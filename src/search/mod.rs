@@ -15,15 +15,18 @@
 //! [`build_root_moves`] with the `searchmoves` filter, per-iteration
 //! full-window root searches, previous-score snapshots, lastBestMove
 //! tracking, selDepth, `check_time` enforcement of the v1 hard limits
-//! (`depth`/`nodes`/`movetime`), and the [`SearchInfo`] callback seam the
-//! UCI layer turns into `info` lines (design/12 §3.13).
+//! (`depth`/`nodes`/`movetime`, plus the wtime/btime hard wall from the
+//! worker-owned [`TimeManager`] — doc 12 §3.8's `elapsed > maximum`), and
+//! the [`SearchInfo`] callback seam the UCI layer turns into `info` lines
+//! (design/12 §3.13).
 //!
 //! Deliberately NOT here yet, per the doc's staging: the TT (§3.7.2 steps
 //! 5–7, plan step 6), the PVS zero-window three-call structure (step 7),
 //! aspiration windows (§3.6, step 8), the full qsearch rules (§3.8, step
 //! 9), the hygiene pass (forgotten mate, aborted loss, `go mate n`,
-//! equal-value dither — step 10), clock time management (doc 12 step 7,
-//! P7), and every ⟨D10⟩ heuristic slot.
+//! equal-value dither — step 10), the soft-stop factors and ponder guard
+//! of the clock TM (doc 12 steps 8–9, P9/P10), and every ⟨D10⟩ heuristic
+//! slot.
 
 pub mod params;
 pub mod rootmoves;
@@ -32,13 +35,14 @@ pub mod stack;
 pub use rootmoves::{RootMove, RootMoves, build_root_moves, sort_descending};
 pub use stack::{ContHistId, PvLine, SS_OFFSET, STACK_SIZE, Stack, init_stack, ss, update_pv};
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::board::Board;
 use crate::eval::{EvalContext, evaluate};
 use crate::movegen::{generate_captures, generate_evasions, generate_legal};
 use crate::moves::{MAX_MOVES, Move, MoveKind, MoveList};
-use crate::timeman::Limits;
+use crate::timeman::{Limits, TimeManager};
 use crate::types::{
     Depth, MAX_PLY, PieceType, VALUE_DRAW, VALUE_INFINITE, VALUE_ZERO, Value, mate_in, mated_in,
 };
@@ -149,6 +153,20 @@ pub struct Worker {
     pub best_move_changes: f64,
     /// What `go` asked for (design/12 §3.6).
     pub limits: Limits,
+    /// Per-`go` time budgets (design/12 §3.7). This is main-worker state
+    /// per doc 12 §3.8's `SearchManager` — the UCI layer calls
+    /// `tm.init(...)` at the top of every search session (on the search
+    /// thread), and [`Worker::check_time`] enforces `maximum()` as the
+    /// hard clock wall. `stop_on_ponderhit` and the soft-stop factors
+    /// are doc 12 steps 8–9 (P9/P10).
+    pub tm: TimeManager,
+    /// The `PoolShared.ponder` flag, v1 stand-in (doc 12 §3.2): set by
+    /// the UCI layer for a `go ponder` session and cleared by
+    /// `ponderhit`, consumed ONLY by [`Worker::check_time`]'s ponder
+    /// guard — while pondering the GUI owns the clock, so no limit may
+    /// stop the search (§3.8). `Arc` because the UCI thread clears the
+    /// same flag the search polls; defaults to an unshared `false`.
+    pub ponder: Arc<AtomicBool>,
     /// Best PV of the last iteration whose result was trusted (`!stop`),
     /// §3.5. Persists across iterations so a `bestmove` is always
     /// printable; the forgotten-mate / aborted-loss hygiene (plan step 10)
@@ -184,6 +202,8 @@ impl Worker {
             pv_idx: 0,
             best_move_changes: 0.0,
             limits: Limits::new(),
+            tm: TimeManager::new(),
+            ponder: Arc::new(AtomicBool::new(false)),
             last_best_move_pv: Vec::new(),
             last_best_move_score: -VALUE_INFINITE,
             last_best_move_depth: 0,
@@ -671,11 +691,13 @@ impl Worker {
     ///
     /// v1 real work — the hard limits a playable engine needs (design/12
     /// step 5): `movetime` (wall clock from `Limits::start_time`, exactly
-    /// `TimeManager::elapsed_ms` semantics) and `nodes` (single worker, so
-    /// `self.nodes` IS the total until SMP aggregation lands, D23).
-    /// `go depth` is enforced by the ID loop, `go infinite` never
-    /// self-stops. The clock-TM wall (`elapsed > maximum`) and the ponder
-    /// guard arrive with doc 12 steps 7/9 (P7+).
+    /// `TimeManager::elapsed_ms` semantics), `nodes` (single worker, so
+    /// `self.nodes` IS the total until SMP aggregation lands, D23), and
+    /// the wtime/btime hard wall `elapsed > maximum` from the worker's
+    /// [`TimeManager`] — all behind the §3.8 ponder guard. `go depth` is
+    /// enforced by the ID loop, `go infinite` never self-stops.
+    /// `stop_on_ponderhit` arrives with doc 12 step 9 (P9); the
+    /// soft-stop factors with step 8 (P10).
     #[inline]
     fn check_time(&mut self, stop: &AtomicBool) {
         self.check_time_countdown -= 1;
@@ -683,12 +705,28 @@ impl Worker {
             return;
         }
         self.check_time_countdown = self.check_time_reset();
+        // The GUI owns the clock while pondering: NEVER stop here
+        // (design/12 §3.8) — `ponderhit`/`stop` are the only ways out of
+        // a ponder search, which keeps `bestmove` behind the UCI layer's
+        // busy-wait until one of them arrives.
+        if self.ponder.load(Ordering::Relaxed) {
+            return;
+        }
+        // Hard clock wall (§3.8 v1 subset). `use_time_management` gates
+        // the comparison, so depth/nodes/movetime/infinite modes never
+        // see it; `tm.elapsed` counts nodes under nodestime, keeping the
+        // units consistent with `maximum()`. When the GUI sent only the
+        // opponent's clock, `init` left `maximum() == 0` and the first
+        // real poll here stops the search (doc 12 §3.7 step 1).
+        let nodes = self.nodes;
+        let tm_stop =
+            self.limits.use_time_management() && self.tm.elapsed(|| nodes) > self.tm.maximum();
         let movetime_stop = self
             .limits
             .movetime
             .is_some_and(|t| self.limits.start_time.elapsed().as_millis() as i64 >= t);
         let nodes_stop = self.limits.nodes.is_some_and(|n| self.nodes >= n);
-        if movetime_stop || nodes_stop {
+        if tm_stop || movetime_stop || nodes_stop {
             stop.store(true, Ordering::Relaxed);
         }
     }
@@ -1013,6 +1051,64 @@ mod tests {
         let stop = AtomicBool::new(false);
         w.iterative_deepening(&stop, &mut |_| {});
         assert!(stop.load(Ordering::Relaxed), "movetime must self-stop");
+        assert!(w.best_move().is_some());
+    }
+
+    #[test]
+    fn ponder_guard_blocks_every_check_time_stop() {
+        // design/12 §3.8: the GUI owns the clock while pondering — an
+        // already-expired movetime must NOT stop a ponder search. The
+        // depth limit (ID-loop condition, not check_time) bounds the
+        // test; depth 4 guarantees the 512-entry cadence fires real
+        // checks (depth <= 3 has too few main-search node entries).
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.movetime = Some(0); // expired from the first poll
+        w.limits.start_time = std::time::Instant::now();
+        w.limits.depth = Some(4);
+        w.limits.ponder = true;
+        w.ponder = Arc::new(AtomicBool::new(true));
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&stop, &mut |_| {});
+        assert!(!stop.load(Ordering::Relaxed), "pondering must never stop");
+        assert_eq!(w.root_depth, 4, "the search deepened on GUI time");
+
+        // Control: the same limits without the ponder flag stop at once.
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.movetime = Some(0);
+        w.limits.start_time = std::time::Instant::now();
+        w.limits.depth = Some(4);
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&stop, &mut |_| {});
+        assert!(stop.load(Ordering::Relaxed), "expired movetime must stop");
+    }
+
+    #[test]
+    fn clock_time_management_enforces_the_hard_wall() {
+        // wtime-only limits (no depth/nodes/movetime): without the
+        // `elapsed > maximum` wall this search would be unbounded, so
+        // returning at all with the stop flag raised proves the wall
+        // (design/12 §3.8 v1 subset). A 50 ms clock keeps `maximum`
+        // around 30 ms, so the test is fast.
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.time[crate::types::Color::White as usize] = 50;
+        w.limits.start_time = std::time::Instant::now();
+        // Mirror the UCI session setup (run_search): init on the worker's
+        // TimeManager against the go limits.
+        let mut limits = w.limits.clone();
+        let mut persist = crate::timeman::TimePersist::default();
+        w.tm.init(
+            &mut limits,
+            crate::types::Color::White,
+            0,
+            &crate::uci::Options::new(),
+            &mut persist,
+        );
+        w.limits = limits;
+        assert!(w.limits.use_time_management());
+        assert!(w.tm.maximum() >= 1);
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&stop, &mut |_| {});
+        assert!(stop.load(Ordering::Relaxed), "the TM wall must self-stop");
         assert!(w.best_move().is_some());
     }
 

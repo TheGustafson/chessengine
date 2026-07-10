@@ -7,12 +7,20 @@
 //! panic on input, unknown commands answer `info string`, EOF on stdin is
 //! `quit` — GUIs close the pipe, and a dead engine loses on time.
 //!
-//! P4 state (doc 12 §4 steps 1–4): `position` (startpos/fen + atomic move
-//! application), the move-text layer (`move_to_uci`/`move_from_uci`), the
-//! §3.5 options table with full `setoption` semantics (including the
-//! `Debug Log File` stdin/stdout tee), `ucinewgame` per-game TM reset, and
-//! `go`-limit parsing into [`Limits`]. Running a search — and with it the
-//! real `go`/`stop`/`bestmove` session — lands in P5 (doc 12 step 5); the
+//! P5 state (doc 12 §4 steps 1–6): everything from P4 — `position`
+//! (startpos/fen + atomic move application), the move-text layer
+//! (`move_to_uci`/`move_from_uci`), the §3.5 options table with full
+//! `setoption` semantics (including the `Debug Log File` stdin/stdout
+//! tee), `ucinewgame` per-game TM reset, `go`-limit parsing into
+//! [`Limits`] — plus the live `go` session (doc 12 §3.2): the search runs
+//! on its own thread while this thread keeps reading stdin, `stop` flips a
+//! shared flag, blocking commands apply the implicit-stop rule, and the
+//! worker prints `info` lines (§3.13 v1 scope) and the exactly-once
+//! `bestmove` — after `stop`/`ponderhit` only, in infinite/ponder mode
+//! (the busy-wait rule). wtime/btime go through
+//! [`TimeManager::init`](crate::timeman::TimeManager::init) with
+//! the `maximum` hard wall enforced in the search's `check_time`; the
+//! soft-stop factors and real pondering are doc 12 steps 8–9. The
 //! in-session `bench`/`perft`/`go perft`/`eval` dev commands land with doc
 //! 12 step 12. The argv subcommands are live: `perft <depth> [fen]` prints
 //! a real SF-format divide (P3, design/06 §3.2) and `bench ... perft` runs
@@ -23,12 +31,16 @@ use crate::board::Board;
 use crate::movegen;
 use crate::moves::{MAX_MOVES, Move, MoveList};
 use crate::perft;
-use crate::timeman::{Limits, TimeManager, TimePersist};
-use crate::types::Color;
+use crate::search::{SearchInfo, Worker};
+use crate::timeman::{Limits, TimePersist};
+use crate::types::{Color, VALUE_INFINITE, VALUE_MATE, Value, is_mate, is_mated};
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufRead, Write};
 use std::str::{FromStr, SplitWhitespace};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::thread;
 use std::time::Instant;
 
 /// `id name` text (doc 12 §3.3): crate name + version from the manifest,
@@ -61,8 +73,12 @@ pub fn run() {
         )),
         None => {
             let stdin = io::stdin();
-            let mut stdout = io::stdout().lock();
-            uci_loop(stdin.lock(), &mut stdout);
+            // Deliberately NOT StdoutLock: the search worker prints from
+            // its own thread, and a lock held by this thread would block
+            // it forever. [`SharedOut`]'s mutex is the line-atomicity
+            // guarantee instead (doc 12 §3.13).
+            let out = SharedOut::new(io::stdout());
+            uci_loop(stdin.lock(), &out);
         }
     }
 }
@@ -205,7 +221,10 @@ impl fmt::Display for OptionEntry {
 
 /// The options table (doc 12 §3.5). Registration order == `uci` print
 /// order; lookup is case-insensitive. Typed accessors hide the table from
-/// the rest of the engine.
+/// the rest of the engine. `Clone` because each `go` session ships a
+/// snapshot to the search thread (`setoption` never changes options under
+/// a running search, §3.5, so a snapshot is always current).
+#[derive(Clone)]
 pub struct Options {
     entries: Vec<OptionEntry>,
 }
@@ -489,21 +508,102 @@ impl<W: Write> Write for UciOut<W> {
     }
 }
 
+/// Line-atomic shared output (doc 12 §3.13): the UCI thread and the search
+/// worker both print through one mutex-guarded [`UciOut`], so lines from
+/// concurrent writers can never interleave mid-line, and the `Debug Log
+/// File` tee sees ALL stdout traffic — search output included. `Clone`
+/// shares the sink (an `Arc` under the hood); the manual impl avoids a
+/// spurious `W: Clone` bound.
+struct SharedOut<W: Write>(Arc<Mutex<UciOut<W>>>);
+
+impl<W: Write> Clone for SharedOut<W> {
+    fn clone(&self) -> SharedOut<W> {
+        SharedOut(Arc::clone(&self.0))
+    }
+}
+
+impl<W: Write> SharedOut<W> {
+    fn new(out: W) -> SharedOut<W> {
+        SharedOut(Arc::new(Mutex::new(UciOut::new(out))))
+    }
+
+    /// Lock for one line (or one short multi-line block, e.g. the `uci`
+    /// handshake). A poisoned mutex — some writer panicked mid-line —
+    /// degrades to the inner value: a protocol loop that must never die
+    /// (doc 12 §3.3) prefers possibly-torn log output over propagating
+    /// the panic.
+    fn lock(&self) -> MutexGuard<'_, UciOut<W>> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Recover the raw sink; callable only when every search thread has
+    /// been joined (test harness use).
+    #[cfg(test)]
+    fn into_inner(self) -> W {
+        let mutex = Arc::try_unwrap(self.0)
+            .ok()
+            .expect("all SharedOut clones dropped (searches joined)");
+        mutex
+            .into_inner()
+            .unwrap_or_else(PoisonError::into_inner)
+            .out
+    }
+}
+
 // ---------------------------------------------------------------------------
-// Engine — the session glue aggregate (design/12 §3.1, P4 subset)
+// Engine — the session glue aggregate (design/12 §3.1, P5 subset)
 // ---------------------------------------------------------------------------
 
-/// The glue aggregate owned by the UCI loop (doc 12 §3.1). P4 subset: the
-/// session position, the options table, and the per-game TM state. The
-/// `ThreadPool` and `Arc<TranspositionTable>` join in P5/P6; when they do,
-/// `TimeManager`/`TimePersist` migrate into the main worker's
-/// `SearchManager` (doc 12 §3.8) and `new_game` grows the TT/history
-/// clears.
+/// The glue aggregate owned by the UCI loop (doc 12 §3.1). P5 subset: the
+/// session position, the options table, and the single search worker with
+/// its per-game TM state. The real `ThreadPool` (with `PoolShared`) and
+/// `Arc<TranspositionTable>` join in P8/P6; [`Session`] and
+/// [`SearchState`] are their v1 stand-ins with the same contract: stdin is
+/// never blocked by a running search, and `bestmove` is printed exactly
+/// once per `go`, by the search thread.
 pub struct Engine {
     board: Board,
     options: Options,
-    time_manager: TimeManager,
+    /// The idle-state search state; `None` exactly while a search thread
+    /// owns it (it travels there and comes back through the join handle).
+    state: Option<SearchState>,
+    /// The most recent `go` session — possibly still searching, possibly
+    /// finished-but-not-yet-joined. Joined (and `state` restored) by
+    /// [`Engine::wait_for_search_finished`].
+    session: Option<Session>,
+}
+
+/// Everything one search session owns: the [`Worker`] (board copy, search
+/// stack, root moves, and the per-`go` `TimeManager`) plus the per-GAME
+/// [`TimePersist`]. This is v1's stand-in for the threading doc's
+/// main-worker `SearchManager` (doc 12 §3.8) — deliberately NOT `Engine`
+/// state (§3.1), so the migration to the pool is a move, not a redesign.
+struct SearchState {
+    worker: Worker,
     persist: TimePersist,
+}
+
+impl SearchState {
+    fn new() -> SearchState {
+        SearchState {
+            worker: Worker::new(Board::startpos()),
+            persist: TimePersist::default(),
+        }
+    }
+}
+
+/// One `go`'s cross-thread handles — the v1 stand-in for the threading
+/// doc's `PoolShared` flag block (doc 12 §3.2). Both flags are pure
+/// signals (no data published through them), hence `Relaxed` everywhere.
+struct Session {
+    /// Set by `stop`/`quit`/blocking commands (implicit stop) and by the
+    /// search's own hard limits in `check_time`.
+    stop: Arc<AtomicBool>,
+    /// True from `go ponder` until `ponderhit`/`stop`: while set, the
+    /// busy-wait in [`run_search`] withholds `bestmove` (§3.2 step 3).
+    ponder: Arc<AtomicBool>,
+    /// Returns the [`SearchState`] to the UCI thread at join.
+    handle: thread::JoinHandle<SearchState>,
 }
 
 impl Engine {
@@ -511,8 +611,8 @@ impl Engine {
         Engine {
             board: Board::startpos(),
             options: Options::new(),
-            time_manager: TimeManager::new(),
-            persist: TimePersist::default(),
+            state: Some(SearchState::new()),
+            session: None,
         }
     }
 
@@ -520,10 +620,60 @@ impl Engine {
     /// "first move of the game" defaults measurably affect move-1 time
     /// usage) and the `nodestime` budget. Deliberately does NOT touch the
     /// session position — GUIs send `position` separately. TT + history
-    /// clears join in P5/P6.
+    /// clears join in P6.
     pub fn new_game(&mut self) {
-        self.persist = TimePersist::default();
-        self.time_manager.new_game();
+        self.wait_for_search_finished();
+        let state = self.state.as_mut().expect("engine idle after wait");
+        state.persist = TimePersist::default();
+        state.worker.tm.new_game();
+    }
+
+    /// Join any running search, first applying the implicit-stop rule
+    /// (doc 12 §3.2): a blocking command that arrives mid-search sets
+    /// `stop`, the pending `bestmove` flushes normally (the exactly-once
+    /// contract is untouched), and the wait is therefore always bounded —
+    /// `go infinite` followed by a mid-search `position` can never
+    /// deadlock. No-op when idle.
+    pub fn wait_for_search_finished(&mut self) {
+        if let Some(session) = self.session.take() {
+            session.stop.store(true, Ordering::Relaxed);
+            self.state = Some(session.handle.join().unwrap_or_else(|_| {
+                // A panicked worker must not kill the UCI session ("never
+                // panic on input", §3.3): restart from fresh state. The
+                // per-game TM state is lost — acceptable in a path that
+                // indicates a bug anyway (the panic went to stderr).
+                SearchState::new()
+            }));
+        }
+    }
+
+    /// `stop`: flip the shared flag; the search thread prints its
+    /// `bestmove` and finishes (§3.2). Harmless no-op when idle (§3.3).
+    pub fn stop_search(&self) {
+        if let Some(session) = &self.session {
+            session.stop.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// `ponderhit`: the GUI played the expected move — clear the ponder
+    /// flag so the busy-wait releases and the search runs on our clock
+    /// (§3.10 v1 subset; the full ponder state machine is doc 12 step 9).
+    /// Harmless no-op when idle (§3.3).
+    pub fn ponderhit(&self) {
+        if let Some(session) = &self.session {
+            session.ponder.store(false, Ordering::Relaxed);
+        }
+    }
+
+    /// Test-only: join the search WITHOUT the implicit stop, letting a
+    /// self-terminating `go` (depth/nodes/movetime) run to natural
+    /// completion so its output is deterministic. Would hang on
+    /// `go infinite` — deliberate, tests must stop those explicitly.
+    #[cfg(test)]
+    fn join_search(&mut self) {
+        if let Some(session) = self.session.take() {
+            self.state = Some(session.handle.join().unwrap_or_else(|_| SearchState::new()));
+        }
     }
 }
 
@@ -538,37 +688,54 @@ impl Default for Engine {
 // ---------------------------------------------------------------------------
 
 /// The blocking UCI loop, generic over the byte streams (`impl BufRead` /
-/// `impl Write`) so unit tests drive it with in-memory buffers while
-/// `run()` passes locked stdin/stdout.
+/// [`SharedOut`]) so unit tests drive it with in-memory buffers while
+/// `run()` passes stdin/stdout. `W: Send + 'static` because each `go`
+/// clones the shared sink into its search thread.
 ///
 /// Loop-exit rules (doc 12 §3.3): `quit`, stdin EOF, or a read error all
 /// leave the loop; a write error means the GUI is gone, same thing. No
-/// input line may panic.
-fn uci_loop(input: impl BufRead, out: &mut impl Write) {
+/// input line may panic. On exit, any running search is stopped and
+/// joined so its `bestmove` flushes before the process ends.
+fn uci_loop<W: Write + Send + 'static>(input: impl BufRead, out: &SharedOut<W>) {
     let mut engine = Engine::new();
-    let mut out = UciOut::new(out);
     for line in input.lines() {
         let Ok(line) = line else { break };
-        out.log_input(&line);
-        match dispatch(&mut engine, &line, &mut out) {
+        out.lock().log_input(&line);
+        match dispatch(&mut engine, &line, out) {
             Ok(true) => {}
             Ok(false) | Err(_) => break,
         }
         // Piped stdout is block-buffered in Rust: flush per command or a
         // GUI waiting on `uciok` hangs forever.
-        if out.flush().is_err() {
+        if out.lock().flush().is_err() {
             break;
         }
     }
-    let _ = out.flush();
+    // `quit`/EOF: stop + join (doc 12 §3.2) — the exactly-once `bestmove`
+    // contract holds even for a search interrupted by process exit.
+    engine.wait_for_search_finished();
+    let _ = out.lock().flush();
 }
 
 /// Handle one input line (the doc 12 §3.3 dispatch shape).
 /// Returns `Ok(false)` exactly when the loop should end (`quit`).
-fn dispatch<W: Write>(engine: &mut Engine, line: &str, out: &mut UciOut<W>) -> io::Result<bool> {
+///
+/// Commands legal DURING a search (`stop`, `ponderhit`, `isready` — a
+/// liveness ping, not a barrier) are handled without waiting; every other
+/// state-touching command first goes through
+/// [`Engine::wait_for_search_finished`] and its implicit-stop rule
+/// (§3.2), so the wait is always bounded.
+fn dispatch<W: Write + Send + 'static>(
+    engine: &mut Engine,
+    line: &str,
+    out: &SharedOut<W>,
+) -> io::Result<bool> {
     let mut tokens = line.split_whitespace();
     match tokens.next() {
         Some("uci") => {
+            // One lock for the whole handshake block: GUI parsers may
+            // assume the id/option/uciok lines arrive uninterrupted.
+            let mut out = out.lock();
             writeln!(out, "id name {NAME}")?;
             writeln!(out, "id author {AUTHOR}")?;
             for entry in engine.options.iter() {
@@ -576,23 +743,29 @@ fn dispatch<W: Write>(engine: &mut Engine, line: &str, out: &mut UciOut<W>) -> i
             }
             writeln!(out, "uciok")?;
         }
-        // Trivially ready until searches run on worker threads (P5); it
-        // stays an immediate answer even then (liveness ping, §3.2).
-        Some("isready") => writeln!(out, "readyok")?,
-        Some("setoption") => cmd_setoption(engine, tokens, out)?,
-        Some("ucinewgame") => engine.new_game(),
-        Some("position") => cmd_position(engine, tokens, out)?,
+        Some("isready") => writeln!(out.lock(), "readyok")?,
+        Some("setoption") => {
+            engine.wait_for_search_finished();
+            cmd_setoption(engine, tokens, &mut *out.lock())?;
+        }
+        Some("ucinewgame") => engine.new_game(), // waits internally
+        Some("position") => {
+            engine.wait_for_search_finished();
+            cmd_position(engine, tokens, &mut *out.lock())?;
+        }
         Some("go") => cmd_go(engine, tokens, out)?,
-        // Harmless no-ops while no search runs (§3.3); they become
-        // PoolShared flag stores in P5.
-        Some("stop" | "ponderhit") => {}
-        Some("d") => print_board(out, &engine.board)?,
+        Some("stop") => engine.stop_search(),
+        Some("ponderhit") => engine.ponderhit(),
+        Some("d") => {
+            engine.wait_for_search_finished(); // dev commands wait (§3.15)
+            print_board(&mut *out.lock(), &engine.board)?;
+        }
         Some("quit") => return Ok(false),
         // Accepted-but-ignored per the UCI spec (doc 12 §3.3): routing
         // these through the unknown branch would spam GUIs that send them.
         Some("debug" | "register") => {}
         // Everything else is absorbed, never fatal (doc 12 §3.3).
-        Some(_) => writeln!(out, "info string Unknown command: '{}'", line.trim())?,
+        Some(_) => writeln!(out.lock(), "info string Unknown command: '{}'", line.trim())?,
         None => {} // blank line
     }
     Ok(true)
@@ -701,21 +874,254 @@ fn cmd_position<W: Write>(
     Ok(())
 }
 
-/// `go [<param>...]` (doc 12 §3.6). P4 parses the limits — the search
-/// session that consumes them is doc 12 step 5 (P5), so until then the
-/// engine says so instead of leaving the GUI waiting for a `bestmove`
-/// that cannot come.
-fn cmd_go<W: Write>(
+/// `go [<param>...]` (doc 12 §3.6, §3.2 step 1): finish any previous
+/// session (implicit stop — a well-behaved GUI never overlaps, but we
+/// tolerate it), parse the limits, and hand the search state to a fresh
+/// worker thread. This thread returns to reading stdin immediately; the
+/// worker prints every `info` line and the exactly-once `bestmove`.
+fn cmd_go<W: Write + Send + 'static>(
     engine: &mut Engine,
     tokens: SplitWhitespace,
-    out: &mut UciOut<W>,
+    out: &SharedOut<W>,
 ) -> io::Result<()> {
-    let limits = parse_go(&engine.board, tokens, out)?;
-    let _ = limits; // consumed by the search session from P5 on
-    writeln!(
-        out,
-        "info string go is not implemented yet (search lands in P5)"
-    )
+    engine.wait_for_search_finished();
+    let limits = parse_go(&engine.board, tokens, &mut *out.lock())?;
+    // `go perft <d>` is a dev command (doc 12 §3.15), wired with the rest
+    // of the in-session dev surface (step 12) — say so rather than
+    // launching a search the GUI did not ask for.
+    if limits.perft.is_some() {
+        return writeln!(
+            out.lock(),
+            "info string go perft is not implemented yet (dev commands land with doc 12 step 12)"
+        );
+    }
+    let mut state = engine.state.take().expect("engine idle after wait");
+    state.worker.board = engine.board.clone(); // history Vec included (D8)
+    state.worker.limits = limits;
+    // Fresh flags per `go` (§3.2 step 1): stop = false, ponder from the
+    // limits. (`increase_depth` joins with the soft stop, step 8.) The
+    // worker shares the ponder flag: its `check_time` ponder guard must
+    // observe `ponderhit` (doc 12 §3.8).
+    let stop = Arc::new(AtomicBool::new(false));
+    let ponder = Arc::new(AtomicBool::new(state.worker.limits.ponder));
+    state.worker.ponder = Arc::clone(&ponder);
+    let spawned = {
+        let stop = Arc::clone(&stop);
+        let ponder = Arc::clone(&ponder);
+        let options = engine.options.clone();
+        let out = out.clone();
+        thread::Builder::new()
+            .name("search-main".to_string())
+            .spawn(move || run_search(state, &stop, &ponder, &options, &out))
+    };
+    match spawned {
+        Ok(handle) => {
+            engine.session = Some(Session {
+                stop,
+                ponder,
+                handle,
+            });
+            Ok(())
+        }
+        Err(e) => {
+            // Spawn failure (resource exhaustion): the state moved into
+            // the dropped closure, so rebuild it, and honor the
+            // exactly-once contract with the best answer available.
+            engine.state = Some(SearchState::new());
+            let mut legal = MoveList::new();
+            movegen::generate_legal(&engine.board, &mut legal);
+            let m = legal.first().copied().unwrap_or(Move::NULL);
+            let mut out = out.lock();
+            writeln!(out, "info string Could not start search thread: {e}")?;
+            writeln!(out, "bestmove {}", move_to_uci(m))
+        }
+    }
+}
+
+/// One `go` session, on the search thread (doc 12 §3.2 steps 2–4): time
+/// management init, iterative deepening with `info` emission (§3.13),
+/// the busy-wait rule for infinite/ponder searches, then the
+/// exactly-once `bestmove`. Returns the [`SearchState`] to the UCI
+/// thread through the join handle.
+///
+/// Output errors are swallowed (`let _`): if the GUI closed the pipe
+/// there is nobody left to tell, and the session still has to unwind
+/// cleanly (§3.3).
+fn run_search<W: Write>(
+    mut state: SearchState,
+    stop: &AtomicBool,
+    ponder: &AtomicBool,
+    options: &Options,
+    out: &SharedOut<W>,
+) -> SearchState {
+    let worker = &mut state.worker;
+    // §3.2 step 2 — TM init on the search thread: turns wtime/btime into
+    // the optimum/maximum budgets `check_time` enforces, and may rewrite
+    // the clock fields under nodestime. (The post-search
+    // `advance_nodes_time` accounting lands with doc 12 step 11.)
+    let mut limits = worker.limits.clone();
+    let (us, game_ply) = (worker.board.side_to_move(), worker.board.game_ply());
+    worker
+        .tm
+        .init(&mut limits, us, game_ply, options, &mut state.persist);
+    worker.limits = limits;
+    let start_time = worker.limits.start_time;
+
+    // §3.13: one pre-built String, one locked write per info line. The
+    // PV head of the last line sent drives the final flush below.
+    let mut last_sent: Option<Move> = None;
+    let multi_pv = 1usize; // fixed until the MultiPV option lands (step 10)
+    worker.iterative_deepening(stop, &mut |info| {
+        // Throttle (§3.13): below INFO_THROTTLE_NODES only the
+        // iteration's LAST MultiPV line prints — at MultiPV 1 that is
+        // every completed line, so nothing is ever suppressed yet.
+        if info.nodes <= INFO_THROTTLE_NODES && info.multipv != multi_pv {
+            return;
+        }
+        let elapsed_ms = start_time.elapsed().as_millis() as i64;
+        let mut out = out.lock();
+        let _ = writeln!(out, "{}", format_info(info, elapsed_ms));
+        let _ = out.flush();
+        last_sent = info.pv.first().copied();
+    });
+
+    if worker.root_moves.is_empty() {
+        // §3.2 step 2: no legal moves — mate (in check) or stalemate.
+        let score = if worker.board.checkers().is_empty() {
+            "cp 0"
+        } else {
+            "mate 0"
+        };
+        let mut out = out.lock();
+        let _ = writeln!(out, "info depth 0 score {score}");
+        let _ = out.flush();
+    }
+
+    // §3.2 step 3 — the bestmove-exactly-once busy-wait rule: in ponder
+    // or infinite mode, bestmove may only be printed after "stop" or
+    // "ponderhit". Burns one core for the (typically tiny) window — SF
+    // makes the same trade (doc 12 §6, Open Question 2).
+    while !stop.load(Ordering::Relaxed)
+        && (ponder.load(Ordering::Relaxed) || worker.limits.infinite)
+    {
+        std::hint::spin_loop();
+    }
+    stop.store(true, Ordering::Relaxed);
+
+    // §3.2 step 4 — final PV flush + bestmove in one locked block, so the
+    // pair can never interleave with UCI-thread output.
+    let mut out = out.lock();
+    if let Some(best) = worker.best_move() {
+        let rm = &worker.root_moves[0];
+        // §3.13: the GUI's last-seen PV must match the bestmove. A
+        // mid-iteration stop can promote a root move whose line was never
+        // sent (or stop before the first report); republish — unless the
+        // front move has no trusted score at all (stopped before any
+        // depth-1 result), in which case there is nothing to say.
+        if last_sent != Some(best) && rm.uci_score != -VALUE_INFINITE {
+            let elapsed_ms = start_time.elapsed().as_millis() as i64;
+            let info = SearchInfo {
+                depth: worker.root_depth.max(1),
+                sel_depth: rm.sel_depth,
+                multipv: 1,
+                score: rm.uci_score,
+                lowerbound: rm.score_lowerbound,
+                upperbound: rm.score_upperbound,
+                nodes: worker.nodes,
+                pv: &rm.pv,
+            };
+            let _ = writeln!(out, "{}", format_info(&info, elapsed_ms));
+        }
+        // Ponder move = pv[1] when the line is long enough (§3.2 step 4;
+        // the TT-probe fallback for 1-ply PVs arrives with the TT, P6).
+        match worker.root_pv().get(1) {
+            Some(p) => {
+                let _ = writeln!(out, "bestmove {best} ponder {p}");
+            }
+            None => {
+                let _ = writeln!(out, "bestmove {best}");
+            }
+        }
+    } else {
+        let _ = writeln!(out, "bestmove (none)");
+    }
+    let _ = out.flush();
+    drop(out);
+    state
+}
+
+// ---------------------------------------------------------------------------
+// info formatting (design/12 §3.13–§3.14)
+// ---------------------------------------------------------------------------
+
+/// design/12 §3.13's `NODES_LIMIT_OUTPUT`, under the doc's preferred
+/// name: `currmove` lines and intermediate aspiration bound updates wait
+/// for this many nodes, and completed PV lines below it print only when
+/// the iteration's last MultiPV line completes. At v1's MultiPV = 1 the
+/// PV rule always prints; `currmove` emission itself lands with the
+/// MovePicker's root loop (docs 09/12 step 6+).
+const INFO_THROTTLE_NODES: u64 = 10_000_000;
+
+/// Format one completed PV line (doc 12 §3.13, v1 field scope): depth,
+/// seldepth, score (with bound suffix), nodes, nps, wall-clock time, pv.
+/// One `String` so the caller can emit it as a single write.
+fn format_info(info: &SearchInfo, elapsed_ms: i64) -> String {
+    use std::fmt::Write as _; // writing to a String cannot fail
+    let time = elapsed_ms.max(0);
+    let nps = info.nodes.saturating_mul(1000) / time.max(1) as u64;
+    let mut line = format!(
+        "info depth {} seldepth {} score {}",
+        info.depth,
+        info.sel_depth,
+        format_score(info.score)
+    );
+    if info.lowerbound {
+        line.push_str(" lowerbound");
+    } else if info.upperbound {
+        line.push_str(" upperbound");
+    }
+    let _ = write!(line, " nodes {} nps {nps} time {time} pv", info.nodes);
+    for m in info.pv {
+        let _ = write!(line, " {m}");
+    }
+    line
+}
+
+/// A score as UCI prints it (doc 12 §3.14). `Mate` counts full MOVES,
+/// signed: positive "we mate in M", negative "we are mated in M".
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum UciScore {
+    Cp(Value),
+    Mate(i32),
+}
+
+impl fmt::Display for UciScore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            UciScore::Cp(v) => write!(f, "cp {v}"),
+            UciScore::Mate(m) => write!(f, "mate {m}"),
+        }
+    }
+}
+
+/// Split a ply-relative internal value into the UCI `cp`/`mate` form
+/// (doc 12 §3.14): mate plies convert to full moves — rounding up on the
+/// winning side (our mating move counts), truncating on the losing side,
+/// matching SF exactly (Rust `/` truncates like C++). Outside the mate
+/// bands the value passes through as centipawns: `to_cp` is the identity
+/// while eval phase A/B prints raw internal values; the WDL normalization
+/// seam replaces it in phase C (§3.14).
+pub fn format_score(v: Value) -> UciScore {
+    debug_assert!(crate::types::is_valid(v) && v.abs() != VALUE_INFINITE);
+    if is_mate(v) {
+        let plies = VALUE_MATE - v;
+        UciScore::Mate((plies + 1) / 2)
+    } else if is_mated(v) {
+        let plies = VALUE_MATE + v;
+        UciScore::Mate(-(plies / 2))
+    } else {
+        UciScore::Cp(v)
+    }
 }
 
 /// Parse the `go` parameter tokens into [`Limits`] (doc 12 §3.6):
@@ -741,12 +1147,25 @@ fn parse_go<W: Write>(
     while let Some(tok) = tokens.next() {
         match tok {
             "searchmoves" => {
+                let mut any_token = false;
                 for tok in tokens.by_ref() {
+                    any_token = true;
                     match move_from_uci(board, tok) {
                         Some(m) => limits.searchmoves.push(m),
                         None => {
                             writeln!(out, "info string Invalid searchmoves token '{tok}' ignored")?
                         }
+                    }
+                }
+                // §3.6: every token unparseable/illegal in a position
+                // that has legal moves — root-move building will ignore
+                // the filter wholesale; tell the GUI why it gets a
+                // normal bestmove instead of `(none)`.
+                if any_token && limits.searchmoves.is_empty() {
+                    let mut legal = MoveList::new();
+                    movegen::generate_legal(board, &mut legal);
+                    if !legal.is_empty() {
+                        writeln!(out, "info string Invalid searchmoves list ignored")?;
                     }
                 }
             }
@@ -812,10 +1231,12 @@ mod tests {
     use crate::types::Square;
 
     /// Drive the loop over a scripted stdin, returning captured stdout.
+    /// The loop's exit path joins any search thread, so the capture is
+    /// complete and the `Arc` unwrap in `into_inner` cannot fail.
     fn session(input: &str) -> String {
-        let mut out = Vec::new();
-        uci_loop(input.as_bytes(), &mut out);
-        String::from_utf8(out).expect("engine output is UTF-8")
+        let out = SharedOut::new(Vec::new());
+        uci_loop(input.as_bytes(), &out);
+        String::from_utf8(out.into_inner()).expect("engine output is UTF-8")
     }
 
     /// Run one command against a fresh engine, returning (engine, output).
@@ -826,10 +1247,14 @@ mod tests {
     }
 
     /// Run one command against an existing engine, returning its output.
+    /// Joins (without stopping) any search the command started, so a
+    /// self-terminating `go` line's whole `info`/`bestmove` stream is
+    /// captured deterministically after natural completion.
     fn command_on(engine: &mut Engine, line: &str) -> String {
-        let mut out = UciOut::new(Vec::new());
-        dispatch(engine, line, &mut out).expect("Vec sink never fails");
-        String::from_utf8(out.out).expect("engine output is UTF-8")
+        let out = SharedOut::new(Vec::new());
+        dispatch(engine, line, &out).expect("Vec sink never fails");
+        engine.join_search();
+        String::from_utf8(out.into_inner()).expect("engine output is UTF-8")
     }
 
     fn parse_limits(fen: &str, params: &str) -> (Limits, String) {
@@ -1246,25 +1671,269 @@ uciok
         assert!(out.contains("info string Invalid searchmoves token '9' ignored"));
     }
 
-    #[test]
-    fn go_command_answers_not_implemented() {
-        let (_, out) = command("go depth 4");
-        assert!(
-            out.contains("info string go is not implemented yet"),
-            "{out}"
-        );
-    }
-
     // -- ucinewgame ---------------------------------------------------------
 
     #[test]
     fn ucinewgame_resets_tm_state_not_position() {
         let mut engine = Engine::new();
         command_on(&mut engine, "position startpos moves e2e4");
-        engine.persist.original_time_adjust = 1.5;
+        engine.state.as_mut().unwrap().persist.original_time_adjust = 1.5;
         command_on(&mut engine, "ucinewgame");
-        assert_eq!(engine.persist.original_time_adjust, -1.0);
+        assert_eq!(
+            engine.state.as_ref().unwrap().persist.original_time_adjust,
+            -1.0
+        );
         // The session position is untouched (GUIs send `position` next).
         assert!(engine.board.to_fen().contains("4P3"));
+    }
+
+    // -- the go session (doc 12 §3.2; §4 steps 5-6) --------------------------
+
+    /// Count `bestmove` lines in a transcript.
+    fn bestmoves(out: &str) -> usize {
+        out.lines().filter(|l| l.starts_with("bestmove ")).count()
+    }
+
+    #[test]
+    fn go_depth_emits_info_lines_then_exactly_one_bestmove() {
+        // Mate-in-1: the completed depth-2 search must find d1d8 with an
+        // exact mate score, and the transcript shape is deterministic.
+        let mut engine = Engine::new();
+        command_on(
+            &mut engine,
+            "position fen 6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1",
+        );
+        let out = command_on(&mut engine, "go depth 2");
+        assert_eq!(bestmoves(&out), 1, "{out}");
+        let bestmove_line = out.lines().last().unwrap();
+        assert!(bestmove_line.starts_with("bestmove d1d8"), "{out}");
+        // §3.13 v1 fields, in order, one line per completed iteration.
+        let infos: Vec<&str> = out.lines().filter(|l| l.starts_with("info ")).collect();
+        assert_eq!(infos.len(), 2, "{out}");
+        assert!(infos[0].starts_with("info depth 1 seldepth "), "{out}");
+        assert!(infos[1].starts_with("info depth 2 seldepth "), "{out}");
+        for info in &infos {
+            assert!(info.contains(" score mate 1"), "{info}");
+            for field in [" nodes ", " nps ", " time ", " pv "] {
+                assert!(info.contains(field), "missing{field}in: {info}");
+            }
+            assert!(info.ends_with(" pv d1d8"), "{info}");
+        }
+    }
+
+    #[test]
+    fn bestmove_carries_a_ponder_move_when_the_pv_is_long_enough() {
+        let mut engine = Engine::new();
+        let out = command_on(&mut engine, "go depth 3");
+        assert_eq!(bestmoves(&out), 1, "{out}");
+        let last = out.lines().last().unwrap();
+        assert!(last.contains(" ponder "), "depth-3 startpos PV >= 2: {out}");
+        // Both moves parse against the evolving position.
+        let tokens: Vec<&str> = last.split_whitespace().collect();
+        let mut board = Board::startpos();
+        let best = move_from_uci(&board, tokens[1]).expect("legal bestmove");
+        board.make_move(best, board.gives_check(best));
+        assert!(move_from_uci(&board, tokens[3]).is_some(), "{last}");
+    }
+
+    #[test]
+    fn mated_root_answers_info_depth_0_and_bestmove_none() {
+        // Fool's mate: white is checkmated (doc 12 §3.2 step 2, §5 item 7).
+        let mut engine = Engine::new();
+        command_on(
+            &mut engine,
+            "position fen rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3",
+        );
+        let out = command_on(&mut engine, "go depth 3");
+        assert_eq!(out, "info depth 0 score mate 0\nbestmove (none)\n");
+    }
+
+    #[test]
+    fn stalemated_root_answers_info_depth_0_and_bestmove_none() {
+        let mut engine = Engine::new();
+        command_on(&mut engine, "position fen k7/8/1K6/8/8/8/7Q/8 b - - 0 1");
+        let out = command_on(&mut engine, "go depth 3");
+        assert_eq!(out, "info depth 0 score cp 0\nbestmove (none)\n");
+    }
+
+    #[test]
+    fn go_infinite_prints_bestmove_only_after_stop() {
+        // Scripted: `stop` releases the busy-wait; exactly one bestmove.
+        let out = session("go infinite\nstop\nquit\n");
+        assert_eq!(bestmoves(&out), 1, "{out}");
+    }
+
+    #[test]
+    fn quit_implicitly_stops_an_infinite_search_and_flushes_bestmove() {
+        let out = session("go infinite\nquit\n");
+        assert_eq!(bestmoves(&out), 1, "{out}");
+    }
+
+    #[test]
+    fn eof_implicitly_stops_a_search_and_flushes_bestmove() {
+        // No quit at all: the loop's exit path must stop + join (§3.2).
+        let out = session("go infinite\n");
+        assert_eq!(bestmoves(&out), 1, "{out}");
+    }
+
+    #[test]
+    fn blocking_commands_implicitly_stop_a_running_search() {
+        // §3.2/§5 item 8: a mid-search `position` flushes the pending
+        // bestmove, then applies; `d` (also blocking) proves it applied.
+        let out = session("go infinite\nposition startpos moves e2e4\nd\nquit\n");
+        assert_eq!(bestmoves(&out), 1, "{out}");
+        assert!(
+            out.contains("Fen: rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"),
+            "{out}"
+        );
+        // The bestmove flushed before the new position's diagram printed.
+        assert!(
+            out.find("bestmove").unwrap() < out.find("Fen:").unwrap(),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn two_go_cycles_answer_exactly_one_bestmove_each() {
+        // Distinct mate-in-1 positions prove the position change between
+        // searches applied (doc 12 §4 steps 5-6 done-conditions).
+        let mut engine = Engine::new();
+        command_on(
+            &mut engine,
+            "position fen 6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1",
+        );
+        let first = command_on(&mut engine, "go depth 2");
+        assert_eq!(bestmoves(&first), 1, "{first}");
+        assert!(first.contains("bestmove d1d8"), "{first}");
+
+        command_on(
+            &mut engine,
+            "position fen 3r2k1/5ppp/8/8/8/8/5PPP/6K1 b - - 0 1",
+        );
+        let second = command_on(&mut engine, "go depth 2");
+        assert_eq!(bestmoves(&second), 1, "{second}");
+        assert!(second.contains("bestmove d8d1"), "{second}");
+    }
+
+    #[test]
+    fn ponderhit_releases_a_finished_ponder_search() {
+        // `go ponder depth 1` finishes searching, then busy-waits; the
+        // ponderhit must release exactly one bestmove without a hang
+        // (§3.2 step 3 — the full ponder machine is step 9).
+        let out = session("go ponder depth 1\nponderhit\nquit\n");
+        assert_eq!(bestmoves(&out), 1, "{out}");
+    }
+
+    #[test]
+    fn timed_ponder_search_stops_only_after_ponderhit() {
+        // The §3.8 ponder guard: the expired movetime cannot stop the
+        // pondering search, so the session hinges on `ponderhit` flipping
+        // the shared flag — then the next check_time poll stops it and
+        // exactly one bestmove flows (§3.10 v1 subset).
+        let out = session("go ponder movetime 1\nponderhit\nquit\n");
+        assert_eq!(bestmoves(&out), 1, "{out}");
+    }
+
+    #[test]
+    fn isready_answers_during_a_search() {
+        // `isready` is a liveness ping (§3.2): it must not wait for the
+        // infinite search — the readyok arrives while the search runs.
+        let out = session("go infinite\nisready\nstop\nquit\n");
+        assert!(out.contains("readyok\n"), "{out}");
+        assert_eq!(bestmoves(&out), 1, "{out}");
+    }
+
+    #[test]
+    fn go_perft_answers_not_implemented() {
+        let (_, out) = command("go perft 5");
+        assert!(
+            out.contains("info string go perft is not implemented yet"),
+            "{out}"
+        );
+        assert_eq!(bestmoves(&out), 0, "{out}");
+    }
+
+    #[test]
+    fn unusable_searchmoves_warns_and_still_searches() {
+        // §3.6/§5 item 9: only-invalid searchmoves → warn, search all
+        // moves, never a fake `bestmove (none)`. (`depth` before
+        // `searchmoves` — the latter consumes the whole tail, §3.6.)
+        let mut engine = Engine::new();
+        let out = command_on(&mut engine, "go depth 1 searchmoves e2e5");
+        assert!(
+            out.contains("info string Invalid searchmoves token 'e2e5' ignored"),
+            "{out}"
+        );
+        assert!(
+            out.contains("info string Invalid searchmoves list ignored"),
+            "{out}"
+        );
+        assert_eq!(bestmoves(&out), 1, "{out}");
+        assert!(!out.contains("bestmove (none)"), "{out}");
+    }
+
+    // -- score/info formatting (doc 12 §3.14; §5 "Unit — text") -------------
+
+    #[test]
+    fn format_score_covers_the_mate_band_both_signs() {
+        use crate::types::{mate_in, mated_in};
+        // Winning side rounds up (our mating move counts).
+        assert_eq!(format_score(mate_in(1)), UciScore::Mate(1));
+        assert_eq!(format_score(mate_in(2)), UciScore::Mate(1));
+        assert_eq!(format_score(mate_in(3)), UciScore::Mate(2));
+        assert_eq!(format_score(mate_in(4)), UciScore::Mate(2));
+        assert_eq!(format_score(mate_in(5)), UciScore::Mate(3));
+        // Losing side truncates, matching SF exactly.
+        assert_eq!(format_score(mated_in(0)), UciScore::Mate(0));
+        assert_eq!(format_score(mated_in(1)), UciScore::Mate(0));
+        assert_eq!(format_score(mated_in(2)), UciScore::Mate(-1));
+        assert_eq!(format_score(mated_in(3)), UciScore::Mate(-1));
+        assert_eq!(format_score(mated_in(4)), UciScore::Mate(-2));
+        // Band edges stay mates; everything below is centipawns.
+        use crate::types::{MAX_PLY, VALUE_MATE_IN_MAX_PLY};
+        assert_eq!(
+            format_score(VALUE_MATE_IN_MAX_PLY),
+            UciScore::Mate((MAX_PLY as i32 + 1) / 2)
+        );
+        assert_eq!(format_score(0), UciScore::Cp(0));
+        assert_eq!(format_score(123), UciScore::Cp(123));
+        assert_eq!(format_score(-4000), UciScore::Cp(-4000));
+    }
+
+    #[test]
+    fn uci_score_displays_the_wdl_less_form() {
+        assert_eq!(UciScore::Cp(-31).to_string(), "cp -31");
+        assert_eq!(UciScore::Mate(-3).to_string(), "mate -3");
+    }
+
+    #[test]
+    fn format_info_orders_the_v1_fields() {
+        let pv = [
+            Move::normal(Square::E2, Square::E4),
+            Move::normal(Square::E7, Square::E5),
+        ];
+        let info = SearchInfo {
+            depth: 7,
+            sel_depth: 12,
+            multipv: 1,
+            score: 42,
+            lowerbound: false,
+            upperbound: false,
+            nodes: 4000,
+            pv: &pv,
+        };
+        assert_eq!(
+            format_info(&info, 2000),
+            "info depth 7 seldepth 12 score cp 42 nodes 4000 nps 2000 time 2000 pv e2e4 e7e5"
+        );
+        // Zero elapsed must not divide by zero; bounds add their suffix.
+        let bound = SearchInfo {
+            lowerbound: true,
+            ..info
+        };
+        assert_eq!(
+            format_info(&bound, 0),
+            "info depth 7 seldepth 12 score cp 42 lowerbound nodes 4000 nps 4000000 time 0 pv e2e4 e7e5"
+        );
     }
 }
