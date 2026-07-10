@@ -1255,6 +1255,147 @@ impl Board {
         false
     }
 
+    /// True iff the static exchange value of `m` is at least `threshold`
+    /// (doc 04 §3.11, D11): starting from `m`, both sides keep recapturing
+    /// on the destination square with their least valuable attacker for as
+    /// long as it pays, and the mover's final material balance must reach
+    /// the bar. Expressed as the null-window swap algorithm: `swap` carries
+    /// the running balance folded into the threshold, `res` flips with every
+    /// recapture, and each capturer only has to "clear the bar" `res` (0 or
+    /// 1) instead of computing an exact exchange value.
+    ///
+    /// Pinned pieces do not count as attackers while an enemy pinner is
+    /// still on the board; x-ray batteries are walked by lifting each used
+    /// capturer out of `occupied` and re-querying the slider rays through
+    /// the vacated square. Values are the D11 `PIECE_VALUES`.
+    pub fn see_ge(&self, m: Move, threshold: Value) -> bool {
+        // Non-Normal kinds (promotion, en passant, castling) short-circuit
+        // to a static exchange value of 0 (doc 04 §3.11 step 1).
+        if m.kind() != MoveKind::Normal {
+            return 0 >= threshold;
+        }
+        let (from, to) = (m.from(), m.to());
+        let pc = self
+            .piece_on(from)
+            .expect("see_ge: no piece on the from-square");
+        debug_assert_eq!(pc.color, self.side_to_move, "see_ge: moving an enemy piece");
+
+        // Bar 1: even winning the target for free must reach the threshold
+        // (an empty destination counts 0 — quiet-move SEE).
+        let mut swap = self
+            .piece_on(to)
+            .map_or(0, |cap| PIECE_VALUES[cap.piece_type as usize])
+            - threshold;
+        if swap < 0 {
+            return false;
+        }
+
+        // Bar 2: if the opponent recapturing our mover for free still
+        // leaves us at the bar, no deeper exchange can sink us below it.
+        // (A king mover has value 0, so it always returns true here — the
+        // loop below never has to trade a king.)
+        swap = PIECE_VALUES[pc.piece_type as usize] - swap;
+        if swap <= 0 {
+            return true;
+        }
+
+        // Clear the mover's square AND toggle `to`: a capture lifts the
+        // victim out, a quiet move marks the destination occupied. The `to`
+        // toggle keeps the pinner-liveness test below honest when the first
+        // move captures a pinner (doc 04 §3.11 step 4).
+        let mut occupied =
+            self.all_occupancy ^ Bitboard::from_square(from) ^ Bitboard::from_square(to);
+        let mut stm = self.side_to_move;
+        let mut attackers = self.attackers_to(to, occupied);
+
+        let tables = attacks::tables();
+        let queens = self.pieces_of_type(PieceType::Queen);
+        let diagonal = self.pieces_of_type(PieceType::Bishop) | queens;
+        let orthogonal = self.pieces_of_type(PieceType::Rook) | queens;
+
+        // Does the side that played `m` currently meet the threshold?
+        let mut res = true;
+
+        loop {
+            stm = stm.flip();
+            attackers &= occupied;
+
+            // No recapture left: the standing verdict is final.
+            let mut stm_attackers = attackers & self.occupancy(stm);
+            if stm_attackers.is_empty() {
+                break;
+            }
+
+            // Pinned pieces may not join while any enemy pinner is still on
+            // the board; once every pinner has been traded off (or was the
+            // initial victim — the `to` toggle above), formerly pinned
+            // pieces participate freely (doc 04 §3.11 step 6, an
+            // approximation shared with Stockfish).
+            if !(self.pinners(stm.flip()) & occupied).is_empty() {
+                stm_attackers &= !self.blockers_for_king(stm);
+                if stm_attackers.is_empty() {
+                    break;
+                }
+            }
+
+            res = !res;
+
+            // stm's least valuable attacker — `PieceType::ALL` is in
+            // ascending value order P, N, B, R, Q, K.
+            let (pt, sq) = PieceType::ALL
+                .into_iter()
+                .find_map(|pt| {
+                    (stm_attackers & self.pieces(stm, pt))
+                        .lsb()
+                        .map(|sq| (pt, sq))
+                })
+                .expect("stm_attackers is non-empty");
+
+            if pt == PieceType::King {
+                // The king may only stand as the FINAL capturer: if the
+                // opponent still has attackers, stepping onto `to` would be
+                // illegal and the just-flipped verdict reverses back.
+                return if (attackers & !self.occupancy(stm)).is_empty() {
+                    res
+                } else {
+                    !res
+                };
+            }
+
+            swap = PIECE_VALUES[pt as usize] - swap;
+            if pt == PieceType::Queen {
+                // A queen recapture after anything but a king always clears
+                // the bar, because the previous capturer was worth at most a
+                // queen — assert instead of test (doc 04 §3.11 step 7).
+                debug_assert!(swap >= res as Value, "queen recapture under the bar");
+            } else if swap < res as Value {
+                // Null-window bar check: `res` is the margin this capture
+                // must clear; failing ends the sequence with the
+                // already-flipped verdict.
+                break;
+            }
+
+            // Lift the capturer out of the occupancy and pick up any x-ray
+            // attacker it was shading along its ray family (nothing x-rays
+            // through a knight's hop).
+            occupied ^= Bitboard::from_square(sq);
+            match pt {
+                PieceType::Pawn | PieceType::Bishop => {
+                    attackers |= tables.bishop_attacks(to, occupied) & diagonal;
+                }
+                PieceType::Rook => {
+                    attackers |= tables.rook_attacks(to, occupied) & orthogonal;
+                }
+                PieceType::Queen => {
+                    attackers |= (tables.bishop_attacks(to, occupied) & diagonal)
+                        | (tables.rook_attacks(to, occupied) & orthogonal);
+                }
+                PieceType::Knight | PieceType::King => {}
+            }
+        }
+        res
+    }
+
     /// The full position invariant oracle (doc 04 §3.12): placement layers
     /// in sync, state stack sane, every incremental key equal to a
     /// from-scratch recompute, structural chess sanity, and the check
@@ -2732,5 +2873,161 @@ mod tests {
             board.make_move(m, gives_check);
             assert_eq!(predicted, board.key(), "prefetch_key({fen}, {m})");
         }
+    }
+
+    // -----------------------------------------------------------------
+    // Doc 04 §4 step 9 / §5: see_ge — the SEE fixture suite (D11)
+    // -----------------------------------------------------------------
+
+    use crate::types::{KNIGHT_VALUE, PAWN_VALUE, QUEEN_VALUE, ROOK_VALUE};
+
+    /// Assert that `m`'s static exchange value in `fen` is exactly `see`:
+    /// `see_ge` holds at the value, fails one above, and — the doc 04 §5
+    /// threshold-semantics requirement — is monotone non-increasing in the
+    /// threshold, with its single true→false step exactly at `see`.
+    fn assert_see_value(fen: &str, m: Move, see: Value) {
+        let board = Board::from_fen(fen).unwrap();
+        assert!(
+            board.see_ge(m, see),
+            "see_ge({fen}, {m}, {see}) must hold at the exact SEE value"
+        );
+        assert!(
+            !board.see_ge(m, see + 1),
+            "see_ge({fen}, {m}, {see} + 1) must fail just above the SEE value"
+        );
+        for t in (-2600..=2600).step_by(97) {
+            assert_eq!(
+                board.see_ge(m, t),
+                t <= see,
+                "see_ge({fen}, {m}, {t}) breaks threshold monotonicity (SEE = {see})"
+            );
+        }
+    }
+
+    // Doc 04 §5 fixture: RxP with no defender — SEE is exactly the pawn.
+    #[test]
+    fn see_simple_winning_capture() {
+        assert_see_value(
+            "1k1r4/1pp4p/p7/4p3/8/P5P1/1PP4P/2K1R3 w - - 0 1",
+            Move::normal(Square::E1, Square::E5),
+            PAWN_VALUE,
+        );
+    }
+
+    // Doc 04 §5 fixture: NxP on a well-defended square — the knight is lost
+    // for the pawn (the deeper R/Q/B/Q exchanges never pay for either side).
+    #[test]
+    fn see_losing_capture_defended_pawn() {
+        assert_see_value(
+            "1k1r3q/1ppn3p/p4b2/4p3/8/P2N2P1/1PP1R1BP/2K1Q3 w - - 0 1",
+            Move::normal(Square::D3, Square::E5),
+            PAWN_VALUE - KNIGHT_VALUE,
+        );
+    }
+
+    // Doc 04 §5: a defender pinned to its king does not count while its
+    // pinner is on the board. Re1 pins Ne7 against the e8 king, so RxP on
+    // d5 wins the pawn outright; lift the pinning rook off the board and
+    // the knight recaptures, sinking the exchange to P - R.
+    #[test]
+    fn see_pinned_defender_does_not_count() {
+        assert_see_value(
+            "4k3/4n3/8/3p4/8/8/8/3RR1K1 w - - 0 1",
+            Move::normal(Square::D1, Square::D5),
+            PAWN_VALUE,
+        );
+        // Same position without the pinner: Ne7 counts again.
+        assert_see_value(
+            "4k3/4n3/8/3p4/8/8/8/3R2K1 w - - 0 1",
+            Move::normal(Square::D1, Square::D5),
+            PAWN_VALUE - ROOK_VALUE,
+        );
+    }
+
+    // The pinner-liveness flip side (the `to` toggle of doc 04 §3.11 step
+    // 4): Qe7 pins Re4 against the white king, and NxQ captures the pinner
+    // itself — the freed rook then guards e7, so Black's Ra7 recapture
+    // (RxN, RxR) never pays and the SEE is the whole queen.
+    #[test]
+    fn see_capturing_the_pinner_frees_the_pinned_piece() {
+        assert_see_value(
+            "7k/r3q3/8/3N4/4R3/8/8/4K3 w - - 0 1",
+            Move::normal(Square::D5, Square::E7),
+            QUEEN_VALUE,
+        );
+    }
+
+    // Doc 04 §5 x-ray case: doubled rooks on both sides of the e-file. The
+    // white back rook is revealed through the vacated from-square, the
+    // black back rook by lifting the used front rook out of the occupancy;
+    // with even batteries the exchange still costs R for P.
+    #[test]
+    fn see_xray_rook_battery() {
+        assert_see_value(
+            "1k2r3/4r3/8/4p3/8/8/4R3/4R1K1 w - - 0 1",
+            Move::normal(Square::E2, Square::E5),
+            PAWN_VALUE - ROOK_VALUE,
+        );
+    }
+
+    // Diagonal x-rays on both sides: Bg2 sits behind the capturing queen,
+    // and Black's Bf7 is revealed when the e6 pawn recaptures. The bishop
+    // behind the queen would re-win the pawn, but Bf7 punishes that, so
+    // Black recaptures and the SEE is P - Q.
+    #[test]
+    fn see_xray_bishop_behind_queen() {
+        assert_see_value(
+            "1k6/5b2/4p3/3p4/8/5Q2/6B1/6K1 w - - 0 1",
+            Move::normal(Square::F3, Square::D5),
+            PAWN_VALUE - QUEEN_VALUE,
+        );
+    }
+
+    // Doc 04 §3.11 step 7, king branch: the defending king may only
+    // recapture when the attacker has no backup. With Bc3 covering e5 the
+    // king recapture is illegal (SEE = P); without it the rook is lost.
+    #[test]
+    fn see_king_recapture_only_when_unguarded() {
+        assert_see_value(
+            "8/8/4k3/4p3/8/2B5/8/4R1K1 w - - 0 1",
+            Move::normal(Square::E1, Square::E5),
+            PAWN_VALUE,
+        );
+        assert_see_value(
+            "8/8/4k3/4p3/8/8/8/4R1K1 w - - 0 1",
+            Move::normal(Square::E1, Square::E5),
+            PAWN_VALUE - ROOK_VALUE,
+        );
+    }
+
+    // Doc 04 §5: quiet-move SEE — an empty destination counts 0, so moving
+    // to a pawn-covered square hangs the whole knight, and moving to a safe
+    // square is exactly 0.
+    #[test]
+    fn see_quiet_move_to_defended_square() {
+        let fen = "4k3/8/2p5/8/3N4/8/8/4K3 w - - 0 1";
+        assert_see_value(fen, Move::normal(Square::D4, Square::B5), -KNIGHT_VALUE);
+        assert_see_value(fen, Move::normal(Square::D4, Square::F5), 0);
+    }
+
+    // Doc 04 §3.11 step 1: promotion/en-passant/castling short-circuit to
+    // a static exchange value of 0 — even a queening capture reports 0.
+    #[test]
+    fn see_non_normal_kinds_short_circuit() {
+        let board = Board::from_fen("4k3/8/8/8/4Pp2/8/8/4K3 b - e3 0 1").unwrap();
+        let ep = Move::en_passant(Square::F4, Square::E3);
+        assert!(board.see_ge(ep, -500));
+        assert!(board.see_ge(ep, 0));
+        assert!(!board.see_ge(ep, 1));
+
+        let board = Board::from_fen("3q3k/4P3/8/8/8/8/8/4K3 w - - 0 1").unwrap();
+        let promo = Move::promotion(Square::E7, Square::D8, PieceType::Queen);
+        assert!(board.see_ge(promo, 0));
+        assert!(!board.see_ge(promo, 1));
+
+        let board = Board::from_fen("4k3/8/8/8/8/8/8/4K2R w K - 0 1").unwrap();
+        let castle = Move::castling(Square::E1, Square::G1);
+        assert!(board.see_ge(castle, 0));
+        assert!(!board.see_ge(castle, 1));
     }
 }
