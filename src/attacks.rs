@@ -419,18 +419,20 @@ pub fn aligned(s1: Square, s2: Square, s3: Square) -> bool {
 /// Xorshift64\* pseudo-random generator (constants exact per doc 03 §3.6).
 ///
 /// `pub(crate)` because the Zobrist key generator (P2) reuses it; doc 03
-/// records SF's Zobrist seed (1070372) so both phases agree on the generator.
+/// records SF's Zobrist seed (1070372) so both phases agree on the
+/// generator. `const fn` because the Zobrist table builder (doc 04 §3.4)
+/// const-evaluates it — the magic search keeps calling it at runtime.
 pub(crate) struct Prng {
     s: u64,
 }
 
 impl Prng {
-    pub(crate) fn new(seed: u64) -> Self {
+    pub(crate) const fn new(seed: u64) -> Self {
         assert!(seed != 0, "xorshift64* has an all-zero fixed point");
         Prng { s: seed }
     }
 
-    pub(crate) fn rand64(&mut self) -> u64 {
+    pub(crate) const fn rand64(&mut self) -> u64 {
         self.s ^= self.s >> 12;
         self.s ^= self.s << 25;
         self.s ^= self.s >> 27;
@@ -441,7 +443,7 @@ impl Prng {
     /// are empirically sparse; sampling sparse candidates directly makes the
     /// magic search converge orders of magnitude faster than uniform
     /// sampling would.
-    pub(crate) fn sparse_rand(&mut self) -> u64 {
+    pub(crate) const fn sparse_rand(&mut self) -> u64 {
         self.rand64() & self.rand64() & self.rand64()
     }
 }

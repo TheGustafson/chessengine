@@ -280,16 +280,13 @@ pub static ZOBRIST: Tables = build_tables(); // const-evaluated
 
 PRNG: xorshift64\* exactly as SF uses (seed and constants are facts;
 our draw order differs, so our keys won't equal SF's — nothing requires
-that):
+that). Implementation-wise this is the shared `attacks::Prng` of doc 03
+§3.6, upgraded to `const fn` (stable since const `&mut self`) so
+`build_tables` const-evaluates — no local tuple-threading helper needed:
 
 ```rust
-const fn xorshift64star(mut s: u64) -> (u64, u64) {
-    s ^= s >> 12;
-    s ^= s << 25;
-    s ^= s >> 27;
-    (s, s.wrapping_mul(2685821657736338717))
-}
-// Seeded with 1070372 (SF's seed for the Zobrist table stream).
+let mut rng = Prng::new(1070372); // SF's seed for the Zobrist table stream
+// every key is one rng.rand64() draw
 ```
 
 `build_tables` is a `const fn`: fill `psq` (color-major, piece-type, then

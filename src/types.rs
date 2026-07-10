@@ -611,6 +611,18 @@ pub const DEPTH_UNSEARCHED: Depth = -2;
 pub const DEPTH_NONE: Depth = -3;
 
 // ---------------------------------------------------------------------------
+// Key: Zobrist hash keys (design/04-position-state.md §3.1, D9)
+// ---------------------------------------------------------------------------
+
+/// A Zobrist hash key. The main position hash and the four specialized keys
+/// (pawn/material/minor/non-pawn) are all this alias.
+///
+/// A plain alias, not a newtype — the D5 rationale for [`Value`] applies:
+/// `make_move` is dense XOR arithmetic and newtype ceremony buys nothing.
+/// The tables and folding helpers live in [`crate::zobrist`].
+pub type Key = u64;
+
+// ---------------------------------------------------------------------------
 // SEE piece values (design/02-core-types.md §3.9, D11, D20)
 // ---------------------------------------------------------------------------
 

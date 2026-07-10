@@ -29,6 +29,15 @@ impl CastlingRights {
     pub const fn is_empty(self) -> bool {
         self.0 == 0
     }
+
+    /// The raw 4-bit mask (bit 0 = White kingside, 1 = White queenside,
+    /// 2 = Black kingside, 3 = Black queenside): the index into the 16-entry
+    /// `zobrist` castling table, which keys rights by the WHOLE mask so any
+    /// rights change costs two XORs, old mask out, new mask in
+    /// (design/04-position-state.md §3.1/§3.4, D9).
+    pub const fn bits(self) -> u8 {
+        self.0
+    }
 }
 
 /// FEN castling field: "KQkq", any sub-combination, or "-".
@@ -302,6 +311,36 @@ mod tests {
         assert!(rights.contains(CastlingRights::BLACK_QUEENSIDE));
 
         assert!(CastlingRights::ALL.contains(CastlingRights::BLACK_KINGSIDE));
+    }
+
+    // Doc 04 §4 step 1: bits() exposes the raw 4-bit mask that indexes the
+    // 16-entry zobrist castling table.
+    #[test]
+    fn castling_rights_bits_roundtrip() {
+        assert_eq!(CastlingRights::NONE.bits(), 0b0000);
+        assert_eq!(CastlingRights::WHITE_KINGSIDE.bits(), 0b0001);
+        assert_eq!(CastlingRights::WHITE_QUEENSIDE.bits(), 0b0010);
+        assert_eq!(CastlingRights::BLACK_KINGSIDE.bits(), 0b0100);
+        assert_eq!(CastlingRights::BLACK_QUEENSIDE.bits(), 0b1000);
+        assert_eq!(CastlingRights::ALL.bits(), 0b1111);
+
+        // Round-trip: every 4-bit mask is reachable by composing single
+        // rights, and bits() reads back exactly the mask that was composed.
+        let single = [
+            CastlingRights::WHITE_KINGSIDE,
+            CastlingRights::WHITE_QUEENSIDE,
+            CastlingRights::BLACK_KINGSIDE,
+            CastlingRights::BLACK_QUEENSIDE,
+        ];
+        for mask in 0u8..16 {
+            let mut rights = CastlingRights::NONE;
+            for (bit, &right) in single.iter().enumerate() {
+                if mask & (1 << bit) != 0 {
+                    rights.add(right);
+                }
+            }
+            assert_eq!(rights.bits(), mask);
+        }
     }
 
     #[test]

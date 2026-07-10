@@ -27,6 +27,7 @@ pub mod perft;
 pub mod search;
 pub mod types;
 pub mod uci;
+pub mod zobrist;
 
 pub use bitboard::Bitboard;
 pub use board::{Board, CastlingRights};

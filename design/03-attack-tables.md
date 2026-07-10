@@ -548,21 +548,24 @@ The pieces, and why each exists:
   ```rust
   pub(crate) struct Prng { s: u64 }
   impl Prng {
-      pub(crate) fn new(seed: u64) -> Self { assert!(seed != 0); Prng { s: seed } }
-      pub(crate) fn rand64(&mut self) -> u64 {
+      pub(crate) const fn new(seed: u64) -> Self { assert!(seed != 0); Prng { s: seed } }
+      pub(crate) const fn rand64(&mut self) -> u64 {
           self.s ^= self.s >> 12;
           self.s ^= self.s << 25;
           self.s ^= self.s >> 27;
           self.s.wrapping_mul(2685821657736338717) // 0x2545F4914F6CDD1D
       }
-      pub(crate) fn sparse_rand(&mut self) -> u64 {
+      pub(crate) const fn sparse_rand(&mut self) -> u64 {
           self.rand64() & self.rand64() & self.rand64()
       }
   }
   ```
 
   `pub(crate)` because the Zobrist doc reuses it (SF seeds its Zobrist PRNG
-  with 1070372; recorded here so both docs agree on the generator).
+  with 1070372; recorded here so both docs agree on the generator), and
+  `const fn` because that reuse is compile-time: the Zobrist tables are
+  const-evaluated (doc 04 §3.4) while the magic search keeps calling the
+  same generator at runtime.
 
 **Step 5 — packing invariant.** After both passes, hard-assert the
 accumulated offsets: rook block consumed exactly `0x19000` entries, bishop
