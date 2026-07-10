@@ -77,6 +77,26 @@ impl Move {
             _ => None,
         }
     }
+
+    /// The FULL 16-bit encoding as an integer: the index into the butterfly
+    /// main history `[color][65536]` and the TT's `move16` field
+    /// (design/02-core-types.md §3.7, D2, D19).
+    ///
+    /// Full — not just from/to — so promotions to different pieces and the
+    /// castling flag get distinct history slots.
+    pub const fn raw16(self) -> u16 {
+        self.0
+    }
+
+    /// Rebuild a `Move` from raw bits (the TT probe path).
+    ///
+    /// Every `u16` decodes to a structurally valid `Move` (from/to are 6-bit
+    /// fields, all kind values are meaningful), so this is total. SEMANTIC
+    /// validity is the caller's job: TT consumers must run pseudo-legality +
+    /// legality checks on any probed move before playing it (D19).
+    pub const fn from_raw16(bits: u16) -> Move {
+        Move(bits)
+    }
 }
 
 /// UCI long algebraic notation: "e2e4", "e7e8q".
@@ -226,6 +246,48 @@ mod tests {
         let normal = Move::normal(Square::E5, Square::D6);
         let ep = Move::en_passant(Square::E5, Square::D6);
         assert_ne!(normal, ep);
+    }
+
+    // Doc 02 §5 item 11: raw16 round-trip, totality, kind-distinctness.
+    #[test]
+    fn raw16_roundtrip_totality_and_distinctness() {
+        // Round-trip one move of each kind, including all four promotions.
+        let moves = [
+            Move::normal(Square::E2, Square::E4),
+            Move::en_passant(Square::E5, Square::D6),
+            Move::castling(Square::E1, Square::G1),
+            Move::promotion(Square::E7, Square::E8, PieceType::Knight),
+            Move::promotion(Square::E7, Square::E8, PieceType::Bishop),
+            Move::promotion(Square::E7, Square::E8, PieceType::Rook),
+            Move::promotion(Square::E7, Square::E8, PieceType::Queen),
+        ];
+        for m in moves {
+            assert_eq!(Move::from_raw16(m.raw16()), m);
+        }
+
+        // Totality: every u16 decodes without panic to a structurally valid
+        // move (semantic validity is the TT consumer's job).
+        let m = Move::from_raw16(0xFFFF);
+        assert_eq!(m.kind(), MoveKind::Castling);
+        assert_eq!(m.from(), Square::H8);
+        assert_eq!(m.to(), Square::H8);
+
+        // Distinct kinds on the same from/to yield distinct raw16 values.
+        let (from, to) = (Square::E5, Square::D6);
+        let raws = [
+            Move::normal(from, to).raw16(),
+            Move::en_passant(from, to).raw16(),
+            Move::castling(from, to).raw16(),
+            Move::promotion(from, to, PieceType::Queen).raw16(),
+        ];
+        for (i, a) in raws.iter().enumerate() {
+            for b in &raws[i + 1..] {
+                assert_ne!(a, b);
+            }
+        }
+
+        // Sentinel bookkeeping (doc 02 §3.7, D2): NULL is raw 0.
+        assert_eq!(Move::NULL.raw16(), 0);
     }
 
     #[test]

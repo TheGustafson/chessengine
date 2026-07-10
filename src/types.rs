@@ -72,6 +72,15 @@ impl Color {
             Color::Black => Color::White,
         }
     }
+
+    /// The forward pawn-push direction for this color
+    /// (design/02-core-types.md §3.4).
+    pub const fn pawn_push(self) -> Direction {
+        match self {
+            Color::White => Direction::North,
+            Color::Black => Direction::South,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -281,6 +290,138 @@ impl FromStr for Square {
         } else {
             Err(ParseSquareError)
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Direction and Square arithmetic (design/02-core-types.md §3.4)
+// ---------------------------------------------------------------------------
+
+/// A one-square step, encoded as the board-index delta (a1 = 0 mapping, D3).
+///
+/// Knight steps (±17, ±15, ±10, ±6) are deliberately NOT `Direction`s — they
+/// are raw `i8` step values used only by table builders, which is why
+/// [`Square::try_offset`] takes an `i8`, not a `Direction`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i8)]
+pub enum Direction {
+    North = 8,
+    NorthEast = 9,
+    East = 1,
+    SouthEast = -7,
+    South = -8,
+    SouthWest = -9,
+    West = -1,
+    NorthWest = 7,
+}
+
+impl Direction {
+    /// All eight directions, clockwise from North.
+    pub const ALL: [Direction; 8] = [
+        Direction::North,
+        Direction::NorthEast,
+        Direction::East,
+        Direction::SouthEast,
+        Direction::South,
+        Direction::SouthWest,
+        Direction::West,
+        Direction::NorthWest,
+    ];
+
+    /// The raw index delta.
+    pub const fn offset(self) -> i8 {
+        self as i8
+    }
+}
+
+impl Square {
+    /// File distance `|file(a) - file(b)|`.
+    pub const fn file_distance(self, other: Square) -> u8 {
+        self.file().abs_diff(other.file())
+    }
+
+    /// Rank distance `|rank(a) - rank(b)|`.
+    pub const fn rank_distance(self, other: Square) -> u8 {
+        self.rank().abs_diff(other.rank())
+    }
+
+    /// Chebyshev distance: king moves between the squares.
+    ///
+    /// The attack-tables doc may later back this with a 64×64 table; this
+    /// `const fn` stays as the reference implementation (design/02 §9.3,
+    /// design/03 §3.4).
+    pub const fn distance(self, other: Square) -> u8 {
+        let f = self.file_distance(other);
+        let r = self.rank_distance(other);
+        if f > r { f } else { r }
+    }
+
+    /// Step by a raw index delta. `None` if the destination is off-board OR
+    /// the step wrapped around a board edge (Chebyshev distance > 2).
+    ///
+    /// The single safe primitive for table building (leaper tables, rays,
+    /// between/line). The wrap test is a Chebyshev-distance bound: every
+    /// legitimate single step (queen direction: distance 1; knight or double
+    /// pawn push: distance 2) moves at most 2 files/ranks, while any wrap
+    /// jumps at least 6 files (design/02 §3.4).
+    pub const fn try_offset(self, step: i8) -> Option<Square> {
+        let to = self.index() as i8 + step;
+        if to < 0 || to >= 64 {
+            return None;
+        }
+        let to = Square::new(to as u8);
+        if self.distance(to) > 2 {
+            None
+        } else {
+            Some(to)
+        }
+    }
+
+    /// Step by a [`Direction`]. `None` if off-board or wrapped.
+    ///
+    /// Callers that iterate a slider ray apply this one step at a time, so
+    /// distance per call is always 1 and the wrap bound is never a false
+    /// negative.
+    pub const fn shifted(self, d: Direction) -> Option<Square> {
+        self.try_offset(d.offset())
+    }
+
+    /// `self + d` where the CALLER guarantees the destination exists and
+    /// does not wrap (e.g. derived from an already-masked bitboard shift).
+    ///
+    /// Safe Rust, no `unsafe` variant (D14): a range escape still panics via
+    /// `Square::new`'s assert; a file wrap is NOT detected here — that
+    /// caller bug is what the perft suite catches (D24). The relaxation
+    /// policy, should this assert ever show up in a profile, is fixed in
+    /// design/02 §3.4: a `debug_assert!`-only constructor, never `unsafe`.
+    pub const fn offset(self, d: Direction) -> Square {
+        Square::new((self.index() as i8 + d.offset()) as u8)
+    }
+
+    /// Vertical mirror: a1 <-> a8. Branchless (XOR with 56).
+    pub const fn flip_rank(self) -> Square {
+        Square::new(self.index() ^ 56)
+    }
+
+    /// Horizontal mirror: a1 <-> h1. Branchless (XOR with 7).
+    pub const fn flip_file(self) -> Square {
+        Square::new(self.index() ^ 7)
+    }
+
+    /// The square from `color`'s point of view: identity for White, vertical
+    /// mirror for Black. `E2.relative_to(Black) == E7`.
+    ///
+    /// Exploits `Color::White as u8 == 0`, `Color::Black as u8 == 1`
+    /// (guaranteed by the `#[repr(u8)]` enum) — no branches
+    /// (design/02 §3.4).
+    pub const fn relative_to(self, color: Color) -> Square {
+        Square::new(self.index() ^ (color as u8 * 56))
+    }
+
+    /// Rank from `color`'s point of view (0 = own back rank). PSQT lookup,
+    /// promotion-rank tests, and pawn-structure code all key off this.
+    pub const fn relative_rank(self, color: Color) -> u8 {
+        self.rank() ^ (color as u8 * 7)
     }
 }
 
@@ -569,6 +710,89 @@ mod tests {
     fn color_flip() {
         assert_eq!(Color::White.flip(), Color::Black);
         assert_eq!(Color::Black.flip(), Color::White);
+    }
+
+    /// The (file delta, rank delta) a direction means in coordinate space —
+    /// the reference model the encoded index deltas are checked against.
+    fn direction_deltas(d: Direction) -> (i8, i8) {
+        match d {
+            Direction::North => (0, 1),
+            Direction::NorthEast => (1, 1),
+            Direction::East => (1, 0),
+            Direction::SouthEast => (1, -1),
+            Direction::South => (0, -1),
+            Direction::SouthWest => (-1, -1),
+            Direction::West => (-1, 0),
+            Direction::NorthWest => (-1, 1),
+        }
+    }
+
+    // Doc 02 §5 item 6: exhaustive 64-square × 8-direction stepping against
+    // the coordinate-space model — catches both wrap and range bugs. Also
+    // pins each Direction discriminant to its coordinate meaning, and checks
+    // the unchecked `offset` agrees with `shifted` wherever a step is valid.
+    #[test]
+    fn square_shifted_exhaustive_vs_coordinate_model() {
+        for d in Direction::ALL {
+            let (df, dr) = direction_deltas(d);
+            assert_eq!(d.offset(), dr * 8 + df, "encoding of {d:?}");
+            for sq in Square::all() {
+                let file = sq.file() as i8 + df;
+                let rank = sq.rank() as i8 + dr;
+                let expected = if (0..8).contains(&file) && (0..8).contains(&rank) {
+                    Some(Square::from_coords(file as u8, rank as u8))
+                } else {
+                    None
+                };
+                assert_eq!(sq.shifted(d), expected, "{sq}.shifted({d:?})");
+                if let Some(to) = expected {
+                    assert_eq!(sq.offset(d), to, "{sq}.offset({d:?})");
+                }
+            }
+        }
+        // Spot checks pinned by the doc.
+        assert_eq!(Square::H4.shifted(Direction::East), None);
+        assert_eq!(Square::H4.shifted(Direction::NorthEast), None);
+        assert_eq!(Square::A1.shifted(Direction::SouthWest), None);
+        assert_eq!(Square::E4.shifted(Direction::North), Some(Square::E5));
+        // Pawn pushes point the right way for each color.
+        assert_eq!(Color::White.pawn_push(), Direction::North);
+        assert_eq!(Color::Black.pawn_push(), Direction::South);
+    }
+
+    // Doc 02 §5 item 7: raw-delta stepping (knight steps, double push, wraps).
+    #[test]
+    fn square_try_offset_knight_steps_and_wraps() {
+        assert_eq!(Square::G1.try_offset(17), Some(Square::H3));
+        assert_eq!(Square::H1.try_offset(10), None); // wraps to b3, distance 6
+        assert_eq!(Square::A8.try_offset(15), None); // off-board
+        assert_eq!(Square::E2.try_offset(16), Some(Square::E4)); // double push
+        // Distance helpers backing the wrap test.
+        assert_eq!(Square::A1.distance(Square::H8), 7);
+        assert_eq!(Square::H1.file_distance(Square::B3), 6);
+        assert_eq!(Square::H1.rank_distance(Square::B3), 2);
+    }
+
+    // Doc 02 §5 item 8: XOR coordinate transforms.
+    #[test]
+    fn square_xor_transforms() {
+        assert_eq!(Square::A1.flip_rank(), Square::A8);
+        assert_eq!(Square::A1.flip_file(), Square::H1);
+        assert_eq!(Square::E2.relative_to(Color::Black), Square::E7);
+        assert_eq!(Square::E2.relative_to(Color::White), Square::E2);
+        assert_eq!(Square::E2.relative_rank(Color::White), 1);
+        assert_eq!(Square::E2.relative_rank(Color::Black), 6);
+        for sq in Square::all() {
+            // Involutions: flipping twice is the identity.
+            assert_eq!(sq.flip_rank().flip_rank(), sq);
+            assert_eq!(sq.flip_file().flip_file(), sq);
+            assert_eq!(sq.relative_to(Color::Black).relative_to(Color::Black), sq);
+            // White's point of view is the identity everywhere.
+            assert_eq!(sq.relative_to(Color::White), sq);
+            assert_eq!(sq.relative_rank(Color::White), sq.rank());
+            // Black's relative rank agrees with the vertical mirror.
+            assert_eq!(sq.relative_rank(Color::Black), sq.flip_rank().rank());
+        }
     }
 
     // Doc 02 §5 item 1: every derived constant against its literal, plus the

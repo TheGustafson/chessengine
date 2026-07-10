@@ -1,4 +1,4 @@
-use crate::types::Square;
+use crate::types::{Color, Direction, Square};
 use std::fmt;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, Shr};
 
@@ -84,6 +84,64 @@ impl Bitboard {
     /// this method is for iterator chains where naming the source reads better.
     pub fn squares(self) -> BitboardIter {
         BitboardIter(self)
+    }
+
+    /// True iff at least two bits are set. One AND + compare — cheaper and
+    /// more explicit than `count() >= 2`. Primary uses: double-check
+    /// detection (evasion generation), "lone attacker" tests in SEE
+    /// (design/02-core-types.md §3.5).
+    ///
+    /// `wrapping_sub` keeps this panic-free on `EMPTY` in debug builds
+    /// (`0u64 - 1` would be an overflow panic); `u64::MAX & 0 == 0` still
+    /// gives the right answer.
+    pub const fn more_than_one(self) -> bool {
+        (self.0 & self.0.wrapping_sub(1)) != 0
+    }
+
+    /// Shift every set square one step in `d`. Squares that would leave the
+    /// board vanish; east/west components mask the wrapping file first
+    /// (design/02-core-types.md §3.5).
+    ///
+    /// Hot call sites must pass a literal (or provably constant) direction —
+    /// the match then constant-folds to one AND + one shift, while a
+    /// runtime-variant direction in a hot loop becomes a jump table
+    /// (design/02 §6).
+    pub const fn shift(self, d: Direction) -> Bitboard {
+        // Operator traits (`BitAnd` etc.) are not `const fn`, so const
+        // helpers use the raw u64 (fine inside bitboard.rs).
+        const NOT_FILE_A: u64 = !Bitboard::FILE_A.to_u64(); // 0xFEFE_FEFE_FEFE_FEFE
+        const NOT_FILE_H: u64 = !Bitboard::FILE_H.to_u64(); // 0x7F7F_7F7F_7F7F_7F7F
+        Bitboard::from_u64(match d {
+            Direction::North => self.0 << 8,
+            Direction::South => self.0 >> 8,
+            Direction::East => (self.0 & NOT_FILE_H) << 1,
+            Direction::West => (self.0 & NOT_FILE_A) >> 1,
+            Direction::NorthEast => (self.0 & NOT_FILE_H) << 9,
+            Direction::NorthWest => (self.0 & NOT_FILE_A) << 7,
+            Direction::SouthEast => (self.0 & NOT_FILE_H) >> 7,
+            Direction::SouthWest => (self.0 & NOT_FILE_A) >> 9,
+        })
+    }
+
+    /// Single pawn pushes for `color` pawns in `self`.
+    ///
+    /// Deliberately does NOT mask occupancy: movegen ANDs with `!occupied`
+    /// itself, because double pushes need the intermediate emptiness test
+    /// anyway (design/02-core-types.md §3.5).
+    pub const fn pawn_pushes(self, color: Color) -> Bitboard {
+        self.shift(color.pawn_push())
+    }
+
+    /// Squares attacked by `color` pawns in `self` (both diagonals, bulk).
+    pub const fn pawn_attacks(self, color: Color) -> Bitboard {
+        match color {
+            Color::White => Bitboard::from_u64(
+                self.shift(Direction::NorthEast).0 | self.shift(Direction::NorthWest).0,
+            ),
+            Color::Black => Bitboard::from_u64(
+                self.shift(Direction::SouthEast).0 | self.shift(Direction::SouthWest).0,
+            ),
+        }
     }
 }
 
@@ -311,5 +369,106 @@ mod tests {
         // Shifting rank 1 up by one rank gives rank 2.
         assert_eq!(Bitboard::RANK_1 << 8, Bitboard::RANKS[1]);
         assert_eq!(Bitboard::RANK_8 >> 8, Bitboard::RANKS[6]);
+    }
+
+    /// Tiny SplitMix64 PRNG: deterministic random bitboards for in-module
+    /// equivalence tests without a dev-dependency (doc 02 §5 item 9, D15).
+    struct SplitMix64(u64);
+
+    impl SplitMix64 {
+        fn next_u64(&mut self) -> u64 {
+            self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = self.0;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^ (z >> 31)
+        }
+    }
+
+    // Doc 02 §5 item 9: fixed shift edges — wrapping files vanish, off-board
+    // ranks vanish.
+    #[test]
+    fn shift_by_direction_edges() {
+        assert_eq!(Bitboard::RANK_1.shift(Direction::North), Bitboard::RANKS[1]);
+        assert_eq!(Bitboard::FILE_H.shift(Direction::East), Bitboard::EMPTY);
+        assert_eq!(Bitboard::FULL.shift(Direction::East), !Bitboard::FILE_A);
+        assert_eq!(Bitboard::FULL.shift(Direction::West), !Bitboard::FILE_H);
+        assert_eq!(Bitboard::RANK_8.shift(Direction::North), Bitboard::EMPTY);
+        assert_eq!(Bitboard::RANK_1.shift(Direction::South), Bitboard::EMPTY);
+        assert_eq!(
+            Bitboard::from_square(Square::E4).shift(Direction::NorthEast),
+            Bitboard::from_square(Square::F5)
+        );
+    }
+
+    // Doc 02 §5 item 9, randomized half: the bulk shift equals the union of
+    // per-square checked stepping, for 1000 random boards × all 8 directions.
+    #[test]
+    fn shift_matches_per_square_shifted_on_random_boards() {
+        let mut rng = SplitMix64(0x0BAD_5EED_0BAD_5EED);
+        for _ in 0..1000 {
+            let bb = Bitboard::from_u64(rng.next_u64());
+            for d in Direction::ALL {
+                let expected: Bitboard = bb.squares().filter_map(|sq| sq.shifted(d)).collect();
+                assert_eq!(bb.shift(d), expected, "shift({d:?}) on {bb:?}");
+            }
+        }
+    }
+
+    // Doc 02 §5 item 10: pawn helpers against per-square models, both colors.
+    #[test]
+    fn pawn_helpers_match_per_square_models() {
+        let mut rng = SplitMix64(0xDEAD_BEEF_CAFE_F00D);
+        for _ in 0..1000 {
+            let bb = Bitboard::from_u64(rng.next_u64());
+            for color in Color::ALL {
+                let pushes: Bitboard = bb
+                    .squares()
+                    .filter_map(|sq| sq.shifted(color.pawn_push()))
+                    .collect();
+                assert_eq!(bb.pawn_pushes(color), pushes, "pushes for {color:?}");
+
+                let (east, west) = match color {
+                    Color::White => (Direction::NorthEast, Direction::NorthWest),
+                    Color::Black => (Direction::SouthEast, Direction::SouthWest),
+                };
+                let attacks: Bitboard = bb
+                    .squares()
+                    .flat_map(|sq| [sq.shifted(east), sq.shifted(west)])
+                    .flatten()
+                    .collect();
+                assert_eq!(bb.pawn_attacks(color), attacks, "attacks for {color:?}");
+            }
+        }
+        // Edge case pinned by the doc: an a-file white pawn attacks only NE
+        // (and, mirrored, an h-file black pawn only SW).
+        assert_eq!(
+            Bitboard::from_square(Square::A4).pawn_attacks(Color::White),
+            Bitboard::from_square(Square::B5)
+        );
+        assert_eq!(
+            Bitboard::from_square(Square::H5).pawn_attacks(Color::Black),
+            Bitboard::from_square(Square::G4)
+        );
+    }
+
+    // Doc 02 §5 item 10: more_than_one over the boundary cases.
+    #[test]
+    fn more_than_one_cases() {
+        assert!(!Bitboard::EMPTY.more_than_one());
+        for sq in Square::all() {
+            assert!(!Bitboard::from_square(sq).more_than_one());
+        }
+        let two = Bitboard::from_square(Square::A1) | Bitboard::from_square(Square::H8);
+        assert!(two.more_than_one());
+        assert!(Bitboard::FULL.more_than_one());
+    }
+
+    // Doc 02 §8 criterion 6 (this step's part): downstream docs can build
+    // const tables on Bitboard::shift.
+    #[test]
+    fn shift_is_const_evaluable() {
+        const RANK_2: Bitboard = Bitboard::RANK_1.shift(Direction::North);
+        assert_eq!(RANK_2, Bitboard::RANKS[1]);
     }
 }
