@@ -50,6 +50,10 @@ Library crate + thin binary. Modules (re-exported at the crate root by
 - `board` — `Board` (hybrid bitboards + mailbox), `CastlingRights`
 - `fen` — `Board::from_fen`/`to_fen`, `FenError`, `START_FEN`
 - `moves` — `Move` (packed `u16`), `MoveKind`, `MoveList` (stack-allocated)
+- `attacks` — const-built leaper/geometry tables (`knight_attacks`,
+  `pawn_attacks`, `between`, `line`, `aligned`, ...) + fancy magic slider
+  lookups behind `LazyLock` (`attacks(pt, sq, occ)`; hoist `tables()` in hot
+  loops). Criterion baseline: `benches/attacks.rs` → `docs/perf-baseline.md`.
 
 ## Core encoding decisions (do not change casually)
 
@@ -92,10 +96,11 @@ GPLv3; take ideas, reimplement idiomatically in Rust.
 
 ## Status / roadmap
 
-Done: types, bitboards, board + FEN, `Move`/`MoveList`.
+Done: types, bitboards, board + FEN, `Move`/`MoveList`; attack tables (P1:
+const leapers + geometry, fancy magic sliders, exhaustively validated
+against the naive ray oracle, criterion-benchmarked).
 
-Next (in rough dependency order): attack tables (leapers, then magic
-bitboards for sliders), make/unmake with a `StateInfo` undo stack, Zobrist
-keys wired into `put_piece`/`remove_piece`, perft validation, UCI loop,
-search, evaluation. Perft is the correctness oracle — no movegen/make-unmake
-change lands without matching known perft counts.
+Next (in rough dependency order): make/unmake with a `StateInfo` undo stack,
+Zobrist keys wired into `put_piece`/`remove_piece`, perft validation, UCI
+loop, search, evaluation. Perft is the correctness oracle — no
+movegen/make-unmake change lands without matching known perft counts.

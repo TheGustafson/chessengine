@@ -41,7 +41,7 @@ cargo test --release -- --ignored perft_full_suite   # full perft tier (D24 gate
 cargo test --release -- --ignored perft_extended     # extended tier (releases/rewrites)
 tools/check.sh                 # the whole merge gate, in order
 python3 tools/verify_perft.py --suite   # re-verify the perft oracle data itself
-cargo bench                    # criterion micro-benches (never a gate; arrive P3+)
+cargo bench                    # criterion micro-benches (never a gate; baselines in docs/perf-baseline.md)
 ```
 
 - **`cargo test` (debug)** — unit tests, property tests, and (once P3 lands)
@@ -76,8 +76,7 @@ Tests for components that don't exist yet land **compiling but ignored**:
 - **Starting a phase means removing its RED markers.** That is the failing
   bar you code against: un-ignore, watch the tests fail, implement until
   green. Never delete or weaken a RED test to get there.
-- Find the current backlog: `grep -rn "RED: un-ignore" src tests`
-  (add `benches` once criterion lands in P3).
+- Find the current backlog: `grep -rn "RED: un-ignore" src tests benches`.
 - Distinguish RED ignores from *permanent* ignores (e.g. the release-only
   perft tiers, whose ignore reason states the command that runs them): a
   permanent ignore survives its phase; a RED marker must not.

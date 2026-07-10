@@ -8,8 +8,16 @@ edition = "2024"
 [dependencies]
 
 [dev-dependencies]
-# Test-only (D15: runtime [dependencies] stays empty; dev-dependencies allowed).
+# Test/bench-only (D15: runtime [dependencies] stays empty; dev-deps allowed).
+# Criterion micro-benches are never a merge gate (design/14 §3.3); baselines
+# live in docs/perf-baseline.md.
+criterion = "0.8.2"
 proptest = "1"
+
+# Criterion needs the default libtest bench harness disabled (design/14 §3.3).
+[[bench]]
+name = "attacks"
+harness = false
 
 # Build profiles (D16; design/01 §3.7, design/14 §3.7). The documented fast
 # configuration adds RUSTFLAGS="-C target-cpu=x86-64-v3" (see CLAUDE.md) —

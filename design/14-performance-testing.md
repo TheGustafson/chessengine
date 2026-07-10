@@ -219,7 +219,11 @@ for catching per-component regressions early — they never gate commits
 ```toml
 # Cargo.toml additions
 [dev-dependencies]
-criterion = "0.5"   # pin whatever is current at implementation time
+criterion = "0.8.2"   # pinned current at implementation time (P1)
+
+[[bench]]
+name = "attacks"
+harness = false
 
 [[bench]]
 name = "perft"
@@ -238,7 +242,11 @@ name = "tt"
 harness = false
 ```
 
-The four benches and their exact measurements:
+The benches and their exact measurements (`benches/attacks.rs` is owned by
+the attack-tables doc 03 §6 — hot rook/bishop/queen magic lookups on a
+mixed-density occupancy stream, the free-function-vs-hoisted-`tables()`
+LazyLock delta, and the one-shot magic-search init time; it landed first,
+in P1, and brought the criterion scaffolding with it):
 
 - **`benches/perft.rs`** — `perft(startpos, 5)` (4,865,609 nodes) and
   `perft(kiwipete, 4)` (4,085,603 nodes; Kiwipete =
@@ -636,10 +644,12 @@ Ordered, commit-sized; each step names its done-condition.
 2. **`tools/check.sh`.** fmt + clippy + test (+ perft/bench lines commented
    until those exist). *Done:* script exits non-zero on any injected
    failure.
-3. **Criterion scaffolding + perft bench** (lands with the perft module).
-   Add dev-dep, `benches/perft.rs` with startpos-d5 and Kiwipete-d4.
-   *Done:* `cargo bench perft` runs; two consecutive runs agree within
-   ±2%; numbers recorded in `docs/perf-baseline.md`.
+3. **Criterion scaffolding + perft bench** (lands with the perft module;
+   the scaffolding itself — dev-dep, first `[[bench]]`, and
+   `docs/perf-baseline.md` — landed early with `benches/attacks.rs` per the
+   attack-tables doc 03 §4 step 5). Add `benches/perft.rs` with startpos-d5
+   and Kiwipete-d4. *Done:* `cargo bench perft` runs; two consecutive runs
+   agree within ±2%; numbers recorded in `docs/perf-baseline.md`.
 4. **`benches/movegen.rs`** (lands with movegen). *Done:* runs; baseline
    recorded.
 5. **`bench` fingerprint v1.** The subcommand itself (parser, 49-FEN

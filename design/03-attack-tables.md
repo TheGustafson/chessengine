@@ -780,7 +780,12 @@ Targets and expectations (x86-64-v3, D16 release profile):
   (magic metadata, then table entry) — ≈ 10–15 cycles latency, heavily
   pipelined across a movegen loop. Criterion target: **≤ 5 ns per
   rook/bishop lookup, ≤ 10 ns per queen lookup** on a hot cache with a random
-  occupancy stream (throughput-mode measurement).
+  occupancy stream (throughput-mode measurement). Measured at step 5
+  (`benches/attacks.rs`, Ryzen 7 7700X / WSL2, x86-64-v3): **~1.1 ns rook /
+  ~0.9 ns bishop / ~1.8 ns queen** per hoisted hot lookup — targets met with
+  ~4x headroom; the free-function path costs ~4–8% more (≈ +0.04–0.10
+  ns/lookup amortized), which is the measured LazyLock-deref price the §3.7
+  hoisting guidance rests on. Full baseline table: `docs/perf-baseline.md`.
 - Startup: full magic search **≤ 25 ms** (measured once at step 4: ~21 ms
   release on a Ryzen 7 7700X / WSL2, stable across runs and unchanged by
   `target-cpu=x86-64-v3`; the draft's "≤ 10 ms, expect ~1–5 ms" guess
