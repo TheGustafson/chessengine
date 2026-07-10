@@ -17,16 +17,19 @@
 //! Hot-path rules: no heap allocation ([`MoveList`] is stack-only), no
 //! `unsafe` (D14 — crate-wide `deny`).
 //!
-//! P3 step 2 status (doc 05 §4): the GenType mechanism, target-mask
-//! plumbing, and non-pawn generation are live; `pawn_moves` (step 3) and
-//! `castling_moves` (step 5) land empty, and the legality layer
-//! (`Board::legal`, `generate_legal`, step 6) follows.
+//! P3 step 3 status (doc 05 §4): the GenType mechanism, target-mask
+//! plumbing, non-pawn generation, and pawn generation (bulk pushes with
+//! the rank-3 relay, the §3.2 promotion split, en passant) are live. The
+//! EVASIONS branches inside `pawn_moves` are implemented per §3.4 but
+//! their targeted tests land with step 4; `castling_moves` (step 5) still
+//! lands empty, and the legality layer (`Board::legal`, `generate_legal`,
+//! step 6) follows.
 
 use crate::attacks;
 use crate::bitboard::Bitboard;
 use crate::board::Board;
 use crate::moves::{Move, MoveList};
-use crate::types::{Color, PieceType, Square};
+use crate::types::{Color, Direction, PieceType, Square};
 
 /// The `GenType` constants: what `generate::<GT>` emits (doc 05 §3.1).
 pub mod gen_type {
@@ -159,18 +162,171 @@ fn generate_all<const GT: u8, const WHITE: bool>(board: &Board, list: &mut MoveL
     }
 }
 
-/// Pawn pushes, captures, promotions, en passant (doc 05 §3.4).
+/// Pawn pushes, promotions, captures, and en passant (doc 05 §3.4).
 ///
-/// TODO(P3 step 3, doc 05 §3.4): bulk-shift pushes with the rank-3 relay
-/// trick, diagonal captures, the §3.2 promotion split via
-/// `push_promotions`, and en passant (with the EVASIONS discovered-check
-/// skip). Lands empty rather than `todo!` so the non-pawn generators are
-/// exercisable on fixtures whose *mover* has no pawns (doc 05 §4 step 2).
+/// Never loops per pawn: the whole pawn set is shifted at once and the
+/// from-square recovered as `to − offset` — every pawn in one batch moved
+/// by the same offset, and a shifted-and-masked destination has a valid,
+/// non-wrapping origin by construction, so `Square::offset` (panics only
+/// on a genuine bug) is the right primitive. `WHITE` makes every
+/// direction and rank mask below a compile-time constant.
 fn pawn_moves<const GT: u8, const WHITE: bool>(
-    _board: &Board,
-    _target: Bitboard,
-    _list: &mut MoveList,
+    board: &Board,
+    target: Bitboard,
+    list: &mut MoveList,
 ) {
+    use gen_type::{CAPTURES, EVASIONS, QUIETS};
+
+    let us = if WHITE { Color::White } else { Color::Black };
+    let them = us.flip();
+    let up = if WHITE {
+        Direction::North
+    } else {
+        Direction::South
+    };
+    let up_right = if WHITE {
+        Direction::NorthEast
+    } else {
+        Direction::SouthWest
+    };
+    let up_left = if WHITE {
+        Direction::NorthWest
+    } else {
+        Direction::SouthEast
+    };
+    let down = opposite(up);
+    // Relative rank 7 (pawns about to promote) and the rank-3 relay rank.
+    let rank7 = if WHITE {
+        Bitboard::RANKS[6]
+    } else {
+        Bitboard::RANKS[1]
+    };
+    let rank3 = if WHITE {
+        Bitboard::RANKS[2]
+    } else {
+        Bitboard::RANKS[5]
+    };
+
+    let empty = !board.all_occupancy();
+    // EVASIONS: a pawn capture can only resolve the check by taking the
+    // checker itself; interpositions are the push loops' target mask.
+    let enemies = if GT == EVASIONS {
+        board.checkers()
+    } else {
+        board.occupancy(them)
+    };
+    let pawns = board.pieces(us, PieceType::Pawn);
+    let on7 = pawns & rank7;
+    let not7 = pawns & !rank7;
+
+    // --- 1. Single and double pushes (everything except CAPTURES) ---
+    if GT != CAPTURES {
+        let mut b1 = not7.shift(up) & empty;
+        // Rank-3 relay trick: a double push exists iff the single push
+        // landed on relative rank 3 AND one more shift is also empty —
+        // both-empty tested with two ANDs, zero per-pawn work.
+        let mut b2 = (b1 & rank3).shift(up) & empty;
+        if GT == EVASIONS {
+            // Only interpositions on the block/capture ray count.
+            b1 &= target;
+            b2 &= target;
+        }
+        for to in b1 {
+            list.push(Move::normal(to.offset(down), to));
+        }
+        for to in b2 {
+            list.push(Move::normal(to.offset(down).offset(down), to));
+        }
+    }
+
+    // --- 2. Promotions (the §3.2 split, encoded by `push_promotions`) ---
+    if !on7.is_empty() {
+        if GT != QUIETS {
+            // Capturing promotions, both diagonals.
+            for to in on7.shift(up_right) & enemies {
+                push_promotions::<GT, true>(list, to.offset(opposite(up_right)), to);
+            }
+            for to in on7.shift(up_left) & enemies {
+                push_promotions::<GT, true>(list, to.offset(opposite(up_left)), to);
+            }
+        }
+        let mut b3 = on7.shift(up) & empty;
+        if GT == EVASIONS {
+            b3 &= target; // a push promotion must land on the block ray
+        }
+        for to in b3 {
+            push_promotions::<GT, false>(list, to.offset(down), to);
+        }
+    }
+
+    // --- 3. Ordinary and en-passant captures (not for QUIETS) ---
+    if GT != QUIETS {
+        for to in not7.shift(up_right) & enemies {
+            list.push(Move::normal(to.offset(opposite(up_right)), to));
+        }
+        for to in not7.shift(up_left) & enemies {
+            list.push(Move::normal(to.offset(opposite(up_left)), to));
+        }
+        if let Some(ep) = board.en_passant_square() {
+            // D9 (design/04 §3.7): an ep square is only ever recorded when
+            // a legal — hence pseudo-legal — ep capture exists, both on FEN
+            // load and in make_move, so a capturer must be present.
+            debug_assert!(
+                !(not7 & attacks::pawn_attacks(them, ep)).is_empty(),
+                "D9 violated: recorded ep square {ep} has no pseudo-legal capturer"
+            );
+            // EVASIONS: if the double-push origin (one step `up` of the ep
+            // square from our view) lies on the checking ray, the check is
+            // a discovered slider check through that square — an ep capture
+            // can never resolve it. Skip. (Unreachable while D9 holds; kept
+            // as defense-in-depth per doc 05 §3.4.)
+            if GT == EVASIONS && target.contains(ep.offset(up)) {
+                return;
+            }
+            // Our pawns attacking the ep square = pawn attacks FROM the ep
+            // square as if an enemy pawn stood there (reversal trick).
+            for from in not7 & attacks::pawn_attacks(them, ep) {
+                list.push(Move::en_passant(from, ep));
+            }
+        }
+    }
+}
+
+/// Emit the promotions for one from/to pair per the doc 05 §3.2 table:
+/// queen first, then R, B, N (pinned emission order, §5.4). `CAPTURE`
+/// distinguishes capturing promotions (all four pieces belong to CAPTURES)
+/// from push promotions (queen to CAPTURES, underpromotions to QUIETS).
+#[inline(always)]
+fn push_promotions<const GT: u8, const CAPTURE: bool>(
+    list: &mut MoveList,
+    from: Square,
+    to: Square,
+) {
+    use gen_type::{CAPTURES, EVASIONS, NON_EVASIONS, QUIETS};
+    let all = GT == EVASIONS || GT == NON_EVASIONS;
+    if GT == CAPTURES || all {
+        list.push(Move::promotion(from, to, PieceType::Queen));
+    }
+    if (GT == CAPTURES && CAPTURE) || (GT == QUIETS && !CAPTURE) || all {
+        list.push(Move::promotion(from, to, PieceType::Rook));
+        list.push(Move::promotion(from, to, PieceType::Bishop));
+        list.push(Move::promotion(from, to, PieceType::Knight));
+    }
+}
+
+/// Direction negation. Doc 05 §3.4 keeps this private to movegen until
+/// doc 02 grows a `Direction::opposite`.
+const fn opposite(d: Direction) -> Direction {
+    match d {
+        Direction::North => Direction::South,
+        Direction::NorthEast => Direction::SouthWest,
+        Direction::East => Direction::West,
+        Direction::SouthEast => Direction::NorthWest,
+        Direction::South => Direction::North,
+        Direction::SouthWest => Direction::NorthEast,
+        Direction::West => Direction::East,
+        Direction::NorthWest => Direction::SouthEast,
+    }
 }
 
 /// One shared inner loop, monomorphized per call site via `impl Fn` — each
@@ -236,12 +392,44 @@ mod tests {
         set
     }
 
+    /// The pawn-made subset of one generation pass (promotions and ep
+    /// included by construction; piece/king/castle moves filtered out).
+    fn pawn_move_set<const GT: u8>(board: &Board) -> HashSet<Move> {
+        let list = generated::<GT>(board);
+        move_set(&list)
+            .into_iter()
+            .filter(|m| {
+                board
+                    .piece_on(m.from())
+                    .expect("generated move must start on a piece")
+                    .piece_type
+                    == PieceType::Pawn
+            })
+            .collect()
+    }
+
+    const ALL_PROMOS: [PieceType; 4] = [
+        PieceType::Queen,
+        PieceType::Rook,
+        PieceType::Bishop,
+        PieceType::Knight,
+    ];
+    const UNDER_PROMOS: [PieceType; 3] = [PieceType::Rook, PieceType::Bishop, PieceType::Knight];
+
+    /// The promotion fan `from -> to` for the given pieces, as a set.
+    fn promo_fan(from: Square, to: Square, pieces: &[PieceType]) -> HashSet<Move> {
+        pieces
+            .iter()
+            .map(|&pt| Move::promotion(from, to, pt))
+            .collect()
+    }
+
     /// Hand fixtures with per-piece counts hand-verified against the board
-    /// diagram (doc 05 §4 step 2, §5 for this step). No mover-side pawns —
-    /// `pawn_moves` is a step-3 stub — so every count below stays valid
-    /// once pawn generation lands. Fields: FEN, then expected
-    /// (knight, bishop, rook, queen, king) NON_EVASIONS counts, then
-    /// expected CAPTURES total.
+    /// diagram (doc 05 §4 step 2, §5 for this step). No mover-side pawns
+    /// (pawn generation contributes nothing) and no castling rights, so
+    /// every count below stays valid once `castling_moves` (step 5) lands.
+    /// Fields: FEN, then expected (knight, bishop, rook, queen, king)
+    /// NON_EVASIONS counts, then expected CAPTURES total.
     const FIXTURES: &[(&str, [usize; 5], usize)] = &[
         // Nc3 vs pawn d5: 8 knight moves (1 capture), 5 king moves.
         ("4k3/8/8/3p4/8/2N5/8/4K3 w - - 0 1", [8, 0, 0, 0, 5], 1),
@@ -330,7 +518,8 @@ mod tests {
                     Some(us),
                     "move {m} in {fen} must start on a mover piece"
                 );
-                assert_eq!(m.kind(), MoveKind::Normal); // no pawns/castles yet
+                // These movers have no pawns and no castling rights.
+                assert_eq!(m.kind(), MoveKind::Normal);
             }
         }
     }
@@ -471,5 +660,366 @@ mod tests {
         let b = board("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
         let mut list = MoveList::new();
         generate_evasions(&b, &mut list);
+    }
+
+    // -----------------------------------------------------------------------
+    // P3 step 3: pawn generation (doc 05 §3.4, §4 step 3, §5.2)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn startpos_pawn_pushes() {
+        let b = board(crate::fen::START_FEN);
+        // 8 single + 8 double pushes, all quiet; nothing to capture.
+        let mut expected = HashSet::new();
+        for file in 0..8 {
+            let from = Square::from_coords(file, 1);
+            expected.insert(Move::normal(from, Square::from_coords(file, 2)));
+            expected.insert(Move::normal(from, Square::from_coords(file, 3)));
+        }
+        assert_eq!(pawn_move_set::<{ gen_type::QUIETS }>(&b), expected);
+        assert!(pawn_move_set::<{ gen_type::CAPTURES }>(&b).is_empty());
+        // Doubles as the perft(1) = 20 pin: the castle paths are occupied,
+        // so this count stays exact once step 5 lands.
+        assert_eq!(generated::<{ gen_type::NON_EVASIONS }>(&b).len(), 20);
+    }
+
+    /// Doc 05 §4 step 3 "double-push blocking": a blocker on the relay
+    /// square kills both pushes; a blocker one further kills only the
+    /// double. Both colors (the rank-3 relay mask is per-color).
+    #[test]
+    fn blocked_and_relayed_pushes() {
+        // Directly blocked: no single push, hence no double either.
+        let b = board("4k3/8/8/8/8/4p3/4P3/4K3 w - - 0 1");
+        assert!(pawn_move_set::<{ gen_type::NON_EVASIONS }>(&b).is_empty());
+
+        // Relay square e3 free, e4 occupied: single push only.
+        let b = board("4k3/8/8/8/4p3/8/4P3/4K3 w - - 0 1");
+        assert_eq!(
+            pawn_move_set::<{ gen_type::NON_EVASIONS }>(&b),
+            HashSet::from([Move::normal(Square::E2, Square::E3)])
+        );
+
+        // Black mirrors of both shapes.
+        let b = board("4k3/4p3/4P3/8/8/8/8/4K3 b - - 0 1");
+        assert!(pawn_move_set::<{ gen_type::NON_EVASIONS }>(&b).is_empty());
+        let b = board("4k3/4p3/8/4P3/8/8/8/4K3 b - - 0 1");
+        assert_eq!(
+            pawn_move_set::<{ gen_type::NON_EVASIONS }>(&b),
+            HashSet::from([Move::normal(Square::E7, Square::E6)])
+        );
+    }
+
+    /// Diagonal capture shifts in both directions for both colors, with the
+    /// from-square recovered as `to − offset`.
+    #[test]
+    fn captures_both_directions_both_colors() {
+        let b = board("4k3/8/8/3p1p2/4P3/8/8/4K3 w - - 0 1");
+        assert_eq!(
+            pawn_move_set::<{ gen_type::CAPTURES }>(&b),
+            HashSet::from([
+                Move::normal(Square::E4, Square::D5),
+                Move::normal(Square::E4, Square::F5),
+            ])
+        );
+        assert_eq!(
+            pawn_move_set::<{ gen_type::QUIETS }>(&b),
+            HashSet::from([Move::normal(Square::E4, Square::E5)])
+        );
+
+        let b = board("4k3/8/8/4p3/3P1P2/8/8/4K3 b - - 0 1");
+        assert_eq!(
+            pawn_move_set::<{ gen_type::CAPTURES }>(&b),
+            HashSet::from([
+                Move::normal(Square::E5, Square::D4),
+                Move::normal(Square::E5, Square::F4),
+            ])
+        );
+        assert_eq!(
+            pawn_move_set::<{ gen_type::QUIETS }>(&b),
+            HashSet::from([Move::normal(Square::E5, Square::E4)])
+        );
+    }
+
+    /// A/H-file capture shifts must not wrap: each fixture places the only
+    /// enemy piece exactly where the unmasked ±9/±7 shift would land.
+    #[test]
+    fn capture_shifts_do_not_wrap_files() {
+        // White h5; unmasked NE (<<9) from h5 would land on a7.
+        let b = board("4k3/p7/8/7P/8/8/8/4K3 w - - 0 1");
+        assert!(pawn_move_set::<{ gen_type::CAPTURES }>(&b).is_empty());
+        assert_eq!(
+            pawn_move_set::<{ gen_type::QUIETS }>(&b),
+            HashSet::from([Move::normal(Square::H5, Square::H6)])
+        );
+
+        // White a5; unmasked NW (<<7) from a5 would land on h5.
+        let b = board("4k3/8/8/P6p/8/8/8/4K3 w - - 0 1");
+        assert!(pawn_move_set::<{ gen_type::CAPTURES }>(&b).is_empty());
+
+        // Black a4; unmasked SW (>>9) from a4 would land on h2.
+        let b = board("4k3/8/8/8/p7/8/7P/4K3 b - - 0 1");
+        assert!(pawn_move_set::<{ gen_type::CAPTURES }>(&b).is_empty());
+
+        // Black h4; unmasked SE (>>7) from h4 would land on a3.
+        let b = board("4k3/8/8/8/7p/P7/8/4K3 b - - 0 1");
+        assert!(pawn_move_set::<{ gen_type::CAPTURES }>(&b).is_empty());
+    }
+
+    /// Non-capturing promotions (§3.2 table, right column of row 2): the
+    /// queen goes to CAPTURES, the underpromotions to QUIETS, all four to
+    /// NON_EVASIONS. Both colors.
+    #[test]
+    fn push_promotion_split() {
+        for (fen, from, to) in [
+            ("4k3/6P1/8/8/8/8/8/4K3 w - - 0 1", Square::G7, Square::G8),
+            ("4k3/8/8/8/8/8/1p6/4K3 b - - 0 1", Square::B2, Square::B1),
+        ] {
+            let b = board(fen);
+            assert_eq!(
+                pawn_move_set::<{ gen_type::CAPTURES }>(&b),
+                promo_fan(from, to, &[PieceType::Queen]),
+                "CAPTURES in {fen}"
+            );
+            assert_eq!(
+                pawn_move_set::<{ gen_type::QUIETS }>(&b),
+                promo_fan(from, to, &UNDER_PROMOS),
+                "QUIETS in {fen}"
+            );
+            assert_eq!(
+                pawn_move_set::<{ gen_type::NON_EVASIONS }>(&b),
+                promo_fan(from, to, &ALL_PROMOS),
+                "NON_EVASIONS in {fen}"
+            );
+        }
+    }
+
+    /// Capturing promotions (§3.2 table row 1): all four pieces belong to
+    /// CAPTURES in both directions; QUIETS gets only the *push*
+    /// underpromotions. Both colors, both diagonals at once.
+    #[test]
+    fn promotion_captures_full_split() {
+        for (fen, from, (left, up, right)) in [
+            (
+                "1n1nk3/2P5/8/8/8/8/8/4K3 w - - 0 1",
+                Square::C7,
+                (Square::B8, Square::C8, Square::D8),
+            ),
+            (
+                "4k3/8/8/8/8/8/6p1/4KN1N b - - 0 1",
+                Square::G2,
+                (Square::F1, Square::G1, Square::H1),
+            ),
+        ] {
+            let b = board(fen);
+            let mut captures = promo_fan(from, left, &ALL_PROMOS);
+            captures.extend(promo_fan(from, right, &ALL_PROMOS));
+            captures.extend(promo_fan(from, up, &[PieceType::Queen]));
+            let quiets = promo_fan(from, up, &UNDER_PROMOS);
+
+            assert_eq!(
+                pawn_move_set::<{ gen_type::CAPTURES }>(&b),
+                captures,
+                "CAPTURES in {fen}"
+            );
+            assert_eq!(
+                pawn_move_set::<{ gen_type::QUIETS }>(&b),
+                quiets,
+                "QUIETS in {fen}"
+            );
+            let mut all = captures;
+            all.extend(quiets);
+            assert_eq!(
+                pawn_move_set::<{ gen_type::NON_EVASIONS }>(&b),
+                all,
+                "NON_EVASIONS in {fen}"
+            );
+        }
+    }
+
+    /// Doc 05 §5.2's classic promotion position, both colors (the position
+    /// is its own color mirror): blocked push promotions contribute nothing
+    /// (a7/c7 resp. f2/h2), the free pawn gets the full 12-move fan.
+    #[test]
+    fn classic_promotion_position_partition() {
+        for (fen, from, (left, up, right)) in [
+            (
+                "n1n5/PPPk4/8/8/8/8/4Kppp/5N1N w - - 0 1",
+                Square::B7,
+                (Square::A8, Square::B8, Square::C8),
+            ),
+            (
+                "n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1",
+                Square::G2,
+                (Square::F1, Square::G1, Square::H1),
+            ),
+        ] {
+            let b = board(fen);
+            let mut captures = promo_fan(from, left, &ALL_PROMOS);
+            captures.extend(promo_fan(from, right, &ALL_PROMOS));
+            captures.extend(promo_fan(from, up, &[PieceType::Queen]));
+            let quiets = promo_fan(from, up, &UNDER_PROMOS);
+
+            assert_eq!(
+                pawn_move_set::<{ gen_type::CAPTURES }>(&b),
+                captures,
+                "CAPTURES in {fen}"
+            );
+            assert_eq!(
+                pawn_move_set::<{ gen_type::QUIETS }>(&b),
+                quiets,
+                "QUIETS in {fen}"
+            );
+        }
+    }
+
+    /// En passant: emitted (with `MoveKind::EnPassant` and the recovered
+    /// from-square) by CAPTURES and NON_EVASIONS, never by QUIETS; both
+    /// capturers found when two pawns flank the target; nothing emitted
+    /// without a recorded ep square.
+    #[test]
+    fn en_passant_generation() {
+        fn ep_moves<const GT: u8>(b: &Board) -> HashSet<Move> {
+            generated::<GT>(b)
+                .iter()
+                .copied()
+                .filter(|m| m.kind() == MoveKind::EnPassant)
+                .collect()
+        }
+
+        // Single white capturer (corpus opening after 1.e4 e6 2.e5 d5).
+        let b = board("rnbqkbnr/ppp2ppp/4p3/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3");
+        let ep = Move::en_passant(Square::E5, Square::D6);
+        assert_eq!(ep_moves::<{ gen_type::CAPTURES }>(&b), HashSet::from([ep]));
+        assert_eq!(
+            ep_moves::<{ gen_type::NON_EVASIONS }>(&b),
+            HashSet::from([ep])
+        );
+        assert!(ep_moves::<{ gen_type::QUIETS }>(&b).is_empty());
+
+        // Two white capturers flanking d5.
+        let b = board("4k3/8/8/2PpP3/8/8/8/4K3 w - d6 0 1");
+        assert_eq!(
+            ep_moves::<{ gen_type::CAPTURES }>(&b),
+            HashSet::from([
+                Move::en_passant(Square::C5, Square::D6),
+                Move::en_passant(Square::E5, Square::D6),
+            ])
+        );
+
+        // Two black capturers flanking e4 (black's shifts and rank masks).
+        let b = board("4k3/8/8/8/3pPp2/8/8/4K3 b - e3 0 1");
+        assert_eq!(
+            ep_moves::<{ gen_type::CAPTURES }>(&b),
+            HashSet::from([
+                Move::en_passant(Square::D4, Square::E3),
+                Move::en_passant(Square::F4, Square::E3),
+            ])
+        );
+
+        // No ep square recorded: same placement, zero ep moves.
+        let b = board("4k3/8/8/2PpP3/8/8/8/4K3 w - - 0 1");
+        assert!(ep_moves::<{ gen_type::NON_EVASIONS }>(&b).is_empty());
+    }
+
+    /// Doc 05 §5.4 order pins within pawn generation: pushes → promotions
+    /// (Q, R, B, N) → captures → ep, then pieces and king — asserted as one
+    /// exact emission sequence on a fixture exercising all four phases.
+    #[test]
+    fn pawn_emission_order_is_pinned() {
+        let b = board("4k3/6P1/8/3pP3/2P5/8/P7/4K3 w - d6 0 2");
+        let all = generated::<{ gen_type::NON_EVASIONS }>(&b);
+        let expected = [
+            // Single pushes (destination bitboard order), then doubles.
+            Move::normal(Square::A2, Square::A3),
+            Move::normal(Square::C4, Square::C5),
+            Move::normal(Square::E5, Square::E6),
+            Move::normal(Square::A2, Square::A4),
+            // Push promotions, Q → R → B → N.
+            Move::promotion(Square::G7, Square::G8, PieceType::Queen),
+            Move::promotion(Square::G7, Square::G8, PieceType::Rook),
+            Move::promotion(Square::G7, Square::G8, PieceType::Bishop),
+            Move::promotion(Square::G7, Square::G8, PieceType::Knight),
+            // Captures (up-right batch first), then en passant.
+            Move::normal(Square::C4, Square::D5),
+            Move::en_passant(Square::E5, Square::D6),
+            // King last (no other pieces on the board).
+            Move::normal(Square::E1, Square::D1),
+            Move::normal(Square::E1, Square::F1),
+            Move::normal(Square::E1, Square::D2),
+            Move::normal(Square::E1, Square::E2),
+            Move::normal(Square::E1, Square::F2),
+        ];
+        assert_eq!(&all[..], &expected[..]);
+    }
+
+    /// Pawn-heavy positions for the step-3 "Done" gate (doc 05 §4): the
+    /// disjoint-union property and the §3.2 per-type semantics must hold
+    /// with promotions and en passant in play. Castling rights present in
+    /// some fixtures are inert until step 5 — the properties below are
+    /// unaffected either way.
+    const PAWN_FIXTURES: &[&str] = &[
+        crate::fen::START_FEN,
+        // Kiwipete.
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        // Perft pos 3 (ep-pin geometry), pos 5 (promotion storm), pos 6
+        // (quiet middlegame breadth). Pos 4 is excluded here on purpose:
+        // its mover is in check, so it belongs to step 4's EVASIONS tests.
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+        "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
+        // The classic promotion position, both colors.
+        "n1n5/PPPk4/8/8/8/8/4Kppp/5N1N w - - 0 1",
+        "n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1",
+        // Live ep squares, one per color.
+        "rnbqkbnr/ppp2ppp/4p3/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3",
+        "rnbqkbnr/pppp1ppp/8/8/4PpP1/8/PPPP3P/RNBQKBNR b KQkq g3 0 3",
+    ];
+
+    #[test]
+    fn pawn_fixture_partition_and_semantics() {
+        for &fen in PAWN_FIXTURES {
+            let b = board(fen);
+            let captures = move_set(&generated::<{ gen_type::CAPTURES }>(&b));
+            let quiets = move_set(&generated::<{ gen_type::QUIETS }>(&b));
+            let all = move_set(&generated::<{ gen_type::NON_EVASIONS }>(&b));
+
+            // Doc 05 §5.1 property 1.
+            assert!(
+                captures.is_disjoint(&quiets),
+                "CAPTURES ∩ QUIETS must be empty in {fen}"
+            );
+            let union: HashSet<Move> = captures.union(&quiets).copied().collect();
+            assert_eq!(union, all, "CAPTURES ⊎ QUIETS != NON_EVASIONS in {fen}");
+
+            // §3.2 semantics: everything CAPTURES emits is a real capture
+            // or a queen promotion (the rule `capture_stage` will mirror in
+            // step 6); QUIETS never captures, never queens, never ep.
+            let enemies = b.occupancy(b.side_to_move().flip());
+            for &m in &captures {
+                let stage_capture = match m.kind() {
+                    MoveKind::Normal => enemies.contains(m.to()),
+                    MoveKind::Promotion => {
+                        enemies.contains(m.to()) || m.promotion_piece() == Some(PieceType::Queen)
+                    }
+                    MoveKind::EnPassant => Some(m.to()) == b.en_passant_square(),
+                    MoveKind::Castling => false,
+                };
+                assert!(stage_capture, "CAPTURES emitted {m} in {fen}");
+            }
+            for &m in &quiets {
+                assert!(
+                    !b.all_occupancy().contains(m.to()),
+                    "QUIETS move {m} lands on a piece in {fen}"
+                );
+                assert_ne!(m.kind(), MoveKind::EnPassant, "QUIETS emitted ep in {fen}");
+                if m.kind() == MoveKind::Promotion {
+                    assert_ne!(
+                        m.promotion_piece(),
+                        Some(PieceType::Queen),
+                        "QUIETS emitted a queen promotion in {fen}"
+                    );
+                }
+            }
+        }
     }
 }
