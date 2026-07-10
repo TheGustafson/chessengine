@@ -45,18 +45,40 @@ cargo test --release -- --ignored perft_full_suite
 # discretion before releases / after movegen rewrites — not part of this
 # gate (design/06 §3.5).
 
-# --- Bench fingerprint (D24; design/14 §3.2, design/06 §3.6) ----------------
-# TODO(P5): SKIPs until P5 (search core v1 + bench depth mode) lands. The
-# probe is a depth-1 bench run; the real run uses the SF-shaped defaults
-# (16 MB TT, 1 thread, depth 13) whose 'Nodes searched' total is THE
-# fingerprint for the `Bench:` commit trailer.
+# --- Bench perft fingerprint (design/06 §3.6; master plan P4 exit) ----------
+# P4 landed: this step is unconditional — losing the perft-mode bench would
+# be a regression. Everything in its output except the 'Total time (ms)' /
+# 'Nodes/second' lines is a pure function of the suite (D24), so two
+# consecutive runs must be byte-identical once those two lines are stripped.
+# Depth 3 (~1.8M nodes/run) keeps the gate fast; output is on stderr, stdout
+# stays a clean UCI stream (design/06 §3.6).
+step "bench perft fingerprint  (two runs, deterministic output identical)"
+run_bench_perft() {
+    "$BIN" bench 16 1 3 default perft 2>&1 >/dev/null \
+        | grep -v -e '^Total time (ms) :' -e '^Nodes/second    :'
+}
+run1=$(run_bench_perft)
+run2=$(run_bench_perft)
+if [ "$run1" != "$run2" ]; then
+    printf 'FAIL: two consecutive bench-perft runs differ\n' >&2
+    diff <(printf '%s\n' "$run1") <(printf '%s\n' "$run2") >&2 || true
+    exit 1
+fi
+printf '%s\n' "$run1" | tail -n 2
+
+# --- Bench depth fingerprint (D24; design/14 §3.2, design/06 §3.6) ----------
+# TODO(P5): SKIPs until P5 (search core v1) lands — the bench subcommand
+# exists (perft mode above), but depth mode needs search. The probe is a
+# depth-1 bench run; the real run uses the SF-shaped defaults (16 MB TT,
+# 1 thread, depth 13) whose 'Nodes searched' total is THE fingerprint for
+# the `Bench:` commit trailer.
 step "bench fingerprint  (chessengine bench)"
 if "$BIN" bench 16 1 1 default depth 2>&1 | grep -q "Nodes searched"; then
     # Footer goes to stderr (stdout stays a clean UCI stream, design/06 §3.6).
     "$BIN" bench 2>&1 | tail -n 4
     printf "paste 'Nodes searched' into the commit's 'Bench:' trailer (TESTING.md)\n"
 else
-    skip "bench fingerprint — TODO(P5): binary has no 'bench' subcommand yet"
+    skip "bench fingerprint — TODO(P5): bench depth mode needs search (perft mode gated above)"
 fi
 
 printf '\nAll checks passed.\n'
