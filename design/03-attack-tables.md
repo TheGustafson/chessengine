@@ -573,8 +573,8 @@ Scratch space: `occupancy` + `reference` (32 KB each) + `epoch` (16 KB) ≈
 80 KB of stack per `init_magics` call — fine on any thread that can run
 `LazyLock` init; box them if we ever care.
 
-The whole init is deterministic (fixed seeds) and takes single-digit
-milliseconds.
+The whole init is deterministic (fixed seeds) and takes ~21 ms (measured,
+§6).
 
 ### 3.7 Storage: LazyLock, and hoisting in hot loops
 
@@ -658,7 +658,7 @@ Instead of searching at startup, we could run the search once, print the 128
 further and emit the entire 841 KB attack table into the binary via a build
 script, making everything const and deleting `LazyLock`.
 
-Rejected for now (D12): startup search costs single-digit milliseconds and is
+Rejected for now (D12): startup search costs ~21 ms (§6) and is
 self-verifying against the naive oracle on every launch — a subtle table bug
 cannot survive a run. Hardcoded constants would be dead weight to review, and
 a full baked table bloats the binary by ~841 KB while removing the
@@ -781,8 +781,14 @@ Targets and expectations (x86-64-v3, D16 release profile):
   pipelined across a movegen loop. Criterion target: **≤ 5 ns per
   rook/bishop lookup, ≤ 10 ns per queen lookup** on a hot cache with a random
   occupancy stream (throughput-mode measurement).
-- Startup: full magic search **≤ 10 ms** (expect ~1–5 ms with the SF seeds).
-  Assert nothing about it in tests (CI machines vary); just measure once.
+- Startup: full magic search **≤ 25 ms** (measured once at step 4: ~21 ms
+  release on a Ryzen 7 7700X / WSL2, stable across runs and unchanged by
+  `target-cpu=x86-64-v3`; the draft's "≤ 10 ms, expect ~1–5 ms" guess
+  undercounted the search — with the SF-identical seeds and consumption
+  order the verification loop runs 158,190 rook + 46,656 bishop attempts,
+  while Carry-Rippler enumeration is only ~1 ms of the total. Amended here
+  per the deviation rule; the D12 mechanism is unchanged). Assert nothing
+  about it in tests (CI machines vary); it was measured once.
 
 What to measure (criterion benches, dev-only):
 
@@ -852,8 +858,9 @@ The component is done when ALL of the following hold:
 4. `cargo clippy --all-targets` is clean; zero new runtime dependencies
    (criterion is dev-only) (D15).
 5. `main` forces table init before the UCI/print path runs; startup measured
-   once at ≤ 10 ms for the magic search on a dev machine (recorded, not
-   CI-enforced).
+   once for the magic search on a dev machine and recorded in §6 (~21 ms;
+   amended at step 4 from the draft's "≤ 10 ms" guess — the mechanism (D12)
+   is unchanged; not CI-enforced).
 6. Criterion bench exists and recorded numbers meet §6 targets (≤ 5 ns hot
    rook lookup on x86-64-v3), with the LazyLock hoisted-vs-unhoisted delta
    documented in the bench commit.

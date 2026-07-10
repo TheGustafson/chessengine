@@ -31,6 +31,11 @@ const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
 /// `perft <depth> [fen...]`, `d`) run to completion; with no subcommand
 /// this blocks on the stdin UCI loop until `quit`/EOF.
 pub fn run() {
+    // Force the magic attack tables before any command runs (design/03
+    // §3.7): the ~21 ms magic search never happens mid-search, and the
+    // LazyLock branch is always-taken from here on. `main` is a one-line
+    // delegator to this function, so this IS startup.
+    crate::attacks::tables();
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("bench") => cmd_bench_argv(&args[1..]),

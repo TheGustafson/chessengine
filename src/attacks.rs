@@ -4,7 +4,7 @@
 //! `sq` attack given occupancy `occ`?* Legality (pins, checks, castling) is
 //! movegen's job (design/05).
 //!
-//! Landed so far (doc 03 §4 steps 1–3): the `const fn` foundations
+//! Landed so far (doc 03 §4 steps 1–4): the `const fn` foundations
 //! ([`safe_destination`] + the naive ray generator that serves as the
 //! module's correctness oracle), the compile-time leaper and empty-board
 //! slider tables (`KNIGHT_ATTACKS`, `KING_ATTACKS`, `PAWN_ATTACKS`,
@@ -14,8 +14,10 @@
 //! (102,400 rook + 5,248 bishop entries) behind `LazyLock<AttackTables>`,
 //! consumed through [`attacks`]/[`rook_attacks`]/[`bishop_attacks`]/
 //! [`queen_attacks`] — or through a hoisted [`tables`] handle in hot loops.
-//! Still to come, in doc 03's step order: the exhaustive validation battery
-//! and startup forcing (step 4), then the criterion bench (step 5).
+//! `uci::run` forces the `LazyLock` before any command runs (§3.7), and the
+//! full doc 03 §5 battery — every mask subset on every square, 10,000 mixed-
+//! density occupancies per square — guards it all. Still to come: the
+//! criterion bench (doc 03 §4 step 5).
 //!
 //! All tables here are `static`, not `const`: a `const` is a value inlined
 //! (and potentially duplicated) at every use site, while a `static`
@@ -615,8 +617,8 @@ impl Slider {
 
 /// Find a magic for every square of `slider` and fill its block of the
 /// packed shared `table`, starting at `base_offset`. Runs once per slider
-/// type inside the `LazyLock` init; deterministic (fixed seeds) and
-/// single-digit milliseconds in release.
+/// type inside the `LazyLock` init; deterministic (fixed seeds), ~21 ms
+/// release for both types together (measured once, doc 03 §6).
 fn init_magics(
     slider: Slider,
     base_offset: usize,
@@ -1475,8 +1477,7 @@ mod tests {
         }
     }
 
-    // -- §5.3 slider magic validation (step 3: the exhaustive battery lands
-    // -- with step 4; this is the seeded cross-check the commit gate needs) --
+    // -- §5.3 slider magic validation (the core gate) ------------------------------
 
     fn naive_rook(sq: Square, occ: Bitboard) -> Bitboard {
         Bitboard::from_u64(rook_attacks_naive(sq.index(), occ.to_u64()))
@@ -1515,12 +1516,13 @@ mod tests {
 
     #[test]
     fn magic_lookups_match_naive_on_random_occupancies() {
-        // Doc 03 §4 step 3 gate: 1,000 seeded occupancies × 64 squares ×
-        // both sliders vs the naive oracle, through the free-function path
-        // (which also exercises the LazyLock). Mixed density: full-board
-        // occupancies are the point — off-mask bits exercise the `& mask`.
+        // Doc 03 §5.3: ≥ 10,000 seeded occupancies × 64 squares ×
+        // {rook, bishop, queen} vs the naive oracle, through the
+        // free-function path (which also exercises the LazyLock). Mixed
+        // density: full-board occupancies are the point — off-mask bits
+        // exercise the `& mask` step. Seeded ⇒ reproducible failures.
         let mut rng = SplitMix64(0x3A61_C0DE_5EED_ED01);
-        for trial in 0..1000u32 {
+        for trial in 0..10_000u32 {
             let occ = Bitboard::from_u64(match trial % 3 {
                 0 => rng.next_u64(),                                   // uniform
                 1 => rng.next_u64() & rng.next_u64() & rng.next_u64(), // sparse
@@ -1605,31 +1607,35 @@ mod tests {
         }
     }
 
+    /// Edge squares irrelevant to a blocker mask on `sq` — the doc 03 §3.6
+    /// step-1 formula, recomputed test-side (never read from the init code).
+    fn irrelevant_edges(sq: Square) -> Bitboard {
+        ((Bitboard::RANK_1 | Bitboard::RANK_8) & !Bitboard::RANKS[sq.rank() as usize])
+            | ((Bitboard::FILE_A | Bitboard::FILE_H) & !Bitboard::FILES[sq.file() as usize])
+    }
+
     #[test]
-    fn all_subsets_exact_on_representative_squares() {
-        // A slice of §5.3's all-subset exact test (the full 64-square
-        // battery lands with step 4): corners, edges, and center squares —
-        // both mask popcount extremes for each slider.
+    fn all_subsets_exact_on_every_square() {
+        // Doc 03 §5.3 all-subset exact test (the core gate): for every
+        // square and both sliders, every subset of the relevant-blocker
+        // mask — all 102,400 rook + 5,248 bishop blocker configurations —
+        // through the public API vs the naive oracle. This re-proves what
+        // init verified by construction, but it catches offset/packing
+        // bugs, not just magic-collision bugs. Masks are recomputed from
+        // the PSEUDO_* rays; `magic_masks_exclude_irrelevant_edges` proves
+        // those equal the masks init actually used.
         let t = tables();
-        for sq in [
-            Square::A1,
-            Square::H1,
-            Square::A8,
-            Square::H8,
-            Square::E4,
-            Square::D5,
-            Square::A4,
-            Square::E1,
-        ] {
-            let pair = &t.magics[sq.index() as usize];
-            for_each_subset(pair.rook.mask, |occ| {
+        for sq in Square::all() {
+            let s = sq.index() as usize;
+            let relevant = !irrelevant_edges(sq);
+            for_each_subset((PSEUDO_ROOK[s] & relevant).to_u64(), |occ| {
                 assert_eq!(
                     t.rook_attacks(sq, occ),
                     naive_rook(sq, occ),
                     "rook on {sq}, subset {occ:?}"
                 );
             });
-            for_each_subset(pair.bishop.mask, |occ| {
+            for_each_subset((PSEUDO_BISHOP[s] & relevant).to_u64(), |occ| {
                 assert_eq!(
                     t.bishop_attacks(sq, occ),
                     naive_bishop(sq, occ),
@@ -1704,9 +1710,7 @@ mod tests {
         let t = tables();
         for sq in Square::all() {
             let s = sq.index() as usize;
-            let edges = ((Bitboard::RANK_1 | Bitboard::RANK_8)
-                & !Bitboard::RANKS[sq.rank() as usize])
-                | ((Bitboard::FILE_A | Bitboard::FILE_H) & !Bitboard::FILES[sq.file() as usize]);
+            let edges = irrelevant_edges(sq);
             assert_eq!(
                 Bitboard::from_u64(t.magics[s].rook.mask),
                 PSEUDO_ROOK[s] & !edges,
