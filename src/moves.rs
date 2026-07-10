@@ -1,0 +1,276 @@
+use crate::types::{PieceType, Square};
+use std::fmt;
+use std::ops::{Deref, DerefMut};
+
+/// A move packed into 16 bits, Stockfish-style:
+///
+/// - bits 0-5:   from square
+/// - bits 6-11:  to square
+/// - bits 12-13: promotion piece (0 = knight, ..., 3 = queen)
+/// - bits 14-15: kind (0 = normal, 1 = promotion, 2 = en passant, 3 = castling)
+///
+/// Castling is encoded as the king's move (e1g1), matching UCI notation.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Move(u16);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveKind {
+    Normal,
+    Promotion,
+    EnPassant,
+    Castling,
+}
+
+impl Move {
+    /// Sentinel that is not a real move (a1 to a1). Used to fill move tables.
+    pub const NULL: Move = Move(0);
+
+    const KIND_PROMOTION: u16 = 1;
+    const KIND_EN_PASSANT: u16 = 2;
+    const KIND_CASTLING: u16 = 3;
+
+    const fn encode(from: Square, to: Square, promotion: u16, kind: u16) -> Move {
+        Move((from.index() as u16) | ((to.index() as u16) << 6) | (promotion << 12) | (kind << 14))
+    }
+
+    pub const fn normal(from: Square, to: Square) -> Move {
+        Move::encode(from, to, 0, 0)
+    }
+
+    pub const fn promotion(from: Square, to: Square, piece_type: PieceType) -> Move {
+        debug_assert!(matches!(
+            piece_type,
+            PieceType::Knight | PieceType::Bishop | PieceType::Rook | PieceType::Queen
+        ));
+        Move::encode(from, to, piece_type as u16 - 1, Move::KIND_PROMOTION)
+    }
+
+    pub const fn en_passant(from: Square, to: Square) -> Move {
+        Move::encode(from, to, 0, Move::KIND_EN_PASSANT)
+    }
+
+    pub const fn castling(from: Square, to: Square) -> Move {
+        Move::encode(from, to, 0, Move::KIND_CASTLING)
+    }
+
+    pub const fn from(self) -> Square {
+        Square::new((self.0 & 0x3F) as u8)
+    }
+
+    pub const fn to(self) -> Square {
+        Square::new(((self.0 >> 6) & 0x3F) as u8)
+    }
+
+    pub const fn kind(self) -> MoveKind {
+        match self.0 >> 14 {
+            0 => MoveKind::Normal,
+            Move::KIND_PROMOTION => MoveKind::Promotion,
+            Move::KIND_EN_PASSANT => MoveKind::EnPassant,
+            _ => MoveKind::Castling,
+        }
+    }
+
+    /// The piece a pawn promotes to, if this is a promotion.
+    pub fn promotion_piece(self) -> Option<PieceType> {
+        match self.kind() {
+            MoveKind::Promotion => {
+                Some(PieceType::ALL[((self.0 >> 12) & 0b11) as usize + 1])
+            }
+            _ => None,
+        }
+    }
+}
+
+/// UCI long algebraic notation: "e2e4", "e7e8q".
+impl fmt::Display for Move {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.from(), self.to())?;
+        if let Some(piece_type) = self.promotion_piece() {
+            write!(f, "{}", piece_type.to_char())?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Debug for Move {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Move({self}, {:?})", self.kind())
+    }
+}
+
+/// Upper bound on moves in any legal position (the known record is 218).
+pub const MAX_MOVES: usize = 256;
+
+/// A fixed-capacity, stack-allocated list of moves.
+///
+/// Dereferences to `[Move]`, so slice methods (`len`, `iter`, indexing,
+/// `sort_unstable_by_key`, ...) all work on it.
+#[derive(Clone)]
+pub struct MoveList {
+    moves: [Move; MAX_MOVES],
+    len: usize,
+}
+
+impl MoveList {
+    pub const fn new() -> Self {
+        MoveList {
+            moves: [Move::NULL; MAX_MOVES],
+            len: 0,
+        }
+    }
+
+    pub fn push(&mut self, m: Move) {
+        assert!(self.len < MAX_MOVES, "MoveList overflow");
+        self.moves[self.len] = m;
+        self.len += 1;
+    }
+
+    pub fn clear(&mut self) {
+        self.len = 0;
+    }
+}
+
+impl Default for MoveList {
+    fn default() -> Self {
+        MoveList::new()
+    }
+}
+
+impl Deref for MoveList {
+    type Target = [Move];
+
+    fn deref(&self) -> &[Move] {
+        &self.moves[..self.len]
+    }
+}
+
+impl DerefMut for MoveList {
+    fn deref_mut(&mut self) -> &mut [Move] {
+        &mut self.moves[..self.len]
+    }
+}
+
+impl<'a> IntoIterator for &'a MoveList {
+    type Item = Move;
+    type IntoIter = std::iter::Copied<std::slice::Iter<'a, Move>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter().copied()
+    }
+}
+
+impl fmt::Debug for MoveList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normal_move_roundtrip() {
+        let m = Move::normal(Square::E2, Square::E4);
+        assert_eq!(m.from(), Square::E2);
+        assert_eq!(m.to(), Square::E4);
+        assert_eq!(m.kind(), MoveKind::Normal);
+        assert_eq!(m.promotion_piece(), None);
+        assert_eq!(m.to_string(), "e2e4");
+    }
+
+    #[test]
+    fn moves_fit_in_two_bytes() {
+        assert_eq!(std::mem::size_of::<Move>(), 2);
+    }
+
+    #[test]
+    fn extreme_squares_roundtrip() {
+        let m = Move::normal(Square::H8, Square::A1);
+        assert_eq!(m.from(), Square::H8);
+        assert_eq!(m.to(), Square::A1);
+        assert_eq!(m.to_string(), "h8a1");
+    }
+
+    #[test]
+    fn promotion_roundtrip_all_pieces() {
+        for piece_type in [
+            PieceType::Knight,
+            PieceType::Bishop,
+            PieceType::Rook,
+            PieceType::Queen,
+        ] {
+            let m = Move::promotion(Square::E7, Square::E8, piece_type);
+            assert_eq!(m.from(), Square::E7);
+            assert_eq!(m.to(), Square::E8);
+            assert_eq!(m.kind(), MoveKind::Promotion);
+            assert_eq!(m.promotion_piece(), Some(piece_type));
+        }
+        let m = Move::promotion(Square::A7, Square::B8, PieceType::Queen);
+        assert_eq!(m.to_string(), "a7b8q");
+    }
+
+    #[test]
+    fn en_passant_and_castling_kinds() {
+        let ep = Move::en_passant(Square::E5, Square::D6);
+        assert_eq!(ep.kind(), MoveKind::EnPassant);
+        assert_eq!(ep.promotion_piece(), None);
+        assert_eq!(ep.to_string(), "e5d6");
+
+        let castle = Move::castling(Square::E1, Square::G1);
+        assert_eq!(castle.kind(), MoveKind::Castling);
+        assert_eq!(castle.to_string(), "e1g1");
+    }
+
+    #[test]
+    fn distinct_kinds_are_distinct_moves() {
+        // Same from/to, different kind must not compare equal.
+        let normal = Move::normal(Square::E5, Square::D6);
+        let ep = Move::en_passant(Square::E5, Square::D6);
+        assert_ne!(normal, ep);
+    }
+
+    #[test]
+    fn movelist_push_and_slice_access() {
+        let mut list = MoveList::new();
+        assert!(list.is_empty());
+
+        list.push(Move::normal(Square::E2, Square::E4));
+        list.push(Move::normal(Square::G1, Square::F3));
+
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0], Move::normal(Square::E2, Square::E4));
+        assert_eq!(list[1], Move::normal(Square::G1, Square::F3));
+
+        let uci: Vec<String> = list.iter().map(Move::to_string).collect();
+        assert_eq!(uci, vec!["e2e4", "g1f3"]);
+
+        for m in &list {
+            assert_eq!(m.kind(), MoveKind::Normal);
+        }
+
+        list.clear();
+        assert!(list.is_empty());
+    }
+
+    #[test]
+    fn movelist_fills_to_capacity() {
+        let mut list = MoveList::new();
+        for i in 0..MAX_MOVES {
+            list.push(Move::normal(
+                Square::new((i % 64) as u8),
+                Square::new((i / 4) as u8 % 64),
+            ));
+        }
+        assert_eq!(list.len(), MAX_MOVES);
+    }
+
+    #[test]
+    #[should_panic(expected = "MoveList overflow")]
+    fn movelist_panics_on_overflow() {
+        let mut list = MoveList::new();
+        for _ in 0..=MAX_MOVES {
+            list.push(Move::NULL);
+        }
+    }
+}

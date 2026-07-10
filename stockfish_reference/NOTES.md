@@ -1,0 +1,52 @@
+# Stockfish study notes — index
+
+Notes written while studying the Stockfish source in `Stockfish/src/`.
+One markdown file per topic, listed here as they're written.
+
+Purpose: when we're unsure how to do something optimally, read how
+Stockfish does it, distill the idea into a note here, then implement it
+in Rust our own way. **Never copy code** — Stockfish is GPLv3; we take
+ideas and measurements, not source.
+
+## Notes
+
+- [00-design-implications.md](00-design-implications.md) — distilled action
+  list: what the study means for our Rust design, ordered by roadmap
+- [01-bitboards-attacks-move-encoding.md](01-bitboards-attacks-move-encoding.md)
+  — Move u16 layout, XOR square/piece tricks, fancy magic bitboards (no PEXT
+  in slider path!), precomputed tables (~1 MB total), Carry-Rippler + epoch
+  magic search
+- [02-position-state-make-unmake.md](02-position-state-make-unmake.md) —
+  StateInfo copied/derived split, Vec-stack instead of pointer chain, Zobrist
+  tricks (zeroed promo ranks, material count slots), castling-rights mask per
+  square, incremental checkers/blockers/pinners, do_move order + prefetch
+- [03-movegen-movepick-history.md](03-movegen-movepick-history.md) —
+  monomorphized GenType generation, target-mask trick, bulk pawn shifts, lazy
+  legality, staged MovePicker + partial insertion sort, gravity history
+  update rule, killers are gone
+- [04-tt-search-structures.md](04-tt-search-structures.md) — 10-byte TTEntry,
+  32-byte 3-entry clusters, mul_hi64 indexing, relaxed-atomic lock-free TT,
+  generation aging, large pages, search Stack/RootMove, threading layout
+- [stockfish_search_notes.md](stockfish_search_notes.md) — comprehensive
+  review of the search **algorithms**: iterative deepening + aspiration
+  windows, the main negamax node step-by-step (every pruning/reduction/
+  extension technique with current constants), qsearch, MovePicker scoring +
+  all history tables and update formulas, SEE, correction history/optimism,
+  TT replacement policy, Zobrist key family, lazy SMP + thread voting, time
+  management, and a dependency-ordered Rust implementation roadmap
+
+## Quick map of Stockfish source
+
+| File | What it covers |
+|---|---|
+| `types.h` | Square/Piece/Move encodings, Value, Score |
+| `bitboard.{h,cpp}` | Bitboard utilities, magic bitboard init |
+| `attacks.{h,cpp}` | Attack table generation |
+| `position.{h,cpp}` | Board state, make/unmake, StateInfo, Zobrist |
+| `movegen.{h,cpp}` | Staged legal/pseudo-legal move generation |
+| `movepick.{h,cpp}` | Move ordering (TT move, captures, killers, history) |
+| `search.{h,cpp}` | Alpha-beta search, pruning, extensions |
+| `evaluate.{h,cpp}` + `nnue/` | Evaluation (NNUE) |
+| `tt.{h,cpp}` | Transposition table |
+| `uci.{h,cpp}`, `engine.{h,cpp}` | UCI protocol and engine glue |
+| `perft.h` | Perft driver |
