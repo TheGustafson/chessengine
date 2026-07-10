@@ -1,5 +1,6 @@
 use crate::attacks;
 use crate::bitboard::Bitboard;
+use crate::moves::{Move, MoveKind};
 use crate::types::{Color, Key, MAX_PLY, PIECE_VALUES, Piece, PieceType, Square, Value};
 use crate::zobrist::{self, ZOBRIST};
 use std::fmt;
@@ -39,6 +40,17 @@ impl CastlingRights {
     /// (design/04-position-state.md §3.1/§3.4, D9).
     pub const fn bits(self) -> u8 {
         self.0
+    }
+
+    /// The single right of `color` on the given wing — setup and make/unmake
+    /// key the castling geometry arrays off this (design/04 §3.7).
+    pub(crate) const fn single(color: Color, kingside: bool) -> CastlingRights {
+        match (color, kingside) {
+            (Color::White, true) => CastlingRights::WHITE_KINGSIDE,
+            (Color::White, false) => CastlingRights::WHITE_QUEENSIDE,
+            (Color::Black, true) => CastlingRights::BLACK_KINGSIDE,
+            (Color::Black, false) => CastlingRights::BLACK_QUEENSIDE,
+        }
     }
 
     /// Bit position 0..4 of a SINGLE right (WK = 0, WQ = 1, BK = 2, BQ = 3):
@@ -492,6 +504,70 @@ impl Board {
         st.check_squares[PieceType::King as usize] = Bitboard::EMPTY;
     }
 
+    /// Does this pseudo-legal move of the side to move give check?
+    /// O(1) for the common cases via `check_squares` and
+    /// `blockers_for_king` (doc 04 §3.6) — search calls this once per move
+    /// and feeds the answer to [`Board::make_move`].
+    pub fn gives_check(&self, m: Move) -> bool {
+        let us = self.side_to_move;
+        let them = us.flip();
+        let (from, to) = (m.from(), m.to());
+        let pc = self
+            .piece_on(from)
+            .expect("gives_check: no piece on the from-square");
+        debug_assert_eq!(pc.color, us, "gives_check: moving an enemy piece");
+        let ksq = self.king_square(them);
+
+        // Direct check: `to` is a square from which `pc`'s type checks the
+        // enemy king.
+        if self.check_squares(pc.piece_type).contains(to) {
+            return true;
+        }
+
+        // Discovered check: the mover blocks a slider aimed at the ENEMY
+        // king and steps off the king line. Castling is always a check
+        // here — the king vacates a blocker square while the rook lands
+        // with tempo.
+        if self.blockers_for_king(them).contains(from)
+            && (!attacks::aligned(from, to, ksq) || m.kind() == MoveKind::Castling)
+        {
+            return true;
+        }
+
+        match m.kind() {
+            MoveKind::Normal => false,
+            // Does the promoted piece attack the king from `to`, with the
+            // pawn already gone from `from`?
+            MoveKind::Promotion => {
+                let promo = m.promotion_piece().expect("promotion kind has a piece");
+                let occupied = self.all_occupancy ^ Bitboard::from_square(from);
+                attacks::attacks(promo, to, occupied).contains(ksq)
+            }
+            // The one case the fast paths miss: discovered check through
+            // the CAPTURED pawn's square.
+            MoveKind::EnPassant => {
+                let capsq = Square::from_coords(to.file(), from.rank());
+                let occupied = (self.all_occupancy
+                    ^ Bitboard::from_square(from)
+                    ^ Bitboard::from_square(capsq))
+                    | Bitboard::from_square(to);
+                let tables = attacks::tables();
+                let queens = self.pieces(us, PieceType::Queen);
+                !((tables.rook_attacks(ksq, occupied)
+                    & (self.pieces(us, PieceType::Rook) | queens))
+                    | (tables.bishop_attacks(ksq, occupied)
+                        & (self.pieces(us, PieceType::Bishop) | queens)))
+                    .is_empty()
+            }
+            // Does the castling rook check from its destination?
+            MoveKind::Castling => {
+                let kingside = to.file() > from.file();
+                let rto = if kingside { Square::F1 } else { Square::D1 }.relative_to(us);
+                self.check_squares(PieceType::Rook).contains(rto)
+            }
+        }
+    }
+
     /// True when each side has at least one king — the precondition for any
     /// check bookkeeping. False only for incomplete boards (`Board::empty`,
     /// mid-construction tests); every position the engine plays on has
@@ -514,12 +590,7 @@ impl Board {
     pub(crate) fn set_castling_right(&mut self, color: Color, rook_from: Square) {
         let king_from = Square::E1.relative_to(color);
         let kingside = rook_from.file() > king_from.file();
-        let right = match (color, kingside) {
-            (Color::White, true) => CastlingRights::WHITE_KINGSIDE,
-            (Color::White, false) => CastlingRights::WHITE_QUEENSIDE,
-            (Color::Black, true) => CastlingRights::BLACK_KINGSIDE,
-            (Color::Black, false) => CastlingRights::BLACK_QUEENSIDE,
-        };
+        let right = CastlingRights::single(color, kingside);
         self.castling_rights_mask[king_from.index() as usize].add(right);
         self.castling_rights_mask[rook_from.index() as usize].add(right);
         self.castling_rook_square[right.index()] = rook_from;
@@ -694,6 +765,296 @@ impl Board {
         self.color_occupancy[piece.color as usize] ^= bb;
         self.all_occupancy ^= bb;
         Some(piece)
+    }
+
+    /// Move a piece between squares in one pass: from-bit ^ to-bit on three
+    /// bitboards plus two mailbox writes (doc 04 §3.3). The internal fast
+    /// path of make/unmake — the destination must be empty (captures and
+    /// promotions go through `remove_piece`/`put_piece` instead). Placement-
+    /// only like its two siblings: Zobrist deltas live in `make_move`, not
+    /// here (doc 04 §9.1).
+    pub(crate) fn move_piece(&mut self, from: Square, to: Square) {
+        debug_assert!(
+            self.piece_on(to).is_none(),
+            "move_piece to occupied square {to}"
+        );
+        let pc = self.mailbox[from.index() as usize]
+            .take()
+            .expect("move_piece from empty square");
+        let from_to = Bitboard::from_square(from) | Bitboard::from_square(to);
+        self.pieces[pc.color as usize][pc.piece_type as usize] ^= from_to;
+        self.color_occupancy[pc.color as usize] ^= from_to;
+        self.all_occupancy ^= from_to;
+        self.mailbox[to.index() as usize] = Some(pc);
+    }
+
+    /// Make `m` on the board (doc 04 §3.8, D10). `m` must be legal for the
+    /// side to move, and `gives_check` must equal `self.gives_check(m)` —
+    /// caller-supplied so quiet moves need no attack query here.
+    ///
+    /// Builds the child `StateInfo` and pushes it; [`Board::unmake_move`]
+    /// pops it. All Zobrist deltas — main key plus the four specialized
+    /// families — are applied here in Stockfish's `do_move` order, NOT in
+    /// the placement mutators (doc 04 §3.3, §9.1). In particular the new ep
+    /// square is set (and hashed) ONLY when an ep capture will actually be
+    /// legal (D9).
+    pub fn make_move(&mut self, m: Move, gives_check: bool) {
+        // Step 1: derive the child key from the parent's, and copy the
+        // carried-over prefix block — this assignment IS Stockfish's
+        // "memcpy up to key" (D8). The push happens at the very end, so
+        // `self.st()` refers to the PREVIOUS state throughout; its blockers
+        // feed the ep-legality test in step 8, so grab them now.
+        let (mut st, mut k, prev_blockers) = {
+            let prev = self.st();
+            (
+                StateInfo {
+                    copied: prev.copied,
+                    ..StateInfo::EMPTY
+                },
+                prev.key ^ ZOBRIST.side,
+                prev.blockers_for_king,
+            )
+        };
+
+        // Step 2: counters.
+        self.game_ply += 1;
+        st.copied.rule50 += 1;
+        st.copied.plies_from_null += 1;
+
+        // Step 3: actors. Our castling encoding is king-to-G1/C1 (D2), not
+        // SF's king-captures-rook, so `piece_on(to)` is None for castling
+        // and `captured` needs no special-casing.
+        let us = self.side_to_move;
+        let them = us.flip();
+        let (from, to) = (m.from(), m.to());
+        let pc = self
+            .piece_on(from)
+            .expect("make_move: no piece on the from-square");
+        debug_assert_eq!(pc.color, us, "make_move: moving an enemy piece");
+        let (captured, capsq) = if m.kind() == MoveKind::EnPassant {
+            // The captured pawn sits one rank from `to`, toward our home.
+            (
+                Some(Piece::new(them, PieceType::Pawn)),
+                to.offset(them.pawn_push()),
+            )
+        } else {
+            (self.piece_on(to), to)
+        };
+        debug_assert!(
+            captured.is_none_or(|cap| cap.piece_type != PieceType::King),
+            "make_move: capturing a king"
+        );
+
+        // Step 4: castling — board update AND rook keys happen here; step
+        // 10 skips castling entirely. Remove both, then place both: with
+        // standard squares nothing overlaps, but the shape is ready for
+        // Chess960's overlapping king/rook squares (D10).
+        if m.kind() == MoveKind::Castling {
+            let kingside = to.file() > from.file();
+            let right = CastlingRights::single(us, kingside);
+            let rfrom = self.castling_rook_square[right.index()];
+            let rto = if kingside { Square::F1 } else { Square::D1 }.relative_to(us);
+            let rook = Piece::new(us, PieceType::Rook);
+
+            self.remove_piece(from);
+            self.remove_piece(rfrom);
+            self.put_piece(pc, to);
+            self.put_piece(rook, rto);
+
+            let rook_delta = ZOBRIST.psq[rook.index()][rfrom.index() as usize]
+                ^ ZOBRIST.psq[rook.index()][rto.index() as usize];
+            k ^= rook_delta;
+            st.copied.non_pawn_key[us as usize] ^= rook_delta;
+        }
+
+        // Step 5: capture (mutually exclusive with castling).
+        if let Some(cap) = captured {
+            let cap_psq = ZOBRIST.psq[cap.index()][capsq.index() as usize];
+            if cap.piece_type == PieceType::Pawn {
+                st.copied.pawn_key ^= cap_psq;
+            } else {
+                st.copied.non_pawn_material[them as usize] -= PIECE_VALUES[cap.piece_type as usize];
+                st.copied.non_pawn_key[them as usize] ^= cap_psq;
+                if matches!(cap.piece_type, PieceType::Knight | PieceType::Bishop) {
+                    st.copied.minor_key ^= cap_psq;
+                }
+            }
+            k ^= cap_psq;
+            // Count-slot removal: slot index = post-removal count. The
+            // popcount is still pre-mutation — ALL board edits wait until
+            // step 10 (unlike SF, which lifts the ep pawn early for
+            // piece-list reasons we don't have).
+            let count = self.pieces(them, cap.piece_type).count() as usize;
+            st.copied.material_key ^= ZOBRIST.material(cap, count - 1);
+            st.copied.rule50 = 0;
+        }
+
+        // Step 6: mover key — for castling this is the king pair; for
+        // promotions the pawn's `to` key is zero by construction, so no
+        // special case (D9). Then clear a stale ep square out of the key.
+        k ^= ZOBRIST.psq[pc.index()][from.index() as usize]
+            ^ ZOBRIST.psq[pc.index()][to.index() as usize];
+        if let Some(ep) = st.copied.ep_square.take() {
+            k ^= ZOBRIST.en_passant[ep.file() as usize];
+        }
+
+        // Step 7: castling-rights revocation. One mask lookup covers king
+        // moves, rook moves, and rook captures (doc 04 §3.7); the whole-mask
+        // castling key makes any change two XORs (a no-op change cancels).
+        let mut touched = self.castling_rights_mask[from.index() as usize];
+        touched.add(self.castling_rights_mask[to.index() as usize]);
+        k ^= ZOBRIST.castling[st.copied.castling_rights.bits() as usize];
+        st.copied.castling_rights.remove(touched);
+        k ^= ZOBRIST.castling[st.copied.castling_rights.bits() as usize];
+
+        // Step 8: pawn extras, or the non-pawn specialized-key upkeep.
+        if pc.piece_type == PieceType::Pawn {
+            if from.index() ^ to.index() == 16 {
+                // Double push: set the ep square ONLY if an ep capture will
+                // actually be legal (D9), via the cheap exact test on the
+                // PREVIOUS state's blockers.
+                let ep = to.offset(them.pawn_push());
+                let pawns = attacks::pawn_attacks(us, ep) & self.pieces(them, PieceType::Pawn);
+                if !pawns.is_empty() {
+                    let ksq = self.king_square(them);
+                    let not_blockers = !prev_blockers[them as usize];
+                    // If the double push itself delivers discovered check,
+                    // ep can never be the legal reply.
+                    let no_discovery = not_blockers.contains(from) || from.file() == ksq.file();
+                    // A capturer is legal iff it is not a blocker of its
+                    // own king, or it captures along its pin line. The
+                    // PREVIOUS blockers also catch the horizontal
+                    // both-pawns-removed pin: before the push only one pawn
+                    // sat between king and rook, so the capturer was
+                    // already registered as a blocker.
+                    if no_discovery && !(pawns & (not_blockers | attacks::line(ep, ksq))).is_empty()
+                    {
+                        st.copied.ep_square = Some(ep);
+                        k ^= ZOBRIST.en_passant[ep.file() as usize];
+                    }
+                }
+            } else if m.kind() == MoveKind::Promotion {
+                let promo_pt = m.promotion_piece().expect("promotion kind has a piece");
+                let promo = Piece::new(us, promo_pt);
+                let promo_psq = ZOBRIST.psq[promo.index()][to.index() as usize];
+                // No pawn-clear XOR: psq[pawn][promotion rank] is zero (D9).
+                k ^= promo_psq;
+                // Count slots: promoted piece pre-add count in, pawn
+                // post-removal count out (popcounts still pre-mutation).
+                let promo_count = self.pieces(us, promo_pt).count() as usize;
+                let pawn_count = self.pieces(us, PieceType::Pawn).count() as usize;
+                st.copied.material_key ^=
+                    ZOBRIST.material(promo, promo_count) ^ ZOBRIST.material(pc, pawn_count - 1);
+                st.copied.non_pawn_key[us as usize] ^= promo_psq;
+                if matches!(promo_pt, PieceType::Knight | PieceType::Bishop) {
+                    st.copied.minor_key ^= promo_psq;
+                }
+                st.copied.non_pawn_material[us as usize] += PIECE_VALUES[promo_pt as usize];
+            }
+            // Always: the `to` term is zero on the promotion rank, so this
+            // degenerates to a from-only update for promotions.
+            st.copied.pawn_key ^= ZOBRIST.psq[pc.index()][from.index() as usize]
+                ^ ZOBRIST.psq[pc.index()][to.index() as usize];
+            st.copied.rule50 = 0;
+        } else {
+            let mover_delta = ZOBRIST.psq[pc.index()][from.index() as usize]
+                ^ ZOBRIST.psq[pc.index()][to.index() as usize];
+            st.copied.non_pawn_key[us as usize] ^= mover_delta;
+            if matches!(pc.piece_type, PieceType::Knight | PieceType::Bishop) {
+                st.copied.minor_key ^= mover_delta;
+            }
+        }
+
+        // Step 9: the child key is final. (Prefetch hook points A/B attach
+        // here when the hook seam lands — doc 04 §3.10, §4 step 10.)
+        st.key = k;
+
+        // Step 10: board mutation (castling already mutated in step 4).
+        if m.kind() != MoveKind::Castling {
+            if captured.is_some() {
+                self.remove_piece(capsq);
+            }
+            if m.kind() == MoveKind::Promotion {
+                let promo_pt = m.promotion_piece().expect("promotion kind has a piece");
+                self.remove_piece(from);
+                self.put_piece(Piece::new(us, promo_pt), to);
+            } else {
+                self.move_piece(from, to);
+            }
+        }
+
+        // Step 11: captured piece and checkers. Trusting the caller's
+        // `gives_check` keeps quiet moves free of any attack query.
+        st.captured = captured;
+        st.checkers = if gives_check {
+            self.attackers_to(self.king_square(them), self.all_occupancy) & self.occupancy(us)
+        } else {
+            Bitboard::EMPTY
+        };
+        debug_assert_eq!(
+            gives_check,
+            !(self.attackers_to(self.king_square(them), self.all_occupancy) & self.occupancy(us))
+                .is_empty(),
+            "make_move: caller-supplied gives_check disagrees with the board after {m}"
+        );
+
+        // Step 12: flip the side to move, then rebuild the check
+        // bookkeeping for the new side.
+        self.side_to_move = them;
+        self.set_check_info(&mut st);
+
+        // Step 13: repetition scan — lands with the null-move/repetition
+        // step (doc 04 §4 step 7); until then every state reports 0.
+
+        // Step 14: publish.
+        self.states.push(st);
+    }
+
+    /// Undo the last made move, which must be `m` (doc 04 §3.8).
+    /// Deliberately dumb-cheap: restore the placement, pop the state — no
+    /// key or check-info work, everything derived lives in the popped
+    /// record and the parent state is intact underneath.
+    pub fn unmake_move(&mut self, m: Move) {
+        let st = self.states.pop().expect("state stack never empty");
+        debug_assert!(
+            !self.states.is_empty(),
+            "unmake_move must leave the root state"
+        );
+        self.side_to_move = self.side_to_move.flip();
+        let us = self.side_to_move;
+        self.game_ply -= 1;
+        let (from, to) = (m.from(), m.to());
+
+        if m.kind() == MoveKind::Castling {
+            // Remove both, place both — the exact inverse of step 4.
+            let kingside = to.file() > from.file();
+            let right = CastlingRights::single(us, kingside);
+            let rfrom = self.castling_rook_square[right.index()];
+            let rto = if kingside { Square::F1 } else { Square::D1 }.relative_to(us);
+            let king = self
+                .remove_piece(to)
+                .expect("king on the castling to-square");
+            let rook = self
+                .remove_piece(rto)
+                .expect("rook on the castling destination");
+            self.put_piece(king, from);
+            self.put_piece(rook, rfrom);
+        } else {
+            if m.kind() == MoveKind::Promotion {
+                self.remove_piece(to);
+                self.put_piece(Piece::new(us, PieceType::Pawn), from);
+            } else {
+                self.move_piece(to, from);
+            }
+            if let Some(cap) = st.captured {
+                let capsq = if m.kind() == MoveKind::EnPassant {
+                    to.offset(us.flip().pawn_push())
+                } else {
+                    to
+                };
+                self.put_piece(cap, capsq);
+            }
+        }
     }
 
     /// Check that the bitboards and mailbox agree. Test-only invariant check.
@@ -1188,5 +1549,497 @@ mod tests {
 1 . . . . K . . .
   a b c d e f g h";
         assert_eq!(board.to_string(), expected);
+    }
+
+    // -----------------------------------------------------------------
+    // Doc 04 §4 steps 5–6: make_move / unmake_move + gives_check
+    // -----------------------------------------------------------------
+
+    const KIWIPETE: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+
+    /// Make `m` with full cross-checking (doc 04 §5): the caller-supplied
+    /// `gives_check` contract, the from-scratch key oracle for all six
+    /// keys, bitboard/mailbox sync, and a recomputed checkers set.
+    fn make_checked(board: &mut Board, m: Move) {
+        let gives_check = board.gives_check(m);
+        board.make_move(m, gives_check);
+        board.assert_consistent();
+        board.assert_state_keys_consistent();
+        let stm = board.side_to_move();
+        let expected = board.attackers_to(board.king_square(stm), board.all_occupancy())
+            & board.occupancy(stm.flip());
+        assert_eq!(board.checkers(), expected, "checkers drifted after {m}");
+        assert_eq!(
+            gives_check,
+            !expected.is_empty(),
+            "gives_check({m}) was wrong"
+        );
+    }
+
+    /// Play `moves` in order (each fully cross-checked), then unmake them
+    /// in reverse, asserting the board comes back EQUAL at every ply —
+    /// placement, side, counters, and the whole state stack (all six keys
+    /// included) via derived `PartialEq`. Returns the final position for
+    /// post-move assertions.
+    fn roundtrip(fen: &str, moves: &[Move]) -> Board {
+        let mut board = Board::from_fen(fen).expect("test FEN parses");
+        let mut snapshots = vec![board.clone()];
+        for &m in moves {
+            make_checked(&mut board, m);
+            snapshots.push(board.clone());
+        }
+        let end = board.clone();
+        for &m in moves.iter().rev() {
+            snapshots.pop();
+            board.unmake_move(m);
+            board.assert_consistent();
+            assert_eq!(
+                &board,
+                snapshots.last().expect("root snapshot remains"),
+                "unmaking {m} did not restore the previous position"
+            );
+        }
+        end
+    }
+
+    #[test]
+    fn make_unmake_roundtrip_from_startpos() {
+        // Berlin-flavored opening: normal moves, double pushes, four
+        // captures (N/B/P/Q), kingside castling — every ply key-oracle
+        // checked, every unmake compared for full state equality.
+        let end = roundtrip(
+            crate::fen::START_FEN,
+            &[
+                Move::normal(Square::E2, Square::E4),
+                Move::normal(Square::E7, Square::E5),
+                Move::normal(Square::G1, Square::F3),
+                Move::normal(Square::B8, Square::C6),
+                Move::normal(Square::F1, Square::B5),
+                Move::normal(Square::G8, Square::F6),
+                Move::castling(Square::E1, Square::G1),
+                Move::normal(Square::F6, Square::E4), // NxP
+                Move::normal(Square::D2, Square::D4),
+                Move::normal(Square::E5, Square::D4), // PxP
+                Move::normal(Square::B5, Square::C6), // BxN
+                Move::normal(Square::D7, Square::C6), // PxB
+                Move::normal(Square::D1, Square::D4), // QxP
+                Move::normal(Square::D8, Square::D4), // QxQ
+            ],
+        );
+        assert_eq!(end.side_to_move(), Color::White);
+        assert_eq!(
+            end.captured_piece(),
+            Some(Piece::new(Color::White, PieceType::Queen))
+        );
+        assert_eq!(
+            end.piece_on(Square::D4),
+            Some(Piece::new(Color::Black, PieceType::Queen))
+        );
+        assert_eq!(
+            end.piece_on(Square::G1),
+            Some(Piece::new(Color::White, PieceType::King))
+        );
+        assert_eq!(
+            end.piece_on(Square::F1),
+            Some(Piece::new(Color::White, PieceType::Rook))
+        );
+    }
+
+    #[test]
+    fn make_unmake_roundtrip_on_kiwipete() {
+        // A capturable double push, the ep capture, castling, and a
+        // capturing under-promotion on a rook's home square — one sequence
+        // on the classic perft position.
+        let mut board = Board::from_fen(KIWIPETE).unwrap();
+        make_checked(&mut board, Move::normal(Square::A2, Square::A4));
+        assert_eq!(board.en_passant_square(), Some(Square::A3));
+
+        let end = roundtrip(
+            KIWIPETE,
+            &[
+                Move::normal(Square::A2, Square::A4),
+                Move::en_passant(Square::B4, Square::A3),
+                Move::castling(Square::E1, Square::G1),
+                Move::normal(Square::A3, Square::B2), // PxP
+                Move::normal(Square::G2, Square::G3),
+                Move::promotion(Square::B2, Square::A1, PieceType::Knight), // PxR=N
+            ],
+        );
+        assert_eq!(
+            end.piece_on(Square::A1),
+            Some(Piece::new(Color::Black, PieceType::Knight))
+        );
+        assert_eq!(
+            end.captured_piece(),
+            Some(Piece::new(Color::White, PieceType::Rook))
+        );
+    }
+
+    // Doc 04 §5 ep hashing: the new ep square is set — and its file keyed —
+    // ONLY when an ep capture will actually be legal (D9).
+    #[test]
+    fn double_push_sets_ep_only_when_capturable() {
+        // No adjacent enemy pawn: no ep square; the child hashes exactly
+        // like the same position parsed from FEN with "-".
+        let mut board = Board::startpos();
+        make_checked(&mut board, Move::normal(Square::E2, Square::E4));
+        assert_eq!(board.en_passant_square(), None);
+        let reparsed =
+            Board::from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1").unwrap();
+        assert_eq!(board.raw_key(), reparsed.raw_key());
+
+        // Adjacent enemy pawn, unpinned: ep set, keyed by its FILE.
+        let mut board = Board::from_fen("4k3/8/8/8/5p2/8/4P3/4K3 w - - 0 1").unwrap();
+        let before = board.raw_key();
+        make_checked(&mut board, Move::normal(Square::E2, Square::E4));
+        assert_eq!(board.en_passant_square(), Some(Square::E3));
+        let wp = Piece::new(Color::White, PieceType::Pawn).index();
+        assert_eq!(
+            board.raw_key(),
+            before
+                ^ ZOBRIST.side
+                ^ ZOBRIST.psq[wp][Square::E2.index() as usize]
+                ^ ZOBRIST.psq[wp][Square::E4.index() as usize]
+                ^ ZOBRIST.en_passant[Square::E3.file() as usize]
+        );
+    }
+
+    #[test]
+    fn double_push_withholds_ep_when_capture_is_illegal() {
+        // Vertical pin of the capturer: ...dxe3 would open the d-file rook
+        // onto the black king.
+        let mut board = Board::from_fen("3k4/8/8/8/3p4/8/4P3/2KR4 w - - 0 1").unwrap();
+        make_checked(&mut board, Move::normal(Square::E2, Square::E4));
+        assert_eq!(board.en_passant_square(), None);
+
+        // Horizontal both-pawns-removed pin (the doc 04 §5 Kh5/Pf5/Ra5
+        // case): fxe6 would clear BOTH e5 and f5 off rank 5. Only the
+        // PREVIOUS state's blockers see this — after the push there are
+        // two pieces between rook and king.
+        let mut board = Board::from_fen("4k3/4p3/8/r4P1K/8/8/8/8 b - - 0 1").unwrap();
+        make_checked(&mut board, Move::normal(Square::E7, Square::E5));
+        assert_eq!(board.en_passant_square(), None);
+
+        // The double push itself delivers discovered check: ep can never
+        // be the legal reply.
+        let mut board = Board::from_fen("8/8/k7/8/5p2/8/4P3/4KB2 w - - 0 1").unwrap();
+        make_checked(&mut board, Move::normal(Square::E2, Square::E4));
+        assert_eq!(board.en_passant_square(), None);
+        assert_eq!(board.checkers(), bb(&[Square::F1]));
+    }
+
+    #[test]
+    fn ep_capture_roundtrip_and_pin_line_capture_keeps_ep() {
+        // Plain ep capture round-trips — capsq != to, so unmake must put
+        // the captured pawn back on its own square, not the to-square.
+        let end = roundtrip(
+            "4k3/8/8/8/5p2/8/4P3/4K3 w - - 0 1",
+            &[
+                Move::normal(Square::E2, Square::E4),
+                Move::en_passant(Square::F4, Square::E3),
+            ],
+        );
+        assert_eq!(
+            end.piece_on(Square::E3),
+            Some(Piece::new(Color::Black, PieceType::Pawn))
+        );
+        assert_eq!(end.piece_on(Square::E4), None);
+        assert_eq!(
+            end.captured_piece(),
+            Some(Piece::new(Color::White, PieceType::Pawn))
+        );
+
+        // The capturer is pinned, but the ep capture travels ALONG the
+        // c4-f7 pin line: ep stays set (and keyed), the capture plays.
+        let fen = "4k3/4pb2/8/3P4/2K5/8/8/8 b - - 0 1";
+        let mut board = Board::from_fen(fen).unwrap();
+        make_checked(&mut board, Move::normal(Square::E7, Square::E5));
+        assert_eq!(board.en_passant_square(), Some(Square::E6));
+        make_checked(&mut board, Move::en_passant(Square::D5, Square::E6));
+        assert_eq!(board.piece_on(Square::E5), None);
+        board.unmake_move(Move::en_passant(Square::D5, Square::E6));
+        board.unmake_move(Move::normal(Square::E7, Square::E5));
+        assert_eq!(board, Board::from_fen(fen).unwrap());
+    }
+
+    #[test]
+    fn promotion_roundtrip_all_pieces() {
+        for pt in [
+            PieceType::Knight,
+            PieceType::Bishop,
+            PieceType::Rook,
+            PieceType::Queen,
+        ] {
+            let end = roundtrip(
+                "4k3/1P6/8/8/8/8/8/4K3 w - - 0 1",
+                &[Move::promotion(Square::B7, Square::B8, pt)],
+            );
+            assert_eq!(end.piece_on(Square::B8), Some(Piece::new(Color::White, pt)));
+            assert!(end.pieces(Color::White, PieceType::Pawn).is_empty());
+            assert_eq!(
+                end.non_pawn_material(Color::White),
+                PIECE_VALUES[pt as usize]
+            );
+            // The board went pawnless: back to the no-pawns baseline.
+            assert_eq!(end.pawn_key(), ZOBRIST.no_pawns);
+        }
+
+        // Black promotes too — the zeroed promotion rank is color-specific.
+        let end = roundtrip(
+            "4k3/8/8/8/8/8/1p6/4K3 b - - 0 1",
+            &[Move::promotion(Square::B2, Square::B1, PieceType::Queen)],
+        );
+        assert_eq!(
+            end.piece_on(Square::B1),
+            Some(Piece::new(Color::Black, PieceType::Queen))
+        );
+    }
+
+    #[test]
+    fn promotion_capture_revokes_castling_rights() {
+        let end = roundtrip(
+            "4k2r/6P1/8/8/8/8/8/4K3 w k - 0 1",
+            &[Move::promotion(Square::G7, Square::H8, PieceType::Queen)],
+        );
+        assert_eq!(
+            end.piece_on(Square::H8),
+            Some(Piece::new(Color::White, PieceType::Queen))
+        );
+        assert_eq!(end.castling_rights(), CastlingRights::NONE);
+        assert_eq!(
+            end.captured_piece(),
+            Some(Piece::new(Color::Black, PieceType::Rook))
+        );
+        assert_eq!(end.non_pawn_material(Color::Black), 0);
+        assert_eq!(
+            end.non_pawn_material(Color::White),
+            PIECE_VALUES[PieceType::Queen as usize]
+        );
+    }
+
+    #[test]
+    fn castling_all_four_roundtrip() {
+        let castle_fen = |stm: char| format!("r3k2r/8/8/8/8/8/8/R3K2R {stm} KQkq - 0 1");
+        let cases = [
+            ('w', Square::E1, Square::G1, Square::F1, "kq"),
+            ('w', Square::E1, Square::C1, Square::D1, "kq"),
+            ('b', Square::E8, Square::G8, Square::F8, "KQ"),
+            ('b', Square::E8, Square::C8, Square::D8, "KQ"),
+        ];
+        for (stm, kfrom, kto, rto, rights) in cases {
+            let color = if stm == 'w' {
+                Color::White
+            } else {
+                Color::Black
+            };
+            let m = Move::castling(kfrom, kto);
+            let end = roundtrip(&castle_fen(stm), &[m]);
+            assert_eq!(
+                end.piece_on(kto),
+                Some(Piece::new(color, PieceType::King)),
+                "{m}"
+            );
+            assert_eq!(
+                end.piece_on(rto),
+                Some(Piece::new(color, PieceType::Rook)),
+                "{m}"
+            );
+            assert_eq!(end.piece_on(kfrom), None, "{m}");
+            assert_eq!(end.castling_rights(), rights.parse().unwrap(), "{m}");
+        }
+
+        // Both sides castle in one sequence.
+        let end = roundtrip(
+            &castle_fen('w'),
+            &[
+                Move::castling(Square::E1, Square::G1),
+                Move::castling(Square::E8, Square::C8),
+            ],
+        );
+        assert_eq!(end.castling_rights(), CastlingRights::NONE);
+    }
+
+    // Doc 04 §5: rights revocation via the mask — king move, each rook
+    // move, and a rook CAPTURING a never-moved rook on its home square
+    // (from-mask and to-mask fire together). Unmake restores the rights
+    // (checked ply-by-ply inside roundtrip).
+    #[test]
+    fn castling_rights_revocation_cases() {
+        const FEN: &str = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1";
+        let cases: [(Move, &str); 4] = [
+            (Move::normal(Square::E1, Square::E2), "kq"), // king move: both rights
+            (Move::normal(Square::H1, Square::G1), "Qkq"), // kingside rook move
+            (Move::normal(Square::A1, Square::B1), "Kkq"), // queenside rook move
+            (Move::normal(Square::A1, Square::A8), "Kk"), // RxR: one right per side
+        ];
+        for (m, rights) in cases {
+            let end = roundtrip(FEN, &[m]);
+            assert_eq!(end.castling_rights(), rights.parse().unwrap(), "{m}");
+        }
+
+        // Rights never come back by returning home — only unmake restores.
+        let end = roundtrip(
+            FEN,
+            &[
+                Move::normal(Square::E1, Square::E2),
+                Move::normal(Square::E8, Square::E7),
+                Move::normal(Square::E2, Square::E1),
+                Move::normal(Square::E7, Square::E8),
+            ],
+        );
+        assert_eq!(end.castling_rights(), CastlingRights::NONE);
+    }
+
+    #[test]
+    fn counters_and_captured_piece_track_moves() {
+        let mut board = Board::startpos();
+        make_checked(&mut board, Move::normal(Square::G1, Square::F3));
+        assert_eq!(board.rule50_count(), 1);
+        assert_eq!(board.game_ply(), 1);
+        assert_eq!(board.fullmove_number(), 1);
+        assert_eq!(board.side_to_move(), Color::Black);
+        make_checked(&mut board, Move::normal(Square::B8, Square::C6));
+        assert_eq!(board.rule50_count(), 2);
+        assert_eq!(board.game_ply(), 2);
+        assert_eq!(board.fullmove_number(), 2);
+        // A pawn move resets the clock...
+        make_checked(&mut board, Move::normal(Square::E2, Square::E4));
+        assert_eq!(board.rule50_count(), 0);
+        make_checked(&mut board, Move::normal(Square::C6, Square::D4));
+        assert_eq!(board.rule50_count(), 1);
+        // ...and so does a capture.
+        make_checked(&mut board, Move::normal(Square::F3, Square::D4));
+        assert_eq!(board.rule50_count(), 0);
+        assert_eq!(
+            board.captured_piece(),
+            Some(Piece::new(Color::Black, PieceType::Knight))
+        );
+        assert_eq!(board.game_ply(), 5);
+
+        // Unmake winds every counter back to the start position.
+        for m in [
+            Move::normal(Square::F3, Square::D4),
+            Move::normal(Square::C6, Square::D4),
+            Move::normal(Square::E2, Square::E4),
+            Move::normal(Square::B8, Square::C6),
+            Move::normal(Square::G1, Square::F3),
+        ] {
+            board.unmake_move(m);
+        }
+        assert_eq!(board, Board::startpos());
+    }
+
+    // Doc 04 §5 gives_check fixtures. Every case is ALSO cross-checked
+    // against make_move + recomputed checkers inside roundtrip.
+    #[test]
+    fn gives_check_fixture_cases() {
+        let check = |fen: &str, m: Move| {
+            let board = Board::from_fen(fen).unwrap();
+            let expected = board.gives_check(m);
+            roundtrip(fen, &[m]);
+            expected
+        };
+
+        // Direct checks (queen slide, knight hop) and a quiet non-check.
+        assert!(check(
+            "4k3/8/8/8/8/8/8/4KQ2 w - - 0 1",
+            Move::normal(Square::F1, Square::F8)
+        ));
+        assert!(check(
+            "4k3/8/8/1N6/8/8/8/4K3 w - - 0 1",
+            Move::normal(Square::B5, Square::D6)
+        ));
+        assert!(!check(
+            "4k3/8/8/1N6/8/8/8/4K3 w - - 0 1",
+            Move::normal(Square::B5, Square::C3)
+        ));
+
+        // Discovered check: the pawn blocker leaves the e-file...
+        assert!(check(
+            "4k3/8/8/3p4/4P3/8/8/4RK2 w - - 0 1",
+            Move::normal(Square::E4, Square::D5)
+        ));
+        // ...but pushing ALONG the king line is no check at all.
+        assert!(!check(
+            "4k3/8/8/3p4/4P3/8/8/4RK2 w - - 0 1",
+            Move::normal(Square::E4, Square::E5)
+        ));
+
+        // Promotion checking through the vacated from-square (rook), and
+        // the bishop flavor that misses.
+        assert!(check(
+            "8/6P1/8/8/8/6k1/8/4K3 w - - 0 1",
+            Move::promotion(Square::G7, Square::G8, PieceType::Rook)
+        ));
+        assert!(!check(
+            "8/6P1/8/8/8/6k1/8/4K3 w - - 0 1",
+            Move::promotion(Square::G7, Square::G8, PieceType::Bishop)
+        ));
+
+        // Ep double-discovery through the CAPTURED pawn's square: both
+        // pawns leave rank 5, unmasking Rh5–Ka5.
+        assert!(check(
+            "8/8/8/k2pP2R/8/8/8/4K3 w - d6 0 2",
+            Move::en_passant(Square::E5, Square::D6)
+        ));
+        // The same capture with no slider behind it: no check.
+        assert!(!check(
+            "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1",
+            Move::en_passant(Square::E5, Square::D6)
+        ));
+
+        // Castling: the rook lands on the king's file with check...
+        assert!(check(
+            "5k2/8/8/8/8/8/8/4K2R w K - 0 1",
+            Move::castling(Square::E1, Square::G1)
+        ));
+        // ...or harmlessly.
+        assert!(!check(
+            "4k3/8/8/8/8/8/8/4K2R w K - 0 1",
+            Move::castling(Square::E1, Square::G1)
+        ));
+    }
+
+    // Doc 04 §5 transposition invariance: two move orders reaching the
+    // same position produce identical keys; a knight shuffle returning
+    // home restores every key (though the clock remembers the walk).
+    #[test]
+    fn transposition_invariance() {
+        let play = |moves: &[Move]| {
+            let mut board = Board::startpos();
+            for &m in moves {
+                make_checked(&mut board, m);
+            }
+            board
+        };
+        let a = play(&[
+            Move::normal(Square::G1, Square::F3),
+            Move::normal(Square::B8, Square::C6),
+            Move::normal(Square::B1, Square::C3),
+            Move::normal(Square::G8, Square::F6),
+        ]);
+        let b = play(&[
+            Move::normal(Square::B1, Square::C3),
+            Move::normal(Square::G8, Square::F6),
+            Move::normal(Square::G1, Square::F3),
+            Move::normal(Square::B8, Square::C6),
+        ]);
+        assert_eq!(a.raw_key(), b.raw_key());
+        assert_eq!(a.key(), b.key());
+        assert_eq!(a.pawn_key(), b.pawn_key());
+        assert_eq!(a.material_key(), b.material_key());
+        assert_eq!(a.minor_key(), b.minor_key());
+        for color in Color::ALL {
+            assert_eq!(a.non_pawn_key(color), b.non_pawn_key(color));
+        }
+
+        let home = play(&[
+            Move::normal(Square::G1, Square::F3),
+            Move::normal(Square::B8, Square::C6),
+            Move::normal(Square::F3, Square::G1),
+            Move::normal(Square::C6, Square::B8),
+        ]);
+        assert_eq!(home.raw_key(), Board::startpos().raw_key());
+        assert_ne!(home.rule50_count(), 0);
     }
 }

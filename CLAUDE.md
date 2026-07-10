@@ -61,8 +61,9 @@ Library crate + thin binary. Modules (re-exported at the crate root by
   `file = index & 7`, `rank = index >> 3`.
 - **Board representation**: bitboards are primary (`pieces[color][piece_type]`,
   per-color occupancy, all occupancy); a redundant `mailbox: [Option<Piece>; 64]`
-  gives O(1) piece-on-square. `put_piece`/`remove_piece` are the ONLY ways to
-  mutate placement — they keep every layer in sync but are placement-only:
+  gives O(1) piece-on-square. `put_piece`/`remove_piece` — plus the internal
+  `move_piece` fast path used by make/unmake — are the ONLY ways to mutate
+  placement; they keep every layer in sync but are placement-only:
   Zobrist key deltas live in `make_move`, NOT in the placement mutators (the
   five-key family updates differently per piece type and move kind, and the
   ep/castling/side keys never route through placement — design/04 §3.3, §9.1).
@@ -107,12 +108,15 @@ GPLv3; take ideas, reimplement idiomatically in Rust.
 Done: types, bitboards, board + FEN, `Move`/`MoveList`; attack tables (P1:
 const leapers + geometry, fancy magic sliders, exhaustively validated
 against the naive ray oracle, criterion-benchmarked); P2 in progress —
-`zobrist` module (five-key family, all SF tricks) and the
+`zobrist` module (five-key family, all SF tricks), the
 `CopiedState`/`StateInfo` split with the `Vec<StateInfo>` state stack,
-from-scratch key computation at FEN setup, FEN ep validation (pseudo-legal;
-full legality lands with `attackers_to`).
+from-scratch key computation at FEN setup, `attackers_to` + check/pin
+bookkeeping, legality-exact FEN ep validation, and `make_move(m,
+gives_check)`/`unmake_move`/`gives_check(m)` for every move kind with all
+five Zobrist keys maintained incrementally (key-oracle-checked in tests).
 
-Next (in rough dependency order): `attackers_to` + check info, make/unmake
-maintaining all five Zobrist keys incrementally, perft validation, UCI loop,
-search, evaluation. Perft is the correctness oracle — no movegen/make-unmake
-change lands without matching known perft counts.
+Next (in rough dependency order): null move + repetition/`is_draw` (P2
+remainder), debug `assert_consistent` key oracle wired into make/unmake,
+movegen + perft validation, SEE, UCI loop, search, evaluation. Perft is the
+correctness oracle — no movegen/make-unmake change lands without matching
+known perft counts.
