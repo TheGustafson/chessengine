@@ -1,0 +1,53 @@
+# CI — the hosted slice of the merge gate.
+#
+# tools/check.sh is the authoritative local ritual (design/14 §3.9); this job
+# runs the parts that are meaningful on a shared runner: fmt, clippy, and the
+# non-ignored test set in debug and release. Perft full/extended tiers, the
+# bench fingerprint, and anything timing-based stay local by design — timing
+# assertions are flaky on shared runners (design/14 §5), and the ignored
+# release tiers are gated by tools/check.sh once P3 lands.
+#
+# Single job on stable, kept fast; a matrix (Windows/macOS/aarch64, per the
+# tier-2 platform policy in design/01 §3.7) comes later.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: fmt + clippy + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable Rust (rustfmt + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test (debug — unit tests + fast perft tier)
+        run: cargo test
+
+      # Non-ignored tests in release. Today this re-runs the unit tests
+      # (RED-ignored tests are skipped, so this is cheap and harmless); once
+      # release-mode tests exist they run here automatically.
+      # TODO(P3): when the perft tiers land, consider a scheduled (nightly)
+      # job for `cargo test --release -- --ignored perft_full_suite`
+      # (design/06 §9.4) — the per-push job stays fast.
+      - name: Test (release)
+        run: cargo test --release

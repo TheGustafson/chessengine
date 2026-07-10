@@ -14,7 +14,10 @@ pub enum FenError {
     /// A character in the placement field is neither a piece nor a digit 1-8.
     InvalidPiece(char),
     /// A rank's pieces and empty-square digits don't add up to 8 files.
-    RankWidth { rank: u8, width: u8 },
+    RankWidth {
+        rank: u8,
+        width: u8,
+    },
     SideToMove(String),
     Castling(String),
     EnPassant(String),
@@ -174,13 +177,7 @@ impl Board {
             None => fen.push_str(" -"),
         }
 
-        write!(
-            fen,
-            " {} {}",
-            self.halfmove_clock(),
-            self.fullmove_number()
-        )
-        .unwrap();
+        write!(fen, " {} {}", self.halfmove_clock(), self.fullmove_number()).unwrap();
 
         fen
     }
@@ -192,8 +189,7 @@ mod tests {
     use crate::board::CastlingRights;
     use crate::types::PieceType;
 
-    const KIWIPETE: &str =
-        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+    const KIWIPETE: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
     #[test]
     fn startpos_has_expected_state() {

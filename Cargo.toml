@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+
+[dev-dependencies]
+# Test-only (D15: runtime [dependencies] stays empty; dev-dependencies allowed).
+proptest = "1"

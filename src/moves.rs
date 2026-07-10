@@ -73,9 +73,7 @@ impl Move {
     /// The piece a pawn promotes to, if this is a promotion.
     pub fn promotion_piece(self) -> Option<PieceType> {
         match self.kind() {
-            MoveKind::Promotion => {
-                Some(PieceType::ALL[((self.0 >> 12) & 0b11) as usize + 1])
-            }
+            MoveKind::Promotion => Some(PieceType::ALL[((self.0 >> 12) & 0b11) as usize + 1]),
             _ => None,
         }
     }

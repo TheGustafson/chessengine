@@ -1,0 +1,82 @@
+# Perft oracle data — the exact-count suite from design/06-perft-validation.md §3.4.
+# Format (parsed by tests/common/mod.rs::parse_perft_epd and tools/verify_perft.py):
+#   <FEN> ;D<depth> <nodes> ;D<depth> <nodes> ...
+# Comments are whole-line only ('#'); the parser rejects inline annotations.
+#
+# Provenance (D27: counts are facts and are cited exactly), marked per position:
+#   verified=python-chess — recomputed 2026-07-09 with python-chess 1.11.2:
+#       python3 tools/verify_perft.py --suite --max-nodes 710000000 --jobs 14
+#     -> 130 counts, 1,587,455,827 nodes, 0 failed (every count up to and
+#     including cpw4 D6 = 706,045,033), plus a separate --line run verifying
+#     startpos D7 = 3,195,901,860.
+#   verified=published — the two multi-billion counts impractical in Python
+#     (kiwipete D6, cpw6 D6): Chess Programming Wiki "Perft Results" values,
+#     the long-settled community consensus reproduced across engines' perft
+#     suites; sources named on the position's comment lines.
+#
+# Tiers (tests/perft_suite.rs) are node-count-driven: <= 700_000 fast,
+# <= 1_000_000_000 full, above that extended — matching design/06 §3.4-3.5
+# fast_depth/extended splits, so the deep entries belong in this file too.
+
+# --- Standard positions (CPW "Perft Results") --------------------------------
+# startpos — verified=python-chess D1-D7; D6/D7 also published
+# (CPW "Perft Results"; OEIS A048987 a(6)=119060324, a(7)=3195901860)
+rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ;D1 20 ;D2 400 ;D3 8902 ;D4 197281 ;D5 4865609 ;D6 119060324 ;D7 3195901860
+# kiwipete — castling through/into attack, ep, promotions, discovered/double checks.
+# verified=python-chess D1-D5; D6 verified=published (CPW "Perft Results";
+# TalkChess consensus for Peter McKenzie's position, reproduced in engines'
+# published perft suites)
+r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1 ;D1 48 ;D2 2039 ;D3 97862 ;D4 4085603 ;D5 193690690 ;D6 8031647685
+# cpw3 — rook/pawn endgame, ep edge cases. verified=python-chess D1-D7
+8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1 ;D1 14 ;D2 191 ;D3 2812 ;D4 43238 ;D5 674624 ;D6 11030083 ;D7 178633661
+# cpw4 — both sides' rights revoked by rook capture; promotion-with-capture.
+# verified=python-chess D1-D6
+r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1 ;D1 6 ;D2 264 ;D3 9467 ;D4 422333 ;D5 15833292 ;D6 706045033
+# cpw5 — the make/unmake killer (promoted piece must un-promote cleanly).
+# verified=python-chess D1-D5
+rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8 ;D1 44 ;D2 1486 ;D3 62379 ;D4 2103487 ;D5 89941194
+# cpw6 — symmetric middlegame (Steven Edwards' position 6).
+# verified=python-chess D1-D5; D6 verified=published (CPW "Perft Results",
+# consensus value reproduced across engines' published perft suites)
+r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10 ;D1 46 ;D2 2079 ;D3 89890 ;D4 3894594 ;D5 164075551 ;D6 6923051137
+
+# --- Tricky positions (TalkChess/Sedlak set + doc-verified additions) --------
+# Every count in this section is verified=python-chess (2026-07-09 suite run).
+# ep-pin-h: ep capture illegal — both pawns leave rank 5, exposing Ka5 to Rh5
+3k4/3p4/8/K1P4r/8/8/8/8 b - - 0 1 ;D1 18 ;D2 92 ;D3 1670 ;D4 10138 ;D5 185429 ;D6 1134888
+# ep-pin-rank: ep target set but exd3 illegal (rank pin through both pawns);
+# Peter Ellis Jones' rank-pin position
+8/8/8/8/k2Pp2Q/8/8/3K4 b - d3 0 1 ;D1 6 ;D2 136 ;D3 863 ;D4 20471 ;D5 117741 ;D6 2822114
+# ep-pin-diag: after d2d4, cxd3 ep would self-expose along a2-e6 diagonal
+8/8/4k3/8/2p5/8/B2P2K1/8 w - - 0 1 ;D1 13 ;D2 102 ;D3 1266 ;D4 10276 ;D5 135655 ;D6 1015133
+# ep-gives-check: legal ep capture that gives check; ep interaction with evasions
+8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1 ;D1 15 ;D2 126 ;D3 1928 ;D4 13931 ;D5 206379 ;D6 1440467
+# castle-rights: rights revoked when a rook is CAPTURED (mask[from] | mask[to])
+r3k2r/1b4bq/8/8/8/8/7B/R3K2R w KQkq - 0 1 ;D1 26 ;D2 1141 ;D3 27826 ;D4 1274206
+# castle-prevented: castling blocked by attacked transit squares, rights persist.
+# Circulated TalkChess copies pair this FEN with D4 1720476; python-chess says
+# 665077, which we adopt (design/06 §9 open question 3 — treat the circulated
+# figure as a transcription artifact once our engine also produces 665077).
+r3k2r/8/3Q4/8/8/8/8/R3K2R b KQkq - 0 1 ;D1 20 ;D2 872 ;D3 16068 ;D4 665077
+# castle-check-k: O-O delivering check; rook path vs king path
+5k2/8/8/8/8/8/8/4K2R w K - 0 1 ;D1 15 ;D2 66 ;D3 1198 ;D4 6399 ;D5 120330 ;D6 661072
+# castle-check-q: O-O-O delivering check; b1 not in king's path
+3k4/8/8/8/8/8/8/R3K3 w Q - 0 1 ;D1 16 ;D2 71 ;D3 1286 ;D4 7418 ;D5 141077 ;D6 803711
+# promo-storm: mass promotions + under-promotions + promo-captures, both colors
+n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 ;D1 24 ;D2 496 ;D3 9483 ;D4 182838 ;D5 3605103 ;D6 71179139
+# promo-out-of-check: promotion (exf8) as a check evasion
+2K2r2/4P3/8/8/8/8/8/3k4 w - - 0 1 ;D1 11 ;D2 133 ;D3 1442 ;D4 19174 ;D5 266199 ;D6 3821001
+# promo-give-check: promotion delivering check (gives_check on promotions)
+4k3/1P6/8/8/8/8/K7/8 w - - 0 1 ;D1 9 ;D2 40 ;D3 472 ;D4 2661 ;D5 38983 ;D6 217342
+# underpromo-check: under-promotion delivering check
+8/P1k5/K7/8/8/8/8/8 w - - 0 1 ;D1 6 ;D2 27 ;D3 273 ;D4 1329 ;D5 18135 ;D6 92683
+# double-check: Nd6 + Re1 — only king moves legal at the root
+4k3/8/3N4/8/8/8/8/4RK2 b - - 0 1 ;D1 3 ;D2 69 ;D3 212 ;D4 4755 ;D5 23842 ;D6 550752
+# discovered-check: discovered checks and evasions with knight forks
+8/8/1P2K3/8/2n5/1q6/8/5k2 b - - 0 1 ;D1 29 ;D2 165 ;D3 5160 ;D4 31961 ;D5 1004658
+# self-stalemate: near-stalemate corner; zero-move nodes counted correctly
+K1k5/8/P7/8/8/8/8/8 w - - 0 1 ;D1 2 ;D2 6 ;D3 13 ;D4 63 ;D5 382 ;D6 2217
+# stale-checkmate: stalemate and checkmate leaves mixed
+8/k1P5/8/1K6/8/8/8/8 w - - 0 1 ;D1 10 ;D2 25 ;D3 268 ;D4 926 ;D5 10857 ;D6 43261 ;D7 567584
+# double-checkmate2: mating nets — forced-mate leaves at shallow depth
+8/8/2k5/5q2/5n2/8/5K2/8 b - - 0 1 ;D1 37 ;D2 183 ;D3 6559 ;D4 23527

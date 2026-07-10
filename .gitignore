@@ -3,3 +3,6 @@
 # Reference clone of Stockfish (GPL, not ours to commit). Markdown notes
 # alongside it in stockfish_reference/ ARE tracked.
 /stockfish_reference/Stockfish/
+
+# Python bytecode from tools/
+__pycache__/
