@@ -6,3 +6,10 @@
 
 # Python bytecode from tools/
 __pycache__/
+
+# Strength-testing externals (design/14 §3.8, §4 steps 10-11): pinned
+# opponent/tool binaries (fastchess, ordo, reference engines), downloaded
+# books and EPD suites (never vendored, D15), and match-run output
+# (PGN/logs) from tools/sprt.sh + tools/gauntlet.sh. Install notes:
+# TESTING.md "Strength testing".
+/engines/

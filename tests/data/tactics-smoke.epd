@@ -1,0 +1,47 @@
+# tactics-smoke.epd — the committed tier-1.5 smoke suite (design/14 §3.1).
+#
+# 28 positions, every one machine-verified before being committed:
+#   - the smoke.mate* entries are the engine's own mate suite
+#     (src/search/mod.rs), verified there by exhaustive minimax over
+#     python-chess movegen, and re-verified with Stockfish 16;
+#   - the named-game entries were reconstructed by REPLAYING the game
+#     moves through python-chess (so each FEN is provably reachable) and
+#     verified with Stockfish 16 at depth 24, MultiPV 2: the bm move is
+#     SF's best and either forces mate or wins by >= 2.0 over the
+#     second-best move;
+#   - the smoke.fork/skewer entries are hand-composed motifs that passed
+#     the same Stockfish check.
+# Chess positions are facts, not code (D27). Lines starting with '#' are
+# comments (tools/tactics.py skips them). bm is SAN; multiple bm moves
+# mean every listed move is a verified-fastest win.
+#
+# This suite is a SANITY harness, never a merge gate; the published WAC
+# corpus is fetched (not vendored, D15) via tools/tactics.sh --fetch-wac.
+6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - bm Rd8#; id "smoke.mate1.backrank"; c0 "back-rank mate";
+k7/8/1K6/8/8/8/8/7R w - - bm Rh8#; id "smoke.mate1.krk"; c0 "KRK edge mate";
+7k/8/5K2/8/8/8/8/6Q1 w - - bm Qg7#; id "smoke.mate1.kqk"; c0 "KQK support mate";
+6rk/6pp/8/6N1/8/8/8/K7 w - - bm Nf7#; id "smoke.mate1.smother"; c0 "smothered mate";
+6k1/8/6K1/8/8/8/8/4R3 w - - bm Re8#; id "smoke.mate1.efile"; c0 "rook mate, kings in opposition";
+7k/R7/1R6/8/8/8/8/K7 w - - bm Rb8#; id "smoke.mate1.tworooks"; c0 "two-rook ladder finish";
+7r/8/8/8/8/1k6/8/K7 b - - bm Rh1#; id "smoke.mate1.black"; c0 "black mates in 1";
+k7/8/2K5/8/8/8/8/7R w - - bm Kb6 Kc7; id "smoke.mate2.krk.a"; c0 "KRK mate in 2";
+7k/8/5K2/8/8/Q7/8/8 w - - bm Kf7 Kg6 Qa7 Qe7 Qf8+ Qg3; id "smoke.mate2.kqk.a"; c0 "KQK mate in 2";
+k7/8/8/1K6/8/8/8/7R w - - bm Kb6; id "smoke.mate2.krk.b"; c0 "KRK mate in 2, king walk";
+K7/8/8/1k6/8/8/8/7r b - - bm Kb6; id "smoke.mate2.krk.black"; c0 "black mates in 2";
+7k/8/4K3/8/8/Q7/8/8 w - - bm Kf7; id "smoke.mate2.kqk.b"; c0 "KQK mate in 2, unique key";
+8/8/6k1/R7/8/8/8/1R5K w - - bm Rb6+; id "smoke.mate3.ladder.a"; c0 "two-rook ladder mate in 3";
+8/8/1k6/7R/8/8/8/6RK w - - bm Rg6+; id "smoke.mate3.ladder.b"; c0 "two-rook ladder mate in 3";
+8/2k1q3/8/8/8/2N5/5PPP/6K1 w - - bm Nd5+; id "smoke.fork.knight"; c0 "royal knight fork wins the queen";
+4q3/8/8/4k3/8/8/5PPP/3R2K1 w - - bm Re1+; id "smoke.skewer.rook"; c0 "rook skewer king-queen on the e-file";
+4kb1r/p2n1ppp/4q3/4p1B1/4P3/1Q6/PPP2PPP/2KR4 w k - bm Qb8+; id "smoke.opera.qb8"; c0 "Morphy, Opera game 1858: queen sacrifice into Rd8#";
+rn1qkbnr/ppp2p1p/3p2p1/4N3/2B1P3/2N5/PPPP1PPP/R1BbK2R w KQkq - bm Bxf7+; id "smoke.legal.bxf7"; c0 "Legal's mate: queen is poisoned, Bxf7+ Ke7 Nd5#";
+rnb1kb1r/pp3ppp/2p5/4q3/4n3/3Q4/PPPB1PPP/2KR1BNR w kq - bm Qd8+; id "smoke.reti.qd8"; c0 "Reti-Tartakower 1910: Qd8+ Kxd8, double check and mate";
+r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - bm Qxf7#; id "smoke.scholar"; c0 "Scholar's mate";
+rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - bm Qh4#; id "smoke.fools"; c0 "Fool's mate";
+r1bqkb1r/pp1npppp/2p2n2/8/3PN3/8/PPP1QPPP/R1B1KBNR w KQkq - bm Nd6#; id "smoke.carokann.nd6"; c0 "Caro-Kann smothered trap";
+r1b1k2r/ppppqppp/2n5/4n3/1PP2B2/5N2/1P1NPPPP/R2QKB1R b KQkq - bm Nd3#; id "smoke.kieninger"; c0 "Budapest, Kieninger trap";
+rnbq1bnr/ppppk1pp/8/4p2Q/4P3/8/PPPP1PPP/RNB1KB1R w KQ - bm Qxe5+; id "smoke.damiano"; c0 "Damiano punishment: king hunt wins material";
+r1bqkb1r/pppn1ppp/5n2/3N2B1/3P4/8/PP2PPPP/R2QKBNR b KQkq - bm Nxd5; id "smoke.elephant"; c0 "Elephant trap: Nxd5! exploits the pinned-bishop illusion";
+rnbqk1nr/ppp2ppp/8/4P3/1BP5/8/PP2KpPP/RN1Q1BNR b kq - bm fxg1=N+; id "smoke.lasker.underpromo"; c0 "Lasker trap (Albin): knight underpromotion with check";
+rnbqkb1r/pppp1ppp/5n2/4N3/8/8/PPPPQPPP/RNB1KB1R w KQkq - bm Nc6+; id "smoke.petroff.nc6"; c0 "Petroff trap: discovered check forks the queen";
+r1bBk2r/ppp2ppp/2p5/2b5/4n3/3P4/PPP2PPP/RN1QKB1R b KQkq - bm Bxf2+; id "smoke.stafford.bxf2"; c0 "Stafford trap: Bxf2+ Ke2 Bg4#";

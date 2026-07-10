@@ -159,15 +159,51 @@ Bench: 3187513
   may omit the trailer. Full policy, determinism requirements, and the
   frozen 49-position suite: design/14 §3.2.
 
-## Strength testing (SPRT) — pointer
+## Strength testing (SPRT, gauntlets, tactics)
 
-Elo claims are made only by games under SPRT (D25): fastchess, bounds
-`[0, 5]` nElo for gains and `[-5, 0]` for simplifications, 10+0.1 for
-iteration, UHO openings with color-reversed pairs — the full methodology,
+Elo claims are made only by games under SPRT (D25); the full methodology,
 honest-concurrency rules, and the gauntlet/rating ladder are design/14 §3.8.
-The tooling (`tools/sprt.sh`, `tools/gauntlet.sh`, `tools/tactics.sh`) and
-`docs/strength-log.md` arrive with the search phases (design/14 §4, steps
-10–11); until then, nothing in this repo may claim Elo.
+The harness (design/14 §4 steps 10–11) is live; every run that supports a
+claim gets one row in `docs/strength-log.md` (appended by the tools).
+
+```sh
+tools/sprt.sh CANDIDATE BASELINE        # the merge gate for functional search/eval changes
+tools/gauntlet.sh [ENGINE]              # calibration vs reference opponents + ordo rating
+tools/tactics.sh [ENGINE] [SUITE]       # tier-1.5 tactical sanity (never a gate)
+tools/tactics.sh --fetch-wac            # download WAC + mate-in-2..5 into engines/suites/
+```
+
+- **`tools/sprt.sh`** — fastchess SPRT with the design/14 §3.8 parameters:
+  bounds `[0, 5]` nElo for gains (`ELO0=-5 ELO1=0` for simplifications),
+  `model=normalized`, 10+0.1 default TC, paired games with colors reversed,
+  concurrency capped at physical cores − 1. `NODES=50000` switches to
+  fixed-node proxy games (immune to machine load; never valid for
+  time-management changes). Both binaries must be built with identical
+  RUSTFLAGS (D16).
+- **`tools/gauntlet.sh`** — the engine vs calibrated Stockfish rungs
+  (`UCI_LimitStrength` + `UCI_Elo`, coarse anchors) and/or real reference
+  engines under `engines/` via `OPPONENTS="name=path;..."`; ratings with
+  error bars from ordo over the produced PGN.
+- **`tools/tactics.sh`** (wrapper over `tools/tactics.py`, python-chess) —
+  scores `bm`/`am` hits over an EPD suite. Default suite:
+  `tests/data/tactics-smoke.epd`, 28 committed positions, every one
+  machine-verified (the repo's exhaustively-verified mate suite, replayed
+  famous miniatures, composed motifs — all re-checked with Stockfish 16 at
+  depth 24 before commit). Published corpora (WAC revised, mate-in-2..5)
+  are fetched with `--fetch-wac`, never vendored (D15). Milestone rule
+  (design/14 §3.9 item 8): run with `--log` before declaring M2+; an
+  unexplained drop against the logged baseline blocks the milestone.
+
+**External tooling** (all under gitignored `engines/`, install notes in the
+script headers): fastchess v1.8.0 (`engines/bin/fastchess`, release tarball
+from github.com/Disservin/fastchess — cutechess-cli is not packaged for
+this distro), ordo 1.2.6 (`engines/bin/ordo`, built from
+github.com/michiguel/Ordo), Stockfish 16 (`apt-get install stockfish`,
+`/usr/games/stockfish`, UCI_Elo range 1320–3190). Openings: the committed
+43-line balanced book `tests/data/openings/openings-8ply.epd` (regenerate
+with `tools/gen_openings.py`; every line legality-checked by python-chess);
+serious SPRT runs should prefer an UHO book (download pointer in
+`tools/sprt.sh`).
 
 ## What CI runs (and what stays local)
 
