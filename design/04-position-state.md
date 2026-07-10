@@ -1027,10 +1027,9 @@ This component is done when all of the following hold:
 2. **Piece-count cache** (`[u8; 12]`): deferred; popcount on the
    capture/promotion paths until a profile or eval (D21-A material terms)
    asks for it.
-3. **`is_draw` legal-move guard ordering**: until movegen lands, the
-   rule50 branch omits the "checkmated on the 100th halfmove" guard; the
-   TODO is closed by design/05-movegen-perft.md. Acceptable because search
-   doesn't exist yet either.
+3. **`is_draw` legal-move guard ordering**: CLOSED in P3 — the rule50
+   branch now consults `movegen::has_legal_moves` (design/05-movegen.md
+   §3.9): in check on a full clock the draw stands unless it is checkmate.
 4. **Sibling doc filenames**: references to the core-types, TT, search,
    movepick, and eval docs use topic names; exact filenames to be
    reconciled when the suite is assembled.

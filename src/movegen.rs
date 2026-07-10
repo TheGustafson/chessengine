@@ -17,16 +17,17 @@
 //! Hot-path rules: no heap allocation ([`MoveList`] is stack-only), no
 //! `unsafe` (D14 — crate-wide `deny`).
 //!
-//! P3 step 5 status (doc 05 §4): generation is complete for all four
-//! GenTypes — GenType plumbing and non-pawn moves (step 2), pawn moves
-//! (step 3), evasions (step 4), and castling (step 5). Still to come:
-//! the legality layer (`Board::legal`, `generate_legal`, step 6) and the
-//! TT-move validator (`Board::pseudo_legal`, step 7).
+//! P3 step 7 status (doc 05 §4): generation for all four GenTypes
+//! (steps 2–5), the legality layer (`Board::legal`, [`generate_legal`],
+//! [`has_legal_moves`], `Board::capture_stage`/`is_capture`, step 6) and
+//! the TT-move validator (`Board::pseudo_legal` + the 64k fuzz, step 7)
+//! are all in. Still to come: the full-depth perft gate (step 8, once
+//! `src/perft.rs` lands per design/06).
 
 use crate::attacks;
 use crate::bitboard::Bitboard;
 use crate::board::{Board, CastlingRights};
-use crate::moves::{Move, MoveList};
+use crate::moves::{Move, MoveKind, MoveList};
 use crate::types::{Color, Direction, PieceType, Square};
 
 /// The `GenType` constants: what `generate::<GT>` emits (doc 05 §3.1).
@@ -86,6 +87,71 @@ pub fn generate_evasions(board: &Board, list: &mut MoveList) {
 #[inline]
 pub fn generate_non_evasions(board: &Board, list: &mut MoveList) {
     generate::<{ gen_type::NON_EVASIONS }>(board, list);
+}
+
+/// Append all fully legal moves for the side to move (doc 05 §3.9):
+/// EVASIONS or NON_EVASIONS by check status, then the lazy legality
+/// filter. Only three kinds of pseudo-legal moves can be illegal — moves
+/// of a pinned piece, king moves, and en passant — so only those suspects
+/// are tested with [`Board::legal`]; everything else is legal by
+/// construction. Removal is swap-with-last, so the pinned emission order
+/// does NOT survive filtering (consumers sort or count).
+///
+/// Appends without clearing, like [`generate`]. The search hot path never
+/// calls this — the MovePicker emits pseudo-legal moves and the search
+/// runs `legal` only on the move it is about to play (doc 09); this is
+/// for perft, root-move setup, UCI `position ... moves` parsing, and
+/// mate/stalemate detection.
+pub fn generate_legal(board: &Board, list: &mut MoveList) {
+    let start = list.len();
+    if board.checkers().is_empty() {
+        generate::<{ gen_type::NON_EVASIONS }>(board, list);
+    } else {
+        generate::<{ gen_type::EVASIONS }>(board, list);
+    }
+
+    // `blockers_for_king(us)` holds blockers of BOTH colors; intersecting
+    // with our occupancy yields the pinned set — an enemy blocker is the
+    // enemy's problem (doc 05 §3.9).
+    let us = board.side_to_move();
+    let pinned = board.blockers_for_king(us) & board.occupancy(us);
+    let ksq = board.king_square(us);
+
+    let mut i = start;
+    while i < list.len() {
+        let m = list[i];
+        let suspect =
+            pinned.contains(m.from()) || m.from() == ksq || m.kind() == MoveKind::EnPassant;
+        if suspect && !board.legal(m) {
+            // Do not advance `i`: the swapped-in last move is unvetted.
+            list.swap_remove(i);
+        } else {
+            i += 1;
+        }
+    }
+}
+
+/// True if the side to move has at least one legal move — the
+/// mate/stalemate probe consumed by `Board::is_draw`'s 50-move guard and,
+/// later, the UCI layer (doc 05 §3.9). Same generation + lazy-filter
+/// logic as [`generate_legal`], but returns on the first survivor.
+pub fn has_legal_moves(board: &Board) -> bool {
+    let mut list = MoveList::new();
+    if board.checkers().is_empty() {
+        generate::<{ gen_type::NON_EVASIONS }>(board, &mut list);
+    } else {
+        generate::<{ gen_type::EVASIONS }>(board, &mut list);
+    }
+
+    let us = board.side_to_move();
+    let pinned = board.blockers_for_king(us) & board.occupancy(us);
+    let ksq = board.king_square(us);
+
+    list.iter().any(|&m| {
+        let suspect =
+            pinned.contains(m.from()) || m.from() == ksq || m.kind() == MoveKind::EnPassant;
+        !suspect || board.legal(m)
+    })
 }
 
 /// The color-monomorphized worker: computes the single target mask
@@ -366,6 +432,230 @@ fn castling_moves<const WHITE: bool>(board: &Board, list: &mut MoveList) {
             && (board.all_occupancy() & board.castling_path(right)).is_empty()
         {
             list.push(Move::castling(from, to));
+        }
+    }
+}
+
+/// The generator-coupled predicates live next to the generator (doc 05
+/// §3.11): `legal` and `capture_stage` must mirror the generation split
+/// exactly, and `pseudo_legal` literally calls [`generate`].
+impl Board {
+    /// True iff any piece of `c` attacks `sq` under `occupied` — the
+    /// early-exit boolean twin of [`Board::attackers_to`] that legality
+    /// testing hammers (doc 05 §3.8). The `||` chain short-circuits
+    /// between the five terms; sliders first, they answer most often on
+    /// the king-safety probes this serves.
+    pub fn attackers_to_exist(&self, sq: Square, occupied: Bitboard, c: Color) -> bool {
+        let tables = attacks::tables();
+        let queens = self.pieces(c, PieceType::Queen);
+        !(tables.rook_attacks(sq, occupied) & (self.pieces(c, PieceType::Rook) | queens))
+            .is_empty()
+            || !(tables.bishop_attacks(sq, occupied)
+                & (self.pieces(c, PieceType::Bishop) | queens))
+                .is_empty()
+            // Attack symmetry: the squares a `c` pawn attacking `sq` may
+            // stand on are the squares a `!c` pawn ON `sq` would attack.
+            || !(attacks::pawn_attacks(c.flip(), sq) & self.pieces(c, PieceType::Pawn)).is_empty()
+            || !(attacks::knight_attacks(sq) & self.pieces(c, PieceType::Knight)).is_empty()
+            || !(attacks::king_attacks(sq) & self.pieces(c, PieceType::King)).is_empty()
+    }
+
+    /// Does playing the pseudo-legal move `m` leave our king unattacked
+    /// (doc 05 §3.8)? Uses only current state — no make/unmake.
+    ///
+    /// Precondition: `m` is pseudo-legal for the side to move (generated
+    /// by [`generate`] or validated by [`Board::pseudo_legal`]).
+    ///
+    /// Deviation note (doc 05 §9 Q1): current SF has no en-passant branch
+    /// here at all — it relies on the D9 recording invariant (an ep square
+    /// exists only when a legal ep capture does). We keep the classic
+    /// occupancy-swap test as defense-in-depth: `legal` stays correct even
+    /// on hand-forced boards that violate D9, at the cost of two slider
+    /// probes on a rare move type.
+    pub fn legal(&self, m: Move) -> bool {
+        let us = self.side_to_move();
+        let them = us.flip();
+        let (from, to) = (m.from(), m.to());
+        let ksq = self.king_square(us);
+        debug_assert_eq!(
+            self.piece_on(from).map(|pc| pc.color),
+            Some(us),
+            "legal() precondition: {m:?} must move a piece of the side to move"
+        );
+
+        match m.kind() {
+            // 1. Castling: the two squares the king crosses/lands on must
+            //    be unattacked. `from` (e1/e8) is not tested — castling is
+            //    never generated nor pseudo_legal-validated while in check.
+            //    Current occupancy is correct: the only ray on which the
+            //    unmoved king could shield a tested square is the back rank
+            //    itself, and a back-rank attacker behind the king would
+            //    already be check (Chess960's rook-shield case is deferred
+            //    with D10).
+            MoveKind::Castling => {
+                let tested = if to.file() > from.file() {
+                    [Square::F1, Square::G1] // kingside
+                } else {
+                    [Square::D1, Square::C1] // queenside
+                };
+                !tested.iter().any(|&s| {
+                    self.attackers_to_exist(s.relative_to(us), self.all_occupancy(), them)
+                })
+            }
+
+            // 2. En passant: the only move that clears TWO squares at
+            //    once. Rebuild the after-occupancy and probe sliders from
+            //    the king square (this is what catches the horizontal
+            //    both-pawns-off-the-rank pin).
+            MoveKind::EnPassant => {
+                let capsq = to.offset(opposite(us.pawn_push()));
+                let occ = (self.all_occupancy()
+                    ^ Bitboard::from_square(from)
+                    ^ Bitboard::from_square(capsq))
+                    | Bitboard::from_square(to);
+                let tables = attacks::tables();
+                let queens = self.pieces(them, PieceType::Queen);
+                (tables.rook_attacks(ksq, occ) & (self.pieces(them, PieceType::Rook) | queens))
+                    .is_empty()
+                    && (tables.bishop_attacks(ksq, occ)
+                        & (self.pieces(them, PieceType::Bishop) | queens))
+                        .is_empty()
+            }
+
+            // 3. King steps: the destination must be safe with the king
+            //    REMOVED from occupancy, so a checking slider's ray extends
+            //    through the vacated square (fleeing along the ray is
+            //    illegal).
+            _ if from == ksq => !self.attackers_to_exist(
+                to,
+                self.all_occupancy() ^ Bitboard::from_square(from),
+                them,
+            ),
+
+            // 4. Everything else: legal iff not pinned, or moving along
+            //    the pin ray (toward or away from the king).
+            _ => !self.blockers_for_king(us).contains(from) || attacks::aligned(from, to, ksq),
+        }
+    }
+
+    /// The from-scratch TT-move validator (doc 05 §3.10): would
+    /// `generate::<EVASIONS|NON_EVASIONS>` emit exactly this move in the
+    /// CURRENT position? TT moves are raw `u16`s that may be corrupted by
+    /// data races or key aliasing (D19); they must pass this — and then
+    /// [`Board::legal`] separately — before being played. Total over all
+    /// 65,536 encodings; never panics.
+    pub fn pseudo_legal(&self, m: Move) -> bool {
+        let us = self.side_to_move();
+        let them = us.flip();
+        let (from, to) = (m.from(), m.to());
+
+        // 1. Non-normal kinds (promotion / ep / castling) are rare:
+        //    validate by containment in a fresh generation. This inherits
+        //    every rule (promotion geometry, ep square match, castling
+        //    rights + empty path) with zero duplicated logic — including
+        //    the full-16-bit equality that rejects garbage promotion bits
+        //    on ep/castling encodings. Legality is NOT included.
+        if m.kind() != MoveKind::Normal {
+            let mut list = MoveList::new();
+            if self.checkers().is_empty() {
+                generate::<{ gen_type::NON_EVASIONS }>(self, &mut list);
+            } else {
+                generate::<{ gen_type::EVASIONS }>(self, &mut list);
+            }
+            return list.contains(&m);
+        }
+
+        // 2. Bit hygiene: a Normal move must have zero promotion bits, or
+        //    it could never equal a generated move (and would corrupt
+        //    stats keyed by the raw encoding). Rejects garbage u16s. Also
+        //    rejects Move::NULL: from == to fails checks 3-5 in every
+        //    case (our piece on `from` means our piece on `to`).
+        if m.raw16() & 0x3000 != 0 {
+            return false;
+        }
+
+        // 3. A piece of ours must sit on `from`.
+        let Some(pc) = self.piece_on(from) else {
+            return false;
+        };
+        if pc.color != us {
+            return false;
+        }
+
+        // 4. `to` must not hold one of our pieces.
+        if self.occupancy(us).contains(to) {
+            return false;
+        }
+
+        if pc.piece_type == PieceType::Pawn {
+            // 5a. Pawns: the destination cannot be a promotion rank (that
+            //     is kind Promotion), and the move must be a capture, a
+            //     single push, or a double push.
+            if (Bitboard::RANK_1 | Bitboard::RANK_8).contains(to) {
+                return false;
+            }
+            let up = us.pawn_push();
+            let start_rank = if us == Color::White { 1 } else { 6 };
+            let is_capture =
+                attacks::pawn_attacks(us, from).contains(to) && self.occupancy(them).contains(to);
+            let is_single = from.shifted(up) == Some(to) && !self.all_occupancy().contains(to);
+            // Short-circuit keeps `to.offset(down)` (the relay square) on
+            // the board: it only evaluates once `to` is the true
+            // double-push destination.
+            let is_double = from.rank() == start_rank
+                && from.shifted(up).and_then(|s| s.shifted(up)) == Some(to)
+                && !self.all_occupancy().contains(to)
+                && !self.all_occupancy().contains(to.offset(opposite(up)));
+            if !(is_capture || is_single || is_double) {
+                return false;
+            }
+        }
+        // 5b. Other pieces: `to` must be attacked from `from` on the
+        //     current occupancy (`attacks` dispatches N/B/R/Q/K, so this
+        //     handles king steps too).
+        else if !attacks::attacks(pc.piece_type, from, self.all_occupancy()).contains(to) {
+            return false;
+        }
+
+        // 6. In check, a Normal move is pseudo-legal only if the evasion
+        //    generator would emit it (blocks, checker captures, king
+        //    flights — with the evasion target masks applied).
+        if !self.checkers().is_empty() {
+            let mut list = MoveList::new();
+            generate::<{ gen_type::EVASIONS }>(self, &mut list);
+            return list.contains(&m);
+        }
+
+        true
+    }
+
+    /// True iff `m` is generated by the CAPTURES stage (doc 05 §3.2): any
+    /// capture, or any queen promotion (even non-capturing). The
+    /// MovePicker relies on this mirroring the generator split exactly to
+    /// avoid emitting a move twice across the capture/quiet stages; the
+    /// search uses it for `ttCapture` and stats classification.
+    ///
+    /// Precondition: `m` is pseudo-legal in `self`. On arbitrary moves the
+    /// answer is meaningless but never panics.
+    pub fn capture_stage(&self, m: Move) -> bool {
+        match m.kind() {
+            MoveKind::Normal => self.all_occupancy().contains(m.to()),
+            MoveKind::Promotion => {
+                self.all_occupancy().contains(m.to())
+                    || m.promotion_piece() == Some(PieceType::Queen)
+            }
+            MoveKind::EnPassant => true,
+            MoveKind::Castling => false,
+        }
+    }
+
+    /// True iff `m` actually captures a piece — material changes
+    /// (doc 05 §3.2). Same precondition as [`Board::capture_stage`].
+    pub fn is_capture(&self, m: Move) -> bool {
+        match m.kind() {
+            MoveKind::Normal | MoveKind::Promotion => self.all_occupancy().contains(m.to()),
+            MoveKind::EnPassant => true,
+            MoveKind::Castling => false,
         }
     }
 }
@@ -1057,20 +1347,39 @@ mod tests {
         list
     }
 
-    /// Make/unmake legality oracle (doc 05 §5.1.5) for in-check positions:
-    /// play the move, ask whether our king is attacked, undo. Castling is
-    /// resolved by rule instead — castling out of check is illegal, and the
-    /// after-state cannot express that (the king may land on a perfectly
-    /// safe square).
+    /// Make/unmake legality oracle (doc 05 §5.1.5): play the move, ask
+    /// whether our king is attacked, undo. Castling needs two extras the
+    /// after-state alone cannot see: it is illegal by rule while in check
+    /// (the king may still land on a safe square), and the king must not
+    /// PASS THROUGH an attacked square — probed independently of
+    /// `Board::legal` by playing an ordinary king step onto the transit
+    /// square and reading the after-state of that.
     fn oracle_legal(board: &mut Board, m: Move) -> bool {
-        debug_assert!(
-            !board.checkers().is_empty(),
-            "this oracle only serves the in-check fixtures"
-        );
-        if m.kind() == MoveKind::Castling {
+        let us = board.side_to_move();
+        // A king step into contact with the enemy king is illegal by the
+        // touch rule, resolved WITHOUT make/unmake: the resulting position
+        // is outside make_move's contract (its debug gives_check
+        // cross-check would see the moved king "checking" the other).
+        if m.from() == board.king_square(us)
+            && attacks::king_attacks(board.king_square(us.flip())).contains(m.to())
+        {
             return false;
         }
-        let us = board.side_to_move();
+        if m.kind() == MoveKind::Castling {
+            if !board.checkers().is_empty() {
+                return false;
+            }
+            let transit = if m.to().file() > m.from().file() {
+                Square::F1
+            } else {
+                Square::D1
+            }
+            .relative_to(us);
+            if !oracle_legal(board, Move::normal(m.from(), transit)) {
+                return false;
+            }
+            // Fall through: the castle itself tests the landing square.
+        }
         let gives_check = board.gives_check(m);
         board.make_move(m, gives_check);
         let safe = (board.attackers_to(board.king_square(us), board.all_occupancy())
@@ -1499,5 +1808,439 @@ mod tests {
         let quiets = move_set(&generated::<{ gen_type::QUIETS }>(&b));
         assert!(quiets.contains(&Move::castling(Square::E1, Square::G1)));
         assert!(quiets.contains(&Move::castling(Square::E1, Square::C1)));
+    }
+
+    // -----------------------------------------------------------------------
+    // P3 step 6: Board::legal, generate_legal, capture_stage / is_capture
+    // (doc 05 §3.2, §3.8-3.9, §4 step 6, §5.1-5.2)
+    // -----------------------------------------------------------------------
+
+    fn legal_set(b: &Board) -> HashSet<Move> {
+        let mut list = MoveList::new();
+        generate_legal(b, &mut list);
+        move_set(&list)
+    }
+
+    /// The pseudo-legal set that legality filters: EVASIONS in check, else
+    /// NON_EVASIONS (doc 05 §3.9).
+    fn pseudo_list(b: &Board) -> MoveList {
+        let mut list = MoveList::new();
+        if b.checkers().is_empty() {
+            generate::<{ gen_type::NON_EVASIONS }>(b, &mut list);
+        } else {
+            generate::<{ gen_type::EVASIONS }>(b, &mut list);
+        }
+        list
+    }
+
+    /// Doc 05 §5.1.5 (the legality oracle) plus the §3.9 filter contract
+    /// in one sweep: `legal` must agree with make/unmake on EVERY
+    /// pseudo-legal move — including the non-suspect ones generate_legal
+    /// trusts without testing — and `generate_legal` must equal the
+    /// oracle-filtered set.
+    fn assert_legal_matches_oracle(b: &Board, ctx: &str) {
+        let pseudo = pseudo_list(b);
+        let mut scratch = b.clone();
+        let mut expected = HashSet::new();
+        for &m in pseudo.iter() {
+            let want = oracle_legal(&mut scratch, m);
+            assert_eq!(
+                b.legal(m),
+                want,
+                "legal({m:?}) disagrees with the make/unmake oracle in {ctx}"
+            );
+            if want {
+                expected.insert(m);
+            }
+        }
+        assert_eq!(legal_set(b), expected, "generate_legal mismatch in {ctx}");
+    }
+
+    /// Depth-1 legal-move counts: the six standard perft positions — the
+    /// step-6 "Done" gate (doc 05 §4, §5.3) — plus the doc 06 §3.4 tricky
+    /// table (ep pins, the castling ladder, promotion checks, stalemate
+    /// corners). All counts are the published / python-chess-verified d1
+    /// values from those tables.
+    const PERFT1_COUNTS: &[(&str, usize)] = &[
+        (crate::fen::START_FEN, 20),
+        (KIWIPETE, 48),
+        ("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 14),
+        (
+            "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+            6,
+        ),
+        (
+            "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+            44,
+        ),
+        (
+            "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
+            46,
+        ),
+        // doc 06 §3.4 tricky positions, by their table names:
+        ("3k4/3p4/8/K1P4r/8/8/8/8 b - - 0 1", 18), // ep-pin-h
+        ("8/8/8/8/k2Pp2Q/8/8/3K4 b - d3 0 1", 6),  // ep-pin-rank (D9 drops ep)
+        ("8/8/4k3/8/2p5/8/B2P2K1/8 w - - 0 1", 13), // ep-pin-diag
+        ("8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1", 15), // ep-gives-check
+        ("r3k2r/1b4bq/8/8/8/8/7B/R3K2R w KQkq - 0 1", 26), // castle-rights
+        ("r3k2r/8/3Q4/8/8/8/8/R3K2R b KQkq - 0 1", 20), // castle-prevented
+        ("5k2/8/8/8/8/8/8/4K2R w K - 0 1", 15),    // castle-check-k
+        ("3k4/8/8/8/8/8/8/R3K3 w Q - 0 1", 16),    // castle-check-q
+        ("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1", 24), // promo-storm
+        ("2K2r2/4P3/8/8/8/8/8/3k4 w - - 0 1", 11), // promo-out-of-check
+        ("4k3/1P6/8/8/8/8/K7/8 w - - 0 1", 9),     // promo-give-check
+        ("8/P1k5/K7/8/8/8/8/8 w - - 0 1", 6),      // underpromo-check
+        ("4k3/8/3N4/8/8/8/8/4RK2 b - - 0 1", 3),   // double-check
+        ("8/8/1P2K3/8/2n5/1q6/8/5k2 b - - 0 1", 29), // discovered-check
+        ("K1k5/8/P7/8/8/8/8/8 w - - 0 1", 2),      // self-stalemate
+        ("8/k1P5/8/1K6/8/8/8/8 w - - 0 1", 10),    // stale-checkmate
+        ("8/8/2k5/5q2/5n2/8/5K2/8 b - - 0 1", 37), // double-checkmate2
+    ];
+
+    /// The step-6 "Done" gate (doc 05 §4): perft(1) via `generate_legal`
+    /// alone, no make/unmake needed.
+    #[test]
+    fn perft1_gate_on_known_positions() {
+        for &(fen, expected) in PERFT1_COUNTS {
+            assert_eq!(
+                legal_set(&board(fen)).len(),
+                expected,
+                "perft(1) via generate_legal in {fen}"
+            );
+        }
+    }
+
+    /// Doc 05 §5.1.5 over the whole corpus: hand fixtures, pawn-heavy
+    /// positions, every in-check fixture, and the perft d1 table.
+    #[test]
+    fn legal_agrees_with_the_make_unmake_oracle() {
+        for &(fen, _, _) in FIXTURES {
+            assert_legal_matches_oracle(&board(fen), fen);
+        }
+        for &fen in PAWN_FIXTURES {
+            assert_legal_matches_oracle(&board(fen), fen);
+        }
+        for &fen in IN_CHECK_FIXTURES {
+            assert_legal_matches_oracle(&board(fen), fen);
+        }
+        for &(fen, _) in PERFT1_COUNTS {
+            assert_legal_matches_oracle(&board(fen), fen);
+        }
+    }
+
+    /// Doc 05 §5.2 "horizontal ep double-removal": capturing en passant
+    /// removes BOTH pawns from rank 4 and exposes Ka4 to Qh4. D9 already
+    /// drops the ep square on FEN load (defense layer 1); forcing the
+    /// state onto the board exercises legal()'s occupancy-swap branch
+    /// (defense layer 2 — the §9 Q1 deviation from current SF).
+    #[test]
+    fn horizontal_ep_double_removal_is_illegal() {
+        let fen = "8/8/8/8/k2Pp2Q/8/8/3K4 b - d3 0 1";
+        assert_eq!(
+            board(fen).en_passant_square(),
+            None,
+            "D9 must drop the unusable ep square at FEN load"
+        );
+
+        let mut forced = Board::empty();
+        for (piece, sq) in [
+            (Piece::new(Color::White, PieceType::King), Square::D1),
+            (Piece::new(Color::White, PieceType::Pawn), Square::D4),
+            (Piece::new(Color::White, PieceType::Queen), Square::H4),
+            (Piece::new(Color::Black, PieceType::King), Square::A4),
+            (Piece::new(Color::Black, PieceType::Pawn), Square::E4),
+        ] {
+            forced.put_piece(piece, sq);
+        }
+        forced.side_to_move = Color::Black;
+        forced.finish_setup(Some(Square::D3), 0, 1);
+        assert_eq!(forced.en_passant_square(), Some(Square::D3));
+        assert!(
+            forced.checkers().is_empty(),
+            "the queen's rank-4 ray is blocked by the two pawns"
+        );
+
+        let ep = Move::en_passant(Square::E4, Square::D3);
+        assert!(
+            move_set(&pseudo_list(&forced)).contains(&ep),
+            "exd3 must still be pseudo-generated"
+        );
+        assert!(!forced.legal(ep), "exd3 exposes the king along rank 4");
+        assert!(!legal_set(&forced).contains(&ep));
+        assert_legal_matches_oracle(&forced, "forced horizontal ep pin");
+    }
+
+    /// Doc 05 §5.2 "ep as evasion": the checker IS the double-pushed pawn,
+    /// so exd3 must survive the legality filter.
+    #[test]
+    fn ep_evasion_survives_the_legality_filter() {
+        let b = board("8/8/8/2k5/3Pp3/8/8/4K3 b - d3 0 1");
+        assert!(legal_set(&b).contains(&Move::en_passant(Square::E4, Square::D3)));
+    }
+
+    /// Doc 05 §5.2 "castling through check": generation emits the castles
+    /// (path empty), legal() drops exactly the ones whose king-transit
+    /// squares are attacked — and an attack on the rook-only path square
+    /// (b1, never crossed by the king) drops neither.
+    #[test]
+    fn castling_transit_attacks_are_dropped_by_legal() {
+        let oo = Move::castling(Square::E1, Square::G1);
+        let ooo = Move::castling(Square::E1, Square::C1);
+
+        // Qf3 attacks f1 (kingside transit) and d1 (queenside transit).
+        let b = board("4k3/8/8/8/8/5q2/8/R3K2R w KQ - 0 1");
+        let pseudo = move_set(&pseudo_list(&b));
+        assert!(pseudo.contains(&oo) && pseudo.contains(&ooo));
+        assert!(!b.legal(oo) && !b.legal(ooo));
+        let legal = legal_set(&b);
+        assert!(!legal.contains(&oo) && !legal.contains(&ooo));
+
+        // Rg8 attacks only g1: kingside dropped, queenside survives.
+        let b = board("4k1r1/8/8/8/8/8/8/R3K2R w KQ - 0 1");
+        assert!(!b.legal(oo));
+        assert!(b.legal(ooo));
+
+        // Rb8 attacks only b1: both castles stay legal.
+        let b = board("1r2k3/8/8/8/8/8/8/R3K2R w KQ - 0 1");
+        assert!(b.legal(oo) && b.legal(ooo));
+
+        // Kiwipete step-6 sanity: both white castles fully legal.
+        let legal = legal_set(&board(KIWIPETE));
+        assert!(legal.contains(&oo) && legal.contains(&ooo));
+    }
+
+    /// Doc 05 §5.2 "pinned-piece filter": the pinned piece may slide along
+    /// the pin ray in BOTH directions — toward or away from the king,
+    /// including capturing the pinner — but never off it.
+    #[test]
+    fn pinned_piece_moves_along_the_ray_only() {
+        // Re2 pinned by Re7 on the e-file: all file moves stay legal.
+        let b = board("4k3/4r3/8/8/8/8/4R3/4K3 w - - 0 1");
+        let mut expected: HashSet<Move> =
+            [Square::E3, Square::E4, Square::E5, Square::E6, Square::E7]
+                .into_iter()
+                .map(|to| Move::normal(Square::E2, to))
+                .collect();
+        for to in [Square::D1, Square::D2, Square::F1, Square::F2] {
+            expected.insert(Move::normal(Square::E1, to));
+        }
+        assert_eq!(legal_set(&b), expected);
+        assert!(!b.legal(Move::normal(Square::E2, Square::D2)));
+        assert!(!b.legal(Move::normal(Square::E2, Square::A2)));
+
+        // d2 pawn pinned by Bc3 diagonally: capturing the pinner is the
+        // pawn's ONLY legal move (both pushes leave the ray).
+        let b = board("4k3/8/8/8/8/2b5/3P4/4K3 w - - 0 1");
+        let legal = legal_set(&b);
+        assert!(legal.contains(&Move::normal(Square::D2, Square::C3)));
+        assert!(!legal.contains(&Move::normal(Square::D2, Square::D3)));
+        assert!(!legal.contains(&Move::normal(Square::D2, Square::D4)));
+    }
+
+    /// Doc 05 §5.2 "double check": every legal move is a king move, and
+    /// the on-ray flights are gone (king-removed occupancy test).
+    #[test]
+    fn double_check_legal_moves_are_king_only() {
+        // Re1 + Bb5: d7 (bishop ray) and e7 (rook x-ray through e8) are
+        // pseudo-generated flights that legal() rejects.
+        let b = board("r3k3/8/8/1B6/8/8/8/4RK2 b - - 0 1");
+        let expected: HashSet<Move> = [Square::D8, Square::F7, Square::F8]
+            .into_iter()
+            .map(|to| Move::normal(Square::E8, to))
+            .collect();
+        assert_eq!(legal_set(&b), expected);
+    }
+
+    /// The §3.2 predicate table, one move per class.
+    #[test]
+    fn capture_stage_and_is_capture_by_kind() {
+        // Normal capture / quiet.
+        let b = board("4k3/8/8/3p4/8/2N5/8/4K3 w - - 0 1");
+        let cap = Move::normal(Square::C3, Square::D5);
+        let quiet = Move::normal(Square::C3, Square::E4);
+        assert!(b.capture_stage(cap) && b.is_capture(cap));
+        assert!(!b.capture_stage(quiet) && !b.is_capture(quiet));
+
+        // En passant: a capture even though `to` is empty.
+        let b = board("rnbqkbnr/ppp2ppp/4p3/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3");
+        let ep = Move::en_passant(Square::E5, Square::D6);
+        assert!(b.capture_stage(ep) && b.is_capture(ep));
+
+        // Castling: never a capture, never capture-stage.
+        let b = board(KIWIPETE);
+        let oo = Move::castling(Square::E1, Square::G1);
+        assert!(!b.capture_stage(oo) && !b.is_capture(oo));
+
+        // Push promotions: the queen belongs to the capture stage WITHOUT
+        // capturing; push underpromotions to neither predicate.
+        let b = board("4k3/6P1/8/8/8/8/8/4K3 w - - 0 1");
+        let queen = Move::promotion(Square::G7, Square::G8, PieceType::Queen);
+        let rook = Move::promotion(Square::G7, Square::G8, PieceType::Rook);
+        assert!(b.capture_stage(queen) && !b.is_capture(queen));
+        assert!(!b.capture_stage(rook) && !b.is_capture(rook));
+
+        // Capturing underpromotion: both.
+        let b = board("1n1nk3/2P5/8/8/8/8/8/4K3 w - - 0 1");
+        let under = Move::promotion(Square::C7, Square::B8, PieceType::Knight);
+        assert!(b.capture_stage(under) && b.is_capture(under));
+    }
+
+    /// Doc 05 §5.1 property 2: `capture_stage` answers `true` for exactly
+    /// the CAPTURES emission and `false` for exactly the QUIETS one — the
+    /// invariant the MovePicker's two-stage dedup silently depends on.
+    #[test]
+    fn capture_stage_is_consistent_with_generation() {
+        for &fen in PAWN_FIXTURES {
+            let b = board(fen);
+            for &m in generated::<{ gen_type::CAPTURES }>(&b).iter() {
+                assert!(b.capture_stage(m), "CAPTURES move {m:?} in {fen}");
+            }
+            for &m in generated::<{ gen_type::QUIETS }>(&b).iter() {
+                assert!(!b.capture_stage(m), "QUIETS move {m:?} in {fen}");
+            }
+        }
+    }
+
+    /// Doc 05 §5.1 property 3: in check, generate_legal ⊆ EVASIONS, and
+    /// the legal()-surviving EVASIONS are exactly generate_legal.
+    #[test]
+    fn legal_evasions_match_filtered_evasions() {
+        for &fen in IN_CHECK_FIXTURES {
+            let b = board(fen);
+            let evasions = move_set(&generated::<{ gen_type::EVASIONS }>(&b));
+            let legal = legal_set(&b);
+            assert!(
+                legal.is_subset(&evasions),
+                "generate_legal ⊄ EVASIONS in {fen}"
+            );
+            let filtered: HashSet<Move> = evasions.into_iter().filter(|&m| b.legal(m)).collect();
+            assert_eq!(
+                filtered, legal,
+                "filtered EVASIONS != generate_legal in {fen}"
+            );
+        }
+    }
+
+    /// `has_legal_moves` agrees with generate_legal emptiness everywhere
+    /// and answers the two probe cases (mate, stalemate) it exists for.
+    #[test]
+    fn has_legal_moves_probe() {
+        for &(fen, count) in PERFT1_COUNTS {
+            assert_eq!(has_legal_moves(&board(fen)), count > 0, "{fen}");
+        }
+        for &fen in IN_CHECK_FIXTURES {
+            let b = board(fen);
+            assert_eq!(has_legal_moves(&b), !legal_set(&b).is_empty(), "{fen}");
+        }
+        // Fool's mate: in check, no legal moves.
+        assert!(!has_legal_moves(&board(
+            "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3"
+        )));
+        // Stalemate: not in check, still no legal moves.
+        let b = board("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1");
+        assert!(b.checkers().is_empty());
+        assert!(!has_legal_moves(&b));
+    }
+
+    /// generate_legal appends without clearing, like generate (§3.9's
+    /// `start = list.len()` composition guard).
+    #[test]
+    fn generate_legal_appends_without_clearing() {
+        let b = board(KIWIPETE);
+        let mut list = MoveList::new();
+        generate_legal(&b, &mut list);
+        let first = list.len();
+        generate_legal(&b, &mut list);
+        assert_eq!(list.len(), first * 2);
+        let (head, tail) = list.split_at(first);
+        assert_eq!(
+            head.iter().collect::<HashSet<_>>(),
+            tail.iter().collect::<HashSet<_>>()
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // P3 step 7: Board::pseudo_legal + the 64k fuzz
+    // (doc 05 §3.10, §4 step 7, §5.1.4)
+    // -----------------------------------------------------------------------
+
+    /// Doc 05 §5.1 property 4, the direct unit test of the TT-corruption
+    /// defense: over ALL 65,536 raw u16 encodings, `pseudo_legal` must
+    /// equal membership in the generated pseudo-legal set, and `legal`
+    /// must not panic on any accepted move.
+    fn assert_pseudo_legal_matches_generation(b: &Board, ctx: &str) {
+        let expected: HashSet<u16> = pseudo_list(b).iter().map(|m| m.raw16()).collect();
+        for raw in 0..=u16::MAX {
+            let m = Move::from_raw16(raw);
+            assert_eq!(
+                b.pseudo_legal(m),
+                expected.contains(&raw),
+                "pseudo_legal disagrees with the generator on {m:?} (raw {raw:#06x}) in {ctx}"
+            );
+            if expected.contains(&raw) {
+                let _ = b.legal(m); // §5.1.4: must never panic here
+            }
+        }
+    }
+
+    /// The fuzz corpus (doc 05 §8.4): the six perft positions plus
+    /// in-check, promotion-, ep- and castling-rich positions covering
+    /// every branch of the validator.
+    const FUZZ_FIXTURES: &[&str] = &[
+        crate::fen::START_FEN,
+        KIWIPETE,
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        // Perft pos 4: the in-check containment path on a busy board.
+        "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+        "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+        "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
+        // The classic promotion position, both colors.
+        "n1n5/PPPk4/8/8/8/8/4Kppp/5N1N w - - 0 1",
+        "n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1",
+        // Live ep squares, one per color.
+        "rnbqkbnr/ppp2ppp/4p3/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3",
+        "rnbqkbnr/pppp1ppp/8/8/4PpP1/8/PPPP3P/RNBQKBNR b KQkq g3 0 3",
+        // Ep capture that is also an evasion (checker = double-pushed pawn).
+        "8/8/8/2k5/3Pp3/8/8/4K3 b - d3 0 1",
+        // Full castling rights with attacked transit squares.
+        "r3k2r/8/3Q4/8/8/8/8/R3K2R b KQkq - 0 1",
+        // Double check and a checkmate: king-only / empty evasion sets.
+        "4k3/8/3N4/8/8/8/8/4RK2 b - - 0 1",
+        "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3",
+    ];
+
+    #[test]
+    fn pseudo_legal_matches_generation_64k_fuzz() {
+        for &fen in FUZZ_FIXTURES {
+            assert_pseudo_legal_matches_generation(&board(fen), fen);
+        }
+    }
+
+    /// A few explicit TT-corruption shapes, named for documentation — the
+    /// 64k fuzz already covers every one of them.
+    #[test]
+    fn pseudo_legal_rejects_classic_tt_corruption() {
+        let b = board(crate::fen::START_FEN);
+        let good = Move::normal(Square::E2, Square::E4);
+        assert!(b.pseudo_legal(good));
+        // Garbage promotion bits on an otherwise-valid normal move.
+        assert!(!b.pseudo_legal(Move::from_raw16(good.raw16() | 0x1000)));
+        // NULL, enemy mover, empty from-square, own-piece destination.
+        assert!(!b.pseudo_legal(Move::NULL));
+        assert!(!b.pseudo_legal(Move::normal(Square::E7, Square::E5)));
+        assert!(!b.pseudo_legal(Move::normal(Square::E4, Square::E5)));
+        assert!(!b.pseudo_legal(Move::normal(Square::D1, Square::E2)));
+        // Stale moves from other positions: blocked castle, blocked slide.
+        assert!(!b.pseudo_legal(Move::castling(Square::E1, Square::G1)));
+        assert!(!b.pseudo_legal(Move::normal(Square::A1, Square::A3)));
+
+        // In check (perft pos 4, Bb6xg1 diagonal): a well-formed normal
+        // move that does not evade is rejected by step 6; a block on the
+        // checking ray is accepted.
+        let b = board("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1");
+        assert!(!b.checkers().is_empty());
+        assert!(!b.pseudo_legal(Move::normal(Square::G2, Square::G3)));
+        assert!(b.pseudo_legal(Move::normal(Square::F3, Square::D4)));
     }
 }

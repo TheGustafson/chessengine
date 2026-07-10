@@ -1214,12 +1214,12 @@ impl Board {
     pub fn is_draw(&self, ply: i32) -> bool {
         let st = self.st();
         // 50-move rule, guarded: a mating move ON the 100th halfmove still
-        // wins, so being in check blocks the claim for now.
-        // TODO(P3, design/05-movegen.md): the full guard is
-        // `st.checkers.is_empty() || self.has_legal_moves()` — in check on
-        // a full clock, the draw stands unless it is checkmate (doc 04
-        // §9.3 keeps the conservative branch until movegen lands).
-        if st.copied.rule50 > 99 && st.checkers.is_empty() {
+        // wins, so in check the claim stands only when an escape exists —
+        // checkmate outranks the clock (doc 04 §9.3, closed by
+        // design/05-movegen.md §3.9's `has_legal_moves`).
+        if st.copied.rule50 > 99
+            && (st.checkers.is_empty() || crate::movegen::has_legal_moves(self))
+        {
             return true;
         }
         self.is_repetition(ply)
@@ -2565,8 +2565,8 @@ mod tests {
     }
 
     // Doc 04 §3.9: rule50 > 99 draws at any ply — unless the side to move
-    // is in check (a mating move on the 100th halfmove wins; the movegen
-    // "has legal moves" refinement is TODO(P3)).
+    // is checkmated (a mating move on the 100th halfmove wins; the movegen
+    // `has_legal_moves` guard landed with design/05 §3.9).
     #[test]
     fn fifty_move_rule_draw_with_check_guard() {
         let mut board = Board::from_fen("4k3/8/8/8/8/8/8/4K2R w - - 99 80").unwrap();
@@ -2576,9 +2576,17 @@ mod tests {
         assert!(board.is_draw(0));
         assert!(board.is_draw(100));
 
+        // In check WITH escapes on a full clock: the draw claim stands.
         let board = Board::from_fen("4k3/8/8/8/8/8/4r3/4K3 w - - 100 80").unwrap();
         assert!(!board.checkers().is_empty());
-        assert!(!board.is_draw(0), "in check on a full clock: no draw claim");
+        assert!(board.is_draw(0), "check with legal escapes: still a draw");
+
+        // Checkmated on the 100th halfmove: mate outranks the clock.
+        let board =
+            Board::from_fen("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 100 3")
+                .unwrap();
+        assert!(!board.checkers().is_empty());
+        assert!(!board.is_draw(0), "checkmate on a full clock is not a draw");
     }
 
     // -----------------------------------------------------------------
