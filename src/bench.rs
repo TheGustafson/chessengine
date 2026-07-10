@@ -12,16 +12,25 @@
 //! chessengine bench [ttMB=16] [threads=1] [limit=13] [fens=default] [type=depth]
 //! ```
 //!
-//! Until P5 lands search, only `type=perft` has a code path (design/06
-//! §3.6: "this makes bench useful from day one, before search exists").
+//! Search modes (`type=depth/nodes/movetime`, P5 / design/06 §4 step 7)
+//! run one `ucinewgame`-fresh [`Worker`] session across the whole suite —
+//! a deterministic single-threaded search per position (`threads`/`ttMB`
+//! become meaningful with SMP/the TT; the TT will then persist across
+//! positions, design/06 §3.6). Depth and nodes limits never read the wall
+//! clock (design/14 §3.2 determinism rule 4), so their totals are exact
+//! fingerprints; `movetime` is an nps probe only, never a fingerprint.
 //!
 //! Output contract (design/06 §3.6, all on stderr so stdout stays a clean
-//! UCI stream): a `Position: i/N (entry)` line per position, in perft mode
-//! followed by that position's `Nodes searched: n` count (the same line
-//! SF's per-position perft emits, format per design/06 §3.2), then the
-//! fixed four-line trailer. Everything except the `Total time (ms)` and
-//! `Nodes/second` lines is a pure function of the suite — byte-identical
-//! across runs (design/14 §3.2 determinism; doc 06 §8 criterion 7).
+//! UCI stream): a `Position: i/N (entry)` line per position followed by
+//! that position's `Nodes searched: n` count (perft mode: the same line
+//! SF's per-position perft emits, format per design/06 §3.2; search
+//! modes: the position's search node count), then the fixed four-line
+//! trailer. The footer's `Nodes searched` total is THE fingerprint: the
+//! `Bench: <total-nodes>` commit trailer (design/14 §3.2) that
+//! `tools/check.sh` extracts and reruns. Everything except the
+//! `Total time (ms)` and `Nodes/second` lines is a pure function of the
+//! suite — byte-identical across runs (design/14 §3.2 determinism; doc 06
+//! §8 criterion 7; doc 07 §8.5).
 //!
 //! Cross-checked fingerprints for the default suite in perft mode, from
 //! python-chess 1.11.2 (an independent legal-move implementation; recorded
@@ -32,10 +41,13 @@ use crate::board::Board;
 use crate::movegen;
 use crate::moves::MoveList;
 use crate::perft;
+use crate::search::Worker;
+use crate::timeman::Limits;
 use std::error::Error;
 use std::fmt;
 use std::io::{self, Write};
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 /// Where the bench positions come from (design/06 §3.6).
@@ -216,27 +228,43 @@ fn suite_entries(fens: &FenSource) -> Vec<String> {
 fn run_to(params: &BenchParams, out: &mut impl Write) -> io::Result<BenchResult> {
     let entries = suite_entries(&params.fens);
 
-    // P5: `ucinewgame` semantics here — allocate the TT at params.tt_mb,
-    // clear histories; the TT then persists across positions (design/06
-    // §3.6 determinism rules).
+    // `ucinewgame` semantics, once for the whole run (design/06 §3.6): a
+    // fresh Worker is the search session the loop below reuses across
+    // positions. When the TT lands (P6) it is allocated here at
+    // `params.tt_mb` and then deliberately PERSISTS across positions
+    // (TT carry-over is part of the fingerprint, design/14 §3.2 rule 3);
+    // histories (doc 09) reset here too. Perft mode never touches it.
+    let mut worker = Worker::new(Board::startpos());
     let start = Instant::now();
     let mut nodes: u64 = 0;
 
     for (i, entry) in entries.iter().enumerate() {
         writeln!(out, "Position: {}/{} ({entry})", i + 1, entries.len())?;
-        nodes += match params.limit {
+        let count = match params.limit {
             BenchLimit::Perft(depth) => {
                 let mut board = board_from_entry(entry);
-                let count = perft::perft(&mut board, depth);
-                // Per-position count, in the SF `go perft` trailer format
-                // (design/06 §3.2) — part of the fingerprint section.
-                writeln!(out, "Nodes searched: {count}")?;
-                count
+                perft::perft(&mut board, depth)
             }
-            BenchLimit::Depth(_) | BenchLimit::Nodes(_) | BenchLimit::Movetime(_) => {
-                todo!("P5: search")
+            BenchLimit::Depth(d) => {
+                let mut limits = Limits::new();
+                limits.depth = Some(d);
+                search_entry(&mut worker, entry, limits)
+            }
+            BenchLimit::Nodes(n) => {
+                let mut limits = Limits::new();
+                limits.nodes = Some(n);
+                search_entry(&mut worker, entry, limits)
+            }
+            BenchLimit::Movetime(t) => {
+                let mut limits = Limits::new();
+                limits.movetime = Some(i64::try_from(t).unwrap_or(i64::MAX));
+                search_entry(&mut worker, entry, limits)
             }
         };
+        // Per-position count, in the SF `go perft` trailer format
+        // (design/06 §3.2) — part of the fingerprint section.
+        writeln!(out, "Nodes searched: {count}")?;
+        nodes += count;
     }
 
     let elapsed_ms = start.elapsed().as_millis() as u64;
@@ -252,6 +280,26 @@ fn run_to(params: &BenchParams, out: &mut impl Write) -> io::Result<BenchResult>
     )?;
 
     Ok(BenchResult { nodes, elapsed_ms })
+}
+
+/// One search-mode bench position (design/06 §3.6): load the entry into
+/// the session worker and run a full `go` under `limits` to its natural
+/// end, returning the position's node count (the per-`go` counter the
+/// iterative-deepening driver resets and [`Worker::do_move`] bumps — the
+/// design/14 §3.2 rule-5 semantics, so bench just sums per-position
+/// counters). Info reports are discarded: their time/nps fields are
+/// wall-clock noise, and everything the fingerprint needs is in the
+/// count. The stop flag stays quiet — nobody else holds it, and
+/// depth/nodes limits terminate by themselves — so depth/nodes runs are
+/// deterministic by construction (no clock read anywhere on their path).
+/// Mate/stalemate entries return immediately with 0 nodes, exercising the
+/// zero-legal-move seam the suite exists to cover.
+fn search_entry(worker: &mut Worker, entry: &str, limits: Limits) -> u64 {
+    worker.board = board_from_entry(entry);
+    worker.limits = limits;
+    let stop = AtomicBool::new(false);
+    worker.iterative_deepening(&stop, &mut |_| {});
+    worker.nodes
 }
 
 /// Set up a bench entry: a FEN, optionally followed by `moves m1 m2 ...`
@@ -551,6 +599,147 @@ mod tests {
             path.display()
         );
         path
+    }
+
+    #[test]
+    fn bench_depth_mode_searches_each_entry_and_counts_nodes() {
+        // design/06 §4 step 7: search-mode bench. A two-entry file suite
+        // keeps the trees tiny — debug builds run the full board
+        // invariant oracle at every node — while still covering a `moves`
+        // replay entry and the zero-legal-move seam the compiled-in suite
+        // exists to exercise (design/06 §3.6).
+        let path = std::env::temp_dir().join(format!(
+            "chessengine_bench_depth_{}_{:?}.txt",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::write(
+            &path,
+            "8/8/8/8/5kp1/P7/8/1K1N4 w - - 0 1 moves b1c2\n\
+             8/8/8/8/8/6k1/6p1/6K1 w - -\n",
+        )
+        .unwrap();
+
+        let params = BenchParams {
+            fens: FenSource::File(path.clone()),
+            limit: BenchLimit::Depth(2),
+            ..BenchParams::default()
+        };
+        let mut out = Vec::new();
+        let result = run_to(&params, &mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+
+        // Same output shape as perft mode: Position + per-position count
+        // per entry, then the fixed four-line trailer.
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 2 * 2 + 4);
+        assert!(lines[0].starts_with("Position: 1/2 (8/8/8/8/5kp1/"));
+        assert!(lines[1].starts_with("Nodes searched: "));
+        // Entry 2 is stalemate (white to move, no legal moves): the
+        // search returns immediately and reports zero nodes.
+        assert_eq!(lines[3], "Nodes searched: 0");
+        assert!(result.nodes > 0, "entry 1 must actually search");
+        assert_eq!(lines[6], format!("Nodes searched  : {}", result.nodes));
+        // The footer total is the sum of the per-position counts
+        // (design/14 §3.2 rule 5: bench just sums per-position counters).
+        let per_position: u64 = [lines[1], lines[3]]
+            .iter()
+            .map(|l| l.strip_prefix("Nodes searched: ").unwrap())
+            .map(|n| n.parse::<u64>().unwrap())
+            .sum();
+        assert_eq!(per_position, result.nodes);
+
+        // Determinism in-process (doc 07 §8.5): identical totals and a
+        // byte-identical fingerprint section across two runs.
+        let mut second = Vec::new();
+        let again = run_to(&params, &mut second).unwrap();
+        assert_eq!(result.nodes, again.nodes);
+        let second = String::from_utf8(second).unwrap();
+        assert_eq!(fingerprint_section(&text), fingerprint_section(&second));
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// design/14 §4 step 7 — THE bench determinism test: the default
+    /// suite searched twice in-process must produce identical node totals
+    /// (and byte-identical fingerprint sections). Release-gated, the
+    /// doc's "release-gated or `--ignored` in debug" option: the P5
+    /// skeleton (no TT/PVS, no qsearch pruning rules) spends ~390M nodes
+    /// per run at depth 3 — ~25 s each in release, unusable in debug.
+    /// Depth 3 rather than the doc's depth-6 sketch for the same reason;
+    /// it matches `tools/check.sh`'s pinned fingerprint invocation
+    /// `bench 16 1 3 default depth`, and both move toward the SF-default
+    /// depth 13 as P6+ shrink the tree.
+    #[test]
+    #[cfg_attr(
+        debug_assertions,
+        ignore = "release-only: two ~25 s suite runs (design/14 §4 step 7)"
+    )]
+    fn bench_depth_fingerprint_is_deterministic_over_the_default_suite() {
+        let params = BenchParams::parse(&["16", "1", "3", "default", "depth"]).unwrap();
+        let mut first = Vec::new();
+        let mut second = Vec::new();
+        let a = run_to(&params, &mut first).unwrap();
+        let b = run_to(&params, &mut second).unwrap();
+        assert_eq!(
+            a.nodes, b.nodes,
+            "the bench fingerprint must reproduce (D24)"
+        );
+        let first = String::from_utf8(first).unwrap();
+        let second = String::from_utf8(second).unwrap();
+        assert_eq!(fingerprint_section(&first), fingerprint_section(&second));
+    }
+
+    #[test]
+    fn spawned_bench_depth_runs_are_byte_identical() {
+        // doc 06 §4 step 7 / doc 07 §8.5 end to end: two consecutive
+        // search-mode bench invocations of the real binary print the same
+        // fingerprint section, and stdout stays a clean UCI stream. A
+        // small file suite keeps this debug-friendly (`cargo test` spawns
+        // the DEBUG binary — the default suite belongs to the
+        // release-gated in-process test above and to tools/check.sh).
+        let bin = engine_binary();
+        let path = std::env::temp_dir().join(format!(
+            "chessengine_bench_depth_spawn_{}_{:?}.txt",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::write(
+            &path,
+            "8/8/8/8/5kp1/P7/8/1K1N4 w - - 0 1\n\
+             K1k5/8/P7/8/8/8/8/8 w - - 0 1 moves a8a7\n",
+        )
+        .unwrap();
+
+        let run_once = || {
+            let out = std::process::Command::new(&bin)
+                .args(["bench", "16", "1", "3", path.to_str().unwrap(), "depth"])
+                .output()
+                .expect("failed to spawn the engine binary");
+            assert!(out.status.success(), "bench exited with {}", out.status);
+            assert!(
+                out.stdout.is_empty(),
+                "bench must keep stdout a clean UCI stream (design/06 §3.6)"
+            );
+            String::from_utf8(out.stderr).expect("bench output is UTF-8")
+        };
+
+        let first = run_once();
+        let second = run_once();
+        assert_eq!(
+            fingerprint_section(&first),
+            fingerprint_section(&second),
+            "bench depth fingerprint must be byte-identical across runs"
+        );
+
+        // Format spot-checks on the spawned output.
+        let lines: Vec<&str> = first.lines().collect();
+        assert_eq!(lines.len(), 2 * 2 + 4);
+        assert!(lines[1].starts_with("Nodes searched: "));
+        assert_ne!(lines[1], "Nodes searched: 0", "entry 1 really searched");
+        assert_eq!(lines[4], "===========================");
+
+        std::fs::remove_file(&path).ok();
     }
 
     #[test]

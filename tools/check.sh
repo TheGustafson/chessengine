@@ -67,18 +67,28 @@ fi
 printf '%s\n' "$run1" | tail -n 2
 
 # --- Bench depth fingerprint (D24; design/14 §3.2, design/06 §3.6) ----------
-# TODO(P5): SKIPs until P5 (search core v1) lands — the bench subcommand
-# exists (perft mode above), but depth mode needs search. The probe is a
-# depth-1 bench run; the real run uses the SF-shaped defaults (16 MB TT,
-# 1 thread, depth 13) whose 'Nodes searched' total is THE fingerprint for
-# the `Bench:` commit trailer.
-step "bench fingerprint  (chessengine bench)"
-if "$BIN" bench 16 1 1 default depth 2>&1 | grep -q "Nodes searched"; then
-    # Footer goes to stderr (stdout stays a clean UCI stream, design/06 §3.6).
-    "$BIN" bench 2>&1 | tail -n 4
-    printf "paste 'Nodes searched' into the commit's 'Bench:' trailer (TESTING.md)\n"
-else
-    skip "bench fingerprint — TODO(P5): bench depth mode needs search (perft mode gated above)"
+# P5 landed: the search fingerprint is live. 'Nodes searched' from the
+# pinned invocation below is THE number for the `Bench: <nodes>` commit
+# trailer — functional commits carry the new count, intended-non-functional
+# commits must reproduce the old one bit-for-bit (rerun this gate on both
+# sides to verify; TESTING.md). The SF-shaped default (`bench` = 16 MB TT,
+# 1 thread, depth 13) is the long-term fingerprint invocation, but the P5
+# skeleton (no TT, no PVS/aspiration, no qsearch pruning rules) makes depth
+# 13 infeasible (~10^12 nodes), so the fingerprint is pinned at depth 3
+# (~390 M nodes, ~25 s). Determinism is gated by the release test
+# bench_depth_fingerprint_is_deterministic_over_the_default_suite.
+# TODO(P6): raise the pinned depth toward the SF default once the TT lands
+# and bench nodes drop materially (master plan P6 exit).
+step "bench fingerprint  (bench 16 1 3 default depth — the Bench: trailer)"
+# Footer goes to stderr (stdout stays a clean UCI stream, design/06 §3.6).
+bench_out=$("$BIN" bench 16 1 3 default depth 2>&1 >/dev/null)
+printf '%s\n' "$bench_out" | tail -n 4
+bench_nodes=$(printf '%s\n' "$bench_out" | sed -n 's/^Nodes searched  : //p')
+if [ -z "$bench_nodes" ]; then
+    printf 'FAIL: bench printed no "Nodes searched" total\n' >&2
+    exit 1
 fi
+printf '\ncommit trailer for functional changes (TESTING.md, design/14 §3.2):\n'
+printf 'Bench: %s\n' "$bench_nodes"
 
 printf '\nAll checks passed.\n'

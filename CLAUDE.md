@@ -30,7 +30,20 @@ decision changes) in the same commit.
 - `cargo run` — the UCI loop (P0 subset: `uci`/`isready`/`d`/`quit`;
   argv subcommands `bench`, `perft <depth> [fen]`, `d`)
 - `bash tools/check.sh` — the full merge gate (fmt, clippy, tests, release
-  perft tier; bench fingerprint once search lands)
+  perft tier, bench fingerprint; prints the `Bench:` trailer line to paste)
+- **The `Bench:` commit trailer (D24, design/14 §3.2)** — every commit that
+  can affect search behavior (search, eval, movegen/make-unmake, move
+  ordering, TT) ends with a `Bench: <nodes>` trailer: the `Nodes searched`
+  total from the pinned fingerprint invocation
+  `./target/release/chessengine bench 16 1 3 default depth`
+  (check.sh runs it and prints the ready-to-paste line; the depth stays
+  pinned at 3 until the TT lands — the SF-default `bench` depth 13 is
+  infeasible pre-TT). A patch that changes the number is *functional* by
+  definition and the trailer states the **new** count; intended
+  non-functional patches (refactors, speedups) must reproduce the old count
+  bit-for-bit — verify by rerunning check.sh on both sides. Commits that
+  cannot affect search (docs, UCI I/O, build scripts) may omit the trailer.
+  Details: TESTING.md, design/14 §3.2.
 - **The D24 perft ritual** — any change touching `movegen`, `board`
   mutation, `zobrist`, or `attacks` must pass, before landing:
   `cargo test` (fast tier, automatic) AND
