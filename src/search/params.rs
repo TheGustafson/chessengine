@@ -39,3 +39,11 @@ pub const ASPIRATION_WIDEN_DEN: Value = 128;
 pub const RAZOR_BASE: Value = 465;
 /// Depth-quadratic term of the razoring margin (`* depth^2`).
 pub const RAZOR_DEPTH_MULT: Value = 300;
+
+// --- Stop cadence (design/07 §3.9) ---
+
+/// `check_time` is called at every main-search node entry but early-outs
+/// on a countdown, doing real work every this many calls. Under a
+/// `go nodes` limit the reset shrinks to `min(512, limits.nodes / 1024)`
+/// (owned by the time-management layer, design/12).
+pub const CHECK_TIME_CALLS: i32 = 512;
