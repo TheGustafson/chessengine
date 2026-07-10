@@ -976,7 +976,10 @@ Conventions:
   `#[cfg(feature = "tune")]` mechanism would rewrite — that is the point of
   centralizing.
 
-Excerpt of the intended shape (values are facts from SF `eca43a97`):
+Excerpt of the intended shape (values are facts from SF `eca43a97`;
+constant names and types follow the owning inventories in docs 07/10 —
+this excerpt amended to match them on 2026-07-10, when P0 seeded the
+file):
 
 ```rust
 //! Tuned search parameters. SF-current starting points (D20),
@@ -989,21 +992,22 @@ use crate::types::{Depth, Value};
 // (7183/10692/30000/8192/1024) are structural const generics in
 // history.rs (doc 09 §3.4). Only their *multipliers* are tunables here.
 
-// --- Aspiration windows (search.cpp) ---
-pub const ASPIRATION_DELTA_BASE: Value = 5;      // + thread jitter + |mss|/10588
-pub const ASPIRATION_MSS_DIV: i64 = 10588;
-pub const ASPIRATION_WIDEN_NUM: i32 = 44;        // delta += delta * 44 / 128
-pub const ASPIRATION_WIDEN_DEN: i32 = 128;
+// --- Aspiration windows (doc 07 §3.6; search.cpp) ---
+pub const ASPIRATION_BASE_DELTA: Value = 5;      // + thread jitter + |mss|/10588
+pub const ASPIRATION_MSS_DIVISOR: i64 = 10588;
+pub const ASPIRATION_WIDEN_NUM: Value = 44;      // delta += delta * 44 / 128
+pub const ASPIRATION_WIDEN_DEN: Value = 128;
 
-// --- Reduction table: reductions[i] = (2834/128) * ln(i), i in 1..MAX_MOVES.
-//     Built at RUNTIME (f64::ln is not const on stable), once per Worker.
-pub const REDUCTION_LN_SCALE_NUM: i32 = 2834;
-pub const REDUCTION_LN_SCALE_DEN: i32 = 128;
+// --- Reduction table (doc 10 §3.3): reductions[i] = (2834/128) * ln(i),
+//     i in 1..MAX_MOVES. Built at RUNTIME (f64::ln is not const on
+//     stable), once per Worker.
+pub const RED_TABLE_NUM: i32 = 2834;
+pub const RED_TABLE_DEN: i32 = 128;
 pub fn build_reductions() -> [i32; MAX_MOVES] { /* runtime ln loop */ }
 
-// --- Razoring: return qsearch if eval < alpha - 465 - 300*depth^2 ---
+// --- Razoring (doc 10 §3.1): qsearch if eval < alpha - 465 - 300*depth^2 ---
 pub const RAZOR_BASE: Value = 465;
-pub const RAZOR_DEPTH_SQ_MULT: Value = 300;
+pub const RAZOR_DEPTH_MULT: Value = 300;
 // ... (full inventory owned by designs 07, 09, and 10)
 ```
 

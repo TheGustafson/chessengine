@@ -1,6 +1,8 @@
 [package]
 name = "chessengine"
 version = "0.1.0"
+# Feeds the UCI `id author` line via CARGO_PKG_AUTHORS (design/12 §3.3).
+authors = ["TheGustafson"]
 edition = "2024"
 
 [dependencies]

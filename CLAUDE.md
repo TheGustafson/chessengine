@@ -26,7 +26,8 @@ decision changes) in the same commit.
 
 - `cargo test` — run all tests (the default check after any change)
 - `cargo clippy --all-targets` — must stay clean
-- `cargo run` — prints the start position (thin UCI entry point later)
+- `cargo run` — the UCI loop (P0 subset: `uci`/`isready`/`d`/`quit`;
+  argv subcommands `bench`, `perft <depth> [fen]`, `d`)
 - `bash tools/check.sh` — the full merge gate (fmt, clippy, tests, release
   perft/bench once those phases land)
 - **Fast builds** (D16, design/01 §3.7) — the supported configuration for

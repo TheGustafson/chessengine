@@ -23,7 +23,9 @@ pub mod board;
 pub mod fen;
 pub mod moves;
 pub mod perft;
+pub mod search;
 pub mod types;
+pub mod uci;
 
 pub use bitboard::Bitboard;
 pub use board::{Board, CastlingRights};
