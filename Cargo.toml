@@ -8,3 +8,16 @@ edition = "2024"
 [dev-dependencies]
 # Test-only (D15: runtime [dependencies] stays empty; dev-dependencies allowed).
 proptest = "1"
+
+# Build profiles (D16; design/01 §3.7, design/14 §3.7). The documented fast
+# configuration adds RUSTFLAGS="-C target-cpu=x86-64-v3" (see CLAUDE.md) —
+# deliberately NOT hardcoded here so default builds stay portable.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort" # ignored by test/bench profiles, so cargo test still works
+
+# Profiling builds: release codegen + symbols. `perf` / flamegraphs read this.
+[profile.profiling]
+inherits = "release"
+debug = "line-tables-only" # symbols for perf/flamegraph; no codegen change

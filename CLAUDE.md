@@ -27,6 +27,17 @@ decision changes) in the same commit.
 - `cargo test` — run all tests (the default check after any change)
 - `cargo clippy --all-targets` — must stay clean
 - `cargo run` — prints the start position (thin UCI entry point later)
+- `bash tools/check.sh` — the full merge gate (fmt, clippy, tests, release
+  perft/bench once those phases land)
+- **Fast builds** (D16, design/01 §3.7) — the supported configuration for
+  strength testing, bench signatures, and SPRT; SPRT pairs must use
+  identical flags:
+  `RUSTFLAGS="-C target-cpu=x86-64-v3" cargo build --release`
+  (or `target-cpu=native` for a machine-local binary). Default builds stay
+  portable — we deliberately don't commit these flags in `.cargo/config.toml`.
+- Profiling: `RUSTFLAGS="-C target-cpu=x86-64-v3 -C force-frame-pointers=yes"
+  cargo build --profile profiling` (release codegen + line tables for
+  perf/flamegraph)
 
 ## Layout
 
