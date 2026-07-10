@@ -131,7 +131,7 @@ impl Board {
 
         // Field 4: en passant target square. A square off ranks 3/6 is a
         // parse error; a well-formed square is then kept only if an ep
-        // capture is pseudo-possible (doc 04 §3.7 a–c) — the ep FILE is
+        // capture is actually playable (doc 04 §3.7 a–d) — the ep FILE is
         // hashed, so a spurious square would make identical positions hash
         // differently and break repetition detection and the TT.
         let ep_square = match fields[3] {
@@ -141,7 +141,7 @@ impl Board {
                 if sq.rank() != 2 && sq.rank() != 5 {
                     return Err(FenError::EnPassant(s.to_string()));
                 }
-                Some(sq).filter(|&sq| board.ep_capture_pseudo_possible(sq))
+                Some(sq).filter(|&sq| board.ep_capture_legal(sq))
             }
         };
 
@@ -170,11 +170,13 @@ impl Board {
         Ok(board)
     }
 
-    /// Doc 04 §3.7 conditions a–c: is an en-passant capture of a just
-    /// double-pushed pawn pseudo-possible? Placement and side to move must
-    /// already be set. Condition d (the capture must not leave the king in
-    /// check) lands with `attackers_to` in doc 04 §4 step 4.
-    fn ep_capture_pseudo_possible(&self, ep: Square) -> bool {
+    /// Doc 04 §3.7 conditions a–d: is an en-passant capture of a just
+    /// double-pushed pawn actually playable? Placement and side to move
+    /// must already be set. Nothing less than full legality suffices: the
+    /// ep file is hashed (D9), so keeping a square whose capture is illegal
+    /// (a pinned capturer, say) would make identical positions hash
+    /// differently.
+    fn ep_capture_legal(&self, ep: Square) -> bool {
         let us = self.side_to_move();
         let them = us.flip();
         // The ep target sits on OUR relative rank 6 (rank 6 with White to
@@ -185,20 +187,41 @@ impl Board {
         // a. one of our pawns attacks the ep square (attack symmetry: the
         //    squares a `them` pawn ON `ep` would attack are exactly the
         //    squares from which an `us` pawn attacks `ep`).
-        if (attacks::pawn_attacks(them, ep) & self.pieces(us, PieceType::Pawn)).is_empty() {
+        let candidates = attacks::pawn_attacks(them, ep) & self.pieces(us, PieceType::Pawn);
+        if candidates.is_empty() {
             return false;
         }
         // b. the double-pushed enemy pawn stands in front of the ep square.
-        if !self
-            .pieces(them, PieceType::Pawn)
-            .contains(ep.offset(them.pawn_push()))
-        {
+        let target = ep.offset(them.pawn_push());
+        if !self.pieces(them, PieceType::Pawn).contains(target) {
             return false;
         }
         // c. the ep square and the pawn's origin square are empty.
         let origin = ep.offset(us.pawn_push());
-        (self.all_occupancy() & (Bitboard::from_square(ep) | Bitboard::from_square(origin)))
+        if !(self.all_occupancy() & (Bitboard::from_square(ep) | Bitboard::from_square(origin)))
             .is_empty()
+        {
+            return false;
+        }
+        // d. at least one candidate can play the capture without leaving
+        //    its own king in check: simulate the post-capture occupancy
+        //    (captured pawn and capturer lifted off, capturer placed on the
+        //    ep square) and require that no enemy piece other than the
+        //    removed target attacks our king. This covers pins of the
+        //    capturer — including the horizontal both-pawns-off-the-rank
+        //    kind — and checks the capture fails to address.
+        let Some(ksq) = self.pieces(us, PieceType::King).lsb() else {
+            return true; // king-less analysis boards: nothing can be in check
+        };
+        let cleared =
+            self.all_occupancy() ^ Bitboard::from_square(target) ^ Bitboard::from_square(ep);
+        candidates.into_iter().any(|from| {
+            let occupied = cleared ^ Bitboard::from_square(from);
+            (self.attackers_to(ksq, occupied)
+                & self.occupancy(them)
+                & !Bitboard::from_square(target))
+            .is_empty()
+        })
     }
 
     /// Serialize the position to Forsyth-Edwards Notation.
@@ -384,7 +407,7 @@ mod tests {
             START_FEN,
             KIWIPETE,
             "rnbqkbnr/ppp2ppp/4p3/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 4 7",
-            "8/8/8/8/k2Pp2Q/8/8/3K4 b - d3 0 1",
+            "8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1",
         ] {
             let board = Board::from_fen(fen).unwrap();
             board.assert_state_keys_consistent();
@@ -425,12 +448,12 @@ mod tests {
     }
 
     // Doc 04 §3.7: the parsed ep square survives only when a capture is
-    // pseudo-possible — (a) one of our pawns attacks it, (b) the double-
+    // actually playable — (a) one of our pawns attacks it, (b) the double-
     // pushed enemy pawn stands in front of it, (c) the target and origin
-    // squares are empty. Full legality (condition d) lands with
-    // attackers_to (doc 04 §4 step 4).
+    // squares are empty, (d) at least one capturer can play it without
+    // leaving its own king in check.
     #[test]
-    fn ep_square_kept_when_capture_pseudo_possible() {
+    fn ep_square_kept_when_capture_playable() {
         // After 1. e4 e6 2. e5 d5: exd6 e.p. is available (White to move).
         let fen = "rnbqkbnr/ppp2ppp/4p3/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3";
         let board = Board::from_fen(fen).unwrap();
@@ -481,6 +504,58 @@ mod tests {
                 fen.replace(&format!(" {ep} "), " - "),
                 "{fen:?} must re-emit '-'"
             );
+        }
+    }
+
+    // Doc 04 §3.7 condition d (needs attackers_to): the ep square is
+    // dropped when every capturer would leave its own king in check.
+    #[test]
+    fn ep_squares_with_illegal_captures_are_dropped() {
+        // (ep, FEN): each capture is fully pseudo-possible but illegal.
+        let cases = [
+            // Vertical pin: exd6 opens the e-file, Re8 hits Ke1.
+            ("d6", "4r2k/8/8/3pP3/8/8/8/4K3 w - d6 0 1"),
+            // Horizontal both-pawns-off-the-rank pin (the doc 04 §5
+            // Kh5/Pf5/Ra5 case): fxe6 clears BOTH e5 and f5 off rank 5.
+            ("e6", "7k/8/8/r3pP1K/8/8/8/8 w - e6 0 2"),
+            // The same family, queen flavor (perft classic, black to
+            // move): exd3 clears the rank between Qh4 and Ka4.
+            ("d3", "8/8/8/8/k2Pp2Q/8/8/3K4 b - d3 0 1"),
+            // Unrelated check: axb6 does nothing about Re8's check.
+            ("b6", "4r2k/8/8/Pp6/8/8/8/4K3 w - b6 0 2"),
+        ];
+        for (ep, fen) in cases {
+            let board = Board::from_fen(fen).unwrap();
+            assert_eq!(board.en_passant_square(), None, "{fen:?} must drop ep");
+            assert_eq!(
+                board.to_fen(),
+                fen.replace(&format!(" {ep} "), " - "),
+                "{fen:?} must re-emit '-'"
+            );
+        }
+    }
+
+    // Condition d keeps the square as soon as ONE capturer is legal: a
+    // capture along the pin line stays on it, and a second unpinned pawn
+    // rescues a pinned one.
+    #[test]
+    fn ep_squares_kept_when_some_capture_is_legal() {
+        let cases = [
+            // dxe6 travels ALONG the c4-f7 pin diagonal and re-blocks it.
+            ("e6", "7k/5b2/8/3Pp3/2K5/8/8/8 w - e6 0 2"),
+            // dxe6 is illegal (Rd8 pins d5 vertically) but fxe6 is fine.
+            ("e6", "3r3k/8/8/3PpP2/8/8/8/3K4 w - e6 0 2"),
+            // Black-side mirror of the along-the-pin-line case.
+            ("d3", "8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1"),
+        ];
+        for (ep, fen) in cases {
+            let board = Board::from_fen(fen).unwrap();
+            assert_eq!(
+                board.en_passant_square().map(|sq| sq.to_string()),
+                Some(ep.to_string()),
+                "{fen:?} must keep ep"
+            );
+            assert_eq!(board.to_fen(), fen, "{fen:?} must round-trip");
         }
     }
 

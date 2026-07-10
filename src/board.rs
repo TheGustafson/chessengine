@@ -345,25 +345,25 @@ impl Board {
     }
 
     /// Enemy pieces currently checking the side to move's king.
-    /// Stubbed EMPTY until `set_check_info` lands (doc 04 §4 step 4).
     pub fn checkers(&self) -> Bitboard {
         self.st().checkers
     }
 
-    /// Pieces (of both colors) that are the sole blocker between a sniper
-    /// and `color`'s king. Stubbed EMPTY until doc 04 §4 step 4.
+    /// Pieces (of BOTH colors) that are the sole piece between an enemy
+    /// sniper and `color`'s king (doc 04 §3.5). Friendly ones are pinned;
+    /// enemy ones are discovered-check candidates.
     pub fn blockers_for_king(&self, color: Color) -> Bitboard {
         self.st().blockers_for_king[color as usize]
     }
 
-    /// `color`'s sliders pinning against the OTHER king. Stubbed EMPTY
-    /// until doc 04 §4 step 4.
+    /// `color`'s sliders pinning a piece of the OTHER color against its own
+    /// king (doc 04 §3.5): the snipers whose sole blocker is an enemy piece.
     pub fn pinners(&self, color: Color) -> Bitboard {
         self.st().pinners[color as usize]
     }
 
     /// From-squares from which a `pt` of the side to move would check the
-    /// enemy king. Stubbed EMPTY until doc 04 §4 step 4.
+    /// enemy king (doc 04 §3.5). EMPTY for `King` — a king never gives check.
     pub fn check_squares(&self, pt: PieceType) -> Bitboard {
         self.st().check_squares[pt as usize]
     }
@@ -397,6 +397,108 @@ impl Board {
     /// elsewhere (doc 04 §3.7 revocation mask).
     pub fn castling_rights_mask(&self, sq: Square) -> CastlingRights {
         self.castling_rights_mask[sq.index() as usize]
+    }
+
+    /// All pieces of BOTH colors attacking `sq` under the given occupancy
+    /// (doc 04 §3.5) — the shared attack query behind check bookkeeping and,
+    /// later, movegen legality and SEE. `occupied` shapes only the slider
+    /// rays; the attacker set always comes from the piece bitboards (SEE
+    /// exploits exactly that to walk x-ray batteries by lifting captured
+    /// pieces out of `occupied`).
+    ///
+    /// The pawn terms use attack symmetry: the squares a White pawn ON `sq`
+    /// would attack are precisely the from-squares of Black pawns attacking
+    /// `sq`, and vice versa.
+    pub fn attackers_to(&self, sq: Square, occupied: Bitboard) -> Bitboard {
+        let tables = attacks::tables();
+        let queens = self.pieces_of_type(PieceType::Queen);
+        (tables.rook_attacks(sq, occupied) & (self.pieces_of_type(PieceType::Rook) | queens))
+            | (tables.bishop_attacks(sq, occupied)
+                & (self.pieces_of_type(PieceType::Bishop) | queens))
+            | (attacks::pawn_attacks(Color::White, sq) & self.pieces(Color::Black, PieceType::Pawn))
+            | (attacks::pawn_attacks(Color::Black, sq) & self.pieces(Color::White, PieceType::Pawn))
+            | (attacks::knight_attacks(sq) & self.pieces_of_type(PieceType::Knight))
+            | (attacks::king_attacks(sq) & self.pieces_of_type(PieceType::King))
+    }
+
+    /// The squares holding `piece_type` pieces of both colors.
+    fn pieces_of_type(&self, piece_type: PieceType) -> Bitboard {
+        self.pieces[Color::White as usize][piece_type as usize]
+            | self.pieces[Color::Black as usize][piece_type as usize]
+    }
+
+    /// Slider-pin geometry around `c`'s king (doc 04 §3.5, the SF
+    /// `update_slider_blockers` algorithm re-expressed). Returns
+    /// `(blockers, pinners)` — a tuple instead of C++'s out-parameter —
+    /// where `blockers` is the value for `blockers_for_king[c]` (pieces of
+    /// EITHER color standing alone between an enemy sniper and the king)
+    /// and `pinners` the value for `pinners[!c]` (the snipers whose sole
+    /// blocker is friendly to `c`, i.e. genuinely pinned).
+    fn slider_blockers(&self, c: Color) -> (Bitboard, Bitboard) {
+        let ksq = self.king_square(c);
+        let them = c.flip();
+        // Enemy sliders that would hit the king on an empty board.
+        let snipers = (attacks::pseudo_attacks(PieceType::Rook, ksq)
+            & (self.pieces(them, PieceType::Rook) | self.pieces(them, PieceType::Queen)))
+            | (attacks::pseudo_attacks(PieceType::Bishop, ksq)
+                & (self.pieces(them, PieceType::Bishop) | self.pieces(them, PieceType::Queen)));
+        // Snipers never block each other: lifting them all out of the
+        // occupancy lets a queen x-ray through a rook in front of it.
+        let occupancy = self.all_occupancy ^ snipers;
+
+        let mut blockers = Bitboard::EMPTY;
+        let mut pinners = Bitboard::EMPTY;
+        for sniper in snipers {
+            // `between` includes its target square, but every sniper was
+            // lifted out of `occupancy`, so `b` is exactly the pieces
+            // strictly between king and sniper.
+            let b = attacks::between(ksq, sniper) & occupancy;
+            if !b.is_empty() && !b.more_than_one() {
+                blockers |= b;
+                if !(b & self.occupancy(c)).is_empty() {
+                    pinners |= Bitboard::from_square(sniper);
+                }
+            }
+        }
+        (blockers, pinners)
+    }
+
+    /// Populate the check bookkeeping of `st` from the CURRENT board
+    /// (doc 04 §3.5): blockers/pinners around both kings, plus the squares
+    /// from which each piece type of the side to move would check the enemy
+    /// king. Called at setup and — once make/unmake land — at the end of
+    /// every make/null-move, AFTER `side_to_move` has been flipped. Does
+    /// NOT touch `st.checkers`; that is the caller's job (from scratch at
+    /// setup, incrementally in `make_move`). Both kings must exist.
+    fn set_check_info(&self, st: &mut StateInfo) {
+        for c in Color::ALL {
+            let (blockers, pinners) = self.slider_blockers(c);
+            st.blockers_for_king[c as usize] = blockers;
+            st.pinners[c.flip() as usize] = pinners;
+        }
+
+        let tables = attacks::tables();
+        let them = self.side_to_move.flip();
+        let ksq = self.king_square(them);
+        let occ = self.all_occupancy;
+        // Pawn attack symmetry again: an enemy pawn ON `ksq` attacks exactly
+        // the squares from which one of our pawns would check `ksq`.
+        st.check_squares[PieceType::Pawn as usize] = attacks::pawn_attacks(them, ksq);
+        st.check_squares[PieceType::Knight as usize] = attacks::knight_attacks(ksq);
+        st.check_squares[PieceType::Bishop as usize] = tables.bishop_attacks(ksq, occ);
+        st.check_squares[PieceType::Rook as usize] = tables.rook_attacks(ksq, occ);
+        st.check_squares[PieceType::Queen as usize] = st.check_squares[PieceType::Bishop as usize]
+            | st.check_squares[PieceType::Rook as usize];
+        st.check_squares[PieceType::King as usize] = Bitboard::EMPTY;
+    }
+
+    /// True when each side has at least one king — the precondition for any
+    /// check bookkeeping. False only for incomplete boards (`Board::empty`,
+    /// mid-construction tests); every position the engine plays on has
+    /// exactly one king per side.
+    fn has_both_kings(&self) -> bool {
+        !self.pieces(Color::White, PieceType::King).is_empty()
+            && !self.pieces(Color::Black, PieceType::King).is_empty()
     }
 
     /// Rule50 folding of the exposed key (doc 04 §3.4).
@@ -449,20 +551,17 @@ impl Board {
         self.init_state();
     }
 
-    /// From-scratch analogue of Stockfish's `set_state` (doc 04 §3.3–3.4):
-    /// recompute the six keys and non-pawn material for the current
-    /// placement plus the staged game-state fields (side to move, castling
-    /// rights, ep square) and overwrite the top state's derived fields.
-    /// `make_move` will maintain the same quantities incrementally; this
-    /// recompute is the drift oracle the debug consistency check compares
-    /// against (doc 04 §3.12).
-    ///
-    /// Check bookkeeping (checkers/blockers/pinners/check_squares) is
-    /// stubbed EMPTY until `attackers_to`/`set_check_info` land
-    /// (doc 04 §4 step 4).
+    /// From-scratch analogue of Stockfish's `set_state` (doc 04 §3.3–3.5):
+    /// recompute the six keys, non-pawn material, and the check bookkeeping
+    /// (checkers/blockers/pinners/check_squares) for the current placement
+    /// plus the staged game-state fields (side to move, castling rights, ep
+    /// square) and overwrite the top state's derived fields. `make_move`
+    /// will maintain the same quantities incrementally; this recompute is
+    /// the drift oracle the debug consistency check compares against
+    /// (doc 04 §3.12).
     fn init_state(&mut self) {
         let computed = self.computed_keys();
-        let st = self.st_mut();
+        let mut st = *self.st();
         st.key = computed.key;
         st.copied.pawn_key = computed.pawn_key;
         st.copied.material_key = computed.material_key;
@@ -475,6 +574,15 @@ impl Board {
         st.check_squares = [Bitboard::EMPTY; 6];
         st.captured = None;
         st.repetition = 0;
+        // Check bookkeeping needs both kings; incomplete boards
+        // (`Board::empty()`, mid-construction tests) keep the empty stubs.
+        if self.has_both_kings() {
+            let stm = self.side_to_move;
+            st.checkers = self.attackers_to(self.king_square(stm), self.all_occupancy)
+                & self.occupancy(stm.flip());
+            self.set_check_info(&mut st);
+        }
+        *self.st_mut() = st;
     }
 
     /// Compute all six keys + material from scratch off the placement and
@@ -654,6 +762,11 @@ impl fmt::Display for Board {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Readable expected sets: `bb(&[Square::E4, Square::D5])`.
+    fn bb(squares: &[Square]) -> Bitboard {
+        squares.iter().copied().collect()
+    }
 
     #[test]
     fn put_piece_updates_all_layers() {
@@ -875,6 +988,159 @@ mod tests {
         assert_eq!(CastlingRights::WHITE_QUEENSIDE.index(), 1);
         assert_eq!(CastlingRights::BLACK_KINGSIDE.index(), 2);
         assert_eq!(CastlingRights::BLACK_QUEENSIDE.index(), 3);
+    }
+
+    // -----------------------------------------------------------------
+    // Doc 04 §4 step 4: attackers_to, slider_blockers, set_check_info
+    // -----------------------------------------------------------------
+
+    // One busy square attacked by every piece type of both colors: the
+    // rook/queen and bishop rays stop at (and include) the first occupied
+    // square, the leapers ignore occupancy entirely.
+    #[test]
+    fn attackers_to_sees_every_piece_type() {
+        let board = Board::from_fen("4r3/8/2nk1p2/7Q/5P2/5N2/1B6/4K3 w - - 0 1").unwrap();
+        assert_eq!(
+            board.attackers_to(Square::E5, board.all_occupancy()),
+            bb(&[
+                Square::E8, // black rook down the open e-file
+                Square::H5, // white queen along rank 5
+                Square::B2, // white bishop, b2-c3-d4 all empty
+                Square::F6, // black pawn
+                Square::F4, // white pawn
+                Square::C6, // black knight
+                Square::F3, // white knight
+                Square::D6, // black king
+            ])
+        );
+        // The same rook also checks the white king: init_state derived it.
+        assert_eq!(board.checkers(), bb(&[Square::E8]));
+    }
+
+    // The `occupied` parameter shapes only the slider rays; lifting a
+    // blocker out exposes the x-ray piece behind it while the piece
+    // bitboards still supply both attackers (the SEE battery walk).
+    #[test]
+    fn attackers_to_exposes_xrays_under_reduced_occupancy() {
+        let board = Board::from_fen("4k3/8/8/8/4R3/8/8/4R2K b - - 0 1").unwrap();
+        let all = board.all_occupancy();
+        assert_eq!(board.attackers_to(Square::E8, all), bb(&[Square::E4]));
+        assert_eq!(
+            board.attackers_to(Square::E8, all ^ Bitboard::from_square(Square::E4)),
+            bb(&[Square::E4, Square::E1])
+        );
+        // Black to move and in check from the front rook only.
+        assert_eq!(board.checkers(), bb(&[Square::E4]));
+    }
+
+    #[test]
+    fn checkers_detects_double_check() {
+        // Corpus classic: knight on d6 and rook on e1 both hit e8.
+        let board = Board::from_fen("4k3/8/3N4/8/8/8/8/4RK2 b - - 0 1").unwrap();
+        assert_eq!(board.checkers(), bb(&[Square::D6, Square::E1]));
+        assert!(Board::startpos().checkers().is_empty());
+    }
+
+    // Friendly blocker: the pinned piece lands in blockers_for_king(c) and
+    // the sniper in pinners(!c).
+    #[test]
+    fn slider_blockers_vertical_pin() {
+        let board = Board::from_fen("4r2k/8/8/8/8/8/4N3/4K3 w - - 0 1").unwrap();
+        assert_eq!(board.blockers_for_king(Color::White), bb(&[Square::E2]));
+        assert_eq!(board.pinners(Color::Black), bb(&[Square::E8]));
+        assert_eq!(board.blockers_for_king(Color::Black), Bitboard::EMPTY);
+        assert_eq!(board.pinners(Color::White), Bitboard::EMPTY);
+        assert!(board.checkers().is_empty());
+    }
+
+    #[test]
+    fn slider_blockers_diagonal_pin() {
+        let board = Board::from_fen("7k/8/8/8/7b/8/5P2/4K3 w - - 0 1").unwrap();
+        assert_eq!(board.blockers_for_king(Color::White), bb(&[Square::F2]));
+        assert_eq!(board.pinners(Color::Black), bb(&[Square::H4]));
+    }
+
+    // Enemy blocker: a discovered-check candidate — it lands in
+    // blockers_for_king (blockers hold pieces of BOTH colors) but its
+    // sniper is NOT a pinner (the blocker is not friendly to the king).
+    #[test]
+    fn slider_blockers_discovered_check_candidate() {
+        let board = Board::from_fen("4r2k/8/8/4n3/8/8/8/4K3 w - - 0 1").unwrap();
+        assert_eq!(board.blockers_for_king(Color::White), bb(&[Square::E5]));
+        assert_eq!(board.pinners(Color::Black), Bitboard::EMPTY);
+    }
+
+    // Two pieces between king and sniper: neither is a blocker.
+    #[test]
+    fn slider_blockers_need_a_sole_blocker() {
+        let board = Board::from_fen("4r2k/8/8/4n3/8/4N3/8/4K3 w - - 0 1").unwrap();
+        assert_eq!(board.blockers_for_king(Color::White), Bitboard::EMPTY);
+        assert_eq!(board.pinners(Color::Black), Bitboard::EMPTY);
+    }
+
+    // Stacked snipers (queen behind rook): snipers are lifted out of the
+    // occupancy together, so BOTH register as pinners of the sole blocker —
+    // the SF convention this implementation pins down.
+    #[test]
+    fn slider_blockers_xray_through_stacked_snipers() {
+        let board = Board::from_fen("4q2k/4r3/8/8/8/8/4B3/4K3 w - - 0 1").unwrap();
+        assert_eq!(board.blockers_for_king(Color::White), bb(&[Square::E2]));
+        assert_eq!(board.pinners(Color::Black), bb(&[Square::E7, Square::E8]));
+    }
+
+    // The mirror orientation: a white sniper pinning a black piece fills
+    // blockers_for_king(Black) and pinners(White).
+    #[test]
+    fn slider_blockers_white_pins_black() {
+        let board = Board::from_fen("4k3/8/4n3/8/8/8/4Q3/6K1 b - - 0 1").unwrap();
+        assert_eq!(board.blockers_for_king(Color::Black), bb(&[Square::E6]));
+        assert_eq!(board.pinners(Color::White), bb(&[Square::E2]));
+        assert!(board.checkers().is_empty());
+    }
+
+    // check_squares: from-squares that would check the ENEMY king, per
+    // piece type of the side to move, under the current occupancy.
+    #[test]
+    fn check_squares_on_startpos() {
+        let board = Board::startpos(); // white to move, target king on e8
+        assert_eq!(
+            board.check_squares(PieceType::Pawn),
+            bb(&[Square::D7, Square::F7])
+        );
+        assert_eq!(
+            board.check_squares(PieceType::Knight),
+            bb(&[Square::C7, Square::D6, Square::F6, Square::G7])
+        );
+        // Sliders stop at (and include) the first occupied square.
+        assert_eq!(
+            board.check_squares(PieceType::Bishop),
+            bb(&[Square::D7, Square::F7])
+        );
+        assert_eq!(
+            board.check_squares(PieceType::Rook),
+            bb(&[Square::D8, Square::E7, Square::F8])
+        );
+        assert_eq!(
+            board.check_squares(PieceType::Queen),
+            board.check_squares(PieceType::Bishop) | board.check_squares(PieceType::Rook)
+        );
+        assert_eq!(board.check_squares(PieceType::King), Bitboard::EMPTY);
+    }
+
+    // Orientation: with Black to move the target is the WHITE king, and the
+    // pawn entry uses white-pawn attack symmetry (a black pawn on d2 or f2
+    // checks e1).
+    #[test]
+    fn check_squares_orientation_for_black() {
+        let board = Board::from_fen("4k3/8/8/8/8/8/8/4K3 b - - 0 1").unwrap();
+        assert_eq!(
+            board.check_squares(PieceType::Pawn),
+            bb(&[Square::D2, Square::F2])
+        );
+        assert_eq!(
+            board.check_squares(PieceType::Knight),
+            bb(&[Square::C2, Square::D3, Square::F3, Square::G2])
+        );
     }
 
     #[test]

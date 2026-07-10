@@ -99,7 +99,11 @@ K1k5/8/P7/8/8/8/8/8 w - - 0 1
 8/8/2k5/5q2/5n2/8/5K2/8 b - - 0 1
 
 # --- En-passant pin trickery (perft classics) ---
+# The first Qh4 position originally carries "d3", but exd3 is illegal (the
+# capture opens the a4-h4 rank onto Black's own king), so the canonical
+# form per design/04 §3.7 condition d drops the ep square. In the Bc5
+# position cxd3 is legal and the ep square survives.
 3k4/3p4/8/K1P4r/8/8/8/8 b - - 0 1
-8/8/8/8/k2Pp2Q/8/8/3K4 b - d3 0 1
+8/8/8/8/k2Pp2Q/8/8/3K4 b - - 0 1
 8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1
 8/8/4k3/8/2p5/8/B2P2K1/8 w - - 0 1
