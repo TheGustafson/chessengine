@@ -17,6 +17,7 @@
 // justification and a `// SAFETY:` comment on each block.
 #![deny(unsafe_code)]
 
+pub mod attacks;
 pub mod bench;
 pub mod bitboard;
 pub mod board;
