@@ -215,6 +215,32 @@ struct ComputedKeys {
     non_pawn_material: [Value; 2],
 }
 
+/// Hook points inside [`Board::make_move_with`] (doc 04 §3.10). D10 pins the
+/// public `make_move(m, gives_check)` signature, so prefetch targets can't be
+/// parameters — the TT (and later the history tables and NNUE dirty-piece
+/// recording, D21) attach through this trait instead. It is monomorphized per
+/// hook type and the default bodies are empty `#[inline]` no-ops, so the
+/// [`NoHooks`] path compiles away entirely: the seam is bench-neutral by
+/// construction.
+pub trait MakeMoveHooks {
+    /// Hook A: the child's full key is final (rule50-folded — the TT probe
+    /// key) while board mutation is still in flight. The TT prefetches its
+    /// cluster here.
+    #[inline]
+    fn on_key(&mut self, _key: Key) {}
+
+    /// Hook B: the child's specialized keys are final. History/correction
+    /// tables prefetch their entries here.
+    #[inline]
+    fn on_state(&mut self, _copied: &CopiedState) {}
+}
+
+/// The default no-op hooks: [`Board::make_move`] delegates through this, and
+/// the empty inline bodies monomorphize to nothing.
+pub struct NoHooks;
+
+impl MakeMoveHooks for NoHooks {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Board {
     // Primary representation: bitboards.
@@ -799,6 +825,14 @@ impl Board {
     /// square is set (and hashed) ONLY when an ep capture will actually be
     /// legal (D9).
     pub fn make_move(&mut self, m: Move, gives_check: bool) {
+        self.make_move_with(m, gives_check, &mut NoHooks);
+    }
+
+    /// [`Board::make_move`] with prefetch/NNUE hook points (doc 04 §3.10).
+    /// Same contract; `hooks` receives the child keys mid-make so consumers
+    /// can overlap memory prefetches with the rest of the move. The
+    /// [`NoHooks`] instantiation is exactly `make_move`.
+    pub fn make_move_with<H: MakeMoveHooks>(&mut self, m: Move, gives_check: bool, hooks: &mut H) {
         // Step 1: derive the child key from the parent's, and copy the
         // carried-over prefix block — this assignment IS Stockfish's
         // "memcpy up to key" (D8). The push happens at the very end, so
@@ -965,9 +999,16 @@ impl Board {
             }
         }
 
-        // Step 9: the child key is final. (Prefetch hook points A/B attach
-        // here when the hook seam lands — doc 04 §3.10, §4 step 10.)
+        // Step 9: the child key is final. Hook A gets the TT probe key:
+        // folded with the STANDARD threshold on the in-flight clock, which
+        // is already exact here (incremented in step 2, zeroed by steps
+        // 5/8). NOT `fold_rule50_after` — that models "parent clock + 1",
+        // which is wrong after any capture or pawn move and exists solely
+        // for the speculative [`Board::prefetch_key`] (doc 04 §3.8 step 9).
         st.key = k;
+        hooks.on_key(zobrist::fold_rule50(k, st.copied.rule50));
+        // Hook B: the specialized keys are final too.
+        hooks.on_state(&st.copied);
 
         // Step 10: board mutation (castling already mutated in step 4).
         if m.kind() != MoveKind::Castling {
@@ -1003,11 +1044,34 @@ impl Board {
         self.side_to_move = them;
         self.set_check_info(&mut st);
 
-        // Step 13: repetition scan — lands with the null-move/repetition
-        // step (doc 04 §4 step 7); until then every state reports 0.
+        // Step 13: repetition scan (doc 04 §3.9). The window is
+        // min(rule50, plies_from_null): a capture/pawn move makes earlier
+        // positions unreachable, and a null move must isolate the scan on
+        // its side of the boundary. RAW keys — rule50 folding is TT-only.
+        // `plies_from_null` never exceeds the plies recorded on this stack,
+        // so `n - i` cannot underflow (doc 04 §3.3).
+        st.repetition = 0;
+        let end = st.copied.rule50.min(st.copied.plies_from_null);
+        if end >= 4 {
+            let n = self.states.len(); // the new state's index once pushed
+            let mut i = 4;
+            while i <= end {
+                let earlier = &self.states[n - i as usize];
+                if earlier.key == st.key {
+                    // +d: first repeat, d plies back. -d: that occurrence
+                    // was itself a repeat — at least threefold.
+                    st.repetition = if earlier.repetition != 0 { -i } else { i };
+                    break;
+                }
+                i += 2;
+            }
+        }
 
-        // Step 14: publish.
+        // Step 14: publish. Debug builds run the full invariant oracle at
+        // every node (doc 04 §3.12, D24); release compiles it out.
         self.states.push(st);
+        #[cfg(debug_assertions)]
+        self.assert_consistent();
     }
 
     /// Undo the last made move, which must be `m` (doc 04 §3.8).
@@ -1055,11 +1119,144 @@ impl Board {
                 self.put_piece(cap, capsq);
             }
         }
+        #[cfg(debug_assertions)]
+        self.assert_consistent();
     }
 
-    /// Check that the bitboards and mailbox agree. Test-only invariant check.
-    #[cfg(test)]
+    /// Switch the side to move without moving anything (doc 04 §3.8, SF
+    /// `do_null_move`) — the primitive behind null-move pruning. The side
+    /// to move must NOT be in check.
+    ///
+    /// Copies the ENTIRE top state (both blocks — this is why `StateInfo:
+    /// Copy`), then: ep cleared (with its key XOR), side key toggled,
+    /// `plies_from_null` reset to 0 (which isolates repetition scans across
+    /// the null boundary), check bookkeeping rebuilt for the new side.
+    /// `rule50` and `game_ply` are deliberately unchanged (SF behavior).
+    pub fn make_null_move(&mut self) {
+        debug_assert!(self.checkers().is_empty(), "make_null_move while in check");
+        let mut st = *self.st();
+        if let Some(ep) = st.copied.ep_square.take() {
+            st.key ^= ZOBRIST.en_passant[ep.file() as usize];
+        }
+        st.key ^= ZOBRIST.side;
+        st.copied.plies_from_null = 0;
+        st.captured = None;
+        st.repetition = 0;
+        self.side_to_move = self.side_to_move.flip();
+        // `st.checkers` keeps the copied EMPTY set: the mover wasn't in
+        // check (precondition) and the new side's king can't be either —
+        // it wasn't attackable while the opponent was to move.
+        self.set_check_info(&mut st);
+        self.states.push(st);
+        #[cfg(debug_assertions)]
+        self.assert_consistent();
+    }
+
+    /// Undo the last [`Board::make_null_move`]: pop the state, flip back.
+    pub fn unmake_null_move(&mut self) {
+        debug_assert!(
+            self.checkers().is_empty(),
+            "unmake_null_move while in check"
+        );
+        self.states.pop();
+        debug_assert!(
+            !self.states.is_empty(),
+            "unmake_null_move must leave the root state"
+        );
+        self.side_to_move = self.side_to_move.flip();
+        #[cfg(debug_assertions)]
+        self.assert_consistent();
+    }
+
+    /// Approximate child key for `m` BEFORE making it (doc 04 §3.10, SF
+    /// `prefetch_key`): `side ^ mover from/to ^ captured@to`, rule50-folded
+    /// with the after-move threshold for quiet non-pawn moves. Search uses
+    /// it to start the TT prefetch even earlier than hook A.
+    ///
+    /// Exact — equal to the child's [`Board::key`] — for `Normal` moves
+    /// that neither clear a parent ep square nor change castling rights;
+    /// castling/ep/promotion details are deliberately ignored (a slightly
+    /// wrong prefetch address costs nothing).
+    pub fn prefetch_key(&self, m: Move) -> Key {
+        let pc = self
+            .piece_on(m.from())
+            .expect("prefetch_key: no piece on the from-square");
+        let captured = self.piece_on(m.to());
+        let mut k = self.raw_key()
+            ^ ZOBRIST.side
+            ^ ZOBRIST.psq[pc.index()][m.from().index() as usize]
+            ^ ZOBRIST.psq[pc.index()][m.to().index() as usize];
+        if let Some(cap) = captured {
+            k ^= ZOBRIST.psq[cap.index()][m.to().index() as usize];
+        }
+        // Captures and pawn moves reset the child clock, so its key is raw;
+        // otherwise fold with threshold 13, modeling "parent rule50 + 1".
+        if captured.is_some() || pc.piece_type == PieceType::Pawn {
+            k
+        } else {
+            zobrist::fold_rule50_after(k, self.st().copied.rule50)
+        }
+    }
+
+    /// Draw by the 50-move rule or by repetition, relative to the search
+    /// ply (doc 04 §3.9). Search scores a true result as `VALUE_DRAW`.
+    pub fn is_draw(&self, ply: i32) -> bool {
+        let st = self.st();
+        // 50-move rule, guarded: a mating move ON the 100th halfmove still
+        // wins, so being in check blocks the claim for now.
+        // TODO(P3, design/05-movegen.md): the full guard is
+        // `st.checkers.is_empty() || self.has_legal_moves()` — in check on
+        // a full clock, the draw stands unless it is checkmate (doc 04
+        // §9.3 keeps the conservative branch until movegen lands).
+        if st.copied.rule50 > 99 && st.checkers.is_empty() {
+            return true;
+        }
+        self.is_repetition(ply)
+    }
+
+    /// Repetition draw relative to the search ply: the position repeated
+    /// once strictly INSIDE the search tree (`0 < repetition < ply`), or
+    /// repeated twice anywhere — the negative "at least threefold" encoding
+    /// is always `< ply` (doc 04 §3.9).
+    pub fn is_repetition(&self, ply: i32) -> bool {
+        let r = self.st().repetition;
+        r != 0 && r < ply
+    }
+
+    /// Has the current position — or any ancestor since the last
+    /// irreversible move — already repeated? Search bookkeeping (SF
+    /// `has_repeated`); the walk shares the repetition scan's
+    /// `min(rule50, plies_from_null)` window and shrinks it by one per
+    /// step back.
+    pub fn has_repeated(&self) -> bool {
+        let copied = &self.st().copied;
+        let mut end = copied.rule50.min(copied.plies_from_null);
+        // `end <= plies_from_null <= top index`, and both shrink in
+        // lockstep, so `idx` cannot underflow.
+        let mut idx = self.states.len() - 1;
+        while end >= 4 {
+            if self.states[idx].repetition != 0 {
+                return true;
+            }
+            idx -= 1;
+            end -= 1;
+        }
+        false
+    }
+
+    /// The full position invariant oracle (doc 04 §3.12): placement layers
+    /// in sync, state stack sane, every incremental key equal to a
+    /// from-scratch recompute, structural chess sanity, and the check
+    /// bookkeeping equal to a recompute. Make/unmake (moves and nulls) run
+    /// it at every node in debug builds, so a debug perft run exercises it
+    /// everywhere (D24); release builds compile it out entirely.
+    ///
+    /// Position-level checks assume a playable position; incomplete boards
+    /// (`Board::empty()`, mid-construction `put_piece` tests) get only the
+    /// placement-layer and stack checks.
+    #[cfg(any(test, debug_assertions))]
     pub(crate) fn assert_consistent(&self) {
+        // --- Placement layers: bitboards vs mailbox vs occupancy ---------
         let mut white = Bitboard::EMPTY;
         let mut black = Bitboard::EMPTY;
         for color in Color::ALL {
@@ -1085,11 +1282,99 @@ impl Board {
         let mailbox_count = self.mailbox.iter().filter(|p| p.is_some()).count();
         assert_eq!(mailbox_count as u32, self.all_occupancy().count());
 
-        // State-stack sanity (doc 04 §3.3): never empty, sane counters.
+        // --- State stack (doc 04 §3.3): never empty, sane counters -------
         assert!(!self.states.is_empty(), "state stack must never be empty");
-        assert!(self.st().copied.rule50 >= 0);
-        assert!(self.st().copied.plies_from_null >= 0);
+        let st = self.st();
+        assert!(st.copied.rule50 >= 0);
+        assert!(st.copied.plies_from_null >= 0);
+        // The repetition scan indexes `plies_from_null` states back.
+        assert!(
+            st.copied.plies_from_null < self.states.len() as i32,
+            "plies_from_null must not exceed the recorded history"
+        );
         assert!(self.game_ply >= 0);
+
+        // Everything below assumes a playable position.
+        if !self.has_both_kings() {
+            return;
+        }
+
+        // --- Keys: all six incremental values vs from-scratch recompute --
+        self.assert_state_keys_consistent();
+
+        // --- Structural sanity --------------------------------------------
+        for color in Color::ALL {
+            assert_eq!(
+                self.pieces(color, PieceType::King).count(),
+                1,
+                "{color:?} must have exactly one king"
+            );
+        }
+        assert!(
+            (self.pieces_of_type(PieceType::Pawn) & (Bitboard::RANK_1 | Bitboard::RANK_8))
+                .is_empty(),
+            "no pawns on ranks 1/8"
+        );
+        for right in [
+            CastlingRights::WHITE_KINGSIDE,
+            CastlingRights::WHITE_QUEENSIDE,
+            CastlingRights::BLACK_KINGSIDE,
+            CastlingRights::BLACK_QUEENSIDE,
+        ] {
+            if st.copied.castling_rights.contains(right) {
+                let color = if right.index() < 2 {
+                    Color::White
+                } else {
+                    Color::Black
+                };
+                assert_eq!(
+                    self.king_square(color),
+                    Square::E1.relative_to(color),
+                    "castling right {right} without the king at home"
+                );
+                let rook_sq = self.castling_rook_square[right.index()];
+                assert_eq!(
+                    self.piece_on(rook_sq),
+                    Some(Piece::new(color, PieceType::Rook)),
+                    "castling right {right} without its rook on {rook_sq}"
+                );
+            }
+        }
+        if let Some(ep) = st.copied.ep_square {
+            let us = self.side_to_move;
+            let them = us.flip();
+            assert_eq!(ep.relative_rank(us), 5, "ep square {ep} on the wrong rank");
+            assert_eq!(
+                self.piece_on(ep.offset(them.pawn_push())),
+                Some(Piece::new(them, PieceType::Pawn)),
+                "ep square {ep} without the double-pushed pawn in front"
+            );
+            assert!(self.piece_on(ep).is_none(), "ep square {ep} must be empty");
+            assert!(
+                self.piece_on(ep.offset(us.pawn_push())).is_none(),
+                "ep origin behind {ep} must be empty"
+            );
+        }
+
+        // --- Check bookkeeping vs from-scratch recompute ------------------
+        let stm = self.side_to_move;
+        assert_eq!(
+            st.checkers,
+            self.attackers_to(self.king_square(stm), self.all_occupancy)
+                & self.occupancy(stm.flip()),
+            "checkers drifted"
+        );
+        let mut expected = *st;
+        self.set_check_info(&mut expected);
+        assert_eq!(
+            st.blockers_for_king, expected.blockers_for_king,
+            "blockers_for_king drifted"
+        );
+        assert_eq!(st.pinners, expected.pinners, "pinners drifted");
+        assert_eq!(
+            st.check_squares, expected.check_squares,
+            "check_squares drifted"
+        );
     }
 }
 
@@ -1274,9 +1559,12 @@ mod tests {
         assert_eq!(clone, board);
         assert_eq!(clone.key(), board.key());
 
-        // Diverge the clone; the original must be untouched.
-        clone.remove_piece(Square::E2);
+        // Diverge the clone through the real mutation path (a bare
+        // remove_piece would leave stale keys — exactly what the oracle
+        // exists to catch); the original must be untouched.
+        clone.make_move(Move::normal(Square::E2, Square::E4), false);
         assert_ne!(clone, board);
+        assert_eq!(clone.piece_on(Square::E2), None);
         assert_eq!(
             board.piece_on(Square::E2),
             Some(Piece::new(Color::White, PieceType::Pawn))
@@ -2041,5 +2329,336 @@ mod tests {
         ]);
         assert_eq!(home.raw_key(), Board::startpos().raw_key());
         assert_ne!(home.rule50_count(), 0);
+    }
+
+    // -----------------------------------------------------------------
+    // Doc 04 §4 step 7: null moves, repetition, draws
+    // -----------------------------------------------------------------
+
+    /// Four plies of knight shuffling that land back on the same position.
+    fn knight_shuffle() -> [Move; 4] {
+        [
+            Move::normal(Square::G1, Square::F3),
+            Move::normal(Square::G8, Square::F6),
+            Move::normal(Square::F3, Square::G1),
+            Move::normal(Square::F6, Square::G8),
+        ]
+    }
+
+    // Doc 04 §5 null move: key = old ^ side ^ (ep key if any); rule50 and
+    // game_ply hold; plies_from_null resets; unmake restores full equality.
+    #[test]
+    fn null_move_key_toggle_and_roundtrip() {
+        // No ep square: the raw key toggles exactly the side key.
+        let mut board = Board::startpos();
+        make_checked(&mut board, Move::normal(Square::G1, Square::F3));
+        let before = board.clone();
+        assert_eq!(before.states.last().unwrap().copied.plies_from_null, 1);
+        board.make_null_move();
+        board.assert_consistent();
+        assert_eq!(board.raw_key(), before.raw_key() ^ ZOBRIST.side);
+        assert_eq!(board.side_to_move(), Color::White);
+        assert_eq!(board.rule50_count(), before.rule50_count());
+        assert_eq!(board.game_ply(), before.game_ply());
+        assert_eq!(board.states.last().unwrap().copied.plies_from_null, 0);
+        assert!(board.checkers().is_empty());
+        assert_eq!(board.captured_piece(), None);
+        board.unmake_null_move();
+        assert_eq!(board, before);
+
+        // With a legal ep square: its FILE key toggles out too, and the
+        // child has no ep square (a null move forfeits the capture).
+        let mut board =
+            Board::from_fen("rnbqkbnr/ppp1pppp/8/8/3pP3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 2")
+                .unwrap();
+        assert_eq!(board.en_passant_square(), Some(Square::E3));
+        let before = board.clone();
+        board.make_null_move();
+        board.assert_consistent();
+        assert_eq!(
+            board.raw_key(),
+            before.raw_key() ^ ZOBRIST.side ^ ZOBRIST.en_passant[Square::E3.file() as usize]
+        );
+        assert_eq!(board.en_passant_square(), None);
+        board.unmake_null_move();
+        assert_eq!(board, before);
+    }
+
+    // Doc 04 §5 repetition: the shuffle produces +d, then -d; is_draw is
+    // ply-relative (in-tree twofold draws, root-side twofold does not,
+    // threefold draws anywhere); unmaking rewinds cleanly.
+    #[test]
+    fn repetition_encoding_and_ply_relative_draw() {
+        let mut board = Board::startpos();
+        for m in knight_shuffle() {
+            assert!(!board.has_repeated());
+            make_checked(&mut board, m);
+        }
+        // First return: +distance.
+        assert_eq!(board.states.last().unwrap().repetition, 4);
+        assert_eq!(board.raw_key(), Board::startpos().raw_key());
+        assert!(board.has_repeated());
+        // Strictly inside the search tree (repetition < ply) it is a draw;
+        // at the boundary or root a single repeat is not (yet).
+        assert!(board.is_repetition(5));
+        assert!(board.is_draw(5));
+        assert!(!board.is_repetition(4));
+        assert!(!board.is_draw(4));
+        assert!(!board.is_draw(0));
+
+        // Second return: -distance (the earlier occurrence was itself a
+        // repeat, i.e. at least threefold) — a draw at ANY ply.
+        for m in knight_shuffle() {
+            make_checked(&mut board, m);
+        }
+        assert_eq!(board.states.last().unwrap().repetition, -4);
+        assert!(board.is_repetition(0));
+        assert!(board.is_draw(0));
+
+        // Unmake rewinds everything back to a repetition-free start.
+        for m in knight_shuffle().into_iter().rev() {
+            board.unmake_move(m);
+        }
+        for m in knight_shuffle().into_iter().rev() {
+            board.unmake_move(m);
+        }
+        assert_eq!(board, Board::startpos());
+        assert!(!board.has_repeated());
+    }
+
+    // Doc 04 §5: the scan window is min(rule50, plies_from_null) — a null
+    // move cuts it even when the clock alone would allow the match.
+    #[test]
+    fn repetition_window_cut_by_null_move() {
+        // Mature clock at the root so rule50 does NOT clip the window.
+        let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 10 6";
+        let mut board = Board::from_fen(fen).unwrap();
+        let root_key = board.raw_key();
+        board.make_null_move();
+        make_checked(&mut board, Move::normal(Square::B8, Square::C6));
+        board.make_null_move();
+        make_checked(&mut board, Move::normal(Square::C6, Square::B8));
+        // The position genuinely equals the root (the two null side-toggles
+        // cancel) — but positions on the far side of a null are unreachable
+        // by real play, so the reset plies_from_null clips the scan.
+        assert_eq!(board.raw_key(), root_key);
+        assert_eq!(board.states.last().unwrap().repetition, 0);
+        assert!(!board.has_repeated());
+        assert!(!board.is_draw(4));
+    }
+
+    // Doc 04 §5: a capture zeroes rule50, cutting the window — earlier
+    // repeats stop counting, later ones are detected as usual.
+    #[test]
+    fn repetition_window_cut_by_capture() {
+        let fen = "4k3/8/7p/8/8/8/8/4K2R w - - 0 1";
+        let mut board = Board::from_fen(fen).unwrap();
+        for m in [
+            Move::normal(Square::H1, Square::H2),
+            Move::normal(Square::E8, Square::D8),
+            Move::normal(Square::H2, Square::H1),
+            Move::normal(Square::D8, Square::E8),
+        ] {
+            make_checked(&mut board, m);
+        }
+        assert_eq!(board.states.last().unwrap().repetition, 4);
+        assert!(board.has_repeated());
+
+        // RxP: irreversible — the accumulated repeat is out of the window.
+        make_checked(&mut board, Move::normal(Square::H1, Square::H6));
+        assert_eq!(board.states.last().unwrap().repetition, 0);
+        assert!(!board.has_repeated());
+
+        // Repeats of POST-capture positions count again.
+        for m in [
+            Move::normal(Square::E8, Square::D8),
+            Move::normal(Square::H6, Square::H1),
+            Move::normal(Square::D8, Square::E8),
+            Move::normal(Square::H1, Square::H6),
+        ] {
+            make_checked(&mut board, m);
+        }
+        assert_eq!(board.states.last().unwrap().repetition, 4);
+        assert!(board.is_draw(5));
+        assert!(!board.is_draw(0));
+    }
+
+    // Doc 04 §5: rule50 folding never hides a repetition — the scan
+    // compares RAW keys, so a repeat across fold buckets still counts.
+    #[test]
+    fn repetition_detected_across_rule50_fold_buckets() {
+        // Root at clock 12 (raw bucket); the repeat lands at 16 (folded).
+        let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 12 7";
+        let mut board = Board::from_fen(fen).unwrap();
+        let root = board.clone();
+        for m in knight_shuffle() {
+            make_checked(&mut board, m);
+        }
+        assert_eq!(board.raw_key(), root.raw_key());
+        assert_ne!(board.key(), root.key(), "clocks 12 vs 16 fold differently");
+        assert_eq!(board.states.last().unwrap().repetition, 4);
+        assert!(board.is_draw(5));
+    }
+
+    // Doc 04 §3.9: rule50 > 99 draws at any ply — unless the side to move
+    // is in check (a mating move on the 100th halfmove wins; the movegen
+    // "has legal moves" refinement is TODO(P3)).
+    #[test]
+    fn fifty_move_rule_draw_with_check_guard() {
+        let mut board = Board::from_fen("4k3/8/8/8/8/8/8/4K2R w - - 99 80").unwrap();
+        assert!(!board.is_draw(0), "clock 99 is not yet a draw");
+        make_checked(&mut board, Move::normal(Square::H1, Square::H2));
+        assert_eq!(board.rule50_count(), 100);
+        assert!(board.is_draw(0));
+        assert!(board.is_draw(100));
+
+        let board = Board::from_fen("4k3/8/8/8/8/8/4r3/4K3 w - - 100 80").unwrap();
+        assert!(!board.checkers().is_empty());
+        assert!(!board.is_draw(0), "in check on a full clock: no draw claim");
+    }
+
+    // -----------------------------------------------------------------
+    // Doc 04 §4 step 8: the oracle validates the validator
+    // -----------------------------------------------------------------
+
+    #[test]
+    #[should_panic(expected = "main key drifted")]
+    fn assert_consistent_catches_key_corruption() {
+        let mut board = Board::startpos();
+        board.states.last_mut().unwrap().key ^= 1;
+        board.assert_consistent();
+    }
+
+    #[test]
+    #[should_panic(expected = "pawn_key drifted")]
+    fn assert_consistent_catches_pawn_key_corruption() {
+        let mut board = Board::startpos();
+        board.states.last_mut().unwrap().copied.pawn_key ^= 1;
+        board.assert_consistent();
+    }
+
+    #[test]
+    #[should_panic(expected = "checkers drifted")]
+    fn assert_consistent_catches_checkers_corruption() {
+        let mut board = Board::startpos();
+        board.states.last_mut().unwrap().checkers = Bitboard::from_square(Square::E4);
+        board.assert_consistent();
+    }
+
+    #[test]
+    #[should_panic(expected = "blockers_for_king drifted")]
+    fn assert_consistent_catches_blockers_corruption() {
+        let mut board = Board::startpos();
+        board.states.last_mut().unwrap().blockers_for_king[Color::White as usize] =
+            Bitboard::from_square(Square::E2);
+        board.assert_consistent();
+    }
+
+    // -----------------------------------------------------------------
+    // Doc 04 §4 step 10: hook seam + prefetch_key
+    // -----------------------------------------------------------------
+
+    /// Test hooks that record what the seam reports.
+    #[derive(Default)]
+    struct RecordingHooks {
+        keys: Vec<Key>,
+        copied: Vec<CopiedState>,
+    }
+
+    impl MakeMoveHooks for RecordingHooks {
+        fn on_key(&mut self, key: Key) {
+            self.keys.push(key);
+        }
+        fn on_state(&mut self, copied: &CopiedState) {
+            self.copied.push(*copied);
+        }
+    }
+
+    // Doc 04 §5: make_move ≡ make_move_with(NoHooks); hook A sees exactly
+    // the child's TT probe key (folded on the child's EXACT clock), hook B
+    // the final CopiedState.
+    #[test]
+    fn hooks_seam_is_a_no_op_and_reports_final_keys() {
+        let moves = [
+            Move::normal(Square::E2, Square::E4),
+            Move::normal(Square::D7, Square::D5),
+            Move::normal(Square::E4, Square::D5), // capture
+            Move::normal(Square::D8, Square::D5), // recapture
+            Move::normal(Square::B1, Square::C3),
+        ];
+        let mut plain = Board::startpos();
+        let mut hooked = Board::startpos();
+        let mut hooks = RecordingHooks::default();
+        for m in moves {
+            let gives_check = plain.gives_check(m);
+            plain.make_move(m, gives_check);
+            hooked.make_move_with(m, gives_check, &mut hooks);
+            assert_eq!(hooked, plain, "hooked make diverged after {m}");
+            assert_eq!(
+                *hooks.keys.last().unwrap(),
+                hooked.key(),
+                "hook A must see the TT probe key after {m}"
+            );
+            assert_eq!(
+                hooks.copied.last().unwrap(),
+                &hooked.states.last().unwrap().copied,
+                "hook B must see the final CopiedState after {m}"
+            );
+        }
+        assert_eq!(hooks.keys.len(), moves.len());
+        assert_eq!(hooks.copied.len(), moves.len());
+        for m in moves.iter().rev() {
+            plain.unmake_move(*m);
+            hooked.unmake_move(*m);
+            assert_eq!(hooked, plain);
+        }
+
+        // Fold check on hook A: parent clock 13, quiet non-pawn move →
+        // child clock 14, first fold bucket (NOT the parent-clock fold)...
+        let mut board = Board::from_fen("4k3/8/8/8/8/8/P7/RN2K3 w - - 13 40").unwrap();
+        let mut hooks = RecordingHooks::default();
+        let m = Move::normal(Square::B1, Square::C3);
+        board.make_move_with(m, false, &mut hooks);
+        assert_eq!(hooks.keys[0], board.key());
+        assert_eq!(hooks.keys[0], zobrist::fold_rule50(board.raw_key(), 14));
+        assert_ne!(hooks.keys[0], board.raw_key());
+        board.unmake_move(m);
+        // ...while a pawn move resets the child clock: raw key.
+        let mut hooks = RecordingHooks::default();
+        board.make_move_with(Move::normal(Square::A2, Square::A3), false, &mut hooks);
+        assert_eq!(hooks.keys[0], board.raw_key());
+        assert_eq!(hooks.keys[0], board.key());
+    }
+
+    // Doc 04 §4 step 10: prefetch_key equals the real child key() on normal
+    // moves whose parent has no ep square and whose from/to touch no
+    // castling rights — including the rule50 fold interplay on both sides
+    // of the capture/pawn-move clock reset.
+    #[test]
+    fn prefetch_key_matches_child_key_on_normal_moves() {
+        let cases = [
+            // Quiet non-pawn moves: clock below, entering, and inside the
+            // fold region (child clock = parent + 1).
+            ("4k3/8/8/8/8/8/P7/RN2K3 w - - 0 1", Square::B1, Square::C3),
+            ("4k3/8/8/8/8/8/P7/RN2K3 w - - 13 40", Square::B1, Square::C3),
+            ("4k3/8/8/8/8/8/P7/RN2K3 w - - 20 40", Square::B1, Square::C3),
+            // Capture and pawn push on a mature clock: child key is raw.
+            (
+                "4k3/8/8/3p4/8/2N5/8/4K3 w - - 20 40",
+                Square::C3,
+                Square::D5,
+            ),
+            ("4k3/8/8/8/8/8/P7/RN2K3 w - - 20 40", Square::A2, Square::A3),
+            // A capture on a busy position (rights untouched: e5 -> g6).
+            (KIWIPETE, Square::E5, Square::G6),
+        ];
+        for (fen, from, to) in cases {
+            let m = Move::normal(from, to);
+            let mut board = Board::from_fen(fen).unwrap();
+            let predicted = board.prefetch_key(m);
+            let gives_check = board.gives_check(m);
+            board.make_move(m, gives_check);
+            assert_eq!(predicted, board.key(), "prefetch_key({fen}, {m})");
+        }
     }
 }

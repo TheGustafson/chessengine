@@ -92,7 +92,11 @@ Library crate + thin binary. Modules (re-exported at the crate root by
   so far — keep it that way unless there's a strong reason.
 - Tests: build positions with `Board::empty()` + `put_piece` or `from_fen`,
   never struct literals. Board-mutating tests should call
-  `board.assert_consistent()` (test-only) to cross-check bitboards vs mailbox.
+  `board.assert_consistent()` — the full invariant oracle (placement layers,
+  all six Zobrist keys vs from-scratch recompute, structural sanity, check
+  bookkeeping; doc 04 §3.12). It is compiled under
+  `cfg(any(test, debug_assertions))`, and make/unmake run it automatically
+  at every node in debug builds; release compiles it out.
   Use the named square constants (`Square::E4`) for readability.
 
 ## Stockfish reference
@@ -107,16 +111,18 @@ GPLv3; take ideas, reimplement idiomatically in Rust.
 
 Done: types, bitboards, board + FEN, `Move`/`MoveList`; attack tables (P1:
 const leapers + geometry, fancy magic sliders, exhaustively validated
-against the naive ray oracle, criterion-benchmarked); P2 in progress —
+against the naive ray oracle, criterion-benchmarked); P2 (SEE pending) —
 `zobrist` module (five-key family, all SF tricks), the
 `CopiedState`/`StateInfo` split with the `Vec<StateInfo>` state stack,
 from-scratch key computation at FEN setup, `attackers_to` + check/pin
-bookkeeping, legality-exact FEN ep validation, and `make_move(m,
+bookkeeping, legality-exact FEN ep validation, `make_move(m,
 gives_check)`/`unmake_move`/`gives_check(m)` for every move kind with all
-five Zobrist keys maintained incrementally (key-oracle-checked in tests).
+five Zobrist keys maintained incrementally, null moves, repetition
+detection + `is_draw`/`has_repeated`, the full `assert_consistent`
+invariant oracle wired into make/unmake in debug builds, and the
+bench-neutral `MakeMoveHooks` seam (`make_move_with`, `prefetch_key`) for
+the future TT/NNUE layers.
 
-Next (in rough dependency order): null move + repetition/`is_draw` (P2
-remainder), debug `assert_consistent` key oracle wired into make/unmake,
-movegen + perft validation, SEE, UCI loop, search, evaluation. Perft is the
-correctness oracle — no movegen/make-unmake change lands without matching
-known perft counts.
+Next (in rough dependency order): SEE (`see_ge`, P2/P4), movegen + perft
+validation, UCI loop, search, evaluation. Perft is the correctness oracle —
+no movegen/make-unmake change lands without matching known perft counts.
