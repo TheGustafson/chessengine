@@ -718,8 +718,10 @@ Each step is one commit, lands green (`cargo test`, `cargo clippy
 
 For all 4096 ordered pairs `(s1, s2)`:
 
-- `between(s1, s2)` always contains `s2`; equals exactly `{s2}` iff the pair
-  is unaligned or equal.
+- `between(s1, s2)` always contains `s2`; equals exactly `{s2}` iff the
+  strict-between set is empty — the pair is unaligned, equal, or
+  adjacent-aligned (the E1/E2 case below; amended during step 2, the original
+  "unaligned or equal" iff contradicted that bullet).
 - Aligned pairs: `between(s1, s2) ^ Bitboard::from_square(s2)` equals the
   independently recomputed strict-between set
   `naive(pt, s1, bit(s2)) & naive(pt, s2, bit(s1))` — i.e. the table agrees
