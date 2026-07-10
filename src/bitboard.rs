@@ -15,7 +15,7 @@ impl Bitboard {
     pub const RANK_1: Bitboard = Bitboard(0x0000_0000_0000_00FF);
     pub const RANK_8: Bitboard = Bitboard(0xFF00_0000_0000_0000);
 
-    /// FILES[0] is the a-file, FILES[7] the h-file.
+    /// `FILES[0]` is the a-file, `FILES[7]` the h-file.
     pub const FILES: [Bitboard; 8] = {
         let mut files = [Bitboard::EMPTY; 8];
         let mut i = 0;
@@ -26,7 +26,7 @@ impl Bitboard {
         files
     };
 
-    /// RANKS[0] is rank 1, RANKS[7] rank 8.
+    /// `RANKS[0]` is rank 1, `RANKS[7]` rank 8.
     pub const RANKS: [Bitboard; 8] = {
         let mut ranks = [Bitboard::EMPTY; 8];
         let mut i = 0;
