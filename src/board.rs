@@ -1508,6 +1508,37 @@ mod tests {
         const { assert!(size_of::<StateInfo>() <= 192) }
     }
 
+    // Doc 04 §8 item 7: make_move performs no heap allocation — the state
+    // stack is pre-reserved past MAX_PLY at construction (doc 04 §3.3), so a
+    // full search-depth walk of makes and nulls never grows it. Capacity
+    // equality is the observable for "no reallocation".
+    #[test]
+    fn state_stack_is_prereserved_and_never_reallocates() {
+        let mut board = Board::startpos();
+        let cap = board.states.capacity();
+        assert!(
+            cap >= MAX_PLY + 64,
+            "state stack must be reserved past MAX_PLY ({cap} < {})",
+            MAX_PLY + 64
+        );
+
+        // MAX_PLY - 6 real plies plus a few nulls: as deep as any search
+        // may stack states on top of the root.
+        for _ in 0..(MAX_PLY - 6) / 4 {
+            for m in knight_shuffle() {
+                board.make_move(m, false);
+            }
+        }
+        board.make_null_move();
+        board.make_null_move();
+        assert!(board.states.len() > MAX_PLY - 10);
+        assert_eq!(
+            board.states.capacity(),
+            cap,
+            "make_move/make_null_move must never reallocate the state stack"
+        );
+    }
+
     // Doc 04 §4 step 3: the root state exists from construction, the
     // accessors delegate to it, and even the empty board's keys are the
     // documented baselines (castling[0] is a real key; pawn_key starts at
