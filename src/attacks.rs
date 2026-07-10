@@ -4,7 +4,7 @@
 //! `sq` attack given occupancy `occ`?* Legality (pins, checks, castling) is
 //! movegen's job (design/05).
 //!
-//! Landed so far (doc 03 §4 steps 1–4): the `const fn` foundations
+//! All of doc 03 §4 (steps 1–5) has landed: the `const fn` foundations
 //! ([`safe_destination`] + the naive ray generator that serves as the
 //! module's correctness oracle), the compile-time leaper and empty-board
 //! slider tables (`KNIGHT_ATTACKS`, `KING_ATTACKS`, `PAWN_ATTACKS`,
@@ -16,8 +16,9 @@
 //! [`queen_attacks`] — or through a hoisted [`tables`] handle in hot loops.
 //! `uci::run` forces the `LazyLock` before any command runs (§3.7), and the
 //! full doc 03 §5 battery — every mask subset on every square, 10,000 mixed-
-//! density occupancies per square — guards it all. Still to come: the
-//! criterion bench (doc 03 §4 step 5).
+//! density occupancies per square — guards it all. `benches/attacks.rs`
+//! (criterion) records the lookup latencies; baselines live in
+//! `docs/perf-baseline.md`.
 //!
 //! All tables here are `static`, not `const`: a `const` is a value inlined
 //! (and potentially duplicated) at every use site, while a `static`
