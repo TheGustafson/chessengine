@@ -2,27 +2,34 @@
 //! (`design/07-search-core.md`) and the pruning/extension heuristics
 //! (`design/10-pruning-extensions.md`).
 //!
-//! Landed so far (design/07 §4 steps 1–4): the [`params`] constants module
+//! Landed so far (design/07 §4 steps 1–5): the [`params`] constants module
 //! (P0, design/01 §4 step 4), the per-ply search [`stack`] with PV lines
-//! (§3.2–§3.3, D18), [`rootmoves`] bookkeeping (§3.4), and the naked
-//! negamax + qsearch skeleton in this file: [`Worker`], the [`NodeType`]
-//! markers (§3.7.1), `search`/`qsearch` with the step-4 node subset —
+//! (§3.2–§3.3, D18), [`rootmoves`] bookkeeping (§3.4), the naked
+//! negamax + qsearch skeleton in this file — [`Worker`], the [`NodeType`]
+//! markers (§3.7.1), `search`/`qsearch` with the step-4 node subset:
 //! draw/max-ply handling with the [`value_draw`] dither, mate-distance
 //! pruning, full-window move loop over `generate_legal` with MVV-LVA
 //! placeholder ordering, PV updates, ply-relative mate/stalemate terminals
-//! (D5), node counting and the stop-flag seam (§3.9).
+//! (D5), node counting and the stop-flag seam (§3.9) — and the
+//! iterative-deepening driver with root bookkeeping (§3.5, step 5):
+//! [`build_root_moves`] with the `searchmoves` filter, per-iteration
+//! full-window root searches, previous-score snapshots, lastBestMove
+//! tracking, selDepth, `check_time` enforcement of the v1 hard limits
+//! (`depth`/`nodes`/`movetime`), and the [`SearchInfo`] callback seam the
+//! UCI layer turns into `info` lines (design/12 §3.13).
 //!
 //! Deliberately NOT here yet, per the doc's staging: the TT (§3.7.2 steps
 //! 5–7, plan step 6), the PVS zero-window three-call structure (step 7),
 //! aspiration windows (§3.6, step 8), the full qsearch rules (§3.8, step
-//! 9), the iterative-deepening driver + root bookkeeping (§3.5, step 5),
-//! and every ⟨D10⟩ heuristic slot.
+//! 9), the hygiene pass (forgotten mate, aborted loss, `go mate n`,
+//! equal-value dither — step 10), clock time management (doc 12 step 7,
+//! P7), and every ⟨D10⟩ heuristic slot.
 
 pub mod params;
 pub mod rootmoves;
 pub mod stack;
 
-pub use rootmoves::{RootMove, RootMoves, sort_descending};
+pub use rootmoves::{RootMove, RootMoves, build_root_moves, sort_descending};
 pub use stack::{ContHistId, PvLine, SS_OFFSET, STACK_SIZE, Stack, init_stack, ss, update_pv};
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -88,6 +95,30 @@ impl NodeType for NonPv {
     const PV: bool = false;
 }
 
+/// One completed PV line's report (design/07 §3.5): everything the UCI
+/// layer needs to format an `info depth ... pv ...` line (design/12 §3.13),
+/// borrowed straight out of the worker's root-move bookkeeping. The UCI
+/// layer adds `time`/`nps` itself from `Limits::start_time` and formats
+/// `score` (mate/cp split, design/12 §3.14).
+#[derive(Clone, Copy)]
+pub struct SearchInfo<'a> {
+    /// Root iteration depth.
+    pub depth: Depth,
+    /// Max ply this line reached, counted from 1 (§3.9).
+    pub sel_depth: i32,
+    /// 1-based MultiPV line index (always 1 in v1, §3.5).
+    pub multipv: usize,
+    /// The line's `uci_score`: clamped to the aspiration window on bounds
+    /// (never actually bound-flagged before plan step 8 lands).
+    pub score: Value,
+    pub lowerbound: bool,
+    pub upperbound: bool,
+    /// Nodes searched so far this `go` (single worker until SMP, D23).
+    pub nodes: u64,
+    /// The line itself; `pv[0]` is the root move.
+    pub pv: &'a [Move],
+}
+
 /// Per-thread search state (design/07 §3.10): one worker owns its board
 /// copy (D8, D23), stack, PV table and counters. Written single-threaded
 /// but SMP-shaped — no globals; the stop flag is a shared borrow.
@@ -118,10 +149,21 @@ pub struct Worker {
     pub best_move_changes: f64,
     /// What `go` asked for (design/12 §3.6).
     pub limits: Limits,
+    /// Best PV of the last iteration whose result was trusted (`!stop`),
+    /// §3.5. Persists across iterations so a `bestmove` is always
+    /// printable; the forgotten-mate / aborted-loss hygiene (plan step 10)
+    /// rolls back to it.
+    pub last_best_move_pv: Vec<Move>,
+    /// Score belonging to [`Self::last_best_move_pv`] (§3.5).
+    pub last_best_move_score: Value,
+    /// Iteration at which the best root move last changed — the
+    /// time-management stability signal (§3.5, doc 12 §3.9, P7).
+    pub last_best_move_depth: Depth,
     /// Per-thread eval state (design/11 §3.1); empty in Phase A.
     eval_ctx: EvalContext,
-    /// Countdown to the next real `check_time` (§3.9): reset to
-    /// [`params::CHECK_TIME_CALLS`].
+    /// Countdown to the next real `check_time` (§3.9): reloaded from
+    /// [`Worker::check_time_reset`] ([`params::CHECK_TIME_CALLS`], tighter
+    /// under a node limit).
     check_time_countdown: i32,
 }
 
@@ -142,59 +184,160 @@ impl Worker {
             pv_idx: 0,
             best_move_changes: 0.0,
             limits: Limits::new(),
+            last_best_move_pv: Vec::new(),
+            last_best_move_score: -VALUE_INFINITE,
+            last_best_move_depth: 0,
             eval_ctx: EvalContext::new(),
             check_time_countdown: params::CHECK_TIME_CALLS,
         }
     }
 
-    /// One fixed-depth, full-window search from the root — the pre-ID
-    /// skeleton entry (design/07 §4 step 4). The iterative-deepening
-    /// driver (§3.5, plan step 5) subsumes this: it will own the stack
-    /// init and per-iteration bookkeeping and call `search::<Root>` per
-    /// aspiration attempt. Until then, tests and `go depth n` drive this.
+    /// The iterative-deepening driver (design/07 §3.5), v1 scope: the
+    /// per-`go` entry point for every search mode. Builds the root move
+    /// list (with the `searchmoves` filter, design/12 §3.6), then deepens
+    /// one full-window root search at a time — the aspiration loop (§3.6)
+    /// replaces the inner search in plan step 8 — with the per-iteration
+    /// bookkeeping this phase owns: previous-score snapshots, stable
+    /// re-sorting, lastBestMove tracking and the instability accumulator.
     ///
     /// `stop` is the §3.9 stop seam: the UCI layer flips it from another
-    /// thread; a search that observes it returns untrusted values (the
-    /// consumers must be `!stop`-guarded, §3.5). The flag rides the call
-    /// stack as a shared borrow — the Rust-safe form of SF's global.
+    /// thread ("stop"/"quit"), `check_time` flips it on hard limits; a
+    /// search that observes it returns untrusted values, so every consumer
+    /// here is `!stop`-guarded. The flag rides the call stack as a shared
+    /// borrow — the Rust-safe form of SF's global.
     ///
-    /// `nodes` accumulates across calls (per-`go` reset is the driver's
-    /// job); the returned value is root-relative, mate scores ply-relative
-    /// from the root (D5).
-    pub fn search_root(&mut self, depth: Depth, stop: &AtomicBool) -> Value {
+    /// `on_info` is called once per completed PV line (never after a
+    /// stop); the UCI layer formats it into an `info` line (design/12
+    /// §3.13), so `go depth N` emits monotone depth reports for free. A
+    /// `&mut dyn FnMut` trait object: the callback fires once per
+    /// iteration (cold), and dynamic dispatch keeps `Worker` free of a
+    /// type parameter.
+    ///
+    /// On return, `root_moves[0]` holds the best move/PV/score — trusted
+    /// even after a mid-iteration stop, because root bookkeeping only
+    /// publishes completed subtree results (§3.9) and the stable sort
+    /// keeps stale-but-real scores ordered (§3.4). With no legal moves
+    /// (`root_moves` empty) it returns immediately; the UCI layer emits
+    /// `info depth 0` + `bestmove (none)` itself (design/12 §3.2 step 2).
+    pub fn iterative_deepening(&mut self, stop: &AtomicBool, on_info: &mut dyn FnMut(&SearchInfo)) {
+        // Per-`go` reset (§3.2.4, §3.9): stack, counters, root moves.
         init_stack(&mut self.stack);
+        self.nodes = 0;
         self.sel_depth = 0;
-        self.root_depth = depth.max(1);
-        // Full window until aspiration lands (§3.6, plan step 8).
-        self.root_delta = 2 * VALUE_INFINITE;
-        self.check_time_countdown = params::CHECK_TIME_CALLS;
-        self.search::<Root>(
-            stop,
-            -VALUE_INFINITE,
-            VALUE_INFINITE,
-            self.root_depth,
-            false,
-            0,
-        )
+        self.root_depth = 0;
+        self.pv_idx = 0;
+        self.best_move_changes = 0.0;
+        self.check_time_countdown = self.check_time_reset();
+        self.last_best_move_pv.clear();
+        self.last_best_move_score = -VALUE_INFINITE;
+        self.last_best_move_depth = 0;
+        self.root_moves = build_root_moves(&self.board, &self.limits.searchmoves);
+        if self.root_moves.is_empty() {
+            return; // mate/stalemate at the root: nothing to search
+        }
+        // histories.pre_age() hook (§3.5): lands with doc 09's tables.
+        // MultiPV is fixed at 1 until the UCI option lands (doc 12 step
+        // 10); the loop below is already shaped for it.
+        let multi_pv: usize = 1;
+        // Time-management instability input (doc 12 §3.9): halved every
+        // iteration, harvested from `best_move_changes`. Consumed by the
+        // soft-stop decision when clock TM lands (P7).
+        let mut tot_best_move_changes = 0.0f64;
+
+        while self.root_depth + 1 < MAX_PLY as Depth
+            && !stop.load(Ordering::Relaxed)
+            // `go depth d` (design/12 §3.6): stop iterating once reached.
+            && self.limits.depth.is_none_or(|d| self.root_depth < d)
+        {
+            self.root_depth += 1;
+            tot_best_move_changes /= 2.0; // age the instability metric
+
+            // Snapshot last iteration (§3.5).
+            for (idx, rm) in self.root_moves.iter_mut().enumerate() {
+                rm.previous_score = rm.score;
+                rm.previous_pv.clone_from(&rm.pv);
+                rm.previous_score_exact = idx < multi_pv;
+            }
+
+            for pv_idx in 0..multi_pv {
+                self.pv_idx = pv_idx;
+                self.sel_depth = 0; // per PV line (§3.9)
+                // v1: one full-window root search per iteration; the
+                // aspiration loop (§3.6, plan step 8) replaces this.
+                self.root_delta = 2 * VALUE_INFINITE;
+                self.search::<Root>(
+                    stop,
+                    -VALUE_INFINITE,
+                    VALUE_INFINITE,
+                    self.root_depth,
+                    false,
+                    0,
+                );
+                // Stable: unsearched moves keep last iteration's order
+                // (§3.4) — even on stop, results still sort safely.
+                sort_descending(&mut self.root_moves[pv_idx..]);
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                let rm = &self.root_moves[pv_idx];
+                on_info(&SearchInfo {
+                    depth: self.root_depth,
+                    sel_depth: rm.sel_depth,
+                    multipv: pv_idx + 1,
+                    score: rm.uci_score,
+                    lowerbound: rm.score_lowerbound,
+                    upperbound: rm.score_upperbound,
+                    nodes: self.nodes,
+                    pv: &rm.pv,
+                });
+            }
+
+            // lastBestMove tracking (§3.5); the forgotten-mate guard on
+            // the update joins with the hygiene pass (plan step 10).
+            if !stop.load(Ordering::Relaxed) {
+                if self.last_best_move_pv.first() != self.root_moves[0].pv.first() {
+                    self.last_best_move_depth = self.root_depth;
+                }
+                self.last_best_move_pv.clone_from(&self.root_moves[0].pv);
+                self.last_best_move_score = self.root_moves[0].score;
+            }
+
+            // Harvest the per-iteration instability signal (§3.5; doc 13
+            // §3.10 owns the SMP aggregation shape).
+            tot_best_move_changes += self.best_move_changes;
+            self.best_move_changes = 0.0;
+
+            // ⟨plan step 10⟩ forgotten-mate / aborted-loss hygiene and the
+            // `go mate n` stop live here.
+            // ⟨P7, doc 12 §3.9⟩ the TM soft-stop decision consumes
+            // tot_best_move_changes / last_best_move_depth / effort here.
+        }
+        // Until the P7 soft stop consumes it, read the accumulator
+        // explicitly so the per-iteration bookkeeping above stays
+        // exercised and warning-free.
+        let _ = tot_best_move_changes;
     }
 
-    /// The principal variation of the last completed root search
-    /// (`pv_table[0]`; empty if the root had no legal moves).
+    /// The best root line of the current `go` (`root_moves[0].pv`; empty
+    /// if the root has no legal moves). Trusted even after a stop (§3.5).
     pub fn root_pv(&self) -> &[Move] {
-        self.pv_table[0].as_slice()
+        self.root_moves.first().map_or(&[][..], |rm| &rm.pv)
     }
 
-    /// The best root move of the last completed search, if any.
+    /// The best root move of the current `go`, if any. Always printable
+    /// once `iterative_deepening` returns with legal moves present: the
+    /// root move list exists before any search happens (§3.9).
     pub fn best_move(&self) -> Option<Move> {
         self.root_pv().first().copied()
     }
 
-    /// The main search node (design/07 §3.7.2), step-4 subset: node order
-    /// steps 2/3/4/9/10/13/14 — no TT (steps 5–7, plan step 6), no ⟨D10⟩
-    /// heuristics (step 8), no root bookkeeping (step 12, plan step 5).
-    /// Step 10 is plain full-window negamax until the PVS three-call
-    /// structure lands (plan step 7), so PV nodes only ever spawn PV
-    /// children here.
+    /// The main search node (design/07 §3.7.2), v1 subset: node order
+    /// steps 2/3/4/9/10/11/12/13/14 — no TT (steps 5–7, plan step 6), no
+    /// ⟨D10⟩ heuristics (step 8), no equal-value dither in step 12 (plan
+    /// step 10). Step 10 is plain full-window negamax until the PVS
+    /// three-call structure lands (plan step 7), so PV nodes only ever
+    /// spawn PV children here — which also keeps `pv_table[1]` fresh for
+    /// every root move's step-12 PV rebuild.
     fn search<NT: NodeType>(
         &mut self,
         stop: &AtomicBool,
@@ -236,7 +379,7 @@ impl Worker {
         }
         // §3.9 cadence: every main-search node entry; qsearch relies on
         // these checks above it. (`follow_pv` semantics arrive with doc 10.)
-        self.check_time();
+        self.check_time(stop);
 
         if !NT::ROOT {
             // Step 3 — abort/draw/max-ply. A stop observed here returns
@@ -263,9 +406,23 @@ impl Worker {
         // generate_legal + placeholder ordering; legality is then checked
         // per move instead of up front. (`excluded_move` guard arrives
         // with doc 10's singular search — nothing writes it yet.)
+        //
+        // At the root the loop iterates `root_moves[pv_idx..]` itself
+        // (doc 07 §3.7.2 step 9's "skip moves outside the root list",
+        // v1 form): the ID loop's stable sort has last iteration's best
+        // in front, which is this phase's stand-in for the step-5 ttMove
+        // override — the MovePicker restores picker order + skip when
+        // doc 09 lands. Everything in `root_moves` is legal by
+        // construction, and `pv_last = root_moves.len()` until MultiPV.
         let mut list = MoveList::new();
-        generate_legal(&self.board, &mut list);
-        order_moves(&self.board, &mut list);
+        if NT::ROOT {
+            for rm in &self.root_moves[self.pv_idx..] {
+                list.push(rm.pv[0]);
+            }
+        } else {
+            generate_legal(&self.board, &mut list);
+            order_moves(&self.board, &mut list);
+        }
 
         let mut best_value = -VALUE_INFINITE;
         let mut move_count = 0;
@@ -273,6 +430,7 @@ impl Worker {
         for m in &list {
             move_count += 1;
             self.stack[cur].move_count = move_count;
+            let nodes_before = self.nodes; // root effort accounting (§3.4)
 
             // Step 10 — make + recurse, full-window negamax (see fn docs).
             let gives_check = self.board.gives_check(m);
@@ -291,9 +449,14 @@ impl Worker {
                 return VALUE_ZERO;
             }
 
-            // Step 13 — best/alpha/beta updates. (Step 12's root
-            // bookkeeping and equal-value dither land with plan step 5;
-            // best-move tracking lands with the TT store, plan step 6.)
+            // Step 12 — root bookkeeping (§3.4 per-move updates; the
+            // equal-value dither joins with plan step 10's hygiene pass).
+            if NT::ROOT {
+                self.update_root_move(m, value, alpha, beta, move_count, self.nodes - nodes_before);
+            }
+
+            // Step 13 — best/alpha/beta updates. (Best-move tracking
+            // lands with the TT store, plan step 6.)
             if value > best_value {
                 best_value = value;
                 if value > alpha {
@@ -326,6 +489,60 @@ impl Worker {
 
         debug_assert!(best_value > -VALUE_INFINITE && best_value < VALUE_INFINITE);
         best_value
+    }
+
+    /// Step-12 root bookkeeping (design/07 §3.4): update `m`'s [`RootMove`]
+    /// after its child search returned `value` against the pre-step-13 root
+    /// window `(alpha, beta)`. The root is cold — the linear lookup and the
+    /// `Vec` PV rebuild are off the hot path (§6).
+    fn update_root_move(
+        &mut self,
+        m: Move,
+        value: Value,
+        alpha: Value,
+        beta: Value,
+        move_count: i32,
+        effort: u64,
+    ) {
+        let idx = self.root_moves[self.pv_idx..]
+            .iter()
+            .position(|rm| rm.pv[0] == m)
+            .map(|i| self.pv_idx + i)
+            .expect("the root move loop iterates root_moves");
+        let sel_depth = self.sel_depth;
+        let rm = &mut self.root_moves[idx];
+        rm.effort += effort;
+        rm.update_average_score(value);
+        rm.update_mean_squared_score(value);
+        if move_count == 1 || value > alpha {
+            rm.score = value;
+            rm.uci_score = value;
+            rm.sel_depth = sel_depth;
+            rm.score_lowerbound = false;
+            rm.score_upperbound = false;
+            if value >= beta {
+                rm.score_lowerbound = true;
+                rm.uci_score = beta; // clamp what we print to the window
+            } else if value <= alpha {
+                rm.score_upperbound = true;
+                rm.uci_score = alpha;
+            }
+            // Rebuild the PV from the fresh child line — §3.3's "the root
+            // copies pv_table[1]" invariant. In v1 every root child is a
+            // full-window PV search, so the row is always fresh.
+            rm.pv.truncate(1);
+            rm.pv.extend_from_slice(self.pv_table[1].as_slice());
+            // Best-move flip mid-iteration: the TM instability signal
+            // (§3.4; consumed by doc 12 §3.9 in P7).
+            if move_count > 1 && self.pv_idx == 0 {
+                self.best_move_changes += 1.0;
+            }
+        } else {
+            // Not the new best: mark unsearched-this-iteration and rely on
+            // the STABLE descending sort to keep last iteration's order
+            // (§3.4 — an unstable sort here is a silent Elo-losing bug).
+            rm.score = -VALUE_INFINITE;
+        }
     }
 
     /// Quiescence search (design/07 §3.8), step-4 skeleton: stand pat on
@@ -448,19 +665,42 @@ impl Worker {
 
     /// The §3.9 time-check cadence seam: called at every main-search node
     /// entry, early-outs on a countdown and does real work every
-    /// [`params::CHECK_TIME_CALLS`] calls. The real work — elapsed-time
-    /// and limit checks that raise the stop flag — belongs to the
-    /// time-management layer (design/12) and lands with the UCI wiring
-    /// (plan step 5); the call site and cadence are fixed here so that
-    /// wiring cannot move them.
+    /// [`params::CHECK_TIME_CALLS`] calls (tightened to ≥ 0.1% of the
+    /// budget under `go nodes`, design/12 §3.8, so tiny node budgets are
+    /// honored).
+    ///
+    /// v1 real work — the hard limits a playable engine needs (design/12
+    /// step 5): `movetime` (wall clock from `Limits::start_time`, exactly
+    /// `TimeManager::elapsed_ms` semantics) and `nodes` (single worker, so
+    /// `self.nodes` IS the total until SMP aggregation lands, D23).
+    /// `go depth` is enforced by the ID loop, `go infinite` never
+    /// self-stops. The clock-TM wall (`elapsed > maximum`) and the ponder
+    /// guard arrive with doc 12 steps 7/9 (P7+).
     #[inline]
-    fn check_time(&mut self) {
+    fn check_time(&mut self, stop: &AtomicBool) {
         self.check_time_countdown -= 1;
         if self.check_time_countdown > 0 {
             return;
         }
-        self.check_time_countdown = params::CHECK_TIME_CALLS;
-        // TM real work goes here (design/12): elapsed vs limits → stop.
+        self.check_time_countdown = self.check_time_reset();
+        let movetime_stop = self
+            .limits
+            .movetime
+            .is_some_and(|t| self.limits.start_time.elapsed().as_millis() as i64 >= t);
+        let nodes_stop = self.limits.nodes.is_some_and(|n| self.nodes >= n);
+        if movetime_stop || nodes_stop {
+            stop.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// Countdown reload for [`Self::check_time`] (design/12 §3.8): 512
+    /// node-entries, or `min(512, nodes_limit / 1024)` under a node limit
+    /// (which may be 0 — then every node entry does the real check).
+    fn check_time_reset(&self) -> i32 {
+        match self.limits.nodes {
+            Some(n) => (n / 1024).min(params::CHECK_TIME_CALLS as u64) as i32,
+            None => params::CHECK_TIME_CALLS,
+        }
     }
 }
 
@@ -518,17 +758,31 @@ fn move_score(board: &Board, m: Move) -> i32 {
 mod tests {
     use super::*;
     use crate::fen::START_FEN;
-    use crate::types::VALUE_MATE;
+    use crate::types::Square;
 
     fn board(fen: &str) -> Board {
         Board::from_fen(fen).unwrap()
     }
 
-    fn go(fen: &str, depth: Depth) -> (Worker, Value) {
+    /// Run a `go depth <depth>` through the iterative-deepening driver,
+    /// discarding info reports.
+    fn go_depth(fen: &str, depth: Depth) -> Worker {
         let mut w = Worker::new(board(fen));
+        w.limits.depth = Some(depth);
         let stop = AtomicBool::new(false);
-        let v = w.search_root(depth, &stop);
-        (w, v)
+        w.iterative_deepening(&stop, &mut |_| {});
+        w
+    }
+
+    /// The best root move's score after a completed `go`.
+    fn best_score(w: &Worker) -> Value {
+        w.root_moves[0].score
+    }
+
+    fn all_legal(b: &Board) -> MoveList {
+        let mut legal = MoveList::new();
+        generate_legal(b, &mut legal);
+        legal
     }
 
     // --- value_draw (design/07 §5: ±1, correlated with nodes & 0x2) ---
@@ -542,7 +796,7 @@ mod tests {
         }
     }
 
-    // --- Mate suite (doc 07 §5): exact ply-relative mate scores (D5) ---
+    // --- Mate suite (doc 07 §5/§8.4): exact ply-relative mate scores (D5) ---
 
     #[test]
     fn back_rank_mate_in_1_found_at_depth_2() {
@@ -550,8 +804,8 @@ mod tests {
         // ply-relative score mate_in(1) and the mating move as the PV.
         let fen = "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1";
         for depth in [2, 3, 4] {
-            let (w, v) = go(fen, depth);
-            assert_eq!(v, mate_in(1), "depth {depth}");
+            let w = go_depth(fen, depth);
+            assert_eq!(best_score(&w), mate_in(1), "depth {depth}");
             assert_eq!(w.best_move().unwrap().to_string(), "d1d8");
         }
     }
@@ -559,113 +813,266 @@ mod tests {
     #[test]
     fn krk_mate_in_2_exact_score_at_depth_3() {
         // 1.Kb6 (only-move reply Kb8) 2.Rh8#: three plies, no mate in one.
-        let (w, v) = go("k7/8/2K5/8/8/8/8/7R w - - 0 1", 3);
-        assert_eq!(v, mate_in(3));
+        let w = go_depth("k7/8/2K5/8/8/8/8/7R w - - 0 1", 3);
+        assert_eq!(best_score(&w), mate_in(3));
         // The PV replays legally from the root position.
-        assert_pv_legal(&w);
+        replay_pv(&w);
     }
 
     #[test]
     fn kqk_mate_in_2_exact_score_at_depth_3() {
         // 1.Qf8+ Kh7 (forced) 2.Qg7#; no mate in one exists.
-        let (w, v) = go("7k/8/5K2/8/8/Q7/8/8 w - - 0 1", 3);
-        assert_eq!(v, mate_in(3));
-        assert_pv_legal(&w);
+        let w = go_depth("7k/8/5K2/8/8/Q7/8/8 w - - 0 1", 3);
+        assert_eq!(best_score(&w), mate_in(3));
+        replay_pv(&w);
     }
 
     #[test]
     fn deeper_search_keeps_the_exact_mate_score() {
         // Ply-relative scoring must not drift when the horizon extends
         // past the mate (doc 07 §3.1).
-        let (_, v) = go("7k/8/5K2/8/8/Q7/8/8 w - - 0 1", 5);
-        assert_eq!(v, mate_in(3));
+        let w = go_depth("7k/8/5K2/8/8/Q7/8/8 w - - 0 1", 5);
+        assert_eq!(best_score(&w), mate_in(3));
     }
 
-    // --- Terminal nodes at the root ---
+    #[test]
+    fn two_rook_ladder_mate_in_3_exact_at_depth_5() {
+        // 1.Rb6+ (rank 5 stays cut by Ra5) K→7th 2.Ra7+ K→8th 3.Rb8#:
+        // five plies. The black king starts on g6, too far from the a/b
+        // files to ever attack the unprotected checking rooks, and too
+        // free for anything shorter than the ladder. Depth 5 is the §8.4
+        // gate's "depth ≤ 6" for mate-in-3.
+        let w = go_depth("8/8/6k1/R7/8/8/8/1R5K w - - 0 1", 5);
+        assert_eq!(best_score(&w), mate_in(5));
+        assert_eq!(w.root_pv().len(), 5);
+        // The PV replays legally and its end really is checkmate.
+        let end = replay_pv(&w);
+        assert!(all_legal(&end).is_empty() && !end.checkers().is_empty());
+    }
 
     #[test]
-    fn checkmated_root_reports_mated_in_0() {
-        // Fool's mate: white to move, checkmated.
+    fn mated_root_reports_the_negative_mate() {
+        // Black's only move is Kg8 (g7/h7 touch the white king); then
+        // Qc8#. Ply-relative from the root: mated_in(2) (doc 07 §5's
+        // mated-side reporting bar).
+        let w = go_depth("7k/8/6K1/8/8/8/2Q5/8 b - - 0 1", 3);
+        assert_eq!(best_score(&w), mated_in(2));
+        assert_eq!(w.best_move().unwrap().to_string(), "h8g8");
+    }
+
+    // --- Terminal roots: no legal moves, nothing to search (§3.5) ---
+
+    #[test]
+    fn checkmated_root_yields_no_root_moves() {
+        // Fool's mate: white to move, checkmated. The driver returns
+        // without searching; the UCI layer emits `info depth 0 score
+        // mate 0` + `bestmove (none)` itself (design/12 §3.2 step 2).
         let fen = "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3";
-        let (w, v) = go(fen, 3);
-        assert_eq!(v, mated_in(0));
-        assert_eq!(v, -VALUE_MATE);
-        assert!(w.root_pv().is_empty());
+        let w = go_depth(fen, 3);
+        assert!(w.root_moves.is_empty());
+        assert!(w.best_move().is_none());
+        assert_eq!(w.nodes, 0);
+        assert_eq!(w.root_depth, 0);
     }
 
     #[test]
-    fn stalemate_returns_exact_draw() {
+    fn stalemate_root_yields_no_root_moves() {
         // Black to move: Ka8 has no moves (Kb6 covers a7/b7, Qh2 covers
         // b8 on the h2-b8 diagonal) and is not in check.
-        let fen = "k7/8/1K6/8/8/8/7Q/8 b - - 0 1";
-        for depth in [1, 4] {
-            let (w, v) = go(fen, depth);
-            assert_eq!(v, VALUE_DRAW, "depth {depth}");
-            assert!(w.root_pv().is_empty());
-        }
+        let w = go_depth("k7/8/1K6/8/8/8/7Q/8 b - - 0 1", 4);
+        assert!(w.root_moves.is_empty());
+        assert!(w.best_move().is_none());
+        assert_eq!(w.nodes, 0);
     }
 
     // --- Basic sanity on the startpos ---
 
     #[test]
     fn startpos_returns_a_legal_pv() {
-        let (w, v) = go(START_FEN, 4);
-        assert!(!crate::types::is_decisive(v), "startpos is not decisive");
+        let w = go_depth(START_FEN, 4);
+        assert!(
+            !crate::types::is_decisive(best_score(&w)),
+            "startpos is not decisive"
+        );
         assert!(w.nodes > 0);
-        assert!(w.sel_depth >= 4, "PV nodes must bump selDepth");
-        assert_pv_legal(&w);
+        assert!(
+            w.root_moves[0].sel_depth >= 4,
+            "PV nodes must bump selDepth"
+        );
+        replay_pv(&w);
     }
 
     /// Replay the root PV move by move, asserting each is legal in turn —
-    /// the "PVs that replay legally" bar of design/07 §4.
-    fn assert_pv_legal(w: &Worker) {
+    /// the "PVs that replay legally" bar of design/07 §4 — and return the
+    /// position at the end of the line.
+    fn replay_pv(w: &Worker) -> Board {
         assert!(!w.root_pv().is_empty());
         let mut b = w.board.clone();
         for &m in w.root_pv() {
-            let mut legal = MoveList::new();
-            generate_legal(&b, &mut legal);
-            assert!(legal.contains(&m), "PV move {m} illegal in {}", b.to_fen());
+            assert!(
+                all_legal(&b).contains(&m),
+                "PV move {m} illegal in {}",
+                b.to_fen()
+            );
             b.make_move(m, b.gives_check(m));
         }
+        b
     }
 
     // --- Node counting and determinism (doc 07 §5, D24) ---
 
     #[test]
-    fn node_counts_are_deterministic_at_fixed_depth() {
+    fn search_is_deterministic_at_fixed_depth() {
         let run = || {
-            let (w, v) = go(START_FEN, 4);
-            (w.nodes, v)
+            let w = go_depth(START_FEN, 4);
+            (w.nodes, best_score(&w), w.best_move())
         };
-        let (n1, v1) = run();
-        let (n2, v2) = run();
+        let (n1, v1, m1) = run();
+        let (n2, v2, m2) = run();
         assert!(n1 > 0);
         assert_eq!(n1, n2, "two identical searches must count identical nodes");
         assert_eq!(v1, v2);
+        assert_eq!(m1, m2);
     }
 
-    // --- Stop-flag seam (§3.9): untrusted return, no tree walked ---
+    // --- Stop-flag seam (§3.9): bestmove is printable even so ---
 
     #[test]
-    fn preset_stop_returns_untrusted_zero_after_one_node() {
+    fn preset_stop_searches_nothing_but_keeps_a_legal_bestmove() {
         let mut w = Worker::new(board(START_FEN));
+        w.limits.depth = Some(6);
         let stop = AtomicBool::new(true);
-        let v = w.search_root(6, &stop);
-        assert_eq!(v, VALUE_ZERO, "stopped searches return VALUE_ZERO");
-        // The root made exactly one move; its child aborted at entry.
-        assert_eq!(w.nodes, 1);
-        assert!(w.root_pv().is_empty(), "no PV write after a stop");
+        let mut infos = 0;
+        w.iterative_deepening(&stop, &mut |_| infos += 1);
+        // The ID loop condition sees the stop before any search runs and
+        // no info line is ever emitted from a stopped iteration (§3.5)...
+        assert_eq!(w.nodes, 0);
+        assert_eq!(infos, 0);
+        // ...but the root move list exists before any search (§3.9), so a
+        // legal bestmove is always printable.
+        let bm = w.best_move().expect("bestmove printable under stop");
+        assert!(all_legal(&w.board).contains(&bm));
+    }
+
+    // --- Limit enforcement seams (design/12 §3.6/§3.8 v1 subset) ---
+
+    #[test]
+    fn depth_limit_is_respected_with_monotone_info_reports() {
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.depth = Some(3);
+        let stop = AtomicBool::new(false);
+        let mut reports: Vec<(Depth, i32, u64, Vec<Move>)> = Vec::new();
+        w.iterative_deepening(&stop, &mut |i| {
+            assert_eq!(i.multipv, 1, "v1 is single-PV");
+            assert!(!i.lowerbound && !i.upperbound, "full window: exact");
+            reports.push((i.depth, i.sel_depth, i.nodes, i.pv.to_vec()));
+        });
+        // Exactly one report per iteration, depths 1..=3, no deeper.
+        assert_eq!(w.root_depth, 3);
+        let depths: Vec<Depth> = reports.iter().map(|r| r.0).collect();
+        assert_eq!(depths, vec![1, 2, 3]);
+        for pair in reports.windows(2) {
+            assert!(pair[0].2 < pair[1].2, "node counts grow per iteration");
+        }
+        for (depth, sel_depth, _, pv) in &reports {
+            assert!(sel_depth >= depth, "selDepth counts past nominal depth");
+            // Every reported PV replays legally from the root.
+            let mut b = w.board.clone();
+            for &m in pv {
+                assert!(all_legal(&b).contains(&m));
+                b.make_move(m, b.gives_check(m));
+            }
+        }
+    }
+
+    #[test]
+    fn node_limit_stops_within_the_check_cadence() {
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.nodes = Some(20_000);
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&stop, &mut |_| {});
+        assert!(
+            stop.load(Ordering::Relaxed),
+            "check_time must raise the stop flag on the node limit"
+        );
+        // The stop fires at the first real check at/past the budget; the
+        // cadence tightens to 20_000/1024 = 19 node entries (§3.8), so the
+        // overshoot is the qsearch slack between checks — small.
+        assert!(w.nodes >= 20_000);
+        assert!(w.nodes < 28_000, "cadence overshoot too large: {}", w.nodes);
+        // A mid-search stop still leaves a trusted, legal bestmove (§3.5).
+        let bm = w.best_move().expect("bestmove after node-limit stop");
+        assert!(all_legal(&w.board).contains(&bm));
+    }
+
+    #[test]
+    fn movetime_limit_terminates_the_search() {
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.movetime = Some(50);
+        w.limits.start_time = std::time::Instant::now();
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&stop, &mut |_| {});
+        assert!(stop.load(Ordering::Relaxed), "movetime must self-stop");
+        assert!(w.best_move().is_some());
+    }
+
+    // --- searchmoves filtering (design/12 §3.6) ---
+
+    #[test]
+    fn searchmoves_restricts_root_moves_and_bestmove() {
+        let filter = [
+            Move::normal(Square::E2, Square::E4),
+            Move::normal(Square::G1, Square::F3),
+        ];
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.searchmoves = filter.to_vec();
+        w.limits.depth = Some(3);
+        let stop = AtomicBool::new(false);
+        let mut pv_heads = Vec::new();
+        w.iterative_deepening(&stop, &mut |i| pv_heads.push(i.pv[0]));
+        assert_eq!(w.root_moves.len(), 2);
+        assert!(w.root_moves.iter().all(|rm| filter.contains(&rm.pv[0])));
+        assert!(filter.contains(&w.best_move().unwrap()));
+        assert!(!pv_heads.is_empty());
+        assert!(pv_heads.iter().all(|m| filter.contains(m)));
+    }
+
+    #[test]
+    fn unusable_searchmoves_filter_is_ignored() {
+        // No token matches a legal move: search all 20 root moves rather
+        // than none (design/12 §3.6 — never a fake `bestmove (none)`).
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.searchmoves = vec![Move::normal(Square::E2, Square::E5)];
+        w.limits.depth = Some(2);
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&stop, &mut |_| {});
+        assert_eq!(w.root_moves.len(), 20);
+        assert!(w.best_move().is_some());
+    }
+
+    // --- lastBestMove tracking (§3.5) ---
+
+    #[test]
+    fn last_best_move_tracks_the_stable_best() {
+        // The mate-in-1 move is already best at depth 1 and never
+        // changes: the remembered PV sticks and the change-depth stays 1.
+        let w = go_depth("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", 4);
+        assert_eq!(w.last_best_move_pv[0].to_string(), "d1d8");
+        assert_eq!(w.last_best_move_score, mate_in(1));
+        assert_eq!(w.last_best_move_depth, 1);
     }
 
     // --- Alpha-beta equivalence vs pure negamax (doc 07 §5) ---
     //
     // Fail-soft alpha-beta over a FIXED tree returns the exact minimax
-    // value at a full-window root. The step-4 tree IS fixed (no
+    // value at a full-window root. The v1 tree IS fixed (no
     // window-dependent pruning anywhere: qsearch has no futility/SEE
     // rules yet), so a cutoff-free reference walking the same tree —
     // same generators, same stand-pat, same terminal rules — must agree
-    // exactly. Positions are chosen with no reachable repetitions so the
-    // node-counter draw dither cannot fire.
+    // exactly with the final iteration (earlier iterations only reorder
+    // the root, which cannot move an exact full-window value). Positions
+    // are chosen with no reachable repetitions so the node-counter draw
+    // dither cannot fire.
 
     fn ref_qsearch(b: &mut Board, ctx: &mut EvalContext, ply: usize) -> Value {
         let in_check = !b.checkers().is_empty();
@@ -731,9 +1138,13 @@ mod tests {
             ("4k3/8/3n4/8/4B3/8/8/4K3 b - - 0 1", 2),
         ];
         for (fen, depth) in cases {
-            let (_, v) = go(fen, depth);
+            let w = go_depth(fen, depth);
             let want = ref_negamax(&mut board(fen), &mut EvalContext::new(), depth, 0);
-            assert_eq!(v, want, "alpha-beta vs pure negamax diverged: {fen}");
+            assert_eq!(
+                best_score(&w),
+                want,
+                "alpha-beta vs pure negamax diverged: {fen}"
+            );
         }
     }
 }

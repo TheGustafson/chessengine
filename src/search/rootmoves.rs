@@ -6,7 +6,9 @@
 //! `Vec` PVs are fine here; the no-allocation rule applies to the tree,
 //! not the root (design/07 §6).
 
-use crate::moves::Move;
+use crate::board::Board;
+use crate::movegen::generate_legal;
+use crate::moves::{Move, MoveList};
 use crate::types::{VALUE_INFINITE, Value, is_loss};
 
 /// "Unsearched this iteration" sentinel for [`RootMove::score`],
@@ -111,6 +113,31 @@ impl RootMove {
             (sq + self.mean_squared_score) / 2
         };
     }
+}
+
+/// Build the root move list for a `go` (design/07 §3.4, design/12 §3.6):
+/// every legal move in `board`, filtered by the `searchmoves` whitelist when
+/// it is non-empty. Initial order is generation order; iterative deepening's
+/// stable sort takes over from iteration 2 on.
+///
+/// A filter that would leave *zero* root moves in a position that has legal
+/// moves is ignored entirely — bad GUI input must never turn a playable
+/// position into `bestmove (none)` (design/12 §3.6). The UCI layer detects
+/// that case (non-empty `searchmoves`, result spanning all legal moves) to
+/// print its `info string` warning; an empty return therefore always means
+/// "no legal moves at all" (mate or stalemate).
+pub fn build_root_moves(board: &Board, searchmoves: &[Move]) -> RootMoves {
+    let mut legal = MoveList::new();
+    generate_legal(board, &mut legal);
+    let filtered: RootMoves = legal
+        .iter()
+        .filter(|m| searchmoves.is_empty() || searchmoves.contains(m))
+        .map(|&m| RootMove::new(m))
+        .collect();
+    if filtered.is_empty() && !legal.is_empty() {
+        return legal.iter().map(|&m| RootMove::new(m)).collect();
+    }
+    filtered
 }
 
 /// Stable descending sort by [`RootMove::sort_key`].
@@ -221,6 +248,54 @@ mod tests {
         assert!(front_move(&moves[0]) == Move::normal(Square::E1, Square::F1));
         assert!(front_move(&moves[1]) == Move::normal(Square::C1, Square::D1));
         assert!(front_move(&moves[2]) == Move::normal(Square::A1, Square::B1));
+    }
+
+    // --- build_root_moves (design/07 §3.4, design/12 §3.6) ---
+
+    #[test]
+    fn build_root_moves_lists_every_legal_move_without_filter() {
+        let board = Board::from_fen(crate::fen::START_FEN).unwrap();
+        let rms = build_root_moves(&board, &[]);
+        assert_eq!(rms.len(), 20);
+        // Every entry is fresh: pv = [move], scores at sentinels.
+        assert!(rms.iter().all(|rm| rm.pv.len() == 1));
+        assert!(rms.iter().all(|rm| rm.score == -VALUE_INFINITE));
+    }
+
+    #[test]
+    fn build_root_moves_applies_the_searchmoves_whitelist() {
+        let board = Board::from_fen(crate::fen::START_FEN).unwrap();
+        let filter = [
+            Move::normal(Square::E2, Square::E4),
+            Move::normal(Square::G1, Square::F3),
+        ];
+        let rms = build_root_moves(&board, &filter);
+        assert_eq!(rms.len(), 2);
+        assert!(rms.iter().all(|rm| filter.contains(&rm.pv[0])));
+    }
+
+    #[test]
+    fn build_root_moves_ignores_a_filter_with_no_legal_moves() {
+        // e2e5 and a move for the wrong side are both illegal here: the
+        // whole filter is ignored, never yielding an empty list in a
+        // playable position (design/12 §3.6).
+        let board = Board::from_fen(crate::fen::START_FEN).unwrap();
+        let filter = [
+            Move::normal(Square::E2, Square::E5),
+            Move::normal(Square::E7, Square::E5),
+        ];
+        assert_eq!(build_root_moves(&board, &filter).len(), 20);
+    }
+
+    #[test]
+    fn build_root_moves_is_empty_only_without_legal_moves() {
+        // Fool's mate: white is checkmated; even a non-empty filter yields
+        // an empty list (the caller emits `bestmove (none)`).
+        let fen = "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3";
+        let board = Board::from_fen(fen).unwrap();
+        assert!(build_root_moves(&board, &[]).is_empty());
+        let filter = [Move::normal(Square::E2, Square::E4)];
+        assert!(build_root_moves(&board, &filter).is_empty());
     }
 
     #[test]
