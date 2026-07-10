@@ -17,17 +17,15 @@
 //! Hot-path rules: no heap allocation ([`MoveList`] is stack-only), no
 //! `unsafe` (D14 — crate-wide `deny`).
 //!
-//! P3 step 3 status (doc 05 §4): the GenType mechanism, target-mask
-//! plumbing, non-pawn generation, and pawn generation (bulk pushes with
-//! the rank-3 relay, the §3.2 promotion split, en passant) are live. The
-//! EVASIONS branches inside `pawn_moves` are implemented per §3.4 but
-//! their targeted tests land with step 4; `castling_moves` (step 5) still
-//! lands empty, and the legality layer (`Board::legal`, `generate_legal`,
-//! step 6) follows.
+//! P3 step 5 status (doc 05 §4): generation is complete for all four
+//! GenTypes — GenType plumbing and non-pawn moves (step 2), pawn moves
+//! (step 3), evasions (step 4), and castling (step 5). Still to come:
+//! the legality layer (`Board::legal`, `generate_legal`, step 6) and the
+//! TT-move validator (`Board::pseudo_legal`, step 7).
 
 use crate::attacks;
 use crate::bitboard::Bitboard;
-use crate::board::Board;
+use crate::board::{Board, CastlingRights};
 use crate::moves::{Move, MoveList};
 use crate::types::{Color, Direction, PieceType, Square};
 
@@ -347,14 +345,30 @@ fn piece_moves(
     }
 }
 
-/// Castling: rights present + path empty; attacked-square testing is
-/// deferred to `Board::legal` (doc 05 §3.7).
+/// Castling generation (doc 05 §3.7): the right must be present and the
+/// between-king-and-rook path empty at generation time — the rights
+/// themselves guarantee king/rook placement (make/unmake revokes them on
+/// any king/rook move or capture). Attacked-square testing is deliberately
+/// deferred to `Board::legal` (step 6), matching SF.
 ///
-/// TODO(P3 step 5, doc 05 §3.7): emit `Move::castling` per the §3.7 table
-/// via `CastlingRights::{kingside, queenside}` and `Board::castling_path`.
-/// Lands empty rather than `todo!` — it is reached by every QUIETS /
-/// NON_EVASIONS call (doc 05 §4 step 2).
-fn castling_moves<const WHITE: bool>(_board: &Board, _list: &mut MoveList) {}
+/// Only reached under QUIETS / NON_EVASIONS: a castle never captures and
+/// never evades, since the mover is not in check in both contexts. The
+/// encoding is the king's two-square move (D2): e1g1 / e1c1 relative.
+/// Emission order: kingside before queenside (doc 05 §5.4 order pin).
+fn castling_moves<const WHITE: bool>(board: &Board, list: &mut MoveList) {
+    let us = if WHITE { Color::White } else { Color::Black };
+    let from = Square::E1.relative_to(us);
+    for (right, to) in [
+        (CastlingRights::kingside(us), Square::G1.relative_to(us)),
+        (CastlingRights::queenside(us), Square::C1.relative_to(us)),
+    ] {
+        if board.castling_rights().contains(right)
+            && (board.all_occupancy() & board.castling_path(right)).is_empty()
+        {
+            list.push(Move::castling(from, to));
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -1021,5 +1035,469 @@ mod tests {
                 }
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // P3 step 4: evasion generation (doc 05 §3.6, §4 step 4, §5.2)
+    // -----------------------------------------------------------------------
+
+    use crate::types::Piece;
+
+    /// The unrestricted pseudo-legal move set on an IN-CHECK position — the
+    /// reference the evasion oracle filters. `generate::<NON_EVASIONS>`
+    /// debug-asserts "not in check" (that assert is itself part of the
+    /// contract under test), so the reference bypasses the dispatcher and
+    /// calls the color worker directly.
+    fn all_pseudo_ignoring_check(board: &Board) -> MoveList {
+        let mut list = MoveList::new();
+        match board.side_to_move() {
+            Color::White => generate_all::<{ gen_type::NON_EVASIONS }, true>(board, &mut list),
+            Color::Black => generate_all::<{ gen_type::NON_EVASIONS }, false>(board, &mut list),
+        }
+        list
+    }
+
+    /// Make/unmake legality oracle (doc 05 §5.1.5) for in-check positions:
+    /// play the move, ask whether our king is attacked, undo. Castling is
+    /// resolved by rule instead — castling out of check is illegal, and the
+    /// after-state cannot express that (the king may land on a perfectly
+    /// safe square).
+    fn oracle_legal(board: &mut Board, m: Move) -> bool {
+        debug_assert!(
+            !board.checkers().is_empty(),
+            "this oracle only serves the in-check fixtures"
+        );
+        if m.kind() == MoveKind::Castling {
+            return false;
+        }
+        let us = board.side_to_move();
+        let gives_check = board.gives_check(m);
+        board.make_move(m, gives_check);
+        let safe = (board.attackers_to(board.king_square(us), board.all_occupancy())
+            & board.occupancy(us.flip()))
+        .is_empty();
+        board.unmake_move(m);
+        safe
+    }
+
+    /// Doc 05 §4 step 4 completeness gate: EVASIONS, filtered through the
+    /// make/unmake oracle, must equal the full pseudo-legal superset under
+    /// the same filter — no legal block/capture/flee missing, nothing
+    /// extra. Pins the §3.6 shape rules along the way.
+    fn assert_evasion_completeness(b: &Board, fen: &str) {
+        let us = b.side_to_move();
+        let ksq = b.king_square(us);
+        assert!(!b.checkers().is_empty(), "fixture must be in check: {fen}");
+
+        let evasions = move_set(&generated::<{ gen_type::EVASIONS }>(b));
+        let superset = move_set(&all_pseudo_ignoring_check(b));
+        assert!(
+            evasions.is_subset(&superset),
+            "EVASIONS must be a subset of the pseudo-legal superset in {fen}"
+        );
+
+        // §3.6 rule 5: castling is never an evasion. Rule 2: double check
+        // is king-only. Rule 3: single-check non-king moves land on the
+        // block-or-capture mask (en passant resolves on the captured
+        // pawn's square, not on `to`, so it is exempt from the to-test).
+        for &m in &evasions {
+            assert_ne!(m.kind(), MoveKind::Castling, "castle evasion {m} in {fen}");
+        }
+        if b.checkers().more_than_one() {
+            for &m in &evasions {
+                assert_eq!(
+                    m.from(),
+                    ksq,
+                    "non-king evasion {m} under double check in {fen}"
+                );
+            }
+        } else {
+            let target = attacks::between(ksq, b.checkers().lsb().unwrap());
+            for &m in &evasions {
+                if m.from() != ksq && m.kind() != MoveKind::EnPassant {
+                    assert!(
+                        target.contains(m.to()),
+                        "evasion {m} off the block/capture ray in {fen}"
+                    );
+                }
+            }
+        }
+
+        let mut scratch = b.clone();
+        let legal_evasions: HashSet<Move> = evasions
+            .into_iter()
+            .filter(|&m| oracle_legal(&mut scratch, m))
+            .collect();
+        let legal_superset: HashSet<Move> = superset
+            .into_iter()
+            .filter(|&m| oracle_legal(&mut scratch, m))
+            .collect();
+        assert_eq!(
+            legal_evasions, legal_superset,
+            "evasion completeness in {fen}"
+        );
+    }
+
+    /// In-check corpus: single checks with blocks/captures/flights, pawn
+    /// and knight checks, ep-as-evasion, promotion evasions, double
+    /// checks, castling rights while in check, x-ray flights, and one
+    /// checkmate (pseudo evasions exist, none legal).
+    const IN_CHECK_FIXTURES: &[&str] = &[
+        // Perft pos 4 (white in check by Bb6) and its color mirror.
+        "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+        "r2q1rk1/pP1p2pp/Q4n2/bbp1p3/Np6/1B3NBn/pPPP1PPP/R3K2R b KQ - 0 1",
+        // Rook check: capture (Nxe4), interposition (Be3), flights.
+        "4k3/8/8/8/4r3/8/3N4/4K1B1 w - - 0 1",
+        // The checker is pawn-capturable; a second enemy piece is not.
+        "k7/8/8/8/3r1b2/4P3/7K/8 w - - 0 1",
+        // Interposition by a double pawn push through the relay square.
+        "8/2p5/8/k6R/8/8/8/4K3 b - - 0 1",
+        // Ep capture of the checking double-pushed pawn.
+        "8/8/8/2k5/3Pp3/8/8/4K3 b - d3 0 1",
+        // Capturing promotions resolve the check; push promotions cannot.
+        "4r3/3P1P2/8/8/8/8/8/4K2k w - - 0 1",
+        // A push promotion lands on the checking ray and blocks.
+        "K6r/2P5/8/8/8/8/8/7k w - - 0 1",
+        // Knight check: no interposition square exists.
+        "4k3/8/8/8/8/5n2/8/4K3 w - - 0 1",
+        // Pawn check, capturable by knight or king.
+        "4k3/8/8/8/8/8/3p4/1N2K3 w - - 0 1",
+        // Double checks: king moves only.
+        "r3k3/8/8/1B6/8/8/8/4RK2 b - - 0 1",
+        "k3r3/8/8/8/8/5n2/8/4K3 w - - 0 1",
+        // Castling rights present while in check (no castle evasions).
+        "r3k2r/8/8/8/B7/8/8/4K3 b kq - 0 1",
+        // King on the checker's ray: the x-ray flight e5 and the on-ray
+        // step e3 are pseudo-generated, both oracle-illegal.
+        "4k3/8/8/8/4K3/8/8/4r3 w - - 0 1",
+        // Fool's mate: the lone pseudo evasion Kf2 is illegal.
+        "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3",
+    ];
+
+    #[test]
+    fn evasions_complete_on_in_check_fixtures() {
+        for &fen in IN_CHECK_FIXTURES {
+            assert_evasion_completeness(&board(fen), fen);
+        }
+    }
+
+    /// Exact block/capture/flee set for a single rook check (doc 05 §5.2):
+    /// Nd2 captures the checker, Bg1 interposes on e3, the king has four
+    /// flights (d2 is own-occupied). Ke2 stays on the checker's file:
+    /// pseudo-generated — flight safety is legal()'s job (§3.6 rule 4) —
+    /// and rejected by the oracle.
+    #[test]
+    fn single_check_block_capture_flee() {
+        let b = board("4k3/8/8/8/4r3/8/3N4/4K1B1 w - - 0 1");
+        let expected: HashSet<Move> = [
+            Move::normal(Square::D2, Square::E4),
+            Move::normal(Square::G1, Square::E3),
+            Move::normal(Square::E1, Square::D1),
+            Move::normal(Square::E1, Square::E2),
+            Move::normal(Square::E1, Square::F1),
+            Move::normal(Square::E1, Square::F2),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(move_set(&generated::<{ gen_type::EVASIONS }>(&b)), expected);
+
+        let mut scratch = b.clone();
+        assert!(!oracle_legal(
+            &mut scratch,
+            Move::normal(Square::E1, Square::E2)
+        ));
+        assert!(oracle_legal(
+            &mut scratch,
+            Move::normal(Square::D2, Square::E4)
+        ));
+    }
+
+    /// Double check emits king moves only (doc 05 §3.6 rule 2, via
+    /// `more_than_one`) — including flights that legal() will reject.
+    #[test]
+    fn double_check_generates_king_moves_only() {
+        // Re1 + Bb5 both check e8; the a8 rook could otherwise block.
+        let b = board("r3k3/8/8/1B6/8/8/8/4RK2 b - - 0 1");
+        assert!(b.checkers().more_than_one());
+        let expected: HashSet<Move> = [Square::D7, Square::D8, Square::E7, Square::F7, Square::F8]
+            .into_iter()
+            .map(|to| Move::normal(Square::E8, to))
+            .collect();
+        assert_eq!(move_set(&generated::<{ gen_type::EVASIONS }>(&b)), expected);
+
+        // Nf3 + Re8 both check e1 (white side of the color dispatch).
+        let b = board("k3r3/8/8/8/8/5n2/8/4K3 w - - 0 1");
+        assert!(b.checkers().more_than_one());
+        let expected: HashSet<Move> = [Square::D1, Square::D2, Square::E2, Square::F1, Square::F2]
+            .into_iter()
+            .map(|to| Move::normal(Square::E1, to))
+            .collect();
+        assert_eq!(move_set(&generated::<{ gen_type::EVASIONS }>(&b)), expected);
+    }
+
+    /// §3.4 `enemies = checkers()`: the e3 pawn attacks both d4 (a rook
+    /// that is NOT the checker) and f4 (the checking bishop); only the
+    /// checker capture is emitted.
+    #[test]
+    fn evasion_pawn_captures_only_the_checker() {
+        let b = board("k7/8/8/8/3r1b2/4P3/7K/8 w - - 0 1");
+        let expected: HashSet<Move> = [
+            Move::normal(Square::E3, Square::F4),
+            Move::normal(Square::H2, Square::G1),
+            Move::normal(Square::H2, Square::G2),
+            Move::normal(Square::H2, Square::G3),
+            Move::normal(Square::H2, Square::H1),
+            Move::normal(Square::H2, Square::H3),
+        ]
+        .into_iter()
+        .collect();
+        let evasions = move_set(&generated::<{ gen_type::EVASIONS }>(&b));
+        assert!(!evasions.contains(&Move::normal(Square::E3, Square::D4)));
+        assert_eq!(evasions, expected);
+    }
+
+    /// Rh5 checks a5 along rank 5; c7-c5 — a double push through the empty
+    /// relay square — is the only non-king evasion (the single push c6
+    /// misses the ray and must NOT appear).
+    #[test]
+    fn evasion_pawn_interposition_by_double_push() {
+        let b = board("8/2p5/8/k6R/8/8/8/4K3 b - - 0 1");
+        let expected: HashSet<Move> = [
+            Move::normal(Square::C7, Square::C5),
+            Move::normal(Square::A5, Square::A4),
+            Move::normal(Square::A5, Square::A6),
+            Move::normal(Square::A5, Square::B4),
+            Move::normal(Square::A5, Square::B5),
+            Move::normal(Square::A5, Square::B6),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(move_set(&generated::<{ gen_type::EVASIONS }>(&b)), expected);
+    }
+
+    /// Promotions under EVASIONS (§3.2 table): the full four-piece fan is
+    /// emitted, but only where it resolves the check — capturing the
+    /// checker on e8, or landing a push promotion on the checking ray.
+    #[test]
+    fn evasion_promotions() {
+        // Re8 checks e1: dxe8 and fxe8 capture the checker (full fans);
+        // the non-resolving pushes d8/f8 are masked out.
+        let b = board("4r3/3P1P2/8/8/8/8/8/4K2k w - - 0 1");
+        let mut expected = promo_fan(Square::D7, Square::E8, &ALL_PROMOS);
+        expected.extend(promo_fan(Square::F7, Square::E8, &ALL_PROMOS));
+        for to in [Square::D1, Square::D2, Square::E2, Square::F1, Square::F2] {
+            expected.insert(Move::normal(Square::E1, to));
+        }
+        assert_eq!(move_set(&generated::<{ gen_type::EVASIONS }>(&b)), expected);
+
+        // Rh8 checks a8: the push promotion c8 lands ON the ray and
+        // blocks (`b3 &= target` keeps it), again with the full fan.
+        let b = board("K6r/2P5/8/8/8/8/8/7k w - - 0 1");
+        let mut expected = promo_fan(Square::C7, Square::C8, &ALL_PROMOS);
+        for to in [Square::A7, Square::B7, Square::B8] {
+            expected.insert(Move::normal(Square::A8, to));
+        }
+        assert_eq!(move_set(&generated::<{ gen_type::EVASIONS }>(&b)), expected);
+    }
+
+    /// Doc 05 §5.2 "ep as evasion": white just played d2-d4 giving check
+    /// with the pawn itself; exd3 en passant captures the checker. D9
+    /// keeps the ep square (the capture is legal), and the ep move is
+    /// exempt from the to-on-ray mask — its resolution square is d4.
+    #[test]
+    fn ep_capture_of_the_checking_pawn_is_an_evasion() {
+        let b = board("8/8/8/2k5/3Pp3/8/8/4K3 b - d3 0 1");
+        assert_eq!(b.en_passant_square(), Some(Square::D3));
+        let ep = Move::en_passant(Square::E4, Square::D3);
+        let mut expected = HashSet::from([ep]);
+        for to in [
+            Square::B4,
+            Square::B5,
+            Square::B6,
+            Square::C4,
+            Square::C6,
+            Square::D4,
+            Square::D5,
+            Square::D6,
+        ] {
+            expected.insert(Move::normal(Square::C5, to));
+        }
+        assert_eq!(move_set(&generated::<{ gen_type::EVASIONS }>(&b)), expected);
+        assert!(oracle_legal(&mut b.clone(), ep));
+    }
+
+    /// Doc 05 §5.2 "ep discovered-check skip": d2-d4 opened the c1-g5
+    /// diagonal, so Bc1 checks THROUGH the vacated push origin and exd3
+    /// can never resolve the check (§3.4). Through FEN, D9 already drops
+    /// the unusable ep square at load; the generator's own skip branch is
+    /// defense-in-depth, exercised by forcing the D9-violating state onto
+    /// the board directly.
+    #[test]
+    fn ep_skipped_when_check_is_discovered_through_the_push_origin() {
+        let b = board("8/8/8/6k1/3Pp3/8/8/2B1K3 b - d3 0 1");
+        assert_eq!(b.en_passant_square(), None, "D9 must drop the ep square");
+        let evasions = move_set(&generated::<{ gen_type::EVASIONS }>(&b));
+        assert!(evasions.iter().all(|m| m.kind() != MoveKind::EnPassant));
+        // The e4 pawn still blocks on the diagonal with a plain push.
+        assert!(evasions.contains(&Move::normal(Square::E4, Square::E3)));
+
+        // Same placement with ep pinned to d3: now the §3.4 skip (not D9)
+        // must reject the ep capture, while everything else is unchanged.
+        let mut forced = Board::empty();
+        for (piece, sq) in [
+            (Piece::new(Color::White, PieceType::Bishop), Square::C1),
+            (Piece::new(Color::White, PieceType::King), Square::E1),
+            (Piece::new(Color::White, PieceType::Pawn), Square::D4),
+            (Piece::new(Color::Black, PieceType::Pawn), Square::E4),
+            (Piece::new(Color::Black, PieceType::King), Square::G5),
+        ] {
+            forced.put_piece(piece, sq);
+        }
+        forced.side_to_move = Color::Black;
+        forced.finish_setup(Some(Square::D3), 0, 1);
+        assert_eq!(forced.en_passant_square(), Some(Square::D3));
+        let evasions = move_set(&generated::<{ gen_type::EVASIONS }>(&forced));
+        assert!(evasions.iter().all(|m| m.kind() != MoveKind::EnPassant));
+        assert!(evasions.contains(&Move::normal(Square::E4, Square::E3)));
+        assert_evasion_completeness(&forced, "forced ep-discovered-check fixture");
+    }
+
+    /// §3.6 rule 5: castling is never generated under EVASIONS, even with
+    /// both rights present and both paths empty — while the unrestricted
+    /// superset on the same position emits both castles, proving the
+    /// exclusion is the EVASIONS rule and not a rights/path failure.
+    #[test]
+    fn no_castling_under_evasions() {
+        let b = board("r3k2r/8/8/8/B7/8/8/4K3 b kq - 0 1");
+        assert!(!b.checkers().is_empty());
+        let evasions = generated::<{ gen_type::EVASIONS }>(&b);
+        assert!(evasions.iter().all(|m| m.kind() != MoveKind::Castling));
+        let superset = move_set(&all_pseudo_ignoring_check(&b));
+        assert!(superset.contains(&Move::castling(Square::E8, Square::G8)));
+        assert!(superset.contains(&Move::castling(Square::E8, Square::C8)));
+    }
+
+    /// The other direction of the §3.1 debug_assert: requesting
+    /// NON_EVASIONS while in check panics in debug builds.
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "generate::<EVASIONS> iff the side to move is in check")]
+    fn non_evasions_while_in_check_panics_in_debug() {
+        let b = board("4k3/8/8/8/8/5n2/8/4K3 w - - 0 1");
+        let mut list = MoveList::new();
+        generate_non_evasions(&b, &mut list);
+    }
+
+    // -----------------------------------------------------------------------
+    // P3 step 5: castling generation (doc 05 §3.7, §4 step 5, §5.2)
+    // -----------------------------------------------------------------------
+
+    const KIWIPETE: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+
+    /// The step-5 "Done" gate (doc 05 §4): Kiwipete emits both white
+    /// castles in QUIETS — as the last two moves, kingside first (§5.4
+    /// order pin) — and in NON_EVASIONS, never in CAPTURES.
+    #[test]
+    fn kiwipete_emits_both_white_castles_in_quiets() {
+        let b = board(KIWIPETE);
+        let oo = Move::castling(Square::E1, Square::G1);
+        let ooo = Move::castling(Square::E1, Square::C1);
+
+        let quiets = generated::<{ gen_type::QUIETS }>(&b);
+        assert_eq!(&quiets[quiets.len() - 2..], &[oo, ooo]);
+
+        let all = move_set(&generated::<{ gen_type::NON_EVASIONS }>(&b));
+        assert!(all.contains(&oo) && all.contains(&ooo));
+        assert!(
+            generated::<{ gen_type::CAPTURES }>(&b)
+                .iter()
+                .all(|m| m.kind() != MoveKind::Castling)
+        );
+    }
+
+    /// Black's rank-8 constants via Kiwipete with the side to move flipped
+    /// (black is not in check there).
+    #[test]
+    fn kiwipete_reversed_emits_both_black_castles() {
+        let b = board("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1");
+        let quiets = generated::<{ gen_type::QUIETS }>(&b);
+        assert_eq!(
+            &quiets[quiets.len() - 2..],
+            &[
+                Move::castling(Square::E8, Square::G8),
+                Move::castling(Square::E8, Square::C8),
+            ]
+        );
+    }
+
+    /// §3.7 condition 1: each right gates exactly its own castle.
+    #[test]
+    fn castling_requires_the_right() {
+        for (fen, kingside, queenside) in [
+            ("4k3/8/8/8/8/8/8/R3K2R w KQ - 0 1", true, true),
+            ("4k3/8/8/8/8/8/8/R3K2R w K - 0 1", true, false),
+            ("4k3/8/8/8/8/8/8/R3K2R w Q - 0 1", false, true),
+            ("4k3/8/8/8/8/8/8/R3K2R w - - 0 1", false, false),
+            ("r3k2r/8/8/8/8/8/8/4K3 b kq - 0 1", true, true),
+            ("r3k2r/8/8/8/8/8/8/4K3 b k - 0 1", true, false),
+            ("r3k2r/8/8/8/8/8/8/4K3 b q - 0 1", false, true),
+        ] {
+            let b = board(fen);
+            let us = b.side_to_move();
+            let from = Square::E1.relative_to(us);
+            let quiets = move_set(&generated::<{ gen_type::QUIETS }>(&b));
+            assert_eq!(
+                quiets.contains(&Move::castling(from, Square::G1.relative_to(us))),
+                kingside,
+                "kingside in {fen}"
+            );
+            assert_eq!(
+                quiets.contains(&Move::castling(from, Square::C1.relative_to(us))),
+                queenside,
+                "queenside in {fen}"
+            );
+        }
+    }
+
+    /// §3.7 condition 2, one blocker per path square (doc 05 §4 step 5):
+    /// any piece — own or enemy — on f1/g1 kills the kingside castle and
+    /// on b1/c1/d1 the queenside one, without disturbing the other wing.
+    /// b1 is rook-path-only (the king never crosses it) yet still blocks.
+    #[test]
+    fn castling_blocked_on_each_path_square() {
+        for (fen, kingside, queenside) in [
+            ("4k3/8/8/8/8/8/8/R3KN1R w KQ - 0 1", false, true), // f1 own
+            ("4k3/8/8/8/8/8/8/R3K1NR w KQ - 0 1", false, true), // g1 own
+            ("4k3/8/8/8/8/8/8/RN2K2R w KQ - 0 1", true, false), // b1 own
+            ("4k3/8/8/8/8/8/8/R1N1K2R w KQ - 0 1", true, false), // c1 own
+            ("4k3/8/8/8/8/8/8/R2NK2R w KQ - 0 1", true, false), // d1 own
+            ("4k3/8/8/8/8/8/8/Rn2K2R w KQ - 0 1", true, false), // b1 enemy
+        ] {
+            let b = board(fen);
+            let quiets = move_set(&generated::<{ gen_type::QUIETS }>(&b));
+            assert_eq!(
+                quiets.contains(&Move::castling(Square::E1, Square::G1)),
+                kingside,
+                "kingside in {fen}"
+            );
+            assert_eq!(
+                quiets.contains(&Move::castling(Square::E1, Square::C1)),
+                queenside,
+                "queenside in {fen}"
+            );
+        }
+    }
+
+    /// Attacked-square testing is deferred to `Board::legal` (§3.7): the
+    /// f3 queen attacks f1 (kingside crossing) and d1 (queenside crossing)
+    /// without giving check, yet generation still emits both castles —
+    /// step 6's legal() is what will drop them.
+    #[test]
+    fn castling_generated_through_attacked_squares() {
+        let b = board("4k3/8/8/8/8/5q2/8/R3K2R w KQ - 0 1");
+        assert!(b.checkers().is_empty());
+        let quiets = move_set(&generated::<{ gen_type::QUIETS }>(&b));
+        assert!(quiets.contains(&Move::castling(Square::E1, Square::G1)));
+        assert!(quiets.contains(&Move::castling(Square::E1, Square::C1)));
     }
 }
