@@ -4,11 +4,11 @@
 python-chess is an independent legal-move implementation that shares no code
 with our engine, so it serves two jobs (design/06-perft-validation.md):
 
-  1. Debugging oracle for future movegen work: print perft or divide counts
+  1. Debugging oracle for movegen work: print perft or divide counts
      for any position, to compare against `chessengine perft` / `go perft N`
      output while descending into a disagreement (§3.7 context — the
-     engine-vs-engine bisection tool `tools/perft_diff.py` lands with the
-     UCI loop; until then, this is the reference side of that loop).
+     automated bisection tool is `tools/perft_diff.py`, whose default
+     reference side is the same python-chess oracle).
   2. Validator for the oracle data itself: `--suite` recomputes the counts in
      tests/data/perft.epd. Every count the suite gates on must be
      independently verified before it can gate the engine (D27: counts are

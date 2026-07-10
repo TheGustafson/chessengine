@@ -13,10 +13,11 @@
 //! ```
 //!
 //! Until P5 lands search, only `type=perft` has a code path (design/06
-//! §3.6: "this makes bench useful from day one, before search exists"),
-//! and that path in turn panics in the P3 movegen stub.
+//! §3.6: "this makes bench useful from day one, before search exists").
 
 use crate::board::Board;
+use crate::movegen;
+use crate::moves::MoveList;
 use crate::perft;
 use std::error::Error;
 use std::fmt;
@@ -220,10 +221,26 @@ pub fn run(params: &BenchParams) -> BenchResult {
 /// (design/06 §3.6).
 fn board_from_entry(entry: &str) -> Board {
     let fen = entry.split(" moves").next().unwrap_or(entry);
-    let board = Board::from_fen(fen).unwrap_or_else(|e| panic!("invalid bench FEN '{entry}': {e}"));
-    if entry.len() != fen.len() {
-        // Replaying the moves suffix needs legal movegen + make_move.
-        todo!("P3: movegen (replay 'moves ...' suffixes)")
+    let mut board =
+        Board::from_fen(fen).unwrap_or_else(|e| panic!("invalid bench FEN '{entry}': {e}"));
+    // Replay each UCI move token against the legal move list — the same
+    // match-by-notation rule the UCI `position ... moves` parser uses
+    // (design/06 §3.6), so promotion suffixes and castling (king's
+    // two-square move, D2) resolve for free via `Move: Display`.
+    for token in entry[fen.len()..]
+        .strip_prefix(" moves")
+        .unwrap_or("")
+        .split_whitespace()
+    {
+        let mut list = MoveList::new();
+        movegen::generate_legal(&board, &mut list);
+        let m = list
+            .iter()
+            .copied()
+            .find(|m| m.to_string() == token)
+            .unwrap_or_else(|| panic!("illegal move '{token}' in bench entry '{entry}'"));
+        let gives_check = board.gives_check(m);
+        board.make_move(m, gives_check);
     }
     board
 }
@@ -377,12 +394,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "RED: un-ignore when P3 movegen lands"]
     fn bench_perft_mode_smoke() {
-        // design/06 §4 step 6: perft-mode bench runs the whole suite.
-        // Depth 1 keeps this cheap; the exact total becomes a known count
-        // once recorded per the plan (python-chess cross-check).
+        // design/06 §4 step 6: perft-mode bench runs the whole suite,
+        // including the three `moves ...` replay entries. Depth 1 keeps
+        // this cheap; 1,380 is the python-chess 1.11.2 cross-checked sum
+        // of legal-move counts over all 49 entries (recorded 2026-07-10).
         let result = run(&BenchParams::parse(&["16", "1", "1", "default", "perft"]).unwrap());
-        assert!(result.nodes > 0);
+        assert_eq!(result.nodes, 1_380);
     }
 }

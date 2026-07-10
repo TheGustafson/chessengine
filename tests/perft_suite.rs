@@ -2,10 +2,9 @@
 //! (design/06 §3.5, tiers 2-3, plus a fast-tier shape; the tier split
 //! here is data-driven, see the node-cap notes below).
 //!
-//! Every suite test is currently `#[ignore]`d under the RED protocol:
-//! `perft` is a `todo!` stub until P3 lands movegen. Starting P3 means
-//! removing the "RED:" halves of the ignore markers (the full/extended
-//! tests keep their release-tier ignores).
+//! The fast tier runs in plain `cargo test`; the full and extended tiers
+//! keep permanent release-tier ignores and are invoked selectively by name
+//! (design/06 §3.5, TESTING.md).
 //!
 //! Data and loader come from the shared fixture module:
 //! `tests/data/perft.epd` parsed by `common::load_perft_epd()` into
@@ -48,9 +47,8 @@ fn run_tier(keep: impl Fn(u64) -> bool) {
     }
 }
 
-/// Fast tier: cheap enough for plain `cargo test` once movegen lands.
+/// Fast tier: cheap enough for plain `cargo test`.
 #[test]
-#[ignore = "RED: un-ignore when P3 movegen lands"]
 fn perft_fast_tier() {
     run_tier(|nodes| nodes <= FAST_NODE_CAP);
 }
@@ -59,7 +57,7 @@ fn perft_fast_tier() {
 /// (design/06 §3.5: `cargo test --release -- --ignored perft_full_suite`,
 /// budget < 30 s).
 #[test]
-#[ignore = "RED: un-ignore when P3 movegen lands; full tier: run with --ignored --release"]
+#[ignore = "full tier: cargo test --release -- --ignored perft_full_suite"]
 fn perft_full_suite() {
     run_tier(|nodes| nodes <= FULL_NODE_CAP);
 }
@@ -68,7 +66,7 @@ fn perft_full_suite() {
 /// EPD (design/06 §3.5: release only, budget < 4 min, run before releases
 /// and after movegen/make-unmake rewrites).
 #[test]
-#[ignore = "RED: un-ignore when P3 movegen lands; extended tier: run with --ignored --release"]
+#[ignore = "extended tier: cargo test --release -- --ignored perft_extended"]
 fn perft_extended() {
     run_tier(|nodes| nodes > FULL_NODE_CAP);
 }

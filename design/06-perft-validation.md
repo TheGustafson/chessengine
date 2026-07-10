@@ -214,19 +214,18 @@ it at shallow depth (§3.5).
 Invariants checked, in order, after each `make_move`:
 
 1. **Layer consistency**: bitboards ↔ mailbox ↔ occupancy agreement.
-   `Board::assert_consistent` is promoted from `#[cfg(test)]` to
+   `Board::assert_consistent` is compiled under
    `#[cfg(any(test, debug_assertions))]` so `perft_checked` can call it from
    a debug binary, not just unit tests. (Behavior unchanged in release.)
 2. **Zobrist recomputation**: all five incremental keys (D9) — `key`,
    `pawn_key`, `material_key`, `minor_key`, `non_pawn_key[2]` — must equal a
-   from-scratch recomputation. The Zobrist module must therefore expose a
-   slow, obviously-correct `zobrist::compute_from_scratch(&Board) -> KeySet`,
-   where `KeySet` is a small `PartialEq` struct of exactly those key values,
-   mirrored by a `Board::keys()` accessor. (`KeySet` is distinct from the
-   random-number table `zobrist::Tables` behind the `ZOBRIST` static —
-   design/04-position-state.md §3.4 owns both.) The computation is the same
-   one `from_fen`/`init_state` setup uses. The recomputation must
-   reproduce the SF key rules exactly, or the cross-check itself lies:
+   from-scratch recomputation. *As landed* (doc 04 §3.12 owns the surface),
+   this is `Board::assert_state_keys_consistent`, which compares the stored
+   keys against the same `computed_keys` routine `from_fen`/`init_state`
+   setup uses — rather than the separate
+   `zobrist::compute_from_scratch -> KeySet` / `Board::keys()` pair this doc
+   originally sketched; the check is identical in content. It reproduces
+   the SF key rules exactly, or the cross-check itself lies:
    castling keyed by the whole 4-bit mask, ep file keyed **only when a legal
    ep capture exists**, zeroed pawn-psq on promotion ranks, material key via
    count slots. The rule50 fold (>= 14) applies to the *exposed* key, not
@@ -238,6 +237,11 @@ Invariants checked, in order, after each `make_move`:
    `board.attackers_to(ksq, occ) & board.occupancy(them)`.
 4. **Derived-state recomputation**: stored `checkers`, `blockers_for_king`,
    `pinners` equal fresh recomputations via the slow path.
+
+Invariants 1, 2, and 4 are all folded into the landed
+`Board::assert_consistent` (doc 04 §3.12), so `perft_checked` makes one
+cfg-gated call for those and adds the independent gives_check recompute
+(invariant 3) and the round-trip snapshot (invariant 5) itself.
 
 And after each `unmake_move`:
 
@@ -272,26 +276,32 @@ pub fn perft_checked(board: &mut Board, depth: u32) -> u64 {
         let gives_check = board.gives_check(m);
         board.make_move(m, gives_check);
 
+        // Invariants 1, 2, 4: layers + keys + derived state (doc 04 §3.12).
+        #[cfg(any(test, debug_assertions))]
         board.assert_consistent();
-        let fresh = zobrist::compute_from_scratch(board);
-        assert_eq!(board.keys(), fresh, "incremental key drift after {m}");
-        assert_eq!(gives_check, !board.checkers().is_empty(),
-                   "gives_check mispredicted for {m}");
-        board.assert_derived_state(); // checkers/blockers/pinners recompute
+        // Invariant 3: recomputed independently of the stored checkers.
+        let us = board.side_to_move();
+        let fresh = board.attackers_to(board.king_square(us), board.all_occupancy())
+            & board.occupancy(us.flip());
+        assert_eq!(gives_check, !fresh.is_empty(), "gives_check mispredicted for {m}");
+        assert_eq!(board.checkers(), fresh, "stored checkers drifted after {m}");
 
         nodes += perft_checked(board, depth - 1);
         board.unmake_move(m);
-        assert_eq!(*board, snapshot, "unmake_move failed to restore after {m}");
+        assert!(*board == snapshot, "unmake_move failed to restore after {m}");
     }
     nodes
 }
 ```
 
-Call-site strategy for `assert_consistent` outside perft: `make_move` and
-`unmake_move` themselves carry only cheap `debug_assert!`s (piece present on
-`from`, destination sanity) — the full O(64) consistency scan lives in
-`perft_checked` and in board-mutating unit tests (per CLAUDE.md), so debug
-search remains usable while debug perft stays maximally paranoid.
+Call-site strategy for `assert_consistent` outside perft, *as landed*: P2
+(doc 04 §3.12) chose to run the full oracle inside `make_move`/`unmake_move`
+at every node in debug builds — more paranoid than the "cheap debug_asserts
+only" split this doc originally proposed. Debug perft therefore checks
+invariants 1/2/4 everywhere already; `perft_checked` remains the entry point
+that adds the independent gives_check cross-check and the unmake round-trip
+snapshot, and the only one that checks anything in release-with-`cfg(test)`
+builds. Revisit the split only if debug search latency becomes a problem.
 
 ### 3.4 The validation suite
 
@@ -530,11 +540,15 @@ pub const BENCH_POSITIONS: &[&str] = &[
 
 ### 3.7 Differential testing vs a reference engine
 
-`tools/perft_diff.py` — Python 3 stdlib only (it is tooling, not a
-dependency, D15). It drives two UCI engines as subprocesses — ours and a
-reference (any engine supporting `go perft` with SF-style output; path via
-`--ref` or `$PERFT_REF`) — and **bisects** any disagreement down to a
-single position and move list:
+`tools/perft_diff.py` — Python 3 (it is tooling, not a dependency, D15). It
+drives our engine and a reference as subprocesses and **bisects** any
+disagreement down to a single position and move list. *P3 form, as landed*:
+our side runs through the `chessengine perft <depth> [fen]` CLI subcommand
+(§3.2 — the UCI loop has no `go perft` until P4, at which point our side
+switches to the same UCI driver), and the reference defaults to python-chess
+in-process (the same independent oracle as `verify_perft.py`), with any UCI
+engine supporting SF-style `go perft` selectable via `--ref` or
+`$PERFT_REF`. The bisection:
 
 ```
 diff(fen, moves, depth):
@@ -730,11 +744,12 @@ Topical ownership is the binding reference if filenames ever shift.
    to seconds with zero determinism loss (counts are order-independent).
    Deferred until the single-threaded floor is met; not worth complexity
    before threading (D23) lands.
-3. **`castle-prevented` provenance**: circulated copies of the TalkChess
-   list pair this FEN with 1 720 476 at depth 4; independent computation
-   (python-chess) gives 665 077, which we adopt. If our engine also
-   produces 665 077 at d4 (and the rest of the ladder matches), treat the
-   circulated figure as a transcription artifact and close this question.
+3. **`castle-prevented` provenance** — *closed 2026-07-10*: circulated
+   copies of the TalkChess list pair this FEN with 1 720 476 at depth 4;
+   independent computation (python-chess) gives 665 077, which we adopted.
+   Our engine independently produces 665 077 at d4 (and the whole ladder
+   matches — the count is in the fast tier, green on every `cargo test`);
+   the circulated figure is a transcription artifact.
 4. **CI**: whether to add a GitHub Actions job running the fast tier per
    push and the full tier nightly — pending a decision on hosted CI for
    this repo at all. The local D24 ritual does not wait for it.

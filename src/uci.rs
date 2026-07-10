@@ -10,10 +10,11 @@
 //! P0 skeleton (design/01 §4 step 5): the loop answers `uci`, `isready`,
 //! `d`, and `quit`, consumes `debug`/`register` silently per spec, and
 //! absorbs every other line — including `position`/`go`/`setoption`, which
-//! P4/P5 wire to the full doc 12 grammar — with `info string`. In-session
-//! `bench`/`perft` (design/01 §3.1) also wait for P3/P4: today their
-//! implementations stop at `todo!` movegen stubs, and the loop must never
-//! panic; their argv forms below run as far as their phases allow.
+//! P4/P5 wire to the full doc 12 grammar — with `info string`. The argv
+//! subcommands are live: `perft <depth> [fen]` prints a real SF-format
+//! divide (P3, design/06 §3.2) and `bench ... perft` runs perft-mode bench;
+//! the *in-session* `bench`/`perft`/`go perft` commands wait for P4's
+//! session-position plumbing.
 
 use crate::bench;
 use crate::board::Board;

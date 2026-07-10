@@ -24,12 +24,21 @@ decision changes) in the same commit.
 
 ## Commands
 
-- `cargo test` — run all tests (the default check after any change)
+- `cargo test` — run all tests (the default check after any change);
+  includes the fast perft tier + checked mini-tier (design/06 §3.5 tier 1)
 - `cargo clippy --all-targets` — must stay clean
 - `cargo run` — the UCI loop (P0 subset: `uci`/`isready`/`d`/`quit`;
   argv subcommands `bench`, `perft <depth> [fen]`, `d`)
 - `bash tools/check.sh` — the full merge gate (fmt, clippy, tests, release
-  perft/bench once those phases land)
+  perft tier; bench fingerprint once search lands)
+- **The D24 perft ritual** — any change touching `movegen`, `board`
+  mutation, `zobrist`, or `attacks` must pass, before landing:
+  `cargo test` (fast tier, automatic) AND
+  `cargo test --release -- --ignored perft_full_suite` (< 30 s). The
+  extended tier (`--ignored perft_extended`, ~18 G nodes, < 4 min in the
+  fast configuration) runs before releases and after movegen/make-unmake
+  rewrites. Debugging a wrong count: TESTING.md (divide →
+  `tools/verify_perft.py "FEN" N --divide` → `tools/perft_diff.py`).
 - **Fast builds** (D16, design/01 §3.7) — the supported configuration for
   strength testing, bench signatures, and SPRT; SPRT pairs must use
   identical flags:
@@ -54,6 +63,11 @@ Library crate + thin binary. Modules (re-exported at the crate root by
   `pawn_attacks`, `between`, `line`, `aligned`, ...) + fancy magic slider
   lookups behind `LazyLock` (`attacks(pt, sq, occ)`; hoist `tables()` in hot
   loops). Criterion baseline: `benches/attacks.rs` → `docs/perf-baseline.md`.
+- `movegen` — `generate::<GT>` (const-generic GenType), `generate_legal`,
+  `has_legal_moves`; `Board::{legal, pseudo_legal, capture_stage,
+  is_capture, attackers_to_exist}` live here next to the generator.
+- `perft` — `perft` (bulk-counted), `perft_checked` (per-node invariant
+  oracle), `divide` (SF-format output). Oracle data: `tests/data/perft.epd`.
 
 ## Core encoding decisions (do not change casually)
 
@@ -123,6 +137,18 @@ invariant oracle wired into make/unmake in debug builds, and the
 bench-neutral `MakeMoveHooks` seam (`make_move_with`, `prefetch_key`) for
 the future TT/NNUE layers.
 
-Next (in rough dependency order): SEE (`see_ge`, P2/P4), movegen + perft
-validation, UCI loop, search, evaluation. Perft is the correctness oracle —
-no movegen/make-unmake change lands without matching known perft counts.
+P3: `movegen` — type-parameterized pseudo-legal generation
+(CAPTURES/QUIETS/EVASIONS/NON_EVASIONS with the SF promotion split), the
+lazy legality layer (`Board::legal`, `generate_legal`,
+`has_legal_moves`), the TT-move validator (`pseudo_legal` + 64k fuzz),
+`capture_stage`/`is_capture`; `perft`/`perft_checked`/`divide`
+(design/06) with the full 23-position suite green at every depth —
+fast tier in `cargo test`, full tier (~1.6 G nodes, ~7 s) and extended
+tier (~18 G nodes, ~58 s) in release — and kiwipete d5 bulk perft
+measured at ~340 Mnps in the fast configuration (floor 100, target 250).
+`tools/perft_diff.py` bisects any divergence against python-chess (or a
+UCI reference via `--ref`).
+
+Next (in rough dependency order): SEE (`see_ge`, P4), eval phase A + UCI
+base (P4), search core (P5). Perft is the correctness oracle — no
+movegen/make-unmake change lands without the D24 ritual above.
