@@ -1,5 +1,7 @@
+use crate::attacks;
 use crate::bitboard::Bitboard;
-use crate::types::{Color, Piece, PieceType, Square};
+use crate::types::{Color, Key, MAX_PLY, PIECE_VALUES, Piece, PieceType, Square, Value};
+use crate::zobrist::{self, ZOBRIST};
 use std::fmt;
 use std::str::FromStr;
 
@@ -37,6 +39,17 @@ impl CastlingRights {
     /// (design/04-position-state.md §3.1/§3.4, D9).
     pub const fn bits(self) -> u8 {
         self.0
+    }
+
+    /// Bit position 0..4 of a SINGLE right (WK = 0, WQ = 1, BK = 2, BQ = 3):
+    /// the index into `Board`'s castling geometry arrays
+    /// (design/04-position-state.md §3.7).
+    pub const fn index(self) -> usize {
+        debug_assert!(
+            self.0.count_ones() == 1,
+            "CastlingRights::index needs exactly one right"
+        );
+        self.0.trailing_zeros() as usize
     }
 }
 
@@ -104,6 +117,92 @@ impl FromStr for CastlingRights {
     }
 }
 
+/// Fields carried over from the previous state and then incrementally
+/// edited by `make_move` (design/04-position-state.md §3.2, D8). Plain
+/// `Copy` — the `copied: prev.copied` assignment in `make_move` is our safe
+/// spelling of Stockfish's "memcpy the struct prefix".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CopiedState {
+    /// Pawns only, both colors; baseline `ZOBRIST.no_pawns` when pawnless.
+    pub pawn_key: Key,
+    /// Piece counts via the count-slot trick (`zobrist::Tables::material`).
+    pub material_key: Key,
+    /// Knights + bishops, both colors.
+    pub minor_key: Key,
+    /// Per-color non-pawns INCLUDING the king.
+    pub non_pawn_key: [Key; 2],
+    /// Per-color sum of `PIECE_VALUES` over N, B, R, Q.
+    pub non_pawn_material: [Value; 2],
+    pub castling_rights: CastlingRights,
+    /// Halfmove clock (50-move rule counter).
+    pub rule50: i32,
+    /// Plies since the last null move (bounds the repetition scan window).
+    pub plies_from_null: i32,
+    /// Set ONLY when an en-passant capture is actually available (D9);
+    /// see the FEN validation in `from_fen` and `make_move`'s double-push
+    /// legality test.
+    pub ep_square: Option<Square>,
+}
+
+/// One ply of undo/search state (design/04-position-state.md §3.2, D8).
+/// `Copy` so `make_null_move` can clone the whole record cheaply.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StateInfo {
+    /// The carried-over block; everything below is recomputed per move.
+    pub copied: CopiedState,
+    /// Full position hash, RAW — rule50 folding happens in [`Board::key`].
+    pub key: Key,
+    /// Enemy pieces giving check to the side to move.
+    pub checkers: Bitboard,
+    /// Indexed by king-owner color; contains pieces of BOTH colors.
+    pub blockers_for_king: [Bitboard; 2],
+    /// `pinners[c]`: color `c` sliders pinning against color `!c`'s king.
+    pub pinners: [Bitboard; 2],
+    /// Per `PieceType`: from-squares that would check the enemy king.
+    pub check_squares: [Bitboard; 6],
+    /// Piece captured by the move that produced this state.
+    pub captured: Option<Piece>,
+    /// Repetition encoding: 0 / +distance / -distance (doc 04 §3.9).
+    pub repetition: i32,
+}
+
+impl StateInfo {
+    /// The all-empty baseline record. Every real state is produced from
+    /// this by `init_state` (setup) or derived from its parent (`make_move`).
+    const EMPTY: StateInfo = StateInfo {
+        copied: CopiedState {
+            pawn_key: 0,
+            material_key: 0,
+            minor_key: 0,
+            non_pawn_key: [0; 2],
+            non_pawn_material: [0; 2],
+            castling_rights: CastlingRights::NONE,
+            rule50: 0,
+            plies_from_null: 0,
+            ep_square: None,
+        },
+        key: 0,
+        checkers: Bitboard::EMPTY,
+        blockers_for_king: [Bitboard::EMPTY; 2],
+        pinners: [Bitboard::EMPTY; 2],
+        check_squares: [Bitboard::EMPTY; 6],
+        captured: None,
+        repetition: 0,
+    };
+}
+
+/// From-scratch key/material computation result — `init_state` applies it,
+/// and the test/debug oracle compares it against the (eventually
+/// incrementally maintained) stored state (doc 04 §3.12).
+struct ComputedKeys {
+    key: Key,
+    pawn_key: Key,
+    material_key: Key,
+    minor_key: Key,
+    non_pawn_key: [Key; 2],
+    non_pawn_material: [Value; 2],
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Board {
     // Primary representation: bitboards.
@@ -114,27 +213,42 @@ pub struct Board {
     // Redundant mailbox for O(1) piece lookup by square.
     pub(crate) mailbox: [Option<Piece>; Square::COUNT],
 
-    // Game state.
     pub(crate) side_to_move: Color,
-    pub(crate) castling_rights: CastlingRights,
-    pub(crate) en_passant_square: Option<Square>,
-    pub(crate) halfmove_clock: u32,
-    pub(crate) fullmove_number: u32,
+    /// Halfmoves since the game's start position (doc 04 §3.3).
+    game_ply: i32,
+
+    // Castling geometry, fixed at setup (Chess960-ready shape, D10).
+    castling_rights_mask: [CastlingRights; Square::COUNT],
+    castling_rook_square: [Square; 4],
+    castling_path: [Bitboard; 4],
+
+    // Ply-indexed state history; NEVER empty — every constructor pushes the
+    // root state (D8). `make_move` pushes, `unmake_move` pops.
+    states: Vec<StateInfo>,
 }
 
 impl Board {
     pub fn empty() -> Self {
-        Board {
+        // Reserved past MAX_PLY so mid-search pushes never reallocate
+        // (doc 04 §3.3; growth would be correct, just a latency spike).
+        let mut states = Vec::with_capacity(MAX_PLY + 64);
+        states.push(StateInfo::EMPTY);
+        let mut board = Board {
             pieces: [[Bitboard::EMPTY; PieceType::COUNT]; Color::COUNT],
             color_occupancy: [Bitboard::EMPTY; Color::COUNT],
             all_occupancy: Bitboard::EMPTY,
             mailbox: [None; Square::COUNT],
             side_to_move: Color::White,
-            castling_rights: CastlingRights::NONE,
-            en_passant_square: None,
-            halfmove_clock: 0,
-            fullmove_number: 1,
-        }
+            game_ply: 0,
+            castling_rights_mask: [CastlingRights::NONE; Square::COUNT],
+            castling_rook_square: [Square::A1; 4],
+            castling_path: [Bitboard::EMPTY; 4],
+            states,
+        };
+        // Even the empty board's root state is self-consistent (its key is
+        // ZOBRIST.castling[0], its pawn key ZOBRIST.no_pawns, ...).
+        board.init_state();
+        board
     }
 
     pub fn piece_on(&self, sq: Square) -> Option<Piece> {
@@ -160,20 +274,295 @@ impl Board {
         self.side_to_move
     }
 
+    /// The current (top-of-stack) state. The stack is never empty (D8).
+    fn st(&self) -> &StateInfo {
+        self.states.last().expect("state stack never empty")
+    }
+
+    fn st_mut(&mut self) -> &mut StateInfo {
+        self.states.last_mut().expect("state stack never empty")
+    }
+
     pub fn castling_rights(&self) -> CastlingRights {
-        self.castling_rights
+        self.st().copied.castling_rights
     }
 
     pub fn en_passant_square(&self) -> Option<Square> {
-        self.en_passant_square
+        self.st().copied.ep_square
     }
 
     pub fn halfmove_clock(&self) -> u32 {
-        self.halfmove_clock
+        self.st().copied.rule50 as u32
+    }
+
+    /// Canonical rule50 accessor for search/TT/pruning callers (design/01
+    /// §3.3.4 seam). [`Board::halfmove_clock`] is the D1-preserved
+    /// FEN-facing alias; both read the same state field.
+    pub fn rule50_count(&self) -> u32 {
+        self.st().copied.rule50 as u32
     }
 
     pub fn fullmove_number(&self) -> u32 {
-        self.fullmove_number
+        (1 + (self.game_ply - (self.side_to_move == Color::Black) as i32) / 2) as u32
+    }
+
+    /// Halfmoves since the game's start position (doc 04 §3.3).
+    pub fn game_ply(&self) -> i32 {
+        self.game_ply
+    }
+
+    /// The TT-facing position hash: the raw key, rule50-folded near the
+    /// 50-move rule (doc 04 §3.4, D9). Repetition detection compares
+    /// [`Board::raw_key`] instead.
+    pub fn key(&self) -> Key {
+        self.adjust_key50(self.st().key)
+    }
+
+    /// The raw (unfolded) position hash.
+    pub fn raw_key(&self) -> Key {
+        self.st().key
+    }
+
+    pub fn pawn_key(&self) -> Key {
+        self.st().copied.pawn_key
+    }
+
+    pub fn material_key(&self) -> Key {
+        self.st().copied.material_key
+    }
+
+    pub fn minor_key(&self) -> Key {
+        self.st().copied.minor_key
+    }
+
+    pub fn non_pawn_key(&self, color: Color) -> Key {
+        self.st().copied.non_pawn_key[color as usize]
+    }
+
+    /// Sum of `PIECE_VALUES` over `color`'s knights, bishops, rooks, queens.
+    pub fn non_pawn_material(&self, color: Color) -> Value {
+        self.st().copied.non_pawn_material[color as usize]
+    }
+
+    /// Enemy pieces currently checking the side to move's king.
+    /// Stubbed EMPTY until `set_check_info` lands (doc 04 §4 step 4).
+    pub fn checkers(&self) -> Bitboard {
+        self.st().checkers
+    }
+
+    /// Pieces (of both colors) that are the sole blocker between a sniper
+    /// and `color`'s king. Stubbed EMPTY until doc 04 §4 step 4.
+    pub fn blockers_for_king(&self, color: Color) -> Bitboard {
+        self.st().blockers_for_king[color as usize]
+    }
+
+    /// `color`'s sliders pinning against the OTHER king. Stubbed EMPTY
+    /// until doc 04 §4 step 4.
+    pub fn pinners(&self, color: Color) -> Bitboard {
+        self.st().pinners[color as usize]
+    }
+
+    /// From-squares from which a `pt` of the side to move would check the
+    /// enemy king. Stubbed EMPTY until doc 04 §4 step 4.
+    pub fn check_squares(&self, pt: PieceType) -> Bitboard {
+        self.st().check_squares[pt as usize]
+    }
+
+    /// The piece captured by the last made move (None at the root state).
+    pub fn captured_piece(&self) -> Option<Piece> {
+        self.st().captured
+    }
+
+    /// `color`'s king square. Panics on king-less boards — every position
+    /// the engine operates on has exactly one king per side.
+    pub fn king_square(&self, color: Color) -> Square {
+        self.pieces(color, PieceType::King)
+            .lsb()
+            .expect("king must exist")
+    }
+
+    /// Squares that must be empty for `right`'s castling move
+    /// (doc 04 §3.7). `right` must be a single right.
+    pub fn castling_path(&self, right: CastlingRights) -> Bitboard {
+        self.castling_path[right.index()]
+    }
+
+    /// Home square of the rook that castles with the single right `right`.
+    pub fn castling_rook_square(&self, right: CastlingRights) -> Square {
+        self.castling_rook_square[right.index()]
+    }
+
+    /// The rights a move touching `sq` revokes: both of a color's rights on
+    /// its king's home square, one right on each rook's home square, NONE
+    /// elsewhere (doc 04 §3.7 revocation mask).
+    pub fn castling_rights_mask(&self, sq: Square) -> CastlingRights {
+        self.castling_rights_mask[sq.index() as usize]
+    }
+
+    /// Rule50 folding of the exposed key (doc 04 §3.4).
+    fn adjust_key50(&self, k: Key) -> Key {
+        zobrist::fold_rule50(k, self.st().copied.rule50)
+    }
+
+    /// Register one granted castling right during setup (doc 04 §3.7):
+    /// revocation-mask bits on the king and rook home squares, the rook's
+    /// origin, the must-be-empty path, and the right itself in the root
+    /// state. Standard chess squares today; the kingside/queenside
+    /// comparison and the path formula are already Chess960-proof (D10).
+    pub(crate) fn set_castling_right(&mut self, color: Color, rook_from: Square) {
+        let king_from = Square::E1.relative_to(color);
+        let kingside = rook_from.file() > king_from.file();
+        let right = match (color, kingside) {
+            (Color::White, true) => CastlingRights::WHITE_KINGSIDE,
+            (Color::White, false) => CastlingRights::WHITE_QUEENSIDE,
+            (Color::Black, true) => CastlingRights::BLACK_KINGSIDE,
+            (Color::Black, false) => CastlingRights::BLACK_QUEENSIDE,
+        };
+        self.castling_rights_mask[king_from.index() as usize].add(right);
+        self.castling_rights_mask[rook_from.index() as usize].add(right);
+        self.castling_rook_square[right.index()] = rook_from;
+
+        let kto = if kingside { Square::G1 } else { Square::C1 }.relative_to(color);
+        let rto = if kingside { Square::F1 } else { Square::D1 }.relative_to(color);
+        // Every square the king or rook crosses or lands on, minus the two
+        // start squares (attacks::between includes its target square).
+        self.castling_path[right.index()] = (attacks::between(rook_from, rto)
+            | attacks::between(king_from, kto)
+            | Bitboard::from_square(kto)
+            | Bitboard::from_square(rto))
+            & !(Bitboard::from_square(king_from) | Bitboard::from_square(rook_from));
+
+        self.st_mut().copied.castling_rights.add(right);
+    }
+
+    /// Final setup step shared by the FEN path (doc 04 §3.3): stage the
+    /// game-state fields into the root state, then recompute every key from
+    /// scratch. Castling geometry must already be registered via
+    /// [`Board::set_castling_right`].
+    pub(crate) fn finish_setup(&mut self, ep_square: Option<Square>, rule50: i32, game_ply: i32) {
+        debug_assert!(rule50 >= 0 && game_ply >= 0);
+        self.game_ply = game_ply;
+        let st = self.st_mut();
+        st.copied.ep_square = ep_square;
+        st.copied.rule50 = rule50;
+        st.copied.plies_from_null = 0;
+        self.init_state();
+    }
+
+    /// From-scratch analogue of Stockfish's `set_state` (doc 04 §3.3–3.4):
+    /// recompute the six keys and non-pawn material for the current
+    /// placement plus the staged game-state fields (side to move, castling
+    /// rights, ep square) and overwrite the top state's derived fields.
+    /// `make_move` will maintain the same quantities incrementally; this
+    /// recompute is the drift oracle the debug consistency check compares
+    /// against (doc 04 §3.12).
+    ///
+    /// Check bookkeeping (checkers/blockers/pinners/check_squares) is
+    /// stubbed EMPTY until `attackers_to`/`set_check_info` land
+    /// (doc 04 §4 step 4).
+    fn init_state(&mut self) {
+        let computed = self.computed_keys();
+        let st = self.st_mut();
+        st.key = computed.key;
+        st.copied.pawn_key = computed.pawn_key;
+        st.copied.material_key = computed.material_key;
+        st.copied.minor_key = computed.minor_key;
+        st.copied.non_pawn_key = computed.non_pawn_key;
+        st.copied.non_pawn_material = computed.non_pawn_material;
+        st.checkers = Bitboard::EMPTY;
+        st.blockers_for_king = [Bitboard::EMPTY; 2];
+        st.pinners = [Bitboard::EMPTY; 2];
+        st.check_squares = [Bitboard::EMPTY; 6];
+        st.captured = None;
+        st.repetition = 0;
+    }
+
+    /// Compute all six keys + material from scratch off the placement and
+    /// the top state's rights/ep fields (which must be staged already).
+    fn computed_keys(&self) -> ComputedKeys {
+        let mut key: Key = 0;
+        let mut pawn_key = ZOBRIST.no_pawns;
+        let mut material_key: Key = 0;
+        let mut minor_key: Key = 0;
+        let mut non_pawn_key: [Key; 2] = [0; 2];
+        let mut non_pawn_material: [Value; 2] = [0; 2];
+
+        for sq in self.all_occupancy() {
+            let pc = self.mailbox[sq.index() as usize].expect("occupancy and mailbox in sync");
+            let psq = ZOBRIST.psq[pc.index()][sq.index() as usize];
+            key ^= psq;
+            match pc.piece_type {
+                PieceType::Pawn => pawn_key ^= psq,
+                pt => {
+                    non_pawn_key[pc.color as usize] ^= psq;
+                    if pt != PieceType::King {
+                        non_pawn_material[pc.color as usize] += PIECE_VALUES[pt as usize];
+                    }
+                    if matches!(pt, PieceType::Knight | PieceType::Bishop) {
+                        minor_key ^= psq;
+                    }
+                }
+            }
+        }
+
+        // Material key: XOR of the count slots psq[pc][8 + i], i in
+        // 0..count, kings included (doc 04 §3.4 trick 3). Indexed directly
+        // rather than via `ZOBRIST.material`: that helper's debug bound
+        // models LEGAL piece counts, but from_fen must stay panic-free on
+        // well-formed yet illegal placements (e.g. nine white pawns), so
+        // absurd counts are capped at the psq row instead.
+        for color in Color::ALL {
+            for piece_type in PieceType::ALL {
+                let row = &ZOBRIST.psq[Piece::new(color, piece_type).index()];
+                let count = (self.pieces(color, piece_type).count() as usize).min(row.len() - 8);
+                for slot in &row[8..8 + count] {
+                    material_key ^= *slot;
+                }
+            }
+        }
+
+        let copied = &self.st().copied;
+        if let Some(ep) = copied.ep_square {
+            key ^= ZOBRIST.en_passant[ep.file() as usize];
+        }
+        if self.side_to_move == Color::Black {
+            key ^= ZOBRIST.side;
+        }
+        key ^= ZOBRIST.castling[copied.castling_rights.bits() as usize];
+
+        ComputedKeys {
+            key,
+            pawn_key,
+            material_key,
+            minor_key,
+            non_pawn_key,
+            non_pawn_material,
+        }
+    }
+
+    /// Test/debug oracle (seed of doc 04 §3.12): recompute every key and
+    /// non-pawn material from scratch and assert they match the stored
+    /// state. Trivially true for freshly parsed boards; it becomes the
+    /// drift detector for every incremental XOR once `make_move` lands.
+    #[cfg(any(test, debug_assertions))]
+    pub fn assert_state_keys_consistent(&self) {
+        let computed = self.computed_keys();
+        let st = self.st();
+        assert_eq!(st.key, computed.key, "main key drifted");
+        assert_eq!(st.copied.pawn_key, computed.pawn_key, "pawn_key drifted");
+        assert_eq!(
+            st.copied.material_key, computed.material_key,
+            "material_key drifted"
+        );
+        assert_eq!(st.copied.minor_key, computed.minor_key, "minor_key drifted");
+        assert_eq!(
+            st.copied.non_pawn_key, computed.non_pawn_key,
+            "non_pawn_key drifted"
+        );
+        assert_eq!(
+            st.copied.non_pawn_material, computed.non_pawn_material,
+            "non_pawn_material drifted"
+        );
     }
 
     /// Place `piece` on the empty square `sq`, keeping bitboards and mailbox in sync.
@@ -226,6 +615,12 @@ impl Board {
         assert!((white & black).is_empty());
         let mailbox_count = self.mailbox.iter().filter(|p| p.is_some()).count();
         assert_eq!(mailbox_count as u32, self.all_occupancy().count());
+
+        // State-stack sanity (doc 04 §3.3): never empty, sane counters.
+        assert!(!self.states.is_empty(), "state stack must never be empty");
+        assert!(self.st().copied.rule50 >= 0);
+        assert!(self.st().copied.plies_from_null >= 0);
+        assert!(self.game_ply >= 0);
     }
 }
 
@@ -341,6 +736,145 @@ mod tests {
             }
             assert_eq!(rights.bits(), mask);
         }
+    }
+
+    // Doc 04 §3.2: StateInfo stays Copy (make_null_move clones the whole
+    // record) and within the ~three-cache-line size budget, so field creep
+    // gets noticed.
+    #[test]
+    fn state_info_is_copy_and_bounded() {
+        fn assert_copy<T: Copy>() {}
+        assert_copy::<CopiedState>();
+        assert_copy::<StateInfo>();
+        const { assert!(size_of::<StateInfo>() <= 192) }
+    }
+
+    // Doc 04 §4 step 3: the root state exists from construction, the
+    // accessors delegate to it, and even the empty board's keys are the
+    // documented baselines (castling[0] is a real key; pawn_key starts at
+    // no_pawns).
+    #[test]
+    fn empty_board_has_consistent_root_state() {
+        let board = Board::empty();
+        board.assert_consistent();
+        board.assert_state_keys_consistent();
+
+        assert_eq!(board.castling_rights(), CastlingRights::NONE);
+        assert_eq!(board.en_passant_square(), None);
+        assert_eq!(board.halfmove_clock(), 0);
+        assert_eq!(board.rule50_count(), 0);
+        assert_eq!(board.game_ply(), 0);
+        assert_eq!(board.fullmove_number(), 1);
+        assert_eq!(board.checkers(), Bitboard::EMPTY);
+        assert_eq!(board.captured_piece(), None);
+
+        assert_eq!(board.raw_key(), ZOBRIST.castling[0]);
+        assert_eq!(board.key(), board.raw_key());
+        assert_eq!(board.pawn_key(), ZOBRIST.no_pawns);
+        assert_eq!(board.material_key(), 0);
+        assert_eq!(board.minor_key(), 0);
+        for color in Color::ALL {
+            assert_eq!(board.non_pawn_key(color), 0);
+            assert_eq!(board.non_pawn_material(color), 0);
+            assert_eq!(board.blockers_for_king(color), Bitboard::EMPTY);
+            assert_eq!(board.pinners(color), Bitboard::EMPTY);
+        }
+        for pt in PieceType::ALL {
+            assert_eq!(board.check_squares(pt), Bitboard::EMPTY);
+        }
+    }
+
+    #[test]
+    fn king_square_finds_kings() {
+        let board = Board::startpos();
+        assert_eq!(board.king_square(Color::White), Square::E1);
+        assert_eq!(board.king_square(Color::Black), Square::E8);
+    }
+
+    // D8: Board::clone clones the state history — per-thread copies are
+    // fully independent.
+    #[test]
+    fn clone_is_deep_and_equal() {
+        let board = Board::startpos();
+        let mut clone = board.clone();
+        assert_eq!(clone, board);
+        assert_eq!(clone.key(), board.key());
+
+        // Diverge the clone; the original must be untouched.
+        clone.remove_piece(Square::E2);
+        assert_ne!(clone, board);
+        assert_eq!(
+            board.piece_on(Square::E2),
+            Some(Piece::new(Color::White, PieceType::Pawn))
+        );
+        board.assert_consistent();
+        clone.assert_consistent();
+    }
+
+    // Doc 04 §3.7: castling geometry (rook squares, empty-path sets,
+    // revocation masks) registered at FEN setup.
+    #[test]
+    fn castling_geometry_from_fen() {
+        use CastlingRights as CR;
+        let board = Board::startpos();
+
+        assert_eq!(board.castling_rook_square(CR::WHITE_KINGSIDE), Square::H1);
+        assert_eq!(board.castling_rook_square(CR::WHITE_QUEENSIDE), Square::A1);
+        assert_eq!(board.castling_rook_square(CR::BLACK_KINGSIDE), Square::H8);
+        assert_eq!(board.castling_rook_square(CR::BLACK_QUEENSIDE), Square::A8);
+
+        let bb = |squares: &[Square]| squares.iter().copied().collect::<Bitboard>();
+        assert_eq!(
+            board.castling_path(CR::WHITE_KINGSIDE),
+            bb(&[Square::F1, Square::G1])
+        );
+        assert_eq!(
+            board.castling_path(CR::WHITE_QUEENSIDE),
+            bb(&[Square::B1, Square::C1, Square::D1])
+        );
+        assert_eq!(
+            board.castling_path(CR::BLACK_KINGSIDE),
+            bb(&[Square::F8, Square::G8])
+        );
+        assert_eq!(
+            board.castling_path(CR::BLACK_QUEENSIDE),
+            bb(&[Square::B8, Square::C8, Square::D8])
+        );
+
+        // Revocation masks: both of a color's rights on its king square,
+        // one on each rook home square, NONE anywhere else.
+        let mut white_both = CR::WHITE_KINGSIDE;
+        white_both.add(CR::WHITE_QUEENSIDE);
+        let mut black_both = CR::BLACK_KINGSIDE;
+        black_both.add(CR::BLACK_QUEENSIDE);
+        assert_eq!(board.castling_rights_mask(Square::E1), white_both);
+        assert_eq!(board.castling_rights_mask(Square::E8), black_both);
+        assert_eq!(board.castling_rights_mask(Square::H1), CR::WHITE_KINGSIDE);
+        assert_eq!(board.castling_rights_mask(Square::A1), CR::WHITE_QUEENSIDE);
+        assert_eq!(board.castling_rights_mask(Square::H8), CR::BLACK_KINGSIDE);
+        assert_eq!(board.castling_rights_mask(Square::A8), CR::BLACK_QUEENSIDE);
+        assert_eq!(board.castling_rights_mask(Square::E4), CR::NONE);
+        assert_eq!(board.castling_rights_mask(Square::B1), CR::NONE);
+
+        // Partial rights register only their own geometry.
+        let partial = Board::from_fen("r3k2r/8/8/8/8/8/8/R3K2R w Kq - 0 1").unwrap();
+        assert_eq!(partial.castling_rights_mask(Square::E1), CR::WHITE_KINGSIDE);
+        assert_eq!(partial.castling_rights_mask(Square::A1), CR::NONE);
+        assert_eq!(
+            partial.castling_rights_mask(Square::E8),
+            CR::BLACK_QUEENSIDE
+        );
+        assert_eq!(partial.castling_rights_mask(Square::H8), CR::NONE);
+    }
+
+    // CastlingRights::index: bit positions for the geometry arrays
+    // (doc 04 §3.7: WK 0, WQ 1, BK 2, BQ 3).
+    #[test]
+    fn castling_rights_single_bit_index() {
+        assert_eq!(CastlingRights::WHITE_KINGSIDE.index(), 0);
+        assert_eq!(CastlingRights::WHITE_QUEENSIDE.index(), 1);
+        assert_eq!(CastlingRights::BLACK_KINGSIDE.index(), 2);
+        assert_eq!(CastlingRights::BLACK_QUEENSIDE.index(), 3);
     }
 
     #[test]

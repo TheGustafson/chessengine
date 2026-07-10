@@ -62,8 +62,16 @@ Library crate + thin binary. Modules (re-exported at the crate root by
 - **Board representation**: bitboards are primary (`pieces[color][piece_type]`,
   per-color occupancy, all occupancy); a redundant `mailbox: [Option<Piece>; 64]`
   gives O(1) piece-on-square. `put_piece`/`remove_piece` are the ONLY ways to
-  mutate placement — they keep every layer in sync, and Zobrist hashing will
-  hook in there too.
+  mutate placement — they keep every layer in sync but are placement-only:
+  Zobrist key deltas live in `make_move`, NOT in the placement mutators (the
+  five-key family updates differently per piece type and move kind, and the
+  ep/castling/side keys never route through placement — design/04 §3.3, §9.1).
+  From-scratch key computation happens once at setup (`from_fen`) and in the
+  debug oracle.
+- **Game state** (castling rights, ep square, halfmove clock, all Zobrist
+  keys, check info) lives in a `StateInfo` stack owned by `Board`
+  (`states: Vec<StateInfo>`, never empty; D8) — not in `Board` fields. The
+  public accessors delegate to the top state.
 - **Move encoding** (Stockfish-style, must fit u16): bits 0-5 from, 6-11 to,
   12-13 promotion piece (0 = knight ... 3 = queen), 14-15 kind
   (normal/promotion/en-passant/castling). Castling is the king's move (e1g1).
@@ -98,9 +106,13 @@ GPLv3; take ideas, reimplement idiomatically in Rust.
 
 Done: types, bitboards, board + FEN, `Move`/`MoveList`; attack tables (P1:
 const leapers + geometry, fancy magic sliders, exhaustively validated
-against the naive ray oracle, criterion-benchmarked).
+against the naive ray oracle, criterion-benchmarked); P2 in progress —
+`zobrist` module (five-key family, all SF tricks) and the
+`CopiedState`/`StateInfo` split with the `Vec<StateInfo>` state stack,
+from-scratch key computation at FEN setup, FEN ep validation (pseudo-legal;
+full legality lands with `attackers_to`).
 
-Next (in rough dependency order): make/unmake with a `StateInfo` undo stack,
-Zobrist keys wired into `put_piece`/`remove_piece`, perft validation, UCI
-loop, search, evaluation. Perft is the correctness oracle — no
-movegen/make-unmake change lands without matching known perft counts.
+Next (in rough dependency order): `attackers_to` + check info, make/unmake
+maintaining all five Zobrist keys incrementally, perft validation, UCI loop,
+search, evaluation. Perft is the correctness oracle — no movegen/make-unmake
+change lands without matching known perft counts.

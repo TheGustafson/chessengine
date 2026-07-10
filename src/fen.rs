@@ -1,5 +1,7 @@
-use crate::board::Board;
-use crate::types::{Color, Piece, Square};
+use crate::attacks;
+use crate::bitboard::Bitboard;
+use crate::board::{Board, CastlingRights};
+use crate::types::{Color, Piece, PieceType, Square};
 use std::fmt;
 use std::fmt::Write as _;
 
@@ -110,34 +112,93 @@ impl Board {
             s => return Err(FenError::SideToMove(s.to_string())),
         };
 
-        // Field 3: castling rights.
-        board.castling_rights = fields[2]
+        // Field 3: castling rights. Each granted right registers its
+        // revocation mask, rook square, and path (doc 04 §3.7); the rights
+        // themselves land in the root state.
+        let rights: CastlingRights = fields[2]
             .parse()
             .map_err(|_| FenError::Castling(fields[2].to_string()))?;
+        for (right, color, rook_from) in [
+            (CastlingRights::WHITE_KINGSIDE, Color::White, Square::H1),
+            (CastlingRights::WHITE_QUEENSIDE, Color::White, Square::A1),
+            (CastlingRights::BLACK_KINGSIDE, Color::Black, Square::H8),
+            (CastlingRights::BLACK_QUEENSIDE, Color::Black, Square::A8),
+        ] {
+            if rights.contains(right) {
+                board.set_castling_right(color, rook_from);
+            }
+        }
 
-        // Field 4: en passant target square.
-        board.en_passant_square = match fields[3] {
+        // Field 4: en passant target square. A square off ranks 3/6 is a
+        // parse error; a well-formed square is then kept only if an ep
+        // capture is pseudo-possible (doc 04 §3.7 a–c) — the ep FILE is
+        // hashed, so a spurious square would make identical positions hash
+        // differently and break repetition detection and the TT.
+        let ep_square = match fields[3] {
             "-" => None,
             s => {
                 let sq: Square = s.parse().map_err(|_| FenError::EnPassant(s.to_string()))?;
                 if sq.rank() != 2 && sq.rank() != 5 {
                     return Err(FenError::EnPassant(s.to_string()));
                 }
-                Some(sq)
+                Some(sq).filter(|&sq| board.ep_capture_pseudo_possible(sq))
             }
         };
 
         // Fields 5 and 6: halfmove clock and fullmove number, optional.
-        board.halfmove_clock = match fields.get(4) {
-            Some(s) => s.parse().map_err(|_| FenError::Clock(s.to_string()))?,
+        let rule50 = match fields.get(4) {
+            Some(s) => s
+                .parse::<u32>()
+                .ok()
+                .and_then(|n| i32::try_from(n).ok())
+                .ok_or_else(|| FenError::Clock(s.to_string()))?,
             None => 0,
         };
-        board.fullmove_number = match fields.get(5) {
-            Some(s) => s.parse().map_err(|_| FenError::Clock(s.to_string()))?,
+        let fullmove = match fields.get(5) {
+            Some(s) => s
+                .parse::<u32>()
+                .map_err(|_| FenError::Clock(s.to_string()))?,
             None => 1,
         };
+        // game_ply mapping with the fullmove-0 clamp (doc 04 §3.3): without
+        // the clamp the common incorrect "fullmove 0" FENs would wrap
+        // fullmove_number() to garbage in re-emitted FENs.
+        let game_ply = (2 * (i64::from(fullmove) - 1)).clamp(0, i64::from(i32::MAX - 2)) as i32
+            + (board.side_to_move == Color::Black) as i32;
 
+        board.finish_setup(ep_square, rule50, game_ply);
         Ok(board)
+    }
+
+    /// Doc 04 §3.7 conditions a–c: is an en-passant capture of a just
+    /// double-pushed pawn pseudo-possible? Placement and side to move must
+    /// already be set. Condition d (the capture must not leave the king in
+    /// check) lands with `attackers_to` in doc 04 §4 step 4.
+    fn ep_capture_pseudo_possible(&self, ep: Square) -> bool {
+        let us = self.side_to_move();
+        let them = us.flip();
+        // The ep target sits on OUR relative rank 6 (rank 6 with White to
+        // move, rank 3 with Black to move); anything else is spurious.
+        if ep.relative_rank(us) != 5 {
+            return false;
+        }
+        // a. one of our pawns attacks the ep square (attack symmetry: the
+        //    squares a `them` pawn ON `ep` would attack are exactly the
+        //    squares from which an `us` pawn attacks `ep`).
+        if (attacks::pawn_attacks(them, ep) & self.pieces(us, PieceType::Pawn)).is_empty() {
+            return false;
+        }
+        // b. the double-pushed enemy pawn stands in front of the ep square.
+        if !self
+            .pieces(them, PieceType::Pawn)
+            .contains(ep.offset(them.pawn_push()))
+        {
+            return false;
+        }
+        // c. the ep square and the pawn's origin square are empty.
+        let origin = ep.offset(us.pawn_push());
+        (self.all_occupancy() & (Bitboard::from_square(ep) | Bitboard::from_square(origin)))
+            .is_empty()
     }
 
     /// Serialize the position to Forsyth-Edwards Notation.
@@ -186,8 +247,8 @@ impl Board {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::board::CastlingRights;
-    use crate::types::PieceType;
+    use crate::types::{BISHOP_VALUE, KNIGHT_VALUE, QUEEN_VALUE, ROOK_VALUE};
+    use crate::zobrist::{ZOBRIST, fold_rule50};
 
     const KIWIPETE: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
@@ -234,14 +295,215 @@ mod tests {
         }
     }
 
+    // Doc 04 §4 step 3: from-scratch key computation pins. The literals
+    // change ONLY if the zobrist seed/fill order changes — which
+    // invalidates every stored key and must be deliberate (the pins in
+    // zobrist::tests catch the same event at the table level).
     #[test]
-    fn parses_en_passant_square() {
-        // Position after 1. e4.
-        let fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1";
+    fn startpos_keys_are_stable_and_recomputable() {
+        let board = Board::startpos();
+        board.assert_state_keys_consistent();
+
+        // rule50 = 0: the exposed key is the raw key, unfolded.
+        assert_eq!(board.key(), board.raw_key());
+        assert_eq!(board.raw_key(), 0x8F8F01D4562F59FB);
+        assert_eq!(board.pawn_key(), 0x916BB95C438C0BA9);
+        assert_eq!(board.material_key(), 0xA0710EF633754DD6);
+        assert_eq!(board.minor_key(), 0x41AF5A253E95F502);
+        assert_eq!(board.non_pawn_key(Color::White), 0x85DC4DDCD53BCFCC);
+        assert_eq!(board.non_pawn_key(Color::Black), 0x54B51DF93C8CF372);
+
+        // Stability across independent parses.
+        assert_eq!(
+            Board::from_fen(START_FEN).unwrap().raw_key(),
+            board.raw_key()
+        );
+
+        // Independent in-test recompute of the main key straight from the
+        // public zobrist tables (different code path from init_state).
+        let mut key = 0;
+        for sq in Square::all() {
+            if let Some(pc) = board.piece_on(sq) {
+                key ^= ZOBRIST.psq[pc.index()][sq.index() as usize];
+            }
+        }
+        key ^= ZOBRIST.castling[board.castling_rights().bits() as usize];
+        assert_eq!(board.raw_key(), key);
+
+        // Non-pawn material: 2N + 2B + 2R + Q per side, symmetric.
+        let npm = 2 * (KNIGHT_VALUE + BISHOP_VALUE + ROOK_VALUE) + QUEEN_VALUE;
+        assert_eq!(board.non_pawn_material(Color::White), npm);
+        assert_eq!(board.non_pawn_material(Color::Black), npm);
+    }
+
+    // Doc 04 §5 (FEN-loadable subset of transposition invariance): side to
+    // move and castling rights each perturb the key by their exact table
+    // entries.
+    #[test]
+    fn state_fields_change_the_key() {
+        let base = Board::from_fen("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1").unwrap();
+        let black = Board::from_fen("r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1").unwrap();
+        assert_eq!(base.raw_key() ^ black.raw_key(), ZOBRIST.side);
+
+        let partial = Board::from_fen("r3k2r/8/8/8/8/8/8/R3K2R w Kq - 0 1").unwrap();
+        assert_eq!(
+            base.raw_key() ^ partial.raw_key(),
+            ZOBRIST.castling[CastlingRights::ALL.bits() as usize]
+                ^ ZOBRIST.castling[partial.castling_rights().bits() as usize]
+        );
+        // Sanity: "Kq" is WK | BQ = 0b1001.
+        assert_eq!(partial.castling_rights().bits(), 0b1001);
+    }
+
+    // Doc 04 §5 rule50 folding: raw keys ignore the clock entirely; key()
+    // folds in 8-step buckets starting at 14.
+    #[test]
+    fn key_folds_rule50_from_fen_clocks() {
+        let at =
+            |clock: u32| Board::from_fen(&format!("4k3/8/8/8/8/8/8/4K3 w - - {clock} 1")).unwrap();
+        let raw = at(0).raw_key();
+        for clock in [0, 13, 14, 21, 22, 99] {
+            assert_eq!(
+                at(clock).raw_key(),
+                raw,
+                "raw key must ignore clock {clock}"
+            );
+        }
+        assert_eq!(at(13).key(), raw);
+        assert_eq!(at(14).key(), fold_rule50(raw, 14));
+        assert_ne!(at(14).key(), raw);
+        assert_eq!(at(14).key(), at(21).key());
+        assert_ne!(at(22).key(), at(21).key());
+    }
+
+    // Doc 04 §4 step 3: FEN round-trips preserve the ENTIRE state — the
+    // reparsed board compares equal (placement, game_ply, all keys).
+    #[test]
+    fn fen_roundtrip_preserves_state() {
+        for fen in [
+            START_FEN,
+            KIWIPETE,
+            "rnbqkbnr/ppp2ppp/4p3/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 4 7",
+            "8/8/8/8/k2Pp2Q/8/8/3K4 b - d3 0 1",
+        ] {
+            let board = Board::from_fen(fen).unwrap();
+            board.assert_state_keys_consistent();
+            let reparsed = Board::from_fen(&board.to_fen()).unwrap();
+            assert_eq!(
+                reparsed, board,
+                "state must survive a round-trip of {fen:?}"
+            );
+            assert_eq!(reparsed.key(), board.key());
+            assert_eq!(reparsed.game_ply(), board.game_ply());
+        }
+    }
+
+    // Doc 04 §5: the fullmove-0 clamp — FENs with the (incorrect but
+    // common) fullmove counter 0 map to game_ply 0/1, report fullmove 1
+    // with no u32 wrap, and re-emit a legal counter.
+    #[test]
+    fn fullmove_zero_fens_clamp_to_game_ply_zero() {
+        let white = Board::from_fen("4k3/8/8/8/8/8/8/4K3 w - - 0 0").unwrap();
+        assert_eq!(white.game_ply(), 0);
+        assert_eq!(white.fullmove_number(), 1);
+        assert!(white.to_fen().ends_with(" 0 1"), "{}", white.to_fen());
+
+        let black = Board::from_fen("4k3/8/8/8/8/8/8/4K3 b - - 0 0").unwrap();
+        assert_eq!(black.game_ply(), 1);
+        assert_eq!(black.fullmove_number(), 1);
+        assert!(black.to_fen().ends_with(" 0 1"), "{}", black.to_fen());
+    }
+
+    // game_ply mapping (doc 04 §3.3): 2 * (fullmove - 1) + black-to-move.
+    #[test]
+    fn game_ply_tracks_fullmove_and_side() {
+        let ply = |fen: &str| Board::from_fen(fen).unwrap().game_ply();
+        assert_eq!(Board::startpos().game_ply(), 0);
+        assert_eq!(ply("4k3/8/8/8/8/8/8/4K3 b - - 0 1"), 1);
+        assert_eq!(ply("4k3/8/8/8/8/8/8/4K3 w - - 0 3"), 4);
+        assert_eq!(ply("4k3/8/8/8/8/8/8/4K3 b - - 0 3"), 5);
+    }
+
+    // Doc 04 §3.7: the parsed ep square survives only when a capture is
+    // pseudo-possible — (a) one of our pawns attacks it, (b) the double-
+    // pushed enemy pawn stands in front of it, (c) the target and origin
+    // squares are empty. Full legality (condition d) lands with
+    // attackers_to (doc 04 §4 step 4).
+    #[test]
+    fn ep_square_kept_when_capture_pseudo_possible() {
+        // After 1. e4 e6 2. e5 d5: exd6 e.p. is available (White to move).
+        let fen = "rnbqkbnr/ppp2ppp/4p3/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3";
+        let board = Board::from_fen(fen).unwrap();
+        assert_eq!(board.en_passant_square(), Some(Square::D6));
+        assert_eq!(board.to_fen(), fen);
+
+        // Black-to-move mirror: after 1. e4 e5 2. f4 exf4 3. g4, fxg3 e.p.
+        let fen = "rnbqkbnr/pppp1ppp/8/8/4PpP1/8/PPPP3P/RNBQKBNR b KQkq g3 0 3";
         let board = Board::from_fen(fen).unwrap();
         assert_eq!(board.side_to_move(), Color::Black);
-        assert_eq!(board.en_passant_square(), Some(Square::E3));
+        assert_eq!(board.en_passant_square(), Some(Square::G3));
         assert_eq!(board.to_fen(), fen);
+    }
+
+    #[test]
+    fn spurious_ep_squares_are_dropped() {
+        // (square, FEN): each ep target fails one §3.7 condition.
+        let cases = [
+            // (a) no capturing pawn: after 1. e4 nothing attacks e3 —
+            // Stockfish drops this ep square too.
+            (
+                "e3",
+                "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+            ),
+            // (b) no double-pushed pawn in front of d6 (d5 is empty).
+            (
+                "d6",
+                "rnbqkbnr/ppp2ppp/4p3/4P3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3",
+            ),
+            // (c) the origin square d7 is occupied (a bishop retreated
+            // there), so d7-d5 cannot have just been played.
+            (
+                "d6",
+                "rn1qkbnr/pppb1ppp/4p3/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 4",
+            ),
+            // Wrong side-relative rank: rank 3 belongs to a WHITE double
+            // push, so with White to move e3 is spurious.
+            (
+                "e3",
+                "rnbqkbnr/pp1ppppp/8/8/2p1P3/8/PPPPQPPP/RNBQKBN1 w Qkq e3 0 5",
+            ),
+        ];
+        for (ep, fen) in cases {
+            let board = Board::from_fen(fen).unwrap();
+            assert_eq!(board.en_passant_square(), None, "{fen:?} must drop ep");
+            assert_eq!(
+                board.to_fen(),
+                fen.replace(&format!(" {ep} "), " - "),
+                "{fen:?} must re-emit '-'"
+            );
+        }
+    }
+
+    // The ep FILE is hashed only when the square is kept (D9): a dropped
+    // ep square hashes identically to the same FEN written with "-", and a
+    // kept one differs by exactly its file key.
+    #[test]
+    fn ep_keying_follows_validation() {
+        let kept = Board::from_fen("rnbqkbnr/ppp2ppp/4p3/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3")
+            .unwrap();
+        let none = Board::from_fen("rnbqkbnr/ppp2ppp/4p3/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq - 0 3")
+            .unwrap();
+        assert_eq!(
+            kept.raw_key() ^ none.raw_key(),
+            ZOBRIST.en_passant[Square::D6.file() as usize]
+        );
+
+        let dropped =
+            Board::from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").unwrap();
+        let dash =
+            Board::from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1").unwrap();
+        assert_eq!(dropped, dash);
+        assert_eq!(dropped.raw_key(), dash.raw_key());
     }
 
     #[test]

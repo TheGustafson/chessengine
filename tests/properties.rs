@@ -227,21 +227,34 @@ proptest! {
     // 256 cases still finishes in well under a second.
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// `from_fen(to_fen(board)) == board` for boards built through random
-    /// `put_piece` sequences.
+    /// FEN round-trips on boards built through random `put_piece`
+    /// sequences: the placement layer survives square for square and the
+    /// FEN text is a fixed point. (Full `Board` equality against the
+    /// put_piece-built original would also compare Zobrist state, which
+    /// only the canonical constructors compute — key deltas live in
+    /// `make_move`, not in `put_piece`; design/04 §3.3.)
     #[test]
     fn fen_roundtrip_on_generated_placements(board in placement_board()) {
         let fen = board.to_fen();
         let reparsed = Board::from_fen(&fen);
         prop_assert!(reparsed.is_ok(), "generated FEN {:?} rejected: {:?}", fen, reparsed.err());
         let reparsed = reparsed.unwrap();
-        prop_assert_eq!(&reparsed, &board);
+        for sq in Square::all() {
+            prop_assert_eq!(reparsed.piece_on(sq), board.piece_on(sq), "mismatch on {}", sq);
+        }
+        // from_fen is deterministic: a second parse yields an equal Board,
+        // Zobrist state and all.
+        prop_assert_eq!(&Board::from_fen(&fen).unwrap(), &reparsed);
         prop_assert_eq!(reparsed.to_fen(), fen);
     }
 
     /// Full-FEN round-trip with randomized state fields spliced onto a
     /// generated placement: side to move, castling rights, a plausible
     /// en-passant target (rank follows the side to move), and clocks.
+    ///
+    /// The ep square is subject to FEN validation (design/04 §3.7): it is
+    /// either kept exactly or dropped to `-` — never invented, never
+    /// replaced — and `to_fen` re-emits whatever survived.
     #[test]
     fn fen_roundtrip_with_random_state_fields(
         board in placement_board(),
@@ -256,10 +269,9 @@ proptest! {
         let side = if black_to_move { 'b' } else { 'w' };
         // A real ep target sits on rank 3 after a white double push (black
         // to move) and on rank 6 after a black one (white to move).
-        let ep = match ep_file {
-            Some(file) => Square::from_coords(file, if black_to_move { 2 } else { 5 }).to_string(),
-            None => "-".to_string(),
-        };
+        let ep_square = ep_file
+            .map(|file| Square::from_coords(file, if black_to_move { 2 } else { 5 }));
+        let ep = ep_square.map_or("-".to_string(), |sq| sq.to_string());
         let fen = format!("{placement} {side} {rights} {ep} {halfmove} {fullmove}");
 
         let parsed = Board::from_fen(&fen);
@@ -271,6 +283,11 @@ proptest! {
         prop_assert_eq!(parsed.castling_rights(), rights);
         prop_assert_eq!(parsed.halfmove_clock(), halfmove);
         prop_assert_eq!(parsed.fullmove_number(), fullmove);
-        prop_assert_eq!(parsed.to_fen(), fen);
+        if parsed.en_passant_square().is_some() {
+            prop_assert_eq!(parsed.en_passant_square(), ep_square, "ep must never be replaced");
+        }
+        let ep_out = parsed.en_passant_square().map_or("-".to_string(), |sq| sq.to_string());
+        let expected = format!("{placement} {side} {rights} {ep_out} {halfmove} {fullmove}");
+        prop_assert_eq!(parsed.to_fen(), expected);
     }
 }
