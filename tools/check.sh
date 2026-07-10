@@ -30,17 +30,20 @@ cargo build --release
 BIN=target/release/chessengine
 
 # --- Full perft tier (D24 gate; design/06 §3.5 tier 2) ----------------------
-# TODO(P3): SKIPs until P3 (movegen + perft) lands. The probe is the
-# `chessengine perft <depth>` subcommand (design/06 §3.2); once it answers
-# with SF-format output, the release perft suite becomes mandatory.
+# P3 landed (M2): this step is unconditional. The SF-format `perft`
+# subcommand (design/06 §3.2) is itself part of the contract — losing it
+# would break tools/perft_diff.py — so its absence FAILS the gate.
+step "perft divide sanity  (chessengine perft 1 — SF-format output)"
+"$BIN" perft 1 | grep -q "Nodes searched" || {
+    printf 'FAIL: %s perft 1 did not print SF-format divide output\n' "$BIN" >&2
+    exit 1
+}
+
 step "release perft suite  (cargo test --release -- --ignored perft_full_suite)"
-if "$BIN" perft 1 2>/dev/null | grep -q "Nodes searched"; then
-    cargo test --release -- --ignored perft_full_suite
-    # Tier 3 (perft_extended, ~18G nodes) is run at maintainer discretion
-    # before releases / after movegen rewrites — not part of this gate.
-else
-    skip "release perft suite — TODO(P3): binary has no 'perft' subcommand yet"
-fi
+cargo test --release -- --ignored perft_full_suite
+# Tier 3 (perft_extended, ~18G nodes, < 4 min) is run at maintainer
+# discretion before releases / after movegen rewrites — not part of this
+# gate (design/06 §3.5).
 
 # --- Bench fingerprint (D24; design/14 §3.2, design/06 §3.6) ----------------
 # TODO(P5): SKIPs until P5 (search core v1 + bench depth mode) lands. The

@@ -47,3 +47,35 @@ within ±3.5%; both point estimates shown, ns/lookup from the better run.
   runs, since a `LazyLock` initializes once per process): **20.9–21.1 ms**
   — matches the ~21 ms measured once at P1 step 4 (doc 03 §6 target
   ≤ 25 ms).
+
+### movegen + perft — 2026-07-10, P3/M2 (`benches/movegen.rs`, `benches/perft.rs`; contracts: design/05 §6, design/14 §4 steps 3–4)
+
+Same machine/config as above (rustc 1.92.0, criterion 0.8.2,
+`RUSTFLAGS="-C target-cpu=x86-64-v3"`, bench profile = release).
+Throughput mode: the perft rows use `Throughput::Elements(<oracle node
+count>)` so thrpt reads directly in nodes/s; the movegen rows use the
+total moves emitted per pass over the six standard perft positions
+(ns/position = time ÷ 6).
+
+| Benchmark               | run 1 (time / thrpt)   | run 2 (time / thrpt)   | derived            | target                        |
+|-------------------------|------------------------|------------------------|--------------------|-------------------------------|
+| perft/startpos_d5       | 17.34 ms / 280.5 Mnps  | 17.39 ms / 279.8 Mnps  | 280 Mnps bulk      | ≥ 100 Mnps floor / 250 target |
+| perft/kiwipete_d4       | 13.76 ms / 297.0 Mnps  | 13.78 ms / 296.6 Mnps  | 297 Mnps bulk      | ≥ 100 Mnps floor / 250 target |
+| movegen/non_evasions_x6 | 171.6 ns / 1.236 G/s   | 172.6 ns / 1.228 G/s   | ≈ 28.7 ns/position | —                             |
+| movegen/captures_x6     | 60.4 ns / 364 Mmoves/s | 61.1 ns / 360 Mmoves/s | ≈ 10.1 ns/position | —                             |
+| movegen/legal_x6        | 361.4 ns / 492.6 M/s   | 361.1 ns / 493.0 M/s   | ≈ 60 ns/position   | —                             |
+
+- Three perft runs were taken; the middle one was a +10 % WSL2 excursion
+  on `startpos_d5` (kiwipete_d4 unaffected), so the recorded pair is runs
+  1 and 3, which agree within 0.3 %. The movegen rows are two consecutive
+  runs, all within ±3 %.
+- **Both perft rows clear the D24 floor (100 Mnps) and the 250 Mnps
+  stretch** (design/06 §6, design/05 §8.8).
+- **Kiwipete d5 bulk perft, D16 record (doc 06 §8.4)**: the release binary
+  (`chessengine perft 5 <kiwipete>`, same RUSTFLAGS) finishes 193,690,690
+  nodes in 0.61 / 0.62 / 0.67 s wall = 289–318 Mnps *including* process
+  startup and the ~21 ms magic init; the in-process M2 gate measurement
+  (commit c8e30dd) was 303–359 Mnps, median 339.
+- `generate_legal` costs ≈ 2.1× raw `NON_EVASIONS` generation on this mix
+  (the lazy legality filter + suspect testing, doc 05 §3.9) while still
+  emitting ~0.5 G legal moves/s.

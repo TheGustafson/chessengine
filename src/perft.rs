@@ -255,6 +255,8 @@ mod tests {
             ("2K2r2/4P3/8/8/8/8/8/3k4 w - - 0 1", 3, 1_442),
             // double-check: only king moves legal at the root.
             ("4k3/8/3N4/8/8/8/8/4RK2 b - - 0 1", 4, 4_755),
+            // double-check-block: a rook that could (illegally) interpose.
+            ("4k3/8/3N4/8/8/8/r7/4RK2 b - - 0 1", 3, 945),
             // stale-checkmate: stalemate and checkmate leaves mixed.
             ("8/k1P5/8/1K6/8/8/8/8 w - - 0 1", 4, 926),
             // cpw5: the make/unmake killer (un-promote cleanly).

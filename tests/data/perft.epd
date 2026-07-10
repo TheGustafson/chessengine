@@ -80,3 +80,9 @@ K1k5/8/P7/8/8/8/8/8 w - - 0 1 ;D1 2 ;D2 6 ;D3 13 ;D4 63 ;D5 382 ;D6 2217
 8/k1P5/8/1K6/8/8/8/8 w - - 0 1 ;D1 10 ;D2 25 ;D3 268 ;D4 926 ;D5 10857 ;D6 43261 ;D7 567584
 # double-checkmate2: mating nets — forced-mate leaves at shallow depth
 8/8/2k5/5q2/5n2/8/5K2/8 b - - 0 1 ;D1 37 ;D2 183 ;D3 6559 ;D4 23527
+# double-check-block: Nd6 + Re1 double check, but black owns a rook (a2) that
+# could (illegally) interpose on the e-file — catches generators that emit
+# non-king moves in double check and rely on the lazy legality filter, which
+# never tests an unpinned non-king mover (found by the M2 mutation audit;
+# counts python-chess 1.11.2 verified 2026-07-10)
+4k3/8/3N4/8/8/8/r7/4RK2 b - - 0 1 ;D1 3 ;D2 60 ;D3 945 ;D4 18006 ;D5 271076 ;D6 5364045

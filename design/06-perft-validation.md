@@ -362,6 +362,7 @@ is ✔-verified at every listed depth.
 | promo-give-check | `4k3/1P6/8/8/8/8/K7/8 w - - 0 1` | promotion delivering check (gives_check on promotions) | 1: 9, 2: 40, 3: 472, 4: 2 661, 5: 38 983, 6: 217 342 | 5 |
 | underpromo-check | `8/P1k5/K7/8/8/8/8/8 w - - 0 1` | under-promotion delivering check | 1: 6, 2: 27, 3: 273, 4: 1 329, 5: 18 135, 6: 92 683 | 5 |
 | double-check | `4k3/8/3N4/8/8/8/8/4RK2 b - - 0 1` | double check (Nd6 + Re1): only king moves legal at the root | 1: 3, 2: 69, 3: 212, 4: 4 755, 5: 23 842, 6: 550 752 | 5 |
+| double-check-block | `4k3/8/3N4/8/8/8/r7/4RK2 b - - 0 1` | double check with a black rook able to (illegally) interpose on the e-file — a generator that emits non-king moves in double check gets a wrong count at d1, because the lazy legality filter never tests an unpinned non-king mover (added by the M2 mutation audit, 2026-07-10) | 1: 3, 2: 60, 3: 945, 4: 18 006, 5: 271 076, 6: 5 364 045 | 5 |
 | discovered-check | `8/8/1P2K3/8/2n5/1q6/8/5k2 b - - 0 1` | discovered checks and evasions with knight forks | 1: 29, 2: 165, 3: 5 160, 4: 31 961, 5: 1 004 658 | 4 |
 | self-stalemate | `K1k5/8/P7/8/8/8/8/8 w - - 0 1` | near-stalemate corner; zero-move nodes counted correctly | 1: 2, 2: 6, 3: 13, 4: 63, 5: 382, 6: 2 217 | 6 |
 | stale-checkmate | `8/k1P5/8/1K6/8/8/8/8 w - - 0 1` | stalemate and checkmate leaves mixed | 1: 10, 2: 25, 3: 268, 4: 926, 5: 10 857, 6: 43 261, 7: 567 584 | 5 |

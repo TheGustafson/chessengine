@@ -39,8 +39,17 @@ retrofitting.
 
 Done (pre-suite): `types` (Color/PieceType/Piece/Square), `bitboard`,
 `board` (hybrid bitboards + mailbox), `fen`, `moves` (`Move` u16 +
-`MoveList`). Nothing from docs 01–14 is implemented yet. CLAUDE.md reflects
-this baseline.
+`MoveList`).
+
+Phases complete: **P0–P3; milestones M1 and M2 passed.** P1 landed the
+attack tables (leapers + fancy magics, doc 03 §8 green); P2 the state
+layer (StateInfo/Zobrist/make-unmake/repetition, doc 04 §8 items 1, 6–8);
+P3 movegen + perft (docs 05 and 06 §8.1–8.6 green, doc 04 items 2–4
+closed). M2 numbers: full 23-position suite exact in debug-with-oracle
+and release, kiwipete d5 bulk perft ~340 Mnps in the D16 fast
+configuration (floor 100, stretch 250), mutation test caught injected
+ep-pin and castling-rights bugs (audited 2026-07-10). CLAUDE.md §Status
+tracks the detail; next phase: P4.
 
 ---
 
