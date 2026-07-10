@@ -889,6 +889,55 @@ mod tests {
     }
 
     #[test]
+    fn mate_suite_1_to_3_exact_scores_and_first_moves() {
+        // The §8.4 exit bar in table form: ≥ 10 positions across mates in
+        // 1/2/3, each solved at depth ≤ 6 with the exact ply-relative
+        // score AND a verified-optimal first move. Every entry — the mate
+        // distance and the complete optimal-first-move set — was checked
+        // against an exhaustive independent minimax over python-chess
+        // movegen, so a listed move set is exact (a single-element set
+        // means the fastest mate is unique).
+        //
+        // (fen, mate distance in plies, all optimal first moves)
+        type Entry = (&'static str, i32, &'static [&'static str]);
+        const SUITE: &[Entry] = &[
+            // -- mate in 1 --
+            ("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", 1, &["d1d8"]),
+            ("k7/8/1K6/8/8/8/8/7R w - - 0 1", 1, &["h1h8"]),
+            ("7k/8/5K2/8/8/8/8/6Q1 w - - 0 1", 1, &["g1g7"]),
+            ("6rk/6pp/8/6N1/8/8/8/K7 w - - 0 1", 1, &["g5f7"]),
+            ("6k1/8/6K1/8/8/8/8/4R3 w - - 0 1", 1, &["e1e8"]),
+            ("7k/R7/1R6/8/8/8/8/K7 w - - 0 1", 1, &["b6b8"]),
+            ("7r/8/8/8/8/1k6/8/K7 b - - 0 1", 1, &["h8h1"]),
+            // -- mate in 2 --
+            ("k7/8/2K5/8/8/8/8/7R w - - 0 1", 3, &["c6b6", "c6c7"]),
+            (
+                "7k/8/5K2/8/8/Q7/8/8 w - - 0 1",
+                3,
+                &["f6f7", "f6g6", "a3f8", "a3e7", "a3a7", "a3g3"],
+            ),
+            ("k7/8/8/1K6/8/8/8/7R w - - 0 1", 3, &["b5b6"]),
+            ("K7/8/8/1k6/8/8/8/7r b - - 0 1", 3, &["b5b6"]),
+            ("7k/8/4K3/8/8/Q7/8/8 w - - 0 1", 3, &["e6f7"]),
+            // -- mate in 3 --
+            ("8/8/6k1/R7/8/8/8/1R5K w - - 0 1", 5, &["b1b6"]),
+            ("8/8/1k6/7R/8/8/8/6RK w - - 0 1", 5, &["g1g6"]),
+        ];
+        assert!(SUITE.len() >= 10, "the §8.4 bar is at least 10 positions");
+        for &(fen, plies, optimal) in SUITE {
+            // Depth = mate distance suffices (mate-in-1 uses 2 so the
+            // score comes from a full search iteration, not bare qsearch).
+            let w = go_depth(fen, plies.max(2));
+            assert_eq!(best_score(&w), mate_in(plies), "score for {fen}");
+            let got = w.best_move().unwrap().to_string();
+            assert!(
+                optimal.contains(&got.as_str()),
+                "first move {got} for {fen} is not one of the verified-fastest {optimal:?}"
+            );
+        }
+    }
+
+    #[test]
     fn mated_root_reports_the_negative_mate() {
         // Black's only move is Kg8 (g7/h7 touch the white king); then
         // Qc8#. Ply-relative from the root: mated_in(2) (doc 07 §5's

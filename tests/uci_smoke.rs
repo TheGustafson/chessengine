@@ -378,6 +378,99 @@ fn go_infinite_bestmove_comes_only_after_stop_and_promptly() {
 }
 
 #[test]
+fn stop_before_any_go_is_a_quiet_noop() {
+    // doc 07 §8.9 / P5 exit: `stop` with no search running must not hang,
+    // must emit no bestmove, and must leave the session fully usable.
+    let mut s = Session::spawn();
+    s.send("stop");
+    s.send("isready");
+    s.wait_for(|l| l == "readyok", Duration::from_secs(5));
+    s.send("position startpos");
+    s.send("go depth 2");
+    s.wait_for(|l| l.starts_with("bestmove "), Duration::from_secs(20));
+    let (status, lines, stderr) = s.finish();
+    assert_clean_exit(status, &stderr);
+    let bests = bestmove_lines(&lines);
+    assert_eq!(bests.len(), 1, "an idle stop must not produce a bestmove");
+    assert_legal_bestmove(&bests[0].1, START_FEN);
+}
+
+#[test]
+fn rapid_stop_after_go_always_yields_one_legal_bestmove() {
+    // doc 07 §8.9 / P5 exit: `stop` racing the search startup — no delay
+    // between `go infinite` and `stop`, repeated in one session to shake
+    // the thread-spawn-vs-stop-flag race. Every cycle must produce exactly
+    // one legal bestmove (never zero — the flag may win the race and abort
+    // iteration 1, but the driver still owes a move), and never two.
+    let mut s = Session::spawn();
+    s.send("position startpos");
+    const CYCLES: usize = 5;
+    for want in 1..=CYCLES {
+        s.send("go infinite");
+        s.send("stop");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let n = {
+                let lines = s.lines.lock().unwrap();
+                lines
+                    .iter()
+                    .filter(|(_, l)| l.starts_with("bestmove "))
+                    .count()
+            };
+            if n >= want {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "timed out waiting for bestmove #{want}; transcript:\n{}",
+                s.transcript()
+            );
+            thread::sleep(Duration::from_millis(2));
+        }
+    }
+    let (status, lines, stderr) = s.finish();
+    assert_clean_exit(status, &stderr);
+    let bests = bestmove_lines(&lines);
+    assert_eq!(
+        bests.len(),
+        CYCLES,
+        "exactly one bestmove per go/stop cycle"
+    );
+    for (_, line) in bests {
+        assert_legal_bestmove(line, START_FEN);
+    }
+}
+
+#[test]
+fn stop_during_deep_search_is_prompt_and_exactly_once() {
+    // doc 07 §8.9 / P5 exit: a stop landing mid-tree in a deep search.
+    // `go depth 30` is unreachable at P5 speeds, so the search is deep in
+    // some iteration ≥ 6 when the stop arrives; the reply must still be
+    // prompt (bounded by the check_time cadence, §3.9) and exactly once.
+    let mut s = Session::spawn();
+    s.send("position startpos");
+    s.send("go depth 30");
+    s.wait_for(|l| l.starts_with("info depth 5 "), Duration::from_secs(60));
+    let stop_at = Instant::now();
+    s.send("stop");
+    let seen_at = s.wait_for(|l| l.starts_with("bestmove "), Duration::from_secs(5));
+    assert!(
+        seen_at.duration_since(stop_at) < Duration::from_secs(2),
+        "bestmove not prompt after mid-iteration stop: {:?}",
+        seen_at.duration_since(stop_at)
+    );
+    let (status, lines, stderr) = s.finish();
+    assert_clean_exit(status, &stderr);
+    let bests = bestmove_lines(&lines);
+    assert_eq!(bests.len(), 1, "exactly one bestmove per go");
+    assert!(
+        bests[0].0 >= stop_at,
+        "bestmove observed before stop (infinite-depth search self-stopped?)"
+    );
+    assert_legal_bestmove(&bests[0].1, START_FEN);
+}
+
+#[test]
 fn go_movetime_respects_the_clock_within_tolerance() {
     // doc 12 §5 item 6: `go movetime 200` answers no earlier than the
     // budget (nothing else can stop this search) and not much later
