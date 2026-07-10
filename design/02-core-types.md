@@ -708,13 +708,27 @@ no struct literals):
    `!is_mate(VALUE_TB)`, `is_decisive` symmetric on ± values,
    `!is_decisive(VALUE_DRAW)`, `!is_decisive(1000)`;
    `mated_in(p) == -mate_in(p)` for several p.
-3. **TT conversion round-trip.** For v in {`mate_in(3)`, `mated_in(7)`,
-   `VALUE_TB - 5`, `-(VALUE_TB - 5)`, 0, 130, -2500} and ply in {0, 1, 5, 40}:
-   `value_from_tt(value_to_tt(v, ply), ply, 0) == v`.
+3. **TT conversion round-trip.** For v in {`mate_in(50)`, `mated_in(45)`,
+   `VALUE_TB - 50`, `-(VALUE_TB - 50)`, 0, 130, -2500} and ply in
+   {0, 1, 5, 40}: `value_from_tt(value_to_tt(v, ply), ply, 0) == v`.
+   (The decisive test values have distance-from-root >= 40, unlike the
+   originally drafted `mate_in(3)`/`VALUE_TB - 5`: a root-relative decisive
+   score with distance k is only ever stored at plies `<= k` — a node at
+   ply p only sees mates/TB wins at k >= p — and `value_to_tt` ADDS ply, so
+   storing deeper overshoots the value's own band. `value_to_tt(mate_in(3),
+   5)` lands exactly on `VALUE_NONE` (32002) and reads back as the
+   sentinel; `value_to_tt(VALUE_TB - 5, 40)` = 31788 lands in the mate band
+   where the rule-50 mate guard fires (apparent mate distance 212 > 100)
+   and downgrades instead of round-tripping. The latter is asserted in
+   item 4.)
 4. **TT downgrade.** `value_from_tt(value_to_tt(mate_in(10), 4), 4, 95)`
    collapses to `VALUE_TB_WIN_IN_MAX_PLY - 1` (mate needs ~31990 > 5 plies of
-   clock); mirrored loss case gives `VALUE_TB_LOSS_IN_MAX_PLY + 1`;
-   `value_from_tt(VALUE_NONE, p, r) == VALUE_NONE`.
+   clock); mirrored loss case gives `VALUE_TB_LOSS_IN_MAX_PLY + 1`; stale TB
+   scores with the band intact but the clock expired (`VALUE_TB - 5` at
+   rule50 = 98) downgrade the same way, both signs; the out-of-band store
+   from item 3's note (`VALUE_TB - 5` stored at ply 40) reads back as
+   `VALUE_TB_WIN_IN_MAX_PLY - 1`; `value_from_tt(VALUE_NONE, p, r) ==
+   VALUE_NONE`.
 5. **Piece values.** `PIECE_VALUES` agrees with the individual constants;
    `PieceType::King.value() == 0`; values strictly increase P<N<B<R<Q.
 6. **Square stepping, exhaustive.** For all 64 squares × 8 directions,
