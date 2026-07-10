@@ -22,6 +22,7 @@ pub mod bench;
 pub mod bitboard;
 pub mod board;
 pub mod fen;
+pub mod movegen;
 pub mod moves;
 pub mod perft;
 pub mod search;

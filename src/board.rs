@@ -53,6 +53,17 @@ impl CastlingRights {
         }
     }
 
+    /// `color`'s kingside right — movegen's castling generator keys off this
+    /// (design/05-movegen.md §3.7).
+    pub const fn kingside(color: Color) -> CastlingRights {
+        CastlingRights::single(color, true)
+    }
+
+    /// `color`'s queenside right (design/05-movegen.md §3.7).
+    pub const fn queenside(color: Color) -> CastlingRights {
+        CastlingRights::single(color, false)
+    }
+
     /// Bit position 0..4 of a SINGLE right (WK = 0, WQ = 1, BK = 2, BQ = 3):
     /// the index into `Board`'s castling geometry arrays
     /// (design/04-position-state.md §3.7).
@@ -1465,6 +1476,28 @@ mod tests {
         assert!(rights.contains(CastlingRights::BLACK_QUEENSIDE));
 
         assert!(CastlingRights::ALL.contains(CastlingRights::BLACK_KINGSIDE));
+    }
+
+    // design/05 §4 step 1: the per-color wing helpers map to the four
+    // existing constants.
+    #[test]
+    fn castling_rights_wing_helpers() {
+        assert_eq!(
+            CastlingRights::kingside(Color::White),
+            CastlingRights::WHITE_KINGSIDE
+        );
+        assert_eq!(
+            CastlingRights::queenside(Color::White),
+            CastlingRights::WHITE_QUEENSIDE
+        );
+        assert_eq!(
+            CastlingRights::kingside(Color::Black),
+            CastlingRights::BLACK_KINGSIDE
+        );
+        assert_eq!(
+            CastlingRights::queenside(Color::Black),
+            CastlingRights::BLACK_QUEENSIDE
+        );
     }
 
     // Doc 04 §4 step 1: bits() exposes the raw 4-bit mask that indexes the

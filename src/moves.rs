@@ -146,6 +146,25 @@ impl MoveList {
     pub fn clear(&mut self) {
         self.len = 0;
     }
+
+    /// O(1) unordered removal: overwrite index `i` with the last move and
+    /// shrink by one. Returns the removed move. Panics if `i >= len` (index
+    /// invariant, matching `Vec::swap_remove`).
+    ///
+    /// Order is deliberately not preserved — the consumer is
+    /// `movegen::generate_legal`'s lazy legality filter (design/05 §3.9),
+    /// whose callers either sort (MovePicker) or count (perft).
+    pub fn swap_remove(&mut self, i: usize) -> Move {
+        assert!(
+            i < self.len,
+            "swap_remove index {i} out of range (len {})",
+            self.len
+        );
+        let removed = self.moves[i];
+        self.len -= 1;
+        self.moves[i] = self.moves[self.len];
+        removed
+    }
 }
 
 impl Default for MoveList {
@@ -332,5 +351,67 @@ mod tests {
         for _ in 0..=MAX_MOVES {
             list.push(Move::NULL);
         }
+    }
+
+    // design/05 §4 step 1: middle / last / single element, panic on bad index.
+
+    #[test]
+    fn swap_remove_middle_element() {
+        let (a, b, c) = (
+            Move::normal(Square::E2, Square::E4),
+            Move::normal(Square::G1, Square::F3),
+            Move::normal(Square::B1, Square::C3),
+        );
+        let mut list = MoveList::new();
+        list.push(a);
+        list.push(b);
+        list.push(c);
+
+        assert_eq!(list.swap_remove(1), b);
+        assert_eq!(list.len(), 2);
+        // The last element was swapped into the hole; order is not preserved.
+        assert_eq!(list[0], a);
+        assert_eq!(list[1], c);
+    }
+
+    #[test]
+    fn swap_remove_last_element() {
+        let (a, b) = (
+            Move::normal(Square::E2, Square::E4),
+            Move::normal(Square::G1, Square::F3),
+        );
+        let mut list = MoveList::new();
+        list.push(a);
+        list.push(b);
+
+        assert_eq!(list.swap_remove(1), b);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0], a);
+    }
+
+    #[test]
+    fn swap_remove_single_element() {
+        let a = Move::normal(Square::E2, Square::E4);
+        let mut list = MoveList::new();
+        list.push(a);
+
+        assert_eq!(list.swap_remove(0), a);
+        assert!(list.is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "swap_remove index 2 out of range (len 2)")]
+    fn swap_remove_panics_on_bad_index() {
+        let mut list = MoveList::new();
+        list.push(Move::normal(Square::E2, Square::E4));
+        list.push(Move::normal(Square::G1, Square::F3));
+        list.swap_remove(2);
+    }
+
+    #[test]
+    #[should_panic(expected = "swap_remove index 0 out of range (len 0)")]
+    fn swap_remove_panics_on_empty_list() {
+        let mut list = MoveList::new();
+        list.swap_remove(0);
     }
 }
