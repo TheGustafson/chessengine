@@ -14,6 +14,19 @@
 //!
 //! Until P5 lands search, only `type=perft` has a code path (design/06
 //! §3.6: "this makes bench useful from day one, before search exists").
+//!
+//! Output contract (design/06 §3.6, all on stderr so stdout stays a clean
+//! UCI stream): a `Position: i/N (entry)` line per position, in perft mode
+//! followed by that position's `Nodes searched: n` count (the same line
+//! SF's per-position perft emits, format per design/06 §3.2), then the
+//! fixed four-line trailer. Everything except the `Total time (ms)` and
+//! `Nodes/second` lines is a pure function of the suite — byte-identical
+//! across runs (design/14 §3.2 determinism; doc 06 §8 criterion 7).
+//!
+//! Cross-checked fingerprints for the default suite in perft mode, from
+//! python-chess 1.11.2 (an independent legal-move implementation; recorded
+//! 2026-07-10 per design/06 §4 step 6): depth 1 = 1,380; depth 2 = 44,275;
+//! depth 3 = 1,839,507.
 
 use crate::board::Board;
 use crate::movegen;
@@ -21,6 +34,7 @@ use crate::moves::MoveList;
 use crate::perft;
 use std::error::Error;
 use std::fmt;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -174,7 +188,16 @@ impl BenchParams {
 /// accumulating node counts. Diagnostics go to stderr, per SF, so stdout
 /// stays a clean UCI stream (design/06 §3.6).
 pub fn run(params: &BenchParams) -> BenchResult {
-    let entries: Vec<String> = match &params.fens {
+    // A failed stderr write means the world is gone; panicking here matches
+    // what `eprintln!` would do.
+    run_to(params, &mut io::stderr().lock()).expect("bench: writing diagnostics to stderr failed")
+}
+
+/// Materialize the position list for a [`FenSource`] (design/06 §3.6):
+/// the compiled-in suite, or one entry per non-blank line of a file
+/// (surrounding whitespace trimmed; entries may carry `moves` suffixes).
+fn suite_entries(fens: &FenSource) -> Vec<String> {
+    match fens {
         FenSource::Default => BENCH_POSITIONS.iter().map(|s| s.to_string()).collect(),
         FenSource::File(path) => std::fs::read_to_string(path)
             .unwrap_or_else(|e| panic!("cannot read fen file {}: {e}", path.display()))
@@ -184,7 +207,14 @@ pub fn run(params: &BenchParams) -> BenchResult {
             .map(str::to_string)
             .collect(),
         FenSource::Current => todo!("P4: UCI loop (bench on the session position)"),
-    };
+    }
+}
+
+/// The writer-generic engine behind [`run`], mirroring `uci_loop`'s
+/// stream-injection pattern so tests can capture and byte-compare the
+/// exact output the binary would print.
+fn run_to(params: &BenchParams, out: &mut impl Write) -> io::Result<BenchResult> {
+    let entries = suite_entries(&params.fens);
 
     // P5: `ucinewgame` semantics here — allocate the TT at params.tt_mb,
     // clear histories; the TT then persists across positions (design/06
@@ -193,11 +223,15 @@ pub fn run(params: &BenchParams) -> BenchResult {
     let mut nodes: u64 = 0;
 
     for (i, entry) in entries.iter().enumerate() {
-        eprintln!("Position: {}/{} ({entry})", i + 1, entries.len());
+        writeln!(out, "Position: {}/{} ({entry})", i + 1, entries.len())?;
         nodes += match params.limit {
             BenchLimit::Perft(depth) => {
                 let mut board = board_from_entry(entry);
-                perft::perft(&mut board, depth)
+                let count = perft::perft(&mut board, depth);
+                // Per-position count, in the SF `go perft` trailer format
+                // (design/06 §3.2) — part of the fingerprint section.
+                writeln!(out, "Nodes searched: {count}")?;
+                count
             }
             BenchLimit::Depth(_) | BenchLimit::Nodes(_) | BenchLimit::Movetime(_) => {
                 todo!("P5: search")
@@ -208,12 +242,16 @@ pub fn run(params: &BenchParams) -> BenchResult {
     let elapsed_ms = start.elapsed().as_millis() as u64;
     // The SF-format trailer (design/06 §3.6). `Nodes searched` is THE
     // number: the `Bench:` commit trailer (design/14 §3.2).
-    eprintln!("===========================");
-    eprintln!("Total time (ms) : {elapsed_ms}");
-    eprintln!("Nodes searched  : {nodes}");
-    eprintln!("Nodes/second    : {}", nodes * 1000 / elapsed_ms.max(1));
+    writeln!(out, "===========================")?;
+    writeln!(out, "Total time (ms) : {elapsed_ms}")?;
+    writeln!(out, "Nodes searched  : {nodes}")?;
+    writeln!(
+        out,
+        "Nodes/second    : {}",
+        nodes * 1000 / elapsed_ms.max(1)
+    )?;
 
-    BenchResult { nodes, elapsed_ms }
+    Ok(BenchResult { nodes, elapsed_ms })
 }
 
 /// Set up a bench entry: a FEN, optionally followed by `moves m1 m2 ...`
@@ -399,7 +437,161 @@ mod tests {
         // including the three `moves ...` replay entries. Depth 1 keeps
         // this cheap; 1,380 is the python-chess 1.11.2 cross-checked sum
         // of legal-move counts over all 49 entries (recorded 2026-07-10).
-        let result = run(&BenchParams::parse(&["16", "1", "1", "default", "perft"]).unwrap());
+        let params = BenchParams::parse(&["16", "1", "1", "default", "perft"]).unwrap();
+        let result = run_to(&params, &mut io::sink()).unwrap();
         assert_eq!(result.nodes, 1_380);
+    }
+
+    #[test]
+    fn suite_entries_default_is_the_frozen_49() {
+        assert_eq!(suite_entries(&FenSource::Default), BENCH_POSITIONS);
+    }
+
+    #[test]
+    fn suite_entries_file_takes_one_entry_per_nonblank_trimmed_line() {
+        // design/06 §3.6: `fens=<path>` reads one entry per line; entries
+        // may carry `moves ...` suffixes just like the compiled-in suite.
+        let path = std::env::temp_dir().join(format!(
+            "chessengine_bench_fens_{}_{:?}.txt",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::write(
+            &path,
+            "\n  rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 moves e2e4 c7c5\n\
+             \t \nK1k5/8/P7/8/8/8/8/8 w - - 0 1  \n\n",
+        )
+        .unwrap();
+
+        let source = FenSource::File(path.clone());
+        let entries = suite_entries(&source);
+        assert_eq!(entries.len(), 2, "blank lines skipped, entries trimmed");
+        assert!(entries[0].starts_with("rnbqkbnr/") && entries[0].ends_with("moves e2e4 c7c5"));
+
+        // Run it: python-chess 1.11.2 says 30 legal moves after 1.e4 c5
+        // and 2 in the self-stalemate corner (recorded 2026-07-10).
+        let params = BenchParams {
+            fens: source,
+            limit: BenchLimit::Perft(1),
+            ..BenchParams::default()
+        };
+        let mut out = Vec::new();
+        let result = run_to(&params, &mut out).unwrap();
+        assert_eq!(result.nodes, 32);
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("Position: 1/2 (rnbqkbnr/"));
+        assert!(text.contains("Position: 2/2 (K1k5/"));
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// The fingerprint section: every output line except the two that
+    /// legitimately vary run-to-run (wall time and the nps derived from
+    /// it) — design/14 §3.2 determinism policy.
+    fn fingerprint_section(output: &str) -> Vec<&str> {
+        output
+            .lines()
+            .filter(|l| !l.starts_with("Total time (ms) :") && !l.starts_with("Nodes/second    :"))
+            .collect()
+    }
+
+    #[test]
+    fn perft_output_matches_the_doc_06_format() {
+        // design/06 §3.6 output contract, checked byte-for-byte at the
+        // line level: `Position: i/N (entry)` + per-position count per
+        // entry, then the fixed four-line trailer.
+        let params = BenchParams::parse(&["16", "1", "1", "default", "perft"]).unwrap();
+        let mut out = Vec::new();
+        run_to(&params, &mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 2 * 49 + 4);
+        assert_eq!(
+            lines[0],
+            "Position: 1/49 (rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1)"
+        );
+        assert_eq!(lines[1], "Nodes searched: 20");
+        assert!(lines[96].starts_with("Position: 49/49 (7k/"));
+        assert_eq!(lines[98], "===========================");
+        assert!(lines[99].starts_with("Total time (ms) : "));
+        assert_eq!(lines[100], "Nodes searched  : 1380");
+        assert!(lines[101].starts_with("Nodes/second    : "));
+    }
+
+    #[test]
+    fn perft_fingerprint_is_byte_identical_across_runs_in_process() {
+        // doc 06 §8 criterion 7 / design/14 §3.2: the fingerprint section
+        // is a pure function of the suite — two runs, identical bytes.
+        let params = BenchParams::parse(&["16", "1", "1", "default", "perft"]).unwrap();
+        let mut first = Vec::new();
+        let mut second = Vec::new();
+        let a = run_to(&params, &mut first).unwrap();
+        let b = run_to(&params, &mut second).unwrap();
+        assert_eq!(a.nodes, b.nodes);
+        let first = String::from_utf8(first).unwrap();
+        let second = String::from_utf8(second).unwrap();
+        assert_eq!(fingerprint_section(&first), fingerprint_section(&second));
+    }
+
+    /// Locate the engine binary Cargo builds alongside this test
+    /// (`target/<profile>/chessengine`); unit tests run from
+    /// `target/<profile>/deps/`, so it lives one directory up.
+    fn engine_binary() -> std::path::PathBuf {
+        let mut path = std::env::current_exe().expect("test binary path");
+        path.pop(); // the test executable's name
+        if path.ends_with("deps") {
+            path.pop();
+        }
+        path.push(format!("chessengine{}", std::env::consts::EXE_SUFFIX));
+        assert!(
+            path.exists(),
+            "engine binary not found at {} — run the full `cargo test` (not --lib) \
+             so Cargo builds the bin target",
+            path.display()
+        );
+        path
+    }
+
+    #[test]
+    fn spawned_bench_perft_runs_are_byte_identical() {
+        // doc 06 §4 step 6 done-condition, end to end: two consecutive
+        // `chessengine bench 16 1 2 default perft` invocations print the
+        // same fingerprint section (everything but the time/nps lines),
+        // stdout stays a clean UCI stream, and the total matches the
+        // python-chess 1.11.2 cross-checked sum (44,275 at depth 2,
+        // recorded 2026-07-10).
+        let bin = engine_binary();
+        let run_once = || {
+            let out = std::process::Command::new(&bin)
+                .args(["bench", "16", "1", "2", "default", "perft"])
+                .output()
+                .expect("failed to spawn the engine binary");
+            assert!(out.status.success(), "bench exited with {}", out.status);
+            assert!(
+                out.stdout.is_empty(),
+                "bench must keep stdout a clean UCI stream (design/06 §3.6)"
+            );
+            String::from_utf8(out.stderr).expect("bench output is UTF-8")
+        };
+
+        let first = run_once();
+        let second = run_once();
+        assert_eq!(
+            fingerprint_section(&first),
+            fingerprint_section(&second),
+            "bench perft fingerprint must be byte-identical across runs"
+        );
+
+        // Documented format spot-checks on the spawned output.
+        let lines: Vec<&str> = first.lines().collect();
+        assert_eq!(lines.len(), 2 * 49 + 4);
+        assert_eq!(
+            lines[0],
+            "Position: 1/49 (rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1)"
+        );
+        assert_eq!(lines[1], "Nodes searched: 400");
+        assert_eq!(lines[98], "===========================");
+        assert_eq!(lines[100], "Nodes searched  : 44275");
     }
 }
