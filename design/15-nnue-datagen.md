@@ -544,6 +544,9 @@ Commit-sized steps; each has a done-condition. Steps 1–4 are this workflow's
 
 ## 7. Interactions
 
+- **Is the Tier-A instance of** the research data platform (doc 16, D29): this
+  doc's flat `bulletformat::ChessBoard` corpus is a Derived-layer projection of
+  doc 16's Observation Store; doc 16 owns the umbrella schema and staging.
 - **Implements** D28's curation-spec-and-pipeline clause; obeys D27 (no SF
   code/nets shipped), D15 (external tooling, no crate `rand`).
 - **Feeds** doc 11 Phase C: the corpus this doc defines is what doc 11 step
