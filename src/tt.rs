@@ -14,19 +14,36 @@
 //! inclusion before use) instead of paying for synchronization on every
 //! probe.
 //!
-//! Landed here (doc 08 §4 steps 3–5): entry/cluster layout with const
+//! Landed here (doc 08 §4 steps 3–6): entry/cluster layout with const
 //! size asserts, [`Bound`], probe/save/penalize, replacement + aging,
 //! [`TranspositionTable`] with portable `Vec` storage, fallible
 //! [`TranspositionTable::resize`], [`TranspositionTable::clear`],
 //! [`TranspositionTable::new_search`] (interior-mutable generation, D23),
-//! and [`TranspositionTable::hashfull`]. Deliberately NOT here yet, per the
-//! doc's staging: the prefetch wrapper (§3.15, plan step 6 — the first
-//! sanctioned `unsafe`, D14a), search integration (step 7, doc 07),
-//! UCI surfacing (step 8), the multithreaded clear (step 9), and the
-//! Linux huge-page allocator (§3.13 phase 2, step 10).
+//! [`TranspositionTable::hashfull`], and the
+//! [`TranspositionTable::prefetch`] wrapper (§3.15). Deliberately NOT here
+//! yet, per the doc's staging: search integration (step 7, doc 07), the
+//! multithreaded clear (step 9), and the Linux huge-page allocator (§3.13
+//! phase 2, step 10).
 //!
-//! Everything in this module is safe Rust: relaxed atomics are the
-//! sanctioned safe equivalent of SF's `RelaxedAtomic<T>` fields (D14).
+//! Relaxed atomics are the sanctioned safe equivalent of SF's
+//! `RelaxedAtomic<T>` fields (D14); the ONE `unsafe` block in this module
+//! is the prefetch intrinsic below.
+//!
+//! Validation (doc 08 §5): `cargo +nightly miri test --lib tt::` must stay
+//! clean on this portable path (the wall-clock concurrency smoke and the
+//! MiB-scale/1e6-iteration tests are `#[ignore]`d under miri for
+//! interpreter time — their atomics surface runs at small scale in
+//! `small_table_lifecycle_exercises_all_paths`; run the full set natively),
+//! and the non-x86_64 no-op prefetch builds via
+//! `cargo check --target aarch64-unknown-linux-gnu`.
+
+// D14(a): module-scoped relaxation of the crate-wide `#![deny(unsafe_code)]`
+// for exactly one sanctioned use — the `_mm_prefetch` cache hint in
+// [`TranspositionTable::prefetch`] (doc 08 §3.15, acceptance criterion 8:
+// "the only unsafe in the module is the prefetch intrinsic"). Each block
+// carries its `// SAFETY:` comment; the measured justification lives on the
+// method's doc comment (and `prefetch_microbenchmark` reproduces it).
+#![allow(unsafe_code)]
 
 use std::sync::atomic::{AtomicI16, AtomicU8, AtomicU16, Ordering::Relaxed};
 
@@ -429,6 +446,13 @@ impl TranspositionTable {
         }
     }
 
+    /// Test observer: allocated table size in bytes (uci wiring tests
+    /// assert `setoption Hash` really resized).
+    #[cfg(test)]
+    pub(crate) fn size_bytes(&self) -> usize {
+        self.clusters.len() * size_of::<Cluster>()
+    }
+
     #[inline]
     fn cluster_for(&self, key: Key) -> &Cluster {
         // Safe indexing: mul_hi64(key, len) < len by construction. Keep the
@@ -555,6 +579,40 @@ impl TranspositionTable {
             }
         }
         count / CLUSTER_SIZE as u32
+    }
+
+    /// Hint the cache to pull the probe target for `key` (doc 08 §3.15).
+    /// No-op off x86_64 (an aarch64 `prfm` variant can come later).
+    ///
+    /// Call sites are owned by docs 04/07: inside `make_move` as soon as
+    /// the child key is known, and speculatively in the search's move loop
+    /// via the cheap predicted key — a wrong key just prefetches a useless
+    /// line, harmlessly.
+    ///
+    /// D14(a) measurement (2026-07-10, WSL2 x86-64, release, 256 MB table,
+    /// 1M uniform-random probes, `prefetch_microbenchmark`): cold probes
+    /// stream at ~23 ns/probe (throughput — out-of-order overlap already
+    /// hides part of each DRAM miss); with `prefetch` issued 8 keys ahead
+    /// the same loop runs at ~11 ns/probe, a 2x gain, matching doc 14
+    /// §3.4's "mostly hidden by prefetch" target. The search-integrated
+    /// bench-nps delta is re-measured when the call sites land (doc 08 §4
+    /// step 7).
+    #[inline]
+    pub fn prefetch(&self, key: Key) {
+        #[cfg(target_arch = "x86_64")]
+        {
+            use std::arch::x86_64::{_MM_HINT_T0, _mm_prefetch};
+            let p: *const Cluster = self.cluster_for(key);
+            // SAFETY: `_mm_prefetch` is a pure cache hint: it performs no
+            // memory access observable by the abstract machine, writes
+            // nothing, and cannot fault even on an invalid address (the
+            // hardware drops bad hints). The pointer additionally derives
+            // from a live `&Cluster` into our own allocation, so it is
+            // valid for the cache line being hinted.
+            unsafe { _mm_prefetch(p.cast::<i8>(), _MM_HINT_T0) };
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        let _ = key;
     }
 }
 
@@ -1026,6 +1084,11 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "1e6 PRNG iterations of pure integer math — minutes under the \
+                  interpreter, and nothing for miri to check (no atomics, no unsafe)"
+    )]
     fn mul_hi64_distribution_smoke() {
         // 1e6 random keys over 1000 clusters: loose bound, no cluster gets
         // more than 3× the mean (doc 08 §5).
@@ -1054,7 +1117,49 @@ mod tests {
         key
     }
 
+    /// Every atomics/`get_mut` path at a miri-tractable scale (1000
+    /// clusters — `hashfull`'s minimum sample). The MiB-scale siblings
+    /// below are `cfg_attr(miri, ignore)`d: constructing 32768+ clusters
+    /// takes minutes under the interpreter's borrow tracking, and the
+    /// aliasing/atomics surface it would check is identical here.
     #[test]
+    fn small_table_lifecycle_exercises_all_paths() {
+        let mut tt = TranspositionTable::with_cluster_count(1000);
+        tt.new_search();
+        assert_eq!(tt.generation(), 1);
+        let key: Key = 0xABCD_EF01_2345_6789;
+        tt.prefetch(key);
+        let probe = tt.probe(key);
+        assert!(!probe.hit);
+        probe.writer.write(
+            key,
+            42,
+            true,
+            Bound::Exact,
+            9,
+            Move::normal(Square::E2, Square::E4),
+            7,
+            tt.generation(),
+        );
+        {
+            let probe = tt.probe(key);
+            assert!(probe.hit);
+            assert_eq!(probe.data.value, 42);
+            assert_eq!(probe.data.eval, 7);
+            assert_eq!(tt.hashfull(0), 0, "1 of 3000 sampled rounds to 0");
+            probe.writer.penalize(1);
+        }
+        assert_eq!(tt.probe(key).data.depth, 8);
+        tt.clear();
+        assert_eq!(tt.generation(), 0);
+        assert!(!tt.probe(key).hit);
+    }
+
+    #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "MiB-scale table; covered by small_table_lifecycle_exercises_all_paths"
+    )]
     fn hashfull_counts_current_generation_permille() {
         let mut tt = TranspositionTable::new(MIN_HASH_MB);
         let n = tt.clusters.len() as u64;
@@ -1082,6 +1187,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "MiB-scale table; covered by small_table_lifecycle_exercises_all_paths"
+    )]
     fn resize_clamps_and_uses_all_requested_memory() {
         // resize(0) clamps to the 1 MiB floor; cluster count is exactly
         // MB·2^20/32 with no power-of-two rounding (doc 08 §3.4).
@@ -1101,6 +1210,56 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "allocates 1 GiB; run manually in release: \
+                cargo test --release -- --ignored resize_1024_mb"]
+    fn resize_1024_mb_uses_all_requested_memory() {
+        // Doc 08 §8 criterion 5: resize honors sizes up to at least
+        // 1024 MB, cluster count exactly MB*2^20/32 (no power-of-two
+        // rounding), and the far end of the table is usable.
+        let mut tt = TranspositionTable::new(MIN_HASH_MB);
+        let got = tt.resize(1024);
+        assert_eq!(got, 1024);
+        assert_eq!(tt.clusters.len(), 1024 * 1024 * 1024 / size_of::<Cluster>());
+        let n = tt.clusters.len() as u64;
+        let k = key_for_cluster(n - 1, n, 0x7777);
+        store(&tt, k, 99, false, Bound::Lower, 9, Move::NULL);
+        assert!(tt.probe(k).hit);
+        assert_eq!(tt.hashfull(0), 0, "1 entry in 3000 sampled rounds to 0");
+    }
+
+    #[test]
+    #[ignore = "commits multiple GiB on overcommit-happy hosts (doc 08 §3.13 \
+                residual risk); run manually in release under a virtual-memory \
+                cap so the halving fallback bottoms out early and cheaply: \
+                cargo test --release --no-run, then \
+                bash -c 'ulimit -v 2097152; <test-binary> --ignored resize_absurd'"]
+    fn resize_absurd_request_falls_back_without_abort() {
+        // Doc 08 §5 allocation-failure contract / §8 criterion 5: an
+        // unsatisfiable mid-session resize NEVER aborts the process — it
+        // falls back through halved sizes, reports the achieved size, and
+        // leaves a usable table.
+        let mut tt = TranspositionTable::new(MIN_HASH_MB);
+        let request = 8 * 1024 * 1024; // 8 TiB in MB, well under MAX_HASH_MB
+        let got = tt.resize(request);
+        assert!(
+            got < request,
+            "8 TiB reserve succeeded?! (vm.overcommit_memory=1 host)"
+        );
+        assert!(got >= MIN_HASH_MB);
+        assert_eq!(tt.clusters.len(), got * 1024 * 1024 / size_of::<Cluster>());
+        // Usable at whatever size was achieved: write/probe roundtrip.
+        tt.new_search();
+        let n = tt.clusters.len() as u64;
+        let k = key_for_cluster(0, n, 0x4242);
+        store(&tt, k, 123, false, Bound::Lower, 7, Move::NULL);
+        assert!(tt.probe(k).hit);
+    }
+
+    #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "MiB-scale table; covered by small_table_lifecycle_exercises_all_paths"
+    )]
     fn clear_zeroes_entries_and_generation() {
         let mut tt = TranspositionTable::new(MIN_HASH_MB);
         tt.new_search();
@@ -1120,5 +1279,141 @@ mod tests {
         assert_eq!(tt.generation(), 0);
         assert!(!tt.probe(k).hit);
         assert_eq!(tt.hashfull(GENERATION_MASK), 0);
+    }
+
+    // --- §3.15 prefetch, §5 concurrency smoke -------------------------------
+
+    #[test]
+    fn prefetch_is_callable_for_any_key() {
+        // The hint must be harmless for every key (including keys computed
+        // speculatively from wrong predictions) and on tiny tables. Also
+        // the one path miri walks through the module's single unsafe block.
+        let tt = TranspositionTable::with_cluster_count(1);
+        for key in [0u64, 1, u64::MAX, 0xDEAD_BEEF] {
+            tt.prefetch(key);
+        }
+        let tt = TranspositionTable::with_cluster_count(1000);
+        tt.prefetch(0x1234_5678_9ABC_DEF0);
+        assert!(
+            !tt.probe(0x1234_5678_9ABC_DEF0).hit,
+            "prefetch never writes"
+        );
+    }
+
+    #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "wall-clock thread hammer; doc 08 §5 excludes it under miri"
+    )]
+    fn concurrency_smoke_probe_write_penalize() {
+        // Doc 08 §5 / §8 criterion 4: 4 threads hammer probe/write/penalize
+        // on a 1 MB table with overlapping keys for ~1 s. Passes if nothing
+        // panics and every decoded TtData is structurally sane. Asserts
+        // crash-freedom, NOT consistency — mixed-writer reads are the
+        // documented §3.5 contract, absorbed by consumer validation.
+        use std::time::{Duration, Instant};
+        let tt = TranspositionTable::new(MIN_HASH_MB);
+        tt.new_search();
+        // Every thread draws from the same 512-key set, so the same entries
+        // are concurrently probed, overwritten, and penalized.
+        let mut rng = Prng::new(0x5EED_CAFE_F00D_D00D);
+        let keys: Vec<Key> = (0..512).map(|_| rng.rand64()).collect();
+        let deadline = Instant::now() + Duration::from_millis(900);
+        std::thread::scope(|scope| {
+            for t in 1..=4u64 {
+                let (tt, keys) = (&tt, &keys);
+                scope.spawn(move || {
+                    let mut rng = Prng::new(0x9E37_79B9_7F4A_7C15u64.wrapping_mul(t));
+                    let values = [0, 1, -1, 500, VALUE_MATE - 3, 3 - VALUE_MATE, VALUE_NONE];
+                    let bounds = [Bound::None, Bound::Upper, Bound::Lower, Bound::Exact];
+                    while Instant::now() < deadline {
+                        for _ in 0..4096 {
+                            let r = rng.rand64();
+                            let key = keys[(r & 511) as usize];
+                            tt.prefetch(key);
+                            let probe = tt.probe(key);
+                            // Structural sanity: depth decodes into
+                            // DEPTH_NONE..=DEPTH_NONE+255 and the bound
+                            // byte into a real Bound no matter how many
+                            // writers the fields mix.
+                            assert!(probe.data.depth >= DEPTH_NONE);
+                            assert!(probe.data.depth <= DEPTH_NONE + 255);
+                            let _: Bound = probe.data.bound;
+                            if r >> 60 == 0 {
+                                probe.writer.penalize(1);
+                            } else {
+                                probe.writer.write(
+                                    key,
+                                    values[(r >> 16) as usize % values.len()],
+                                    r & (1 << 12) != 0,
+                                    bounds[(r >> 24) as usize % bounds.len()],
+                                    ((r >> 32) % 240) as Depth + 1, // 1..=240
+                                    Move::from_raw16((r >> 40) as u16),
+                                    values[(r >> 8) as usize % values.len()],
+                                    tt.generation(),
+                                );
+                            }
+                        }
+                    }
+                });
+            }
+        });
+        // Still coherent for single-threaded use afterwards (EXACT write
+        // is unconditionally accepted, rule 2a).
+        let key = keys[0];
+        tt.probe(key).writer.write(
+            key,
+            77,
+            false,
+            Bound::Exact,
+            30,
+            Move::NULL,
+            5,
+            tt.generation(),
+        );
+        let probe = tt.probe(key);
+        assert!(probe.hit);
+        assert_eq!(probe.data.value, 77);
+    }
+
+    #[test]
+    #[ignore = "timing microbenchmark (D14a measurement); run manually: \
+                cargo test --release -- --ignored prefetch_microbenchmark --nocapture"]
+    fn prefetch_microbenchmark() {
+        // The doc 14 §3.4 cold-probe shape: uniform-random probes over a
+        // table far beyond LLC, without vs with `prefetch` issued DIST
+        // keys ahead. Records the D14(a) measured justification quoted on
+        // the `prefetch` doc comment; the search-integrated bench-nps
+        // delta is re-measured at doc 08 §4 step 7.
+        use std::hint::black_box;
+        use std::time::Instant;
+        let tt = TranspositionTable::new(256);
+        const N: usize = 1 << 20;
+        const DIST: usize = 8;
+        let mut rng = Prng::new(0xC0FF_EE00_D15E_A5E5);
+        let keys: Vec<Key> = (0..N + DIST).map(|_| rng.rand64()).collect();
+        let run = |prefetch: bool| -> f64 {
+            let mut sink = 0i64;
+            let start = Instant::now();
+            for i in 0..N {
+                if prefetch {
+                    tt.prefetch(keys[i + DIST]);
+                }
+                let probe = tt.probe(black_box(keys[i]));
+                sink = sink.wrapping_add(i64::from(probe.data.depth));
+            }
+            black_box(sink);
+            start.elapsed().as_secs_f64() * 1e9 / N as f64
+        };
+        // Interleave and keep the best of three, defusing turbo/paging
+        // noise in either direction.
+        let (mut cold, mut ahead) = (f64::INFINITY, f64::INFINITY);
+        for _ in 0..3 {
+            cold = cold.min(run(false));
+            ahead = ahead.min(run(true));
+        }
+        println!("cold probe:                 {cold:.1} ns/probe");
+        println!("prefetch {DIST} keys ahead:   {ahead:.1} ns/probe");
+        assert!(ahead < cold, "prefetch made cold probes slower");
     }
 }

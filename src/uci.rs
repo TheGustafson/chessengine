@@ -25,6 +25,15 @@
 //! 12 step 12. The argv subcommands are live: `perft <depth> [fen]` prints
 //! a real SF-format divide (P3, design/06 §3.2) and `bench ... perft` runs
 //! perft-mode bench.
+//!
+//! P6 state (doc 08 §4 step 8, the Hash/Clear Hash half): [`Engine`] owns
+//! the shared `Arc<TranspositionTable>` (D23); `setoption name Hash`
+//! resizes it between searches via `Arc::get_mut` — fallible per doc 08
+//! §3.13, allocation shortfall answers
+//! `info string Failed to allocate <req> MB hash, using <got> MB` and the
+//! engine keeps playing — while `Clear Hash` and `ucinewgame` clear it.
+//! Search probe/write integration and `info hashfull` land with doc 08
+//! step 7 (doc 07's call sites).
 
 use crate::bench;
 use crate::board::Board;
@@ -33,6 +42,7 @@ use crate::moves::{MAX_MOVES, Move, MoveList};
 use crate::perft;
 use crate::search::{SearchInfo, Worker};
 use crate::timeman::{Limits, TimePersist};
+use crate::tt::{MAX_HASH_MB, MIN_HASH_MB, TranspositionTable};
 use crate::types::{Color, VALUE_INFINITE, VALUE_MATE, Value, is_mate, is_mated};
 use std::fmt;
 use std::fs::File;
@@ -160,11 +170,11 @@ pub fn move_from_uci(board: &Board, token: &str) -> Option<Move> {
 // Options table (design/12 §3.5)
 // ---------------------------------------------------------------------------
 
-/// `Hash` spin range in MiB. Owned by the TT design doc (§3.13:
-/// `MIN_HASH_MB`/`MAX_HASH_MB`, SF's 64-bit cap); mirrored here until the
-/// `tt` module lands (P6) and these become re-exports.
-const HASH_MB_MIN: i64 = 1;
-const HASH_MB_MAX: i64 = 33_554_432;
+/// `Hash` spin range in MiB, straight from the owner (doc 08 §3.13:
+/// SF's 64-bit cap; the range is a sanity bound on the option, not a
+/// promise the allocation succeeds — `resize` is fallible).
+const HASH_MB_MIN: i64 = MIN_HASH_MB as i64;
+const HASH_MB_MAX: i64 = MAX_HASH_MB as i64;
 
 /// What kind of option an entry is, with its default and (for spins) the
 /// clamping range. The kind is immutable after registration; only
@@ -551,19 +561,25 @@ impl<W: Write> SharedOut<W> {
 }
 
 // ---------------------------------------------------------------------------
-// Engine — the session glue aggregate (design/12 §3.1, P5 subset)
+// Engine — the session glue aggregate (design/12 §3.1, P5/P6 subset)
 // ---------------------------------------------------------------------------
 
-/// The glue aggregate owned by the UCI loop (doc 12 §3.1). P5 subset: the
-/// session position, the options table, and the single search worker with
-/// its per-game TM state. The real `ThreadPool` (with `PoolShared`) and
-/// `Arc<TranspositionTable>` join in P8/P6; [`Session`] and
-/// [`SearchState`] are their v1 stand-ins with the same contract: stdin is
+/// The glue aggregate owned by the UCI loop (doc 12 §3.1). P5/P6 subset:
+/// the session position, the options table, the shared transposition
+/// table, and the single search worker with its per-game TM state. The
+/// real `ThreadPool` (with `PoolShared`) joins in P8; [`Session`] and
+/// [`SearchState`] are its v1 stand-ins with the same contract: stdin is
 /// never blocked by a running search, and `bestmove` is printed exactly
 /// once per `go`, by the search thread.
 pub struct Engine {
     board: Board,
     options: Options,
+    /// The one large shared-mutable structure (D23): search sessions will
+    /// clone this handle into their workers (doc 08 §4 step 7 / P8 pool);
+    /// between searches the UCI thread is the only holder, so
+    /// [`Engine::tt_mut`] gets `&mut` for resize/clear via `Arc::get_mut`
+    /// (doc 13 §3.6) with zero locking on the probe path.
+    tt: Arc<TranspositionTable>,
     /// The idle-state search state; `None` exactly while a search thread
     /// owns it (it travels there and comes back through the join handle).
     state: Option<SearchState>,
@@ -608,21 +624,37 @@ struct Session {
 
 impl Engine {
     pub fn new() -> Engine {
+        let options = Options::new();
+        // The startup default allocation (Hash default, 16 MB). Doc 01
+        // §3.4 permits this one to be fatal; `resize`'s halving fallback
+        // makes even it survive anything short of total memory exhaustion.
+        let tt = Arc::new(TranspositionTable::new(options.hash_mb() as usize));
         Engine {
             board: Board::startpos(),
-            options: Options::new(),
+            options,
+            tt,
             state: Some(SearchState::new()),
             session: None,
         }
     }
 
-    /// `ucinewgame` (doc 12 §3.3/§3.7): reset the per-game TM state (the
-    /// "first move of the game" defaults measurably affect move-1 time
-    /// usage) and the `nodestime` budget. Deliberately does NOT touch the
-    /// session position — GUIs send `position` separately. TT + history
-    /// clears join in P6.
+    /// Exclusive TT access for resize/clear, legal only between searches
+    /// (doc 13 §3.6, D23). After [`Engine::wait_for_search_finished`] the
+    /// UCI thread holds the only strong reference (sessions clone the
+    /// handle and drop it at join), so `Arc::get_mut` cannot fail; a
+    /// `None` here would be an engine bug, never a protocol-input error.
+    fn tt_mut(&mut self) -> &mut TranspositionTable {
+        Arc::get_mut(&mut self.tt).expect("no search running: UCI thread holds the only TT handle")
+    }
+
+    /// `ucinewgame` (doc 12 §3.3/§3.7): clear the TT (doc 08 §3.14) and
+    /// reset the per-game TM state (the "first move of the game" defaults
+    /// measurably affect move-1 time usage) and the `nodestime` budget.
+    /// Deliberately does NOT touch the session position — GUIs send
+    /// `position` separately. History clears join with doc 09.
     pub fn new_game(&mut self) {
         self.wait_for_search_finished();
+        self.tt_mut().clear();
         let state = self.state.as_mut().expect("engine idle after wait");
         state.persist = TimePersist::default();
         state.worker.tm.new_game();
@@ -803,9 +835,30 @@ fn cmd_setoption<W: Write>(
             let path = engine.options.debug_log_file().to_string();
             out.set_log_path(&path)
         }
-        // `Clear Hash` clears the TT + histories once those exist (P6);
-        // `Hash` resizes the TT (P6); `Threads` rebuilds the pool (P8).
-        // Their values are stored above; nothing further yet.
+        // `Hash`: resize + clear (doc 12 §3.5 table). The stored option
+        // value is already range-clamped, and `resize` is fallible
+        // (doc 08 §3.13): on allocation shortfall it fell back through
+        // halved sizes — announce the achieved size and keep playing,
+        // never abort mid-session.
+        Ok("Hash") => {
+            let requested = engine.options.hash_mb() as usize;
+            let got = engine.tt_mut().resize(requested);
+            if got == requested {
+                Ok(())
+            } else {
+                writeln!(
+                    out,
+                    "info string Failed to allocate {requested} MB hash, using {got} MB"
+                )
+            }
+        }
+        Ok("Clear Hash") => {
+            // Clears the TT (doc 08 §3.14); histories join with doc 09.
+            engine.tt_mut().clear();
+            Ok(())
+        }
+        // `Threads` rebuilds the pool (P8). Other values are stored
+        // above; nothing further yet.
         Ok(_) => Ok(()),
     }
 }
@@ -1569,6 +1622,78 @@ uciok
         assert!(out.contains("info string Malformed setoption"), "{out}");
         let (_, out) = command("setoption name Hash value banana");
         assert!(out.contains("info string Invalid value 'banana'"), "{out}");
+    }
+
+    // -- Hash / Clear Hash TT wiring (doc 08 §4 step 8; doc 12 §3.5) --------
+
+    /// Plant a recognizable entry in the engine's TT through the public
+    /// probe/write API (search integration is doc 08 step 7; until then
+    /// the tests are the TT's only writer).
+    fn plant_tt_entry(engine: &Engine, key: u64) {
+        use crate::tt::Bound;
+        engine.tt.probe(key).writer.write(
+            key,
+            42,
+            false,
+            Bound::Exact,
+            5,
+            Move::NULL,
+            7,
+            engine.tt.generation(),
+        );
+        assert!(engine.tt.probe(key).hit, "planted entry must be probeable");
+    }
+
+    #[test]
+    fn setoption_hash_resizes_and_clears_the_tt() {
+        let mut engine = Engine::new();
+        assert_eq!(
+            engine.tt.size_bytes(),
+            16 * 1024 * 1024,
+            "default Hash is 16 MB"
+        );
+        let key = 0xFACE_FEED_0000_0001;
+        plant_tt_entry(&engine, key);
+        let out = command_on(&mut engine, "setoption name Hash value 4");
+        assert_eq!(out, "", "successful resize is silent");
+        assert_eq!(engine.tt.size_bytes(), 4 * 1024 * 1024);
+        assert!(!engine.tt.probe(key).hit, "resize implies clear");
+        assert_eq!(engine.tt.generation(), 0);
+    }
+
+    #[test]
+    fn setoption_clear_hash_clears_the_tt_without_resizing() {
+        let mut engine = Engine::new();
+        engine.tt.new_search();
+        let key = 0xFACE_FEED_0000_0002;
+        plant_tt_entry(&engine, key);
+        let out = command_on(&mut engine, "setoption name Clear Hash");
+        assert_eq!(out, "");
+        assert!(!engine.tt.probe(key).hit, "Clear Hash empties the table");
+        assert_eq!(engine.tt.generation(), 0, "clear resets the age");
+        assert_eq!(engine.tt.size_bytes(), 16 * 1024 * 1024, "size untouched");
+    }
+
+    #[test]
+    fn ucinewgame_clears_the_tt() {
+        // doc 12 §3.3 command table: `ucinewgame` clears the TT (histories
+        // join with doc 09; per-game TM reset asserted separately below).
+        let mut engine = Engine::new();
+        let key = 0xFACE_FEED_0000_0003;
+        plant_tt_entry(&engine, key);
+        command_on(&mut engine, "ucinewgame");
+        assert!(!engine.tt.probe(key).hit);
+    }
+
+    #[test]
+    fn mid_search_hash_setoption_implicitly_stops_then_applies() {
+        // doc 12 §3.5 step 1: a mid-search `setoption` first stops the
+        // search (bestmove flushes exactly once), THEN resizes — the
+        // Arc::get_mut path must never race a live session.
+        let out = session("go infinite\nsetoption name Hash value 2\nisready\nquit\n");
+        assert_eq!(bestmoves(&out), 1, "{out}");
+        assert!(out.contains("readyok\n"), "{out}");
+        assert!(!out.contains("Failed to allocate"), "{out}");
     }
 
     #[test]
