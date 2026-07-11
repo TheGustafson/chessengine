@@ -7,6 +7,12 @@
 # Python bytecode from tools/
 __pycache__/
 
+# NNUE training-data corpus (design/15, D28): the SF-labeled bootstrap
+# corpus is gigabytes of discardable dev scaffold — never committed. The
+# SF teacher binary is covered by the /stockfish_reference/Stockfish/ ignore
+# above; the tools/nnue/ generation scripts ARE tracked.
+/data/
+
 # Strength-testing externals (design/14 §3.8, §4 steps 10-11): pinned
 # opponent/tool binaries (fastchess, ordo, reference engines), downloaded
 # books and EPD suites (never vendored, D15), and match-run output

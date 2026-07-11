@@ -1026,10 +1026,18 @@ Phase C done when:
    head. Alternative: approximate complexity as `|mg - eg|` of the Phase A
    tapered pair in Phases A/B. Decided *against* for now (one more untuned
    knob); revisit when the PSQT head lands.
-2. **Public tuning dataset licensing**: verify the exact license of the
-   Zurichess quiet-labeled set (and any lichess-derived corpus) before any
-   copy enters the repo; if unclear, use download-scripts only and rely on
-   own datagen. Needs a one-time check when step 7 starts.
+2. **Dataset licensing & NNUE-data provenance**: for the *texel* tuner
+   (step 7), verify the exact license of the Zurichess quiet-labeled set
+   (and any lichess-derived corpus) before any copy enters the repo; if
+   unclear, use download-scripts only and rely on own datagen. For the
+   *NNUE* corpus, provenance is now governed by **D28 + `design/15-nnue-datagen.md`**:
+   the Phase C net is bootstrapped by distilling a locally-compiled
+   Stockfish (SF-labeled data = discardable dev scaffold, never shipped —
+   D27/D28), and the **shipped** net is retrained from clean self-play data
+   only. Doc 15 owns the training-data format contract and curation spec
+   that both the bootstrap tool and the `bin/datagen.rs` generator of §3.4.7
+   conform to. Needs the one-time texel-licensing check when step 7 starts;
+   the NNUE side is closed by doc 15.
 3. **Net distribution**: embedded default via `include_bytes!` is decided,
    but where net binaries live (GitHub release assets vs. git LFS) is a
    repo-ops choice deferred until the first real net exists.
