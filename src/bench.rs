@@ -14,11 +14,14 @@
 //!
 //! Search modes (`type=depth/nodes/movetime`, P5 / design/06 §4 step 7)
 //! run one `ucinewgame`-fresh [`Worker`] session across the whole suite —
-//! a deterministic single-threaded search per position (`threads`/`ttMB`
-//! become meaningful with SMP/the TT; the TT will then persist across
-//! positions, design/06 §3.6). Depth and nodes limits never read the wall
-//! clock (design/14 §3.2 determinism rule 4), so their totals are exact
-//! fingerprints; `movetime` is an nps probe only, never a fingerprint.
+//! a deterministic single-threaded search per position. Since P6 the
+//! session owns a `ttMB`-sized [`TranspositionTable`] that deliberately
+//! PERSISTS across positions with one generation bump per position — the
+//! TT carry-over is part of the fingerprint (design/06 §3.6, design/14
+//! §3.2 rule 3); `threads` becomes meaningful with SMP. Depth and nodes
+//! limits never read the wall clock (design/14 §3.2 determinism rule 4),
+//! so their totals are exact fingerprints; `movetime` is an nps probe
+//! only, never a fingerprint.
 //!
 //! Output contract (design/06 §3.6, all on stderr so stdout stays a clean
 //! UCI stream): a `Position: i/N (entry)` line per position followed by
@@ -43,6 +46,7 @@ use crate::moves::MoveList;
 use crate::perft;
 use crate::search::Worker;
 use crate::timeman::Limits;
+use crate::tt::TranspositionTable;
 use std::error::Error;
 use std::fmt;
 use std::io::{self, Write};
@@ -229,12 +233,14 @@ fn run_to(params: &BenchParams, out: &mut impl Write) -> io::Result<BenchResult>
     let entries = suite_entries(&params.fens);
 
     // `ucinewgame` semantics, once for the whole run (design/06 §3.6): a
-    // fresh Worker is the search session the loop below reuses across
-    // positions. When the TT lands (P6) it is allocated here at
-    // `params.tt_mb` and then deliberately PERSISTS across positions
-    // (TT carry-over is part of the fingerprint, design/14 §3.2 rule 3);
-    // histories (doc 09) reset here too. Perft mode never touches it.
+    // fresh Worker and a fresh `params.tt_mb`-MiB table are the search
+    // session the loop below reuses across positions — the TT deliberately
+    // PERSISTS across positions (carry-over is part of the fingerprint,
+    // design/14 §3.2 rule 3), aged by one `new_search` bump per position
+    // in [`search_entry`]; histories (doc 09) will reset here too. Perft
+    // mode never touches either.
     let mut worker = Worker::new(Board::startpos());
+    let tt = TranspositionTable::new(params.tt_mb);
     let start = Instant::now();
     let mut nodes: u64 = 0;
 
@@ -248,17 +254,17 @@ fn run_to(params: &BenchParams, out: &mut impl Write) -> io::Result<BenchResult>
             BenchLimit::Depth(d) => {
                 let mut limits = Limits::new();
                 limits.depth = Some(d);
-                search_entry(&mut worker, entry, limits)
+                search_entry(&mut worker, &tt, entry, limits)
             }
             BenchLimit::Nodes(n) => {
                 let mut limits = Limits::new();
                 limits.nodes = Some(n);
-                search_entry(&mut worker, entry, limits)
+                search_entry(&mut worker, &tt, entry, limits)
             }
             BenchLimit::Movetime(t) => {
                 let mut limits = Limits::new();
                 limits.movetime = Some(i64::try_from(t).unwrap_or(i64::MAX));
-                search_entry(&mut worker, entry, limits)
+                search_entry(&mut worker, &tt, entry, limits)
             }
         };
         // Per-position count, in the SF `go perft` trailer format
@@ -283,22 +289,25 @@ fn run_to(params: &BenchParams, out: &mut impl Write) -> io::Result<BenchResult>
 }
 
 /// One search-mode bench position (design/06 §3.6): load the entry into
-/// the session worker and run a full `go` under `limits` to its natural
-/// end, returning the position's node count (the per-`go` counter the
-/// iterative-deepening driver resets and [`Worker::do_move`] bumps — the
-/// design/14 §3.2 rule-5 semantics, so bench just sums per-position
-/// counters). Info reports are discarded: their time/nps fields are
-/// wall-clock noise, and everything the fingerprint needs is in the
-/// count. The stop flag stays quiet — nobody else holds it, and
-/// depth/nodes limits terminate by themselves — so depth/nodes runs are
-/// deterministic by construction (no clock read anywhere on their path).
-/// Mate/stalemate entries return immediately with 0 nodes, exercising the
-/// zero-legal-move seam the suite exists to cover.
-fn search_entry(worker: &mut Worker, entry: &str, limits: Limits) -> u64 {
+/// the session worker, bump the shared table's generation (the per-`go`
+/// `new_search` the session layer owns, doc 08 §3.9 / doc 13 §3.7 B) and
+/// run a full `go` under `limits` to its natural end, returning the
+/// position's node count (the per-`go` counter the iterative-deepening
+/// driver resets and `Worker::do_move` bumps — the design/14 §3.2 rule-5
+/// semantics, so bench just sums per-position counters). Info reports are
+/// discarded: their time/nps fields are wall-clock noise, and everything
+/// the fingerprint needs is in the count. The stop flag stays quiet —
+/// nobody else holds it, and depth/nodes limits terminate by themselves —
+/// so depth/nodes runs are deterministic by construction (no clock read
+/// anywhere on their path). Mate/stalemate entries return immediately
+/// with 0 nodes, exercising the zero-legal-move seam the suite exists to
+/// cover.
+fn search_entry(worker: &mut Worker, tt: &TranspositionTable, entry: &str, limits: Limits) -> u64 {
     worker.board = board_from_entry(entry);
     worker.limits = limits;
+    tt.new_search();
     let stop = AtomicBool::new(false);
-    worker.iterative_deepening(&stop, &mut |_| {});
+    worker.iterative_deepening(tt, &stop, &mut |_| {});
     worker.nodes
 }
 

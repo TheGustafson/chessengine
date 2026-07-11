@@ -20,13 +20,35 @@
 //! the [`SearchInfo`] callback seam the UCI layer turns into `info` lines
 //! (design/12 §3.13).
 //!
-//! Deliberately NOT here yet, per the doc's staging: the TT (§3.7.2 steps
-//! 5–7, plan step 6), the PVS zero-window three-call structure (step 7),
-//! aspiration windows (§3.6, step 8), the full qsearch rules (§3.8, step
-//! 9), the hygiene pass (forgotten mate, aborted loss, `go mate n`,
-//! equal-value dither — step 10), the soft-stop factors and ponder guard
-//! of the clock TM (doc 12 steps 8–9, P9/P10), and every ⟨D10⟩ heuristic
-//! slot.
+//! P6 adds the TT integration (design/07 §4 step 6, at the §3.7.2/§3.8
+//! marked points, v1 scope): the probe at node entry with `value_from_tt`
+//! at the single conversion boundary (§3.12), ttMove-first move ordering
+//! (the stable front placement in [`order_moves`]), raw-eval reuse from
+//! probed entries plus the §3.11 eval-cache writes at `DEPTH_UNSEARCHED`,
+//! the store at node exit with `value_to_tt`/bound selection, the sticky
+//! `ss.tt_pv` round-trip, qsearch's `DEPTH_QS` probe/store discipline
+//! (never `Exact` there), the base NonPV TT cutoffs with the rule-50
+//! guard (compiled but unreachable until the PVS zero-window creates
+//! NonPV nodes — which is exactly what keeps step 6's TT-on/off VALUE
+//! equality bit-exact, proven by the §5 suite below), and the TT prefetch
+//! hook wired into [`Worker::do_move`] through the [`MakeMoveHooks`] seam
+//! (doc 04 §3.10 hook A, doc 08 §3.15). The table itself reaches the
+//! search as `&TranspositionTable` through the search entry (doc 07
+//! §3.10); the session layer holds the `Arc<TT>` handle for the job's
+//! duration and bumps `new_search()` once per `go` (D23, doc 13 §3.4/§3.7
+//! — the worker deliberately does NOT store the handle, so the idle UCI
+//! thread keeps `Arc::get_mut` for resize/clear).
+//!
+//! Deliberately NOT here yet, per the doc's staging: the PVS zero-window
+//! three-call structure (step 7), aspiration windows (§3.6, step 8), the
+//! full qsearch rules including the stand-pat tt-value substitution and
+//! softening blends (§3.8, step 9), the hygiene pass (forgotten mate,
+//! aborted loss, `go mate n`, equal-value dither — step 10), the
+//! soft-stop factors and ponder guard of the clock TM (doc 12 steps 8–9,
+//! P9/P10), the speculative `prefetch_key` pre-make prefetch (doc 08
+//! §3.15 call site 2), and every ⟨D10⟩ heuristic slot — including the TT
+//! cutoff refinements (cutNode agreement, depth ≥ 7 verification, the
+//! `penalize(1)` trigger).
 
 pub mod params;
 pub mod rootmoves;
@@ -38,13 +60,15 @@ pub use stack::{ContHistId, PvLine, SS_OFFSET, STACK_SIZE, Stack, init_stack, ss
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::board::Board;
+use crate::board::{Board, MakeMoveHooks};
 use crate::eval::{EvalContext, evaluate};
 use crate::movegen::{generate_captures, generate_evasions, generate_legal};
 use crate::moves::{MAX_MOVES, Move, MoveKind, MoveList};
 use crate::timeman::{Limits, TimeManager};
+use crate::tt::{Bound, TranspositionTable};
 use crate::types::{
-    Depth, MAX_PLY, PieceType, VALUE_DRAW, VALUE_INFINITE, VALUE_ZERO, Value, mate_in, mated_in,
+    DEPTH_QS, DEPTH_UNSEARCHED, Depth, Key, MAX_PLY, PieceType, VALUE_DRAW, VALUE_INFINITE,
+    VALUE_NONE, VALUE_ZERO, Value, is_valid, mate_in, mated_in, value_from_tt, value_to_tt,
 };
 
 /// The draw dither (design/07 §3.1 — the one value function search owns):
@@ -59,6 +83,24 @@ use crate::types::{
 #[inline]
 pub fn value_draw(nodes: u64) -> Value {
     VALUE_DRAW - 1 + (nodes & 0x2) as Value
+}
+
+/// The TT prefetch hook (doc 04 §3.10 hook A, doc 08 §3.15 call site 1):
+/// wired into [`Worker::do_move`] so every made move issues a prefetch for
+/// the child's cluster the moment the child key is final — the DRAM fetch
+/// overlaps the rest of `make_move` and the child's node entry, hiding
+/// most of the probe's cache-miss latency. Monomorphized away to a single
+/// `prefetcht0` instruction; hook B stays a no-op until the history
+/// tables (doc 09) want their own prefetches.
+struct TtPrefetch<'a> {
+    tt: &'a TranspositionTable,
+}
+
+impl MakeMoveHooks for TtPrefetch<'_> {
+    #[inline]
+    fn on_key(&mut self, key: Key) {
+        self.tt.prefetch(key);
+    }
 }
 
 mod sealed {
@@ -119,6 +161,9 @@ pub struct SearchInfo<'a> {
     pub upperbound: bool,
     /// Nodes searched so far this `go` (single worker until SMP, D23).
     pub nodes: u64,
+    /// TT occupancy in permille (`tt.hashfull(0)`, doc 08 §3.10), sampled
+    /// once per completed line — UCI-info cadence, never per node.
+    pub hashfull: u32,
     /// The line itself; `pv[0]` is the root move.
     pub pv: &'a [Move],
 }
@@ -220,6 +265,12 @@ impl Worker {
     /// bookkeeping this phase owns: previous-score snapshots, stable
     /// re-sorting, lastBestMove tracking and the instability accumulator.
     ///
+    /// `tt` is the shared transposition table, borrowed through the search
+    /// entry (doc 07 §3.10). The session layer owns the `Arc<TT>` handle
+    /// for the job's duration and has already bumped `tt.new_search()`
+    /// once for this `go` (doc 13 §3.7 B) — the driver never bumps it, so
+    /// helpers can share one generation when SMP lands (D23).
+    ///
     /// `stop` is the §3.9 stop seam: the UCI layer flips it from another
     /// thread ("stop"/"quit"), `check_time` flips it on hard limits; a
     /// search that observes it returns untrusted values, so every consumer
@@ -239,7 +290,12 @@ impl Worker {
     /// keeps stale-but-real scores ordered (§3.4). With no legal moves
     /// (`root_moves` empty) it returns immediately; the UCI layer emits
     /// `info depth 0` + `bestmove (none)` itself (design/12 §3.2 step 2).
-    pub fn iterative_deepening(&mut self, stop: &AtomicBool, on_info: &mut dyn FnMut(&SearchInfo)) {
+    pub fn iterative_deepening(
+        &mut self,
+        tt: &TranspositionTable,
+        stop: &AtomicBool,
+        on_info: &mut dyn FnMut(&SearchInfo),
+    ) {
         // Per-`go` reset (§3.2.4, §3.9): stack, counters, root moves.
         init_stack(&mut self.stack);
         self.nodes = 0;
@@ -286,6 +342,7 @@ impl Worker {
                 // aspiration loop (§3.6, plan step 8) replaces this.
                 self.root_delta = 2 * VALUE_INFINITE;
                 self.search::<Root>(
+                    tt,
                     stop,
                     -VALUE_INFINITE,
                     VALUE_INFINITE,
@@ -308,6 +365,7 @@ impl Worker {
                     lowerbound: rm.score_lowerbound,
                     upperbound: rm.score_upperbound,
                     nodes: self.nodes,
+                    hashfull: tt.hashfull(0),
                     pv: &rm.pv,
                 });
             }
@@ -352,14 +410,22 @@ impl Worker {
     }
 
     /// The main search node (design/07 §3.7.2), v1 subset: node order
-    /// steps 2/3/4/9/10/11/12/13/14 — no TT (steps 5–7, plan step 6), no
-    /// ⟨D10⟩ heuristics (step 8), no equal-value dither in step 12 (plan
-    /// step 10). Step 10 is plain full-window negamax until the PVS
-    /// three-call structure lands (plan step 7), so PV nodes only ever
-    /// spawn PV children here — which also keeps `pv_table[1]` fresh for
-    /// every root move's step-12 PV rebuild.
+    /// steps 2/3/4/5/6/7/9/10/11/12/13/14 — no ⟨D10⟩ heuristics (step 8),
+    /// no equal-value dither in step 12 (plan step 10). Step 10 is plain
+    /// full-window negamax until the PVS three-call structure lands (plan
+    /// step 7), so PV nodes only ever spawn PV children here — which also
+    /// keeps `pv_table[1]` fresh for every root move's step-12 PV rebuild,
+    /// and makes the step-7 NonPV TT cutoff below dead code for now:
+    /// nothing the TT stores can reach a returned value yet, so TT-on and
+    /// TT-off searches return identical values at fixed depth (the step-6
+    /// done-condition, pinned by the §5 equality suite).
+    // The parameter list is the doc 07 §3.7.1 node signature plus the two
+    // plumbed-through borrows (`tt` per doc 07 §3.10, `stop` per §3.9) —
+    // SF's search carries the same state; bundling would only rename it.
+    #[allow(clippy::too_many_arguments)]
     fn search<NT: NodeType>(
         &mut self,
+        tt: &TranspositionTable,
         stop: &AtomicBool,
         mut alpha: Value,
         mut beta: Value,
@@ -370,9 +436,9 @@ impl Worker {
         // Depth-0 boundary: drop into qsearch, preserving PV-ness.
         if depth <= 0 {
             return if NT::PV {
-                self.qsearch::<Pv>(alpha, beta, ply)
+                self.qsearch::<Pv>(tt, alpha, beta, ply)
             } else {
-                self.qsearch::<NonPv>(alpha, beta, ply)
+                self.qsearch::<NonPv>(tt, alpha, beta, ply)
             };
         }
 
@@ -422,6 +488,86 @@ impl Worker {
             }
         }
 
+        // Step 5 — TT probe (doc 08 §3.5 API). The single read-side
+        // conversion boundary: a hit's value goes through `value_from_tt`
+        // (§3.12) — with the 50-move downgrade — before any use; a
+        // tag-matched-but-unoccupied entry normalizes to VALUE_NONE here.
+        // The ttMove needs no pseudo_legal/legal validation in this phase:
+        // it is only ever matched against `generate_legal`'s output in
+        // [`order_moves`], which subsumes the doc 08 §3.5 contract.
+        let key = self.board.key();
+        let generation = tt.generation(); // once per node (doc 08 §3.9)
+        let probe = tt.probe(key);
+        let (tt_hit, tt_data) = (probe.hit, probe.data);
+        let tt_value = if tt_hit {
+            value_from_tt(tt_data.value, ply as i32, self.board.rule50_count() as i32)
+        } else {
+            VALUE_NONE
+        };
+        self.stack[cur].tt_hit = tt_hit;
+        // Sticky "was ever on the PV" flag (stored back at node exit).
+        self.stack[cur].tt_pv = NT::PV || (tt_hit && tt_data.is_pv);
+
+        // Steps 6+7 — the static-eval slot, then the TT cutoff (doc 07
+        // deliberately orders the cutoff AFTER the eval slot so doc 10's
+        // hindsight depth adjustments can feed it). In check both are
+        // skipped: the node borrows the grandparent's eval and jumps
+        // straight to the move loop — no pruning happens in check.
+        let raw_eval;
+        if in_check {
+            raw_eval = VALUE_NONE;
+            self.stack[cur].static_eval = self.stack[cur - 2].static_eval;
+        } else {
+            // Step 6 — eval reuse: a valid cached eval (RAW, uncorrected —
+            // D22) saves the evaluate() call. Correction history will
+            // adjust it into `ss.static_eval` here (eval doc); in Phase A
+            // corrected == raw. The step-6 tt_value-as-better-eval
+            // substitution has no consumer until doc 10's pruning lands —
+            // deliberately absent.
+            raw_eval = if tt_hit && is_valid(tt_data.eval) {
+                tt_data.eval
+            } else {
+                evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO)
+            };
+            self.stack[cur].static_eval = raw_eval;
+            // Eval-cache write (§3.11): a TT miss that just paid for
+            // evaluate() caches the raw eval at DEPTH_UNSEARCHED, so
+            // transpositions skip the eval even if this node never
+            // completes a search result.
+            if !tt_hit {
+                probe.writer.write(
+                    key,
+                    VALUE_NONE,
+                    self.stack[cur].tt_pv,
+                    Bound::None,
+                    DEPTH_UNSEARCHED,
+                    Move::NULL,
+                    raw_eval,
+                    generation,
+                );
+            }
+
+            // Step 7 — the NonPV TT cutoff, v1 base form (the cutNode
+            // agreement, depth ≥ 7 verification and `penalize` refinements
+            // are ⟨D10⟩): enough stored depth, a valid value, the bound
+            // pointing the cutoff's way, and never when the halfmove clock
+            // could stale the entry (rule-50 guard, §3.12). Unreachable
+            // until plan step 7's zero-window creates NonPV nodes.
+            if !NT::PV
+                && self.stack[cur].excluded_move == Move::NULL
+                && is_valid(tt_value)
+                && tt_data.depth > depth - Depth::from(tt_value <= beta)
+                && (if tt_value >= beta {
+                    tt_data.bound.includes_lower()
+                } else {
+                    tt_data.bound.includes_upper()
+                })
+                && (self.board.rule50_count() as i32) < params::TT_CUTOFF_RULE50_LIMIT
+            {
+                return tt_value;
+            }
+        }
+
         // Step 9 — move loop. The staged MovePicker (doc 09) replaces
         // generate_legal + placeholder ordering; legality is then checked
         // per move instead of up front. (`excluded_move` guard arrives
@@ -430,10 +576,10 @@ impl Worker {
         // At the root the loop iterates `root_moves[pv_idx..]` itself
         // (doc 07 §3.7.2 step 9's "skip moves outside the root list",
         // v1 form): the ID loop's stable sort has last iteration's best
-        // in front, which is this phase's stand-in for the step-5 ttMove
-        // override — the MovePicker restores picker order + skip when
-        // doc 09 lands. Everything in `root_moves` is legal by
-        // construction, and `pv_last = root_moves.len()` until MultiPV.
+        // in front — the root form of the step-5 ttMove override, so the
+        // probed move is not consulted here. Everything in `root_moves`
+        // is legal by construction, and `pv_last = root_moves.len()`
+        // until MultiPV.
         let mut list = MoveList::new();
         if NT::ROOT {
             for rm in &self.root_moves[self.pv_idx..] {
@@ -441,10 +587,11 @@ impl Worker {
             }
         } else {
             generate_legal(&self.board, &mut list);
-            order_moves(&self.board, &mut list);
+            order_moves(&self.board, &mut list, tt_data.mv);
         }
 
         let mut best_value = -VALUE_INFINITE;
+        let mut best_move = Move::NULL;
         let mut move_count = 0;
 
         for m in &list {
@@ -454,11 +601,11 @@ impl Worker {
 
             // Step 10 — make + recurse, full-window negamax (see fn docs).
             let gives_check = self.board.gives_check(m);
-            self.do_move(m, gives_check, ply);
+            self.do_move(tt, m, gives_check, ply);
             let value = if NT::PV {
-                -self.search::<Pv>(stop, -beta, -alpha, depth - 1, false, ply + 1)
+                -self.search::<Pv>(tt, stop, -beta, -alpha, depth - 1, false, ply + 1)
             } else {
-                -self.search::<NonPv>(stop, -beta, -alpha, depth - 1, !cut_node, ply + 1)
+                -self.search::<NonPv>(tt, stop, -beta, -alpha, depth - 1, !cut_node, ply + 1)
             };
             self.undo_move(m);
 
@@ -475,11 +622,11 @@ impl Worker {
                 self.update_root_move(m, value, alpha, beta, move_count, self.nodes - nodes_before);
             }
 
-            // Step 13 — best/alpha/beta updates. (Best-move tracking
-            // lands with the TT store, plan step 6.)
+            // Step 13 — best/alpha/beta updates.
             if value > best_value {
                 best_value = value;
                 if value > alpha {
+                    best_move = m;
                     if NT::PV {
                         update_pv(&mut self.pv_table[..], ply, m);
                     }
@@ -497,14 +644,51 @@ impl Worker {
         // Step 14 — node result: ply-relative mate/stalemate terminals
         // (D5): a longer mate scores closer to zero, so the search
         // naturally prefers the shortest mate and delays being mated.
-        // Fail-high softening, ttPv back-propagation and the TT store are
-        // plan steps 10/6.
+        // (Fail-high softening joins with plan step 10's hygiene pass.)
         if move_count == 0 {
             best_value = if in_check {
                 mated_in(ply as i32)
             } else {
                 VALUE_DRAW
             };
+        }
+
+        // ttPv back-propagation on fail low (step 14): a node with no good
+        // move below a still-PV parent stays flagged as search-tree-worthy.
+        if best_value <= alpha {
+            self.stack[cur].tt_pv = self.stack[cur].tt_pv || self.stack[cur - 1].tt_pv;
+        }
+
+        // TT store (step 14), through the write-side conversion boundary
+        // `value_to_tt` (§3.12): LOWER on a fail high, EXACT only for a PV
+        // node that found a best move, else UPPER; the RAW uncorrected
+        // eval (D22); the sticky tt_pv flag. Skipped for excluded-move
+        // searches and root nodes with pv_idx != 0; stopped searches never
+        // reach here (step 11 returned). Terminal nodes store with a depth
+        // bonus — the result is exact at any depth.
+        if self.stack[cur].excluded_move == Move::NULL && !(NT::ROOT && self.pv_idx != 0) {
+            let bound = if best_value >= beta {
+                Bound::Lower
+            } else if NT::PV && best_move != Move::NULL {
+                Bound::Exact
+            } else {
+                Bound::Upper
+            };
+            let store_depth = if move_count != 0 {
+                depth
+            } else {
+                depth + params::TT_NO_MOVES_DEPTH_BONUS
+            };
+            probe.writer.write(
+                key,
+                value_to_tt(best_value, ply as i32),
+                self.stack[cur].tt_pv,
+                bound,
+                store_depth,
+                best_move,
+                raw_eval,
+                generation,
+            );
         }
 
         debug_assert!(best_value > -VALUE_INFINITE && best_value < VALUE_INFINITE);
@@ -565,16 +749,27 @@ impl Worker {
         }
     }
 
-    /// Quiescence search (design/07 §3.8), step-4 skeleton: stand pat on
-    /// the static eval, captures only (queen promotions ride the CAPTURES
-    /// stage) via `capture_stage` semantics, ALL evasions while in check,
-    /// ply-relative mate when checkmated. No TT (step 4 of §3.8), none of
-    /// the step-7 per-move rules (late-move cutoff, futility, SEE gates),
-    /// no softening blends, no narrow stalemate test — all plan step 9/6.
+    /// Quiescence search (design/07 §3.8): stand pat on the static eval,
+    /// captures only (queen promotions ride the CAPTURES stage) via
+    /// `capture_stage` semantics, ALL evasions while in check, ply-relative
+    /// mate when checkmated, and the `DEPTH_QS` TT discipline (§3.8 steps
+    /// 4/5/12): probe at entry, eval reuse, the stand-pat fail-high
+    /// eval-cache write, and a store at exit that is NEVER `Exact`. Still
+    /// missing (plan step 9): the step-7 per-move rules (late-move cutoff,
+    /// futility, SEE gates), the softening blends, the stand-pat tt-value
+    /// substitution (deliberately deferred — at v1's all-PV nodes it would
+    /// leak TT values into returned scores and break the step-6 TT-on/off
+    /// value equality), and the narrow stalemate test.
     ///
     /// No stop poll here (§3.9, SF parity): qsearch is bounded by the
     /// main-search checks above it.
-    fn qsearch<NT: NodeType>(&mut self, mut alpha: Value, beta: Value, ply: usize) -> Value {
+    fn qsearch<NT: NodeType>(
+        &mut self,
+        tt: &TranspositionTable,
+        mut alpha: Value,
+        beta: Value,
+        ply: usize,
+    ) -> Value {
         debug_assert!(!NT::ROOT, "qsearch is never Root-typed (§3.7.1)");
         debug_assert!(NT::PV || alpha == beta - 1, "NonPV requires a zero window");
         debug_assert!(-VALUE_INFINITE <= alpha && alpha < beta && beta <= VALUE_INFINITE);
@@ -598,17 +793,71 @@ impl Worker {
             };
         }
 
-        // Step 5 — stand pat (not in check). In check there is no stand
-        // pat: best_value stays at -VALUE_INFINITE (a loss) so nothing
-        // can cut before at least one evasion is searched — the evasion
-        // guard that keeps checkmates from being pruned into existence.
+        // Step 4 — TT probe: everything probes and stores at DEPTH_QS.
+        // Same read-side conversion boundary as the main search (§3.12).
+        let key = self.board.key();
+        let generation = tt.generation();
+        let probe = tt.probe(key);
+        let (tt_hit, tt_data) = (probe.hit, probe.data);
+        let tt_value = if tt_hit {
+            value_from_tt(tt_data.value, ply as i32, self.board.rule50_count() as i32)
+        } else {
+            VALUE_NONE
+        };
+        // The PV flag the step-12 store writes back: the PROBED flag only,
+        // deliberately NOT OR'd with this node's own PV-ness (§3.8 step 12
+        // — OR-ing would systematically inflate the sticky ttPv signal).
+        let pv_hit = tt_hit && tt_data.is_pv;
+        self.stack[cur].tt_hit = tt_hit;
+
+        // The NonPV TT cutoff (§3.8 step 4): any stored depth qualifies
+        // (`>= DEPTH_QS`). Like the main search's step 7, unreachable
+        // until the PVS zero-window creates NonPV qsearch nodes.
+        if !NT::PV
+            && is_valid(tt_value)
+            && tt_data.depth >= DEPTH_QS
+            && (if tt_value >= beta {
+                tt_data.bound.includes_lower()
+            } else {
+                tt_data.bound.includes_upper()
+            })
+        {
+            return tt_value;
+        }
+
+        // Step 5 — stand pat (not in check), reusing a valid cached RAW
+        // eval (D22). In check there is no stand pat: best_value stays at
+        // -VALUE_INFINITE (a loss) so nothing can cut before at least one
+        // evasion is searched — the evasion guard that keeps checkmates
+        // from being pruned into existence — and raw_eval stays VALUE_NONE
+        // for the store.
         let mut best_value = -VALUE_INFINITE;
+        let mut raw_eval = VALUE_NONE;
         if !in_check {
-            let static_eval = evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO);
-            self.stack[cur].static_eval = static_eval;
-            best_value = static_eval;
+            raw_eval = if tt_hit && is_valid(tt_data.eval) {
+                tt_data.eval
+            } else {
+                evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO)
+            };
+            self.stack[cur].static_eval = raw_eval; // corrected == raw (Phase A)
+            best_value = raw_eval;
             if best_value >= beta {
-                return best_value; // softening blend arrives with plan step 9
+                // Softening blend arrives with plan step 9. A stand-pat
+                // fail high on a TT miss caches the raw eval as a
+                // Bound::Lower eval-only entry (§3.11).
+                if !tt_hit {
+                    probe.writer.write(
+                        key,
+                        VALUE_NONE,
+                        false,
+                        Bound::Lower,
+                        DEPTH_UNSEARCHED,
+                        Move::NULL,
+                        raw_eval,
+                        generation,
+                    );
+                }
+                return best_value;
             }
             alpha = alpha.max(best_value);
         }
@@ -616,15 +865,17 @@ impl Worker {
         // Steps 6–7 — captures (+ queen promotions, the CAPTURES stage of
         // doc 05 §3.2, mirroring `Board::capture_stage`), or every evasion
         // in check. Pseudo-legal generation; legality tested on the move
-        // we are about to play.
+        // we are about to play. A probed ttMove sorts first when the
+        // generator emitted it — list membership subsumes its validation.
         let mut list = MoveList::new();
         if in_check {
             generate_evasions(&self.board, &mut list);
         } else {
             generate_captures(&self.board, &mut list);
         }
-        order_moves(&self.board, &mut list);
+        order_moves(&self.board, &mut list, tt_data.mv);
 
+        let mut best_move = Move::NULL;
         let mut move_count = 0;
         for m in &list {
             if !self.board.legal(m) {
@@ -634,14 +885,15 @@ impl Worker {
 
             // Step 8 — recurse: full window, same node type.
             let gives_check = self.board.gives_check(m);
-            self.do_move(m, gives_check, ply);
-            let value = -self.qsearch::<NT>(-beta, -alpha, ply + 1);
+            self.do_move(tt, m, gives_check, ply);
+            let value = -self.qsearch::<NT>(tt, -beta, -alpha, ply + 1);
             self.undo_move(m);
 
             // Step 9 — updates.
             if value > best_value {
                 best_value = value;
                 if value > alpha {
+                    best_move = m;
                     if NT::PV {
                         update_pv(&mut self.pv_table[..], ply, m);
                     }
@@ -654,28 +906,50 @@ impl Worker {
         }
 
         // Step 10 — checkmate: every evasion was generated, so zero legal
-        // moves while in check is mate, ply-relative (D5). (The narrow
-        // stalemate test is plan step 9.)
+        // moves while in check is mate, ply-relative (D5), returned
+        // WITHOUT a store (SF parity). (The narrow stalemate test is plan
+        // step 9.)
         if in_check && move_count == 0 {
             return mated_in(ply as i32);
         }
+
+        // Step 12 — TT store at DEPTH_QS: LOWER on a fail high, else
+        // UPPER — NEVER Exact in qsearch — value through `value_to_tt`,
+        // the RAW eval, and the probed PV flag only.
+        probe.writer.write(
+            key,
+            value_to_tt(best_value, ply as i32),
+            pv_hit,
+            if best_value >= beta {
+                Bound::Lower
+            } else {
+                Bound::Upper
+            },
+            DEPTH_QS,
+            best_move,
+            raw_eval,
+            generation,
+        );
 
         debug_assert!(best_value > -VALUE_INFINITE && best_value < VALUE_INFINITE);
         best_value
     }
 
     /// Make `m`, counting the node (§3.9 — `nodes` counts MADE moves,
-    /// matching SF and the future `bench` fingerprint) and installing the
-    /// child's stack slots. The continuation-history key install (keyed by
-    /// `(in_check, capture, piece, to)`) and the TT prefetch hook land
-    /// with docs 09/08; the sentinel is always safe to read through.
+    /// matching SF and the `bench` fingerprint) and installing the child's
+    /// stack slots. The [`TtPrefetch`] hook rides the [`MakeMoveHooks`]
+    /// seam (doc 04 §3.10): the child's TT cluster is prefetched the
+    /// moment its key is final, mid-make. The continuation-history key
+    /// install (keyed by `(in_check, capture, piece, to)`) lands with doc
+    /// 09; the sentinel is always safe to read through.
     #[inline]
-    fn do_move(&mut self, m: Move, gives_check: bool, ply: usize) {
+    fn do_move(&mut self, tt: &TranspositionTable, m: Move, gives_check: bool, ply: usize) {
         self.nodes += 1;
         let cur = ss(ply);
         self.stack[cur].current_move = m;
         self.stack[cur].cont_hist = ContHistId::SENTINEL;
-        self.board.make_move(m, gives_check);
+        self.board
+            .make_move_with(m, gives_check, &mut TtPrefetch { tt });
     }
 
     #[inline]
@@ -742,19 +1016,29 @@ impl Worker {
     }
 }
 
-/// MVV-LVA placeholder ordering until doc 09's staged MovePicker lands
-/// (design/07 §4 step 4): captures sort first by most valuable victim,
+/// ttMove-first MVV-LVA placeholder ordering until doc 09's staged
+/// MovePicker lands (design/07 §4 steps 4/6): the probed TT move — when
+/// the generator emitted it, which is also its semantic validation (a
+/// collided or garbage `tt_move` simply matches nothing and is dropped,
+/// doc 08 §3.5) — sorts in front; then captures by most valuable victim,
 /// ties broken by least valuable attacker; promotions add the promoted
 /// piece so queen promotions sort with queen captures; quiets keep
 /// generation order behind all captures.
 ///
-/// Insertion sort: stable and in-place (no allocation on the hot path,
-/// §6), so node counts are deterministic (D24). O(n²) worst case is fine
-/// for n ≤ 256 in a placeholder the MovePicker deletes.
-fn order_moves(board: &Board, list: &mut MoveList) {
+/// Insertion sort: STABLE and in-place (no allocation on the hot path,
+/// §6), so the ttMove's front placement preserves the relative order of
+/// everything else and node counts are deterministic (D24). O(n²) worst
+/// case is fine for n ≤ 256 in a placeholder the MovePicker deletes.
+fn order_moves(board: &Board, list: &mut MoveList, tt_move: Move) {
     let mut scores = [0i32; MAX_MOVES];
     for (s, &m) in scores.iter_mut().zip(list.iter()) {
-        *s = move_score(board, m);
+        // No generated move is ever Move::NULL, so a NULL tt_move (probe
+        // miss / move-less entry) matches nothing.
+        *s = if m == tt_move {
+            i32::MAX
+        } else {
+            move_score(board, m)
+        };
     }
     for i in 1..list.len() {
         let (m, s) = (list[i], scores[i]);
@@ -802,14 +1086,33 @@ mod tests {
         Board::from_fen(fen).unwrap()
     }
 
-    /// Run a `go depth <depth>` through the iterative-deepening driver,
-    /// discarding info reports.
-    fn go_depth(fen: &str, depth: Depth) -> Worker {
+    /// The smallest real table (1 MiB): every test `go` runs with the TT
+    /// enabled, exactly like the engine.
+    fn test_tt() -> TranspositionTable {
+        TranspositionTable::new(1)
+    }
+
+    /// One `go` session against `tt`: the per-`go` generation bump the
+    /// session layer owns (doc 13 §3.7 B), then the driver.
+    fn go(w: &mut Worker, tt: &TranspositionTable) {
+        tt.new_search();
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(tt, &stop, &mut |_| {});
+    }
+
+    /// Run a `go depth <depth>` on `tt` (warm or fresh), discarding info
+    /// reports.
+    fn go_depth_on(fen: &str, depth: Depth, tt: &TranspositionTable) -> Worker {
         let mut w = Worker::new(board(fen));
         w.limits.depth = Some(depth);
-        let stop = AtomicBool::new(false);
-        w.iterative_deepening(&stop, &mut |_| {});
+        go(&mut w, tt);
         w
+    }
+
+    /// Run a `go depth <depth>` through the iterative-deepening driver
+    /// with a fresh table, discarding info reports.
+    fn go_depth(fen: &str, depth: Depth) -> Worker {
+        go_depth_on(fen, depth, &test_tt())
     }
 
     /// The best root move's score after a completed `go`.
@@ -1030,7 +1333,7 @@ mod tests {
         w.limits.depth = Some(6);
         let stop = AtomicBool::new(true);
         let mut infos = 0;
-        w.iterative_deepening(&stop, &mut |_| infos += 1);
+        w.iterative_deepening(&test_tt(), &stop, &mut |_| infos += 1);
         // The ID loop condition sees the stop before any search runs and
         // no info line is ever emitted from a stopped iteration (§3.5)...
         assert_eq!(w.nodes, 0);
@@ -1049,7 +1352,7 @@ mod tests {
         w.limits.depth = Some(3);
         let stop = AtomicBool::new(false);
         let mut reports: Vec<(Depth, i32, u64, Vec<Move>)> = Vec::new();
-        w.iterative_deepening(&stop, &mut |i| {
+        w.iterative_deepening(&test_tt(), &stop, &mut |i| {
             assert_eq!(i.multipv, 1, "v1 is single-PV");
             assert!(!i.lowerbound && !i.upperbound, "full window: exact");
             reports.push((i.depth, i.sel_depth, i.nodes, i.pv.to_vec()));
@@ -1077,7 +1380,7 @@ mod tests {
         let mut w = Worker::new(board(START_FEN));
         w.limits.nodes = Some(20_000);
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&stop, &mut |_| {});
+        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
         assert!(
             stop.load(Ordering::Relaxed),
             "check_time must raise the stop flag on the node limit"
@@ -1098,7 +1401,7 @@ mod tests {
         w.limits.movetime = Some(50);
         w.limits.start_time = std::time::Instant::now();
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&stop, &mut |_| {});
+        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
         assert!(stop.load(Ordering::Relaxed), "movetime must self-stop");
         assert!(w.best_move().is_some());
     }
@@ -1117,7 +1420,7 @@ mod tests {
         w.limits.ponder = true;
         w.ponder = Arc::new(AtomicBool::new(true));
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&stop, &mut |_| {});
+        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
         assert!(!stop.load(Ordering::Relaxed), "pondering must never stop");
         assert_eq!(w.root_depth, 4, "the search deepened on GUI time");
 
@@ -1127,7 +1430,7 @@ mod tests {
         w.limits.start_time = std::time::Instant::now();
         w.limits.depth = Some(4);
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&stop, &mut |_| {});
+        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
         assert!(stop.load(Ordering::Relaxed), "expired movetime must stop");
     }
 
@@ -1156,7 +1459,7 @@ mod tests {
         assert!(w.limits.use_time_management());
         assert!(w.tm.maximum() >= 1);
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&stop, &mut |_| {});
+        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
         assert!(stop.load(Ordering::Relaxed), "the TM wall must self-stop");
         assert!(w.best_move().is_some());
     }
@@ -1174,7 +1477,7 @@ mod tests {
         w.limits.depth = Some(3);
         let stop = AtomicBool::new(false);
         let mut pv_heads = Vec::new();
-        w.iterative_deepening(&stop, &mut |i| pv_heads.push(i.pv[0]));
+        w.iterative_deepening(&test_tt(), &stop, &mut |i| pv_heads.push(i.pv[0]));
         assert_eq!(w.root_moves.len(), 2);
         assert!(w.root_moves.iter().all(|rm| filter.contains(&rm.pv[0])));
         assert!(filter.contains(&w.best_move().unwrap()));
@@ -1190,7 +1493,7 @@ mod tests {
         w.limits.searchmoves = vec![Move::normal(Square::E2, Square::E5)];
         w.limits.depth = Some(2);
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&stop, &mut |_| {});
+        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
         assert_eq!(w.root_moves.len(), 20);
         assert!(w.best_move().is_some());
     }
@@ -1212,12 +1515,14 @@ mod tests {
     // Fail-soft alpha-beta over a FIXED tree returns the exact minimax
     // value at a full-window root. The v1 tree IS fixed (no
     // window-dependent pruning anywhere: qsearch has no futility/SEE
-    // rules yet), so a cutoff-free reference walking the same tree —
-    // same generators, same stand-pat, same terminal rules — must agree
-    // exactly with the final iteration (earlier iterations only reorder
-    // the root, which cannot move an exact full-window value). Positions
-    // are chosen with no reachable repetitions so the node-counter draw
-    // dither cannot fire.
+    // rules yet, and the TT only reorders moves and caches raw evals —
+    // never a returned value, since the sanctioned NonPV cutoffs are
+    // unreachable without zero-window nodes), so a cutoff-free reference
+    // walking the same tree — same generators, same stand-pat, same
+    // terminal rules — must agree exactly with the final iteration
+    // (earlier iterations only reorder the root, which cannot move an
+    // exact full-window value). Positions are chosen with no reachable
+    // repetitions so the node-counter draw dither cannot fire.
 
     fn ref_qsearch(b: &mut Board, ctx: &mut EvalContext, ply: usize) -> Value {
         let in_check = !b.checkers().is_empty();
@@ -1291,5 +1596,106 @@ mod tests {
                 "alpha-beta vs pure negamax diverged: {fen}"
             );
         }
+    }
+
+    // --- TT-on/off value equality (doc 07 §4 step 6 done-condition; doc
+    //     08 §8 criterion 6's value half) ---
+
+    /// One position of the TT value-equality suite: search it three ways
+    /// with the TT enabled — a fresh table, the same table warmed by that
+    /// run, and a table warmed by a DEEPER run first (deeper entries are
+    /// the classic source of value-changing TT cutoffs) — assert all
+    /// three agree, and return the shared value.
+    fn tt_value_triple(fen: &str, depth: Depth) -> Value {
+        let tt = test_tt();
+        let fresh = go_depth_on(fen, depth, &tt);
+        let warm = go_depth_on(fen, depth, &tt);
+        assert_eq!(
+            best_score(&fresh),
+            best_score(&warm),
+            "fresh vs warm TT: {fen}"
+        );
+        let deep_tt = test_tt();
+        go_depth_on(fen, depth + 1, &deep_tt);
+        let after_deeper = go_depth_on(fen, depth, &deep_tt);
+        assert_eq!(
+            best_score(&fresh),
+            best_score(&after_deeper),
+            "fresh vs deeper-warmed TT: {fen}"
+        );
+        best_score(&fresh)
+    }
+
+    #[test]
+    fn tt_on_and_off_return_identical_values_at_fixed_depth() {
+        // The suite the step-6 exit bar demands: fixed-depth searches with
+        // the TT disabled vs enabled return identical VALUES (node counts
+        // may differ — ttMove ordering changes cutoff order, never the
+        // exact full-window root value). `ref_negamax` — proven equal to
+        // the pre-TT engine by the test above at the commit that added it
+        // — is the TT-disabled oracle, compared against the fresh/warm/
+        // deeper-warmed triple: equality proves the v1 bounds/cutoff
+        // discipline — nothing the TT stores reaches a returned value.
+        //
+        // Depths stay <= 4: from a FEN root (no game history) the first
+        // possible in-tree repetition is ply 4, which at these depths is
+        // qsearch's plain deterministic VALUE_DRAW — the node-counter
+        // draw dither is unreachable, so any divergence would be TT value
+        // flow, exactly what must not exist. Positions keep the material
+        // low: the CUTOFF-FREE oracle explores every capture/evasion
+        // chain exhaustively, which explodes on full-material boards (the
+        // startpos test below covers that class without the oracle).
+        let suite: &[(&str, Depth)] = &[
+            // Two-rook ladder: wide branching, decisive scores in the tree.
+            ("8/8/6k1/R7/8/8/8/1R5K w - - 0 1", 3),
+            // KRK mate-in-2: decisive scores through value_to_tt/from_tt.
+            ("k7/8/2K5/8/8/8/8/7R w - - 0 1", 3),
+            // Mated-side reporting through the TT boundary.
+            ("7k/8/6K1/8/8/8/2Q5/8 b - - 0 1", 3),
+            // Tiny pawn ending: eval-cache traffic plus qsearch captures.
+            ("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1", 4),
+            // Back-rank mate with pawn shields on both sides.
+            ("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", 3),
+            // Minor-piece skirmish: black to move, hanging knight.
+            ("4k3/8/3n4/8/4B3/8/8/4K3 b - - 0 1", 3),
+        ];
+        for &(fen, depth) in suite {
+            let tt_off = ref_negamax(&mut board(fen), &mut EvalContext::new(), depth, 0);
+            assert_eq!(
+                tt_value_triple(fen, depth),
+                tt_off,
+                "TT-on vs TT-off: {fen}"
+            );
+        }
+    }
+
+    #[test]
+    fn tt_state_never_moves_the_startpos_value() {
+        // Full-material coverage for the suite above, without the
+        // exponential no-cutoff oracle: the fresh/warm/deeper-warmed
+        // triple must agree on the startpos value — any inequality would
+        // be TT state leaking into returned values.
+        tt_value_triple(START_FEN, 3);
+    }
+
+    #[test]
+    fn warm_tt_searches_fewer_nodes_at_equal_depth() {
+        // The other half of the step-6 exit bar in miniature (the real
+        // "bench nodes drop materially" number is recorded in the commit
+        // trailer, D24): re-searching the same position at the same depth
+        // against the warmed table must cost fewer nodes — the ttMove-
+        // first ordering and the eval cache are actually doing work.
+        // Depth 4 keeps the draw dither unreachable (see the test above),
+        // so the value-equality assert can ride along.
+        let tt = test_tt();
+        let fresh = go_depth_on(START_FEN, 4, &tt);
+        let warm = go_depth_on(START_FEN, 4, &tt);
+        assert_eq!(best_score(&fresh), best_score(&warm));
+        assert!(
+            warm.nodes < fresh.nodes,
+            "warm TT must shrink the tree: {} !< {}",
+            warm.nodes,
+            fresh.nodes
+        );
     }
 }

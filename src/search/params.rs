@@ -20,7 +20,7 @@
 //! `search/`, `movepick.rs`, or `see.rs` that a tuner could move is a
 //! defect (design/01 §3.8).
 
-use crate::types::Value;
+use crate::types::{Depth, Value};
 
 // --- Aspiration windows (design/07 §3.6) ---
 
@@ -39,6 +39,17 @@ pub const ASPIRATION_WIDEN_DEN: Value = 128;
 pub const RAZOR_BASE: Value = 465;
 /// Depth-quadratic term of the razoring margin (`* depth^2`).
 pub const RAZOR_DEPTH_MULT: Value = 300;
+
+// --- Transposition-table interaction (design/07 §3.7.2 steps 7/14) ---
+
+/// TT cutoffs are refused once the halfmove clock reaches this (the
+/// graph-history guard of design/07 §3.7.2 step 7 / design/08 §3.12).
+/// `i32`: matches `value_from_tt`'s rule50 parameter (doc 02).
+pub const TT_CUTOFF_RULE50_LIMIT: i32 = 96;
+/// Extra depth credited to the TT store of a no-legal-moves node
+/// (design/07 §3.7.2 step 14): a mate/stalemate terminal is exact far
+/// beyond its nominal depth, so make the entry hard to displace.
+pub const TT_NO_MOVES_DEPTH_BONUS: Depth = 6;
 
 // --- Stop cadence (design/07 §3.9) ---
 

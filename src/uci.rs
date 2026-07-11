@@ -26,14 +26,18 @@
 //! a real SF-format divide (P3, design/06 §3.2) and `bench ... perft` runs
 //! perft-mode bench.
 //!
-//! P6 state (doc 08 §4 step 8, the Hash/Clear Hash half): [`Engine`] owns
-//! the shared `Arc<TranspositionTable>` (D23); `setoption name Hash`
-//! resizes it between searches via `Arc::get_mut` — fallible per doc 08
-//! §3.13, allocation shortfall answers
+//! P6 state (doc 08 §4 steps 7–8): [`Engine`] owns the shared
+//! `Arc<TranspositionTable>` (D23); `setoption name Hash` resizes it
+//! between searches via `Arc::get_mut` — fallible per doc 08 §3.13,
+//! allocation shortfall answers
 //! `info string Failed to allocate <req> MB hash, using <got> MB` and the
 //! engine keeps playing — while `Clear Hash` and `ucinewgame` clear it.
-//! Search probe/write integration and `info hashfull` land with doc 08
-//! step 7 (doc 07's call sites).
+//! Each `go` clones the handle into its search thread ([`run_search`]
+//! holds it for the job's duration and bumps `tt.new_search()` once, doc
+//! 13 §3.4/§3.7 B — dropped at job end, so the idle UCI thread stays the
+//! sole holder and `Arc::get_mut` keeps working), the worker probes and
+//! stores through it (doc 07's call sites), and completed PV lines carry
+//! `info hashfull` (§3.13).
 
 use crate::bench;
 use crate::board::Board;
@@ -962,10 +966,16 @@ fn cmd_go<W: Write + Send + 'static>(
         let stop = Arc::clone(&stop);
         let ponder = Arc::clone(&ponder);
         let options = engine.options.clone();
+        // The session's TT handle (D23; doc 13 §3.4's per-job carry):
+        // cloned per `go`, held by the search thread for the job's
+        // duration, dropped when `run_search` returns — between searches
+        // the UCI thread is again the only holder, so `Engine::tt_mut`'s
+        // `Arc::get_mut` keeps working.
+        let tt = Arc::clone(&engine.tt);
         let out = out.clone();
         thread::Builder::new()
             .name("search-main".to_string())
-            .spawn(move || run_search(state, &stop, &ponder, &options, &out))
+            .spawn(move || run_search(state, &stop, &ponder, &options, &tt, &out))
     };
     match spawned {
         Ok(handle) => {
@@ -1005,6 +1015,7 @@ fn run_search<W: Write>(
     stop: &AtomicBool,
     ponder: &AtomicBool,
     options: &Options,
+    tt: &TranspositionTable,
     out: &SharedOut<W>,
 ) -> SearchState {
     let worker = &mut state.worker;
@@ -1020,11 +1031,15 @@ fn run_search<W: Write>(
     worker.limits = limits;
     let start_time = worker.limits.start_time;
 
+    // The single per-`go` TT generation bump, after TM init and before
+    // the search starts (doc 08 §3.9; doc 13 §3.7 B's ordering).
+    tt.new_search();
+
     // §3.13: one pre-built String, one locked write per info line. The
     // PV head of the last line sent drives the final flush below.
     let mut last_sent: Option<Move> = None;
     let multi_pv = 1usize; // fixed until the MultiPV option lands (step 10)
-    worker.iterative_deepening(stop, &mut |info| {
+    worker.iterative_deepening(tt, stop, &mut |info| {
         // Throttle (§3.13): below INFO_THROTTLE_NODES only the
         // iteration's LAST MultiPV line prints — at MultiPV 1 that is
         // every completed line, so nothing is ever suppressed yet.
@@ -1081,13 +1096,20 @@ fn run_search<W: Write>(
                 lowerbound: rm.score_lowerbound,
                 upperbound: rm.score_upperbound,
                 nodes: worker.nodes,
+                hashfull: tt.hashfull(0),
                 pv: &rm.pv,
             };
             let _ = writeln!(out, "{}", format_info(&info, elapsed_ms));
         }
-        // Ponder move = pv[1] when the line is long enough (§3.2 step 4;
-        // the TT-probe fallback for 1-ply PVs arrives with the TT, P6).
-        match worker.root_pv().get(1) {
+        // Ponder move = pv[1] when the line is long enough; for a 1-ply
+        // PV, fall back to probing the TT after making pv[0] (doc 12
+        // §3.2 step 4).
+        let ponder_mv = worker
+            .root_pv()
+            .get(1)
+            .copied()
+            .or_else(|| ponder_from_tt(tt, &worker.board, best));
+        match ponder_mv {
             Some(p) => {
                 let _ = writeln!(out, "bestmove {best} ponder {p}");
             }
@@ -1103,6 +1125,28 @@ fn run_search<W: Write>(
     state
 }
 
+/// The 1-ply-PV ponder fallback (doc 12 §3.2 step 4): make the best move
+/// on a scratch board and probe the TT there; offer the stored move as
+/// the ponder move only if the resulting position is not an immediate
+/// draw and the move is legal there — the doc 08 §3.5 validation
+/// contract, discharged by legal-list membership: a collided or garbage
+/// move simply matches nothing. Cold path (once per `go`), so the clone
+/// and the O(legal) scan are fine.
+fn ponder_from_tt(tt: &TranspositionTable, board: &Board, best: Move) -> Option<Move> {
+    let mut b = board.clone();
+    b.make_move(best, b.gives_check(best));
+    if b.is_draw(1) {
+        return None;
+    }
+    let probe = tt.probe(b.key());
+    if !probe.hit || probe.data.mv == Move::NULL {
+        return None;
+    }
+    let mut legal = MoveList::new();
+    movegen::generate_legal(&b, &mut legal);
+    legal.contains(&probe.data.mv).then_some(probe.data.mv)
+}
+
 // ---------------------------------------------------------------------------
 // info formatting (design/12 §3.13–§3.14)
 // ---------------------------------------------------------------------------
@@ -1116,8 +1160,10 @@ fn run_search<W: Write>(
 const INFO_THROTTLE_NODES: u64 = 10_000_000;
 
 /// Format one completed PV line (doc 12 §3.13, v1 field scope): depth,
-/// seldepth, score (with bound suffix), nodes, nps, wall-clock time, pv.
-/// One `String` so the caller can emit it as a single write.
+/// seldepth, score (with bound suffix), nodes, nps, hashfull (the TT
+/// permille estimate, doc 08 §3.10), wall-clock time, pv — the doc's SF
+/// field order, minus the deferred `multipv`/`wdl`/`tbhits`. One `String`
+/// so the caller can emit it as a single write.
 fn format_info(info: &SearchInfo, elapsed_ms: i64) -> String {
     use std::fmt::Write as _; // writing to a String cannot fail
     let time = elapsed_ms.max(0);
@@ -1133,7 +1179,11 @@ fn format_info(info: &SearchInfo, elapsed_ms: i64) -> String {
     } else if info.upperbound {
         line.push_str(" upperbound");
     }
-    let _ = write!(line, " nodes {} nps {nps} time {time} pv", info.nodes);
+    let _ = write!(
+        line,
+        " nodes {} nps {nps} hashfull {} time {time} pv",
+        info.nodes, info.hashfull
+    );
     for m in info.pv {
         let _ = write!(line, " {m}");
     }
@@ -1839,11 +1889,62 @@ uciok
         assert!(infos[1].starts_with("info depth 2 seldepth "), "{out}");
         for info in &infos {
             assert!(info.contains(" score mate 1"), "{info}");
-            for field in [" nodes ", " nps ", " time ", " pv "] {
+            for field in [" nodes ", " nps ", " hashfull ", " time ", " pv "] {
                 assert!(info.contains(field), "missing{field}in: {info}");
             }
             assert!(info.ends_with(" pv d1d8"), "{info}");
         }
+    }
+
+    #[test]
+    fn ponder_from_tt_offers_only_validated_moves() {
+        // doc 12 §3.2 step 4: the 1-ply-PV fallback probes the TT after
+        // making the best move and must validate everything it reads
+        // (doc 08 §3.5).
+        use crate::tt::Bound;
+        let tt = TranspositionTable::new(MIN_HASH_MB);
+        let board = Board::startpos();
+        let best = move_from_uci(&board, "e2e4").unwrap();
+        let mut after = board.clone();
+        after.make_move(best, after.gives_check(best));
+        let key = after.key();
+
+        // Nothing stored: no ponder move.
+        assert_eq!(ponder_from_tt(&tt, &board, best), None);
+
+        // A legal stored reply is offered.
+        let reply = move_from_uci(&after, "c7c5").unwrap();
+        tt.probe(key)
+            .writer
+            .write(key, 10, false, Bound::Exact, 3, reply, 0, tt.generation());
+        assert_eq!(ponder_from_tt(&tt, &board, best), Some(reply));
+
+        // A garbage/collided move (illegal after 1.e4: it moves a WHITE
+        // pawn with black to play) is dropped by the validation contract.
+        let foreign = Move::normal(Square::A2, Square::A3);
+        tt.probe(key)
+            .writer
+            .write(key, 10, false, Bound::Exact, 4, foreign, 0, tt.generation());
+        assert_eq!(ponder_from_tt(&tt, &board, best), None);
+    }
+
+    #[test]
+    fn ponder_from_tt_refuses_immediate_draws() {
+        // The "not an immediate draw" guard (doc 12 §3.2 step 4): the
+        // best move lands on the 100th quiet halfmove, so the resulting
+        // position is a 50-move draw — no pondering into a dead game.
+        use crate::tt::Bound;
+        let tt = TranspositionTable::new(MIN_HASH_MB);
+        let board = Board::from_fen("k7/8/2K5/8/8/8/8/7R w - - 99 80").unwrap();
+        let best = move_from_uci(&board, "h1h2").unwrap();
+        let mut after = board.clone();
+        after.make_move(best, after.gives_check(best));
+        let key = after.key();
+        let reply = move_from_uci(&after, "a8b8").unwrap();
+        tt.probe(key)
+            .writer
+            .write(key, 0, false, Bound::Exact, 3, reply, 0, tt.generation());
+        assert_eq!(ponder_from_tt(&tt, &board, best), None);
     }
 
     #[test]
@@ -2045,11 +2146,13 @@ uciok
             lowerbound: false,
             upperbound: false,
             nodes: 4000,
+            hashfull: 13,
             pv: &pv,
         };
         assert_eq!(
             format_info(&info, 2000),
-            "info depth 7 seldepth 12 score cp 42 nodes 4000 nps 2000 time 2000 pv e2e4 e7e5"
+            "info depth 7 seldepth 12 score cp 42 nodes 4000 nps 2000 hashfull 13 time 2000 \
+             pv e2e4 e7e5"
         );
         // Zero elapsed must not divide by zero; bounds add their suffix.
         let bound = SearchInfo {
@@ -2058,7 +2161,8 @@ uciok
         };
         assert_eq!(
             format_info(&bound, 0),
-            "info depth 7 seldepth 12 score cp 42 lowerbound nodes 4000 nps 4000000 time 0 pv e2e4 e7e5"
+            "info depth 7 seldepth 12 score cp 42 lowerbound nodes 4000 nps 4000000 hashfull 13 \
+             time 0 pv e2e4 e7e5"
         );
     }
 }
