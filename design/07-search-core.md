@@ -758,8 +758,9 @@ check (doc 09). Steps:
      - **SEE vs the window**: if `!board.see_ge(m, alpha - futility_base)`:
        `best_value = best_value.max(alpha.min(futility_base))`, skip.
    - Skip all remaining non-captures (`!capture_stage(m)` → continue). In
-     practice this drops non-capture queen promotions that survived above
-     only via the give-check/prev_sq exemptions.
+     practice this drops the quiet evasions once one escape has a real
+     value; queen promotions are `capture_stage` (doc 05 §3.2), so they are
+     never dropped here — they proceed to the SEE floor like any capture.
    - **Hard SEE floor** for everything left: if `!board.see_ge(m, -74)`, skip.
 8. **Recurse** with the full window and the same node type:
    `value = -self.qsearch::<NT>(-beta, -alpha, ply + 1)` around

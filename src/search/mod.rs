@@ -2028,6 +2028,29 @@ mod tests {
     }
 
     #[test]
+    fn qsearch_non_capture_skip_drops_quiet_evasions_once_best_value_is_real() {
+        // The positive direction of the §3.8 step-7 non-capture skip (the
+        // §8.8 flip test its evasion-guard sibling above cannot provide):
+        // white is in check with THREE evasions — Rxa1, a clean recapture
+        // that sorts first, and the quiet Kh2/Kg2. The capture's child
+        // value makes best_value real (a rook up, not a loss), so both
+        // quiet evasions are dropped unsearched; disable the skip and all
+        // three run (nodes == 3). The in-check futility block is inert
+        // (futility_base is a loss), so ONLY this rule can skip them.
+        let fen = "7k/8/8/R7/8/8/8/r6K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let rxa1 = Move::normal(Square::A5, Square::A1);
+        assert!(all_legal(&w.board).contains(&rxa1));
+        let mut after = w.board.clone();
+        after.make_move(rxa1, after.gives_check(rxa1));
+        let v = qsearch_at::<Pv>(&mut w, &tt, -VALUE_INFINITE, VALUE_INFINITE);
+        assert_eq!(w.nodes, 1, "only the capture evasion is searched");
+        assert_eq!(v, -static_eval(&after));
+        assert!(v > 0 && !is_decisive(v), "a real material edge, not a mate");
+    }
+
+    #[test]
     fn qsearch_in_check_never_stands_pat() {
         // White is well ahead: were stand pat allowed, eval >= beta would
         // cut with zero nodes. In check the §3.8 step-5 rule forbids it —
