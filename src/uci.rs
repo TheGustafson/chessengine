@@ -19,8 +19,11 @@
 //! `bestmove` — after `stop`/`ponderhit` only, in infinite/ponder mode
 //! (the busy-wait rule). wtime/btime go through
 //! [`TimeManager::init`](crate::timeman::TimeManager::init) with
-//! the `maximum` hard wall enforced in the search's `check_time`; the
-//! soft-stop factors and real pondering are doc 12 steps 8–9. The
+//! the `maximum` hard wall enforced in the search's `check_time` and,
+//! since doc 12 step 7 (P7), the v1 soft stop ending deepening at the
+//! first iteration boundary past `optimum` (doc 12 §3.9 subset, owned by
+//! the search's ID loop); the four-factor soft-stop stack and real
+//! pondering are doc 12 steps 8–9. The
 //! in-session `bench`/`perft`/`go perft`/`eval` dev commands land with doc
 //! 12 step 12. The argv subcommands are live: `perft <depth> [fen]` prints
 //! a real SF-format divide (P3, design/06 §3.2) and `bench ... perft` runs

@@ -298,6 +298,32 @@ fn bestmove_lines(lines: &[(Instant, String)]) -> Vec<&(Instant, String)> {
         .collect()
 }
 
+/// Block until the session has produced `n` bestmove lines; returns the
+/// n-th line's (arrival timestamp, move token).
+fn wait_for_bestmove_n(s: &Session, n: usize, timeout: Duration) -> (Instant, String) {
+    let deadline = Instant::now() + timeout;
+    loop {
+        {
+            let lines = s.lines.lock().unwrap();
+            let mut bests = lines.iter().filter(|(_, l)| l.starts_with("bestmove "));
+            if let Some((at, line)) = bests.nth(n - 1) {
+                let token = line
+                    .split_whitespace()
+                    .nth(1)
+                    .unwrap_or_else(|| panic!("malformed bestmove line: {line}"))
+                    .to_string();
+                return (*at, token);
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for bestmove #{n}; transcript:\n{}",
+            s.transcript()
+        );
+        thread::sleep(Duration::from_millis(2));
+    }
+}
+
 /// The `bestmove` token must be a legal move of `fen`.
 fn assert_legal_bestmove(line: &str, fen: &str) {
     let token = line
@@ -575,6 +601,98 @@ fn blocking_position_during_infinite_search_implicitly_stops_it() {
     // The bestmove flushed before the new position's diagram printed.
     let best_at = bestmove_lines(&lines)[0].0;
     assert!(best_at <= fen_line.0, "bestmove must precede the d output");
+}
+
+#[test]
+fn go_with_clocks_returns_promptly_and_spends_near_optimum() {
+    // doc 12 step 7: the wtime/btime clock path is live end to end. With
+    // 10 s on the clock the TM allocates optimum ≈ 150 ms and maximum
+    // ≈ 1 s (§3.7 at ply 0); the v1 soft stop (§3.9 subset) ends the
+    // search at the first iteration boundary past optimum. So the answer
+    // must take at least ~optimum (nothing stops a clock search sooner)
+    // and land well under both the hard wall + slack and the 10 s clock.
+    // Bounds are loose on purpose: they assert TM behavior, not
+    // CI-scheduler latency.
+    let mut s = Session::spawn();
+    s.send("position startpos");
+    let go_at = Instant::now();
+    s.send("go wtime 10000 btime 10000");
+    let seen_at = s.wait_for(|l| l.starts_with("bestmove "), Duration::from_secs(8));
+    let elapsed = seen_at.duration_since(go_at);
+    assert!(
+        elapsed >= Duration::from_millis(50),
+        "bestmove after {elapsed:?} — a clock search cannot stop before optimum"
+    );
+    assert!(
+        elapsed <= Duration::from_secs(3),
+        "bestmove after {elapsed:?} — nowhere near the ~150 ms optimum"
+    );
+    let (status, lines, stderr) = s.finish();
+    assert_clean_exit(status, &stderr);
+    let bests = bestmove_lines(&lines);
+    assert_eq!(bests.len(), 1, "exactly one bestmove per go");
+    assert_legal_bestmove(&bests[0].1, START_FEN);
+}
+
+#[test]
+fn clock_game_of_20_moves_never_forfeits_at_10_plus_01() {
+    // doc 12 step 7's done-condition scaled to a test: a 10+0.1 game
+    // simulation with real clock bookkeeping. GUI-style accounting:
+    // elapsed runs from the `go` send to the bestmove arrival, so pipe
+    // and parse overhead count against the engine (Move Overhead's job
+    // to price in). Every move is validated against an independent
+    // board; overspending the remaining clock on any move is a forfeit
+    // and fails the test.
+    const INC_MS: i64 = 100;
+    let mut clocks: [i64; 2] = [10_000, 10_000]; // [white, black] ms
+    let mut moves: Vec<String> = Vec::new();
+    let mut board = Board::startpos();
+    let mut s = Session::spawn();
+    for ply in 0..40usize {
+        let stm = ply % 2;
+        if moves.is_empty() {
+            s.send("position startpos");
+        } else {
+            s.send(&format!("position startpos moves {}", moves.join(" ")));
+        }
+        let go_at = Instant::now();
+        s.send(&format!(
+            "go wtime {} btime {} winc {INC_MS} binc {INC_MS}",
+            clocks[0], clocks[1]
+        ));
+        let (seen_at, token) = wait_for_bestmove_n(&s, ply + 1, Duration::from_secs(15));
+        if token == "(none)" {
+            break; // checkmate/stalemate ended the game early
+        }
+        let elapsed = seen_at.duration_since(go_at).as_millis() as i64;
+        assert!(
+            elapsed <= clocks[stm],
+            "time forfeit at ply {ply}: spent {elapsed} ms with {} ms left",
+            clocks[stm]
+        );
+        clocks[stm] = clocks[stm] - elapsed + INC_MS;
+        // Replay the move on the reference board: legality proof, and
+        // keeps the `position ... moves` line honest for the next ply.
+        let mut legal = MoveList::new();
+        movegen::generate_legal(&board, &mut legal);
+        let mv = legal
+            .iter()
+            .copied()
+            .find(|m| m.to_string() == token)
+            .unwrap_or_else(|| panic!("illegal bestmove {token} at ply {ply}: {}", board.to_fen()));
+        board.make_move(mv, board.gives_check(mv));
+        moves.push(token);
+    }
+    let (status, lines, stderr) = s.finish();
+    assert_clean_exit(status, &stderr);
+    // Exactly one bestmove per `go`: the count equals the plies played,
+    // plus one for a terminal `(none)` if the game ended early.
+    let bests = bestmove_lines(&lines).len();
+    assert!(
+        bests == moves.len() || bests == moves.len() + 1,
+        "{bests} bestmoves for {} plies",
+        moves.len()
+    );
 }
 
 #[test]

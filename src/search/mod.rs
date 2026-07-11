@@ -90,17 +90,29 @@
 //! `go mate n` limit stops the search once a completed iteration proves
 //! a mate within `2n` plies (doc 12 §3.9's mate-limit stop, wired
 //! through `Limits::mate`); the step-12 equal-value dither occasionally
-//! promotes an equal-to-best value near the leaves; and the main node
-//! gains its step-14 fail-high softening blend (qsearch already had
-//! its two from step 9). Both value dampers are gated on
+//! promotes an equal-to-best value near the leaves (with the §3.3
+//! PV-freshness guard: a dither-promoted move truncates the PV rather
+//! than stitch a child row its zero-window scout left stale); and the
+//! main node gains its step-14 fail-high softening blend (qsearch
+//! already had its two from step 9). Both value dampers are gated on
 //! `is_decisive`/`is_win` — no decisive score is ever dithered or
 //! blended (§8.11).
 //!
-//! Deliberately NOT here yet, per the doc's staging: the
-//! soft-stop factors and ponder guard of the clock TM (doc 12 steps 8–9,
-//! P9/P10) — including the `search_again_counter` producer and the
-//! fail-low `stop_on_ponderhit` revoke, whose seams the aspiration loop
-//! carries — the SMP window jitter `+ thread_idx % 8` (vacuous single-
+//! Doc 12 step 7 completes P7's basic clock TM: with the `maximum` hard
+//! wall already live in [`Worker::check_time`], the ID loop gains the v1
+//! between-iterations soft stop ([`Worker::soft_stop`], doc 12 §3.9
+//! subset) — stop deepening once elapsed exceeds the plain `optimum`
+//! budget (capped by `maximum`), with the single-reply cap
+//! ([`params::ONE_REPLY_TOTAL_TIME_CAP`]) as the one §3.9 refinement
+//! that ships now. Fixed-depth modes bypass it (`use_time_management`
+//! gate), so the bench fingerprint is TM-independent (D24).
+//!
+//! Deliberately NOT here yet, per the doc's staging: the four-factor
+//! soft-stop stack, its mate-score early stops, and the
+//! `increase_depth`/`search_again_counter` producer (doc 12 step 8,
+//! P10); the ponder state machine with `stop_on_ponderhit` and the
+//! fail-low revoke, whose seams the aspiration loop carries (doc 12
+//! step 9) — the SMP window jitter `+ thread_idx % 8` (vacuous single-
 //! threaded; joins with doc 13 in P11), the speculative `prefetch_key`
 //! pre-make prefetch (doc 08 §3.15 call site 2), and every ⟨D10⟩
 //! heuristic slot — including the TT cutoff refinements (cutNode
@@ -278,9 +290,10 @@ pub struct Worker {
     /// Per-`go` time budgets (design/12 §3.7). This is main-worker state
     /// per doc 12 §3.8's `SearchManager` — the UCI layer calls
     /// `tm.init(...)` at the top of every search session (on the search
-    /// thread), and [`Worker::check_time`] enforces `maximum()` as the
-    /// hard clock wall. `stop_on_ponderhit` and the soft-stop factors
-    /// are doc 12 steps 8–9 (P9/P10).
+    /// thread), [`Worker::check_time`] enforces `maximum()` as the hard
+    /// clock wall, and [`Worker::soft_stop`] compares `optimum()` between
+    /// iterations (v1, doc 12 step 7). `stop_on_ponderhit` and the
+    /// soft-stop factor stack are doc 12 steps 8–9 (P10/P11).
     pub tm: TimeManager,
     /// The `PoolShared.ponder` flag, v1 stand-in (doc 12 §3.2): set by
     /// the UCI layer for a `go ponder` session and cleared by
@@ -297,7 +310,8 @@ pub struct Worker {
     /// Score belonging to [`Self::last_best_move_pv`] (§3.5).
     pub last_best_move_score: Value,
     /// Iteration at which the best root move last changed — the
-    /// time-management stability signal (§3.5, doc 12 §3.9, P7).
+    /// time-management stability signal (§3.5; consumed by doc 12 §3.9's
+    /// four-factor soft stop, step 8/P10).
     pub last_best_move_depth: Depth,
     /// Per-thread eval state (design/11 §3.1); empty in Phase A.
     eval_ctx: EvalContext,
@@ -402,7 +416,7 @@ impl Worker {
         let multi_pv: usize = 1;
         // Time-management instability input (doc 12 §3.9): halved every
         // iteration, harvested from `best_move_changes`. Consumed by the
-        // soft-stop decision when clock TM lands (P7).
+        // four-factor soft stop when it lands (doc 12 step 8, P10).
         let mut tot_best_move_changes = 0.0f64;
         // TM-driven re-search damping (doc 12 §3.9): bumped at the top of
         // an iteration when the soft stop said "don't deepen"
@@ -474,12 +488,13 @@ impl Worker {
                 stop.store(true, Ordering::Relaxed);
             }
 
-            // ⟨P7, doc 12 §3.9⟩ the TM soft-stop decision consumes
-            // tot_best_move_changes / last_best_move_depth / effort here.
+            // TM soft stop between completed iterations (doc 12 §3.9,
+            // v1 subset — doc 12 step 7).
+            self.soft_stop(stop);
         }
-        // Until the P7 soft stop consumes it, read the accumulator
-        // explicitly so the per-iteration bookkeeping above stays
-        // exercised and warning-free.
+        // The four-factor soft stop (doc 12 step 8, P10) consumes the
+        // accumulator; keep the per-iteration bookkeeping above exercised
+        // and warning-free until then.
         let _ = tot_best_move_changes;
     }
 
@@ -917,11 +932,13 @@ impl Worker {
             // (c) PV re-search, full window: PV/Root nodes only, for the
             // first move and for any scout that beat alpha. PV children
             // are never cut nodes — and only THIS call writes
-            // `pv_table[ply + 1]`, which keeps §3.3's freshness invariant:
-            // a step-13 PV update always follows a full-window PV-typed
-            // child search, never a zero-window scout.
+            // `pv_table[ply + 1]`, which is §3.3's freshness invariant:
+            // a step-13 PV update must never stitch a child row a
+            // zero-window scout left stale (see `child_pv_fresh` below).
+            let mut child_pv_fresh = false;
             if NT::PV && (move_count == 1 || value > alpha) {
                 value = -self.search::<Pv>(tt, stop, -beta, -alpha, new_depth, false, ply + 1);
+                child_pv_fresh = true;
             }
             self.undo_move(m);
 
@@ -959,6 +976,18 @@ impl Worker {
                 if value + inc > alpha {
                     best_move = m;
                     if NT::PV {
+                        // §3.3 freshness: the equal-value dither can
+                        // promote a move whose LAST child call was a
+                        // zero-window scout (`value == alpha`, `inc ==
+                        // 1`) — `pv_table[ply + 1]` then still holds an
+                        // earlier sibling's line, and stitching it would
+                        // publish an illegal PV tail (caught by fastchess
+                        // as "Illegal PV move" in the P7 clock games).
+                        // Truncate instead: clear the stale row so the
+                        // PV honestly ends at `m`.
+                        if !child_pv_fresh {
+                            self.pv_table[ply + 1].clear();
+                        }
                         update_pv(&mut self.pv_table[..], ply, m);
                     }
                     if value >= beta {
@@ -1082,7 +1111,7 @@ impl Worker {
             rm.pv.truncate(1);
             rm.pv.extend_from_slice(self.pv_table[1].as_slice());
             // Best-move flip mid-iteration: the TM instability signal
-            // (§3.4; consumed by doc 12 §3.9 in P7).
+            // (§3.4; consumed by doc 12 §3.9's factor stack in P10).
             if move_count > 1 && self.pv_idx == 0 {
                 self.best_move_changes += 1.0;
             }
@@ -1472,6 +1501,50 @@ impl Worker {
             .is_some_and(|t| self.limits.start_time.elapsed().as_millis() as i64 >= t);
         let nodes_stop = self.limits.nodes.is_some_and(|n| self.nodes >= n);
         if tm_stop || movetime_stop || nodes_stop {
+            stop.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// The between-iterations soft stop (design/12 §3.9), v1 subset (doc
+    /// 12 step 7): once the soft budget is spent, starting another
+    /// iteration is pointless — it would almost certainly be cut off by
+    /// the `maximum` hard wall before completing, wasting clock a later
+    /// move could have used. v1 compares elapsed against the plain
+    /// `optimum` allocation; the four multiplicative factors
+    /// (fallingEval, reduction, bestMoveInstability, highBestMoveEffort),
+    /// the mate-score early stops, and the `increase_depth` /
+    /// `search_again_counter` damping land with doc 12 step 8 (P10) —
+    /// their inputs (`tot_best_move_changes`, `last_best_move_depth`,
+    /// per-root-move `effort`) are already maintained by the ID loop.
+    ///
+    /// The one §3.9 refinement that IS v1 (this step's brief): the
+    /// single-reply cap — with exactly one legal move the search result
+    /// cannot change the move played, so the budget is capped at
+    /// [`params::ONE_REPLY_TOTAL_TIME_CAP`].
+    ///
+    /// Guards mirror the doc's `use_time_management() && !stop` gate plus
+    /// §3.8's ponder rule: while pondering the GUI owns the clock, so
+    /// nothing may self-stop — the doc's "remember the verdict in
+    /// `stop_on_ponderhit` instead" conversion arrives with the ponder
+    /// state machine (doc 12 step 9). `tm.elapsed` counts nodes under
+    /// `nodestime`, keeping the units consistent with the budgets
+    /// (§3.11) — which is also the fake-clock seam the unit tests use.
+    fn soft_stop(&self, stop: &AtomicBool) {
+        if !self.limits.use_time_management()
+            || stop.load(Ordering::Relaxed)
+            || self.ponder.load(Ordering::Relaxed)
+        {
+            return;
+        }
+        // v1 total_time == optimum; the factor stack multiplies in here
+        // (doc 12 step 8, P10).
+        let mut total_time = self.tm.optimum() as f64;
+        if self.root_moves.len() == 1 {
+            total_time = total_time.min(params::ONE_REPLY_TOTAL_TIME_CAP);
+        }
+        let nodes = self.nodes;
+        let elapsed = self.tm.elapsed(|| nodes) as f64;
+        if elapsed > total_time.min(self.tm.maximum() as f64) {
             stop.store(true, Ordering::Relaxed);
         }
     }
@@ -2186,6 +2259,153 @@ mod tests {
         w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
         assert!(stop.load(Ordering::Relaxed), "the TM wall must self-stop");
         assert!(w.best_move().is_some());
+    }
+
+    #[test]
+    fn reported_pvs_replay_legally_under_the_dither() {
+        // Regression (§3.3 freshness): the equal-value dither could
+        // promote a move whose last child call was a zero-window scout
+        // (`value == alpha`, `inc == 1`), stitching an earlier sibling's
+        // stale `pv_table` row into the PV — fastchess flagged the
+        // resulting illegal tails in the P7 clock games. Every reported
+        // PV must replay legally from the root (the fastchess repro
+        // position, depth deep enough for the dither to fire).
+        let fen = "rnbqk2r/ppp1bppp/4pn2/3p2B1/2PP4/2N2N2/PP2PPPP/R2QKB1R b KQkq - 5 5";
+        let mut w = Worker::new(board(fen));
+        w.limits.depth = Some(7);
+        let tt = test_tt();
+        tt.new_search();
+        let stop = AtomicBool::new(false);
+        let root = board(fen);
+        let mut reported = 0;
+        w.iterative_deepening(&tt, &stop, &mut |i| {
+            let mut b = root.clone();
+            for &m in i.pv {
+                assert!(
+                    all_legal(&b).contains(&m),
+                    "illegal PV move {m} in reported pv {:?}",
+                    i.pv
+                );
+                b.make_move(m, b.gives_check(m));
+            }
+            reported += 1;
+        });
+        assert_eq!(reported, 7, "one exact report per completed iteration");
+    }
+
+    // --- TM soft stop (design/12 §3.9 v1 subset, doc 12 step 7) ---
+
+    /// Mirror the UCI session setup (`run_search`): init the worker's
+    /// [`TimeManager`] against its limits with the given options.
+    fn init_clock(w: &mut Worker, options: &crate::uci::Options) {
+        let mut limits = w.limits.clone();
+        let mut persist = crate::timeman::TimePersist::default();
+        let (us, ply) = (w.board.side_to_move(), w.board.game_ply());
+        w.tm.init(&mut limits, us, ply, options, &mut persist);
+        w.limits = limits;
+    }
+
+    /// `nodestime 1` options — the doc 12 §3.11 fake clock: `tm.elapsed`
+    /// returns nodes searched and every budget is a node count, so these
+    /// tests are bit-deterministic (no wall-clock read affects any stop
+    /// decision).
+    fn nodestime_options() -> crate::uci::Options {
+        let mut options = crate::uci::Options::new();
+        options.set("nodestime", Some("1")).unwrap();
+        options
+    }
+
+    #[test]
+    fn soft_stop_halts_deepening_once_optimum_is_spent() {
+        // 60 s on the 1-node-per-ms fake clock: optimum ≈ 1.25k nodes,
+        // maximum ≈ 8.6k. The run must end via the between-iterations
+        // soft stop — final nodes past optimum (it never stops sooner)
+        // but within maximum (the hard wall never fired).
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.time[crate::types::Color::White as usize] = 60_000;
+        init_clock(&mut w, &nodestime_options());
+        let (optimum, maximum) = (w.tm.optimum(), w.tm.maximum());
+        assert!(0 < optimum && optimum < maximum);
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
+        assert!(stop.load(Ordering::Relaxed), "the soft stop must self-stop");
+        assert!(
+            w.nodes as i64 > optimum,
+            "stopped before optimum was spent: {} <= {optimum}",
+            w.nodes
+        );
+        assert!(
+            w.nodes as i64 <= maximum,
+            "the hard wall fired, not the soft stop: {} > {maximum}",
+            w.nodes
+        );
+        assert!(w.best_move().is_some());
+    }
+
+    #[test]
+    fn one_legal_reply_caps_the_soft_budget() {
+        // In check with exactly one evasion — the rook block h6a6,
+        // defended by the b7 pawn, so the position after it stays rich
+        // and mate-free and iterations grow normally. 10 min on the fake
+        // clock puts optimum (~16.7k nodes) far above the ~562-node
+        // single-reply cap, so stopping under optimum proves the cap
+        // bound the budget (§3.9's `min(561.7, total_time)`).
+        const ONE_REPLY: &str = "kr4n1/1p4pp/7r/8/4P3/5N2/5PPP/R6K b - - 0 1";
+        let mut w = Worker::new(board(ONE_REPLY));
+        w.limits.time[crate::types::Color::Black as usize] = 600_000;
+        init_clock(&mut w, &nodestime_options());
+        assert!(
+            w.tm.optimum() as f64 > 2.0 * params::ONE_REPLY_TOTAL_TIME_CAP,
+            "test premise: the uncapped budget must dwarf the cap"
+        );
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
+        assert_eq!(w.root_moves.len(), 1, "test premise: one legal move");
+        assert!(stop.load(Ordering::Relaxed), "the capped soft stop fires");
+        assert!(
+            w.nodes as f64 > params::ONE_REPLY_TOTAL_TIME_CAP,
+            "stopped before the cap was spent: {}",
+            w.nodes
+        );
+        assert!(
+            (w.nodes as i64) < w.tm.optimum(),
+            "the single-reply cap did not bind: {} >= {}",
+            w.nodes,
+            w.tm.optimum()
+        );
+        assert!(w.best_move().is_some());
+    }
+
+    #[test]
+    fn soft_stop_defers_to_the_ponder_guard() {
+        // A tiny fake clock (optimum ≈ 3 nodes, maximum ≈ 10) under `go
+        // ponder`: the GUI owns the clock, so neither the soft stop nor
+        // the hard wall may fire (§3.8's guard applies to both); the
+        // depth limit (ID-loop condition) bounds the test.
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.time[crate::types::Color::White as usize] = 1_000;
+        w.limits.depth = Some(4);
+        w.limits.ponder = true;
+        init_clock(&mut w, &nodestime_options());
+        w.ponder = Arc::new(AtomicBool::new(true));
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
+        assert!(
+            !stop.load(Ordering::Relaxed),
+            "pondering must never self-stop"
+        );
+        assert_eq!(w.root_depth, 4, "the search deepened on GUI time");
+
+        // Control: the same budgets without the ponder flag stop right
+        // after the first completed iteration (~21 nodes > optimum 3).
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.time[crate::types::Color::White as usize] = 1_000;
+        w.limits.depth = Some(4);
+        init_clock(&mut w, &nodestime_options());
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
+        assert!(stop.load(Ordering::Relaxed), "the soft stop must fire");
+        assert!(w.root_depth < 4, "deepening was cut short at optimum");
     }
 
     // --- searchmoves filtering (design/12 §3.6) ---

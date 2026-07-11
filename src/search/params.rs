@@ -89,6 +89,16 @@ pub const TT_CUTOFF_RULE50_LIMIT: i32 = 96;
 /// beyond its nominal depth, so make the entry hard to displace.
 pub const TT_NO_MOVES_DEPTH_BONUS: Depth = 6;
 
+// --- Time management: soft stop (design/12 §3.9) ---
+
+/// Single-reply cap on the soft time budget (`min(561.7, total_time)`,
+/// design/12 §3.9): with exactly one legal move at the root the search
+/// result cannot change the move played, so never sit on it longer than
+/// this — a viewer-experience cap, not a strength knob. In TM units:
+/// milliseconds, or nodes under `nodestime` (doc 12 §3.11), like every
+/// budget the soft stop compares against.
+pub const ONE_REPLY_TOTAL_TIME_CAP: f64 = 561.7;
+
 // --- Stop cadence (design/07 §3.9) ---
 
 /// `check_time` is called at every main-search node entry but early-outs

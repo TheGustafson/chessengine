@@ -982,11 +982,15 @@ threading docs' milestones.
    scripted session) shows well-formed info; a `go nodes 20000000` run
    emits currmove lines only late.
 7. **Clock TM wired**: `TimeManager` driving `check_time`
-   (optimum/maximum), `ucinewgame` persist reset. Done: 100 games at
-   10s+0.1 sudden death with zero time forfeits (D25 tooling).
-8. **Soft stop**: the four factors, single-reply cap, mate-score early
-   stops, `increase_depth`/`search_again_counter` (hooks:
-   `best_move_changes`, `effort`, `iter_value` from the search doc).
+   (optimum/maximum), the v1 between-iterations soft stop — the plain
+   `elapsed > optimum` comparison (§3.9's `total_time` with no factors
+   yet) with the single-reply cap, per the master plan's P7 scope note —
+   and `ucinewgame` persist reset. Done: 100 games at 10s+0.1 sudden
+   death with zero time forfeits (D25 tooling).
+8. **Soft stop completion**: the four factors (multiplying into step 7's
+   plain-optimum budget), mate-score early stops,
+   `increase_depth`/`search_again_counter` (hooks: `best_move_changes`,
+   `effort`, `iter_value` from the search doc).
    Done: bench signature unchanged (fixed-depth bench is TM-independent,
    D24); TC self-play vs step-7 build is non-regressing (SPRT, D25).
 9. **Ponder**: `go ponder`, `ponderhit`, busy-wait rule,
