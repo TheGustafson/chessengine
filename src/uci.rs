@@ -654,15 +654,17 @@ impl Engine {
         Arc::get_mut(&mut self.tt).expect("no search running: UCI thread holds the only TT handle")
     }
 
-    /// `ucinewgame` (doc 12 §3.3/§3.7): clear the TT (doc 08 §3.14) and
-    /// reset the per-game TM state (the "first move of the game" defaults
-    /// measurably affect move-1 time usage) and the `nodestime` budget.
-    /// Deliberately does NOT touch the session position — GUIs send
-    /// `position` separately. History clears join with doc 09.
+    /// `ucinewgame` (doc 12 §3.3/§3.7): clear the TT (doc 08 §3.14), the
+    /// per-thread move-ordering histories (doc 09 §3.11 — the new-game
+    /// "Init" column), and the per-game TM state (the "first move of the
+    /// game" defaults measurably affect move-1 time usage) plus the
+    /// `nodestime` budget. Deliberately does NOT touch the session
+    /// position — GUIs send `position` separately.
     pub fn new_game(&mut self) {
         self.wait_for_search_finished();
         self.tt_mut().clear();
         let state = self.state.as_mut().expect("engine idle after wait");
+        state.worker.histories.clear();
         state.persist = TimePersist::default();
         state.worker.tm.new_game();
     }

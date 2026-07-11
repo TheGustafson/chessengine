@@ -107,6 +107,26 @@
 //! that ships now. Fixed-depth modes bypass it (`use_time_management`
 //! gate), so the bench fingerprint is TM-independent (D24).
 //!
+//! P8 (design/09 §4 step 11) replaces the placeholder MVV-LVA
+//! [`order_moves`] insertion sort with the staged [`MovePicker`] at every
+//! interior main-search and qsearch node (the root still iterates its
+//! stable-sorted `root_moves`, doc 07 §3.7.2 step 9). The per-thread
+//! [`Histories`] tables (D23) join [`Worker`]; [`Worker::do_move`] installs
+//! the continuation-history [`ContHistId`] key on the stack after each move
+//! ([in_check][capture][piece][to], doc 09 §3.2); interior nodes copy the
+//! six predecessor keys into the picker for quiet scoring; and a node that
+//! found a best move raising alpha runs the
+//! [`Histories::update_all_stats`] write burst at node exit (doc 09 §3.9).
+//! `new_search()` decays the tables each `go`; `ucinewgame` clears them
+//! (uci.rs). The correction-history tables exist and are unit-tested, but
+//! *reading* the corrected static eval and *writing* correction history are
+//! deferred to their doc-10/11 pruning consumers (doc 09 §3.10 / D22): the
+//! current pre-pruning search has no consumer of a corrected eval that
+//! would change a returned value (only qsearch stand-pat reads
+//! `static_eval`, and it stays raw here), so the raw eval that the TT
+//! stores is also what search uses, keeping the P6/P7 value-equality
+//! oracles valid. The Bench fingerprint changes materially (D24).
+//!
 //! Deliberately NOT here yet, per the doc's staging: the four-factor
 //! soft-stop stack, its mate-score early stops, and the
 //! `increase_depth`/`search_again_counter` producer (doc 12 step 8,
@@ -131,8 +151,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::board::{Board, MakeMoveHooks};
 use crate::eval::{EvalContext, evaluate};
-use crate::movegen::{generate_captures, generate_evasions, generate_legal};
-use crate::moves::{MAX_MOVES, Move, MoveKind, MoveList};
+use crate::history::Histories;
+use crate::movegen::generate_legal;
+use crate::movepick::MovePicker;
+use crate::moves::{Move, MoveKind, MoveList};
 use crate::timeman::{Limits, TimeManager};
 use crate::tt::{Bound, TranspositionTable};
 use crate::types::{
@@ -316,6 +338,12 @@ pub struct Worker {
     pub last_best_move_depth: Depth,
     /// Per-thread eval state (design/11 §3.1); empty in Phase A.
     eval_ctx: EvalContext,
+    /// Per-thread move-ordering statistics (design/09 §3.4, D23): butterfly/
+    /// low-ply/capture/continuation/pawn/correction history. Read by the
+    /// [`MovePicker`] scoring and written by [`Histories::update_all_stats`]
+    /// at node exit. `new_search()` decays it each `go`; `ucinewgame` clears
+    /// it (uci.rs). ~20 MiB behind a `Box` so it never transits the stack.
+    pub histories: Box<Histories>,
     /// Countdown to the next real `check_time` (§3.9): reloaded from
     /// [`Worker::check_time_reset`] ([`params::CHECK_TIME_CALLS`], tighter
     /// under a node limit).
@@ -349,6 +377,7 @@ impl Worker {
             last_best_move_score: -VALUE_INFINITE,
             last_best_move_depth: 0,
             eval_ctx: EvalContext::new(),
+            histories: Histories::new(),
             check_time_countdown: params::CHECK_TIME_CALLS,
             #[cfg(test)]
             asp_trace: Vec::new(),
@@ -411,7 +440,11 @@ impl Worker {
         if self.root_moves.is_empty() {
             return; // mate/stalemate at the root: nothing to search
         }
-        // histories.pre_age() hook (§3.5): lands with doc 09's tables.
+        // Per-`go` history refresh (design/09 §3.4): decay the butterfly
+        // history toward zero so recent searches dominate, and refill the
+        // low-ply history. Correction/capture/continuation tables persist
+        // untouched across the game (cleared only by `ucinewgame`).
+        self.histories.new_search();
         // MultiPV is fixed at 1 until the UCI option lands (doc 12 step
         // 10); the loop below is already shaped for it.
         let multi_pv: usize = 1;
@@ -844,33 +877,74 @@ impl Worker {
             }
         }
 
-        // Step 9 — move loop. The staged MovePicker (doc 09) replaces
-        // generate_legal + placeholder ordering; legality is then checked
-        // per move instead of up front. (`excluded_move` guard arrives
-        // with doc 10's singular search — nothing writes it yet.)
+        // Step 9 — move loop. Interior nodes draw from the staged
+        // MovePicker (doc 09), which emits pseudo-legal moves best-first
+        // (TT move → good captures → good quiets → bad captures → bad
+        // quiets); legality is checked per move instead of up front.
+        // (`excluded_move` guard arrives with doc 10's singular search —
+        // nothing writes it yet.)
         //
         // At the root the loop iterates `root_moves[pv_idx..]` itself
         // (doc 07 §3.7.2 step 9's "skip moves outside the root list",
         // v1 form): the ID loop's stable sort has last iteration's best
         // in front — the root form of the step-5 ttMove override, so the
-        // probed move is not consulted here. Everything in `root_moves`
-        // is legal by construction, and `pv_last = root_moves.len()`
-        // until MultiPV.
-        let mut list = MoveList::new();
+        // picker is not consulted here. Everything in `root_moves` is
+        // legal by construction, and `pv_last = root_moves.len()` until
+        // MultiPV.
+        let mut root_list = MoveList::new();
         if NT::ROOT {
             for rm in &self.root_moves[self.pv_idx..] {
-                list.push(rm.pv[0]);
+                root_list.push(rm.pv[0]);
             }
-        } else {
-            generate_legal(&self.board, &mut list);
-            order_moves(&self.board, &mut list, tt_data.mv);
         }
+        // The six predecessor continuation-history keys the quiet scorer
+        // rewards continuing (doc 09 §3.7): `stack[cur-1..=cur-6].cont_hist`,
+        // in-bounds since `cur >= SS_OFFSET`. The picker is built for every
+        // node but only POLLED at interior nodes; at the root it sits inert
+        // (a cheap once-per-visit 2 KiB buffer init, §6).
+        let cont_hist = [
+            self.stack[cur - 1].cont_hist,
+            self.stack[cur - 2].cont_hist,
+            self.stack[cur - 3].cont_hist,
+            self.stack[cur - 4].cont_hist,
+            self.stack[cur - 5].cont_hist,
+            self.stack[cur - 6].cont_hist,
+        ];
+        let mut mp = MovePicker::new(&self.board, tt_data.mv, depth, ply, cont_hist);
 
         let mut best_value = -VALUE_INFINITE;
         let mut best_move = Move::NULL;
         let mut move_count = 0;
+        // Tried non-best moves, split by kind, for the node-result history
+        // burst (doc 09 §3.9). Fixed 32-slot buffers — no heap on the hot
+        // path (§6); anything past 32 is simply not recorded, matching SF.
+        let mut quiets_searched = [Move::NULL; 32];
+        let mut captures_searched = [Move::NULL; 32];
+        let mut n_quiets = 0usize;
+        let mut n_captures = 0usize;
 
-        for m in &list {
+        let mut root_idx = 0;
+        loop {
+            let m = if NT::ROOT {
+                match root_list.get(root_idx) {
+                    Some(&m) => {
+                        root_idx += 1;
+                        m
+                    }
+                    None => break,
+                }
+            } else {
+                match mp.next_move(&self.board, &self.histories) {
+                    Some(m) => m,
+                    None => break,
+                }
+            };
+            // Interior nodes emit pseudo-legal moves — skip the illegal
+            // ones before they count toward move_count (mate detection).
+            if !NT::ROOT && !self.board.legal(m) {
+                continue;
+            }
+            let is_capture = self.board.capture_stage(m);
             move_count += 1;
             self.stack[cur].move_count = move_count;
             let nodes_before = self.nodes; // root effort accounting (§3.4)
@@ -1000,6 +1074,22 @@ impl Worker {
                     alpha = value;
                 }
             }
+
+            // Remember a tried non-best move for the node-result history
+            // burst (doc 09 §3.9). The fail-high `break` above already
+            // skipped the cutoff move; a move still equal to best_move (it
+            // raised alpha and stayed best) is likewise not recorded.
+            if m != best_move {
+                if is_capture {
+                    if n_captures < captures_searched.len() {
+                        captures_searched[n_captures] = m;
+                        n_captures += 1;
+                    }
+                } else if n_quiets < quiets_searched.len() {
+                    quiets_searched[n_quiets] = m;
+                    n_quiets += 1;
+                }
+            }
         }
 
         // Step 14 — fail-high softening (search-instability damping, kept
@@ -1023,6 +1113,30 @@ impl Worker {
             } else {
                 VALUE_DRAW
             };
+        }
+        // Node-result history burst (doc 09 §3.9): a node that found a best
+        // move raising alpha rewards it (and the agreeing quiet/capture/
+        // continuation tables) and punishes the tried-but-worse moves.
+        // `prev_sq` is the parent move's destination — `None` at the root
+        // and after a null move, so the refutation-malus branch stays off
+        // there. A terminal node (`move_count == 0`) leaves best_move NULL,
+        // so this is skipped. SF's paired correction-history write is
+        // deferred to its doc-10/11 pruning consumer (doc 09 §3.10 / D22).
+        else if best_move != Move::NULL {
+            let prev_move = self.stack[cur - 1].current_move;
+            let prev_sq = prev_move.is_ok().then(|| prev_move.to());
+            self.histories.update_all_stats(
+                &self.board,
+                &self.stack[..],
+                cur,
+                best_move,
+                prev_sq,
+                &quiets_searched[..n_quiets],
+                &captures_searched[..n_captures],
+                depth,
+                tt_data.mv,
+                NT::PV,
+            );
         }
 
         // ttPv back-propagation on fail low (step 14): a node with no good
@@ -1268,18 +1382,24 @@ impl Worker {
             futility_base = self.stack[cur].static_eval + params::QS_FUTILITY_MARGIN;
         }
 
-        // Steps 6–7 — captures (+ queen promotions, the CAPTURES stage of
-        // doc 05 §3.2, mirroring `Board::capture_stage`), or every evasion
-        // in check. Pseudo-legal generation; legality tested on the move
-        // we are about to play. A probed ttMove sorts first when the
-        // generator emitted it — list membership subsumes its validation.
-        let mut list = MoveList::new();
-        if in_check {
-            generate_evasions(&self.board, &mut list);
-        } else {
-            generate_captures(&self.board, &mut list);
-        }
-        order_moves(&self.board, &mut list, tt_data.mv);
+        // Steps 6–7 — the staged MovePicker (doc 09). Not in check it runs
+        // the qsearch pipeline (TT move → captures + queen promotions, the
+        // CAPTURES stage of doc 05 §3.2); in check it runs the evasion
+        // pipeline (every evasion, captures first). Both emit pseudo-legal
+        // moves; legality is tested on the move we are about to play, and
+        // the TT move's usability is validated inside the picker (§3.5). A
+        // quiet TT move can be emitted here, but the step-7 non-capture skip
+        // drops it once best_value is real — the qsearch move set is
+        // effectively captures/evasions, as before.
+        let cont_hist = [
+            self.stack[cur - 1].cont_hist,
+            self.stack[cur - 2].cont_hist,
+            self.stack[cur - 3].cont_hist,
+            self.stack[cur - 4].cont_hist,
+            self.stack[cur - 5].cont_hist,
+            self.stack[cur - 6].cont_hist,
+        ];
+        let mut mp = MovePicker::new(&self.board, tt_data.mv, DEPTH_QS, ply, cont_hist);
 
         // The previous move's destination (§3.8 step 6): recaptures on
         // that square are exempt from the step-7 futility block. NULL
@@ -1289,7 +1409,7 @@ impl Worker {
 
         let mut best_move = Move::NULL;
         let mut move_count = 0;
-        for m in &list {
+        while let Some(m) = mp.next_move(&self.board, &self.histories) {
             if !self.board.legal(m) {
                 continue;
             }
@@ -1440,15 +1560,23 @@ impl Worker {
     /// matching SF and the `bench` fingerprint) and installing the child's
     /// stack slots. The [`TtPrefetch`] hook rides the [`MakeMoveHooks`]
     /// seam (doc 04 §3.10): the child's TT cluster is prefetched the
-    /// moment its key is final, mid-make. The continuation-history key
-    /// install (keyed by `(in_check, capture, piece, to)`) lands with doc
-    /// 09; the sentinel is always safe to read through.
+    /// moment its key is final, mid-make.
+    ///
+    /// The continuation-history key (doc 09 §3.2) is stamped here, computed
+    /// from the PRE-move position: `[node in_check][capture stage][moved
+    /// piece][to]`. `stack[cur].cont_hist` becomes the child's offset-1
+    /// predecessor slab; the SENTINEL is only for null moves / pre-root
+    /// padding (no null moves until doc 10). `in_check` was set at this
+    /// node's step-2 entry.
     #[inline]
     fn do_move(&mut self, tt: &TranspositionTable, m: Move, gives_check: bool, ply: usize) {
         self.nodes += 1;
         let cur = ss(ply);
+        let moved_piece = self.board.piece_on(m.from());
+        let capture = self.board.capture_stage(m);
+        let in_check = self.stack[cur].in_check;
         self.stack[cur].current_move = m;
-        self.stack[cur].cont_hist = ContHistId::SENTINEL;
+        self.stack[cur].cont_hist = ContHistId::new(in_check, capture, moved_piece, m.to());
         self.board
             .make_move_with(m, gives_check, &mut TtPrefetch { tt });
     }
@@ -1561,70 +1689,11 @@ impl Worker {
     }
 }
 
-/// ttMove-first MVV-LVA placeholder ordering until doc 09's staged
-/// MovePicker lands (design/07 §4 steps 4/6): the probed TT move — when
-/// the generator emitted it, which is also its semantic validation (a
-/// collided or garbage `tt_move` simply matches nothing and is dropped,
-/// doc 08 §3.5) — sorts in front; then captures by most valuable victim,
-/// ties broken by least valuable attacker; promotions add the promoted
-/// piece so queen promotions sort with queen captures; quiets keep
-/// generation order behind all captures.
-///
-/// Insertion sort: STABLE and in-place (no allocation on the hot path,
-/// §6), so the ttMove's front placement preserves the relative order of
-/// everything else and node counts are deterministic (D24). O(n²) worst
-/// case is fine for n ≤ 256 in a placeholder the MovePicker deletes.
-fn order_moves(board: &Board, list: &mut MoveList, tt_move: Move) {
-    let mut scores = [0i32; MAX_MOVES];
-    for (s, &m) in scores.iter_mut().zip(list.iter()) {
-        // No generated move is ever Move::NULL, so a NULL tt_move (probe
-        // miss / move-less entry) matches nothing.
-        *s = if m == tt_move {
-            i32::MAX
-        } else {
-            move_score(board, m)
-        };
-    }
-    for i in 1..list.len() {
-        let (m, s) = (list[i], scores[i]);
-        let mut j = i;
-        while j > 0 && scores[j - 1] < s {
-            list[j] = list[j - 1];
-            scores[j] = scores[j - 1];
-            j -= 1;
-        }
-        list[j] = m;
-        scores[j] = s;
-    }
-}
-
-/// MVV-LVA key for [`order_moves`]. Radix-8 ordinal packing over
-/// `PieceType` discriminants — pure ordering structure, not tunable
-/// values (the D20 params rule covers tuner-movable constants).
-fn move_score(board: &Board, m: Move) -> i32 {
-    // Victim: en passant captures a pawn that is not on `to`; castling
-    // never captures; otherwise whatever sits on the destination.
-    let victim = match m.kind() {
-        MoveKind::EnPassant => Some(PieceType::Pawn),
-        MoveKind::Castling => None,
-        _ => board.piece_on(m.to()).map(|p| p.piece_type),
-    };
-    let mut score = match victim {
-        // Most valuable victim dominates (×8 ranks victims apart);
-        // least valuable attacker breaks ties.
-        Some(v) => (v as i32 + 1) * 8 - board.piece_on(m.from()).map_or(0, |p| p.piece_type as i32),
-        None => 0,
-    };
-    if let Some(promo) = m.promotion_piece() {
-        score += (promo as i32 + 1) * 8;
-    }
-    score
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::fen::START_FEN;
+    use crate::movegen::{generate_captures, generate_evasions};
     use crate::types::Square;
 
     fn board(fen: &str) -> Board {
