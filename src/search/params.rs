@@ -40,6 +40,26 @@ pub const ASPIRATION_SEARCH_AGAIN_NUM: Depth = 3;
 /// Denominator of the search-again depth damping.
 pub const ASPIRATION_SEARCH_AGAIN_DEN: Depth = 4;
 
+// --- Quiescence search (design/07 §3.8) ---
+
+/// Futility headroom over the corrected static eval:
+/// `futility_base = static_eval + 335` (§3.8 step 5). A capture whose
+/// victim cannot lift this base above alpha is skipped.
+pub const QS_FUTILITY_MARGIN: Value = 335;
+/// Stand-pat fail-high softening `(467·best + 557·beta) / 1024` — applied
+/// to non-decisive stand pats at or above beta (§3.8 step 5).
+pub const QS_STANDPAT_BLEND: (Value, Value, Value) = (467, 557, 1024);
+/// Node-exit fail-high softening `(481·best + 543·beta) / 1024` — applied
+/// to non-decisive best values strictly above beta (§3.8 step 11).
+pub const QS_FAILHIGH_BLEND: (Value, Value, Value) = (481, 543, 1024);
+/// The hard SEE floor: any move whose static exchange value cannot reach
+/// this bar is never searched in qsearch (§3.8 step 7).
+pub const QS_SEE_FLOOR: Value = -74;
+/// Late-move cutoff: after this many non-checking moves not aimed at the
+/// previous move's destination, stop trying such moves entirely
+/// (`move_count > 2`, §3.8 step 7).
+pub const QS_LATE_MOVE_LIMIT: i32 = 2;
+
 // --- Razoring (design/10 §3.1; node step N9) ---
 
 /// Flat margin below alpha at which shallow nodes drop to qsearch.

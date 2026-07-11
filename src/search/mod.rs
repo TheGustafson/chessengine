@@ -67,9 +67,20 @@
 //! sentinels make the first iteration's window clamp to `(-INF, INF)`,
 //! so depth 1 needs no special case.
 //!
+//! Step 9 brings qsearch up to the complete §3.8 spec: the stand-pat
+//! tt-value substitution (with its non-decisive guard — deliberately
+//! stricter than the main search's step-6 twin), both softening blends
+//! (the stand-pat cutoff and node-exit fail-high dampers), and the
+//! step-7 per-move pruning block — late-move cutoff, futility against
+//! `futility_base = static_eval + 335`, SEE against the window, the
+//! non-capture skip and the hard SEE floor, all gated on
+//! `!is_loss(best_value)` so in-check nodes prune nothing until one legal
+//! evasion has produced a real value — plus the narrow stalemate test
+//! that catches "qsearch just won material into a stalemate trap" for
+//! ~zero cost. Constants in [`params`] (D20).
+//!
 //! Deliberately NOT here yet, per the doc's staging: the
-//! full qsearch rules including the stand-pat tt-value substitution and
-//! softening blends (§3.8, step 9), the hygiene pass (forgotten mate,
+//! hygiene pass (forgotten mate,
 //! aborted loss, `go mate n`, equal-value dither — step 10), the
 //! soft-stop factors and ponder guard of the clock TM (doc 12 steps 8–9,
 //! P9/P10) — including the `search_again_counter` producer and the
@@ -98,7 +109,8 @@ use crate::timeman::{Limits, TimeManager};
 use crate::tt::{Bound, TranspositionTable};
 use crate::types::{
     DEPTH_QS, DEPTH_UNSEARCHED, Depth, Key, MAX_PLY, PieceType, VALUE_DRAW, VALUE_INFINITE,
-    VALUE_NONE, VALUE_ZERO, Value, is_valid, mate_in, mated_in, value_from_tt, value_to_tt,
+    VALUE_NONE, VALUE_ZERO, Value, is_decisive, is_loss, is_valid, mate_in, mated_in,
+    value_from_tt, value_to_tt,
 };
 
 /// The draw dither (design/07 §3.1 — the one value function search owns):
@@ -967,15 +979,20 @@ impl Worker {
         }
     }
 
-    /// Quiescence search (design/07 §3.8): stand pat on the static eval,
-    /// captures only (queen promotions ride the CAPTURES stage) via
-    /// `capture_stage` semantics, ALL evasions while in check, ply-relative
-    /// mate when checkmated, and the `DEPTH_QS` TT discipline (§3.8 steps
-    /// 4/5/12): probe at entry, eval reuse, the stand-pat fail-high
-    /// eval-cache write, and a store at exit that is NEVER `Exact`. Still
-    /// missing (plan step 9): the step-7 per-move rules (late-move cutoff,
-    /// futility, SEE gates), the softening blends, the stand-pat tt-value
-    /// substitution, and the narrow stalemate test.
+    /// Quiescence search, the full design/07 §3.8 spec (plan step 9):
+    /// stand pat on the corrected static eval with the tt-value
+    /// substitution and the fail-high softening blend (step 5), captures
+    /// only (queen promotions ride the CAPTURES stage) via `capture_stage`
+    /// semantics, ALL evasions while in check, the step-7 per-move pruning
+    /// block — every rule gated on `!is_loss(best_value)`, the evasion
+    /// guard that keeps checkmates from being pruned into existence — with
+    /// the late-move cutoff, futility against `futility_base`, SEE against
+    /// the window, the non-capture skip and the hard SEE floor, ply-relative
+    /// mate when checkmated plus the narrow stalemate test (step 10), the
+    /// node-exit fail-high blend (step 11), and the `DEPTH_QS` TT
+    /// discipline (steps 4/5/12): probe at entry, eval reuse, the stand-pat
+    /// fail-high eval-cache write, and a store at exit that is NEVER
+    /// `Exact`. Constants live in [`params`] (D20).
     ///
     /// No stop poll here (§3.9, SF parity): qsearch is bounded by the
     /// main-search checks above it.
@@ -1045,9 +1062,11 @@ impl Worker {
         // eval (D22). In check there is no stand pat: best_value stays at
         // -VALUE_INFINITE (a loss) so nothing can cut before at least one
         // evasion is searched — the evasion guard that keeps checkmates
-        // from being pruned into existence — and raw_eval stays VALUE_NONE
+        // from being pruned into existence — futility_base stays a loss so
+        // the futility sub-block never fires, and raw_eval stays VALUE_NONE
         // for the store.
         let mut best_value = -VALUE_INFINITE;
+        let mut futility_base = -VALUE_INFINITE;
         let mut raw_eval = VALUE_NONE;
         if !in_check {
             raw_eval = if tt_hit && is_valid(tt_data.eval) {
@@ -1057,10 +1076,32 @@ impl Worker {
             };
             self.stack[cur].static_eval = raw_eval; // corrected == raw (Phase A)
             best_value = raw_eval;
+
+            // A valid, NON-decisive tt_value whose bound points the right
+            // way substitutes as a better stand pat (§3.8 step 5). Unlike
+            // the main search's step-6 twin this one requires the
+            // non-decisive guard (SF parity, asymmetric by design).
+            if is_valid(tt_value)
+                && !is_decisive(tt_value)
+                && (if tt_value > best_value {
+                    tt_data.bound.includes_lower()
+                } else {
+                    tt_data.bound.includes_upper()
+                })
+            {
+                best_value = tt_value;
+            }
+
             if best_value >= beta {
-                // Softening blend arrives with plan step 9. A stand-pat
-                // fail high on a TT miss caches the raw eval as a
-                // Bound::Lower eval-only entry (§3.11).
+                // Search-instability damping (§3.8 step 5): pull a
+                // non-decisive stand-pat cutoff partway back toward beta.
+                // Decisive scores are never blended (§8.11).
+                if !is_decisive(best_value) {
+                    let (w_best, w_beta, den) = params::QS_STANDPAT_BLEND;
+                    best_value = (w_best * best_value + w_beta * beta) / den;
+                }
+                // A stand-pat fail high on a TT miss caches the raw eval
+                // as a Bound::Lower eval-only entry (§3.11).
                 if !tt_hit {
                     probe.writer.write(
                         key,
@@ -1076,6 +1117,10 @@ impl Worker {
                 return best_value;
             }
             alpha = alpha.max(best_value);
+            // The bar every capture's victim must clear (§3.8 step 5):
+            // from the CORRECTED static eval, not the substituted
+            // best_value.
+            futility_base = self.stack[cur].static_eval + params::QS_FUTILITY_MARGIN;
         }
 
         // Steps 6–7 — captures (+ queen promotions, the CAPTURES stage of
@@ -1091,16 +1136,78 @@ impl Worker {
         }
         order_moves(&self.board, &mut list, tt_data.mv);
 
+        // The previous move's destination (§3.8 step 6): recaptures on
+        // that square are exempt from the step-7 futility block. NULL
+        // means "no real move" (root entry, later null-move search).
+        let prev_move = self.stack[cur - 1].current_move;
+        let prev_sq = (prev_move != Move::NULL).then(|| prev_move.to());
+
         let mut best_move = Move::NULL;
         let mut move_count = 0;
         for m in &list {
             if !self.board.legal(m) {
                 continue;
             }
+            let gives_check = self.board.gives_check(m);
             move_count += 1;
 
+            // Step 7 — the pruning block, gated in FULL on
+            // `!is_loss(best_value)`: while in check and no legal evasion
+            // has produced a real value yet, best_value is -VALUE_INFINITE
+            // (a loss) and nothing may be pruned — a checkmate can never
+            // be pruned into existence.
+            if !is_loss(best_value) {
+                // Non-checking moves not aimed at the previous move's
+                // square, promotions excluded; inert while futility_base
+                // is a loss (in-check nodes).
+                if !gives_check
+                    && Some(m.to()) != prev_sq
+                    && !is_loss(futility_base)
+                    && m.kind() != MoveKind::Promotion
+                {
+                    // Late-move cutoff: after two such moves, skip them
+                    // all (§3.8 step 7).
+                    if move_count > params::QS_LATE_MOVE_LIMIT {
+                        continue;
+                    }
+
+                    // Futility: even winning the victim for free cannot
+                    // lift the eval-based bar above alpha. The pruned
+                    // move's optimistic value still raises best_value
+                    // (D11 SEE-scale piece values; empty destination —
+                    // en passant — counts 0, SF parity).
+                    let futility_value = futility_base
+                        + self
+                            .board
+                            .piece_on(m.to())
+                            .map_or(0, |victim| victim.piece_type.value());
+                    if futility_value <= alpha {
+                        best_value = best_value.max(futility_value);
+                        continue;
+                    }
+
+                    // SEE vs the window: the exchange cannot recover the
+                    // gap between futility_base and alpha.
+                    if !self.board.see_ge(m, alpha - futility_base) {
+                        best_value = best_value.max(alpha.min(futility_base));
+                        continue;
+                    }
+                }
+
+                // Skip all remaining non-captures — in practice the quiet
+                // evasions once one escape has a real value (queen
+                // promotions ride the capture stage).
+                if !self.board.capture_stage(m) {
+                    continue;
+                }
+
+                // The hard SEE floor for everything left (§3.8 step 7).
+                if !self.board.see_ge(m, params::QS_SEE_FLOOR) {
+                    continue;
+                }
+            }
+
             // Step 8 — recurse: full window, same node type.
-            let gives_check = self.board.gives_check(m);
             self.do_move(tt, m, gives_check, ply);
             let value = -self.qsearch::<NT>(tt, -beta, -alpha, ply + 1);
             self.undo_move(m);
@@ -1121,12 +1228,45 @@ impl Worker {
             }
         }
 
-        // Step 10 — checkmate: every evasion was generated, so zero legal
-        // moves while in check is mate, ply-relative (D5), returned
-        // WITHOUT a store (SF parity). (The narrow stalemate test is plan
-        // step 9.)
-        if in_check && move_count == 0 {
-            return mated_in(ply as i32);
+        // Step 10 — mate and the narrow stalemate test. Every evasion was
+        // generated, so zero legal moves while in check is mate,
+        // ply-relative (D5), returned WITHOUT a store (SF parity).
+        if move_count == 0 {
+            if in_check {
+                return mated_in(ply as i32);
+            }
+            // The narrow stalemate test (§3.8 step 10): a full legality
+            // scan at every quiet qsearch leaf would be ruinous, so pay
+            // for one only when stalemate is cheap to suspect — the side
+            // to move has no non-pawn material, every pawn single-push is
+            // blocked, and the previous move captured a piece >= knight
+            // (the classic "qsearch just won material into a stalemate
+            // trap" pattern). Kings are never captured, so ">= knight" is
+            // exactly "not a pawn".
+            let us = self.board.side_to_move();
+            let pawn_pushes = self.board.pieces(us, PieceType::Pawn).pawn_pushes(us);
+            if self.board.non_pawn_material(us) == 0
+                && (pawn_pushes & !self.board.all_occupancy()).is_empty()
+                && self
+                    .board
+                    .captured_piece()
+                    .is_some_and(|victim| victim.piece_type != PieceType::Pawn)
+            {
+                let mut legal = MoveList::new();
+                generate_legal(&self.board, &mut legal);
+                if legal.is_empty() {
+                    best_value = VALUE_DRAW;
+                }
+            }
+        }
+
+        // Step 11 — fail-high softening: pull a non-decisive best value
+        // strictly above beta partway back toward it (search-instability
+        // damping; the blended value is what gets stored below). Decisive
+        // scores are never blended (§8.11).
+        if !is_decisive(best_value) && best_value > beta {
+            let (w_best, w_beta, den) = params::QS_FAILHIGH_BLEND;
+            best_value = (w_best * best_value + w_beta * beta) / den;
         }
 
         // Step 12 — TT store at DEPTH_QS: LOWER on a fail high, else
@@ -1537,6 +1677,237 @@ mod tests {
             b.make_move(m, b.gives_check(m));
         }
         b
+    }
+
+    // --- Qsearch rule fixtures (doc 07 §3.8, §5, §8.8; plan step 9) ---
+    //
+    // Each rule gets a FEN whose observable flips if the rule is
+    // disabled: `w.nodes` counts MADE moves, so `nodes == 0` proves a
+    // skip, and pinned return values come from the doc's exact formulas
+    // over in-test `evaluate` calls — no magic score literals.
+
+    /// The corrected static eval exactly as qsearch computes it
+    /// (Phase A: corrected == raw).
+    fn static_eval(b: &Board) -> Value {
+        evaluate(b, &mut EvalContext::new(), VALUE_ZERO)
+    }
+
+    /// Drive `qsearch` directly at ply 0 on a fresh stack: the fixtures
+    /// pin per-rule behavior against exact windows, bypassing the driver.
+    fn qsearch_at<NT: NodeType>(
+        w: &mut Worker,
+        tt: &TranspositionTable,
+        alpha: Value,
+        beta: Value,
+    ) -> Value {
+        init_stack(&mut w.stack);
+        w.qsearch::<NT>(tt, alpha, beta, 0)
+    }
+
+    #[test]
+    fn qsearch_stand_pat_fail_high_blends_toward_beta() {
+        // Quiet position, white a queen up, window far below the eval:
+        // the stand pat cuts immediately — softened by the §3.8 step-5
+        // blend, pinned exactly — and searches nothing. The TT miss
+        // leaves an eval-only Bound::Lower entry behind (§3.11).
+        let fen = "7k/8/8/8/8/8/8/1Q5K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let eval = static_eval(&w.board);
+        let beta = eval - 100;
+        let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
+        let (w_best, w_beta, den) = params::QS_STANDPAT_BLEND;
+        assert_eq!(v, (w_best * eval + w_beta * beta) / den);
+        assert_eq!(w.nodes, 0, "a stand-pat cutoff searches nothing");
+        let cached = tt.probe(w.board.key());
+        assert!(cached.hit);
+        assert_eq!(cached.data.depth, DEPTH_UNSEARCHED);
+        assert!(cached.data.bound.includes_lower());
+        assert_eq!(cached.data.eval, eval);
+        assert!(!is_valid(cached.data.value), "eval-only entry has no value");
+    }
+
+    #[test]
+    fn qsearch_stand_pat_uses_tt_value_as_better_eval() {
+        // No captures exist; a probed LOWER-bound tt value above the
+        // static eval substitutes as the stand pat (§3.8 step 5) and,
+        // staying inside the window, comes back unchanged.
+        let fen = "7k/8/8/8/8/8/8/1Q5K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let eval = static_eval(&w.board);
+        let tt_value = eval + 55;
+        let key = w.board.key();
+        tt.probe(key).writer.write(
+            key,
+            tt_value,
+            false,
+            Bound::Lower,
+            DEPTH_QS,
+            Move::NULL,
+            eval,
+            tt.generation(),
+        );
+        let v = qsearch_at::<Pv>(&mut w, &tt, eval - 1000, eval + 1000);
+        assert_eq!(v, tt_value);
+        assert_eq!(w.nodes, 0);
+    }
+
+    #[test]
+    fn qsearch_futility_prunes_a_small_capture_below_alpha() {
+        // exd5 is the only capture; with alpha a full grand above the
+        // eval the §3.8 futility rule skips it unsearched, and its
+        // optimistic futility_value IS the returned fail-low best_value.
+        let fen = "7k/8/8/3p4/4P3/8/8/7K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let eval = static_eval(&w.board);
+        let beta = eval + 1000;
+        let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
+        assert_eq!(
+            v,
+            eval + params::QS_FUTILITY_MARGIN + PieceType::Pawn.value()
+        );
+        assert_eq!(w.nodes, 0, "the futile capture must not be searched");
+    }
+
+    #[test]
+    fn qsearch_window_see_rule_skips_an_even_capture_below_the_window() {
+        // Rxa8 is a dead-even rook trade (SEE 0 — comfortably above the
+        // -74 floor, so ONLY the window rule can skip it), but alpha sits
+        // 500 above the eval: `see_ge(m, alpha - futility_base)` fails
+        // and best_value is pinned to min(alpha, futility_base).
+        let fen = "rr5k/8/8/8/8/8/8/R6K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let eval = static_eval(&w.board);
+        let alpha = eval + 500;
+        let v = qsearch_at::<NonPv>(&mut w, &tt, alpha, alpha + 1);
+        assert_eq!(v, eval + params::QS_FUTILITY_MARGIN);
+        assert_eq!(w.nodes, 0, "the SEE-vs-window rule must skip the trade");
+    }
+
+    #[test]
+    fn qsearch_see_floor_skips_a_losing_capture_even_when_it_checks() {
+        // Qxd7+ gives check, so it is exempt from the whole futility
+        // block — but it hangs the queen to Kxd7 (SEE -2330 < -74): the
+        // §3.8 hard floor skips it and the node stands pat.
+        let fen = "4k3/3p4/8/8/3Q4/8/8/7K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let eval = static_eval(&w.board);
+        let v = qsearch_at::<Pv>(&mut w, &tt, -VALUE_INFINITE, VALUE_INFINITE);
+        assert_eq!(v, eval, "the node must fall back to its stand pat");
+        assert_eq!(w.nodes, 0, "the SEE floor must skip the losing capture");
+    }
+
+    #[test]
+    fn qsearch_late_move_rule_stops_after_two_quiet_window_captures() {
+        // Four equal knight-takes-pawn captures — none checking, none
+        // recapturable, none aimed at a previous square: the §3.8
+        // move-count rule searches exactly the first two (each child is
+        // quiet, so nodes counts searched captures one-for-one).
+        let fen = "7k/p1p1p3/8/1N1N4/8/8/8/7K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let v = qsearch_at::<Pv>(&mut w, &tt, -VALUE_INFINITE, VALUE_INFINITE);
+        assert_eq!(
+            w.nodes,
+            2,
+            "moveCount > {} must stop the remaining captures",
+            params::QS_LATE_MOVE_LIMIT
+        );
+        assert!(!crate::types::is_decisive(v));
+    }
+
+    #[test]
+    fn qsearch_evasions_are_searched_while_best_value_is_a_loss() {
+        // White is in double check, hugely behind, and the only legal
+        // evasion is a QUIET king move — exactly what the step-7
+        // non-capture skip would drop were the `!is_loss(best_value)`
+        // evasion guard not in force. It must be searched: the node's
+        // value is the child's stand pat, not a mate or a pruned -INF.
+        let fen = "k7/1q6/8/8/8/8/8/r6K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let kh2 = Move::normal(Square::H1, Square::H2);
+        let mut after = w.board.clone();
+        after.make_move(kh2, after.gives_check(kh2));
+        let v = qsearch_at::<Pv>(&mut w, &tt, -VALUE_INFINITE, VALUE_INFINITE);
+        assert_eq!(w.nodes, 1, "the lone evasion must be searched");
+        assert_eq!(v, -static_eval(&after));
+        assert!(v < 0 && !is_loss(v), "a real (bad) value, not a mate");
+    }
+
+    #[test]
+    fn qsearch_in_check_never_stands_pat() {
+        // White is well ahead: were stand pat allowed, eval >= beta would
+        // cut with zero nodes. In check the §3.8 step-5 rule forbids it —
+        // the lone evasion (double check) is searched and the fail-high
+        // value is the step-11 blend of the child's exact stand pat.
+        let fen = "6k1/1b6/8/5R2/5R2/8/8/r6K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let kh2 = Move::normal(Square::H1, Square::H2);
+        let mut after = w.board.clone();
+        after.make_move(kh2, after.gives_check(kh2));
+        let beta = 0;
+        let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
+        assert_eq!(w.nodes, 1, "in check the evasion must be searched");
+        let (w_best, w_beta, den) = params::QS_FAILHIGH_BLEND;
+        assert_eq!(v, (w_best * -static_eval(&after) + w_beta * beta) / den);
+        assert!(v >= beta, "still a fail high after the blend");
+    }
+
+    #[test]
+    fn qsearch_fail_high_softening_blends_toward_beta() {
+        // exd5 wins a clean queen against a window pinned far below: the
+        // raw fail-high value (the child's exact stand pat, negated) is
+        // pulled toward beta by the §3.8 step-11 blend.
+        let fen = "7k/8/8/3q4/4P3/8/8/7K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let eval = static_eval(&w.board);
+        let exd5 = Move::normal(Square::E4, Square::D5);
+        let mut after = w.board.clone();
+        after.make_move(exd5, after.gives_check(exd5));
+        let beta = eval + 100;
+        let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
+        assert_eq!(w.nodes, 1);
+        let (w_best, w_beta, den) = params::QS_FAILHIGH_BLEND;
+        assert_eq!(v, (w_best * -static_eval(&after) + w_beta * beta) / den);
+    }
+
+    #[test]
+    fn qsearch_narrow_stalemate_test_scores_the_trap_as_a_draw() {
+        // Qf3xf7 wins a clean rook but stalemates the bare king (f7
+        // covers g7/g8/h7): in the child every §3.8 step-10 precondition
+        // holds — no non-pawn material, no pawn pushes, previous capture
+        // >= knight — so the narrow test pays for the legality scan and
+        // returns exactly VALUE_DRAW.
+        let fen = "7k/5r2/8/8/8/5Q2/8/1K6 w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let qxf7 = Move::normal(Square::F3, Square::F7);
+        assert!(all_legal(&w.board).contains(&qxf7));
+        w.board.make_move(qxf7, w.board.gives_check(qxf7));
+        let tt = test_tt();
+        let v = qsearch_at::<Pv>(&mut w, &tt, -10, 10);
+        assert_eq!(v, VALUE_DRAW);
+        assert_eq!(w.nodes, 0);
+    }
+
+    #[test]
+    fn qsearch_stalemate_test_needs_a_preceding_big_capture() {
+        // The SAME stalemate reached from FEN (no captured piece on the
+        // board's last state) must NOT fire the narrow test — the whole
+        // point is paying for the legality scan only after "qsearch just
+        // won material": the node stands pat instead.
+        let fen = "7k/5Q2/8/8/8/8/8/1K6 b - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let eval = static_eval(&w.board);
+        let v = qsearch_at::<Pv>(&mut w, &tt, -10, 10);
+        assert_eq!(v, eval, "no prior capture: the narrow test stays off");
     }
 
     // --- Node counting and determinism (doc 07 §5, D24) ---
