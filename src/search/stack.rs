@@ -25,6 +25,7 @@
 //! PV storage is per-ply fixed lines ([`PvLine`]), worker-owned — option 3
 //! of design/07 §3.3 — spliced by the borrow-splitting [`update_pv`].
 
+use crate::history::ContHistId;
 use crate::moves::Move;
 use crate::types::{MAX_PLY, VALUE_NONE, Value};
 
@@ -44,29 +45,11 @@ pub const fn ss(ply: usize) -> usize {
     ply + SS_OFFSET
 }
 
-/// Opaque key resolving to one `[Piece × Square]` slab of the
-/// continuation-history tensor (design/07 §3.2.3).
-///
-/// Stockfish stores a raw pointer into the conthist tensor on its stack; a
-/// Rust raw pointer would poison the search with `unsafe` and a `&'a`
-/// reference would freeze the tables, so the stack stores this compact
-/// `Copy` key instead and doc 09 resolves it in O(1).
-///
-/// **Stub** until design/09 §3.2 lands: the flat-index encoding, the real
-/// `SENTINEL` value, and the resolving accessors (`Histories::cont_ref`,
-/// `piece_to()`) are all owned there. This module fixes only the contract:
-/// `Copy`, one-load resolution, a sentinel that is always safe to
-/// read/update.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct ContHistId(u16);
-
-impl ContHistId {
-    /// The "no piece" slab: installed at the `ss-7 … ss-1` padding slots
-    /// and after null moves, so reads through it are valid but inert.
-    ///
-    /// Provisional out-of-band value; design/09 §3.2 owns the real one.
-    pub const SENTINEL: ContHistId = ContHistId(u16::MAX);
-}
+// The continuation-history key `ContHistId` — the `Copy`, one-load-resolvable
+// key resolving to one `[Piece × Square]` slab of the conthist tensor
+// (design/07 §3.2.3) — is owned by `crate::history` (design/09 §3.2) and
+// imported above. The stack only stores it, defaults it to the inert
+// `SENTINEL`, and compares it for equality.
 
 /// One ply's worth of search state (design/07 §3.2.3).
 ///

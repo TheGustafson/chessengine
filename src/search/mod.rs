@@ -122,8 +122,9 @@ pub mod params;
 pub mod rootmoves;
 pub mod stack;
 
+pub use crate::history::ContHistId;
 pub use rootmoves::{RootMove, RootMoves, build_root_moves, sort_descending};
-pub use stack::{ContHistId, PvLine, SS_OFFSET, STACK_SIZE, Stack, init_stack, ss, update_pv};
+pub use stack::{PvLine, SS_OFFSET, STACK_SIZE, Stack, init_stack, ss, update_pv};
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
