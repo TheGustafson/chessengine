@@ -40,6 +40,14 @@ pub const ASPIRATION_SEARCH_AGAIN_NUM: Depth = 3;
 /// Denominator of the search-again depth damping.
 pub const ASPIRATION_SEARCH_AGAIN_DEN: Depth = 4;
 
+// --- Move ordering: capture scoring (design/09 §3.7) ---
+
+/// MVV weight on the victim value in the capture ordering score
+/// `CAPTURE_MVV_FACTOR * victim_value + capture_history` (design/09 §3.7):
+/// pure most-valuable-victim plus capture history, with no attacker (LVA)
+/// term — SEE handles attacker risk at the good/bad split gate.
+pub const CAPTURE_MVV_FACTOR: Value = 7;
+
 // --- Quiescence search (design/07 §3.8) ---
 
 /// Futility headroom over the corrected static eval:

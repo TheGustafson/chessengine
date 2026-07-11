@@ -25,6 +25,7 @@ pub mod eval;
 pub mod fen;
 pub mod history;
 pub mod movegen;
+pub mod movepick;
 pub mod moves;
 pub mod perft;
 pub mod search;
