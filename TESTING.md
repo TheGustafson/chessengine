@@ -176,10 +176,49 @@ tools/tactics.sh --fetch-wac            # download WAC + mate-in-2..5 into engin
 - **`tools/sprt.sh`** — fastchess SPRT with the design/14 §3.8 parameters:
   bounds `[0, 5]` nElo for gains (`ELO0=-5 ELO1=0` for simplifications),
   `model=normalized`, 10+0.1 default TC, paired games with colors reversed,
-  concurrency capped at physical cores − 1. `NODES=50000` switches to
-  fixed-node proxy games (immune to machine load; never valid for
-  time-management changes). Both binaries must be built with identical
-  RUSTFLAGS (D16).
+  concurrency capped at physical cores − 1. `NODES=200000` switches to the
+  calibrated fixed-node proxy (below; immune to machine load, deterministic,
+  never valid for time-management changes; concurrency then defaults to all
+  logical cores). Both binaries must be built with identical RUSTFLAGS (D16).
+
+### Fixed-node proxy (P9 pruning-wave gating, design/14 §3.8 / §9 Q4)
+
+Per-heuristic SPRTs need a game mode that is cheap AND deterministic so a
+verdict is minutes not hours. `go nodes N` is both: node counting has no
+wall-clock input (design/14 §3.2), so the *same N yields byte-identical games
+on any hardware* — verified, engine returns identical bestmove **and** node
+count on repeat. fastchess drives it with `tc=inf nodes=N`.
+
+**Calibrated budget: `N = 200_000` nodes/move.** Arithmetic (this engine,
+x86-64-v3, ~5.5 Mnps measured by `bench`):
+
+- Real 10+0.1 self-play (this build, 380 plies) spends a mean of ~1.0–1.4 M
+  and a median ~0.45 M nodes/move (mean skewed up by max-time tactical
+  moves; the info-line figure understates the true per-move total, which is
+  ≈ think-time × nps). A proxy that reproduced that *absolute* budget would
+  cost ~15–20 s/game — too slow to be a cheap proxy.
+- 200 k nodes/move ≈ 36 ms of equivalent think-time (200 k / 5.5 Mnps),
+  i.e. roughly 1/7 of the real 10+0.1 per-move budget — the standard
+  "fast-STC fraction". It still reaches ~depth 7–8, the same middlegame
+  regime where Wave-A pruning (RFP/NMP/LMR) operates, so the **relative** Elo
+  ordering of a heuristic is preserved.
+- Cost: measured throughput on this 8-physical-core box (16-way, fixed nodes
+  tolerate SMT): 100 k → 2.3 g/s, **200 k → 1.45 g/s (~0.7 s amortized/game)**,
+  250 k → 1.06 g/s, 300 k → 0.93 g/s. A 400-game batch at 200 k ≈ 4–5 min; a
+  large-effect pruning SPRT terminates in a few hundred games ≈ 3–5 min.
+
+Invocation (the exact command Wave-A gating uses):
+
+```sh
+NODES=200000 tools/sprt.sh ./candidate ./baseline          # gain test  [0,5] nElo
+ELO0=-5 ELO1=0 NODES=200000 tools/sprt.sh ./candidate ./baseline   # simplification
+```
+
+Faster/rougher iteration: `NODES=100000` (depth ~6–7). Higher-fidelity
+confirm: `NODES=400000`. **Caveat (design/14 §3.8):** the proxy gates
+*acceptance during* a wave; the final milestone gate for the wave still uses
+real **10+0.1** timed games, and anything surprising at fixed nodes is
+re-checked timed before it is trusted.
 - **`tools/gauntlet.sh`** — the engine vs calibrated Stockfish rungs
   (`UCI_LimitStrength` + `UCI_Elo`, coarse anchors) and/or real reference
   engines under `engines/` via `OPPONENTS="name=path;..."`; ratings with

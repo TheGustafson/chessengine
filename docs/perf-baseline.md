@@ -79,3 +79,44 @@ total moves emitted per pass over the six standard perft positions
 - `generate_legal` costs ≈ 2.1× raw `NON_EVASIONS` generation on this mix
   (the lazy legality filter + suspect testing, doc 05 §3.9) while still
   emitting ~0.5 G legal moves/s.
+
+### fixed-node SPRT proxy — 2026-07-11, P9 Wave A (design/14 §3.8 / §9 Q4)
+
+Calibration of the per-move node budget `N` for the fixed-node game proxy
+that gates each pruning heuristic (`go nodes N`, driven by fastchess
+`tc=inf nodes=N` via `NODES=N tools/sprt.sh`). Same machine/config
+(x86-64-v3, release, 8 physical / 16 logical cores). `bench 16 1 6 default
+depth` measured **5.82 Mnps** on this tree.
+
+**Determinism (the whole point):** `go nodes N` reads no wall clock on any
+node-count path (design/14 §3.2), so it is bit-reproducible and
+hardware-independent. Verified — identical bestmove *and* final node count
+on repeat (`go nodes 250000`): startpos → `g1f3`/60297, kiwipete →
+`e2a6`/125258, R+P endgame → `b4f4`/133554, twice each. Stop overshoot is
+bounded by `min(N/1024, 512)` nodes (`check_time_reset`).
+
+**Real 10+0.1 anchor** (this build, self-play, 380 plies driving both
+clocks): mean ≈ 1.0–1.4 M, median ≈ 0.45 M nodes/move (mean skewed by
+max-time tactical moves; the info-line node figure understates the true
+per-move total ≈ think-time × nps). Matching that absolute budget would cost
+~15–20 s/game — too slow for a cheap proxy.
+
+**Throughput vs budget** (48-game self-vs-self batches, 16-way, fixed nodes
+tolerate SMT):
+
+| N (nodes/move) | games/s | amortized s/game | ~equiv think-time | ~depth |
+|----------------|---------|------------------|-------------------|--------|
+| 100 000        | 2.27    | 0.44             | 18 ms             | 6–7    |
+| **200 000**    | **1.45**| **0.69**         | **36 ms**         | **7–8**|
+| 250 000        | 1.06    | 0.94             | 45 ms             | 7–9    |
+| 300 000        | 0.93    | 1.08             | 55 ms             | 8–9    |
+
+**Chosen: `N = 200_000`** — ~1/7 of the real 10+0.1 per-move budget (the
+standard fast-STC fraction), still deep enough (~7–8) that RFP/NMP/LMR fire
+in an STC-representative regime, and cheap enough that a 400-game batch is
+~4–5 min and a large-effect pruning SPRT terminates in ~3–5 min. `sprt.sh`
+self-vs-self smoke at N=200 000 returned Elo −0.00 / LLR −0.00 over 20 games
+(sanity: a proxy of a binary against itself is ~0 Elo). `NODES=100000`
+is the faster/rougher setting; `NODES=400000` a higher-fidelity confirm. The
+proxy gates acceptance within a wave; the milestone gate still uses real
+10+0.1 (design/14 §3.8).

@@ -828,6 +828,15 @@ This component is done when all of the following hold:
    we're ever forced onto cutechess, translate bounds to roughly
    `[0, 3]` logistic at our draw rates — needs a one-time calibration
    against fastchess on the same pair of builds.
-4. **Fixed-node budget for proxy games**: 50k nodes/move is the starting
-   point; calibrate once (does a known +X Elo change at 10+0.1 show
-   comparably at fixed nodes?) before trusting proxy SPRTs for merges.
+4. **Fixed-node budget for proxy games** — resolved (P9 Wave A): calibrated
+   to **`N = 200_000` nodes/move** for this build (~5.5 Mnps). `go nodes N`
+   is deterministic and hardware-independent (node counting reads no clock,
+   §3.2) — verified identical bestmove + node count on repeat. 200 k ≈ 36 ms
+   equivalent think-time ≈ ~1/7 of the real 10+0.1 per-move budget (measured
+   median ~0.45 M, mean ~1.0–1.4 M nodes/move), reaching ~depth 7–8 so
+   Wave-A pruning fires in an STC-representative regime; throughput ~1.45
+   games/s (16-way, SMT-tolerant) keeps a per-heuristic SPRT to minutes. Full
+   arithmetic, throughput table, and the exact `tools/sprt.sh` invocation are
+   in TESTING.md and docs/perf-baseline.md. The proxy gates acceptance
+   *within* a wave; the milestone gate still uses real 10+0.1 (§3.8), so a
+   known +X Elo change is re-confirmed timed before the wave is declared.

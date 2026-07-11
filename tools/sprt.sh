@@ -17,7 +17,14 @@
 #   TC=10+0.1          time control (10+0.1 = our STC; confirm milestones at 60+0.6)
 #   NODES=             if set, fixed-node proxy games instead of TC
 #                      (tc=inf nodes=N: immune to machine load/SMT — never
-#                      valid for time-management changes, design/14 §3.8)
+#                      valid for time-management changes, design/14 §3.8).
+#                      Calibrated P9-Wave-A proxy for 10+0.1 at this engine's
+#                      ~5.5 Mnps: NODES=200000 (deterministic, hardware-
+#                      independent, ~0.7 s amortized/game at 16-way; the
+#                      arithmetic + ~TC mapping is in TESTING.md and
+#                      docs/perf-baseline.md). When NODES is set CONCURRENCY
+#                      defaults to ALL logical cores (fixed nodes are
+#                      SMT-immune, design/14 §3.8), not physical-1.
 #   ELO0=0 ELO1=5      nElo hypothesis bounds; simplifications use [-5, 0]:
 #                      ELO0=-5 ELO1=0 tools/sprt.sh ...
 #   HASH=16            Hash MB per engine (16 STC / 64 LTC)
@@ -73,7 +80,14 @@ physical_cores() {
     fi
 }
 if [ -z "${CONCURRENCY:-}" ]; then
-    CONCURRENCY=$(($(physical_cores) - 1))
+    if [ -n "${NODES:-}" ]; then
+        # Fixed-node games are immune to clock jitter (design/14 §3.8), so
+        # oversubscribing SMT siblings only trades a little per-game speed for
+        # throughput — safe here (it would corrupt timed-game clocks).
+        CONCURRENCY=$(nproc)
+    else
+        CONCURRENCY=$(($(physical_cores) - 1))
+    fi
     [ "$CONCURRENCY" -ge 1 ] || CONCURRENCY=1
 fi
 
