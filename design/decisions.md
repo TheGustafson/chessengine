@@ -185,4 +185,28 @@ strength. Two constraints in permanent tension, resolved in this order:
   without conceding the shipped net's provenance. Curation spec + pipeline:
   `design/15-nnue-datagen.md`. The bulk SF-labeled corpus may be generated
   ahead of P13 as a throttled background task once the curation spec is
-  validated on a small sample and reviewed.
+  validated on a small sample and reviewed. Training hardware: local
+  RTX 4060 (bootstrap + first nets); a larger machine is available later.
+
+- **D29**: Research data platform (added 2026-07-11, per user vision). Datagen
+  is architected as a research data platform on the principle **store
+  observations, not labels**: preserve expensive raw search observations
+  (position state, search context, search observations, per-move
+  observations) so future labels (value, WDL, policy, search-control,
+  cascade/MoE routing, adversarial hard-examples) are cheap DERIVATIONS —
+  regenerating deep search is expensive, deriving labels is cheap. Three
+  layers: Raw Position Store (canonical, deduped) / Observation Store
+  (immutable search records + counterfactuals — PERMANENT) / Derived Training
+  Sets (experiment-specific — DISPOSABLE, e.g. the flat bullet export). Full
+  spec: `design/16-research-data-platform.md`. **STAGING discipline** (design
+  the whole platform now, build it incrementally): (a) the Tier-A bootstrap
+  (SF teacher, discardable scaffold, D28) stays SIMPLE — flat bullet records
+  — because rich capture on throwaway data is waste AND a foreign teacher
+  cannot emit our engine's internal search-control / per-move signals; (b) the
+  rich Observation Store is built with Tier-B — our own INSTRUMENTED engine
+  generating PERMANENT self-play data (post-first-NNUE); the internal-search,
+  per-move, counterfactual, adversarial, and MoE/search-control corpora are
+  each built when the research consuming them starts. Provenance (engine /
+  net / search-config / generator / seed / opening / teacher versions) is
+  mandatory from day one for label reproducibility. Reconciles with the
+  `bullet` flat 32-byte format via the disposable Derived layer.
