@@ -60,6 +60,17 @@ pub const QS_SEE_FLOOR: Value = -74;
 /// (`move_count > 2`, §3.8 step 7).
 pub const QS_LATE_MOVE_LIMIT: i32 = 2;
 
+// --- Equal-value dither (design/07 §3.7.2 step 12) ---
+
+/// Node-counter mask of the equal-value dither: near the leaves an
+/// equal-to-best value is promoted to best only when `(nodes & 14) == 0`
+/// (nodes ≡ 0 or 1 mod 16, ~1 in 8 made moves) — deliberate diversity so
+/// equal lines do not all tie on the first one found.
+pub const DITHER_NODE_MASK: u64 = 14;
+/// Leaf-proximity gate of the dither: it fires only when
+/// `ply + 2 >= root_depth`.
+pub const DITHER_PLY_MARGIN: usize = 2;
+
 // --- Razoring (design/10 §3.1; node step N9) ---
 
 /// Flat margin below alpha at which shallow nodes drop to qsearch.

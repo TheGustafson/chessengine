@@ -1897,6 +1897,26 @@ uciok
     }
 
     #[test]
+    fn go_mate_self_terminates_on_the_mate_limit() {
+        // doc 12 §3.9's mate-limit stop end-to-end: `go mate 1` rides
+        // `Limits::mate` from parse_go into the ID loop's §3.5 check
+        // (doc 07). No depth/time/node limit here, so only the mate rule
+        // can end the session — a regression hangs rather than passes.
+        let mut engine = Engine::new();
+        command_on(
+            &mut engine,
+            "position fen 6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1",
+        );
+        let out = command_on(&mut engine, "go mate 1");
+        assert_eq!(bestmoves(&out), 1, "{out}");
+        assert!(
+            out.lines().last().unwrap().starts_with("bestmove d1d8"),
+            "{out}"
+        );
+        assert!(out.contains(" score mate 1"), "{out}");
+    }
+
+    #[test]
     fn ponder_from_tt_offers_only_validated_moves() {
         // doc 12 §3.2 step 4: the 1-ply-PV fallback probes the TT after
         // making the best move and must validate everything it reads

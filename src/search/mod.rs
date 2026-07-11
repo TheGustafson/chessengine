@@ -79,9 +79,24 @@
 //! that catches "qsearch just won material into a stalemate trap" for
 //! ~zero cost. Constants in [`params`] (D20).
 //!
+//! Step 10 is the hygiene pass that closes out the doc's plan (§3.5,
+//! §3.7.2 steps 12/14): the iteration-end bookkeeping grows the
+//! forgotten-mate rollback (a proven mate PV/score is never replaced by
+//! a weaker or bound re-score) and the aborted-loss repair (an exact
+//! mated/TB-loss front score from a STOPPED iteration is untrusted —
+//! unsearched root moves might refute or delay it — so the previous
+//! iteration's line is restored, or the score marked a lower bound when
+//! no previous iteration exists), both in [`Worker::root_hygiene`]; the
+//! `go mate n` limit stops the search once a completed iteration proves
+//! a mate within `2n` plies (doc 12 §3.9's mate-limit stop, wired
+//! through `Limits::mate`); the step-12 equal-value dither occasionally
+//! promotes an equal-to-best value near the leaves; and the main node
+//! gains its step-14 fail-high softening blend (qsearch already had
+//! its two from step 9). Both value dampers are gated on
+//! `is_decisive`/`is_win` — no decisive score is ever dithered or
+//! blended (§8.11).
+//!
 //! Deliberately NOT here yet, per the doc's staging: the
-//! hygiene pass (forgotten mate,
-//! aborted loss, `go mate n`, equal-value dither — step 10), the
 //! soft-stop factors and ponder guard of the clock TM (doc 12 steps 8–9,
 //! P9/P10) — including the `search_again_counter` producer and the
 //! fail-low `stop_on_ponderhit` revoke, whose seams the aspiration loop
@@ -109,8 +124,8 @@ use crate::timeman::{Limits, TimeManager};
 use crate::tt::{Bound, TranspositionTable};
 use crate::types::{
     DEPTH_QS, DEPTH_UNSEARCHED, Depth, Key, MAX_PLY, PieceType, VALUE_DRAW, VALUE_INFINITE,
-    VALUE_NONE, VALUE_ZERO, Value, is_decisive, is_loss, is_valid, mate_in, mated_in,
-    value_from_tt, value_to_tt,
+    VALUE_MATE, VALUE_NONE, VALUE_ZERO, Value, is_decisive, is_loss, is_mate, is_mated, is_valid,
+    is_win, mate_in, mated_in, value_from_tt, value_to_tt,
 };
 
 /// The draw dither (design/07 §3.1 — the one value function search owns):
@@ -274,10 +289,10 @@ pub struct Worker {
     /// stop the search (§3.8). `Arc` because the UCI thread clears the
     /// same flag the search polls; defaults to an unshared `false`.
     pub ponder: Arc<AtomicBool>,
-    /// Best PV of the last iteration whose result was trusted (`!stop`),
-    /// §3.5. Persists across iterations so a `bestmove` is always
-    /// printable; the forgotten-mate / aborted-loss hygiene (plan step 10)
-    /// rolls back to it.
+    /// Best PV of the last iteration whose result was trusted (`!stop`)
+    /// AND not a forgotten mate, §3.5. Persists across iterations so a
+    /// `bestmove` is always printable; [`Worker::root_hygiene`] both
+    /// maintains it and rolls back to it.
     pub last_best_move_pv: Vec<Move>,
     /// Score belonging to [`Self::last_best_move_pv`] (§3.5).
     pub last_best_move_score: Value,
@@ -436,23 +451,29 @@ impl Worker {
                 });
             }
 
-            // lastBestMove tracking (§3.5); the forgotten-mate guard on
-            // the update joins with the hygiene pass (plan step 10).
-            if !stop.load(Ordering::Relaxed) {
-                if self.last_best_move_pv.first() != self.root_moves[0].pv.first() {
-                    self.last_best_move_depth = self.root_depth;
-                }
-                self.last_best_move_pv.clone_from(&self.root_moves[0].pv);
-                self.last_best_move_score = self.root_moves[0].score;
-            }
+            // lastBestMove tracking with the forgotten-mate guard, plus
+            // the aborted-loss repair (§3.5, plan step 10).
+            self.root_hygiene(stop.load(Ordering::Relaxed));
 
             // Harvest the per-iteration instability signal (§3.5; doc 13
             // §3.10 owns the SMP aggregation shape).
             tot_best_move_changes += self.best_move_changes;
             self.best_move_changes = 0.0;
 
-            // ⟨plan step 10⟩ forgotten-mate / aborted-loss hygiene and the
-            // `go mate n` stop live here.
+            // `go mate n` (§3.5; doc 12 §3.9's mate-limit stop,
+            // independent of TM): a COMPLETED iteration whose front score
+            // proves a mate — ours or theirs — within n full moves ends
+            // the search. `2` converts the UCI limit's full moves to the
+            // mate score's plies (structural, not tunable).
+            if !stop.load(Ordering::Relaxed)
+                && self.limits.mate.is_some_and(|n| {
+                    let s = self.root_moves[0].score;
+                    (is_mate(s) || is_mated(s)) && VALUE_MATE - s.abs() <= 2 * n
+                })
+            {
+                stop.store(true, Ordering::Relaxed);
+            }
+
             // ⟨P7, doc 12 §3.9⟩ the TM soft-stop decision consumes
             // tot_best_move_changes / last_best_move_depth / effort here.
         }
@@ -460,6 +481,73 @@ impl Worker {
         // explicitly so the per-iteration bookkeeping above stays
         // exercised and warning-free.
         let _ = tot_best_move_changes;
+    }
+
+    /// End-of-iteration root hygiene (design/07 §3.5, plan step 10):
+    /// lastBestMove tracking with the forgotten-mate guard, then the
+    /// rollback/repair pass. Called once per ID iteration, after the
+    /// MultiPV loop; `stopped` is the stop flag as observed there.
+    /// Requires a non-empty `root_moves` (the driver returns before its
+    /// first iteration otherwise).
+    ///
+    /// - **Forgotten mate**: once an iteration proves `mate n`, a later
+    ///   iteration returning a weaker (smaller-magnitude) or bound score
+    ///   — aspiration instability, pruning noise — must not replace the
+    ///   proven line: the tracking refuses the update and the front root
+    ///   move is rolled back to the remembered PV/score.
+    /// - **Aborted loss**: an *exact* mated/TB-loss score for the whole
+    ///   root from a search stopped mid-iteration is untrusted —
+    ///   unsearched root moves might refute or delay it. Restore the
+    ///   previous iteration's move/score, or (no previous iteration) mark
+    ///   the score as a lower bound so the GUI never sees a fake forced
+    ///   loss (doc 12 §3.12). The `pv_idx == 0` guard keeps an aborted
+    ///   LATER MultiPV line from leapfrogging a proven loss in an earlier
+    ///   line (structural now; exercised when MultiPV lands, doc 12 step
+    ///   10).
+    fn root_hygiene(&mut self, stopped: bool) {
+        let front = &self.root_moves[0];
+        let forgotten_mate = self.last_best_move_score != -VALUE_INFINITE
+            && (is_mate(self.last_best_move_score) || is_mated(self.last_best_move_score))
+            && (front.score.abs() < self.last_best_move_score.abs() || front.score_is_bound());
+
+        if !stopped {
+            // The TM stability signal: the iteration at which the best
+            // move last changed (§3.5, doc 12 §3.9).
+            if self.last_best_move_pv.first() != front.pv.first() {
+                self.last_best_move_depth = self.root_depth;
+            }
+            // Never replace a proven (shorter) mate with a weaker or
+            // bound re-score.
+            if !forgotten_mate {
+                self.last_best_move_pv.clone_from(&self.root_moves[0].pv);
+                self.last_best_move_score = self.root_moves[0].score;
+            }
+        }
+
+        let aborted_loss = stopped && self.pv_idx == 0 && self.root_moves[0].score_is_exact_loss();
+        if aborted_loss || (self.root_moves[0].score != -VALUE_INFINITE && forgotten_mate) {
+            if let Some(&remembered) = self.last_best_move_pv.first() {
+                // Move the remembered line's root move to the front (the
+                // rotate preserves the others' relative order — the next
+                // iteration's move ordering, §3.4) and republish it.
+                let idx = self
+                    .root_moves
+                    .iter()
+                    .position(|rm| rm.pv[0] == remembered)
+                    .expect("the remembered best move is a root move");
+                self.root_moves[..=idx].rotate_right(1);
+                let rm = &mut self.root_moves[0];
+                rm.score = self.last_best_move_score;
+                rm.uci_score = self.last_best_move_score;
+                rm.pv.clone_from(&self.last_best_move_pv);
+                rm.score_lowerbound = false;
+                rm.score_upperbound = false;
+            } else if aborted_loss {
+                // Aborted depth-1 search: nothing to restore — label the
+                // loss as a lower bound (unsearched moves may beat it).
+                self.root_moves[0].score_lowerbound = true;
+            }
+        }
     }
 
     /// The aspiration loop (design/07 §3.6): one iteration's root search
@@ -581,8 +669,9 @@ impl Worker {
     }
 
     /// The main search node (design/07 §3.7.2), v1 subset: node order
-    /// steps 2/3/4/5/6/7/9/10/11/12/13/14 — no ⟨D10⟩ heuristics (step 8),
-    /// no equal-value dither in step 12 (plan step 10). Step 10 is the
+    /// steps 2/3/4/5/6/7/9/10/11/12/13/14 — no ⟨D10⟩ heuristics (step 8);
+    /// step 12's equal-value dither and step 14's fail-high softening
+    /// landed with plan step 10. Step 10 is the
     /// PVS three-call structure (plan step 7) with reductions pinned at
     /// r = 0 — LMR is doc 10's (P9). Zero-window scouts are NonPV and
     /// never write PV lines, so `pv_table[1]` stays fresh for every root
@@ -843,16 +932,31 @@ impl Worker {
                 return VALUE_ZERO;
             }
 
-            // Step 12 — root bookkeeping (§3.4 per-move updates; the
-            // equal-value dither joins with plan step 10's hygiene pass).
+            // Step 12 — root bookkeeping (§3.4 per-move updates).
             if NT::ROOT {
                 self.update_root_move(m, value, alpha, beta, move_count, self.nodes - nodes_before);
             }
 
-            // Step 13 — best/alpha/beta updates.
-            if value > best_value {
+            // Step 12 — the equal-value dither: near the leaves an
+            // equal-to-best value is occasionally promoted — deliberate
+            // diversity so equal (typically repetition-flavored) lines do
+            // not all resolve to the first one found. The `is_win` guard
+            // keeps the whole decisive band out (§8.11: mate distances
+            // are never dithered), and short-circuiting on `value ==
+            // best_value` first keeps `abs()` off the -INFINITE sentinel.
+            // Only the comparisons below see `inc` — stored values and
+            // window updates stay raw.
+            let inc = Value::from(
+                value == best_value
+                    && ply + params::DITHER_PLY_MARGIN >= self.root_depth as usize
+                    && (self.nodes & params::DITHER_NODE_MASK) == 0
+                    && !is_win(value.abs() + 1),
+            );
+
+            // Step 13 — best/alpha/beta updates (dither-biased compares).
+            if value + inc > best_value {
                 best_value = value;
-                if value > alpha {
+                if value + inc > alpha {
                     best_move = m;
                     if NT::PV {
                         update_pv(&mut self.pv_table[..], ply, m);
@@ -868,10 +972,21 @@ impl Worker {
             }
         }
 
+        // Step 14 — fail-high softening (search-instability damping, kept
+        // with the frame): pull a fail-high best value partway back
+        // toward beta, trusting deeper results more — `(v·depth + beta) /
+        // (depth + 1)` is pure shape, no tunable constants. Guarded on
+        // best_value AND alpha (alpha, not beta — SF parity, doc 10 §3.10
+        // step 1): no decisive score is ever blended (§8.11), and a
+        // decisive alpha means the window sits in the mate band, where
+        // damping would corrupt mate distances.
+        if best_value >= beta && !is_decisive(best_value) && !is_decisive(alpha) {
+            best_value = (best_value * depth + beta) / (depth + 1);
+        }
+
         // Step 14 — node result: ply-relative mate/stalemate terminals
         // (D5): a longer mate scores closer to zero, so the search
         // naturally prefers the shortest mate and delays being mated.
-        // (Fail-high softening joins with plan step 10's hygiene pass.)
         if move_count == 0 {
             best_value = if in_check {
                 mated_in(ply as i32)
@@ -1914,6 +2029,14 @@ mod tests {
 
     #[test]
     fn search_is_deterministic_at_fixed_depth() {
+        // Also the dither-determinism gate (§5): both value dithers —
+        // the draw dither and the step-12 equal-value dither — read only
+        // the worker's own made-move counter, so two identical
+        // single-threaded searches replay the same choices node for node
+        // (the release-bench two-run fingerprint in tools/check.sh is the
+        // deep version of this assert). The dither DOES change the bench
+        // number vs the pre-step-10 code — a functional change whose new
+        // count the commit trailer records (D24).
         let run = || {
             let w = go_depth(START_FEN, 4);
             (w.nodes, best_score(&w), w.best_move())
@@ -2109,6 +2232,324 @@ mod tests {
         assert_eq!(w.last_best_move_pv[0].to_string(), "d1d8");
         assert_eq!(w.last_best_move_score, mate_in(1));
         assert_eq!(w.last_best_move_depth, 1);
+    }
+
+    // --- Iteration hygiene (§3.5, plan step 10; §8.9) ---
+    //
+    // `root_hygiene` is scripted directly: a worker with real root moves
+    // and the §3.5 post-iteration state (one exact front score, the rest
+    // unsearched) pins each rule against the doc's pseudocode; the
+    // driver-level tests further down cover the same rules end-to-end.
+
+    /// A worker over `fen` with root moves built and one iteration result
+    /// scripted: `front` searched to an exact `score` and floated to the
+    /// front by the §3.4 stable sort, everything else unsearched.
+    fn hygiene_worker(fen: &str, front: Move, score: Value) -> Worker {
+        let mut w = Worker::new(board(fen));
+        w.root_moves = build_root_moves(&w.board, &[]);
+        let idx = w
+            .root_moves
+            .iter()
+            .position(|rm| rm.pv[0] == front)
+            .expect("scripted front move must be legal");
+        w.root_moves[idx].score = score;
+        w.root_moves[idx].uci_score = score;
+        sort_descending(&mut w.root_moves[..]);
+        assert_eq!(w.root_moves[0].pv[0], front);
+        w
+    }
+
+    #[test]
+    fn forgotten_mate_rolls_back_to_the_proven_line() {
+        // §3.5's forgotten-mate construction: iteration 5 proved
+        // mate_in(3) behind Kb6; iteration 6 (aspiration instability,
+        // pruning noise) came back with a weaker exact score on a
+        // different front move. The tracking must refuse the weaker line
+        // and the rollback must restore the proven PV/score to the front.
+        let mate_move = Move::normal(Square::C6, Square::B6);
+        let other = Move::normal(Square::H1, Square::H2);
+        let mut w = hygiene_worker("k7/8/2K5/8/8/8/8/7R w - - 0 1", other, 500);
+        let n_moves = w.root_moves.len();
+        w.root_depth = 6;
+        w.last_best_move_pv = vec![mate_move];
+        w.last_best_move_score = mate_in(3);
+        w.last_best_move_depth = 5;
+
+        w.root_hygiene(false);
+
+        // The remembered mate survives the weaker re-score...
+        assert_eq!(w.last_best_move_score, mate_in(3));
+        assert_eq!(w.last_best_move_pv, vec![mate_move]);
+        // ...and is restored to the front, bound-free.
+        let front = &w.root_moves[0];
+        assert_eq!(front.pv, vec![mate_move]);
+        assert_eq!(front.score, mate_in(3));
+        assert_eq!(front.uci_score, mate_in(3));
+        assert!(!front.score_is_bound());
+        // The rotate keeps every root move (the displaced one included).
+        assert_eq!(w.root_moves.len(), n_moves);
+        assert!(w.root_moves.iter().any(|rm| rm.pv[0] == other));
+        // The front move DID flip this iteration: the TM stability signal
+        // records it (§3.5 order: tracking before the rollback).
+        assert_eq!(w.last_best_move_depth, 6);
+    }
+
+    #[test]
+    fn a_shorter_proven_mate_replaces_the_remembered_one() {
+        // "Never replace a proven (SHORTER) mate": a larger-magnitude
+        // exact mate is genuinely better news, not a forgotten mate —
+        // the tracking must adopt it and no rollback may fire.
+        let mate_move = Move::normal(Square::C6, Square::B6);
+        let other = Move::normal(Square::C6, Square::C7);
+        let mut w = hygiene_worker("k7/8/2K5/8/8/8/8/7R w - - 0 1", other, mate_in(1));
+        w.root_depth = 6;
+        w.last_best_move_pv = vec![mate_move];
+        w.last_best_move_score = mate_in(3);
+
+        w.root_hygiene(false);
+
+        assert_eq!(w.last_best_move_score, mate_in(1));
+        assert_eq!(w.last_best_move_pv, vec![other]);
+        assert_eq!(w.root_moves[0].pv[0], other, "no rollback");
+        assert_eq!(w.root_moves[0].score, mate_in(1));
+    }
+
+    #[test]
+    fn a_bound_mate_rescore_is_rolled_back_to_the_exact_one() {
+        // The same front move re-scored as a BOUND (mid-aspiration shape)
+        // is also a forgotten mate: bounds never replace a proven exact
+        // mate, and the restore clears the flags.
+        let mate_move = Move::normal(Square::C6, Square::B6);
+        let mut w = hygiene_worker("k7/8/2K5/8/8/8/8/7R w - - 0 1", mate_move, mate_in(3));
+        w.root_moves[0].score_lowerbound = true;
+        w.root_moves[0].uci_score = mate_in(3) - 20; // window-clamped print value
+        w.root_depth = 7;
+        w.last_best_move_pv = vec![mate_move];
+        w.last_best_move_score = mate_in(3);
+        w.last_best_move_depth = 4;
+
+        w.root_hygiene(false);
+
+        let front = &w.root_moves[0];
+        assert_eq!(front.pv[0], mate_move);
+        assert_eq!(front.score, mate_in(3));
+        assert_eq!(front.uci_score, mate_in(3));
+        assert!(!front.score_is_bound(), "the restore clears the bounds");
+        assert_eq!(w.last_best_move_depth, 4, "same front move: no flip");
+    }
+
+    #[test]
+    fn aborted_loss_restores_the_previous_iteration_line() {
+        // §3.5 aborted-loss hygiene, scripted: the front root move's
+        // exact mated score came from a STOPPED iteration — untrusted
+        // (unsearched root moves might refute or delay it) — so the
+        // previous iteration's line comes back, bound-free, and the
+        // stopped iteration never feeds lastBestMove.
+        let fen = "8/8/6k1/R7/8/8/8/1R5K b - - 0 1"; // lost to the ladder
+        let lost = Move::normal(Square::G6, Square::G7);
+        let previous = Move::normal(Square::G6, Square::F6);
+        let mut w = hygiene_worker(fen, lost, mated_in(6));
+        w.root_depth = 8;
+        w.last_best_move_pv = vec![previous];
+        w.last_best_move_score = -800;
+        w.last_best_move_depth = 7;
+
+        w.root_hygiene(true);
+
+        let front = &w.root_moves[0];
+        assert_eq!(front.pv, vec![previous]);
+        assert_eq!(front.score, -800);
+        assert_eq!(front.uci_score, -800);
+        assert!(!front.score_is_bound());
+        // The untrusted loss slid one slot back (stable rotate).
+        assert_eq!(w.root_moves[1].pv[0], lost);
+        assert_eq!(w.last_best_move_score, -800);
+        assert_eq!(w.last_best_move_depth, 7);
+    }
+
+    #[test]
+    fn aborted_loss_without_history_is_published_as_a_bound() {
+        // An aborted depth-1 search has nothing to restore: the exact
+        // loss is re-labeled a LOWER bound — unsearched root moves may
+        // beat it, and the GUI must never see a fake forced loss
+        // (doc 12 §3.12).
+        let kg8 = Move::normal(Square::H8, Square::G8);
+        let mut w = hygiene_worker("7k/8/6K1/8/8/8/2Q5/8 b - - 0 1", kg8, mated_in(2));
+        w.root_depth = 1;
+
+        w.root_hygiene(true);
+
+        let front = &w.root_moves[0];
+        assert_eq!(front.score, mated_in(2), "the score itself is kept");
+        assert!(front.score_lowerbound && !front.score_upperbound);
+        assert!(w.last_best_move_pv.is_empty());
+    }
+
+    #[test]
+    fn a_stopped_non_loss_iteration_is_left_alone() {
+        // A stop with an ordinary (non-loss) exact front score triggers
+        // neither repair: the §3.4 stable-sort state IS the answer.
+        let e5 = Move::normal(Square::E7, Square::E5);
+        let mut w = hygiene_worker(START_FEN, Move::normal(Square::E2, Square::E4), 30);
+        w.last_best_move_pv = vec![e5]; // not even a root move here
+        w.last_best_move_score = -10;
+
+        w.root_hygiene(true);
+
+        assert_eq!(w.root_moves[0].pv[0], Move::normal(Square::E2, Square::E4));
+        assert_eq!(w.root_moves[0].score, 30);
+        assert!(!w.root_moves[0].score_is_bound());
+        assert_eq!(w.last_best_move_score, -10, "stopped: tracking is off");
+    }
+
+    #[test]
+    fn aborted_loss_end_to_end_reports_the_last_completed_iteration() {
+        // §8.9 end-to-end: black is lost to the two-rook ladder but has
+        // many moves. Learn where iterations end from an unlimited run
+        // (deterministic, D24), then re-run with a node budget that stops
+        // the search mid-way through the iteration AFTER the first one
+        // whose front score is an exact loss. The aborted iteration must
+        // not degrade the report: the front root move carries exactly
+        // what the last completed iteration published.
+        let fen = "8/8/6k1/R7/8/8/8/1R5K b - - 0 1";
+        let max_depth = 10;
+        let mut probe = Worker::new(board(fen));
+        probe.limits.depth = Some(max_depth);
+        let mut infos: Vec<(Depth, Value, Move, u64)> = Vec::new();
+        {
+            let tt = test_tt();
+            tt.new_search();
+            let stop = AtomicBool::new(false);
+            probe.iterative_deepening(&tt, &stop, &mut |i| {
+                infos.push((i.depth, i.score, i.pv[0], i.nodes));
+            });
+        }
+        let loss_at = infos
+            .iter()
+            .position(|&(_, score, _, _)| is_loss(score))
+            .expect("the ladder must prove the loss within the probe depth");
+        assert!(
+            loss_at + 1 < infos.len(),
+            "need one more iteration to abort"
+        );
+        let budget = infos[loss_at].3 + 1; // stops early in the NEXT iteration
+
+        let mut w = Worker::new(board(fen));
+        w.limits.depth = Some(max_depth);
+        w.limits.nodes = Some(budget);
+        let mut infos2: Vec<(Depth, Value, Move, u64)> = Vec::new();
+        let tt = test_tt();
+        tt.new_search();
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&tt, &stop, &mut |i| {
+            infos2.push((i.depth, i.score, i.pv[0], i.nodes));
+        });
+
+        assert!(stop.load(Ordering::Relaxed), "the node budget must stop");
+        let &(depth, score, first, _) = infos2.last().expect("completed iterations exist");
+        assert!(is_loss(score), "the abort lands in the exact-loss regime");
+        assert!(w.root_depth > depth, "the stop aborted a deeper iteration");
+        // The report equals the last COMPLETED iteration, bound-free —
+        // never the aborted iteration's partial state.
+        assert_eq!(best_score(&w), score);
+        assert_eq!(w.root_moves[0].uci_score, score);
+        assert_eq!(w.best_move(), Some(first));
+        assert!(!w.root_moves[0].score_is_bound());
+        assert_eq!(w.last_best_move_score, score);
+    }
+
+    // --- `go mate n` (§3.5, §8.10; doc 12 §3.9's mate-limit stop) ---
+
+    /// Run `w`'s configured `go` against a fresh TT, returning the stop
+    /// flag's final state.
+    fn go_returning_stop(w: &mut Worker) -> bool {
+        let tt = test_tt();
+        tt.new_search();
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&tt, &stop, &mut |_| {});
+        stop.load(Ordering::Relaxed)
+    }
+
+    #[test]
+    fn go_mate_2_stops_after_proving_the_mate_in_2() {
+        // KRK mates in 2 full moves (3 plies): once an iteration
+        // completes on the exact mate_in(3), `VALUE_MATE - 3 <= 2·2`
+        // raises the stop — far below the safety-net depth cap, which
+        // exists only so a regression cannot run this test to MAX_PLY.
+        let mut w = Worker::new(board("k7/8/2K5/8/8/8/8/7R w - - 0 1"));
+        w.limits.mate = Some(2);
+        w.limits.depth = Some(32);
+        assert!(go_returning_stop(&mut w), "the mate limit must self-stop");
+        assert_eq!(best_score(&w), mate_in(3));
+        assert!(
+            w.root_depth <= 6,
+            "stopped by the mate rule, not the cap: {}",
+            w.root_depth
+        );
+    }
+
+    #[test]
+    fn go_mate_1_ignores_a_longer_mate() {
+        // mate_in(3) is outside `go mate 1` (3 > 2·1): the mate rule must
+        // never fire and the depth cap ends the go with stop untouched.
+        let mut w = Worker::new(board("k7/8/2K5/8/8/8/8/7R w - - 0 1"));
+        w.limits.mate = Some(1);
+        w.limits.depth = Some(5);
+        assert!(!go_returning_stop(&mut w), "a 2-move mate is out of reach");
+        assert_eq!(w.root_depth, 5, "the depth cap ended the go");
+    }
+
+    #[test]
+    fn go_mate_stops_when_the_engine_is_being_mated() {
+        // §3.5 gates on is_mate OR is_mated: a proven mated_in(2)
+        // (2 <= 2·1) ends a `go mate 1` search from the losing side too.
+        let mut w = Worker::new(board("7k/8/6K1/8/8/8/2Q5/8 b - - 0 1"));
+        w.limits.mate = Some(1);
+        w.limits.depth = Some(16);
+        assert!(go_returning_stop(&mut w), "a proven mated score stops");
+        assert_eq!(best_score(&w), mated_in(2));
+        assert!(w.root_depth <= 6, "stopped early: {}", w.root_depth);
+    }
+
+    // --- Main-node fail-high softening (§3.7.2 step 14; §8.11) ---
+
+    #[test]
+    fn main_search_fail_high_softens_toward_beta() {
+        // A single-legal-move position (only e4e5 — the king is boxed by
+        // the rooks) whose child qsearch has no captures and fails low,
+        // returning its exact stand pat E: the depth-1 parent fails high
+        // with best_value = -E and the node-exit blend is pinned exactly
+        // — `(best·depth + beta) / (depth + 1)` = `(-E + beta) / 2`.
+        let fen = "k7/8/8/8/4P3/1r6/7r/K7 w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        init_stack(&mut w.stack);
+        assert_eq!(all_legal(&w.board).len(), 1);
+        let e5 = Move::normal(Square::E4, Square::E5);
+        let mut after = w.board.clone();
+        after.make_move(e5, after.gives_check(e5));
+        let e_child = static_eval(&after);
+        let beta = -e_child - 100; // parent's true value -E sits above it
+        let tt = test_tt();
+        let stop = AtomicBool::new(false);
+        let depth = 1;
+        let v = w.search::<NonPv>(&tt, &stop, beta - 1, beta, depth, true, 1);
+        assert_eq!(v, (-e_child * depth + beta) / (depth + 1));
+        assert!(v >= beta, "still a fail high after the blend");
+        assert!(v < -e_child, "pulled strictly back toward beta");
+    }
+
+    #[test]
+    fn main_search_never_softens_a_decisive_fail_high() {
+        // §8.11: Rxd8# is the first ordered move (the only capture,
+        // MVV-first) and fails high against a tiny window — the mate
+        // distance must come back exact, never blended toward beta.
+        let fen = "3r2k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        init_stack(&mut w.stack);
+        let tt = test_tt();
+        let stop = AtomicBool::new(false);
+        let v = w.search::<NonPv>(&tt, &stop, 99, 100, 1, true, 1);
+        assert_eq!(v, mate_in(2), "ply-relative mate through a fail high");
     }
 
     // --- Zero-window invariant (§3.7.1; §8 criterion 6) ---
