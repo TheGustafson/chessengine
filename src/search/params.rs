@@ -241,6 +241,59 @@ pub const RED_NON_IMPROVING_DEN: i32 = 512;
 /// Flat base added to every base reduction (in 1024ths of a ply).
 pub const RED_BASE: i32 = 1027;
 
+// --- LMR reduction finalization + search mechanics (design/10 §3.7/§3.8) ---
+//
+// Wave-A item 4 (design/10 §4): the base [`Worker::reduction`] output `r`
+// (1024ths of a ply) accretes the Wave-A subset of the §3.7 finalization —
+// the flat rebase, the move-count discount, the cut-node surcharge, and the
+// TT-move rebate — then §3.8 turns it into a reduced zero-window scout depth
+// `d = max(1, min(new_depth - r/RED_UNIT, new_depth + RED_MAX_DEEPER)) + PV`,
+// with the deeper/shallower re-search rule and the non-LMR dock path. The
+// ttPv, correction (`/26131`), tt_capture, cutoffCnt, stat_score and all-node
+// terms — and the LMR flat conthist bonus — are deferred to their later waves
+// (design/10 §4 Waves C/D/F), so this item touches ONLY the constants below.
+
+/// The application unit of the reduction accumulator: reductions are carried
+/// in 1024ths of a ply and divided by this only at the moment they become a
+/// depth (`new_depth - r / RED_UNIT`, §3.8 — the suite's unit convention).
+pub const RED_UNIT: i32 = 1024;
+/// Flat rebase added to every finalized reduction (§3.7).
+pub const RED_FLAT: i32 = 714;
+/// Per-move-count reduction discount `r -= RED_MOVECOUNT * move_count`: later
+/// moves in the list reduce a little less than the raw log table implies
+/// (they were tried later precisely because ordering distrusted them, §3.7).
+pub const RED_MOVECOUNT: i32 = 62;
+/// Cut-node reduction surcharge: an expected-fail-high node reduces its late
+/// moves harder — it wants a cheap refutation, not a thorough search (§3.7).
+pub const RED_CUTNODE: i32 = 3995;
+/// Extra cut-node surcharge when the node has no TT move: nothing trustworthy
+/// to search near full depth, so reduce even more (§3.7).
+pub const RED_CUTNODE_NO_TTMOVE: i32 = 1059;
+/// TT-move reduction rebate `r = max(0, r - RED_TTMOVE_SUB)`: the move the TT
+/// records as best is searched close to full depth (§3.7). In Wave A this is
+/// a plain `if m == tt.mv`; the cutoffCnt `if/else` wrapper is Wave D.
+pub const RED_TTMOVE_SUB: i32 = 2016;
+/// Cap on how many plies a NEGATIVE net `r` may DEEPEN the reduced scout past
+/// `new_depth` (`min(new_depth - r/RED_UNIT, new_depth + RED_MAX_DEEPER)`,
+/// §3.8); PV nodes get a further unconditional +1.
+pub const RED_MAX_DEEPER: Depth = 2;
+/// Deeper-re-search margin: after a reduced scout beats alpha, re-search one
+/// ply DEEPER when it beat the running best by more than this (§3.8).
+pub const LMR_DEEPER_MARGIN: Value = 52;
+/// Shallower-re-search margin: re-search one ply SHALLOWER when the scout only
+/// barely cleared the running best (`value < best_value + this`, §3.8).
+pub const LMR_SHALLOWER_MARGIN: Value = 9;
+/// Non-LMR path: a node with no TT move adds this to `r` before the depth
+/// docks below — the full-depth analogue of the cut-node no-ttMove surcharge
+/// (§3.8).
+pub const RED_FULLDEPTH_NO_TTMOVE: i32 = 1085;
+/// Non-LMR path first depth dock: an `r` above this costs one ply even for a
+/// move that does not qualify for LMR proper (§3.8).
+pub const RED_FULLDEPTH_DOCK1: i32 = 5039;
+/// Non-LMR path second depth dock: an `r` above this (and `new_depth > 2`)
+/// costs a second ply (§3.8).
+pub const RED_FULLDEPTH_DOCK2: i32 = 5223;
+
 // --- Transposition-table interaction (design/07 §3.7.2 steps 7/14) ---
 
 /// TT cutoffs are refused once the halfmove clock reaches this (the

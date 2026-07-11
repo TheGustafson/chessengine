@@ -885,9 +885,16 @@ impl Worker {
         // skipped: the node borrows the grandparent's eval and jumps
         // straight to the move loop — no pruning happens in check.
         let raw_eval;
+        // `improving` is hoisted out of the not-in-check branch: doc 10's LMR
+        // reduction (below, in the move loop) reads it even when this node is
+        // in check — where SF pins it `false` (the pre-check eval bears no
+        // useful trend). RFP/NMP still consume the computed value inside the
+        // branch.
+        let improving;
         if in_check {
             raw_eval = VALUE_NONE;
             self.stack[cur].static_eval = self.stack[cur - 2].static_eval;
+            improving = false;
         } else {
             // Step 6 — eval reuse: a valid cached eval (RAW, uncorrected —
             // D22) saves the evaluate() call. Correction history will
@@ -961,7 +968,7 @@ impl Worker {
             // the parent's — the position is turning our way. Both use
             // `ss.static_eval` (never the substituted `eval`), and an unset
             // predecessor is the large `VALUE_NONE` sentinel (SF parity).
-            let improving = self.stack[cur].static_eval > self.stack[cur - 2].static_eval;
+            improving = self.stack[cur].static_eval > self.stack[cur - 2].static_eval;
             let opponent_worsening = self.stack[cur].static_eval > -self.stack[cur - 1].static_eval;
             // A capturing ttMove does not veto RFP (N10); a quiet one does —
             // a stored quiet best move is a standing reason to search.
@@ -1142,52 +1149,93 @@ impl Worker {
             // every later move must first prove itself against a
             // zero-width window before it earns a PV re-search.
             let gives_check = self.board.gives_check(m);
-            let new_depth = depth - 1;
+            // `new_depth` is `depth - 1` (no extensions until Wave D). It is
+            // `mut` because the deeper/shallower rule (§3.8) adjusts it in
+            // place, and the PV re-search below reads the adjusted value.
+            let mut new_depth = depth - 1;
+            // N-loop / §3.5 — the base per-move reduction (design/10 §3.3).
+            // `delta = beta - alpha` is the local window; at NonPV nodes it is
+            // 1, at the root it is the aspiration width.
+            let delta = beta - alpha;
+            let mut r = self.reduction(improving, depth, move_count, delta);
             self.do_move(tt, m, gives_check, ply);
+            // §3.7 — reduction finalization, Wave-A subset (design/10 §4). The
+            // flat rebase, the move-count discount, the cut-node surcharge
+            // (plus its no-ttMove extra), and the TT-move rebate. Everything
+            // else in the §3.7 accretion list — the ttPv block, the
+            // correction/tt_capture/cutoffCnt/stat_score/all-node terms — is
+            // deferred to Waves C/D/F and is intentionally absent here.
+            r += params::RED_FLAT;
+            r -= params::RED_MOVECOUNT * move_count;
+            if cut_node {
+                r += params::RED_CUTNODE
+                    + params::RED_CUTNODE_NO_TTMOVE * i32::from(tt_data.mv == Move::NULL);
+            }
+            if m == tt_data.mv {
+                // The TT's own best move is searched close to full depth.
+                r = (r - params::RED_TTMOVE_SUB).max(0);
+            }
             // Overwritten by whichever call below runs last. A PV node's
             // first move skips (a)/(b), and (c)'s `move_count == 1` arm
             // never reads the sentinel.
             let mut value = -VALUE_INFINITE;
 
-            // (a) Reduced zero-window scout, expected to fail low. LMR
-            // scouts always START as cut nodes (§3.7.1); the reduction r
-            // is doc 10's (P9) — the skeleton runs r = 0, so `d` stays
-            // `new_depth` (later: `new_depth - r/1024`, clamped) and the
-            // recorded `ss.reduction` is 0 (the child reads it back and
-            // resets it at entry, step 2).
+            // (a) Reduced zero-window scout — LMR proper (design/10 §3.8). The
+            // net reduction `r / RED_UNIT` (1024ths → plies) shrinks
+            // `new_depth` to the scout depth `d`, clamped to
+            // `[1, new_depth + RED_MAX_DEEPER]` and lifted one ply at PV nodes;
+            // a negative net `r` may search a move DEEPER than `new_depth`.
+            // LMR scouts always start as cut nodes (§3.7.1). `ss.reduction`
+            // records the ply delta for the child's (deferred) hindsight read
+            // (N6) and is cleared after — the child clears it at its own entry
+            // too, but resetting by hand keeps the protocol robust if a future
+            // `d <= 0` were ever to drop the scout straight to qsearch.
             if depth >= 2 && move_count > 1 {
-                let d = new_depth;
+                let d = (new_depth - r / params::RED_UNIT)
+                    .min(new_depth + params::RED_MAX_DEEPER)
+                    .max(1)
+                    + Depth::from(NT::PV);
                 self.stack[cur].reduction = new_depth - d;
                 value = -self.search::<NonPv>(tt, stop, -(alpha + 1), -alpha, d, true, ply + 1);
+                self.stack[cur].reduction = 0;
 
-                // (b) The scout beat alpha at REDUCED depth: verify at
-                // full depth, still zero-window, with the negamax sign
-                // discipline on cut-node-ness (`!cut_node`, §3.7.1).
-                // Structurally dead while r = 0 keeps d == new_depth.
+                // (b) The reduced scout beat alpha: apply the deeper/shallower
+                // rule to `new_depth`, then re-search full-depth zero-window
+                // with the flipped cut-node discipline (`!cut_node`, §3.7.1)
+                // whenever the adjusted depth still exceeds the reduced `d`.
+                // Gated on `d < new_depth` so a scout that was DEEPENED (or
+                // ran at full depth) never triggers a shallower re-search. The
+                // flat +1415 conthist bonus SF grants on either arm is Wave C.
                 if value > alpha && d < new_depth {
-                    value = -self.search::<NonPv>(
-                        tt,
-                        stop,
-                        -(alpha + 1),
-                        -alpha,
-                        new_depth,
-                        !cut_node,
-                        ply + 1,
-                    );
+                    let do_deeper = value > best_value + params::LMR_DEEPER_MARGIN;
+                    let do_shallower = value < best_value + params::LMR_SHALLOWER_MARGIN;
+                    new_depth += Depth::from(do_deeper) - Depth::from(do_shallower);
+                    if new_depth > d {
+                        value = -self.search::<NonPv>(
+                            tt,
+                            stop,
+                            -(alpha + 1),
+                            -alpha,
+                            new_depth,
+                            !cut_node,
+                            ply + 1,
+                        );
+                    }
                 }
             } else if !NT::PV || move_count > 1 {
-                // (b) directly, when (a)'s conditions don't hold: depth 1,
-                // or a NonPV node's first move (where `(-(alpha+1), -alpha)`
-                // IS the node's own zero-width window).
-                value = -self.search::<NonPv>(
-                    tt,
-                    stop,
-                    -(alpha + 1),
-                    -alpha,
-                    new_depth,
-                    !cut_node,
-                    ply + 1,
-                );
+                // Non-LMR zero-window path (§3.8): depth 1, or a NonPV node's
+                // first move (where `(-(alpha+1), -alpha)` IS the node's own
+                // zero-width window). A node with no TT move reduces a little
+                // more, and a very high nominal `r` still docks 1–2 plies even
+                // without LMR proper.
+                if tt_data.mv == Move::NULL {
+                    r += params::RED_FULLDEPTH_NO_TTMOVE;
+                }
+                let d = new_depth
+                    - Depth::from(r > params::RED_FULLDEPTH_DOCK1)
+                    - Depth::from(r > params::RED_FULLDEPTH_DOCK2 && new_depth > 2);
+                value =
+                    -self.search::<NonPv>(tt, stop, -(alpha + 1), -alpha, d, !cut_node, ply + 1);
             }
 
             // (c) PV re-search, full window: PV/Root nodes only, for the
@@ -1383,11 +1431,10 @@ impl Worker {
     ///
     /// Integer division truncates toward zero exactly like the Stockfish
     /// source this re-expresses (D27), so the term order matters and is
-    /// preserved. Wired here but UNUSED until Wave-A item 4 applies LMR in
-    /// the move loop (design/10 §4); its correctness is pinned by the
-    /// golden-value and algebra tests below (§5).
-    // Wired by Wave-A item 4 (LMR core), design/10 §4; unused until then.
-    #[allow(dead_code)]
+    /// preserved. Consumed by the move loop's LMR (design/10 §3.7/§3.8,
+    /// Wave-A item 4): the returned `r` is finalized with the Wave-A accretion
+    /// subset and applied as `new_depth - r / RED_UNIT`. Its base algebra is
+    /// additionally pinned by the golden-value tests below (§5).
     #[inline]
     fn reduction(&self, improving: bool, depth: Depth, move_number: i32, delta: i32) -> i32 {
         debug_assert!(
@@ -2396,6 +2443,43 @@ mod tests {
         assert_eq!(best_score(&w), mate_in(3), "NMP must not corrupt the mate");
     }
 
+    // --- LMR core (design/10 §3.7/§3.8, Wave-A item 4) ---
+
+    #[test]
+    fn lmr_shrinks_the_effective_branching_factor() {
+        // The payoff of LMR (design/10 §6): reducing late moves collapses the
+        // per-ply effective branching factor from plain PVS's ~6–8 toward
+        // ~2. On a quiet Italian-ish midgame the node count from depth 6 to
+        // depth 8 must grow FAR less than an unreduced tree would — a loose
+        // ceiling (a per-ply EBF of ~3.5, versus LMR's measured ~1.9) that a
+        // mis-signed or mis-scaled reduction (which would fail to prune, or
+        // prune the wrong moves and re-search them all) blows straight past.
+        // Node counts are single-thread deterministic (D24), so this is a
+        // stable regression guard, not a timing test.
+        let fen = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 1";
+        let n6 = go_depth(fen, 6).nodes;
+        let n8 = go_depth(fen, 8).nodes;
+        assert!(
+            n8 < 12 * n6,
+            "LMR must keep the tree shallow: nodes(8)={n8} !< 12·nodes(6)={}",
+            12 * n6
+        );
+    }
+
+    #[test]
+    fn lmr_active_deep_search_preserves_the_exact_mate() {
+        // Mate safety with LMR reducing the bulk of the tree (the §3.8
+        // `depth >= 2 && move_count > 1` gate fires everywhere at this
+        // depth): the KRK forced mate in 2 full moves (mate_in(3), three
+        // plies) must still come back EXACT at depth 9, never a reduction-
+        // truncated shorter/longer distance. The re-search rules and the
+        // decisive-score guards are what this pins — complementing the
+        // shallow mate suite below (which now also runs under LMR) and the
+        // NMP mate test above.
+        let w = go_depth("k7/8/2K5/8/8/8/8/7R w - - 0 1", 9);
+        assert_eq!(best_score(&w), mate_in(3), "LMR must not corrupt the mate");
+    }
+
     // --- Mate suite (doc 07 §5/§8.4): exact ply-relative mate scores (D5) ---
 
     #[test]
@@ -3370,7 +3454,10 @@ mod tests {
         // not degrade the report: the front root move carries exactly
         // what the last completed iteration published.
         let fen = "8/8/6k1/R7/8/8/8/1R5K b - - 0 1";
-        let max_depth = 10;
+        // Doc 10's LMR (P9) deepens the tree, so the ladder now first proves
+        // the loss at iteration 10 (was earlier pre-LMR); the probe cap must
+        // leave at least one iteration AFTER that for the abort to land in.
+        let max_depth = 12;
         let mut probe = Worker::new(board(fen));
         probe.limits.depth = Some(max_depth);
         let mut infos: Vec<(Depth, Value, Move, u64)> = Vec::new();
@@ -3802,10 +3889,19 @@ mod tests {
     #[test]
     fn aspiration_preserves_values_on_quiet_positions_at_fixed_depth() {
         // Step-8 regression bar (§4/§5): on positions whose iteration
-        // scores stay inside every window, aspiration is a pure
-        // node-count optimization — same fixed-depth value and best move
-        // as the full-window driver. The trace assert pins the fixtures'
+        // scores stay inside every window, aspiration keeps the full-window
+        // driver's BEST MOVE. The trace assert pins the fixtures'
         // load-bearing property: no attempt ever failed.
+        //
+        // Pre-P9 this also pinned exact fixed-depth SCORE identity, but doc
+        // 10's LMR (`Worker::reduction`, §3.3) scales the base reduction by
+        // `delta / root_delta` — the LOCAL window over the aspiration window.
+        // A narrow aspiration window and the `2·VALUE_INFINITE` full window
+        // therefore reduce their NonPV subtrees differently, so the lossy
+        // fixed-depth score can drift a few cp (measured: 21cp on the
+        // queen-up mirror) even when the chosen move is unchanged. The best
+        // move, mate distances (mate suite) and the SPRT (D25) are the
+        // surviving strength claims; exact score identity is a pre-LMR oracle.
         //
         // "Quiet" here means score-STABLE, which needs a clean material
         // edge: delta = 5 + avg²/10588 then dwarfs the odd/even tempo
@@ -3839,7 +3935,8 @@ mod tests {
                 "score-stable fixture stayed inside every window: {fen}"
             );
             let full = go_depth_full_window(fen, depth);
-            assert_eq!(best_score(&asp), best_score(&full), "value identity: {fen}");
+            // Best move survives the window-width-coupled LMR drift (above);
+            // exact score identity does not, so it is no longer asserted.
             assert_eq!(
                 asp.best_move(),
                 full.best_move(),
@@ -3992,40 +4089,27 @@ mod tests {
     // --- TT value equality at fixed depth (doc 07 §4 step 6's bar,
     //     re-scoped by step 7; doc 08 §8 criterion 6's value half) ---
 
-    /// One position of the TT value-equality suite: search it twice with
-    /// the TT enabled — a fresh table, then the same table warmed by that
-    /// run — assert both agree, and return the shared value. Same-depth
-    /// TT state must never move a fixed-depth value: an equal-draft
-    /// entry's bound is a correct bound on the node's fixed-depth value
+    /// One position of the TT value-equality suite: the fixed-depth value of
+    /// the full-window driver against a FRESH table. A cutoff on an
+    /// equal-draft entry is a correct bound on the node's fixed-depth value
     /// (§3.12 keeps mate scores exact; the fixtures keep rule-50 and
-    /// repetition path-dependence out of reach), so a cutoff only
-    /// short-circuits work alpha-beta would have done anyway.
+    /// repetition path-dependence out of reach), so with a FRESH table the
+    /// returned value equals cutoff-free negamax — which is the TT-boundary
+    /// correctness the caller pins.
     ///
-    /// A table warmed by a DEEPER run is deliberately NOT an equality
-    /// leg anymore: plan step 7 made the NonPV TT cutoffs live, and
-    /// `tt_depth > depth - (tt_value <= beta)` accepts deeper drafts —
-    /// deeper information legitimately substitutes into zero-window
-    /// subtrees and may move a fixed-depth value (measured on the
-    /// two-rook ladder at depth 3 after a depth-4 warm-up). That is the
-    /// cutoff doing its job, not a leak; the P6 version of this helper
-    /// asserted the stricter triple only because the cutoffs were
-    /// unreachable before the zero-window existed.
-    ///
-    /// Runs through the full-window test driver since plan step 8: the
-    /// aspirated driver's decisive-score dynamics (shallower fail-high
-    /// re-searches) move fixed-depth values on the mate fixtures below
-    /// for reasons that have nothing to do with TT semantics — which is
-    /// what this suite pins.
+    /// Pre-P9 this searched twice (fresh, then the same table warmed by that
+    /// run) and asserted fresh == warm. Doc 10's LMR (`Worker::reduction`,
+    /// §3.7) couples the reduction to TT-supplied ttMoves (the ttMove rebate
+    /// and the no-ttMove cut-node/full-depth surcharges), so a WARM table's
+    /// richer move info legitimately reduces its NonPV subtrees differently
+    /// and drifts the lossy fixed-depth score a few cp (measured: 1cp on the
+    /// two-rook ladder, 4cp on the startpos) — never a mate distance, which
+    /// the mate suite pins. Fresh-vs-warm determinism is therefore no longer
+    /// a TT invariant; the surviving one is fresh-TT == negamax below, and
+    /// warm-TT node shrink is covered by
+    /// [`warm_tt_searches_fewer_nodes_at_equal_depth`].
     fn tt_value_pair(fen: &str, depth: Depth) -> Value {
-        let tt = test_tt();
-        let fresh = go_depth_full_window_on(fen, depth, &tt);
-        let warm = go_depth_full_window_on(fen, depth, &tt);
-        assert_eq!(
-            best_score(&fresh),
-            best_score(&warm),
-            "fresh vs warm TT: {fen}"
-        );
-        best_score(&fresh)
+        best_score(&go_depth_full_window_on(fen, depth, &test_tt()))
     }
 
     #[test]
@@ -4066,12 +4150,21 @@ mod tests {
     }
 
     #[test]
-    fn tt_state_never_moves_the_startpos_value() {
-        // Full-material coverage for the suite above, without the
-        // exponential no-cutoff oracle: fresh and same-depth-warmed
-        // searches must agree on the startpos value — any inequality
-        // would be same-draft TT state moving a returned value.
-        tt_value_pair(START_FEN, 3);
+    fn fresh_startpos_search_is_bit_reproducible() {
+        // Full-material coverage without the exponential no-cutoff oracle.
+        // Pre-P9 this asserted a fresh vs same-depth-WARMED startpos value
+        // match; doc 10's LMR couples reductions to TT-supplied ttMoves
+        // (see [`tt_value_pair`]), so a warm table legitimately drifts the
+        // startpos value a few cp. The surviving invariant is single-thread
+        // DETERMINISM (D24, §8 criterion 6): two independent FRESH searches
+        // of the startpos — same driver, same fresh table, node-count dither
+        // and all — reproduce the value, the best move AND the node count
+        // bit-for-bit.
+        let a = go_depth_full_window(START_FEN, 3);
+        let b = go_depth_full_window(START_FEN, 3);
+        assert_eq!(best_score(&a), best_score(&b), "startpos value determinism");
+        assert_eq!(a.best_move(), b.best_move(), "startpos move determinism");
+        assert_eq!(a.nodes, b.nodes, "startpos node-count determinism");
     }
 
     #[test]
