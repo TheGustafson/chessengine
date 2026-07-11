@@ -28,9 +28,7 @@
 //! the store at node exit with `value_to_tt`/bound selection, the sticky
 //! `ss.tt_pv` round-trip, qsearch's `DEPTH_QS` probe/store discipline
 //! (never `Exact` there), the base NonPV TT cutoffs with the rule-50
-//! guard (compiled but unreachable until the PVS zero-window creates
-//! NonPV nodes — which is exactly what keeps step 6's TT-on/off VALUE
-//! equality bit-exact, proven by the §5 suite below), and the TT prefetch
+//! guard, and the TT prefetch
 //! hook wired into [`Worker::do_move`] through the [`MakeMoveHooks`] seam
 //! (doc 04 §3.10 hook A, doc 08 §3.15). The table itself reaches the
 //! search as `&TranspositionTable` through the search entry (doc 07
@@ -39,8 +37,24 @@
 //! — the worker deliberately does NOT store the handle, so the idle UCI
 //! thread keeps `Arc::get_mut` for resize/clear).
 //!
-//! Deliberately NOT here yet, per the doc's staging: the PVS zero-window
-//! three-call structure (step 7), aspiration windows (§3.6, step 8), the
+//! P7 converts the move loop to principal variation search (design/07
+//! §4 step 7, §3.7.2 step 10): the three-call structure — (a) a reduced
+//! zero-window scout for every move after the first (r = 0 until doc
+//! 10's LMR lands in P9, so the (b) full-depth zero-window re-search
+//! after a reduced fail-high is structurally present but cannot trigger
+//! yet), (b) the plain full-depth zero-window search where (a) does not
+//! apply, and (c) the full-window PV re-search for the first move and
+//! for any scout that beats alpha — with the §3.7.1 cut-node discipline
+//! (scouts start as cut nodes, plain zero-window searches flip
+//! `!cut_node`, PV re-searches never are) enforced by the node-entry
+//! debug_asserts. This is what turns the P6 NonPV TT cutoffs
+//! (main-search step 7 and qsearch's `DEPTH_QS` cutoff) into live code,
+//! and it leans on the P6 ttMove-first ordering: the move most likely
+//! to be best gets the one full-window search, everything else is
+//! proven `<= alpha` as cheaply as possible.
+//!
+//! Deliberately NOT here yet, per the doc's staging:
+//! aspiration windows (§3.6, step 8), the
 //! full qsearch rules including the stand-pat tt-value substitution and
 //! softening blends (§3.8, step 9), the hygiene pass (forgotten mate,
 //! aborted loss, `go mate n`, equal-value dither — step 10), the
@@ -411,14 +425,14 @@ impl Worker {
 
     /// The main search node (design/07 §3.7.2), v1 subset: node order
     /// steps 2/3/4/5/6/7/9/10/11/12/13/14 — no ⟨D10⟩ heuristics (step 8),
-    /// no equal-value dither in step 12 (plan step 10). Step 10 is plain
-    /// full-window negamax until the PVS three-call structure lands (plan
-    /// step 7), so PV nodes only ever spawn PV children here — which also
-    /// keeps `pv_table[1]` fresh for every root move's step-12 PV rebuild,
-    /// and makes the step-7 NonPV TT cutoff below dead code for now:
-    /// nothing the TT stores can reach a returned value yet, so TT-on and
-    /// TT-off searches return identical values at fixed depth (the step-6
-    /// done-condition, pinned by the §5 equality suite).
+    /// no equal-value dither in step 12 (plan step 10). Step 10 is the
+    /// PVS three-call structure (plan step 7) with reductions pinned at
+    /// r = 0 — LMR is doc 10's (P9). Zero-window scouts are NonPV and
+    /// never write PV lines, so `pv_table[1]` stays fresh for every root
+    /// move's step-12 PV rebuild (§3.3), and the step-7 NonPV TT cutoff
+    /// below is live: zero-window subtrees may resolve straight from the
+    /// table — the source of the step-7 node-count drop the Bench:
+    /// trailer records (D24).
     // The parameter list is the doc 07 §3.7.1 node signature plus the two
     // plumbed-through borrows (`tt` per doc 07 §3.10, `stop` per §3.9) —
     // SF's search carries the same state; bundling would only rename it.
@@ -551,8 +565,8 @@ impl Worker {
             // agreement, depth ≥ 7 verification and `penalize` refinements
             // are ⟨D10⟩): enough stored depth, a valid value, the bound
             // pointing the cutoff's way, and never when the halfmove clock
-            // could stale the entry (rule-50 guard, §3.12). Unreachable
-            // until plan step 7's zero-window creates NonPV nodes.
+            // could stale the entry (rule-50 guard, §3.12). Live since
+            // plan step 7's zero-window scouts create NonPV nodes.
             if !NT::PV
                 && self.stack[cur].excluded_move == Move::NULL
                 && is_valid(tt_value)
@@ -599,14 +613,70 @@ impl Worker {
             self.stack[cur].move_count = move_count;
             let nodes_before = self.nodes; // root effort accounting (§3.4)
 
-            // Step 10 — make + recurse, full-window negamax (see fn docs).
+            // Step 10 — make + recurse: the PVS three-call structure
+            // (§3.7.2). Only the move ordered first (the ttMove when the
+            // P6 probe supplied one — its likely-best status is what makes
+            // the scouts below usually right) gets a full window up front;
+            // every later move must first prove itself against a
+            // zero-width window before it earns a PV re-search.
             let gives_check = self.board.gives_check(m);
+            let new_depth = depth - 1;
             self.do_move(tt, m, gives_check, ply);
-            let value = if NT::PV {
-                -self.search::<Pv>(tt, stop, -beta, -alpha, depth - 1, false, ply + 1)
-            } else {
-                -self.search::<NonPv>(tt, stop, -beta, -alpha, depth - 1, !cut_node, ply + 1)
-            };
+            // Overwritten by whichever call below runs last. A PV node's
+            // first move skips (a)/(b), and (c)'s `move_count == 1` arm
+            // never reads the sentinel.
+            let mut value = -VALUE_INFINITE;
+
+            // (a) Reduced zero-window scout, expected to fail low. LMR
+            // scouts always START as cut nodes (§3.7.1); the reduction r
+            // is doc 10's (P9) — the skeleton runs r = 0, so `d` stays
+            // `new_depth` (later: `new_depth - r/1024`, clamped) and the
+            // recorded `ss.reduction` is 0 (the child reads it back and
+            // resets it at entry, step 2).
+            if depth >= 2 && move_count > 1 {
+                let d = new_depth;
+                self.stack[cur].reduction = new_depth - d;
+                value = -self.search::<NonPv>(tt, stop, -(alpha + 1), -alpha, d, true, ply + 1);
+
+                // (b) The scout beat alpha at REDUCED depth: verify at
+                // full depth, still zero-window, with the negamax sign
+                // discipline on cut-node-ness (`!cut_node`, §3.7.1).
+                // Structurally dead while r = 0 keeps d == new_depth.
+                if value > alpha && d < new_depth {
+                    value = -self.search::<NonPv>(
+                        tt,
+                        stop,
+                        -(alpha + 1),
+                        -alpha,
+                        new_depth,
+                        !cut_node,
+                        ply + 1,
+                    );
+                }
+            } else if !NT::PV || move_count > 1 {
+                // (b) directly, when (a)'s conditions don't hold: depth 1,
+                // or a NonPV node's first move (where `(-(alpha+1), -alpha)`
+                // IS the node's own zero-width window).
+                value = -self.search::<NonPv>(
+                    tt,
+                    stop,
+                    -(alpha + 1),
+                    -alpha,
+                    new_depth,
+                    !cut_node,
+                    ply + 1,
+                );
+            }
+
+            // (c) PV re-search, full window: PV/Root nodes only, for the
+            // first move and for any scout that beat alpha. PV children
+            // are never cut nodes — and only THIS call writes
+            // `pv_table[ply + 1]`, which keeps §3.3's freshness invariant:
+            // a step-13 PV update always follows a full-window PV-typed
+            // child search, never a zero-window scout.
+            if NT::PV && (move_count == 1 || value > alpha) {
+                value = -self.search::<Pv>(tt, stop, -beta, -alpha, new_depth, false, ply + 1);
+            }
             self.undo_move(m);
 
             // Step 11 — stop check: the subtree result is untrusted
@@ -732,8 +802,11 @@ impl Worker {
                 rm.uci_score = alpha;
             }
             // Rebuild the PV from the fresh child line — §3.3's "the root
-            // copies pv_table[1]" invariant. In v1 every root child is a
-            // full-window PV search, so the row is always fresh.
+            // copies pv_table[1]" invariant. This branch only runs when
+            // the (c) full-window PV re-search ran last (§3.7.2 step 10:
+            // `move_count == 1`, or a final value above alpha — which a
+            // skipped re-search cannot produce), so the row is always
+            // fresh; zero-window scouts are NonPV and never write it.
             rm.pv.truncate(1);
             rm.pv.extend_from_slice(self.pv_table[1].as_slice());
             // Best-move flip mid-iteration: the TM instability signal
@@ -757,9 +830,7 @@ impl Worker {
     /// eval-cache write, and a store at exit that is NEVER `Exact`. Still
     /// missing (plan step 9): the step-7 per-move rules (late-move cutoff,
     /// futility, SEE gates), the softening blends, the stand-pat tt-value
-    /// substitution (deliberately deferred — at v1's all-PV nodes it would
-    /// leak TT values into returned scores and break the step-6 TT-on/off
-    /// value equality), and the narrow stalemate test.
+    /// substitution, and the narrow stalemate test.
     ///
     /// No stop poll here (§3.9, SF parity): qsearch is bounded by the
     /// main-search checks above it.
@@ -811,8 +882,8 @@ impl Worker {
         self.stack[cur].tt_hit = tt_hit;
 
         // The NonPV TT cutoff (§3.8 step 4): any stored depth qualifies
-        // (`>= DEPTH_QS`). Like the main search's step 7, unreachable
-        // until the PVS zero-window creates NonPV qsearch nodes.
+        // (`>= DEPTH_QS`). Like the main search's step 7, live since the
+        // PVS zero-window (plan step 7) creates NonPV qsearch nodes.
         if !NT::PV
             && is_valid(tt_value)
             && tt_data.depth >= DEPTH_QS
@@ -1510,19 +1581,85 @@ mod tests {
         assert_eq!(w.last_best_move_depth, 1);
     }
 
-    // --- Alpha-beta equivalence vs pure negamax (doc 07 §5) ---
+    // --- Zero-window invariant (§3.7.1; §8 criterion 6) ---
     //
-    // Fail-soft alpha-beta over a FIXED tree returns the exact minimax
-    // value at a full-window root. The v1 tree IS fixed (no
-    // window-dependent pruning anywhere: qsearch has no futility/SEE
-    // rules yet, and the TT only reorders moves and caches raw evals —
-    // never a returned value, since the sanctioned NonPV cutoffs are
-    // unreachable without zero-window nodes), so a cutoff-free reference
-    // walking the same tree — same generators, same stand-pat, same
-    // terminal rules — must agree exactly with the final iteration
-    // (earlier iterations only reorder the root, which cannot move an
-    // exact full-window value). Positions are chosen with no reachable
-    // repetitions so the node-counter draw dither cannot fire.
+    // The node-entry debug_asserts ARE the instrumentation criterion 6
+    // asks for: every debug-build search in this suite executes them at
+    // every node, so a green debug run IS the "no NonPV node with
+    // beta != alpha + 1, no PV cut node" report. The #[should_panic]
+    // tests prove the asserts actually fire on the two illegal
+    // combinations (doc 07 §5's NodeType guarantees); they are
+    // debug-gated because release strips `debug_assert!`.
+
+    #[cfg(debug_assertions)]
+    fn raw_search_worker() -> (Worker, TranspositionTable) {
+        let mut w = Worker::new(board(START_FEN));
+        init_stack(&mut w.stack);
+        (w, test_tt())
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "NonPV requires a zero window")]
+    fn nonpv_search_rejects_a_wide_window() {
+        let (mut w, tt) = raw_search_worker();
+        let stop = AtomicBool::new(false);
+        // Width-2 window at a NonPV node: the §3.7.1 invariant must trip.
+        // Depth 2 keeps the call out of the depth-0 qsearch dispatch.
+        w.search::<NonPv>(&tt, &stop, 0, 2, 2, true, 1);
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "NonPV requires a zero window")]
+    fn nonpv_qsearch_rejects_a_wide_window() {
+        let (mut w, tt) = raw_search_worker();
+        w.qsearch::<NonPv>(&tt, 0, 2, 1);
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "PV nodes are never cut nodes")]
+    fn pv_node_rejects_cut_node_status() {
+        let (mut w, tt) = raw_search_worker();
+        let stop = AtomicBool::new(false);
+        w.search::<Pv>(&tt, &stop, 0, 2, 2, true, 1);
+    }
+
+    #[test]
+    fn bench_suite_debug_run_upholds_the_node_invariants() {
+        // §8 criterion 6's instrumented run over the bench suite: in a
+        // debug build every node entry executes the §3.7.1 asserts, so
+        // completing all 49 positions cleanly is the evidence. Depth 2
+        // keeps the debug-mode board-consistency oracle affordable; the
+        // full-depth version of this run is tools/check.sh's release
+        // bench (which cannot carry the asserts — hence this miniature).
+        let tt = test_tt();
+        for entry in crate::bench::BENCH_POSITIONS {
+            let fen = entry.split(" moves").next().unwrap();
+            let mut w = Worker::new(board(fen));
+            w.limits.depth = Some(2);
+            go(&mut w, &tt);
+        }
+    }
+
+    // --- PVS equivalence vs full-window negamax (doc 07 §4 step 7, §5) ---
+    //
+    // Fail-soft alpha-beta over a fixed tree returns the exact minimax
+    // value at a full-window root, and the PVS three-call structure
+    // preserves it: a zero-window scout that fails low has proven
+    // `value <= alpha` (so skipping its PV re-search is sound), and one
+    // that beats alpha is re-searched with the full window before
+    // anything consumes it. The caveat since step 7 made the NonPV TT
+    // cutoffs live: a cutoff may substitute a DEEPER stored value for a
+    // scout's fixed-depth value. The step-7 done-condition ("scores
+    // unchanged at fixed depth") pins down that this does not move the
+    // root value on this suite — the cutoff-free full-window reference
+    // walking the same tree (same generators, same stand-pat, same
+    // terminal rules) must agree exactly with the final iteration.
+    // Positions are chosen with no reachable repetitions so the
+    // node-counter draw dither cannot fire, and with little material so
+    // the exponential no-cutoff oracle stays cheap.
 
     fn ref_qsearch(b: &mut Board, ctx: &mut EvalContext, ply: usize) -> Value {
         let in_check = !b.checkers().is_empty();
@@ -1575,38 +1712,95 @@ mod tests {
         best
     }
 
+    /// Full-window negamax root oracle: the exact minimax value plus
+    /// EVERY root move attaining it. PVS may legitimately tie-break
+    /// differently than the reference loop (ttMove-first ordering vs
+    /// generation order), so the bestmove bar is set membership.
+    fn ref_root(fen: &str, depth: Depth) -> (Value, Vec<Move>) {
+        let mut b = board(fen);
+        let mut ctx = EvalContext::new();
+        let list = all_legal(&b);
+        let mut best = -VALUE_INFINITE;
+        let mut best_moves: Vec<Move> = Vec::new();
+        for m in &list {
+            b.make_move(m, b.gives_check(m));
+            let v = -ref_negamax(&mut b, &mut ctx, depth - 1, 1);
+            b.unmake_move(m);
+            match v.cmp(&best) {
+                std::cmp::Ordering::Greater => {
+                    best = v;
+                    best_moves.clear();
+                    best_moves.push(m);
+                }
+                std::cmp::Ordering::Equal => best_moves.push(m),
+                std::cmp::Ordering::Less => {}
+            }
+        }
+        (best, best_moves)
+    }
+
     #[test]
-    fn alpha_beta_equals_pure_negamax_on_tiny_positions() {
-        let cases = [
+    fn pvs_matches_full_window_negamax_at_fixed_depth() {
+        // doc 07 §4 step 7 done-condition + §5 regression strategy: PVS
+        // returns the same VALUE and an equally-best MOVE as full-window
+        // negamax at fixed depth. Node counts drop instead of matching —
+        // that half of the done-condition is the Bench: trailer (D24).
+        let suite: &[(&str, Depth)] = &[
             // KRK mate-in-2: exercises mate-distance pruning soundness.
             ("k7/8/2K5/8/8/8/8/7R w - - 0 1", 3),
             // Tiny pawn ending with captures in the qsearch tree.
             ("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1", 3),
+            // The same ending one ply deeper: scouts inside scouts.
+            ("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1", 4),
             // Back-rank mate-in-1 with pawns on both sides.
             ("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", 2),
             // Minor-piece skirmish: black to move, hanging knight.
             ("4k3/8/3n4/8/4B3/8/8/4K3 b - - 0 1", 2),
+            ("4k3/8/3n4/8/4B3/8/8/4K3 b - - 0 1", 3),
+            // Two-rook ladder: wide branching, decisive scores in-tree.
+            ("8/8/6k1/R7/8/8/8/1R5K w - - 0 1", 3),
+            // Mated side: fail-lows all the way down at the root.
+            ("7k/8/6K1/8/8/8/2Q5/8 b - - 0 1", 3),
         ];
-        for (fen, depth) in cases {
+        for &(fen, depth) in suite {
             let w = go_depth(fen, depth);
-            let want = ref_negamax(&mut board(fen), &mut EvalContext::new(), depth, 0);
+            let (want, optimal) = ref_root(fen, depth);
             assert_eq!(
                 best_score(&w),
                 want,
-                "alpha-beta vs pure negamax diverged: {fen}"
+                "PVS vs full-window negamax value diverged: {fen} depth {depth}"
+            );
+            let bm = w.best_move().unwrap();
+            assert!(
+                optimal.contains(&bm),
+                "PVS bestmove {bm} is not full-window-optimal for {fen} depth {depth} \
+                 (optimal: {optimal:?})"
             );
         }
     }
 
-    // --- TT-on/off value equality (doc 07 §4 step 6 done-condition; doc
-    //     08 §8 criterion 6's value half) ---
+    // --- TT value equality at fixed depth (doc 07 §4 step 6's bar,
+    //     re-scoped by step 7; doc 08 §8 criterion 6's value half) ---
 
-    /// One position of the TT value-equality suite: search it three ways
-    /// with the TT enabled — a fresh table, the same table warmed by that
-    /// run, and a table warmed by a DEEPER run first (deeper entries are
-    /// the classic source of value-changing TT cutoffs) — assert all
-    /// three agree, and return the shared value.
-    fn tt_value_triple(fen: &str, depth: Depth) -> Value {
+    /// One position of the TT value-equality suite: search it twice with
+    /// the TT enabled — a fresh table, then the same table warmed by that
+    /// run — assert both agree, and return the shared value. Same-depth
+    /// TT state must never move a fixed-depth value: an equal-draft
+    /// entry's bound is a correct bound on the node's fixed-depth value
+    /// (§3.12 keeps mate scores exact; the fixtures keep rule-50 and
+    /// repetition path-dependence out of reach), so a cutoff only
+    /// short-circuits work alpha-beta would have done anyway.
+    ///
+    /// A table warmed by a DEEPER run is deliberately NOT an equality
+    /// leg anymore: plan step 7 made the NonPV TT cutoffs live, and
+    /// `tt_depth > depth - (tt_value <= beta)` accepts deeper drafts —
+    /// deeper information legitimately substitutes into zero-window
+    /// subtrees and may move a fixed-depth value (measured on the
+    /// two-rook ladder at depth 3 after a depth-4 warm-up). That is the
+    /// cutoff doing its job, not a leak; the P6 version of this helper
+    /// asserted the stricter triple only because the cutoffs were
+    /// unreachable before the zero-window existed.
+    fn tt_value_pair(fen: &str, depth: Depth) -> Value {
         let tt = test_tt();
         let fresh = go_depth_on(fen, depth, &tt);
         let warm = go_depth_on(fen, depth, &tt);
@@ -1615,33 +1809,23 @@ mod tests {
             best_score(&warm),
             "fresh vs warm TT: {fen}"
         );
-        let deep_tt = test_tt();
-        go_depth_on(fen, depth + 1, &deep_tt);
-        let after_deeper = go_depth_on(fen, depth, &deep_tt);
-        assert_eq!(
-            best_score(&fresh),
-            best_score(&after_deeper),
-            "fresh vs deeper-warmed TT: {fen}"
-        );
         best_score(&fresh)
     }
 
     #[test]
     fn tt_on_and_off_return_identical_values_at_fixed_depth() {
-        // The suite the step-6 exit bar demands: fixed-depth searches with
-        // the TT disabled vs enabled return identical VALUES (node counts
-        // may differ — ttMove ordering changes cutoff order, never the
-        // exact full-window root value). `ref_negamax` — proven equal to
-        // the pre-TT engine by the test above at the commit that added it
-        // — is the TT-disabled oracle, compared against the fresh/warm/
-        // deeper-warmed triple: equality proves the v1 bounds/cutoff
-        // discipline — nothing the TT stores reaches a returned value.
+        // The step-6 exit bar, kept green through step 7: fixed-depth
+        // searches with the TT disabled vs enabled (fresh or same-depth
+        // warmed) return identical VALUES — node counts may differ.
+        // `ref_negamax` — proven equal to the pre-TT engine at the commit
+        // that added it — is the TT-disabled oracle.
         //
         // Depths stay <= 4: from a FEN root (no game history) the first
         // possible in-tree repetition is ply 4, which at these depths is
         // qsearch's plain deterministic VALUE_DRAW — the node-counter
-        // draw dither is unreachable, so any divergence would be TT value
-        // flow, exactly what must not exist. Positions keep the material
+        // draw dither is unreachable, so any divergence would be TT state
+        // moving a same-draft value, exactly what must not happen.
+        // Positions keep the material
         // low: the CUTOFF-FREE oracle explores every capture/evasion
         // chain exhaustively, which explodes on full-material boards (the
         // startpos test below covers that class without the oracle).
@@ -1661,21 +1845,17 @@ mod tests {
         ];
         for &(fen, depth) in suite {
             let tt_off = ref_negamax(&mut board(fen), &mut EvalContext::new(), depth, 0);
-            assert_eq!(
-                tt_value_triple(fen, depth),
-                tt_off,
-                "TT-on vs TT-off: {fen}"
-            );
+            assert_eq!(tt_value_pair(fen, depth), tt_off, "TT-on vs TT-off: {fen}");
         }
     }
 
     #[test]
     fn tt_state_never_moves_the_startpos_value() {
         // Full-material coverage for the suite above, without the
-        // exponential no-cutoff oracle: the fresh/warm/deeper-warmed
-        // triple must agree on the startpos value — any inequality would
-        // be TT state leaking into returned values.
-        tt_value_triple(START_FEN, 3);
+        // exponential no-cutoff oracle: fresh and same-depth-warmed
+        // searches must agree on the startpos value — any inequality
+        // would be same-draft TT state moving a returned value.
+        tt_value_pair(START_FEN, 3);
     }
 
     #[test]
