@@ -778,10 +778,10 @@ impl Worker {
 
     /// The main search node (design/07 §3.7.2), v1 subset: node order
     /// steps 2/3/4/5/6/7/9/10/11/12/13/14, plus the first ⟨D10⟩ pruning
-    /// heuristics (step 8, design/10 §3.4): N10 reverse futility pruning and
-    /// N11 null move pruning with its verification scheme, both in the
-    /// not-in-check branch after the TT cutoff (LMP/LMR/singular remain doc
-    /// 10's later Wave-A/B items). Step 12's equal-value dither and step
+    /// heuristics (step 8, design/10 §3.4): N9 razoring, N10 reverse futility
+    /// pruning and N11 null move pruning with its verification scheme, all in
+    /// the not-in-check branch after the TT cutoff (LMP/singular remain doc
+    /// 10's later Wave-B/D items). Step 12's equal-value dither and step
     /// 14's fail-high softening landed with plan step 10. Step 10 is the
     /// PVS three-call structure (plan step 7) with reductions pinned at
     /// r = 0 — LMR is doc 10's (P9). Zero-window scouts are NonPV and
@@ -973,6 +973,29 @@ impl Worker {
             // A capturing ttMove does not veto RFP (N10); a quiet one does —
             // a stored quiet best move is a standing reason to search.
             let tt_capture = tt_data.mv != Move::NULL && self.board.capture_stage(tt_data.mv);
+
+            // N9 — razoring (design/10 §3.4). A non-PV node whose corrected
+            // `eval` sits so far below alpha that even the quadratic razoring
+            // margin (`RAZOR_BASE + RAZOR_DEPTH_MULT·depth²`) cannot lift it
+            // toward the window skips the full-width search entirely and drops
+            // straight to qsearch, returning whatever tactic the captures-only
+            // search uncovers — the qsearch IS the verification (a real
+            // resource found there is >= alpha and returned; otherwise the
+            // pessimistic fail-low stands). Uses the TT-substituted `eval`
+            // (NOT `ss.static_eval` — the doc marks this site). No depth cap:
+            // the margin grows as depth² so deep nodes effectively never
+            // razor, making the heuristic self-limiting. Gated `!PV` so a mate
+            // score along a PV line is never masked behind a qsearch value
+            // (the SF "guard against mates being returned"); non-PV nodes have
+            // no such exposure — the returned value stays inside the window,
+            // and a losing `eval` only ever drops us into a qsearch that
+            // confirms the loss. No `is_decisive` guard is needed: a winning
+            // `eval` fails the `<` test outright, so wins are never razored.
+            if !NT::PV
+                && eval < alpha - params::RAZOR_BASE - params::RAZOR_DEPTH_MULT * depth * depth
+            {
+                return self.qsearch::<NonPv>(tt, alpha, beta, ply);
+            }
 
             // N10 — reverse futility pruning ("futility: child", design/10
             // §3.4). Gated on `!ss.tt_pv` (a PV-flagged node is worth a real
@@ -2262,6 +2285,118 @@ mod tests {
         assert!(
             v >= beta,
             "the winning node still fails high, just by searching"
+        );
+    }
+
+    // --- Razoring (design/10 §3.4 N9) ---
+
+    #[test]
+    fn razoring_drops_a_hopeless_nonpv_node_straight_to_qsearch() {
+        // Black is a full queen up; White to move, quiet, not in check, no
+        // captures on the board. With alpha set to the SMALLEST value that
+        // satisfies `eval < alpha - margin` at depth 1 (one cp above the
+        // boundary), a non-PV node skips the full-width search and returns the
+        // qsearch value directly. Because qsearch of a quiet, not-in-check node
+        // with no captures makes ZERO moves and stands pat, `w.nodes == 0`
+        // proves the move loop was never entered and the return is exactly the
+        // stand-pat eval.
+        let fen = "7k/8/8/3q4/8/8/8/K7 w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let eval = static_eval(&w.board);
+        assert!(
+            !is_decisive(eval),
+            "a queen deficit is not a decisive score"
+        );
+        let depth: Depth = 1;
+        let margin = params::RAZOR_BASE + params::RAZOR_DEPTH_MULT * depth * depth;
+        let alpha = eval + margin + 1; // smallest alpha with eval < alpha - margin
+        let beta = alpha + 1;
+        assert!(eval < alpha - margin, "the fixture must trigger razoring");
+        let v = search_at::<NonPv>(&mut w, &tt, alpha, beta, depth, true, 1);
+        assert_eq!(v, eval, "razoring returns the qsearch stand-pat value");
+        assert_eq!(w.nodes, 0, "razoring must return before the move loop");
+    }
+
+    #[test]
+    fn razoring_holds_off_one_centipawn_below_its_threshold() {
+        // The trigger is exact. With alpha set so `alpha - margin == eval`
+        // (one cp below the firing point above), the strict `<` fails and the
+        // node does NOT razor — it enters the move loop and makes real moves
+        // (`w.nodes > 0`). This pins the boundary: a single centipawn on alpha
+        // is the difference between razoring and a full search, proving the
+        // heuristic fires ONLY under its exact condition.
+        let fen = "7k/8/8/3q4/8/8/8/K7 w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let eval = static_eval(&w.board);
+        let depth: Depth = 1;
+        let margin = params::RAZOR_BASE + params::RAZOR_DEPTH_MULT * depth * depth;
+        let alpha = eval + margin; // eval < alpha - margin is now FALSE (equal)
+        let beta = alpha + 1;
+        assert!(
+            eval >= alpha - margin,
+            "the fixture must sit exactly on the no-razor side"
+        );
+        let v = search_at::<NonPv>(&mut w, &tt, alpha, beta, depth, true, 1);
+        assert!(w.nodes > 0, "on the margin, the node must search");
+        let _ = v;
+    }
+
+    #[test]
+    fn razoring_never_fires_on_a_pv_node() {
+        // The `!PV` guard (SF's "guard against mates being returned"): the
+        // same hopeless position, in a window that WOULD razor at a non-PV
+        // node, must still be searched at a PV node — dropping a PV line to
+        // qsearch could mask a mate the full search would find. The PV node
+        // enters its move loop (`w.nodes > 0`).
+        let fen = "7k/8/8/3q4/8/8/8/K7 w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let eval = static_eval(&w.board);
+        let depth: Depth = 1;
+        let margin = params::RAZOR_BASE + params::RAZOR_DEPTH_MULT * depth * depth;
+        let alpha = eval + margin + 1;
+        let beta = alpha + 200; // a real PV window (alpha < beta - 1)
+        assert!(
+            eval < alpha - margin,
+            "the window would razor at a non-PV node"
+        );
+        let v = search_at::<Pv>(&mut w, &tt, alpha, beta, depth, false, 1);
+        assert!(w.nodes > 0, "a PV node must never razor to qsearch");
+        let _ = v;
+    }
+
+    #[test]
+    fn razoring_condition_never_fires_on_a_winning_eval() {
+        // Razoring only ever drops a node whose eval is far BELOW alpha. A
+        // winning static eval fails the strict `<` test for every alpha at or
+        // below it, so the dangerous direction — throwing away a win by
+        // dropping to a shallow qsearch — is structurally impossible. Pure
+        // boundary check over a real (winning, non-mate) eval across depths.
+        let eval = static_eval(&board("7k/8/8/3Q4/8/8/8/K7 w - - 0 1"));
+        assert!(!is_decisive(eval), "a queen edge is not a decisive score");
+        for depth in 1..=6 {
+            let margin = params::RAZOR_BASE + params::RAZOR_DEPTH_MULT * depth * depth;
+            for alpha in [eval - 500, eval, eval + margin] {
+                assert!(eval >= alpha - margin, "depth {depth}, alpha {alpha}");
+            }
+        }
+    }
+
+    #[test]
+    fn razoring_active_search_still_finds_the_forced_mate() {
+        // Mate-safety with razoring live in the tree (the "decisive nodes"
+        // guarantee): KRK mates in mate_in(3). Razoring fires in the losing
+        // side's deeply-negative nodes — dropping them to qsearch — yet the
+        // exact ply-relative mate must still come back along the PV, which the
+        // `!PV` guard keeps off razoring entirely. Mirrors the NMP twin.
+        let fen = "k7/8/2K5/8/8/8/8/7R w - - 0 1";
+        let w = go_depth(fen, 8);
+        assert_eq!(
+            best_score(&w),
+            mate_in(3),
+            "razoring must not corrupt the mate"
         );
     }
 
