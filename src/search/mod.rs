@@ -343,6 +343,12 @@ pub struct Worker {
     /// before any search. Read only by [`Worker::reduction`], which stays
     /// unused until Wave-A item 4 wires LMR (design/10 §4).
     reductions: [i32; MAX_MOVES],
+    /// Null-move pruning floor (design/10 §3.4 N11): NMP is disabled while
+    /// `ply < nmp_min_ply`. Normally 0; a high-depth NMP verification search
+    /// raises it for the duration of that re-search so the subtree cannot
+    /// recursively null-move its way back to the same (possibly zugzwang)
+    /// cutoff, then resets it to 0. Per-worker (D23); reset to 0 each `go`.
+    nmp_min_ply: i32,
     /// MultiPV line currently searched (§3.5; v1 always 0).
     pub pv_idx: usize,
     /// Time-management instability signal (§3.4/§3.5).
@@ -419,6 +425,7 @@ impl Worker {
             root_depth: 0,
             root_delta: 2 * VALUE_INFINITE,
             reductions,
+            nmp_min_ply: 0,
             pv_idx: 0,
             best_move_changes: 0.0,
             limits: Limits::new(),
@@ -481,6 +488,7 @@ impl Worker {
         self.root_depth = 0;
         self.pv_idx = 0;
         self.best_move_changes = 0.0;
+        self.nmp_min_ply = 0;
         self.check_time_countdown = self.check_time_reset();
         self.last_best_move_pv.clear();
         self.last_best_move_score = -VALUE_INFINITE;
@@ -769,9 +777,12 @@ impl Worker {
     }
 
     /// The main search node (design/07 §3.7.2), v1 subset: node order
-    /// steps 2/3/4/5/6/7/9/10/11/12/13/14 — no ⟨D10⟩ heuristics (step 8);
-    /// step 12's equal-value dither and step 14's fail-high softening
-    /// landed with plan step 10. Step 10 is the
+    /// steps 2/3/4/5/6/7/9/10/11/12/13/14, plus the first ⟨D10⟩ pruning
+    /// heuristics (step 8, design/10 §3.4): N10 reverse futility pruning and
+    /// N11 null move pruning with its verification scheme, both in the
+    /// not-in-check branch after the TT cutoff (LMP/LMR/singular remain doc
+    /// 10's later Wave-A/B items). Step 12's equal-value dither and step
+    /// 14's fail-high softening landed with plan step 10. Step 10 is the
     /// PVS three-call structure (plan step 7) with reductions pinned at
     /// r = 0 — LMR is doc 10's (P9). Zero-window scouts are NonPV and
     /// never write PV lines, so `pv_table[1]` stays fresh for every root
@@ -979,6 +990,75 @@ impl Worker {
                 if eval - margin >= beta {
                     return (params::RFP_RET_BETA_W * beta + params::RFP_RET_EVAL_W * eval)
                         / params::RFP_RET_DEN;
+                }
+            }
+
+            // N11 — null move pruning with verification (cutNode-only,
+            // design/10 §3.4). A cut node whose *static* eval already clears
+            // a beta-relative bar assumes it can afford to "pass" and still
+            // fail high: it searches a null move at reduced depth `depth - R`
+            // and, if that fails high, returns without searching a real move.
+            // The gate reads `ss.static_eval`, NOT the TT-substituted `eval`
+            // RFP uses (the doc marks this site). Zugzwang — where passing is
+            // illusory — is fenced three ways: NMP runs only with non-pawn
+            // material for the side to move, never trusts an unproven mate
+            // (`!is_win(null_value)`), and at high depth re-confirms the
+            // fail-high with a verification search that disables NMP up to
+            // `nmp_min_ply` (recursion- and zugzwang-proof).
+            let us = self.board.side_to_move();
+            if cut_node
+                && self.stack[cur].static_eval
+                    >= beta
+                        - params::NMP_EVAL_DEPTH * depth
+                        - params::NMP_EVAL_IMPROVING * Value::from(improving)
+                        + params::NMP_EVAL_BASE
+                && self.stack[cur].excluded_move == Move::NULL
+                && self.board.non_pawn_material(us) != 0
+                && ply as i32 >= self.nmp_min_ply
+                && !is_loss(beta)
+            {
+                // The parent is never itself a null move: a null move's child
+                // is searched as a non-cut (all) node, so NMP — cutNode only —
+                // cannot fire two plies deep off a single pass (SF's assert).
+                debug_assert!(
+                    self.stack[cur - 1].current_move != Move::NULL,
+                    "no two null moves in a row"
+                );
+                let r = params::NMP_R_BASE + depth / params::NMP_R_DEPTH_DIV;
+
+                // Make the null move by hand (not `do_move`): a pass searches
+                // no node, so it does NOT bump the node counter (SF `do_null_
+                // move` parity), and it stamps the null-move stack markers the
+                // child reads as its parent — `Move::NULL` (⇒ no `prev_sq`)
+                // and the inert continuation-history SENTINEL.
+                self.stack[cur].current_move = Move::NULL;
+                self.stack[cur].cont_hist = ContHistId::SENTINEL;
+                self.board.make_null_move();
+                let null_value =
+                    -self.search::<NonPv>(tt, stop, -beta, -beta + 1, depth - r, false, ply + 1);
+                self.board.unmake_null_move();
+
+                // Do not return an unproven mate/TB score: a null-move
+                // "mate" is an artifact of the illegal pass, never real.
+                if null_value >= beta && !is_win(null_value) {
+                    // Below the verification depth — or already inside a
+                    // verification (`nmp_min_ply != 0`, where recursive
+                    // verification is disallowed) — trust the null value.
+                    if self.nmp_min_ply != 0 || depth < params::NMP_VERIFY_DEPTH {
+                        return null_value;
+                    }
+                    // Verification search at THIS node (same ply, real moves)
+                    // with NMP disabled up to `nmp_min_ply`; only a fail-high
+                    // here confirms the cutoff. The disable window spans the
+                    // whole verification subtree, so it cannot recursively
+                    // null-move back to the same (possibly zugzwang) cutoff.
+                    self.nmp_min_ply = ply as i32
+                        + params::NMP_VERIFY_FRAC.0 * (depth - r) / params::NMP_VERIFY_FRAC.1;
+                    let v = self.search::<NonPv>(tt, stop, beta - 1, beta, depth - r, false, ply);
+                    self.nmp_min_ply = 0;
+                    if v >= beta {
+                        return null_value;
+                    }
                 }
             }
         }
@@ -2136,6 +2216,184 @@ mod tests {
             v >= beta,
             "the winning node still fails high, just by searching"
         );
+    }
+
+    // --- Null move pruning (design/10 §3.4 N11, §5 zugzwang guard) ---
+
+    /// Seed an eval-only TT entry carrying a quiet `ttm`: `is_valid` fails on
+    /// both its value and eval (no TT cutoff, no eval substitution), so its
+    /// ONLY effect at the node is to veto RFP through the
+    /// `(ttMove == NULL || ttCapture)` guard — leaving NMP as the heuristic
+    /// under test.
+    fn seed_quiet_ttmove(w: &Worker, tt: &TranspositionTable, ttm: Move) {
+        let key = w.board.key();
+        tt.probe(key).writer.write(
+            key,
+            VALUE_NONE,
+            false,
+            Bound::None,
+            DEPTH_UNSEARCHED,
+            ttm,
+            VALUE_NONE,
+            tt.generation(),
+        );
+    }
+
+    #[test]
+    fn nmp_prunes_a_winning_cut_node_via_the_null_search() {
+        // White a full queen up, quiet, not in check: the static eval clears
+        // the N11 bar `beta - 14·depth - 45·improving + 374`, and after the
+        // pass the opponent (still down a queen) cannot pull the score below
+        // beta — so the null search fails high and NMP returns before any
+        // real move. RFP is vetoed by a quiet ttMove, so NMP is what cuts.
+        // depth 4 ⇒ R = 8 ⇒ the null search runs at depth −4, i.e. straight
+        // into a capture-free qsearch that makes ZERO moves: `w.nodes == 0`
+        // proves the node returned through the pass, not a real search.
+        let fen = "7k/8/8/8/8/8/8/1Q5K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let eval = static_eval(&w.board);
+        let depth: Depth = 4;
+        let beta = eval - 400;
+        // improving is false at ply 1 (VALUE_NONE predecessors), so the bar
+        // is `beta - 14·depth + 374`.
+        let bar = beta - params::NMP_EVAL_DEPTH * depth + params::NMP_EVAL_BASE;
+        assert!(eval >= bar, "fixture must clear the NMP static-eval bar");
+        assert!(!is_win(eval), "material edge alone is not decisive");
+        seed_quiet_ttmove(&w, &tt, Move::normal(Square::B1, Square::B2));
+        // A real interior node always has a real parent move (the N11 assert
+        // `no two null moves in a row`); the search_at harness starts on a
+        // fresh stack whose ply-0 slot is NULL, so install one by hand.
+        init_stack(&mut w.stack);
+        w.stack[ss(0)].current_move = Move::normal(Square::H1, Square::G1);
+        w.nodes = 0;
+        let stop = AtomicBool::new(false);
+        let v = w.search::<NonPv>(&tt, &stop, beta - 1, beta, depth, true, 1);
+        assert_eq!(w.nodes, 0, "NMP must return through the pass, no real move");
+        assert!(v >= beta, "the null search fails high");
+        assert_ne!(
+            v,
+            (params::RFP_RET_BETA_W * beta + params::RFP_RET_EVAL_W * eval) / params::RFP_RET_DEN,
+            "the return is the null value, not the (vetoed) RFP blend"
+        );
+    }
+
+    #[test]
+    fn nmp_never_fires_on_a_pv_node() {
+        // NMP is cutNode-only. The same winning position searched as a PV
+        // node (cut_node = false) must NOT prune through the pass — it
+        // searches a real move (`w.nodes > 0`).
+        let fen = "7k/8/8/8/8/8/8/1Q5K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let eval = static_eval(&w.board);
+        let depth: Depth = 4;
+        let beta = eval - 400;
+        seed_quiet_ttmove(&w, &tt, Move::normal(Square::B1, Square::B2));
+        // A PV node needs alpha < beta - 1; the RFP/NMP blend/return path is
+        // NonPV-shaped, but the point is just that no pass-based cutoff fires.
+        let v = search_at::<Pv>(&mut w, &tt, beta - 200, beta, depth, false, 1);
+        assert!(w.nodes > 0, "a PV node must not null-move prune");
+        let _ = v;
+    }
+
+    #[test]
+    fn nmp_disabled_below_nmp_min_ply() {
+        // The `ply >= nmp_min_ply` gate is the verification scheme's teeth:
+        // with the floor raised above the node's ply, the would-be pruning
+        // node searches a real move instead of passing (`w.nodes > 0`), even
+        // though every other N11 condition holds and RFP stays vetoed.
+        let fen = "7k/8/8/8/8/8/8/1Q5K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let eval = static_eval(&w.board);
+        let depth: Depth = 4;
+        let beta = eval - 400;
+        seed_quiet_ttmove(&w, &tt, Move::normal(Square::B1, Square::B2));
+        w.nmp_min_ply = 100; // ply 1 < 100 ⇒ NMP gate closed
+        let v = search_at::<NonPv>(&mut w, &tt, beta - 1, beta, depth, true, 1);
+        assert!(w.nodes > 0, "the ply floor must block the pass");
+        assert!(v >= beta, "the winning node still fails high by searching");
+    }
+
+    #[test]
+    fn nmp_disabled_without_non_pawn_material() {
+        // The primary zugzwang fence (design/10 §5): a side with only pawns
+        // must never null-move prune, because passing is exactly the move it
+        // wishes it had. In a K+P endgame the `non_pawn_material(us) != 0`
+        // gate keeps NMP off even when the eval clears the bar and RFP is
+        // vetoed — so the node searches a real move (`w.nodes > 0`). Contrast
+        // `nmp_prunes_a_winning_cut_node_via_the_null_search`, where the same
+        // setup WITH a queen prunes to zero nodes.
+        let fen = "7k/8/8/8/8/2P1P3/8/K7 w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let us = w.board.side_to_move();
+        assert_eq!(w.board.non_pawn_material(us), 0, "K+P only for the mover");
+        let eval = static_eval(&w.board);
+        let depth: Depth = 4;
+        let beta = eval - 400;
+        let bar = beta - params::NMP_EVAL_DEPTH * depth + params::NMP_EVAL_BASE;
+        assert!(eval >= bar, "the eval still clears the NMP bar");
+        assert!(
+            !is_loss(beta),
+            "beta is non-decisive, so only the NPM gate blocks"
+        );
+        seed_quiet_ttmove(&w, &tt, Move::normal(Square::A1, Square::B1));
+        let v = search_at::<NonPv>(&mut w, &tt, beta - 1, beta, depth, true, 1);
+        assert!(
+            w.nodes > 0,
+            "no non-pawn material ⇒ NMP must not prune the pass"
+        );
+        let _ = v;
+    }
+
+    #[test]
+    fn nmp_reduces_nodes_in_the_null_only_regime() {
+        // NMP's node-level payoff, isolated from RFP: at depth 10 RFP's
+        // margin (~580) exceeds 400, so a window 400cp below the eval leaves
+        // RFP's `eval - margin >= beta` unsatisfied while NMP's bar
+        // (beta + ~234) is cleared — the regime where NMP fires but RFP does
+        // not. White (a full queen up, non-pawn material present) passes, the
+        // opponent cannot recover, so the null search fails high and prunes.
+        // A control with NMP disabled via the ply floor searches strictly
+        // more nodes. (A direct fixed-depth search bypasses the per-go reset,
+        // so the floor sticks for the whole subtree.)
+        let fen = "r3k2r/ppp2ppp/2n5/8/8/2N5/PPP2PPP/R2QK2R w KQkq - 0 1";
+        let depth: Depth = 10;
+        let eval = static_eval(&board(fen));
+        let (alpha, beta) = (eval - 401, eval - 400);
+        let run = |disable: bool| -> u64 {
+            let mut w = Worker::new(board(fen));
+            let tt = test_tt();
+            tt.new_search();
+            init_stack(&mut w.stack);
+            w.stack[ss(0)].current_move = Move::normal(Square::A2, Square::A3);
+            w.nodes = 0;
+            w.root_depth = depth;
+            w.nmp_min_ply = if disable { 1_000_000 } else { 0 };
+            let stop = AtomicBool::new(false);
+            let _ = w.search::<NonPv>(&tt, &stop, alpha, beta, depth, true, 1);
+            w.nodes
+        };
+        let on = run(false);
+        let off = run(true);
+        assert!(
+            on < off,
+            "NMP must prune in its own regime: on={on} off={off}"
+        );
+    }
+
+    #[test]
+    fn nmp_active_search_still_finds_the_forced_mate() {
+        // Mate-safety with NMP live in the tree: KRK mates in 2 full moves
+        // (mate_in(3)). White has a rook (non-pawn material), so NMP fires in
+        // the winning-side nodes — yet the exact ply-relative mate must still
+        // come back, never a pass-induced non-mate score. Searched deep
+        // enough (depth 8) that NMP is exercised throughout.
+        let fen = "k7/8/2K5/8/8/8/8/7R w - - 0 1";
+        let w = go_depth(fen, 8);
+        assert_eq!(best_score(&w), mate_in(3), "NMP must not corrupt the mate");
     }
 
     // --- Mate suite (doc 07 §5/§8.4): exact ply-relative mate scores (D5) ---

@@ -174,6 +174,46 @@ pub const RFP_RET_EVAL_W: Value = 308;
 /// Denominator of the return blend (`RFP_RET_BETA_W + RFP_RET_EVAL_W`).
 pub const RFP_RET_DEN: Value = 1024;
 
+// --- Null move pruning (design/10 §3.4; node step N11) ---
+//
+// A cut node whose static eval already clears a beta-relative bar assumes
+// it can afford to "pass" (make a null move) and still fail high: it
+// searches the null move at reduced depth `depth - R` and, if that fails
+// high, returns without searching a real move. The classic zugzwang trap —
+// where passing is illusory — is fenced off three ways: NMP runs only when
+// the side to move has non-pawn material (`non_pawn_material(us) != 0`), a
+// proven-mate null value is never trusted (`!is_win(null_value)`), and at
+// high depth a same-node verification search re-confirms the fail-high with
+// NMP disabled up to `nmp_min_ply` (recursion- and zugzwang-proof).
+//
+// The gate reads `ss.static_eval` (NOT the TT-substituted `eval` RFP uses —
+// design/10 §3.4 N11 marks the site).
+
+/// Per-ply slope of the NMP static-eval bar `beta - NMP_EVAL_DEPTH·depth -
+/// NMP_EVAL_IMPROVING·improving + NMP_EVAL_BASE`: deeper nodes need less
+/// headroom (a deeper fail-high is better supported).
+pub const NMP_EVAL_DEPTH: Value = 14;
+/// Improving discount of the NMP static-eval bar.
+pub const NMP_EVAL_IMPROVING: Value = 45;
+/// Flat base of the NMP static-eval bar (dominates at shallow depth, so the
+/// bar sits well above beta there).
+pub const NMP_EVAL_BASE: Value = 374;
+/// Base of the null-move dynamic reduction `R = NMP_R_BASE + depth /
+/// NMP_R_DEPTH_DIV` (in whole plies — this reduction is applied directly to
+/// depth, not in the 1024ths the LMR table uses).
+pub const NMP_R_BASE: Depth = 7;
+/// Depth divisor of the null-move reduction.
+pub const NMP_R_DEPTH_DIV: Depth = 3;
+/// Depth at/above which a fail-high null search is re-confirmed by the
+/// verification search (`depth >= NMP_VERIFY_DEPTH`); below it the null
+/// value is returned directly.
+pub const NMP_VERIFY_DEPTH: Depth = 16;
+/// The verification's NMP-disable window `nmp_min_ply = ply +
+/// NMP_VERIFY_FRAC.0·(depth - R) / NMP_VERIFY_FRAC.1`: NMP stays off for the
+/// whole subtree up to that ply, so the verification (and its children)
+/// cannot recursively null-move their way back to the same false cutoff.
+pub const NMP_VERIFY_FRAC: (Depth, Depth) = (3, 4);
+
 // --- Base reduction table + `reduction()` (design/10 §3.3) ---
 //
 // The per-worker log reduction table `reductions[i] = int(RED_TABLE_NUM /
