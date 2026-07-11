@@ -222,8 +222,15 @@ gate per D24.
   ≥ 90 % per-thread nps retention at 8 threads, SPRT `Threads=4` vs `1`
   clearly positive; doc 12 §8 items 2–3 (ponder-on parts).
 
-### P12 — Eval phase B: HCE + texel tuning (L) → **milestone M8 (M-2950)**
-- **Implements:** `11` steps 5–8.
+### P12 — Eval phase B: HCE + texel tuning — DESCOPED (optional contingency)
+- **Status (amended 2026-07-11, D21/D28):** SKIPPED on the critical path.
+  HCE existed mainly to generate NNUE data under the own-data rule; D28 makes
+  Stockfish the bootstrap generator, so HCE is off the path and its terms are
+  largely subsumed by NNUE. New order jumps P11 (SMP) -> P13 (NNUE), with
+  PSQT (Phase A) as the NNUE SPRT baseline and eval fallback. Build HCE ONLY
+  as a contingency if NNUE stalls (reversible, gated on nothing). Milestone
+  M8/M-2950 is retired; the ladder goes M7 (SMP) -> M9 (NNUE).
+- **Implements (only if the contingency is triggered):** `11` steps 5–8.
 - **Entry:** P8 (correction history) + P11 recommended; dataset licensing
   check (doc 11 §9.2) before the tuner step.
 - **Deliverables:** pawn hash, HCE terms (mobility, king safety, passers,

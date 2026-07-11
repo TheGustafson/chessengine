@@ -121,12 +121,20 @@ strength. Two constraints in permanent tension, resolved in this order:
 
 ## Evaluation roadmap
 
-- **D21**: Three phases. (A) Material + tapered PSQT — enough to validate
-  search machinery. (B) Hand-crafted eval with texel tuning (own tuner) —
-  intermediate strength. (C) **NNUE** — required for the end goal; implement
-  inference with incremental accumulators (dirty-piece tracking hooks in
-  make_move), quantized SIMD with scalar fallback; train our own net with
-  external tooling (bullet) — we do NOT ship Stockfish's GPL nets.
+- **D21**: Eval phases. (A) Material + tapered PSQT — enough to validate
+  search machinery (done, P4). (B) Hand-crafted eval with texel tuning —
+  **DESCOPED to an optional contingency** (amended 2026-07-11): P12/HCE
+  existed mainly to generate NNUE training data under the own-data rule, but
+  D28 makes Stockfish the bootstrap data generator, so HCE is no longer on
+  the critical path. The plan skips it — go PSQT (A) straight to NNUE (C) —
+  since HCE terms are largely subsumed by NNUE (throwaway work) and
+  AlphaZero-style has no HCE. HCE is built ONLY as a fallback if NNUE stalls
+  (slow inference / non-converging training); it is a reversible decision,
+  gated on nothing. The NNUE SPRT baseline is therefore Phase A (PSQT), not
+  Phase B. Phase order: P9 -> P10 -> P11 (SMP) -> P13 (NNUE). (C) **NNUE** —
+  required for the end goal; incremental accumulators (dirty-piece hooks in
+  make_move), quantized SIMD with scalar fallback; bootstrap-distill then
+  retrain clean per D28; train with `bullet` — we do NOT ship SF's GPL nets.
 - **D22**: Eval interface is a single `evaluate(&Board, ...) -> Value` seam so
   phases A/B/C swap without touching search. Correction history corrects the
   static eval inside search (raw eval is what the TT stores).
@@ -161,3 +169,20 @@ strength. Two constraints in permanent tension, resolved in this order:
 - **D27**: We take ideas, algorithms, constants, and formulas from Stockfish
   (facts are not copyrightable); we never copy code or ship SF network files.
   Notes in `stockfish_reference/` document provenance.
+
+- **D28**: NNUE bootstrap strategy (added 2026-07-11). The net is developed
+  in two provenance tiers, AlphaGo → AlphaZero style. (a) BOOTSTRAP:
+  distill from a locally-compiled strong Stockfish — positions labeled with
+  SF search eval (+ game WDL) — to validate the NNUE *infrastructure*
+  (dirty-piece accumulators, the trainer, the scalar/SIMD inference
+  backends) and reach strength quickly, decoupling the machinery risk from
+  the data-quality risk. (b) SHIP: the released net is retrained from CLEAN
+  data (engine self-play / own-engine labels, up to a full self-play "zero"
+  restart) once the NNUE machinery is proven. SF-labeled data is therefore
+  **discardable development scaffold, never shipped** — the released
+  artifact is trained only on our own/self-play data and is ours (consistent
+  with D27). Rationale: use distillation to de-risk the hardest phase (P13)
+  without conceding the shipped net's provenance. Curation spec + pipeline:
+  `design/15-nnue-datagen.md`. The bulk SF-labeled corpus may be generated
+  ahead of P13 as a throttled background task once the curation spec is
+  validated on a small sample and reviewed.
