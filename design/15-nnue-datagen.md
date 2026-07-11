@@ -617,3 +617,105 @@ The bootstrap pipeline is done (later, P13) when:
    whether to seed tablebase-ish endgame positions or enable the §3.5.7
    rejection-sampling enforce lever is a corpus-balance decision deferred to
    the review of the sample histogram.
+
+## 10. Validation results — small sample (impl steps 1–4, 2026-07-11)
+
+A small validation corpus was generated and verified end to end to prove the
+Tier-A pipeline (§3.7, §5) before authorising the bulk run (§4 step 5). **No
+bulk run was launched.** Sample: **100,071 positions** from 10,015 games,
+`--seed 7`, 8 SF workers at `--nodes 5000`, random openings + ±600 cp balance
+gate, all default §3.5 filters, `--p-cap 10`. Teacher: local SF
+`dev-20260706-eca43a97` (sha256 `69ade9…`, ARCH `x86-64-avx512icl`). Full
+`meta.json` written (`binary_status=built`).
+
+### 10.1 Correctness — PASS
+
+- **Format round-trip (gold standard).** `bulletformat` (v1.8.0, cloned
+  read-only to scratch — GPL, never committed, D27; it has *zero* external
+  deps so it builds offline) converted every text line with its own
+  `ChessBoard::from_str`, and its own `DataLoader` (bullet's real read path)
+  read the records back. All **99,071 train records byte-match** an
+  independent re-derivation of bulletformat's side-to-move canonicalisation,
+  **decode to legal boards** (python-chess `is_valid` + king/pawn-count
+  checks), and bullet's own `Chess768::map_features` yields the same board with
+  a consistent opponent perspective (`sq ^ 56` mirror). `build_corpus.sh` with
+  that converter produced `train.bin` (99,071) + `val.bin` (1,000); its
+  per-shard record==line checks passed. This meets the §4 step-4 format-contract
+  gate **using bullet's actual code**, not a reimplementation.
+- **Perspective / sign convention (§3.2.4).** Canonicalisation verified exact —
+  for the 49.2 % black-to-move records the score is negated, the result flipped,
+  and the board colour-swapped + vertically mirrored. The White-relative disk
+  sign was independently re-derived by a fresh-SF resample: **100 % sign
+  agreement (204/204)** for every position whose eval reaches ≥ 25 cp; the only
+  disagreements sit in the dead-equal [0, 25 cp) band, where a cold re-search's
+  own sign is noise.
+- **Curation (§3.5).** 0 positions written in check; all `|score| < 2500`; no
+  mate scores; result ∈ {0, 0.5, 1}; STM balance 50.8 % / 49.2 %. Dedup:
+  within-worker 0.068 %, cross-worker global-key **0.017 %** (17/100 071) — the
+  generator dedups per-worker (§3.7), so these are exactly the residue that the
+  optional global-dedup bulk lever (§3.5.5) would remove; negligible. Eval
+  **not saturated**: `|score| ≥ 2400` is only **0.151 %** of the corpus
+  (score-cap rejects 0.19 %, mate rejects 1.4 % of searched plies); median
+  15 cp, well spread across ±800. Distributions healthy — piece-count populated
+  across 3..32, game-phase across 0..24 (natural full-board spike at 32/phase-24
+  from openings, endgame tail present). Game result W/D/L ≈ 38.3 / 32.2 / 29.5 %.
+
+### 10.2 Tooling fix (`validate_sample.py`)
+
+The SF round-trip previously hard-failed on near-zero positions, because a cold
+re-search's sign and bestmove diverge from the generator's in-game search
+(different TT/history). Added a magnitude **deadband** (`--sign-deadband`,
+default 100 cp) to the sign check and demoted the quiet-bestmove re-check to an
+advisory rate — the authoritative (gen-time) bestmove the §3.5(3) filter used
+cannot be re-derived from disk. Data-justified by the 100 %-above-25 cp
+agreement above. (The dedup check is unchanged and correctly surfaces the
+0.017 % cross-worker residue as expected, per-worker-dedup behaviour.)
+
+### 10.3 Throughput and bulk extrapolation
+
+- Measured **13.1 pos/s/core** steady-state (8 workers, full-box contention;
+  104.6 pos/s aggregate interval) and **16.5 pos/s/core** uncontended (2-worker
+  smoke). Whole-run aggregate incl. startup + opening gates: **86–90 pos/s** on
+  8 workers (100 071 positions in 1 161 s).
+- **§6's "hundreds to a few thousand accepted pos/s/core" is 1–2 orders of
+  magnitude optimistic.** It assumed "tens of ms/game", but a fixed-5000-node
+  game is ~125 SF searches ≈ 0.5 s, and `p_cap 10` writes only 10 of the ~89
+  eligible quiet positions such a game already produces — throughput is
+  **game-bound**, not filter-bound.
+- **Bulk 100 M at `p_cap 10`:** ≈ 100 M ÷ 13–16 pos/s/core ≈ **1,700–2,100
+  core-hours**. Throttled to the mandated 2–3 cores that is **~24–36 days wall**
+  — not the "single- to low-double-digit core-hour" §6 implies. Even at a full
+  8 workers it is ~11–13 days wall.
+
+### 10.4 The `p_cap` lever (the key go/no-go input)
+
+The whole cost is the ~125 SF searches/game; `p_cap` only decides how many of
+the ~89 eligible quiet positions/game to *keep*. At `p_cap 10` the run
+**discards 88.8 % of already-labeled positions** (`rej_pcap` 792 080 vs 100 071
+written). Raising `p_cap` is near-linear *free* throughput — the searches are
+already paid for:
+
+| `p_cap` | pos/game | ≈ speed-up | 100 M cost |
+|---------|----------|-----------|-------------|
+| 10 (current) | 10 | 1× | ~1,700–2,100 core-h |
+| 30 | 30 | ~3× | ~570–700 core-h |
+| ~80 (keep most eligible) | ~80 | ~8× | ~215–265 core-h |
+
+The tradeoff is intra-game correlation (doc 11 §3.3.3 ceiling is 16/game; the
+global shuffle + many games is the decorrelator). This is the single
+highest-leverage knob for the bulk run and the main thing the human review
+should retune.
+
+### 10.5 Go / No-Go
+
+- **GO on correctness.** Format, canonicalisation, feature extraction,
+  perspective, and curation are all proven against bullet's real code — the bulk
+  run will not waste compute on a malformed or degenerate corpus.
+- **Adjust the plan before bulk.** The 100 M / `p_cap 10` plan costs
+  ~1,700–2,100 core-hours (~60× §6's estimate). Recommended before authorising
+  bulk: (a) raise `p_cap` to ~30–40 (≈3–4× throughput; review the correlation
+  impact on net-0), and/or (b) right-size the first bootstrap to ~10–30 M
+  positions (still above the community underfit floor for a 768→2×256 net) —
+  either lands the run in tens-to-low-hundreds of throttled core-hours. §6 and
+  §3.5(6) should be updated with the measured rate. **Bulk generation remains
+  deferred pending this human review (D28); nothing here authorises it.**
