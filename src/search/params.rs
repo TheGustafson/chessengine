@@ -132,6 +132,33 @@ pub const RAZOR_BASE: Value = 465;
 /// Depth-quadratic term of the razoring margin (`* depth^2`).
 pub const RAZOR_DEPTH_MULT: Value = 300;
 
+// --- Base reduction table + `reduction()` (design/10 §3.3) ---
+//
+// The per-worker log reduction table `reductions[i] = int(RED_TABLE_NUM /
+// RED_TABLE_DEN * ln(i))` (built once at `Worker` construction) and the base
+// per-move reduction `reduction(improving, depth, move_number, delta)`, both
+// carried in 1024ths of a ply — divide by 1024 only at the moment of
+// application (the suite's unit convention). The table and function are
+// wired in this Wave-A item but stay UNUSED until Wave-A item 4 applies LMR
+// in the move loop (design/10 §4).
+
+/// Numerator of the log reduction table `int(2834 / 128 * ln(i))`; the
+/// division is done in floating point once, at table-build time.
+pub const RED_TABLE_NUM: i32 = 2834;
+/// Denominator of the log reduction table (a power of two — exactly
+/// representable, so the built table is bit-reproducible).
+pub const RED_TABLE_DEN: i32 = 128;
+/// Wide-window damping of the base reduction: a wider local window `delta`
+/// reduces less, via `- delta * RED_DELTA_MULT / root_delta`.
+pub const RED_DELTA_MULT: i32 = 617;
+/// Not-improving surcharge numerator: a not-improving node reduces more, by
+/// `+ scale * RED_NON_IMPROVING / RED_NON_IMPROVING_DEN` (~38% extra).
+pub const RED_NON_IMPROVING: i32 = 194;
+/// Not-improving surcharge denominator (the `/512` of the term above).
+pub const RED_NON_IMPROVING_DEN: i32 = 512;
+/// Flat base added to every base reduction (in 1024ths of a ply).
+pub const RED_BASE: i32 = 1027;
+
 // --- Transposition-table interaction (design/07 §3.7.2 steps 7/14) ---
 
 /// TT cutoffs are refused once the halfmove clock reaches this (the

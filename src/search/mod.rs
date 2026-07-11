@@ -154,7 +154,7 @@ use crate::eval::{EvalContext, evaluate};
 use crate::history::Histories;
 use crate::movegen::generate_legal;
 use crate::movepick::MovePicker;
-use crate::moves::{Move, MoveKind, MoveList};
+use crate::moves::{MAX_MOVES, Move, MoveKind, MoveList};
 use crate::timeman::{Limits, TimeManager};
 use crate::tt::{Bound, TranspositionTable};
 use crate::types::{
@@ -304,6 +304,14 @@ pub struct Worker {
     /// every root search — re-searches included (§3.6); feeds doc 10's
     /// reduction formula.
     pub root_delta: Value,
+    /// The per-worker log reduction table (design/10 §3.3): `reductions[i]
+    /// = int(RED_TABLE_NUM / RED_TABLE_DEN * ln(i))` in 1024ths of a ply,
+    /// indexed by *either* depth or move number (`MAX_MOVES = 256`, and
+    /// `MAX_PLY < 256`, so depth always fits). Built once at construction —
+    /// runtime `f64::ln` is fine there: it runs once, deterministically,
+    /// before any search. Read only by [`Worker::reduction`], which stays
+    /// unused until Wave-A item 4 wires LMR (design/10 §4).
+    reductions: [i32; MAX_MOVES],
     /// MultiPV line currently searched (§3.5; v1 always 0).
     pub pv_idx: usize,
     /// Time-management instability signal (§3.4/§3.5).
@@ -359,6 +367,17 @@ impl Worker {
         // `[CONST; N]` array-repeat works for the non-Copy PvLine because
         // the repeated operand is a `const` item, evaluated per element.
         const EMPTY_PV: PvLine = PvLine::new();
+        // The log reduction table (design/10 §3.3), built once here. Index 0
+        // is never read (depth/move_number are >= 1 at every call site) and
+        // stays 0; `ln(1) == 0` makes `reductions[1]` exactly 0. The `as
+        // i32` cast truncates toward zero exactly like Stockfish's `int(...)`
+        // — since `ln(i) >= 0` for `i >= 1` this is a floor, and the divisor
+        // is a power of two so the table is bit-reproducible (D24).
+        let mut reductions = [0i32; MAX_MOVES];
+        for (i, r) in reductions.iter_mut().enumerate().skip(1) {
+            *r = (params::RED_TABLE_NUM as f64 / params::RED_TABLE_DEN as f64 * (i as f64).ln())
+                as i32;
+        }
         Worker {
             board,
             root_moves: RootMoves::new(),
@@ -368,6 +387,7 @@ impl Worker {
             sel_depth: 0,
             root_depth: 0,
             root_delta: 2 * VALUE_INFINITE,
+            reductions,
             pv_idx: 0,
             best_move_changes: 0.0,
             limits: Limits::new(),
@@ -1181,6 +1201,40 @@ impl Worker {
         best_value
     }
 
+    /// The base per-move reduction (design/10 §3.3), in 1024ths of a ply —
+    /// divide by 1024 only at the moment of application (the suite's unit
+    /// convention). Combines the log table [`Worker::reductions`] (indexed
+    /// by `depth` and by `move_number`) with the aspiration window width
+    /// `root_delta` (`beta - alpha` at the root, never zero — §3.6):
+    ///
+    /// ```text
+    /// scale = reductions[depth] * reductions[move_number]
+    /// r     = scale
+    ///       - delta * RED_DELTA_MULT / root_delta         // wide window → less
+    ///       + !improving * scale * RED_NON_IMPROVING / 512 // not improving → ~38% more
+    ///       + RED_BASE
+    /// ```
+    ///
+    /// Integer division truncates toward zero exactly like the Stockfish
+    /// source this re-expresses (D27), so the term order matters and is
+    /// preserved. Wired here but UNUSED until Wave-A item 4 applies LMR in
+    /// the move loop (design/10 §4); its correctness is pinned by the
+    /// golden-value and algebra tests below (§5).
+    // Wired by Wave-A item 4 (LMR core), design/10 §4; unused until then.
+    #[allow(dead_code)]
+    #[inline]
+    fn reduction(&self, improving: bool, depth: Depth, move_number: i32, delta: i32) -> i32 {
+        debug_assert!(
+            self.root_delta > 0,
+            "root_delta is beta - alpha, never zero"
+        );
+        let scale = self.reductions[depth as usize] * self.reductions[move_number as usize];
+        scale - delta * params::RED_DELTA_MULT / self.root_delta
+            + i32::from(!improving) * scale * params::RED_NON_IMPROVING
+                / params::RED_NON_IMPROVING_DEN
+            + params::RED_BASE
+    }
+
     /// Step-12 root bookkeeping (design/07 §3.4): update `m`'s [`RootMove`]
     /// after its child search returned `value` against the pre-step-13 root
     /// window `(alpha, beta)`. The root is cold — the linear lookup and the
@@ -1749,6 +1803,108 @@ mod tests {
             assert!(v == -1 || v == 1, "value_draw({nodes}) = {v}");
             assert_eq!(v == 1, nodes & 0x2 != 0);
         }
+    }
+
+    // --- Base reduction table + reduction() (design/10 §3.3, §5) ---
+
+    /// The table's closed form, recomputed exactly as `Worker::new` builds
+    /// it, for golden cross-checks.
+    fn red_table(i: usize) -> i32 {
+        (params::RED_TABLE_NUM as f64 / params::RED_TABLE_DEN as f64 * (i as f64).ln()) as i32
+    }
+
+    #[test]
+    fn reduction_table_matches_the_closed_form() {
+        let w = Worker::new(board(START_FEN));
+        // `ln(1) == 0`, so the first usable entry is exactly 0 (§5); index
+        // 0 is never read and stays 0.
+        assert_eq!(w.reductions[0], 0);
+        assert_eq!(w.reductions[1], 0);
+        // Concrete golden anchors: int(22.140625 * ln(i)).
+        assert_eq!(w.reductions[2], 15);
+        assert_eq!(w.reductions[64], 92);
+        // Every entry equals the closed form.
+        for i in 1..MAX_MOVES {
+            assert_eq!(w.reductions[i], red_table(i), "reductions[{i}]");
+        }
+    }
+
+    #[test]
+    fn reduction_table_is_monotonic_nondecreasing() {
+        // `ln` is increasing, so the truncated table never steps down.
+        let w = Worker::new(board(START_FEN));
+        for i in 2..MAX_MOVES {
+            assert!(
+                w.reductions[i] >= w.reductions[i - 1],
+                "reductions dropped at {i}: {} < {}",
+                w.reductions[i],
+                w.reductions[i - 1]
+            );
+        }
+    }
+
+    #[test]
+    fn reduction_scale_product_fits_i32() {
+        // `scale = reductions[d] * reductions[mn]` peaks at the top-right
+        // corner; design/10 §6 bounds it around 122² ≈ 15k. Prove the
+        // product — and the not-improving surcharge `scale * 194` — never
+        // overflow i32.
+        let w = Worker::new(board(START_FEN));
+        let peak = w.reductions[MAX_MOVES - 1];
+        let scale = i64::from(peak) * i64::from(peak);
+        assert!(
+            peak * peak < 20_000,
+            "scale ~15k expected, got {}",
+            peak * peak
+        );
+        assert!(
+            scale * i64::from(params::RED_NON_IMPROVING) <= i64::from(i32::MAX),
+            "scale * RED_NON_IMPROVING overflows i32"
+        );
+    }
+
+    #[test]
+    fn reduction_not_improving_adds_the_scale_surcharge() {
+        // improving vs. not differs by exactly `scale * 194 / 512`, all
+        // else fixed (§5).
+        let mut w = Worker::new(board(START_FEN));
+        w.root_delta = 100;
+        let (depth, mn, delta): (Depth, i32, i32) = (12, 8, 40);
+        let scale = w.reductions[depth as usize] * w.reductions[mn as usize];
+        let improving = w.reduction(true, depth, mn, delta);
+        let not_improving = w.reduction(false, depth, mn, delta);
+        assert_eq!(
+            not_improving - improving,
+            scale * params::RED_NON_IMPROVING / params::RED_NON_IMPROVING_DEN
+        );
+        assert!(not_improving > improving);
+    }
+
+    #[test]
+    fn reduction_wider_window_reduces_less() {
+        // A wider local window (larger `delta`) lowers r through the
+        // `- delta * 617 / root_delta` term.
+        let mut w = Worker::new(board(START_FEN));
+        w.root_delta = 50;
+        let (depth, mn): (Depth, i32) = (10, 6);
+        let narrow = w.reduction(true, depth, mn, 20);
+        let wide = w.reduction(true, depth, mn, 400);
+        assert!(wide < narrow, "wide {wide} !< narrow {narrow}");
+    }
+
+    #[test]
+    fn reduction_equals_the_full_formula() {
+        // Full cross-check at a representative point, preserving the exact
+        // truncating term order of design/10 §3.3.
+        let mut w = Worker::new(board(START_FEN));
+        w.root_delta = 137;
+        let (improving, depth, mn, delta): (bool, Depth, i32, i32) = (false, 15, 20, 33);
+        let scale = w.reductions[depth as usize] * w.reductions[mn as usize];
+        let want = scale - delta * params::RED_DELTA_MULT / w.root_delta
+            + i32::from(!improving) * scale * params::RED_NON_IMPROVING
+                / params::RED_NON_IMPROVING_DEN
+            + params::RED_BASE;
+        assert_eq!(w.reduction(improving, depth, mn, delta), want);
     }
 
     // --- Mate suite (doc 07 §5/§8.4): exact ply-relative mate scores (D5) ---
