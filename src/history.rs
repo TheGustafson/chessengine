@@ -103,7 +103,9 @@ pub const TT_MOVE_D: i32 = 8192; // the lone tt-move reliability scalar
 // `Move::raw16` space: the raw16 bijection makes indexing by it statistically
 // identical to Stockfish's from×to butterfly (design/09 §3.4, D2).
 const BUTTERFLY_SIZE: usize = 1 << 16; // 65536
-const LOW_PLY_SIZE: usize = 5; // plies 0..=4
+/// Low-ply history plane count (plies 0..=4). Public so the quiet scorer can
+/// bound its low-ply term (design/09 §3.7) against the table's plane count.
+pub const LOW_PLY_SIZE: usize = 5;
 const VICTIM_NB: usize = 7; // 6 piece types + a "no victim" slot (ep, quiet promos)
 const CONT_NB: usize = 3328; // in_check(2) × capture(2) × piece13 × to(64)
 const CONT_CORR_NB: usize = 832; // piece13 × to(64)

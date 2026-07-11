@@ -48,6 +48,52 @@ pub const ASPIRATION_SEARCH_AGAIN_DEN: Depth = 4;
 /// term — SEE handles attacker risk at the good/bad split gate.
 pub const CAPTURE_MVV_FACTOR: Value = 7;
 
+// --- Move ordering: good/bad capture split (design/09 §3.6 stage 3) ---
+
+/// Divisor of the score-dependent SEE gate `see_ge(m, -score / 18)` that
+/// splits captures into good and bad (design/09 §3.6): a capture with a
+/// high ordering score may lose a little material and still count as good;
+/// a capture with terrible capture-history must win material to qualify.
+pub const GOOD_CAPTURE_SEE_DIVISOR: Value = 18;
+
+// --- Move ordering: quiet scoring (design/09 §3.7) ---
+
+/// Weight on butterfly (main) history in the quiet ordering score.
+pub const QUIET_MAIN_HISTORY_WEIGHT: Value = 2;
+/// Weight on pawn-structure history in the quiet ordering score.
+pub const QUIET_PAWN_HISTORY_WEIGHT: Value = 2;
+/// Flat bonus for a quiet that gives check, gated by the SEE margin below
+/// so a check that hangs material earns nothing.
+pub const QUIET_CHECK_BONUS: Value = 16384;
+/// SEE margin gating the check bonus: a checking quiet earns it only if the
+/// move does not lose more than this much material (`see_ge(m, -75)`).
+pub const QUIET_CHECK_SEE_MARGIN: Value = -75;
+/// Per-piece-value multiplier of the threat escape/entry term: fleeing a
+/// square attacked by a strictly cheaper enemy piece earns
+/// `QUIET_THREAT_FACTOR * piece_value`, stepping onto one costs the same.
+pub const QUIET_THREAT_FACTOR: Value = 20;
+/// Weight on low-ply history in the quiet ordering score (plies 0..4 only,
+/// scaled by `/ (1 + ply)`).
+pub const QUIET_LOW_PLY_WEIGHT: Value = 8;
+
+// --- Move ordering: quiet good/bad split + sort (design/09 §3.6) ---
+
+/// Good/bad quiet partition threshold (design/09 §3.6 stages 5/7): quiets
+/// scoring strictly above this are "good" (emitted before bad captures);
+/// the exact complement are "bad" (emitted last). One shared threshold
+/// partitions the quiet region with no dedup bookkeeping.
+pub const GOOD_QUIET_THRESHOLD: Value = -14000;
+/// Depth multiplier of the quiet partial-sort limit `-3560 * depth`
+/// (design/09 §3.6 stage 4 / §3.8): deeper nodes sort more of the list, so
+/// sorting work scales with what the search actually consumes.
+pub const QUIET_SORT_DEPTH_FACTOR: Value = -3560;
+
+// --- Move ordering: evasion scoring (design/09 §3.7) ---
+
+/// Constant lifting every capturing evasion above every quiet evasion
+/// (design/09 §3.7): `2^28` dwarfs any history-based quiet-evasion score.
+pub const EVASION_CAPTURE_BONUS: Value = 1 << 28;
+
 // --- Quiescence search (design/07 §3.8) ---
 
 /// Futility headroom over the corrected static eval:

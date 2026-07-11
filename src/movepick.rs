@@ -9,16 +9,22 @@
 //!
 //! This module lands incrementally over design/09 §4:
 //!
-//! - **step 5 (here):** [`ExtMove`] (the move + ordering score, §3.1) and
+//! - **step 5:** [`ExtMove`] (the move + ordering score, §3.1) and
 //!   [`partial_insertion_sort`] (the limited descending sort, §3.8).
-//! - **step 6 (here):** the [`MovePicker`] skeleton — the single owned
+//! - **step 6:** the [`MovePicker`] skeleton — the single owned
 //!   `[ExtMove; MAX_MOVES]` buffer carved into regions by *indices* (§3.1),
 //!   the branchless TT-stage skip (§3.5), the dedup [`select`](MovePicker)
-//!   scan (§3.6) — and the two capture-only pipelines it drives now:
+//!   scan (§3.6) — and the two capture-only pipelines it drives:
 //!   quiescence (`QsearchTt → QcaptureInit → Qcapture`) and ProbCut
 //!   (`ProbcutTt → ProbcutInit → Probcut` with the `see_ge(threshold)` gate).
-//! - later steps (07/08): the main pipeline (good/bad capture split, quiet
-//!   scoring + split, `skip_quiet_moves`) and the evasion pipeline.
+//! - **step 7 (here):** the main pipeline (`MainTt → CaptureInit →
+//!   GoodCapture → QuietInit → GoodQuiet → BadCapture → BadQuiet`): quiet
+//!   scoring (butterfly + pawn + continuation history, the check bonus, the
+//!   threat escape/entry term via [`threats_by_lesser`], low-ply history),
+//!   the score-dependent good/bad capture split with region swaps, the
+//!   good/bad quiet split, and [`skip_quiet_moves`](MovePicker::skip_quiet_moves).
+//! - **step 8 (here):** the evasion pipeline (`EvasionTt → EvasionInit →
+//!   Evasion`) with its capture-first scoring.
 //!
 //! Hot-path rules (design/09 §6): no heap allocation on any [`next_move`]
 //! path (generation uses a stack [`MoveList`], scoring writes into the owned
@@ -28,12 +34,17 @@
 //!
 //! [`next_move`]: MovePicker::next_move
 
+use crate::bitboard::Bitboard;
 use crate::board::Board;
-use crate::history::Histories;
-use crate::movegen::generate_captures;
+use crate::history::{Histories, LOW_PLY_SIZE};
+use crate::movegen::{generate_captures, generate_evasions, generate_quiets};
 use crate::moves::{MAX_MOVES, Move, MoveList};
-use crate::search::params::CAPTURE_MVV_FACTOR;
-use crate::types::{DEPTH_QS, Depth, VALUE_ZERO, Value};
+use crate::search::params::{
+    CAPTURE_MVV_FACTOR, EVASION_CAPTURE_BONUS, GOOD_CAPTURE_SEE_DIVISOR, GOOD_QUIET_THRESHOLD,
+    QUIET_CHECK_BONUS, QUIET_CHECK_SEE_MARGIN, QUIET_LOW_PLY_WEIGHT, QUIET_MAIN_HISTORY_WEIGHT,
+    QUIET_PAWN_HISTORY_WEIGHT, QUIET_SORT_DEPTH_FACTOR, QUIET_THREAT_FACTOR,
+};
+use crate::types::{Color, DEPTH_QS, Depth, PieceType, VALUE_ZERO, Value};
 
 /// A move paired with its ordering score (design/09 §3.1, D7).
 ///
@@ -127,6 +138,48 @@ fn score_capture(board: &Board, hist: &Histories, m: Move) -> i32 {
     CAPTURE_MVV_FACTOR * victim_value + cap_hist
 }
 
+/// Squares attacked by enemy pieces *strictly cheaper* than each of our piece
+/// types, indexed by our [`PieceType`] (design/09 §3.7).
+///
+/// "Cheaper" is bucketed into tiers — pawn < {knight, bishop} < rook < queen —
+/// so the two minors form one tier (a knight does not threaten a bishop here).
+/// The quiet scorer uses these to reward a piece *fleeing* a square a cheaper
+/// enemy attacks and to bury a move *stepping onto* one. Pawns and kings have
+/// no cheaper attacker (and the king's ordering value is 0), so both stay
+/// `EMPTY`. Computed once per quiet-scoring pass — each enemy union is a
+/// pop-lsb loop over that piece type (pawns via a single bulk shift).
+fn threats_by_lesser(board: &Board, us: Color) -> [Bitboard; 6] {
+    let them = us.flip();
+    let occ = board.all_occupancy();
+    let tables = crate::attacks::tables();
+
+    let by_pawn = crate::attacks::pawn_attacks_bb(them, board.pieces(them, PieceType::Pawn));
+
+    let mut minors = Bitboard::EMPTY;
+    for sq in board.pieces(them, PieceType::Knight) {
+        minors |= crate::attacks::knight_attacks(sq);
+    }
+    for sq in board.pieces(them, PieceType::Bishop) {
+        minors |= tables.bishop_attacks(sq, occ);
+    }
+    let mut rooks = Bitboard::EMPTY;
+    for sq in board.pieces(them, PieceType::Rook) {
+        rooks |= tables.rook_attacks(sq, occ);
+    }
+
+    // Accumulated tiers: knights/bishops threatened by pawns; rooks by pawns +
+    // minors; queens by pawns + minors + rooks (design/09 §3.7).
+    let by_minor = by_pawn | minors;
+    let by_rook = by_minor | rooks;
+
+    let mut threat = [Bitboard::EMPTY; 6];
+    threat[PieceType::Knight as usize] = by_pawn;
+    threat[PieceType::Bishop as usize] = by_pawn;
+    threat[PieceType::Rook as usize] = by_minor;
+    threat[PieceType::Queen as usize] = by_rook;
+    threat
+}
+
 /// The picker's explicit state machine (design/09 §3.5). Each pipeline is a
 /// contiguous run of variants, so the branchless TT skip is a single `+1` on
 /// the discriminant. Steps 05/06 implement the two capture-only pipelines
@@ -201,16 +254,9 @@ impl Stage {
 ///
 /// The single `[ExtMove; MAX_MOVES]` buffer is carved into regions by the
 /// index cursors below rather than pointers (borrow-checker-friendly, equally
-/// fast — doc 09 §3.1). Steps 05/06 use only the `[cur .. end_cur)` emission
-/// window over a captures region; the bad-capture/quiet regions and the
-/// depth/ply/continuation inputs are populated now but consumed by the main
-/// and evasion pipelines in doc 09 §4 steps 7-8.
-// The struct deliberately carries the full doc-09 §3.5 field set now so the
-// constructor signatures match what the search will call; the fields the
-// capture-only pipelines don't yet read (`depth`, `ply`, `skip_quiets`,
-// `cont_hist`, and the `end_bad_captures`/`end_captures`/`end_generated`
-// region cursors) are wired through by steps 7-8.
-#[allow(dead_code)]
+/// fast — doc 09 §3.1): `[0, end_bad_captures)` bad captures, `[end_bad_captures,
+/// end_captures)` captures, `[end_captures, end_generated)` quiets, with
+/// `[cur, end_cur)` the live emission window over one of them.
 pub struct MovePicker {
     stage: Stage,
     tt_move: Move,
@@ -320,8 +366,8 @@ impl MovePicker {
                 }
 
                 // §3.6 item 2: generate + score captures, full sort, advance.
-                // ProbCut and quiescence share this init verbatim.
-                Stage::ProbcutInit | Stage::QcaptureInit => {
+                // Main search, ProbCut, and quiescence share this init verbatim.
+                Stage::CaptureInit | Stage::ProbcutInit | Stage::QcaptureInit => {
                     self.init_captures(board, hist);
                     self.stage = self.stage.bump();
                 }
@@ -332,20 +378,84 @@ impl MovePicker {
                 // ProbCut: captures clearing the SEE threshold, TT deduped.
                 Stage::Probcut => {
                     let threshold = self.threshold;
-                    return self.select(board, move |b, m| b.see_ge(m, threshold));
+                    return self.select(board, move |b, e| b.see_ge(e.mv, threshold));
                 }
 
-                // Main and evasion pipelines land in doc 09 §4 steps 7-8.
-                Stage::CaptureInit
-                | Stage::GoodCapture
-                | Stage::QuietInit
-                | Stage::GoodQuiet
-                | Stage::BadCapture
-                | Stage::BadQuiet
-                | Stage::EvasionInit
-                | Stage::Evasion => {
-                    todo!("main and evasion pipelines land in doc 09 §4 steps 7-8")
+                // §3.6 stage 3: the score-dependent good/bad split. A capture
+                // clears the SEE bar `-value / 18` (a high ordering score buys
+                // slack) to be *good*; failures are swapped down into the
+                // bad-captures region for later and skipped here.
+                Stage::GoodCapture => {
+                    while self.cur < self.end_cur {
+                        let ext = self.buf[self.cur];
+                        // Dedup: the TT move was already emitted at MainTt.
+                        if ext.mv == self.tt_move {
+                            self.cur += 1;
+                            continue;
+                        }
+                        if board.see_ge(ext.mv, -ext.value / GOOD_CAPTURE_SEE_DIVISOR) {
+                            self.cur += 1;
+                            return Some(ext.mv);
+                        }
+                        // Bad: park it in `[0, end_bad_captures)`. The stale,
+                        // already-emitted element it displaces goes to `cur`,
+                        // which `cur += 1` then steps past.
+                        self.buf.swap(self.end_bad_captures, self.cur);
+                        self.end_bad_captures += 1;
+                        self.cur += 1;
+                    }
+                    self.stage = self.stage.bump();
                 }
+
+                // §3.6 stage 4: generate + score quiets (unless skipping),
+                // laying them out just past the captures region.
+                Stage::QuietInit => {
+                    if !self.skip_quiets {
+                        self.init_quiets(board, hist);
+                    }
+                    self.stage = self.stage.bump();
+                }
+
+                // §3.6 stage 5: quiets scoring above the threshold, then rewind
+                // the emission window to the bad-captures region.
+                Stage::GoodQuiet => {
+                    if !self.skip_quiets
+                        && let Some(m) = self.select(board, |_, e| e.value > GOOD_QUIET_THRESHOLD)
+                    {
+                        return Some(m);
+                    }
+                    self.cur = 0;
+                    self.end_cur = self.end_bad_captures;
+                    self.stage = self.stage.bump();
+                }
+
+                // §3.6 stage 6: the deferred bad captures (in swap order), then
+                // rewind to the quiet region for the sub-threshold quiets.
+                Stage::BadCapture => {
+                    if let Some(m) = self.select(board, |_, _| true) {
+                        return Some(m);
+                    }
+                    self.cur = self.end_captures;
+                    self.end_cur = self.end_generated;
+                    self.stage = self.stage.bump();
+                }
+
+                // §3.6 stage 7: the exact complement of GoodQuiet (`value <=
+                // threshold`), so the two passes partition the quiet region.
+                Stage::BadQuiet => {
+                    if self.skip_quiets {
+                        return None;
+                    }
+                    return self.select(board, |_, e| e.value <= GOOD_QUIET_THRESHOLD);
+                }
+
+                // Evasion pipeline (§3.6): generate + score all evasions
+                // (captures lifted above quiets), full sort, emit every one.
+                Stage::EvasionInit => {
+                    self.init_evasions(board, hist);
+                    self.stage = self.stage.bump();
+                }
+                Stage::Evasion => return self.select(board, |_, _| true),
             }
         }
     }
@@ -374,17 +484,137 @@ impl MovePicker {
         partial_insertion_sort(&mut self.buf[..n], i32::MIN);
     }
 
-    /// Scan the emission window `buf[cur..end_cur]` for the next move passing
-    /// `ok`, skipping any element equal to the already-emitted TT move
-    /// (design/09 §3.6 shared select semantics). Advances `cur` past every
-    /// element it inspects.
-    fn select(&mut self, board: &Board, mut ok: impl FnMut(&Board, Move) -> bool) -> Option<Move> {
+    /// Late-move pruning (design/09 §3.5): abandon quiet generation and
+    /// emission — bad captures still come. Idempotent and callable
+    /// mid-iteration; if set before `QuietInit` no quiets are ever generated,
+    /// if set during `GoodQuiet` the remaining quiets are simply not emitted.
+    pub fn skip_quiet_moves(&mut self) {
+        self.skip_quiets = true;
+    }
+
+    /// Generate quiets into `buf[end_captures..]`, score them (§3.7), and
+    /// partial-sort only the promising prefix (limit `-3560 * depth`; deeper
+    /// nodes sort more — design/09 §3.6 stage 4 / §3.8).
+    ///
+    /// The five continuation-history slabs, the pawn-history slot, the
+    /// butterfly/low-ply planes, and the threat sets are resolved **once**
+    /// here, not per move (design/09 §6): each move then costs a handful of
+    /// array reads.
+    fn init_quiets(&mut self, board: &Board, hist: &Histories) {
+        let mut list = MoveList::new();
+        generate_quiets(board, &mut list);
+        let n = list.len();
+
+        let us = board.side_to_move();
+        let threat = threats_by_lesser(board, us);
+        let main_plane = &hist.main[us as usize];
+        let pawn_plane = hist.pawn_slot(board.pawn_key());
+        // Offsets 1,2,3,4,6 → cont_hist[0,1,2,3,5]; offset 5 is not read for
+        // ordering (only written by updates — design/09 §3.7).
+        let c1 = hist.cont_ref(self.cont_hist[0]);
+        let c2 = hist.cont_ref(self.cont_hist[1]);
+        let c3 = hist.cont_ref(self.cont_hist[2]);
+        let c4 = hist.cont_ref(self.cont_hist[3]);
+        let c6 = hist.cont_ref(self.cont_hist[5]);
+        let ply = self.ply;
+        let low_ply_plane = (ply < LOW_PLY_SIZE).then(|| &hist.low_ply[ply]);
+
+        let base = self.end_captures;
+        for (i, &m) in list.iter().enumerate() {
+            let pc = board
+                .piece_on(m.from())
+                .expect("a quiet move starts on a piece of the side to move");
+            let pt = pc.piece_type;
+            let pci = pc.index();
+            let to = m.to().index() as usize;
+            let raw = m.raw16() as usize;
+
+            let mut value = QUIET_MAIN_HISTORY_WEIGHT * main_plane[raw].get()
+                + QUIET_PAWN_HISTORY_WEIGHT * pawn_plane[pci][to].get()
+                + c1[pci][to].get()
+                + c2[pci][to].get()
+                + c3[pci][to].get()
+                + c4[pci][to].get()
+                + c6[pci][to].get();
+
+            // Check bonus, gated so a checking quiet that hangs material earns
+            // nothing (design/09 §3.7).
+            if board.check_squares(pt).contains(m.to()) && board.see_ge(m, QUIET_CHECK_SEE_MARGIN) {
+                value += QUIET_CHECK_BONUS;
+            }
+
+            // Threat escape/entry: +factor·value for fleeing a cheaper-piece
+            // attack, -factor·value for stepping into one (design/09 §3.7).
+            let from_threat = threat[pt as usize].contains(m.from()) as i32;
+            let to_threat = threat[pt as usize].contains(m.to()) as i32;
+            value += pt.value() * QUIET_THREAT_FACTOR * (from_threat - to_threat);
+
+            // Low-ply history (plies 0..4 only), damped toward the leaves.
+            if let Some(lp) = low_ply_plane {
+                value += QUIET_LOW_PLY_WEIGHT * lp[raw].get() / (1 + ply as i32);
+            }
+
+            self.buf[base + i] = ExtMove { mv: m, value };
+        }
+
+        self.cur = base;
+        self.end_cur = base + n;
+        self.end_generated = base + n;
+        partial_insertion_sort(
+            &mut self.buf[base..base + n],
+            QUIET_SORT_DEPTH_FACTOR * self.depth,
+        );
+    }
+
+    /// Generate + score check evasions into `buf[0..n]`, full-sort, and set the
+    /// emission window over the whole region (design/09 §3.6/§3.7). Capturing
+    /// evasions are lifted above every quiet evasion by [`EVASION_CAPTURE_BONUS`].
+    fn init_evasions(&mut self, board: &Board, hist: &Histories) {
+        let mut list = MoveList::new();
+        generate_evasions(board, &mut list);
+        let n = list.len();
+
+        let us = board.side_to_move();
+        let main_plane = &hist.main[us as usize];
+        let c1 = hist.cont_ref(self.cont_hist[0]);
+
+        for (i, &m) in list.iter().enumerate() {
+            let value = if board.capture_stage(m) {
+                let victim_value = board.piece_on(m.to()).map_or(0, |p| p.piece_type.value());
+                victim_value + EVASION_CAPTURE_BONUS
+            } else {
+                let pc = board
+                    .piece_on(m.from())
+                    .expect("an evasion starts on a piece of the side to move");
+                main_plane[m.raw16() as usize].get() + c1[pc.index()][m.to().index() as usize].get()
+            };
+            self.buf[i] = ExtMove { mv: m, value };
+        }
+
+        self.cur = 0;
+        self.end_cur = n;
+        self.end_captures = 0;
+        self.end_bad_captures = 0;
+        self.end_generated = n;
+        partial_insertion_sort(&mut self.buf[..n], i32::MIN);
+    }
+
+    /// Scan the emission window `buf[cur..end_cur]` for the next element passing
+    /// `ok`, skipping any equal to the already-emitted TT move (design/09 §3.6
+    /// shared select semantics). Advances `cur` past every element it inspects.
+    /// The closure sees the whole [`ExtMove`] so value-filtered stages (good/
+    /// bad quiets) can test the ordering score directly.
+    fn select(
+        &mut self,
+        board: &Board,
+        mut ok: impl FnMut(&Board, ExtMove) -> bool,
+    ) -> Option<Move> {
         while self.cur < self.end_cur {
-            let m = self.buf[self.cur].mv;
+            let ext = self.buf[self.cur];
             self.cur += 1;
             // Dedup: the TT move was already emitted at the `*Tt` stage.
-            if m != self.tt_move && ok(board, m) {
-                return Some(m);
+            if ext.mv != self.tt_move && ok(board, ext) {
+                return Some(ext.mv);
             }
         }
         None
@@ -396,7 +626,7 @@ mod tests {
     use super::*;
     use crate::history::Histories;
     use crate::movegen::generate_quiets;
-    use crate::types::Square;
+    use crate::types::{Piece, Square};
     use std::collections::HashSet;
 
     // A tiny LCG (same multiplier/increment as history.rs' tests) —
@@ -753,5 +983,348 @@ mod tests {
 
     fn sentinels() -> [crate::history::ContHistId; 6] {
         [crate::history::ContHistId::SENTINEL; 6]
+    }
+
+    // --- design/09 §5 steps 7-8: main + evasion pipelines ---
+
+    // A value in `[-bound, bound]` from the shared LCG.
+    fn rnd(state: &mut u64, bound: i16) -> i16 {
+        (((lcg_next(state) >> 40) as i64) % (2 * bound as i64 + 1) - bound as i64) as i16
+    }
+
+    // Poke pseudo-random values into every table the quiet + capture scorers
+    // read (main, low-ply, capture, pawn, continuation). Ordering must change
+    // freely while the *emitted set* stays invariant (design/09 §5).
+    fn randomize_ordering(hist: &mut Histories, seed: u64) {
+        let mut s = seed;
+        for row in hist.main.iter_mut() {
+            for c in row.iter_mut() {
+                *c = crate::history::StatEntry::new(rnd(&mut s, 7000));
+            }
+        }
+        for row in hist.low_ply.iter_mut() {
+            for c in row.iter_mut() {
+                *c = crate::history::StatEntry::new(rnd(&mut s, 7000));
+            }
+        }
+        for plane in hist.capture.iter_mut() {
+            for row in plane.iter_mut() {
+                for c in row.iter_mut() {
+                    *c = crate::history::StatEntry::new(rnd(&mut s, 10000));
+                }
+            }
+        }
+        for plane in hist.pawn.iter_mut() {
+            for row in plane.iter_mut() {
+                for c in row.iter_mut() {
+                    *c = crate::history::StatEntry::new(rnd(&mut s, 8000));
+                }
+            }
+        }
+        for slab in hist.cont.iter_mut() {
+            for row in slab.iter_mut() {
+                for c in row.iter_mut() {
+                    *c = crate::history::StatEntry::new(rnd(&mut s, 29000));
+                }
+            }
+        }
+    }
+
+    // The full pseudo-legal set of a not-in-check position (captures ⊎ quiets).
+    fn nonevasion_set(b: &Board) -> HashSet<Move> {
+        let mut list = MoveList::new();
+        crate::movegen::generate_non_evasions(b, &mut list);
+        let set: HashSet<Move> = list.iter().copied().collect();
+        assert_eq!(set.len(), list.len(), "generator emitted a duplicate move");
+        set
+    }
+
+    // The pseudo-legal evasion set of an in-check position.
+    fn evasion_set(b: &Board) -> HashSet<Move> {
+        let mut list = MoveList::new();
+        generate_evasions(b, &mut list);
+        let set: HashSet<Move> = list.iter().copied().collect();
+        assert_eq!(
+            set.len(),
+            list.len(),
+            "generator emitted a duplicate evasion"
+        );
+        set
+    }
+
+    // The set of quiet moves (for stage-order assertions).
+    fn quiet_set(b: &Board) -> HashSet<Move> {
+        let mut list = MoveList::new();
+        generate_quiets(b, &mut list);
+        list.iter().copied().collect()
+    }
+
+    // The main pipeline must emit exactly the full pseudo-legal set, with the
+    // usable TT move (capturing or quiet) emitted first and exactly once.
+    fn assert_main_emits_full(b: &Board, hist: &Histories) {
+        let full = nonevasion_set(b);
+
+        // No TT move: emission set == the whole pseudo-legal set.
+        let emitted = drain(MovePicker::new(b, Move::NULL, 8, 0, sentinels()), b, hist);
+        assert_eq!(emitted.iter().copied().collect::<HashSet<_>>(), full);
+        assert_eq!(emitted.len(), full.len());
+
+        // A capturing TT move: first, once, set unchanged.
+        if let Some(&tt) = capture_set(b).iter().next() {
+            let emitted = drain(MovePicker::new(b, tt, 8, 0, sentinels()), b, hist);
+            assert_eq!(emitted[0], tt, "usable TT capture must come first");
+            assert_eq!(emitted.iter().copied().collect::<HashSet<_>>(), full);
+            assert_eq!(emitted.len(), full.len());
+        }
+
+        // A quiet TT move: first, once, set unchanged (it is already in `full`).
+        if let Some(tt) = some_quiet(b) {
+            let emitted = drain(MovePicker::new(b, tt, 8, 0, sentinels()), b, hist);
+            assert_eq!(emitted[0], tt, "usable quiet TT move must come first");
+            assert_eq!(emitted.iter().copied().collect::<HashSet<_>>(), full);
+            assert_eq!(emitted.len(), full.len());
+        }
+    }
+
+    #[test]
+    fn main_pipeline_emits_full_pseudo_legal_set() {
+        // One fresh and one fully-randomized history, reused across fixtures:
+        // the emission set must be identical (ordering-invariant, design/09 §5).
+        let fresh = Histories::new();
+        let mut rand = Histories::new();
+        randomize_ordering(&mut rand, 0x0DDF_00D5_u64);
+        for &fen in FIXTURES {
+            let b = board(fen);
+            assert!(
+                b.checkers().is_empty(),
+                "fixture {fen} must not be in check"
+            );
+            assert_main_emits_full(&b, &fresh);
+            assert_main_emits_full(&b, &rand);
+        }
+    }
+
+    // In-check fixtures with a mix of capturing and quiet evasions.
+    const EVASION_FIXTURES: &[&str] = &[
+        // Rook checks the king from an adjacent square: Kxe2 is a capturing
+        // evasion alongside quiet king steps.
+        "4k3/8/8/8/8/8/4r3/4K3 w - - 0 1",
+        // Rook checks down the c-file: only quiet king moves evade.
+        "2r1k3/8/8/8/8/8/8/2K5 w - - 0 1",
+        // Queen checks adjacently: both Rxd2 and Kxd2 capture the checker.
+        "4k3/8/8/8/8/8/3q4/3RK3 w - - 0 1",
+    ];
+
+    #[test]
+    fn evasion_pipeline_emits_all_evasions_captures_first() {
+        let fresh = Histories::new();
+        let mut rand = Histories::new();
+        randomize_ordering(&mut rand, 0x0E7A_5104_u64);
+        for &fen in EVASION_FIXTURES {
+            let b = board(fen);
+            assert!(!b.checkers().is_empty(), "fixture {fen} must be in check");
+            let all = evasion_set(&b);
+            for hist in [&*fresh, &*rand] {
+                // Without a TT move the pipeline is EvasionInit → Evasion, fully
+                // sorted: every capturing evasion (score ≥ 2^28) precedes every
+                // quiet one, and the emitted set is exactly the generator's.
+                let emitted = drain(MovePicker::new(&b, Move::NULL, 8, 0, sentinels()), &b, hist);
+                assert_eq!(
+                    emitted.iter().copied().collect::<HashSet<_>>(),
+                    all,
+                    "evasion set != generator in {fen}"
+                );
+                let mut seen_quiet = false;
+                for &m in &emitted {
+                    if b.capture_stage(m) {
+                        assert!(!seen_quiet, "capturing evasion after a quiet one in {fen}");
+                    } else {
+                        seen_quiet = true;
+                    }
+                }
+
+                // A usable TT evasion is emitted first and exactly once; the set
+                // is unchanged.
+                let tt = *all.iter().next().unwrap();
+                let emitted = drain(MovePicker::new(&b, tt, 8, 0, sentinels()), &b, hist);
+                assert_eq!(emitted[0], tt, "usable TT evasion must come first in {fen}");
+                assert_eq!(
+                    emitted.iter().copied().collect::<HashSet<_>>(),
+                    all,
+                    "TT evasion changed the set in {fen}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn capture_history_flips_good_to_bad() {
+        // An equal rook trade (SEE exactly 0): the black rook a2 is defended
+        // only by its king on b3, so Rxa2 then Kxa2 nets zero.
+        let b = board("8/8/8/8/8/1k6/r7/R6K w - - 0 1");
+        assert!(b.checkers().is_empty());
+        let rxa2 = Move::normal(Square::A1, Square::A2);
+        assert!(b.pseudo_legal(rxa2) && b.is_capture(rxa2));
+        assert!(
+            b.see_ge(rxa2, 0) && !b.see_ge(rxa2, 1),
+            "the trade must be exactly even"
+        );
+        let quiets = quiet_set(&b);
+        assert!(!quiets.is_empty());
+
+        // Fresh history: an even capture clears `-value/18` → GOOD, so it is
+        // emitted before every quiet.
+        let fresh = Histories::new();
+        let emitted = drain(
+            MovePicker::new(&b, Move::NULL, 8, 0, sentinels()),
+            &b,
+            &fresh,
+        );
+        let good_idx = emitted
+            .iter()
+            .position(|&m| m == rxa2)
+            .expect("Rxa2 emitted");
+        for &q in &quiets {
+            let qi = emitted.iter().position(|&m| m == q).unwrap();
+            assert!(
+                good_idx < qi,
+                "fresh: good capture Rxa2 must precede quiet {q}"
+            );
+        }
+
+        // Terrible capture history drives `value` negative, so `-value/18`
+        // becomes a positive material demand the even trade cannot meet → BAD,
+        // emitted after every (good) quiet.
+        let mut poked = Histories::new();
+        poked.capture[Piece::new(Color::White, PieceType::Rook).index()]
+            [Square::A2.index() as usize][PieceType::Rook as usize] =
+            crate::history::StatEntry::new(-10692);
+        let emitted = drain(
+            MovePicker::new(&b, Move::NULL, 8, 0, sentinels()),
+            &b,
+            &poked,
+        );
+        let bad_idx = emitted
+            .iter()
+            .position(|&m| m == rxa2)
+            .expect("Rxa2 emitted");
+        for &q in &quiets {
+            let qi = emitted.iter().position(|&m| m == q).unwrap();
+            assert!(
+                bad_idx > qi,
+                "poked: bad capture Rxa2 must follow quiet {q}"
+            );
+        }
+    }
+
+    // Drive a picker's capture+quiet init directly and read one quiet's score
+    // out of the buffer (region order is irrelevant — we search the whole quiet
+    // region for the move). Fresh histories make every table cell its init
+    // value, so scores are hand-computable.
+    fn quiet_score(b: &Board, hist: &Histories, m: Move, ply: usize) -> i32 {
+        let mut mp = MovePicker::new(b, Move::NULL, 8, ply, sentinels());
+        mp.init_captures(b, hist);
+        mp.init_quiets(b, hist);
+        mp.buf[mp.end_captures..mp.end_generated]
+            .iter()
+            .find(|e| e.mv == m)
+            .unwrap_or_else(|| panic!("quiet {m} not generated"))
+            .value
+    }
+
+    #[test]
+    fn quiet_scoring_matches_hand_computed_values() {
+        // Fresh-history base: 2·main(−5) + 2·pawn(−1262) + 5·cont(−552).
+        const BASE: i32 = 2 * -5 + 2 * -1262 + 5 * -552; // −5294
+        let fresh = Histories::new();
+
+        // (a) Plain quiet at ply ≥ 5 (no low-ply term): a pawn push gives no
+        //     check and a pawn has no cheaper attacker (threat[Pawn] EMPTY).
+        let b = board(crate::fen::START_FEN);
+        let a3 = Move::normal(Square::A2, Square::A3);
+        assert_eq!(quiet_score(&b, &fresh, a3, 7), BASE);
+
+        // (b) Check bonus: Rd1-d4 checks the king on d8 and is SEE-safe.
+        let b = board("3k4/8/8/8/8/8/8/3RK3 w - - 0 1");
+        let rd4 = Move::normal(Square::D1, Square::D4);
+        assert!(b.check_squares(PieceType::Rook).contains(Square::D4));
+        assert_eq!(quiet_score(&b, &fresh, rd4, 7), BASE + QUIET_CHECK_BONUS);
+
+        // (c) Threat escape: a queen fleeing a rook-attacked square earns
+        //     +factor·QUEEN_VALUE.
+        let b = board("3rk3/8/8/8/3Q4/8/8/4K3 w - - 0 1");
+        let qf4 = Move::normal(Square::D4, Square::F4);
+        assert_eq!(
+            quiet_score(&b, &fresh, qf4, 7),
+            BASE + PieceType::Queen.value() * QUIET_THREAT_FACTOR
+        );
+
+        // (d) Threat entry: a queen stepping onto a rook-attacked square pays
+        //     the same, sinking the move far below the other quiets.
+        let b = board("3rk3/8/8/8/8/8/8/Q3K3 w - - 0 1");
+        let qd1 = Move::normal(Square::A1, Square::D1);
+        assert_eq!(
+            quiet_score(&b, &fresh, qd1, 7),
+            BASE - PieceType::Queen.value() * QUIET_THREAT_FACTOR
+        );
+        assert!(
+            quiet_score(&b, &fresh, qd1, 7) < GOOD_QUIET_THRESHOLD,
+            "must be a bad quiet"
+        );
+    }
+
+    #[test]
+    fn capture_scoring_matches_hand_computed_values() {
+        // 7·victim_value + capture_history; a fresh capture cell is −699.
+        let b = board("4k3/8/8/3n4/4P3/8/8/4K3 w - - 0 1");
+        let exd5 = Move::normal(Square::E4, Square::D5);
+        assert!(b.is_capture(exd5));
+        let expect = CAPTURE_MVV_FACTOR * PieceType::Knight.value() - 699;
+        assert_eq!(score_capture(&b, &Histories::new(), exd5), expect);
+        assert_eq!(expect, 4768); // 7·781 − 699
+    }
+
+    #[test]
+    fn skip_quiet_moves_suppresses_quiets() {
+        // Kiwipete: many captures and quiets, not in check.
+        let b = board(FIXTURES[1]);
+        assert!(b.checkers().is_empty());
+        let hist = Histories::new();
+        let captures = capture_set(&b);
+        let quiets = quiet_set(&b);
+        assert!(!captures.is_empty() && !quiets.is_empty());
+
+        // Skip before QuietInit: no quiet is ever generated, yet every capture
+        // (good and bad) still comes out.
+        let mut mp = MovePicker::new(&b, Move::NULL, 8, 0, sentinels());
+        mp.skip_quiet_moves();
+        let emitted = drain(mp, &b, &hist);
+        for &m in &emitted {
+            assert!(!quiets.contains(&m), "quiet {m} emitted despite skip");
+        }
+        assert_eq!(emitted.iter().copied().collect::<HashSet<_>>(), captures);
+
+        // Skip mid-GoodQuiet: quiets already emitted stay, no further quiets
+        // appear, and the bad captures still follow.
+        let mut mp = MovePicker::new(&b, Move::NULL, 8, 0, sentinels());
+        let mut got = Vec::new();
+        let mut seen = HashSet::new();
+        let mut skipped = false;
+        while let Some(m) = mp.next_move(&b, &hist) {
+            assert!(seen.insert(m), "duplicate {m} after mid-skip");
+            if !skipped && quiets.contains(&m) {
+                mp.skip_quiet_moves();
+                skipped = true;
+            }
+            got.push(m);
+        }
+        assert!(
+            skipped,
+            "no quiet ever appeared to trigger the mid-iteration skip"
+        );
+        assert!(
+            captures.iter().all(|c| got.contains(c)),
+            "a capture went missing after a mid-iteration skip"
+        );
     }
 }
