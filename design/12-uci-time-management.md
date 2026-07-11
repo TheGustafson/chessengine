@@ -1,6 +1,6 @@
 # 12 — UCI protocol and time management
 
-Status: Draft v1
+Status: Reviewed v1
 
 This document specifies the engine's entire user-visible surface: the UCI
 protocol implementation (`uci` module), the developer command extensions

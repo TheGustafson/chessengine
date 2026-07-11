@@ -1,6 +1,6 @@
 # Design 05 — Move generation
 
-Status: Draft v1
+Status: Reviewed v1
 
 This document specifies `src/movegen.rs`: type-parameterized pseudo-legal move
 generation (`CAPTURES`, `QUIETS`, `EVASIONS`, `NON_EVASIONS` and a `LEGAL`

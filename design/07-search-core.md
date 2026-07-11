@@ -1,6 +1,6 @@
 # 07 — Search core: PVS, qsearch, iterative deepening, aspiration
 
-Status: Draft v1
+Status: Reviewed v1
 
 This document specifies the naked search skeleton of the engine: the value
 semantics every score obeys, the per-ply search stack and its safe-Rust

@@ -1,6 +1,6 @@
 # 02 — Core types: `Value`, `Depth`, extensions to existing types
 
-Status: Draft v1
+Status: Reviewed v1
 
 This document specifies the search-oriented core type layer: the `Value` and
 `Depth` aliases with their full constant sets and predicates, mate-score

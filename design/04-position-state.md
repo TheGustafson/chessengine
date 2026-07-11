@@ -1,6 +1,6 @@
 # 04 — Board state, Zobrist keys, make/unmake, SEE
 
-Status: Draft v1
+Status: Reviewed v1
 
 This document specifies the evolution of `Board` from a static position
 container into the search-ready core of the engine: a split `StateInfo` undo

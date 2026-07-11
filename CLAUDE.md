@@ -9,12 +9,13 @@ introducing them.
 
 `design/` holds the reviewed design suite that governs all implementation:
 
-- `design/decisions.md` — pinned decisions D1-D27. **Decisions change here
+- `design/decisions.md` — pinned decisions D1-D29. **Decisions change here
   first; docs follow; code follows docs.**
 - `design/00-master-plan.md` — phase ordering (P0-P14), milestone gates,
   current phase status.
 - `design/README.md` — index and process rules for the suite.
-- `design/01-*.md` … `design/14-*.md` — one contract per component. Check
+- `design/01-*.md` … `design/16-*.md` — one contract per component (14
+  numbered + `15` NNUE datagen + `16` research data platform). Check
   code against the owning doc's acceptance criteria (§8) before calling a
   phase done.
 
@@ -183,8 +184,25 @@ tests; miri-clean. M4 passed (audited 2026-07-10, evidence in
 `docs/strength-log.md`): gauntlet places the engine between the SF16
 UCI_Elo 2000 and 2200 rungs; WAC-revised tactics 154/200 at 100 ms.
 
-Next (in rough dependency order): P7 — PVS zero-window, aspiration
-windows, full qsearch spec (doc 07 steps 7–10), basic clock TM (doc 12
-step 7); then P8 move ordering/history, P9 pruning waves. Perft is the
-correctness oracle — no movegen/make-unmake change lands without the D24
-ritual above.
+P7 (`be3adfa`): PVS zero-window + aspiration windows + full qsearch spec +
+hygiene pass + basic clock TM. +65 Elo vs P6, zero time forfeits, ~33× node
+reduction at equal depth. P8 (`3227593`): staged `MovePicker` + the full
+history/correction stack (butterfly/capture/continuation/pawn/low-ply,
+gravity updates, no killers — D17); +76 Elo vs naive MVV-LVA, borrow-safe
+`ContHistId` (no unsafe).
+
+P9 pruning waves IN PROGRESS: Wave A (reduction table + RFP + NMP + LMR)
+landed ~+570 Elo vs pre-pruning at fixed time (92% smaller tree); Wave B
+(razoring / LMP / futility+SEE / IIR) running. A fixed-node proxy SPRT
+(doc 14 §9.4) gates each heuristic; the real-TC SPRT gates each wave.
+
+Next / plan amended (D21/D28/D29, 2026-07-11): eval Phase B (HCE + texel)
+DESCOPED — Stockfish is now the NNUE bootstrap data generator, so HCE is off
+the critical path. Order: **P9 → P10** (time-mgmt completion + full UCI) **→
+P11** (lazy SMP) **→ P13** (NNUE), with PSQT as the eval fallback. NNUE is
+trained AlphaGo→AlphaZero style: distill from a compiled SF (discardable
+scaffold), then retrain the *shipped* net from self-play for clean
+provenance. Datagen is a research data platform (D29, `design/16`); the
+bootstrap pipeline + `bullet` format contract live in `design/15`. Perft
+remains the correctness oracle — no movegen/make-unmake change lands
+without the D24 ritual above.

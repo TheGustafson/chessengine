@@ -1,6 +1,6 @@
 # 11 — Evaluation: PSQT to HCE to NNUE
 
-Status: Draft v1
+Status: Reviewed v1
 
 This document designs the evaluation subsystem behind the single
 `evaluate(&Board, ...) -> Value` seam (D22), covering all three phases of the

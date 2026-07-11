@@ -1,6 +1,6 @@
 # 03 — Attack tables: leapers, rays, fancy magic bitboards
 
-Status: Draft v1
+Status: Reviewed v1
 
 This document specifies the `attacks` module (D13): every precomputed attack
 table the engine will ever consult. Leaper attacks (knight, king, pawn), the

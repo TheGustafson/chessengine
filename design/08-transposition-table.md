@@ -1,6 +1,6 @@
 # 08 — Transposition table
 
-Status: Draft v1
+Status: Reviewed v1
 
 The transposition table (TT) is the engine's shared, lock-free cache of search
 results, keyed by the 64-bit Zobrist key. This document specifies the full TT

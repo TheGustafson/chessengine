@@ -308,7 +308,7 @@ noted per row.
 | M5 | M-2450 | P9 | Gauntlet ≥ 2450 (rung M2); ≥ +150 Elo vs pre-Wave-A baseline over 1000+ games (doc 10 §8.4); tactics score attributed |
 | M6 | M-2750 | P10 | Gauntlet ≥ 2750 (rung M3); zero time forfeits in 1000 @ 10+0.1 + 300 @ 60+0.6 (doc 12 §8.3) |
 | M7 | M-SMP | P11 | Doc 13 §8 complete: `Threads=1` bench identical, TSan clean, ≥ 90 %/thread retention at 8 threads, SPRT `Threads=4` vs `1` clearly positive |
-| M8 | M-2950 | P12 | SPRT Phase B vs Phase A passed; gauntlet ≥ 2950 (rung M4) |
+| ~~M8~~ | ~~M-2950~~ | ~~P12~~ | **RETIRED** (2026-07-11, D21/D28): P12 HCE descoped — Stockfish is the NNUE bootstrap generator, so HCE is off the path. Ladder skips M8: M7 (SMP) → M9 (NNUE). |
 | M9 | M-3200 | P13 | Self-trained net SPRT-beats HCE; gauntlet ≥ 3200 (rung M5); NNUE bench nps ≥ 70 % of locally built SF |
 | M10 | M-parity | P14 | Sustained gauntlet climb vs recent Stash tags / older SF releases per doc 14 §3.5/§3.8; every gain SPRT-attributed |
 

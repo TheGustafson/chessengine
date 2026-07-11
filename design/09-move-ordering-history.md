@@ -1,6 +1,6 @@
 # 09 — Move ordering: MovePicker and history tables
 
-Status: Draft v1
+Status: Reviewed v1
 
 This document specifies the two modules that decide *in what order* the search
 considers moves: `movepick` (a lazily staged, one-move-at-a-time generator

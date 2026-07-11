@@ -1,6 +1,6 @@
 # 13 — Threading: lazy SMP in safe Rust
 
-Status: Draft v1
+Status: Reviewed v1
 
 This document specifies the engine's multithreading layer: a lazy-SMP design
 (D23) in which N identical searchers run on private copies of the root

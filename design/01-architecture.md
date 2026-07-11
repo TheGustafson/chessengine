@@ -1,6 +1,6 @@
 # 01 — Architecture, module layout, and conventions
 
-Status: Draft v1
+Status: Reviewed v1
 
 This document is the top-level map of the engine: the single-crate layout
 (D13), every planned module with its responsibility and public seam, the

@@ -1,6 +1,6 @@
 # 14 — Performance engineering and strength testing
 
-Status: Draft v1
+Status: Reviewed v1
 
 This document defines how we *know* the engine is fast and strong: the
 measurement hierarchy (SPRT games > `bench` > tactical suite > criterion

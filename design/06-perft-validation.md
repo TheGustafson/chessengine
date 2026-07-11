@@ -1,6 +1,6 @@
 # 06 — Perft and correctness validation
 
-Status: Draft v1
+Status: Reviewed v1
 
 Perft is the ground-truth oracle for the move generator and make/unmake: it
 counts every legal move path to a fixed depth and compares against exactly
