@@ -557,6 +557,20 @@ impl Histories {
         }
     }
 
+    /// The capture-history value for `m` in `board` (read side): the same
+    /// `[moved][to][victim]` cell [`Self::capture_entry_mut`] writes, with the
+    /// [`NO_VICTIM`] slot for en passant and quiet queen promotions (no piece
+    /// on `to`). Read by design/10 §3.5's capture futility / SEE pruning.
+    pub fn capture_value(&self, board: &Board, m: Move) -> i32 {
+        let moved = board
+            .piece_on(m.from())
+            .expect("a capture or checking move starts on a piece of the side to move");
+        let victim = board
+            .piece_on(m.to())
+            .map_or(NO_VICTIM, |p| p.piece_type as usize);
+        self.capture[moved.index()][m.to().index() as usize][victim].get()
+    }
+
     /// The mutable capture-history cell for `m` in `board`: `[moved][to]
     /// [victim]`, with the [`NO_VICTIM`] slot for en passant and quiet queen
     /// promotions (no piece on `to`).

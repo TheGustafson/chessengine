@@ -256,6 +256,52 @@ fn parent_futility_value(
         + params::PFUT_EVAL_ABOVE_ALPHA * Value::from(eval_above_alpha)
 }
 
+/// The capture-futility optimistic value (design/10 §3.5, the move loop's
+/// capture branch): the most a non-checking capture could plausibly yield —
+/// the static eval, a depth-scaled slack, the victim's value, and a
+/// capture-history nudge. The capture is pruned when this cannot reach alpha.
+///
+/// ```text
+/// static_eval + CFUT_BASE + CFUT_LMRDEPTH_MULT·lmr_depth
+///             + captured_value + CFUT_HIST_MULT·capt_hist / CAPT_HIST_DEN
+/// ```
+///
+/// `captured_value` is 0 for en passant (no piece on `to`) — SF parity; the
+/// `CFUT_LMRDEPTH_MULT·lmr_depth` term LOWERS the value at shallow nodes (it
+/// can be negative). Pure `i32`, so the term order and truncation match the
+/// Stockfish source this re-expresses (D27): `CFUT_HIST_MULT·capt_hist` is
+/// formed before the divide, exactly like `131 * captHist / 1024`. Keeping the
+/// bound a pure function makes its algebra unit-testable (§5) apart from the
+/// make/prune control flow.
+#[inline]
+fn capture_futility_value(
+    static_eval: Value,
+    lmr_depth: i32,
+    captured_value: Value,
+    capt_hist: i32,
+) -> Value {
+    static_eval
+        + params::CFUT_BASE
+        + params::CFUT_LMRDEPTH_MULT * lmr_depth
+        + captured_value
+        + params::CFUT_HIST_MULT * capt_hist / params::CAPT_HIST_DEN
+}
+
+/// The capture/check SEE margin (design/10 §3.5): a capture or checking move
+/// whose static exchange cannot reach `-margin` is pruned.
+///
+/// ```text
+/// CAP_SEE_DEPTH_MULT·depth + CAP_SEE_HIST_MULT·capt_hist / CAPT_HIST_DEN
+/// ```
+///
+/// Pure `i32`; the capture-history term is formed before the divide, matching
+/// the Stockfish source's `captHist * 34 / 1024` truncation (D27).
+#[inline]
+fn capture_see_margin(depth: Depth, capt_hist: i32) -> Value {
+    params::CAP_SEE_DEPTH_MULT * depth
+        + params::CAP_SEE_HIST_MULT * capt_hist / params::CAPT_HIST_DEN
+}
+
 /// The TT prefetch hook (doc 04 §3.10 hook A, doc 08 §3.15 call site 1):
 /// wired into [`Worker::do_move`] so every made move issues a prefetch for
 /// the child's cluster the moment the child key is final — the DRAM fetch
@@ -1262,13 +1308,63 @@ impl Worker {
                 // item 11; item 7 uses the plain `new_depth - r/1024`.
                 let mut lmr_depth = new_depth - r / params::RED_UNIT;
 
-                // Captures and checking moves route to their own futility/SEE
-                // gates (Wave-B item 8); until those land they fall through
-                // unpruned. Quiets — spared only on the last iteration's PV
-                // path at a PV node (`!follow_pv || !PV`; `follow_pv` is inert
-                // until item 9 plumbs it, so this OR is currently always true)
-                // — take parent futility then negative-SEE pruning.
-                if !is_capture && !gives_check && (!self.stack[cur].follow_pv || !NT::PV) {
+                // Captures and checking moves (Wave-B item 8, design/10 §3.5)
+                // take their own futility/SEE gates; quiets — spared only on
+                // the last iteration's PV path at a PV node (`!follow_pv ||
+                // !PV`; `follow_pv` is inert until item 9 plumbs it, so this OR
+                // is currently always true) — take parent futility then
+                // negative-SEE pruning. The `else` already implies a quiet
+                // non-check, so its condition drops the `!is_capture &&
+                // !gives_check` the capture arm now consumes.
+                if is_capture || gives_check {
+                    // The capture history `capt_hist = capture[moved][to]
+                    // [captured]` (doc 09; the NO_VICTIM slot for en passant
+                    // and quiet queen promotions, where no piece sits on `to`)
+                    // feeds both capture gates.
+                    let capt_hist = self.histories.capture_value(&self.board, m);
+
+                    // Capture futility (design/10 §3.5): a non-checking capture
+                    // whose victim value plus a depth-scaled slack and the
+                    // capture-history nudge still leaves the static eval below
+                    // alpha is futile and skipped. `piece_value(captured)` is 0
+                    // for en passant (no piece on `to`) — SF parity. Unlike
+                    // parent futility there is NO `!in_check` guard: the block's
+                    // outer `!is_loss(best_value)` fence already keeps every
+                    // evasion searched until one produces a real value.
+                    if !gives_check && lmr_depth < params::CFUT_MAX_LMRDEPTH {
+                        let captured_value = self
+                            .board
+                            .piece_on(m.to())
+                            .map_or(0, |p| p.piece_type.value());
+                        if capture_futility_value(
+                            self.stack[cur].static_eval,
+                            lmr_depth,
+                            captured_value,
+                            capt_hist,
+                        ) <= alpha
+                        {
+                            continue;
+                        }
+                    }
+
+                    // Capture/check SEE pruning (design/10 §3.5): a capture or
+                    // checking move that cannot win back `-margin` in a static
+                    // exchange is pruned — UNLESS `alpha < VALUE_DRAW` and the
+                    // moved piece is our LAST non-pawn material (sacrificing it
+                    // may be a stalemate resource, which is never pruned).
+                    let us = self.board.side_to_move();
+                    let moved_value = self
+                        .board
+                        .piece_on(m.from())
+                        .expect("a capture or checking move starts on a piece of the side to move")
+                        .piece_type
+                        .value();
+                    if (alpha >= VALUE_DRAW || self.board.non_pawn_material(us) != moved_value)
+                        && !self.board.see_ge(m, -capture_see_margin(depth, capt_hist))
+                    {
+                        continue;
+                    }
+                } else if !self.stack[cur].follow_pv || !NT::PV {
                     // Parent futility (design/10 §3.5): the most optimistic
                     // value this quiet could yield still cannot reach alpha at
                     // a shallow predicted depth. Lift `best_value` to that
@@ -2730,6 +2826,132 @@ mod tests {
         let v = search_at::<NonPv>(&mut w, &tt, alpha, alpha + 1, depth, true, 1);
         assert!(v <= alpha, "Nc2 must fail low (no fail-high shortcut)");
         assert_eq!(w.nodes, 1, "quiet SEE must drop the hanging Nb3");
+    }
+
+    // --- Capture futility + capture/check SEE pruning (design/10 §3.5, §5) ---
+
+    #[test]
+    fn capture_futility_value_matches_the_hand_computed_bound() {
+        // (static_eval, lmr_depth, captured_value, capt_hist, expected):
+        // `static_eval + 231 + 232·lmr_depth + captured_value
+        //  + 131·capt_hist/1024`, computed by hand — including the negative
+        // `lmr_depth` term that LOWERS the bound at shallow nodes and the
+        // truncation of `131·capt_hist/1024` (formed before the divide).
+        let cases: &[(Value, i32, Value, i32, Value)] = &[
+            (0, 0, 0, 0, 231),             // the flat base alone
+            (0, -1, 208, -699, 118),       // depth-1 pawn capture, fresh capt_hist: 231-232+208-89
+            (0, 0, 0, -1, 231),            // -131/1024 truncates toward zero to 0
+            (0, 0, 0, -1024, 100),         // -131·1024/1024 = -131 → 231-131
+            (100, 3, 208, 1024, 1366),     // 100+231+696+208+131
+            (-1412, -1, 208, -699, -1294), // the search-level fixture's bound
+        ];
+        for &(se, lmr, cap, ch, want) in cases {
+            assert_eq!(
+                capture_futility_value(se, lmr, cap, ch),
+                want,
+                "capture_futility_value({se}, {lmr}, {cap}, {ch})"
+            );
+        }
+    }
+
+    #[test]
+    fn capture_see_margin_matches_the_hand_computed_value() {
+        // (depth, capt_hist, expected): `175·depth + 34·capt_hist/1024`, the
+        // capture-history term formed before the truncating divide.
+        let cases: &[(Depth, i32, Value)] = &[
+            (1, 0, 175),      // 175 + 0
+            (1, -699, 152),   // 175 + (34·-699)/1024 = 175 - 23
+            (2, -1, 350),     // -34/1024 truncates toward zero to 0
+            (4, 1024, 734),   // 700 + 34
+            (10, 3000, 1849), // 1750 + 102000/1024 = 1750 + 99
+        ];
+        for &(d, ch, want) in cases {
+            assert_eq!(
+                capture_see_margin(d, ch),
+                want,
+                "capture_see_margin({d}, {ch})"
+            );
+        }
+    }
+
+    #[test]
+    fn capture_futility_prunes_a_futile_capture_at_its_margin() {
+        // White (Ka6, Na1) is boxed to exactly two legal moves, both captures
+        // of black pawns' guards: Nxb3 (an even trade — the black knight on b3
+        // is pawn-defended, SEE 0) and Nxc2 (an undefended pawn, SEE +208).
+        // Both are SEE-safe, so the capture-SEE gate can NEVER prune either —
+        // isolating capture FUTILITY as the only rule at play. The picker
+        // orders the higher-MVV Nxb3 first: it is searched (its qsearch child
+        // recaptures cxb3, so move 1 costs two nodes) and fails low, leaving
+        // best_value non-loss with no best move. Nxc2 then reaches the capture
+        // branch, where at depth 1 `lmr_depth == -1` and the fresh capture
+        // history is −699, so the futility bound is exactly
+        // `capture_futility_value(static_eval, -1, 208, -699)`. The boundary is
+        // sharp (`futility_value <= alpha`):
+        //   - alpha = bound:     Nxc2 is pruned → 2 nodes (only move 1's pair).
+        //   - alpha = bound - 1: Nxc2 is searched → 3 nodes.
+        let fen = "kr4r1/8/K7/8/2p5/1n6/2p5/N7 w - - 0 1";
+        let b = board(fen);
+        assert_eq!(
+            all_legal(&b).len(),
+            2,
+            "fixture must offer exactly two moves"
+        );
+        let nxb3 = Move::normal(Square::A1, Square::B3);
+        let nxc2 = Move::normal(Square::A1, Square::C2);
+        assert!(
+            b.capture_stage(nxb3) && b.capture_stage(nxc2),
+            "both are captures"
+        );
+        assert!(!b.gives_check(nxc2), "Nxc2 must be a non-checking capture");
+        // Both SEE-safe → capture SEE cannot prune (isolates futility).
+        let depth: Depth = 1;
+        let ch = Worker::new(board(fen)).histories.capture_value(&b, nxc2);
+        assert_eq!(ch, -699, "fresh capture history is CAPTURE_INIT");
+        assert!(
+            b.see_ge(nxc2, -capture_see_margin(depth, ch)),
+            "Nxc2 must clear the capture-SEE margin (SEE cannot be the pruner)"
+        );
+
+        let se = static_eval(&b);
+        assert!(
+            !is_decisive(se),
+            "the fixture's eval is not a decisive score"
+        );
+        let bound = capture_futility_value(se, -1, PieceType::Pawn.value(), ch);
+
+        // At the margin: Nxc2 pruned by capture futility. Move 1 (Nxb3) plus
+        // its qsearch recapture are the only nodes.
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let _ = search_at::<NonPv>(&mut w, &tt, bound, bound + 1, depth, true, 1);
+        assert_eq!(
+            w.nodes, 2,
+            "at the margin, capture futility must prune Nxc2"
+        );
+
+        // One below the margin: capture futility dormant, Nxc2 is searched.
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let _ = search_at::<NonPv>(&mut w, &tt, bound - 1, bound, depth, true, 1);
+        assert_eq!(w.nodes, 3, "below the margin, Nxc2 must be searched");
+    }
+
+    #[test]
+    fn capture_pruning_preserves_a_forced_mate() {
+        // Mate-safety with capture futility + capture SEE live in a tree full
+        // of captures: the losing side has a queen (h4), so both rooks' capture
+        // moves and the queen's are subject to the capture-pruning gates. The
+        // shared `!is_loss(best_value)` fence keeps them out of the mate band,
+        // so the exact ply-relative mate (Ra8+ …#, mate in two moves) still
+        // returns. Companion to the parent-futility / quiet-SEE mate twin.
+        let fen = "6k1/5ppp/8/8/7q/8/5PPP/R2R2K1 w - - 0 1";
+        let w = go_depth(fen, 8);
+        assert_eq!(
+            best_score(&w),
+            mate_in(3),
+            "capture futility / SEE must not corrupt the forced mate"
+        );
     }
 
     #[test]

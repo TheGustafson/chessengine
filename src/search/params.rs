@@ -312,6 +312,52 @@ pub const RED_FULLDEPTH_DOCK2: i32 = 5223;
 /// tried before movecount pruning can bite, before the depth² growth.
 pub const LMP_BASE: i32 = 3;
 
+// --- Move-loop pruning: capture futility + capture/check SEE (design/10 §3.5) ---
+//
+// The capture/check arm of the shallow-depth pruning block (Wave-B item 8),
+// keyed by the capture history `capt_hist = capture[moved][to][captured]`
+// (design/09). Two gates, in node order:
+//
+//   * Capture futility (non-checking captures, `lmr_depth < CFUT_MAX_LMRDEPTH`):
+//     a capture whose victim value plus a depth-scaled slack and the
+//     capture-history nudge still leaves the static eval below alpha is futile
+//     — skip when `ss.static_eval + CFUT_BASE + CFUT_LMRDEPTH_MULT·lmr_depth +
+//     piece_value(captured) + CFUT_HIST_MULT·capt_hist/CAPT_HIST_DEN <= alpha`.
+//     `piece_value(captured)` is 0 for en passant (no piece on `to`) — SF
+//     parity. There is NO `!in_check` guard (unlike parent futility below):
+//     the block's outer `!is_loss(best_value)` fence already keeps every
+//     evasion searched until one produces a real value.
+//   * Capture/check SEE (captures AND checking quiets): a move that cannot win
+//     back `-(CAP_SEE_DEPTH_MULT·depth + CAP_SEE_HIST_MULT·capt_hist/
+//     CAPT_HIST_DEN)` in a static exchange is pruned — UNLESS `alpha <
+//     VALUE_DRAW` and the moved piece is our LAST non-pawn material
+//     (`non_pawn_material(us) == piece_value(moved)`): sacrificing it may be a
+//     stalemate resource, which is never pruned.
+
+/// Exclusive lmr-depth ceiling of capture futility (`lmr_depth <
+/// CFUT_MAX_LMRDEPTH`); deeper predicted searches are trusted to see the
+/// tactic themselves.
+pub const CFUT_MAX_LMRDEPTH: Depth = 7;
+/// Flat base of the capture-futility optimistic value over the static eval.
+pub const CFUT_BASE: Value = 231;
+/// Per-lmr-depth slope of the capture-futility value (can be negative at
+/// shallow nodes, LOWERING the bound).
+pub const CFUT_LMRDEPTH_MULT: Value = 232;
+/// Capture-history nudge numerator of the capture-futility value
+/// (`CFUT_HIST_MULT·capt_hist / CAPT_HIST_DEN`): a capture the history likes
+/// is written off a little less readily.
+pub const CFUT_HIST_MULT: i32 = 131;
+/// Depth multiplier of the capture/check SEE margin
+/// (`CAP_SEE_DEPTH_MULT·depth + CAP_SEE_HIST_MULT·capt_hist/CAPT_HIST_DEN`):
+/// deeper nodes tolerate a bigger static-exchange loss before pruning.
+pub const CAP_SEE_DEPTH_MULT: Value = 175;
+/// Capture-history numerator of the capture/check SEE margin.
+pub const CAP_SEE_HIST_MULT: i32 = 34;
+/// Shared `/1024` divisor of the capture-history reads in both capture gates
+/// above (the capture history itself is carried at design/09's `CAPT_D`
+/// gravity scale; this is only the pruning read weight).
+pub const CAPT_HIST_DEN: i32 = 1024;
+
 // --- Move-loop pruning: parent futility (design/10 §3.5) ---
 //
 // "Futility pruning: parent node" — a shallow, not-in-check node writes off
