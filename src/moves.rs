@@ -97,6 +97,17 @@ impl Move {
     pub const fn from_raw16(bits: u16) -> Move {
         Move(bits)
     }
+
+    /// True for every real move, false for a none/null sentinel.
+    ///
+    /// The invariant is `from() != to()` (design/09 §3.4, D2): a legal move
+    /// always changes the moving piece's square, whereas [`Move::NULL`]
+    /// (a1→a1) and any future null-move sentinel share `from == to`. History
+    /// writes and the continuation-history walk gate on this so a null move
+    /// or the padding slots below the root never poison a table.
+    pub const fn is_ok(self) -> bool {
+        (self.0 & 0x3F) != ((self.0 >> 6) & 0x3F)
+    }
 }
 
 /// UCI long algebraic notation: "e2e4", "e7e8q".
@@ -307,6 +318,37 @@ mod tests {
 
         // Sentinel bookkeeping (doc 02 §3.7, D2): NULL is raw 0.
         assert_eq!(Move::NULL.raw16(), 0);
+    }
+
+    // design/09 §3.4 / step 1: is_ok() distinguishes real moves from the
+    // none/null sentinel by the from != to invariant.
+    #[test]
+    fn is_ok_distinguishes_null_from_real_moves() {
+        // The none-sentinel and any same-square pattern are not ok.
+        assert!(!Move::NULL.is_ok());
+        assert!(!Move::normal(Square::E4, Square::E4).is_ok());
+        assert!(!Move::normal(Square::A1, Square::A1).is_ok());
+        assert!(!Move::normal(Square::H8, Square::H8).is_ok());
+
+        // Every real move of every kind changes the square, so is ok.
+        assert!(Move::normal(Square::E2, Square::E4).is_ok());
+        assert!(Move::en_passant(Square::E5, Square::D6).is_ok());
+        assert!(Move::castling(Square::E1, Square::G1).is_ok());
+        for pt in [
+            PieceType::Knight,
+            PieceType::Bishop,
+            PieceType::Rook,
+            PieceType::Queen,
+        ] {
+            assert!(Move::promotion(Square::E7, Square::E8, pt).is_ok());
+        }
+
+        // Exhaustive: from != to iff is_ok, across all from/to pairs.
+        for from in Square::all() {
+            for to in Square::all() {
+                assert_eq!(Move::normal(from, to).is_ok(), from != to);
+            }
+        }
     }
 
     #[test]

@@ -844,11 +844,11 @@ every step.
    `design/09-move-ordering-history.md` per the commissioning instruction.
    One rename (or a sweep of the ~10 references) is needed at suite
    assembly; content is unaffected.
-2. **`ContCorrId` stack field:** doc 10 sketches a separate
-   `StackEntry::cont_corr_hist` field. Since `ContHistId::piece_to()`
-   derives it exactly (§3.2), we propose dropping the extra field and
-   deriving on use — to be settled with doc 07 when `StackEntry` is
-   finalized.
+2. **`ContCorrId` stack field:** RESOLVED (P7 froze `Stack`,
+   `src/search/stack.rs`) — no separate `cont_corr_hist`/`ContCorrId` field;
+   the continuation-correction outer index is derived from the `cont_hist`
+   key via `ContHistId::piece_to()` at its use sites (§3.2, §3.10). `Stack`
+   carries the single `cont_hist: ContHistId` and nothing more.
 3. **Breadth-multiplier arithmetic:** SF's `bonus * u64(count) / 256` wraps
    negative bonuses through u64, effectively floor-dividing them; we define
    plain i64 truncating division. Off-by-one on negative bonuses versus SF —
