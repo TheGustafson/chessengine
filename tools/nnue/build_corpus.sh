@@ -10,14 +10,21 @@
 #     histograms, timestamp -- §3.6).
 #
 # We do NOT hand-pack the 32-byte record (§3.2.1): the binary is produced by
-# bulletformat's own converter, located via env (crates.io is firewalled in
-# this env, so the Rust tools are vendored/installed at P13 -- open question 1).
-# The exact convert/shuffle/interleave CLI is PINNED against the vendored
-# bullet+bulletformat commit at that time; this script parametrises it:
+# bulletformat's own converter, located via env. The exact convert/shuffle/
+# interleave CLI is PINNED against the vendored bullet+bulletformat commit; this
+# script parametrises it:
 #
 #   BULLETFORMAT_CONVERT  full command; receives:  <in.txt> <out.bin>
 #   BULLET_UTILS_SHUFFLE  full command; receives:  <in.bin> <out.bin>
 #   BULLET_UTILS_ILEAVE   full command; receives:  <out.bin> <in1.bin>...
+#
+# The working converter + the full build/train recipe are documented and pinned
+# (bulletformat 1.8.0, bullet cebc78a) in tools/nnue/TRAINING.md; the converter
+# reference source is tools/nnue/bf_convert.rs. Validated end-to-end on the
+# shard_43 smoke corpus 2026-07-11 (raw text -> 32B bin -> GPU-trained net).
+# Typical wiring:
+#   BULLETFORMAT_CONVERT="$SCRATCH/nnue_convert/target/release/nnue_convert convert" \
+#     tools/nnue/build_corpus.sh --seed 43 --require-convert
 #
 # When those are unset the script still validates the raw shards and writes a
 # complete meta.json, marking the binary corpus PENDING (the smoke path for
