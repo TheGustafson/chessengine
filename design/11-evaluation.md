@@ -2,6 +2,17 @@
 
 Status: Reviewed v1
 
+> **Amendment (2026-07-11, D21/D28):** Phase B (HCE + texel tuning) is
+> **descoped to an optional contingency** — it existed mainly to generate
+> NNUE data under the own-data rule, but D28 makes Stockfish the bootstrap
+> data generator, so HCE is off the critical path (P9 → P10 → P11 → P13).
+> The Phase B sections below are retained as the contingency spec, built only
+> if NNUE stalls. Consequently the **Phase C (NNUE) SPRT baseline is Phase A
+> (PSQT)** unless the HCE contingency was built; read "vs Phase B" below as
+> "vs the prevailing baseline (Phase A by default)". NNUE data provenance
+> follows D28/D29 (bootstrap-distill then retrain clean); the datagen
+> platform is design/15 + design/16.
+
 This document designs the evaluation subsystem behind the single
 `evaluate(&Board, ...) -> Value` seam (D22), covering all three phases of the
 roadmap (D21): Phase A material + tapered PSQT (enough to validate the search

@@ -247,7 +247,9 @@ gate per D24.
   format + loader, lazy incremental accumulators, scalar + AVX2 backends
   (bit-exact), datagen (≥ 100 M positions) + bullet training + embedded
   self-trained net (never SF's — D27).
-- **Exit:** doc 11 Phase C criteria 9–14, including SPRT vs Phase B and the
+- **Exit:** doc 11 Phase C criteria 9–14, including SPRT vs the prevailing
+  eval baseline — **Phase A (PSQT)** since Phase B/HCE is descoped (D21); it
+  reverts to Phase B only if the HCE contingency was built — and the
   incremental==refresh 100k-node walk; ≥ 70 % of local SF bench nps (doc 14
   §3.4).
 
