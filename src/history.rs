@@ -8,16 +8,33 @@
 //!
 //! - **step 2:** the generic gravity cell [`StatEntry`] — the *only* way any
 //!   table is ever written after init.
-//! - **steps 3–4 (here):** the table catalogue + [`Histories`] container
+//! - **steps 3–4:** the table catalogue + [`Histories`] container
 //!   (§3.4) with its heap-construction / [`clear`](Histories::clear) /
 //!   [`new_search`](Histories::new_search) plumbing, and the borrow-safe
 //!   [`ContHistId`] continuation-history key (§3.2).
-//! - later steps: the `update_*` / correction-history functions (§3.9–§3.10).
+//! - **step 9 (here):** the history-update burst (§3.9) —
+//!   [`update_continuation_histories`](Histories::update_continuation_histories),
+//!   [`update_quiet_histories`](Histories::update_quiet_histories), and the
+//!   [`update_all_stats`](Histories::update_all_stats) orchestration.
+//! - **step 10 (here):** correction history (§3.10) —
+//!   [`correction_value`](Histories::correction_value),
+//!   [`to_corrected_static_eval`], the gated [`correction_bonus`], and
+//!   [`update_correction_history`](Histories::update_correction_history).
+//!
+//! The *call sites* and per-site bonus formulas belong to design/10; the
+//! functions here own only the internals (weights, offsets, combiners). They
+//! are wired into the search in the P8 integration wave (design/09 §4 step 11).
 //!
 //! Everything is per-thread, plain (non-atomic) `i16` (D23); nothing here
 //! allocates on a search hot path.
 
-use crate::types::{Key, Piece, Square};
+use crate::board::Board;
+use crate::moves::Move;
+use crate::search::params;
+use crate::search::stack::{SS_OFFSET, Stack};
+use crate::types::{
+    Color, Depth, Key, Piece, Square, VALUE_TB_LOSS_IN_MAX_PLY, VALUE_TB_WIN_IN_MAX_PLY, Value,
+};
 
 /// A single history cell bounded to `[-D, D]` by the "gravity" update rule
 /// (design/09 §3.3).
@@ -342,6 +359,348 @@ impl Histories {
     pub fn pawn_slot(&self, key: Key) -> &[[StatEntry<PAWN_D>; 64]; 12] {
         &self.pawn[(key & (PAWN_HIST_SIZE as u64 - 1)) as usize]
     }
+}
+
+// ---------------------------------------------------------------------------
+// History updates (design/09 §3.9) and correction history (§3.10).
+//
+// Every bonus flows through the gravity operator (§3.3); this section owns the
+// *internals* (per-table weights, chain offsets, the correction combiner). The
+// call sites and per-site bonus formulas belong to design/10.
+//
+// Signatures take the full padded stack slice plus the padded index
+// `cur = ply + SS_OFFSET` (never the raw ply, design/09 §3.9 / D18): the
+// refutation malus walks offsets 1..=6 from `cur - 1`, so its deepest read is
+// `stack[cur - 7]`, in-bounds by the SS_OFFSET padding. `ContHistId` is `Copy`,
+// so a key is read out of a stack slot *before* `hist` is mutated — the search
+// can score (read) and update (write) the same tensor with no aliasing.
+// ---------------------------------------------------------------------------
+
+/// The "no victim" capture-history slot (en passant, quiet queen promotions):
+/// the last victim axis, mirroring the movepick scorer's `NO_VICTIM`.
+const NO_VICTIM: usize = VICTIM_NB - 1;
+
+impl Histories {
+    /// Reward or punish "move `pc`→`to` after each predecessor move" along the
+    /// continuation chain (design/09 §3.9). `cur` is the padded index of the
+    /// node whose predecessors are walked; offsets 1..=6 read `stack[cur - i]`.
+    ///
+    /// The consistency multiplier grows with the running count of already-
+    /// positive entries (an agreeing chain amplifies the update); the offset-1
+    /// entry always takes a flat `+71`, even for maluses. In check only offsets
+    /// 1..=2 update — the position before the check bears little relation.
+    pub fn update_continuation_histories(
+        &mut self,
+        stack: &[Stack],
+        cur: usize,
+        pc: Piece,
+        to: Square,
+        bonus: i32,
+    ) {
+        debug_assert!(cur >= SS_OFFSET);
+        let in_check = stack[cur].in_check;
+        let pci = pc.index();
+        let toi = to.index() as usize;
+        let mut positive_count = 0usize;
+
+        for (idx, &weight) in params::CONT_OFFSET_WEIGHTS.iter().enumerate() {
+            let i = idx + 1;
+            if in_check && i > params::CONT_IN_CHECK_MAX_OFFSET {
+                break;
+            }
+            // Null move / pre-root padding: no predecessor move to pair with.
+            if !stack[cur - i].current_move.is_ok() {
+                continue;
+            }
+            // Copy the key out first, then borrow `self` — no aliasing (§3.2).
+            let id = stack[cur - i].cont_hist;
+            let entry = &mut self.cont_mut(id)[pci][toi];
+            if entry.get() > 0 {
+                positive_count += 1;
+            }
+            let mult = params::CONT_CONSISTENCY_MULT[positive_count];
+            let scaled = (bonus as i64 * weight as i64 * mult as i64 / params::CONT_UPDATE_DIVISOR)
+                as i32
+                + if i == 1 {
+                    params::CONT_OFFSET1_FLAT_BONUS
+                } else {
+                    0
+                };
+            entry.update(scaled);
+        }
+    }
+
+    /// Update every quiet table for one quiet move (design/09 §3.9): main
+    /// history ×1, low-ply (plies < 5), the continuation chain (×820/1024), and
+    /// pawn history (×1038/1024 for bonuses, ×525/1024 for maluses — the split
+    /// point is `> -7`, deliberately not `> 0`). `m` is scored in `board`, so
+    /// `piece_on(m.from())` is the moving piece.
+    pub fn update_quiet_histories(
+        &mut self,
+        board: &Board,
+        stack: &[Stack],
+        cur: usize,
+        m: Move,
+        bonus: i32,
+    ) {
+        debug_assert!(cur >= SS_OFFSET);
+        let us = board.side_to_move();
+        let raw = m.raw16() as usize;
+        self.main[us as usize][raw].update(bonus);
+
+        let ply = cur - SS_OFFSET;
+        if ply < LOW_PLY_SIZE {
+            self.low_ply[ply][raw]
+                .update(bonus * params::QUIET_LOW_PLY_UPDATE_NUM / params::STAT_WEIGHT_DEN);
+        }
+
+        let pc = board
+            .piece_on(m.from())
+            .expect("a quiet move starts on a piece of the side to move");
+        let to = m.to();
+        self.update_continuation_histories(
+            stack,
+            cur,
+            pc,
+            to,
+            bonus * params::QUIET_CONT_UPDATE_NUM / params::STAT_WEIGHT_DEN,
+        );
+
+        let pawn_weight = if bonus > params::PAWN_HIST_ASYMMETRY_THRESHOLD {
+            params::PAWN_HIST_BONUS_NUM
+        } else {
+            params::PAWN_HIST_MALUS_NUM
+        };
+        let slot = (board.pawn_key() & (PAWN_HIST_SIZE as u64 - 1)) as usize;
+        self.pawn[slot][pc.index()][to.index() as usize]
+            .update(bonus * pawn_weight / params::STAT_WEIGHT_DEN);
+    }
+
+    /// The node-result write burst on a best move that raised alpha
+    /// (design/09 §3.9). `quiets_searched`/`captures_searched` are the tried
+    /// non-best moves; `prev_sq` the parent move's destination (`None` at the
+    /// root or after a null move). Computes one `bonus`/`malus` pair and
+    /// distributes them: the best move is rewarded, every tried non-best move
+    /// punished (quiets via a geometrically decaying malus, captures flat), and
+    /// — when the parent played a refuted first-try quiet — its continuation
+    /// entries take an extra malus.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_all_stats(
+        &mut self,
+        board: &Board,
+        stack: &[Stack],
+        cur: usize,
+        best_move: Move,
+        prev_sq: Option<Square>,
+        quiets_searched: &[Move],
+        captures_searched: &[Move],
+        depth: Depth,
+        tt_move: Move,
+        is_pv: bool,
+    ) {
+        debug_assert!(cur >= SS_OFFSET);
+
+        let mut bonus = (params::STAT_BONUS_DEPTH_MULT * depth - params::STAT_BONUS_DEPTH_SUB)
+            .min(params::STAT_BONUS_MAX)
+            + params::STAT_BONUS_TTMOVE * (best_move == tt_move) as i32
+            + stack[cur - 1].stat_score / params::STAT_BONUS_STATSCORE_DIV;
+        let malus = (params::STAT_MALUS_DEPTH_MULT * depth - params::STAT_MALUS_DEPTH_SUB)
+            .min(params::STAT_MALUS_MAX);
+
+        // A wide node that tried many moves before the cutoff taught us more.
+        if !is_pv {
+            let tried = (quiets_searched.len() + captures_searched.len()) as i64;
+            bonus += (bonus as i64 * tried / params::STAT_BREADTH_DIVISOR) as i32;
+        }
+
+        if !board.capture_stage(best_move) {
+            self.update_quiet_histories(
+                board,
+                stack,
+                cur,
+                best_move,
+                bonus * params::QUIET_BEST_BONUS_NUM / params::STAT_WEIGHT_DEN,
+            );
+            // Geometrically decaying malus: earliest failures punished hardest.
+            let mut m = malus * params::QUIET_MALUS_START_NUM / params::STAT_WEIGHT_DEN;
+            for &q in quiets_searched {
+                m = m * params::QUIET_MALUS_DECAY_NUM / params::STAT_WEIGHT_DEN;
+                self.update_quiet_histories(board, stack, cur, q, -m);
+            }
+        } else {
+            self.capture_entry_mut(board, best_move)
+                .update(bonus * params::CAPTURE_BEST_BONUS_NUM / params::STAT_WEIGHT_DEN);
+        }
+
+        // Refutation malus: the parent's move was a quiet it tried first and
+        // that got refuted here (design/09 §3.9). `cur - 1` walks the parent's
+        // predecessors, reaching `stack[cur - 7]` — in-bounds by D18.
+        if let Some(prev_sq) = prev_sq {
+            let prev = &stack[cur - 1];
+            if prev.move_count == 1 + prev.tt_hit as i32 && board.captured_piece().is_none() {
+                let pc = board
+                    .piece_on(prev_sq)
+                    .expect("the parent's moved piece sits on its to-square");
+                self.update_continuation_histories(
+                    stack,
+                    cur - 1,
+                    pc,
+                    prev_sq,
+                    -malus * params::REFUTATION_MALUS_NUM / params::STAT_WEIGHT_DEN,
+                );
+            }
+        }
+
+        for &c in captures_searched {
+            self.capture_entry_mut(board, c)
+                .update(-malus * params::CAPTURE_MALUS_NUM / params::STAT_WEIGHT_DEN);
+        }
+    }
+
+    /// The mutable capture-history cell for `m` in `board`: `[moved][to]
+    /// [victim]`, with the [`NO_VICTIM`] slot for en passant and quiet queen
+    /// promotions (no piece on `to`).
+    fn capture_entry_mut(&mut self, board: &Board, m: Move) -> &mut StatEntry<CAPT_D> {
+        let moved = board
+            .piece_on(m.from())
+            .expect("a capture move starts on a piece of the side to move");
+        let victim = board
+            .piece_on(m.to())
+            .map_or(NO_VICTIM, |p| p.piece_type as usize);
+        &mut self.capture[moved.index()][m.to().index() as usize][victim]
+    }
+
+    /// A correction-history bundle for `key`'s slot and side `us` (read side).
+    #[inline]
+    fn corr_slot(&self, key: Key, us: Color) -> &CorrBundle {
+        &self.corr[(key & (CORR_SIZE as u64 - 1)) as usize][us as usize]
+    }
+
+    /// A correction-history bundle for `key`'s slot and side `us` (write side).
+    #[inline]
+    fn corr_slot_mut(&mut self, key: Key, us: Color) -> &mut CorrBundle {
+        &mut self.corr[(key & (CORR_SIZE as u64 - 1)) as usize][us as usize]
+    }
+
+    /// The weighted correction of the raw static eval, in 1/131072-pawn units
+    /// (design/09 §3.10). Each correction field is read under its *own*
+    /// specialized key; the continuation term sums offsets 2 and 4 (or falls
+    /// back to a flat prior after a null previous move). Combine with
+    /// [`to_corrected_static_eval`].
+    pub fn correction_value(&self, board: &Board, stack: &[Stack], cur: usize) -> i32 {
+        debug_assert!(cur >= SS_OFFSET);
+        let us = board.side_to_move();
+        let pcv = self.corr_slot(board.pawn_key(), us).pawn.get();
+        let micv = self.corr_slot(board.minor_key(), us).minor.get();
+        let wnp = self
+            .corr_slot(board.non_pawn_key(Color::White), us)
+            .non_pawn_white
+            .get();
+        let bnp = self
+            .corr_slot(board.non_pawn_key(Color::Black), us)
+            .non_pawn_black
+            .get();
+
+        let prev = stack[cur - 1].current_move;
+        let cntcv = if prev.is_ok() {
+            let to = prev.to();
+            let pc = board
+                .piece_on(to)
+                .expect("the previous move's piece sits on its to-square");
+            let (pci, toi) = (pc.index(), to.index() as usize);
+            let o2 = stack[cur - 2].cont_hist.piece_to();
+            let o4 = stack[cur - 4].cont_hist.piece_to();
+            params::CORR_CONT_WEIGHT
+                * (self.cont_corr[o2][pci][toi].get() + self.cont_corr[o4][pci][toi].get())
+        } else {
+            params::CORR_CONT_NULL_PRIOR
+        };
+
+        params::CORR_PAWN_WEIGHT * pcv
+            + params::CORR_MINOR_WEIGHT * micv
+            + params::CORR_NONPAWN_WEIGHT * (wnp + bnp)
+            + cntcv
+    }
+
+    /// Fold the learned correction back into the raw eval (design/09 §3.10):
+    /// the caller-computed, gated bonus (see [`correction_bonus`]) is
+    /// distributed across the pawn/minor/non-pawn and — when the previous move
+    /// is real — the two continuation-correction tables.
+    pub fn update_correction_history(
+        &mut self,
+        board: &Board,
+        stack: &[Stack],
+        cur: usize,
+        bonus: i32,
+    ) {
+        debug_assert!(cur >= SS_OFFSET);
+        let us = board.side_to_move();
+        self.corr_slot_mut(board.pawn_key(), us).pawn.update(bonus);
+        self.corr_slot_mut(board.minor_key(), us)
+            .minor
+            .update(bonus * params::CORR_MINOR_UPDATE_NUM / params::CORR_UPDATE_DEN);
+        self.corr_slot_mut(board.non_pawn_key(Color::White), us)
+            .non_pawn_white
+            .update(bonus * params::CORR_NONPAWN_UPDATE_NUM / params::CORR_UPDATE_DEN);
+        self.corr_slot_mut(board.non_pawn_key(Color::Black), us)
+            .non_pawn_black
+            .update(bonus * params::CORR_NONPAWN_UPDATE_NUM / params::CORR_UPDATE_DEN);
+
+        let prev = stack[cur - 1].current_move;
+        if prev.is_ok() {
+            let to = prev.to();
+            let pc = board
+                .piece_on(to)
+                .expect("the previous move's piece sits on its to-square");
+            let (pci, toi) = (pc.index(), to.index() as usize);
+            let o2 = stack[cur - 2].cont_hist.piece_to();
+            let o4 = stack[cur - 4].cont_hist.piece_to();
+            self.cont_corr[o2][pci][toi]
+                .update(bonus * params::CORR_CONT2_UPDATE_NUM / params::CORR_UPDATE_DEN);
+            self.cont_corr[o4][pci][toi]
+                .update(bonus * params::CORR_CONT4_UPDATE_NUM / params::CORR_UPDATE_DEN);
+        }
+    }
+}
+
+/// Fold the correction sum into the raw static eval and keep the result inside
+/// the non-tablebase band (design/09 §3.10): `clamp(raw + cv/131072, just
+/// inside TB-loss..TB-win)`. The **raw** eval is what the TT stores; the
+/// corrected one drives pruning (D22).
+pub fn to_corrected_static_eval(raw: Value, cv: i32) -> Value {
+    (raw + cv / params::CORR_VALUE_DIVISOR)
+        .clamp(VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1)
+}
+
+/// The gated, clamped correction-history bonus (design/10 §4.6, colocated with
+/// its callee per design/09 §3.9). Returns `None` when the update must not
+/// fire: in check, when the best move is a real capture, or when the eval-error
+/// direction disagrees with whether a best move was found. Otherwise the
+/// depth-scaled error is clamped to `±256` and scaled by `1114/1024`, ready for
+/// [`Histories::update_correction_history`].
+pub fn correction_bonus(
+    best_value: Value,
+    static_eval: Value,
+    in_check: bool,
+    best_move: Move,
+    best_is_capture: bool,
+    depth: Depth,
+) -> Option<i32> {
+    if in_check || (best_move.is_ok() && best_is_capture) {
+        return None;
+    }
+    // The error direction must match whether we actually found a best move.
+    if (best_value > static_eval) != best_move.is_ok() {
+        return None;
+    }
+    let depth_mult = if best_move.is_ok() {
+        params::CORR_BONUS_DEPTH_MULT_BESTMOVE
+    } else {
+        params::CORR_BONUS_DEPTH_MULT_NOMOVE
+    };
+    let raw = ((best_value - static_eval) * depth * depth_mult / params::CORR_BONUS_DIVISOR)
+        .clamp(-params::CORR_BONUS_CLAMP, params::CORR_BONUS_CLAMP);
+    Some(raw * params::CORR_BONUS_SCALE_NUM / params::CORR_BONUS_SCALE_DEN)
 }
 
 // Compile-time guards on the catalogue (design/09 §8 criterion 2). Every
@@ -692,5 +1051,443 @@ mod tests {
         assert_eq!(size_of::<PieceToHist>(), 12 * 64 * 2); // 1.5 KiB
         assert_eq!(size_of::<PieceToCorr>(), 12 * 64 * 2);
         assert_eq!(size_of::<StatEntry<MAIN_D>>(), 2);
+    }
+
+    // ---- design/09 §5 steps 9-10: update functions + correction history ----
+    //
+    // Golden tests: hand-computed post-update i16 cells for known bonus/malus
+    // sequences. Every literal below is verified against the §3.9/§3.10
+    // formulas. Poking start cells to 0 makes gravity-from-0 the identity, so
+    // a cell ends at exactly the (weighted, truncated) bonus argument.
+
+    use crate::board::Board;
+    use crate::moves::Move;
+    use crate::search::stack::{SS_OFFSET, Stack};
+
+    // A real (is_ok) placeholder predecessor move.
+    fn real_move() -> Move {
+        Move::normal(Square::A1, Square::B1)
+    }
+
+    // Wire six distinct predecessor slabs at `stack[cur-1..=cur-6]`, each with a
+    // real move and its target `[pc][to]` cell poked to `start`. Returns the ids
+    // in offset order.
+    fn wire_cont_chain(
+        h: &mut Histories,
+        stack: &mut [Stack],
+        cur: usize,
+        pci: usize,
+        toi: usize,
+        start: i16,
+    ) -> Vec<ContHistId> {
+        let filler = Some(Piece::new(Color::White, PieceType::Pawn));
+        (1..=6)
+            .map(|i| {
+                let id = ContHistId::new(false, false, filler, Square::new(i as u8));
+                stack[cur - i].current_move = real_move();
+                stack[cur - i].cont_hist = id;
+                h.cont_mut(id)[pci][toi] = StatEntry::new(start);
+                id
+            })
+            .collect()
+    }
+
+    // §3.9: offset weights {1040,780,300,537,129,423}, consistency mult 96 at
+    // count 0 (no pre-positive entries), flat +71 at offset 1, ÷131072.
+    #[test]
+    fn cont_update_offset_weights_and_flat_bonus() {
+        let mut h = Histories::new();
+        let cur = SS_OFFSET;
+        let mut stack = vec![Stack::default(); cur + 1];
+        let pc = Piece::new(Color::White, PieceType::Knight);
+        let (pci, toi) = (pc.index(), Square::E4.index() as usize);
+        let ids = wire_cont_chain(&mut h, &mut stack, cur, pci, toi, 0);
+
+        h.update_continuation_histories(&stack, cur, pc, Square::E4, 1024);
+
+        let want = [851, 585, 225, 402, 96, 317];
+        for (idx, id) in ids.iter().enumerate() {
+            assert_eq!(
+                h.cont_ref(*id)[pci][toi].get(),
+                want[idx],
+                "offset {}",
+                idx + 1
+            );
+        }
+    }
+
+    // §3.9: in check, only offsets 1-2 update; 3..6 keep their poked start.
+    #[test]
+    fn cont_update_in_check_truncates_to_offsets_one_two() {
+        let mut h = Histories::new();
+        let cur = SS_OFFSET;
+        let mut stack = vec![Stack::default(); cur + 1];
+        stack[cur].in_check = true;
+        let pc = Piece::new(Color::White, PieceType::Knight);
+        let (pci, toi) = (pc.index(), Square::E4.index() as usize);
+        let ids = wire_cont_chain(&mut h, &mut stack, cur, pci, toi, 0);
+
+        h.update_continuation_histories(&stack, cur, pc, Square::E4, 1024);
+
+        let want = [851, 585, 0, 0, 0, 0];
+        for (idx, id) in ids.iter().enumerate() {
+            assert_eq!(
+                h.cont_ref(*id)[pci][toi].get(),
+                want[idx],
+                "offset {}",
+                idx + 1
+            );
+        }
+    }
+
+    // §3.9: with every predecessor cell already positive, positive_count reaches
+    // `i` at offset `i`, so the consistency multiplier is CMHC[i] — an agreeing
+    // chain amplifies the update. Gravity from +1 just adds the arg (the decay
+    // term truncates to 0 for these magnitudes).
+    #[test]
+    fn cont_update_consistency_multiplier_amplifies_agreeing_chain() {
+        let mut h = Histories::new();
+        let cur = SS_OFFSET;
+        let mut stack = vec![Stack::default(); cur + 1];
+        let pc = Piece::new(Color::White, PieceType::Knight);
+        let (pci, toi) = (pc.index(), Square::E4.index() as usize);
+        let ids = wire_cont_chain(&mut h, &mut stack, cur, pci, toi, 1);
+
+        h.update_continuation_histories(&stack, cur, pc, Square::E4, 1024);
+
+        // CMHC = {_,113,101,105,127,121,126} at counts 1..6.
+        let want = [990, 616, 247, 533, 122, 417];
+        for (idx, id) in ids.iter().enumerate() {
+            assert_eq!(
+                h.cont_ref(*id)[pci][toi].get(),
+                want[idx],
+                "offset {}",
+                idx + 1
+            );
+        }
+    }
+
+    const PAWN_FEN: &str = "4k3/8/8/8/8/8/4P3/4K3 w - - 0 1";
+
+    // §3.9 update_quiet_histories: main ×1, low-ply ×663/1024 (ply < 5),
+    // pawn ×1038/1024 (bonus). Null predecessors ⇒ the cont chain is skipped.
+    #[test]
+    fn quiet_update_writes_all_tables() {
+        let mut h = Histories::new();
+        let b = Board::from_fen(PAWN_FEN).unwrap();
+        let m = Move::normal(Square::E2, Square::E3);
+        let pc = b.piece_on(Square::E2).unwrap();
+        let ply = 2usize;
+        let cur = SS_OFFSET + ply;
+        let stack = vec![Stack::default(); cur + 1];
+        let us = b.side_to_move() as usize;
+        let raw = m.raw16() as usize;
+        let slot = (b.pawn_key() & (PAWN_HIST_SIZE as u64 - 1)) as usize;
+        let (pci, toi) = (pc.index(), Square::E3.index() as usize);
+
+        h.main[us][raw] = StatEntry::new(0);
+        h.low_ply[ply][raw] = StatEntry::new(0);
+        h.pawn[slot][pci][toi] = StatEntry::new(0);
+
+        h.update_quiet_histories(&b, &stack, cur, m, 2048);
+
+        assert_eq!(h.main[us][raw].get(), 2048); // ×1
+        assert_eq!(h.low_ply[ply][raw].get(), 1326); // 2048·663/1024
+        assert_eq!(h.pawn[slot][pci][toi].get(), 2076); // 2048·1038/1024
+    }
+
+    // §3.9: the pawn-history bonus/malus asymmetry pivots at `bonus > -7`.
+    #[test]
+    fn quiet_update_pawn_history_bonus_malus_asymmetry() {
+        let b = Board::from_fen(PAWN_FEN).unwrap();
+        let m = Move::normal(Square::E2, Square::E3);
+        let pc = b.piece_on(Square::E2).unwrap();
+        let cur = SS_OFFSET + 2;
+        let stack = vec![Stack::default(); cur + 1];
+        let slot = (b.pawn_key() & (PAWN_HIST_SIZE as u64 - 1)) as usize;
+        let (pci, toi) = (pc.index(), Square::E3.index() as usize);
+
+        let pawn_after = |bonus: i32| -> i32 {
+            let mut h = Histories::new();
+            h.pawn[slot][pci][toi] = StatEntry::new(0);
+            h.update_quiet_histories(&b, &stack, cur, m, bonus);
+            h.pawn[slot][pci][toi].get()
+        };
+
+        assert_eq!(pawn_after(-2048), -1050); // malus weight 525: -2048·525/1024
+        assert_eq!(pawn_after(-7), -3); //  -7 is NOT > -7 ⇒ 525: -7·525/1024
+        assert_eq!(pawn_after(-6), -6); //  -6 IS  > -7 ⇒ 1038: -6·1038/1024
+    }
+
+    // §3.9 update_all_stats: best-quiet bonus (×824/1024) and the geometrically
+    // decaying malus over tried quiets (start ×1136/1024, ×956/1024 per move).
+    #[test]
+    fn all_stats_best_quiet_and_geometric_malus() {
+        let mut h = Histories::new();
+        let b = Board::from_fen("4k3/8/8/8/8/8/PPPP4/4K3 w - - 0 1").unwrap();
+        let cur = SS_OFFSET;
+        let stack = vec![Stack::default(); cur + 1]; // stat_score 0
+        let us = b.side_to_move() as usize;
+        let bq = Move::normal(Square::A2, Square::A3);
+        let quiets = [
+            Move::normal(Square::B2, Square::B3),
+            Move::normal(Square::C2, Square::C3),
+            Move::normal(Square::D2, Square::D3),
+        ];
+        for m in std::iter::once(bq).chain(quiets) {
+            h.main[us][m.raw16() as usize] = StatEntry::new(0);
+        }
+
+        // depth 8, PV node (no breadth), tt_move ≠ best: bonus 993, malus 2218.
+        h.update_all_stats(&b, &stack, cur, bq, None, &quiets, &[], 8, Move::NULL, true);
+
+        assert_eq!(h.main[us][bq.raw16() as usize].get(), 799); // 993·824/1024
+        // 2218·1136/1024 = 2460, then ×956/1024 before each use.
+        assert_eq!(h.main[us][quiets[0].raw16() as usize].get(), -2296);
+        assert_eq!(h.main[us][quiets[1].raw16() as usize].get(), -2143);
+        assert_eq!(h.main[us][quiets[2].raw16() as usize].get(), -2000);
+        // Ratio pinned: each successive malus ≈ 956/1024 of the last.
+        assert_eq!(2143 * 1024 / 2296, 955); // ≈ 956/1024 (truncation)
+    }
+
+    // §3.9: best-capture bonus (×1366/1024) and non-best-capture malus
+    // (×1518/1024), addressed by [moved][to][victim].
+    #[test]
+    fn all_stats_best_capture_and_nonbest_capture_malus() {
+        let mut h = Histories::new();
+        let b = Board::from_fen("1n1qk3/8/8/8/8/8/1N1Q4/4K3 w - - 0 1").unwrap();
+        let cur = SS_OFFSET;
+        let stack = vec![Stack::default(); cur + 1];
+        let best = Move::normal(Square::D2, Square::D8); // Qxd8: moved Q, victim Q
+        let cap = Move::normal(Square::B2, Square::B8); // Nxb8: moved N, victim N
+        assert!(b.capture_stage(best));
+        let wq = Piece::new(Color::White, PieceType::Queen).index();
+        let wn = Piece::new(Color::White, PieceType::Knight).index();
+        let (d8, b8) = (Square::D8.index() as usize, Square::B8.index() as usize);
+        h.capture[wq][d8][PieceType::Queen as usize] = StatEntry::new(0);
+        h.capture[wn][b8][PieceType::Knight as usize] = StatEntry::new(0);
+
+        h.update_all_stats(
+            &b,
+            &stack,
+            cur,
+            best,
+            None,
+            &[],
+            &[cap],
+            8,
+            Move::NULL,
+            true,
+        );
+
+        assert_eq!(h.capture[wq][d8][PieceType::Queen as usize].get(), 1324); // 993·1366/1024
+        assert_eq!(h.capture[wn][b8][PieceType::Knight as usize].get(), -3288); // -2218·1518/1024
+    }
+
+    // §3.9: the refutation malus fires only when the parent played its first
+    // move (`move_count == 1 + tt_hit`) as an uncaptured quiet, and never
+    // without a parent square. A capture best move keeps the only continuation
+    // write to the refutation itself.
+    #[test]
+    fn all_stats_refutation_malus_gated_on_first_try_quiet() {
+        let b = Board::from_fen("3qk3/1n6/8/8/8/8/3Q4/4K3 w - - 0 1").unwrap();
+        let best = Move::normal(Square::D2, Square::D8); // capture ⇒ no best cont walk
+        assert!(b.capture_stage(best));
+        let prev_sq = Square::B7;
+        let refuted_pc = b.piece_on(prev_sq).unwrap(); // black knight
+        let (rpci, rto) = (refuted_pc.index(), prev_sq.index() as usize);
+        let cur = SS_OFFSET + 2; // ply 2
+
+        // Only stack[cur-2] (offset 1 from the parent) carries a real move.
+        let refut_id = ContHistId::new(
+            true,
+            false,
+            Some(Piece::new(Color::White, PieceType::Rook)),
+            Square::H1,
+        );
+        let build = |move_count: i32| {
+            let mut stack = vec![Stack::default(); cur + 1];
+            stack[cur - 1].move_count = move_count;
+            stack[cur - 2].current_move = real_move();
+            stack[cur - 2].cont_hist = refut_id;
+            stack
+        };
+        let run = |stack: &[Stack], prev: Option<Square>| -> i32 {
+            let mut h = Histories::new();
+            h.cont_mut(refut_id)[rpci][rto] = StatEntry::new(0);
+            h.update_all_stats(&b, stack, cur, best, prev, &[], &[], 8, Move::NULL, true);
+            h.cont_ref(refut_id)[rpci][rto].get()
+        };
+
+        // Gate satisfied (move_count 1 == 1 + tt_hit 0): -malus·683/1024 = -1479,
+        // then the offset-1 cont update = -1479·1040·96/131072 + 71 = -1055.
+        assert_eq!(run(&build(1), Some(prev_sq)), -1055);
+        // Parent tried more than one move ⇒ no refutation write.
+        assert_eq!(run(&build(2), Some(prev_sq)), 0);
+        // No parent square ⇒ no refutation write.
+        assert_eq!(run(&build(1), None), 0);
+    }
+
+    // §3.10 correction_value: the linear combiner over the six inputs, with a
+    // real previous move so the continuation term (×8363) is read.
+    #[test]
+    fn correction_value_combiner_matches_hand_computed() {
+        let mut h = Histories::new();
+        let b = Board::from_fen(crate::fen::START_FEN).unwrap();
+        let us = b.side_to_move();
+        let cur = SS_OFFSET + 4;
+        let mut stack = vec![Stack::default(); cur + 1];
+        let prev_to = Square::B1; // a white knight sits here in the start position
+        let prev_pc = b.piece_on(prev_to).unwrap();
+        stack[cur - 1].current_move = Move::normal(Square::G1, prev_to);
+        let id2 = ContHistId::new(
+            false,
+            false,
+            Some(Piece::new(Color::White, PieceType::Knight)),
+            prev_to,
+        );
+        let id4 = ContHistId::new(
+            true,
+            false,
+            Some(Piece::new(Color::Black, PieceType::Queen)),
+            Square::D8,
+        );
+        stack[cur - 2].cont_hist = id2;
+        stack[cur - 4].cont_hist = id4;
+        assert_ne!(id2.piece_to(), id4.piece_to());
+
+        h.corr_slot_mut(b.pawn_key(), us).pawn = StatEntry::new(3);
+        h.corr_slot_mut(b.minor_key(), us).minor = StatEntry::new(-5);
+        h.corr_slot_mut(b.non_pawn_key(Color::White), us)
+            .non_pawn_white = StatEntry::new(7);
+        h.corr_slot_mut(b.non_pawn_key(Color::Black), us)
+            .non_pawn_black = StatEntry::new(-11);
+        let (pci, toi) = (prev_pc.index(), prev_to.index() as usize);
+        h.cont_corr[id2.piece_to()][pci][toi] = StatEntry::new(4);
+        h.cont_corr[id4.piece_to()][pci][toi] = StatEntry::new(6);
+
+        let want = 13345 * 3 + 9280 * -5 + 11840 * (7 + -11) + 8363 * (4 + 6);
+        assert_eq!(h.correction_value(&b, &stack, cur), want);
+    }
+
+    // §3.10: after a null previous move the continuation term is the flat prior.
+    #[test]
+    fn correction_value_null_prev_uses_flat_prior() {
+        let h = Histories::new();
+        let b = Board::from_fen(crate::fen::START_FEN).unwrap();
+        let us = b.side_to_move();
+        let cur = SS_OFFSET + 4;
+        let stack = vec![Stack::default(); cur + 1]; // stack[cur-1].current_move = NULL
+
+        let pcv = h.corr_slot(b.pawn_key(), us).pawn.get();
+        let micv = h.corr_slot(b.minor_key(), us).minor.get();
+        let wnp = h
+            .corr_slot(b.non_pawn_key(Color::White), us)
+            .non_pawn_white
+            .get();
+        let bnp = h
+            .corr_slot(b.non_pawn_key(Color::Black), us)
+            .non_pawn_black
+            .get();
+        let want = 13345 * pcv + 9280 * micv + 11840 * (wnp + bnp) + 64549;
+        assert_eq!(h.correction_value(&b, &stack, cur), want);
+    }
+
+    // §3.10 to_corrected_static_eval: add cv/131072, clamp into the non-TB band.
+    #[test]
+    fn to_corrected_static_eval_adds_and_clamps() {
+        assert_eq!(to_corrected_static_eval(50, 131072), 51); // +1
+        assert_eq!(to_corrected_static_eval(50, -262144), 48); // -2
+        assert_eq!(to_corrected_static_eval(50, 131071), 50); // truncates to +0
+        assert_eq!(
+            to_corrected_static_eval(VALUE_TB_WIN_IN_MAX_PLY, 131072 * 1000),
+            VALUE_TB_WIN_IN_MAX_PLY - 1
+        );
+        assert_eq!(
+            to_corrected_static_eval(VALUE_TB_LOSS_IN_MAX_PLY, -131072 * 1000),
+            VALUE_TB_LOSS_IN_MAX_PLY + 1
+        );
+    }
+
+    // §3.10 / doc 10 §4.6: the direction-consistency gate and clamped bonus.
+    #[test]
+    fn correction_bonus_respects_direction_gate() {
+        let real = Move::normal(Square::E2, Square::E4);
+        // Best move + improved eval: fires. err 40, depth 8 ⇒ 40·8·12/128 = 30,
+        // then 1114·30/1024 = 32.
+        assert_eq!(correction_bonus(100, 60, false, real, false, 8), Some(32));
+        // Best move but eval fell ⇒ direction mismatch.
+        assert_eq!(correction_bonus(50, 60, false, real, false, 8), None);
+        // Fail-low (no best move) with a fallen eval: directions agree ⇒ fires.
+        assert_eq!(
+            correction_bonus(40, 60, false, Move::NULL, false, 8),
+            Some(-23)
+        );
+        // Fail-low but eval rose ⇒ mismatch.
+        assert_eq!(correction_bonus(80, 60, false, Move::NULL, false, 8), None);
+        // In check ⇒ never fires.
+        assert_eq!(correction_bonus(100, 60, true, real, false, 8), None);
+        // Best move is a real capture ⇒ never fires.
+        assert_eq!(correction_bonus(100, 60, false, real, true, 8), None);
+        // The raw bonus is clamped to ±256 before scaling: 1114·256/1024 = 278.
+        assert_eq!(correction_bonus(5000, 0, false, real, false, 20), Some(278));
+    }
+
+    // §3.10 update_correction_history: per-table weights over pawn/minor/
+    // non-pawn and the two continuation-correction tables.
+    #[test]
+    fn correction_update_writes_all_tables() {
+        let mut h = Histories::new();
+        let b = Board::from_fen(crate::fen::START_FEN).unwrap();
+        let us = b.side_to_move();
+        let cur = SS_OFFSET + 4;
+        let mut stack = vec![Stack::default(); cur + 1];
+        let prev_to = Square::B1;
+        let prev_pc = b.piece_on(prev_to).unwrap();
+        stack[cur - 1].current_move = Move::normal(Square::G1, prev_to);
+        let id2 = ContHistId::new(
+            false,
+            false,
+            Some(Piece::new(Color::White, PieceType::Knight)),
+            prev_to,
+        );
+        let id4 = ContHistId::new(
+            true,
+            false,
+            Some(Piece::new(Color::Black, PieceType::Queen)),
+            Square::D8,
+        );
+        stack[cur - 2].cont_hist = id2;
+        stack[cur - 4].cont_hist = id4;
+        assert_ne!(id2.piece_to(), id4.piece_to());
+
+        h.corr_slot_mut(b.pawn_key(), us).pawn = StatEntry::new(0);
+        h.corr_slot_mut(b.minor_key(), us).minor = StatEntry::new(0);
+        h.corr_slot_mut(b.non_pawn_key(Color::White), us)
+            .non_pawn_white = StatEntry::new(0);
+        h.corr_slot_mut(b.non_pawn_key(Color::Black), us)
+            .non_pawn_black = StatEntry::new(0);
+        let (pci, toi) = (prev_pc.index(), prev_to.index() as usize);
+        h.cont_corr[id2.piece_to()][pci][toi] = StatEntry::new(0);
+        h.cont_corr[id4.piece_to()][pci][toi] = StatEntry::new(0);
+
+        h.update_correction_history(&b, &stack, cur, 512);
+
+        assert_eq!(h.corr_slot(b.pawn_key(), us).pawn.get(), 512); // ×1
+        assert_eq!(h.corr_slot(b.minor_key(), us).minor.get(), 608); // ·152/128
+        assert_eq!(
+            h.corr_slot(b.non_pawn_key(Color::White), us)
+                .non_pawn_white
+                .get(),
+            744
+        ); // ·186/128
+        assert_eq!(
+            h.corr_slot(b.non_pawn_key(Color::Black), us)
+                .non_pawn_black
+                .get(),
+            744
+        );
+        assert_eq!(h.cont_corr[id2.piece_to()][pci][toi].get(), 544); // ·136/128
+        assert_eq!(h.cont_corr[id4.piece_to()][pci][toi].get(), 272); // ·68/128
     }
 }

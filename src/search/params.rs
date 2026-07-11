@@ -160,3 +160,134 @@ pub const ONE_REPLY_TOTAL_TIME_CAP: f64 = 561.7;
 /// `go nodes` limit the reset shrinks to `min(512, limits.nodes / 1024)`
 /// (owned by the time-management layer, design/12).
 pub const CHECK_TIME_CALLS: i32 = 512;
+
+// --- History updates: node-result bonus/malus (design/09 §3.9) ---
+//
+// `update_all_stats` computes one `bonus` (for the best move and agreeing
+// tables) and one `malus` (for tried non-best moves) per fail-high node,
+// then distributes them through the per-table weights below. The shared
+// `/1024` denominator is [`STAT_WEIGHT_DEN`].
+
+/// Depth multiplier of the stat bonus `min(STAT_BONUS_DEPTH_MULT·depth −
+/// STAT_BONUS_DEPTH_SUB, STAT_BONUS_MAX)`.
+pub const STAT_BONUS_DEPTH_MULT: i32 = 134;
+/// Depth-linear subtrahend of the stat bonus.
+pub const STAT_BONUS_DEPTH_SUB: i32 = 79;
+/// Ceiling of the stat bonus.
+pub const STAT_BONUS_MAX: i32 = 1572;
+/// Extra bonus when the best move equals the TT move (it was predicted).
+pub const STAT_BONUS_TTMOVE: i32 = 382;
+/// Divisor of the parent `stat_score` contribution to the bonus.
+pub const STAT_BONUS_STATSCORE_DIV: i32 = 30;
+/// Depth multiplier of the stat malus `min(STAT_MALUS_DEPTH_MULT·depth −
+/// STAT_MALUS_DEPTH_SUB, STAT_MALUS_MAX)`.
+pub const STAT_MALUS_DEPTH_MULT: i32 = 1005;
+/// Depth-linear subtrahend of the stat malus.
+pub const STAT_MALUS_DEPTH_SUB: i32 = 205;
+/// Ceiling of the stat malus.
+pub const STAT_MALUS_MAX: i32 = 2218;
+/// Divisor of the non-PV breadth multiplier `bonus += bonus·tried /
+/// STAT_BREADTH_DIVISOR` (a wide node that tried many moves taught us more).
+/// `i64`: the product is widened to avoid the 32-bit overflow SF guards
+/// against (design/09 §9 open-question 3 — ours is plain i64 truncation).
+pub const STAT_BREADTH_DIVISOR: i64 = 256;
+/// Shared `/1024` denominator of every history-update weight below.
+pub const STAT_WEIGHT_DEN: i32 = 1024;
+/// Best-quiet bonus weight (`bonus·824/1024`).
+pub const QUIET_BEST_BONUS_NUM: i32 = 824;
+/// Geometric quiet-malus start weight (`malus·1136/1024`), decayed by
+/// [`QUIET_MALUS_DECAY_NUM`] before each successive non-best quiet — earliest
+/// failures punished hardest.
+pub const QUIET_MALUS_START_NUM: i32 = 1136;
+/// Per-move decay of the geometric quiet malus (`m·956/1024` each step).
+pub const QUIET_MALUS_DECAY_NUM: i32 = 956;
+/// Best-capture bonus weight (`bonus·1366/1024`).
+pub const CAPTURE_BEST_BONUS_NUM: i32 = 1366;
+/// Non-best-capture malus weight (`−malus·1518/1024`).
+pub const CAPTURE_MALUS_NUM: i32 = 1518;
+/// Refutation malus weight for the parent's refuted first-try quiet
+/// (`−malus·683/1024`).
+pub const REFUTATION_MALUS_NUM: i32 = 683;
+
+// --- History updates: per-quiet-table weights (design/09 §3.9) ---
+
+/// Low-ply history update weight (`bonus·663/1024`, plies < 5 only).
+pub const QUIET_LOW_PLY_UPDATE_NUM: i32 = 663;
+/// Continuation-history update weight (`bonus·820/1024`).
+pub const QUIET_CONT_UPDATE_NUM: i32 = 820;
+/// Pawn-history update weight for bonuses (`bonus·1038/1024`).
+pub const PAWN_HIST_BONUS_NUM: i32 = 1038;
+/// Pawn-history update weight for maluses (`bonus·525/1024`) — maluses are
+/// roughly halved relative to bonuses.
+pub const PAWN_HIST_MALUS_NUM: i32 = 525;
+/// The pawn-history bonus/malus split point: `> -7` takes the bonus weight,
+/// `<= -7` the malus weight (deliberately not `> 0`).
+pub const PAWN_HIST_ASYMMETRY_THRESHOLD: i32 = -7;
+
+// --- History updates: continuation chain (design/09 §3.9) ---
+
+/// Per-offset weights of the continuation-history update, offsets 1..=6
+/// (÷[`CONT_UPDATE_DIVISOR`] with the bonus).
+pub const CONT_OFFSET_WEIGHTS: [i32; 6] = [1040, 780, 300, 537, 129, 423];
+/// Consistency multipliers indexed by the running count of already-positive
+/// entries along the chain: an agreeing chain amplifies the update.
+pub const CONT_CONSISTENCY_MULT: [i32; 7] = [96, 113, 101, 105, 127, 121, 126];
+/// Divisor of the continuation-history update `bonus·weight·mult / 131072`.
+/// `i64`: the triple product is widened before the divide.
+pub const CONT_UPDATE_DIVISOR: i64 = 131072;
+/// Flat bonus added to the offset-1 continuation update (even for maluses).
+pub const CONT_OFFSET1_FLAT_BONUS: i32 = 71;
+/// In check, only offsets `<= 2` update (the position before the check bears
+/// little relation to the current one).
+pub const CONT_IN_CHECK_MAX_OFFSET: usize = 2;
+
+// --- Correction history: read combiner (design/09 §3.10) ---
+//
+// `correction_value` blends the learned static-eval corrections in
+// 1/131072-pawn units; [`CORR_VALUE_DIVISOR`] converts back to centipawns.
+
+/// Weight on the pawn-structure correction.
+pub const CORR_PAWN_WEIGHT: i32 = 13345;
+/// Weight on the minor-piece correction.
+pub const CORR_MINOR_WEIGHT: i32 = 9280;
+/// Weight on each non-pawn (white/black) correction.
+pub const CORR_NONPAWN_WEIGHT: i32 = 11840;
+/// Weight on the summed continuation corrections (offsets 2 and 4).
+pub const CORR_CONT_WEIGHT: i32 = 8363;
+/// Flat continuation-correction prior used after a null previous move.
+pub const CORR_CONT_NULL_PRIOR: i32 = 64549;
+/// Divisor turning the correction sum back into a centipawn adjustment.
+pub const CORR_VALUE_DIVISOR: i32 = 131072;
+
+// --- Correction history: update weights (design/09 §3.10) ---
+
+/// Shared `/128` denominator of the correction-update weights below.
+pub const CORR_UPDATE_DEN: i32 = 128;
+/// Minor-piece correction update weight (`bonus·152/128`).
+pub const CORR_MINOR_UPDATE_NUM: i32 = 152;
+/// Non-pawn (white and black) correction update weight (`bonus·186/128`).
+pub const CORR_NONPAWN_UPDATE_NUM: i32 = 186;
+/// Offset-2 continuation-correction update weight (`bonus·136/128`).
+pub const CORR_CONT2_UPDATE_NUM: i32 = 136;
+/// Offset-4 continuation-correction update weight (`bonus·68/128`).
+pub const CORR_CONT4_UPDATE_NUM: i32 = 68;
+
+// --- Correction history: bonus computation (call site, design/10 §4.6) ---
+//
+// The gated, clamped bonus fed to `update_correction_history`. Owned by
+// design/10's node-result step; colocated with the callee here (design/09
+// §3.9 records external write-site formulas for grep-ability) so the P8
+// integration wave can compute it in one call.
+
+/// Depth multiplier when a best move exists (`err·depth·12/128`).
+pub const CORR_BONUS_DEPTH_MULT_BESTMOVE: i32 = 12;
+/// Depth multiplier on a fail-low with no best move (`err·depth·18/128`).
+pub const CORR_BONUS_DEPTH_MULT_NOMOVE: i32 = 18;
+/// Divisor of the raw correction bonus.
+pub const CORR_BONUS_DIVISOR: i32 = 128;
+/// Symmetric clamp on the raw correction bonus (`CORRECTION_HISTORY_LIMIT/4`).
+pub const CORR_BONUS_CLAMP: i32 = 256;
+/// Numerator of the outer correction-bonus scaling (`·1114/1024`).
+pub const CORR_BONUS_SCALE_NUM: i32 = 1114;
+/// Denominator of the outer correction-bonus scaling.
+pub const CORR_BONUS_SCALE_DEN: i32 = 1024;
