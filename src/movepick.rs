@@ -1157,6 +1157,98 @@ mod tests {
         }
     }
 
+    // design/09 §5 / §8 criterion 1: the four-pipeline emission-completeness
+    // sweep over the FULL perft FEN suite (design/06), not merely the
+    // hand-picked FIXTURES above. For every position and each pipeline, the
+    // emitted multiset must equal the corresponding generator's — in check the
+    // evasion pipeline; otherwise the main pipeline (all pseudo-legal moves),
+    // quiescence (captures), and probcut with a −∞ threshold (captures) — with
+    // the usable TT move emitted first and exactly once (criterion 3). Run
+    // against both fresh and fully-randomized histories: ordering may change
+    // freely, the emitted SET may not.
+    const PERFT_SUITE: &str = include_str!("../tests/data/perft.epd");
+
+    // The FEN of each non-comment, non-blank EPD line is everything before the
+    // first `;D<depth>` perft field.
+    fn perft_suite_fens() -> Vec<&'static str> {
+        PERFT_SUITE
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(|l| l.split(" ;").next().unwrap().trim())
+            .collect()
+    }
+
+    #[test]
+    fn emission_completeness_over_full_perft_suite() {
+        const NEG_INF: Value = -30_000;
+        let fresh = Histories::new();
+        let mut rand = Histories::new();
+        randomize_ordering(&mut rand, 0xF00D_5EED_u64);
+
+        let fens = perft_suite_fens();
+        assert!(fens.len() >= 20, "perft suite unexpectedly small");
+
+        for fen in fens {
+            let b = board(fen);
+            for hist in [&*fresh, &*rand] {
+                if b.checkers().is_empty() {
+                    // Main pipeline: full pseudo-legal set, TT (capturing or
+                    // quiet) first and once — reuses the fixture-test oracle.
+                    assert_main_emits_full(&b, hist);
+
+                    // Quiescence and probcut(−∞) both reproduce the capture set.
+                    let caps = capture_set(&b);
+                    let q = drain(
+                        MovePicker::new(&b, Move::NULL, DEPTH_QS, 0, sentinels()),
+                        &b,
+                        hist,
+                    );
+                    assert_eq!(
+                        q.iter().copied().collect::<HashSet<_>>(),
+                        caps,
+                        "qsearch set != captures in {fen}"
+                    );
+                    let p = drain(MovePicker::new_probcut(&b, Move::NULL, NEG_INF), &b, hist);
+                    assert_eq!(
+                        p.iter().copied().collect::<HashSet<_>>(),
+                        caps,
+                        "probcut(-inf) set != captures in {fen}"
+                    );
+                } else {
+                    // Evasion pipeline: every evasion, captures first, TT first.
+                    let all = evasion_set(&b);
+                    let emitted =
+                        drain(MovePicker::new(&b, Move::NULL, 8, 0, sentinels()), &b, hist);
+                    assert_eq!(
+                        emitted.iter().copied().collect::<HashSet<_>>(),
+                        all,
+                        "evasion set != generator in {fen}"
+                    );
+                    let mut seen_quiet = false;
+                    for &m in &emitted {
+                        if b.capture_stage(m) {
+                            assert!(!seen_quiet, "capturing evasion after a quiet one in {fen}");
+                        } else {
+                            seen_quiet = true;
+                        }
+                    }
+                    // (A suite position is never checkmate, but guard the
+                    // empty set rather than unwrap a would-be panic.)
+                    if let Some(&tt) = all.iter().next() {
+                        let emitted = drain(MovePicker::new(&b, tt, 8, 0, sentinels()), &b, hist);
+                        assert_eq!(emitted[0], tt, "usable TT evasion must come first in {fen}");
+                        assert_eq!(
+                            emitted.iter().copied().collect::<HashSet<_>>(),
+                            all,
+                            "TT evasion changed the set in {fen}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn capture_history_flips_good_to_bad() {
         // An equal rook trade (SEE exactly 0): the black rook a2 is defended
