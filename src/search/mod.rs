@@ -177,6 +177,37 @@ pub fn value_draw(nodes: u64) -> Value {
     VALUE_DRAW - 1 + (nodes & 0x2) as Value
 }
 
+/// The reverse-futility margin (design/10 §3.4, node step N10): the
+/// static-eval headroom over beta a non-PV node must clear to prune. The
+/// per-ply multiplier `min(RFP_MULT_BASE + RFP_MULT_SLOPE·depth,
+/// RFP_MULT_CAP)` (docked by [`params::RFP_MULT_NO_TTHIT`] on a TT miss)
+/// scales the margin with depth, then the two trend flags discount it:
+/// an *improving* node or a *worsening* opponent both signal the fail-high
+/// is real, so less headroom is demanded.
+///
+/// ```text
+/// futility_mult = min(40 + 4·depth, 80) - 20·(!tt_hit)
+/// margin        = futility_mult·depth
+///               - (2934·improving + 343·opponent_worsening)·futility_mult / 1024
+/// ```
+///
+/// Pure integer arithmetic — division truncates toward zero exactly like
+/// the Stockfish source this re-expresses (D27), so the term order is
+/// preserved. The Wave-F correction-history widening term
+/// (`|correction_value| / 182069`) is deliberately absent until correction
+/// history is plumbed into this suite (design/10 §4 Wave F).
+#[inline]
+fn rfp_margin(depth: Depth, tt_hit: bool, improving: bool, opponent_worsening: bool) -> Value {
+    let futility_mult = (params::RFP_MULT_BASE + params::RFP_MULT_SLOPE * depth)
+        .min(params::RFP_MULT_CAP)
+        - params::RFP_MULT_NO_TTHIT * Value::from(!tt_hit);
+    futility_mult * depth
+        - (params::RFP_IMPROVING * Value::from(improving)
+            + params::RFP_OPP_WORSENING * Value::from(opponent_worsening))
+            * futility_mult
+            / params::RFP_TREND_DEN
+}
+
 /// The TT prefetch hook (doc 04 §3.10 hook A, doc 08 §3.15 call site 1):
 /// wired into [`Worker::do_move`] so every made move issues a prefetch for
 /// the child's cluster the moment the child key is final — the DRAM fetch
@@ -894,6 +925,61 @@ impl Worker {
                 && (self.board.rule50_count() as i32) < params::TT_CUTOFF_RULE50_LIMIT
             {
                 return tt_value;
+            }
+
+            // The pruning value `eval` (design/10 §3.4 N6): the corrected
+            // static eval, then the TT-value-as-better-eval substitution —
+            // a valid stored value whose bound points the right way is a
+            // tighter position estimate than the raw eval. (No consumer
+            // existed until doc 10's pruning; RFP below is the first.) The
+            // trend flags and `tt_capture` gate the pruning too. All
+            // computed AFTER the TT cutoff so a cut node pays for none of
+            // them.
+            let mut eval = self.stack[cur].static_eval;
+            if is_valid(tt_value)
+                && (if tt_value > eval {
+                    tt_data.bound.includes_lower()
+                } else {
+                    tt_data.bound.includes_upper()
+                })
+            {
+                eval = tt_value;
+            }
+            // `improving`: our eval beats our eval two plies ago (our last
+            // turn). `opponent_worsening`: our eval beats the negation of
+            // the parent's — the position is turning our way. Both use
+            // `ss.static_eval` (never the substituted `eval`), and an unset
+            // predecessor is the large `VALUE_NONE` sentinel (SF parity).
+            let improving = self.stack[cur].static_eval > self.stack[cur - 2].static_eval;
+            let opponent_worsening = self.stack[cur].static_eval > -self.stack[cur - 1].static_eval;
+            // A capturing ttMove does not veto RFP (N10); a quiet one does —
+            // a stored quiet best move is a standing reason to search.
+            let tt_capture = tt_data.mv != Move::NULL && self.board.capture_stage(tt_data.mv);
+
+            // N10 — reverse futility pruning ("futility: child", design/10
+            // §3.4). Gated on `!ss.tt_pv` (a PV-flagged node is worth a real
+            // search — and PV nodes always carry the flag, so this subsumes
+            // `!PV`), a shallow depth (deep nodes never RFP — the depth
+            // guard is what keeps mates findable), an eval already at/above
+            // beta, the ttMove/ttCapture guard, and the two decisive-score
+            // guards (`!is_loss(beta)`, `!is_win(eval)`) that keep the mate
+            // bands out (§8.11). When the eval clears beta by the whole
+            // margin, return a beta-ward blend rather than the raw eval —
+            // static-eval instability damping (the same idiom as the
+            // node-exit fail-high soften). The correction-history term of
+            // the margin joins in Wave F (design/10 §4).
+            if !self.stack[cur].tt_pv
+                && depth < params::RFP_MAX_DEPTH
+                && eval >= beta
+                && (tt_data.mv == Move::NULL || tt_capture)
+                && !is_loss(beta)
+                && !is_win(eval)
+            {
+                let margin = rfp_margin(depth, tt_hit, improving, opponent_worsening);
+                if eval - margin >= beta {
+                    return (params::RFP_RET_BETA_W * beta + params::RFP_RET_EVAL_W * eval)
+                        / params::RFP_RET_DEN;
+                }
             }
         }
 
@@ -1905,6 +1991,151 @@ mod tests {
                 / params::RED_NON_IMPROVING_DEN
             + params::RED_BASE;
         assert_eq!(w.reduction(improving, depth, mn, delta), want);
+    }
+
+    // --- Reverse futility pruning (design/10 §3.4 N10, §5) ---
+
+    #[test]
+    fn rfp_margin_matches_the_hand_computed_formula() {
+        // (depth, tt_hit, improving, opponent_worsening, expected). Values
+        // are `futility_mult·depth - (2934·imp + 343·opp)·futility_mult/1024`
+        // with `futility_mult = min(40 + 4·depth, 80) - 20·(!tt_hit)`,
+        // computed by hand — the truncating divide is the point.
+        let cases: &[(Depth, bool, bool, bool, Value)] = &[
+            // fm = min(44,80) = 44; 44·1 - 0 = 44
+            (1, true, false, false, 44),
+            // fm = min(56,80) = 56; 56·4 - 0 = 224
+            (4, true, false, false, 224),
+            // fm = 56 - 20 = 36; 36·4 - 343·36/1024 = 144 - 12 = 132
+            (4, false, false, true, 132),
+            // fm = min(80,80) = 80; 80·10 - (2934+343)·80/1024 = 800 - 256 = 544
+            (10, true, true, true, 544),
+            // fm = min(104,80) = 80 (cap); 80·16 - 2934·80/1024 = 1280 - 229 = 1051
+            (16, true, true, false, 1051),
+        ];
+        for &(d, hit, imp, opp, want) in cases {
+            assert_eq!(
+                rfp_margin(d, hit, imp, opp),
+                want,
+                "rfp_margin{:?}",
+                (d, hit, imp, opp)
+            );
+        }
+    }
+
+    #[test]
+    fn rfp_margin_preserves_the_truncating_term_order() {
+        // Cross-check at a representative point against the exact §3.4
+        // expression, guarding the operator precedence / truncation order.
+        let (d, hit, imp, opp): (Depth, bool, bool, bool) = (9, false, true, true);
+        let fm = (params::RFP_MULT_BASE + params::RFP_MULT_SLOPE * d).min(params::RFP_MULT_CAP)
+            - params::RFP_MULT_NO_TTHIT * Value::from(!hit);
+        let want = fm * d
+            - (params::RFP_IMPROVING * Value::from(imp)
+                + params::RFP_OPP_WORSENING * Value::from(opp))
+                * fm
+                / params::RFP_TREND_DEN;
+        assert_eq!(rfp_margin(d, hit, imp, opp), want);
+    }
+
+    #[test]
+    fn rfp_return_blend_weights_sum_to_the_denominator() {
+        // The return `(716·beta + 308·eval)/1024` is a weighted average, so
+        // its result lies between beta and eval — the weights must sum to
+        // the denominator or the blend would drift off the [beta, eval] band.
+        assert_eq!(
+            params::RFP_RET_BETA_W + params::RFP_RET_EVAL_W,
+            params::RFP_RET_DEN
+        );
+    }
+
+    /// Drive `search` directly at a fixed ply on a fresh stack — the RFP
+    /// analogue of [`qsearch_at`]. `nodes` is zeroed so a return with
+    /// `w.nodes == 0` proves the node made no move (RFP short-circuited
+    /// before the move loop).
+    #[allow(clippy::too_many_arguments)]
+    fn search_at<NT: NodeType>(
+        w: &mut Worker,
+        tt: &TranspositionTable,
+        alpha: Value,
+        beta: Value,
+        depth: Depth,
+        cut_node: bool,
+        ply: usize,
+    ) -> Value {
+        init_stack(&mut w.stack);
+        w.nodes = 0;
+        let stop = AtomicBool::new(false);
+        w.search::<NT>(tt, &stop, alpha, beta, depth, cut_node, ply)
+    }
+
+    #[test]
+    fn rfp_fires_on_a_winning_nonpv_node_and_returns_the_blend() {
+        // White is a full queen up, quiet, not in check: the corrected
+        // static eval sits far above a low beta, so a non-PV node RFP-prunes
+        // — returning the exact §3.4 beta-ward blend and searching NOTHING.
+        let fen = "7k/8/8/8/8/8/8/1Q5K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let eval = static_eval(&w.board);
+        assert!(!is_win(eval), "material edge alone is not a decisive score");
+        let depth: Depth = 4;
+        let beta = eval - 200; // eval - margin(~132) >= beta must hold
+        // A fresh TT → tt miss at this node, so the margin is the no-ttHit
+        // form; the trend flags at ply 1 read VALUE_NONE predecessors
+        // (improving false, opponent_worsening true).
+        let margin = rfp_margin(depth, false, false, true);
+        assert!(
+            eval - margin >= beta,
+            "the fixture must actually trigger RFP"
+        );
+        let v = search_at::<NonPv>(&mut w, &tt, beta - 1, beta, depth, true, 1);
+        assert_eq!(
+            v,
+            (params::RFP_RET_BETA_W * beta + params::RFP_RET_EVAL_W * eval) / params::RFP_RET_DEN
+        );
+        assert_eq!(w.nodes, 0, "RFP must return before making any move");
+    }
+
+    #[test]
+    fn rfp_never_fires_on_a_pv_node() {
+        // Same winning position, but a PV node carries ss.tt_pv, so the
+        // `!ss.tt_pv` guard blocks RFP: the node searches (nodes > 0) and
+        // does NOT return the blend shortcut.
+        let fen = "7k/8/8/8/8/8/8/1Q5K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let eval = static_eval(&w.board);
+        let depth: Depth = 4;
+        let beta = eval - 200;
+        let v = search_at::<Pv>(&mut w, &tt, beta - 1, beta, depth, false, 1);
+        assert!(w.nodes > 0, "a PV node must not RFP-prune");
+        assert_ne!(
+            v,
+            (params::RFP_RET_BETA_W * beta + params::RFP_RET_EVAL_W * eval) / params::RFP_RET_DEN,
+            "the PV node must not return the RFP blend"
+        );
+    }
+
+    #[test]
+    fn rfp_never_fires_when_beta_is_decisive() {
+        // A loss-band beta (is_loss) must disarm RFP via `!is_loss(beta)`,
+        // even though the huge eval clears it — the mate-safety guard. The
+        // node searches instead of pruning.
+        let fen = "7k/8/8/8/8/8/8/1Q5K w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let beta = crate::types::VALUE_TB_LOSS_IN_MAX_PLY; // is_loss(beta) == true
+        assert!(is_loss(beta));
+        let v = search_at::<NonPv>(&mut w, &tt, beta - 1, beta, 4, true, 1);
+        assert!(
+            w.nodes > 0,
+            "a decisive (loss-band) beta must block RFP and force a search"
+        );
+        assert!(
+            v >= beta,
+            "the winning node still fails high, just by searching"
+        );
     }
 
     // --- Mate suite (doc 07 §5/§8.4): exact ply-relative mate scores (D5) ---
@@ -2999,6 +3230,24 @@ mod tests {
         let e_child = static_eval(&after);
         let beta = -e_child - 100; // parent's true value -E sits above it
         let tt = test_tt();
+        // The parent's static eval already clears this low beta, so N10 RFP
+        // would short-circuit the node before the move loop and pre-empt the
+        // node-exit soften this test targets. Seed a QUIET ttMove (e4e5) —
+        // the `(!ttMove || ttCapture)` guard vetoes RFP on a quiet ttMove —
+        // so the node searches and reaches the step-14 blend. The eval-only
+        // (VALUE_NONE) entry can neither cut (invalid value) nor change the
+        // eval (invalid eval → real evaluate()), so only the veto is felt.
+        let key = w.board.key();
+        tt.probe(key).writer.write(
+            key,
+            VALUE_NONE,
+            false,
+            Bound::None,
+            DEPTH_UNSEARCHED,
+            e5,
+            VALUE_NONE,
+            tt.generation(),
+        );
         let stop = AtomicBool::new(false);
         let depth = 1;
         let v = w.search::<NonPv>(&tt, &stop, beta - 1, beta, depth, true, 1);

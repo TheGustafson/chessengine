@@ -132,6 +132,48 @@ pub const RAZOR_BASE: Value = 465;
 /// Depth-quadratic term of the razoring margin (`* depth^2`).
 pub const RAZOR_DEPTH_MULT: Value = 300;
 
+// --- Reverse futility pruning (design/10 §3.4; node step N10) ---
+//
+// "Futility pruning: child" — a non-PV node whose corrected static eval
+// already clears beta by a depth-scaled margin returns a beta-ward blend
+// without searching (the fail-high is almost certainly real). The margin
+// `futility_mult·depth - (RFP_IMPROVING·improving + RFP_OPP_WORSENING·
+// opponent_worsening)·futility_mult / RFP_TREND_DEN` shrinks when the
+// trend flags say the fail-high is well-supported. The Wave-F correction
+// term (`|correction_value| / 182069`) is deliberately absent until
+// correction history is plumbed into this suite (design/10 §4 Wave F).
+
+/// Exclusive depth ceiling: RFP only runs while `depth < RFP_MAX_DEPTH`
+/// (the depth condition matters for mate finding — deep nodes never RFP).
+pub const RFP_MAX_DEPTH: Depth = 17;
+/// Base of the per-ply futility multiplier `min(RFP_MULT_BASE +
+/// RFP_MULT_SLOPE·depth, RFP_MULT_CAP)`.
+pub const RFP_MULT_BASE: Value = 40;
+/// Per-ply slope of the futility multiplier.
+pub const RFP_MULT_SLOPE: Value = 4;
+/// Cap of the futility multiplier.
+pub const RFP_MULT_CAP: Value = 80;
+/// Subtracted from the futility multiplier on a TT miss (a node with no TT
+/// data prunes a little more cautiously).
+pub const RFP_MULT_NO_TTHIT: Value = 20;
+/// Weight (÷[`RFP_TREND_DEN`] of `futility_mult`) by which an *improving*
+/// node shrinks the margin — the fail-high is better supported.
+pub const RFP_IMPROVING: Value = 2934;
+/// Weight (÷[`RFP_TREND_DEN`] of `futility_mult`) by which a *worsening*
+/// opponent shrinks the margin.
+pub const RFP_OPP_WORSENING: Value = 343;
+/// Denominator of the improving/opponent-worsening margin discounts.
+pub const RFP_TREND_DEN: Value = 1024;
+/// Beta weight of the return blend `(RFP_RET_BETA_W·beta + RFP_RET_EVAL_W·
+/// eval) / RFP_RET_DEN` — a value ≥ beta, pulled toward beta to damp
+/// static-eval noise (the same instability-damping idiom as the node-exit
+/// fail-high soften).
+pub const RFP_RET_BETA_W: Value = 716;
+/// Eval weight of the return blend.
+pub const RFP_RET_EVAL_W: Value = 308;
+/// Denominator of the return blend (`RFP_RET_BETA_W + RFP_RET_EVAL_W`).
+pub const RFP_RET_DEN: Value = 1024;
+
 // --- Base reduction table + `reduction()` (design/10 §3.3) ---
 //
 // The per-worker log reduction table `reductions[i] = int(RED_TABLE_NUM /
