@@ -312,6 +312,49 @@ pub const RED_FULLDEPTH_DOCK2: i32 = 5223;
 /// tried before movecount pruning can bite, before the depth² growth.
 pub const LMP_BASE: i32 = 3;
 
+// --- Move-loop pruning: parent futility (design/10 §3.5) ---
+//
+// "Futility pruning: parent node" — a shallow, not-in-check node writes off
+// a quiet whose most optimistic outcome still fails to reach alpha. The
+// bound is `ss.static_eval + PFUT_BASE + PFUT_NO_BESTMOVE·(no best move yet)
+// + PFUT_LMRDEPTH_MULT·lmr_depth + PFUT_EVAL_ABOVE_ALPHA·(eval already beats
+// alpha)`: a depth-scaled slack over the static eval, widened while the node
+// has no alpha-raiser in hand and when the eval already clears alpha. When
+// that bound `<= alpha` at a shallow predicted depth
+// (`lmr_depth < PFUT_MAX_LMRDEPTH`), the quiet is skipped — after first
+// lifting `best_value` to the bound (the fail-low value a pruned move could
+// plausibly deliver), gated by `!is_decisive(best_value) && !is_win(bound)`
+// so no mate score is corrupted (§8.11). The `!ss.in_check` guard keeps
+// every check evasion searched. `lmr_depth = new_depth - r/1024` is the
+// predicted post-LMR depth; the continuation-history nudge SF folds into it
+// first is Wave-C item 11 — this item uses the plain derivation.
+
+/// Flat base of the parent-futility bound over the static eval.
+pub const PFUT_BASE: Value = 40;
+/// Bound surcharge while no best move has been found yet: a node with no
+/// established alpha-raiser writes moves off a little more optimistically.
+pub const PFUT_NO_BESTMOVE: Value = 138;
+/// Per-lmr-depth slope of the bound: a deeper predicted search must clear
+/// more headroom before its quiets are futile.
+pub const PFUT_LMRDEPTH_MULT: Value = 117;
+/// Bound surcharge when the static eval already clears alpha.
+pub const PFUT_EVAL_ABOVE_ALPHA: Value = 90;
+/// Exclusive lmr-depth ceiling: parent futility runs only while
+/// `lmr_depth < PFUT_MAX_LMRDEPTH` (deeper predicted searches are trusted).
+pub const PFUT_MAX_LMRDEPTH: Depth = 12;
+
+// --- Move-loop pruning: quiet SEE (design/10 §3.5) ---
+//
+// After parent futility, a quiet whose static-exchange value cannot reach
+// `-QSEE_MULT·lmr_depth²` (quadratic in the predicted post-LMR depth, floored
+// at 0) is pruned: a material-losing quiet at shallow effective depth is
+// almost never worth a search. At `lmr_depth == 0` the bar is 0, so any
+// negative-SEE quiet is dropped; it slackens quadratically with depth.
+
+/// Quadratic coefficient of the quiet SEE margin `-QSEE_MULT·lmr_depth²`
+/// (`lmr_depth` clamped to `>= 0` first).
+pub const QSEE_MULT: Value = 25;
+
 // --- Transposition-table interaction (design/07 §3.7.2 steps 7/14) ---
 
 /// TT cutoffs are refused once the halfmove clock reaches this (the

@@ -225,6 +225,37 @@ fn lmp_move_count(depth: Depth, improving: bool) -> i32 {
     (params::LMP_BASE + depth * depth) / (2 - i32::from(improving))
 }
 
+/// The parent-futility bound (design/10 §3.5, the move loop's quiet branch):
+/// the most optimistic value a quiet move could deliver, against which a
+/// shallow non-check node writes it off when the bound cannot reach alpha.
+///
+/// ```text
+/// static_eval + PFUT_BASE
+///             + PFUT_NO_BESTMOVE       · (no best move found yet)
+///             + PFUT_LMRDEPTH_MULT     · lmr_depth
+///             + PFUT_EVAL_ABOVE_ALPHA  · (static_eval > alpha)
+/// ```
+///
+/// `lmr_depth` is the predicted post-LMR depth `new_depth - r / 1024` and can
+/// be negative at shallow nodes (the `PFUT_LMRDEPTH_MULT · lmr_depth` term
+/// then lowers the bound) — pure `i32`, so the term order and truncation match
+/// the Stockfish source this re-expresses (D27). The caller supplies the two
+/// predicates; keeping the bound a pure function makes its algebra unit-
+/// testable (§5) apart from the make/prune control flow.
+#[inline]
+fn parent_futility_value(
+    static_eval: Value,
+    no_best_move: bool,
+    lmr_depth: i32,
+    eval_above_alpha: bool,
+) -> Value {
+    static_eval
+        + params::PFUT_BASE
+        + params::PFUT_NO_BESTMOVE * Value::from(no_best_move)
+        + params::PFUT_LMRDEPTH_MULT * lmr_depth
+        + params::PFUT_EVAL_ABOVE_ALPHA * Value::from(eval_above_alpha)
+}
+
 /// The TT prefetch hook (doc 04 §3.10 hook A, doc 08 §3.15 call site 1):
 /// wired into [`Worker::do_move`] so every made move issues a prefetch for
 /// the child's cluster the moment the child key is final — the DRAM fetch
@@ -1182,6 +1213,20 @@ impl Worker {
             self.stack[cur].move_count = move_count;
             let nodes_before = self.nodes; // root effort accounting (§3.4)
 
+            // Pre-move facts the §3.5 pruning block and the §3.7.2 PVS
+            // three-call structure both read: whether the move gives check,
+            // the child depth (`new_depth = depth - 1` — no extensions until
+            // Wave D; `mut` because the §3.8 deeper/shallower rule adjusts it
+            // in place), and the base per-move reduction `r` (design/10 §3.3;
+            // `delta = beta - alpha` is the local window — 1 at NonPV nodes,
+            // the aspiration width at the root). `r` is finalized after the
+            // move is made (§3.7), but the pruning block reads only its BASE
+            // value for `lmr_depth`, so it is computed here, ahead of both.
+            let gives_check = self.board.gives_check(m);
+            let mut new_depth = depth - 1;
+            let delta = beta - alpha;
+            let mut r = self.reduction(improving, depth, move_count, delta);
+
             // §3.5 — shallow-depth pruning, decided BEFORE the move is made.
             // The whole block is fenced by the mate-safety guard `!is_loss(
             // best_value)` (never prune while we might still be getting
@@ -1189,9 +1234,8 @@ impl Worker {
             // escapes), never runs at the root, and never when the side to
             // move has only pawns left (the zugzwang/stalemate-trap guard
             // shared with NMP: sacrificing into a bare-pawn ending must stay
-            // searched). Wave-B item 6 fills in LMP; the capture/quiet
-            // futility+SEE prunings (design/10 §3.5, items 7/8) join here
-            // later.
+            // searched). Wave-B item 8's capture/check futility+SEE prunings
+            // join the `capture || gives_check` arm below.
             if !NT::ROOT
                 && !is_loss(best_value)
                 && self.board.non_pawn_material(self.board.side_to_move()) != 0
@@ -1207,6 +1251,60 @@ impl Worker {
                 if move_count >= lmp_move_count(depth, improving) {
                     mp.skip_quiet_moves();
                 }
+
+                // The predicted post-LMR depth (design/10 §3.5): the reduced
+                // scout depth this move WOULD get, the depth input every
+                // shallow-depth margin below takes. The BASE reduction `r`
+                // (pre-§3.7 finalization) is the right one here — SF reads
+                // `reduction()` output before its post-make adjustments — and
+                // it can go negative at shallow nodes. The continuation-
+                // history nudge SF folds into `lmr_depth` first is Wave-C
+                // item 11; item 7 uses the plain `new_depth - r/1024`.
+                let mut lmr_depth = new_depth - r / params::RED_UNIT;
+
+                // Captures and checking moves route to their own futility/SEE
+                // gates (Wave-B item 8); until those land they fall through
+                // unpruned. Quiets — spared only on the last iteration's PV
+                // path at a PV node (`!follow_pv || !PV`; `follow_pv` is inert
+                // until item 9 plumbs it, so this OR is currently always true)
+                // — take parent futility then negative-SEE pruning.
+                if !is_capture && !gives_check && (!self.stack[cur].follow_pv || !NT::PV) {
+                    // Parent futility (design/10 §3.5): the most optimistic
+                    // value this quiet could yield still cannot reach alpha at
+                    // a shallow predicted depth. Lift `best_value` to that
+                    // bound first — the fail-low value a pruned move plausibly
+                    // delivers — guarded so no decisive score is corrupted
+                    // (§8.11), then skip. `!in_check` keeps evasions searched.
+                    let futility_value = parent_futility_value(
+                        self.stack[cur].static_eval,
+                        best_move == Move::NULL,
+                        lmr_depth,
+                        self.stack[cur].static_eval > alpha,
+                    );
+                    if !in_check && lmr_depth < params::PFUT_MAX_LMRDEPTH && futility_value <= alpha
+                    {
+                        if best_value <= futility_value
+                            && !is_decisive(best_value)
+                            && !is_win(futility_value)
+                        {
+                            best_value = futility_value;
+                        }
+                        continue;
+                    }
+
+                    // Quiet SEE pruning (design/10 §3.5): a quiet that loses
+                    // more than the quadratic margin `-25·lmr_depth²` in a
+                    // static exchange is pruned (`lmr_depth` floored at 0, so
+                    // the bar is 0 at shallow nodes — any material-losing
+                    // quiet is dropped).
+                    lmr_depth = lmr_depth.max(0);
+                    if !self
+                        .board
+                        .see_ge(m, -params::QSEE_MULT * lmr_depth * lmr_depth)
+                    {
+                        continue;
+                    }
+                }
             }
 
             // Step 10 — make + recurse: the PVS three-call structure
@@ -1215,16 +1313,6 @@ impl Worker {
             // the scouts below usually right) gets a full window up front;
             // every later move must first prove itself against a
             // zero-width window before it earns a PV re-search.
-            let gives_check = self.board.gives_check(m);
-            // `new_depth` is `depth - 1` (no extensions until Wave D). It is
-            // `mut` because the deeper/shallower rule (§3.8) adjusts it in
-            // place, and the PV re-search below reads the adjusted value.
-            let mut new_depth = depth - 1;
-            // N-loop / §3.5 — the base per-move reduction (design/10 §3.3).
-            // `delta = beta - alpha` is the local window; at NonPV nodes it is
-            // 1, at the root it is the aspiration width.
-            let delta = beta - alpha;
-            let mut r = self.reduction(improving, depth, move_count, delta);
             self.do_move(tt, m, gives_check, ply);
             // §3.7 — reduction finalization, Wave-A subset (design/10 §4). The
             // flat rebase, the move-count discount, the cut-node surcharge
@@ -2500,11 +2588,10 @@ mod tests {
         // not in check, and no legal move gives check or lands beside the
         // black king — so every child is a captureless qsearch that makes
         // zero moves. `self.nodes` is bumped once per do_move, so it counts
-        // exactly the moves the top node searched. A window pitched 400 cp
-        // above the (non-decisive) static eval keeps razoring/RFP/NMP off yet
-        // leaves every quiet failing low, so the move loop runs until LMP
-        // calls skip_quiet_moves — capping the node at exactly
-        // lmp_move_count(depth, improving=false).
+        // exactly the moves the top node searched. All quiets are SEE-safe
+        // (nothing to lose material to), so item-7 quiet SEE never fires; the
+        // window is pitched to isolate LMP from item-7 PARENT FUTILITY as
+        // well — see below.
         let fen = "7k/8/8/8/8/2N5/8/K7 w - - 0 1";
         let mut w = Worker::new(board(fen));
         let tt = test_tt();
@@ -2519,14 +2606,145 @@ mod tests {
             (threshold as usize) < legal,
             "fixture must offer more quiets ({legal}) than the LMP cap ({threshold})"
         );
-        // eval + 400 sits below the depth-1 razoring margin (765) yet above
-        // every quiet's value, so nothing razors and nothing fails high.
-        let alpha = eval + 400;
+        // The window must sit ABOVE every quiet's value (so nothing fails
+        // high and the loop runs to the LMP cap) yet BELOW the item-7
+        // parent-futility bound `parent_futility_value(eval, no_bestmove=true,
+        // lmr_depth=-1, eval>alpha=false) = eval + 61` at this depth, so
+        // parent futility stays dormant and LMP alone caps the node. `eval +
+        // 40` is comfortably inside that band; below the depth-1 razoring
+        // margin (765) too. (Pre-item-7 this test used `eval + 400`; parent
+        // futility now prunes there, so the window tightened — the LMP cap
+        // itself is unchanged.)
+        let fut = parent_futility_value(eval, true, -1, false);
+        let alpha = eval + 40;
+        assert!(alpha < fut, "window must keep parent futility dormant");
         let beta = alpha + 1;
         let _ = search_at::<NonPv>(&mut w, &tt, alpha, beta, depth, true, 1);
         assert_eq!(
             w.nodes, threshold as u64,
             "LMP must cap the node at exactly its move-count threshold"
+        );
+    }
+
+    // --- Parent futility + quiet SEE pruning (design/10 §3.5, §5) ---
+
+    #[test]
+    fn parent_futility_value_matches_the_hand_computed_bound() {
+        // (static_eval, no_best_move, lmr_depth, eval_above_alpha, expected),
+        // `static_eval + 40 + 138·no_best_move + 117·lmr_depth
+        //  + 90·eval_above_alpha`, computed by hand — including the negative
+        // `lmr_depth` term that LOWERS the bound at shallow nodes.
+        let cases: &[(Value, bool, i32, bool, Value)] = &[
+            (0, true, -1, false, 61),      // 40 + 138 - 117
+            (0, false, -1, false, -77),    // 40 - 117
+            (0, false, 0, false, 40),      // the flat base alone
+            (100, true, 0, true, 368),     // 100 + 40 + 138 + 90
+            (100, true, 5, false, 863),    // 100 + 40 + 138 + 585
+            (-50, true, 3, true, 569),     // -50 + 40 + 138 + 351 + 90
+            (200, false, 11, false, 1527), // 200 + 40 + 1287
+        ];
+        for &(ev, nbm, lmr, eaa, want) in cases {
+            assert_eq!(
+                parent_futility_value(ev, nbm, lmr, eaa),
+                want,
+                "parent_futility_value({ev}, {nbm}, {lmr}, {eaa})"
+            );
+        }
+    }
+
+    #[test]
+    fn parent_futility_prunes_a_quiet_only_at_or_below_its_margin() {
+        // Same wide-quiet KN-vs-K node as the LMP test: at depth 1 the loop
+        // searches move 1 (fails low, no best move raised), then reaches the
+        // second quiet. Its parent-futility bound is
+        // `parent_futility_value(eval, no_bestmove=true, lmr_depth=-1,
+        // eval>alpha=false) = eval + 61`. The move is pruned iff that bound
+        // `<= alpha`, so the boundary is sharp:
+        //   - alpha = bound - 1: NOT pruned → the second quiet is searched,
+        //     move 3+ are LMP-skipped → exactly 2 nodes.
+        //   - alpha = bound:     pruned, and `best_value` is first lifted to
+        //     the bound → exactly 1 node, and the node returns that bound.
+        // The pruned move is SEE-safe, so this isolates parent futility from
+        // quiet SEE; `!in_check` and the non-decisive eval keep every guard
+        // satisfied.
+        let fen = "7k/8/8/8/8/2N5/8/K7 w - - 0 1";
+        let eval = static_eval(&board(fen));
+        assert!(!is_decisive(eval), "a knight edge is not a decisive score");
+        let bound = parent_futility_value(eval, true, -1, false);
+        let depth: Depth = 1;
+
+        // Just below the margin: parent futility dormant, the second quiet is
+        // searched. Two nodes (LMP caps move 3+).
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let _ = search_at::<NonPv>(&mut w, &tt, bound - 1, bound, depth, true, 1);
+        assert_eq!(w.nodes, 2, "below the margin, the second quiet must search");
+
+        // At the margin: parent futility prunes the second quiet AND raises
+        // best_value to the bound; one node, and the returned value is the
+        // bound itself (the fail-low value the pruned move contributes).
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let v = search_at::<NonPv>(&mut w, &tt, bound, bound + 1, depth, true, 1);
+        assert_eq!(w.nodes, 1, "at the margin, the second quiet must be pruned");
+        assert_eq!(v, bound, "parent futility lifts best_value to its bound");
+    }
+
+    #[test]
+    fn quiet_see_pruning_drops_a_hanging_quiet() {
+        // White is boxed by two black rooks (down a rook-plus) with a knight
+        // on a1 whose only two moves are quiets: Nc2 (SEE-safe — the white
+        // king on c1 defends c2, so the black king cannot recapture) and Nb3
+        // (SEE < 0 — it walks into the black king's grasp on c3, undefended).
+        // Nc2 has the higher quiet score (Nb3 carries a threat penalty), so
+        // Nc2 is searched first, fails low, and leaves best_value non-loss
+        // with no best move. Nb3 then reaches the pruning block, where the
+        // window is chosen so parent futility is PROVABLY dormant — leaving
+        // quiet SEE (`-25·max(0,lmr_depth)² = 0` at depth 1) as the only rule
+        // that can drop it. It is SEE < 0, so it is pruned: one node.
+        let fen = "1r1r4/8/8/8/8/2k5/8/N1K5 w - - 0 1";
+        let b = board(fen);
+        let legal = all_legal(&b);
+        assert_eq!(legal.len(), 2, "fixture must offer exactly two quiets");
+        let safe = Move::normal(Square::A1, Square::C2);
+        let hanging = Move::normal(Square::A1, Square::B3);
+        assert!(b.see_ge(safe, 0), "Nc2 must be SEE-safe (king-defended)");
+        assert!(!b.see_ge(hanging, 0), "Nb3 must lose material by SEE");
+        assert!(
+            !b.capture_stage(hanging) && !b.gives_check(hanging),
+            "Nb3 must be a quiet non-check (the item-7 branch)"
+        );
+
+        let eval = static_eval(&b);
+        let depth: Depth = 1;
+        // lmr_depth = -1 at depth 1, so the SEE bar is `-25·max(0,-1)² = 0`:
+        // any SEE < 0 quiet is dropped. Pitch alpha above Nc2's value (so it
+        // fails low and we reach Nb3) yet below the parent-futility bound
+        // `eval + 61` (so parent futility stays dormant and quiet SEE is the
+        // sole pruner of Nb3).
+        let bound = parent_futility_value(eval, true, -1, false);
+        let alpha = eval + 40;
+        assert!(alpha < bound, "window must keep parent futility dormant");
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let v = search_at::<NonPv>(&mut w, &tt, alpha, alpha + 1, depth, true, 1);
+        assert!(v <= alpha, "Nc2 must fail low (no fail-high shortcut)");
+        assert_eq!(w.nodes, 1, "quiet SEE must drop the hanging Nb3");
+    }
+
+    #[test]
+    fn parent_futility_and_quiet_see_preserve_the_forced_mate() {
+        // Mate-safety with both item-7 prunings live in the tree: the
+        // `!is_loss(best_value)` fence and the `!is_decisive(best_value)` /
+        // `!is_win(futility_value)` guards keep the shallow quiet prunings out
+        // of the mate band, so the exact ply-relative KRK mate still returns.
+        // Mirrors the LMP / NMP / razoring twins on the same fixture.
+        let fen = "k7/8/2K5/8/8/8/8/7R w - - 0 1";
+        let w = go_depth(fen, 8);
+        assert_eq!(
+            best_score(&w),
+            mate_in(3),
+            "parent futility / quiet SEE must not corrupt the mate"
         );
     }
 
