@@ -208,6 +208,23 @@ fn rfp_margin(depth: Depth, tt_hit: bool, improving: bool, opponent_worsening: b
             / params::RFP_TREND_DEN
 }
 
+/// The late-move-pruning move-count threshold (design/10 §3.5, the move
+/// loop's LMP): once the running `move_count` reaches
+/// `(LMP_BASE + depth²) / (2 - improving)`, the picker is told to stop
+/// emitting quiets ([`MovePicker::skip_quiet_moves`]). The threshold is
+/// quadratic in depth — a deeper node trusts its move ordering less, so it
+/// tries more moves before movecount pruning bites — and the `improving`
+/// flag halves the divisor: a node whose eval is not improving distrusts its
+/// late quiets and prunes them roughly twice as early.
+///
+/// Integer division truncates toward zero exactly like the Stockfish source
+/// this re-expresses (D27); the numerator `LMP_BASE + depth²` is always
+/// positive, so the truncation is a plain floor.
+#[inline]
+fn lmp_move_count(depth: Depth, improving: bool) -> i32 {
+    (params::LMP_BASE + depth * depth) / (2 - i32::from(improving))
+}
+
 /// The TT prefetch hook (doc 04 §3.10 hook A, doc 08 §3.15 call site 1):
 /// wired into [`Worker::do_move`] so every made move issues a prefetch for
 /// the child's cluster the moment the child key is final — the DRAM fetch
@@ -1164,6 +1181,33 @@ impl Worker {
             move_count += 1;
             self.stack[cur].move_count = move_count;
             let nodes_before = self.nodes; // root effort accounting (§3.4)
+
+            // §3.5 — shallow-depth pruning, decided BEFORE the move is made.
+            // The whole block is fenced by the mate-safety guard `!is_loss(
+            // best_value)` (never prune while we might still be getting
+            // mated — the losing side keeps searching every move until one
+            // escapes), never runs at the root, and never when the side to
+            // move has only pawns left (the zugzwang/stalemate-trap guard
+            // shared with NMP: sacrificing into a bare-pawn ending must stay
+            // searched). Wave-B item 6 fills in LMP; the capture/quiet
+            // futility+SEE prunings (design/10 §3.5, items 7/8) join here
+            // later.
+            if !NT::ROOT
+                && !is_loss(best_value)
+                && self.board.non_pawn_material(self.board.side_to_move()) != 0
+            {
+                // Late move pruning (movecount pruning): once enough moves
+                // have been tried at this shallow node, stop the picker from
+                // emitting any more quiets. The ttMove (always emitted first)
+                // and every capture — good or bad — still come; in check the
+                // evasion pipeline ignores the skip, so no response to check
+                // is ever pruned. `improving` is false in check, halving the
+                // threshold there, but the `!is_loss` guard keeps the block
+                // dormant until an evasion has produced a non-loss value.
+                if move_count >= lmp_move_count(depth, improving) {
+                    mp.skip_quiet_moves();
+                }
+            }
 
             // Step 10 — make + recurse: the PVS three-call structure
             // (§3.7.2). Only the move ordered first (the ttMove when the
@@ -2400,6 +2444,136 @@ mod tests {
         );
     }
 
+    // --- Late move pruning (design/10 §3.5 move-loop LMP, §5) ---
+
+    #[test]
+    fn lmp_move_count_matches_the_hand_computed_threshold() {
+        // (depth, improving, expected) for `(3 + depth²) / (2 - improving)`,
+        // computed by hand — the truncating divide (odd numerator / 2) is the
+        // point. Not improving halves the divisor, so it prunes ~twice as
+        // early; improving keeps every quiet's slot until 3 + depth².
+        let cases: &[(Depth, bool, i32)] = &[
+            (1, false, 2),  // (3+1)/2 = 2
+            (1, true, 4),   // (3+1)/1 = 4
+            (2, false, 3),  // (3+4)/2 = 7/2 = 3 (truncated)
+            (2, true, 7),   // (3+4)/1 = 7
+            (3, false, 6),  // (3+9)/2 = 6
+            (3, true, 12),  // (3+9)/1 = 12
+            (6, false, 19), // (3+36)/2 = 39/2 = 19 (truncated)
+            (6, true, 39),  // (3+36)/1 = 39
+            (8, false, 33), // (3+64)/2 = 67/2 = 33 (truncated)
+            (8, true, 67),  // (3+64)/1 = 67
+        ];
+        for &(d, imp, want) in cases {
+            assert_eq!(lmp_move_count(d, imp), want, "lmp_move_count({d}, {imp})");
+        }
+    }
+
+    #[test]
+    fn lmp_threshold_grows_with_depth_and_prunes_sooner_when_not_improving() {
+        // Monotone non-decreasing in depth (the quadratic numerator only
+        // grows), and a not-improving node always prunes at or before an
+        // improving one (the divisor is 2 vs 1). The numerator is >= 4, so
+        // the not-improving threshold is STRICTLY smaller at every depth.
+        let mut prev_imp = 0;
+        let mut prev_not = 0;
+        for d in 1..=32 {
+            let imp = lmp_move_count(d, true);
+            let not = lmp_move_count(d, false);
+            assert!(imp >= prev_imp, "improving threshold dropped at depth {d}");
+            assert!(
+                not >= prev_not,
+                "not-improving threshold dropped at depth {d}"
+            );
+            assert!(
+                not < imp,
+                "depth {d}: not-improving {not} must prune before improving {imp}"
+            );
+            prev_imp = imp;
+            prev_not = not;
+        }
+    }
+
+    #[test]
+    fn lmp_caps_a_wide_quiet_nonpv_node_at_the_threshold() {
+        // White is up a knight; there are no captures anywhere, the node is
+        // not in check, and no legal move gives check or lands beside the
+        // black king — so every child is a captureless qsearch that makes
+        // zero moves. `self.nodes` is bumped once per do_move, so it counts
+        // exactly the moves the top node searched. A window pitched 400 cp
+        // above the (non-decisive) static eval keeps razoring/RFP/NMP off yet
+        // leaves every quiet failing low, so the move loop runs until LMP
+        // calls skip_quiet_moves — capping the node at exactly
+        // lmp_move_count(depth, improving=false).
+        let fen = "7k/8/8/8/8/2N5/8/K7 w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let legal = all_legal(&w.board).len();
+        let eval = static_eval(&w.board);
+        assert!(!is_decisive(eval), "a knight edge is not a decisive score");
+        let depth: Depth = 1;
+        // improving is false at ply 1 (the grandparent static_eval is the
+        // VALUE_NONE sentinel), so the threshold divisor is 2.
+        let threshold = lmp_move_count(depth, false);
+        assert!(
+            (threshold as usize) < legal,
+            "fixture must offer more quiets ({legal}) than the LMP cap ({threshold})"
+        );
+        // eval + 400 sits below the depth-1 razoring margin (765) yet above
+        // every quiet's value, so nothing razors and nothing fails high.
+        let alpha = eval + 400;
+        let beta = alpha + 1;
+        let _ = search_at::<NonPv>(&mut w, &tt, alpha, beta, depth, true, 1);
+        assert_eq!(
+            w.nodes, threshold as u64,
+            "LMP must cap the node at exactly its move-count threshold"
+        );
+    }
+
+    #[test]
+    fn lmp_is_disabled_without_non_pawn_material() {
+        // The same wide-quiet shape but the side to move has only pawns
+        // (+king): the `non_pawn_material(us) != 0` guard disables the whole
+        // shallow-pruning block, so LMP never fires and every quiet is
+        // searched — `self.nodes` equals the full legal move count, not the
+        // LMP cap. This isolates the zugzwang guard from the movecount rule.
+        let fen = "7k/8/8/8/8/2P5/PP6/K7 w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let legal = all_legal(&w.board).len();
+        assert_eq!(
+            w.board.non_pawn_material(w.board.side_to_move()),
+            0,
+            "fixture must have no non-pawn material for the side to move"
+        );
+        let eval = static_eval(&w.board);
+        let depth: Depth = 1;
+        assert!(
+            (lmp_move_count(depth, false) as usize) < legal,
+            "the LMP cap would bite here if the block ran ({legal} quiets)"
+        );
+        let alpha = eval + 400;
+        let beta = alpha + 1;
+        let _ = search_at::<NonPv>(&mut w, &tt, alpha, beta, depth, true, 1);
+        assert_eq!(
+            w.nodes, legal as u64,
+            "no non-pawn material must leave every quiet searched"
+        );
+    }
+
+    #[test]
+    fn lmp_active_search_still_finds_the_forced_mate() {
+        // Mate-safety with LMP live in the tree: the `!is_loss(best_value)`
+        // guard keeps the losing side searching every evasion, and quiets are
+        // only skipped once a non-loss value stands — so the movecount rule
+        // prunes the wide shuffling nodes yet the exact ply-relative mate
+        // still comes back. KRK mates in mate_in(3); mirrors the razoring and
+        // NMP twins on the same fixture.
+        let fen = "k7/8/2K5/8/8/8/8/7R w - - 0 1";
+        let w = go_depth(fen, 8);
+        assert_eq!(best_score(&w), mate_in(3), "LMP must not corrupt the mate");
+    }
+
     // --- Null move pruning (design/10 §3.4 N11, §5 zugzwang guard) ---
 
     /// Seed an eval-only TT entry carrying a quiet `ttm`: `is_valid` fails on
@@ -2737,7 +2911,18 @@ mod tests {
         // Black's only move is Kg8 (g7/h7 touch the white king); then
         // Qc8#. Ply-relative from the root: mated_in(2) (doc 07 §5's
         // mated-side reporting bar).
-        let w = go_depth("7k/8/6K1/8/8/8/2Q5/8 b - - 0 1", 3);
+        //
+        // This KQ-vs-K fixture is a worst case for LMP (doc 10 §3.5): FOUR
+        // white queen moves give check (Qa2+/Qb3+/Qc4+ all lie on the
+        // a2–g8 diagonal, plus the mating Qc8+ on rank 8), so they tie on
+        // the check-order bonus and the mating one sorts fourth. At the
+        // white reply node the movecount threshold `(3 + depth²)/2` only
+        // reaches 4 once that node has depth ≥ 3 (root depth ≥ 4), so LMP
+        // prunes Qc8# for one extra iteration — mate_in(2) surfaces from
+        // root depth 4 on. Depth 5 leaves a settling iteration of margin,
+        // like the KRK mate tests; the mate is still exact, LMP only
+        // delayed it (the `!is_loss` guard keeps the mated SIDE searching).
+        let w = go_depth("7k/8/6K1/8/8/8/2Q5/8 b - - 0 1", 5);
         assert_eq!(best_score(&w), mated_in(2));
         assert_eq!(w.best_move().unwrap().to_string(), "h8g8");
     }
@@ -3165,24 +3350,27 @@ mod tests {
         // design/12 §3.8: the GUI owns the clock while pondering — an
         // already-expired movetime must NOT stop a ponder search. The
         // depth limit (ID-loop condition, not check_time) bounds the
-        // test; depth 4 guarantees the 512-entry cadence fires real
-        // checks (depth <= 3 has too few main-search node entries).
+        // test; depth 5 guarantees the 512-entry cadence fires real
+        // checks. (Depth 4 sufficed pre-LMP, but doc 10 §3.5's movecount
+        // pruning shrinks the startpos tree below 512 main-search node
+        // entries at depth 4 — the control below would never reach a real
+        // check — so the floor moves up one ply.)
         let mut w = Worker::new(board(START_FEN));
         w.limits.movetime = Some(0); // expired from the first poll
         w.limits.start_time = std::time::Instant::now();
-        w.limits.depth = Some(4);
+        w.limits.depth = Some(5);
         w.limits.ponder = true;
         w.ponder = Arc::new(AtomicBool::new(true));
         let stop = AtomicBool::new(false);
         w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
         assert!(!stop.load(Ordering::Relaxed), "pondering must never stop");
-        assert_eq!(w.root_depth, 4, "the search deepened on GUI time");
+        assert_eq!(w.root_depth, 5, "the search deepened on GUI time");
 
         // Control: the same limits without the ponder flag stop at once.
         let mut w = Worker::new(board(START_FEN));
         w.limits.movetime = Some(0);
         w.limits.start_time = std::time::Instant::now();
-        w.limits.depth = Some(4);
+        w.limits.depth = Some(5);
         let stop = AtomicBool::new(false);
         w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
         assert!(stop.load(Ordering::Relaxed), "expired movetime must stop");
@@ -4048,13 +4236,17 @@ mod tests {
         // opposite reason — a fail-high's shallower re-search can end the
         // iteration below the mate (see the mate-suite tests, which spend
         // one extra settling iteration instead).
+        //
+        // Doc 10 §3.5's LMP tightens this window-stability bar further: on a
+        // full-material opening its lossy movecount pruning can move the
+        // fixed-depth value enough between iterations to trip an aspiration
+        // re-search (measured: 7 attempts, and a changed bestmove, on the
+        // white queen-up opening at depth 4). The surviving fixtures are the
+        // ones whose LMP-pruned value stays window-stable AND move-stable —
+        // the queen-up MIRROR (whose ordering keeps every attempt inside its
+        // window) and the low-branching knight endgame.
         let suite: &[(&str, Depth)] = &[
-            // White up a queen in an otherwise symmetric opening.
-            (
-                "r1b1kbnr/pppppppp/2n5/8/8/2N5/PPPPPPPP/R1BQKBNR w KQkq - 0 1",
-                4,
-            ),
-            // The mirror image: black up a queen, black to move.
+            // Black up a queen, black to move.
             (
                 "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB1KBNR b KQkq - 0 1",
                 4,
@@ -4187,6 +4379,18 @@ mod tests {
         // re-searches); this suite therefore pins the PVS structure
         // through the full-window test driver — aspiration's own bars are
         // the trace/identity tests above plus bench and SPRT (D25).
+        //
+        // Doc 10 §3.5's LMP is the first LOSSY node-level pruning (LMR/RFP/
+        // NMP were value-preserving or fired only on decisive scores here):
+        // it discards late quiets outright, so on a wide or tactically
+        // shallow node the production fixed-depth value — and even the
+        // bestmove — can legitimately part from cutoff-free negamax (the
+        // minor-piece skirmish drifted 40cp, the two-rook ladder changed its
+        // chosen rook move). The cutoff-free oracle therefore only applies to
+        // fixtures LMP does not reshape: low-branching pawn endings and
+        // early-mate positions whose (check-ordered) mating move is searched
+        // before the movecount threshold. The lossy-node classes migrate to
+        // the bench trailer + SPRT (D25) and the LMP-specific tests above.
         let suite: &[(&str, Depth)] = &[
             // KRK mate-in-2: exercises mate-distance pruning soundness.
             ("k7/8/2K5/8/8/8/8/7R w - - 0 1", 3),
@@ -4196,13 +4400,6 @@ mod tests {
             ("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1", 4),
             // Back-rank mate-in-1 with pawns on both sides.
             ("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", 2),
-            // Minor-piece skirmish: black to move, hanging knight.
-            ("4k3/8/3n4/8/4B3/8/8/4K3 b - - 0 1", 2),
-            ("4k3/8/3n4/8/4B3/8/8/4K3 b - - 0 1", 3),
-            // Two-rook ladder: wide branching, decisive scores in-tree.
-            ("8/8/6k1/R7/8/8/8/1R5K w - - 0 1", 3),
-            // Mated side: fail-lows all the way down at the root.
-            ("7k/8/6K1/8/8/8/2Q5/8 b - - 0 1", 3),
         ];
         for &(fen, depth) in suite {
             let w = go_depth_full_window(fen, depth);
@@ -4264,19 +4461,22 @@ mod tests {
         // low: the CUTOFF-FREE oracle explores every capture/evasion
         // chain exhaustively, which explodes on full-material boards (the
         // startpos test below covers that class without the oracle).
+        //
+        // The `ref_negamax` oracle prunes NOTHING, so — like the PVS suite
+        // above — this bar now holds only on fixtures doc 10 §3.5's lossy
+        // LMP does not reshape. The wide-branching (two-rook ladder) and
+        // tactically-shallow (minor-piece skirmish, the pathological mated
+        // KQ-vs-K) fixtures legitimately part from cutoff-free negamax once
+        // late quiets are discarded, so they move to the LMP-specific tests
+        // and the SPRT; the surviving fixtures are the low-branching /
+        // early-mate ones whose value LMP leaves intact.
         let suite: &[(&str, Depth)] = &[
-            // Two-rook ladder: wide branching, decisive scores in the tree.
-            ("8/8/6k1/R7/8/8/8/1R5K w - - 0 1", 3),
             // KRK mate-in-2: decisive scores through value_to_tt/from_tt.
             ("k7/8/2K5/8/8/8/8/7R w - - 0 1", 3),
-            // Mated-side reporting through the TT boundary.
-            ("7k/8/6K1/8/8/8/2Q5/8 b - - 0 1", 3),
             // Tiny pawn ending: eval-cache traffic plus qsearch captures.
             ("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1", 4),
             // Back-rank mate with pawn shields on both sides.
             ("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", 3),
-            // Minor-piece skirmish: black to move, hanging knight.
-            ("4k3/8/3n4/8/4B3/8/8/4K3 b - - 0 1", 3),
         ];
         for &(fen, depth) in suite {
             let tt_off = ref_negamax(&mut board(fen), &mut EvalContext::new(), depth, 0);
@@ -4309,12 +4509,19 @@ mod tests {
         // trailer, D24): re-searching the same position at the same depth
         // against the warmed table must cost fewer nodes — the ttMove-
         // first ordering and the eval cache are actually doing work.
-        // Depth 4 keeps the draw dither unreachable (see the test above),
-        // so the value-equality assert can ride along.
+        //
+        // Depth 5 (was 4): doc 10 §3.5's LMP shrinks the startpos tree so
+        // hard at depth 4 (~370 nodes) that the ttMove ordering can no
+        // longer beat it — a warm table actually reshaped the LMP-pruned
+        // tree LARGER there. From depth 5 on the TT cutoffs dominate again
+        // and the shrink is robust. The fresh-vs-warm VALUE equality is no
+        // longer asserted: as with `fresh_startpos_search_is_bit_reproducible`
+        // (LMR) and now LMP, a warm table's richer move info legitimately
+        // drifts the lossy fixed-depth score a few cp — the node shrink is
+        // the invariant this test owns.
         let tt = test_tt();
-        let fresh = go_depth_on(START_FEN, 4, &tt);
-        let warm = go_depth_on(START_FEN, 4, &tt);
-        assert_eq!(best_score(&fresh), best_score(&warm));
+        let fresh = go_depth_on(START_FEN, 5, &tt);
+        let warm = go_depth_on(START_FEN, 5, &tt);
         assert!(
             warm.nodes < fresh.nodes,
             "warm TT must shrink the tree: {} !< {}",

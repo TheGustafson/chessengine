@@ -294,6 +294,24 @@ pub const RED_FULLDEPTH_DOCK1: i32 = 5039;
 /// costs a second ply (§3.8).
 pub const RED_FULLDEPTH_DOCK2: i32 = 5223;
 
+// --- Move-loop pruning: late move pruning (design/10 §3.5) ---
+//
+// "Movecount pruning": once the running `move_count` clears a depth-scaled
+// threshold at a shallow node, the picker is told to stop emitting quiets
+// ([`MovePicker::skip_quiet_moves`]) — the late moves ordering already
+// distrusted are never even generated. The threshold is
+// `(LMP_BASE + depth²) / (2 - improving)`: quadratic in depth (deeper nodes
+// try more moves before giving up) and halved for a not-improving node (a
+// stagnant eval distrusts its late quiets, so it prunes them roughly twice
+// as early). The whole move-loop pruning block is fenced by the mate-safety
+// guard `!is_loss(best_value)` and the zugzwang guard
+// `non_pawn_material(us) != 0` (design/10 §3.5), never at the root.
+
+/// Base term of the LMP move-count threshold `(LMP_BASE + depth²) /
+/// (2 - improving)` (design/10 §3.5): the constant floor of quiets always
+/// tried before movecount pruning can bite, before the depth² growth.
+pub const LMP_BASE: i32 = 3;
+
 // --- Transposition-table interaction (design/07 §3.7.2 steps 7/14) ---
 
 /// TT cutoffs are refused once the halfmove clock reaches this (the
