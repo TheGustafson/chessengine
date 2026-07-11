@@ -148,10 +148,10 @@ Bench: 3187513
 ```
 
 - The number is `Nodes searched` from the pinned fingerprint invocation
-  `chessengine bench 16 1 3 default depth` (the SF-shaped default is 16 MB
-  TT, 1 thread, depth 13 — design/06 §3.6 — but the P5 skeleton pins the
-  depth at 3 until the TT lands; TODO(P6) in tools/check.sh tracks raising
-  it). `tools/check.sh` prints the footer for you.
+  `chessengine bench 16 1 6 default depth` (the SF-shaped default is 16 MB
+  TT, 1 thread, depth 13 — design/06 §3.6; P5 pinned depth 3, the P6 exit
+  audit raised it to 6 once the TT landed, and TODO(P7+) in tools/check.sh
+  tracks the climb toward 13). `tools/check.sh` prints the footer for you.
 - *Functional* patches (the count changes) state the **new** count.
   *Intended-non-functional* patches state the unchanged count — reviewers
   and tooling verify by rerunning bench and reject the commit if the number

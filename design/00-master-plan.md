@@ -1,6 +1,6 @@
 # 00 — Master implementation plan
 
-Status: Living (updated as phases complete; last revised 2026-07-09)
+Status: Living (updated as phases complete; last revised 2026-07-10)
 
 This document turns the reviewed design suite (`01`–`14`) into an ordered
 build plan: phases with entry/exit criteria, a dependency graph, a milestone
@@ -41,15 +41,24 @@ Done (pre-suite): `types` (Color/PieceType/Piece/Square), `bitboard`,
 `board` (hybrid bitboards + mailbox), `fen`, `moves` (`Move` u16 +
 `MoveList`).
 
-Phases complete: **P0–P3; milestones M1 and M2 passed.** P1 landed the
+Phases complete: **P0–P6; milestones M1–M4 passed.** P1 landed the
 attack tables (leapers + fancy magics, doc 03 §8 green); P2 the state
 layer (StateInfo/Zobrist/make-unmake/repetition, doc 04 §8 items 1, 6–8);
 P3 movegen + perft (docs 05 and 06 §8.1–8.6 green, doc 04 items 2–4
 closed). M2 numbers: full 23-position suite exact in debug-with-oracle
 and release, kiwipete d5 bulk perft ~340 Mnps in the D16 fast
 configuration (floor 100, stretch 250), mutation test caught injected
-ep-pin and castling-rights bugs (audited 2026-07-10). CLAUDE.md §Status
-tracks the detail; next phase: P4.
+ep-pin and castling-rights bugs (audited 2026-07-10). P4–P5 landed eval
+phase A, negamax+qsearch, the UCI loop, and the strength harness (M3:
+complete legal games at fixed movetime, mate-in-1..3 exact, bench
+fingerprint bit-reproducible). P6 landed the transposition table (doc 08
+§8 items 1–8 green; bench nodes −46.6% at equal depth, 387698251 →
+206861941; TT-on/off value-equality suite exact). M4 numbers (audited
+2026-07-10, engines/runs/gauntlet-p6audit + docs/strength-log.md):
+gauntlet vs SF16 UCI_Elo 1700–2200 at 2+0.02, 200 games — 69% vs the
+1900 rung, 65% vs 2000, ordo places the engine between the 2000 and 2200
+rungs (UCI_Elo-anchor caveat); WAC-revised tactics 154/200 at 100 ms
+(pre-TT: 145/200). CLAUDE.md §Status tracks the detail; next phase: P7.
 
 ---
 

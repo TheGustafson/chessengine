@@ -72,16 +72,18 @@ printf '%s\n' "$run1" | tail -n 2
 # trailer — functional commits carry the new count, intended-non-functional
 # commits must reproduce the old one bit-for-bit (rerun this gate on both
 # sides to verify; TESTING.md). The SF-shaped default (`bench` = 16 MB TT,
-# 1 thread, depth 13) is the long-term fingerprint invocation, but the P5
-# skeleton (no TT, no PVS/aspiration, no qsearch pruning rules) makes depth
-# 13 infeasible (~10^12 nodes), so the fingerprint is pinned at depth 3
-# (~390 M nodes, ~25 s). Determinism is gated by the release test
+# 1 thread, depth 13) is the long-term fingerprint invocation; depth 13 is
+# still infeasible pre-PVS/pruning, so the pin rises phase by phase. P5
+# pinned depth 3 (~390 M nodes pre-TT); the P6 exit audit raised it to
+# depth 6 (~335 M nodes, ~34 s — the TT flattens the curve, measured
+# d3/d4/d5/d6/d7 = 207/213/276/335/508 M nodes). Determinism is gated by
+# the release test
 # bench_depth_fingerprint_is_deterministic_over_the_default_suite.
-# TODO(P6): raise the pinned depth toward the SF default once the TT lands
-# and bench nodes drop materially (master plan P6 exit).
-step "bench fingerprint  (bench 16 1 3 default depth — the Bench: trailer)"
+# TODO(P7+): keep raising toward depth 13 as PVS/aspiration (P7) and the
+# pruning waves (P9-P10) shrink the tree; keep a single run under ~60 s.
+step "bench fingerprint  (bench 16 1 6 default depth — the Bench: trailer)"
 # Footer goes to stderr (stdout stays a clean UCI stream, design/06 §3.6).
-bench_out=$("$BIN" bench 16 1 3 default depth 2>&1 >/dev/null)
+bench_out=$("$BIN" bench 16 1 6 default depth 2>&1 >/dev/null)
 printf '%s\n' "$bench_out" | tail -n 4
 bench_nodes=$(printf '%s\n' "$bench_out" | sed -n 's/^Nodes searched  : //p')
 if [ -z "$bench_nodes" ]; then

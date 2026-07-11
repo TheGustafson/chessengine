@@ -775,7 +775,9 @@ cluster 0 and tags are controlled via low-16 bits):
     move while updating value/depth; different-key write with NULL clears it.
   - Secondary aging: rejected write against external-depth ≥ 5, non-EXACT,
     decisive-value entry decrements depth8 by exactly 1; repeated rejections
-    march it to 0 (unoccupied); non-decisive or EXACT entries are untouched.
+    erode it only down to external depth 4 (the §3.7 guard stops there —
+    only `penalize` marches an entry to 0); non-decisive or EXACT entries
+    are untouched.
   - `penalize(1)` decrements; `penalize(255)` clamps to 0 and the entry
     stops counting in `hashfull` and reports `hit == false` on re-probe.
 - **Aging wraparound**: all 32×32 (current, entry) generation pairs give

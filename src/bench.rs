@@ -672,20 +672,19 @@ mod tests {
     /// design/14 §4 step 7 — THE bench determinism test: the default
     /// suite searched twice in-process must produce identical node totals
     /// (and byte-identical fingerprint sections). Release-gated, the
-    /// doc's "release-gated or `--ignored` in debug" option: the P5
-    /// skeleton (no TT/PVS, no qsearch pruning rules) spends ~390M nodes
-    /// per run at depth 3 — ~25 s each in release, unusable in debug.
-    /// Depth 3 rather than the doc's depth-6 sketch for the same reason;
-    /// it matches `tools/check.sh`'s pinned fingerprint invocation
-    /// `bench 16 1 3 default depth`, and both move toward the SF-default
-    /// depth 13 as P6+ shrink the tree.
+    /// doc's "release-gated or `--ignored` in debug" option: a run spends
+    /// ~335M nodes at depth 6 — ~34 s each in release, unusable in debug.
+    /// The depth matches `tools/check.sh`'s pinned fingerprint invocation
+    /// `bench 16 1 6 default depth` (P5 pinned 3; the P6 exit audit
+    /// raised it to 6 once the TT flattened the curve), and both move
+    /// toward the SF-default depth 13 as P7+ shrink the tree.
     #[test]
     #[cfg_attr(
         debug_assertions,
-        ignore = "release-only: two ~25 s suite runs (design/14 §4 step 7)"
+        ignore = "release-only: two ~34 s suite runs (design/14 §4 step 7)"
     )]
     fn bench_depth_fingerprint_is_deterministic_over_the_default_suite() {
-        let params = BenchParams::parse(&["16", "1", "3", "default", "depth"]).unwrap();
+        let params = BenchParams::parse(&["16", "1", "6", "default", "depth"]).unwrap();
         let mut first = Vec::new();
         let mut second = Vec::new();
         let a = run_to(&params, &mut first).unwrap();

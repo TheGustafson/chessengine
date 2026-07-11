@@ -162,6 +162,29 @@ measured at ~340 Mnps in the fast configuration (floor 100, target 250).
 `tools/perft_diff.py` bisects any divergence against python-chess (or a
 UCI reference via `--ref`).
 
-Next (in rough dependency order): SEE (`see_ge`, P4), eval phase A + UCI
-base (P4), search core (P5). Perft is the correctness oracle — no
-movegen/make-unmake change lands without the D24 ritual above.
+P4–P5: `see_ge`; `eval` phase A (material + PSQT, incremental
+`EvalContext`); `search` (iterative-deepening negamax + alpha-beta,
+stand-pat qsearch, mate/draw scores, `Worker`/`Stack`/`RootMoves`);
+`timeman` `Limits`; `uci` (full loop — position/go/stop on a search
+thread, exactly-once bestmove, info lines, setoption); `bench` (perft +
+depth modes; the `Bench:` trailer + `tools/check.sh` D24 ritual);
+strength harness (`tools/sprt.sh`/`gauntlet.sh`/`tactics.sh`, fastchess +
+ordo + SF16 in gitignored `engines/`). M3 passed: complete legal games at
+fixed movetime, mate-in-1..3 exact, bit-reproducible fingerprints.
+
+P6: `tt` — 10-byte relaxed-atomic entries in 32-byte clusters, `mul_hi64`
+indexing, SF replacement/aging rules, `probe`/`TtWriter`, generations,
+fallible `resize` + `clear`, `hashfull`, and the prefetch intrinsic (the
+crate's single sanctioned `unsafe`, D14a); `Hash`/`Clear Hash` UCI
+options; search integration (probe at node entry, eval-cache reuse,
+ttMove-first ordering, store at node exit, prefetch hook in `do_move`) —
+bench −46.6% nodes at equal depth, TT-on/off value equality pinned by
+tests; miri-clean. M4 passed (audited 2026-07-10, evidence in
+`docs/strength-log.md`): gauntlet places the engine between the SF16
+UCI_Elo 2000 and 2200 rungs; WAC-revised tactics 154/200 at 100 ms.
+
+Next (in rough dependency order): P7 — PVS zero-window, aspiration
+windows, full qsearch spec (doc 07 steps 7–10), basic clock TM (doc 12
+step 7); then P8 move ordering/history, P9 pruning waves. Perft is the
+correctness oracle — no movegen/make-unmake change lands without the D24
+ritual above.
