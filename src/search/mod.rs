@@ -53,16 +53,32 @@
 //! to be best gets the one full-window search, everything else is
 //! proven `<= alpha` as cheaply as possible.
 //!
-//! Deliberately NOT here yet, per the doc's staging:
-//! aspiration windows (§3.6, step 8), the
+//! Step 8 completes the root driver with aspiration windows
+//! ([`Worker::aspiration_search`], design/07 §3.6): each iteration
+//! searches a window `average_score ± (5 + |mean_squared_score|/10588)`
+//! instead of `(-INF, INF)`, re-searching on fails — a fail-low slides
+//! the window down (beta drops exactly to the old alpha, `failed_high_cnt`
+//! resets), a fail-high backs alpha off by at most one delta and runs
+//! each consecutive re-search one ply shallower (`adjusted_depth`), and
+//! every re-search widens delta by ~×1.34 — until the value lands
+//! strictly inside the window. `root_delta` is stored before every root
+//! search for doc 10's reduction formula, and the §3.4 root bound flags
+//! and `uci_score` window clamps become reachable code. The unset EMA
+//! sentinels make the first iteration's window clamp to `(-INF, INF)`,
+//! so depth 1 needs no special case.
+//!
+//! Deliberately NOT here yet, per the doc's staging: the
 //! full qsearch rules including the stand-pat tt-value substitution and
 //! softening blends (§3.8, step 9), the hygiene pass (forgotten mate,
 //! aborted loss, `go mate n`, equal-value dither — step 10), the
 //! soft-stop factors and ponder guard of the clock TM (doc 12 steps 8–9,
-//! P9/P10), the speculative `prefetch_key` pre-make prefetch (doc 08
-//! §3.15 call site 2), and every ⟨D10⟩ heuristic slot — including the TT
-//! cutoff refinements (cutNode agreement, depth ≥ 7 verification, the
-//! `penalize(1)` trigger).
+//! P9/P10) — including the `search_again_counter` producer and the
+//! fail-low `stop_on_ponderhit` revoke, whose seams the aspiration loop
+//! carries — the SMP window jitter `+ thread_idx % 8` (vacuous single-
+//! threaded; joins with doc 13 in P11), the speculative `prefetch_key`
+//! pre-make prefetch (doc 08 §3.15 call site 2), and every ⟨D10⟩
+//! heuristic slot — including the TT cutoff refinements (cutNode
+//! agreement, depth ≥ 7 verification, the `penalize(1)` trigger).
 
 pub mod params;
 pub mod rootmoves;
@@ -168,8 +184,11 @@ pub struct SearchInfo<'a> {
     pub sel_depth: i32,
     /// 1-based MultiPV line index (always 1 in v1, §3.5).
     pub multipv: usize,
-    /// The line's `uci_score`: clamped to the aspiration window on bounds
-    /// (never actually bound-flagged before plan step 8 lands).
+    /// The line's `uci_score`: clamped to the aspiration window on a
+    /// bound (§3.4). v1 emits one info line per COMPLETED aspiration
+    /// loop, whose front move is exact by construction, so the flags
+    /// below stay false until fail-high/low progress reports land with
+    /// the UCI layer's 3-second info cadence (doc 12 §3.13).
     pub score: Value,
     pub lowerbound: bool,
     pub upperbound: bool,
@@ -180,6 +199,22 @@ pub struct SearchInfo<'a> {
     pub hashfull: u32,
     /// The line itself; `pv[0]` is the root move.
     pub pv: &'a [Move],
+}
+
+/// One aspiration attempt's window snapshot — test-only instrumentation
+/// behind the design/07 §8 criterion-7 trace test. `delta`/`alpha`/
+/// `beta`/`failed_high_cnt` are the values the attempt SEARCHED with;
+/// `value` is what the root search returned against them.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+struct AspirationAttempt {
+    root_depth: Depth,
+    adjusted_depth: Depth,
+    delta: Value,
+    alpha: Value,
+    beta: Value,
+    failed_high_cnt: i32,
+    value: Value,
 }
 
 /// Per-thread search state (design/07 §3.10): one worker owns its board
@@ -203,8 +238,9 @@ pub struct Worker {
     pub sel_depth: i32,
     /// Depth of the current iteration (§3.5).
     pub root_depth: Depth,
-    /// Current root window width `beta - alpha`; feeds doc 10's reduction
-    /// formula once aspiration windows land (§3.6).
+    /// Current root aspiration window width `beta - alpha`, stored before
+    /// every root search — re-searches included (§3.6); feeds doc 10's
+    /// reduction formula.
     pub root_delta: Value,
     /// MultiPV line currently searched (§3.5; v1 always 0).
     pub pv_idx: usize,
@@ -242,6 +278,10 @@ pub struct Worker {
     /// [`Worker::check_time_reset`] ([`params::CHECK_TIME_CALLS`], tighter
     /// under a node limit).
     check_time_countdown: i32,
+    /// Per-attempt aspiration trace (§8 criterion 7) — test builds only,
+    /// cleared per `go`, appended by [`Worker::aspiration_search`].
+    #[cfg(test)]
+    asp_trace: Vec<AspirationAttempt>,
 }
 
 impl Worker {
@@ -268,16 +308,18 @@ impl Worker {
             last_best_move_depth: 0,
             eval_ctx: EvalContext::new(),
             check_time_countdown: params::CHECK_TIME_CALLS,
+            #[cfg(test)]
+            asp_trace: Vec::new(),
         }
     }
 
     /// The iterative-deepening driver (design/07 §3.5), v1 scope: the
     /// per-`go` entry point for every search mode. Builds the root move
     /// list (with the `searchmoves` filter, design/12 §3.6), then deepens
-    /// one full-window root search at a time — the aspiration loop (§3.6)
-    /// replaces the inner search in plan step 8 — with the per-iteration
-    /// bookkeeping this phase owns: previous-score snapshots, stable
-    /// re-sorting, lastBestMove tracking and the instability accumulator.
+    /// one aspirated root search at a time ([`Worker::aspiration_search`],
+    /// §3.6) with the per-iteration bookkeeping this phase owns:
+    /// previous-score snapshots, stable re-sorting, lastBestMove tracking
+    /// and the instability accumulator.
     ///
     /// `tt` is the shared transposition table, borrowed through the search
     /// entry (doc 07 §3.10). The session layer owns the `Arc<TT>` handle
@@ -321,6 +363,8 @@ impl Worker {
         self.last_best_move_pv.clear();
         self.last_best_move_score = -VALUE_INFINITE;
         self.last_best_move_depth = 0;
+        #[cfg(test)]
+        self.asp_trace.clear();
         self.root_moves = build_root_moves(&self.board, &self.limits.searchmoves);
         if self.root_moves.is_empty() {
             return; // mate/stalemate at the root: nothing to search
@@ -333,6 +377,12 @@ impl Worker {
         // iteration, harvested from `best_move_changes`. Consumed by the
         // soft-stop decision when clock TM lands (P7).
         let mut tot_best_move_changes = 0.0f64;
+        // TM-driven re-search damping (doc 12 §3.9): bumped at the top of
+        // an iteration when the soft stop said "don't deepen"
+        // (`increase_depth == false`). The producer lands with doc 12
+        // step 8; until then every iteration searches at full depth
+        // (`3 * (0 + 1) / 4 == 0` in the §3.6 adjusted-depth formula).
+        let search_again_counter: i32 = 0;
 
         while self.root_depth + 1 < MAX_PLY as Depth
             && !stop.load(Ordering::Relaxed)
@@ -352,21 +402,11 @@ impl Worker {
             for pv_idx in 0..multi_pv {
                 self.pv_idx = pv_idx;
                 self.sel_depth = 0; // per PV line (§3.9)
-                // v1: one full-window root search per iteration; the
-                // aspiration loop (§3.6, plan step 8) replaces this.
-                self.root_delta = 2 * VALUE_INFINITE;
-                self.search::<Root>(
-                    tt,
-                    stop,
-                    -VALUE_INFINITE,
-                    VALUE_INFINITE,
-                    self.root_depth,
-                    false,
-                    0,
-                );
-                // Stable: unsearched moves keep last iteration's order
-                // (§3.4) — even on stop, results still sort safely.
-                sort_descending(&mut self.root_moves[pv_idx..]);
+                self.aspiration_search(tt, stop, search_again_counter);
+                // Order the completed lines among themselves (§3.5) — a
+                // no-op at MultiPV 1, but the shape is load-bearing for
+                // the MultiPV loop.
+                sort_descending(&mut self.root_moves[..=pv_idx]);
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
@@ -408,6 +448,111 @@ impl Worker {
         // explicitly so the per-iteration bookkeeping above stays
         // exercised and warning-free.
         let _ = tot_best_move_changes;
+    }
+
+    /// The aspiration loop (design/07 §3.6): one iteration's root search
+    /// for the current PV line, run in a window centered on that line's
+    /// `average_score` and re-searched with a widening window until the
+    /// value lands strictly inside it (or the search is stopped).
+    ///
+    /// Mechanics, in doc order (constants in [`params`], D20):
+    ///
+    /// - Initial half-width `delta = 5 + |mean_squared_score| / 10588`
+    ///   (i64 EMA, §3.4). First iterations start from the
+    ///   `-VALUE_INFINITE²` sentinel, so `|mss|/10588 ≈ 96_700` and the
+    ///   window clamps to `(-INF, INF)` — depth 1 is effectively a
+    ///   full-window search, no special-casing. The lazy-SMP diversity
+    ///   term `+ thread_idx % 8` is vacuous single-threaded and joins
+    ///   with doc 13 (P11); the eval-doc hook
+    ///   `optimism = 137·avg / (|avg| + 81)` attaches here when
+    ///   design/11 phase B lands.
+    /// - `adjusted_depth` shrinks by one ply per CONSECUTIVE fail-high
+    ///   (fail-highs are usually resolved by move ordering, not depth —
+    ///   this caps re-search cost) and by the TM's search-again damping
+    ///   (doc 12 §3.9; counter 0 until its producer lands).
+    /// - FAIL LOW (`best <= alpha`): the window slides down — beta drops
+    ///   exactly to the old alpha, alpha backs off delta below the
+    ///   returned value — and `failed_high_cnt` resets, restoring the
+    ///   full re-search depth. TM seam: a root fail low must also revoke
+    ///   `stop_on_ponderhit` (the intended move may be refuted — the one
+    ///   case where burning past the soft budget after a ponderhit is
+    ///   clearly right); the flag lands with doc 12 step 9 (P9) and the
+    ///   revoke goes on this branch then.
+    /// - FAIL HIGH (`best >= beta`): alpha backs off at most to the old
+    ///   `beta - delta` and never below its current value — the window
+    ///   stays tight from below — while beta chases the returned value.
+    /// - Every re-search widens `delta += 44·delta/128` (~×1.34).
+    ///
+    /// `self.root_delta` is stored before EVERY root search, re-searches
+    /// included — doc 10's reduction formula divides by it (§3.6).
+    fn aspiration_search(
+        &mut self,
+        tt: &TranspositionTable,
+        stop: &AtomicBool,
+        search_again_counter: i32,
+    ) {
+        let rm = &self.root_moves[self.pv_idx];
+        let mut delta = (params::ASPIRATION_BASE_DELTA as i64
+            + rm.mean_squared_score.abs() / params::ASPIRATION_MSS_DIVISOR)
+            as Value;
+        let avg = rm.average_score;
+        let mut alpha = (avg - delta).max(-VALUE_INFINITE);
+        let mut beta = (avg + delta).min(VALUE_INFINITE);
+        let mut failed_high_cnt: i32 = 0;
+
+        loop {
+            let adjusted_depth = (self.root_depth
+                - failed_high_cnt
+                - params::ASPIRATION_SEARCH_AGAIN_NUM * (search_again_counter + 1)
+                    / params::ASPIRATION_SEARCH_AGAIN_DEN)
+                .max(1);
+            self.root_delta = beta - alpha;
+            let best = self.search::<Root>(tt, stop, alpha, beta, adjusted_depth, false, 0);
+
+            // Stable re-sort per attempt (§3.4): the searched PV move
+            // floats to the front, everything else keeps last iteration's
+            // order. Even on stop the results still sort safely — they
+            // refer to the previous iteration.
+            sort_descending(&mut self.root_moves[self.pv_idx..]);
+
+            #[cfg(test)]
+            self.asp_trace.push(AspirationAttempt {
+                root_depth: self.root_depth,
+                adjusted_depth,
+                delta,
+                alpha,
+                beta,
+                failed_high_cnt,
+                value: best,
+            });
+
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
+
+            if best <= alpha {
+                // FAIL LOW: slide the window down; the old alpha caps it.
+                beta = alpha;
+                alpha = (best - delta).max(-VALUE_INFINITE);
+                failed_high_cnt = 0;
+                // ⟨doc 12 step 9⟩ stop_on_ponderhit revoke goes here.
+            } else if best >= beta {
+                // FAIL HIGH: alpha never loosens past its current value.
+                alpha = (beta - delta).max(alpha);
+                beta = (best + delta).min(VALUE_INFINITE);
+                failed_high_cnt += 1;
+            } else {
+                break; // inside the window: done
+            }
+
+            // Widen ~×1.34 per re-search. The cap is semantics-preserving:
+            // once delta >= 2·VALUE_INFINITE both window edges clamp to
+            // ±INF for every representable score and further growth is
+            // inert — while unbounded ×1.34 growth would eventually
+            // overflow the i32 in a long enough re-search storm.
+            delta = (delta + params::ASPIRATION_WIDEN_NUM * delta / params::ASPIRATION_WIDEN_DEN)
+                .min(2 * VALUE_INFINITE);
+        }
     }
 
     /// The best root line of the current `go` (`root_moves[0].pv`; empty
@@ -1223,18 +1368,26 @@ mod tests {
     }
 
     #[test]
-    fn krk_mate_in_2_exact_score_at_depth_3() {
+    fn krk_mate_in_2_exact_score_at_depth_4() {
         // 1.Kb6 (only-move reply Kb8) 2.Rh8#: three plies, no mate in one.
-        let w = go_depth("k7/8/2K5/8/8/8/8/7R w - - 0 1", 3);
+        //
+        // Depth 4, not 3, since aspiration landed (§3.6): the iteration
+        // that first sees the mate fails high and its shallower re-search
+        // (adjusted_depth) legitimately ends the iteration on a non-mate
+        // value — SF-identical dynamics. One more iteration re-scores the
+        // front (mating) move inside a mate-band-widened window and the
+        // exact score sticks. The §8.4 bar is depth <= 6.
+        let w = go_depth("k7/8/2K5/8/8/8/8/7R w - - 0 1", 4);
         assert_eq!(best_score(&w), mate_in(3));
         // The PV replays legally from the root position.
         replay_pv(&w);
     }
 
     #[test]
-    fn kqk_mate_in_2_exact_score_at_depth_3() {
-        // 1.Qf8+ Kh7 (forced) 2.Qg7#; no mate in one exists.
-        let w = go_depth("7k/8/5K2/8/8/Q7/8/8 w - - 0 1", 3);
+    fn kqk_mate_in_2_exact_score_at_depth_4() {
+        // 1.Qf8+ Kh7 (forced) 2.Qg7#; no mate in one exists. Depth 4 for
+        // the aspiration settling iteration (see the KRK test above).
+        let w = go_depth("7k/8/5K2/8/8/Q7/8/8 w - - 0 1", 4);
         assert_eq!(best_score(&w), mate_in(3));
         replay_pv(&w);
     }
@@ -1248,13 +1401,14 @@ mod tests {
     }
 
     #[test]
-    fn two_rook_ladder_mate_in_3_exact_at_depth_5() {
+    fn two_rook_ladder_mate_in_3_exact_at_depth_6() {
         // 1.Rb6+ (rank 5 stays cut by Ra5) K→7th 2.Ra7+ K→8th 3.Rb8#:
         // five plies. The black king starts on g6, too far from the a/b
         // files to ever attack the unprotected checking rooks, and too
-        // free for anything shorter than the ladder. Depth 5 is the §8.4
-        // gate's "depth ≤ 6" for mate-in-3.
-        let w = go_depth("8/8/6k1/R7/8/8/8/1R5K w - - 0 1", 5);
+        // free for anything shorter than the ladder. Depth 6 = the five
+        // plies the mate needs plus the aspiration settling iteration
+        // (see the KRK test) — exactly the §8.4 gate's "depth ≤ 6".
+        let w = go_depth("8/8/6k1/R7/8/8/8/1R5K w - - 0 1", 6);
         assert_eq!(best_score(&w), mate_in(5));
         assert_eq!(w.root_pv().len(), 5);
         // The PV replays legally and its end really is checkmate.
@@ -1299,9 +1453,14 @@ mod tests {
         ];
         assert!(SUITE.len() >= 10, "the §8.4 bar is at least 10 positions");
         for &(fen, plies, optimal) in SUITE {
-            // Depth = mate distance suffices (mate-in-1 uses 2 so the
-            // score comes from a full search iteration, not bare qsearch).
-            let w = go_depth(fen, plies.max(2));
+            // Mate-in-1 uses depth 2 so the score comes from a full search
+            // iteration, not bare qsearch (found at depth 1, the mate-band
+            // EMAs keep every later window effectively infinite). Deeper
+            // mates need the mate distance plus one aspiration settling
+            // iteration (see the KRK test) — still within the §8.4
+            // "depth ≤ 6" bar.
+            let depth = if plies == 1 { 2 } else { plies + 1 };
+            let w = go_depth(fen, depth);
             assert_eq!(best_score(&w), mate_in(plies), "score for {fen}");
             let got = w.best_move().unwrap().to_string();
             assert!(
@@ -1643,6 +1802,264 @@ mod tests {
         }
     }
 
+    // --- Aspiration windows (§3.6; §8 criterion 7) ---
+
+    /// Assert one iteration's attempt group follows the §3.6 recurrences
+    /// exactly: only fails re-search; delta widens by `44·delta/128` per
+    /// re-search; a fail low slides beta down to the old alpha and resets
+    /// `failed_high_cnt`; a fail high backs alpha off to at most the old
+    /// `beta - delta` and increments the counter; every attempt runs at
+    /// `max(1, root_depth - failed_high_cnt)` (`search_again_counter` is
+    /// 0 until doc 12 step 8); the loop only ends inside the window.
+    /// `seed` is the (average_score, mean_squared_score) pair the first
+    /// window was built from, when the test controls it.
+    fn check_asp_group(group: &[AspirationAttempt], seed: Option<(Value, i64)>) {
+        let first = &group[0];
+        assert_eq!(first.failed_high_cnt, 0);
+        assert_eq!(first.adjusted_depth, first.root_depth.max(1));
+        if let Some((avg, mss)) = seed {
+            let d0 = (params::ASPIRATION_BASE_DELTA as i64
+                + mss.abs() / params::ASPIRATION_MSS_DIVISOR) as Value;
+            assert_eq!(first.delta, d0, "initial delta is 5 + |mss|/10588");
+            assert_eq!(first.alpha, (avg - d0).max(-VALUE_INFINITE));
+            assert_eq!(first.beta, (avg + d0).min(VALUE_INFINITE));
+        }
+        for pair in group.windows(2) {
+            let (p, n) = (&pair[0], &pair[1]);
+            assert_eq!(p.root_depth, n.root_depth, "one iteration per group");
+            assert!(
+                p.value <= p.alpha || p.value >= p.beta,
+                "only a failed attempt re-searches: {p:?}"
+            );
+            assert_eq!(
+                n.delta,
+                (p.delta + params::ASPIRATION_WIDEN_NUM * p.delta / params::ASPIRATION_WIDEN_DEN)
+                    .min(2 * VALUE_INFINITE),
+                "every re-search widens delta"
+            );
+            if p.value <= p.alpha {
+                // Fail low: the window slides down at full depth.
+                assert_eq!(n.beta, p.alpha, "beta drops exactly to the old alpha");
+                assert_eq!(n.alpha, (p.value - p.delta).max(-VALUE_INFINITE));
+                assert_eq!(n.failed_high_cnt, 0, "fail low resets failed_high_cnt");
+            } else {
+                // Fail high: alpha never loosens past its current value.
+                assert_eq!(n.alpha, (p.beta - p.delta).max(p.alpha));
+                assert_eq!(n.beta, (p.value + p.delta).min(VALUE_INFINITE));
+                assert_eq!(n.failed_high_cnt, p.failed_high_cnt + 1);
+            }
+            assert_eq!(
+                n.adjusted_depth,
+                (n.root_depth - n.failed_high_cnt).max(1),
+                "each consecutive fail-high re-search runs one ply shallower"
+            );
+        }
+        let last = group.last().unwrap();
+        assert!(
+            last.alpha < last.value && last.value < last.beta,
+            "the loop only ends inside the window (no stop in these tests): {last:?}"
+        );
+    }
+
+    /// A worker run through one direct `aspiration_search` call at
+    /// `root_depth`, with the front root move's window inputs seeded to
+    /// (avg, mss) — the §5/§8 "scripted window evolution" harness.
+    fn seeded_aspiration_run(fen: &str, root_depth: Depth, avg: Value, mss: i64) -> Worker {
+        let tt = test_tt();
+        tt.new_search();
+        let mut w = Worker::new(board(fen));
+        init_stack(&mut w.stack);
+        w.root_moves = build_root_moves(&w.board, &[]);
+        w.root_depth = root_depth;
+        w.root_moves[0].average_score = avg;
+        w.root_moves[0].mean_squared_score = mss;
+        let stop = AtomicBool::new(false);
+        w.aspiration_search(&tt, &stop, 0);
+        w
+    }
+
+    #[test]
+    fn aspiration_fail_high_widens_and_researches_shallower() {
+        // The §4 step-8 done-condition trace: KRK mate-in-2 scores
+        // mate_in(3) at depth 3 — far above a window seeded around 0 with
+        // mss 0 (delta = the base 5) — forcing the fail-high path.
+        let w = seeded_aspiration_run("k7/8/2K5/8/8/8/8/7R w - - 0 1", 3, 0, 0);
+        let trace = &w.asp_trace;
+        assert!(trace.len() >= 2, "the mate score must fail high");
+        let t0 = trace[0];
+        assert_eq!(t0.delta, params::ASPIRATION_BASE_DELTA);
+        assert_eq!((t0.alpha, t0.beta), (-5, 5));
+        assert_eq!(t0.adjusted_depth, 3);
+        assert!(t0.value >= t0.beta, "attempt 0 fails high");
+        let t1 = trace[1];
+        assert_eq!(t1.failed_high_cnt, 1);
+        assert_eq!(t1.adjusted_depth, 2, "re-search runs one ply shallower");
+        assert_eq!(t1.delta, 5 + 44 * 5 / 128); // widened to 6
+        assert_eq!(t1.alpha, 0, "alpha backs off exactly to old beta - delta");
+        assert_eq!(t1.beta, (t0.value + 5).min(VALUE_INFINITE));
+        check_asp_group(trace, Some((0, 0)));
+        // root_delta is left at the last attempt's window width — doc
+        // 10's reduction formula divides by it.
+        let last = trace.last().unwrap();
+        assert_eq!(w.root_delta, last.beta - last.alpha);
+    }
+
+    #[test]
+    fn aspiration_fail_low_slides_beta_to_old_alpha_at_full_depth() {
+        // The startpos is worth far less than the seeded +300 average
+        // (delta = 5 + 90_000/10588 = 13, window (287, 313)): the first
+        // attempt fails low. Beta drops exactly to the old alpha, alpha
+        // backs off delta below the returned value, failed_high_cnt stays
+        // 0 so the re-search keeps the FULL depth, and delta widens.
+        // (The stop_on_ponderhit revoke rides this branch once the flag
+        // exists — doc 12 step 9.)
+        let w = seeded_aspiration_run(START_FEN, 2, 300, 300 * 300);
+        let trace = &w.asp_trace;
+        assert!(trace.len() >= 2, "the quiet score must fail low");
+        let t0 = trace[0];
+        assert_eq!(t0.delta, 13);
+        assert_eq!((t0.alpha, t0.beta), (287, 313));
+        assert!(t0.value <= t0.alpha, "attempt 0 fails low");
+        let t1 = trace[1];
+        assert_eq!(t1.beta, 287, "beta slides down exactly to the old alpha");
+        assert_eq!(t1.alpha, (t0.value - 13).max(-VALUE_INFINITE));
+        assert_eq!(t1.failed_high_cnt, 0, "fail low resets failed_high_cnt");
+        assert_eq!(t1.adjusted_depth, 2, "fail low keeps the full depth");
+        assert_eq!(t1.delta, 13 + 44 * 13 / 128); // widened to 17
+        check_asp_group(trace, Some((300, 300 * 300)));
+    }
+
+    #[test]
+    fn aspiration_trace_through_iterative_deepening_on_a_score_jump() {
+        // KRK through the real driver — the doc's "crafted volatile
+        // position": iterations 1-2 see a quiet rook-up score, iteration
+        // 3 jumps to mate_in(3). Iteration 1 runs with the unset-sentinel
+        // window (clamped to the full window — "depth 1 is effectively an
+        // infinite-window search", §3.6), the jump iteration must fail
+        // high then re-search shallower with a widened delta, and the
+        // extra iteration 4 — its window blown wide open by the mate-band
+        // EMAs — settles on the exact mate.
+        let w = go_depth("k7/8/2K5/8/8/8/8/7R w - - 0 1", 4);
+        let trace = &w.asp_trace;
+        for d in 1..=4 {
+            let group: Vec<AspirationAttempt> = trace
+                .iter()
+                .copied()
+                .filter(|a| a.root_depth == d)
+                .collect();
+            assert!(!group.is_empty(), "iteration {d} left no attempts");
+            check_asp_group(&group, None);
+        }
+        let it1: Vec<AspirationAttempt> = trace
+            .iter()
+            .copied()
+            .filter(|a| a.root_depth == 1)
+            .collect();
+        assert_eq!(it1.len(), 1, "a full window cannot fail");
+        assert_eq!(
+            (it1[0].alpha, it1[0].beta),
+            (-VALUE_INFINITE, VALUE_INFINITE)
+        );
+        let it3: Vec<AspirationAttempt> = trace
+            .iter()
+            .copied()
+            .filter(|a| a.root_depth == 3)
+            .collect();
+        assert!(
+            it3[0].alpha > -VALUE_INFINITE && it3[0].beta < VALUE_INFINITE,
+            "the jump iteration really ran an aspirated window: {:?}",
+            it3[0]
+        );
+        assert!(
+            it3.len() >= 2 && it3[0].value >= it3[0].beta,
+            "mate fails high"
+        );
+        assert_eq!(it3[1].adjusted_depth, 2, "shallower re-search");
+        assert!(it3[1].delta > it3[0].delta, "widened delta");
+        // And the iteration still converges on the exact mate: the
+        // shallower re-search re-finds it through the TT.
+        assert_eq!(best_score(&w), mate_in(3));
+    }
+
+    /// The plan-step-5/7 driver shape — full-window root searches, no
+    /// aspiration — preserved as the reference harness for the step-8
+    /// value-identity bar and for the PVS/TT equivalence suites below
+    /// (whose bars are about the PVS structure and TT semantics, which
+    /// aspiration deliberately layers window dynamics on top of).
+    fn go_depth_full_window_on(fen: &str, depth: Depth, tt: &TranspositionTable) -> Worker {
+        tt.new_search();
+        let mut w = Worker::new(board(fen));
+        init_stack(&mut w.stack);
+        w.root_moves = build_root_moves(&w.board, &[]);
+        let stop = AtomicBool::new(false);
+        for d in 1..=depth {
+            w.root_depth = d;
+            for rm in w.root_moves.iter_mut() {
+                rm.previous_score = rm.score;
+                rm.previous_pv.clone_from(&rm.pv);
+            }
+            w.sel_depth = 0;
+            w.root_delta = 2 * VALUE_INFINITE;
+            w.search::<Root>(tt, &stop, -VALUE_INFINITE, VALUE_INFINITE, d, false, 0);
+            sort_descending(&mut w.root_moves[..]);
+        }
+        w
+    }
+
+    /// [`go_depth_full_window_on`] against a fresh table.
+    fn go_depth_full_window(fen: &str, depth: Depth) -> Worker {
+        go_depth_full_window_on(fen, depth, &test_tt())
+    }
+
+    #[test]
+    fn aspiration_preserves_values_on_quiet_positions_at_fixed_depth() {
+        // Step-8 regression bar (§4/§5): on positions whose iteration
+        // scores stay inside every window, aspiration is a pure
+        // node-count optimization — same fixed-depth value and best move
+        // as the full-window driver. The trace assert pins the fixtures'
+        // load-bearing property: no attempt ever failed.
+        //
+        // "Quiet" here means score-STABLE, which needs a clean material
+        // edge: delta = 5 + avg²/10588 then dwarfs the odd/even tempo
+        // swing between iterations. Near-zero positions (the startpos)
+        // are poor fixtures — delta ~5 sits BELOW their parity swing, and
+        // the resulting re-searches legitimately store different TT
+        // bounds than one full-window pass (measured: an 8cp drift on the
+        // startpos at depth 4). Decisive-score fixtures diverge for the
+        // opposite reason — a fail-high's shallower re-search can end the
+        // iteration below the mate (see the mate-suite tests, which spend
+        // one extra settling iteration instead).
+        let suite: &[(&str, Depth)] = &[
+            // White up a queen in an otherwise symmetric opening.
+            (
+                "r1b1kbnr/pppppppp/2n5/8/8/2N5/PPPPPPPP/R1BQKBNR w KQkq - 0 1",
+                4,
+            ),
+            // The mirror image: black up a queen, black to move.
+            (
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB1KBNR b KQkq - 0 1",
+                4,
+            ),
+            // Black up a knight in a bare-kings endgame.
+            ("4k3/8/3n4/8/8/8/8/4K3 b - - 0 1", 3),
+        ];
+        for &(fen, depth) in suite {
+            let asp = go_depth(fen, depth);
+            assert_eq!(
+                asp.asp_trace.len(),
+                depth as usize,
+                "score-stable fixture stayed inside every window: {fen}"
+            );
+            let full = go_depth_full_window(fen, depth);
+            assert_eq!(best_score(&asp), best_score(&full), "value identity: {fen}");
+            assert_eq!(
+                asp.best_move(),
+                full.best_move(),
+                "bestmove identity: {fen}"
+            );
+        }
+    }
+
     // --- PVS equivalence vs full-window negamax (doc 07 §4 step 7, §5) ---
     //
     // Fail-soft alpha-beta over a fixed tree returns the exact minimax
@@ -1745,6 +2162,11 @@ mod tests {
         // returns the same VALUE and an equally-best MOVE as full-window
         // negamax at fixed depth. Node counts drop instead of matching —
         // that half of the done-condition is the Bench: trailer (D24).
+        // Since step 8 the production driver aspirates the root window,
+        // which legitimately moves fixed-depth values (shallower fail-high
+        // re-searches); this suite therefore pins the PVS structure
+        // through the full-window test driver — aspiration's own bars are
+        // the trace/identity tests above plus bench and SPRT (D25).
         let suite: &[(&str, Depth)] = &[
             // KRK mate-in-2: exercises mate-distance pruning soundness.
             ("k7/8/2K5/8/8/8/8/7R w - - 0 1", 3),
@@ -1763,7 +2185,7 @@ mod tests {
             ("7k/8/6K1/8/8/8/2Q5/8 b - - 0 1", 3),
         ];
         for &(fen, depth) in suite {
-            let w = go_depth(fen, depth);
+            let w = go_depth_full_window(fen, depth);
             let (want, optimal) = ref_root(fen, depth);
             assert_eq!(
                 best_score(&w),
@@ -1800,10 +2222,16 @@ mod tests {
     /// cutoff doing its job, not a leak; the P6 version of this helper
     /// asserted the stricter triple only because the cutoffs were
     /// unreachable before the zero-window existed.
+    ///
+    /// Runs through the full-window test driver since plan step 8: the
+    /// aspirated driver's decisive-score dynamics (shallower fail-high
+    /// re-searches) move fixed-depth values on the mate fixtures below
+    /// for reasons that have nothing to do with TT semantics — which is
+    /// what this suite pins.
     fn tt_value_pair(fen: &str, depth: Depth) -> Value {
         let tt = test_tt();
-        let fresh = go_depth_on(fen, depth, &tt);
-        let warm = go_depth_on(fen, depth, &tt);
+        let fresh = go_depth_full_window_on(fen, depth, &tt);
+        let warm = go_depth_full_window_on(fen, depth, &tt);
         assert_eq!(
             best_score(&fresh),
             best_score(&warm),

@@ -32,6 +32,13 @@ pub const ASPIRATION_MSS_DIVISOR: i64 = 10588;
 pub const ASPIRATION_WIDEN_NUM: Value = 44;
 /// Denominator of the per-re-search widening (~x1.34 per fail).
 pub const ASPIRATION_WIDEN_DEN: Value = 128;
+/// Numerator of the search-again depth damping term
+/// `3 * (search_again_counter + 1) / 4` in the aspiration loop's
+/// `adjusted_depth` (design/07 §3.6, design/12 §3.9 — the counter itself
+/// is TM-owned and 0 until doc 12 step 8).
+pub const ASPIRATION_SEARCH_AGAIN_NUM: Depth = 3;
+/// Denominator of the search-again depth damping.
+pub const ASPIRATION_SEARCH_AGAIN_DEN: Depth = 4;
 
 // --- Razoring (design/10 §3.1; node step N9) ---
 
