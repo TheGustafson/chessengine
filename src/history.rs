@@ -359,6 +359,16 @@ impl Histories {
     pub fn pawn_slot(&self, key: Key) -> &[[StatEntry<PAWN_D>; 64]; 12] {
         &self.pawn[(key & (PAWN_HIST_SIZE as u64 - 1)) as usize]
     }
+
+    /// The pawn-history slot for a position (write side), masked by its pawn
+    /// key. Used by the search's out-of-band pawn nudges (design/10 §3.4 N8 /
+    /// §3.10 fail-low bonus), where the moved piece is keyed off a
+    /// non-side-to-move move and so cannot route through
+    /// [`Self::update_quiet_histories`].
+    #[inline]
+    pub fn pawn_slot_mut(&mut self, key: Key) -> &mut [[StatEntry<PAWN_D>; 64]; 12] {
+        &mut self.pawn[(key & (PAWN_HIST_SIZE as u64 - 1)) as usize]
+    }
 }
 
 // ---------------------------------------------------------------------------

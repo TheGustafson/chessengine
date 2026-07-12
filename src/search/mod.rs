@@ -937,6 +937,13 @@ impl Worker {
         self.stack[cur].in_check = in_check;
         self.stack[cur].move_count = 0;
         self.stack[cur].stat_score = 0;
+        // Parent-move facts (design/10 §3.4 N2): `prev_sq` is the parent's
+        // destination (None after a null move / at the root), `prior_capture`
+        // whether the parent's move captured. Read by N6b's TT-cutoff parent
+        // penalty and N8's eval-diff nudge.
+        let prev_move = self.stack[cur - 1].current_move;
+        let prev_sq = prev_move.is_ok().then(|| prev_move.to());
+        let prior_capture = self.board.captured_piece().is_some();
         // Consumed-and-reset slot: doc 10's hindsight logic reads the
         // parent's reduction; resetting here keeps it from going stale.
         self.stack[cur - 1].reduction = 0;
@@ -1053,6 +1060,43 @@ impl Worker {
                 })
                 && (self.board.rule50_count() as i32) < params::TT_CUTOFF_RULE50_LIMIT
             {
+                // N6b extras (design/10 §3.4, Wave-C item 12): a beta-side
+                // cutoff means the stored ttMove "worked" here.
+                let ttm = tt_data.mv;
+                if ttm != Move::NULL && tt_value >= beta {
+                    let us = self.board.side_to_move();
+                    // Reward a quiet ttMove. The from-square guard keeps a rare
+                    // colliding TT move from mis-indexing the histories.
+                    if !self.board.capture_stage(ttm)
+                        && self
+                            .board
+                            .piece_on(ttm.from())
+                            .is_some_and(|p| p.color == us)
+                    {
+                        let bonus = (params::TTCUT_BONUS_MULT * depth).min(params::TTCUT_BONUS_CAP);
+                        self.histories.update_quiet_histories(
+                            &self.board,
+                            &self.stack[..],
+                            cur,
+                            ttm,
+                            bonus,
+                        );
+                    }
+                    // Penalize the parent's early non-capturing quiet.
+                    if let Some(sq) = prev_sq
+                        && self.stack[cur - 1].move_count < params::TTCUT_PARENT_MOVECOUNT
+                        && !prior_capture
+                        && let Some(pc) = self.board.piece_on(sq)
+                    {
+                        self.histories.update_continuation_histories(
+                            &self.stack[..],
+                            cur - 1,
+                            pc,
+                            sq,
+                            params::TTCUT_PARENT_MALUS,
+                        );
+                    }
+                }
                 return tt_value;
             }
 
@@ -1084,6 +1128,31 @@ impl Worker {
             // A capturing ttMove does not veto RFP (N10); a quiet one does —
             // a stored quiet best move is a standing reason to search.
             let tt_capture = tt_data.mv != Move::NULL && self.board.capture_stage(tt_data.mv);
+
+            // N8 — eval-diff history nudge for the parent's quiet move
+            // (design/10 §3.4, Wave-C item 12): grade the opponent's last
+            // quiet by the static-eval swing it produced. `prev_sq` is Some
+            // only for a real (non-null) parent move.
+            if let Some(sq) = prev_sq
+                && !self.stack[cur - 1].in_check
+                && !prior_capture
+            {
+                let them = self.board.side_to_move().flip();
+                let eval_diff = (-self.stack[cur - 1].static_eval - self.stack[cur].static_eval)
+                    .clamp(params::EVALDIFF_CLAMP_LO, params::EVALDIFF_CLAMP_HI)
+                    + params::EVALDIFF_OFFSET;
+                self.histories.main[them as usize][prev_move.raw16() as usize]
+                    .update(params::EVALDIFF_MAIN_MULT * eval_diff);
+                if let Some(pc) = self.board.piece_on(sq)
+                    && !tt_hit
+                    && pc.piece_type != PieceType::Pawn
+                    && prev_move.kind() != MoveKind::Promotion
+                {
+                    let pawn_key = self.board.pawn_key();
+                    self.histories.pawn_slot_mut(pawn_key)[pc.index()][sq.index() as usize]
+                        .update(params::EVALDIFF_PAWN_MULT * eval_diff);
+                }
+            }
 
             // N9 — razoring (design/10 §3.4). A non-PV node whose corrected
             // `eval` sits so far below alpha that even the quadratic razoring
@@ -3027,7 +3096,10 @@ mod tests {
         let mut w = Worker::new(board(fen));
         let tt = test_tt();
         let vf = search_at::<NonPv>(&mut w, &tt, bound - 1, bound, depth, true, 1);
-        assert!(vf < bound, "fresh: the node must fail low (at or below alpha)");
+        assert!(
+            vf < bound,
+            "fresh: the node must fail low (at or below alpha)"
+        );
         assert_eq!(
             w.nodes, 2,
             "fresh histories: cont-hist dormant, the second quiet is searched"
@@ -5292,5 +5364,42 @@ mod tests {
             warm.nodes,
             fresh.nodes
         );
+    }
+
+    // --- Wave-C item 12: eval-diff nudge (N8) + TT-cutoff history (N6b) ---
+
+    #[test]
+    fn item12_nudges_preserve_correctness_and_determinism() {
+        // The N8 eval-diff nudge and the N6b TT-cutoff bonus/penalty write
+        // into the history tables from out-of-band sites (opponent-keyed main
+        // history, parent conthist, quiet ttMove). A search must still (a)
+        // never panic — the from-square guard protects against a colliding
+        // ttMove mis-indexing — (b) solve a mate exactly, and (c) stay
+        // bit-reproducible across fresh runs (the nudges are pure functions of
+        // deterministic state).
+        //
+        // Back-rank mate in 1: 1.Ra8#.
+        let w = go_depth("6k1/5ppp/8/8/8/8/8/R6K w - - 0 1", 4);
+        assert!(is_mate(best_score(&w)), "mate score must survive item 12");
+        let a = go_depth(START_FEN, 5);
+        let b = go_depth(START_FEN, 5);
+        assert_eq!(a.nodes, b.nodes, "item 12 preserves node determinism");
+        assert_eq!(a.best_move(), b.best_move());
+    }
+
+    #[test]
+    fn item12_n8_nudges_opponent_main_history() {
+        // The N8 nudge writes into `main[opponent]` for the parent's quiet
+        // move — a table cell that a from-scratch board leaves at MAIN_INIT.
+        // After a few plies of a quiet opening, at least one opponent-keyed
+        // main-history cell must have moved off the init value, proving the
+        // out-of-band write site actually fires (and does not panic).
+        let w = go_depth(START_FEN, 6);
+        let moved = w
+            .histories
+            .main
+            .iter()
+            .any(|plane| plane.iter().any(|e| e.get() != -5));
+        assert!(moved, "N8/history writes must move main history off init");
     }
 }

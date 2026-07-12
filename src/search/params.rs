@@ -479,6 +479,46 @@ pub const TT_CUTOFF_RULE50_LIMIT: i32 = 96;
 /// beyond its nominal depth, so make the entry hard to displace.
 pub const TT_NO_MOVES_DEPTH_BONUS: Depth = 6;
 
+// --- TT-cutoff history nudges (N6b extras, design/10 §3.4; Wave-C item 12) ---
+//
+// When the non-PV TT cutoff fires with `tt.value >= beta`, the stored ttMove
+// "worked": if it is quiet, reward it (`min(TTCUT_BONUS_MULT·depth,
+// TTCUT_BONUS_CAP)`), and if the parent played an early (`move_count < 4`)
+// non-capturing quiet, penalize that parent move along its continuation chain
+// (`TTCUT_PARENT_MALUS`) — a cheap cutoff here is evidence the parent's move
+// was refutable.
+
+/// Depth multiplier of the TT-cutoff quiet-ttMove bonus.
+pub const TTCUT_BONUS_MULT: i32 = 114;
+/// Cap of the TT-cutoff quiet-ttMove bonus.
+pub const TTCUT_BONUS_CAP: i32 = 724;
+/// Continuation-history malus applied to the parent's early quiet move on a
+/// beta-side TT cutoff.
+pub const TTCUT_PARENT_MALUS: i32 = -2187;
+/// The parent's `move_count` must be below this for the TT-cutoff parent
+/// penalty to fire (an "early" quiet the cutoff just refuted).
+pub const TTCUT_PARENT_MOVECOUNT: i32 = 4;
+
+// --- Eval-diff parent nudge (N8, design/10 §3.4; Wave-C item 12) ---
+//
+// Grade the opponent's last quiet by the static-eval swing it produced.
+// `eval_diff = clamp(-(ss-1).static_eval - ss.static_eval, EVALDIFF_CLAMP_LO,
+// EVALDIFF_CLAMP_HI) + EVALDIFF_OFFSET`; the parent's move (indexed by the
+// *opponent* color) takes `main_history << EVALDIFF_MAIN_MULT·eval_diff`, and —
+// on a TT miss for a non-pawn, non-promotion parent move — its pawn-history
+// slot takes `<< EVALDIFF_PAWN_MULT·eval_diff`.
+
+/// Low clamp of the eval swing feeding the eval-diff nudge.
+pub const EVALDIFF_CLAMP_LO: Value = -183;
+/// High clamp of the eval swing.
+pub const EVALDIFF_CLAMP_HI: Value = 180;
+/// Flat offset added to the clamped eval swing.
+pub const EVALDIFF_OFFSET: Value = 62;
+/// Main-history multiplier of the eval-diff nudge.
+pub const EVALDIFF_MAIN_MULT: i32 = 10;
+/// Pawn-history multiplier of the eval-diff nudge (TT-miss, non-pawn mover).
+pub const EVALDIFF_PAWN_MULT: i32 = 13;
+
 // --- Time management: soft stop (design/12 §3.9) ---
 
 /// Single-reply cap on the soft time budget (`min(561.7, total_time)`,
