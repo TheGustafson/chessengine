@@ -1330,6 +1330,40 @@ mod tests {
         }
     }
 
+    /// Stop-latency bound (design/13 §5, §8 criterion 4, plan step 7): a
+    /// `go infinite` at N = cores threads on a busy middlegame, stopped after
+    /// 100 ms, must return from `wait_for_search_finished` well under the
+    /// 50 ms hard bound (target < 5 ms). Prints the measured number
+    /// (`cargo test -- --nocapture`).
+    #[test]
+    fn stop_latency_is_bounded() {
+        let cores = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+            .clamp(2, 8);
+        let mut engine = Engine::new();
+        engine.pool.set(cores);
+        let out = SharedOut::new(Vec::new());
+        // Kiwipete: a rich middlegame so every thread is deep in the tree.
+        dispatch(
+            &mut engine,
+            "position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            &out,
+        )
+        .unwrap();
+        dispatch(&mut engine, "go infinite", &out).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let t0 = std::time::Instant::now();
+        engine.stop_search();
+        engine.pool.wait_for_search_finished();
+        let latency = t0.elapsed();
+        eprintln!("[stop-latency] Threads={cores}: {latency:?}");
+        assert!(
+            latency < std::time::Duration::from_millis(50),
+            "stop latency {latency:?} exceeds the 50 ms hard bound"
+        );
+    }
+
     /// Run one command against a fresh engine, returning (engine, output).
     fn command(line: &str) -> (Engine, String) {
         let mut engine = Engine::new();

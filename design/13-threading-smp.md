@@ -1042,11 +1042,26 @@ in the same commit" rule. None changes a pinned decision.
   `increase_depth`; they stop only on the shared `stop`. Helpers *are* woken
   even for a no-legal-move root (they return immediately) rather than being
   skipped as in §3.7 A — simpler, negligible cost.
-- **Counter aggregation is end-of-search in step 1–3** (`nodes.store(self.nodes)`
-  at search end). Live mid-search aggregation for a multi-thread `go nodes`
-  limit and the `best_move_changes`/jitter cross-thread wiring land in plan
-  step 4; `SearchReport` voting in step 5; the ponder state machine
-  (`stop_on_ponderhit`) in step 6.
+- **Counter aggregation (step 4).** `do_move` mirrors the deterministic
+  `self.nodes` into the per-thread atomic every node (single-writer relaxed
+  store), so `nodes_searched()` is live. The `info nodes` field and the
+  `check_time` node limit both read the aggregate; at Threads=1 the aggregate
+  equals `self.nodes` (bit-identical), and `go depth` (the fingerprint) sets no
+  node limit, so the depth-6 bench is unaffected. `best_move_changes` moved
+  from a `Worker` field to the per-thread atomic; the MAIN worker harvests all
+  threads' counts each iteration with `swap(0)` and divides instability by the
+  real thread count. Voting (step 5) and the `stop_on_ponderhit` ponder state
+  machine (step 6) as specced.
+- **Race hardening (step 7, measured 2026-07-12).** ThreadSanitizer
+  (`RUSTFLAGS=-Zsanitizer=thread cargo +nightly test -Z build-std`) is **clean —
+  zero data-race warnings** across both the pool-mechanics unit tests and a
+  real multi-thread search (the 500-search interleaving smoke ran a full 120 s
+  of instrumented search + the 8-thread stop-latency test, no TSan report). The
+  accepted races (TT fields, flags, counters) all go through atomics, so TSan
+  sees no violation, matching §3.13. **Stop latency**, `go infinite` at 8
+  threads then `stop`: **0.53 ms** (debug, uninstrumented) / **18.9 ms** (under
+  TSan) — both under the 50 ms hard bound (§8 criterion 4), the debug figure
+  under the 5 ms target too.
 - **NUMA (§3.15) stays deferred** — no topology/replication registry shape was
   built for P11 (single-socket dev box; real pinning needs a libc dep that
   conflicts with D15). The `Job::Custom` slot is present and is the seam a

@@ -1243,11 +1243,13 @@ impl Worker {
         self.root_depth = 0;
         self.completed_depth = 0;
         self.pv_idx = 0;
-        // `best_move_changes` lives in the per-thread atomic counter now
-        // (design/13 §3.10); `setup`/`Counters::reset` already zeroed it for
-        // this `go`. Detached workers (bench/tests) zero it too via `setup`
-        // is not called — but the direct `iterative_deepening` path resets it
-        // here so a reused worker starts clean.
+        // The cross-thread counters (design/13 §3.10) are reset here so a
+        // reused worker on the DIRECT path (bench/tests, which never call
+        // `setup`) starts clean; the pool path also zeroes them in `setup`.
+        // `nodes` mirrors `self.nodes` and must start at 0 so `nodes_searched`
+        // is accurate from the first `info` line, before the `do_move` mirror
+        // catches up.
+        self.counters.nodes.store(0, Ordering::Relaxed);
         self.counters.best_move_changes.store(0, Ordering::Relaxed);
         self.nmp_min_ply = 0;
         self.check_time_mask = self.compute_check_time_mask();
@@ -3573,7 +3575,16 @@ impl Worker {
             .limits
             .movetime
             .is_some_and(|t| self.limits.start_time.elapsed().as_millis() as i64 >= t - eps);
-        let nodes_stop = self.limits.nodes.is_some_and(|n| self.nodes >= n);
+        // The node limit is enforced against the CROSS-THREAD aggregate
+        // (design/13 §3.10): with N threads a `go nodes` budget is a total.
+        // At Threads=1 the aggregate equals `self.nodes` (the per-node mirror
+        // in `do_move`), so this is bit-identical for single-thread `go nodes`
+        // / nodes-mode bench; and `go depth` (the fingerprint) never sets a
+        // node limit, so the depth-6 bench is unaffected either way (D24).
+        let nodes_stop = self
+            .limits
+            .nodes
+            .is_some_and(|n| self.pool.nodes_searched() >= n);
         if tm_stop || movetime_stop || nodes_stop {
             stop.store(true, Ordering::Relaxed);
         }
