@@ -1598,7 +1598,12 @@ impl Worker {
                 beta = alpha;
                 alpha = (best - delta).max(-VALUE_INFINITE);
                 failed_high_cnt = 0;
-                // ⟨doc 12 step 9⟩ stop_on_ponderhit revoke goes here.
+                // A root fail-low may mean the pondered move is refuted;
+                // burning past the soft budget to find a replacement is right,
+                // so revoke any pending ponderhit stop (design/12 step 9).
+                if let Some(m) = &mut self.manager {
+                    m.stop_on_ponderhit = false;
+                }
             } else if best >= beta {
                 // FAIL HIGH: alpha never loosens past its current value.
                 alpha = (beta - delta).max(alpha);
@@ -3546,6 +3551,15 @@ impl Worker {
         if self.pool.ponder.load(Ordering::Relaxed) {
             return;
         }
+        // Ponderhit already happened AND the soft budget elapsed during the
+        // ponder (design/12 step 9): stop now instead of burning to `maximum`
+        // on the now-live clock. `stop_on_ponderhit` is only ever set while
+        // pondering (soft_stop) and is false for a non-ponder search, so this
+        // is inert outside the ponder path (bench-neutral, D24).
+        if self.manager.as_ref().is_some_and(|m| m.stop_on_ponderhit) {
+            stop.store(true, Ordering::Relaxed);
+            return;
+        }
         let eps = params::CHECK_TIME_EPSILON_MS;
         // Hard clock wall. `use_time_management` gates the comparison, so
         // depth/nodes/movetime/infinite modes never see it; `tm.elapsed`
@@ -3701,9 +3715,15 @@ impl Worker {
             || self.root_moves[0].score == mated_in(params::SOFT_STOP_MATED_PLIES);
 
         if elapsed > total_time.min(self.tm.maximum() as f64) || mate_stop {
-            // While pondering the GUI owns the clock — never self-stop (the
-            // stop_on_ponderhit conversion is P11). Otherwise stop.
-            if !pondering {
+            if pondering {
+                // While pondering the GUI owns the clock — never self-stop.
+                // Instead remember the verdict (design/12 step 9): a later
+                // `ponderhit` then stops at once via `check_time` rather than
+                // burning to `maximum` on our now-live clock.
+                if let Some(m) = &mut self.manager {
+                    m.stop_on_ponderhit = true;
+                }
+            } else {
                 stop.store(true, Ordering::Relaxed);
             }
         } else {
@@ -6201,6 +6221,46 @@ mod tests {
         w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
         assert!(stop.load(Ordering::Relaxed), "the soft stop must fire");
         assert!(w.root_depth < 4, "deepening was cut short at optimum");
+    }
+
+    #[test]
+    fn pondering_soft_budget_arms_stop_on_ponderhit() {
+        // A tiny timed budget under `go ponder`: the search never self-stops
+        // (GUI owns the clock), but the elapsed soft budget arms
+        // `stop_on_ponderhit` so a later ponderhit stops at once (doc 12 step
+        // 9 / doc 13). The depth limit bounds the test.
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.time[crate::types::Color::White as usize] = 1_000;
+        w.limits.depth = Some(4);
+        w.limits.ponder = true;
+        init_clock(&mut w, &nodestime_options());
+        w.pool.ponder.store(true, Ordering::Relaxed);
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
+        assert!(!stop.load(Ordering::Relaxed), "pondering never self-stops");
+        assert!(
+            w.manager.as_ref().unwrap().stop_on_ponderhit,
+            "the elapsed soft budget armed stop_on_ponderhit"
+        );
+    }
+
+    #[test]
+    fn ponderhit_after_armed_budget_stops_via_check_time() {
+        // With `stop_on_ponderhit` armed, the FIRST poll after ponderhit
+        // (ponder cleared) stops immediately; while still pondering it must
+        // not (the ponder guard precedes the check).
+        let arm = |ponder: bool| {
+            let mut w = Worker::new(board(START_FEN));
+            w.completed_depth = 1; // past iteration 1 (check_time guard)
+            w.manager.as_mut().unwrap().stop_on_ponderhit = true;
+            w.pool.ponder.store(ponder, Ordering::Relaxed);
+            w.nodes = w.check_time_mask; // poll-aligned: check_time does real work
+            let stop = AtomicBool::new(false);
+            w.check_time(&stop);
+            stop.load(Ordering::Relaxed)
+        };
+        assert!(arm(false), "ponderhit + armed budget stops at once");
+        assert!(!arm(true), "still pondering must not stop");
     }
 
     // --- MultiPV (design/12 §3.12, step 10) ---
