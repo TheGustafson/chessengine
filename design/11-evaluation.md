@@ -1132,6 +1132,14 @@ loss to stdout and saves checkpoints — so any viewer needs a small (~30-line)
 Python shim in `tools/nnue/` that taps that output. Tooling layer only (may use
 any deps, design/16 §3.5.1; does NOT touch the zero-dep engine crate, D15).
 
+**Python env (user, 2026-07-12): all tooling Python runs under `uv`.** The repo
+is now a `uv` project (`pyproject.toml`, `uv.lock`, `.python-version` = 3.13);
+tensorboard + tensorflow are already pinned there. Invoke every tooling script
+with `uv run …` (e.g. `uv run python tools/nnue/gen_sf_data.py`, `uv run
+tensorboard --logdir tools/nnue/runs`) so deps resolve from the locked env. This
+is a tooling-only change — the engine crate stays zero-dependency (D15). New
+Python deps get added with `uv add <pkg>` (updates `uv.lock`), never ad-hoc pip.
+
 **Planned default (revisable): TensorBoard for live curves + a net-iteration
 registry.** Two things, because for a chess NNUE the metric that matters is
 net-vs-net Elo, NOT loss (two nets with equal loss can be tens of Elo apart):
