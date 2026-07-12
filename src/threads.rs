@@ -64,6 +64,17 @@ impl Counters {
         self.tb_hits.store(0, Ordering::Relaxed);
         self.best_move_changes.store(0, Ordering::Relaxed);
     }
+
+    /// Owner-only single-writer bump of `best_move_changes` (§3.10): a
+    /// non-first root move became best this iteration. Plain relaxed
+    /// load+store; the main worker harvests every thread's count with an
+    /// atomic `swap(0)` (the one cross-thread write), so a bump racing the
+    /// harvest is at worst counted one iteration late — harmless, it feeds
+    /// only the TM instability heuristic.
+    pub fn bump_best_move_changes(&self) {
+        let v = self.best_move_changes.load(Ordering::Relaxed);
+        self.best_move_changes.store(v + 1, Ordering::Relaxed);
+    }
 }
 
 impl Default for Counters {

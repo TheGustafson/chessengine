@@ -747,8 +747,6 @@ pub struct Worker {
     /// (if shallow) bestmove is always produced under a tiny budget. Also
     /// the future SMP best-thread vote weight (doc 13).
     pub completed_depth: Depth,
-    /// Time-management instability signal (§3.4/§3.5).
-    pub best_move_changes: f64,
     /// What `go` asked for (design/12 §3.6).
     pub limits: Limits,
     /// Per-`go` time budgets (design/12 §3.7). This is main-worker state
@@ -887,7 +885,6 @@ impl Worker {
             pv_idx: 0,
             multi_pv: 1,
             completed_depth: 0,
-            best_move_changes: 0.0,
             limits: Limits::new(),
             tm: TimeManager::new(),
             last_best_move_pv: Vec::new(),
@@ -1246,7 +1243,12 @@ impl Worker {
         self.root_depth = 0;
         self.completed_depth = 0;
         self.pv_idx = 0;
-        self.best_move_changes = 0.0;
+        // `best_move_changes` lives in the per-thread atomic counter now
+        // (design/13 §3.10); `setup`/`Counters::reset` already zeroed it for
+        // this `go`. Detached workers (bench/tests) zero it too via `setup`
+        // is not called — but the direct `iterative_deepening` path resets it
+        // here so a reused worker starts clean.
+        self.counters.best_move_changes.store(0, Ordering::Relaxed);
         self.nmp_min_ply = 0;
         self.check_time_mask = self.compute_check_time_mask();
         self.last_best_move_pv.clear();
@@ -1359,7 +1361,9 @@ impl Worker {
                             score: rm.uci_score,
                             lowerbound: rm.score_lowerbound,
                             upperbound: rm.score_upperbound,
-                            nodes: self.nodes,
+                            // Aggregate across all threads (design/13 §3.10);
+                            // equals `self.nodes` at Threads=1 (bench-neutral).
+                            nodes: self.pool.nodes_searched(),
                             hashfull: tt.hashfull(0),
                             pv: &rm.pv,
                         });
@@ -1378,10 +1382,21 @@ impl Worker {
                 self.completed_depth = self.root_depth;
             }
 
-            // Harvest the per-iteration instability signal (§3.5; doc 13
-            // §3.10 owns the SMP aggregation shape).
-            tot_best_move_changes += self.best_move_changes;
-            self.best_move_changes = 0.0;
+            // Harvest the per-iteration instability signal across ALL threads
+            // (design/13 §3.10): only the main worker aggregates, summing and
+            // resetting every thread's atomic counter with `swap(0)` so no
+            // count is lost. Helpers never reach `soft_stop`, so their local
+            // `tot_best_move_changes` stays 0 (unused). At Threads=1 this is
+            // exactly the main worker's own count (bench-neutral, D24).
+            if self.is_main() {
+                let sum: u64 = self
+                    .pool
+                    .shells
+                    .iter()
+                    .map(|s| s.counters.best_move_changes.swap(0, Ordering::Relaxed))
+                    .sum();
+                tot_best_move_changes += sum as f64;
+            }
 
             // `go mate n` (§3.5; doc 12 §3.9's mate-limit stop,
             // independent of TM): a COMPLETED iteration whose front score
@@ -1532,7 +1547,12 @@ impl Worker {
         search_again_counter: i32,
     ) -> Value {
         let rm = &self.root_moves[self.pv_idx];
+        // Lazy-SMP aspiration jitter (design/13 §3.1): the `thread_idx % 8`
+        // term makes helpers search slightly different windows so they diverge
+        // and seed the shared TT differently. Vacuous at `thread_idx == 0`
+        // (main / detached / bench), keeping Threads=1 bit-identical (D24).
         let mut delta = (params::ASPIRATION_BASE_DELTA as i64
+            + (self.thread_idx % 8) as i64
             + rm.mean_squared_score.abs() / params::ASPIRATION_MSS_DIVISOR)
             as Value;
         let avg = rm.average_score;
@@ -3105,9 +3125,11 @@ impl Worker {
             rm.pv.truncate(1);
             rm.pv.extend_from_slice(self.pv_table[1].as_slice());
             // Best-move flip mid-iteration: the TM instability signal
-            // (§3.4; consumed by doc 12 §3.9's factor stack in P10).
+            // (§3.4; consumed by doc 12 §3.9's factor stack). Counted in the
+            // per-thread atomic (design/13 §3.10) so the main worker can
+            // aggregate it across all threads at iteration end.
             if move_count > 1 && self.pv_idx == 0 {
-                self.best_move_changes += 1.0;
+                self.counters.bump_best_move_changes();
             }
         } else {
             // Not the new best: mark unsearched-this-iteration and rely on
@@ -3458,6 +3480,13 @@ impl Worker {
     #[inline]
     fn do_move(&mut self, tt: &TranspositionTable, m: Move, gives_check: bool, ply: usize) {
         self.nodes += 1;
+        // Mirror the plain per-worker counter (the deterministic driver of
+        // every search decision, D24) into this thread's atomic so the pool
+        // can aggregate live `nodes`/`nps` and the node limit across threads
+        // (design/13 §3.10). Single-writer load+store — no `fetch_add`; a
+        // relaxed store to an owned cache line. Bench reads `self.nodes`, so
+        // the count is unchanged.
+        self.counters.nodes.store(self.nodes, Ordering::Relaxed);
         let cur = ss(ply);
         let moved_piece = self.board.piece_on(m.from());
         let capture = self.board.capture_stage(m);
@@ -3649,7 +3678,11 @@ impl Worker {
             self.root_depth - self.last_best_move_depth,
             self.tm_previous_time_reduction,
         );
-        let instability = Self::best_move_instability(tot_best_move_changes, 1);
+        // `bestMoveInstability` averages the cross-thread change count over
+        // the thread count (design/13 §3.10). At Threads=1 the divisor is 1
+        // (bench-neutral, D24).
+        let instability =
+            Self::best_move_instability(tot_best_move_changes, self.pool.shells.len());
         let effort = Self::high_best_move_effort(self.root_moves[0].effort, self.nodes);
 
         let mut total_time =

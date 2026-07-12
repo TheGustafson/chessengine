@@ -1261,6 +1261,75 @@ mod tests {
         String::from_utf8(out.into_inner()).expect("engine output is UTF-8")
     }
 
+    /// Run `session(input)` on a helper thread and fail if it does not finish
+    /// within `secs` — a hung pool must fail the test, never wedge the suite.
+    fn session_timeout(input: &str, secs: u64) -> String {
+        let input = input.to_string();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let h = std::thread::spawn(move || {
+            let out = session(&input);
+            let _ = tx.send(out);
+        });
+        match rx.recv_timeout(std::time::Duration::from_secs(secs)) {
+            Ok(out) => {
+                h.join().unwrap();
+                out
+            }
+            Err(_) => panic!("multi-thread session did not finish within {secs}s (hang)"),
+        }
+    }
+
+    /// Multi-thread interleaving smoke (design/13 §5, plan step 4): at
+    /// `Threads=4`, 500 short searches with `stop`/`isready`/`position`/
+    /// `ucinewgame` woven in must all answer exactly one legal `bestmove`,
+    /// with no hang or panic. Runs in a DEBUG build, so make/unmake's
+    /// `assert_consistent` validates every thread's per-thread board at every
+    /// node — any threading-induced corruption trips the oracle here.
+    #[test]
+    fn multithread_interleaved_search_smoke() {
+        let mut input = String::from("setoption name Threads value 4\n");
+        let mut go_count = 0usize;
+        for i in 0..500 {
+            match i % 5 {
+                0 => input.push_str("ucinewgame\nposition startpos\n"),
+                1 => input.push_str("position startpos moves e2e4 e7e5 g1f3\n"),
+                2 => input.push_str(
+                    "position fen r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3\n",
+                ),
+                _ => {}
+            }
+            input.push_str("go depth 4\n");
+            go_count += 1;
+            match i % 4 {
+                0 => input.push_str("stop\n"),
+                1 => input.push_str("isready\n"),
+                _ => {}
+            }
+        }
+        input.push_str("quit\n");
+        let out = session_timeout(&input, 120);
+        // Exactly-once: one bestmove per `go`, never `(none)` (every position
+        // here has legal moves).
+        let bestmoves = out.lines().filter(|l| l.starts_with("bestmove ")).count();
+        assert_eq!(bestmoves, go_count, "one bestmove per go (exactly-once)");
+        assert!(
+            !out.contains("bestmove (none)"),
+            "no position here is mate/stalemate"
+        );
+        // Every bestmove token is a well-formed UCI move (4-5 chars, files/
+        // ranks/promo) — a garbled move would signal cross-thread corruption
+        // of the winning report.
+        for line in out.lines().filter(|l| l.starts_with("bestmove ")) {
+            let mv = line.split_whitespace().nth(1).unwrap_or("");
+            assert!(
+                (4..=5).contains(&mv.len())
+                    && mv.as_bytes()[0].is_ascii_lowercase()
+                    && mv.as_bytes()[1].is_ascii_digit(),
+                "malformed bestmove line: {line}"
+            );
+        }
+    }
+
     /// Run one command against a fresh engine, returning (engine, output).
     fn command(line: &str) -> (Engine, String) {
         let mut engine = Engine::new();
