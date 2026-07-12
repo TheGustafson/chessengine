@@ -1033,3 +1033,16 @@ This component is done when all of the following hold:
 4. **Sibling doc filenames**: references to the core-types, TT, search,
    movepick, and eval docs use topic names; exact filenames to be
    reconciled when the suite is assembled.
+
+## 10. Reckless study inputs (D31, 2026-07-11)
+
+Candidate refinements from the Reckless study
+(`reckless_reference/00-design-implications.md`), to weigh at the noted phase —
+ideas only, reimplemented in safe Rust (D27):
+- **P9 Wave G / D30** — the per-node opponent threat map lives partly here: a
+  new `StateInfo` field (§3.5) holding `all_threats` + `piece_threats[pt]`,
+  built bench-node-neutral (D24). Spec: `design/10` §4 Wave G.
+- **P9 SEE accuracy** (§3.11) — evaluate promotions/en-passant through the real
+  exchange with the promoted-piece value; allow on-king-pin-ray recaptures.
+- **P9 simplification** (§3.5) — enemy-occupancy-only sniper detection for
+  `slider_blockers` (one fewer op, no separate snipers-subtraction case).

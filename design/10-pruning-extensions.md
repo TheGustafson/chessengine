@@ -844,6 +844,65 @@ eval doc; expected +5..15).**
     (`/194822`), and the node-result correction update with its
     direction-consistency gate. SPRT `[0, 5]`.
 
+**Wave G — Reckless-derived threat map + dependents (2026-07-11 study, D30;
+scheduled AFTER the existing waves A–F).** Prereq is *infrastructure, not a
+heuristic*: **the per-node opponent threat map** (D30) — once per
+`make_move`/`make_null_move`, build `all_threats` + `piece_threats[pt]` for the
+side-not-to-move via whole-army *setwise* attack fills (own king excluded from
+occupancy so sliders see through it). Its own commit, proven **perft-clean and
+bench-node-neutral** (full D24 ritual + `Bench:` trailer) before any dependent
+lands. Then:
+22. Threat-aware quiet ordering: a threat-escape term (moving a piece off an
+    attacked square) + a symmetric offense term (moving to attack a vulnerable
+    enemy). `design/09` §3.4/§3.7. SPRT `[0, 5]`.
+23. Threat-coupled RFP margin: subtract a flat term from the N10 margin when no
+    own piece is currently threatened. §3.4 N10. SPRT `[0, 3]`.
+
+**Reckless-derived candidates (study 2026-07-11, D31) — enrich the menu without
+restructuring the waves; each is one commit, proxy-gated, reimplemented
+idiomatically (AGPLv3 prior art, D27).** Tried at the named gate:
+- *Wave C item 11* — history-coupled LMP threshold (couple the move-count
+  budget to the move's own ordering history, not just `improving`); +
+  history-scaled quiet-SEE margin (add a history term to the `-25·lmr_depth²`
+  bar).
+- *Wave C / Wave F* — rule50 (`fold_rule50`) bucket axis on the pawn/non-pawn
+  correction tables (reuse the bucket we already compute; `design/09` §3.10);
+  and qsearch SEE folds `|correction_value|` as an eval-uncertainty term
+  (`design/07` §3.8).
+- *Wave D items 13–15* — LDSE (low-depth singular extension at shallow cut-nodes
+  below the `depth ≥ 6 + ttPv` SE gate); + bound-type-conditioned singular
+  margin (`depth/4` when the TT bound is Exact, full depth when only Lower).
+- *Wave E item 16* — dynamic-depth/dynamic-beta ProbCut re-verify (scale probe
+  depth and a shifted beta by how far the qsearch probe exceeded
+  `probcut_beta`, with a full-window fallback re-search).
+- **NMP couplings** on the shipped N11 (three isolated SPRTs `[0,3]`): a
+  cutoffCnt discount when `cutoff_count[ply+1] < 2`; veto NMP when the TT
+  already promises a beta-beating capture of ≥knight material; narrow the
+  null-move window to `tt_score` when a fresh TT Lower bound sits below beta.
+- **Root-move re-scoring** after each completed sibling subtree (root only), so
+  ordering reflects the history the just-finished subtree wrote (`design/09`
+  §3.6). A mid-iteration staleness fix neither SF nor we do today.
+- **SEE accuracy** (`design/04` §3.11): run promotions/en-passant through the
+  real exchange loop with the *promoted* piece's value (not the blanket
+  non-Normal→0 shortcut); and exclude a pinned attacker from SEE only when the
+  capture square is *off* its king-pin ray (allowing on-ray recaptures).
+  Correctness + SPRT; D24 perft applies.
+- **nps micro-ops** (verify by bench, not SPRT — must reproduce the node count):
+  branchless least-valuable-attacker in `see_ge`; an O(1) `is_direct_check`
+  proxy at pruning-exemption sites (accepts losing discovered-check exemptions).
+- **Correctness cleanups** (D24 perft applies): enemy-occupancy-only sniper
+  detection for `slider_blockers` (`design/04` §3.5); harden `Board::legal`'s
+  pin check to directional (`!ray_pass(king,from).contains(to)`, `design/05`
+  §3.8) so it is correct standalone, not only when composed after
+  `pseudo_legal`.
+
+**Post-Wave-C standalone experiment (D31) — isolated and revert-friendly, never
+folded into wave work.** `ilog2(depth)`-only LMR base (§3.3): drop SF's
+move-number reduction dimension entirely, letting the continuous per-move
+history score substitute (Reckless base `269·ilog2(depth)`, no move-count term).
+Plausibly the study's highest-ceiling single idea, but a genuine change to a
+shipped component — run as its OWN SPRT after the Wave-C history couplings land.
+
 Done-condition for the whole document: §8 acceptance criteria.
 
 ## 5. Testing and validation

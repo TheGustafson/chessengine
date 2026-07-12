@@ -1175,3 +1175,15 @@ The component is done when all of the following hold:
    first NNUE release or later.
 6. **Threads option upper bound** (1024) and Hash upper bound are
    provisional pending the threading and TT docs' final limits.
+
+## 10. Reckless study inputs (D31, 2026-07-11)
+
+P10 candidates from the Reckless study (`reckless_reference/09`, summary
+`00-design-implications.md` §P10); ideas only, safe-Rust (D27):
+- **Robustness bundle (§3.8)** — a `completed_depth==0` hard-stop guard
+  (guarantee a real bestmove under a tiny budget); re-poll `check_time` at
+  qsearch entry (bound stop latency in long forcing dives); a flat epsilon
+  shave on every enforced bound including `movetime` (cut fast-TC forfeit
+  risk); node-counter bitmask poll cadence (`nodes & 2047`).
+- **Options** — `Threads` upper bound `max(4·available_parallelism, 512)`
+  (§9.6); a low-verbosity report mode for high-frequency self-play (§3.13).

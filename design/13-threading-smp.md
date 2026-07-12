@@ -970,3 +970,19 @@ The threading component is done when all of the following hold:
    contained change, same semantics.
 6. **`Job::Custom(Box<dyn FnOnce(&mut Worker) + Send>)`**: deferred until
    parallel TT clear / NUMA needs it; the enum keeps the variant slot open.
+
+## 10. Reckless study inputs (D31, 2026-07-11)
+
+P11 lazy-SMP / NUMA candidates from the Reckless study
+(`reckless_reference/10`, summary `00-design-implications.md` §P11); ideas
+only, safe-Rust (D27):
+- **Zero-unsafe closure `Job::Custom` dispatch** (§3.4) — take the closure as a
+  call-time `&mut Worker` param instead of a captured borrow (avoids Reckless's
+  lifetime `transmute`). Resolves §9 open Q6.
+- **Soft-stop by quorum vote** (§3.7/§3.10) — every thread votes; global stop at
+  a supermajority (Reckless 65%); degenerates to today at `Threads=1`.
+- **Cross-thread optimism fusion** — a shared `[AtomicU32; MAX_MOVES]` packing
+  `depth<<16 | score`, `fetch_max` per root move, blended at aspiration setup.
+- **Three-tier state + NUMA-replication registry** (§3.15) — global / per-node /
+  per-thread, inert on single-socket; real pinning needs libc → gate behind a
+  measured multi-socket need + its own decision (affirms D15).

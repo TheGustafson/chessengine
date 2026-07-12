@@ -182,7 +182,8 @@ gate per D24.
   tests, and the SPRT win vs naive MVV-LVA-only ordering (D25).
 
 ### P9 — Pruning waves (XL) → **milestone M5 (M-2450)**
-- **Implements:** `10-pruning-extensions.md` waves A–E (F trails), `04`
+- **Implements:** `10-pruning-extensions.md` waves A–F + the Reckless-derived
+  **Wave G** (per-node threat map + dependents, D30), `04`
   step 12 (cuckoo tables / `upcoming_repetition`, consumed by wave E).
 - **Entry:** P8.
 - **Deliverables:** one-heuristic-per-commit waves, each SPRT-gated at the
@@ -190,8 +191,9 @@ gate per D24.
   core), B (razoring, LMP, futility + SEE pruning, IIR), C (statScore,
   conthist pruning), D (singular extensions, multicut), E (ProbCut,
   hindsight, softening, TT hardening), F (correction couplings — may trail
-  into P12). Fixed-node proxy budget calibrated before first proxy-gated
-  merge (doc 14 §9.4).
+  into P12), **G** (Reckless-derived per-node threat map + threat-aware
+  ordering/RFP, D30 — after F; perft- and bench-node-neutral). Fixed-node
+  proxy budget calibrated before first proxy-gated merge (doc 14 §9.4).
 - **Exit:** doc 10 §8 — all waves merged with `bench:` footers and passed
   SPRTs; ≥ +150 Elo vs the pre-Wave-A baseline over 1000+ games at 10+0.1;
   zugzwang/mate/repetition suites green at pinned depths.

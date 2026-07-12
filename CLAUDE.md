@@ -9,7 +9,7 @@ introducing them.
 
 `design/` holds the reviewed design suite that governs all implementation:
 
-- `design/decisions.md` — pinned decisions D1-D29. **Decisions change here
+- `design/decisions.md` — pinned decisions D1-D31. **Decisions change here
   first; docs follow; code follows docs.**
 - `design/00-master-plan.md` — phase ordering (P0-P14), milestone gates,
   current phase status.
@@ -135,6 +135,12 @@ then write a distilled markdown note in `stockfish_reference/` (tracked; index
 in `NOTES.md`) so the insight isn't lost. **Never copy Stockfish code** — it's
 GPLv3; take ideas, reimplement idiomatically in Rust.
 
+`reckless_reference/Reckless/` similarly holds a clone of Reckless (a top-2
+Rust engine, ~3833 SPCC; **AGPLv3**, gitignored). Its distilled study notes
+live in `reckless_reference/` (tracked; index `NOTES.md`, adaptation list
+`00-design-implications.md`) — same rule: **never copy code**, take ideas and
+reimplement in our own safe Rust (D27/D31).
+
 ## Status / roadmap
 
 Done: types, bitboards, board + FEN, `Move`/`MoveList`; attack tables (P1:
@@ -192,11 +198,23 @@ gravity updates, no killers — D17); +76 Elo vs naive MVV-LVA, borrow-safe
 `ContHistId` (no unsafe).
 
 P9 pruning waves IN PROGRESS: Wave A (reduction table + RFP + NMP + LMR)
-landed ~+570 Elo vs pre-pruning at fixed time (92% smaller tree); Wave B
-(razoring / LMP / futility+SEE / IIR) running. A fixed-node proxy SPRT
-(doc 14 §9.4) gates each heuristic; the real-TC SPRT gates each wave.
+landed ~+570 Elo vs pre-pruning at fixed time (92% smaller tree); **Wave B**
+(razoring / LMP / parent- & capture-futility + SEE) PASSED its gate
+(`81538f7`, real 10+0.1 **+237 Elo** vs pre-Wave-B, 0 forfeits; bench 350190;
+item 9 IIR reverted — regressed ~−15 Elo, parked on
+`wip/p9-item9-iir-followpv`). Next: **Wave C** (statScore /
+continuation-history pruning), then D/E/F, then **Wave G** — the
+Reckless-derived per-node threat map + dependents (D30). A fixed-node proxy
+SPRT (doc 14 §9.4) gates each heuristic; the real-TC SPRT gates each wave.
 
-Next / plan amended (D21/D28/D29, 2026-07-11): eval Phase B (HCE + texel)
+Reckless study (2026-07-11, D31): a distilled study of the Reckless engine
+(`reckless_reference/`) fed vetted refinements into the P9 waves, added Wave G
+(threat map, D30), and annotated the P10/P11/P13 docs; the declined set
+(Move-kind capture bits, unsafe TT/Stack, Syzygy FFI, RNG jitter) is recorded
+against D2/D14/D15/D19/D24. Adaptation list:
+`reckless_reference/00-design-implications.md`.
+
+Next / plan amended (D21/D28/D29/D30/D31, 2026-07-11): eval Phase B (HCE + texel)
 DESCOPED — Stockfish is now the NNUE bootstrap data generator, so HCE is off
 the critical path. Order: **P9 → P10** (time-mgmt completion + full UCI) **→
 P11** (lazy SMP) **→ P13** (NNUE), with PSQT as the eval fallback. NNUE is

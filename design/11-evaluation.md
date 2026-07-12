@@ -1059,3 +1059,18 @@ Phase C done when:
 5. **Tempo term**: omitted in Phase A by design; whether Phase B gains a
    tuned tempo constant is left to the tuner experiments (add the parameter,
    let SPRT decide).
+
+## 10. Reckless study inputs (D31, 2026-07-11)
+
+P13 NNUE candidates from the Reckless study (`reckless_reference/11,12,13`,
+summary `00-design-implications.md` §P13); ideas only, safe-Rust (D27). Mostly
+confirmations of our planned machinery:
+- **Confirmations** — ply-indexed flat accumulator stack + `split_at_mut(i+1)`
+  adjacent-slot update (§3.4.4); Finny refresh cache; king input buckets;
+  hybrid int8-FT/L1 → f32-L2/L3 quantization (Reckless `FT_QUANT=255`/`L1=64`
+  == our `QA=255`/`QB=64`, §3.4.6); the SIMD bit-exactness checklist (`mul_add`,
+  bias-as-initial-accumulator, fixed recursive-halving reduction order).
+- **The big lever (post-v1 stretch, L)** — **threat input features** (relational
+  attacker/victim inputs summed into a second accumulator; §3.4.1). Forces a
+  `design/15` §3.2.3 datagen-record amendment — but NOT the raw store (D29
+  regenerates any feature projection).

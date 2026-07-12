@@ -863,3 +863,14 @@ every step.
 6. **`threats_by_lesser` home:** specified as a `movepick.rs` helper; if
    eval (doc 11) later needs the same threat sets, promote it to a `Board`
    method — coordinate then, not now.
+
+## 10. Reckless study inputs (D31, 2026-07-11)
+
+Candidate refinements from the Reckless study
+(`reckless_reference/00-design-implications.md`); ideas only, safe-Rust (D27):
+- **P9 Wave G / D30** — threat-aware quiet ordering: a threat-escape term + a
+  symmetric offense term (§3.4/§3.7), fed by the D30 threat map.
+- **P9** — root-move re-scoring after each completed sibling subtree (§3.6), so
+  ordering reflects the history the just-finished subtree wrote.
+- **P9 Wave C/F** — a rule50 (`fold_rule50`) bucket axis on the pawn/non-pawn
+  correction tables (§3.10), reusing the bucket we already compute.

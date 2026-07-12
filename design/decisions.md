@@ -210,3 +210,42 @@ strength. Two constraints in permanent tension, resolved in this order:
   net / search-config / generator / seed / opening / teacher versions) is
   mandatory from day one for label reproducibility. Reconciles with the
   `bullet` flat 32-byte format via the disposable Derived layer.
+
+- **D30**: Per-node opponent threat map (added 2026-07-11, from the Reckless
+  study — `reckless_reference/07,04,05,09`). P9 **Wave G** adds a per-node
+  bitboard of every square attacked by the side-not-to-move, per piece type
+  (`all_threats` + `piece_threats[pt]`), maintained in `StateInfo` via
+  whole-army *setwise* attack fills (own king excluded from occupancy so
+  sliders see through it). It collapses king-move/castling legality to an O(1)
+  mask test and is then reused — for free — as move-ordering features
+  (threat-escape + a symmetric offense term) and as a threat-coupled RFP margin
+  dimension. Scheduled AFTER the existing waves A–F (the highest-value NEW idea in the study
+  but also its highest-effort/risk), gated by the usual per-item proxy SPRT.
+  **Non-negotiable:** the map must be perft-clean and bench-node-neutral (full
+  D24 ritual + `Bench:` trailer) — it redistributes cost without changing the
+  node count. Reimplemented idiomatically in safe Rust; the Reckless version is
+  prior art only (AGPLv3, D27). Touches `design/03` (setwise helper),
+  `design/04` §3.5 (new StateInfo field), `design/05` §3.8 (legality arms),
+  `design/09` §3.4/§3.7 (ordering features), `design/10` §3.4 (RFP term); the
+  Wave-G spec lives in `design/10` §4.
+
+- **D31**: Reckless-study incorporation — declined adaptations (added
+  2026-07-11). The study (`reckless_reference/00-design-implications.md`) was
+  triaged into the roadmap; ADOPTED items are baked into `design/10` (P9 wave
+  refinements + a standalone-candidate backlog + Wave F) and annotated into
+  `design/04/09/11/12/13`. The following are recorded as prior art and
+  DECLINED, each affirming an existing decision: (a) baking
+  `is_capture`/`is_noisy` into `Move` kind bits — affirms **D2** (pinned u16
+  layout); (b) Reckless's unsafe posture — non-atomic TT under
+  `unsafe impl Sync`, `static mut`, a self-referential raw-pointer Stack —
+  affirms **D14/D19** (measured/documented unsafe only; per-field relaxed
+  atomics; miri-clean); we take only ideas (e.g. the SWAR cluster-tag lookup)
+  atop our atomic contract; (c) Syzygy/Fathom tablebases — vendored C +
+  `cc`/`bindgen` + runtime libc + unsafe FFI — affirms **D15** (zero runtime
+  deps); deferred past P13 as a possible future non-default opt-in feature with
+  its own decision; (d) reduction/draw-dither RNG jitter — would break **D24**
+  bench determinism if added pre-SMP; deferred to P11. Datagen is UNAFFECTED by
+  the study's threat-feature finding: **D29**'s raw observation store
+  regenerates any feature projection (including relational threat features);
+  only the disposable `bullet`/Chess768 export (`design/15` §3.2.3) would be
+  amended if/when we train threat features.
