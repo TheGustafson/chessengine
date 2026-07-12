@@ -5370,6 +5370,66 @@ mod tests {
         assert!(w.root_depth < 4, "deepening was cut short at optimum");
     }
 
+    // --- MultiPV (design/12 §3.12, step 10) ---
+
+    #[test]
+    fn multipv_reports_k_ordered_lines_per_iteration() {
+        // MultiPV=3 `go depth 6`: every completed iteration emits exactly 3
+        // lines, multipv 1..=3, with exact scores weakly decreasing (line 0
+        // finds the global best, each later line the best of the remaining
+        // moves — always <= the line before it).
+        use std::collections::BTreeMap;
+        let mut w = Worker::new(board(START_FEN));
+        w.multi_pv = 3;
+        w.limits.depth = Some(6);
+        let stop = AtomicBool::new(false);
+        let mut by_depth: BTreeMap<Depth, Vec<(usize, Value)>> = BTreeMap::new();
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |i| {
+            by_depth
+                .entry(i.depth)
+                .or_default()
+                .push((i.multipv, i.score));
+        });
+        assert!(by_depth.len() >= 3, "several completed iterations reported");
+        for (d, group) in by_depth {
+            assert_eq!(group.len(), 3, "depth {d} must report 3 PV lines");
+            assert_eq!(
+                group.iter().map(|(pv, _)| *pv).collect::<Vec<_>>(),
+                vec![1, 2, 3],
+                "depth {d} multipv indices are 1..=3 in order"
+            );
+            assert!(
+                group[0].1 >= group[1].1 && group[1].1 >= group[2].1,
+                "depth {d}: exact scores must weakly decrease: {group:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn multipv_clamps_to_the_legal_move_count() {
+        // MultiPV=5 with a 2-move `searchmoves` whitelist clamps to 2 lines
+        // per iteration — the filter narrows the root move list before the
+        // MultiPV clamp (design/12 §3.6/§3.12).
+        let filter = [
+            Move::normal(Square::E2, Square::E4),
+            Move::normal(Square::G1, Square::F3),
+        ];
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.searchmoves = filter.to_vec();
+        w.multi_pv = 5;
+        w.limits.depth = Some(4);
+        let stop = AtomicBool::new(false);
+        let mut counts: std::collections::BTreeMap<Depth, usize> = Default::default();
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |i| {
+            *counts.entry(i.depth).or_default() += 1;
+        });
+        assert!(!counts.is_empty());
+        assert!(
+            counts.values().all(|&c| c == 2),
+            "MultiPV must clamp to the 2 whitelisted moves: {counts:?}"
+        );
+    }
+
     // --- searchmoves filtering (design/12 §3.6) ---
 
     #[test]

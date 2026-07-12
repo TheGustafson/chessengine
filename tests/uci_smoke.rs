@@ -375,6 +375,46 @@ fn go_depth_completes_with_exactly_one_legal_bestmove() {
 }
 
 #[test]
+fn multipv_emits_three_ordered_lines_per_iteration() {
+    // doc 12 §3.12/§8.5: MultiPV=3 `go depth 6` prints 3 info lines per
+    // iteration, multipv 1..3, with weakly-decreasing exact scores. The
+    // final iteration (depth 6) is inspected — a completed, non-aborted
+    // block whose three lines are searched exactly.
+    let mut s = Session::spawn();
+    s.send("setoption name MultiPV value 3");
+    s.send("position startpos");
+    s.send("go depth 6");
+    s.wait_for(|l| l.starts_with("bestmove "), Duration::from_secs(20));
+    let (status, lines, stderr) = s.finish();
+    assert_clean_exit(status, &stderr);
+    // The depth-6 block: three lines, multipv 1/2/3 in order.
+    let depth6: Vec<&str> = lines
+        .iter()
+        .map(|(_, l)| l.as_str())
+        .filter(|l| l.starts_with("info depth 6 "))
+        .collect();
+    assert_eq!(
+        depth6.len(),
+        3,
+        "MultiPV=3 emits 3 lines at depth 6:\n{depth6:?}"
+    );
+    let mut scores = Vec::new();
+    for (i, line) in depth6.iter().enumerate() {
+        let toks: Vec<&str> = line.split_whitespace().collect();
+        let mpv = toks[toks.iter().position(|&t| t == "multipv").unwrap() + 1];
+        assert_eq!(mpv, (i + 1).to_string(), "multipv index in order: {line}");
+        // score is `cp N` (no mate at the start position, low depth).
+        let sp = toks.iter().position(|&t| t == "score").unwrap();
+        assert_eq!(toks[sp + 1], "cp", "expected a cp score: {line}");
+        scores.push(toks[sp + 2].parse::<i64>().expect("cp value"));
+    }
+    assert!(
+        scores[0] >= scores[1] && scores[1] >= scores[2],
+        "exact scores must weakly decrease across multipv 1..3: {scores:?}"
+    );
+}
+
+#[test]
 fn go_infinite_bestmove_comes_only_after_stop_and_promptly() {
     // doc 12 §5 item 4 + the task's promptness bar: 100 ms of infinite
     // search, then `stop` → exactly one bestmove, only after the stop,

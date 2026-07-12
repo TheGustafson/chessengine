@@ -1040,22 +1040,22 @@ fn run_search<W: Write>(
     // the search starts (doc 08 §3.9; doc 13 §3.7 B's ordering).
     tt.new_search();
 
-    // §3.13: one pre-built String, one locked write per info line. The
-    // PV head of the last line sent drives the final flush below.
+    // MultiPV (doc 12 §3.12, step 10): read the option at `go` and hand it
+    // to the worker, which clamps it to the legal-move count. The ID loop
+    // owns the §3.13 emission cadence (whole block at iteration end below
+    // the node throttle; per-line above it), so this callback just formats
+    // and writes — one pre-built String, one locked write per line.
+    worker.multi_pv = options.multipv().max(1) as usize;
+    // The PV head of the `multipv 1` line drives the final flush below.
     let mut last_sent: Option<Move> = None;
-    let multi_pv = 1usize; // fixed until the MultiPV option lands (step 10)
     worker.iterative_deepening(tt, stop, &mut state.persist, &mut |info| {
-        // Throttle (§3.13): below INFO_THROTTLE_NODES only the
-        // iteration's LAST MultiPV line prints — at MultiPV 1 that is
-        // every completed line, so nothing is ever suppressed yet.
-        if info.nodes <= INFO_THROTTLE_NODES && info.multipv != multi_pv {
-            return;
-        }
         let elapsed_ms = start_time.elapsed().as_millis() as i64;
         let mut out = out.lock();
         let _ = writeln!(out, "{}", format_info(info, elapsed_ms));
         let _ = out.flush();
-        last_sent = info.pv.first().copied();
+        if info.multipv == 1 {
+            last_sent = info.pv.first().copied();
+        }
     });
 
     if worker.root_moves.is_empty() {
@@ -1156,27 +1156,22 @@ fn ponder_from_tt(tt: &TranspositionTable, board: &Board, best: Move) -> Option<
 // info formatting (design/12 §3.13–§3.14)
 // ---------------------------------------------------------------------------
 
-/// design/12 §3.13's `NODES_LIMIT_OUTPUT`, under the doc's preferred
-/// name: `currmove` lines and intermediate aspiration bound updates wait
-/// for this many nodes, and completed PV lines below it print only when
-/// the iteration's last MultiPV line completes. At v1's MultiPV = 1 the
-/// PV rule always prints; `currmove` emission itself lands with the
-/// MovePicker's root loop (docs 09/12 step 6+).
-const INFO_THROTTLE_NODES: u64 = 10_000_000;
-
-/// Format one completed PV line (doc 12 §3.13, v1 field scope): depth,
-/// seldepth, score (with bound suffix), nodes, nps, hashfull (the TT
-/// permille estimate, doc 08 §3.10), wall-clock time, pv — the doc's SF
-/// field order, minus the deferred `multipv`/`wdl`/`tbhits`. One `String`
-/// so the caller can emit it as a single write.
+/// Format one completed PV line (doc 12 §3.13 field scope): depth,
+/// seldepth, multipv, score (with bound suffix), nodes, nps, hashfull (the
+/// TT permille estimate, doc 08 §3.10), wall-clock time, pv — the doc's SF
+/// field order, minus the deferred `wdl`/`tbhits`. The `info` throttle that
+/// decides WHICH lines reach here lives in the ID loop
+/// (`params::INFO_THROTTLE_NODES`, doc 12 step 10). One `String` so the
+/// caller can emit it as a single write.
 fn format_info(info: &SearchInfo, elapsed_ms: i64) -> String {
     use std::fmt::Write as _; // writing to a String cannot fail
     let time = elapsed_ms.max(0);
     let nps = info.nodes.saturating_mul(1000) / time.max(1) as u64;
     let mut line = format!(
-        "info depth {} seldepth {} score {}",
+        "info depth {} seldepth {} multipv {} score {}",
         info.depth,
         info.sel_depth,
+        info.multipv,
         format_score(info.score)
     );
     if info.lowerbound {
@@ -2158,7 +2153,7 @@ uciok
     }
 
     #[test]
-    fn format_info_orders_the_v1_fields() {
+    fn format_info_orders_the_fields() {
         let pv = [
             Move::normal(Square::E2, Square::E4),
             Move::normal(Square::E7, Square::E5),
@@ -2166,7 +2161,7 @@ uciok
         let info = SearchInfo {
             depth: 7,
             sel_depth: 12,
-            multipv: 1,
+            multipv: 2,
             score: 42,
             lowerbound: false,
             upperbound: false,
@@ -2176,8 +2171,8 @@ uciok
         };
         assert_eq!(
             format_info(&info, 2000),
-            "info depth 7 seldepth 12 score cp 42 nodes 4000 nps 2000 hashfull 13 time 2000 \
-             pv e2e4 e7e5"
+            "info depth 7 seldepth 12 multipv 2 score cp 42 nodes 4000 nps 2000 hashfull 13 \
+             time 2000 pv e2e4 e7e5"
         );
         // Zero elapsed must not divide by zero; bounds add their suffix.
         let bound = SearchInfo {
@@ -2186,8 +2181,8 @@ uciok
         };
         assert_eq!(
             format_info(&bound, 0),
-            "info depth 7 seldepth 12 score cp 42 lowerbound nodes 4000 nps 4000000 hashfull 13 \
-             time 0 pv e2e4 e7e5"
+            "info depth 7 seldepth 12 multipv 2 score cp 42 lowerbound nodes 4000 nps 4000000 \
+             hashfull 13 time 0 pv e2e4 e7e5"
         );
     }
 }
