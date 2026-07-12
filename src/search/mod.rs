@@ -302,6 +302,23 @@ fn capture_see_margin(depth: Depth, capt_hist: i32) -> Value {
         + params::CAP_SEE_HIST_MULT * capt_hist / params::CAPT_HIST_DEN
 }
 
+/// The continuation-history pruning predicate (design/10 §3.5, the move loop's
+/// quiet branch, Wave-C item 11): a quiet whose combined recent history
+/// `cont_history = contHist(1)[pc][to] + contHist(2)[pc][to] +
+/// pawnHistory[pc][to]` falls below the depth-scaled bar `-QHIST_PRUNE_MULT ·
+/// depth` is written off without a search — the offset-1/offset-2 continuation
+/// slabs plus the pawn-structure slot say the move has been failing here.
+///
+/// A LINEAR depth scale (unlike the quadratic quiet-SEE bar): a deeper node
+/// demands a proportionally more damning history. Pure `i32`, so the
+/// `-4313 · depth` boundary matches the Stockfish source this re-expresses
+/// (D27); keeping the predicate a free function makes that boundary
+/// unit-testable (§5) apart from the make/prune control flow.
+#[inline]
+fn continuation_history_prunes(cont_history: i32, depth: Depth) -> bool {
+    cont_history < -params::QHIST_PRUNE_MULT * depth
+}
+
 /// The TT prefetch hook (doc 04 §3.10 hook A, doc 08 §3.15 call site 1):
 /// wired into [`Worker::do_move`] so every made move issues a prefetch for
 /// the child's cluster the moment the child key is final — the DRAM fetch
@@ -1365,6 +1382,36 @@ impl Worker {
                         continue;
                     }
                 } else if !self.stack[cur].follow_pv || !NT::PV {
+                    // Continuation-history pruning (design/10 §3.5, Wave-C
+                    // item 11): the FIRST quiet gate, ahead of parent futility
+                    // and quiet SEE. A quiet whose combined recent history
+                    // `contHist(1)[pc][to] + contHist(2)[pc][to] +
+                    // pawnHistory[pc][to]` — the offset-1/offset-2 predecessor
+                    // slabs `stack[cur-1]/[cur-2]` key (the same contHist(1/2)
+                    // move ordering and `stat_score` read) plus the pawn slot,
+                    // all PRE-move — is deeply negative is skipped: the
+                    // position's own ordering memory says the move has been
+                    // failing here. `pc` is the piece on `m.from()`. No
+                    // `!in_check` guard (unlike parent futility): the block's
+                    // outer `!is_loss(best_value)` fence already keeps every
+                    // evasion searched until one produces a real value. Fresh
+                    // histories sum to −2366 (above the bar at every depth), so
+                    // this is dormant until the search's own updates drive a
+                    // quiet's score below `-QHIST_PRUNE_MULT·depth`.
+                    let pc = self
+                        .board
+                        .piece_on(m.from())
+                        .expect("a quiet move starts on a piece of the side to move");
+                    let pci = pc.index();
+                    let to = m.to().index() as usize;
+                    let cont_history =
+                        self.histories.cont_ref(self.stack[cur - 1].cont_hist)[pci][to].get()
+                            + self.histories.cont_ref(self.stack[cur - 2].cont_hist)[pci][to].get()
+                            + self.histories.pawn_slot(self.board.pawn_key())[pci][to].get();
+                    if continuation_history_prunes(cont_history, depth) {
+                        continue;
+                    }
+
                     // Parent futility (design/10 §3.5): the most optimistic
                     // value this quiet could yield still cannot reach alpha at
                     // a shallow predicted depth. Lift `best_value` to that
@@ -2890,6 +2937,149 @@ mod tests {
         let v = search_at::<NonPv>(&mut w, &tt, alpha, alpha + 1, depth, true, 1);
         assert!(v <= alpha, "Nc2 must fail low (no fail-high shortcut)");
         assert_eq!(w.nodes, 1, "quiet SEE must drop the hanging Nb3");
+    }
+
+    // --- Continuation-history pruning (design/10 §3.5, Wave-C item 11, §5) ---
+
+    #[test]
+    fn continuation_history_prunes_matches_the_threshold() {
+        // The gate `history < -QHIST_PRUNE_MULT · depth` (design/10 §3.5) — a
+        // LINEAR depth scale (unlike the quadratic quiet-SEE bar). The
+        // comparison is STRICT, so a history exactly at `-4313·depth` is NOT
+        // pruned while one just below is; positive history never prunes; the
+        // fresh combined sum (−2366) stays dormant at every depth.
+        let m = params::QHIST_PRUNE_MULT; // 4313
+        let cases: &[(i32, Depth, bool)] = &[
+            (0, 1, false),         // healthy history never prunes
+            (100, 8, false),       // positive: never
+            (-m, 1, false),        // exactly at the bar → strict `<` → NOT pruned
+            (-m - 1, 1, true),     // one below → pruned
+            (-m * 2, 2, false),    // −8626 at depth 2 → NOT pruned
+            (-m * 2 - 1, 2, true), // one below → pruned
+            (-m * 4, 4, false),    // boundary at depth 4
+            (-m * 4 - 1, 4, true),
+            (-2366, 1, false),   // the FRESH sum is dormant (−2366 > −4313)
+            (-2366, 32, false),  // fresh stays dormant at every depth
+            (-100_000, 8, true), // deeply distrusted: pruned even deep
+        ];
+        for &(hist, depth, want) in cases {
+            assert_eq!(
+                continuation_history_prunes(hist, depth),
+                want,
+                "continuation_history_prunes({hist}, {depth})"
+            );
+        }
+    }
+
+    #[test]
+    fn continuation_history_bar_is_linear_and_monotone_in_depth() {
+        // The bar `-4313·depth` deepens LINEARLY, so a fixed negative history
+        // that prunes at shallow depth clears the (steadily more negative) bar
+        // as depth grows: `-20000 < -4313·d` iff `d < 4.63`, i.e. prunes for
+        // `d <= 4` only. This linearity is exactly what distinguishes the gate
+        // from the quiet-SEE bar's quadratic `-25·lmr_depth²`.
+        let hist = -20_000;
+        for d in 1..=4 {
+            assert!(
+                continuation_history_prunes(hist, d),
+                "must prune at depth {d}"
+            );
+        }
+        for d in 5..=16 {
+            assert!(
+                !continuation_history_prunes(hist, d),
+                "must be dormant at depth {d}"
+            );
+        }
+        // The fresh combined history is dormant at every depth.
+        for d in 1..=64 {
+            assert!(
+                !continuation_history_prunes(-2366, d),
+                "fresh history must stay dormant at depth {d}"
+            );
+        }
+    }
+
+    #[test]
+    fn continuation_history_pruning_drops_a_distrusted_quiet() {
+        use crate::history::StatEntry;
+        // The wide-quiet KN-vs-K node the LMP / parent-futility tests use: at
+        // depth 1 move 1 is searched (the `is_loss` fence skips pruning on the
+        // first move), then a second quiet reaches the quiet arm. With FRESH
+        // histories the combined `cont_history` is −2366, above the bar, so the
+        // gate is dormant and the second quiet is searched — the exact 2-node
+        // parent-futility "below the margin" result. Poking the offset-1/
+        // offset-2 continuation slab (the SENTINEL predecessor frames below the
+        // root, which the ply-1 node reads for both offsets) to a large
+        // negative drives every quiet's
+        // `cont_history = 2·(−8000) + pawnHistory(−1262) = −17262 < −4313·1`,
+        // so the gate fires and the second quiet is pruned outright — 1 node.
+        let fen = "7k/8/8/8/8/2N5/8/K7 w - - 0 1";
+        let eval = static_eval(&board(fen));
+        assert!(!is_decisive(eval), "a knight edge is not a decisive score");
+        // Below the parent-futility bound (that gate stays dormant) and just
+        // above the quiets' values (move 1 fails low) — the parent-futility
+        // test pins this exact window at 2 nodes.
+        let bound = parent_futility_value(eval, true, -1, false);
+        let depth: Depth = 1;
+
+        // Fresh: cont-hist dormant, the second quiet is searched (2 nodes).
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let vf = search_at::<NonPv>(&mut w, &tt, bound - 1, bound, depth, true, 1);
+        assert!(vf < bound, "fresh: the node must fail low (at or below alpha)");
+        assert_eq!(
+            w.nodes, 2,
+            "fresh histories: cont-hist dormant, the second quiet is searched"
+        );
+
+        // Poked: every quiet's cont_history falls below −4313·depth → pruned.
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        for row in w.histories.cont_mut(ContHistId::SENTINEL).iter_mut() {
+            for cell in row.iter_mut() {
+                *cell = StatEntry::new(-8000);
+            }
+        }
+        let vp = search_at::<NonPv>(&mut w, &tt, bound - 1, bound, depth, true, 1);
+        assert!(
+            vp < bound,
+            "poked: the node must fail low (a cont-hist skip, not a cutoff)"
+        );
+        assert_eq!(
+            w.nodes, 1,
+            "continuation-history pruning must drop the second quiet"
+        );
+    }
+
+    #[test]
+    fn continuation_history_pruning_preserves_a_forced_mate() {
+        use crate::history::StatEntry;
+        // Mate-safety with the gate armed as hard as it goes: poke the WHOLE
+        // continuation-history table to its most negative bound, so every quiet
+        // the search meets is a maximal pruning candidate. The exact
+        // ply-relative mate must still return. Rd8# is a CHECK — it lives in
+        // the capture/check arm, never the quiet arm this gate guards — and the
+        // deeper mate-suite tests re-run with the gate active cover interior
+        // quiets under the shared `!is_loss(best_value)` fence.
+        let fen = "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1";
+        let mut w = Worker::new(board(fen));
+        w.limits.depth = Some(2);
+        for slab in w.histories.cont.iter_mut() {
+            for row in slab.iter_mut() {
+                for cell in row.iter_mut() {
+                    *cell = StatEntry::new(-(crate::history::CONT_D as i16));
+                }
+            }
+        }
+        let tt = test_tt();
+        go(&mut w, &tt);
+        assert_eq!(
+            best_score(&w),
+            mate_in(1),
+            "the exact mate must survive a maximally-armed gate"
+        );
+        assert_eq!(w.best_move().unwrap().to_string(), "d1d8");
     }
 
     // --- Capture futility + capture/check SEE pruning (design/10 §3.5, §5) ---

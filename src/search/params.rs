@@ -397,6 +397,34 @@ pub const CAP_SEE_HIST_MULT: i32 = 34;
 /// gravity scale; this is only the pruning read weight).
 pub const CAPT_HIST_DEN: i32 = 1024;
 
+// --- Move-loop pruning: continuation-history pruning (design/10 §3.5) ---
+//
+// The FIRST gate in the quiet arm of the shallow-depth pruning block (Wave-C
+// item 11), ahead of parent futility and quiet SEE. A quiet whose combined
+// recent history `history = contHist(1)[pc][to] + contHist(2)[pc][to] +
+// pawnHistory[pc][to]` — the offset-1/offset-2 continuation slabs (the same
+// contHist(1/2) move ordering reads) plus the pawn-structure slot, all from
+// PRE-move state — is deeply negative is skipped without a search: the
+// position's own move-ordering memory reports that this move has been failing
+// here. The move is pruned when `history < -QHIST_PRUNE_MULT·depth`, a linear
+// (not quadratic, unlike quiet SEE) depth scale, so a deeper node demands a
+// proportionally more damning history before writing a quiet off. Fenced by
+// the block's outer `!is_loss(best_value)` mate guard and the
+// `non_pawn_material(us) != 0` zugzwang guard, never at the root, and — like
+// every quiet gate — only off the last iteration's PV path (`!follow_pv ||
+// !PV`); the ttMove (searched first under the `is_loss` fence), captures, and
+// checks never reach this arm. There is no `!in_check` guard (unlike parent
+// futility): the outer `!is_loss` fence already keeps every evasion searched
+// until one produces a real value. Fresh histories sum to −2366, above the
+// bar at every depth, so the gate is dormant until the search's own history
+// updates drive a quiet's combined score below `-QHIST_PRUNE_MULT·depth`.
+
+/// Linear depth multiplier of the continuation-history pruning threshold
+/// `history < -QHIST_PRUNE_MULT·depth` (design/10 §3.5): a quiet whose
+/// offset-1/offset-2 continuation histories plus its pawn history fall below
+/// this depth-scaled bar is pruned before it is searched.
+pub const QHIST_PRUNE_MULT: i32 = 4313;
+
 // --- Move-loop pruning: parent futility (design/10 §3.5) ---
 //
 // "Futility pruning: parent node" — a shallow, not-in-check node writes off
