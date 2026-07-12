@@ -649,6 +649,22 @@ pub const PROBCUT_DEPTH_SUB: Depth = 4;
 /// The in-check small-ProbCut beta margin (N14): `probcut_beta = beta + 428`.
 pub const PROBCUT_CHECK_BETA: Value = 428;
 
+// --- Correction-history couplings (Wave F, design/10 §4.6; item 21) ---
+//
+// `correction_value` (the UNSCALED weighted correction sum, design/09 §3.10)
+// is plumbed into the pruning suite: it corrects the static eval (N6, via
+// `to_corrected_static_eval`), WIDENS the RFP margin when the corrector says
+// our eval is unreliable (`+ |correction_value| / RFP_CORR_DIV`), reduces a
+// touch LESS under eval uncertainty (`r -= |correction_value| / RED_CORR_DIV`),
+// tightens the singular margins (`corr_adj = |correction_value| / SE_CORR_DIV`,
+// consumed by Wave D once this lands), and the node-result correction update
+// (`correction_bonus` + `update_correction_history`) learns the eval error.
+
+/// Divisor of the RFP margin correction-widening term.
+pub const RFP_CORR_DIV: i32 = 182_069;
+/// Divisor of the reduction correction-slackening term.
+pub const RED_CORR_DIV: i32 = 26_131;
+
 // --- Hindsight depth adjustments (N6, design/10 §3.4; Wave-E item 17) ---
 //
 // From the parent's LMR bookkeeping (`prior_reduction = (ss-1).reduction`

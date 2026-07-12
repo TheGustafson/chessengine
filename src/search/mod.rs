@@ -197,7 +197,13 @@ pub fn value_draw(nodes: u64) -> Value {
 /// (`|correction_value| / 182069`) is deliberately absent until correction
 /// history is plumbed into this suite (design/10 §4 Wave F).
 #[inline]
-fn rfp_margin(depth: Depth, tt_hit: bool, improving: bool, opponent_worsening: bool) -> Value {
+fn rfp_margin(
+    depth: Depth,
+    tt_hit: bool,
+    improving: bool,
+    opponent_worsening: bool,
+    correction_value: i32,
+) -> Value {
     let futility_mult = (params::RFP_MULT_BASE + params::RFP_MULT_SLOPE * depth)
         .min(params::RFP_MULT_CAP)
         - params::RFP_MULT_NO_TTHIT * Value::from(!tt_hit);
@@ -206,6 +212,7 @@ fn rfp_margin(depth: Depth, tt_hit: bool, improving: bool, opponent_worsening: b
             + params::RFP_OPP_WORSENING * Value::from(opponent_worsening))
             * futility_mult
             / params::RFP_TREND_DEN
+        + correction_value.abs() / params::RFP_CORR_DIV
 }
 
 /// The late-move-pruning move-count threshold (design/10 §3.5, the move
@@ -947,6 +954,12 @@ impl Worker {
         let prev_move = self.stack[cur - 1].current_move;
         let prev_sq = prev_move.is_ok().then(|| prev_move.to());
         let prior_capture = self.board.captured_piece().is_some();
+        // The UNSCALED correction sum (design/09 §3.10, Wave-F item 21): its
+        // `/131072` is the eval delta, and the pruning couplings below divide
+        // this raw value by their own big divisors. Computed once per node.
+        let correction_value = self
+            .histories
+            .correction_value(&self.board, &self.stack[..], cur);
         // Consumed-and-reset slot (design/10 §3.4 N6 hindsight): capture the
         // parent's LMR reduction, then reset it so it cannot go stale.
         let prior_reduction = self.stack[cur - 1].reduction;
@@ -1039,6 +1052,13 @@ impl Worker {
                 } else {
                     evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO)
                 };
+                // Item 21 wires the correction COUPLINGS (RFP margin, reduction,
+                // singular corr_adj, node-result update); folding the correction
+                // into `ss.static_eval` itself (design/10 N6, via
+                // `to_corrected_static_eval`) is held back so the exact-value
+                // pruning-margin unit tests stay pinned to the raw eval — it
+                // lands with the eval-doc's corrected-eval consumer (D22), the
+                // natural owner of the value-equality contract.
                 self.stack[cur].static_eval = raw_eval;
                 if !tt_hit {
                     probe.writer.write(
@@ -1264,7 +1284,13 @@ impl Worker {
                 && !is_loss(beta)
                 && !is_win(eval)
             {
-                let margin = rfp_margin(depth, tt_hit, improving, opponent_worsening);
+                let margin = rfp_margin(
+                    depth,
+                    tt_hit,
+                    improving,
+                    opponent_worsening,
+                    correction_value,
+                );
                 if eval - margin >= beta {
                     return (params::RFP_RET_BETA_W * beta + params::RFP_RET_EVAL_W * eval)
                         / params::RFP_RET_DEN;
@@ -1709,7 +1735,7 @@ impl Worker {
                 if value < singular_beta {
                     // Singular: extend. corr_adj is 0 until Wave F (item 21)
                     // plumbs correction history into the margins.
-                    let corr_adj = 0;
+                    let corr_adj = correction_value.abs() / params::SE_CORR_DIV;
                     let tmh = self.histories.tt_move.get();
                     let deep = Value::from(ply > self.root_depth as usize);
                     let double_margin = params::SE_DOUBLE_BASE
@@ -1776,6 +1802,9 @@ impl Worker {
             // min-depth clamp (below), which only HELPS mate finding.
             r += params::RED_FLAT;
             r -= params::RED_MOVECOUNT * move_count;
+            // Correction slackening (design/10 §3.7, Wave-F item 21): an
+            // uncertain eval (large |correction_value|) reduces a touch LESS.
+            r -= correction_value.abs() / params::RED_CORR_DIV;
             if cut_node {
                 r += params::RED_CUTNODE
                     + params::RED_CUTNODE_NO_TTMOVE * i32::from(tt_data.mv == Move::NULL);
@@ -2120,6 +2149,26 @@ impl Worker {
                 raw_eval,
                 generation,
             );
+        }
+
+        // Correction-history update (design/10 §3.10 step 9, Wave-F item 21):
+        // direction-consistency gated inside `correction_bonus` (not in check,
+        // best move not a capture, and the eval-error direction matches whether
+        // a best move was found). Skipped inside a singular verification (the
+        // real best move was excluded, so the error signal is polluted).
+        if self.stack[cur].excluded_move == Move::NULL
+            && move_count != 0
+            && let Some(bonus) = crate::history::correction_bonus(
+                best_value,
+                self.stack[cur].static_eval,
+                in_check,
+                best_move,
+                best_move != Move::NULL && self.board.capture_stage(best_move),
+                depth,
+            )
+        {
+            self.histories
+                .update_correction_history(&self.board, &self.stack[..], cur, bonus);
         }
 
         debug_assert!(best_value > -VALUE_INFINITE && best_value < VALUE_INFINITE);
@@ -2908,7 +2957,7 @@ mod tests {
         ];
         for &(d, hit, imp, opp, want) in cases {
             assert_eq!(
-                rfp_margin(d, hit, imp, opp),
+                rfp_margin(d, hit, imp, opp, 0),
                 want,
                 "rfp_margin{:?}",
                 (d, hit, imp, opp)
@@ -2928,7 +2977,7 @@ mod tests {
                 + params::RFP_OPP_WORSENING * Value::from(opp))
                 * fm
                 / params::RFP_TREND_DEN;
-        assert_eq!(rfp_margin(d, hit, imp, opp), want);
+        assert_eq!(rfp_margin(d, hit, imp, opp, 0), want);
     }
 
     #[test]
@@ -2977,7 +3026,7 @@ mod tests {
         // A fresh TT → tt miss at this node, so the margin is the no-ttHit
         // form; the trend flags at ply 1 read VALUE_NONE predecessors
         // (improving false, opponent_worsening true).
-        let margin = rfp_margin(depth, false, false, true);
+        let margin = rfp_margin(depth, false, false, true, 0);
         assert!(
             eval - margin >= beta,
             "the fixture must actually trigger RFP"
@@ -3720,9 +3769,13 @@ mod tests {
         seed_quiet_ttmove(&w, &tt, Move::normal(Square::B1, Square::B2));
         // A real interior node always has a real parent move (the N11 assert
         // `no two null moves in a row`); the search_at harness starts on a
-        // fresh stack whose ply-0 slot is NULL, so install one by hand.
+        // fresh stack whose ply-0 slot is NULL, so install one by hand. The
+        // marker must END on an occupied square — item 21's correction reads
+        // `piece_on((ss-1).current_move.to())`, which in real search always
+        // holds (the child sees the parent's piece on its to-square). A
+        // plausible black parent move landing on the black king (h8).
         init_stack(&mut w.stack);
-        w.stack[ss(0)].current_move = Move::normal(Square::H1, Square::G1);
+        w.stack[ss(0)].current_move = Move::normal(Square::G8, Square::H8);
         w.nodes = 0;
         let stop = AtomicBool::new(false);
         let v = w.search::<NonPv>(&tt, &stop, beta - 1, beta, depth, true, 1);
@@ -3825,7 +3878,9 @@ mod tests {
             let tt = test_tt();
             tt.new_search();
             init_stack(&mut w.stack);
-            w.stack[ss(0)].current_move = Move::normal(Square::A2, Square::A3);
+            // Marker must land on an occupied square (item 21 reads the piece
+            // on the parent move's to-square): a black knight move to c6.
+            w.stack[ss(0)].current_move = Move::normal(Square::B8, Square::C6);
             w.nodes = 0;
             w.root_depth = depth;
             w.nmp_min_ply = if disable { 1_000_000 } else { 0 };
@@ -5804,6 +5859,33 @@ mod tests {
         let a = go_depth(START_FEN, 9);
         let b = go_depth(START_FEN, 9);
         assert_eq!(a.nodes, b.nodes, "singular preserves node determinism");
+        assert_eq!(a.best_move(), b.best_move());
+    }
+
+    // --- Wave-F item 21: correction-history couplings ---
+
+    #[test]
+    fn item21_correction_history_learns_and_preserves_mate() {
+        // The node-result correction update (direction-consistency gated) must
+        // actually write the correction tables during a search, and the RFP/
+        // reduction/singular couplings must not corrupt mate scores or
+        // determinism.
+        let w = go_depth(START_FEN, 7);
+        // At least one correction cell moved off its init (CORR_INIT = -6).
+        let moved = w
+            .histories
+            .corr
+            .iter()
+            .any(|slot| slot.iter().any(|b| b.pawn.get() != -6 || b.non_pawn_white.get() != -6));
+        assert!(moved, "correction history must learn during a search");
+
+        // Mate stays exact with the correction couplings live.
+        let m = go_depth("6k1/5ppp/8/8/8/8/8/R6K w - - 0 1", 6);
+        assert!(is_mate(best_score(&m)), "correction couplings keep mate exact");
+
+        let a = go_depth(START_FEN, 7);
+        let b = go_depth(START_FEN, 7);
+        assert_eq!(a.nodes, b.nodes, "correction couplings stay deterministic");
         assert_eq!(a.best_move(), b.best_move());
     }
 
