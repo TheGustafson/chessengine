@@ -2217,6 +2217,72 @@ mod tests {
         }
     }
 
+    /// design/06 §3.5 differential oracle: a legal-move generator built ONLY
+    /// from the per-move predicates (`pseudo_legal` + `legal`), scanned over
+    /// the whole 64k encodable-move space at every node — wholly independent
+    /// of the bulk `generate_legal` path. Recursed as perft; any divergence
+    /// from [`crate::perft::perft`] means the generator and the predicate pair
+    /// disagree *inside* the tree, not merely at a fuzz-corpus root (which the
+    /// 64k fuzz above already covers).
+    fn perft_via_predicate(b: &mut Board, depth: u32) -> u64 {
+        if depth == 0 {
+            return 1;
+        }
+        let legal: Vec<Move> = (0..=u16::MAX)
+            .map(Move::from_raw16)
+            .filter(|&m| b.pseudo_legal(m) && b.legal(m))
+            .collect();
+        if depth == 1 {
+            return legal.len() as u64;
+        }
+        let mut nodes = 0;
+        for m in legal {
+            let gives_check = b.gives_check(m);
+            b.make_move(m, gives_check);
+            nodes += perft_via_predicate(b, depth - 1);
+            b.unmake_move(m);
+        }
+        nodes
+    }
+
+    /// Fast tier: the predicate-only generator must reproduce `perft` at
+    /// shallow depth across the fuzz corpus (depth 1 everywhere — the count
+    /// now also exercises the `legal` filter, not just `pseudo_legal` — plus
+    /// depth 2 from the start position for one ply of recursion).
+    #[test]
+    fn perft_predicate_oracle_matches_perft() {
+        for &fen in FUZZ_FIXTURES {
+            assert_eq!(
+                perft_via_predicate(&mut board(fen), 1),
+                crate::perft::perft(&mut board(fen), 1),
+                "predicate-perft(1) != perft(1) for {fen}"
+            );
+        }
+        assert_eq!(
+            perft_via_predicate(&mut board(crate::fen::START_FEN), 2),
+            crate::perft::perft(&mut board(crate::fen::START_FEN), 2),
+        );
+    }
+
+    /// Release/nightly tier (heavier — a 64k scan at every interior node):
+    /// recurse the differential oracle to depth 3 from the most branching
+    /// standard perft positions.
+    #[test]
+    #[ignore = "release/nightly perft tier: 64k-per-node predicate scan"]
+    fn perft_predicate_oracle_deep() {
+        for (fen, depth) in [
+            (crate::fen::START_FEN, 3),
+            (KIWIPETE, 3),
+            ("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 3),
+        ] {
+            assert_eq!(
+                perft_via_predicate(&mut board(fen), depth),
+                crate::perft::perft(&mut board(fen), depth),
+                "predicate-perft({depth}) != perft({depth}) for {fen}"
+            );
+        }
+    }
+
     /// A few explicit TT-corruption shapes, named for documentation — the
     /// 64k fuzz already covers every one of them.
     #[test]
