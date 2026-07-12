@@ -499,6 +499,89 @@ pub const TTCUT_PARENT_MALUS: i32 = -2187;
 /// penalty to fire (an "early" quiet the cutoff just refuted).
 pub const TTCUT_PARENT_MOVECOUNT: i32 = 4;
 
+// --- Hindsight depth adjustments (N6, design/10 §3.4; Wave-E item 17) ---
+//
+// From the parent's LMR bookkeeping (`prior_reduction = (ss-1).reduction`
+// before it is reset): if the parent reduced us hard yet the position did not
+// turn their way, the reduction looks unjustified — search one ply deeper;
+// conversely a moderate parent reduction plus a healthy combined eval sum
+// searches one ply shallower.
+
+/// `prior_reduction >= HINDSIGHT_RED_UP && !opponent_worsening` → `depth += 1`.
+pub const HINDSIGHT_RED_UP: i32 = 3;
+/// `prior_reduction >= HINDSIGHT_RED_DOWN && depth >= 2 && eval-sum big` →
+/// `depth -= 1`.
+pub const HINDSIGHT_RED_DOWN: i32 = 2;
+/// The `ss.static_eval + (ss-1).static_eval` threshold of the depth-down arm.
+pub const HINDSIGHT_EVAL_SUM: Value = 173;
+
+// --- TT-cutoff hardening (N6b, design/10 §3.4; Wave-E item 20) ---
+//
+// Beyond the base non-PV cutoff (depth slack + rule50 guard, already live):
+// require the stored bound direction to AGREE with the expected node type at
+// shallow depth (`cut_node == (tt.value >= beta) || depth > TTCUT_AGREE_DEPTH`),
+// re-verify a deep cutoff against the ttMove's child entry
+// (`depth >= TTCUT_VERIFY_DEPTH`), and — in the else branch — age out an entry
+// whose bound points the wrong way (`penalize(1)` at `depth > TTCUT_PENALIZE_DEPTH`).
+
+/// Shallow cutoffs (`depth <= TTCUT_AGREE_DEPTH`) require the stored direction
+/// to match the node type; deeper cutoffs skip the agreement test.
+pub const TTCUT_AGREE_DEPTH: Depth = 4;
+/// At/above this depth, a candidate cutoff is re-verified against the ttMove's
+/// child TT entry (one make/probe/unmake).
+pub const TTCUT_VERIFY_DEPTH: Depth = 7;
+/// A wrong-direction bound at `depth > TTCUT_PENALIZE_DEPTH` costs the stored
+/// entry one ply of depth (`penalize(1)`), aging it out faster.
+pub const TTCUT_PENALIZE_DEPTH: Depth = 5;
+
+// --- Fail-low parent history bonus (N-result, design/10 §3.10; Wave-E item 19) ---
+//
+// When a node fails low with no best move and the parent played a quiet
+// (`prev_sq` set, `!prior_capture`), the parent's move "worked" — reward it.
+// `bonus_scale` accumulates several signals; `scaled_bonus = min(FL_BONUS_MULT·
+// depth - FL_BONUS_SUB, FL_BONUS_CAP) * bonus_scale` is then distributed to the
+// parent conthist / main / pawn histories at the weights below. A fail low
+// under a parent capture instead flat-rewards capture history (FL_CAPTURE_BONUS).
+
+/// Flat base (negative) of `bonus_scale`.
+pub const FL_SCALE_BASE: i32 = -245;
+/// Divisor of the `(ss-1).stat_score` term subtracted from `bonus_scale`.
+pub const FL_STATSCORE_DIV: i32 = 98;
+/// Depth multiplier of the `min(FL_DEPTH_MULT·depth, FL_DEPTH_CAP)` term.
+pub const FL_DEPTH_MULT: i32 = 59;
+/// Cap of the depth term.
+pub const FL_DEPTH_CAP: i32 = 430;
+/// `bonus_scale` bump when the parent tried many moves (`(ss-1).move_count > 8`).
+pub const FL_LATE_PARENT: i32 = 191;
+/// `bonus_scale` bump when `!ss.in_check && best_value <= ss.static_eval - 103`.
+pub const FL_BELOW_EVAL: i32 = 143;
+/// Margin of the below-own-eval bump.
+pub const FL_BELOW_EVAL_MARGIN: Value = 103;
+/// `bonus_scale` bump when `!(ss-1).in_check && best_value <= -(ss-1).static_eval - 78`.
+pub const FL_BELOW_PARENT_EVAL: i32 = 151;
+/// Margin of the below-parent-eval bump.
+pub const FL_BELOW_PARENT_EVAL_MARGIN: Value = 78;
+/// Depth multiplier of `scaled_bonus`.
+pub const FL_BONUS_MULT: i32 = 141;
+/// Depth-linear subtrahend of `scaled_bonus`.
+pub const FL_BONUS_SUB: i32 = 82;
+/// Cap of the `scaled_bonus` depth factor.
+pub const FL_BONUS_CAP: i32 = 1472;
+/// Parent-conthist weight of the fail-low bonus (`scaled_bonus·236/16384`).
+pub const FL_CONTHIST_NUM: i32 = 236;
+/// Parent-conthist divisor.
+pub const FL_CONTHIST_DEN: i32 = 16384;
+/// Main-history weight of the fail-low bonus (`scaled_bonus·234/32768`).
+pub const FL_MAIN_NUM: i32 = 234;
+/// Main-history divisor.
+pub const FL_MAIN_DEN: i32 = 32768;
+/// Pawn-history weight of the fail-low bonus (`scaled_bonus·322/8192`).
+pub const FL_PAWN_NUM: i32 = 322;
+/// Pawn-history divisor.
+pub const FL_PAWN_DEN: i32 = 8192;
+/// Flat capture-history bonus on a fail low under a parent capture.
+pub const FL_CAPTURE_BONUS: i32 = 901;
+
 // --- Eval-diff parent nudge (N8, design/10 §3.4; Wave-C item 12) ---
 //
 // Grade the opponent's last quiet by the static-eval swing it produced.

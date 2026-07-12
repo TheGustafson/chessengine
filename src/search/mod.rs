@@ -911,7 +911,7 @@ impl Worker {
         stop: &AtomicBool,
         mut alpha: Value,
         mut beta: Value,
-        depth: Depth,
+        mut depth: Depth,
         cut_node: bool,
         ply: usize,
     ) -> Value {
@@ -923,6 +923,9 @@ impl Worker {
                 self.qsearch::<NonPv>(tt, alpha, beta, ply)
             };
         }
+        // N0 — depth clamp: singular/hindsight extensions can overshoot the
+        // stack (design/10 §3.4). Bounds the child's ply below MAX_PLY.
+        depth = depth.min(MAX_PLY as Depth - 1);
 
         // Node-entry invariants (§3.7.1).
         debug_assert!(!(NT::PV && cut_node), "PV nodes are never cut nodes");
@@ -944,8 +947,9 @@ impl Worker {
         let prev_move = self.stack[cur - 1].current_move;
         let prev_sq = prev_move.is_ok().then(|| prev_move.to());
         let prior_capture = self.board.captured_piece().is_some();
-        // Consumed-and-reset slot: doc 10's hindsight logic reads the
-        // parent's reduction; resetting here keeps it from going stale.
+        // Consumed-and-reset slot (design/10 §3.4 N6 hindsight): capture the
+        // parent's LMR reduction, then reset it so it cannot go stale.
+        let prior_reduction = self.stack[cur - 1].reduction;
         self.stack[cur - 1].reduction = 0;
         self.stack[cur + 2].cutoff_cnt = 0;
         if NT::PV {
@@ -1008,7 +1012,7 @@ impl Worker {
         // in check — where SF pins it `false` (the pre-check eval bears no
         // useful trend). RFP/NMP still consume the computed value inside the
         // branch.
-        let improving;
+        let mut improving;
         if in_check {
             raw_eval = VALUE_NONE;
             self.stack[cur].static_eval = self.stack[cur - 2].static_eval;
@@ -1043,13 +1047,38 @@ impl Worker {
                 );
             }
 
-            // Step 7 — the NonPV TT cutoff, v1 base form (the cutNode
-            // agreement, depth ≥ 7 verification and `penalize` refinements
-            // are ⟨D10⟩): enough stored depth, a valid value, the bound
-            // pointing the cutoff's way, and never when the halfmove clock
-            // could stale the entry (rule-50 guard, §3.12). Live since
-            // plan step 7's zero-window scouts create NonPV nodes.
-            if !NT::PV
+            // Trend flags (design/10 §3.4 N6), computed BEFORE the TT cutoff so
+            // the hindsight depth adjustments can feed it. `improving`: our
+            // eval beats our eval two plies ago (our last turn).
+            // `opponent_worsening`: our eval beats the negation of the parent's
+            // — the position is turning our way. Both use `ss.static_eval`
+            // (never the substituted `eval`); an unset predecessor is the large
+            // `VALUE_NONE` sentinel (SF parity).
+            improving = self.stack[cur].static_eval > self.stack[cur - 2].static_eval;
+            let opponent_worsening = self.stack[cur].static_eval > -self.stack[cur - 1].static_eval;
+
+            // N6 hindsight depth adjustments (Wave-E item 17): the parent's LMR
+            // bookkeeping second-guessed. A hard reduction that did not turn
+            // the position their way looks unjustified — deepen; a moderate
+            // reduction with a healthy combined eval sum — shallow.
+            if prior_reduction >= params::HINDSIGHT_RED_UP && !opponent_worsening {
+                depth += 1;
+            }
+            if prior_reduction >= params::HINDSIGHT_RED_DOWN
+                && depth >= 2
+                && self.stack[cur].static_eval + self.stack[cur - 1].static_eval
+                    > params::HINDSIGHT_EVAL_SUM
+            {
+                depth -= 1;
+            }
+
+            // N6b — the NonPV TT cutoff (design/10 §3.4): enough stored depth
+            // (one ply of slack for upper-bound values), a valid value, the
+            // bound pointing the cutoff's way, the cutNode-agreement guard at
+            // shallow depth (item 20), the rule-50 guard (§3.12), and — deep —
+            // a child-TT re-verification. Live since plan step 7's zero-window
+            // scouts create NonPV nodes.
+            let cutoff_ok = !NT::PV
                 && self.stack[cur].excluded_move == Move::NULL
                 && is_valid(tt_value)
                 && tt_data.depth > depth - Depth::from(tt_value <= beta)
@@ -1058,8 +1087,9 @@ impl Worker {
                 } else {
                     tt_data.bound.includes_upper()
                 })
-                && (self.board.rule50_count() as i32) < params::TT_CUTOFF_RULE50_LIMIT
-            {
+                && (cut_node == (tt_value >= beta) || depth > params::TTCUT_AGREE_DEPTH)
+                && (self.board.rule50_count() as i32) < params::TT_CUTOFF_RULE50_LIMIT;
+            if cutoff_ok {
                 // N6b extras (design/10 §3.4, Wave-C item 12): a beta-side
                 // cutoff means the stored ttMove "worked" here.
                 let ttm = tt_data.mv;
@@ -1097,17 +1127,58 @@ impl Worker {
                         );
                     }
                 }
-                return tt_value;
+                // N6b child-TT verification (item 20): a deep cutoff on a
+                // non-decisive value re-probes the ttMove's child entry — only
+                // an invalid child value or one AGREEING with the cutoff
+                // direction confirms it. A contradicting child falls through to
+                // a real search.
+                if depth >= params::TTCUT_VERIFY_DEPTH
+                    && !is_decisive(tt_value)
+                    && tt_data.mv != Move::NULL
+                    && self.board.pseudo_legal(tt_data.mv)
+                    && self.board.legal(tt_data.mv)
+                {
+                    let m = tt_data.mv;
+                    self.do_move(tt, m, self.board.gives_check(m), ply);
+                    let child = tt.probe(self.board.key());
+                    let child_value = if child.hit {
+                        value_from_tt(
+                            child.data.value,
+                            ply as i32 + 1,
+                            self.board.rule50_count() as i32,
+                        )
+                    } else {
+                        VALUE_NONE
+                    };
+                    self.undo_move(m);
+                    if !is_valid(child_value) || (tt_value >= beta) == (-child_value >= beta) {
+                        return tt_value;
+                    }
+                } else {
+                    return tt_value;
+                }
+            } else if !NT::PV
+                && self.stack[cur].excluded_move == Move::NULL
+                && is_valid(tt_value)
+                && tt_data.depth > depth - Depth::from(tt_value <= beta)
+                && tt_data.bound != Bound::Exact
+                && (if tt_value >= beta {
+                    tt_data.bound.includes_upper()
+                } else {
+                    tt_data.bound.includes_lower()
+                })
+                && depth > params::TTCUT_PENALIZE_DEPTH
+            {
+                // Wrong-direction bound (item 20): the only reason the cutoff
+                // failed is a bound pointing the wrong way — age the mismatching
+                // entry out faster.
+                probe.writer.penalize(1);
             }
 
             // The pruning value `eval` (design/10 §3.4 N6): the corrected
             // static eval, then the TT-value-as-better-eval substitution —
             // a valid stored value whose bound points the right way is a
-            // tighter position estimate than the raw eval. (No consumer
-            // existed until doc 10's pruning; RFP below is the first.) The
-            // trend flags and `tt_capture` gate the pruning too. All
-            // computed AFTER the TT cutoff so a cut node pays for none of
-            // them.
+            // tighter position estimate than the raw eval.
             let mut eval = self.stack[cur].static_eval;
             if is_valid(tt_value)
                 && (if tt_value > eval {
@@ -1118,13 +1189,6 @@ impl Worker {
             {
                 eval = tt_value;
             }
-            // `improving`: our eval beats our eval two plies ago (our last
-            // turn). `opponent_worsening`: our eval beats the negation of
-            // the parent's — the position is turning our way. Both use
-            // `ss.static_eval` (never the substituted `eval`), and an unset
-            // predecessor is the large `VALUE_NONE` sentinel (SF parity).
-            improving = self.stack[cur].static_eval > self.stack[cur - 2].static_eval;
-            let opponent_worsening = self.stack[cur].static_eval > -self.stack[cur - 1].static_eval;
             // A capturing ttMove does not veto RFP (N10); a quiet one does —
             // a stored quiet best move is a standing reason to search.
             let tt_capture = tt_data.mv != Move::NULL && self.board.capture_stage(tt_data.mv);
@@ -1271,6 +1335,12 @@ impl Worker {
                     }
                 }
             }
+
+            // N11b — improving late-OR (design/10 §3.4, Wave-E item 17): from
+            // here on, "improving" also means "eval already beats beta". Feeds
+            // ProbCut and the move-loop LMP/reduction. SF places it between NMP
+            // and IIR.
+            improving |= self.stack[cur].static_eval >= beta;
         }
 
         // Step 9 — move loop. Interior nodes draw from the staged
@@ -1754,8 +1824,6 @@ impl Worker {
         // so this is skipped. SF's paired correction-history write is
         // deferred to its doc-10/11 pruning consumer (doc 09 §3.10 / D22).
         else if best_move != Move::NULL {
-            let prev_move = self.stack[cur - 1].current_move;
-            let prev_sq = prev_move.is_ok().then(|| prev_move.to());
             self.histories.update_all_stats(
                 &self.board,
                 &self.stack[..],
@@ -1768,6 +1836,66 @@ impl Worker {
                 tt_data.mv,
                 NT::PV,
             );
+        }
+        // Fail low with a real move loop (design/10 §3.10 steps 4/5, Wave-E
+        // item 19): no move raised alpha, so the parent's move "worked" —
+        // reward it. A quiet parent gets the full `bonus_scale` distributed to
+        // its conthist / main / pawn histories; a capturing parent gets a flat
+        // capture-history bonus.
+        else if move_count != 0
+            && let Some(sq) = prev_sq
+        {
+            if !prior_capture {
+                let bonus_scale = (params::FL_SCALE_BASE
+                    - self.stack[cur - 1].stat_score / params::FL_STATSCORE_DIV
+                    + (params::FL_DEPTH_MULT * depth).min(params::FL_DEPTH_CAP)
+                    + params::FL_LATE_PARENT * i32::from(self.stack[cur - 1].move_count > 8)
+                    + params::FL_BELOW_EVAL
+                        * i32::from(
+                            !in_check
+                                && best_value
+                                    <= self.stack[cur].static_eval - params::FL_BELOW_EVAL_MARGIN,
+                        )
+                    + params::FL_BELOW_PARENT_EVAL
+                        * i32::from(
+                            !self.stack[cur - 1].in_check
+                                && best_value
+                                    <= -self.stack[cur - 1].static_eval
+                                        - params::FL_BELOW_PARENT_EVAL_MARGIN,
+                        ))
+                .max(0);
+                let scaled_bonus = (params::FL_BONUS_MULT * depth - params::FL_BONUS_SUB)
+                    .min(params::FL_BONUS_CAP)
+                    * bonus_scale;
+                if let Some(pc) = self.board.piece_on(sq) {
+                    self.histories.update_continuation_histories(
+                        &self.stack[..],
+                        cur - 1,
+                        pc,
+                        sq,
+                        scaled_bonus * params::FL_CONTHIST_NUM / params::FL_CONTHIST_DEN,
+                    );
+                    let them = self.board.side_to_move().flip();
+                    self.histories.main[them as usize][prev_move.raw16() as usize]
+                        .update(scaled_bonus * params::FL_MAIN_NUM / params::FL_MAIN_DEN);
+                    if pc.piece_type != PieceType::Pawn && prev_move.kind() != MoveKind::Promotion {
+                        let pawn_key = self.board.pawn_key();
+                        self.histories.pawn_slot_mut(pawn_key)[pc.index()][sq.index() as usize]
+                            .update(scaled_bonus * params::FL_PAWN_NUM / params::FL_PAWN_DEN);
+                    }
+                }
+            } else if let Some(moved) = self.board.piece_on(sq) {
+                // The victim slot mirrors the in-search capture convention:
+                // en passant uses NO_VICTIM (None), every other capture its
+                // captured piece type.
+                let victim = if prev_move.kind() == MoveKind::EnPassant {
+                    None
+                } else {
+                    self.board.captured_piece().map(|p| p.piece_type)
+                };
+                self.histories
+                    .reward_prior_capture(moved, sq, victim, params::FL_CAPTURE_BONUS);
+            }
         }
 
         // ttPv back-propagation on fail low (step 14): a node with no good
@@ -4186,27 +4314,28 @@ mod tests {
         // design/12 §3.8: the GUI owns the clock while pondering — an
         // already-expired movetime must NOT stop a ponder search. The
         // depth limit (ID-loop condition, not check_time) bounds the
-        // test; depth 5 guarantees the 512-entry cadence fires real
-        // checks. (Depth 4 sufficed pre-LMP, but doc 10 §3.5's movecount
-        // pruning shrinks the startpos tree below 512 main-search node
-        // entries at depth 4 — the control below would never reach a real
-        // check — so the floor moves up one ply.)
+        // test; the depth must be high enough that the 512-entry cadence
+        // fires real checks. (Depth 4 sufficed pre-LMP; doc 10 §3.5's
+        // movecount pruning and then the Wave-C/E history-coupled
+        // reductions and hindsight depth shrink the startpos tree, so the
+        // floor keeps rising — depth 8 leaves comfortable margin above
+        // 512 main-search node entries.)
         let mut w = Worker::new(board(START_FEN));
         w.limits.movetime = Some(0); // expired from the first poll
         w.limits.start_time = std::time::Instant::now();
-        w.limits.depth = Some(5);
+        w.limits.depth = Some(8);
         w.limits.ponder = true;
         w.ponder = Arc::new(AtomicBool::new(true));
         let stop = AtomicBool::new(false);
         w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
         assert!(!stop.load(Ordering::Relaxed), "pondering must never stop");
-        assert_eq!(w.root_depth, 5, "the search deepened on GUI time");
+        assert_eq!(w.root_depth, 8, "the search deepened on GUI time");
 
         // Control: the same limits without the ponder flag stop at once.
         let mut w = Worker::new(board(START_FEN));
         w.limits.movetime = Some(0);
         w.limits.start_time = std::time::Instant::now();
-        w.limits.depth = Some(5);
+        w.limits.depth = Some(8);
         let stop = AtomicBool::new(false);
         w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
         assert!(stop.load(Ordering::Relaxed), "expired movetime must stop");
@@ -5385,6 +5514,41 @@ mod tests {
         let b = go_depth(START_FEN, 5);
         assert_eq!(a.nodes, b.nodes, "item 12 preserves node determinism");
         assert_eq!(a.best_move(), b.best_move());
+    }
+
+    // --- Wave-E items 17/19/20: hindsight, N11b, fail-low bonus, TT hardening ---
+
+    #[test]
+    fn wave_e_preserves_mate_and_determinism() {
+        // Hindsight depth adjustments (item 17) mutate `depth` mid-node; N11b
+        // widens `improving`; the fail-low parent bonus (item 19) and the TT
+        // child-verification / wrong-direction penalize (item 20) all fire
+        // during a normal search. None may corrupt a mate score or break
+        // single-thread determinism.
+        //
+        // Back-rank mate (1.Ra8#), searched deep so RFP/hindsight/fail-low all
+        // run at interior plies without corrupting the mate score.
+        let m1 = go_depth("6k1/5ppp/8/8/8/8/8/R6K w - - 0 1", 6);
+        assert!(is_mate(best_score(&m1)), "Wave E keeps mate scores exact");
+
+        let a = go_depth(START_FEN, 7);
+        let b = go_depth(START_FEN, 7);
+        assert_eq!(a.nodes, b.nodes, "Wave E preserves node determinism");
+        assert_eq!(a.best_move(), b.best_move());
+    }
+
+    #[test]
+    fn wave_e_zugzwang_reti_still_draws_or_wins() {
+        // The Réti zugzwang study (design/10 §5): NMP + the new hindsight /
+        // TT-hardening must not turn the drawn/won study into a loss. White
+        // to move holds (the study is a draw with best play; a shallow search
+        // must at least not evaluate it as lost for White).
+        let w = go_depth("8/8/p1p5/1p5p/1P5p/8/PPP2K1p/4R1rk w - - 0 1", 8);
+        assert!(
+            !is_mated(best_score(&w)),
+            "Réti zugzwang must not be scored as a White loss: {}",
+            best_score(&w)
+        );
     }
 
     #[test]

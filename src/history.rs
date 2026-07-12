@@ -33,7 +33,8 @@ use crate::moves::Move;
 use crate::search::params;
 use crate::search::stack::{SS_OFFSET, Stack};
 use crate::types::{
-    Color, Depth, Key, Piece, Square, VALUE_TB_LOSS_IN_MAX_PLY, VALUE_TB_WIN_IN_MAX_PLY, Value,
+    Color, Depth, Key, Piece, PieceType, Square, VALUE_TB_LOSS_IN_MAX_PLY, VALUE_TB_WIN_IN_MAX_PLY,
+    Value,
 };
 
 /// A single history cell bounded to `[-D, D]` by the "gravity" update rule
@@ -579,6 +580,23 @@ impl Histories {
             .piece_on(m.to())
             .map_or(NO_VICTIM, |p| p.piece_type as usize);
         self.capture[moved.index()][m.to().index() as usize][victim].get()
+    }
+
+    /// Flat capture-history reward for the parent's capturing move that caused
+    /// a fail low (design/10 §3.10 step 5). The board is already PAST the
+    /// parent move, so the cell is addressed by the reconstructed key: `moved`
+    /// is the parent's piece (now on `to`), `victim` its captured piece type
+    /// (`None` ⇒ the [`NO_VICTIM`] slot, e.g. en passant — keeping the same
+    /// victim convention the in-search capture writes use).
+    pub fn reward_prior_capture(
+        &mut self,
+        moved: Piece,
+        to: Square,
+        victim: Option<PieceType>,
+        bonus: i32,
+    ) {
+        let vi = victim.map_or(NO_VICTIM, |pt| pt as usize);
+        self.capture[moved.index()][to.index() as usize][vi].update(bonus);
     }
 
     /// The mutable capture-history cell for `m` in `board`: `[moved][to]
