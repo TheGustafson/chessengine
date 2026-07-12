@@ -9,7 +9,7 @@ introducing them.
 
 `design/` holds the reviewed design suite that governs all implementation:
 
-- `design/decisions.md` — pinned decisions D1-D31. **Decisions change here
+- `design/decisions.md` — pinned decisions D1-D32. **Decisions change here
   first; docs follow; code follows docs.**
 - `design/00-master-plan.md` — phase ordering (P0-P14), milestone gates,
   current phase status.
@@ -202,10 +202,13 @@ landed ~+570 Elo vs pre-pruning at fixed time (92% smaller tree); **Wave B**
 (razoring / LMP / parent- & capture-futility + SEE) PASSED its gate
 (`81538f7`, real 10+0.1 **+237 Elo** vs pre-Wave-B, 0 forfeits; bench 350190;
 item 9 IIR reverted — regressed ~−15 Elo, parked on
-`wip/p9-item9-iir-followpv`). Next: **Wave C** (statScore /
-continuation-history pruning), then D/E/F, then **Wave G** — the
-Reckless-derived per-node threat map + dependents (D30). A fixed-node proxy
-SPRT (doc 14 §9.4) gates each heuristic; the real-TC SPRT gates each wave.
+`wip/p9-item9-iir-followpv`). **Waves C–G are now BATCHED (D32, per user):**
+item 10 (statScore, `2436669`) landed; items 11–21 + the Wave-G threat map
+(Reckless, D30) are implemented + unit-tested in one pass (no per-item games),
+then a full correctness gate, then a SINGLE bug-tripwire SPRT vs pre-C — small
+regressions are kept and micro-tuned later via SPSA; only a large/surprising
+regression (= an implementation bug) triggers a bisect. Waves A/B used the
+older per-heuristic proxy-SPRT rhythm (doc 14 §9.4).
 
 Reckless study (2026-07-11, D31): a distilled study of the Reckless engine
 (`reckless_reference/`) fed vetted refinements into the P9 waves, added Wave G
@@ -214,7 +217,7 @@ Reckless study (2026-07-11, D31): a distilled study of the Reckless engine
 against D2/D14/D15/D19/D24. Adaptation list:
 `reckless_reference/00-design-implications.md`.
 
-Next / plan amended (D21/D28/D29/D30/D31, 2026-07-11): eval Phase B (HCE + texel)
+Next / plan amended (D21/D28/D29/D30/D31/D32, 2026-07-11): eval Phase B (HCE + texel)
 DESCOPED — Stockfish is now the NNUE bootstrap data generator, so HCE is off
 the critical path. Order: **P9 → P10** (time-mgmt completion + full UCI) **→
 P11** (lazy SMP) **→ P13** (NNUE), with PSQT as the eval fallback. NNUE is
