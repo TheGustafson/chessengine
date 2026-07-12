@@ -86,12 +86,14 @@ name = "chessengine"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "numpy" },
     { name = "tensorboard" },
     { name = "tensorflow" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "numpy", specifier = ">=2.5.1" },
     { name = "tensorboard", specifier = ">=2.21.0" },
     { name = "tensorflow", specifier = ">=2.21.0" },
 ]

@@ -14,6 +14,7 @@
 //!   history is applied in *search*, never here; the raw return value is
 //!   what the TT's `eval16` stores (D22).
 
+pub mod nnue;
 pub mod params;
 pub mod psqt;
 pub mod score;

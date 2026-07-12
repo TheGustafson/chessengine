@@ -236,6 +236,137 @@ struct ComputedKeys {
     non_pawn_material: [Value; 2],
 }
 
+/// The piece-placement deltas of a single move, the payload the NNUE
+/// accumulator consumes to update its feature columns incrementally
+/// (design/11 §3.4.4). A move touches at most two "adds" (a piece appearing
+/// on a square) and two "subs" (a piece leaving a square):
+///
+/// - normal quiet: 1 sub + 1 add (the mover);
+/// - capture (incl. en passant): 2 subs (mover + victim) + 1 add;
+/// - promotion: sub the pawn (+ sub a captured victim) + add the promoted
+///   piece;
+/// - castling: 2 subs + 2 adds (king and rook);
+/// - null move: empty (0 adds, 0 subs).
+///
+/// **Layering note (design/11 §3.4.4, adapted).** The design sketch places
+/// `DirtyPiece` under `src/eval/nnue/`, but its data is a pure
+/// board-mutation fact and [`DirtyPiece::from_move`] must read `Board`'s
+/// private castling geometry, so it lives HERE (the low module) and
+/// `eval::nnue` re-exports it. That keeps the dependency arrow pointing
+/// `eval → board` only — the foundational `board` module never reaches up
+/// into `eval`. The fields are private; iterate via [`DirtyPiece::adds`] /
+/// [`DirtyPiece::subs`] (behavior, not representation — CLAUDE.md).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DirtyPiece {
+    adds: [(Piece, Square); 2],
+    subs: [(Piece, Square); 2],
+    n_add: u8,
+    n_sub: u8,
+}
+
+impl Default for DirtyPiece {
+    fn default() -> Self {
+        Self::EMPTY
+    }
+}
+
+impl DirtyPiece {
+    /// A null record (the null-move case): no pieces added or removed. The
+    /// slot placeholder is never read — [`DirtyPiece::adds`]/[`subs`] bound
+    /// their slices by `n_add`/`n_sub`.
+    pub const EMPTY: DirtyPiece = DirtyPiece {
+        adds: [(Piece::new(Color::White, PieceType::Pawn), Square::A1); 2],
+        subs: [(Piece::new(Color::White, PieceType::Pawn), Square::A1); 2],
+        n_add: 0,
+        n_sub: 0,
+    };
+
+    /// The (piece, square) pairs a piece appears on after this move.
+    #[inline]
+    pub fn adds(&self) -> &[(Piece, Square)] {
+        &self.adds[..self.n_add as usize]
+    }
+
+    /// The (piece, square) pairs a piece leaves after this move.
+    #[inline]
+    pub fn subs(&self) -> &[(Piece, Square)] {
+        &self.subs[..self.n_sub as usize]
+    }
+
+    #[inline]
+    fn add(&mut self, piece: Piece, sq: Square) {
+        self.adds[self.n_add as usize] = (piece, sq);
+        self.n_add += 1;
+    }
+
+    #[inline]
+    fn sub(&mut self, piece: Piece, sq: Square) {
+        self.subs[self.n_sub as usize] = (piece, sq);
+        self.n_sub += 1;
+    }
+
+    /// Derive the placement deltas of `m` from the position `board` it is
+    /// made in (design/11 §3.4.4). `m` must be legal for `board`'s side to
+    /// move. This mirrors the mutation cases of [`Board::make_move_with`]
+    /// exactly, so the NNUE accumulator stays in lockstep with the board.
+    ///
+    /// A null / same-square sentinel yields [`DirtyPiece::EMPTY`].
+    pub fn from_move(board: &Board, m: Move) -> DirtyPiece {
+        let mut dp = DirtyPiece::EMPTY;
+        if !m.is_ok() {
+            return dp; // null move: empty record
+        }
+        let us = board.side_to_move;
+        let them = us.flip();
+        let (from, to) = (m.from(), m.to());
+        let mover = board
+            .piece_on(from)
+            .expect("DirtyPiece::from_move: no piece on the from-square");
+
+        match m.kind() {
+            MoveKind::Castling => {
+                // King to G1/C1 (D2); the rook jumps to F1/D1. Same geometry
+                // as make_move_with step 4.
+                let kingside = to.file() > from.file();
+                let rook_from =
+                    board.castling_rook_square[CastlingRights::single(us, kingside).index()];
+                let rook_to = if kingside { Square::F1 } else { Square::D1 }.relative_to(us);
+                let rook = Piece::new(us, PieceType::Rook);
+                dp.sub(mover, from);
+                dp.sub(rook, rook_from);
+                dp.add(mover, to);
+                dp.add(rook, rook_to);
+            }
+            MoveKind::EnPassant => {
+                // The captured pawn sits one rank from `to`, toward our home.
+                let capsq = to.offset(them.pawn_push());
+                dp.sub(mover, from);
+                dp.sub(Piece::new(them, PieceType::Pawn), capsq);
+                dp.add(mover, to);
+            }
+            MoveKind::Promotion => {
+                let promoted = Piece::new(
+                    us,
+                    m.promotion_piece().expect("promotion kind carries a piece"),
+                );
+                dp.sub(mover, from);
+                if let Some(victim) = board.piece_on(to) {
+                    dp.sub(victim, to); // capture-promotion
+                }
+                dp.add(promoted, to);
+            }
+            MoveKind::Normal => {
+                dp.sub(mover, from);
+                if let Some(victim) = board.piece_on(to) {
+                    dp.sub(victim, to); // ordinary capture
+                }
+                dp.add(mover, to);
+            }
+        }
+        dp
+    }
+}
+
 /// Hook points inside [`Board::make_move_with`] (doc 04 §3.10). D10 pins the
 /// public `make_move(m, gives_check)` signature, so prefetch targets can't be
 /// parameters — the TT (and later the history tables and NNUE dirty-piece
@@ -254,6 +385,17 @@ pub trait MakeMoveHooks {
     /// tables prefetch their entries here.
     #[inline]
     fn on_state(&mut self, _copied: &CopiedState) {}
+
+    /// Hook C (design/11 §3.4.4): the move's placement deltas, for the NNUE
+    /// accumulator to fold into its feature columns. Default no-op, so
+    /// [`NoHooks`] (hence `make_move`, perft, and the classical search path)
+    /// stays bit-identical — the accumulator layer (P13 step 4) is the only
+    /// caller that will supply a real body. NOT invoked from
+    /// `make_move_with` yet: computing the payload has a panic-carrying
+    /// `expect`, so a speculative unconditional call could perturb NoHooks
+    /// codegen; the call site lands with the search wiring in step 4.
+    #[inline]
+    fn on_dirty(&mut self, _dp: &DirtyPiece) {}
 }
 
 /// The default no-op hooks: [`Board::make_move`] delegates through this, and

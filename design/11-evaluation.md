@@ -554,6 +554,30 @@ In Phase C the *search's* `do_move` wrapper calls
 `make_move_with(m, gives_check, &mut NnueHooks { .. })` and the hook writes
 the record directly into the accumulator-stack entry it belongs to (below).
 
+> **Step-1 implementation note (P13 step 1, 2026-07-12; `src/eval/nnue/`).**
+> As built, refined from the sketch above (all consistent with its intent):
+> - **`DirtyPiece` lives in `board.rs`** (the low module), not
+>   `src/eval/nnue/`, and `eval::nnue` re-exports it. Its data is a pure
+>   board-mutation fact and its constructor
+>   `DirtyPiece::from_move(board_before, m)` reads `Board`'s private castling
+>   geometry, so keeping it in `board` avoids a `board → eval` layering
+>   inversion (the foundational module never reaches up into `eval`). The
+>   `on_dirty(&mut self, &DirtyPiece)` hook method is added to
+>   `MakeMoveHooks` as a default no-op but is **NOT yet called from
+>   `make_move_with`** — computing the payload has a panic-carrying `expect`,
+>   so a speculative unconditional call could perturb `NoHooks` codegen; the
+>   call site lands with the search wiring (step 4). Bench stays bit-identical
+>   (548978).
+> - **The `Kernels` seam uses safe `fn` pointers** this step (scalar-only
+>   under `#![deny(unsafe_code)]`); they become `#[target_feature]`
+>   `unsafe fn` pointers when the AVX2 backend lands (step 2, §3.4.6).
+> - **`NnueContext<'a>` borrows the net** (`net: &'a Network`) rather than
+>   `&'static Network`; it is not yet stored in the `Worker`'s `EvalContext`
+>   (that is step 4), so a borrow keeps tests free of a global.
+> - **The loader pins the header `qa`/`qb`/`scale` to the compile-time
+>   `QA`/`QB`/`SCALE`** for container version 1 (mismatch ⇒ `NnueError`), and
+>   the scalar forward uses the constants directly.
+
 **Lazy update (SF's approach).** Most made moves are pruned before ever
 being evaluated, so accumulators update lazily at evaluate time, not in
 `make_move`:

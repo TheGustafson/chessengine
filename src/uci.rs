@@ -44,6 +44,7 @@
 
 use crate::bench;
 use crate::board::Board;
+use crate::eval::nnue;
 use crate::eval::{EvalContext, evaluate};
 use crate::movegen;
 use crate::moves::{MAX_MOVES, Move, MoveList};
@@ -79,6 +80,11 @@ pub fn run() {
     match args.first().map(String::as_str) {
         Some("bench") => cmd_bench_argv(&args[1..]),
         Some("perft") => cmd_perft_argv(&args[1..]),
+        // Hidden NNUE dev surface (design/11 §3.4, P13 step 1): the raw
+        // forward-pass oracle and a deterministic test-net writer. Not part
+        // of the UCI protocol; used by tools/nnue/verify_forward.sh.
+        Some("nnue-eval") => cmd_nnue_eval_argv(&args[1..]),
+        Some("nnue-testnet") => cmd_nnue_testnet_argv(&args[1..]),
         // `d`: board diagram + FEN + key + checkers (design/12 §3.15).
         // Outside a UCI session the "current" position is the start
         // position.
@@ -141,6 +147,85 @@ fn cmd_perft_argv(args: &[String]) {
         Board::startpos()
     };
     print!("{}", perft::divide(&mut board, depth));
+}
+
+/// `chessengine nnue-eval <net.cenn> [fen...]` — the raw NNUE forward-pass
+/// oracle (design/11 §3.4, P13 step 1). Loads a CENN net and prints its
+/// integer centipawn forward-pass value for each position, one per line:
+///
+/// - with a FEN in argv (which may span several tokens): score that one
+///   position;
+/// - with no FEN: read one FEN per line from stdin, score each.
+///
+/// The output is a deterministic integer, cross-checked bit-for-bit against
+/// the independent Python reference (`tools/nnue/nnue_ref.py`). This is the
+/// forward-pass bit-oracle; the vs-`bullet` cross-check folds in at step 3.
+fn cmd_nnue_eval_argv(args: &[String]) {
+    let Some(net_path) = args.first() else {
+        exit_usage(format_args!(
+            "usage: chessengine nnue-eval <net.cenn> [fen...]"
+        ));
+    };
+    let net = match nnue::load(net_path) {
+        Ok(net) => net,
+        Err(e) => exit_usage(format_args!("nnue-eval: {e}")),
+    };
+
+    let mut out = io::stdout().lock();
+    let mut score_fen = |fen: &str| match Board::from_fen(fen) {
+        Ok(board) => {
+            let _ = writeln!(out, "{}", nnue::evaluate_forward(&net, &board));
+        }
+        Err(e) => exit_usage(format_args!("nnue-eval: invalid FEN '{fen}': {e}")),
+    };
+
+    if args.len() > 1 {
+        // FEN given on the command line (may span several argv tokens).
+        score_fen(&args[1..].join(" "));
+    } else {
+        // Batch mode: one FEN per line from stdin.
+        let stdin = io::stdin();
+        for line in stdin.lock().lines() {
+            let line = line.unwrap_or_else(|e| exit_usage(format_args!("nnue-eval: stdin: {e}")));
+            let fen = line.trim();
+            if !fen.is_empty() {
+                score_fen(fen);
+            }
+        }
+    }
+}
+
+/// `chessengine nnue-testnet <out.cenn> <seed> <screlu|crelu>` — write a
+/// deterministic pseudo-random CENN test net (design/11 §3.4.5/§3.4.7). A
+/// dev/test fixture, NOT a trained net; the single source of net bytes both
+/// the Rust `nnue-eval` and the Python oracle read, so their forward passes
+/// compare on identical weights.
+fn cmd_nnue_testnet_argv(args: &[String]) {
+    let usage = || -> ! {
+        exit_usage(format_args!(
+            "usage: chessengine nnue-testnet <out.cenn> <seed> <screlu|crelu>"
+        ))
+    };
+    let (Some(out_path), Some(seed_tok), Some(act_tok)) = (args.first(), args.get(1), args.get(2))
+    else {
+        usage();
+    };
+    let Ok(seed) = seed_tok.parse::<u64>() else {
+        exit_usage(format_args!("nnue-testnet: bad seed '{seed_tok}'"));
+    };
+    let activation = match act_tok.as_str() {
+        "screlu" => nnue::Activation::SCReLU,
+        "crelu" => nnue::Activation::CReLU,
+        other => exit_usage(format_args!(
+            "nnue-testnet: bad activation '{other}' (expected screlu or crelu)"
+        )),
+    };
+
+    let net = nnue::Network::deterministic_test_net(seed, activation);
+    let bytes = nnue::serialize(&net);
+    if let Err(e) = std::fs::write(out_path, &bytes) {
+        exit_usage(format_args!("nnue-testnet: writing {out_path}: {e}"));
+    }
 }
 
 // ---------------------------------------------------------------------------
