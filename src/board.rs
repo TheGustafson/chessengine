@@ -183,6 +183,14 @@ pub struct StateInfo {
     pub pinners: [Bitboard; 2],
     /// Per `PieceType`: from-squares that would check the enemy king.
     pub check_squares: [Bitboard; 6],
+    /// Wave-G threat map (D30): every square attacked by the side-NOT-to-move,
+    /// unioned (`all_threats`) and split by attacker `PieceType`
+    /// (`piece_threats[pt]`). Whole-army setwise fills with the side-to-move's
+    /// king removed from slider occupancy (sliders see through it). Recomputed
+    /// per state; read by threat-aware move ordering (§3.4/§3.7) and the
+    /// threat-coupled RFP margin (design/10 §3.4).
+    pub all_threats: Bitboard,
+    pub piece_threats: [Bitboard; 6],
     /// Piece captured by the move that produced this state.
     pub captured: Option<Piece>,
     /// Repetition encoding: 0 / +distance / -distance (doc 04 §3.9).
@@ -209,6 +217,8 @@ impl StateInfo {
         blockers_for_king: [Bitboard::EMPTY; 2],
         pinners: [Bitboard::EMPTY; 2],
         check_squares: [Bitboard::EMPTY; 6],
+        all_threats: Bitboard::EMPTY,
+        piece_threats: [Bitboard::EMPTY; 6],
         captured: None,
         repetition: 0,
     };
@@ -411,6 +421,20 @@ impl Board {
         self.st().blockers_for_king[color as usize]
     }
 
+    /// Every square attacked by the side NOT to move (Wave-G threat map, D30),
+    /// with the side-to-move's king x-rayed out of slider occupancy.
+    pub fn all_threats(&self) -> Bitboard {
+        self.st().all_threats
+    }
+
+    /// Squares attacked by the side-not-to-move's pieces of type `pt`
+    /// (Wave-G threat map, D30). `piece_threats(King)` is the enemy king's
+    /// attacks; kings/pawns have no cheaper attacker so the ordering scorer
+    /// unions the relevant tiers itself (design/09 §3.7).
+    pub fn piece_threats(&self, pt: PieceType) -> Bitboard {
+        self.st().piece_threats[pt as usize]
+    }
+
     /// `color`'s sliders pinning a piece of the OTHER color against its own
     /// king (doc 04 §3.5): the snipers whose sole blocker is an enemy piece.
     pub fn pinners(&self, color: Color) -> Bitboard {
@@ -545,6 +569,50 @@ impl Board {
         st.check_squares[PieceType::Queen as usize] = st.check_squares[PieceType::Bishop as usize]
             | st.check_squares[PieceType::Rook as usize];
         st.check_squares[PieceType::King as usize] = Bitboard::EMPTY;
+
+        self.set_threats(st);
+    }
+
+    /// Populate the Wave-G threat map (D30): squares attacked by `them` (the
+    /// side NOT to move), by piece type and unioned. Whole-army setwise fills;
+    /// the side-to-move's own king is removed from slider occupancy so a
+    /// slider's threat extends THROUGH it (the king cannot shield the square
+    /// behind it — it must move). Called from [`set_check_info`], so it is
+    /// maintained once per make/unmake/setup, AFTER `side_to_move` is flipped.
+    fn set_threats(&self, st: &mut StateInfo) {
+        let tables = attacks::tables();
+        let us = self.side_to_move;
+        let them = us.flip();
+        // Sliders see through our king (king-danger x-ray).
+        let slider_occ = self.all_occupancy ^ Bitboard::from_square(self.king_square(us));
+
+        let pawns = attacks::pawn_attacks_bb(them, self.pieces(them, PieceType::Pawn));
+
+        let mut knights = Bitboard::EMPTY;
+        for sq in self.pieces(them, PieceType::Knight) {
+            knights |= attacks::knight_attacks(sq);
+        }
+        let mut bishops = Bitboard::EMPTY;
+        for sq in self.pieces(them, PieceType::Bishop) {
+            bishops |= tables.bishop_attacks(sq, slider_occ);
+        }
+        let mut rooks = Bitboard::EMPTY;
+        for sq in self.pieces(them, PieceType::Rook) {
+            rooks |= tables.rook_attacks(sq, slider_occ);
+        }
+        let mut queens = Bitboard::EMPTY;
+        for sq in self.pieces(them, PieceType::Queen) {
+            queens |= tables.queen_attacks(sq, slider_occ);
+        }
+        let king = attacks::king_attacks(self.king_square(them));
+
+        st.piece_threats[PieceType::Pawn as usize] = pawns;
+        st.piece_threats[PieceType::Knight as usize] = knights;
+        st.piece_threats[PieceType::Bishop as usize] = bishops;
+        st.piece_threats[PieceType::Rook as usize] = rooks;
+        st.piece_threats[PieceType::Queen as usize] = queens;
+        st.piece_threats[PieceType::King as usize] = king;
+        st.all_threats = pawns | knights | bishops | rooks | queens | king;
     }
 
     /// Does this pseudo-legal move of the side to move give check?
@@ -1572,6 +1640,64 @@ mod tests {
         squares.iter().copied().collect()
     }
 
+    /// Independent oracle for the Wave-G threat map: `them` (side not to move)
+    /// threatens `sq` iff one of its pieces attacks `sq`, with the side-to-
+    /// move's king x-rayed out of slider occupancy — computed via
+    /// `attackers_to` (a different code path than the setwise fills).
+    fn threat_oracle(b: &Board) -> Bitboard {
+        let us = b.side_to_move();
+        let them = us.flip();
+        let slider_occ = b.all_occupancy() ^ Bitboard::from_square(b.king_square(us));
+        let them_occ = b.occupancy(them);
+        let mut t = Bitboard::EMPTY;
+        for i in 0..64u8 {
+            let sq = Square::new(i);
+            if !(b.attackers_to(sq, slider_occ) & them_occ).is_empty() {
+                t |= Bitboard::from_square(sq);
+            }
+        }
+        t
+    }
+
+    #[test]
+    fn threat_map_matches_the_attackers_to_oracle() {
+        // G0 (D30): the setwise-filled `all_threats` equals the per-square
+        // oracle across a range of positions (incl. slider x-ray through the
+        // king), and the per-piece-type maps union to it.
+        let fens = [
+            crate::fen::START_FEN,
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", // kiwipete
+            "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+            "6k1/8/8/8/3q4/8/8/4K3 b - - 0 1", // queen x-rays the white king
+        ];
+        for fen in fens {
+            let b = Board::from_fen(fen).unwrap();
+            assert_eq!(b.all_threats(), threat_oracle(&b), "all_threats for {fen}");
+            let mut union = Bitboard::EMPTY;
+            for pt in PieceType::ALL {
+                union |= b.piece_threats(pt);
+            }
+            assert_eq!(union, b.all_threats(), "piece_threats union for {fen}");
+        }
+    }
+
+    #[test]
+    fn threat_map_survives_make_unmake() {
+        // The threat map is maintained per state, so it is fresh after a move
+        // and restored after unmake.
+        let mut b = Board::from_fen(crate::fen::START_FEN).unwrap();
+        let before = b.all_threats();
+        let m = Move::normal(Square::E2, Square::E4);
+        b.make_move(m, b.gives_check(m));
+        assert_eq!(
+            b.all_threats(),
+            threat_oracle(&b),
+            "threats fresh after make"
+        );
+        b.unmake_move(m);
+        assert_eq!(b.all_threats(), before, "threats restored after unmake");
+    }
+
     #[test]
     fn put_piece_updates_all_layers() {
         let mut board = Board::empty();
@@ -1685,7 +1811,12 @@ mod tests {
         fn assert_copy<T: Copy>() {}
         assert_copy::<CopiedState>();
         assert_copy::<StateInfo>();
-        const { assert!(size_of::<StateInfo>() <= 192) }
+        // The bound grew from 192 with the Wave-G threat map (D30): `all_threats`
+        // + `piece_threats[6]` add 7 bitboards (56 bytes). These are recomputed
+        // per state (not carried in `copied`), so make_move does not copy them;
+        // only make_null_move's whole-record clone and the Vec entry pay the
+        // size — an accepted cost for O(1) threat queries.
+        const { assert!(size_of::<StateInfo>() <= 256) }
     }
 
     // Doc 04 §8 item 7: make_move performs no heap allocation — the state

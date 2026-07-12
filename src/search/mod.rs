@@ -5872,16 +5872,18 @@ mod tests {
         // determinism.
         let w = go_depth(START_FEN, 7);
         // At least one correction cell moved off its init (CORR_INIT = -6).
-        let moved = w
-            .histories
-            .corr
-            .iter()
-            .any(|slot| slot.iter().any(|b| b.pawn.get() != -6 || b.non_pawn_white.get() != -6));
+        let moved = w.histories.corr.iter().any(|slot| {
+            slot.iter()
+                .any(|b| b.pawn.get() != -6 || b.non_pawn_white.get() != -6)
+        });
         assert!(moved, "correction history must learn during a search");
 
         // Mate stays exact with the correction couplings live.
         let m = go_depth("6k1/5ppp/8/8/8/8/8/R6K w - - 0 1", 6);
-        assert!(is_mate(best_score(&m)), "correction couplings keep mate exact");
+        assert!(
+            is_mate(best_score(&m)),
+            "correction couplings keep mate exact"
+        );
 
         let a = go_depth(START_FEN, 7);
         let b = go_depth(START_FEN, 7);
