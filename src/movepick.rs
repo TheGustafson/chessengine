@@ -1376,6 +1376,51 @@ mod tests {
     }
 
     #[test]
+    fn wave_g_offense_term_scores_only_an_undefended_target() {
+        // G1 offense (D30): a quiet moving to a square from which the piece
+        // attacks an UNDEFENDED enemy piece worth >= the mover earns
+        // QUIET_OFFENSE_FACTOR · piece_value. This pins BOTH branches of the
+        // term precisely (hand-computed), including the disarm branch the
+        // determinism/mate smoke tests never touch.
+        //
+        // Fresh-history base (same as quiet_scoring_matches_hand_computed_values).
+        const BASE: i32 = 2 * -5 + 2 * -1262 + 5 * -552; // −5294
+        let fresh = Histories::new();
+        let nc6 = Move::normal(Square::E5, Square::C6);
+
+        // Armed: the lone Black rook on b8 is undefended (nothing Black attacks
+        // b8). White Ne5–c6 attacks b8 (rook ≥ knight), so the offense term
+        // fires and is the ONLY non-base term (no check, no threat escape:
+        // threat[Knight] is the pawn map, and Black has no pawns).
+        let armed = board("1r5k/8/8/4N3/8/8/8/K7 w - - 0 1");
+        assert!(
+            !armed.all_threats().contains(Square::B8),
+            "the lone Black rook on b8 is undefended (absent from Black's attack map)"
+        );
+        assert_eq!(
+            quiet_score(&armed, &fresh, nc6, 7),
+            BASE + PieceType::Knight.value() * QUIET_OFFENSE_FACTOR,
+            "attacking an undefended enemy rook must add the offense bonus"
+        );
+
+        // Disarmed: a Black knight on a6 defends b8, so b8 joins Black's attack
+        // map and is no longer 'undefended' — the offense bonus is withheld and
+        // the identical move scores the bare base. (a6 is a Knight attacker, so
+        // it feeds piece_threats(Knight)/by_minor, never threat[Knight] — the
+        // White knight's escape term stays zero, so nothing else moves.)
+        let defended = board("1r5k/8/n7/4N3/8/8/8/K7 w - - 0 1");
+        assert!(
+            defended.all_threats().contains(Square::B8),
+            "with a defender the rook's square joins Black's attack map"
+        );
+        assert_eq!(
+            quiet_score(&defended, &fresh, nc6, 7),
+            BASE,
+            "a DEFENDED enemy is not a vulnerable target — the offense bonus is disarmed"
+        );
+    }
+
+    #[test]
     fn capture_scoring_matches_hand_computed_values() {
         // 7·victim_value + capture_history; a fresh capture cell is −699.
         let b = board("4k3/8/8/3n4/4P3/8/8/4K3 w - - 0 1");

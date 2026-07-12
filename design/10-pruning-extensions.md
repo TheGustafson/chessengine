@@ -289,7 +289,15 @@ inside a singular search (`excluded_move != Move::NULL`) keep the existing
   pruning will run — after N7 we jump straight to the move loop, skipping
   N8–N13 but NOT N14).
 - *Excluded move set*: reuse `ss.static_eval` from the enclosing invocation
-  (same ply, already corrected); no TT eval store.
+  (same ply, already corrected); no TT eval store. `eval = ss.static_eval`
+  with **no** TT-value-as-better-bound substitution — SF takes a dedicated
+  `else if (excludedMove)` branch that does not fall through to the ttHit
+  substitution (search.cpp). This matters: the re-probe inside a singular
+  verification hits the excluded move's own entry, so applying the
+  substitution would inflate `eval` toward `tt_value` and corrupt the
+  razoring/RFP inputs — and hence the exclusion-search return that decides
+  singular vs multicut vs negative extension. (Round-2 review fix,
+  2026-07-12; previously applied unconditionally.)
 - *TT hit*: `raw_eval = tt.eval` if valid else `evaluate(board)`;
   `ss.static_eval = eval = raw_eval + correction_value / 131072` (clamped
   inside the non-decisive range);
@@ -837,6 +845,15 @@ expected +15..40 combined).**
 
 **Wave E — flow refinements (each small; expected +10..30 aggregate).**
 16. ProbCut (N13) + in-check small ProbCut (N14). SPRT `[0, 3]`.
+    *Fidelity note (round-2 review, 2026-07-12): both ProbCuts are gated
+    `excluded_move == NULL`, so — unlike SF, which runs ProbCut inside an
+    exclusion search and merely `continue`s over the excluded move in its own
+    loop — they never fire during a singular verification. Intentional: it
+    keeps the exclusion-search verdict a clean function of the ordinary move
+    search. Consequence: the exclusion search does strictly more work than
+    SF's, contributing to the deferred-reductions node-count trade-off. The
+    now-dead `m == excluded_move` skip inside the N13 loop is retained as a
+    self-documenting mirror of SF's structure.*
 17. Hindsight depth adjustments (N6) + `improving |= eval >= beta` (N11b).
     SPRT `[0, 3]`.
     *Fidelity note (2026-07-12): per §3.11 the N6 trend flags and the two
@@ -856,6 +873,13 @@ expected +15..40 combined).**
 20. TT-cutoff hardening: depth slack, cutNode agreement, rule50 ≥ 96 guard,
     depth ≥ 7 child verification, wrong-direction penalize. SPRT `[0, 3]`
     (some of these are safety, not Elo; accept on non-regression `[-3, 1]`).
+    *Fidelity note (round-2 review, 2026-07-12): the `rule50 < 96` limit is
+    folded into `cutoff_ok`, so at rule50 ∈ [96, 100) the whole N6b block —
+    including the quiet-ttMove history bonus and the parent early-quiet malus —
+    is skipped. SF instead applies those history nudges whenever the bound
+    matches and gates only the RETURN / child verification on `rule50 < 90`.
+    Accepted deviation: the affected band is rare (rule50 96–99) and the nudges
+    are second-order; revisit if a rule50 axis is added to the histories.*
 
 **Wave F — correction-history couplings (needs correction history from the
 eval doc; expected +5..15).**
@@ -870,6 +894,19 @@ eval doc; expected +5..15).**
     `to_corrected_static_eval`) is **DEFERRED** to the eval doc's corrected-eval
     consumer (D22) so the exact-value pruning-margin unit tests stay pinned to
     the raw eval.
+    *Fidelity note (round-2 review, 2026-07-12): the node-result correction
+    update is gated `excluded_move == NULL && move_count != 0`. SF has NEITHER
+    guard. The excluded-move skip is deliberate (an exclusion search's best
+    move was forcibly removed, so its eval-error signal is polluted). The
+    `move_count != 0` guard is an accepted deviation: it drops the update at
+    terminal (stalemate) nodes SF would still learn from — a negligible,
+    rarely-reached signal — and is kept for symmetry with the TT no-moves
+    store. Also (round-2, §3.7): en-passant contributes 0 victim value to
+    `stat_score` (`piece_on(to)` is empty), unlike SF's post-move
+    `PieceValue[captured] == PAWN` — an intentional internal convention that
+    matches this engine's NO_VICTIM capture-history slot for e.p. (doc 09
+    §3.9); it under-docks an e.p. capture's reduction by a pawn-scaled term
+    only.*
 
 **Wave G — Reckless-derived threat map + dependents (2026-07-11 study, D30;
 scheduled AFTER the existing waves A–F).** Prereq is *infrastructure, not a

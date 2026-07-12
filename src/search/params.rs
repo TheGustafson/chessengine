@@ -172,11 +172,13 @@ pub const RFP_IMPROVING: Value = 2934;
 pub const RFP_OPP_WORSENING: Value = 343;
 /// Denominator of the improving/opponent-worsening margin discounts.
 pub const RFP_TREND_DEN: Value = 1024;
-/// Threat-coupled RFP relaxation (Wave-G item 23, D30): when NO own non-pawn
-/// piece is currently threatened (the Wave-G threat map says the position is
-/// safe), subtract this flat term from the N10 margin so RFP fires a little
-/// more readily — a safe position at/above beta is very likely a real
-/// fail-high.
+/// Threat-coupled RFP relaxation (Wave-G item 23, D30): when NO own piece
+/// (pawns included) is currently threatened (the Wave-G threat map says the
+/// position is safe), subtract this flat term from the N10 margin so RFP fires
+/// a little more readily — a safe position at/above beta is very likely a real
+/// fail-high. The N10 use-site keys on `all_threats() & occupancy(us)` — ALL
+/// our pieces, matching Reckless's `all_threats() & colors(stm)`; a hanging
+/// pawn still blocks the relaxation. Un-tuned placeholder pending the SPSA pass.
 pub const RFP_THREAT_MARGIN: Value = 55;
 /// Beta weight of the return blend `(RFP_RET_BETA_W·beta + RFP_RET_EVAL_W·
 /// eval) / RFP_RET_DEN` — a value ≥ beta, pulled toward beta to damp

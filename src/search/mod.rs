@@ -1220,9 +1220,19 @@ impl Worker {
             // The pruning value `eval` (design/10 §3.4 N6): the corrected
             // static eval, then the TT-value-as-better-eval substitution —
             // a valid stored value whose bound points the right way is a
-            // tighter position estimate than the raw eval.
+            // tighter position estimate than the raw eval. The substitution is
+            // fenced to `excluded_move == NULL`: SF (search.cpp) takes a
+            // dedicated `else if (excludedMove)` branch that sets
+            // `eval = ss->staticEval` and does NOT fall through to the ttHit
+            // substitution — so a singular verification razors/RFPs on the raw
+            // static eval, not on the (necessarily present) stored value of the
+            // very move it is excluding. Without this guard the re-probe hits
+            // the excluded move's own entry and inflates `eval` toward
+            // `tt_value`, corrupting the exclusion-search return that decides
+            // singular vs multicut vs negative extension.
             let mut eval = self.stack[cur].static_eval;
-            if is_valid(tt_value)
+            if self.stack[cur].excluded_move == Move::NULL
+                && is_valid(tt_value)
                 && (if tt_value > eval {
                     tt_data.bound.includes_lower()
                 } else {
@@ -5959,6 +5969,38 @@ mod tests {
         let b = go_depth(START_FEN, 7);
         assert_eq!(a.nodes, b.nodes, "Wave G stays deterministic");
         assert_eq!(a.best_move(), b.best_move());
+    }
+
+    #[test]
+    fn rfp_threat_coupling_is_disarmed_when_an_own_piece_is_attacked() {
+        // The G2 threat-coupled RFP relaxation subtracts RFP_THREAT_MARGIN only
+        // when `all_threats() & occupancy(us)` is EMPTY (no own piece
+        // threatened). This pins the negative branch the coupling exists for —
+        // the `no_own_threat = false` path at mod.rs N10 — which the
+        // mate/determinism smoke tests never exercise. Keys on ALL our pieces
+        // (pawns included), matching the N10 use-site and Reckless's
+        // `all_threats() & colors(stm)`.
+
+        // A hanging own rook: the black queen on d8 attacks the White rook on
+        // d4 down the open d-file. An own (White) piece IS threatened, so the
+        // predicate is non-empty and the relaxation is DISARMED.
+        let attacked = board("3q3k/8/8/8/3R4/8/8/6K1 w - - 0 1");
+        let us = attacked.side_to_move();
+        assert!(
+            !(attacked.all_threats() & attacked.occupancy(us)).is_empty(),
+            "a hanging own rook must register in all_threats() & occupancy(us), \
+             disarming the RFP relaxation"
+        );
+
+        // A quiet position: no White piece stands on any square Black attacks,
+        // so the predicate is empty and the relaxation is ARMED (the margin
+        // shrinks by RFP_THREAT_MARGIN).
+        let safe = board("6k1/8/8/8/8/8/6P1/6K1 w - - 0 1");
+        let us2 = safe.side_to_move();
+        assert!(
+            (safe.all_threats() & safe.occupancy(us2)).is_empty(),
+            "with no own piece attacked the relaxation predicate must be empty"
+        );
     }
 
     // --- Wave-F item 21: correction-history couplings ---
