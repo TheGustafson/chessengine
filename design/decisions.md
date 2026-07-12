@@ -341,6 +341,15 @@ strength. Two constraints in permanent tension, resolved in this order:
      provenance of the SHIPPED net. Reimplement inference from the Reckless Rust
      as prior art only (D27/D31), never copied. Owning docs: `design/11` §3.4
      (arch/quant/inference), `design/17` (the search-integrated heads on top).
+  **FINALIZED & GO (user, 2026-07-12) — see `design/11` §11 for the full step
+  plan.** Locked: first net = SMALL `Chess768 → 2×256 → 1` (not final — smallest
+  that proves the loop); train net-0 on WHATEVER the SF-teacher corpus has now
+  (~23M+; we retrain on fresh data later regardless); execution = consolidated
+  impl agent → D33 review → my bench-neutrality + bullet-oracle gates → local
+  SPRT vs the PSQT baseline (the "NNUE beats PSQT" = it-works milestone); the
+  Reckless-net A/B is DEFERRED to AFTER our first NNUE works and shows a big Elo
+  jump, then the firewalled loader is added as a stress-test/baseline. Ready to
+  start P13 step 1 (inference skeleton) on the user's go.
 
 - **D36**: Testing-throughput strategy — cloud-burst distributed SPRT/SPSA + a
   proactive SPSA scaffold (from the Integral study, 2026-07-12; user-confirmed).

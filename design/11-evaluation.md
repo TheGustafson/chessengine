@@ -1074,3 +1074,52 @@ confirmations of our planned machinery:
   attacker/victim inputs summed into a second accumulator; §3.4.1). Forces a
   `design/15` §3.2.3 datagen-record amendment — but NOT the raw store (D29
   regenerates any feature projection).
+
+## 11. P13 kickoff plan — FINALIZED & GO (D35, user-approved 2026-07-12)
+
+The concrete, ratified plan to START P13 (NNUE). Approach = D35 (inference-first,
+bullet-oracled, own-net-first), sharpened by the Integral study (§design/17 §10:
+get the full loop working cheap-and-early at a weak net before polishing).
+
+**Preconditions (all TRUE as of 2026-07-12, HEAD `04ffd19`):** P9+P10+P11 complete
+(engine ~2720 Elo single-core PSQT; depth-6 bench 548978). Datagen corpus building
+at `data/nnue/raw/*.txt` (~23M positions and growing, SF-teacher-labeled text
+lines `<FEN> | <cp> | <result>`). The `bullet` training half is VALIDATED end-to-end
+(commit 241b937, `tools/nnue/TRAINING.md`, converter `tools/nnue/bf_convert.rs`,
+bullet cebc78a, RTX 4060 Ti). The bench-neutral `MakeMoveHooks` seam already exists
+(`src/board.rs:246`, `make_move_with`) — reserved for exactly this. Current eval is
+the incremental material+PSQT `EvalContext`; NNUE slots alongside/replaces it.
+
+**Locked choices (user, 2026-07-12):**
+- **First net = SMALL.** `Chess768 → 2×256 → 1` (single perspective pair, 1 output
+  bucket). Explicitly NOT the final net — smallest thing that proves the loop.
+  Grow (king buckets, larger L1, output buckets) only AFTER step 4 works.
+- **Data = whatever the corpus has NOW.** Train net-0 on the current SF-teacher
+  corpus (no waiting for a target count — we regenerate/retrain later regardless).
+- **Execution = consolidated impl agent → D33 review loop → my bench-neutrality +
+  bullet-oracle gates → local SPRT vs PSQT.**
+- **Reckless-net A/B = DEFERRED.** Only AFTER our own first NNUE works AND shows a
+  big Elo jump vs PSQT; THEN implement the firewalled Reckless-net loader as a
+  stress-test / baseline (D35 step 4-optional; AGPL net gitignored, never shipped).
+
+**Step sequence:**
+1. **Inference skeleton** — `src/nnue/` module: net loader (our own format, versioned),
+   the perspective accumulator + incremental add/remove hung on the `MakeMoveHooks`
+   seam, and a SCALAR quantized forward pass (QA=255/QB=64, SCReLU, scale). GATE:
+   eval flag OFF ⇒ depth-6 bench bit-identical 548978 (D24); **bit-oracle the forward
+   pass against `bullet`'s own reference inference** on shared positions (D35).
+2. **SIMD forward pass** — AVX2 (x86-64-v3 target) + the cross-ISA bit-exactness
+   checklist (design/17 §10 / mul_add, fixed reduction order). GATE: bit-identical
+   to scalar.
+3. **Train net-0** — the small arch above on the current corpus via `bullet`
+   (tools/nnue/TRAINING.md). GATE: a net file that loads + evaluates sane cp.
+4. **Wire NNUE as eval** — behind net-present; **local SPRT vs the PSQT baseline
+   (04ffd19)**. GATE: **NNUE beats PSQT** ← the P13 "it works" milestone. Expect a
+   large jump (NNUE is worth ~+400-700 Elo over PSQT).
+5. **Iterate** — bigger arch + more/fresh data + the D36 SPSA scaffold; each change
+   SPRT-gated. Then: self-play retrain for clean provenance (D28b) → the D34
+   research heads (design/17). The Reckless A/B slots in here once step 4 shows big Elo.
+
+**Owning docs:** this §11 + §3.4 (arch/quant/inference/net-format), design/15 (datagen/
+bullet contract), design/16 (observation store), design/17 (research heads, later),
+design/14 §11 (SPSA scaffold + cloud testing, D36). Datagen keeps running throughout.

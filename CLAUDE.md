@@ -168,6 +168,15 @@ mutates. Full mechanics: `design/14` §10.
 
 ## Status / roadmap
 
+**CURRENT (2026-07-12): the CLASSICAL ENGINE IS COMPLETE — P0–P11 all done + gated.**
+~**2720 Elo single-core** on PSQT eval (anchored vs SF16 rungs); depth-6 bench
+**548978**. P9 (all pruning waves A–G), P10 (TM + full UCI), P11 (lazy SMP:
+Threads-4-vs-1 +279 Elo, TSan-clean) — each D33-reviewed + game-gated. **NEXT =
+P13 (NNUE), GO GRANTED** — the finalized step plan is **`design/11` §11** (read it
+first) + **D35**; start with step 1 (inference skeleton in `src/nnue/`). Datagen
+corpus building at `data/nnue/raw/` (~23M+). The narrative below is the
+phase-by-phase history.
+
 Done: types, bitboards, board + FEN, `Move`/`MoveList`; attack tables (P1:
 const leapers + geometry, fancy magic sliders, exhaustively validated
 against the naive ray oracle, criterion-benchmarked); P2 (SEE pending) —
