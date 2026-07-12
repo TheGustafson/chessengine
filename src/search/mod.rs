@@ -530,6 +530,13 @@ struct AspirationAttempt {
     value: Value,
 }
 
+/// Length of the soft-stop `fallingEval` ring (design/12 §3.9): the scores
+/// of the previous four completed iterations. A power of two so the cursor
+/// advance is a single mask (`& (ITER_VALUE_RING - 1)`); named once here so
+/// the array size and the mask can never silently disagree (doc 12 §8.4).
+const ITER_VALUE_RING: usize = 4;
+const _: () = assert!(ITER_VALUE_RING.is_power_of_two());
+
 /// Per-thread search state (design/07 §3.10): one worker owns its board
 /// copy (D8, D23), stack, PV table and counters. Written single-threaded
 /// but SMP-shaped — no globals; the stop flag is a shared borrow.
@@ -617,7 +624,7 @@ pub struct Worker {
     /// `persist.best_previous_score` (or `VALUE_DRAW` on the first search
     /// of a game), never carried over — so `fallingEval` is well-defined
     /// from iteration 1.
-    iter_value: [Value; 4],
+    iter_value: [Value; ITER_VALUE_RING],
     /// Ring cursor into [`Self::iter_value`]; `iter_value[iter_idx]` is the
     /// score from four iterations ago at read time.
     iter_idx: usize,
@@ -704,7 +711,7 @@ impl Worker {
             last_best_move_pv: Vec::new(),
             last_best_move_score: -VALUE_INFINITE,
             last_best_move_depth: 0,
-            iter_value: [VALUE_DRAW; 4],
+            iter_value: [VALUE_DRAW; ITER_VALUE_RING],
             iter_idx: 0,
             increase_depth: true,
             tm_previous_time_reduction: crate::timeman::PREVIOUS_TIME_REDUCTION_INIT,
@@ -783,7 +790,7 @@ impl Worker {
         } else {
             VALUE_DRAW // first search of the game (§3.9)
         };
-        self.iter_value = [iter_seed; 4];
+        self.iter_value = [iter_seed; ITER_VALUE_RING];
         self.tm_previous_time_reduction = persist.previous_time_reduction;
         // The running time_reduction seeds to 1.0 per `go` (SF search.cpp:279),
         // NOT to the persisted numerator: if the factor block never runs this
@@ -838,10 +845,17 @@ impl Worker {
                 rm.previous_score_exact = idx < multi_pv;
             }
 
+            // SF's `bestValue`: the value the LAST MultiPV line's root
+            // search settled on (reassigned every line, so after the loop it
+            // holds the pv_idx == multi_pv-1 line's return). Feeds the
+            // soft-stop `fallingEval` + `iter_value` ring. Identical to
+            // `root_moves[0].score` at MultiPV 1 (bench-neutral); the weakest
+            // line at MultiPV > 1, matching search.cpp.
+            let mut root_best_value = -VALUE_INFINITE;
             for pv_idx in 0..multi_pv {
                 self.pv_idx = pv_idx;
                 self.sel_depth = 0; // per PV line (§3.9)
-                self.aspiration_search(tt, stop, search_again_counter);
+                root_best_value = self.aspiration_search(tt, stop, search_again_counter);
                 // Order the completed lines among themselves (§3.5) — a
                 // no-op at MultiPV 1, but the shape is load-bearing for
                 // the MultiPV loop.
@@ -910,7 +924,7 @@ impl Worker {
             // TM soft stop between completed iterations (doc 12 §3.9, full
             // four-factor form — doc 12 step 8). Sets `increase_depth` for
             // the next iteration and maintains the `iter_value` ring.
-            self.soft_stop(stop, multi_pv, tot_best_move_changes);
+            self.soft_stop(stop, multi_pv, tot_best_move_changes, root_best_value);
         }
         // Persist the per-game TM state for the next `go` of this game
         // (design/12 §3.7/§3.9): the front move's score and running average
@@ -1030,12 +1044,17 @@ impl Worker {
     ///
     /// `self.root_delta` is stored before EVERY root search, re-searches
     /// included — doc 10's reduction formula divides by it (§3.6).
+    ///
+    /// Returns the raw value the root search settled on (SF's `bestValue`).
+    /// The MultiPV driver keeps the LAST line's return as the soft-stop
+    /// `fallingEval` input, exactly as SF does — identical to
+    /// `root_moves[0].score` at MultiPV 1, the weakest line at MultiPV > 1.
     fn aspiration_search(
         &mut self,
         tt: &TranspositionTable,
         stop: &AtomicBool,
         search_again_counter: i32,
-    ) {
+    ) -> Value {
         let rm = &self.root_moves[self.pv_idx];
         let mut delta = (params::ASPIRATION_BASE_DELTA as i64
             + rm.mean_squared_score.abs() / params::ASPIRATION_MSS_DIVISOR)
@@ -1044,6 +1063,9 @@ impl Worker {
         let mut alpha = (avg - delta).max(-VALUE_INFINITE);
         let mut beta = (avg + delta).min(VALUE_INFINITE);
         let mut failed_high_cnt: i32 = 0;
+        // Assigned at the top of every loop iteration before any break, so
+        // definite-assignment holds at the post-loop return.
+        let mut best;
 
         loop {
             let adjusted_depth = (self.root_depth
@@ -1052,7 +1074,7 @@ impl Worker {
                     / params::ASPIRATION_SEARCH_AGAIN_DEN)
                 .max(1);
             self.root_delta = beta - alpha;
-            let best = self.search::<Root>(tt, stop, alpha, beta, adjusted_depth, false, 0);
+            best = self.search::<Root>(tt, stop, alpha, beta, adjusted_depth, false, 0);
 
             // Stable re-sort per attempt (§3.4): the searched PV move
             // floats to the front, everything else keeps last iteration's
@@ -1098,6 +1120,7 @@ impl Worker {
             delta = (delta + params::ASPIRATION_WIDEN_NUM * delta / params::ASPIRATION_WIDEN_DEN)
                 .min(2 * VALUE_INFINITE);
         }
+        best
     }
 
     /// The best root line of the current `go` (`root_moves[0].pv`; empty
@@ -3113,12 +3136,22 @@ impl Worker {
     ///
     /// Maintains the per-iteration TM state (`iter_value` ring,
     /// `tm_previous_time_reduction`) as a side effect, hence `&mut self`.
-    fn soft_stop(&mut self, stop: &AtomicBool, multi_pv: usize, tot_best_move_changes: f64) {
+    ///
+    /// `best_value` is SF's `bestValue` — the value the LAST MultiPV line's
+    /// root search settled on (`root_moves[0].score` at MultiPV 1, the
+    /// weakest line at MultiPV > 1), NOT `root_moves[0].score` unconditionally;
+    /// it drives `fallingEval` and seeds the `iter_value` ring.
+    fn soft_stop(
+        &mut self,
+        stop: &AtomicBool,
+        multi_pv: usize,
+        tot_best_move_changes: f64,
+        best_value: Value,
+    ) {
         if !self.limits.use_time_management() || stop.load(Ordering::Relaxed) {
             return;
         }
         let pondering = self.ponder.load(Ordering::Relaxed);
-        let best_value = self.root_moves[0].score;
 
         // The four §3.9 factors (constants pinned by golden tests).
         let falling_eval = Self::falling_eval(
@@ -3166,7 +3199,7 @@ impl Worker {
         // seeded at `go` start (SF: the local `timeReduction` is recomputed,
         // `previousTimeReduction` is not touched until search end).
         self.iter_value[self.iter_idx] = best_value;
-        self.iter_idx = (self.iter_idx + 1) & 3;
+        self.iter_idx = (self.iter_idx + 1) & (ITER_VALUE_RING - 1);
         self.tm_time_reduction = time_reduction;
     }
 

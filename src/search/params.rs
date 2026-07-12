@@ -869,6 +869,17 @@ pub const SOFT_STOP_MATED_PLIES: Depth = 2;
 /// min(512, limits.nodes / 1024)` so tiny node budgets are honored.
 pub const CHECK_TIME_CALLS: i32 = 512;
 
+// The poll mask is `CHECK_TIME_CALLS - 1` (default branch) / a power-of-two
+// `<= CHECK_TIME_CALLS` (nodes branch). `x & (CALLS - 1) == CALLS - 1` is a
+// valid contiguous low-bit gate ONLY when CALLS is 2^k; a non-power-of-two
+// would open silent gaps far wider than the cadence between real clock
+// checks. Enforce the invariant at compile time so nobody can retune it into
+// a forfeit-latency bug.
+const _: () = assert!(
+    CHECK_TIME_CALLS > 0 && (CHECK_TIME_CALLS as u64).is_power_of_two(),
+    "CHECK_TIME_CALLS must be a positive power of two (the poll mask assumes it)"
+);
+
 /// Flat epsilon shaved off every enforced *wall-clock* bound — `maximum()`
 /// and `movetime` (design/12 §3.8; Reckless bundle D31). Cuts fast-TC
 /// forfeit risk by stopping a few ms early to cover the unwind-and-print

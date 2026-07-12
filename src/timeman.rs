@@ -111,6 +111,16 @@ pub struct Limits {
     pub inc: [i64; 2],
     /// `movestogo`; 0 = sudden death / not given.
     pub movestogo: i32,
+    /// `nodestime` (nodes-per-ms) flag, set by [`TimeManager::init`] ONLY
+    /// when it actually converted the side-to-move's own clock to a node
+    /// budget this move (SF's `limits.npmsec`, `search.h`/`timeman.cpp`):
+    /// non-zero iff `nodestime > 0` AND the own clock was given (so `init`
+    /// ran past its missing-clock early return). The post-search node
+    /// accounting gates on this — NOT on `use_time_management()`, which is
+    /// true even when only the OPPONENT's clock was sent, a corner where
+    /// `init` early-returns and the conversion never happened (§3.11).
+    /// Reset to 0 by [`Limits::new`] every `go`.
+    pub npmsec: i64,
     /// `go depth d`
     pub depth: Option<Depth>,
     /// `go nodes n`
@@ -136,6 +146,7 @@ impl Limits {
             time: [0; 2],
             inc: [0; 2],
             movestogo: 0,
+            npmsec: 0,
             depth: None,
             nodes: None,
             movetime: None,
@@ -270,6 +281,10 @@ impl TimeManager {
             }
             limits.time[us] = self.available_nodes;
             limits.inc[us] *= npmsec;
+            // SF timeman.cpp:79 — the post-search accounting gate. Set here,
+            // AFTER the missing-own-clock early return, so it stays 0 in the
+            // opponent-clock-only corner where no conversion happened.
+            limits.npmsec = npmsec;
             move_overhead *= npmsec;
         }
         let scale_factor: i64 = if self.use_nodes_time { npmsec } else { 1 };
@@ -542,6 +557,34 @@ mod tests {
         limits3.time[Color::White as usize] = 60000;
         tm.init(&mut limits3, Color::White, 0, &options, &mut persist);
         assert_eq!(limits3.time[Color::White as usize], 60_000_000);
+    }
+
+    #[test]
+    fn nodestime_opponent_clock_only_leaves_budget_untouched() {
+        // §3.11 corner (SF timeman.cpp:79 / search.cpp:232): nodestime ON but
+        // only the OPPONENT's clock was sent (engine is White, GUI sends
+        // `btime` only). `init` early-returns before the conversion, so it
+        // must leave `limits.npmsec == 0` — the post-search accounting gate —
+        // and NOT seed `available_nodes`. Gating on `use_time_management()`
+        // (true here, Black's clock is set) would corrupt the game-long node
+        // budget to 0 and forfeit the rest of the game.
+        let mut options = default_options();
+        options.set("nodestime", Some("1000")).unwrap();
+        let mut persist = TimePersist::default();
+        let mut limits = Limits::new();
+        limits.time[Color::Black as usize] = 60000; // opponent clock only
+        let mut tm = TimeManager::new();
+        tm.init(&mut limits, Color::White, 0, &options, &mut persist);
+        // The gate SF (and our uci.rs) checks stays 0: no conversion ran.
+        assert_eq!(limits.npmsec, 0);
+        assert!(limits.use_time_management()); // but TM IS active (Black clock)
+        // Next move White's clock arrives; the budget must still derive fresh
+        // from the full clock (available_nodes was NOT clobbered to 0).
+        let mut limits2 = Limits::new();
+        limits2.time[Color::White as usize] = 60000;
+        tm.init(&mut limits2, Color::White, 2, &options, &mut persist);
+        assert_eq!(limits2.time[Color::White as usize], 60_000_000);
+        assert_eq!(limits2.npmsec, 1000);
     }
 
     #[test]

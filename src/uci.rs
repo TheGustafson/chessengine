@@ -1114,10 +1114,14 @@ fn run_search<W: Write>(
 
     // §3.11 post-search `nodestime` accounting (step 11): book the nodes
     // consumed this move minus the increment credit, exactly like a real
-    // clock, so the node budget carries across the game. Only when this
-    // move actually ran on the node clock (own clock given AND nodestime
-    // on); `limits.inc[us]` is already in nodes (rewritten by `init`).
-    if options.nodestime() > 0 && worker.limits.use_time_management() {
+    // clock, so the node budget carries across the game. Gate on SF's
+    // `limits.npmsec` (set by `init` ONLY when it converted OUR OWN clock to
+    // a node budget this move) — NOT `use_time_management()`, which is also
+    // true when just the OPPONENT's clock was sent, a corner where `init`
+    // early-returns leaving `available_nodes == -1`; advancing there would
+    // corrupt the game-long budget to 0 and forfeit the rest of the game.
+    // `limits.inc[us]` is already in nodes (rewritten by `init`).
+    if worker.limits.npmsec > 0 {
         let inc_nodes = worker.limits.inc[us as usize];
         worker
             .tm
