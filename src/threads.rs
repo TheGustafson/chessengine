@@ -286,13 +286,30 @@ fn thread_main(idx: usize, pool: Arc<PoolShared>) {
             return;
         }
         // Run the job; a panic is caught so the idle handoff below still runs.
-        let _ = std::panic::catch_unwind(AssertUnwindSafe(|| match job {
+        let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| match job {
             Job::Setup(s) => worker.setup(*s),
             Job::Search { tt } => worker.start_searching(&tt),
             Job::Clear => worker.clear(),
             Job::Custom(f) => f(&mut worker),
             Job::Exit => unreachable!("Exit handled before dispatch"),
         }));
+        // A panicked job must not leave the REST of the pool running. The main
+        // worker's `start_searching` runs its stop-and-join epilogue (search
+        // `main_search` step E: `pool.stop.store(true)` + wait every helper)
+        // INSIDE the job, so a panic before that point would swallow the stop
+        // and leave the helpers searching — still holding their per-`go`
+        // `Arc<TranspositionTable>` clones — while `wait_for_search_finished`
+        // already observes the parked (panicked) main. A following
+        // `setoption Hash`/`ucinewgame`/`Clear Hash` would then reach
+        // `Arc::get_mut(&mut tt)` (uci `tt_mut`) against those live clones and
+        // panic a SECOND time on the UCI read loop (breaking "never panic on
+        // input"). Requesting `stop` here makes every helper wind down and drop
+        // its clone promptly; the all-shells wait in `wait_for_search_finished`
+        // then closes the get_mut race for good. Harmless for a non-`Search`
+        // job or a between-`go` panic (the next `start_thinking` clears `stop`).
+        if outcome.is_err() {
+            pool.stop.store(true, Ordering::Relaxed);
+        }
         // Job complete (or panicked): announce idle and wake any
         // `wait_idle`/`submit` waiter.
         let mut st = shell.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -415,11 +432,23 @@ impl ThreadPool {
         self.shared.ponder.store(false, Ordering::Relaxed);
     }
 
-    /// Wait until the search is fully finished (§3.5): only the main worker is
-    /// waited on — its epilogue already joins the helpers, so main idle ⇒ all
-    /// idle.
+    /// Wait until the search is fully finished (§3.5). In normal operation the
+    /// main worker's epilogue (`main_search` step E) stops and joins every
+    /// helper before it parks, so main-idle already implies all-idle — but if
+    /// the main worker's job PANICS before that epilogue, its helpers keep
+    /// running (and holding `Arc<TranspositionTable>` clones) after main parks.
+    /// Waiting on EVERY shell — not just `shells[0]` — guarantees that once
+    /// this returns no worker is busy and every per-`go` TT clone has been
+    /// dropped, so the UCI thread's `Arc::get_mut(&mut tt)` (uci `tt_mut`)
+    /// cannot race a live helper. `thread_main` sets `stop` on a caught panic
+    /// so those helpers actually wind down (bounded wait, never a hang). Cheap
+    /// in the common case: the helpers are already parked, each extra
+    /// `wait_idle` returns at once; at Threads=1 it is exactly the old
+    /// single-shell wait.
     pub fn wait_for_search_finished(&self) {
-        self.shared.shells[0].wait_idle();
+        for shell in &self.shared.shells {
+            shell.wait_idle();
+        }
     }
 
     /// `ucinewgame`: reset every worker (histories, TM). Waits for the search
@@ -678,6 +707,63 @@ mod tests {
             pool.shared.shells[0].wait_idle();
             assert_eq!(ran.load(Ordering::SeqCst), 7, "pool must survive a panic");
             // Drop must also not hang (Exit + join on a live thread).
+        });
+    }
+
+    /// Round-2 lifecycle fix (§3.5, review): a panic in the MAIN worker's job
+    /// must not leave the helpers running. The main worker's stop-and-join
+    /// epilogue lives INSIDE its job, so a panic before it never sets `stop`;
+    /// `thread_main` therefore sets `stop` on any caught unwind, and
+    /// `wait_for_search_finished` waits on EVERY shell. Together they guarantee
+    /// that once the wait returns no helper is still busy (holding an
+    /// `Arc<TT>` clone) — the window that would let the UCI thread's
+    /// `Arc::get_mut` in `tt_mut` panic a second time. Here two helpers spin
+    /// like a live search until they see `stop`; only the panic-set `stop` can
+    /// release them, and only the all-shells wait can observe it.
+    #[test]
+    fn a_main_panic_stops_helpers_so_the_all_shells_wait_joins() {
+        with_timeout(Duration::from_secs(10), || {
+            let prev = std::panic::take_hook();
+            std::panic::set_hook(Box::new(|_| {}));
+
+            let pool = ThreadPool::new(3);
+            pool.shared.stop.store(false, Ordering::Relaxed);
+            // Helpers busy-loop until they observe `stop` — a live search that
+            // never stops itself, exactly the case a main panic must not strand.
+            for shell in pool.shared.shells.iter().skip(1) {
+                let shared = Arc::clone(&pool.shared);
+                shell.submit(Job::Custom(Box::new(move |_w| {
+                    while !shared.stop.load(Ordering::Relaxed) {
+                        std::thread::yield_now();
+                    }
+                })));
+            }
+            // Main panics before it could ever set `stop` on its own.
+            pool.shared.shells[0].submit(Job::Custom(Box::new(|_w| {
+                panic!("boom");
+            })));
+
+            // Returns only once the panic-set `stop` has released both helpers
+            // and every shell has parked — a hang here fails via `with_timeout`.
+            pool.wait_for_search_finished();
+            std::panic::set_hook(prev);
+
+            assert!(
+                pool.shared.stop.load(Ordering::Relaxed),
+                "a caught panic must request stop so helpers wind down"
+            );
+            // Every shell is serviceable again (proves they re-parked, not hung).
+            let ran = Arc::new(AtomicUsize::new(0));
+            for shell in &pool.shared.shells {
+                let r = Arc::clone(&ran);
+                shell.submit(Job::Custom(Box::new(move |_w| {
+                    r.fetch_add(1, Ordering::SeqCst);
+                })));
+            }
+            for shell in &pool.shared.shells {
+                shell.wait_idle();
+            }
+            assert_eq!(ran.load(Ordering::SeqCst), 3, "all shells survived");
         });
     }
 

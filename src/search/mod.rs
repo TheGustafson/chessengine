@@ -578,9 +578,15 @@ impl SearchReport {
 /// `score - min_score + VOTE_TEMPO`, so even the weakest thread's opinion
 /// counts and identical moves accumulate. A *trusted decisive* incumbent is
 /// only displaced by a trusted decisive candidate with strictly larger
-/// magnitude (a shorter mate / faster TB win); otherwise a candidate wins on
-/// more votes, or equal votes and a longer PV (a depth proxy). A `-INFINITE`
-/// or losing candidate can never win.
+/// magnitude (a shorter mate / faster TB win). Against a NON-decisive
+/// incumbent, a *trusted decisive* candidate — a proven, non-bound mate/TB
+/// result, WIN **or** LOSS — is trusted outright (SF `get_best_thread`'s
+/// `newThreadDecisive` short-circuit: an exact proof of a lost position, whose
+/// PV is then the longest defence, is more reliable than another thread's fuzzy
+/// heuristic score). Only among NON-decisive candidates does the vote decide —
+/// more votes, or equal votes and a longer PV (a depth proxy) — and there a
+/// losing (`is_loss`) or never-finished (`-VALUE_INFINITE`) candidate can never
+/// win.
 pub fn best_thread(reports: &[SearchReport]) -> usize {
     use std::collections::HashMap;
     debug_assert!(!reports.is_empty());
@@ -1403,7 +1409,17 @@ impl Worker {
                 // last line `0..=pv_idx == 0..multi_pv`, the full coherent
                 // block; at MultiPV 1 a single line per iteration (unchanged,
                 // bench-neutral).
-                if pv_idx + 1 == multi_pv || self.nodes > params::INFO_THROTTLE_NODES {
+                // Helpers pass a no-op `on_info` and never emit, so skip the
+                // whole block for them — building a `SearchInfo` eagerly calls
+                // `pool.nodes_searched()` (a Σ over all shells) and samples
+                // `tt.hashfull` per root line per iteration, side-effecting
+                // reads the compiler cannot elide behind the empty callback.
+                // Gating on `is_main` costs the (perfectly predicted) branch and
+                // is bench-neutral: the detached bench worker and the Threads=1
+                // pool main are both `is_main`, so their emission is unchanged.
+                if self.is_main()
+                    && (pv_idx + 1 == multi_pv || self.nodes > params::INFO_THROTTLE_NODES)
+                {
                     for line in 0..=pv_idx {
                         let rm = &self.root_moves[line];
                         on_info(&SearchInfo {
@@ -3963,6 +3979,53 @@ mod tests {
             report(b, -VALUE_INFINITE, 9, false),
         ];
         assert_eq!(best_thread(&reports), 0);
+    }
+
+    #[test]
+    fn voting_trusts_a_proven_loss_over_a_fuzzy_incumbent() {
+        // A *trusted* (exact, non-bound) proven-loss candidate DOES displace a
+        // non-decisive incumbent — SF `get_best_thread`'s `newThreadDecisive`
+        // short-circuit fires for a proven LOSS as well as a proven win. An
+        // exact mated_in(n) is ground truth (its PV is the longest defence),
+        // more reliable than another thread's fuzzy +50 that has not yet seen
+        // the refutation. This is the deliberate reference behaviour, NOT the
+        // (never-finished) `-VALUE_INFINITE` sentinel of `voting_infinite_*`:
+        // that one is blocked by both `is_trusted_decisive`'s `!= -INFINITE`
+        // guard and the vote arm's `!is_loss` guard.
+        let a = mv(Square::E2, Square::E4);
+        let b = mv(Square::D2, Square::D4);
+        let reports = [
+            report(a, 50, 2, false),          // non-decisive, optimistic
+            report(b, mated_in(5), 2, false), // trusted proven loss
+        ];
+        assert_eq!(
+            best_thread(&reports),
+            1,
+            "a trusted proven loss is trusted over a fuzzy incumbent (SF-faithful)"
+        );
+        // Mirror: a trusted proven-loss INCUMBENT is protected from votes just
+        // like a proven win — only a shorter/longer decisive of the same sign
+        // displaces it (the vote arm never runs while `b_dec` holds).
+        let reports = [
+            report(a, mated_in(5), 2, false), // trusted proven-loss incumbent
+            report(b, 50, 3, false),          // non-decisive, more votes/longer PV
+        ];
+        assert_eq!(
+            best_thread(&reports),
+            0,
+            "a decisive incumbent (loss) ignores the vote (SF-faithful)"
+        );
+        // But a BOUND (aborted-iteration) loss is untrusted: it neither wins as
+        // a candidate nor protects itself as an incumbent.
+        let reports = [
+            report(a, 50, 2, false),
+            report(b, mated_in(5), 2, true), // bound ⇒ not trusted-decisive
+        ];
+        assert_eq!(
+            best_thread(&reports),
+            0,
+            "a bound loss cannot displace via the decisive short-circuit"
+        );
     }
 
     #[test]
