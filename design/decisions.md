@@ -341,3 +341,46 @@ strength. Two constraints in permanent tension, resolved in this order:
      provenance of the SHIPPED net. Reimplement inference from the Reckless Rust
      as prior art only (D27/D31), never copied. Owning docs: `design/11` §3.4
      (arch/quant/inference), `design/17` (the search-integrated heads on top).
+
+- **D36**: Testing-throughput strategy — cloud-burst distributed SPRT/SPSA + a
+  proactive SPSA scaffold (from the Integral study, 2026-07-12; user-confirmed).
+  The Integral study's dominant finding: **~half of "how a solo dev reached
+  top-6" is free access to a distributed test fleet** — a "+2 Elo" verdict needs
+  ~48k games (`design/14` §3.8 error math), and Integral ran millions of games
+  over its climb; impossible on one desktop. Our `tools/sprt.sh` single-machine
+  setup (the §3.8 "concession to local hardware") is the biggest lever we are
+  NOT yet using. Resolution (user): **rent it when we need it** — 5–10 GCE spot
+  instances running OpenBench-shaped workers, spun up for a tuning burst / SPRT
+  batch and torn down after; cheap on spot pricing. TIMING: distributed compute
+  enters at the **tuning grind (post-first-NNUE, P13 tail → P14)** — NOT before;
+  all of P13's core (inference, first-net, pipeline validation) is single-machine
+  work gated by local SPRT. PREP NOW (near-zero cost, so the cloud burst is
+  plug-and-play): (a) build the `cargo feature="spsa"` **`TUNABLE` scaffold over
+  `search/params.rs`** — dead weight without compute but trivial to add, and
+  Integral wired it in *before* it had the compute (our constants are all untuned
+  SF starting points); (b) keep `bench` stdout OpenBench-parseable. Owning doc:
+  `design/14` §11. Supersedes the §3.8 "local only" concession once the scaffold
+  + a cloud OpenBench instance exist.
+
+- **D37**: Integral-study incorporation (2026-07-12). A 13-agent study of Integral
+  (`integral_reference/`, top-6 solo-dev C++ engine, aronpetko; ALL-RIGHTS-
+  RESERVED — no license — so ideas-only per D27, even harder than SF/Reckless).
+  It surfaced FEW novel search techniques (we already source current SF), so its
+  value is dominantly **validation + the D36 tooling lesson**. VALIDATED (record
+  so a future reader doesn't second-guess): our `Bench:` trailer + one-idea-per-PR
+  SPRT rhythm (D24/D25/D32), the `bullet` trainer + UHO opening book (D28 — two
+  unrelated top engines independently converged on both), and the iterative NNUE
+  self-bootstrap (D28/D34) — Integral reached top-6 with PURE self-bootstrap (no
+  foreign teacher), confirming the SF-teacher shortcut (D28a) and the Reckless-net
+  A/B (D35) are genuinely OPTIONAL, not load-bearing. ADOPTED (folded into docs):
+  a small set of cheap search micro-refinements (e.g. an `eval_complexity` distrust
+  signal reusing the correction-history byproduct — `design/09` §3.10 / `design/10`
+  RFP-LMR) as P9-tail SPRT candidates; the datagen recipe corroboration + the
+  DATAGEN-flag footgun (strip search-only rule-50/optimism from training labels —
+  `design/15`/`design/16`); the sharpened P13 lesson (get the full
+  datagen→train→embed→bench loop working cheap-and-early before polishing —
+  `design/17`). DECLINED: **killer moves** — Integral uses them; our **D17**
+  deliberately dropped killers for the history stack. Record as prior art;
+  affirms D17, do not adopt. Adaptation list: `integral_reference/
+  00-design-implications.md`; success-factors: `integral_reference/
+  00-success-factors.md`.

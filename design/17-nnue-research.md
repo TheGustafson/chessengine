@@ -465,3 +465,33 @@ post-P13 milestone to be added to the master plan when the first thrust lands).
    gives a *local* label, but the global effect is what matters. How well local
    counterfactual supervision predicts global Elo is the deepest open question
    of Thrust II.
+
+## 10. Integral study inputs (D37, 2026-07-12)
+
+Integral (`integral_reference/`, top-6 solo-dev engine) built its eval with
+almost exactly our planned pipeline (`bullet` + iterative HCE→NNUE→self-play
+retrain = D28/D34) and reached top-6 — a direct validation. The sharpened
+lessons for our P13 (ideas only; Integral is all-rights-reserved, D27/D37):
+
+- **Get the full loop working cheap-and-early.** datagen → train → embed → bench
+  end-to-end at a *weak* first architecture, BEFORE polishing — the sharpened
+  form of D35. Integral's expensive phase was the ~6-month *architecture* search;
+  once the arch froze and the net embedded, retrains dropped to ~13 days each
+  (Zekrom v2→v7 in 67 days). Lesson: don't over-engineer the first net's shape;
+  make the pipeline solid, then iterate architectures behind it.
+- **Pure self-bootstrap reaches top-tier.** Integral's first net distilled from
+  its OWN HCE self-play; every net since retrained on the prior net's self-play,
+  no foreign teacher (its own-HCE data beat lichess-HCE data in an A/B). Confirms
+  D28's clean-provenance path and that the SF-teacher (D28a) + Reckless-net A/B
+  (D35) are optional insurance, not load-bearing.
+- **Architecture reference data point** (not a prescription): Integral's net is
+  `(768×12 factorized → 1536)×2 → (16 → 32 → 1)×8` — horizontally mirrored, 12
+  factorized king input buckets, L1=1536, an L2/L3 head, 8 output buckets. A
+  concrete "what a top-6 net shape looks like" anchor for our `design/11` §3.4.1
+  arch choice; our first net stays smaller/simpler (D35) and grows toward this.
+- **The DATAGEN-flag footgun** (audit into acceptance criteria): Integral strips
+  search-only score adjustments (rule-50 / optimism terms) from the *training
+  labels* under a datagen build flag — our labels must not bake in search-only
+  eval tweaks either. Fold into `design/11` §3.6 / `design/16` acceptance.
+- **P13 is a perpetual research thread**, not a one-shot: Integral was still
+  shipping new nets 19 months / 7 nets after the first — matches the D34 framing.

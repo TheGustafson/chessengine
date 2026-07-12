@@ -722,3 +722,19 @@ should retune.
   either lands the run in tens-to-low-hundreds of throttled core-hours. §6 and
   §3.5(6) should be updated with the measured rate. **Bulk generation remains
   deferred pending this human review (D28); nothing here authorises it.**
+
+## 11. Integral corroboration (D37, 2026-07-12)
+
+The Integral study (`integral_reference/07-datagen-training.md`) independently
+corroborates two datagen choices already pinned here, and adds one guard:
+- **UHO opening book** (`UHO_Lichess_4852_v1`) + a few random opening plies (3–4)
+  off each — the same book family already in `tools/sprt.sh`; a second unrelated
+  top engine converging on it. Keep.
+- **`bullet` trainer** (D28) — same choice; independently corroborated. Keep.
+- **5-man Syzygy TBs to guide the datagen search** (adjudicate + steer) — a datagen
+  quality lever to adopt when Syzygy lands (post-P13; Fathom is a non-default
+  opt-in feature, D27 reuse / D14-D15 caveat).
+- **GUARD — the DATAGEN-flag footgun:** strip search-only score adjustments
+  (rule-50 / optimism) from the *training labels* (Integral does this under a
+  build flag). Add to this doc's acceptance criteria + `design/16` so a first net
+  is not trained on search-contaminated labels.

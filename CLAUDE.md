@@ -9,7 +9,7 @@ introducing them.
 
 `design/` holds the reviewed design suite that governs all implementation:
 
-- `design/decisions.md` — pinned decisions D1-D35. **Decisions change here
+- `design/decisions.md` — pinned decisions D1-D37. **Decisions change here
   first; docs follow; code follows docs.**
 - `design/00-master-plan.md` — phase ordering (P0-P14), milestone gates,
   current phase status.
@@ -147,6 +147,13 @@ live in `reckless_reference/` (tracked; index `NOTES.md`, adaptation list
 `00-design-implications.md`) — same rule: **never copy code**, take ideas and
 reimplement in our own safe Rust (D27/D31).
 
+`integral_reference/integral/` holds a clone of Integral (a top-6 solo-dev C++
+engine, aronpetko; **NO license → all-rights-reserved**, gitignored — ideas-only
+even harder than SF/Reckless). Distilled notes in `integral_reference/` (tracked;
+index `NOTES.md`, headline `00-success-factors.md`, adaptation list
+`00-design-implications.md`) — the study of how a solo dev reached top-6
+(D36/D37). **Never copy code.**
+
 ## Multi-agent review loop (D33)
 
 For substantial batched or one-shot implementations, **before game testing**
@@ -235,7 +242,15 @@ Reckless study (2026-07-11, D31): a distilled study of the Reckless engine
 against D2/D14/D15/D19/D24. Adaptation list:
 `reckless_reference/00-design-implications.md`.
 
-Next / plan amended (D21/D28/D29/D30/D31/D32, 2026-07-11): eval Phase B (HCE + texel)
+Integral study (2026-07-12, D36/D37): a distilled study of Integral (top-6
+solo-dev C++ engine) — how one dev reached top-6. Headline: ~half the story is
+free DISTRIBUTED TEST COMPUTE (D36 — resolved via GCE-spot OpenBench workers at
+the tuning grind, post-first-NNUE; proactive SPSA scaffold + OpenBench-parseable
+bench built now). Validated our D24/D25/D28/D32/D35 + bullet + UHO book calls;
+declined killers (affirms D17); sharpened the P13 loop-first lesson. Notes:
+`integral_reference/00-success-factors.md` + `00-design-implications.md`.
+
+Next / plan amended (D21/D28-D37, 2026-07-11..12): eval Phase B (HCE + texel)
 DESCOPED — Stockfish is now the NNUE bootstrap data generator, so HCE is off
 the critical path. Order: **P9 → P10** (time-mgmt completion + full UCI) **→
 P11** (lazy SMP) **→ P13** (NNUE), with PSQT as the eval fallback. NNUE is

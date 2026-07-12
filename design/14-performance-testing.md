@@ -885,3 +885,41 @@ rule for the P9 C-G batch).
 while material findings remain. Persona count/mix scales with the change's size
 and risk; the three above are the default for search/eval code. Emit the
 per-round finding counts so convergence is visible.
+
+## 11. Distributed testing & the SPSA scaffold (D36, Integral study)
+
+The Integral study (`integral_reference/00-success-factors.md`, 2026-07-12)
+found that the dominant lever behind a solo dev reaching top-6 was **free access
+to a distributed SPRT/SPSA test fleet**, not code. The §3.8 error math makes it
+concrete: a "+2 Elo" verdict needs ~48,000 games (error ∝ 1/√N); the small-Elo
+increments that make up the top-tier climb are *invisible* on a single machine's
+game budget. Our `tools/sprt.sh` single-machine setup (§3.8, "a concession to
+local hardware") is therefore the binding constraint on the *back half* of the
+strength climb — not the front half.
+
+**Plan (D36):**
+
+- **Distribution = cloud burst, rented when needed.** 5–10 GCE spot instances
+  running OpenBench-shaped workers pointed at a small OpenBench server; spun up
+  for a tuning burst or an SPRT gate batch, torn down after. Spot pricing makes a
+  75–100k-game SPSA run cheap. This is an OPS exercise, not an engine-code change.
+- **Timing.** Distributed compute enters at the **tuning grind (post-first-NNUE,
+  P13 tail → P14)**. Everything up to and including a first NNUE that beats PSQT
+  in a *local* SPRT is single-machine work — do not block P13 on cloud setup.
+- **Prep now (near-zero cost, so the burst is plug-and-play):**
+  1. **The SPSA scaffold** — a `cargo feature="spsa"` `TUNABLE`/`TUNABLE_STEP`
+     macro pair over `search/params.rs` (D20): a normal `pub const` when the
+     feature is off (bench-neutral, D24), a UCI-settable + OpenBench-format-
+     printing static when on. Build it *before* the compute exists (Integral
+     did); our constants are all untuned SF starting points, so the payoff is
+     large the day we rent instances. Roadmap: `design/00` P14, `design/10` §9.1.
+  2. **Keep `bench` stdout OpenBench-parseable** — the `<nodes> nodes <nps> nps`
+     line an OpenBench worker greps. A one-line check now; we already emit the
+     `Bench:` fingerprint (D24), so the artifact exists.
+- **SPSA cadence (when live):** all-parameters-at-once batches (~75–100k games/
+  run) after each pruning-wave batch and each NNUE net swap (Integral ran 7 such
+  campaigns escalating to 100k games / 12.5k iterations). Curate an in-rotation
+  vs frozen tunable set.
+
+This supersedes §3.8's "local only" concession once the scaffold + a cloud
+OpenBench instance exist.
