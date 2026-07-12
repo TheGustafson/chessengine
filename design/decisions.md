@@ -249,3 +249,28 @@ strength. Two constraints in permanent tension, resolved in this order:
   regenerates any feature projection (including relational threat features);
   only the disposable `bullet`/Chess768 export (`design/15` §3.2.3) would be
   amended if/when we train threat features.
+
+- **D32**: Batched P9 Waves C–G (added 2026-07-11, per user). For the remaining
+  P9 pruning/reduction/extension waves (C–G — doc 10 items 11–21 plus the
+  Wave-G threat map), we one-shot IMPLEMENT + unit-test every heuristic first,
+  then gate the WHOLE batch with a single SPRT vs the pre-C baseline — rather
+  than a per-heuristic proxy SPRT (the Wave A/B rhythm). Rationale: these are
+  clean transcriptions of proven Stockfish/Reckless heuristics (correctness risk
+  is low and caught by unit tests + the perft/invariant oracles), so the
+  per-item SPRT wall-clock — not the coding — dominated wave time; and the C–G
+  aggregate is expected strongly positive (~+150..250 at fixed time vs the
+  PSQT-only baseline), so a single flat/negative interaction cannot sink it.
+  Consistent with **D25** (strength still comes from games, just batched) and it
+  preserves attribution: each heuristic stays ONE commit behind a `params.rs`
+  constant (D20), so a flat/negative batch is bisected by git/param toggle, not
+  re-coded. The Wave-G threat map (D30) is verified perft- and bench-node-neutral
+  at its own commit (D24), independent of the batch's Elo. The batch SPRT is a
+  CORRECTNESS TRIPWIRE, not a strict Elo gate (per user, 2026-07-11): the
+  completed heuristics are expected net-positive once the full system (NNUE +
+  greater depth + SMP) is in place, so a SMALL regression now is ACCEPTED and
+  kept (micro-tuned in the later SPSA pass). Only a LARGE or surprising
+  regression — which signals an implementation BUG, not a weak heuristic —
+  triggers a bisect-and-fix before moving on. Rationale: a silent search bug
+  would corrupt everything built on top (NNUE training signal, SMP search), so
+  cheap bug-detection is worth it; incremental Elo optimization is not the P9
+  bottleneck — NNUE, SIMD, and concurrency are the priorities.
