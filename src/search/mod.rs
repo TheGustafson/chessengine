@@ -3762,6 +3762,133 @@ mod tests {
         Board::from_fen(fen).unwrap()
     }
 
+    // ---- Best-thread voting matrix (design/13 §3.8, §5) ----
+
+    /// A synthetic report: `mv` heads a PV of `pv_len`, with `score`
+    /// (untrusted when `bound`).
+    fn report(mv: Move, score: Value, pv_len: usize, bound: bool) -> SearchReport {
+        let mut pv = vec![mv];
+        // Pad the PV with a distinct filler move so `pv.len()` is the tiebreak.
+        while pv.len() < pv_len {
+            pv.push(Move::normal(Square::A2, Square::A3));
+        }
+        SearchReport {
+            pv,
+            score,
+            uci_score: score,
+            score_lowerbound: bound,
+            score_upperbound: false,
+            completed_depth: 1,
+            sel_depth: 1,
+        }
+    }
+
+    fn mv(from: Square, to: Square) -> Move {
+        Move::normal(from, to)
+    }
+
+    #[test]
+    fn voting_unanimous_elects_that_move() {
+        let a = mv(Square::E2, Square::E4);
+        let reports = [report(a, 20, 2, false), report(a, 22, 2, false)];
+        assert_eq!(reports[best_thread(&reports)].pv[0], a); // (a)
+    }
+
+    #[test]
+    fn voting_accumulates_votes_over_a_lone_higher_score() {
+        // (b) 3 threads × A@10 vs 1 thread × B@30 → A (votes accumulate).
+        let a = mv(Square::E2, Square::E4);
+        let b = mv(Square::D2, Square::D4);
+        let reports = [
+            report(a, 10, 2, false),
+            report(a, 10, 2, false),
+            report(a, 10, 2, false),
+            report(b, 30, 2, false),
+        ];
+        assert_eq!(reports[best_thread(&reports)].pv[0], a);
+    }
+
+    #[test]
+    fn voting_prefers_the_shorter_mate() {
+        // (c) incumbent mate-in-5 vs candidate mate-in-3 → candidate.
+        let a = mv(Square::E2, Square::E4);
+        let b = mv(Square::D2, Square::D4);
+        let reports = [
+            report(a, mate_in(5), 2, false),
+            report(b, mate_in(3), 2, false),
+        ];
+        assert_eq!(best_thread(&reports), 1);
+    }
+
+    #[test]
+    fn voting_protects_a_decisive_incumbent_from_votes() {
+        // (d) incumbent mate-in-3 vs 3 threads voting a normal move → incumbent.
+        let a = mv(Square::E2, Square::E4);
+        let b = mv(Square::D2, Square::D4);
+        let reports = [
+            report(a, mate_in(3), 2, false),
+            report(b, 100, 2, false),
+            report(b, 100, 2, false),
+            report(b, 100, 2, false),
+        ];
+        assert_eq!(best_thread(&reports), 0);
+    }
+
+    #[test]
+    fn voting_bound_flagged_win_is_not_decisive() {
+        // (e) a bound-flagged (aborted-iteration) win is untrusted: it does
+        // NOT get the shorter-mate displacement. Contrast with (c): there the
+        // candidate mate-in-3 was trusted and won; here a BOUND mate-in-8 must
+        // fail to displace a TRUSTED incumbent mate-in-10, precisely because
+        // its bound flag makes it non-decisive.
+        let a = mv(Square::E2, Square::E4);
+        let b = mv(Square::D2, Square::D4);
+        let reports = [
+            report(a, mate_in(10), 2, false), // trusted decisive incumbent
+            report(b, mate_in(8), 2, true),   // bound ⇒ untrusted ⇒ not decisive
+        ];
+        assert_eq!(best_thread(&reports), 0, "a bound win cannot displace");
+        // Sanity: the SAME candidate, trusted, would win (shorter mate).
+        let trusted = [
+            report(a, mate_in(10), 2, false),
+            report(b, mate_in(8), 2, false),
+        ];
+        assert_eq!(best_thread(&trusted), 1);
+    }
+
+    #[test]
+    fn voting_equal_votes_break_by_pv_length() {
+        // (f) equal votes → the longer PV (depth proxy) wins.
+        let a = mv(Square::E2, Square::E4);
+        let b = mv(Square::D2, Square::D4);
+        let reports = [report(a, 15, 2, false), report(b, 15, 5, false)];
+        assert_eq!(best_thread(&reports), 1);
+    }
+
+    #[test]
+    fn voting_infinite_helper_never_wins() {
+        // (g) a helper that never finished depth 1 (score -INF) never wins.
+        let a = mv(Square::E2, Square::E4);
+        let b = mv(Square::D2, Square::D4);
+        let reports = [
+            report(a, 30, 2, false),
+            report(b, -VALUE_INFINITE, 2, false),
+        ];
+        assert_eq!(best_thread(&reports), 0);
+        // Even with a longer PV, the losing sentinel cannot displace.
+        let reports = [
+            report(a, 30, 2, false),
+            report(b, -VALUE_INFINITE, 9, false),
+        ];
+        assert_eq!(best_thread(&reports), 0);
+    }
+
+    #[test]
+    fn voting_single_report_is_thread_zero() {
+        let a = mv(Square::E2, Square::E4);
+        assert_eq!(best_thread(&[report(a, 5, 1, false)]), 0);
+    }
+
     /// The smallest real table (1 MiB): every test `go` runs with the TT
     /// enabled, exactly like the engine.
     fn test_tt() -> TranspositionTable {
