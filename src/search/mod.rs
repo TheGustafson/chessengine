@@ -158,7 +158,7 @@ use crate::moves::{MAX_MOVES, Move, MoveKind, MoveList};
 use crate::timeman::{Limits, TimeManager};
 use crate::tt::{Bound, TranspositionTable};
 use crate::types::{
-    DEPTH_QS, DEPTH_UNSEARCHED, Depth, Key, MAX_PLY, PieceType, VALUE_DRAW, VALUE_INFINITE,
+    DEPTH_QS, DEPTH_UNSEARCHED, Depth, Key, MAX_PLY, Piece, PieceType, VALUE_DRAW, VALUE_INFINITE,
     VALUE_MATE, VALUE_NONE, VALUE_ZERO, Value, is_decisive, is_loss, is_mate, is_mated, is_valid,
     is_win, mate_in, mated_in, value_from_tt, value_to_tt,
 };
@@ -1403,6 +1403,20 @@ impl Worker {
                 }
             }
 
+            // §3.7 — the per-node combined history statistic `ss.stat_score`
+            // (design/10 Wave-C item 10), computed from PRE-move facts:
+            // `moved_piece` (piece on `m.from()`) also keys the post-LMR
+            // conthist bonus below, so it is captured once here. `stat_score`
+            // lives on the stack because the finalization block docks `r` by
+            // it AND the child reads `(ss-1).stat_score` for its fail-low
+            // parent bonus (a later wave). Must precede `do_move` — every
+            // input (piece_on(from/to), the moving side) is a pre-move fact.
+            let moved_piece = self
+                .board
+                .piece_on(m.from())
+                .expect("a legal move starts on a piece of the side to move");
+            self.stack[cur].stat_score = self.stat_score(m, is_capture, moved_piece, cur);
+
             // Step 10 — make + recurse: the PVS three-call structure
             // (§3.7.2). Only the move ordered first (the ttMove when the
             // P6 probe supplied one — its likely-best status is what makes
@@ -1410,12 +1424,13 @@ impl Worker {
             // every later move must first prove itself against a
             // zero-width window before it earns a PV re-search.
             self.do_move(tt, m, gives_check, ply);
-            // §3.7 — reduction finalization, Wave-A subset (design/10 §4). The
-            // flat rebase, the move-count discount, the cut-node surcharge
-            // (plus its no-ttMove extra), and the TT-move rebate. Everything
-            // else in the §3.7 accretion list — the ttPv block, the
-            // correction/tt_capture/cutoffCnt/stat_score/all-node terms — is
-            // deferred to Waves C/D/F and is intentionally absent here.
+            // §3.7 — reduction finalization (design/10 §4). The flat rebase,
+            // the move-count discount, the cut-node surcharge (plus its
+            // no-ttMove extra), the TT-move rebate (Wave A), then the
+            // combined-history dock (Wave-C item 10). The remaining §3.7
+            // accretion terms — the ttPv block, the correction/tt_capture/
+            // cutoffCnt/all-node terms — are deferred to Waves C/D/F and are
+            // intentionally absent here.
             r += params::RED_FLAT;
             r -= params::RED_MOVECOUNT * move_count;
             if cut_node {
@@ -1426,6 +1441,11 @@ impl Worker {
                 // The TT's own best move is searched close to full depth.
                 r = (r - params::RED_TTMOVE_SUB).max(0);
             }
+            // Good/bad history docks the reduction (design/10 §3.7, Wave-C
+            // item 10): a move the combined history likes searches fuller, one
+            // it distrusts is reduced harder. Truncation toward zero on a
+            // negative `stat_score` is intended (design/10 §3.1).
+            r -= self.stack[cur].stat_score * params::RED_STATSCORE_NUM / params::RED_STATSCORE_DEN;
             // Overwritten by whichever call below runs last. A PV node's
             // first move skips (a)/(b), and (c)'s `move_count == 1` arm
             // never reads the sentinel.
@@ -1454,11 +1474,14 @@ impl Worker {
                 // rule to `new_depth`, then re-search full-depth zero-window
                 // with the flipped cut-node discipline (`!cut_node`, §3.7.1)
                 // whenever the adjusted depth still exceeds the reduced `d`.
-                // Gated on `d < new_depth` so a scout that was DEEPENED (or
-                // ran at full depth) never triggers a shallower re-search. The
-                // flat +1415 conthist bonus SF grants on either arm is Wave C.
-                if value > alpha && d < new_depth {
-                    let do_deeper = value > best_value + params::LMR_DEEPER_MARGIN;
+                // The deeper arm is itself gated on `d < new_depth` (a scout
+                // that already ran at/above `new_depth` never deepens); the
+                // shallower arm may still fire on a deepened scout (§3.8 / SF
+                // parity). Whichever way it lands, a scout that beat alpha is
+                // "worth continuing from" and earns the flat post-LMR
+                // continuation-history bonus (design/10 §3.8, Wave-C item 10).
+                if value > alpha {
+                    let do_deeper = d < new_depth && value > best_value + params::LMR_DEEPER_MARGIN;
                     let do_shallower = value < best_value + params::LMR_SHALLOWER_MARGIN;
                     new_depth += Depth::from(do_deeper) - Depth::from(do_shallower);
                     if new_depth > d {
@@ -1472,6 +1495,13 @@ impl Worker {
                             ply + 1,
                         );
                     }
+                    self.histories.update_continuation_histories(
+                        &self.stack[..],
+                        cur,
+                        moved_piece,
+                        m.to(),
+                        params::LMR_CONTHIST_BONUS,
+                    );
                 }
             } else if !NT::PV || move_count > 1 {
                 // Non-LMR zero-window path (§3.8): depth 1, or a NonPV node's
@@ -1697,6 +1727,40 @@ impl Worker {
             + i32::from(!improving) * scale * params::RED_NON_IMPROVING
                 / params::RED_NON_IMPROVING_DEN
             + params::RED_BASE
+    }
+
+    /// The per-node combined history statistic `ss.stat_score` (design/10
+    /// §3.7, Wave-C item 10), read from PRE-move state (so it must be called
+    /// before `do_move`): `moved_piece` is the piece on `m.from()`, `us` the
+    /// side to move. A capture is graded by victim value plus its capture
+    /// history — `STATSCORE_CAPT_NUM·piece_value(captured)/STATSCORE_CAPT_DEN +
+    /// capt_hist`, with `piece_value(captured) == 0` and the NO_VICTIM
+    /// capture-history slot for en passant / quiet queen promotions (no piece
+    /// on `to`), consistent with our capture-history victim convention (doc 09
+    /// §3.9). A quiet is graded by twice its butterfly history plus the
+    /// offset-1 and offset-2 continuation histories, indexed
+    /// `[moved_piece][to]` off the predecessor frames `stack[cur-1]` /
+    /// `stack[cur-2]` (the same slabs move ordering reads as `contHist(1/2)`,
+    /// doc 09 §3.7). Feeds the `RED_STATSCORE_NUM` reduction dock in the
+    /// finalization block below.
+    #[inline]
+    fn stat_score(&self, m: Move, is_capture: bool, moved_piece: Piece, cur: usize) -> i32 {
+        if is_capture {
+            let captured_value = self
+                .board
+                .piece_on(m.to())
+                .map_or(0, |p| p.piece_type.value());
+            params::STATSCORE_CAPT_NUM * captured_value / params::STATSCORE_CAPT_DEN
+                + self.histories.capture_value(&self.board, m)
+        } else {
+            let us = self.board.side_to_move();
+            let pci = moved_piece.index();
+            let to = m.to().index() as usize;
+            params::STATSCORE_MAIN_WEIGHT
+                * self.histories.main[us as usize][m.raw16() as usize].get()
+                + self.histories.cont_ref(self.stack[cur - 1].cont_hist)[pci][to].get()
+                + self.histories.cont_ref(self.stack[cur - 2].cont_hist)[pci][to].get()
+        }
     }
 
     /// Step-12 root bookkeeping (design/07 §3.4): update `m`'s [`RootMove`]
@@ -3227,6 +3291,76 @@ mod tests {
         // NMP mate test above.
         let w = go_depth("k7/8/2K5/8/8/8/8/7R w - - 0 1", 9);
         assert_eq!(best_score(&w), mate_in(3), "LMR must not corrupt the mate");
+    }
+
+    // --- statScore reduction term + LMR conthist bonus (design/10 §3.7/§3.8,
+    //     Wave-C item 10) ---
+
+    #[test]
+    fn statscore_reduction_dock_direction_and_truncation() {
+        // `r -= stat_score·RED_STATSCORE_NUM / RED_STATSCORE_DEN` (design/10
+        // §3.7): a positive (good-history) stat_score LOWERS the reduction, a
+        // negative one RAISES it, and — like the Stockfish source it re-
+        // expresses (D27) — the division truncates toward zero, so a negative
+        // product does NOT floor.
+        let dock = |s: i32| s * params::RED_STATSCORE_NUM / params::RED_STATSCORE_DEN;
+        // Exact multiple of the divisor: symmetric magnitudes.
+        assert_eq!(dock(params::RED_STATSCORE_DEN), params::RED_STATSCORE_NUM);
+        assert_eq!(dock(-params::RED_STATSCORE_DEN), -params::RED_STATSCORE_NUM);
+        // Non-exact: truncation toward zero (a floor would give -11, not -10).
+        assert_eq!(dock(100), 10); // 44500/4096 = 10.86 → 10
+        assert_eq!(dock(-100), -10); // -44500/4096 = -10.86 → -10 (toward 0)
+        // Direction: a good history subtracts from r, a bad one adds to it.
+        assert!(dock(5000) > 0 && dock(-5000) < 0);
+    }
+
+    #[test]
+    fn statscore_capture_grades_victim_value_plus_capture_history() {
+        use crate::history::StatEntry;
+        // ss.stat_score for a capture = STATSCORE_CAPT_NUM·piece_value(victim)
+        // / STATSCORE_CAPT_DEN + capt_hist (design/10 §3.7). Nf3xe5 wins a
+        // pawn; with a hand-set capture-history cell the whole statistic is
+        // exact. The capture branch reads no stack, so `cur` is inert.
+        let fen = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 1";
+        let mut w = Worker::new(board(fen));
+        let m = Move::normal(Square::F3, Square::E5);
+        let moved_piece = w.board.piece_on(m.from()).unwrap();
+        let victim = w.board.piece_on(m.to()).unwrap();
+        // Same [moved][to][victim] cell `capture_value` reads (doc 09 §3.9).
+        w.histories.capture[moved_piece.index()][m.to().index() as usize]
+            [victim.piece_type as usize] = StatEntry::new(300);
+        let want = params::STATSCORE_CAPT_NUM * victim.piece_type.value()
+            / params::STATSCORE_CAPT_DEN
+            + 300;
+        assert_eq!(w.stat_score(m, true, moved_piece, ss(0)), want);
+    }
+
+    #[test]
+    fn statscore_quiet_grades_main_and_two_continuation_histories() {
+        use crate::history::StatEntry;
+        // ss.stat_score for a quiet = STATSCORE_MAIN_WEIGHT·main[us][raw16]
+        // + contHist(1)[pc][to] + contHist(2)[pc][to] (design/10 §3.7), the
+        // offset-1/2 slabs keyed off the predecessor frames stack[cur-1]/
+        // [cur-2] (the same slabs move ordering reads as contHist(1/2)).
+        let mut w = Worker::new(board(START_FEN));
+        let m = Move::normal(Square::G1, Square::F3); // Ng1-f3, a quiet
+        let moved_piece = w.board.piece_on(m.from()).unwrap();
+        let us = w.board.side_to_move();
+        let pci = moved_piece.index();
+        let to = m.to().index() as usize;
+        let cur = ss(2);
+        // Two DISTINCT predecessor continuation-history slabs (different `to`).
+        let id1 = ContHistId::new(false, false, Some(moved_piece), Square::E2);
+        let id2 = ContHistId::new(false, false, Some(moved_piece), Square::D2);
+        assert_ne!(id1.piece_to(), id2.piece_to(), "slabs must be distinct");
+        w.stack[cur - 1].cont_hist = id1;
+        w.stack[cur - 2].cont_hist = id2;
+        // Seed the three read cells to distinct known values.
+        w.histories.main[us as usize][m.raw16() as usize] = StatEntry::new(60);
+        w.histories.cont_mut(id1)[pci][to] = StatEntry::new(700);
+        w.histories.cont_mut(id2)[pci][to] = StatEntry::new(-400);
+        let want = params::STATSCORE_MAIN_WEIGHT * 60 + 700 - 400;
+        assert_eq!(w.stat_score(m, false, moved_piece, cur), want);
     }
 
     // --- Mate suite (doc 07 §5/§8.4): exact ply-relative mate scores (D5) ---

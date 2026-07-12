@@ -248,10 +248,11 @@ pub const RED_BASE: i32 = 1027;
 // the flat rebase, the move-count discount, the cut-node surcharge, and the
 // TT-move rebate — then §3.8 turns it into a reduced zero-window scout depth
 // `d = max(1, min(new_depth - r/RED_UNIT, new_depth + RED_MAX_DEEPER)) + PV`,
-// with the deeper/shallower re-search rule and the non-LMR dock path. The
-// ttPv, correction (`/26131`), tt_capture, cutoffCnt, stat_score and all-node
-// terms — and the LMR flat conthist bonus — are deferred to their later waves
-// (design/10 §4 Waves C/D/F), so this item touches ONLY the constants below.
+// with the deeper/shallower re-search rule and the non-LMR dock path. Wave-C
+// item 10 adds the `ss.stat_score` combined-history term below. The ttPv,
+// correction (`/26131`), tt_capture, cutoffCnt and all-node terms are still
+// deferred to their later waves (design/10 §4 Waves C/D/F), so those
+// constants are absent here.
 
 /// The application unit of the reduction accumulator: reductions are carried
 /// in 1024ths of a ply and divided by this only at the moment they become a
@@ -293,6 +294,44 @@ pub const RED_FULLDEPTH_DOCK1: i32 = 5039;
 /// Non-LMR path second depth dock: an `r` above this (and `new_depth > 2`)
 /// costs a second ply (§3.8).
 pub const RED_FULLDEPTH_DOCK2: i32 = 5223;
+
+// --- LMR statScore: combined-history reduction + post-LMR bonus (design/10
+//     §3.7/§3.8; Wave-C item 10) ---
+//
+// `ss.stat_score` is the per-node combined history statistic of the move about
+// to be searched, read from PRE-move state and stored on the stack (the child
+// reads `(ss-1).stat_score` for its fail-low parent bonus, a later wave). It
+// grades a capture by victim value plus capture history —
+// `STATSCORE_CAPT_NUM·piece_value(captured)/STATSCORE_CAPT_DEN + capt_hist` —
+// and a quiet by twice its butterfly history plus the offset-1/offset-2
+// continuation histories — `STATSCORE_MAIN_WEIGHT·main + contHist(1) +
+// contHist(2)`. It then docks the reduction: `r -= stat_score·
+// RED_STATSCORE_NUM / RED_STATSCORE_DEN` — a move the combined history likes
+// searches fuller, one it distrusts is reduced harder. Rust integer division
+// truncates toward zero exactly like C++ (design/10 §3.1), so a negative
+// `stat_score` does NOT floor. Independently, a move that survives its reduced
+// LMR scout earns a flat [`LMR_CONTHIST_BONUS`] along its continuation chain
+// (design/10 §3.8) — "worth continuing from".
+
+/// Butterfly-history weight in the quiet `stat_score` (the `2·mainHistory`
+/// term). A dedicated tunable so the reduction statistic can move independently
+/// of the move-ordering weight [`QUIET_MAIN_HISTORY_WEIGHT`].
+pub const STATSCORE_MAIN_WEIGHT: i32 = 2;
+/// Victim-value multiplier of the capture `stat_score`
+/// (`STATSCORE_CAPT_NUM·piece_value(captured) / STATSCORE_CAPT_DEN`).
+pub const STATSCORE_CAPT_NUM: i32 = 809;
+/// Divisor of the capture `stat_score` victim term.
+pub const STATSCORE_CAPT_DEN: i32 = 128;
+/// Numerator of the reduction dock `r -= stat_score·RED_STATSCORE_NUM /
+/// RED_STATSCORE_DEN`: positive `stat_score` LOWERS the reduction (search
+/// fuller), negative RAISES it.
+pub const RED_STATSCORE_NUM: i32 = 445;
+/// Divisor of the reduction dock (a power of two — the truncation toward zero
+/// on a negative `stat_score` is intended, not to be "fixed" to floor).
+pub const RED_STATSCORE_DEN: i32 = 4096;
+/// Flat continuation-history bonus a move earns when its reduced LMR scout
+/// beats alpha (design/10 §3.8): applied along the offset-1..6 chain.
+pub const LMR_CONTHIST_BONUS: i32 = 1415;
 
 // --- Move-loop pruning: late move pruning (design/10 §3.5) ---
 //
