@@ -274,3 +274,22 @@ strength. Two constraints in permanent tension, resolved in this order:
   would corrupt everything built on top (NNUE training signal, SMP search), so
   cheap bug-detection is worth it; incremental Elo optimization is not the P9
   bottleneck — NNUE, SIMD, and concurrency are the priorities.
+
+- **D33**: Multi-agent review loop before behavioral testing (added 2026-07-11,
+  per user). For any substantial batched or one-shot implementation (e.g. the
+  D32 P9 C-G batch; future large changes), BEFORE game/behavioral testing we run
+  an iterative multi-persona code-review loop. Each ROUND: N parallel reviewer
+  subagents (default 3), each a DISTINCT persona — (A) correctness/safety
+  auditor, (B) reference-fidelity vs the `stockfish_reference/` +
+  `reckless_reference/` notes, (C) Rust-idiom/perf/test-quality — report
+  structured findings with severity; then a synthesis/adjust subagent VERIFIES
+  each finding (discards false positives with a recorded reason), applies the
+  warranted code+test fixes, re-runs the correctness gate
+  (fmt/clippy/test/perft/oracle/selfplay), and commits a "review round N fixes"
+  commit. The A/B/C → adjust cycle REPEATS until a round surfaces no material
+  (high/medium, verified) finding — convergence — capped at ~4 rounds as a
+  runaway guard. THEN, and only then, behavioral/game testing (SPRT) runs.
+  Reviewers are READ-ONLY; only the adjust agent mutates. Rationale: cheap
+  adversarial scrutiny catches the bugs unit tests miss BEFORE expensive game
+  time, and a silent search bug would poison everything built on top (NNUE
+  training signal, SMP search). Full mechanics: `design/14` §10.

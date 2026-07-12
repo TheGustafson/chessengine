@@ -840,3 +840,48 @@ This component is done when all of the following hold:
    in TESTING.md and docs/perf-baseline.md. The proxy gates acceptance
    *within* a wave; the milestone gate still uses real 10+0.1 (§3.8), so a
    known +X Elo change is re-confirmed timed before the wave is declared.
+
+## 10. Multi-agent code-review loop (D33)
+
+Before behavioral/game testing of a substantial batched or one-shot
+implementation, run an iterative multi-persona review loop to catch the bugs
+unit tests miss — a silent search bug poisons everything downstream (NNUE
+labels, SMP search), so cheap adversarial scrutiny is worth it before expensive
+game time. **Reviewers are READ-ONLY; only the adjust agent mutates.**
+
+Each **round**:
+
+1. **N parallel reviewer subagents** (default 3), each a distinct persona,
+   review the batch (the git range vs the pre-batch base) and return structured
+   findings — `{file, line, severity: high|med|low|nit, category, claim,
+   suggested_fix}`:
+   - **A — correctness & safety.** Mate/draw score integrity; PVS/zero-window
+     invariants; pruning/extension guards (`is_loss`/`is_win`/decisive/PV/
+     `excluded_move`); singular-search recursion safety; sign / off-by-one /
+     margin errors; TT-bound interactions; and bench-node-neutrality of any
+     pure-infrastructure commit (e.g. the D30 threat map).
+   - **B — reference fidelity.** Diff each heuristic against the proven formulas
+     in `stockfish_reference/` (esp. `stockfish_search_notes.md`) and
+     `reckless_reference/` — exact constants, divisors, thresholds, operation
+     order, guard conditions; flag transcription drift. (Ideas only — D27.)
+   - **C — Rust idiom / perf / test quality.** Safe idiomatic Rust (no needless
+     `unsafe`, D14/D19); `params.rs` discipline (D20); no heap in hot paths;
+     borrow-safety; clippy-clean; readability — AND whether the unit tests
+     actually pin the behavior, including the *disarm* conditions.
+2. **One synthesis/adjust subagent** ingests all findings, VERIFIES each against
+   the code (discarding false positives with a recorded reason), applies the
+   warranted code + test fixes, re-runs the correctness gate (fmt / clippy -D
+   warnings / `cargo test` debug+release / `tools/check.sh` / the ignored perft
+   tier + differential oracle / `selfplay_smoke.py`), and commits
+   `"<phase> review round N fixes: <summary>"` (Bench + Co-Authored-By trailers,
+   no push).
+
+**Repeat** until a round yields no material (high/med, verified) finding —
+**convergence** — or a ~4-round cap trips (report if it does). **Then** game
+testing (the SPRT), interpreted per its owning decision (e.g. D32's tripwire
+rule for the P9 C-G batch).
+
+**Shape:** a Workflow — `parallel(reviewers)` barrier → adjust agent → loop
+while material findings remain. Persona count/mix scales with the change's size
+and risk; the three above are the default for search/eval code. Emit the
+per-round finding counts so convergence is visible.

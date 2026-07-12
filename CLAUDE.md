@@ -9,7 +9,7 @@ introducing them.
 
 `design/` holds the reviewed design suite that governs all implementation:
 
-- `design/decisions.md` — pinned decisions D1-D32. **Decisions change here
+- `design/decisions.md` — pinned decisions D1-D33. **Decisions change here
   first; docs follow; code follows docs.**
 - `design/00-master-plan.md` — phase ordering (P0-P14), milestone gates,
   current phase status.
@@ -140,6 +140,18 @@ Rust engine, ~3833 SPCC; **AGPLv3**, gitignored). Its distilled study notes
 live in `reckless_reference/` (tracked; index `NOTES.md`, adaptation list
 `00-design-implications.md`) — same rule: **never copy code**, take ideas and
 reimplement in our own safe Rust (D27/D31).
+
+## Multi-agent review loop (D33)
+
+For substantial batched or one-shot implementations, **before game testing**
+run an iterative multi-persona review: 3 parallel reviewer subagents with
+distinct personas — (A) correctness/safety, (B) reference-fidelity vs
+`stockfish_reference/` + `reckless_reference/`, (C) Rust-idiom/perf/test-quality
+— each reporting structured findings; then a synthesis agent verifies + applies
+the warranted fixes + re-runs the correctness gate + commits; loop
+A/B/C → adjust until a round has no material findings (convergence, ~4-round
+cap), **then** game testing. Reviewers are read-only; only the adjust agent
+mutates. Full mechanics: `design/14` §10.
 
 ## Status / roadmap
 
