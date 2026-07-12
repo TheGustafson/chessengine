@@ -794,13 +794,95 @@ pub const EVALDIFF_PAWN_MULT: i32 = 13;
 /// budget the soft stop compares against.
 pub const ONE_REPLY_TOTAL_TIME_CAP: f64 = 561.7;
 
-// --- Stop cadence (design/07 §3.9) ---
+// The four soft-stop factors multiply into the plain `optimum` budget
+// (design/12 §3.9, step 8). Each is an SF-current fitted value (D20); the
+// formula SHAPES are documented at the use site in `search::soft_stop`.
 
-/// `check_time` is called at every main-search node entry but early-outs
-/// on a countdown, doing real work every this many calls. Under a
-/// `go nodes` limit the reset shrinks to `min(512, limits.nodes / 1024)`
-/// (owned by the time-management layer, design/12).
+/// fallingEval factor 1: constant term of `(11.87 + 2.21·Δavg + 1.0·Δiter)
+/// / 100`, clamped to `[0.572, 1.708]` — think longer when the score drops.
+pub const FALLING_EVAL_BASE: f64 = 11.87;
+/// fallingEval: weight on `best_previous_average_score − best_value`.
+pub const FALLING_EVAL_PREV_AVG_COEFF: f64 = 2.21;
+/// fallingEval: weight on `iter_value[iter_idx] − best_value`.
+pub const FALLING_EVAL_ITER_COEFF: f64 = 1.0;
+/// fallingEval: the `/100` scale.
+pub const FALLING_EVAL_DIV: f64 = 100.0;
+/// fallingEval lower clamp.
+pub const FALLING_EVAL_MIN: f64 = 0.572;
+/// fallingEval upper clamp.
+pub const FALLING_EVAL_MAX: f64 = 1.708;
+
+/// reduction factor 2, stability lerp x0: best-move-stability in iterations
+/// `root_depth − last_best_move_depth`, mapped 5→[TIME_REDUCTION_MIN].
+pub const TIME_REDUCTION_STABILITY_LO: f64 = 5.0;
+/// reduction: stability lerp x1, mapped 18→[TIME_REDUCTION_MAX].
+pub const TIME_REDUCTION_STABILITY_HI: f64 = 18.0;
+/// reduction: `time_reduction` lower clamp (and lerp y at low stability).
+pub const TIME_REDUCTION_MIN: f64 = 0.65;
+/// reduction: `time_reduction` upper clamp (and lerp y at high stability).
+pub const TIME_REDUCTION_MAX: f64 = 1.55;
+/// reduction: constant term of `(1.48 + prev_time_reduction) / (2.157 ·
+/// time_reduction)` — partially gives back last move's stability savings.
+pub const REDUCTION_BASE: f64 = 1.48;
+/// reduction: divisor coefficient scaling `time_reduction`.
+pub const REDUCTION_DEN_COEFF: f64 = 2.157;
+
+/// bestMoveInstability factor 3: constant term of `1.096 + 2.29 ·
+/// tot_best_move_changes / threads` — think longer when the best move
+/// keeps flipping.
+pub const INSTABILITY_BASE: f64 = 1.096;
+/// bestMoveInstability: weight on the per-thread-averaged change count.
+pub const INSTABILITY_CHANGES_COEFF: f64 = 2.29;
+
+/// highBestMoveEffort factor 4, effort lerp x0 (per-100k node units):
+/// `nodes_effort = effort · 100000 / max(1, nodes)` mapped 79219→0.924.
+pub const EFFORT_LERP_LO: f64 = 79_219.0;
+/// highBestMoveEffort: effort lerp x1, mapped 101822→0.71.
+pub const EFFORT_LERP_HI: f64 = 101_822.0;
+/// highBestMoveEffort: scale at low effort (also the upper clamp).
+pub const EFFORT_SCALE_AT_LO: f64 = 0.924;
+/// highBestMoveEffort: scale at high effort (also the lower clamp) — stop
+/// sooner once the lion's share of nodes already went into the best move.
+pub const EFFORT_SCALE_AT_HI: f64 = 0.71;
+/// highBestMoveEffort: the per-100k fixed-point scale of the effort ratio.
+pub const EFFORT_UNIT_SCALE: i64 = 100_000;
+
+/// Soft-stop `increase_depth`/`search_again_counter` threshold: the next
+/// iteration deepens honestly only while at most this fraction of the soft
+/// budget is spent (design/12 §3.9).
+pub const INCREASE_DEPTH_FRACTION: f64 = 0.50;
+
+/// Soft-stop mate early-stop: stop once every PV line mates in `<=` this
+/// many plies (`rootMoves[multiPV-1].score >= mate_in(3)`, design/12 §3.9).
+pub const SOFT_STOP_MATE_PLIES: Depth = 3;
+/// Soft-stop mate early-stop: stop once we are mated in exactly this many
+/// plies (`rootMoves[0].score == mated_in(2)`, design/12 §3.9).
+pub const SOFT_STOP_MATED_PLIES: Depth = 2;
+
+// --- Stop cadence (design/07 §3.9, design/12 §3.8; Reckless bundle D31) ---
+
+/// `check_time` does real work once per this many main-search node
+/// entries. The poll is gated by a bitmask on the node counter (`nodes &
+/// mask`, D31 robustness bundle) rather than a decrementing field, so the
+/// added qsearch-entry re-poll shares the exact same cadence for free.
+/// Under a `go nodes` limit the mask tightens to a power of two `<=
+/// min(512, limits.nodes / 1024)` so tiny node budgets are honored.
 pub const CHECK_TIME_CALLS: i32 = 512;
+
+/// Flat epsilon shaved off every enforced *wall-clock* bound — `maximum()`
+/// and `movetime` (design/12 §3.8; Reckless bundle D31). Cuts fast-TC
+/// forfeit risk by stopping a few ms early to cover the unwind-and-print
+/// tail after `stop`. Deliberately NOT applied to the `nodes` budget
+/// (an exactness/testing bound, not a clock forfeit risk). In TM units:
+/// milliseconds, or nodes under `nodestime`.
+pub const CHECK_TIME_EPSILON_MS: i64 = 15;
+
+/// `info` throttle (design/12 §3.13, SF's `NODES_LIMIT_OUTPUT`): below
+/// this many nodes the whole MultiPV block is published only when the
+/// iteration's LAST line finishes; above it, after every line (more
+/// frequent updates on long searches). At MultiPV 1 the block is a single
+/// line, published every iteration either way.
+pub const INFO_THROTTLE_NODES: u64 = 10_000_000;
 
 // --- History updates: node-result bonus/malus (design/09 §3.9) ---
 //

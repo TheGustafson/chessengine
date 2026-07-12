@@ -656,6 +656,34 @@ instant stop at the first poll after `ponderhit` (§3.10). The 512-entry
 cadence bounds clock-read overhead to ~1 syscall per 512 nodes while
 keeping stop latency well under a millisecond at realistic NPS.
 
+**P10 implementation note (the §10 robustness bundle, landed).** The
+shipped `check_time` (`src/search/mod.rs`) folds in the Reckless-study
+hardening, so it diverges from the sketch above in four bench-neutral ways
+(all inert under fixed-depth/fixed-node search — the stop conditions never
+fire there — so the `bench` fingerprint is unmoved, D24):
+
+- **Bitmask cadence.** The `calls_cnt` countdown field is replaced by a
+  bitmask on the per-worker node counter: the real check runs when `nodes &
+  mask == mask`. `mask = CHECK_TIME_CALLS − 1` (511) by default; under
+  `go nodes n` it tightens to the largest power of two `≤ min(512, n/1024)`
+  (a mask of 0 polls every node), so tiny node budgets are still honored.
+  This lets the added qsearch-entry poll share one cadence for free — no
+  double-decrement.
+- **`completed_depth == 0` guard.** No hard stop of any kind (clock,
+  `movetime`, or `nodes`) fires before the first ID iteration has fully
+  completed, guaranteeing a real — if shallow — `bestmove` under an absurdly
+  small budget. `completed_depth` is set to `root_depth` at the end of each
+  un-aborted iteration.
+- **Flat epsilon shave** (`CHECK_TIME_EPSILON_MS`, 15 in TM units) is
+  subtracted from the *wall-clock* bounds only — `maximum()` and `movetime`
+  — so we stop a few ms early to cover the unwind-and-print tail and cut
+  fast-TC forfeit risk. The `nodes` budget is left unshaved (an exactness
+  bound, not a clock forfeit risk).
+- **qsearch-entry re-poll.** `check_time` is also called at qsearch entry,
+  bounding stop latency under a long forcing-capture dive; qsearch itself
+  does not abort — the enclosing node's step-11 stop check discards the
+  untrusted subtree the moment the dive returns.
+
 ### 3.9 Soft stop: between-iterations decision
 
 At the end of each completed ID iteration, the main worker decides
@@ -725,6 +753,19 @@ if elapsed > min(total_time, tm.maximum())
 else:
     pool.increase_depth = ponder or elapsed <= total_time * 0.50
 ```
+
+**P10 landed (step 8).** The four factors, both mate early-stops, and the
+`increase_depth`/`search_again_counter` damping ship now
+(`Worker::soft_stop`, `src/search/mod.rs`), each factor a pure function
+with a golden test pinning its §3.9 constants (params in
+`search/params.rs`). One v1 restriction: `stop_on_ponderhit` is the ponder
+state machine (step 9), which is **deferred to P11** — so while pondering,
+`soft_stop` simply never self-stops and leaves `increase_depth = true`
+(the GUI owns the clock until `ponderhit`/`stop`), rather than latching
+`stop_on_ponderhit`. Everything is gated behind `use_time_management()`, so
+fixed-depth/fixed-node search (bench, D24) is untouched: the factor math
+never runs, the `iter_value` ring is never read, and `search_again_counter`
+stays 0, leaving `adjusted_depth` at its full value.
 
 **`increase_depth` / `searchAgainCounter`**: when the soft budget is more
 than half spent, the next iteration should not honestly deepen — at the
@@ -1180,10 +1221,12 @@ The component is done when all of the following hold:
 
 P10 candidates from the Reckless study (`reckless_reference/09`, summary
 `00-design-implications.md` §P10); ideas only, safe-Rust (D27):
-- **Robustness bundle (§3.8)** — a `completed_depth==0` hard-stop guard
-  (guarantee a real bestmove under a tiny budget); re-poll `check_time` at
-  qsearch entry (bound stop latency in long forcing dives); a flat epsilon
-  shave on every enforced bound including `movetime` (cut fast-TC forfeit
-  risk); node-counter bitmask poll cadence (`nodes & 2047`).
+- **Robustness bundle (§3.8) — LANDED in P10.** A `completed_depth==0`
+  hard-stop guard (guarantee a real bestmove under a tiny budget); re-poll
+  `check_time` at qsearch entry (bound stop latency in long forcing dives);
+  a flat epsilon shave (`CHECK_TIME_EPSILON_MS`) on the wall-clock bounds
+  including `movetime` (cut fast-TC forfeit risk); node-counter bitmask poll
+  cadence (`nodes & mask`, mask `= CHECK_TIME_CALLS − 1`, tightened under a
+  node limit). See the §3.8 implementation note for the shipped shape.
 - **Options** — `Threads` upper bound `max(4·available_parallelism, 512)`
   (§9.6); a low-verbosity report mode for high-frequency self-play (§3.13).

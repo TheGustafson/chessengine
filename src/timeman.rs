@@ -82,8 +82,10 @@ const MAX_CLOCK_FRACTION: f64 = 0.8097;
 const PONDER_OPTIMUM_BONUS_DIV: i64 = 4;
 
 /// Initial `previous_time_reduction` (per-game default; SF's
-/// `previousTimeReduction = 0.85` in `thread.cpp`).
-const PREVIOUS_TIME_REDUCTION_INIT: f64 = 0.85;
+/// `previousTimeReduction = 0.85` in `thread.cpp`). `pub(crate)` so the
+/// search worker's working copy (doc 12 §3.9 `reduction` factor) can share
+/// the same seed.
+pub(crate) const PREVIOUS_TIME_REDUCTION_INIT: f64 = 0.85;
 
 // ---------------------------------------------------------------------------
 // Limits — everything `go` can ask for (design/12 §3.6)

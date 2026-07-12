@@ -45,7 +45,7 @@ use crate::movegen;
 use crate::moves::MoveList;
 use crate::perft;
 use crate::search::Worker;
-use crate::timeman::Limits;
+use crate::timeman::{Limits, TimePersist};
 use crate::tt::TranspositionTable;
 use std::error::Error;
 use std::fmt;
@@ -312,7 +312,10 @@ fn search_entry(worker: &mut Worker, tt: &TranspositionTable, entry: &str, limit
     worker.limits = limits;
     tt.new_search();
     let stop = AtomicBool::new(false);
-    worker.iterative_deepening(tt, &stop, &mut |_| {});
+    // Fixed depth/nodes bench: TM is inert, so a throwaway per-entry
+    // persist keeps the fingerprint independent of persist state (D24).
+    let mut persist = TimePersist::default();
+    worker.iterative_deepening(tt, &stop, &mut persist, &mut |_| {});
     worker.nodes
 }
 

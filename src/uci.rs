@@ -1044,7 +1044,7 @@ fn run_search<W: Write>(
     // PV head of the last line sent drives the final flush below.
     let mut last_sent: Option<Move> = None;
     let multi_pv = 1usize; // fixed until the MultiPV option lands (step 10)
-    worker.iterative_deepening(tt, stop, &mut |info| {
+    worker.iterative_deepening(tt, stop, &mut state.persist, &mut |info| {
         // Throttle (§3.13): below INFO_THROTTLE_NODES only the
         // iteration's LAST MultiPV line prints — at MultiPV 1 that is
         // every completed line, so nothing is ever suppressed yet.

@@ -155,7 +155,7 @@ use crate::history::Histories;
 use crate::movegen::generate_legal;
 use crate::movepick::MovePicker;
 use crate::moves::{MAX_MOVES, Move, MoveKind, MoveList};
-use crate::timeman::{Limits, TimeManager};
+use crate::timeman::{Limits, TimeManager, TimePersist};
 use crate::tt::{Bound, TranspositionTable};
 use crate::types::{
     DEPTH_QS, DEPTH_UNSEARCHED, Depth, Key, MAX_PLY, Piece, PieceType, VALUE_DRAW, VALUE_INFINITE,
@@ -569,8 +569,19 @@ pub struct Worker {
     /// recursively null-move its way back to the same (possibly zugzwang)
     /// cutoff, then resets it to 0. Per-worker (D23); reset to 0 each `go`.
     nmp_min_ply: i32,
-    /// MultiPV line currently searched (§3.5; v1 always 0).
+    /// MultiPV line currently searched (§3.5; the outer loop index).
     pub pv_idx: usize,
+    /// Number of PV lines to search this `go` (design/12 §3.12, step 10):
+    /// the `MultiPV` option, set by the session layer before
+    /// [`Worker::iterative_deepening`], clamped there to `root_moves.len()`
+    /// (min 1). Default 1 keeps single-PV behavior (bench, D24).
+    pub multi_pv: usize,
+    /// Depth of the last FULLY completed ID iteration (design/12 §3.8;
+    /// Reckless robustness bundle D31). 0 until iteration 1 finishes —
+    /// [`Worker::check_time`] refuses any hard stop while it is 0 so a real
+    /// (if shallow) bestmove is always produced under a tiny budget. Also
+    /// the future SMP best-thread vote weight (doc 13).
+    pub completed_depth: Depth,
     /// Time-management instability signal (§3.4/§3.5).
     pub best_move_changes: f64,
     /// What `go` asked for (design/12 §3.6).
@@ -601,6 +612,30 @@ pub struct Worker {
     /// time-management stability signal (§3.5; consumed by doc 12 §3.9's
     /// four-factor soft stop, step 8/P10).
     pub last_best_move_depth: Depth,
+    /// Soft-stop `fallingEval` ring (design/12 §3.9): the scores of the
+    /// previous four iterations. Re-seeded per `go` from
+    /// `persist.best_previous_score` (or `VALUE_DRAW` on the first search
+    /// of a game), never carried over — so `fallingEval` is well-defined
+    /// from iteration 1.
+    iter_value: [Value; 4],
+    /// Ring cursor into [`Self::iter_value`]; `iter_value[iter_idx]` is the
+    /// score from four iterations ago at read time.
+    iter_idx: usize,
+    /// Soft-stop search-again signal (design/12 §3.9): while `false`, the
+    /// next iteration re-searches near the same effective depth instead of
+    /// honestly deepening (the soft budget is more than half spent). Set by
+    /// [`Worker::soft_stop`]; `true` at every `go` start, so fixed-depth /
+    /// fixed-node search (bench, D24) never damps its depth.
+    increase_depth: bool,
+    /// Working copy of `persist.previous_time_reduction` for the soft-stop
+    /// `reduction` factor (design/12 §3.9): seeded from persist at `go`
+    /// start, updated by [`Worker::soft_stop`] each iteration, written back
+    /// to persist at search end.
+    tm_previous_time_reduction: f64,
+    /// Working copy of `persist.best_previous_average_score` for the
+    /// soft-stop `fallingEval` factor (design/12 §3.9): seeded from persist
+    /// at `go` start.
+    tm_best_previous_average_score: Value,
     /// Per-thread eval state (design/11 §3.1); empty in Phase A.
     eval_ctx: EvalContext,
     /// Per-thread move-ordering statistics (design/09 §3.4, D23): butterfly/
@@ -609,10 +644,11 @@ pub struct Worker {
     /// at node exit. `new_search()` decays it each `go`; `ucinewgame` clears
     /// it (uci.rs). ~20 MiB behind a `Box` so it never transits the stack.
     pub histories: Box<Histories>,
-    /// Countdown to the next real `check_time` (§3.9): reloaded from
-    /// [`Worker::check_time_reset`] ([`params::CHECK_TIME_CALLS`], tighter
-    /// under a node limit).
-    check_time_countdown: i32,
+    /// Poll-cadence bitmask for [`Worker::check_time`] (design/12 §3.8;
+    /// Reckless bundle D31): the real clock/limit check runs when `nodes &
+    /// mask == mask`. Recomputed per `go` — tighter (a smaller power of
+    /// two) under a `go nodes` limit so tiny budgets are honored.
+    check_time_mask: u64,
     /// Per-attempt aspiration trace (§8 criterion 7) — test builds only,
     /// cleared per `go`, appended by [`Worker::aspiration_search`].
     #[cfg(test)]
@@ -647,6 +683,8 @@ impl Worker {
             reductions,
             nmp_min_ply: 0,
             pv_idx: 0,
+            multi_pv: 1,
+            completed_depth: 0,
             best_move_changes: 0.0,
             limits: Limits::new(),
             tm: TimeManager::new(),
@@ -654,9 +692,14 @@ impl Worker {
             last_best_move_pv: Vec::new(),
             last_best_move_score: -VALUE_INFINITE,
             last_best_move_depth: 0,
+            iter_value: [VALUE_DRAW; 4],
+            iter_idx: 0,
+            increase_depth: true,
+            tm_previous_time_reduction: crate::timeman::PREVIOUS_TIME_REDUCTION_INIT,
+            tm_best_previous_average_score: VALUE_INFINITE,
             eval_ctx: EvalContext::new(),
             histories: Histories::new(),
-            check_time_countdown: params::CHECK_TIME_CALLS,
+            check_time_mask: params::CHECK_TIME_CALLS as u64 - 1,
             #[cfg(test)]
             asp_trace: Vec::new(),
         }
@@ -699,6 +742,7 @@ impl Worker {
         &mut self,
         tt: &TranspositionTable,
         stop: &AtomicBool,
+        persist: &mut TimePersist,
         on_info: &mut dyn FnMut(&SearchInfo),
     ) {
         // Per-`go` reset (§3.2.4, §3.9): stack, counters, root moves.
@@ -706,13 +750,29 @@ impl Worker {
         self.nodes = 0;
         self.sel_depth = 0;
         self.root_depth = 0;
+        self.completed_depth = 0;
         self.pv_idx = 0;
         self.best_move_changes = 0.0;
         self.nmp_min_ply = 0;
-        self.check_time_countdown = self.check_time_reset();
+        self.check_time_mask = self.compute_check_time_mask();
         self.last_best_move_pv.clear();
         self.last_best_move_score = -VALUE_INFINITE;
         self.last_best_move_depth = 0;
+        // Soft-stop factor state (doc 12 §3.9, step 8). `increase_depth`
+        // starts `true` so fixed-depth/fixed-node search never damps its
+        // depth (bench-neutral, D24). The `iter_value` ring is seeded per
+        // `go` from persist (never carried over), and the persist-derived
+        // factor inputs are latched into working copies here.
+        self.increase_depth = true;
+        self.iter_idx = 0;
+        let iter_seed = if persist.best_previous_score != VALUE_INFINITE {
+            persist.best_previous_score
+        } else {
+            VALUE_DRAW // first search of the game (§3.9)
+        };
+        self.iter_value = [iter_seed; 4];
+        self.tm_previous_time_reduction = persist.previous_time_reduction;
+        self.tm_best_previous_average_score = persist.best_previous_average_score;
         #[cfg(test)]
         self.asp_trace.clear();
         self.root_moves = build_root_moves(&self.board, &self.limits.searchmoves);
@@ -724,19 +784,20 @@ impl Worker {
         // low-ply history. Correction/capture/continuation tables persist
         // untouched across the game (cleared only by `ucinewgame`).
         self.histories.new_search();
-        // MultiPV is fixed at 1 until the UCI option lands (doc 12 step
-        // 10); the loop below is already shaped for it.
-        let multi_pv: usize = 1;
+        // MultiPV (doc 12 §3.12, step 10): the number of PV lines to
+        // report, the option clamped to the legal-move count (min 1). At
+        // MultiPV 1 the loop below is exactly single-PV (bench, D24).
+        let multi_pv = self.multi_pv.clamp(1, self.root_moves.len());
         // Time-management instability input (doc 12 §3.9): halved every
-        // iteration, harvested from `best_move_changes`. Consumed by the
-        // four-factor soft stop when it lands (doc 12 step 8, P10).
+        // iteration, harvested from `best_move_changes`, consumed by the
+        // four-factor soft stop.
         let mut tot_best_move_changes = 0.0f64;
         // TM-driven re-search damping (doc 12 §3.9): bumped at the top of
-        // an iteration when the soft stop said "don't deepen"
-        // (`increase_depth == false`). The producer lands with doc 12
-        // step 8; until then every iteration searches at full depth
-        // (`3 * (0 + 1) / 4 == 0` in the §3.6 adjusted-depth formula).
-        let search_again_counter: i32 = 0;
+        // an iteration when the previous soft stop said "don't deepen"
+        // (`increase_depth == false`). Stays 0 whenever the soft stop never
+        // runs (fixed depth/nodes), so `3 * (0 + 1) / 4 == 0` leaves the
+        // §3.6 adjusted-depth formula untouched (bench-neutral, D24).
+        let mut search_again_counter: i32 = 0;
 
         while self.root_depth + 1 < MAX_PLY as Depth
             && !stop.load(Ordering::Relaxed)
@@ -744,6 +805,13 @@ impl Worker {
             && self.limits.depth.is_none_or(|d| self.root_depth < d)
         {
             self.root_depth += 1;
+            // §3.9 search-again: a soft budget more than half spent leaves
+            // `increase_depth == false`, so this iteration re-searches near
+            // the same effective depth (refreshing PV/TT) instead of
+            // starting a deeper pass that would be aborted mid-way.
+            if !self.increase_depth {
+                search_again_counter += 1;
+            }
             tot_best_move_changes /= 2.0; // age the instability metric
 
             // Snapshot last iteration (§3.5).
@@ -764,23 +832,40 @@ impl Worker {
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
-                let rm = &self.root_moves[pv_idx];
-                on_info(&SearchInfo {
-                    depth: self.root_depth,
-                    sel_depth: rm.sel_depth,
-                    multipv: pv_idx + 1,
-                    score: rm.uci_score,
-                    lowerbound: rm.score_lowerbound,
-                    upperbound: rm.score_upperbound,
-                    nodes: self.nodes,
-                    hashfull: tt.hashfull(0),
-                    pv: &rm.pv,
-                });
+                // §3.13 emission: below the node throttle publish the whole
+                // MultiPV block only when the iteration's LAST line
+                // finishes; above it, after every line. When it fires,
+                // every completed line 1..=multi_pv is (re)published so the
+                // GUI always sees a coherent block. At MultiPV 1 this is a
+                // single line per iteration (unchanged).
+                if pv_idx + 1 == multi_pv || self.nodes > params::INFO_THROTTLE_NODES {
+                    for line in 0..multi_pv {
+                        let rm = &self.root_moves[line];
+                        on_info(&SearchInfo {
+                            depth: self.root_depth,
+                            sel_depth: rm.sel_depth,
+                            multipv: line + 1,
+                            score: rm.uci_score,
+                            lowerbound: rm.score_lowerbound,
+                            upperbound: rm.score_upperbound,
+                            nodes: self.nodes,
+                            hashfull: tt.hashfull(0),
+                            pv: &rm.pv,
+                        });
+                    }
+                }
             }
 
             // lastBestMove tracking with the forgotten-mate guard, plus
             // the aborted-loss repair (§3.5, plan step 10).
             self.root_hygiene(stop.load(Ordering::Relaxed));
+
+            // Mark the iteration fully completed (design/12 §3.8): unblocks
+            // the `check_time` hard stops (the `completed_depth == 0`
+            // guard) now that a real bestmove exists at this depth.
+            if !stop.load(Ordering::Relaxed) {
+                self.completed_depth = self.root_depth;
+            }
 
             // Harvest the per-iteration instability signal (§3.5; doc 13
             // §3.10 owns the SMP aggregation shape).
@@ -801,14 +886,22 @@ impl Worker {
                 stop.store(true, Ordering::Relaxed);
             }
 
-            // TM soft stop between completed iterations (doc 12 §3.9,
-            // v1 subset — doc 12 step 7).
-            self.soft_stop(stop);
+            // TM soft stop between completed iterations (doc 12 §3.9, full
+            // four-factor form — doc 12 step 8). Sets `increase_depth` for
+            // the next iteration and maintains the `iter_value` ring.
+            self.soft_stop(stop, multi_pv, tot_best_move_changes);
         }
-        // The four-factor soft stop (doc 12 step 8, P10) consumes the
-        // accumulator; keep the per-iteration bookkeeping above exercised
-        // and warning-free until then.
-        let _ = tot_best_move_changes;
+        // Persist the per-game TM state for the next `go` of this game
+        // (design/12 §3.7/§3.9): the front move's score and running average
+        // seed next move's `iter_value` and `fallingEval`; this move's
+        // `time_reduction` becomes next move's `previous_time_reduction`.
+        // Only a truly completed iteration (real, non-sentinel score) may
+        // overwrite the seeds — an aborted depth-0 search leaves them.
+        if let Some(front) = self.root_moves.first().filter(|_| self.completed_depth > 0) {
+            persist.best_previous_score = front.score;
+            persist.best_previous_average_score = front.average_score;
+        }
+        persist.previous_time_reduction = self.tm_previous_time_reduction;
     }
 
     /// End-of-iteration root hygiene (design/07 §3.5, plan step 10):
@@ -1027,9 +1120,9 @@ impl Worker {
         // Depth-0 boundary: drop into qsearch, preserving PV-ness.
         if depth <= 0 {
             return if NT::PV {
-                self.qsearch::<Pv>(tt, alpha, beta, ply)
+                self.qsearch::<Pv>(tt, stop, alpha, beta, ply)
             } else {
-                self.qsearch::<NonPv>(tt, alpha, beta, ply)
+                self.qsearch::<NonPv>(tt, stop, alpha, beta, ply)
             };
         }
         // N0 — depth clamp: singular/hindsight extensions can overshoot the
@@ -1411,7 +1504,7 @@ impl Worker {
             if !NT::PV
                 && eval < alpha - params::RAZOR_BASE - params::RAZOR_DEPTH_MULT * depth * depth
             {
-                return self.qsearch::<NonPv>(tt, alpha, beta, ply);
+                return self.qsearch::<NonPv>(tt, stop, alpha, beta, ply);
             }
 
             // N10 — reverse futility pruning ("futility: child", design/10
@@ -1554,7 +1647,7 @@ impl Worker {
                     // Cheap qsearch verification first, then — if it held — a
                     // real reduced search.
                     let mut value =
-                        -self.qsearch::<NonPv>(tt, -probcut_beta, -probcut_beta + 1, ply + 1);
+                        -self.qsearch::<NonPv>(tt, stop, -probcut_beta, -probcut_beta + 1, ply + 1);
                     if value >= probcut_beta && probcut_depth > 0 {
                         value = -self.search::<NonPv>(
                             tt,
@@ -2516,11 +2609,17 @@ impl Worker {
     /// fail-high eval-cache write, and a store at exit that is NEVER
     /// `Exact`. Constants live in [`params`] (D20).
     ///
-    /// No stop poll here (§3.9, SF parity): qsearch is bounded by the
-    /// main-search checks above it.
+    /// Stop poll at entry (the Reckless re-poll, D31): `check_time` is
+    /// re-checked here so the hard wall is observed even in the middle of a
+    /// long forcing-capture dive, bounding worst-case stop latency. qsearch
+    /// itself does not abort — it relies on the enclosing main-search node's
+    /// step-11 stop check to discard the untrusted subtree — so a stop set
+    /// here surfaces the moment this dive returns. Under fixed-depth /
+    /// fixed-node search `check_time` can never fire (bench-neutral, D24).
     fn qsearch<NT: NodeType>(
         &mut self,
         tt: &TranspositionTable,
+        stop: &AtomicBool,
         mut alpha: Value,
         beta: Value,
         ply: usize,
@@ -2537,6 +2636,8 @@ impl Worker {
             self.pv_table[ply].clear();
             self.sel_depth = self.sel_depth.max(ply as i32 + 1);
         }
+        // D31 re-poll: bound stop latency under a long qsearch dive.
+        self.check_time(stop);
 
         // Step 3 — draw/max-ply: plain VALUE_DRAW, deliberately NOT
         // dithered (SF parity; see [`value_draw`]).
@@ -2737,7 +2838,7 @@ impl Worker {
 
             // Step 8 — recurse: full window, same node type.
             self.do_move(tt, m, gives_check, ply);
-            let value = -self.qsearch::<NT>(tt, -beta, -alpha, ply + 1);
+            let value = -self.qsearch::<NT>(tt, stop, -beta, -alpha, ply + 1);
             self.undo_move(m);
 
             // Step 9 — updates.
@@ -2849,107 +2950,223 @@ impl Worker {
         self.board.unmake_move(m);
     }
 
-    /// The §3.9 time-check cadence seam: called at every main-search node
-    /// entry, early-outs on a countdown and does real work every
-    /// [`params::CHECK_TIME_CALLS`] calls (tightened to ≥ 0.1% of the
-    /// budget under `go nodes`, design/12 §3.8, so tiny node budgets are
-    /// honored).
+    /// The §3.8 time-check seam: called at every main-search node entry AND
+    /// at qsearch entry (the Reckless re-poll, D31 — bounding stop latency
+    /// under a long forcing-capture dive). The poll is gated by a bitmask
+    /// on the node counter (`nodes & mask`, D31) rather than a decrementing
+    /// field, so both call sites share one cadence for free; the mask
+    /// tightens under `go nodes` so tiny budgets are honored.
     ///
-    /// v1 real work — the hard limits a playable engine needs (design/12
-    /// step 5): `movetime` (wall clock from `Limits::start_time`, exactly
-    /// `TimeManager::elapsed_ms` semantics), `nodes` (single worker, so
-    /// `self.nodes` IS the total until SMP aggregation lands, D23), and
-    /// the wtime/btime hard wall `elapsed > maximum` from the worker's
-    /// [`TimeManager`] — all behind the §3.8 ponder guard. `go depth` is
-    /// enforced by the ID loop, `go infinite` never self-stops.
-    /// `stop_on_ponderhit` arrives with doc 12 step 9 (P9); the
-    /// soft-stop factors with step 8 (P10).
+    /// Real work — the hard limits a playable engine needs (design/12 §3.8):
+    /// `movetime` (wall clock from `Limits::start_time`), `nodes` (single
+    /// worker, so `self.nodes` IS the total until SMP aggregation lands,
+    /// D23), and the wtime/btime hard wall `elapsed > maximum` from the
+    /// worker's [`TimeManager`] — all behind the §3.8 ponder guard. `go
+    /// depth` is enforced by the ID loop, `go infinite` never self-stops.
+    ///
+    /// Two D31 hardening rules gate the real work: the `completed_depth ==
+    /// 0` guard (never hard-stop before iteration 1 finishes, guaranteeing
+    /// a real bestmove under a tiny budget), and a flat epsilon shaved off
+    /// the wall-clock bounds (`maximum`/`movetime`) so we stop a few ms
+    /// early to cover the unwind-and-print tail. The `nodes` budget is left
+    /// unshaved — an exactness bound, not a clock forfeit risk.
     #[inline]
-    fn check_time(&mut self, stop: &AtomicBool) {
-        self.check_time_countdown -= 1;
-        if self.check_time_countdown > 0 {
+    fn check_time(&self, stop: &AtomicBool) {
+        if self.nodes & self.check_time_mask != self.check_time_mask {
             return;
         }
-        self.check_time_countdown = self.check_time_reset();
+        // D31: guarantee a real (if shallow) bestmove — no hard stop of any
+        // kind fires before the first iteration has fully completed.
+        if self.completed_depth == 0 {
+            return;
+        }
         // The GUI owns the clock while pondering: NEVER stop here
-        // (design/12 §3.8) — `ponderhit`/`stop` are the only ways out of
-        // a ponder search, which keeps `bestmove` behind the UCI layer's
+        // (design/12 §3.8) — `ponderhit`/`stop` are the only ways out of a
+        // ponder search, which keeps `bestmove` behind the UCI layer's
         // busy-wait until one of them arrives.
         if self.ponder.load(Ordering::Relaxed) {
             return;
         }
-        // Hard clock wall (§3.8 v1 subset). `use_time_management` gates
-        // the comparison, so depth/nodes/movetime/infinite modes never
-        // see it; `tm.elapsed` counts nodes under nodestime, keeping the
-        // units consistent with `maximum()`. When the GUI sent only the
-        // opponent's clock, `init` left `maximum() == 0` and the first
-        // real poll here stops the search (doc 12 §3.7 step 1).
+        let eps = params::CHECK_TIME_EPSILON_MS;
+        // Hard clock wall. `use_time_management` gates the comparison, so
+        // depth/nodes/movetime/infinite modes never see it; `tm.elapsed`
+        // counts nodes under nodestime, keeping the units consistent with
+        // `maximum()`. When the GUI sent only the opponent's clock, `init`
+        // left `maximum() == 0`, so the first real poll here stops (§3.7).
         let nodes = self.nodes;
-        let tm_stop =
-            self.limits.use_time_management() && self.tm.elapsed(|| nodes) > self.tm.maximum();
+        let tm_stop = self.limits.use_time_management()
+            && self.tm.elapsed(|| nodes) > self.tm.maximum() - eps;
         let movetime_stop = self
             .limits
             .movetime
-            .is_some_and(|t| self.limits.start_time.elapsed().as_millis() as i64 >= t);
+            .is_some_and(|t| self.limits.start_time.elapsed().as_millis() as i64 >= t - eps);
         let nodes_stop = self.limits.nodes.is_some_and(|n| self.nodes >= n);
         if tm_stop || movetime_stop || nodes_stop {
             stop.store(true, Ordering::Relaxed);
         }
     }
 
-    /// The between-iterations soft stop (design/12 §3.9), v1 subset (doc
-    /// 12 step 7): once the soft budget is spent, starting another
-    /// iteration is pointless — it would almost certainly be cut off by
-    /// the `maximum` hard wall before completing, wasting clock a later
-    /// move could have used. v1 compares elapsed against the plain
-    /// `optimum` allocation; the four multiplicative factors
-    /// (fallingEval, reduction, bestMoveInstability, highBestMoveEffort),
-    /// the mate-score early stops, and the `increase_depth` /
-    /// `search_again_counter` damping land with doc 12 step 8 (P10) —
-    /// their inputs (`tot_best_move_changes`, `last_best_move_depth`,
-    /// per-root-move `effort`) are already maintained by the ID loop.
+    // Soft-stop factors (design/12 §3.9). Pure functions of their inputs so
+    // every §3.9 constant is pinned by a golden unit test at its clamp
+    // edges; the decision that multiplies them lives in [`Self::soft_stop`].
+
+    /// Factor 1 — `fallingEval`: think longer when the score is dropping
+    /// (design/12 §3.9). Clamped to `[FALLING_EVAL_MIN, FALLING_EVAL_MAX]`.
+    fn falling_eval(prev_avg: Value, best_value: Value, iter_value_old: Value) -> f64 {
+        ((params::FALLING_EVAL_BASE
+            + params::FALLING_EVAL_PREV_AVG_COEFF * f64::from(prev_avg - best_value)
+            + params::FALLING_EVAL_ITER_COEFF * f64::from(iter_value_old - best_value))
+            / params::FALLING_EVAL_DIV)
+            .clamp(params::FALLING_EVAL_MIN, params::FALLING_EVAL_MAX)
+    }
+
+    /// Factor 2 — best-move-stability `reduction` (design/12 §3.9). Returns
+    /// `(time_reduction, reduction)`: `time_reduction` is stored back as
+    /// next move's `previous_time_reduction`; `reduction` is the budget
+    /// multiplier. Stable-for-many-iterations → higher `time_reduction` →
+    /// lower `reduction` → less time (partially giving savings back).
+    fn stability_reduction(stability_iters: i32, previous_time_reduction: f64) -> (f64, f64) {
+        let time_reduction = lerp(
+            f64::from(stability_iters),
+            params::TIME_REDUCTION_STABILITY_LO,
+            params::TIME_REDUCTION_STABILITY_HI,
+            params::TIME_REDUCTION_MIN,
+            params::TIME_REDUCTION_MAX,
+        )
+        .clamp(params::TIME_REDUCTION_MIN, params::TIME_REDUCTION_MAX);
+        let reduction = (params::REDUCTION_BASE + previous_time_reduction)
+            / (params::REDUCTION_DEN_COEFF * time_reduction);
+        (time_reduction, reduction)
+    }
+
+    /// Factor 3 — `bestMoveInstability`: think longer when the best move
+    /// keeps flipping (design/12 §3.9). `threads` is 1 until SMP (P11).
+    fn best_move_instability(tot_best_move_changes: f64, threads: usize) -> f64 {
+        params::INSTABILITY_BASE
+            + params::INSTABILITY_CHANGES_COEFF * tot_best_move_changes / threads as f64
+    }
+
+    /// Factor 4 — `highBestMoveEffort`: stop sooner once the lion's share
+    /// of nodes already went into the best move (design/12 §3.9). Clamped
+    /// to `[EFFORT_SCALE_AT_HI, EFFORT_SCALE_AT_LO]`.
+    fn high_best_move_effort(effort: u64, total_nodes: u64) -> f64 {
+        let nodes_effort =
+            (effort as i64 * params::EFFORT_UNIT_SCALE / total_nodes.max(1) as i64) as f64;
+        lerp(
+            nodes_effort,
+            params::EFFORT_LERP_LO,
+            params::EFFORT_LERP_HI,
+            params::EFFORT_SCALE_AT_LO,
+            params::EFFORT_SCALE_AT_HI,
+        )
+        .clamp(params::EFFORT_SCALE_AT_HI, params::EFFORT_SCALE_AT_LO)
+    }
+
+    /// The between-iterations soft stop (design/12 §3.9, full four-factor
+    /// form — doc 12 step 8): once the soft budget is spent, starting
+    /// another iteration is pointless — it would almost certainly be cut
+    /// off by the `maximum` hard wall before completing, wasting clock a
+    /// later move could have used.
     ///
-    /// The one §3.9 refinement that IS v1 (this step's brief): the
-    /// single-reply cap — with exactly one legal move the search result
-    /// cannot change the move played, so the budget is capped at
-    /// [`params::ONE_REPLY_TOTAL_TIME_CAP`].
+    /// `total_time = optimum · fallingEval · reduction · bestMoveInstability
+    /// · highBestMoveEffort`, then capped at
+    /// [`params::ONE_REPLY_TOTAL_TIME_CAP`] with exactly one legal move
+    /// (the result cannot change the move played). The search stops when
+    /// `elapsed > min(total_time, maximum)`, or on the two mate early-stops
+    /// (every PV line mates in `<=` [`params::SOFT_STOP_MATE_PLIES`], or we
+    /// are mated in [`params::SOFT_STOP_MATED_PLIES`]). Otherwise it sets
+    /// `increase_depth` for the next iteration: honest deepening only while
+    /// at most [`params::INCREASE_DEPTH_FRACTION`] of the budget is spent.
     ///
     /// Guards mirror the doc's `use_time_management() && !stop` gate plus
     /// §3.8's ponder rule: while pondering the GUI owns the clock, so
-    /// nothing may self-stop — the doc's "remember the verdict in
-    /// `stop_on_ponderhit` instead" conversion arrives with the ponder
-    /// state machine (doc 12 step 9). `tm.elapsed` counts nodes under
-    /// `nodestime`, keeping the units consistent with the budgets
-    /// (§3.11) — which is also the fake-clock seam the unit tests use.
-    fn soft_stop(&self, stop: &AtomicBool) {
-        if !self.limits.use_time_management()
-            || stop.load(Ordering::Relaxed)
-            || self.ponder.load(Ordering::Relaxed)
-        {
+    /// nothing may self-stop (the doc's "remember the verdict in
+    /// `stop_on_ponderhit` instead" conversion is the ponder state machine,
+    /// doc 12 step 9 / P11 — until then a pondering search simply never
+    /// self-stops, and `increase_depth` stays `true`). `tm.elapsed` counts
+    /// nodes under `nodestime`, keeping the units consistent with the
+    /// budgets (§3.11) — the fake-clock seam the unit tests use.
+    ///
+    /// Maintains the per-iteration TM state (`iter_value` ring,
+    /// `tm_previous_time_reduction`) as a side effect, hence `&mut self`.
+    fn soft_stop(&mut self, stop: &AtomicBool, multi_pv: usize, tot_best_move_changes: f64) {
+        if !self.limits.use_time_management() || stop.load(Ordering::Relaxed) {
             return;
         }
-        // v1 total_time == optimum; the factor stack multiplies in here
-        // (doc 12 step 8, P10).
-        let mut total_time = self.tm.optimum() as f64;
+        let pondering = self.ponder.load(Ordering::Relaxed);
+        let best_value = self.root_moves[0].score;
+
+        // The four §3.9 factors (constants pinned by golden tests).
+        let falling_eval = Self::falling_eval(
+            self.tm_best_previous_average_score,
+            best_value,
+            self.iter_value[self.iter_idx],
+        );
+        let (time_reduction, reduction) = Self::stability_reduction(
+            self.root_depth - self.last_best_move_depth,
+            self.tm_previous_time_reduction,
+        );
+        let instability = Self::best_move_instability(tot_best_move_changes, 1);
+        let effort = Self::high_best_move_effort(self.root_moves[0].effort, self.nodes);
+
+        let mut total_time =
+            self.tm.optimum() as f64 * falling_eval * reduction * instability * effort;
         if self.root_moves.len() == 1 {
             total_time = total_time.min(params::ONE_REPLY_TOTAL_TIME_CAP);
         }
+
         let nodes = self.nodes;
         let elapsed = self.tm.elapsed(|| nodes) as f64;
-        if elapsed > total_time.min(self.tm.maximum() as f64) {
-            stop.store(true, Ordering::Relaxed);
+        // Mate early-stops (design/12 §3.9): every reported PV line already
+        // mates in <= SOFT_STOP_MATE_PLIES, or we are mated in exactly
+        // SOFT_STOP_MATED_PLIES — either way deeper search cannot help.
+        let mate_stop = self.root_moves[multi_pv - 1].score
+            >= mate_in(params::SOFT_STOP_MATE_PLIES)
+            || self.root_moves[0].score == mated_in(params::SOFT_STOP_MATED_PLIES);
+
+        if elapsed > total_time.min(self.tm.maximum() as f64) || mate_stop {
+            // While pondering the GUI owns the clock — never self-stop (the
+            // stop_on_ponderhit conversion is P11). Otherwise stop.
+            if !pondering {
+                stop.store(true, Ordering::Relaxed);
+            }
+        } else {
+            self.increase_depth =
+                pondering || elapsed <= total_time * params::INCREASE_DEPTH_FRACTION;
         }
+
+        // Maintain the fallingEval ring and the reduction memory for the
+        // next iteration / next `go` (design/12 §3.9).
+        self.iter_value[self.iter_idx] = best_value;
+        self.iter_idx = (self.iter_idx + 1) & 3;
+        self.tm_previous_time_reduction = time_reduction;
     }
 
-    /// Countdown reload for [`Self::check_time`] (design/12 §3.8): 512
-    /// node-entries, or `min(512, nodes_limit / 1024)` under a node limit
-    /// (which may be 0 — then every node entry does the real check).
-    fn check_time_reset(&self) -> i32 {
+    /// Poll-cadence bitmask for [`Self::check_time`] (design/12 §3.8;
+    /// Reckless bundle D31). Default cadence is [`params::CHECK_TIME_CALLS`]
+    /// node-entries (`mask = CALLS - 1`, a power of two). Under `go nodes`
+    /// the cadence tightens to the largest power of two `<= min(CALLS,
+    /// nodes / 1024)` so a tiny node budget is polled often enough to be
+    /// honored (a mask of 0 polls every node).
+    fn compute_check_time_mask(&self) -> u64 {
         match self.limits.nodes {
-            Some(n) => (n / 1024).min(params::CHECK_TIME_CALLS as u64) as i32,
-            None => params::CHECK_TIME_CALLS,
+            Some(n) => {
+                let cadence = (n / 1024).clamp(1, params::CHECK_TIME_CALLS as u64);
+                // Round DOWN to a power of two, then subtract 1 for the mask.
+                let pow2 = cadence.next_power_of_two();
+                let pow2 = if pow2 > cadence { pow2 >> 1 } else { pow2 };
+                pow2 - 1
+            }
+            None => params::CHECK_TIME_CALLS as u64 - 1,
         }
     }
+}
+
+/// Linear interpolation with clamping left to the caller: maps `x` from the
+/// segment `[x0, x1]` onto `[y0, y1]` (design/12 §3.9's `lerp`). Extrapolates
+/// outside the segment — every soft-stop caller clamps the result.
+fn lerp(x: f64, x0: f64, x1: f64, y0: f64, y1: f64) -> f64 {
+    y0 + (x - x0) * (y1 - y0) / (x1 - x0)
 }
 
 #[cfg(test)]
@@ -2974,7 +3191,7 @@ mod tests {
     fn go(w: &mut Worker, tt: &TranspositionTable) {
         tt.new_search();
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(tt, &stop, &mut |_| {});
+        w.iterative_deepening(tt, &stop, &mut TimePersist::default(), &mut |_| {});
     }
 
     /// Run a `go depth <depth>` on `tt` (warm or fresh), discarding info
@@ -4511,7 +4728,8 @@ mod tests {
         beta: Value,
     ) -> Value {
         init_stack(&mut w.stack);
-        w.qsearch::<NT>(tt, alpha, beta, 0)
+        let stop = AtomicBool::new(false);
+        w.qsearch::<NT>(tt, &stop, alpha, beta, 0)
     }
 
     #[test]
@@ -4775,7 +4993,9 @@ mod tests {
         w.limits.depth = Some(6);
         let stop = AtomicBool::new(true);
         let mut infos = 0;
-        w.iterative_deepening(&test_tt(), &stop, &mut |_| infos += 1);
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {
+            infos += 1
+        });
         // The ID loop condition sees the stop before any search runs and
         // no info line is ever emitted from a stopped iteration (§3.5)...
         assert_eq!(w.nodes, 0);
@@ -4794,7 +5014,7 @@ mod tests {
         w.limits.depth = Some(3);
         let stop = AtomicBool::new(false);
         let mut reports: Vec<(Depth, i32, u64, Vec<Move>)> = Vec::new();
-        w.iterative_deepening(&test_tt(), &stop, &mut |i| {
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |i| {
             assert_eq!(i.multipv, 1, "v1 is single-PV");
             assert!(!i.lowerbound && !i.upperbound, "full window: exact");
             reports.push((i.depth, i.sel_depth, i.nodes, i.pv.to_vec()));
@@ -4822,14 +5042,15 @@ mod tests {
         let mut w = Worker::new(board(START_FEN));
         w.limits.nodes = Some(20_000);
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
         assert!(
             stop.load(Ordering::Relaxed),
             "check_time must raise the stop flag on the node limit"
         );
         // The stop fires at the first real check at/past the budget; the
-        // cadence tightens to 20_000/1024 = 19 node entries (§3.8), so the
-        // overshoot is the qsearch slack between checks — small.
+        // bitmask cadence tightens under a node limit to the largest power
+        // of two <= 20_000/1024 = 19, i.e. every 16 node-entries (§3.8), so
+        // the overshoot is the cadence plus qsearch slack — small.
         assert!(w.nodes >= 20_000);
         assert!(w.nodes < 28_000, "cadence overshoot too large: {}", w.nodes);
         // A mid-search stop still leaves a trusted, legal bestmove (§3.5).
@@ -4843,7 +5064,7 @@ mod tests {
         w.limits.movetime = Some(50);
         w.limits.start_time = std::time::Instant::now();
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
         assert!(stop.load(Ordering::Relaxed), "movetime must self-stop");
         assert!(w.best_move().is_some());
     }
@@ -4868,7 +5089,7 @@ mod tests {
         w.limits.ponder = true;
         w.ponder = Arc::new(AtomicBool::new(true));
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
         assert!(!stop.load(Ordering::Relaxed), "pondering must never stop");
         assert_eq!(w.root_depth, 5, "the search deepened on GUI time");
 
@@ -4878,7 +5099,7 @@ mod tests {
         w.limits.start_time = std::time::Instant::now();
         w.limits.depth = Some(5);
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
         assert!(stop.load(Ordering::Relaxed), "expired movetime must stop");
     }
 
@@ -4907,7 +5128,7 @@ mod tests {
         assert!(w.limits.use_time_management());
         assert!(w.tm.maximum() >= 1);
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
         assert!(stop.load(Ordering::Relaxed), "the TM wall must self-stop");
         assert!(w.best_move().is_some());
     }
@@ -4929,7 +5150,7 @@ mod tests {
         let stop = AtomicBool::new(false);
         let root = board(fen);
         let mut reported = 0;
-        w.iterative_deepening(&tt, &stop, &mut |i| {
+        w.iterative_deepening(&tt, &stop, &mut TimePersist::default(), &mut |i| {
             let mut b = root.clone();
             for &m in i.pv {
                 assert!(
@@ -4967,30 +5188,120 @@ mod tests {
     }
 
     #[test]
-    fn soft_stop_halts_deepening_once_optimum_is_spent() {
+    fn soft_stop_halts_deepening_within_the_budget() {
         // 60 s on the 1-node-per-ms fake clock: optimum ≈ 1.25k nodes,
-        // maximum ≈ 8.6k. The run must end via the between-iterations
-        // soft stop — final nodes past optimum (it never stops sooner)
-        // but within maximum (the hard wall never fired).
+        // maximum ≈ 8.6k. The four-factor soft stop (doc 12 §3.9) ends the
+        // search between iterations once `total_time` (optimum scaled by
+        // the four factors) is spent; the `maximum` hard wall is the
+        // backstop for a last iteration that overshoots. Either way the run
+        // ends well past optimum and within maximum plus one poll cadence
+        // (the hard wall's granularity, `params::CHECK_TIME_CALLS`). On the
+        // first move `best_previous_average_score` is still the
+        // `VALUE_INFINITE` sentinel, so `fallingEval` clamps high (1.708),
+        // inflating `total_time` above optimum — the search never stops at
+        // the bare optimum.
         let mut w = Worker::new(board(START_FEN));
         w.limits.time[crate::types::Color::White as usize] = 60_000;
         init_clock(&mut w, &nodestime_options());
         let (optimum, maximum) = (w.tm.optimum(), w.tm.maximum());
         assert!(0 < optimum && optimum < maximum);
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
-        assert!(stop.load(Ordering::Relaxed), "the soft stop must self-stop");
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
+        assert!(stop.load(Ordering::Relaxed), "the soft/hard stop must fire");
         assert!(
             w.nodes as i64 > optimum,
             "stopped before optimum was spent: {} <= {optimum}",
             w.nodes
         );
         assert!(
-            w.nodes as i64 <= maximum,
-            "the hard wall fired, not the soft stop: {} > {maximum}",
-            w.nodes
+            w.nodes as i64 <= maximum + params::CHECK_TIME_CALLS as i64,
+            "overshot the hard wall by more than one poll cadence: {} > {maximum} + {}",
+            w.nodes,
+            params::CHECK_TIME_CALLS
         );
         assert!(w.best_move().is_some());
+    }
+
+    // --- Golden soft-stop factor tests (design/12 §3.9, §5). Each pins the
+    // §3.9 constants at their clamp edges. Expected values are hand-derived
+    // from the formulas with the literal constants, so moving a params
+    // constant fails the matching test. ---
+
+    #[test]
+    fn soft_stop_falling_eval_pins_constants() {
+        // (11.87 + 2.21·Δavg + 1.0·Δiter) / 100, clamped to [0.572, 1.708].
+        // Mid: Δavg = 100-50 = 50, Δiter = 60-50 = 10 →
+        //   (11.87 + 110.5 + 10)/100 = 1.3237.
+        assert!((Worker::falling_eval(100, 50, 60) - 1.3237).abs() < 1e-9);
+        // Huge positive drop clamps to the max; huge negative to the min.
+        assert!((Worker::falling_eval(10_000, 0, 0) - 1.708).abs() < 1e-12);
+        assert!((Worker::falling_eval(0, 10_000, 0) - 0.572).abs() < 1e-12);
+    }
+
+    #[test]
+    fn soft_stop_stability_reduction_pins_constants() {
+        // time_reduction = lerp(iters, 5,18, 0.65,1.55) clamped [0.65,1.55];
+        // reduction = (1.48 + prev) / (2.157 · time_reduction).
+        let (tr0, red0) = Worker::stability_reduction(0, 0.85); // below lo -> clamp 0.65
+        assert!((tr0 - 0.65).abs() < 1e-12);
+        assert!((red0 - 1.661_852_287_721_550_7).abs() < 1e-9);
+        let (tr5, _) = Worker::stability_reduction(5, 0.85); // lerp x0 -> 0.65
+        assert!((tr5 - 0.65).abs() < 1e-12);
+        let (tr11, red11) = Worker::stability_reduction(11, 0.85);
+        assert!((tr11 - 1.065_384_615_384_615_4).abs() < 1e-9);
+        assert!((red11 - 1.013_909_879_512_426_4).abs() < 1e-9);
+        let (tr18, red18) = Worker::stability_reduction(18, 0.85); // lerp x1 -> 1.55
+        assert!((tr18 - 1.55).abs() < 1e-12);
+        assert!((red18 - 0.696_905_798_076_779_3).abs() < 1e-9);
+        let (tr30, _) = Worker::stability_reduction(30, 0.85); // above hi -> clamp 1.55
+        assert!((tr30 - 1.55).abs() < 1e-12);
+    }
+
+    #[test]
+    fn soft_stop_best_move_instability_pins_constants() {
+        // 1.096 + 2.29 · changes / threads.
+        assert!((Worker::best_move_instability(0.0, 1) - 1.096).abs() < 1e-12);
+        assert!((Worker::best_move_instability(2.0, 1) - 5.676).abs() < 1e-12);
+        // The /threads term averages the SMP change count (P11).
+        assert!((Worker::best_move_instability(4.0, 2) - 5.676).abs() < 1e-12);
+    }
+
+    #[test]
+    fn soft_stop_high_best_move_effort_pins_constants() {
+        // nodes_effort = effort·100000 / max(1,nodes); then
+        // lerp(nodes_effort, 79219,101822, 0.924,0.71) clamped [0.71,0.924].
+        assert!((Worker::high_best_move_effort(79_219, 100_000) - 0.924).abs() < 1e-9);
+        assert!((Worker::high_best_move_effort(101_822, 100_000) - 0.71).abs() < 1e-9);
+        // Below the low knee clamps to 0.924; above the high knee to 0.71.
+        assert!((Worker::high_best_move_effort(0, 100_000) - 0.924).abs() < 1e-12);
+        assert!((Worker::high_best_move_effort(200_000, 100_000) - 0.71).abs() < 1e-12);
+        // A mid ratio interpolates.
+        assert!(
+            (Worker::high_best_move_effort(90_520, 100_000) - 0.817_004_733_884_882_6).abs() < 1e-9
+        );
+    }
+
+    #[test]
+    fn iter_value_ring_is_seeded_per_go_from_persist() {
+        // First search of a game (best_previous_score == VALUE_INFINITE):
+        // the ring seeds to VALUE_DRAW so fallingEval is well-defined
+        // (design/12 §3.9). Fixed depth leaves the ring at its seed (the
+        // soft stop never runs), so we can read it back.
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.depth = Some(2);
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
+        assert_eq!(w.iter_value, [VALUE_DRAW; 4]);
+        // A later move of the game seeds every slot from best_previous_score.
+        let mut persist = TimePersist {
+            best_previous_score: 137,
+            ..TimePersist::default()
+        };
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.depth = Some(2);
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&test_tt(), &stop, &mut persist, &mut |_| {});
+        assert_eq!(w.iter_value, [137; 4]);
     }
 
     #[test]
@@ -5010,7 +5321,7 @@ mod tests {
             "test premise: the uncapped budget must dwarf the cap"
         );
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
         assert_eq!(w.root_moves.len(), 1, "test premise: one legal move");
         assert!(stop.load(Ordering::Relaxed), "the capped soft stop fires");
         assert!(
@@ -5040,7 +5351,7 @@ mod tests {
         init_clock(&mut w, &nodestime_options());
         w.ponder = Arc::new(AtomicBool::new(true));
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
         assert!(
             !stop.load(Ordering::Relaxed),
             "pondering must never self-stop"
@@ -5054,7 +5365,7 @@ mod tests {
         w.limits.depth = Some(4);
         init_clock(&mut w, &nodestime_options());
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
         assert!(stop.load(Ordering::Relaxed), "the soft stop must fire");
         assert!(w.root_depth < 4, "deepening was cut short at optimum");
     }
@@ -5072,7 +5383,9 @@ mod tests {
         w.limits.depth = Some(3);
         let stop = AtomicBool::new(false);
         let mut pv_heads = Vec::new();
-        w.iterative_deepening(&test_tt(), &stop, &mut |i| pv_heads.push(i.pv[0]));
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |i| {
+            pv_heads.push(i.pv[0])
+        });
         assert_eq!(w.root_moves.len(), 2);
         assert!(w.root_moves.iter().all(|rm| filter.contains(&rm.pv[0])));
         assert!(filter.contains(&w.best_move().unwrap()));
@@ -5088,7 +5401,7 @@ mod tests {
         w.limits.searchmoves = vec![Move::normal(Square::E2, Square::E5)];
         w.limits.depth = Some(2);
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
         assert_eq!(w.root_moves.len(), 20);
         assert!(w.best_move().is_some());
     }
@@ -5294,7 +5607,7 @@ mod tests {
             let tt = test_tt();
             tt.new_search();
             let stop = AtomicBool::new(false);
-            probe.iterative_deepening(&tt, &stop, &mut |i| {
+            probe.iterative_deepening(&tt, &stop, &mut TimePersist::default(), &mut |i| {
                 infos.push((i.depth, i.score, i.pv[0], i.nodes));
             });
         }
@@ -5315,7 +5628,7 @@ mod tests {
         let tt = test_tt();
         tt.new_search();
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&tt, &stop, &mut |i| {
+        w.iterative_deepening(&tt, &stop, &mut TimePersist::default(), &mut |i| {
             infos2.push((i.depth, i.score, i.pv[0], i.nodes));
         });
 
@@ -5340,7 +5653,7 @@ mod tests {
         let tt = test_tt();
         tt.new_search();
         let stop = AtomicBool::new(false);
-        w.iterative_deepening(&tt, &stop, &mut |_| {});
+        w.iterative_deepening(&tt, &stop, &mut TimePersist::default(), &mut |_| {});
         stop.load(Ordering::Relaxed)
     }
 
@@ -5477,7 +5790,8 @@ mod tests {
     #[should_panic(expected = "NonPV requires a zero window")]
     fn nonpv_qsearch_rejects_a_wide_window() {
         let (mut w, tt) = raw_search_worker();
-        w.qsearch::<NonPv>(&tt, 0, 2, 1);
+        let stop = AtomicBool::new(false);
+        w.qsearch::<NonPv>(&tt, &stop, 0, 2, 1);
     }
 
     #[test]
