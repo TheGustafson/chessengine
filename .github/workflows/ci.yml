@@ -1,20 +1,27 @@
 # CI — the hosted slice of the merge gate.
 #
-# tools/check.sh is the authoritative local ritual (design/14 §3.9); this job
-# runs the parts that are meaningful on a shared runner: fmt, clippy, and the
-# non-ignored test set in debug and release. Perft full/extended tiers, the
-# bench fingerprint, and anything timing-based stay local by design — timing
-# assertions are flaky on shared runners (design/14 §5), and the ignored
-# release tiers are gated by tools/check.sh once P3 lands.
+# tools/check.sh is the authoritative local ritual (design/14 §3.9); this
+# workflow runs the parts that are meaningful on a shared runner. Timing-based
+# gates (the bench fingerprint nps, perft nps floors) stay local by design —
+# timing assertions are flaky on shared runners (design/14 §5) — but the node
+# COUNTS are deterministic, so the ignored perft tier runs here on a nightly
+# schedule.
 #
-# Single job on stable, kept fast; a matrix (Windows/macOS/aarch64, per the
-# tier-2 platform policy in design/01 §3.7) comes later.
+# Jobs:
+#   check           fmt + clippy + test (debug & release)       — every push/PR
+#   selfplay-smoke  a full self-play game, legality-checked      — every push/PR
+#   nightly-perft   the ignored release perft tier (node counts) — schedule only
+#
+# A platform matrix (Windows/macOS/aarch64, per the tier-2 policy in
+# design/01 §3.7) comes later.
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: '0 6 * * *'  # 06:00 UTC nightly — the perft node-count tier
 
 env:
   CARGO_TERM_COLOR: always
@@ -43,11 +50,50 @@ jobs:
       - name: Test (debug — unit tests + fast perft tier)
         run: cargo test
 
-      # Non-ignored tests in release. Today this re-runs the unit tests
-      # (RED-ignored tests are skipped, so this is cheap and harmless); once
-      # release-mode tests exist they run here automatically.
-      # TODO(P3): when the perft tiers land, consider a scheduled (nightly)
-      # job for `cargo test --release -- --ignored perft_full_suite`
-      # (design/06 §9.4) — the per-push job stays fast.
+      # Non-ignored tests in release (RED-ignored tiers are skipped here — they
+      # run in the nightly-perft job below and in tools/check.sh locally).
       - name: Test (release)
         run: cargo test --release
+
+  # A full fixed-movetime self-play game over the release binary, with
+  # python-chess independently verifying the legality of every move and a
+  # per-move watchdog turning a stall into a hard failure (tools/selfplay_smoke.py,
+  # design/14 §3.8 tier 0). Catches a distinct bug class from bench/perft — UCI
+  # protocol violations, illegal-move emission, and stalls — that unit tests
+  # never exercise. No Elo signal; a crash / illegal move / stall fails it.
+  selfplay-smoke:
+    name: self-play smoke (protocol + legality)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install python-chess
+        run: pip install chess
+
+      - name: Self-play smoke (100 ms/move)
+        run: python3 tools/selfplay_smoke.py target/release/chessengine 100
+
+  # The ignored release perft tier: the full suite plus the differential
+  # legal-predicate oracle (design/06 §9.4). Node counts are deterministic, so
+  # this is CI-safe; it is heavy (~minutes), hence schedule-only.
+  nightly-perft:
+    name: nightly perft tier (node counts)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Release perft tier (full suite + predicate oracle)
+        run: cargo test --release -- --ignored --test-threads=1 perft
