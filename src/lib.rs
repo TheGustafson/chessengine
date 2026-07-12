@@ -29,6 +29,7 @@ pub mod movepick;
 pub mod moves;
 pub mod perft;
 pub mod search;
+pub mod threads;
 pub mod timeman;
 pub mod tt;
 pub mod types;

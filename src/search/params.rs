@@ -895,6 +895,14 @@ pub const CHECK_TIME_EPSILON_MS: i64 = 15;
 /// line, published every iteration either way.
 pub const INFO_THROTTLE_NODES: u64 = 10_000_000;
 
+// --- Lazy-SMP best-thread voting (design/13 §3.8, D20) ---
+
+/// The per-thread vote tempo (design/13 §3.8; SF-current `get_best_thread`).
+/// Each thread votes for its own best move with weight `score - min_score +
+/// VOTE_TEMPO`; the `+ VOTE_TEMPO` floor means even the weakest thread's
+/// opinion is counted. Value units (centipawn-ish, ply-relative).
+pub const VOTE_TEMPO: crate::types::Value = 14;
+
 // --- History updates: node-result bonus/malus (design/09 §3.9) ---
 //
 // `update_all_stats` computes one `bonus` (for the best move and agreeing

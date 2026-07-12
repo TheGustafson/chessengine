@@ -155,6 +155,7 @@ use crate::history::Histories;
 use crate::movegen::generate_legal;
 use crate::movepick::MovePicker;
 use crate::moves::{MAX_MOVES, Move, MoveKind, MoveList};
+use crate::threads::{Counters, Job, PoolShared, SetupJob};
 use crate::timeman::{Limits, TimeManager, TimePersist};
 use crate::tt::{Bound, TranspositionTable};
 use crate::types::{
@@ -162,6 +163,7 @@ use crate::types::{
     VALUE_MATE, VALUE_NONE, VALUE_ZERO, Value, is_decisive, is_loss, is_mate, is_mated, is_valid,
     is_win, mate_in, mated_in, value_from_tt, value_to_tt,
 };
+use crate::uci::Options;
 
 /// The draw dither (design/07 §3.1 — the one value function search owns):
 /// draw-ish returns in the MAIN search are never exactly [`VALUE_DRAW`];
@@ -514,6 +516,129 @@ pub struct SearchInfo<'a> {
     pub pv: &'a [Move],
 }
 
+/// The type-erased UCI output sink (design/13 §3.3/§3.7 G). The threading
+/// layer holds this as `Arc<dyn UciSink>` so the pool stays free of the
+/// output stream's `W: Write` type parameter; the UCI layer implements it
+/// (formatting lives there, `uci.rs`). Only the MAIN worker ever writes
+/// through it, from its own thread, so every method must be internally
+/// line-atomic. `Send + Sync` because the handle travels into the search
+/// threads and is shared by all of them.
+pub trait UciSink: Send + Sync {
+    /// One completed `info` line (design/12 §3.13).
+    fn emit_info(&self, info: &SearchInfo, elapsed_ms: i64);
+    /// An arbitrary already-formatted line (the `info depth 0 score ...`
+    /// mate/stalemate report and diagnostics). Written verbatim + newline.
+    fn emit_raw(&self, line: &str);
+    /// The final block, emitted atomically (design/12 §3.2 step 4): an
+    /// optional trailing `info` line whose PV matches `best`, then
+    /// `bestmove <best> [ponder <p>]`.
+    fn emit_bestmove(&self, tail: Option<(SearchInfo, i64)>, best: Move, ponder: Option<Move>);
+    /// `bestmove (none)` — the root had no legal move.
+    fn emit_bestmove_none(&self);
+}
+
+/// One worker's end-of-search summary, published under its shell for voting
+/// (design/13 §3.8). Built from `root_moves[0]` as the last act of a search
+/// job, then read by the main worker after every helper has parked.
+#[derive(Clone, Debug)]
+pub struct SearchReport {
+    /// `root_moves[0].pv`; `pv[0]` is the move this thread would play.
+    pub pv: Vec<Move>,
+    /// `root_moves[0].score` (ply-relative, may be a bound after an abort).
+    pub score: Value,
+    /// `root_moves[0].uci_score` (window-clamped) — what the winner's
+    /// republished `info` line prints.
+    pub uci_score: Value,
+    pub score_lowerbound: bool,
+    pub score_upperbound: bool,
+    /// Deepest fully-completed iteration for this thread (a vote weight).
+    pub completed_depth: Depth,
+    pub sel_depth: i32,
+}
+
+impl SearchReport {
+    /// A report whose score is decisive AND trusted (not a bound left by an
+    /// aborted iteration) — the §3.8 decisive-protection predicate.
+    fn is_trusted_decisive(&self) -> bool {
+        self.score != -VALUE_INFINITE
+            && is_decisive(self.score)
+            && !(self.score_lowerbound || self.score_upperbound)
+    }
+}
+
+/// Best-thread voting (design/13 §3.8; SF `get_best_thread`, re-expressed).
+/// Returns the index of the winning report. Callers disable voting (and take
+/// thread 0 directly) for a single thread or a fixed-depth `go` (§3.8 step 1).
+///
+/// Each thread votes for its own best move with weight
+/// `score - min_score + VOTE_TEMPO`, so even the weakest thread's opinion
+/// counts and identical moves accumulate. A *trusted decisive* incumbent is
+/// only displaced by a trusted decisive candidate with strictly larger
+/// magnitude (a shorter mate / faster TB win); otherwise a candidate wins on
+/// more votes, or equal votes and a longer PV (a depth proxy). A `-INFINITE`
+/// or losing candidate can never win.
+pub fn best_thread(reports: &[SearchReport]) -> usize {
+    use std::collections::HashMap;
+    debug_assert!(!reports.is_empty());
+    if reports.len() == 1 {
+        return 0;
+    }
+    let min_score = reports.iter().map(|r| r.score).min().unwrap_or(VALUE_DRAW);
+    let mut votes: HashMap<Move, i64> = HashMap::new();
+    for r in reports {
+        if let Some(&mv) = r.pv.first() {
+            *votes.entry(mv).or_insert(0) += i64::from(r.score - min_score + params::VOTE_TEMPO);
+        }
+    }
+    let vote_of = |r: &SearchReport| -> i64 {
+        r.pv.first()
+            .and_then(|m| votes.get(m))
+            .copied()
+            .unwrap_or(0)
+    };
+    let mut best = 0;
+    for i in 1..reports.len() {
+        let b = &reports[best];
+        let c = &reports[i];
+        let b_dec = b.is_trusted_decisive();
+        let c_dec = c.is_trusted_decisive();
+        if b_dec {
+            // Only a strictly shorter mate / faster win displaces a decisive
+            // incumbent; votes are ignored entirely.
+            if c_dec && c.score.abs() > b.score.abs() {
+                best = i;
+            }
+        } else if c_dec
+            || (!is_loss(c.score)
+                && (vote_of(c) > vote_of(b)
+                    || (vote_of(c) == vote_of(b) && c.pv.len() > b.pv.len())))
+        {
+            best = i;
+        }
+    }
+    best
+}
+
+/// The 1-ply-PV ponder fallback (design/12 §3.2 step 4): make `best` on a
+/// scratch board and probe the TT there; offer the stored move only if the
+/// resulting position is not an immediate draw and the move is legal (the doc
+/// 08 §3.5 validation, discharged by legal-list membership: a collided or
+/// garbage move simply matches nothing). Cold path (once per `go`).
+pub(crate) fn ponder_from_tt(tt: &TranspositionTable, board: &Board, best: Move) -> Option<Move> {
+    let mut b = board.clone();
+    b.make_move(best, b.gives_check(best));
+    if b.is_draw(1) {
+        return None;
+    }
+    let probe = tt.probe(b.key());
+    if !probe.hit || probe.data.mv == Move::NULL {
+        return None;
+    }
+    let mut legal = MoveList::new();
+    generate_legal(&b, &mut legal);
+    legal.contains(&probe.data.mv).then_some(probe.data.mv)
+}
+
 /// One aspiration attempt's window snapshot — test-only instrumentation
 /// behind the design/07 §8 criterion-7 trace test. `delta`/`alpha`/
 /// `beta`/`failed_high_cnt` are the values the attempt SEARCHED with;
@@ -537,9 +662,42 @@ struct AspirationAttempt {
 const ITER_VALUE_RING: usize = 4;
 const _: () = assert!(ITER_VALUE_RING.is_power_of_two());
 
-/// Per-thread search state (design/07 §3.10): one worker owns its board
-/// copy (D8, D23), stack, PV table and counters. Written single-threaded
-/// but SMP-shaped — no globals; the stop flag is a shared borrow.
+/// Main-worker-only state (design/13 §3.3), gathered so the search code
+/// stays branch-light: the null-object payload behind the main worker's
+/// `manager: Some(..)` (helpers hold `None`). Holds the per-GAME time state
+/// that must survive across `go`s ([`TimePersist`]) and the ponder-hit
+/// verdict. Never touched cross-thread — the UCI thread flips only
+/// `PoolShared.ponder`, never this (§3.3).
+pub struct SearchManager {
+    /// Per-game TM state, seeded into the ID loop each `go` and updated at
+    /// search end; reset by `ucinewgame` ([`Worker::clear`]).
+    pub persist: TimePersist,
+    /// `stop_on_ponderhit` (design/12 step 9 / §3.3): set true when the soft
+    /// budget elapses *while pondering*, so a later `ponderhit` stops at once
+    /// instead of burning the whole clock. Cleared each `go` (`setup`).
+    pub stop_on_ponderhit: bool,
+}
+
+impl SearchManager {
+    pub fn new() -> SearchManager {
+        SearchManager {
+            persist: TimePersist::default(),
+            stop_on_ponderhit: false,
+        }
+    }
+}
+
+impl Default for SearchManager {
+    fn default() -> SearchManager {
+        SearchManager::new()
+    }
+}
+
+/// Per-thread search state (design/07 §3.10, design/13 §3.2): one worker owns
+/// its board copy (D8, D23), stack, PV table, histories and reduction table —
+/// none observable from another thread. The only cross-thread-visible handles
+/// are the atomic [`Counters`] and the `Arc<PoolShared>` (flags + sibling
+/// shells). Moved into its thread at spawn, never shared (§3.12).
 pub struct Worker {
     /// The worker's own board copy, history Vec included (D8).
     pub board: Board,
@@ -601,13 +759,6 @@ pub struct Worker {
     /// iterations (v1, doc 12 step 7). `stop_on_ponderhit` and the
     /// soft-stop factor stack are doc 12 steps 8–9 (P10/P11).
     pub tm: TimeManager,
-    /// The `PoolShared.ponder` flag, v1 stand-in (doc 12 §3.2): set by
-    /// the UCI layer for a `go ponder` session and cleared by
-    /// `ponderhit`, consumed ONLY by [`Worker::check_time`]'s ponder
-    /// guard — while pondering the GUI owns the clock, so no limit may
-    /// stop the search (§3.8). `Arc` because the UCI thread clears the
-    /// same flag the search polls; defaults to an unshared `false`.
-    pub ponder: Arc<AtomicBool>,
     /// Best PV of the last iteration whose result was trusted (`!stop`)
     /// AND not a forgotten mate, §3.5. Persists across iterations so a
     /// `bestmove` is always printable; [`Worker::root_hygiene`] both
@@ -628,12 +779,6 @@ pub struct Worker {
     /// Ring cursor into [`Self::iter_value`]; `iter_value[iter_idx]` is the
     /// score from four iterations ago at read time.
     iter_idx: usize,
-    /// Soft-stop search-again signal (design/12 §3.9): while `false`, the
-    /// next iteration re-searches near the same effective depth instead of
-    /// honestly deepening (the soft budget is more than half spent). Set by
-    /// [`Worker::soft_stop`]; `true` at every `go` start, so fixed-depth /
-    /// fixed-node search (bench, D24) never damps its depth.
-    increase_depth: bool,
     /// Working copy of `persist.previous_time_reduction` — the *numerator*
     /// of the soft-stop `reduction` factor (design/12 §3.9). Seeded from
     /// persist at `go` start and held CONSTANT for the whole search (SF's
@@ -668,6 +813,37 @@ pub struct Worker {
     /// mask == mask`. Recomputed per `go` — tighter (a smaller power of
     /// two) under a `go nodes` limit so tiny budgets are honored.
     check_time_mask: u64,
+
+    // ---- Cross-thread-visible handles (design/13 §3.2) ----
+    /// 0 = main; feeds the aspiration jitter and gates helper-only behavior.
+    pub thread_idx: usize,
+    /// This thread's atomic counters (nodes/tb_hits/best_move_changes),
+    /// shared with its shell so the pool can read them while the worker runs
+    /// (§3.10). Written owner-only; a plain `self.nodes` mirror stays the
+    /// deterministic driver of every search decision (D24).
+    pub counters: Arc<Counters>,
+    /// The shared pool block: control flags (`stop`/`increase_depth`/
+    /// `ponder`) and every sibling shell. The main worker (thread 0) uses it
+    /// to wake helpers, wait for them, aggregate counters and read reports;
+    /// helpers only read the flags (§3.5).
+    pub pool: Arc<PoolShared>,
+
+    // ---- Main-thread-only state (None for helpers, design/13 §3.3) ----
+    /// `Some` iff this is the main worker (thread 0): the null-object payload
+    /// (per-game TM persist + ponder-hit verdict). `is_main()` reads its
+    /// presence.
+    pub manager: Option<Box<SearchManager>>,
+    /// The UCI output sink, installed by `setup`; only the main worker writes
+    /// through it. `None` on a detached worker (bench/tests never emit).
+    output: Option<Arc<dyn UciSink>>,
+    /// The options snapshot for this `go`, installed by `setup`; the main
+    /// worker consumes it in `TimeManager::init`. Defaults on a detached
+    /// worker.
+    options: Options,
+    /// `Minimal` report mode (design/12 §3.13): suppress per-iteration `info`
+    /// lines. Installed by `setup`; main worker only.
+    minimal: bool,
+
     /// Per-attempt aspiration trace (§8 criterion 7) — test builds only,
     /// cleared per `go`, appended by [`Worker::aspiration_search`].
     #[cfg(test)]
@@ -690,6 +866,13 @@ impl Worker {
             *r = (params::RED_TABLE_NUM as f64 / params::RED_TABLE_DEN as f64 * (i as f64).ln())
                 as i32;
         }
+        // A detached worker (bench, unit tests) is its own 1-thread pool:
+        // it is `is_main()` (manager present), shares its counters with its
+        // shell, and never emits (`output = None`). thread_idx 0 ⇒ no
+        // aspiration jitter, so its search is bit-identical to Threads=1
+        // (D24).
+        let counters = Arc::new(Counters::new());
+        let pool = PoolShared::detached(Arc::clone(&counters));
         Worker {
             board,
             root_moves: RootMoves::new(),
@@ -707,22 +890,313 @@ impl Worker {
             best_move_changes: 0.0,
             limits: Limits::new(),
             tm: TimeManager::new(),
-            ponder: Arc::new(AtomicBool::new(false)),
             last_best_move_pv: Vec::new(),
             last_best_move_score: -VALUE_INFINITE,
             last_best_move_depth: 0,
             iter_value: [VALUE_DRAW; ITER_VALUE_RING],
             iter_idx: 0,
-            increase_depth: true,
             tm_previous_time_reduction: crate::timeman::PREVIOUS_TIME_REDUCTION_INIT,
             tm_time_reduction: crate::timeman::TIME_REDUCTION_INIT,
             tm_best_previous_average_score: VALUE_INFINITE,
             eval_ctx: EvalContext::new(),
             histories: Histories::new(),
             check_time_mask: params::CHECK_TIME_CALLS as u64 - 1,
+            thread_idx: 0,
+            counters,
+            pool,
+            manager: Some(Box::new(SearchManager::new())),
+            output: None,
+            options: Options::new(),
+            minimal: false,
             #[cfg(test)]
             asp_trace: Vec::new(),
         }
+    }
+
+    /// Construct a pooled worker on its own thread (design/13 §3.4): `idx`
+    /// selects main (0) vs helper, `counters` is this thread's shell's atomic
+    /// block, and `pool` is the shared handle. The main worker gets a
+    /// [`SearchManager`]; helpers get `None` (the null object). All heavy
+    /// tables are allocated here so their pages are first-touch-local (§3.4).
+    pub fn new_in_pool(idx: usize, counters: Arc<Counters>, pool: Arc<PoolShared>) -> Worker {
+        let mut w = Worker::new(Board::startpos());
+        w.thread_idx = idx;
+        w.counters = counters;
+        w.pool = pool;
+        w.manager = if idx == 0 {
+            Some(Box::new(SearchManager::new()))
+        } else {
+            None
+        };
+        w
+    }
+
+    /// True iff this is the main worker (thread 0). The null-object gate
+    /// (design/13 §3.3): main-only bookkeeping (TM, `info`/`bestmove`
+    /// output, voting) is `if self.is_main()`-guarded; helpers pay one
+    /// perfectly-predicted branch and never touch that state. Keyed on the
+    /// manager's presence (helpers hold `None`).
+    #[inline]
+    pub fn is_main(&self) -> bool {
+        self.manager.is_some()
+    }
+
+    /// `Setup` job (design/13 §3.6 step 4): install this `go`'s per-thread
+    /// state on the worker's own thread, and zero the per-`go` counters and
+    /// this thread's report slot. `nmp_min_ply`/`root_depth`/... are reset by
+    /// [`Worker::iterative_deepening`] itself, so this only covers what the
+    /// driver assumes already-set.
+    pub fn setup(&mut self, job: SetupJob) {
+        self.board = job.board;
+        self.limits = job.limits;
+        self.options = job.options;
+        self.output = Some(job.output);
+        self.multi_pv = self.options.multipv().max(1) as usize;
+        self.minimal = self.options.minimal();
+        self.nodes = 0;
+        self.counters.reset();
+        *self.pool.shells[self.thread_idx]
+            .report
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        if let Some(m) = &mut self.manager {
+            m.stop_on_ponderhit = false;
+        }
+    }
+
+    /// `Clear` job (`ucinewgame`, design/13 §3.4): reset the per-thread
+    /// histories and the per-game TM state to their new-game defaults.
+    pub fn clear(&mut self) {
+        self.histories.clear();
+        self.tm.new_game();
+        if let Some(m) = &mut self.manager {
+            m.persist = TimePersist::default();
+        }
+    }
+
+    /// A `Search` job entry (design/13 §3.4): the main worker orchestrates
+    /// (TM, helper wake, output, voting); a helper just deepens until `stop`.
+    pub fn start_searching(&mut self, tt: &Arc<TranspositionTable>) {
+        if self.is_main() {
+            self.main_search(tt);
+        } else {
+            self.helper_search(tt);
+        }
+        // Release this `go`'s output sink so the UCI layer regains sole
+        // ownership of the stream once the search is joined (the type-erased
+        // `Arc<dyn UciSink>` clone must not outlive the search; a `Setup` for
+        // the next `go` reinstalls it).
+        self.output = None;
+    }
+
+    /// Main-worker orchestration (design/13 §3.7): TM init + the single TT
+    /// generation bump, wake the helpers, run our own iterative deepening
+    /// with `info` output, honor the ponder/infinite busy-wait, stop and
+    /// collect every worker, vote, and emit the exactly-once `bestmove`.
+    fn main_search(&mut self, tt: &Arc<TranspositionTable>) {
+        let pool = Arc::clone(&self.pool);
+        let n = pool.shells.len();
+
+        // B. TM init + the single per-`go` TT generation bump. `persist`
+        // lives in the manager; move it into a local so the borrow checker
+        // lets the driver mutate it (the manager box stays present, so
+        // `is_main()` is still true throughout).
+        let mut persist = std::mem::take(&mut self.manager.as_mut().expect("main").persist);
+        let mut limits = self.limits.clone();
+        let (us, game_ply) = (self.board.side_to_move(), self.board.game_ply());
+        let options = self.options.clone();
+        self.tm
+            .init(&mut limits, us, game_ply, &options, &mut persist);
+        self.limits = limits;
+        let start_time = self.limits.start_time;
+        // The single per-`go` generation bump, after TM init, before helpers
+        // can observe the table (the `submit` mutex publishes it, §3.7 B).
+        tt.new_search();
+
+        // C. Wake the helpers; each runs the identical `iterative_deepening`.
+        for shell in pool.shells.iter().skip(1) {
+            shell.submit(Job::Search { tt: Arc::clone(tt) });
+        }
+
+        // Run our own iterative deepening with `info` emission. The closure
+        // captures owned handles only (no `self` borrow), so it coexists with
+        // the `&mut self` the driver needs.
+        let output = self.output.clone();
+        let minimal = self.minimal;
+        let mut last_sent: Option<Move> = None;
+        self.iterative_deepening(tt, &pool.stop, &mut persist, &mut |info| {
+            if minimal {
+                return;
+            }
+            if let Some(sink) = output.as_ref() {
+                sink.emit_info(info, start_time.elapsed().as_millis() as i64);
+            }
+            if info.multipv == 1 {
+                last_sent = info.pv.first().copied();
+            }
+        });
+        // Restore the per-game persist for the next `go`.
+        self.manager.as_mut().expect("main").persist = persist;
+
+        // §3.11 post-search `nodestime` accounting (doc 12 step 11): book the
+        // nodes consumed minus the increment credit. Gate on `npmsec` (set by
+        // `init` only when it converted OUR clock to a node budget).
+        if self.limits.npmsec > 0 {
+            let inc_nodes = self.limits.inc[us as usize];
+            self.tm.advance_nodes_time(self.nodes as i64 - inc_nodes);
+        }
+
+        // Publish our final node count for the aggregate before the epilogue.
+        self.counters.nodes.store(self.nodes, Ordering::Relaxed);
+
+        // D. Never answer early: while pondering or infinite, spin until
+        // `stop`/`ponderhit` (design/13 §3.7 D). Burns one core for the
+        // (typically tiny) window — SF makes the same trade.
+        while !pool.stop.load(Ordering::Relaxed)
+            && (pool.ponder.load(Ordering::Relaxed) || self.limits.infinite)
+        {
+            std::thread::yield_now();
+        }
+        // E. Stop and collect: signal every worker, then wait for the helpers
+        // to park — the mutex hand-off publishes their reports/root scores.
+        pool.stop.store(true, Ordering::Relaxed);
+        for shell in pool.shells.iter().skip(1) {
+            shell.wait_idle();
+        }
+
+        // Gather reports: index 0 is ours (built inline), 1.. from the shells
+        // (each helper published exactly one before parking).
+        let mut reports: Vec<SearchReport> = Vec::with_capacity(n);
+        reports.push(self.build_report());
+        for shell in pool.shells.iter().skip(1) {
+            if let Some(r) = shell
+                .report
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
+            {
+                reports.push(r);
+            }
+        }
+
+        // F. Vote (§3.8) — disabled under a single thread or fixed-depth
+        // `go` (bench reproducibility, D24), where thread 0 wins directly.
+        let winner = if n == 1 || self.limits.depth.is_some() {
+            0
+        } else {
+            best_thread(&reports)
+        };
+
+        // G. Emit the exactly-once final block.
+        self.emit_bestmove(tt, &pool, &reports[winner], winner, last_sent, start_time);
+    }
+
+    /// A helper worker (design/13 §3.7): run the identical iterative deepening
+    /// until `stop`, then publish the node count and a [`SearchReport`] for
+    /// the main worker's vote. Helpers never emit output or evaluate time.
+    fn helper_search(&mut self, tt: &Arc<TranspositionTable>) {
+        let pool = Arc::clone(&self.pool);
+        // Helpers do not persist TM state across `go`s.
+        let mut persist = TimePersist::default();
+        self.iterative_deepening(tt, &pool.stop, &mut persist, &mut |_| {});
+        self.counters.nodes.store(self.nodes, Ordering::Relaxed);
+        self.publish_report();
+    }
+
+    /// Build this worker's end-of-search [`SearchReport`] from `root_moves[0]`
+    /// (design/13 §3.8). An empty root move list (mate/stalemate) reports an
+    /// empty PV and a `-VALUE_INFINITE` score, which voting never elects.
+    fn build_report(&self) -> SearchReport {
+        match self.root_moves.first() {
+            Some(rm) => SearchReport {
+                pv: rm.pv.clone(),
+                score: rm.score,
+                uci_score: rm.uci_score,
+                score_lowerbound: rm.score_lowerbound,
+                score_upperbound: rm.score_upperbound,
+                completed_depth: self.completed_depth,
+                sel_depth: rm.sel_depth,
+            },
+            None => SearchReport {
+                pv: Vec::new(),
+                score: -VALUE_INFINITE,
+                uci_score: -VALUE_INFINITE,
+                score_lowerbound: false,
+                score_upperbound: false,
+                completed_depth: 0,
+                sel_depth: 0,
+            },
+        }
+    }
+
+    /// Publish this worker's report into its shell for the main worker's vote
+    /// (design/13 §3.8). Helper worker only; the main worker builds its report
+    /// inline.
+    fn publish_report(&self) {
+        let report = self.build_report();
+        *self.pool.shells[self.thread_idx]
+            .report
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(report);
+    }
+
+    /// Emit the winning worker's final block (design/13 §3.7 G): republish an
+    /// `info` line when the GUI's last-seen PV differs from the played move
+    /// (always, when the winner is a helper), then the exactly-once
+    /// `bestmove [ponder]`. `bestmove (none)` when the root had no legal move.
+    fn emit_bestmove(
+        &self,
+        tt: &TranspositionTable,
+        pool: &PoolShared,
+        winner: &SearchReport,
+        winner_idx: usize,
+        last_sent: Option<Move>,
+        start_time: std::time::Instant,
+    ) {
+        let Some(sink) = self.output.as_ref() else {
+            return; // a detached worker never emits
+        };
+        let Some(best) = winner.pv.first().copied() else {
+            // Mate/stalemate at the root (design/12 §3.2 step 2).
+            let score = if self.board.checkers().is_empty() {
+                "cp 0"
+            } else {
+                "mate 0"
+            };
+            sink.emit_raw(&format!("info depth 0 score {score}"));
+            sink.emit_bestmove_none();
+            return;
+        };
+        let elapsed_ms = start_time.elapsed().as_millis() as i64;
+        // Republish the winner's line if the GUI has not seen it as the front
+        // move (a mid-iteration promotion, or any helper win), and it has a
+        // trusted score to show.
+        let need_tail =
+            (winner_idx != 0 || last_sent != Some(best)) && winner.uci_score != -VALUE_INFINITE;
+        let tail = need_tail.then(|| {
+            (
+                SearchInfo {
+                    depth: self.root_depth.max(1),
+                    sel_depth: winner.sel_depth,
+                    multipv: 1,
+                    score: winner.uci_score,
+                    lowerbound: winner.score_lowerbound,
+                    upperbound: winner.score_upperbound,
+                    nodes: pool.nodes_searched(),
+                    hashfull: tt.hashfull(0),
+                    pv: &winner.pv,
+                },
+                elapsed_ms,
+            )
+        });
+        // Ponder = pv[1] when the line is long enough; else probe the TT after
+        // playing `best`.
+        let ponder = winner
+            .pv
+            .get(1)
+            .copied()
+            .or_else(|| ponder_from_tt(tt, &self.board, best));
+        sink.emit_bestmove(tail, best, ponder);
     }
 
     /// The iterative-deepening driver (design/07 §3.5), v1 scope: the
@@ -783,7 +1257,7 @@ impl Worker {
         // depth (bench-neutral, D24). The `iter_value` ring is seeded per
         // `go` from persist (never carried over), and the persist-derived
         // factor inputs are latched into working copies here.
-        self.increase_depth = true;
+        self.pool.increase_depth.store(true, Ordering::Relaxed);
         self.iter_idx = 0;
         let iter_seed = if persist.best_previous_score != VALUE_INFINITE {
             persist.best_previous_score
@@ -832,8 +1306,10 @@ impl Worker {
             // §3.9 search-again: a soft budget more than half spent leaves
             // `increase_depth == false`, so this iteration re-searches near
             // the same effective depth (refreshing PV/TT) instead of
-            // starting a deeper pass that would be aborted mid-way.
-            if !self.increase_depth {
+            // starting a deeper pass that would be aborted mid-way. The flag
+            // is shared (design/13 §3.7): helpers read the main worker's
+            // verdict; each worker keeps its own `search_again_counter`.
+            if !self.pool.increase_depth.load(Ordering::Relaxed) {
                 search_again_counter += 1;
             }
             tot_best_move_changes /= 2.0; // age the instability metric
@@ -3019,6 +3495,13 @@ impl Worker {
     /// unshaved — an exactness bound, not a clock forfeit risk.
     #[inline]
     fn check_time(&self, stop: &AtomicBool) {
+        // Helpers never enforce time or limits (design/13 §3.7): they stop
+        // only when they observe the shared `stop`, which the main worker
+        // sets against the AGGREGATE node count. One perfectly-predicted
+        // branch; at Threads=1 the main worker always passes it (D24).
+        if !self.is_main() {
+            return;
+        }
         if self.nodes & self.check_time_mask != self.check_time_mask {
             return;
         }
@@ -3031,7 +3514,7 @@ impl Worker {
         // (design/12 §3.8) — `ponderhit`/`stop` are the only ways out of a
         // ponder search, which keeps `bestmove` behind the UCI layer's
         // busy-wait until one of them arrives.
-        if self.ponder.load(Ordering::Relaxed) {
+        if self.pool.ponder.load(Ordering::Relaxed) {
             return;
         }
         let eps = params::CHECK_TIME_EPSILON_MS;
@@ -3148,10 +3631,13 @@ impl Worker {
         tot_best_move_changes: f64,
         best_value: Value,
     ) {
-        if !self.limits.use_time_management() || stop.load(Ordering::Relaxed) {
+        // Only the main worker manages the clock and writes `increase_depth`
+        // (design/13 §3.7); helpers keep deepening until they see `stop`. At
+        // Threads=1 the worker is always main (D24).
+        if !self.is_main() || !self.limits.use_time_management() || stop.load(Ordering::Relaxed) {
             return;
         }
-        let pondering = self.ponder.load(Ordering::Relaxed);
+        let pondering = self.pool.ponder.load(Ordering::Relaxed);
 
         // The four §3.9 factors (constants pinned by golden tests).
         let falling_eval = Self::falling_eval(
@@ -3188,8 +3674,10 @@ impl Worker {
                 stop.store(true, Ordering::Relaxed);
             }
         } else {
-            self.increase_depth =
-                pondering || elapsed <= total_time * params::INCREASE_DEPTH_FRACTION;
+            // Shared across the pool (design/13 §3.7): the main worker writes
+            // it, every worker reads it at the top of its ID loop.
+            let deepen = pondering || elapsed <= total_time * params::INCREASE_DEPTH_FRACTION;
+            self.pool.increase_depth.store(deepen, Ordering::Relaxed);
         }
 
         // Maintain the fallingEval ring and the reduction memory for the
@@ -5148,7 +5636,7 @@ mod tests {
         w.limits.start_time = std::time::Instant::now();
         w.limits.depth = Some(5);
         w.limits.ponder = true;
-        w.ponder = Arc::new(AtomicBool::new(true));
+        w.pool.ponder.store(true, Ordering::Relaxed);
         let stop = AtomicBool::new(false);
         w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
         assert!(!stop.load(Ordering::Relaxed), "pondering must never stop");
@@ -5534,7 +6022,7 @@ mod tests {
         w.limits.depth = Some(4);
         w.limits.ponder = true;
         init_clock(&mut w, &nodestime_options());
-        w.ponder = Arc::new(AtomicBool::new(true));
+        w.pool.ponder.store(true, Ordering::Relaxed);
         let stop = AtomicBool::new(false);
         w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
         assert!(

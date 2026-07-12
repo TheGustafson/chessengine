@@ -48,17 +48,16 @@ use crate::eval::{EvalContext, evaluate};
 use crate::movegen;
 use crate::moves::{MAX_MOVES, Move, MoveList};
 use crate::perft;
-use crate::search::{SearchInfo, Worker};
-use crate::timeman::{Limits, TimePersist};
+use crate::search::{SearchInfo, UciSink};
+use crate::threads::ThreadPool;
+use crate::timeman::Limits;
 use crate::tt::{MAX_HASH_MB, MIN_HASH_MB, TranspositionTable};
 use crate::types::{Color, VALUE_INFINITE, VALUE_MATE, VALUE_ZERO, Value, is_mate, is_mated};
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufRead, Write};
 use std::str::{FromStr, SplitWhitespace};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::thread;
 use std::time::Instant;
 
 /// `id name` text (doc 12 §3.3): crate name + version from the manifest,
@@ -594,66 +593,71 @@ impl<W: Write> SharedOut<W> {
     }
 }
 
+/// The output side of the threading layer's [`UciSink`] (design/13 §3.3):
+/// the main worker writes `info`/`bestmove` through this from its own thread.
+/// Type-erasing `SharedOut<W>` to `Arc<dyn UciSink>` keeps `ThreadPool` free
+/// of the stream's `W` type parameter; all formatting stays here. Every method
+/// takes the mutex for one whole line/block, so writes never interleave.
+impl<W: Write + Send> UciSink for SharedOut<W> {
+    fn emit_info(&self, info: &SearchInfo, elapsed_ms: i64) {
+        let mut out = self.lock();
+        let _ = writeln!(out, "{}", format_info(info, elapsed_ms));
+        let _ = out.flush();
+    }
+
+    fn emit_raw(&self, line: &str) {
+        let mut out = self.lock();
+        let _ = writeln!(out, "{line}");
+        let _ = out.flush();
+    }
+
+    fn emit_bestmove(&self, tail: Option<(SearchInfo, i64)>, best: Move, ponder: Option<Move>) {
+        // One lock for the whole block so the final `info` and `bestmove` can
+        // never interleave with UCI-thread output (doc 12 §3.2 step 4).
+        let mut out = self.lock();
+        if let Some((info, elapsed_ms)) = tail {
+            let _ = writeln!(out, "{}", format_info(&info, elapsed_ms));
+        }
+        match ponder {
+            Some(p) => {
+                let _ = writeln!(out, "bestmove {best} ponder {p}");
+            }
+            None => {
+                let _ = writeln!(out, "bestmove {best}");
+            }
+        }
+        let _ = out.flush();
+    }
+
+    fn emit_bestmove_none(&self) {
+        let mut out = self.lock();
+        let _ = writeln!(out, "bestmove (none)");
+        let _ = out.flush();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Engine — the session glue aggregate (design/12 §3.1, P5/P6 subset)
 // ---------------------------------------------------------------------------
 
-/// The glue aggregate owned by the UCI loop (doc 12 §3.1). P5/P6 subset:
-/// the session position, the options table, the shared transposition
-/// table, and the single search worker with its per-game TM state. The
-/// real `ThreadPool` (with `PoolShared`) joins in P8; [`Session`] and
-/// [`SearchState`] are its v1 stand-ins with the same contract: stdin is
-/// never blocked by a running search, and `bestmove` is printed exactly
-/// once per `go`, by the search thread.
+/// The glue aggregate owned by the UCI loop (doc 12 §3.1). Holds the session
+/// position, the options table, the shared transposition table, and the
+/// long-lived [`ThreadPool`] (design/13): the search workers live inside the
+/// pool's parked threads, so `go` is non-blocking (the UCI thread returns to
+/// stdin immediately) and `bestmove` is printed exactly once per `go`, by the
+/// main worker.
 pub struct Engine {
     board: Board,
     options: Options,
-    /// The one large shared-mutable structure (D23): search sessions will
-    /// clone this handle into their workers (doc 08 §4 step 7 / P8 pool);
-    /// between searches the UCI thread is the only holder, so
-    /// [`Engine::tt_mut`] gets `&mut` for resize/clear via `Arc::get_mut`
-    /// (doc 13 §3.6) with zero locking on the probe path.
+    /// The one large shared-mutable structure (D23): each `go` clones this
+    /// handle into a `Job::Search` per thread; between searches the UCI
+    /// thread is the only holder, so [`Engine::tt_mut`] gets `&mut` for
+    /// resize/clear via `Arc::get_mut` (doc 13 §3.4) with zero locking on the
+    /// probe path.
     tt: Arc<TranspositionTable>,
-    /// The idle-state search state; `None` exactly while a search thread
-    /// owns it (it travels there and comes back through the join handle).
-    state: Option<SearchState>,
-    /// The most recent `go` session — possibly still searching, possibly
-    /// finished-but-not-yet-joined. Joined (and `state` restored) by
-    /// [`Engine::wait_for_search_finished`].
-    session: Option<Session>,
-}
-
-/// Everything one search session owns: the [`Worker`] (board copy, search
-/// stack, root moves, and the per-`go` `TimeManager`) plus the per-GAME
-/// [`TimePersist`]. This is v1's stand-in for the threading doc's
-/// main-worker `SearchManager` (doc 12 §3.8) — deliberately NOT `Engine`
-/// state (§3.1), so the migration to the pool is a move, not a redesign.
-struct SearchState {
-    worker: Worker,
-    persist: TimePersist,
-}
-
-impl SearchState {
-    fn new() -> SearchState {
-        SearchState {
-            worker: Worker::new(Board::startpos()),
-            persist: TimePersist::default(),
-        }
-    }
-}
-
-/// One `go`'s cross-thread handles — the v1 stand-in for the threading
-/// doc's `PoolShared` flag block (doc 12 §3.2). Both flags are pure
-/// signals (no data published through them), hence `Relaxed` everywhere.
-struct Session {
-    /// Set by `stop`/`quit`/blocking commands (implicit stop) and by the
-    /// search's own hard limits in `check_time`.
-    stop: Arc<AtomicBool>,
-    /// True from `go ponder` until `ponderhit`/`stop`: while set, the
-    /// busy-wait in [`run_search`] withholds `bestmove` (§3.2 step 3).
-    ponder: Arc<AtomicBool>,
-    /// Returns the [`SearchState`] to the UCI thread at join.
-    handle: thread::JoinHandle<SearchState>,
+    /// The parked search-thread pool (design/13 §3.5). Sized by the `Threads`
+    /// option; owns every [`Worker`] and the shared flag/counter block.
+    pool: ThreadPool,
 }
 
 impl Engine {
@@ -663,85 +667,66 @@ impl Engine {
         // §3.4 permits this one to be fatal; `resize`'s halving fallback
         // makes even it survive anything short of total memory exhaustion.
         let tt = Arc::new(TranspositionTable::new(options.hash_mb() as usize));
+        let pool = ThreadPool::new(options.threads() as usize);
         Engine {
             board: Board::startpos(),
             options,
             tt,
-            state: Some(SearchState::new()),
-            session: None,
+            pool,
         }
     }
 
     /// Exclusive TT access for resize/clear, legal only between searches
-    /// (doc 13 §3.6, D23). After [`Engine::wait_for_search_finished`] the
-    /// UCI thread holds the only strong reference (sessions clone the
-    /// handle and drop it at join), so `Arc::get_mut` cannot fail; a
-    /// `None` here would be an engine bug, never a protocol-input error.
+    /// (doc 13 §3.4, D23). After [`Engine::wait_for_search_finished`] every
+    /// `Job::Search`'s `Arc<TT>` clone has been dropped (the search finished),
+    /// so the UCI thread holds the only strong reference and `Arc::get_mut`
+    /// cannot fail; a `None` here would be an engine bug, never a
+    /// protocol-input error.
     fn tt_mut(&mut self) -> &mut TranspositionTable {
         Arc::get_mut(&mut self.tt).expect("no search running: UCI thread holds the only TT handle")
     }
 
-    /// `ucinewgame` (doc 12 §3.3/§3.7): clear the TT (doc 08 §3.14), the
-    /// per-thread move-ordering histories (doc 09 §3.11 — the new-game
-    /// "Init" column), and the per-game TM state (the "first move of the
-    /// game" defaults measurably affect move-1 time usage) plus the
-    /// `nodestime` budget. Deliberately does NOT touch the session
+    /// `ucinewgame` (doc 12 §3.3/§3.7): clear the TT (doc 08 §3.14) and reset
+    /// every worker (per-thread histories, per-game TM state — the "first
+    /// move of the game" defaults measurably affect move-1 time usage) via a
+    /// `Clear` job on every thread. Deliberately does NOT touch the session
     /// position — GUIs send `position` separately.
     pub fn new_game(&mut self) {
         self.wait_for_search_finished();
         self.tt_mut().clear();
-        let state = self.state.as_mut().expect("engine idle after wait");
-        state.worker.histories.clear();
-        state.persist = TimePersist::default();
-        state.worker.tm.new_game();
+        self.pool.clear();
     }
 
-    /// Join any running search, first applying the implicit-stop rule
-    /// (doc 12 §3.2): a blocking command that arrives mid-search sets
-    /// `stop`, the pending `bestmove` flushes normally (the exactly-once
-    /// contract is untouched), and the wait is therefore always bounded —
-    /// `go infinite` followed by a mid-search `position` can never
-    /// deadlock. No-op when idle.
+    /// Finish any running search, applying the implicit-stop rule (doc 12
+    /// §3.2): a blocking command that arrives mid-search sets `stop`, the
+    /// pending `bestmove` flushes normally (exactly-once untouched), and the
+    /// wait is therefore always bounded — `go infinite` followed by a
+    /// mid-search `position` can never deadlock. No-op when idle.
     pub fn wait_for_search_finished(&mut self) {
-        if let Some(session) = self.session.take() {
-            session.stop.store(true, Ordering::Relaxed);
-            self.state = Some(session.handle.join().unwrap_or_else(|_| {
-                // A panicked worker must not kill the UCI session ("never
-                // panic on input", §3.3): restart from fresh state. The
-                // per-game TM state is lost — acceptable in a path that
-                // indicates a bug anyway (the panic went to stderr).
-                SearchState::new()
-            }));
-        }
+        self.pool.stop();
+        self.pool.wait_for_search_finished();
     }
 
-    /// `stop`: flip the shared flag; the search thread prints its
-    /// `bestmove` and finishes (§3.2). Harmless no-op when idle (§3.3).
+    /// `stop`: request every worker to finish; the main worker prints its
+    /// `bestmove` and parks (§3.2). Harmless no-op when idle (§3.3).
     pub fn stop_search(&self) {
-        if let Some(session) = &self.session {
-            session.stop.store(true, Ordering::Relaxed);
-        }
+        self.pool.stop();
     }
 
-    /// `ponderhit`: the GUI played the expected move — clear the ponder
-    /// flag so the busy-wait releases and the search runs on our clock
-    /// (§3.10 v1 subset; the full ponder state machine is doc 12 step 9).
-    /// Harmless no-op when idle (§3.3).
+    /// `ponderhit`: the GUI played the expected move — clear the shared
+    /// ponder flag so the main worker's busy-wait releases and its clock goes
+    /// live (design/13 §3.7 D). Harmless no-op when idle (§3.3).
     pub fn ponderhit(&self) {
-        if let Some(session) = &self.session {
-            session.ponder.store(false, Ordering::Relaxed);
-        }
+        self.pool.ponderhit();
     }
 
-    /// Test-only: join the search WITHOUT the implicit stop, letting a
+    /// Test-only: wait for the search WITHOUT the implicit stop, letting a
     /// self-terminating `go` (depth/nodes/movetime) run to natural
     /// completion so its output is deterministic. Would hang on
     /// `go infinite` — deliberate, tests must stop those explicitly.
     #[cfg(test)]
-    fn join_search(&mut self) {
-        if let Some(session) = self.session.take() {
-            self.state = Some(session.handle.join().unwrap_or_else(|_| SearchState::new()));
-        }
+    fn join_search(&self) {
+        self.pool.wait_for_search_finished();
     }
 }
 
@@ -908,8 +893,14 @@ fn cmd_setoption<W: Write>(
             engine.tt_mut().clear();
             Ok(())
         }
-        // `Threads` rebuilds the pool (P8). Other values are stored
-        // above; nothing further yet.
+        // `Threads` (re)builds the pool with the clamped count (design/13
+        // §3.5): waits for any running search, joins the old threads, spawns
+        // the new set. Histories and TM state are rebuilt fresh.
+        Ok("Threads") => {
+            engine.pool.set(engine.options.threads() as usize);
+            Ok(())
+        }
+        // Other values are stored above; nothing further yet.
         Ok(_) => Ok(()),
     }
 }
@@ -1003,223 +994,20 @@ fn cmd_go<W: Write + Send + 'static>(
             )
         };
     }
-    let mut state = engine.state.take().expect("engine idle after wait");
-    state.worker.board = engine.board.clone(); // history Vec included (D8)
-    state.worker.limits = limits;
-    // Fresh flags per `go` (§3.2 step 1): stop = false, ponder from the
-    // limits. (`increase_depth` joins with the soft stop, step 8.) The
-    // worker shares the ponder flag: its `check_time` ponder guard must
-    // observe `ponderhit` (doc 12 §3.8).
-    let stop = Arc::new(AtomicBool::new(false));
-    let ponder = Arc::new(AtomicBool::new(state.worker.limits.ponder));
-    state.worker.ponder = Arc::clone(&ponder);
-    let spawned = {
-        let stop = Arc::clone(&stop);
-        let ponder = Arc::clone(&ponder);
-        let options = engine.options.clone();
-        // The session's TT handle (D23; doc 13 §3.4's per-job carry):
-        // cloned per `go`, held by the search thread for the job's
-        // duration, dropped when `run_search` returns — between searches
-        // the UCI thread is again the only holder, so `Engine::tt_mut`'s
-        // `Arc::get_mut` keeps working.
-        let tt = Arc::clone(&engine.tt);
-        let out = out.clone();
-        thread::Builder::new()
-            .name("search-main".to_string())
-            .spawn(move || run_search(state, &stop, &ponder, &options, &tt, &out))
-    };
-    match spawned {
-        Ok(handle) => {
-            engine.session = Some(Session {
-                stop,
-                ponder,
-                handle,
-            });
-            Ok(())
-        }
-        Err(e) => {
-            // Spawn failure (resource exhaustion): the state moved into
-            // the dropped closure, so rebuild it, and honor the
-            // exactly-once contract with the best answer available.
-            engine.state = Some(SearchState::new());
-            let mut legal = MoveList::new();
-            movegen::generate_legal(&engine.board, &mut legal);
-            let m = legal.first().copied().unwrap_or(Move::NULL);
-            let mut out = out.lock();
-            writeln!(out, "info string Could not start search thread: {e}")?;
-            writeln!(out, "bestmove {}", move_to_uci(m))
-        }
-    }
-}
-
-/// One `go` session, on the search thread (doc 12 §3.2 steps 2–4): time
-/// management init, iterative deepening with `info` emission (§3.13),
-/// the busy-wait rule for infinite/ponder searches, then the
-/// exactly-once `bestmove`. Returns the [`SearchState`] to the UCI
-/// thread through the join handle.
-///
-/// Output errors are swallowed (`let _`): if the GUI closed the pipe
-/// there is nobody left to tell, and the session still has to unwind
-/// cleanly (§3.3).
-fn run_search<W: Write>(
-    mut state: SearchState,
-    stop: &AtomicBool,
-    ponder: &AtomicBool,
-    options: &Options,
-    tt: &TranspositionTable,
-    out: &SharedOut<W>,
-) -> SearchState {
-    let worker = &mut state.worker;
-    // §3.2 step 2 — TM init on the search thread: turns wtime/btime into
-    // the optimum/maximum budgets `check_time` enforces, and may rewrite
-    // the clock fields under nodestime. (The post-search
-    // `advance_nodes_time` accounting lands with doc 12 step 11.)
-    let mut limits = worker.limits.clone();
-    let (us, game_ply) = (worker.board.side_to_move(), worker.board.game_ply());
-    worker
-        .tm
-        .init(&mut limits, us, game_ply, options, &mut state.persist);
-    worker.limits = limits;
-    let start_time = worker.limits.start_time;
-
-    // The single per-`go` TT generation bump, after TM init and before
-    // the search starts (doc 08 §3.9; doc 13 §3.7 B's ordering).
-    tt.new_search();
-
-    // MultiPV (doc 12 §3.12, step 10): read the option at `go` and hand it
-    // to the worker, which clamps it to the legal-move count. The ID loop
-    // owns the §3.13 emission cadence (whole block at iteration end below
-    // the node throttle; per-line above it), so this callback just formats
-    // and writes — one pre-built String, one locked write per line.
-    worker.multi_pv = options.multipv().max(1) as usize;
-    // Low-verbosity report mode (doc 12 §3.13, D31): suppress every
-    // per-iteration `info` line; the final-PV flush below still prints one
-    // summary before `bestmove` (in `Minimal`, `last_sent` stays `None`, so
-    // that flush always fires).
-    let minimal = options.minimal();
-    // The PV head of the `multipv 1` line drives the final flush below.
-    let mut last_sent: Option<Move> = None;
-    worker.iterative_deepening(tt, stop, &mut state.persist, &mut |info| {
-        if minimal {
-            return;
-        }
-        let elapsed_ms = start_time.elapsed().as_millis() as i64;
-        let mut out = out.lock();
-        let _ = writeln!(out, "{}", format_info(info, elapsed_ms));
-        let _ = out.flush();
-        if info.multipv == 1 {
-            last_sent = info.pv.first().copied();
-        }
-    });
-
-    // §3.11 post-search `nodestime` accounting (step 11): book the nodes
-    // consumed this move minus the increment credit, exactly like a real
-    // clock, so the node budget carries across the game. Gate on SF's
-    // `limits.npmsec` (set by `init` ONLY when it converted OUR OWN clock to
-    // a node budget this move) — NOT `use_time_management()`, which is also
-    // true when just the OPPONENT's clock was sent, a corner where `init`
-    // early-returns leaving `available_nodes == -1`; advancing there would
-    // corrupt the game-long budget to 0 and forfeit the rest of the game.
-    // `limits.inc[us]` is already in nodes (rewritten by `init`).
-    if worker.limits.npmsec > 0 {
-        let inc_nodes = worker.limits.inc[us as usize];
-        worker
-            .tm
-            .advance_nodes_time(worker.nodes as i64 - inc_nodes);
-    }
-
-    if worker.root_moves.is_empty() {
-        // §3.2 step 2: no legal moves — mate (in check) or stalemate.
-        let score = if worker.board.checkers().is_empty() {
-            "cp 0"
-        } else {
-            "mate 0"
-        };
-        let mut out = out.lock();
-        let _ = writeln!(out, "info depth 0 score {score}");
-        let _ = out.flush();
-    }
-
-    // §3.2 step 3 — the bestmove-exactly-once busy-wait rule: in ponder
-    // or infinite mode, bestmove may only be printed after "stop" or
-    // "ponderhit". Burns one core for the (typically tiny) window — SF
-    // makes the same trade (doc 12 §6, Open Question 2).
-    while !stop.load(Ordering::Relaxed)
-        && (ponder.load(Ordering::Relaxed) || worker.limits.infinite)
-    {
-        std::hint::spin_loop();
-    }
-    stop.store(true, Ordering::Relaxed);
-
-    // §3.2 step 4 — final PV flush + bestmove in one locked block, so the
-    // pair can never interleave with UCI-thread output.
-    let mut out = out.lock();
-    if let Some(best) = worker.best_move() {
-        let rm = &worker.root_moves[0];
-        // §3.13: the GUI's last-seen PV must match the bestmove. A
-        // mid-iteration stop can promote a root move whose line was never
-        // sent (or stop before the first report); republish — unless the
-        // front move has no trusted score at all (stopped before any
-        // depth-1 result), in which case there is nothing to say.
-        if last_sent != Some(best) && rm.uci_score != -VALUE_INFINITE {
-            let elapsed_ms = start_time.elapsed().as_millis() as i64;
-            let info = SearchInfo {
-                depth: worker.root_depth.max(1),
-                sel_depth: rm.sel_depth,
-                multipv: 1,
-                score: rm.uci_score,
-                lowerbound: rm.score_lowerbound,
-                upperbound: rm.score_upperbound,
-                nodes: worker.nodes,
-                hashfull: tt.hashfull(0),
-                pv: &rm.pv,
-            };
-            let _ = writeln!(out, "{}", format_info(&info, elapsed_ms));
-        }
-        // Ponder move = pv[1] when the line is long enough; for a 1-ply
-        // PV, fall back to probing the TT after making pv[0] (doc 12
-        // §3.2 step 4).
-        let ponder_mv = worker
-            .root_pv()
-            .get(1)
-            .copied()
-            .or_else(|| ponder_from_tt(tt, &worker.board, best));
-        match ponder_mv {
-            Some(p) => {
-                let _ = writeln!(out, "bestmove {best} ponder {p}");
-            }
-            None => {
-                let _ = writeln!(out, "bestmove {best}");
-            }
-        }
-    } else {
-        let _ = writeln!(out, "bestmove (none)");
-    }
-    let _ = out.flush();
-    drop(out);
-    state
-}
-
-/// The 1-ply-PV ponder fallback (doc 12 §3.2 step 4): make the best move
-/// on a scratch board and probe the TT there; offer the stored move as
-/// the ponder move only if the resulting position is not an immediate
-/// draw and the move is legal there — the doc 08 §3.5 validation
-/// contract, discharged by legal-list membership: a collided or garbage
-/// move simply matches nothing. Cold path (once per `go`), so the clone
-/// and the O(legal) scan are fine.
-fn ponder_from_tt(tt: &TranspositionTable, board: &Board, best: Move) -> Option<Move> {
-    let mut b = board.clone();
-    b.make_move(best, b.gives_check(best));
-    if b.is_draw(1) {
-        return None;
-    }
-    let probe = tt.probe(b.key());
-    if !probe.hit || probe.data.mv == Move::NULL {
-        return None;
-    }
-    let mut legal = MoveList::new();
-    movegen::generate_legal(&b, &mut legal);
-    legal.contains(&probe.data.mv).then_some(probe.data.mv)
+    // Non-blocking hand-off to the pool (design/13 §3.6): install per-`go`
+    // state on every worker and wake the main worker, then return to stdin at
+    // once. The main worker (thread 0) runs the search on its own thread and
+    // prints every `info` line plus the exactly-once `bestmove`; helpers
+    // diverge through aspiration jitter and TT races and vote at the end.
+    let sink: Arc<dyn UciSink> = Arc::new(out.clone());
+    engine.pool.start_thinking(
+        &engine.board,
+        limits,
+        &engine.tt,
+        engine.options.clone(),
+        sink,
+    );
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1994,12 +1782,19 @@ uciok
     fn ucinewgame_resets_tm_state_not_position() {
         let mut engine = Engine::new();
         command_on(&mut engine, "position startpos moves e2e4");
-        engine.state.as_mut().unwrap().persist.original_time_adjust = 1.5;
+        // Dirty the main worker's per-game TM persist, then verify
+        // `ucinewgame` (a `Clear` job) resets it. The worker lives inside the
+        // pool thread, so poke it through the `Job::Custom` test hook.
+        engine.pool.run_on_main(|w| {
+            w.manager.as_mut().unwrap().persist.original_time_adjust = 1.5;
+        });
         command_on(&mut engine, "ucinewgame");
-        assert_eq!(
-            engine.state.as_ref().unwrap().persist.original_time_adjust,
-            -1.0
-        );
+        let observed = Arc::new(Mutex::new(0.0));
+        let sink = Arc::clone(&observed);
+        engine.pool.run_on_main(move |w| {
+            *sink.lock().unwrap() = w.manager.as_ref().unwrap().persist.original_time_adjust;
+        });
+        assert_eq!(*observed.lock().unwrap(), -1.0);
         // The session position is untouched (GUIs send `position` next).
         assert!(engine.board.to_fen().contains("4P3"));
     }
@@ -2072,14 +1867,17 @@ uciok
         let key = after.key();
 
         // Nothing stored: no ponder move.
-        assert_eq!(ponder_from_tt(&tt, &board, best), None);
+        assert_eq!(crate::search::ponder_from_tt(&tt, &board, best), None);
 
         // A legal stored reply is offered.
         let reply = move_from_uci(&after, "c7c5").unwrap();
         tt.probe(key)
             .writer
             .write(key, 10, false, Bound::Exact, 3, reply, 0, tt.generation());
-        assert_eq!(ponder_from_tt(&tt, &board, best), Some(reply));
+        assert_eq!(
+            crate::search::ponder_from_tt(&tt, &board, best),
+            Some(reply)
+        );
 
         // A garbage/collided move (illegal after 1.e4: it moves a WHITE
         // pawn with black to play) is dropped by the validation contract.
@@ -2087,7 +1885,7 @@ uciok
         tt.probe(key)
             .writer
             .write(key, 10, false, Bound::Exact, 4, foreign, 0, tt.generation());
-        assert_eq!(ponder_from_tt(&tt, &board, best), None);
+        assert_eq!(crate::search::ponder_from_tt(&tt, &board, best), None);
     }
 
     #[test]
@@ -2106,7 +1904,7 @@ uciok
         tt.probe(key)
             .writer
             .write(key, 0, false, Bound::Exact, 3, reply, 0, tt.generation());
-        assert_eq!(ponder_from_tt(&tt, &board, best), None);
+        assert_eq!(crate::search::ponder_from_tt(&tt, &board, best), None);
     }
 
     #[test]

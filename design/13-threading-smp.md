@@ -319,8 +319,6 @@ fn thread_main(idx: usize, pool: Arc<PoolShared>) {
     loop {
         let job = {
             let mut st = shell.state.lock().unwrap();
-            st.busy = false;
-            shell.cv.notify_all();                    // wake wait_idle() callers
             while st.job.is_none() {
                 st = shell.cv.wait(st).unwrap();
             }
@@ -332,6 +330,14 @@ fn thread_main(idx: usize, pool: Arc<PoolShared>) {
             Job::Search { tt } => worker.start_searching(&tt),
             Job::Clear => worker.clear(),
         }
+        // Clear busy ONLY after the job runs (never before taking one): the
+        // submit→complete window stays busy==true. Clearing at the loop TOP (a
+        // 2026-07-12 bug) races a submit that lands before the worker's first
+        // park — the worker would clobber the submitter's busy==true and run
+        // with busy==false, so wait_idle returns before completion.
+        let mut st = shell.state.lock().unwrap();
+        st.busy = false;
+        shell.cv.notify_all();                        // wake wait_idle() callers
     }
 }
 
@@ -986,3 +992,62 @@ only, safe-Rust (D27):
 - **Three-tier state + NUMA-replication registry** (§3.15) — global / per-node /
   per-thread, inert on single-socket; real pinning needs libc → gate behind a
   measured multi-socket need + its own decision (affirms D15).
+
+## 11. P11 implementation notes (2026-07-12)
+
+As-built deviations from §3–§4, recorded per the CLAUDE.md "docs follow reality
+in the same commit" rule. None changes a pinned decision.
+
+- **Module split.** `Counters`, `ThreadShell`, `Job` (`Setup`/`Search`/`Clear`/
+  `Exit`/`Custom`), `SetupJob`, `PoolShared`, `thread_main`, `ThreadPool` live in
+  `src/threads.rs`. The *search-result* types (`UciSink`, `SearchReport`,
+  `SearchManager`, `best_thread`, `ponder_from_tt`) live in `src/search` next to
+  `Worker`; `threads` imports them. The two modules reference each other (a
+  normal in-crate cycle) — `Worker` holds `Arc<PoolShared>`, `thread_main`
+  builds `Worker`.
+- **Output is type-erased, not `W`-generic (§3.3/§3.7 G).** The pool never sees
+  the stream's `W: Write` parameter: the UCI layer hands a
+  `Arc<dyn UciSink>` (impl on `SharedOut<W>`, formatting stays in `uci.rs`) into
+  the `SetupJob`; the main worker writes through it and drops it at search end
+  (`start_searching` sets `output = None`) so the UCI thread regains sole
+  stream ownership between `go`s.
+- **`increase_depth`/`ponder` relocated into `PoolShared` (§3.5).** They were
+  `Worker` fields (P10); now shared atomics — the main worker writes
+  `increase_depth` in `soft_stop`, every worker reads it at its ID-loop top;
+  `ponder` is read by `check_time`/`soft_stop` and flipped by the UCI thread.
+  `stop` stays a call-stack `&AtomicBool` argument down `iterative_deepening`
+  (each worker is handed `&pool.stop`), so the per-node hot path is unchanged.
+- **Root moves rebuilt per-thread, not cloned once (§3.6 step 3).**
+  `iterative_deepening` already builds the list deterministically from
+  `board + searchmoves`; every worker rebuilds the identical list in the same
+  order, so divergence still comes only from search. One fewer clone; behaviour
+  identical.
+- **`SearchManager` is minimal.** It holds `persist: TimePersist` and
+  `stop_on_ponderhit`; the rest of §3.3's inventory (`tm`, `calls_cnt`,
+  `best_previous_*` seeds) already lived on `Worker`/`TimePersist` from P10 and
+  is consulted only under the `is_main()` gate — so main-only bookkeeping
+  branch-predicts identically without moving those fields. `is_main()` is
+  `manager.is_some()`; `main_search` `mem::take`s the *persist field* (not the
+  whole box) across `iterative_deepening` so the box stays present and
+  `is_main()` holds throughout.
+- **Detached worker (§3.14 bench, unit tests).** `Worker::new(board)` builds a
+  1-thread `PoolShared::detached` and is `is_main()` with `thread_idx == 0`, so
+  its search is bit-identical to `Threads=1`. **`bench` runs this direct-Worker
+  path** (`Worker::new` → `iterative_deepening`), *not* `start_thinking` — the
+  fingerprint (548978 at depth 6) is unchanged and stays the D24 regression
+  oracle. `start_thinking` at `Threads=1` produces the same play; bench simply
+  skips the pool plumbing it does not need.
+- **Helpers gated by `is_main()` (§3.7).** `check_time` and `soft_stop` return
+  early for helpers: they never enforce time/limits and never write
+  `increase_depth`; they stop only on the shared `stop`. Helpers *are* woken
+  even for a no-legal-move root (they return immediately) rather than being
+  skipped as in §3.7 A — simpler, negligible cost.
+- **Counter aggregation is end-of-search in step 1–3** (`nodes.store(self.nodes)`
+  at search end). Live mid-search aggregation for a multi-thread `go nodes`
+  limit and the `best_move_changes`/jitter cross-thread wiring land in plan
+  step 4; `SearchReport` voting in step 5; the ponder state machine
+  (`stop_on_ponderhit`) in step 6.
+- **NUMA (§3.15) stays deferred** — no topology/replication registry shape was
+  built for P11 (single-socket dev box; real pinning needs a libc dep that
+  conflicts with D15). The `Job::Custom` slot is present and is the seam a
+  future parallel-clear / node-pinned job would use.
