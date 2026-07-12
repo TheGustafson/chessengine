@@ -222,7 +222,12 @@ fn suite_entries(fens: &FenSource) -> Vec<String> {
             .filter(|l| !l.is_empty())
             .map(str::to_string)
             .collect(),
-        FenSource::Current => todo!("P4: UCI loop (bench on the session position)"),
+        // Reachable only from the future in-session `bench` dev command
+        // (design/12 UCI dev surface); the argv front door has no session
+        // position. Parsing stays forward-compatible (see the parser test).
+        FenSource::Current => {
+            todo!("in-session bench on the session position (design/12 dev surface)")
+        }
     }
 }
 
