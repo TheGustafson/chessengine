@@ -1284,13 +1284,19 @@ impl Worker {
                 && !is_loss(beta)
                 && !is_win(eval)
             {
+                // Threat-coupled relaxation (Wave-G item 23, D30): a position
+                // where none of our non-pawn pieces is attacked is safe enough
+                // to prune a little more readily.
+                let us = self.board.side_to_move();
+                let our_valued = self.board.occupancy(us) ^ self.board.pieces(us, PieceType::Pawn);
+                let no_own_threat = (self.board.all_threats() & our_valued).is_empty();
                 let margin = rfp_margin(
                     depth,
                     tt_hit,
                     improving,
                     opponent_worsening,
                     correction_value,
-                );
+                ) - params::RFP_THREAT_MARGIN * Value::from(no_own_threat);
                 if eval - margin >= beta {
                     return (params::RFP_RET_BETA_W * beta + params::RFP_RET_EVAL_W * eval)
                         / params::RFP_RET_DEN;
@@ -4575,13 +4581,16 @@ mod tests {
     fn ponder_guard_blocks_every_check_time_stop() {
         // design/12 §3.8: the GUI owns the clock while pondering — an
         // already-expired movetime must NOT stop a ponder search. The
-        // depth limit (ID-loop condition, not check_time) bounds the
-        // test; depth 5 guarantees the 512-entry cadence fires real
-        // checks. (Depth 4 sufficed pre-LMP, but doc 10 §3.5's movecount
-        // pruning shrinks the startpos tree below 512 main-search node
-        // entries at depth 4 — the control below would never reach a real
-        // check — so the floor moves up one ply.)
-        let mut w = Worker::new(board(START_FEN));
+        // depth limit (ID-loop condition, not check_time) bounds the test;
+        // check_time only does real work every 512 main-node ENTRIES, so the
+        // fixture must have a tree that large. As the pruning suite deepened
+        // (LMP, then the Wave C-G history/threat couplings) the startpos tree
+        // at any small fixed depth kept shrinking below that floor, making
+        // this test flap; kiwipete at depth 5 (~5k nodes) is robustly above
+        // it — the fixture, not the depth, is what the test needs.
+        const KIWIPETE: &str =
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+        let mut w = Worker::new(board(KIWIPETE));
         w.limits.movetime = Some(0); // expired from the first poll
         w.limits.start_time = std::time::Instant::now();
         w.limits.depth = Some(5);
@@ -4593,7 +4602,7 @@ mod tests {
         assert_eq!(w.root_depth, 5, "the search deepened on GUI time");
 
         // Control: the same limits without the ponder flag stop at once.
-        let mut w = Worker::new(board(START_FEN));
+        let mut w = Worker::new(board(KIWIPETE));
         w.limits.movetime = Some(0);
         w.limits.start_time = std::time::Instant::now();
         w.limits.depth = Some(5);
@@ -5859,6 +5868,27 @@ mod tests {
         let a = go_depth(START_FEN, 9);
         let b = go_depth(START_FEN, 9);
         assert_eq!(a.nodes, b.nodes, "singular preserves node determinism");
+        assert_eq!(a.best_move(), b.best_move());
+    }
+
+    // --- Wave-G items 22/23: threat-aware ordering + threat-coupled RFP ---
+
+    #[test]
+    fn wave_g_ordering_and_rfp_preserve_correctness() {
+        // G1 (offense/escape ordering off the threat map) and G2 (RFP margin
+        // relaxed when no own piece is threatened) must not corrupt mate scores
+        // or determinism, and must still find a hanging piece.
+        let m = go_depth("6k1/5ppp/8/8/8/8/8/R6K w - - 0 1", 6);
+        assert!(is_mate(best_score(&m)), "Wave G keeps mate exact");
+
+        // A free undefended queen is still won (the offense term rewards
+        // attacking it, but SEE/search find it regardless).
+        let w = go_depth("3q3k/8/8/8/8/8/3R4/3R3K w - - 0 1", 6);
+        assert!(best_score(&w) > 800, "Wave G must not miss the free queen");
+
+        let a = go_depth(START_FEN, 7);
+        let b = go_depth(START_FEN, 7);
+        assert_eq!(a.nodes, b.nodes, "Wave G stays deterministic");
         assert_eq!(a.best_move(), b.best_move());
     }
 

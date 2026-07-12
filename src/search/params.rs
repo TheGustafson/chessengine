@@ -71,7 +71,15 @@ pub const QUIET_CHECK_SEE_MARGIN: Value = -75;
 /// Per-piece-value multiplier of the threat escape/entry term: fleeing a
 /// square attacked by a strictly cheaper enemy piece earns
 /// `QUIET_THREAT_FACTOR * piece_value`, stepping onto one costs the same.
+/// Fed by the Wave-G threat map (D30, `Board::piece_threats`).
 pub const QUIET_THREAT_FACTOR: Value = 20;
+/// Per-piece-value multiplier of the Wave-G offense term (D30, needs the threat
+/// map): moving to a square from which the piece attacks a *vulnerable* enemy —
+/// an undefended enemy piece worth at least as much as the mover — earns
+/// `QUIET_OFFENSE_FACTOR * piece_value`. The "create a threat" counterpart to
+/// the "avoid a threat" escape term; a modest reward (SF/our §3.7 scored only
+/// the defensive side).
+pub const QUIET_OFFENSE_FACTOR: Value = 10;
 /// Weight on low-ply history in the quiet ordering score (plies 0..4 only,
 /// scaled by `/ (1 + ply)`).
 pub const QUIET_LOW_PLY_WEIGHT: Value = 8;
@@ -164,6 +172,12 @@ pub const RFP_IMPROVING: Value = 2934;
 pub const RFP_OPP_WORSENING: Value = 343;
 /// Denominator of the improving/opponent-worsening margin discounts.
 pub const RFP_TREND_DEN: Value = 1024;
+/// Threat-coupled RFP relaxation (Wave-G item 23, D30): when NO own non-pawn
+/// piece is currently threatened (the Wave-G threat map says the position is
+/// safe), subtract this flat term from the N10 margin so RFP fires a little
+/// more readily — a safe position at/above beta is very likely a real
+/// fail-high.
+pub const RFP_THREAT_MARGIN: Value = 55;
 /// Beta weight of the return blend `(RFP_RET_BETA_W·beta + RFP_RET_EVAL_W·
 /// eval) / RFP_RET_DEN` — a value ≥ beta, pulled toward beta to damp
 /// static-eval noise (the same instability-damping idiom as the node-exit

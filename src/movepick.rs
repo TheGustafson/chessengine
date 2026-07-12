@@ -42,9 +42,9 @@ use crate::moves::{MAX_MOVES, Move, MoveList};
 use crate::search::params::{
     CAPTURE_MVV_FACTOR, EVASION_CAPTURE_BONUS, GOOD_CAPTURE_SEE_DIVISOR, GOOD_QUIET_THRESHOLD,
     QUIET_CHECK_BONUS, QUIET_CHECK_SEE_MARGIN, QUIET_LOW_PLY_WEIGHT, QUIET_MAIN_HISTORY_WEIGHT,
-    QUIET_PAWN_HISTORY_WEIGHT, QUIET_SORT_DEPTH_FACTOR, QUIET_THREAT_FACTOR,
+    QUIET_OFFENSE_FACTOR, QUIET_PAWN_HISTORY_WEIGHT, QUIET_SORT_DEPTH_FACTOR, QUIET_THREAT_FACTOR,
 };
-use crate::types::{Color, DEPTH_QS, Depth, PieceType, VALUE_ZERO, Value};
+use crate::types::{DEPTH_QS, Depth, PieceType, VALUE_ZERO, Value};
 
 /// A move paired with its ordering score (design/09 §3.1, D7).
 ///
@@ -136,48 +136,6 @@ fn score_capture(board: &Board, hist: &Histories, m: Move) -> i32 {
     let victim_slot = victim.map_or(NO_VICTIM, |p| p.piece_type as usize);
     let cap_hist = hist.capture[pc.index()][m.to().index() as usize][victim_slot].get();
     CAPTURE_MVV_FACTOR * victim_value + cap_hist
-}
-
-/// Squares attacked by enemy pieces *strictly cheaper* than each of our piece
-/// types, indexed by our [`PieceType`] (design/09 §3.7).
-///
-/// "Cheaper" is bucketed into tiers — pawn < {knight, bishop} < rook < queen —
-/// so the two minors form one tier (a knight does not threaten a bishop here).
-/// The quiet scorer uses these to reward a piece *fleeing* a square a cheaper
-/// enemy attacks and to bury a move *stepping onto* one. Pawns and kings have
-/// no cheaper attacker (and the king's ordering value is 0), so both stay
-/// `EMPTY`. Computed once per quiet-scoring pass — each enemy union is a
-/// pop-lsb loop over that piece type (pawns via a single bulk shift).
-fn threats_by_lesser(board: &Board, us: Color) -> [Bitboard; 6] {
-    let them = us.flip();
-    let occ = board.all_occupancy();
-    let tables = crate::attacks::tables();
-
-    let by_pawn = crate::attacks::pawn_attacks_bb(them, board.pieces(them, PieceType::Pawn));
-
-    let mut minors = Bitboard::EMPTY;
-    for sq in board.pieces(them, PieceType::Knight) {
-        minors |= crate::attacks::knight_attacks(sq);
-    }
-    for sq in board.pieces(them, PieceType::Bishop) {
-        minors |= tables.bishop_attacks(sq, occ);
-    }
-    let mut rooks = Bitboard::EMPTY;
-    for sq in board.pieces(them, PieceType::Rook) {
-        rooks |= tables.rook_attacks(sq, occ);
-    }
-
-    // Accumulated tiers: knights/bishops threatened by pawns; rooks by pawns +
-    // minors; queens by pawns + minors + rooks (design/09 §3.7).
-    let by_minor = by_pawn | minors;
-    let by_rook = by_minor | rooks;
-
-    let mut threat = [Bitboard::EMPTY; 6];
-    threat[PieceType::Knight as usize] = by_pawn;
-    threat[PieceType::Bishop as usize] = by_pawn;
-    threat[PieceType::Rook as usize] = by_minor;
-    threat[PieceType::Queen as usize] = by_rook;
-    threat
 }
 
 /// The picker's explicit state machine (design/09 §3.5). Each pipeline is a
@@ -506,7 +464,43 @@ impl MovePicker {
         let n = list.len();
 
         let us = board.side_to_move();
-        let threat = threats_by_lesser(board, us);
+        // Escape/entry tiers from the Wave-G threat map (D30): squares attacked
+        // by an enemy piece strictly cheaper than each of our types (cumulative
+        // union — the same structure the old local `threats_by_lesser`
+        // produced, now read O(1) from the precomputed per-node map).
+        let by_pawn = board.piece_threats(PieceType::Pawn);
+        let by_minor = by_pawn
+            | board.piece_threats(PieceType::Knight)
+            | board.piece_threats(PieceType::Bishop);
+        let by_rook = by_minor | board.piece_threats(PieceType::Rook);
+        let threat: [Bitboard; 6] = [
+            Bitboard::EMPTY, // Pawn: no cheaper attacker
+            by_pawn,         // Knight
+            by_pawn,         // Bishop
+            by_minor,        // Rook
+            by_rook,         // Queen
+            Bitboard::EMPTY, // King
+        ];
+        // Offense (D30): the "create a threat" counterpart — for each of our
+        // piece types, the undefended enemy pieces (not in the opponent's own
+        // attack map) worth at least as much as the mover; a quiet moving to a
+        // square attacking one earns the offense bonus.
+        let them = us.flip();
+        let occ = board.all_occupancy();
+        let undefended = board.occupancy(them) & !board.all_threats();
+        let eq = board.pieces(them, PieceType::Queen);
+        let er = eq | board.pieces(them, PieceType::Rook);
+        let eb = er | board.pieces(them, PieceType::Bishop);
+        let en = eb | board.pieces(them, PieceType::Knight);
+        let ep = en | board.pieces(them, PieceType::Pawn);
+        let vulnerable: [Bitboard; 6] = [
+            ep & undefended, // Pawn: any undefended enemy
+            en & undefended, // Knight: >= knight value
+            eb & undefended, // Bishop
+            er & undefended, // Rook
+            eq & undefended, // Queen: only an undefended queen
+            Bitboard::EMPTY, // King
+        ];
         let main_plane = &hist.main[us as usize];
         let pawn_plane = hist.pawn_slot(board.pawn_key());
         // Offsets 1,2,3,4,6 → cont_hist[0,1,2,3,5]; offset 5 is not read for
@@ -548,6 +542,22 @@ impl MovePicker {
             let from_threat = threat[pt as usize].contains(m.from()) as i32;
             let to_threat = threat[pt as usize].contains(m.to()) as i32;
             value += pt.value() * QUIET_THREAT_FACTOR * (from_threat - to_threat);
+
+            // Offense (D30): moving to a square from which the piece attacks a
+            // vulnerable enemy earns a modest reward. `occ` is the pre-move
+            // occupancy (a heuristic approximation — the mover still sits on
+            // `from`); acceptable for ordering.
+            let targets = vulnerable[pt as usize];
+            if !targets.is_empty() {
+                let att = if pt == PieceType::Pawn {
+                    crate::attacks::pawn_attacks(us, m.to())
+                } else {
+                    crate::attacks::attacks(pt, m.to(), occ)
+                };
+                if !(att & targets).is_empty() {
+                    value += pt.value() * QUIET_OFFENSE_FACTOR;
+                }
+            }
 
             // Low-ply history (plies 0..4 only), damped toward the leaves.
             if let Some(lp) = low_ply_plane {
@@ -626,7 +636,7 @@ mod tests {
     use super::*;
     use crate::history::Histories;
     use crate::movegen::generate_quiets;
-    use crate::types::{Piece, Square};
+    use crate::types::{Color, Piece, Square};
     use std::collections::HashSet;
 
     // A tiny LCG (same multiplier/increment as history.rs' tests) —
