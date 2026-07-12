@@ -1074,31 +1074,39 @@ impl Worker {
                 }
             }
 
-            // Trend flags (design/10 §3.4 N6), computed BEFORE the TT cutoff so
-            // the hindsight depth adjustments can feed it. `improving`: our
-            // eval beats our eval two plies ago (our last turn).
-            // `opponent_worsening`: our eval beats the negation of the parent's
-            // — the position is turning our way. Both use `ss.static_eval`
-            // (never the substituted `eval`); an unset predecessor is the large
-            // `VALUE_NONE` sentinel (SF parity).
+            // `improving`: our eval beats our eval two plies ago (our last
+            // turn). Uses `ss.static_eval` (never the substituted `eval`); an
+            // unset predecessor is the large `VALUE_NONE` sentinel (SF parity).
+            // Pinned false in check (set above).
             improving = self.stack[cur].static_eval > self.stack[cur - 2].static_eval;
-            let opponent_worsening = self.stack[cur].static_eval > -self.stack[cur - 1].static_eval;
+        }
 
-            // N6 hindsight depth adjustments (Wave-E item 17): the parent's LMR
-            // bookkeeping second-guessed. A hard reduction that did not turn
-            // the position their way looks unjustified — deepen; a moderate
-            // reduction with a healthy combined eval sum — shallow.
-            if prior_reduction >= params::HINDSIGHT_RED_UP && !opponent_worsening {
-                depth += 1;
-            }
-            if prior_reduction >= params::HINDSIGHT_RED_DOWN
-                && depth >= 2
-                && self.stack[cur].static_eval + self.stack[cur - 1].static_eval
-                    > params::HINDSIGHT_EVAL_SUM
-            {
-                depth -= 1;
-            }
+        // N6 trend flag + hindsight depth adjustments (design/10 §3.11):
+        // ordered BEFORE the N7 in-check jump, so they run for ALL nodes —
+        // including in check, where `ss.static_eval` is the grandparent's eval.
+        // `opponent_worsening`: our eval beats the negation of the parent's —
+        // the position is turning our way. A hard parent reduction
+        // (`>= HINDSIGHT_RED_UP`) that did NOT turn the position the opponent's
+        // way looks unjustified — deepen the whole node; extending a
+        // hard-reduced check evasion is exactly where this pays, so it must not
+        // be gated out of check. A moderate reduction with a healthy combined
+        // eval sum — shallow it.
+        let opponent_worsening = self.stack[cur].static_eval > -self.stack[cur - 1].static_eval;
+        if prior_reduction >= params::HINDSIGHT_RED_UP && !opponent_worsening {
+            depth += 1;
+        }
+        if prior_reduction >= params::HINDSIGHT_RED_DOWN
+            && depth >= 2
+            && self.stack[cur].static_eval + self.stack[cur - 1].static_eval
+                > params::HINDSIGHT_EVAL_SUM
+        {
+            depth -= 1;
+        }
 
+        // Steps N6b–N13 (design/10 §3.11) are skipped in check: the node
+        // borrowed the grandparent's eval and jumps straight to N14 / the move
+        // loop, since no pruning is sound while in check.
+        if !in_check {
             // N6b — the NonPV TT cutoff (design/10 §3.4): enough stored depth
             // (one ply of slack for upper-bound values), a valid value, the
             // bound pointing the cutoff's way, the cutNode-agreement guard at
@@ -1166,7 +1174,14 @@ impl Worker {
                     && self.board.legal(tt_data.mv)
                 {
                     let m = tt_data.mv;
-                    self.do_move(tt, m, self.board.gives_check(m), ply);
+                    // Board-only make/unmake (SF `pos.do_move`, search.cpp):
+                    // this verification probe is NOT a search node, so it must
+                    // NOT bump `self.nodes` (which would inflate the bench
+                    // fingerprint, the `go nodes` budget, and node-based TM)
+                    // nor stamp the search stack. The prefetch hook still rides
+                    // along so the immediate child probe below is warm.
+                    let gc = self.board.gives_check(m);
+                    self.board.make_move_with(m, gc, &mut TtPrefetch { tt });
                     let child = tt.probe(self.board.key());
                     let child_value = if child.hit {
                         value_from_tt(
@@ -1177,7 +1192,7 @@ impl Worker {
                     } else {
                         VALUE_NONE
                     };
-                    self.undo_move(m);
+                    self.board.unmake_move(m);
                     if !is_valid(child_value) || (tt_value >= beta) == (-child_value >= beta) {
                         return tt_value;
                     }
@@ -1284,12 +1299,15 @@ impl Worker {
                 && !is_loss(beta)
                 && !is_win(eval)
             {
-                // Threat-coupled relaxation (Wave-G item 23, D30): a position
-                // where none of our non-pawn pieces is attacked is safe enough
-                // to prune a little more readily.
+                // Threat-coupled relaxation (Wave-G item 23, D30, Reckless R8):
+                // a position where none of our pieces is currently threatened
+                // is safe enough to prune a little more readily. Keys on ALL
+                // our pieces — pawns included — matching the doc's "no own
+                // piece is currently threatened" and Reckless's `all_threats()
+                // & colors(stm)`; a hanging pawn still blocks the relaxation.
                 let us = self.board.side_to_move();
-                let our_valued = self.board.occupancy(us) ^ self.board.pieces(us, PieceType::Pawn);
-                let no_own_threat = (self.board.all_threats() & our_valued).is_empty();
+                let no_own_threat =
+                    (self.board.all_threats() & self.board.occupancy(us)).is_empty();
                 let margin = rfp_margin(
                     depth,
                     tt_hit,
@@ -1458,8 +1476,8 @@ impl Worker {
         // MovePicker (doc 09), which emits pseudo-legal moves best-first
         // (TT move → good captures → good quiets → bad captures → bad
         // quiets); legality is checked per move instead of up front.
-        // (`excluded_move` guard arrives with doc 10's singular search —
-        // nothing writes it yet.)
+        // (The `excluded_move` skip lives at the top of the loop below —
+        // doc 10's singular verification writes it during an exclusion search.)
         //
         // At the root the loop iterates `root_moves[pv_idx..]` itself
         // (doc 07 §3.7.2 step 9's "skip moves outside the root list",
@@ -1516,6 +1534,18 @@ impl Worker {
                     None => break,
                 }
             };
+            // Skip the singular-exclusion move (design/10 §3.5, SF `if (move
+            // == ss->excludedMove) continue;`): during an exclusion search the
+            // MovePicker is still built from `tt_data.mv` and emits it first,
+            // so without this skip the search would include the very move it is
+            // meant to exclude — silently defeating the singular test and
+            // firing spurious multicuts. `excluded_move` is NULL at every
+            // normal node (and no real move is NULL), so this only bites inside
+            // a verification; when the ttMove is the ONLY legal move the loop
+            // then ends with `move_count == 0`, taking the §3.10 fail-low.
+            if m == self.stack[cur].excluded_move {
+                continue;
+            }
             // Interior nodes emit pseudo-legal moves — skip the illegal
             // ones before they count toward move_count (mate detection).
             if !NT::ROOT && !self.board.legal(m) {
@@ -1739,8 +1769,10 @@ impl Worker {
                 self.stack[cur].excluded_move = Move::NULL;
 
                 if value < singular_beta {
-                    // Singular: extend. corr_adj is 0 until Wave F (item 21)
-                    // plumbs correction history into the margins.
+                    // Singular: extend. `corr_adj` (Wave-F item 21, now live)
+                    // tightens the double/triple margins under eval
+                    // uncertainty — a large |correction_value| makes the extra
+                    // extensions harder to earn.
                     let corr_adj = correction_value.abs() / params::SE_CORR_DIV;
                     let tmh = self.histories.tt_move.get();
                     let deep = Value::from(ply > self.root_depth as usize);
@@ -5869,6 +5901,43 @@ mod tests {
         let b = go_depth(START_FEN, 9);
         assert_eq!(a.nodes, b.nodes, "singular preserves node determinism");
         assert_eq!(a.best_move(), b.best_move());
+    }
+
+    #[test]
+    fn exclusion_search_skips_the_excluded_move() {
+        // design/10 §3.5 / §3.10 step 2: an exclusion search must SKIP the
+        // ttMove (`excluded_move`) — the MovePicker still emits it first, so
+        // without the top-of-loop skip the search would include the very move
+        // it is meant to exclude (defeating the singular test and firing
+        // spurious multicuts). We drive a node whose ONLY legal move is the
+        // excluded one: the loop must end with `move_count == 0` and take the
+        // §3.10 fail-low, returning `alpha`. Before the skip landed this
+        // searched Ka7 and returned a real (non-alpha) value.
+        let fen = "k7/8/2K5/8/8/8/8/1R6 b - - 0 1";
+        let mut w = Worker::new(board(fen));
+        let tt = test_tt();
+        let only = Move::normal(Square::A8, Square::A7);
+        let legal = all_legal(&w.board);
+        assert_eq!(legal.len(), 1, "fixture must have exactly one legal move");
+        assert_eq!(legal[0], only, "the one legal move is Ka7");
+
+        init_stack(&mut w.stack);
+        // A PV node with a real window reaches the move loop without any
+        // pre-loop pruning short-circuit (razoring/NMP/ProbCut are !PV or
+        // excluded-gated; the losing eval keeps RFP dormant).
+        let cur = ss(1);
+        w.stack[cur].excluded_move = only;
+        // An exclusion search reuses the enclosing node's already-computed
+        // static eval (§3.6); seed it so the eval-reuse path is valid.
+        w.stack[cur].static_eval = static_eval(&w.board);
+        let stop = AtomicBool::new(false);
+        let alpha: Value = -100;
+        let beta: Value = 100;
+        let v = w.search::<Pv>(&tt, &stop, alpha, beta, 4, false, 1);
+        assert_eq!(
+            v, alpha,
+            "excluding the sole legal move must leave move_count == 0 and fail low with alpha"
+        );
     }
 
     // --- Wave-G items 22/23: threat-aware ordering + threat-coupled RFP ---

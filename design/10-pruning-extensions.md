@@ -803,6 +803,9 @@ Ground rules for every wave (D24, D25):
 8. Capture futility + capture SEE pruning (needs captureHistory from doc 09).
    SPRT `[0, 5]`.
 9. IIR (N12) + followPV plumbing (`last_iteration_pv`). SPRT `[0, 3]`.
+   *Status (2026-07-12): not yet landed — Wave B is in progress. N12 is
+   genuinely absent between N11b and ProbCut (not a silent deviation); it
+   lands with the rest of Wave B.*
 
 **Wave C — history-coupled pruning/reduction (needs continuation history
 from doc 09; expected +20..60 combined).**
@@ -823,16 +826,33 @@ expected +15..40 combined).**
     double/triple extension margins. SPRT `[0, 5]`.
 15. ttMove min-depth clamp at PV re-search + cutoffCnt reduction terms +
     sibling `depth -= 2` on alpha raise. SPRT `[0, 3]`.
+    **Partially deferred (P9 Waves C–G, 2026-07-12):** the ttMove min-depth
+    clamp landed (it only helps mate finding); the **cutoffCnt reduction terms
+    and the §3.9 sibling `depth -= 2`** are **DEFERRED**. Their params
+    (`RED_CUTOFFCNT_*`, `RED_ALLNODE_*`, `RED_TTPV_*`, `RED_TTCAPTURE`,
+    `SIBLING_DEPTH_*`) are defined in `params.rs` but currently **unconsumed** —
+    in this PSQT-only engine they over-reduce deep mate lines past the §8.4
+    "solved at depth ≤ 6" bar (SF absorbs the same reductions with NNUE-grade
+    eval/ordering). Revisit with the P13 eval upgrade.
 
 **Wave E — flow refinements (each small; expected +10..30 aggregate).**
 16. ProbCut (N13) + in-check small ProbCut (N14). SPRT `[0, 3]`.
 17. Hindsight depth adjustments (N6) + `improving |= eval >= beta` (N11b).
     SPRT `[0, 3]`.
+    *Fidelity note (2026-07-12): per §3.11 the N6 trend flags and the two
+    hindsight `depth ±1` adjustments run for ALL nodes — including in check —
+    BEFORE the N7 in-check jump to the move loop. `improving` stays false in
+    check; `opponent_worsening` and the hindsight arms use the grandparent's
+    eval there.*
 18. Fail-high softening + RFP return blend + equal-value dither + dithered
     draws (if not already in core). SPRT `[0, 3]`.
 19. Fail-low parent bonus (full `bonus_scale` formula) + fail-low capture
     bonus + ttPv backprop + TT `depth+6` no-moves store + upcoming-repetition
     early draw (needs cuckoo tables from the board doc). SPRT `[0, 3]`.
+    **Partially deferred (P9, 2026-07-12):** the fail-low bonuses, ttPv
+    backprop, and TT no-moves store landed; the **N1 upcoming-repetition /
+    cuckoo early draw** is **DEFERRED** — the board doc's cuckoo tables are not
+    yet built.
 20. TT-cutoff hardening: depth slack, cutNode agreement, rule50 ≥ 96 guard,
     depth ≥ 7 child verification, wrong-direction penalize. SPRT `[0, 3]`
     (some of these are safety, not Elo; accept on non-regression `[-3, 1]`).
@@ -843,6 +863,13 @@ eval doc; expected +5..15).**
     (`/182069`), reduction term (`/26131`), singular `corr_adj`
     (`/194822`), and the node-result correction update with its
     direction-consistency gate. SPRT `[0, 5]`.
+    **Partially deferred (P9, 2026-07-12):** the RFP/reduction/singular
+    couplings and the node-result update landed and are live (`corr_adj` now
+    tightens the singular double/triple margins); **folding the correction
+    INTO `ss.static_eval`** itself (the N6 corrected static eval, via
+    `to_corrected_static_eval`) is **DEFERRED** to the eval doc's corrected-eval
+    consumer (D22) so the exact-value pruning-margin unit tests stay pinned to
+    the raw eval.
 
 **Wave G — Reckless-derived threat map + dependents (2026-07-11 study, D30;
 scheduled AFTER the existing waves A–F).** Prereq is *infrastructure, not a
@@ -855,8 +882,16 @@ lands. Then:
 22. Threat-aware quiet ordering: a threat-escape term (moving a piece off an
     attacked square) + a symmetric offense term (moving to attack a vulnerable
     enemy). `design/09` §3.4/§3.7. SPRT `[0, 5]`.
-23. Threat-coupled RFP margin: subtract a flat term from the N10 margin when no
-    own piece is currently threatened. §3.4 N10. SPRT `[0, 3]`.
+23. Threat-coupled RFP margin: subtract a flat term (`RFP_THREAT_MARGIN`) from
+    the N10 margin when no own piece is currently threatened. §3.4 N10.
+    SPRT `[0, 3]`. *"Own piece" means ALL our pieces, pawns included —
+    `all_threats() & occupancy(us)` — matching Reckless's `colors(stm)`; a
+    threatened pawn blocks the relaxation. `RFP_THREAT_MARGIN` (currently 55,
+    Reckless uses 54) is a provisional guess pending SPSA. The G1 offense
+    ordering term (`QUIET_OFFENSE_FACTOR`) reads the same king-x-rayed
+    `piece_threats` map (sliders see through our own king — the king-danger
+    build), an intentional D30 behavior change from the deleted full-occupancy
+    `threats_by_lesser`.*
 
 **Reckless-derived candidates (study 2026-07-11, D31) — enrich the menu without
 restructuring the waves; each is one commit, proxy-gated, reimplemented

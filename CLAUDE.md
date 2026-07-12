@@ -36,10 +36,16 @@ decision changes) in the same commit.
   can affect search behavior (search, eval, movegen/make-unmake, move
   ordering, TT) ends with a `Bench: <nodes>` trailer: the `Nodes searched`
   total from the pinned fingerprint invocation
-  `./target/release/chessengine bench 16 1 3 default depth`
-  (check.sh runs it and prints the ready-to-paste line; the depth stays
-  pinned at 3 until the TT lands — the SF-default `bench` depth 13 is
-  infeasible pre-TT). A patch that changes the number is *functional* by
+  `./target/release/chessengine bench 16 1 6 default depth`
+  (check.sh runs exactly this — see `tools/check.sh` — and prints the
+  ready-to-paste line). The depth is pinned at **6** (~34 s in the fast
+  config): the TT landed in P6 and flattened the node curve enough to
+  raise it from the pre-TT depth 3; it keeps climbing toward the SF-default
+  13 as the pruning waves shrink the tree, staying under ~60 s per run.
+  Trailers from before this pin (P9 Waves C–G and earlier) were recorded at
+  depth 3 and are NOT reproducible by today's depth-6 check.sh — reproduce a
+  commit's number with the depth its own era used. A patch that changes the
+  number is *functional* by
   definition and the trailer states the **new** count; intended
   non-functional patches (refactors, speedups) must reproduce the old count
   bit-for-bit — verify by rerunning check.sh on both sides. Commits that
