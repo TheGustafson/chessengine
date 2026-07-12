@@ -87,6 +87,14 @@ const PONDER_OPTIMUM_BONUS_DIV: i64 = 4;
 /// the same seed.
 pub(crate) const PREVIOUS_TIME_REDUCTION_INIT: f64 = 0.85;
 
+/// Per-`go` seed for the running `time_reduction` (SF's local
+/// `double timeReduction = 1` at `search.cpp:279`). It is recomputed by the
+/// soft stop each iteration and written back to `previous_time_reduction`
+/// at search end; seeding to 1.0 means a `go` whose factor block never runs
+/// (fixed depth/nodes) leaves the *next* move's numerator at 1.0, not a
+/// stale persisted seed. `pub(crate)` for the search worker's working copy.
+pub(crate) const TIME_REDUCTION_INIT: f64 = 1.0;
+
 // ---------------------------------------------------------------------------
 // Limits — everything `go` can ask for (design/12 §3.6)
 // ---------------------------------------------------------------------------

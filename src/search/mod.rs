@@ -627,11 +627,23 @@ pub struct Worker {
     /// [`Worker::soft_stop`]; `true` at every `go` start, so fixed-depth /
     /// fixed-node search (bench, D24) never damps its depth.
     increase_depth: bool,
-    /// Working copy of `persist.previous_time_reduction` for the soft-stop
-    /// `reduction` factor (design/12 §3.9): seeded from persist at `go`
-    /// start, updated by [`Worker::soft_stop`] each iteration, written back
-    /// to persist at search end.
+    /// Working copy of `persist.previous_time_reduction` — the *numerator*
+    /// of the soft-stop `reduction` factor (design/12 §3.9). Seeded from
+    /// persist at `go` start and held CONSTANT for the whole search (SF's
+    /// `mainThread->previousTimeReduction`, `search.cpp:580`): every
+    /// iteration divides `1.48 + this` by the current iteration's freshly
+    /// recomputed `time_reduction`. The running value that replaces it for
+    /// the *next move* is [`Worker::tm_time_reduction`], not this field.
     tm_previous_time_reduction: f64,
+    /// The running `time_reduction` (SF's local `timeReduction`,
+    /// `search.cpp:279`/`576`/`619`): seeded to
+    /// [`crate::timeman::TIME_REDUCTION_INIT`] (1.0) at `go` start,
+    /// recomputed by [`Worker::soft_stop`] each iteration, and written back
+    /// to `persist.previous_time_reduction` at search end so it becomes the
+    /// next move's numerator. Distinct from [`Worker::tm_previous_time_reduction`]
+    /// so the numerator stays a per-move constant, not the prior iteration's
+    /// value.
+    tm_time_reduction: f64,
     /// Working copy of `persist.best_previous_average_score` for the
     /// soft-stop `fallingEval` factor (design/12 §3.9): seeded from persist
     /// at `go` start.
@@ -696,6 +708,7 @@ impl Worker {
             iter_idx: 0,
             increase_depth: true,
             tm_previous_time_reduction: crate::timeman::PREVIOUS_TIME_REDUCTION_INIT,
+            tm_time_reduction: crate::timeman::TIME_REDUCTION_INIT,
             tm_best_previous_average_score: VALUE_INFINITE,
             eval_ctx: EvalContext::new(),
             histories: Histories::new(),
@@ -772,6 +785,10 @@ impl Worker {
         };
         self.iter_value = [iter_seed; 4];
         self.tm_previous_time_reduction = persist.previous_time_reduction;
+        // The running time_reduction seeds to 1.0 per `go` (SF search.cpp:279),
+        // NOT to the persisted numerator: if the factor block never runs this
+        // move, next move's numerator falls back to 1.0.
+        self.tm_time_reduction = crate::timeman::TIME_REDUCTION_INIT;
         self.tm_best_previous_average_score = persist.best_previous_average_score;
         #[cfg(test)]
         self.asp_trace.clear();
@@ -832,14 +849,18 @@ impl Worker {
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
-                // §3.13 emission: below the node throttle publish the whole
-                // MultiPV block only when the iteration's LAST line
-                // finishes; above it, after every line. When it fires,
-                // every completed line 1..=multi_pv is (re)published so the
-                // GUI always sees a coherent block. At MultiPV 1 this is a
-                // single line per iteration (unchanged).
+                // §3.13 emission: below the node throttle publish the block
+                // only when the iteration's LAST line finishes; above it,
+                // after every line. Either way republish exactly the lines
+                // already searched THIS iteration (`0..=pv_idx`, matching
+                // SF's `i <= pvIdx`) — a higher-index line still holds last
+                // iteration's score/pv, so surfacing it under the current
+                // depth label would make the block non-monotonic. On the
+                // last line `0..=pv_idx == 0..multi_pv`, the full coherent
+                // block; at MultiPV 1 a single line per iteration (unchanged,
+                // bench-neutral).
                 if pv_idx + 1 == multi_pv || self.nodes > params::INFO_THROTTLE_NODES {
-                    for line in 0..multi_pv {
+                    for line in 0..=pv_idx {
                         let rm = &self.root_moves[line];
                         on_info(&SearchInfo {
                             depth: self.root_depth,
@@ -901,7 +922,10 @@ impl Worker {
             persist.best_previous_score = front.score;
             persist.best_previous_average_score = front.average_score;
         }
-        persist.previous_time_reduction = self.tm_previous_time_reduction;
+        // SF search.cpp:619 `previousTimeReduction = timeReduction`: the
+        // running value (this move's last iteration, or the 1.0 seed if the
+        // factor block never ran) becomes next move's numerator.
+        persist.previous_time_reduction = self.tm_time_reduction;
     }
 
     /// End-of-iteration root hygiene (design/07 §3.5, plan step 10):
@@ -3136,10 +3160,14 @@ impl Worker {
         }
 
         // Maintain the fallingEval ring and the reduction memory for the
-        // next iteration / next `go` (design/12 §3.9).
+        // next iteration / next `go` (design/12 §3.9). Record this
+        // iteration's `time_reduction` in the RUNNING field only — the
+        // numerator `tm_previous_time_reduction` stays the per-move constant
+        // seeded at `go` start (SF: the local `timeReduction` is recomputed,
+        // `previousTimeReduction` is not touched until search end).
         self.iter_value[self.iter_idx] = best_value;
         self.iter_idx = (self.iter_idx + 1) & 3;
-        self.tm_previous_time_reduction = time_reduction;
+        self.tm_time_reduction = time_reduction;
     }
 
     /// Poll-cadence bitmask for [`Self::check_time`] (design/12 §3.8;
@@ -5189,17 +5217,18 @@ mod tests {
 
     #[test]
     fn soft_stop_halts_deepening_within_the_budget() {
-        // 60 s on the 1-node-per-ms fake clock: optimum ≈ 1.25k nodes,
-        // maximum ≈ 8.6k. The four-factor soft stop (doc 12 §3.9) ends the
-        // search between iterations once `total_time` (optimum scaled by
-        // the four factors) is spent; the `maximum` hard wall is the
-        // backstop for a last iteration that overshoots. Either way the run
-        // ends well past optimum and within maximum plus one poll cadence
-        // (the hard wall's granularity, `params::CHECK_TIME_CALLS`). On the
-        // first move `best_previous_average_score` is still the
+        // Two scenarios on the 1-node-per-ms fake clock, pinning the two
+        // stop paths (doc 12 §3.9). Case A is the combined-budget backstop;
+        // case B provably witnesses the between-iteration SOFT stop, so this
+        // test earns its name and does not degenerate into a hard-wall check.
+        //
+        // Case A — 60 s clock (optimum ≈ 1.25k, maximum ≈ 8.6k), first move
+        // of the game: `best_previous_average_score` is still the
         // `VALUE_INFINITE` sentinel, so `fallingEval` clamps high (1.708),
-        // inflating `total_time` above optimum — the search never stops at
-        // the bare optimum.
+        // inflating `total_time` ABOVE `maximum`. A deep last iteration then
+        // blows past both budgets in one pass and the hard wall backstops
+        // it — so we only bound the result: past optimum, within maximum
+        // plus one poll cadence (`params::CHECK_TIME_CALLS`).
         let mut w = Worker::new(board(START_FEN));
         w.limits.time[crate::types::Color::White as usize] = 60_000;
         init_clock(&mut w, &nodestime_options());
@@ -5220,6 +5249,78 @@ mod tests {
             params::CHECK_TIME_CALLS
         );
         assert!(w.best_move().is_some());
+
+        // Case B — 10 min clock (optimum ≈ 16.7k, maximum ≈ 115k) on a LATER
+        // move seeded with a moderate `best_previous_average_score`, so
+        // `fallingEval` clamps low and `total_time` lands near optimum, far
+        // under the hard wall. The search must therefore stop STRICTLY below
+        // `maximum` — that can only be the between-iteration soft stop, not
+        // the `check_time` wall — while still deepening past optimum. This is
+        // the assertion Case A cannot make (its total_time exceeds maximum).
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.time[crate::types::Color::White as usize] = 600_000;
+        init_clock(&mut w, &nodestime_options());
+        let (optimum, maximum) = (w.tm.optimum(), w.tm.maximum());
+        let mut persist = TimePersist {
+            best_previous_score: 30,
+            best_previous_average_score: 30,
+            ..TimePersist::default()
+        };
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&test_tt(), &stop, &mut persist, &mut |_| {});
+        assert!(stop.load(Ordering::Relaxed), "the soft stop must fire");
+        assert!(
+            w.nodes as i64 > optimum,
+            "soft stop fired before optimum was spent: {} <= {optimum}",
+            w.nodes
+        );
+        assert!(
+            (w.nodes as i64) < maximum - params::CHECK_TIME_EPSILON_MS,
+            "the hard wall stopped it, not the soft stop: {} not < {maximum}",
+            w.nodes
+        );
+        assert!(w.best_move().is_some());
+    }
+
+    #[test]
+    fn sub_iteration_node_budget_still_completes_iteration_one() {
+        // `go nodes 5` — a hard node budget far below the depth-1 node cost
+        // (~21 nodes at the start position). The tiny budget tightens the
+        // check_time poll cadence to every node (`compute_check_time_mask`),
+        // so the `nodes >= 5` hard stop would otherwise fire mid-depth-1
+        // with `completed_depth == 0` and salvage only a half-searched root.
+        // The `completed_depth == 0` guard (design/12 §3.8, D31) suppresses
+        // every hard stop until iteration 1 has fully completed, guaranteeing
+        // a real, completed bestmove. Without the guard this search returns
+        // an aborted depth-0 result; the assertions below (a completed depth
+        // >= 1 AND a real bestmove) are exactly what the guard buys and what
+        // no other TM test pins.
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.nodes = Some(5);
+        assert!(
+            !w.limits.use_time_management(),
+            "test premise: a pure node budget, so only check_time can stop"
+        );
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&test_tt(), &stop, &mut TimePersist::default(), &mut |_| {});
+        assert!(
+            stop.load(Ordering::Relaxed),
+            "the node budget must stop the search"
+        );
+        assert!(
+            w.nodes >= 5,
+            "the node budget was actually reached: {}",
+            w.nodes
+        );
+        assert!(
+            w.best_move().is_some(),
+            "the guard must salvage a real bestmove under a sub-iteration budget"
+        );
+        assert!(
+            w.completed_depth >= 1,
+            "iteration 1 must run to completion despite the 5-node budget (completed_depth = {})",
+            w.completed_depth
+        );
     }
 
     // --- Golden soft-stop factor tests (design/12 §3.9, §5). Each pins the
@@ -5255,6 +5356,57 @@ mod tests {
         assert!((red18 - 0.696_905_798_076_779_3).abs() < 1e-9);
         let (tr30, _) = Worker::stability_reduction(30, 0.85); // above hi -> clamp 1.55
         assert!((tr30 - 1.55).abs() < 1e-12);
+    }
+
+    #[test]
+    fn tm_reduction_numerator_is_a_per_move_constant() {
+        // Integration guard for the `reduction` factor's two roles (doc 12
+        // §3.9; SF search.cpp:580/619). The numerator
+        // `previous_time_reduction` is the PREVIOUS MOVE's time_reduction,
+        // held CONSTANT for the whole search; only the running
+        // `time_reduction` (the denominator, SF's local) is recomputed each
+        // iteration and written back to persist at search END. A regression
+        // that folded the two into one field would overwrite the numerator
+        // mid-search with each iteration's value, inflating the budget on a
+        // stabilizing search — invisible to the pure-function golden test
+        // above, which only ever passes an explicit numerator.
+        const SEED: f64 = 0.42; // distinctive; never a natural time_reduction
+        let mut w = Worker::new(board(START_FEN));
+        w.limits.time[crate::types::Color::White as usize] = 600_000;
+        init_clock(&mut w, &nodestime_options());
+        let mut persist = TimePersist {
+            previous_time_reduction: SEED,
+            best_previous_score: 30,
+            best_previous_average_score: 30,
+            ..TimePersist::default()
+        };
+        let stop = AtomicBool::new(false);
+        w.iterative_deepening(&test_tt(), &stop, &mut persist, &mut |_| {});
+        // The numerator working copy is untouched across the whole
+        // multi-iteration search.
+        assert_eq!(
+            w.tm_previous_time_reduction, SEED,
+            "the reduction numerator must stay the per-move constant, not the prior iteration's value",
+        );
+        // The running value WAS recomputed by soft_stop into [MIN, MAX] and
+        // is distinct from the seed (proving soft_stop ran and only touched
+        // the running field).
+        assert!(
+            w.tm_time_reduction >= params::TIME_REDUCTION_MIN
+                && w.tm_time_reduction <= params::TIME_REDUCTION_MAX,
+            "running time_reduction out of range: {}",
+            w.tm_time_reduction
+        );
+        assert_ne!(
+            w.tm_time_reduction, SEED,
+            "the running time_reduction must be recomputed, not left at the numerator seed",
+        );
+        // Persist takes the running value (SF:619), so next move's numerator
+        // is this move's last time_reduction — not the stale seed.
+        assert_eq!(
+            persist.previous_time_reduction, w.tm_time_reduction,
+            "search end must persist the running time_reduction as next move's numerator",
+        );
     }
 
     #[test]

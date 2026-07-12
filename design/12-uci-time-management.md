@@ -726,7 +726,11 @@ y0, y1)` is linear interpolation):
    `                            5.0, 18.0, 0.65, 1.55), 0.65, 1.55)`
    `reduction = (1.48 + previous_time_reduction) / (2.157 * time_reduction)`
    (`previous_time_reduction` = last move's `time_reduction`, initial
-   0.85; stored back into persist at search end).
+   0.85; **held constant for the whole search** — only the denominator's
+   `time_reduction` is recomputed each iteration. The running
+   `time_reduction` seeds to `1.0` at each `go` (SF `search.cpp:279`) and is
+   stored back into persist as the next move's `previous_time_reduction`
+   only at search end, never mid-search).
 3. **bestMoveInstability** — think longer when the best move keeps
    flipping:
    `best_move_instability = 1.096 + 2.29 * tot_best_move_changes / threads`
