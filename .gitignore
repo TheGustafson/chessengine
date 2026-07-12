@@ -4,6 +4,10 @@
 # alongside it in stockfish_reference/ ARE tracked.
 /stockfish_reference/Stockfish/
 
+# Reference clone of Reckless (AGPLv3, not ours to commit). Distilled
+# markdown notes alongside it in reckless_reference/ ARE tracked.
+/reckless_reference/Reckless/
+
 # Python bytecode from tools/
 __pycache__/
 
