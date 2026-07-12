@@ -9,15 +9,15 @@ introducing them.
 
 `design/` holds the reviewed design suite that governs all implementation:
 
-- `design/decisions.md` — pinned decisions D1-D33. **Decisions change here
+- `design/decisions.md` — pinned decisions D1-D34. **Decisions change here
   first; docs follow; code follows docs.**
 - `design/00-master-plan.md` — phase ordering (P0-P14), milestone gates,
   current phase status.
 - `design/README.md` — index and process rules for the suite.
-- `design/01-*.md` … `design/16-*.md` — one contract per component (14
-  numbered + `15` NNUE datagen + `16` research data platform). Check
-  code against the owning doc's acceptance criteria (§8) before calling a
-  phase done.
+- `design/01-*.md` … `design/17-*.md` — one contract per component (14
+  numbered + `15` NNUE datagen + `16` research data platform + `17` NNUE
+  research roadmap, D34). Check code against the owning doc's acceptance
+  criteria (§8) before calling a phase done.
 
 When implementing a component, read its design doc first and follow it; if
 reality forces a deviation, update the doc (and decisions.md if a pinned

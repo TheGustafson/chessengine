@@ -36,6 +36,7 @@ the note.
 | `14-performance-testing.md` | Performance & testing | Measurement hierarchy (SPRT / tactics / bench / criterion), bench fingerprint policy, target ladder, profiling toolkit, SPRT/gauntlet protocol (D24/D25) | Reviewed v1 |
 | `15-nnue-datagen.md` | NNUE training-data generation | The `bullet`/`bulletformat` on-disk format contract, curation/filtering spec, SF-teacher bootstrap pipeline, corpus volume/storage, D28 two-tier provenance progression | Draft v1 |
 | `16-research-data-platform.md` | Research data platform | Four-layer observation model, the versioned self-describing Observation-Store schema (superset of doc 15's flat record), three-store data management, provenance, and the D29 staging/reconciliation discipline (build-now = Tier-A + schema; the rest deferred behind its consuming research) | Living |
+| `17-nnue-research.md` | NNUE research roadmap | The engine's differentiating bet (D34): a search-integrated, shared-trunk, multi-head NNUE co-trained with search control from the D29 store — flagship thrusts **uncertainty coupling** (deep-search residual → extensions/reductions/time) and **learned policy & search control** (policy/control head → ordering/LMR/pruning), plus cascade/MoE/threat-feature supporting thrusts; the corpus→target→experiment map and the per-node compute-budget discipline; staged post-P13 behind Tier-B triggers | Living |
 
 (Some doc headers still read "Draft v1" from the drafting workflow; the
 review pass is complete and this table is authoritative until the header

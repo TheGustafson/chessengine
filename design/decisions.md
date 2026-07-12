@@ -293,3 +293,25 @@ strength. Two constraints in permanent tension, resolved in this order:
   adversarial scrutiny catches the bugs unit tests miss BEFORE expensive game
   time, and a silent search bug would poison everything built on top (NNUE
   training signal, SMP search). Full mechanics: `design/14` §10.
+
+- **D34**: The engine's differentiating bet — search-integrated NNUE (added
+  2026-07-11, per user; the stated reason for building this engine). Beyond a
+  conventional value net we build a shared-trunk **multi-head** network whose
+  evaluation AND search control are **co-trained** from the D29 observation
+  store, so eval and search co-evolve (the signal a foreign teacher cannot give
+  — D29 §3.8). Two flagship thrusts: **(I) uncertainty coupling** — the net
+  predicts the deep-search residual (Layer-2 static vs Layer-3 deep — a *free*
+  label) and that scalar drives extensions / reductions-pruning / time
+  management; **(II) learned policy & search control** — a policy/control head on
+  the *same* trunk guides ordering, reductions, and pruning, moving off D20's
+  hand-tuned constants via a fallback-safe correction (mirroring correction
+  history). Thesis: at fixed time, strength is decision-quality per
+  node-microsecond, not centipawn accuracy — a cleaner engine that *searches
+  smarter* can beat a bigger hand-tuned evaluator; this is the lever aimed at
+  beating Stockfish. GOVERNING CONSTRAINT: in-tree heads must be amortized on the
+  shared (sunk-cost) trunk or be tiny — SIMD/quant efficiency (doc 11 §3.4.6) is
+  the per-node budget that ranks what is affordable. Staged post-P13, gated on
+  Tier-B corpora (D28b/D29); the uncertainty head is the first novel thrust (its
+  label is free). Aspirational and genuine research (roadmap
+  `design/17-nnue-research.md`, §9 risks); the D29 platform exists precisely to
+  preserve the signals these heads need.
