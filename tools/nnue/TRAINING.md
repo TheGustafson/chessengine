@@ -201,5 +201,72 @@ Caveats / follow-ups (none blocking):
 - For real training use `bullet-utils` shuffle+interleave (not the `cp`/`cat`
   fallback) so the loader doesn't see shard-ordered data.
 - Wrapping the raw quantised `.bin` into the engine's `CENN` container +
-  in-engine load/symmetry test is doc 11 §3.4.5/§3.4.7 (Phase C), out of scope
-  here.
+  in-engine load/symmetry test is doc 11 §3.4.5/§3.4.7 (Phase C) — **now done,
+  §6 below.**
+
+---
+
+## 6. Step 3 (P13): net-0 — full corpus, CENN packing, dashboard, vs-bullet
+
+Validated 2026-07-12. This is the **Phase C** half deferred by §5: raw shards →
+shuffled/interleaved `train.bin` → GPU-trained net-0 → CENN container our engine
+loads. New tracked tooling: `netpack.py` (quantised→CENN), `train_net0.rs`
+(real-net trainer), `dashboard.py` (bullet-stdout→tfevents), `vs_bullet.py`
+(packing oracle), `net_registry.csv`.
+
+### 6.1 Assemble the real corpus (real shuffle + interleave)
+
+`bullet-utils` uses named flags, so wrap them for `build_corpus.sh`'s positional
+contract (`shuffle <in> <out>` / `interleave <out> <in>...`):
+
+```bash
+UTIL="$SCRATCH/bullet/target/release/bullet-utils"   # cargo b -r -p bullet-utils
+# shuffle_wrap.sh:  exec "$UTIL" shuffle --input "$1" --output "$2" --mem-used-mb 2048
+# ileave_wrap.sh:   out="$1"; shift; exec "$UTIL" interleave "$@" --output "$out"
+
+BULLETFORMAT_CONVERT="$CONV convert" \
+BULLET_UTILS_SHUFFLE="$SCRATCH/shuffle_wrap.sh" \
+BULLET_UTILS_ILEAVE="$SCRATCH/ileave_wrap.sh" \
+  bash tools/nnue/build_corpus.sh --seed 100 --require-convert --val-pct 1
+# -> data/nnue/{train.bin, val.bin, meta.json}; per-shard shuffle then interleave
+#    so the DirectSequentialDataLoader never sees shard-ordered data.
+```
+
+### 6.2 Train net-0 THROUGH the dashboard shim
+
+`train_net0.rs` is the tracked real-net recipe (arch `768→2×256→1` SCReLU,
+QA=255/QB=64/scale=400, wdl 0.3). **The output-weight clip is bullet's AdamW
+default float ±1.98** (`1.98·QB=126.72 → round 127`), applied every step by the
+optimiser kernel; `ValueTrainerBuilder` builds the optimiser with
+`Default::default()` so the clip is active. This GUARANTEES quantized
+`|out_weight| ≤ 127`, the loader's `OutWeightOutOfClip` precondition (doc 11
+§3.4.3). Do not weaken it.
+
+```bash
+cp tools/nnue/train_net0.rs "$SCRATCH/bullet/examples/net0.rs"   # + register [[example]] name="net0"
+cd "$SCRATCH/bullet" && CUDA_PATH=/usr cargo build --release -p bullet_lib --features cuda --example net0
+
+# Pipe the trainer's stdout through the dashboard shim -> tfevents.
+( NET0_DATA=<repo>/data/nnue/train.bin NET0_OUT=<repo>/data/nnue/nets/ckpt \
+  NET0_ID=net-0 NET0_SUPERBATCHES=30 CUDA_PATH=/usr \
+  ./target/release/examples/net0 2>&1 ) \
+  | uv run python <repo>/tools/nnue/dashboard.py --run net-0 --logdir <repo>/tools/nnue/runs
+# NET0_BPS defaults to 1520 (~1 epoch of a 25M corpus at batch 16384).
+# bullet emits NO validation loss (value.rs: "not currently implemented"); the
+# dashboard logs train loss + LR + throughput only. The real strength signal is
+# SPRT Elo vs PSQT (step 4), recorded in net_registry.csv.
+```
+
+### 6.3 Pack → verify → load
+
+```bash
+uv run python tools/nnue/netpack.py <ckpt>/net-0-30/quantised.bin \
+    data/nnue/nets/net-0.cenn screlu     # re-checks max|out_weight| ≤ 127 first
+./target/release/chessengine nnue-eval data/nnue/nets/net-0.cenn "<fen>"   # loader accepts
+
+# vs-bullet packing oracle (deferred from step 1): quantised.bin read DIRECTLY
+# vs the CENN via the engine, over a FEN set — confirms the packing incl. the
+# i16→i32 out_bias sign-extension is bit-faithful.
+uv run python tools/nnue/vs_bullet.py <ckpt>/net-0-30/quantised.bin \
+    data/nnue/nets/net-0.cenn ./target/release/chessengine tests/data/fens.txt
+```

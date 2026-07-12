@@ -28,3 +28,6 @@ __pycache__/
 # (PGN/logs) from tools/sprt.sh + tools/gauntlet.sh. Install notes:
 # TESTING.md "Strength testing".
 /engines/
+
+# NNUE training dashboard tfevents (artifacts, P13)
+tools/nnue/runs/
