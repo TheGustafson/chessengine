@@ -1123,3 +1123,28 @@ the incremental material+PSQT `EvalContext`; NNUE slots alongside/replaces it.
 **Owning docs:** this §11 + §3.4 (arch/quant/inference/net-format), design/15 (datagen/
 bullet contract), design/16 (observation store), design/17 (research heads, later),
 design/14 §11 (SPSA scaffold + cloud testing, D36). Datagen keeps running throughout.
+
+### 11.1 Training observability dashboard (user, 2026-07-12)
+
+A localhost browser dashboard to watch NNUE training (MLflow-style), folded into
+P13. `bullet` is a Rust trainer with no native dashboard — it prints per-superbatch
+loss to stdout and saves checkpoints — so any viewer needs a small (~30-line)
+Python shim in `tools/nnue/` that taps that output. Tooling layer only (may use
+any deps, design/16 §3.5.1; does NOT touch the zero-dep engine crate, D15).
+
+**Planned default (revisable): TensorBoard for live curves + a net-iteration
+registry.** Two things, because for a chess NNUE the metric that matters is
+net-vs-net Elo, NOT loss (two nets with equal loss can be tens of Elo apart):
+1. **Live curves** — a shim tails bullet's stdout (train loss / val loss / LR /
+   superbatch) → tfevents; `tensorboard --logdir tools/nnue/runs` on localhost:6006.
+   Real-time "watch it train."
+2. **Net-iteration registry** — each trained net logged with its inputs (arch, LR,
+   data snapshot, superbatches) AND its outcome (final loss + **SPRT Elo vs the
+   prior net**, from our local sprt.sh). A small CSV + a one-page view (or TB
+   scalars). This is the real "am I getting stronger" signal across the iterative
+   D28/D34 net series.
+
+**Alternative if cross-run comparison tables are preferred over live curves:**
+MLflow (`mlflow ui`, localhost:5000) — its run table natively does #2; feed the
+same shim. Decide for-real at P13 step 3 (first `bullet` run) when bullet's exact
+log format is in hand; the choice is swappable (both consume the same shim).
