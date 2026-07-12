@@ -333,6 +333,43 @@ pub const RED_STATSCORE_DEN: i32 = 4096;
 /// beats alpha (design/10 §3.8): applied along the offset-1..6 chain.
 pub const LMR_CONTHIST_BONUS: i32 = 1415;
 
+// --- LMR reduction finalization: ttPv rebate / tt_capture / all-node
+//     (design/10 §3.5/§3.7) ---
+//
+// The remaining §3.7 accretion terms that BALANCE the reduction. Their absence
+// alongside the Wave-D cutoffCnt/singular reductions over-reduces PV-history
+// (ttPv) lines and can hide shallow mates, so they land with item 15's cutoffCnt
+// terms to complete the §3.7 finalization (the wave plan left them unassigned).
+//   * §3.5 entry bump: `if ss.tt_pv { r += RED_TTPV_ENTRY }` — a provisional
+//     bump, mostly cancelled by the rebate below.
+//   * §3.7 rebate: `if ss.tt_pv { r -= RED_TTPV_BASE + RED_TTPV_PV·PV +
+//     RED_TTPV_TTVALUE·(tt.value > alpha) + (tt.depth >= depth)·
+//     (RED_TTPV_TTDEPTH_BASE + RED_TTPV_TTDEPTH_CUT·cut_node) }` — a PV-flagged
+//     node with a trustworthy TT entry searches much fuller.
+//   * tt_capture surcharge and the all-node scaling close the balance.
+
+/// §3.5 provisional ttPv reduction bump (mostly cancelled by the rebate).
+pub const RED_TTPV_ENTRY: i32 = 1006;
+/// ttPv rebate: base.
+pub const RED_TTPV_BASE: i32 = 2766;
+/// ttPv rebate: PV bonus.
+pub const RED_TTPV_PV: i32 = 1017;
+/// ttPv rebate: `tt.value > alpha` bonus.
+pub const RED_TTPV_TTVALUE: i32 = 838;
+/// ttPv rebate: `tt.depth >= depth` base bonus.
+pub const RED_TTPV_TTDEPTH_BASE: i32 = 923;
+/// ttPv rebate: extra `tt.depth >= depth` bonus at a cut node.
+pub const RED_TTPV_TTDEPTH_CUT: i32 = 955;
+/// tt_capture reduction surcharge (a capturing ttMove distrusts quiet siblings).
+pub const RED_TTCAPTURE: i32 = 1039;
+/// All-node reduction scaling numerator `r += r·RED_ALLNODE_NUM /
+/// (RED_ALLNODE_DEPTH_MULT·depth + RED_ALLNODE_DEPTH_BASE)`.
+pub const RED_ALLNODE_NUM: i32 = 272;
+/// All-node scaling depth multiplier.
+pub const RED_ALLNODE_DEPTH_MULT: i32 = 256;
+/// All-node scaling depth base.
+pub const RED_ALLNODE_DEPTH_BASE: i32 = 285;
+
 // --- Move-loop pruning: late move pruning (design/10 §3.5) ---
 //
 // "Movecount pruning": once the running `move_count` clears a depth-scaled
@@ -498,6 +535,97 @@ pub const TTCUT_PARENT_MALUS: i32 = -2187;
 /// The parent's `move_count` must be below this for the TT-cutoff parent
 /// penalty to fire (an "early" quiet the cutoff just refuted).
 pub const TTCUT_PARENT_MOVECOUNT: i32 = 4;
+
+// --- Singular extensions + multicut (design/10 §3.6; Wave-D items 13/14) ---
+//
+// When the move under consideration is the ttMove, an exclusion search
+// (`search::<NonPv>(singular_beta-1, singular_beta, new_depth/2, cut_node, ply)`
+// with `excluded_move = m`) at `singular_beta = tt.value - (SE_BETA_MULT +
+// SE_BETA_TTPV_MULT·(tt_pv && !PV))·depth / SE_BETA_DIV` decides:
+//   * value < singular_beta → singular: extend (1 + double/triple margins),
+//     and the WHOLE node deepens (`depth += 1`);
+//   * value >= beta (non-decisive) → multicut: several moves beat beta, prune
+//     the subtree (dock the tt_move_history scalar and return value);
+//   * else if tt.value >= beta → extension = -3 (the ttMove likely fails high
+//     anyway; search it shallower);
+//   * else if cut_node → extension = -2.
+// The `is_shuffling` guard suppresses extensions of back-and-forth shuffles in
+// 50-move territory. `corr_adj` (Wave F) is 0 until item 21 plumbs correction.
+
+/// Minimum depth for the singular trigger (`depth >= SE_MIN_DEPTH + tt_pv`).
+pub const SE_MIN_DEPTH: Depth = 6;
+/// The ttMove's stored depth must be within this of the node depth.
+pub const SE_TT_DEPTH_SLACK: Depth = 3;
+/// Base per-ply multiplier of the singular-beta margin.
+pub const SE_BETA_MULT: Value = 60;
+/// Extra singular-beta multiplier when `tt_pv && !PV`.
+pub const SE_BETA_TTPV_MULT: Value = 70;
+/// Divisor of the singular-beta margin.
+pub const SE_BETA_DIV: Value = 59;
+/// Divisor of the correction adjustment folded into the extension margins
+/// (Wave F item 21; `corr_adj = |correction_value| / SE_CORR_DIV`).
+pub const SE_CORR_DIV: i32 = 194_822;
+/// Double-extension margin: base.
+pub const SE_DOUBLE_BASE: Value = -3;
+/// Double-extension margin: PV bonus.
+pub const SE_DOUBLE_PV: Value = 201;
+/// Double-extension margin: non-tt-capture discount.
+pub const SE_DOUBLE_NON_TTCAP: Value = 157;
+/// Double-extension margin: tt_move_history numerator.
+pub const SE_DOUBLE_TMH_NUM: i32 = 1081;
+/// Double-extension margin: tt_move_history divisor.
+pub const SE_DOUBLE_TMH_DEN: i32 = 117_824;
+/// Double-extension margin: deep-node (`ply > root_depth`) discount.
+pub const SE_DOUBLE_DEEP: Value = 41;
+/// Triple-extension margin: base.
+pub const SE_TRIPLE_BASE: Value = 72;
+/// Triple-extension margin: PV bonus.
+pub const SE_TRIPLE_PV: Value = 306;
+/// Triple-extension margin: non-tt-capture discount.
+pub const SE_TRIPLE_NON_TTCAP: Value = 188;
+/// Triple-extension margin: tt_pv bonus.
+pub const SE_TRIPLE_TTPV: Value = 84;
+/// Triple-extension margin: deep-node discount.
+pub const SE_TRIPLE_DEEP: Value = 45;
+/// Multicut tt_move_history dock: base (`<< MULTICUT_TMH_BASE + MULTICUT_TMH_DEPTH·depth`).
+pub const MULTICUT_TMH_BASE: i32 = -442;
+/// Multicut tt_move_history dock: depth multiplier.
+pub const MULTICUT_TMH_DEPTH: i32 = -108;
+/// `is_shuffling`: minimum halfmove clock.
+pub const SHUFFLE_RULE50: i32 = 10;
+/// `is_shuffling`: minimum plies since the last null move.
+pub const SHUFFLE_PLIES_FROM_NULL: i32 = 6;
+/// `is_shuffling`: minimum ply.
+pub const SHUFFLE_MIN_PLY: usize = 20;
+
+// --- tt_move_history node-result update (design/10 §3.10; Wave-D item 14) ---
+
+/// tt_move_history bonus when the best move was the ttMove (non-PV nodes).
+pub const TMH_HIT: i32 = 792;
+/// tt_move_history malus when the best move was NOT the ttMove (non-PV nodes).
+pub const TMH_MISS: i32 = -779;
+
+// --- Sibling depth reduction on alpha raise (design/10 §3.9; Wave-D item 15) ---
+
+/// A quiet alpha-raise (no cutoff) at `SIBLING_DEPTH_MIN < depth <
+/// SIBLING_DEPTH_MAX` searches remaining siblings two plies shallower.
+pub const SIBLING_DEPTH_MIN: Depth = 2;
+/// Upper (exclusive) depth of the sibling depth reduction.
+pub const SIBLING_DEPTH_MAX: Depth = 13;
+
+// --- cutoffCnt reduction gates (design/10 §3.7; Wave-D item 15) ---
+
+/// The child cutoff count `(ss+1).cutoff_cnt` must exceed this to add the
+/// cutoffCnt reduction surcharge.
+pub const RED_CUTOFFCNT_GATE: i32 = 1;
+/// Above this child cutoff count, the surcharge adds RED_CUTOFFCNT_MANY.
+pub const RED_CUTOFFCNT_MANY_GATE: i32 = 2;
+/// Base cutoffCnt reduction surcharge (child slot has been failing high).
+pub const RED_CUTOFFCNT_BASE: i32 = 236;
+/// Extra surcharge when the child cutoff count exceeds RED_CUTOFFCNT_MANY_GATE.
+pub const RED_CUTOFFCNT_MANY: i32 = 1079;
+/// Extra surcharge when the current node is an all-node (`!PV && !cut_node`).
+pub const RED_CUTOFFCNT_ALLNODE: i32 = 1143;
 
 // --- ProbCut (N13, design/10 §3.4; Wave-E item 16) ---
 //

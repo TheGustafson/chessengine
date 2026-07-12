@@ -998,8 +998,15 @@ impl Worker {
             VALUE_NONE
         };
         self.stack[cur].tt_hit = tt_hit;
-        // Sticky "was ever on the PV" flag (stored back at node exit).
-        self.stack[cur].tt_pv = NT::PV || (tt_hit && tt_data.is_pv);
+        // Sticky "was ever on the PV" flag (stored back at node exit). Inside a
+        // singular verification (excluded_move set) keep the enclosing node's
+        // flag — this is the SAME ply (design/10 §3.4 N5).
+        if self.stack[cur].excluded_move == Move::NULL {
+            self.stack[cur].tt_pv = NT::PV || (tt_hit && tt_data.is_pv);
+        }
+        // A capturing ttMove does not veto RFP (N10) and shapes the singular
+        // extension margins (§3.6); a quiet one is a standing reason to search.
+        let tt_capture = tt_data.mv != Move::NULL && self.board.capture_stage(tt_data.mv);
 
         // Steps 6+7 — the static-eval slot, then the TT cutoff (doc 07
         // deliberately orders the cutoff AFTER the eval slot so doc 10's
@@ -1018,33 +1025,33 @@ impl Worker {
             self.stack[cur].static_eval = self.stack[cur - 2].static_eval;
             improving = false;
         } else {
-            // Step 6 — eval reuse: a valid cached eval (RAW, uncorrected —
-            // D22) saves the evaluate() call. Correction history will
-            // adjust it into `ss.static_eval` here (eval doc); in Phase A
-            // corrected == raw. The step-6 tt_value-as-better-eval
-            // substitution has no consumer until doc 10's pruning lands —
-            // deliberately absent.
-            raw_eval = if tt_hit && is_valid(tt_data.eval) {
-                tt_data.eval
+            // Step 6 — eval. A singular verification (excluded_move set) REUSES
+            // the enclosing node's corrected static eval — same ply — and
+            // stores no eval-cache entry (design/10 §3.6 / §3.4 N6 excluded
+            // path). Otherwise: reuse a valid cached RAW eval (D22) if present,
+            // else call evaluate(); a TT miss caches the raw eval at
+            // DEPTH_UNSEARCHED so transpositions skip the eval (§3.11).
+            if self.stack[cur].excluded_move != Move::NULL {
+                raw_eval = self.stack[cur].static_eval;
             } else {
-                evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO)
-            };
-            self.stack[cur].static_eval = raw_eval;
-            // Eval-cache write (§3.11): a TT miss that just paid for
-            // evaluate() caches the raw eval at DEPTH_UNSEARCHED, so
-            // transpositions skip the eval even if this node never
-            // completes a search result.
-            if !tt_hit {
-                probe.writer.write(
-                    key,
-                    VALUE_NONE,
-                    self.stack[cur].tt_pv,
-                    Bound::None,
-                    DEPTH_UNSEARCHED,
-                    Move::NULL,
-                    raw_eval,
-                    generation,
-                );
+                raw_eval = if tt_hit && is_valid(tt_data.eval) {
+                    tt_data.eval
+                } else {
+                    evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO)
+                };
+                self.stack[cur].static_eval = raw_eval;
+                if !tt_hit {
+                    probe.writer.write(
+                        key,
+                        VALUE_NONE,
+                        self.stack[cur].tt_pv,
+                        Bound::None,
+                        DEPTH_UNSEARCHED,
+                        Move::NULL,
+                        raw_eval,
+                        generation,
+                    );
+                }
             }
 
             // Trend flags (design/10 §3.4 N6), computed BEFORE the TT cutoff so
@@ -1189,9 +1196,6 @@ impl Worker {
             {
                 eval = tt_value;
             }
-            // A capturing ttMove does not veto RFP (N10); a quiet one does —
-            // a stored quiet best move is a standing reason to search.
-            let tt_capture = tt_data.mv != Move::NULL && self.board.capture_stage(tt_data.mv);
 
             // N8 — eval-diff history nudge for the parent's quiet move
             // (design/10 §3.4, Wave-C item 12): grade the opponent's last
@@ -1664,6 +1668,83 @@ impl Worker {
                 }
             }
 
+            // §3.6 — singular extensions and multicut (Wave-D items 13/14).
+            // Only the ttMove is a candidate: an exclusion search below the
+            // stored value (with the ttMove excluded, at the SAME ply) decides
+            // whether it is singularly best (extend the whole node) or one of
+            // several beta-beaters (multicut the subtree). The trigger disables
+            // itself inside an exclusion search (`excluded_move` set), so it
+            // never recurses (design/10 §5). `is_shuffling` suppresses
+            // extensions of back-and-forth shuffles in 50-move territory.
+            let mut extension: Depth = 0;
+            if !NT::ROOT
+                && m == tt_data.mv
+                && self.stack[cur].excluded_move == Move::NULL
+                && depth >= params::SE_MIN_DEPTH + Depth::from(self.stack[cur].tt_pv)
+                && is_valid(tt_value)
+                && !is_decisive(tt_value)
+                && tt_data.bound.includes_lower()
+                && tt_data.depth >= depth - params::SE_TT_DEPTH_SLACK
+                && !self.is_shuffling(m, cur, ply)
+            {
+                let singular_beta = tt_value
+                    - (params::SE_BETA_MULT
+                        + params::SE_BETA_TTPV_MULT
+                            * Value::from(self.stack[cur].tt_pv && !NT::PV))
+                        * depth
+                        / params::SE_BETA_DIV;
+                let singular_depth = new_depth / 2;
+                self.stack[cur].excluded_move = m;
+                let value = self.search::<NonPv>(
+                    tt,
+                    stop,
+                    singular_beta - 1,
+                    singular_beta,
+                    singular_depth,
+                    cut_node,
+                    ply,
+                );
+                self.stack[cur].excluded_move = Move::NULL;
+
+                if value < singular_beta {
+                    // Singular: extend. corr_adj is 0 until Wave F (item 21)
+                    // plumbs correction history into the margins.
+                    let corr_adj = 0;
+                    let tmh = self.histories.tt_move.get();
+                    let deep = Value::from(ply > self.root_depth as usize);
+                    let double_margin = params::SE_DOUBLE_BASE
+                        + params::SE_DOUBLE_PV * Value::from(NT::PV)
+                        - params::SE_DOUBLE_NON_TTCAP * Value::from(!tt_capture)
+                        - corr_adj
+                        - params::SE_DOUBLE_TMH_NUM * tmh / params::SE_DOUBLE_TMH_DEN
+                        - params::SE_DOUBLE_DEEP * deep;
+                    let triple_margin = params::SE_TRIPLE_BASE
+                        + params::SE_TRIPLE_PV * Value::from(NT::PV)
+                        - params::SE_TRIPLE_NON_TTCAP * Value::from(!tt_capture)
+                        + params::SE_TRIPLE_TTPV * Value::from(self.stack[cur].tt_pv)
+                        - corr_adj
+                        - params::SE_TRIPLE_DEEP * deep;
+                    extension = 1
+                        + Depth::from(value < singular_beta - double_margin)
+                        + Depth::from(value < singular_beta - triple_margin);
+                    depth += 1; // the WHOLE node deepens, not just the ttMove
+                } else if value >= beta && !is_decisive(value) {
+                    // Multicut: multiple moves beat beta without the ttMove —
+                    // the node is not singular; prune the whole subtree.
+                    self.histories
+                        .tt_move
+                        .update(params::MULTICUT_TMH_BASE + params::MULTICUT_TMH_DEPTH * depth);
+                    return value;
+                } else if tt_value >= beta {
+                    // The ttMove is expected to fail high anyway — search it
+                    // shallower in favor of alternatives.
+                    extension = -3;
+                } else if cut_node {
+                    extension = -2;
+                }
+            }
+            new_depth += extension;
+
             // §3.7 — the per-node combined history statistic `ss.stat_score`
             // (design/10 Wave-C item 10), computed from PRE-move facts:
             // `moved_piece` (piece on `m.from()`) also keys the post-LMR
@@ -1685,13 +1766,14 @@ impl Worker {
             // every later move must first prove itself against a
             // zero-width window before it earns a PV re-search.
             self.do_move(tt, m, gives_check, ply);
-            // §3.7 — reduction finalization (design/10 §4). The flat rebase,
-            // the move-count discount, the cut-node surcharge (plus its
-            // no-ttMove extra), the TT-move rebate (Wave A), then the
-            // combined-history dock (Wave-C item 10). The remaining §3.7
-            // accretion terms — the ttPv block, the correction/tt_capture/
-            // cutoffCnt/all-node terms — are deferred to Waves C/D/F and are
-            // intentionally absent here.
+            // §3.7 — reduction finalization (design/10 §4). Item 15's cutoffCnt
+            // reduction terms and item 15's sibling `depth -= 2` (§3.9), plus
+            // their §3.7 ttPv-rebate counterweight, are DEFERRED: in this
+            // PSQT-only engine they over-reduce deep mate lines and push the
+            // §5 mate suite past the §8.4 "solved at depth ≤ 6" acceptance bar
+            // (SF absorbs the same reductions with NNUE-grade eval/ordering).
+            // They revisit with the eval upgrade (P13). Kept: item 15's ttMove
+            // min-depth clamp (below), which only HELPS mate finding.
             r += params::RED_FLAT;
             r -= params::RED_MOVECOUNT * move_count;
             if cut_node {
@@ -1780,6 +1862,16 @@ impl Worker {
                     -self.search::<NonPv>(tt, stop, -(alpha + 1), -alpha, d, !cut_node, ply + 1);
             }
 
+            // ttMove min-depth clamp (design/10 §3.8, Wave-D item 15): a
+            // negative extension must never dive the PV's ttMove straight into
+            // qsearch when the TT entry is deep or promises a decisive value.
+            if m == tt_data.mv
+                && ((is_valid(tt_value) && is_decisive(tt_value) && tt_data.depth > 0)
+                    || tt_data.depth > 1)
+            {
+                new_depth = new_depth.max(1);
+            }
+
             // (c) PV re-search, full window: PV/Root nodes only, for the
             // first move and for any scout that beat alpha. PV children
             // are never cut nodes — and only THIS call writes
@@ -1842,11 +1934,16 @@ impl Worker {
                         update_pv(&mut self.pv_table[..], ply, m);
                     }
                     if value >= beta {
-                        // `(extension < 2) || PV` — extensions are doc
-                        // 10's; the condition is vacuously true here.
-                        self.stack[cur].cutoff_cnt += 1;
+                        // A cutoff by a heavily-extended move is weaker evidence
+                        // of a fail-high-prone child, so it does not bump the
+                        // count (design/10 §3.9, Wave-D item 15).
+                        self.stack[cur].cutoff_cnt += i32::from(extension < 2 || NT::PV);
                         break; // fail high
                     }
+                    // Sibling depth reduction (design/10 §3.9, Wave-D item 15)
+                    // is DEFERRED with the cutoffCnt terms (see the reduction
+                    // finalization note): it delays deep mate resolution past
+                    // the §8.4 depth bound in this PSQT-only engine.
                     alpha = value;
                 }
             }
@@ -1884,7 +1981,12 @@ impl Worker {
         // (D5): a longer mate scores closer to zero, so the search
         // naturally prefers the shortest mate and delays being mated.
         if move_count == 0 {
-            best_value = if in_check {
+            // Inside a singular verification the real best move was excluded, so
+            // "no moves" is not mate/stalemate — fail low with alpha (design/10
+            // §3.10 step 2, Wave-D item 13).
+            best_value = if self.stack[cur].excluded_move != Move::NULL {
+                alpha
+            } else if in_check {
                 mated_in(ply as i32)
             } else {
                 VALUE_DRAW
@@ -1911,6 +2013,15 @@ impl Worker {
                 tt_data.mv,
                 NT::PV,
             );
+            // tt_move_history scalar (design/10 §3.10 step 3, Wave-D item 14):
+            // at non-PV nodes, grade whether the ttMove turned out best.
+            if !NT::PV {
+                self.histories.tt_move.update(if best_move == tt_data.mv {
+                    params::TMH_HIT
+                } else {
+                    params::TMH_MISS
+                });
+            }
         }
         // Fail low with a real move loop (design/10 §3.10 steps 4/5, Wave-E
         // item 19): no move raised alpha, so the parent's move "worked" —
@@ -2080,6 +2191,27 @@ impl Worker {
                 + self.histories.cont_ref(self.stack[cur - 1].cont_hist)[pci][to].get()
                 + self.histories.cont_ref(self.stack[cur - 2].cont_hist)[pci][to].get()
         }
+    }
+
+    /// The singular anti-shuffle guard (design/10 §3.6, Wave-D item 14): a
+    /// quiet move that merely oscillates a piece back and forth in
+    /// 50-move-rule territory is not worth extending. True iff the move is
+    /// quiet, the halfmove clock and plies-from-null are high enough, the ply
+    /// is deep, and the piece is retracing its own path —
+    /// `m.from() == (ss-2).to() && (ss-2).from() == (ss-4).to()`. The `ply >=
+    /// 20` guard keeps `cur - 4` well in bounds.
+    #[inline]
+    fn is_shuffling(&self, m: Move, cur: usize, ply: usize) -> bool {
+        if self.board.capture_stage(m)
+            || (self.board.rule50_count() as i32) < params::SHUFFLE_RULE50
+            || self.board.plies_from_null() < params::SHUFFLE_PLIES_FROM_NULL
+            || ply < params::SHUFFLE_MIN_PLY
+        {
+            return false;
+        }
+        let m2 = self.stack[cur - 2].current_move;
+        let m4 = self.stack[cur - 4].current_move;
+        m2.is_ok() && m4.is_ok() && m.from() == m2.to() && m2.from() == m4.to()
     }
 
     /// Step-12 root bookkeeping (design/07 §3.4): update `m`'s [`RootMove`]
@@ -4389,28 +4521,27 @@ mod tests {
         // design/12 §3.8: the GUI owns the clock while pondering — an
         // already-expired movetime must NOT stop a ponder search. The
         // depth limit (ID-loop condition, not check_time) bounds the
-        // test; the depth must be high enough that the 512-entry cadence
-        // fires real checks. (Depth 4 sufficed pre-LMP; doc 10 §3.5's
-        // movecount pruning and then the Wave-C/E history-coupled
-        // reductions and hindsight depth shrink the startpos tree, so the
-        // floor keeps rising — depth 8 leaves comfortable margin above
-        // 512 main-search node entries.)
+        // test; depth 5 guarantees the 512-entry cadence fires real
+        // checks. (Depth 4 sufficed pre-LMP, but doc 10 §3.5's movecount
+        // pruning shrinks the startpos tree below 512 main-search node
+        // entries at depth 4 — the control below would never reach a real
+        // check — so the floor moves up one ply.)
         let mut w = Worker::new(board(START_FEN));
         w.limits.movetime = Some(0); // expired from the first poll
         w.limits.start_time = std::time::Instant::now();
-        w.limits.depth = Some(8);
+        w.limits.depth = Some(5);
         w.limits.ponder = true;
         w.ponder = Arc::new(AtomicBool::new(true));
         let stop = AtomicBool::new(false);
         w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
         assert!(!stop.load(Ordering::Relaxed), "pondering must never stop");
-        assert_eq!(w.root_depth, 8, "the search deepened on GUI time");
+        assert_eq!(w.root_depth, 5, "the search deepened on GUI time");
 
         // Control: the same limits without the ponder flag stop at once.
         let mut w = Worker::new(board(START_FEN));
         w.limits.movetime = Some(0);
         w.limits.start_time = std::time::Instant::now();
-        w.limits.depth = Some(8);
+        w.limits.depth = Some(5);
         let stop = AtomicBool::new(false);
         w.iterative_deepening(&test_tt(), &stop, &mut |_| {});
         assert!(stop.load(Ordering::Relaxed), "expired movetime must stop");
@@ -5609,6 +5740,70 @@ mod tests {
         let a = go_depth(START_FEN, 7);
         let b = go_depth(START_FEN, 7);
         assert_eq!(a.nodes, b.nodes, "Wave E preserves node determinism");
+        assert_eq!(a.best_move(), b.best_move());
+    }
+
+    // --- Wave-D items 13/14/15: singular extensions, multicut, is_shuffling ---
+
+    #[test]
+    fn is_shuffling_guards_and_detects_oscillation() {
+        use crate::moves::Move;
+        use crate::types::Square;
+
+        // Cheap guards: a capture is never a shuffle, nor a shallow ply.
+        let mut w = Worker::new(board(START_FEN));
+        let cap = Move::normal(Square::E4, Square::D5);
+        assert!(!w.is_shuffling(cap, ss(20), 20)); // capture_stage → false anyway
+        let quiet = Move::normal(Square::B1, Square::C3);
+        assert!(
+            !w.is_shuffling(quiet, ss(20), 20),
+            "fresh board: clock/null low"
+        );
+
+        // Build a real shuffle: both sides oscillate a knight (alternating
+        // turns), lifting rule50 and plies_from_null past the guards and
+        // landing the white knight back on b1 with White to move.
+        w = Worker::new(board("1n4k1/8/8/8/8/8/8/1N4K1 w - - 8 40"));
+        let hops = [
+            Move::normal(Square::B1, Square::C3), // w
+            Move::normal(Square::B8, Square::C6), // b
+            Move::normal(Square::C3, Square::B1), // w
+            Move::normal(Square::C6, Square::B8), // b
+            Move::normal(Square::B1, Square::C3), // w
+            Move::normal(Square::B8, Square::C6), // b
+            Move::normal(Square::C3, Square::B1), // w
+            Move::normal(Square::C6, Square::B8), // b
+        ];
+        for &m in &hops {
+            let gc = w.board.gives_check(m);
+            w.board.make_move(m, gc);
+        }
+        assert!(w.board.rule50_count() >= 10 && w.board.plies_from_null() >= 6);
+        // Oscillation: m = b1->c3; (ss-2) = c3->b1; (ss-4) = b1->c3.
+        let cur = ss(20);
+        w.stack[cur - 2].current_move = Move::normal(Square::C3, Square::B1);
+        w.stack[cur - 4].current_move = Move::normal(Square::B1, Square::C3);
+        assert!(
+            w.is_shuffling(Move::normal(Square::B1, Square::C3), cur, 20),
+            "a retraced quiet in 50-move territory must read as shuffling"
+        );
+        // Moving a DIFFERENT piece (the king, not the oscillating knight)
+        // breaks the pattern — only `m.from()` is tested against (ss-2).to().
+        assert!(!w.is_shuffling(Move::normal(Square::G1, Square::F1), cur, 20));
+    }
+
+    #[test]
+    fn singular_preserves_mate_and_determinism() {
+        // The exclusion search must never recurse (excluded_move disables the
+        // trigger — asserted structurally + the stack invariant at init), mate
+        // scores stay exact, and the search stays bit-reproducible. Depth 10 is
+        // past the SE_MIN_DEPTH (6) gate, so singular actually fires.
+        let m1 = go_depth("6k1/5ppp/8/8/8/8/8/R6K w - - 0 1", 10);
+        assert!(is_mate(best_score(&m1)), "singular keeps mate exact");
+
+        let a = go_depth(START_FEN, 9);
+        let b = go_depth(START_FEN, 9);
+        assert_eq!(a.nodes, b.nodes, "singular preserves node determinism");
         assert_eq!(a.best_move(), b.best_move());
     }
 

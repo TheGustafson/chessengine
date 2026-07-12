@@ -351,6 +351,12 @@ impl Board {
         self.st().copied.rule50 as u32
     }
 
+    /// Plies since the last null move (design/10 §3.6 `is_shuffling`): reset to
+    /// 0 by [`Board::make_null_move`], incremented by every real move.
+    pub fn plies_from_null(&self) -> i32 {
+        self.st().copied.plies_from_null
+    }
+
     pub fn fullmove_number(&self) -> u32 {
         (1 + (self.game_ply - (self.side_to_move == Color::Black) as i32) / 2) as u32
     }
