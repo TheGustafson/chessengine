@@ -1,14 +1,24 @@
 //! The compute kernels behind the accumulator and forward pass (design/11
 //! §3.4.6).
 //!
-//! **Step 1 is SCALAR ONLY** (no `unsafe`, no AVX2). The design's eventual
-//! seam uses `#[target_feature(enable = "avx2")] unsafe fn` pointers selected
-//! once at startup; here the [`Kernels`] table holds plain safe `fn`
-//! pointers and [`KERNELS`] always returns the scalar backend. The scalar
-//! forward pass accumulates in `i64` and IS the bit-exact reference the step-2
-//! AVX2 backend must reproduce. When the AVX2 backend lands, the pointer types
-//! become `unsafe fn` and the dispatch below gains the one `is_x86_feature_
-//! detected!("avx2")` branch (its single `// SAFETY:` call site).
+//! **Two backends, selected once at startup** (design/11 §3.4.6):
+//! [`scalar`] (plain safe Rust, forward pass accumulated in `i64`) and, on
+//! x86_64 with AVX2, [`avx2`]. [`KERNELS`] runtime-detects AVX2 via
+//! `is_x86_feature_detected!("avx2")` and installs the faster backend; on any
+//! other CPU it falls back to scalar. The scalar forward IS the bit-exact
+//! reference — the `avx2` backend reproduces it lane-for-lane, pinned by
+//! `avx2_matches_scalar_*` below.
+//!
+//! **The AVX2 backend is the crate's sanctioned SIMD `unsafe` (D14b).** The
+//! crate is `#![deny(unsafe_code)]`; all `unsafe` here is contained inside the
+//! [`avx2`] module (a localized `#[allow(unsafe_code)]`, `// SAFETY:` on every
+//! block — the same discipline as `tt`'s prefetch intrinsic, D14a). The
+//! [`Kernels`] table therefore keeps plain **safe `fn` pointers**: the AVX2
+//! kernels are `#[target_feature(enable = "avx2")] unsafe fn`, reached only
+//! through thin *safe wrappers* that are installed into [`KERNELS`] once AVX2
+//! detection has succeeded. So the accumulator/forward callers stay safe and
+//! no `unsafe` leaks past this module (a deliberate deviation from the doc's
+//! `unsafe fn`-pointer sketch, recorded in design/11 §3.4.6).
 
 use super::network::Activation;
 use super::{L1, QA, QB, SCALE};
@@ -16,7 +26,10 @@ use crate::types::Value;
 use std::sync::LazyLock;
 
 /// 64-byte-aligned wrapper for accumulator storage. Harmless for the scalar
-/// backend; step 2's AVX2 loads want the accumulator cache-line aligned.
+/// backend; keeps the *stored* accumulator cache-line aligned so the AVX2
+/// kernels' 16-lane loads never straddle a cache line (they still use
+/// alignment-agnostic `loadu`, since the temporaries and FT rows they also
+/// touch are only 2-aligned — design/11 §3.4.6).
 ///
 /// `Deref`/`DerefMut` expose the inner value so callers write `acc[color]`
 /// rather than `acc.0[color]`.
@@ -72,7 +85,9 @@ pub type ForwardFn = fn(
 ) -> Value;
 
 /// The compute kernels the accumulator and forward pass dispatch through
-/// (design/11 §3.4.6). Safe `fn` pointers in step 1; `unsafe fn` in step 2.
+/// (design/11 §3.4.6). **Safe `fn` pointers** in both backends: the AVX2
+/// kernels are `#[target_feature] unsafe fn` but are reached through safe
+/// wrappers, so all `unsafe` stays inside [`avx2`] and callers never write it.
 pub struct Kernels {
     pub add_sub: AddSubFn,
     pub add_sub_sub: AddSubSubFn,
@@ -81,12 +96,21 @@ pub struct Kernels {
     pub forward: ForwardFn,
 }
 
-/// The active kernel backend, selected once. Step 1: always scalar.
+/// The active kernel backend, selected once (design/11 §3.4.6). AVX2 where
+/// available, scalar otherwise.
 pub static KERNELS: LazyLock<Kernels> = LazyLock::new(|| {
-    // step 2: AVX2 backend selected here when is_x86_feature_detected!("avx2")
-    // — e.g. `#[cfg(target_arch = "x86_64")] if is_x86_feature_detected!("avx2")
-    // { return avx2::KERNELS; }` — with the one `// SAFETY:` comment on the
-    // dispatch. Not implemented this step (scalar-only, no unsafe).
+    #[cfg(target_arch = "x86_64")]
+    {
+        // SAFETY: avx2 verified at startup via is_x86_feature_detected! (D14b).
+        // Every `avx2::KERNELS` wrapper's precondition is exactly "this CPU has
+        // AVX2"; this runtime check discharges it for the whole process, so it
+        // is sound to install the AVX2 backend below. (The `unsafe` itself is
+        // contained in `avx2`; this is the single site that establishes the
+        // invariant those blocks rely on.)
+        if std::arch::is_x86_feature_detected!("avx2") {
+            return avx2::KERNELS;
+        }
+    }
     scalar::KERNELS
 });
 
@@ -152,20 +176,24 @@ pub mod scalar {
         }
     }
 
-    /// The exact §3.4.3 integer forward pass, accumulating in `i64`.
+    /// The raw pre-scaling dot-product sum, accumulated in `i64` — the
+    /// **bit-exact reference** the AVX2 path must reproduce (design/11 §3.4.3,
+    /// §3.4.6). This is the accumulator *before* the SCReLU `/QA` fold, the
+    /// output-bias add, and the `SCALE / (QA·QB)` narrowing:
     ///
-    /// SCReLU: `sum = Σ clamp(a,0,QA)² · w`; `v = (sum/QA + bias)·SCALE/(QA·QB)`.
-    /// CReLU:  `sum = Σ clamp(a,0,QA)  · w`; `v = (sum     + bias)·SCALE/(QA·QB)`
-    /// (the `²` and the `/QA` drop out). The stm half (`w1[0..L1]`) is summed
-    /// first. All divisions truncate toward zero (Rust `/`); the Python oracle
-    /// mirrors this exactly.
-    pub fn forward(
+    /// - SCReLU: `Σ clamp(a,0,QA)² · w`
+    /// - CReLU:  `Σ clamp(a,0,QA)  · w`  (drop the `²`)
+    ///
+    /// The stm half (`w1[0..L1]`) is summed first. Exposed so the
+    /// bit-exactness tests can compare backends at the pre-narrowing width,
+    /// where an AVX2 i32-lane overflow would otherwise be hidden by the final
+    /// `as Value` truncation (reviewer B's F3 landmine).
+    pub fn forward_raw_sum(
         us: &[i16; L1],
         them: &[i16; L1],
         w1: &[i16; 2 * L1],
-        out_bias: i32,
         act: Activation,
-    ) -> Value {
+    ) -> i64 {
         let mut sum: i64 = 0;
         match act {
             Activation::SCReLU => {
@@ -177,7 +205,6 @@ pub mod scalar {
                     let a = (them[i] as i64).clamp(0, QA as i64);
                     sum += a * a * w1[L1 + i] as i64;
                 }
-                sum /= QA as i64; // per-term scale QA²·QB → QA·QB
             }
             Activation::CReLU => {
                 for i in 0..L1 {
@@ -190,6 +217,30 @@ pub mod scalar {
                 }
             }
         }
+        sum
+    }
+
+    /// The exact §3.4.3 integer forward pass, accumulating in `i64`.
+    ///
+    /// SCReLU: `sum = Σ clamp(a,0,QA)² · w`; `v = (sum/QA + bias)·SCALE/(QA·QB)`.
+    /// CReLU:  `sum = Σ clamp(a,0,QA)  · w`; `v = (sum     + bias)·SCALE/(QA·QB)`
+    /// (the `²` and the `/QA` drop out). All divisions truncate toward zero
+    /// (Rust `/`); the Python oracle mirrors this exactly. The accumulation is
+    /// factored into [`forward_raw_sum`]; the SCReLU `/QA` and the final
+    /// narrowing stay here — arithmetically identical to folding `/QA` into the
+    /// SCReLU branch (division-before-add of a common divisor), so the byte
+    /// output is unchanged.
+    pub fn forward(
+        us: &[i16; L1],
+        them: &[i16; L1],
+        w1: &[i16; 2 * L1],
+        out_bias: i32,
+        act: Activation,
+    ) -> Value {
+        let mut sum = forward_raw_sum(us, them, w1, act);
+        if let Activation::SCReLU = act {
+            sum /= QA as i64; // per-term scale QA²·QB → QA·QB
+        }
         let v = (sum + out_bias as i64) * SCALE as i64 / (QA as i64 * QB as i64);
         v as Value
     }
@@ -200,6 +251,267 @@ pub mod scalar {
         add_sub_sub,
         add2_sub2,
         refresh,
+        forward,
+    };
+}
+
+/// The AVX2 backend (design/11 §3.4.6, D14b): 16×i16 lanes per 256-bit
+/// register, `L1 = 256` ⇒ 16 chunks per accumulator.
+///
+/// **This module is the crate's sanctioned SIMD `unsafe`.** The
+/// `#[allow(unsafe_code)]` below re-opens the crate-wide `#![deny(unsafe_code)]`
+/// for exactly this backend (the same localization `tt` uses for its prefetch
+/// intrinsic, D14a). Every kernel is a private `#[target_feature(enable =
+/// "avx2")] unsafe fn`; the public surface is the safe wrappers in [`KERNELS`]
+/// plus the test-only [`forward_raw_sum`], all reachable only after the
+/// [`super::KERNELS`] dispatch has confirmed AVX2 at runtime. Each `unsafe`
+/// block carries its `// SAFETY:` note.
+///
+/// **Loads/stores are unaligned** (`loadu`/`storeu`): [`Aligned64`] covers the
+/// *stored* accumulator, but not the stack temporaries the kernels receive nor
+/// the 2-aligned FT weight rows, so an aligned load off those would fault
+/// (design/11 §3.4.6 step-2 note).
+#[cfg(target_arch = "x86_64")]
+#[allow(unsafe_code)]
+pub mod avx2 {
+    use super::*;
+    use std::arch::x86_64::*;
+
+    /// i16 lanes per 256-bit AVX2 register.
+    const LANES: usize = 16;
+    // The kernels stride the accumulator in `LANES`-wide chunks with no
+    // remainder handling, so `L1` must divide evenly.
+    const _: () = assert!(
+        L1.is_multiple_of(LANES),
+        "L1 must be a multiple of 16 for AVX2"
+    );
+
+    /// `dst = src + add_row − sub_row`, 16 i16 lanes at a time. Exact vs the
+    /// scalar `wrapping_add`/`wrapping_sub`: `_mm256_add/sub_epi16` wrap i16
+    /// identically.
+    #[target_feature(enable = "avx2")]
+    unsafe fn add_sub(
+        dst: &mut [i16; L1],
+        src: &[i16; L1],
+        add_row: &[i16; L1],
+        sub_row: &[i16; L1],
+    ) {
+        // SAFETY: every ref is exactly L1 i16; `off` steps 0..L1 by 16, so each
+        // loadu/storeu covers 16 in-bounds lanes. loadu/storeu are
+        // alignment-agnostic (module note).
+        unsafe {
+            for off in (0..L1).step_by(LANES) {
+                let s = _mm256_loadu_si256(src.as_ptr().add(off).cast());
+                let a = _mm256_loadu_si256(add_row.as_ptr().add(off).cast());
+                let b = _mm256_loadu_si256(sub_row.as_ptr().add(off).cast());
+                let r = _mm256_sub_epi16(_mm256_add_epi16(s, a), b);
+                _mm256_storeu_si256(dst.as_mut_ptr().add(off).cast(), r);
+            }
+        }
+    }
+
+    /// `dst = src + add − sub0 − sub1` (capture / ep / capture-promotion).
+    #[target_feature(enable = "avx2")]
+    unsafe fn add_sub_sub(
+        dst: &mut [i16; L1],
+        src: &[i16; L1],
+        add: &[i16; L1],
+        sub0: &[i16; L1],
+        sub1: &[i16; L1],
+    ) {
+        // SAFETY: all five refs are exactly L1 i16; `off` steps 0..L1 by 16.
+        unsafe {
+            for off in (0..L1).step_by(LANES) {
+                let s = _mm256_loadu_si256(src.as_ptr().add(off).cast());
+                let a = _mm256_loadu_si256(add.as_ptr().add(off).cast());
+                let s0 = _mm256_loadu_si256(sub0.as_ptr().add(off).cast());
+                let s1 = _mm256_loadu_si256(sub1.as_ptr().add(off).cast());
+                let r = _mm256_sub_epi16(_mm256_sub_epi16(_mm256_add_epi16(s, a), s0), s1);
+                _mm256_storeu_si256(dst.as_mut_ptr().add(off).cast(), r);
+            }
+        }
+    }
+
+    /// `dst = src + add0 + add1 − sub0 − sub1` (castling — king + rook).
+    #[target_feature(enable = "avx2")]
+    unsafe fn add2_sub2(
+        dst: &mut [i16; L1],
+        src: &[i16; L1],
+        add0: &[i16; L1],
+        add1: &[i16; L1],
+        sub0: &[i16; L1],
+        sub1: &[i16; L1],
+    ) {
+        // SAFETY: all six refs are exactly L1 i16; `off` steps 0..L1 by 16.
+        unsafe {
+            for off in (0..L1).step_by(LANES) {
+                let s = _mm256_loadu_si256(src.as_ptr().add(off).cast());
+                let a0 = _mm256_loadu_si256(add0.as_ptr().add(off).cast());
+                let a1 = _mm256_loadu_si256(add1.as_ptr().add(off).cast());
+                let s0 = _mm256_loadu_si256(sub0.as_ptr().add(off).cast());
+                let s1 = _mm256_loadu_si256(sub1.as_ptr().add(off).cast());
+                let acc = _mm256_add_epi16(_mm256_add_epi16(s, a0), a1);
+                let r = _mm256_sub_epi16(_mm256_sub_epi16(acc, s0), s1);
+                _mm256_storeu_si256(dst.as_mut_ptr().add(off).cast(), r);
+            }
+        }
+    }
+
+    /// `dst = bias + Σ rows` (a from-scratch refresh). The chunk accumulator
+    /// stays in a register across all rows before the single store.
+    #[target_feature(enable = "avx2")]
+    unsafe fn refresh(dst: &mut [i16; L1], bias: &[i16; L1], rows: &[&[i16; L1]]) {
+        // SAFETY: dst/bias and every `row` are exactly L1 i16; `off` steps
+        // 0..L1 by 16. loadu/storeu are alignment-agnostic.
+        unsafe {
+            for off in (0..L1).step_by(LANES) {
+                let mut acc = _mm256_loadu_si256(bias.as_ptr().add(off).cast());
+                for row in rows {
+                    let r = _mm256_loadu_si256(row.as_ptr().add(off).cast());
+                    acc = _mm256_add_epi16(acc, r);
+                }
+                _mm256_storeu_si256(dst.as_mut_ptr().add(off).cast(), acc);
+            }
+        }
+    }
+
+    /// The raw pre-scaling dot-product sum (the AVX2 analogue of
+    /// [`scalar::forward_raw_sum`]).
+    ///
+    /// SCReLU per 16-lane chunk: clamp `a` to `[0, QA]`
+    /// (`_mm256_max_epi16` then `_mm256_min_epi16`), `p = _mm256_mullo_epi16(a,
+    /// w)` (fits i16 by the §3.4.3 weight clip `|w1| ≤ 127`, so `|a·w| ≤
+    /// 255·127 = 32385 < 32768`), then `_mm256_madd_epi16(p, a)` → i32 pairwise
+    /// `a²·w`. CReLU drops the square: `_mm256_madd_epi16(a, w)`. The 8 i32
+    /// lanes accumulate across all 32 chunks (2·L1 terms) with `add_epi32`;
+    /// under the clip each lane holds ≤ 64·255²·127 ≈ 5.3e8 < i32::MAX, so no
+    /// lane overflows. The final horizontal reduction **widens each lane to
+    /// i64** before summing, so even a total that exceeds i32 (worst case
+    /// ≈ 4.2e9 > i32::MAX) is exact — that is what makes this bit-identical to
+    /// the scalar i64 reference (reviewer B's F3: i32-lane accumulation is safe,
+    /// the i32 *total* is not, so the reduction is i64).
+    #[target_feature(enable = "avx2")]
+    unsafe fn forward_sum(
+        us: &[i16; L1],
+        them: &[i16; L1],
+        w1: &[i16; 2 * L1],
+        act: Activation,
+    ) -> i64 {
+        // SAFETY: us/them are L1 i16, w1 is 2·L1 i16; `off` steps 0..L1 by 16
+        // and the nstm half reads w1[L1 + off .. +16] (in-bounds since off < L1).
+        // loadu/storeu are alignment-agnostic. The final storeu targets a local
+        // [i32; 8] (32 bytes) — the exact width of one register.
+        unsafe {
+            let zero = _mm256_setzero_si256();
+            let qa = _mm256_set1_epi16(QA as i16);
+            let mut acc = _mm256_setzero_si256(); // 8 × i32
+            // (accumulator base pointer, output-weight offset): stm half first.
+            let halves = [(us.as_ptr(), 0usize), (them.as_ptr(), L1)];
+            match act {
+                Activation::SCReLU => {
+                    for (base, woff) in halves {
+                        for off in (0..L1).step_by(LANES) {
+                            let raw = _mm256_loadu_si256(base.add(off).cast());
+                            let a = _mm256_min_epi16(_mm256_max_epi16(raw, zero), qa);
+                            let w = _mm256_loadu_si256(w1.as_ptr().add(woff + off).cast());
+                            let p = _mm256_mullo_epi16(a, w);
+                            acc = _mm256_add_epi32(acc, _mm256_madd_epi16(p, a));
+                        }
+                    }
+                }
+                Activation::CReLU => {
+                    for (base, woff) in halves {
+                        for off in (0..L1).step_by(LANES) {
+                            let raw = _mm256_loadu_si256(base.add(off).cast());
+                            let a = _mm256_min_epi16(_mm256_max_epi16(raw, zero), qa);
+                            let w = _mm256_loadu_si256(w1.as_ptr().add(woff + off).cast());
+                            acc = _mm256_add_epi32(acc, _mm256_madd_epi16(a, w));
+                        }
+                    }
+                }
+            }
+            // Horizontal reduce the 8 i32 lanes, widening to i64 first.
+            let mut lanes = [0i32; 8];
+            _mm256_storeu_si256(lanes.as_mut_ptr().cast(), acc);
+            lanes.iter().map(|&x| x as i64).sum()
+        }
+    }
+
+    /// The AVX2 forward pass. The AVX2 part is just the raw sum; the SCReLU
+    /// `/QA` fold and the final `SCALE / (QA·QB)` narrowing are plain i64 scalar
+    /// arithmetic, byte-identical to [`scalar::forward`]'s tail.
+    fn forward(
+        us: &[i16; L1],
+        them: &[i16; L1],
+        w1: &[i16; 2 * L1],
+        out_bias: i32,
+        act: Activation,
+    ) -> Value {
+        // SAFETY: installed into KERNELS only after is_x86_feature_detected!(
+        // "avx2") (super::KERNELS dispatch, D14b).
+        let mut sum = unsafe { forward_sum(us, them, w1, act) };
+        if let Activation::SCReLU = act {
+            sum /= QA as i64;
+        }
+        let v = (sum + out_bias as i64) * SCALE as i64 / (QA as i64 * QB as i64);
+        v as Value
+    }
+
+    // --- Safe wrappers: the KERNELS entry points. Each discharges its callee's
+    //     "AVX2 is present" precondition against the super::KERNELS dispatch,
+    //     which only installs these after runtime detection (D14b). ---
+
+    fn add_sub_w(dst: &mut [i16; L1], src: &[i16; L1], add_row: &[i16; L1], sub_row: &[i16; L1]) {
+        // SAFETY: reached only via super::KERNELS after AVX2 detection.
+        unsafe { add_sub(dst, src, add_row, sub_row) }
+    }
+    fn add_sub_sub_w(
+        dst: &mut [i16; L1],
+        src: &[i16; L1],
+        add: &[i16; L1],
+        sub0: &[i16; L1],
+        sub1: &[i16; L1],
+    ) {
+        // SAFETY: reached only via super::KERNELS after AVX2 detection.
+        unsafe { add_sub_sub(dst, src, add, sub0, sub1) }
+    }
+    fn add2_sub2_w(
+        dst: &mut [i16; L1],
+        src: &[i16; L1],
+        add0: &[i16; L1],
+        add1: &[i16; L1],
+        sub0: &[i16; L1],
+        sub1: &[i16; L1],
+    ) {
+        // SAFETY: reached only via super::KERNELS after AVX2 detection.
+        unsafe { add2_sub2(dst, src, add0, add1, sub0, sub1) }
+    }
+    fn refresh_w(dst: &mut [i16; L1], bias: &[i16; L1], rows: &[&[i16; L1]]) {
+        // SAFETY: reached only via super::KERNELS after AVX2 detection.
+        unsafe { refresh(dst, bias, rows) }
+    }
+
+    /// Test-only: the raw pre-scaling sum through the AVX2 path, for the
+    /// pre-narrowing bit-exactness comparison against
+    /// [`scalar::forward_raw_sum`]. Callers MUST have confirmed
+    /// `is_x86_feature_detected!("avx2")` (the tests do).
+    pub fn forward_raw_sum(
+        us: &[i16; L1],
+        them: &[i16; L1],
+        w1: &[i16; 2 * L1],
+        act: Activation,
+    ) -> i64 {
+        // SAFETY: the bit-exactness tests gate on AVX2 detection before calling.
+        unsafe { forward_sum(us, them, w1, act) }
+    }
+
+    /// The AVX2 kernel table (safe-wrapper fn pointers). Installed by
+    /// [`super::KERNELS`] once AVX2 is detected.
+    pub const KERNELS: Kernels = Kernels {
+        add_sub: add_sub_w,
+        add_sub_sub: add_sub_sub_w,
+        add2_sub2: add2_sub2_w,
+        refresh: refresh_w,
         forward,
     };
 }
@@ -298,13 +610,168 @@ mod tests {
     }
 
     #[test]
-    fn kernels_lazylock_returns_scalar_backend() {
-        // Smoke: the dispatched forward equals the scalar forward directly.
+    fn kernels_lazylock_dispatch_matches_scalar_reference() {
+        // Smoke: whichever backend the runtime dispatch installed (AVX2 on this
+        // box, scalar elsewhere) reproduces the scalar reference forward.
         let us = [5i16; L1];
         let them = [5i16; L1];
         let w1 = [1i16; 2 * L1];
         let via_lock = (KERNELS.forward)(&us, &them, &w1, 0, Activation::SCReLU);
         let direct = scalar::forward(&us, &them, &w1, 0, Activation::SCReLU);
         assert_eq!(via_lock, direct);
+    }
+
+    // --- AVX2 == scalar, bit-exact (design/11 §3.4.6 step-2 GATE) -----------
+    //
+    // The key step-2 gate: the AVX2 backend must reproduce the scalar i64
+    // reference lane-for-lane, for ALL FIVE kernels, over many random inputs.
+    // The dispatch auto-selects AVX2 on this box, so these tests reach both
+    // backends *explicitly* (`scalar::KERNELS` vs `avx2::KERNELS`) and compare
+    // them directly. They no-op (pass) on a machine without AVX2.
+    #[cfg(target_arch = "x86_64")]
+    mod avx2_bit_exact {
+        use super::*;
+        use crate::attacks::Prng;
+
+        /// Draw a full-range random `[i16; L1]` (stresses the SCReLU clamp on
+        /// both ends and the i16 add/sub wrap).
+        fn rand_arr(rng: &mut Prng) -> [i16; L1] {
+            let mut a = [0i16; L1];
+            for x in a.iter_mut() {
+                *x = rng.rand64() as i16;
+            }
+            a
+        }
+
+        #[test]
+        fn add_sub_family_matches_scalar_over_full_range_i16() {
+            if !std::arch::is_x86_feature_detected!("avx2") {
+                return; // no AVX2: dispatch uses scalar, nothing to cross-check
+            }
+            let s = scalar::KERNELS;
+            let v = avx2::KERNELS;
+            let mut rng = Prng::new(0x0000_ACC2_BEEF_1357);
+            for _ in 0..3000 {
+                let src = rand_arr(&mut rng);
+                let r = [
+                    rand_arr(&mut rng),
+                    rand_arr(&mut rng),
+                    rand_arr(&mut rng),
+                    rand_arr(&mut rng),
+                    rand_arr(&mut rng),
+                ];
+                let (mut ds, mut dv) = ([0i16; L1], [0i16; L1]);
+
+                // add_sub (1+/1−) — exact for any i16 (add/sub_epi16 wrap = wrapping_*).
+                (s.add_sub)(&mut ds, &src, &r[0], &r[1]);
+                (v.add_sub)(&mut dv, &src, &r[0], &r[1]);
+                assert_eq!(ds, dv, "add_sub");
+
+                // add_sub_sub (1+/2−).
+                (s.add_sub_sub)(&mut ds, &src, &r[0], &r[1], &r[2]);
+                (v.add_sub_sub)(&mut dv, &src, &r[0], &r[1], &r[2]);
+                assert_eq!(ds, dv, "add_sub_sub");
+
+                // add2_sub2 (2+/2−).
+                (s.add2_sub2)(&mut ds, &src, &r[0], &r[1], &r[2], &r[3]);
+                (v.add2_sub2)(&mut dv, &src, &r[0], &r[1], &r[2], &r[3]);
+                assert_eq!(ds, dv, "add2_sub2");
+
+                // refresh with a random row count 0..=5 (bias = src).
+                let rows: [&[i16; L1]; 5] = [&r[0], &r[1], &r[2], &r[3], &r[4]];
+                let n = (rng.rand64() % 6) as usize;
+                (s.refresh)(&mut ds, &src, &rows[..n]);
+                (v.refresh)(&mut dv, &src, &rows[..n]);
+                assert_eq!(ds, dv, "refresh (n={n})");
+            }
+        }
+
+        #[test]
+        fn forward_matches_scalar_pre_narrowing_and_final() {
+            if !std::arch::is_x86_feature_detected!("avx2") {
+                return;
+            }
+            let mut rng = Prng::new(0xF0_2E_1A_7C_5B_39_11_23);
+            // Weights bounded to the §3.4.3 training clip |w1| ≤ round(1.98·QB)
+            // = 127. This is the exact condition that keeps the AVX2 path
+            // bit-exact vs the scalar i64 reference (reviewer B's F3):
+            //   * `mullo_epi16(clamp(a), w)` fits i16: |a·w| ≤ 255·127 < 2^15;
+            //   * each i32 lane sums ≤ 64·255²·127 ≈ 5.3e8 < i32::MAX (no lane
+            //     overflow), and the horizontal reduction is done in i64 so the
+            //     ≈4.2e9 worst-case *total* (which exceeds i32) is still exact.
+            // Real bullet nets satisfy the same clip, so this matches inference.
+            let w1_row = |rng: &mut Prng| -> [i16; 2 * L1] {
+                let mut w = [0i16; 2 * L1];
+                for x in w.iter_mut() {
+                    *x = (rng.rand64() % 255) as i16 - 127; // [-127, 127]
+                }
+                w
+            };
+            for act in [Activation::SCReLU, Activation::CReLU] {
+                for _ in 0..3000 {
+                    let us = rand_arr(&mut rng);
+                    let them = rand_arr(&mut rng);
+                    let w1 = w1_row(&mut rng);
+                    let out_bias = (rng.rand64() % 60_001) as i32 - 30_000;
+
+                    // (1) pre-narrowing raw i64 sum — an i32-lane overflow would
+                    // diverge here even when the final `as Value` truncation
+                    // happens to collapse two different sums to the same i32.
+                    let ss = scalar::forward_raw_sum(&us, &them, &w1, act);
+                    let vs = avx2::forward_raw_sum(&us, &them, &w1, act);
+                    assert_eq!(ss, vs, "{act:?} raw sum diverged");
+
+                    // (2) final Value.
+                    let sf = (scalar::KERNELS.forward)(&us, &them, &w1, out_bias, act);
+                    let vf = (avx2::KERNELS.forward)(&us, &them, &w1, out_bias, act);
+                    assert_eq!(sf, vf, "{act:?} final Value diverged");
+                }
+            }
+        }
+
+        // A quick, non-gating micro-measurement (design/11 §3.4.6 optional):
+        // AVX2-vs-scalar forward-pass throughput. Ignored by default (timing is
+        // machine-dependent); run with:
+        //   cargo test --release -- --ignored avx2_forward_speedup --nocapture
+        #[test]
+        #[ignore = "timing microbenchmark; run manually with --nocapture in release"]
+        fn avx2_forward_speedup() {
+            use std::hint::black_box;
+            use std::time::Instant;
+            if !std::arch::is_x86_feature_detected!("avx2") {
+                println!("no AVX2 on this host");
+                return;
+            }
+            let mut rng = Prng::new(0x5EED_DEAD_BEEF_0001); // any nonzero seed
+            let us = rand_arr(&mut rng);
+            let them = rand_arr(&mut rng);
+            let mut w1 = [0i16; 2 * L1];
+            for x in w1.iter_mut() {
+                *x = (rng.rand64() % 255) as i16 - 127;
+            }
+            const N: usize = 2_000_000;
+            let time = |k: &Kernels| -> f64 {
+                let mut sink = 0i64;
+                let start = Instant::now();
+                for _ in 0..N {
+                    sink = sink.wrapping_add((k.forward)(
+                        black_box(&us),
+                        black_box(&them),
+                        &w1,
+                        0,
+                        Activation::SCReLU,
+                    ) as i64);
+                }
+                black_box(sink);
+                start.elapsed().as_secs_f64() * 1e9 / N as f64
+            };
+            let (mut sc, mut av) = (f64::INFINITY, f64::INFINITY);
+            for _ in 0..3 {
+                sc = sc.min(time(&scalar::KERNELS));
+                av = av.min(time(&avx2::KERNELS));
+            }
+            println!("scalar forward: {sc:.1} ns/call");
+            println!("avx2   forward: {av:.1} ns/call  ({:.2}x)", sc / av);
+        }
     }
 }

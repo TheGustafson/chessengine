@@ -134,6 +134,21 @@ impl Network {
         // A modest bias at the QA·QB scale.
         let out_bias = (prng.rand64() % 20001) as i32 - 10000;
 
+        // `small()` keeps `out_weights` in [-100, 100], well inside the §3.4.3
+        // output-weight clip `|w1_q| ≤ round(1.98·QB) = 127`. That bound is the
+        // exact condition under which the step-2 AVX2 forward pass
+        // (`_mm256_mullo_epi16` + i32-lane `_mm256_madd_epi16`) is bit-identical
+        // to the scalar i64 reference (reviewer B's F3; design/11 §3.4.3,
+        // §3.4.6). Every net this fixture feeds — the accumulator fuzz, the
+        // `verify_forward.sh` oracle (now AVX2-active in release), and the
+        // bit-exactness test — therefore stays exact. Assert it so a future
+        // widening of `small()` can't silently break that.
+        debug_assert!(
+            out_weights.iter().all(|&w| w.unsigned_abs() <= 127),
+            "test-net out_weights must stay within the §3.4.3 clip (|w1| ≤ 127) \
+             for AVX2/scalar bit-exactness"
+        );
+
         Network {
             ft_weights,
             ft_bias,

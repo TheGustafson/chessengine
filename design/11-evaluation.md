@@ -734,6 +734,33 @@ pub static KERNELS: LazyLock<Kernels> = LazyLock::new(|| {
 >   Integer division does not distribute over the sum, so this sum-then-single
 >   `/QA` ordering is the exact spot the **step-3 vs-bullet cross-check** must
 >   confirm against a real trained net.
+>
+> **Step-2 AS BUILT (P13 step 2, 2026-07-12; `src/eval/nnue/simd.rs`).**
+> - **`Kernels` keeps SAFE `fn` pointers** — a deliberate deviation from the
+>   `unsafe fn`-pointer sketch above. The AVX2 kernels are the promised
+>   `#[target_feature(enable = "avx2")] unsafe fn`, but they are reached only
+>   through thin **safe wrappers** installed into `KERNELS` after detection, so
+>   every `unsafe` is *contained inside the `avx2` module* (localized
+>   `#[allow(unsafe_code)]`, `// SAFETY:` per block — the `tt` prefetch
+>   discipline, D14a/D14b). Callers (`accumulator`, `evaluate_forward`) stay
+>   `unsafe`-free and the crate-wide `#![deny(unsafe_code)]` holds everywhere
+>   else. The one-line cost — a non-inlined wrapper call on top of the already
+>   non-inlinable `KERNELS.forward` fn-pointer indirection — is nil this step
+>   (NNUE isn't wired) and a step-4 concern if ever measured. The dispatch site
+>   carries the single `// SAFETY: avx2 verified at startup via
+>   is_x86_feature_detected!` comment (D14b).
+> - **Forward reduction is i32 lanes + i64 horizontal add.** `madd_epi16`
+>   accumulates `a²·w` (SCReLU) / `a·w` (CReLU) into 8 i32 lanes; under the
+>   §3.4.3 clip `|w1| ≤ 127` no lane overflows (≤ 64·255²·127 ≈ 5.3e8), and the
+>   final horizontal reduction **widens each lane to i64 before summing** so the
+>   worst-case *total* (≈ 4.2e9 > i32::MAX) is still exact vs the scalar i64
+>   reference. This resolves reviewer B's F3: i32-lane accumulation is safe, the
+>   i32 *total* is not, so only the reduction is i64. Bit-exactness (raw i64 sum
+>   **and** final `Value`, all five kernels, full-range random accumulators,
+>   clipped weights) is pinned by `simd::tests::avx2_bit_exact::*`;
+>   `deterministic_test_net` bounds its `out_weights` to the same clip (a
+>   `debug_assert`) so the accumulator fuzz + `verify_forward.sh` oracle exercise
+>   the AVX2 path bit-exactly on release.
 
 #### 3.4.7 Training pipeline (external bullet, D15)
 
