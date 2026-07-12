@@ -399,16 +399,18 @@ pub struct ThreadPool {
 }
 
 impl ThreadPool {
-    /// (Re)create the pool with `n >= 1` threads. Waits for any running
-    /// search, exits and joins old threads first.
-    pub fn set(&mut self, n: usize);
+    /// (Re)create the pool with `n >= 1` threads. Builds the new set FIRST,
+    /// then joins the old — fallible: on OS spawn refusal it returns `Err`
+    /// and leaves the existing pool intact (setoption degrades, never panics).
+    pub fn set(&mut self, n: usize) -> io::Result<()>;
 
     /// UCI `go`. Non-blocking: returns once the main worker is woken.
     pub fn start_thinking(&mut self, board: &Board, limits: Limits, tt: &Arc<TT>);
 
     pub fn stop(&self)          { self.shared.stop.store(true, Ordering::Relaxed); }
     pub fn ponderhit(&self)     { self.shared.ponder.store(false, Ordering::Relaxed); }
-    pub fn wait_for_search_finished(&self);   // wait_idle on the MAIN thread only
+    pub fn wait_for_search_finished(&self);   // wait_idle on EVERY shell (reaps a
+                                              // helper stranded by a main panic)
     pub fn clear(&self);        // ucinewgame: Job::Clear to every thread, wait all
 
     pub fn nodes_searched(&self) -> u64;      // Σ shells[i].counters.nodes
@@ -1067,6 +1069,38 @@ in the same commit" rule. None changes a pinned decision.
   threads then `stop`: **0.53 ms** (debug, uninstrumented) / **18.9 ms** (under
   TSan) — both under the 50 ms hard bound (§8 criterion 4), the debug figure
   under the 5 ms target too.
+- **Panic teardown waits on EVERY shell; a caught panic requests `stop`
+  (review rounds 2–3).** §3.5 originally specced `wait_for_search_finished` as
+  "wait_idle on the MAIN thread only" (`main idle ⇒ all idle`). That invariant
+  holds only on the non-panic path, where `main_search` step E stops-and-joins
+  the helpers before main parks. If the MAIN worker's job panics before step E,
+  `thread_main`'s `catch_unwind` sets `pool.stop = true` (so the stranded
+  helpers — still holding their per-`go` `Arc<TT>` clones — wind down) and both
+  `wait_for_search_finished` AND `start_thinking`'s step-1 pre-wait now loop
+  over **every** shell, joining any such helper before a following
+  `setoption Hash`/`ucinewgame` reaches `Arc::get_mut(&mut tt)` (which would
+  otherwise panic a second time on the UCI read loop) and before step 2 revives
+  `stop` for the next `go`. Nil cost on the normal path (all shells already
+  idle). Covered by `a_main_panic_stops_helpers_so_the_all_shells_wait_joins`.
+- **`ThreadPool::set`/`build` are fallible; `setoption Threads` degrades
+  (review round 3, §3.3 "never panic on input").** Spawning is reachable from
+  UCI input (`setoption name Threads value N`, `N` up to `max_threads()` ≥ 512).
+  On a host at its thread `ulimit`/cgroup `pids.max` the OS refuses the spawn;
+  the old `Builder::spawn(...).expect(...)` would panic and unwind the
+  single-threaded UCI loop, killing the session. `set` now builds the new pool
+  FIRST (rolling back any partially-spawned threads on failure), leaves the
+  existing working pool untouched on `Err`, and the `Threads` setoption arm
+  emits `info string Failed to spawn … using <have>` and keeps playing — exactly
+  the fallible-`Hash`-resize pattern. Only `ThreadPool::new` (startup, not input)
+  stays fatal-on-failure.
+- **Exactly-once bestmove is NOT guaranteed across a MAIN-worker search panic.**
+  If `main_search` panics before step G (`emit_bestmove`), `thread_main`
+  swallows the unwind, sets `stop`, and re-parks — no `bestmove` is emitted for
+  that `go`, and `wait_for_search_finished` then returns cleanly, so the GUI
+  waits forever for that reply. This is an internal-bug-only path (a search
+  panic is never expected input) and matches pre-P11 behavior; the pool
+  lifecycle (above) is still hardened so the next command runs. A fallback-emit
+  on the caught main-shell panic is left as possible future work.
 - **NUMA (§3.15) stays deferred** — no topology/replication registry shape was
   built for P11 (single-socket dev box; real pinning needs a libc dep that
   conflicts with D15). The `Job::Custom` slot is present and is the seam a

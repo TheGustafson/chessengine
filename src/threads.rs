@@ -331,42 +331,67 @@ pub struct ThreadPool {
 }
 
 impl ThreadPool {
-    /// Create a pool with `n >= 1` threads, all parked and ready.
+    /// Create a pool with `n >= 1` threads, all parked and ready. A spawn
+    /// failure here is at *startup* (not in response to UCI input), so it is
+    /// fatal — the engine cannot run without its search threads.
     pub fn new(n: usize) -> ThreadPool {
-        let mut pool = ThreadPool {
-            shared: PoolShared::new(0),
-            handles: Vec::new(),
-        };
-        pool.spawn(n.max(1));
-        pool
+        let (shared, handles) =
+            Self::build(n.max(1)).expect("spawn search worker threads at startup");
+        ThreadPool { shared, handles }
     }
 
-    fn spawn(&mut self, n: usize) {
+    /// Spawn `n >= 1` parked worker threads and their shared block WITHOUT
+    /// installing them on `self`. On any OS spawn failure (a restrictive
+    /// thread `ulimit` / cgroup `pids.max`), the threads already created are
+    /// cleanly `Exit`ed and joined and the `io::Error` is returned, so no
+    /// half-built pool ever escapes and the caller can keep whatever pool it
+    /// already had. Reserving the fatal case for `new` (startup) lets `set`
+    /// (`setoption Threads`) degrade gracefully — the engine must **never
+    /// panic on input** (§3.3).
+    fn build(n: usize) -> std::io::Result<(Arc<PoolShared>, Vec<JoinHandle<()>>)> {
         let shared = PoolShared::new(n);
         let mut handles = Vec::with_capacity(n);
         for idx in 0..n {
             let pool = Arc::clone(&shared);
-            let handle = std::thread::Builder::new()
+            match std::thread::Builder::new()
                 .name(format!("search-{idx}"))
                 .stack_size(WORKER_STACK_SIZE)
                 .spawn(move || thread_main(idx, pool))
-                .expect("spawn search worker thread");
-            handles.push(handle);
+            {
+                Ok(handle) => handles.push(handle),
+                Err(e) => {
+                    // Roll back: each thread we did spawn is parked on its own
+                    // shell, so `Job::Exit` + join reaps it. No orphan survives.
+                    for shell in shared.shells.iter().take(handles.len()) {
+                        shell.submit(Job::Exit);
+                    }
+                    for h in handles.drain(..) {
+                        let _ = h.join();
+                    }
+                    return Err(e);
+                }
+            }
         }
-        self.shared = shared;
-        self.handles = handles;
+        Ok((shared, handles))
     }
 
-    /// (Re)create the pool with `n >= 1` threads (`setoption Threads`). Waits
-    /// for any running search, exits and joins the old threads first, then
-    /// spawns the new set. All per-thread state (histories, TM) is rebuilt.
-    pub fn set(&mut self, n: usize) {
+    /// (Re)create the pool with `n >= 1` threads (`setoption Threads`). Builds
+    /// the NEW set FIRST, and only then waits for any running search, exits and
+    /// joins the old threads, and swaps them in — so a spawn failure returns
+    /// `Err` with the existing (working) pool left completely untouched, and
+    /// the caller keeps playing on it (mirrors the fallible `Hash` resize). The
+    /// only cost is a brief `old + new` thread overlap. All per-thread state
+    /// (histories, TM) on the new set is rebuilt fresh.
+    pub fn set(&mut self, n: usize) -> std::io::Result<()> {
         let n = n.max(1);
         if n == self.size() {
-            return;
+            return Ok(());
         }
+        let (shared, handles) = Self::build(n)?;
         self.shutdown();
-        self.spawn(n);
+        self.shared = shared;
+        self.handles = handles;
+        Ok(())
     }
 
     /// Number of threads currently in the pool.
@@ -392,8 +417,20 @@ impl ThreadPool {
         options: Options,
         output: Arc<dyn UciSink>,
     ) {
-        // Step 1: wait for the previous search (main idle ⇒ all idle, §3.5).
-        self.shared.shells[0].wait_idle();
+        // Step 1: wait for the previous search to FULLY finish, on every shell
+        // — not just main. On the normal path main's step-E epilogue already
+        // joined the helpers before parking, so this is the old single-shell
+        // wait at nil extra cost. But "main idle ⇒ all idle" is FALSE when the
+        // main worker's job panicked before that epilogue: `thread_main` set
+        // `stop` on the caught unwind, yet its helpers only wind down once
+        // something waits on them. Waiting on all shells here reaps any such
+        // stranded helper BEFORE step 2 revives `stop` — otherwise a helper
+        // that first reads `stop` only after `stop.store(false)` would never
+        // stop, and step 3's `submit(Setup)` to its still-`busy` shell would
+        // block forever, wedging the UCI thread (review round 3). `cmd_go`
+        // already pre-waits, so this is defense-in-depth that makes
+        // `start_thinking` self-sufficient rather than relying on its caller.
+        self.wait_for_search_finished();
         // Step 2: clear control flags.
         self.shared.stop.store(false, Ordering::Relaxed);
         self.shared.increase_depth.store(true, Ordering::Relaxed);
@@ -602,9 +639,9 @@ mod tests {
         with_timeout(Duration::from_secs(10), || {
             let mut pool = ThreadPool::new(2);
             assert_eq!(pool.size(), 2);
-            pool.set(8);
+            pool.set(8).expect("grow pool");
             assert_eq!(pool.size(), 8);
-            pool.set(1);
+            pool.set(1).expect("shrink pool");
             assert_eq!(pool.size(), 1);
         });
     }

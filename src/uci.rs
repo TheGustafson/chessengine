@@ -898,10 +898,23 @@ fn cmd_setoption<W: Write>(
         }
         // `Threads` (re)builds the pool with the clamped count (design/13
         // §3.5): waits for any running search, joins the old threads, spawns
-        // the new set. Histories and TM state are rebuilt fresh.
+        // the new set. Histories and TM state are rebuilt fresh. `set` is
+        // fallible (§3.3): if the OS refuses the spawn (thread `ulimit` /
+        // `pids.max`) it leaves the current pool intact and returns `Err` —
+        // announce the shortfall and keep playing, exactly like the fallible
+        // `Hash` resize above, never panic mid-session on input.
         Ok("Threads") => {
-            engine.pool.set(engine.options.threads() as usize);
-            Ok(())
+            let requested = engine.options.threads() as usize;
+            match engine.pool.set(requested) {
+                Ok(()) => Ok(()),
+                Err(e) => {
+                    let have = engine.pool.size();
+                    writeln!(
+                        out,
+                        "info string Failed to spawn {requested} threads ({e}), using {have}"
+                    )
+                }
+            }
         }
         // Other values are stored above; nothing further yet.
         Ok(_) => Ok(()),
@@ -1333,6 +1346,43 @@ mod tests {
         }
     }
 
+    /// Voting-ENABLED multi-thread search (design/13 §3.8, review round 3): a
+    /// `go` without a fixed depth (here a node budget) leaves best-thread
+    /// voting ON, so the main worker actually runs `elect_winner` →
+    /// `best_thread`, gathers every helper's cross-shell `SearchReport`, and
+    /// may republish/persist a helper's winning line — the whole path the
+    /// fixed-depth `go depth 4` smoke skips (voting is disabled under
+    /// `limits.depth`). At `Threads=4` two node-budgeted searches must each
+    /// answer exactly one well-formed `bestmove`, with no hang, and the debug
+    /// build validates every thread's board via `assert_consistent` per node.
+    #[test]
+    fn multithread_voting_enabled_search_smoke() {
+        let input = concat!(
+            "setoption name Threads value 4\n",
+            "position startpos\n",
+            "go nodes 300000\n",
+            "position fen r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3\n",
+            "go nodes 300000\n",
+            "quit\n",
+        );
+        let out = session_timeout(input, 120);
+        let bestmoves = out.lines().filter(|l| l.starts_with("bestmove ")).count();
+        assert_eq!(bestmoves, 2, "one bestmove per voting-enabled go");
+        assert!(
+            !out.contains("bestmove (none)"),
+            "both positions have legal moves"
+        );
+        for line in out.lines().filter(|l| l.starts_with("bestmove ")) {
+            let mv = line.split_whitespace().nth(1).unwrap_or("");
+            assert!(
+                (4..=5).contains(&mv.len())
+                    && mv.as_bytes()[0].is_ascii_lowercase()
+                    && mv.as_bytes()[1].is_ascii_digit(),
+                "malformed bestmove line: {line}"
+            );
+        }
+    }
+
     /// Stop-latency bound (design/13 §5, §8 criterion 4, plan step 7): a
     /// `go infinite` at N = cores threads on a busy middlegame, stopped after
     /// 100 ms, must return from `wait_for_search_finished` well under the
@@ -1345,7 +1395,10 @@ mod tests {
             .unwrap_or(4)
             .clamp(2, 8);
         let mut engine = Engine::new();
-        engine.pool.set(cores);
+        engine
+            .pool
+            .set(cores)
+            .expect("spawn stop-latency test pool");
         let out = SharedOut::new(Vec::new());
         // Kiwipete: a rich middlegame so every thread is deep in the tree.
         dispatch(
