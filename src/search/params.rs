@@ -499,6 +499,28 @@ pub const TTCUT_PARENT_MALUS: i32 = -2187;
 /// penalty to fire (an "early" quiet the cutoff just refuted).
 pub const TTCUT_PARENT_MOVECOUNT: i32 = 4;
 
+// --- ProbCut (N13, design/10 §3.4; Wave-E item 16) ---
+//
+// A shallow, cheap search proving a *capture* beats `probcut_beta = beta +
+// PROBCUT_BETA_BASE - PROBCUT_BETA_IMPROVING·improving` lets the node fail high
+// early. Per candidate (captures clearing `see_ge(probcut_beta - static_eval)`):
+// a qsearch probe at `probcut_beta`, then — if it held and
+// `probcut_depth = depth - PROBCUT_DEPTH_SUB - improving > 0` — a real reduced
+// search; a confirmed cutoff stores BOUND_LOWER and returns
+// `value - (probcut_beta - beta)`.
+
+/// Flat base of the ProbCut beta margin.
+pub const PROBCUT_BETA_BASE: Value = 214;
+/// Improving discount of the ProbCut beta margin.
+pub const PROBCUT_BETA_IMPROVING: Value = 59;
+/// Minimum depth at which ProbCut runs (`depth >= PROBCUT_MIN_DEPTH`).
+pub const PROBCUT_MIN_DEPTH: Depth = 3;
+/// Depth subtracted (with `improving`) for the ProbCut re-verification search;
+/// also the child-depth slack of the in-check small ProbCut (N14).
+pub const PROBCUT_DEPTH_SUB: Depth = 4;
+/// The in-check small-ProbCut beta margin (N14): `probcut_beta = beta + 428`.
+pub const PROBCUT_CHECK_BETA: Value = 428;
+
 // --- Hindsight depth adjustments (N6, design/10 §3.4; Wave-E item 17) ---
 //
 // From the parent's LMR bookkeeping (`prior_reduction = (ss-1).reduction`

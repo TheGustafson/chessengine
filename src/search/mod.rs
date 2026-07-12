@@ -1341,6 +1341,81 @@ impl Worker {
             // ProbCut and the move-loop LMP/reduction. SF places it between NMP
             // and IIR.
             improving |= self.stack[cur].static_eval >= beta;
+
+            // N13 — ProbCut (design/10 §3.4, Wave-E item 16): a cheap search
+            // proving a capture beats a raised beta lets the node fail high
+            // early. Skipped inside a singular verification; a stored value
+            // already below the threshold says "don't bother".
+            let probcut_beta = beta + params::PROBCUT_BETA_BASE
+                - params::PROBCUT_BETA_IMPROVING * Value::from(improving);
+            if depth >= params::PROBCUT_MIN_DEPTH
+                && !is_decisive(beta)
+                && self.stack[cur].excluded_move == Move::NULL
+                && !(is_valid(tt_value) && tt_value < probcut_beta)
+            {
+                let probcut_depth = depth - params::PROBCUT_DEPTH_SUB - Depth::from(improving);
+                let threshold = probcut_beta - self.stack[cur].static_eval;
+                let mut mp = MovePicker::new_probcut(&self.board, tt_data.mv, threshold);
+                while let Some(m) = mp.next_move(&self.board, &self.histories) {
+                    if m == self.stack[cur].excluded_move || !self.board.legal(m) {
+                        continue;
+                    }
+                    let gives_check = self.board.gives_check(m);
+                    self.do_move(tt, m, gives_check, ply);
+                    // Cheap qsearch verification first, then — if it held — a
+                    // real reduced search.
+                    let mut value =
+                        -self.qsearch::<NonPv>(tt, -probcut_beta, -probcut_beta + 1, ply + 1);
+                    if value >= probcut_beta && probcut_depth > 0 {
+                        value = -self.search::<NonPv>(
+                            tt,
+                            stop,
+                            -probcut_beta,
+                            -probcut_beta + 1,
+                            probcut_depth,
+                            !cut_node,
+                            ply + 1,
+                        );
+                    }
+                    self.undo_move(m);
+                    if stop.load(Ordering::Relaxed) {
+                        return VALUE_ZERO;
+                    }
+                    if value >= probcut_beta {
+                        probe.writer.write(
+                            key,
+                            value_to_tt(value, ply as i32),
+                            self.stack[cur].tt_pv,
+                            Bound::Lower,
+                            probcut_depth + 1,
+                            m,
+                            raw_eval,
+                            generation,
+                        );
+                        if !is_decisive(value) {
+                            // Shift the surplus back onto our window.
+                            return value - (probcut_beta - beta);
+                        }
+                    }
+                }
+            }
+        }
+
+        // N14 — small in-check ProbCut (design/10 §3.4, Wave-E item 16): sits
+        // after the in-check jump target, so it runs even in check. A deep
+        // stored LOWER bound already above a large raised beta lets the node
+        // fail high without entering the move loop.
+        let check_probcut_beta = beta + params::PROBCUT_CHECK_BETA;
+        if !is_decisive(beta)
+            && self.stack[cur].excluded_move == Move::NULL
+            && tt_hit
+            && tt_data.bound.includes_lower()
+            && tt_data.depth >= depth - params::PROBCUT_DEPTH_SUB
+            && is_valid(tt_value)
+            && !is_decisive(tt_value)
+            && tt_value >= check_probcut_beta
+        {
+            return check_probcut_beta;
         }
 
         // Step 9 — move loop. Interior nodes draw from the staged
@@ -5534,6 +5609,24 @@ mod tests {
         let a = go_depth(START_FEN, 7);
         let b = go_depth(START_FEN, 7);
         assert_eq!(a.nodes, b.nodes, "Wave E preserves node determinism");
+        assert_eq!(a.best_move(), b.best_move());
+    }
+
+    #[test]
+    fn item16_probcut_preserves_tactics_and_determinism() {
+        // ProbCut (N13) runs at depth >= 3 with a qsearch probe then a real
+        // reduced verification search; N14 is its in-check twin. Neither may
+        // corrupt tactics: a free queen (1.Rxd8) is still won, and fresh
+        // searches stay bit-reproducible (the probe/verify are deterministic).
+        let w = go_depth("3q3k/8/8/8/8/8/3R4/3R3K w - - 0 1", 6);
+        assert!(
+            best_score(&w) > 800,
+            "ProbCut must not miss the winning capture (up ~a queen): {}",
+            best_score(&w)
+        );
+        let a = go_depth(START_FEN, 7);
+        let b = go_depth(START_FEN, 7);
+        assert_eq!(a.nodes, b.nodes, "ProbCut preserves node determinism");
         assert_eq!(a.best_move(), b.best_move());
     }
 
