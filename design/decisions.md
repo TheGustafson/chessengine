@@ -315,3 +315,29 @@ strength. Two constraints in permanent tension, resolved in this order:
   label is free). Aspirational and genuine research (roadmap
   `design/17-nnue-research.md`, §9 risks); the D29 platform exists precisely to
   preserve the signals these heads need.
+
+- **D35**: P13 NNUE start = inference-first, bullet-oracled, own-net-first
+  (accepted 2026-07-12, user). The way we START P13, to validate search+infra
+  with a real net before trusting our own training while maximizing reuse and
+  minimizing licensing entanglement:
+  1. Build P13's NNUE **inference for our OWN planned architecture** (Chess768 /
+     `bullet` format — the training half already validated) FIRST; this is
+     reusable P13 code, not a throwaway experiment.
+  2. **Bit-exactly oracle** the quantized forward pass against **`bullet`'s own
+     reference inference** (permissive, clean) on shared positions — NOT against
+     a foreign engine's net. This de-risks the hardest, most bug-prone part of
+     P13 (cross-ISA quantized-SIMD bit-exactness, `design/17` §5, note 13 of the
+     Reckless study).
+  3. **Lead with training our OWN first net** from the live datagen corpus
+     (~22M+ positions and growing, D28/D29): "our search + our real net = X Elo"
+     is the eval-ceiling / search-vs-training bottleneck diagnostic, with ZERO
+     licensing questions, and it directly advances P13.
+  4. The **Reckless-net A/B** (our search vs Reckless search, eval held
+     constant) is an **OPTIONAL, dev-only, FIREWALLED** second step: implement
+     the Reckless *threats-input* loader only if still wanted after our own net
+     exists; the AGPLv3 net stays **gitignored, never in a shipped build, never
+     networked** (AGPL private-use/testing only) — treated exactly like the
+     gitignored SF teacher scaffold, and it does NOT touch the D28 clean
+     provenance of the SHIPPED net. Reimplement inference from the Reckless Rust
+     as prior art only (D27/D31), never copied. Owning docs: `design/11` §3.4
+     (arch/quant/inference), `design/17` (the search-integrated heads on top).
