@@ -396,6 +396,49 @@ mod tests {
     }
 
     #[test]
+    fn rejects_wrong_quant_qb_and_scale() {
+        // qb lives at header bytes 22..24; a mismatch is rejected before the
+        // checksum is even consulted (the payload is left intact here).
+        let mut bytes = serialize(&test_net());
+        bytes[22..24].copy_from_slice(&7u16.to_le_bytes());
+        assert!(matches!(
+            load_bytes(&bytes),
+            Err(NnueError::WrongQuant { field: "qb", .. })
+        ));
+
+        // scale lives at header bytes 24..26.
+        let mut bytes = serialize(&test_net());
+        bytes[24..26].copy_from_slice(&123u16.to_le_bytes());
+        assert!(matches!(
+            load_bytes(&bytes),
+            Err(NnueError::WrongQuant { field: "scale", .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_wrong_payload_len_field() {
+        // A tampered `payload_len` header field that is NOT a plain truncation:
+        // every real payload byte is present, but the declared length disagrees
+        // with this architecture's fixed size, so the loader rejects it with
+        // BadPayloadLen (before the checksum check) rather than reading past the
+        // buffer or panicking.
+        let mut bytes = serialize(&test_net());
+        bytes[32..40].copy_from_slice(&((PAYLOAD_LEN as u64) + 2).to_le_bytes());
+        assert!(matches!(
+            load_bytes(&bytes),
+            Err(NnueError::BadPayloadLen { .. })
+        ));
+
+        // A too-small declared length is likewise a mismatch, not a truncation.
+        let mut bytes = serialize(&test_net());
+        bytes[32..40].copy_from_slice(&((PAYLOAD_LEN as u64) - 2).to_le_bytes());
+        assert!(matches!(
+            load_bytes(&bytes),
+            Err(NnueError::BadPayloadLen { .. })
+        ));
+    }
+
+    #[test]
     fn rejects_truncated_payload() {
         let bytes = serialize(&test_net());
         // Drop the last few payload bytes; the header still declares the full

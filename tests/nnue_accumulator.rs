@@ -89,23 +89,27 @@ fn incremental_accumulator_equals_refresh_over_random_games() {
     let records = common::load_perft_epd().unwrap_or_else(|e| panic!("{e}"));
     assert!(!records.is_empty(), "perft.epd contains no cases");
 
-    // Two nets so both activations drive the walk (the forward pass differs,
-    // but the accumulator invariant is activation-independent — still, no
-    // reason to leave SCReLU-only coverage).
-    let net = Network::deterministic_test_net(0xACC0_1ADE, Activation::SCReLU);
+    // Alternate the two activations across roots so BOTH the SCReLU and CReLU
+    // forward paths run inside the incremental walk. The accumulator invariant
+    // itself is activation-independent (refresh/add_sub never read Activation),
+    // but alternating also drives evaluate()'s CReLU branch under lazy
+    // fold-forward — at no extra runtime, since each root uses one net not both.
+    let screlu = Network::deterministic_test_net(0xACC0_1ADE, Activation::SCReLU);
+    let crelu = Network::deterministic_test_net(0xACC0_1ADF, Activation::CReLU);
     let mut rng = SplitMix64(0x1234_5678_9ABC_DEF0);
     let mut nodes = 0u64;
 
-    for record in &records {
+    for (idx, record) in records.iter().enumerate() {
+        let net = if idx % 2 == 0 { &screlu } else { &crelu };
         let mut board = common::board(&record.fen);
-        let mut ctx = NnueContext::new(&net);
+        let mut ctx = NnueContext::new(net);
         ctx.refresh_root(&board);
 
         // Phase 1: sibling-reuse DFS (invalidation stress).
         explore(&mut board, &mut ctx, 0, 4, 4, &mut rng, &mut nodes);
 
         // Phase 2: a deep linear chain from the same root (long walk-backs).
-        let mut ctx = NnueContext::new(&net);
+        let mut ctx = NnueContext::new(net);
         ctx.refresh_root(&board);
         let mut trail = Vec::new();
         for ply in 0..80usize {

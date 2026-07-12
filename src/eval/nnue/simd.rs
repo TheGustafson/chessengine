@@ -40,9 +40,23 @@ impl<T> std::ops::DerefMut for Aligned64<T> {
 }
 
 /// `dst = src + W0[add_row] − W0[sub_row]`: the fused 1-add/1-sub column
-/// update (the dominant case, a quiet move).
+/// update (the dominant case, a quiet or quiet-promotion move).
 pub type AddSubFn =
     fn(dst: &mut [i16; L1], src: &[i16; L1], add_row: &[i16; L1], sub_row: &[i16; L1]);
+/// `dst = src + W0[add] − W0[sub0] − W0[sub1]`: the fused 1-add/2-sub update
+/// (an ordinary capture, en passant, or capture-promotion).
+pub type AddSubSubFn =
+    fn(dst: &mut [i16; L1], src: &[i16; L1], add: &[i16; L1], sub0: &[i16; L1], sub1: &[i16; L1]);
+/// `dst = src + W0[add0] + W0[add1] − W0[sub0] − W0[sub1]`: the fused
+/// 2-add/2-sub update (castling — the king and rook both move).
+pub type Add2Sub2Fn = fn(
+    dst: &mut [i16; L1],
+    src: &[i16; L1],
+    add0: &[i16; L1],
+    add1: &[i16; L1],
+    sub0: &[i16; L1],
+    sub1: &[i16; L1],
+);
 /// `dst = bias + Σ_f W0[f]` over already-resolved `L1`-wide feature rows: a
 /// from-scratch accumulator refresh.
 pub type RefreshFn = fn(dst: &mut [i16; L1], bias: &[i16; L1], rows: &[&[i16; L1]]);
@@ -61,6 +75,8 @@ pub type ForwardFn = fn(
 /// (design/11 §3.4.6). Safe `fn` pointers in step 1; `unsafe fn` in step 2.
 pub struct Kernels {
     pub add_sub: AddSubFn,
+    pub add_sub_sub: AddSubSubFn,
+    pub add2_sub2: Add2Sub2Fn,
     pub refresh: RefreshFn,
     pub forward: ForwardFn,
 }
@@ -87,6 +103,42 @@ pub mod scalar {
     pub fn add_sub(dst: &mut [i16; L1], src: &[i16; L1], add_row: &[i16; L1], sub_row: &[i16; L1]) {
         for i in 0..L1 {
             dst[i] = src[i].wrapping_add(add_row[i]).wrapping_sub(sub_row[i]);
+        }
+    }
+
+    /// `dst = src + add − sub0 − sub1`, column-wise (a capture / ep /
+    /// capture-promotion). Same i16 lane-wrap discipline as [`add_sub`].
+    pub fn add_sub_sub(
+        dst: &mut [i16; L1],
+        src: &[i16; L1],
+        add: &[i16; L1],
+        sub0: &[i16; L1],
+        sub1: &[i16; L1],
+    ) {
+        for i in 0..L1 {
+            dst[i] = src[i]
+                .wrapping_add(add[i])
+                .wrapping_sub(sub0[i])
+                .wrapping_sub(sub1[i]);
+        }
+    }
+
+    /// `dst = src + add0 + add1 − sub0 − sub1`, column-wise (castling — king +
+    /// rook). Same i16 lane-wrap discipline as [`add_sub`].
+    pub fn add2_sub2(
+        dst: &mut [i16; L1],
+        src: &[i16; L1],
+        add0: &[i16; L1],
+        add1: &[i16; L1],
+        sub0: &[i16; L1],
+        sub1: &[i16; L1],
+    ) {
+        for i in 0..L1 {
+            dst[i] = src[i]
+                .wrapping_add(add0[i])
+                .wrapping_add(add1[i])
+                .wrapping_sub(sub0[i])
+                .wrapping_sub(sub1[i]);
         }
     }
 
@@ -145,6 +197,8 @@ pub mod scalar {
     /// The scalar kernel table.
     pub const KERNELS: Kernels = Kernels {
         add_sub,
+        add_sub_sub,
+        add2_sub2,
         refresh,
         forward,
     };
@@ -172,6 +226,29 @@ mod tests {
         let mut dst = [0i16; L1];
         scalar::add_sub(&mut dst, &src, &add, &sub);
         assert!(dst.iter().all(|&x| x == 8)); // 10 + 3 − 5
+    }
+
+    #[test]
+    fn add_sub_sub_is_src_plus_add_minus_two_subs() {
+        let src = [20i16; L1];
+        let add = [3i16; L1];
+        let sub0 = [5i16; L1];
+        let sub1 = [4i16; L1];
+        let mut dst = [0i16; L1];
+        scalar::add_sub_sub(&mut dst, &src, &add, &sub0, &sub1);
+        assert!(dst.iter().all(|&x| x == 14)); // 20 + 3 − 5 − 4
+    }
+
+    #[test]
+    fn add2_sub2_is_src_plus_two_adds_minus_two_subs() {
+        let src = [20i16; L1];
+        let add0 = [3i16; L1];
+        let add1 = [2i16; L1];
+        let sub0 = [5i16; L1];
+        let sub1 = [4i16; L1];
+        let mut dst = [0i16; L1];
+        scalar::add2_sub2(&mut dst, &src, &add0, &add1, &sub0, &sub1);
+        assert!(dst.iter().all(|&x| x == 16)); // 20 + 3 + 2 − 5 − 4
     }
 
     #[test]

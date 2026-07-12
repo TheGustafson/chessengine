@@ -626,7 +626,19 @@ king buckets (upgrade path), which is also when a refresh-cache (per-bucket
 cached accumulator + diff) earns its keep.
 
 Fused add+sub kernels (`acc += W0[a] - W0[s]`) handle the dominant
-1-add/1-sub case in one pass over the vector.
+1-add/1-sub case in one pass over the vector; the 1-add/2-sub (capture / ep /
+capture-promotion) and 2-add/2-sub (castling) variants have their own fused
+kernels in the same `Kernels` seam, so the step-2 AVX2 backend covers every
+update kind rather than falling back to a scalar element-wise path for a third
+of moves.
+
+> **Training-vs-inference canonicalization (review, 2026-07-12).**
+> bulletformat canonicalizes each training board to the side to move
+> (color-swap + vertical mirror when black is to move), which is exactly our
+> inference-time `relative_to(perspective)` feature construction (§3.4.1) — so
+> a net trained on that data reads our accumulators correctly. The §3.4.2
+> color-flip symmetry test is the standing guard that the two constructions
+> stay in agreement.
 
 #### 3.4.5 Net file format (own, versioned)
 
@@ -664,6 +676,13 @@ engine always builds and runs.
 Feature-major weight layout means an accumulator update touches one
 contiguous 512-byte row per feature — cache-optimal for the add/sub kernels.
 
+> **Step-3 packer note (review, 2026-07-12).** bullet emits the output bias
+> `l1b` as a **single i16** at the `QA·QB` scale, whereas CENN stores
+> `out_bias` as i32. The step-3 CENN packer must therefore **sign-extend**
+> that i16 into the i32 field (not zero-extend, and not mis-slice a wider
+> field). bullet caps `out_bias` to the i16 range at save time, so a
+> sign-extended i32 CENN always carries it faithfully.
+
 #### 3.4.6 SIMD strategy
 
 Stable `std::arch` AVX2 intrinsics with a scalar fallback; **no `std::simd`**
@@ -700,6 +719,21 @@ pub static KERNELS: LazyLock<Kernels> = LazyLock::new(|| {
   the add/sub kernels), accumulates the forward pass in i64, and is the
   reference the AVX2 path must match **bit-exactly** in tests.
 - AVX-512 / VNNI: later, same dispatch seam, only after AVX2 is measured.
+
+> **Step-2 AVX2 author notes (review, 2026-07-12).**
+> - Use **unaligned loads** (`_mm256_loadu_si256`). `Aligned64` covers the
+>   *stored* accumulator, but NOT the stack temporaries or the 2-aligned FT
+>   weight rows — an aligned load off those would fault. The step-1 `Kernels`
+>   seam now routes every update kind (1-add/1-sub, 1-add/2-sub capture/ep,
+>   2-add/2-sub castling), so the AVX2 backend must supply all of them.
+> - The i16-intermediate `_mm256_mullo_epi16(a, w)` trick is bit-exact vs the
+>   i64 scalar reference **only while `|clamp(a)·w1|` fits i16** (real `QB=64`
+>   nets satisfy this by the 3.4.3 weight clip; bound any synthetic fuzz-net
+>   weights the same way, or the SIMD and scalar paths will disagree).
+> - The forward pass sums first and divides by `QA` **once** at the end.
+>   Integer division does not distribute over the sum, so this sum-then-single
+>   `/QA` ordering is the exact spot the **step-3 vs-bullet cross-check** must
+>   confirm against a real trained net.
 
 #### 3.4.7 Training pipeline (external bullet, D15)
 

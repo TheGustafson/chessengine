@@ -163,7 +163,8 @@ fn cmd_perft_argv(args: &[String]) {
 fn cmd_nnue_eval_argv(args: &[String]) {
     let Some(net_path) = args.first() else {
         exit_usage(format_args!(
-            "usage: chessengine nnue-eval <net.cenn> [fen...]"
+            "usage: chessengine nnue-eval <net.cenn> [<fen>]  \
+             (argv tokens join into ONE FEN; omit the FEN to score one per line from stdin)"
         ));
     };
     let net = match nnue::load(net_path) {

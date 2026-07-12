@@ -21,7 +21,7 @@ use super::L1;
 use super::network::{Network, feature_index};
 use super::simd::{Aligned64, KERNELS};
 use crate::board::{Board, DirtyPiece};
-use crate::types::{Color, MAX_PLY, Value};
+use crate::types::{Color, MAX_PLY, Piece, Square, Value};
 
 /// Accumulator-stack length: one entry per search ply (root = 0) plus margin.
 /// Indexed by SEARCH ply, never by `board.states.len()` (which includes
@@ -104,11 +104,22 @@ impl<'a> NnueContext<'a> {
     /// folding the accumulators forward lazily as needed. `board` must be the
     /// position at `ply` (its side to move selects the stm half).
     pub fn evaluate(&mut self, board: &Board, ply: usize) -> Value {
+        // Precondition: the root was refreshed. `compute`'s walk-back is
+        // release-safe regardless (it saturates at ply 0), but a missing
+        // `refresh_root` yields a silently-wrong zero accumulator — catch it
+        // loudly in debug (design/11 §3.4.4).
+        debug_assert!(
+            self.stack[0].computed[0] && self.stack[0].computed[1],
+            "evaluate at ply {ply} before refresh_root — stack[0] uncomputed (design/11 §3.4.4)"
+        );
         let stm = board.side_to_move();
         self.compute(ply, stm);
         self.compute(ply, stm.flip());
         let us = &self.stack[ply].acc.0[stm as usize];
         let them = &self.stack[ply].acc.0[stm.flip() as usize];
+        // step 4: hoist `let k = &*KERNELS;` out of the per-node search loop
+        // (see the `attacks::tables()` hot-loop idiom) so this LazyLock deref
+        // isn't repeated at every evaluated node.
         (KERNELS.forward)(
             us,
             them,
@@ -128,18 +139,29 @@ impl<'a> NnueContext<'a> {
             return;
         }
         let mut k = ply;
-        while !self.stack[k].computed[p] {
-            debug_assert!(k > 0, "stack[0] must always be computed (design/11 §3.4.4)");
+        // Walk back to the nearest computed ancestor. The `k > 0` bound keeps
+        // this memory-safe in RELEASE even if `refresh_root` was never called:
+        // `k` saturates at 0 rather than underflowing `usize` to a wild index
+        // (the debug_assert below is compiled out in release). design/11 §3.4.4.
+        while k > 0 && !self.stack[k].computed[p] {
             k -= 1;
         }
+        debug_assert!(
+            self.stack[k].computed[p],
+            "compute reached ply {ply} with no computed ancestor — refresh_root not called? (design/11 §3.4.4)"
+        );
         let net = self.net;
         for i in (k + 1)..=ply {
-            let src = self.stack[i - 1].acc.0[p]; // copy: ends the shared borrow
-            let dp = self.stack[i].dirty;
-            let mut dst = [0i16; L1];
-            apply_dirty(net, &mut dst, &src, &dp, perspective);
-            self.stack[i].acc.0[p] = dst;
-            self.stack[i].computed[p] = true;
+            // Disjoint mutable borrow: src = stack[i-1], dst = stack[i]. The
+            // kernel writes straight into `dst`, so there is no per-ply ~1 KB
+            // accumulator memcpy (this is the hot path once search wires in at
+            // step 4). `split_at_mut(i)` proves lo[i-1] and hi[0] don't alias.
+            let (lo, hi) = self.stack.split_at_mut(i);
+            let dp = hi[0].dirty;
+            let src = &lo[i - 1].acc.0[p];
+            let dst = &mut hi[0].acc.0[p];
+            apply_dirty(net, dst, src, &dp, perspective);
+            hi[0].computed[p] = true;
         }
     }
 
@@ -180,8 +202,15 @@ fn refresh_into(net: &Network, board: &Board, perspective: Color, dst: &mut [i16
 }
 
 /// Fold one move's deltas into `dst` from base `src` for `perspective`
-/// (design/11 §3.4.4): `dst = src + Σ W0[add] − Σ W0[sub]`. The dominant
-/// 1-add/1-sub case (a quiet move) uses the fused kernel in one pass.
+/// (design/11 §3.4.4): `dst = src + Σ W0[add] − Σ W0[sub]`.
+///
+/// Routes by delta shape so the step-2 AVX2 backend covers **every** update
+/// kind through the [`KERNELS`] seam, not just the quiet case. Move kind →
+/// kernel:
+///   - quiet / quiet-promotion → `(1 add, 1 sub)` → `add_sub`;
+///   - capture / en passant / capture-promotion → `(1 add, 2 sub)` → `add_sub_sub`;
+///   - castling → `(2 add, 2 sub)` → `add2_sub2`;
+///   - null (`0, 0`) or any unforeseen shape → the element-wise fallback.
 fn apply_dirty(
     net: &Network,
     dst: &mut [i16; L1],
@@ -191,25 +220,34 @@ fn apply_dirty(
 ) {
     let adds = dp.adds();
     let subs = dp.subs();
-    if adds.len() == 1 && subs.len() == 1 {
-        let add_row = net.ft_row(feature_index(perspective, adds[0].0, adds[0].1));
-        let sub_row = net.ft_row(feature_index(perspective, subs[0].0, subs[0].1));
-        (KERNELS.add_sub)(dst, src, add_row, sub_row);
-        return;
-    }
-    // General path (captures, promotions, castling, null): start from `src`,
-    // then apply each add/sub column-wise.
-    *dst = *src;
-    for &(piece, sq) in adds {
-        let row = net.ft_row(feature_index(perspective, piece, sq));
-        for i in 0..L1 {
-            dst[i] = dst[i].wrapping_add(row[i]);
-        }
-    }
-    for &(piece, sq) in subs {
-        let row = net.ft_row(feature_index(perspective, piece, sq));
-        for i in 0..L1 {
-            dst[i] = dst[i].wrapping_sub(row[i]);
+    let row = |(piece, sq): (Piece, Square)| net.ft_row(feature_index(perspective, piece, sq));
+    match (adds.len(), subs.len()) {
+        (1, 1) => (KERNELS.add_sub)(dst, src, row(adds[0]), row(subs[0])),
+        (1, 2) => (KERNELS.add_sub_sub)(dst, src, row(adds[0]), row(subs[0]), row(subs[1])),
+        (2, 2) => (KERNELS.add2_sub2)(
+            dst,
+            src,
+            row(adds[0]),
+            row(adds[1]),
+            row(subs[0]),
+            row(subs[1]),
+        ),
+        // General fallback (null = (0, 0); any unforeseen shape): copy `src`,
+        // then apply each add/sub column-wise.
+        _ => {
+            *dst = *src;
+            for &(piece, sq) in adds {
+                let r = row((piece, sq));
+                for i in 0..L1 {
+                    dst[i] = dst[i].wrapping_add(r[i]);
+                }
+            }
+            for &(piece, sq) in subs {
+                let r = row((piece, sq));
+                for i in 0..L1 {
+                    dst[i] = dst[i].wrapping_sub(r[i]);
+                }
+            }
         }
     }
 }

@@ -9,10 +9,11 @@ FENs and prints, per FEN, the exact integer centipawn value — the same number
 the engine's `nnue-eval` subcommand prints.
 
 Accumulation is in Python `int` (arbitrary precision), so this is a true
-reference; the only place we deliberately model a fixed width is the
-feature-transformer accumulator, which the spec pins to i16 — we wrap to i16
-to mirror the engine exactly (a no-op for real / small-weight nets, but it
-keeps the two bit-identical even on a synthetic net that would overflow).
+reference; the two places we deliberately model a fixed width are the
+feature-transformer accumulator (the spec pins it to i16 — we wrap to i16)
+and the final output (the engine returns `v as i32`, `Value = i32` — we wrap
+to i32). Both are no-ops for real / small-weight nets, but they keep the two
+implementations bit-identical even on a synthetic net that would overflow.
 Integer division truncates toward zero, matching Rust's `/`.
 
 Run under uv (design/11 §11.1): `uv run python tools/nnue/nnue_ref.py`.
@@ -142,10 +143,12 @@ def parse_placement(fen: str):
     return pieces, stm
 
 
-def to_i16(x: int) -> int:
-    """Wrap an int into the i16 range (mirrors the engine's i16 accumulator)."""
-    x &= 0xFFFF
-    return x - 0x10000 if x >= 0x8000 else x
+def to_i32(x: int) -> int:
+    """Wrap an int into the i32 range (mirrors the engine's final `v as i32`
+    cast: `Value = i32`, so an i64 result truncates by wrapping). A no-op for
+    real nets, but keeps the two bit-identical on a synthetic overflow net."""
+    x &= 0xFFFFFFFF
+    return x - 0x100000000 if x >= 0x80000000 else x
 
 
 def feature_index(perspective: int, color: int, pt: int, sq: int) -> int:
@@ -194,7 +197,8 @@ def forward(net: Net, us, them) -> int:
         for i in range(L1):
             a = min(max(them[i], 0), QA)
             total += a * w[L1 + i]
-    return trunc_div((total + net.out_bias) * SCALE, QA * QB)
+    # Final i32 truncation mirrors the engine's `v as i32` (Value = i32).
+    return to_i32(trunc_div((total + net.out_bias) * SCALE, QA * QB))
 
 
 def evaluate(net: Net, fen: str) -> int:
