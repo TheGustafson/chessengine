@@ -865,8 +865,11 @@ fn cmd_setoption<W: Write>(
         Err(msg) => writeln!(out, "info string {msg}"),
         // Side effects, keyed off the canonical name. They run
         // synchronously so a following `isready` is the GUI's sync point
-        // (§3.5); the searches-must-be-finished precondition is trivially
-        // true until P5.
+        // (§3.5). The searches-must-be-finished precondition (needed by the
+        // `Hash`/`Clear Hash`/`Threads` arms, which `Arc::get_mut` the TT or
+        // rebuild the pool) is enforced by dispatch's
+        // `wait_for_search_finished()` before every `setoption` (design/13
+        // §3.4), so all `Job::Search` `Arc<TT>` clones are already dropped.
         Ok("Debug Log File") => {
             let path = engine.options.debug_log_file().to_string();
             out.set_log_path(&path)

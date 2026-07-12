@@ -28,6 +28,12 @@ use crate::types::{Depth, Value};
 pub const ASPIRATION_BASE_DELTA: Value = 5;
 /// Divisor of `mean_squared_score`: unstable scores widen the base delta.
 pub const ASPIRATION_MSS_DIVISOR: i64 = 10588;
+/// Period of the lazy-SMP aspiration jitter (design/13 §3.1): helper thread
+/// `t` adds `t % ASPIRATION_JITTER_PERIOD` to the base delta so helpers search
+/// slightly different windows and seed the shared TT divergently. Vacuous at
+/// `thread_idx == 0` (main/detached/bench), keeping Threads=1 bit-identical
+/// (D24).
+pub const ASPIRATION_JITTER_PERIOD: usize = 8;
 /// Numerator of the per-re-search widening `delta += delta * 44 / 128`.
 pub const ASPIRATION_WIDEN_NUM: Value = 44;
 /// Denominator of the per-re-search widening (~x1.34 per fail).

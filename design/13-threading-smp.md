@@ -613,13 +613,16 @@ pub struct Counters {
 }
 ```
 
-- **Increment (owner only)**: single-writer, so the cheap non-RMW form is
-  correct and preferred:
+- **Increment**: `nodes`/`tb_hits` are single-writer (owner only), so the
+  cheap non-RMW form is correct and preferred:
   `c.nodes.store(c.nodes.load(Relaxed) + 1, Relaxed)` — plain load+store, no
-  `lock xadd`; wrapped as `Counters::bump_nodes(&self)`. `nodes` increments
-  in `make_move`-per-node position entry (search doc), `tb_hits` on syzygy
-  probes (later), `best_move_changes` when a non-first root move becomes
-  best.
+  `lock xadd`. `nodes` increments in `make_move`-per-node position entry
+  (search doc), `tb_hits` on syzygy probes (later). `best_move_changes`
+  (bumped when a non-first root move becomes best) is the exception: the main
+  worker *also* writes it (the `swap(0)` harvest below), so its owner bump is a
+  genuine atomic RMW `fetch_add(1, Relaxed)` — a load+store there could lose or
+  double-count against a racing harvest. It fires at most once per root move
+  per iteration (never per node), so the locked op is negligible.
 - **Aggregate (any thread)**:
   `pool.nodes_searched() = Σ shells[i].counters.nodes.load(Relaxed)` — used
   by the main worker's `check_time` (node limit), by `info ... nodes/nps`
@@ -632,8 +635,10 @@ pub struct Counters {
   time-manager instability factor
   (`bestMoveInstability = 1.096 + 2.29 · totBestMoveChanges / n_threads`,
   constants owned by the timeman doc). This is the one place main *writes*
-  another thread's counter; `swap(0)` is atomic so no increments are lost,
-  and staleness is harmless (it feeds a heuristic).
+  another thread's counter; `swap(0)` and the owner's `fetch_add(1)` are both
+  atomic RMWs on one location, so no increment is lost or double-counted, and
+  staleness (a bump landing after the harvest) is harmless (it feeds a
+  heuristic and is picked up next iteration).
 
 ### 3.11 Stop flag and memory-ordering discipline
 

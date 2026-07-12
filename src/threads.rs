@@ -17,6 +17,7 @@
 //! no lock on the per-node search path** (§3.11–§3.13): the mutexes here are
 //! touched only at job boundaries (a handful of times per `go`).
 
+use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
@@ -37,10 +38,12 @@ pub const WORKER_STACK_SIZE: usize = 8 * 1024 * 1024;
 // ---------------------------------------------------------------------------
 
 /// Per-thread atomic counters, cache-line isolated so helpers never
-/// false-share (§3.10, §6). Each is written by its owning worker only (the
-/// cheap single-writer load+store bump, never `fetch_add`), and read by any
-/// thread; `best_move_changes` additionally uses atomic `swap(0)` on the main
-/// worker's harvest, the one cross-thread write.
+/// false-share (§3.10, §6). `nodes`/`tb_hits` are written by their owning
+/// worker only, so the cheap single-writer load+store bump is correct and
+/// preferred (no `lock xadd`); they are read by any thread. `best_move_changes`
+/// is the one counter the main worker also *writes* (an atomic `swap(0)`
+/// harvest), so its owner bump uses `fetch_add` — a genuine atomic RMW — and
+/// the harvest then loses no increment even when the two race (§3.10).
 #[repr(align(64))]
 pub struct Counters {
     pub nodes: AtomicU64,
@@ -65,15 +68,18 @@ impl Counters {
         self.best_move_changes.store(0, Ordering::Relaxed);
     }
 
-    /// Owner-only single-writer bump of `best_move_changes` (§3.10): a
-    /// non-first root move became best this iteration. Plain relaxed
-    /// load+store; the main worker harvests every thread's count with an
-    /// atomic `swap(0)` (the one cross-thread write), so a bump racing the
-    /// harvest is at worst counted one iteration late — harmless, it feeds
-    /// only the TM instability heuristic.
+    /// Bump `best_move_changes` (§3.10): a non-first root move became best this
+    /// iteration. Unlike `nodes`/`tb_hits`, the main worker *also* writes this
+    /// counter — it harvests every thread's count with an atomic `swap(0)` — so
+    /// the owner bump must be a real atomic RMW (`fetch_add`). A plain
+    /// load+store could interleave with the harvest and lose or double-count
+    /// (owner loads `v`; main `swap(0)`s away `v`; owner stores `v+1`,
+    /// re-seeding the already-harvested `v`); `fetch_add` vs `swap` are both
+    /// RMWs on one location, so every increment is accounted exactly once. The
+    /// extra locked op is negligible: this fires at most once per root move per
+    /// iteration, never on the per-node path.
     pub fn bump_best_move_changes(&self) {
-        let v = self.best_move_changes.load(Ordering::Relaxed);
-        self.best_move_changes.store(v + 1, Ordering::Relaxed);
+        self.best_move_changes.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -251,6 +257,17 @@ impl PoolShared {
 /// then the worker's first iteration clobbered it back to `false` and ran the
 /// job with `busy == false`, so `wait_idle` returned before completion). The
 /// fix keeps `busy == true` for the whole submit→complete window.
+///
+/// A panicking job must never wedge the pool: the whole `busy` clear + notify
+/// must run on unwind too, or a dead thread would leave `busy == true` forever
+/// and every future `wait_idle` (and thus `shutdown`/`Drop`, and every next
+/// `go`) would block for good — the pre-P11 code recovered from this explicitly
+/// (§3.3). The job body therefore runs inside `catch_unwind`: the default panic
+/// hook still prints the message + backtrace, but the unwind stops here, the
+/// thread releases `busy`, wakes waiters, and re-parks. A job that panicked may
+/// leave its `Worker` in an arbitrary (but always *safe* — this is all safe
+/// Rust) state; the next `Setup`/`Clear` reinstalls the fields a search reads,
+/// so the thread stays serviceable.
 fn thread_main(idx: usize, pool: Arc<PoolShared>) {
     let counters = Arc::clone(&pool.shells[idx].counters);
     let mut worker = Worker::new_in_pool(idx, counters, Arc::clone(&pool));
@@ -265,14 +282,19 @@ fn thread_main(idx: usize, pool: Arc<PoolShared>) {
             // true through execution.
             st.job.take().expect("woke with a job")
         };
-        match job {
-            Job::Exit => return,
+        if matches!(job, Job::Exit) {
+            return;
+        }
+        // Run the job; a panic is caught so the idle handoff below still runs.
+        let _ = std::panic::catch_unwind(AssertUnwindSafe(|| match job {
             Job::Setup(s) => worker.setup(*s),
             Job::Search { tt } => worker.start_searching(&tt),
             Job::Clear => worker.clear(),
             Job::Custom(f) => f(&mut worker),
-        }
-        // Job complete: announce idle and wake any `wait_idle`/`submit` waiter.
+            Job::Exit => unreachable!("Exit handled before dispatch"),
+        }));
+        // Job complete (or panicked): announce idle and wake any
+        // `wait_idle`/`submit` waiter.
         let mut st = shell.state.lock().unwrap_or_else(|e| e.into_inner());
         st.busy = false;
         shell.cv.notify_all();
@@ -592,6 +614,133 @@ mod tests {
                 shell.wait_idle();
             }
             assert_eq!(pool.nodes_searched(), 4000);
+        });
+    }
+
+    /// §5 acceptance: the `best_move_changes` harvest loses no count under a
+    /// hammering writer. The owner bump is `fetch_add` (an atomic RMW) and the
+    /// main worker harvests with `swap(0)`, so every increment is accounted
+    /// exactly once — accumulated harvest + residual must equal N. A plain
+    /// load+store bump would fail this (it can lose or double-count against the
+    /// concurrent `swap`).
+    #[test]
+    fn best_move_changes_harvest_loses_no_counts() {
+        with_timeout(Duration::from_secs(10), || {
+            const N: u64 = 200_000;
+            let counters = Arc::new(Counters::new());
+            let writer = Arc::clone(&counters);
+            let h = std::thread::spawn(move || {
+                for _ in 0..N {
+                    writer.bump_best_move_changes();
+                }
+            });
+            let mut harvested = 0u64;
+            while !h.is_finished() {
+                harvested += counters.best_move_changes.swap(0, Ordering::Relaxed);
+            }
+            h.join().unwrap();
+            // Final sweep for whatever the writer stored after the last swap.
+            harvested += counters.best_move_changes.swap(0, Ordering::Relaxed);
+            assert_eq!(harvested, N, "every bump must survive the racing harvest");
+        });
+    }
+
+    /// A panicking job must not wedge the pool (§3.3): after a `Custom` job
+    /// panics, its thread must release `busy`, re-park, and still service the
+    /// next job — `wait_idle` must return (not hang) and later work must run.
+    /// The pre-fix code let the unwind kill the thread with `busy == true`, so
+    /// every subsequent `wait_idle`/`shutdown`/`go` blocked forever.
+    #[test]
+    fn a_panicking_job_does_not_wedge_the_pool() {
+        with_timeout(Duration::from_secs(10), || {
+            // The panicking job runs the default hook (stderr backtrace); mute
+            // it for this test so the output stays clean, then restore.
+            let prev = std::panic::take_hook();
+            std::panic::set_hook(Box::new(|_| {}));
+
+            let pool = ThreadPool::new(2);
+            // Panic on the MAIN thread's shell — the worst case, since main
+            // idle ⇒ all idle drives shutdown/next-go waits.
+            pool.shared.shells[0].submit(Job::Custom(Box::new(|_w| {
+                panic!("boom");
+            })));
+            // Must return despite the panic (the fix clears `busy` on unwind).
+            pool.shared.shells[0].wait_idle();
+
+            std::panic::set_hook(prev);
+
+            // The thread survived and re-parked: a normal job still runs.
+            let ran = Arc::new(AtomicUsize::new(0));
+            let r = Arc::clone(&ran);
+            pool.shared.shells[0].submit(Job::Custom(Box::new(move |_w| {
+                r.store(7, Ordering::SeqCst);
+            })));
+            pool.shared.shells[0].wait_idle();
+            assert_eq!(ran.load(Ordering::SeqCst), 7, "pool must survive a panic");
+            // Drop must also not hang (Exit + join on a live thread).
+        });
+    }
+
+    /// A `UciSink` that drops everything — a `Setup` needs one, but this test
+    /// only inspects worker board state, never output.
+    struct NullSink;
+    impl UciSink for NullSink {
+        fn emit_info(&self, _: &crate::search::SearchInfo, _: i64) {}
+        fn emit_raw(&self, _: &str) {}
+        fn emit_bestmove(
+            &self,
+            _: Option<(crate::search::SearchInfo, i64)>,
+            _: crate::moves::Move,
+            _: Option<crate::moves::Move>,
+        ) {
+        }
+        fn emit_bestmove_none(&self) {}
+    }
+
+    /// §5 setup-propagation: a `Job::Setup` clones the board WITH its game
+    /// history (D8, §3.2), so a pooled worker's `root_board` sees the same
+    /// repetition state the session board does — the per-thread repetition
+    /// detection is self-contained. Verified at the worker level via
+    /// `run_on_main`, which the session-level test at `uci.rs` cannot reach.
+    #[test]
+    fn setup_propagates_repetition_history_to_the_worker() {
+        use crate::moves::Move;
+        use crate::types::Square;
+        with_timeout(Duration::from_secs(10), || {
+            // Four reversible knight moves each side: the start position
+            // repeats twofold (same shuffle as the uci.rs session test).
+            let shuffle = [
+                (Square::G1, Square::F3),
+                (Square::G8, Square::F6),
+                (Square::F3, Square::G1),
+                (Square::F6, Square::G8),
+                (Square::G1, Square::F3),
+                (Square::G8, Square::F6),
+                (Square::F3, Square::G1),
+                (Square::F6, Square::G8),
+            ];
+            let mut board = Board::startpos();
+            for (from, to) in shuffle {
+                let m = Move::normal(from, to);
+                board.make_move(m, board.gives_check(m));
+            }
+            assert!(board.has_repeated(), "session board must see the twofold");
+
+            let pool = ThreadPool::new(2);
+            pool.shared.shells[0].submit(Job::Setup(Box::new(SetupJob {
+                board,
+                limits: Limits::new(),
+                options: Options::new(),
+                output: Arc::new(NullSink),
+            })));
+            pool.shared.shells[0].wait_idle();
+            // The worker's own cloned board must also know the twofold.
+            pool.run_on_main(|w| {
+                assert!(
+                    w.board.has_repeated(),
+                    "the worker's cloned board lost its repetition history"
+                );
+            });
         });
     }
 }

@@ -551,6 +551,10 @@ pub struct SearchReport {
     pub uci_score: Value,
     pub score_lowerbound: bool,
     pub score_upperbound: bool,
+    /// `root_moves[0].average_score` — the running EMA the winner carries into
+    /// the next move's TM persist (design/13 §3.7 G; SF's
+    /// `bestThread->rootMoves[0].averageScore`).
+    pub average_score: Value,
     /// Deepest fully-completed iteration for this thread (a vote weight).
     pub completed_depth: Depth,
     pub sel_depth: i32,
@@ -617,6 +621,18 @@ pub fn best_thread(reports: &[SearchReport]) -> usize {
         }
     }
     best
+}
+
+/// Elect the winning worker index (design/13 §3.8 step 1). Voting is disabled —
+/// thread 0 wins directly — for a `single_thread` pool or a `fixed_depth` `go`,
+/// the two cases that must stay bit-reproducible (D24, acceptance criterion 3);
+/// otherwise the best-thread vote decides.
+pub fn elect_winner(reports: &[SearchReport], single_thread: bool, fixed_depth: bool) -> usize {
+    if single_thread || fixed_depth {
+        0
+    } else {
+        best_thread(reports)
+    }
 }
 
 /// The 1-ply-PV ponder fallback (design/12 §3.2 step 4): make `best` on a
@@ -1032,8 +1048,8 @@ impl Worker {
                 last_sent = info.pv.first().copied();
             }
         });
-        // Restore the per-game persist for the next `go`.
-        self.manager.as_mut().expect("main").persist = persist;
+        // The per-game persist is restored AFTER voting (below), so its
+        // winner-derived seeds can come from the voted thread, not just main.
 
         // §3.11 post-search `nodestime` accounting (doc 12 step 11): book the
         // nodes consumed minus the increment credit. Gate on `npmsec` (set by
@@ -1078,11 +1094,22 @@ impl Worker {
 
         // F. Vote (§3.8) — disabled under a single thread or fixed-depth
         // `go` (bench reproducibility, D24), where thread 0 wins directly.
-        let winner = if n == 1 || self.limits.depth.is_some() {
-            0
-        } else {
-            best_thread(&reports)
-        };
+        let winner = elect_winner(&reports, n == 1, self.limits.depth.is_some());
+
+        // Seed the next `go`'s TM persist from the VOTED winner (design/13
+        // §3.7 G; SF search.cpp: `bestPreviousScore/AverageScore =
+        // bestThread->rootMoves[0]...`). `iterative_deepening` already filled
+        // `persist` from OUR (main's) last iteration; overwrite only the two
+        // winner-derived seeds when a helper won. Under fixed-depth `go` the
+        // winner is forced to 0, so this never fires there — matching SF's
+        // "only when `limits.depth` unset" and keeping Threads=1 bit-identical
+        // (D24). The seeds feed only next move's aspiration/TM inputs, never
+        // the played move.
+        if winner != 0 {
+            persist.best_previous_score = reports[winner].score;
+            persist.best_previous_average_score = reports[winner].average_score;
+        }
+        self.manager.as_mut().expect("main").persist = persist;
 
         // G. Emit the exactly-once final block.
         self.emit_bestmove(tt, &pool, &reports[winner], winner, last_sent, start_time);
@@ -1111,6 +1138,7 @@ impl Worker {
                 uci_score: rm.uci_score,
                 score_lowerbound: rm.score_lowerbound,
                 score_upperbound: rm.score_upperbound,
+                average_score: rm.average_score,
                 completed_depth: self.completed_depth,
                 sel_depth: rm.sel_depth,
             },
@@ -1120,6 +1148,7 @@ impl Worker {
                 uci_score: -VALUE_INFINITE,
                 score_lowerbound: false,
                 score_upperbound: false,
+                average_score: -VALUE_INFINITE,
                 completed_depth: 0,
                 sel_depth: 0,
             },
@@ -1173,7 +1202,12 @@ impl Worker {
         let tail = need_tail.then(|| {
             (
                 SearchInfo {
-                    depth: self.root_depth.max(1),
+                    // The winner's own deepest completed iteration — so depth,
+                    // sel_depth, score and PV all describe the SAME thread
+                    // (design/13 §3.7 G; SF prints the winner's completedDepth).
+                    // At Threads=1 the winner is thread 0, so this equals main's
+                    // completed depth (info-only, bench-neutral, D24).
+                    depth: winner.completed_depth.max(1),
                     sel_depth: winner.sel_depth,
                     multipv: 1,
                     score: winner.uci_score,
@@ -1261,7 +1295,16 @@ impl Worker {
         // depth (bench-neutral, D24). The `iter_value` ring is seeded per
         // `go` from persist (never carried over), and the persist-derived
         // factor inputs are latched into working copies here.
-        self.pool.increase_depth.store(true, Ordering::Relaxed);
+        //
+        // Only the MAIN worker writes `increase_depth` (design/13 §3.7): the
+        // pool already stores `true` in `start_thinking` before any search
+        // begins, so a helper re-storing it here could clobber a soft-stop
+        // verdict main published earlier this `go`. Detached/bench workers are
+        // `is_main()`, so their needed per-`go` reset is preserved on the
+        // direct path (bench-neutral, D24).
+        if self.is_main() {
+            self.pool.increase_depth.store(true, Ordering::Relaxed);
+        }
         self.iter_idx = 0;
         let iter_seed = if persist.best_previous_score != VALUE_INFINITE {
             persist.best_previous_score
@@ -1303,8 +1346,15 @@ impl Worker {
 
         while self.root_depth + 1 < MAX_PLY as Depth
             && !stop.load(Ordering::Relaxed)
-            // `go depth d` (design/12 §3.6): stop iterating once reached.
-            && self.limits.depth.is_none_or(|d| self.root_depth < d)
+            // `go depth d` (design/12 §3.6): stop iterating once reached — but
+            // only on the MAIN worker (SF search.cpp gates the depth cap on
+            // `mainThread`; design/13 §3.7 has helpers ignore `limits.depth`).
+            // Helpers keep deepening past `d` to enrich the shared TT and are
+            // halted by main's step-E `stop`; voting is disabled under
+            // `go depth` so thread 0's move is chosen regardless. Vacuous at
+            // Threads=1 (`is_main()` always true → the cap always applies,
+            // bench-neutral, D24).
+            && (!self.is_main() || self.limits.depth.is_none_or(|d| self.root_depth < d))
         {
             self.root_depth += 1;
             // §3.9 search-again: a soft budget more than half spent leaves
@@ -1554,7 +1604,7 @@ impl Worker {
         // and seed the shared TT differently. Vacuous at `thread_idx == 0`
         // (main / detached / bench), keeping Threads=1 bit-identical (D24).
         let mut delta = (params::ASPIRATION_BASE_DELTA as i64
-            + (self.thread_idx % 8) as i64
+            + (self.thread_idx % params::ASPIRATION_JITTER_PERIOD) as i64
             + rm.mean_squared_score.abs() / params::ASPIRATION_MSS_DIVISOR)
             as Value;
         let avg = rm.average_score;
@@ -3809,6 +3859,7 @@ mod tests {
             uci_score: score,
             score_lowerbound: bound,
             score_upperbound: false,
+            average_score: score,
             completed_depth: 1,
             sel_depth: 1,
         }
@@ -3918,6 +3969,23 @@ mod tests {
     fn voting_single_report_is_thread_zero() {
         let a = mv(Square::E2, Square::E4);
         assert_eq!(best_thread(&[report(a, 5, 1, false)]), 0);
+    }
+
+    #[test]
+    fn voting_disabled_under_fixed_depth_or_single_thread() {
+        // A slate where the vote genuinely prefers a helper (thread 1): B's
+        // lone higher score outvotes A here.
+        let a = mv(Square::E2, Square::E4);
+        let b = mv(Square::D2, Square::D4);
+        let reports = [report(a, 10, 2, false), report(b, 30, 2, false)];
+        assert_ne!(best_thread(&reports), 0, "vote should pick the helper");
+        // Fixed-depth `go` (D24 reproducibility, acceptance criterion 3):
+        // thread 0 regardless of the vote.
+        assert_eq!(elect_winner(&reports, false, true), 0);
+        // Single-thread pool: thread 0 regardless.
+        assert_eq!(elect_winner(&reports, true, false), 0);
+        // Multi-thread, no depth limit: the vote decides (the helper wins).
+        assert_eq!(elect_winner(&reports, false, false), best_thread(&reports));
     }
 
     /// The smallest real table (1 MiB): every test `go` runs with the TT
