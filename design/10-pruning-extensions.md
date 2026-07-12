@@ -821,9 +821,11 @@ Ground rules for every wave (D24, D25):
 8. Capture futility + capture SEE pruning (needs captureHistory from doc 09).
    SPRT `[0, 5]`.
 9. IIR (N12) + followPV plumbing (`last_iteration_pv`). SPRT `[0, 3]`.
-   *Status (2026-07-12): not yet landed — Wave B is in progress. N12 is
-   genuinely absent between N11b and ProbCut (not a silent deviation); it
-   lands with the rest of Wave B.*
+   *Status (2026-07-12): REVERTED. Wave B's item 9 (IIR) regressed ~−15 Elo
+   over ~1036 proxy games and was backed out to branch
+   `wip/p9-item9-iir-followpv`; N12 is genuinely absent between N11b and
+   ProbCut (an intentional revert, not a silent deviation). The `follow_pv`
+   field exists but is inert/forward-compatible. Revisit post-NNUE.*
 
 **Wave C — history-coupled pruning/reduction (needs continuation history
 from doc 09; expected +20..60 combined).**
@@ -1128,6 +1130,16 @@ matches the code:
   superseded for Waves C–G by **D32**: the whole batch is implemented and
   unit-tested first, then gated by a single batched sanity SPRT plus the
   fixed-node proxy SPRT (doc 14 §9.4), rather than one SPRT per heuristic.
+  **RESULT (2026-07-12, commit `80dc33d`):** the C–G batch PASSED. First a D33
+  multi-persona review loop (4 rounds + a clean confirming round; it caught a
+  silent excluded-move TT-value-substitution bug in singular verification),
+  then the D32 tripwire — fixed-node proxy SPRT vs the pre-C baseline
+  (`0f664e2`): **400 games, +208.68 ± 28.64 Elo (nElo +313.57), LOS 100 %,
+  W-L-D 242-27-131 = 76.88 %, LLR 2.95 → H1 accepted.** Verdict KEEP: decisively
+  positive at equal nodes, no bug. The deferred §3.7/§3.9 reductions inflate the
+  depth-6 bench (350190 → 548978), a known SPSA item for P13 — real-TC will read
+  lower than the fixed-node proxy until they are retuned (D32; see
+  `docs/strength-log.md`). Waves A/B used the older per-heuristic proxy rhythm.
 
 ## 9. Open questions
 
