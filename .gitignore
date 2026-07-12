@@ -8,6 +8,11 @@
 # markdown notes alongside it in reckless_reference/ ARE tracked.
 /reckless_reference/Reckless/
 
+# Reference clone of Integral (NO explicit license => all rights reserved;
+# study for IDEAS ONLY, never copy code). Distilled notes in
+# integral_reference/ ARE tracked; the clone is not.
+/integral_reference/integral/
+
 # Python bytecode from tools/
 __pycache__/
 
