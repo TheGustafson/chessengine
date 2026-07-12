@@ -1220,20 +1220,29 @@ impl Worker {
             // shallow depth (item 20), the rule-50 guard (§3.12), and — deep —
             // a child-TT re-verification. Live since plan step 7's zero-window
             // scouts create NonPV nodes.
-            let cutoff_ok = !NT::PV
+            //
+            // The rule-50 graph-history guard (§3.12) wraps only the cutoff
+            // RETURN, not the N6b move-ordering updates: SF (search.cpp) runs
+            // the quiet-ttMove bonus / parent malus whenever the base cutoff
+            // shape holds and skips only the `return` in the near-50-move
+            // regime. `tt_cut_base` is the shared skeleton both the cutoff and
+            // the item-20 wrong-direction penalize build on, so the two
+            // predicates cannot silently drift.
+            let tt_cut_base = !NT::PV
                 && self.stack[cur].excluded_move == Move::NULL
                 && is_valid(tt_value)
-                && tt_data.depth > depth - Depth::from(tt_value <= beta)
+                && tt_data.depth > depth - Depth::from(tt_value <= beta);
+            let base_cutoff = tt_cut_base
                 && (if tt_value >= beta {
                     tt_data.bound.includes_lower()
                 } else {
                     tt_data.bound.includes_upper()
                 })
-                && (cut_node == (tt_value >= beta) || depth > params::TTCUT_AGREE_DEPTH)
-                && (self.board.rule50_count() as i32) < params::TT_CUTOFF_RULE50_LIMIT;
-            if cutoff_ok {
+                && (cut_node == (tt_value >= beta) || depth > params::TTCUT_AGREE_DEPTH);
+            if base_cutoff {
                 // N6b extras (design/10 §3.4, Wave-C item 12): a beta-side
-                // cutoff means the stored ttMove "worked" here.
+                // cutoff means the stored ttMove "worked" here. These run
+                // regardless of rule50 — SF gates only the cutoff return.
                 let ttm = tt_data.mv;
                 if ttm != Move::NULL && tt_value >= beta {
                     let us = self.board.side_to_move();
@@ -1269,47 +1278,50 @@ impl Worker {
                         );
                     }
                 }
-                // N6b child-TT verification (item 20): a deep cutoff on a
-                // non-decisive value re-probes the ttMove's child entry — only
-                // an invalid child value or one AGREEING with the cutoff
-                // direction confirms it. A contradicting child falls through to
-                // a real search.
-                if depth >= params::TTCUT_VERIFY_DEPTH
-                    && !is_decisive(tt_value)
-                    && tt_data.mv != Move::NULL
-                    && self.board.pseudo_legal(tt_data.mv)
-                    && self.board.legal(tt_data.mv)
-                {
-                    let m = tt_data.mv;
-                    // Board-only make/unmake (SF `pos.do_move`, search.cpp):
-                    // this verification probe is NOT a search node, so it must
-                    // NOT bump `self.nodes` (which would inflate the bench
-                    // fingerprint, the `go nodes` budget, and node-based TM)
-                    // nor stamp the search stack. The prefetch hook still rides
-                    // along so the immediate child probe below is warm.
-                    let gc = self.board.gives_check(m);
-                    self.board.make_move_with(m, gc, &mut TtPrefetch { tt });
-                    let child = tt.probe(self.board.key());
-                    let child_value = if child.hit {
-                        value_from_tt(
-                            child.data.value,
-                            ply as i32 + 1,
-                            self.board.rule50_count() as i32,
-                        )
+                // The cutoff RETURN itself is gated by the rule-50 guard
+                // (§3.12); at rule50 >= limit the node falls through to a real
+                // search even though the bonus/malus above already fired.
+                if (self.board.rule50_count() as i32) < params::TT_CUTOFF_RULE50_LIMIT {
+                    // N6b child-TT verification (item 20): a deep cutoff on a
+                    // non-decisive value re-probes the ttMove's child entry —
+                    // only an invalid child value or one AGREEING with the
+                    // cutoff direction confirms it. A contradicting child falls
+                    // through to a real search.
+                    if depth >= params::TTCUT_VERIFY_DEPTH
+                        && !is_decisive(tt_value)
+                        && tt_data.mv != Move::NULL
+                        && self.board.pseudo_legal(tt_data.mv)
+                        && self.board.legal(tt_data.mv)
+                    {
+                        let m = tt_data.mv;
+                        // Board-only make/unmake (SF `pos.do_move`,
+                        // search.cpp): this verification probe is NOT a search
+                        // node, so it must NOT bump `self.nodes` (which would
+                        // inflate the bench fingerprint, the `go nodes` budget,
+                        // and node-based TM) nor stamp the search stack. The
+                        // prefetch hook still rides along so the immediate child
+                        // probe below is warm.
+                        let gc = self.board.gives_check(m);
+                        self.board.make_move_with(m, gc, &mut TtPrefetch { tt });
+                        let child = tt.probe(self.board.key());
+                        let child_value = if child.hit {
+                            value_from_tt(
+                                child.data.value,
+                                ply as i32 + 1,
+                                self.board.rule50_count() as i32,
+                            )
+                        } else {
+                            VALUE_NONE
+                        };
+                        self.board.unmake_move(m);
+                        if !is_valid(child_value) || (tt_value >= beta) == (-child_value >= beta) {
+                            return tt_value;
+                        }
                     } else {
-                        VALUE_NONE
-                    };
-                    self.board.unmake_move(m);
-                    if !is_valid(child_value) || (tt_value >= beta) == (-child_value >= beta) {
                         return tt_value;
                     }
-                } else {
-                    return tt_value;
                 }
-            } else if !NT::PV
-                && self.stack[cur].excluded_move == Move::NULL
-                && is_valid(tt_value)
-                && tt_data.depth > depth - Depth::from(tt_value <= beta)
+            } else if tt_cut_base
                 && tt_data.bound != Bound::Exact
                 && (if tt_value >= beta {
                     tt_data.bound.includes_upper()
@@ -1723,9 +1735,17 @@ impl Worker {
                 // shallow-depth margin below takes. The BASE reduction `r`
                 // (pre-§3.7 finalization) is the right one here — SF reads
                 // `reduction()` output before its post-make adjustments — and
-                // it can go negative at shallow nodes. The continuation-
-                // history nudge SF folds into `lmr_depth` first is Wave-C
-                // item 11; item 7 uses the plain `new_depth - r/1024`.
+                // it can go negative at shallow nodes.
+                //
+                // The "history buys effective depth" half of Wave-C item 11
+                // (SF `lmr_depth += history / LMR_DIVISOR[...]`, where a
+                // good-history quiet earns extra effective depth and is spared
+                // from parent-futility / quiet-SEE pruning) is DEFERRED — see
+                // design/10 §4 item 11. It is a new tree-relaxing heuristic that
+                // must clear its own fixed-node proxy SPRT (doc 14 §9.4), so it
+                // is not implemented here: item 11 ships with only its
+                // continuation-history pruning half. This site uses the plain
+                // `new_depth - r/1024`.
                 let mut lmr_depth = new_depth - r / params::RED_UNIT;
 
                 // Captures and checking moves (Wave-B item 8, design/10 §3.5)
@@ -2292,7 +2312,13 @@ impl Worker {
             let store_depth = if move_count != 0 {
                 depth
             } else {
-                depth + params::TT_NO_MOVES_DEPTH_BONUS
+                // Clamp like SF (search.cpp): the terminal depth bonus must not
+                // push the stored depth past MAX_PLY-1, where `TtEntry::save`'s
+                // `depth - DEPTH_NONE` byte would overflow the u8 (debug assert)
+                // and wrap to the empty-entry marker in release. The N0 clamp
+                // (line ~1037) plus the hindsight +1 leaves only one unit of
+                // slack; this makes the ceiling explicit rather than incidental.
+                (depth + params::TT_NO_MOVES_DEPTH_BONUS).min(MAX_PLY as Depth - 1)
             };
             probe.writer.write(
                 key,
@@ -6251,6 +6277,61 @@ mod tests {
         let b = go_depth(START_FEN, 7);
         assert_eq!(a.nodes, b.nodes, "ProbCut preserves node determinism");
         assert_eq!(a.best_move(), b.best_move());
+    }
+
+    #[test]
+    fn n14_in_check_probcut_fails_high_before_the_move_loop() {
+        // N14 (design/10 §3.4, Wave-E item 16) is an unconditional early return
+        // that runs even in check: a valid, non-decisive, stored LOWER bound at
+        // depth >= depth - PROBCUT_DEPTH_SUB already >= beta + PROBCUT_CHECK_BETA
+        // lets the node fail high at `beta + PROBCUT_CHECK_BETA` WITHOUT entering
+        // the move loop. This white-box test seeds exactly that TT entry on an
+        // in-check node and pins the early return; a mirror with a contradicting
+        // (UPPER) bound asserts the gate stays dormant. The smoke test
+        // (`item16_...`) uses non-check positions and never deterministically
+        // populates this path.
+        //
+        // Black king in check from the white rook down the open h-file.
+        let fen = "7k/8/8/8/8/8/6K1/7R b - - 0 1";
+        let beta: Value = 100;
+        let alpha: Value = beta - 1; // NonPv zero window
+        let depth: Depth = 6;
+        let check_probcut_beta = beta + params::PROBCUT_CHECK_BETA;
+
+        // Seed the node's own TT entry, then run one direct `search`. The
+        // stored depth is one ply short of the N6b cutoff's strict `>` slack
+        // (so the N6b cutoff cannot pre-empt N14) but still clears N14's
+        // `>= depth - PROBCUT_DEPTH_SUB` (= depth - 4).
+        let run = |bound: Bound, value: Value| -> Value {
+            let mut w = Worker::new(board(fen));
+            let tt = test_tt();
+            assert!(!w.board.checkers().is_empty(), "fixture must be in check");
+            init_stack(&mut w.stack);
+            let key = w.board.key();
+            tt.probe(key).writer.write(
+                key,
+                value_to_tt(value, 1),
+                false,
+                bound,
+                depth - 1,
+                Move::NULL,
+                VALUE_NONE,
+                tt.generation(),
+            );
+            let stop = AtomicBool::new(false);
+            w.search::<NonPv>(&tt, &stop, alpha, beta, depth, true, 1)
+        };
+
+        assert_eq!(
+            run(Bound::Lower, check_probcut_beta + 50),
+            check_probcut_beta,
+            "a deep LOWER bound above the raised beta must trip N14's fail-high"
+        );
+        assert_ne!(
+            run(Bound::Upper, check_probcut_beta + 50),
+            check_probcut_beta,
+            "an UPPER bound fails includes_lower(): N14 must stay dormant"
+        );
     }
 
     #[test]

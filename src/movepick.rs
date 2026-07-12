@@ -512,6 +512,11 @@ impl MovePicker {
         let c6 = hist.cont_ref(self.cont_hist[5]);
         let ply = self.ply;
         let low_ply_plane = (ply < LOW_PLY_SIZE).then(|| &hist.low_ply[ply]);
+        // Hoist the slider-table `LazyLock` deref out of the per-quiet loop
+        // (CLAUDE.md hot-loop rule): the offense term calls `attacks()` for
+        // every non-pawn quiet, and the free function re-derefs `tables()` on
+        // each call.
+        let att_tables = crate::attacks::tables();
 
         let base = self.end_captures;
         for (i, &m) in list.iter().enumerate() {
@@ -552,7 +557,7 @@ impl MovePicker {
                 let att = if pt == PieceType::Pawn {
                     crate::attacks::pawn_attacks(us, m.to())
                 } else {
-                    crate::attacks::attacks(pt, m.to(), occ)
+                    att_tables.attacks(pt, m.to(), occ)
                 };
                 if !(att & targets).is_empty() {
                     value += pt.value() * QUIET_OFFENSE_FACTOR;

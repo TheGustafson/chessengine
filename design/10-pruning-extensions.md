@@ -504,6 +504,16 @@ mostly cancelled at §3.7's ttPv subtraction).
     with the 16-entry tuned table
     `LMR_DIVISOR = [3307, 2930, 2874, 2818, 3215, 3225, 3224, 2782,
     2858, 2919, 3088, 3275, 3180, 2868, 3006, 3599]`.
+    **DEFERRED (P9 Waves C–G, 2026-07-12):** this history-buys-effective-depth
+    half of item 11 is NOT implemented — item 11 ships with only its
+    continuation-history-pruning half above. It is a distinct
+    tree-*relaxing* heuristic (a good-history quiet earns effective depth and
+    is thereby spared from parent-futility / quiet-SEE pruning), so it must
+    clear its own fixed-node proxy SPRT (doc 14 §9.4) rather than ride the
+    batched Waves-C–G sanity SPRT. There is no `LMR_DIVISOR` const in
+    `params.rs` yet; add it (and the `+ 2*main_history` term at the pruning
+    site) when this lands. Revisit alongside the deferred §3.7 reduction terms
+    (item 15) so the reduction/effective-depth balance is tuned as a unit.
   - **Parent futility**:
     `futility_value = ss.static_eval + 40 + 138*(best_move == Move::NULL)
     + 117*lmr_depth + 90*(ss.static_eval > alpha)`;
@@ -821,6 +831,13 @@ from doc 09; expected +20..60 combined).**
     `+1415` conthist bonus. SPRT `[0, 5]`.
 11. Continuation-history pruning (`history < -4313·depth`) +
     history-buys-lmrDepth via `LMR_DIVISOR`. SPRT `[0, 5]`.
+    **Partially deferred (P9 Waves C–G, 2026-07-12):** the continuation-history
+    pruning landed; the **history-buys-lmrDepth** half (`+2*main_history` then
+    `lmr_depth += history / LMR_DIVISOR[...]`) is **DEFERRED** — a distinct
+    tree-relaxing heuristic with no `LMR_DIVISOR` const yet, gated on its own
+    fixed-node proxy SPRT (doc 14 §9.4). See §3.5's quiet bullet for the full
+    note. The `lmr_depth` site in `search/mod.rs` uses the plain
+    `new_depth - r/1024` and flags the deferral in-line.
 12. Eval-diff parent nudge (N8) + TT-cutoff quiet bonus/parent penalty (N6b
     extras). SPRT `[0, 3]`.
 
