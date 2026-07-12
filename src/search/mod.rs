@@ -215,6 +215,34 @@ fn rfp_margin(
         + correction_value.abs() / params::RFP_CORR_DIV
 }
 
+/// The N10 RFP prune margin with the threat-coupled relaxation folded in
+/// (design/10 §3.4, Wave-G item 23, D30): the base [`rfp_margin`] minus
+/// `RFP_THREAT_MARGIN` when NONE of our pieces is currently threatened — a
+/// position with nothing hanging is safe enough to prune a little more
+/// readily. The caller supplies the predicate
+/// (`(all_threats() & occupancy(us)).is_empty()`, itself pinned by
+/// `rfp_threat_coupling_is_disarmed_when_an_own_piece_is_attacked`); keeping
+/// the subtraction in a pure function pins its SIGN and MAGNITUDE, so a wiring
+/// regression that dropped the term or flipped its sign changes this returned
+/// margin and a unit test catches it apart from the make/prune control flow.
+#[inline]
+fn rfp_prune_margin(
+    depth: Depth,
+    tt_hit: bool,
+    improving: bool,
+    opponent_worsening: bool,
+    correction_value: i32,
+    no_own_threat: bool,
+) -> Value {
+    rfp_margin(
+        depth,
+        tt_hit,
+        improving,
+        opponent_worsening,
+        correction_value,
+    ) - params::RFP_THREAT_MARGIN * Value::from(no_own_threat)
+}
+
 /// The late-move-pruning move-count threshold (design/10 §3.5, the move
 /// loop's LMP): once the running `move_count` reaches
 /// `(LMP_BASE + depth²) / (2 - improving)`, the picker is told to stop
@@ -307,6 +335,80 @@ fn capture_futility_value(
 fn capture_see_margin(depth: Depth, capt_hist: i32) -> Value {
     params::CAP_SEE_DEPTH_MULT * depth
         + params::CAP_SEE_HIST_MULT * capt_hist / params::CAPT_HIST_DEN
+}
+
+/// The singular-verification window centre (design/10 §3.6, Wave-D item 13):
+/// the exclusion search runs at the zero window `[singular_beta - 1,
+/// singular_beta]` with the ttMove excluded, where
+///
+/// ```text
+/// singular_beta = tt_value - (SE_BETA_MULT + SE_BETA_TTPV_MULT·ttpv_non_pv)·depth / SE_BETA_DIV
+/// ```
+///
+/// `ttpv_non_pv` is `ss.tt_pv && !PV`. Pure `i32`; the `(…)·depth` product is
+/// formed before the divide, matching the SF truncation this re-expresses
+/// (D27). Keeping it a pure function makes the algebra unit-testable (§5)
+/// apart from the exclusion-search control flow.
+#[inline]
+fn singular_verification_beta(tt_value: Value, depth: Depth, ttpv_non_pv: bool) -> Value {
+    tt_value
+        - (params::SE_BETA_MULT + params::SE_BETA_TTPV_MULT * Value::from(ttpv_non_pv)) * depth
+            / params::SE_BETA_DIV
+}
+
+/// The singular DOUBLE-extension margin (design/10 §3.6, Wave-D item 13): when
+/// the exclusion value falls below `singular_beta - double_margin` the ttMove
+/// earns a second extension ply.
+///
+/// ```text
+/// SE_DOUBLE_BASE + SE_DOUBLE_PV·pv - SE_DOUBLE_NON_TTCAP·(!tt_capture)
+///                - corr_adj - SE_DOUBLE_TMH_NUM·tmh / SE_DOUBLE_TMH_DEN
+///                - SE_DOUBLE_DEEP·deep
+/// ```
+///
+/// `corr_adj = |correction_value| / SE_CORR_DIV` (Wave-F item 21) tightens the
+/// margin under eval uncertainty; `tmh` is the tt_move_history scalar; `deep`
+/// is `ply > root_depth`. Pure `i32`; the `tmh` term is formed before its
+/// divide, matching the SF truncation this re-expresses (D27).
+#[inline]
+fn singular_double_margin(
+    pv: bool,
+    tt_capture: bool,
+    corr_adj: Value,
+    tmh: i32,
+    deep: bool,
+) -> Value {
+    params::SE_DOUBLE_BASE + params::SE_DOUBLE_PV * Value::from(pv)
+        - params::SE_DOUBLE_NON_TTCAP * Value::from(!tt_capture)
+        - corr_adj
+        - params::SE_DOUBLE_TMH_NUM * tmh / params::SE_DOUBLE_TMH_DEN
+        - params::SE_DOUBLE_DEEP * Value::from(deep)
+}
+
+/// The singular TRIPLE-extension margin (design/10 §3.6, Wave-D item 13): when
+/// the exclusion value falls below `singular_beta - triple_margin` the ttMove
+/// earns a third extension ply.
+///
+/// ```text
+/// SE_TRIPLE_BASE + SE_TRIPLE_PV·pv - SE_TRIPLE_NON_TTCAP·(!tt_capture)
+///                + SE_TRIPLE_TTPV·ttpv - corr_adj - SE_TRIPLE_DEEP·deep
+/// ```
+///
+/// Same `corr_adj`/`deep` as [`singular_double_margin`]; `ttpv` is `ss.tt_pv`.
+/// Pure `i32`, so term order and truncation match the SF source (D27).
+#[inline]
+fn singular_triple_margin(
+    pv: bool,
+    tt_capture: bool,
+    ttpv: bool,
+    corr_adj: Value,
+    deep: bool,
+) -> Value {
+    params::SE_TRIPLE_BASE + params::SE_TRIPLE_PV * Value::from(pv)
+        - params::SE_TRIPLE_NON_TTCAP * Value::from(!tt_capture)
+        + params::SE_TRIPLE_TTPV * Value::from(ttpv)
+        - corr_adj
+        - params::SE_TRIPLE_DEEP * Value::from(deep)
 }
 
 /// The continuation-history pruning predicate (design/10 §3.5, the move loop's
@@ -1103,10 +1205,15 @@ impl Worker {
             depth -= 1;
         }
 
-        // Steps N6b–N13 (design/10 §3.11) are skipped in check: the node
-        // borrowed the grandparent's eval and jumps straight to N14 / the move
-        // loop, since no pruning is sound while in check.
-        if !in_check {
+        // N6b — the NonPV TT cutoff runs for ALL nodes, in check or not
+        // (design/10 §3.11 / SF search.cpp: the early TT cutoff precedes the
+        // `if (ss->inCheck) goto moves_loop`). A TT cutoff keys only on the
+        // stored value/depth/bound, never on the static eval, so it is exactly
+        // as sound in check as out of it — and in-check nodes are common, so
+        // gating it out silently searches whole evasion subtrees SF prunes.
+        // The child-TT verification's make/unmake is safe in check: it
+        // re-checks `pseudo_legal && legal` on the ttMove first.
+        {
             // N6b — the NonPV TT cutoff (design/10 §3.4): enough stored depth
             // (one ply of slack for upper-bound values), a valid value, the
             // bound pointing the cutoff's way, the cutNode-agreement guard at
@@ -1216,7 +1323,12 @@ impl Worker {
                 // entry out faster.
                 probe.writer.penalize(1);
             }
+        }
 
+        // Steps N8–N13 (design/10 §3.11) are skipped in check: the node
+        // borrowed the grandparent's eval and jumps straight to N14 / the move
+        // loop, since no eval-based pruning is sound while in check.
+        if !in_check {
             // The pruning value `eval` (design/10 §3.4 N6): the corrected
             // static eval, then the TT-value-as-better-eval substitution —
             // a valid stored value whose bound points the right way is a
@@ -1318,13 +1430,14 @@ impl Worker {
                 let us = self.board.side_to_move();
                 let no_own_threat =
                     (self.board.all_threats() & self.board.occupancy(us)).is_empty();
-                let margin = rfp_margin(
+                let margin = rfp_prune_margin(
                     depth,
                     tt_hit,
                     improving,
                     opponent_worsening,
                     correction_value,
-                ) - params::RFP_THREAT_MARGIN * Value::from(no_own_threat);
+                    no_own_threat,
+                );
                 if eval - margin >= beta {
                     return (params::RFP_RET_BETA_W * beta + params::RFP_RET_EVAL_W * eval)
                         / params::RFP_RET_DEN;
@@ -1759,12 +1872,8 @@ impl Worker {
                 && tt_data.depth >= depth - params::SE_TT_DEPTH_SLACK
                 && !self.is_shuffling(m, cur, ply)
             {
-                let singular_beta = tt_value
-                    - (params::SE_BETA_MULT
-                        + params::SE_BETA_TTPV_MULT
-                            * Value::from(self.stack[cur].tt_pv && !NT::PV))
-                        * depth
-                        / params::SE_BETA_DIV;
+                let singular_beta =
+                    singular_verification_beta(tt_value, depth, self.stack[cur].tt_pv && !NT::PV);
                 let singular_depth = new_depth / 2;
                 self.stack[cur].excluded_move = m;
                 let value = self.search::<NonPv>(
@@ -1785,19 +1894,16 @@ impl Worker {
                     // extensions harder to earn.
                     let corr_adj = correction_value.abs() / params::SE_CORR_DIV;
                     let tmh = self.histories.tt_move.get();
-                    let deep = Value::from(ply > self.root_depth as usize);
-                    let double_margin = params::SE_DOUBLE_BASE
-                        + params::SE_DOUBLE_PV * Value::from(NT::PV)
-                        - params::SE_DOUBLE_NON_TTCAP * Value::from(!tt_capture)
-                        - corr_adj
-                        - params::SE_DOUBLE_TMH_NUM * tmh / params::SE_DOUBLE_TMH_DEN
-                        - params::SE_DOUBLE_DEEP * deep;
-                    let triple_margin = params::SE_TRIPLE_BASE
-                        + params::SE_TRIPLE_PV * Value::from(NT::PV)
-                        - params::SE_TRIPLE_NON_TTCAP * Value::from(!tt_capture)
-                        + params::SE_TRIPLE_TTPV * Value::from(self.stack[cur].tt_pv)
-                        - corr_adj
-                        - params::SE_TRIPLE_DEEP * deep;
+                    let deep = ply > self.root_depth as usize;
+                    let double_margin =
+                        singular_double_margin(NT::PV, tt_capture, corr_adj, tmh, deep);
+                    let triple_margin = singular_triple_margin(
+                        NT::PV,
+                        tt_capture,
+                        self.stack[cur].tt_pv,
+                        corr_adj,
+                        deep,
+                    );
                     extension = 1
                         + Depth::from(value < singular_beta - double_margin)
                         + Depth::from(value < singular_beta - triple_margin);
@@ -1844,7 +1950,7 @@ impl Worker {
             // reduction terms and item 15's sibling `depth -= 2` (§3.9), plus
             // their §3.7 ttPv-rebate counterweight, are DEFERRED: in this
             // PSQT-only engine they over-reduce deep mate lines and push the
-            // §5 mate suite past the §8.4 "solved at depth ≤ 6" acceptance bar
+            // §5 mate suite past the §8(4) "solved at depth ≤ 6" acceptance bar
             // (SF absorbs the same reductions with NNUE-grade eval/ordering).
             // They revisit with the eval upgrade (P13). Kept: item 15's ttMove
             // min-depth clamp (below), which only HELPS mate finding.
@@ -2020,7 +2126,7 @@ impl Worker {
                     // Sibling depth reduction (design/10 §3.9, Wave-D item 15)
                     // is DEFERRED with the cutoffCnt terms (see the reduction
                     // finalization note): it delays deep mate resolution past
-                    // the §8.4 depth bound in this PSQT-only engine.
+                    // the §8(4) depth bound in this PSQT-only engine.
                     alpha = value;
                 }
             }
@@ -2105,9 +2211,10 @@ impl Worker {
         // reward it. A quiet parent gets the full `bonus_scale` distributed to
         // its conthist / main / pawn histories; a capturing parent gets a flat
         // capture-history bonus.
-        else if move_count != 0
-            && let Some(sq) = prev_sq
-        {
+        // Reached only when the two arms above are false: `move_count == 0` is
+        // excluded by the first arm and `best_move != NULL` by the second, so
+        // `move_count != 0` here is implied — this is the fail-low case.
+        else if let Some(sq) = prev_sq {
             if !prior_capture {
                 let bonus_scale = (params::FL_SCALE_BASE
                     - self.stack[cur - 1].stat_score / params::FL_STATSCORE_DIV
@@ -3029,6 +3136,34 @@ mod tests {
     }
 
     #[test]
+    fn rfp_prune_margin_folds_the_threat_relaxation_with_the_right_sign() {
+        // The N10 use-site subtracts RFP_THREAT_MARGIN from the base margin
+        // exactly when no own piece is threatened — a LOWER margin is easier to
+        // clear, so the disarmed case prunes more readily. Pin the sign and
+        // magnitude at a representative point so a wiring regression (dropped
+        // term / flipped sign) is caught apart from the search control flow.
+        let (d, hit, imp, opp): (Depth, bool, bool, bool) = (4, true, false, false);
+        let base = rfp_margin(d, hit, imp, opp, 0);
+        // Armed (a piece is threatened): no relaxation — equals the base.
+        assert_eq!(
+            rfp_prune_margin(d, hit, imp, opp, 0, false),
+            base,
+            "an armed node uses the un-relaxed base margin"
+        );
+        // Disarmed (nothing hanging): the base LESS the whole threat margin.
+        assert_eq!(
+            rfp_prune_margin(d, hit, imp, opp, 0, true),
+            base - params::RFP_THREAT_MARGIN,
+            "a disarmed node relaxes the margin by exactly RFP_THREAT_MARGIN"
+        );
+        // The relaxation strictly lowers the bar (RFP_THREAT_MARGIN > 0).
+        assert!(
+            rfp_prune_margin(d, hit, imp, opp, 0, true) < base,
+            "the threat relaxation must make the margin easier to clear"
+        );
+    }
+
+    #[test]
     fn rfp_return_blend_weights_sum_to_the_denominator() {
         // The return `(716·beta + 308·eval)/1024` is a weighted average, so
         // its result lies between beta and eval — the weights must sum to
@@ -3633,6 +3768,74 @@ mod tests {
     }
 
     #[test]
+    fn singular_verification_beta_matches_the_hand_computed_centre() {
+        // (tt_value, depth, ttpv_non_pv, expected):
+        // `tt_value - (60 + 70·ttpv_non_pv)·depth / 59`, the `(…)·depth`
+        // product formed before the truncating divide (D27).
+        let cases: &[(Value, Depth, bool, Value)] = &[
+            (0, 0, false, 0),       // no depth → no offset
+            (0, 1, false, -1),      // 60/59 = 1 truncates → -1
+            (0, 1, true, -2),       // 130/59 = 2 truncates → -2
+            (100, 8, false, 92),    // 480/59 = 8 → 100-8
+            (100, 8, true, 83),     // 1040/59 = 17 → 100-17
+            (1000, 10, false, 990), // 600/59 = 10 → 1000-10
+            (-500, 12, true, -526), // 1560/59 = 26 → -500-26
+        ];
+        for &(tt, d, ttpv, want) in cases {
+            assert_eq!(
+                singular_verification_beta(tt, d, ttpv),
+                want,
+                "singular_verification_beta({tt}, {d}, {ttpv})"
+            );
+        }
+    }
+
+    #[test]
+    fn singular_double_margin_matches_the_hand_computed_margin() {
+        // (pv, tt_capture, corr_adj, tmh, deep, expected):
+        // `-3 + 201·pv - 157·(!tt_capture) - corr_adj
+        //  - 1081·tmh/117824 - 41·deep`, the `tmh` term formed before its
+        // truncating divide (D27).
+        let cases: &[(bool, bool, Value, i32, bool, Value)] = &[
+            (false, true, 0, 0, false, -3), // base alone (ttCapture: no !cap penalty)
+            (false, false, 0, 0, false, -160), // quiet ttMove docks 157
+            (true, false, 0, 0, false, 41), // PV bonus 201, minus 157
+            (true, true, 0, 0, true, 157),  // PV, ttCapture, deep: 201-3-41
+            (false, true, 0, 117824, false, -1084), // full tmh unit: -1081
+            (false, true, 0, 1, false, -3), // 1081·1/117824 truncates → 0
+            (false, true, 0, -1, false, -3), // negative tmh truncates toward zero → 0
+            (false, true, 500, 0, false, -503), // corr_adj subtracts directly
+        ];
+        for &(pv, cap, corr, tmh, deep, want) in cases {
+            assert_eq!(
+                singular_double_margin(pv, cap, corr, tmh, deep),
+                want,
+                "singular_double_margin({pv}, {cap}, {corr}, {tmh}, {deep})"
+            );
+        }
+    }
+
+    #[test]
+    fn singular_triple_margin_matches_the_hand_computed_margin() {
+        // (pv, tt_capture, ttpv, corr_adj, deep, expected):
+        // `72 + 306·pv - 188·(!tt_capture) + 84·ttpv - corr_adj - 45·deep`.
+        let cases: &[(bool, bool, bool, Value, bool, Value)] = &[
+            (false, true, false, 0, false, 72),    // base alone
+            (false, false, false, 0, false, -116), // quiet ttMove docks 188
+            (true, false, true, 0, false, 274),    // 72+306-188+84
+            (true, true, true, 0, true, 417),      // 72+306+84-45
+            (false, true, false, 100, true, -73),  // corr_adj 100, deep 45: 72-100-45
+        ];
+        for &(pv, cap, ttpv, corr, deep, want) in cases {
+            assert_eq!(
+                singular_triple_margin(pv, cap, ttpv, corr, deep),
+                want,
+                "singular_triple_margin({pv}, {cap}, {ttpv}, {corr}, {deep})"
+            );
+        }
+    }
+
+    #[test]
     fn capture_futility_prunes_a_futile_capture_at_its_margin() {
         // White (Ka6, Na1) is boxed to exactly two legal moves, both captures
         // of black pawns' guards: Nxb3 (an even trade — the black knight on b3
@@ -4063,7 +4266,7 @@ mod tests {
         assert_eq!(w.stat_score(m, false, moved_piece, cur), want);
     }
 
-    // --- Mate suite (doc 07 §5/§8.4): exact ply-relative mate scores (D5) ---
+    // --- Mate suite (doc 07 §5/§8(4)): exact ply-relative mate scores (D5) ---
 
     #[test]
     fn back_rank_mate_in_1_found_at_depth_2() {
@@ -4086,7 +4289,7 @@ mod tests {
         // (adjusted_depth) legitimately ends the iteration on a non-mate
         // value — SF-identical dynamics. One more iteration re-scores the
         // front (mating) move inside a mate-band-widened window and the
-        // exact score sticks. The §8.4 bar is depth <= 6.
+        // exact score sticks. The §8(4) bar is depth <= 6.
         let w = go_depth("k7/8/2K5/8/8/8/8/7R w - - 0 1", 4);
         assert_eq!(best_score(&w), mate_in(3));
         // The PV replays legally from the root position.
@@ -4117,7 +4320,7 @@ mod tests {
         // files to ever attack the unprotected checking rooks, and too
         // free for anything shorter than the ladder. Depth 6 = the five
         // plies the mate needs plus the aspiration settling iteration
-        // (see the KRK test) — exactly the §8.4 gate's "depth ≤ 6".
+        // (see the KRK test) — exactly the §8(4) gate's "depth ≤ 6".
         let w = go_depth("8/8/6k1/R7/8/8/8/1R5K w - - 0 1", 6);
         assert_eq!(best_score(&w), mate_in(5));
         assert_eq!(w.root_pv().len(), 5);
@@ -4128,7 +4331,7 @@ mod tests {
 
     #[test]
     fn mate_suite_1_to_3_exact_scores_and_first_moves() {
-        // The §8.4 exit bar in table form: ≥ 10 positions across mates in
+        // The §8(4) exit bar in table form: ≥ 10 positions across mates in
         // 1/2/3, each solved at depth ≤ 6 with the exact ply-relative
         // score AND a verified-optimal first move. Every entry — the mate
         // distance and the complete optimal-first-move set — was checked
@@ -4161,13 +4364,13 @@ mod tests {
             ("8/8/6k1/R7/8/8/8/1R5K w - - 0 1", 5, &["b1b6"]),
             ("8/8/1k6/7R/8/8/8/6RK w - - 0 1", 5, &["g1g6"]),
         ];
-        assert!(SUITE.len() >= 10, "the §8.4 bar is at least 10 positions");
+        assert!(SUITE.len() >= 10, "the §8(4) bar is at least 10 positions");
         for &(fen, plies, optimal) in SUITE {
             // Mate-in-1 uses depth 2 so the score comes from a full search
             // iteration, not bare qsearch (found at depth 1, the mate-band
             // EMAs keep every later window effectively infinite). Deeper
             // mates need the mate distance plus one aspiration settling
-            // iteration (see the KRK test) — still within the §8.4
+            // iteration (see the KRK test) — still within the §8(4)
             // "depth ≤ 6" bar.
             let depth = if plies == 1 { 2 } else { plies + 1 };
             let w = go_depth(fen, depth);

@@ -140,7 +140,7 @@ pub struct Stack {
     pub tt_pv: bool,             // sticky "was ever on the PV" flag
     pub tt_hit: bool,
     pub cutoff_cnt: i32,         // fail-highs observed at this ply (child reads parent+1)
-    pub reduction: i32,          // 1024ths of a ply the parent's LMR removed before calling us
+    pub reduction: i32,          // plies of reduction the parent's LMR removed before calling us
     pub follow_pv: bool,         // on last iteration's PV path
     pub cont_hist: ContHistId,   // flat conthist index, set by do_move (doc 09 §3.2)
 }
@@ -839,8 +839,8 @@ expected +15..40 combined).**
     and the §3.9 sibling `depth -= 2`** are **DEFERRED**. Their params
     (`RED_CUTOFFCNT_*`, `RED_ALLNODE_*`, `RED_TTPV_*`, `RED_TTCAPTURE`,
     `SIBLING_DEPTH_*`) are defined in `params.rs` but currently **unconsumed** —
-    in this PSQT-only engine they over-reduce deep mate lines past the §8.4
-    "solved at depth ≤ 6" bar (SF absorbs the same reductions with NNUE-grade
+    in this PSQT-only engine they over-reduce deep mate lines past the doc 07
+    §8(4) "solved at depth ≤ 6" bar (SF absorbs the same reductions with NNUE-grade
     eval/ordering). Revisit with the P13 eval upgrade.
 
 **Wave E — flow refinements (each small; expected +10..30 aggregate).**
@@ -1094,6 +1094,23 @@ Feeds:
 6. Bench is bit-reproducible single-threaded across runs (dither uses node
    counts, not RNG — determinism preserved).
 7. No `unsafe` introduced by this suite (D14 — nothing here needs it).
+
+**Shipped-reality deviations (P9 Waves C–G, D32).** Two criteria above are
+relaxed by decisions taken after §8 was written; recorded here so the bar
+matches the code:
+
+- *Criterion 2 (exact N0–N14 order)* holds for the **consumed** steps, but the
+  §3.7 all-node reduction extras (`cutoffCnt`, the ttPv rebate, `tt_capture`)
+  and the §3.9 sibling `depth -= 2` are **deferred** (params defined in
+  `params.rs`, currently unconsumed — §4 Wave-D/§842 note): in this PSQT-only
+  engine they over-reduce deep mate lines past the doc 07 §8(4) bar. They land
+  with the P13 eval upgrade. The N6b non-PV TT cutoff runs for **all** nodes
+  (in check or not), matching SF's placement of the early cutoff before the
+  in-check jump — see §3.11.
+- *Criterion 3 (a passed SPRT per Wave A–E commit at the §4 bounds)* is
+  superseded for Waves C–G by **D32**: the whole batch is implemented and
+  unit-tested first, then gated by a single batched sanity SPRT plus the
+  fixed-node proxy SPRT (doc 14 §9.4), rather than one SPRT per heuristic.
 
 ## 9. Open questions
 
