@@ -518,6 +518,18 @@ of the 512-term sum exists but is unreachable with real nets (activations
 and weights never co-saturate); the scalar reference path accumulates in i64
 so any real overflow would show up as a scalar/SIMD mismatch in tests.
 
+> **Step-3 precondition (review, 2026-07-12).** The bullet training recipe
+> **must** apply this output/L1 weight clip (`|w1_float| ≤ 32767/(QA·QB) ≈
+> 1.98` ⇒ quantized `|out_weight| ≤ 127`) — not merely the ≤ i16 range bullet
+> guarantees at save (§3.4.5 packer note). The step-2 AVX2 `mullo_epi16` SCReLU
+> trick (§3.4.6) is bit-exact vs the scalar reference **only** under this clip;
+> a net that violates it would checksum-clean yet score differently on AVX2 vs
+> scalar. The loader now enforces it as a fail-fast precondition:
+> `load_bytes` rejects any `|out_weight| > 127` with
+> `NnueError::OutWeightOutOfClip` rather than loading a net the two backends
+> would evaluate differently. This is a net-0 (step-3) training requirement,
+> backstopped at load.
+
 #### 3.4.4 Incremental accumulators and dirty pieces
 
 **Recording (through doc 04's hook seam).** Doc 04 deliberately keeps NNUE
@@ -799,6 +811,12 @@ pub static KERNELS: LazyLock<Kernels> = LazyLock::new(|| {
 2. **Train with bullet** (external, GPU): arch `768 -> 2x256 -> 1` SCReLU,
    our quantization constants; standard recipe: interleave/shuffle data,
    WDL-blended target (`lambda ≈ 0.7` score / 0.3 result to start).
+   **Weight-clip requirement (net-0 precondition):** the recipe must clip the
+   L1/output weights to `|w1_float| ≤ 32767/(QA·QB) ≈ 1.98` (⇒ quantized
+   `|out_weight| ≤ 127`) — the AVX2 `mullo_epi16` SCReLU kernel (§3.4.6) is
+   bit-exact vs the scalar reference only under it, and the loader's
+   `NnueError::OutWeightOutOfClip` check (§3.4.3) is the fail-fast backstop
+   that rejects any net violating it.
 3. **`netpack` helper** (small bin or script): wrap bullet's raw quantized
    output in the CENN container, compute checksum.
 4. **Iterate**: gen-0 data from the Phase B (HCE) engine → net-1 → engine

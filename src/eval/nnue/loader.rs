@@ -75,6 +75,14 @@ pub enum NnueError {
     BadPayloadLen { expected: u64, found: u64 },
     /// The recomputed FNV-1a-64 payload checksum did not match the header.
     ChecksumMismatch { expected: u64, found: u64 },
+    /// An `out_weights` value fell outside the AVX2 SCReLU clip `|w| ≤ 127`
+    /// (design/11 §3.4.3). The `_mm256_mullo_epi16` trick in the SIMD forward
+    /// pass (§3.4.6) is bit-exact vs the scalar reference ONLY under this clip;
+    /// bullet guarantees the i16 range at save, not this tighter bound (§3.4.5
+    /// packer note), so a checksum-clean net could otherwise mis-evaluate on
+    /// AVX2. Rejected at load so the AVX2/scalar contract is a checked
+    /// precondition rather than a silent divergence.
+    OutWeightOutOfClip { index: usize, value: i16 },
 }
 
 impl fmt::Display for NnueError {
@@ -121,6 +129,11 @@ impl fmt::Display for NnueError {
             NnueError::ChecksumMismatch { expected, found } => write!(
                 f,
                 "CENN checksum mismatch: header {expected:#018x}, computed {found:#018x}"
+            ),
+            NnueError::OutWeightOutOfClip { index, value } => write!(
+                f,
+                "CENN out_weights[{index}] = {value} exceeds the AVX2 SCReLU clip \
+                 |w| <= 127 (design/11 §3.4.3)"
             ),
         }
     }
@@ -291,6 +304,22 @@ pub fn load_bytes(bytes: &[u8]) -> Result<Network, NnueError> {
     let ft_weights = read_i16s(&mut cur, INPUT * L1);
     let ft_bias = read_i16s(&mut cur, L1);
     let out_weights = read_i16s(&mut cur, 2 * L1);
+
+    // AVX2 bit-exactness precondition (design/11 §3.4.3, §3.4.6): every output
+    // weight must lie within the training clip |w| ≤ 127, or the SIMD
+    // `_mm256_mullo_epi16` SCReLU trick would overflow i16 and the AVX2 forward
+    // would silently disagree with the scalar reference. bullet only guarantees
+    // the i16 range at save, so enforce the tighter bound here — one O(2·L1)
+    // pass. (Only `out_weights` take the mullo path; the ft/accumulator weights
+    // do NOT, so they are deliberately left unclipped.)
+    if let Some((index, &value)) = out_weights
+        .iter()
+        .enumerate()
+        .find(|(_, w)| w.unsigned_abs() > 127)
+    {
+        return Err(NnueError::OutWeightOutOfClip { index, value });
+    }
+
     let out_bias = i32::from_le_bytes([
         payload[cur],
         payload[cur + 1],
@@ -453,6 +482,49 @@ mod tests {
             load_bytes(&bytes[..10]),
             Err(NnueError::TooShort { .. })
         ));
+    }
+
+    #[test]
+    fn rejects_out_weight_out_of_clip() {
+        // The AVX2 SCReLU `mullo_epi16` trick is bit-exact vs the scalar path
+        // only while every out_weight satisfies |w| ≤ 127 (design/11 §3.4.3,
+        // §3.4.6). A net can pass every structural + checksum check yet violate
+        // this (bullet caps only the i16 range at save), so the loader must
+        // reject it — not panic, not load a net the two backends score
+        // differently. Build a valid net, tamper ONE out_weight past the clip,
+        // reserialize (so the checksum covers the tampered payload and the
+        // rejection is the clip check, not ChecksumMismatch), and confirm.
+        let mut net = test_net(); // out_weights start in [-100, 100]
+        net.out_weights[3] = 200; // > 127: out of clip
+        let bytes = serialize(&net);
+        match load_bytes(&bytes) {
+            Err(NnueError::OutWeightOutOfClip {
+                index: 3,
+                value: 200,
+            }) => {}
+            other => {
+                panic!("expected OutWeightOutOfClip {{ index: 3, value: 200 }}, got {other:?}")
+            }
+        }
+
+        // The negative clip edge (−128) is also rejected; +127/−127 load clean.
+        let mut net = test_net();
+        net.out_weights[0] = -128;
+        assert!(matches!(
+            load_bytes(&serialize(&net)),
+            Err(NnueError::OutWeightOutOfClip {
+                index: 0,
+                value: -128
+            })
+        ));
+
+        let mut net = test_net();
+        net.out_weights[1] = 127;
+        net.out_weights[2] = -127;
+        assert!(
+            load_bytes(&serialize(&net)).is_ok(),
+            "±127 is inside the clip and must load"
+        );
     }
 
     #[test]

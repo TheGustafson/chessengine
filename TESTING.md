@@ -257,3 +257,15 @@ verification (needs a known machine and the commit trailer), criterion
 baselines and any timing assertion (flaky on shared runners — design/14
 §5), and SPRT. Those live in `tools/check.sh` and the human checklist of
 design/14 §3.9.
+
+**The `unsafe`-containment gate is miri**, scoped to the module that owns the
+crate's sanctioned `unsafe`: `cargo +nightly miri test tt::` (the TT prefetch
+intrinsic, D14a; design/08 §5) — the MiB-scale / concurrency cases are
+`#[ignore]`d under miri. The NNUE SIMD tests are **deliberately outside** the
+miri path: miri cannot execute the AVX2 intrinsics in `eval::nnue::simd::avx2`
+(D14b), so the `simd::tests::avx2_bit_exact::*` scalar-vs-AVX2 cross-checks
+self-guard on `is_x86_feature_detected!("avx2")` and no-op (printing a skip
+marker) on any host — including the miri interpreter — that lacks it. The AVX2
+kernels' correctness gate is instead that bit-exactness comparison run on a real
+AVX2 CPU plus `tools/nnue/verify_forward.sh` (0 mismatches on the AVX2-active
+release build).

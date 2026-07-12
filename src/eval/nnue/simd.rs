@@ -262,8 +262,10 @@ pub mod scalar {
 /// `#[allow(unsafe_code)]` below re-opens the crate-wide `#![deny(unsafe_code)]`
 /// for exactly this backend (the same localization `tt` uses for its prefetch
 /// intrinsic, D14a). Every kernel is a private `#[target_feature(enable =
-/// "avx2")] unsafe fn`; the public surface is the safe wrappers in [`KERNELS`]
-/// plus the test-only [`forward_raw_sum`], all reachable only after the
+/// "avx2")] unsafe fn`; the release surface is exactly the safe wrappers in
+/// [`KERNELS`] (`pub(super)`, so the dispatch and tests reach them but nothing
+/// outside `simd` can) — plus, under `#[cfg(test)]` only, `forward_raw_sum` for
+/// the bit-exactness cross-check — all reachable only after the
 /// [`super::KERNELS`] dispatch has confirmed AVX2 at runtime. Each `unsafe`
 /// block carries its `// SAFETY:` note.
 ///
@@ -495,7 +497,12 @@ pub mod avx2 {
     /// pre-narrowing bit-exactness comparison against
     /// [`scalar::forward_raw_sum`]. Callers MUST have confirmed
     /// `is_x86_feature_detected!("avx2")` (the tests do).
-    pub fn forward_raw_sum(
+    ///
+    /// `#[cfg(test)] pub(super)`: its sole caller is the bit-exactness test, so
+    /// it is compiled out of every release binary — the AVX2 module's shipped
+    /// surface is exactly the safe `KERNELS` wrappers (A-F1).
+    #[cfg(test)]
+    pub(super) fn forward_raw_sum(
         us: &[i16; L1],
         them: &[i16; L1],
         w1: &[i16; 2 * L1],
@@ -506,8 +513,12 @@ pub mod avx2 {
     }
 
     /// The AVX2 kernel table (safe-wrapper fn pointers). Installed by
-    /// [`super::KERNELS`] once AVX2 is detected.
-    pub const KERNELS: Kernels = Kernels {
+    /// [`super::KERNELS`] once AVX2 is detected. `pub(super)` (not `pub`): only
+    /// the `simd`-module dispatch and the bit-exactness tests may reach it, so
+    /// safe code OUTSIDE `simd` cannot install AVX2 fn pointers on a non-AVX2
+    /// CPU — that keeps the crate-wide `#![deny(unsafe_code)]` an honest UB
+    /// guarantee (A-F1).
+    pub(super) const KERNELS: Kernels = Kernels {
         add_sub: add_sub_w,
         add_sub_sub: add_sub_sub_w,
         add2_sub2: add2_sub2_w,
@@ -646,7 +657,13 @@ mod tests {
         #[test]
         fn add_sub_family_matches_scalar_over_full_range_i16() {
             if !std::arch::is_x86_feature_detected!("avx2") {
-                return; // no AVX2: dispatch uses scalar, nothing to cross-check
+                // no AVX2: dispatch uses scalar, nothing to cross-check. Emit a
+                // marker so a green run here is not mistaken for AVX2 coverage.
+                eprintln!(
+                    "SKIP add_sub_family_matches_scalar: host lacks AVX2 — \
+                     scalar dispatch only, AVX2 kernels NOT verified"
+                );
+                return;
             }
             let s = scalar::KERNELS;
             let v = avx2::KERNELS;
@@ -689,6 +706,10 @@ mod tests {
         #[test]
         fn forward_matches_scalar_pre_narrowing_and_final() {
             if !std::arch::is_x86_feature_detected!("avx2") {
+                eprintln!(
+                    "SKIP forward_matches_scalar_pre_narrowing_and_final: host \
+                     lacks AVX2 — AVX2 forward NOT verified"
+                );
                 return;
             }
             let mut rng = Prng::new(0xF0_2E_1A_7C_5B_39_11_23);
@@ -726,6 +747,142 @@ mod tests {
                     let vf = (avx2::KERNELS.forward)(&us, &them, &w1, out_bias, act);
                     assert_eq!(sf, vf, "{act:?} final Value diverged");
                 }
+            }
+        }
+
+        /// Cross-check the scalar reference and the AVX2 backend at BOTH the raw
+        /// i64 sum and the final `Value`, returning the (identical) raw sum so a
+        /// caller can pin its magnitude. AVX2 must be present (callers gate).
+        fn agree(
+            us: &[i16; L1],
+            them: &[i16; L1],
+            w1: &[i16; 2 * L1],
+            out_bias: i32,
+            act: Activation,
+            label: &str,
+        ) -> i64 {
+            let ss = scalar::forward_raw_sum(us, them, w1, act);
+            let vs = avx2::forward_raw_sum(us, them, w1, act);
+            assert_eq!(ss, vs, "{label}: {act:?} raw sum diverged");
+            let sf = (scalar::KERNELS.forward)(us, them, w1, out_bias, act);
+            let vf = (avx2::KERNELS.forward)(us, them, w1, out_bias, act);
+            assert_eq!(sf, vf, "{label}: {act:?} final Value diverged");
+            ss
+        }
+
+        // Constructed (non-RNG) boundary cases. The RNG sweep above rarely — if
+        // ever — makes the SCReLU total exceed i32, so on its own it would NOT
+        // catch a regression from the i64 horizontal reduction back to i32.
+        // These cases force the overflow deterministically and pin the exact
+        // saturated corners of the clamp and the weight clip (B-MAJOR-1 /
+        // B-MINOR-1).
+        #[test]
+        fn forward_constructed_cases_exercise_i64_reduction_and_boundaries() {
+            if !std::arch::is_x86_feature_detected!("avx2") {
+                eprintln!(
+                    "SKIP forward_constructed_cases: host lacks AVX2 — the i64 \
+                     reduction / boundary corners are NOT verified"
+                );
+                return;
+            }
+            let qa = QA as i16; // 255
+
+            // (A) i64-REDUCTION PROOF, positive. Every accumulator lane clamps to
+            // QA; every output weight is at the +127 clip. Under SCReLU the raw
+            // sum is 2·L1 · QA² · 127 = 512 · 65025 · 127 = 4,228,185,600, which
+            // is > i32::MAX (2,147,483,647): a reduction that summed the eight i32
+            // madd lanes in i32 (instead of widening to i64) would WRAP here and
+            // diverge from the scalar reference — this case would then fail. It
+            // also drives every i32 madd lane to its ceiling 64·QA²·127 =
+            // 528,523,200 (≈5.3e8), the max a lane can hold under the §3.4.3 clip.
+            let us_max = [qa; L1];
+            let them_max = [qa; L1];
+            let w_pos = [127i16; 2 * L1];
+            let raw_pos = agree(
+                &us_max,
+                &them_max,
+                &w_pos,
+                12_345,
+                Activation::SCReLU,
+                "all-QA×+127",
+            );
+            assert_eq!(raw_pos, 4_228_185_600, "SCReLU max positive raw sum");
+            assert!(
+                raw_pos > i32::MAX as i64,
+                "constructed case must exceed i32::MAX to exercise the i64 \
+                 reduction (got {raw_pos}, i32::MAX = {})",
+                i32::MAX
+            );
+
+            // (B) i64-REDUCTION PROOF, negative. Same accumulators, all weights at
+            // the −127 clip: raw sum = −4,228,185,600 < i32::MIN.
+            let w_neg = [-127i16; 2 * L1];
+            let raw_neg = agree(
+                &us_max,
+                &them_max,
+                &w_neg,
+                -12_345,
+                Activation::SCReLU,
+                "all-QA×−127",
+            );
+            assert_eq!(raw_neg, -4_228_185_600, "SCReLU max negative raw sum");
+            assert!(
+                (raw_neg) < i32::MIN as i64,
+                "constructed case must underflow i32::MIN (got {raw_neg})"
+            );
+
+            // CReLU counterpart (no square): raw = 2·L1·QA·(+127) = 16,581,120.
+            let craw = agree(
+                &us_max,
+                &them_max,
+                &w_pos,
+                0,
+                Activation::CReLU,
+                "all-QA×+127 CReLU",
+            );
+            assert_eq!(craw, 2 * L1 as i64 * QA as i64 * 127);
+
+            // (C) A mid-range mix (accumulators at QA/2, weights alternating
+            // ±127): keeps the total well inside i32 while every lane stays
+            // populated, so a lane-vs-total confusion still cannot hide.
+            let us_mid = [qa / 2; L1];
+            let w_alt = {
+                let mut w = [0i16; 2 * L1];
+                for (i, x) in w.iter_mut().enumerate() {
+                    *x = if i % 2 == 0 { 127 } else { -127 };
+                }
+                w
+            };
+            agree(
+                &us_mid,
+                &them_max,
+                &w_alt,
+                7,
+                Activation::SCReLU,
+                "mid×alt-±127",
+            );
+
+            // (D) BOUNDARY PINS. Accumulator lanes cycle the SCReLU-clamp corners
+            // {−1, 0, 1, QA−1, QA, QA+1}; output weights cycle the clip corners
+            // {−127, 0, 127}. This isolates the clamp-at-0 / clamp-at-QA edges and
+            // the weight-at-±127 extremes at known, staggered positions (the two
+            // cycle lengths, 6 and 3, stagger the us/them halves). Both
+            // activations, both signs of the out-bias.
+            let acc_corners = [-1i16, 0, 1, qa - 1, qa, qa + 1];
+            let w_corners = [-127i16, 0, 127];
+            let mut us_b = [0i16; L1];
+            let mut them_b = [0i16; L1];
+            let mut w_b = [0i16; 2 * L1];
+            for i in 0..L1 {
+                us_b[i] = acc_corners[i % acc_corners.len()];
+                them_b[i] = acc_corners[(i + 3) % acc_corners.len()];
+            }
+            for (i, x) in w_b.iter_mut().enumerate() {
+                *x = w_corners[i % w_corners.len()];
+            }
+            for act in [Activation::SCReLU, Activation::CReLU] {
+                agree(&us_b, &them_b, &w_b, -30_000, act, "boundary corners −bias");
+                agree(&us_b, &them_b, &w_b, 30_000, act, "boundary corners +bias");
             }
         }
 

@@ -141,9 +141,13 @@ impl Network {
         // to the scalar i64 reference (reviewer B's F3; design/11 §3.4.3,
         // §3.4.6). Every net this fixture feeds — the accumulator fuzz, the
         // `verify_forward.sh` oracle (now AVX2-active in release), and the
-        // bit-exactness test — therefore stays exact. Assert it so a future
-        // widening of `small()` can't silently break that.
-        debug_assert!(
+        // bit-exactness test — therefore stays exact. A plain `assert!` (not
+        // `debug_assert!`): it runs once at fixture build so the cost is
+        // negligible, and it must hold in RELEASE too — `verify_forward.sh`
+        // scores this fixture with the release binary, whose forward IS the AVX2
+        // path — so a future widening of `small()` that broke the clip is caught
+        // even there rather than silently mis-scoring the oracle (B-MINOR-2).
+        assert!(
             out_weights.iter().all(|&w| w.unsigned_abs() <= 127),
             "test-net out_weights must stay within the §3.4.3 clip (|w1| ≤ 127) \
              for AVX2/scalar bit-exactness"
