@@ -284,6 +284,101 @@ impl Session {
     }
 }
 
+/// Drop the wall-clock `nps <x>` and `time <x>` tokens from an info line so
+/// two `nodestime` runs (which differ only in real time) compare equal.
+fn strip_walltime(line: &str) -> String {
+    let toks: Vec<&str> = line.split_whitespace().collect();
+    let mut out: Vec<&str> = Vec::new();
+    let mut i = 0;
+    while i < toks.len() {
+        if (toks[i] == "nps" || toks[i] == "time") && i + 1 < toks.len() {
+            i += 2;
+        } else {
+            out.push(toks[i]);
+            i += 1;
+        }
+    }
+    out.join(" ")
+}
+
+#[test]
+fn nodestime_games_are_deterministic() {
+    // doc 12 §5 / step 11: the node clock removes wall-clock from every stop
+    // decision, so two identical scripted `nodestime` games produce
+    // identical move sequences AND node counts. Fixed positions (chosen
+    // moves, not the engine's) let the cross-move `advance_nodes_time`
+    // budget carry across three `go`s; wall-clock nps/time are stripped.
+    fn transcript() -> Vec<String> {
+        let mut s = Session::spawn();
+        s.send("setoption name nodestime value 1000");
+        s.send("ucinewgame");
+        for (i, pos) in [
+            "position startpos",
+            "position startpos moves e2e4",
+            "position startpos moves e2e4 e7e5",
+        ]
+        .iter()
+        .enumerate()
+        {
+            s.send(pos);
+            s.send("go wtime 3000 btime 3000");
+            // Wait for THIS move's bestmove before the next position, so the
+            // next `position`'s implicit stop never truncates this search.
+            wait_for_bestmove_n(&s, i + 1, Duration::from_secs(30));
+        }
+        let (status, lines, stderr) = s.finish();
+        assert_clean_exit(status, &stderr);
+        lines
+            .iter()
+            .map(|(_, l)| l.as_str())
+            .filter(|l| l.starts_with("info depth ") || l.starts_with("bestmove "))
+            .map(strip_walltime)
+            .collect()
+    }
+    let a = transcript();
+    let b = transcript();
+    assert!(!a.is_empty(), "the game produced info/bestmove output");
+    assert_eq!(a, b, "nodestime games must be bit-deterministic");
+}
+
+#[test]
+fn perft_command_matches_known_counts() {
+    // doc 12 §5 / step 12: `perft N` and `go perft N` both run divide from
+    // the session position and print the known node totals.
+    let out = run_engine(
+        &[],
+        "position startpos\nperft 4\ngo perft 3\nposition startpos moves e2e4\nperft 3\nquit\n",
+    );
+    assert!(out.status.success(), "engine exited with {}", out.status);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Nodes searched: 197281"),
+        "perft 4 startpos total wrong:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("Nodes searched: 8902"),
+        "go perft 3 startpos total wrong:\n{stdout}"
+    );
+    // After 1.e4, perft 3 is 13160 — proves it runs from the session position.
+    assert!(
+        stdout.contains("Nodes searched: 13160"),
+        "perft 3 after e2e4 total wrong:\n{stdout}"
+    );
+}
+
+#[test]
+fn eval_command_prints_a_static_evaluation() {
+    // doc 12 §5 / step 12: `eval` prints the Phase A static evaluation of
+    // the session position. Symmetric start position -> exactly 0.
+    let out = run_engine(&[], "position startpos\neval\nquit\n");
+    assert!(out.status.success(), "engine exited with {}", out.status);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Final evaluation: 0 "),
+        "eval of the symmetric start position must be 0:\n{stdout}"
+    );
+}
+
 /// Every session must exit 0 with no panic on stderr (a panicking search
 /// thread would NOT change the exit code — stderr is the only witness).
 fn assert_clean_exit(status: ExitStatus, stderr: &str) {

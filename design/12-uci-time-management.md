@@ -988,6 +988,20 @@ the engine may convert values to centipawns.
 
 All dev commands `wait_for_search_finished()` first (§3.2).
 
+**P10 landed (step 12).** In-session `perft N` / `go perft N` (perft divide
+from the session position), `bench [...]` (the fixed suite on its own
+worker/TT, diagnostics to stderr), and `eval` are wired into the dispatch
+alongside `d`. `eval` prints the Phase A static value (material + PSQT) from
+the side-to-move's perspective — the rich per-term trace lands with the
+eval doc's later phases, and `to_cp` is still the identity (§3.14). The
+`bench current`-position source (design/06 §3.6) is not yet plumbed to the
+session board: the in-session command answers `info string` rather than
+hitting its `todo!()`. Also landed: step 11's post-search `nodestime`
+accounting (`advance_nodes_time`), booking consumed nodes minus the
+increment credit after every clock-based move so the node budget carries
+across the game — two identical scripted `nodestime` games are
+bit-deterministic (§5).
+
 ## 4. Implementation plan
 
 Each step is one commit-sized unit with a done-condition. Steps 1-3 need

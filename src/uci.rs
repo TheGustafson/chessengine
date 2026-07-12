@@ -44,13 +44,14 @@
 
 use crate::bench;
 use crate::board::Board;
+use crate::eval::{EvalContext, evaluate};
 use crate::movegen;
 use crate::moves::{MAX_MOVES, Move, MoveList};
 use crate::perft;
 use crate::search::{SearchInfo, Worker};
 use crate::timeman::{Limits, TimePersist};
 use crate::tt::{MAX_HASH_MB, MIN_HASH_MB, TranspositionTable};
-use crate::types::{Color, VALUE_INFINITE, VALUE_MATE, Value, is_mate, is_mated};
+use crate::types::{Color, VALUE_INFINITE, VALUE_MATE, VALUE_ZERO, Value, is_mate, is_mated};
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufRead, Write};
@@ -801,6 +802,21 @@ fn dispatch<W: Write + Send + 'static>(
             engine.wait_for_search_finished(); // dev commands wait (§3.15)
             print_board(&mut *out.lock(), &engine.board)?;
         }
+        // In-session dev commands (doc 12 §3.15, step 12): perft divide and
+        // the static-eval trace print to the shared stream; `bench` runs the
+        // fixed suite on its own worker/TT (diagnostics to stderr).
+        Some("perft") => {
+            engine.wait_for_search_finished();
+            cmd_perft_session(&engine.board, tokens, &mut *out.lock())?;
+        }
+        Some("eval") => {
+            engine.wait_for_search_finished();
+            cmd_eval(&engine.board, &mut *out.lock())?;
+        }
+        Some("bench") => {
+            engine.wait_for_search_finished();
+            cmd_bench_session(tokens, &mut *out.lock())?;
+        }
         Some("quit") => return Ok(false),
         // Accepted-but-ignored per the UCI spec (doc 12 §3.3): routing
         // these through the unknown branch would spam GUIs that send them.
@@ -948,14 +964,18 @@ fn cmd_go<W: Write + Send + 'static>(
 ) -> io::Result<()> {
     engine.wait_for_search_finished();
     let limits = parse_go(&engine.board, tokens, &mut *out.lock())?;
-    // `go perft <d>` is a dev command (doc 12 §3.15), wired with the rest
-    // of the in-session dev surface (step 12) — say so rather than
-    // launching a search the GUI did not ask for.
-    if limits.perft.is_some() {
-        return writeln!(
-            out.lock(),
-            "info string go perft is not implemented yet (dev commands land with doc 12 step 12)"
-        );
+    // `go perft <d>` is a dev command (doc 12 §3.15): run perft divide from
+    // the session position rather than launching a search.
+    if let Some(depth) = limits.perft {
+        return if depth >= 1 {
+            let mut b = engine.board.clone();
+            write!(out.lock(), "{}", perft::divide(&mut b, depth))
+        } else {
+            writeln!(
+                out.lock(),
+                "info string usage: go perft <depth> (depth >= 1)"
+            )
+        };
     }
     let mut state = engine.state.take().expect("engine idle after wait");
     state.worker.board = engine.board.clone(); // history Vec included (D8)
@@ -1057,6 +1077,18 @@ fn run_search<W: Write>(
             last_sent = info.pv.first().copied();
         }
     });
+
+    // §3.11 post-search `nodestime` accounting (step 11): book the nodes
+    // consumed this move minus the increment credit, exactly like a real
+    // clock, so the node budget carries across the game. Only when this
+    // move actually ran on the node clock (own clock given AND nodestime
+    // on); `limits.inc[us]` is already in nodes (rewritten by `init`).
+    if options.nodestime() > 0 && worker.limits.use_time_management() {
+        let inc_nodes = worker.limits.inc[us as usize];
+        worker
+            .tm
+            .advance_nodes_time(worker.nodes as i64 - inc_nodes);
+    }
 
     if worker.root_moves.is_empty() {
         // §3.2 step 2: no legal moves — mate (in check) or stalemate.
@@ -1312,6 +1344,67 @@ fn parse_go<W: Write>(
     Ok(limits)
 }
 
+/// In-session `perft <depth>` / `go perft <depth>` (doc 12 §3.15, §3.3):
+/// print `perft::divide` (per-root-move splits + `Nodes searched:` total)
+/// from the session position. `divide` requires `depth >= 1`; a bad depth
+/// answers `info string` and changes nothing (never panics on GUI input).
+fn cmd_perft_session(
+    board: &Board,
+    mut tokens: SplitWhitespace,
+    out: &mut impl Write,
+) -> io::Result<()> {
+    match tokens.next().and_then(|t| t.parse::<u32>().ok()) {
+        Some(depth @ 1..) => {
+            let mut b = board.clone();
+            write!(out, "{}", perft::divide(&mut b, depth))
+        }
+        _ => writeln!(out, "info string usage: perft <depth> (depth >= 1)"),
+    }
+}
+
+/// In-session `eval` (doc 12 §3.15, step 12): the static evaluation of the
+/// session position. Phase A eval is material + PSQT, so the trace is a
+/// single value from the side-to-move's perspective; the rich per-term
+/// breakdown lands with the eval doc's later phases. `to_cp` is still the
+/// identity (doc 12 §3.14), so the value prints in raw internal units.
+fn cmd_eval(board: &Board, out: &mut impl Write) -> io::Result<()> {
+    let mut ctx = EvalContext::new();
+    let v = evaluate(board, &mut ctx, VALUE_ZERO);
+    let side = if board.side_to_move() == Color::White {
+        "white"
+    } else {
+        "black"
+    };
+    writeln!(
+        out,
+        "Final evaluation: {v} (internal, from {side}'s perspective; Phase A material + PSQT)"
+    )
+}
+
+/// In-session `bench [ttMB [threads [limit [fenFile [limitType]]]]]`
+/// (doc 12 §3.15, step 12): the same fixed-suite run as the argv front
+/// door, on its own worker/TT. Diagnostics and the signature report go to
+/// stderr (design/06 §3.6); a malformed argument answers `info string`
+/// and never exits the loop (§3.3).
+fn cmd_bench_session(tokens: SplitWhitespace, out: &mut impl Write) -> io::Result<()> {
+    let args: Vec<String> = tokens.map(String::from).collect();
+    match bench::BenchParams::parse(&args) {
+        // The `current`-position source (design/06 §3.6) is not yet wired to
+        // the session board; reject it here rather than hit `suite_entries`'
+        // `todo!()` — "never panic on input" (§3.3).
+        Ok(params) if matches!(params.fens, bench::FenSource::Current) => writeln!(
+            out,
+            "info string bench: the 'current' fen source is not wired in-session yet; \
+             use 'default' or a fen file"
+        ),
+        Ok(params) => {
+            bench::run(&params);
+            Ok(())
+        }
+        Err(e) => writeln!(out, "info string bench: {e}"),
+    }
+}
+
 /// `d` output (doc 12 §3.15): diagram, `Fen:`, `Key:` (16 hex digits,
 /// D9), and `Checkers:` (the checking pieces' squares).
 fn print_board(out: &mut impl Write, board: &Board) -> io::Result<()> {
@@ -1469,23 +1562,29 @@ uciok
 
     #[test]
     fn no_panic_on_junk_torrent() {
-        // "Never panic on any input" — near-miss commands, dev commands
-        // that exist in the grammar but not yet in the loop (they must
-        // absorb, not hit todo! stubs), non-ASCII, control characters, and
-        // malformed-but-real P4 commands.
+        // "Never panic on any input" — near-miss commands, the in-session
+        // dev commands (which must run/absorb cleanly, never hit a todo!
+        // stub), non-ASCII, control characters, and malformed-but-real P4
+        // commands. `bench` is omitted deliberately: it runs the full fixed
+        // suite (slow), tested elsewhere.
         let junk = "uciready\nucii\nquitt quit\nd d d\nположение\n\u{1}\u{7f}\n\
                     go depth 4\nposition startpos moves e2e4\n\
                     position fen banana\nposition moves e2e4\n\
                     setoption name Hash value banana\nsetoption Hash 16\n\
                     setoption name\ngo wtime\ngo searchmoves zzz\n\
-                    stop\nponderhit\nucinewgame\neval\nbench\nperft 1\n\
-                    go perft 5\nquit\n";
+                    stop\nponderhit\nucinewgame\neval\nperft 1\n\
+                    bench 1 1 1 default depth\ngo perft 3\nquit\n";
         let out = session(junk);
-        // ... and the loop stayed alive through all of it up to `quit`.
+        // A genuinely unknown command is still absorbed (the loop stayed
+        // alive through everything up to `quit`).
         assert!(
-            out.contains("info string Unknown command: 'perft 1'"),
+            out.contains("info string Unknown command: 'uciready'"),
             "{out}"
         );
+        // The dev commands ran rather than being rejected: `perft 1` from
+        // startpos is 20, and `eval` printed a static evaluation.
+        assert!(out.contains("Nodes searched: 20"), "{out}");
+        assert!(out.contains("Final evaluation:"), "{out}");
     }
 
     // -- move text (doc 12 §3.4; §5 "Unit — text") ------------------------
@@ -2090,12 +2189,11 @@ uciok
     }
 
     #[test]
-    fn go_perft_answers_not_implemented() {
-        let (_, out) = command("go perft 5");
-        assert!(
-            out.contains("info string go perft is not implemented yet"),
-            "{out}"
-        );
+    fn go_perft_runs_divide_not_a_search() {
+        // doc 12 §3.15 step 12: `go perft N` runs perft divide from the
+        // session position (startpos here) — no search, no bestmove.
+        let (_, out) = command("go perft 4");
+        assert!(out.contains("Nodes searched: 197281"), "{out}");
         assert_eq!(bestmoves(&out), 0, "{out}");
     }
 
