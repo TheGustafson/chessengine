@@ -379,12 +379,13 @@ v1 table (defaults/ranges are SF-current where we share the option):
 |---|---|---|---|---|
 | `Debug Log File` | string | "" (empty) | — | close any open log; if non-empty, open (append) and tee all stdin/stdout traffic (below) |
 | `Hash` | spin | 16 | 1 .. max (TT doc; MiB) | resize + clear TT |
-| `Threads` | spin | 1 | 1 .. 1024 | rebuild thread pool |
+| `Threads` | spin | 1 | 1 .. `max(4·available_parallelism, 512)` (§9.6, D31) | rebuild thread pool |
 | `Clear Hash` | button | — | — | clear TT + histories |
 | `MultiPV` | spin | 1 | 1 .. 256 (`MAX_MOVES`) | read at next `go` |
 | `Ponder` | check | false | — | TM adds +25% optimum (§3.7); GUI drives actual pondering via `go ponder` |
 | `Move Overhead` | spin | 10 | 0 .. 5000 (ms) | read at next TM init |
 | `nodestime` | spin | 0 | 0 .. 10000 (nodes per ms) | read at next TM init (§3.11) |
+| `Minimal` | check | false | — | low-verbosity report mode (§3.13, D31): suppress per-iteration `info`, print one summary before `bestmove` |
 
 **`Debug Log File`** is the protocol debugging tool (SF ships the same
 option): when set, every line read from stdin and every line written to
@@ -1228,8 +1229,10 @@ The component is done when all of the following hold:
 5. **WDL model timing**: `to_cp` stays identity until phase C (D21) plus
    a self-play WDL fit; decide then whether `UCI_ShowWDL` ships with the
    first NNUE release or later.
-6. **Threads option upper bound** (1024) and Hash upper bound are
-   provisional pending the threading and TT docs' final limits.
+6. **Threads option upper bound** — RESOLVED in P10 (D31): the provisional
+   flat 1024 is replaced by the hardware-scaled `max(4·available_parallelism,
+   512)` (`uci::max_threads`), falling back to 512 when the core count is
+   unavailable. The Hash upper bound stays the TT doc's 64-bit cap.
 
 ## 10. Reckless study inputs (D31, 2026-07-11)
 
@@ -1242,5 +1245,8 @@ P10 candidates from the Reckless study (`reckless_reference/09`, summary
   including `movetime` (cut fast-TC forfeit risk); node-counter bitmask poll
   cadence (`nodes & mask`, mask `= CHECK_TIME_CALLS − 1`, tightened under a
   node limit). See the §3.8 implementation note for the shipped shape.
-- **Options** — `Threads` upper bound `max(4·available_parallelism, 512)`
-  (§9.6); a low-verbosity report mode for high-frequency self-play (§3.13).
+- **Options — LANDED in P10.** `Threads` upper bound
+  `max(4·available_parallelism, 512)` (§9.6, `uci::max_threads`) resolves the
+  flat-1024 open question with a hardware-scaled bound; the `Minimal` check
+  option (§3.13) gates every per-iteration `info` line, leaving one summary
+  before `bestmove` for high-frequency self-play — pure I/O, bench-neutral.

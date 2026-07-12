@@ -75,17 +75,21 @@ fn handshake_transcript_is_byte_exact() {
          id author {}\n\
          option name Debug Log File type string default <empty>\n\
          option name Hash type spin default 16 min 1 max 33554432\n\
-         option name Threads type spin default 1 min 1 max 1024\n\
+         option name Threads type spin default 1 min 1 max {threads_max}\n\
          option name Clear Hash type button\n\
          option name MultiPV type spin default 1 min 1 max 256\n\
          option name Ponder type check default false\n\
          option name Move Overhead type spin default 10 min 0 max 5000\n\
          option name nodestime type spin default 0 min 0 max 10000\n\
+         option name Minimal type check default false\n\
          uciok\n\
          readyok\n",
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION"),
         env!("CARGO_PKG_AUTHORS"),
+        // The Threads ceiling is hardware-scaled (doc 12 §9.6): compute the
+        // same value the engine registers so this stays byte-exact anywhere.
+        threads_max = chessengine::uci::max_threads(),
     );
     assert_eq!(stdout, expected);
 }
@@ -507,6 +511,40 @@ fn multipv_emits_three_ordered_lines_per_iteration() {
         scores[0] >= scores[1] && scores[1] >= scores[2],
         "exact scores must weakly decrease across multipv 1..3: {scores:?}"
     );
+}
+
+#[test]
+fn minimal_report_mode_prints_one_summary_line() {
+    // doc 12 §3.13 / D31: `Minimal` suppresses the per-iteration info lines
+    // and prints exactly one summary line before `bestmove` (log-volume
+    // relief for high-frequency self-play). Pure I/O — no search change.
+    let mut s = Session::spawn();
+    s.send("setoption name Minimal value true");
+    s.send("position startpos");
+    s.send("go depth 8");
+    s.wait_for(|l| l.starts_with("bestmove "), Duration::from_secs(20));
+    let (status, lines, stderr) = s.finish();
+    assert_clean_exit(status, &stderr);
+    let infos = lines
+        .iter()
+        .filter(|(_, l)| l.starts_with("info depth "))
+        .count();
+    assert_eq!(
+        infos,
+        1,
+        "Minimal prints exactly one summary info line, not one per iteration:\n{}",
+        s_transcript(&lines)
+    );
+    assert_eq!(bestmove_lines(&lines).len(), 1, "exactly one bestmove");
+}
+
+/// Join timestamped lines for an assertion message.
+fn s_transcript(lines: &[(Instant, String)]) -> String {
+    lines
+        .iter()
+        .map(|(_, l)| l.as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[test]

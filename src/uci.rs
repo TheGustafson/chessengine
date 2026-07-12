@@ -184,6 +184,17 @@ pub fn move_from_uci(board: &Board, token: &str) -> Option<Move> {
 const HASH_MB_MIN: i64 = MIN_HASH_MB as i64;
 const HASH_MB_MAX: i64 = MAX_HASH_MB as i64;
 
+/// UCI `Threads` upper bound (design/12 §9.6; Reckless bundle D31):
+/// `max(4 · available_parallelism, 512)`, a hardware-scaled ceiling — a
+/// lazy-SMP pool never usefully exceeds a few times the core count. Falls
+/// back to 512 when the hardware thread count is unavailable. Exposed so
+/// the handshake test can pin the same value it registers.
+pub fn max_threads() -> i64 {
+    std::thread::available_parallelism()
+        .map(|n| (4 * n.get() as i64).max(512))
+        .unwrap_or(512)
+}
+
 /// What kind of option an entry is, with its default and (for spins) the
 /// clamping range. The kind is immutable after registration; only
 /// [`OptionValue`] changes on `setoption`.
@@ -281,7 +292,7 @@ impl Options {
                     OptionKind::Spin {
                         default: 1,
                         min: 1,
-                        max: 1024,
+                        max: max_threads(),
                     },
                 ),
                 register("Clear Hash", OptionKind::Button),
@@ -310,6 +321,11 @@ impl Options {
                         max: 10000,
                     },
                 ),
+                // Low-verbosity report mode (design/12 §3.13; Reckless
+                // bundle D31): suppress the per-iteration `info` lines and
+                // print one summary line before `bestmove`. Pure I/O, for
+                // high-frequency self-play log volume — bench-neutral.
+                register("Minimal", OptionKind::Check { default: false }),
             ],
         }
     }
@@ -391,14 +407,24 @@ impl Options {
     }
 
     pub fn ponder(&self) -> bool {
+        self.check("Ponder")
+    }
+
+    /// Low-verbosity report mode (design/12 §3.13): suppress per-iteration
+    /// `info` lines, printing one summary before `bestmove`.
+    pub fn minimal(&self) -> bool {
+        self.check("Minimal")
+    }
+
+    fn check(&self, name: &str) -> bool {
         match self
             .entries
             .iter()
-            .find(|e| e.name == "Ponder")
+            .find(|e| e.name == name)
             .map(|e| &e.value)
         {
             Some(&OptionValue::Check(v)) => v,
-            _ => unreachable!("Ponder is a registered check option"),
+            _ => unreachable!("{name} is a registered check option"),
         }
     }
 
@@ -1066,9 +1092,17 @@ fn run_search<W: Write>(
     // the node throttle; per-line above it), so this callback just formats
     // and writes — one pre-built String, one locked write per line.
     worker.multi_pv = options.multipv().max(1) as usize;
+    // Low-verbosity report mode (doc 12 §3.13, D31): suppress every
+    // per-iteration `info` line; the final-PV flush below still prints one
+    // summary before `bestmove` (in `Minimal`, `last_sent` stays `None`, so
+    // that flush always fires).
+    let minimal = options.minimal();
     // The PV head of the `multipv 1` line drives the final flush below.
     let mut last_sent: Option<Move> = None;
     worker.iterative_deepening(tt, stop, &mut state.persist, &mut |info| {
+        if minimal {
+            return;
+        }
         let elapsed_ms = start_time.elapsed().as_millis() as i64;
         let mut out = out.lock();
         let _ = writeln!(out, "{}", format_info(info, elapsed_ms));
@@ -1473,23 +1507,28 @@ mod tests {
     }
 
     #[test]
-    fn uci_lists_the_v1_options_verbatim() {
-        // doc 12 §3.5/§8.1: exactly the v1 table, registration order,
-        // correct types/defaults/ranges.
+    fn uci_lists_the_options_verbatim() {
+        // doc 12 §3.5/§8.1: exactly the v1 table + the P10 additions
+        // (hardware-scaled Threads ceiling, `Minimal` report mode), in
+        // registration order with correct types/defaults/ranges.
         let out = session("uci\nquit\n");
-        let expected = "\
+        let expected = format!(
+            "\
 option name Debug Log File type string default <empty>
 option name Hash type spin default 16 min 1 max 33554432
-option name Threads type spin default 1 min 1 max 1024
+option name Threads type spin default 1 min 1 max {}
 option name Clear Hash type button
 option name MultiPV type spin default 1 min 1 max 256
 option name Ponder type check default false
 option name Move Overhead type spin default 10 min 0 max 5000
 option name nodestime type spin default 0 min 0 max 10000
+option name Minimal type check default false
 uciok
-";
-        assert!(out.ends_with(expected), "{out}");
-        assert_eq!(out.matches("option name").count(), 8, "{out}");
+",
+            max_threads()
+        );
+        assert!(out.ends_with(&expected), "{out}");
+        assert_eq!(out.matches("option name").count(), 9, "{out}");
     }
 
     #[test]
