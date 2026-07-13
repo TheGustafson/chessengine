@@ -31,3 +31,4 @@ __pycache__/
 
 # NNUE training dashboard tfevents (artifacts, P13)
 tools/nnue/runs/
+/dist/

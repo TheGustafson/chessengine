@@ -7,6 +7,13 @@ edition = "2024"
 
 [dependencies]
 
+[features]
+# Distribution-only: embed net-0 as the default eval so the engine plays NNUE
+# with no `EvalFile` set (for GUIs that can't set UCI string options). OFF by
+# default, so runtime [dependencies] stays empty (D15) and the default build is
+# PSQT/bench-neutral (548978). Build a playable binary with `--features embed-net`.
+embed-net = []
+
 [dev-dependencies]
 # Test/bench-only (D15: runtime [dependencies] stays empty; dev-deps allowed).
 # Criterion micro-benches are never a merge gate (design/14 §3.3); baselines

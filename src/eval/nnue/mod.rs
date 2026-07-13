@@ -96,6 +96,35 @@ pub fn set_eval_file(path: &str) -> Result<(), NnueError> {
 
 /// The active net, or `None` when NNUE is off (⇒ PSQT). Read at each search's
 /// eval boundary and handed to the per-thread [`NnueContext`].
+///
+/// With the `embed-net` feature (distribution builds), an explicit `EvalFile`
+/// still wins, but when none is set the compile-time-embedded default net is
+/// used instead of falling back to PSQT — so the engine plays NNUE out of the
+/// box for GUIs that can't set UCI string options. The default build (no
+/// `embed-net`) ignores this entirely and stays PSQT/bench-neutral (548978).
 pub fn active_net() -> Option<&'static Network> {
-    *ACTIVE_NET.read().unwrap_or_else(|e| e.into_inner())
+    let from_eval_file = *ACTIVE_NET.read().unwrap_or_else(|e| e.into_inner());
+    #[cfg(feature = "embed-net")]
+    {
+        return from_eval_file.or_else(|| Some(embedded_net()));
+    }
+    #[cfg(not(feature = "embed-net"))]
+    from_eval_file
+}
+
+/// The compile-time-embedded default net (distribution builds only, `embed-net`
+/// feature). Loaded and leaked once. The bytes are a build asset validated at
+/// build time, so a load failure is a broken build — not user input — hence the
+/// `expect`. Read once per search (never on the hot path), same as [`active_net`].
+#[cfg(feature = "embed-net")]
+fn embedded_net() -> &'static Network {
+    use std::sync::OnceLock;
+    static EMBEDDED: OnceLock<&'static Network> = OnceLock::new();
+    *EMBEDDED.get_or_init(|| {
+        const BYTES: &[u8] =
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/nnue/nets/net-0.cenn"));
+        Box::leak(Box::new(
+            load_bytes(BYTES).expect("embedded default net is a valid CENN file"),
+        )) as &'static Network
+    })
 }
