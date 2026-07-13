@@ -1448,6 +1448,27 @@ tail. The custom work:
 Output = CENN-v2 nets our loader owns. (nnue-pytorch was declined: no policy path,
 SF-format nets we'd re-quantize.)
 
+> **Feasibility spike verdict (2026-07-13, bullet `cebc78a`).** GO, no fork needed —
+> everything routes through public APIs. **The eval trunk is entirely native**:
+> `ChessBucketsMirrored` (king-bucketed+mirrored input), `pairwise_mul()`, per-tensor
+> quant (`SavedFormat`/`QuantTarget` → FT `i16(255)`, L1 `i8(64)`, L2/L3 `Float` — the
+> exact D40 lean), and `OutputBuckets`/`MaterialCount<8>`. A net in this shape trained
+> end-to-end on GPU + emitted a valid mixed-quant checkpoint (overflow hard-checked at
+> save). **HalfKA i16 / threats i8 as two separately-quantized tensors** = two affine
+> weight tensors summed in the graph (`node + node`) — which is exactly what our
+> inference wants, since the head keeps `pst`/`threat` as *separate* accumulators (§12.3).
+> **The two custom pieces:** (1) SF-exact HalfKAv2_hm + FullThreats via a **custom
+> `SparseInputType`** (one combined impl over the concatenated `0..83,248` index space);
+> bullet wiring is ~½–1 day, the index math is the engine-domain work of §12.9 (shared
+> with inference). (2) The **policy head + combined loss** drops off the eval-only
+> convenience `ValueTrainer` to the **low-level `ModelDefinition` + `Optimiser` +
+> `run::train`** path (which `ValueTrainer` builds internally, so it's a known-good
+> template): `matmul` for from×to, `softmax_crossentropy_loss`, operator-overload loss
+> combine, a named `policy_target` data input; ~3–6 days, and **the gating risk is the
+> policy-target corpus/`DataReader` (§12.8, task #27), not the graph.** So the build
+> order stands: #27 (data) gates #28 (train); the eval-only nets are low-risk, the
+> policy nets ride the low-level path.
+
 ### 12.8 Data-format extension — eval + policy per position (the curation work)
 
 The single new corpus requirement (the user's "focus on data curation"): every
