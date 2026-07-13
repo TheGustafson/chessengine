@@ -148,7 +148,8 @@ def cmd_add_net(a) -> None:
         "train_data": a.train_data, "parent_net": a.parent,
         "provenance": a.provenance, "bullet_commit": a.bullet_commit,
         "hparams": maybe_json(a.hparams) or {}, "final_loss": a.final_loss,
-        "elo_vs_parent": a.elo_vs_parent, "code_sha": a.code_sha or git_head(),
+        "elo_vs_parent": a.elo_vs_parent, "nps": a.nps,
+        "code_sha": a.code_sha or git_head(),
         "recipe": a.recipe, "file": rel(path), "created": today(),
         "notes": a.notes,
     }
@@ -328,6 +329,8 @@ def build_parser() -> argparse.ArgumentParser:
     n.add_argument("--hparams", help="JSON, e.g. '{\"sb\":30,\"lr\":\"0.001-cos\"}'")
     n.add_argument("--final-loss", dest="final_loss", type=float)
     n.add_argument("--elo-vs-parent", dest="elo_vs_parent", type=float)
+    n.add_argument("--nps", type=int,
+                   help="single-thread nps of this net's eval path (D39 speed axis)")
     n.add_argument("--code-sha", dest="code_sha", help="default: git HEAD")
     n.add_argument("--recipe", help="exact regen command / pointer")
     n.add_argument("--notes")

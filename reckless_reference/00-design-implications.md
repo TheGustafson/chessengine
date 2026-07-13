@@ -466,3 +466,48 @@ supplies working shapes for the post-v1 upgrade path. Its standout is the
   Reckless's caller-must-pre-mask generic shift; **file-indexed ep Zobrist**
   (tighter) vs Reckless's 64-slot table; **cheaper `(nodes&2)-1` draw dither**
   matching current SF vs Reckless's wider `(nodes%5)-2`.
+
+---
+
+## Reckless techniques triaged as search-quality candidates (2026-07-13, D39)
+
+Prompted by a Gemini review of Reckless's source (file `reckless_review.md` — not
+in our repo; worked from the paste) surfacing "things Reckless may do better."
+Each item **verified against our code before recording** (D39 rule h). Verdict
+key: ✅ already-have · ⛔ declined-on-principle · ◐ partial → candidate · ⬜
+net-new candidate · 🔷 net-coupled (needs a threat-map net).
+
+- ⛔ **Thread-jittered LMR** (`reduction += (nodes + id·27) % 128 − 59`). Already
+  **declined** (`decisions.md` D24 / this file's deferred list): it is
+  node-count-dependent, so it desyncs even thread 0's `bench` and breaks D24
+  reproducibility. We take SMP diversity from **aspiration-window jitter**
+  (`thread_idx % 8`, `search/mod.rs:1639`) instead. Not a gap.
+- ✅ **King-danger x-ray / O(1) king & castling legality** (`occ ^ king`). We
+  already do exactly this — `board.rs:729` `slider_occ = all_occupancy ^
+  king_square(us)`. Not a gap.
+- ✅ **Pinner/pinned precompute from the king** — we maintain pin bookkeeping in
+  the state stack (D8, `board.rs`), used by the lazy legality layer. Convergent,
+  not a gap.
+- ◐ **Threat-aware quiet-move ordering** (escape bonus for moving a threatened
+  piece; penalty for moving *onto* a lower-attacker square; offense bonus for
+  attacking an undefended enemy). We adopted only the **RFP-margin** slice of the
+  D30/Wave-G threat coupling (`search/mod.rs:220`), **not** the move-ordering
+  scoring. It is **board-threat-based** (`all_threats()`), so **not net-coupled**
+  — implementable on net-0. **Highest-value net-new search candidate.** Screen at
+  fixed-node per D39.
+- ⬜ **Tactical NMP refinements** (veto NMP when a TT lower-bound implies a
+  capture ≥ knight; narrow the null window to `tt_score` under a below-beta TT
+  lower bound; quieter-line threshold via `cutoff_cnt`). Plausible net-new;
+  audit our NMP block first, then fixed-node screen.
+- 🔷 **Vectorized Kogge-Stone setwise fills** (`setwise.rs`, 4 slider dirs in one
+  `__m256i`). Real, but our movegen is **301 Mnps** (not the bottleneck); its
+  payoff is whole-board **threat maps**, which we don't compute until a
+  threat-feature net exists. Defer with the threat-map arch.
+- ⏱ **Quorum-vote soft-stop** (65% thread vote → `STOPPED`). A **real-TC
+  time-management** refinement — it cannot move the equal-nodes number, so it is
+  *out of scope* for the −87 search-quality gap. Revisit under TM (`design/12`),
+  not as a per-node search win.
+
+Ordering discipline (D39 rule f): these are tuned/adopted **on the shipped net**,
+after a good net lands — not bolted onto net-0, which would confound the very
+measurement.

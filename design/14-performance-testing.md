@@ -630,6 +630,75 @@ Ranked by how likely they are to silently cost us node-cost parity:
    when in doubt in the hottest loops, write the plain loop — this is the
    one place CLAUDE.md's "prefer idiomatic" yields to measurement.
 
+### 3.11 The strength decomposition & anti-confound protocol (D39)
+
+§3.1 says "using the wrong tier is the most common testing mistake." Its more
+dangerous cousin: **measuring one strength axis through a test that silently
+moves another.** Playing strength factors into nearly-orthogonal axes —
+
+> **Elo ≈ f(net quality, search quality, inference speed)**
+
+— and every strength claim must name which axis it isolates. The axes and how
+to isolate each:
+
+| Axis | What it is | Isolate it with | Confounded by |
+|---|---|---|---|
+| **inference speed** | nps of the eval path (arch + quant + code quality) | fixed-node timing / perft; log as `nps` | reading it off a real-TC or search-depth result |
+| **net quality** | how good the eval signal is *per node* | **fixed-node** SPRT, arch held constant | real-TC (blends in speed), arch change (moves speed too) |
+| **search quality** | strength extracted *per node* by the tree | fixed-node SPRT, **same net** both sides | a net swap (search is eval-coupled), untuned params |
+
+**The rules (D39):**
+
+1. **Fixed-node (or fixed-depth) is the research metric.** Equal node budget
+   removes the speed axis, so a fixed-node SPRT reads net + search quality
+   directly. This is how we rank data recipes, label mappings, and (same-net)
+   search changes.
+2. **Real-TC is a ship gate, never a net- or search-quality measurement.** It
+   blends all three axes. A real-TC delta decomposes as `(fixed-node Elo) +
+   (speed Elo)`, where speed Elo comes from the §3.1 rule of thumb (~+50–70 Elo
+   per 2× nps at short TC). If you only ran real-TC, you cannot say whether a
+   regression was the net, the search, or the inference code.
+3. **Inference speed is a separately-logged axis** — the `nps` field on ledger
+   net rows (D38). A slow first-cut inference path is an implementation
+   accident, not a property of the net, and it must never be silently folded
+   into a net verdict.
+4. **Never compare two nets/arches across different-maturity inference paths and
+   blame the artifact.** Same net, different code = a *speed* result, not a
+   *net* result.
+5. **Hold arch + quant constant ⇒ there is no speed confound**, so test at any
+   TC. Our entire Lc0/data campaign shares the net-0 arch and our one AVX2
+   forward, so those net-vs-net tests are already clean. **An arch or quant
+   change moves net-quality and speed together** → the required order is
+   **fixed-node screen → (if promising) write production inference → real-TC
+   ship gate**. Never judge an arch on a lazy first-cut inference path.
+6. **Tuning is eval-coupled: SPSA-tune search params on the *shipped* net, not a
+   throwaway.** Margins in centipawn units (RFP/futility/razoring) re-mistune
+   when the eval scale/distribution changes, so tuning against net-0 and then
+   swapping nets wastes the work. Correct order (with D35/D36): get a good net,
+   *then* run the tuning grind on it.
+7. **External improvement suggestions are triaged by axis and verified against
+   our code + decisions before adoption.** A "engine X does Y better" list is
+   usually part already-present, part declined-on-principle, part net-coupled,
+   and only partly net-new — see the worked triage in
+   `reckless_reference/00-design-implications.md`.
+
+**Worked example (2026-07-13, the Reckless signal battery).** The battery's
+headline read "us ~4× slower, depth 25 vs 19" at fixed *time*. Decomposed:
+
+- *Inference speed* (fixed-node self-reported nps): our engine **net-0 2.36
+  Mnps**, PSQT 2.67, full **Reckless 0.95**, our hand-port of Reckless's net
+  **0.34**. Perft **301 Mnps** (clean release). ⟹ we are **~2.5× faster** than
+  Reckless; the "4×" was a mislabel — it timed the **port** (0.34 M, our slow
+  first-cut inference of a foreign 63 MB net), which rule 4 says is a speed
+  artifact, not our engine.
+- *Net quality* (fixed-node): net-0 vs Reckless-net in our search = **+759** for
+  the Reckless net. This is the dominant lever.
+- *Search quality* (fixed-node, **same net** both sides, T1 @100k):
+  **−86.68 ± 22.97** — our search is ~87 Elo behind Reckless's per node. Real,
+  second-order, and (rule 6) a tuning-maturity gap deferred behind the net.
+
+The fixed-time headline confounded all three; the decomposition is the truth.
+
 ---
 
 ## 4. Implementation plan

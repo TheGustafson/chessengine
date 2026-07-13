@@ -368,6 +368,13 @@ doc beyond what its owning docs (11/16) build; this doc sequences the research.
   positions.
 - **Multi-head training doesn't degrade value:** the joint-trained value head
   must SPRT ≥ a value-only net (multi-task should help, not hurt — §9d).
+- **Axis hygiene (D39):** rank nets by **fixed-node** strength (it isolates net
+  quality from inference speed); real-TC is a ship gate, never a net-quality
+  read. Log every net's `nps` (D38) so a real-TC result decomposes into
+  net-quality + speed Elo. Any arch/quant change → **fixed-node screen →
+  production inference → real-TC**, never judged on a first-cut inference path;
+  and **SPSA-tune on the shipped net, not net-0** (tuning is eval-coupled). Full
+  protocol + worked example: `design/14` §3.11.
 
 ## 6. Performance / budget notes
 

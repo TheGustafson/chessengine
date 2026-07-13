@@ -53,7 +53,10 @@ The ledger makes strength history queryable and every version reproducible.
 - **net** (`nets.jsonl`): `id`, `hash` (sha256 of `.cenn`), `size`, `arch`,
   `act`, `quant`, `train_data` (corpus id), `parent_net`, `provenance`
   (`sf-distill`|`lc0-distill`|`self-play`|`mixed`), `bullet_commit`, `hparams`,
-  `final_loss`, `elo_vs_parent`, `code_sha`, `recipe`, `file`, `created`, `notes`.
+  `final_loss`, `elo_vs_parent`, `nps` (single-thread nps of this net's eval
+  path — the **D39** inference-speed axis, kept beside net quality so any
+  real-TC result decomposes into net-quality + speed Elo), `code_sha`, `recipe`,
+  `file`, `created`, `notes`.
 - **data** (`data.jsonl`): `id`, `hash` (manifest sha256 over sorted
   `name:filehash`), `size`, `source`, `positions`, `format`, `gen_recipe`,
   `generator_net` (self-play), `path`, `glob`, `created`, `notes`.

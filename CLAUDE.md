@@ -9,7 +9,7 @@ introducing them.
 
 `design/` holds the reviewed design suite that governs all implementation:
 
-- `design/decisions.md` — pinned decisions D1-D38. **Decisions change here
+- `design/decisions.md` — pinned decisions D1-D39. **Decisions change here
   first; docs follow; code follows docs.**
 - `design/00-master-plan.md` — phase ordering (P0-P14), milestone gates,
   current phase status.

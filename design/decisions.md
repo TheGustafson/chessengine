@@ -410,3 +410,41 @@ strength. Two constraints in permanent tension, resolved in this order:
   + markdown (diffable, zero-dep). Build MINIMAL now (discipline is the value, not
   infra — Integral lesson, D37); grow toward OpenBench at the tuning grind.
   SPSA tuning runs are experiments too (`kind:"spsa"`). Owning doc: `design/18`.
+
+- **D39**: The strength decomposition & anti-confound testing protocol
+  (2026-07-13). Playing strength factors into nearly-orthogonal axes —
+  **Elo ≈ f(net quality, search quality, inference speed)** — and the cardinal
+  sin is measuring one axis through a test that silently moves another. Rules:
+  (a) **Fixed-node (or fixed-depth) games isolate net + search quality** by
+  removing the speed axis — this is the RESEARCH / screening metric. (b) **Real-TC
+  is a SHIP GATE, never a net- or search-quality measurement**: it blends all
+  three axes, so a real-TC delta decomposes into (fixed-node Elo) + (speed Elo,
+  from the §3.1 nps→Elo rule of thumb). (c) **Inference speed is a
+  separately-LOGGED axis** — the `nps` field on ledger net rows (D38); a slow
+  first-cut inference path is an implementation accident, not a property of the
+  net. (d) **Never compare two nets/arches across different-maturity inference
+  paths and blame the artifact** — cautionary tale: our hand-port of Reckless's
+  net ran the *same* net at 0.34 Mnps vs Reckless's 0.95 Mnps native, and the
+  battery's "we're 4× slower" headline was timing the port, while our real engine
+  (net-0) runs **2.36 Mnps ≈ 2.5× FASTER than Reckless** (perft 301 Mnps; movegen
+  is not the bottleneck). (e) **Hold arch + quant constant ⇒ no speed confound,
+  test at any TC** — the whole Lc0/data campaign shares the net-0 arch, so those
+  net-vs-net tests are already clean. An arch/quant change moves net-quality AND
+  speed together → **screen at fixed-node first, THEN invest in production
+  inference, THEN real-TC ship gate**. (f) **Tuning is eval-coupled: SPSA-tune
+  search params on the SHIPPED net, not a throwaway (net-0)** — tuning against
+  net-0 then swapping nets re-mistunes the margins; this + D36 fix the order (good
+  net → then the tuning grind). (g) **Search quality is the fourth axis and is
+  presently a tuning-maturity gap, not missing machinery** — at equal 100k nodes
+  with the same net our search is ~87 Elo behind Reckless (T1, 2026-07-13), but we
+  already ship singular/double/triple extensions, ProbCut, multicut, LMR; the 240
+  `search/params.rs` constants are SF defaults never SPSA-tuned for our engine
+  (the IIR −15 revert is the tell). Largely planned debt behind the net (D36).
+  (h) **External improvement suggestions are triaged by axis and VERIFIED against
+  our code + decisions before adoption** — a "Reckless does X better" list is
+  typically part already-present (king-danger x-ray, `board.rs`), part
+  declined-on-principle (reduction-jitter breaks D24 bench reproducibility), part
+  net-coupled (threat-map ordering), and only partly net-new. Owning doc:
+  `design/14` §3.11 (NNUE application: `design/17` §5); the `nps` metadata lands in
+  D38's `nets.jsonl` schema; the triaged Reckless backlog lives in
+  `reckless_reference/00-design-implications.md`.
