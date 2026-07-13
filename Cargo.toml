@@ -18,6 +18,10 @@ embed-net = []
 # A 512-build loads ONLY 512-wide CENN nets (the loader checks the header `l1`);
 # build a 512 engine with `--features nnue-l1-512`.
 nnue-l1-512 = []
+# Experimental learned policy head for MovePicker quiet ordering (design/17
+# Thrust II, src/policy.rs). OFF by default so the shipped engine + depth-6 bench
+# stay byte-identical; build the experiment with `--features policy`.
+policy = []
 
 [dev-dependencies]
 # Test/bench-only (D15: runtime [dependencies] stays empty; dev-deps allowed).

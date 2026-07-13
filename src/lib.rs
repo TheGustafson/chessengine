@@ -28,6 +28,8 @@ pub mod movegen;
 pub mod movepick;
 pub mod moves;
 pub mod perft;
+#[cfg(feature = "policy")]
+pub mod policy;
 pub mod search;
 pub mod threads;
 pub mod timeman;
