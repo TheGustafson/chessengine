@@ -28,6 +28,10 @@ pub mod simd;
 /// The SOTA net's head forward (D40, design/11 §12) — behind the `sota` feature.
 #[cfg(feature = "sota")]
 pub mod sota_head;
+/// The SOTA net's SF feature front-end (HalfKAv2_hm + FullThreats index math +
+/// from-scratch accumulator refresh, D40, design/11 §12.1-12.2) — behind `sota`.
+#[cfg(feature = "sota")]
+pub mod sota_features;
 
 // --- Architecture dimensions (design/11 §3.4.1) ----------------------------
 
