@@ -22,6 +22,10 @@ nnue-l1-512 = []
 # Thrust II, src/policy.rs). OFF by default so the shipped engine + depth-6 bench
 # stay byte-identical; build the experiment with `--features policy`.
 policy = []
+# The SOTA NNUE net (D40, design/11 §12): SF features + Reckless-shaped hybrid
+# head. OFF by default (the whole SOTA path is inert until it ships), so the
+# default build + depth-6 bench stay byte-identical. Build with `--features sota`.
+sota = []
 
 [dev-dependencies]
 # Test/bench-only (D15: runtime [dependencies] stays empty; dev-deps allowed).

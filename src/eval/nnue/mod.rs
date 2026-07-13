@@ -25,6 +25,9 @@ pub mod accumulator;
 pub mod loader;
 pub mod network;
 pub mod simd;
+/// The SOTA net's head forward (D40, design/11 §12) — behind the `sota` feature.
+#[cfg(feature = "sota")]
+pub mod sota_head;
 
 // --- Architecture dimensions (design/11 §3.4.1) ----------------------------
 
