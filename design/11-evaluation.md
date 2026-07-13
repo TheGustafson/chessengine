@@ -1548,6 +1548,64 @@ keep only positions with a usable policy target for the policy nets.
   tolerance across a fixture set (the §3.4.6 scalar/SIMD discipline, now also
   Rust-vs-trainer), before any strength claim.
 
+#### 12.9.1 Incremental FullThreats update (the ≤80/move dirty-diff observer)
+
+The one genuinely heavy new machine (study 2026-07-13, from SF + Reckless — never
+copied). A move produces a raw list of perspective-agnostic
+`ThreatDelta{attacker, from, victim, to, add}` events, **built once** in the
+make/unmake hook and **resolved per perspective** at eval time via the same
+`threat_index` the from-scratch path uses (excluded pairs return the sentinel and
+are dropped — so the enumeration may safely over-generate). Adopt **Reckless's
+structure, SF's content** (kings excluded as attacker/victim; pawn-push relations
+included — already true of our from-scratch `pawn_push_or_attacks`).
+
+**Core primitive `record_square_touch(P, s, add, occ)`** — emit every relation a
+piece `P` conceptually appearing/disappearing at `s` participates in:
+1. **outgoing**: `piece_attacks(P, s, occ) & occ` → a `(P, s, victim, t, add)` per
+   occupied target (pawns use `pawn_push_or_attacks`).
+2. **x-ray ripple**: for each slider `S` (bishop/rook/queen) attacking `s`, the
+   first occupant strictly beyond `s` on the `S→s` ray = `ray_pass(S.sq, s) & occ &
+   slider_attacks(s)` (**at most one** — `ray_pass` at `src/attacks.rs:396` is
+   exactly this "discovered-attack" query). Emit that discovered relation with the
+   **sign flipped** (`!add`: removing `P` *unblocks* `S`), plus `S`'s direct
+   relation to `P@s`.
+3. **incoming**: short-range attackers of `s` (pawns via the color-symmetry
+   `pawn_attacks(!c, s) & c_pawns`; knights) → `(A, victim=P, s, add)`.
+   Kings are **not** emitted as attackers (SF). For `P`=king, run **only** the ripple.
+
+**Three drivers**, called from the mutation points (board already reflects the move):
+- `on_move(P, from, to)`: one shared occupancy `occ ^ to` for both
+  `record_square_touch(P, from, false)` and `(P, to, true)` — this makes the
+  along-a-ray discovered victim cancel (equal index, opposite sign), Reckless's
+  elegant replacement for SF's `noRaysContaining` guard.
+- `on_change(P, s, add)`: full touch (used for captures' removed piece, ep pawn,
+  castling rook).
+- `on_mutate(old, new, s)`: relabel `s`'s relations old→new **with no ripple**
+  (occupancy at `s` unchanged) — promotions and the captured→mover swap.
+  Per-move-kind wiring: quiet=`on_move`; capture=`on_change(mover,from,false)` +
+  `on_mutate(victim,mover,to)`; ep=`on_move`+`on_change(pawn,capsq,false)`;
+  promo=`on_move`+`on_mutate(pawn,promoted,to)`; castling=rook `on_change`×2 + king
+  `on_move` (two ripples). A simpler first-cut (correctness A/B): `on_change` every
+  `DirtyPiece` sub (removes first) then every add — auto-cancels, costs extra events.
+
+**Buffers** (stack, heap-free): raw deltas `[ThreatDelta; 128]` (the `(8+16)·3+8 =
+80` bound + pad; debug-assert `len ≤ 80`); per-perspective `added`/`removed` index
+lists `[u16; 128]` each. **Undo** swaps `added↔removed`.
+
+**Refresh trigger**: a threat index depends on the perspective's king **mirror half
+only** (not the bucket), so a perspective's threat accumulator fully refreshes when
+*its own* king crosses the d/e boundary — a strict subset of the HalfKA refresh, so
+**piggyback: refresh threats whenever the PST (HalfKA) accumulator refreshes**
+(superset-safe; a separate mirror flag is a later optimization). No Finny cache for
+threats (mirror flips are rare) — reuse the from-scratch `append_active`.
+
+**The correctness gate** (non-negotiable): a random-game replay test asserting
+`incremental_threat_accumulator == from_scratch_refresh` at *every* node — the same
+make/unmake-equivalence discipline as `assert_consistent`. The incremental
+enumeration and the from-scratch `append_active` are two encodings of one feature
+set; any content choice (kings, pushes, queen-victim rules) is made in lockstep in
+both, or this test fails.
+
 ### 12.10 Build plan / phasing (full 83k from day one, lean head)
 
 1. **Trainer** (§12.7): bullet FullThreats feature + configurable policy head +
