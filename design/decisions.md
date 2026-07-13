@@ -393,3 +393,20 @@ strength. Two constraints in permanent tension, resolved in this order:
   affirms D17, do not adopt. Adaptation list: `integral_reference/
   00-design-implications.md`; success-factors: `integral_reference/
   00-success-factors.md`.
+
+- **D38**: Experimental ledger (2026-07-12). A content-addressed **provenance
+  DAG + results ledger** tracking the engine's evolution — nets, corpora, code
+  versions, and their measured results — so any past version is reproducible and
+  any net's lineage is provable (the D28 clean-provenance goal). Three append-only
+  git-tracked JSONL registries under `ledger/` (`nets`, `data`, `experiments`) +
+  a curated `milestones.md`, driven by a stdlib-only `tools/ledger/ledger.py` CLI
+  (`add-net`/`add-data`/`add-exp`/`verify`/`show`/`reproduce`). Two keystone
+  invariants: **identity = sha256** (friendly ids are labels; the hash is truth)
+  and **every artifact carries its regeneration recipe** (git SHA + input hashes
+  + command — extends the D24 `Bench:` trailer and the D29 corpus `meta.json`).
+  **Metadata in git, bytes in a content store** (nets/corpora stay gitignored
+  under `data/…`; a hash-keyed **GCS mirror comes later, D36**; OpenBench becomes
+  the execution + web-UI layer, referencing net hashes from here). Format = JSONL
+  + markdown (diffable, zero-dep). Build MINIMAL now (discipline is the value, not
+  infra — Integral lesson, D37); grow toward OpenBench at the tuning grind.
+  SPSA tuning runs are experiments too (`kind:"spsa"`). Owning doc: `design/18`.

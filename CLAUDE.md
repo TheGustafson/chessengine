@@ -9,15 +9,27 @@ introducing them.
 
 `design/` holds the reviewed design suite that governs all implementation:
 
-- `design/decisions.md` — pinned decisions D1-D37. **Decisions change here
+- `design/decisions.md` — pinned decisions D1-D38. **Decisions change here
   first; docs follow; code follows docs.**
 - `design/00-master-plan.md` — phase ordering (P0-P14), milestone gates,
   current phase status.
 - `design/README.md` — index and process rules for the suite.
-- `design/01-*.md` … `design/17-*.md` — one contract per component (14
+- `design/01-*.md` … `design/18-*.md` — one contract per component (14
   numbered + `15` NNUE datagen + `16` research data platform + `17` NNUE
-  research roadmap, D34). Check code against the owning doc's acceptance
-  criteria (§8) before calling a phase done.
+  research roadmap, D34 + `18` experimental ledger, D38). Check code against the
+  owning doc's acceptance criteria (§8) before calling a phase done.
+
+## Experimental ledger (D38, design/18)
+
+`ledger/` is the content-addressed provenance DAG + results ledger tracking the
+engine's evolution (nets, corpora, experiments) so any version is reproducible
+and any net's lineage is provable. Append-only JSONL registries
+(`nets`/`data`/`experiments`) + `milestones.md`, driven by the stdlib-only
+`tools/ledger/ledger.py` CLI. **After training a net, building a corpus, or
+running a match/SPRT/SPSA, add a ledger row** (`add-net`/`add-data`/`add-exp`);
+identity is the artifact's sha256; every row carries a regen recipe. Metadata is
+git-tracked; the net/corpus bytes stay gitignored (GCS mirror + OpenBench come
+later, D36). `ledger.py verify` checks hash drift + referential integrity.
 
 When implementing a component, read its design doc first and follow it; if
 reality forces a deviation, update the doc (and decisions.md if a pinned
