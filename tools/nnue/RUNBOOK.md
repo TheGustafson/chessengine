@@ -11,6 +11,45 @@ The validated reference is `tools/nnue/TRAINING.md` (§2 convert, §3 build bull
 §4 train, §6 CENN pack) + `net-0` (the first net; `ledger.py show nets`). This
 runbook is the checklist over it.
 
+## Automation — the one-command path (`train_run.py`)
+
+**Prefer this over running the steps by hand.** The whole flow below (corpus →
+train → verify → pack → sanity → SPRT → ledger) is codified in
+`tools/nnue/train_run.py`. A run is now: **write a config, run one command** — no
+subagent, no hand-orchestration.
+
+```bash
+# 1. copy an example config and edit the params for your experiment:
+cp tools/nnue/runs/example-classic.json tools/nnue/runs/net-9.json   # or example-d40-c1.json
+#    (edit net_id, corpus, train.env knobs, sprt.baseline_net, notes …)
+
+# 2. dry-run FIRST — prints the resolved plan + every command, runs nothing:
+uv run python tools/nnue/train_run.py --config tools/nnue/runs/net-9.json --dry-run
+
+# 3. run it end-to-end (add --commit to also make a LOCAL ledger commit):
+uv run python tools/nnue/train_run.py --config tools/nnue/runs/net-9.json --commit
+```
+
+Flags: `--only a,b` / `--skip a,b` (resume a partial run without redoing the slow
+corpus/train/sprt stages), `--set k.v=x` (one-off override, e.g.
+`--set sprt.nodes=25000`). Every run writes a reproducibility manifest to the
+gitignored `tools/nnue/runs/<net_id>/run.json` (all resolved params + per-stage
+status/timing/results); the git-tracked provenance is the ledger row.
+
+**Config schema** (defaults in `train_run.py:DEFAULTS`; two examples in
+`tools/nnue/runs/`): `net_id` (required, must be free in `nets.jsonl`), `arch`,
+`provenance`, `parent`, `notes`; `corpus.{id, raw_dir|train_bin}`;
+`train.{bullet_dir, example, env{…}}`; `verify_out_clip` (true for the classic
+i16-out net; **false** for the D40 hybrid save, which hard-checks overflow
+itself); `pack.activation`; `sprt.{enable, baseline_net, baseline_id, nodes,
+rounds, concurrency}`. The `preflight` stage builds the fast binary, records the
+git sha, warns on a dirty `src/`, and refuses a net_id already in the ledger — so
+"is the engine in a good state for the experiment" is checked automatically.
+
+The manual steps below are the **reference** for what each stage does and its
+tool's flags — read them to understand or debug a stage, or to run a
+deliberately-experimental flow the driver doesn't cover.
+
 ## Parameters (set these per experiment)
 | var | example | meaning |
 |---|---|---|
