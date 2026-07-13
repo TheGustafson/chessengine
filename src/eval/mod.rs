@@ -19,7 +19,7 @@ pub mod params;
 pub mod psqt;
 pub mod score;
 
-use crate::board::Board;
+use crate::board::{Board, DirtyPiece};
 use crate::types::{
     BISHOP_VALUE, Color, KNIGHT_VALUE, PieceType, VALUE_DRAW, VALUE_TB_LOSS_IN_MAX_PLY,
     VALUE_TB_WIN_IN_MAX_PLY, Value,
@@ -34,12 +34,77 @@ use params::{EVAL_BLEND_BASE, MATERIAL_PAWN_WEIGHT, OPTIMISM_BLEND_BASE, RULE50_
 /// without the seam ever changing. Per-thread mutable eval state cannot
 /// hide behind `&Board` without interior mutability or `thread_local!`,
 /// both banned on the search path (design/13 §3.12).
-#[derive(Debug, Clone, Default)]
-pub struct EvalContext {}
+#[derive(Debug, Default)]
+pub struct EvalContext {
+    /// The per-thread NNUE accumulator stack over the active net (design/11
+    /// §3.4.4), or `None` when NNUE is off (⇒ PSQT). Installed from the
+    /// process-wide active net at each search's eval boundary
+    /// ([`EvalContext::set_net`]), refreshed at the root of every search
+    /// ([`EvalContext::refresh_root`]), and folded forward lazily per node.
+    /// `None` leaves the PSQT hot path — and the depth-6 bench — untouched.
+    nnue: Option<nnue::NnueContext<'static>>,
+}
 
 impl EvalContext {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Install (or tear down) the NNUE accumulator for `net` (design/11
+    /// §3.4.4). `None` turns NNUE off. A net whose pointer already matches the
+    /// installed one keeps its heap allocation (its columns are re-refreshed by
+    /// [`EvalContext::refresh_root`]); a different net allocates a fresh stack.
+    /// The *process-wide* active net is read at the search boundary and handed
+    /// in here, so this method never touches global state — search unit tests
+    /// (and the parallel test harness) stay hermetic.
+    pub fn set_net(&mut self, net: Option<&'static nnue::Network>) {
+        match net {
+            None => self.nnue = None,
+            Some(net) => {
+                let reuse = matches!(&self.nnue, Some(ctx) if std::ptr::eq(ctx.net(), net));
+                if !reuse {
+                    self.nnue = Some(nnue::NnueContext::new(net));
+                }
+            }
+        }
+    }
+
+    /// True iff NNUE is the active eval for this thread.
+    #[inline]
+    pub fn nnue_active(&self) -> bool {
+        self.nnue.is_some()
+    }
+
+    /// Refresh the NNUE root accumulator (`stack[0]`) from `board`, both
+    /// perspectives (design/11 §3.4.4). Called once at the start of every
+    /// search; a no-op when NNUE is off.
+    pub fn refresh_root(&mut self, board: &Board) {
+        if let Some(ctx) = self.nnue.as_mut() {
+            ctx.refresh_root(board);
+        }
+    }
+
+    /// Record a move's placement deltas into the child accumulator entry at
+    /// `ply + 1`, marking it uncomputed (the §3.4.4 invalidation rule). A no-op
+    /// when NNUE is off. Pass [`DirtyPiece::EMPTY`] for a null move.
+    #[inline]
+    pub fn push_dirty(&mut self, dp: DirtyPiece, ply: usize) {
+        if let Some(ctx) = self.nnue.as_mut() {
+            ctx.push(ply, dp);
+        }
+    }
+
+    /// Test-only: the RAW NNUE forward value at the root (`ply 0`) from the
+    /// incrementally-maintained accumulator. Lets the search-consistency test
+    /// compare the incremental root eval against a from-scratch forward in
+    /// RELEASE too (where the per-node `assert_matches_refresh` oracle is
+    /// compiled out). Panics if NNUE is off.
+    #[cfg(test)]
+    pub fn nnue_root_forward_for_test(&mut self, board: &Board) -> Value {
+        self.nnue
+            .as_mut()
+            .expect("NNUE must be active for the root-forward check")
+            .evaluate(board, 0)
     }
 }
 
@@ -47,25 +112,46 @@ impl EvalContext {
 ///
 /// `optimism` is computed by search at aspiration-window setup (owned by
 /// the search doc) and blended in here; pass `0` for a neutral eval
-/// (tools, tests, tuner). Phase A ignores `ctx` entirely — it is passed
-/// anyway so the signature never changes (design/11 §3.1).
-pub fn evaluate(board: &Board, _ctx: &mut EvalContext, optimism: Value) -> Value {
+/// (tools, tests, tuner). `ply` is the SEARCH ply of `board` (root = 0),
+/// needed only to index the per-thread NNUE accumulator stack when a net is
+/// loaded (design/11 §3.4.4); PSQT ignores it. Standalone callers outside a
+/// search (`eval` command, tools, tuner) pass `0` after a `refresh_root`.
+///
+/// A four-argument reading of the §3.1 seam: the accumulator stack is
+/// ply-indexed, so NNUE dispatch needs the ply the PSQT path never did
+/// (design/11 §3.1/§3.4.4).
+pub fn evaluate(board: &Board, ctx: &mut EvalContext, optimism: Value, ply: usize) -> Value {
     debug_assert!(
         board.checkers().is_empty(),
         "evaluate must never be called in check (design/11 §3.1)"
     );
 
-    // Dead-draw guard (all phases inherit it): insufficient mating
-    // material is an exact draw — bypass the whole pipeline. Search's
+    // Dead-draw guard (ALL phases inherit it, NNUE included): insufficient
+    // mating material is an exact draw — bypass the whole pipeline. Search's
     // rule50/repetition draw handling is untouched (design/11 §3.6).
     if is_material_draw(board) {
         return VALUE_DRAW;
     }
 
-    // Inner eval, stm-relative. Phase A has no psqt/positional split, so
-    // `complexity = 0` and the §3.6 complexity blend vanishes; its
-    // divisors are pinned in `params` for when Phase C's split arrives.
-    let inner = psqt::psqt_eval(board);
+    // Inner eval, stm-relative. NNUE when a net is loaded (design/11 §3.4),
+    // PSQT otherwise — both route through the SAME §3.6 outer shape below. The
+    // first net has no psqt/positional split (§3.6: `(nnue_out, 0)`), so
+    // `complexity = 0` and the complexity blend still vanishes exactly as it
+    // does for PSQT; NNUE therefore shares PSQT's optimism/material/rule-50
+    // consumption verbatim (the raw-vs-corrected boundary is unchanged, D22).
+    let inner = match ctx.nnue.as_mut() {
+        Some(nnue) => {
+            // Debug oracle (design/11 §3.4.4): the incrementally-maintained
+            // accumulator at this ply must equal a from-scratch refresh — trips
+            // any stale-accumulator bug the instant search evaluates a node.
+            // Compiled out of release (the AVX2/scalar forward is the shipping
+            // path).
+            #[cfg(debug_assertions)]
+            nnue.assert_matches_refresh(board, ply);
+            nnue.evaluate(board, ply)
+        }
+        None => psqt::psqt_eval(board),
+    };
 
     apply_outer_shape(
         inner,
@@ -145,7 +231,7 @@ mod tests {
     }
 
     fn eval0(b: &Board) -> Value {
-        evaluate(b, &mut EvalContext::new(), 0)
+        evaluate(b, &mut EvalContext::new(), 0, 0)
     }
 
     // Both sides of the startpos material blend: 16 pawns and full

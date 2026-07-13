@@ -56,6 +56,7 @@ impl Default for AccumulatorEntry {
 /// `EvalFile`); step 1 borrows for a lifetime `'a` so tests can drive a
 /// locally-built net without leaking a `'static`. It is NOT yet placed in the
 /// search `Worker`'s `EvalContext` — that wiring is step 4.
+#[derive(Debug)]
 pub struct NnueContext<'a> {
     stack: Box<[AccumulatorEntry]>,
     net: &'a Network,

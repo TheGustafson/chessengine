@@ -81,9 +81,15 @@ pub struct BenchParams {
     pub threads: usize,
     pub limit: BenchLimit,
     pub fens: FenSource,
+    /// Optional NNUE net (design/11 §3.4.5, P13 step 4): the 6th positional
+    /// arg. `None` ⇒ PSQT (the default; the depth-6 fingerprint invocation
+    /// `bench 16 1 6 default depth` has no 6th arg, so it stays bit-identical).
+    /// `Some(path)` loads it as the active net before the run for the NNUE-on
+    /// node count.
+    pub net: Option<String>,
 }
 
-/// SF defaults: `16 1 13 default depth` (design/06 §3.6).
+/// SF defaults: `16 1 13 default depth` (design/06 §3.6), NNUE off.
 impl Default for BenchParams {
     fn default() -> Self {
         BenchParams {
@@ -91,6 +97,7 @@ impl Default for BenchParams {
             threads: 1,
             limit: BenchLimit::Depth(13),
             fens: FenSource::Default,
+            net: None,
         }
     }
 }
@@ -189,12 +196,17 @@ impl BenchParams {
             "movetime" => BenchLimit::Movetime(limit_value),
             other => return Err(BenchArgsError::UnknownLimitType(other.to_string())),
         };
+        // Optional 6th positional arg: an NNUE net path (design/11 §3.4.5).
+        // Absent ⇒ PSQT, so the pinned `bench 16 1 6 default depth` fingerprint
+        // is unaffected.
+        let net = arg(5).map(str::to_string);
 
         Ok(BenchParams {
             tt_mb,
             threads,
             limit,
             fens,
+            net,
         })
     }
 }
@@ -245,6 +257,10 @@ fn run_to(params: &BenchParams, out: &mut impl Write) -> io::Result<BenchResult>
     // in [`search_entry`]; histories (doc 09) will reset here too. Perft
     // mode never touches either.
     let mut worker = Worker::new(Board::startpos());
+    // Install the active NNUE net (set by the front door from `params.net`, or
+    // by a prior `setoption EvalFile`) into this worker; `None` ⇒ PSQT, so the
+    // default fingerprint invocation is untouched (design/11 §3.4.5).
+    worker.refresh_eval_net();
     let tt = TranspositionTable::new(params.tt_mb);
     let start = Instant::now();
     let mut nodes: u64 = 0;

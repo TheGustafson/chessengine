@@ -22,9 +22,10 @@ use chessengine::types::{VALUE_DRAW, VALUE_TB_LOSS_IN_MAX_PLY, VALUE_TB_WIN_IN_M
 use chessengine::{Board, Move, MoveKind, MoveList, START_FEN};
 
 fn eval_opt(board: &Board, optimism: Value) -> Value {
-    // Phase A ignores the context; a fresh one per call keeps this helper
-    // honest about `evaluate` not depending on hidden state.
-    evaluate(board, &mut EvalContext::new(), optimism)
+    // Phase A / PSQT ignores the context and ply; a fresh (net-less) context
+    // per call keeps this helper honest about `evaluate` not depending on
+    // hidden state, and ply 0 is irrelevant to the PSQT path.
+    evaluate(board, &mut EvalContext::new(), optimism, 0)
 }
 
 fn eval0(board: &Board) -> Value {

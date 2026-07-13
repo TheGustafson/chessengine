@@ -60,3 +60,42 @@ pub use simd::{Aligned64, KERNELS, Kernels};
 // §3.4.4 layering note). Re-exported here so the design-doc-facing path
 // `eval::nnue::DirtyPiece` still resolves.
 pub use crate::board::DirtyPiece;
+
+// --- Active-net registry (design/11 §3.4.5: EvalFile, opt-in) ----------------
+
+use std::sync::RwLock;
+
+/// The process-wide active NNUE net (design/11 §3.4.5). `None` ⇒ NNUE is OFF
+/// and evaluation is PSQT — the default, so the depth-6 bench fingerprint stays
+/// bit-identical. Set via the UCI `EvalFile` option or the `bench` net argument
+/// ([`set_eval_file`]); read once per search at the eval boundary
+/// (`Worker::refresh_eval_net`), never on the hot per-node path. `RwLock` (not
+/// an `AtomicPtr`) keeps the crate `unsafe`-free (D14): a `&'static Network` is
+/// `Send + Sync`, so concurrent worker threads read the same net lock-free
+/// enough (uncontended reader lock, once per `go`).
+static ACTIVE_NET: RwLock<Option<&'static Network>> = RwLock::new(None);
+
+/// Install (or clear) the `EvalFile` net. An empty/blank path turns NNUE OFF
+/// (back to PSQT). Otherwise the CENN file is loaded and fully validated (bad
+/// magic, wrong dims, checksum, `OutWeightOutOfClip`, …), then leaked to
+/// `'static` so the per-thread accumulators can borrow it for the run. The leak
+/// is deliberate and bounded by the number of distinct `EvalFile` sets in a
+/// session (normally one). Loader errors are returned as [`NnueError`] for a
+/// clean UCI `info string`; this never panics on a user-supplied file
+/// (CLAUDE.md).
+pub fn set_eval_file(path: &str) -> Result<(), NnueError> {
+    let net: Option<&'static Network> = if path.trim().is_empty() {
+        None
+    } else {
+        let leaked: &'static Network = Box::leak(Box::new(load(path)?));
+        Some(leaked)
+    };
+    *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = net;
+    Ok(())
+}
+
+/// The active net, or `None` when NNUE is off (⇒ PSQT). Read at each search's
+/// eval boundary and handed to the per-thread [`NnueContext`].
+pub fn active_net() -> Option<&'static Network> {
+    *ACTIVE_NET.read().unwrap_or_else(|e| e.into_inner())
+}

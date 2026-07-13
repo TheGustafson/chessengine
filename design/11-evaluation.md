@@ -135,6 +135,40 @@ interior mutability or `thread_local!`, both banned on the search path (doc
 13 §3.12). Borrow-wise it splits disjoint `Worker` fields —
 `evaluate(&self.board, &mut self.eval_ctx, opt)`.
 
+> **Step-4 wiring note (P13 step 4, 2026-07-12; NNUE goes live).** As built,
+> refined from the sketch above (all consistent with its intent):
+> - **The seam gains a fourth argument, `ply: usize`** — the SEARCH ply of
+>   `board` (root = 0). PSQT ignores it; NNUE needs it to index the
+>   ply-indexed accumulator stack (§3.4.4). Real signature:
+>   `pub fn evaluate(board: &Board, ctx: &mut EvalContext, optimism: Value, ply: usize) -> Value`.
+>   Standalone callers (`eval` command, tools, tuner) pass `0` after a
+>   `refresh_root`; search threads its node ply through. This is the minimal
+>   honest reading of the seam once the accumulator is ply-addressed — the
+>   PSQT/HCE consumption is otherwise untouched.
+> - **`EvalContext` holds `nnue: Option<NnueContext<'static>>`** (the Phase B
+>   `pawn_table` is still future). `None` ⇒ NNUE off (PSQT), the zero-cost
+>   default that keeps the depth-6 bench bit-identical (548978). A net is
+>   installed from the process-wide active net (`EvalFile`) at the search
+>   boundary via `EvalContext::set_net`; the accumulator is refreshed at the
+>   root of every search (`refresh_root`) and pushed per move
+>   (`push_dirty`, the §3.4.4 invalidation rule) from the search's `do_move`
+>   wrapper (NOT the `on_dirty` hook — the direct wrapper avoids the
+>   borrow-split and the NoHooks-codegen perturbation the §3.4.4 note flagged;
+>   both are permitted, this is the chosen one). Null moves push
+>   `DirtyPiece::EMPTY`.
+> - **`EvalFile` is opt-in (design/11 §3.4.5), NOT an embedded default net
+>   this step.** A UCI `EvalFile` string option (empty = PSQT) and an optional
+>   6th `bench` positional arg both load a CENN net into a
+>   process-wide `RwLock<Option<&'static Network>>` (leaked once,
+>   `unsafe`-free); loader errors surface as a clean UCI `info string`, never
+>   a panic. Embedding a default net (so NNUE is the out-of-the-box eval) is a
+>   later step. This keeps the PSQT/NNUE A/B a clean toggle and the DEFAULT
+>   bench unchanged.
+> - **Debug oracle:** `evaluate` calls
+>   `NnueContext::assert_matches_refresh(board, ply)` at every NNUE eval node
+>   in debug builds — the search analogue of the step-1 incremental==refresh
+>   fuzz, trapping any stale-accumulator bug the instant search evaluates.
+
 ### 3.2 Phase A — material + tapered PSQT
 
 #### 3.2.1 Score type

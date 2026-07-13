@@ -82,6 +82,7 @@ fn handshake_transcript_is_byte_exact() {
          option name Move Overhead type spin default 10 min 0 max 5000\n\
          option name nodestime type spin default 0 min 0 max 10000\n\
          option name Minimal type check default false\n\
+         option name EvalFile type string default <empty>\n\
          uciok\n\
          readyok\n",
         env!("CARGO_PKG_NAME"),

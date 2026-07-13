@@ -149,7 +149,7 @@ pub use stack::{PvLine, SS_OFFSET, STACK_SIZE, Stack, init_stack, ss, update_pv}
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::board::{Board, MakeMoveHooks};
+use crate::board::{Board, DirtyPiece, MakeMoveHooks};
 use crate::eval::{EvalContext, evaluate};
 use crate::history::Histories;
 use crate::movegen::generate_legal;
@@ -996,6 +996,11 @@ impl Worker {
     /// A `Search` job entry (design/13 §3.4): the main worker orchestrates
     /// (TM, helper wake, output, voting); a helper just deepens until `stop`.
     pub fn start_searching(&mut self, tt: &Arc<TranspositionTable>) {
+        // Install this thread's eval from the process-wide active net (the
+        // `EvalFile` option, design/11 §3.4.5) — read once per `go` at the
+        // search boundary, before iterative deepening refreshes the root
+        // accumulator. `None` ⇒ PSQT (default; bench-neutral).
+        self.refresh_eval_net();
         if self.is_main() {
             self.main_search(tt);
         } else {
@@ -1006,6 +1011,15 @@ impl Worker {
         // `Arc<dyn UciSink>` clone must not outlive the search; a `Setup` for
         // the next `go` reinstalls it).
         self.output = None;
+    }
+
+    /// Install this thread's eval from the process-wide active NNUE net
+    /// (design/11 §3.4.5), read once at the search boundary. `None` ⇒ PSQT.
+    /// Called by `start_searching` (pool path) and by `bench` (direct path)
+    /// before iterative deepening; unit tests inject a net into `eval_ctx`
+    /// directly to stay independent of the global.
+    pub fn refresh_eval_net(&mut self) {
+        self.eval_ctx.set_net(crate::eval::nnue::active_net());
     }
 
     /// Main-worker orchestration (design/13 §3.7): TM init + the single TT
@@ -1335,6 +1349,13 @@ impl Worker {
         // low-ply history. Correction/capture/continuation tables persist
         // untouched across the game (cleared only by `ucinewgame`).
         self.histories.new_search();
+        // NNUE root accumulator (design/11 §3.4.4): refresh `stack[0]` from the
+        // root position, both perspectives, once per search — the root stays
+        // valid regardless of how much game history UCI replayed. Refreshes only
+        // the already-installed net (the active net is installed at the search
+        // boundary — `start_searching`/`bench` — not here, so unit tests driving
+        // `iterative_deepening` directly stay on PSQT); a no-op when NNUE is off.
+        self.eval_ctx.refresh_root(&self.board);
         // MultiPV (doc 12 §3.12, step 10): the number of PV lines to
         // report, the option clamped to the legal-move count (min 1). At
         // MultiPV 1 the loop below is exactly single-PV (bench, D24).
@@ -1790,7 +1811,7 @@ impl Worker {
             // discards it.
             if stop.load(Ordering::Relaxed) || self.board.is_draw(ply as i32) || ply >= MAX_PLY {
                 return if ply >= MAX_PLY && !in_check {
-                    evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO)
+                    evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO, ply)
                 } else {
                     value_draw(self.nodes)
                 };
@@ -1861,7 +1882,7 @@ impl Worker {
                 raw_eval = if tt_hit && is_valid(tt_data.eval) {
                     tt_data.eval
                 } else {
-                    evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO)
+                    evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO, ply)
                 };
                 // Item 21 wires the correction COUPLINGS (RFP margin, reduction,
                 // singular corr_adj, node-result update); folding the correction
@@ -2011,6 +2032,11 @@ impl Worker {
                         // prefetch hook still rides along so the immediate child
                         // probe below is warm.
                         let gc = self.board.gives_check(m);
+                        // No NNUE accumulator push here: this probe only reads
+                        // the child's TT entry and never `evaluate`s it, and it
+                        // unmakes immediately — the next real `do_move` at this
+                        // node re-pushes and invalidates `stack[ply + 1]`
+                        // (design/11 §3.4.4), so the accumulator stays correct.
                         self.board.make_move_with(m, gc, &mut TtPrefetch { tt });
                         let child = tt.probe(self.board.key());
                         let child_value = if child.hit {
@@ -2205,6 +2231,11 @@ impl Worker {
                 // and the inert continuation-history SENTINEL.
                 self.stack[cur].current_move = Move::NULL;
                 self.stack[cur].cont_hist = ContHistId::SENTINEL;
+                // NNUE (design/11 §3.4.4): a null move leaves every piece in
+                // place, so the child accumulator equals the parent's — push an
+                // EMPTY delta at `ply + 1` (marks it uncomputed; the us/them
+                // perspective swap happens at `evaluate`). No-op when NNUE off.
+                self.eval_ctx.push_dirty(DirtyPiece::EMPTY, ply);
                 self.board.make_null_move();
                 let null_value =
                     -self.search::<NonPv>(tt, stop, -beta, -beta + 1, depth - r, false, ply + 1);
@@ -3261,7 +3292,7 @@ impl Worker {
         // dithered (SF parity; see [`value_draw`]).
         if self.board.is_draw(ply as i32) || ply >= MAX_PLY {
             return if ply >= MAX_PLY && !in_check {
-                evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO)
+                evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO, ply)
             } else {
                 VALUE_DRAW
             };
@@ -3313,7 +3344,7 @@ impl Worker {
             raw_eval = if tt_hit && is_valid(tt_data.eval) {
                 tt_data.eval
             } else {
-                evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO)
+                evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO, ply)
             };
             self.stack[cur].static_eval = raw_eval; // corrected == raw (Phase A)
             best_value = raw_eval;
@@ -3566,6 +3597,17 @@ impl Worker {
         let in_check = self.stack[cur].in_check;
         self.stack[cur].current_move = m;
         self.stack[cur].cont_hist = ContHistId::new(in_check, capture, moved_piece, m.to());
+        // NNUE accumulator maintenance (design/11 §3.4.4): record this move's
+        // placement deltas into the child entry at `ply + 1` and mark it
+        // uncomputed (the invalidation rule), so a sibling subtree can never
+        // reuse a stale accumulator across LMR/PVS re-searches. Derived from the
+        // PRE-move board, so this must run before `make_move_with`. A no-op —
+        // and no `DirtyPiece::from_move` cost — when NNUE is off, keeping the
+        // PSQT hot path and the depth-6 bench bit-identical.
+        if self.eval_ctx.nnue_active() {
+            let dp = DirtyPiece::from_move(&self.board, m);
+            self.eval_ctx.push_dirty(dp, ply);
+        }
         self.board
             .make_move_with(m, gives_check, &mut TtPrefetch { tt });
     }
@@ -5587,7 +5629,7 @@ mod tests {
     /// The corrected static eval exactly as qsearch computes it
     /// (Phase A: corrected == raw).
     fn static_eval(b: &Board) -> Value {
-        evaluate(b, &mut EvalContext::new(), VALUE_ZERO)
+        evaluate(b, &mut EvalContext::new(), VALUE_ZERO, 0)
     }
 
     /// Drive `qsearch` directly at ply 0 on a fresh stack: the fixtures
@@ -5854,6 +5896,71 @@ mod tests {
         assert_eq!(n1, n2, "two identical searches must count identical nodes");
         assert_eq!(v1, v2);
         assert_eq!(m1, m2);
+    }
+
+    // --- NNUE-in-search accumulator consistency (design/11 §3.4.4) ---
+
+    /// The SEARCH analogue of the step-1 incremental==refresh fuzz: with a net
+    /// installed, the debug oracle `assert_matches_refresh` fires inside
+    /// `evaluate` at EVERY evaluated node, so a stale-accumulator bug across
+    /// LMR/PVS re-searches, null-move pruning, or the qsearch dive trips the
+    /// assert mid-search. A per-`Worker` net injection (not the process-global
+    /// `EvalFile`) keeps the test hermetic under the parallel harness — nothing
+    /// here touches `ACTIVE_NET`, so concurrent PSQT search tests are unaffected.
+    #[test]
+    fn search_nnue_accumulator_stays_consistent_across_the_tree() {
+        use crate::eval::nnue::{Activation, Network, evaluate_forward};
+
+        // Leak a deterministic test net to `'static` (a tiny, one-off leak — the
+        // production lifetime the per-thread accumulator borrows). SCReLU
+        // exercises both activation clamps.
+        let net: &'static Network = Box::leak(Box::new(Network::deterministic_test_net(
+            0x00C0_FFEE,
+            Activation::SCReLU,
+        )));
+
+        // A spread of quiet, tactical, and endgame positions so the search
+        // reaches captures (qsearch), null moves, and deep re-searches.
+        let positions = [
+            START_FEN,
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 10",
+            "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 11",
+            "4rrk1/pp1n3p/3q2pQ/2p1pb2/2PP4/2P3N1/P2B2PP/4RRK1 b - - 7 19",
+        ];
+
+        let tt = test_tt();
+        let mut w = Worker::new(Board::startpos());
+        // Inject the net directly into this worker's eval context (bypassing the
+        // EvalFile global). `iterative_deepening` only *refreshes* the installed
+        // net, so this survives across positions.
+        w.eval_ctx.set_net(Some(net));
+        assert!(w.eval_ctx.nnue_active(), "net must install");
+
+        for fen in positions {
+            w.board = board(fen);
+            // A node budget bounds the debug runtime (both the board oracle and
+            // the NNUE oracle run at every node) while still spanning thousands
+            // of evaluated nodes — plenty to cover the re-search paths.
+            w.limits = Limits::new();
+            w.limits.nodes = Some(6_000);
+            let stop = AtomicBool::new(false);
+            tt.new_search();
+            w.iterative_deepening(&tt, &stop, &mut TimePersist::default(), &mut |_| {});
+
+            assert!(w.eval_ctx.nnue_active(), "NNUE stayed active for {fen}");
+            assert!(w.nodes > 0, "search evaluated nodes for {fen}");
+
+            // The board is restored to the root, and `stack[0]` holds the root
+            // accumulator refreshed at go-start: the incrementally-driven root
+            // eval equals a standalone from-scratch NNUE forward. This half is
+            // meaningful in RELEASE too (the per-node oracle above is debug-only).
+            let root = board(fen);
+            assert_eq!(
+                w.eval_ctx.nnue_root_forward_for_test(&root),
+                evaluate_forward(net, &root),
+                "root accumulator diverged from a from-scratch forward for {fen}"
+            );
+        }
     }
 
     // --- Stop-flag seam (§3.9): bestmove is printable even so ---
@@ -7216,7 +7323,7 @@ mod tests {
         let mut best = if in_check {
             -VALUE_INFINITE
         } else {
-            evaluate(b, ctx, VALUE_ZERO)
+            evaluate(b, ctx, VALUE_ZERO, ply)
         };
         let mut any_legal = false;
         for m in &list {

@@ -121,6 +121,14 @@ fn exit_usage(msg: fmt::Arguments<'_>) -> ! {
 fn cmd_bench_argv(args: &[String]) {
     match bench::BenchParams::parse(args) {
         Ok(params) => {
+            // Optional 6th arg: an NNUE net path (design/11 §3.4.5). Load it as
+            // the active net before the run so the NNUE-on node count can be
+            // recorded; a bad net exits cleanly rather than searching on PSQT.
+            if let Some(net) = &params.net
+                && let Err(e) = nnue::set_eval_file(net)
+            {
+                exit_usage(format_args!("bench: loading net '{net}': {e}"));
+            }
             bench::run(&params);
         }
         Err(e) => exit_usage(format_args!("bench: {e}")),
@@ -411,6 +419,12 @@ impl Options {
                 // print one summary line before `bestmove`. Pure I/O, for
                 // high-frequency self-play log volume — bench-neutral.
                 register("Minimal", OptionKind::Check { default: false }),
+                // NNUE net file (design/11 §3.4.5, P13 step 4). Empty (the
+                // default) ⇒ NNUE OFF and eval is PSQT — so the DEFAULT engine,
+                // and the depth-6 bench fingerprint, are unchanged. Setting it
+                // loads + validates a CENN net and makes it the active eval;
+                // embedding a default net is a later step (opt-in for now).
+                register("EvalFile", OptionKind::Text { default: "" }),
             ],
         }
     }
@@ -530,6 +544,19 @@ impl Options {
         {
             Some(OptionValue::Text(v)) => v,
             _ => unreachable!("Debug Log File is a registered string option"),
+        }
+    }
+
+    /// The `EvalFile` net path (design/11 §3.4.5); empty ⇒ NNUE off (PSQT).
+    pub fn eval_file(&self) -> &str {
+        match self
+            .entries
+            .iter()
+            .find(|e| e.name == "EvalFile")
+            .map(|e| &e.value)
+        {
+            Some(OptionValue::Text(v)) => v,
+            _ => unreachable!("EvalFile is a registered string option"),
         }
     }
 }
@@ -982,6 +1009,20 @@ fn cmd_setoption<W: Write>(
             engine.tt_mut().clear();
             Ok(())
         }
+        // `EvalFile` (design/11 §3.4.5, P13 step 4): (re)load the active NNUE
+        // net from the stored path, or turn NNUE off (⇒ PSQT) when empty. The
+        // `wait_for_search_finished()` in dispatch guarantees no worker is mid
+        // -search, so swapping the process-wide active net is safe here; each
+        // subsequent `go` installs it at its eval boundary. A load failure
+        // (bad file, checksum, `OutWeightOutOfClip`, …) answers `info string`
+        // and leaves the previous net in place — never a panic (§3.3).
+        Ok("EvalFile") => {
+            let path = engine.options.eval_file().to_string();
+            match nnue::set_eval_file(&path) {
+                Ok(()) => Ok(()),
+                Err(e) => writeln!(out, "info string EvalFile: {e}"),
+            }
+        }
         // `Threads` (re)builds the pool with the clamped count (design/13
         // §3.5): waits for any running search, joins the old threads, spawns
         // the new set. Histories and TM state are rebuilt fresh. `set` is
@@ -1296,8 +1337,17 @@ fn cmd_perft_session(
 /// breakdown lands with the eval doc's later phases. `to_cp` is still the
 /// identity (doc 12 §3.14), so the value prints in raw internal units.
 fn cmd_eval(board: &Board, out: &mut impl Write) -> io::Result<()> {
+    // Reflect the active eval: install the EvalFile net (if any) and refresh
+    // its root accumulator so the trace shows the NNUE value, else PSQT.
     let mut ctx = EvalContext::new();
-    let v = evaluate(board, &mut ctx, VALUE_ZERO);
+    ctx.set_net(nnue::active_net());
+    ctx.refresh_root(board);
+    let mode = if ctx.nnue_active() {
+        "NNUE"
+    } else {
+        "Phase A material + PSQT"
+    };
+    let v = evaluate(board, &mut ctx, VALUE_ZERO, 0);
     let side = if board.side_to_move() == Color::White {
         "white"
     } else {
@@ -1305,7 +1355,7 @@ fn cmd_eval(board: &Board, out: &mut impl Write) -> io::Result<()> {
     };
     writeln!(
         out,
-        "Final evaluation: {v} (internal, from {side}'s perspective; Phase A material + PSQT)"
+        "Final evaluation: {v} (internal, from {side}'s perspective; {mode})"
     )
 }
 
@@ -1560,12 +1610,13 @@ option name Ponder type check default false
 option name Move Overhead type spin default 10 min 0 max 5000
 option name nodestime type spin default 0 min 0 max 10000
 option name Minimal type check default false
+option name EvalFile type string default <empty>
 uciok
 ",
             max_threads()
         );
         assert!(out.ends_with(&expected), "{out}");
-        assert_eq!(out.matches("option name").count(), 9, "{out}");
+        assert_eq!(out.matches("option name").count(), 10, "{out}");
     }
 
     #[test]
