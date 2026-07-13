@@ -9,7 +9,7 @@ to reproduce. Reproduce a build with `tools/ledger/ledger.py reproduce <id>`.
 | 2026-07-10 | M4 / P6 (TT) | `~P6` | — (PSQT) | — | SF16 UCI_Elo 2000–2200 band | TT landed; WAC 154/200 @100ms |
 | 2026-07-11 | P9 pruning | `80dc33d` | — (PSQT) | 350190 (d3 era) | +208 Elo vs pre-wave-C | all pruning waves A–G |
 | 2026-07-11 | P11 SMP | `bbbb423` | — (PSQT) | 548978 | ~2720 single-core; +279 Elo @4t | **classical engine complete** |
-| 2026-07-12 | net-0 (first NNUE) | `fedd159` | `net-0` (sha256:60138d33…) | 548978 (PSQT default) | *pending step-4 SPRT vs PSQT* | `768×2×256×1` SCReLU, SF-distill |
+| 2026-07-12 | net-0 (first NNUE) | `f91fce4` | `net-0` (sha256:60138d33…) | 548978 PSQT / 336890 NNUE-on | **+696 ± 139 Elo vs PSQT** (277-8-1 / 286) | `768×2×256×1` SCReLU, SF-distill; the P13 "it works" milestone (`exp-0004`) |
 
 ## How to read strength
 - **Anchored strength** = gauntlet vs SF16 `UCI_Elo` rungs (approximate,
@@ -21,6 +21,8 @@ to reproduce. Reproduce a build with `tools/ledger/ledger.py reproduce <id>`.
   (fetch by hash from the store).
 
 ## Pending
-- **net-0 vs PSQT** — the P13 "it works" gate (step 4). When it lands, add the
-  `exp-` row + fill net-0's `elo_vs_parent` and this table's strength cell.
-- The net series (net-1, net-2, …) each gets a row once SPRT-gated vs its parent.
+- The net series (net-1, net-2, …) each gets a row once SPRT-gated vs its parent
+  (net-0 is the current baseline to beat).
+- **P13 step 5 (iterate):** bigger arch + fresh/mixed data (the SF-vs-Lc0 A/B,
+  `lc0-test91`) + D36 SPSA scaffold → self-play retrain (D28b). Each net SPRT-gated
+  vs net-0, recorded here + in `experiments.jsonl`.

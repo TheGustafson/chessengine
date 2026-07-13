@@ -120,8 +120,8 @@ redistribution — we only consume.
   the backfilled set).
 - [x] net-0, sf-100, lc0-test91, and the P9/P10/P11 + anchored-Elo experiments
   are backfilled; `show dag` renders the net→data lineage.
-- [ ] net-0-vs-PSQT (P13 step-4) recorded as an `exp-` row + `milestones.md`
-  strength cell filled once measured.
+- [x] net-0-vs-PSQT (P13 step-4) recorded (`exp-0004`, +696 ± 139 Elo) +
+  `milestones.md` strength cell filled.
 - [ ] GCS content-addressed mirror (deferred, D36).
 - [ ] OpenBench integration (deferred, D36).
 
