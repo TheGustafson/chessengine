@@ -1433,6 +1433,52 @@ i8) with their dims, per-bucket i8 L1 + f32 L1-bias/L2/L3, the quant constants,
 `NETWORK_SCALE`, and a `policy_kind ∈ {none, bilinear, full}` tag + its head
 weights. Versioned so a v1 (768→256) loader rejects a v2 net and vice-versa.
 
+**CENN-v2 byte layout (concrete).** Little-endian; the loader validates magic +
+version + every dim + a trailing checksum, then borrows the tensors zero-copy
+(page-aligned). All dims are header fields (not compile-time constants) so one
+loader reads any width/bucket variant; a build still refuses a net whose dims
+don't match its compiled head (the §3.4.5 `WrongL1`-style guard, generalized).
+
+| Field | Type | Count | Notes |
+|---|---|---|---|
+| `magic` | u32 | 1 | `"CEN2"` |
+| `version` | u16 | 1 | 2 |
+| `flags` | u16 | 1 | bit0 = threats present; bits1-2 = `policy_kind` (0 none / 1 bilinear / 2 full) |
+| `halfka_dims` | u32 | 1 | 22 528 |
+| `threat_dims` | u32 | 1 | 60 720 (0 if absent — config C1) |
+| `l1,l2,l3` | u32 | 3 | 768, 16, 32 (accumulator + tail widths) |
+| `out_buckets` | u32 | 1 | 8 |
+| `king_buckets` | u32 | 1 | 32 (HalfKAv2_hm) |
+| `ft_quant,l1_quant,ft_shift` | i32 | 3 | 255, 64, 9 |
+| `network_scale` | i32 | 1 | f32→cp (baked at training) |
+| `policy_rank` | u32 | 1 | bilinear K (=8) or 0 |
+| — FT weights — | | | |
+| `halfka_w` | i16 | `halfka_dims·l1` | HalfKA transformer |
+| `threat_w` | i8 | `threat_dims·l1` | threats transformer (present iff flag) |
+| `ft_bias` | i16 | `l1` | shared FT bias (seeds `pst`; `threat` seeds 0) |
+| — head (per bucket) — | | | |
+| `l1_w` | i8 | `out_buckets·l2·l1` | |
+| `l1_b` | f32 | `out_buckets·l2` | |
+| `l2_w` | f32 | `out_buckets·l2·l3` | |
+| `l2_b` | f32 | `out_buckets·l3` | |
+| `l3_w` | f32 | `out_buckets·l3` | |
+| `l3_b` | f32 | `out_buckets` | |
+| — policy head (iff `policy_kind≠none`) — | | | |
+| `pol_trunk_w/b` | f32 | policy trunk off the 768 features | shape per kind |
+| `pol_from_emb`,`pol_to_emb` | f32 | `64·K` each | bilinear (kind=1) |
+| `pol_head_w/b` | f32 | `…·4096` | full (kind=2) |
+| `checksum` | u32 | 1 | over all preceding bytes |
+
+The FT is **two separately-quantized tensors** (`halfka_w` i16, `threat_w` i8) —
+matching both the trainer's two-summed-affine-tensors export (§12.7) and the
+inference head's two accumulators `pst`/`threat` (§12.3). The head block (`l1_w`
+… `l3_b`) is exactly `SotaHead`'s fields (`src/eval/nnue/sota_head.rs`), so the
+loader fills that struct directly. `network_scale` is per-net (not the const 380
+Reckless baked). **Open item to reconcile with the trainer:** `bullet` writes its
+own `quantised.bin` layout; the packer (`tools/nnue/`) transcodes that → this
+CENN-v2 order at save time (task #28 reports bullet's exact tensor order; the
+table above is the loader-side contract that transcode must hit).
+
 ### 12.7 Trainer — bullet, extended
 
 bullet natively covers HalfKA + output buckets + pairwise + the mixed int8-FT/f32
