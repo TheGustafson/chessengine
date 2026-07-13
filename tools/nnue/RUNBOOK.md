@@ -65,9 +65,12 @@ SIGPIPEs the trainer (the one gotcha that bit step 3).
    same fast binary (`RUSTFLAGS="-C target-cpu=x86-64-v3" cargo build --release`),
    toggled by `option.EvalFile`. Use **fixed nodes** (e.g. `nodes=25000` via
    `tc=inf` + `nodestime`/`go nodes`, or fastchess `-each tc=... nodes=...`) so
-   concurrent jobs don't skew results; openings `engines/books/openings-8ply.epd`,
-   ~1000–4000 games or until the SPRT bound is hit. See `tools/sprt.sh` /
-   `docs/strength-log.md` for the exact fastchess invocation. A new net should be
+   concurrent jobs don't skew results; openings `tests/data/openings/openings-8ply.epd`
+   (the committed book), ~1000–4000 games or until the SPRT bound is hit. **Note:**
+   `tools/sprt.sh`'s `-engine` blocks are hardcoded (cmd/name only) and can't inject
+   a per-engine `EvalFile`, which a same-binary net-vs-net A/B needs — use a direct
+   `fastchess` call with `-engine … option.EvalFile=<net>` on each side (mirror
+   sprt.sh's other settings). (TODO: add an EvalFile-toggle path to sprt.sh.) A new net should be
    ≥ ~0 vs net-0 to be worth keeping (small regressions kept for later SPSA per
    D32; large regression = a training/packing bug → investigate).
 

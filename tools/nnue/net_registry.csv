@@ -1,2 +1,3 @@
 net_id,arch,activation,quant,lr,superbatches,bps,batch,wdl,data_snapshot,train_positions,final_train_loss,sprt_elo_vs_prev,notes
 net-0,768x2x256x1,screlu,QA255/QB64/scale400,0.001-cosine,30,1520,16384,0.3,shard_100_*@seed100(24.95M),24702066,0.008734,pending-step4,"first NNUE; SF-teacher corpus; AdamW ±1.98 clip -> max|out_w|=127; beats-PSQT gate at step4"
+net-1,768x2x256x1,screlu,QA255/QB64/scale400,0.001-cosine,30,1520,16384,0.3,lc0-test91@seed91(25.0M),24750003,0.017648,-404.89±52.95,"SF-vs-Lc0 data A/B (exp-0006); SAME arch/hparams as net-0, Lc0 corpus is only variable; max|out_w|=127; compressed eval from Lc0 cp labels peaked at 0 (median|cp|=16); loses -405 Elo to net-0 -> SF teacher/data stronger at net-0 defaults"
