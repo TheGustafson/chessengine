@@ -180,14 +180,19 @@ mutates. Full mechanics: `design/14` §10.
 
 ## Status / roadmap
 
-**CURRENT (2026-07-12): the CLASSICAL ENGINE IS COMPLETE — P0–P11 all done + gated.**
-~**2720 Elo single-core** on PSQT eval (anchored vs SF16 rungs); depth-6 bench
-**548978**. P9 (all pruning waves A–G), P10 (TM + full UCI), P11 (lazy SMP:
-Threads-4-vs-1 +279 Elo, TSan-clean) — each D33-reviewed + game-gated. **NEXT =
-P13 (NNUE), GO GRANTED** — the finalized step plan is **`design/11` §11** (read it
-first) + **D35**; start with step 1 (inference skeleton in `src/nnue/`). Datagen
-corpus building at `data/nnue/raw/` (~23M+). The narrative below is the
-phase-by-phase history.
+**CURRENT (2026-07-13): P13 first-net DONE; SOTA-net sprint DESIGNED (D40) + planned.**
+Classical engine complete (P0–P11, ~2720 Elo PSQT, depth-6 bench **548978**). P13
+NNUE landed: net-0..net-10 (768→256 scaffold, SF-teacher; NNUE **+696 vs PSQT**;
+net-8 best). Lc0 data salvaged (+449 mapping fix) but SF > Lc0 for eval. A learned
+policy head was prototyped + wired into MovePicker — **negative for quiet-ordering**
+(kept feature-gated, bench-neutral). **NEXT = the P13-SOTA sprint (D40, design/11
+§12, design/00 P13-SOTA):** SF features (HalfKAv2_hm + FullThreats, 83,248) + a
+Reckless-shaped lean head (int8-FT/f32-tail, 8 buckets — already reimplemented
+bit-exactly on `experiment/reckless-net`) + the **triple-net grid** (eval-only /
++small-policy / +full-policy), bullet-extended trainer. Sprint goal = a **12-net
+experiment** (4 configs × 3 policy variants), tasks #27–30. Datagen at
+`data/nnue/raw/` (~23M+ SF) + `data/lc0_nnue/` (86 tars ~107M, policy targets). The
+narrative below is the phase-by-phase history.
 
 Done: types, bitboards, board + FEN, `Move`/`MoveList`; attack tables (P1:
 const leapers + geometry, fancy magic sliders, exhaustively validated

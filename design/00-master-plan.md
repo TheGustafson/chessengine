@@ -255,6 +255,42 @@ gate per D24.
   incremental==refresh 100k-node walk; ≥ 70 % of local SF bench nps (doc 14
   §3.4).
 
+### P13-SOTA — SOTA net sprint (D40, current 2026-07-13)
+P13's first net is DONE (net-0..net-10, the 768→256 scaffold; net-8 best; NNUE ≫
+PSQT, +696 vs PSQT). This sprint escalates to a SOTA-class net (design/11 §12,
+D40): **SF features (HalfKAv2_hm + FullThreats, 83,248) + a Reckless-shaped lean
+head (pairwise-mul → int8-FT/f32-tail → 8 buckets, no PSQT) + the triple-net
+grid.**
+
+**Sprint goal — a 12-net experiment (4 configs × the 3-net grid):**
+
+| Config | Features | Data | Answers |
+|---|---|---|---|
+| C1 | HalfKA-only | SF-teacher | does the SOTA arch+head beat net-8? (vs scaffold) |
+| C2 | HalfKA+FullThreats | SF-teacher | the FullThreats (attack-features) Elo (C2 vs C1) |
+| C3 | HalfKA+FullThreats | Lc0 | SF vs Lc0 teacher at SOTA arch + rich policy target (C3 vs C2) |
+| C4 | HalfKA+FullThreats | SF+Lc0 mix | the data-scale / mix lever |
+
+Each config trains `{eval-only, eval+small (bilinear), eval+full (4096)}` = **12
+nets**. Head + 768 accumulator + 8 buckets held constant across configs (acc/bucket
+are later SPRT knobs). **Eval/policy data tension:** SF gives the best eval but only
+a one-hot policy target; Lc0 gives a rich soft policy but weaker eval — so each
+config's triple is internally consistent (one corpus), and the policy comparison is
+richest on C3/C4.
+
+**Implementation phases (tasks #27–30):**
+- **A — data (#27):** eval+policy corpus + record-format extension + curation.
+- **B — trainer (#28):** bullet FullThreats feature + configurable policy head +
+  combined loss → train the 12 nets. (blocked by A)
+- **C — inference (#29):** port the Reckless head to main + build the SF feature
+  front-end (accumulator + Finny cache + threats observer) + CENN-v2 + parity. (∥ A/B)
+- **D — test (#30):** fixed-node SPRT ×12 vs net-8 + the D40 controls + real-TC
+  ship gate + ledger rows. (blocked by B + C)
+
+**Exit:** all 12 trained + in the ledger (D38); ≥1 eval net beats net-8 at real TC;
+the D40 controls answered (does a policy head hurt eval? the FullThreats Elo? SF vs
+Lc0 teacher?). Milestone M9 (M-3200) is the target.
+
 ### P14 — Tuning & parity chase (XL, ongoing) → **milestone M10 (M-parity)**
 - **Implements:** the open-ended tails of docs 10/11/13/14: `tune` cfg
   feature + SPSA (doc 10 §9.1), net upgrade path (L1 512, buckets, PSQT

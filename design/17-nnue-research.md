@@ -212,6 +212,20 @@ Elo at equal nodes. Then add #1 (extensions), then #3 (TM), each SPRT-gated.
 
 ### 3.4 Thrust II — learned policy & search control
 
+> **Status update (2026-07-13).** Thrust II is now driven by **D40** (design/11
+> §12): the SOTA net trains a **triple-net grid** — {eval-only, eval+**small**
+> policy (rank-8 bilinear from×to), eval+**full** policy (4096 from×to)} — sharing
+> one trunk architecture, so the policy head is developed with a permanent
+> eval-only control. **First in-search result is in and it is NEGATIVE for the
+> obvious use:** an offline-trained bilinear policy (Lc0 target, 32% top-1) blended
+> *additively* into MovePicker quiet ordering gave a net-neutral tree on 400
+> realistic positions (geomean ~1.0) — it helps endgames but hurts open/middlegame
+> where search time is spent (see the memory note `policy-integration-status`). So
+> the naive "policy → quiet ordering" hook is parked; the live hypotheses for the
+> policy heads are **policy-as-pruning/reduction-confidence** and **policy-only-where-
+> history-is-cold** (§3.4.2's control-correction framing), tested on the D40 nets.
+> Neither SF nor Reckless has a policy head — this remains genuinely novel (D34).
+
 #### 3.4.1 Policy head (move prior, amortized)
 
 A **policy head** on the shared trunk emits a prior over moves (or a score per
