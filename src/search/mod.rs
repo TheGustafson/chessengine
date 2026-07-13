@@ -864,6 +864,12 @@ pub struct Worker {
     /// lines. Installed by `setup`; main worker only.
     minimal: bool,
 
+    /// Experiment (design/17 Thrust II): the shared learned move-prior, cloned
+    /// into each node's [`MovePicker`]. `None` unless `POLICY_NET` is set; the
+    /// default build does not compile the field.
+    #[cfg(feature = "policy")]
+    policy_net: Option<Arc<crate::policy::PolicyNet>>,
+
     /// Per-attempt aspiration trace (§8 criterion 7) — test builds only,
     /// cleared per `go`, appended by [`Worker::aspiration_search`].
     #[cfg(test)]
@@ -927,6 +933,8 @@ impl Worker {
             output: None,
             options: Options::new(),
             minimal: false,
+            #[cfg(feature = "policy")]
+            policy_net: crate::policy::shared_from_env(),
             #[cfg(test)]
             asp_trace: Vec::new(),
         }
@@ -2381,6 +2389,8 @@ impl Worker {
             self.stack[cur - 6].cont_hist,
         ];
         let mut mp = MovePicker::new(&self.board, tt_data.mv, depth, ply, cont_hist);
+        #[cfg(feature = "policy")]
+        mp.set_policy_net(self.policy_net.clone());
 
         let mut best_value = -VALUE_INFINITE;
         let mut best_move = Move::NULL;

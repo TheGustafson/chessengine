@@ -24,6 +24,7 @@
 use crate::board::Board;
 use crate::eval::nnue::feature_index;
 use crate::types::{Color, Square};
+use std::sync::{Arc, OnceLock};
 
 /// A loaded bilinear policy net (float; ordering-only, so not held to the
 /// eval's quantized-SIMD budget in this first cut).
@@ -134,6 +135,37 @@ impl PolicyScores {
         }
         s
     }
+}
+
+// --- process-wide experiment plumbing (env-driven; no UCI/message surgery) ---
+
+static SHARED: OnceLock<Option<Arc<PolicyNet>>> = OnceLock::new();
+static WEIGHT: OnceLock<i32> = OnceLock::new();
+
+/// The policy net named by `POLICY_NET`, loaded **once** and shared across all
+/// workers (SMP reads the file once, not per thread). `None` when the env var
+/// is unset (the experiment is off) or the file is missing/malformed — in which
+/// case ordering falls back to the pure history stack, unchanged.
+pub fn shared_from_env() -> Option<Arc<PolicyNet>> {
+    SHARED
+        .get_or_init(|| {
+            std::env::var("POLICY_NET")
+                .ok()
+                .and_then(|p| PolicyNet::load(&p).ok().map(Arc::new))
+        })
+        .clone()
+}
+
+/// Multiplier turning a bilinear move-prior (~[-3, 3]) into history-comparable
+/// ordering units, from `POLICY_W` (default 1000). Cached; sweep it via the env
+/// var in the fixed-depth node-count test before pinning a value for SPSA.
+pub fn quiet_weight() -> i32 {
+    *WEIGHT.get_or_init(|| {
+        std::env::var("POLICY_W")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1000)
+    })
 }
 
 #[cfg(test)]

@@ -230,6 +230,14 @@ pub struct MovePicker {
     end_bad_captures: usize,
     end_captures: usize,
     end_generated: usize,
+    /// Experiment (design/17 Thrust II): the shared learned move-prior, blended
+    /// into quiet ordering when `POLICY_NET` is set. `None` ⇒ pure history stack
+    /// (the default build never compiles this in). Set once per node by the
+    /// search via [`set_policy_net`](MovePicker::set_policy_net); the forward is
+    /// run lazily in [`init_quiets`](MovePicker::init_quiets), so nodes that cut
+    /// off before generating quiets pay nothing.
+    #[cfg(feature = "policy")]
+    policy_net: Option<std::sync::Arc<crate::policy::PolicyNet>>,
     buf: [ExtMove; MAX_MOVES],
 }
 
@@ -304,8 +312,19 @@ impl MovePicker {
             end_bad_captures: 0,
             end_captures: 0,
             end_generated: 0,
+            #[cfg(feature = "policy")]
+            policy_net: None,
             buf: [ExtMove::NULL; MAX_MOVES],
         }
+    }
+
+    /// Attach the shared policy net for this node (design/17 Thrust II). Called
+    /// by the search right after construction; a no-op cost when `None`. The
+    /// forward is deferred to [`init_quiets`](MovePicker::init_quiets).
+    #[cfg(feature = "policy")]
+    #[inline]
+    pub fn set_policy_net(&mut self, net: Option<std::sync::Arc<crate::policy::PolicyNet>>) {
+        self.policy_net = net;
     }
 
     /// Emit one pseudo-legal move per call, `None` once the active pipeline is
@@ -518,6 +537,14 @@ impl MovePicker {
         // each call.
         let att_tables = crate::attacks::tables();
 
+        // Experiment (design/17 Thrust II): one policy forward per node, reused
+        // by every quiet below. Owned (borrows `self.policy_net` only for the
+        // `map`), so the mutable `self.buf[..]` writes in the loop stay clean.
+        #[cfg(feature = "policy")]
+        let policy_scores = self.policy_net.as_ref().map(|n| n.scores(board));
+        #[cfg(feature = "policy")]
+        let policy_weight = crate::policy::quiet_weight();
+
         let base = self.end_captures;
         for (i, &m) in list.iter().enumerate() {
             let pc = board
@@ -567,6 +594,14 @@ impl MovePicker {
             // Low-ply history (plies 0..4 only), damped toward the leaves.
             if let Some(lp) = low_ply_plane {
                 value += QUIET_LOW_PLY_WEIGHT * lp[raw].get() / (1 + ply as i32);
+            }
+
+            // Learned move-prior (design/17 Thrust II), scaled into history
+            // units. Additive, so it only nudges ties the history stack leaves
+            // ambiguous rather than overriding a strong history signal.
+            #[cfg(feature = "policy")]
+            if let Some(ps) = &policy_scores {
+                value += (policy_weight as f32 * ps.move_score(m.from(), m.to())) as i32;
             }
 
             self.buf[base + i] = ExtMove { mv: m, value };
