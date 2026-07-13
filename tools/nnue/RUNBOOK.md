@@ -20,14 +20,14 @@ subagent, no hand-orchestration.
 
 ```bash
 # 1. copy an example config and edit the params for your experiment:
-cp tools/nnue/runs/example-classic.json tools/nnue/runs/net-9.json   # or example-d40-c1.json
+cp tools/nnue/configs/example-classic.json tools/nnue/configs/net-9.json   # or example-d40-c1.json
 #    (edit net_id, corpus, train.env knobs, sprt.baseline_net, notes …)
 
 # 2. dry-run FIRST — prints the resolved plan + every command, runs nothing:
-uv run python tools/nnue/train_run.py --config tools/nnue/runs/net-9.json --dry-run
+uv run python tools/nnue/train_run.py --config tools/nnue/configs/net-9.json --dry-run
 
 # 3. run it end-to-end (add --commit to also make a LOCAL ledger commit):
-uv run python tools/nnue/train_run.py --config tools/nnue/runs/net-9.json --commit
+uv run python tools/nnue/train_run.py --config tools/nnue/configs/net-9.json --commit
 ```
 
 Flags: `--only a,b` / `--skip a,b` (resume a partial run without redoing the slow
@@ -37,7 +37,7 @@ gitignored `tools/nnue/runs/<net_id>/run.json` (all resolved params + per-stage
 status/timing/results); the git-tracked provenance is the ledger row.
 
 **Config schema** (defaults in `train_run.py:DEFAULTS`; two examples in
-`tools/nnue/runs/`): `net_id` (required, must be free in `nets.jsonl`), `arch`,
+`tools/nnue/configs/`): `net_id` (required, must be free in `nets.jsonl`), `arch`,
 `provenance`, `parent`, `notes`; `corpus.{id, raw_dir|train_bin}`;
 `train.{bullet_dir, example, env{…}}`; `verify_out_clip` (true for the classic
 i16-out net; **false** for the D40 hybrid save, which hard-checks overflow

@@ -1,0 +1,20 @@
+{
+  "net_id": "net-example",
+  "arch": "768x2x256x1",
+  "provenance": "sf-distill",
+  "parent": "net-8",
+  "notes": "example classic-net config for train_run.py (copy + edit per experiment)",
+  "corpus": {
+    "id": "sf-100",
+    "raw_dir": null,
+    "train_bin": "data/nnue/sf/train.bin"
+  },
+  "train": {
+    "bullet_dir": "/tmp/claude-0/-root-projects-learnrust-chessengine/c0a1b520-8665-4b2f-85c5-35473d97415c/scratchpad/bullet",
+    "example": "train_net0.rs",
+    "env": {"NET0_SUPERBATCHES": "30", "NET0_BPS": "1520", "NET0_BATCH": "16384", "NET0_LR": "0.001", "NET0_WDL": "0.3"}
+  },
+  "verify_out_clip": true,
+  "pack": {"activation": "screlu"},
+  "sprt": {"enable": true, "baseline_net": "data/nnue/nets/net-8.cenn", "baseline_id": "net-8", "nodes": 25000, "rounds": 1000, "concurrency": 8}
+}
