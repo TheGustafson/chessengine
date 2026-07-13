@@ -511,3 +511,26 @@ net-new candidate · 🔷 net-coupled (needs a threat-map net).
 Ordering discipline (D39 rule f): these are tuned/adopted **on the shipped net**,
 after a good net lands — not bolted onto net-0, which would confound the very
 measurement.
+
+### Deferred ISA-specific (AVX-512) speed-axis items (D39 rule i)
+
+Surfaced by a second Gemini review (Reckless's SIMD breadth). Both **verified
+`#[cfg(target_feature = "avx512…")]`-gated** — on AVX2 (our `x86-64-v3` config)
+Reckless falls back to *our exact scalar code*, so these are **not gaps on our
+target**:
+
+- **Branchless move-pack** — `arrayvec.rs` `splat8/16` uses AVX-512-VBMI2
+  `_mm512_maskz_compress_epi16` to compress a move mask into the list with no
+  loop/branch. AVX2 fallback = per-move `push` (= our `MoveList::push`).
+- **Parallel SEE least-valuable-attacker** — `see.rs:101` loads all six piece
+  bitboards into a 512-bit register and `_mm512_test_epi64_mask`s them at once.
+  AVX2 fallback (`see.rs:126`) = the same low-to-high `is_empty()` scan as our
+  `see_ge` (`board.rs:1561`).
+
+**Gain for us ≈ 0 now** and a **~3–5 Elo ceiling** later (Gemini's own optimistic
+figure): AVX-512-only, real-TC-only, on an axis where we already run **2.36 Mnps
+≈ 2.5× faster than Reckless** (movegen already 301 Mnps; SEE's share *shrinks* as
+the net grows). **DEFER until** (a) **Top-10 strength + TCEC-prep** (user,
+2026-07-13), (b) we choose to ship v4/AVX-512 builds (accepting the D16 flag-fork),
+AND (c) a profile shows SEE/movegen actually hot with the *shipped* net. Verdict:
+**right technique, wrong axis, wrong time.**

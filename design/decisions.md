@@ -444,7 +444,19 @@ strength. Two constraints in permanent tension, resolved in this order:
   our code + decisions before adoption** — a "Reckless does X better" list is
   typically part already-present (king-danger x-ray, `board.rs`), part
   declined-on-principle (reduction-jitter breaks D24 bench reproducibility), part
-  net-coupled (threat-map ordering), and only partly net-new. Owning doc:
+  net-coupled (threat-map ordering), and only partly net-new. (i)
+  **Architecture-specific ISA optimizations are deferred until Top-10 strength +
+  TCEC preparation** (user, 2026-07-13). Target-specific SIMD in
+  movegen/SEE/board (e.g. Reckless's AVX-512 `maskz_compress_epi16` branchless
+  move-pack and `test_epi64_mask` SEE least-valuable-attacker — both
+  `#[cfg(target_feature = "avx512…")]`-gated, so on our AVX2 target Reckless runs
+  our exact scalar code) is a real-TC *speed-axis* polish worth only ~a few Elo,
+  and ONLY on specific silicon: it forks the build/test matrix (D16 — a v4 binary
+  won't run on v3 hardware, and SPRT pairs must share flags), its value SHRINKS as
+  the net grows (eval dominates node cost), and it moves the axis where we are
+  already ~2.5× ahead of Reckless. Until that milestone we ship ONE portable fast
+  path (`x86-64-v3` / AVX2) + scalar fallback; the deferred items are parked in
+  the triage backlog. Owning doc:
   `design/14` §3.11 (NNUE application: `design/17` §5); the `nps` metadata lands in
   D38's `nets.jsonl` schema; the triaged Reckless backlog lives in
   `reckless_reference/00-design-implications.md`.
