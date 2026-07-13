@@ -399,9 +399,12 @@ mod tests {
             Err(NnueError::WrongInputDims(769))
         ));
 
+        // A width differing from THIS build's L1 (256 default, 512 under
+        // `nnue-l1-512`) must be rejected — use L1+1 so the test is width-agnostic.
         let mut bytes = serialize(&test_net());
-        bytes[12..16].copy_from_slice(&512u32.to_le_bytes());
-        assert!(matches!(load_bytes(&bytes), Err(NnueError::WrongL1(512))));
+        let wrong_l1 = L1 as u32 + 1;
+        bytes[12..16].copy_from_slice(&wrong_l1.to_le_bytes());
+        assert!(matches!(load_bytes(&bytes), Err(NnueError::WrongL1(l)) if l == wrong_l1));
     }
 
     #[test]

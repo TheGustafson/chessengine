@@ -806,7 +806,11 @@ mod tests {
                 Activation::SCReLU,
                 "all-QA×+127",
             );
-            assert_eq!(raw_pos, 4_228_185_600, "SCReLU max positive raw sum");
+            assert_eq!(
+                raw_pos,
+                2 * L1 as i64 * QA as i64 * QA as i64 * 127,
+                "SCReLU max positive raw sum"
+            );
             assert!(
                 raw_pos > i32::MAX as i64,
                 "constructed case must exceed i32::MAX to exercise the i64 \
@@ -825,7 +829,11 @@ mod tests {
                 Activation::SCReLU,
                 "all-QA×−127",
             );
-            assert_eq!(raw_neg, -4_228_185_600, "SCReLU max negative raw sum");
+            assert_eq!(
+                raw_neg,
+                -(2 * L1 as i64 * QA as i64 * QA as i64 * 127),
+                "SCReLU max negative raw sum"
+            );
             assert!(
                 (raw_neg) < i32::MIN as i64,
                 "constructed case must underflow i32::MIN (got {raw_neg})"

@@ -13,6 +13,11 @@ edition = "2024"
 # default, so runtime [dependencies] stays empty (D15) and the default build is
 # PSQT/bench-neutral (548978). Build a playable binary with `--features embed-net`.
 embed-net = []
+# Widen the NNUE hidden layer 256 -> 512 (arch-scale experiment, task #19). OFF
+# by default so the shipped engine + depth-6 bench stay 768x256 and bench-neutral.
+# A 512-build loads ONLY 512-wide CENN nets (the loader checks the header `l1`);
+# build a 512 engine with `--features nnue-l1-512`.
+nnue-l1-512 = []
 
 [dev-dependencies]
 # Test/bench-only (D15: runtime [dependencies] stays empty; dev-deps allowed).

@@ -31,10 +31,17 @@ pub mod simd;
 /// Number of sparse input features: `2 colors × 6 piece types × 64 squares`.
 pub const INPUT: usize = 768;
 
-/// Feature-transformer / accumulator width (the "L1" hidden size). The first
-/// net is deliberately small (design/11 §11 locked choice); the upgrade path
-/// grows this to 512/1024.
+/// Feature-transformer / accumulator width (the "L1" hidden size). 256 by
+/// default (design/11 §11 locked choice); the `nnue-l1-512` feature widens it to
+/// 512 for the arch-scale experiment (task #19). A build loads only nets of its
+/// own width — the loader checks the CENN header `l1` (`WrongL1`). Everything
+/// downstream (accumulator arrays, AVX2 kernel strides, `PAYLOAD_LEN`) derives
+/// from this const, so 512 is a one-line widening (512 % 16 == 0, so the AVX2
+/// lane assert still holds).
+#[cfg(not(feature = "nnue-l1-512"))]
 pub const L1: usize = 256;
+#[cfg(feature = "nnue-l1-512")]
+pub const L1: usize = 512;
 
 // --- Quantization constants (design/11 §3.4.3) -----------------------------
 

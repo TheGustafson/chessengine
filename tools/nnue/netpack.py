@@ -32,6 +32,7 @@ Discardable-scaffold-adjacent tooling (D15/D28): reads a gitignored bullet
 artifact, writes a gitignored net. No engine (`src/`) code is touched.
 """
 
+import os
 import sys
 
 import numpy as np
@@ -39,7 +40,9 @@ import numpy as np
 # Architecture + quantization — must match src/eval/nnue/mod.rs and the
 # loader header (design/11 §3.4.1, §3.4.3, §3.4.5).
 INPUT = 768
-L1 = 256
+# Hidden width. 256 default; set NET_L1=512 to pack a 768x512 net (must match the
+# bullet NET0_HIDDEN the net was trained with, and the engine build's L1).
+L1 = int(os.environ.get("NET_L1", "256"))
 QA = 255
 QB = 64
 SCALE = 400
