@@ -1293,3 +1293,224 @@ net-vs-net Elo, NOT loss (two nets with equal loss can be tens of Elo apart):
 MLflow (`mlflow ui`, localhost:5000) — its run table natively does #2; feed the
 same shim. Decide for-real at P13 step 3 (first `bullet` run) when bullet's exact
 log format is in hand; the choice is swappable (both consume the same shim).
+
+## 12. SOTA NNUE architecture (D40, user-approved 2026-07-13)
+
+A major escalation ratified 2026-07-13: skip §3.4.1's intermediate SPRT rungs (a
+deliberate deviation from D25) and build a SOTA-class net directly — **Stockfish's
+exact feature set** feeding a **Reckless-shaped lean hybrid head**, trained as a
+**triple-net grid** (no / small / full policy). Grounded in two source extractions
+of the current SF net and a source study of Reckless (all `stockfish_reference/`
++ `reckless_reference/`, 2026-07-13). net-0..net-10 remain the validated 768→256
+scaffold and a ready net-quality A/B (D39). This section is the contract; where it
+differs from §3.4.1–§3.4.7 (the first net), §12 governs the SOTA net and §3.4 the
+scaffold.
+
+**Why this shape** (the decision trail): the user's four calls were (1) full 83k
+features from day one, (2) bullet-extended trainer, (3) lean-to-iterate, (4) full
+4096 policy head — then refined to (5) the triple-net grid and (6) **SF features +
+Reckless head**. Reckless is the decisive input: a top-2 engine reaches ~3833 with
+a *leaner* net than SF (768 acc, single-activation, int8-FT/f32-tail, no PSQT), and
+**we already reimplemented its exact forward bit-for-bit** (`experiment/reckless-net`,
+0 cp / 42 positions). So the head is proven + already coded (our own D31-clean
+code → moves to main; only Reckless's *weights* stay firewalled), while the
+feature front-end is the new, SF-faithful build.
+
+### 12.1 Feature set — SF HalfKAv2_hm + FullThreats (83,248)
+
+Two parallel feature transformers, each indexed from 0, both summing into the same
+accumulator (they are NOT one 83,248-long array at runtime):
+
+- **HalfKAv2_hm — 22,528 = 64·704/2** (`half_ka_v2_hm.h`). `PS_NB = 704` = 11
+  piece slots × 64 (10 non-king + one *shared* king slot `PS_KING=640`; kings are
+  features, both colors share the slot). **32 king buckets** (a 64-entry table of
+  `bucket·704`, horizontally symmetric → 4 files × 8 ranks after mirror).
+  `make_index(persp) = (sq ^ OrientTBL[ksq] ^ 56·persp) + PieceSquareIndex[persp][pc]
+  + KingBuckets[ksq ^ 56·persp]` — oriented-square (0–63) + piece-slot + king-bucket.
+  `OrientTBL` file-mirrors so the king is always on files e–h. i16 FT weights.
+  Max 32 active/perspective.
+- **FullThreats — 60,720** (`full_threats.h`). One feature per directed **attack
+  relation**: attacker piece on `from` reaching a victim on `to`, encoded as
+  (attacker piece incl. color, victim relation, from→to geometry). `map[6][6]`
+  selects which attacker→victim type pairs are enumerated: kings never attack
+  (whole row/col excluded), pawns only threaten P/N/R, B/R skip Q & K victims,
+  N/Q include Q. Per-attacker geometry sizes (empty-board edge counts):
+  P 132, N 336, B 560, R 896, Q 1456, K 420. Index = attacker-block +
+  (victim-color, relation) sub-block + from-square base + ordinal-of-`to` (popcount
+  of attack bits below `to`). Own `OrientTBL` (opposite a1/h1 polarity to HalfKA —
+  a fidelity trap) and color-swap `^8·persp`. **i8 FT weights.** Max 128
+  active/perspective; **≤80 changed per move** (x-ray ripple: sliders through
+  touched squares + short-range attackers).
+- **Total input = 83,248**; HashValues `0x7f234cb8` (HalfKA) / `0x8f234cb8`
+  (threats) gate net-file compatibility.
+
+### 12.2 Accumulator, refresh, and cache
+
+- **Width 768 i16 per perspective** (Reckless-proven starting point; 512↔1024 is
+  an SPRT knob). Two feature transformers add into it: HalfKA (i16 weights, seeded
+  from FT bias) and threats (i8 weights, seeded from zero).
+- **Refresh triggers.** HalfKA: any **own-king move** (it defines both bucket and
+  mirror — SF refreshes on every own-king move, not just boundary crossings).
+  Threats: **mirror flip only** (a strict subset of HalfKA refreshes), so threats
+  need king-bucket-free indexing and refresh strictly less often (Reckless's neat
+  asymmetry — adopt it).
+- **Accumulator cache ("Finny tables").** HalfKA only, keyed by
+  `(perspective, king-bucket)` (and mirror) — each slot caches a full accumulator +
+  the occupancy it was built from; a refresh diffs current vs cached occupancy
+  rather than rebuilding from bias. Threats have **no cache** (plain rebuild on
+  mirror flip, like Reckless).
+- **Incremental (non-king) updates** flow through the existing `MakeMoveHooks`
+  seam (§3.4.4). HalfKA emits ≤2 sub / ≤2 add per move from `DirtyPiece`. Threats
+  need a **second observer** producing up to 80 add/remove threat events per move
+  (the x-ray dirty-diff) — the one genuinely heavy new piece of machinery.
+
+### 12.3 Head — Reckless-shaped lean hybrid (int8-FT / f32 tail)
+
+Feature-set-independent (operates on the accumulator), and already coded in
+`experiment/reckless-net`. Pipeline per node:
+
+1. **Pairwise-multiply FT activation** (adopt over §3.4.1's SCReLU): sum
+   HalfKA+threats accumulators; clamp each half to `[0, 255]`; `out[i] =
+   (left[i] · right[i]) >> FT_SHIFT` as u8 ∈ [0,127]. Halves 768 → 384/perspective;
+   both perspectives (STM half first) → **768 u8 transformed features**. Bilinear
+   (two independently-learned projections), same one-mul-per-output cost.
+2. **NNZ sparse gate**: ~85–95% of the 768 u8 are zero after the clamp; skip
+   all-zero 4-byte groups (movemask+LUT / VBMI2 compress).
+3. **L1 768→16**: int8 sparse `dpbusd` over nonzero groups → i32, then **dequant to
+   f32 once** (`× DEQUANT + bias`, clamp `[0,1]`). This is the ONLY integer layer
+   past the FT.
+4. **L2 16→32**: f32 affine, `mul_add`, clamp `[0,1]` (CReLU, single activation —
+   no squared/dual, no concat).
+5. **L3 32→1**: f32 affine, fixed recursive-halving reduction.
+6. **8 output buckets** by `OUTPUT_BUCKETS_LAYOUT[popcount(occ)]` (non-uniform;
+   copy the *shape* — fine at mid-material, coarse at extremes — then retune). Each
+   bucket owns its own L1/L2/L3; the FT + pairwise trunk is shared.
+7. **No PSQT pathway, no output-skip.** Single scalar output `× NETWORK_SCALE →
+   stm-relative cp`.
+
+### 12.4 Outer shape
+
+The scalar cp feeds the existing §3.6 outer shape (optimism/material/rule-50). This
+head has no psqt/positional split, so — exactly like net-0 — **complexity = 0** and
+the §3.6 complexity blend vanishes identically; the material/optimism/rule-50
+consumption is unchanged (D22). No new outer machinery.
+
+### 12.5 The triple-net policy grid (D40)
+
+Every training config produces **three independently-trained nets on one trunk
+architecture**, differing only in the policy head, all on the **Lc0 soft-policy
+target**:
+
+| Net | Policy head | Purpose |
+|---|---|---|
+| **eval-only** | none | control — proves a jointly-trained policy head is not degrading eval |
+| **eval+small** | rank-8 bilinear from×to (`from_emb·to_emb`, off the 768 trunk) | the in-search-affordable policy; ~83% of full-head ordering benefit (offline) |
+| **eval+full** | 4096 from×to logits (off the 768 trunk) | strongest predictor; the small-vs-full gap measures the cheap head's cost |
+
+The policy head reads the **768 transformed features** (post-pairwise trunk output,
+bucket-independent), so its gradient shapes the FT+pairwise trunk — which is why
+eval-only (no policy gradient) is a *true* control. Policy heads are **novel** (no
+SF/Reckless precedent; D34 research). Comparison axes: eval strength (all three, by
+SPRT) + policy quality (the two, by held-out top-1/target-CE).
+
+### 12.6 Quantization + net format (CENN-v2)
+
+Reckless's hybrid quant, which our port already matches (`FT_QUANT/QA = 255`,
+`L1_QUANT/QB = 64` — already our constants):
+
+- **FT**: HalfKA weights i16, threats weights i8, bias i16; activation clamp
+  `[0,255]`, pairwise `>> FT_SHIFT (=9)` → u8.
+- **L1**: weights i8, bias f32; `dpbusd` → i32 → f32 via `DEQUANT = 2^FT_SHIFT /
+  (QA²·QB)`.
+- **L2/L3**: all f32. *This is the key lean: only FT+L1 are integer, so the
+  quantization-training surface is tiny vs SF's all-integer dual-activation tail.*
+- `NETWORK_SCALE` maps f32 → cp (Reckless 380; we set to our eval scale, pinned in
+  the header).
+
+**Net file = CENN-v2** — extend the existing CENN loader (magic/version/dims/
+checksum + `WrongL1`-style guards, §3.4.5) to carry: two FT weight tensors (i16 +
+i8) with their dims, per-bucket i8 L1 + f32 L1-bias/L2/L3, the quant constants,
+`NETWORK_SCALE`, and a `policy_kind ∈ {none, bilinear, full}` tag + its head
+weights. Versioned so a v1 (768→256) loader rejects a v2 net and vice-versa.
+
+### 12.7 Trainer — bullet, extended
+
+bullet natively covers HalfKA + output buckets + pairwise + the mixed int8-FT/f32
+tail. The custom work:
+
+1. **FullThreats input feature** — a bullet sparse-input type emitting the 60,720
+   threat indices per position (bullet supports custom Rust input features).
+2. **Configurable policy head** — none / bilinear / 4096, off the trunk, with a
+   **combined loss** = eval (WDL+MSE blend, §3.2/§15) + `λ_policy ·` policy
+   cross-entropy to the Lc0 distribution. Three build configs from one trunk.
+3. **Data loader** for the extended record (§12.8).
+
+Output = CENN-v2 nets our loader owns. (nnue-pytorch was declined: no policy path,
+SF-format nets we'd re-quantize.)
+
+### 12.8 Data-format extension — eval + policy per position (the curation work)
+
+The single new corpus requirement (the user's "focus on data curation"): every
+record carries **both** an eval/WDL label **and** the Lc0 policy target, so all
+three nets train from one corpus (eval-only ignores the policy column).
+`bulletformat::ChessBoard` (32 B) cannot hold a policy distribution, so either a new
+fixed+sparse record (board + eval + wdl + a capped list of `(move, prob)` pairs) or
+a parallel policy-target stream keyed by position. Lc0 data already has the
+policy[1858] vector → the converter (`data/lc0_nnue/`) emits both eval and policy;
+SF-teacher data (design/15) supplies eval + a best-move (a degenerate one-hot
+policy) for the eval-only and as a mix. Curation/filter rules (§15 §3.5) extend to
+keep only positions with a usable policy target for the policy nets.
+
+### 12.9 Inference plan — reuse the Reckless head, build the SF front-end
+
+- **Head (reuse):** port the `experiment/reckless-net` forward (pairwise-mul +
+  NNZ-sparse int8 L1 + f32 L2/L3 + 8 buckets) to `src/eval/nnue/` on main — it is
+  our own code, bit-exact against a real SOTA-shaped net. Only the L1 input width
+  changes if the accumulator ≠ 768.
+- **Front-end (new):** HalfKAv2_hm + FullThreats index computation; the 768-wide
+  two-transformer accumulator with the HalfKA Finny cache + threats mirror-rebuild;
+  the threats dirty-diff observer (≤80/move) on the `MakeMoveHooks` seam. This is
+  the bulk of the new engine code.
+- **Adopt from Reckless** (D40): pairwise-mul activation, int8-FT/f32-tail hybrid,
+  the `DEQUANT = 2^shift/(QA²·QB)` bridge, the bit-exactness checklist
+  (`f32::mul_add` where SIMD uses FMA; bias-seeded accumulators; one fixed
+  reduction order; explicit scalar clamps), and — for the D16 fast build only —
+  compile-time cfg-module SIMD dispatch (no runtime fn-pointer indirection),
+  keeping the `LazyLock<Kernels>` path for the portable default.
+- **Parity gate:** the Rust forward must match the bullet-side forward to a fixed
+  tolerance across a fixture set (the §3.4.6 scalar/SIMD discipline, now also
+  Rust-vs-trainer), before any strength claim.
+
+### 12.10 Build plan / phasing (full 83k from day one, lean head)
+
+1. **Trainer** (§12.7): bullet FullThreats feature + configurable policy head +
+   combined loss + extended data loader; produce the first eval+policy corpus and
+   train the first triple (eval-only / small / full).
+2. **Inference** (§12.9): port the Reckless head to main; build the SF feature
+   front-end (features + accumulator + Finny cache + threats observer); CENN-v2
+   loader; the quantized forward; the Rust-vs-trainer parity gate. All behind a
+   feature/`EvalFile`-versioned path — default build + depth-6 bench stay neutral
+   until ship.
+3. **Screen** (D39): fixed-node SPRT of all three nets vs net-8 (best scaffold) to
+   isolate net quality from inference speed; the eval-only ≥ eval+policy check
+   (D40 control).
+4. **Ship gate** (D39): real-TC SPRT of the winning eval net vs net-8; then the
+   policy nets' in-search value (ordering/pruning) tested separately (the policy
+   line is a research appendage — the eval-only net is shippable on its own).
+5. Accumulator width / bucket count (§12.2/§12.3) and `λ_policy` are SPRT/SPSA
+   knobs tuned after the loop is green (D39 rule f: tune on the shipped net).
+
+### 12.11 Acceptance criteria (extends §8)
+
+- **Parity:** Rust forward == trainer forward within tolerance on the fixture set;
+  scalar == SIMD bit-exact (§3.4.6).
+- **Bench neutrality:** default build byte-identical, depth-6 fingerprint 548978,
+  until the net is shipped as the default eval.
+- **Feature fidelity:** HalfKAv2_hm + FullThreats indices reproduce the SF
+  reference index math on a cross-check set (the two OrientTBL polarities, the
+  threat LUT arithmetic).
+- **Strength:** fixed-node SPRT (screen) then real-TC SPRT (ship gate) vs net-8;
+  the D40 control (eval-only not worse than eval+policy on eval) holds or the
+  regression is attributed.
+- **Provenance:** every net → a ledger row (D38) with arch tag, data snapshot,
+  policy_kind, nps, and SPRT Elo.

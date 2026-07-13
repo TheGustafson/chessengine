@@ -460,3 +460,32 @@ strength. Two constraints in permanent tension, resolved in this order:
   `design/14` §3.11 (NNUE application: `design/17` §5); the `nps` metadata lands in
   D38's `nets.jsonl` schema; the triaged Reckless backlog lives in
   `reckless_reference/00-design-implications.md`.
+
+- **D40**: SOTA NNUE architecture & the triple-net training discipline
+  (user-approved 2026-07-13). Skip design/11 §3.4.1's intermediate SPRT rungs (a
+  deliberate deviation from D25) to build a SOTA-class net directly. **Features =
+  Stockfish's exact set** (extracted from `stockfish_reference/`, 2026-07-13):
+  `HalfKAv2_hm` (22,528; 32 king buckets, horizontal mirror, i16 FT weights) +
+  `FullThreats` (60,720; relational attacker→victim + move-geometry, i8 FT
+  weights) = **83,248** sparse inputs, two transformers summing into one
+  accumulator. **Head = Reckless-shaped lean hybrid** (studied 2026-07-13):
+  pairwise-multiply FT activation → **int8-sparse-FT + f32 tail** → 8 output
+  buckets, **no PSQT pathway, no output-skip** — the exact head we already
+  reimplemented bit-exactly on `experiment/reckless-net` (0 cp / 42 positions).
+  That reimplementation is **our own code (D31-clean) and moves to main**; only
+  Reckless's trained *weights* stay firewalled (we train our own). Accumulator
+  768 wide (Reckless-proven; 512↔1024 is an SPRT knob), 8 buckets (4↔8 a knob).
+  **Trainer = bullet, extended** (custom FullThreats input feature + configurable
+  policy head + combined eval+policy loss). **Triple-net discipline** (refined
+  mid-design from an initial dual eval/eval+policy framing): every training config
+  produces THREE independently-trained nets on one trunk *architecture* — {eval-only,
+  eval+**small** policy (rank-8 bilinear from×to), eval+**full** policy (4096
+  from×to)}, all on the Lc0 soft-policy target. eval-only is the control that
+  proves a jointly-trained policy head is not degrading eval; small-vs-full
+  measures the cheap head's prediction cost. Policy heads have **no SF/Reckless
+  precedent** — novel research (D34). **Data** must carry eval/WDL **and** the
+  Lc0 policy target per position (a corpus-format extension — the real "curation"
+  work, design/15). Supersedes the *architecture* parts of D35's first-net plan;
+  net-0..net-10 remain the validated scaffold + a ready net-quality A/B. Owning
+  doc: `design/11` §12. Reference provenance: the two SF extractions + the
+  Reckless study, all 2026-07-13.
