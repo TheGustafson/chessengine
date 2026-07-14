@@ -149,12 +149,217 @@ def pack(quantised_path: str, out_path: str, activation: str) -> None:
     print(f"  payload_len {len(payload)}   checksum {checksum:#018x}")
 
 
+# ============================================================================
+# D40 CENN-v2 packer (design/11 §12.6)
+#
+# Transcodes bullet d40_features.rs quantised.bin → CENN-v2 (.cenn).
+#
+# Bullet's d40_features SavedFormat (from research):
+#   0: l0_pstw  i16  (ACC, HALFKA)  neuron-major (scale 255)
+#   1: l0_pstb  i16  (ACC, 1)       shared FT bias (scale 255)
+#   2: l0_threatw i8 (ACC, THREAT)  neuron-major (scale 64)
+#   3: l1w      i8   (ACC, BUCKETS*L2)  TRANSPOSED → on disk (BUCKETS*L2, ACC)
+#   4: l1b      f32  (BUCKETS*L2, 1)
+#   5: l2w      f32  (L2, BUCKETS*L3)   TRANSPOSED → on disk (BUCKETS*L3, L2)
+#   6: l2b      f32  (BUCKETS*L3, 1)
+#   7: l3w      f32  (L3, BUCKETS)      TRANSPOSED → on disk (BUCKETS, L3)
+#   8: l3b      f32  (BUCKETS, 1)
+#
+# The engine wants feature-major FTs and a group-interleaved L1 layout.
+# ============================================================================
+
+MAGIC_V2 = b"CEN2"
+CENN_V2_VERSION = 2
+HEADER_V2_LEN = 64
+FLAG_HAS_THREATS = 1
+
+# D40 architecture constants — must match src/eval/nnue/sota_head.rs +
+# sota_features.rs.
+HALFKA_DIMS = 22528
+THREAT_DIMS = 60720
+D40_ACC = 768      # Accumulator width (= SotaHead::L1)
+D40_L2 = 16
+D40_L3 = 32
+D40_BUCKETS = 8
+D40_FT_QUANT = 255
+D40_L1_QUANT = 64
+D40_FT_SHIFT = 9
+D40_NETWORK_SCALE = 380  # Reckless default; overridable via env
+
+
+def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> None:
+    """Pack a bullet d40_features quantised.bin into CENN-v2."""
+    if network_scale is None:
+        network_scale = int(os.environ.get("D40_NETWORK_SCALE", str(D40_NETWORK_SCALE)))
+
+    raw = open(quantised_path, "rb").read()
+
+    acc = D40_ACC
+    buckets = D40_BUCKETS
+
+    # ── Parse bullet tensors ───────────────────────────────────────────
+    # Tensor 0: l0_pstw i16 (ACC × HALFKA_DIMS) neuron-major
+    n_pst_w = acc * HALFKA_DIMS
+    # Tensor 1: l0_pstb i16 (ACC)
+    n_pst_b = acc
+    # Tensor 2: l0_threatw i8 (ACC × THREAT_DIMS) neuron-major
+    n_threat_w = acc * THREAT_DIMS
+    # Tensor 3: l1w i8 (BUCKETS*L2 × ACC) — bullet stores TRANSPOSED
+    n_l1w = buckets * D40_L2 * acc
+    # Tensor 4: l1b f32 (BUCKETS*L2)
+    n_l1b = buckets * D40_L2
+    # Tensor 5: l2w f32 (BUCKETS*L3 × L2) — TRANSPOSED
+    n_l2w = buckets * D40_L3 * D40_L2
+    # Tensor 6: l2b f32 (BUCKETS*L3)
+    n_l2b = buckets * D40_L3
+    # Tensor 7: l3w f32 (BUCKETS × L3) — TRANSPOSED
+    n_l3w = buckets * D40_L3
+    # Tensor 8: l3b f32 (BUCKETS)
+    n_l3b = buckets
+
+    # Byte offsets
+    need_bytes = (n_pst_w + n_pst_b) * 2 + n_threat_w + n_l1w + (n_l1b + n_l2w + n_l2b + n_l3w + n_l3b) * 4
+    if len(raw) < need_bytes:
+        die(f"{quantised_path}: {len(raw)} bytes < {need_bytes} needed for D40 arch")
+
+    off = 0
+
+    # l0_pstw: i16 (ACC, HALFKA) neuron-major in bullet
+    pst_w = np.frombuffer(raw, dtype="<i2", count=n_pst_w, offset=off).reshape(acc, HALFKA_DIMS)
+    off += n_pst_w * 2
+
+    # l0_pstb: i16 (ACC)
+    pst_b = np.frombuffer(raw, dtype="<i2", count=n_pst_b, offset=off)
+    off += n_pst_b * 2
+
+    # l0_threatw: i8 (ACC, THREAT) neuron-major in bullet
+    threat_w = np.frombuffer(raw, dtype="<i1", count=n_threat_w, offset=off).reshape(acc, THREAT_DIMS)
+    off += n_threat_w
+
+    # l1w: i8 — bullet stores as (BUCKETS*L2, ACC) row-major (TRANSPOSED flag)
+    l1w_raw = np.frombuffer(raw, dtype="<i1", count=n_l1w, offset=off).reshape(buckets * D40_L2, acc)
+    off += n_l1w
+
+    # l1b: f32 (BUCKETS*L2)
+    l1b = np.frombuffer(raw, dtype="<f4", count=n_l1b, offset=off)
+    off += n_l1b * 4
+
+    # l2w: f32 — bullet stores as (BUCKETS*L3, L2) row-major (TRANSPOSED)
+    l2w_raw = np.frombuffer(raw, dtype="<f4", count=n_l2w, offset=off).reshape(buckets * D40_L3, D40_L2)
+    off += n_l2w * 4
+
+    # l2b: f32 (BUCKETS*L3)
+    l2b = np.frombuffer(raw, dtype="<f4", count=n_l2b, offset=off)
+    off += n_l2b * 4
+
+    # l3w: f32 — bullet stores as (BUCKETS, L3) row-major (TRANSPOSED)
+    l3w_raw = np.frombuffer(raw, dtype="<f4", count=n_l3w, offset=off).reshape(buckets, D40_L3)
+    off += n_l3w * 4
+
+    # l3b: f32 (BUCKETS)
+    l3b = np.frombuffer(raw, dtype="<f4", count=n_l3b, offset=off)
+    off += n_l3b * 4
+
+    # ── Transpose FTs to feature-major ─────────────────────────────────
+    # Engine wants: halfka_w[feature][neuron] = pst_w^T
+    pst_w_feat = pst_w.T.copy()  # (HALFKA, ACC) — feature-major, C-contiguous
+    assert pst_w_feat.shape == (HALFKA_DIMS, acc), pst_w_feat.shape
+
+    threat_w_feat = threat_w.T.copy()  # (THREAT, ACC) — feature-major
+    assert threat_w_feat.shape == (THREAT_DIMS, acc), threat_w_feat.shape
+
+    # ── Rearrange L1 weights to group-interleaved layout ───────────────
+    # Engine's propagate_l1 accesses: wb[group * (L2*4) + neuron * 4 + k]
+    # where group = input/4, k = input%4, neuron = output.
+    # This is [L1/4][L2][4] per bucket.
+    #
+    # Bullet has: l1w_raw[bucket*L2 + neuron][input] (row-major TRANSPOSED).
+    l1w_engine = np.zeros(buckets * D40_L2 * acc, dtype=np.int8)
+    for b in range(buckets):
+        for j in range(D40_L2):  # output neuron
+            for i in range(acc):  # input
+                g = i // 4
+                k = i % 4
+                src = l1w_raw[b * D40_L2 + j, i]
+                dst_idx = b * D40_L2 * acc + g * (D40_L2 * 4) + j * 4 + k
+                l1w_engine[dst_idx] = src
+
+    # ── Rearrange L2 weights ───────────────────────────────────────────
+    # Engine accesses: l2_weights[bucket * L2 * L3 + i * L3 + j]
+    #   where i=L2 input, j=L3 output.
+    # Bullet has: l2w_raw[bucket*L3 + j][i] (TRANSPOSED).
+    l2w_engine = np.zeros(buckets * D40_L2 * D40_L3, dtype=np.float32)
+    for b in range(buckets):
+        for i in range(D40_L2):
+            for j in range(D40_L3):
+                src = l2w_raw[b * D40_L3 + j, i]
+                dst_idx = b * D40_L2 * D40_L3 + i * D40_L3 + j
+                l2w_engine[dst_idx] = src
+
+    # ── Rearrange L3 weights ───────────────────────────────────────────
+    # Engine accesses: l3_weights[bucket * L3 + i] (one output per bucket).
+    # Bullet has: l3w_raw[bucket][i] (TRANSPOSED: output=bucket, input=i).
+    # This is already the right layout when flattened: [bucket*L3 + i].
+    l3w_engine = l3w_raw.ravel()
+
+    # ── Build CENN-v2 payload ──────────────────────────────────────────
+    payload = bytearray()
+    payload += pst_w_feat.astype("<i2").tobytes()    # halfka_w feature-major i16
+    payload += pst_b.astype("<i2").tobytes()          # ft_bias i16
+    payload += threat_w_feat.astype("<i1").tobytes()  # threat_w feature-major i8
+    payload += l1w_engine.tobytes()                   # l1_w i8 group-interleaved
+    payload += l1b.astype("<f4").tobytes()             # l1_b f32
+    payload += l2w_engine.astype("<f4").tobytes()      # l2_w f32
+    payload += l2b.astype("<f4").tobytes()             # l2_b f32
+    payload += l3w_engine.astype("<f4").tobytes()      # l3_w f32
+    payload += l3b.astype("<f4").tobytes()             # l3_b f32
+
+    checksum = fnv1a64(bytes(payload))
+
+    # ── Build CENN-v2 header (64 bytes) ────────────────────────────────
+    flags = FLAG_HAS_THREATS  # always has threats for d40_features
+    header = bytearray()
+    header += MAGIC_V2
+    header += int(CENN_V2_VERSION).to_bytes(2, "little")
+    header += int(flags).to_bytes(2, "little")
+    header += int(HALFKA_DIMS).to_bytes(4, "little")
+    header += int(THREAT_DIMS).to_bytes(4, "little")
+    header += int(D40_ACC).to_bytes(4, "little")       # acc_width
+    header += int(D40_L2).to_bytes(4, "little")
+    header += int(D40_L3).to_bytes(4, "little")
+    header += int(D40_BUCKETS).to_bytes(4, "little")
+    header += int(D40_FT_QUANT).to_bytes(4, "little", signed=True)
+    header += int(D40_L1_QUANT).to_bytes(4, "little", signed=True)
+    header += int(D40_FT_SHIFT).to_bytes(4, "little", signed=True)
+    header += int(network_scale).to_bytes(4, "little", signed=True)
+    header += len(payload).to_bytes(8, "little")
+    header += checksum.to_bytes(8, "little")
+    assert len(header) == HEADER_V2_LEN, f"header {len(header)} != {HEADER_V2_LEN}"
+
+    with open(out_path, "wb") as f:
+        f.write(header)
+        f.write(payload)
+
+    total = HEADER_V2_LEN + len(payload)
+    print(f"netpack-d40: wrote {out_path} ({total:,} bytes)")
+    print(f"  arch        halfka={HALFKA_DIMS} threats={THREAT_DIMS} acc={D40_ACC}")
+    print(f"              L2={D40_L2} L3={D40_L3} buckets={D40_BUCKETS}")
+    print(f"  quant       ft_quant={D40_FT_QUANT} l1_quant={D40_L1_QUANT} "
+          f"ft_shift={D40_FT_SHIFT} scale={network_scale}")
+    print(f"  payload     {len(payload):,} bytes   checksum {checksum:#018x}")
+
+
 def main():
     if len(sys.argv) < 3:
-        die("usage: netpack.py <quantised.bin> <out.cenn> [screlu|crelu]")
-    activation = sys.argv[3] if len(sys.argv) >= 4 else "screlu"
-    pack(sys.argv[1], sys.argv[2], activation)
+        die("usage: netpack.py <quantised.bin> <out.cenn> [screlu|crelu|d40]")
+    mode = sys.argv[3] if len(sys.argv) >= 4 else "screlu"
+
+    if mode.lower() == "d40":
+        pack_d40(sys.argv[1], sys.argv[2])
+    else:
+        pack(sys.argv[1], sys.argv[2], mode)
 
 
 if __name__ == "__main__":
     main()
+

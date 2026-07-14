@@ -30,9 +30,9 @@ pub const L3: usize = 32;
 /// Material/output buckets.
 pub const BUCKETS: usize = 8;
 
-const FT_QUANT: i32 = 255; // FT activation clamp ceiling / QA
-const L1_QUANT: i32 = 64; // L1 weight scale / QB
-const FT_SHIFT: i32 = 9; // pairwise-multiply right shift
+pub(crate) const FT_QUANT: i32 = 255; // FT activation clamp ceiling / QA
+pub(crate) const L1_QUANT: i32 = 64; // L1 weight scale / QB
+pub(crate) const FT_SHIFT: i32 = 9; // pairwise-multiply right shift
 /// `(1 << FT_SHIFT) / (FT_QUANT² · L1_QUANT)` — the i32→f32 bridge at L1
 /// (design/11 §12.6).
 const DEQUANT: f32 = (1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT * L1_QUANT) as f32;
@@ -53,6 +53,7 @@ const OUTPUT_BUCKETS_LAYOUT: [usize; 33] = [
 /// The head's per-bucket weights + the net's output scale. Format-agnostic: the
 /// CENN-v2 loader (task #29) fills these from disk; tests fill them synthetically.
 /// Layouts are bucket-major, flattened.
+#[derive(Debug)]
 pub struct SotaHead {
     /// `[BUCKETS][L2 · L1]` i8.
     pub l1_weights: Box<[i8]>,

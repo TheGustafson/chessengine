@@ -36,6 +36,10 @@ pub mod sota_features;
 /// observer, D40, design/11 §12.9.1) — behind `sota`.
 #[cfg(feature = "sota")]
 pub mod sota_threats;
+/// The CENN-v2 container loader for D40 SOTA nets (design/11 §12.6) — behind
+/// `sota`.
+#[cfg(feature = "sota")]
+pub mod sota_loader;
 
 // --- Architecture dimensions (design/11 §3.4.1) ----------------------------
 
