@@ -337,7 +337,7 @@ pub fn init() {
 /// Call `f` with the HalfKA index of every piece on the board, from
 /// `perspective`. Exactly one feature per piece (kings included), so the call
 /// count equals the piece count.
-fn for_each_halfka(board: &Board, perspective: Color, mut f: impl FnMut(usize)) {
+pub fn for_each_halfka(board: &Board, perspective: Color, mut f: impl FnMut(usize)) {
     let ksq = board.king_square(perspective);
     for sq in board.all_occupancy() {
         let piece = board.piece_on(sq).expect("occupancy ⇒ a piece");
@@ -350,7 +350,7 @@ fn for_each_halfka(board: &Board, perspective: Color, mut f: impl FnMut(usize)) 
 /// both colors is an attacker; victim sets are pre-filtered to the legal types;
 /// excluded / semi-excluded relations are skipped ([`threat_index`] returns
 /// `None`).
-fn for_each_threat(board: &Board, perspective: Color, mut f: impl FnMut(usize)) {
+pub fn for_each_threat(board: &Board, perspective: Color, mut f: impl FnMut(usize)) {
     let ksq = board.king_square(perspective);
     let occ = board.all_occupancy();
 

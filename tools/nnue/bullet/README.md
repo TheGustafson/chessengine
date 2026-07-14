@@ -14,9 +14,10 @@ register each as a `[[example]]` in `bullet_lib/Cargo.toml`, then
   `l0.init_with_effective_input_size(32)` for king-bucketed sparse inputs.
 - `d40_features.rs` — FullThreats+HalfKA as a custom `SparseInputType` over the
   concatenated 0..83248 space, as TWO summed affine tensors (HalfKA i16 +
-  threats i8, threats bias DROPPED — CSE compile fix + matches §12.2). Index
-  math is a PLACEHOLDER — port the canonical version from
-  `src/eval/nnue/sota_features.rs` (task #29/#28).
+  threats i8, threats bias DROPPED — CSE compile fix + matches §12.2). It calls
+  the engine's canonical index functions through a path dependency and checks
+  its exact active-index sets against the engine enumerators on real records
+  before training.
 - `d40_policy.rs` — the low-level `ModelDefinition`+`run::train` policy trainer:
   from×to (4096) head off the shared trunk + combined `eval + λ·policy-CE` loss,
   named `policy_target` input. Ran on a synthetic target (loss 8.37→7.39).

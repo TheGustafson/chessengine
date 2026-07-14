@@ -4,14 +4,12 @@
  *
  * TWO deliverables, both compiling + running on a real bulletformat corpus:
  *
- *  A. `HalfKaThreats`: the custom `SparseInputType` skeleton over the CONCATENATED
+ *  A. `HalfKaThreats`: the custom `SparseInputType` over the CONCATENATED
  *     0..83,248 index space (HalfKAv2_hm 22,528 in [0,22528) + FullThreats 60,720
- *     in [22528,83248)). The EXACT index math is a documented TODO -- the canonical
- *     HalfKAv2_hm + FullThreats index functions (OrientTBL polarities, 32 king
- *     buckets, threat LUT geometry) are being implemented engine-side (task #29,
- *     design/11 §12.9) and will be ported in / shared. The placeholder emits
- *     structurally-valid indices in the two subspaces so the graph runs on real
- *     sparse gathers.
+ *     in [22528,83248)). It calls the engine's canonical, unit-tested
+ *     `halfka_index` and `threat_index` functions directly. Only enumeration is
+ *     local, and startup parity-checks its exact index sets against the engine's
+ *     canonical enumerators over fixtures plus real corpus records.
  *
  *  B. The TWO-summed-tensor FT graph (design/11 §12.1/§12.6): the HalfKA weights
  *     (i16) and threat weights (i8) live in SEPARATE affine tensors that are
@@ -21,29 +19,143 @@
  *     low-level `ModelDefinition` + `AdamW::new` + `run::train` path (the same
  *     path `ValueTrainer` builds internally; see examples/tests/test4.rs).
  *
- * This is NOT a real net: the placeholder index math means the learned weights
- * are meaningless. It proves the STRUCTURE + graph + separate quant compile+run.
+ * This is the real C2 feature front end; trainer and inference index math share
+ * one implementation through the chessengine path dependency.
  */
 use bullet_lib::{
-    game::inputs::{Chess768, SparseInputType},
-    nn::InitSettings,
-    value::loader::DirectSequentialDataLoader,
+    game::inputs::SparseInputType, nn::InitSettings, value::loader::DirectSequentialDataLoader,
 };
 use bullet_trainer::{
     model::{ModelDefinition, ModelInputs, ModelInputsMapper, ModelWeights, SavedFormat},
     optimiser::adam::{AdamW, AdamWParams},
-    reader::ReadMapLoader,
+    reader::{DataReader, ReadMapLoader},
     run::{DefaultDevice, TrainingSchedule, TrainingSteps, train},
 };
 use bulletformat::ChessBoard;
+use chessengine::attacks::{attacks, pawn_attacks};
+use chessengine::eval::nnue::sota_features::{
+    HALFKA_DIMS, THREAT_DIMS, for_each_halfka, for_each_threat, halfka_index, threat_index,
+};
+use chessengine::{Bitboard, Board, Color, Piece, PieceType, Square};
 
 // --- Feature-space layout (design/11 §12.1) ---------------------------------
-const HALFKA_INPUTS: usize = 22_528; // 64 * 704 / 2
-const THREAT_INPUTS: usize = 60_720; // FullThreats
+const HALFKA_INPUTS: usize = HALFKA_DIMS;
+const THREAT_INPUTS: usize = THREAT_DIMS;
 const TOTAL_INPUTS: usize = HALFKA_INPUTS + THREAT_INPUTS; // 83_248
 const HALFKA_MAX_ACTIVE: usize = 32; // <=32 HalfKA features / perspective
-const THREAT_MAX_ACTIVE: usize = 128; // <=128 threat features / perspective
-const MAX_ACTIVE: usize = HALFKA_MAX_ACTIVE + THREAT_MAX_ACTIVE; // 160
+const THREAT_MAX_ACTIVE: usize = 160;
+const MAX_ACTIVE: usize = HALFKA_MAX_ACTIVE + THREAT_MAX_ACTIVE; // 192
+
+const PIECE_TYPES: [PieceType; 6] = [
+    PieceType::Pawn,
+    PieceType::Knight,
+    PieceType::Bishop,
+    PieceType::Rook,
+    PieceType::Queen,
+    PieceType::King,
+];
+
+struct Decoded {
+    mailbox: [Option<(Color, PieceType)>; 64],
+    pieces: [[Bitboard; 6]; 2],
+    occupancy: Bitboard,
+    kings: [Square; 2],
+}
+
+fn decode(pos: &ChessBoard) -> Decoded {
+    let mut mailbox = [None; 64];
+    let mut pieces = [[Bitboard::EMPTY; 6]; 2];
+    let mut kings = [Square::A1; 2];
+
+    for (code, sq) in *pos {
+        let color = Color::ALL[((code >> 3) & 1) as usize];
+        let piece_type = PIECE_TYPES[(code & 7) as usize];
+        let square = Square::new(sq);
+        mailbox[sq as usize] = Some((color, piece_type));
+        pieces[color as usize][piece_type as usize] |= Bitboard::from_square(square);
+        if piece_type == PieceType::King {
+            kings[color as usize] = square;
+        }
+    }
+
+    Decoded {
+        mailbox,
+        pieces,
+        occupancy: Bitboard::from_u64(pos.occ()),
+        kings,
+    }
+}
+
+fn emit_features<F: FnMut(usize, usize)>(pos: &ChessBoard, mut f: F) {
+    let decoded = decode(pos);
+    let [white_king, black_king] = decoded.kings;
+
+    for square in decoded.occupancy {
+        let (color, piece_type) =
+            decoded.mailbox[square.index() as usize].expect("occupied square must contain a piece");
+        let piece = Piece::new(color, piece_type);
+        f(
+            halfka_index(Color::White, piece, square, white_king),
+            halfka_index(Color::Black, piece, square, black_king),
+        );
+    }
+
+    let both = |piece_type: PieceType| {
+        decoded.pieces[Color::White as usize][piece_type as usize]
+            | decoded.pieces[Color::Black as usize][piece_type as usize]
+    };
+    let all_pawns = both(PieceType::Pawn);
+    let pawn_targets = all_pawns | both(PieceType::Knight) | both(PieceType::Rook);
+    let minor_slider_targets = pawn_targets | both(PieceType::Bishop);
+    let queen_targets = minor_slider_targets | both(PieceType::Queen);
+
+    let mut emit_threat =
+        |attacker_color: Color, attacker_type: PieceType, from: Square, to: Square| {
+            let attacker = Piece::new(attacker_color, attacker_type);
+            let (victim_color, victim_type) =
+                decoded.mailbox[to.index() as usize].expect("threat target must contain a piece");
+            let victim = Piece::new(victim_color, victim_type);
+
+            if let Some(white) = threat_index(Color::White, attacker, from, to, victim, white_king)
+            {
+                let black = threat_index(Color::Black, attacker, from, to, victim, black_king)
+                    .or_else(|| threat_index(Color::Black, victim, to, from, attacker, black_king))
+                    .expect("a White-active threat must have a Black-perspective partner");
+                f(HALFKA_INPUTS + white, HALFKA_INPUTS + black);
+            }
+        };
+
+    for color in Color::ALL {
+        for from in decoded.pieces[color as usize][PieceType::Pawn as usize] {
+            for to in pawn_attacks(color, from) & pawn_targets {
+                emit_threat(color, PieceType::Pawn, from, to);
+            }
+            if let Some(to) = from.shifted(color.pawn_push())
+                && all_pawns.contains(to)
+            {
+                emit_threat(color, PieceType::Pawn, from, to);
+            }
+        }
+
+        for piece_type in [
+            PieceType::Knight,
+            PieceType::Bishop,
+            PieceType::Rook,
+            PieceType::Queen,
+        ] {
+            let targets = if matches!(piece_type, PieceType::Knight | PieceType::Queen) {
+                queen_targets
+            } else {
+                minor_slider_targets
+            };
+            for from in decoded.pieces[color as usize][piece_type as usize] {
+                for to in attacks(piece_type, from, decoded.occupancy) & targets {
+                    emit_threat(color, piece_type, from, to);
+                }
+            }
+        }
+    }
+}
 
 // ============================================================================
 // A. Custom SparseInputType: HalfKAv2_hm + FullThreats over 0..83,248.
@@ -67,26 +179,8 @@ impl SparseInputType for HalfKaThreats {
     /// Each emitted pair is entirely within ONE subspace: a HalfKA pair has both
     /// indices in [0, HALFKA_INPUTS); a threat pair has both in
     /// [HALFKA_INPUTS, TOTAL_INPUTS). The downstream mapper routes on that.
-    fn map_features<F: FnMut(usize, usize)>(&self, pos: &Self::RequiredDataType, mut f: F) {
-        // ================= TODO(task #29 / design/11 §12.9) =================
-        // Replace this ENTIRE body with the SF-exact index math, shared with the
-        // engine inference front-end:
-        //   HalfKAv2_hm:  make_index(persp) =
-        //       (sq ^ OrientTBL[ksq] ^ 56*persp) + PieceSquareIndex[persp][pc]
-        //       + KingBuckets[ksq ^ 56*persp]                 (PS_NB=704, 32 buckets)
-        //   FullThreats:  attacker-block + (victim-colour,relation) sub-block
-        //       + from-square base + ordinal-of-`to`          (own OrientTBL polarity)
-        // Placeholder below derives in-range indices from the 768 base features so
-        // both subspaces activate with real gathers (weights are meaningless).
-        // ===================================================================
-        Chess768.map_features(pos, |stm768, ntm768| {
-            // HalfKA subspace [0, HALFKA_INPUTS): one feature / piece.
-            f(stm768 % HALFKA_INPUTS, ntm768 % HALFKA_INPUTS);
-            // Threat subspace [HALFKA_INPUTS, TOTAL_INPUTS): one placeholder / piece.
-            let th_stm = HALFKA_INPUTS + (stm768.wrapping_mul(31) % THREAT_INPUTS);
-            let th_ntm = HALFKA_INPUTS + (ntm768.wrapping_mul(31) % THREAT_INPUTS);
-            f(th_stm, th_ntm);
-        });
+    fn map_features<F: FnMut(usize, usize)>(&self, pos: &Self::RequiredDataType, f: F) {
+        emit_features(pos, f);
     }
 
     fn shorthand(&self) -> String {
@@ -110,6 +204,68 @@ fn self_check_position() -> ChessBoard {
         .expect("valid self-check position")
 }
 
+fn reconstruct_board(pos: &ChessBoard) -> Board {
+    let decoded = decode(pos);
+    let mut board = Board::empty();
+    for square in decoded.occupancy {
+        let (color, piece_type) =
+            decoded.mailbox[square.index() as usize].expect("occupied square must contain a piece");
+        board.put_piece(Piece::new(color, piece_type), square);
+    }
+    board
+}
+
+fn verify_feature_parity(data: &str) {
+    let reader = DirectSequentialDataLoader::new(&[data]);
+    let mut positions = vec![self_check_position()];
+    reader.read_chunks(0, |chunk: &[ChessBoard]| {
+        positions.extend_from_slice(&chunk[..chunk.len().min(64)]);
+        true
+    });
+
+    let mut max_halfka = 0usize;
+    let mut max_threats = 0usize;
+    for (position_number, pos) in positions.iter().enumerate() {
+        let board = reconstruct_board(pos);
+        let mut trainer = [Vec::<usize>::new(), Vec::<usize>::new()];
+        emit_features(pos, |stm, ntm| {
+            trainer[Color::White as usize].push(stm);
+            trainer[Color::Black as usize].push(ntm);
+        });
+
+        for perspective in Color::ALL {
+            let mut engine = Vec::new();
+            for_each_halfka(&board, perspective, |idx| engine.push(idx));
+            for_each_threat(&board, perspective, |idx| engine.push(HALFKA_INPUTS + idx));
+
+            let actual = &mut trainer[perspective as usize];
+            actual.sort_unstable();
+            engine.sort_unstable();
+            assert_eq!(
+                *actual, engine,
+                "trainer/engine feature mismatch at sampled position {position_number}, {perspective:?}"
+            );
+
+            let halfka = actual.partition_point(|&idx| idx < HALFKA_INPUTS);
+            max_halfka = max_halfka.max(halfka);
+            max_threats = max_threats.max(actual.len() - halfka);
+        }
+    }
+
+    assert!(
+        max_halfka <= HALFKA_MAX_ACTIVE,
+        "HalfKA sparse capacity is too small"
+    );
+    assert!(
+        max_threats <= THREAT_MAX_ACTIVE,
+        "threat sparse capacity is too small"
+    );
+    println!(
+        "feature parity: {} positions exact; max active HalfKA={max_halfka}, threats={max_threats}",
+        positions.len()
+    );
+}
+
 fn sigmoid(x: f32) -> f32 {
     1.0 / (1.0 + (-x).exp())
 }
@@ -130,6 +286,7 @@ fn main() {
     );
     assert_eq!(feats.num_inputs(), TOTAL_INPUTS);
     assert_eq!(feats.max_active(), MAX_ACTIVE);
+    verify_feature_parity(&data);
 
     // Scaffold self-check: features split cleanly into the two subspaces.
     let pos = self_check_position();
