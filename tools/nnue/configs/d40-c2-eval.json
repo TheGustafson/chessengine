@@ -3,6 +3,7 @@
   "arch": "halfka+threats-768x2-8bkt-hybrid",
   "provenance": "sf-distill",
   "parent": "net-8",
+  "engine_features": "sota",
   "notes": "D40 config C2 (HalfKA+FullThreats, SF-teacher, eval-only) via train_run.py; the full d40_features bullet example with 83k features",
   "corpus": {
     "id": "sf-mix-49m",
@@ -13,7 +14,15 @@
     "bullet_dir": "/tmp/claude-0/-root-projects-learnrust-chessengine/c0a1b520-8665-4b2f-85c5-35473d97415c/scratchpad/bullet",
     "example": "bullet/d40_features.rs",
     "example_name": "d40_features",
-    "env": {"D40_SUPERBATCHES": "30", "D40_SAVE_RATE": "10"}
+    "checkpoint_dir": "data/nnue/d40_c2_ckpt",
+    "env": {
+      "D40_SUPERBATCHES": "30",
+      "D40_SAVE_RATE": "10",
+      "D40_DATA": "data/nnue/mix/train.bin",
+      "D40_OUT": "data/nnue/d40_c2_ckpt",
+      "D40_ID": "d40-c2-eval"
+    },
+    "quantised": "d40-c2-eval-sb30-quant.bin"
   },
   "verify_out_clip": false,
   "pack": {"activation": "d40"},

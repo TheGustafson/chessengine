@@ -477,11 +477,13 @@ fn main() {
         schedule,
         loader,
         |_, step, err| {
-            println!(
-                "  sb {} batch {}: loss {err:.6}",
-                step.superbatch(),
-                step.batch()
-            );
+            if step.batch() % 16 == 0 {
+                println!(
+                    "  sb {} batch {}: loss {err:.6}",
+                    step.superbatch(),
+                    step.batch()
+                );
+            }
         },
         move |opt, step| {
             let sb = step.superbatch();

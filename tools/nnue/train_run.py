@@ -51,6 +51,7 @@ DEFAULTS = {
     "provenance": "sf-distill",           # sf-distill | lc0-distill | self-play
     "parent": None,                       # parent net id (lineage)
     "notes": "",
+    "engine_features": None,              # extra cargo features for the engine build (e.g. "sota" for D40)
     # --- corpus (stage 1) --- build a train.bin from text shards, or point at a prebuilt one
     "corpus": {
         "id": None,                       # ledger data.jsonl id (provenance)
@@ -188,7 +189,9 @@ def stage_preflight(ctx):
     cfg = ctx.cfg
     # fast release build (the strength/SPRT config, D16) — this is the binary the
     # sanity + SPRT stages use, so build it here and record the sha.
-    run(ctx, "RUSTFLAGS='-C target-cpu=x86-64-v3' cargo build --release", stage="preflight")
+    features = cfg.get("engine_features")
+    feat_flag = f" --features {features}" if features else ""
+    run(ctx, f"RUSTFLAGS='-C target-cpu=x86-64-v3' cargo build --release{feat_flag}", stage="preflight")
     sha = run(ctx, ["git", "rev-parse", "--short", "HEAD"], stage="preflight", capture=True).strip()
     dirty = run(ctx, ["git", "status", "--porcelain", "src", "Cargo.toml"],
                 stage="preflight", capture=True).strip()
@@ -240,11 +243,14 @@ def stage_train(ctx):
         print(f"    registered [[example]] {ex_name} in {rel(cargo)}")
     # 2. build + run (from REPO root — the uv/env gotcha in RUNBOOK step 3)
     ckpt = Path(t["checkpoint_dir"])
-    env = {**t.get("env", {}),
-           "NET0_DATA": str(REPO / ctx.cfg["corpus"]["train_bin"]),
+    # Start with the config's explicit env, then add fallbacks for the classic
+    # NET0_* convention. The explicit env wins — so a D40 config that sets
+    # D40_DATA/D40_OUT/D40_ID skips these, while a classic config gets them free.
+    env = {"NET0_DATA": str(REPO / ctx.cfg["corpus"]["train_bin"]),
            "NET0_OUT": str(ckpt),
            "NET0_ID": ctx.cfg["net_id"],
            "CUDA_PATH": os.environ.get("CUDA_PATH", "/usr")}
+    env.update(t.get("env", {}))  # config's env wins over defaults
     manifest = f"{bdir}/Cargo.toml"
     run(ctx, ["cargo", "run", "--release", "--features", t["features"],
               "--manifest-path", manifest, "--example", ex_name], env=env, stage="train")
@@ -255,9 +261,15 @@ def stage_train(ctx):
 def _quantised_path(ctx):
     t = ctx.cfg["train"]
     ckpt = Path(t["checkpoint_dir"])
-    # bullet writes <id>-<sb>/quantised.bin; pick the highest superbatch dir
+    # Classic net: bullet writes <id>-<sb>/quantised.bin in subdirectories.
+    # D40 net: bullet writes <id>-sb<N>-quant.bin directly in the output dir.
     if ctx.dry:
         return ckpt / "final" / t["quantised"]
+    # 1. Check flat layout first (D40: file directly in ckpt dir).
+    flat = ckpt / t["quantised"]
+    if flat.exists():
+        return flat
+    # 2. Check subdirectory layout (classic: ckpt/<subdir>/quantised.bin).
     subs = sorted([d for d in ckpt.glob("*/") if (d / t["quantised"]).exists()],
                   key=lambda d: d.stat().st_mtime)
     if not subs:
