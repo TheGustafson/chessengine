@@ -2,7 +2,7 @@
  * D40 custom-feature scaffold (task #28 part 2; design/11 §12.1/§12.6/§12.7).
  * Scratchpad-only scaffold (discardable, D15/D28).
  *
- * TWO deliverables, both compiling + running on a tiny sample:
+ * TWO deliverables, both compiling + running on a real bulletformat corpus:
  *
  *  A. `HalfKaThreats`: the custom `SparseInputType` skeleton over the CONCATENATED
  *     0..83,248 index space (HalfKAv2_hm 22,528 in [0,22528) + FullThreats 60,720
@@ -24,15 +24,18 @@
  * This is NOT a real net: the placeholder index math means the learned weights
  * are meaningless. It proves the STRUCTURE + graph + separate quant compile+run.
  */
-use bullet_lib::game::inputs::{Chess768, SparseInputType};
-use bullet_lib::nn::InitSettings;
-use bulletformat::ChessBoard;
+use bullet_lib::{
+    game::inputs::{Chess768, SparseInputType},
+    nn::InitSettings,
+    value::loader::DirectSequentialDataLoader,
+};
 use bullet_trainer::{
     model::{ModelDefinition, ModelInputs, ModelInputsMapper, ModelWeights, SavedFormat},
     optimiser::adam::{AdamW, AdamWParams},
-    reader::{DataReader, ReadMapLoader},
-    run::{train, DefaultDevice, TrainingSchedule, TrainingSteps},
+    reader::ReadMapLoader,
+    run::{DefaultDevice, TrainingSchedule, TrainingSteps, train},
 };
+use bulletformat::ChessBoard;
 
 // --- Feature-space layout (design/11 §12.1) ---------------------------------
 const HALFKA_INPUTS: usize = 22_528; // 64 * 704 / 2
@@ -91,46 +94,20 @@ impl SparseInputType for HalfKaThreats {
     }
 
     fn description(&self) -> String {
-        "SF HalfKAv2_hm (22528) + FullThreats (60720), two separately-quantised FT tensors".to_string()
+        "SF HalfKAv2_hm (22528) + FullThreats (60720), two separately-quantised FT tensors"
+            .to_string()
     }
 }
 
 // ============================================================================
-// Synthetic data: a few real positions cycled to fill tiny batches.
+// A parsed fixture used only for the feature-space structural self-check below.
+// Training data always comes from D40_DATA through bullet's supported direct
+// bulletformat loader.
 // ============================================================================
-#[derive(Clone)]
-struct CyclingReader {
-    data: Vec<ChessBoard>,
-    chunk: usize,
-}
-
-impl DataReader<ChessBoard> for CyclingReader {
-    fn read_chunks<F: FnMut(&[ChessBoard]) -> bool>(&self, _skip_count: usize, mut f: F) {
-        let mut i = 0;
-        loop {
-            let chunk: Vec<ChessBoard> = (0..self.chunk)
-                .map(|_| {
-                    let d = self.data[i % self.data.len()];
-                    i += 1;
-                    d
-                })
-                .collect();
-            if f(&chunk) {
-                break;
-            }
-        }
-    }
-}
-
-fn synthetic_positions() -> Vec<ChessBoard> {
-    // fen | white-relative-score-cp | result(0/0.5/1)
-    let fens = [
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 | 0 | 0.5",
-        "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3 | 25 | 0.5",
-        "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 6 5 | 15 | 1.0",
-        "8/8/8/4k3/8/4K3/4P3/8 w - - 0 1 | 320 | 1.0",
-    ];
-    fens.iter().map(|s| s.parse::<ChessBoard>().expect("valid synthetic fen")).collect()
+fn self_check_position() -> ChessBoard {
+    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 | 0 | 0.5"
+        .parse()
+        .expect("valid self-check position")
 }
 
 fn sigmoid(x: f32) -> f32 {
@@ -138,27 +115,34 @@ fn sigmoid(x: f32) -> f32 {
 }
 
 fn main() {
+    let data = std::env::var("D40_DATA")
+        .expect("set D40_DATA to a bulletformat ChessBoard train.bin path");
     let feats = HalfKaThreats;
     println!("=== D40 feature scaffold ===");
     println!("input type   : {}", feats.description());
-    println!("num_inputs   : {} (expected {TOTAL_INPUTS})", feats.num_inputs());
-    println!("max_active   : {} (expected {MAX_ACTIVE})", feats.max_active());
+    println!(
+        "num_inputs   : {} (expected {TOTAL_INPUTS})",
+        feats.num_inputs()
+    );
+    println!(
+        "max_active   : {} (expected {MAX_ACTIVE})",
+        feats.max_active()
+    );
     assert_eq!(feats.num_inputs(), TOTAL_INPUTS);
     assert_eq!(feats.max_active(), MAX_ACTIVE);
 
     // Scaffold self-check: features split cleanly into the two subspaces.
-    let pos = synthetic_positions()[0];
+    let pos = self_check_position();
     let (mut n_hk, mut n_th) = (0usize, 0usize);
     feats.map_features(&pos, |stm, ntm| {
-        assert!(stm < TOTAL_INPUTS && ntm < TOTAL_INPUTS, "index out of range");
+        assert!(
+            stm < TOTAL_INPUTS && ntm < TOTAL_INPUTS,
+            "index out of range"
+        );
         let stm_is_hk = stm < HALFKA_INPUTS;
         let ntm_is_hk = ntm < HALFKA_INPUTS;
         assert_eq!(stm_is_hk, ntm_is_hk, "a pair must lie in ONE subspace");
-        if stm_is_hk {
-            n_hk += 1
-        } else {
-            n_th += 1
-        }
+        if stm_is_hk { n_hk += 1 } else { n_th += 1 }
     });
     println!("startpos     : {n_hk} HalfKA + {n_th} threat features active");
     assert!(n_hk <= HALFKA_MAX_ACTIVE && n_th <= THREAT_MAX_ACTIVE);
@@ -199,7 +183,7 @@ fn main() {
             hk_ntm[hk..].iter_mut().for_each(|s| *s = -1);
             th_stm[th..].iter_mut().for_each(|s| *s = -1);
             th_ntm[th..].iter_mut().for_each(|s| *s = -1);
-            // Synthetic eval target = sigmoid(score / 400).
+            // Real corpus eval target = sigmoid(score / 400).
             targets[0] = sigmoid(f32::from(pos.score) / 400.0);
         },
     );
@@ -243,11 +227,16 @@ fn main() {
     let params = AdamWParams::default();
     let mut optimiser = AdamW::new(defn, weights, device, params).expect("optimiser");
 
-    let reader = CyclingReader { data: synthetic_positions(), chunk: batch_size };
+    let reader = DirectSequentialDataLoader::new(&[data.as_str()]);
     let loader = ReadMapLoader::new(reader, mapper, 2);
 
     let schedule = TrainingSchedule {
-        steps: TrainingSteps { batch_size, batches_per_superbatch: 2, start_superbatch: 1, end_superbatch: 1 },
+        steps: TrainingSteps {
+            batch_size,
+            batches_per_superbatch: 2,
+            start_superbatch: 1,
+            end_superbatch: 1,
+        },
         log_rate: 1,
         lr_schedule: Box::new(|_| 0.001),
     };
@@ -260,7 +249,12 @@ fn main() {
         loader,
         |_, step, err| {
             steps += 1;
-            println!("  step {} (sb {}, batch {}): loss {err:.6}", steps, step.superbatch(), step.batch());
+            println!(
+                "  step {} (sb {}, batch {}): loss {err:.6}",
+                steps,
+                step.superbatch(),
+                step.batch()
+            );
         },
         |_, _| {},
     )
@@ -283,6 +277,9 @@ fn main() {
         .expect("sync cpu weights")
         .to_quantised_buffer(&fmt, true)
         .expect("separate quant (overflow-checked)");
-    println!("separate-quant buffer: {} bytes (i16 HalfKA-FT + i8 threat-FT + f32 tail)", buf.len());
+    println!(
+        "separate-quant buffer: {} bytes (i16 HalfKA-FT + i8 threat-FT + f32 tail)",
+        buf.len()
+    );
     println!("=== d40_features: STRUCTURE + two-tensor graph + separate quant OK ===");
 }
