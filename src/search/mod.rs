@@ -1028,6 +1028,9 @@ impl Worker {
     /// directly to stay independent of the global.
     pub fn refresh_eval_net(&mut self) {
         self.eval_ctx.set_net(crate::eval::nnue::active_net());
+        #[cfg(feature = "sota")]
+        self.eval_ctx
+            .set_sota_net(crate::eval::nnue::active_sota_net());
     }
 
     /// Main-worker orchestration (design/13 §3.7): TM init + the single TT

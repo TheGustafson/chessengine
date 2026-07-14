@@ -175,16 +175,58 @@ fn cmd_nnue_eval_argv(args: &[String]) {
              (argv tokens join into ONE FEN; omit the FEN to score one per line from stdin)"
         ));
     };
-    let net = match nnue::load(net_path) {
-        Ok(net) => net,
-        Err(e) => exit_usage(format_args!("nnue-eval: {e}")),
+
+    // Peek magic to detect CENN-v2 vs v1.
+    enum LoadedNet {
+        V1(nnue::Network),
+        #[cfg(feature = "sota")]
+        V2(&'static nnue::sota_loader::SotaNetwork),
+    }
+
+    let raw = std::fs::read(net_path).unwrap_or_else(|e| {
+        exit_usage(format_args!("nnue-eval: reading {net_path}: {e}"))
+    });
+
+    let loaded = if cfg!(feature = "sota") && raw.len() >= 4 && raw[0..4] == *b"CEN2" {
+        #[cfg(feature = "sota")]
+        {
+            match nnue::sota_loader::load_v2_bytes(&raw) {
+                Ok(net) => LoadedNet::V2(Box::leak(Box::new(net))),
+                Err(e) => exit_usage(format_args!("nnue-eval: {e}")),
+            }
+        }
+        #[cfg(not(feature = "sota"))]
+        {
+            exit_usage(format_args!(
+                "nnue-eval: CEN2 net requires --features sota"
+            ))
+        }
+    } else {
+        match nnue::load_bytes(&raw) {
+            Ok(net) => LoadedNet::V1(net),
+            Err(e) => exit_usage(format_args!("nnue-eval: {e}")),
+        }
+    };
+
+    // Build eval context once (reused for every FEN).
+    #[cfg(feature = "sota")]
+    let sota_ctx = match &loaded {
+        LoadedNet::V2(net) => Some(nnue::sota_context::SotaContext::new(net)),
+        _ => None,
     };
 
     let mut out = io::stdout().lock();
     let mut score_fen = |fen: &str| match Board::from_fen(fen) {
-        Ok(board) => {
-            let _ = writeln!(out, "{}", nnue::evaluate_forward(&net, &board));
-        }
+        Ok(board) => match &loaded {
+            LoadedNet::V1(net) => {
+                let _ = writeln!(out, "{}", nnue::evaluate_forward(net, &board));
+            }
+            #[cfg(feature = "sota")]
+            LoadedNet::V2(_) => {
+                let val = sota_ctx.as_ref().unwrap().evaluate(&board, 0);
+                let _ = writeln!(out, "{val}");
+            }
+        },
         Err(e) => exit_usage(format_args!("nnue-eval: invalid FEN '{fen}': {e}")),
     };
 
@@ -1341,6 +1383,8 @@ fn cmd_eval(board: &Board, out: &mut impl Write) -> io::Result<()> {
     // its root accumulator so the trace shows the NNUE value, else PSQT.
     let mut ctx = EvalContext::new();
     ctx.set_net(nnue::active_net());
+    #[cfg(feature = "sota")]
+    ctx.set_sota_net(nnue::active_sota_net());
     ctx.refresh_root(board);
     let mode = if ctx.nnue_active() {
         "NNUE"

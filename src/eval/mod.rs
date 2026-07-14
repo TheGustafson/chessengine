@@ -43,6 +43,11 @@ pub struct EvalContext {
     /// ([`EvalContext::refresh_root`]), and folded forward lazily per node.
     /// `None` leaves the PSQT hot path — and the depth-6 bench — untouched.
     nnue: Option<nnue::NnueContext<'static>>,
+    /// The per-thread SOTA (D40) eval context, or `None`. Checked BEFORE `nnue`
+    /// in `evaluate()`, so a loaded CENN-v2 net takes priority. Behind the `sota`
+    /// feature; the default build never compiles this field.
+    #[cfg(feature = "sota")]
+    sota: Option<nnue::sota_context::SotaContext>,
 }
 
 impl EvalContext {
@@ -69,15 +74,36 @@ impl EvalContext {
         }
     }
 
-    /// True iff NNUE is the active eval for this thread.
+    /// Install (or tear down) the D40 SOTA eval context. `None` turns SOTA off.
+    /// When SOTA is active, `evaluate()` routes through `SotaContext::evaluate`
+    /// instead of the v1 NNUE or PSQT paths.
+    #[cfg(feature = "sota")]
+    pub fn set_sota_net(&mut self, net: Option<&'static nnue::sota_loader::SotaNetwork>) {
+        match net {
+            None => self.sota = None,
+            Some(net) => {
+                let reuse = matches!(&self.sota, Some(ctx) if std::ptr::eq(ctx.net(), net));
+                if !reuse {
+                    self.sota = Some(nnue::sota_context::SotaContext::new(net));
+                }
+            }
+        }
+    }
+
+    /// True iff NNUE (v1 or SOTA) is the active eval for this thread.
     #[inline]
     pub fn nnue_active(&self) -> bool {
+        #[cfg(feature = "sota")]
+        if self.sota.is_some() {
+            return true;
+        }
         self.nnue.is_some()
     }
 
     /// Refresh the NNUE root accumulator (`stack[0]`) from `board`, both
     /// perspectives (design/11 §3.4.4). Called once at the start of every
-    /// search; a no-op when NNUE is off.
+    /// search; a no-op when NNUE is off. SOTA (from-scratch MVP) doesn't need
+    /// this — it refreshes at every `evaluate()` call.
     pub fn refresh_root(&mut self, board: &Board) {
         if let Some(ctx) = self.nnue.as_mut() {
             ctx.refresh_root(board);
@@ -87,6 +113,7 @@ impl EvalContext {
     /// Record a move's placement deltas into the child accumulator entry at
     /// `ply + 1`, marking it uncomputed (the §3.4.4 invalidation rule). A no-op
     /// when NNUE is off. Pass [`DirtyPiece::EMPTY`] for a null move.
+    /// SOTA (from-scratch MVP) doesn't need this.
     #[inline]
     pub fn push_dirty(&mut self, dp: DirtyPiece, ply: usize) {
         if let Some(ctx) = self.nnue.as_mut() {
@@ -139,6 +166,19 @@ pub fn evaluate(board: &Board, ctx: &mut EvalContext, optimism: Value, ply: usiz
     // `complexity = 0` and the complexity blend still vanishes exactly as it
     // does for PSQT; NNUE therefore shares PSQT's optimism/material/rule-50
     // consumption verbatim (the raw-vs-corrected boundary is unchanged, D22).
+    // SOTA (D40) takes priority over v1 NNUE, which takes priority over PSQT.
+    // The cfg(feature) gate compiles this branch out of default builds entirely.
+    #[cfg(feature = "sota")]
+    if let Some(sota) = &ctx.sota {
+        let inner = sota.evaluate(board, ply);
+        return apply_outer_shape(
+            inner,
+            optimism,
+            blend_material(board),
+            board.rule50_count() as i64,
+        );
+    }
+
     let inner = match ctx.nnue.as_mut() {
         Some(nnue) => {
             // Debug oracle (design/11 §3.4.4): the incrementally-maintained

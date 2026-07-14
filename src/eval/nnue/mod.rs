@@ -40,6 +40,10 @@ pub mod sota_threats;
 /// `sota`.
 #[cfg(feature = "sota")]
 pub mod sota_loader;
+/// Per-thread SOTA eval context: accumulators + head forward (design/11 §12) —
+/// behind `sota`.
+#[cfg(feature = "sota")]
+pub mod sota_context;
 
 // --- Architecture dimensions (design/11 §3.4.1) ----------------------------
 
@@ -97,26 +101,58 @@ use std::sync::RwLock;
 /// enough (uncontended reader lock, once per `go`).
 static ACTIVE_NET: RwLock<Option<&'static Network>> = RwLock::new(None);
 
+/// Process-wide active SOTA (D40) net. Mirrors [`ACTIVE_NET`] for CENN-v2 files.
+/// When a CENN-v2 net is installed the v1 ACTIVE_NET is cleared, and vice versa.
+#[cfg(feature = "sota")]
+static ACTIVE_SOTA_NET: RwLock<Option<&'static sota_loader::SotaNetwork>> = RwLock::new(None);
+
 /// Install (or clear) the `EvalFile` net. An empty/blank path turns NNUE OFF
-/// (back to PSQT). Otherwise the CENN file is loaded and fully validated (bad
-/// magic, wrong dims, checksum, `OutWeightOutOfClip`, …), then leaked to
-/// `'static` so the per-thread accumulators can borrow it for the run. The leak
-/// is deliberate and bounded by the number of distinct `EvalFile` sets in a
-/// session (normally one). Loader errors are returned as [`NnueError`] for a
-/// clean UCI `info string`; this never panics on a user-supplied file
-/// (CLAUDE.md).
+/// (back to PSQT). Otherwise the file is loaded and fully validated.
+///
+/// With the `sota` feature: the first 4 bytes are peeked — if `b"CEN2"` the
+/// file is loaded as a D40 SOTA net (clearing any v1 net), otherwise as a v1
+/// CENN net (clearing any SOTA net). Without the `sota` feature: only v1 CENN
+/// is accepted. Loader errors are returned for a clean UCI `info string`; this
+/// never panics on a user-supplied file (CLAUDE.md).
 pub fn set_eval_file(path: &str) -> Result<(), NnueError> {
-    let net: Option<&'static Network> = if path.trim().is_empty() {
-        None
-    } else {
+    if path.trim().is_empty() {
+        *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
+        #[cfg(feature = "sota")]
+        {
+            *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+        return Ok(());
+    }
+
+    // Peek magic to route v1 vs v2.
+    #[cfg(feature = "sota")]
+    {
+        let bytes = std::fs::read(path).map_err(NnueError::Io)?;
+        if bytes.len() >= 4 && bytes[0..4] == *b"CEN2" {
+            let net = sota_loader::load_v2_bytes(&bytes)
+                .map_err(|e| NnueError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())))?;
+            let leaked: &'static sota_loader::SotaNetwork = Box::leak(Box::new(net));
+            *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = Some(leaked);
+            *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
+            return Ok(());
+        }
+        // Not CEN2 → fall through to v1 loader. Clear SOTA.
+        *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
+        let net: &'static Network = Box::leak(Box::new(load_bytes(&bytes)?));
+        *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = Some(net);
+        Ok(())
+    }
+
+    // Non-sota build: v1 only.
+    #[cfg(not(feature = "sota"))]
+    {
         let leaked: &'static Network = Box::leak(Box::new(load(path)?));
-        Some(leaked)
-    };
-    *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = net;
-    Ok(())
+        *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = Some(leaked);
+        Ok(())
+    }
 }
 
-/// The active net, or `None` when NNUE is off (⇒ PSQT). Read at each search's
+/// The active v1 net, or `None` when NNUE is off (⇒ PSQT). Read at each search's
 /// eval boundary and handed to the per-thread [`NnueContext`].
 ///
 /// With the `embed-net` feature (distribution builds), an explicit `EvalFile`
@@ -132,6 +168,12 @@ pub fn active_net() -> Option<&'static Network> {
     }
     #[cfg(not(feature = "embed-net"))]
     from_eval_file
+}
+
+/// The active D40 SOTA net, or `None`. Read at each search's eval boundary.
+#[cfg(feature = "sota")]
+pub fn active_sota_net() -> Option<&'static sota_loader::SotaNetwork> {
+    *ACTIVE_SOTA_NET.read().unwrap_or_else(|e| e.into_inner())
 }
 
 /// The compile-time-embedded default net (distribution builds only, `embed-net`

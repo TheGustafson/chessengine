@@ -517,12 +517,17 @@ fn read_f32s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[f32]> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::attacks::Prng;
 
     /// Build a deterministic synthetic SOTA net (with threats) for round-trip
     /// tests. NOT a trained net — weights are small random values.
+    /// `pub(crate)` so sibling modules' tests can use it.
+    pub(crate) fn test_net_with_threats_pub() -> SotaNetwork {
+        test_net_with_threats()
+    }
+
     fn test_net_with_threats() -> SotaNetwork {
         let mut prng = Prng::new(0xD40C_E420);
 
