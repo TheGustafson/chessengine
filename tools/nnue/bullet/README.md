@@ -17,7 +17,11 @@ register each as a `[[example]]` in `bullet_lib/Cargo.toml`, then
   threats i8, threats bias DROPPED — CSE compile fix + matches §12.2). It calls
   the engine's canonical index functions through a path dependency and checks
   its exact active-index sets against the engine enumerators on real records
-  before training.
+  before training. The production graph has the custom 8-bucket 768→16→32→1
+  tail and emits the exact mixed-quant tensor order consumed by
+  `netpack.py ... d40`. Runtime knobs are `D40_DATA`, `D40_OUT`, `D40_ID`,
+  `D40_SUPERBATCHES`, `D40_BPS`, `D40_BATCH`, `D40_THREADS`, `D40_SAVE_RATE`,
+  and `D40_LR`.
 - `d40_policy.rs` — the low-level `ModelDefinition`+`run::train` policy trainer:
   from×to (4096) head off the shared trunk + combined `eval + λ·policy-CE` loss,
   named `policy_target` input. Ran on a synthetic target (loss 8.37→7.39).

@@ -29,7 +29,7 @@ use bullet_trainer::{
     model::{ModelDefinition, ModelInputs, ModelInputsMapper, ModelWeights, SavedFormat},
     optimiser::adam::{AdamW, AdamWParams},
     reader::{DataReader, ReadMapLoader},
-    run::{DefaultDevice, TrainingSchedule, TrainingSteps, train},
+    run::{DefaultDevice, Step, TrainingSchedule, TrainingSteps, train},
 };
 use bulletformat::ChessBoard;
 use chessengine::attacks::{attacks, pawn_attacks};
@@ -45,6 +45,24 @@ const TOTAL_INPUTS: usize = HALFKA_INPUTS + THREAT_INPUTS; // 83_248
 const HALFKA_MAX_ACTIVE: usize = 32; // <=32 HalfKA features / perspective
 const THREAT_MAX_ACTIVE: usize = 160;
 const MAX_ACTIVE: usize = HALFKA_MAX_ACTIVE + THREAT_MAX_ACTIVE; // 192
+const SCALE: f32 = 400.0;
+const WDL: f32 = 0.3;
+const NUM_BUCKETS: usize = 8;
+const L2: usize = 16;
+const L3: usize = 32;
+const HL: usize = 768;
+
+#[rustfmt::skip]
+const OUTPUT_BUCKETS_LAYOUT: [u8; 33] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 1, 1, 1,
+    2, 2, 2, 2,
+    3, 3, 3,
+    4, 4, 4,
+    5, 5, 5,
+    6, 6, 6,
+    7, 7, 7, 7,
+];
 
 const PIECE_TYPES: [PieceType; 6] = [
     PieceType::Pawn,
@@ -270,6 +288,20 @@ fn sigmoid(x: f32) -> f32 {
     1.0 / (1.0 + (-x).exp())
 }
 
+fn env_usize(key: &str, default: usize) -> usize {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
+
+fn env_f32(key: &str, default: f32) -> f32 {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
+
 fn main() {
     let data = std::env::var("D40_DATA")
         .expect("set D40_DATA to a bulletformat ChessBoard train.bin path");
@@ -307,8 +339,15 @@ fn main() {
     // ------------------------------------------------------------------
     // B. Two-summed-tensor FT graph (low-level path).
     // ------------------------------------------------------------------
-    let hl_size = 768usize; // D40 accumulator width (even; pairwise halves it)
-    let batch_size = 256usize;
+    let out_dir = std::env::var("D40_OUT").unwrap_or_else(|_| "d40_feat_ckpt".to_string());
+    let net_id = std::env::var("D40_ID").unwrap_or_else(|_| "d40-feat-0".to_string());
+    let end_superbatch = env_usize("D40_SUPERBATCHES", 30);
+    let batches_per_superbatch = env_usize("D40_BPS", 1520);
+    let batch_size = env_usize("D40_BATCH", 16_384);
+    let threads = env_usize("D40_THREADS", 6) as u8;
+    let save_rate = env_usize("D40_SAVE_RATE", 10);
+    let initial_lr = env_f32("D40_LR", 0.001);
+    std::fs::create_dir_all(&out_dir).expect("create D40_OUT directory");
 
     // Four sparse inputs: HalfKA (i16 tensor) + threats (i8 tensor), each stm/ntm.
     let inputs = ModelInputs::default()
@@ -316,11 +355,14 @@ fn main() {
         .add_sparse("halfka_ntm", (HALFKA_INPUTS, 1), HALFKA_MAX_ACTIVE)
         .add_sparse("threat_stm", (THREAT_INPUTS, 1), THREAT_MAX_ACTIVE)
         .add_sparse("threat_ntm", (THREAT_INPUTS, 1), THREAT_MAX_ACTIVE)
+        .add_sparse("buckets", (NUM_BUCKETS, 1), 1)
         .add_dense("targets", (1, 1));
 
     let mapper = ModelInputsMapper::build(
         &inputs,
-        move |pos: &ChessBoard, _step, ((((hk_stm, hk_ntm), th_stm), th_ntm), targets)| {
+        move |pos: &ChessBoard,
+              _step,
+              (((((hk_stm, hk_ntm), th_stm), th_ntm), buckets), targets)| {
             let (mut hk, mut th) = (0usize, 0usize);
             feats.map_features(pos, |stm, ntm| {
                 if stm < HALFKA_INPUTS {
@@ -340,25 +382,28 @@ fn main() {
             hk_ntm[hk..].iter_mut().for_each(|s| *s = -1);
             th_stm[th..].iter_mut().for_each(|s| *s = -1);
             th_ntm[th..].iter_mut().for_each(|s| *s = -1);
-            // Real corpus eval target = sigmoid(score / 400).
-            targets[0] = sigmoid(f32::from(pos.score) / 400.0);
+            buckets[0] = OUTPUT_BUCKETS_LAYOUT[(pos.occ.count_ones() as usize).min(32)] as i32;
+            let eval = sigmoid(f32::from(pos.score) / SCALE);
+            let result = f32::from(pos.result) / 2.0;
+            targets[0] = WDL * result + (1.0 - WDL) * eval;
         },
     );
 
     let defn = ModelDefinition::build(
         &inputs,
-        |builder, ((((hk_stm, hk_ntm), th_stm), th_ntm), targets)| {
+        |builder, (((((hk_stm, hk_ntm), th_stm), th_ntm), buckets), targets)| {
             // Two SEPARATE FT tensors (quantised i16 / i8 respectively). Per
             // design/11 §12.2 the threats transformer is seeded from ZERO and
             // carries NO bias (the shared FT bias lives on the HalfKA tensor);
             // that also keeps the two bias gradients from colliding into an
             // un-eliminable CSE copy in the backward graph.
-            let l0_pst = builder.new_affine("l0_pst", HALFKA_INPUTS, hl_size);
+            let l0_pst = builder.new_affine("l0_pst", HALFKA_INPUTS, HL);
+            l0_pst.init_with_effective_input_size(32);
             let l0_threat_w =
-                builder.new_weights("l0_threatw", (hl_size, THREAT_INPUTS), InitSettings::Zeroed);
-            let l1 = builder.new_affine("l1", hl_size, 16);
-            let l2 = builder.new_affine("l2", 16, 32);
-            let l3 = builder.new_affine("l3", 32, 1);
+                builder.new_weights("l0_threatw", (HL, THREAT_INPUTS), InitSettings::Zeroed);
+            let l1 = builder.new_affine("l1", HL, NUM_BUCKETS * L2);
+            let l2 = builder.new_affine("l2", L2, NUM_BUCKETS * L3);
+            let l3 = builder.new_affine("l3", L3, NUM_BUCKETS);
 
             // node + node: the two-transformer sum into one accumulator/perspective.
             let acc_stm = l0_pst.forward(hk_stm) + l0_threat_w.matmul(th_stm);
@@ -369,9 +414,9 @@ fn main() {
             let ntm_hidden = acc_ntm.crelu().pairwise_mul();
             let hl1 = stm_hidden.concat(ntm_hidden);
 
-            let hl2 = l1.forward(hl1).screlu();
-            let hl3 = l2.forward(hl2).screlu();
-            let out = l3.forward(hl3);
+            let hl2 = l1.forward(hl1).select(buckets).screlu();
+            let hl3 = l2.forward(hl2).select(buckets).screlu();
+            let out = l3.forward(hl3).select(buckets);
 
             let loss = out.sigmoid().squared_error(targets).reduce_sum_batch();
             (Some(loss), vec![("output".to_string(), out)])
@@ -385,58 +430,73 @@ fn main() {
     let mut optimiser = AdamW::new(defn, weights, device, params).expect("optimiser");
 
     let reader = DirectSequentialDataLoader::new(&[data.as_str()]);
-    let loader = ReadMapLoader::new(reader, mapper, 2);
+    let loader = ReadMapLoader::new(reader, mapper, threads);
+
+    let final_lr = initial_lr * 0.3f32.powi(3);
+    let lr_schedule: Box<dyn Fn(Step) -> f32> = Box::new(move |step| {
+        if end_superbatch <= 1 {
+            return initial_lr;
+        }
+        let t = (step.superbatch() as f32 - 1.0) / (end_superbatch as f32 - 1.0);
+        final_lr + 0.5 * (initial_lr - final_lr) * (1.0 + (std::f32::consts::PI * t).cos())
+    });
 
     let schedule = TrainingSchedule {
         steps: TrainingSteps {
             batch_size,
-            batches_per_superbatch: 2,
+            batches_per_superbatch,
             start_superbatch: 1,
-            end_superbatch: 1,
+            end_superbatch,
         },
-        log_rate: 1,
-        lr_schedule: Box::new(|_| 0.001),
+        log_rate: 16.min(batches_per_superbatch),
+        lr_schedule,
     };
 
-    println!("--- training the two-summed-tensor graph (1 superbatch x 2 batches) ---");
-    let mut steps = 0u32;
+    let fmt = vec![
+        SavedFormat::id("l0_pstw").round().quantise::<i16>(255),
+        SavedFormat::id("l0_pstb").round().quantise::<i16>(255),
+        SavedFormat::id("l0_threatw").round().quantise::<i8>(64),
+        SavedFormat::id("l1w")
+            .transpose()
+            .round()
+            .quantise::<i8>(64),
+        SavedFormat::id("l1b"),
+        SavedFormat::id("l2w").transpose(),
+        SavedFormat::id("l2b"),
+        SavedFormat::id("l3w").transpose(),
+        SavedFormat::id("l3b"),
+    ];
+
+    println!(
+        "--- D40 training: {end_superbatch} superbatches x {batches_per_superbatch} batches x {batch_size} ---"
+    );
+    let save_out = out_dir.clone();
+    let save_id = net_id.clone();
     train(
         &mut optimiser,
         schedule,
         loader,
         |_, step, err| {
-            steps += 1;
             println!(
-                "  step {} (sb {}, batch {}): loss {err:.6}",
-                steps,
+                "  sb {} batch {}: loss {err:.6}",
                 step.superbatch(),
                 step.batch()
             );
         },
-        |_, _| {},
+        move |opt, step| {
+            let sb = step.superbatch();
+            if sb % save_rate == 0 || sb == end_superbatch {
+                let buf = opt
+                    .cpu_weights()
+                    .expect("sync CPU weights")
+                    .to_quantised_buffer(&fmt, true)
+                    .expect("quantise D40 checkpoint");
+                let path = format!("{save_out}/{save_id}-sb{sb}-quant.bin");
+                std::fs::write(&path, &buf).expect("write D40 checkpoint");
+                println!("  saved {path} ({} bytes)", buf.len());
+            }
+        },
     )
-    .expect("training step");
-
-    // Prove the two FT tensors quantise SEPARATELY (i16 pst + i8 threats), no overflow.
-    let fmt = vec![
-        SavedFormat::id("l0_pstw").round().quantise::<i16>(255),
-        SavedFormat::id("l0_pstb").round().quantise::<i16>(255),
-        SavedFormat::id("l0_threatw").round().quantise::<i8>(64),
-        SavedFormat::id("l1w"),
-        SavedFormat::id("l1b"),
-        SavedFormat::id("l2w"),
-        SavedFormat::id("l2b"),
-        SavedFormat::id("l3w"),
-        SavedFormat::id("l3b"),
-    ];
-    let buf = optimiser
-        .cpu_weights()
-        .expect("sync cpu weights")
-        .to_quantised_buffer(&fmt, true)
-        .expect("separate quant (overflow-checked)");
-    println!(
-        "separate-quant buffer: {} bytes (i16 HalfKA-FT + i8 threat-FT + f32 tail)",
-        buf.len()
-    );
-    println!("=== d40_features: STRUCTURE + two-tensor graph + separate quant OK ===");
+    .expect("D40 training");
+    println!("=== d40_features: production-shaped checkpoint complete ===");
 }
