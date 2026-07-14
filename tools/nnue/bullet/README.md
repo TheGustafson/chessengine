@@ -22,6 +22,7 @@ register each as a `[[example]]` in `bullet_lib/Cargo.toml`, then
   `netpack.py ... d40`. Runtime knobs are `D40_DATA`, `D40_OUT`, `D40_ID`,
   `D40_SUPERBATCHES`, `D40_BPS`, `D40_BATCH`, `D40_THREADS`, `D40_SAVE_RATE`,
   and `D40_LR`.
-- `d40_policy.rs` — the low-level `ModelDefinition`+`run::train` policy trainer:
-  from×to (4096) head off the shared trunk + combined `eval + λ·policy-CE` loss,
-  named `policy_target` input. Ran on a synthetic target (loss 8.37→7.39).
+- `d40_policy.rs` — streams the real 100M-row dual-target NumPy corpus, rebuilds
+  each normalized placement, and uses the engine's canonical HalfKA+FullThreats
+  enumerators. `D40_POLICY_HEAD=bilinear|full` selects the rank-8 or 4096-logit
+  head off the shared pairwise trunk; both optimize `eval + λ·policy-CE`.
