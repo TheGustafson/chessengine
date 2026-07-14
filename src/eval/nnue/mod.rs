@@ -32,6 +32,10 @@ pub mod sota_head;
 /// from-scratch accumulator refresh, D40, design/11 §12.1-12.2) — behind `sota`.
 #[cfg(feature = "sota")]
 pub mod sota_features;
+/// The SOTA net's incremental FullThreats accumulator (the ≤80/move dirty-diff
+/// observer, D40, design/11 §12.9.1) — behind `sota`.
+#[cfg(feature = "sota")]
+pub mod sota_threats;
 
 // --- Architecture dimensions (design/11 §3.4.1) ----------------------------
 
