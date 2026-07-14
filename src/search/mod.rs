@@ -2248,6 +2248,9 @@ impl Worker {
                 // perspective swap happens at `evaluate`). No-op when NNUE off.
                 self.eval_ctx.push_dirty(DirtyPiece::EMPTY, ply);
                 self.board.make_null_move();
+                #[cfg(feature = "sota")]
+                self.eval_ctx
+                    .push_sota_dirty(DirtyPiece::EMPTY, ply, &self.board);
                 let null_value =
                     -self.search::<NonPv>(tt, stop, -beta, -beta + 1, depth - r, false, ply + 1);
                 self.board.unmake_null_move();
@@ -3617,12 +3620,19 @@ impl Worker {
         // PRE-move board, so this must run before `make_move_with`. A no-op —
         // and no `DirtyPiece::from_move` cost — when NNUE is off, keeping the
         // PSQT hot path and the depth-6 bench bit-identical.
-        if self.eval_ctx.nnue_active() {
-            let dp = DirtyPiece::from_move(&self.board, m);
+        let dirty = self
+            .eval_ctx
+            .nnue_active()
+            .then(|| DirtyPiece::from_move(&self.board, m));
+        if let Some(dp) = dirty {
             self.eval_ctx.push_dirty(dp, ply);
         }
         self.board
             .make_move_with(m, gives_check, &mut TtPrefetch { tt });
+        #[cfg(feature = "sota")]
+        if let Some(dp) = dirty {
+            self.eval_ctx.push_sota_dirty(dp, ply, &self.board);
+        }
     }
 
     #[inline]

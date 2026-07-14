@@ -25,25 +25,28 @@ pub mod accumulator;
 pub mod loader;
 pub mod network;
 pub mod simd;
-/// The SOTA net's head forward (D40, design/11 §12) — behind the `sota` feature.
+/// Incremental HalfKA stack and Finny cache for the SOTA net.
 #[cfg(feature = "sota")]
-pub mod sota_head;
-/// The SOTA net's SF feature front-end (HalfKAv2_hm + FullThreats index math +
-/// from-scratch accumulator refresh, D40, design/11 §12.1-12.2) — behind `sota`.
-#[cfg(feature = "sota")]
-pub mod sota_features;
-/// The SOTA net's incremental FullThreats accumulator (the ≤80/move dirty-diff
-/// observer, D40, design/11 §12.9.1) — behind `sota`.
-#[cfg(feature = "sota")]
-pub mod sota_threats;
-/// The CENN-v2 container loader for D40 SOTA nets (design/11 §12.6) — behind
-/// `sota`.
-#[cfg(feature = "sota")]
-pub mod sota_loader;
+mod sota_accumulator;
 /// Per-thread SOTA eval context: accumulators + head forward (design/11 §12) —
 /// behind `sota`.
 #[cfg(feature = "sota")]
 pub mod sota_context;
+/// The SOTA net's SF feature front-end (HalfKAv2_hm + FullThreats index math +
+/// from-scratch accumulator refresh, D40, design/11 §12.1-12.2) — behind `sota`.
+#[cfg(feature = "sota")]
+pub mod sota_features;
+/// The SOTA net's head forward (D40, design/11 §12) — behind the `sota` feature.
+#[cfg(feature = "sota")]
+pub mod sota_head;
+/// The CENN-v2 container loader for D40 SOTA nets (design/11 §12.6) — behind
+/// `sota`.
+#[cfg(feature = "sota")]
+pub mod sota_loader;
+/// The SOTA net's incremental FullThreats accumulator (the ≤80/move dirty-diff
+/// observer, D40, design/11 §12.9.1) — behind `sota`.
+#[cfg(feature = "sota")]
+pub mod sota_threats;
 
 // --- Architecture dimensions (design/11 §3.4.1) ----------------------------
 
@@ -129,8 +132,12 @@ pub fn set_eval_file(path: &str) -> Result<(), NnueError> {
     {
         let bytes = std::fs::read(path).map_err(NnueError::Io)?;
         if bytes.len() >= 4 && bytes[0..4] == *b"CEN2" {
-            let net = sota_loader::load_v2_bytes(&bytes)
-                .map_err(|e| NnueError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())))?;
+            let net = sota_loader::load_v2_bytes(&bytes).map_err(|e| {
+                NnueError::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    e.to_string(),
+                ))
+            })?;
             let leaked: &'static sota_loader::SotaNetwork = Box::leak(Box::new(net));
             *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = Some(leaked);
             *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
@@ -185,8 +192,10 @@ fn embedded_net() -> &'static Network {
     use std::sync::OnceLock;
     static EMBEDDED: OnceLock<&'static Network> = OnceLock::new();
     *EMBEDDED.get_or_init(|| {
-        const BYTES: &[u8] =
-            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/nnue/nets/net-0.cenn"));
+        const BYTES: &[u8] = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/data/nnue/nets/net-0.cenn"
+        ));
         Box::leak(Box::new(
             load_bytes(BYTES).expect("embedded default net is a valid CENN file"),
         )) as &'static Network

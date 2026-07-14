@@ -102,10 +102,14 @@ impl EvalContext {
 
     /// Refresh the NNUE root accumulator (`stack[0]`) from `board`, both
     /// perspectives (design/11 §3.4.4). Called once at the start of every
-    /// search; a no-op when NNUE is off. SOTA (from-scratch MVP) doesn't need
-    /// this — it refreshes at every `evaluate()` call.
+    /// search; a no-op when NNUE is off. Both v1 and SOTA seed their ply-zero
+    /// stacks here.
     pub fn refresh_root(&mut self, board: &Board) {
         if let Some(ctx) = self.nnue.as_mut() {
+            ctx.refresh_root(board);
+        }
+        #[cfg(feature = "sota")]
+        if let Some(ctx) = self.sota.as_mut() {
             ctx.refresh_root(board);
         }
     }
@@ -113,11 +117,22 @@ impl EvalContext {
     /// Record a move's placement deltas into the child accumulator entry at
     /// `ply + 1`, marking it uncomputed (the §3.4.4 invalidation rule). A no-op
     /// when NNUE is off. Pass [`DirtyPiece::EMPTY`] for a null move.
-    /// SOTA (from-scratch MVP) doesn't need this.
+    /// SOTA consumes the same record after board mutation via
+    /// [`EvalContext::push_sota_dirty`].
     #[inline]
     pub fn push_dirty(&mut self, dp: DirtyPiece, ply: usize) {
         if let Some(ctx) = self.nnue.as_mut() {
             ctx.push(ply, dp);
+        }
+    }
+
+    /// Fold a just-made move into the SOTA HalfKA and FullThreats child stacks.
+    /// This must run after board mutation because threat x-rays read the child.
+    #[cfg(feature = "sota")]
+    #[inline]
+    pub fn push_sota_dirty(&mut self, dp: DirtyPiece, ply: usize, board: &Board) {
+        if let Some(ctx) = self.sota.as_mut() {
+            ctx.push(dp, ply, board);
         }
     }
 
@@ -169,7 +184,7 @@ pub fn evaluate(board: &Board, ctx: &mut EvalContext, optimism: Value, ply: usiz
     // SOTA (D40) takes priority over v1 NNUE, which takes priority over PSQT.
     // The cfg(feature) gate compiles this branch out of default builds entirely.
     #[cfg(feature = "sota")]
-    if let Some(sota) = &ctx.sota {
+    if let Some(sota) = ctx.sota.as_mut() {
         let inner = sota.evaluate(board, ply);
         return apply_outer_shape(
             inner,

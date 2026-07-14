@@ -6,38 +6,47 @@
 //! per-perspective [`ACC`]-wide accumulator, fed into the multi-layer bucketed
 //! [`SotaHead`].
 //!
-//! **MVP strategy (from-scratch refresh per eval).** This first cut rebuilds
-//! both accumulators from scratch at every `evaluate` call. This is correct but
-//! O(~200 features × 768 neurons) per perspective per eval — about 100× slower
-//! than incremental. It is sufficient for:
-//! - Load/sanity testing: does the packed net produce sane centipawns?
-//! - Fixed-node SPRT: node-limited games don't care about wall time.
-//!
-//! Incremental HalfKA (dirty-piece add/sub, Finny cache for king moves) and
-//! incremental FullThreats (via [`super::sota_threats::ThreatContext`]) are
-//! deferred optimizations — they will be wired into the `MakeMoveHooks` seam
-//! once the from-scratch path proves correct end-to-end.
+//! Both transformers are incremental on the search stack. HalfKA folds ordinary
+//! dirty-piece columns lazily and uses a 64-state-per-perspective Finny cache on
+//! king moves; FullThreats applies its bounded x-ray delta list eagerly after
+//! board mutation. Root refresh and standalone `nnue-eval` remain from-scratch.
 //!
 //! Behind the `sota` cargo feature.
 
-use super::sota_features;
+use super::sota_accumulator::HalfkaContext;
 use super::sota_loader::SotaNetwork;
+use super::sota_threats::ThreatContext;
 use crate::board::Board;
+use crate::board::DirtyPiece;
 use crate::types::Value;
 
 /// Per-thread SOTA evaluation state, owned by a search `Worker` via
 /// [`super::super::EvalContext`].
-#[derive(Debug)]
 pub struct SotaContext {
     /// The loaded net. Leaked to `'static` by `set_eval_file` so multiple
     /// threads can borrow it concurrently without lifetime gymnastics.
     net: &'static SotaNetwork,
+    halfka: HalfkaContext<'static>,
+    threats: ThreatContext<'static>,
+}
+
+impl std::fmt::Debug for SotaContext {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SotaContext")
+            .field("net", &(self.net as *const SotaNetwork))
+            .finish_non_exhaustive()
+    }
 }
 
 impl SotaContext {
     /// Create a new context over the given net.
     pub fn new(net: &'static SotaNetwork) -> Self {
-        SotaContext { net }
+        SotaContext {
+            net,
+            halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
+            threats: ThreatContext::new(&net.threat_weights),
+        }
     }
 
     /// The net this context evaluates against.
@@ -45,25 +54,28 @@ impl SotaContext {
         self.net
     }
 
-    /// Evaluate `board` through the SOTA forward pass. From-scratch refresh
-    /// (MVP): rebuilds both FT accumulators from scratch, then runs the head.
-    /// `ply` is accepted for API compatibility but ignored (no lazy stack yet).
-    pub fn evaluate(&self, board: &Board, _ply: usize) -> Value {
-        let stm = board.side_to_move();
+    /// Seed both accumulator stacks from `board` at ply zero.
+    pub fn refresh_root(&mut self, board: &Board) {
+        self.halfka.refresh_root(board);
+        self.threats.refresh(board);
+    }
 
-        // From-scratch refresh: build the (pst, threat) pair for both
-        // perspectives.
-        let (pst, threat) = sota_features::refresh_both(
-            &self.net.halfka_weights,
-            &self.net.ft_bias,
-            &self.net.threat_weights,
-            board,
-        );
+    /// Record one post-move position at `ply + 1`.
+    pub fn push(&mut self, dirty: DirtyPiece, ply: usize, post_move_board: &Board) {
+        self.halfka.push(ply, dirty);
+        self.threats.apply_at(ply, &dirty, post_move_board);
+    }
+
+    /// Evaluate `board` through the incrementally maintained SOTA accumulators.
+    pub fn evaluate(&mut self, board: &Board, ply: usize) -> Value {
+        let stm = board.side_to_move();
+        let pst = self.halfka.current(board, ply);
+        let threat = self.threats.at(ply);
 
         // Count total pieces for the output bucket.
         let piece_count = board.all_occupancy().count() as usize;
 
-        self.net.head.forward(&pst, &threat, stm, piece_count)
+        self.net.head.forward(pst, threat, stm, piece_count)
     }
 }
 
@@ -71,6 +83,8 @@ impl SotaContext {
 mod tests {
     use super::*;
     use crate::fen::START_FEN;
+    use crate::movegen::generate_legal;
+    use crate::moves::MoveList;
 
     /// Build a leaked static SotaNetwork from the loader's test fixture.
     fn leaked_test_net() -> &'static SotaNetwork {
@@ -81,8 +95,9 @@ mod tests {
     #[test]
     fn evaluate_returns_finite_value() {
         let net = leaked_test_net();
-        let ctx = SotaContext::new(net);
+        let mut ctx = SotaContext::new(net);
         let board = Board::from_fen(START_FEN).unwrap();
+        ctx.refresh_root(&board);
         let val = ctx.evaluate(&board, 0);
         assert!(
             val.abs() < 100_000,
@@ -93,13 +108,15 @@ mod tests {
     #[test]
     fn evaluate_stm_relative() {
         let net = leaked_test_net();
-        let ctx = SotaContext::new(net);
+        let mut ctx = SotaContext::new(net);
         // Same position, different side to move.
-        let w = Board::from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1")
-            .unwrap();
-        let b = Board::from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1")
-            .unwrap();
+        let w =
+            Board::from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").unwrap();
+        let b =
+            Board::from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1").unwrap();
+        ctx.refresh_root(&w);
         let val_w = ctx.evaluate(&w, 0);
+        ctx.refresh_root(&b);
         let val_b = ctx.evaluate(&b, 0);
         // With a random test net, these won't be exact negatives, but they
         // should be finite and (with asymmetric accumulators) likely different.
@@ -110,10 +127,41 @@ mod tests {
     #[test]
     fn evaluate_deterministic() {
         let net = leaked_test_net();
-        let ctx = SotaContext::new(net);
+        let mut ctx = SotaContext::new(net);
         let board = Board::from_fen(START_FEN).unwrap();
+        ctx.refresh_root(&board);
         let a = ctx.evaluate(&board, 0);
         let b = ctx.evaluate(&board, 0);
         assert_eq!(a, b, "eval must be deterministic");
+    }
+
+    #[test]
+    fn incremental_context_matches_fresh_context() {
+        let net = leaked_test_net();
+        let mut incremental = SotaContext::new(net);
+        let mut board = Board::startpos();
+        incremental.refresh_root(&board);
+        let mut seed = 0x51A7_A40Du64;
+        for ply in 0..48usize {
+            let mut moves = MoveList::new();
+            generate_legal(&board, &mut moves);
+            if moves.is_empty() {
+                break;
+            }
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let m = moves[seed as usize % moves.len()];
+            let dirty = DirtyPiece::from_move(&board, m);
+            let gives_check = board.gives_check(m);
+            board.make_move(m, gives_check);
+            incremental.push(dirty, ply, &board);
+            let got = incremental.evaluate(&board, ply + 1);
+
+            let mut fresh = SotaContext::new(net);
+            fresh.refresh_root(&board);
+            let expected = fresh.evaluate(&board, 0);
+            assert_eq!(got, expected, "ply {ply} {m}");
+        }
     }
 }

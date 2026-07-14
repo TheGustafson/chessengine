@@ -5,8 +5,8 @@
 #[test]
 fn cenn_v2_round_trip_and_evaluate() {
     use chessengine::eval::nnue::sota_context::SotaContext;
-    use chessengine::eval::nnue::sota_head::{SotaHead, BUCKETS, L1, L2, L3};
     use chessengine::eval::nnue::sota_features::{ACC, HALFKA_DIMS, THREAT_DIMS};
+    use chessengine::eval::nnue::sota_head::{BUCKETS, L1, L2, L3, SotaHead};
     use chessengine::eval::nnue::sota_loader::{self, SotaNetwork};
 
     // Build a deterministic synthetic net (same as the unit tests, but
@@ -15,15 +15,11 @@ fn cenn_v2_round_trip_and_evaluate() {
         .map(|i| (i % 11) as i16 - 5)
         .collect();
     let ft_bias: Box<[i16]> = (0..ACC).map(|i| (i % 5) as i16 - 2).collect();
-    let threat_weights: Box<[i8]> = (0..THREAT_DIMS * ACC)
-        .map(|i| (i % 9) as i8 - 4)
-        .collect();
+    let threat_weights: Box<[i8]> = (0..THREAT_DIMS * ACC).map(|i| (i % 9) as i8 - 4).collect();
     let l1_weights: Box<[i8]> = (0..BUCKETS * L2 * L1)
         .map(|i| ((i as i8).wrapping_mul(5).wrapping_add(7)) % 61 - 30)
         .collect();
-    let l1_biases: Box<[f32]> = (0..BUCKETS * L2)
-        .map(|i| (i as f32) * 0.01 - 0.5)
-        .collect();
+    let l1_biases: Box<[f32]> = (0..BUCKETS * L2).map(|i| (i as f32) * 0.01 - 0.5).collect();
     let l2_weights: Box<[f32]> = (0..BUCKETS * L2 * L3)
         .map(|i| (i as f32) * 0.003 - 0.4)
         .collect();
@@ -33,9 +29,7 @@ fn cenn_v2_round_trip_and_evaluate() {
     let l3_weights: Box<[f32]> = (0..BUCKETS * L3)
         .map(|i| (i as f32) * 0.007 - 0.2)
         .collect();
-    let l3_biases: Box<[f32]> = (0..BUCKETS)
-        .map(|i| (i as f32) * 0.01 - 0.04)
-        .collect();
+    let l3_biases: Box<[f32]> = (0..BUCKETS).map(|i| (i as f32) * 0.01 - 0.04).collect();
 
     let net = SotaNetwork {
         halfka_weights,
@@ -60,8 +54,9 @@ fn cenn_v2_round_trip_and_evaluate() {
 
     // Evaluate startpos — must produce a finite value.
     let leaked: &'static SotaNetwork = Box::leak(Box::new(loaded));
-    let ctx = SotaContext::new(leaked);
+    let mut ctx = SotaContext::new(leaked);
     let board = chessengine::Board::from_fen(chessengine::fen::START_FEN).unwrap();
+    ctx.refresh_root(&board);
     let val = ctx.evaluate(&board, 0);
     assert!(
         val.abs() < 100_000,

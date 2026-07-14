@@ -101,7 +101,10 @@ impl DeltaBuf {
             to: Square::A1,
             add: false,
         };
-        DeltaBuf { data: [placeholder; DELTA_CAP], len: 0 }
+        DeltaBuf {
+            data: [placeholder; DELTA_CAP],
+            len: 0,
+        }
     }
 
     #[inline]
@@ -165,7 +168,10 @@ impl<'a> Replay<'a> {
     fn resolve(&self, sq: Square) -> Piece {
         match self.find(sq) {
             Some(i) => self.over_pc[i].expect("resolve on an empty touched square"),
-            None => self.board.piece_on(sq).expect("resolve on an empty untouched square"),
+            None => self
+                .board
+                .piece_on(sq)
+                .expect("resolve on an empty untouched square"),
         }
     }
 }
@@ -184,7 +190,13 @@ fn record_square_touch(buf: &mut DeltaBuf, r: &Replay, p: Piece, s: Square, add:
         PieceType::Pawn => {
             // Diagonal captures (any occupant; threat_index filters to P/N/R).
             for to in pawn_attacks(p.color, s) & occ {
-                buf.push(ThreatDelta { attacker: p, from: s, victim: r.resolve(to), to, add });
+                buf.push(ThreatDelta {
+                    attacker: p,
+                    from: s,
+                    victim: r.resolve(to),
+                    to,
+                    add,
+                });
             }
             // Push relation: only a pawn directly in front is threatened
             // (matching for_each_threat's `all_pawns` guard — MAP would
@@ -194,13 +206,25 @@ fn record_square_touch(buf: &mut DeltaBuf, r: &Replay, p: Piece, s: Square, add:
             {
                 let victim = r.resolve(push);
                 if victim.piece_type == PieceType::Pawn {
-                    buf.push(ThreatDelta { attacker: p, from: s, victim, to: push, add });
+                    buf.push(ThreatDelta {
+                        attacker: p,
+                        from: s,
+                        victim,
+                        to: push,
+                        add,
+                    });
                 }
             }
         }
         pt => {
             for to in attacks(pt, s, occ) & occ {
-                buf.push(ThreatDelta { attacker: p, from: s, victim: r.resolve(to), to, add });
+                buf.push(ThreatDelta {
+                    attacker: p,
+                    from: s,
+                    victim: r.resolve(to),
+                    to,
+                    add,
+                });
             }
         }
     }
@@ -232,7 +256,13 @@ fn record_square_touch(buf: &mut DeltaBuf, r: &Replay, p: Piece, s: Square, add:
     if p.piece_type != PieceType::King {
         for a in knight_attacks(s) & occ {
             if r.resolve(a).piece_type == PieceType::Knight {
-                buf.push(ThreatDelta { attacker: r.resolve(a), from: a, victim: p, to: s, add });
+                buf.push(ThreatDelta {
+                    attacker: r.resolve(a),
+                    from: a,
+                    victim: p,
+                    to: s,
+                    add,
+                });
             }
         }
         // A white pawn attacking `s` sits on a down-diagonal of `s`
@@ -240,13 +270,25 @@ fn record_square_touch(buf: &mut DeltaBuf, r: &Replay, p: Piece, s: Square, add:
         for a in pawn_attacks(Color::Black, s) & occ {
             let ap = r.resolve(a);
             if ap.color == Color::White && ap.piece_type == PieceType::Pawn {
-                buf.push(ThreatDelta { attacker: ap, from: a, victim: p, to: s, add });
+                buf.push(ThreatDelta {
+                    attacker: ap,
+                    from: a,
+                    victim: p,
+                    to: s,
+                    add,
+                });
             }
         }
         for a in pawn_attacks(Color::White, s) & occ {
             let ap = r.resolve(a);
             if ap.color == Color::Black && ap.piece_type == PieceType::Pawn {
-                buf.push(ThreatDelta { attacker: ap, from: a, victim: p, to: s, add });
+                buf.push(ThreatDelta {
+                    attacker: ap,
+                    from: a,
+                    victim: p,
+                    to: s,
+                    add,
+                });
             }
         }
         // Incoming pawn push: a pawn directly behind `s` threatens it — but only
@@ -258,7 +300,13 @@ fn record_square_touch(buf: &mut DeltaBuf, r: &Replay, p: Piece, s: Square, add:
                 {
                     let ap = r.resolve(back);
                     if ap.color == c && ap.piece_type == PieceType::Pawn {
-                        buf.push(ThreatDelta { attacker: ap, from: back, victim: p, to: s, add });
+                        buf.push(ThreatDelta {
+                            attacker: ap,
+                            from: back,
+                            victim: p,
+                            to: s,
+                            add,
+                        });
                     }
                 }
             }
@@ -285,9 +333,21 @@ fn ripple(
 ) {
     let beyond = ray_pass(sl_sq, s) & r.occ & qatt;
     if let Some(d) = beyond.lsb() {
-        buf.push(ThreatDelta { attacker: sl, from: sl_sq, victim: r.resolve(d), to: d, add: !add });
+        buf.push(ThreatDelta {
+            attacker: sl,
+            from: sl_sq,
+            victim: r.resolve(d),
+            to: d,
+            add: !add,
+        });
     }
-    buf.push(ThreatDelta { attacker: sl, from: sl_sq, victim: p, to: s, add });
+    buf.push(ThreatDelta {
+        attacker: sl,
+        from: sl_sq,
+        victim: p,
+        to: s,
+        add,
+    });
 }
 
 /// Does `color`'s king cross the d/e mirror boundary in this move? (If so,
@@ -348,7 +408,11 @@ impl<'a> ThreatContext<'a> {
     /// A fresh context over `weights` (the `i8` FullThreats weight slice). Call
     /// [`refresh`](Self::refresh) to seed the root before any [`apply`](Self::apply).
     pub fn new(weights: &'a [i8]) -> Self {
-        ThreatContext { weights, stack: Vec::with_capacity(64), buf: DeltaBuf::new() }
+        ThreatContext {
+            weights,
+            stack: Vec::with_capacity(64),
+            buf: DeltaBuf::new(),
+        }
     }
 
     /// Rebuild the root accumulator from scratch for `board`, both perspectives,
@@ -367,7 +431,15 @@ impl<'a> ThreatContext<'a> {
     /// The current (top-of-stack) accumulator pair, `[White, Black]` — the input
     /// [`super::sota_head::SotaHead::forward`] consumes as `threat`.
     pub fn current(&self) -> &[[i16; ACC]; 2] {
-        self.stack.last().expect("ThreatContext: refresh before current")
+        self.stack
+            .last()
+            .expect("ThreatContext: refresh before current")
+    }
+
+    /// Accumulator at a search ply. The search overwrites sibling plies rather
+    /// than calling `undo`, so callers use this indexed form.
+    pub fn at(&self, ply: usize) -> &[[i16; ACC]; 2] {
+        &self.stack[ply]
     }
 
     /// Fold the move described by `dp` (made to reach `board`) forward: push a
@@ -379,7 +451,10 @@ impl<'a> ThreatContext<'a> {
         self.buf.clear();
         build_deltas(&mut self.buf, dp, board);
 
-        let parent = *self.stack.last().expect("ThreatContext: refresh before apply");
+        let parent = *self
+            .stack
+            .last()
+            .expect("ThreatContext: refresh before apply");
         let mut child = parent;
         for (i, &persp) in Color::ALL.iter().enumerate() {
             if king_crossed(dp, persp) {
@@ -401,12 +476,24 @@ impl<'a> ThreatContext<'a> {
         self.stack.push(child);
     }
 
+    /// Apply a post-move dirty record from `ply` to `ply + 1`, truncating any
+    /// stale sibling/deeper entries first. This is the search-stack form of
+    /// [`apply`](Self::apply).
+    pub fn apply_at(&mut self, ply: usize, dp: &DirtyPiece, board: &Board) {
+        assert!(ply < self.stack.len(), "ThreatContext parent ply missing");
+        self.stack.truncate(ply + 1);
+        self.apply(dp, board);
+    }
+
     /// Pop the top stack entry, returning to the parent — the exact inverse of
     /// the matching [`apply`](Self::apply) (the full parent pair is retained, so
     /// undo is the delta walk run backward with added↔removed swapped, by
     /// construction). Panics if only the root remains.
     pub fn undo(&mut self) {
-        assert!(self.stack.len() > 1, "ThreatContext::undo underflow (only the root remains)");
+        assert!(
+            self.stack.len() > 1,
+            "ThreatContext::undo underflow (only the root remains)"
+        );
         self.stack.pop();
     }
 
@@ -477,8 +564,8 @@ fn build_deltas(buf: &mut DeltaBuf, dp: &DirtyPiece, board: &Board) {
 mod tests {
     use super::*;
     use crate::fen::START_FEN;
-    use crate::moves::{Move, MoveList};
     use crate::movegen::generate_legal;
+    use crate::moves::{Move, MoveList};
 
     // A tiny SplitMix64 so the replay games are deterministic without pulling in
     // a dependency.
@@ -570,16 +657,25 @@ mod tests {
                 Move::en_passant(Square::E5, Square::F6),
             ),
             // Quiet promotion to queen.
-            ("8/P6k/8/8/8/8/7K/8 w - - 0 1", Move::promotion(Square::A7, Square::A8, PieceType::Queen)),
+            (
+                "8/P6k/8/8/8/8/7K/8 w - - 0 1",
+                Move::promotion(Square::A7, Square::A8, PieceType::Queen),
+            ),
             // Capture-promotion to knight.
             (
                 "1n5k/P7/8/8/8/8/7K/8 w - - 0 1",
                 Move::promotion(Square::A7, Square::B8, PieceType::Knight),
             ),
             // Kingside castle (no mirror cross).
-            ("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", Move::castling(Square::E1, Square::G1)),
+            (
+                "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+                Move::castling(Square::E1, Square::G1),
+            ),
             // Queenside castle (king e1 → c1 crosses d/e).
-            ("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", Move::castling(Square::E1, Square::C1)),
+            (
+                "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+                Move::castling(Square::E1, Square::C1),
+            ),
         ];
         for &(fen, m) in cases {
             let mut b = board(fen);
@@ -588,7 +684,11 @@ mod tests {
             let dp = DirtyPiece::from_move(&b, m);
             b.make_move(m, b.gives_check(m));
             ctx.apply(&dp, &b);
-            assert_eq!(*ctx.current(), refresh_pair(&w, &b), "mismatch after {m} from {fen}");
+            assert_eq!(
+                *ctx.current(),
+                refresh_pair(&w, &b),
+                "mismatch after {m} from {fen}"
+            );
         }
     }
 
@@ -667,7 +767,10 @@ mod tests {
     fn threats_replay_matches_refresh() {
         let w = signature_weights();
         let nodes = replay(&w, 60, 60, 0x00C0_FFEE_1234);
-        assert!(nodes > 1500, "expected a substantial corpus, got {nodes} nodes");
+        assert!(
+            nodes > 1500,
+            "expected a substantial corpus, got {nodes} nodes"
+        );
     }
 
     /// The large-corpus stress gate — thousands of games. Slow in debug (the
@@ -678,6 +781,9 @@ mod tests {
     fn threats_replay_large() {
         let w = signature_weights();
         let nodes = replay(&w, 4000, 120, 0x5EED_D00D_F00D);
-        assert!(nodes > 100_000, "expected a large corpus, got {nodes} nodes");
+        assert!(
+            nodes > 100_000,
+            "expected a large corpus, got {nodes} nodes"
+        );
     }
 }

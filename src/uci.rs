@@ -183,9 +183,8 @@ fn cmd_nnue_eval_argv(args: &[String]) {
         V2(&'static nnue::sota_loader::SotaNetwork),
     }
 
-    let raw = std::fs::read(net_path).unwrap_or_else(|e| {
-        exit_usage(format_args!("nnue-eval: reading {net_path}: {e}"))
-    });
+    let raw = std::fs::read(net_path)
+        .unwrap_or_else(|e| exit_usage(format_args!("nnue-eval: reading {net_path}: {e}")));
 
     let loaded = if cfg!(feature = "sota") && raw.len() >= 4 && raw[0..4] == *b"CEN2" {
         #[cfg(feature = "sota")]
@@ -197,9 +196,7 @@ fn cmd_nnue_eval_argv(args: &[String]) {
         }
         #[cfg(not(feature = "sota"))]
         {
-            exit_usage(format_args!(
-                "nnue-eval: CEN2 net requires --features sota"
-            ))
+            exit_usage(format_args!("nnue-eval: CEN2 net requires --features sota"))
         }
     } else {
         match nnue::load_bytes(&raw) {
@@ -210,7 +207,7 @@ fn cmd_nnue_eval_argv(args: &[String]) {
 
     // Build eval context once (reused for every FEN).
     #[cfg(feature = "sota")]
-    let sota_ctx = match &loaded {
+    let mut sota_ctx = match &loaded {
         LoadedNet::V2(net) => Some(nnue::sota_context::SotaContext::new(net)),
         _ => None,
     };
@@ -223,7 +220,9 @@ fn cmd_nnue_eval_argv(args: &[String]) {
             }
             #[cfg(feature = "sota")]
             LoadedNet::V2(_) => {
-                let val = sota_ctx.as_ref().unwrap().evaluate(&board, 0);
+                let ctx = sota_ctx.as_mut().unwrap();
+                ctx.refresh_root(&board);
+                let val = ctx.evaluate(&board, 0);
                 let _ = writeln!(out, "{val}");
             }
         },

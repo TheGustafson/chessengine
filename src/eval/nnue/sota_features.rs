@@ -78,6 +78,16 @@ fn orient_halfka(ksq: Square) -> u8 {
     if ksq.file() <= 3 { 7 } else { 0 }
 }
 
+/// Cache key for a HalfKAv2_hm king state: 32 bucket ids × two horizontal
+/// orientations. Moving the king without changing this key leaves every
+/// non-king feature's index stable, so a dirty-piece update is sufficient.
+#[inline]
+pub(crate) fn halfka_king_key(perspective: Color, king_sq: Square) -> usize {
+    let flip = 56 * perspective as u8;
+    let bucket = KING_BUCKETS[(king_sq.index() ^ flip) as usize] as usize;
+    bucket * 2 + usize::from(orient_halfka(king_sq) != 0)
+}
+
 /// The piece-slot offset within a 704-block (SF `PieceSquareIndex`).
 ///
 /// From `persp`'s point of view own pieces occupy the "white" even slots
@@ -249,7 +259,10 @@ fn build_threat_tables() -> ThreatTables {
         cumulative_offset[code] = cumulative;
         cumulative += NUM_VALID_TARGETS[code] as u32 * cum_piece;
     }
-    debug_assert_eq!(cumulative, THREAT_DIMS as u32, "threat blocks must tile 60720");
+    debug_assert_eq!(
+        cumulative, THREAT_DIMS as u32,
+        "threat blocks must tile 60720"
+    );
 
     // Per (attacker, attacked) feature base + the exclusion sentinels.
     let mut lut1 = [[[THREAT_DIMS as u32; 2]; 16]; 16];
@@ -274,7 +287,11 @@ fn build_threat_tables() -> ThreatTables {
                 let sub = atd_color * num_types + map as usize;
                 cumulative_offset[attacker] + sub as u32 * piece_offset[attacker]
             };
-            lut1[attacker][attacked][0] = if excluded { THREAT_DIMS as u32 } else { feature };
+            lut1[attacker][attacked][0] = if excluded {
+                THREAT_DIMS as u32
+            } else {
+                feature
+            };
             lut1[attacker][attacked][1] = if excluded || semi_excluded {
                 THREAT_DIMS as u32
             } else {
@@ -283,7 +300,13 @@ fn build_threat_tables() -> ThreatTables {
         }
     }
 
-    ThreatTables { offsets, piece_offset, cumulative_offset, lut2, lut1 }
+    ThreatTables {
+        offsets,
+        piece_offset,
+        cumulative_offset,
+        lut2,
+        lut1,
+    }
 }
 
 static THREAT_TABLES: LazyLock<ThreatTables> = LazyLock::new(build_threat_tables);
@@ -437,7 +460,9 @@ pub fn refresh_pst(
 ) -> [i16; ACC] {
     let mut acc = [0i16; ACC];
     acc.copy_from_slice(&ft_bias[..ACC]);
-    for_each_halfka(board, perspective, |idx| add_column(&mut acc, halfka_weights, idx));
+    for_each_halfka(board, perspective, |idx| {
+        add_column(&mut acc, halfka_weights, idx)
+    });
     acc
 }
 
@@ -446,7 +471,9 @@ pub fn refresh_pst(
 /// `threat_weights` is feature-major (`[THREAT_DIMS · ACC]` i8).
 pub fn refresh_threat(threat_weights: &[i8], board: &Board, perspective: Color) -> [i16; ACC] {
     let mut acc = [0i16; ACC];
-    for_each_threat(board, perspective, |idx| add_column(&mut acc, threat_weights, idx));
+    for_each_threat(board, perspective, |idx| {
+        add_column(&mut acc, threat_weights, idx)
+    });
     acc
 }
 
@@ -630,7 +657,10 @@ mod tests {
             "from<to direction of a symmetric threat is semi-excluded"
         );
         let kept = threat_index(Color::White, rw, Square::A8, Square::A1, rb, ksq);
-        assert!(kept.is_some() && kept.unwrap() < THREAT_DIMS, "other direction kept");
+        assert!(
+            kept.is_some() && kept.unwrap() < THREAT_DIMS,
+            "other direction kept"
+        );
     }
 
     /// On real positions, every active threat index is in range and — crucially
