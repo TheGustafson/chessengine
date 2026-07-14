@@ -21,7 +21,9 @@ register each as a `[[example]]` in `bullet_lib/Cargo.toml`, then
   tail and emits the exact mixed-quant tensor order consumed by
   `netpack.py ... d40`. Runtime knobs are `D40_DATA`, `D40_OUT`, `D40_ID`,
   `D40_SUPERBATCHES`, `D40_BPS`, `D40_BATCH`, `D40_THREADS`, `D40_SAVE_RATE`,
-  and `D40_LR`.
+  and `D40_LR`. The final superbatch also writes a named raw checkpoint. With
+  `D40_PROBE_FENS`, either `D40_PROBE_RAW` or `D40_PROBE_QUANT` evaluates the
+  identical graph for the orchestrator's cross-boundary parity gate.
 - `d40_policy.rs` — streams the real 100M-row dual-target NumPy corpus, rebuilds
   each normalized placement, and uses the engine's canonical HalfKA+FullThreats
   enumerators. `D40_POLICY_HEAD=bilinear|full` selects the rank-8 or 4096-logit

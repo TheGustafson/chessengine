@@ -26,5 +26,20 @@
   },
   "verify_out_clip": false,
   "pack": {"activation": "d40"},
+  "parity": {
+    "enable": true,
+    "fens": "tools/nnue/d40_probe.fens",
+    "raw": "data/nnue/d40_c2_ckpt/d40-c2-eval-final-raw.bin",
+    "max_abs_quantization_logit_error": 1.0,
+    "mean_abs_quantization_logit_error": 0.25,
+    "max_abs_runtime_logit_error": 0.2,
+    "mean_abs_runtime_logit_error": 0.03
+  },
+  "sanity_fens": [
+    {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "min_cp": -150, "max_cp": 150},
+    {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1", "min_cp": -150, "max_cp": 150},
+    {"fen": "4k3/8/8/8/8/8/8/QQQQK3 w - - 0 1", "min_cp": 500},
+    {"fen": "qqqqk3/8/8/8/8/8/8/4K3 w - - 0 1", "max_cp": -500}
+  ],
   "sprt": {"enable": true, "baseline_net": "data/nnue/nets/net-8.cenn", "baseline_id": "net-8", "nodes": 25000, "rounds": 1000, "concurrency": 8}
 }

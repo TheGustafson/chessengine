@@ -14,7 +14,7 @@ runbook is the checklist over it.
 ## Automation — the one-command path (`train_run.py`)
 
 **Prefer this over running the steps by hand.** The whole flow below (corpus →
-train → verify → pack → sanity → SPRT → ledger) is codified in
+train → verify → pack → parity → semantic sanity → SPRT → ledger) is codified in
 `tools/nnue/train_run.py`. A run is now: **write a config, run one command** — no
 subagent, no hand-orchestration.
 
@@ -41,7 +41,9 @@ status/timing/results); the git-tracked provenance is the ledger row.
 `provenance`, `parent`, `notes`; `corpus.{id, raw_dir|train_bin}`;
 `train.{bullet_dir, example, env{…}}`; `verify_out_clip` (true for the classic
 i16-out net; **false** for the D40 hybrid save, which hard-checks overflow
-itself); `pack.activation`; `sprt.{enable, baseline_net, baseline_id, nodes,
+itself); `pack.activation`; `parity.{enable, fens, raw, *_logit_error}`;
+`sanity_fens` (strings or `{fen,min_cp,max_cp}` constraints);
+`sprt.{enable, baseline_net, baseline_id, nodes,
 rounds, concurrency}`. The `preflight` stage builds the fast binary, records the
 git sha, warns on a dirty `src/`, and refuses a net_id already in the ledger — so
 "is the engine in a good state for the experiment" is checked automatically.
@@ -95,12 +97,18 @@ SIGPIPEs the trainer (the one gotcha that bit step 3).
    `quantised.bin` → `data/nnue/nets/<NET_ID>.cenn` (magic/version/dims/checksum;
    **sign-extends the i16 l1b → i32 out_bias**). (`netpack.py --help`.)
 
-5. **Load-sanity.** `./target/release/chessengine nnue-eval data/nnue/nets/<NET_ID>.cenn "<fen>"`
-   on: startpos (small, and equal for w/b = symmetry), a clearly White-up-material
-   position (>0), a Black-up one (<0). Loader must ACCEPT it (no `NnueError`) and
-   all cp finite. If it's rejected → the clip failed (step 3).
+5. **Trainer/export/runtime parity (mandatory for D40).** Probe the named raw
+   checkpoint, the dequantized exported tensors, and the packed Rust runtime on
+   identical FENs. Report float→quantized degradation separately from
+   quantized→runtime drift. This catches layout, activation, scale, and
+   accumulator transcription bugs that checksums and feature parity cannot.
 
-6. **SPRT vs the baseline (FIXED-NODE proxy — contention-immune).** Both sides the
+6. **Semantic load-sanity.** `./target/release/chessengine nnue-eval
+   data/nnue/nets/<NET_ID>.cenn "<fen>"` must satisfy configured score ranges,
+   not merely print a finite integer. Gate a symmetric start position near zero,
+   a clearly White-up-material position (>0), and a Black-up one (<0).
+
+7. **SPRT vs the baseline (FIXED-NODE proxy — contention-immune).** Both sides the
    same fast binary (`RUSTFLAGS="-C target-cpu=x86-64-v3" cargo build --release`),
    toggled by `option.EvalFile`. Use **fixed nodes** (e.g. `nodes=25000` via
    `tc=inf` + `nodestime`/`go nodes`, or fastchess `-each tc=... nodes=...`) so

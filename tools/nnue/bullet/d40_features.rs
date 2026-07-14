@@ -25,8 +25,11 @@
 use bullet_lib::{
     game::inputs::SparseInputType, nn::InitSettings, value::loader::DirectSequentialDataLoader,
 };
+use bullet_compiler::tensor::TValue;
 use bullet_trainer::{
-    model::{ModelDefinition, ModelInputs, ModelInputsMapper, ModelWeights, SavedFormat},
+    model::{
+        ModelDefinition, ModelEvaluator, ModelInputs, ModelInputsMapper, ModelWeights, SavedFormat,
+    },
     optimiser::adam::{AdamW, AdamWParams},
     reader::{DataReader, ReadMapLoader},
     run::{DefaultDevice, Step, TrainingSchedule, TrainingSteps, train},
@@ -302,6 +305,89 @@ fn env_f32(key: &str, default: f32) -> f32 {
         .unwrap_or(default)
 }
 
+fn load_raw_weights(weights: &mut ModelWeights, path: &str) {
+    let file = std::fs::File::open(path).expect("open D40_PROBE_RAW");
+    weights.load_from(file).expect("load named raw tensors");
+}
+
+fn transpose_saved(rows: usize, cols: usize, saved: Vec<f32>) -> Vec<f32> {
+    let mut internal = vec![0.0; saved.len()];
+    for row in 0..rows {
+        for col in 0..cols {
+            internal[rows * col + row] = saved[cols * row + col];
+        }
+    }
+    internal
+}
+
+fn load_quantised_weights(weights: &mut ModelWeights, path: &str) {
+    let raw = std::fs::read(path).expect("read D40_PROBE_QUANT");
+    let mut offset = 0usize;
+    let mut i16s = |count: usize, scale: f32| {
+        let end = offset + count * 2;
+        let values = raw[offset..end]
+            .chunks_exact(2)
+            .map(|bytes| f32::from(i16::from_le_bytes(bytes.try_into().unwrap())) / scale)
+            .collect();
+        offset = end;
+        values
+    };
+    let pst = i16s(HALFKA_INPUTS * HL, 255.0);
+    let pst_bias = i16s(HL, 255.0);
+    drop(i16s);
+    let mut i8s = |count: usize, scale: f32| {
+        let end = offset + count;
+        let values = raw[offset..end]
+            .iter()
+            .map(|&byte| f32::from(byte as i8) / scale)
+            .collect();
+        offset = end;
+        values
+    };
+    let threat = i8s(THREAT_INPUTS * HL, 64.0);
+    let l1_saved = i8s(NUM_BUCKETS * L2 * HL, 64.0);
+    drop(i8s);
+    let mut f32s = |count: usize| {
+        let end = offset + count * 4;
+        let values = raw[offset..end]
+            .chunks_exact(4)
+            .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
+            .collect();
+        offset = end;
+        values
+    };
+    let l1_bias = f32s(NUM_BUCKETS * L2);
+    let l2_saved = f32s(NUM_BUCKETS * L3 * L2);
+    let l2_bias = f32s(NUM_BUCKETS * L3);
+    let l3_saved = f32s(NUM_BUCKETS * L3);
+    let l3_bias = f32s(NUM_BUCKETS);
+    drop(f32s);
+    let padding = &raw[offset..];
+    assert!(padding.len() <= 63, "oversized quantized padding");
+    assert!(
+        padding
+            .iter()
+            .enumerate()
+            .all(|(i, &byte)| byte == b"bullet"[i % 6]),
+        "invalid quantized padding"
+    );
+
+    let tensors = [
+        ("l0_pstw", pst),
+        ("l0_pstb", pst_bias),
+        ("l0_threatw", threat),
+        ("l1w", transpose_saved(NUM_BUCKETS * L2, HL, l1_saved)),
+        ("l1b", l1_bias),
+        ("l2w", transpose_saved(NUM_BUCKETS * L3, L2, l2_saved)),
+        ("l2b", l2_bias),
+        ("l3w", transpose_saved(NUM_BUCKETS, L3, l3_saved)),
+        ("l3b", l3_bias),
+    ];
+    for (id, values) in tensors {
+        assert!(weights.set(id, TValue::F32(values)), "quant tensor shape {id}");
+    }
+}
+
 fn main() {
     let data = std::env::var("D40_DATA")
         .expect("set D40_DATA to a bulletformat ChessBoard train.bin path");
@@ -423,8 +509,45 @@ fn main() {
         },
     );
 
-    let weights = ModelWeights::new(&defn, 0x00D4_0FEA);
     let device = DefaultDevice::new(0).expect("device");
+    if let Ok(fen_path) = std::env::var("D40_PROBE_FENS")
+        && (std::env::var("D40_PROBE_RAW").is_ok()
+            || std::env::var("D40_PROBE_QUANT").is_ok())
+    {
+        let mut weights = ModelWeights::zeroed(&defn);
+        let prefix = if let Ok(path) = std::env::var("D40_PROBE_QUANT") {
+            load_quantised_weights(&mut weights, &path);
+            "D40_PROBE_QUANT"
+        } else {
+            load_raw_weights(&mut weights, &std::env::var("D40_PROBE_RAW").unwrap());
+            "D40_PROBE_RAW"
+        };
+        let mut evaluator = ModelEvaluator::new(&defn, device.clone()).expect("raw evaluator");
+        evaluator.load_weights(&weights).expect("raw model weights");
+        let fens = std::fs::read_to_string(fen_path).expect("read D40_PROBE_FENS");
+        for line in fens.lines() {
+            let fen = line.trim();
+            if fen.is_empty() || fen.starts_with('#') {
+                continue;
+            }
+            let position: ChessBoard = format!("{fen} | 0 | 0.5").parse().expect("probe FEN");
+            let host = mapper.map(&[position], Step::default(), 1);
+            let input = host.to_device(&device).expect("probe inputs to device");
+            let output = evaluator.evaluate(&input).expect("probe evaluate");
+            let TValue::F32(value) = output
+                .get("output")
+                .expect("probe output")
+                .to_host()
+                .expect("probe output to host")
+            else {
+                panic!("probe output must be f32");
+            };
+            println!("{prefix}\t{:.9}\t{fen}", value[0]);
+        }
+        return;
+    }
+
+    let weights = ModelWeights::new(&defn, 0x00D4_0FEA);
     // AdamW default clip +/-1.98 => i8 L1/threat weights * 64 <= 127 (no overflow).
     let params = AdamWParams::default();
     let mut optimiser = AdamW::new(defn, weights, device, params).expect("optimiser");
@@ -488,14 +611,19 @@ fn main() {
         move |opt, step| {
             let sb = step.superbatch();
             if sb % save_rate == 0 || sb == end_superbatch {
-                let buf = opt
-                    .cpu_weights()
-                    .expect("sync CPU weights")
+                let weights = opt.cpu_weights().expect("sync CPU weights");
+                let buf = weights
                     .to_quantised_buffer(&fmt, true)
                     .expect("quantise D40 checkpoint");
                 let path = format!("{save_out}/{save_id}-sb{sb}-quant.bin");
                 std::fs::write(&path, &buf).expect("write D40 checkpoint");
                 println!("  saved {path} ({} bytes)", buf.len());
+                if sb == end_superbatch {
+                    let raw_path = format!("{save_out}/{save_id}-final-raw.bin");
+                    let mut raw = std::fs::File::create(&raw_path).expect("create raw checkpoint");
+                    weights.write_into(&mut raw).expect("write named raw checkpoint");
+                    println!("  saved {raw_path} (trainer-parity source)");
+                }
             }
         },
     )

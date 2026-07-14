@@ -31,6 +31,9 @@ pub const L3: usize = 32;
 pub const BUCKETS: usize = 8;
 
 pub(crate) const FT_QUANT: i32 = 255; // FT activation clamp ceiling / QA
+/// Quantization scale of the separately exported FullThreats transformer.
+/// CENN-v2 fixes this as an architecture constant so its weights fit in i8.
+pub(crate) const THREAT_QUANT: i32 = 64;
 pub(crate) const L1_QUANT: i32 = 64; // L1 weight scale / QB
 pub(crate) const FT_SHIFT: i32 = 9; // pairwise-multiply right shift
 /// `(1 << FT_SHIFT) / (FT_QUANT² · L1_QUANT)` — the i32→f32 bridge at L1
@@ -83,12 +86,26 @@ fn activate_ft(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color) -> [u8
         let p = &pst[persp];
         let t = &threat[persp];
         for i in 0..H {
-            let left = p[i].wrapping_add(t[i]).clamp(0, FT_QUANT as i16);
-            let right = p[i + H].wrapping_add(t[i + H]).clamp(0, FT_QUANT as i16);
+            let left = merge_transformers(p[i], t[i]);
+            let right = merge_transformers(p[i + H], t[i + H]);
             out[i + flip * H] = ((left as i32 * right as i32) >> FT_SHIFT) as u8;
         }
     }
     out
+}
+
+/// Convert the independently quantized threat accumulator to the HalfKA scale
+/// before summing. This is `round(pst + threat * 255/64)` in quantized space.
+/// Adding the raw integers would underweight every threat feature by ~4x.
+#[inline]
+fn merge_transformers(pst: i16, threat: i16) -> i16 {
+    let scaled = i32::from(threat) * FT_QUANT;
+    let rounded = if scaled >= 0 {
+        (scaled + THREAT_QUANT / 2) / THREAT_QUANT
+    } else {
+        (scaled - THREAT_QUANT / 2) / THREAT_QUANT
+    };
+    (i32::from(pst) + rounded).clamp(0, FT_QUANT) as i16
 }
 
 /// Indices of the 4-byte groups (of `L1/4`) holding any nonzero activation
@@ -110,7 +127,7 @@ fn find_nnz(ft: &[u8; L1]) -> ([u16; L1 / 4], usize) {
 }
 
 impl SotaHead {
-    /// int8 sparse matmul over the nonzero groups → dequantized, clamped f32[L2]
+    /// int8 sparse matmul over the nonzero groups → dequantized SCReLU f32[L2]
     /// (design/11 §12.3 step 3). The inner 4-product sum runs in wrapping i16.
     fn propagate_l1(&self, ft: &[u8; L1], nnz: &[u16], bucket: usize) -> [f32; L2] {
         let mut pre = [0i32; L2];
@@ -131,14 +148,15 @@ impl SotaHead {
         let mut out = [0.0f32; L2];
         let bb = bucket * L2;
         for j in 0..L2 {
-            out[j] = (pre[j] as f32)
+            let clipped = (pre[j] as f32)
                 .mul_add(DEQUANT, self.l1_biases[bb + j])
                 .clamp(0.0, 1.0);
+            out[j] = clipped * clipped;
         }
         out
     }
 
-    /// Dense f32[L2]→f32[L3], bias-seeded FMA then clamp (step 4). The
+    /// Dense f32[L2]→f32[L3], bias-seeded FMA then SCReLU (step 4). The
     /// i-outer/j-inner order is load-bearing: it pins the accumulation order.
     #[allow(clippy::needless_range_loop)]
     fn propagate_l2(&self, l1: &[f32; L2], bucket: usize) -> [f32; L3] {
@@ -153,7 +171,8 @@ impl SotaHead {
             }
         }
         for v in &mut out {
-            *v = v.clamp(0.0, 1.0);
+            let clipped = v.clamp(0.0, 1.0);
+            *v = clipped * clipped;
         }
         out
     }
@@ -207,6 +226,30 @@ impl SotaHead {
 mod tests {
     use super::*;
 
+    #[test]
+    fn mixed_transformer_scales_are_normalized_before_sum() {
+        assert_eq!(merge_transformers(0, 64), 255);
+        assert_eq!(merge_transformers(255, -64), 0);
+        assert_eq!(merge_transformers(100, 16), 164);
+        assert_eq!(merge_transformers(100, -16), 36);
+        assert_eq!(merge_transformers(250, 2), 255);
+        assert_eq!(merge_transformers(5, -2), 0);
+    }
+
+    #[test]
+    fn dense_tail_uses_squared_clipped_relu() {
+        let mut head = synth_head();
+        head.l1_weights.fill(0);
+        head.l1_biases.fill(0.5);
+        let l1 = head.propagate_l1(&[0; L1], &[], 0);
+        assert_eq!(l1, [0.25; L2]);
+
+        head.l2_weights.fill(0.0);
+        head.l2_biases.fill(0.5);
+        let l2 = head.propagate_l2(&l1, 0);
+        assert_eq!(l2, [0.25; L3]);
+    }
+
     /// A deterministic synthetic head + inputs (no Reckless weights — this is a
     /// transcription regression guard, not a strength net).
     fn synth_head() -> SotaHead {
@@ -251,12 +294,11 @@ mod tests {
     fn activate_ft_hand_computed() {
         let mut pst = [[0i16; L1]; 2];
         let mut threat = [[0i16; L1]; 2];
-        // index 0 (STM half low): left = pst[0]+threat[0], right = pst[H]+threat[H].
-        pst[0][0] = 100;
-        threat[0][0] = 50; // left sum = 150, clamp[0,255] = 150
+        // index 0 (STM half low): left = 150, right clamps to 255.
+        pst[0][0] = 150;
         const H: usize = L1 / 2;
         pst[0][H] = 200;
-        threat[0][H] = 200; // right sum = 400 → clamp 255
+        threat[0][H] = 16; // rescaled to 64, so right sum = 264 → clamp 255
         let ft = activate_ft(&pst, &threat, Color::White);
         // (150 * 255) >> 9 = 38250 >> 9 = 74
         assert_eq!(ft[0], 74, "pairwise clamp+shift");
@@ -291,9 +333,10 @@ mod tests {
         }
         let mut dense = [0.0f32; L2];
         for j in 0..L2 {
-            dense[j] = (pre[j] as f32)
+            let clipped = (pre[j] as f32)
                 .mul_add(DEQUANT, head.l1_biases[bucket * L2 + j])
                 .clamp(0.0, 1.0);
+            dense[j] = clipped * clipped;
         }
         assert_eq!(sparse, dense);
         assert!(count > 0, "the synthetic input must produce some nonzeros");

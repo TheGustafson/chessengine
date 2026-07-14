@@ -34,6 +34,7 @@ artifact, writes a gitignored net. No engine (`src/`) code is touched.
 
 import os
 import sys
+from pathlib import Path
 
 import numpy as np
 
@@ -83,7 +84,7 @@ def pack(quantised_path: str, out_path: str, activation: str) -> None:
     if act_id is None:
         die(f"bad activation '{activation}' (want screlu or crelu)")
 
-    raw = open(quantised_path, "rb").read()
+    raw = Path(quantised_path).read_bytes()
     n_i16 = N_FT_W + N_FT_B + N_OUT_W + 1  # 197377
     need_bytes = n_i16 * 2                 # 394754 (before bullet's 64B pad)
     if len(raw) < need_bytes:
@@ -182,9 +183,12 @@ D40_L2 = 16
 D40_L3 = 32
 D40_BUCKETS = 8
 D40_FT_QUANT = 255
+D40_THREAT_QUANT = 64
 D40_L1_QUANT = 64
 D40_FT_SHIFT = 9
-D40_NETWORK_SCALE = 380  # Reckless default; overridable via env
+# The trainer's target is sigmoid(score / 400), so the inverse-logit runtime
+# scale is 400 unless an explicitly calibrated successor overrides it.
+D40_NETWORK_SCALE = 400
 
 
 def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> None:
@@ -192,17 +196,18 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     if network_scale is None:
         network_scale = int(os.environ.get("D40_NETWORK_SCALE", str(D40_NETWORK_SCALE)))
 
-    raw = open(quantised_path, "rb").read()
+    raw = Path(quantised_path).read_bytes()
 
     acc = D40_ACC
     buckets = D40_BUCKETS
 
     # ── Parse bullet tensors ───────────────────────────────────────────
-    # Tensor 0: l0_pstw i16 (ACC × HALFKA_DIMS) neuron-major
+    # Tensor 0: l0_pstw i16 (HALFKA_DIMS × ACC) feature-major. Bullet's
+    # untransposed affine storage is already input/feature-major.
     n_pst_w = acc * HALFKA_DIMS
     # Tensor 1: l0_pstb i16 (ACC)
     n_pst_b = acc
-    # Tensor 2: l0_threatw i8 (ACC × THREAT_DIMS) neuron-major
+    # Tensor 2: l0_threatw i8 (THREAT_DIMS × ACC) feature-major.
     n_threat_w = acc * THREAT_DIMS
     # Tensor 3: l1w i8 (BUCKETS*L2 × ACC) — bullet stores TRANSPOSED
     n_l1w = buckets * D40_L2 * acc
@@ -221,19 +226,24 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     need_bytes = (n_pst_w + n_pst_b) * 2 + n_threat_w + n_l1w + (n_l1b + n_l2w + n_l2b + n_l3w + n_l3b) * 4
     if len(raw) < need_bytes:
         die(f"{quantised_path}: {len(raw)} bytes < {need_bytes} needed for D40 arch")
+    padding = raw[need_bytes:]
+    expected_padding = bytes(b"bullet"[i % 6] for i in range(len(padding)))
+    if len(padding) > 63 or padding != expected_padding:
+        die(f"{quantised_path}: invalid trailing data after D40 tensors "
+            f"({len(padding)} bytes; expected Bullet's <=63-byte padding)")
 
     off = 0
 
-    # l0_pstw: i16 (ACC, HALFKA) neuron-major in bullet
-    pst_w = np.frombuffer(raw, dtype="<i2", count=n_pst_w, offset=off).reshape(acc, HALFKA_DIMS)
+    # l0_pstw: i16 (HALFKA, ACC), already feature-major in Bullet.
+    pst_w = np.frombuffer(raw, dtype="<i2", count=n_pst_w, offset=off).reshape(HALFKA_DIMS, acc)
     off += n_pst_w * 2
 
     # l0_pstb: i16 (ACC)
     pst_b = np.frombuffer(raw, dtype="<i2", count=n_pst_b, offset=off)
     off += n_pst_b * 2
 
-    # l0_threatw: i8 (ACC, THREAT) neuron-major in bullet
-    threat_w = np.frombuffer(raw, dtype="<i1", count=n_threat_w, offset=off).reshape(acc, THREAT_DIMS)
+    # l0_threatw: i8 (THREAT, ACC), also already feature-major.
+    threat_w = np.frombuffer(raw, dtype="<i1", count=n_threat_w, offset=off).reshape(THREAT_DIMS, acc)
     off += n_threat_w
 
     # l1w: i8 — bullet stores as (BUCKETS*L2, ACC) row-major (TRANSPOSED flag)
@@ -260,13 +270,8 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     l3b = np.frombuffer(raw, dtype="<f4", count=n_l3b, offset=off)
     off += n_l3b * 4
 
-    # ── Transpose FTs to feature-major ─────────────────────────────────
-    # Engine wants: halfka_w[feature][neuron] = pst_w^T
-    pst_w_feat = pst_w.T.copy()  # (HALFKA, ACC) — feature-major, C-contiguous
-    assert pst_w_feat.shape == (HALFKA_DIMS, acc), pst_w_feat.shape
-
-    threat_w_feat = threat_w.T.copy()  # (THREAT, ACC) — feature-major
-    assert threat_w_feat.shape == (THREAT_DIMS, acc), threat_w_feat.shape
+    assert pst_w.shape == (HALFKA_DIMS, acc), pst_w.shape
+    assert threat_w.shape == (THREAT_DIMS, acc), threat_w.shape
 
     # ── Rearrange L1 weights to group-interleaved layout ───────────────
     # Engine's propagate_l1 accesses: wb[group * (L2*4) + neuron * 4 + k]
@@ -304,9 +309,9 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
 
     # ── Build CENN-v2 payload ──────────────────────────────────────────
     payload = bytearray()
-    payload += pst_w_feat.astype("<i2").tobytes()    # halfka_w feature-major i16
+    payload += pst_w.astype("<i2").tobytes()         # halfka_w feature-major i16
     payload += pst_b.astype("<i2").tobytes()          # ft_bias i16
-    payload += threat_w_feat.astype("<i1").tobytes()  # threat_w feature-major i8
+    payload += threat_w.astype("<i1").tobytes()       # threat_w feature-major i8
     payload += l1w_engine.tobytes()                   # l1_w i8 group-interleaved
     payload += l1b.astype("<f4").tobytes()             # l1_b f32
     payload += l2w_engine.astype("<f4").tobytes()      # l2_w f32
@@ -344,7 +349,8 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     print(f"netpack-d40: wrote {out_path} ({total:,} bytes)")
     print(f"  arch        halfka={HALFKA_DIMS} threats={THREAT_DIMS} acc={D40_ACC}")
     print(f"              L2={D40_L2} L3={D40_L3} buckets={D40_BUCKETS}")
-    print(f"  quant       ft_quant={D40_FT_QUANT} l1_quant={D40_L1_QUANT} "
+    print(f"  quant       ft_quant={D40_FT_QUANT} threat_quant={D40_THREAT_QUANT} "
+          f"l1_quant={D40_L1_QUANT} "
           f"ft_shift={D40_FT_SHIFT} scale={network_scale}")
     print(f"  payload     {len(payload):,} bytes   checksum {checksum:#018x}")
 
@@ -362,4 +368,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

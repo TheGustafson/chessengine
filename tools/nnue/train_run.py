@@ -33,13 +33,14 @@ import argparse
 import json
 import os
 import shlex
+import struct
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-STAGES = ["preflight", "corpus", "train", "verify", "pack", "sanity", "sprt", "ledger"]
+STAGES = ["preflight", "corpus", "train", "verify", "pack", "parity", "sanity", "sprt", "ledger"]
 
 # --------------------------------------------------------------------------- #
 # config                                                                       #
@@ -79,7 +80,17 @@ DEFAULTS = {
     "verify_out_clip": True,
     # --- pack (stage 4) --- netpack.py → .cenn
     "pack": {"activation": "screlu"},
-    # --- sanity (stage 5) --- nnue-eval load + a few fens
+    # --- parity (stage 5) --- raw Bullet logits vs packed Rust logits
+    "parity": {
+        "enable": False,
+        "fens": "tools/nnue/d40_probe.fens",
+        "raw": None,                      # defaults to <checkpoint_dir>/<net_id>-final-raw.bin
+        "max_abs_quantization_logit_error": 1.0,
+        "mean_abs_quantization_logit_error": 0.25,
+        "max_abs_runtime_logit_error": 0.2,
+        "mean_abs_runtime_logit_error": 0.03,
+    },
+    # --- sanity (stage 6) --- nnue-eval load + semantic score constraints
     "sanity_fens": [
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1",
@@ -313,14 +324,124 @@ def stage_pack(ctx):
 
 
 def stage_sanity(ctx):
-    """nnue-eval: the loader must ACCEPT the net and all cp be finite/sane."""
+    """nnue-eval: require both loadability and configured score semantics."""
     cenn = ctx.cfg.get("_cenn") or str(REPO / "data/nnue/nets" / f"{ctx.cfg['net_id']}.cenn")
     binp = REPO / "target/release/chessengine"
-    for fen in ctx.cfg["sanity_fens"]:
+    scores = []
+    for entry in ctx.cfg["sanity_fens"]:
+        spec = entry if isinstance(entry, dict) else {"fen": entry}
+        fen = spec["fen"]
         out = run(ctx, [str(binp), "nnue-eval", cenn, fen], stage="sanity", capture=True)
         if not ctx.dry:
-            print(f"    {fen[:32]:32s} → {out.strip().splitlines()[-1] if out.strip() else '(no output)'}")
-    ctx.results["sanity"] = {"cenn": rel(cenn), "fens": len(ctx.cfg["sanity_fens"])}
+            last = out.strip().splitlines()[-1] if out.strip() else ""
+            try:
+                score = int(last)
+            except ValueError:
+                die(f"sanity: non-integer output for {fen}: {last!r}")
+            scores.append(score)
+            print(f"    {fen[:32]:32s} → {score}")
+            if "min_cp" in spec and score < int(spec["min_cp"]):
+                die(f"sanity: {score} < min_cp {spec['min_cp']} for {fen}")
+            if "max_cp" in spec and score > int(spec["max_cp"]):
+                die(f"sanity: {score} > max_cp {spec['max_cp']} for {fen}")
+    ctx.results["sanity"] = {
+        "cenn": rel(cenn), "fens": len(ctx.cfg["sanity_fens"]), "scores": scores,
+    }
+
+
+def stage_parity(ctx):
+    """Reject a packed D40 net that does not reproduce its raw Bullet graph."""
+    parity = ctx.cfg["parity"]
+    if not parity.get("enable", False):
+        print("    parity.enable=false — skipping trainer/runtime parity")
+        ctx.results["parity"] = {"ran": False}
+        return
+    train = ctx.cfg["train"]
+    bullet_dir = Path(train["bullet_dir"])
+    example_src = REPO / "tools/nnue" / train["example"]
+    if not example_src.exists() and (REPO / train["example"]).exists():
+        example_src = REPO / train["example"]
+    run(ctx, ["cp", str(example_src),
+              str(bullet_dir / "examples" / f"{train['example_name']}.rs")],
+        stage="parity")
+    raw = Path(parity.get("raw") or
+               Path(train["checkpoint_dir"]) / f"{ctx.cfg['net_id']}-final-raw.bin")
+    fens_path = REPO / parity["fens"]
+    cenn = Path(ctx.cfg.get("_cenn") or REPO / "data/nnue/nets" / f"{ctx.cfg['net_id']}.cenn")
+    for required in (raw, fens_path, cenn):
+        if not required.exists():
+            die(f"parity: missing {required}")
+
+    base_env = dict(train.get("env", {}))
+    base_env.update({
+        "D40_PROBE_FENS": str(fens_path.resolve()),
+        "D40_DATA": str((REPO / ctx.cfg["corpus"]["train_bin"]).resolve()),
+    })
+    manifest = bullet_dir / "Cargo.toml"
+    probe_cmd = ["cargo", "run", "--release", "--features", train["features"],
+                 "--manifest-path", str(manifest), "--example", train["example_name"]]
+
+    def trainer_probe(kind, path):
+        env = {**base_env, f"D40_PROBE_{kind}": str(path.resolve())}
+        output = run(ctx, probe_cmd, env=env, stage="parity", capture=True)
+        prefix = f"D40_PROBE_{kind}\t"
+        values, fens = [], []
+        for line in output.splitlines():
+            if line.startswith(prefix):
+                _, value, fen = line.split("\t", 2)
+                values.append(float(value))
+                fens.append(fen)
+        if not values:
+            die(f"parity: trainer emitted no D40_PROBE_{kind} records")
+        return values, fens
+
+    raw_logits, probe_fens = trainer_probe("RAW", raw)
+    quant_logits, quant_fens = trainer_probe("QUANT", _quantised_path(ctx))
+    if quant_fens != probe_fens:
+        die("parity: raw and quantized trainer probes emitted different FENs")
+
+    print(f"    $ {REPO / 'target/release/chessengine'} nnue-eval {cenn} < {fens_path}")
+    proc = subprocess.run(
+        [str(REPO / "target/release/chessengine"), "nnue-eval", str(cenn)],
+        input="\n".join(probe_fens) + "\n", text=True, capture_output=True,
+        cwd=REPO, env=os.environ,
+    )
+    if proc.returncode != 0:
+        sys.stderr.write(proc.stdout + proc.stderr)
+        die(f"parity: engine probe failed (exit {proc.returncode})")
+    engine_cp = [int(line) for line in proc.stdout.splitlines() if line.strip()]
+    if len(engine_cp) != len(raw_logits):
+        die(f"parity: trainer emitted {len(raw_logits)} rows, engine emitted {len(engine_cp)}")
+    network_scale = struct.unpack_from("<i", cenn.read_bytes(), 44)[0]
+    quant_errors = [abs(quant - raw) for quant, raw in zip(quant_logits, raw_logits)]
+    runtime_errors = [abs(cp / network_scale - quant)
+                      for cp, quant in zip(engine_cp, quant_logits)]
+    quant_max, quant_mean = max(quant_errors), sum(quant_errors) / len(quant_errors)
+    runtime_max = max(runtime_errors)
+    runtime_mean = sum(runtime_errors) / len(runtime_errors)
+    worst = max(range(len(runtime_errors)), key=runtime_errors.__getitem__)
+    print(f"    parity rows={len(runtime_errors)} "
+          f"quant mean/max={quant_mean:.6f}/{quant_max:.6f} "
+          f"runtime mean/max={runtime_mean:.6f}/{runtime_max:.6f}")
+    print(f"    worst quant={quant_logits[worst]:.6f} "
+          f"runtime={engine_cp[worst] / network_scale:.6f} "
+          f"fen={probe_fens[worst]}")
+    gates = [
+        (quant_max, "max_abs_quantization_logit_error"),
+        (quant_mean, "mean_abs_quantization_logit_error"),
+        (runtime_max, "max_abs_runtime_logit_error"),
+        (runtime_mean, "mean_abs_runtime_logit_error"),
+    ]
+    for value, key in gates:
+        if value > float(parity[key]):
+            die(f"parity: {key} observed {value:.6f} exceeds {parity[key]}")
+    ctx.results["parity"] = {
+        "ran": True, "rows": len(runtime_errors),
+        "quantization_mean_abs_logit_error": quant_mean,
+        "quantization_max_abs_logit_error": quant_max,
+        "runtime_mean_abs_logit_error": runtime_mean,
+        "runtime_max_abs_logit_error": runtime_max,
+    }
 
 
 def stage_sprt(ctx):
@@ -389,7 +510,7 @@ def stage_ledger(ctx):
 
 STAGE_FNS = {
     "preflight": stage_preflight, "corpus": stage_corpus, "train": stage_train,
-    "verify": stage_verify, "pack": stage_pack, "sanity": stage_sanity,
+    "verify": stage_verify, "pack": stage_pack, "parity": stage_parity, "sanity": stage_sanity,
     "sprt": stage_sprt, "ledger": stage_ledger,
 }
 
