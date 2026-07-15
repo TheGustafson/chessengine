@@ -220,6 +220,43 @@ it may transform the fishpack picture entirely.
   regress, the joint diagnosis is "H1 holds only with calibrated targets;
   fishpack needs the A2 rescale."
 
+- **2026-07-15 18:40 — DIAGNOSIS CLOSED BY USER DECISION; probes terminated
+  mid-cell-2.** User: remaining results (cell 2/3, A2) would not change the
+  next action. All probe processes killed cleanly (campaign driver, cell-2
+  trainer at ~SB300+, watcher, A2 runner, monitors); cell 2/3 and the A2
+  anchor reruns are CANCELLED, their preregistrations void. **Final
+  synthesis — why we struggled to train good nets:**
+  1. NOT the pipeline (H4; seed-100 repro = 50.0%).
+  2. NOT the search consumer (H2; Probe B: no coupling signature — every
+     bulk net loses even at 32-node near-eval-only budgets).
+  3. NOT a label-semantics defect (Probe C: both corpora byte-verified
+     against pinned SF18; POV/sign/canonicalization exact).
+  4. **Fishpack: target-scale miscalibration (H3b).** Stored scores are SF
+     internal units ≈ 3.0x UCI cp; trainer sigmoid scale 400 assumes UCI cp
+     ⇒ ~3x over-sharp targets. Probe A cell 1: 16x presentations made it
+     WORSE (−328 vs −163) — faithful fitting of miscalibrated targets.
+  5. **Scale alone fixes nothing when targets are miscalibrated; scale with
+     calibrated targets remains the live (untested-at-endpoint) H1 lever**,
+     with Lichess classic1024's −39 @20k off a 12-min run as the best
+     supporting evidence.
+  Actionable recipe going forward: calibrated targets (per-source score
+  scale) + real outcomes/WDL + real schedule (multi-billion presentations)
+  + capacity, screened with the local-coherence gate and multi-budget games.
+
+### Production track (started 2026-07-15 18:40): prod-fishpack-cal-v1
+
+The diagnosis phase is over; the GPU now trains PRODUCTION candidates.
+Campaign `data/nnue/campaigns/prod-fishpack-cal-v1/`, bullet patched with the
+env-gated `SFBINPACK_SCORE_DIV` (tools/nnue/patches/bullet-sfbinpack-score-div.patch):
+
+1. `prod-fishpack-cal-v1-classic256`: fishpack, score/3.5, WDL 0.3, 480 SB
+   full decay, seed 198273612 — the fast (~20 min) calibration read; its
+   endpoint vs the miscalibrated anchors (−163 @1x, −328 @16x) measures H3b
+   directly at scale.
+2. `prod-fishpack-cal-v1-classic1024`: same recipe at width 1024 — the first
+   real candidate. Endpoint screen 200g @5k vs net-0; if ≥ −50, run the
+   2k/5k/20k curve + coherence audit before any promotion talk.
+
 ## Resume instructions
 
 1. Read this file + the takeover checkpoint of `policy-automl-state.md`.

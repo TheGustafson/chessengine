@@ -1,14 +1,15 @@
 diff --git a/crates/bullet_lib/src/value/loader/sfbinpack.rs b/crates/bullet_lib/src/value/loader/sfbinpack.rs
+index b8887b5..01d53cf 100644
 --- a/crates/bullet_lib/src/value/loader/sfbinpack.rs
 +++ b/crates/bullet_lib/src/value/loader/sfbinpack.rs
-@@ -20,6 +20,17 @@ use crate::game::formats::bulletformat::ChessBoard;
-
+@@ -20,6 +20,18 @@ use crate::game::formats::bulletformat::ChessBoard;
+ 
  use super::rng::SimpleRand;
-
-+/// ARCHON H3b probe: optional score rescale for SF-binpack sources whose
-+/// stored scores are SF internal units (~3x UCI cp) rather than the UCI-cp
-+/// scale the sigmoid target scale was calibrated for. Env-gated; the default
-+/// of 1.0 is bit-identical to unpatched behavior.
+ 
++/// ARCHON H3b fix: optional score rescale for SF-binpack sources whose stored
++/// scores are SF internal units (~3x UCI cp) rather than the UCI-cp scale the
++/// sigmoid target scale was calibrated for. Env-gated; the default of 1.0 is
++/// bit-identical to unpatched behavior.
 +static SCORE_DIV: std::sync::LazyLock<f32> = std::sync::LazyLock::new(|| {
 +    let div = std::env::var("SFBINPACK_SCORE_DIV").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0);
 +    if div != 1.0 {
@@ -19,15 +20,15 @@ diff --git a/crates/bullet_lib/src/value/loader/sfbinpack.rs b/crates/bullet_lib
 +
  fn convert_to_bulletformat(entry: &TrainingDataEntry) -> ChessBoard {
      let mut bbs = [0; 8];
-
-@@ -44,6 +55,10 @@ fn convert_to_bulletformat(entry: &TrainingDataEntry) -> ChessBoard {
+ 
+@@ -44,6 +56,10 @@ fn convert_to_bulletformat(entry: &TrainingDataEntry) -> ChessBoard {
          result = 1.0 - result;
      }
-
+ 
 +    if *SCORE_DIV != 1.0 {
 +        score = (f32::from(score) / *SCORE_DIV).round() as i16;
 +    }
 +
      ChessBoard::from_raw(bbs, stm, score, result).expect("Binpack must be malformed!")
  }
-
+ 
