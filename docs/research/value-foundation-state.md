@@ -12,8 +12,14 @@
 > **GOVERNING GOAL (user, 2026-07-15):** Find out WHY we struggle to train
 > nets that beat net-0 — fast — then spend all effort improving models well
 > beyond it. A world-class eval-only engine is the prerequisite for the D41
-> research program. Roadmap doc: `archon-self-improvement-roadmap.md` (B4);
-> next user checkpoint = probes A–C complete.
+> research program. Roadmap doc: `archon-self-improvement-roadmap.md` (B4).
+> **PROMOTION BAR (user, 2026-07-15 evening): candidates must beat net-0 at
+> EQUAL TIME** — fixed-node screens are attribution instruments only; the
+> gate is a 200-game 10+0.1 real-TC match (`tools/nnue/prod_tc_gate.sh`,
+> width-specific fixed-node floors feed it). net-0 is far below top engines;
+> the capability ladder beyond it: calibrated classic → exact HalfKA at
+> scale on calibrated fishpack → multi-epoch schedules → self-play datagen
+> flywheel + SPSA consumer retune.
 
 Last updated: 2026-07-15 America/New_York
 
