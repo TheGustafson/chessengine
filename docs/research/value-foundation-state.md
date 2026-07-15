@@ -112,6 +112,20 @@ check, mate handling; JSON + markdown under `data/nnue/audits/`. Any semantic
 defect ⇒ quarantine the corpus and re-audit every conclusion built on it
 (including Probe A's cells on that source).
 
+### Probe A2 (preregistered 2026-07-15 18:05, runs after Probe A cells finish)
+
+**H3b — per-source target-scale miscalibration (new, from Probe C).** Fishpack
+stored scores are SF INTERNAL units ≈ 3.0x SF18-UCI cp (Probe C OLS a=3.026,
+R²=0.90); Lichess ≈ 1.28x. The trainer's sigmoid target scale (400) was
+calibrated for net-0's UCI-scale SF16 labels, so every fishpack cell trained
+against ~3x over-sharp sigmoid targets — the exact direction (over-sharp
+targets) that the WDL-logit400 and scale-200 experiments already proved loses
+engine strength. Test: fishpack classic256, 30 SB (matrix-v2 anchor recipe,
+−163), with stored scores divided by ~3.03 (or equivalent sigmoid-scale
+1212) — one ~12-minute GPU run + 80-game screen. Prediction: if H3b is
+material, the rescaled cell clearly beats −163; combined with a long schedule
+it may transform the fishpack picture entirely.
+
 ## Live status
 
 - 2026-07-15: file created; probes A/B/C launching. Worktree committed
@@ -159,6 +173,34 @@ defect ⇒ quarantine the corpus and re-audit every conclusion built on it
   budget-shape structure exists but is noise-level at 80g); per-net margin
   SPSA is DEPRIORITIZED. The binding question is now H1 vs H3 — Probe A's
   decayed endpoints and Probe C's audit decide.
+- **2026-07-15 18:00 — PROBE C COMPLETE: BOTH SOURCES PASS — no semantic
+  defect, no quarantine.** `tools/nnue/audit_label_semantics.py` (400
+  rows/source, seed 20260715, FULL-file coverage on both corpora — fishpack
+  sampled via chunk-header skip-scan across all 5477 chunks, one entry per
+  selected chunk; lichess evenly-spaced record indices, stride 663152 —
+  fresh SF18 `go depth 12` oracle, Threads=1, hash cleared per position, 2
+  nice-10 workers; corpus sha256s re-verified == ledger rows; outputs
+  `data/nnue/audits/label-semantics-v1/{lichess,fishpack}{.json,-summary.md}`).
+  **Lichess train.bin PASS:** all 400 records decode white-to-move canonical
+  (bulletformat flip verified: kings match ksq/opp_ksq^56; 0 structural
+  faults); result byte uniformly 1 (exporter 0.5 placeholder, WDL=0 rule
+  intact); core Pearson 0.946 / Spearman 0.974, sign agreement 96.9% (all 11
+  disagreements |cp|<80 near-equality noise); OLS stored = 1.284·SF18cp + 5.0
+  (R² 0.89) — stored cp ~28% hotter than depth-12 SF18-UCI, a calibration
+  note (deeper heterogeneous browser-SF sources), not a defect; no mates,
+  |stored| ≤ 1679 (2000 export cap intact). **fishpack32 PASS:** stm
+  209w/191b; POV decisively stm-relative (core Pearson 0.948 stm vs −0.044
+  white); sign agreement 99.7% (364/365); OLS stored = 3.026·SF18cp + 1.3
+  (R² 0.90) — labels are SF *internal* units (~3x UCI cp, normalization ≈3.5
+  attenuated by oracle noise); result −1/0/+1 = 90/232/78 stm-POV, coherent
+  with scores (bucket mean stored −499/+21/+488). Oracle regime: 0/800
+  bound-carrying finals, 0 timeouts, median 0.04 s / ~20-26k nodes per
+  position. **Consequence: H3-as-semantic-defect is dead; both corpora mean
+  what training assumed (mover/stm-POV, sign-correct, projection intact).
+  H3 survives only as heterogeneity/scale (lichess 1.28x, fishpack 3.0x
+  SF18-UCI-cp — per-source trainer scale/σ must match). Probe A/B
+  conclusions on these sources stand; H1 is now the last hypothesis
+  standing pending Probe A's decayed endpoints.**
 
 ## Resume instructions
 
