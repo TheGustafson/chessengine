@@ -61,6 +61,7 @@
 //! side (and every non-king move) stays incremental.
 
 use super::sota_features::{ACC, refresh_threat, threat_index};
+use super::sota_simd::apply_i8_deltas;
 use crate::attacks::{
     attacks, bishop_attacks, knight_attacks, pawn_attacks, ray_pass, rook_attacks,
 };
@@ -350,6 +351,125 @@ fn ripple(
     });
 }
 
+/// Occupancy-preserving identity replacement at `square` (capture placement or
+/// promotion). Only relations whose attacker or victim is that square change;
+/// x-rays beyond it do not. This is the compact counterpart to a remove+add
+/// pair, which needlessly emits and later cancels those unchanged x-rays.
+fn record_mutate(buf: &mut DeltaBuf, r: &Replay, old: Piece, new: Piece, square: Square) {
+    record_outgoing(buf, r, old, square, false);
+    record_outgoing(buf, r, new, square, true);
+    record_incoming_mutate(buf, r, old, new, square);
+}
+
+fn record_outgoing(buf: &mut DeltaBuf, r: &Replay, piece: Piece, from: Square, add: bool) {
+    if piece.piece_type == PieceType::King {
+        return;
+    }
+    let occ = r.occ;
+    if piece.piece_type == PieceType::Pawn {
+        for to in pawn_attacks(piece.color, from) & occ {
+            buf.push(ThreatDelta {
+                attacker: piece,
+                from,
+                victim: r.resolve(to),
+                to,
+                add,
+            });
+        }
+        if let Some(to) = from.shifted(piece.color.pawn_push())
+            && occ.contains(to)
+        {
+            let victim = r.resolve(to);
+            if victim.piece_type == PieceType::Pawn {
+                buf.push(ThreatDelta {
+                    attacker: piece,
+                    from,
+                    victim,
+                    to,
+                    add,
+                });
+            }
+        }
+    } else {
+        for to in attacks(piece.piece_type, from, occ) & occ {
+            buf.push(ThreatDelta {
+                attacker: piece,
+                from,
+                victim: r.resolve(to),
+                to,
+                add,
+            });
+        }
+    }
+}
+
+fn record_incoming_mutate(buf: &mut DeltaBuf, r: &Replay, old: Piece, new: Piece, to: Square) {
+    let occ = r.occ;
+    let rookers = rook_attacks(to, occ) & occ;
+    let bishops = bishop_attacks(to, occ) & occ;
+    let knights = knight_attacks(to) & occ;
+    let white_pawns = pawn_attacks(Color::Black, to) & occ;
+    let black_pawns = pawn_attacks(Color::White, to) & occ;
+    for from in rookers | bishops | knights | white_pawns | black_pawns {
+        let attacker = r.resolve(from);
+        let attacks_to = match attacker.piece_type {
+            PieceType::Rook => rookers.contains(from),
+            PieceType::Bishop => bishops.contains(from),
+            PieceType::Queen => rookers.contains(from) || bishops.contains(from),
+            PieceType::Knight => knights.contains(from),
+            PieceType::Pawn => {
+                (attacker.color == Color::White && white_pawns.contains(from))
+                    || (attacker.color == Color::Black && black_pawns.contains(from))
+            }
+            PieceType::King => false,
+        };
+        if attacks_to {
+            buf.push(ThreatDelta {
+                attacker,
+                from,
+                victim: old,
+                to,
+                add: false,
+            });
+            buf.push(ThreatDelta {
+                attacker,
+                from,
+                victim: new,
+                to,
+                add: true,
+            });
+        }
+    }
+    // The non-capture pawn-push relation exists only when the victim is a pawn.
+    for color in Color::ALL {
+        if let Some(from) = to.shifted(color.flip().pawn_push())
+            && occ.contains(from)
+        {
+            let attacker = r.resolve(from);
+            if attacker.color == color && attacker.piece_type == PieceType::Pawn {
+                if old.piece_type == PieceType::Pawn {
+                    buf.push(ThreatDelta {
+                        attacker,
+                        from,
+                        victim: old,
+                        to,
+                        add: false,
+                    });
+                }
+                if new.piece_type == PieceType::Pawn {
+                    buf.push(ThreatDelta {
+                        attacker,
+                        from,
+                        victim: new,
+                        to,
+                        add: true,
+                    });
+                }
+            }
+        }
+    }
+}
+
 /// Does `color`'s king cross the d/e mirror boundary in this move? (If so,
 /// `color`'s threat accumulator must be rebuilt from scratch.)
 fn king_crossed(dp: &DirtyPiece, color: Color) -> bool {
@@ -370,25 +490,6 @@ fn king_crossed(dp: &DirtyPiece, color: Color) -> bool {
         // orient_threats splits on file <= 3 (a–d) vs >= 4 (e–h).
         (Some(f), Some(t)) => (f.file() <= 3) != (t.file() <= 3),
         _ => false,
-    }
-}
-
-/// Add / subtract feature `idx`'s `ACC`-wide `i8` weight column into `acc`,
-/// wrapping i16 (identical math to [`refresh_threat`]'s `add_column`, so an
-/// add-then-subtract is an exact inverse mod 2¹⁶).
-#[inline]
-fn add_column(acc: &mut [i16; ACC], weights: &[i8], idx: usize) {
-    let col = &weights[idx * ACC..idx * ACC + ACC];
-    for (a, &w) in acc.iter_mut().zip(col.iter()) {
-        *a = a.wrapping_add(w as i16);
-    }
-}
-
-#[inline]
-fn sub_column(acc: &mut [i16; ACC], weights: &[i8], idx: usize) {
-    let col = &weights[idx * ACC..idx * ACC + ACC];
-    for (a, &w) in acc.iter_mut().zip(col.iter()) {
-        *a = a.wrapping_sub(w as i16);
     }
 }
 
@@ -421,8 +522,14 @@ impl<'a> ThreatContext<'a> {
     /// definition of the feature set.
     pub fn refresh(&mut self, board: &Board) {
         let mut root = [[0i16; ACC]; 2];
-        for (i, &persp) in Color::ALL.iter().enumerate() {
-            root[i] = refresh_threat(self.weights, board, persp);
+        // CENN-v2 explicitly supports HalfKA-only networks.  Their threat
+        // transformer is represented by an empty slice and contributes the
+        // all-zero accumulator; never index that empty slice through the
+        // ordinary FullThreats refresh path.
+        if !self.weights.is_empty() {
+            for (i, &persp) in Color::ALL.iter().enumerate() {
+                root[i] = refresh_threat(self.weights, board, persp);
+            }
         }
         self.stack.clear();
         self.stack.push(root);
@@ -447,6 +554,14 @@ impl<'a> ThreatContext<'a> {
     /// crossed the d/e boundary is rebuilt from scratch instead; the other is
     /// incremental. `board` is the fully post-move position.
     pub fn apply(&mut self, dp: &DirtyPiece, board: &Board) {
+        if self.weights.is_empty() {
+            let parent = *self
+                .stack
+                .last()
+                .expect("ThreatContext: refresh before apply");
+            self.stack.push(parent);
+            return;
+        }
         // Build the perspective-agnostic raw event list from dp + post-move board.
         self.buf.clear();
         build_deltas(&mut self.buf, dp, board);
@@ -463,15 +578,35 @@ impl<'a> ThreatContext<'a> {
             }
             let ksq = board.king_square(persp);
             let acc = &mut child[i];
+            let mut adds = [0usize; DELTA_CAP];
+            let mut add_len = 0;
+            let mut subs = [0usize; DELTA_CAP];
+            let mut sub_len = 0;
             for d in self.buf.events() {
                 if let Some(idx) = threat_index(persp, d.attacker, d.from, d.to, d.victim, ksq) {
                     if d.add {
-                        add_column(acc, self.weights, idx);
+                        // The simple intermediate-state replay deliberately
+                        // over-emits telescoping events. Cancel an opposite
+                        // occurrence before purchasing a 768-lane update.
+                        if let Some(pos) = subs[..sub_len].iter().position(|&old| old == idx) {
+                            sub_len -= 1;
+                            subs[pos] = subs[sub_len];
+                        } else {
+                            adds[add_len] = idx;
+                            add_len += 1;
+                        }
                     } else {
-                        sub_column(acc, self.weights, idx);
+                        if let Some(pos) = adds[..add_len].iter().position(|&old| old == idx) {
+                            add_len -= 1;
+                            adds[pos] = adds[add_len];
+                        } else {
+                            subs[sub_len] = idx;
+                            sub_len += 1;
+                        }
                     }
                 }
             }
+            apply_i8_deltas(acc, self.weights, &adds[..add_len], &subs[..sub_len]);
         }
         self.stack.push(child);
     }
@@ -509,6 +644,53 @@ impl<'a> ThreatContext<'a> {
 /// `record_square_touch` per edit against the state *after* that edit. See the
 /// module docs for the telescoping argument.
 fn build_deltas(buf: &mut DeltaBuf, dp: &DirtyPiece, board: &Board) {
+    // A non-capture (including a quiet promotion) changes occupancy only by
+    // moving the blocker from `from` to `to`. Evaluate both endpoint changes
+    // against the shared occupancy with both endpoints empty; this is the
+    // compact move primitive and avoids intermediate endpoint interactions.
+    if let ([(mover, from)], [(placed, to)]) = (dp.subs(), dp.adds())
+        && from != to
+    {
+        let between = Replay {
+            board,
+            occ: board.all_occupancy() & !Bitboard::from_square(*to),
+            over_sq: [Square::A1; 8],
+            over_pc: [None; 8],
+            n_over: 0,
+        };
+        record_square_touch(buf, &between, *mover, *from, false);
+        record_square_touch(buf, &between, *placed, *to, true);
+        return;
+    }
+
+    // Ordinary and promotion captures are the common occupancy-preserving
+    // replacement case. Model them as mover removal plus victim→mover identity
+    // mutation, avoiding the remove/add x-ray churn at the destination.
+    if let ([(mover, from), (victim, victim_sq)], [(placed, to)]) = (dp.subs(), dp.adds())
+        && victim_sq == to
+        && from != to
+    {
+        let mut after_remove = Replay {
+            board,
+            occ: board.all_occupancy(),
+            over_sq: [Square::A1; 8],
+            over_pc: [None; 8],
+            n_over: 0,
+        };
+        after_remove.set(*to, Some(*victim));
+        record_square_touch(buf, &after_remove, *mover, *from, false);
+
+        let final_state = Replay {
+            board,
+            occ: board.all_occupancy(),
+            over_sq: [Square::A1; 8],
+            over_pc: [None; 8],
+            n_over: 0,
+        };
+        record_mutate(buf, &final_state, *victim, *placed, *to);
+        return;
+    }
+
     // Pre-move occupancy = post-move, with adds cleared then subs set. A square
     // that is both a sub and an add (a capture's destination) ends up SET
     // (occupied pre-move by the victim), because subs are applied last.

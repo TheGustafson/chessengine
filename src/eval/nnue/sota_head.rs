@@ -19,6 +19,7 @@
 //! Behind the `sota` cargo feature; the default build never compiles it, so the
 //! depth-6 bench stays 548978.
 
+use super::sota_simd::{activate, l1_dot};
 use crate::types::Color;
 
 /// Accumulator width per perspective (Reckless-proven; an SPRT knob, D40).
@@ -79,24 +80,27 @@ pub struct SotaHead {
 /// and `>> FT_SHIFT` → u8 ∈ [0,127]. STM half occupies `[0, L1/2)`. The
 /// `wrapping_add` reproduces the reference's wrapping i16 accumulator math.
 fn activate_ft(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color) -> [u8; L1] {
-    const H: usize = L1 / 2; // 384
     let mut out = [0u8; L1];
-    for flip in 0..2usize {
-        let persp = (stm as usize) ^ flip;
-        let p = &pst[persp];
-        let t = &threat[persp];
-        for i in 0..H {
-            let left = merge_transformers(p[i], t[i]);
-            let right = merge_transformers(p[i + H], t[i + H]);
-            out[i + flip * H] = ((left as i32 * right as i32) >> FT_SHIFT) as u8;
-        }
-    }
+    activate(&mut out, pst, threat, stm as usize);
     out
+}
+
+/// Float view of the quantized shared D40 trunk for the optional policy head.
+/// The trainer's pairwise CReLU produces values in `[0, 1]`; the runtime FT
+/// stores the same product after `>> FT_SHIFT`, so undo that scale here.  This
+/// deliberately shares [`activate_ft`] with eval to prevent the two consumers
+/// from drifting on perspective order, threat scaling, or clamp semantics.
+#[cfg(feature = "policy")]
+pub fn policy_trunk(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color) -> [f32; L1] {
+    let quantized = activate_ft(pst, threat, stm);
+    let scale = (1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT) as f32;
+    quantized.map(|value| f32::from(value) * scale)
 }
 
 /// Convert the independently quantized threat accumulator to the HalfKA scale
 /// before summing. This is `round(pst + threat * 255/64)` in quantized space.
 /// Adding the raw integers would underweight every threat feature by ~4x.
+#[cfg(test)]
 #[inline]
 fn merge_transformers(pst: i16, threat: i16) -> i16 {
     let scaled = i32::from(threat) * FT_QUANT;
@@ -128,23 +132,13 @@ fn find_nnz(ft: &[u8; L1]) -> ([u16; L1 / 4], usize) {
 
 impl SotaHead {
     /// int8 sparse matmul over the nonzero groups → dequantized SCReLU f32[L2]
-    /// (design/11 §12.3 step 3). The inner 4-product sum runs in wrapping i16.
+    /// (design/11 §12.3 step 3). Products accumulate in i32, matching Bullet's
+    /// affine layer and the `dpbusd` semantics used by the reference design.
     fn propagate_l1(&self, ft: &[u8; L1], nnz: &[u16], bucket: usize) -> [f32; L2] {
         let mut pre = [0i32; L2];
         let wbase = bucket * L2 * L1;
         let wb = &self.l1_weights[wbase..wbase + L2 * L1];
-        for &g in nnz {
-            let g = g as usize;
-            for j in 0..L2 {
-                let mut vector: i16 = 0;
-                for k in 0..4 {
-                    let byte = ft[g * 4 + k] as i16;
-                    let weight = wb[g * (L2 * 4) + j * 4 + k] as i16;
-                    vector = vector.wrapping_add(byte.wrapping_mul(weight));
-                }
-                pre[j] += vector as i32;
-            }
-        }
+        l1_dot(&mut pre, ft, nnz, wb);
         let mut out = [0.0f32; L2];
         let bb = bucket * L2;
         for j in 0..L2 {
@@ -261,7 +255,9 @@ mod tests {
             .map(|i| ((i % 13) as f32 - 6.0) * 0.02)
             .collect();
         let l2b: Vec<f32> = (0..BUCKETS * L3).map(|i| (i % 7) as f32 * 0.01).collect();
-        let l3w: Vec<f32> = (0..BUCKETS * L3).map(|i| ((i % 11) as f32 - 5.0) * 0.03).collect();
+        let l3w: Vec<f32> = (0..BUCKETS * L3)
+            .map(|i| ((i % 11) as f32 - 5.0) * 0.03)
+            .collect();
         let l3b: Vec<f32> = (0..BUCKETS).map(|i| i as f32 * 0.1).collect();
         SotaHead {
             l1_weights: l1w.into_boxed_slice(),
@@ -319,16 +315,16 @@ mod tests {
         let (nnz, count) = find_nnz(&ft);
         let bucket = 3;
         let sparse = head.propagate_l1(&ft, &nnz[..count], bucket);
-        // dense: iterate every group, same wrapping-i16 inner math.
+        // Dense: iterate every group with the same mathematical i32 dot.
         let mut pre = [0i32; L2];
         let wb = &head.l1_weights[bucket * L2 * L1..bucket * L2 * L1 + L2 * L1];
         for g in 0..L1 / 4 {
             for j in 0..L2 {
-                let mut v: i16 = 0;
+                let mut v = 0i32;
                 for k in 0..4 {
-                    v = v.wrapping_add((ft[g * 4 + k] as i16).wrapping_mul(wb[g * (L2 * 4) + j * 4 + k] as i16));
+                    v += i32::from(ft[g * 4 + k]) * i32::from(wb[g * (L2 * 4) + j * 4 + k]);
                 }
-                pre[j] += v as i32;
+                pre[j] += v;
             }
         }
         let mut dense = [0.0f32; L2];

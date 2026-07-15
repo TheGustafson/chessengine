@@ -24,7 +24,13 @@
 pub mod accumulator;
 pub mod loader;
 pub mod network;
+/// Frozen classic evaluator plus an exact HalfKAv2_hm residual (CENN-v4).
+#[cfg(feature = "sota")]
+pub mod protected_halfka;
 pub mod simd;
+/// Exact HalfKAv2_hm plus the protected classic SCReLU head (CENN-v3).
+#[cfg(feature = "sota")]
+pub mod simple_halfka;
 /// Incremental HalfKA stack and Finny cache for the SOTA net.
 #[cfg(feature = "sota")]
 mod sota_accumulator;
@@ -43,6 +49,9 @@ pub mod sota_head;
 /// `sota`.
 #[cfg(feature = "sota")]
 pub mod sota_loader;
+/// Runtime-dispatched fused accumulator kernels for the SOTA transformers.
+#[cfg(feature = "sota")]
+mod sota_simd;
 /// The SOTA net's incremental FullThreats accumulator (the ≤80/move dirty-diff
 /// observer, D40, design/11 §12.9.1) — behind `sota`.
 #[cfg(feature = "sota")]
@@ -60,10 +69,14 @@ pub const INPUT: usize = 768;
 /// downstream (accumulator arrays, AVX2 kernel strides, `PAYLOAD_LEN`) derives
 /// from this const, so 512 is a one-line widening (512 % 16 == 0, so the AVX2
 /// lane assert still holds).
-#[cfg(not(feature = "nnue-l1-512"))]
+#[cfg(all(not(feature = "nnue-l1-512"), not(feature = "nnue-l1-1024")))]
 pub const L1: usize = 256;
-#[cfg(feature = "nnue-l1-512")]
+#[cfg(all(feature = "nnue-l1-512", not(feature = "nnue-l1-1024")))]
 pub const L1: usize = 512;
+#[cfg(all(feature = "nnue-l1-1024", not(feature = "nnue-l1-512")))]
+pub const L1: usize = 1024;
+#[cfg(all(feature = "nnue-l1-512", feature = "nnue-l1-1024"))]
+compile_error!("nnue-l1-512 and nnue-l1-1024 are mutually exclusive");
 
 // --- Quantization constants (design/11 §3.4.3) -----------------------------
 
@@ -108,6 +121,13 @@ static ACTIVE_NET: RwLock<Option<&'static Network>> = RwLock::new(None);
 /// When a CENN-v2 net is installed the v1 ACTIVE_NET is cleared, and vice versa.
 #[cfg(feature = "sota")]
 static ACTIVE_SOTA_NET: RwLock<Option<&'static sota_loader::SotaNetwork>> = RwLock::new(None);
+#[cfg(feature = "sota")]
+static ACTIVE_SIMPLE_HALFKA_NET: RwLock<Option<&'static simple_halfka::SimpleHalfkaNetwork>> =
+    RwLock::new(None);
+#[cfg(feature = "sota")]
+static ACTIVE_PROTECTED_HALFKA_NET: RwLock<
+    Option<&'static protected_halfka::ProtectedHalfkaNetwork>,
+> = RwLock::new(None);
 
 /// Install (or clear) the `EvalFile` net. An empty/blank path turns NNUE OFF
 /// (back to PSQT). Otherwise the file is loaded and fully validated.
@@ -123,6 +143,12 @@ pub fn set_eval_file(path: &str) -> Result<(), NnueError> {
         #[cfg(feature = "sota")]
         {
             *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
+            *ACTIVE_SIMPLE_HALFKA_NET
+                .write()
+                .unwrap_or_else(|e| e.into_inner()) = None;
+            *ACTIVE_PROTECTED_HALFKA_NET
+                .write()
+                .unwrap_or_else(|e| e.into_inner()) = None;
         }
         return Ok(());
     }
@@ -141,10 +167,58 @@ pub fn set_eval_file(path: &str) -> Result<(), NnueError> {
             let leaked: &'static sota_loader::SotaNetwork = Box::leak(Box::new(net));
             *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = Some(leaked);
             *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
+            *ACTIVE_SIMPLE_HALFKA_NET
+                .write()
+                .unwrap_or_else(|e| e.into_inner()) = None;
+            *ACTIVE_PROTECTED_HALFKA_NET
+                .write()
+                .unwrap_or_else(|e| e.into_inner()) = None;
+            return Ok(());
+        }
+        if bytes.len() >= 4 && bytes[0..4] == simple_halfka::MAGIC {
+            let net = simple_halfka::load_bytes(&bytes).map_err(|e| {
+                NnueError::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    e.to_string(),
+                ))
+            })?;
+            *ACTIVE_SIMPLE_HALFKA_NET
+                .write()
+                .unwrap_or_else(|e| e.into_inner()) = Some(Box::leak(Box::new(net)));
+            *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
+            *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
+            *ACTIVE_PROTECTED_HALFKA_NET
+                .write()
+                .unwrap_or_else(|e| e.into_inner()) = None;
+            return Ok(());
+        }
+        if bytes.len() >= 4 && bytes[0..4] == protected_halfka::MAGIC {
+            let net = protected_halfka::load_bytes_v4(&bytes).map_err(|e| {
+                NnueError::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    e.to_string(),
+                ))
+            })?;
+            let leaked: &'static protected_halfka::ProtectedHalfkaNetwork =
+                Box::leak(Box::new(net));
+            *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = Some(&leaked.base);
+            *ACTIVE_PROTECTED_HALFKA_NET
+                .write()
+                .unwrap_or_else(|e| e.into_inner()) = Some(leaked);
+            *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
+            *ACTIVE_SIMPLE_HALFKA_NET
+                .write()
+                .unwrap_or_else(|e| e.into_inner()) = None;
             return Ok(());
         }
         // Not CEN2 → fall through to v1 loader. Clear SOTA.
         *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
+        *ACTIVE_SIMPLE_HALFKA_NET
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        *ACTIVE_PROTECTED_HALFKA_NET
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = None;
         let net: &'static Network = Box::leak(Box::new(load_bytes(&bytes)?));
         *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = Some(net);
         Ok(())
@@ -181,6 +255,20 @@ pub fn active_net() -> Option<&'static Network> {
 #[cfg(feature = "sota")]
 pub fn active_sota_net() -> Option<&'static sota_loader::SotaNetwork> {
     *ACTIVE_SOTA_NET.read().unwrap_or_else(|e| e.into_inner())
+}
+
+#[cfg(feature = "sota")]
+pub fn active_simple_halfka_net() -> Option<&'static simple_halfka::SimpleHalfkaNetwork> {
+    *ACTIVE_SIMPLE_HALFKA_NET
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+#[cfg(feature = "sota")]
+pub fn active_protected_halfka_net() -> Option<&'static protected_halfka::ProtectedHalfkaNetwork> {
+    *ACTIVE_PROTECTED_HALFKA_NET
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
 }
 
 /// The compile-time-embedded default net (distribution builds only, `embed-net`

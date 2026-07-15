@@ -1,6 +1,7 @@
 //! Incremental HalfKAv2_hm accumulator with a per-king-state Finny cache.
 
 use super::sota_features::{ACC, halfka_index, halfka_king_key};
+use super::sota_simd::apply_i16_deltas;
 use crate::board::{Board, DirtyPiece};
 use crate::types::{Color, MAX_PLY, Piece, Square};
 
@@ -116,9 +117,14 @@ impl<'a> HalfkaContext<'a> {
         let slot = &mut self.cache[perspective as usize * FINNY_KEYS + key];
         let acc = if let Some(cached) = slot.as_ref() {
             let mut acc = cached.acc;
+            let mut adds = [0usize; 32];
+            let mut add_len = 0;
+            let mut subs = [0usize; 32];
+            let mut sub_len = 0;
             for &old in &cached.features[..cached.len as usize] {
                 if features[..len].binary_search(&old).is_err() {
-                    add_column(self.weights, &mut acc, old as usize, -1);
+                    subs[sub_len] = old as usize;
+                    sub_len += 1;
                 }
             }
             for &new in &features[..len] {
@@ -126,16 +132,20 @@ impl<'a> HalfkaContext<'a> {
                     .binary_search(&new)
                     .is_err()
                 {
-                    add_column(self.weights, &mut acc, new as usize, 1);
+                    adds[add_len] = new as usize;
+                    add_len += 1;
                 }
             }
+            apply_i16_deltas(&mut acc, self.weights, &adds[..add_len], &subs[..sub_len]);
             acc
         } else {
             let mut acc = [0i16; ACC];
             acc.copy_from_slice(&self.bias[..ACC]);
-            for &feature in &features[..len] {
-                add_column(self.weights, &mut acc, feature as usize, 1);
+            let mut adds = [0usize; 32];
+            for (dst, &feature) in adds.iter_mut().zip(&features[..len]) {
+                *dst = feature as usize;
             }
+            apply_i16_deltas(&mut acc, self.weights, &adds[..len], &[]);
             acc
         };
         // Keep the cache's accumulator bit-identical even if an exotic illegal
@@ -157,29 +167,20 @@ fn apply_dirty(
     perspective: Color,
     king: Square,
 ) {
-    for &(piece, square) in dirty.subs() {
-        add_column(
-            weights,
-            acc,
-            halfka_index(perspective, piece, square, king),
-            -1,
-        );
+    let mut adds = [0usize; 2];
+    let mut subs = [0usize; 2];
+    for (i, &(piece, square)) in dirty.adds().iter().enumerate() {
+        adds[i] = halfka_index(perspective, piece, square, king);
     }
-    for &(piece, square) in dirty.adds() {
-        add_column(
-            weights,
-            acc,
-            halfka_index(perspective, piece, square, king),
-            1,
-        );
+    for (i, &(piece, square)) in dirty.subs().iter().enumerate() {
+        subs[i] = halfka_index(perspective, piece, square, king);
     }
-}
-
-fn add_column(weights: &[i16], acc: &mut [i16; ACC], feature: usize, sign: i16) {
-    let column = &weights[feature * ACC..(feature + 1) * ACC];
-    for (dst, &weight) in acc.iter_mut().zip(column) {
-        *dst = dst.wrapping_add(weight.wrapping_mul(sign));
-    }
+    apply_i16_deltas(
+        acc,
+        weights,
+        &adds[..dirty.adds().len()],
+        &subs[..dirty.subs().len()],
+    );
 }
 
 #[cfg(test)]

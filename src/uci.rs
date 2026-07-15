@@ -53,6 +53,8 @@ use crate::search::{SearchInfo, UciSink};
 use crate::threads::ThreadPool;
 use crate::timeman::Limits;
 use crate::tt::{MAX_HASH_MB, MIN_HASH_MB, TranspositionTable};
+#[cfg(feature = "policy")]
+use crate::types::Square;
 use crate::types::{Color, VALUE_INFINITE, VALUE_MATE, VALUE_ZERO, Value, is_mate, is_mated};
 use std::fmt;
 use std::fs::File;
@@ -61,9 +63,9 @@ use std::str::{FromStr, SplitWhitespace};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
-/// `id name` text (doc 12 §3.3): crate name + version from the manifest,
-/// so the handshake can never drift from `Cargo.toml`.
-const NAME: &str = concat!(env!("CARGO_PKG_NAME"), " ", env!("CARGO_PKG_VERSION"));
+/// Public engine name (D41, doc 12 §3.3) plus manifest version. The Cargo
+/// package and binary retain their stable internal `chessengine` identifiers.
+const NAME: &str = concat!("ARCHON ", env!("CARGO_PKG_VERSION"));
 /// `id author` text, likewise from the manifest `authors` field.
 const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
 
@@ -84,6 +86,8 @@ pub fn run() {
         // forward-pass oracle and a deterministic test-net writer. Not part
         // of the UCI protocol; used by tools/nnue/verify_forward.sh.
         Some("nnue-eval") => cmd_nnue_eval_argv(&args[1..]),
+        #[cfg(feature = "policy")]
+        Some("policy-eval") => cmd_policy_eval_argv(&args[1..]),
         Some("nnue-testnet") => cmd_nnue_testnet_argv(&args[1..]),
         // `d`: board diagram + FEN + key + checkers (design/12 §3.15).
         // Outside a UCI session the "current" position is the start
@@ -103,6 +107,70 @@ pub fn run() {
             let out = SharedOut::new(io::stdout());
             uci_loop(stdin.lock(), &out);
         }
+    }
+}
+
+/// `chessengine policy-eval <eval.cenn> <head.cpol>` reads `FEN|uci moves`
+/// lines and prints one tab-separated policy score per move. This explicit
+/// research oracle fails loudly on either artifact instead of the UCI
+/// experiment's intentionally optional/fallback environment loading.
+#[cfg(feature = "policy")]
+fn cmd_policy_eval_argv(args: &[String]) {
+    let (Some(eval_path), Some(policy_path)) = (args.first(), args.get(1)) else {
+        exit_usage(format_args!(
+            "usage: chessengine policy-eval <eval.cenn> <head.cpol> < lines 'FEN|e2e4 ...'"
+        ));
+    };
+    if let Err(error) = nnue::set_eval_file(eval_path) {
+        exit_usage(format_args!("policy-eval: eval net: {error}"));
+    }
+    let policy = crate::policy::PolicyNet::load(policy_path)
+        .unwrap_or_else(|error| exit_usage(format_args!("policy-eval: policy net: {error}")));
+    let mut classic_ctx = if policy.uses_classic_accumulator() {
+        Some(nnue::NnueContext::new(nnue::active_net().unwrap_or_else(
+            || {
+                exit_usage(format_args!(
+                    "policy-eval: classic policy requires a CENN-v1 eval net"
+                ))
+            },
+        )))
+    } else {
+        None
+    };
+    let stdin = io::stdin();
+    let mut out = io::stdout().lock();
+    for line in stdin.lock().lines() {
+        let line =
+            line.unwrap_or_else(|error| exit_usage(format_args!("policy-eval: stdin: {error}")));
+        let Some((fen, moves)) = line.split_once('|') else {
+            exit_usage(format_args!("policy-eval: expected FEN|moves"));
+        };
+        let board = Board::from_fen(fen.trim())
+            .unwrap_or_else(|error| exit_usage(format_args!("policy-eval: invalid FEN: {error}")));
+        let scores = if let Some(ctx) = classic_ctx.as_mut() {
+            ctx.refresh_root(&board);
+            let (stm, ntm, activation) = ctx.policy_accumulators(&board, 0);
+            policy.scores_from_classic(stm, ntm, activation, board.side_to_move())
+        } else {
+            policy.scores(&board)
+        }
+        .unwrap_or_else(|| exit_usage(format_args!("policy-eval: policy/eval trunks mismatch")));
+        let mut first = true;
+        for text in moves.split_whitespace() {
+            if text.len() < 4 {
+                exit_usage(format_args!("policy-eval: invalid move '{text}'"));
+            }
+            let from = Square::from_str(&text[..2])
+                .unwrap_or_else(|_| exit_usage(format_args!("policy-eval: invalid move '{text}'")));
+            let to = Square::from_str(&text[2..4])
+                .unwrap_or_else(|_| exit_usage(format_args!("policy-eval: invalid move '{text}'")));
+            if !first {
+                let _ = write!(out, "\t");
+            }
+            first = false;
+            let _ = write!(out, "{:.9}", scores.move_score(from, to));
+        }
+        let _ = writeln!(out);
     }
 }
 
@@ -181,6 +249,10 @@ fn cmd_nnue_eval_argv(args: &[String]) {
         V1(nnue::Network),
         #[cfg(feature = "sota")]
         V2(&'static nnue::sota_loader::SotaNetwork),
+        #[cfg(feature = "sota")]
+        V3(&'static nnue::simple_halfka::SimpleHalfkaNetwork),
+        #[cfg(feature = "sota")]
+        V4(&'static nnue::protected_halfka::ProtectedHalfkaNetwork),
     }
 
     let raw = std::fs::read(net_path)
@@ -198,6 +270,30 @@ fn cmd_nnue_eval_argv(args: &[String]) {
         {
             exit_usage(format_args!("nnue-eval: CEN2 net requires --features sota"))
         }
+    } else if cfg!(feature = "sota") && raw.len() >= 4 && raw[0..4] == *b"CEN3" {
+        #[cfg(feature = "sota")]
+        {
+            match nnue::simple_halfka::load_bytes(&raw) {
+                Ok(net) => LoadedNet::V3(Box::leak(Box::new(net))),
+                Err(e) => exit_usage(format_args!("nnue-eval: {e}")),
+            }
+        }
+        #[cfg(not(feature = "sota"))]
+        {
+            exit_usage(format_args!("nnue-eval: CEN3 net requires --features sota"))
+        }
+    } else if cfg!(feature = "sota") && raw.len() >= 4 && raw[0..4] == *b"CEN4" {
+        #[cfg(feature = "sota")]
+        {
+            match nnue::protected_halfka::load_bytes_v4(&raw) {
+                Ok(net) => LoadedNet::V4(Box::leak(Box::new(net))),
+                Err(e) => exit_usage(format_args!("nnue-eval: {e}")),
+            }
+        }
+        #[cfg(not(feature = "sota"))]
+        {
+            exit_usage(format_args!("nnue-eval: CEN4 net requires --features sota"))
+        }
     } else {
         match nnue::load_bytes(&raw) {
             Ok(net) => LoadedNet::V1(net),
@@ -209,6 +305,16 @@ fn cmd_nnue_eval_argv(args: &[String]) {
     #[cfg(feature = "sota")]
     let mut sota_ctx = match &loaded {
         LoadedNet::V2(net) => Some(nnue::sota_context::SotaContext::new(net)),
+        _ => None,
+    };
+    #[cfg(feature = "sota")]
+    let mut simple_ctx = match &loaded {
+        LoadedNet::V3(net) => Some(nnue::simple_halfka::SimpleHalfkaContext::new(net)),
+        _ => None,
+    };
+    #[cfg(feature = "sota")]
+    let mut protected_ctx = match &loaded {
+        LoadedNet::V4(net) => Some(nnue::protected_halfka::ProtectedHalfkaContext::new(net)),
         _ => None,
     };
 
@@ -223,6 +329,21 @@ fn cmd_nnue_eval_argv(args: &[String]) {
                 let ctx = sota_ctx.as_mut().unwrap();
                 ctx.refresh_root(&board);
                 let val = ctx.evaluate(&board, 0);
+                let _ = writeln!(out, "{val}");
+            }
+            #[cfg(feature = "sota")]
+            LoadedNet::V3(_) => {
+                let ctx = simple_ctx.as_mut().unwrap();
+                ctx.refresh_root(&board);
+                let val = ctx.evaluate(&board, 0);
+                let _ = writeln!(out, "{val}");
+            }
+            #[cfg(feature = "sota")]
+            LoadedNet::V4(net) => {
+                let ctx = protected_ctx.as_mut().unwrap();
+                ctx.refresh_root(&board);
+                let val =
+                    nnue::evaluate_forward(&net.base, &board) + ctx.evaluate_residual(&board, 0);
                 let _ = writeln!(out, "{val}");
             }
         },
@@ -1629,7 +1750,7 @@ mod tests {
     fn uci_handshake() {
         // doc 12 §3.3: id name, id author, the options block, then uciok.
         let out = session("uci\nquit\n");
-        assert!(out.contains("id name chessengine "), "{out}");
+        assert!(out.contains("id name ARCHON "), "{out}");
         assert!(out.contains("id author "), "{out}");
         let id_at = out.find("id name").unwrap();
         let uciok_at = out.find("uciok\n").unwrap();

@@ -48,6 +48,10 @@ pub struct EvalContext {
     /// feature; the default build never compiles this field.
     #[cfg(feature = "sota")]
     sota: Option<nnue::sota_context::SotaContext>,
+    #[cfg(feature = "sota")]
+    simple_halfka: Option<nnue::simple_halfka::SimpleHalfkaContext>,
+    #[cfg(feature = "sota")]
+    protected_halfka: Option<nnue::protected_halfka::ProtectedHalfkaContext>,
 }
 
 impl EvalContext {
@@ -90,11 +94,54 @@ impl EvalContext {
         }
     }
 
+    #[cfg(feature = "sota")]
+    pub fn set_simple_halfka_net(
+        &mut self,
+        net: Option<&'static nnue::simple_halfka::SimpleHalfkaNetwork>,
+    ) {
+        match net {
+            None => self.simple_halfka = None,
+            Some(net) => {
+                let reuse =
+                    matches!(&self.simple_halfka, Some(ctx) if std::ptr::eq(ctx.net(), net));
+                if !reuse {
+                    self.simple_halfka = Some(nnue::simple_halfka::SimpleHalfkaContext::new(net));
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "sota")]
+    pub fn set_protected_halfka_net(
+        &mut self,
+        net: Option<&'static nnue::protected_halfka::ProtectedHalfkaNetwork>,
+    ) {
+        match net {
+            None => self.protected_halfka = None,
+            Some(net) => {
+                let reuse =
+                    matches!(&self.protected_halfka, Some(ctx) if std::ptr::eq(ctx.net(), net));
+                if !reuse {
+                    self.protected_halfka =
+                        Some(nnue::protected_halfka::ProtectedHalfkaContext::new(net));
+                }
+            }
+        }
+    }
+
     /// True iff NNUE (v1 or SOTA) is the active eval for this thread.
     #[inline]
     pub fn nnue_active(&self) -> bool {
         #[cfg(feature = "sota")]
         if self.sota.is_some() {
+            return true;
+        }
+        #[cfg(feature = "sota")]
+        if self.simple_halfka.is_some() {
+            return true;
+        }
+        #[cfg(feature = "sota")]
+        if self.protected_halfka.is_some() {
             return true;
         }
         self.nnue.is_some()
@@ -112,6 +159,14 @@ impl EvalContext {
         if let Some(ctx) = self.sota.as_mut() {
             ctx.refresh_root(board);
         }
+        #[cfg(feature = "sota")]
+        if let Some(ctx) = self.simple_halfka.as_mut() {
+            ctx.refresh_root(board);
+        }
+        #[cfg(feature = "sota")]
+        if let Some(ctx) = self.protected_halfka.as_mut() {
+            ctx.refresh_root(board);
+        }
     }
 
     /// Record a move's placement deltas into the child accumulator entry at
@@ -126,6 +181,24 @@ impl EvalContext {
         }
     }
 
+    /// Classic v1 accumulator pair for a frozen policy head. `None` when the
+    /// active evaluator is PSQT or D40 rather than the bit-identical CENN-v1
+    /// sister expected by this experiment.
+    #[cfg(any(feature = "policy", feature = "search-control"))]
+    pub fn classic_policy_accumulators(
+        &mut self,
+        board: &Board,
+        ply: usize,
+    ) -> Option<(&[i16; nnue::L1], &[i16; nnue::L1], nnue::Activation)> {
+        #[cfg(feature = "sota")]
+        if self.sota.is_some() {
+            return None;
+        }
+        self.nnue
+            .as_mut()
+            .map(|ctx| ctx.policy_accumulators(board, ply))
+    }
+
     /// Fold a just-made move into the SOTA HalfKA and FullThreats child stacks.
     /// This must run after board mutation because threat x-rays read the child.
     #[cfg(feature = "sota")]
@@ -133,6 +206,12 @@ impl EvalContext {
     pub fn push_sota_dirty(&mut self, dp: DirtyPiece, ply: usize, board: &Board) {
         if let Some(ctx) = self.sota.as_mut() {
             ctx.push(dp, ply, board);
+        }
+        if let Some(ctx) = self.simple_halfka.as_mut() {
+            ctx.push(dp, ply);
+        }
+        if let Some(ctx) = self.protected_halfka.as_mut() {
+            ctx.push(dp, ply);
         }
     }
 
@@ -184,8 +263,33 @@ pub fn evaluate(board: &Board, ctx: &mut EvalContext, optimism: Value, ply: usiz
     // SOTA (D40) takes priority over v1 NNUE, which takes priority over PSQT.
     // The cfg(feature) gate compiles this branch out of default builds entirely.
     #[cfg(feature = "sota")]
+    if let Some(residual) = ctx.protected_halfka.as_mut() {
+        let base = ctx
+            .nnue
+            .as_mut()
+            .expect("CENN-v4 always installs its frozen classic base")
+            .evaluate(board, ply);
+        let inner = base + residual.evaluate_residual(board, ply);
+        return apply_outer_shape(
+            inner,
+            optimism,
+            blend_material(board),
+            board.rule50_count() as i64,
+        );
+    }
+    #[cfg(feature = "sota")]
     if let Some(sota) = ctx.sota.as_mut() {
         let inner = sota.evaluate(board, ply);
+        return apply_outer_shape(
+            inner,
+            optimism,
+            blend_material(board),
+            board.rule50_count() as i64,
+        );
+    }
+    #[cfg(feature = "sota")]
+    if let Some(simple) = ctx.simple_halfka.as_mut() {
+        let inner = simple.evaluate(board, ply);
         return apply_outer_shape(
             inner,
             optimism,

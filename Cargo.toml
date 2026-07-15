@@ -18,10 +18,16 @@ embed-net = []
 # A 512-build loads ONLY 512-wide CENN nets (the loader checks the header `l1`);
 # build a 512 engine with `--features nnue-l1-512`.
 nnue-l1-512 = []
+# Experimental classic width control. Mutually exclusive with nnue-l1-512;
+# compile-time assertions in nnue::mod reject accidental combinations.
+nnue-l1-1024 = []
 # Experimental learned policy head for MovePicker quiet ordering (design/17
 # Thrust II, src/policy.rs). OFF by default so the shipped engine + depth-6 bench
 # stay byte-identical; build the experiment with `--features policy`.
-policy = []
+policy = ["sota"]
+# D41 learned search-consequence head contracts and experiments. OFF by
+# default; the initial scaffold is shadow-only and has no search authority.
+search-control = []
 # The SOTA NNUE net (D40, design/11 §12): SF features + Reckless-shaped hybrid
 # head. OFF by default (the whole SOTA path is inert until it ships), so the
 # default build + depth-6 bench stay byte-identical. Build with `--features sota`.

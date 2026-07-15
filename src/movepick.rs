@@ -238,6 +238,10 @@ pub struct MovePicker {
     /// off before generating quiets pay nothing.
     #[cfg(feature = "policy")]
     policy_net: Option<std::sync::Arc<crate::policy::PolicyNet>>,
+    /// Lazily computed once per node and shared by capture/quiet scoring when
+    /// the capture-policy experiment is enabled.
+    #[cfg(feature = "policy")]
+    policy_scores: Option<crate::policy::PolicyScores>,
     buf: [ExtMove; MAX_MOVES],
 }
 
@@ -314,6 +318,8 @@ impl MovePicker {
             end_generated: 0,
             #[cfg(feature = "policy")]
             policy_net: None,
+            #[cfg(feature = "policy")]
+            policy_scores: None,
             buf: [ExtMove::NULL; MAX_MOVES],
         }
     }
@@ -325,6 +331,12 @@ impl MovePicker {
     #[inline]
     pub fn set_policy_net(&mut self, net: Option<std::sync::Arc<crate::policy::PolicyNet>>) {
         self.policy_net = net;
+    }
+
+    #[cfg(feature = "policy")]
+    #[inline]
+    pub fn set_policy_scores(&mut self, scores: Option<crate::policy::PolicyScores>) {
+        self.policy_scores = scores;
     }
 
     /// Emit one pseudo-legal move per call, `None` once the active pipeline is
@@ -445,11 +457,27 @@ impl MovePicker {
         let mut list = MoveList::new();
         generate_captures(board, &mut list);
         let n = list.len();
+        #[cfg(feature = "policy")]
+        if crate::policy::captures_enabled()
+            && crate::policy::enabled_at(self.depth, self.ply)
+            && self.policy_scores.is_none()
+        {
+            self.policy_scores = self.policy_net.as_ref().and_then(|net| net.scores(board));
+        }
+        #[cfg(feature = "policy")]
+        let policy_scores = self.policy_scores.as_ref();
+        #[cfg(feature = "policy")]
+        let policy_weight = crate::policy::capture_weight();
         for (i, &m) in list.iter().enumerate() {
-            self.buf[i] = ExtMove {
-                mv: m,
-                value: score_capture(board, hist, m),
-            };
+            let value = score_capture(board, hist, m);
+            #[cfg(feature = "policy")]
+            let value = value
+                + policy_scores
+                    .map(|scores| {
+                        (policy_weight as f32 * scores.move_score(m.from(), m.to())) as i32
+                    })
+                    .unwrap_or(0);
+            self.buf[i] = ExtMove { mv: m, value };
         }
         // Captures occupy `[0, n)`; nothing has been swapped into the
         // bad-captures region and no quiets exist yet.
@@ -541,7 +569,11 @@ impl MovePicker {
         // by every quiet below. Owned (borrows `self.policy_net` only for the
         // `map`), so the mutable `self.buf[..]` writes in the loop stay clean.
         #[cfg(feature = "policy")]
-        let policy_scores = self.policy_net.as_ref().map(|n| n.scores(board));
+        if crate::policy::enabled_at(self.depth, self.ply) && self.policy_scores.is_none() {
+            self.policy_scores = self.policy_net.as_ref().and_then(|net| net.scores(board));
+        }
+        #[cfg(feature = "policy")]
+        let policy_scores = self.policy_scores.as_ref();
         #[cfg(feature = "policy")]
         let policy_weight = crate::policy::quiet_weight();
 

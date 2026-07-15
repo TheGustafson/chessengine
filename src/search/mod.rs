@@ -870,6 +870,14 @@ pub struct Worker {
     #[cfg(feature = "policy")]
     policy_net: Option<Arc<crate::policy::PolicyNet>>,
 
+    /// Main-worker-only, bounded observational LMR telemetry. It is compiled
+    /// only for search-control experiments and has no authority over search.
+    #[cfg(feature = "search-control")]
+    search_trace: Option<crate::search_trace::SearchTrace>,
+    /// One explicit deterministic replay intervention, never enabled in play.
+    #[cfg(feature = "search-control")]
+    lmr_intervention: Option<crate::search_intervention::LmrIntervention>,
+
     /// Per-attempt aspiration trace (§8 criterion 7) — test builds only,
     /// cleared per `go`, appended by [`Worker::aspiration_search`].
     #[cfg(test)]
@@ -935,6 +943,10 @@ impl Worker {
             minimal: false,
             #[cfg(feature = "policy")]
             policy_net: crate::policy::shared_from_env(),
+            #[cfg(feature = "search-control")]
+            search_trace: None,
+            #[cfg(feature = "search-control")]
+            lmr_intervention: None,
             #[cfg(test)]
             asp_trace: Vec::new(),
         }
@@ -1009,10 +1021,41 @@ impl Worker {
         // search boundary, before iterative deepening refreshes the root
         // accumulator. `None` ⇒ PSQT (default; bench-neutral).
         self.refresh_eval_net();
+        #[cfg(feature = "search-control")]
+        {
+            self.search_trace = if self.is_main() {
+                crate::search_trace::SearchTrace::from_env(self.board.key())
+            } else {
+                None
+            };
+            self.lmr_intervention = if self.is_main() {
+                match crate::search_intervention::LmrIntervention::from_env() {
+                    Ok(intervention) => intervention,
+                    Err(error) => {
+                        eprintln!("ARCHON LMR intervention disabled: {error}");
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+        }
         if self.is_main() {
             self.main_search(tt);
         } else {
             self.helper_search(tt);
+        }
+        #[cfg(feature = "search-control")]
+        if let Some(trace) = self.search_trace.as_mut() {
+            if let Err(error) = trace.flush() {
+                eprintln!("ARCHON search trace write failed: {error}");
+            }
+        }
+        #[cfg(feature = "search-control")]
+        if let Some(intervention) = self.lmr_intervention.as_ref() {
+            if let Err(error) = intervention.flush() {
+                eprintln!("ARCHON LMR intervention result write failed: {error}");
+            }
         }
         // Release this `go`'s output sink so the UCI layer regains sole
         // ownership of the stream once the search is joined (the type-erased
@@ -1031,6 +1074,12 @@ impl Worker {
         #[cfg(feature = "sota")]
         self.eval_ctx
             .set_sota_net(crate::eval::nnue::active_sota_net());
+        #[cfg(feature = "sota")]
+        self.eval_ctx
+            .set_simple_halfka_net(crate::eval::nnue::active_simple_halfka_net());
+        #[cfg(feature = "sota")]
+        self.eval_ctx
+            .set_protected_halfka_net(crate::eval::nnue::active_protected_halfka_net());
     }
 
     /// Main-worker orchestration (design/13 §3.7): TM init + the single TT
@@ -1355,6 +1404,32 @@ impl Worker {
         if self.root_moves.is_empty() {
             return; // mate/stalemate at the root: nothing to search
         }
+        // Refresh before the optional root-policy consumer. Frozen-classic
+        // heads reuse this protected accumulator and have no board-refresh
+        // trunk of their own.
+        self.eval_ctx.refresh_root(&self.board);
+        #[cfg(feature = "policy")]
+        if crate::policy::root_order_enabled() {
+            let scores = self.policy_net.as_ref().and_then(|net| {
+                if net.uses_classic_accumulator() {
+                    self.eval_ctx
+                        .classic_policy_accumulators(&self.board, 0)
+                        .and_then(|(stm, ntm, activation)| {
+                            net.scores_from_classic(stm, ntm, activation, self.board.side_to_move())
+                        })
+                } else {
+                    net.scores(&self.board)
+                }
+            });
+            if let Some(scores) = scores {
+                for root_move in &mut self.root_moves {
+                    let mv = root_move.pv[0];
+                    root_move.policy_score =
+                        (scores.move_score(mv.from(), mv.to()) * 1024.0) as i32;
+                }
+                sort_descending(&mut self.root_moves);
+            }
+        }
         // Per-`go` history refresh (design/09 §3.4): decay the butterfly
         // history toward zero so recent searches dominate, and refill the
         // low-ply history. Correction/capture/continuation tables persist
@@ -1366,7 +1441,6 @@ impl Worker {
         // the already-installed net (the active net is installed at the search
         // boundary — `start_searching`/`bench` — not here, so unit tests driving
         // `iterative_deepening` directly stay on PSQT); a no-op when NNUE is off.
-        self.eval_ctx.refresh_root(&self.board);
         // MultiPV (doc 12 §3.12, step 10): the number of PV lines to
         // report, the option clamped to the legal-move count (min 1). At
         // MultiPV 1 the loop below is exactly single-PV (bench, D24).
@@ -2396,7 +2470,24 @@ impl Worker {
         ];
         let mut mp = MovePicker::new(&self.board, tt_data.mv, depth, ply, cont_hist);
         #[cfg(feature = "policy")]
-        mp.set_policy_net(self.policy_net.clone());
+        {
+            mp.set_policy_net(self.policy_net.clone());
+            if crate::policy::enabled_at(depth, ply) {
+                if let Some(net) = self
+                    .policy_net
+                    .as_ref()
+                    .filter(|net| net.uses_classic_accumulator())
+                {
+                    let scores = self
+                        .eval_ctx
+                        .classic_policy_accumulators(&self.board, ply)
+                        .and_then(|(stm, ntm, activation)| {
+                            net.scores_from_classic(stm, ntm, activation, self.board.side_to_move())
+                        });
+                    mp.set_policy_scores(scores);
+                }
+            }
+        }
 
         let mut best_value = -VALUE_INFINITE;
         let mut best_move = Move::NULL;
@@ -2460,6 +2551,10 @@ impl Worker {
             let mut new_depth = depth - 1;
             let delta = beta - alpha;
             let mut r = self.reduction(improving, depth, move_count, delta);
+            #[cfg(feature = "search-control")]
+            let trace_node_depth = depth;
+            #[cfg(feature = "search-control")]
+            let trace_base_reduction = r;
 
             // §3.5 — shallow-depth pruning, decided BEFORE the move is made.
             // The whole block is fenced by the mate-safety guard `!is_loss(
@@ -2715,6 +2810,33 @@ impl Worker {
                 .expect("a legal move starts on a piece of the side to move");
             self.stack[cur].stat_score = self.stat_score(m, is_capture, moved_piece, cur);
 
+            // Observational only: copy the already-maintained protected
+            // accumulator for a deterministic, bounded subset of real LMR
+            // actions. This occurs before make-move, so the latent and all
+            // context describe the action's parent position.
+            #[cfg(feature = "search-control")]
+            let trace_latent = {
+                let selected = depth >= 2
+                    && move_count > 1
+                    && self.search_trace.as_ref().is_some_and(|trace| {
+                        trace.should_sample(key, m.raw16(), trace_node_depth, ply)
+                    });
+                if selected {
+                    self.eval_ctx
+                        .classic_policy_accumulators(&self.board, ply)
+                        .map(|(stm, ntm, _)| {
+                            let mut latent = Box::new([0i16; crate::eval::nnue::L1 * 2]);
+                            latent[..crate::eval::nnue::L1].copy_from_slice(stm);
+                            latent[crate::eval::nnue::L1..].copy_from_slice(ntm);
+                            latent
+                        })
+                } else {
+                    None
+                }
+            };
+            #[cfg(feature = "search-control")]
+            let trace_nominal_child_depth = new_depth;
+
             // Step 10 — make + recurse: the PVS three-call structure
             // (§3.7.2). Only the move ordered first (the ttMove when the
             // P6 probe supplied one — its likely-best status is what makes
@@ -2748,6 +2870,26 @@ impl Worker {
             // it distrusts is reduced harder. Truncation toward zero on a
             // negative `stat_score` is intended (design/10 §3.1).
             r -= self.stack[cur].stat_score * params::RED_STATSCORE_NUM / params::RED_STATSCORE_DEN;
+            #[cfg(feature = "search-control")]
+            let trace_final_reduction = r;
+            #[cfg(feature = "search-control")]
+            let mut trace_scout_depth = 0;
+            #[cfg(feature = "search-control")]
+            let mut trace_scout_score = -VALUE_INFINITE;
+            #[cfg(feature = "search-control")]
+            let mut trace_scout_nodes = 0u64;
+            #[cfg(feature = "search-control")]
+            let mut trace_research_nodes = 0u64;
+            #[cfg(feature = "search-control")]
+            let mut trace_lmr_research = false;
+            #[cfg(feature = "search-control")]
+            let mut trace_pv_research_nodes = 0u64;
+            #[cfg(feature = "search-control")]
+            let mut trace_pv_research = false;
+            #[cfg(feature = "search-control")]
+            let mut intervention_applied = false;
+            #[cfg(feature = "search-control")]
+            let mut intervention_classical_scout_depth = 0;
             // Overwritten by whichever call below runs last. A PV node's
             // first move skips (a)/(b), and (c)'s `move_count == 1` arm
             // never reads the sentinel.
@@ -2764,12 +2906,34 @@ impl Worker {
             // too, but resetting by hand keeps the protocol robust if a future
             // `d <= 0` were ever to drop the scout straight to qsearch.
             if depth >= 2 && move_count > 1 {
-                let d = (new_depth - r / params::RED_UNIT)
+                let classical_d = (new_depth - r / params::RED_UNIT)
                     .min(new_depth + params::RED_MAX_DEEPER)
                     .max(1)
                     + Depth::from(NT::PV);
+                #[cfg(feature = "search-control")]
+                let d = {
+                    intervention_classical_scout_depth = classical_d;
+                    if let Some(requested) = self.lmr_intervention.as_mut().and_then(|oracle| {
+                        oracle.request(key, m, trace_node_depth, ply, move_count)
+                    }) {
+                        intervention_applied = true;
+                        requested.clamp(1, new_depth + params::RED_MAX_DEEPER + Depth::from(NT::PV))
+                    } else {
+                        classical_d
+                    }
+                };
+                #[cfg(not(feature = "search-control"))]
+                let d = classical_d;
                 self.stack[cur].reduction = new_depth - d;
+                #[cfg(feature = "search-control")]
+                let trace_nodes_before_scout = self.nodes;
                 value = -self.search::<NonPv>(tt, stop, -(alpha + 1), -alpha, d, true, ply + 1);
+                #[cfg(feature = "search-control")]
+                {
+                    trace_scout_depth = d;
+                    trace_scout_score = value;
+                    trace_scout_nodes = self.nodes - trace_nodes_before_scout;
+                }
                 self.stack[cur].reduction = 0;
 
                 // (b) The reduced scout beat alpha: apply the deeper/shallower
@@ -2787,6 +2951,8 @@ impl Worker {
                     let do_shallower = value < best_value + params::LMR_SHALLOWER_MARGIN;
                     new_depth += Depth::from(do_deeper) - Depth::from(do_shallower);
                     if new_depth > d {
+                        #[cfg(feature = "search-control")]
+                        let trace_nodes_before_research = self.nodes;
                         value = -self.search::<NonPv>(
                             tt,
                             stop,
@@ -2796,6 +2962,11 @@ impl Worker {
                             !cut_node,
                             ply + 1,
                         );
+                        #[cfg(feature = "search-control")]
+                        {
+                            trace_lmr_research = true;
+                            trace_research_nodes = self.nodes - trace_nodes_before_research;
+                        }
                     }
                     self.histories.update_continuation_histories(
                         &self.stack[..],
@@ -2839,10 +3010,100 @@ impl Worker {
             // zero-window scout left stale (see `child_pv_fresh` below).
             let mut child_pv_fresh = false;
             if NT::PV && (move_count == 1 || value > alpha) {
+                #[cfg(feature = "search-control")]
+                let trace_nodes_before_pv = self.nodes;
                 value = -self.search::<Pv>(tt, stop, -beta, -alpha, new_depth, false, ply + 1);
+                #[cfg(feature = "search-control")]
+                {
+                    trace_pv_research = true;
+                    trace_pv_research_nodes = self.nodes - trace_nodes_before_pv;
+                }
                 child_pv_fresh = true;
             }
             self.undo_move(m);
+
+            #[cfg(feature = "search-control")]
+            if intervention_applied {
+                if let Some(intervention) = self.lmr_intervention.as_mut() {
+                    intervention.finish(crate::search_intervention::InterventionOutcome {
+                        alpha,
+                        beta,
+                        classical_scout_depth: intervention_classical_scout_depth,
+                        applied_scout_depth: trace_scout_depth,
+                        scout_score: trace_scout_score,
+                        final_score: value,
+                        scout_nodes: trace_scout_nodes,
+                        research_nodes: trace_research_nodes,
+                        pv_research_nodes: trace_pv_research_nodes,
+                        total_nodes: self.nodes - nodes_before,
+                        lmr_research: trace_lmr_research,
+                        pv_research: trace_pv_research,
+                    });
+                }
+            }
+
+            #[cfg(feature = "search-control")]
+            if let Some(latent) = trace_latent {
+                let row = crate::search_trace::LmrObservation {
+                    position_key: key,
+                    fen: self.board.to_fen(),
+                    latent,
+                    raw_move: m.raw16(),
+                    side_to_move: self.board.side_to_move() as u8,
+                    moving_piece: moved_piece.piece_type as u8,
+                    captured_piece: self
+                        .board
+                        .piece_on(m.to())
+                        .map_or(PieceType::ALL.len() as u8, |piece| piece.piece_type as u8),
+                    promotion_piece: m
+                        .promotion_piece()
+                        .map_or(PieceType::ALL.len() as u8, |piece| piece as u8),
+                    depth: trace_node_depth,
+                    ply: ply as u16,
+                    alpha,
+                    beta,
+                    static_eval: self.stack[cur].static_eval,
+                    best_value_before: best_value,
+                    node_kind: if NT::ROOT {
+                        0
+                    } else if NT::PV {
+                        1
+                    } else if cut_node {
+                        2
+                    } else {
+                        3
+                    },
+                    in_check,
+                    improving,
+                    cut_node,
+                    tt_hit,
+                    tt_depth: tt_data.depth,
+                    tt_bound: tt_data.bound as u8,
+                    tt_move: m == tt_data.mv,
+                    move_index: move_count as u16,
+                    capture: is_capture,
+                    gives_check,
+                    stat_score: self.stack[cur].stat_score,
+                    base_reduction: trace_base_reduction,
+                    final_reduction: trace_final_reduction,
+                    extension,
+                    nominal_child_depth: trace_nominal_child_depth,
+                    scout_depth: trace_scout_depth,
+                    scout_score: trace_scout_score,
+                    final_score: value,
+                    scout_nodes: trace_scout_nodes,
+                    research_nodes: trace_research_nodes,
+                    pv_research_nodes: trace_pv_research_nodes,
+                    total_nodes: self.nodes - nodes_before,
+                    lmr_research: trace_lmr_research,
+                    pv_research: trace_pv_research,
+                    alpha_raise: value > alpha,
+                    beta_cutoff: value >= beta,
+                };
+                if let Some(trace) = self.search_trace.as_mut() {
+                    trace.push(row);
+                }
+            }
 
             // Step 11 — stop check: the subtree result is untrusted
             // (§3.9). Return immediately — no best-move update, no PV

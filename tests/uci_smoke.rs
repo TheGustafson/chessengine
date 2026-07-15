@@ -85,7 +85,7 @@ fn handshake_transcript_is_byte_exact() {
          option name EvalFile type string default <empty>\n\
          uciok\n\
          readyok\n",
-        env!("CARGO_PKG_NAME"),
+        "ARCHON",
         env!("CARGO_PKG_VERSION"),
         env!("CARGO_PKG_AUTHORS"),
         // The Threads ceiling is hardware-scaled (doc 12 §9.6): compute the

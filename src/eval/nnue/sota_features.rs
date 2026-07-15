@@ -458,6 +458,12 @@ pub fn refresh_pst(
     board: &Board,
     perspective: Color,
 ) -> [i16; ACC] {
+    assert_eq!(
+        halfka_weights.len(),
+        HALFKA_DIMS * ACC,
+        "HalfKA transformer has the wrong size"
+    );
+    assert_eq!(ft_bias.len(), ACC, "SOTA FT bias has the wrong size");
     let mut acc = [0i16; ACC];
     acc.copy_from_slice(&ft_bias[..ACC]);
     for_each_halfka(board, perspective, |idx| {
@@ -471,6 +477,14 @@ pub fn refresh_pst(
 /// `threat_weights` is feature-major (`[THREAT_DIMS · ACC]` i8).
 pub fn refresh_threat(threat_weights: &[i8], board: &Board, perspective: Color) -> [i16; ACC] {
     let mut acc = [0i16; ACC];
+    if threat_weights.is_empty() {
+        return acc;
+    }
+    assert_eq!(
+        threat_weights.len(),
+        THREAT_DIMS * ACC,
+        "FullThreats transformer has the wrong size"
+    );
     for_each_threat(board, perspective, |idx| {
         add_column(&mut acc, threat_weights, idx)
     });

@@ -61,7 +61,10 @@ pub const HEADER_V2_LEN: usize = 64;
 pub const FLAG_HAS_THREATS: u16 = 1;
 
 // Compile-time assertions: the head and feature constants must agree.
-const _: () = assert!(L1 == ACC, "SotaHead::L1 must equal ACC (the accumulator width)");
+const _: () = assert!(
+    L1 == ACC,
+    "SotaHead::L1 must equal ACC (the accumulator width)"
+);
 
 /// A D40 SOTA network: two feature transformers + multi-layer bucketed head.
 /// Produced by [`load_v2_bytes`]; consumed by the SOTA eval context.
@@ -78,6 +81,10 @@ pub struct SotaNetwork {
     pub head: SotaHead,
 }
 
+/// `PartialEq`/`Eq` are implemented for **bit-exact round-trip testing only**.
+/// The f32 head weights are compared with `==`, which is sound for serializer
+/// round-trips (bit-identical bytes → bit-identical f32) but would be incorrect
+/// in contexts where NaN is possible. Do not use for fuzzy comparison.
 impl PartialEq for SotaNetwork {
     fn eq(&self, other: &Self) -> bool {
         self.halfka_weights == other.halfka_weights
@@ -153,10 +160,7 @@ impl fmt::Display for SotaNnueError {
                 field,
                 expected,
                 found,
-            } => write!(
-                f,
-                "CENN-v2 {field} {found} != {expected} (quant mismatch)"
-            ),
+            } => write!(f, "CENN-v2 {field} {found} != {expected} (quant mismatch)"),
             SotaNnueError::BadPayloadLen { expected, found } => write!(
                 f,
                 "CENN-v2 payload_len {found} != {expected} (architecture mismatch)"
@@ -212,7 +216,14 @@ fn payload_len_no_threats() -> usize {
     let l2b_bytes = BUCKETS * L3 * 4;
     let l3w_bytes = BUCKETS * L3 * 4;
     let l3b_bytes = BUCKETS * 4;
-    halfka_bytes + bias_bytes + l1w_bytes + l1b_bytes + l2w_bytes + l2b_bytes + l3w_bytes + l3b_bytes
+    halfka_bytes
+        + bias_bytes
+        + l1w_bytes
+        + l1b_bytes
+        + l2w_bytes
+        + l2b_bytes
+        + l3w_bytes
+        + l3b_bytes
 }
 
 // ─── Low-level readers ─────────────────────────────────────────────────────
@@ -310,6 +321,13 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     check_quant(36, "l1_quant", sota_head::L1_QUANT)?;
     check_quant(40, "ft_shift", sota_head::FT_SHIFT)?;
     let network_scale = read_i32(bytes, 44);
+    if !(1..=10_000).contains(&network_scale) {
+        return Err(SotaNnueError::WrongDim {
+            field: "network_scale",
+            expected: 380,
+            found: network_scale as u32,
+        });
+    }
 
     // Payload length + checksum.
     let expected_payload = if has_threats {
@@ -378,7 +396,10 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     // L3 biases: f32[BUCKETS].
     let l3_biases = read_f32s(payload, &mut cur, BUCKETS);
 
-    debug_assert_eq!(cur, expected_payload, "payload cursor must consume all bytes");
+    debug_assert_eq!(
+        cur, expected_payload,
+        "payload cursor must consume all bytes"
+    );
 
     let head = SotaHead {
         l1_weights,
@@ -509,7 +530,12 @@ fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
 fn read_f32s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[f32]> {
     let mut v = Vec::with_capacity(count);
     for _ in 0..count {
-        let bytes = [payload[*cur], payload[*cur + 1], payload[*cur + 2], payload[*cur + 3]];
+        let bytes = [
+            payload[*cur],
+            payload[*cur + 1],
+            payload[*cur + 2],
+            payload[*cur + 3],
+        ];
         v.push(f32::from_le_bytes(bytes));
         *cur += 4;
     }
@@ -533,9 +559,7 @@ pub(crate) mod tests {
 
         let small_i16 = |prng: &mut Prng| -> i16 { (prng.rand64() % 201) as i16 - 100 };
         let small_i8 = |prng: &mut Prng| -> i8 { (prng.rand64() % 121) as i8 - 60 };
-        let small_f32 = |prng: &mut Prng| -> f32 {
-            ((prng.rand64() % 201) as f32 - 100.0) * 0.01
-        };
+        let small_f32 = |prng: &mut Prng| -> f32 { ((prng.rand64() % 201) as f32 - 100.0) * 0.01 };
 
         let halfka_weights: Box<[i16]> = (0..HALFKA_DIMS * ACC)
             .map(|_| small_i16(&mut prng))
@@ -547,21 +571,13 @@ pub(crate) mod tests {
         let l1_weights: Box<[i8]> = (0..BUCKETS * L2 * L1)
             .map(|_| small_i8(&mut prng))
             .collect();
-        let l1_biases: Box<[f32]> = (0..BUCKETS * L2)
-            .map(|_| small_f32(&mut prng))
-            .collect();
+        let l1_biases: Box<[f32]> = (0..BUCKETS * L2).map(|_| small_f32(&mut prng)).collect();
         let l2_weights: Box<[f32]> = (0..BUCKETS * L2 * L3)
             .map(|_| small_f32(&mut prng))
             .collect();
-        let l2_biases: Box<[f32]> = (0..BUCKETS * L3)
-            .map(|_| small_f32(&mut prng))
-            .collect();
-        let l3_weights: Box<[f32]> = (0..BUCKETS * L3)
-            .map(|_| small_f32(&mut prng))
-            .collect();
-        let l3_biases: Box<[f32]> = (0..BUCKETS)
-            .map(|_| small_f32(&mut prng))
-            .collect();
+        let l2_biases: Box<[f32]> = (0..BUCKETS * L3).map(|_| small_f32(&mut prng)).collect();
+        let l3_weights: Box<[f32]> = (0..BUCKETS * L3).map(|_| small_f32(&mut prng)).collect();
+        let l3_biases: Box<[f32]> = (0..BUCKETS).map(|_| small_f32(&mut prng)).collect();
 
         SotaNetwork {
             halfka_weights,
@@ -718,7 +734,7 @@ pub(crate) mod tests {
             + BUCKETS * L2 * L3 * 4           // l2w f32
             + BUCKETS * L3 * 4                // l2b f32
             + BUCKETS * L3 * 4                // l3w f32
-            + BUCKETS * 4;                    // l3b f32
+            + BUCKETS * 4; // l3b f32
         assert_eq!(payload_len_with_threats(), expected);
 
         // Verify the serialized net has the right total size.

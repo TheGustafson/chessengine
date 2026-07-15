@@ -5,7 +5,7 @@
 //! Everything here is governed by the design suite in `design/`:
 //! `design/decisions.md` pins decisions D1–D27 (decisions change there first;
 //! docs follow; code follows docs) and `design/00-master-plan.md` orders the
-//! phases P0–P14. Working conventions live in `CLAUDE.md`; test conventions
+//! phases P0–P15. Working conventions live in `CLAUDE.md`; test conventions
 //! in `TESTING.md`. Perft is the correctness oracle, `bench` the search
 //! regression oracle (D24).
 //!
@@ -31,6 +31,12 @@ pub mod perft;
 #[cfg(feature = "policy")]
 pub mod policy;
 pub mod search;
+#[cfg(feature = "search-control")]
+pub mod search_control;
+#[cfg(feature = "search-control")]
+pub mod search_intervention;
+#[cfg(feature = "search-control")]
+pub mod search_trace;
 pub mod threads;
 pub mod timeman;
 pub mod tt;

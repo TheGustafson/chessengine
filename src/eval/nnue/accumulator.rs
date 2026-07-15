@@ -130,6 +130,26 @@ impl<'a> NnueContext<'a> {
         )
     }
 
+    /// Return the already-incremental accumulator pair in side-to-move order
+    /// for a frozen classic policy head. Computing a missing child folds only
+    /// its recorded dirty moves; it never refreshes the transformer.
+    #[cfg(any(feature = "policy", feature = "search-control"))]
+    pub fn policy_accumulators(
+        &mut self,
+        board: &Board,
+        ply: usize,
+    ) -> (&[i16; L1], &[i16; L1], super::network::Activation) {
+        let stm = board.side_to_move();
+        self.compute(ply, stm);
+        self.compute(ply, stm.flip());
+        let entry = &self.stack[ply].acc.0;
+        (
+            &entry[stm as usize],
+            &entry[stm.flip() as usize],
+            self.net.activation,
+        )
+    }
+
     /// Ensure `stack[ply].acc[perspective]` is valid: if already computed,
     /// done; otherwise walk back to the nearest computed ancestor and fold
     /// each intervening dirty record forward (design/11 §3.4.4). `stack[0]` is
