@@ -162,6 +162,22 @@ canonical data shape and the top-level structure of the on-disk record
    Tier-A/Tier-B seam (§3.8): a foreign teacher physically cannot produce it,
    because these are *our* search's internal signals.**
 
+#### 3.2.1 Evidence kind is part of the label
+
+D43 requires two distinct record families:
+
+- **Observational:** the current behavior policy encountered the node and chose
+  its normal ordering/reduction/extension. These records are cheap and preserve
+  the deployed distribution, but later moves are censored by earlier cutoffs and
+  the chosen action is confounded with the heuristics that chose it.
+- **Interventional:** the generator reconstructs the same pre-action state and
+  forces one declared `CfAxis` while holding all other configuration and state
+  regimes fixed. Only these records identify consequences of alternative
+  reductions/extensions/policy tiers.
+
+Derived exporters must never silently combine these evidence kinds. An
+observational reduction outcome is not a counterfactual reduction label.
+
 ### 3.3 Data-management model — three stores
 
 The platform's data lives in three stores with sharply different lifetimes:
@@ -308,6 +324,9 @@ pub struct Episode {
     game_result: Option<Wdl>,         // 4  white-relative; back-patched at game end
     cf_axis: Option<CfAxis>,          // 5  which knob differs across a counterfactual pair
     records: Vec<Observation>,        // 6  repeated
+    replay_root: PositionState,       // 7  full episode-start state
+    root_reversible_keys: Vec<u64>,   // 8  repetition history preceding replay_root
+    event_hash_chain: Vec<u64>,       // 9  locate first deterministic divergence
 }
 
 pub struct Observation {              // one node — the four vision layers
@@ -328,6 +347,7 @@ pub struct PositionState {            // Layer 1 — full reconstruction + ident
     plies_from_null: u16,             // 8
     repetition: i8,                   // 9
     canonical_key: u64,               // 10 placement+stm+castling+ep — dedup identity
+    path_from_episode_root: Vec<u16>,  // 11 legal moves root→node
 }
 
 pub struct SearchContext {            // Layer 2 — circumstances of the search
@@ -340,6 +360,14 @@ pub struct SearchContext {            // Layer 2 — circumstances of the search
     tt_depth: i32, tt_bound: Bound,   // 8, 9
     tt_value: i32, tt_move: u16,      // 10, 11
     flags: u32,                       // 12 bitset: improving/cutnode/in_check/singular/excluded/…
+    event_ordinal: u64,               // 13 stable within deterministic episode
+    event_fingerprint: u64,           // 14 hash(key,ply,depth,window,node-kind,move)
+    ply: u16,                         // 15
+    alpha_before_move: i32,           // 16 frozen pre-action window
+    beta_before_move: i32,            // 17
+    root_delta: i32,                  // 18 node-dither context
+    tt_regime: TtRegime,              // 19 Empty/Restored/WarmObserved
+    history_regime: HistoryRegime,    // 20 Fresh/Frozen/Restored/WarmObserved
     // engine config lives in Provenance.search_config (interned)
 }
 
@@ -366,12 +394,30 @@ pub struct PerMoveObservation {       // Layer 4 — per searched/considered mov
     caused_cutoff: bool,              // 11
     researched: bool,                 // 12 full-window/full-depth re-search happened
     pruned_by: Prune,                 // 13 None if searched; else Lmp/Futility/See/History/…
+    evidence: EvidenceKind,           // 14 Observational/Intervention/Reference
+    baseline_reduction: i16,          // 15 classical finalized reduction
+    requested_reduction: i16,         // 16 proposed/forced action
+    actual_scout_depth: i32,          // 17 after reduction/extension
+    policy_tier: PolicyTier,          // 18 None/Cheap/Full
+    scout_score: i32,                 // 19 before any re-search
+    scout_bound: Bound,               // 20 classification vs frozen alpha/beta
+    scout_nodes: u64,                 // 21
+    research_score: Option<i32>,      // 22 full-depth result when run
+    research_bound: Option<Bound>,    // 23
+    research_nodes: u64,              // 24
+    research_changed_bound: bool,     // 25 not synonymous with trigger
+    research_was_necessary: Option<bool>, // 26 requires accepted reference
+    reference_bound: Option<Bound>,   // 27
+    bound_error: Option<bool>,        // 28 action vs accepted full reference
+    completion: Completion,           // 29 Complete/Stopped/TargetMiss/Invalid
 }
 ```
 
-Enums `Wdl`, `NodeType`, `Bound`, `Prune`, `CfAxis`, and `SearchConfig`/
+Enums `Wdl`, `NodeType`, `Bound`, `Prune`, `CfAxis`, `EvidenceKind`,
+`PolicyTier`, `Completion`, `TtRegime`, `HistoryRegime`, and `SearchConfig`/
 `IdSnapshot` are small companion types; their discriminants follow the same
-append-only, skip-unknown rule.
+append-only, skip-unknown rule. Missing fields use explicit option/presence
+encoding; readers never interpret an absent field as numeric zero.
 
 #### 3.5.4 Episode assembly note
 

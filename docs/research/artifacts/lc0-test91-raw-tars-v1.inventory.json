@@ -1,0 +1,440 @@
+{
+  "archive_id": "lc0-test91-raw-tars-v1",
+  "files": [
+    {
+      "bytes": 910858240,
+      "path": "tars/training-run2-test91-20251220-0017.tar",
+      "sha256": "97e016b61e41664e982d12a5ba076152b8ee14dca6ade63de7b779fe71b3de2b"
+    },
+    {
+      "bytes": 915456000,
+      "path": "tars/training-run2-test91-20251220-0117.tar",
+      "sha256": "301ac152614ba220c7da455968a9fb11f0c94bb7ba622bfbd6d19b4b9cb6d8e9"
+    },
+    {
+      "bytes": 806973440,
+      "path": "tars/training-run2-test91-20251220-0217.tar",
+      "sha256": "0199ddc6c31a233d0dc20bb0d0bc3f470dded92d25c2ca329840bc0cec7db970"
+    },
+    {
+      "bytes": 907704320,
+      "path": "tars/training-run2-test91-20251220-0317.tar",
+      "sha256": "35f9fa5bd0a4cb50ae2ffff033c31125169000f0a19b45d18f30f5f5f8ca48a4"
+    },
+    {
+      "bytes": 912424960,
+      "path": "tars/training-run2-test91-20251220-0417.tar",
+      "sha256": "92479821aa3d7147527d0089d8d3e655a41b42b148dae8cc7387040b4a41ad42"
+    },
+    {
+      "bytes": 917012480,
+      "path": "tars/training-run2-test91-20251220-0517.tar",
+      "sha256": "72768afaf35676417cc2f7bd45134762bd75629d27296777730b7bfcafaca310"
+    },
+    {
+      "bytes": 915384320,
+      "path": "tars/training-run2-test91-20251220-0617.tar",
+      "sha256": "39d72f48580a18c8e89f27a70fe894a98a1bf5a18b2d99f218e2b166e318b66d"
+    },
+    {
+      "bytes": 790026240,
+      "path": "tars/training-run2-test91-20251220-0717.tar",
+      "sha256": "9bc110ff8626e9f821422f7e76f571dae2b7a5c0a70b89d3fbbb8d20a64ea47a"
+    },
+    {
+      "bytes": 906792960,
+      "path": "tars/training-run2-test91-20251220-0817.tar",
+      "sha256": "cbd3ced5ee018e9bf0473ee9856aa379c6bf451ef23cff5b50c9bf680fbad783"
+    },
+    {
+      "bytes": 799713280,
+      "path": "tars/training-run2-test91-20251220-0917.tar",
+      "sha256": "caeb8960ed6c8da64c4f4d8bd053e07237105808ab002bd5ad00978414d12d60"
+    },
+    {
+      "bytes": 900515840,
+      "path": "tars/training-run2-test91-20251220-1017.tar",
+      "sha256": "16f8046508500ce5685b989714f67b5acf89d420e19de90d2b2134d3097024e7"
+    },
+    {
+      "bytes": 905574400,
+      "path": "tars/training-run2-test91-20251220-1117.tar",
+      "sha256": "e1244092fc0ea16d8700fb4cf5c10ead82983739b195fa890617826503a5e2a6"
+    },
+    {
+      "bytes": 900884480,
+      "path": "tars/training-run2-test91-20251220-1217.tar",
+      "sha256": "26854b501635af8bdb6501d367356423ba2948b6bc3878bb6f2c70b74b7f18d9"
+    },
+    {
+      "bytes": 904345600,
+      "path": "tars/training-run2-test91-20251220-1317.tar",
+      "sha256": "b33649f7c0c56b18314b81e467e33da2407bbb72863f902697fb4bfb75f7cdc9"
+    },
+    {
+      "bytes": 902000640,
+      "path": "tars/training-run2-test91-20251220-1417.tar",
+      "sha256": "2a4c8bfe79112a845e0c3107fa6d18f6e42ad9de07cd16891ace013d5219c3bb"
+    },
+    {
+      "bytes": 848465920,
+      "path": "tars/training-run2-test91-20251220-1517.tar",
+      "sha256": "726200e17e2c063964031abbf59f983773c14260b40e28f5f031f410397399cc"
+    },
+    {
+      "bytes": 763791360,
+      "path": "tars/training-run2-test91-20251220-1617.tar",
+      "sha256": "7a2d8f0cf1f51b09e52ed4e46fe27347db8499e289665535535f63762ceab11d"
+    },
+    {
+      "bytes": 847626240,
+      "path": "tars/training-run2-test91-20251220-1717.tar",
+      "sha256": "887c92b482722432ba3f0147e0440c30ad8e9491a4c6b97575dc4be929b0f964"
+    },
+    {
+      "bytes": 896552960,
+      "path": "tars/training-run2-test91-20251220-1817.tar",
+      "sha256": "08876cde66667e6d72a512db97899e0f15935dc7c68e33edd5fb771971522ec8"
+    },
+    {
+      "bytes": 902359040,
+      "path": "tars/training-run2-test91-20251220-1917.tar",
+      "sha256": "b615aeb658939781d23cc6a4b465aed1fe5ddba53e8e2fd2bdcec45a991358cd"
+    },
+    {
+      "bytes": 787609600,
+      "path": "tars/training-run2-test91-20251220-2017.tar",
+      "sha256": "a9a8fb91a48bd5aaefb8927e6b7a5a5f6e94cedf5b4a9d44ba21ece524f8239e"
+    },
+    {
+      "bytes": 907489280,
+      "path": "tars/training-run2-test91-20251220-2117.tar",
+      "sha256": "ebd99182482fa593da25b651bfd970e178cb0c9a4be4c1387a977887eb03fa78"
+    },
+    {
+      "bytes": 906178560,
+      "path": "tars/training-run2-test91-20251220-2217.tar",
+      "sha256": "85a0f427597dca4cb9048a08bd51718964d421856b88fb50a706e4b77fec51f7"
+    },
+    {
+      "bytes": 903823360,
+      "path": "tars/training-run2-test91-20251220-2317.tar",
+      "sha256": "5014dec664a918f920d5466782664a9da27d39d2497817ba7d57fa8a020723f3"
+    },
+    {
+      "bytes": 793722880,
+      "path": "tars/training-run2-test91-20251221-0017.tar",
+      "sha256": "873db572795465031db54637a36dba89c79aa316fd665b369337088f19dbafe1"
+    },
+    {
+      "bytes": 899072000,
+      "path": "tars/training-run2-test91-20251221-0117.tar",
+      "sha256": "58b0fba5fa4eb62a8522de4191637b551bcd683c8cd2f08bdd902f520af2309d"
+    },
+    {
+      "bytes": 904908800,
+      "path": "tars/training-run2-test91-20251221-0217.tar",
+      "sha256": "471ff9ee314bbff5ee35313b46932674b92eaa1e29cb5c5606e7ed0249099b9f"
+    },
+    {
+      "bytes": 912455680,
+      "path": "tars/training-run2-test91-20251221-0317.tar",
+      "sha256": "4dbfcbcbd2081efc6a5f83422e27d3cfb32df40baaa0b4bc0f1576ff53b67396"
+    },
+    {
+      "bytes": 913039360,
+      "path": "tars/training-run2-test91-20251221-0417.tar",
+      "sha256": "00b0becaff4a216e7e447339285c95e3b4101929447a9cdb9b06dd1fddf829a5"
+    },
+    {
+      "bytes": 916623360,
+      "path": "tars/training-run2-test91-20251221-0517.tar",
+      "sha256": "5b9ceb4a18a888ab59abd28555067936a43d7a283703df8c288bd5ad1eee99d3"
+    },
+    {
+      "bytes": 857610240,
+      "path": "tars/training-run2-test91-20251221-0617.tar",
+      "sha256": "f578c87c5639db3d33bc098f6113ca96b7e71eb2ccdf9a226c9bb7ece282cf88"
+    },
+    {
+      "bytes": 860712960,
+      "path": "tars/training-run2-test91-20251221-0717.tar",
+      "sha256": "84d0ad84244bbd4e8051a39e6b72620981136fab49868d2e7f69c27a19b28954"
+    },
+    {
+      "bytes": 911298560,
+      "path": "tars/training-run2-test91-20251221-0817.tar",
+      "sha256": "b4d0850795da7756b5ae26c1e5ef5916bd840b944274279fd014fd4ccc8c63a9"
+    },
+    {
+      "bytes": 785121280,
+      "path": "tars/training-run2-test91-20251221-0917.tar",
+      "sha256": "1a12016676f036b0166dc26bc45d6878dba82e905f7e6671369ebdc85de1f8a1"
+    },
+    {
+      "bytes": 901918720,
+      "path": "tars/training-run2-test91-20251221-1017.tar",
+      "sha256": "cd177ec115e507144e867b0dd8a74a7a18554fbbd553b44660044ded60349600"
+    },
+    {
+      "bytes": 899727360,
+      "path": "tars/training-run2-test91-20251221-1117.tar",
+      "sha256": "f26bbdd3804c2b15eec0f50b4a874893feade45f9ecc00618c1f5ff2deeceff7"
+    },
+    {
+      "bytes": 901713920,
+      "path": "tars/training-run2-test91-20251221-1217.tar",
+      "sha256": "78cadc3c3058498d2cb372b52895d9c07c5ad57d40039dfb6c71c6a4be213f0e"
+    },
+    {
+      "bytes": 849725440,
+      "path": "tars/training-run2-test91-20251221-1317.tar",
+      "sha256": "de7cb74413c916b790f9f08e6a1ff5faecb52e6ea18f687079492f3c191818ac"
+    },
+    {
+      "bytes": 805171200,
+      "path": "tars/training-run2-test91-20251221-1417.tar",
+      "sha256": "72ffa7473a73e82e3f5ba10c97b084c4113a442a29d77cf7c62ba4cb2ce93c76"
+    },
+    {
+      "bytes": 789483520,
+      "path": "tars/training-run2-test91-20251221-1517.tar",
+      "sha256": "ddb65555e4c26284dad2b5cf8c4931594eeb2cf61dba35d284b50b9b1bc77823"
+    },
+    {
+      "bytes": 887715840,
+      "path": "tars/training-run2-test91-20251221-1617.tar",
+      "sha256": "5108ad5fbc6d00a61fcb894ea9381cf4523c8682758f9ac908e7344819425d30"
+    },
+    {
+      "bytes": 792637440,
+      "path": "tars/training-run2-test91-20251221-1717.tar",
+      "sha256": "a770ec4f6bf74f1c04709b8ce1584f42a6cc422fe37fce73ac8ad5fba76aeb63"
+    },
+    {
+      "bytes": 788684800,
+      "path": "tars/training-run2-test91-20251221-1817.tar",
+      "sha256": "ef1d25fc076bf295d7f8a5868f55c84d20e486fa30d99de96186f28b29653358"
+    },
+    {
+      "bytes": 787476480,
+      "path": "tars/training-run2-test91-20251221-1917.tar",
+      "sha256": "dd1ee858efdcca8b7733259278c0b2974e65d5d5301d835ca5951a54388f3047"
+    },
+    {
+      "bytes": 789329920,
+      "path": "tars/training-run2-test91-20251221-2017.tar",
+      "sha256": "4b42b9bc61c67a93530f13120fe68514bc1bee7b92c243a8732c2116fd8564e2"
+    },
+    {
+      "bytes": 787445760,
+      "path": "tars/training-run2-test91-20251221-2117.tar",
+      "sha256": "598e50484c7ad05bc11d9a6ab8532b34f2304609a490696936e7b1cf332cc2f1"
+    },
+    {
+      "bytes": 788756480,
+      "path": "tars/training-run2-test91-20251221-2217.tar",
+      "sha256": "b053ab2e39cd9e96e7d5968082a830b28048819a128ac6ea9f785182e1fd5d3b"
+    },
+    {
+      "bytes": 679034880,
+      "path": "tars/training-run2-test91-20251221-2317.tar",
+      "sha256": "32abcedbbb0200fd87e0db812e60203201338c0cc7e32ebd831d9a29320c891b"
+    },
+    {
+      "bytes": 791726080,
+      "path": "tars/training-run2-test91-20251222-0017.tar",
+      "sha256": "ed641b1bd5e2b3a42023a905a625c33d6825c6d2880ce442bd66eebebf591cf1"
+    },
+    {
+      "bytes": 791418880,
+      "path": "tars/training-run2-test91-20251222-0117.tar",
+      "sha256": "8c4576d295099026e27391bca71b3f854d656e67b2633e564b50f7bc36dd2f58"
+    },
+    {
+      "bytes": 791572480,
+      "path": "tars/training-run2-test91-20251222-0217.tar",
+      "sha256": "3d12abfb50105ae7948d2ce9244f1aed3fcbb6b1cfdae11b960ab1a106b4bbde"
+    },
+    {
+      "bytes": 790056960,
+      "path": "tars/training-run2-test91-20251222-0317.tar",
+      "sha256": "3fe0bdfee16cc4774bb40f5740f4abcc795ebe2d686277c46c2dffcecfdc59e0"
+    },
+    {
+      "bytes": 789913600,
+      "path": "tars/training-run2-test91-20251222-0417.tar",
+      "sha256": "030e37145a69ecace0994a743cf59bb975f24c1b57a73eeb15effd05315eb9ac"
+    },
+    {
+      "bytes": 786892800,
+      "path": "tars/training-run2-test91-20251222-0517.tar",
+      "sha256": "3f87403ebaf1c3ab82b70f9d3536d27c8b9891801939d2d033510e7b9bb640d0"
+    },
+    {
+      "bytes": 791306240,
+      "path": "tars/training-run2-test91-20251222-0617.tar",
+      "sha256": "a269bfa84ebb4b1eb4031c3a338228deca04d1ad85bf2b5c10d1ae3b5a43249f"
+    },
+    {
+      "bytes": 790036480,
+      "path": "tars/training-run2-test91-20251222-0717.tar",
+      "sha256": "8a93af7f836c244e94eccb46047a76246717b09847066e1f38edc00988bfb975"
+    },
+    {
+      "bytes": 793569280,
+      "path": "tars/training-run2-test91-20251222-0817.tar",
+      "sha256": "8174e9b4826cd9a2c93c0ad61dd95d1252bbd7af1f19fa0a501aa95b915dd8f7"
+    },
+    {
+      "bytes": 795668480,
+      "path": "tars/training-run2-test91-20251222-0917.tar",
+      "sha256": "1e296f511589a080553d0c245966e811a57e6a7a40ff4eb80c0dae3dd8fe2d02"
+    },
+    {
+      "bytes": 790732800,
+      "path": "tars/training-run2-test91-20251222-1017.tar",
+      "sha256": "2f6bd1bf4dde607dc9daf1cc32c5e87c3a166bc2aedd10d7ff2a3674d9d21f7b"
+    },
+    {
+      "bytes": 794357760,
+      "path": "tars/training-run2-test91-20251222-1117.tar",
+      "sha256": "e27d6efa256296fd243b955e30961e7ee7d2c523b50de628ea7ff0c6fe3691ff"
+    },
+    {
+      "bytes": 792965120,
+      "path": "tars/training-run2-test91-20251222-1217.tar",
+      "sha256": "664004fb94cf7278f79cc45082882b143f2510679a94c2523d6d54b66bf9c61e"
+    },
+    {
+      "bytes": 792852480,
+      "path": "tars/training-run2-test91-20251222-1317.tar",
+      "sha256": "5b9f38d7fa9f18d2c05a40cb203dadd5068e811fac200096dbd8cb817fb705ac"
+    },
+    {
+      "bytes": 362240000,
+      "path": "tars/training-run2-test91-20251222-1417.tar",
+      "sha256": "87094741842153faec3140c84427fc9f6521f895ce218b0ecb937cd07f8f4407"
+    },
+    {
+      "bytes": 787240960,
+      "path": "tars/training-run2-test91-20251222-1517.tar",
+      "sha256": "be69e97c0e26059edb022cb18a7c0dfa5d6610ea06bab82b28add302f9ce08f6"
+    },
+    {
+      "bytes": 791511040,
+      "path": "tars/training-run2-test91-20251222-1617.tar",
+      "sha256": "b7eab442a7c43e428405ab7660b56bb96913bf6524b057b6e8a0c8fe9570cbd5"
+    },
+    {
+      "bytes": 794521600,
+      "path": "tars/training-run2-test91-20251222-1717.tar",
+      "sha256": "ce98ad8d3c227b390385a2234b7473624ff44c1fa5a4301518a7e489218fc711"
+    },
+    {
+      "bytes": 788285440,
+      "path": "tars/training-run2-test91-20251222-1817.tar",
+      "sha256": "3f5be2abc5fec22073935bebffe49110014e06d34a2b4a26c1b64fdeb3a0363d"
+    },
+    {
+      "bytes": 794849280,
+      "path": "tars/training-run2-test91-20251222-1917.tar",
+      "sha256": "a662af2a732eea2d9a464f3a1fccd80eb44cd630b0e9add99ed03dd76126505c"
+    },
+    {
+      "bytes": 792954880,
+      "path": "tars/training-run2-test91-20251222-2017.tar",
+      "sha256": "b21aae20f15f2e7d60a3f16934bf643a485e7d35d7f2a2e43331e07e5feee5e1"
+    },
+    {
+      "bytes": 784302080,
+      "path": "tars/training-run2-test91-20251222-2117.tar",
+      "sha256": "3643d2cf821f55d54f70912e6ddaa842e9e61000f51d977a92da351b9d6bddeb"
+    },
+    {
+      "bytes": 653783040,
+      "path": "tars/training-run2-test91-20251222-2217.tar",
+      "sha256": "f74a600b841e786e27dfe5cd7193ef42e7d3ba3d29c3fa13d3811f2b8dd7ea68"
+    },
+    {
+      "bytes": 771706880,
+      "path": "tars/training-run2-test91-20251222-2317.tar",
+      "sha256": "45574990f2094ea153ada4c0179f8e61557f82687f0fe3dec8adb39d8f6f1ef7"
+    },
+    {
+      "bytes": 770447360,
+      "path": "tars/training-run2-test91-20251223-0017.tar",
+      "sha256": "a8d480023b9802015b3c21c29d415cca5ca9fffa815ca25c1d5df6c1d5d7d6ab"
+    },
+    {
+      "bytes": 769945600,
+      "path": "tars/training-run2-test91-20251223-0117.tar",
+      "sha256": "e0eabe37cd7e67c75c58a6f8e436be7f4f59d343f8fbd984b432db5835d5c1a8"
+    },
+    {
+      "bytes": 773263360,
+      "path": "tars/training-run2-test91-20251223-0217.tar",
+      "sha256": "6be325542786a4c283550de5956bf95d1f51504fa802bce4680d98854eba8440"
+    },
+    {
+      "bytes": 775075840,
+      "path": "tars/training-run2-test91-20251223-0317.tar",
+      "sha256": "3e93bbeae12cffc868392a22f9cce94e5a1f2dc94ee814dc374309bdfe769d49"
+    },
+    {
+      "bytes": 681533440,
+      "path": "tars/training-run2-test91-20251223-0417.tar",
+      "sha256": "afb20c0d558b8f1ced31a79a4ddc42fad527d209f30262e2029dea819674699d"
+    },
+    {
+      "bytes": 808499200,
+      "path": "tars/training-run2-test91-20251223-0517.tar",
+      "sha256": "9f2c4d98901a2a343de715a8b8c788367766c4e23a1896df35fc586e3ea2f9dc"
+    },
+    {
+      "bytes": 772689920,
+      "path": "tars/training-run2-test91-20251223-0617.tar",
+      "sha256": "2baa00fbcdc5bfc366dc70a8477ed2a955f14c0d76fac02a945baf90f895330c"
+    },
+    {
+      "bytes": 778936320,
+      "path": "tars/training-run2-test91-20251223-0717.tar",
+      "sha256": "0fd95078fb1d7d525ac72043ae3f9a4f1ebefadcde64aafb0cd39dae76925d0f"
+    },
+    {
+      "bytes": 769771520,
+      "path": "tars/training-run2-test91-20251223-0817.tar",
+      "sha256": "3b275d87433d4717c771948840f240760b2013a17ec2ba897b9f00086c28e7e7"
+    },
+    {
+      "bytes": 364759040,
+      "path": "tars/training-run2-test91-20251224-0917.tar",
+      "sha256": "fea35c7e08babe3a3a7a1e94f0433d3644ae878b9cbda90ed023aba5f6e416cb"
+    },
+    {
+      "bytes": 782213120,
+      "path": "tars/training-run2-test91-20251224-1017.tar",
+      "sha256": "3cef5c3d0785b8b93f1a925e4b281643a7f6393f0f356817b43da374e72ef80e"
+    },
+    {
+      "bytes": 666787840,
+      "path": "tars/training-run2-test91-20251224-1117.tar",
+      "sha256": "9faaed5e074a3406394716129105a8bc6c02f060a7bd3e7468090ad7be9eb81f"
+    },
+    {
+      "bytes": 784640000,
+      "path": "tars/training-run2-test91-20251224-1217.tar",
+      "sha256": "1e1f4614a839d5daadd6e0fb40551a7e3c639bbda774c4fea908c13d35b9ee6c"
+    },
+    {
+      "bytes": 785684480,
+      "path": "tars/training-run2-test91-20251224-1317.tar",
+      "sha256": "e46fd28ca61659b945991af8dfbb7e89b2d2fa5f8d9b1c033aa14b3cc4503204"
+    }
+  ],
+  "inventory_hash": "70d2ea1d3c56328a1f7bd1645255e29d7a8a771b769229e142fe1632145127ab",
+  "root": "/root/projects/learnrust/chessengine/data/lc0_nnue",
+  "schema": "archon.archive-inventory.v1",
+  "total_bytes": 69951662080,
+  "total_files": 86
+}

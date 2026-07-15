@@ -1,10 +1,10 @@
 # Design suite index
 
 This directory is the engine's build plan. `decisions.md` is the
-constitution: numbered, terse, binding decisions (D1–D39) that every doc and
+constitution: numbered, terse, binding decisions (D1–D41) that every doc and
 every line of code must comply with — **decisions change there first, docs
 follow** (a decision change is its own commit with rationale; the owning doc
-is updated to match). The numbered docs `01`–`18` are prescriptive component
+is updated to match). The numbered docs `01`–`19` are prescriptive component
 designs — full algorithms, constants, implementation plans, and acceptance
 criteria (D26). They are distinct from `stockfish_reference/`, which holds
 *descriptive* study notes (what current Stockfish does, with file/line
@@ -18,8 +18,8 @@ the note.
 | Doc | Title | Scope | Status |
 |---|---|---|---|
 | `README.md` | Suite index | This file: index, reading order, process rules | Living |
-| `decisions.md` | Design decisions record | Numbered binding decisions D1–D39; every doc complies | Living |
-| `00-master-plan.md` | Master implementation plan | Phases P0–P14, dependency graph, milestone ladder M1–M10, risks, consolidated open questions | Living |
+| `decisions.md` | Design decisions record | Numbered binding decisions D1–D41; every doc complies | Living |
+| `00-master-plan.md` | Master implementation plan | Phases P0–P15, dependency graph, milestone ladder M1–M11, risks, consolidated open questions | Living |
 | `01-architecture.md` | Architecture, module layout, conventions | Crate/module map, public seams, data flow, error/unsafe/dependency/build policies, `params.rs` convention | Reviewed v1 |
 | `02-core-types.md` | Core types | `Value`/`Depth` bands + predicates, mate/TT score arithmetic, `Direction`/`Square`/`Bitboard` helpers, `Move::raw16`, `ExtMove` repr, SEE piece values | Reviewed v1 |
 | `03-attack-tables.md` | Attack tables | Const leaper + ray-geometry tables, fancy magic bitboards behind `LazyLock`, the naive-ray correctness oracle | Reviewed v1 |
@@ -36,8 +36,14 @@ the note.
 | `14-performance-testing.md` | Performance & testing | Measurement hierarchy (SPRT / tactics / bench / criterion), bench fingerprint policy, target ladder, profiling toolkit, SPRT/gauntlet protocol (D24/D25) | Reviewed v1 |
 | `15-nnue-datagen.md` | NNUE training-data generation | The `bullet`/`bulletformat` on-disk format contract, curation/filtering spec, SF-teacher bootstrap pipeline, corpus volume/storage, D28 two-tier provenance progression | Draft v1 |
 | `16-research-data-platform.md` | Research data platform | Four-layer observation model, the versioned self-describing Observation-Store schema (superset of doc 15's flat record), three-store data management, provenance, and the D29 staging/reconciliation discipline (build-now = Tier-A + schema; the rest deferred behind its consuming research) | Living |
-| `17-nnue-research.md` | NNUE research roadmap | The engine's differentiating bet (D34): a search-integrated, shared-trunk, multi-head NNUE co-trained with search control from the D29 store — flagship thrusts **uncertainty coupling** (deep-search residual → extensions/reductions/time) and **learned policy & search control** (policy/control head → ordering/LMR/pruning), plus cascade/MoE/threat-feature supporting thrusts; the corpus→target→experiment map and the per-node compute-budget discipline; staged post-P13 behind Tier-B triggers | Living |
+| `17-nnue-research.md` | NNUE research predecessor | D34/D40 experiments and hypotheses that established learned move information can improve fixed-node search and exposed shared-training/data failures; partially superseded by D41/doc 19, retained as evidence and an idea catalogue | Historical/Living evidence |
 | `18-experimental-ledger.md` | Experimental ledger | Content-addressed provenance DAG + append-only results ledger (nets/data/experiments JSONL + milestones) with a stdlib-only CLI; identity = sha256, every artifact carries a regen recipe; metadata in git, bytes in a content store (GCS + OpenBench later) (D38) | Living |
+| `19-learned-search-allocation.md` | ARCHON learned counterfactual search allocation | Governing D41 research roadmap: external positions relabeled by ARCHON-native oracle search, protected value head, move/action consequence model, constrained planner, on-policy flywheel, staged authority, and fixed-node plus equal-time gates | Living |
+
+The operational goal hierarchy, promotion thresholds, always-next rule, and
+current research checkpoint live in
+`docs/research/archon-execution-plan.md`; experimental continuation state lives
+in `docs/research/policy-automl-state.md` (legacy filename retained).
 
 (Some doc headers still read "Draft v1" from the drafting workflow; the
 review pass is complete and this table is authoritative until the header
@@ -58,10 +64,12 @@ sweep in the docs-sync commit — see `00-master-plan.md` §6.2.)
    data platform) is the forward-looking umbrella `15` is the first instance of.
 8. Rest of `14` when you need targets, profiling recipes, or the strength
    harness.
+9. `17` for the policy/value experimental history, `18` for provenance, then
+   `19` for the governing ARCHON learned-allocation program.
 
 ## Process rules
 
-- **Decisions lead docs.** A change to any pinned decision (D1–D39) lands in
+- **Decisions lead docs.** A change to any pinned decision (D1–D41) lands in
   `decisions.md` first, as its own commit with rationale; the owning doc is
   updated to comply. A doc may not silently contradict `decisions.md` — a
   necessary deviation is called out in that doc's §9 Open Questions until

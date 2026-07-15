@@ -1,0 +1,80 @@
+{
+  "cost_cap_usd": 16.6,
+  "created_utc": "2026-07-15T03:55:41.902829+00:00",
+  "estimated_compute_usd": 6.153535398724659,
+  "estimated_vm_hours": 33.62440657634999,
+  "estimated_wall_hours": 5.604067762724998,
+  "image": "us-east1-docker.pkg.dev/archon-502500/archon-workers/data-worker@sha256:9b0889708691851f2b68a0033759622d890aeb911df72a18d38d27065d3573c3",
+  "job": {
+    "allocationPolicy": {
+      "instances": [
+        {
+          "policy": {
+            "machineType": "c2d-highcpu-16",
+            "provisioningModel": "SPOT"
+          }
+        }
+      ],
+      "location": {
+        "allowedLocations": [
+          "zones/us-east1-b"
+        ]
+      },
+      "serviceAccount": {
+        "email": "archon-batch-worker@archon-502500.iam.gserviceaccount.com"
+      }
+    },
+    "labels": {
+      "corpus": "lc0-selected-101m",
+      "purpose": "durable-paired-labels",
+      "teachers": "reckless-sf18"
+    },
+    "logsPolicy": {
+      "destination": "CLOUD_LOGGING"
+    },
+    "taskGroups": [
+      {
+        "parallelism": 6,
+        "taskCount": 135,
+        "taskSpec": {
+          "computeResource": {
+            "cpuMilli": 16000,
+            "memoryMib": 24576
+          },
+          "maxRetryCount": 1,
+          "maxRunDuration": "1200s",
+          "runnables": [
+            {
+              "container": {
+                "commands": [
+                  "-lc",
+                  "set -euo pipefail; python /opt/archon/tools/dual_label_shard.py --manifest gs://archon-main-bucket/corpora/lc0-selected/v1/position-shards/batch-partitions/3zone-v1/part-00.json --output gs://archon-main-bucket/corpora/lc0-selected/v1/dual-labels-r5k-sf18-5k --reckless /opt/archon/bin/reckless --stockfish /opt/archon/bin/stockfish-18 --nodes 5000 --workers 16 --hash-mb 8"
+                ],
+                "entrypoint": "/bin/bash",
+                "imageUri": "us-east1-docker.pkg.dev/archon-502500/archon-workers/data-worker@sha256:9b0889708691851f2b68a0033759622d890aeb911df72a18d38d27065d3573c3"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "job_id": "archon-lc0-101m-paired-zone-b-v3",
+  "machine": "c2d-highcpu-16",
+  "manifest": "gs://archon-main-bucket/corpora/lc0-selected/v1/position-shards/batch-partitions/3zone-v1/part-00.json",
+  "manifest_hash": "35d98a635f2377339dad23c71215f2251e06abeb5982a43679b3fe939cd93707",
+  "max_attempts": 2,
+  "max_task_seconds": 1200,
+  "measured_rows_per_second": 278.8153295348857,
+  "nodes_per_teacher": 5000,
+  "output": "gs://archon-main-bucket/corpora/lc0-selected/v1/dual-labels-r5k-sf18-5k",
+  "parallelism": 6,
+  "project": "archon-502500",
+  "region": "us-east1",
+  "rows": 33750000,
+  "spot_only": true,
+  "tasks": 135,
+  "workers_per_vm": 16,
+  "worst_case_compute_usd": 16.47072,
+  "zone": "us-east1-b"
+}

@@ -1,0 +1,47 @@
+{
+  "taskGroups": [
+    {
+      "taskSpec": {
+        "runnables": [
+          {
+            "container": {
+              "imageUri": "us-east1-docker.pkg.dev/archon-502500/archon-workers/data-worker@sha256:1db7c3e2be31cdf4fdfed3aac8b81c2b073c4ac67fdd0dffe2dee09e03eece9e",
+              "entrypoint": "/bin/bash",
+              "commands": [
+                "-lc",
+                "set -euo pipefail; python /opt/archon/tools/native_game_generator.py --reckless /opt/archon/bin/reckless --stockfish /opt/archon/bin/stockfish-18 --output gs://archon-main-bucket/smoke/native-flow-v2 --corpus-id archon-native-cloud-canary-v2 --stratum exploratory --task-index 0 --target-positions 100 --positions-per-game 20 --max-games 20 --move-nodes 500 --gate-nodes 100 --gate-cp 500 --opening-min-plies 8 --opening-max-plies 12 --opening-retries 30 --max-plies 80 --win-cp 1500 --win-plies 6 --draw-after-ply 50 --draw-plies 8 --explore-plies 16 --multipv 4 --temperature-cp 80"
+              ]
+            }
+          }
+        ],
+        "computeResource": {
+          "cpuMilli": 2000,
+          "memoryMib": 4096
+        },
+        "maxRetryCount": 0,
+        "maxRunDuration": "600s"
+      },
+      "taskCount": 1,
+      "parallelism": 1
+    }
+  ],
+  "allocationPolicy": {
+    "instances": [
+      {
+        "policy": {
+          "machineType": "e2-standard-2",
+          "provisioningModel": "SPOT"
+        }
+      }
+    ],
+    "serviceAccount": {
+      "email": "archon-batch-worker@archon-502500.iam.gserviceaccount.com"
+    }
+  },
+  "logsPolicy": {
+    "destination": "CLOUD_LOGGING"
+  },
+  "labels": {
+    "purpose": "native-generator-canary"
+  }
+}

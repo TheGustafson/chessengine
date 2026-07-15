@@ -117,6 +117,7 @@ chessengine/
 │   ├── perft.rs             # perft/divide drivers
 │   ├── see.rs               # impl Board { fn see_ge } (D11)
 │   ├── eval.rs              # evaluate() seam (D22); becomes eval/ in phase B/C
+│   ├── search_control.rs    # D41 consequence-head contract (feature-gated, shadow-only)
 │   ├── tt.rs                # transposition table (D19) + prefetch wrapper
 │   ├── movepick.rs          # staged MovePicker, ExtMove (D7)
 │   ├── history.rs           # gravity StatEntry + all history tables
@@ -146,6 +147,8 @@ Rules:
 
 ```
 uci → threads → search → { movepick, tt, eval, timeman }
+                search ↛ search_control  (until an explicit D41 authority gate)
+                search_control → {types only; caller supplies an opaque latent slice}
                 movepick → { movegen, history, see }
                 movegen  → { board, attacks }
                 see      → { board, attacks }
@@ -490,6 +493,50 @@ and threaded through from day one: it cannot hide behind `&Board` without
 interior mutability or `thread_local!`, both banned on the search path
 (design/13 §3.12). Phase A ignores it. Borrow-wise the call splits disjoint
 `Worker` fields — `evaluate(&self.board, &mut self.eval_ctx, optimism)`.
+
+#### 3.3.11a `search_control` (D41 scaffold; feature-gated)
+
+The first learned-search-allocation code is a pure, allocation-free inference
+contract, compiled only with `search-control`. It deliberately has no authority
+over search: `search` does not call it until a later, separately designed shadow
+integration. The contract accepts only a caller-supplied opaque latent slice,
+pre-action search context, legal-move features, and a proposed action. It cannot
+observe the action's returned score, nodes, cutoff, or re-search result.
+
+Every head declares a versioned representation fingerprint and latent dimension.
+The checked adapter rejects a contract-version/fingerprint/dimension mismatch,
+non-finite latent or output, invalid probability/cost range, malformed context,
+move, or action. Rejection is an explicit `ClassicalFallback` outcome; it never
+manufactures a neural answer and never weakens the classical controller. The
+zero/deterministic implementation exists only for interface and telemetry smoke
+tests. Models, file formats, planner authority, and accumulator extraction remain
+owned by docs 11 and 19.
+
+```rust
+pub const SEARCH_CONTROL_CONTRACT_VERSION: u16 = 1;
+
+pub struct RepresentationSpecV1 {
+    pub contract_version: u16,
+    pub latent_fingerprint: u64,
+    pub latent_dim: u32,
+}
+
+pub trait SearchConsequenceHeadV1 {
+    fn representation(&self) -> RepresentationSpecV1;
+    fn predict_unchecked(&self, latent: &[f32], context: &SearchContextV1,
+                         mv: &MoveFeaturesV1, action: &ProposedActionV1)
+        -> ActionPredictions;
+}
+
+pub fn predict_checked<H: SearchConsequenceHeadV1>(
+    head: &H, expected: RepresentationSpecV1, latent: &[f32],
+    context: &SearchContextV1, mv: &MoveFeaturesV1,
+    action: &ProposedActionV1,
+) -> PredictionOutcome;
+```
+
+No call in this interface allocates. Default builds do not compile the module,
+and heads-off bench/search behavior is unchanged.
 
 #### 3.3.12 `tt` (new)
 

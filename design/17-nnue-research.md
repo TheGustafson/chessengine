@@ -1,9 +1,21 @@
 # 17 — NNUE research: the search-integrated network
 
-Status: Living (research roadmap — designed now, built incrementally post-P13
-behind Tier-B triggers, like doc 16)
+Status: Historical predecessor and living evidence catalogue. D41 and
+`design/19-learned-search-allocation.md` supersede this document wherever it
+treats direct Lc0 policy imitation, mandatory shared-trunk co-training, or a
+policy head itself as the final research objective.
 
-This document is the roadmap for the engine's differentiating bet (D34). A
+> **D41 pivot (2026-07-14).** The experiments recorded by this roadmap remain
+> important: learned move information improved fixed-node search, naive joint
+> training damaged evaluation, and the Lc0-trained value pipeline exposed
+> systematic generalization problems. ARCHON now uses strong-engine corpora as
+> state coverage, relabels them with ARCHON-native counterfactual searches, and
+> learns the value, risk, and cost of proposed search actions. Doc 19 owns that
+> governing program. The feature work, protected-value lessons, compute-budget
+> discipline, and completed controls here remain active inputs to it.
+
+This document records the predecessor roadmap for the engine's differentiating
+bet (D34). A
 conventional NNUE is a value function trained on deep-search labels and then
 **bolted onto a hand-tuned search** — the two are developed separately and
 never talk to each other. Our bet is different: a **search-integrated,

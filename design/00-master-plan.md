@@ -300,6 +300,21 @@ Lc0 teacher?). Milestone M9 (M-3200) is the target.
   gauntlet ladder (doc 14 §3.8) against recent Stash tags and older SF
   releases.
 
+### P15 — ARCHON learned search allocation (XL, iterative) → **milestone M11 (M-allocator)**
+- **Implements:** D41 and `19-learned-search-allocation.md`: preserve the
+  strongest evaluator, turn Lc0/strong-engine data into a position corpus,
+  build the ARCHON oracle relabeler, then learn search-action consequences and
+  deploy them through bounded corrections and a constrained planner.
+- **Entry:** a strong, frozen evaluator; deterministic search telemetry;
+  paired-opening fixed-node harness; D29 observation storage and D38 ledger.
+- **Sequence:** ARCHON-native ordering/cutoff targets → reduction-risk model →
+  cost model → unified allocator → node-level planner → optional residual
+  learned memory. Each target proves independent engine value before unifying.
+- **Exit:** never as a flywheel; M11 is reached when a calibrated bounded
+  allocator reproducibly improves the prevailing evaluator's Elo-versus-node-
+  budget curve and equal-time Elo, with NPS cost and failure rates accounted
+  for. Hard pruning remains out of scope until the calibrated allocator passes.
+
 ### Dependency graph (docs; arrows = "must land before")
 
 ```
@@ -325,6 +340,8 @@ Lc0 teacher?). Milestone M9 (M-3200) is the target.
         11-B HCE+texel ──► 11-C NNUE (+08 huge pages, 14 PGO) ──► tuning loop
 14 perf/testing: spans everything (check.sh → criterion → bench → SPRT →
                  gauntlet/tactics → PGO); its gates apply from P0 onward
+16 observation store + 18 ledger ──► 19 ARCHON oracle/allocator (P15), while
+07/09/10/12 retain ownership of the search seams the allocator informs
 ```
 
 ---
@@ -351,6 +368,7 @@ noted per row.
 | ~~M8~~ | ~~M-2950~~ | ~~P12~~ | **RETIRED** (2026-07-11, D21/D28): P12 HCE descoped — Stockfish is the NNUE bootstrap generator, so HCE is off the path. Ladder skips M8: M7 (SMP) → M9 (NNUE). |
 | M9 | M-3200 | P13 | Self-trained net SPRT-beats HCE; gauntlet ≥ 3200 (rung M5); NNUE bench nps ≥ 70 % of locally built SF |
 | M10 | M-parity | P14 | Sustained gauntlet climb vs recent Stash tags / older SF releases per doc 14 §3.5/§3.8; every gain SPRT-attributed |
+| M11 | M-allocator | P15 | Bounded ARCHON-native allocation improves the prevailing evaluator over multiple fixed-node budgets and at equal time; paired openings, multiple seeds, pair-bootstrap confidence intervals, calibrated risk, NPS/invocation cost, and classical-controller ablations all recorded |
 
 ---
 
@@ -364,7 +382,7 @@ noted per row.
 | 4 | **Correctness debt in make/unmake/Zobrist** — the five-key family, ep-only-when-legal, and rule50 folding are near-impossible to retrofit; a subtle key bug poisons the TT and everything above it | Weeks of misdirected debugging in P6+ | All five keys wired from day one (D9); incremental-vs-recompute oracle at every node in debug perft; mutation testing proves the suite catches the classic bug classes; perft is a non-negotiable merge gate forever (D24) |
 | 5 | **Nondeterminism breaking the bench oracle** — a single time-seeded value or `HashMap` in a search path destroys the fingerprint that all regression discipline rests on | D24 gates become theater | Determinism requirements are hard invariants with an in-process test (doc 14 §3.2, step 7); dither keyed off node counters; multi-thread bench is nps-only by rule; single-writer relaxed counters |
 | 6 | **Measurement environment (WSL2)** — unreliable hardware perf counters and noisy timing on the current dev box | Bad optimization decisions | Elapsed-time medians + cachegrind as the WSL2 fallback; surprising counter readings validated on native Linux before acting; pinned-core, 5-run-median hygiene for any claim (doc 14 §6) |
-| 7 | **Scope creep / doc drift** — 14 reviewed docs only stay authoritative if deviations flow back | Docs stop being contracts; reviews lose their reference | Docs-lead-code rule: implementation deviations update the owning doc in the same commit (doc 01 §3.9); seam changes reflected into doc 01 same-commit; decisions change in decisions.md first (see README process rules) |
+| 7 | **Scope creep / doc drift** — the numbered design suite only stays authoritative if deviations flow back | Docs stop being contracts; reviews lose their reference | Docs-lead-code rule: implementation deviations update the owning doc in the same commit (doc 01 §3.9); seam changes reflected into doc 01 same-commit; decisions change in decisions.md first (see README process rules) |
 
 ---
 

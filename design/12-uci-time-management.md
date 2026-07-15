@@ -224,7 +224,7 @@ cutechess/fastchess which close the pipe).
 
 | Command | Grammar | Response |
 |---|---|---|
-| `uci` | — | `id name <name> <version>`, `id author <author>`, one `option` line per table entry (§3.5), then `uciok` |
+| `uci` | — | `id name ARCHON <version>`, `id author <author>`, one `option` line per table entry (§3.5), then `uciok`; `ARCHON` is the D41 public engine name while the internal Cargo package/binary may remain `chessengine` |
 | `isready` | — | `readyok` |
 | `setoption` | `setoption name <id...> [value <x...>]` | none (errors as `info string`) |
 | `ucinewgame` | — | none; clears TT, histories, per-game TM state (§3.7) |

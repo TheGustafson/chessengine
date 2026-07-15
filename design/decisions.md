@@ -489,3 +489,105 @@ strength. Two constraints in permanent tension, resolved in this order:
   net-0..net-10 remain the validated scaffold + a ready net-quality A/B. Owning
   doc: `design/11` §12. Reference provenance: the two SF extractions + the
   Reckless study, all 2026-07-13.
+
+- **D41**: ARCHON learned counterfactual search allocation (user-directed
+  research pivot, 2026-07-14). The engine and research program are named
+  **ARCHON**. Strong external engines, especially Lc0, supply valuable,
+  diverse **positions** and may supply bootstrap targets, but their policy or
+  visit distributions are not ARCHON's final search-control target. ARCHON
+  relabels those states with a conservative, deeper version of its own search
+  and learns a search-action consequence model
+  `Q(position, search_context, legal_move, proposed_action)`. Its outputs must
+  include calibrated bound-error/re-search risk, cutoff and alpha-raise
+  probability, and expected log nodes/cycles; later outputs may cover
+  extensions and the value of buying cheap/full policy inference. A small,
+  chess-agnostic constrained planner chooses the least-cost action satisfying
+  a configured error-risk bound. The learned model predicts consequences; it
+  does not imitate one universally “correct” reduction.
+
+  The strongest available evaluator is the protected baseline. Initially its
+  value behavior is frozen and bit-identical while node-control and legal-move
+  consequence heads train; separate adapters are allowed and uncontrolled
+  shared-trunk gradients are forbidden. Authority expands only through
+  bounded corrections with the classical controller retained as behavior
+  policy, fallback, and control. Search ordering and reductions precede hard
+  pruning. Data collection is an iterative flywheel: current ARCHON supplies
+  states, slow ARCHON oracle searches supply counterfactual labels, games
+  select models, deployed controllers expose new states, and failures and
+  disagreements are mined and relabeled.
+
+  Every stage must pass offline calibration/OOD tests, paired fixed-node tests
+  over **multiple node budgets** with pair-bootstrap intervals, and equal-time
+  tests accounting for NPS and invocation cost. The governing objective is the
+  Elo-versus-compute frontier, ultimately maximum Elo/second, not imitation
+  accuracy. D41 supersedes D34's requirement that all tasks co-train one shared
+  trunk and D40's use of Lc0 soft policy as the final target. D34's search-
+  integrated thesis, D40's feature/value architecture, and completed policy
+  experiments remain useful foundations and controls. Owning roadmap:
+  `design/19-learned-search-allocation.md`; experimental history remains in
+  `design/17-nnue-research.md` and `docs/research/policy-automl-state.md`.
+
+- **D42**: External value-oracle bootstrap and frozen value representation
+  (user-directed implementation detail, 2026-07-14). When D41 work needs a
+  value oracle other than ARCHON, use both (a) the most recently compiled local
+  Reckless release build and (b) the official stable **Stockfish 18** build.
+  Stockfish 16—the teacher used for `net-0`—must not silently substitute. Pin
+  each executable by path, UCI identity, source revision where known, binary
+  SHA-256, options, and label budget in dataset provenance.
+
+  The first representation target is paired Reckless/SF18 value supervision on
+  the same positions. Preserve the two raw labels separately; calibrate their
+  score/WDL scales before deriving any consensus target, and retain their
+  disagreement as uncertainty/hard-case information. Never average raw engine
+  centipawns across uncalibrated scales. A candidate value model must pass the
+  evaluator strength gate before replacing the prevailing baseline. Once the
+  baseline is selected, freeze the complete value accumulator and value head
+  bit-identically while training the first ARCHON search-control heads. This is
+  the causal isolation: improvements or regressions belong to learned search
+  control, not simultaneous value drift. Owning roadmap: doc 19 §§4.2, 5.3,
+  and 10.
+
+- **D43**: Search-control data are intervention-aware (user-approved parallel
+  head/data track, 2026-07-14). Maintain two semantically distinct corpora:
+  **observational traces** record what the current heuristic ARCHON encountered
+  and did; **forced counterfactual interventions** rerun the same pre-action
+  state with one declared search-action axis changed. Observations provide
+  on-policy coverage but cannot establish the causal consequence of a different
+  reduction. Every record and derived label identifies its evidence kind.
+
+  Final-best-move and pairwise targets require a stable conservative reference
+  (agreement across increasing depth/budget, explicit ties/margins); contextual
+  alpha-raise and cutoff use the alpha/beta captured before the move. Reduction
+  error compares bound class against a full-depth reference under the same
+  parent context. Re-search trigger, changed bound, and necessity are separate
+  labels. Node cost is the first authoritative cost target; cycles/time are
+  calibrated in warmed pinned batches rather than trusted per tiny subtree.
+
+  Counterfactual arms start from identical board/history/config/node-counter
+  state, isolated fresh TT state, and frozen or restored history writes. An
+  asserted event fingerprint prevents an override from applying to the wrong
+  node. One action axis changes per experiment; changing reduction must update
+  both actual scout depth and the parent `Stack.reduction` observed by child
+  hindsight. Initial reduction data include only ordinary LMR-eligible moves
+  and exclude entangled singular/check/pruned/stopped cases. Root v0 may use
+  independent `searchmoves` arms with cold state before internal intervention
+  instrumentation lands. Owning schema: doc 16; model/controller roadmap:
+  doc 19.
+
+- **D44**: Reckless-to-ARCHON search-control curriculum (user-directed,
+  2026-07-14). ARCHON need not produce every initial search-control label.
+  Bootstrap the first move-quality representation with independent cold root
+  move analyses from the newest pinned Reckless build: stable best move,
+  pairwise ordering, per-move score/margin, PV stability, and root node cost at
+  increasing budgets. Preserve `producer_engine` on every observation and use
+  one schema/tool that can rerun identical source positions with ARCHON.
+
+  External labels are target-scoped, not interchangeable with native search
+  consequences. Contextual cutoff, reduction/bound error, re-search, and exact
+  action cost depend on ARCHON's windows, ordering, TT, histories, pruning, and
+  reduction semantics; their production targets must transition to ARCHON
+  observations/interventions before deployment. Do not invest in invasive
+  Reckless internal-LMR instrumentation unless a later controlled experiment
+  justifies it. Curriculum: Reckless root bootstrap → ARCHON root adaptation →
+  ARCHON internal counterfactuals → on-policy ARCHON flywheel. Promotion is
+  always determined by ARCHON engine games. Owning roadmaps: docs 16 and 19.

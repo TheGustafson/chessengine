@@ -1,0 +1,40 @@
+{
+  "complete": false,
+  "config_hashes": [
+    "e83063f12b761804d2521494b72b355a4731ca4bf7b681fcab40d30aafcaf814"
+  ],
+  "download_validated_ordinals": [
+    20,
+    236
+  ],
+  "expected_shards": 404,
+  "first_missing": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+  ],
+  "manifest": "gs://archon-main-bucket/corpora/lc0-selected/v1/position-shards/manifest.json",
+  "missing_shards": 402,
+  "output": "gs://archon-main-bucket/corpora/lc0-selected/v1/dual-labels-r5k-sf18-5k",
+  "present_bytes": 6199987,
+  "present_rows": 500000,
+  "present_shards": 2,
+  "schema": "archon.paired-label-reconciliation.v1"
+}

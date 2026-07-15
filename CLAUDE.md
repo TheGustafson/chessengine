@@ -1,23 +1,36 @@
-# chessengine
+# ARCHON
 
-A UCI chess engine in Rust, aiming at Stockfish-class architecture. This is
-also a Rust learning project: **prefer the idiomatic Rust way** over a
-transliteration of C++ patterns, and briefly explain non-obvious idioms when
-introducing them.
+A UCI chess engine in Rust (crate/dir name `chessengine`, engine name
+**ARCHON**), aiming at Stockfish-class architecture. This is also a Rust
+learning project: **prefer the idiomatic Rust way** over a transliteration of
+C++ patterns, and briefly explain non-obvious idioms when introducing them.
 
 ## Design documents (read before implementing anything)
 
 `design/` holds the reviewed design suite that governs all implementation:
 
-- `design/decisions.md` — pinned decisions D1-D39. **Decisions change here
+- `design/decisions.md` — pinned decisions D1-D44. **Decisions change here
   first; docs follow; code follows docs.**
-- `design/00-master-plan.md` — phase ordering (P0-P14), milestone gates,
+- `design/00-master-plan.md` — phase ordering (P0-P15), milestone gates,
   current phase status.
 - `design/README.md` — index and process rules for the suite.
-- `design/01-*.md` … `design/18-*.md` — one contract per component (14
+- `design/01-*.md` … `design/19-*.md` — one contract per component (14
   numbered + `15` NNUE datagen + `16` research data platform + `17` NNUE
-  research roadmap, D34 + `18` experimental ledger, D38). Check code against the
+  research predecessor, D34/D40 + `18` experimental ledger, D38 + `19` ARCHON
+  learned search allocation, D41). Check code against the
   owning doc's acceptance criteria (§8) before calling a phase done.
+
+## Live research state (read before any research/training loop)
+
+`docs/research/policy-automl-state.md` is the compact-safe research decision
+log and continuation record for the D41/ARCHON era — read it completely
+(especially its final takeover checkpoint) before resuming research, and
+update it after every completed, rejected, or redirected trial. Its header
+invariants (bounded-label quarantine, quality-first flywheel rule, SF18
+tiered-oracle plan) override stale narrative below them. Companion docs:
+`docs/research/archon-execution-plan.md`,
+`docs/research/archon-self-improvement-roadmap.md`,
+`docs/research/sf18-label-quality-plan.md`.
 
 ## Experimental ledger (D38, design/18)
 
@@ -180,18 +193,27 @@ mutates. Full mechanics: `design/14` §10.
 
 ## Status / roadmap
 
-**CURRENT (2026-07-13): P13 first-net DONE; SOTA-net sprint DESIGNED (D40) + planned.**
-Classical engine complete (P0–P11, ~2720 Elo PSQT, depth-6 bench **548978**). P13
-NNUE landed: net-0..net-10 (768→256 scaffold, SF-teacher; NNUE **+696 vs PSQT**;
-net-8 best). Lc0 data salvaged (+449 mapping fix) but SF > Lc0 for eval. A learned
-policy head was prototyped + wired into MovePicker — **negative for quiet-ordering**
-(kept feature-gated, bench-neutral). **NEXT = the P13-SOTA sprint (D40, design/11
-§12, design/00 P13-SOTA):** SF features (HalfKAv2_hm + FullThreats, 83,248) + a
-Reckless-shaped lean head (int8-FT/f32-tail, 8 buckets — already reimplemented
-bit-exactly on `experiment/reckless-net`) + the **triple-net grid** (eval-only /
-+small-policy / +full-policy), bullet-extended trainer. Sprint goal = a **12-net
-experiment** (4 configs × 3 policy variants), tasks #27–30. Datagen at
-`data/nnue/raw/` (~23M+ SF) + `data/lc0_nnue/` (86 tars ~107M, policy targets). The
+**CURRENT (2026-07-15): D41 ARCHON era — value-foundation phase (roadmap
+B1–B4); net-0 is still the strongest evaluator.**
+Classical engine complete (P0–P11, ~2720 Elo PSQT, depth-6 bench **548978**).
+P13 NNUE landed: **net-0** (768→2x256 SCReLU, SF16-teacher, **+696 vs PSQT**,
+~3400 anchored) remains unbeaten; net-1..11, the 13-net D40 policy campaign,
+and the bulk value matrix are historical controls. D40 (SF HalfKAv2_hm +
+FullThreats features + Reckless-shaped head) is implemented, SIMD-optimized,
+and parity-proven. **D41 renamed the engine ARCHON and pivoted the goal to
+learned search allocation** (design/19, phase P15/M11): consequence models
+over policy imitation, protected/frozen evaluator, equal-time promotion gates.
+Standing facts (details + takeover protocol in
+`docs/research/policy-automl-state.md`): every bulk/scalar-label recipe so far
+failed to beat net-0 (best bulk: Lichess classic1024, −39 Elo @20k); working
+root-cause hypothesis = target/search-contract mismatch — bulk isolated-cp
+nets fit statically but lose the local score topology alpha-beta consumes
+(`tools/nnue/audit_local_coherence.py` is a mandatory pre-game gate); hard
+node-limit (5k) search labels are frequently aspiration-window **bounds** and
+are quarantined from scalar losses; the production value oracle is the tiered
+deep-SF18 protocol (`docs/research/sf18-label-quality-plan.md`). The one
+confirmed positive: gen-0 rank-8 bilinear policy head + unchanged net-0 =
++68.6 ±23 Elo at 2k **fixed nodes** (not equal-time; large NPS tax). The
 narrative below is the phase-by-phase history.
 
 Done: types, bitboards, board + FEN, `Move`/`MoveList`; attack tables (P1:
