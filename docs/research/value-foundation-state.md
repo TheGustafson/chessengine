@@ -202,6 +202,24 @@ it may transform the fishpack picture entirely.
   conclusions on these sources stand; H1 is now the last hypothesis
   standing pending Probe A's decayed endpoints.**
 
+- **2026-07-15 18:07 — PROBE A CELL 1 COMPLETE: fishpack classic256 @ 16x =
+  −328 ± 55 (driver screen, fully decayed SB480) vs 1x anchor −163.** Full
+  watcher curve (80g @5k, seed 20260715): SB30..270 flat in a noisy
+  −407..−536 band at full LR (one −881 tail excursion at SB210, recovered;
+  semantic probes sane throughout, no pack corruption; trainer loss smooth
+  0.0154→0.0146 — loss saw nothing); late decay lifted it only to
+  −269/−348/−328 at SB390/420/450. **Verdict: 16x presentations made this
+  cell ~165 Elo WORSE than 1x. Pure H1 is DEAD for fishpack classic256.**
+  Best explanation: H3b — more presentations fit the ~3x over-sharp targets
+  more faithfully (semantic probes confirm amplitude shrinking with
+  training: +N probe 405→342 cp from SB90→SB210). Note loss-vs-strength
+  dissociation again: lowest running loss coincided with the −881 screen.
+  Cell 2 (fishpack 1024) prediction under H3b: also fails to beat its −215
+  anchor. Cell 3 (Lichess 1024, near-calibrated 1.28x labels) is now the
+  decisive H1 test: if IT improves markedly with 16x while fishpack cells
+  regress, the joint diagnosis is "H1 holds only with calibrated targets;
+  fishpack needs the A2 rescale."
+
 ## Resume instructions
 
 1. Read this file + the takeover checkpoint of `policy-automl-state.md`.
