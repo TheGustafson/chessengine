@@ -84,9 +84,14 @@ orientation + non-repo facts.
   Best bulk candidate: Lichess classic1024 (−100/−72/−39 @2k/5k/20k).
 
 **Non-repo environment facts (verified 2026-07-15):**
-- Worktree HEAVILY DIRTY on top of HEAD `da75ce8` (~139 paths, all D41-era
-  work UNCOMMITTED). Takeover order: treat as authoritative, NEVER reset;
-  do not retrain completed models (artifacts under `data/nnue/nets/`,
+- HOUSEKEEPING DONE (2026-07-15 eve): the formerly-dirty D41-era worktree is
+  now COMMITTED locally as 4 commits on top of `da75ce8` (docs `6f2af5f`,
+  src `c2aa976` Bench: 548978 bit-identical, tools `3ca50de`, ledger
+  backfill `1f7fd49`). Full merge gate green. CLAUDE.md==GEMINI.md
+  (canonical ARCHON-era). Ledger backfilled (data rows incl. QUARANTINED
+  paired corpora + tombstone; nets; exps 0025-0034); `verify` clean except
+  4 pre-existing MISSING historical corpora. NEVER push (user pushes).
+  Do not retrain completed models (artifacts under `data/nnue/nets/`,
   campaigns, audits are the record).
 - No training/match/relabel processes running (clean pause verified). Disk
   33GB free. GCP project `archon-502500`: zone-D label job SUCCEEDED 134/134;
