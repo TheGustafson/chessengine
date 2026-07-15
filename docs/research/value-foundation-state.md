@@ -279,6 +279,23 @@ env-gated `SFBINPACK_SCORE_DIV` (tools/nnue/patches/bullet-sfbinpack-score-div.p
   The classic1024 (÷3.5) cell continues training — its learned function is
   expected repackable/rescalable the same way.
 
+- **2026-07-15 19:35 — Thesis corrected (user challenge): asymmetric
+  temperature tolerance, NOT co-adaptation, NOT a magic dataset.** Nothing
+  was ever fit to sf-100: search margins are PSQT-era (P9), training
+  constants are bullet defaults. The consistent story: (a) the consumer is
+  HOT-TOLERANT (net-0 runs 2-3x hotter than the PSQT scale the margins were
+  tuned on and won +696) but COLD-FRAGILE (over-pruning when eval swings sit
+  inside fixed margins; k=1.75 output rescue bought +170 tonight); (b) eval
+  temperature is set by data statistics under identical defaults — sf-100
+  measured at **32.4% draws, |cp| median 168, std 468** (decisive-rich → hot
+  net) vs fishpack streamed at ~60% draws (→ cold net, and amplitude decays
+  the longer you train). Prediction: fishpack normalized into sf-100's
+  marginals trains hot and competitive. Test = v2 ladder (div2.0 alone;
+  div2.0+skip75) then v3 (`prod-fishpack-cal-v3-sf100frame`: div2.0 + skip75
+  + draw-keep 32%), 30 SB vs the −163 anchor, auto-escalating to 480 SB +
+  200g screen if ≥ −100. New trainer knobs: `NET0_RANDOM_SKIP_PCT`,
+  `NET0_DRAW_KEEP_PCT` (both env-gated, default inert).
+
 ## Resume instructions
 
 1. Read this file + the takeover checkpoint of `policy-automl-state.md`.
