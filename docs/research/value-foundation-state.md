@@ -139,13 +139,26 @@ defect ⇒ quarantine the corpus and re-audit every conclusion built on it
   comparison is probe A's FINAL SB480 (fully decayed) vs matrix-v2's final
   (−163/−215), at 16x presentations. Curve interpretation must weight the
   trend and the decayed endpoint, not raw intermediate levels.
-- **2026-07-15 17:50 — Probe B first ladder (80g each, seed 20260716), vs
-  net-0.** lichess-classic1024: n32 −132 ± 39, n256 −26 ± 39, n2k −98 ± 40,
-  n20k −48 ± 36. d40-mid-sb15: n32 −48 ± 36 (rest pending). Early read: the
-  Lichess net's deficit is LARGEST at the near-eval-only budget — the
-  opposite of the H2 coupling signature — suggesting its raw eval is
-  genuinely weaker and deeper search partially compensates. Withhold judgment
-  until the full grid + Probe A curves land.
+- **2026-07-15 17:56 — PROBE B COMPLETE (80g/point, seed 20260716, paired
+  balanced-256 book, vs net-0).** Elo ± SE by fixed-node budget:
+
+  | net | n32 | n256 | n2k | n20k |
+  |---|---|---|---|---|
+  | lichess-classic1024 | −132 ± 39 | −26 ± 39 | −98 ± 40 | −48 ± 36 |
+  | d40-lichess-mid-sb15 | −48 ± 36 | −75 ± 39 | −137 ± 40 | −39 ± 35 |
+  | binpack-classic256 | −185 ± 41 | −112 ± 40 | −293 ± 52 | −293 ± 52 |
+
+  (binpack 2k/20k identical scores verified as coincidence: distinct PGNs,
+  correct node configs.) **Verdict: the H2 coupling signature — strong at
+  eval-dominated tiny budgets, degrading as pruning margins bite — appears in
+  NO net. All three lose clearly at n32, the near-eval-only regime, so their
+  raw evaluations are genuinely weaker than net-0's; the negative screens
+  were honest.** The fishpack net worsens sharply with depth (−185→−293),
+  consistent with its terrible local coherence (156 cp mean residual)
+  compounding under search. H2 demoted to a secondary factor (some
+  budget-shape structure exists but is noise-level at 80g); per-net margin
+  SPSA is DEPRIORITIZED. The binding question is now H1 vs H3 — Probe A's
+  decayed endpoints and Probe C's audit decide.
 
 ## Resume instructions
 
