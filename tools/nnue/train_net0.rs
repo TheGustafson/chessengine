@@ -76,27 +76,46 @@ static RANDOM_SKIP_PCT: std::sync::LazyLock<u64> = std::sync::LazyLock::new(|| {
     pct
 });
 
+/// Draw down-sampling to match a target corpus's decisive/draw balance
+/// (sf-100 is 32.4% draws; raw fishpack ~60%). `NET0_DRAW_KEEP_PCT` keeps
+/// that percentage of drawn-game positions (default 100 = keep all =
+/// historical behavior). Deterministic per position (same FNV as skip).
+static DRAW_KEEP_PCT: std::sync::LazyLock<u64> = std::sync::LazyLock::new(|| {
+    let pct = std::env::var("NET0_DRAW_KEEP_PCT").ok().and_then(|v| v.parse().ok()).unwrap_or(100);
+    assert!((1..=100).contains(&pct), "NET0_DRAW_KEEP_PCT must be 1-100");
+    if pct < 100 {
+        println!("SF binpack draw keep: {pct}%");
+    }
+    pct
+});
+
+fn position_hash(entry: &loader::sfbinpack::TrainingDataEntry) -> u64 {
+    use loader::sfbinpack::Color;
+    let mut h = 0xcbf29ce484222325u64;
+    for v in [
+        entry.pos.pieces_bb(Color::White).bits(),
+        entry.pos.pieces_bb(Color::Black).bits(),
+        u64::from(entry.ply),
+        entry.score as u64,
+    ] {
+        h ^= v;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
 fn sfbinpack_filter(entry: &loader::sfbinpack::TrainingDataEntry) -> bool {
-    use loader::sfbinpack::{Color, MoveType, PieceType};
+    use loader::sfbinpack::{MoveType, PieceType};
 
     entry.ply >= 16
         && !entry.pos.is_checked(entry.pos.side_to_move())
         && entry.score.unsigned_abs() <= 10_000
         && entry.mv.mtype() == MoveType::Normal
         && entry.pos.piece_at(entry.mv.to()).piece_type() == PieceType::None
-        && (*RANDOM_SKIP_PCT == 0 || {
-            let mut h = 0xcbf29ce484222325u64;
-            for v in [
-                entry.pos.pieces_bb(Color::White).bits(),
-                entry.pos.pieces_bb(Color::Black).bits(),
-                u64::from(entry.ply),
-                entry.score as u64,
-            ] {
-                h ^= v;
-                h = h.wrapping_mul(0x100000001b3);
-            }
-            h % 100 >= *RANDOM_SKIP_PCT
-        })
+        && (*RANDOM_SKIP_PCT == 0 || position_hash(entry) % 100 >= *RANDOM_SKIP_PCT)
+        && (*DRAW_KEEP_PCT == 100
+            || entry.result != 0
+            || position_hash(entry).rotate_left(17) % 100 < *DRAW_KEEP_PCT)
 }
 
 const SCALE: i32 = 400;
