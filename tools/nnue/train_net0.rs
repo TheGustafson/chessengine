@@ -63,14 +63,40 @@ use bullet_lib::{
 use bullet_trainer::model::ModelWeights;
 use chessengine::eval::nnue::load;
 
+/// Official-nnue-pytorch-style random position skip (decorrelates the
+/// game-contiguous binpack stream). `NET0_RANDOM_SKIP_PCT` (0-99, default 0 =
+/// keep everything = historical behavior). Deterministic per position: FNV
+/// over occupancy/ply/score, so reruns see the identical kept subset.
+static RANDOM_SKIP_PCT: std::sync::LazyLock<u64> = std::sync::LazyLock::new(|| {
+    let pct = std::env::var("NET0_RANDOM_SKIP_PCT").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+    assert!(pct < 100, "NET0_RANDOM_SKIP_PCT must be 0-99");
+    if pct > 0 {
+        println!("SF binpack random skip: {pct}%");
+    }
+    pct
+});
+
 fn sfbinpack_filter(entry: &loader::sfbinpack::TrainingDataEntry) -> bool {
-    use loader::sfbinpack::{MoveType, PieceType};
+    use loader::sfbinpack::{Color, MoveType, PieceType};
 
     entry.ply >= 16
         && !entry.pos.is_checked(entry.pos.side_to_move())
         && entry.score.unsigned_abs() <= 10_000
         && entry.mv.mtype() == MoveType::Normal
         && entry.pos.piece_at(entry.mv.to()).piece_type() == PieceType::None
+        && (*RANDOM_SKIP_PCT == 0 || {
+            let mut h = 0xcbf29ce484222325u64;
+            for v in [
+                entry.pos.pieces_bb(Color::White).bits(),
+                entry.pos.pieces_bb(Color::Black).bits(),
+                u64::from(entry.ply),
+                entry.score as u64,
+            ] {
+                h ^= v;
+                h = h.wrapping_mul(0x100000001b3);
+            }
+            h % 100 >= *RANDOM_SKIP_PCT
+        })
 }
 
 const SCALE: i32 = 400;

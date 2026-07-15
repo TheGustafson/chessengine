@@ -263,6 +263,22 @@ env-gated `SFBINPACK_SCORE_DIV` (tools/nnue/patches/bullet-sfbinpack-score-div.p
    real candidate. Endpoint screen 200g @5k vs net-0; if ≥ −50, run the
    2k/5k/20k curve + coherence audit before any promotion talk.
 
+- **2026-07-15 19:05 — prod classic256 (÷3.5) endpoint = −470 ± 76: naive
+  H3b calibration REFUTED; refined to H3b′ (consumer-amplitude matching).**
+  The ÷3.5 "UCI calibration" overshot: the consumer's proven operating point
+  is net-0's own (very hot) output distribution, not abstract UCI cp.
+  Amplitude probes (+N, white knight up): net-0 = 1047, raw-fishpack-480SB
+  net = 342 (screened −328), ÷3.5 net = 242 (screened −470) — strength has
+  been MONOTONIC in output amplitude across all three. Fishpack labels are
+  hotter than UCI but net-0's learned outputs are hotter still; dividing by
+  3.5 made the coldest net yet. Test in flight: pack-time output rescale of
+  the ÷3.5 net at k=1.75/2.33 (clip clamps 26/34 of 512 out-weights —
+  partial compensation only), 80g @5k each. If Elo recovers toward −163,
+  amplitude is causal and the durable fix is a training-side divisor ≈
+  1.5–2.0 (or none) chosen to match net-0's output std, not label units.
+  The classic1024 (÷3.5) cell continues training — its learned function is
+  expected repackable/rescalable the same way.
+
 ## Resume instructions
 
 1. Read this file + the takeover checkpoint of `policy-automl-state.md`.
