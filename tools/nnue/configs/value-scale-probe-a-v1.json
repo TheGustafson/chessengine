@@ -1,0 +1,39 @@
+{
+  "campaign_id": "value-scale-probe-a-v1",
+  "baseline_net": "data/nnue/nets/net-0.cenn",
+  "comment": "Probe A (docs/research/value-foundation-state.md): identical to value-bulk-matrix-v2 EXCEPT 16x schedule (480 SB ~= 12.0B presentations, full cosine decay, save every 30 SB). Tests H1 scale/schedule starvation. SB30 checkpoints must reproduce the matrix-v2 anchors (-163 classic256 / -215 classic1024 on fishpack).",
+  "sources": {
+    "binpack": {
+      "id": "fishpack32-official",
+      "path": "data/corpora/official-stockfish-master-binpacks/main/raw/fishpack32.binpack",
+      "format": "sfbinpack",
+      "wdl": 0.3,
+      "provenance": "official-stockfish-master-binpack"
+    },
+    "lichess": {
+      "id": "lichess-evals-v14-canonical-265m",
+      "path": "data/corpora/lichess-chess-evaluations/kaggle-v14/bulk-value-v1/train.bin",
+      "format": "bulletformat",
+      "wdl": 0.0,
+      "provenance": "lichess-browser-stockfish-distill"
+    }
+  },
+  "cells": ["classic256", "classic1024"],
+  "train": {
+    "superbatches": 480,
+    "batches_per_superbatch": 1520,
+    "batch_size": 16384,
+    "lr": 0.001,
+    "lr_end_superbatch": 480,
+    "save_rate": 30,
+    "seed": 198273612
+  },
+  "screen": {
+    "games": 80,
+    "nodes": 5000,
+    "survivor_elo_floor": -150.0,
+    "curve_games": 400,
+    "curve_nodes": [2000, 5000, 20000],
+    "concurrency": 4
+  }
+}
