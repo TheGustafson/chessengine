@@ -36,14 +36,15 @@ satisfied automatically but still fine to set. Use Co-Authored-By trailer
 ## ★ CURRENT STATE (2026-07-15 — ARCHON/D41 era; onboarded after codex/user handoff). Read THIS first; everything below is historical.
 
 **THE AUTHORITATIVE LIVE STATE IS IN THE REPO, NOT HERE:**
-`docs/research/policy-automl-state.md` (2,786 lines) — read it COMPLETELY,
-especially the final "Takeover checkpoint" section, before any research loop;
-update it after every completed/rejected/redirected trial. Also read (per its
-continuation invariant): `design/19-learned-search-allocation.md` + decisions
-D40–D44, `docs/research/archon-execution-plan.md`,
-`docs/research/archon-self-improvement-roadmap.md`,
-`docs/research/sf18-label-quality-plan.md`. This memory section only carries
-orientation + non-repo facts.
+`docs/research/value-foundation-state.md` is the ACTIVE research log as of
+2026-07-15 (user-declared transformational point: diagnose WHY nothing beats
+net-0, fast — probes A/B/C preregistered there; user checks in when they're
+done). `docs/research/policy-automl-state.md` is the historical archive whose
+header invariants REMAIN BINDING (bounded-label quarantine, quality-first
+rule, never reset worktree). Also read: design/19 + D40–D44,
+`archon-execution-plan.md`, `archon-self-improvement-roadmap.md`,
+`sf18-label-quality-plan.md`. This memory section only carries orientation +
+non-repo facts.
 
 **Orientation (2026-07-15):**
 - Engine RENAMED **ARCHON**. `GEMINI.md` is the codex/gemini copy of CLAUDE.md

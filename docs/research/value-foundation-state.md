@@ -117,10 +117,35 @@ defect ⇒ quarantine the corpus and re-audit every conclusion built on it
 - 2026-07-15: file created; probes A/B/C launching. Worktree committed
   through `a8856b1`; ledger backfilled (exps 0025-0034). No cloud spend
   authorized for the probes; everything local.
+- 2026-07-15 ~17:47 ET: ALL THREE PROBES LAUNCHED (detached; pgids of
+  probe_a_launch.sh / probe_a_watch.py / probe_b_ladder.sh ≈ 1055970-72).
+  Prebuilt match binaries at `engines/bin/probe-{default,l1024,sota}`
+  (x86-64-v3; sota + default both verified bench 548978). Probe A trains at
+  8-12M pos/s on SF-binpack — a 480-SB cell is ~20-25 min, so GPU work
+  finishes in ~1.5h and the watcher's 48 checkpoint screens are the long
+  pole (~4-6h). First ladder instrument check: lichess-classic1024 @2k =
+  -98.1 (matches the -100 matrix anchor, different seed/book — instrument
+  consistent). Probe C runs as a subagent writing
+  `tools/nnue/audit_label_semantics.py` + `data/nnue/audits/label-semantics-v1/`.
 
 ## Results log
 
-(append per completed/rejected/redirected trial)
+- **2026-07-15 17:50 — Preregistration amendment (Probe A control).** The
+  "SB30 checkpoint must reproduce the matrix-v2 anchor" control was
+  mis-specified: matrix-v2's SB30 was the END of its cosine decay, while probe
+  A's SB30 sits at near-full LR on a 480-SB horizon. Intermediate
+  high-LR checkpoints screen far worse (observed: fishpack classic256 SB30 =
+  −490 ± 82; cf. matrix-v1's undecayed −512 datapoint). The valid anchor
+  comparison is probe A's FINAL SB480 (fully decayed) vs matrix-v2's final
+  (−163/−215), at 16x presentations. Curve interpretation must weight the
+  trend and the decayed endpoint, not raw intermediate levels.
+- **2026-07-15 17:50 — Probe B first ladder (80g each, seed 20260716), vs
+  net-0.** lichess-classic1024: n32 −132 ± 39, n256 −26 ± 39, n2k −98 ± 40,
+  n20k −48 ± 36. d40-mid-sb15: n32 −48 ± 36 (rest pending). Early read: the
+  Lichess net's deficit is LARGEST at the near-eval-only budget — the
+  opposite of the H2 coupling signature — suggesting its raw eval is
+  genuinely weaker and deeper search partially compensates. Withhold judgment
+  until the full grid + Probe A curves land.
 
 ## Resume instructions
 
