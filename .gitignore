@@ -33,3 +33,10 @@ __pycache__/
 tools/nnue/runs/
 /dist/
 /.claude/
+
+# ARCHON runtime state (pids, logs, pinned toolchain checkouts) — never commit
+/.archon-state/
+
+# tool sub-crates build artifacts
+tools/*/target/
+tools/nnue/*/target/

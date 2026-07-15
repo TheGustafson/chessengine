@@ -1,0 +1,33 @@
+{
+  "net_id": "fishpack32-classic256-cold-prefix61m-v1",
+  "arch": "768x2x256x1-screlu",
+  "provenance": "official-stockfish-master-binpack",
+  "parent": null,
+  "notes": "Cold classic256 baseline on the audited 61.07M-position fishpack32 prefix; reproduces the historical net-0 presentation schedule before any larger fetch.",
+  "corpus": {
+    "id": "official-stockfish-fishpack32-complete-prefix-128m-v1",
+    "raw_dir": null,
+    "train_bin": "data/corpora/official-stockfish-master-binpacks/main/samples/fishpack32.complete-prefix-128m.binpack"
+  },
+  "train": {
+    "bullet_dir": ".archon-state/toolchains/bullet",
+    "example": "train_net0.rs",
+    "checkpoint_dir": "data/nnue/fishpack32_classic256_cold_prefix61m_v1_ckpt",
+    "env": {
+      "NET0_FORMAT": "sfbinpack",
+      "NET0_SF_BUFFER_MB": "256",
+      "NET0_SUPERBATCHES": "30",
+      "NET0_BPS": "1520",
+      "NET0_BATCH": "16384",
+      "NET0_THREADS": "4",
+      "NET0_SAVE_RATE": "10",
+      "NET0_LR": "0.001",
+      "NET0_WDL": "0.3",
+      "NET0_SEED": "198273612"
+    }
+  },
+  "verify_out_clip": true,
+  "pack": {"activation": "screlu", "l1": 256},
+  "parity": {"enable": false},
+  "sprt": {"enable": false}
+}

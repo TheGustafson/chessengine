@@ -1,0 +1,3 @@
+numpy==2.5.1
+python-chess==1.999
+google-cloud-storage==3.13.0

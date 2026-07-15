@@ -1,0 +1,34 @@
+{
+  "net_id": "fishpack32-net0-ft-prefix61m-quartersteps-v1",
+  "arch": "768x2x256x1-screlu",
+  "provenance": "official-stockfish-master-binpack",
+  "parent": "net-0",
+  "notes": "Quarter-million-presentation checkpoint sweep around the promising first fishpack32 smoke checkpoint.",
+  "corpus": {
+    "id": "official-stockfish-fishpack32-complete-prefix-128m-v1",
+    "raw_dir": null,
+    "train_bin": "data/corpora/official-stockfish-master-binpacks/main/samples/fishpack32.complete-prefix-128m.binpack"
+  },
+  "train": {
+    "bullet_dir": ".archon-state/toolchains/bullet",
+    "example": "train_net0.rs",
+    "checkpoint_dir": "data/nnue/fishpack32_net0_ft_prefix61m_quartersteps_v1_ckpt",
+    "env": {
+      "NET0_FORMAT": "sfbinpack",
+      "NET0_SF_BUFFER_MB": "256",
+      "NET0_SUPERBATCHES": "4",
+      "NET0_BPS": "15",
+      "NET0_BATCH": "16384",
+      "NET0_THREADS": "4",
+      "NET0_SAVE_RATE": "1",
+      "NET0_LR": "0.00001",
+      "NET0_WDL": "0.3",
+      "NET0_SEED": "198273612",
+      "NET0_INIT": "data/nnue/nets/net-0.cenn"
+    }
+  },
+  "verify_out_clip": true,
+  "pack": {"activation": "screlu", "l1": 256},
+  "parity": {"enable": false},
+  "sprt": {"enable": false}
+}

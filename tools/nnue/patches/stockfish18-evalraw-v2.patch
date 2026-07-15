@@ -1,0 +1,63 @@
+diff --git a/src/engine.cpp b/src/engine.cpp
+index dfd2099..7786035 100644
+--- a/src/engine.cpp
++++ b/src/engine.cpp
+@@ -336,6 +336,33 @@ void Engine::trace_eval() const {
+     sync_cout << "\n" << Eval::trace(p, *networks) << sync_endl;
+ }
+ 
++void Engine::raw_eval() const {
++    StateListPtr raw_states(new std::deque<StateInfo>(1));
++    Position     p;
++    p.set(pos.fen(), options["UCI_Chess960"], &raw_states->back());
++
++    verify_networks();
++    if (p.checkers())
++    {
++        sync_cout << "evalraw status=invalid_check" << sync_endl;
++        return;
++    }
++
++    auto accumulators = std::make_unique<Eval::NNUE::AccumulatorStack>();
++    auto caches       = std::make_unique<Eval::NNUE::AccumulatorCaches>(*networks);
++    auto [psqt, positional] = networks->big.evaluate(p, *accumulators, caches->big);
++    Value bigSum            = psqt + positional;
++    Value finalValue = Eval::evaluate(*networks, p, *accumulators, *caches, VALUE_ZERO);
++    sync_cout << "evalraw status=ok"
++              << " final_internal=" << int(finalValue)
++              << " final_uci_cp=" << UCIEngine::to_cp(finalValue, p)
++              << " big_psqt_internal=" << int(psqt)
++              << " big_positional_internal=" << int(positional)
++              << " big_sum_internal=" << int(bigSum)
++              << " big_sum_uci_cp=" << UCIEngine::to_cp(bigSum, p)
++              << " rule50=" << p.rule50_count() << sync_endl;
++}
++
+ const OptionsMap& Engine::get_options() const { return options; }
+ OptionsMap&       Engine::get_options() { return options; }
+ 
+diff --git a/src/engine.h b/src/engine.h
+index 10c92d7..6dc7a47 100644
+--- a/src/engine.h
++++ b/src/engine.h
+@@ -94,6 +94,7 @@ class Engine {
+     // utility functions
+ 
+     void trace_eval() const;
++    void raw_eval() const;
+ 
+     const OptionsMap& get_options() const;
+     OptionsMap&       get_options();
+diff --git a/src/uci.cpp b/src/uci.cpp
+index 9270076..51f7b53 100644
+--- a/src/uci.cpp
++++ b/src/uci.cpp
+@@ -148,6 +148,8 @@ void UCIEngine::loop() {
+             sync_cout << engine.visualize() << sync_endl;
+         else if (token == "eval")
+             engine.trace_eval();
++        else if (token == "evalraw")
++            engine.raw_eval();
+         else if (token == "compiler")
+             sync_cout << compiler_info() << sync_endl;
+         else if (token == "export_net")

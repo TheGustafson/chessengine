@@ -22,10 +22,12 @@
  * This is the real C2 feature front end; trainer and inference index math share
  * one implementation through the chessengine path dependency.
  */
-use bullet_lib::{
-    game::inputs::SparseInputType, nn::InitSettings, value::loader::DirectSequentialDataLoader,
-};
 use bullet_compiler::tensor::TValue;
+use bullet_lib::{
+    game::inputs::SparseInputType,
+    nn::InitSettings,
+    value::loader::{self, DirectSequentialDataLoader},
+};
 use bullet_trainer::{
     model::{
         ModelDefinition, ModelEvaluator, ModelInputs, ModelInputsMapper, ModelWeights, SavedFormat,
@@ -40,6 +42,34 @@ use chessengine::eval::nnue::sota_features::{
     HALFKA_DIMS, THREAT_DIMS, for_each_halfka, for_each_threat, halfka_index, threat_index,
 };
 use chessengine::{Bitboard, Board, Color, Piece, PieceType, Square};
+use std::sync::OnceLock;
+
+type SfReader = loader::SfBinpackLoader<fn(&loader::sfbinpack::TrainingDataEntry) -> bool>;
+
+#[derive(Clone)]
+enum D40Reader {
+    Bullet(DirectSequentialDataLoader),
+    Sf(SfReader),
+}
+
+impl DataReader<ChessBoard> for D40Reader {
+    fn read_chunks<F: FnMut(&[ChessBoard]) -> bool>(&self, skip_count: usize, f: F) {
+        match self {
+            Self::Bullet(reader) => DataReader::<ChessBoard>::read_chunks(reader, skip_count, f),
+            Self::Sf(reader) => DataReader::<ChessBoard>::read_chunks(reader, skip_count, f),
+        }
+    }
+}
+
+fn sfbinpack_filter(entry: &loader::sfbinpack::TrainingDataEntry) -> bool {
+    use loader::sfbinpack::{MoveType, PieceType};
+
+    entry.ply >= 16
+        && !entry.pos.is_checked(entry.pos.side_to_move())
+        && entry.score.unsigned_abs() <= 10_000
+        && entry.mv.mtype() == MoveType::Normal
+        && entry.pos.piece_at(entry.mv.to()).piece_type() == PieceType::None
+}
 
 // --- Feature-space layout (design/11 §12.1) ---------------------------------
 const HALFKA_INPUTS: usize = HALFKA_DIMS;
@@ -48,12 +78,17 @@ const TOTAL_INPUTS: usize = HALFKA_INPUTS + THREAT_INPUTS; // 83_248
 const HALFKA_MAX_ACTIVE: usize = 32; // <=32 HalfKA features / perspective
 const THREAT_MAX_ACTIVE: usize = 160;
 const MAX_ACTIVE: usize = HALFKA_MAX_ACTIVE + THREAT_MAX_ACTIVE; // 192
-const SCALE: f32 = 400.0;
-const WDL: f32 = 0.3;
+const DEFAULT_SCALE: f32 = 400.0;
+const DEFAULT_WDL: f32 = 0.3;
 const NUM_BUCKETS: usize = 8;
 const L2: usize = 16;
 const L3: usize = 32;
 const HL: usize = 768;
+
+fn halfka_only() -> bool {
+    static VALUE: OnceLock<bool> = OnceLock::new();
+    *VALUE.get_or_init(|| env_usize("D40_HALFKA_ONLY", 0) != 0)
+}
 
 #[rustfmt::skip]
 const OUTPUT_BUCKETS_LAYOUT: [u8; 33] = [
@@ -119,6 +154,10 @@ fn emit_features<F: FnMut(usize, usize)>(pos: &ChessBoard, mut f: F) {
             halfka_index(Color::White, piece, square, white_king),
             halfka_index(Color::Black, piece, square, black_king),
         );
+    }
+
+    if halfka_only() {
+        return;
     }
 
     let both = |piece_type: PieceType| {
@@ -236,17 +275,12 @@ fn reconstruct_board(pos: &ChessBoard) -> Board {
     board
 }
 
-fn verify_feature_parity(data: &str) {
-    let reader = DirectSequentialDataLoader::new(&[data]);
-    let mut positions = vec![self_check_position()];
-    reader.read_chunks(0, |chunk: &[ChessBoard]| {
-        positions.extend_from_slice(&chunk[..chunk.len().min(64)]);
-        true
-    });
-
+fn verify_feature_parity(reader: &D40Reader, requested_rows: usize) {
+    assert!(requested_rows > 0, "D40_VERIFY_ROWS must be positive");
     let mut max_halfka = 0usize;
     let mut max_threats = 0usize;
-    for (position_number, pos) in positions.iter().enumerate() {
+    let mut checked = 0usize;
+    let mut check = |pos: &ChessBoard| {
         let board = reconstruct_board(pos);
         let mut trainer = [Vec::<usize>::new(), Vec::<usize>::new()];
         emit_features(pos, |stm, ntm| {
@@ -257,21 +291,37 @@ fn verify_feature_parity(data: &str) {
         for perspective in Color::ALL {
             let mut engine = Vec::new();
             for_each_halfka(&board, perspective, |idx| engine.push(idx));
-            for_each_threat(&board, perspective, |idx| engine.push(HALFKA_INPUTS + idx));
+            if !halfka_only() {
+                for_each_threat(&board, perspective, |idx| engine.push(HALFKA_INPUTS + idx));
+            }
 
             let actual = &mut trainer[perspective as usize];
             actual.sort_unstable();
             engine.sort_unstable();
             assert_eq!(
                 *actual, engine,
-                "trainer/engine feature mismatch at sampled position {position_number}, {perspective:?}"
+                "trainer/engine feature mismatch at sampled position {checked}, {perspective:?}"
             );
 
             let halfka = actual.partition_point(|&idx| idx < HALFKA_INPUTS);
             max_halfka = max_halfka.max(halfka);
             max_threats = max_threats.max(actual.len() - halfka);
         }
-    }
+        checked += 1;
+    };
+
+    check(&self_check_position());
+    let target = requested_rows;
+    let mut corpus_checked = 0usize;
+    reader.read_chunks(0, |chunk: &[ChessBoard]| {
+        let take = chunk.len().min(target - corpus_checked);
+        for pos in &chunk[..take] {
+            check(pos);
+        }
+        corpus_checked += take;
+        corpus_checked == target
+    });
+    assert_eq!(corpus_checked, target, "feature scan ended early");
 
     assert!(
         max_halfka <= HALFKA_MAX_ACTIVE,
@@ -283,7 +333,7 @@ fn verify_feature_parity(data: &str) {
     );
     println!(
         "feature parity: {} positions exact; max active HalfKA={max_halfka}, threats={max_threats}",
-        positions.len()
+        checked
     );
 }
 
@@ -384,7 +434,10 @@ fn load_quantised_weights(weights: &mut ModelWeights, path: &str) {
         ("l3b", l3_bias),
     ];
     for (id, values) in tensors {
-        assert!(weights.set(id, TValue::F32(values)), "quant tensor shape {id}");
+        assert!(
+            weights.set(id, TValue::F32(values)),
+            "quant tensor shape {id}"
+        );
     }
 }
 
@@ -392,6 +445,22 @@ fn main() {
     let data = std::env::var("D40_DATA")
         .expect("set D40_DATA to a bulletformat ChessBoard train.bin path");
     let feats = HalfKaThreats;
+    let format = std::env::var("D40_FORMAT").unwrap_or_else(|_| "bulletformat".into());
+    let threads = env_usize("D40_THREADS", 6) as u8;
+    let reader = match format.as_str() {
+        "bulletformat" => D40Reader::Bullet(DirectSequentialDataLoader::new(&[data.as_str()])),
+        "sfbinpack" => {
+            let buffer_mb = env_usize("D40_SF_BUFFER_MB", 256);
+            println!("SF binpack input: buffer={buffer_mb}MiB quiet-filter=standard");
+            D40Reader::Sf(loader::SfBinpackLoader::new(
+                data.as_str(),
+                buffer_mb,
+                usize::from(threads),
+                sfbinpack_filter,
+            ))
+        }
+        other => panic!("D40_FORMAT must be bulletformat or sfbinpack, got {other}"),
+    };
     println!("=== D40 feature scaffold ===");
     println!("input type   : {}", feats.description());
     println!(
@@ -404,7 +473,12 @@ fn main() {
     );
     assert_eq!(feats.num_inputs(), TOTAL_INPUTS);
     assert_eq!(feats.max_active(), MAX_ACTIVE);
-    verify_feature_parity(&data);
+    let verify_rows = env_usize("D40_VERIFY_ROWS", 64);
+    verify_feature_parity(&reader, verify_rows);
+    if env_usize("D40_VERIFY_ONLY", 0) != 0 {
+        println!("D40_VERIFY_ONLY complete");
+        return;
+    }
 
     // Scaffold self-check: features split cleanly into the two subspaces.
     let pos = self_check_position();
@@ -427,12 +501,27 @@ fn main() {
     // ------------------------------------------------------------------
     let out_dir = std::env::var("D40_OUT").unwrap_or_else(|_| "d40_feat_ckpt".to_string());
     let net_id = std::env::var("D40_ID").unwrap_or_else(|_| "d40-feat-0".to_string());
+    let start_superbatch = env_usize("D40_START_SUPERBATCH", 1);
     let end_superbatch = env_usize("D40_SUPERBATCHES", 30);
     let batches_per_superbatch = env_usize("D40_BPS", 1520);
     let batch_size = env_usize("D40_BATCH", 16_384);
-    let threads = env_usize("D40_THREADS", 6) as u8;
     let save_rate = env_usize("D40_SAVE_RATE", 10);
     let initial_lr = env_f32("D40_LR", 0.001);
+    let lr_end_superbatch = env_usize("D40_LR_END_SB", end_superbatch);
+    assert!(
+        (1..=end_superbatch).contains(&start_superbatch),
+        "D40_START_SUPERBATCH must be in 1..=D40_SUPERBATCHES"
+    );
+    assert!(
+        lr_end_superbatch >= end_superbatch,
+        "D40_LR_END_SB must be >= D40_SUPERBATCHES"
+    );
+    let target_scale = env_f32("D40_EVAL_TARGET_SCALE", DEFAULT_SCALE);
+    let wdl = env_f32("D40_WDL", DEFAULT_WDL);
+    let score_multiplier = env_f32("D40_SCORE_MULTIPLIER", 1.0);
+    assert!(target_scale > 0.0 && target_scale.is_finite());
+    assert!((0.0..=1.0).contains(&wdl));
+    assert!(score_multiplier > 0.0 && score_multiplier.is_finite());
     std::fs::create_dir_all(&out_dir).expect("create D40_OUT directory");
 
     // Four sparse inputs: HalfKA (i16 tensor) + threats (i8 tensor), each stm/ntm.
@@ -452,12 +541,20 @@ fn main() {
             let (mut hk, mut th) = (0usize, 0usize);
             feats.map_features(pos, |stm, ntm| {
                 if stm < HALFKA_INPUTS {
-                    if hk < HALFKA_MAX_ACTIVE {
-                        hk_stm[hk] = stm as i32;
-                        hk_ntm[hk] = ntm as i32;
-                        hk += 1;
-                    }
-                } else if th < THREAT_MAX_ACTIVE {
+                    assert!(
+                        hk < HALFKA_MAX_ACTIVE,
+                        "HalfKA sparse capacity exceeded: position has more than \
+                         {HALFKA_MAX_ACTIVE} active features"
+                    );
+                    hk_stm[hk] = stm as i32;
+                    hk_ntm[hk] = ntm as i32;
+                    hk += 1;
+                } else {
+                    assert!(
+                        th < THREAT_MAX_ACTIVE,
+                        "FullThreats sparse capacity exceeded: position has more than \
+                         {THREAT_MAX_ACTIVE} active features"
+                    );
                     th_stm[th] = (stm - HALFKA_INPUTS) as i32;
                     th_ntm[th] = (ntm - HALFKA_INPUTS) as i32;
                     th += 1;
@@ -469,9 +566,9 @@ fn main() {
             th_stm[th..].iter_mut().for_each(|s| *s = -1);
             th_ntm[th..].iter_mut().for_each(|s| *s = -1);
             buckets[0] = OUTPUT_BUCKETS_LAYOUT[(pos.occ.count_ones() as usize).min(32)] as i32;
-            let eval = sigmoid(f32::from(pos.score) / SCALE);
+            let eval = sigmoid(f32::from(pos.score) * score_multiplier / target_scale);
             let result = f32::from(pos.result) / 2.0;
-            targets[0] = WDL * result + (1.0 - WDL) * eval;
+            targets[0] = wdl * result + (1.0 - wdl) * eval;
         },
     );
 
@@ -511,8 +608,7 @@ fn main() {
 
     let device = DefaultDevice::new(0).expect("device");
     if let Ok(fen_path) = std::env::var("D40_PROBE_FENS")
-        && (std::env::var("D40_PROBE_RAW").is_ok()
-            || std::env::var("D40_PROBE_QUANT").is_ok())
+        && (std::env::var("D40_PROBE_RAW").is_ok() || std::env::var("D40_PROBE_QUANT").is_ok())
     {
         let mut weights = ModelWeights::zeroed(&defn);
         let prefix = if let Ok(path) = std::env::var("D40_PROBE_QUANT") {
@@ -547,31 +643,42 @@ fn main() {
         return;
     }
 
-    let weights = ModelWeights::new(&defn, 0x00D4_0FEA);
+    let seed = env_usize("D40_SEED", 0x00D4_0FEA) as u64;
+    let mut weights = ModelWeights::new(&defn, seed);
+    if let Ok(path) = std::env::var("D40_INIT_QUANT") {
+        load_quantised_weights(&mut weights, &path);
+        println!("initialised from quantized checkpoint {path}");
+    } else if let Ok(path) = std::env::var("D40_INIT_RAW") {
+        load_raw_weights(&mut weights, &path);
+        println!("initialised from raw checkpoint {path}");
+    }
     // AdamW default clip +/-1.98 => i8 L1/threat weights * 64 <= 127 (no overflow).
     let params = AdamWParams::default();
     let mut optimiser = AdamW::new(defn, weights, device, params).expect("optimiser");
 
-    let reader = DirectSequentialDataLoader::new(&[data.as_str()]);
     let loader = ReadMapLoader::new(reader, mapper, threads);
 
     let final_lr = initial_lr * 0.3f32.powi(3);
     let lr_schedule: Box<dyn Fn(Step) -> f32> = Box::new(move |step| {
-        if end_superbatch <= 1 {
+        if lr_end_superbatch <= 1 {
             return initial_lr;
         }
-        let t = (step.superbatch() as f32 - 1.0) / (end_superbatch as f32 - 1.0);
+        let t =
+            ((step.superbatch() as f32 - 1.0) / (lr_end_superbatch as f32 - 1.0)).clamp(0.0, 1.0);
         final_lr + 0.5 * (initial_lr - final_lr) * (1.0 + (std::f32::consts::PI * t).cos())
     });
 
+    let log_every = env_usize("D40_LOG_EVERY", 128)
+        .max(1)
+        .min(batches_per_superbatch);
     let schedule = TrainingSchedule {
         steps: TrainingSteps {
             batch_size,
             batches_per_superbatch,
-            start_superbatch: 1,
+            start_superbatch,
             end_superbatch,
         },
-        log_rate: 16.min(batches_per_superbatch),
+        log_rate: log_every,
         lr_schedule,
     };
 
@@ -591,16 +698,20 @@ fn main() {
     ];
 
     println!(
-        "--- D40 training: {end_superbatch} superbatches x {batches_per_superbatch} batches x {batch_size} ---"
+        "--- D40 training: superbatches {start_superbatch}..={end_superbatch} x {batches_per_superbatch} batches x {batch_size} ---"
     );
+    println!(
+        "--- D40 targets: scale={target_scale} wdl={wdl} score_multiplier={score_multiplier} seed={seed} ---"
+    );
+    println!("--- D40 HalfKA-only ablation: {} ---", halfka_only());
     let save_out = out_dir.clone();
     let save_id = net_id.clone();
     train(
         &mut optimiser,
         schedule,
         loader,
-        |_, step, err| {
-            if step.batch() % 16 == 0 {
+        move |_, step, err| {
+            if step.batch() % log_every == 0 {
                 println!(
                     "  sb {} batch {}: loss {err:.6}",
                     step.superbatch(),
@@ -621,7 +732,9 @@ fn main() {
                 if sb == end_superbatch {
                     let raw_path = format!("{save_out}/{save_id}-final-raw.bin");
                     let mut raw = std::fs::File::create(&raw_path).expect("create raw checkpoint");
-                    weights.write_into(&mut raw).expect("write named raw checkpoint");
+                    weights
+                        .write_into(&mut raw)
+                        .expect("write named raw checkpoint");
                     println!("  saved {raw_path} (trainer-parity source)");
                 }
             }

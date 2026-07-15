@@ -1,0 +1,12 @@
+[package]
+name = "archon-nnue-convert"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "nnue_convert"
+path = "../bf_convert.rs"
+
+[dependencies]
+bulletformat = "=1.8.0"

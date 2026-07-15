@@ -79,7 +79,7 @@ DEFAULTS = {
     # --- verify (stage 3) --- the out-weight clip (classic arch); D40 hybrid save hard-checks itself
     "verify_out_clip": True,
     # --- pack (stage 4) --- netpack.py → .cenn
-    "pack": {"activation": "screlu"},
+    "pack": {"activation": "screlu", "format": "classic", "input": 768},
     # --- parity (stage 5) --- raw Bullet logits vs packed Rust logits
     "parity": {
         "enable": False,
@@ -261,7 +261,10 @@ def stage_train(ctx):
            "NET0_OUT": str(ckpt),
            "NET0_ID": ctx.cfg["net_id"],
            "CUDA_PATH": os.environ.get("CUDA_PATH", "/usr")}
-    env.update(t.get("env", {}))  # config's env wins over defaults
+    # CLI --set values are JSON-decoded, so numeric env overrides arrive as
+    # ints/floats even though subprocess requires string environment values.
+    # Stringify at the boundary; config's explicit values still win.
+    env.update({key: str(value) for key, value in t.get("env", {}).items()})
     manifest = f"{bdir}/Cargo.toml"
     run(ctx, ["cargo", "run", "--release", "--features", t["features"],
               "--manifest-path", manifest, "--example", ex_name], env=env, stage="train")
@@ -300,11 +303,18 @@ def stage_verify(ctx):
         return
     import struct
     data = q.read_bytes()
-    # the out block is the tail: 512 i16 out-weights + 256-ish i16 bias for the
-    # classic 768x2x256 net; scan the whole file's i16s for a hard ceiling as a
-    # cheap guard (a real violation shows up as a value > 127 in the out region).
-    vals = struct.unpack(f"<{len(data)//2}h", data[: len(data)//2*2])
-    mx = max(abs(v) for v in vals[-1024:]) if len(vals) >= 1024 else max(abs(v) for v in vals)
+    # Canonical classic layout is l0w[768*256], l0b[256], l1w[512], l1b[1],
+    # all i16, followed by optional alignment padding.  Do not inspect a tail
+    # window: that includes l0 weights and opaque padding and caused false
+    # failures despite a valid clipped l1 block.
+    width = int(ctx.cfg["pack"].get("l1", 256))
+    input_width = int(ctx.cfg["pack"].get("input", 768))
+    out_offset = 2 * (input_width * width + width)
+    out_bytes = 2 * (2 * width)
+    if len(data) < out_offset + out_bytes:
+        die(f"verify: classic quantised file is truncated ({len(data)} bytes)")
+    vals = struct.unpack(f"<{2 * width}h", data[out_offset:out_offset + out_bytes])
+    mx = max(abs(v) for v in vals)
     if mx > 127:
         die(f"out-weight clip VIOLATED (max |w|={mx} > 127) — tighten the training clip and retrain "
             f"(the loader will reject this net; RUNBOOK step 3)")
@@ -317,8 +327,24 @@ def stage_pack(ctx):
     q = _quantised_path(ctx)
     out = REPO / "data/nnue/nets" / f"{ctx.cfg['net_id']}.cenn"
     out.parent.mkdir(parents=True, exist_ok=True)
+    if ctx.cfg["pack"].get("format") == "halfka-classic":
+        run(ctx, ["uv", "run", "--no-project", "python",
+                  "tools/nnue/pack_halfka_classic.py", str(q), str(out)], stage="pack")
+        ctx.results["pack"] = {"cenn": rel(out), "format": "CENN-v3"}
+        ctx.cfg["_cenn"] = str(out)
+        return
+    strip_threats = bool(ctx.cfg["pack"].get("strip_d40_threats", False))
+    packed = out.with_suffix(".with-threats.cenn") if strip_threats else out
+    pack_env = {}
+    if ctx.cfg["pack"].get("l1") is not None:
+        pack_env["NET_L1"] = str(ctx.cfg["pack"]["l1"])
     run(ctx, ["uv", "run", "--no-project", "python", "tools/nnue/netpack.py",
-              str(q), str(out), ctx.cfg["pack"]["activation"]], stage="pack")
+              str(q), str(packed), ctx.cfg["pack"]["activation"]], env=pack_env, stage="pack")
+    if strip_threats:
+        run(ctx, ["uv", "run", "--no-project", "python", "tools/nnue/netpack.py",
+                  "--strip-d40-threats", str(packed), str(out)], stage="pack")
+        if not ctx.dry:
+            packed.unlink()
     ctx.results["pack"] = {"cenn": rel(out)}
     ctx.cfg["_cenn"] = str(out)
 
@@ -416,13 +442,24 @@ def stage_parity(ctx):
     quant_errors = [abs(quant - raw) for quant, raw in zip(quant_logits, raw_logits)]
     runtime_errors = [abs(cp / network_scale - quant)
                       for cp, quant in zip(engine_cp, quant_logits)]
+    def percentile(values, fraction):
+        ordered = sorted(values)
+        at = fraction * (len(ordered) - 1)
+        lo = int(at)
+        hi = min(lo + 1, len(ordered) - 1)
+        return ordered[lo] + (ordered[hi] - ordered[lo]) * (at - lo)
+
     quant_max, quant_mean = max(quant_errors), sum(quant_errors) / len(quant_errors)
     runtime_max = max(runtime_errors)
     runtime_mean = sum(runtime_errors) / len(runtime_errors)
+    quant_p95, quant_p99 = percentile(quant_errors, 0.95), percentile(quant_errors, 0.99)
+    runtime_p95, runtime_p99 = percentile(runtime_errors, 0.95), percentile(runtime_errors, 0.99)
     worst = max(range(len(runtime_errors)), key=runtime_errors.__getitem__)
     print(f"    parity rows={len(runtime_errors)} "
           f"quant mean/max={quant_mean:.6f}/{quant_max:.6f} "
           f"runtime mean/max={runtime_mean:.6f}/{runtime_max:.6f}")
+    print(f"    parity quant p95/p99={quant_p95:.6f}/{quant_p99:.6f} "
+          f"runtime p95/p99={runtime_p95:.6f}/{runtime_p99:.6f}")
     print(f"    worst quant={quant_logits[worst]:.6f} "
           f"runtime={engine_cp[worst] / network_scale:.6f} "
           f"fen={probe_fens[worst]}")
@@ -432,14 +469,22 @@ def stage_parity(ctx):
         (runtime_max, "max_abs_runtime_logit_error"),
         (runtime_mean, "mean_abs_runtime_logit_error"),
     ]
+    if "p99_abs_quantization_logit_error" in parity:
+        gates.append((quant_p99, "p99_abs_quantization_logit_error"))
+    if "p99_abs_runtime_logit_error" in parity:
+        gates.append((runtime_p99, "p99_abs_runtime_logit_error"))
     for value, key in gates:
         if value > float(parity[key]):
             die(f"parity: {key} observed {value:.6f} exceeds {parity[key]}")
     ctx.results["parity"] = {
         "ran": True, "rows": len(runtime_errors),
         "quantization_mean_abs_logit_error": quant_mean,
+        "quantization_p95_abs_logit_error": quant_p95,
+        "quantization_p99_abs_logit_error": quant_p99,
         "quantization_max_abs_logit_error": quant_max,
         "runtime_mean_abs_logit_error": runtime_mean,
+        "runtime_p95_abs_logit_error": runtime_p95,
+        "runtime_p99_abs_logit_error": runtime_p99,
         "runtime_max_abs_logit_error": runtime_max,
     }
 

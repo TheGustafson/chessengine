@@ -226,10 +226,21 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     need_bytes = (n_pst_w + n_pst_b) * 2 + n_threat_w + n_l1w + (n_l1b + n_l2w + n_l2b + n_l3w + n_l3b) * 4
     if len(raw) < need_bytes:
         die(f"{quantised_path}: {len(raw)} bytes < {need_bytes} needed for D40 arch")
-    padding = raw[need_bytes:]
+    # Dual-target checkpoints append one policy head after the eval tensors.
+    # CENN contains eval only; a CPOL companion is produced by policy_pack.py.
+    bilinear_bytes = 2 * (64 * 8 * acc + 64 * 8) * 4
+    full_bytes = (4096 * acc + 4096) * 4
+    policy_bytes = next(
+        (size for size in (0, bilinear_bytes, full_bytes)
+         if len(raw) >= need_bytes + size and len(raw) - need_bytes - size <= 63),
+        None,
+    )
+    if policy_bytes is None:
+        die(f"{quantised_path}: unrecognized D40 trailing payload ({len(raw)-need_bytes} bytes)")
+    padding = raw[need_bytes + policy_bytes:]
     expected_padding = bytes(b"bullet"[i % 6] for i in range(len(padding)))
     if len(padding) > 63 or padding != expected_padding:
-        die(f"{quantised_path}: invalid trailing data after D40 tensors "
+        die(f"{quantised_path}: invalid trailing data after D40 eval/policy tensors "
             f"({len(padding)} bytes; expected Bullet's <=63-byte padding)")
 
     off = 0
@@ -355,9 +366,42 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     print(f"  payload     {len(payload):,} bytes   checksum {checksum:#018x}")
 
 
+def strip_d40_threats(cenn_path: str, out_path: str) -> None:
+    """Create a diagnostic HalfKA-only CENN-v2 while preserving its head.
+
+    This is an inference-cost isolation tool, not a strength network: removing
+    a trained threat transformer changes its evaluations. The resulting file
+    remains a fully checksummed, loader-valid CENN-v2 container.
+    """
+    raw = bytearray(Path(cenn_path).read_bytes())
+    if len(raw) < 64 or raw[:4] != MAGIC_V2:
+        die(f"{cenn_path}: not a CENN-v2 container")
+    flags = int.from_bytes(raw[6:8], "little")
+    threat_dims = int.from_bytes(raw[12:16], "little")
+    if not flags & FLAG_HAS_THREATS or threat_dims != THREAT_DIMS:
+        die(f"{cenn_path}: expected a {THREAT_DIMS}-feature threat channel")
+    payload_len = int.from_bytes(raw[48:56], "little")
+    payload = raw[64:]
+    if len(payload) != payload_len:
+        die(f"{cenn_path}: payload length mismatch")
+    prefix = HALFKA_DIMS * D40_ACC * 2 + D40_ACC * 2
+    threat_bytes = THREAT_DIMS * D40_ACC
+    payload = payload[:prefix] + payload[prefix + threat_bytes:]
+    raw[6:8] = (flags & ~FLAG_HAS_THREATS).to_bytes(2, "little")
+    raw[12:16] = (0).to_bytes(4, "little")
+    raw[48:56] = len(payload).to_bytes(8, "little")
+    raw[56:64] = fnv1a64(bytes(payload)).to_bytes(8, "little")
+    Path(out_path).write_bytes(raw[:64] + payload)
+    print(f"netpack-d40: wrote diagnostic HalfKA-only {out_path} ({64 + len(payload):,} bytes)")
+
+
 def main():
+    if len(sys.argv) == 4 and sys.argv[1] == "--strip-d40-threats":
+        strip_d40_threats(sys.argv[2], sys.argv[3])
+        return
     if len(sys.argv) < 3:
-        die("usage: netpack.py <quantised.bin> <out.cenn> [screlu|crelu|d40]")
+        die("usage: netpack.py <quantised.bin> <out.cenn> [screlu|crelu|d40]\n"
+            "       netpack.py --strip-d40-threats <in.cenn> <out.cenn>")
     mode = sys.argv[3] if len(sys.argv) >= 4 else "screlu"
 
     if mode.lower() == "d40":

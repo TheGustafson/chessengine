@@ -19,7 +19,7 @@ maxed ``|out_weight| = 127`` inside the AVX2 SCReLU clip ``|w| <= 127`` the
 loader enforces (loader.rs ``OutWeightOutOfClip``), so the rescaled net still
 loads.
 
-CENN format (design/11 §3.4.5, mirrors tools/nnue/netpack.py):
+Classic CENN-v1 format (design/11 §3.4.5, mirrors tools/nnue/netpack.py):
     48-byte header, then payload (all little-endian):
         ft_weights : i16[768*256]   (unchanged)
         ft_bias    : i16[256]       (unchanged)
@@ -27,9 +27,9 @@ CENN format (design/11 §3.4.5, mirrors tools/nnue/netpack.py):
         out_bias   : i32            *= k, round-nearest
     header[40:48] = FNV-1a-64 of the payload (recomputed here).
 
-Only ``out_weights`` and ``out_bias`` change; every other byte (header padding,
-ft_* payload) is preserved verbatim, and the checksum is recomputed over the
-edited payload.
+For D40 CENN-v2, the final bucketed ``l3_w`` and ``l3_b`` f32 tensors are
+scaled instead. In either format every other byte is preserved verbatim and
+the payload checksum is recomputed.
 
 PRECISION CAVEAT: the rescaled ``out_weights`` are re-rounded integers, so the
 transform is k-scaling *up to* a per-weight rounding error of <= 0.5 quant unit
@@ -55,6 +55,8 @@ SCALE = 400
 MAGIC = b"CENN"
 CENN_VERSION = 1
 HEADER_LEN = 48
+MAGIC_V2 = b"CEN2"
+HEADER_V2_LEN = 64
 
 # Payload element counts, in CENN order.
 N_FT_W = INPUT * L1  # 196608
@@ -94,9 +96,7 @@ def round_half_away(x: float) -> int:
     return math.floor(x + 0.5) if x >= 0.0 else math.ceil(x - 0.5)
 
 
-def rescale(in_path: str, out_path: str, k: float) -> None:
-    raw = open(in_path, "rb").read()
-
+def rescale_v1(raw: bytes, in_path: str, k: float) -> bytes:
     # --- header sanity (design/11 §3.4.5) ------------------------------------
     if len(raw) < HEADER_LEN + PAYLOAD_LEN:
         die(f"{in_path}: {len(raw)} bytes < {HEADER_LEN + PAYLOAD_LEN} "
@@ -146,16 +146,67 @@ def rescale(in_path: str, out_path: str, k: float) -> None:
     checksum = fnv1a64(bytes(payload))
     struct.pack_into("<Q", header, 40, checksum)
 
-    with open(out_path, "wb") as f:
-        f.write(header)
-        f.write(payload)
-
-    print(f"rescale_net: wrote {out_path} ({HEADER_LEN + PAYLOAD_LEN} bytes)")
     print(f"  k            {k}")
     print(f"  out_weights  max|w| {max_abs_before} -> {max_abs_after} "
           f"(clip {OUT_WEIGHT_CLIP}; {clamped} clamped)")
     print(f"  out_bias     {old_bias} -> {new_bias}")
     print(f"  payload_len  {PAYLOAD_LEN}   checksum {checksum:#018x}")
+    return bytes(header) + bytes(payload)
+
+
+def rescale_v2(raw: bytes, in_path: str, k: float) -> bytes:
+    if len(raw) < HEADER_V2_LEN:
+        die(f"{in_path}: truncated CENN-v2 header")
+    version, flags = struct.unpack_from("<HH", raw, 4)
+    if version != 2:
+        die(f"unsupported CENN-v2 version {version}")
+    halfka, threats, acc, l2, l3, buckets = struct.unpack_from("<6I", raw, 8)
+    payload_len = struct.unpack_from("<Q", raw, 48)[0]
+    if len(raw) != HEADER_V2_LEN + payload_len:
+        die(f"CENN-v2 length {len(raw)} != header+payload {HEADER_V2_LEN + payload_len}")
+    expected = (
+        halfka * acc * 2 + acc * 2 + (threats * acc if flags & 1 else 0)
+        + buckets * l2 * acc
+        + buckets * l2 * 4
+        + buckets * l2 * l3 * 4
+        + buckets * l3 * 4
+        + buckets * l3 * 4
+        + buckets * 4
+    )
+    if payload_len != expected:
+        die(f"CENN-v2 payload_len {payload_len} != derived {expected}")
+
+    payload = bytearray(raw[HEADER_V2_LEN:])
+    # l3_w and l3_b are the final two tensors in the payload.
+    off_b = payload_len - buckets * 4
+    off_w = off_b - buckets * l3 * 4
+    weights = list(struct.unpack_from(f"<{buckets * l3}f", payload, off_w))
+    biases = list(struct.unpack_from(f"<{buckets}f", payload, off_b))
+    struct.pack_into(f"<{len(weights)}f", payload, off_w, *(v * k for v in weights))
+    struct.pack_into(f"<{len(biases)}f", payload, off_b, *(v * k for v in biases))
+
+    header = bytearray(raw[:HEADER_V2_LEN])
+    checksum = fnv1a64(bytes(payload))
+    struct.pack_into("<Q", header, 56, checksum)
+    print(f"  k            {k}")
+    print(f"  CENN-v2      {halfka}+{threats}->{acc}->{l2}->{l3}, buckets={buckets}")
+    print(f"  l3 weights   max|w| {max(map(abs, weights)):.7g} -> "
+          f"{max(abs(v * k) for v in weights):.7g}")
+    print(f"  payload_len  {payload_len}   checksum {checksum:#018x}")
+    return bytes(header) + bytes(payload)
+
+
+def rescale(in_path: str, out_path: str, k: float) -> None:
+    raw = open(in_path, "rb").read()
+    if raw[:4] == MAGIC:
+        output = rescale_v1(raw, in_path, k)
+    elif raw[:4] == MAGIC_V2:
+        output = rescale_v2(raw, in_path, k)
+    else:
+        die(f"bad magic {raw[:4]!r} (expected {MAGIC!r} or {MAGIC_V2!r})")
+    with open(out_path, "wb") as handle:
+        handle.write(output)
+    print(f"rescale_net: wrote {out_path} ({len(output)} bytes)")
 
 
 def main():

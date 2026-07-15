@@ -7,8 +7,8 @@
 //                                   §3.2.1/§3.2.4). Prints a few decoded boards.
 //
 // Discardable scaffold (D15/D28). No engine code touched.
-use bulletformat::{convert_from_text, BulletFormat, ChessBoard, DataLoader};
-use std::io::{BufRead, BufReader};
+use bulletformat::{BulletFormat, ChessBoard, DataLoader, convert_from_text};
+use std::io::{BufRead, BufReader, BufWriter};
 
 fn piece_char(colour: u8, pt: u8) -> char {
     let base = [b'P', b'N', b'B', b'R', b'Q', b'K'][pt as usize];
@@ -34,7 +34,11 @@ fn record_counts(b: &ChessBoard) -> [[u32; 6]; 2] {
 fn fen_counts(board_field: &str) -> [[u32; 6]; 2] {
     let mut c = [[0u32; 6]; 2];
     for ch in board_field.chars() {
-        let (colour, up) = if ch.is_ascii_uppercase() { (0usize, ch) } else { (1usize, ch.to_ascii_uppercase()) };
+        let (colour, up) = if ch.is_ascii_uppercase() {
+            (0usize, ch)
+        } else {
+            (1usize, ch.to_ascii_uppercase())
+        };
         let pt = match up {
             'P' => 0,
             'N' => 1,
@@ -77,6 +81,28 @@ fn main() {
             let out = &args[3];
             convert_from_text::<ChessBoard>(inp, out).expect("convert failed");
         }
+        Some("convert-stdin") => {
+            let out = &args[2];
+            let stdin = std::io::stdin();
+            let mut output = BufWriter::new(std::fs::File::create(out).expect("create output"));
+            let mut records = Vec::with_capacity(65_536);
+            let mut count = 0usize;
+            for line in stdin.lock().lines() {
+                let line = line.expect("read stdin");
+                if line.trim().is_empty() {
+                    continue;
+                }
+                records.push(line.parse::<ChessBoard>().expect("parse streamed record"));
+                if records.len() == records.capacity() {
+                    ChessBoard::write_to_bin(&mut output, &records).expect("write output");
+                    count += records.len();
+                    records.clear();
+                }
+            }
+            ChessBoard::write_to_bin(&mut output, &records).expect("write output tail");
+            count += records.len();
+            eprintln!("convert-stdin: wrote {count} ChessBoard records to {out}");
+        }
         Some("inspect") => {
             let bin = &args[2];
             let txt = &args[3];
@@ -117,9 +143,16 @@ fn main() {
                 assert_eq!(rc[1][5], 1, "line {i}: not exactly one opp king");
                 assert!(rc[0][0] <= 8 && rc[1][0] <= 8, "line {i}: >8 pawns");
                 let total: u32 = rc.iter().flatten().sum();
-                assert_eq!(total, b.occ().count_ones(), "line {i}: occ popcount != nibble count");
+                assert_eq!(
+                    total,
+                    b.occ().count_ones(),
+                    "line {i}: occ popcount != nibble count"
+                );
                 assert!(b.score().unsigned_abs() < 2500, "line {i}: |score| >= 2500");
-                assert!(matches!(b.result, 0 | 1 | 2), "line {i}: result not in 0/1/2");
+                assert!(
+                    matches!(b.result, 0 | 1 | 2),
+                    "line {i}: result not in 0/1/2"
+                );
 
                 // --- king square fields (doc 15 §3.2.1) ---
                 let mut mover_ksq = 64u8;
@@ -149,16 +182,31 @@ fn main() {
                 if rc != exp {
                     mism += 1;
                     if mism <= 5 {
-                        eprintln!("line {i}: piece-count mismatch\n text: {line}\n rec counts: {rc:?}\n exp counts: {exp:?}");
+                        eprintln!(
+                            "line {i}: piece-count mismatch\n text: {line}\n rec counts: {rc:?}\n exp counts: {exp:?}"
+                        );
                     }
                 }
-                assert_eq!(b.score() as i32, exp_score, "line {i}: score sign mismatch (text {s_white} stm {stm})");
-                assert_eq!(b.result as i32, exp_result, "line {i}: result mismatch (text {r_white} stm {stm})");
+                assert_eq!(
+                    b.score() as i32,
+                    exp_score,
+                    "line {i}: score sign mismatch (text {s_white} stm {stm})"
+                );
+                assert_eq!(
+                    b.result as i32, exp_result,
+                    "line {i}: result mismatch (text {r_white} stm {stm})"
+                );
 
                 if i < k {
                     println!("\n--- record {i} ---");
                     println!("text : {line}");
-                    println!("stored score={} result={} ksq={} opp_ksq={}", b.score(), b.result, b.our_ksq(), b.opp_ksq());
+                    println!(
+                        "stored score={} result={} ksq={} opp_ksq={}",
+                        b.score(),
+                        b.result,
+                        b.our_ksq(),
+                        b.opp_ksq()
+                    );
                     print!("{}", decode_board_ascii(b));
                 }
                 checked += 1;
@@ -169,6 +217,7 @@ fn main() {
         }
         _ => {
             eprintln!("usage: nnue_convert convert <in.txt> <out.bin>");
+            eprintln!("       nnue_convert convert-stdin <out.bin>");
             eprintln!("       nnue_convert inspect <bin> <txt> [K]");
             std::process::exit(2);
         }

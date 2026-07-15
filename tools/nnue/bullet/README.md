@@ -21,10 +21,19 @@ register each as a `[[example]]` in `bullet_lib/Cargo.toml`, then
   tail and emits the exact mixed-quant tensor order consumed by
   `netpack.py ... d40`. Runtime knobs are `D40_DATA`, `D40_OUT`, `D40_ID`,
   `D40_SUPERBATCHES`, `D40_BPS`, `D40_BATCH`, `D40_THREADS`, `D40_SAVE_RATE`,
-  and `D40_LR`. The final superbatch also writes a named raw checkpoint. With
+  `D40_LR`, `D40_SEED`, `D40_WDL`, `D40_EVAL_TARGET_SCALE`, and
+  `D40_SCORE_MULTIPLIER`. `D40_INIT_RAW`/`D40_INIT_QUANT` resume or fine-tune
+  from a named checkpoint. `D40_VERIFY_ROWS=0 D40_VERIFY_ONLY=1` performs the
+  full corpus feature/capacity parity scan without training. The final
+  superbatch also writes a named raw checkpoint. With
   `D40_PROBE_FENS`, either `D40_PROBE_RAW` or `D40_PROBE_QUANT` evaluates the
   identical graph for the orchestrator's cross-boundary parity gate.
 - `d40_policy.rs` — streams the real 100M-row dual-target NumPy corpus, rebuilds
   each normalized placement, and uses the engine's canonical HalfKA+FullThreats
-  enumerators. `D40_POLICY_HEAD=bilinear|full` selects the rank-8 or 4096-logit
-  head off the shared pairwise trunk; both optimize `eval + λ·policy-CE`.
+  enumerators. `D40_POLICY_HEAD=eval|bilinear|full` selects the controlled
+  eval-only baseline, configurable-rank (`D40_POLICY_RANK`, default 8) partial
+  policy, or 4096-logit full policy head off
+  the shared pairwise trunk. `D40_EVAL_TARGET_SCALE` defaults to the empirically
+  stronger soft target 400; scale 200 is the exact `(1+Q)/2` inverse but lost
+  the classic strength A/B. `D40_WDL` defaults to 0.3. Seeds and campaign
+  sizing are environment-driven.

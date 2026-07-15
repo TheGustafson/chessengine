@@ -1,0 +1,26 @@
+{
+  "net_id": "lichess-evals-classic256-cold-1m-v1",
+  "arch": "768x2x256x1-screlu",
+  "provenance": "lichess-browser-stockfish-distill",
+  "parent": null,
+  "notes": "Cold-start scale gate on 1M canonical highest-depth/first-PV Lichess evaluation positions; eval-only WDL=0.",
+  "corpus": {
+    "id": "lichess-evals-kaggle-v14-value-1m-v1",
+    "raw_dir": null,
+    "train_bin": "data/corpora/lichess-chess-evaluations/kaggle-v14/value-1m-v1/train.bin"
+  },
+  "train": {
+    "bullet_dir": ".archon-state/toolchains/bullet",
+    "example": "train_net0.rs",
+    "checkpoint_dir": "data/nnue/lichess_evals_classic256_cold_1m_v1_ckpt",
+    "env": {
+      "NET0_SUPERBATCHES": "30", "NET0_BPS": "61", "NET0_BATCH": "16384",
+      "NET0_THREADS": "4", "NET0_SAVE_RATE": "5", "NET0_LR": "0.001",
+      "NET0_WDL": "0.0", "NET0_SEED": "198273612"
+    }
+  },
+  "verify_out_clip": true,
+  "pack": {"activation": "screlu", "l1": 256},
+  "parity": {"enable": false},
+  "sprt": {"enable": false}
+}

@@ -11,7 +11,7 @@
     "train_bin": "data/nnue/mix/train.bin"
   },
   "train": {
-    "bullet_dir": "/tmp/claude-0/-root-projects-learnrust-chessengine/c0a1b520-8665-4b2f-85c5-35473d97415c/scratchpad/bullet",
+    "bullet_dir": "/root/projects/learnrust/chessengine/.archon-state/toolchains/bullet",
     "example": "bullet/d40_features.rs",
     "example_name": "d40_features",
     "checkpoint_dir": "data/nnue/d40_c2_ckpt",

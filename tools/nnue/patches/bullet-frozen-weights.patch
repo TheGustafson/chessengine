@@ -1,0 +1,92 @@
+diff --git a/crates/trainer/src/run.rs b/crates/trainer/src/run.rs
+index 7b73421..69e4df7 100644
+--- a/crates/trainer/src/run.rs
++++ b/crates/trainer/src/run.rs
+@@ -5,7 +5,7 @@ mod schedule;
+ pub use dataloader::{DataLoader, DataLoadingError, HostPool, PreparedBatchHost};
+ pub use schedule::{Step, TrainingSchedule, TrainingSteps};
+ 
+-use std::{collections::BTreeMap, sync::mpsc, thread, time::Instant};
++use std::{collections::{BTreeMap, BTreeSet}, sync::mpsc, thread, time::Instant};
+ 
+ use bullet_compiler::{
+     model::Layout,
+@@ -76,6 +76,30 @@ pub fn train<G: Gpu, O: OptimiserState<G>>(
+     optimiser: &mut Optimiser<G, O>,
+     schedule: TrainingSchedule,
+     dataloader: impl DataLoader,
++    batch_callback: impl FnMut(&mut Optimiser<G, O>, Step, f32),
++    superbatch_callback: impl FnMut(&mut Optimiser<G, O>, Step),
++) -> Result<(), TrainingError<G>> {
++    train_frozen(
++        optimiser,
++        schedule,
++        dataloader,
++        &BTreeSet::new(),
++        batch_callback,
++        superbatch_callback,
++    )
++}
++
++/// Train while keeping complete named tensors bit-identical.
++///
++/// Frozen weights remain present in the forward graph, but autograd does not
++/// materialise their gradients and the optimiser never updates them.  This is
++/// useful for protected teacher trunks and adapters; freezing tensor slices is
++/// deliberately out of scope.
++pub fn train_frozen<G: Gpu, O: OptimiserState<G>>(
++    optimiser: &mut Optimiser<G, O>,
++    schedule: TrainingSchedule,
++    dataloader: impl DataLoader,
++    frozen_names: &BTreeSet<String>,
+     mut batch_callback: impl FnMut(&mut Optimiser<G, O>, Step, f32),
+     mut superbatch_callback: impl FnMut(&mut Optimiser<G, O>, Step),
+ ) -> Result<(), TrainingError<G>> {
+@@ -103,8 +127,19 @@ pub fn train<G: Gpu, O: OptimiserState<G>>(
+     });
+ 
+     let defn = optimiser.definition();
+-    let (func, gmap) =
+-        defn.lower_backward(&Default::default(), steps.batch_size).map_err(TrainingError::CompilingBackwards)?;
++    let known_names = defn.ir().weights().values().map(|(name, _)| name).collect::<BTreeSet<_>>();
++    for name in frozen_names {
++        assert!(known_names.contains(name), "unknown frozen weight tensor: {name}");
++    }
++    let frozen_ids = defn
++        .ir()
++        .weights()
++        .iter()
++        .filter_map(|(id, (name, _))| frozen_names.contains(name).then_some(*id))
++        .collect::<BTreeSet<_>>();
++    let (func, gmap) = defn
++        .lower_backward(&frozen_ids, steps.batch_size)
++        .map_err(TrainingError::CompilingBackwards)?;
+     let map = func.map();
+     let mut backwards = Function::new(device.clone(), func.ir().clone()).map_err(TrainingError::CompilingBackwards)?;
+     backwards.prealloc().map_err(TrainingError::Unexpected)?;
+@@ -114,17 +149,15 @@ pub fn train<G: Gpu, O: OptimiserState<G>>(
+     let mut gradients = BTreeMap::new();
+     for (mid, (name, _)) in defn.ir().weights() {
+         let tid = *map.get(mid).unwrap();
+-        let gid = *gmap.get(mid).unwrap();
+-
+-        let ty = defn.ir().node(*mid).ty();
+-        let Layout::Dense(dtype) = ty.layout() else { unreachable!() };
+-        let size = ty.shape().size();
+-        let grad = Buffer::zeroed(&device, dtype, size).map_err(TrainingError::Unexpected)?;
+-
+         tensor_map.insert(tid, optimiser.weights().get(name).unwrap().clone());
+-        tensor_map.insert(gid, grad.clone());
+-
+-        gradients.insert(name.clone(), grad);
++        if let Some(&gid) = gmap.get(mid) {
++            let ty = defn.ir().node(*mid).ty();
++            let Layout::Dense(dtype) = ty.layout() else { unreachable!() };
++            let size = ty.shape().size();
++            let grad = Buffer::zeroed(&device, dtype, size).map_err(TrainingError::Unexpected)?;
++            tensor_map.insert(gid, grad.clone());
++            gradients.insert(name.clone(), grad);
++        }
+     }
+ 
+     let tgf = TValue::F32(vec![1.0 / steps.batch_size as f32]);
