@@ -61,6 +61,34 @@ impl DataReader<ChessBoard> for D40Reader {
     }
 }
 
+/// Official-style random position skip (decorrelates game-contiguous
+/// binpack streams). `D40_RANDOM_SKIP_PCT` (0-99, default 0 = historical
+/// behavior). Deterministic FNV over occupancy/ply/score, same construction
+/// as train_net0's NET0_RANDOM_SKIP_PCT.
+static RANDOM_SKIP_PCT: std::sync::LazyLock<u64> = std::sync::LazyLock::new(|| {
+    let pct = std::env::var("D40_RANDOM_SKIP_PCT").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+    assert!(pct < 100, "D40_RANDOM_SKIP_PCT must be 0-99");
+    if pct > 0 {
+        println!("SF binpack random skip: {pct}%");
+    }
+    pct
+});
+
+fn position_hash(entry: &loader::sfbinpack::TrainingDataEntry) -> u64 {
+    use loader::sfbinpack::Color;
+    let mut h = 0xcbf29ce484222325u64;
+    for v in [
+        entry.pos.pieces_bb(Color::White).bits(),
+        entry.pos.pieces_bb(Color::Black).bits(),
+        u64::from(entry.ply),
+        entry.score as u64,
+    ] {
+        h ^= v;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
 fn sfbinpack_filter(entry: &loader::sfbinpack::TrainingDataEntry) -> bool {
     use loader::sfbinpack::{MoveType, PieceType};
 
@@ -69,6 +97,7 @@ fn sfbinpack_filter(entry: &loader::sfbinpack::TrainingDataEntry) -> bool {
         && entry.score.unsigned_abs() <= 10_000
         && entry.mv.mtype() == MoveType::Normal
         && entry.pos.piece_at(entry.mv.to()).piece_type() == PieceType::None
+        && (*RANDOM_SKIP_PCT == 0 || position_hash(entry) % 100 >= *RANDOM_SKIP_PCT)
 }
 
 // --- Feature-space layout (design/11 §12.1) ---------------------------------
