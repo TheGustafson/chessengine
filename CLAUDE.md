@@ -22,12 +22,13 @@ C++ patterns, and briefly explain non-obvious idioms when introducing them.
 
 ## Live research state (read before any research/training loop)
 
-`docs/research/policy-automl-state.md` is the compact-safe research decision
-log and continuation record for the D41/ARCHON era — read it completely
-(especially its final takeover checkpoint) before resuming research, and
-update it after every completed, rejected, or redirected trial. Its header
-invariants (bounded-label quarantine, quality-first flywheel rule, SF18
-tiered-oracle plan) override stale narrative below them. Companion docs:
+`docs/research/value-foundation-state.md` is the live research log — its
+TAKEOVER CHECKPOINT at the top is the authoritative current state (incumbent
+chain, external anchors, in-flight jobs). Read it before any research/training
+loop and update it after every completed, rejected, or redirected trial. Its
+predecessor `docs/research/policy-automl-state.md` covers the D41 policy era;
+that doc's header invariants (bounded-label quarantine, quality-first flywheel
+rule, SF18 tiered-oracle plan) still stand. Companion docs:
 `docs/research/archon-execution-plan.md`,
 `docs/research/archon-self-improvement-roadmap.md`,
 `docs/research/sf18-label-quality-plan.md`.
@@ -193,28 +194,42 @@ mutates. Full mechanics: `design/14` §10.
 
 ## Status / roadmap
 
-**CURRENT (2026-07-15): D41 ARCHON era — value-foundation phase (roadmap
-B1–B4); net-0 is still the strongest evaluator.**
+**CURRENT (2026-07-16): D41 ARCHON era — value-foundation phase; net-0 has
+been dethroned.**
 Classical engine complete (P0–P11, ~2720 Elo PSQT, depth-6 bench **548978**).
-P13 NNUE landed: **net-0** (768→2x256 SCReLU, SF16-teacher, **+696 vs PSQT**,
-~3400 anchored) remains unbeaten; net-1..11, the 13-net D40 policy campaign,
-and the bulk value matrix are historical controls. D40 (SF HalfKAv2_hm +
-FullThreats features + Reckless-shaped head) is implemented, SIMD-optimized,
-and parity-proven. **D41 renamed the engine ARCHON and pivoted the goal to
-learned search allocation** (design/19, phase P15/M11): consequence models
-over policy imitation, protected/frozen evaluator, equal-time promotion gates.
-Standing facts (details + takeover protocol in
-`docs/research/policy-automl-state.md`): every bulk/scalar-label recipe so far
-failed to beat net-0 (best bulk: Lichess classic1024, −39 Elo @20k); working
-root-cause hypothesis = target/search-contract mismatch — bulk isolated-cp
-nets fit statically but lose the local score topology alpha-beta consumes
-(`tools/nnue/audit_local_coherence.py` is a mandatory pre-game gate); hard
-node-limit (5k) search labels are frequently aspiration-window **bounds** and
-are quarantined from scalar losses; the production value oracle is the tiered
-deep-SF18 protocol (`docs/research/sf18-label-quality-plan.md`). The one
-confirmed positive: gen-0 rank-8 bilinear policy head + unchanged net-0 =
-+68.6 ±23 Elo at 2k **fixed nodes** (not equal-time; large NPS tax). The
-narrative below is the phase-by-phase history.
+P13 NNUE landed **net-0** (768→2x256 SCReLU, SF16-teacher, **+696 vs PSQT**,
+~3400 anchored); net-1..11, the 13-net D40 policy campaign, and the bulk
+value matrix are historical controls. **The B4 question is answered
+(2026-07-16): training-data volume was the constraint.** Every failed
+challenger trained on 25M–265M positions; nets trained on the official
+Stockfish binpacks (nodes5000pv2_UHO stage-1 → farseer stage-2 warm retrain,
+3–9B position presentations, official two-stage recipe) beat net-0
+decisively. This supersedes the earlier target/search-contract-mismatch
+root-cause hypothesis. Current incumbent:
+`stage2-v1-s3-2048-farseer-120sb` (L1=2048), ≈ **+265 composed at equal time
+(10+0.1)** over net-0 via the gated chain u1024 (+166±18) → uf2048 (+44±14)
+→ s3-farseer (+55±17 h2h); the width ladder saturated at 2048. External
+anchors (100g, 10+0.1): SF16 −78±18, SF18 −191±23, Integral v6 −70±22
+(cross-match triangle closes within 1.3σ). The D40 full-feature arch (SF
+HalfKAv2_hm + FullThreats + Reckless-shaped head) is implemented,
+SIMD-optimized, parity-proven, and — at full data scale — beats the best
+classic-feature net at fixed nodes (stage-1 only, +32.5±17.3, exp-0065); its
+equal-time promotion gate is tracked in the live log. **D41 renamed the
+engine ARCHON; the learned-search-allocation program (design/19, P15/M11)
+resumes after the eval foundation settles.** A ranked search-improvement
+program distilled from the SF14→16 patch study
+(`stockfish_reference/06-sf14-sf16-search-patch-study.md` §6b) is queued
+behind the eval arc: S0 unbalanced testing book + SF16-late mechanics audit,
+S1 wire the existing correction-history tables, S2 gainer-season global SPSA
+retune. Standing facts: labels from OUR hard-node-limit (5k) datagen are
+frequently aspiration-window **bounds** and stay quarantined from scalar
+losses (the official binpacks are empirically clean — they trained the nets
+that won); the deep value oracle is the tiered SF18 protocol
+(`docs/research/sf18-label-quality-plan.md`); the one confirmed policy
+positive remains gen-0 rank-8 bilinear head + unchanged net-0 = +68.6±23 at
+2k **fixed nodes** (not equal-time; large NPS tax). Live leaderboard +
+in-flight jobs: `docs/research/value-foundation-state.md`. The narrative
+below is the phase-by-phase history.
 
 Done: types, bitboards, board + FEN, `Move`/`MoveList`; attack tables (P1:
 const leapers + geometry, fancy magic sliders, exhaustively validated
