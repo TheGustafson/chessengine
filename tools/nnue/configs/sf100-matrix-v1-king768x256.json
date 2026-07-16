@@ -1,0 +1,35 @@
+{
+  "baseline_net": "data/nnue/nets/net-0.cenn",
+  "sources": {
+    "sf100": {
+      "id": "sf-100",
+      "path": "data/nnue/train.bin",
+      "format": "bulletformat",
+      "wdl": 0.3,
+      "provenance": "sf-datagen"
+    }
+  },
+  "screen": {
+    "games": 300,
+    "nodes": 5000,
+    "survivor_elo_floor": -50.0,
+    "curve_games": 400,
+    "curve_nodes": [
+      20000
+    ],
+    "concurrency": 4
+  },
+  "campaign_id": "sf100-matrix-v1",
+  "cells": [
+    "king768x256"
+  ],
+  "train": {
+    "superbatches": 240,
+    "batches_per_superbatch": 1520,
+    "batch_size": 16384,
+    "lr": 0.001,
+    "lr_end_superbatch": 240,
+    "save_rate": 30,
+    "seed": 198273612
+  }
+}

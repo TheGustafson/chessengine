@@ -296,6 +296,34 @@ env-gated `SFBINPACK_SCORE_DIV` (tools/nnue/patches/bullet-sfbinpack-score-div.p
   200g screen if ≥ −100. New trainer knobs: `NET0_RANDOM_SKIP_PCT`,
   `NET0_DRAW_KEEP_PCT` (both env-gated, default inert).
 
+### Active experiments (preregistered 2026-07-15 ~20:05, post-reset)
+
+**E1 — positions vs labels (user-designed).** Question: is fishpack held back
+by its positions or its scores? Method: 5.93M fishpack positions (evenly
+sampled across all 5,477 chunks, per-game cap via stride), relabeled with
+SF16 using gen_sf_data.py's EXACT settings (engines/stockfish-datagen,
+Threads=1, Hash=16, nodes=5000, White-POV UCI cp, quiet/check/mate/cap
+filters, dedup; aspiration bounds intentionally NOT filtered — sf-100 itself
+was made this way). Fishpack's own game results kept for the WDL 0.3 blend.
+Then train with the exact net-0 recipe and screen ≥300g vs net-0.
+OUTCOMES: works → positions fine, original fishpack scores (or their
+consumption) were the problem, and this pipeline = unlimited sf-100-style
+data; fails → scores were never the problem, suspect stream/loader
+mechanics. Tools: sfbinpack-audit/src/bin/bulk_fens.rs,
+tools/nnue/relabel_fishpack_sf16.py. Running: ~1,300 pos/s, ETA ~75 min.
+Output: data/nnue/experiments/fishpack-sf16-relabel/.
+
+**E2 — 4-net architecture matrix on sf-100 (user-directed).** Question: was
+"bigger net on the known-good data" ever given a fair shot? (No: 512 got one
+unreliable cross-binary +16; 1024 was schedule-starved at 747M.) Method:
+classic256 (60 SB), classic1024 / king768x256 / d40-full (240 SB each ≈ 6B
+presentations, 8x the old budget), net-0 recipe otherwise, WDL 0.3,
+sf-100 = the exact data/nnue/train.bin artifact. Decision-grade 300g @5k
+endpoint screens; 400g @20k for anything above −50. Checkpoints every 30 SB
+retained for convergence inspection. Per user rule: if cells converge badly
+on the KNOWN-GOOD data with generous schedules, the training method itself
+goes under review. Campaign: data/nnue/campaigns/sf100-matrix-v1/.
+
 ## Resume instructions
 
 1. Read this file + the takeover checkpoint of `policy-automl-state.md`.
