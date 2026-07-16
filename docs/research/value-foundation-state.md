@@ -438,6 +438,23 @@ are all individually proven. Runs after E1 (GPU serial).
   fixed-node winners → NPS/time-management investigation before any arch
   pivot.
 
+- **2026-07-16 07:55 — uho-ladder-v1 screens: CAPACITY UNLOCKED on
+  billions-scale data.** [OBSERVATION] 300g @5k vs net-0, all on the UHO
+  10GiB clean prefix, e3 recipe: u256-60sb **+32.5 ± 18.7**, u256-120sb
+  **+27.9 ± 18.8** (schedule axis flat at width 256 — 30/60/120 SB all
+  ≈ +30-50), u512-60sb **+123.0 ± 19.5**, u1024-120sb **+225.0 ± 22.8**.
+  The SAME classic1024 that scored −68 on sf-100 (25M rows) scores +225 on
+  UHO-10GiB. Bench NPS sanity: probe-default 4.30M, classic512 4.26M,
+  l1024 4.65M (tree-shape noise; no material eval tax at these widths).
+  [INTERPRETATION] Width × data is the scaling frontier, exactly as
+  official practice predicts (their stage-1 = 40-60B samples). Width 256
+  is the net-0-era ceiling; it cannot absorb more data or schedule.
+  Equal-time gate for u1024-120sb (200g 10+0.1) launched; full 40.3GB UHO
+  still downloading. Next GPU wave (after gate, to keep the box quiet):
+  u1024 longer schedule on 10GiB, then full-UHO scale runs; consider a
+  2048-wide engine feature if 1024 promotes (code change needed).
+  Ledger rows to follow with the gate result.
+
 - **2026-07-16 07:35 — D40 rescreen + E3 depth curve; sf-100 matrix
   complete.** [OBSERVATION] d40-full on sf-100 (240 SB, conc-1 clean
   screen): **−478.0 ± 39.7** (parity caveat max-err 0.355 on record). Full
