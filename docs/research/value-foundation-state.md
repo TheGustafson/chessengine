@@ -438,6 +438,42 @@ are all individually proven. Runs after E1 (GPU serial).
   fixed-node winners → NPS/time-management investigation before any arch
   pivot.
 
+- **2026-07-16 10:55 — Wave3 flat; stage-2 track armed.** [OBSERVATION]
+  wave3 h2h vs uf1024-240sb (300g @5k): uf1024-480sb (12B presentations)
+  **−10.4 ± 17.4**; uf1024-240sb-wdl0 (official pure-score lambda)
+  **−6.9 ± 17.4**. Schedule and lambda both flat at width 1024 — the width
+  family is recipe-saturated ≈ +200-225 over net-0 (exp-0050/0051).
+  [OBSERVATION] test80 (Lc0-derived stage-2 corpus, 10.8GB, 10,308 clean
+  chunks) label audit vs SF18 d12: stm-POV, core slope **2.18x SF18-UCI**,
+  Pearson 0.784, sign 93.9% — clean but noisier than UHO (0.970/98.3%),
+  29% exact-zero scores, weak tail sign (73.7% at |cp|≥2000). SCORE_DIV
+  1.45 maps it to the proven SF16 frame. [PREREGISTERED] Stage-2 attempt 1
+  (tools/nnue/stage2_v1.sh, gated on wave4): warm start uf1024-240sb
+  (new NET0_INIT_CENN knob), test80, LR 0.0005 (halved), WDL 0.25
+  (≈ official stage-2 lambda 0.75), 120 SB; h2h vs its parent. OUTCOMES:
+  clear win → the official two-stage shape transfers; scale stage-2 data
+  next (T60T70/farseer files as disk allows). Flat/loss → rich-data gains
+  need the official loss shape or interleaved mixing — loss-shape work in
+  bullet becomes the next lever. In flight: wave4 uf2048-240sb (capacity;
+  ETA ~13:35), then stage2. Disk 9.2GB free (floor reached; fishpack32
+  deleted, re-downloadable, was E1-proven negative-value).
+
+- **2026-07-16 09:05 — Full-file scaling at width 1024 is FLAT under the
+  current recipe; width is the live lever.** [OBSERVATION] uf1024-240sb
+  (full 40.3GB, 6B presentations) vs u1024-120sb (10GiB, 3B): pooled 600g
+  head-to-head **+6.9 ± 12.4 — parity** (exp-0049). At width 512 the full
+  file DID pay (+123 → +151.3 ± 20.9 vs net-0). [INTERPRETATION] At 1024,
+  4x data + 2x presentations bought nothing under single-cosine + WDL 0.3;
+  the binding constraint is now recipe or capacity, not corpus size.
+  In flight: wave3 probes recipe (uf1024-480sb = 12B presentations;
+  uf1024-240sb-wdl0 = official pure-score stage-1 lambda), wave4 probes
+  capacity (NEW `nnue-l1-2048` engine feature, commit b9536e3 — default
+  build unaffected; probe-l2048 built; uf2048-240sb queued behind wave3).
+  train_net0 now accepts comma-separated binpacks (concat loader) for the
+  coming multi-file stage-1 mix; wrongIsRight_nodes5000pv2 (7.3GB)
+  downloading. Screens within a width family (same NPS) use direct
+  head-to-heads; equal-time gates reserved for cross-width promotion.
+
 - **2026-07-16 08:30 — EQUAL-TIME GATE PASSED: net-0 DETHRONED after 4
   days as incumbent.** [OBSERVATION] `uho-ladder-v1-u1024-120sb` vs net-0,
   200g at 10+0.1 (the user's promotion bar): **+166.2 ± 18.3**, score
