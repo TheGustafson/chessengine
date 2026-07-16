@@ -438,6 +438,21 @@ are all individually proven. Runs after E1 (GPU serial).
   fixed-node winners → NPS/time-management investigation before any arch
   pivot.
 
+- **2026-07-16 17:55 — Integral v6 anchor + triangle closure: rating
+  validated.** [OBSERVATION] Integral v6 built from source (tag v6, era
+  net integral-networks@238c8e4a30 pinned — main-branch net would be
+  wrong-era; clang-for-both-languages fixes a mixed-LTO link failure).
+  ARCHON vs Integral v6: **40.0% (11W 58D 31L), −70.4 ± 22.4**
+  (exp-0063). Triangle closure under identical local conditions (early-
+  stopped at n=54 by preregistered rule): SF16 vs Integral **+51.9 ±
+  19.7** (exp-0064) — the sites' ~80 gap compresses to ~52 at 10+0.1 /
+  1 thread / balanced book (draw compression). Triangle arithmetic:
+  predicted Integral−ARCHON = 26 ± 27, measured 70 ± 22 → closes within
+  1.3σ. [CONCLUSION] All four external measurements are mutually
+  consistent: ARCHON sits ≈ 70-90 below SF16-class, i.e. Integral-v6
+  class head-to-head, at these conditions. The internal +265 chain and
+  external anchors agree.
+
 - **2026-07-16 17:10 — SF18 sanity check PASSES.** [OBSERVATION] ARCHON
   incumbent vs FULL SF18, 100g 10+0.1: **25.0% (0W 50D 50L), −190.8 ±
   23.3, 0 time losses** (exp-0062; D40 trainer on GPU during the match —
