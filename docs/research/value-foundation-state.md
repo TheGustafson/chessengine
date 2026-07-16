@@ -21,9 +21,27 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-16 ~18:30 America/New_York
+Last updated: 2026-07-16 ~20:30 America/New_York
 
-## TAKEOVER CHECKPOINT (2026-07-16 18:45 — read this first)
+## TAKEOVER CHECKPOINT (2026-07-16 20:30 — read this first)
+
+**Housekeeping state (20:30):** disk cleaned 8.1G→41G free (~33GB: cargo
+debug/cross targets, sf-100 shard intermediates, six old ckpt dirs, eight
+dead campaign dirs, and three LEDGERED artifacts deleted WITH lost-
+annotations: lichess bulk 8G, test80 binpack 11G [re-downloadable], E1
+relabel corpus). Ledger gained the append-only correction mechanism
+(`ledger.py annotate`, annotations.jsonl, design/18 §5; commit 287db4f);
+verify now runs end-to-end (7fa53f4) and reports exactly 1 problem: exp-0042
+dangling → unregistered net sf100-matrix-v1-sf100-d40-full (registration
+needs a code_sha convention — user decision pending). Killed three stale
+sleep-loop waiters from concluded eras (d40_rescreen, e4_king_rerun,
+e1_control) — kill by exact PID only. Worktree CLEAN, all work committed;
+122 commits ahead of origin/main, push is the USER's action (never push).
+config.json is fastchess-written runtime state and will re-dirty after
+every match — candidate for gitignore, don't chase it. Design docs + 
+CLAUDE.md status refreshed to the post-B4 reality (24c8499, 52d1de9).
+Rust perf tasks R1-R4 queued (native builds / VNNI sota_simd / PGO /
+micro-audits) — R2 VNNI is the D40-NPS lever, box is Zen 4.
 
 **In flight RIGHT NOW (updated 19:45; check these before doing anything):**
 - `tools/nnue/d40_night_v2.sh` (bg) is the ONLY live match chain: waits
