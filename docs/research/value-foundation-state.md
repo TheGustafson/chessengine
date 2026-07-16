@@ -25,15 +25,26 @@ Last updated: 2026-07-16 ~18:30 America/New_York
 
 ## TAKEOVER CHECKPOINT (2026-07-16 18:45 — read this first)
 
-**In flight RIGHT NOW (check these before doing anything):**
-- `tools/nnue/d40_s2_gate_v1.sh` (bg): d40-s2-farseer-120sb training
-  (warm from d40-uho raw ckpt, started 18:04, ~1h) → h2h vs
-  d40-uho-v1-240sb (conc 1) → EQUAL-TIME GATE best-D40 vs s4 (200g
-  10+0.1 conc 1, ~3h, verdict ~22:30-23:00) — promotion #4 decision.
-- `tools/nnue/d40_long_v1.sh` (bg): d40-uho-720sb (18B presentations,
-  ~7h) waits for GPU idle, runs overnight; screen it next morning
-  (h2h vs d40-uho-v1-240sb). Runs DURING the gate by standing
-  symmetric-load exception (0 forfeits precedent) — caveat any result.
+**In flight RIGHT NOW (updated 19:45; check these before doing anything):**
+- `tools/nnue/d40_night_v2.sh` (bg) is the ONLY live match chain: waits
+  for the 720sb train to end (~02:15) + RAM to free, then (1) h2h hop
+  d40-s2-farseer-120sb vs d40-uho-v1-240sb — DIAGNOSTIC ONLY, (2) 720sb
+  parity parse + h2h vs 240sb, (3) EQUAL-TIME GATE best parity-PASSING
+  D40 vs s4 (200g 10+0.1 conc 1) — promotion #4 verdict by ~06:30.
+- `tools/nnue/d40_long_v1.sh` (bg): d40-uho-720sb (18B presentations)
+  training since 19:15, ~7h.
+- HOP PARITY FAIL (19:14): d40-s2-farseer-120sb runtime mean/max
+  0.011/**0.241** vs gates 0.03/**0.20** — mean excellent, p99 0.088,
+  worst fen an OOD bare endgame (2R5/8/8/3BK2k/8/7p/8/8 b), runtime
+  tracks quant (quant max 0.63) → quant-CLIPPING tail, NOT a transform
+  bug (sf-100's true fail: 0.355 broad). Hop is NOT a gate candidate;
+  user decides waiver vs rescale (tools/nnue/rescale_net.py) tomorrow
+  with its h2h number in hand. Old `d40_s2_gate_v1.sh` chain is DEAD
+  (exited 1 at parity) — superseded by d40_night_v2.sh.
+- RAM RULE that forced this: sota-vs-sota h2h = 2×3.6GB engines; with
+  the trainer resident (2.7GB) only ~2.9GB was available → never run
+  sota-pair games while a train lives (OOM would kill the un-resumable
+  trainer).
 - Results log for everything: `data/nnue/experiments/chain-v2-results.log`.
 - SEARCH PROGRAM defined (user-directed): ranked matrix in
   `stockfish_reference/06-sf14-sf16-search-patch-study.md` §6a/6b;
@@ -719,3 +730,30 @@ are all individually proven. Runs after E1 (GPU serial).
 4. Probe C outputs: `data/nnue/audits/label-semantics-v1*`.
 5. After A–C: write the synthesis in Results log, update H1–H4 posteriors,
    pick the fork (scale / retune-consumer / label-quality), report to user.
+
+## 2026-07-16 19:45 [OBSERVATION] D40 farseer hop fails parity marginally; night chain replaces gate
+
+- d40-s2-farseer-120sb (warm from d40-uho-v1-240sb raw, farseerT76 120SB)
+  trained clean but FAILED the runtime-parity gate: mean/max 0.011/0.241
+  vs 0.03/0.20 (p95 0.042, p99 0.088). Worst fen = OOD bare endgame at
+  move 86; quant-vs-raw max 0.63 with runtime tracking quant → the tail
+  is quantization clipping on out-of-distribution material, not a
+  trainer/runtime transform mismatch (contrast sf-100 D40: 0.355 broad
+  fail). Candidate fixes if its h2h is strong: rescale_net.py pass or a
+  waiver with the caveat recorded. NOT a gate candidate as-is.
+- Gate chain d40_s2_gate_v1.sh exited at the parity stage by design;
+  equal-time gate rescheduled into tools/nnue/d40_night_v2.sh (waits for
+  the 720sb train, then hop h2h [diagnostic] → 720sb parity+h2h → gate
+  best PASSING net vs s4, verdict ~06:30). Reason: 7.6GB box cannot host
+  2 sota engines + the resident trainer (OOM risk to an un-resumable
+  train).
+- Ledger verify hardened (commit 7fa53f4): runs end-to-end now; first
+  honest full pass = 2 problems (sf100+lc0atanhraw-9pct-27m DRIFT from
+  deleted mix shards; exp-0042.A dangling → unregistered net
+  sf100-matrix-v1-sf100-d40-full whose .cenn exists). Both need an
+  annotate/status mechanism or a registration decision (user pending).
+- Rust perf program queued as tasks R1-R4: native builds (R1, deferred
+  to quiet box), AVX-512 VNNI sota_simd path (R2 — box is Zen 4, VNNI
+  available; attacks D40's NPS tax directly), PGO (R3), bounds-check/
+  false-sharing audits (R4). All gate through bench bit-reproduction
+  (D24); sota f32 tail is the rounding hazard.
