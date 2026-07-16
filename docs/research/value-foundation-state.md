@@ -438,6 +438,20 @@ are all individually proven. Runs after E1 (GPU serial).
   fixed-node winners → NPS/time-management investigation before any arch
   pivot.
 
+- **2026-07-16 16:20 — Stage-2 plateau confirmed; FULL-FEATURE TRACK
+  OPENED.** [OBSERVATION] s4 pooled 600g vs s3: **+15.6 ± 11.9** — not
+  promoted (farseer hops: +55 → +29 → +15.6 pooled; the classic-family
+  stage-2 well is drying up). s4 stays working-best/gate-baseline.
+  [OBSERVATION] bench NPS: probe-sota 4.26M vs probe-l2048 4.09M — the
+  D40 SIMD path carries NO material speed tax, so fixed-node wins should
+  transfer to equal time. [LAUNCHED] `d40-uho-v1-240sb`: D40
+  (HalfKAv2_hm + FullThreats) stage-1 on full UHO with the proven recipe
+  (div 1.9, skip75 — D40_RANDOM_SKIP_PCT added to the trainer) — the
+  first rich-feature net ever given billions-scale data. Known risk: the
+  pack parity gate (0.355 max-err failure on sf-100; hypothesis =
+  saturation at very low loss — big data may avoid it). Screen: h2h vs
+  s4, conc 1. king768-on-UHO is the follow-up probe.
+
 - **2026-07-16 16:00 — Reality check vs full Stockfish 16: −78 ± 18.**
   [OBSERVATION] ARCHON (incumbent s3-2048-farseer, P9-era search) vs
   FULL-strength SF16, 100g 10+0.1, both 1 thread / 16MB hash:
