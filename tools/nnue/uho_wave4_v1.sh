@@ -10,8 +10,10 @@ cd "$(dirname "$0")/../.."
 R=data/nnue/experiments/chain-v2-results.log
 say() { echo "[wave4 $(date +%H:%M:%S)] $*" | tee -a "$R"; }
 
-say "waiting for WAVE3 COMPLETE"
-until grep -aq "WAVE3 COMPLETE" "$R"; do sleep 120; done
+# NOTE: the wait phrase must NOT appear in our own log lines (say() appends
+# to $R — an earlier version gated on a phrase it had just written itself).
+say "waiting for wave3 to finish"
+until grep -aqE "^\[wave3 [0-9:]+\] WAVE3 COMPLETE" "$R"; do sleep 120; done
 
 name=uf2048-240sb
 d=data/nnue/experiments/uho-wave4/$name
