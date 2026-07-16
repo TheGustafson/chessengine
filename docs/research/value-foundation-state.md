@@ -438,6 +438,14 @@ are all individually proven. Runs after E1 (GPU serial).
   fixed-node winners → NPS/time-management investigation before any arch
   pivot.
 
+- **2026-07-16 17:10 — SF18 sanity check PASSES.** [OBSERVATION] ARCHON
+  incumbent vs FULL SF18, 100g 10+0.1: **25.0% (0W 50D 50L), −190.8 ±
+  23.3, 0 time losses** (exp-0062; D40 trainer on GPU during the match —
+  symmetric load caveat). vs SF16 was −77.7 ± 18.4 → the measured
+  SF16→SF18 gap through our engine is **113 ± 29**, consistent with the
+  known ~90. External anchors now bracket the engine coherently:
+  ≈ −78 from SF16, ≈ −191 from SF18, +265 internal chain over net-0.
+
 - **2026-07-16 16:20 — Stage-2 plateau confirmed; FULL-FEATURE TRACK
   OPENED.** [OBSERVATION] s4 pooled 600g vs s3: **+15.6 ± 11.9** — not
   promoted (farseer hops: +55 → +29 → +15.6 pooled; the classic-family
