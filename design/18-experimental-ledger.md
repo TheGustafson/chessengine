@@ -101,6 +101,20 @@ referential-integrity pass always runs. `DRIFT` (content hash mismatch) and
 `BADSIZE` (hash matches but the row's recorded `size` is wrong) are problems
 and fail the run. `add-*` still refuses to register an empty shard dir.
 
+**Corrections: `annotations.jsonl` + `annotate` (2026-07-16).** Registry rows
+are never edited or deleted — corrections are a fourth append-only stream.
+`ledger.py annotate {net|data|exp} <id> [--status
+lost|superseded|corrected|waived] [--set key=value …] --note "why"` appends a
+row `{id: ann-NNNN, target_kind, target_id, status, set, note, date,
+code_sha}`. Later annotations win (`status` overwritten, `set` merged per
+key); `hash` and `id` can never be overlaid — the recorded hash stays the
+artifact's identity forever. `verify`/`show`/`reproduce` read rows with
+overlays applied; a `lost` status acknowledges deliberately-deleted or
+unrecoverable bytes, so `verify` stops counting that artifact's drift as a
+problem (remnants print as `LOST`, absence as `MISSING (annotated lost)`).
+This keeps the §4.3 append-only principle while giving deletions, metadata
+backfill, and gate waivers an auditable home.
+
 ## 6. Phasing (deliberately minimal; grow toward OpenBench)
 
 The value is *discipline*, not tooling — the compute lever (D36) is where the

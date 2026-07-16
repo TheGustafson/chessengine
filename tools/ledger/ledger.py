@@ -21,9 +21,17 @@ Commands:
     add-net    register a trained net (hashes the .cenn file)
     add-data   register a corpus (manifest-hashes a file or shard dir)
     add-exp    record a match / SPRT / tuning result
+    annotate   append a status/correction row for an existing id
     verify     recompute hashes vs the registry + check referential integrity
     show       print nets | data | exps | dag | milestone-stub
     reproduce  print the recipe to regenerate an artifact or rerun an experiment
+
+Corrections (annotations.jsonl): registry rows are never edited — a fourth
+append-only stream records status changes (`lost`/`superseded`/`corrected`/
+`waived`) and metadata overlays (`--set key=value`) against existing rows.
+verify/show/reproduce read rows with overlays applied; a `lost` status stops
+verify counting that artifact's drift as a problem (the bytes are gone and
+acknowledged, the recorded hash remains the historical identity).
 """
 
 from __future__ import annotations
@@ -41,6 +49,7 @@ LEDGER = REPO / "ledger"
 NETS = LEDGER / "nets.jsonl"
 DATA = LEDGER / "data.jsonl"
 EXPS = LEDGER / "experiments.jsonl"
+ANNS = LEDGER / "annotations.jsonl"
 
 
 # ---- helpers ---------------------------------------------------------------
@@ -106,6 +115,35 @@ def append(fp: Path, row: dict) -> None:
     fp.parent.mkdir(parents=True, exist_ok=True)
     with fp.open("a") as f:
         f.write(json.dumps(row, separators=(",", ":")) + "\n")
+
+
+def ann_index() -> dict[tuple[str, str], dict]:
+    """(target_kind, target_id) -> {'status': latest, 'set': merged overlay}.
+
+    Annotations apply in file order, so a later row wins for `status` and
+    later `--set` values override earlier ones per key.
+    """
+    idx: dict[tuple[str, str], dict] = {}
+    for r in load(ANNS):
+        e = idx.setdefault((r["target_kind"], r["target_id"]),
+                           {"status": None, "set": {}})
+        if r.get("status"):
+            e["status"] = r["status"]
+        e["set"].update(r.get("set") or {})
+    return idx
+
+
+def load_merged(fp: Path, kind: str) -> list[dict]:
+    """Registry rows with annotation overlays applied (rows on disk stay
+    append-only; corrections live in annotations.jsonl — design/18 §5)."""
+    idx = ann_index()
+    out = []
+    for r in load(fp):
+        ov = idx.get((kind, r["id"]))
+        if ov and ov["set"]:
+            r = {**r, **ov["set"]}
+        out.append(r)
+    return out
 
 
 def die(msg: str) -> None:
@@ -202,27 +240,64 @@ def cmd_add_exp(a) -> None:
     print(f"recorded {exp_id}: {a.purpose}  ({verdict} Elo)")
 
 
+def cmd_annotate(a) -> None:
+    fp = {"net": NETS, "data": DATA, "exp": EXPS}[a.kind]
+    if a.target_id not in {r["id"] for r in load(fp)}:
+        die(f"unknown {a.kind} id: {a.target_id}")
+    fields: dict = {}
+    for kv in a.set or []:
+        if "=" not in kv:
+            die(f"--set expects key=value, got: {kv}")
+        k, v = kv.split("=", 1)
+        try:
+            fields[k] = json.loads(v)
+        except json.JSONDecodeError:
+            fields[k] = v
+    if "hash" in fields or "id" in fields:
+        die("hash and id are the row's identity — never overlay them")
+    if not a.status and not fields:
+        die("nothing to annotate: give --status and/or --set key=value")
+    row = {
+        "id": f"ann-{len(load(ANNS)):04d}", "target_kind": a.kind,
+        "target_id": a.target_id, "status": a.status, "set": fields,
+        "note": a.note, "date": today(), "code_sha": git_head(),
+    }
+    append(ANNS, row)
+    print(f"annotated {a.kind} {a.target_id}: status={a.status or '-'} "
+          f"set={fields or '-'}")
+
+
 def cmd_verify(a) -> None:
     problems = 0
     net_ids = {r["id"] for r in load(NETS)}
     data_ids = {r["id"] for r in load(DATA)}
+    anns = ann_index()
     # hash drift + missing files
     for kind, fp in (("net", NETS), ("data", DATA)):
-        for r in load(fp):
+        for r in load_merged(fp, kind):
+            status = (anns.get((kind, r["id"])) or {}).get("status")
             p = REPO / r.get("file", r.get("path", ""))
             if not p.exists():
+                tag = " (annotated lost)" if status == "lost" else ""
                 print(f"  MISSING  {kind} {r['id']}: {rel(p)} not on disk "
-                      f"(recorded {r['hash'][:19]}…)")
+                      f"(recorded {r['hash'][:19]}…){tag}")
                 continue
             glob = r.get("glob") or "*"
             digest, size = hash_path(p, glob, strict=False)
             if digest is None:
                 # Shard dir exists but every matching file is gone (deleted
                 # sources / broken symlinks): bytes absent, same as MISSING.
+                tag = " (annotated lost)" if status == "lost" else ""
                 print(f"  MISSING  {kind} {r['id']}: {rel(p)} matches no files "
-                      f"for glob {glob!r} (recorded {r['hash'][:19]}…)")
+                      f"for glob {glob!r} (recorded {r['hash'][:19]}…){tag}")
                 continue
             if f"sha256:{digest}" != r["hash"]:
+                if status == "lost":
+                    # Bytes changed AND the loss is acknowledged: identity
+                    # stays the recorded hash; the leftovers don't count.
+                    print(f"  LOST     {kind} {r['id']}: drifted remnants on "
+                          f"disk, annotated lost — not counted")
+                    continue
                 problems += 1
                 print(f"  DRIFT    {kind} {r['id']}: on-disk sha256:{digest[:12]}… "
                       f"!= recorded {r['hash'][:19]}…")
@@ -255,12 +330,12 @@ def cmd_verify(a) -> None:
 def cmd_show(a) -> None:
     what = a.what
     if what == "nets":
-        for r in load(NETS):
+        for r in load_merged(NETS, "net"):
             print(f"{r['id']:<10} {r['arch']:<14} {r['provenance']:<12} "
                   f"loss={r.get('final_loss','?')}  vs_parent="
                   f"{r.get('elo_vs_parent','?')}  {r['hash'][:19]}…")
     elif what == "data":
-        for r in load(DATA):
+        for r in load_merged(DATA, "data"):
             print(f"{r['id']:<12} {r['source']:<12} "
                   f"{r.get('positions','?')} pos  {r['hash'][:19]}…")
     elif what in ("exps", "experiments"):
@@ -295,9 +370,9 @@ def _print_dag() -> None:
 
 
 def cmd_reproduce(a) -> None:
-    nets = {r["id"]: r for r in load(NETS)}
-    data = {r["id"]: r for r in load(DATA)}
-    exps = {r["id"]: r for r in load(EXPS)}
+    nets = {r["id"]: r for r in load_merged(NETS, "net")}
+    data = {r["id"]: r for r in load_merged(DATA, "data")}
+    exps = {r["id"]: r for r in load_merged(EXPS, "exp")}
     tid = a.id
     if tid in nets:
         r = nets[tid]
@@ -383,6 +458,20 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--cmd", help="exact harness invocation")
     e.add_argument("--notes")
     e.set_defaults(func=cmd_add_exp)
+
+    an = sub.add_parser("annotate",
+                        help="append a status/correction row for an existing id")
+    an.add_argument("kind", choices=["net", "data", "exp"])
+    an.add_argument("target_id")
+    an.add_argument("--status", choices=["lost", "superseded", "corrected",
+                                         "waived"])
+    an.add_argument("--set", action="append", metavar="KEY=VALUE",
+                    help="metadata overlay applied by verify/show/reproduce "
+                         "(value parsed as JSON when possible; hash/id "
+                         "forbidden)")
+    an.add_argument("--note", required=True,
+                    help="why — one line, mandatory")
+    an.set_defaults(func=cmd_annotate)
 
     v = sub.add_parser("verify", help="check hashes + referential integrity")
     v.set_defaults(func=cmd_verify)

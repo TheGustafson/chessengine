@@ -1,0 +1,2 @@
+{"id":"ann-0000","target_kind":"data","target_id":"sf100+lc0atanhraw-9pct-27m","status":"lost","set":{},"note":"mix source shards deleted in the 2026-07-15 disk crunch (broken symlinks remain); hash unrecoverable, superseded era \u2014 official SF binpacks are the active corpora","date":"2026-07-16","code_sha":"7981e75"}
+{"id":"ann-0001","target_kind":"data","target_id":"sf100+lc0atanhraw-50m-mix","status":"lost","set":{},"note":"same 2026-07-15 disk-crunch loss as the 9pct row; empty shard dir remains","date":"2026-07-16","code_sha":"7981e75"}
