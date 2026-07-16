@@ -151,7 +151,49 @@ Plus two meta-adoptions: unbalanced opening book for all internal
 testing (throughput), and simplification passes under non-regression
 bounds as routine hygiene.
 
-## 6. Testing-economics lessons for a solo box
+## 6a. AUDIT RESULT (2026-07-16): what ARCHON actually has vs the catalogue
+
+Code audit against src/search/mod.rs + timeman + tt: the P9 Waves C-G
+batch (built from doc-10, itself written from the SF/Reckless study)
+already implements singular + multicut + NEGATIVE extensions, ProbCut,
+cutoffCnt, the do_deeper/do_shallower re-search ladder, improving flag,
+cut_node threading, fallingEval + best-move-instability TM, TT is_pv,
+capped stat bonus. Section 5's "port list" is therefore mostly DONE.
+What is genuinely open:
+1. **Correction-history wiring** — tables exist + unit-tested; READING
+   the corrected eval and WRITING corrections are explicitly deferred
+   (src/search/mod.rs ~line 121, doc 09 §3.10/D22).
+2. **Gainer-season global retune** — every P9/P10 constant was set
+   against PSQT/net-0-era eval; the evaluator moved +265 today with a
+   different output distribution (D40). SF's own record says post-net
+   retunes + mass LTC tunes were their main compounding source.
+3. **Optimism** — absent.
+4. **Small SF16-late mechanics audit** — qsearch EXACT-store ban,
+   exact-bound TT cutoff aggressiveness, excluded-move TT handling,
+   queen-promo-as-capture stats semantics, staticEval init semantics.
+5. **IIR retest** — parked branch `wip/p9-item9-iir-followpv` predates
+   the eval jump; SF's narrow cutnode form is a proven gainer.
+6. **Unbalanced testing book** — meta, immediate throughput win.
+
+## 6b. Ranked class matrix for ARCHON (2026-07-16)
+
+| # | Class | Likely Elo | Effort | Evidence | Priority (Elo/effort × evidence) |
+|---|---|---|---|---|---|
+| 1 | Global SPSA retune of search constants vs the NEW eval (margins: RFP/futility/razoring/NMP/LMR bases/singular betas; gainer season) | +15–40 | 2–4 days (mostly machine time; D36 SPSA scaffold exists) | SF mass-tune commits, both eras; our own hot/cold-margin measurements | **1** |
+| 2 | Correction-history wiring (read corrected eval + write corrections) | +8–20 | 1–2 days (tables done; respect P6/P7 value-equality tests) | SF corrhist STC 128k + LTC 97k game passes; Caissa/Motor lineage | **2** |
+| 3 | Unbalanced testing book for all internal matches | 0 direct; 2–3× test throughput | hours | fishtest practice (UHO book) | **3 (do first, it accelerates everything else)** |
+| 4 | SF16-late mechanics audit bundle (TT exact-bound cutoffs, qsearch EXACT ban, excluded-move TT, promo-stats semantics, staticEval init) + TM completeness (nodesEffort) | +5–15 | 1–2 days | direct SF commits (582c88ee, 45e5e65a, 8d3457a9, 5c75c1c2, 9fe9ff00) | **4** |
+| 5 | IIR narrow retest (cutnode, no ttMove, depth≥9, −1) | 0–8 | hours (branch exists) | SF 30fdbf43/6a6e32df + gainer season | **5** |
+| 6 | Optimism (stm bias inside eval scaling) | +5–15 | 1–2 days (couples with our hot eval scale — needs the amplitude story) | SF PR #3797 (~+15 external) | **6** |
+| 7 | Simplification passes (delete Wave C-G items that stopped paying under the new eval) | ~0 (enables tuning headroom) | recurring, ~1 day each | SF non-regression channel | **7** |
+| 8 | Mass VLTC-style tune of extension margins specifically | +5–15 (long-TC only) | 1–2 days machine time | SF 472e726b/f030a1c5/06186b78 | **8** |
+
+Sequencing vs the eval loop: eval work (D40 arc) still pays +30–55 per
+step and owns the GPU; search items 2/4/5/6 are CPU-code work that can
+proceed while trains run, but their GAME TESTING contends with eval
+screens — schedule SPRT/SPSA blocks after the current D40 promotion arc
+settles. Item 3 (book) first; item 1 (SPSA) is the single biggest pool
+and should run as soon as the box has a free overnight.
 
 - SF pays ~200k games per accepted feature at ~1.5% acceptance; we
   cannot. Compensate with: unbalanced book (higher decisiveness),
