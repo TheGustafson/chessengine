@@ -438,6 +438,25 @@ are all individually proven. Runs after E1 (GPU serial).
   fixed-node winners → NPS/time-management investigation before any arch
   pivot.
 
+- **2026-07-16 11:30 — SECOND PROMOTION: uf2048-240sb is the new
+  incumbent.** [OBSERVATION] Equal-time gate (200g 10+0.1, quiet box):
+  uf2048-240sb vs u1024-120sb **+43.7 ± 13.9**, score 0.562, 0 time
+  losses (exp-0054). Wave4 h2h @5k was +57.3 ± 17.7 vs uf1024-240sb
+  (exp-0052) — the 2048 real-time tax costs some of the fixed-node edge
+  but the capacity gain survives at 3σ. Composed equal-time chain vs
+  net-0: ≈ **+210** (+166 u1024 gate + 44 this gate). [OBSERVATION]
+  Stage-2 attempt 1 (s2-1024-test80-120sb, warm from uf1024-240sb):
+  **+23.2 ± 17.4** vs its parent (exp-0053) — the official two-stage
+  shape shows signal where cold-training the same data family always
+  cratered. Width ladder to date (vs net-0 @5k): 256 +32 / 512 +123-151 /
+  1024 +225 / 2048 ≈ +282 composed. In flight: s2w2 (pool s2-1024 to
+  600g; s2-2048-test80-120sb warm retrain of the incumbent), farseerT76
+  audited next; then width 4096 vs stage-2 data scaling by results.
+  Ops: disk crunch to 3.4GB during downloads → deleted search-trace,
+  E2/E4 checkpoint dirs, sf-100 raw shards (train.bin exact-bytes anchor
+  re-registered as `sf-100-trainbin`; list-then-delete lesson added to
+  memory). Disk 19GB free.
+
 - **2026-07-16 10:55 — Wave3 flat; stage-2 track armed.** [OBSERVATION]
   wave3 h2h vs uf1024-240sb (300g @5k): uf1024-480sb (12B presentations)
   **−10.4 ± 17.4**; uf1024-240sb-wdl0 (official pure-score lambda)
