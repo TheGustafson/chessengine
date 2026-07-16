@@ -70,15 +70,19 @@ def sha256_file(path: Path) -> tuple[str, int]:
     return h.hexdigest(), size
 
 
-def sha256_tree(path: Path, glob: str) -> tuple[str, int]:
+def sha256_tree(path: Path, glob: str, strict: bool = True) -> tuple[str | None, int]:
     """Manifest hash of a shard dir: sha256 over sorted `name:filehash` lines.
 
     Deterministic regardless of read chunking or filesystem order, so a corpus
-    has one stable identity across machines.
+    has one stable identity across machines. `strict` dies on an empty match
+    (right for add-*: never register an empty dir); non-strict returns
+    (None, 0) so verify can report the row instead of aborting the whole run.
     """
     files = sorted(p for p in path.glob(glob) if p.is_file())
     if not files:
-        die(f"no files match {path}/{glob}")
+        if strict:
+            die(f"no files match {path}/{glob}")
+        return None, 0
     manifest = hashlib.sha256()
     total = 0
     for p in files:
@@ -88,8 +92,8 @@ def sha256_tree(path: Path, glob: str) -> tuple[str, int]:
     return manifest.hexdigest(), total
 
 
-def hash_path(path: Path, glob: str) -> tuple[str, int]:
-    return sha256_file(path) if path.is_file() else sha256_tree(path, glob)
+def hash_path(path: Path, glob: str, strict: bool = True) -> tuple[str | None, int]:
+    return sha256_file(path) if path.is_file() else sha256_tree(path, glob, strict)
 
 
 def load(fp: Path) -> list[dict]:
@@ -211,11 +215,23 @@ def cmd_verify(a) -> None:
                       f"(recorded {r['hash'][:19]}…)")
                 continue
             glob = r.get("glob") or "*"
-            digest, _ = hash_path(p, glob)
+            digest, size = hash_path(p, glob, strict=False)
+            if digest is None:
+                # Shard dir exists but every matching file is gone (deleted
+                # sources / broken symlinks): bytes absent, same as MISSING.
+                print(f"  MISSING  {kind} {r['id']}: {rel(p)} matches no files "
+                      f"for glob {glob!r} (recorded {r['hash'][:19]}…)")
+                continue
             if f"sha256:{digest}" != r["hash"]:
                 problems += 1
                 print(f"  DRIFT    {kind} {r['id']}: on-disk sha256:{digest[:12]}… "
                       f"!= recorded {r['hash'][:19]}…")
+            elif r.get("size") is not None and r["size"] != size:
+                # Content hash matches, so the bytes are right and the row's
+                # size field itself was recorded wrong.
+                problems += 1
+                print(f"  BADSIZE  {kind} {r['id']}: row says {r['size']} B, "
+                      f"artifact is {size} B (hash matches)")
             else:
                 print(f"  ok       {kind} {r['id']}  {r['hash'][:19]}…")
     # referential integrity

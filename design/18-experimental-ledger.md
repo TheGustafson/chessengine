@@ -92,6 +92,15 @@ version like a net is (D36).
 recipe). Zero deps (runs under `python3` or `uv run`), consistent with the
 zero-runtime-dep ethos (tooling layer, not the engine crate — D15).
 
+`verify` semantics (2026-07-16 hardening): a row whose artifact bytes are
+absent locally — file gone, or a shard dir whose glob matches no files (e.g.
+sources of a mix corpus deleted) — reports `MISSING` and does **not** count as
+a problem (bytes are allowed to live only on the future mirror, D36) and must
+never abort the run; every row is always checked and the
+referential-integrity pass always runs. `DRIFT` (content hash mismatch) and
+`BADSIZE` (hash matches but the row's recorded `size` is wrong) are problems
+and fail the run. `add-*` still refuses to register an empty shard dir.
+
 ## 6. Phasing (deliberately minimal; grow toward OpenBench)
 
 The value is *discipline*, not tooling — the compute lever (D36) is where the
