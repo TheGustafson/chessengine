@@ -324,6 +324,41 @@ retained for convergence inspection. Per user rule: if cells converge badly
 on the KNOWN-GOOD data with generous schedules, the training method itself
 goes under review. Campaign: data/nnue/campaigns/sf100-matrix-v1/.
 
+- **2026-07-15 20:55 — E2 partials (decision-grade, 300g @5k vs net-0).**
+  [OBSERVATION] classic256 @60SB: **+6.9 ± 18.0** (parity; 400g @20k curve
+  −0.9) — instrument + recipe reproduce parity on the good data; 2x schedule
+  neither helps nor hurts. classic1024 @240SB (6B presentations, 8x the old
+  budget): **−68.0 ± 18.9** — did not reach the −50 curve floor.
+  [HYPOTHESIS] 25M positions cannot feed 4x capacity (memorization/underfeed),
+  and/or the single-cosine schedule shape remains wrong for width; either
+  way, capacity is NOT a free win on sf-100 — more data (E1/E3 pipelines) is
+  the prerequisite for capacity, consistent with official practice (stage-1
+  corpora are billions of positions). king768x256 and d40 cells pending.
+- **2026-07-15 20:52 — UHO prefix label audit (200 rows vs SF18 d12):
+  PASS.** [OBSERVATION] stm-POV (opposite-POV r = −0.007), sign 98.25%, core
+  Pearson 0.970, OLS slope **2.82x SF18-UCI** (internal-units family, like
+  fishpack's 3.03). Draws 50.5%. Score std ≈ 883 internal ≈ 313 UCI —
+  **matching sf-100's ≈ 312 UCI-equivalent** (the stage-1 family shares a
+  temperature signature; fishpack at ~60% draws is the cold outlier).
+  Report: data/nnue/audits/uho-label-semantics-v1/.
+
+### E3 (preregistered 2026-07-15 20:55): data transplant — net-0's exact
+recipe on the official stage-1 corpus
+
+Question: does our full stack train a strong net from the LITERAL data family
+official SF bootstraps on? Method: `nodes5000pv2_UHO.binpack` 10GiB prefix
+(~4B+ positions), net-0's exact recipe (classic256, 30 SB, WDL 0.3, sigmoid
+400) with exactly two declared adaptations: `SFBINPACK_SCORE_DIV=1.9` (maps
+UHO's 2.82x units onto sf-100's SF16 frame ≈ 1.5x, where the recipe is
+proven) and `NET0_RANDOM_SKIP_PCT=75` (their own rfs=3; approximates sf-100's
+global pre-shuffle on a game-contiguous stream). 300g @5k screen vs net-0.
+OUTCOMES: ≈ net-0 → trainer/recipe exonerated end-to-end on external data;
+the whole official data lineage is usable and scaling (schedule, then
+capacity, then stage-2 warm retrains) is unblocked. Clearly below → the
+defect is on our side of the interface and now tightly localized (loss
+shape/quantization/eval integration), since data, labels, units, and recipe
+are all individually proven. Runs after E1 (GPU serial).
+
 ## Resume instructions
 
 1. Read this file + the takeover checkpoint of `policy-automl-state.md`.
