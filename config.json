@@ -22,7 +22,7 @@
         "enabled": false
     },
     "opening": {
-        "file": "data/nnue/openings/policy-balanced-256.epd",
+        "file": "/root/projects/learnrust/chessengine/data/nnue/openings/policy-balanced-256.epd",
         "format": 0,
         "order": 0,
         "plies": -1,
@@ -32,7 +32,7 @@
         "additional_lines_rgx": [],
         "event_name": "Fastchess Tournament",
         "site": "?",
-        "file": "data/nnue/experiments/sf16-vs-integral6-v1/games.pgn",
+        "file": "/root/projects/learnrust/chessengine/data/nnue/experiments/d40-uho-v1/h2h/games.pgn",
         "notation": 1,
         "append_file": true,
         "track_nodes": false,
@@ -60,7 +60,7 @@
     },
     "config_name": "config.json",
     "output": 0,
-    "seed": 20260733,
+    "seed": 20260730,
     "variant": 0,
     "type": 0,
     "gauntlet_seeds": 1,
@@ -69,8 +69,8 @@
     "wait": 0,
     "autosaveinterval": 20,
     "games": 2,
-    "rounds": 50,
-    "concurrency": 3,
+    "rounds": 150,
+    "concurrency": 1,
     "force_concurrency": false,
     "recover": true,
     "noswap": false,
@@ -79,7 +79,7 @@
     "affinity": false,
     "show_latency": false,
     "log": {
-        "file": "data/nnue/experiments/sf16-vs-integral6-v1/fastchess.log",
+        "file": "/root/projects/learnrust/chessengine/data/nnue/experiments/d40-uho-v1/h2h/fastchess.log",
         "level": 2,
         "append_file": true,
         "compress": false,
@@ -88,12 +88,16 @@
     },
     "engines": [
         {
-            "name": "stockfish16",
+            "name": "candidate",
             "dir": "",
-            "cmd": "/usr/games/stockfish",
+            "cmd": "/root/projects/learnrust/chessengine/engines/bin/probe-sota",
             "args": "",
             "restart": false,
             "options": [
+                [
+                    "EvalFile",
+                    "/root/projects/learnrust/chessengine/data/nnue/nets/d40-uho-v1-240sb.cenn"
+                ],
                 [
                     "Threads",
                     "1"
@@ -105,24 +109,28 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 100,
+                    "increment": 0,
                     "fixed_time": 0,
-                    "time": 10000,
+                    "time": 0,
                     "moves": 0,
                     "timemargin": 0
                 },
-                "nodes": 0,
+                "nodes": 5000,
                 "plies": 0
             },
             "variant": 0
         },
         {
-            "name": "integral-v6",
+            "name": "baseline",
             "dir": "",
-            "cmd": "engines/bin/integral-v6",
+            "cmd": "/root/projects/learnrust/chessengine/engines/bin/probe-l2048",
             "args": "",
             "restart": false,
             "options": [
+                [
+                    "EvalFile",
+                    "/root/projects/learnrust/chessengine/data/nnue/nets/stage2-v1-s4-2048-t74-240sb.cenn"
+                ],
                 [
                     "Threads",
                     "1"
@@ -134,29 +142,29 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 100,
+                    "increment": 0,
                     "fixed_time": 0,
-                    "time": 10000,
+                    "time": 0,
                     "moves": 0,
                     "timemargin": 0
                 },
-                "nodes": 0,
+                "nodes": 5000,
                 "plies": 0
             },
             "variant": 0
         }
     ],
     "stats": {
-        "stockfish16 vs integral-v6": {
-            "wins": 6,
-            "losses": 1,
-            "draws": 33,
-            "penta_WW": 0,
-            "penta_WD": 5,
-            "penta_WL": 1,
-            "penta_DD": 14,
-            "penta_LD": 0,
-            "penta_LL": 0
+        "candidate vs baseline": {
+            "wins": 124,
+            "losses": 96,
+            "draws": 80,
+            "penta_WW": 28,
+            "penta_WD": 31,
+            "penta_WL": 37,
+            "penta_DD": 10,
+            "penta_LD": 29,
+            "penta_LL": 15
         }
     }
 }
