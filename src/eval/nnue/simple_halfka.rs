@@ -224,7 +224,11 @@ impl SimpleHalfkaContext {
         }
         let acc = &self.stack[ply].acc;
         let stm = board.side_to_move() as usize;
-        #[cfg(not(any(feature = "nnue-l1-512", feature = "nnue-l1-1024")))]
+        #[cfg(not(any(
+            feature = "nnue-l1-512",
+            feature = "nnue-l1-1024",
+            feature = "nnue-l1-2048"
+        )))]
         {
             let out: &[i16; 2 * SIMPLE_ACC] = self
                 .net
@@ -240,7 +244,11 @@ impl SimpleHalfkaContext {
                 super::Activation::SCReLU,
             );
         }
-        #[cfg(any(feature = "nnue-l1-512", feature = "nnue-l1-1024"))]
+        #[cfg(any(
+            feature = "nnue-l1-512",
+            feature = "nnue-l1-1024",
+            feature = "nnue-l1-2048"
+        ))]
         {
             let mut sum = 0i64;
             for (half, perspective) in [stm, stm ^ 1].into_iter().enumerate() {

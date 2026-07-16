@@ -21,6 +21,8 @@ nnue-l1-512 = []
 # Experimental classic width control. Mutually exclusive with nnue-l1-512;
 # compile-time assertions in nnue::mod reject accidental combinations.
 nnue-l1-1024 = []
+# Next capacity rung for the UHO scaling ladder (2026-07-16); same rules.
+nnue-l1-2048 = []
 # Experimental learned policy head for MovePicker quiet ordering (design/17
 # Thrust II, src/policy.rs). OFF by default so the shipped engine + depth-6 bench
 # stay byte-identical; build the experiment with `--features policy`.

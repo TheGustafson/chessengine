@@ -272,9 +272,19 @@ fn main() {
         }
         "sfbinpack" => {
             let buffer_mb = env_usize("NET0_SF_BUFFER_MB", 256);
-            println!("SF binpack input: buffer={buffer_mb}MiB quiet-filter=standard");
-            let data_loader =
-                loader::SfBinpackLoader::new(data.as_str(), buffer_mb, threads, sfbinpack_filter);
+            // NET0_DATA may be a comma-separated list; the loader concatenates
+            // the files into one stream per epoch (single path == old behavior).
+            let paths: Vec<&str> = data.split(',').map(str::trim).collect();
+            println!(
+                "SF binpack input: {} file(s), buffer={buffer_mb}MiB quiet-filter=standard",
+                paths.len()
+            );
+            let data_loader = loader::SfBinpackLoader::new_concat_multiple(
+                &paths,
+                buffer_mb,
+                threads,
+                sfbinpack_filter,
+            );
             trainer.run(&schedule, &settings, &data_loader);
         }
         other => panic!("NET0_FORMAT must be bulletformat or sfbinpack, got {other}"),

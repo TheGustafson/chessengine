@@ -69,14 +69,33 @@ pub const INPUT: usize = 768;
 /// downstream (accumulator arrays, AVX2 kernel strides, `PAYLOAD_LEN`) derives
 /// from this const, so 512 is a one-line widening (512 % 16 == 0, so the AVX2
 /// lane assert still holds).
-#[cfg(all(not(feature = "nnue-l1-512"), not(feature = "nnue-l1-1024")))]
+#[cfg(not(any(
+    feature = "nnue-l1-512",
+    feature = "nnue-l1-1024",
+    feature = "nnue-l1-2048"
+)))]
 pub const L1: usize = 256;
-#[cfg(all(feature = "nnue-l1-512", not(feature = "nnue-l1-1024")))]
+#[cfg(all(
+    feature = "nnue-l1-512",
+    not(any(feature = "nnue-l1-1024", feature = "nnue-l1-2048"))
+))]
 pub const L1: usize = 512;
-#[cfg(all(feature = "nnue-l1-1024", not(feature = "nnue-l1-512")))]
+#[cfg(all(
+    feature = "nnue-l1-1024",
+    not(any(feature = "nnue-l1-512", feature = "nnue-l1-2048"))
+))]
 pub const L1: usize = 1024;
-#[cfg(all(feature = "nnue-l1-512", feature = "nnue-l1-1024"))]
-compile_error!("nnue-l1-512 and nnue-l1-1024 are mutually exclusive");
+#[cfg(all(
+    feature = "nnue-l1-2048",
+    not(any(feature = "nnue-l1-512", feature = "nnue-l1-1024"))
+))]
+pub const L1: usize = 2048;
+#[cfg(any(
+    all(feature = "nnue-l1-512", feature = "nnue-l1-1024"),
+    all(feature = "nnue-l1-512", feature = "nnue-l1-2048"),
+    all(feature = "nnue-l1-1024", feature = "nnue-l1-2048")
+))]
+compile_error!("nnue-l1-512 / nnue-l1-1024 / nnue-l1-2048 are mutually exclusive");
 
 // --- Quantization constants (design/11 §3.4.3) -----------------------------
 
