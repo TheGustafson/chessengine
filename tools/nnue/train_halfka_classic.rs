@@ -130,6 +130,10 @@ fn main() {
         .loss_fn(|output, target| output.sigmoid().squared_error(target))
         .build(|builder, stm, ntm| {
             let ft = builder.new_affine("l0", KING768_DIMS, hidden);
+            // Sparse-input init scale: only <=32 of the 49,152 inputs are ever
+            // active, so default fan-in init starves the signal (same fix the
+            // whole D40 family needed — "else flat loss").
+            ft.init_with_effective_input_size(32);
             let out = builder.new_affine("l1", 2 * hidden, 1);
             out.forward(ft.forward(stm).screlu().concat(ft.forward(ntm).screlu()))
         });
