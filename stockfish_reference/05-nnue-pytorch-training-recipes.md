@@ -76,3 +76,38 @@ docs/research/value-foundation-state.md before E1/E2 results)
 6. Lambda practice: stage 1 pure-score (1.0), stage 2 annealed to 0.75.
    ARCHON's fixed WDL 0.3 (≈ lambda 0.7) is more outcome-weighted than
    either official stage.
+
+## Addendum (same session): the current loss function, exactly
+
+From `model/lightning_module.py` + `model/config.py` (master, fetched
+2026-07-15). All constants in SF INTERNAL units (~3x UCI cp).
+
+```
+q  = sigmoid((net_out - 270)/340);  qm = sigmoid((-net_out - 270)/340)
+qf = 0.5*(1 + q - qm)                  # net -> win prob (two-sided, offset)
+s  = sigmoid((score - 270)/380);    sm = sigmoid((-score - 270)/380)
+pf = 0.5*(1 + s - sm)                  # teacher score -> win prob
+pt = lambda*pf + (1-lambda)*outcome    # blend
+loss = |pt - qf|^2.5                   # pow 2.5, not MSE
+# optional weights (w1=0 default => uniform); qp_asymmetry=0 default
+# mate/TB scores are REMAPPED (base 7000 + 20000*0.8^plies), not dropped
+```
+
+Differences vs ARCHON's bullet loss (target = wdl-blend of sigmoid(score/400)
+and result; loss = (sigmoid(pred) - target)^2):
+
+1. Two-sided sigmoid with a 270-internal (~90 UCI cp) offset: flatter near 0,
+   steeper past the offset — different gradient allocation across score bands
+   than a plain sigmoid.
+2. in_scaling 340 (net) vs out_scaling 380 (teacher): the net is trained to
+   output ~0.9x the teacher's score scale. Deliberate temperature asymmetry.
+3. Exponent 2.5 (heavier tail penalty than squared error).
+4. Mates/TB wins are remapped to a finite 7000..27000 band and KEPT; we drop
+   them.
+5. Their effective probability-mapping temperature (~113-127 UCI cp) is about
+   2x sharper than ours (sigmoid/400 on SF16-frame ≈ 267 UCI-cp-equivalent).
+
+Candidate "training methods" upgrade if the E-series shows our recipe
+underperforming on good data: implement this loss shape in the bullet
+examples (bullet accepts custom loss_fn closures; the lambda blend needs
+score and outcome separately, i.e. loader-side pf computation).
