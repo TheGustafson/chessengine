@@ -359,6 +359,17 @@ defect is on our side of the interface and now tightly localized (loss
 shape/quantization/eval integration), since data, labels, units, and recipe
 are all individually proven. Runs after E1 (GPU serial).
 
+- **2026-07-15 23:40 — E2 d40 cell: parity gate FAILED; screened manually
+  with caveat.** [OBSERVATION] After 240 SB on sf-100 (running loss
+  0.000633), the packed CENN's runtime-vs-trainer max error was 0.355 logits
+  (gate 0.2; mean 0.0124 passes; quantization passes). ~5x worse max
+  deviation than the lichess-trained D40 packs (0.074). The matrix runner
+  died on the gate; chain released manually, 300g screen running on the
+  packed net with this deviation on record. [HYPOTHESIS] very low loss /
+  large weights → saturation amplifying pack rounding; not investigated yet.
+  E1 starts now (GPU free); ETAs: d40 screen ~00:05, E1 ~00:30, E3 ~00:55,
+  size control ~01:10, E4 ~02:00.
+
 ## Resume instructions
 
 1. Read this file + the takeover checkpoint of `policy-automl-state.md`.
