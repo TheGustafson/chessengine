@@ -370,6 +370,66 @@ are all individually proven. Runs after E1 (GPU serial).
   E1 starts now (GPU free); ETAs: d40 screen ~00:05, E1 ~00:30, E3 ~00:55,
   size control ~01:10, E4 ~02:00.
 
+- **2026-07-16 06:45 — overnight chain died at E3; cause found and fixed.**
+  [OBSERVATION] E3's second run crashed at SB 28/30: bullet's
+  SfBinpackLoader panics (`UnexpectedEof`, sfbinpack.rs:112 unwrap) on a
+  binpack whose last chunk is byte-truncated — our UHO file was a raw 10GiB
+  `head` prefix, so its tail ends mid-chunk. Clean EOF at a chunk boundary
+  is handled (loader wraps for the next epoch); ragged EOF panics. Fix:
+  truncated the file in place at the last complete `BINP` chunk boundary
+  (10,736,935,551 bytes, 10,273 chunks, 482,689 tail bytes dropped). All
+  downstream steps (size control, E4, E1 rescreen, D40 rescreen) were
+  gate-chained behind E3 and never ran; relaunched everything as ONE serial
+  script with no gate files: `tools/nnue/chain_v2.sh`
+  (log `data/nnue/experiments/chain-v2.log`, results
+  `data/nnue/experiments/chain-v2-results.log`). Ops rule reaffirmed: any
+  byte-truncated binpack must be re-truncated to a chunk boundary before
+  training.
+
+- **2026-07-16 06:52 — E1 rescreen reproduces −463 exactly: the original
+  was NOT contaminated.** [OBSERVATION] Fresh 300g @5k with a different
+  fastchess seed (20260716): score 0.065, **−463.2 ± 38.7** — same to the
+  decimal as the pkill-suspected run. E1 verdict stands: fishpack positions
+  + SF16 5000-node labels + fishpack results, exact net-0 recipe, 4.06M
+  rows → far below net-0. Also learned: these screens take ~20 s, not
+  ~25 min (300 games @5k nodes, conc 4, classic256) — screening was never
+  the bottleneck we scheduled around. Interpretation deferred to the size
+  control (4M sf-100 rows, identical recipe): if it also craters, E1's
+  deficit is mostly corpus size; if it holds near net-0, fishpack positions
+  (or their fishpack-outcome WDL component) are the problem.
+
+- **2026-07-16 06:54 — E3 RESULT: first net ever to beat net-0.**
+  [OBSERVATION] `e3-uho-transplant-classic256` (net-0 exact recipe on the
+  official stage-1 `nodes5000pv2_UHO` 10GiB prefix, SCORE_DIV 1.9,
+  skip75, 30 SB ≈ 747M presentations ≈ one pass): 300g @5k vs net-0 =
+  **+47.8 ± 18.7**, paired-bootstrap CI95 [+11.6, +85.0], score 0.568.
+  Same architecture and engine as net-0 → no NPS tax; fixed-node ≈
+  equal-time for this pair (equal-time gate still required before any
+  promotion claim). [HYPOTHESIS → now well-supported] The stack (trainer,
+  units bridge, filters, pack, engine integration) is exonerated
+  end-to-end; the binding constraint was DATA. sf-100 (25M) was the best
+  corpus we had; the official stage-1 family at 10GiB immediately clears
+  it. Unblocked next steps, in order of expected value: (a) equal-time
+  gate for e3 vs net-0; (b) scale: more UHO data (we hold the manifest
+  for 287GB), longer schedules; (c) capacity on the bigger data
+  (classic1024 failed on 25M — retry on UHO); (d) stage-2-style warm
+  retrains on rich data from the e3/UHO base.
+
+- **2026-07-16 06:55 — E1 size control: −189.3 ± 21.5. Positions-vs-labels
+  decomposition complete.** [OBSERVATION] sf-100 truncated to E1's exact
+  corpus size (4,064,476 rows, identical net-0 recipe/schedule):
+  **−189.3 ± 21.5** vs net-0. Ladder at matched recipe: sf-100 25M ≈ 0
+  (E2 classic256 +6.9 ± 18.0) → sf-100 4M = −189 ± 22 → fishpack-pos +
+  SF16-labels 4M (E1) = −463 ± 39. [INTERPRETATION] Two real, separable
+  effects: (1) corpus SIZE costs ~190 Elo at 4M vs 25M under this schedule
+  (747M presentations over 4M rows = ~187 epochs of repetition); (2) with
+  size and labels held fixed, fishpack positions + fishpack outcomes cost
+  a further ~270 Elo vs SF self-play positions. The user's question is
+  answered: it is BOTH, and neither is a units/pipeline artifact —
+  position provenance matters at matched everything-else, and data volume
+  matters steeply below ~10M rows. Consistent with E3: the winning move
+  is more SF-self-play-shaped data, not fishpack repair.
+
 ## Resume instructions
 
 1. Read this file + the takeover checkpoint of `policy-automl-state.md`.
