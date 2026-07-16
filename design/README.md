@@ -1,7 +1,7 @@
 # Design suite index
 
 This directory is the engine's build plan. `decisions.md` is the
-constitution: numbered, terse, binding decisions (D1–D41) that every doc and
+constitution: numbered, terse, binding decisions (D1–D44) that every doc and
 every line of code must comply with — **decisions change there first, docs
 follow** (a decision change is its own commit with rationale; the owning doc
 is updated to match). The numbered docs `01`–`19` are prescriptive component
@@ -18,7 +18,7 @@ the note.
 | Doc | Title | Scope | Status |
 |---|---|---|---|
 | `README.md` | Suite index | This file: index, reading order, process rules | Living |
-| `decisions.md` | Design decisions record | Numbered binding decisions D1–D41; every doc complies | Living |
+| `decisions.md` | Design decisions record | Numbered binding decisions D1–D44; every doc complies | Living |
 | `00-master-plan.md` | Master implementation plan | Phases P0–P15, dependency graph, milestone ladder M1–M11, risks, consolidated open questions | Living |
 | `01-architecture.md` | Architecture, module layout, conventions | Crate/module map, public seams, data flow, error/unsafe/dependency/build policies, `params.rs` convention | Reviewed v1 |
 | `02-core-types.md` | Core types | `Value`/`Depth` bands + predicates, mate/TT score arithmetic, `Direction`/`Square`/`Bitboard` helpers, `Move::raw16`, `ExtMove` repr, SEE piece values | Reviewed v1 |
@@ -69,7 +69,7 @@ sweep in the docs-sync commit — see `00-master-plan.md` §6.2.)
 
 ## Process rules
 
-- **Decisions lead docs.** A change to any pinned decision (D1–D41) lands in
+- **Decisions lead docs.** A change to any pinned decision (D1–D44) lands in
   `decisions.md` first, as its own commit with rationale; the owning doc is
   updated to comply. A doc may not silently contradict `decisions.md` — a
   necessary deviation is called out in that doc's §9 Open Questions until

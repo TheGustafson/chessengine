@@ -1,6 +1,6 @@
 # 00 — Master implementation plan
 
-Status: Living (updated as phases complete; last revised 2026-07-10)
+Status: Living (updated as phases complete; last revised 2026-07-16)
 
 This document turns the reviewed design suite (`01`–`14`) into an ordered
 build plan: phases with entry/exit criteria, a dependency graph, a milestone
@@ -37,6 +37,19 @@ retrofitting.
 
 ## 2. Current state
 
+**Current phase (2026-07-16): P15 — the D41 ARCHON learned-search-allocation
+program (design/19), in its value-foundation sub-phase.** Since the P0–P6
+snapshot recorded below, P7–P11 landed (search completion, move
+ordering/history, the P9 pruning waves, time-management completion, and lazy
+SMP — SMP scaling measured +279 Elo, ledger exp-0002; design/11 §11 records
+P9+P10+P11 complete). P13's first NNUE net shipped (net-0, +696 vs PSQT,
+exp-0004) and the engine was renamed **ARCHON** (D41). Eval-foundation work is
+now the active track: the D40 SOTA architecture (HalfKAv2_hm + FullThreats) is
+implemented, SIMD-optimized, and runtime-parity-proven, and on 2026-07-16 a
+trained net beat net-0 at equal time for the first time (exp-0048). The live
+leaderboard, incumbent chain, and in-flight jobs are tracked in
+`docs/research/value-foundation-state.md`, not here.
+
 Done (pre-suite): `types` (Color/PieceType/Piece/Square), `bitboard`,
 `board` (hybrid bitboards + mailbox), `fen`, `moves` (`Move` u16 +
 `MoveList`).
@@ -58,7 +71,9 @@ fingerprint bit-reproducible). P6 landed the transposition table (doc 08
 gauntlet vs SF16 UCI_Elo 1700–2200 at 2+0.02, 200 games — 69% vs the
 1900 rung, 65% vs 2000, ordo places the engine between the 2000 and 2200
 rungs (UCI_Elo-anchor caveat); WAC-revised tactics 154/200 at 100 ms
-(pre-TT: 145/200). CLAUDE.md §Status tracks the detail; next phase: P7.
+(pre-TT: 145/200). CLAUDE.md §Status carries the classical-engine build
+detail; the current-phase status is at the head of this section and in
+`docs/research/value-foundation-state.md`.
 
 ---
 
@@ -255,12 +270,21 @@ gate per D24.
   incremental==refresh 100k-node walk; ≥ 70 % of local SF bench nps (doc 14
   §3.4).
 
-### P13-SOTA — SOTA net sprint (D40, current 2026-07-13)
+### P13-SOTA — SOTA net sprint (D40, 2026-07-13)
 P13's first net is DONE (net-0..net-10, the 768→256 scaffold; net-8 best; NNUE ≫
 PSQT, +696 vs PSQT). This sprint escalates to a SOTA-class net (design/11 §12,
 D40): **SF features (HalfKAv2_hm + FullThreats, 83,248) + a Reckless-shaped lean
 head (pairwise-mul → int8-FT/f32-tail → 8 buckets, no PSQT) + the triple-net
 grid.**
+
+> **Status (2026-07-16):** this sprint is complete — the D40 architecture is
+> implemented, SIMD-optimized, and runtime-parity-proven, and the D40 policy
+> grid ran as historical controls. Net-quality development has since moved to
+> the P15/D41 value-foundation program (design/19): full-UHO-trained nets have
+> dethroned net-0 at equal time (incumbent chain ≈ +265 over net-0, composed
+> from exp-0048/0054/0056) and a stage-1-only D40 net beat the best
+> classic-feature net at fixed nodes (exp-0065). Live leaderboard:
+> `docs/research/value-foundation-state.md`.
 
 **Sprint goal — a 12-net experiment (4 configs × the 3-net grid):**
 
