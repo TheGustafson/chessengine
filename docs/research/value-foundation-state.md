@@ -438,6 +438,18 @@ are all individually proven. Runs after E1 (GPU serial).
   fixed-node winners → NPS/time-management investigation before any arch
   pivot.
 
+- **2026-07-16 16:00 — Reality check vs full Stockfish 16: −78 ± 18.**
+  [OBSERVATION] ARCHON (incumbent s3-2048-farseer, P9-era search) vs
+  FULL-strength SF16, 100g 10+0.1, both 1 thread / 16MB hash:
+  **39.0% (4W 70D 26L), −77.7 ± 18.4, 0 time losses** (exp-0060). Net-0-era
+  ARCHON anchored ~3400 vs SF16's handicapped rungs; today the gap to the
+  full engine is under 80 Elo, consistent with the +265 equal-time chain.
+  70% draw rate — the eval is competitive; the deficit is now plausibly
+  search-era (P9 pruning stack) as much as eval. [OBSERVATION] T74 hop:
+  s4-2048-t74-240sb vs s3 incumbent **+29.0 ± 16.5** (exp-0059) — second
+  consecutive stage-2 gain, diminishing vs T76's +55; 600g pooled confirm
+  running before promotion.
+
 - **2026-07-16 14:20 — Width ladder SATURATES at 2048.** [OBSERVATION]
   uf4096-240sb vs uf2048-240sb h2h: **+15.1 ± 17.3** @5k fixed nodes
   (exp-0058). Per-doubling curve on full UHO: 512→1024 +102, 1024→2048
