@@ -132,7 +132,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path,
                         default=REPO / "tools/nnue/configs/value-bulk-matrix-v1.json")
-    parser.add_argument("--source", choices=["binpack", "lichess", "all"], default="all")
+    parser.add_argument("--source", default="all",
+                        help="a source key from the config's `sources`, or 'all'")
     parser.add_argument("--cell", action="append")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
