@@ -21,7 +21,37 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-15 America/New_York
+Last updated: 2026-07-16 ~18:30 America/New_York
+
+## TAKEOVER CHECKPOINT (2026-07-16 18:30 — read this first)
+
+**The governing question is ANSWERED.** Net-0 was never special; DATA VOLUME
+was the constraint end-to-end. Everything below in one paragraph: the
+official stage-1 UHO binpack beat net-0 at its own recipe on the first try
+(E3, +47.8); width then scaled 256→512→1024→2048 (+32/+123/+225/+282 @5k vs
+net-0) and SATURATED at 2048 (4096: +15 ± 17); schedule and lambda were flat;
+stage-2 warm retrains gain in proportion to stage-2 LABEL QUALITY (farseer
+0.93 Pearson: +55/+38; test80 0.78: +19/flat) and plateau after ~2 hops;
+rich FEATURE SETS (king768, D40) failed historically ONLY from data
+starvation — on full UHO the D40 parity gate passes (0.174 vs 0.355 on
+sf-100) and stage-1-only D40 beats the best classic by +32.5 ± 17.3
+(exp-0065). External anchors (all 100g, 10+0.1, 1 thread): SF16 −78 ± 18,
+SF18 −191 ± 23 (gap 113 ± 29 ≈ known 90), Integral v6 −70 ± 22, and the
+triangle closes locally (SF16−Integral = +52 ± 20 measured here; site 80
+compresses at fast TC). Promotion chain (equal-time gated): net-0 → +166
+(u1024-120sb) → +43.7 (uf2048-240sb) → +54.9 same-width (s3-2048-farseer,
+INCUMBENT); s4-2048-t74 = working best (+15.6 ± 11.9, below bar).
+**In flight at checkpoint:** `tools/nnue/d40_s2_gate_v1.sh` — D40 farseer
+hop (warm via D40_INIT_RAW) → h2h → equal-time gate vs s4 (conc 1, ~3h;
+promotion #4 candidate). Next levers ranked: bigger/better stage-2 corpora
+for D40 (T60T70 33GB needs disk; test80 deletable), longer D40 stage-1,
+king768 probe, official loss shape (prepared, unneeded so far). Disk 8.5GB
+free. All experiments exp-0038..0065 + 20 nets ledgered today; every
+result also in `data/nnue/experiments/chain-v2-results.log`. Ops rules
+that bit today: gate-waits must check status=complete AND not self-match
+their own log lines; cloned D40 configs need `train.quantised` updated;
+parity stage needs CUDA_PATH=/usr; list-then-delete separately; conc 1
+for sota engines (3.6GB on a 7.6GB box).
 
 ## The theory (ranked, with evidence)
 
