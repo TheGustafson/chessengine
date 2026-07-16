@@ -23,7 +23,29 @@
 
 Last updated: 2026-07-16 ~18:30 America/New_York
 
-## TAKEOVER CHECKPOINT (2026-07-16 18:30 — read this first)
+## TAKEOVER CHECKPOINT (2026-07-16 18:45 — read this first)
+
+**In flight RIGHT NOW (check these before doing anything):**
+- `tools/nnue/d40_s2_gate_v1.sh` (bg): d40-s2-farseer-120sb training
+  (warm from d40-uho raw ckpt, started 18:04, ~1h) → h2h vs
+  d40-uho-v1-240sb (conc 1) → EQUAL-TIME GATE best-D40 vs s4 (200g
+  10+0.1 conc 1, ~3h, verdict ~22:30-23:00) — promotion #4 decision.
+- `tools/nnue/d40_long_v1.sh` (bg): d40-uho-720sb (18B presentations,
+  ~7h) waits for GPU idle, runs overnight; screen it next morning
+  (h2h vs d40-uho-v1-240sb). Runs DURING the gate by standing
+  symmetric-load exception (0 forfeits precedent) — caveat any result.
+- Results log for everything: `data/nnue/experiments/chain-v2-results.log`.
+- SEARCH PROGRAM defined (user-directed): ranked matrix in
+  `stockfish_reference/06-sf14-sf16-search-patch-study.md` §6a/6b;
+  tasks S0 (unbalanced test book + SF16 mechanics audit), S1 (wire
+  correction history — tables exist, read/write deferred at
+  src/search/mod.rs ~line 121), S2 (gainer-season global SPSA retune —
+  the single biggest pool, +15-40 est). Key audit fact: P9 already has
+  singular/multicut/negative extensions, ProbCut, cutoffCnt,
+  do_deeper/do_shallower, improving, cut_node, fallingEval/instability
+  TM. Search game-testing waits for the D40 arc to settle; code work
+  can start anytime.
+
 
 **The governing question is ANSWERED.** Net-0 was never special; DATA VOLUME
 was the constraint end-to-end. Everything below in one paragraph: the
