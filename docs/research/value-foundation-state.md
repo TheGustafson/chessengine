@@ -438,6 +438,19 @@ are all individually proven. Runs after E1 (GPU serial).
   fixed-node winners → NPS/time-management investigation before any arch
   pivot.
 
+- **2026-07-16 07:15 — E4: the sparse-init fix does NOT rescue
+  king768x256.** [OBSERVATION] With `init_with_effective_input_size(32)`
+  fixed (the only change): **−409.1 ± 33.8** (300g @5k) vs the buggy run's
+  −372.3 ± 31.4. [INTERPRETATION] The historical king-cell failures were
+  NOT the init bug. Remaining suspects, now data-first given E3/e1ctl: 64
+  king buckets slice 25M rows into ~sparse per-bucket samples (official
+  HalfKA-family trains on billions); possibly also the trainer's king-cell
+  transform itself. Action: park king features until a billions-scale
+  corpus is in hand (full UHO downloading), then retry once at matched
+  budget. The CENN-v3 "simple HalfKA destroys topology" reading stays
+  partially confounded but is no longer blamed on the init bug alone.
+  Ledger: exp-0041.
+
 - **2026-07-16 06:55 — E1 size control: −189.3 ± 21.5. Positions-vs-labels
   decomposition complete.** [OBSERVATION] sf-100 truncated to E1's exact
   corpus size (4,064,476 rows, identical net-0 recipe/schedule):
