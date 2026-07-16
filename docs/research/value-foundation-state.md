@@ -438,6 +438,21 @@ are all individually proven. Runs after E1 (GPU serial).
   fixed-node winners → NPS/time-management investigation before any arch
   pivot.
 
+- **2026-07-16 18:15 — FULL-FEATURE BREAKTHROUGH: D40 works at data
+  scale.** [OBSERVATION] `d40-uho-v1-240sb` (HalfKAv2_hm + FullThreats,
+  stage-1 on full UHO, 2h23m train): parity gate **PASSES** (runtime
+  mean/max 0.0072/0.174 vs gates 0.03/0.2; the sf-100 twin failed at
+  0.355 → yesterday's failure was data-starvation weight saturation, not
+  a pack bug). h2h vs s4 working-best: **+32.5 ± 17.3** (300g @5k,
+  exp-0065) — a first-try, stage-1-only full-feature net beats the
+  twice-stage-2-hopped classic 2048. Every sf-100-era rich-feature
+  failure is now explained by data volume. [LAUNCHED] D40 stage-2
+  farseer hop (warm via D40_INIT_RAW from the retained raw ckpt) →
+  h2h → EQUAL-TIME gate vs s4 (200g 10+0.1, conc 1, ~3h) — promotion
+  #4 candidate. Ops notes: cloned D40 configs must update
+  `train.quantised` (stale filename aborted the first pack); the
+  train_run parity stage needs `CUDA_PATH=/usr` in the caller env.
+
 - **2026-07-16 17:55 — Integral v6 anchor + triangle closure: rating
   validated.** [OBSERVATION] Integral v6 built from source (tag v6, era
   net integral-networks@238c8e4a30 pinned — main-branch net would be
