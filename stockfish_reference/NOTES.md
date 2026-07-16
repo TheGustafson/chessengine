@@ -50,3 +50,4 @@ ideas and measurements, not source.
 | `tt.{h,cpp}` | Transposition table |
 | `uci.{h,cpp}`, `engine.{h,cpp}` | UCI protocol and engine glue |
 | `perft.h` | Perft driver |
+- `05-nnue-pytorch-training-recipes.md` — official two-stage training recipe (stage-1 shallow 5000-node self-play from scratch; stage-2 warm retrain on rich data at halved LR), filters (random/smart/wld-fen-skipping), 40-120B-sample scale, Elo-based net selection; read 2026-07-15 for the B4 investigation.
