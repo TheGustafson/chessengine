@@ -51,3 +51,4 @@ ideas and measurements, not source.
 | `uci.{h,cpp}`, `engine.{h,cpp}` | UCI protocol and engine glue |
 | `perft.h` | Perft driver |
 - `05-nnue-pytorch-training-recipes.md` — official two-stage training recipe (stage-1 shallow 5000-node self-play from scratch; stage-2 warm retrain on rich data at halved LR), filters (random/smart/wld-fen-skipping), 40-120B-sample scale, Elo-based net selection; read 2026-07-15 for the B4 investigation.
+- `06-sf14-sf16-search-patch-study.md` — full mining of sf_14..sf_16 (480 commits, ~210 qualifying non-NNUE patches) + fishtest methodology + PR discussions: what classes of search change kept winning (extensions, cutnode/cutoffCnt reductions, re-search ladder, history-fed pruning, optimism, TM-by-uncertainty), what got simplified away, "gainer season" after evaluator jumps, and the ranked ARCHON port list; mined 2026-07-16 during the D41-prep study.
