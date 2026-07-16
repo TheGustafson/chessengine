@@ -46,6 +46,8 @@
  *   NET0_SEED          deterministic parameter seed        [default: 198273612]
  *   NET0_HIDDEN        accumulator width (256/512/1024)              [default: 256]
  *   NET0_INIT          optional 256-wide CENN-v1 evaluator to preserve/expand
+ *   NET0_INIT_CENN     same-width warm start from any-width CENN (stage-2
+ *                      retrains; width must equal NET0_HIDDEN)
  *   NET0_FORMAT        bulletformat | sfbinpack             [default: bulletformat]
  *   NET0_SF_BUFFER_MB  SF-binpack shuffle buffer MiB                 [default: 256]
  */
@@ -234,6 +236,54 @@ fn main() {
             .load_weights_from_file(&init_path)
             .expect("install NET0_INIT");
         println!("fine-tune init from {path}");
+    }
+    // Stage-2 warm retrain (official recipe: resume weights on rich data at
+    // halved LR). Unlike NET0_INIT (256-wide teacher + width expansion), this
+    // takes a CENN of EXACTLY the target width, any width — parsed here rather
+    // than via chessengine::load(), which is compile-time bound to one L1.
+    if let Ok(path) = std::env::var("NET0_INIT_CENN") {
+        let bytes = std::fs::read(&path).expect("read NET0_INIT_CENN");
+        let u32_at = |o: usize| u32::from_le_bytes(bytes[o..o + 4].try_into().unwrap());
+        let i16_at = |o: usize| i16::from_le_bytes(bytes[o..o + 2].try_into().unwrap());
+        assert_eq!(&bytes[0..4], b"CENN", "NET0_INIT_CENN: bad magic");
+        assert_eq!(u32_at(4), 1, "NET0_INIT_CENN: unsupported version");
+        assert_eq!(u32_at(8), 768, "NET0_INIT_CENN: input_dims != 768");
+        let l1 = u32_at(12) as usize;
+        assert_eq!(
+            l1, hidden_size,
+            "NET0_INIT_CENN width {l1} != NET0_HIDDEN {hidden_size} (same-width warm start only)"
+        );
+        assert_eq!(bytes[16], 1, "NET0_INIT_CENN: activation must be SCReLU");
+        let payload = 48usize;
+        let ft_w_end = payload + 768 * l1 * 2;
+        let ft_b_end = ft_w_end + l1 * 2;
+        let out_w_end = ft_b_end + 2 * l1 * 2;
+        let l0w: Vec<f32> = (0..768 * l1)
+            .map(|i| f32::from(i16_at(payload + i * 2)) / 255.0)
+            .collect();
+        let l0b: Vec<f32> = (0..l1)
+            .map(|i| f32::from(i16_at(ft_w_end + i * 2)) / 255.0)
+            .collect();
+        let l1w: Vec<f32> = (0..2 * l1)
+            .map(|i| f32::from(i16_at(ft_b_end + i * 2)) / 64.0)
+            .collect();
+        let out_bias = i32::from_le_bytes(bytes[out_w_end..out_w_end + 4].try_into().unwrap());
+        let mut init = ModelWeights::zeroed(trainer.optimiser.definition());
+        assert!(init.set("l0w", TValue::F32(l0w)));
+        assert!(init.set("l0b", TValue::F32(l0b)));
+        assert!(init.set("l1w", TValue::F32(l1w)));
+        assert!(init.set(
+            "l1b",
+            TValue::F32(vec![out_bias as f32 / (255.0 * 64.0)]),
+        ));
+        let init_path = format!("{out}/{net_id}-warm-init.raw");
+        init.write_into(&mut std::fs::File::create(&init_path).expect("create warm init raw"))
+            .expect("write warm init raw");
+        trainer
+            .optimiser
+            .load_weights_from_file(&init_path)
+            .expect("install NET0_INIT_CENN");
+        println!("stage-2 warm start from {path} (width {l1})");
     }
 
     let final_lr = initial_lr * 0.3f32.powi(3);
