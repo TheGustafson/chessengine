@@ -415,6 +415,29 @@ are all individually proven. Runs after E1 (GPU serial).
   (classic1024 failed on 25M — retry on UHO); (d) stage-2-style warm
   retrains on rich data from the e3/UHO base.
 
+- **2026-07-16 07:15 — AUTONOMOUS LOOP MANDATE (user): "auto research loop
+  until we have a SOTA eval model. Local compute only."** Promotion bar
+  unchanged: beat the incumbent at equal time. Loop protocol: fixed-node
+  screens route, 300g+ decides, equal-time promotes, everything ledgered.
+  Wave preregistered now:
+  - E3 follow-ups: 400g @20k curve; 200g 10+0.1 equal-time gate (quiet box).
+  - `uho-ladder-v1` (tools/nnue/uho_ladder_v1.sh, GPU-serial after E4):
+    u256-60sb / u256-120sb (schedule axis: does optimization beyond one
+    pass of the 10GiB keep paying? official practice says data gets many
+    epochs); u512-60sb / u1024-120sb (capacity axis: E2 showed 1024 fails
+    on 25M rows; prediction from official practice = capacity unlocks with
+    billions-scale data. If u1024 ≥ u256 at matched screens, capacity
+    scaling is open and the SOTA path is data x capacity x schedule).
+  - Full `nodes5000pv2_UHO.binpack` (40.3GB) downloading (resume-capable);
+    disk freed 16→59GB by deleting re-generable checkpoints of finished
+    campaigns + quarantined lc0/mix/net0-paired corpora (identities +
+    regen recipes preserved in ledger; active campaigns untouched).
+  Decision rules, in advance: schedule axis wins → full-UHO long run next;
+  capacity wins → full-UHO at the winning width; both flat → stage-2 warm
+  retrain exploration (task 7) or loss-shape work. Equal-time failures of
+  fixed-node winners → NPS/time-management investigation before any arch
+  pivot.
+
 - **2026-07-16 06:55 — E1 size control: −189.3 ± 21.5. Positions-vs-labels
   decomposition complete.** [OBSERVATION] sf-100 truncated to E1's exact
   corpus size (4,064,476 rows, identical net-0 recipe/schedule):
