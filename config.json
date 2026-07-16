@@ -22,7 +22,7 @@
         "enabled": false
     },
     "opening": {
-        "file": "/root/projects/learnrust/chessengine/data/nnue/openings/policy-balanced-256.epd",
+        "file": "data/nnue/openings/policy-balanced-256.epd",
         "format": 0,
         "order": 0,
         "plies": -1,
@@ -32,7 +32,7 @@
         "additional_lines_rgx": [],
         "event_name": "Fastchess Tournament",
         "site": "?",
-        "file": "/root/projects/learnrust/chessengine/data/nnue/campaigns/value-bulk-d40-lichess-mid-v1/matches/d40-mid-unscaled/control-n5k-g40/games.pgn",
+        "file": "data/nnue/experiments/sf16-vs-integral6-v1/games.pgn",
         "notation": 1,
         "append_file": true,
         "track_nodes": false,
@@ -60,7 +60,7 @@
     },
     "config_name": "config.json",
     "output": 0,
-    "seed": 20260714,
+    "seed": 20260733,
     "variant": 0,
     "type": 0,
     "gauntlet_seeds": 1,
@@ -69,8 +69,8 @@
     "wait": 0,
     "autosaveinterval": 20,
     "games": 2,
-    "rounds": 20,
-    "concurrency": 4,
+    "rounds": 50,
+    "concurrency": 3,
     "force_concurrency": false,
     "recover": true,
     "noswap": false,
@@ -79,7 +79,7 @@
     "affinity": false,
     "show_latency": false,
     "log": {
-        "file": "/root/projects/learnrust/chessengine/data/nnue/campaigns/value-bulk-d40-lichess-mid-v1/matches/d40-mid-unscaled/control-n5k-g40/fastchess.log",
+        "file": "data/nnue/experiments/sf16-vs-integral6-v1/fastchess.log",
         "level": 2,
         "append_file": true,
         "compress": false,
@@ -88,16 +88,12 @@
     },
     "engines": [
         {
-            "name": "candidate",
+            "name": "stockfish16",
             "dir": "",
-            "cmd": "/root/projects/learnrust/chessengine/data/nnue/campaigns/value-bulk-d40-lichess-mid-v1/engines/value-bulk-d40-lichess-mid-v1-lichess-d40-full",
+            "cmd": "/usr/games/stockfish",
             "args": "",
             "restart": false,
             "options": [
-                [
-                    "EvalFile",
-                    "/root/projects/learnrust/chessengine/data/nnue/nets/value-bulk-d40-lichess-mid-v1-lichess-d40-full.cenn"
-                ],
                 [
                     "Threads",
                     "1"
@@ -109,28 +105,24 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 0,
+                    "increment": 100,
                     "fixed_time": 0,
-                    "time": 0,
+                    "time": 10000,
                     "moves": 0,
                     "timemargin": 0
                 },
-                "nodes": 5000,
+                "nodes": 0,
                 "plies": 0
             },
             "variant": 0
         },
         {
-            "name": "baseline",
+            "name": "integral-v6",
             "dir": "",
-            "cmd": "/root/projects/learnrust/chessengine/data/nnue/campaigns/value-bulk-d40-lichess-mid-v1/engines/baseline",
+            "cmd": "engines/bin/integral-v6",
             "args": "",
             "restart": false,
             "options": [
-                [
-                    "EvalFile",
-                    "/root/projects/learnrust/chessengine/data/nnue/nets/net-0.cenn"
-                ],
                 [
                     "Threads",
                     "1"
@@ -142,29 +134,29 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 0,
+                    "increment": 100,
                     "fixed_time": 0,
-                    "time": 0,
+                    "time": 10000,
                     "moves": 0,
                     "timemargin": 0
                 },
-                "nodes": 5000,
+                "nodes": 0,
                 "plies": 0
             },
             "variant": 0
         }
     ],
     "stats": {
-        "candidate vs baseline": {
-            "wins": 14,
-            "losses": 21,
-            "draws": 5,
-            "penta_WW": 3,
-            "penta_WD": 2,
-            "penta_WL": 6,
-            "penta_DD": 0,
-            "penta_LD": 3,
-            "penta_LL": 6
+        "stockfish16 vs integral-v6": {
+            "wins": 6,
+            "losses": 1,
+            "draws": 33,
+            "penta_WW": 0,
+            "penta_WD": 5,
+            "penta_WL": 1,
+            "penta_DD": 14,
+            "penta_LD": 0,
+            "penta_LL": 0
         }
     }
 }
