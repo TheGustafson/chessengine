@@ -438,6 +438,20 @@ are all individually proven. Runs after E1 (GPU serial).
   fixed-node winners → NPS/time-management investigation before any arch
   pivot.
 
+- **2026-07-16 12:50 — THIRD PROMOTION: stage-2 works, and label quality
+  is what gates it.** [OBSERVATION] Farseer hops (h2h vs each warm-start
+  parent, 300g @5k): s3-2048-farseer **+54.9 ± 17.4** over incumbent
+  uf2048-240sb; s3-1024-farseer **+38.4 ± 17.9** (test80 hop at the same
+  width: +19.1 ± 12.5 pooled 600g; test80 at 2048: −6.9 ± 16.4 flat).
+  farseerT76's labels audit cleaner (Pearson 0.934 vs test80's 0.784) and
+  its hop gains are ~2-3x — stage-2 gains track stage-2 LABEL QUALITY.
+  **New incumbent: stage2-v1-s3-2048-farseer-120sb** (same width/engine as
+  the old one → h2h transfers to equal time; exp-0056). Composed
+  equal-time vs net-0 ≈ **+265**. Next: farseerT74 (20.1GB, downloading)
+  for a second farseer-family hop at more data; wave5 uf4096-240sb
+  training (~14:45); redundant 10GiB UHO prefix deleted (full file
+  supersedes; disk 28GB free → T74 fits).
+
 - **2026-07-16 11:30 — SECOND PROMOTION: uf2048-240sb is the new
   incumbent.** [OBSERVATION] Equal-time gate (200g 10+0.1, quiet box):
   uf2048-240sb vs u1024-120sb **+43.7 ± 13.9**, score 0.562, 0 time
