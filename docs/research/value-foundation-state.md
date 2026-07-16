@@ -438,6 +438,19 @@ are all individually proven. Runs after E1 (GPU serial).
   fixed-node winners → NPS/time-management investigation before any arch
   pivot.
 
+- **2026-07-16 14:20 — Width ladder SATURATES at 2048.** [OBSERVATION]
+  uf4096-240sb vs uf2048-240sb h2h: **+15.1 ± 17.3** @5k fixed nodes
+  (exp-0058). Per-doubling curve on full UHO: 512→1024 +102, 1024→2048
+  +57, 2048→4096 +15 — and the 4096 equal-time tax would eat that.
+  [DECISION] Capacity axis closed on stage-1 UHO + current recipe;
+  width 2048 is the platform. Live levers, in expected-value order:
+  (1) stage-2 hops on the incumbent (T74 hop training now — farseer
+  family at 3x data), (2) more/better stage-2 corpora (T60T70 33GB needs
+  a disk decision), (3) official loss shape in bullet, (4) feature-set
+  growth (king buckets) at billions-scale — parked, one retry planned
+  when a stage-2 plateau arrives. farseerT74 audited: div 1.66, Pearson
+  0.937, sign 95.1% (farseer-tier).
+
 - **2026-07-16 12:50 — THIRD PROMOTION: stage-2 works, and label quality
   is what gates it.** [OBSERVATION] Farseer hops (h2h vs each warm-start
   parent, 300g @5k): s3-2048-farseer **+54.9 ± 17.4** over incumbent
