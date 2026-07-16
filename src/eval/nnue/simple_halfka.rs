@@ -227,7 +227,8 @@ impl SimpleHalfkaContext {
         #[cfg(not(any(
             feature = "nnue-l1-512",
             feature = "nnue-l1-1024",
-            feature = "nnue-l1-2048"
+            feature = "nnue-l1-2048",
+            feature = "nnue-l1-4096"
         )))]
         {
             let out: &[i16; 2 * SIMPLE_ACC] = self
@@ -247,7 +248,8 @@ impl SimpleHalfkaContext {
         #[cfg(any(
             feature = "nnue-l1-512",
             feature = "nnue-l1-1024",
-            feature = "nnue-l1-2048"
+            feature = "nnue-l1-2048",
+            feature = "nnue-l1-4096"
         ))]
         {
             let mut sum = 0i64;

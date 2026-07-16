@@ -159,7 +159,7 @@ fn main() {
     let seed = env_usize("NET0_SEED", 198_273_612) as u64;
     let hidden_size = env_usize("NET0_HIDDEN", 256);
     assert!(
-        matches!(hidden_size, 256 | 512 | 1024 | 2048),
+        matches!(hidden_size, 256 | 512 | 1024 | 2048 | 4096),
         "unsupported NET0_HIDDEN"
     );
 

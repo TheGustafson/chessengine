@@ -72,30 +72,55 @@ pub const INPUT: usize = 768;
 #[cfg(not(any(
     feature = "nnue-l1-512",
     feature = "nnue-l1-1024",
-    feature = "nnue-l1-2048"
+    feature = "nnue-l1-2048",
+    feature = "nnue-l1-4096"
 )))]
 pub const L1: usize = 256;
 #[cfg(all(
     feature = "nnue-l1-512",
-    not(any(feature = "nnue-l1-1024", feature = "nnue-l1-2048"))
+    not(any(
+        feature = "nnue-l1-1024",
+        feature = "nnue-l1-2048",
+        feature = "nnue-l1-4096"
+    ))
 ))]
 pub const L1: usize = 512;
 #[cfg(all(
     feature = "nnue-l1-1024",
-    not(any(feature = "nnue-l1-512", feature = "nnue-l1-2048"))
+    not(any(
+        feature = "nnue-l1-512",
+        feature = "nnue-l1-2048",
+        feature = "nnue-l1-4096"
+    ))
 ))]
 pub const L1: usize = 1024;
 #[cfg(all(
     feature = "nnue-l1-2048",
-    not(any(feature = "nnue-l1-512", feature = "nnue-l1-1024"))
+    not(any(
+        feature = "nnue-l1-512",
+        feature = "nnue-l1-1024",
+        feature = "nnue-l1-4096"
+    ))
 ))]
 pub const L1: usize = 2048;
+#[cfg(all(
+    feature = "nnue-l1-4096",
+    not(any(
+        feature = "nnue-l1-512",
+        feature = "nnue-l1-1024",
+        feature = "nnue-l1-2048"
+    ))
+))]
+pub const L1: usize = 4096;
 #[cfg(any(
     all(feature = "nnue-l1-512", feature = "nnue-l1-1024"),
     all(feature = "nnue-l1-512", feature = "nnue-l1-2048"),
-    all(feature = "nnue-l1-1024", feature = "nnue-l1-2048")
+    all(feature = "nnue-l1-512", feature = "nnue-l1-4096"),
+    all(feature = "nnue-l1-1024", feature = "nnue-l1-2048"),
+    all(feature = "nnue-l1-1024", feature = "nnue-l1-4096"),
+    all(feature = "nnue-l1-2048", feature = "nnue-l1-4096")
 ))]
-compile_error!("nnue-l1-512 / nnue-l1-1024 / nnue-l1-2048 are mutually exclusive");
+compile_error!("the nnue-l1-* width features are mutually exclusive");
 
 // --- Quantization constants (design/11 §3.4.3) -----------------------------
 
