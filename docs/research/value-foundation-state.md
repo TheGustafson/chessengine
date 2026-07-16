@@ -438,6 +438,18 @@ are all individually proven. Runs after E1 (GPU serial).
   fixed-node winners → NPS/time-management investigation before any arch
   pivot.
 
+- **2026-07-16 07:35 — D40 rescreen + E3 depth curve; sf-100 matrix
+  complete.** [OBSERVATION] d40-full on sf-100 (240 SB, conc-1 clean
+  screen): **−478.0 ± 39.7** (parity caveat max-err 0.355 on record). Full
+  E2/E4 matrix on sf-100 25M, 300g @5k: classic256 **+6.9**, classic1024
+  **−68**, king768x256 **−409**, d40-full **−478** — strength is MONOTONE
+  DECREASING in feature richness at fixed 25M rows. [OBSERVATION] E3 depth
+  curve: **+62.3 ± 15.4 @20k (400g)** vs +47.8 ± 18.7 @5k — the UHO net's
+  edge GROWS with depth; every failed bulk net closed from below instead.
+  [INTERPRETATION] One coherent picture: feature-rich architectures are
+  data-starved at 25M; data scale is the master variable. Ledger
+  exp-0042/0043.
+
 - **2026-07-16 07:15 — E4: the sparse-init fix does NOT rescue
   king768x256.** [OBSERVATION] With `init_with_effective_input_size(32)`
   fixed (the only change): **−409.1 ± 33.8** (300g @5k) vs the buggy run's
