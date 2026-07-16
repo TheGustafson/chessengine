@@ -21,3 +21,6 @@ matters because Y." No metaphors ("bracket the mystery", "crack the case"),
 no headline adjectives ("decisive", "damning", "gold"), no narrative arcs.
 When uncertain, say "I don't know" plainly. Numbers with error bars, claims
 tagged fact vs guess. Related: [[implementation-runbook]].
+
+Addendum (user, same session): never say "will report when it lands"
+without an ETA. Every pending result gets a time estimate.
