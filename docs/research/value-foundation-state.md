@@ -438,6 +438,21 @@ are all individually proven. Runs after E1 (GPU serial).
   fixed-node winners → NPS/time-management investigation before any arch
   pivot.
 
+- **2026-07-16 08:30 — EQUAL-TIME GATE PASSED: net-0 DETHRONED after 4
+  days as incumbent.** [OBSERVATION] `uho-ladder-v1-u1024-120sb` vs net-0,
+  200g at 10+0.1 (the user's promotion bar): **+166.2 ± 18.3**, score
+  0.7225, ZERO time losses either side. Fixed-node +225 → equal-time +166
+  = a real but affordable width-1024 speed tax. Caveat on record: the
+  full-UHO wave trained on GPU concurrently for part of the match
+  (gate-wait bug: eval_match writes summary.json with status=running at
+  START — wait conditions must check status=complete, not file existence);
+  load was engine-symmetric and forfeits were zero, so the 9σ verdict
+  stands. **New incumbent: u1024-120sb. All future promotion gates run
+  vs the current incumbent at equal time.** net-0 becomes the historical
+  baseline. Ledger exp-0048. uf512-120sb (full 40.3GB file, 1 pass):
+  **+151.3 ± 20.9** vs net-0 @5k — width 512 gains ~+28 over its 10GiB
+  version (1.4σ, scaling-consistent). uf1024-240sb training (SB 179/240).
+
 - **2026-07-16 07:55 — uho-ladder-v1 screens: CAPACITY UNLOCKED on
   billions-scale data.** [OBSERVATION] 300g @5k vs net-0, all on the UHO
   10GiB clean prefix, e3 recipe: u256-60sb **+32.5 ± 18.7**, u256-120sb
