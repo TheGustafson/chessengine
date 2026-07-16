@@ -775,3 +775,35 @@ are all individually proven. Runs after E1 (GPU serial).
   available; attacks D40's NPS tax directly), PGO (R3), bounds-check/
   false-sharing audits (R4). All gate through bench bit-reproduction
   (D24); sota f32 tail is the rounding hazard.
+
+## 2026-07-16 20:50 [PLAN] Throughput program: optimize the research loop itself
+
+Measured tonight: D40 trainer is GPU-BOUND (99% util) — local training
+speedups are capped (only levers: batch 16384→32768 fits VRAM 3.4/8GB +
+TF32 — but batch changes recipe semantics, treat as an experiment, not a
+free win). The wall-clock cost of a RESEARCH DECISION is dominated by
+TESTING, so that's where the program aims. Ranked (impact × effort):
+
+- T1 sota engine RSS audit: runbook says 3.6-5.1GB/engine but the D40 net
+  is only ~250-500MB of weights — likely loader staging waste (f32 copies
+  not freed / oversized per-thread tables). If RSS → <1GB, D40 testing
+  conc 1→3 (≈3x all D40 screens+gates) AND kills the OOM-vs-trainer
+  conflict that pushed tonight's gate overnight. AUDIT FIRST, tomorrow.
+- T2 unbalanced book (= S0, queued): our anchor matches run ~70% draws;
+  UHO-style unbalanced books are exactly fishtest's fix. Fewer games per
+  verdict (~1.3-1.7x).
+- T3 SPRT early-stop in eval_match (fastchess native): clear results stop
+  at ~1/2-1/3 the games; borderline ones run long — right allocation.
+- T4 fixed-node screen concurrency: node-limited games are conc-invariant
+  by design; classic screens at conc 3 waste 13 cores. conc 12 ≈ 4x.
+  One-line + a one-time invariance sanity check.
+- T5 interruptible training: periodic D40_SAVE_RATE + accept fresh-stream
+  resume (with random-skip, restarting the stream is a distribution nop
+  for multi-epoch runs — revisit the "never interrupt" rule deliberately).
+  Removes the 7h-block serialization of the whole box.
+- (user Q) WSL2 RAM ceiling: box shows 7.6GB total + 2GB swap — if the
+  Windows host has 16/32GB, a .wslconfig bump is the cheapest multiplier
+  of all (removes conc caps + OOM fear even before T1).
+- (flagged, D36) GCE-spot OpenBench workers when S2 SPSA starts (10k+
+  games/tune) — designed for exactly this, but LOCAL-ONLY mandate stands
+  until the user lifts it.
