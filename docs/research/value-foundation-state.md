@@ -21,7 +21,7 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-16 ~20:30 America/New_York
+Last updated: 2026-07-16 ~21:00 America/New_York
 
 ## TAKEOVER CHECKPOINT (2026-07-16 20:30 — read this first)
 
@@ -43,14 +43,24 @@ CLAUDE.md status refreshed to the post-B4 reality (24c8499, 52d1de9).
 Rust perf tasks R1-R4 queued (native builds / VNNI sota_simd / PGO /
 micro-audits) — R2 VNNI is the D40-NPS lever, box is Zen 4.
 
-**In flight RIGHT NOW (updated 19:45; check these before doing anything):**
-- `tools/nnue/d40_night_v2.sh` (bg) is the ONLY live match chain: waits
-  for the 720sb train to end (~02:15) + RAM to free, then (1) h2h hop
-  d40-s2-farseer-120sb vs d40-uho-v1-240sb — DIAGNOSTIC ONLY, (2) 720sb
-  parity parse + h2h vs 240sb, (3) EQUAL-TIME GATE best parity-PASSING
-  D40 vs s4 (200g 10+0.1 conc 1) — promotion #4 verdict by ~06:30.
+**In flight RIGHT NOW (updated 21:00; check these before doing anything):**
 - `tools/nnue/d40_long_v1.sh` (bg): d40-uho-720sb (18B presentations)
-  training since 19:15, ~7h.
+  training — RESTARTED 20:48 after the OOM incident below, ~7h → done
+  ~03:50. The first attempt (19:15) was OOM-killed at ~70 min.
+- `tools/nnue/d40_night_v2.sh` (bg, re-armed 20:48): waits for the train,
+  then (1) h2h hop d40-s2-farseer-120sb vs d40-uho-v1-240sb — DIAGNOSTIC
+  ONLY, (2) 720sb parity parse + h2h vs 240sb, (3) EQUAL-TIME GATE best
+  parity-PASSING D40 vs s4 (200g 10+0.1 conc 1) — promotion #4 verdict by
+  ~08:00. Both engine binaries (probe-sota, probe-l2048) were rebuilt at
+  df2b746 with the EvalFile leak fix; .pre-leakfix backups sit beside them.
+- **THE 3.6GB-ENGINE BELIEF IS DEAD (21:00): it was a per-game memory
+  leak, now FIXED (df2b746).** fastchess re-sends every option — EvalFile
+  included — before every game; each re-send re-loaded and leaked the
+  net (~78MB/game for D40, ~3MB/game for classic). Real sota engine
+  footprint after fix: **~135MB flat** (verified over a 20-game match:
+  134-135MB throughout vs 1.7GB-and-climbing before). This retro-explains
+  weeks of "sota engines are huge" ops pain AND unlocks D40 test
+  concurrency (T4 applies to D40 now, not just classic).
 - HOP PARITY FAIL (19:14): d40-s2-farseer-120sb runtime mean/max
   0.011/**0.241** vs gates 0.03/**0.20** — mean excellent, p99 0.088,
   worst fen an OOD bare endgame (2R5/8/8/3BK2k/8/7p/8/8 b), runtime
@@ -59,10 +69,15 @@ micro-audits) — R2 VNNI is the D40-NPS lever, box is Zen 4.
   user decides waiver vs rescale (tools/nnue/rescale_net.py) tomorrow
   with its h2h number in hand. Old `d40_s2_gate_v1.sh` chain is DEAD
   (exited 1 at parity) — superseded by d40_night_v2.sh.
-- RAM RULE that forced this: sota-vs-sota h2h = 2×3.6GB engines; with
-  the trainer resident (2.7GB) only ~2.9GB was available → never run
-  sota-pair games while a train lives (OOM would kill the un-resumable
-  trainer).
+- RAM RULE, amended 21:00: the old form ("sota pairs = 2×3.6GB, never
+  run games while a train lives") was built on the leak, which is now
+  fixed — engines are ~135MB. The surviving rules: (a) equal-time (TC)
+  games still require a quiet box for WALL-CLOCK FAIRNESS — never run
+  them alongside a trainer; (b) fixed-node games alongside a trainer are
+  now RAM-safe but were the proximate cause of tonight's OOM before the
+  fix — only resume that practice with post-fix binaries; (c) any new
+  engine binary must pass a capped 20-game RSS-flatness check before an
+  overnight chain trusts it.
 - Results log for everything: `data/nnue/experiments/chain-v2-results.log`.
 - SEARCH PROGRAM defined (user-directed): ranked matrix in
   `stockfish_reference/06-sf14-sf16-search-patch-study.md` §6a/6b;
@@ -92,17 +107,18 @@ triangle closes locally (SF16−Integral = +52 ± 20 measured here; site 80
 compresses at fast TC). Promotion chain (equal-time gated): net-0 → +166
 (u1024-120sb) → +43.7 (uf2048-240sb) → +54.9 same-width (s3-2048-farseer,
 INCUMBENT); s4-2048-t74 = working best (+15.6 ± 11.9, below bar).
-**In flight at checkpoint:** `tools/nnue/d40_s2_gate_v1.sh` — D40 farseer
-hop (warm via D40_INIT_RAW) → h2h → equal-time gate vs s4 (conc 1, ~3h;
-promotion #4 candidate). Next levers ranked: bigger/better stage-2 corpora
+**In flight at checkpoint:** see the "In flight RIGHT NOW" block above
+(d40_long_v1 720sb retrain + d40_night_v2 chain; the old d40_s2_gate_v1
+chain is dead). Next levers ranked: bigger/better stage-2 corpora
 for D40 (T60T70 33GB needs disk; test80 deletable), longer D40 stage-1,
 king768 probe, official loss shape (prepared, unneeded so far). Disk 8.5GB
 free. All experiments exp-0038..0065 + 20 nets ledgered today; every
 result also in `data/nnue/experiments/chain-v2-results.log`. Ops rules
 that bit today: gate-waits must check status=complete AND not self-match
 their own log lines; cloned D40 configs need `train.quantised` updated;
-parity stage needs CUDA_PATH=/usr; list-then-delete separately; conc 1
-for sota engines (3.6GB on a 7.6GB box).
+parity stage needs CUDA_PATH=/usr; list-then-delete separately; the old
+"conc 1, sota engines are 3.6GB" rule is superseded — that was the
+per-game EvalFile leak, fixed at df2b746 (see the 21:00 incident entry).
 
 ## The theory (ranked, with evidence)
 
@@ -807,3 +823,46 @@ TESTING, so that's where the program aims. Ranked (impact × effort):
 - (flagged, D36) GCE-spot OpenBench workers when S2 SPSA starts (10k+
   games/tune) — designed for exactly this, but LOCAL-ONLY mandate stands
   until the user lifts it.
+
+## 2026-07-16 21:00 [INCIDENT+FIX] OOM killed the 720sb train; root cause was a per-game net leak, now fixed
+
+**What happened.** Post-compaction throughput work (T1 RSS audit) measured a
+standalone probe-sota at 135MB peak through an 8s/2.27M-node search and
+concluded the "3.6-5.1GB per sota engine" figure was a mismeasurement. On
+that basis the hop h2h (fixed-node, believed RAM-safe) was launched at 20:16
+alongside the resident 720sb trainer. Under real match conditions the
+engines ballooned (~90MB/s each); at ~20:25 the kernel OOM killer shot the
+trainer (d40_features, ~70 min into ~7h), then one engine. The night chain
+was killed by hand before it could launch the same match again. **The old
+rule was right and the standalone measurement was the trap: engine RSS must
+be measured under fastchess, not a hand-driven UCI session.**
+
+**Root cause (proven, not guessed).** A tee-wrapper capture of 4 games shows
+fastchess re-sends every configured option — `setoption name EvalFile ...`
+included — before EVERY game. Each call to `nnue::set_eval_file` re-read and
+re-parsed the net and `Box::leak`ed a fresh copy: one net per game per
+engine, forever (~78MB D40, ~3MB classic-2048). The historical 3.6-5.1GB
+observations were ~46-65 games of accumulation, partially paged to swap.
+All match RSS forensics ran engines under `ulimit -v` caps so a repeat
+overrun could only kill the capped engine, never the trainer.
+
+**Fix (df2b746).** `set_eval_file` now records the installed file's identity
+(canonical path, size, mtime) and treats a same-file re-send as a no-op; a
+changed file at the same path still reloads; failed installs drop the cached
+identity. Regression test `tests/eval_file_reload.rs` (own process — it
+installs process-global nets). Full suite green (631 tests), clippy clean on
+the merge gate, check.sh bench fingerprint **548978 reproduced bit-for-bit**
+(non-functional for search). Verified in production conditions: 20-game
+fastchess match, RSS flat 134-135MB the whole way (was 756→1661MB and
+climbing at the same point pre-fix). probe-sota + probe-l2048 rebuilt at
+df2b746 (only src change since 52d1de9); `.pre-leakfix` backups kept.
+
+**Cost + consequences.** ~70 min GPU time + ~5.5h calendar slip (train
+restarted 20:48, done ~03:50; night-chain verdicts ~08:00, unchanged in
+content). In exchange: the single biggest known testing-throughput lie is
+gone — D40 engines are ~135MB, so T4 (screen concurrency) now applies to
+the full-feature track, and the trainer-vs-testing RAM conflict is over for
+fixed-node work (see amended RAM rule in the checkpoint). Standing lesson
+recorded in memory: measure engine RSS under the real match harness, and
+smoke-test any "this rule is wrong" conclusion under the conditions the
+rule was written for before acting on it.
