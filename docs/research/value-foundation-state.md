@@ -1114,6 +1114,45 @@ packing/clipping and re-gate — over waiving. The hop diagnostic confirmed
 the cached evening number (−23.2, exp-0066; hop stays dead). The
 equal-time gate (240sb vs s4, promotion #4) started 03:52, verdict ~06:50.
 
+## 2026-07-17 05:35 [VERDICT] Promotion #4 REJECTED: D40 loses −57.9 ± 12.6 at equal time. Evaluator-freeze proposal.
+
+**GATE (exp-0073)**: d40-uho-v1-240sb (best parity-passing D40) vs
+stage2-v1-s4-2048-t74-240sb, 200g 10+0.1, quiet box:
+**−57.9 ± 12.6** (11W/145D/44L, score 41.7%). The full-feature net wins
+per node (+32.5 ± 17.3, exp-0065) and its 720sb sibling adds another
++30 per node (exp-0072) — but at the clock the inference tax erases all
+of it. D40 needs roughly 1.7–2× more NPS to convert its per-node edge
+(~70 Elo per doubling rule of thumb); the realistic near-term speed
+program (R4 #1 lazy threat fold 5–15%, PGO ~5–10%, native build ~5%, R2
+VNNI +6.4% already landed) sums to ~20–35%, not 70–100%. Conclusion: D40
+is not promotable on this hardware without an algorithmic speed break-
+through; it stays a RESEARCH line (packing-tail fix + speed program),
+re-gated only after a major NPS win. The night chain worked exactly as
+designed end-to-end: parity bar → diagnostics → gate → clean verdict.
+
+**EVALUATOR-FREEZE PROPOSAL (for the user, morning decision):**
+1. **Freeze the classic binpack line as THE evaluator** for the next
+   program phase. Incumbent stays `stage2-v1-s3-2048-farseer-120sb`
+   (+265 composed over net-0); `s4-2048-t74-240sb` is working-best
+   (+15.6 ± 11.9 pooled fixed-node, same width/NPS family). One cheap
+   pending item: the s4 equal-time re-check on the UHO book (promotion
+   #5) to make the frozen evaluator the true best classic net.
+2. **Pause new eval trainings.** The B4 question is answered (data
+   volume), width is saturated at 2048, and stage-2 gains are visibly
+   shrinking (+55 → +29 → +15.6). Marginal Elo per GPU-hour on this box
+   is now far below what the search side offers.
+3. **Shift primary effort to search**: S1 correction history is merged
+   (SPRT pending tonight, fixed-node screen +18.5 ± 17.4), S2 SPSA is
+   queued, and the SF16-late audit shortlist (un-deferrals) is scoped.
+4. **D41/design-19 becomes the main research thrust**: the obs platform
+   is production-proven tonight (M1–M5 closed, dual-teacher audits GO,
+   big-v1 10k labeling in flight). The eval foundation this program
+   waited for is settled by this freeze.
+5. D40 continues in the background only as engineering: fix the packing
+   tail (netpack quant headroom or clip-aware training — raw ckpts
+   exist), take the speed program as far as it goes, re-gate when NPS
+   justifies it.
+
 **S1 merge gate**: with the trainer gone, `bash tools/check.sh` reran the
 full D24 gate at HEAD (S1 correction history + R4 #2/#3 + obs stack):
 fmt/clippy/tests/release-perft all green, bench fingerprint **701605**
