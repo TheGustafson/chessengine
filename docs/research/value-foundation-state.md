@@ -1195,6 +1195,18 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 17:40 [BASELINE] Cold classical ordering on big-v1: top-1 18.1% — the D41 yardstick
+
+obs-tool rank over all 10,000 big-v1 SF18 positions: the classical
+MovePicker ordering COLD (no TT move, fresh histories) predicts the
+teacher's best move top-1 18.1%, top-3 32.9%, top-5 42.1%, mean rank
+10.1 of ~34. Context: random 3.4%, the v1 head 13.0%. So the 152-second
+head already reaches ~72% of the cold hand-tuned stack — and the in-game
+null is now fully explained (the warm in-search picker with histories +
+TT move is far above 18%, so a below-baseline blend had nothing to add).
+ACCEPTANCE BAR for v1.1 and beyond: held-out top-1 must clear 18.1%
+with margin before another game test is worth the box time.
+
 ## 2026-07-17 17:30 [MILESTONE] big-v1 COMPLETE + gate night launched + v1.1 anti-overfit grid on GPU
 
 big-v1 final: both shards 10,000 episodes, verify 0 problems, ledgered
