@@ -6,10 +6,12 @@
 //! per-perspective [`ACC`]-wide accumulator, fed into the multi-layer bucketed
 //! [`SotaHead`].
 //!
-//! Both transformers are incremental on the search stack. HalfKA folds ordinary
-//! dirty-piece columns lazily and uses a 64-state-per-perspective Finny cache on
-//! king moves; FullThreats applies its bounded x-ray delta list eagerly after
-//! board mutation. Root refresh and standalone `nnue-eval` remain from-scratch.
+//! Both transformers are incremental *and* lazy on the search stack. HalfKA
+//! folds ordinary dirty-piece columns lazily and uses a 64-state-per-perspective
+//! Finny cache on king moves; FullThreats resolves its bounded x-ray delta list
+//! at push time (it reads the post-move board) but defers the 768-lane fold to
+//! evaluate time, so children that cut off before evaluating never pay it (R4).
+//! Root refresh and standalone `nnue-eval` remain from-scratch.
 //!
 //! Behind the `sota` cargo feature.
 
