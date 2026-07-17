@@ -22,7 +22,8 @@ def die(message: str) -> None:
     raise SystemExit(f"policy_pack: {message}")
 
 
-def pack(source: Path, output: Path, kind: str, rank: int = DEFAULT_RANK) -> None:
+def pack(source: Path, output: Path, kind: str, rank: int = DEFAULT_RANK,
+         base_override: int | None = None) -> None:
     if kind not in ("bilinear", "full", "classic", "classic-factorized"):
         die("head must be bilinear, full, classic, or classic-factorized")
     if not 1 <= rank <= 64:
@@ -36,7 +37,7 @@ def pack(source: Path, output: Path, kind: str, rank: int = DEFAULT_RANK) -> Non
         base = 0
         size = (rank * classic_trunk + rank + 4096 * rank + 4096) * 4
     else:
-        base = BASE
+        base = BASE if base_override is None else base_override
         size = (2 * (64 * rank * TRUNK + 64 * rank) * 4
                 if kind == "bilinear" else (4096 * TRUNK + 4096) * 4)
     padding = raw[base + size:]
@@ -66,5 +67,8 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     parser.add_argument("head", choices=("bilinear", "full", "classic", "classic-factorized"))
     parser.add_argument("--rank", type=int, default=DEFAULT_RANK)
+    parser.add_argument("--base", type=int, default=None, help=(
+        "override the head-tensor byte offset (checkpoints whose layout "
+        "omits the value head, e.g. d41_alloc: trunk-only base 81237504)"))
     args = parser.parse_args()
-    pack(args.source, args.output, args.head, args.rank)
+    pack(args.source, args.output, args.head, args.rank, args.base)
