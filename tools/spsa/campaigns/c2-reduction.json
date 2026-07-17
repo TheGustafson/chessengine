@@ -1,0 +1,20 @@
+{
+  "name": "c2-reduction",
+  "comment": "Campaign 2/8 (D45): the LMR/reduction bundle - the SF14->16 study's biggest single gainer pool. RED_UNIT (the 1024 fixed-point unit) and RED_NON_IMPROVING_DEN / RED_TABLE_DEN (unit definitions) stay fixed; everything that shapes r moves.",
+  "params": [
+    {"name": "RED_TABLE_NUM",           "min": 1400,  "max": 5600},
+    {"name": "RED_DELTA_MULT",          "min": 300,   "max": 1234},
+    {"name": "RED_NON_IMPROVING",       "min": 90,    "max": 390},
+    {"name": "RED_BASE",                "min": 500,   "max": 2054},
+    {"name": "RED_FLAT",                "min": 350,   "max": 1430},
+    {"name": "RED_MOVECOUNT",           "min": 20,    "max": 124},
+    {"name": "RED_CUTNODE",             "min": 2000,  "max": 8000},
+    {"name": "RED_CUTNODE_NO_TTMOVE",   "min": 520,   "max": 2120},
+    {"name": "RED_TTMOVE_SUB",          "min": 1000,  "max": 4032},
+    {"name": "RED_FULLDEPTH_NO_TTMOVE", "min": 540,   "max": 2170},
+    {"name": "RED_FULLDEPTH_DOCK1",     "min": 2500,  "max": 10078},
+    {"name": "RED_FULLDEPTH_DOCK2",     "min": 2600,  "max": 10446},
+    {"name": "LMR_DEEPER_MARGIN",       "min": 24,    "max": 104},
+    {"name": "LMR_SHALLOWER_MARGIN",    "min": 4,     "max": 18}
+  ]
+}
