@@ -981,3 +981,29 @@ searchmoves arms, cold state) -> M4 D44 stability/disagreement audits ->
 M5 D33 review -> first Reckless labeling run (which does NOT wait for the
 evaluator freeze). Revised Phase-1 forecast: first "more than eval"
 training in ~3-5 days, gated mainly by M3 + the eval verdicts.
+
+## 2026-07-17 01:15 [OVERNIGHT] Auto research loop armed; obs stack reviewed + first labeling run in flight
+
+USER DIRECTIVE: autonomous loop until morning. In flight right now:
+1. **720sb D40 train** — ends ~03:50; then check.sh reruns the S1 merge
+   gate on the shared release dir; then d40_night_v2.sh runs h2h-720 +
+   the EQUAL-TIME GATE (promotion #4) — verdicts ~06:30-08:00.
+2. **obs sample v1 labeling** (tools/obs/label_sample_v1.sh, bg): the
+   SAME 1000 seeded UHO positions through Reckless-d445b8b (child arms)
+   AND SF18 (searchmoves arms), 4k/16k/64k tiers, then the M4
+   stability/disagree audits — the dual-teacher data for the "is
+   Reckless the right teacher?" question. Ledger add-data rows on
+   completion. Results tee'd to chain-v2-results.log ([obslabel] tags).
+3. **D33 round-2 verifier** (agent) re-checking the a664da0 synthesis;
+   round 1 found 2 HIGH (canonical_key was the rule50-folded key —
+   dedup/leakage-barrier breaker; child-mode mate-arm inversion) + 4 MED,
+   ALL fixed with regression tests in a664da0. CONVERGED verdict expected
+   → M5 closes → first big labeling run authorized.
+
+Obs program status: M1 store, M2 verify/replay, M3 generator (+child arm
+mode: Reckless IGNORES searchmoves — caught by the audits before any data
+was generated), M4 audit tools all landed and reviewed. Reckless teacher
+pinned (engines/bin/reckless-d445b8b, sha256 2e9fc5dd…). Teacher
+recommendation on record: Reckless primary on alpha-beta-affinity +
+teacher-diversity grounds, SF18 same-row control; the sample-v1 audit
+numbers decide, diversity breaks ties.
