@@ -9,7 +9,15 @@
 //!
 //!   root-analysis --engine <bin> --fens <file> --out <shard.ceobs> \
 //!     [--nodes 1000,4000,16000] [--uci-option Name=Value]... \
-//!     [--seed N] [--created-unix N] [--arm-timeout-secs 60]
+//!     [--seed N] [--created-unix N] [--arm-timeout-secs 60] \
+//!     [--arm-mode searchmoves|child]
+//!
+//! Arm modes: `searchmoves` restricts the root search to one move (spec
+//! shape; ARCHON supports it). `child` searches the position AFTER the move
+//! at the same budget and NEGATES the score — fully independent child
+//! searches for engines that silently ignore searchmoves (Reckless). The
+//! mode is pinned in provenance.search_config; arms from different modes
+//! are not comparable rows.
 //!
 //! Cold state: `ucinewgame` + `isready` before EVERY `go` (the per-arm reset
 //! D43 requires; the M4 repeatability audit empirically confirms it). Engine
@@ -42,6 +50,16 @@ use std::time::Duration;
 const SCORE_WINDOW: i32 = 32_000;
 const MATE_BASE: i32 = 31_000;
 
+#[derive(Clone, Copy, PartialEq)]
+enum ArmMode {
+    /// `go nodes N searchmoves <m>` — requires engine support (ARCHON has it).
+    Searchmoves,
+    /// Search the position AFTER the move and negate: fully independent
+    /// child searches, for engines that ignore searchmoves (Reckless does —
+    /// found by the M4 smoke: all arms returned the unrestricted result).
+    Child,
+}
+
 struct Config {
     engine: String,
     fens: String,
@@ -51,6 +69,7 @@ struct Config {
     seed: u64,
     created_unix: Option<u64>,
     arm_timeout: Duration,
+    arm_mode: ArmMode,
 }
 
 fn parse_args() -> Result<Config, String> {
@@ -63,6 +82,7 @@ fn parse_args() -> Result<Config, String> {
         seed: 0,
         created_unix: None,
         arm_timeout: Duration::from_secs(60),
+        arm_mode: ArmMode::Searchmoves,
     };
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -95,6 +115,13 @@ fn parse_args() -> Result<Config, String> {
                         .parse()
                         .map_err(|_| "bad --created-unix")?,
                 );
+            }
+            "--arm-mode" => {
+                config.arm_mode = match value("--arm-mode")?.as_str() {
+                    "searchmoves" => ArmMode::Searchmoves,
+                    "child" => ArmMode::Child,
+                    other => return Err(format!("--arm-mode searchmoves|child, got '{other}'")),
+                };
             }
             "--arm-timeout-secs" => {
                 config.arm_timeout = Duration::from_secs(
@@ -503,7 +530,22 @@ fn run(config: &Config) -> Result<String, String> {
             let mut moves_out = Vec::with_capacity(legal.len());
             for mv in legal.iter() {
                 let text = mv.to_string();
-                let arm = engine.search(&canonical_fen, tier, Some(&text), config.arm_timeout)?;
+                let arm = match config.arm_mode {
+                    ArmMode::Searchmoves => {
+                        engine.search(&canonical_fen, tier, Some(&text), config.arm_timeout)?
+                    }
+                    ArmMode::Child => {
+                        let mut child = board.clone();
+                        let gives_check = child.gives_check(*mv);
+                        child.make_move(*mv, gives_check);
+                        let mut result =
+                            engine.search(&child.to_fen(), tier, None, config.arm_timeout)?;
+                        // The child search scores from the OPPONENT's side;
+                        // the ±(MATE_BASE − n) encoding negates symmetrically.
+                        result.score = -result.score;
+                        result
+                    }
+                };
                 arms_total += 1;
                 if arm.timed_out {
                     timeouts += 1;
