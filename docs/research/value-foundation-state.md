@@ -1195,6 +1195,25 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 16:15 [MILESTONE] D41 trainer v0 smoke: the search-data signal is LEARNABLE
+
+Branch merged (1c8f3ad): tools/nnue/bullet/d41_alloc.rs — the Phase-1
+allocation-head trainer (design/19 §4.4 v0: per-legal-move value-margin
+regression, gen-0-proven rank-8 bilinear on the D40 trunk, stm-corrected
+frame, leakage-safe position-id split). Smoke on sample-v1 (789 train /
+211 held-out positions, both teachers, idle GPU):
+- held-out MSE **−70% vs predict-zero** AND below the optimal-constant
+  baseline (genuine position-specific generalization);
+- **mean per-position rank correlation 0.49** with teacher margins;
+- top-1 0.10–0.13 vs 0.042 random (weakest cell, exactly as the M4
+  soft-argmax audit predicts);
+- Reckless and SF18 results near-identical → teacher-agnostic data path.
+Full note: docs/research/d41-trainer-v0-smoke.md. This is the shift's
+go-signal: pipeline proven end-to-end (.ceobs → export-train → GPU →
+metrics). v1 = big-v1 10k corpus + frozen protected trunk + ranking loss.
+Datagen scalability also landed today (label_gold_v1.sh: parallel
+workers + single-tier + drift monitor, ~25-30x; 100k gold FENs staged).
+
 ## 2026-07-17 16:10 [SEASON SUMMARY] D45 SPSA: all 8 decisions minted — tuning phase complete
 
 | # | Bundle | Movement | Screen (1000g, 5k nodes) | Status |
