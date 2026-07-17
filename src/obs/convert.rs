@@ -33,6 +33,16 @@ pub fn position_from_board(
             pcs[i / 2] |= nibble << 4;
         }
     }
+    // Loud instead of wrapped: a permanent store must never silently
+    // truncate identity-adjacent fields (D33 review round 1).
+    assert!(
+        board.halfmove_clock() <= u32::from(u8::MAX),
+        "rule50 overflows u8"
+    );
+    assert!(
+        board.game_ply() <= i32::from(u16::MAX),
+        "game_ply overflows u16"
+    );
     PositionState {
         occ,
         pcs,
@@ -43,9 +53,35 @@ pub fn position_from_board(
         game_ply: board.game_ply() as u16,
         plies_from_null: board.plies_from_null() as u16,
         repetition,
-        canonical_key: board.key(),
+        // The UNFOLDED key: placement+stm+castling+ep only. `board.key()`
+        // folds rule50 buckets in (adjust_key50), which would give the same
+        // position different identities at different clock values and break
+        // the dedup / train-test leakage barrier this field exists for
+        // (D33 review round 1, HIGH).
+        canonical_key: board.raw_key(),
         path_from_episode_root,
     }
+}
+
+/// Replay a stored move path from `root`, requiring every step to be a
+/// legal move (exact 16-bit identity — generators must store the canonical
+/// `Move::raw16()`, never a reconstructed from/to encoding). Shared by
+/// `obs-tool verify` and the replay tests.
+pub fn replay_path(root: &Board, path: &[u16]) -> Result<Board, String> {
+    use crate::movegen::generate_legal;
+    use crate::moves::{Move, MoveList};
+    let mut board = root.clone();
+    for (ply, &raw) in path.iter().enumerate() {
+        let mv = Move::from_raw16(raw);
+        let mut legal = MoveList::new();
+        generate_legal(&board, &mut legal);
+        if !legal.contains(&mv) {
+            return Err(format!("path ply {ply}: move {raw:#06x} is not legal here"));
+        }
+        let gives_check = board.gives_check(mv);
+        board.make_move(mv, gives_check);
+    }
+    Ok(board)
 }
 
 /// The FEN a [`PositionState`] describes. Reconstructing THROUGH FEN reuses
@@ -166,8 +202,67 @@ mod tests {
             let back = board_from_position(&state).unwrap();
             assert_eq!(back.key(), board.key(), "{fen}");
             assert_eq!(back.to_fen(), board.to_fen(), "{fen}");
-            assert_eq!(state.canonical_key, board.key(), "{fen}");
+            assert_eq!(state.canonical_key, board.raw_key(), "{fen}");
         }
+    }
+
+    /// THE D33 round-1 HIGH: canonical_key must be pure position identity.
+    /// Same placement/stm/castling/ep at different fifty-move clocks MUST
+    /// share one key — the folded board.key() puts rule50 >= 14 in a
+    /// different bucket, silently splitting dedup identity (and this test
+    /// fails against it).
+    #[test]
+    fn canonical_key_ignores_the_fifty_move_clock() {
+        let a = Board::from_fen("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 40").unwrap();
+        let b = Board::from_fen("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 40 40").unwrap();
+        assert_ne!(
+            a.key(),
+            b.key(),
+            "the folded key differs by design at clock 40"
+        );
+        let state_a = position_from_board(&a, 0, vec![]);
+        let state_b = position_from_board(&b, 0, vec![]);
+        assert_eq!(
+            state_a.canonical_key, state_b.canonical_key,
+            "canonical_key must be clock-independent position identity"
+        );
+    }
+
+    /// Replay must handle every special move kind — and must REJECT a path
+    /// built from kind-less from/to reconstructions (the exact trap the
+    /// in-repo demo fixture used to seed).
+    #[test]
+    fn replay_path_handles_castling_ep_and_promotion() {
+        use crate::moves::MoveList;
+        // A scripted line containing a castle, an en-passant capture, and a
+        // promotion, all as canonical legal moves.
+        let mut board =
+            Board::from_fen("r3k2r/1Ppp1ppp/8/4pP2/8/8/PPPP2PP/R3K2R w KQkq e6 0 2").unwrap();
+        let script = ["f5e6", "e8g8", "b7a8q", "g8h8"]; // ep, castle, promo, quiet
+        let mut path = Vec::new();
+        for text in script {
+            let mut legal = MoveList::new();
+            crate::movegen::generate_legal(&board, &mut legal);
+            let mv = *legal
+                .iter()
+                .find(|m| m.to_string() == text)
+                .unwrap_or_else(|| panic!("{text} must be legal"));
+            path.push(mv.raw16());
+            let gives_check = board.gives_check(mv);
+            board.make_move(mv, gives_check);
+        }
+        let root =
+            Board::from_fen("r3k2r/1Ppp1ppp/8/4pP2/8/8/PPPP2PP/R3K2R w KQkq e6 0 2").unwrap();
+        let replayed = replay_path(&root, &path).expect("canonical path replays");
+        assert_eq!(replayed.raw_key(), board.raw_key());
+
+        // The same line encoded as bare from/to normals must FAIL loudly:
+        // kind bits are part of move identity.
+        let bad: Vec<u16> = path
+            .iter()
+            .map(|&raw| raw & 0x0fff) // strip kind + promo bits
+            .collect();
+        assert!(replay_path(&root, &bad).is_err());
     }
 
     #[test]

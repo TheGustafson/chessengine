@@ -183,6 +183,16 @@ struct SearchResult {
     timed_out: bool,
 }
 
+impl Drop for Engine {
+    fn drop(&mut self) {
+        // Any early-return `?` path must not orphan a still-searching child
+        // (D33 round 1). kill/wait on an already-exited child just errors,
+        // which is fine; the reader thread ends when stdout closes.
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
 impl Engine {
     fn spawn(config: &Config) -> Result<Self, String> {
         let mut child = Command::new(&config.engine)
@@ -296,12 +306,11 @@ impl Engine {
 
     fn quit(mut self) {
         let _ = self.send("quit");
-        let _ = self.child.wait();
+        // Drop reaps; sending quit first lets the engine exit cleanly.
     }
 
-    fn kill(mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+    fn kill(self) {
+        // Drop kills + reaps.
     }
 }
 
@@ -374,7 +383,7 @@ fn parse_uci_move(text: &str) -> Option<u16> {
     };
     let from = sq(bytes[0], bytes[1])?;
     let to = sq(bytes[2], bytes[3])?;
-    let promo = match bytes.get(4) {
+    let promo = match bytes.get(4).map(u8::to_ascii_lowercase) {
         Some(b'n') => 0u16,
         Some(b'b') => 1,
         Some(b'r') => 2,
@@ -404,7 +413,7 @@ fn sha256_of(path: &str) -> String {
         .unwrap_or_else(|| "sha256-unavailable".into())
 }
 
-fn hardware_identity() -> String {
+fn hardware_identity(engine_threads: u32) -> String {
     let model = std::fs::read_to_string("/proc/cpuinfo")
         .ok()
         .and_then(|s| {
@@ -413,7 +422,7 @@ fn hardware_identity() -> String {
                 .and_then(|l| l.split(':').nth(1).map(|v| v.trim().to_string()))
         })
         .unwrap_or_else(|| "unknown-cpu".into());
-    format!("{model}, 1 engine thread")
+    format!("{model}, {engine_threads} engine thread(s)")
 }
 
 fn fnv1a64(seed: u64, data: &[u8]) -> u64 {
@@ -472,12 +481,35 @@ fn run(config: &Config) -> Result<String, String> {
         .map(u64::to_string)
         .collect::<Vec<_>>()
         .join(",");
-    let search_config =
-        format!("cold ucinewgame per go; nodes tiers {nodes_text}; options [{options_text}]");
+    let mode_text = match config.arm_mode {
+        ArmMode::Searchmoves => "searchmoves",
+        ArmMode::Child => "child-negate",
+    };
+    let search_config = format!(
+        "cold ucinewgame per go; arm-mode {mode_text}; nodes tiers {nodes_text}; \
+         options [{options_text}]"
+    );
+    // The searching engine's net identity (D33 round 1): an ARCHON arm
+    // selects its net via `--uci-option EvalFile=…`, which must surface in
+    // the §3.4 net_version field, not only inside the config string.
+    let net_version = config
+        .options
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("EvalFile"))
+        .map(|(_, value)| value.clone());
+    let engine_threads: u32 = config
+        .options
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("Threads"))
+        .and_then(|(_, value)| value.parse().ok())
+        .unwrap_or(1);
     let provenance = Provenance {
         engine_version: format!("root-analysis v0 (obs M3) @ {}", env!("CARGO_PKG_VERSION")),
         engine_bench_sig: 0,
-        net_version: None,
+        net_version,
+        // For RootMoveAnalysis shards teacher_identity IS D44's
+        // producer_engine: single --engine per shard, resolved per
+        // observation via Episode.provenance_ref (interned per §3.4).
         teacher_identity: Some(format!(
             "{} | uci id '{}' | sha256:{}",
             config.engine,
@@ -490,7 +522,7 @@ fn run(config: &Config) -> Result<String, String> {
         rng_seed: config.seed,
         dataset_source: "root_move_analysis".into(),
         opening_source: config.fens.clone(),
-        hardware_identity: hardware_identity(),
+        hardware_identity: hardware_identity(engine_threads),
     };
     let header = ShardHeader {
         format_version: OBS_FORMAT_VERSION,
@@ -538,12 +570,21 @@ fn run(config: &Config) -> Result<String, String> {
                         let mut child = board.clone();
                         let gives_check = child.gives_check(*mv);
                         child.make_move(*mv, gives_check);
-                        let mut result =
-                            engine.search(&child.to_fen(), tier, None, config.arm_timeout)?;
-                        // The child search scores from the OPPONENT's side;
-                        // the ±(MATE_BASE − n) encoding negates symmetrically.
-                        result.score = -result.score;
-                        result
+                        if let Some(score) = terminal_child_score(&child) {
+                            SearchResult {
+                                score,
+                                ..Default::default()
+                            }
+                        } else {
+                            let mut result =
+                                engine.search(&child.to_fen(), tier, None, config.arm_timeout)?;
+                            // The child search scores from the OPPONENT's
+                            // side; the ±(MATE_BASE − n) encoding negates
+                            // symmetrically (and `mate 0` cannot occur on a
+                            // non-terminal child).
+                            result.score = -result.score;
+                            result
+                        }
                     }
                 };
                 arms_total += 1;
@@ -593,6 +634,11 @@ fn run(config: &Config) -> Result<String, String> {
                     nodes: full.nodes,
                     seldepth: full.seldepth,
                     id_snapshots: vec![],
+                    completion: if full.timed_out {
+                        Completion::Stopped
+                    } else {
+                        Completion::Complete
+                    },
                 },
                 moves: moves_out,
             });
@@ -625,7 +671,91 @@ fn run(config: &Config) -> Result<String, String> {
     ))
 }
 
+/// The arm score when a child position is TERMINAL, from the ARM-MOVER's
+/// perspective: a mate-delivering move is a win (+MATE_BASE), a stalemating
+/// move a draw (0). Asking an engine instead would return `mate 0` —
+/// "the side to move IS mated" — which the win-positive score parse would
+/// invert into the worst possible arm label (D33 round 1, HIGH).
+fn terminal_child_score(child: &Board) -> Option<i32> {
+    let mut legal = MoveList::new();
+    generate_legal(child, &mut legal);
+    if !legal.is_empty() {
+        return None;
+    }
+    Some(if child.checkers().is_empty() {
+        0
+    } else {
+        MATE_BASE
+    })
+}
+
 fn respawn(engine: Engine, config: &Config) -> Result<Engine, String> {
     engine.kill();
     Engine::spawn(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chessengine::types::Square;
+
+    /// The D33 round-1 HIGH repro: Rb8# from 6k1/5ppp/.../1R4K1. The child
+    /// after Rb8 is checkmate; the arm must score +MATE_BASE (pre-fix the
+    /// engine's `mate 0` reply was negated into -MATE_BASE, ranking the
+    /// mating move dead last).
+    #[test]
+    fn mate_delivering_child_arm_scores_as_a_win() {
+        let board = Board::from_fen("6k1/5ppp/8/8/8/8/8/1R4K1 w - - 0 1").unwrap();
+        let mut legal = MoveList::new();
+        generate_legal(&board, &mut legal);
+        let rb8 = *legal
+            .iter()
+            .find(|m| m.from() == Square::B1 && m.to() == Square::B8)
+            .expect("Rb8 legal");
+        let mut child = board.clone();
+        let gives_check = child.gives_check(rb8);
+        child.make_move(rb8, gives_check);
+        assert_eq!(terminal_child_score(&child), Some(MATE_BASE));
+    }
+
+    #[test]
+    fn stalemating_child_arm_scores_as_a_draw() {
+        // Qf3xf7 stalemates the bare king (the qsearch stalemate fixture).
+        let board = Board::from_fen("7k/5r2/8/8/8/5Q2/8/1K6 w - - 0 1").unwrap();
+        let mut legal = MoveList::new();
+        generate_legal(&board, &mut legal);
+        let qxf7 = *legal
+            .iter()
+            .find(|m| m.from() == Square::F3 && m.to() == Square::F7)
+            .expect("Qxf7 legal");
+        let mut child = board.clone();
+        let gives_check = child.gives_check(qxf7);
+        child.make_move(qxf7, gives_check);
+        assert_eq!(terminal_child_score(&child), Some(0));
+    }
+
+    #[test]
+    fn non_terminal_child_defers_to_the_engine() {
+        let mut child = Board::startpos();
+        let mut legal = MoveList::new();
+        generate_legal(&child, &mut legal);
+        let e4 = *legal
+            .iter()
+            .find(|m| m.from() == Square::E2 && m.to() == Square::E4)
+            .unwrap();
+        let gives_check = child.gives_check(e4);
+        child.make_move(e4, gives_check);
+        assert_eq!(terminal_child_score(&child), None);
+    }
+
+    #[test]
+    fn mate_scores_parse_sign_correctly_and_case_insensitive_promotions() {
+        let mut r = SearchResult::default();
+        parse_info(&["info", "score", "mate", "3"], &mut r);
+        assert_eq!(r.score, MATE_BASE - 3);
+        parse_info(&["info", "score", "mate", "-2"], &mut r);
+        assert_eq!(r.score, -MATE_BASE + 2);
+        assert_eq!(parse_uci_move("e7e8q"), parse_uci_move("e7e8Q"));
+        assert!(parse_uci_move("(none)").is_none());
+    }
 }

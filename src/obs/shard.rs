@@ -121,6 +121,17 @@ fn read_message(input: &mut impl Read) -> io::Result<Option<Vec<u8>>> {
     };
     let len = usize::try_from(len)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "message length overflows"))?;
+    // Bound the allocation BEFORE trusting the length: a flipped bit in a
+    // length prefix must surface as InvalidData, not an allocation abort
+    // (D33 round 1, reproduced with a crafted 14-byte shard). 256 MiB is
+    // ~100x the largest sane episode.
+    const MAX_MESSAGE_LEN: usize = 256 * 1024 * 1024;
+    if len > MAX_MESSAGE_LEN {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("message length {len} exceeds the {MAX_MESSAGE_LEN}-byte cap"),
+        ));
+    }
     let mut bytes = vec![0u8; len];
     input.read_exact(&mut bytes)?;
     Ok(Some(bytes))

@@ -294,7 +294,8 @@ pub const OBS_MAGIC: [u8; 6] = *b"CEOBS\0";
 pub const OBS_FORMAT_VERSION: u16 = 1;
 
 pub struct ShardHeader {              // one file
-    magic: [u8; 6],                   // 1
+    magic: [u8; 6],                   // (file framing preceding the header
+                                      //  message, not a TLV field — impl note)
     format_version: u16,              // 2
     created_unix: u64,                // 3
     provenance: Vec<Provenance>,      // 4  interned; records reference by index
@@ -349,7 +350,9 @@ pub struct PositionState {            // Layer 1 — full reconstruction + ident
     game_ply: u16,                    // 7
     plies_from_null: u16,             // 8
     repetition: i8,                   // 9
-    canonical_key: u64,               // 10 placement+stm+castling+ep — dedup identity
+    canonical_key: u64,               // 10 placement+stm+castling+ep — dedup identity;
+                                      //    the UNFOLDED main key (no rule50 fold —
+                                      //    identity must be clock-independent, D33 r1)
     path_from_episode_root: Vec<u16>,  // 11 legal moves root→node
 }
 
@@ -387,6 +390,9 @@ pub struct SearchObservations {       // Layer 3 — outcomes
     nodes: u64,                       // 5  subtree
     seldepth: i32,                    // 6
     id_snapshots: Vec<IdSnapshot>,    // 7  per ID depth: {depth, score, best, nodes, time_ms, pv}
+    completion: Completion,           // 8  appended 2026-07-17 (D33 r1): a timed-out
+                                      //    REFERENCE search must never read as a
+                                      //    complete Exact label (doc 19 §5.4/§11.1)
 }
 
 pub struct PerMoveObservation {       // Layer 4 — per searched/considered move
@@ -426,6 +432,26 @@ Enums `Wdl`, `NodeType`, `Bound`, `Prune`, `CfAxis`, `EvidenceKind`,
 `IdSnapshot` are small companion types; their discriminants follow the same
 append-only, skip-unknown rule. Missing fields use explicit option/presence
 encoding; readers never interpret an absent field as numeric zero.
+
+**Presence semantics, per field class (D33 round 1, F2):** the presence
+guarantee above is delivered by the `Option`-typed fields. The non-Option
+numeric context fields (`static_eval`, the `tt_*` group, `correction_value`,
+…) are always encoded, so "generator could not observe this" is expressed at
+the RECORD-CLASS level, not per field: `EpisodeKind` + `evidence` +
+`generator_version` scope which Layer-2 fields are meaningful. For
+`RootMoveAnalysis` episodes produced by the external-engine root-v0
+generator, only `depth`, `node_budget`, the window fields, and the
+legal/capture move counts are meaningful; the engine-internal group is
+Default-filled and MUST NOT be consumed. Corpora where those fields are
+genuinely observed (`InternalSearch`) will populate them; if a future
+consumer needs per-field presence inside one episode kind, the affected
+fields get Option-ized with NEW tags (append-only).
+
+**`search_config` v1 representation:** implemented as a canonical text
+string plus `search_config_hash` (the doc's `SearchConfig` companion type
+deferred until a consumer needs per-knob joins). The string INCLUDES the
+root-analysis arm mode (`searchmoves` vs `child-negate`) — arms from
+different modes are not comparable rows.
 
 #### 3.5.4 Episode assembly note
 

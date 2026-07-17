@@ -13,9 +13,7 @@
 //! that verifies can be deterministically replayed (design/19 §11.1).
 
 use chessengine::board::Board;
-use chessengine::movegen::generate_legal;
-use chessengine::moves::{Move, MoveList};
-use chessengine::obs::convert::{board_from_position, fen_from_position};
+use chessengine::obs::convert::{board_from_position, fen_from_position, replay_path};
 use chessengine::obs::{Episode, PositionState, ShardReader};
 use std::process::ExitCode;
 
@@ -59,6 +57,8 @@ fn stability(args: &[String]) -> ExitCode {
     let mut tier_score_drift = Vec::new();
     let mut arm_vs_full_mismatch = 0u64;
 
+    let mut incomplete_refs = 0u64;
+    let mut stopped_arms = 0u64;
     for episode in &episodes {
         if episode.records.len() < 2 {
             too_few_tiers += 1;
@@ -66,11 +66,26 @@ fn stability(args: &[String]) -> ExitCode {
         }
         let deep = &episode.records[episode.records.len() - 1];
         let prev = &episode.records[episode.records.len() - 2];
+        // A partial reference must never drive an ACCEPT (D33 round 1): its
+        // best move/score are whatever arrived before the timeout.
+        if deep.search.completion != chessengine::obs::Completion::Complete
+            || prev.search.completion != chessengine::obs::Completion::Complete
+        {
+            incomplete_refs += 1;
+            continue;
+        }
 
-        // Margin between the two best ARMS at the deepest tier.
+        // Margin between the two best COMPLETE arms at the deepest tier
+        // (Stopped arms carry partial scores — recorded, never aggregated).
+        stopped_arms += deep
+            .moves
+            .iter()
+            .filter(|m| m.completion != chessengine::obs::Completion::Complete)
+            .count() as u64;
         let mut arm_scores: Vec<(i32, u16)> = deep
             .moves
             .iter()
+            .filter(|m| m.completion == chessengine::obs::Completion::Complete)
             .map(|m| (m.returned_score, m.mv))
             .collect();
         arm_scores.sort_by_key(|&(score, _)| std::cmp::Reverse(score));
@@ -102,9 +117,12 @@ fn stability(args: &[String]) -> ExitCode {
     let total = accepted + best_flip + tie;
     println!("stability audit: {path}");
     println!(
-        "  positions: {} ({} skipped: <2 tiers)",
+        "  positions: {} ({} skipped: <2 tiers; {} skipped: incomplete reference; \
+         {} Stopped arms excluded)",
         episodes.len(),
-        too_few_tiers
+        too_few_tiers,
+        incomplete_refs,
+        stopped_arms
     );
     if total > 0 {
         println!(
@@ -157,6 +175,11 @@ fn disagree(args: &[String]) -> ExitCode {
         let (Some(da), Some(db)) = (ea.records.last(), eb.records.last()) else {
             continue;
         };
+        if da.search.completion != chessengine::obs::Completion::Complete
+            || db.search.completion != chessengine::obs::Completion::Complete
+        {
+            continue;
+        }
         pairs += 1;
         if da.search.best_move == db.search.best_move {
             best_agree += 1;
@@ -209,33 +232,48 @@ fn quantiles(sample: &mut [i32]) -> String {
     sample.sort_unstable();
     let at = |p: usize| sample[(sample.len() - 1) * p / 100];
     format!(
-        "p25 {} / p50 {} / p75 {} / p95 {}",
+        "p25 {} / p50 {} / p75 {} / p95 {} (n={})",
         at(25),
         at(50),
         at(75),
-        at(95)
+        at(95),
+        sample.len()
     )
 }
 
 /// Kendall tau between two engines' arm scores over the same move set.
+/// Tau-b (tie-aware): ties are everywhere at low node budgets, and the
+/// tau-a denominator would bias |tau| toward 0 exactly there (D33 round 1).
 fn kendall_tau(
     a: &[chessengine::obs::PerMoveObservation],
     b: &[chessengine::obs::PerMoveObservation],
 ) -> f64 {
-    let scores_b: std::collections::HashMap<u16, i32> =
-        b.iter().map(|m| (m.mv, m.returned_score)).collect();
+    use chessengine::obs::Completion;
+    let scores_b: std::collections::HashMap<u16, i32> = b
+        .iter()
+        .filter(|m| m.completion == Completion::Complete)
+        .map(|m| (m.mv, m.returned_score))
+        .collect();
     let rows: Vec<(i32, i32)> = a
         .iter()
+        .filter(|m| m.completion == Completion::Complete)
         .filter_map(|m| scores_b.get(&m.mv).map(|&sb| (m.returned_score, sb)))
         .collect();
     if rows.len() < 2 {
         return 1.0;
     }
     let (mut concordant, mut discordant) = (0i64, 0i64);
+    let (mut ties_a, mut ties_b) = (0i64, 0i64);
     for i in 0..rows.len() {
         for j in (i + 1)..rows.len() {
             let da = rows[i].0 - rows[j].0;
             let db = rows[i].1 - rows[j].1;
+            if da == 0 {
+                ties_a += 1;
+            }
+            if db == 0 {
+                ties_b += 1;
+            }
             match (da.signum() * db.signum()).signum() {
                 1 => concordant += 1,
                 -1 => discordant += 1,
@@ -244,7 +282,12 @@ fn kendall_tau(
         }
     }
     let n = rows.len() as i64;
-    (concordant - discordant) as f64 / (n * (n - 1) / 2) as f64
+    let n0 = n * (n - 1) / 2;
+    let denominator = (((n0 - ties_a) as f64) * ((n0 - ties_b) as f64)).sqrt();
+    if denominator == 0.0 {
+        return 0.0; // one side fully tied: correlation undefined, report 0
+    }
+    (concordant - discordant) as f64 / denominator
 }
 
 fn verify(paths: &[String]) -> ExitCode {
@@ -341,11 +384,13 @@ fn verify_episode(
 /// truth (recomputed key), not just self-consistent bytes.
 fn checked_board(position: &PositionState) -> Result<Board, String> {
     let board = board_from_position(position)?;
-    if board.key() != position.canonical_key {
+    // raw_key: the unfolded placement+stm+castling+ep identity (the folded
+    // board.key() would agree with a mis-keyed writer — D33 round 1, HIGH).
+    if board.raw_key() != position.canonical_key {
         return Err(format!(
             "stored canonical_key {:#018x} != recomputed {:#018x}",
             position.canonical_key,
-            board.key()
+            board.raw_key()
         ));
     }
     Ok(board)
@@ -354,22 +399,12 @@ fn checked_board(position: &PositionState) -> Result<Board, String> {
 /// Replay the record's path from the episode root, requiring every step to
 /// be legal and the destination to be the stored position.
 fn verify_record(root: &Board, record: &chessengine::obs::Observation) -> Result<(), String> {
-    let mut board = root.clone();
-    for (ply, &raw) in record.position.path_from_episode_root.iter().enumerate() {
-        let mv = Move::from_raw16(raw);
-        let mut legal = MoveList::new();
-        generate_legal(&board, &mut legal);
-        if !legal.contains(&mv) {
-            return Err(format!("path ply {ply}: move {raw:#06x} is not legal here"));
-        }
-        let gives_check = board.gives_check(mv);
-        board.make_move(mv, gives_check);
-    }
+    let board = replay_path(root, &record.position.path_from_episode_root)?;
     let stored = &record.position;
-    if board.key() != stored.canonical_key {
+    if board.raw_key() != stored.canonical_key {
         return Err(format!(
             "replayed key {:#018x} != stored canonical_key {:#018x}",
-            board.key(),
+            board.raw_key(),
             stored.canonical_key
         ));
     }
@@ -444,4 +479,55 @@ fn dump(args: &[String]) -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chessengine::obs::{Completion, PerMoveObservation};
+
+    fn arm(mv: u16, score: i32, completion: Completion) -> PerMoveObservation {
+        PerMoveObservation {
+            mv,
+            returned_score: score,
+            completion,
+            ..Default::default()
+        }
+    }
+
+    /// Tau-b with heavy ties must not deflate toward zero (D33 round 1: the
+    /// tau-a denominator counted tied pairs against agreement), and Stopped
+    /// arms must be excluded from the statistic entirely.
+    #[test]
+    fn kendall_is_tie_aware_and_skips_stopped_arms() {
+        // Perfect agreement on the comparable pairs, with one tied pair on
+        // each side: tau-b must be exactly 1.0 (tau-a would report 5/6).
+        let a = vec![
+            arm(1, 100, Completion::Complete),
+            arm(2, 50, Completion::Complete),
+            arm(3, 50, Completion::Complete),
+            arm(4, 10, Completion::Complete),
+        ];
+        let b = vec![
+            arm(1, 90, Completion::Complete),
+            arm(2, 40, Completion::Complete),
+            arm(3, 40, Completion::Complete),
+            arm(4, 5, Completion::Complete),
+        ];
+        assert!((kendall_tau(&a, &b) - 1.0).abs() < 1e-12);
+
+        // A Stopped arm with a garbage score must not perturb the result.
+        let mut poisoned = a.clone();
+        poisoned.push(arm(5, -30_000, Completion::Stopped));
+        let mut b_with = b.clone();
+        b_with.push(arm(5, 25_000, Completion::Stopped));
+        assert!((kendall_tau(&poisoned, &b_with) - 1.0).abs() < 1e-12);
+
+        // Fully tied on one side: undefined, reported as 0.
+        let flat = vec![
+            arm(1, 7, Completion::Complete),
+            arm(2, 7, Completion::Complete),
+        ];
+        assert_eq!(kendall_tau(&flat, &b[..2]), 0.0);
+    }
 }

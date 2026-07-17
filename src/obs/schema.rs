@@ -192,6 +192,22 @@ impl Provenance {
         if !saw_generator {
             return Err(missing("Provenance.generator_version"));
         }
+        // The full §3.4 mandatory set: a record without provenance is
+        // unwritable, and "provenance" means the WHOLE block (D33 round 1).
+        // rng_seed/engine_bench_sig legitimately carry 0 (external-engine
+        // sentinel), so only the string fields are enforced.
+        if p.search_config.is_empty() {
+            return Err(missing("Provenance.search_config"));
+        }
+        if p.dataset_source.is_empty() {
+            return Err(missing("Provenance.dataset_source"));
+        }
+        if p.opening_source.is_empty() {
+            return Err(missing("Provenance.opening_source"));
+        }
+        if p.hardware_identity.is_empty() {
+            return Err(missing("Provenance.hardware_identity"));
+        }
         Ok(p)
     }
 }
@@ -417,6 +433,10 @@ pub struct SearchObservations {
     pub nodes: u64,                    // 5
     pub seldepth: i32,                 // 6
     pub id_snapshots: Vec<IdSnapshot>, // 7
+    /// 8 — appended 2026-07-17 (D33 round 1): a timed-out/partial REFERENCE
+    /// search must never read as a complete Exact label (§5.4/§11.1 demand
+    /// completion status on every label, not only per-move rows).
+    pub completion: Completion, // 8
 }
 
 impl SearchObservations {
@@ -432,6 +452,7 @@ impl SearchObservations {
             snapshot.encode(&mut nested);
             out.bytes(7, nested.as_bytes());
         }
+        out.uint(8, u64::from(self.completion.to_u8()));
     }
 
     fn decode(bytes: &[u8]) -> io::Result<Self> {
@@ -452,6 +473,7 @@ impl SearchObservations {
                 5 => s.nodes = value.as_uint()?,
                 6 => s.seldepth = value.as_sint()? as i32,
                 7 => s.id_snapshots.push(IdSnapshot::decode(value.as_bytes()?)?),
+                8 => s.completion = Completion::from_u8(value.as_uint()? as u8),
                 _ => {}
             }
         }
@@ -723,14 +745,21 @@ impl ShardHeader {
 
     pub(super) fn decode(bytes: &[u8]) -> io::Result<Self> {
         let mut h = ShardHeader::default();
+        let mut saw_version = false;
         let mut reader = FieldReader::new(bytes);
         while let Some((tag, value)) = reader.next()? {
             match tag {
-                2 => h.format_version = value.as_uint()? as u16,
+                2 => {
+                    h.format_version = value.as_uint()? as u16;
+                    saw_version = true;
+                }
                 3 => h.created_unix = value.as_uint()?,
                 4 => h.provenance.push(Provenance::decode(value.as_bytes()?)?),
                 _ => {}
             }
+        }
+        if !saw_version {
+            return Err(missing("ShardHeader.format_version"));
         }
         if h.provenance.is_empty() {
             return Err(missing(

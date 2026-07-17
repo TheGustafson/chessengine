@@ -90,6 +90,7 @@ mod tests {
                 bound: Bound::Exact,
                 nodes: 4_812,
                 seldepth: 14,
+                completion: Completion::Stopped,
                 id_snapshots: vec![IdSnapshot {
                     depth: 8,
                     score: 19,
@@ -114,7 +115,7 @@ mod tests {
                 researched: true,
                 pruned_by: Prune::None,
                 evidence: EvidenceKind::Intervention,
-                baseline_reduction: 1,
+                baseline_reduction: -1,
                 requested_reduction: 2,
                 actual_scout_depth: 6,
                 policy_tier: PolicyTier::Cheap,
@@ -232,6 +233,70 @@ mod tests {
         std::fs::remove_file(&path).ok();
     }
 
+    /// A corrupted length prefix must surface as InvalidData — never an
+    /// allocation abort (D33 round 1: reproduced pre-fix with a crafted
+    /// shard claiming a 2^50-byte message).
+    #[test]
+    fn absurd_message_length_is_a_clean_error() {
+        let path = temp_path("hugelen");
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&OBS_MAGIC);
+        // varint length claiming 2^50 bytes, then nothing.
+        let mut huge = Vec::new();
+        crate::obs::wire::write_varint(&mut huge, 1u64 << 50).unwrap();
+        bytes.extend_from_slice(&huge);
+        std::fs::write(&path, &bytes).unwrap();
+        let error = match ShardReader::open(&path) {
+            Err(error) => error,
+            Ok(_) => panic!("absurd length must not open"),
+        };
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// The FULL §3.4 provenance set is enforced, not just two fields: a
+    /// provenance block missing search_config/dataset_source/opening_source/
+    /// hardware_identity must not decode (D33 round 1).
+    #[test]
+    fn partial_provenance_is_rejected() {
+        let mut sparse = full_provenance();
+        sparse.hardware_identity = String::new();
+        let header = ShardHeader {
+            format_version: OBS_FORMAT_VERSION,
+            created_unix: 0,
+            provenance: vec![sparse],
+        };
+        let path = temp_path("sparseprov");
+        let writer = ShardWriter::create(&path, &header).unwrap();
+        writer.finish().unwrap();
+        assert!(ShardReader::open(&path).is_err());
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// A header whose format_version field was dropped must not silently
+    /// read as v0 (D33 round 1).
+    #[test]
+    fn missing_format_version_is_rejected() {
+        let mut message = FieldWriter::new();
+        message.uint(3, 0); // created_unix only
+        let mut prov = FieldWriter::new();
+        full_provenance_encode_into(&mut prov);
+        message.bytes(4, prov.as_bytes());
+        assert!(ShardHeader::decode(message.as_bytes()).is_err());
+    }
+
+    fn full_provenance_encode_into(out: &mut FieldWriter) {
+        // Encode the full fixture provenance by writing a real shard header
+        // through the public path and re-borrowing its block would be
+        // circular; hand-encode the minimal complete set instead.
+        out.string(1, "engine");
+        out.string(5, "config");
+        out.string(7, "generator");
+        out.string(9, "source");
+        out.string(10, "book");
+        out.string(11, "hw");
+    }
+
     /// Crash-truncation surfaces as an error on the partial episode, with
     /// every earlier episode still readable.
     #[test]
@@ -269,7 +334,6 @@ mod cli_fixture {
     //! then `cargo run --features datagen --bin obs-tool -- verify <path>`.
     use super::*;
     use crate::board::Board;
-    use crate::moves::Move;
     use crate::obs::convert::position_from_board;
     use crate::types::Square;
 
@@ -295,7 +359,15 @@ mod cli_fixture {
         }];
         let mut path_moves = Vec::new();
         for (from, to) in [(Square::E2, Square::E4), (Square::E7, Square::E5)] {
-            let mv = Move::normal(from, to);
+            // ALWAYS store the canonical legal move's raw16 — a
+            // reconstructed Move::normal() lacks the kind bits for
+            // castling/ep/promotion and would fail replay (D33 round 1).
+            let mut legal = crate::moves::MoveList::new();
+            crate::movegen::generate_legal(&board, &mut legal);
+            let mv = *legal
+                .iter()
+                .find(|m| m.from() == from && m.to() == to)
+                .expect("fixture move is legal");
             path_moves.push(mv.raw16());
             let gives_check = board.gives_check(mv);
             board.make_move(mv, gives_check);
