@@ -642,3 +642,16 @@ strength. Two constraints in permanent tension, resolved in this order:
   until the D41-era D40 line clears an equal-time gate; (3) the SPSA
   season (D45) proceeds unchanged — its 8 decisions transfer (search
   params are eval-agnostic to first order, re-checked at the D40 switch).
+
+  Addendum (2026-07-17, same day): the "packing tail" was diagnosed as NOT
+  a packing defect (docs/research/d40-packing-tail-2026-07-17.md): no
+  tensor value overflows its quant range in any D40 net; the runtime
+  parity error is the engine's integer forward vs bullet's float forward
+  on identical weights, dominated by the pairwise FT shift floor — a thin
+  OOD tail with clean mean/p99. The parity gate is recalibrated to bound
+  the distribution (mean <= 0.03, p99 <= 0.10) with a coarse max <= 0.30
+  backstop for real transform bugs (sf-100's genuine failure was BROAD:
+  mean 0.355). d40-uho-720sb passes the recalibrated gate and goes to
+  equal-time strength testing. Optional future work: a rounding FT shift
+  in sota_simd (R1 of the note) would shrink the divergence at its source
+  but changes sota eval semantics — own verify + h2h when scheduled.

@@ -1195,6 +1195,27 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 08:20 [FINDING] The D40 "packing tail" was never packing — parity gate recalibrated; 720sb admitted to gating
+
+Full note: docs/research/d40-packing-tail-2026-07-17.md (+ reusable
+tools/nnue/audit_d40_quant_clip.py). Headlines: ZERO quant overflow in any
+D40 tensor (bullet errors rather than saturates, and AdamW clips at ±1.98
+— clipping was structurally impossible); the passing 240sb net actually
+has LARGER threat weights than the failing 720sb; the runtime parity
+error is integer-vs-float arithmetic divergence (the (l*r)>>FT_SHIFT
+floor), a thin OOD-endgame tail on a clean distribution (720sb: mean
+0.0121, p99 0.0635, max 0.2517). Gate recalibrated (train_run.py): mean
+<= 0.03 AND p99 <= 0.10, max backstop 0.30 (sf-100's true transform bug
+was mean 0.355 broad — still caught instantly). Network_scale rebalance
+proven impotent (identical max at scale 400 vs 800); no repack can help
+by construction, so no -rs1 net exists and the ledgered 720sb sha is
+unchanged. CONSEQUENCE: d40-uho-720sb (+30.2±17.1 per node over 240sb,
+exp-0072) is now a legitimate gate candidate — queued for tonight's
+quiet-box window: equal-time vs s4 after the c1 TC gate. The two failed
+"parity" hop nets from yesterday deserve re-audit under the new bars too.
+Optional engine-side improvement (R1 of the note): rounding FT shift —
+deferred, changes sota semantics mid-SPSA.
+
 ## 2026-07-17 08:00 [PROGRAM] D45: SPSA gainer season begins — 8 decisions, then the D41 shift
 
 USER DIRECTIVE (07:10): "transition into a full SPSA auto research loop.

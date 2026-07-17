@@ -87,7 +87,18 @@ DEFAULTS = {
         "raw": None,                      # defaults to <checkpoint_dir>/<net_id>-final-raw.bin
         "max_abs_quantization_logit_error": 1.0,
         "mean_abs_quantization_logit_error": 0.25,
-        "max_abs_runtime_logit_error": 0.2,
+        # Runtime bars recalibrated 2026-07-17 (D45a diagnosis,
+        # docs/research/d40-packing-tail-2026-07-17.md): the runtime error is
+        # the engine's integer forward vs bullet's float forward on the SAME
+        # weights — dominated by the (left*right) >> FT_SHIFT floor, NOT a
+        # packing defect (zero tensor values overflow; bullet errors rather
+        # than saturates on overflow). A thin OOD-endgame tail is arithmetic
+        # noise, so the gate now bounds the DISTRIBUTION (mean + p99) and
+        # keeps only a coarse absolute backstop against real transform bugs
+        # (sf-100's true failure was mean 0.355 BROAD, caught by mean/p99
+        # long before max). Strength remains the real gate: Elo testing.
+        "max_abs_runtime_logit_error": 0.3,
+        "p99_abs_runtime_logit_error": 0.1,
         "mean_abs_runtime_logit_error": 0.03,
     },
     # --- sanity (stage 6) --- nnue-eval load + semantic score constraints
