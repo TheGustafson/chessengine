@@ -1195,6 +1195,21 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 11:00 [DECISION 2/8] SPSA c2 (LMR/reduction bundle): NO-CHANGE — and the harness goes on trial
+
+exp-0076. Second consecutive perfect null: all 15 reduction params within
+0.25% of defaults after 8,000 games (the bundle the SF14->16 study ranked
+as the biggest single gainer pool). Two readings, now formally split:
+(a) the SF-derived constants really are at a local optimum for our engine
+at this eval; (b) the harness cannot resolve gradients at this budget
+(8k games, r_end=0.002 — fishtest uses that r with 25-100x more games).
+The DETUNED-START POSITIVE CONTROL launched 10:57 decides it: RED_BASE
+starts at 1541 (1.5x default — a deliberate ~+50% reduction offset, a
+known material detune) with --r-end 0.01, 200 iters. If theta walks back
+toward 1027, the harness works and the nulls stand (and r_end 0.01
+becomes the season default); if it sits still, decisions 3-8 are FROZEN
+until the sensitivity problem is diagnosed. c3 waits for this verdict.
+
 ## 2026-07-17 09:20 [DECISION 1/8] SPSA c1 (corrhist weights): NO-CHANGE — the S1 constants survive
 
 exp-0075. 800 iterations x 10 games @20k nodes (8,000 games) perturbing
