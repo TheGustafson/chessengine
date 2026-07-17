@@ -110,6 +110,13 @@ def main() -> None:
     ap.add_argument("--nodes", type=int, default=20000)
     ap.add_argument("--concurrency", type=int, default=10)
     ap.add_argument("--seed", type=int, default=20260717)
+    ap.add_argument("--override", action="append", default=[],
+                    metavar="NAME=VALUE",
+                    help="start theta override (repeatable) — for detuned-"
+                         "start positive controls of the harness itself")
+    ap.add_argument("--r-end", type=float, default=None,
+                    help="override every param's r_end (default from config "
+                         "or 0.002; larger = coarser but more decisive steps)")
     args = ap.parse_args()
 
     config = json.loads(args.config.read_text())
@@ -117,8 +124,22 @@ def main() -> None:
     for p in params:
         p.setdefault("c_end", (p["max"] - p["min"]) / 20.0)
         p.setdefault("r_end", 0.002)
+        if args.r_end is not None:
+            p["r_end"] = args.r_end
 
     theta = preflight(args.engine, params)
+    for spec in args.override:
+        name, _, raw = spec.partition("=")
+        if name not in theta:
+            sys.exit(f"--override: '{name}' is not in this campaign")
+        value = float(raw)
+        matching = next(p for p in params if p["name"] == name)
+        if not (matching["min"] <= value <= matching["max"]):
+            sys.exit(f"--override: {name}={value} outside "
+                     f"[{matching['min']}, {matching['max']}]")
+        theta[name] = value
+        print(f"[spsa {config['name']}] start override: {name} = {value}",
+              flush=True)
     start = dict(theta)
     args.out.mkdir(parents=True, exist_ok=True)
     history = (args.out / "history.jsonl").open("a")
