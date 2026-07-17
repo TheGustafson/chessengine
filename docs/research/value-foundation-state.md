@@ -1195,6 +1195,35 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 16:10 [SEASON SUMMARY] D45 SPSA: all 8 decisions minted — tuning phase complete
+
+| # | Bundle | Movement | Screen (1000g, 5k nodes) | Status |
+|---|---|---|---|---|
+| 1 | corrhist weights | none (±0.1%) | — | NO-CHANGE certified (exp-0075) |
+| 2 | LMR/reduction | none (±0.25%) | — | NO-CHANGE certified (exp-0076) |
+| 3 | RFP+razoring | RFP_IMPROVING −34% | +7.3 ± 16.8, LLR .31 | PENDING TC gate |
+| 4 | NMP | EVAL_BASE +36%, EVAL_DEPTH 14→12 | +9.7 ± 17.0, LLR .63 | PENDING TC gate |
+| 5 | futility+SEE | 5 movers, all more aggressive | +10.4 ± 16.8, LLR .74 | PENDING TC gate |
+| 6 | gates/counters | all gates −1 step | +12.2 ± 17.1, LLR .95 | PENDING TC gate |
+| 7 | aspiration+eval blend | wider window, gentler widen; eval FLAT | +7.3 ± 17.8, LLR .28 | PENDING TC gate |
+| 8 | history magnitudes | softer maluses | **−11.1 ± 17.0, LLR −2.15** | REJECTED (exp-0085) |
+
+Meta-findings that outlast the season: (a) the landscape is a high
+plateau — a +50% detune of the base LMR reduction costs only −8 ± 13
+(exp-0078), so re-search machinery absorbs mistuning and micro-Elo
+mining is fishtest-scale work; (b) SF-derived constants transfer
+wholesale (corrhist, reductions, optimism all flat at our resolution);
+(c) the one consistent live gradient is MORE PRUNING AGGRESSION —
+margins and gates in c3–c6 all pushed the same direction with
+positive screen leans. Tonight's TC gates + the combined-config SPRT
+decide what ships; per the user's directive the program then SHIFTS to
+D41: big-v1 corpus → export-train (bridge a831f3b) → first D40-trunk
+allocation-head training per design/19.
+
+30-hour tally on the shipped model since the last SF16 anchor: S1
+correction history +72.9 ± 16.2 banked; SPSA bundles pending tonight;
+anchor REMATCH queued after the gates.
+
 ## 2026-07-17 15:45 [RESULT] Study exp #1 probe: the final checkpoint wins — intra-run harvesting adds nothing
 
 Ledger row filed. sb210 is -15.1 ± 17.1 and sb180 -53.7 ± 16.8 against
