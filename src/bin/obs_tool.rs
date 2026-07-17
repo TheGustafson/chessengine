@@ -1291,6 +1291,27 @@ fn verify_episode(
         problems += 1;
     }
 
+    // In-search capture (design/16 §3.5.5): each record carries FULL position
+    // identity (`canonical_key = raw_key`) with an EMPTY path — there is no
+    // shared replay root to reconstruct/replay from. Verify each record's
+    // position in isolation (reconstruct through FEN validation, recompute the
+    // key) instead of the RootMoveAnalysis replay-root + path-replay path.
+    if episode.kind == EpisodeKind::InSearchCapture {
+        for (index, record) in episode.records.iter().enumerate() {
+            if !record.position.path_from_episode_root.is_empty() {
+                fail(format!(
+                    "episode {id} record {index}: InSearchCapture must carry an empty path"
+                ));
+                problems += 1;
+            }
+            if let Err(error) = checked_board(&record.position) {
+                fail(format!("episode {id} record {index}: {error}"));
+                problems += 1;
+            }
+        }
+        return problems;
+    }
+
     let root = match checked_board(&episode.replay_root) {
         Ok(board) => board,
         Err(error) => {

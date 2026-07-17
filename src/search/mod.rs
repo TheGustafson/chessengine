@@ -178,6 +178,19 @@ pub fn value_draw(nodes: u64) -> Value {
     VALUE_DRAW - 1 + (nodes & 0x2) as Value
 }
 
+/// Map the search/TT bound to the Observation-Store bound (design/16 §3.5.5).
+/// The two enums disagree on discriminants; `tt::Bound::None` (only seen when
+/// `!tt_hit`, where the field is not meaningful) maps to the store's default.
+#[cfg(feature = "datagen")]
+fn obs_bound_from_tt(bound: Bound) -> crate::obs::Bound {
+    match bound {
+        Bound::Lower => crate::obs::Bound::Lower,
+        Bound::Upper => crate::obs::Bound::Upper,
+        Bound::Exact => crate::obs::Bound::Exact,
+        Bound::None => crate::obs::Bound::Exact,
+    }
+}
+
 /// The reverse-futility margin (design/10 §3.4, node step N10): the
 /// static-eval headroom over beta a non-PV node must clear to prune. The
 /// per-ply multiplier `min(RFP_MULT_BASE + RFP_MULT_SLOPE·depth,
@@ -877,6 +890,14 @@ pub struct Worker {
     #[cfg(feature = "search-control")]
     lmr_intervention: Option<crate::search_intervention::LmrIntervention>,
 
+    /// In-search observation capture (design/16 §3.5.5, D45a): the per-`Worker`
+    /// buffer + shard writer. `None` unless `ObsCapturePath` is set on the main
+    /// worker at `Threads == 1`. Observation-only — the sample gate is a pure
+    /// function of the position key, so capture never perturbs search. Compiled
+    /// out of the default build (bench neutrality, §6).
+    #[cfg(feature = "datagen")]
+    obs_recorder: Option<Box<crate::obs::recorder::ObsRecorder>>,
+
     /// Per-attempt aspiration trace (§8 criterion 7) — test builds only,
     /// cleared per `go`, appended by [`Worker::aspiration_search`].
     #[cfg(test)]
@@ -946,6 +967,8 @@ impl Worker {
             search_trace: None,
             #[cfg(feature = "search-control")]
             lmr_intervention: None,
+            #[cfg(feature = "datagen")]
+            obs_recorder: None,
             #[cfg(test)]
             asp_trace: Vec::new(),
         }
@@ -1010,6 +1033,16 @@ impl Worker {
         if let Some(m) = &mut self.manager {
             m.persist = TimePersist::default();
         }
+        // In-search capture (design/16 §3.5.5): `ucinewgame` is the game
+        // boundary — flush the buffered episode, if any, before the histories
+        // reset begins the next game. Best-effort; an I/O error must not crash
+        // the engine (§3.3).
+        #[cfg(feature = "datagen")]
+        if let Some(rec) = self.obs_recorder.as_mut()
+            && let Err(error) = rec.flush_game()
+        {
+            eprintln!("ARCHON obs capture: game flush failed: {error}");
+        }
     }
 
     /// A `Search` job entry (design/13 §3.4): the main worker orchestrates
@@ -1020,6 +1053,10 @@ impl Worker {
         // search boundary, before iterative deepening refreshes the root
         // accumulator. `None` ⇒ PSQT (default; bench-neutral).
         self.refresh_eval_net();
+        #[cfg(feature = "datagen")]
+        if self.is_main() {
+            self.obs_capture_setup();
+        }
         #[cfg(feature = "search-control")]
         {
             self.search_trace = if self.is_main() {
@@ -1079,6 +1116,97 @@ impl Worker {
         #[cfg(feature = "sota")]
         self.eval_ctx
             .set_protected_halfka_net(crate::eval::nnue::active_protected_halfka_net());
+    }
+
+    /// Lazily create the in-search observation recorder (design/16 §3.5.5) when
+    /// `ObsCapturePath` is set. Runs once per `go` on the main worker; the
+    /// recorder persists across the game's `go`s (idempotent — a second call
+    /// with a recorder already open is a no-op). Refuses (with an `info string`)
+    /// when `Threads != 1`, keeping single-threaded capture determinism. Silent
+    /// on success so fastchess sees no unexpected between-game stdout.
+    #[cfg(feature = "datagen")]
+    fn obs_capture_setup(&mut self) {
+        let path = self.options.obs_capture_path();
+        if path.is_empty() || self.obs_recorder.is_some() {
+            return; // capture off, or already open
+        }
+        if self.options.threads() != 1 {
+            if let Some(out) = &self.output {
+                out.emit_raw(&format!(
+                    "info string ObsCapture: requires Threads==1 (have {}); capture disabled",
+                    self.options.threads()
+                ));
+            }
+            return;
+        }
+        let eval_file = self.options.eval_file();
+        let net_version = (!eval_file.is_empty()).then(|| eval_file.to_string());
+        let search_config = format!(
+            "Threads=1 Hash={} EvalFile={} obs[min_depth={} sample_bits={} per_game_cap={}]",
+            self.options.hash_mb(),
+            if eval_file.is_empty() {
+                "<none>"
+            } else {
+                eval_file
+            },
+            self.options.obs_capture_min_depth(),
+            self.options.obs_capture_sample_bits(),
+            self.options.obs_capture_per_game_cap(),
+        );
+        let config = crate::obs::recorder::ObsRecorderConfig {
+            path: std::path::PathBuf::from(path),
+            min_depth: self
+                .options
+                .obs_capture_min_depth()
+                .clamp(0, MAX_PLY as i64) as Depth,
+            sample_bits: self.options.obs_capture_sample_bits().clamp(0, 63) as u32,
+            per_game_cap: self.options.obs_capture_per_game_cap().max(0) as usize,
+            engine_version: format!(
+                "ARCHON {} (in-search-capture v0)",
+                env!("CARGO_PKG_VERSION")
+            ),
+            search_config,
+            net_version,
+            hardware_identity: crate::obs::recorder::hardware_identity(),
+        };
+        match crate::obs::recorder::ObsRecorder::enable(config) {
+            Ok(recorder) => self.obs_recorder = Some(Box::new(recorder)),
+            Err(error) => {
+                if let Some(out) = &self.output {
+                    out.emit_raw(&format!("info string ObsCapture: disabled ({error})"));
+                }
+            }
+        }
+    }
+
+    /// Node-entry gate for in-search capture (design/16 §3.5.5). Returns `Some`
+    /// only when the recorder is open, the node is deep enough, and its position
+    /// key passes the deterministic sample gate with buffer room. When capture
+    /// is DISABLED (`obs_recorder` is `None`) this is one predictable, always-not
+    /// -taken branch per node — the `?` short-circuit — and reads nothing else.
+    #[cfg(feature = "datagen")]
+    #[inline]
+    fn obs_begin_node(
+        &mut self,
+        depth: Depth,
+        alpha: Value,
+        beta: Value,
+    ) -> Option<crate::obs::recorder::ObsNodeCapture> {
+        let recorder = self.obs_recorder.as_mut()?;
+        if depth < recorder.min_depth() {
+            return None;
+        }
+        let sample_key = self.board.raw_key();
+        if !recorder.sample_hit(sample_key) {
+            return None;
+        }
+        if !recorder.has_room() {
+            recorder.note_dropped();
+            return None;
+        }
+        Some(crate::obs::recorder::ObsNodeCapture::new(
+            self.nodes, depth, alpha, beta,
+        ))
     }
 
     /// Main-worker orchestration (design/13 §3.7): TM init + the single TT
@@ -2508,6 +2636,16 @@ impl Worker {
         let mut n_quiets = 0usize;
         let mut n_captures = 0usize;
 
+        // In-search observation capture (design/16 §3.5.5): decide ONCE, at the
+        // node's move-loop entry, whether this node is captured. The window
+        // (`alpha`/`beta`) and `depth` are snapshotted here because both mutate
+        // during the loop (alpha via move updates, depth via singular
+        // extension), and the recorded context is the entry state. `None` (the
+        // common case) is a single predictable branch; capture is observation-
+        // only and never changes any search decision below.
+        #[cfg(feature = "datagen")]
+        let mut obs_node_capture = self.obs_begin_node(depth, alpha, beta);
+
         let mut root_idx = 0;
         loop {
             let m = if NT::ROOT {
@@ -2905,6 +3043,11 @@ impl Worker {
             // first move skips (a)/(b), and (c)'s `move_count == 1` arm
             // never reads the sentinel.
             let mut value = -VALUE_INFINITE;
+            // In-search capture (design/16 §3.5.5): did this move take an LMR
+            // full-depth zero-window re-search? Cheap unconditional local (no
+            // branch); compiled out of the default build.
+            #[cfg(feature = "datagen")]
+            let mut obs_researched = false;
 
             // (a) Reduced zero-window scout — LMR proper (design/10 §3.8). The
             // net reduction `r / RED_UNIT` (1024ths → plies) shrinks
@@ -2982,6 +3125,10 @@ impl Worker {
                             trace_lmr_research = true;
                             trace_research_nodes = self.nodes - trace_nodes_before_research;
                         }
+                        #[cfg(feature = "datagen")]
+                        {
+                            obs_researched = true;
+                        }
                     }
                     self.histories.update_continuation_histories(
                         &self.stack[..],
@@ -3036,6 +3183,27 @@ impl Worker {
                 child_pv_fresh = true;
             }
             self.undo_move(m);
+
+            // In-search capture (design/16 §3.5.5): one Layer-4 row per move
+            // actually searched. `alpha`/`beta` here are still the values this
+            // move was searched against (step 13 raises alpha below). `r` is the
+            // finalized LMR reduction (1024ths); `self.nodes - nodes_before` is
+            // this move's subtree cost. Read-only — no search state touched.
+            #[cfg(feature = "datagen")]
+            if let Some(capture) = obs_node_capture.as_mut() {
+                capture.push_move(crate::obs::recorder::move_row(
+                    m.raw16(),
+                    move_count as u16,
+                    new_depth,
+                    r / params::RED_UNIT(),
+                    extension,
+                    value,
+                    self.nodes - nodes_before,
+                    value > alpha,
+                    value >= beta,
+                    obs_researched,
+                ));
+            }
 
             #[cfg(feature = "search-control")]
             if intervention_applied {
@@ -3382,6 +3550,51 @@ impl Worker {
         {
             self.histories
                 .update_correction_history(&self.board, &self.stack[..], cur, bonus);
+        }
+
+        // In-search capture (design/16 §3.5.5): finish and buffer this node's
+        // record. `self.board` is back at the node position (every move undone),
+        // so Layer 1 is the node itself. A search stopped mid-loop returned at
+        // step 11 above, so a finished node is always `Completion::Complete`.
+        // Node-outcome bound mirrors the TT-store bound exactly. A node that
+        // searched no move (terminal / all-pruned) carries no v0 Layer-4 data
+        // and is skipped.
+        #[cfg(feature = "datagen")]
+        if let Some(capture) = obs_node_capture.take().filter(|c| c.searched_any()) {
+            let obs_bound = if best_value >= beta {
+                crate::obs::Bound::Lower
+            } else if NT::PV && best_move != Move::NULL {
+                crate::obs::Bound::Exact
+            } else {
+                crate::obs::Bound::Upper
+            };
+            let node_type = if NT::ROOT {
+                crate::obs::NodeType::Root
+            } else if NT::PV {
+                crate::obs::NodeType::Pv
+            } else if cut_node {
+                crate::obs::NodeType::Cut
+            } else {
+                crate::obs::NodeType::All
+            };
+            let exit = crate::obs::recorder::NodeExit {
+                best_value,
+                best_move: best_move.raw16(),
+                bound: obs_bound,
+                node_type,
+                static_eval: self.stack[cur].static_eval,
+                ply: ply as u16,
+                tt_hit,
+                tt_depth: tt_data.depth,
+                tt_bound: obs_bound_from_tt(tt_data.bound),
+                tt_value: if tt_hit { tt_value } else { 0 },
+                tt_move: tt_data.mv.raw16(),
+                correction_value,
+                node_budget: self.limits.nodes,
+            };
+            if let Some(recorder) = self.obs_recorder.as_mut() {
+                crate::obs::recorder::finish_node(&self.board, self.nodes, recorder, capture, exit);
+            }
         }
 
         debug_assert!(best_value > -VALUE_INFINITE && best_value < VALUE_INFINITE);

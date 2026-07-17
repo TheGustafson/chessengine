@@ -43,6 +43,15 @@ impl ShardWriter {
         self.out.write_all(&bytes)
     }
 
+    /// Push the `BufWriter`'s buffer to the OS without consuming the writer, so
+    /// a long-lived writer (the in-search recorder appends one episode per
+    /// game across a whole match) makes each flushed episode crash-durable
+    /// rather than holding it until `finish`. Whole episodes only ever land at
+    /// a message boundary (§3.5.2), so a flush here never splits one.
+    pub fn flush(&mut self) -> io::Result<()> {
+        self.out.flush()
+    }
+
     pub fn finish(mut self) -> io::Result<()> {
         self.out.flush()
     }

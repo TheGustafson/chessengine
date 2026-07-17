@@ -63,6 +63,12 @@ obs_enum!(
         RootMoveAnalysis = 2,
         Counterfactual = 3,
         Adversarial = 4,
+        // In-search observation capture (design/16 §3.5.5, D45a): interior
+        // main-search nodes sampled live during real games — the concrete
+        // engine-embedded realization of the `InternalSearch` mode, kept as a
+        // distinct discriminant so game-embedded capture is provenance-separable
+        // from a future offline `InternalSearch` generator.
+        InSearchCapture = 5,
     }
 );
 
@@ -667,6 +673,10 @@ pub struct Episode {
     pub replay_root: PositionState,     // 7
     pub root_reversible_keys: Vec<u64>, // 8
     pub event_hash_chain: Vec<u64>,     // 9
+    /// 10 — appended 2026-07-17 (design/16 §3.5.5, D45a): sampled records the
+    /// per-game `ObsCapturePerGameCap` bound refused (no silent loss). Encoded
+    /// only when non-zero, so every pre-existing episode is byte-unchanged.
+    pub dropped_records: u64, // 10
 }
 
 impl Episode {
@@ -690,6 +700,9 @@ impl Episode {
         out.bytes(7, nested.as_bytes());
         out.packed_uints(8, self.root_reversible_keys.iter().copied());
         out.packed_uints(9, self.event_hash_chain.iter().copied());
+        if self.dropped_records != 0 {
+            out.uint(10, self.dropped_records);
+        }
     }
 
     pub(super) fn decode(bytes: &[u8]) -> io::Result<Self> {
@@ -710,6 +723,7 @@ impl Episode {
                 7 => e.replay_root = PositionState::decode(value.as_bytes()?)?,
                 8 => e.root_reversible_keys = value.as_packed_uints()?,
                 9 => e.event_hash_chain = value.as_packed_uints()?,
+                10 => e.dropped_records = value.as_uint()?,
                 _ => {}
             }
         }
