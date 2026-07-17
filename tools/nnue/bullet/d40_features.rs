@@ -758,6 +758,19 @@ fn main() {
                 let path = format!("{save_out}/{save_id}-sb{sb}-quant.bin");
                 std::fs::write(&path, &buf).expect("write D40 checkpoint");
                 println!("  saved {path} ({} bytes)", buf.len());
+                // T5 (2026-07-17): raw f32 at EVERY save point, not only the
+                // end — raw is the faithful resume source (D40_INIT_RAW +
+                // D40_START_SUPERBATCH; quantised init loses precision).
+                // Keep only the newest intermediate raw: they're ~4x the
+                // quant size and only the latest matters for resume.
+                let raw_path = format!("{save_out}/{save_id}-sb{sb}-raw.bin");
+                let mut raw = std::fs::File::create(&raw_path).expect("create sb raw checkpoint");
+                weights.write_into(&mut raw).expect("write sb raw checkpoint");
+                println!("  saved {raw_path} (resume source)");
+                if sb > save_rate {
+                    let prev = format!("{save_out}/{save_id}-sb{}-raw.bin", sb - save_rate);
+                    let _ = std::fs::remove_file(&prev);
+                }
                 if sb == end_superbatch {
                     let raw_path = format!("{save_out}/{save_id}-final-raw.bin");
                     let mut raw = std::fs::File::create(&raw_path).expect("create raw checkpoint");
