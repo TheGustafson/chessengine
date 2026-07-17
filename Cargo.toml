@@ -12,6 +12,11 @@ name = "obs-tool"
 path = "src/bin/obs_tool.rs"
 required-features = ["datagen"]
 
+[[bin]]
+name = "root-analysis"
+path = "src/bin/root_analysis.rs"
+required-features = ["datagen"]
+
 [features]
 # Distribution-only: embed net-0 as the default eval so the engine plays NNUE
 # with no `EvalFile` set (for GUIs that can't set UCI string options). OFF by
