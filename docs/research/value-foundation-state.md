@@ -1195,6 +1195,16 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 12:55 [DECISION 4/8 PENDING] c4 NMP: second real mover — deeper null-move confidence wanted
+
+Ledger row filed. NMP_EVAL_BASE 374 -> 507 (23% of range) and
+NMP_EVAL_DEPTH 14 -> 12: the tuner wants null-move pruning applied more
+readily. Screen at 1000g cap: +9.7 ± 17.0, LLR 0.63 — same shape as c3
+(positive lean, undecided). Pattern so far with r_end=0.2: the margin/
+threshold bundles DO have findable direction, sized ~5-10 Elo — exactly
+the band the TC gates exist to adjudicate. Two pending gates queued
+(c3, c4); c5 futility+SEE running.
+
 ## 2026-07-17 12:20 [DECISION 3/8 PENDING] c3 RFP+razoring: first real theta movement — gate tonight
 
 exp-0079-adjacent (ledger row filed). With r_end=0.2 the harness finally
