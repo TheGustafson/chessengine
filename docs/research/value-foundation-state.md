@@ -1195,6 +1195,19 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 16:30 [RESULT] D41 v1 on big-v1 SF18: the signal SCALES — rank corr 0.604
+
+152 seconds of GPU on the freshly-exported 336k-row SF18 corpus
+(ledgered d41-alloc-v1-sf18): held-out MSE -74.2% vs zero-margin and
+-26.7% vs the best-constant baseline (v0: -70%/-9%), per-position rank
+correlation **0.604** (v0: 0.49), top-1 3.8x random. Ten times the
+positions bought +0.11 rank correlation — the same data-scaling shape
+that decided B4 for value nets. The flywheel thesis (D45a: information-
+dense search data + relational inputs) now has its first quantitative
+support. Next rungs: Reckless twin + combined-teacher run tonight,
+frozen-protected-trunk v1 architecture, then the 100k gold corpus
+(~30x more positions) once the parallel harness runs post-gates.
+
 ## 2026-07-17 16:15 [MILESTONE] D41 trainer v0 smoke: the search-data signal is LEARNABLE
 
 Branch merged (1c8f3ad): tools/nnue/bullet/d41_alloc.rs — the Phase-1
