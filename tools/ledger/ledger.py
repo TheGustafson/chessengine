@@ -309,15 +309,17 @@ def cmd_verify(a) -> None:
                       f"artifact is {size} B (hash matches)")
             else:
                 print(f"  ok       {kind} {r['id']}  {r['hash'][:19]}…")
-    # referential integrity
-    for r in load(NETS):
+    # referential integrity — on MERGED rows (design/18 §5: annotations can
+    # correct a reference, e.g. a train_data backfill typo; the raw row stays
+    # append-only history).
+    for r in load_merged(NETS, "net"):
         if r.get("train_data") and r["train_data"] not in data_ids:
             problems += 1
             print(f"  DANGLING net {r['id']}.train_data -> {r['train_data']}")
         if r.get("parent_net") and r["parent_net"] not in net_ids:
             problems += 1
             print(f"  DANGLING net {r['id']}.parent_net -> {r['parent_net']}")
-    for r in load(EXPS):
+    for r in load_merged(EXPS, "exp"):
         for side in ("A", "B"):
             s = r.get(side) or {}
             if s.get("net") and s["net"] not in net_ids:
