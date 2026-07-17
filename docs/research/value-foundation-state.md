@@ -1195,6 +1195,17 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 12:20 [DECISION 3/8 PENDING] c3 RFP+razoring: first real theta movement — gate tonight
+
+exp-0079-adjacent (ledger row filed). With r_end=0.2 the harness finally
+moves: **RFP_IMPROVING 2934 -> 1947** (22% of range, ~5 sigma above the
+step-noise floor — the improving-trend discount on RFP margins wants to
+be ~34% smaller), RFP_THREAT_MARGIN 55 -> 46, RAZOR_BASE 465 -> 422,
+six smaller drifts. Fixed-node screen at the 1000g cap: +7.3 ± 16.8,
+LLR 0.31 (positive lean, SPRT undecided). Decision 3/8 rides on
+tonight's TC ship gate — night_gates_v1.sh generalized to gate every
+campaign whose theta moved (vacuous thetas self-skip). c4 (NMP) running.
+
 ## 2026-07-17 12:15 [CALIBRATION] The SPSA season's true meaning: the search-param landscape is a high plateau
 
 exp-0078, two measurements: (1) the r_end=0.01 control did NOT walk back
