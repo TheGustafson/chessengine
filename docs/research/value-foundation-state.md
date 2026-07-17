@@ -943,3 +943,23 @@ Findings worth remembering from the landing:
   agents) dispatched post-commit; synthesis + any fixes before game
   testing. check.sh re-run on the shared release dir due ~03:50 when the
   720sb train frees it (side-build bench already bit-reproducible 2x).
+
+## 2026-07-16 23:15 [PROGRESS] Overnight window: S1 screen positive, R2 VNNI landed, distribution builds
+
+- **S1 fixed-node screen (exp-0071): +18.5 +- 17.4** vs pre-S1, same s3 net,
+  300g @5k on UHO — mid-prior (+10-25 family), weak-positive, no red flag.
+  Equal-time SPRT on the quiet box is still the verdict.
+- **R2 landed (d895cf6):** AVX-512 VNNI dispatch tier in sota_simd —
+  bit-exact (per-backend parity sweep), +6.4% D40 NPS measured on the busy
+  box (lower bound; the compare binary lacked S1's per-node cost). Do NOT
+  rebuild engines/bin probes until the night gate completes; then rebuild
+  at HEAD (leak fix + S1 + VNNI together) and get clean R1 NPS numbers.
+- **Distribution:** embed-net now takes ARCHON_EMBED_NET at build time
+  (6725e38 — the old hardcoded net-0 embed would panic on width builds);
+  two self-contained Windows exes (s3/s4 embedded, l1-2048, bench-verified
+  701605) shipped to the user's desktop.
+- S0 progress: UHO book adopted for screens (exp-0068..70); the SF16-late
+  mechanics audit is running as a study agent, output lands in
+  stockfish_reference/07-s0-sf16-mechanics-audit.md.
+- Pending USER decisions: exp-0042 code_sha convention ("unknown"
+  recommended); gitignore config.json.
