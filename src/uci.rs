@@ -1078,6 +1078,16 @@ fn dispatch<W: Write + Send + 'static>(
             for entry in engine.options.iter() {
                 writeln!(out, "{entry}")?;
             }
+            // SPSA tunables (D45): fastchess only forwards `option.X=v` for
+            // options the engine ADVERTISES here — an unadvertised name is
+            // silently dropped and both sides of a perturbation pair play
+            // identical defaults (caught 2026-07-17: 135/135 batches with
+            // exactly mirror-cancelled results). `type string` sidesteps
+            // spin min/max declarations; set_tunable parses and validates.
+            #[cfg(feature = "tune")]
+            for (name, value) in crate::search::params::tunables_list() {
+                writeln!(out, "option name {name} type string default {value}")?;
+            }
             writeln!(out, "uciok")?;
         }
         Some("isready") => writeln!(out.lock(), "readyok")?,
