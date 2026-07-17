@@ -367,6 +367,12 @@ pub fn active_protected_halfka_net() -> Option<&'static protected_halfka::Protec
 /// feature). Loaded and leaked once. The bytes are a build asset validated at
 /// build time, so a load failure is a broken build — not user input — hence the
 /// `expect`. Read once per search (never on the hot path), same as [`active_net`].
+///
+/// The net to embed is chosen at BUILD time: set `ARCHON_EMBED_NET` to a
+/// v1 CENN path relative to the crate root (its width must match the
+/// build's `nnue-l1-*` feature, or the expect fires on first use). The
+/// variable is required whenever `embed-net` is on — an explicit choice
+/// beats a stale hardcoded default now that multiple widths ship.
 #[cfg(feature = "embed-net")]
 fn embedded_net() -> &'static Network {
     use std::sync::OnceLock;
@@ -374,10 +380,14 @@ fn embedded_net() -> &'static Network {
     *EMBEDDED.get_or_init(|| {
         const BYTES: &[u8] = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/data/nnue/nets/net-0.cenn"
+            "/",
+            env!(
+                "ARCHON_EMBED_NET",
+                "embed-net builds require ARCHON_EMBED_NET=<path to .cenn, relative to the crate root>"
+            )
         ));
         Box::leak(Box::new(
-            load_bytes(BYTES).expect("embedded default net is a valid CENN file"),
+            load_bytes(BYTES).expect("embedded net is a valid CENN file of this build's width"),
         )) as &'static Network
     })
 }

@@ -11,7 +11,9 @@ edition = "2024"
 # Distribution-only: embed net-0 as the default eval so the engine plays NNUE
 # with no `EvalFile` set (for GUIs that can't set UCI string options). OFF by
 # default, so runtime [dependencies] stays empty (D15) and the default build is
-# PSQT/bench-neutral (548978). Build a playable binary with `--features embed-net`.
+# PSQT/bench-neutral. Build a playable binary with `--features embed-net` plus
+# ARCHON_EMBED_NET=<.cenn path relative to the crate root> in the build env;
+# the net's width must match the build's nnue-l1-* feature.
 embed-net = []
 # Widen the NNUE hidden layer 256 -> 512 (arch-scale experiment, task #19). OFF
 # by default so the shipped engine + depth-6 bench stay 768x256 and bench-neutral.
