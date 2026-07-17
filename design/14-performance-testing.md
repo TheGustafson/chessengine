@@ -910,6 +910,26 @@ This component is done when all of the following hold:
    *within* a wave; the milestone gate still uses real 10+0.1 (§3.8), so a
    known +X Elo change is re-confirmed timed before the wave is declared.
 
+## 9.6 SPSA gainer season (D45)
+
+The local SPSA harness (`tools/spsa/spsa_tune.py` + one JSON per campaign in
+`tools/spsa/campaigns/`) tunes `params.rs` scalars through a tune-feature
+build (`src/tune.rs`): paired Rademacher perturbations, fishtest-style
+schedules (alpha 0.602, gamma 0.101, A = 0.1T, c_end = range/20,
+r_end = 0.002), fixed-node mini-matches on the UHO book with both sides the
+SHIPPED net (D39). Fixed-node batches are load-immune (T4), so tuning runs
+at high concurrency on a busy box. A campaign's decision protocol:
+
+1. SPSA run (~800 x 10 games at 20k nodes) -> `theta_final.json`;
+2. fixed-node SPRT screen, tuned vs defaults, [0, 10];
+3. equal-time SPRT ship gate on a quiet box — THE decision;
+4. accept: new defaults committed (functional; fresh `Bench:` trailer) +
+   ledger add-exp (kind spsa). Reject: values archived, defaults stay.
+
+Eight campaigns, then the program shifts (D45): corrhist weights,
+LMR/reduction, RFP+razoring, NMP, futility+SEE, LMP+history-pruning,
+aspiration+IIR, history update magnitudes.
+
 ## 10. Multi-agent code-review loop (D33)
 
 Before behavioral/game testing of a substantial batched or one-shot

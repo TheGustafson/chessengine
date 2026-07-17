@@ -1,0 +1,19 @@
+{
+  "name": "c1-corrhist",
+  "comment": "Campaign 1/8 (D45): correction-history read/update weights. S1 landed these at SF-parity values (SF eca43a97) tuned for SF's eval; ARCHON's net-0-lineage eval has different error structure, so these are the freshest untuned pool. Divisors/denominators stay fixed (unit definitions); numerators move.",
+  "params": [
+    {"name": "CORR_PAWN_WEIGHT",            "min": 4000,  "max": 28000},
+    {"name": "CORR_MINOR_WEIGHT",           "min": 3000,  "max": 20000},
+    {"name": "CORR_NONPAWN_WEIGHT",         "min": 4000,  "max": 24000},
+    {"name": "CORR_CONT_WEIGHT",            "min": 2500,  "max": 18000},
+    {"name": "CORR_CONT_NULL_PRIOR",        "min": 20000, "max": 130000},
+    {"name": "CORR_MINOR_UPDATE_NUM",       "min": 64,    "max": 300},
+    {"name": "CORR_NONPAWN_UPDATE_NUM",     "min": 80,    "max": 372},
+    {"name": "CORR_CONT2_UPDATE_NUM",       "min": 60,    "max": 272},
+    {"name": "CORR_CONT4_UPDATE_NUM",       "min": 24,    "max": 140},
+    {"name": "CORR_BONUS_SCALE_NUM",        "min": 512,   "max": 2228},
+    {"name": "CORR_BONUS_CLAMP",            "min": 96,    "max": 512},
+    {"name": "CORR_BONUS_DEPTH_MULT_BESTMOVE", "min": 4,  "max": 24},
+    {"name": "CORR_BONUS_DEPTH_MULT_NOMOVE",   "min": 6,  "max": 36}
+  ]
+}
