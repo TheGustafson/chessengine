@@ -1,0 +1,16 @@
+{
+  "name": "c7-aspiration-hindsight-optimism",
+  "comment": "Campaign 7/8 (D45): aspiration window shape + hindsight depth adjustments + the eval outer-shape blend (optimism was on the SF-study shortlist; eval params joined the tunable surface at cead59a). ASPIRATION_WIDEN_DEN / SEARCH_AGAIN_* / JITTER_PERIOD are structural. TM f64s excluded (fixed-node tuning cannot see them).",
+  "params": [
+    {"name": "ASPIRATION_BASE_DELTA",  "min": 2,     "max": 12},
+    {"name": "ASPIRATION_MSS_DIVISOR", "min": 5000,  "max": 21000},
+    {"name": "ASPIRATION_WIDEN_NUM",   "min": 20,    "max": 90},
+    {"name": "HINDSIGHT_RED_UP",       "min": 2,     "max": 6},
+    {"name": "HINDSIGHT_RED_DOWN",     "min": 1,     "max": 4},
+    {"name": "HINDSIGHT_EVAL_SUM",     "min": 85,    "max": 350},
+    {"name": "MATERIAL_PAWN_WEIGHT",   "min": 260,   "max": 1070},
+    {"name": "EVAL_BLEND_BASE",        "min": 39000, "max": 156000},
+    {"name": "OPTIMISM_BLEND_BASE",    "min": 3500,  "max": 14400},
+    {"name": "RULE50_DAMPING_DEN",     "min": 100,   "max": 400}
+  ]
+}
