@@ -24,11 +24,13 @@ fn main() -> ExitCode {
         Some((cmd, rest)) if cmd == "dump" && !rest.is_empty() => dump(rest),
         Some((cmd, rest)) if cmd == "stability" && !rest.is_empty() => stability(rest),
         Some((cmd, rest)) if cmd == "disagree" && rest.len() == 2 => disagree(rest),
+        Some((cmd, rest)) if cmd == "export" && !rest.is_empty() => export(rest),
         _ => {
             eprintln!("usage: obs-tool verify <shard.ceobs>...");
             eprintln!("       obs-tool dump <shard.ceobs> [episodes]");
             eprintln!("       obs-tool stability <shard.ceobs> [tie-margin-cp (default 20)]");
             eprintln!("       obs-tool disagree <shardA.ceobs> <shardB.ceobs>");
+            eprintln!("       obs-tool export <shard.ceobs>   (per-arm JSONL on stdout)");
             ExitCode::FAILURE
         }
     }
@@ -200,6 +202,66 @@ fn disagree(args: &[String]) -> ExitCode {
         );
         let mean_tau = taus.iter().sum::<f64>() / taus.len() as f64;
         println!("  arm-ranking Kendall tau: mean {mean_tau:.3}");
+    }
+    ExitCode::SUCCESS
+}
+
+/// Flat per-arm JSONL for the Derived layer (design/16 §3.6): one line per
+/// (position, tier, legal move) through the store's OWN decoder — python
+/// tooling consumes this instead of growing a second TLV implementation.
+/// Escaping is trivial by construction: every emitted string is a FEN, a
+/// UCI move, or an enum name (no quotes/backslashes possible).
+fn export(args: &[String]) -> ExitCode {
+    use chessengine::moves::Move;
+    let episodes = match load_root_episodes(&args[0]) {
+        Ok(episodes) => episodes,
+        Err(error) => {
+            eprintln!("obs-tool: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::new(stdout.lock());
+    use std::io::Write;
+    for episode in &episodes {
+        let fen = match fen_from_position(&episode.replay_root) {
+            Ok(fen) => fen,
+            Err(error) => {
+                eprintln!("obs-tool: episode {}: {error}", episode.episode_id);
+                return ExitCode::FAILURE;
+            }
+        };
+        for record in &episode.records {
+            let tier = record.context.node_budget.unwrap_or(0);
+            for arm in &record.moves {
+                let mv = Move::from_raw16(arm.mv);
+                if writeln!(
+                    out,
+                    "{{\"episode\":{},\"fen\":\"{}\",\"tier\":{},\"mv\":\"{}\",\
+                     \"score\":{},\"nodes\":{},\"depth\":{},\"complete\":{},\
+                     \"is_best\":{},\"ref_score\":{},\"ref_nodes\":{},\"ref_complete\":{},\
+                     \"legal\":{},\"captures\":{}}}",
+                    episode.episode_id,
+                    fen,
+                    tier,
+                    mv,
+                    arm.returned_score,
+                    arm.nodes,
+                    arm.searched_depth,
+                    arm.completion == chessengine::obs::Completion::Complete,
+                    arm.mv == record.search.best_move,
+                    record.search.final_score,
+                    record.search.nodes,
+                    record.search.completion == chessengine::obs::Completion::Complete,
+                    record.context.legal_move_count,
+                    record.context.capture_move_count
+                )
+                .is_err()
+                {
+                    return ExitCode::FAILURE; // broken pipe: downstream closed
+                }
+            }
+        }
     }
     ExitCode::SUCCESS
 }
