@@ -1195,6 +1195,26 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 17:20 [RESULT] D41 plays — and teaches us the bottleneck is data, not wiring
+
+User-directed fast experiment: the v1 margin head wired into MovePicker
+quiet ordering via the gen-0 CPOL path (trunk grafted into a policy
+trunk, head packed with the new --base override; a from/to TRANSPOSE was
+diagnosed with a free-queen probe and fixed via CPOL layout=0). Results:
+- As ordering prior: -9.3 +/- 25.5 at 2k fixed nodes (gen-0's +68.6
+  config); POLICY_W sweep monotone WORSE (-33 at 3000, -50 at 8000) —
+  the value head's quiet-ordering content is noise at any gain.
+- Listwise-softmax retrain (same corpus, policy-style targets via a
+  logit-trick margin rewrite): held-out top-1 0.040 ~= random —
+  memorizes, does not generalize top-move identity at 336k rows.
+Diagnosis: gen-0's ordering positive came from 100M policy rows; top-
+move discrimination at 0.3M rows is data-starved (B4 at the head level).
+The margin head's 0.60 rank corr is real but lives in the easy mass.
+PATH: gold-v1 parallel harness (25-30x) + in-search capture (MERGED
+2acc736: node-identical, ~2% overhead, 1.3MB/game — tonight's gates can
+emit data) → rerun this exact experiment at 10-30x rows. Wiring risk is
+now ZERO — the whole pack/load/play loop is proven.
+
 ## 2026-07-17 16:30 [RESULT] D41 v1 on big-v1 SF18: the signal SCALES — rank corr 0.604
 
 152 seconds of GPU on the freshly-exported 336k-row SF18 corpus
