@@ -630,7 +630,18 @@ fn main() {
             let hl3 = l2.forward(hl2).select(buckets).screlu();
             let out = l3.forward(hl3).select(buckets);
 
-            let loss = out.sigmoid().squared_error(targets).reduce_sum_batch();
+            // D40_LOSS_POWER (study 2026-07, experiment #2): official
+            // nnue-pytorch trains |pt-qf|^2.5; bullet's default is power 2.
+            // Default path stays squared_error so existing recipes reproduce
+            // byte-identically; any other value routes through power_error.
+            let sig = out.sigmoid();
+            let loss = match std::env::var("D40_LOSS_POWER").as_deref() {
+                Ok(p) if p != "2" && p != "2.0" => {
+                    let power: f32 = p.parse().expect("D40_LOSS_POWER must be a float");
+                    sig.power_error(targets, power).reduce_sum_batch()
+                }
+                _ => sig.squared_error(targets).reduce_sum_batch(),
+            };
             (Some(loss), vec![("output".to_string(), out)])
         },
     );
