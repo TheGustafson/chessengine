@@ -1195,6 +1195,27 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 17:30 [MILESTONE] big-v1 COMPLETE + gate night launched + v1.1 anti-overfit grid on GPU
+
+big-v1 final: both shards 10,000 episodes, verify 0 problems, ledgered
+(reckless 39cfc72d…, sf18 dd907004…), both exported (336,130 rows each,
+identical grids). Audits at 10x replicate sample-v1 within a point:
+stability 38/23/40 (reckless) and 35/23/43 (sf18), cross-tier drift p50
+10/7cp, cross-teacher best-move agreement 74%, |Δscore| p50 11cp. The
+data platform is validated end-to-end at scale.
+
+GATE NIGHT running (biq3xmly4): c3-c7 TC ship gates → s4 promotion #5 →
+720sb equal-time (the D45a headline) → speed A/B; SF16 anchor rematch
+follows on the final shipped config; gold-v1 20k after that.
+
+D41 v1.1 training grid launched on the GPU alongside (agent, branch
+d41-trainer-v11): frozen-720sb-trunk + pairwise ranking loss + dual-
+teacher multi-tier data + early stopping + wd — the anti-overfit stack
+from the 17:20 diagnosis, with a packed-for-play artifact if the rank
+metrics clearly beat v1's 0.604/0.130 (play test deferred until the box
+frees; the frozen-trunk config needs NO graft — POLICY_TRUNK is the
+720sb cenn itself, the exact shared-trunk deployment shape).
+
 ## 2026-07-17 17:20 [RESULT] D41 plays — and teaches us the bottleneck is data, not wiring
 
 User-directed fast experiment: the v1 margin head wired into MovePicker
