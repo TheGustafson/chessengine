@@ -866,3 +866,27 @@ fixed-node work (see amended RAM rule in the checkpoint). Standing lesson
 recorded in memory: measure engine RSS under the real match harness, and
 smoke-test any "this rule is wrong" conclusion under the conditions the
 rule was written for before acting on it.
+
+## 2026-07-16 21:40 [TOOLING] T3 SPRT early-stop + T4 concurrency invariance both landed
+
+**T3 (95dfda5).** `eval_match.py` gains `--sprt-elo0/--sprt-elo1`
+(fastchess-native SPRT, logistic model so bounds are regular Elo,
+alpha=beta=0.05, `--games` stays the cap). Early stop records an `sprt`
+block (llr/bounds/verdict) in summary.json; completed dirs stay idempotent
+via stored `pgn_games`. Default invocations are byte-identical (the
+overnight chain is untouched). Smokes: classic 4-game regression clean;
+D40 big-gap pair with a [0,200] window stopped **H1 at 16/100 games**.
+CALIBRATION LESSON: a narrow [0,10] window resolved SLOWLY even at 100%
+score (LLR 1.42 after 100g) — SPRT windows must be sized to the question:
+~[0,50] for is-it-clearly-better screens, ~[0,10] only for gate-grade
+close calls where you'd accept long runs.
+
+**T4 (this entry).** Fixed-node concurrency invariance PROVEN: 60 games
+s3-vs-s4 @5k, seed 4242, conc 1 vs conc 12 — same opening assignment,
+same W-L-D (17-23-20, −34.9), and **0/60 games differ in movetext** after
+stripping fastchess's per-move time comments. Wall clock 20s → 6s
+(~3.3× with the trainer loader running; better on longer matches). NEW
+PRACTICE: fixed-node screens run `--concurrency 12` (classic AND D40 —
+post-df2b746 engines are ~135MB). Equal-time matches keep conc 1-3 and a
+quiet box (wall-clock fairness, unchanged). eval_match's default stays 1
+so TC invocations can't inherit 12 by accident.
