@@ -40,3 +40,4 @@ tools/nnue/runs/
 # tool sub-crates build artifacts
 tools/*/target/
 tools/nnue/*/target/
+config.json
