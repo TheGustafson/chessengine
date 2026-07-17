@@ -1153,6 +1153,27 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 06:10 [VERDICT] S1 correction history PASSES its equal-time SPRT: +72.9 ± 16.2, H1 at 208 games
+
+**exp-0074**: engine-s1 (c10680f) vs engine-pre-s1 (df2b746), SAME s3 net
+both sides, 10+0.1 conc 3 quiet box, SPRT [0, 10] α=β=0.05: **H1 at 208
+games** (69W/113D/26L, +72.9 ± 16.2, LLR 2.95/2.94). The T3 early stop
+saved ~2/3 of the 600-game budget.
+
+Why equal-time (+73) so far exceeds the fixed-node screen (+18.5 ± 17.4,
+exp-0071): correction history costs essentially no NPS, so its per-node
+accuracy gain compounds through deeper TC searches (and 5k-node screens
+barely fill the correction tables). Lesson for the protocol: NPS-neutral
+SEARCH changes can be badly underestimated by shallow fixed-node screens
+— route them to the TC gate quickly rather than iterating on screen Elo.
+
+**Deployment call: S1 STAYS** (it is already merged at HEAD; merge gate
+green, bench 701605). This is the largest single search gain since the
+P9 pruning waves and lands squarely in support of freeze-proposal point
+3: the search side is where the Elo is right now. Next in the program:
+S2 (gainer-season SPSA retune) once the box has a free tuning window,
+then the SF16-late un-deferral shortlist (S0 audit §6b).
+
 **S1 merge gate**: with the trainer gone, `bash tools/check.sh` reran the
 full D24 gate at HEAD (S1 correction history + R4 #2/#3 + obs stack):
 fmt/clippy/tests/release-perft all green, bench fingerprint **701605**
