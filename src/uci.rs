@@ -91,7 +91,10 @@ pub fn run() {
         // campaign config against this before burning any games.
         #[cfg(feature = "tune")]
         Some("tunables") => {
-            for (name, value) in crate::search::params::tunables_list() {
+            for (name, value) in crate::search::params::tunables_list()
+                .into_iter()
+                .chain(crate::eval::params::tunables_list())
+            {
                 println!("{name}\t{value}");
             }
         }
@@ -1085,7 +1088,10 @@ fn dispatch<W: Write + Send + 'static>(
             // exactly mirror-cancelled results). `type string` sidesteps
             // spin min/max declarations; set_tunable parses and validates.
             #[cfg(feature = "tune")]
-            for (name, value) in crate::search::params::tunables_list() {
+            for (name, value) in crate::search::params::tunables_list()
+                .into_iter()
+                .chain(crate::eval::params::tunables_list())
+            {
                 writeln!(out, "option name {name} type string default {value}")?;
             }
             writeln!(out, "uciok")?;
@@ -1165,7 +1171,8 @@ fn cmd_setoption<W: Write>(
     // preflights names via `chessengine tunables`).
     #[cfg(feature = "tune")]
     if let Some(raw) = value.as_deref()
-        && crate::search::params::set_tunable(&name, raw).is_ok()
+        && (crate::search::params::set_tunable(&name, raw).is_ok()
+            || crate::eval::params::set_tunable(&name, raw).is_ok())
     {
         return Ok(());
     }

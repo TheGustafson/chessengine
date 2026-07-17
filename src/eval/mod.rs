@@ -351,7 +351,7 @@ fn blend_material(board: &Board) -> i64 {
     .count() as i64;
     let npm = i64::from(board.non_pawn_material(Color::White))
         + i64::from(board.non_pawn_material(Color::Black));
-    MATERIAL_PAWN_WEIGHT * pawns + npm
+    MATERIAL_PAWN_WEIGHT() * pawns + npm
 }
 
 /// The outer shape every eval phase wears (design/11 §3.6, complexity
@@ -367,11 +367,11 @@ fn apply_outer_shape(inner: Value, optimism: Value, material: i64, rule50: i64) 
 
     // Material scaling: heavier boards trust eval more, lighter boards
     // trust optimism relatively more.
-    v = (v * (EVAL_BLEND_BASE + material) + opt * (OPTIMISM_BLEND_BASE + material))
-        / EVAL_BLEND_BASE;
+    v = (v * (EVAL_BLEND_BASE() + material) + opt * (OPTIMISM_BLEND_BASE() + material))
+        / EVAL_BLEND_BASE();
 
     // Rule-50 damping: shuffle toward zero as the counter grows.
-    v -= v * rule50 / RULE50_DAMPING_DEN;
+    v -= v * rule50 / RULE50_DAMPING_DEN();
 
     // Never collide with the TB/mate bands.
     v.clamp(
