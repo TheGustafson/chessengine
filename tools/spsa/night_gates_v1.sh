@@ -23,10 +23,15 @@ for CAMP in c1-corrhist c2-reduction c3-rfp-razor c4-nmp c5-futility-see \
   [ -f "$THETA" ] || continue
   grep -q "GATE RESULT $CAMP" "$R" && continue
   OPTS=$(python3 -c "
-import json
+import json, glob
 t=json.load(open('$THETA'))
 f=t['final']; st=t['start']
-moved={k:v for k,v in f.items() if v != int(round(st[k]))}
+cfg=glob.glob('tools/spsa/campaigns/$CAMP.json')
+ranges={p['name']:(p['min'],p['max']) for p in json.load(open(cfg[0]))['params']} if cfg else {}
+def real(k,v):
+    lo,hi=ranges.get(k,(0,0))
+    return hi>lo and abs(v-st[k])/(hi-lo) >= 0.01
+moved={k:v for k,v in f.items() if real(k,v)}
 print(' '.join(f'option.{k}={v}' for k,v in f.items()) if moved else '')")
   if [ -z "$OPTS" ]; then
     say "$CAMP: theta == defaults, gate vacuous — skipped"
