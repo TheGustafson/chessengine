@@ -123,12 +123,14 @@ historical net. Freeze it while search-control heads train. A frozen-control
 experiment must keep evaluator outputs bit-identical on the parity corpus and
 the engine's heads-disabled bench fingerprint unchanged.
 
-Per D42, the first representation experiment uses paired value labels from the
-latest compiled local Reckless release and official Stockfish 18. It does not
-automatically become the protected baseline: it must first beat or match the
-prevailing evaluator in fair evaluator-only games. After selection, freeze the
-**entire value accumulator and value head**, not merely the final scalar layer,
-for Phase 1 and the first reduction-risk experiment.
+Per D42 as amended (2026-07-17): the protected evaluator is selected from the
+official-binpack-trained line by equal-time games on the UHO testing book —
+B4 established that binpack data volume, not label source, was the evaluator
+constraint, so the paired Reckless/SF18 labeling experiment is an ablation
+and label-quality audit, not the selection path. Whatever wins must beat or
+match the prevailing evaluator in fair evaluator-only games. After selection,
+freeze the **entire value accumulator and value head**, not merely the final
+scalar layer, for Phase 1 and the first reduction-risk experiment.
 
 The default later decomposition is:
 
@@ -246,9 +248,12 @@ Each sampled node records enough state to reproduce the search decision:
 Missing context is not silently zero-filled. Schema presence bits and versions
 distinguish unavailable fields from genuine zero values.
 
-### 5.3 External value-oracle bootstrap (D42)
+### 5.3 External value-oracle bootstrap (D42, amended 2026-07-17)
 
-When a non-ARCHON value label is required, label identical positions with both:
+Demoted from the evaluator-selection path to an ablation + label-quality
+audit (see §4.2 and D42's amendment); the mechanics below govern whenever
+paired external labels are produced. When a non-ARCHON value label is
+required, label identical positions with both:
 
 - the newest compiled local Reckless release binary; and
 - the official stable Stockfish 18 binary.
@@ -465,11 +470,14 @@ fixed model/configuration and retains alpha–beta verification.
 
 ## 10. Immediate execution path
 
-1. Pin the newest local Reckless release and official Stockfish 18 binaries,
-   then label a small common calibration set and audit score/WDL compatibility.
-2. Train or select the strongest evaluator using paired external-value targets;
-   promote it only through evaluator-only games, then freeze its complete
+1. Settle the eval foundation (in flight, 2026-07-16): the D40 equal-time
+   gate, the 720sb scale point, and the s3-vs-s4 re-check at equal time on
+   the UHO book. Select the protected evaluator from the binpack-trained
+   line by equal-time games (D42 as amended), then freeze its complete
    accumulator and value head bit-identically.
+2. Pin the newest local Reckless release and official Stockfish 18 binaries
+   for the D44 curriculum and the demoted paired-label ablation; label a
+   small common calibration set and audit score/WDL compatibility.
 3. Treat the current Lc0 corpus as positions; preserve its original labels only
    as bootstrap features and controls.
 4. Define the minimal reproducible node-context and oracle-output records in

@@ -547,6 +547,20 @@ strength. Two constraints in permanent tension, resolved in this order:
   control, not simultaneous value drift. Owning roadmap: doc 19 §§4.2, 5.3,
   and 10.
 
+  **AMENDED (user-approved, 2026-07-17), after B4's answer:** paired
+  Reckless/SF18 labeling is DEMOTED from the evaluator-selection path to an
+  ablation and label-quality audit. B4 established (2026-07-16) that
+  training-data VOLUME on the official Stockfish binpacks was the evaluator
+  constraint — every binpack-scale net beat every small-data challenger
+  regardless of label source — so the protected evaluator is selected from
+  the binpack-trained line by equal-time games (the prevailing promotion
+  bar), on the UHO testing book (exp-0068..70 book-effect finding). The
+  paired-teacher experiment retains value as (a) a disagreement-aware label
+  audit over the SF18 tiered-oracle plan and (b) a Phase-1 ablation control.
+  Everything else in D42 stands unchanged: the pinning discipline, the
+  no-uncalibrated-averaging rule, the SF16-no-silent-substitute rule, and
+  the freeze-the-complete-accumulator contract.
+
 - **D43**: Search-control data are intervention-aware (user-approved parallel
   head/data track, 2026-07-14). Maintain two semantically distinct corpora:
   **observational traces** record what the current heuristic ARCHON encountered
