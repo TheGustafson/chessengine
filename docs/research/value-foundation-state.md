@@ -1195,6 +1195,30 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 18:20 [RESULT] D41 v1.1: the anti-overfit stack works — held-out top-1 0.258 CLEARS the classical bar
+
+Grid on the GPU while gates play (agent branch merged, 884ae3b; net
+ledgered d41-alloc-v11-c). Held-out (same split as v1):
+
+| config | rank corr / top-1 |
+|---|---|
+| v1 (unfrozen, margin MSE, sf18) | 0.604 / 0.130 |
+| frozen trunk + margin, same data | 0.694 / 0.173 |
+| frozen + pairwise, both teachers | 0.666 / 0.205 |
+| frozen + pairwise + ALL TIERS (winner) | **0.706 / 0.258** |
+
+Ablation reads: FREEZING the 720sb trunk is the dominant lever (+0.09
+rank corr, overfit gap collapses ~0.0176→0.0114 MSE); the pairwise
+RankNet loss buys +0.03 top-1 (best-move discrimination — the cell that
+matters for allocation); 3x tier data adds +0.02/+0.03 on top. The
+winner clears the 18.1% cold-classical baseline by 8 points — the first
+D41 artifact to pass the Stage-0 bar. It is packed for play (CPOL layout
+0, free-queen probe passed) with POLICY_TRUNK = the 720sb cenn itself:
+the true shared-trunk deployment shape, no graft. Play test queued the
+moment the TC gates free the box (caveat on record: held-out ranking is
+necessary, not sufficient — the warm in-search picker is the real bar).
+Infra note: export-train grew --all-tiers (5 tests green).
+
 ## 2026-07-17 17:40 [BASELINE] Cold classical ordering on big-v1: top-1 18.1% — the D41 yardstick
 
 obs-tool rank over all 10,000 big-v1 SF18 positions: the classical
