@@ -1195,6 +1195,26 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 12:15 [CALIBRATION] The SPSA season's true meaning: the search-param landscape is a high plateau
+
+exp-0078, two measurements: (1) the r_end=0.01 control did NOT walk back
+(final 1533 from 1541; z mean +0.0075 ± 0.016 — zero local gradient);
+(2) the direct calibration match: **RED_BASE 1541 (a +50% detune of the
+base LMR reduction) costs only −8.1 ± 12.9 Elo** at 20k nodes, 1200g.
+
+The harness was never broken — there was nothing to find. Re-search
+safety nets (do_deeper/do_shallower, PVS re-search, TT) absorb even
+gross reduction mistuning. Season recalibration, in effect immediately:
+- c1/c2 NO-CHANGE decisions are REAL findings ("no >~10 Elo error in
+  the bundle"), not harness artifacts.
+- c3–c8 run at 400 iters (4,000 games each — same certification power,
+  half the cost) with r_end=0.2 (steps large enough that any genuinely
+  steep gradient CAN move theta; c7's eval-blend params are the likeliest
+  to have one).
+- Sub-10-Elo per-param mining is fishtest-scale work (100k+ games per
+  param) that this box cannot do; after the 8 decisions the Elo lives in
+  the S0 structural un-deferrals, the D40 speed/gate arc, and D41.
+
 ## 2026-07-17 11:30 [ANALYSIS] p25 twin verdicts + the SPSA step-size diagnosis
 
 **Study experiments #1+#2 (exp-0077, d40-uho-p25-240sb):** loss ^2.5 is
