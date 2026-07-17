@@ -149,7 +149,9 @@ pub use crate::board::DirtyPiece;
 
 // --- Active-net registry (design/11 §3.4.5: EvalFile, opt-in) ----------------
 
-use std::sync::RwLock;
+use std::path::PathBuf;
+use std::sync::{Mutex, RwLock};
+use std::time::SystemTime;
 
 /// The process-wide active NNUE net (design/11 §3.4.5). `None` ⇒ NNUE is OFF
 /// and evaluation is PSQT — the default, so the depth-6 bench fingerprint stays
@@ -173,8 +175,28 @@ static ACTIVE_PROTECTED_HALFKA_NET: RwLock<
     Option<&'static protected_halfka::ProtectedHalfkaNetwork>,
 > = RwLock::new(None);
 
+/// Identity of the file behind the currently-installed net: canonical path,
+/// size, and mtime. Match runners (fastchess) re-send every configured option
+/// — `EvalFile` included — before EVERY game of a match, and each install
+/// leaks its parsed net to `'static`; without this guard a 300-game match
+/// leaked one full net per game (~78MB for D40) until the OOM killer fired.
+/// A same-file re-send is a no-op; a changed file at the same path (new
+/// size/mtime, e.g. netpack overwrote it) still reloads. `None` mtime means
+/// the filesystem can't report one — such files are never treated as
+/// already-loaded, trading redundant loads for correctness.
+static LOADED_FILE: Mutex<Option<(PathBuf, u64, Option<SystemTime>)>> = Mutex::new(None);
+
+/// The (canonical path, size, mtime) identity of `path` right now.
+fn file_identity(path: &str) -> Result<(PathBuf, u64, Option<SystemTime>), NnueError> {
+    let canonical = std::fs::canonicalize(path).map_err(NnueError::Io)?;
+    let meta = std::fs::metadata(&canonical).map_err(NnueError::Io)?;
+    Ok((canonical, meta.len(), meta.modified().ok()))
+}
+
 /// Install (or clear) the `EvalFile` net. An empty/blank path turns NNUE OFF
-/// (back to PSQT). Otherwise the file is loaded and fully validated.
+/// (back to PSQT). Otherwise the file is loaded and fully validated —
+/// unless the exact same file is already the active net, in which case this
+/// is a no-op (see [`LOADED_FILE`]).
 ///
 /// With the `sota` feature: the first 4 bytes are peeked — if `b"CEN2"` the
 /// file is loaded as a D40 SOTA net (clearing any v1 net), otherwise as a v1
@@ -194,9 +216,35 @@ pub fn set_eval_file(path: &str) -> Result<(), NnueError> {
                 .write()
                 .unwrap_or_else(|e| e.into_inner()) = None;
         }
+        *LOADED_FILE.lock().unwrap_or_else(|e| e.into_inner()) = None;
         return Ok(());
     }
 
+    let identity = file_identity(path)?;
+    if identity.2.is_some()
+        && LOADED_FILE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            == Some(&identity)
+    {
+        return Ok(());
+    }
+
+    let result = install_eval_file(path);
+    // A failed install may leave the slots partially cleared (pre-existing
+    // contract: the error is reported and play continues) — drop the cached
+    // identity so the next call always does a real load.
+    *LOADED_FILE.lock().unwrap_or_else(|e| e.into_inner()) = match &result {
+        Ok(()) if identity.2.is_some() => Some(identity),
+        _ => None,
+    };
+    result
+}
+
+/// The unconditional load path behind [`set_eval_file`]: read, parse,
+/// validate, leak, and swap the parsed net into its active slot.
+fn install_eval_file(path: &str) -> Result<(), NnueError> {
     // Peek magic to route v1 vs v2.
     #[cfg(feature = "sota")]
     {
