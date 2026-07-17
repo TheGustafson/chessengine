@@ -1195,6 +1195,23 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 09:20 [DECISION 1/8] SPSA c1 (corrhist weights): NO-CHANGE — the S1 constants survive
+
+exp-0075. 800 iterations x 10 games @20k nodes (8,000 games) perturbing
+all 13 correction-history read/update weights: every parameter came home
+to within ±0.1% of its SF-parity default (mid-run wander up to ±90 units
+on CONT_NULL_PRIOR fully reverted). The landscape is flat at this
+budget's resolution (gradient floor ~5 Elo at 8k games). Decision:
+KEEP DEFAULTS; ship-gate skipped as vacuous (theta_final == defaults
+within integer rounding). Two useful facts fall out: (1) SF's corrhist
+constants transfer to ARCHON's eval unchanged — consistent with S1's
+clean +72.9 landing; (2) the harness needs a positive control if c2
+(reductions — historically strong gradients) also comes back flat.
+c2 launched immediately after (seed 20260720, same budget), with
+tune-l2048 redeployed at HEAD (eval tunables + advertisement fix in).
+Season: 1/8 decisions done. In parallel: d40-uho-p25-240sb (study exps
+#1+#2) trains until ~11:30.
+
 ## 2026-07-17 08:20 [FINDING] The D40 "packing tail" was never packing — parity gate recalibrated; 720sb admitted to gating
 
 Full note: docs/research/d40-packing-tail-2026-07-17.md (+ reusable
