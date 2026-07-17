@@ -88,6 +88,19 @@ if ! grep -q '"status": "complete"' "$G/summary.json" 2>/dev/null; then
 fi
 python3 -c "import json;s=json.load(open('$G/summary.json'));print(f'[GATE d40-uho-720sb vs s4 EQUAL-TIME] RESULT: elo={s[\"candidate_elo\"]:.1f} se={s[\"candidate_elo_se\"]:.1f} score={s[\"candidate_score\"]:.3f}')" | tee -a "$R"
 
+# --- 2b. s4 promotion #5 re-check (equal-time, UHO book) --------------------
+G4=data/nnue/experiments/s4-promo5-gate
+if ! grep -q '"status": "complete"' "$G4/summary.json" 2>/dev/null; then
+  say "promotion #5 re-check: s4 vs s3 incumbent (200g 10+0.1, conc 3, UHO)"
+  uv run python tools/nnue/eval_match.py \
+    --candidate data/nnue/nets/stage2-v1-s4-2048-t74-240sb.cenn \
+    --baseline "$S3" \
+    --candidate-engine engines/bin/probe-l2048 --baseline-engine engines/bin/probe-l2048 \
+    --games 200 --tc 10+0.1 --concurrency 3 --seed 20260744 \
+    --output "$G4" >/dev/null 2>&1 || say "s4 re-check FAILED to run"
+fi
+python3 -c "import json;s=json.load(open('$G4/summary.json'));print(f'[GATE s4 vs s3 EQUAL-TIME promo5] RESULT: elo={s[\"candidate_elo\"]:.1f} se={s[\"candidate_elo_se\"]:.1f} score={s[\"candidate_score\"]:.3f}')" 2>/dev/null | tee -a "$R"
+
 # --- 3. speed measurements --------------------------------------------------
 say "speed: R4-stack NPS A/B (pre-r4 vs current probe-sota, D40 net, depth 13 x3)"
 nps_probe() { # binary net -> median nps of 3 fixed-depth searches
