@@ -19,9 +19,11 @@ say() { echo "[obsbig $(date +%H:%M:%S)] $*" | tee -a "$R"; }
 say "armed: waiting for the box to go quiet (night chain + S1 gate + trainer)"
 while true; do
   chain_done=$(grep -c "D40 NIGHT CHAIN COMPLETE" "$R" || true)
-  s1_alive=$(pgrep -f "tools/nnue/s1_gate_v1.sh" | wc -l)
-  train_alive=$(pgrep -x "d40_features" | wc -l)
-  match_alive=$(pgrep -x "fastchess" | wc -l)
+  # `|| true`: pgrep exits 1 on zero matches, which pipefail would otherwise
+  # propagate through wc and set -e would kill the guard (bit us at 03:09).
+  s1_alive=$(pgrep -f "tools/nnue/s1_gate_v1.sh" | wc -l || true)
+  train_alive=$(pgrep -x "d40_features" | wc -l || true)
+  match_alive=$(pgrep -x "fastchess" | wc -l || true)
   if [ "$chain_done" -ge 1 ] && [ "$s1_alive" -eq 0 ] \
      && [ "$train_alive" -eq 0 ] && [ "$match_alive" -eq 0 ]; then
     break
