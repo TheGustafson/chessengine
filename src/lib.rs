@@ -27,6 +27,8 @@ pub mod history;
 pub mod movegen;
 pub mod movepick;
 pub mod moves;
+#[cfg(feature = "datagen")]
+pub mod obs;
 pub mod perft;
 #[cfg(feature = "policy")]
 pub mod policy;

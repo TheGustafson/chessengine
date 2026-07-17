@@ -30,6 +30,11 @@ nnue-l1-4096 = []
 # Thrust II, src/policy.rs). OFF by default so the shipped engine + depth-6 bench
 # stay byte-identical; build the experiment with `--features policy`.
 policy = ["sota"]
+# The Observation Store (design/16 §3.5, D29/D43): the permanent four-layer
+# search-observation record + shard writer/reader, std-only TLV. OFF by
+# default so the tournament/bench binary compiles it out (§6 bench
+# neutrality); build datagen tooling with `--features datagen`.
+datagen = []
 # D41 learned search-consequence head contracts and experiments. OFF by
 # default; the initial scaffold is shadow-only and has no search authority.
 search-control = []
