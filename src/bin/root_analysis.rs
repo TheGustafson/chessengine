@@ -654,6 +654,7 @@ fn run(config: &Config) -> Result<String, String> {
             replay_root: root_state,
             root_reversible_keys: vec![],
             event_hash_chain: hash_chain,
+            dropped_records: 0,
         };
         writer
             .append(&episode)

@@ -10,6 +10,7 @@
 //! dependency, D27).
 
 pub mod convert;
+pub mod recorder;
 pub mod schema;
 pub mod shard;
 mod wire;
@@ -145,6 +146,9 @@ mod tests {
             replay_root: full_observation().position,
             root_reversible_keys: vec![1, 2, 3],
             event_hash_chain: vec![0xAAAA, 0xBBBB],
+            // Non-zero so the round-trip test exercises the tag-10 encode/decode
+            // path (design/16 §3.5.5).
+            dropped_records: 5,
         }
     }
 

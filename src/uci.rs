@@ -543,64 +543,96 @@ impl Options {
                 OptionKind::Text { default } => OptionValue::Text(default.to_string()),
             },
         };
-        Options {
-            entries: vec![
-                register("Debug Log File", OptionKind::Text { default: "" }),
-                register(
-                    "Hash",
-                    OptionKind::Spin {
-                        default: 16,
-                        min: HASH_MB_MIN,
-                        max: HASH_MB_MAX,
-                    },
-                ),
-                register(
-                    "Threads",
-                    OptionKind::Spin {
-                        default: 1,
-                        min: 1,
-                        max: max_threads(),
-                    },
-                ),
-                register("Clear Hash", OptionKind::Button),
-                register(
-                    "MultiPV",
-                    OptionKind::Spin {
-                        default: 1,
-                        min: 1,
-                        max: MAX_MOVES as i64,
-                    },
-                ),
-                register("Ponder", OptionKind::Check { default: false }),
-                register(
-                    "Move Overhead",
-                    OptionKind::Spin {
-                        default: 10,
-                        min: 0,
-                        max: 5000,
-                    },
-                ),
-                register(
-                    "nodestime",
-                    OptionKind::Spin {
-                        default: 0,
-                        min: 0,
-                        max: 10000,
-                    },
-                ),
-                // Low-verbosity report mode (design/12 §3.13; Reckless
-                // bundle D31): suppress the per-iteration `info` lines and
-                // print one summary line before `bestmove`. Pure I/O, for
-                // high-frequency self-play log volume — bench-neutral.
-                register("Minimal", OptionKind::Check { default: false }),
-                // NNUE net file (design/11 §3.4.5, P13 step 4). Empty (the
-                // default) ⇒ NNUE OFF and eval is PSQT — so the DEFAULT engine,
-                // and the depth-6 bench fingerprint, are unchanged. Setting it
-                // loads + validates a CENN net and makes it the active eval;
-                // embedding a default net is a later step (opt-in for now).
-                register("EvalFile", OptionKind::Text { default: "" }),
-            ],
+        #[cfg_attr(not(feature = "datagen"), allow(unused_mut))]
+        let mut entries = vec![
+            register("Debug Log File", OptionKind::Text { default: "" }),
+            register(
+                "Hash",
+                OptionKind::Spin {
+                    default: 16,
+                    min: HASH_MB_MIN,
+                    max: HASH_MB_MAX,
+                },
+            ),
+            register(
+                "Threads",
+                OptionKind::Spin {
+                    default: 1,
+                    min: 1,
+                    max: max_threads(),
+                },
+            ),
+            register("Clear Hash", OptionKind::Button),
+            register(
+                "MultiPV",
+                OptionKind::Spin {
+                    default: 1,
+                    min: 1,
+                    max: MAX_MOVES as i64,
+                },
+            ),
+            register("Ponder", OptionKind::Check { default: false }),
+            register(
+                "Move Overhead",
+                OptionKind::Spin {
+                    default: 10,
+                    min: 0,
+                    max: 5000,
+                },
+            ),
+            register(
+                "nodestime",
+                OptionKind::Spin {
+                    default: 0,
+                    min: 0,
+                    max: 10000,
+                },
+            ),
+            // Low-verbosity report mode (design/12 §3.13; Reckless
+            // bundle D31): suppress the per-iteration `info` lines and
+            // print one summary line before `bestmove`. Pure I/O, for
+            // high-frequency self-play log volume — bench-neutral.
+            register("Minimal", OptionKind::Check { default: false }),
+            // NNUE net file (design/11 §3.4.5, P13 step 4). Empty (the
+            // default) ⇒ NNUE OFF and eval is PSQT — so the DEFAULT engine,
+            // and the depth-6 bench fingerprint, are unchanged. Setting it
+            // loads + validates a CENN net and makes it the active eval;
+            // embedding a default net is a later step (opt-in for now).
+            register("EvalFile", OptionKind::Text { default: "" }),
+        ];
+        // In-search observation capture (design/16 §3.5.5, D45a): ADVERTISED
+        // only under `datagen` so fastchess forwards `option.X=v`, and so the
+        // tournament/bench binary's option block (and the D24 fingerprint) is
+        // byte-unchanged. Registration order == uci print order.
+        #[cfg(feature = "datagen")]
+        {
+            entries.push(register("ObsCapturePath", OptionKind::Text { default: "" }));
+            entries.push(register(
+                "ObsCaptureMinDepth",
+                OptionKind::Spin {
+                    default: 6,
+                    min: 0,
+                    max: crate::types::MAX_PLY as i64,
+                },
+            ));
+            entries.push(register(
+                "ObsCaptureSampleBits",
+                OptionKind::Spin {
+                    default: 4,
+                    min: 0,
+                    max: 32,
+                },
+            ));
+            entries.push(register(
+                "ObsCapturePerGameCap",
+                OptionKind::Spin {
+                    default: 20_000,
+                    min: 0,
+                    max: 100_000_000,
+                },
+            ));
         }
+        Options { entries }
     }
 
     /// Registration-order iteration (the `uci` print order).
@@ -732,6 +764,39 @@ impl Options {
             Some(OptionValue::Text(v)) => v,
             _ => unreachable!("EvalFile is a registered string option"),
         }
+    }
+
+    /// In-search observation capture (design/16 §3.5.5, D45a). The shard path;
+    /// empty ⇒ capture OFF. Only registered/parsed under `datagen`.
+    #[cfg(feature = "datagen")]
+    pub fn obs_capture_path(&self) -> &str {
+        match self
+            .entries
+            .iter()
+            .find(|e| e.name == "ObsCapturePath")
+            .map(|e| &e.value)
+        {
+            Some(OptionValue::Text(v)) => v,
+            _ => unreachable!("ObsCapturePath is a registered string option"),
+        }
+    }
+
+    /// Minimum remaining depth for a node to be captured (design/16 §3.5.5).
+    #[cfg(feature = "datagen")]
+    pub fn obs_capture_min_depth(&self) -> i64 {
+        self.spin("ObsCaptureMinDepth")
+    }
+
+    /// Sample-gate width: a node is captured iff `raw_key & ((1<<bits)-1) == 0`.
+    #[cfg(feature = "datagen")]
+    pub fn obs_capture_sample_bits(&self) -> i64 {
+        self.spin("ObsCaptureSampleBits")
+    }
+
+    /// Per-game record cap (design/16 §3.5.5); overflow is counted, not lost.
+    #[cfg(feature = "datagen")]
+    pub fn obs_capture_per_game_cap(&self) -> i64 {
+        self.spin("ObsCapturePerGameCap")
     }
 }
 
@@ -1803,6 +1868,16 @@ mod tests {
         // (hardware-scaled Threads ceiling, `Minimal` report mode), in
         // registration order with correct types/defaults/ranges.
         let out = session("uci\nquit\n");
+        // Under `datagen` the four ObsCapture options (design/16 §3.5.5) are
+        // registered after EvalFile; the default build must not carry them.
+        let obs_block = if cfg!(feature = "datagen") {
+            "option name ObsCapturePath type string default <empty>\n\
+             option name ObsCaptureMinDepth type spin default 6 min 0 max 246\n\
+             option name ObsCaptureSampleBits type spin default 4 min 0 max 32\n\
+             option name ObsCapturePerGameCap type spin default 20000 min 0 max 100000000\n"
+        } else {
+            ""
+        };
         let expected = format!(
             "\
 option name Debug Log File type string default <empty>
@@ -1815,12 +1890,13 @@ option name Move Overhead type spin default 10 min 0 max 5000
 option name nodestime type spin default 0 min 0 max 10000
 option name Minimal type check default false
 option name EvalFile type string default <empty>
-uciok
+{obs_block}uciok
 ",
             max_threads()
         );
         assert!(out.ends_with(&expected), "{out}");
-        assert_eq!(out.matches("option name").count(), 10, "{out}");
+        let expected_count = if cfg!(feature = "datagen") { 14 } else { 10 };
+        assert_eq!(out.matches("option name").count(), expected_count, "{out}");
     }
 
     #[test]

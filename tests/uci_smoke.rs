@@ -70,6 +70,16 @@ fn handshake_transcript_is_byte_exact() {
     let out = run_engine(&[], "uci\nisready\nquit\n");
     assert!(out.status.success(), "engine exited with {}", out.status);
     let stdout = String::from_utf8(out.stdout).expect("stdout is UTF-8");
+    // Under `datagen` the four ObsCapture options (design/16 §3.5.5) follow
+    // EvalFile; the default (tournament/bench) binary must not carry them.
+    let obs_block = if cfg!(feature = "datagen") {
+        "option name ObsCapturePath type string default <empty>\n\
+         option name ObsCaptureMinDepth type spin default 6 min 0 max 246\n\
+         option name ObsCaptureSampleBits type spin default 4 min 0 max 32\n\
+         option name ObsCapturePerGameCap type spin default 20000 min 0 max 100000000\n"
+    } else {
+        ""
+    };
     let expected = format!(
         "id name {} {}\n\
          id author {}\n\
@@ -83,6 +93,7 @@ fn handshake_transcript_is_byte_exact() {
          option name nodestime type spin default 0 min 0 max 10000\n\
          option name Minimal type check default false\n\
          option name EvalFile type string default <empty>\n\
+         {obs_block}\
          uciok\n\
          readyok\n",
         "ARCHON",

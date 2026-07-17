@@ -460,6 +460,77 @@ one episode (a game is ~100–400 records — trivially in memory), attaches the
 white-relative WDL, and appends the whole episode. Counterfactual and
 root-analysis episodes are naturally batch-shaped already.
 
+#### 3.5.5 `InSearchCapture` episode kind — in-search observation capture v0 (D45a)
+
+`InSearchCapture` (discriminant **5**, appended to `EpisodeKind` under the
+append-only rule of §3.5.2) is the concrete engine-embedded realization of the
+`InternalSearch` generation mode (§3.6.1 item 2): sampled *interior* main-search
+nodes, captured live by the playing engine during ordinary SPRT/SPSA test games
+so that the ~10⁴–10⁵ games/day the engine already plays feed the design/19
+learned-search-allocation program instead of producing zero training data. It is
+kept as a distinct discriminant from the reserved `InternalSearch` (=1) so that
+game-embedded capture is provenance-separable from any future dedicated/offline
+`InternalSearch` generator; both share this record framing.
+
+**Record framing — one `Observation` per captured NODE.** A node is captured
+only when it (a) reaches the interior move loop of the main negamax `search`
+(not qsearch, and not a node that returns before the loop — RFP/NMP/ProbCut/
+multicut cutoffs are not captured), (b) has remaining `depth ≥ ObsCaptureMinDepth`,
+and (c) passes the deterministic position-keyed sample gate below, and (d)
+actually searched at least one move (a terminal or fully-pruned node carries no
+v0 Layer-4 data and is skipped). Each captured node emits exactly one
+`Observation`:
+
+- **Layer 1 `PositionState`** — packed with `convert::position_from_board(&board,
+  0, vec![])`: an **EMPTY** `path_from_episode_root`. Game capture does not replay
+  from a stored episode root, so the path is intentionally empty and node identity
+  is `canonical_key = raw_key` (the UNFOLDED key, §3.5.3 / D33 r1). Consumers of
+  `InSearchCapture` records dedup and join on `canonical_key`, never on the path.
+  `repetition` is recorded as 0 (v0 does not thread per-node repetition state).
+- **Layer 2 `SearchContext`** — the node's circumstances at loop entry: `depth`
+  (post-hindsight, pre-singular-extension), `node_budget` (the `go nodes` limit if
+  any, else absent), the entry `alpha`/`beta` window (also copied into
+  `alpha_before_move`/`beta_before_move`), `node_type` (Root/Pv/Cut/All),
+  `static_eval` (the corrected node eval), the `tt_*` group, `ply`,
+  `correction_value`, and `legal_move_count`/`capture_move_count` (from a
+  legal-move generation done only at the sampled node). The other engine-internal
+  fields are Default-filled per the §3.5.3 F2 presence rule.
+- **Layer 3 `SearchObservations`** — the node outcome: `best_move`,
+  `final_score` (= `best_value`), `bound` (Lower/Exact/Upper, computed exactly as
+  the TT-store bound), `nodes` (the node's own subtree cost), and
+  `completion = Complete` (a stopped search returns before the node exit and is
+  never captured). PV, seldepth, and id_snapshots are left empty in v0.
+- **Layer 4 `PerMoveObservation`** — one row per move **actually searched** at the
+  node (pruned-before-make moves are not rowed in v0). Each row carries: the move's
+  `mv` (canonical `raw16`), `order_index` (1-based rank in the move loop, counting
+  pruned siblings), `reduction` (**the finalized LMR reduction `r` in plies,
+  `r / RED_UNIT` truncated toward zero** — RED_UNIT = 1024ths of a ply, doc 10 §3.3),
+  `extension`, `searched_depth` (the nominal child depth after extension/
+  deeper-shallower), `returned_score`, `nodes` (this move's subtree cost),
+  `raised_alpha` (`value > alpha`), `caused_cutoff` (`value ≥ beta`) — together the
+  fail-low/exact/cutoff value class vs the window — and `researched` (an LMR
+  full-depth zero-window re-search fired). `pruned_by = None` and
+  `evidence = Observational` on every v0 row.
+
+**Sampling semantics.** Capture is deterministic and **position-keyed**, never
+timing- or RNG-driven: a node is sampled iff `(raw_key & ((1 << ObsCaptureSampleBits)
+− 1)) == 0`. Because the gate is a pure function of the position key, capture is
+reproducible and never perturbs search (identical node counts / bestmove / score
+with capture on or off — the D24 bench neutrality of the default build is
+preserved because the whole path is behind `feature = "datagen"`). Transpositions
+to the same key sample identically by construction.
+
+**Episode framing & bounds.** One `Episode` per game: the per-`Worker` buffer
+accumulates `Observation`s across the game's `go` commands and is flushed as a
+single `InSearchCapture` episode on `ucinewgame` (game boundary) and on engine
+drop/quit; an empty buffer flushes nothing (so *N* games → *N* episodes).
+`game_result` is absent (the engine does not know the game outcome). The buffer is
+a fixed-capacity `Vec` reserved once to `ObsCapturePerGameCap`; once full, further
+sampled nodes are **counted, not silently lost** — the drop count is stored in the
+new `Episode.dropped_records` field (tag **10**, append-only; encoded only when
+non-zero so existing shards are byte-unchanged). Capture requires `Threads == 1`
+(refused with an `info string` otherwise) so single-threaded determinism holds.
+
 ### 3.6 Reconciliation: generation modes, research targets, and the flat bullet projection
 
 #### 3.6.1 The five generation modes (data products)
