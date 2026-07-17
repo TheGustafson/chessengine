@@ -14,7 +14,9 @@
 
 use chessengine::board::Board;
 use chessengine::obs::convert::{board_from_position, fen_from_position, replay_path};
-use chessengine::obs::{Episode, PositionState, ShardReader};
+use chessengine::obs::{
+    Completion, Episode, EpisodeKind, Observation, PositionState, Provenance, ShardReader,
+};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -25,6 +27,7 @@ fn main() -> ExitCode {
         Some((cmd, rest)) if cmd == "stability" && !rest.is_empty() => stability(rest),
         Some((cmd, rest)) if cmd == "disagree" && rest.len() == 2 => disagree(rest),
         Some((cmd, rest)) if cmd == "export" && !rest.is_empty() => export(rest),
+        Some((cmd, rest)) if cmd == "export-train" && rest.len() >= 2 => export_train(rest),
         Some((cmd, rest)) if cmd == "rank" && !rest.is_empty() => rank(rest),
         _ => {
             eprintln!("usage: obs-tool verify <shard.ceobs>...");
@@ -32,6 +35,9 @@ fn main() -> ExitCode {
             eprintln!("       obs-tool stability <shard.ceobs> [tie-margin-cp (default 20)]");
             eprintln!("       obs-tool disagree <shardA.ceobs> <shardB.ceobs>");
             eprintln!("       obs-tool export <shard.ceobs>   (per-arm JSONL on stdout)");
+            eprintln!(
+                "       obs-tool export-train <out-dir> <shard.ceobs>...  (D40-class value corpus, NumPy SoA)"
+            );
             eprintln!("       obs-tool rank <shard.ceobs>     (classical-ordering baseline)");
             ExitCode::FAILURE
         }
@@ -266,6 +272,784 @@ fn export(args: &[String]) -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+// ─── export-train: obs shards → D40-class value/allocation training corpus ───
+//
+// The Phase-1 target (design/19 §7, §3): learn per-move search consequences
+// from the teacher's independent root-arm searches. The M4 audit
+// (value-foundation-state.md 03:15) found argmax labels SOFT (median top-arm
+// margin 13-16cp) but per-arm SCORES reproducible (8-10cp cross-tier drift) —
+// so we emit per-arm VALUES and value-MARGINS, not hard best-move classes.
+//
+// Format: a NumPy structure-of-arrays directory, the same on-disk primitive
+// the D40 policy trainer streams (`d40_policy.rs`'s `NpyFile`/`SideFiles` read
+// exactly this: NumPy v1 `.npy`, one file per column). DELTA vs d40_policy's
+// schema (documented in manifest.json + here):
+//   * one row per (position, legal arm) instead of one row per position with a
+//     40-wide sparse policy block — value/margin targets are per-arm and the
+//     legal-move count is unbounded, so a fixed policy cap would truncate arms;
+//   * targets are `value` (per-arm cp) + `margin` (vs the best arm) instead of
+//     softmax policy probabilities; `is_ref_best`/`is_max_value` are optional
+//     soft hard-labels (design/19 §7 final-best-move);
+//   * no white/black side split (that was an Lc0-data artifact) — an explicit
+//     `stm` column replaces it; `feats` are ABSOLUTE and stay compatible with
+//     d40_policy's `board_from_features` ((colour*6+pt)*64+sq, -1 padded);
+//   * added provenance columns `tier` (node budget), `teacher_id`, and `key`
+//     (canonical position identity, for dedup + leakage-safe train/test split).
+// The writer is versioned: any column-set change bumps TRAIN_WRITER.
+
+const TRAIN_SCHEMA: &str = "archon.obs-train.rootmove-value-v1";
+const TRAIN_WRITER: &str = "obs-tool export-train v1";
+const MAX_TEACHERS: usize = u8::MAX as usize + 1;
+
+/// (teacher_id, identity, row count), in stable id order.
+type PerTeacherCounts = Vec<(u8, String, u64)>;
+/// (node budget, row count), ascending.
+type TierHistogram = Vec<(u32, u64)>;
+
+/// Interned per-shard producer identity (design/19 §7 `producer_engine`):
+/// mixed-teacher corpora stay auditable because every row carries a
+/// `teacher_id` into this table and the manifest pins the full provenance.
+#[derive(Clone)]
+struct TeacherInfo {
+    teacher_id: u8,
+    identity: String,
+    engine_version: String,
+    net_version: Option<String>,
+    search_config: String,
+    search_config_hash: u64,
+    generator_version: String,
+    dataset_source: String,
+    opening_source: String,
+    hardware_identity: String,
+}
+
+fn teacher_from_prov(prov: &Provenance) -> TeacherInfo {
+    // teacher_identity IS D44's producer_engine for RootMoveAnalysis shards
+    // (root_analysis.rs pins it); fall back to a stable composite only if a
+    // shard predates that field.
+    let identity = prov
+        .teacher_identity
+        .clone()
+        .unwrap_or_else(|| format!("{}|{}", prov.engine_version, prov.dataset_source));
+    TeacherInfo {
+        teacher_id: 0,
+        identity,
+        engine_version: prov.engine_version.clone(),
+        net_version: prov.net_version.clone(),
+        search_config: prov.search_config.clone(),
+        search_config_hash: prov.search_config_hash,
+        generator_version: prov.generator_version.clone(),
+        dataset_source: prov.dataset_source.clone(),
+        opening_source: prov.opening_source.clone(),
+        hardware_identity: prov.hardware_identity.clone(),
+    }
+}
+
+/// One emitted training example: a single Complete arm of a position's chosen
+/// deepest-Complete tier. `Copy` so the SoA writer can stream columns.
+#[derive(Clone, Copy)]
+struct TrainRow {
+    position_id: u32,
+    key: u64,
+    stm: u8,
+    feats: [i16; 32],
+    nmoves: u16,
+    move_idx: i16,
+    mv_raw16: u16,
+    value: i32,
+    margin: i32,
+    is_ref_best: u8,
+    is_max_value: u8,
+    tier: u32,
+    ref_score: i32,
+    teacher_id: u8,
+    arm_nodes: u32,
+    arm_depth: i16,
+}
+
+#[derive(Default)]
+struct Stats {
+    positions_in: u64,
+    positions_out: u64,
+    arms_out: u64,
+    arms_skipped_stopped: u64,
+    dedup_drops: u64,
+    skip_no_complete_reference: u64,
+    skip_no_complete_arms: u64,
+    skip_bad_position: u64,
+    non_rootmove_episodes: u64,
+    ref_best_missing: u64,
+}
+
+struct CorpusBuilder {
+    rows: Vec<TrainRow>,
+    seen_keys: std::collections::HashSet<u64>,
+    next_position_id: u32,
+    stats: Stats,
+    teachers: Vec<TeacherInfo>,
+    teacher_index: std::collections::HashMap<String, u8>,
+}
+
+impl CorpusBuilder {
+    fn new() -> Self {
+        Self {
+            rows: Vec::new(),
+            seen_keys: std::collections::HashSet::new(),
+            next_position_id: 0,
+            stats: Stats::default(),
+            teachers: Vec::new(),
+            teacher_index: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Intern a producer identity → stable `teacher_id`; identical teachers
+    /// across shards share one id so a merged corpus stays coherent.
+    fn intern_teacher(&mut self, prov: &Provenance) -> Result<u8, String> {
+        let info = teacher_from_prov(prov);
+        if let Some(&id) = self.teacher_index.get(&info.identity) {
+            return Ok(id);
+        }
+        if self.teachers.len() >= MAX_TEACHERS {
+            return Err(format!("more than {MAX_TEACHERS} distinct teachers"));
+        }
+        let id = self.teachers.len() as u8;
+        self.teacher_index.insert(info.identity.clone(), id);
+        self.teachers.push(TeacherInfo {
+            teacher_id: id,
+            ..info
+        });
+        Ok(id)
+    }
+
+    /// Fold one episode into the corpus. Non-RootMoveAnalysis episodes and
+    /// positions without a Complete reference/arm are counted and skipped;
+    /// duplicate canonical keys (across every input shard) drop with
+    /// first-occurrence-wins.
+    fn add_episode(&mut self, episode: &Episode, teacher_id: u8) {
+        if episode.kind != EpisodeKind::RootMoveAnalysis {
+            self.stats.non_rootmove_episodes += 1;
+            return;
+        }
+        self.stats.positions_in += 1;
+        let key = episode.replay_root.canonical_key;
+        if !self.seen_keys.insert(key) {
+            self.stats.dedup_drops += 1;
+            return;
+        }
+
+        // The value source: the DEEPEST tier whose unrestricted reference is
+        // Complete AND which has at least one Complete arm. A timed-out top
+        // tier falls back to the deepest completed one; no Complete reference
+        // anywhere skips the position (design/19 §5.4).
+        let mut chosen: Option<&Observation> = None;
+        let mut any_complete_ref = false;
+        for record in &episode.records {
+            if record.search.completion != Completion::Complete {
+                continue;
+            }
+            any_complete_ref = true;
+            if !record
+                .moves
+                .iter()
+                .any(|m| m.completion == Completion::Complete)
+            {
+                continue;
+            }
+            let budget = record.context.node_budget.unwrap_or(0);
+            let deeper = chosen.is_none_or(|c| budget > c.context.node_budget.unwrap_or(0));
+            if deeper {
+                chosen = Some(record);
+            }
+        }
+        let Some(record) = chosen else {
+            if any_complete_ref {
+                self.stats.skip_no_complete_arms += 1;
+            } else {
+                self.stats.skip_no_complete_reference += 1;
+            }
+            return;
+        };
+
+        let feats = match source_features(&episode.replay_root) {
+            Ok(feats) => feats,
+            Err(_) => {
+                self.stats.skip_bad_position += 1;
+                return;
+            }
+        };
+
+        let complete: Vec<&_> = record
+            .moves
+            .iter()
+            .filter(|m| m.completion == Completion::Complete)
+            .collect();
+        self.stats.arms_skipped_stopped += (record.moves.len() - complete.len()) as u64;
+        // `chosen` guarantees a non-empty Complete set.
+        let best_value = complete.iter().map(|m| m.returned_score).max().unwrap();
+
+        let position_id = self.next_position_id;
+        self.next_position_id += 1;
+        self.stats.positions_out += 1;
+        let tier = record.context.node_budget.unwrap_or(0) as u32;
+        let ref_score = record.search.final_score;
+        let ref_best = record.search.best_move;
+        let stm = episode.replay_root.stm;
+        let nmoves = complete.len() as u16;
+
+        let mut max_taken = false; // exactly one is_max_value per position (ties → first)
+        let mut ref_best_seen = false;
+        for arm in complete {
+            let is_max = arm.returned_score == best_value && !max_taken;
+            max_taken |= is_max;
+            let is_ref_best = arm.mv == ref_best;
+            ref_best_seen |= is_ref_best;
+            let from = arm.mv & 0x3f;
+            let to = (arm.mv >> 6) & 0x3f;
+            self.rows.push(TrainRow {
+                position_id,
+                key,
+                stm,
+                feats,
+                nmoves,
+                move_idx: (from * 64 + to) as i16,
+                mv_raw16: arm.mv,
+                value: arm.returned_score,
+                margin: arm.returned_score - best_value,
+                is_ref_best: u8::from(is_ref_best),
+                is_max_value: u8::from(is_max),
+                tier,
+                ref_score,
+                teacher_id,
+                arm_nodes: arm.nodes.min(u64::from(u32::MAX)) as u32,
+                arm_depth: arm
+                    .searched_depth
+                    .clamp(i32::from(i16::MIN), i32::from(i16::MAX))
+                    as i16,
+            });
+            self.stats.arms_out += 1;
+        }
+        if !ref_best_seen {
+            self.stats.ref_best_missing += 1;
+        }
+    }
+}
+
+/// The 32 absolute source features of a stored position, `board_from_features`
+/// compatible: reconstruct THROUGH `Board::from_fen` (full validation), then
+/// one `(colour*6+pt)*64+sq` index per occupied square in ascending order,
+/// `-1` padded. A position with >32 pieces (impossible in legal chess) errors
+/// rather than overflow.
+fn source_features(position: &PositionState) -> Result<[i16; 32], String> {
+    let board = board_from_position(position)?;
+    let mut feats = [-1i16; 32];
+    for (n, sq) in board.all_occupancy().into_iter().enumerate() {
+        if n >= 32 {
+            return Err("position has more than 32 pieces".into());
+        }
+        let piece = board.piece_on(sq).expect("occupied square");
+        let feat = (u16::from(piece.color as u8) * 6 + u16::from(piece.piece_type as u8)) * 64
+            + u16::from(sq.index());
+        feats[n] = feat as i16;
+    }
+    Ok(feats)
+}
+
+// ─── NumPy v1 .npy writer (std-only; the exact layout d40_policy.rs reads) ───
+
+/// A NumPy v1.0 `.npy` header: magic, version, u16 header length, then a
+/// dict literal padded with spaces so the data section starts 64-byte aligned
+/// and terminated with `\n`. Mirrors `NpyFile::open` in `d40_policy.rs`.
+fn npy_header(descr: &str, shape: &str) -> Vec<u8> {
+    let dict = format!("{{'descr': '{descr}', 'fortran_order': False, 'shape': ({shape}), }}");
+    let unpadded = 10 + dict.len() + 1; // 6 magic + 2 version + 2 length + dict + '\n'
+    let pad = (64 - (unpadded % 64)) % 64;
+    let mut body = dict.into_bytes();
+    body.resize(body.len() + pad, b' ');
+    body.push(b'\n');
+    let header_len = u16::try_from(body.len()).expect("npy header fits u16");
+    let mut out = Vec::with_capacity(10 + body.len());
+    out.extend_from_slice(b"\x93NUMPY");
+    out.extend_from_slice(&[1, 0]);
+    out.extend_from_slice(&header_len.to_le_bytes());
+    out.extend_from_slice(&body);
+    out
+}
+
+fn write_npy(
+    dir: &std::path::Path,
+    name: &str,
+    descr: &str,
+    shape: &str,
+    data: &[u8],
+) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = std::io::BufWriter::new(std::fs::File::create(dir.join(name))?);
+    file.write_all(&npy_header(descr, shape))?;
+    file.write_all(data)?;
+    file.flush()
+}
+
+/// Minimal JSON string literal (quote + escape) — the manifest is the only
+/// place strings can carry arbitrary teacher/path bytes.
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// Write the whole SoA corpus (one `.npy` per column) plus `manifest.json`.
+fn write_corpus(
+    dir: &std::path::Path,
+    rows: &[TrainRow],
+    teachers: &[TeacherInfo],
+    stats: &Stats,
+    sources: &[String],
+    per_teacher: &[(u8, String, u64)],
+    tier_hist: &[(u32, u64)],
+) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    let n = rows.len();
+    let shape1 = format!("{n},");
+
+    // Scalar columns.
+    let mut buf = Vec::with_capacity(n * 4);
+    for r in rows {
+        buf.extend_from_slice(&r.position_id.to_le_bytes());
+    }
+    write_npy(dir, "position_id.npy", "<u4", &shape1, &buf)?;
+
+    buf.clear();
+    for r in rows {
+        buf.extend_from_slice(&r.key.to_le_bytes());
+    }
+    write_npy(dir, "key.npy", "<u8", &shape1, &buf)?;
+
+    buf.clear();
+    for r in rows {
+        buf.push(r.stm);
+    }
+    write_npy(dir, "stm.npy", "|u1", &shape1, &buf)?;
+
+    // feats: (N, 32) i16, C-order.
+    buf.clear();
+    for r in rows {
+        for &f in &r.feats {
+            buf.extend_from_slice(&f.to_le_bytes());
+        }
+    }
+    write_npy(dir, "feats.npy", "<i2", &format!("{n}, 32"), &buf)?;
+
+    buf.clear();
+    for r in rows {
+        buf.extend_from_slice(&r.nmoves.to_le_bytes());
+    }
+    write_npy(dir, "nmoves.npy", "<u2", &shape1, &buf)?;
+
+    buf.clear();
+    for r in rows {
+        buf.extend_from_slice(&r.move_idx.to_le_bytes());
+    }
+    write_npy(dir, "move_idx.npy", "<i2", &shape1, &buf)?;
+
+    buf.clear();
+    for r in rows {
+        buf.extend_from_slice(&r.mv_raw16.to_le_bytes());
+    }
+    write_npy(dir, "mv_raw16.npy", "<u2", &shape1, &buf)?;
+
+    buf.clear();
+    for r in rows {
+        buf.extend_from_slice(&r.value.to_le_bytes());
+    }
+    write_npy(dir, "value.npy", "<i4", &shape1, &buf)?;
+
+    buf.clear();
+    for r in rows {
+        buf.extend_from_slice(&r.margin.to_le_bytes());
+    }
+    write_npy(dir, "margin.npy", "<i4", &shape1, &buf)?;
+
+    buf.clear();
+    for r in rows {
+        buf.push(r.is_ref_best);
+    }
+    write_npy(dir, "is_ref_best.npy", "|u1", &shape1, &buf)?;
+
+    buf.clear();
+    for r in rows {
+        buf.push(r.is_max_value);
+    }
+    write_npy(dir, "is_max_value.npy", "|u1", &shape1, &buf)?;
+
+    buf.clear();
+    for r in rows {
+        buf.extend_from_slice(&r.tier.to_le_bytes());
+    }
+    write_npy(dir, "tier.npy", "<u4", &shape1, &buf)?;
+
+    buf.clear();
+    for r in rows {
+        buf.extend_from_slice(&r.ref_score.to_le_bytes());
+    }
+    write_npy(dir, "ref_score.npy", "<i4", &shape1, &buf)?;
+
+    buf.clear();
+    for r in rows {
+        buf.push(r.teacher_id);
+    }
+    write_npy(dir, "teacher_id.npy", "|u1", &shape1, &buf)?;
+
+    buf.clear();
+    for r in rows {
+        buf.extend_from_slice(&r.arm_nodes.to_le_bytes());
+    }
+    write_npy(dir, "arm_nodes.npy", "<u4", &shape1, &buf)?;
+
+    buf.clear();
+    for r in rows {
+        buf.extend_from_slice(&r.arm_depth.to_le_bytes());
+    }
+    write_npy(dir, "arm_depth.npy", "<i2", &shape1, &buf)?;
+
+    write_manifest(dir, rows, teachers, stats, sources, per_teacher, tier_hist)
+}
+
+fn write_manifest(
+    dir: &std::path::Path,
+    rows: &[TrainRow],
+    teachers: &[TeacherInfo],
+    stats: &Stats,
+    sources: &[String],
+    per_teacher: &[(u8, String, u64)],
+    tier_hist: &[(u32, u64)],
+) -> std::io::Result<()> {
+    let created_unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let columns = [
+        (
+            "position_id",
+            "<u4",
+            "dense position id; arms of one position are contiguous and share it",
+        ),
+        (
+            "key",
+            "<u8",
+            "canonical_key (unfolded Zobrist position identity) for dedup + leakage-safe split",
+        ),
+        ("stm", "|u1", "side to move (0=white,1=black)"),
+        (
+            "feats",
+            "<i2 [N,32]",
+            "absolute source features (colour*6+pt)*64+sq, -1 padded; d40 board_from_features compatible",
+        ),
+        (
+            "nmoves",
+            "<u2",
+            "count of Complete arms emitted for this position (root complexity)",
+        ),
+        (
+            "move_idx",
+            "<i2",
+            "from*64+to in 0..4095 (d40 policy-index convention)",
+        ),
+        (
+            "mv_raw16",
+            "<u2",
+            "full packed Move (kind|promo|to|from); lossless move identity",
+        ),
+        (
+            "value",
+            "<i4",
+            "PRIMARY per-arm value cp (returned_score at the chosen tier)",
+        ),
+        (
+            "margin",
+            "<i4",
+            "PRIMARY value - best_arm_value (<=0; best arm = 0)",
+        ),
+        (
+            "is_ref_best",
+            "|u1",
+            "1 if arm == unrestricted reference best move (soft best-move label)",
+        ),
+        (
+            "is_max_value",
+            "|u1",
+            "1 for the max-value arm (ties -> first)",
+        ),
+        (
+            "tier",
+            "<u4",
+            "node budget of the chosen deepest-Complete tier",
+        ),
+        (
+            "ref_score",
+            "<i4",
+            "unrestricted reference final score cp at the chosen tier",
+        ),
+        (
+            "teacher_id",
+            "|u1",
+            "index into `teachers` (producer_engine, design/19 §7)",
+        ),
+        (
+            "arm_nodes",
+            "<u4",
+            "nodes the arm search spent (Phase-3 cost signal)",
+        ),
+        ("arm_depth", "<i2", "depth the arm search reached"),
+    ];
+    let columns_json = columns
+        .iter()
+        .map(|(name, dtype, doc)| {
+            format!(
+                "{}: {{\"dtype\": {}, \"doc\": {}}}",
+                json_escape(name),
+                json_escape(dtype),
+                json_escape(doc)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let teachers_json = teachers
+        .iter()
+        .map(|t| {
+            let net = t
+                .net_version
+                .as_deref()
+                .map_or_else(|| "null".to_string(), json_escape);
+            format!(
+                "{{\"teacher_id\": {}, \"identity\": {}, \"engine_version\": {}, \"net_version\": {}, \
+                 \"search_config\": {}, \"search_config_hash\": {}, \"generator_version\": {}, \
+                 \"dataset_source\": {}, \"opening_source\": {}, \"hardware_identity\": {}}}",
+                t.teacher_id,
+                json_escape(&t.identity),
+                json_escape(&t.engine_version),
+                net,
+                json_escape(&t.search_config),
+                t.search_config_hash,
+                json_escape(&t.generator_version),
+                json_escape(&t.dataset_source),
+                json_escape(&t.opening_source),
+                json_escape(&t.hardware_identity),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let per_teacher_json = per_teacher
+        .iter()
+        .map(|(id, name, rows)| {
+            format!(
+                "{{\"teacher_id\": {id}, \"identity\": {}, \"rows\": {rows}}}",
+                json_escape(name)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let tier_hist_json = tier_hist
+        .iter()
+        .map(|(tier, count)| format!("\"{tier}\": {count}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let sources_json = sources
+        .iter()
+        .map(|s| json_escape(s))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let manifest = format!(
+        "{{\n  \"schema\": {schema},\n  \"writer\": {writer},\n  \"created_unix\": {created},\n  \
+         \"rows\": {rows_len},\n  \"row_granularity\": \"per (position, legal Complete arm)\",\n  \
+         \"tier_selection\": \"deepest tier with Complete reference AND >=1 Complete arm\",\n  \
+         \"value_encoding\": \"centipawns as the teacher reported; mate mapped to +-(31000-n) (root_analysis.rs)\",\n  \
+         \"margin_definition\": \"value - max(Complete arm value); best arm = 0, worse arms negative\",\n  \
+         \"targets\": {{\"primary\": [\"value\", \"margin\"], \"soft_best_move\": [\"is_ref_best\", \"is_max_value\"]}},\n  \
+         \"stats\": {{\"positions_in\": {p_in}, \"positions_out\": {p_out}, \"arms_out\": {a_out}, \
+         \"arms_skipped_stopped\": {a_stop}, \"dedup_drops\": {dedup}, \
+         \"skip_no_complete_reference\": {s_ref}, \"skip_no_complete_arms\": {s_arms}, \
+         \"skip_bad_position\": {s_bad}, \"non_rootmove_episodes\": {non_rma}, \
+         \"ref_best_missing\": {rbm}}},\n  \
+         \"per_teacher\": [{per_teacher_json}],\n  \
+         \"tier_histogram\": {{{tier_hist_json}}},\n  \
+         \"columns\": {{{columns_json}}},\n  \
+         \"teachers\": [{teachers_json}],\n  \
+         \"source_shards\": [{sources_json}]\n}}\n",
+        schema = json_escape(TRAIN_SCHEMA),
+        writer = json_escape(TRAIN_WRITER),
+        created = created_unix,
+        rows_len = rows.len(),
+        p_in = stats.positions_in,
+        p_out = stats.positions_out,
+        a_out = stats.arms_out,
+        a_stop = stats.arms_skipped_stopped,
+        dedup = stats.dedup_drops,
+        s_ref = stats.skip_no_complete_reference,
+        s_arms = stats.skip_no_complete_arms,
+        s_bad = stats.skip_bad_position,
+        non_rma = stats.non_rootmove_episodes,
+        rbm = stats.ref_best_missing,
+    );
+    std::fs::write(dir.join("manifest.json"), manifest)
+}
+
+/// Per-teacher row counts and tier histogram, derived from the emitted rows in
+/// stable id/tier order.
+fn corpus_aggregates(
+    rows: &[TrainRow],
+    teachers: &[TeacherInfo],
+) -> (PerTeacherCounts, TierHistogram) {
+    let mut per_teacher: PerTeacherCounts = teachers
+        .iter()
+        .map(|t| (t.teacher_id, t.identity.clone(), 0))
+        .collect();
+    let mut tiers: std::collections::BTreeMap<u32, u64> = std::collections::BTreeMap::new();
+    for row in rows {
+        if let Some(entry) = per_teacher
+            .iter_mut()
+            .find(|(id, _, _)| *id == row.teacher_id)
+        {
+            entry.2 += 1;
+        }
+        *tiers.entry(row.tier).or_insert(0) += 1;
+    }
+    (per_teacher, tiers.into_iter().collect())
+}
+
+fn export_train(args: &[String]) -> ExitCode {
+    let out_dir = std::path::PathBuf::from(&args[0]);
+    let shards = &args[1..];
+    let mut builder = CorpusBuilder::new();
+
+    // Deterministic order: shards in argument order, episodes in stream order,
+    // arms in stored order. dedup by canonical_key across every shard.
+    for path in shards {
+        let mut reader = match ShardReader::open(path) {
+            Ok(reader) => reader,
+            Err(error) => {
+                eprintln!("obs-tool: {path}: {error}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let provenance = reader.header().provenance.clone();
+        loop {
+            let episode = match reader.next_episode() {
+                Ok(Some(episode)) => episode,
+                Ok(None) => break,
+                Err(error) => {
+                    eprintln!("obs-tool: {path}: {error}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            let Some(prov) = provenance.get(episode.provenance_ref as usize) else {
+                eprintln!(
+                    "obs-tool: {path}: episode {} provenance_ref {} out of range",
+                    episode.episode_id, episode.provenance_ref
+                );
+                return ExitCode::FAILURE;
+            };
+            let teacher_id = match builder.intern_teacher(prov) {
+                Ok(id) => id,
+                Err(error) => {
+                    eprintln!("obs-tool: {path}: {error}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            builder.add_episode(&episode, teacher_id);
+        }
+    }
+
+    if builder.rows.is_empty() {
+        eprintln!("obs-tool: export-train produced 0 rows (no usable positions)");
+        return ExitCode::FAILURE;
+    }
+
+    let (per_teacher, tier_hist) = corpus_aggregates(&builder.rows, &builder.teachers);
+    if let Err(error) = write_corpus(
+        &out_dir,
+        &builder.rows,
+        &builder.teachers,
+        &builder.stats,
+        shards,
+        &per_teacher,
+        &tier_hist,
+    ) {
+        eprintln!("obs-tool: writing {}: {error}", out_dir.display());
+        return ExitCode::FAILURE;
+    }
+
+    print_train_stats(&out_dir, &builder.stats, &per_teacher, &tier_hist);
+    ExitCode::SUCCESS
+}
+
+fn print_train_stats(
+    out_dir: &std::path::Path,
+    stats: &Stats,
+    per_teacher: &[(u8, String, u64)],
+    tier_hist: &[(u32, u64)],
+) {
+    println!(
+        "export-train -> {} (NumPy SoA + manifest.json)",
+        out_dir.display()
+    );
+    println!("  positions in (RootMoveAnalysis): {}", stats.positions_in);
+    println!("  positions out:                   {}", stats.positions_out);
+    println!("  arms out (rows):                 {}", stats.arms_out);
+    println!(
+        "  arms skipped (Stopped in tier):  {}",
+        stats.arms_skipped_stopped
+    );
+    println!("  skip reasons:");
+    println!("    dedup (canonical_key seen):    {}", stats.dedup_drops);
+    println!(
+        "    no Complete reference:         {}",
+        stats.skip_no_complete_reference
+    );
+    println!(
+        "    Complete ref but no arms:      {}",
+        stats.skip_no_complete_arms
+    );
+    println!(
+        "    unreconstructable position:    {}",
+        stats.skip_bad_position
+    );
+    println!(
+        "    non-RootMoveAnalysis episodes: {}",
+        stats.non_rootmove_episodes
+    );
+    println!(
+        "  positions missing ref-best arm:  {}",
+        stats.ref_best_missing
+    );
+    println!("  per-teacher rows:");
+    for (id, identity, rows) in per_teacher {
+        println!("    [{id}] {rows} rows  ({identity})");
+    }
+    print!("  tier histogram (rows):");
+    for (tier, count) in tier_hist {
+        print!(" {tier}={count}");
+    }
+    println!();
 }
 
 /// The design/19 §8.1 CLASSICAL-ORDERING baseline: where does the teacher's
@@ -628,7 +1412,8 @@ fn dump(args: &[String]) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chessengine::obs::{Completion, PerMoveObservation};
+    use chessengine::obs::convert::position_from_board;
+    use chessengine::obs::{Completion, PerMoveObservation, SearchContext, SearchObservations};
 
     fn arm(mv: u16, score: i32, completion: Completion) -> PerMoveObservation {
         PerMoveObservation {
@@ -673,5 +1458,269 @@ mod tests {
             arm(2, 7, Completion::Complete),
         ];
         assert_eq!(kendall_tau(&flat, &b[..2]), 0.0);
+    }
+
+    // ─── export-train fixtures ───────────────────────────────────────────
+
+    fn prov(name: &str) -> Provenance {
+        Provenance {
+            engine_version: "test-engine".into(),
+            generator_version: "test".into(),
+            search_config: "test".into(),
+            dataset_source: "test".into(),
+            opening_source: "test".into(),
+            hardware_identity: "test".into(),
+            teacher_identity: Some(name.into()),
+            ..Default::default()
+        }
+    }
+
+    fn record(
+        budget: u64,
+        ref_completion: Completion,
+        ref_score: i32,
+        best: u16,
+        arms: Vec<PerMoveObservation>,
+    ) -> Observation {
+        Observation {
+            position: PositionState::default(),
+            context: SearchContext {
+                node_budget: Some(budget),
+                ..Default::default()
+            },
+            search: SearchObservations {
+                best_move: best,
+                final_score: ref_score,
+                completion: ref_completion,
+                ..Default::default()
+            },
+            moves: arms,
+        }
+    }
+
+    fn episode(root_fen: &str, id: u64, records: Vec<Observation>) -> Episode {
+        let board = Board::from_fen(root_fen).unwrap();
+        Episode {
+            kind: EpisodeKind::RootMoveAnalysis,
+            episode_id: id,
+            provenance_ref: 0,
+            records,
+            replay_root: position_from_board(&board, 0, vec![]),
+            ..Default::default()
+        }
+    }
+
+    /// The synthetic fixture: deepest Complete tier is the value source, its
+    /// Stopped arm is dropped, values/margins/best-flags are exact.
+    #[test]
+    fn export_train_emits_exact_value_margin_rows() {
+        let mut builder = CorpusBuilder::new();
+        let teacher = builder.intern_teacher(&prov("reckless")).unwrap();
+        let (arm_a, arm_b, arm_c) = (0x0001u16, 0x0002u16, 0x0003u16);
+        let ep = episode(
+            "7k/8/8/8/8/8/8/K7 w - - 0 1",
+            0,
+            vec![
+                record(
+                    1000,
+                    Completion::Complete,
+                    10,
+                    arm_a,
+                    vec![
+                        arm(arm_a, 8, Completion::Complete),
+                        arm(arm_b, 5, Completion::Complete),
+                    ],
+                ),
+                record(
+                    4000,
+                    Completion::Complete,
+                    12,
+                    arm_a,
+                    vec![
+                        arm(arm_a, 20, Completion::Complete),
+                        arm(arm_b, 7, Completion::Complete),
+                        arm(arm_c, -3, Completion::Stopped),
+                    ],
+                ),
+            ],
+        );
+        builder.add_episode(&ep, teacher);
+
+        assert_eq!(builder.rows.len(), 2, "two Complete arms; Stopped dropped");
+        let (a, b) = (builder.rows[0], builder.rows[1]);
+        // Deepest tier (4000) is the value source, not tier 1000.
+        assert_eq!(a.tier, 4000);
+        assert_eq!(a.ref_score, 12);
+        // Arm A: max value + reference best.
+        assert_eq!(a.mv_raw16, arm_a);
+        assert_eq!(a.value, 20);
+        assert_eq!(a.margin, 0);
+        assert_eq!(a.is_max_value, 1);
+        assert_eq!(a.is_ref_best, 1);
+        assert_eq!(a.move_idx, 64); // raw16 1 -> from 1, to 0 -> 1*64+0
+        // Arm B: value + margin vs best.
+        assert_eq!(b.value, 7);
+        assert_eq!(b.margin, 7 - 20);
+        assert_eq!(b.is_max_value, 0);
+        assert_eq!(b.is_ref_best, 0);
+        assert_eq!(b.move_idx, 128); // raw16 2 -> from 2, to 0
+        // Shared position metadata + absolute feats (a1 white K, h8 black K).
+        assert_eq!(a.position_id, 0);
+        assert_eq!(a.nmoves, 2);
+        assert_eq!(a.teacher_id, teacher);
+        assert_eq!(a.stm, 0);
+        assert_eq!(a.feats[0], 320); // (0*6+5)*64 + 0
+        assert_eq!(a.feats[1], 767); // (1*6+5)*64 + 63
+        assert_eq!(a.feats[2], -1); // padded
+        // Stats.
+        assert_eq!(builder.stats.positions_in, 1);
+        assert_eq!(builder.stats.positions_out, 1);
+        assert_eq!(builder.stats.arms_out, 2);
+        assert_eq!(builder.stats.arms_skipped_stopped, 1);
+        assert_eq!(builder.stats.ref_best_missing, 0);
+    }
+
+    /// Same canonical_key across two shards: first occurrence wins, the second
+    /// drops, and the drop is counted (not silently merged).
+    #[test]
+    fn export_train_dedups_by_canonical_key_across_shards() {
+        let mut builder = CorpusBuilder::new();
+        let t1 = builder.intern_teacher(&prov("reckless")).unwrap();
+        let t2 = builder.intern_teacher(&prov("sf18")).unwrap();
+        let make = || {
+            episode(
+                "7k/8/8/8/8/8/8/K7 w - - 0 1",
+                0,
+                vec![record(
+                    4000,
+                    Completion::Complete,
+                    5,
+                    0x0001,
+                    vec![
+                        arm(0x0001, 10, Completion::Complete),
+                        arm(0x0002, -4, Completion::Complete),
+                    ],
+                )],
+            )
+        };
+        builder.add_episode(&make(), t1); // shard A
+        builder.add_episode(&make(), t2); // shard B: identical key
+
+        assert_eq!(builder.stats.dedup_drops, 1);
+        assert_eq!(builder.rows.len(), 2, "only shard A's two arms survive");
+        assert!(builder.rows.iter().all(|r| r.teacher_id == t1));
+        assert_eq!(builder.stats.positions_in, 2);
+        assert_eq!(builder.stats.positions_out, 1);
+    }
+
+    /// A Stopped reference is not a value source: skip if none complete, but
+    /// fall back to the deepest COMPLETE tier when a shallower one exists.
+    #[test]
+    fn export_train_completion_filter_and_tier_fallback() {
+        let mut builder = CorpusBuilder::new();
+        let teacher = builder.intern_teacher(&prov("reckless")).unwrap();
+
+        // Only tier's reference Stopped -> skipped entirely.
+        let stopped_only = episode(
+            "7k/8/8/8/8/8/8/K7 w - - 0 1",
+            0,
+            vec![record(
+                4000,
+                Completion::Stopped,
+                0,
+                0x0001,
+                vec![arm(0x0001, 10, Completion::Complete)],
+            )],
+        );
+        builder.add_episode(&stopped_only, teacher);
+        assert_eq!(builder.rows.len(), 0);
+        assert_eq!(builder.stats.skip_no_complete_reference, 1);
+        assert_eq!(builder.stats.positions_out, 0);
+
+        // Deepest tier Stopped, shallower Complete -> use the shallower one.
+        let fallback = episode(
+            "k7/8/8/8/8/8/8/7K w - - 0 1",
+            1,
+            vec![
+                record(
+                    4000,
+                    Completion::Complete,
+                    3,
+                    0x0001,
+                    vec![
+                        arm(0x0001, 9, Completion::Complete),
+                        arm(0x0002, 1, Completion::Complete),
+                    ],
+                ),
+                record(
+                    16000,
+                    Completion::Stopped,
+                    0,
+                    0x0001,
+                    vec![arm(0x0001, 99, Completion::Complete)],
+                ),
+            ],
+        );
+        builder.add_episode(&fallback, teacher);
+        assert_eq!(builder.rows.len(), 2);
+        assert!(
+            builder.rows.iter().all(|r| r.tier == 4000),
+            "fell back to the deepest Complete tier, not the Stopped one"
+        );
+    }
+
+    /// The `.npy` writer produces the exact layout `d40_policy.rs` reads
+    /// (magic, u16 header length, data at 10+header_len) and round-trips the
+    /// column payloads; the manifest names the versioned schema.
+    #[test]
+    fn export_train_npy_columns_round_trip() {
+        fn read_npy_i32(path: &std::path::Path) -> Vec<i32> {
+            let bytes = std::fs::read(path).unwrap();
+            assert_eq!(&bytes[..6], b"\x93NUMPY");
+            assert_eq!(bytes[6], 1, "npy v1");
+            let header_len = u16::from_le_bytes([bytes[8], bytes[9]]) as usize;
+            bytes[10 + header_len..]
+                .chunks_exact(4)
+                .map(|c| i32::from_le_bytes(c.try_into().unwrap()))
+                .collect()
+        }
+
+        let mut builder = CorpusBuilder::new();
+        let teacher = builder.intern_teacher(&prov("reckless")).unwrap();
+        let ep = episode(
+            "7k/8/8/8/8/8/8/K7 w - - 0 1",
+            0,
+            vec![record(
+                4000,
+                Completion::Complete,
+                12,
+                0x0001,
+                vec![
+                    arm(0x0001, 20, Completion::Complete),
+                    arm(0x0002, 7, Completion::Complete),
+                ],
+            )],
+        );
+        builder.add_episode(&ep, teacher);
+        let (per_teacher, tier_hist) = corpus_aggregates(&builder.rows, &builder.teachers);
+        let dir = std::env::temp_dir().join(format!("archon-train-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        write_corpus(
+            &dir,
+            &builder.rows,
+            &builder.teachers,
+            &builder.stats,
+            &["synthetic".to_string()],
+            &per_teacher,
+            &tier_hist,
+        )
+        .unwrap();
+
+        assert_eq!(read_npy_i32(&dir.join("value.npy")), vec![20, 7]);
+        assert_eq!(read_npy_i32(&dir.join("margin.npy")), vec![0, -13]);
+        let manifest = std::fs::read_to_string(dir.join("manifest.json")).unwrap();
+        assert!(manifest.contains("archon.obs-train.rootmove-value-v1"));
+        assert!(manifest.contains("\"rows\": 2"));
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
