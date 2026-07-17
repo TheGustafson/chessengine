@@ -625,3 +625,20 @@ strength. Two constraints in permanent tension, resolved in this order:
   correction-history weights, LMR/reduction bundle, RFP+razoring, NMP,
   futility+SEE, LMP+history-pruning, aspiration+IIR, history update
   magnitudes.
+
+- **D45a** (user-directed, 2026-07-17): **D40-class architectures are the
+  designated model family for the D41 era** — not a background line. The
+  reasoning: the obs platform's search-data augmentation (design/16/19)
+  raises the information density of every game dramatically (per-arm
+  values, margins, node costs — ~100 per-move rows per position in
+  sample-v1 vs one scalar label in a binpack), and absorbing relational
+  search-consequence targets needs relational inputs: FullThreats gives
+  the net direct access to the attack structure those labels correlate
+  with, where the classic 768 set must burn capacity inferring it. The
+  D40 trunk was already designed to host shared eval+policy/search heads
+  (design/17 Thrust II, design/19). Consequences: (1) the D40 speed
+  program and the packing-tail fix are STRATEGIC PREREQUISITES, worked in
+  SPSA downtime, not parked; (2) s3/s4 remain the shipped evaluator only
+  until the D41-era D40 line clears an equal-time gate; (3) the SPSA
+  season (D45) proceeds unchanged — its 8 decisions transfer (search
+  params are eval-agnostic to first order, re-checked at the D40 switch).
