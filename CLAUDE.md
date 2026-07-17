@@ -196,7 +196,7 @@ mutates. Full mechanics: `design/14` §10.
 
 **CURRENT (2026-07-16): D41 ARCHON era — value-foundation phase; net-0 has
 been dethroned.**
-Classical engine complete (P0–P11, ~2720 Elo PSQT, depth-6 bench **548978**).
+Classical engine complete (P0–P11, ~2720 Elo PSQT; the PSQT-era depth-6 bench was 548978 — the pin moved to **701605** when S1 correction history landed 2026-07-17).
 P13 NNUE landed **net-0** (768→2x256 SCReLU, SF16-teacher, **+696 vs PSQT**,
 ~3400 anchored); net-1..11, the 13-net D40 policy campaign, and the bulk
 value matrix are historical controls. **The B4 question is answered
