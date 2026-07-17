@@ -19,6 +19,12 @@ SUMMARY_RE = re.compile(
     r"Games:\s*(\d+),\s*Wins:\s*(\d+),\s*Losses:\s*(\d+),"
     r"\s*Draws:\s*(\d+),\s*Points:"
 )
+# e.g. "LLR: 1.42 (48.2%) (-2.94, 2.94) [0.00, 10.00]" (the % is progress).
+LLR_RE = re.compile(
+    r"LLR:\s*(-?[\d.]+)\s*(?:\([\d.]+%\)\s*)?\((-?[\d.]+),\s*(-?[\d.]+)\)"
+)
+SPRT_ALPHA = 0.05
+SPRT_BETA = 0.05
 
 
 def absolute(value: str) -> Path:
@@ -54,6 +60,11 @@ def main() -> int:
     limit.add_argument("--nodes", type=int)
     limit.add_argument("--tc")
     parser.add_argument("--concurrency", type=int, default=1)
+    parser.add_argument("--sprt-elo0", type=float,
+                        help="SPRT H0 bound (logistic Elo); early-stops a decided "
+                             "match, with --games as the cap. Requires --sprt-elo1.")
+    parser.add_argument("--sprt-elo1", type=float,
+                        help="SPRT H1 bound (logistic Elo). Requires --sprt-elo0.")
     parser.add_argument("--seed", type=int, default=20260714)
     parser.add_argument("--openings", type=absolute,
                         default=absolute("data/nnue/openings/policy-balanced-256.epd"))
@@ -71,6 +82,11 @@ def main() -> int:
         args.nodes = 2000
     if args.games <= 0 or args.games % 2:
         parser.error("--games must be a positive even number")
+    if (args.sprt_elo0 is None) != (args.sprt_elo1 is None):
+        parser.error("--sprt-elo0 and --sprt-elo1 must be given together")
+    sprt = args.sprt_elo1 is not None
+    if sprt and args.sprt_elo1 <= args.sprt_elo0:
+        parser.error("--sprt-elo1 must be greater than --sprt-elo0")
     if args.nodes is not None and args.nodes <= 0:
         parser.error("--nodes must be positive")
     for path in (args.candidate, args.baseline, args.openings, args.candidate_engine,
@@ -86,6 +102,7 @@ def main() -> int:
         "candidate": str(args.candidate), "baseline": str(args.baseline),
         "games": args.games, "nodes": args.nodes, "tc": args.tc,
         "concurrency": args.concurrency, "seed": args.seed,
+        "sprt_elo0": args.sprt_elo0, "sprt_elo1": args.sprt_elo1,
         "openings": str(args.openings), "engine": str(args.engine),
         "candidate_engine": str(args.candidate_engine),
         "baseline_engine": str(args.baseline_engine),
@@ -96,7 +113,10 @@ def main() -> int:
                       if state.get(key) != value}
         if mismatches:
             raise RuntimeError(f"output directory has another configuration: {mismatches}")
-        if state.get("status") == "complete" and pgn_games(pgn) == args.games:
+        # SPRT runs legitimately finish with fewer games than the cap, so a
+        # completed state records how many it actually played.
+        if (state.get("status") == "complete"
+                and pgn_games(pgn) == state.get("pgn_games", args.games)):
             print(json.dumps(state, indent=2, sort_keys=True))
             return 0
         if pgn.exists():
@@ -119,6 +139,11 @@ def main() -> int:
         "-srand", str(args.seed), "-pgnout", f"file={pgn}", "notation=lan",
         "-log", f"file={args.output / 'fastchess.log'}", "level=warn",
     ]
+    if sprt:
+        # logistic model: bounds are in the same regular-Elo units every other
+        # number in the ledger uses (normalized would report nElo).
+        command += ["-sprt", f"elo0={args.sprt_elo0}", f"elo1={args.sprt_elo1}",
+                    f"alpha={SPRT_ALPHA}", f"beta={SPRT_BETA}", "model=logistic"]
     state.update(status="running", command=command)
     state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
     result = subprocess.run(command, cwd=REPO, text=True, stdout=subprocess.PIPE,
@@ -126,15 +151,32 @@ def main() -> int:
     stdout_log.write_text(result.stdout)
     matches = SUMMARY_RE.findall(result.stdout)
     count = pgn_games(pgn)
-    if result.returncode or not matches or count != args.games:
+    # In SPRT mode a decided match legitimately stops before the --games cap:
+    # accept a short run only when the final LLR actually crossed a bound.
+    sprt_state = None
+    if sprt:
+        llr_matches = LLR_RE.findall(result.stdout)
+        if llr_matches:
+            llr, lower, upper = map(float, llr_matches[-1])
+            verdict = ("H1" if llr >= upper else
+                       "H0" if llr <= lower else "max-games")
+            sprt_state = {"elo0": args.sprt_elo0, "elo1": args.sprt_elo1,
+                          "alpha": SPRT_ALPHA, "beta": SPRT_BETA,
+                          "llr": llr, "lower": lower, "upper": upper,
+                          "verdict": verdict}
+    early_stop_ok = sprt_state is not None and sprt_state["verdict"] != "max-games"
+    if result.returncode or not matches or (count != args.games and not early_stop_ok):
         state.update(status="failed", returncode=result.returncode, pgn_games=count,
                      output_tail=result.stdout[-4000:])
         state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
         raise RuntimeError(f"match failed: rc={result.returncode}, games={count}/{args.games}")
     games, wins, losses, draws = map(int, matches[-1])
-    state.update(status="complete", candidate_wins=wins, candidate_losses=losses, draws=draws,
+    state.update(status="complete", pgn_games=count,
+                 candidate_wins=wins, candidate_losses=losses, draws=draws,
                  **estimate(games, wins, losses, draws),
                  paired_bootstrap=paired_bootstrap(pgn, "candidate", args.seed))
+    if sprt_state is not None:
+        state["sprt"] = sprt_state
     state_path.write_text(json.dumps(state, indent=2, sort_keys=True, allow_nan=True) + "\n")
     print(json.dumps(state, indent=2, sort_keys=True))
     return 0
