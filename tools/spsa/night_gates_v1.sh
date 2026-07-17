@@ -16,7 +16,40 @@ if [ "$busy" -gt 0 ]; then
   say "ABORT: box not quiet ($busy tuner/labeler/trainer procs)"; exit 1
 fi
 
-# --- 1. c1 ship gate -------------------------------------------------------
+# --- 1. campaign ship gates (any campaign whose theta actually moved) ------
+for CAMP in c1-corrhist c2-reduction c3-rfp-razor c4-nmp c5-futility-see \
+            c6-gates-counters c7-aspiration-hindsight-optimism c8-history-updates; do
+  THETA=data/nnue/experiments/spsa/$CAMP/theta_final.json
+  [ -f "$THETA" ] || continue
+  grep -q "GATE RESULT $CAMP" "$R" && continue
+  OPTS=$(python3 -c "
+import json
+t=json.load(open('$THETA'))
+f=t['final']; st=t['start']
+moved={k:v for k,v in f.items() if v != int(round(st[k]))}
+print(' '.join(f'option.{k}={v}' for k,v in f.items()) if moved else '')")
+  if [ -z "$OPTS" ]; then
+    say "$CAMP: theta == defaults, gate vacuous — skipped"
+    continue
+  fi
+  say "$CAMP ship gate: tuned vs defaults (10+0.1, SPRT [0,10], cap 600g)"
+  OUT=data/nnue/experiments/spsa/$CAMP/tc-gate.log
+  # shellcheck disable=SC2086
+  engines/bin/fastchess \
+    -engine cmd=engines/bin/tune-l2048 name=tuned $OPTS \
+    -engine cmd=engines/bin/tune-l2048 name=default \
+    -each proto=uci tc=10+0.1 option.Threads=1 option.Hash=16 \
+      "option.EvalFile=$S3" \
+    -openings file=data/nnue/openings/UHO_Lichess_4852_v1.epd format=epd order=random \
+    -repeat -games 2 -rounds 300 -concurrency 3 -recover \
+    -draw movenumber=40 movecount=8 score=15 \
+    -resign movecount=4 score=700 -maxmoves 250 \
+    -sprt elo0=0 elo1=10 alpha=0.05 beta=0.05 model=logistic \
+    -srand 20260721 > "$OUT" 2>&1 || true
+  echo "[GATE RESULT $CAMP] $(grep -aE 'LLR:' "$OUT" | tail -1) | $(grep -aE 'Elo:' "$OUT" | tail -1) | $(grep -aE 'Games:' "$OUT" | tail -1)" | tee -a "$R"
+done
+OLD_C1_BLOCK_REMOVED() { :; }
+if false; then
 THETA=data/nnue/experiments/spsa/c1-corrhist/theta_final.json
 if [ -f "$THETA" ] && ! grep -q "C1 GATE RESULT" "$R"; then
   OPTS=$(python3 -c "
@@ -39,6 +72,7 @@ print(' '.join(f'option.{k}={v}' for k,v in f.items()))")
     -srand 20260721 > "$OUT" 2>&1 || true
   tail -30 "$OUT" | grep -E "Games:|LLR:" | tail -4 | sed 's/^/[gates c1] /' | tee -a "$R"
   echo "[C1 GATE RESULT] $(grep -E 'LLR:' "$OUT" | tail -1) | $(grep -E 'Games:' "$OUT" | tail -1)" | tee -a "$R"
+fi
 fi
 
 # --- 2. 720sb equal-time gate ---------------------------------------------
