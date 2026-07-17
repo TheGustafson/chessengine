@@ -25,12 +25,14 @@ fn main() -> ExitCode {
         Some((cmd, rest)) if cmd == "stability" && !rest.is_empty() => stability(rest),
         Some((cmd, rest)) if cmd == "disagree" && rest.len() == 2 => disagree(rest),
         Some((cmd, rest)) if cmd == "export" && !rest.is_empty() => export(rest),
+        Some((cmd, rest)) if cmd == "rank" && !rest.is_empty() => rank(rest),
         _ => {
             eprintln!("usage: obs-tool verify <shard.ceobs>...");
             eprintln!("       obs-tool dump <shard.ceobs> [episodes]");
             eprintln!("       obs-tool stability <shard.ceobs> [tie-margin-cp (default 20)]");
             eprintln!("       obs-tool disagree <shardA.ceobs> <shardB.ceobs>");
             eprintln!("       obs-tool export <shard.ceobs>   (per-arm JSONL on stdout)");
+            eprintln!("       obs-tool rank <shard.ceobs>     (classical-ordering baseline)");
             ExitCode::FAILURE
         }
     }
@@ -262,6 +264,86 @@ fn export(args: &[String]) -> ExitCode {
                 }
             }
         }
+    }
+    ExitCode::SUCCESS
+}
+
+/// The design/19 §8.1 CLASSICAL-ORDERING baseline: where does the teacher's
+/// reference best move sit in ARCHON's own MovePicker order (fresh
+/// histories, no TT move — the cold ordering a Phase-1 model must beat)?
+/// Only complete deepest-tier references count; unstable positions are the
+/// model's hard class, not the baseline's.
+fn rank(args: &[String]) -> ExitCode {
+    use chessengine::history::{ContHistId, Histories};
+    use chessengine::movepick::MovePicker;
+    use chessengine::moves::Move;
+    let episodes = match load_root_episodes(&args[0]) {
+        Ok(episodes) => episodes,
+        Err(error) => {
+            eprintln!("obs-tool: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let histories = Histories::new(); // fresh: the cold-start ordering
+    let (mut scored, mut skipped) = (0u64, 0u64);
+    let (mut top1, mut top3, mut top5) = (0u64, 0u64, 0u64);
+    let mut rank_sum = 0u64;
+    for episode in &episodes {
+        let Some(deep) = episode.records.last() else {
+            skipped += 1;
+            continue;
+        };
+        if deep.search.completion != chessengine::obs::Completion::Complete {
+            skipped += 1;
+            continue;
+        }
+        let board = match checked_board(&episode.replay_root) {
+            Ok(board) => board,
+            Err(_) => {
+                skipped += 1;
+                continue;
+            }
+        };
+        let best = Move::from_raw16(deep.search.best_move);
+        let mut picker = MovePicker::new(&board, Move::NULL, 1, 0, [ContHistId::SENTINEL; 6]);
+        let mut position = 0u64;
+        let mut found = None;
+        while let Some(mv) = picker.next_move(&board, &histories) {
+            if !board.legal(mv) {
+                continue;
+            }
+            position += 1;
+            if mv == best {
+                found = Some(position);
+                break;
+            }
+        }
+        let Some(rank) = found else {
+            skipped += 1; // reference best not produced (shouldn't happen)
+            continue;
+        };
+        scored += 1;
+        rank_sum += rank;
+        if rank <= 1 {
+            top1 += 1;
+        }
+        if rank <= 3 {
+            top3 += 1;
+        }
+        if rank <= 5 {
+            top5 += 1;
+        }
+    }
+    println!("classical-ordering baseline: {}", args[0]);
+    println!("  scored positions: {scored} (skipped {skipped})");
+    if scored > 0 {
+        println!(
+            "  teacher-best in classical order: top-1 {:.1}%  top-3 {:.1}%  top-5 {:.1}%  mean rank {:.2}",
+            100.0 * top1 as f64 / scored as f64,
+            100.0 * top3 as f64 / scored as f64,
+            100.0 * top5 as f64 / scored as f64,
+            rank_sum as f64 / scored as f64
+        );
     }
     ExitCode::SUCCESS
 }
