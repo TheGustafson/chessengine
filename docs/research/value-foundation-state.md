@@ -1195,6 +1195,17 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 15:00 [DECISION 7/8 PENDING] c7: aspiration wants wider+gentler; the eval blend is flat
+
+exp-0083. ASPIRATION_BASE_DELTA 5 -> 7 (wider initial window) with
+ASPIRATION_WIDEN_NUM 44 -> 37 (gentler re-search widening) — 20%/10% of
+range. The eval outer-shape blend (material/optimism/rule50) stayed in
+the noise band: an interesting NEGATIVE — SF's optimism constants
+transfer to our net lineage unchanged, matching the c1 corrhist result.
+Screen +7.3 ± 17.8, LLR 0.28. Five pending TC gates (c3-c7); c8
+(history-update magnitudes) is the LAST campaign, running now. Season
+completes tonight with the gate sequence + combined-config verification.
+
 ## 2026-07-17 14:20 [DECISION 6/8 PENDING] c6 gates/counters: integer gates all step toward more pruning
 
 exp-0082. LMP_BASE 3 -> 2 (~3 sigma continuous-theta), PFUT_MAX_LMRDEPTH
