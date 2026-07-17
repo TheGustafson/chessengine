@@ -1106,6 +1106,14 @@ clipping so packing never saturates. Note `rescale_net.py` does NOT apply
 here — it hot-scales the OUTPUT layer; this tail comes from packed
 mid-net weights saturating their integer range.
 
+04:34 update — the night chain's diagnostics are in (exp-0072): **720sb
+beats 240sb +30.2 ± 17.1 at fixed nodes** (300g @5k, 121W/84D/95L). The
+longer schedule genuinely helps; the ONLY thing blocking it from the gate
+is the packing tail. This tilts the repair decision toward (b)/(c) — fix
+packing/clipping and re-gate — over waiving. The hop diagnostic confirmed
+the cached evening number (−23.2, exp-0066; hop stays dead). The
+equal-time gate (240sb vs s4, promotion #4) started 03:52, verdict ~06:50.
+
 **S1 merge gate**: with the trainer gone, `bash tools/check.sh` reran the
 full D24 gate at HEAD (S1 correction history + R4 #2/#3 + obs stack):
 fmt/clippy/tests/release-perft all green, bench fingerprint **701605**
