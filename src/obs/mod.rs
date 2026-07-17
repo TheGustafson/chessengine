@@ -348,6 +348,9 @@ mod cli_fixture {
                 engine_version: "archon demo".into(),
                 generator_version: "cli_fixture".into(),
                 hardware_identity: "demo".into(),
+                search_config: "demo".into(),
+                dataset_source: "cli_fixture".into(),
+                opening_source: "startpos".into(),
                 ..Default::default()
             }],
         };
@@ -387,6 +390,16 @@ mod cli_fixture {
         let mut writer = ShardWriter::create(&path, &header).unwrap();
         writer.append(&episode).unwrap();
         writer.finish().unwrap();
+        // Self round-trip: the fixture must produce a shard the STRICT
+        // decoder accepts — round 2 caught it writing provenance the same
+        // commit's enforcement rejected (D33 r2, MEDIUM).
+        let mut reader = ShardReader::open(&path).expect("fixture shard must decode");
+        assert!(
+            reader
+                .next_episode()
+                .expect("fixture episode decodes")
+                .is_some()
+        );
         eprintln!("demo shard: {}", path.display());
     }
 }
