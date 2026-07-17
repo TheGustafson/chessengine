@@ -963,3 +963,21 @@ Findings worth remembering from the landing:
   stockfish_reference/07-s0-sf16-mechanics-audit.md.
 - Pending USER decisions: exp-0042 code_sha convention ("unknown"
   recommended); gitignore config.json.
+
+## 2026-07-17 01:15 [CODE] D41 Phase-1 infrastructure: obs M1+M2 landed in one evening
+
+The doc-16 Observation Store is real: `src/obs/` (0f81b34) — std-only TLV
+(protobuf wire MODEL, no dependency), full four-layer schema incl. the
+§5.2 completeness fields, shard framing with whole-episode appends;
+contract tests green (round-trip, forward-compat incl. future EpisodeKind,
+provenance-mandatory both sides, newer-version refusal, crash-truncation
+semantics). M2 (e940e03): Board<->PositionState conversion (doc 15 nibble
+convention, reconstruction THROUGH from_fen so shard bytes are validated,
+never trusted) + `obs-tool verify/dump` — the design/19 §11.1 replay
+audit; smoked on a real shard (0 problems) and a bit-flipped one (caught).
+All behind feature="datagen"; default build + bench untouched; clippy
+clean both feature sets. NEXT: M3 RootMoveAnalysis generator (D43 root-v0
+searchmoves arms, cold state) -> M4 D44 stability/disagreement audits ->
+M5 D33 review -> first Reckless labeling run (which does NOT wait for the
+evaluator freeze). Revised Phase-1 forecast: first "more than eval"
+training in ~3-5 days, gated mainly by M3 + the eval verdicts.
