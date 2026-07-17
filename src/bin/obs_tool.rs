@@ -24,12 +24,227 @@ fn main() -> ExitCode {
     match args.split_first() {
         Some((cmd, rest)) if cmd == "verify" && !rest.is_empty() => verify(rest),
         Some((cmd, rest)) if cmd == "dump" && !rest.is_empty() => dump(rest),
+        Some((cmd, rest)) if cmd == "stability" && !rest.is_empty() => stability(rest),
+        Some((cmd, rest)) if cmd == "disagree" && rest.len() == 2 => disagree(rest),
         _ => {
             eprintln!("usage: obs-tool verify <shard.ceobs>...");
             eprintln!("       obs-tool dump <shard.ceobs> [episodes]");
+            eprintln!("       obs-tool stability <shard.ceobs> [tie-margin-cp (default 20)]");
+            eprintln!("       obs-tool disagree <shardA.ceobs> <shardB.ceobs>");
             ExitCode::FAILURE
         }
     }
+}
+
+// ─── M4: D44 fail-fast audits ──────────────────────────────────────────────
+
+/// The design/19 §5.4 stability rule over a RootMoveAnalysis shard: a
+/// position's reference is ACCEPTED when the unrestricted best move agrees
+/// between the two deepest tiers AND the top-tier margin (best arm minus
+/// runner-up) clears the tie threshold. Everything else is reported as the
+/// explicit unstable/tie class — usable as hard-case strata, never as
+/// ground truth.
+fn stability(args: &[String]) -> ExitCode {
+    let path = &args[0];
+    let tie_margin: i32 = args.get(1).and_then(|n| n.parse().ok()).unwrap_or(20);
+    let episodes = match load_root_episodes(path) {
+        Ok(episodes) => episodes,
+        Err(error) => {
+            eprintln!("obs-tool: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let (mut accepted, mut best_flip, mut tie, mut too_few_tiers) = (0u64, 0u64, 0u64, 0u64);
+    let mut margins = Vec::new();
+    let mut tier_score_drift = Vec::new();
+    let mut arm_vs_full_mismatch = 0u64;
+
+    for episode in &episodes {
+        if episode.records.len() < 2 {
+            too_few_tiers += 1;
+            continue;
+        }
+        let deep = &episode.records[episode.records.len() - 1];
+        let prev = &episode.records[episode.records.len() - 2];
+
+        // Margin between the two best ARMS at the deepest tier.
+        let mut arm_scores: Vec<(i32, u16)> = deep
+            .moves
+            .iter()
+            .map(|m| (m.returned_score, m.mv))
+            .collect();
+        arm_scores.sort_by_key(|&(score, _)| std::cmp::Reverse(score));
+        let margin = match arm_scores.as_slice() {
+            [(top, _), (second, _), ..] => top - second,
+            _ => i32::MAX, // single legal move: trivially stable
+        };
+        margins.push(margin);
+
+        // Does the top arm agree with the unrestricted search's best move?
+        if let Some(&(_, top_mv)) = arm_scores.first()
+            && top_mv != deep.search.best_move
+        {
+            arm_vs_full_mismatch += 1;
+        }
+
+        // Score drift of the unrestricted search between the deepest tiers.
+        tier_score_drift.push((deep.search.final_score - prev.search.final_score).abs());
+
+        if deep.search.best_move != prev.search.best_move {
+            best_flip += 1;
+        } else if margin < tie_margin {
+            tie += 1;
+        } else {
+            accepted += 1;
+        }
+    }
+
+    let total = accepted + best_flip + tie;
+    println!("stability audit: {path}");
+    println!(
+        "  positions: {} ({} skipped: <2 tiers)",
+        episodes.len(),
+        too_few_tiers
+    );
+    if total > 0 {
+        println!(
+            "  ACCEPTED (stable best + margin >= {tie_margin}cp): {accepted} ({:.0}%)",
+            100.0 * accepted as f64 / total as f64
+        );
+        println!(
+            "  best-move flip across deepest tiers:              {best_flip} ({:.0}%)",
+            100.0 * best_flip as f64 / total as f64
+        );
+        println!(
+            "  tie (margin < {tie_margin}cp):                             {tie} ({:.0}%)",
+            100.0 * tie as f64 / total as f64
+        );
+        println!("  top-arm vs unrestricted-best mismatch:            {arm_vs_full_mismatch}");
+        println!(
+            "  top-tier margin cp: {}   |Δscore| across tiers cp: {}",
+            quantiles(&mut margins),
+            quantiles(&mut tier_score_drift)
+        );
+    }
+    ExitCode::SUCCESS
+}
+
+/// Teacher-disagreement report between two shards over the SAME positions
+/// (same fens file, same tier count): best-move agreement at the deepest
+/// tier, unrestricted-score deltas, and arm-ranking correlation (Kendall
+/// tau) — the design/19 §5.3 disagreement strata.
+fn disagree(args: &[String]) -> ExitCode {
+    let (a, b) = (&args[0], &args[1]);
+    let (episodes_a, episodes_b) = match (load_root_episodes(a), load_root_episodes(b)) {
+        (Ok(a), Ok(b)) => (a, b),
+        (Err(error), _) | (_, Err(error)) => {
+            eprintln!("obs-tool: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut pairs = 0u64;
+    let mut best_agree = 0u64;
+    let mut score_delta = Vec::new();
+    let mut taus = Vec::new();
+    for (ea, eb) in episodes_a.iter().zip(&episodes_b) {
+        if ea.replay_root.canonical_key != eb.replay_root.canonical_key {
+            eprintln!(
+                "obs-tool: episode {} roots differ — shards are not row-aligned",
+                ea.episode_id
+            );
+            return ExitCode::FAILURE;
+        }
+        let (Some(da), Some(db)) = (ea.records.last(), eb.records.last()) else {
+            continue;
+        };
+        pairs += 1;
+        if da.search.best_move == db.search.best_move {
+            best_agree += 1;
+        }
+        score_delta.push((da.search.final_score - db.search.final_score).abs());
+        taus.push(kendall_tau(&da.moves, &db.moves));
+    }
+    println!("disagreement audit: {a} vs {b}");
+    println!("  aligned positions: {pairs}");
+    if pairs > 0 {
+        println!(
+            "  deepest-tier best-move agreement: {best_agree} ({:.0}%)",
+            100.0 * best_agree as f64 / pairs as f64
+        );
+        println!(
+            "  |Δ unrestricted score| cp: {}",
+            quantiles(&mut score_delta)
+        );
+        let mean_tau = taus.iter().sum::<f64>() / taus.len() as f64;
+        println!("  arm-ranking Kendall tau: mean {mean_tau:.3}");
+    }
+    ExitCode::SUCCESS
+}
+
+fn load_root_episodes(path: &str) -> Result<Vec<Episode>, String> {
+    let mut reader = ShardReader::open(path).map_err(|e| format!("{path}: {e}"))?;
+    let mut episodes = Vec::new();
+    loop {
+        match reader.next_episode() {
+            Ok(Some(episode)) => {
+                if episode.kind == chessengine::obs::EpisodeKind::RootMoveAnalysis {
+                    episodes.push(episode);
+                }
+            }
+            Ok(None) => break,
+            Err(error) => return Err(format!("{path}: {error}")),
+        }
+    }
+    if episodes.is_empty() {
+        return Err(format!("{path}: no RootMoveAnalysis episodes"));
+    }
+    Ok(episodes)
+}
+
+/// p25/p50/p75/p95 of an integer sample, as a compact string.
+fn quantiles(sample: &mut [i32]) -> String {
+    if sample.is_empty() {
+        return "n/a".into();
+    }
+    sample.sort_unstable();
+    let at = |p: usize| sample[(sample.len() - 1) * p / 100];
+    format!(
+        "p25 {} / p50 {} / p75 {} / p95 {}",
+        at(25),
+        at(50),
+        at(75),
+        at(95)
+    )
+}
+
+/// Kendall tau between two engines' arm scores over the same move set.
+fn kendall_tau(
+    a: &[chessengine::obs::PerMoveObservation],
+    b: &[chessengine::obs::PerMoveObservation],
+) -> f64 {
+    let scores_b: std::collections::HashMap<u16, i32> =
+        b.iter().map(|m| (m.mv, m.returned_score)).collect();
+    let rows: Vec<(i32, i32)> = a
+        .iter()
+        .filter_map(|m| scores_b.get(&m.mv).map(|&sb| (m.returned_score, sb)))
+        .collect();
+    if rows.len() < 2 {
+        return 1.0;
+    }
+    let (mut concordant, mut discordant) = (0i64, 0i64);
+    for i in 0..rows.len() {
+        for j in (i + 1)..rows.len() {
+            let da = rows[i].0 - rows[j].0;
+            let db = rows[i].1 - rows[j].1;
+            match (da.signum() * db.signum()).signum() {
+                1 => concordant += 1,
+                -1 => discordant += 1,
+                _ => {}
+            }
+        }
+    }
+    let n = rows.len() as i64;
+    (concordant - discordant) as f64 / (n * (n - 1) / 2) as f64
 }
 
 fn verify(paths: &[String]) -> ExitCode {
