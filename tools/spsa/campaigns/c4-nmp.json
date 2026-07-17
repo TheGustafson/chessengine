@@ -1,0 +1,12 @@
+{
+  "name": "c4-nmp",
+  "comment": "Campaign 4/8 (D45): null-move pruning. NMP_VERIFY_FRAC is a tuple const (not tunable this season); NMP_VERIFY_DEPTH and the R formula terms move. Depth-typed params are coarse integers - small ranges.",
+  "params": [
+    {"name": "NMP_EVAL_DEPTH",     "min": 7,   "max": 28},
+    {"name": "NMP_EVAL_IMPROVING", "min": 20,  "max": 90},
+    {"name": "NMP_EVAL_BASE",      "min": 180, "max": 750},
+    {"name": "NMP_R_BASE",         "min": 4,   "max": 11},
+    {"name": "NMP_R_DEPTH_DIV",    "min": 2,   "max": 6},
+    {"name": "NMP_VERIFY_DEPTH",   "min": 8,   "max": 32}
+  ]
+}
