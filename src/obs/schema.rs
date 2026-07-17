@@ -22,11 +22,15 @@ fn missing(what: &'static str) -> io::Error {
 // ─── Enums (u8 discriminants; unknown values preserved, not rejected) ──────
 
 macro_rules! obs_enum {
-    ($(#[$doc:meta])* $name:ident { $($variant:ident = $value:expr),+ $(,)? }) => {
+    ($(#[$doc:meta])* $name:ident { $first:ident = $first_value:expr
+        $(, $variant:ident = $value:expr)* $(,)? }) => {
         $(#[$doc])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
         pub enum $name {
-            $($variant,)+
+            /// The schema's zero value doubles as the Rust default.
+            #[default]
+            $first,
+            $($variant,)*
             /// A discriminant this reader predates (§3.5.2: skip, don't error).
             Unknown(u8),
         }
@@ -34,14 +38,16 @@ macro_rules! obs_enum {
         impl $name {
             pub fn to_u8(self) -> u8 {
                 match self {
-                    $(Self::$variant => $value,)+
+                    Self::$first => $first_value,
+                    $(Self::$variant => $value,)*
                     Self::Unknown(v) => v,
                 }
             }
 
             pub fn from_u8(value: u8) -> Self {
                 match value {
-                    $($value => Self::$variant,)+
+                    $first_value => Self::$first,
+                    $($value => Self::$variant,)*
                     other => Self::Unknown(other),
                 }
             }
@@ -292,30 +298,6 @@ pub struct SearchContext {
     pub correction_value: i32,         // 23 (2026-07-17, S1)
 }
 
-impl Default for NodeType {
-    fn default() -> Self {
-        NodeType::Root
-    }
-}
-
-impl Default for Bound {
-    fn default() -> Self {
-        Bound::Exact
-    }
-}
-
-impl Default for TtRegime {
-    fn default() -> Self {
-        TtRegime::Empty
-    }
-}
-
-impl Default for HistoryRegime {
-    fn default() -> Self {
-        HistoryRegime::Fresh
-    }
-}
-
 impl SearchContext {
     fn encode(&self, out: &mut FieldWriter) {
         out.sint(1, i64::from(self.depth));
@@ -512,30 +494,6 @@ pub struct PerMoveObservation {
     pub completion: Completion,               // 29
 }
 
-impl Default for Prune {
-    fn default() -> Self {
-        Prune::None
-    }
-}
-
-impl Default for EvidenceKind {
-    fn default() -> Self {
-        EvidenceKind::Observational
-    }
-}
-
-impl Default for PolicyTier {
-    fn default() -> Self {
-        PolicyTier::None
-    }
-}
-
-impl Default for Completion {
-    fn default() -> Self {
-        Completion::Complete
-    }
-}
-
 impl PerMoveObservation {
     fn encode(&self, out: &mut FieldWriter) {
         out.uint(1, u64::from(self.mv));
@@ -687,12 +645,6 @@ pub struct Episode {
     pub replay_root: PositionState,     // 7
     pub root_reversible_keys: Vec<u64>, // 8
     pub event_hash_chain: Vec<u64>,     // 9
-}
-
-impl Default for EpisodeKind {
-    fn default() -> Self {
-        EpisodeKind::SelfPlay
-    }
 }
 
 impl Episode {

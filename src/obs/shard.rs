@@ -100,9 +100,8 @@ impl ShardReader {
 fn read_message(input: &mut impl Read) -> io::Result<Option<Vec<u8>>> {
     // Distinguish "clean EOF" (no length byte at all) from truncation.
     let mut first = [0u8; 1];
-    match input.read(&mut first)? {
-        0 => return Ok(None),
-        _ => {}
+    if input.read(&mut first)? == 0 {
+        return Ok(None);
     }
     let len = if first[0] & 0x80 == 0 {
         u64::from(first[0])

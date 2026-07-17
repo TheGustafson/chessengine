@@ -179,7 +179,10 @@ pub enum FieldValue<'a> {
     Varint(u64),
     Fixed64(u64),
     Bytes(&'a [u8]),
-    Fixed32(u32),
+    // No schema field uses fixed32 yet; the variant must exist anyway so the
+    // reader can SKIP a future fixed32 field (the §3.5.2 contract), and the
+    // accessor completes the API for that future consumer.
+    Fixed32(#[allow(dead_code)] u32),
 }
 
 impl<'a> FieldValue<'a> {
@@ -202,6 +205,14 @@ impl<'a> FieldValue<'a> {
         match self {
             FieldValue::Fixed64(v) => Ok(*v),
             _ => Err(bad_data("expected fixed64 field".into())),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn as_fixed32(&self) -> io::Result<u32> {
+        match self {
+            FieldValue::Fixed32(v) => Ok(*v),
+            _ => Err(bad_data("expected fixed32 field".into())),
         }
     }
 

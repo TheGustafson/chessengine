@@ -9,6 +9,7 @@
 //! after the protobuf wire *model* (a public fact; no protobuf code or
 //! dependency, D27).
 
+pub mod convert;
 pub mod schema;
 pub mod shard;
 mod wire;
@@ -258,5 +259,62 @@ mod tests {
             "partial episode must error, not vanish"
         );
         std::fs::remove_file(&path).ok();
+    }
+}
+
+#[cfg(test)]
+mod cli_fixture {
+    //! A REAL-data shard for exercising `obs-tool` by hand:
+    //! `cargo test --features datagen write_demo_shard -- --ignored`
+    //! then `cargo run --features datagen --bin obs-tool -- verify <path>`.
+    use super::*;
+    use crate::board::Board;
+    use crate::moves::Move;
+    use crate::obs::convert::position_from_board;
+    use crate::types::Square;
+
+    #[test]
+    #[ignore = "writes a demo shard for manual obs-tool smoke runs"]
+    fn write_demo_shard() {
+        let path = std::env::temp_dir().join("archon-obs-demo.ceobs");
+        let header = ShardHeader {
+            format_version: OBS_FORMAT_VERSION,
+            created_unix: 0,
+            provenance: vec![Provenance {
+                engine_version: "archon demo".into(),
+                generator_version: "cli_fixture".into(),
+                hardware_identity: "demo".into(),
+                ..Default::default()
+            }],
+        };
+        let mut board = Board::startpos();
+        let root = position_from_board(&board, 0, vec![]);
+        let mut records = vec![Observation {
+            position: root.clone(),
+            ..Default::default()
+        }];
+        let mut path_moves = Vec::new();
+        for (from, to) in [(Square::E2, Square::E4), (Square::E7, Square::E5)] {
+            let mv = Move::normal(from, to);
+            path_moves.push(mv.raw16());
+            let gives_check = board.gives_check(mv);
+            board.make_move(mv, gives_check);
+            records.push(Observation {
+                position: position_from_board(&board, 0, path_moves.clone()),
+                ..Default::default()
+            });
+        }
+        let episode = Episode {
+            kind: EpisodeKind::RootMoveAnalysis,
+            episode_id: 1,
+            provenance_ref: 0,
+            records,
+            replay_root: root,
+            ..Default::default()
+        };
+        let mut writer = ShardWriter::create(&path, &header).unwrap();
+        writer.append(&episode).unwrap();
+        writer.finish().unwrap();
+        eprintln!("demo shard: {}", path.display());
     }
 }
