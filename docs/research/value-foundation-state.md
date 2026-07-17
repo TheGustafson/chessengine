@@ -1098,8 +1098,13 @@ at 0.174; longer/warmer training pushes some weight past the clip). The
 night chain handles it correctly by design: 720sb is h2h'd as a
 DIAGNOSTIC but the equal-time gate (promotion #4) runs with the parity
 -passing **d40-uho-v1-240sb**. Open decision for the user (both hop and
-720sb): waiver vs rescale; the T5 raw f32 checkpoint for 720sb exists, so
-a rescale+repack+re-parity attempt costs minutes of GPU, not a retrain.
+720sb): (a) waive the max-tail bar for OOD-endgame-only divergence (mean
+and p99 are clean), (b) repack with per-layer quant headroom (netpack
+change; the T5 raw f32 checkpoint exists, so any repack attempt costs
+minutes, not a retrain), or (c) train the next long run with weight
+clipping so packing never saturates. Note `rescale_net.py` does NOT apply
+here — it hot-scales the OUTPUT layer; this tail comes from packed
+mid-net weights saturating their integer range.
 
 **S1 merge gate**: with the trainer gone, `bash tools/check.sh` reran the
 full D24 gate at HEAD (S1 correction history + R4 #2/#3 + obs stack):
