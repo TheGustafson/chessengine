@@ -135,7 +135,7 @@ fn score_capture(board: &Board, hist: &Histories, m: Move) -> i32 {
     let victim_value = victim.map_or(0, |p| p.piece_type.value());
     let victim_slot = victim.map_or(NO_VICTIM, |p| p.piece_type as usize);
     let cap_hist = hist.capture[pc.index()][m.to().index() as usize][victim_slot].get();
-    CAPTURE_MVV_FACTOR * victim_value + cap_hist
+    CAPTURE_MVV_FACTOR() * victim_value + cap_hist
 }
 
 /// The picker's explicit state machine (design/09 §3.5). Each pipeline is a
@@ -382,7 +382,7 @@ impl MovePicker {
                             self.cur += 1;
                             continue;
                         }
-                        if board.see_ge(ext.mv, -ext.value / GOOD_CAPTURE_SEE_DIVISOR) {
+                        if board.see_ge(ext.mv, -ext.value / GOOD_CAPTURE_SEE_DIVISOR()) {
                             self.cur += 1;
                             return Some(ext.mv);
                         }
@@ -409,7 +409,7 @@ impl MovePicker {
                 // the emission window to the bad-captures region.
                 Stage::GoodQuiet => {
                     if !self.skip_quiets
-                        && let Some(m) = self.select(board, |_, e| e.value > GOOD_QUIET_THRESHOLD)
+                        && let Some(m) = self.select(board, |_, e| e.value > GOOD_QUIET_THRESHOLD())
                     {
                         return Some(m);
                     }
@@ -435,7 +435,7 @@ impl MovePicker {
                     if self.skip_quiets {
                         return None;
                     }
-                    return self.select(board, |_, e| e.value <= GOOD_QUIET_THRESHOLD);
+                    return self.select(board, |_, e| e.value <= GOOD_QUIET_THRESHOLD());
                 }
 
                 // Evasion pipeline (§3.6): generate + score all evasions
@@ -587,8 +587,8 @@ impl MovePicker {
             let to = m.to().index() as usize;
             let raw = m.raw16() as usize;
 
-            let mut value = QUIET_MAIN_HISTORY_WEIGHT * main_plane[raw].get()
-                + QUIET_PAWN_HISTORY_WEIGHT * pawn_plane[pci][to].get()
+            let mut value = QUIET_MAIN_HISTORY_WEIGHT() * main_plane[raw].get()
+                + QUIET_PAWN_HISTORY_WEIGHT() * pawn_plane[pci][to].get()
                 + c1[pci][to].get()
                 + c2[pci][to].get()
                 + c3[pci][to].get()
@@ -597,15 +597,16 @@ impl MovePicker {
 
             // Check bonus, gated so a checking quiet that hangs material earns
             // nothing (design/09 §3.7).
-            if board.check_squares(pt).contains(m.to()) && board.see_ge(m, QUIET_CHECK_SEE_MARGIN) {
-                value += QUIET_CHECK_BONUS;
+            if board.check_squares(pt).contains(m.to()) && board.see_ge(m, QUIET_CHECK_SEE_MARGIN())
+            {
+                value += QUIET_CHECK_BONUS();
             }
 
             // Threat escape/entry: +factor·value for fleeing a cheaper-piece
             // attack, -factor·value for stepping into one (design/09 §3.7).
             let from_threat = threat[pt as usize].contains(m.from()) as i32;
             let to_threat = threat[pt as usize].contains(m.to()) as i32;
-            value += pt.value() * QUIET_THREAT_FACTOR * (from_threat - to_threat);
+            value += pt.value() * QUIET_THREAT_FACTOR() * (from_threat - to_threat);
 
             // Offense (D30): moving to a square from which the piece attacks a
             // vulnerable enemy earns a modest reward. `occ` is the pre-move
@@ -619,13 +620,13 @@ impl MovePicker {
                     att_tables.attacks(pt, m.to(), occ)
                 };
                 if !(att & targets).is_empty() {
-                    value += pt.value() * QUIET_OFFENSE_FACTOR;
+                    value += pt.value() * QUIET_OFFENSE_FACTOR();
                 }
             }
 
             // Low-ply history (plies 0..4 only), damped toward the leaves.
             if let Some(lp) = low_ply_plane {
-                value += QUIET_LOW_PLY_WEIGHT * lp[raw].get() / (1 + ply as i32);
+                value += QUIET_LOW_PLY_WEIGHT() * lp[raw].get() / (1 + ply as i32);
             }
 
             // Learned move-prior (design/17 Thrust II), scaled into history
@@ -644,7 +645,7 @@ impl MovePicker {
         self.end_generated = base + n;
         partial_insertion_sort(
             &mut self.buf[base..base + n],
-            QUIET_SORT_DEPTH_FACTOR * self.depth,
+            QUIET_SORT_DEPTH_FACTOR() * self.depth,
         );
     }
 
@@ -663,7 +664,7 @@ impl MovePicker {
         for (i, &m) in list.iter().enumerate() {
             let value = if board.capture_stage(m) {
                 let victim_value = board.piece_on(m.to()).map_or(0, |p| p.piece_type.value());
-                victim_value + EVASION_CAPTURE_BONUS
+                victim_value + EVASION_CAPTURE_BONUS()
             } else {
                 let pc = board
                     .piece_on(m.from())
@@ -1422,7 +1423,7 @@ mod tests {
         let b = board("3k4/8/8/8/8/8/8/3RK3 w - - 0 1");
         let rd4 = Move::normal(Square::D1, Square::D4);
         assert!(b.check_squares(PieceType::Rook).contains(Square::D4));
-        assert_eq!(quiet_score(&b, &fresh, rd4, 7), BASE + QUIET_CHECK_BONUS);
+        assert_eq!(quiet_score(&b, &fresh, rd4, 7), BASE + QUIET_CHECK_BONUS());
 
         // (c) Threat escape: a queen fleeing a rook-attacked square earns
         //     +factor·QUEEN_VALUE.
@@ -1430,7 +1431,7 @@ mod tests {
         let qf4 = Move::normal(Square::D4, Square::F4);
         assert_eq!(
             quiet_score(&b, &fresh, qf4, 7),
-            BASE + PieceType::Queen.value() * QUIET_THREAT_FACTOR
+            BASE + PieceType::Queen.value() * QUIET_THREAT_FACTOR()
         );
 
         // (d) Threat entry: a queen stepping onto a rook-attacked square pays
@@ -1439,10 +1440,10 @@ mod tests {
         let qd1 = Move::normal(Square::A1, Square::D1);
         assert_eq!(
             quiet_score(&b, &fresh, qd1, 7),
-            BASE - PieceType::Queen.value() * QUIET_THREAT_FACTOR
+            BASE - PieceType::Queen.value() * QUIET_THREAT_FACTOR()
         );
         assert!(
-            quiet_score(&b, &fresh, qd1, 7) < GOOD_QUIET_THRESHOLD,
+            quiet_score(&b, &fresh, qd1, 7) < GOOD_QUIET_THRESHOLD(),
             "must be a bad quiet"
         );
     }
@@ -1471,7 +1472,7 @@ mod tests {
         );
         assert_eq!(
             quiet_score(&armed, &fresh, nc6, 7),
-            BASE + PieceType::Knight.value() * QUIET_OFFENSE_FACTOR,
+            BASE + PieceType::Knight.value() * QUIET_OFFENSE_FACTOR(),
             "attacking an undefended enemy rook must add the offense bonus"
         );
 
@@ -1498,7 +1499,7 @@ mod tests {
         let b = board("4k3/8/8/3n4/4P3/8/8/4K3 w - - 0 1");
         let exd5 = Move::normal(Square::E4, Square::D5);
         assert!(b.is_capture(exd5));
-        let expect = CAPTURE_MVV_FACTOR * PieceType::Knight.value() - 699;
+        let expect = CAPTURE_MVV_FACTOR() * PieceType::Knight.value() - 699;
         assert_eq!(score_capture(&b, &Histories::new(), exd5), expect);
         assert_eq!(expect, 4768); // 7·781 − 699
     }

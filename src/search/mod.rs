@@ -103,7 +103,7 @@
 //! between-iterations soft stop ([`Worker::soft_stop`], doc 12 §3.9
 //! subset) — stop deepening once elapsed exceeds the plain `optimum`
 //! budget (capped by `maximum`), with the single-reply cap
-//! ([`params::ONE_REPLY_TOTAL_TIME_CAP`]) as the one §3.9 refinement
+//! ([`params::ONE_REPLY_TOTAL_TIME_CAP()`]) as the one §3.9 refinement
 //! that ships now. Fixed-depth modes bypass it (`use_time_management`
 //! gate), so the bench fingerprint is TM-independent (D24).
 //!
@@ -181,7 +181,7 @@ pub fn value_draw(nodes: u64) -> Value {
 /// The reverse-futility margin (design/10 §3.4, node step N10): the
 /// static-eval headroom over beta a non-PV node must clear to prune. The
 /// per-ply multiplier `min(RFP_MULT_BASE + RFP_MULT_SLOPE·depth,
-/// RFP_MULT_CAP)` (docked by [`params::RFP_MULT_NO_TTHIT`] on a TT miss)
+/// RFP_MULT_CAP)` (docked by [`params::RFP_MULT_NO_TTHIT()`] on a TT miss)
 /// scales the margin with depth, then the two trend flags discount it:
 /// an *improving* node or a *worsening* opponent both signal the fail-high
 /// is real, so less headroom is demanded.
@@ -205,15 +205,15 @@ fn rfp_margin(
     opponent_worsening: bool,
     correction_value: i32,
 ) -> Value {
-    let futility_mult = (params::RFP_MULT_BASE + params::RFP_MULT_SLOPE * depth)
-        .min(params::RFP_MULT_CAP)
-        - params::RFP_MULT_NO_TTHIT * Value::from(!tt_hit);
+    let futility_mult = (params::RFP_MULT_BASE() + params::RFP_MULT_SLOPE() * depth)
+        .min(params::RFP_MULT_CAP())
+        - params::RFP_MULT_NO_TTHIT() * Value::from(!tt_hit);
     futility_mult * depth
-        - (params::RFP_IMPROVING * Value::from(improving)
-            + params::RFP_OPP_WORSENING * Value::from(opponent_worsening))
+        - (params::RFP_IMPROVING() * Value::from(improving)
+            + params::RFP_OPP_WORSENING() * Value::from(opponent_worsening))
             * futility_mult
-            / params::RFP_TREND_DEN
-        + correction_value.abs() / params::RFP_CORR_DIV
+            / params::RFP_TREND_DEN()
+        + correction_value.abs() / params::RFP_CORR_DIV()
 }
 
 /// The N10 RFP prune margin with the threat-coupled relaxation folded in
@@ -241,7 +241,7 @@ fn rfp_prune_margin(
         improving,
         opponent_worsening,
         correction_value,
-    ) - params::RFP_THREAT_MARGIN * Value::from(no_own_threat)
+    ) - params::RFP_THREAT_MARGIN() * Value::from(no_own_threat)
 }
 
 /// The late-move-pruning move-count threshold (design/10 §3.5, the move
@@ -258,7 +258,7 @@ fn rfp_prune_margin(
 /// positive, so the truncation is a plain floor.
 #[inline]
 fn lmp_move_count(depth: Depth, improving: bool) -> i32 {
-    (params::LMP_BASE + depth * depth) / (2 - i32::from(improving))
+    (params::LMP_BASE() + depth * depth) / (2 - i32::from(improving))
 }
 
 /// The parent-futility bound (design/10 §3.5, the move loop's quiet branch):
@@ -286,10 +286,10 @@ fn parent_futility_value(
     eval_above_alpha: bool,
 ) -> Value {
     static_eval
-        + params::PFUT_BASE
-        + params::PFUT_NO_BESTMOVE * Value::from(no_best_move)
-        + params::PFUT_LMRDEPTH_MULT * lmr_depth
-        + params::PFUT_EVAL_ABOVE_ALPHA * Value::from(eval_above_alpha)
+        + params::PFUT_BASE()
+        + params::PFUT_NO_BESTMOVE() * Value::from(no_best_move)
+        + params::PFUT_LMRDEPTH_MULT() * lmr_depth
+        + params::PFUT_EVAL_ABOVE_ALPHA() * Value::from(eval_above_alpha)
 }
 
 /// The capture-futility optimistic value (design/10 §3.5, the move loop's
@@ -317,10 +317,10 @@ fn capture_futility_value(
     capt_hist: i32,
 ) -> Value {
     static_eval
-        + params::CFUT_BASE
-        + params::CFUT_LMRDEPTH_MULT * lmr_depth
+        + params::CFUT_BASE()
+        + params::CFUT_LMRDEPTH_MULT() * lmr_depth
         + captured_value
-        + params::CFUT_HIST_MULT * capt_hist / params::CAPT_HIST_DEN
+        + params::CFUT_HIST_MULT() * capt_hist / params::CAPT_HIST_DEN()
 }
 
 /// The capture/check SEE margin (design/10 §3.5): a capture or checking move
@@ -334,8 +334,8 @@ fn capture_futility_value(
 /// the Stockfish source's `captHist * 34 / 1024` truncation (D27).
 #[inline]
 fn capture_see_margin(depth: Depth, capt_hist: i32) -> Value {
-    params::CAP_SEE_DEPTH_MULT * depth
-        + params::CAP_SEE_HIST_MULT * capt_hist / params::CAPT_HIST_DEN
+    params::CAP_SEE_DEPTH_MULT() * depth
+        + params::CAP_SEE_HIST_MULT() * capt_hist / params::CAPT_HIST_DEN()
 }
 
 /// The singular-verification window centre (design/10 §3.6, Wave-D item 13):
@@ -353,8 +353,8 @@ fn capture_see_margin(depth: Depth, capt_hist: i32) -> Value {
 #[inline]
 fn singular_verification_beta(tt_value: Value, depth: Depth, ttpv_non_pv: bool) -> Value {
     tt_value
-        - (params::SE_BETA_MULT + params::SE_BETA_TTPV_MULT * Value::from(ttpv_non_pv)) * depth
-            / params::SE_BETA_DIV
+        - (params::SE_BETA_MULT() + params::SE_BETA_TTPV_MULT() * Value::from(ttpv_non_pv)) * depth
+            / params::SE_BETA_DIV()
 }
 
 /// The singular DOUBLE-extension margin (design/10 §3.6, Wave-D item 13): when
@@ -379,11 +379,11 @@ fn singular_double_margin(
     tmh: i32,
     deep: bool,
 ) -> Value {
-    params::SE_DOUBLE_BASE + params::SE_DOUBLE_PV * Value::from(pv)
-        - params::SE_DOUBLE_NON_TTCAP * Value::from(!tt_capture)
+    params::SE_DOUBLE_BASE() + params::SE_DOUBLE_PV() * Value::from(pv)
+        - params::SE_DOUBLE_NON_TTCAP() * Value::from(!tt_capture)
         - corr_adj
-        - params::SE_DOUBLE_TMH_NUM * tmh / params::SE_DOUBLE_TMH_DEN
-        - params::SE_DOUBLE_DEEP * Value::from(deep)
+        - params::SE_DOUBLE_TMH_NUM() * tmh / params::SE_DOUBLE_TMH_DEN()
+        - params::SE_DOUBLE_DEEP() * Value::from(deep)
 }
 
 /// The singular TRIPLE-extension margin (design/10 §3.6, Wave-D item 13): when
@@ -405,11 +405,11 @@ fn singular_triple_margin(
     corr_adj: Value,
     deep: bool,
 ) -> Value {
-    params::SE_TRIPLE_BASE + params::SE_TRIPLE_PV * Value::from(pv)
-        - params::SE_TRIPLE_NON_TTCAP * Value::from(!tt_capture)
-        + params::SE_TRIPLE_TTPV * Value::from(ttpv)
+    params::SE_TRIPLE_BASE() + params::SE_TRIPLE_PV() * Value::from(pv)
+        - params::SE_TRIPLE_NON_TTCAP() * Value::from(!tt_capture)
+        + params::SE_TRIPLE_TTPV() * Value::from(ttpv)
         - corr_adj
-        - params::SE_TRIPLE_DEEP * Value::from(deep)
+        - params::SE_TRIPLE_DEEP() * Value::from(deep)
 }
 
 /// The continuation-history pruning predicate (design/10 §3.5, the move loop's
@@ -426,7 +426,7 @@ fn singular_triple_margin(
 /// unit-testable (§5) apart from the make/prune control flow.
 #[inline]
 fn continuation_history_prunes(cont_history: i32, depth: Depth) -> bool {
-    cont_history < -params::QHIST_PRUNE_MULT * depth
+    cont_history < -params::QHIST_PRUNE_MULT() * depth
 }
 
 /// The TT prefetch hook (doc 04 §3.10 hook A, doc 08 §3.15 call site 1):
@@ -896,7 +896,7 @@ impl Worker {
         // is a power of two so the table is bit-reproducible (D24).
         let mut reductions = [0i32; MAX_MOVES];
         for (i, r) in reductions.iter_mut().enumerate().skip(1) {
-            *r = (params::RED_TABLE_NUM as f64 / params::RED_TABLE_DEN as f64 * (i as f64).ln())
+            *r = (params::RED_TABLE_NUM() as f64 / params::RED_TABLE_DEN() as f64 * (i as f64).ln())
                 as i32;
         }
         // A detached worker (bench, unit tests) is its own 1-thread pool:
@@ -1523,7 +1523,7 @@ impl Worker {
                 // is bench-neutral: the detached bench worker and the Threads=1
                 // pool main are both `is_main`, so their emission is unchanged.
                 if self.is_main()
-                    && (pv_idx + 1 == multi_pv || self.nodes > params::INFO_THROTTLE_NODES)
+                    && (pv_idx + 1 == multi_pv || self.nodes > params::INFO_THROTTLE_NODES())
                 {
                     for line in 0..=pv_idx {
                         let rm = &self.root_moves[line];
@@ -1724,9 +1724,9 @@ impl Worker {
         // term makes helpers search slightly different windows so they diverge
         // and seed the shared TT differently. Vacuous at `thread_idx == 0`
         // (main / detached / bench), keeping Threads=1 bit-identical (D24).
-        let mut delta = (params::ASPIRATION_BASE_DELTA as i64
-            + (self.thread_idx % params::ASPIRATION_JITTER_PERIOD) as i64
-            + rm.mean_squared_score.abs() / params::ASPIRATION_MSS_DIVISOR)
+        let mut delta = (params::ASPIRATION_BASE_DELTA() as i64
+            + (self.thread_idx % params::ASPIRATION_JITTER_PERIOD()) as i64
+            + rm.mean_squared_score.abs() / params::ASPIRATION_MSS_DIVISOR())
             as Value;
         let avg = rm.average_score;
         let mut alpha = (avg - delta).max(-VALUE_INFINITE);
@@ -1739,9 +1739,9 @@ impl Worker {
         loop {
             let adjusted_depth = (self.root_depth
                 - failed_high_cnt
-                - params::ASPIRATION_SEARCH_AGAIN_NUM * (search_again_counter + 1)
-                    / params::ASPIRATION_SEARCH_AGAIN_DEN)
-                .max(1);
+                - params::ASPIRATION_SEARCH_AGAIN_NUM() * (search_again_counter + 1)
+                    / params::ASPIRATION_SEARCH_AGAIN_DEN())
+            .max(1);
             self.root_delta = beta - alpha;
             best = self.search::<Root>(tt, stop, alpha, beta, adjusted_depth, false, 0);
 
@@ -1791,8 +1791,9 @@ impl Worker {
             // ±INF for every representable score and further growth is
             // inert — while unbounded ×1.34 growth would eventually
             // overflow the i32 in a long enough re-search storm.
-            delta = (delta + params::ASPIRATION_WIDEN_NUM * delta / params::ASPIRATION_WIDEN_DEN)
-                .min(2 * VALUE_INFINITE);
+            delta = (delta
+                + params::ASPIRATION_WIDEN_NUM() * delta / params::ASPIRATION_WIDEN_DEN())
+            .min(2 * VALUE_INFINITE);
         }
         best
     }
@@ -2015,13 +2016,13 @@ impl Worker {
         // be gated out of check. A moderate reduction with a healthy combined
         // eval sum — shallow it.
         let opponent_worsening = self.stack[cur].static_eval > -self.stack[cur - 1].static_eval;
-        if prior_reduction >= params::HINDSIGHT_RED_UP && !opponent_worsening {
+        if prior_reduction >= params::HINDSIGHT_RED_UP() && !opponent_worsening {
             depth += 1;
         }
-        if prior_reduction >= params::HINDSIGHT_RED_DOWN
+        if prior_reduction >= params::HINDSIGHT_RED_DOWN()
             && depth >= 2
             && self.stack[cur].static_eval + self.stack[cur - 1].static_eval
-                > params::HINDSIGHT_EVAL_SUM
+                > params::HINDSIGHT_EVAL_SUM()
         {
             depth -= 1;
         }
@@ -2059,7 +2060,7 @@ impl Worker {
                 } else {
                     tt_data.bound.includes_upper()
                 })
-                && (cut_node == (tt_value >= beta) || depth > params::TTCUT_AGREE_DEPTH);
+                && (cut_node == (tt_value >= beta) || depth > params::TTCUT_AGREE_DEPTH());
             if base_cutoff {
                 // N6b extras (design/10 §3.4, Wave-C item 12): a beta-side
                 // cutoff means the stored ttMove "worked" here. These run
@@ -2075,7 +2076,8 @@ impl Worker {
                             .piece_on(ttm.from())
                             .is_some_and(|p| p.color == us)
                     {
-                        let bonus = (params::TTCUT_BONUS_MULT * depth).min(params::TTCUT_BONUS_CAP);
+                        let bonus =
+                            (params::TTCUT_BONUS_MULT() * depth).min(params::TTCUT_BONUS_CAP());
                         self.histories.update_quiet_histories(
                             &self.board,
                             &self.stack[..],
@@ -2086,7 +2088,7 @@ impl Worker {
                     }
                     // Penalize the parent's early non-capturing quiet.
                     if let Some(sq) = prev_sq
-                        && self.stack[cur - 1].move_count < params::TTCUT_PARENT_MOVECOUNT
+                        && self.stack[cur - 1].move_count < params::TTCUT_PARENT_MOVECOUNT()
                         && !prior_capture
                         && let Some(pc) = self.board.piece_on(sq)
                     {
@@ -2095,20 +2097,20 @@ impl Worker {
                             cur - 1,
                             pc,
                             sq,
-                            params::TTCUT_PARENT_MALUS,
+                            params::TTCUT_PARENT_MALUS(),
                         );
                     }
                 }
                 // The cutoff RETURN itself is gated by the rule-50 guard
                 // (§3.12); at rule50 >= limit the node falls through to a real
                 // search even though the bonus/malus above already fired.
-                if (self.board.rule50_count() as i32) < params::TT_CUTOFF_RULE50_LIMIT {
+                if (self.board.rule50_count() as i32) < params::TT_CUTOFF_RULE50_LIMIT() {
                     // N6b child-TT verification (item 20): a deep cutoff on a
                     // non-decisive value re-probes the ttMove's child entry —
                     // only an invalid child value or one AGREEING with the
                     // cutoff direction confirms it. A contradicting child falls
                     // through to a real search.
-                    if depth >= params::TTCUT_VERIFY_DEPTH
+                    if depth >= params::TTCUT_VERIFY_DEPTH()
                         && !is_decisive(tt_value)
                         && tt_data.mv != Move::NULL
                         && self.board.pseudo_legal(tt_data.mv)
@@ -2154,7 +2156,7 @@ impl Worker {
                 } else {
                     tt_data.bound.includes_lower()
                 })
-                && depth > params::TTCUT_PENALIZE_DEPTH
+                && depth > params::TTCUT_PENALIZE_DEPTH()
             {
                 // Wrong-direction bound (item 20): the only reason the cutoff
                 // failed is a bound pointing the wrong way — age the mismatching
@@ -2202,10 +2204,10 @@ impl Worker {
             {
                 let them = self.board.side_to_move().flip();
                 let eval_diff = (-self.stack[cur - 1].static_eval - self.stack[cur].static_eval)
-                    .clamp(params::EVALDIFF_CLAMP_LO, params::EVALDIFF_CLAMP_HI)
-                    + params::EVALDIFF_OFFSET;
+                    .clamp(params::EVALDIFF_CLAMP_LO(), params::EVALDIFF_CLAMP_HI())
+                    + params::EVALDIFF_OFFSET();
                 self.histories.main[them as usize][prev_move.raw16() as usize]
-                    .update(params::EVALDIFF_MAIN_MULT * eval_diff);
+                    .update(params::EVALDIFF_MAIN_MULT() * eval_diff);
                 if let Some(pc) = self.board.piece_on(sq)
                     && !tt_hit
                     && pc.piece_type != PieceType::Pawn
@@ -2213,7 +2215,7 @@ impl Worker {
                 {
                     let pawn_key = self.board.pawn_key();
                     self.histories.pawn_slot_mut(pawn_key)[pc.index()][sq.index() as usize]
-                        .update(params::EVALDIFF_PAWN_MULT * eval_diff);
+                        .update(params::EVALDIFF_PAWN_MULT() * eval_diff);
                 }
             }
 
@@ -2235,7 +2237,7 @@ impl Worker {
             // confirms the loss. No `is_decisive` guard is needed: a winning
             // `eval` fails the `<` test outright, so wins are never razored.
             if !NT::PV
-                && eval < alpha - params::RAZOR_BASE - params::RAZOR_DEPTH_MULT * depth * depth
+                && eval < alpha - params::RAZOR_BASE() - params::RAZOR_DEPTH_MULT() * depth * depth
             {
                 return self.qsearch::<NonPv>(tt, stop, alpha, beta, ply);
             }
@@ -2253,7 +2255,7 @@ impl Worker {
             // node-exit fail-high soften). The correction-history term of
             // the margin joins in Wave F (design/10 §4).
             if !self.stack[cur].tt_pv
-                && depth < params::RFP_MAX_DEPTH
+                && depth < params::RFP_MAX_DEPTH()
                 && eval >= beta
                 && (tt_data.mv == Move::NULL || tt_capture)
                 && !is_loss(beta)
@@ -2277,8 +2279,8 @@ impl Worker {
                     no_own_threat,
                 );
                 if eval - margin >= beta {
-                    return (params::RFP_RET_BETA_W * beta + params::RFP_RET_EVAL_W * eval)
-                        / params::RFP_RET_DEN;
+                    return (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval)
+                        / params::RFP_RET_DEN();
                 }
             }
 
@@ -2298,9 +2300,9 @@ impl Worker {
             if cut_node
                 && self.stack[cur].static_eval
                     >= beta
-                        - params::NMP_EVAL_DEPTH * depth
-                        - params::NMP_EVAL_IMPROVING * Value::from(improving)
-                        + params::NMP_EVAL_BASE
+                        - params::NMP_EVAL_DEPTH() * depth
+                        - params::NMP_EVAL_IMPROVING() * Value::from(improving)
+                        + params::NMP_EVAL_BASE()
                 && self.stack[cur].excluded_move == Move::NULL
                 && self.board.non_pawn_material(us) != 0
                 && ply as i32 >= self.nmp_min_ply
@@ -2313,7 +2315,7 @@ impl Worker {
                     self.stack[cur - 1].current_move != Move::NULL,
                     "no two null moves in a row"
                 );
-                let r = params::NMP_R_BASE + depth / params::NMP_R_DEPTH_DIV;
+                let r = params::NMP_R_BASE() + depth / params::NMP_R_DEPTH_DIV();
 
                 // Make the null move by hand (not `do_move`): a pass searches
                 // no node, so it does NOT bump the node counter (SF `do_null_
@@ -2341,7 +2343,7 @@ impl Worker {
                     // Below the verification depth — or already inside a
                     // verification (`nmp_min_ply != 0`, where recursive
                     // verification is disallowed) — trust the null value.
-                    if self.nmp_min_ply != 0 || depth < params::NMP_VERIFY_DEPTH {
+                    if self.nmp_min_ply != 0 || depth < params::NMP_VERIFY_DEPTH() {
                         return null_value;
                     }
                     // Verification search at THIS node (same ply, real moves)
@@ -2369,14 +2371,14 @@ impl Worker {
             // proving a capture beats a raised beta lets the node fail high
             // early. Skipped inside a singular verification; a stored value
             // already below the threshold says "don't bother".
-            let probcut_beta = beta + params::PROBCUT_BETA_BASE
-                - params::PROBCUT_BETA_IMPROVING * Value::from(improving);
-            if depth >= params::PROBCUT_MIN_DEPTH
+            let probcut_beta = beta + params::PROBCUT_BETA_BASE()
+                - params::PROBCUT_BETA_IMPROVING() * Value::from(improving);
+            if depth >= params::PROBCUT_MIN_DEPTH()
                 && !is_decisive(beta)
                 && self.stack[cur].excluded_move == Move::NULL
                 && !(is_valid(tt_value) && tt_value < probcut_beta)
             {
-                let probcut_depth = depth - params::PROBCUT_DEPTH_SUB - Depth::from(improving);
+                let probcut_depth = depth - params::PROBCUT_DEPTH_SUB() - Depth::from(improving);
                 let threshold = probcut_beta - self.stack[cur].static_eval;
                 let mut mp = MovePicker::new_probcut(&self.board, tt_data.mv, threshold);
                 while let Some(m) = mp.next_move(&self.board, &self.histories) {
@@ -2428,12 +2430,12 @@ impl Worker {
         // after the in-check jump target, so it runs even in check. A deep
         // stored LOWER bound already above a large raised beta lets the node
         // fail high without entering the move loop.
-        let check_probcut_beta = beta + params::PROBCUT_CHECK_BETA;
+        let check_probcut_beta = beta + params::PROBCUT_CHECK_BETA();
         if !is_decisive(beta)
             && self.stack[cur].excluded_move == Move::NULL
             && tt_hit
             && tt_data.bound.includes_lower()
-            && tt_data.depth >= depth - params::PROBCUT_DEPTH_SUB
+            && tt_data.depth >= depth - params::PROBCUT_DEPTH_SUB()
             && is_valid(tt_value)
             && !is_decisive(tt_value)
             && tt_value >= check_probcut_beta
@@ -2603,7 +2605,7 @@ impl Worker {
                 // is not implemented here: item 11 ships with only its
                 // continuation-history pruning half. This site uses the plain
                 // `new_depth - r/1024`.
-                let mut lmr_depth = new_depth - r / params::RED_UNIT;
+                let mut lmr_depth = new_depth - r / params::RED_UNIT();
 
                 // Captures and checking moves (Wave-B item 8, design/10 §3.5)
                 // take their own futility/SEE gates; quiets — spared only on
@@ -2628,7 +2630,7 @@ impl Worker {
                     // parent futility there is NO `!in_check` guard: the block's
                     // outer `!is_loss(best_value)` fence already keeps every
                     // evasion searched until one produces a real value.
-                    if !gives_check && lmr_depth < params::CFUT_MAX_LMRDEPTH {
+                    if !gives_check && lmr_depth < params::CFUT_MAX_LMRDEPTH() {
                         let captured_value = self
                             .board
                             .piece_on(m.to())
@@ -2704,7 +2706,9 @@ impl Worker {
                         lmr_depth,
                         self.stack[cur].static_eval > alpha,
                     );
-                    if !in_check && lmr_depth < params::PFUT_MAX_LMRDEPTH && futility_value <= alpha
+                    if !in_check
+                        && lmr_depth < params::PFUT_MAX_LMRDEPTH()
+                        && futility_value <= alpha
                     {
                         if best_value <= futility_value
                             && !is_decisive(best_value)
@@ -2723,7 +2727,7 @@ impl Worker {
                     lmr_depth = lmr_depth.max(0);
                     if !self
                         .board
-                        .see_ge(m, -params::QSEE_MULT * lmr_depth * lmr_depth)
+                        .see_ge(m, -params::QSEE_MULT() * lmr_depth * lmr_depth)
                     {
                         continue;
                     }
@@ -2742,11 +2746,11 @@ impl Worker {
             if !NT::ROOT
                 && m == tt_data.mv
                 && self.stack[cur].excluded_move == Move::NULL
-                && depth >= params::SE_MIN_DEPTH + Depth::from(self.stack[cur].tt_pv)
+                && depth >= params::SE_MIN_DEPTH() + Depth::from(self.stack[cur].tt_pv)
                 && is_valid(tt_value)
                 && !is_decisive(tt_value)
                 && tt_data.bound.includes_lower()
-                && tt_data.depth >= depth - params::SE_TT_DEPTH_SLACK
+                && tt_data.depth >= depth - params::SE_TT_DEPTH_SLACK()
                 && !self.is_shuffling(m, cur, ply)
             {
                 let singular_beta =
@@ -2769,7 +2773,7 @@ impl Worker {
                     // tightens the double/triple margins under eval
                     // uncertainty — a large |correction_value| makes the extra
                     // extensions harder to earn.
-                    let corr_adj = correction_value.abs() / params::SE_CORR_DIV;
+                    let corr_adj = correction_value.abs() / params::SE_CORR_DIV();
                     let tmh = self.histories.tt_move.get();
                     let deep = ply > self.root_depth as usize;
                     let double_margin =
@@ -2790,7 +2794,7 @@ impl Worker {
                     // the node is not singular; prune the whole subtree.
                     self.histories
                         .tt_move
-                        .update(params::MULTICUT_TMH_BASE + params::MULTICUT_TMH_DEPTH * depth);
+                        .update(params::MULTICUT_TMH_BASE() + params::MULTICUT_TMH_DEPTH() * depth);
                     return value;
                 } else if tt_value >= beta {
                     // The ttMove is expected to fail high anyway — search it
@@ -2858,24 +2862,25 @@ impl Worker {
             // (SF absorbs the same reductions with NNUE-grade eval/ordering).
             // They revisit with the eval upgrade (P13). Kept: item 15's ttMove
             // min-depth clamp (below), which only HELPS mate finding.
-            r += params::RED_FLAT;
-            r -= params::RED_MOVECOUNT * move_count;
+            r += params::RED_FLAT();
+            r -= params::RED_MOVECOUNT() * move_count;
             // Correction slackening (design/10 §3.7, Wave-F item 21): an
             // uncertain eval (large |correction_value|) reduces a touch LESS.
-            r -= correction_value.abs() / params::RED_CORR_DIV;
+            r -= correction_value.abs() / params::RED_CORR_DIV();
             if cut_node {
-                r += params::RED_CUTNODE
-                    + params::RED_CUTNODE_NO_TTMOVE * i32::from(tt_data.mv == Move::NULL);
+                r += params::RED_CUTNODE()
+                    + params::RED_CUTNODE_NO_TTMOVE() * i32::from(tt_data.mv == Move::NULL);
             }
             if m == tt_data.mv {
                 // The TT's own best move is searched close to full depth.
-                r = (r - params::RED_TTMOVE_SUB).max(0);
+                r = (r - params::RED_TTMOVE_SUB()).max(0);
             }
             // Good/bad history docks the reduction (design/10 §3.7, Wave-C
             // item 10): a move the combined history likes searches fuller, one
             // it distrusts is reduced harder. Truncation toward zero on a
             // negative `stat_score` is intended (design/10 §3.1).
-            r -= self.stack[cur].stat_score * params::RED_STATSCORE_NUM / params::RED_STATSCORE_DEN;
+            r -= self.stack[cur].stat_score * params::RED_STATSCORE_NUM()
+                / params::RED_STATSCORE_DEN();
             #[cfg(feature = "search-control")]
             let trace_final_reduction = r;
             #[cfg(feature = "search-control")]
@@ -2912,8 +2917,8 @@ impl Worker {
             // too, but resetting by hand keeps the protocol robust if a future
             // `d <= 0` were ever to drop the scout straight to qsearch.
             if depth >= 2 && move_count > 1 {
-                let classical_d = (new_depth - r / params::RED_UNIT)
-                    .min(new_depth + params::RED_MAX_DEEPER)
+                let classical_d = (new_depth - r / params::RED_UNIT())
+                    .min(new_depth + params::RED_MAX_DEEPER())
                     .max(1)
                     + Depth::from(NT::PV);
                 #[cfg(feature = "search-control")]
@@ -2923,7 +2928,10 @@ impl Worker {
                         oracle.request(key, m, trace_node_depth, ply, move_count)
                     }) {
                         intervention_applied = true;
-                        requested.clamp(1, new_depth + params::RED_MAX_DEEPER + Depth::from(NT::PV))
+                        requested.clamp(
+                            1,
+                            new_depth + params::RED_MAX_DEEPER() + Depth::from(NT::PV),
+                        )
                     } else {
                         classical_d
                     }
@@ -2953,8 +2961,9 @@ impl Worker {
                 // "worth continuing from" and earns the flat post-LMR
                 // continuation-history bonus (design/10 §3.8, Wave-C item 10).
                 if value > alpha {
-                    let do_deeper = d < new_depth && value > best_value + params::LMR_DEEPER_MARGIN;
-                    let do_shallower = value < best_value + params::LMR_SHALLOWER_MARGIN;
+                    let do_deeper =
+                        d < new_depth && value > best_value + params::LMR_DEEPER_MARGIN();
+                    let do_shallower = value < best_value + params::LMR_SHALLOWER_MARGIN();
                     new_depth += Depth::from(do_deeper) - Depth::from(do_shallower);
                     if new_depth > d {
                         #[cfg(feature = "search-control")]
@@ -2979,7 +2988,7 @@ impl Worker {
                         cur,
                         moved_piece,
                         m.to(),
-                        params::LMR_CONTHIST_BONUS,
+                        params::LMR_CONTHIST_BONUS(),
                     );
                 }
             } else if !NT::PV || move_count > 1 {
@@ -2989,11 +2998,11 @@ impl Worker {
                 // more, and a very high nominal `r` still docks 1–2 plies even
                 // without LMR proper.
                 if tt_data.mv == Move::NULL {
-                    r += params::RED_FULLDEPTH_NO_TTMOVE;
+                    r += params::RED_FULLDEPTH_NO_TTMOVE();
                 }
                 let d = new_depth
-                    - Depth::from(r > params::RED_FULLDEPTH_DOCK1)
-                    - Depth::from(r > params::RED_FULLDEPTH_DOCK2 && new_depth > 2);
+                    - Depth::from(r > params::RED_FULLDEPTH_DOCK1())
+                    - Depth::from(r > params::RED_FULLDEPTH_DOCK2() && new_depth > 2);
                 value =
                     -self.search::<NonPv>(tt, stop, -(alpha + 1), -alpha, d, !cut_node, ply + 1);
             }
@@ -3134,8 +3143,8 @@ impl Worker {
             // window updates stay raw.
             let inc = Value::from(
                 value == best_value
-                    && ply + params::DITHER_PLY_MARGIN >= self.root_depth as usize
-                    && (self.nodes & params::DITHER_NODE_MASK) == 0
+                    && ply + params::DITHER_PLY_MARGIN() >= self.root_depth as usize
+                    && (self.nodes & params::DITHER_NODE_MASK()) == 0
                     && !is_win(value.abs() + 1),
             );
 
@@ -3243,9 +3252,9 @@ impl Worker {
             // at non-PV nodes, grade whether the ttMove turned out best.
             if !NT::PV {
                 self.histories.tt_move.update(if best_move == tt_data.mv {
-                    params::TMH_HIT
+                    params::TMH_HIT()
                 } else {
-                    params::TMH_MISS
+                    params::TMH_MISS()
                 });
             }
         }
@@ -3259,26 +3268,26 @@ impl Worker {
         // `move_count != 0` here is implied — this is the fail-low case.
         else if let Some(sq) = prev_sq {
             if !prior_capture {
-                let bonus_scale = (params::FL_SCALE_BASE
-                    - self.stack[cur - 1].stat_score / params::FL_STATSCORE_DIV
-                    + (params::FL_DEPTH_MULT * depth).min(params::FL_DEPTH_CAP)
-                    + params::FL_LATE_PARENT * i32::from(self.stack[cur - 1].move_count > 8)
-                    + params::FL_BELOW_EVAL
+                let bonus_scale = (params::FL_SCALE_BASE()
+                    - self.stack[cur - 1].stat_score / params::FL_STATSCORE_DIV()
+                    + (params::FL_DEPTH_MULT() * depth).min(params::FL_DEPTH_CAP())
+                    + params::FL_LATE_PARENT() * i32::from(self.stack[cur - 1].move_count > 8)
+                    + params::FL_BELOW_EVAL()
                         * i32::from(
                             !in_check
                                 && best_value
-                                    <= self.stack[cur].static_eval - params::FL_BELOW_EVAL_MARGIN,
+                                    <= self.stack[cur].static_eval - params::FL_BELOW_EVAL_MARGIN(),
                         )
-                    + params::FL_BELOW_PARENT_EVAL
+                    + params::FL_BELOW_PARENT_EVAL()
                         * i32::from(
                             !self.stack[cur - 1].in_check
                                 && best_value
                                     <= -self.stack[cur - 1].static_eval
-                                        - params::FL_BELOW_PARENT_EVAL_MARGIN,
+                                        - params::FL_BELOW_PARENT_EVAL_MARGIN(),
                         ))
                 .max(0);
-                let scaled_bonus = (params::FL_BONUS_MULT * depth - params::FL_BONUS_SUB)
-                    .min(params::FL_BONUS_CAP)
+                let scaled_bonus = (params::FL_BONUS_MULT() * depth - params::FL_BONUS_SUB())
+                    .min(params::FL_BONUS_CAP())
                     * bonus_scale;
                 if let Some(pc) = self.board.piece_on(sq) {
                     self.histories.update_continuation_histories(
@@ -3286,15 +3295,15 @@ impl Worker {
                         cur - 1,
                         pc,
                         sq,
-                        scaled_bonus * params::FL_CONTHIST_NUM / params::FL_CONTHIST_DEN,
+                        scaled_bonus * params::FL_CONTHIST_NUM() / params::FL_CONTHIST_DEN(),
                     );
                     let them = self.board.side_to_move().flip();
                     self.histories.main[them as usize][prev_move.raw16() as usize]
-                        .update(scaled_bonus * params::FL_MAIN_NUM / params::FL_MAIN_DEN);
+                        .update(scaled_bonus * params::FL_MAIN_NUM() / params::FL_MAIN_DEN());
                     if pc.piece_type != PieceType::Pawn && prev_move.kind() != MoveKind::Promotion {
                         let pawn_key = self.board.pawn_key();
                         self.histories.pawn_slot_mut(pawn_key)[pc.index()][sq.index() as usize]
-                            .update(scaled_bonus * params::FL_PAWN_NUM / params::FL_PAWN_DEN);
+                            .update(scaled_bonus * params::FL_PAWN_NUM() / params::FL_PAWN_DEN());
                     }
                 }
             } else if let Some(moved) = self.board.piece_on(sq) {
@@ -3307,7 +3316,7 @@ impl Worker {
                     self.board.captured_piece().map(|p| p.piece_type)
                 };
                 self.histories
-                    .reward_prior_capture(moved, sq, victim, params::FL_CAPTURE_BONUS);
+                    .reward_prior_capture(moved, sq, victim, params::FL_CAPTURE_BONUS());
             }
         }
 
@@ -3341,7 +3350,7 @@ impl Worker {
                 // and wrap to the empty-entry marker in release. The N0 clamp
                 // (line ~1037) plus the hindsight +1 leaves only one unit of
                 // slack; this makes the ceiling explicit rather than incidental.
-                (depth + params::TT_NO_MOVES_DEPTH_BONUS).min(MAX_PLY as Depth - 1)
+                (depth + params::TT_NO_MOVES_DEPTH_BONUS()).min(MAX_PLY as Depth - 1)
             };
             probe.writer.write(
                 key,
@@ -3406,10 +3415,10 @@ impl Worker {
             "root_delta is beta - alpha, never zero"
         );
         let scale = self.reductions[depth as usize] * self.reductions[move_number as usize];
-        scale - delta * params::RED_DELTA_MULT / self.root_delta
-            + i32::from(!improving) * scale * params::RED_NON_IMPROVING
-                / params::RED_NON_IMPROVING_DEN
-            + params::RED_BASE
+        scale - delta * params::RED_DELTA_MULT() / self.root_delta
+            + i32::from(!improving) * scale * params::RED_NON_IMPROVING()
+                / params::RED_NON_IMPROVING_DEN()
+            + params::RED_BASE()
     }
 
     /// The per-node combined history statistic `ss.stat_score` (design/10
@@ -3433,13 +3442,13 @@ impl Worker {
                 .board
                 .piece_on(m.to())
                 .map_or(0, |p| p.piece_type.value());
-            params::STATSCORE_CAPT_NUM * captured_value / params::STATSCORE_CAPT_DEN
+            params::STATSCORE_CAPT_NUM() * captured_value / params::STATSCORE_CAPT_DEN()
                 + self.histories.capture_value(&self.board, m)
         } else {
             let us = self.board.side_to_move();
             let pci = moved_piece.index();
             let to = m.to().index() as usize;
-            params::STATSCORE_MAIN_WEIGHT
+            params::STATSCORE_MAIN_WEIGHT()
                 * self.histories.main[us as usize][m.raw16() as usize].get()
                 + self.histories.cont_ref(self.stack[cur - 1].cont_hist)[pci][to].get()
                 + self.histories.cont_ref(self.stack[cur - 2].cont_hist)[pci][to].get()
@@ -3456,9 +3465,9 @@ impl Worker {
     #[inline]
     fn is_shuffling(&self, m: Move, cur: usize, ply: usize) -> bool {
         if self.board.capture_stage(m)
-            || (self.board.rule50_count() as i32) < params::SHUFFLE_RULE50
-            || self.board.plies_from_null() < params::SHUFFLE_PLIES_FROM_NULL
-            || ply < params::SHUFFLE_MIN_PLY
+            || (self.board.rule50_count() as i32) < params::SHUFFLE_RULE50()
+            || self.board.plies_from_null() < params::SHUFFLE_PLIES_FROM_NULL()
+            || ply < params::SHUFFLE_MIN_PLY()
         {
             return false;
         }
@@ -3682,7 +3691,7 @@ impl Worker {
             // The bar every capture's victim must clear (§3.8 step 5):
             // from the CORRECTED static eval, not the substituted
             // best_value.
-            futility_base = self.stack[cur].static_eval + params::QS_FUTILITY_MARGIN;
+            futility_base = self.stack[cur].static_eval + params::QS_FUTILITY_MARGIN();
         }
 
         // Steps 6–7 — the staged MovePicker (doc 09). Not in check it runs
@@ -3735,7 +3744,7 @@ impl Worker {
                 {
                     // Late-move cutoff: after two such moves, skip them
                     // all (§3.8 step 7).
-                    if move_count > params::QS_LATE_MOVE_LIMIT {
+                    if move_count > params::QS_LATE_MOVE_LIMIT() {
                         continue;
                     }
 
@@ -3770,7 +3779,7 @@ impl Worker {
                 }
 
                 // The hard SEE floor for everything left (§3.8 step 7).
-                if !self.board.see_ge(m, params::QS_SEE_FLOOR) {
+                if !self.board.see_ge(m, params::QS_SEE_FLOOR()) {
                     continue;
                 }
             }
@@ -3967,7 +3976,7 @@ impl Worker {
             stop.store(true, Ordering::Relaxed);
             return;
         }
-        let eps = params::CHECK_TIME_EPSILON_MS;
+        let eps = params::CHECK_TIME_EPSILON_MS();
         // Hard clock wall. `use_time_management` gates the comparison, so
         // depth/nodes/movetime/infinite modes never see it; `tm.elapsed`
         // counts nodes under nodestime, keeping the units consistent with
@@ -4002,11 +4011,11 @@ impl Worker {
     /// Factor 1 — `fallingEval`: think longer when the score is dropping
     /// (design/12 §3.9). Clamped to `[FALLING_EVAL_MIN, FALLING_EVAL_MAX]`.
     fn falling_eval(prev_avg: Value, best_value: Value, iter_value_old: Value) -> f64 {
-        ((params::FALLING_EVAL_BASE
-            + params::FALLING_EVAL_PREV_AVG_COEFF * f64::from(prev_avg - best_value)
-            + params::FALLING_EVAL_ITER_COEFF * f64::from(iter_value_old - best_value))
-            / params::FALLING_EVAL_DIV)
-            .clamp(params::FALLING_EVAL_MIN, params::FALLING_EVAL_MAX)
+        ((params::FALLING_EVAL_BASE()
+            + params::FALLING_EVAL_PREV_AVG_COEFF() * f64::from(prev_avg - best_value)
+            + params::FALLING_EVAL_ITER_COEFF() * f64::from(iter_value_old - best_value))
+            / params::FALLING_EVAL_DIV())
+        .clamp(params::FALLING_EVAL_MIN(), params::FALLING_EVAL_MAX())
     }
 
     /// Factor 2 — best-move-stability `reduction` (design/12 §3.9). Returns
@@ -4017,22 +4026,22 @@ impl Worker {
     fn stability_reduction(stability_iters: i32, previous_time_reduction: f64) -> (f64, f64) {
         let time_reduction = lerp(
             f64::from(stability_iters),
-            params::TIME_REDUCTION_STABILITY_LO,
-            params::TIME_REDUCTION_STABILITY_HI,
-            params::TIME_REDUCTION_MIN,
-            params::TIME_REDUCTION_MAX,
+            params::TIME_REDUCTION_STABILITY_LO(),
+            params::TIME_REDUCTION_STABILITY_HI(),
+            params::TIME_REDUCTION_MIN(),
+            params::TIME_REDUCTION_MAX(),
         )
-        .clamp(params::TIME_REDUCTION_MIN, params::TIME_REDUCTION_MAX);
-        let reduction = (params::REDUCTION_BASE + previous_time_reduction)
-            / (params::REDUCTION_DEN_COEFF * time_reduction);
+        .clamp(params::TIME_REDUCTION_MIN(), params::TIME_REDUCTION_MAX());
+        let reduction = (params::REDUCTION_BASE() + previous_time_reduction)
+            / (params::REDUCTION_DEN_COEFF() * time_reduction);
         (time_reduction, reduction)
     }
 
     /// Factor 3 — `bestMoveInstability`: think longer when the best move
     /// keeps flipping (design/12 §3.9). `threads` is 1 until SMP (P11).
     fn best_move_instability(tot_best_move_changes: f64, threads: usize) -> f64 {
-        params::INSTABILITY_BASE
-            + params::INSTABILITY_CHANGES_COEFF * tot_best_move_changes / threads as f64
+        params::INSTABILITY_BASE()
+            + params::INSTABILITY_CHANGES_COEFF() * tot_best_move_changes / threads as f64
     }
 
     /// Factor 4 — `highBestMoveEffort`: stop sooner once the lion's share
@@ -4040,15 +4049,15 @@ impl Worker {
     /// to `[EFFORT_SCALE_AT_HI, EFFORT_SCALE_AT_LO]`.
     fn high_best_move_effort(effort: u64, total_nodes: u64) -> f64 {
         let nodes_effort =
-            (effort as i64 * params::EFFORT_UNIT_SCALE / total_nodes.max(1) as i64) as f64;
+            (effort as i64 * params::EFFORT_UNIT_SCALE() / total_nodes.max(1) as i64) as f64;
         lerp(
             nodes_effort,
-            params::EFFORT_LERP_LO,
-            params::EFFORT_LERP_HI,
-            params::EFFORT_SCALE_AT_LO,
-            params::EFFORT_SCALE_AT_HI,
+            params::EFFORT_LERP_LO(),
+            params::EFFORT_LERP_HI(),
+            params::EFFORT_SCALE_AT_LO(),
+            params::EFFORT_SCALE_AT_HI(),
         )
-        .clamp(params::EFFORT_SCALE_AT_HI, params::EFFORT_SCALE_AT_LO)
+        .clamp(params::EFFORT_SCALE_AT_HI(), params::EFFORT_SCALE_AT_LO())
     }
 
     /// The between-iterations soft stop (design/12 §3.9, full four-factor
@@ -4059,13 +4068,13 @@ impl Worker {
     ///
     /// `total_time = optimum · fallingEval · reduction · bestMoveInstability
     /// · highBestMoveEffort`, then capped at
-    /// [`params::ONE_REPLY_TOTAL_TIME_CAP`] with exactly one legal move
+    /// [`params::ONE_REPLY_TOTAL_TIME_CAP()`] with exactly one legal move
     /// (the result cannot change the move played). The search stops when
     /// `elapsed > min(total_time, maximum)`, or on the two mate early-stops
-    /// (every PV line mates in `<=` [`params::SOFT_STOP_MATE_PLIES`], or we
-    /// are mated in [`params::SOFT_STOP_MATED_PLIES`]). Otherwise it sets
+    /// (every PV line mates in `<=` [`params::SOFT_STOP_MATE_PLIES()`], or we
+    /// are mated in [`params::SOFT_STOP_MATED_PLIES()`]). Otherwise it sets
     /// `increase_depth` for the next iteration: honest deepening only while
-    /// at most [`params::INCREASE_DEPTH_FRACTION`] of the budget is spent.
+    /// at most [`params::INCREASE_DEPTH_FRACTION()`] of the budget is spent.
     ///
     /// Guards mirror the doc's `use_time_management() && !stop` gate plus
     /// §3.8's ponder rule: while pondering the GUI owns the clock, so
@@ -4118,7 +4127,7 @@ impl Worker {
         let mut total_time =
             self.tm.optimum() as f64 * falling_eval * reduction * instability * effort;
         if self.root_moves.len() == 1 {
-            total_time = total_time.min(params::ONE_REPLY_TOTAL_TIME_CAP);
+            total_time = total_time.min(params::ONE_REPLY_TOTAL_TIME_CAP());
         }
 
         let nodes = self.nodes;
@@ -4127,8 +4136,8 @@ impl Worker {
         // mates in <= SOFT_STOP_MATE_PLIES, or we are mated in exactly
         // SOFT_STOP_MATED_PLIES — either way deeper search cannot help.
         let mate_stop = self.root_moves[multi_pv - 1].score
-            >= mate_in(params::SOFT_STOP_MATE_PLIES)
-            || self.root_moves[0].score == mated_in(params::SOFT_STOP_MATED_PLIES);
+            >= mate_in(params::SOFT_STOP_MATE_PLIES())
+            || self.root_moves[0].score == mated_in(params::SOFT_STOP_MATED_PLIES());
 
         if elapsed > total_time.min(self.tm.maximum() as f64) || mate_stop {
             if pondering {
@@ -4145,7 +4154,7 @@ impl Worker {
         } else {
             // Shared across the pool (design/13 §3.7): the main worker writes
             // it, every worker reads it at the top of its ID loop.
-            let deepen = pondering || elapsed <= total_time * params::INCREASE_DEPTH_FRACTION;
+            let deepen = pondering || elapsed <= total_time * params::INCREASE_DEPTH_FRACTION();
             self.pool.increase_depth.store(deepen, Ordering::Relaxed);
         }
 
@@ -4446,7 +4455,7 @@ mod tests {
     /// The table's closed form, recomputed exactly as `Worker::new` builds
     /// it, for golden cross-checks.
     fn red_table(i: usize) -> i32 {
-        (params::RED_TABLE_NUM as f64 / params::RED_TABLE_DEN as f64 * (i as f64).ln()) as i32
+        (params::RED_TABLE_NUM() as f64 / params::RED_TABLE_DEN() as f64 * (i as f64).ln()) as i32
     }
 
     #[test]
@@ -4494,7 +4503,7 @@ mod tests {
             peak * peak
         );
         assert!(
-            scale * i64::from(params::RED_NON_IMPROVING) <= i64::from(i32::MAX),
+            scale * i64::from(params::RED_NON_IMPROVING()) <= i64::from(i32::MAX),
             "scale * RED_NON_IMPROVING overflows i32"
         );
     }
@@ -4511,7 +4520,7 @@ mod tests {
         let not_improving = w.reduction(false, depth, mn, delta);
         assert_eq!(
             not_improving - improving,
-            scale * params::RED_NON_IMPROVING / params::RED_NON_IMPROVING_DEN
+            scale * params::RED_NON_IMPROVING() / params::RED_NON_IMPROVING_DEN()
         );
         assert!(not_improving > improving);
     }
@@ -4536,10 +4545,10 @@ mod tests {
         w.root_delta = 137;
         let (improving, depth, mn, delta): (bool, Depth, i32, i32) = (false, 15, 20, 33);
         let scale = w.reductions[depth as usize] * w.reductions[mn as usize];
-        let want = scale - delta * params::RED_DELTA_MULT / w.root_delta
-            + i32::from(!improving) * scale * params::RED_NON_IMPROVING
-                / params::RED_NON_IMPROVING_DEN
-            + params::RED_BASE;
+        let want = scale - delta * params::RED_DELTA_MULT() / w.root_delta
+            + i32::from(!improving) * scale * params::RED_NON_IMPROVING()
+                / params::RED_NON_IMPROVING_DEN()
+            + params::RED_BASE();
         assert_eq!(w.reduction(improving, depth, mn, delta), want);
     }
 
@@ -4578,13 +4587,14 @@ mod tests {
         // Cross-check at a representative point against the exact §3.4
         // expression, guarding the operator precedence / truncation order.
         let (d, hit, imp, opp): (Depth, bool, bool, bool) = (9, false, true, true);
-        let fm = (params::RFP_MULT_BASE + params::RFP_MULT_SLOPE * d).min(params::RFP_MULT_CAP)
-            - params::RFP_MULT_NO_TTHIT * Value::from(!hit);
+        let fm = (params::RFP_MULT_BASE() + params::RFP_MULT_SLOPE() * d)
+            .min(params::RFP_MULT_CAP())
+            - params::RFP_MULT_NO_TTHIT() * Value::from(!hit);
         let want = fm * d
-            - (params::RFP_IMPROVING * Value::from(imp)
-                + params::RFP_OPP_WORSENING * Value::from(opp))
+            - (params::RFP_IMPROVING() * Value::from(imp)
+                + params::RFP_OPP_WORSENING() * Value::from(opp))
                 * fm
-                / params::RFP_TREND_DEN;
+                / params::RFP_TREND_DEN();
         assert_eq!(rfp_margin(d, hit, imp, opp, 0), want);
     }
 
@@ -4606,7 +4616,7 @@ mod tests {
         // Disarmed (nothing hanging): the base LESS the whole threat margin.
         assert_eq!(
             rfp_prune_margin(d, hit, imp, opp, 0, true),
-            base - params::RFP_THREAT_MARGIN,
+            base - params::RFP_THREAT_MARGIN(),
             "a disarmed node relaxes the margin by exactly RFP_THREAT_MARGIN"
         );
         // The relaxation strictly lowers the bar (RFP_THREAT_MARGIN > 0).
@@ -4622,8 +4632,8 @@ mod tests {
         // its result lies between beta and eval — the weights must sum to
         // the denominator or the blend would drift off the [beta, eval] band.
         assert_eq!(
-            params::RFP_RET_BETA_W + params::RFP_RET_EVAL_W,
-            params::RFP_RET_DEN
+            params::RFP_RET_BETA_W() + params::RFP_RET_EVAL_W(),
+            params::RFP_RET_DEN()
         );
     }
 
@@ -4672,7 +4682,8 @@ mod tests {
         let v = search_at::<NonPv>(&mut w, &tt, beta - 1, beta, depth, true, 1);
         assert_eq!(
             v,
-            (params::RFP_RET_BETA_W * beta + params::RFP_RET_EVAL_W * eval) / params::RFP_RET_DEN
+            (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval)
+                / params::RFP_RET_DEN()
         );
         assert_eq!(w.nodes, 0, "RFP must return before making any move");
     }
@@ -4692,7 +4703,8 @@ mod tests {
         assert!(w.nodes > 0, "a PV node must not RFP-prune");
         assert_ne!(
             v,
-            (params::RFP_RET_BETA_W * beta + params::RFP_RET_EVAL_W * eval) / params::RFP_RET_DEN,
+            (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval)
+                / params::RFP_RET_DEN(),
             "the PV node must not return the RFP blend"
         );
     }
@@ -4739,7 +4751,7 @@ mod tests {
             "a queen deficit is not a decisive score"
         );
         let depth: Depth = 1;
-        let margin = params::RAZOR_BASE + params::RAZOR_DEPTH_MULT * depth * depth;
+        let margin = params::RAZOR_BASE() + params::RAZOR_DEPTH_MULT() * depth * depth;
         let alpha = eval + margin + 1; // smallest alpha with eval < alpha - margin
         let beta = alpha + 1;
         assert!(eval < alpha - margin, "the fixture must trigger razoring");
@@ -4761,7 +4773,7 @@ mod tests {
         let tt = test_tt();
         let eval = corrected_eval(&w.board, None);
         let depth: Depth = 1;
-        let margin = params::RAZOR_BASE + params::RAZOR_DEPTH_MULT * depth * depth;
+        let margin = params::RAZOR_BASE() + params::RAZOR_DEPTH_MULT() * depth * depth;
         let alpha = eval + margin; // eval < alpha - margin is now FALSE (equal)
         let beta = alpha + 1;
         assert!(
@@ -4785,7 +4797,7 @@ mod tests {
         let tt = test_tt();
         let eval = static_eval(&w.board);
         let depth: Depth = 1;
-        let margin = params::RAZOR_BASE + params::RAZOR_DEPTH_MULT * depth * depth;
+        let margin = params::RAZOR_BASE() + params::RAZOR_DEPTH_MULT() * depth * depth;
         let alpha = eval + margin + 1;
         let beta = alpha + 200; // a real PV window (alpha < beta - 1)
         assert!(
@@ -4807,7 +4819,7 @@ mod tests {
         let eval = static_eval(&board("7k/8/8/3Q4/8/8/8/K7 w - - 0 1"));
         assert!(!is_decisive(eval), "a queen edge is not a decisive score");
         for depth in 1..=6 {
-            let margin = params::RAZOR_BASE + params::RAZOR_DEPTH_MULT * depth * depth;
+            let margin = params::RAZOR_BASE() + params::RAZOR_DEPTH_MULT() * depth * depth;
             for alpha in [eval - 500, eval, eval + margin] {
                 assert!(eval >= alpha - margin, "depth {depth}, alpha {alpha}");
             }
@@ -5039,7 +5051,7 @@ mod tests {
         // comparison is STRICT, so a history exactly at `-4313·depth` is NOT
         // pruned while one just below is; positive history never prunes; the
         // fresh combined sum (−2366) stays dormant at every depth.
-        let m = params::QHIST_PRUNE_MULT; // 4313
+        let m = params::QHIST_PRUNE_MULT(); // 4313
         let cases: &[(i32, Depth, bool)] = &[
             (0, 1, false),         // healthy history never prunes
             (100, 8, false),       // positive: never
@@ -5469,7 +5481,7 @@ mod tests {
         let beta = eval - 400;
         // improving is false at ply 1 (VALUE_NONE predecessors), so the bar
         // is `beta - 14·depth + 374`.
-        let bar = beta - params::NMP_EVAL_DEPTH * depth + params::NMP_EVAL_BASE;
+        let bar = beta - params::NMP_EVAL_DEPTH() * depth + params::NMP_EVAL_BASE();
         assert!(eval >= bar, "fixture must clear the NMP static-eval bar");
         assert!(!is_win(eval), "material edge alone is not decisive");
         seed_quiet_ttmove(&w, &tt, Move::normal(Square::B1, Square::B2));
@@ -5489,7 +5501,8 @@ mod tests {
         assert!(v >= beta, "the null search fails high");
         assert_ne!(
             v,
-            (params::RFP_RET_BETA_W * beta + params::RFP_RET_EVAL_W * eval) / params::RFP_RET_DEN,
+            (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval)
+                / params::RFP_RET_DEN(),
             "the return is the null value, not the (vetoed) RFP blend"
         );
     }
@@ -5549,7 +5562,7 @@ mod tests {
         let eval = static_eval(&w.board);
         let depth: Depth = 4;
         let beta = eval - 400;
-        let bar = beta - params::NMP_EVAL_DEPTH * depth + params::NMP_EVAL_BASE;
+        let bar = beta - params::NMP_EVAL_DEPTH() * depth + params::NMP_EVAL_BASE();
         assert!(eval >= bar, "the eval still clears the NMP bar");
         assert!(
             !is_loss(beta),
@@ -5661,10 +5674,16 @@ mod tests {
         // negative one RAISES it, and — like the Stockfish source it re-
         // expresses (D27) — the division truncates toward zero, so a negative
         // product does NOT floor.
-        let dock = |s: i32| s * params::RED_STATSCORE_NUM / params::RED_STATSCORE_DEN;
+        let dock = |s: i32| s * params::RED_STATSCORE_NUM() / params::RED_STATSCORE_DEN();
         // Exact multiple of the divisor: symmetric magnitudes.
-        assert_eq!(dock(params::RED_STATSCORE_DEN), params::RED_STATSCORE_NUM);
-        assert_eq!(dock(-params::RED_STATSCORE_DEN), -params::RED_STATSCORE_NUM);
+        assert_eq!(
+            dock(params::RED_STATSCORE_DEN()),
+            params::RED_STATSCORE_NUM()
+        );
+        assert_eq!(
+            dock(-params::RED_STATSCORE_DEN()),
+            -params::RED_STATSCORE_NUM()
+        );
         // Non-exact: truncation toward zero (a floor would give -11, not -10).
         assert_eq!(dock(100), 10); // 44500/4096 = 10.86 → 10
         assert_eq!(dock(-100), -10); // -44500/4096 = -10.86 → -10 (toward 0)
@@ -5687,8 +5706,8 @@ mod tests {
         // Same [moved][to][victim] cell `capture_value` reads (doc 09 §3.9).
         w.histories.capture[moved_piece.index()][m.to().index() as usize]
             [victim.piece_type as usize] = StatEntry::new(300);
-        let want = params::STATSCORE_CAPT_NUM * victim.piece_type.value()
-            / params::STATSCORE_CAPT_DEN
+        let want = params::STATSCORE_CAPT_NUM() * victim.piece_type.value()
+            / params::STATSCORE_CAPT_DEN()
             + 300;
         assert_eq!(w.stat_score(m, true, moved_piece, ss(0)), want);
     }
@@ -5717,7 +5736,7 @@ mod tests {
         w.histories.main[us as usize][m.raw16() as usize] = StatEntry::new(60);
         w.histories.cont_mut(id1)[pci][to] = StatEntry::new(700);
         w.histories.cont_mut(id2)[pci][to] = StatEntry::new(-400);
-        let want = params::STATSCORE_MAIN_WEIGHT * 60 + 700 - 400;
+        let want = params::STATSCORE_MAIN_WEIGHT() * 60 + 700 - 400;
         assert_eq!(w.stat_score(m, false, moved_piece, cur), want);
     }
 
@@ -6043,7 +6062,7 @@ mod tests {
         let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
         assert_eq!(
             v,
-            eval + params::QS_FUTILITY_MARGIN + PieceType::Pawn.value()
+            eval + params::QS_FUTILITY_MARGIN() + PieceType::Pawn.value()
         );
         assert_eq!(w.nodes, 0, "the futile capture must not be searched");
     }
@@ -6060,7 +6079,7 @@ mod tests {
         let eval = corrected_eval(&w.board, None);
         let alpha = eval + 500;
         let v = qsearch_at::<NonPv>(&mut w, &tt, alpha, alpha + 1);
-        assert_eq!(v, eval + params::QS_FUTILITY_MARGIN);
+        assert_eq!(v, eval + params::QS_FUTILITY_MARGIN());
         assert_eq!(w.nodes, 0, "the SEE-vs-window rule must skip the trade");
     }
 
@@ -6092,7 +6111,7 @@ mod tests {
             w.nodes,
             2,
             "moveCount > {} must stop the remaining captures",
-            params::QS_LATE_MOVE_LIMIT
+            params::QS_LATE_MOVE_LIMIT()
         );
         assert!(!crate::types::is_decisive(v));
     }
@@ -6564,7 +6583,7 @@ mod tests {
             w.nodes
         );
         assert!(
-            (w.nodes as i64) < maximum - params::CHECK_TIME_EPSILON_MS,
+            (w.nodes as i64) < maximum - params::CHECK_TIME_EPSILON_MS(),
             "the hard wall stopped it, not the soft stop: {} not < {maximum}",
             w.nodes
         );
@@ -6681,8 +6700,8 @@ mod tests {
         // is distinct from the seed (proving soft_stop ran and only touched
         // the running field).
         assert!(
-            w.tm_time_reduction >= params::TIME_REDUCTION_MIN
-                && w.tm_time_reduction <= params::TIME_REDUCTION_MAX,
+            w.tm_time_reduction >= params::TIME_REDUCTION_MIN()
+                && w.tm_time_reduction <= params::TIME_REDUCTION_MAX(),
             "running time_reduction out of range: {}",
             w.tm_time_reduction
         );
@@ -6758,7 +6777,7 @@ mod tests {
         w.limits.time[crate::types::Color::Black as usize] = 600_000;
         init_clock(&mut w, &nodestime_options());
         assert!(
-            w.tm.optimum() as f64 > 2.0 * params::ONE_REPLY_TOTAL_TIME_CAP,
+            w.tm.optimum() as f64 > 2.0 * params::ONE_REPLY_TOTAL_TIME_CAP(),
             "test premise: the uncapped budget must dwarf the cap"
         );
         let stop = AtomicBool::new(false);
@@ -6766,7 +6785,7 @@ mod tests {
         assert_eq!(w.root_moves.len(), 1, "test premise: one legal move");
         assert!(stop.load(Ordering::Relaxed), "the capped soft stop fires");
         assert!(
-            w.nodes as f64 > params::ONE_REPLY_TOTAL_TIME_CAP,
+            w.nodes as f64 > params::ONE_REPLY_TOTAL_TIME_CAP(),
             "stopped before the cap was spent: {}",
             w.nodes
         );
@@ -7377,8 +7396,8 @@ mod tests {
         assert_eq!(first.failed_high_cnt, 0);
         assert_eq!(first.adjusted_depth, first.root_depth.max(1));
         if let Some((avg, mss)) = seed {
-            let d0 = (params::ASPIRATION_BASE_DELTA as i64
-                + mss.abs() / params::ASPIRATION_MSS_DIVISOR) as Value;
+            let d0 = (params::ASPIRATION_BASE_DELTA() as i64
+                + mss.abs() / params::ASPIRATION_MSS_DIVISOR()) as Value;
             assert_eq!(first.delta, d0, "initial delta is 5 + |mss|/10588");
             assert_eq!(first.alpha, (avg - d0).max(-VALUE_INFINITE));
             assert_eq!(first.beta, (avg + d0).min(VALUE_INFINITE));
@@ -7392,8 +7411,9 @@ mod tests {
             );
             assert_eq!(
                 n.delta,
-                (p.delta + params::ASPIRATION_WIDEN_NUM * p.delta / params::ASPIRATION_WIDEN_DEN)
-                    .min(2 * VALUE_INFINITE),
+                (p.delta
+                    + params::ASPIRATION_WIDEN_NUM() * p.delta / params::ASPIRATION_WIDEN_DEN())
+                .min(2 * VALUE_INFINITE),
                 "every re-search widens delta"
             );
             if p.value <= p.alpha {
@@ -7446,7 +7466,7 @@ mod tests {
         let trace = &w.asp_trace;
         assert!(trace.len() >= 2, "the mate score must fail high");
         let t0 = trace[0];
-        assert_eq!(t0.delta, params::ASPIRATION_BASE_DELTA);
+        assert_eq!(t0.delta, params::ASPIRATION_BASE_DELTA());
         assert_eq!((t0.alpha, t0.beta), (-5, 5));
         assert_eq!(t0.adjusted_depth, 3);
         assert!(t0.value >= t0.beta, "attempt 0 fails high");
@@ -8182,7 +8202,7 @@ mod tests {
         let beta: Value = 100;
         let alpha: Value = beta - 1; // NonPv zero window
         let depth: Depth = 6;
-        let check_probcut_beta = beta + params::PROBCUT_CHECK_BETA;
+        let check_probcut_beta = beta + params::PROBCUT_CHECK_BETA();
 
         // Seed the node's own TT entry, then run one direct `search`. The
         // stored depth is one ply short of the N6b cutoff's strict `>` slack

@@ -416,7 +416,7 @@ impl Histories {
 
         for (idx, &weight) in params::CONT_OFFSET_WEIGHTS.iter().enumerate() {
             let i = idx + 1;
-            if in_check && i > params::CONT_IN_CHECK_MAX_OFFSET {
+            if in_check && i > params::CONT_IN_CHECK_MAX_OFFSET() {
                 break;
             }
             // Null move / pre-root padding: no predecessor move to pair with.
@@ -430,10 +430,10 @@ impl Histories {
                 positive_count += 1;
             }
             let mult = params::CONT_CONSISTENCY_MULT[positive_count];
-            let scaled = (bonus as i64 * weight as i64 * mult as i64 / params::CONT_UPDATE_DIVISOR)
-                as i32
+            let scaled = (bonus as i64 * weight as i64 * mult as i64
+                / params::CONT_UPDATE_DIVISOR()) as i32
                 + if i == 1 {
-                    params::CONT_OFFSET1_FLAT_BONUS
+                    params::CONT_OFFSET1_FLAT_BONUS()
                 } else {
                     0
                 };
@@ -462,7 +462,7 @@ impl Histories {
         let ply = cur - SS_OFFSET;
         if ply < LOW_PLY_SIZE {
             self.low_ply[ply][raw]
-                .update(bonus * params::QUIET_LOW_PLY_UPDATE_NUM / params::STAT_WEIGHT_DEN);
+                .update(bonus * params::QUIET_LOW_PLY_UPDATE_NUM() / params::STAT_WEIGHT_DEN());
         }
 
         let pc = board
@@ -474,17 +474,17 @@ impl Histories {
             cur,
             pc,
             to,
-            bonus * params::QUIET_CONT_UPDATE_NUM / params::STAT_WEIGHT_DEN,
+            bonus * params::QUIET_CONT_UPDATE_NUM() / params::STAT_WEIGHT_DEN(),
         );
 
-        let pawn_weight = if bonus > params::PAWN_HIST_ASYMMETRY_THRESHOLD {
-            params::PAWN_HIST_BONUS_NUM
+        let pawn_weight = if bonus > params::PAWN_HIST_ASYMMETRY_THRESHOLD() {
+            params::PAWN_HIST_BONUS_NUM()
         } else {
-            params::PAWN_HIST_MALUS_NUM
+            params::PAWN_HIST_MALUS_NUM()
         };
         let slot = (board.pawn_key() & (PAWN_HIST_SIZE as u64 - 1)) as usize;
         self.pawn[slot][pc.index()][to.index() as usize]
-            .update(bonus * pawn_weight / params::STAT_WEIGHT_DEN);
+            .update(bonus * pawn_weight / params::STAT_WEIGHT_DEN());
     }
 
     /// The node-result write burst on a best move that raised alpha
@@ -511,17 +511,17 @@ impl Histories {
     ) {
         debug_assert!(cur >= SS_OFFSET);
 
-        let mut bonus = (params::STAT_BONUS_DEPTH_MULT * depth - params::STAT_BONUS_DEPTH_SUB)
-            .min(params::STAT_BONUS_MAX)
-            + params::STAT_BONUS_TTMOVE * (best_move == tt_move) as i32
-            + stack[cur - 1].stat_score / params::STAT_BONUS_STATSCORE_DIV;
-        let malus = (params::STAT_MALUS_DEPTH_MULT * depth - params::STAT_MALUS_DEPTH_SUB)
-            .min(params::STAT_MALUS_MAX);
+        let mut bonus = (params::STAT_BONUS_DEPTH_MULT() * depth - params::STAT_BONUS_DEPTH_SUB())
+            .min(params::STAT_BONUS_MAX())
+            + params::STAT_BONUS_TTMOVE() * (best_move == tt_move) as i32
+            + stack[cur - 1].stat_score / params::STAT_BONUS_STATSCORE_DIV();
+        let malus = (params::STAT_MALUS_DEPTH_MULT() * depth - params::STAT_MALUS_DEPTH_SUB())
+            .min(params::STAT_MALUS_MAX());
 
         // A wide node that tried many moves before the cutoff taught us more.
         if !is_pv {
             let tried = (quiets_searched.len() + captures_searched.len()) as i64;
-            bonus += (bonus as i64 * tried / params::STAT_BREADTH_DIVISOR) as i32;
+            bonus += (bonus as i64 * tried / params::STAT_BREADTH_DIVISOR()) as i32;
         }
 
         if !board.capture_stage(best_move) {
@@ -530,17 +530,17 @@ impl Histories {
                 stack,
                 cur,
                 best_move,
-                bonus * params::QUIET_BEST_BONUS_NUM / params::STAT_WEIGHT_DEN,
+                bonus * params::QUIET_BEST_BONUS_NUM() / params::STAT_WEIGHT_DEN(),
             );
             // Geometrically decaying malus: earliest failures punished hardest.
-            let mut m = malus * params::QUIET_MALUS_START_NUM / params::STAT_WEIGHT_DEN;
+            let mut m = malus * params::QUIET_MALUS_START_NUM() / params::STAT_WEIGHT_DEN();
             for &q in quiets_searched {
-                m = m * params::QUIET_MALUS_DECAY_NUM / params::STAT_WEIGHT_DEN;
+                m = m * params::QUIET_MALUS_DECAY_NUM() / params::STAT_WEIGHT_DEN();
                 self.update_quiet_histories(board, stack, cur, q, -m);
             }
         } else {
             self.capture_entry_mut(board, best_move)
-                .update(bonus * params::CAPTURE_BEST_BONUS_NUM / params::STAT_WEIGHT_DEN);
+                .update(bonus * params::CAPTURE_BEST_BONUS_NUM() / params::STAT_WEIGHT_DEN());
         }
 
         // Refutation malus: the parent's move was a quiet it tried first and
@@ -557,14 +557,14 @@ impl Histories {
                     cur - 1,
                     pc,
                     prev_sq,
-                    -malus * params::REFUTATION_MALUS_NUM / params::STAT_WEIGHT_DEN,
+                    -malus * params::REFUTATION_MALUS_NUM() / params::STAT_WEIGHT_DEN(),
                 );
             }
         }
 
         for &c in captures_searched {
             self.capture_entry_mut(board, c)
-                .update(-malus * params::CAPTURE_MALUS_NUM / params::STAT_WEIGHT_DEN);
+                .update(-malus * params::CAPTURE_MALUS_NUM() / params::STAT_WEIGHT_DEN());
         }
     }
 
@@ -652,15 +652,15 @@ impl Histories {
             let (pci, toi) = (pc.index(), to.index() as usize);
             let o2 = stack[cur - 2].cont_hist.piece_to();
             let o4 = stack[cur - 4].cont_hist.piece_to();
-            params::CORR_CONT_WEIGHT
+            params::CORR_CONT_WEIGHT()
                 * (self.cont_corr[o2][pci][toi].get() + self.cont_corr[o4][pci][toi].get())
         } else {
-            params::CORR_CONT_NULL_PRIOR
+            params::CORR_CONT_NULL_PRIOR()
         };
 
-        params::CORR_PAWN_WEIGHT * pcv
-            + params::CORR_MINOR_WEIGHT * micv
-            + params::CORR_NONPAWN_WEIGHT * (wnp + bnp)
+        params::CORR_PAWN_WEIGHT() * pcv
+            + params::CORR_MINOR_WEIGHT() * micv
+            + params::CORR_NONPAWN_WEIGHT() * (wnp + bnp)
             + cntcv
     }
 
@@ -680,13 +680,13 @@ impl Histories {
         self.corr_slot_mut(board.pawn_key(), us).pawn.update(bonus);
         self.corr_slot_mut(board.minor_key(), us)
             .minor
-            .update(bonus * params::CORR_MINOR_UPDATE_NUM / params::CORR_UPDATE_DEN);
+            .update(bonus * params::CORR_MINOR_UPDATE_NUM() / params::CORR_UPDATE_DEN());
         self.corr_slot_mut(board.non_pawn_key(Color::White), us)
             .non_pawn_white
-            .update(bonus * params::CORR_NONPAWN_UPDATE_NUM / params::CORR_UPDATE_DEN);
+            .update(bonus * params::CORR_NONPAWN_UPDATE_NUM() / params::CORR_UPDATE_DEN());
         self.corr_slot_mut(board.non_pawn_key(Color::Black), us)
             .non_pawn_black
-            .update(bonus * params::CORR_NONPAWN_UPDATE_NUM / params::CORR_UPDATE_DEN);
+            .update(bonus * params::CORR_NONPAWN_UPDATE_NUM() / params::CORR_UPDATE_DEN());
 
         let prev = stack[cur - 1].current_move;
         if prev.is_ok() {
@@ -698,9 +698,9 @@ impl Histories {
             let o2 = stack[cur - 2].cont_hist.piece_to();
             let o4 = stack[cur - 4].cont_hist.piece_to();
             self.cont_corr[o2][pci][toi]
-                .update(bonus * params::CORR_CONT2_UPDATE_NUM / params::CORR_UPDATE_DEN);
+                .update(bonus * params::CORR_CONT2_UPDATE_NUM() / params::CORR_UPDATE_DEN());
             self.cont_corr[o4][pci][toi]
-                .update(bonus * params::CORR_CONT4_UPDATE_NUM / params::CORR_UPDATE_DEN);
+                .update(bonus * params::CORR_CONT4_UPDATE_NUM() / params::CORR_UPDATE_DEN());
         }
     }
 }
@@ -710,7 +710,7 @@ impl Histories {
 /// inside TB-loss..TB-win)`. The **raw** eval is what the TT stores; the
 /// corrected one drives pruning (D22).
 pub fn to_corrected_static_eval(raw: Value, cv: i32) -> Value {
-    (raw + cv / params::CORR_VALUE_DIVISOR)
+    (raw + cv / params::CORR_VALUE_DIVISOR())
         .clamp(VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1)
 }
 
@@ -736,13 +736,13 @@ pub fn correction_bonus(
         return None;
     }
     let depth_mult = if best_move.is_ok() {
-        params::CORR_BONUS_DEPTH_MULT_BESTMOVE
+        params::CORR_BONUS_DEPTH_MULT_BESTMOVE()
     } else {
-        params::CORR_BONUS_DEPTH_MULT_NOMOVE
+        params::CORR_BONUS_DEPTH_MULT_NOMOVE()
     };
-    let raw = ((best_value - static_eval) * depth * depth_mult / params::CORR_BONUS_DIVISOR)
-        .clamp(-params::CORR_BONUS_CLAMP, params::CORR_BONUS_CLAMP);
-    Some(raw * params::CORR_BONUS_SCALE_NUM / params::CORR_BONUS_SCALE_DEN)
+    let raw = ((best_value - static_eval) * depth * depth_mult / params::CORR_BONUS_DIVISOR())
+        .clamp(-params::CORR_BONUS_CLAMP(), params::CORR_BONUS_CLAMP());
+    Some(raw * params::CORR_BONUS_SCALE_NUM() / params::CORR_BONUS_SCALE_DEN())
 }
 
 // Compile-time guards on the catalogue (design/09 §8 criterion 2). Every

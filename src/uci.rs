@@ -86,6 +86,15 @@ pub fn run() {
         // forward-pass oracle and a deterministic test-net writer. Not part
         // of the UCI protocol; used by tools/nnue/verify_forward.sh.
         Some("nnue-eval") => cmd_nnue_eval_argv(&args[1..]),
+        // SPSA driver preflight (D45, tune builds): every runtime tunable as
+        // `NAME<TAB>current-value`, one per line — the driver validates its
+        // campaign config against this before burning any games.
+        #[cfg(feature = "tune")]
+        Some("tunables") => {
+            for (name, value) in crate::search::params::tunables_list() {
+                println!("{name}\t{value}");
+            }
+        }
         #[cfg(feature = "policy")]
         Some("policy-eval") => cmd_policy_eval_argv(&args[1..]),
         Some("nnue-testnet") => cmd_nnue_testnet_argv(&args[1..]),
@@ -1136,6 +1145,20 @@ fn cmd_setoption<W: Write>(
         name_tokens.push(tok);
     }
     let name = name_tokens.join(" ");
+    // SPSA tunables (D45): in a tune build every params.rs scalar is a
+    // runtime option under its SCREAMING_SNAKE name. Checked before the
+    // standard table so a tunable can never be shadowed by it; the name
+    // shapes are disjoint anyway (standard options contain spaces or
+    // lowercase). Unknown/garbage values answer `info string` like every
+    // other setoption error — but a VALID set must stay silent (fastchess
+    // treats unexpected stdout between games as noise, and the SPSA driver
+    // preflights names via `chessengine tunables`).
+    #[cfg(feature = "tune")]
+    if let Some(raw) = value.as_deref()
+        && crate::search::params::set_tunable(&name, raw).is_ok()
+    {
+        return Ok(());
+    }
     match engine.options.set(&name, value.as_deref()) {
         Err(msg) => writeln!(out, "info string {msg}"),
         // Side effects, keyed off the canonical name. They run
@@ -1324,7 +1347,7 @@ fn cmd_go<W: Write + Send + 'static>(
 /// TT permille estimate, doc 08 §3.10), wall-clock time, pv — the doc's SF
 /// field order, minus the deferred `wdl`/`tbhits`. The `info` throttle that
 /// decides WHICH lines reach here lives in the ID loop
-/// (`params::INFO_THROTTLE_NODES`, doc 12 step 10). One `String` so the
+/// (`params::INFO_THROTTLE_NODES()`, doc 12 step 10). One `String` so the
 /// caller can emit it as a single write.
 fn format_info(info: &SearchInfo, elapsed_ms: i64) -> String {
     use std::fmt::Write as _; // writing to a String cannot fail

@@ -605,3 +605,23 @@ strength. Two constraints in permanent tension, resolved in this order:
   justifies it. Curriculum: Reckless root bootstrap → ARCHON root adaptation →
   ARCHON internal counterfactuals → on-policy ARCHON flywheel. Promotion is
   always determined by ARCHON engine games. Owning roadmaps: docs 16 and 19.
+
+- **D45**: SPSA gainer season (user-directed, 2026-07-17). The evaluator is
+  frozen on the classic binpack line (s3-farseer incumbent; D40 demoted to a
+  background speed/packing line by the failed promotion #4, exp-0073) and the
+  program shifts to search-parameter optimization: **eight full SPSA
+  decisions** — tune → verify → accept/reject, each ledgered — drawn from the
+  S0/SF14→16 study (`stockfish_reference/06-…` §6b) and the params.rs
+  inventory, then the program shifts to the D41/design-19 thrust. Protocol
+  (D39-consistent): SPSA iterations run at FIXED NODES (load-immune, high
+  concurrency); the tuned candidate must pass an EQUAL-TIME SPRT ship gate on
+  a quiet box before its values become defaults; an accepted tune is a
+  functional change and carries a fresh `Bench:` trailer. Infrastructure: the
+  `tune` feature (`src/tune.rs` `tunables!` macro) turns every params.rs
+  scalar into a relaxed-atomic-backed getter settable via
+  `setoption name <NAME> value <x>`; the default build expands the same
+  entries to inline-folded constants and is verified bit-identical (D24
+  bench). Tune builds are harness-only, never shipped. Campaign order:
+  correction-history weights, LMR/reduction bundle, RFP+razoring, NMP,
+  futility+SEE, LMP+history-pruning, aspiration+IIR, history update
+  magnitudes.

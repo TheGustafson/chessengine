@@ -42,6 +42,8 @@ pub mod search_trace;
 pub mod threads;
 pub mod timeman;
 pub mod tt;
+#[macro_use]
+mod tune;
 pub mod types;
 pub mod uci;
 pub mod zobrist;

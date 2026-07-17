@@ -18,6 +18,11 @@ path = "src/bin/root_analysis.rs"
 required-features = ["datagen"]
 
 [features]
+# SPSA tuning (D45): every params.rs scalar becomes a runtime-settable atomic
+# behind `setoption name <NAME> value <x>`. OFF by default: the default build
+# expands the same entries to inline-folded constants and stays bench-
+# identical (D24). Tune builds are for the SPSA harness only, never shipped.
+tune = []
 # Distribution-only: embed net-0 as the default eval so the engine plays NNUE
 # with no `EvalFile` set (for GUIs that can't set UCI string options). OFF by
 # default, so runtime [dependencies] stays empty (D15) and the default build is
