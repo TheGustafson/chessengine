@@ -917,3 +917,29 @@ GPU throughout — the first productive use of the reclaimed testing lane.
    adopt UHO for future fixed-node screens, and re-run the s3-vs-s4
    equal-time comparison on UHO before promotion #5. Draw rate at 5k was
    flat (26%->24-26%) — the S0 draw-rate claim is a TC question, untested.
+
+## 2026-07-16 23:45 [CODE] S1 landed: correction history fully wired (a8e16c5) — D33 review in flight
+
+The held-back half of Wave-F item 21: `ss.static_eval` is now the CORRECTED
+eval (main-search N6 + qsearch stand pat); TT keeps raw everywhere (D22);
+write-back was already live. Read/write formula parity checked against SF
+search.cpp line-by-line. New bench fingerprint **701605** (was 548978,
++28% nodes at depth 6 — expected-functional per the doc; one pawnless
+bench position balloons to 580k nodes, see below). Suite green: 586 tests.
+
+Findings worth remembering from the landing:
+- **Pawnless positions degrade correction history**: pawn_key and (in
+  minor-less positions) minor_key are constant across the whole tree, so
+  the mate-line's +256-clamped bonuses saturate the shared cells and
+  inflate every sibling's margins. Empirically: the two-rook mate-in-3
+  needed depth 12 (was 6) to prove exactly; middlegame positions shift
+  ~1-3cp only. SF ships the identical formula (verified) — inherent
+  tradeoff, not a bug. Doc 07 §8(4) bar amended 6→12; oracles re-scoped
+  to exact-on-decisive + 8cp band (measured 3cp drift).
+- S1 is FUNCTIONAL: games are the verdict. SPRT queued behind the D40
+  arc per the search program (quiet box needed). Elo prior from the
+  SF14→16 patch study: correction history family was worth ~+10-25.
+- D33 3-persona review (correctness / SF-fidelity / test-quality, opus
+  agents) dispatched post-commit; synthesis + any fixes before game
+  testing. check.sh re-run on the shared release dir due ~03:50 when the
+  720sb train frees it (side-build bench already bit-reproducible 2x).
