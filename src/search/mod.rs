@@ -1961,7 +1961,13 @@ impl Worker {
             // else call evaluate(); a TT miss caches the raw eval at
             // DEPTH_UNSEARCHED so transpositions skip the eval (§3.11).
             if self.stack[cur].excluded_move != Move::NULL {
-                raw_eval = self.stack[cur].static_eval;
+                // `raw_eval` is DEAD on this path — every TT store of it is
+                // `excluded_move == NULL`-gated — and `ss.static_eval` holds
+                // the enclosing node's CORRECTED eval, which must never be
+                // mislabeled as raw (D22). The sentinel keeps any future
+                // un-gated store loud instead of silently corrupting the TT
+                // eval field (D33 review round 1, personas A + C).
+                raw_eval = VALUE_NONE;
             } else {
                 raw_eval = if tt_hit && is_valid(tt_data.eval) {
                     tt_data.eval
@@ -2168,9 +2174,9 @@ impl Worker {
             // fenced to `excluded_move == NULL`: SF (search.cpp) takes a
             // dedicated `else if (excludedMove)` branch that sets
             // `eval = ss->staticEval` and does NOT fall through to the ttHit
-            // substitution — so a singular verification razors/RFPs on the raw
-            // static eval, not on the (necessarily present) stored value of the
-            // very move it is excluding. Without this guard the re-probe hits
+            // substitution — so a singular verification razors/RFPs on the
+            // enclosing node's corrected static eval, not on the (necessarily
+            // present) stored value of the very move it is excluding. Without this guard the re-probe hits
             // the excluded move's own entry and inflates `eval` toward
             // `tt_value`, corrupting the exclusion-search return that decides
             // singular vs multicut vs negative extension.
@@ -5786,8 +5792,9 @@ mod tests {
     #[test]
     fn mate_suite_1_to_3_exact_scores_and_first_moves() {
         // The §8(4) exit bar in table form: ≥ 10 positions across mates in
-        // 1/2/3, each solved at depth ≤ 6 with the exact ply-relative
-        // score AND a verified-optimal first move. Every entry — the mate
+        // 1/2/3, each solved at depth ≤ 12 (the S1 bar — see the two-rook
+        // ladder test for why pawnless proofs deepened) with the exact
+        // ply-relative score AND a verified-optimal first move. Every entry — the mate
         // distance and the complete optimal-first-move set — was checked
         // against an exhaustive independent minimax over python-chess
         // movegen, so a listed move set is exact (a single-element set
@@ -5939,7 +5946,10 @@ mod tests {
     /// sentinel frames below the root supply the stack context. `prev` is
     /// the parent's just-made move for a CHILD fixture (its to-square piece
     /// keys the continuation term); `None` models a root-driven node, where
-    /// the null-move flat prior applies instead.
+    /// the null-move flat prior applies instead. CAUTION: with today's fill
+    /// values both variants truncate to the same −1cp delta, so a fixture
+    /// passing the wrong `prev` would pass by coincidence — pick the
+    /// variant that matches the driven node, not the one that works.
     fn fresh_cv(b: &Board, prev: Option<Move>) -> i32 {
         let mut w = Worker::new(b.clone());
         init_stack(&mut w.stack);
