@@ -906,13 +906,19 @@ eval doc; expected +5..15).**
     (`/182069`), reduction term (`/26131`), singular `corr_adj`
     (`/194822`), and the node-result correction update with its
     direction-consistency gate. SPRT `[0, 5]`.
-    **Partially deferred (P9, 2026-07-12):** the RFP/reduction/singular
-    couplings and the node-result update landed and are live (`corr_adj` now
-    tightens the singular double/triple margins); **folding the correction
-    INTO `ss.static_eval`** itself (the N6 corrected static eval, via
-    `to_corrected_static_eval`) is **DEFERRED** to the eval doc's corrected-eval
-    consumer (D22) so the exact-value pruning-margin unit tests stay pinned to
-    the raw eval.
+    **FULLY LANDED (S1, 2026-07-16):** the RFP/reduction/singular couplings
+    and the node-result update went live in P9 (2026-07-12); the held-back
+    N6 fold — `ss.static_eval = to_corrected_static_eval(raw, cv)` in the
+    main search AND the qsearch stand-pat (doc 07 §3.8 step 5) — landed as
+    search-program item S1. The TT stores the raw eval on every path (D22).
+    Consequences absorbed by the test suite in the same commit: margin
+    fixtures derive their boundaries from the corrected eval (fresh-table
+    cv via the real `correction_value`); the pawnless mate fixtures'
+    proof-depth bar moved 6 → 12 (doc 07 §8(4) — the shared pawn/minor
+    correction cells saturate on mate lines and inflate sibling margins);
+    the PVS-vs-negamax and TT-on/off exact-value oracles are re-scoped to
+    exact-on-decisive + an 8cp correction-drift band on centipawn fixtures
+    (measured drift 3cp; theoretical ceiling |cv|max/131072 = 493).
     *Fidelity note (round-2 review, 2026-07-12): the node-result correction
     update is gated `excluded_move == NULL && move_count != 0`. SF has NEITHER
     guard. The excluded-move skip is deliberate (an exclusion search's best

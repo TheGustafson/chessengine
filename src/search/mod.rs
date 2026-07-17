@@ -118,14 +118,13 @@
 //! found a best move raising alpha runs the
 //! [`Histories::update_all_stats`] write burst at node exit (doc 09 §3.9).
 //! `new_search()` decays the tables each `go`; `ucinewgame` clears them
-//! (uci.rs). The correction-history tables exist and are unit-tested, but
-//! *reading* the corrected static eval and *writing* correction history are
-//! deferred to their doc-10/11 pruning consumers (doc 09 §3.10 / D22): the
-//! current pre-pruning search has no consumer of a corrected eval that
-//! would change a returned value (only qsearch stand-pat reads
-//! `static_eval`, and it stays raw here), so the raw eval that the TT
-//! stores is also what search uses, keeping the P6/P7 value-equality
-//! oracles valid. The Bench fingerprint changes materially (D24).
+//! (uci.rs). Correction history is FULLY wired (S1, 2026-07-16): both the
+//! main search (N6) and qsearch (stand pat) fold `correction_value/131072`
+//! into `ss.static_eval` via `to_corrected_static_eval`, the step-9 gated
+//! `update_correction_history` writes the search-vs-eval error back at
+//! node exit, and the TT stores the RAW eval on every path (D22) —
+//! corrections are per-path, so cached corrected values would leak one
+//! path's correction into another.
 //!
 //! Deliberately NOT here yet, per the doc's staging: the four-factor
 //! soft-stop stack, its mate-score early stops, and the
@@ -1969,14 +1968,15 @@ impl Worker {
                 } else {
                     evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO, ply)
                 };
-                // Item 21 wires the correction COUPLINGS (RFP margin, reduction,
-                // singular corr_adj, node-result update); folding the correction
-                // into `ss.static_eval` itself (design/10 N6, via
-                // `to_corrected_static_eval`) is held back so the exact-value
-                // pruning-margin unit tests stay pinned to the raw eval — it
-                // lands with the eval-doc's corrected-eval consumer (D22), the
-                // natural owner of the value-equality contract.
-                self.stack[cur].static_eval = raw_eval;
+                // S1 (design/10 N6, D22): `ss.static_eval` is the CORRECTED
+                // eval — raw plus the correction-history delta — and every
+                // downstream consumer (improving/opponent_worsening, hindsight,
+                // razoring/RFP/NMP margins, the step-9 error signal) reads it.
+                // The TT keeps the RAW eval (both stores below): corrections
+                // are per-path (continuation keys), so a cached corrected
+                // value would smuggle one path's correction into another.
+                self.stack[cur].static_eval =
+                    crate::history::to_corrected_static_eval(raw_eval, correction_value);
                 if !tt_hit {
                     probe.writer.write(
                         key,
@@ -3623,8 +3623,15 @@ impl Worker {
             } else {
                 evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO, ply)
             };
-            self.stack[cur].static_eval = raw_eval; // corrected == raw (Phase A)
-            best_value = raw_eval;
+            // S1 (doc 07 §3.8 step 5, D22): stand pat on the CORRECTED eval;
+            // the TT stores (fail-high cache above the loop, step-12 store
+            // below) keep the RAW eval, same discipline as the main search.
+            let correction_value =
+                self.histories
+                    .correction_value(&self.board, &self.stack[..], cur);
+            self.stack[cur].static_eval =
+                crate::history::to_corrected_static_eval(raw_eval, correction_value);
+            best_value = self.stack[cur].static_eval;
 
             // A valid, NON-decisive tt_value whose bound points the right
             // way substitutes as a better stand pat (§3.8 step 5). Unlike
@@ -4642,14 +4649,16 @@ mod tests {
         let fen = "7k/8/8/8/8/8/8/1Q5K w - - 0 1";
         let mut w = Worker::new(board(fen));
         let tt = test_tt();
-        let eval = static_eval(&w.board);
+        let cv = fresh_cv(&w.board, None);
+        let eval = corrected_eval(&w.board, None);
         assert!(!is_win(eval), "material edge alone is not a decisive score");
         let depth: Depth = 4;
         let beta = eval - 200; // eval - margin(~132) >= beta must hold
         // A fresh TT → tt miss at this node, so the margin is the no-ttHit
         // form; the trend flags at ply 1 read VALUE_NONE predecessors
-        // (improving false, opponent_worsening true).
-        let margin = rfp_margin(depth, false, false, true, 0);
+        // (improving false, opponent_worsening true). The margin widens by
+        // |cv|/RFP_CORR_DIV exactly as the search computes it.
+        let margin = rfp_margin(depth, false, false, true, cv);
         assert!(
             eval - margin >= beta,
             "the fixture must actually trigger RFP"
@@ -4718,7 +4727,7 @@ mod tests {
         let fen = "7k/8/8/3q4/8/8/8/K7 w - - 0 1";
         let mut w = Worker::new(board(fen));
         let tt = test_tt();
-        let eval = static_eval(&w.board);
+        let eval = corrected_eval(&w.board, None);
         assert!(
             !is_decisive(eval),
             "a queen deficit is not a decisive score"
@@ -4744,7 +4753,7 @@ mod tests {
         let fen = "7k/8/8/3q4/8/8/8/K7 w - - 0 1";
         let mut w = Worker::new(board(fen));
         let tt = test_tt();
-        let eval = static_eval(&w.board);
+        let eval = corrected_eval(&w.board, None);
         let depth: Depth = 1;
         let margin = params::RAZOR_BASE + params::RAZOR_DEPTH_MULT * depth * depth;
         let alpha = eval + margin; // eval < alpha - margin is now FALSE (equal)
@@ -4951,7 +4960,7 @@ mod tests {
         // quiet SEE; `!in_check` and the non-decisive eval keep every guard
         // satisfied.
         let fen = "7k/8/8/8/8/2N5/8/K7 w - - 0 1";
-        let eval = static_eval(&board(fen));
+        let eval = corrected_eval(&board(fen), None);
         assert!(!is_decisive(eval), "a knight edge is not a decisive score");
         let bound = parent_futility_value(eval, true, -1, false);
         let depth: Depth = 1;
@@ -5091,7 +5100,7 @@ mod tests {
         // `cont_history = 2·(−8000) + pawnHistory(−1262) = −17262 < −4313·1`,
         // so the gate fires and the second quiet is pruned outright — 1 node.
         let fen = "7k/8/8/8/8/2N5/8/K7 w - - 0 1";
-        let eval = static_eval(&board(fen));
+        let eval = corrected_eval(&board(fen), None);
         assert!(!is_decisive(eval), "a knight edge is not a decisive score");
         // Below the parent-futility bound (that gate stays dormant) and just
         // above the quiets' values (move 1 fails low) — the parent-futility
@@ -5314,7 +5323,7 @@ mod tests {
             "Nxc2 must clear the capture-SEE margin (SEE cannot be the pruner)"
         );
 
-        let se = static_eval(&b);
+        let se = corrected_eval(&b, None);
         assert!(
             !is_decisive(se),
             "the fixture's eval is not a decisive score"
@@ -5754,14 +5763,19 @@ mod tests {
     }
 
     #[test]
-    fn two_rook_ladder_mate_in_3_exact_at_depth_6() {
+    fn two_rook_ladder_mate_in_3_exact_at_depth_12() {
         // 1.Rb6+ (rank 5 stays cut by Ra5) K→7th 2.Ra7+ K→8th 3.Rb8#:
         // five plies. The black king starts on g6, too far from the a/b
         // files to ever attack the unprotected checking rooks, and too
-        // free for anything shorter than the ladder. Depth 6 = the five
-        // plies the mate needs plus the aspiration settling iteration
-        // (see the KRK test) — exactly the §8(4) gate's "depth ≤ 6".
-        let w = go_depth("8/8/6k1/R7/8/8/8/1R5K w - - 0 1", 6);
+        // free for anything shorter than the ladder. Pre-S1 the proof
+        // landed at depth 6 (five plies + one aspiration settling
+        // iteration); live correction history (S1/D22) shifts proof depth
+        // in PAWNLESS studies — the whole tree shares the pawn/minor
+        // correction cells, so the mate-line's bonuses saturate them and
+        // inflate every sibling's margins — and this position converges to
+        // the exact mate 3 at depth 12 (stable through 14+). Doc 07 §8(4)
+        // carries the amended depth ≤ 12 bar.
+        let w = go_depth("8/8/6k1/R7/8/8/8/1R5K w - - 0 1", 12);
         assert_eq!(best_score(&w), mate_in(5));
         assert_eq!(w.root_pv().len(), 5);
         // The PV replays legally and its end really is checkmate.
@@ -5809,10 +5823,13 @@ mod tests {
             // Mate-in-1 uses depth 2 so the score comes from a full search
             // iteration, not bare qsearch (found at depth 1, the mate-band
             // EMAs keep every later window effectively infinite). Deeper
-            // mates need the mate distance plus one aspiration settling
-            // iteration (see the KRK test) — still within the §8(4)
-            // "depth ≤ 6" bar.
-            let depth = if plies == 1 { 2 } else { plies + 1 };
+            // mates pre-S1 needed the mate distance plus one aspiration
+            // settling iteration; live correction history (S1/D22) shifts
+            // proof depth in these pawnless studies (see the two-rook
+            // ladder test), so the §8(4) bar is now depth ≤ 12 — node
+            // counts stay tiny (~5k), the exact-score and optimal-first-
+            // move asserts stay untouched.
+            let depth = if plies == 1 { 2 } else { 12 };
             let w = go_depth(fen, depth);
             assert_eq!(best_score(&w), mate_in(plies), "score for {fen}");
             let got = w.best_move().unwrap().to_string();
@@ -5910,10 +5927,35 @@ mod tests {
     // skip, and pinned return values come from the doc's exact formulas
     // over in-test `evaluate` calls — no magic score literals.
 
-    /// The corrected static eval exactly as qsearch computes it
-    /// (Phase A: corrected == raw).
+    /// The RAW static eval (`evaluate` only). Since S1 the search never
+    /// consumes this directly — fixtures pinning search-visible values must
+    /// use [`corrected_eval`].
     fn static_eval(b: &Board) -> Value {
         evaluate(b, &mut EvalContext::new(), VALUE_ZERO, 0)
+    }
+
+    /// The unscaled correction sum a FRESH fixture node computes at entry
+    /// (S1/D22): every correction entry sits at its fill value and the
+    /// sentinel frames below the root supply the stack context. `prev` is
+    /// the parent's just-made move for a CHILD fixture (its to-square piece
+    /// keys the continuation term); `None` models a root-driven node, where
+    /// the null-move flat prior applies instead.
+    fn fresh_cv(b: &Board, prev: Option<Move>) -> i32 {
+        let mut w = Worker::new(b.clone());
+        init_stack(&mut w.stack);
+        let cur = ss(1);
+        if let Some(m) = prev {
+            w.stack[cur - 1].current_move = m;
+        }
+        w.histories.correction_value(&w.board, &w.stack[..], cur)
+    }
+
+    /// The CORRECTED static eval a fresh fixture node computes (S1/D22):
+    /// exactly what `ss.static_eval` — and every margin, stand-pat, and
+    /// blend formula built from it — now holds in place of the raw
+    /// `evaluate()`. Fixture boundary arithmetic must start here.
+    fn corrected_eval(b: &Board, prev: Option<Move>) -> Value {
+        crate::history::to_corrected_static_eval(static_eval(b), fresh_cv(b, prev))
     }
 
     /// Drive `qsearch` directly at ply 0 on a fresh stack: the fixtures
@@ -5986,7 +6028,7 @@ mod tests {
         let fen = "7k/8/8/3p4/4P3/8/8/7K w - - 0 1";
         let mut w = Worker::new(board(fen));
         let tt = test_tt();
-        let eval = static_eval(&w.board);
+        let eval = corrected_eval(&w.board, None);
         let beta = eval + 1000;
         let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
         assert_eq!(
@@ -6005,7 +6047,7 @@ mod tests {
         let fen = "rr5k/8/8/8/8/8/8/R6K w - - 0 1";
         let mut w = Worker::new(board(fen));
         let tt = test_tt();
-        let eval = static_eval(&w.board);
+        let eval = corrected_eval(&w.board, None);
         let alpha = eval + 500;
         let v = qsearch_at::<NonPv>(&mut w, &tt, alpha, alpha + 1);
         assert_eq!(v, eval + params::QS_FUTILITY_MARGIN);
@@ -6020,7 +6062,7 @@ mod tests {
         let fen = "4k3/3p4/8/8/3Q4/8/8/7K w - - 0 1";
         let mut w = Worker::new(board(fen));
         let tt = test_tt();
-        let eval = static_eval(&w.board);
+        let eval = corrected_eval(&w.board, None);
         let v = qsearch_at::<Pv>(&mut w, &tt, -VALUE_INFINITE, VALUE_INFINITE);
         assert_eq!(v, eval, "the node must fall back to its stand pat");
         assert_eq!(w.nodes, 0, "the SEE floor must skip the losing capture");
@@ -6060,7 +6102,7 @@ mod tests {
         after.make_move(kh2, after.gives_check(kh2));
         let v = qsearch_at::<Pv>(&mut w, &tt, -VALUE_INFINITE, VALUE_INFINITE);
         assert_eq!(w.nodes, 1, "the lone evasion must be searched");
-        assert_eq!(v, -static_eval(&after));
+        assert_eq!(v, -corrected_eval(&after, Some(kh2)));
         assert!(v < 0 && !is_loss(v), "a real (bad) value, not a mate");
     }
 
@@ -6083,7 +6125,7 @@ mod tests {
         after.make_move(rxa1, after.gives_check(rxa1));
         let v = qsearch_at::<Pv>(&mut w, &tt, -VALUE_INFINITE, VALUE_INFINITE);
         assert_eq!(w.nodes, 1, "only the capture evasion is searched");
-        assert_eq!(v, -static_eval(&after));
+        assert_eq!(v, -corrected_eval(&after, Some(rxa1)));
         assert!(v > 0 && !is_decisive(v), "a real material edge, not a mate");
     }
 
@@ -6103,7 +6145,10 @@ mod tests {
         let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
         assert_eq!(w.nodes, 1, "in check the evasion must be searched");
         let (w_best, w_beta, den) = params::QS_FAILHIGH_BLEND;
-        assert_eq!(v, (w_best * -static_eval(&after) + w_beta * beta) / den);
+        assert_eq!(
+            v,
+            (w_best * -corrected_eval(&after, Some(kh2)) + w_beta * beta) / den
+        );
         assert!(v >= beta, "still a fail high after the blend");
     }
 
@@ -6153,7 +6198,7 @@ mod tests {
         let fen = "7k/5Q2/8/8/8/8/8/1K6 b - - 0 1";
         let mut w = Worker::new(board(fen));
         let tt = test_tt();
-        let eval = static_eval(&w.board);
+        let eval = corrected_eval(&w.board, None);
         let v = qsearch_at::<Pv>(&mut w, &tt, -10, 10);
         assert_eq!(v, eval, "no prior capture: the narrow test stays off");
     }
@@ -7200,7 +7245,7 @@ mod tests {
         let e5 = Move::normal(Square::E4, Square::E5);
         let mut after = w.board.clone();
         after.make_move(e5, after.gives_check(e5));
-        let e_child = static_eval(&after);
+        let e_child = corrected_eval(&after, Some(e5));
         let beta = -e_child - 100; // parent's true value -E sits above it
         let tt = test_tt();
         // The parent's static eval already clears this low beta, so N10 RFP
@@ -7707,20 +7752,38 @@ mod tests {
             // Back-rank mate-in-1 with pawns on both sides.
             ("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", 2),
         ];
+        // S1 (D22) re-scopes this oracle the same way LMP once did: live
+        // correction history makes the leaf eval history-dependent, so the
+        // production value drifts from the raw-eval reference by the
+        // correction magnitude a shallow fresh-table search accumulates
+        // (measured 3cp on the pawn ending; hard ceiling |cv|max/131072 =
+        // 493 at saturated tables). DECISIVE values stay exact — mate
+        // distances are eval-independent — and keep the bestmove assert;
+        // centipawn fixtures assert the drift band and surrender bestmove
+        // equality (a few cp legitimately reorders near-equal roots).
+        const S1_CORR_DRIFT_CP: Value = 8;
         for &(fen, depth) in suite {
             let w = go_depth_full_window(fen, depth);
             let (want, optimal) = ref_root(fen, depth);
-            assert_eq!(
-                best_score(&w),
-                want,
-                "PVS vs full-window negamax value diverged: {fen} depth {depth}"
-            );
-            let bm = w.best_move().unwrap();
-            assert!(
-                optimal.contains(&bm),
-                "PVS bestmove {bm} is not full-window-optimal for {fen} depth {depth} \
-                 (optimal: {optimal:?})"
-            );
+            let got = best_score(&w);
+            if is_decisive(want) {
+                assert_eq!(
+                    got, want,
+                    "PVS vs full-window negamax decisive value diverged: {fen} depth {depth}"
+                );
+                let bm = w.best_move().unwrap();
+                assert!(
+                    optimal.contains(&bm),
+                    "PVS bestmove {bm} is not full-window-optimal for {fen} depth {depth} \
+                     (optimal: {optimal:?})"
+                );
+            } else {
+                assert!(
+                    (got - want).abs() <= S1_CORR_DRIFT_CP,
+                    "PVS drifted past the S1 correction band: {fen} depth {depth} \
+                     (got {got}, reference {want})"
+                );
+            }
         }
     }
 
@@ -7784,9 +7847,22 @@ mod tests {
             // Back-rank mate with pawn shields on both sides.
             ("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", 3),
         ];
+        // S1 (D22): same re-scope as the PVS oracle — decisive values exact,
+        // centipawn values within the correction-drift band (see
+        // [`pvs_matches_full_window_negamax_at_fixed_depth`]).
+        const S1_CORR_DRIFT_CP: Value = 8;
         for &(fen, depth) in suite {
             let tt_off = ref_negamax(&mut board(fen), &mut EvalContext::new(), depth, 0);
-            assert_eq!(tt_value_pair(fen, depth), tt_off, "TT-on vs TT-off: {fen}");
+            let tt_on = tt_value_pair(fen, depth);
+            if is_decisive(tt_off) {
+                assert_eq!(tt_on, tt_off, "TT-on vs TT-off decisive value: {fen}");
+            } else {
+                assert!(
+                    (tt_on - tt_off).abs() <= S1_CORR_DRIFT_CP,
+                    "TT-on drifted past the S1 correction band: {fen} \
+                     (TT-on {tt_on}, TT-off {tt_off})"
+                );
+            }
         }
     }
 

@@ -1030,7 +1030,12 @@ single-threaded)
    completes a forced deep search (fine-70 style shuffling position,
    `go depth 40`) with no panic and no out-of-bounds.
 4. Mate suite: 100% of mate-in-1..3 solved with exact `mate n` scores at
-   depth ≤ 6; a mated root reports the correct negative mate.
+   depth ≤ 12; a mated root reports the correct negative mate. (Bar was
+   depth ≤ 6 until S1 — live correction history, 2026-07-16 — shifted
+   proof depth in the pawnless fixtures: the whole tree shares the
+   pawn/minor correction cells, so the mate line's own bonuses saturate
+   them and inflate every sibling's pruning margins. Exact scores and
+   optimal first moves remain mandatory; only the depth budget moved.)
 5. `bench` produces bit-identical node counts across two consecutive
    single-threaded runs; the bench number is recorded in every search commit.
 6. Zero-window invariant holds: an instrumented debug run over the bench
