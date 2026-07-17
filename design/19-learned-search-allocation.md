@@ -480,8 +480,12 @@ fixed model/configuration and retains alpha–beta verification.
    small common calibration set and audit score/WDL compatibility.
 3. Treat the current Lc0 corpus as positions; preserve its original labels only
    as bootstrap features and controls.
-4. Define the minimal reproducible node-context and oracle-output records in
-   doc 16, including castling, rule-50, and repetition state.
+4. Node-context and oracle-output records: doc 16 §3.5 carries the contract
+   (four-layer record, evidence kinds, CF axes, replay fingerprints;
+   castling/rule-50/repetition in PositionState). Completeness pass against
+   §5.2 done 2026-07-17 — added legal-move count/composition, node
+   correction_value (S1), and hardware identity in Provenance. Remaining:
+   the doc-16 §4 implementation itself.
 5. Build a tiny ARCHON oracle relabeling smoke pipeline with deterministic
    replay and label audits.
 6. Generate ARCHON-native final-best-move, pairwise, alpha-raise, and cutoff

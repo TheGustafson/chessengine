@@ -311,6 +311,9 @@ pub struct Provenance {               // §3.4 — mandatory, no record without 
     rng_seed: u64,                    // 8
     dataset_source: String,           // 9  which generation mode (§3.6)
     opening_source: String,           // 10 book id / random-ply policy
+    hardware_identity: String,        // 11 appended 2026-07-17 (doc 19 §5.2):
+                                      //    cpu model + feature flags + threads —
+                                      //    cycle/time labels are machine-relative
 }
 
 #[repr(u8)]
@@ -368,6 +371,11 @@ pub struct SearchContext {            // Layer 2 — circumstances of the search
     root_delta: i32,                  // 18 node-dither context
     tt_regime: TtRegime,              // 19 Empty/Restored/WarmObserved
     history_regime: HistoryRegime,    // 20 Fresh/Frozen/Restored/WarmObserved
+    // 21–23 appended 2026-07-17 (doc 19 §5.2 completeness pass):
+    legal_move_count: u8,             // 21 total legal moves at the node
+    capture_move_count: u8,           // 22 tactical/quiet composition (quiets = 21 − 22)
+    correction_value: i32,            // 23 unscaled corr-history sum at node entry (S1);
+                                      //    /131072 is the eval delta the search applied
     // engine config lives in Provenance.search_config (interned)
 }
 
