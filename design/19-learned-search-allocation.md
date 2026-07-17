@@ -544,3 +544,42 @@ The roadmap is correctly instantiated when:
 The research bet is concise: learn the expected value, cost, and risk of each
 possible search computation, then let a constrained planner allocate work while
 deterministic alpha–beta retains final verification.
+
+## Addendum (2026-07-17): "the helm", consultation economics, and Phase-1 status
+
+**Naming.** The search-informed network family is THE HELM (ARCHON's
+steering net): the eval net answers "how good is this position", the helm
+answers "where should the search go". Usage: helm net / helm head.
+
+**Consultation economics (why helm capacity scales differently from eval
+capacity).** Value-net cost divides NPS at every node, which is why eval
+capacity saturated (width 2048; D40 -58 equal-time). The helm's economics
+differ on three axes: (1) consultation frequency — qsearch (~70-80% of
+nodes) never consults it, interior nodes skip quiet stages on TT/capture
+cutoffs, and depth-gating is natural: realistic consultation is 5-15% of
+nodes, choosable; (2) marginal cost — on the shared trunk (already paid
+by eval, incrementally maintained) the helm costs head-only inference,
+~2% NPS at rank 8; a 10x bigger head at 10% consultation costs ~1-2%
+NPS where a 10x bigger eval costs ~10x everywhere; (3) error leverage —
+a leaf eval error costs one node and washes out in backup; a reduction/
+ordering error at depth d mis-spends a b^(d-r) subtree. Consequence: a
+modest eval plus a comparatively LARGE helm can beat a huge eval at
+equal time. Capacity growth waits on data (the 2026-07-17 experiments:
+bigger/unfrozen heads overfit at <=1M rows); when the flywheel provides
+volume, growth axes are rank 8->32, then a move-conditioned MLP head
+whose inputs include the history values themselves (learning the blend
+now hand-tuned as POLICY_W), then multi-target heads over the in-search
+capture record (subtree cost, re-search probability, reduction size).
+
+**Phase-1 status (2026-07-17).** Data platform validated at 10k-position
+scale (big-v1; audits replicate sample-v1). Trainer ladder: v0 signal
+learnable; v1 scales (rank corr 0.604 held-out, seed-stable); v1.1
+anti-overfit stack — FROZEN 720sb trunk is the dominant lever (+0.09),
+pairwise RankNet +0.03 top-1, all-tiers +0.03 — winner 0.706/0.258,
+clearing the cold-classical ordering baseline (18.1% top-1) by 8 points;
+packed shared-trunk artifact (d41-alloc-v11-c, CPOL layout 0). In-game:
+v1 was null at 336k rows in the gen-0 wiring (exp-0086) — held-out
+ranking is necessary, not sufficient; the warm in-search picker is the
+real bar. In-search observation capture v0 is MERGED (node-identical,
+~2% active overhead, never enabled in TC games). Datagen scalability:
+parallel gold harness (~25-30x) staged with a 100k FEN pool.
