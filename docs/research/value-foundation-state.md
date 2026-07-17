@@ -1007,3 +1007,39 @@ pinned (engines/bin/reckless-d445b8b, sha256 2e9fc5dd…). Teacher
 recommendation on record: Reckless primary on alpha-beta-affinity +
 teacher-diversity grounds, SF18 same-row control; the sample-v1 audit
 numbers decide, diversity breaks ties.
+
+## 2026-07-17 02:50 [CODE] R4 micro-audit: two bench-neutral SOTA speedups landed; big-v1 labeling staged
+
+D33 round 2 CONVERGED at 01:40 (M5 closed; fixture fix 55c310f). Idle
+window while the SF18 labeling pass runs was spent on R4 (task #16):
+
+- **R4 audit** (read-only agent): docs/research/r4-micro-audit-2026-07-17.md.
+  6 ranked candidates; TT layout/prefetch, MovePicker hoisting, and the
+  classic accumulator verified already-tight. The one functional candidate
+  (#5, defer correction_value past the NonPV TT cutoff) is parked — SPRT
+  cost, hindsight coupling risk.
+- **Landed #3** (943584d): threat-apply scratch arrays hoisted onto
+  ThreatContext — removes an ~8 KB stack memset per SOTA do_move.
+- **Landed #2** (3257492): find_nnz — the last scalar step in the SOTA
+  forward, 192 branchy serial iterations — is now a dispatched SIMD kernel
+  (AVX2 movemask + 256-row compaction table; identical index set, parity
+  fixtures per backend). Guessing 3-9% SOTA NPS combined; measured numbers
+  deferred to the R1 quiet-box session.
+- Candidate #1 (make the FullThreats fold lazy like HalfKA, est. 5-15%
+  SOTA NPS) is the remaining big lever — a real refactor, queued for a
+  window with review capacity, not a 3am one-shot.
+- **Verification gap found and closed**: the sota modules are compiled ONLY
+  under `--features sota`, so the default check.sh gate never clippy-checks
+  or tests them. Both commits verified explicitly with
+  `--features sota` (633 lib tests green incl. threats_replay_*); pinned
+  bench stays 701605 (the default bench build compiles sota out entirely).
+  A pre-existing `sota,nnue-l1-2048` feature-combo build break was
+  confirmed pre-existing (fails at the parent of 943584d too) and left
+  alone — no probe config uses that combination.
+
+Also staged: **obs big-v1** (tools/obs/label_big_v1.sh, a76d1c7) — 10k
+fresh UHO positions (seed 20260718, sample-v1's 1000 excluded so sample-v1
+stays a clean held-out shard), both teachers in PARALLEL (fixed-node =
+load-immune, T4), behind a guard that waits for the night-chain gate, the
+S1 SPRT, and the trainer (TC games need the quiet box). Launch decision
+after the sample-v1 audits are reviewed. ETA ~10.5h from launch.
