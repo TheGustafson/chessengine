@@ -890,3 +890,30 @@ PRACTICE: fixed-node screens run `--concurrency 12` (classic AND D40 —
 post-df2b746 engines are ~135MB). Equal-time matches keep conc 1-3 and a
 quiet box (wall-clock fairness, unchanged). eval_match's default stays 1
 so TC invocations can't inherit 12 by accident.
+
+## 2026-07-16 22:30 [RESULTS] Evening fixed-node slate (post-leak-fix, conc 6-12 beside the trainer)
+
+All fixed-node @5k, post-df2b746 engines, capped wrappers, trainer at 99%
+GPU throughout — the first productive use of the reclaimed testing lane.
+
+1. **Hop is DEAD (exp-0066).** d40-s2-farseer-120sb vs its own stage-1
+   parent: **-23.2 +- 17.1** (300g). The farseer stage-2 recipe that gained
+   +55 on classic REGRESSES the D40 arch. The parity waiver/rescale
+   question is moot; gate candidate stays d40-uho-v1-240sb (or 720sb).
+   OPEN QUESTION for the D40 track: why does stage-2 warm-retraining hurt
+   here — LR too hot for a warm start? 120sb too short? threat features
+   overfitting to farseer's distribution?
+2. **D40 beats the INCUMBENT at fixed nodes (exp-0067).** d40-uho-v1-240sb
+   vs s3-2048-farseer: **+30.2 +- 17.4** (300g SPRT [-10,10] cap-out,
+   LLR 2.04). Consistent with +32.5 vs s4 (exp-0065). The arch is ahead of
+   both classic bests per node; tonight's equal-time gate prices the NPS tax.
+3. **Book sensitivity found, S0 promoted in urgency (exp-0068/69/70).**
+   s3 vs s4 on the fishtest UHO unbalanced book (downloaded to
+   data/nnue/openings/UHO_Lichess_4852_v1.epd, 2.63M lines): pooled 400g
+   **-45 +- 15** vs **-15.6 +- 11.9** on our 256-line balanced book — a
+   ~30 Elo book effect (~1.5 sigma). s4 (t74 stage-2) is plausibly the
+   better net from unbalanced openings and our promotion history is all
+   balanced-book. NOT leaderboard-invalidating on this evidence, but:
+   adopt UHO for future fixed-node screens, and re-run the s3-vs-s4
+   equal-time comparison on UHO before promotion #5. Draw rate at 5k was
+   flat (26%->24-26%) — the S0 draw-rate claim is a TC question, untested.
