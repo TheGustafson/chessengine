@@ -50,12 +50,17 @@ Last updated: 2026-07-16 ~21:00 America/New_York
    decision**: freeze the classic line (s3-farseer incumbent, s4
    working-best + cheap promotion-#5 TC re-check), pause eval trainings,
    shift to search (S2 SPSA next) + D41/design-19 as the main thrust.
-5. R4 micro-audit: 2 bench-neutral speedups landed (SIMD find_nnz
-   3257492, threat scratch 943584d; sota-gated tests need
-   `--features sota` — the default gate compiles them out). #1 lazy
-   threat fold (5–15%) parked for a review-capable window.
-   engines/bin probes REBUILT at HEAD b71d2b0 (.pre-r4 backups) — they
-   now carry S1 search; cross-era fixed-node comparisons must note this.
+5. R4 COMPLETE: all three bench-neutral speedups landed — SIMD find_nnz
+   (3257492), threat scratch (943584d), and **#1 lazy FullThreats fold
+   (45301df)**: the fold (3 KB copy + 768-lane apply) now runs only for
+   plies that reach an evaluate, mirroring HalfKA's memoized compute;
+   king-crossed plies stay eager by design. Verified: 636 sota tests + 3
+   new lazy-path tests + release replay oracle green, and the new binary
+   is EVAL-BIT-IDENTICAL to the pre-R4 one across the 4096-fen parity
+   set. probe-sota redeployed at 45301df (.pre-r4 backup kept); NPS
+   numbers wait for the R1 quiet-box session. Sota-gated tests need
+   `--features sota` — the default gate compiles them out. Probes carry
+   S1 search now; cross-era fixed-node comparisons must note this.
 6. Ops: 720sb wrapper exit ≠ success (train FAILED at parity after 7h —
    the night chain degraded gracefully by design). big-v1 guard survived
    a pipefail/pgrep bug (fixed, a76d1c7+). Ledger verify: 0 problems.
