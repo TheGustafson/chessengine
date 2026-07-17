@@ -1043,3 +1043,45 @@ stays a clean held-out shard), both teachers in PARALLEL (fixed-node =
 load-immune, T4), behind a guard that waits for the night-chain gate, the
 S1 SPRT, and the trainer (TC games need the quiet box). Launch decision
 after the sample-v1 audits are reviewed. ETA ~10.5h from launch.
+
+## 2026-07-17 03:15 [RESULTS] Obs M4: sample-v1 dual-teacher audits — GO for the big run
+
+Both 1000-position shards complete and ledgered (obs-sample-v1-reckless
+sha256 9c4981a0…, obs-sample-v1-sf18 sha256 73329eeb…; ledger verify 0
+problems). Reckless pass 63 min, SF18 pass 54 min. The M4 fail-fast
+audits, first real data:
+
+- **Structure**: `verify` 0 problems on both; identical per-move row
+  counts (101,727) — both teachers labeled exactly the same arm sets.
+- **Stability** (per teacher, 16k→64k deepest tiers):
+  | | accepted (stable+≥20cp) | flip | tie (<20cp) | cross-tier \|Δscore\| p50 | top margin p50 |
+  |---|---|---|---|---|---|
+  | Reckless | 39% | 23% | 38% | 10cp | 16cp |
+  | SF18 | 36% | 24% | 40% | 8cp | 13cp |
+  Read: **scores are reproducible** (median 8-10cp drift across a 4x node
+  jump), but **argmax labels are inherently soft** — the median top-arm
+  margin is only 13-16cp on UHO middlegames, so best-move identity churns
+  on near-ties. Consequence for design/19: train on per-arm VALUES /
+  margin-weighted or distributional targets, not hard best-move classes;
+  the ~37% "accepted" subset is the natural hard-label stratum if one is
+  ever needed.
+- **Cross-teacher disagreement**: 75% deepest-tier best-move agreement,
+  arm-ranking Kendall tau mean 0.841, unrestricted-score gap p50 11cp
+  (p95 31cp). Two independent engines produce convergent arm rankings —
+  strong external validity for the label signal; neither teacher is an
+  outlier.
+- **Teacher verdict**: no disqualifier on either side; numbers are near
+  identical (Reckless marginally more decisive margins). The standing
+  recommendation HOLDS: **Reckless primary** (alpha-beta affinity +
+  engine-diversity vs the SF-derived eval lineage), **SF18 control** on a
+  subsample of every future run. Caveat on record: Reckless arms are
+  child-negate (root TT context lost), SF18 arms are true searchmoves;
+  the 75%/0.841 agreement bounds the semantic gap as small.
+
+**GO issued**: big-v1 launched 03:10 (10k positions, seed 20260718, both
+teachers parallel), self-guarded behind the night-chain gate + S1 SPRT +
+trainer; expect labeling to actually start ~09:00-10:00 and finish
+~19:30-20:30. One guard bug caught immediately: pgrep|wc under
+`set -o pipefail` exits 1 on zero matches — fixed, committed, relaunched.
+M4 (task #24) is CLOSED: both fail-fast audits ran on real data and the
+signal is trainable.
