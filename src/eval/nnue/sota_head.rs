@@ -113,20 +113,12 @@ fn merge_transformers(pst: i16, threat: i16) -> i16 {
 }
 
 /// Indices of the 4-byte groups (of `L1/4`) holding any nonzero activation
-/// (design/11 §12.3 step 2) — ~85–95% are zero after the clamp.
+/// (design/11 §12.3 step 2) — ~85–95% are zero after the clamp. Dispatched:
+/// the scalar scan's 192 data-dependent branches mispredict on the sparse
+/// pattern, so the SIMD backends compact via movemask instead (R4 #2).
 fn find_nnz(ft: &[u8; L1]) -> ([u16; L1 / 4], usize) {
     let mut idx = [0u16; L1 / 4];
-    let mut count = 0;
-    for g in 0..L1 / 4 {
-        let mut nz = 0u8;
-        for k in 0..4 {
-            nz |= ft[g * 4 + k];
-        }
-        if nz != 0 {
-            idx[count] = g as u16;
-            count += 1;
-        }
-    }
+    let count = super::sota_simd::find_nnz(ft, &mut idx);
     (idx, count)
 }
 

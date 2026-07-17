@@ -13,12 +13,14 @@ type ApplyI16Fn = fn(&mut [i16; ACC], &[i16], &[usize], &[usize]);
 type ApplyI8Fn = fn(&mut [i16; ACC], &[i8], &[usize], &[usize]);
 type L1DotFn = fn(&mut [i32; 16], &[u8; ACC], &[u16], &[i8]);
 type ActivateFn = fn(&mut [u8; ACC], &[[i16; ACC]; 2], &[[i16; ACC]; 2], usize);
+type FindNnzFn = fn(&[u8; ACC], &mut [u16; ACC / 4]) -> usize;
 
 struct Kernels {
     i16_deltas: ApplyI16Fn,
     i8_deltas: ApplyI8Fn,
     l1_dot: L1DotFn,
     activate: ActivateFn,
+    find_nnz: FindNnzFn,
 }
 
 static KERNELS: LazyLock<Kernels> = LazyLock::new(|| {
@@ -75,6 +77,14 @@ pub(crate) fn activate(
     stm: usize,
 ) {
     (KERNELS.activate)(out, pst, threat, stm);
+}
+
+/// Compact the indices of the nonzero four-byte groups of `ft` into `out`
+/// (ascending), returning the count — the sparse-group set [`l1_dot`]
+/// consumes. Every backend produces the identical index set.
+#[inline]
+pub(crate) fn find_nnz(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
+    (KERNELS.find_nnz)(ft, out)
 }
 
 mod scalar {
@@ -148,11 +158,27 @@ mod scalar {
         }
     }
 
+    pub(super) fn find_nnz(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
+        let mut count = 0;
+        for g in 0..ACC / 4 {
+            let mut nz = 0u8;
+            for k in 0..4 {
+                nz |= ft[g * 4 + k];
+            }
+            if nz != 0 {
+                out[count] = g as u16;
+                count += 1;
+            }
+        }
+        count
+    }
+
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i8_deltas,
         l1_dot,
         activate,
+        find_nnz,
     };
 }
 
@@ -301,6 +327,55 @@ mod avx2 {
         }
     }
 
+    /// `NNZ_COMPACT[m]` = the positions of the set bits of `m`, ascending,
+    /// zero-padded to 8 — one 128-bit row of u16 lane offsets per possible
+    /// 8-group nonzero mask.
+    static NNZ_COMPACT: [[u16; 8]; 256] = {
+        let mut table = [[0u16; 8]; 256];
+        let mut mask = 0usize;
+        while mask < 256 {
+            let mut bit = 0;
+            let mut n = 0;
+            while bit < 8 {
+                if mask & (1 << bit) != 0 {
+                    table[mask][n] = bit as u16;
+                    n += 1;
+                }
+                bit += 1;
+            }
+            mask += 1;
+        }
+        table
+    };
+
+    #[target_feature(enable = "avx2")]
+    unsafe fn find_nnz_inner(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
+        // Eight 4-byte groups per iteration: compare the u32 view against
+        // zero, movemask the eight sign bits into a nonzero bitmask, then
+        // append the mask's compacted bit positions (one table row) plus the
+        // running group base. Identical index set to the scalar scan, without
+        // its 192 data-dependent branches.
+        // SAFETY: each load reads 32 in-bounds FT bytes. Each store writes a
+        // full 8-lane row at `out[count]`: entering chunk `c`, count <= 8c <=
+        // ACC/4 - 8, so the row fits even when every group so far was
+        // nonzero; the lanes past the popcount are dead padding overwritten
+        // by the next store or ignored via the returned count.
+        unsafe {
+            let zero = _mm256_setzero_si256();
+            let mut count = 0usize;
+            for chunk in 0..ACC / 4 / 8 {
+                let groups = _mm256_loadu_si256(ft.as_ptr().add(chunk * 32).cast());
+                let is_zero = _mm256_cmpeq_epi32(groups, zero);
+                let mask = !(_mm256_movemask_ps(_mm256_castsi256_ps(is_zero)) as u32) & 0xff;
+                let row = _mm_loadu_si128(NNZ_COMPACT[mask as usize].as_ptr().cast());
+                let base = _mm_set1_epi16((chunk * 8) as i16);
+                _mm_storeu_si128(out.as_mut_ptr().add(count).cast(), _mm_add_epi16(row, base));
+                count += mask.count_ones() as usize;
+            }
+            count
+        }
+    }
+
     fn i16_deltas(acc: &mut [i16; ACC], weights: &[i16], adds: &[usize], subs: &[usize]) {
         // SAFETY: installed only after runtime AVX2 detection.
         unsafe { i16_deltas_inner(acc, weights, adds, subs) }
@@ -321,11 +396,18 @@ mod avx2 {
         unsafe { activate_inner(out, pst, threat, stm) }
     }
 
+    pub(super) fn find_nnz(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
+        // SAFETY: installed only after runtime AVX2 detection (the avx512
+        // kernel set reuses this too — every avx512 CPU has AVX2).
+        unsafe { find_nnz_inner(ft, out) }
+    }
+
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i8_deltas,
         l1_dot,
         activate,
+        find_nnz,
     };
 }
 
@@ -497,6 +579,9 @@ mod avx512 {
         i8_deltas,
         l1_dot,
         activate,
+        // The AVX2 movemask+compact form; a 512-bit variant needs
+        // vpcompressw (avx512-vbmi2, outside our f+bw+vnni gate) to beat it.
+        find_nnz: avx2::find_nnz,
     };
 }
 
@@ -619,6 +704,19 @@ mod tests {
             (kernels.i16_deltas)(&mut got, &i16_weights, &adds, &subs);
             assert_eq!(got, reference, "{name} i16_deltas");
 
+            for fixture in nnz_fixtures() {
+                let mut reference = [0u16; ACC / 4];
+                let ref_count = scalar::find_nnz(&fixture, &mut reference);
+                let mut got = [0u16; ACC / 4];
+                let got_count = (kernels.find_nnz)(&fixture, &mut got);
+                assert_eq!(got_count, ref_count, "{name} find_nnz count");
+                assert_eq!(
+                    got[..got_count],
+                    reference[..ref_count],
+                    "{name} find_nnz indices"
+                );
+            }
+
             let mut reference = seed;
             scalar::i8_deltas(&mut reference, &i8_weights, &adds, &subs);
             let mut got = seed;
@@ -638,6 +736,45 @@ mod tests {
                 (kernels.activate)(&mut got, &pst, &threat, stm);
                 assert_eq!(got, reference, "{name} activate stm {stm}");
             }
+        }
+    }
+
+    /// FT fixtures spanning the nnz corners: empty, dense, lone groups at the
+    /// array edges, a nonzero byte in each of a group's four positions, and
+    /// deterministic pseudo-random patterns at realistic (~10%) and adversarial
+    /// (~50%) densities.
+    fn nnz_fixtures() -> Vec<[u8; ACC]> {
+        let mut fixtures = vec![[0u8; ACC], [1u8; ACC]];
+        for group in [0, 1, ACC / 4 / 2, ACC / 4 - 2, ACC / 4 - 1] {
+            for lane in 0..4 {
+                let mut ft = [0u8; ACC];
+                ft[group * 4 + lane] = 200;
+                fixtures.push(ft);
+            }
+        }
+        for (keep_mod, salt) in [(11, 3u32), (2, 7u32)] {
+            let mut ft = [0u8; ACC];
+            let mut rng = salt;
+            for group in 0..ACC / 4 {
+                rng = rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                if (rng >> 16) % keep_mod == 0 {
+                    ft[group * 4 + ((rng >> 8) % 4) as usize] = (rng % 255 + 1) as u8;
+                }
+            }
+            fixtures.push(ft);
+        }
+        fixtures
+    }
+
+    #[test]
+    fn dispatched_find_nnz_matches_scalar_across_sparsity() {
+        for fixture in nnz_fixtures() {
+            let mut reference = [0u16; ACC / 4];
+            let ref_count = scalar::find_nnz(&fixture, &mut reference);
+            let mut got = [0u16; ACC / 4];
+            let got_count = find_nnz(&fixture, &mut got);
+            assert_eq!(got_count, ref_count);
+            assert_eq!(got[..got_count], reference[..ref_count]);
         }
     }
 

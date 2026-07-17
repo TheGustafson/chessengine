@@ -602,14 +602,14 @@ impl<'a> ThreatContext<'a> {
                             self.adds[add_len] = idx;
                             add_len += 1;
                         }
+                    } else if let Some(pos) =
+                        self.adds[..add_len].iter().position(|&old| old == idx)
+                    {
+                        add_len -= 1;
+                        self.adds[pos] = self.adds[add_len];
                     } else {
-                        if let Some(pos) = self.adds[..add_len].iter().position(|&old| old == idx) {
-                            add_len -= 1;
-                            self.adds[pos] = self.adds[add_len];
-                        } else {
-                            self.subs[sub_len] = idx;
-                            sub_len += 1;
-                        }
+                        self.subs[sub_len] = idx;
+                        sub_len += 1;
                     }
                 }
             }
