@@ -1195,6 +1195,31 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 11:30 [ANALYSIS] p25 twin verdicts + the SPSA step-size diagnosis
+
+**Study experiments #1+#2 (exp-0077, d40-uho-p25-240sb):** loss ^2.5 is
+NEUTRAL vs ^2 at 240sb full-UHO scale — pooled 900g fixed-node
++5.0 ± 9.7. Parity is cleaner (runtime mean 0.0076 vs 0.0121) and the
+net passed the recalibrated bars on the first try. No adoption alone;
+revisit only bundled with a longer schedule. The #1 payload delivered:
+8 harvested checkpoints (sb30..sb240) ready for a selection-by-games
+probe. Net ledgered (cb3c3eea…).
+
+**SPSA harness diagnosis (from the control's live trajectory):** at
+k=125/200 the detuned RED_BASE has walked back −7.7 of −514 — almost
+exactly the EXPECTED −0.07/batch for a ~30-Elo detune at r_end=0.01.
+Conclusion forming: the harness detects gradients fine; the STEP SIZE is
+the bottleneck. With c1/c2's r_end=0.002 the maximum systematic traverse
+over a whole 800-iter campaign is a few units on 10000-unit scales — the
+two nulls were foregone conclusions, informative only as "no gross
+(>50 Elo) detune exists in those bundles." fishtest uses r~0.002 with
+25-100x our games; at our budget r_end≈0.2 makes an 800-iter campaign
+able to traverse ~10-15% of a param range against realistic z-bias while
+keeping end-noise ~10% of range. PLAN once the control completes: rerun
+the control at r_end=0.2 expecting a DECISIVE walk-back; if confirmed,
+redo c1+c2 at r_end=0.2 (2x2h, cheap) and run c3-c8 at r_end=0.2 — the
+season's 8 decisions get made under a harness that can actually move.
+
 ## 2026-07-17 11:00 [DECISION 2/8] SPSA c2 (LMR/reduction bundle): NO-CHANGE — and the harness goes on trial
 
 exp-0076. Second consecutive perfect null: all 15 reduction params within
