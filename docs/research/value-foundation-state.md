@@ -1195,6 +1195,21 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 13:40 [DECISION 5/8 PENDING] c5 futility+SEE: five real movers, strongest screen lean yet
+
+Ledger row filed. PFUT_NO_BESTMOVE 138 -> 179 (19% of range),
+PFUT_EVAL_ABOVE_ALPHA 90 -> 108, CFUT_LMRDEPTH_MULT 232 -> 267,
+QS_SEE_FLOOR -74 -> -63, CAP_SEE_HIST_MULT 34 -> 39: the tuner
+consistently wants MORE pruning aggression in the futility family.
+Screen +10.4 ± 16.8, LLR 0.74 at cap. Three pending gates now (c3 +7.3,
+c4 +9.7, c5 +10.4) — all positive-lean; a consistent picture that the
+margin bundles sit ~5-10 Elo below optimum, adjudicated tonight at TC.
+Note the compounding caveat: the three tuned sets were each tuned
+against DEFAULTS independently; if all three gate positive they get
+committed together and the COMBINED config re-verified with one final
+TC SPRT before becoming the shipped defaults (interaction risk).
+c6 gates/counters running.
+
 ## 2026-07-17 12:55 [DECISION 4/8 PENDING] c4 NMP: second real mover — deeper null-move confidence wanted
 
 Ledger row filed. NMP_EVAL_BASE 374 -> 507 (23% of range) and
