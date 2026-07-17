@@ -1195,6 +1195,34 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 08:00 [PROGRAM] D45: SPSA gainer season begins — 8 decisions, then the D41 shift
+
+USER DIRECTIVE (07:10): "transition into a full SPSA auto research loop.
+Goal is 8 full SPSA decisions from our plans and informed by our stockfish
+study on optimization. After that we shift." This ratifies the optimize
+direction of the 05:35 freeze proposal. Recorded as D45.
+
+Infrastructure landed this morning (34deade + 2950ee1, both D24-verified):
+- `tune` feature: all 233 params.rs scalars are runtime tunables
+  (`setoption name <NAME> value <x>`), atomic-backed getters; the default
+  build folds them back to constants — bench 701605 bit-identical.
+  Proven live: ASPIRATION_BASE_DELTA=300 moves UCI-bench 4777232 -> 4590853;
+  unknown names error loudly.
+- `tools/spsa/spsa_tune.py`: local SPSA (paired Rademacher, fishtest
+  schedules), fixed-node fastchess batches, both sides the SHIPPED s3 net
+  (D39), preflight against the binary's `tunables` list. Smoke-tested.
+- Decision protocol per campaign (design/14 §9.6): SPSA (~8000 games @20k
+  nodes) -> fixed-node SPRT screen [0,10] -> EQUAL-TIME SPRT ship gate on
+  the quiet box = the decision -> accept commits new defaults (functional,
+  fresh Bench trailer) + ledger row.
+
+Campaign order (S0 audit + SF14->16 study §6b + S1 freshness):
+c1 corrhist weights (RUNNING since 07:58: 13 params, 800x10 games @20k,
+beside the big-v1 labeling — fixed-node is load-immune) · c2 LMR/reduction
+· c3 RFP+razoring · c4 NMP · c5 futility+SEE · c6 LMP+history-pruning ·
+c7 aspiration+IIR · c8 history update magnitudes. TC gates run on quiet
+windows (tonight); after decision #8 the program shifts to D41.
+
 ## 2026-07-17 06:10 [VERDICT] S1 correction history PASSES its equal-time SPRT: +72.9 ± 16.2, H1 at 208 games
 
 **exp-0074**: engine-s1 (c10680f) vs engine-pre-s1 (df2b746), SAME s3 net
