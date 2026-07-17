@@ -23,7 +23,44 @@
 
 Last updated: 2026-07-16 ~21:00 America/New_York
 
-## TAKEOVER CHECKPOINT (2026-07-16 20:30 — read this first)
+## TAKEOVER CHECKPOINT (2026-07-17 06:20 — read this first)
+
+**OVERNIGHT OUTCOME (all ledgered, details in the dated entries below):**
+1. **Promotion #4 REJECTED (exp-0073)**: d40-uho-v1-240sb vs s4 at equal
+   time = **−57.9 ± 12.6** (200g 10+0.1). D40 wins per node (+32.5
+   exp-0065; 720sb adds +30.2 exp-0072) but the inference tax dominates;
+   needs ~1.7–2× NPS to convert. D40 → background line (task #26).
+   720sb itself trained fine but is parity-barred by the OOD-endgame
+   quant tail (max 0.2517 vs 0.20, mean clean) — same mode as the hop;
+   repair options for the user in the 03:50 entry.
+2. **S1 correction history DEPLOYED (exp-0074)**: equal-time SPRT PASSED
+   H1 in 208g, **+72.9 ± 16.2** (SPRT [0,10], LLR 2.95). Merge gate green
+   at HEAD, bench 701605. Largest search gain since the P9 waves. The
+   fixed-node screen said only +18.5 — protocol lesson: NPS-neutral
+   search changes are underestimated by shallow screens; TC-gate them
+   early.
+3. **Obs/D41 platform is PRODUCTION (M1–M5 all closed)**: dual-teacher
+   sample-v1 audits = GO (scores reproducible, 8–10cp cross-tier drift;
+   argmax soft — median top margin 13–16cp → train on per-arm values;
+   teachers convergent: 75% best-move agreement, tau 0.841). Reckless
+   primary / SF18 control HOLDS. Both shards ledgered. **big-v1 labeling
+   RUNNING since 06:09** (10k fresh positions, both teachers parallel,
+   done ~16:30, auto-audits at end, [obsbig] tags).
+4. **EVALUATOR-FREEZE PROPOSAL drafted (05:35 entry) — the user's morning
+   decision**: freeze the classic line (s3-farseer incumbent, s4
+   working-best + cheap promotion-#5 TC re-check), pause eval trainings,
+   shift to search (S2 SPSA next) + D41/design-19 as the main thrust.
+5. R4 micro-audit: 2 bench-neutral speedups landed (SIMD find_nnz
+   3257492, threat scratch 943584d; sota-gated tests need
+   `--features sota` — the default gate compiles them out). #1 lazy
+   threat fold (5–15%) parked for a review-capable window.
+   engines/bin probes REBUILT at HEAD b71d2b0 (.pre-r4 backups) — they
+   now carry S1 search; cross-era fixed-node comparisons must note this.
+6. Ops: 720sb wrapper exit ≠ success (train FAILED at parity after 7h —
+   the night chain degraded gracefully by design). big-v1 guard survived
+   a pipefail/pgrep bug (fixed, a76d1c7+). Ledger verify: 0 problems.
+
+## PREVIOUS CHECKPOINT (2026-07-16 20:30)
 
 **Housekeeping state (20:30):** disk cleaned 8.1G→41G free (~33GB: cargo
 debug/cross targets, sf-100 shard intermediates, six old ckpt dirs, eight
