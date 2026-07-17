@@ -36,7 +36,7 @@ fn main() -> ExitCode {
             eprintln!("       obs-tool disagree <shardA.ceobs> <shardB.ceobs>");
             eprintln!("       obs-tool export <shard.ceobs>   (per-arm JSONL on stdout)");
             eprintln!(
-                "       obs-tool export-train <out-dir> <shard.ceobs>...  (D40-class value corpus, NumPy SoA)"
+                "       obs-tool export-train <out-dir> <shard.ceobs>... [--all-tiers]  (D40-class value corpus, NumPy SoA)"
             );
             eprintln!("       obs-tool rank <shard.ceobs>     (classical-ordering baseline)");
             ExitCode::FAILURE
@@ -423,11 +423,31 @@ impl CorpusBuilder {
         Ok(id)
     }
 
+    /// Fold one episode into the corpus (deepest-tier only — the default,
+    /// backward-compatible behaviour). Kept as a thin wrapper so the unit tests
+    /// and any legacy caller stay unchanged. (Only exercised from tests now that
+    /// the CLI path calls `add_episode_tiered`.)
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn add_episode(&mut self, episode: &Episode, teacher_id: u8) {
+        self.add_episode_tiered(episode, teacher_id, false);
+    }
+
     /// Fold one episode into the corpus. Non-RootMoveAnalysis episodes and
     /// positions without a Complete reference/arm are counted and skipped;
     /// duplicate canonical keys (across every input shard) drop with
     /// first-occurrence-wins.
-    fn add_episode(&mut self, episode: &Episode, teacher_id: u8) {
+    ///
+    /// `all_tiers` controls tier selection (D41 v1.1 anti-overfit data lever):
+    ///   * `false` — emit ONLY the deepest tier whose unrestricted reference is
+    ///     Complete AND which has ≥1 Complete arm (design/19 §5.4). The historic
+    ///     export-train behaviour.
+    ///   * `true` — emit EVERY such Complete tier, each row tagged with that
+    ///     tier's node budget and its margin computed vs THAT tier's own best
+    ///     arm. All tiers of one position share a single `position_id`/`key`, so
+    ///     the leakage-safe train/test split (by key) still keeps every tier of
+    ///     a position on one side; the trainer groups ranking by (key, tier), so
+    ///     shallow/deep searches stay separate ranking problems.
+    fn add_episode_tiered(&mut self, episode: &Episode, teacher_id: u8, all_tiers: bool) {
         if episode.kind != EpisodeKind::RootMoveAnalysis {
             self.stats.non_rootmove_episodes += 1;
             return;
@@ -439,38 +459,33 @@ impl CorpusBuilder {
             return;
         }
 
-        // The value source: the DEEPEST tier whose unrestricted reference is
-        // Complete AND which has at least one Complete arm. A timed-out top
-        // tier falls back to the deepest completed one; no Complete reference
-        // anywhere skips the position (design/19 §5.4).
-        let mut chosen: Option<&Observation> = None;
+        // Every tier whose unrestricted reference is Complete AND which has at
+        // least one Complete arm, plus the single deepest such tier.
+        let mut qualifying: Vec<&Observation> = Vec::new();
+        let mut deepest: Option<&Observation> = None;
         let mut any_complete_ref = false;
         for record in &episode.records {
             if record.search.completion != Completion::Complete {
                 continue;
             }
             any_complete_ref = true;
-            if !record
-                .moves
-                .iter()
-                .any(|m| m.completion == Completion::Complete)
-            {
+            if !record.moves.iter().any(|m| m.completion == Completion::Complete) {
                 continue;
             }
+            qualifying.push(record);
             let budget = record.context.node_budget.unwrap_or(0);
-            let deeper = chosen.is_none_or(|c| budget > c.context.node_budget.unwrap_or(0));
-            if deeper {
-                chosen = Some(record);
+            if deepest.is_none_or(|c| budget > c.context.node_budget.unwrap_or(0)) {
+                deepest = Some(record);
             }
         }
-        let Some(record) = chosen else {
+        if qualifying.is_empty() {
             if any_complete_ref {
                 self.stats.skip_no_complete_arms += 1;
             } else {
                 self.stats.skip_no_complete_reference += 1;
             }
             return;
-        };
+        }
 
         let feats = match source_features(&episode.replay_root) {
             Ok(feats) => feats,
@@ -479,26 +494,45 @@ impl CorpusBuilder {
                 return;
             }
         };
-
-        let complete: Vec<&_> = record
-            .moves
-            .iter()
-            .filter(|m| m.completion == Completion::Complete)
-            .collect();
-        self.stats.arms_skipped_stopped += (record.moves.len() - complete.len()) as u64;
-        // `chosen` guarantees a non-empty Complete set.
-        let best_value = complete.iter().map(|m| m.returned_score).max().unwrap();
+        let stm = episode.replay_root.stm;
 
         let position_id = self.next_position_id;
         self.next_position_id += 1;
         self.stats.positions_out += 1;
+
+        if all_tiers {
+            // Ascending tier order keeps a position's rows tier-contiguous.
+            qualifying.sort_by_key(|r| r.context.node_budget.unwrap_or(0));
+            for record in qualifying {
+                self.emit_record(record, &feats, position_id, key, stm, teacher_id);
+            }
+        } else {
+            self.emit_record(deepest.unwrap(), &feats, position_id, key, stm, teacher_id);
+        }
+    }
+
+    /// Emit every Complete arm of one tier (record) as a `TrainRow`, with the
+    /// per-tier best arm defining margin 0 and the per-tier `is_max_value`.
+    fn emit_record(
+        &mut self,
+        record: &Observation,
+        feats: &[i16; 32],
+        position_id: u32,
+        key: u64,
+        stm: u8,
+        teacher_id: u8,
+    ) {
+        let complete: Vec<&_> =
+            record.moves.iter().filter(|m| m.completion == Completion::Complete).collect();
+        self.stats.arms_skipped_stopped += (record.moves.len() - complete.len()) as u64;
+        // Caller guarantees a non-empty Complete set for this record.
+        let best_value = complete.iter().map(|m| m.returned_score).max().unwrap();
         let tier = record.context.node_budget.unwrap_or(0) as u32;
         let ref_score = record.search.final_score;
         let ref_best = record.search.best_move;
-        let stm = episode.replay_root.stm;
         let nmoves = complete.len() as u16;
 
-        let mut max_taken = false; // exactly one is_max_value per position (ties → first)
+        let mut max_taken = false; // exactly one is_max_value per tier (ties → first)
         let mut ref_best_seen = false;
         for arm in complete {
             let is_max = arm.returned_score == best_value && !max_taken;
@@ -511,7 +545,7 @@ impl CorpusBuilder {
                 position_id,
                 key,
                 stm,
-                feats,
+                feats: *feats,
                 nmoves,
                 move_idx: (from * 64 + to) as i16,
                 mv_raw16: arm.mv,
@@ -523,10 +557,7 @@ impl CorpusBuilder {
                 ref_score,
                 teacher_id,
                 arm_nodes: arm.nodes.min(u64::from(u32::MAX)) as u32,
-                arm_depth: arm
-                    .searched_depth
-                    .clamp(i32::from(i16::MIN), i32::from(i16::MAX))
-                    as i16,
+                arm_depth: arm.searched_depth.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16,
             });
             self.stats.arms_out += 1;
         }
@@ -612,6 +643,7 @@ fn json_escape(s: &str) -> String {
 }
 
 /// Write the whole SoA corpus (one `.npy` per column) plus `manifest.json`.
+#[allow(clippy::too_many_arguments)] // cohesive SoA-corpus writer; args are the columns' provenance
 fn write_corpus(
     dir: &std::path::Path,
     rows: &[TrainRow],
@@ -620,6 +652,7 @@ fn write_corpus(
     sources: &[String],
     per_teacher: &[(u8, String, u64)],
     tier_hist: &[(u32, u64)],
+    all_tiers: bool,
 ) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
     let n = rows.len();
@@ -725,9 +758,10 @@ fn write_corpus(
     }
     write_npy(dir, "arm_depth.npy", "<i2", &shape1, &buf)?;
 
-    write_manifest(dir, rows, teachers, stats, sources, per_teacher, tier_hist)
+    write_manifest(dir, rows, teachers, stats, sources, per_teacher, tier_hist, all_tiers)
 }
 
+#[allow(clippy::too_many_arguments)] // mirrors write_corpus's provenance columns
 fn write_manifest(
     dir: &std::path::Path,
     rows: &[TrainRow],
@@ -736,6 +770,7 @@ fn write_manifest(
     sources: &[String],
     per_teacher: &[(u8, String, u64)],
     tier_hist: &[(u32, u64)],
+    all_tiers: bool,
 ) -> std::io::Result<()> {
     let created_unix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -878,10 +913,15 @@ fn write_manifest(
         .collect::<Vec<_>>()
         .join(", ");
 
+    let tier_selection = if all_tiers {
+        "\"all Complete tiers (Complete reference AND >=1 Complete arm); margin per-tier; --all-tiers\""
+    } else {
+        "\"deepest tier with Complete reference AND >=1 Complete arm\""
+    };
     let manifest = format!(
         "{{\n  \"schema\": {schema},\n  \"writer\": {writer},\n  \"created_unix\": {created},\n  \
          \"rows\": {rows_len},\n  \"row_granularity\": \"per (position, legal Complete arm)\",\n  \
-         \"tier_selection\": \"deepest tier with Complete reference AND >=1 Complete arm\",\n  \
+         \"tier_selection\": {tier_selection},\n  \
          \"value_encoding\": \"centipawns as the teacher reported; mate mapped to +-(31000-n) (root_analysis.rs)\",\n  \
          \"margin_definition\": \"value - max(Complete arm value); best arm = 0, worse arms negative\",\n  \
          \"targets\": {{\"primary\": [\"value\", \"margin\"], \"soft_best_move\": [\"is_ref_best\", \"is_max_value\"]}},\n  \
@@ -937,13 +977,21 @@ fn corpus_aggregates(
 }
 
 fn export_train(args: &[String]) -> ExitCode {
-    let out_dir = std::path::PathBuf::from(&args[0]);
-    let shards = &args[1..];
+    // `--all-tiers` (D41 v1.1): emit every Complete tier per position, not just
+    // the deepest. Flag may appear anywhere; the rest are out-dir + shards.
+    let all_tiers = args.iter().any(|a| a == "--all-tiers");
+    let positional: Vec<&String> = args.iter().filter(|a| a.as_str() != "--all-tiers").collect();
+    if positional.len() < 2 {
+        eprintln!("obs-tool: export-train needs <out-dir> <shard.ceobs>... [--all-tiers]");
+        return ExitCode::FAILURE;
+    }
+    let out_dir = std::path::PathBuf::from(positional[0]);
+    let shards: Vec<String> = positional[1..].iter().map(|s| (*s).clone()).collect();
     let mut builder = CorpusBuilder::new();
 
     // Deterministic order: shards in argument order, episodes in stream order,
     // arms in stored order. dedup by canonical_key across every shard.
-    for path in shards {
+    for path in &shards {
         let mut reader = match ShardReader::open(path) {
             Ok(reader) => reader,
             Err(error) => {
@@ -975,7 +1023,7 @@ fn export_train(args: &[String]) -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             };
-            builder.add_episode(&episode, teacher_id);
+            builder.add_episode_tiered(&episode, teacher_id, all_tiers);
         }
     }
 
@@ -990,9 +1038,10 @@ fn export_train(args: &[String]) -> ExitCode {
         &builder.rows,
         &builder.teachers,
         &builder.stats,
-        shards,
+        &shards,
         &per_teacher,
         &tier_hist,
+        all_tiers,
     ) {
         eprintln!("obs-tool: writing {}: {error}", out_dir.display());
         return ExitCode::FAILURE;
@@ -1690,6 +1739,70 @@ mod tests {
         );
     }
 
+    /// `--all-tiers` emits every Complete tier (not just the deepest), each
+    /// tier's arms tagged with its budget and margined vs its own best arm;
+    /// all tiers of one position share a single `position_id`.
+    #[test]
+    fn export_train_all_tiers_emits_every_complete_tier() {
+        let ep = || {
+            episode(
+                "7k/8/8/8/8/8/8/K7 w - - 0 1",
+                0,
+                vec![
+                    record(
+                        4000,
+                        Completion::Complete,
+                        10,
+                        0x0001,
+                        vec![
+                            arm(0x0001, 10, Completion::Complete),
+                            arm(0x0002, -4, Completion::Complete),
+                        ],
+                    ),
+                    record(
+                        16000,
+                        Completion::Complete,
+                        20,
+                        0x0001,
+                        vec![
+                            arm(0x0001, 20, Completion::Complete),
+                            arm(0x0002, 5, Completion::Complete),
+                        ],
+                    ),
+                ],
+            )
+        };
+
+        // Deepest-only (default): just the 16000 tier's two arms.
+        let mut deep = CorpusBuilder::new();
+        let td = deep.intern_teacher(&prov("reckless")).unwrap();
+        deep.add_episode_tiered(&ep(), td, false);
+        assert_eq!(deep.rows.len(), 2);
+        assert!(deep.rows.iter().all(|r| r.tier == 16000));
+        assert_eq!(deep.stats.positions_out, 1);
+
+        // All-tiers: both tiers, one position_id, per-tier best margin 0.
+        let mut all = CorpusBuilder::new();
+        let ta = all.intern_teacher(&prov("reckless")).unwrap();
+        all.add_episode_tiered(&ep(), ta, true);
+        assert_eq!(all.rows.len(), 4, "both Complete tiers emitted");
+        assert_eq!(all.stats.positions_out, 1, "one position across tiers");
+        assert!(all.rows.iter().all(|r| r.position_id == 0));
+        let tiers: std::collections::BTreeSet<u32> = all.rows.iter().map(|r| r.tier).collect();
+        assert_eq!(tiers, [4000, 16000].into_iter().collect());
+        for tier in [4000u32, 16000] {
+            let n_best = all.rows.iter().filter(|r| r.tier == tier && r.margin == 0).count();
+            let n_max = all.rows.iter().filter(|r| r.tier == tier && r.is_max_value == 1).count();
+            assert_eq!(n_best, 1, "exactly one margin-0 (best) arm per tier");
+            assert_eq!(n_max, 1, "exactly one is_max_value per tier");
+        }
+        // Per-tier margins are vs THAT tier's best (-4-10=-14; 5-20=-15).
+        let m4 = all.rows.iter().find(|r| r.tier == 4000 && r.mv_raw16 == 0x0002).unwrap().margin;
+        let m16 = all.rows.iter().find(|r| r.tier == 16000 && r.mv_raw16 == 0x0002).unwrap().margin;
+        assert_eq!(m4, -14);
+        assert_eq!(m16, -15);
+    }
+
     /// The `.npy` writer produces the exact layout `d40_policy.rs` reads
     /// (magic, u16 header length, data at 10+header_len) and round-trips the
     /// column payloads; the manifest names the versioned schema.
@@ -1734,6 +1847,7 @@ mod tests {
             &["synthetic".to_string()],
             &per_teacher,
             &tier_hist,
+            false,
         )
         .unwrap();
 
