@@ -1195,6 +1195,16 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 15:45 [RESULT] Study exp #1 probe: the final checkpoint wins — intra-run harvesting adds nothing
+
+Ledger row filed. sb210 is -15.1 ± 17.1 and sb180 -53.7 ± 16.8 against
+the final sb240 of the same run: monotone improvement into the final LR
+decay, exactly what a healthy schedule should produce. The official
+harvest-and-select win must come from selecting across SEEDS (16
+parallel runs), not within one run — that variant needs N seed twins
+and is a future GPU-budget question. D40_SAVE_RATE=30 stays for T5
+resume insurance.
+
 ## 2026-07-17 15:00 [DECISION 7/8 PENDING] c7: aspiration wants wider+gentler; the eval blend is flat
 
 exp-0083. ASPIRATION_BASE_DELTA 5 -> 7 (wider initial window) with
