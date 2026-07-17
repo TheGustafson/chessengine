@@ -503,6 +503,13 @@ pub struct ThreatContext<'a> {
     /// One `[White, Black]` accumulator pair per ply; `stack[0]` is the root.
     stack: Vec<[[i16; ACC]; 2]>,
     buf: DeltaBuf,
+    /// Persistent scratch for the resolved add/sub feature indices in
+    /// [`apply`](Self::apply). Only the `..len` prefix is ever read, so the
+    /// storage must never be re-zeroed — declaring these inside the per-move
+    /// loop cost an ~8 KB stack memset per made move (LLVM cannot elide it
+    /// against a runtime-length read).
+    adds: [usize; DELTA_CAP],
+    subs: [usize; DELTA_CAP],
 }
 
 impl<'a> ThreatContext<'a> {
@@ -513,6 +520,8 @@ impl<'a> ThreatContext<'a> {
             weights,
             stack: Vec::with_capacity(64),
             buf: DeltaBuf::new(),
+            adds: [0; DELTA_CAP],
+            subs: [0; DELTA_CAP],
         }
     }
 
@@ -578,9 +587,7 @@ impl<'a> ThreatContext<'a> {
             }
             let ksq = board.king_square(persp);
             let acc = &mut child[i];
-            let mut adds = [0usize; DELTA_CAP];
             let mut add_len = 0;
-            let mut subs = [0usize; DELTA_CAP];
             let mut sub_len = 0;
             for d in self.buf.events() {
                 if let Some(idx) = threat_index(persp, d.attacker, d.from, d.to, d.victim, ksq) {
@@ -588,25 +595,30 @@ impl<'a> ThreatContext<'a> {
                         // The simple intermediate-state replay deliberately
                         // over-emits telescoping events. Cancel an opposite
                         // occurrence before purchasing a 768-lane update.
-                        if let Some(pos) = subs[..sub_len].iter().position(|&old| old == idx) {
+                        if let Some(pos) = self.subs[..sub_len].iter().position(|&old| old == idx) {
                             sub_len -= 1;
-                            subs[pos] = subs[sub_len];
+                            self.subs[pos] = self.subs[sub_len];
                         } else {
-                            adds[add_len] = idx;
+                            self.adds[add_len] = idx;
                             add_len += 1;
                         }
                     } else {
-                        if let Some(pos) = adds[..add_len].iter().position(|&old| old == idx) {
+                        if let Some(pos) = self.adds[..add_len].iter().position(|&old| old == idx) {
                             add_len -= 1;
-                            adds[pos] = adds[add_len];
+                            self.adds[pos] = self.adds[add_len];
                         } else {
-                            subs[sub_len] = idx;
+                            self.subs[sub_len] = idx;
                             sub_len += 1;
                         }
                     }
                 }
             }
-            apply_i8_deltas(acc, self.weights, &adds[..add_len], &subs[..sub_len]);
+            apply_i8_deltas(
+                acc,
+                self.weights,
+                &self.adds[..add_len],
+                &self.subs[..sub_len],
+            );
         }
         self.stack.push(child);
     }
