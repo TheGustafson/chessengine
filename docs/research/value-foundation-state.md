@@ -1195,6 +1195,16 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 14:20 [DECISION 6/8 PENDING] c6 gates/counters: integer gates all step toward more pruning
+
+exp-0082. LMP_BASE 3 -> 2 (~3 sigma continuous-theta), PFUT_MAX_LMRDEPTH
+12 -> 11, RFP_MAX_DEPTH 17 -> 16, NMP_EVAL_DEPTH 14 -> 13 — every gate
+stepped one unit in the more-pruning direction, agreeing with c3/c4/c5.
+Screen: **+12.2 ± 17.1, LLR 0.95** — fourth consecutive positive lean,
+now the strongest. Four pending TC gates (c3 +7.3, c4 +9.7, c5 +10.4,
+c6 +12.2); combined-config re-verification rule stands (13:40 entry).
+c7 (aspiration/hindsight/optimism — the eval-blend campaign) running.
+
 ## 2026-07-17 13:40 [DECISION 5/8 PENDING] c5 futility+SEE: five real movers, strongest screen lean yet
 
 Ledger row filed. PFUT_NO_BESTMOVE 138 -> 179 (19% of range),
