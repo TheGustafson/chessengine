@@ -1085,3 +1085,24 @@ trainer; expect labeling to actually start ~09:00-10:00 and finish
 `set -o pipefail` exits 1 on zero matches — fixed, committed, relaunched.
 M4 (task #24) is CLOSED: both fail-fast audits ran on real data and the
 signal is trainable.
+
+## 2026-07-17 03:50 [RESULTS] 720sb train: parity FAIL on the max tail (again the OOD-endgame clip); S1 merge gate GREEN
+
+**d40-uho-720sb** (7h train, 720 superbatches on full UHO) completed and
+packed, then FAILED the runtime-parity gate the same way the farseer hop
+did: mean is clean (quant 0.0330, runtime 0.0121 — well under the 0.03
+bar), but max = 0.2517 vs the 0.20 bar, worst fen a bare rook endgame
+(`1k6/4R3/2K5/8/8/8/P4b2/8`). That is now TWO D40 nets whose only parity
+failure is a quant-clipping tail on OOD pawnless endgames (240sb passed
+at 0.174; longer/warmer training pushes some weight past the clip). The
+night chain handles it correctly by design: 720sb is h2h'd as a
+DIAGNOSTIC but the equal-time gate (promotion #4) runs with the parity
+-passing **d40-uho-v1-240sb**. Open decision for the user (both hop and
+720sb): waiver vs rescale; the T5 raw f32 checkpoint for 720sb exists, so
+a rescale+repack+re-parity attempt costs minutes of GPU, not a retrain.
+
+**S1 merge gate**: with the trainer gone, `bash tools/check.sh` reran the
+full D24 gate at HEAD (S1 correction history + R4 #2/#3 + obs stack):
+fmt/clippy/tests/release-perft all green, bench fingerprint **701605**
+reproduced. S1 is merge-clean; its equal-time SPRT (armed, [s1gate]) is
+the remaining deployment gate.
