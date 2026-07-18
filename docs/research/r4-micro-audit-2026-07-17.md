@@ -142,3 +142,22 @@ low risk — a good warm-up before tackling #1.
   picker are compiled out of the shipping build entirely — no runtime cost, no
   `#[cold]`/`likely` opportunity that the compiler isn't already handling on the
   hot arms.
+
+## MEASURED (2026-07-17 22:01, quiet box, depth-13 startpos, median-of-3)
+
+The full R4 stack (#1 lazy FullThreats fold + #2 SIMD find_nnz + #3 threat
+scratch hoist, all bench-neutral at 701605 and eval-bit-identical):
+
+| binary / net | pre-R4 nps | current nps | delta |
+|---|---|---|---|
+| probe-sota / d40-uho-720sb | 572,019 | 822,604 | **+43.8%** |
+| probe-l2048 / s3-farseer | 1,714,851 | 1,875,384 | **+9.4%** |
+
+The D40 gain lands above the audit's summed guesses (5-15% + 2-6% + 1-3%) —
+the lazy fold compounds with the SIMD/scratch wins because skipped folds also
+skip their cache traffic. Elo cross-check: +43.8% NPS ≈ 0.52 doublings ≈ ~37
+Elo at ~70 Elo/doubling, matching the observed equal-time recovery
+−57.9±12.6 → −17.4±12.8 vs s4 (exp-0073 → exp-0089) within noise. Remaining
+D40 deficit is ~pure speed: 822k vs 1875k nps = 44% of classic throughput at
+L1=720 vs 2048 — the arch wins per node (+30 h2h exp-0072) and needs ~1.5×
+more NPS to win per second. Next levers: R1 native, R3 PGO, task-26 packing.

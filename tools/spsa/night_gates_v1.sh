@@ -109,10 +109,14 @@ python3 -c "import json;s=json.load(open('$G4/summary.json'));print(f'[GATE s4 v
 # --- 3. speed measurements --------------------------------------------------
 say "speed: R4-stack NPS A/B (pre-r4 vs current probe-sota, D40 net, depth 13 x3)"
 nps_probe() { # binary net -> median nps of 3 fixed-depth searches
+  # NOTE the piped-quit race (TESTING.md): quit directly after go kills the
+  # engine before any info line prints -> grep matches nothing -> pipefail
+  # kills the whole runner (bit the 2026-07-17 night run). Sleep before quit.
   local bin=$1 net=$2 total=""
   for _ in 1 2 3; do
-    n=$(printf 'uci\nsetoption name EvalFile value %s\nisready\nposition startpos\ngo depth 13\nquit\n' "$net" \
-        | "$bin" 2>/dev/null | grep -o "nps [0-9]*" | tail -1 | cut -d' ' -f2)
+    n=$({ printf 'uci\nsetoption name EvalFile value %s\nisready\nposition startpos\ngo depth 13\n' "$net"
+          sleep 30; echo quit; } \
+        | "$bin" 2>/dev/null | grep -o "nps [0-9]*" | tail -1 | cut -d' ' -f2) || n=""
     total="$total $n"
   done
   echo "$total" | tr ' ' '\n' | grep -v '^$' | sort -n | sed -n 2p
