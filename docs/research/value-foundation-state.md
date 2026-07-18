@@ -25,6 +25,28 @@ Last updated: 2026-07-18 ~02:35 America/New_York
 
 ## TAKEOVER CHECKPOINT (2026-07-18 02:35 — read this first)
 
+> **OVERNIGHT UPDATE 2026-07-18 10:07 (persist checkpoint):** two things
+> since 02:35. (A) SPEED PROGRAM CLOSED — R1 native REJECTED, R3 PGO SHIPPED
+> (+10.5% D40 / +3.0% classic, machine-local), 720sb equal-time fastgate on
+> best-PGO builds = **−8.7±12.9 (CI [−31.4,+13.9] straddles zero)**, D40 at
+> equal-time parity (ladder −57.9→−17.4→−8.7, exp-0093). (B) CAPTURE-DATA
+> USEFULNESS ANSWERED (user directive "generate a lot and train"): in-search
+> capture is **99.6% aspiration bounds**; only 0.36% are exact PV nodes. Built
+> the InSearchCapture→export-train bridge (Bound::Exact gate, committed
+> dfe6cf9, 6/6 tests). Trained d41-capture-scale on 8.37M exact arms:
+> **rank_corr 0.263 / top-1 ~0.30** — BEATS gold on top-1 (0.258) but 2.7×
+> below on rank_corr (bound-capped ordering; 12× scale helped, quality
+> ceiling holds). Capture = a clean BEST-MOVE supplement, not a teacher
+> replacement. Disk cleaned (reclaimed d41-v1 + raw shards + zip; ledger 0
+> problems; 19G free). NOW RUNNING: gold-v2 teacher labeling (pool2 100k,
+> reckless+sf18, ~5-6h, tail phase at 10:07) → clean-ordering reference +
+> flywheel cycle-1 corpus; on completion the loop trains d41-gold-v2 and does
+> the 3-way verdict. Next levers queued: refined ordering-bridge (use
+> raised_alpha/caused_cutoff not bound margins), capture-top-1 + gold-ordering
+> BLEND. Helm play test HELD for user (capture ordering too weak to beat the
+> warm picker). Commits: aea9ee0, dfe6cf9, 600bcb2. The 02:35 block below is
+> superseded by this summary for the speed/capture items.
+
 **THE DAY IN ONE LINE:** the speed program CLOSED — R1 native REJECTED, R3
 PGO SHIPPED (+10.5% D40 / +3.0% classic, machine-local), and the final
 720sb equal-time fastgate on best-PGO builds both sides landed
@@ -33,9 +55,6 @@ statistically at parity with the s4 classic incumbent at equal time
 (ladder −57.9 → −17.4 → −8.7). D45 SPSA season stays 8/8 ship-nothing;
 s3-farseer stays incumbent (s4 no-promo 0.0±11.3); SF16 anchor −63 (n.s.);
 helm v1.1 play-NEGATIVE (−29.6±12.9, exp-0092) → data-scale-first.
-**NEXT (overnight, autonomous, user asleep, all-resources mandate):**
-capture-yield pilot + the pool2 overnight gold harvest (~6.8M rows) to
-build the flywheel cycle-1 corpus, then train on the scaled corpus.
 
 **1. D45 SPSA season FINAL (exp-0075..0088):** c1/c2 NO-CHANGE certified,
 c3 tentative-positive-UNSHIPPED (+10.4±14.1 cap-undecided, exp-0087; a
