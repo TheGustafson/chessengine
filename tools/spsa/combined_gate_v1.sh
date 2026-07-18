@@ -34,8 +34,9 @@ assert opts, "union is empty — nothing to gate"
 print(" ".join(f"option.{k}={v}" for k, v in sorted(opts.items())))
 EOF
 )
+# DRY runs print to stdout only — the results log stays verdicts-only.
+[ "${DRY:-0}" = "1" ] && { echo "[combined DRY] union (${ACCEPTED}): $OPTS"; exit 0; }
 say "combined union (${ACCEPTED}): $OPTS"
-[ "${DRY:-0}" = "1" ] && exit 0
 
 busy=$(pgrep -f "spsa_tune.py|root-analysis|night_gates" | wc -l || true)
 [ "$busy" -gt 0 ] && { say "ABORT: box not quiet ($busy procs)"; exit 1; }
