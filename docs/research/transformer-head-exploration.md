@@ -96,18 +96,24 @@ result that would simplify the whole eval.
   BETTER than our MLP head? Arms: (A) accumulator-chunk attention, (C) per-square
   FT-embedding attention, and the (C-minus-threats) subsumption probe. Metric:
   val eval-MAE / loss vs the MLP baseline. If none beats the MLP → STOP.
-  - Trainer: **bullet, NOT PyTorch.** Correction (2026-07-18): bullet's autodiff
-    graph already exposes `matmul`/`sparse_matmul`, `softmax(inner_size)`,
-    `reshape`/`cols`/`rows`, `concat`, `pairwise_mul`, `broadcast`, `new_affine`,
-    reduce ops — enough to compose a KQV attention block
-    (`Q,K,V = X·W`; `softmax(QKᵀ/√d)`; `·V`) by hand. No fused `sdpa`, so we wire
-    it from primitives; single-head fixed-token (64 squares or fixed acc chunks)
-    is straightforward, multi-head / variable-length sparse piece-tokens is
-    fiddlier (batched matmul over the token dim + masking) but still composable.
-    Staying in bullet keeps the binpack data pipeline, CUDA path, export, and
-    quant provenance. PyTorch is only worth it for FAST architecture iteration
-    (eager-mode `nn.MultiheadAttention` is one line) during prototyping — a
-    convenience, not a requirement, and a parallel data/export stack if adopted.
+  - Trainer — the honest boundary (re-corrected 2026-07-18 after a deep read of
+    bullet's API): the matmul/softmax primitives exist, BUT only at bullet's
+    lower **tensor-IR** level; the **model-builder** level that examples use
+    (`ModelNode`) has **no transpose, no standalone softmax, no reduce-MAX** —
+    so a genuine `[T×T]` `Q·Kᵀ` self-attention is **NOT expressible** at the
+    usable example level. A true KQV self-attention head therefore needs one of:
+    (a) drop to bullet's tensor-IR (significant work, stays in-stack), or
+    (b) **PyTorch** (attention is one line; a parallel data/export stack) — so
+    PyTorch is a real option after all for *true* self-attention, contrary to my
+    earlier "no PyTorch needed." What IS expressible in bullet now, and what the
+    Stage-0 scaffold (`tools/nnue/bullet/d40_attn.rs`) implements, is
+    **diagonal self-gating attention**: Wq/Wk/Wv projections, per-token
+    importance = `softmax(diag(Q·Kᵀ))` (softmax hand-composed from
+    `exp`+`reduce_sum_cols`+`repeat`+reciprocal), value-weighted token-sum. This
+    is attention-*lite* — learned token gating, NOT token↔token mixing — so it is
+    a weaker first probe: if even it beats the MLP head, invest in true
+    self-attention; if it's flat, accumulator-chunk attention likely doesn't
+    help our features. Inference still needs no framework (matmul+softmax in Rust).
   - INFERENCE needs NO framework at all: the attention forward is matmul +
     softmax in plain Rust/SIMD, hand-written like `sota_head`/`sota_simd`.
 - **Stage 1 — if offline-positive: Rust scalar forward + FIXED-NODE screen** vs
