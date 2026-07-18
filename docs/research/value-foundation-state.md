@@ -1268,6 +1268,23 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 23:15 [RESULT] Helm v1.1 play test: −29.6±12.9 — offline bars do not transfer; data-volume diagnosis stands
+
+d41-alloc-v11-c as MovePicker prior (true shared-trunk shape:
+POLICY_TRUNK = the 720sb cenn, CPOL layout 0, W=1000), 600g at 2k fixed
+nodes vs the plain build, net-0 eval both sides (exp-0092):
+**219W/111D/270L = −29.6±12.9** — worse than v1's −9.3±25.5 despite
+v1.1 clearing every offline bar (0.706 rank corr / 0.258 top-1 > the
+18.1% cold-classical baseline). Two lessons pinned in the ledger row and
+the integration memory: the cold bar is not the play bar (the warm
+picker is far stronger than cold-classical, so a below-picker prior is
+noise injection), and a sharper pairwise head misleads *more
+confidently* per unit of blend weight when its knowledge is
+data-starved. No more knob sweeps at 336k rows — the route is 10–30×
+data (gold harness + in-search capture), then retrain, then one play
+test. Historical note: two ~19:00 OOM kills in dmesg were the Manim
+pilot's TTS processes (recovered by that agent), not research lanes.
+
 ## 2026-07-17 20:55 [DECISION] D45 season CLOSES ship-nothing; gate queue cut by user to jump to the headline gates
 
 TC gate verdicts: c3 rfp-razor **+10.4±14.1 cap-undecided, LLR 1.05**
