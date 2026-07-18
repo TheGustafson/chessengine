@@ -160,6 +160,50 @@ fn bestmove(lines: &[String]) -> String {
         .expect("a bestmove line")
 }
 
+/// The engine pid-suffixes its shard (`<stem>.p<pid>.ceobs`) so concurrent
+/// match processes never share a file; resolve the one shard written for a
+/// configured path.
+fn written_shard(configured: &Path) -> PathBuf {
+    let dir = configured.parent().expect("temp dir");
+    let name = configured.file_name().and_then(|n| n.to_str()).expect("utf8 name");
+    let stem = name.strip_suffix(".ceobs").expect(".ceobs temp path");
+    let prefix = format!("{stem}.p");
+    let mut hits: Vec<PathBuf> = std::fs::read_dir(dir)
+        .expect("read temp dir")
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with(&prefix) && n.ends_with(".ceobs"))
+        })
+        .collect();
+    assert_eq!(hits.len(), 1, "expected one pid-suffixed shard for {stem}: {hits:?}");
+    hits.pop().unwrap()
+}
+
+/// Remove every pid-suffixed shard for a configured path (test cleanup).
+fn cleanup_shards(configured: &Path) {
+    if let (Some(dir), Some(name)) = (
+        configured.parent(),
+        configured.file_name().and_then(|n| n.to_str()),
+    ) {
+        if let Some(stem) = name.strip_suffix(".ceobs") {
+            let prefix = format!("{stem}.p");
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.starts_with(&prefix) && n.ends_with(".ceobs"))
+                    {
+                        let _ = std::fs::remove_file(p);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Read every episode of a shard (fails on any decode error).
 fn read_episodes(path: &Path) -> Vec<chessengine::obs::Episode> {
     let mut reader = ShardReader::open(path).expect("open shard");
@@ -231,7 +275,7 @@ fn capture_does_not_perturb_the_search() {
         bestmove(&on_lines),
         "bestmove changed with capture enabled"
     );
-    std::fs::remove_file(&path).ok();
+    cleanup_shards(&path);
 }
 
 /// A shard written during a real `go nodes` search decodes through ShardReader
@@ -252,7 +296,8 @@ fn shard_from_a_real_search_verifies() {
     s.wait_for(|l| l.starts_with("bestmove "), Duration::from_secs(60));
     s.finish();
 
-    let episodes = read_episodes(&path);
+    let shard = written_shard(&path);
+    let episodes = read_episodes(&shard);
     assert_eq!(episodes.len(), 1, "one game -> one episode");
     let episode = &episodes[0];
     assert_eq!(episode.kind, EpisodeKind::InSearchCapture);
@@ -279,8 +324,8 @@ fn shard_from_a_real_search_verifies() {
     }
     assert!(total_rows > 0, "no per-move rows captured");
 
-    assert_obs_tool_verify(&path);
-    std::fs::remove_file(&path).ok();
+    assert_obs_tool_verify(&shard);
+    cleanup_shards(&path);
 }
 
 /// The per-game cap bounds the buffer and drops are COUNTED (no silent loss):
@@ -301,7 +346,8 @@ fn per_game_cap_is_respected_with_drop_counting() {
     s.wait_for(|l| l.starts_with("bestmove "), Duration::from_secs(60));
     s.finish();
 
-    let episodes = read_episodes(&path);
+    let shard = written_shard(&path);
+    let episodes = read_episodes(&shard);
     assert_eq!(episodes.len(), 1);
     let episode = &episodes[0];
     assert_eq!(episode.records.len(), 5, "cap bounds the record count");
@@ -309,8 +355,8 @@ fn per_game_cap_is_respected_with_drop_counting() {
         episode.dropped_records > 0,
         "over-cap sampled nodes must be counted as drops"
     );
-    assert_obs_tool_verify(&path);
-    std::fs::remove_file(&path).ok();
+    assert_obs_tool_verify(&shard);
+    cleanup_shards(&path);
 }
 
 /// `ucinewgame` is the game boundary: two games (with a `ucinewgame` between)
@@ -339,7 +385,8 @@ fn two_games_flush_two_episodes() {
     s.wait_for_bestmove_count(2, Duration::from_secs(60));
     s.finish();
 
-    let episodes = read_episodes(&path);
+    let shard = written_shard(&path);
+    let episodes = read_episodes(&shard);
     assert_eq!(episodes.len(), 2, "two games -> two episodes");
     assert_eq!(episodes[0].episode_id, 0);
     assert_eq!(episodes[1].episode_id, 1);
@@ -347,6 +394,6 @@ fn two_games_flush_two_episodes() {
     assert_eq!(episodes[1].kind, EpisodeKind::InSearchCapture);
     assert!(!episodes[0].records.is_empty());
     assert!(!episodes[1].records.is_empty());
-    assert_obs_tool_verify(&path);
-    std::fs::remove_file(&path).ok();
+    assert_obs_tool_verify(&shard);
+    cleanup_shards(&path);
 }

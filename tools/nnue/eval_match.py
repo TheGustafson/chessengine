@@ -75,6 +75,11 @@ def main() -> int:
     parser.add_argument("--baseline-engine", type=absolute,
                         help="baseline binary (defaults to --engine)")
     parser.add_argument("--fastchess", type=absolute, default=absolute("engines/bin/fastchess"))
+    parser.add_argument("--each-option", action="append", default=[], metavar="NAME=VALUE",
+                        help="extra UCI option applied to BOTH engines (repeatable), e.g. "
+                             "--each-option ObsCapturePath=data/obs/harvest/run1.ceobs for "
+                             "fixed-node capture harvests (engines pid-suffix their shards; "
+                             "engine must be a datagen-feature build; NEVER use in TC gates)")
     args = parser.parse_args()
     args.candidate_engine = args.candidate_engine or args.engine
     args.baseline_engine = args.baseline_engine or args.engine
@@ -106,6 +111,7 @@ def main() -> int:
         "openings": str(args.openings), "engine": str(args.engine),
         "candidate_engine": str(args.candidate_engine),
         "baseline_engine": str(args.baseline_engine),
+        "each_option": args.each_option,
     }
     if state_path.exists():
         state = json.loads(state_path.read_text())
@@ -131,6 +137,7 @@ def main() -> int:
         "-engine", f"cmd={args.candidate_engine}", "name=candidate", f"option.EvalFile={args.candidate}",
         "-engine", f"cmd={args.baseline_engine}", "name=baseline", f"option.EvalFile={args.baseline}",
         "-each", "proto=uci", *search_limit, "option.Threads=1", "option.Hash=16",
+        *[f"option.{opt}" for opt in args.each_option],
         "-openings", f"file={args.openings}", "format=epd", "order=random",
         "-repeat", "-games", "2", "-rounds", str(args.games // 2),
         "-concurrency", str(args.concurrency), "-recover",

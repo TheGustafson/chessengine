@@ -1153,8 +1153,19 @@ impl Worker {
             self.options.obs_capture_sample_bits(),
             self.options.obs_capture_per_game_cap(),
         );
+        // Concurrent matches hand every engine process the same option value,
+        // and the shard writer is a plain truncating create — suffix the pid
+        // so each process owns a distinct shard (obs-tool merges + dedups
+        // multi-shard input by canonical key).
+        let pid_path = {
+            let pid = std::process::id();
+            match path.strip_suffix(".ceobs") {
+                Some(stem) => format!("{stem}.p{pid}.ceobs"),
+                None => format!("{path}.p{pid}.ceobs"),
+            }
+        };
         let config = crate::obs::recorder::ObsRecorderConfig {
-            path: std::path::PathBuf::from(path),
+            path: std::path::PathBuf::from(pid_path),
             min_depth: self
                 .options
                 .obs_capture_min_depth()
