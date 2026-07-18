@@ -119,6 +119,58 @@ fn halfka_only() -> bool {
     *VALUE.get_or_init(|| env_usize("D40_HALFKA_ONLY", 0) != 0)
 }
 
+/// King-bucket FACTORIZATION (task #27, `D40_FACTORIZE=1`). A pure
+/// data-efficiency device: during training the 32 king buckets share a gradient
+/// through a bucket-agnostic 704-wide factoriser, folded back into the real FT
+/// at export so the engine format + inference cost are UNCHANGED. Default is 0
+/// (the existing 240sb/720sb recipes reproduce byte-identically when unset).
+fn factorize() -> bool {
+    static VALUE: OnceLock<bool> = OnceLock::new();
+    *VALUE.get_or_init(|| env_usize("D40_FACTORIZE", 0) != 0)
+}
+
+/// The bucket-agnostic factoriser width: SF's `PS_NB` piece-square stride, of
+/// which `HALFKA_INPUTS` is exactly 32 tiled copies (one per king bucket). Each
+/// real HalfKA feature `f = bucket*704 + piece_square` shares the factor
+/// `HALFKA_INPUTS + (f % 704)` — the king-bucket-free piece-square weight.
+const FACTOR_INPUTS: usize = 704;
+const _: () = assert!(
+    HALFKA_INPUTS == 32 * FACTOR_INPUTS,
+    "HalfKA is 32 king buckets × 704 piece-square slots"
+);
+
+/// Fold the king-bucket factoriser into the real HalfKA transformer at export
+/// (`D40_FACTORIZE=1`). This is the manual reimplementation of bullet's
+/// `Factorised::merge_factoriser` for the two-FT custom path (design/11 §12.6).
+///
+/// `weights` is the trained `l0_pstw` in bullet's internal, **feature-major**
+/// layout `w[feature*HL + neuron]` over the widened input space
+/// `[HALFKA_INPUTS + FACTOR_INPUTS]`: real features `[0, HALFKA_INPUTS)` first,
+/// then the 704 bucket-agnostic factor columns. It returns the engine-format
+/// `l0_pstw` of shape `[HALFKA_INPUTS × HL]` (22528 features) where
+/// `merged[f] = real[f] + factor[f % 704]` — the exact sum the factorised
+/// accumulator computed during training, so the emitted quant checkpoint and
+/// `.cenn` are shape-identical to a non-factorized net (netpack.py unchanged).
+///
+/// Runs as a `SavedFormat` transform BEFORE `round()/quantise::<i16>(255)`, so
+/// the merge happens in float and quantisation sees the final engine weights.
+fn merge_factoriser(_store: &ModelWeights, weights: Vec<f32>) -> Vec<f32> {
+    assert_eq!(
+        weights.len(),
+        (HALFKA_INPUTS + FACTOR_INPUTS) * HL,
+        "factorised l0_pstw has the wrong size"
+    );
+    let mut merged = vec![0.0f32; HALFKA_INPUTS * HL];
+    for feature in 0..HALFKA_INPUTS {
+        let real = feature * HL;
+        let factor = (HALFKA_INPUTS + feature % FACTOR_INPUTS) * HL;
+        for n in 0..HL {
+            merged[real + n] = weights[real + n] + weights[factor + n];
+        }
+    }
+    merged
+}
+
 #[rustfmt::skip]
 const OUTPUT_BUCKETS_LAYOUT: [u8; 33] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -553,10 +605,19 @@ fn main() {
     assert!(score_multiplier > 0.0 && score_multiplier.is_finite());
     std::fs::create_dir_all(&out_dir).expect("create D40_OUT directory");
 
+    // King-bucket factorization (D40_FACTORIZE): widen the HalfKA FT input by the
+    // 704-wide factoriser and double its active count (each real feature also
+    // emits its bucket-agnostic factor). Folded away at export (merge_factoriser),
+    // so the engine format + inference cost are unchanged. Threats are king-
+    // agnostic and are NOT factorized.
+    let factorize = factorize();
+    let halfka_ft_inputs = HALFKA_INPUTS + if factorize { FACTOR_INPUTS } else { 0 };
+    let halfka_nnz = HALFKA_MAX_ACTIVE * if factorize { 2 } else { 1 };
+
     // Four sparse inputs: HalfKA (i16 tensor) + threats (i8 tensor), each stm/ntm.
     let inputs = ModelInputs::default()
-        .add_sparse("halfka_stm", (HALFKA_INPUTS, 1), HALFKA_MAX_ACTIVE)
-        .add_sparse("halfka_ntm", (HALFKA_INPUTS, 1), HALFKA_MAX_ACTIVE)
+        .add_sparse("halfka_stm", (halfka_ft_inputs, 1), halfka_nnz)
+        .add_sparse("halfka_ntm", (halfka_ft_inputs, 1), halfka_nnz)
         .add_sparse("threat_stm", (THREAT_INPUTS, 1), THREAT_MAX_ACTIVE)
         .add_sparse("threat_ntm", (THREAT_INPUTS, 1), THREAT_MAX_ACTIVE)
         .add_sparse("buckets", (NUM_BUCKETS, 1), 1)
@@ -570,14 +631,23 @@ fn main() {
             let (mut hk, mut th) = (0usize, 0usize);
             feats.map_features(pos, |stm, ntm| {
                 if stm < HALFKA_INPUTS {
+                    // Factorization emits the real feature AND its bucket-agnostic
+                    // factor into the SAME halfka stream, so the accumulator sums
+                    // real_weight[f] + factor_weight[f % 704] — exact factorization.
+                    let needed = if factorize { 2 } else { 1 };
                     assert!(
-                        hk < HALFKA_MAX_ACTIVE,
+                        hk + needed <= halfka_nnz,
                         "HalfKA sparse capacity exceeded: position has more than \
-                         {HALFKA_MAX_ACTIVE} active features"
+                         {halfka_nnz} active halfka slots"
                     );
                     hk_stm[hk] = stm as i32;
                     hk_ntm[hk] = ntm as i32;
                     hk += 1;
+                    if factorize {
+                        hk_stm[hk] = (HALFKA_INPUTS + stm % FACTOR_INPUTS) as i32;
+                        hk_ntm[hk] = (HALFKA_INPUTS + ntm % FACTOR_INPUTS) as i32;
+                        hk += 1;
+                    }
                 } else {
                     assert!(
                         th < THREAT_MAX_ACTIVE,
@@ -609,8 +679,15 @@ fn main() {
             // carries NO bias (the shared FT bias lives on the HalfKA tensor);
             // that also keeps the two bias gradients from colliding into an
             // un-eliminable CSE copy in the backward graph.
-            let l0_pst = builder.new_affine("l0_pst", HALFKA_INPUTS, HL);
-            l0_pst.init_with_effective_input_size(32);
+            // Factorization widens this FT by FACTOR_INPUTS (the extra 704 columns
+            // are the bucket-agnostic factoriser). The effective input size tracks
+            // the ACTIVE count (32 real, or 64 real+factor) so the initial
+            // accumulator variance — and the merged weight distribution at t=0 —
+            // match the non-factorized net (each column ~N(0, 2/nnz); the merged
+            // real+factor sum has the same variance as a single non-factorized
+            // column). Default path is unchanged (nnz == 32).
+            let l0_pst = builder.new_affine("l0_pst", halfka_ft_inputs, HL);
+            l0_pst.init_with_effective_input_size(halfka_nnz);
             let l0_threat_w =
                 builder.new_weights("l0_threatw", (HL, THREAT_INPUTS), InitSettings::Zeroed);
             let l1 = builder.new_affine("l1", HL, NUM_BUCKETS * L2);
@@ -685,6 +762,15 @@ fn main() {
 
     let seed = env_usize("D40_SEED", 0x00D4_0FEA) as u64;
     let mut weights = ModelWeights::new(&defn, seed);
+    // Warm-start interaction (D40_FACTORIZE): a checkpoint's l0_pstw must match
+    // the graph's l0_pstw size. A factorized graph expects the WIDENED tensor
+    // ((HALFKA_INPUTS + 704) × HL), so it can only resume from a factorized raw;
+    // warming from a NON-factorized net (l0_pstw == HALFKA_INPUTS × HL, or a
+    // merged quant) size-mismatches and is rejected below by ModelWeights. To
+    // warm a factorized run from a non-factorized net you would load the real
+    // columns and zero-init the 704 factoriser columns (not wired — the
+    // factorized recipe trains FRESH). D40_INIT_QUANT is unusable with
+    // D40_FACTORIZE (its l0_pstw reader is the merged, non-widened shape).
     if let Ok(path) = std::env::var("D40_INIT_QUANT") {
         load_quantised_weights(&mut weights, &path);
         println!("initialised from quantized checkpoint {path}");
@@ -722,8 +808,20 @@ fn main() {
         lr_schedule,
     };
 
+    // Factorization folds the 704-wide factoriser back into the real HalfKA FT
+    // here, BEFORE quantisation, so the emitted quant checkpoint (and the .cenn
+    // netpack.py packs from it) are shape-identical to a non-factorized net — no
+    // netpack change, unchanged inference. Default path is byte-identical.
+    let l0_pstw_saved = if factorize {
+        SavedFormat::id("l0_pstw")
+            .transform(merge_factoriser)
+            .round()
+            .quantise::<i16>(255)
+    } else {
+        SavedFormat::id("l0_pstw").round().quantise::<i16>(255)
+    };
     let fmt = vec![
-        SavedFormat::id("l0_pstw").round().quantise::<i16>(255),
+        l0_pstw_saved,
         SavedFormat::id("l0_pstb").round().quantise::<i16>(255),
         SavedFormat::id("l0_threatw").round().quantise::<i8>(64),
         SavedFormat::id("l1w")
@@ -744,6 +842,12 @@ fn main() {
         "--- D40 targets: scale={target_scale} wdl={wdl} score_multiplier={score_multiplier} seed={seed} ---"
     );
     println!("--- D40 HalfKA-only ablation: {} ---", halfka_only());
+    if factorize {
+        println!(
+            "--- D40 king-bucket FACTORIZATION: ON (halfka FT {HALFKA_INPUTS}+{FACTOR_INPUTS} \
+             inputs, {halfka_nnz} active/persp; folded to {HALFKA_INPUTS} at export) ---"
+        );
+    }
     let save_out = out_dir.clone();
     let save_id = net_id.clone();
     train(
