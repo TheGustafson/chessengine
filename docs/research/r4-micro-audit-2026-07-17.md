@@ -161,3 +161,39 @@ Elo at ~70 Elo/doubling, matching the observed equal-time recovery
 D40 deficit is ~pure speed: 822k vs 1875k nps = 44% of classic throughput at
 L1=720 vs 2048 — the arch wins per node (+30 h2h exp-0072) and needs ~1.5×
 more NPS to win per second. Next levers: R1 native, R3 PGO, task-26 packing.
+
+## R1/R3 MEASURED (2026-07-18 02:05, definitive instrument)
+
+**Measurement lesson first:** the quick probe above (median-of-3 depth-13
+nps) is NOISE-DOMINATED on this WSL2 box — two back-to-back 6-config
+rounds contradicted each other by ±9-18% per cell (host-managed boost
+states; identical binaries swapped ranks). It cannot resolve effects
+under ~±10%. The definitive instrument: fixed-node searches (6M sota /
+12M classic), engine-reported ms, MINIMUM of 5 runs, binaries
+interleaved round-robin. The R4 +43.8%/+9.4% numbers above were huge
+within-session relatives and stand; treat their absolute nps as ±10%.
+
+| build (per path best in **bold**) | D40 / 720sb | classic / s3 |
+|---|---|---|
+| x86-64-v3 (shipping) | 688,073 | 1,822,877 |
+| native (R1) | 688,231 (null) | 1,647,220 (−9.6%) |
+| PGO, real-net profile (R3) | **760,070 (+10.5%)** | 1,695,394 (−7.0%; native-based) |
+| PGO on v3 base | — | **1,832,620 (+3.0%** vs same-session v3 1,779,623**)** |
+
+Verdicts:
+- **R1 native: REJECTED.** Null on the sota path (the hand-SIMD kernels
+  already dispatch AVX-512 at runtime; Zen-4 scheduling adds nothing),
+  and an outright regression on the classic path (LLVM's 512-bit
+  autovectorization of the L1-2048 inner loops loses to the AVX2 shapes).
+- **R3 PGO: ADOPTED, machine-local.** +10.5% D40 / +3.0% classic. Two
+  conditions discovered the hard way, both encoded in tools/build_pgo.sh:
+  (1) the profiling workload MUST run the real serving net over UCI —
+  bench-only profiles leave the NNUE kernels unprofiled and PGO inert;
+  (2) the base target-cpu must be chosen per path (PGO_CPU env): native
+  base for sota, v3 base for classic (a native-based classic PGO stays
+  −7% under plain v3).
+- Node-identity verified for every adopted binary (13814/13629 fixed-
+  depth counts match v3 siblings bit-for-bit).
+- Deployed: engines/bin/probe-sota-pgo, engines/bin/probe-l2048-pgov3.
+  D16 rules: machine-local only, SPRT pairs both-PGO or both-not, the
+  Bench: trailer stays on the portable default build.
