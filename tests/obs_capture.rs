@@ -183,23 +183,26 @@ fn written_shard(configured: &Path) -> PathBuf {
 
 /// Remove every pid-suffixed shard for a configured path (test cleanup).
 fn cleanup_shards(configured: &Path) {
-    if let (Some(dir), Some(name)) = (
+    let (Some(dir), Some(name)) = (
         configured.parent(),
         configured.file_name().and_then(|n| n.to_str()),
-    ) {
-        if let Some(stem) = name.strip_suffix(".ceobs") {
-            let prefix = format!("{stem}.p");
-            if let Ok(entries) = std::fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    if p.file_name()
-                        .and_then(|n| n.to_str())
-                        .is_some_and(|n| n.starts_with(&prefix) && n.ends_with(".ceobs"))
-                    {
-                        let _ = std::fs::remove_file(p);
-                    }
-                }
-            }
+    ) else {
+        return;
+    };
+    let Some(stem) = name.strip_suffix(".ceobs") else {
+        return;
+    };
+    let prefix = format!("{stem}.p");
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.starts_with(&prefix) && n.ends_with(".ceobs"))
+        {
+            let _ = std::fs::remove_file(p);
         }
     }
 }
