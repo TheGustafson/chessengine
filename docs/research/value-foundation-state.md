@@ -1306,6 +1306,39 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-18 11:45 [RESULT] Corrected D40 stage-2 (gentle, LR 2.5e-4) = −12.7 vs 720sb — NO GAIN; testing LR 5e-4 next (exp-0094)
+
+Screen done: d40-s2-diag-120sb vs d40-uho-720sb = **−12.7 Elo** (300g 5k,
+W102/L113/D85, CI [−47.8,+22.0] straddles 0), exp-0094. Below the +15 gate →
+NOT committing the 480sb run. Nuance: training was CLEAN (loss 0.0086→0.0071
+monotonic, NOT the exp-0066 regression) but at LR 2.5e-4 the net barely moved
+— this tested a *gentle* stage-2. The exp-0066 failure (−23.2) used LR 5e-4
+BUT warmed from the WEAK 240sb net. So the untested cell is **LR 5e-4 +
+warm-from-STRONG-720sb** — isolates whether the weak warm-start alone caused
+exp-0066. Launched d40-s2-diag2 (LR 5e-4, else identical). If also ≤+5:
+stage-2 is genuinely dry for the D40 threat arch (unlike the classic net
+which banked +84) → pivot to longer stage-1 (#3) or king-bucket
+factorization (#27). If positive: the weak warm-start was the bug, promote
+the recipe to a full 480sb run.
+
+## 2026-07-18 11:40 [PLAN] Corrected D40 stage-2 TRAINED CLEANLY (loss 0.0086→0.0071 monotonic)
+
+d40-s2-diag finished 120sb in 1h09m: loss declined monotonically
+0.0086(sb1)→0.0071(sb120), NO divergence — the exact opposite of the failed
+exp-0066 hop (which regressed). The corrected recipe (warm from STRONG 720sb
++ cooler LR 2.5e-4 vs the old warm-from-weak-240sb + LR 5e-4) trains healthy.
+Net packed d40-s2-diag-120sb.cenn (loads, startpos eval 30cp sane). The
+train_run pipeline exit-1 is ONLY the parity gate: runtime max_abs 0.309 >
+the config's OLD strict 0.2 bound — this is the KNOWN cosmetic quantization
+tail (#26, d40-packing-tail doc): runtime MEAN error 0.019 (well within),
+worst FEN 8/8/4R3/3k3p/8/q7/4K2P/8 = sparse OOD endgame; ~zero Elo cost. Not
+a training failure; the net is valid for a fixed-node screen. LAUNCHED the
+decision screen (d40-s2-diag-screen): d40-s2-diag-120sb vs d40-uho-720sb,
+probe-sota-pgo both sides, 5k nodes 300g conc 8, seed 20260818. GATE: ≥+15
+fixed-node → the corrected stage-2 works → commit the full 480sb run + then
+equal-time vs s3 (D40 starts −8.7, a stage-2 gain flips it positive =
+promotion). <+15 → stage-2 gives little for the threat arch even corrected.
+
 ## 2026-07-18 10:30 [PLAN+LAUNCH] North star raised to SF16+30 → highest-value eval lever = CORRECTED D40 stage-2 (running)
 
 User raised the goal (via /loop 15m) to a search-augmented NNUE beating SF16
