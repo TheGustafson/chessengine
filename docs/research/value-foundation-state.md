@@ -1306,6 +1306,50 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-18 19:20 [RESULTS] Factorization weak (+7); SF16 anchor ~−43; search −25 at real depth; label-value pilot RUNNING
+
+Afternoon/evening measurement sweep (all ledgered):
+1. **King-bucket factorization (#27) = WEAK +6.9** (exp-0099, CI [−29,+43],
+   below +15 gate). Implemented + verified (D40_FACTORIZE, folds virtual→real
+   at export = zero inference cost, .cenn byte-identical; committed d208c5a).
+   Modest lever, likely shrinks at 720sb scale. The signature run OOM'd
+   (co-ran a screen with a bullet train under 7GB — LESSON) and was dropped
+   as low-value.
+2. **Search caught up (exp-0096/0097):** ARCHON-search vs Reckless-search,
+   same v60 net: −86.7 (2026-07-13, pre-P9-waves+S1) → **−49@100k → −25@200k**
+   (real equal-time depth). Gap HALVED and shrinks at depth; at real depth
+   search is ~on par with a top-2 engine. Search is a SMALLER lever than the
+   stale −87 implied.
+3. **Fresh SF16 anchor (exp-0098) = −43.1±20.2** (300g, current best build
+   probe-l2048-pgov3 + s3-farseer; noisy 72% draws, beside-train). Nominally
+   better than stale −63/−78 (CI excludes −78) → gap-to-goal ~+73-86, maybe
+   less than the +95-110 assumed. NEEDS a clean quiet-box rerun to firm.
+4. **Strategic synthesis (user asked "eval, search, or both"):** BOTH, but
+   both more caught-up than the stale numbers implied; NEITHER has a big easy
+   one-box lever left (factorization +7, stage-2 dead, width saturated;
+   search ~caught up). The BIG gains (eval data-scale + SF18 labels; search
+   SPSA at scale) are D36-compute-gated. One-box realistic: ~+20-40 (promote
+   D40 via longer stage-1 + factorization + search slices via the instrument).
+5. **RUNNING now:** (a) D40 warm-continue +360sb on UHO (d40-uho-cont-1080sb,
+   GPU, gentle LR 3e-4, banking per-node edge → promote D40; screen vs 720sb
+   when done); (b) **LABEL-VALUE PILOT (user-greenlit)** — does deeper (SF18
+   @100k) vs cheap (5k) labels on the SAME 2M mix90 positions make a stronger
+   net? Chunked/resumable deep relabel (tools/nnue/label_value_pilot.sh,
+   f149def). Valid pre-gate on the training distribution: Pearson 0.959 / RMS
+   42cp / **15% sign-flips** (gap grows to 136cp RMS in decisive positions) —
+   labels DIFFER meaningfully (necessary condition met); the A/B confirms
+   whether that difference → Elo before any bulk SF18 spend. New tools:
+   relabel_depth.py, paired_label_calibration.py (committed 6ab735d).
+   Decision rule: deep-net ≥+15 vs cheap-net → SF18 worth it; else labels not
+   the bottleneck.
+6. **Firewalled Reckless-net instrument** rebased onto main
+   (instrument/reckless-net-v60 branch, engines/bin/probe-recklessnet,
+   RECKLESS_NET=v60) = a deflation-free FIXED-NODE test bed for search changes.
+   NPS reality: real Reckless ~817k, our D40 604k (threats made our eval
+   Reckless-like/slower), classic-2048 1366k, net-0 2.36M (cheap/weak).
+7. All session work PUSHED to origin/main once (user asked, overriding the
+   never-push default) — 62 commits. Ledger verify 0 problems.
+
 ## 2026-07-18 13:35 [STUDY+RESULTS] "What holds ARCHON back" — search caught up to −49/node vs Reckless; stage-2 dead; king-bucket factorization is the active eval lever
 
 Big afternoon. Full study: docs/research/what-holds-archon-back-2026-07-18.md.
