@@ -96,9 +96,20 @@ result that would simplify the whole eval.
   BETTER than our MLP head? Arms: (A) accumulator-chunk attention, (C) per-square
   FT-embedding attention, and the (C-minus-threats) subsumption probe. Metric:
   val eval-MAE / loss vs the MLP baseline. If none beats the MLP → STOP.
-  - Needs: **PyTorch (NOT currently installed — infra step)**; our value corpus
-    (official binpacks / the export SoA); a loader that emits our FT embeddings
-    (or raw HalfKA+threat indices) per position.
+  - Trainer: **bullet, NOT PyTorch.** Correction (2026-07-18): bullet's autodiff
+    graph already exposes `matmul`/`sparse_matmul`, `softmax(inner_size)`,
+    `reshape`/`cols`/`rows`, `concat`, `pairwise_mul`, `broadcast`, `new_affine`,
+    reduce ops — enough to compose a KQV attention block
+    (`Q,K,V = X·W`; `softmax(QKᵀ/√d)`; `·V`) by hand. No fused `sdpa`, so we wire
+    it from primitives; single-head fixed-token (64 squares or fixed acc chunks)
+    is straightforward, multi-head / variable-length sparse piece-tokens is
+    fiddlier (batched matmul over the token dim + masking) but still composable.
+    Staying in bullet keeps the binpack data pipeline, CUDA path, export, and
+    quant provenance. PyTorch is only worth it for FAST architecture iteration
+    (eager-mode `nn.MultiheadAttention` is one line) during prototyping — a
+    convenience, not a requirement, and a parallel data/export stack if adopted.
+  - INFERENCE needs NO framework at all: the attention forward is matmul +
+    softmax in plain Rust/SIMD, hand-written like `sota_head`/`sota_simd`.
 - **Stage 1 — if offline-positive: Rust scalar forward + FIXED-NODE screen** vs
   the incumbent net. Reuse the firewalled-instrument pattern (feature-gated,
   scalar OK for fixed-node). Measure fixed-node Elo AND nps (to project
