@@ -21,9 +21,82 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-16 ~21:00 America/New_York
+Last updated: 2026-07-17 ~22:30 America/New_York
 
-## TAKEOVER CHECKPOINT (2026-07-17 06:20 — read this first)
+## TAKEOVER CHECKPOINT (2026-07-17 22:30 — read this first)
+
+**THE DAY IN ONE LINE:** D45 SPSA season closed 8/8 ship-nothing (the
+post-S1 defaults are certified within ~10 Elo everywhere probed); the R4
+speed stack measured +43.8% NPS on the D40 path and cut the 720sb
+equal-time deficit from −57.9 to −17.4; s3 stays incumbent; the SF16
+anchor moved −78 → −63 (not significant); the D41 helm v1.1 play test and
+the gold-v1 20k parallel labeling are running overnight.
+
+**1. D45 SPSA season FINAL (exp-0075..0088):** c1/c2 NO-CHANGE certified,
+c3 tentative-positive-UNSHIPPED (+10.4±14.1 cap-undecided, exp-0087; a
+confirm SPRT was armed then CANCELLED by user — theta preserved in
+`spsa/c3-rfp-razor/theta_final.json`), c4 neutral-reject (+1.2±14.0,
+exp-0088), c5/c6/c7 screen-positive TC-unverified (gates cut by user
+20:46 to jump the queue), c8 rejected. Nothing shipped; params.rs
+unchanged; bench stays 701605. Calibration standing fact (exp-0078):
++50% RED_BASE detune costs only −8±13 — one-box SPSA has hit its
+resolution floor; sub-10-Elo mining needs fishtest scale (D36).
+Tooling kept: `tools/spsa/combined_gate_v1.sh` (union ship-SPRT, unused),
+tune builds + `tunables` advertising, night_gates runner (nps_probe
+piped-quit race now fixed).
+
+**2. D45a headline (exp-0089):** d40-uho-720sb vs s4 at EQUAL TIME =
+**−17.4±12.8**, up from −57.9±12.6 pre-R4 (exp-0073). Measured R4 A/B
+(depth-13 median-of-3, quiet box): probe-sota 572,019 → **822,604 nps
+(+43.8%)**; probe-l2048 1,714,851 → 1,875,384 (+9.4%). The Elo/NPS
+arithmetic closes (+44% ≈ 0.52 doublings ≈ ~37 Elo). D40 wins per node
+(+30.2 h2h exp-0072); the remaining −17 is ~pure speed (822k vs 1875k =
+44% of classic throughput). Levers not yet pulled: R1 native (task #13),
+R3 PGO (#15), packing fix (#26), narrower-L1 D40.
+
+**3. Incumbent unchanged (exp-0090):** s4 vs s3 promo re-check at equal
+time = **0.0±11.3** — dead even, second failed separation.
+**s3-farseer remains the incumbent**; the classic-2048 line is saturated
+(consistent with the width-ladder plateau). Eval-foundation freeze holds.
+
+**4. SF16 anchor rematch (exp-0091):** −63.2±29.5 (13W/56D/31L, 100g
+10+0.1, srand 20260743) vs the 2026-07-16 anchor −78±18. Nominal +15,
+diff CI ≈ [−20,+49] — NOT statistically established. **Lesson written
+into the row: self-play gains deflate externally** (S1's +72.9 was
+tuned-vs-default in-family; do not bank self-play Elo into external
+projections). External movers remain eval quality (D41 flywheel) and
+D40 speed parity.
+
+**5. IN FLIGHT overnight:** (a) **gold-v1**: 20k positions, 4 workers ×
+2 teachers + dual-tier monitors ([obsgold] tags, done ~00:55, auto-audits
+at end) — first measurement of the ~25–30× parallel-labeling throughput
+claim; (b) **helm v1.1 play test**: d41-alloc-v11-c (frozen-720sb-trunk +
+pairwise + all-tiers; held-out 0.706/0.258, clears the 18.1% cold bar)
+as MovePicker prior — probe-policy-d41 + POLICY_TRUNK=720sb cenn vs
+probe-plain-d41mm, net-0 eval both sides, 600g 2k fixed nodes conc 12,
+srand 20260791, output `d41-v11-playtest/` (verdict ~23:00; v1 at 336k
+rows was null — this is the anti-overfit retrain).
+
+**6. Learn-docs media:** Manim pilot (doc 02, 7:11 1080p30 + narration)
+PASSED the user gate and is merged (e95d833); the series was started
+then **POSTPONED by user** ("not now", task #29) — partial agent diff
+saved to session scratchpad, workspace reverted to pilot state. Do not
+resume without an explicit user go.
+
+**7. Ledger:** verify = 0 problems; dotted-path annotation overlays
+fixed in ledger.py (553d8c8). Rows tonight: exp-0087..0091 + annotations
+on exp-0081/2/3/5 (gate cuts).
+
+**RECOMMENDED NEXT MOVES (morning):** (1) read the helm verdict — if
+positive at fixed nodes it is the first play-positive D41 artifact on the
+shared trunk; if null, the data-volume diagnosis routes work to gold
+throughput + in-search capture harvests; (2) D40 speed program (tasks
+#13/#15/#26) — the −17.4 gap is now plausibly closable by build/packing
+alone; (3) king-bucket factorization remains the top pending training
+experiment; (4) S3 of the search program (gainer-season global SPSA)
+waits on fishtest-scale compute (D36) per the season lesson.
+
+## PREVIOUS CHECKPOINT (2026-07-17 06:20)
 
 **OVERNIGHT OUTCOME (all ledgered, details in the dated entries below):**
 1. **Promotion #4 REJECTED (exp-0073)**: d40-uho-v1-240sb vs s4 at equal
