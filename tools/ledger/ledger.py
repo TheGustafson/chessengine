@@ -133,6 +133,27 @@ def ann_index() -> dict[tuple[str, str], dict]:
     return idx
 
 
+def _overlay_path(row: dict, dotted: str, value) -> None:
+    """Apply one overlay key. Dotted keys ('a.net') address nested dicts;
+    each segment matches exactly first, then case-insensitively (annotation
+    keys are conventionally lowercase, row fields may be 'A'/'B')."""
+    parts = dotted.split(".")
+    node = row
+    for seg in parts[:-1]:
+        if seg not in node:
+            seg = next((k for k in node if isinstance(k, str)
+                        and k.lower() == seg.lower()), seg)
+        nxt = node.get(seg)
+        if not isinstance(nxt, dict):
+            node[seg] = nxt = {}
+        node = nxt
+    leaf = parts[-1]
+    if leaf not in node:
+        leaf = next((k for k in node if isinstance(k, str)
+                     and k.lower() == leaf.lower()), leaf)
+    node[leaf] = value
+
+
 def load_merged(fp: Path, kind: str) -> list[dict]:
     """Registry rows with annotation overlays applied (rows on disk stay
     append-only; corrections live in annotations.jsonl — design/18 §5)."""
@@ -141,7 +162,9 @@ def load_merged(fp: Path, kind: str) -> list[dict]:
     for r in load(fp):
         ov = idx.get((kind, r["id"]))
         if ov and ov["set"]:
-            r = {**r, **ov["set"]}
+            r = json.loads(json.dumps(r))  # deep copy before nested overlay
+            for k, v in ov["set"].items():
+                _overlay_path(r, k, v)
         out.append(r)
     return out
 
