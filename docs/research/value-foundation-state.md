@@ -1268,6 +1268,26 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-18 02:10 [RESULT] Speed program R1/R3 decided: native REJECTED, PGO ships +10.5% D40 / +3.0% classic; fastgate running
+
+Definitive fixed-node min-of-5 interleaved timings (the quick nps probe
+was proven noise-dominated on this box — two rounds contradicted by
+±9-18%/cell; lesson + table in r4-micro-audit doc): D40 path v3 688,073
+→ **PGO 760,070 (+10.5%)**, native null; classic v3 1,822,877 → native
+−9.6% (Zen-4 512-bit autovec loses to the AVX2 shapes), **PGO-on-v3
++3.0%**. Two PGO pipeline conditions discovered and encoded in
+tools/build_pgo.sh: profile against the REAL serving net over UCI
+(bench-only profiles leave NNUE kernels unprofiled → inert), and pick
+the base target-cpu per path (PGO_CPU env). Node-identity verified for
+both deployed binaries (probe-sota-pgo, probe-l2048-pgov3). Net
+relative swing to D40 ≈ +7% ≈ +5 Elo at equal time. The **720sb
+equal-time fastgate** (both sides best builds, 200g 10+0.1, seed
+20260723) is running — the ladder reads −57.9 (v3, pre-R4, exp-0073) →
+−17.4 (v3, post-R4, exp-0089) → tonight's rung. Flywheel prep also
+landed tonight: gold-v1 ledgered both teachers (12.5× production
+throughput measured), FEN pool #2 staged (100k, seed 20260800), capture
+harvest wiring committed (pid-suffix shards + eval_match --each-option).
+
 ## 2026-07-17 23:15 [RESULT] Helm v1.1 play test: −29.6±12.9 — offline bars do not transfer; data-volume diagnosis stands
 
 d41-alloc-v11-c as MovePicker prior (true shared-trunk shape:
