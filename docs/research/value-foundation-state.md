@@ -1195,6 +1195,38 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-17 20:55 [DECISION] D45 season CLOSES ship-nothing; gate queue cut by user to jump to the headline gates
+
+TC gate verdicts: c3 rfp-razor **+10.4±14.1 cap-undecided, LLR 1.05**
+(exp-0087, the lone tentative-accept) and c4 nmp **+1.2±14.0, LLR −0.75
+neutral-reject** (exp-0088 — the fixed-node screen positive did not
+survive TC). With c4 dead, the user cut the remaining queue at 20:46:
+c5 stopped at 80 uninformative games, c6/c7 skipped outright, and the
+runner's accidental c8 gate (screen-REJECTED bundle; the campaign loop
+doesn't know screen verdicts) killed at ~15 games. All annotated
+(exp-0081/2/3/5), ledger verify 0 problems (9ce5a0c).
+
+**Season verdict: SHIP NOTHING.** A lone +10.4±14.1 undecided doesn't
+clear the ship bar, and no second accept exists to form the combined
+config. c3's tuned values are preserved in
+`data/nnue/experiments/spsa/c3-rfp-razor/theta_final.json` — the natural
+seed for a future season (or fishtest-scale run) targeting the RFP/razor
+family. The 8/8 decision record: c1/c2 no-change certified, c3
+tentative-positive-unshipped, c4 neutral, c5/c6/c7 screen-positive
+TC-unverified, c8 rejected. Consistent with exp-0078's plateau
+calibration: post-S1 defaults sit within ~10 Elo on every bundle probed;
+sub-10-Elo mining is fishtest-scale, not one-box-scale.
+
+Tooling landed in the window: `tools/spsa/combined_gate_v1.sh` (union
+ship-SPRT, unused this season but smoke-tested), ledger dotted-path
+annotation overlays (553d8c8 — the exp-0084 correction had been landing
+at top level; verify went 3 problems → 0).
+
+The runner is on the headline gates as of 20:54: 720sb equal-time vs s4
+(the D45a question: how much of exp-0073's −57.9 inference tax did
+R4 + 720sb repair) → s4 promo5 re-check → speed A/B → then the SF16
+rematch, gold-v1 20k launch, and the v1.1 helm play test.
+
 ## 2026-07-17 18:20 [RESULT] D41 v1.1: the anti-overfit stack works — held-out top-1 0.258 CLEARS the classical bar
 
 Grid on the GPU while gates play (agent branch merged, 884ae3b; net
