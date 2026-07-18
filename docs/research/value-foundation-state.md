@@ -1306,6 +1306,53 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-18 13:35 [STUDY+RESULTS] "What holds ARCHON back" — search caught up to −49/node vs Reckless; stage-2 dead; king-bucket factorization is the active eval lever
+
+Big afternoon. Full study: docs/research/what-holds-archon-back-2026-07-18.md.
+1. **Study verdict:** engine is architecturally complete; eval is COMPETITIVE
+   with SF16 (70% draws, exp-0060; D40 wins per node, NPS-limited not
+   quality-limited); the binding constraint is testing/tuning throughput (D36)
+   + external deflation (internal +265 over net-0 but still −63/−78 vs SF16;
+   S1 +72.9 internal moved the anchor ≤+15). One-box eval headroom is modest
+   (~30-40 fixed-node): longer stage-1 + king-bucket factorization.
+2. **Search RE-MEASURED vs Reckless (exp-0096), the deflation-free instrument:**
+   ARCHON-search vs Reckless-search, both on the v60 net, fixed 100k nodes =
+   **−49.0 ± 24.8** (was −86.68 on 2026-07-13, pre-P9-waves-C-G + pre-S1). The
+   P9 Wave C-G batch + S1 correction history closed ~+38 of the search gap to a
+   top-2 engine. Real residual (~49) remains but HALVED. The firewalled
+   Reckless-net instrument (rebased onto main today, branch
+   instrument/reckless-net-v60, worktree .claude/worktrees/reckless-v60,
+   engines/bin/probe-recklessnet, RECKLESS_NET=v60 env) is now a deflation-free
+   FIXED-NODE test bed for search changes. Its scalar forward is slow (273k nps
+   full-refresh) — FIXED-NODE ONLY.
+3. **NPS reality (user asked):** real Reckless ~817k nps; our D40-sota 604k
+   (SLOWER than Reckless now — the threats FT made our eval Reckless-like);
+   our classic-2048 1366k (HalfKA-only, simpler); net-0 was 2.36M (tiny/weak).
+   NPS is work-per-node, not quality — our old "2.5× faster" was a cheap-net
+   artifact. Adding threats converged our NPS to Reckless's (the right trade).
+   The equal-time reckless-net-vs-D40 test was CUT (user): confounded by the
+   instrument's slow scalar port; can't cleanly compare net quality.
+4. **Stage-2 DEAD for D40 (exp-0095, definitive):** diag2 (strong-warm + LR
+   5e-4) = **−72.9, CI [−106,−40]**. Three cells: −23.2 / −12.7 / −72.9. NOT a
+   score-div bug (classic +54.9 used the same farseerT76+div1.9). Mechanism:
+   D40's threat FT + more-converged 720sb stage-1 are brittle to the farseer
+   distribution shift; more LR = more regression. Eval lever = longer stage-1
+   (same UHO dist) + factorization, NOT stage-2.
+5. **ACTIVE: king-bucket factorization (#27, user-chosen highest-leverage
+   eval lever).** We train the 32-bucket HalfKA UNfactorized (no gradient
+   sharing). Implementation delegated (env-gated D40_FACTORIZE in
+   d40_features.rs: widen HalfKA FT +704 bucket-agnostic slots, mapper emits
+   each feature's factor, FOLD virtual→real at export = zero inference cost,
+   mirrors bullet merge_factoriser). Gate: factorized-240sb vs d40-uho-v1-240sb
+   twin, 300g@5k, want ≥+15; data-efficiency signature factorized-60sb ≈
+   unfactorized-240sb. Expected +10-30 fixed-node.
+6. Other: gold-v2 monitor workers HUNG (9.6h @0.8% CPU), reaped; 180k-position
+   production corpus salvaged + ledgered (gold-v2-teachers, feeds a future
+   low-priority d41-gold-v2). Attention Stage-0 trainer written (d40_attn.rs,
+   diagonal self-gating — full Q·Kᵀ self-attention NOT expressible at bullet's
+   model-builder level; needs tensor-IR or PyTorch). Reckless-net instrument
+   committed ee7cf47 (worktree branch).
+
 ## 2026-07-18 11:45 [RESULT] Corrected D40 stage-2 (gentle, LR 2.5e-4) = −12.7 vs 720sb — NO GAIN; testing LR 5e-4 next (exp-0094)
 
 Screen done: d40-s2-diag-120sb vs d40-uho-720sb = **−12.7 Elo** (300g 5k,
