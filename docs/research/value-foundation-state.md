@@ -1279,6 +1279,38 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-18 04:05 [RESULT] Capture at 12× scale: quantity helped, ordering ceiling holds — top-1 now BEATS gold, rank_corr does not
+
+Batched scale-up done: 12 batches × 600 self-play games → 7.67M exact-node
+arms (450,956 exact positions; the batched harvest→export→delete-raw loop
+held disk at 20 GB throughout). Retrained d41-capture-scale on ~8.37M arms
+(with capture-scale-v1), 20 superbatches:
+
+| net | exact arms | rank_corr | top-1 | best sb |
+|---|---|---|---|---|
+| d41-capture-v1 | 0.7M | 0.197 | 0.235 | 1 (overfit) |
+| **d41-capture-scale** | **8.37M** | **0.263** | **~0.30** | **19** |
+| v1.1-gold | 0.34M×3 | 0.706 | 0.258 | — |
+| cold-classical | — | — | 0.181 | — |
+
+VERDICT (answers the user's "how useful is that data"): 12× more capture
+data lifted rank_corr +0.07 and top-1 +0.06 and resolved the immediate
+overfit (best sb 1→19), so data starvation was real. BUT rank_corr plateaus
+at ~0.26 — 2.7× below gold's 0.706 — the bound-contaminated non-best-arm
+ordering is a QUALITY ceiling scale can't break. The striking part:
+capture-at-scale top-1 (~0.30) BEATS gold's top-1 (0.258) — exact PV-node
+best moves are a *stronger best-move teacher* than the gold corpus at this
+volume. So capture's value is concentrated in the FIRST move (clean, exact),
+not the tail ordering (bounds). Levers: (1) a refined bridge emitting
+reliable partial orderings from `raised_alpha`/`caused_cutoff` flags instead
+of bound margins could rescue rank_corr; (2) a capture(top-1)+gold(ordering)
+BLEND may dominate either alone. Corpus ledgered capture-scale-batches-v1
+(sha 8480cf1b). NOTE: these bars are on held-out CAPTURE data, not a common
+test set — a fair capture-vs-gold comparison needs same-test cross-eval (or
+the play test, expected negative given rank_corr 0.26 « picker strength).
+Next overnight run: gold-v2 teacher labeling (clean-ordering reference +
+flywheel cycle-1 corpus).
+
 ## 2026-07-18 03:15 [FINDING] In-search capture is 99.6% bounds — cheap volume, thin clean core; first helm train on it is best-move-usable but ordering-noisy
 
 User directive (asleep, all-night mandate): "figure out how useful [the
