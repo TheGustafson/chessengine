@@ -9,10 +9,18 @@
 > never reset/discard the worktree, D38 ledger rows for every
 > net/corpus/match, local commits only (never push).
 >
-> **GOVERNING GOAL (user, 2026-07-15):** Find out WHY we struggle to train
-> nets that beat net-0 — fast — then spend all effort improving models well
-> beyond it. A world-class eval-only engine is the prerequisite for the D41
-> research program. Roadmap doc: `archon-self-improvement-roadmap.md` (B4).
+> **NORTH-STAR GOAL (user, 2026-07-18 via /loop 15m):** a SEARCH-AUGMENTED
+> NNUE that BEATS SF16 by +30 Elo at EQUAL TIME (10+0.1). ARCHON is currently
+> ~−63 to −78 vs SF16 at equal time → need ~+95-110 Elo. Open research
+> question "how"; be ruthless, prioritize the highest-value lever each loop,
+> use the box fully. Ranked levers: (A) EVAL quality (D40 nets/data/king-bucket
+> #27/packing #26), (B) SEARCH (SF14→16 patch study, S2 SPSA, corr-history),
+> (C) SPEED (PGO done, packing/narrower-L1), (D) D41 helm search-augmentation
+> (play-negative, low priority until A/B advance). Don't tunnel on the helm.
+> **GOVERNING GOAL (user, 2026-07-15, still binding):** Find out WHY we
+> struggle to train nets that beat net-0 — fast — then improve well beyond it.
+> A world-class eval engine is the prerequisite. Roadmap:
+> `archon-self-improvement-roadmap.md` (B4).
 > **PROMOTION BAR (user, 2026-07-15 evening): candidates must beat net-0 at
 > EQUAL TIME** — fixed-node screens are attribution instruments only; the
 > gate is a 200-game 10+0.1 real-TC match (`tools/nnue/prod_tc_gate.sh`,
