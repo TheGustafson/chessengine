@@ -55,10 +55,25 @@ the checklist; the live log stays `value-foundation-state.md`.
 
 ## Open items before cycle 1 starts
 
-- [ ] Speed matrix (v3/native/PGO × D40/classic) — running tonight.
-- [ ] Capture yield measurement: rows/game at the standard screen config
-  (first fixed-node screen with ObsCapturePath set, then obs-tool export).
-- [ ] FEN pool #2: 100k fresh openings-derived positions, dedup vs
-  obs-gold-v1-fens + big-v1 pools (seed 20260800).
+- [x] Speed matrix (v3/native/PGO × D40/classic) — DONE 2026-07-18: R1
+  native rejected, R3 PGO shipped (+10.5% D40 / +3.0% classic); the 720sb
+  equal-time fastgate closed to −8.7±12.9 (CI straddles zero, exp-0093).
+- [x] Capture yield measurement — DONE 2026-07-18 (capture-yield-pilot,
+  probe-l2048-datagen, s3-farseer both sides, 40g @50k nodes, MinDepth 6 /
+  SampleBits 4 / PerGameCap 20000): **16,104 positions/game, 118,593
+  per-move rows/game**, 9.4 MB/game, 584 B/record, audit 0 problems. 40
+  games alone → 644k positions / 4.7M per-move rows (> the entire big-v1
+  helm corpus). Capture is effectively free and disk-bound, not
+  compute-bound: 1000g @50k ≈ 16M positions / 9.4 GB. IMPLICATION: the
+  expensive overnight investment is TEACHER gold labeling (external
+  signal); self-capture is a cheap high-volume supplement whose ceiling is
+  self-distillation. Yield is depth-sensitive (MinDepth 6 harvests only
+  ≥6-remaining-depth nodes) — deeper screens yield far more; a 2000-node
+  gate screen yields much less. Shards:
+  data/obs/harvest/yield-probe/*.ceobs (ledger obs-cap-yield-pilot).
+- [x] FEN pool #2: 100k fresh openings-derived positions, dedup vs
+  obs-gold-v1-fens + big-v1 pools (seed 20260800) —
+  data/nnue/experiments/obs-pool2-fens.txt (100,001 lines).
 - [ ] Decide harvest-B blend weighting (teacher rows vs capture rows) —
-  start uniform, measure.
+  start uniform, measure. (Capture is ~free so it can dominate by volume;
+  cap its weight so teacher signal is not drowned — decide at train time.)

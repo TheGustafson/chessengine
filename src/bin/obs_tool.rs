@@ -15,7 +15,7 @@
 use chessengine::board::Board;
 use chessengine::obs::convert::{board_from_position, fen_from_position, replay_path};
 use chessengine::obs::{
-    Completion, Episode, EpisodeKind, Observation, PositionState, Provenance, ShardReader,
+    Bound, Completion, Episode, EpisodeKind, Observation, PositionState, Provenance, ShardReader,
 };
 use std::process::ExitCode;
 
@@ -448,9 +448,20 @@ impl CorpusBuilder {
     ///     a position on one side; the trainer groups ranking by (key, tier), so
     ///     shallow/deep searches stay separate ranking problems.
     fn add_episode_tiered(&mut self, episode: &Episode, teacher_id: u8, all_tiers: bool) {
-        if episode.kind != EpisodeKind::RootMoveAnalysis {
-            self.stats.non_rootmove_episodes += 1;
-            return;
+        match episode.kind {
+            EpisodeKind::RootMoveAnalysis => {}
+            // In-search capture (design/16 §3.5.5): each RECORD is its own
+            // sampled interior node (full position key, empty replay path), so
+            // it folds record-as-position — not the shared-replay-root +
+            // per-tier shape the RootMoveAnalysis path below assumes.
+            EpisodeKind::InSearchCapture => {
+                self.add_insearch_episode(episode, teacher_id);
+                return;
+            }
+            _ => {
+                self.stats.non_rootmove_episodes += 1;
+                return;
+            }
         }
         self.stats.positions_in += 1;
         let key = episode.replay_root.canonical_key;
@@ -508,6 +519,48 @@ impl CorpusBuilder {
             }
         } else {
             self.emit_record(deepest.unwrap(), &feats, position_id, key, stm, teacher_id);
+        }
+    }
+
+    /// Fold one in-search-capture episode (design/16 §3.5.5). Each record is an
+    /// independently-keyed interior search node, so we iterate records-as-
+    /// positions (features from the record's own position, not a shared replay
+    /// root). QUARANTINE-SAFE label gate: the recorder stamps every capture
+    /// `Completion::Complete`, so completion is NOT an exactness signal here —
+    /// the node's `bound` is. Only `Bound::Exact` (PV) nodes carry a true
+    /// evaluation; cut/all nodes are aspiration bounds and are dropped (the same
+    /// bound-quarantine our 5k-node datagen labels sit under). NOTE: even at an
+    /// exact node, non-best arms' `returned_score` are scout-search bounds, so
+    /// the emitted margins are ordering-grade, not clean scalar values — train
+    /// this as a pairwise/ranking signal, not an L2 value target.
+    fn add_insearch_episode(&mut self, episode: &Episode, teacher_id: u8) {
+        for record in &episode.records {
+            self.stats.positions_in += 1;
+            if record.search.bound != Bound::Exact {
+                self.stats.skip_no_complete_reference += 1;
+                continue;
+            }
+            if !record.moves.iter().any(|m| m.completion == Completion::Complete) {
+                self.stats.skip_no_complete_arms += 1;
+                continue;
+            }
+            let key = record.position.canonical_key;
+            if !self.seen_keys.insert(key) {
+                self.stats.dedup_drops += 1;
+                continue;
+            }
+            let feats = match source_features(&record.position) {
+                Ok(feats) => feats,
+                Err(_) => {
+                    self.stats.skip_bad_position += 1;
+                    continue;
+                }
+            };
+            let stm = record.position.stm;
+            let position_id = self.next_position_id;
+            self.next_position_id += 1;
+            self.stats.positions_out += 1;
+            self.emit_record(record, &feats, position_id, key, stm, teacher_id);
         }
     }
 

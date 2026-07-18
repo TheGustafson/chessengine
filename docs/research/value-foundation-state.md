@@ -1279,6 +1279,47 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-18 03:15 [FINDING] In-search capture is 99.6% bounds — cheap volume, thin clean core; first helm train on it is best-move-usable but ordering-noisy
+
+User directive (asleep, all-night mandate): "figure out how useful [the
+in-search capture] data is by generating a lot of it and training." Result
+chain:
+
+1. **Yield is huge but mostly unusable.** Capture at 50k nodes gives ~16k
+   positions/game, but the recorder samples INTERIOR search nodes and stamps
+   every one `Completion::Complete` (completion is NOT an exactness signal —
+   the node's `bound` is). Only `Bound::Exact` (PV) nodes carry a true
+   evaluation; cut/all nodes are aspiration bounds (the same quarantine our
+   5k-node datagen labels sit under). Measured over 600 self-play games +
+   the 40g pilot = **11.57M captured positions → 41,527 exact (0.36%) →
+   700,828 pairwise arms**. skip_no_complete_reference = 11.27M (the bounds).
+2. **New bridge (obs-tool).** `export-train` rejected all capture (episode
+   kind `InSearchCapture` ≠ `RootMoveAnalysis`). Added `add_insearch_episode`
+   (per-record-as-position fold, `Bound::Exact` gate, reuses `emit_record`);
+   datagen-only, clippy-clean, does not touch the shipped engine/bench.
+3. **First train (d41-capture-v1, 700k arms, exact d41_alloc11 recipe,
+   frozen 720sb trunk, pairwise, tier 50k):** held-out **rank_corr 0.197
+   (best at superbatch 1 → overfits) / top-1 0.235**. Compare v1.1-gold
+   (336k×3) 0.706/0.258 and cold-classical 0.181. Reading: capture teaches a
+   usable BEST-MOVE (top-1 clears cold by +5 pts) but poor FULL ORDERING
+   (rank_corr collapses 0.71→0.20) because non-best arms are scout-search
+   bounds, so the emitted margins are ordering-grade noise. It is both
+   data-starved (overfits at sb1, like v1.1) AND label-noisy.
+4. **Overnight scale-up LAUNCHED** (`tools/obs/capture_scale_batches.sh`,
+   PID 2954506): 12 batches × 600 games, batched harvest→export→delete-raw
+   to keep disk bounded (raw .ceobs is ~9.4 GB/600g and can't be kept at
+   scale). Target ~8M exact arms → retrain to separate quantity from the
+   label-quality ceiling. ETA ~2.2 h.
+
+IMPLICATION for the flywheel: the in-search capture is NOT the free-data
+goldmine the raw 16k pos/game suggested — the clean core is 0.36%, and its
+per-move margins are bound-contaminated. Best-move (top-1) transfer is the
+only clean signal; a future bridge could emit RELIABLE partial orderings
+from `raised_alpha`/`caused_cutoff` flags instead of bound margins. Teacher
+gold labeling remains the high-signal source; capture is a best-move
+supplement whose weight must be capped. Corpus ledgered
+`capture-scale-v1-train` (sha 463bef0b); raw scale-v1 reclaimed post-export.
+
 ## 2026-07-18 02:35 [MILESTONE] Speed program CLOSED — fastgate −8.7±12.9, D40 at equal-time parity with the classic incumbent
 
 The 720sb equal-time fastgate finished 200g 10+0.1, best-PGO both sides
