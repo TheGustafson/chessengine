@@ -1,0 +1,389 @@
+{
+  "video": "02",
+  "title": "Board Representation \u2014 Bitboards",
+  "voice": "en_US-ryan-high",
+  "fps": 30,
+  "pad_seconds": 0.55,
+  "total_duration": 431.9667,
+  "total_words": 1254,
+  "scenes": [
+    {
+      "key": "S1_hook",
+      "title": "The question",
+      "duration": 32.9333,
+      "tail": 0.5,
+      "global_start": 0.0,
+      "beats": [
+        {
+          "id": "s1a",
+          "text": "A chessboard is eight by eight: sixty-four squares, each one empty or holding one of twelve kinds of piece. That is a tiny amount of information. You could write down any position in sixty-four bytes.",
+          "wav": "audio/02/s1a.wav",
+          "audio_dur": 11.4939,
+          "beat_dur": 12.0667,
+          "scene_beat_offset": 0.0,
+          "global_offset": 0.0
+        },
+        {
+          "id": "s1b",
+          "text": "So the interesting question is not whether a computer can store a board. It is how to store it, so that the questions an engine asks billions of times a second are almost free. Which squares does this bishop attack? Is this square defended? Generate every pawn move.",
+          "wav": "audio/02/s1b.wav",
+          "audio_dur": 14.0249,
+          "beat_dur": 14.6,
+          "scene_beat_offset": 12.0667,
+          "global_offset": 12.0667
+        },
+        {
+          "id": "s1c",
+          "text": "The answer, used by every strong engine, is the bitboard. Let us build it from first principles.",
+          "wav": "audio/02/s1c.wav",
+          "audio_dur": 5.2013,
+          "beat_dur": 5.7667,
+          "scene_beat_offset": 26.6667,
+          "global_offset": 26.6667
+        }
+      ]
+    },
+    {
+      "key": "S2_squares",
+      "title": "Squares as numbers",
+      "duration": 60.6,
+      "tail": 0.5,
+      "global_start": 32.9333,
+      "beats": [
+        {
+          "id": "s2a",
+          "text": "First, every square needs a name that a computer likes. ARCHON numbers them zero to sixty-three. a1 is zero, b1 is one, along the first rank to h1, which is seven. Then a2 is eight, and so on, all the way up to h8, which is sixty-three.",
+          "wav": "audio/02/s2a.wav",
+          "audio_dur": 15.3136,
+          "beat_dur": 15.8667,
+          "scene_beat_offset": 0.0,
+          "global_offset": 32.9333
+        },
+        {
+          "id": "s2b",
+          "text": "This is the little-endian rank-file mapping, and the rule behind it is just this: index equals rank times eight, plus file.",
+          "wav": "audio/02/s2b.wav",
+          "audio_dur": 7.2795,
+          "beat_dur": 7.8333,
+          "scene_beat_offset": 15.8667,
+          "global_offset": 48.8
+        },
+        {
+          "id": "s2c",
+          "text": "That choice pays off at once. Because the file is the low three bits of the index, and the rank is the next three bits, you pull them apart with a mask and a shift. No division needed. Take e4. Its index is twenty-eight. The low three bits are four, the e-file. The next three bits are three, the fourth rank.",
+          "wav": "audio/02/s2c.wav",
+          "audio_dur": 16.9041,
+          "beat_dur": 17.4667,
+          "scene_beat_offset": 23.7,
+          "global_offset": 56.6333
+        },
+        {
+          "id": "s2d",
+          "text": "Why this order, instead of counting down from a8, which reads more like a printed diagram? Because now bit arithmetic mirrors board geometry. Shift the whole number left by eight, and every piece moves up one rank. Shift by one, and it moves east one file. Geometry, done with arithmetic. That is the payoff we are chasing.",
+          "wav": "audio/02/s2d.wav",
+          "audio_dur": 18.3786,
+          "beat_dur": 18.9333,
+          "scene_beat_offset": 41.1667,
+          "global_offset": 74.1
+        }
+      ]
+    },
+    {
+      "key": "S3_bitboard",
+      "title": "A board is a set of squares",
+      "duration": 46.1,
+      "tail": 0.5,
+      "global_start": 93.5333,
+      "beats": [
+        {
+          "id": "s3a",
+          "text": "Here is the key idea. A sixty-four-bit integer has exactly sixty-four bits. A chessboard has exactly sixty-four squares. So one u64 can represent any set of squares at all: bit i is one if square i is in the set, and zero if it is not. That integer is a bitboard.",
+          "wav": "audio/02/s3a.wav",
+          "audio_dur": 16.6835,
+          "beat_dur": 17.2667,
+          "scene_beat_offset": 0.0,
+          "global_offset": 93.5333
+        },
+        {
+          "id": "s3b",
+          "text": "ARCHON wraps the raw integer in a newtype, Bitboard, a struct around a single u64, so the compiler will never let you confuse a set of squares with some other number. It exposes behavior, the set operations, and hides the representation, the raw bits.",
+          "wav": "audio/02/s3b.wav",
+          "audio_dur": 15.7315,
+          "beat_dur": 16.3,
+          "scene_beat_offset": 17.2667,
+          "global_offset": 110.8
+        },
+        {
+          "id": "s3c",
+          "text": "And you do not keep just one. A full position is a whole collection of bitboards: the white pawns, the black knights, all white pieces, every occupied square. One board for each question you might want to ask.",
+          "wav": "audio/02/s3c.wav",
+          "audio_dur": 11.459,
+          "beat_dur": 12.0333,
+          "scene_beat_offset": 33.5667,
+          "global_offset": 127.1
+        }
+      ]
+    },
+    {
+      "key": "S4_setops",
+      "title": "Set operations, one instruction each",
+      "duration": 45.9667,
+      "tail": 0.5,
+      "global_start": 139.6333,
+      "beats": [
+        {
+          "id": "s4a",
+          "text": "And this is why the representation is transformative. Set operations become single machine instructions, each one acting on all sixty-four squares at the same time.",
+          "wav": "audio/02/s4a.wav",
+          "audio_dur": 9.2299,
+          "beat_dur": 9.8,
+          "scene_beat_offset": 0.0,
+          "global_offset": 139.6333
+        },
+        {
+          "id": "s4b",
+          "text": "The union of two sets, the squares in either one, is a bitwise OR.",
+          "wav": "audio/02/s4b.wav",
+          "audio_dur": 4.4582,
+          "beat_dur": 5.0333,
+          "scene_beat_offset": 9.8,
+          "global_offset": 149.4333
+        },
+        {
+          "id": "s4c",
+          "text": "The intersection, the squares in both, is a bitwise AND.",
+          "wav": "audio/02/s4c.wav",
+          "audio_dur": 3.4714,
+          "beat_dur": 4.0333,
+          "scene_beat_offset": 14.8333,
+          "global_offset": 154.4667
+        },
+        {
+          "id": "s4d",
+          "text": "The difference, squares in the first but not the second, is an AND with the complement of the second.",
+          "wav": "audio/02/s4d.wav",
+          "audio_dur": 4.9459,
+          "beat_dur": 5.5,
+          "scene_beat_offset": 18.8667,
+          "global_offset": 158.5
+        },
+        {
+          "id": "s4e",
+          "text": "And the complement itself, every square not in the set, is a bitwise NOT.",
+          "wav": "audio/02/s4e.wav",
+          "audio_dur": 4.377,
+          "beat_dur": 4.9333,
+          "scene_beat_offset": 24.3667,
+          "global_offset": 164.0
+        },
+        {
+          "id": "s4f",
+          "text": "So a loaded question, like which of my pawns are attacked by an enemy piece, becomes: my pawns, AND, enemy attacks. One instruction. Geometry has turned into arithmetic, and arithmetic on sixty-four-bit words is exactly what a processor is fastest at.",
+          "wav": "audio/02/s4f.wav",
+          "audio_dur": 15.6154,
+          "beat_dur": 16.1667,
+          "scene_beat_offset": 29.3,
+          "global_offset": 168.9333
+        }
+      ]
+    },
+    {
+      "key": "S5_knight",
+      "title": "A picture",
+      "duration": 23.3667,
+      "tail": 0.5,
+      "global_start": 185.6,
+      "beats": [
+        {
+          "id": "s5a",
+          "text": "Bitboards are easier to believe once you actually see one. Here is the set of squares a knight on d4 attacks: eight squares, and as a u64, one specific sixty-four-bit number.",
+          "wav": "audio/02/s5a.wav",
+          "audio_dur": 10.5883,
+          "beat_dur": 11.1667,
+          "scene_beat_offset": 0.0,
+          "global_offset": 185.6
+        },
+        {
+          "id": "s5b",
+          "text": "ARCHON has this precomputed for all sixty-four possible knight squares. However you obtain it, the result is just a bitboard, ready to be ANDed and ORed with everything else on the board.",
+          "wav": "audio/02/s5b.wav",
+          "audio_dur": 11.134,
+          "beat_dur": 11.7,
+          "scene_beat_offset": 11.1667,
+          "global_offset": 196.7667
+        }
+      ]
+    },
+    {
+      "key": "S6_tricks",
+      "title": "Three bit tricks",
+      "duration": 67.4,
+      "tail": 0.5,
+      "global_start": 208.9667,
+      "beats": [
+        {
+          "id": "s6a",
+          "text": "Three primitive operations show up constantly, and the processor has a dedicated instruction for each. First, population count: how many squares are in the set? One instruction. How many pawns do I have is a single popcount.",
+          "wav": "audio/02/s6a.wav",
+          "audio_dur": 13.2354,
+          "beat_dur": 13.8,
+          "scene_beat_offset": 0.0,
+          "global_offset": 208.9667
+        },
+        {
+          "id": "s6b",
+          "text": "Second, the least significant bit: which is the lowest square in the set? That is the count of trailing zeros, which is exactly the index of the lowest one-bit.",
+          "wav": "audio/02/s6b.wav",
+          "audio_dur": 8.5333,
+          "beat_dur": 9.1,
+          "scene_beat_offset": 13.8,
+          "global_offset": 222.7667
+        },
+        {
+          "id": "s6c",
+          "text": "Third, pop the lowest bit: remove and return that square. Clearing the lowest set bit is the classic trick, x AND x minus one. Repeat until the board is empty, and you have visited every piece. This is the bitboard's for-loop.",
+          "wav": "audio/02/s6c.wav",
+          "audio_dur": 13.1541,
+          "beat_dur": 13.7333,
+          "scene_beat_offset": 22.9,
+          "global_offset": 231.8667
+        },
+        {
+          "id": "s6d",
+          "text": "Watch it run across the knights. Each step hands you one square, in ascending order, and the loop runs exactly as many times as there are pieces to visit. No wasted work, no branch per square.",
+          "wav": "audio/02/s6d.wav",
+          "audio_dur": 10.4258,
+          "beat_dur": 11.0,
+          "scene_beat_offset": 36.6333,
+          "global_offset": 245.6
+        },
+        {
+          "id": "s6e",
+          "text": "One last family: directional shifts. Because of our mapping, shifting left by eight moves every square up a rank. So every white pawn's single push is just the pawns, shifted left by eight. The whole pawn army advances in one instruction, with a small mask to stop a piece on the h-file from wrapping around the edge of the board.",
+          "wav": "audio/02/s6e.wav",
+          "audio_dur": 18.7153,
+          "beat_dur": 19.2667,
+          "scene_beat_offset": 47.6333,
+          "global_offset": 256.6
+        }
+      ]
+    },
+    {
+      "key": "S7_mailbox",
+      "title": "The other half of the hybrid",
+      "duration": 60.7333,
+      "tail": 0.5,
+      "global_start": 276.3667,
+      "beats": [
+        {
+          "id": "s7a",
+          "text": "Bitboards are brilliant at which squares have property X. But they are clumsy at the opposite question: what piece, if any, is on this one square? With bitboards alone you would have to test up to twelve boards to find the answer, and that question comes up on every single capture.",
+          "wav": "audio/02/s7a.wav",
+          "audio_dur": 14.617,
+          "beat_dur": 15.2,
+          "scene_beat_offset": 0.0,
+          "global_offset": 276.3667
+        },
+        {
+          "id": "s7b",
+          "text": "So ARCHON keeps a second, redundant representation right alongside them: a plain array of sixty-four slots, each holding a piece, or nothing. It is called a mailbox, each square a little box you can peek into. Now, what is on d5, is a single array lookup, done in constant time.",
+          "wav": "audio/02/s7b.wav",
+          "audio_dur": 16.8345,
+          "beat_dur": 17.4,
+          "scene_beat_offset": 15.2,
+          "global_offset": 291.5667
+        },
+        {
+          "id": "s7c",
+          "text": "Two copies of the same fact must never disagree. So every placement change funnels through two private methods, put_piece and remove_piece, which update the bitboards and the mailbox together. One code path, so the two layers can never drift out of sync.",
+          "wav": "audio/02/s7c.wav",
+          "audio_dur": 13.7114,
+          "beat_dur": 14.2667,
+          "scene_beat_offset": 32.6,
+          "global_offset": 308.9667
+        },
+        {
+          "id": "s7d",
+          "text": "That is the hybrid design: bitboards as the primary representation, for fast set algebra, and a mailbox as a constant-time index, for point lookups. A little extra memory, in exchange for both kinds of speed.",
+          "wav": "audio/02/s7d.wav",
+          "audio_dur": 12.8058,
+          "beat_dur": 13.3667,
+          "scene_beat_offset": 46.8667,
+          "global_offset": 323.2333
+        }
+      ]
+    },
+    {
+      "key": "S8_layout",
+      "title": "The full board",
+      "duration": 65.7333,
+      "tail": 0.5,
+      "global_start": 337.1,
+      "beats": [
+        {
+          "id": "s8a",
+          "text": "Put it all together, and here is the heart of ARCHON's board. Twelve piece bitboards, indexed by color and piece type. White pawns, white knights, on up to black king, one board for each.",
+          "wav": "audio/02/s8a.wav",
+          "audio_dur": 10.2052,
+          "beat_dur": 10.7667,
+          "scene_beat_offset": 0.0,
+          "global_offset": 337.1
+        },
+        {
+          "id": "s8b",
+          "text": "Plus two aggregates, kept purely for speed. Color occupancy, the union of one side's six boards. And all occupancy, every occupied square, which the sliding pieces depend on. Redundant, but computing them once and keeping them saves work on every query.",
+          "wav": "audio/02/s8b.wav",
+          "audio_dur": 15.4877,
+          "beat_dur": 16.0667,
+          "scene_beat_offset": 10.7667,
+          "global_offset": 347.8667
+        },
+        {
+          "id": "s8c",
+          "text": "Then the mailbox for point lookups, and a single bit, side to move, the flag that flips every ply. And the pieces themselves are small enum values, laid out from least to most valuable, pawn up to queen, then king, so that move-ordering routines can simply iterate in order.",
+          "wav": "audio/02/s8c.wav",
+          "audio_dur": 15.3948,
+          "beat_dur": 15.9667,
+          "scene_beat_offset": 26.8333,
+          "global_offset": 363.9333
+        },
+        {
+          "id": "s8d",
+          "text": "Every file downstream is written in this vocabulary. Move generation is a series of ANDs and ORs against precomputed attack sets. Hashing indexes a random key by piece and square. Evaluation loops over these boards and pops squares. The board is not a detail you set up and forget. It is the substrate whose shape dictates how every later algorithm is written.",
+          "wav": "audio/02/s8d.wav",
+          "audio_dur": 21.8732,
+          "beat_dur": 22.4333,
+          "scene_beat_offset": 42.8,
+          "global_offset": 379.9
+        }
+      ]
+    },
+    {
+      "key": "S9_recap",
+      "title": "What you now know",
+      "duration": 29.1333,
+      "tail": 0.0,
+      "global_start": 402.8333,
+      "beats": [
+        {
+          "id": "s9a",
+          "text": "So, to recap. Squares are numbered zero to sixty-three, so that file and rank are just a mask and a shift. A bitboard is a u64 read as a set of squares, where union, intersection, and complement are single instructions. And a redundant mailbox answers what is on this square in constant time.",
+          "wav": "audio/02/s9a.wav",
+          "audio_dur": 17.7052,
+          "beat_dur": 18.2667,
+          "scene_beat_offset": 0.0,
+          "global_offset": 402.8333
+        },
+        {
+          "id": "s9b",
+          "text": "Next, we take these attack sets and actually generate moves, including one of the most beautiful hacks in the whole field, magic bitboards. That is file three, move generation.",
+          "wav": "audio/02/s9b.wav",
+          "audio_dur": 10.3097,
+          "beat_dur": 10.8667,
+          "scene_beat_offset": 18.2667,
+          "global_offset": 421.1
+        }
+      ]
+    }
+  ]
+}

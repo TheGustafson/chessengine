@@ -1,0 +1,23 @@
+# Heavy artifacts — never commit bytes. Commit only text:
+# PLAN.md, scripts/*, manifests/*, scenes/*, pipeline/*, .gitignore
+venv/
+media/
+audio/
+voices/
+checkpoints/
+
+# belt-and-suspenders: media / audio / model bytes anywhere in the tree
+*.mp4
+*.mov
+*.mkv
+*.wav
+*.mp3
+*.aac
+*.m4a
+*.onnx
+*.onnx.json
+
+# python cruft
+__pycache__/
+*.pyc
+.manim_cache/
