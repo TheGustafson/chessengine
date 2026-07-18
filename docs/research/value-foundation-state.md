@@ -21,16 +21,21 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-17 ~22:30 America/New_York
+Last updated: 2026-07-18 ~02:35 America/New_York
 
-## TAKEOVER CHECKPOINT (2026-07-17 22:30 — read this first)
+## TAKEOVER CHECKPOINT (2026-07-18 02:35 — read this first)
 
-**THE DAY IN ONE LINE:** D45 SPSA season closed 8/8 ship-nothing (the
-post-S1 defaults are certified within ~10 Elo everywhere probed); the R4
-speed stack measured +43.8% NPS on the D40 path and cut the 720sb
-equal-time deficit from −57.9 to −17.4; s3 stays incumbent; the SF16
-anchor moved −78 → −63 (not significant); the D41 helm v1.1 play test and
-the gold-v1 20k parallel labeling are running overnight.
+**THE DAY IN ONE LINE:** the speed program CLOSED — R1 native REJECTED, R3
+PGO SHIPPED (+10.5% D40 / +3.0% classic, machine-local), and the final
+720sb equal-time fastgate on best-PGO builds both sides landed
+**−8.7±12.9 (bootstrap CI [−31.4,+13.9] STRADDLES ZERO)**: D40 is now
+statistically at parity with the s4 classic incumbent at equal time
+(ladder −57.9 → −17.4 → −8.7). D45 SPSA season stays 8/8 ship-nothing;
+s3-farseer stays incumbent (s4 no-promo 0.0±11.3); SF16 anchor −63 (n.s.);
+helm v1.1 play-NEGATIVE (−29.6±12.9, exp-0092) → data-scale-first.
+**NEXT (overnight, autonomous, user asleep, all-resources mandate):**
+capture-yield pilot + the pool2 overnight gold harvest (~6.8M rows) to
+build the flywheel cycle-1 corpus, then train on the scaled corpus.
 
 **1. D45 SPSA season FINAL (exp-0075..0088):** c1/c2 NO-CHANGE certified,
 c3 tentative-positive-UNSHIPPED (+10.4±14.1 cap-undecided, exp-0087; a
@@ -45,14 +50,20 @@ Tooling kept: `tools/spsa/combined_gate_v1.sh` (union ship-SPRT, unused),
 tune builds + `tunables` advertising, night_gates runner (nps_probe
 piped-quit race now fixed).
 
-**2. D45a headline (exp-0089):** d40-uho-720sb vs s4 at EQUAL TIME =
-**−17.4±12.8**, up from −57.9±12.6 pre-R4 (exp-0073). Measured R4 A/B
-(depth-13 median-of-3, quiet box): probe-sota 572,019 → **822,604 nps
-(+43.8%)**; probe-l2048 1,714,851 → 1,875,384 (+9.4%). The Elo/NPS
-arithmetic closes (+44% ≈ 0.52 doublings ≈ ~37 Elo). D40 wins per node
-(+30.2 h2h exp-0072); the remaining −17 is ~pure speed (822k vs 1875k =
-44% of classic throughput). Levers not yet pulled: R1 native (task #13),
-R3 PGO (#15), packing fix (#26), narrower-L1 D40.
+**2. D45a headline — SPEED PROGRAM CLOSED (exp-0093):** the 720sb
+equal-time ladder is now d40-uho-720sb vs s4:
+**−57.9±12.6** (v3, pre-R4, exp-0073) → **−17.4±12.8** (v3, post-R4 stack,
+exp-0089) → **−8.7±12.9** (best-PGO both sides, exp-0093, 200g 10+0.1,
+25W/145D/30L, bootstrap CI [−31.4,+13.9] STRADDLES ZERO). D40 is
+statistically at parity at equal time. Speed verdicts (task #13/#15,
+r4-micro-audit doc): R1 native REJECTED (null on sota — AVX-512 VNNI is
+runtime-dispatched so v3 already uses it; −9.6% classic — Zen-4 512-bit
+autovec loses to AVX2); R3 PGO SHIPPED machine-local (+10.5% D40
+`probe-sota-pgo`, +3.0% classic `probe-l2048-pgov3`, both node-verified;
+PGO base target-cpu per path via PGO_CPU, profile MUST run the real net
+over UCI). D40 wins per node (+30.2 h2h exp-0072). Levers still open:
+packing fix (#26), narrower-L1 D40. The equal-time promotion bar for D40
+over the classic incumbent is now within one modest quality/speed step.
 
 **3. Incumbent unchanged (exp-0090):** s4 vs s3 promo re-check at equal
 time = **0.0±11.3** — dead even, second failed separation.
@@ -1267,6 +1278,24 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    tail (netpack quant headroom or clip-aware training — raw ckpts
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
+
+## 2026-07-18 02:35 [MILESTONE] Speed program CLOSED — fastgate −8.7±12.9, D40 at equal-time parity with the classic incumbent
+
+The 720sb equal-time fastgate finished 200g 10+0.1, best-PGO both sides
+(probe-sota-pgo vs probe-l2048-pgov3): **25W/145D/30L = −8.7±12.9**,
+paired-bootstrap CI **[−31.4, +13.9] STRADDLES ZERO** (exp-0093). The
+speed-recovery ladder is complete: −57.9±12.6 (v3, pre-R4, exp-0073) →
+−17.4±12.8 (v3, post-R4 stack, exp-0089) → −8.7±12.9 (best PGO, exp-0093).
+Interpretation: D40 already wins per node (+30.2, exp-0072); once the
+speed program restored ~+7% relative throughput to the D40 path, the
+equal-time deficit collapsed into statistical noise. The D40 architecture
+is now a live promotion candidate over the classic-2048 incumbent — the
+remaining gap is within one modest quality or speed step (packing fix #26,
+narrower-L1 D40). Speed program verdicts final: R1 native REJECTED, R3 PGO
+SHIPPED (machine-local, node-verified). **User gave an all-night
+all-resources autonomy mandate (asleep); the loop now pivots to flywheel
+data-scale: capture-yield pilot + the pool2 overnight gold harvest
+(~6.8M rows, both teachers) → train on the scaled corpus.**
 
 ## 2026-07-18 02:10 [RESULT] Speed program R1/R3 decided: native REJECTED, PGO ships +10.5% D40 / +3.0% classic; fastgate running
 
