@@ -1306,6 +1306,29 @@ designed end-to-end: parity bar → diagnostics → gate → clean verdict.
    exist), take the speed program as far as it goes, re-gate when NPS
    justifies it.
 
+## 2026-07-18 10:30 [PLAN+LAUNCH] North star raised to SF16+30 → highest-value eval lever = CORRECTED D40 stage-2 (running)
+
+User raised the goal (via /loop 15m) to a search-augmented NNUE beating SF16
+by +30 at equal time (~+95-110 Elo gap). Ran a ranked eval-lever analysis
+(subagent, read-only). Verdict: D40 is at equal-time PARITY with the classic
+incumbent (exp-0093) and wins +30/node (exp-0072); the one axis where it is
+demonstrably behind is STAGE-2 — the classic net banked ~+84 Elo across two
+farseer stage-2 hops, while D40's single attempt REGRESSED −23.2 (exp-0066).
+Root cause of that failure, from its config: it warmed from the WEAK 240sb
+stage-1 net at LR 5e-4. LAUNCHED the corrected diagnostic (d40-s2-diag,
+tools/nnue/runs/d40-s2-diag.json, log logs/overnight/d40-s2-diag.log): warm
+from the STRONG 720sb net, cooler LR 2.5e-4 cosine, 120sb, SAVE_RATE 30,
+farseerT76. Warm-start confirmed (start loss 0.0086 = continuation not cold),
+710k pos/s, ETA ~11:45. GPU-bound so it coexists with gold-v2 (CPU). Gate:
+parity → fixed-node h2h vs d40-uho-720sb @5k (want ≥+15) → equal-time vs s3
+(D40 starts −8.7, +15-30 should flip positive → promotion). If diagnostic
+≤+5 over the botched hop, the stage-2 well is dry for the threat arch → fall
+back to longer stage-1. #2 lever queued: HalfKA king-bucket factorization
+(#27, zero inference cost). REALITY CHECK (honest): eval alone likely gets
+~30-40% of the +100; the rest needs search (SPSA retune vs new eval, gated on
+distributed compute D36) + speed. Don't over-project internal Elo (deflates
+2-3× externally, exp-0091).
+
 ## 2026-07-18 04:05 [RESULT] Capture at 12× scale: quantity helped, ordering ceiling holds — top-1 now BEATS gold, rank_corr does not
 
 Batched scale-up done: 12 batches × 600 self-play games → 7.67M exact-node
