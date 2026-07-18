@@ -92,3 +92,34 @@ ARCHON-loss subset is the highest-value part.
 - Self-improvement endgame: once ARCHON is strong, ARCHON's OWN
   disagreement-with-labels guides relabeling and ARCHON-loss games guide
   position generation — the AlphaZero-style flywheel, bootstrapped by SF18/Reckless.
+
+## VERIFIED (2026-07-18): the obs schema ALREADY captures the superset
+
+Confirmed in `src/obs/schema.rs` — no new schema needed, only route relabeling
+through it (answers "capture now what future helm/beyond nets need"):
+- **`IdSnapshot`** (in `SearchObservations.id_snapshots`) = the eval TRAJECTORY:
+  `{depth, score, best, nodes, time_ms, pv}` at EVERY iterative-deepening depth —
+  the #1 capture-now / helm-needs-later signal, already in the schema, ~free.
+- **`PerMoveObservation`** = per-move `{returned_score, nodes, searched_depth,
+  order_index, pruned_by, ...}` — policy/move-ordering + helm-effort target.
+- **`root-analysis`** emits one Observation PER TIER (node_budget) — multi-budget
+  per-move capture is native (tiers configurable).
+- **`Provenance`** = full versioning `{engine_version, engine_bench_sig,
+  net_version, teacher_identity(rev+binary sha256), search_config+hash,
+  generator_version, rng_seed, dataset_source, opening_source, hardware_identity}`
+  — the versioned/additive-label requirement, fully covered.
+
+**THE ONLY GAP:** the relabel PILOT path (`relabel_depth.py`) bypasses all of it
+(python-chess `analyse` → scalar cp). The PRODUCTION relabel must route through
+`root-analysis`/obs so trajectory + per-move + provenance ride along for free;
+the scalar-cp corpus stays a cheap EXPORT VIEW (`obs-tool export-train`). So the
+forward-looking data plan is de-risked: the machinery to "capture the superset
+once" exists — we just stop using the scalar shortcut for production relabeling.
+
+## Value-tiered capture (recommended default, pending user steer)
+- EVERY deep search → the free layers (trajectory + PV + metadata + provenance).
+- HIGH-VALUE positions (high-disagreement, game-derived, ARCHON-loss) → also the
+  rich per-move analysis + effort (searchmoves, ~35x cost).
+- Bulk low-disagreement → free layers only.
+- Far-future (counterfactual/intervention search traces, for true search-augmentation):
+  keep the obs hooks, sample a thin slice, do NOT scale on one box.
