@@ -37,10 +37,13 @@ Capturable eval headroom on one box is therefore **modest and concrete**
    32× with no gradient sharing. Official nnue-pytorch / Integral / Viridithas
    all factorize. Expected +10–30 fixed-node, **zero inference cost**,
    one-box-verifiable. The single most under-exploited eval lever.
-3. Stage-2 farseer — SPECULATIVE for D40: classic banked +84 across two hops,
-   D40 has banked ≤0 (exp-0066 −23.2, diag1 exp-0094 −12.7; the LR-5e-4
-   warm-from-strong cell, diag2, is being screened now). If diag2 also ≤0,
-   stage-2 is dry for the threat arch.
+3. Stage-2 farseer — **RESOLVED DEAD for D40 (2026-07-18).** Three cells:
+   exp-0066 (weak-warm + LR 5e-4) −23.2; diag1 exp-0094 (strong-warm + LR 2.5e-4
+   cold) −12.7 (neutral, barely moved); diag2 exp-0095 (strong-warm + LR 5e-4
+   moderate) **−72.9, CI [−106,−40]**. Pattern: farseer stage-2 *regresses* the
+   D40 threat arch, and more LR = more regression. Classic banked +84 here; D40
+   banks ≤0. Cross stage-2 off for D40 — the eval lever is longer stage-1 (same
+   UHO distribution, +30/node proven) + factorization, NOT stage-2.
 
 ## Finding 2 — Search IS measurably behind, but the gap is un-localizable on one box
 
