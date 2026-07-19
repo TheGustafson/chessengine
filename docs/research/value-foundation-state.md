@@ -56,8 +56,21 @@ Last updated: 2026-07-18 (evening loop)
 > `docs/research/profiling-study-2026-07-18.md`. (D) **Label-value pilot deep
 > relabel: 2/10 chunks done** (SF18 @100k, 13 workers, ~resumable); on
 > completion → cheap relabel → 2 corpora → deep-vs-cheap fixed-node A/B (gate
-> ≥+15 → SF18 relabeling validated). The 10:07 block below stands for the
-> speed/capture items.
+> ≥+15 → SF18 relabeling validated). (E) **gold-v2 labeling SALVAGED, but the
+> d41-gold-v2 train is DEFERRED.** The gold-v2 run logged "2 worker(s) FAILED"
+> (13:26) — but those are only the two 10% MONITOR QA slices
+> (reckless-monitor / sf18-monitor, 1 verify-problem each); all **12 main
+> worker shards are CLEAN** (15k episodes / ~500k arms each, reckless-w0..5 +
+> sf18-w0..5 ≈ 180k positions × 2 teachers) and already ledgered
+> (`gold-v2-teachers`). The teacher corpus is intact — nothing lost. But
+> training d41-gold-v2 is lever-D (helm/policy), which the north-star ranking
+> deprioritizes ("don't tunnel on the helm"), the capture-data question it
+> serves is already answered, and the box CPU+RAM are committed to the
+> higher-value lever-A relabel + lever-C profiler (RAM ~4.9GB → a train risks
+> the 7GB-OOM rule). So d41-gold-v2 is QUEUED for when the relabel frees the
+> box AND only if the helm line warrants revisiting; the label-value A/B
+> (lever-A) processes FIRST. Export from the 12 clean worker shards (exclude
+> the 2 monitors). The 10:07 block below stands for the speed/capture items.
 
 > **OVERNIGHT UPDATE 2026-07-18 10:07 (persist checkpoint):** two things
 > since 02:35. (A) SPEED PROGRAM CLOSED — R1 native REJECTED, R3 PGO SHIPPED
