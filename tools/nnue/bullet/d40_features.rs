@@ -722,7 +722,28 @@ fn main() {
             // l3_varw/l3_varb from the raw ckpt. Default path (flag unset) stays
             // squared_error -> existing recipes reproduce byte-identically.
             let mut outputs = vec![("output".to_string(), out)];
-            let loss = if std::env::var("D40_HETERO_NLL").is_ok() {
+            let loss = if std::env::var("D40_HETERO_NLL_DETACH").is_ok() {
+                // EXP-UNC-1 DETACH variant (D33 reviewer B): protect the MEAN from
+                // the heteroscedastic-NLL reweighting (Seitzer). The mean+trunk
+                // train on PURE MSE, so the mean == the MSE control by construction
+                // (Gate 1 automatic + TRUE, not "carried over"); the variance head
+                // trains on the DETACHED residual off a DETACHED trunk — its own
+                // weights still train (created outside with_no_grad, so they keep
+                // requires_grad), but no gradient reaches the mean or the shared
+                // trunk. σ̂ is then a pure post-hoc residual predictor. `x*1.0`
+                // under with_no_grad yields a stop-grad copy (model.rs: an op node
+                // under stop_grad gets no requires_grad, so backward halts there).
+                let l3_var = builder.new_affine("l3_var", L3, NUM_BUCKETS);
+                let hl3_sg = builder.with_no_grad(|| hl3 * 1.0);
+                let logvar = l3_var.forward(hl3_sg).select(buckets);
+                outputs.push(("logvar".to_string(), logvar));
+                let sig_sg = builder.with_no_grad(|| sig * 1.0);
+                let resid = sig_sg.squared_error(targets); // (detached sig - t)^2
+                let inv_var = (-logvar).exp();
+                let nll_var = (inv_var * resid + logvar) * 0.5;
+                let mse = sig.squared_error(targets); // mean/trunk gradient == control
+                (mse + nll_var).reduce_sum_batch()
+            } else if std::env::var("D40_HETERO_NLL").is_ok() {
                 let l3_var = builder.new_affine("l3_var", L3, NUM_BUCKETS);
                 let logvar = l3_var.forward(hl3).select(buckets);
                 outputs.push(("logvar".to_string(), logvar));
