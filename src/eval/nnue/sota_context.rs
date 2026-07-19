@@ -23,7 +23,7 @@ use super::sota_loader::SotaNetwork;
 use super::sota_threats::ThreatContext;
 use crate::board::Board;
 use crate::board::DirtyPiece;
-use crate::types::Value;
+use crate::types::{Color, PAWN_VALUE, PieceType, Value};
 
 /// A permanently-zero threat accumulator handed to the cheap net's head on the
 /// smallnet-gate path (perf study #3 #8). The cheap net is HalfKA-only, so its
@@ -34,6 +34,22 @@ use crate::types::Value;
 /// `static` so `&ZERO_THREAT` is a stable `'static` reference with no per-eval
 /// cost.
 static ZERO_THREAT: [[i16; ACC]; 2] = [[0; ACC]; 2];
+
+/// Signed material imbalance (White − Black) in centipawns: cached non-pawn
+/// material plus a pawn-count difference. Used as the smallnet gate's *material
+/// prefilter* — an almost-free decided-ness proxy (`non_pawn_material` is an O(1)
+/// state field; pawns are one popcount per side) so the cheap net runs ONLY on
+/// materially-lopsided nodes and the undecided majority pays zero cheap-eval
+/// overhead. Sign is irrelevant to the gate (it compares `.abs()`); returning the
+/// signed value keeps it a plain difference.
+#[inline]
+fn material_imbalance(board: &Board) -> Value {
+    let non_pawn =
+        board.non_pawn_material(Color::White) - board.non_pawn_material(Color::Black);
+    let pawns = board.pieces(Color::White, PieceType::Pawn).count() as Value
+        - board.pieces(Color::Black, PieceType::Pawn).count() as Value;
+    non_pawn + pawns * PAWN_VALUE
+}
 
 /// Per-thread SOTA evaluation state, owned by a search `Worker` via
 /// [`super::super::EvalContext`].
@@ -66,6 +82,14 @@ pub struct SotaContext {
     smallnet_halfka: Option<HalfkaContext<'static>>,
     /// The decided-position centipawn threshold; `0` ⇒ gate off.
     smallnet_thresh: Value,
+    /// Material prefilter (`ARCHON_SMALLNET_MAT_GATE`): only run the cheap net
+    /// when `|material_imbalance| ≥` this. `0` ⇒ always run it when the gate is
+    /// armed (SF-style output-only gate). A positive value is the cost-model fix
+    /// (design doc §COST-MODEL CAVEAT): because our cheap net is HalfKA-only-768
+    /// (~0.6× the big net, not SF-tiny), running it on every eval'd node would be
+    /// a wash; prefiltering on near-free material skips it on the balanced
+    /// (unclear) majority so the undecided nodes pay no cheap overhead.
+    smallnet_mat_gate: Value,
 }
 
 impl std::fmt::Debug for SotaContext {
@@ -96,6 +120,11 @@ impl SotaContext {
         };
         let smallnet_halfka =
             smallnet.map(|small| HalfkaContext::new(&small.halfka_weights, &small.ft_bias));
+        let smallnet_mat_gate: Value = std::env::var("ARCHON_SMALLNET_MAT_GATE")
+            .ok()
+            .and_then(|value| value.parse::<Value>().ok())
+            .filter(|&gate| gate > 0)
+            .unwrap_or(0);
         SotaContext {
             net,
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
@@ -104,16 +133,19 @@ impl SotaContext {
             smallnet,
             smallnet_halfka,
             smallnet_thresh: if smallnet.is_some() { smallnet_thresh } else { 0 },
+            smallnet_mat_gate,
         }
     }
 
     /// Test-only constructor that arms the smallnet gate explicitly (bypassing the
     /// env), so gate correctness is unit-testable without a global env dependency.
+    /// `mat_gate` is the material prefilter (0 = always run the cheap net).
     #[cfg(test)]
     fn new_with_gate(
         net: &'static SotaNetwork,
         smallnet: &'static SotaNetwork,
         smallnet_thresh: Value,
+        smallnet_mat_gate: Value,
     ) -> Self {
         SotaContext {
             net,
@@ -126,6 +158,7 @@ impl SotaContext {
                 &smallnet.ft_bias,
             )),
             smallnet_thresh,
+            smallnet_mat_gate,
         }
     }
 
@@ -186,14 +219,21 @@ impl SotaContext {
         // Count total pieces for the output bucket (both nets share the layout).
         let piece_count = board.all_occupancy().count() as usize;
 
-        // Smallnet gate (perf study #3 item #8): on a DECIDED position the cheap
-        // HalfKA-only net decides, so we skip the big net's FullThreats fold and
-        // head entirely. The big net's accumulators were still advanced by
-        // `push`/`refresh_root`, so a later undecided node evaluates it exactly as
-        // before. Inert (thresh 0 / `smallnet == None`) ⇒ this block is skipped
-        // ⇒ bit-identical to a no-gate build (sota bench 147691).
+        // Smallnet gate (perf study #3 item #8) + material prefilter: on a
+        // materially-decided position the cheap HalfKA-only net decides, so we
+        // skip the big net's FullThreats fold and head. The material prefilter
+        // (`mat_gate`) is the cost-model fix (design doc §COST-MODEL CAVEAT): our
+        // cheap net is HalfKA-only-768 (~0.6× the big net, not SF-tiny), so
+        // running it on every eval'd node would be a wash — the near-free material
+        // check short-circuits FIRST (before we even touch the cheap accumulator),
+        // keeping it off the balanced/unclear majority. The big net's accumulators
+        // were still advanced by `push`/`refresh_root`, so a later undecided node
+        // evaluates it exactly as before. Inert (thresh 0 / `smallnet == None`) ⇒
+        // this block is skipped ⇒ bit-identical to a no-gate build (bench 147691).
         let thresh = self.smallnet_thresh;
+        let mat_gate = self.smallnet_mat_gate;
         if thresh > 0
+            && (mat_gate == 0 || material_imbalance(board).abs() >= mat_gate)
             && let (Some(small), Some(small_halfka)) =
                 (self.smallnet, self.smallnet_halfka.as_mut())
         {
@@ -394,8 +434,8 @@ mod tests {
     #[test]
     fn smallnet_gate_transparent_when_nets_agree() {
         let net = leaked_halfka_only_test_net();
-        let mut gated_always = SotaContext::new_with_gate(net, net, 1);
-        let mut gated_never = SotaContext::new_with_gate(net, net, i32::MAX);
+        let mut gated_always = SotaContext::new_with_gate(net, net, 1, 0);
+        let mut gated_never = SotaContext::new_with_gate(net, net, i32::MAX, 0);
         let mut ungated = SotaContext::new(net);
         let mut board = Board::startpos();
         gated_always.refresh_root(&board);
@@ -440,7 +480,7 @@ mod tests {
     fn smallnet_gate_never_routes_is_bit_identical() {
         let big = leaked_test_net();
         let small = leaked_halfka_only_test_net();
-        let mut gated = SotaContext::new_with_gate(big, small, i32::MAX);
+        let mut gated = SotaContext::new_with_gate(big, small, i32::MAX, 0);
         let mut ungated = SotaContext::new(big);
         let mut board = Board::startpos();
         gated.refresh_root(&board);
@@ -465,6 +505,67 @@ mod tests {
                 gated.evaluate(&board, ply + 1),
                 ungated.evaluate(&board, ply + 1),
                 "never-route gate must match the ungated big-net eval at ply {ply}"
+            );
+        }
+    }
+
+    #[test]
+    fn material_imbalance_signs_and_zero() {
+        // Startpos is materially symmetric.
+        assert_eq!(material_imbalance(&Board::startpos()), 0);
+        // White up a full queen (black has no queen): positive, ≈ a queen's value.
+        let w_up = Board::from_fen("rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+            .unwrap();
+        assert!(
+            material_imbalance(&w_up) > 500,
+            "white up a queen should read strongly positive, got {}",
+            material_imbalance(&w_up)
+        );
+        // Black up a full rook: negative.
+        let b_up = Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/1NBQKBNR w Kkq - 0 1")
+            .unwrap();
+        assert!(
+            material_imbalance(&b_up) < -300,
+            "black up a rook should read strongly negative, got {}",
+            material_imbalance(&b_up)
+        );
+    }
+
+    /// Material prefilter: a `mat_gate` no near-balanced position reaches
+    /// (`i32::MAX`) blocks the cheap net from ever running — even with `thresh 1`
+    /// that would otherwise always route — so every eval is the ungated big-net
+    /// eval. Proves the prefilter short-circuits the cheap path (the cost-model
+    /// fix that keeps the cheap net off the unclear majority).
+    #[test]
+    fn smallnet_gate_material_prefilter_blocks_cheap_path() {
+        let big = leaked_test_net();
+        let small = leaked_halfka_only_test_net();
+        // thresh 1 (would route on any node) but mat_gate MAX (never passes).
+        let mut gated = SotaContext::new_with_gate(big, small, 1, i32::MAX);
+        let mut ungated = SotaContext::new(big);
+        let mut board = Board::startpos();
+        gated.refresh_root(&board);
+        ungated.refresh_root(&board);
+        let mut seed = 0x0FF1_CE55u64;
+        for ply in 0..32usize {
+            let mut moves = MoveList::new();
+            generate_legal(&board, &mut moves);
+            if moves.is_empty() {
+                break;
+            }
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let m = moves[seed as usize % moves.len()];
+            let dirty = DirtyPiece::from_move(&board, m);
+            let gives_check = board.gives_check(m);
+            board.make_move(m, gives_check);
+            gated.push(dirty, ply, &board);
+            ungated.push(dirty, ply, &board);
+            assert_eq!(
+                gated.evaluate(&board, ply + 1),
+                ungated.evaluate(&board, ply + 1),
+                "material prefilter must block the cheap path at ply {ply}"
             );
         }
     }
