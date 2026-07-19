@@ -366,6 +366,34 @@ pub fn active_protected_halfka_net() -> Option<&'static protected_halfka::Protec
         .unwrap_or_else(|e| e.into_inner())
 }
 
+/// The smallnet-gate cheap net (perf study #3 item #8), or `None` when the gate
+/// is off. Env-driven — `ARCHON_SMALLNET` is a CENN-v2 path, typically a
+/// HalfKA-only net — and loaded once, lazily, into a leaked `'static` (a single
+/// load, not the per-game leak [`set_eval_file`] guards against, because the
+/// `OnceLock` loads exactly once). `None` (env unset, blank, or an unreadable /
+/// invalid file) ⇒ the gate is inert and the D40 eval is bit-identical to today
+/// (sota bench 147691). Read once per search when a [`sota_context::SotaContext`]
+/// is built (the eval boundary), never on the hot per-node path.
+///
+/// Only the cheap net's HalfKA channel is consumed — its FullThreats channel is
+/// never built, which IS the speed win — so ANY CENN-v2 net works here (a
+/// HalfKA-only net is simply the cheapest, and a full net doubles as a stand-in
+/// for smoke-testing the gate plumbing before a dedicated cheap net is trained).
+#[cfg(feature = "sota")]
+pub fn active_smallnet() -> Option<&'static sota_loader::SotaNetwork> {
+    use std::sync::OnceLock;
+    static SMALLNET: OnceLock<Option<&'static sota_loader::SotaNetwork>> = OnceLock::new();
+    *SMALLNET.get_or_init(|| {
+        let path = std::env::var("ARCHON_SMALLNET").ok()?;
+        if path.trim().is_empty() {
+            return None;
+        }
+        let bytes = std::fs::read(&path).ok()?;
+        let net = sota_loader::load_v2_bytes(&bytes).ok()?;
+        Some(Box::leak(Box::new(net)) as &'static sota_loader::SotaNetwork)
+    })
+}
+
 /// The compile-time-embedded default net (distribution builds only, `embed-net`
 /// feature). Loaded and leaked once. The bytes are a build asset validated at
 /// build time, so a load failure is a broken build — not user input — hence the

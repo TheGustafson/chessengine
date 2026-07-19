@@ -16,6 +16,7 @@
 //! Behind the `sota` cargo feature.
 
 use super::sota_accumulator::HalfkaContext;
+use super::sota_features::ACC;
 #[cfg(debug_assertions)]
 use super::sota_features::refresh_both;
 use super::sota_loader::SotaNetwork;
@@ -23,6 +24,16 @@ use super::sota_threats::ThreatContext;
 use crate::board::Board;
 use crate::board::DirtyPiece;
 use crate::types::Value;
+
+/// A permanently-zero threat accumulator handed to the cheap net's head on the
+/// smallnet-gate path (perf study #3 #8). The cheap net is HalfKA-only, so its
+/// FullThreats channel contributes nothing; passing this in place of a real
+/// threat accumulator is exactly what an empty-threat-weights net produces (see
+/// `halfka_only_context_has_zero_threat_channel`), but WITHOUT paying to build
+/// or fold any threat state — which is the gate's entire speed win. A single
+/// `static` so `&ZERO_THREAT` is a stable `'static` reference with no per-eval
+/// cost.
+static ZERO_THREAT: [[i16; ACC]; 2] = [[0; ACC]; 2];
 
 /// Per-thread SOTA evaluation state, owned by a search `Worker` via
 /// [`super::super::EvalContext`].
@@ -39,6 +50,22 @@ pub struct SotaContext {
     ///
     /// [`evaluate`]: Self::evaluate
     last_sigma: Option<f32>,
+    /// Smallnet gate (perf study #3 item #8): the cheap net used on DECIDED
+    /// positions, or `None` when the gate is off (`ARCHON_SMALLNET` unset or
+    /// `ARCHON_SMALLNET_THRESH` ≤ 0). When armed, [`evaluate`](Self::evaluate)
+    /// runs this net's HalfKA channel first and, if the resulting `|value|` is at
+    /// least [`smallnet_thresh`](Self::smallnet_thresh), returns it — skipping the
+    /// big net's FullThreats fold and head. `None` ⇒ every path below is
+    /// byte-for-byte today's (bit-identical, sota bench 147691).
+    smallnet: Option<&'static SotaNetwork>,
+    /// The cheap net's own incremental HalfKA stack. Its FullThreats channel is
+    /// never built — that is the point. Reuses [`HalfkaContext`] with the cheap
+    /// net's weights and is maintained in lockstep with [`halfka`](Self::halfka)
+    /// so a later undecided node evaluates the big net exactly as before. Armed
+    /// together with [`smallnet`](Self::smallnet).
+    smallnet_halfka: Option<HalfkaContext<'static>>,
+    /// The decided-position centipawn threshold; `0` ⇒ gate off.
+    smallnet_thresh: Value,
 }
 
 impl std::fmt::Debug for SotaContext {
@@ -51,13 +78,54 @@ impl std::fmt::Debug for SotaContext {
 }
 
 impl SotaContext {
-    /// Create a new context over the given net.
+    /// Create a new context over the given net. Reads the smallnet-gate env
+    /// (`ARCHON_SMALLNET` + `ARCHON_SMALLNET_THRESH`) once here, at the eval
+    /// boundary — never on the hot path. Both unset ⇒ no gate ⇒ bit-identical.
     pub fn new(net: &'static SotaNetwork) -> Self {
+        let smallnet_thresh: Value = std::env::var("ARCHON_SMALLNET_THRESH")
+            .ok()
+            .and_then(|value| value.parse::<Value>().ok())
+            .unwrap_or(0);
+        // Arm only when BOTH a cheap net and a positive threshold are present;
+        // otherwise leave every smallnet field inert so the accumulator and
+        // evaluate paths are byte-for-byte identical to a no-gate build.
+        let smallnet = if smallnet_thresh > 0 {
+            super::active_smallnet()
+        } else {
+            None
+        };
+        let smallnet_halfka =
+            smallnet.map(|small| HalfkaContext::new(&small.halfka_weights, &small.ft_bias));
         SotaContext {
             net,
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
             threats: ThreatContext::new(&net.threat_weights),
             last_sigma: None,
+            smallnet,
+            smallnet_halfka,
+            smallnet_thresh: if smallnet.is_some() { smallnet_thresh } else { 0 },
+        }
+    }
+
+    /// Test-only constructor that arms the smallnet gate explicitly (bypassing the
+    /// env), so gate correctness is unit-testable without a global env dependency.
+    #[cfg(test)]
+    fn new_with_gate(
+        net: &'static SotaNetwork,
+        smallnet: &'static SotaNetwork,
+        smallnet_thresh: Value,
+    ) -> Self {
+        SotaContext {
+            net,
+            halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
+            threats: ThreatContext::new(&net.threat_weights),
+            last_sigma: None,
+            smallnet: Some(smallnet),
+            smallnet_halfka: Some(HalfkaContext::new(
+                &smallnet.halfka_weights,
+                &smallnet.ft_bias,
+            )),
+            smallnet_thresh,
         }
     }
 
@@ -83,16 +151,26 @@ impl SotaContext {
         self.net
     }
 
-    /// Seed both accumulator stacks from `board` at ply zero.
+    /// Seed both accumulator stacks from `board` at ply zero (plus the cheap
+    /// net's stack when the smallnet gate is armed).
     pub fn refresh_root(&mut self, board: &Board) {
         self.halfka.refresh_root(board);
         self.threats.refresh(board);
+        if let Some(small_halfka) = self.smallnet_halfka.as_mut() {
+            small_halfka.refresh_root(board);
+        }
     }
 
-    /// Record one post-move position at `ply + 1`.
+    /// Record one post-move position at `ply + 1`. When the smallnet gate is
+    /// armed the cheap net's HalfKA stack is advanced in lockstep — cheap (a few
+    /// i16 lanes per moved piece), and it keeps the big net's own stacks valid so
+    /// any later undecided node evaluates the big net exactly as before.
     pub fn push(&mut self, dirty: DirtyPiece, ply: usize, post_move_board: &Board) {
         self.halfka.push(ply, dirty);
         self.threats.apply_at(ply, &dirty, post_move_board);
+        if let Some(small_halfka) = self.smallnet_halfka.as_mut() {
+            small_halfka.push(ply, dirty);
+        }
     }
 
     /// Evaluate `board` through the incrementally maintained SOTA accumulators.
@@ -105,12 +183,32 @@ impl SotaContext {
         self.assert_matches_refresh(board, ply);
 
         let stm = board.side_to_move();
-        let pst = self.halfka.current(board, ply);
-        let threat = self.threats.at(ply);
-
-        // Count total pieces for the output bucket.
+        // Count total pieces for the output bucket (both nets share the layout).
         let piece_count = board.all_occupancy().count() as usize;
 
+        // Smallnet gate (perf study #3 item #8): on a DECIDED position the cheap
+        // HalfKA-only net decides, so we skip the big net's FullThreats fold and
+        // head entirely. The big net's accumulators were still advanced by
+        // `push`/`refresh_root`, so a later undecided node evaluates it exactly as
+        // before. Inert (thresh 0 / `smallnet == None`) ⇒ this block is skipped
+        // ⇒ bit-identical to a no-gate build (sota bench 147691).
+        let thresh = self.smallnet_thresh;
+        if thresh > 0
+            && let (Some(small), Some(small_halfka)) =
+                (self.smallnet, self.smallnet_halfka.as_mut())
+        {
+            let small_pst = small_halfka.current(board, ply);
+            let (small_value, _) = small.head.forward(small_pst, &ZERO_THREAT, stm, piece_count);
+            if small_value.abs() >= thresh {
+                // Cheap path: no variance head, so σ̂ is unavailable — correct,
+                // since the uncertainty consumers no-op on decided positions.
+                self.last_sigma = None;
+                return small_value;
+            }
+        }
+
+        let pst = self.halfka.current(board, ply);
+        let threat = self.threats.at(ply);
         let (value, sigma) = self.net.head.forward(pst, threat, stm, piece_count);
         self.last_sigma = sigma;
         value
@@ -286,6 +384,89 @@ mod tests {
             board.unmake_move(m);
         }
         visited
+    }
+
+    /// Smallnet gate: when the cheap net and the big net are the SAME HalfKA-only
+    /// net, routing is value-transparent — whether the gate takes the cheap path
+    /// (thresh 1) or falls through (thresh MAX), it returns exactly the ungated
+    /// eval. This exercises the whole gate: the second HalfKA stack's
+    /// push/refresh/current, the `ZERO_THREAT` head call, and the routing branch.
+    #[test]
+    fn smallnet_gate_transparent_when_nets_agree() {
+        let net = leaked_halfka_only_test_net();
+        let mut gated_always = SotaContext::new_with_gate(net, net, 1);
+        let mut gated_never = SotaContext::new_with_gate(net, net, i32::MAX);
+        let mut ungated = SotaContext::new(net);
+        let mut board = Board::startpos();
+        gated_always.refresh_root(&board);
+        gated_never.refresh_root(&board);
+        ungated.refresh_root(&board);
+        let mut seed = 0xBEEF_1234u64;
+        for ply in 0..24usize {
+            let mut moves = MoveList::new();
+            generate_legal(&board, &mut moves);
+            if moves.is_empty() {
+                break;
+            }
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let m = moves[seed as usize % moves.len()];
+            let dirty = DirtyPiece::from_move(&board, m);
+            let gives_check = board.gives_check(m);
+            board.make_move(m, gives_check);
+            gated_always.push(dirty, ply, &board);
+            gated_never.push(dirty, ply, &board);
+            ungated.push(dirty, ply, &board);
+            let expected = ungated.evaluate(&board, ply + 1);
+            assert_eq!(
+                gated_always.evaluate(&board, ply + 1),
+                expected,
+                "always-route gate must reproduce the ungated eval at ply {ply}"
+            );
+            assert_eq!(
+                gated_never.evaluate(&board, ply + 1),
+                expected,
+                "never-route gate must reproduce the ungated eval at ply {ply}"
+            );
+        }
+    }
+
+    /// Smallnet gate: with a FULL big net and a HalfKA-only cheap net, a threshold
+    /// no position can reach (`i32::MAX`) must never route, so every eval equals
+    /// the ungated big-net eval bit-for-bit — the gate adds zero drift to the big
+    /// path (the property `EvalFile`-less bit-identity depends on).
+    #[test]
+    fn smallnet_gate_never_routes_is_bit_identical() {
+        let big = leaked_test_net();
+        let small = leaked_halfka_only_test_net();
+        let mut gated = SotaContext::new_with_gate(big, small, i32::MAX);
+        let mut ungated = SotaContext::new(big);
+        let mut board = Board::startpos();
+        gated.refresh_root(&board);
+        ungated.refresh_root(&board);
+        let mut seed = 0x1234_ABCDu64;
+        for ply in 0..32usize {
+            let mut moves = MoveList::new();
+            generate_legal(&board, &mut moves);
+            if moves.is_empty() {
+                break;
+            }
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let m = moves[seed as usize % moves.len()];
+            let dirty = DirtyPiece::from_move(&board, m);
+            let gives_check = board.gives_check(m);
+            board.make_move(m, gives_check);
+            gated.push(dirty, ply, &board);
+            ungated.push(dirty, ply, &board);
+            assert_eq!(
+                gated.evaluate(&board, ply + 1),
+                ungated.evaluate(&board, ply + 1),
+                "never-route gate must match the ungated big-net eval at ply {ply}"
+            );
+        }
     }
 
     #[test]
