@@ -43,20 +43,23 @@ Last updated: 2026-07-18 (evening loop, opt#1 landed)
 > bench-node-preserving opt package sums to ~+20-30% NPS = ~the whole speed
 > gap, and per exp-0093 (D40 at equal-time PARITY purely for speed) is the most
 > direct route to equal-time Elo vs SF16 — do this BEFORE more net-quality
-> spend on the arch. **Ranked queue (do in order):**
-> - **#1 DONE (8287e90): vectorize the f32 head tail** (sota_head.rs) — flat
->   `l2_weights[wbase+i*L3+j]` with a runtime bucket forced fully-scalar FMA
->   (~10% runtime + 28% I1 misses). Per-bucket block/row fixed-size slices →
->   LLVM vectorizes the 32-wide j-FMA; **bit-identical** (sota bench 147691
->   nodes unchanged), **+11.0% NPS** measured (422568→468947, x86-64-v3 release
->   under load).
-> - **#2 QUEUED: fused copy+apply fold kernels** — the lazy folds memmove 1.5KB
->   parent→child before applying deltas (9.4% of runtime); add
->   `apply_i16_deltas_into(dst,src,…)` / `apply_i8_deltas_into` to sota_simd.rs
->   (classic add_sub_w shape, simd.rs:466-473), rewire sota_accumulator.rs:95-102
->   + sota_threats.rs:709-729. +7-9% NPS, bit-identical, needs the
->   threats_replay parity gate. Files are CLEAN vs HEAD (isolatable).
-> - **#3 QUEUED: prefetch + pair threat-fold rows** (sota_simd.rs:424-499) +2-5%.
+> spend on the arch. **THE SPEED LEVER IS CONFIRMED (2026-07-19): opt#1 alone =
+> +28.8 ± 10.3 Elo at EQUAL TIME (10+0.1, 569g, LOS 99.7%, exp-0101)** — bit-
+> identical binaries differing ONLY by the +13-15% NPS opt → ~2× the D39 rule
+> (slow eval ⇒ extra nodes pay off disproportionately). This is the first hard
+> proof that NPS converts to equal-time Elo on this arch — the whole speed
+> package is de-risked. **Ranked queue:**
+> - **#1 DONE (8287e90): vectorize the f32 head tail** — bit-identical (bench
+>   147691), **+13-15% NPS**, **+28.8±10.3 Elo equal-time (exp-0101)**.
+> - **#2 DONE (1cc2147): fused copy+apply fold kernels** — `apply_i16/i8_deltas_into`
+>   (scalar+AVX2+AVX512) read parent / write child in one pass, no memmove;
+>   rewired both folds; removed the now-dead in-place i8 path. **Bit-identical**
+>   (bench 147691, all 637 fold-parity tests + threats_replay_large green),
+>   **+3.5% NPS** (below the +7-9% est — LLVM already elided part of the copy).
+>   Package opt1+opt2 = **+17.1% NPS**. Equal-time match (opt2 vs base) RUNNING.
+> - **#3 DEPRIORITIZED: prefetch + pair threat-fold rows** (sota_simd.rs) — est
+>   +2-5% but speculative/hw-sensitive; given #2 underdelivered, low marginal
+>   value. Revisit only if the package match shows the NPS→Elo slope stays steep.
 > - **#7 (trivial): bulk net parse** (sota_loader.rs:512-529) — 0.21s/spawn.
 > - **Deploy step:** rebuild `probe-sota-pgo` (tools/build_pgo.sh sota) with the
 >   opt package BEFORE the next equal-time gate — the PGO binary is what gates
