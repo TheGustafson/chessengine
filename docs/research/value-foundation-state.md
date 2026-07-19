@@ -95,6 +95,25 @@ Last updated: 2026-07-19 (post-compact resume block added)
 > GPU is idle (this + EXP-AUX-1 share the trainer plumbing). Runs alongside the
 > CPU relabel. D38 ledger the twin + both gates.
 >
+> **★★ DETACH GATE 1 VERDICT (2026-07-19): ALSO FAILED — Elo −116.4 ± 49.7
+> (130g, exp-0106). Both EXP-UNC-1 variance-training approaches wreck the mean.**
+> The detach was supposed to be mean = control BY CONSTRUCTION (pure-MSE mean off
+> a stop-grad trunk). It isn't: bench nodecount detach 11304 vs control 10545 at
+> d2 → the mean WEIGHTS differ, and −116 rules out benign RNG (a different-seed
+> twin is ~parity). **Root cause: bullet's `with_no_grad` did NOT isolate the
+> variance gradient from the trunk** — the NLL reweighting leaked into the mean,
+> so "detach" behaved like coupled NLL (−116 vs g2 −179; the extra pure-MSE term
+> only partly shielded it). **→ THE FIX (bulletproof): a FROZEN-mean post-hoc
+> variance fit.** Do NOT retrain the mean at all — take the incumbent (mean =
+> guaranteed the incumbent), and fit ONLY the l3_var head to its residuals
+> (`logvar = w·h + b`, per-bucket NLL) either (a) in bullet with the mean/trunk
+> weights frozen (requires_grad off) or (b) post-hoc in Python from a
+> `nnue-dump` of (pre-l3_var activation, sig, target). Cheap (fit a small head,
+> no full retrain). This σ̂ then serves BOTH EXP-UNC-1 Gate 2 AND the n-gate LARGE
+> tier router. **Impact: the n-gate SMALL tier (speed, running) is UNAFFECTED —
+> it needs no σ̂; the LARGE tier + Gate 2 wait on the frozen-mean σ̂ (and the
+> large tier ALSO needs a genuinely-better net → fleet).**
+>
 > **★★ g2 GATE 1 VERDICT (2026-07-19): FAILED HARD — Elo −178.86 ± 60.06 (114g
 > @5k), LLR −2.98, SPRT H0 accepted. B's Seitzer concern CONFIRMED, dramatically.**
 > The twin's l3_var never trained (raw ckpt drops non-output-reachable weights →
