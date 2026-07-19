@@ -2070,3 +2070,23 @@ the remaining deployment gate.
   gcloud unlocks image build+push, auth (project archon-502500), FEN-manifest upload, submit.
   Cost: pilot ~$6-12, targeted relabel ~$12, full 100M@100k ~$59. GATED on: strategic study
   verdict + the label-value pilot (paused 3/10) finishing. Resume relabel after studies free box.
+
+## 2026-07-19 — STRATEGIC FABLE VERDICT (path-to-1-first-principles-2026-07-19.md)
+- **Verdict: right on engine-building, WRONG on sequencing.** The fast progress was a
+  "replication dividend" (consuming published SF/binpack/reference knowledge); it runs out
+  ~at SF16. Past here Elo must be statistically MINED (fishtest) or research-DISCOVERED —
+  both need testing throughput one box lacks. **BINDING CONSTRAINT = D36 distributed testing
+  (decided, never built).** Evidence: SPSA 8/8 null, SF16 anchor CIs all overlap, data
+  0-for-15 self-sourced, all one-box eval rungs measured shut this week.
+- **Do:** (1) finish speed tail (days, +10-25 Elo, best Elo/effort) then CLOSE speed;
+  (2) stand up D36 fleet THIS WEEK (5-10 GCE spot, ~$100-300/mo — weekly 2000g SF16 anchor
+  + global SPSA retune + SF16-late SPRT queue); (3) label-value pilot to verdict as a
+  KILL-SWITCH (≥+15 scale targeted SF18 relabel; null hard-stop relabel/obs line).
+- **STOP:** obs/cloud data infra + helm ahead of evidence — CANCEL d41-gold-v2, FREEZE
+  obs-factory until the pilot pays. **START:** the fleet + weekly external SF16 anchor as the
+  ONLY trusted metric (internal Elo deflates 2-3x).
+- **Feasibility:** beat SF16 ET 1-3mo (high conf); SF16+30 3-9mo WITH fleet, unlikely without;
+  #1 not plannable (keep as north star, revive D41 only after SF16+30). Realistic target:
+  strongest solo/AI-built engine on record.
+- **Cloud reframe:** highest-value cloud spend = TESTING FLEET, not data relabel. Awaiting
+  user decision on the fleet (cloud approval). Profiling round-2 (ab28d053) still running.
