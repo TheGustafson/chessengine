@@ -250,12 +250,15 @@ fn install_eval_file(path: &str) -> Result<(), NnueError> {
     {
         let bytes = std::fs::read(path).map_err(NnueError::Io)?;
         if bytes.len() >= 4 && bytes[0..4] == *b"CEN2" {
-            let net = sota_loader::load_v2_bytes(&bytes).map_err(|e| {
+            let mut net = sota_loader::load_v2_bytes(&bytes).map_err(|e| {
                 NnueError::Io(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     e.to_string(),
                 ))
             })?;
+            // EXP-UNC-1: attach the optional value-uncertainty head (D40_UNC_HEAD
+            // sidecar) before leaking. No-op when the env is unset → bit-identical.
+            sota_loader::load_uncertainty_sidecar(&mut net.head);
             let leaked: &'static sota_loader::SotaNetwork = Box::leak(Box::new(net));
             *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = Some(leaked);
             *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = None;

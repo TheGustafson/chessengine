@@ -427,6 +427,46 @@ pub fn load_v2(path: impl AsRef<Path>) -> Result<SotaNetwork, SotaNnueError> {
     load_v2_bytes(&bytes)
 }
 
+/// EXP-UNC-1 (search study bet 1): load the OPTIONAL value-uncertainty head into
+/// `head` from the sidecar named by `D40_UNC_HEAD`, if set. Kept out of the CENN
+/// (so the net format is unchanged) — the head is small (`BUCKETS·L3` weights +
+/// `BUCKETS` biases) and rides a tiny companion file, extracted from the
+/// trainer's raw checkpoint. Layout: flat little-endian f32, `l3_var_weights`
+/// (bucket-major `[b·L3 + j]`, identical layout to `l3_weights`) then
+/// `l3_var_biases` (`[b]`). Absent env or any read/shape error leaves the head
+/// variance-less (σ̂ = `None`, every uncertainty consumer off) — so a net without
+/// the sidecar is bit-identical to today. Called once at net-load time.
+pub(crate) fn load_uncertainty_sidecar(head: &mut SotaHead) {
+    let Some(path) = std::env::var_os("D40_UNC_HEAD") else {
+        return;
+    };
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            eprintln!("D40_UNC_HEAD: cannot read {path:?}: {error}");
+            return;
+        }
+    };
+    let n_weights = BUCKETS * L3;
+    let expected = (n_weights + BUCKETS) * 4;
+    if bytes.len() != expected {
+        eprintln!(
+            "D40_UNC_HEAD: {path:?} is {} bytes, expected {expected} \
+             ({n_weights} weights + {BUCKETS} biases, f32) — ignoring",
+            bytes.len()
+        );
+        return;
+    }
+    let mut floats = bytes
+        .chunks_exact(4)
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]));
+    let weights: Vec<f32> = (&mut floats).take(n_weights).collect();
+    let biases: Vec<f32> = floats.take(BUCKETS).collect();
+    head.l3_var_weights = Some(weights.into_boxed_slice());
+    head.l3_var_biases = Some(biases.into_boxed_slice());
+    eprintln!("D40_UNC_HEAD: loaded value-uncertainty head from {path:?}");
+}
+
 // ─── Serializer (tests + netpack cross-check) ──────────────────────────────
 
 /// Serialize a `SotaNetwork` to CENN-v2 bytes (the inverse of [`load_v2_bytes`]).
