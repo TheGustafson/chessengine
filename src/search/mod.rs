@@ -280,6 +280,22 @@ fn unc_margin_scale(sigma: f32, sigma_bar: f32, c1: f32) -> f32 {
     (1.0 + c1 * (sigma - sigma_bar) / sigma_bar).clamp(0.7, 1.5)
 }
 
+/// EXP-UNC-1 consumer 2: the TM soft-stop time scale from the ROOT value
+/// uncertainty. Think LONGER (factor > 1) at a sharp/unclear root, SHORTER at a
+/// reliable one — ARCHON's TM otherwise has zero position content. Returns
+/// exactly `1.0` (bit-identical) when disabled / no root σ̂ / σ̄ unwarmed;
+/// clamped to [0.8, 1.25] (design). Narrower bound than the margin scale — time
+/// is a scarcer, riskier lever than a prune margin. Returns `f64` to fold into
+/// `soft_stop`'s `total_time` without a precision hop.
+#[cfg(feature = "sota")]
+#[inline]
+fn unc_tm_factor(root_sigma: f32, sigma_bar: f32, c2: f32) -> f64 {
+    if c2 == 0.0 || root_sigma <= 0.0 || sigma_bar <= 0.0 {
+        return 1.0;
+    }
+    f64::from((1.0 + c2 * (root_sigma - sigma_bar) / sigma_bar).clamp(0.8, 1.25))
+}
+
 /// The late-move-pruning move-count threshold (design/10 §3.5, the move
 /// loop's LMP): once the running `move_count` reaches
 /// `(LMP_BASE + depth²) / (2 - improving)`, the picker is told to stop
@@ -865,6 +881,14 @@ pub struct Worker {
     /// fresh σ̂. Per-worker; the ratio `(σ̂−σ̄)/σ̄` self-calibrates as it warms.
     #[cfg(feature = "sota")]
     sigma_bar: f32,
+    /// EXP-UNC-1 consumer 2: TM soft-stop uncertainty coefficient (env
+    /// `ARCHON_UNC_TM_C2`, default 0.0 = off). Read once at construction.
+    #[cfg(feature = "sota")]
+    unc_tm_c2: f32,
+    /// EXP-UNC-1 consumer 2: the ROOT position's value uncertainty σ̂ (ply-0
+    /// fresh eval), read by [`Worker::soft_stop`]. 0.0 until a root eval lands.
+    #[cfg(feature = "sota")]
+    root_sigma: f32,
     /// Per-thread move-ordering statistics (design/09 §3.4, D23): butterfly/
     /// low-ply/capture/continuation/pawn/correction history. Read by the
     /// [`MovePicker`] scoring and written by [`Histories::update_all_stats`]
@@ -990,6 +1014,13 @@ impl Worker {
                 .unwrap_or(0.0),
             #[cfg(feature = "sota")]
             sigma_bar: 0.0,
+            #[cfg(feature = "sota")]
+            unc_tm_c2: std::env::var("ARCHON_UNC_TM_C2")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0),
+            #[cfg(feature = "sota")]
+            root_sigma: 0.0,
             histories: Histories::new(),
             check_time_mask: params::CHECK_TIME_CALLS as u64 - 1,
             thread_idx: 0,
@@ -2161,7 +2192,7 @@ impl Worker {
                 // skipped entirely when ARCHON_UNC_RFP_C1 is unset, so zero
                 // overhead and bit-identical by default.
                 #[cfg(feature = "sota")]
-                if self.unc_rfp_c1 != 0.0
+                if (self.unc_rfp_c1 != 0.0 || self.unc_tm_c2 != 0.0)
                     && !(tt_hit && is_valid(tt_data.eval))
                     && let Some(s) = self.eval_ctx.last_sigma()
                 {
@@ -2171,6 +2202,10 @@ impl Worker {
                     } else {
                         s
                     };
+                    // Consumer 2 reads the ROOT position's uncertainty in soft_stop.
+                    if ply == 0 {
+                        self.root_sigma = s;
+                    }
                 }
                 // S1 (design/10 N6, D22): `ss.static_eval` is the CORRECTED
                 // eval — raw plus the correction-history delta — and every
@@ -4420,6 +4455,14 @@ impl Worker {
 
         let mut total_time =
             self.tm.optimum() as f64 * falling_eval * reduction * instability * effort;
+        // EXP-UNC-1 consumer 2: position-condition the time budget by the root
+        // value uncertainty. unc_tm_factor is exactly 1.0 when disabled or before
+        // a root σ̂ exists, so total_time is unchanged and the four-factor golden
+        // tests hold; it only bites with a variance net + a nonzero coeff.
+        #[cfg(feature = "sota")]
+        {
+            total_time *= unc_tm_factor(self.root_sigma, self.sigma_bar, self.unc_tm_c2);
+        }
         if self.root_moves.len() == 1 {
             total_time = total_time.min(params::ONE_REPLY_TOTAL_TIME_CAP());
         }
@@ -4940,6 +4983,22 @@ mod tests {
         // Clamped both ways.
         assert_eq!(unc_margin_scale(1.0, 0.10, 1.0), 1.5, "clamped high");
         assert_eq!(unc_margin_scale(0.01, 0.10, 1.0), 0.7, "clamped low");
+    }
+
+    /// EXP-UNC-1 consumer 2: the TM factor is 1.0 (off) when disabled/unwarmed,
+    /// lengthens the budget at an above-average-uncertainty root and shortens it
+    /// below, clamped to [0.8, 1.25] (narrower than the margin scale).
+    #[cfg(feature = "sota")]
+    #[test]
+    fn unc_tm_factor_signs_and_clamps() {
+        assert_eq!(unc_tm_factor(0.2, 0.1, 0.0), 1.0, "c2=0 is off");
+        assert_eq!(unc_tm_factor(0.0, 0.1, 1.0), 1.0, "no root sigma");
+        assert_eq!(unc_tm_factor(0.2, 0.0, 1.0), 1.0, "sigma_bar unwarmed");
+        assert!(unc_tm_factor(0.12, 0.10, 1.0) > 1.0, "sharp root → think longer");
+        assert!(unc_tm_factor(0.08, 0.10, 1.0) < 1.0, "reliable root → think less");
+        // Clamp bounds round-trip f32→f64, so compare approximately.
+        assert!((unc_tm_factor(1.0, 0.10, 1.0) - 1.25).abs() < 1e-6, "clamped high");
+        assert!((unc_tm_factor(0.01, 0.10, 1.0) - 0.8).abs() < 1e-6, "clamped low");
     }
 
     #[test]
