@@ -62,11 +62,40 @@ net is ~⅓ the eval cost with the infra already half-built.
 
 ## Sequencing (when a resource frees)
 
-1. Train the HalfKA-only smallnet (GPU — after g2/EXP-UNC-1 frees it).
-2. Build the second-context + gate infra (Rust, env-gated default-off →
-   bit-identical; verify 147691).
-3. Gate the package: sweep THRESH; equal-time vs big-net-only (the ship metric).
-   Expected +8-15% NPS → +16-30 Elo if the gate replicates SF's.
+1. ~~Build the second-context + gate infra~~ **DONE 2026-07-19, commit 62102ca**
+   (Rust, env-gated default-off → bit-identical, sota 469205 == baseline / default
+   depth-6 701605). `ARCHON_SMALLNET` + `ARCHON_SMALLNET_THRESH`; second
+   `HalfkaContext` in lockstep; `evaluate()` routes on `|cheap eval| ≥ thresh`.
+2. **Train the HalfKA-only cheap net (GPU — after g2/EXP-UNC-1 frees it).**
+3. Gate the package: sweep `ARCHON_SMALLNET_THRESH`; equal-time vs big-net-only
+   (the ship metric). Expected +8-15% NPS → +16-30 Elo if the gate replicates SF's.
+
+### Cheap-net launch recipe (one step, when the GPU frees)
+
+The trainer's L1 is baked at **768** (`ACC`; the `pairwise_mul` on 768-wide
+accumulators — there is NO width knob today, so a narrower cheap net is a
+deferred trainer arch change). So the cheapest net WITHOUT a trainer change is
+**HalfKA-only at L1=768**: `D40_HALFKA_ONLY=1` skips the whole FullThreats channel
+(the 46.6 MB table + observer + 768-lane fold, ~half the D40 eval cost). That IS
+the speed win the gate exploits — the runtime already skips threats on the cheap
+path (`ZERO_THREAT`, no fold), and a HalfKA-only CENN's `threat_weights` are
+empty, so the two agree by construction.
+
+Adapt the g2 config (`data/nnue/experiments/d40-uho-unc-g2/config.json`) — env
+deltas only:
+- `D40_HALFKA_ONLY`: `"0"` → `"1"`   (drop the threat channel)
+- `D40_HETERO_NLL`:  `"1"` → `"0"`   (no variance head on the cheap net)
+- `D40_ID` / `D40_OUT` / `checkpoint_dir` / `net_id`: a fresh id, e.g.
+  `d40-uho-halfka-cheap-240sb` (append-only ledger rejects a reused id)
+- `parity.raw`: repoint to the new ckpt dir; keep parity enabled
+- Corpus/SB: UHO stage-1 full, 240 SB (match the big net so they agree on decided
+  positions — SF distills the smallnet from the big net; same-corpus SF labels is
+  the affordable first cut). Reconsider stage-2 warm-retrain vs the then-current
+  incumbent at launch.
+
+Then: pack → `ARCHON_SMALLNET=<cheap.cenn> ARCHON_SMALLNET_THRESH=<t>` and sweep
+`t` (start ~300-600cp: only clearly-decided nodes take the cheap path) at
+fixed-node (NPS + node-count) AND equal-time (the ship metric) vs `t=0`.
 
 ## Relation to EXP-UNC-1
 
