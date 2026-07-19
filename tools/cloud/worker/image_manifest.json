@@ -1,25 +1,21 @@
 {
   "schema": "archon.worker-image-inputs.v1",
-  "_sha_refresh_needed": true,
-  "_note": "M1 rebuild: before building, pin the sha256 of every artifact marked \"_sha_refresh_needed\" against the freshly-built production binaries. The 3 engine SHAs drifted (chessengine/reckless/stockfish-18 no longer match); root-analysis and obs-tool are new and unpinned. build_worker_image.py hard-fails on any pinned-but-drifted hash and hashes unpinned entries at build; add the pins there. Do NOT compute/build binaries here.",
+  "_note": "M1 rebuild: before building, pin the sha256 of every artifact marked \"_sha_refresh_needed\" against the freshly-built production binaries. The 3 engine SHAs drifted (chessengine/reckless/stockfish-18 no longer match); root-analysis and obs-tool are new and unpinned. build_worker_image.py hard-fails on any pinned-but-drifted hash and hashes unpinned entries at build; add the pins there. Do NOT compute/build binaries here. | re-pinned 2026-07-19 to fresh datagen root-analysis/obs-tool (M2 --reference-only validated)",
   "artifacts": [
     {
       "source": "target/release/chessengine",
       "image_path": "bin/archon",
-      "sha256": "f55d0591666adcc6ad0e11fd9fb6e62978e5234ac2e4be81f1ee42622d4df698",
-      "_sha_refresh_needed": true
+      "sha256": "c277491656147fc9420bb35703178efea547e4a288dff137bc935f6027d835f2"
     },
     {
       "source": "reckless_reference/Reckless/target/release/reckless",
       "image_path": "bin/reckless",
-      "sha256": "8c4e36c012f4403f4441eead969a5e8dde182a2e45c69696170c85c11c2c66f9",
-      "_sha_refresh_needed": true
+      "sha256": "2e9fc5dd900bec217130f19675572b60c6992b12e5ced098f4a62c7666f5cd30"
     },
     {
       "source": "engines/stockfish-18-src/src/stockfish",
       "image_path": "bin/stockfish-18",
-      "sha256": "174270346ae9ed600713d165fa745dfa87fc084e44907c8084767f2b905e86d3",
-      "_sha_refresh_needed": true
+      "sha256": "3a42924156d0edb656efe3efb4c75ac3aacca8e9ca25dce80a86eb8749b299d0"
     },
     {
       "source": "data/nnue/nets/net-0.cenn",
@@ -29,44 +25,52 @@
     {
       "source": "target/release/root-analysis",
       "image_path": "bin/root-analysis",
-      "_sha_refresh_needed": true
+      "sha256": "9a157b9b4bc8b954569feb2ca51f71939a7d8d3ccde5a4a7b86bf2fdb6f4abae"
     },
     {
       "source": "target/release/obs-tool",
       "image_path": "bin/obs-tool",
-      "_sha_refresh_needed": true
+      "sha256": "1a008f5faac3efc1b3cd92d91dd89c9b6923ede53a2e102ef535ad029801185b"
     },
     {
       "source": "tools/ledger/ledger.py",
-      "image_path": "tools/ledger.py"
+      "image_path": "tools/ledger.py",
+      "sha256": "b0def92af1b48a2b3cdd264e01c0994e6e6151a661b0716a0f18520129c085ce"
     },
     {
       "source": "tools/cloud/obs_relabel_shard.py",
-      "image_path": "tools/obs_relabel_shard.py"
+      "image_path": "tools/obs_relabel_shard.py",
+      "sha256": "f082bb1157ac241a94eb0abc92850d2e473f14a08fa2f6cc97893024a887ea5a"
     },
     {
       "source": "tools/nnue/root_move_oracle.py",
-      "image_path": "tools/root_move_oracle.py"
+      "image_path": "tools/root_move_oracle.py",
+      "sha256": "1c631b59de1f0e021dd2db54a22e56a8618d949d87787a5424c22c0f51d389b7"
     },
     {
       "source": "tools/cloud/shard_lc0_positions.py",
-      "image_path": "tools/shard_lc0_positions.py"
+      "image_path": "tools/shard_lc0_positions.py",
+      "sha256": "84332c1aa1f95d194b56d2f1848e6ca903f1084ea5987deeadb52f47b5c6fcc4"
     },
     {
       "source": "tools/cloud/dual_label_shard.py",
-      "image_path": "tools/dual_label_shard.py"
+      "image_path": "tools/dual_label_shard.py",
+      "sha256": "6cbbd406aeb83928921f9d411ebb965c2e41d7a7b1809b648400c87b4ee10943"
     },
     {
       "source": "tools/cloud/native_game_generator.py",
-      "image_path": "tools/native_game_generator.py"
+      "image_path": "tools/native_game_generator.py",
+      "sha256": "2c9ec6ad680b299da9a7694bdf6f3ee7e3806bd677ae7c49b1170cad7b272aa8"
     },
     {
       "source": "tools/cloud/reconcile_native_games.py",
-      "image_path": "tools/reconcile_native_games.py"
+      "image_path": "tools/reconcile_native_games.py",
+      "sha256": "f184b0109cb8505437d09e22bef9ddb92bd31e814004d6cca4b125b54c541231"
     },
     {
       "source": "tools/cloud/native_dedup.py",
-      "image_path": "tools/native_dedup.py"
+      "image_path": "tools/native_dedup.py",
+      "sha256": "c1cee5939fa068ff43018faf374f7e11d13b4481b1c0f3a54e3eeb16bad24d83"
     }
   ]
 }

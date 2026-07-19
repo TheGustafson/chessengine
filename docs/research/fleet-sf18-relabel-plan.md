@@ -71,12 +71,22 @@ Fewer instances just runs longer at the same total spend. Implications:
   box or as a cloud prep step; batched extract→partition→upload to fit 8G disk.)
 - ✅ **Worker image context present** (`tools/cloud/worker/`: Dockerfile,
   archon_worker.py entrypoint, image_manifest.json, requirements.lock).
-- ⏳ **Image manifest SHA re-pin** — the pinned artifact SHAs drifted (binaries
-  rebuilt since). Re-pin = build fresh production `root-analysis` / `obs-tool` /
-  `chessengine` (+ the SF18 src build) and stamp their sha256 into the manifest.
-  This is the last local step before the (access-gated) image build+push.
-- ⛔ **Access-gated:** `bootstrap_gcp.sh`, image build+push to Artifact Registry,
-  and submit — all need `gcloud auth` + the billed project.
+- ✅ **Relabel CORE validated end-to-end (local):** the shipped `root-analysis`
+  was STALE (pre-M2, no `--reference-only`) — would have failed the whole fleet.
+  Rebuilt `--features datagen`; `root-analysis --engine <sf18> --fens f --nodes N
+  --reference-only --out shard.ceobs` → `obs-tool export-value` → `FEN|cp|wdl`.
+  SF18 labels correct (startpos +51, an equal endgame +6, an ARCHON-blindspot pos
+  −459 = Black winning). The fleet just scales this.
+- ✅ **Image manifest re-pinned** (13 SHAs → current, incl. the fresh
+  root-analysis/obs-tool); zero drift. Image build is one command once authed.
+- ⚠️ **WDL note:** relabel is eval-only → WDL=0.5 (no game outcome). Two clean
+  options at corpus-build: (A) train score-only (`D40_WDL=0`) — pure SF18
+  distillation, simplest; (B) line-aligned MERGE of the ORIGINAL binpack WDL
+  (bulk_fens emits `FEN\twdl\tscore`) with the new SF18 score → `FEN|SF18cp|origWDL`,
+  preserving the real-outcome signal. Recommend (B) to match the winning recipe.
+- ⛔ **Access-gated (all that's left):** `bootstrap_gcp.sh`, image build+push to
+  Artifact Registry, partition upload, and submit — need `gcloud auth` + the
+  billed project. Everything else is done + validated.
 
 ## The gate discipline
 The local pilot's train+gate (SF18-deep vs SF16 on 2M) is the cheap first read; but
