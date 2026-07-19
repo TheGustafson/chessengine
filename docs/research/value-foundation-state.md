@@ -133,9 +133,14 @@ Last updated: 2026-07-19 (post-compact resume block added)
 > **★ INTEGRAL EQUAL-TIME (user-requested "how far caught up", exp pending):**
 > ARCHON sota (d40-uho-720sb + opt1+opt2 + lazy observer) vs integral-v6, 100g
 > 10+0.1 (tools/nnue/integral_match_v1.sh, relabel-paused for clean timing).
-> THROUGH 28g: **~50% (≈0 Elo), draw-heavy (DrawRatio 80%)** — a large jump from
-> the **−70±22** anchor (speed package + stronger D40 net). Small sample (large
-> SE); final 100g + exact Elo±SE pending → ledger it then.
+> **FINAL 100g: ARCHON +24.4 ± 32.2 Elo (19W-12L-69D, LOS 93.2%), ledger
+> exp-0104** — even-to-AHEAD of Integral v6 (a top-6-class engine); a ~94-Elo
+> swing from the **−70±22** anchor. Speed package (opt1+opt2, +28 vs SF16) +
+> stronger D40 net (d40-uho-720sb). ARCHON is now ~Integral-v6-class. SF16 gap
+> remains (−41.5, exp-0103) — the north-star. **EXP-UNC-1 head plumbing verified
+> BIT-IDENTICAL (sota bench 147691) with the σ̂ forward + sidecar loader +
+> EvalContext::last_sigma accessor all committed; logvar-save fix build COMPILES
+> (auto-verifier building; smoke waits for the twin to free the GPU).**
 >
 > **★ LAZY OBSERVER IMPLEMENTED + MEASURED (2026-07-19, commit 249e1b5): the
 > +11-12% projection MISSED — clean measured = +3.6% NPS, bit-identical.** The
