@@ -63,6 +63,21 @@ Last updated: 2026-07-18 (evening loop, opt#1 landed)
 >   use; opt#1 is in-tree but not yet in the PGO binary.
 > Verification harness (reuse): build base+opt release, `bench 16 1 8 default
 > depth <net>` node-count = bit-identity anchor, benchmark_eval_nps.py for NPS.
+>
+> **opt#1 COMPREHENSIVELY VALIDATED + equal-time match RUNNING (user asked to
+> test comprehensively, 2026-07-18 evening).** Correctness: node-count
+> bit-identical at depth 6/8/10 on BOTH nets (683938 evals deep), AND all 2000
+> diverse training positions eval bit-identical (base vs opt dump, 0 diffs).
+> Speed: **+15.1% NPS geomean** (470583→541538, benchmark_eval_nps.py 16pos×200k,
+> median +22.5%) — under relabel load, so clean is ≥ that. **DEFINITIVE test now
+> running:** equal-time match sota-opt1 vs sota-base, same net 720sb, 10+0.1,
+> 1000g, UHO_Lichess_4852 book, concurrency 8 (one/physical-core, clean TC),
+> plain-release both (isolates opt#1). PID/log logs/opt1-equaltime.log, out
+> data/nnue/experiments/opt1-equaltime/. Expected ~+10-15 internal Elo (D39:
+> ~+9-10/+10% speed). **Label-value relabel PAUSED at 3/10 chunks** (resumable;
+> orchestrator killed) for the quiet box — RESUME after the match + then
+> implement opt#2/#3 (user-approved sequence). Ledger the match as an exp on
+> completion.
 
 > **EVENING UPDATE 2026-07-18 (persist checkpoint):** four items since 10:07.
 > (A) **STAGE-1 SATURATED at 720sb.** The warm-continue +360sb extension
