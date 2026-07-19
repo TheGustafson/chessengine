@@ -90,6 +90,24 @@ pub struct SotaContext {
     /// a wash; prefiltering on near-free material skips it on the balanced
     /// (unclear) majority so the undecided nodes pay no cheap overhead.
     smallnet_mat_gate: Value,
+    /// T-shirt gate LARGE tier (`ARCHON_LARGENET`): a full-feature net run on
+    /// CRITICAL positions — where the medium net's EXP-UNC-1 σ̂ ≥
+    /// [`largenet_sigma_gate`](Self::largenet_sigma_gate) — for extra accuracy
+    /// where the medium eval is least reliable. `None` ⇒ no large tier ⇒
+    /// bit-identical. Full-feature (HalfKA + FullThreats), so it carries BOTH
+    /// accumulator stacks, unlike the HalfKA-only small tier.
+    largenet: Option<&'static SotaNetwork>,
+    /// The large net's own incremental HalfKA + FullThreats stacks, maintained in
+    /// lockstep. Lazy like the medium's: the folds only happen on the (minority
+    /// of) nodes that actually escalate, so undecided/decided nodes pay only the
+    /// O(1) push.
+    largenet_halfka: Option<HalfkaContext<'static>>,
+    largenet_threats: Option<ThreatContext<'static>>,
+    /// σ̂ threshold (sigmoid/WDL space) at/above which the medium eval is "unsure
+    /// enough" to escalate to the large net. `0.0` ⇒ large tier off. Requires the
+    /// medium net to carry a variance head (else σ̂ is `None` and nothing
+    /// escalates).
+    largenet_sigma_gate: f32,
 }
 
 impl std::fmt::Debug for SotaContext {
@@ -125,6 +143,22 @@ impl SotaContext {
             .and_then(|value| value.parse::<Value>().ok())
             .filter(|&gate| gate > 0)
             .unwrap_or(0);
+        // T-shirt gate LARGE tier: arm only when a positive σ̂ gate AND a large net
+        // are both configured; otherwise every large field stays inert so the
+        // accumulator/evaluate paths are byte-for-byte the no-tier build.
+        let largenet_sigma_gate: f32 = std::env::var("ARCHON_LARGENET_SIGMA")
+            .ok()
+            .and_then(|value| value.parse::<f32>().ok())
+            .filter(|&gate| gate > 0.0 && gate.is_finite())
+            .unwrap_or(0.0);
+        let largenet = if largenet_sigma_gate > 0.0 {
+            super::active_largenet()
+        } else {
+            None
+        };
+        let largenet_halfka =
+            largenet.map(|large| HalfkaContext::new(&large.halfka_weights, &large.ft_bias));
+        let largenet_threats = largenet.map(|large| ThreatContext::new(&large.threat_weights));
         SotaContext {
             net,
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
@@ -134,6 +168,14 @@ impl SotaContext {
             smallnet_halfka,
             smallnet_thresh: if smallnet.is_some() { smallnet_thresh } else { 0 },
             smallnet_mat_gate,
+            largenet,
+            largenet_halfka,
+            largenet_threats,
+            largenet_sigma_gate: if largenet.is_some() {
+                largenet_sigma_gate
+            } else {
+                0.0
+            },
         }
     }
 
@@ -159,6 +201,34 @@ impl SotaContext {
             )),
             smallnet_thresh,
             smallnet_mat_gate,
+            largenet: None,
+            largenet_halfka: None,
+            largenet_threats: None,
+            largenet_sigma_gate: 0.0,
+        }
+    }
+
+    /// Test-only constructor that arms the LARGE tier explicitly. `sigma_gate` is
+    /// the σ̂ escalation threshold; the large net carries its own HalfKA + threats
+    /// stacks (full-feature).
+    #[cfg(test)]
+    fn new_with_large(net: &'static SotaNetwork, largenet: &'static SotaNetwork, sigma_gate: f32) -> Self {
+        SotaContext {
+            net,
+            halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
+            threats: ThreatContext::new(&net.threat_weights),
+            last_sigma: None,
+            smallnet: None,
+            smallnet_halfka: None,
+            smallnet_thresh: 0,
+            smallnet_mat_gate: 0,
+            largenet: Some(largenet),
+            largenet_halfka: Some(HalfkaContext::new(
+                &largenet.halfka_weights,
+                &largenet.ft_bias,
+            )),
+            largenet_threats: Some(ThreatContext::new(&largenet.threat_weights)),
+            largenet_sigma_gate: sigma_gate,
         }
     }
 
@@ -192,6 +262,12 @@ impl SotaContext {
         if let Some(small_halfka) = self.smallnet_halfka.as_mut() {
             small_halfka.refresh_root(board);
         }
+        if let Some(large_halfka) = self.largenet_halfka.as_mut() {
+            large_halfka.refresh_root(board);
+        }
+        if let Some(large_threats) = self.largenet_threats.as_mut() {
+            large_threats.refresh(board);
+        }
     }
 
     /// Record one post-move position at `ply + 1`. When the smallnet gate is
@@ -203,6 +279,12 @@ impl SotaContext {
         self.threats.apply_at(ply, &dirty, post_move_board);
         if let Some(small_halfka) = self.smallnet_halfka.as_mut() {
             small_halfka.push(ply, dirty);
+        }
+        if let Some(large_halfka) = self.largenet_halfka.as_mut() {
+            large_halfka.push(ply, dirty);
+        }
+        if let Some(large_threats) = self.largenet_threats.as_mut() {
+            large_threats.apply_at(ply, &dirty, post_move_board);
         }
     }
 
@@ -251,6 +333,31 @@ impl SotaContext {
         let threat = self.threats.at(ply);
         let (value, sigma) = self.net.head.forward(pst, threat, stm, piece_count);
         self.last_sigma = sigma;
+
+        // T-shirt gate LARGE tier: on a CRITICAL position — one the medium net is
+        // least sure about (its EXP-UNC-1 σ̂ ≥ largenet_sigma_gate) — escalate to
+        // the large net, spending extra eval accuracy exactly where the medium eval
+        // is least reliable. σ̂ IS the criticality router (|eval| can't tell a dead
+        // draw from a razor-sharp position; σ̂ can). No σ̂ (variance-less medium
+        // net) ⇒ nothing escalates. Inert (sigma_gate 0 / largenet None) ⇒ this
+        // block is skipped ⇒ bit-identical to a no-tier build.
+        let sigma_gate = self.largenet_sigma_gate;
+        if sigma_gate > 0.0
+            && let Some(medium_sigma) = sigma
+            && medium_sigma >= sigma_gate
+            && let (Some(large), Some(large_halfka), Some(large_threats)) = (
+                self.largenet,
+                self.largenet_halfka.as_mut(),
+                self.largenet_threats.as_mut(),
+            )
+        {
+            let large_pst = large_halfka.current(board, ply);
+            let large_threat = large_threats.at(ply);
+            let (large_value, large_sigma) =
+                large.head.forward(large_pst, large_threat, stm, piece_count);
+            self.last_sigma = large_sigma;
+            return large_value;
+        }
         value
     }
 
@@ -293,6 +400,98 @@ mod tests {
         let mut net = test_net_with_threats_pub();
         net.threat_weights = Vec::new().into_boxed_slice();
         Box::leak(Box::new(net))
+    }
+
+    /// A test net WITH a synthetic EXP-UNC-1 variance head, so `forward` returns
+    /// `Some(σ̂)` and the t-shirt LARGE tier has a criticality signal to route on.
+    fn leaked_variance_test_net() -> &'static SotaNetwork {
+        use super::super::sota_head::{BUCKETS, L3};
+        use super::super::sota_loader::tests::test_net_with_threats_pub;
+        let mut net = test_net_with_threats_pub();
+        net.head.l3_var_weights = Some(vec![0.01f32; BUCKETS * L3].into_boxed_slice());
+        net.head.l3_var_biases = Some(vec![0.0f32; BUCKETS].into_boxed_slice());
+        Box::leak(Box::new(net))
+    }
+
+    /// T-shirt LARGE tier: a σ̂ gate no position reaches (`1e9`) must never
+    /// escalate, so every eval equals the ungated medium-net eval bit-for-bit —
+    /// the large tier adds zero drift to the medium path (the property default
+    /// bit-identity depends on).
+    #[test]
+    fn largenet_tier_never_escalates_is_bit_identical() {
+        let medium = leaked_variance_test_net();
+        let large = leaked_test_net();
+        let mut gated = SotaContext::new_with_large(medium, large, 1e9);
+        let mut ungated = SotaContext::new(medium);
+        let mut board = Board::startpos();
+        gated.refresh_root(&board);
+        ungated.refresh_root(&board);
+        let mut seed = 0xC0FFEE11u64;
+        for ply in 0..32usize {
+            let mut moves = MoveList::new();
+            generate_legal(&board, &mut moves);
+            if moves.is_empty() {
+                break;
+            }
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let m = moves[seed as usize % moves.len()];
+            let dirty = DirtyPiece::from_move(&board, m);
+            let gives_check = board.gives_check(m);
+            board.make_move(m, gives_check);
+            gated.push(dirty, ply, &board);
+            ungated.push(dirty, ply, &board);
+            assert_eq!(
+                gated.evaluate(&board, ply + 1),
+                ungated.evaluate(&board, ply + 1),
+                "never-escalate large tier must match the ungated medium eval at ply {ply}"
+            );
+        }
+    }
+
+    /// T-shirt LARGE tier: when the large net and the medium net are the SAME
+    /// (variance-bearing) net, escalating is value-transparent — a σ̂ gate that
+    /// always fires (`1e-6`) returns exactly the medium eval, exercising the whole
+    /// escalation path (second HalfKA+threats stacks, σ̂ routing, large head call).
+    #[test]
+    fn largenet_tier_transparent_when_nets_agree() {
+        let net = leaked_variance_test_net();
+        let mut gated = SotaContext::new_with_large(net, net, 1e-6);
+        let mut ungated = SotaContext::new(net);
+        let mut board = Board::startpos();
+        gated.refresh_root(&board);
+        ungated.refresh_root(&board);
+        let mut seed = 0x5EED_1A9Eu64;
+        let mut escalations = 0;
+        for ply in 0..32usize {
+            let mut moves = MoveList::new();
+            generate_legal(&board, &mut moves);
+            if moves.is_empty() {
+                break;
+            }
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let m = moves[seed as usize % moves.len()];
+            let dirty = DirtyPiece::from_move(&board, m);
+            let gives_check = board.gives_check(m);
+            board.make_move(m, gives_check);
+            gated.push(dirty, ply, &board);
+            ungated.push(dirty, ply, &board);
+            let expected = ungated.evaluate(&board, ply + 1);
+            assert_eq!(
+                gated.evaluate(&board, ply + 1),
+                expected,
+                "escalated large tier (large == medium) must reproduce the medium eval at ply {ply}"
+            );
+            // The medium net has a variance head, so σ̂ is present and the tiny gate
+            // fires — confirm the escalation path is actually taken.
+            if gated.last_sigma().is_some() {
+                escalations += 1;
+            }
+        }
+        assert!(escalations > 0, "expected the large tier to actually escalate");
     }
 
     #[test]

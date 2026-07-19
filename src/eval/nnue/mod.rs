@@ -394,6 +394,33 @@ pub fn active_smallnet() -> Option<&'static sota_loader::SotaNetwork> {
     })
 }
 
+/// The t-shirt gate's LARGE-tier net (S/M/L adaptive eval routing). A full-feature
+/// CENN-v2 net run ONLY on CRITICAL positions — the ones the MEDIUM net is least
+/// sure about (its EXP-UNC-1 σ̂ ≥ `ARCHON_LARGENET_SIGMA`) — spending extra eval
+/// accuracy where it matters most. Env-driven (`ARCHON_LARGENET`), loaded once,
+/// lazily, leaked. `None` (unset/blank/bad file) ⇒ no large tier ⇒ bit-identical.
+///
+/// NOTE (honest): a large tier only pays off if this net is genuinely MORE
+/// ACCURATE than the medium net. Our one-box results say width is saturated and
+/// eval is data-limited (`training-methods-study` / `sf16-gap-diagnosis`), so a
+/// same-data wider net will NOT help — the tier's real value is as the deployment
+/// vehicle for a beyond-SF16 fleet net or an ensemble. This is the routing
+/// mechanism; the accuracy must come from the net itself.
+#[cfg(feature = "sota")]
+pub fn active_largenet() -> Option<&'static sota_loader::SotaNetwork> {
+    use std::sync::OnceLock;
+    static LARGENET: OnceLock<Option<&'static sota_loader::SotaNetwork>> = OnceLock::new();
+    *LARGENET.get_or_init(|| {
+        let path = std::env::var("ARCHON_LARGENET").ok()?;
+        if path.trim().is_empty() {
+            return None;
+        }
+        let bytes = std::fs::read(&path).ok()?;
+        let net = sota_loader::load_v2_bytes(&bytes).ok()?;
+        Some(Box::leak(Box::new(net)) as &'static sota_loader::SotaNetwork)
+    })
+}
+
 /// The compile-time-embedded default net (distribution builds only, `embed-net`
 /// feature). Loaded and leaked once. The bytes are a build asset validated at
 /// build time, so a load failure is a broken build — not user input — hence the
