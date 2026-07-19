@@ -95,6 +95,20 @@ Last updated: 2026-07-19 (post-compact resume block added)
 > GPU is idle (this + EXP-AUX-1 share the trainer plumbing). Runs alongside the
 > CPU relabel. D38 ledger the twin + both gates.
 >
+> **★★ g2 GATE 1 VERDICT (2026-07-19): FAILED HARD — Elo −178.86 ± 60.06 (114g
+> @5k), LLR −2.98, SPRT H0 accepted. B's Seitzer concern CONFIRMED, dramatically.**
+> The twin's l3_var never trained (raw ckpt drops non-output-reachable weights →
+> its "NLL" collapsed to ≈MSE → Gate 1 +5.2 parity). g2 = same seed + the
+> logvar-SAVE fix → l3_var ACTUALLY trained (loss −2.28) → the COUPLED NLL's
+> exp(−s) mean-reweighting then WRECKED the mean (−184 Elo vs the twin). Coupled
+> NLL is UNUSABLE for the shipped mean. → **Executing the prepared branch: the
+> DETACH variant** (`D40_HETERO_NLL_DETACH=1`, trainer d40_features.rs:725) — mean
+> loss stays pure MSE + the l3_var head reads a stop-grad trunk, so the mean =
+> control by construction (Gate 1 automatic + TRUE) and σ̂ is a clean post-hoc
+> residual predictor. Smoke launched (3 SB); full 240sb retrain
+> (`d40-uho-unc-detach-240sb`) on the now-FREE GPU (g2 retrain done). Then Gate 2
+> (the consumer probe) — the real, unproven test of EXP-UNC-1's +3-15 bet.
+>
 > **STATUS (2026-07-19, LAUNCHED — trainer fully validated):** The NLL trainer is
 > IMPLEMENTED + smoke-validated. Edit in `.archon-state/toolchains/bullet/examples/
 > d40_features.rs` (~line 708): behind `D40_HETERO_NLL=1`, a parallel `l3_var`
