@@ -68,6 +68,16 @@ impl SotaContext {
         self.last_sigma
     }
 
+    /// EXP-UNC-1: invalidate the cached σ̂ (set to `None`). Called at the top of
+    /// [`super::super::evaluate`] so any eval path that does NOT run the SOTA
+    /// forward this node (material-draw shortcut, a non-SOTA net) leaves σ̂ as
+    /// `None` instead of a STALE prior-position value — the D33 review found the
+    /// stale value would otherwise be folded into the search's uncertainty EMA
+    /// and root capture (reviewers A/C).
+    pub fn invalidate_sigma(&mut self) {
+        self.last_sigma = None;
+    }
+
     /// The net this context evaluates against.
     pub fn net(&self) -> &SotaNetwork {
         self.net

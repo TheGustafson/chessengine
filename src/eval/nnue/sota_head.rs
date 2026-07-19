@@ -217,8 +217,11 @@ impl SotaHead {
 
     /// EXP-UNC-1: the log-variance head's dense f32[L3]→f32, mirroring
     /// [`propagate_l3`](Self::propagate_l3) exactly (same lane layout + reduction
-    /// order) but reading the variance weights. Returns raw `s = log(σ²)` in the
-    /// mean's pre-sigmoid space. Caller guarantees the variance head is present.
+    /// order) but reading the variance weights. Returns raw `s = log(σ²)`, the
+    /// log-variance of the SIGMOID (WDL) value — the NLL trains it on the
+    /// `(sigmoid(out) − target)` residual, so σ̂ = exp(½·s) is a WDL-space std,
+    /// NOT a cp-space one (D33 review, reviewer B: mind this when it scales the
+    /// cp-space RFP margin). Caller guarantees the variance head is present.
     fn propagate_l3_var(&self, l2: &[f32; L3], bucket: usize) -> f32 {
         const LANES: usize = 16;
         let mut sums = [0.0f32; LANES];
@@ -266,10 +269,15 @@ impl SotaHead {
         let l2 = self.propagate_l2(&l1, bucket);
         let l3 = self.propagate_l3(&l2, bucket);
         let value = (l3 * self.network_scale as f32) as i32;
-        let sigma = self
-            .l3_var_weights
-            .as_ref()
-            .map(|_| (0.5 * self.propagate_l3_var(&l2, bucket)).exp());
+        // σ̂ = exp(½·logσ²). Guard against a non-finite result (only reachable
+        // via a garbage/mismatched D40_UNC_HEAD sidecar, which is size- but not
+        // content-validated): return None so every consumer falls back to its
+        // factor-1.0 no-op instead of NaN-poisoning the RFP margin / TM budget
+        // (D33 review, reviewer A).
+        let sigma = self.l3_var_weights.as_ref().and_then(|_| {
+            let s = (0.5 * self.propagate_l3_var(&l2, bucket)).exp();
+            s.is_finite().then_some(s)
+        });
         (value, sigma)
     }
 }
@@ -439,5 +447,25 @@ mod tests {
         assert_eq!(v0, v1, "the value (mean) path is unchanged by the variance head");
         let sigma = s1.expect("variance head => Some(sigma)");
         assert!(sigma.is_finite() && sigma > 0.0, "sigma finite & positive, got {sigma}");
+    }
+
+    /// EXP-UNC-1 (D33 review, reviewer C): propagate_l3_var must be a faithful
+    /// mirror of the trusted propagate_l3 — given identical weights/biases it
+    /// returns identical values for every bucket. Pins the lane layout, reduction
+    /// order, and bias so the σ̂ dot-product cannot silently diverge from the mean
+    /// head (the two are hand-kept duplicates until deduped).
+    #[test]
+    fn propagate_l3_var_mirrors_propagate_l3() {
+        let mut head = synth_head();
+        head.l3_var_weights = Some(head.l3_weights.clone());
+        head.l3_var_biases = Some(head.l3_biases.clone());
+        let l2: [f32; L3] = std::array::from_fn(|i| (i as f32 * 0.031 - 0.5).sin());
+        for bucket in 0..BUCKETS {
+            assert_eq!(
+                head.propagate_l3_var(&l2, bucket),
+                head.propagate_l3(&l2, bucket),
+                "variance head must mirror the mean head exactly at bucket {bucket}"
+            );
+        }
     }
 }

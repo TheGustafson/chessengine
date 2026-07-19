@@ -1615,6 +1615,17 @@ impl Worker {
         // heads reuse this protected accumulator and have no board-refresh
         // trunk of their own.
         self.eval_ctx.refresh_root(&self.board);
+        // EXP-UNC-1 (D33 review, reviewers A/B/C): reset the root uncertainty
+        // per search. The persistent TT means the root usually hits a cached
+        // eval on move N+1, so a fresh root σ̂ isn't recaptured every search;
+        // without this reset `root_sigma` would leak a PRIOR move's value into
+        // the TM soft-stop. Worst case now: 0.0 → `unc_tm_factor` returns 1.0
+        // (consumer 2 self-disables that search) rather than mis-scaling on a
+        // different position's uncertainty.
+        #[cfg(feature = "sota")]
+        {
+            self.root_sigma = 0.0;
+        }
         #[cfg(feature = "policy")]
         if crate::policy::root_order_enabled() {
             let scores = self.policy_net.as_ref().and_then(|net| {
@@ -2189,8 +2200,11 @@ impl Worker {
                 };
                 // EXP-UNC-1: on a FRESH sota eval, capture this node's value
                 // uncertainty σ̂ and fold it into the running mean σ̄. Env-gated —
-                // skipped entirely when ARCHON_UNC_RFP_C1 is unset, so zero
-                // overhead and bit-identical by default.
+                // skipped entirely unless a consumer coefficient (ARCHON_UNC_RFP_C1
+                // for the RFP margin, ARCHON_UNC_TM_C2 for the TM soft-stop) is set,
+                // so zero overhead and bit-identical by default. `last_sigma()` is
+                // invalidated at the top of `evaluate()`, so a material-draw /
+                // non-SOTA node yields None here (no stale fold) — D33 review.
                 #[cfg(feature = "sota")]
                 if (self.unc_rfp_c1 != 0.0 || self.unc_tm_c2 != 0.0)
                     && !(tt_hit && is_valid(tt_data.eval))

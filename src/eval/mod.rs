@@ -263,6 +263,17 @@ pub fn evaluate(board: &Board, ctx: &mut EvalContext, optimism: Value, ply: usiz
         "evaluate must never be called in check (design/11 §3.1)"
     );
 
+    // EXP-UNC-1 (D33 review, reviewers A/C): invalidate the SOTA value-uncertainty
+    // σ̂ up front, so any path that does NOT run the SOTA forward this node
+    // (the material-draw shortcut below, or a non-SOTA active net) leaves
+    // `last_sigma() == None` rather than a STALE prior-position value that the
+    // search would fold into its σ̄ EMA / root capture. Only a fresh
+    // `SotaContext::evaluate` below re-sets it.
+    #[cfg(feature = "sota")]
+    if let Some(sota) = ctx.sota.as_mut() {
+        sota.invalidate_sigma();
+    }
+
     // Dead-draw guard (ALL phases inherit it, NNUE included): insufficient
     // mating material is an exact draw — bypass the whole pipeline. Search's
     // rule50/repetition draw handling is untouched (design/11 §3.6).
