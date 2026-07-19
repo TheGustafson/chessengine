@@ -133,10 +133,12 @@ impl SotaHead {
         l1_dot(&mut pre, ft, nnz, wb);
         let mut out = [0.0f32; L2];
         let bb = bucket * L2;
+        // Fixed-size bucket slice hoists the bounds check out of the loop so
+        // the dequant+SCReLU vectorizes (perf: the flat `l1_biases[bb + j]`
+        // load kept a panic edge per element). Same per-j math → bit-identical.
+        let bias: &[f32; L2] = self.l1_biases[bb..bb + L2].try_into().expect("l1 bias block");
         for j in 0..L2 {
-            let clipped = (pre[j] as f32)
-                .mul_add(DEQUANT, self.l1_biases[bb + j])
-                .clamp(0.0, 1.0);
+            let clipped = (pre[j] as f32).mul_add(DEQUANT, bias[j]).clamp(0.0, 1.0);
             out[j] = clipped * clipped;
         }
         out
@@ -144,16 +146,26 @@ impl SotaHead {
 
     /// Dense f32[L2]→f32[L3], bias-seeded FMA then SCReLU (step 4). The
     /// i-outer/j-inner order is load-bearing: it pins the accumulation order.
+    /// Per-bucket block + per-row fixed-size slices (hoisted out of the loop)
+    /// let LLVM vectorize the 32-wide j-FMA: the flat `l2_weights[wbase + i*L3
+    /// + j]` load with a runtime bucket kept a bounds-check panic edge on every
+    /// element and forced fully-scalar `vfmadd*ss` (~10% of eval runtime + 28%
+    /// of I1 misses; profiling-study §4.2). j-lane vectorization preserves each
+    /// `out[j]`'s sequential accumulation over i ⇒ bit-identical.
     #[allow(clippy::needless_range_loop)]
     fn propagate_l2(&self, l1: &[f32; L2], bucket: usize) -> [f32; L3] {
         let mut out = [0.0f32; L3];
         let bb = bucket * L3;
         out.copy_from_slice(&self.l2_biases[bb..bb + L3]);
         let wbase = bucket * L2 * L3;
+        let wblock: &[f32; L2 * L3] = self.l2_weights[wbase..wbase + L2 * L3]
+            .try_into()
+            .expect("l2 weight block");
         for i in 0..L2 {
+            let row: &[f32; L3] = wblock[i * L3..i * L3 + L3].try_into().expect("l2 weight row");
+            let li = l1[i];
             for j in 0..L3 {
-                let w = self.l2_weights[wbase + i * L3 + j];
-                out[j] = w.mul_add(l1[i], out[j]);
+                out[j] = row[j].mul_add(li, out[j]);
             }
         }
         for v in &mut out {
@@ -169,11 +181,16 @@ impl SotaHead {
         const LANES: usize = 16;
         let mut sums = [0.0f32; LANES];
         let wbase = bucket * L3;
+        // Fixed-size bucket + per-lane slices hoist the bounds checks so the
+        // 16-wide FMA vectorizes; same lane assignment ⇒ bit-identical.
+        let weights: &[f32; L3] =
+            self.l3_weights[wbase..wbase + L3].try_into().expect("l3 weight block");
         let mut i = 0;
         while i < L3 {
+            let wl: &[f32; LANES] = weights[i..i + LANES].try_into().expect("l3 weight lane");
+            let ll: &[f32; LANES] = l2[i..i + LANES].try_into().expect("l2 lane");
             for j in 0..LANES {
-                let w = self.l3_weights[wbase + i + j];
-                sums[j] = w.mul_add(l2[i + j], sums[j]);
+                sums[j] = wl[j].mul_add(ll[j], sums[j]);
             }
             i += LANES;
         }
