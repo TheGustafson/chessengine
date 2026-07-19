@@ -2119,3 +2119,20 @@ the remaining deployment gate.
   pre-speed base). Match archon-pgo vs SF16 10+0.1 (data/nnue/experiments/pgo-vs-sf16).
   Prior plain-opt2 was −42.8; PGO ~+9% NPS => expect closer. Relabel PAUSED at 3/10
   for the quiet box; resume after.
+
+## 2026-07-19 — SF16 PGO validation FINAL + 3 studies running
+- **exp-0103: ARCHON opt1+opt2+PGO vs SF16 = −41.5 ± 12.3 (463g).** Statistically =
+  plain-opt2's −42.8 (exp-0102) → **PGO's +9% bench-NPS did NOT convert to game-Elo**
+  (workload mismatch + NPS→Elo slope flattens near SF16). SPEED PROGRAM VALIDATED gain
+  vs SF16 = ~+28 (from ~−70 to ~−42), matches opt#1's +28.8. Keep PGO as the deploy
+  form but it's a wash for game-Elo; the sota bench NPS ranking still holds.
+- **3 Fable studies commissioned (all model=fable, self-report requested):**
+  (1) D41 auxiliary-task ADVERSARIAL (train-time aux / eval-only inference, H-AUX) →
+  d41-auxiliary-task-adversarial-2026-07-19.md; (2) creative PERFORMANCE study #3
+  (more liberty, structural/arch wins beyond micro-opts) → profiling-study-3-creative
+  -2026-07-19.md. Both boxed to not disturb equal-time matches. Box kept QUIET for
+  their measurements; kill-switch relabel PAUSED at 3/10, resumes after.
+- **D41 REFRAME (user):** the first D41 study was wrongly scoped — closed per-node
+  INFERENCE allocation (k>T) but never evaluated the TRAIN-TIME-auxiliary/eval-only
+  formulation (T=1, no tax). H-AUX = co-train eval trunk w/ a policy/search-value aux
+  head, deploy eval-only. reframe doc committed; adversarial re-study running.
