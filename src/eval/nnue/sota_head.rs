@@ -73,6 +73,17 @@ pub struct SotaHead {
     pub l3_biases: Box<[f32]>,
     /// f32→centipawn scale (Reckless 380; ours is baked at training, per-net).
     pub network_scale: i32,
+    /// EXP-UNC-1 (search study bet 1): the OPTIONAL heteroscedastic log-variance
+    /// head — a parallel `[BUCKETS][L3]` weight block + `[BUCKETS]` bias trained
+    /// under Gaussian NLL alongside the value mean. `None` for every net without
+    /// the head (all existing nets), in which case [`forward`](Self::forward)
+    /// returns `sigma = None` and every uncertainty consumer falls back to its
+    /// constant — so a variance-less net is bit-identical to today. Loaded from a
+    /// small sidecar (`D40_UNC_HEAD`), not the CENN, so the CENN format is
+    /// unchanged.
+    pub l3_var_weights: Option<Box<[f32]>>,
+    /// `[BUCKETS]` f32, paired with [`l3_var_weights`](Self::l3_var_weights).
+    pub l3_var_biases: Option<Box<[f32]>>,
 }
 
 /// Pairwise-multiply FT activation (design/11 §12.3 step 1): sum the two
@@ -204,24 +215,62 @@ impl SotaHead {
         sums[0] + self.l3_biases[bucket]
     }
 
+    /// EXP-UNC-1: the log-variance head's dense f32[L3]→f32, mirroring
+    /// [`propagate_l3`](Self::propagate_l3) exactly (same lane layout + reduction
+    /// order) but reading the variance weights. Returns raw `s = log(σ²)` in the
+    /// mean's pre-sigmoid space. Caller guarantees the variance head is present.
+    fn propagate_l3_var(&self, l2: &[f32; L3], bucket: usize) -> f32 {
+        const LANES: usize = 16;
+        let mut sums = [0.0f32; LANES];
+        let wbase = bucket * L3;
+        let vw = self.l3_var_weights.as_ref().expect("variance head present");
+        let vb = self.l3_var_biases.as_ref().expect("variance head present");
+        let weights: &[f32; L3] = vw[wbase..wbase + L3].try_into().expect("l3 var weight block");
+        let mut i = 0;
+        while i < L3 {
+            let wl: &[f32; LANES] = weights[i..i + LANES].try_into().expect("l3 var lane");
+            let ll: &[f32; LANES] = l2[i..i + LANES].try_into().expect("l2 lane");
+            for j in 0..LANES {
+                sums[j] = wl[j].mul_add(ll[j], sums[j]);
+            }
+            i += LANES;
+        }
+        let mut stride = LANES / 2;
+        while stride > 0 {
+            for k in 0..stride {
+                sums[k] += sums[k + stride];
+            }
+            stride /= 2;
+        }
+        sums[0] + vb[bucket]
+    }
+
     /// The head forward: two per-perspective accumulators + side to move + total
-    /// piece count → stm-relative centipawns. The front-end (task #29 part 2)
-    /// produces `pst`/`threat`; this is the shared trunk read for both eval and
-    /// the policy heads.
+    /// piece count → (stm-relative centipawns, optional value-uncertainty σ̂).
+    /// The front-end (task #29 part 2) produces `pst`/`threat`; this is the
+    /// shared trunk read for both eval and the policy heads. `sigma` is `Some`
+    /// only when the net carries the EXP-UNC-1 log-variance head; it is the
+    /// per-position value std in sigmoid (WDL) space, `σ̂ = exp(½·log σ²)`,
+    /// computed from the SAME `l2` activations at ~32 extra FLOPs (T ≈ 1).
     pub fn forward(
         &self,
         pst: &[[i16; L1]; 2],
         threat: &[[i16; L1]; 2],
         stm: Color,
         piece_count: usize,
-    ) -> i32 {
+    ) -> (i32, Option<f32>) {
         let ft = activate_ft(pst, threat, stm);
         let (nnz, count) = find_nnz(&ft);
         let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
         let l1 = self.propagate_l1(&ft, &nnz[..count], bucket);
         let l2 = self.propagate_l2(&l1, bucket);
         let l3 = self.propagate_l3(&l2, bucket);
-        (l3 * self.network_scale as f32) as i32
+        let value = (l3 * self.network_scale as f32) as i32;
+        let sigma = self
+            .l3_var_weights
+            .as_ref()
+            .map(|_| (0.5 * self.propagate_l3_var(&l2, bucket)).exp());
+        (value, sigma)
     }
 }
 
@@ -276,6 +325,8 @@ mod tests {
             l3_weights: l3w.into_boxed_slice(),
             l3_biases: l3b.into_boxed_slice(),
             network_scale: 380,
+            l3_var_weights: None,
+            l3_var_biases: None,
         }
     }
 
@@ -353,16 +404,40 @@ mod tests {
     fn forward_deterministic_and_bucketed() {
         let head = synth_head();
         let (pst, threat) = synth_accs();
-        let a = head.forward(&pst, &threat, Color::White, 20);
-        let b = head.forward(&pst, &threat, Color::White, 20);
+        let (a, _) = head.forward(&pst, &threat, Color::White, 20);
+        let (b, _) = head.forward(&pst, &threat, Color::White, 20);
         assert_eq!(a, b, "deterministic");
         assert!(a.abs() < 100_000, "finite, sane cp");
         // piece counts 20 and 32 map to different buckets (4 vs 7).
         assert_eq!(OUTPUT_BUCKETS_LAYOUT[20], 4);
         assert_eq!(OUTPUT_BUCKETS_LAYOUT[32], 7);
         // stm flip changes which half leads → generally a different value.
-        let w = head.forward(&pst, &threat, Color::White, 20);
-        let bl = head.forward(&pst, &threat, Color::Black, 20);
+        let (w, _) = head.forward(&pst, &threat, Color::White, 20);
+        let (bl, _) = head.forward(&pst, &threat, Color::Black, 20);
         assert!(w != bl, "side-to-move relativity is wired");
+    }
+
+    /// EXP-UNC-1: the optional variance head yields a finite, positive σ̂ and
+    /// leaves the value (mean) path byte-identical — the head-level form of the
+    /// "bit-identical when the uncertainty consumers are off" guarantee. Without
+    /// the head, σ̂ is `None`.
+    #[test]
+    fn variance_head_yields_finite_sigma_without_touching_value() {
+        let (pst, threat) = synth_accs();
+
+        let plain = synth_head();
+        let (v0, s0) = plain.forward(&pst, &threat, Color::White, 20);
+        assert!(s0.is_none(), "no variance head => no sigma");
+
+        let mut head = synth_head();
+        let vw: Vec<f32> = (0..BUCKETS * L3).map(|i| ((i % 7) as f32 - 3.0) * 0.05).collect();
+        let vb: Vec<f32> = (0..BUCKETS).map(|i| i as f32 * 0.01 - 0.02).collect();
+        head.l3_var_weights = Some(vw.into_boxed_slice());
+        head.l3_var_biases = Some(vb.into_boxed_slice());
+        let (v1, s1) = head.forward(&pst, &threat, Color::White, 20);
+
+        assert_eq!(v0, v1, "the value (mean) path is unchanged by the variance head");
+        let sigma = s1.expect("variance head => Some(sigma)");
+        assert!(sigma.is_finite() && sigma > 0.0, "sigma finite & positive, got {sigma}");
     }
 }

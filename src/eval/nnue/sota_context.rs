@@ -32,6 +32,13 @@ pub struct SotaContext {
     net: &'static SotaNetwork,
     halfka: HalfkaContext<'static>,
     threats: ThreatContext<'static>,
+    /// EXP-UNC-1: the value-uncertainty σ̂ from the most recent [`evaluate`], or
+    /// `None` when the net has no variance head. Stashed here (rather than
+    /// widening the `Value` return) so the search can read it for the pruning /
+    /// time-management consumers without disturbing the eval-value contract.
+    ///
+    /// [`evaluate`]: Self::evaluate
+    last_sigma: Option<f32>,
 }
 
 impl std::fmt::Debug for SotaContext {
@@ -50,7 +57,15 @@ impl SotaContext {
             net,
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
             threats: ThreatContext::new(&net.threat_weights),
+            last_sigma: None,
         }
+    }
+
+    /// The value-uncertainty σ̂ produced by the most recent [`evaluate`](Self::evaluate),
+    /// or `None` when the loaded net has no EXP-UNC-1 variance head. σ̂ is the
+    /// per-position value std in sigmoid (WDL) space.
+    pub fn last_sigma(&self) -> Option<f32> {
+        self.last_sigma
     }
 
     /// The net this context evaluates against.
@@ -86,7 +101,9 @@ impl SotaContext {
         // Count total pieces for the output bucket.
         let piece_count = board.all_occupancy().count() as usize;
 
-        self.net.head.forward(pst, threat, stm, piece_count)
+        let (value, sigma) = self.net.head.forward(pst, threat, stm, piece_count);
+        self.last_sigma = sigma;
+        value
     }
 
     #[cfg(debug_assertions)]

@@ -799,9 +799,11 @@ mod tests {
             l3_weights: vec![0.02f32; BUCKETS * L3].into_boxed_slice(),
             l3_biases: vec![0.0f32; BUCKETS].into_boxed_slice(),
             network_scale: 380,
+            l3_var_weights: None,
+            l3_var_biases: None,
         };
         let piece_count = board.all_occupancy().count() as usize;
-        let cp = head.forward(&pst, &threat, Color::White, piece_count);
+        let (cp, _sigma) = head.forward(&pst, &threat, Color::White, piece_count);
         assert!(cp.abs() < 1_000_000, "finite centipawns");
     }
 }

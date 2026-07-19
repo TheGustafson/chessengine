@@ -409,6 +409,8 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         l3_weights,
         l3_biases,
         network_scale,
+        l3_var_weights: None,
+        l3_var_biases: None,
     };
 
     Ok(SotaNetwork {
@@ -591,6 +593,8 @@ pub(crate) mod tests {
                 l3_weights,
                 l3_biases,
                 network_scale: 380,
+                l3_var_weights: None,
+                l3_var_biases: None,
             },
         }
     }
