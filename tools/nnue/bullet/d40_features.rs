@@ -706,20 +706,44 @@ fn main() {
             let hl2 = l1.forward(hl1).select(buckets).screlu();
             let hl3 = l2.forward(hl2).select(buckets).screlu();
             let out = l3.forward(hl3).select(buckets);
-
-            // D40_LOSS_POWER (study 2026-07, experiment #2): official
-            // nnue-pytorch trains |pt-qf|^2.5; bullet's default is power 2.
-            // Default path stays squared_error so existing recipes reproduce
-            // byte-identically; any other value routes through power_error.
             let sig = out.sigmoid();
-            let loss = match std::env::var("D40_LOSS_POWER").as_deref() {
-                Ok(p) if p != "2" && p != "2.0" => {
-                    let power: f32 = p.parse().expect("D40_LOSS_POWER must be a float");
-                    sig.power_error(targets, power).reduce_sum_batch()
+
+            // EXP-UNC-1 (search study bet 1): heteroscedastic-NLL uncertainty head.
+            // A PARALLEL log-variance head `l3_var` (same L3->NUM_BUCKETS shape as
+            // the mean head) makes the value output (mean = `out`, log_var). Loss =
+            // 0.5*(exp(-s)*(sig - t)^2 + s), the Gaussian NLL in sigmoid space with
+            // s = log(sigma^2). The MEAN head + its save tensors (l3w/l3b) are
+            // UNCHANGED, so the mean-only netpack for the Gate-1 value-parity screen
+            // is byte-structurally identical to the control. logvar is exposed as a
+            // SAVED OUTPUT so l3_var lands in the raw checkpoint — the raw save only
+            // persists output-reachable weights, so a loss-only l3_var is dropped
+            // (verified: without this the smoke raw ckpt had no l3_varw/l3_varb).
+            // The runtime uncertainty sidecar (tools/nnue/extract_unc_head.py) reads
+            // l3_varw/l3_varb from the raw ckpt. Default path (flag unset) stays
+            // squared_error -> existing recipes reproduce byte-identically.
+            let mut outputs = vec![("output".to_string(), out)];
+            let loss = if std::env::var("D40_HETERO_NLL").is_ok() {
+                let l3_var = builder.new_affine("l3_var", L3, NUM_BUCKETS);
+                let logvar = l3_var.forward(hl3).select(buckets);
+                outputs.push(("logvar".to_string(), logvar));
+                let sq = sig.squared_error(targets); // (sig - t)^2, per position
+                let inv_var = (-logvar).exp(); // exp(-log_var) = 1/sigma^2
+                let nll = (inv_var * sq + logvar) * 0.5;
+                nll.reduce_sum_batch()
+            } else {
+                // D40_LOSS_POWER (study 2026-07, experiment #2): official
+                // nnue-pytorch trains |pt-qf|^2.5; bullet's default is power 2.
+                // Default path stays squared_error so existing recipes reproduce
+                // byte-identically; any other value routes through power_error.
+                match std::env::var("D40_LOSS_POWER").as_deref() {
+                    Ok(p) if p != "2" && p != "2.0" => {
+                        let power: f32 = p.parse().expect("D40_LOSS_POWER must be a float");
+                        sig.power_error(targets, power).reduce_sum_batch()
+                    }
+                    _ => sig.squared_error(targets).reduce_sum_batch(),
                 }
-                _ => sig.squared_error(targets).reduce_sum_batch(),
             };
-            (Some(loss), vec![("output".to_string(), out)])
+            (Some(loss), outputs)
         },
     );
 
