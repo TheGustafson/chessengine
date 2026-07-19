@@ -67,6 +67,29 @@ node better than ARCHON's D40 net. (ARCHON is actually time-*efficient* — medi
   endgame depth) could actually help disproportionately. Worth checking in the
   gate sweep.
 
+## Refinement: the gap is FINE-GRAINED eval, not blunders (blindspot mining)
+
+`tools/analysis/sf16_eval_blindspots.py` mines positions where ARCHON's eval was
+roughly equal/slightly-better (E_a ∈ [−0.5, +1.5]) right after its move but
+LOSING (≤ −1.0) after SF16's single reply — genuine "thought it was fine, wasn't"
+oversights (won-position eval-compression filtered out).
+
+**Only 57 such blindspots in 26,892 ARCHON moves (~0.2%).** ARCHON's eval is
+almost never grossly wrong. So the −41.5 is NOT blunder-driven — it is a
+consistent, small per-node eval disadvantage (SF16 judges each node ~a fraction
+of a pawn better, accumulating over the game), exactly what "distilled-from-SF16,
+slightly lossy" predicts. Corollary: **you cannot close the gap by patching a
+handful of blindspots; the whole eval has to get uniformly sharper** → data +
+compute (fleet), not a targeted fix.
+
+Where the rare blindspots DO occur: 44% opening / 37% endgame; the worst cases
+are sharp positions where ARCHON UNDER-rates an enemy king attack (e.g.
+`7k/7p/1pn3p1/p1pnpr2/1P2N1q1/P1PP1pPr/5P1P/1R1Q1NRK b` — ARCHON +1.20, actually
+−3.5). A weak (N=57) hint that king-safety/attack in sharp middlegames is the
+softest spot. Saved as a regression suite:
+`data/nnue/testsuites/archon-eval-blindspots.epd` (a better net should rate these
+nearer the SF16-implied value).
+
 ## What this changes
 
 Nothing already in flight is wasted (all incremental gains compound), but it
