@@ -33,17 +33,28 @@
 //! into the SOTA search stack via [`super::sota_context::SotaContext`], behind
 //! the `sota` cargo feature, so the default build is untouched.
 //!
-//! # Lazy folding (R4)
-//! Event resolution ([`build_deltas`] + [`threat_index`]) must run at push time
-//! because it reads the post-move board, which siblings destroy in place. But the
-//! expensive 768-lane fold ([`apply_i8_deltas`]) and the parent→child copy are
-//! *deferred* to evaluate time and memoized per perspective, mirroring the HalfKA
-//! stack ([`super::sota_accumulator::HalfkaContext`]): [`ThreatContext::apply_at`]
-//! stores the resolved `(adds, subs)` index lists, and
-//! [`ThreatContext::compute`] folds forward from the nearest computed ancestor
-//! only for the plies that actually reach an evaluate. A king cross (the sole
-//! from-scratch case) still refreshes eagerly at push, since its rebuild needs
-//! the post-move board.
+//! # Fully-lazy folding (perf study 3, §2)
+//! The observer is *fully* deferred to evaluate time. The round-1/2 claim that
+//! resolution "must run at push time because it reads the post-move board" was
+//! false: event generation reads only occupancy + the mailbox, and resolution
+//! reads the king square only through a 1-bit mirror ([`orient_threats`]). So
+//! [`ThreatContext::apply_at`] snapshots exactly those inputs (mailbox +
+//! occupancy + both king squares, ~140 B — a [`ThreatSnapshot`]) plus the
+//! [`DirtyPiece`], and defers *everything else* — generation ([`build_deltas`]),
+//! per-perspective resolution ([`threat_index`]), and the 768-lane fold
+//! ([`apply_i8_deltas`]) — to [`ThreatContext::compute`], which runs them against
+//! the stored snapshot only for the plies that actually reach an [`evaluate`],
+//! folding forward from the nearest computed ancestor. Children that cut off
+//! (TT hits, immediate fail-lows) pay nothing. Generation is shared across
+//! perspectives per folded ply; only ~46% of pushed plies are ever folded, so
+//! this deletes ~54% of the observer block at a **bit-identical** eval — same
+//! events, same resolution, same fold, run later and less often. A king cross
+//! (the sole from-scratch case) still refreshes eagerly at push, since its
+//! rebuild reads the post-move king square + occupancy directly.
+//!
+//! [`orient_threats`]: super::sota_features
+//! [`evaluate`]: super::sota_context::SotaContext::evaluate
+//! [`apply_i8_deltas`]: super::sota_simd::apply_i8_deltas_into
 //!
 //! ## Why the first-cut is correct on a post-move board (the telescoping)
 //! Reckless calls its hooks *during* make-move, at each intermediate
@@ -137,12 +148,62 @@ impl DeltaBuf {
     }
 }
 
+/// The ~140-byte snapshot of the post-move board state the observer needs to
+/// (re)generate + resolve its events at fold time: the mailbox (piece
+/// identities), the all-occupancy bitboard, and both king squares. Captured at
+/// push by [`ThreatContext::apply_at`] and consumed by
+/// [`ThreatContext::compute`], which runs [`build_deltas`]/[`resolve_into`]
+/// against it instead of the live [`Board`] a sibling would have destroyed in
+/// place. It carries exactly what [`build_deltas`] (occupancy + `piece_on`) and
+/// [`resolve_into`] (each perspective's king square) read — nothing else — so
+/// the deferred work is bit-identical to running it eagerly on the live board.
+#[derive(Clone)]
+struct ThreatSnapshot {
+    mailbox: [Option<Piece>; Square::COUNT],
+    occ: Bitboard,
+    kings: [Square; 2],
+}
+
+impl ThreatSnapshot {
+    #[inline]
+    fn from_board(board: &Board) -> Self {
+        ThreatSnapshot {
+            mailbox: board.mailbox,
+            occ: board.all_occupancy(),
+            kings: [
+                board.king_square(Color::White),
+                board.king_square(Color::Black),
+            ],
+        }
+    }
+
+    #[inline]
+    fn all_occupancy(&self) -> Bitboard {
+        self.occ
+    }
+
+    #[inline]
+    fn piece_on(&self, sq: Square) -> Option<Piece> {
+        self.mailbox[sq.index() as usize]
+    }
+}
+
+impl Default for ThreatSnapshot {
+    fn default() -> Self {
+        ThreatSnapshot {
+            mailbox: [None; Square::COUNT],
+            occ: Bitboard::EMPTY,
+            kings: [Square::A1; 2],
+        }
+    }
+}
+
 /// The intermediate replay state: the running occupancy plus a small
 /// override map for the few squares the move touches, so identity lookups match
-/// the state *after the current edit* even though the underlying [`Board`] is
-/// already fully post-move.
+/// the state *after the current edit* even though the underlying
+/// [`ThreatSnapshot`] is already fully post-move.
 struct Replay<'a> {
-    board: &'a Board,
+    snap: &'a ThreatSnapshot,
     /// Current (intermediate) occupancy — starts at the pre-move occupancy and
     /// evolves one edit at a time.
     occ: Bitboard,
@@ -181,7 +242,7 @@ impl<'a> Replay<'a> {
         match self.find(sq) {
             Some(i) => self.over_pc[i].expect("resolve on an empty touched square"),
             None => self
-                .board
+                .snap
                 .piece_on(sq)
                 .expect("resolve on an empty untouched square"),
         }
@@ -508,25 +569,22 @@ fn king_crossed(dp: &DirtyPiece, color: Color) -> bool {
 /// the HalfKA accumulator stack ([`super::sota_accumulator`]).
 const STACK_LEN: usize = MAX_PLY + 8;
 
-/// One per-ply FullThreats entry, folded **lazily** — the FullThreats mirror of
-/// [`super::sota_accumulator::HalfkaContext`]'s per-ply `Entry`. At push time we
-/// resolve the move's per-perspective `(adds, subs)` feature-index lists (they
-/// read the post-move board, which is destroyed once a sibling mutates the board
-/// in place) but *defer* the 768-lane fold; [`ThreatContext::compute`] runs it
-/// later, and only for the plies that are actually evaluated.
+/// One per-ply FullThreats entry, folded **fully lazily** — the FullThreats
+/// mirror of [`super::sota_accumulator::HalfkaContext`]'s per-ply `Entry`. At
+/// push time we store only the move ([`dp`](Self::dp)) and a
+/// [`ThreatSnapshot`] of the post-move board; generation, resolution, and the
+/// 768-lane fold are all deferred to [`ThreatContext::compute`], which runs
+/// them against the snapshot only for the plies that are actually evaluated.
 #[derive(Clone)]
 struct ThreatEntry {
     /// `[White, Black]` accumulator pair — valid only where `computed[p]`.
     acc: [[i16; ACC]; 2],
-    /// Resolved feature-add / feature-sub indices per perspective (the 60_720
-    /// FullThreats features fit a `u16`). Read only for a `!computed[p]`
-    /// perspective; a king-crossed perspective is refreshed from scratch eagerly
-    /// at push time (its refresh needs the post-move board) and leaves these
-    /// stale but unread.
-    adds: [[u16; DELTA_CAP]; 2],
-    subs: [[u16; DELTA_CAP]; 2],
-    add_len: [u16; 2],
-    sub_len: [u16; 2],
+    /// The move that produced this entry, and the post-move board state its
+    /// events regenerate against. Shared by both perspectives; a king-crossed
+    /// perspective ignores them (it was refreshed from scratch eagerly at push).
+    /// Read only while folding a `!computed[p]` perspective.
+    dp: DirtyPiece,
+    snapshot: ThreatSnapshot,
     /// Per-perspective memoization flag — the FullThreats analogue of HalfKA's
     /// `Entry::computed`. Set by [`ThreatContext::compute`] (deferred fold) or
     /// eagerly at push (root, king cross, empty-weights net).
@@ -537,10 +595,8 @@ impl Default for ThreatEntry {
     fn default() -> Self {
         ThreatEntry {
             acc: [[0i16; ACC]; 2],
-            adds: [[0u16; DELTA_CAP]; 2],
-            subs: [[0u16; DELTA_CAP]; 2],
-            add_len: [0; 2],
-            sub_len: [0; 2],
+            dp: DirtyPiece::EMPTY,
+            snapshot: ThreatSnapshot::default(),
             computed: [false; 2],
         }
     }
@@ -551,15 +607,16 @@ impl Default for ThreatEntry {
 /// (design/11 §12.9.1, R4). Format-agnostic: it borrows the `i8` threat-weight
 /// slice (feature-major, `THREAT_DIMS · ACC`), exactly like [`refresh_threat`].
 ///
-/// Unlike HalfKA — whose dirty record is re-resolved to feature indices from the
-/// current king square at fold time — FullThreats' delta list derives from the
-/// x-ray geometry of the *post-move* board, which is gone once a sibling mutates
-/// the board in place. So [`apply_at`](Self::apply_at) still resolves the
-/// per-perspective `(adds, subs)` index lists at push time, but the expensive
-/// part — the ~3 KB parent→child copy and the 768-lane [`apply_i8_deltas`] — is
-/// deferred to [`compute`](Self::compute), folding forward from the nearest
-/// computed ancestor only for plies that reach an [`evaluate`]. Children that cut
-/// off (TT hits, immediate fail-lows) never pay the fold.
+/// Like HalfKA — whose dirty record is re-resolved to feature indices at fold
+/// time — FullThreats now defers *everything*: [`apply_at`](Self::apply_at)
+/// snapshots the post-move board ([`ThreatSnapshot`]) + the [`DirtyPiece`], and
+/// [`compute`](Self::compute) regenerates the events, resolves the
+/// per-perspective indices, and folds forward from the nearest computed ancestor
+/// only for plies that reach an [`evaluate`]. Children that cut off (TT hits,
+/// immediate fail-lows) never pay generation, resolution, *or* the fold. The
+/// snapshot's x-ray geometry is the *post-move* board's, captured before a
+/// sibling can mutate it in place, so the deferred work is bit-identical to the
+/// old eager path.
 ///
 /// [`evaluate`]: super::sota_context::SotaContext::evaluate
 pub struct ThreatContext<'a> {
@@ -568,12 +625,12 @@ pub struct ThreatContext<'a> {
     /// absolute search ply and never truncated — a sibling simply overwrites its
     /// ply's entry — exactly like the HalfKA stack. Heap-allocated once.
     stack: Box<[ThreatEntry]>,
-    /// Scratch raw-event buffer for [`build_deltas`], reused every push.
+    /// Scratch raw-event buffer for [`build_deltas`], reused every fold.
     buf: DeltaBuf,
-    /// Fold-time `u16 -> usize` index scratch for [`apply_i8_deltas`], reused
-    /// every [`compute`](Self::compute) — never a per-node allocation, and
-    /// never re-zeroed (only the `..len` prefix is read; an in-loop array
-    /// here cost an ~8 KB memset per made move before 943584d).
+    /// Fold-time resolved-index scratch for [`apply_i8_deltas`], written by
+    /// [`resolve_into`] and reused every [`compute`](Self::compute) — never a
+    /// per-node allocation, and never re-zeroed (only the `..len` prefix is
+    /// read).
     add_scratch: [usize; DELTA_CAP],
     sub_scratch: [usize; DELTA_CAP],
     /// Top-of-stack ply for the cursor form of the API
@@ -630,28 +687,28 @@ impl<'a> ThreatContext<'a> {
     /// ancestor. The search overwrites sibling plies rather than calling `undo`,
     /// so callers use this indexed form. Now `&mut self` (it may trigger a fold).
     pub fn at(&mut self, ply: usize) -> &[[i16; ACC]; 2] {
-        self.compute(ply, 0);
-        self.compute(ply, 1);
+        self.compute(ply);
         &self.stack[ply].acc
     }
 
-    /// Resolve (but do NOT fold) the move described by `dp` (made to reach
+    /// Record (but do NOT fold) the move described by `dp` (made to reach
     /// `board`) into the child entry at `ply + 1`, advancing the cursor. A
     /// perspective whose own king crossed the d/e boundary is refreshed from
-    /// scratch eagerly here (that rebuild needs the post-move board); every other
-    /// perspective just stores its resolved `(adds, subs)` index lists for
-    /// [`compute`](Self::compute) to fold later. `board` is the fully post-move
-    /// position. This is the cursor form of [`apply_at`](Self::apply_at).
+    /// scratch eagerly here (that rebuild reads the post-move board); every other
+    /// perspective just gets the post-move [`ThreatSnapshot`] stored for
+    /// [`compute`](Self::compute) to (re)generate and fold later. `board` is the
+    /// fully post-move position. This is the cursor form of
+    /// [`apply_at`](Self::apply_at).
     pub fn apply(&mut self, dp: &DirtyPiece, board: &Board) {
         let ply = self.top;
         self.apply_at(ply, dp, board);
     }
 
-    /// Resolve a post-move dirty record from `ply` to `ply + 1` (search-stack
+    /// Record a post-move dirty record from `ply` to `ply + 1` (search-stack
     /// form of [`apply`](Self::apply)). A stale sibling entry at `ply + 1` is
-    /// fully overwritten — every perspective's `computed` flag and delta lists
-    /// are reset here, so no truncation is needed and deeper stale entries are
-    /// never read (`compute` only ever walks toward the root).
+    /// fully overwritten — every perspective's `computed` flag plus the move and
+    /// snapshot are reset here, so no truncation is needed and deeper stale
+    /// entries are never read (`compute` only ever walks toward the root).
     pub fn apply_at(&mut self, ply: usize, dp: &DirtyPiece, board: &Board) {
         let child = ply + 1;
         debug_assert!(child < STACK_LEN, "ThreatContext ply {child} exceeds stack");
@@ -665,69 +722,93 @@ impl<'a> ThreatContext<'a> {
             return;
         }
 
-        // Resolve the perspective-agnostic raw event list NOW: it reads the
-        // post-move board, which is destroyed once a sibling mutates the board.
-        self.buf.clear();
-        build_deltas(&mut self.buf, dp, board);
+        // Snapshot the post-move inputs the observer needs at fold time (mailbox
+        // + occupancy + king squares, ~140 B) plus the move itself. Every
+        // fold-time (re)generation reads THIS, never the live board a sibling
+        // will overwrite. Generation, resolution, and the fold are all deferred.
+        self.stack[child].dp = *dp;
+        self.stack[child].snapshot = ThreatSnapshot::from_board(board);
 
         let weights = self.weights;
         for (pi, &persp) in Color::ALL.iter().enumerate() {
             if king_crossed(dp, persp) {
                 // The perspective's king crossed the d/e mirror: its whole threat
-                // accumulator must be rebuilt from scratch, which needs the king
-                // square + occupancy of THIS board — both gone at fold time. So
-                // do the refresh eagerly here and mark the perspective computed.
-                // A king cross is rare; the common case stays lazy.
+                // accumulator must be rebuilt from scratch, which reads the king
+                // square + occupancy of the live post-move board. Do it eagerly
+                // here and mark the perspective computed; a king cross is rare, so
+                // the common case stays fully lazy. The OTHER perspective still
+                // folds against the snapshot stored above.
                 self.stack[child].acc[pi] = refresh_threat(weights, board, persp);
                 self.stack[child].computed[pi] = true;
             } else {
-                // Resolve this perspective's (adds, subs) feature indices now
-                // (they depend on the post-move board via `king_square`), but
-                // defer the 768-lane `apply_i8_deltas` fold to `compute`.
-                let ksq = board.king_square(persp);
-                resolve_entry(self.buf.events(), &mut self.stack[child], pi, persp, ksq);
                 self.stack[child].computed[pi] = false;
             }
         }
     }
 
-    /// Fold `stack[ply]`'s `perspective` accumulator, memoizing it — the
-    /// FullThreats mirror of [`super::sota_accumulator::HalfkaContext::compute`].
-    /// Walks back to the nearest computed ancestor (the root is always computed;
-    /// any king-crossed ply was computed eagerly at push, so the span holds only
-    /// non-crossed deferred plies with valid resolved delta lists), then folds
-    /// each child forward through its stored deltas.
-    fn compute(&mut self, ply: usize, p: usize) {
-        if self.stack[ply].computed[p] {
+    /// Fold `stack[ply]`'s accumulator for **both** perspectives, memoizing them
+    /// — the FullThreats mirror of
+    /// [`super::sota_accumulator::HalfkaContext::compute`], but fully lazy:
+    /// generation ([`build_deltas`]) and resolution ([`resolve_into`]) happen
+    /// here too, against each folded ply's stored [`ThreatSnapshot`]. Walks back
+    /// to the nearest computed ancestor per perspective (the root is always
+    /// computed; any king-crossed ply was computed eagerly at push), then, for
+    /// each child across the union span, regenerates the perspective-agnostic
+    /// events ONCE and resolves + folds each perspective that still needs it.
+    fn compute(&mut self, ply: usize) {
+        if self.stack[ply].computed[0] && self.stack[ply].computed[1] {
             return;
         }
-        let mut ancestor = ply;
-        while ancestor > 0 && !self.stack[ancestor].computed[p] {
-            ancestor -= 1;
+        // Nearest computed ancestor per perspective (spans differ only across a
+        // king-crossed ply, which computes one perspective eagerly at push).
+        let mut anc = [ply; 2];
+        for (p, a) in anc.iter_mut().enumerate() {
+            while *a > 0 && !self.stack[*a].computed[p] {
+                *a -= 1;
+            }
         }
         let weights = self.weights;
-        for child in (ancestor + 1)..=ply {
-            let add_len = self.stack[child].add_len[p] as usize;
-            let sub_len = self.stack[child].sub_len[p] as usize;
-            for i in 0..add_len {
-                self.add_scratch[i] = self.stack[child].adds[p][i] as usize;
+        for child in (anc[0].min(anc[1]) + 1)..=ply {
+            let need = [
+                child > anc[0] && !self.stack[child].computed[0],
+                child > anc[1] && !self.stack[child].computed[1],
+            ];
+            if !need[0] && !need[1] {
+                continue;
             }
-            for i in 0..sub_len {
-                self.sub_scratch[i] = self.stack[child].subs[p][i] as usize;
-            }
-            // Fused parent→child fold (opt #2): read parent lanes, apply
-            // deltas, write child lanes in one pass — the ~1.5 KB parent→child
-            // memmove we deferred off `do_move` is now eliminated, not just
-            // deferred. Paid only for evaluated plies.
-            let (before, after) = self.stack.split_at_mut(child);
-            apply_i8_deltas_into(
-                &mut after[0].acc[p],
-                &before[child - 1].acc[p],
-                weights,
-                &self.add_scratch[..add_len],
-                &self.sub_scratch[..sub_len],
+            // Regenerate the perspective-agnostic raw events once, from this
+            // ply's stored snapshot — shared across both perspectives.
+            self.buf.clear();
+            build_deltas(
+                &mut self.buf,
+                &self.stack[child].dp,
+                &self.stack[child].snapshot,
             );
-            after[0].computed[p] = true;
+            for (p, &needs_fold) in need.iter().enumerate() {
+                if !needs_fold {
+                    continue;
+                }
+                let ksq = self.stack[child].snapshot.kings[p];
+                let (add_len, sub_len) = resolve_into(
+                    self.buf.events(),
+                    &mut self.add_scratch,
+                    &mut self.sub_scratch,
+                    Color::ALL[p],
+                    ksq,
+                );
+                // Fused parent→child fold (opt #2): read parent lanes, apply
+                // deltas, write child lanes in one pass. Paid only for evaluated
+                // plies.
+                let (before, after) = self.stack.split_at_mut(child);
+                apply_i8_deltas_into(
+                    &mut after[0].acc[p],
+                    &before[child - 1].acc[p],
+                    weights,
+                    &self.add_scratch[..add_len],
+                    &self.sub_scratch[..sub_len],
+                );
+                after[0].computed[p] = true;
+            }
         }
     }
 
@@ -751,53 +832,51 @@ impl<'a> ThreatContext<'a> {
     }
 }
 
-/// Resolve the perspective-agnostic raw `events` to `perspective`'s
-/// `(adds, subs)` FullThreats feature-index lists, written into `entry` at slot
-/// `pi`. This is the per-perspective inner loop lifted out of the old eager
-/// `apply`: [`threat_index`] maps each raw event (dropping excluded pairs), and
-/// the simple intermediate-state replay's telescoping over-emission is cancelled
-/// pairwise before it costs a stored update. The resulting `(adds, subs)`
-/// multiset is exactly what the eager path would have applied, so the deferred
-/// [`apply_i8_deltas`] fold is bit-identical.
-fn resolve_entry(
+/// Resolve the perspective-agnostic raw `events` to `persp`'s FullThreats
+/// feature-index lists, written as `usize` indices into the caller's
+/// `adds`/`subs` scratch and returned as `(add_len, sub_len)`. [`threat_index`]
+/// maps each raw event (dropping excluded pairs), and the simple
+/// intermediate-state replay's telescoping over-emission is cancelled pairwise
+/// before it reaches the fold. The resulting `(adds, subs)` multiset is exactly
+/// what the old eager path applied, so the [`apply_i8_deltas`] fold is
+/// bit-identical — only run later and per folded ply instead of at every push.
+fn resolve_into(
     events: &[ThreatDelta],
-    entry: &mut ThreatEntry,
-    pi: usize,
+    adds: &mut [usize],
+    subs: &mut [usize],
     persp: Color,
     ksq: Square,
-) {
+) -> (usize, usize) {
     let mut add_len = 0usize;
     let mut sub_len = 0usize;
     for d in events {
         if let Some(idx) = threat_index(persp, d.attacker, d.from, d.to, d.victim, ksq) {
             debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
-            let idx = idx as u16;
             if d.add {
-                if let Some(pos) = entry.subs[pi][..sub_len].iter().position(|&old| old == idx) {
+                if let Some(pos) = subs[..sub_len].iter().position(|&old| old == idx) {
                     sub_len -= 1;
-                    entry.subs[pi][pos] = entry.subs[pi][sub_len];
+                    subs[pos] = subs[sub_len];
                 } else {
-                    entry.adds[pi][add_len] = idx;
+                    adds[add_len] = idx;
                     add_len += 1;
                 }
-            } else if let Some(pos) = entry.adds[pi][..add_len].iter().position(|&old| old == idx) {
+            } else if let Some(pos) = adds[..add_len].iter().position(|&old| old == idx) {
                 add_len -= 1;
-                entry.adds[pi][pos] = entry.adds[pi][add_len];
+                adds[pos] = adds[add_len];
             } else {
-                entry.subs[pi][sub_len] = idx;
+                subs[sub_len] = idx;
                 sub_len += 1;
             }
         }
     }
-    entry.add_len[pi] = add_len as u16;
-    entry.sub_len[pi] = sub_len as u16;
+    (add_len, sub_len)
 }
 
-/// Reconstruct the pre-move occupancy from `board` (post-move) + `dp`, then
+/// Reconstruct the pre-move occupancy from `snap` (post-move) + `dp`, then
 /// replay the edits — every sub removed (in order), then every add — recording a
 /// `record_square_touch` per edit against the state *after* that edit. See the
 /// module docs for the telescoping argument.
-fn build_deltas(buf: &mut DeltaBuf, dp: &DirtyPiece, board: &Board) {
+fn build_deltas(buf: &mut DeltaBuf, dp: &DirtyPiece, snap: &ThreatSnapshot) {
     // A non-capture (including a quiet promotion) changes occupancy only by
     // moving the blocker from `from` to `to`. Evaluate both endpoint changes
     // against the shared occupancy with both endpoints empty; this is the
@@ -806,8 +885,8 @@ fn build_deltas(buf: &mut DeltaBuf, dp: &DirtyPiece, board: &Board) {
         && from != to
     {
         let between = Replay {
-            board,
-            occ: board.all_occupancy() & !Bitboard::from_square(*to),
+            snap,
+            occ: snap.all_occupancy() & !Bitboard::from_square(*to),
             over_sq: [Square::A1; 8],
             over_pc: [None; 8],
             n_over: 0,
@@ -825,8 +904,8 @@ fn build_deltas(buf: &mut DeltaBuf, dp: &DirtyPiece, board: &Board) {
         && from != to
     {
         let mut after_remove = Replay {
-            board,
-            occ: board.all_occupancy(),
+            snap,
+            occ: snap.all_occupancy(),
             over_sq: [Square::A1; 8],
             over_pc: [None; 8],
             n_over: 0,
@@ -835,8 +914,8 @@ fn build_deltas(buf: &mut DeltaBuf, dp: &DirtyPiece, board: &Board) {
         record_square_touch(buf, &after_remove, *mover, *from, false);
 
         let final_state = Replay {
-            board,
-            occ: board.all_occupancy(),
+            snap,
+            occ: snap.all_occupancy(),
             over_sq: [Square::A1; 8],
             over_pc: [None; 8],
             n_over: 0,
@@ -848,7 +927,7 @@ fn build_deltas(buf: &mut DeltaBuf, dp: &DirtyPiece, board: &Board) {
     // Pre-move occupancy = post-move, with adds cleared then subs set. A square
     // that is both a sub and an add (a capture's destination) ends up SET
     // (occupied pre-move by the victim), because subs are applied last.
-    let mut pre_occ = board.all_occupancy();
+    let mut pre_occ = snap.all_occupancy();
     for &(_, sq) in dp.adds() {
         pre_occ &= !Bitboard::from_square(sq);
     }
@@ -857,7 +936,7 @@ fn build_deltas(buf: &mut DeltaBuf, dp: &DirtyPiece, board: &Board) {
     }
 
     let mut r = Replay {
-        board,
+        snap,
         occ: pre_occ,
         over_sq: [Square::A1; 8],
         over_pc: [None; 8],
