@@ -93,12 +93,25 @@ Last updated: 2026-07-19 (post-compact resume block added)
 > pid 430823, log data/nnue/experiments/d40-uho-unc-v1/train.log; exact control
 > recipe + default power-2 loss, same seed 198273612 → identical mean-head init;
 > D40_SF_BUFFER_MB lowered 256→128 for RAM safety w/ the relabel; save_rate 30).
-> ~2.4h to SB240, then train_run.py packs (mean-only CENN) + parity. **NEXT on
-> completion:** GATE 1 = fixed-node value screen d40-uho-unc-240sb (mean) vs the
-> control d40-uho-v1-240sb (kill ≤−15); if pass → runtime plumbing (l3_var into
-> CENN format + loader + head forward + futility/RFP + TM soft-stop, env-gated) →
-> GATE 2. RAM tight (~1.95 GB avail, stable — don't add heavy jobs). Ledger the
-> twin after pack.
+> ~2.4h to SB240, then train_run.py packs (mean-only CENN) + parity.
+>
+> **MEANTIME PLUMBING BUILT WHILE THE TWIN TRAINS (2026-07-19, committed):**
+> Decision: variance head rides a **SIDECAR** (D40_UNC_HEAD env), NOT the CENN
+> (netpack rejects unknown trailing bytes; CENN format stays unchanged; no train
+> restart). Done + tested, all bit-identical when off:
+> - **7b17338 head-side σ̂:** SotaHead optional l3_var head + propagate_l3_var;
+>   forward() → (value, Option<σ̂>), σ̂=exp(½·logσ²) sigmoid-space from shared l2
+>   (~32 FLOPs, T≈1); SotaContext.last_sigma() getter; unit-tested value-unchanged.
+> - **5126538 sidecar loader:** load_uncertainty_sidecar reads D40_UNC_HEAD (flat
+>   LE f32, BUCKETS·L3 weights bucket-major + BUCKETS biases) into the head at
+>   net-load; absent/error → variance-less.
+> - **Gate-1 harness armed (self-firing):** tools/nnue/exp_unc_gate1.sh (pid poll
+>   on 430823 → 400g @5k SPRT[-15,5] twin vs control → GATE1-DONE + verdict).
+> STILL TODO (Gate-2 prep, in progress): (a) **sidecar EXTRACTOR** — a bullet
+> dumper reading l3_varw/l3_varb from the raw ckpt (ModelWeights.get by name) →
+> the sidecar file; (b) **consumers** — futility/RFP margin scale c1 + TM soft-stop
+> c2 (env-gated, read SotaContext.last_sigma). **Gate 1 needs NONE of this** (mean
+> value only). RAM tight — build with CARGO_BUILD_JOBS=2. Ledger the twin after pack.
 >
 > **★ LAZY OBSERVER IMPLEMENTED + MEASURED (2026-07-19, commit 249e1b5): the
 > +11-12% projection MISSED — clean measured = +3.6% NPS, bit-identical.** The
