@@ -105,11 +105,13 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory(prefix="archon-fen-task-") as temporary:
         temporary_root = Path(temporary)
+        # Phase 1: write every shard locally + hash + metadata (fast, serial CPU).
+        specs = []
         for start in range(0, len(fens), args.rows_per_task):
-            if args.max_tasks is not None and len(manifest["shards"]) >= args.max_tasks:
+            if args.max_tasks is not None and len(specs) >= args.max_tasks:
                 break
             stop = min(start + args.rows_per_task, len(fens))
-            ordinal = len(manifest["shards"])
+            ordinal = len(specs)
             filename = f"{ordinal:06d}.fens"
             local_path = temporary_root / filename
             local_path.write_text("\n".join(fens[start:stop]) + "\n", encoding="utf-8")
@@ -124,8 +126,17 @@ def main() -> None:
                 "source_stop": str(stop),
                 "rows": str(stop - start),
             }
+            specs.append((ordinal, filename, local_path, digest, object_name, metadata, start, stop))
+
+        # Phase 2: upload shards in PARALLEL — the per-object HTTP round-trip
+        # dominates (serial ~0.6 shards/s), so a thread pool is ~30x faster. The
+        # keyless client + immutable no-overwrite semantics are unchanged.
+        import concurrent.futures
+
+        def _upload(spec):
+            ordinal, filename, local_path, digest, object_name, metadata, start, stop = spec
             generation, _ = upload_immutable(bucket, object_name, local_path, metadata)
-            manifest["shards"].append({
+            return {
                 "ordinal": ordinal,
                 "fen_file_uri": f"gs://{bucket_name}/{object_name}",
                 "generation": generation,
@@ -134,8 +145,16 @@ def main() -> None:
                 "rows": stop - start,
                 "source_start": start,
                 "source_stop": stop,
-            })
-            local_path.unlink()
+            }
+
+        done = 0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=32) as pool:
+            for shard in pool.map(_upload, specs):
+                manifest["shards"].append(shard)
+                done += 1
+                if done % 500 == 0:
+                    print(f"uploaded {done}/{len(specs)} shards", flush=True)
+        manifest["shards"].sort(key=lambda item: item["ordinal"])
 
     manifest["total_rows"] = sum(int(shard["rows"]) for shard in manifest["shards"])
     manifest["total_shards"] = len(manifest["shards"])
