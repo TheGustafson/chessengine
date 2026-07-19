@@ -34,7 +34,7 @@ from typing import Any
 # production binaries. Every submit_*.py + README §"Worker image" reference this
 # same identity — no more research-worker/data-worker three-digest drift.
 DEFAULT_IMAGE = (
-    "us-east1-docker.pkg.dev/archon-502500/archon-workers/archon-worker@sha256:640b73509d6b8beba944c7c5e64c027cd3b8cf684e63bca2cf282fe5686d4b4e"
+    "us-east1-docker.pkg.dev/archon-502500/archon-workers/archon-worker@sha256:2110987b3ea6806f694459d0532bf40ab92892f2e8930a36d2e4d6f78cf5c19e"
 )
 DEFAULT_SERVICE_ACCOUNT = "archon-batch-worker@archon-502500.iam.gserviceaccount.com"
 
@@ -69,6 +69,10 @@ def main() -> None:
     parser.add_argument("--nodes", type=int, required=True, help="node budget per position")
     parser.add_argument("--tier", choices=("reference-only", "rich"), default="reference-only")
     parser.add_argument("--arm-mode", choices=("searchmoves", "child"), default="searchmoves")
+    parser.add_argument("--warm", action="store_true",
+                        help="warm-TT relabel: skip per-position ucinewgame across the "
+                             "shard's game-ordered FENs (Fable study: ~4x @10k). Requires a "
+                             "game-ordered manifest.")
     parser.add_argument("--date", help="campaign date YYYY-MM-DD (default: today UTC)")
     parser.add_argument("--created-unix", type=int,
                         help="pin for byte-reproducible shards (default: --date midnight UTC)")
@@ -218,7 +222,7 @@ def main() -> None:
         "--tier", args.tier,
         "--arm-mode", args.arm_mode,
         "--seed", str(args.seed),
-    ] + option_args)
+    ] + (["--warm"] if args.warm else []) + option_args)
 
     job = {
         "taskGroups": [{

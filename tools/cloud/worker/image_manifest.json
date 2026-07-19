@@ -25,7 +25,7 @@
     {
       "source": "target/release/root-analysis",
       "image_path": "bin/root-analysis",
-      "sha256": "9a157b9b4bc8b954569feb2ca51f71939a7d8d3ccde5a4a7b86bf2fdb6f4abae"
+      "sha256": "acd5dc352985a6ce8771a0d86f940525f44318d23825802d2d079f852b3874d4"
     },
     {
       "source": "target/release/obs-tool",
@@ -40,7 +40,7 @@
     {
       "source": "tools/cloud/obs_relabel_shard.py",
       "image_path": "tools/obs_relabel_shard.py",
-      "sha256": "f082bb1157ac241a94eb0abc92850d2e473f14a08fa2f6cc97893024a887ea5a"
+      "sha256": "0ed21c6ba4da0c5aa5cd6c0982b3eee027d0c77a9f8c6048e03ebb9809a2eb94"
     },
     {
       "source": "tools/nnue/root_move_oracle.py",

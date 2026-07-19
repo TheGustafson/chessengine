@@ -138,6 +138,7 @@ def run_root_analysis(
     seed: int,
     created_unix: int | None,
     uci_options: list[str],
+    warm: bool = False,
 ) -> int:
     """Invoke the packaged root-analysis; return the reported episode count."""
     argv = [
@@ -152,6 +153,10 @@ def run_root_analysis(
     if tier == "reference-only":
         # M2's Tier-F flag: L1+L3+Provenance, no per-arm searchmoves loop.
         argv.append("--reference-only")
+    if warm:
+        # Skip per-position `ucinewgame` so the TT persists across the shard's
+        # game-ordered FENs -> tree reuse (Fable relabel-speed study: ~4x @10k).
+        argv.append("--warm")
     if created_unix is not None:
         argv += ["--created-unix", str(created_unix)]
     for option in uci_options:
@@ -184,6 +189,9 @@ def main() -> None:
                         default="reference-only")
     parser.add_argument("--arm-mode", choices=("searchmoves", "child"),
                         default="searchmoves")
+    parser.add_argument("--warm", action="store_true",
+                        help="skip per-position ucinewgame -> warm-TT reuse across "
+                             "game-ordered FENs (Fable study: ~4x @10k)")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--created-unix", type=int,
                         help="pin for byte-reproducible shards (submit pins to the campaign date)")
@@ -289,6 +297,7 @@ def main() -> None:
             args.seed,
             args.created_unix,
             args.uci_option,
+            args.warm,
         )
         elapsed = time.monotonic() - started
         validate_ceobs(output_path)
