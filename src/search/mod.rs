@@ -257,6 +257,29 @@ fn rfp_prune_margin(
     ) - params::RFP_THREAT_MARGIN() * Value::from(no_own_threat)
 }
 
+/// EXP-UNC-1 (search study bet 1): EMA smoothing for the running mean value
+/// uncertainty `σ̄`. α ≈ 1/1024 — slow enough to be a stable per-game reference,
+/// fast enough to track the phase distribution.
+#[cfg(feature = "sota")]
+const UNC_EMA_ALPHA: f32 = 1.0 / 1024.0;
+
+/// EXP-UNC-1: the position-conditioned RFP/futility margin scale from the value
+/// uncertainty `σ̂` relative to its running mean `σ̄` (design: consumer 1). The
+/// eval is trusted MORE (tighter margin, prune more — where the Elo lives) where
+/// σ̂ is below average, and LESS (looser margin, prune less — safety) where it is
+/// above. Returns exactly `1.0` (no change) when disabled (`c1 == 0`), when there
+/// is no fresh σ̂ this node (`sigma <= 0`), or before σ̄ has warmed
+/// (`sigma_bar <= 0`) — so a variance-less net or the default coefficient is
+/// bit-identical. Clamped to [0.7, 1.5] to bound the effect (study formula).
+#[cfg(feature = "sota")]
+#[inline]
+fn unc_margin_scale(sigma: f32, sigma_bar: f32, c1: f32) -> f32 {
+    if c1 == 0.0 || sigma <= 0.0 || sigma_bar <= 0.0 {
+        return 1.0;
+    }
+    (1.0 + c1 * (sigma - sigma_bar) / sigma_bar).clamp(0.7, 1.5)
+}
+
 /// The late-move-pruning move-count threshold (design/10 §3.5, the move
 /// loop's LMP): once the running `move_count` reaches
 /// `(LMP_BASE + depth²) / (2 - improving)`, the picker is told to stop
@@ -834,6 +857,14 @@ pub struct Worker {
     tm_best_previous_average_score: Value,
     /// Per-thread eval state (design/11 §3.1); empty in Phase A.
     eval_ctx: EvalContext,
+    /// EXP-UNC-1: RFP/futility uncertainty coefficient (env `ARCHON_UNC_RFP_C1`,
+    /// default 0.0 = off → bit-identical). Read once at Worker construction.
+    #[cfg(feature = "sota")]
+    unc_rfp_c1: f32,
+    /// EXP-UNC-1: running mean value-uncertainty σ̄ (EMA), 0.0 until the first
+    /// fresh σ̂. Per-worker; the ratio `(σ̂−σ̄)/σ̄` self-calibrates as it warms.
+    #[cfg(feature = "sota")]
+    sigma_bar: f32,
     /// Per-thread move-ordering statistics (design/09 §3.4, D23): butterfly/
     /// low-ply/capture/continuation/pawn/correction history. Read by the
     /// [`MovePicker`] scoring and written by [`Histories::update_all_stats`]
@@ -952,6 +983,13 @@ impl Worker {
             tm_time_reduction: crate::timeman::TIME_REDUCTION_INIT,
             tm_best_previous_average_score: VALUE_INFINITE,
             eval_ctx: EvalContext::new(),
+            #[cfg(feature = "sota")]
+            unc_rfp_c1: std::env::var("ARCHON_UNC_RFP_C1")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0),
+            #[cfg(feature = "sota")]
+            sigma_bar: 0.0,
             histories: Histories::new(),
             check_time_mask: params::CHECK_TIME_CALLS as u64 - 1,
             thread_idx: 0,
@@ -2083,6 +2121,10 @@ impl Worker {
         // skipped: the node borrows the grandparent's eval and jumps
         // straight to the move loop — no pruning happens in check.
         let raw_eval;
+        // EXP-UNC-1: this node's value uncertainty σ̂ (0.0 = none this node);
+        // set on a fresh sota eval, read at the RFP margin below.
+        #[cfg(feature = "sota")]
+        let mut node_sigma: f32 = 0.0;
         // `improving` is hoisted out of the not-in-check branch: doc 10's LMR
         // reduction (below, in the move loop) reads it even when this node is
         // in check — where SF pins it `false` (the pre-check eval bears no
@@ -2114,6 +2156,22 @@ impl Worker {
                 } else {
                     evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO, ply)
                 };
+                // EXP-UNC-1: on a FRESH sota eval, capture this node's value
+                // uncertainty σ̂ and fold it into the running mean σ̄. Env-gated —
+                // skipped entirely when ARCHON_UNC_RFP_C1 is unset, so zero
+                // overhead and bit-identical by default.
+                #[cfg(feature = "sota")]
+                if self.unc_rfp_c1 != 0.0
+                    && !(tt_hit && is_valid(tt_data.eval))
+                    && let Some(s) = self.eval_ctx.last_sigma()
+                {
+                    node_sigma = s;
+                    self.sigma_bar = if self.sigma_bar > 0.0 {
+                        self.sigma_bar + (s - self.sigma_bar) * UNC_EMA_ALPHA
+                    } else {
+                        s
+                    };
+                }
                 // S1 (design/10 N6, D22): `ss.static_eval` is the CORRECTED
                 // eval — raw plus the correction-history delta — and every
                 // downstream consumer (improving/opponent_worsening, hindsight,
@@ -2417,6 +2475,18 @@ impl Worker {
                     correction_value,
                     no_own_threat,
                 );
+                // EXP-UNC-1: position-condition the RFP margin by the value
+                // uncertainty (consumer 1). unc_margin_scale returns exactly 1.0
+                // when disabled or when there is no fresh σ̂ this node, and the
+                // else keeps the integer margin untouched → bit-identical by
+                // default (verified: sota bench 147691 with the coeff unset).
+                #[cfg(feature = "sota")]
+                let margin = if self.unc_rfp_c1 != 0.0 {
+                    (margin as f32 * unc_margin_scale(node_sigma, self.sigma_bar, self.unc_rfp_c1))
+                        as Value
+                } else {
+                    margin
+                };
                 if eval - margin >= beta {
                     return (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval)
                         / params::RFP_RET_DEN();
@@ -4848,6 +4918,28 @@ mod tests {
             rfp_prune_margin(d, hit, imp, opp, 0, true) < base,
             "the threat relaxation must make the margin easier to clear"
         );
+    }
+
+    /// EXP-UNC-1: the uncertainty margin scale is 1.0 (off) exactly when disabled
+    /// or unwarmed, scales up above-average uncertainty and down below-average,
+    /// and is clamped to [0.7, 1.5]. Pins the SIGN so a wiring/sign regression is
+    /// caught apart from the search control flow.
+    #[cfg(feature = "sota")]
+    #[test]
+    fn unc_margin_scale_signs_and_clamps() {
+        // Disabled / no fresh sigma / unwarmed sigma_bar → exactly 1.0 (off).
+        assert_eq!(unc_margin_scale(0.2, 0.1, 0.0), 1.0, "c1=0 is off");
+        assert_eq!(unc_margin_scale(0.0, 0.1, 1.0), 1.0, "no sigma this node");
+        assert_eq!(unc_margin_scale(0.2, 0.0, 1.0), 1.0, "sigma_bar unwarmed");
+        // Above-average uncertainty (σ̂ > σ̄) → LARGER margin (prune less; safety).
+        assert!(unc_margin_scale(0.12, 0.10, 1.0) > 1.0);
+        // Below-average uncertainty → SMALLER margin (prune more; the Elo).
+        assert!(unc_margin_scale(0.08, 0.10, 1.0) < 1.0);
+        // Symmetric mid response is exact.
+        assert!((unc_margin_scale(0.11, 0.10, 0.5) - 1.05).abs() < 1e-6);
+        // Clamped both ways.
+        assert_eq!(unc_margin_scale(1.0, 0.10, 1.0), 1.5, "clamped high");
+        assert_eq!(unc_margin_scale(0.01, 0.10, 1.0), 0.7, "clamped low");
     }
 
     #[test]
