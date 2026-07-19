@@ -10,7 +10,17 @@
 //!   root-analysis --engine <bin> --fens <file> --out <shard.ceobs> \
 //!     [--nodes 1000,4000,16000] [--uci-option Name=Value]... \
 //!     [--seed N] [--created-unix N] [--arm-timeout-secs 60] \
-//!     [--arm-mode searchmoves|child]
+//!     [--arm-mode searchmoves|child] [--reference-only]
+//!
+//! `--reference-only` (Tier-F): emit ONE Observation per tier — the position,
+//! the unrestricted reference search's Layer-3 SearchObservations (final
+//! score, bound, pv, completion, and the per-depth id trajectory), and
+//! provenance — SKIPPING the per-legal-move arm loop. This is the "free
+//! layers always" capture: a production relabel routed through obs gets the
+//! eval trajectory + provenance for ~the cost of a scalar relabel, while the
+//! scalar-cp corpus stays a cheap `obs-tool export-train` view (data-quality
+//! strategy, Dimension 1). The full per-move arms (Tier-R, ~35× cost) are
+//! reserved for high-value positions.
 //!
 //! Arm modes: `searchmoves` restricts the root search to one move (spec
 //! shape; ARCHON supports it). `child` searches the position AFTER the move
@@ -36,11 +46,12 @@
 
 use chessengine::board::Board;
 use chessengine::movegen::generate_legal;
-use chessengine::moves::MoveList;
+use chessengine::moves::{Move, MoveList};
 use chessengine::obs::convert::position_from_board;
 use chessengine::obs::{
-    Bound, Completion, Episode, EpisodeKind, EvidenceKind, OBS_FORMAT_VERSION, Observation,
-    PerMoveObservation, Provenance, SearchContext, SearchObservations, ShardHeader, ShardWriter,
+    Bound, Completion, Episode, EpisodeKind, EvidenceKind, IdSnapshot, OBS_FORMAT_VERSION,
+    Observation, PerMoveObservation, Provenance, SearchContext, SearchObservations, ShardHeader,
+    ShardWriter,
 };
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, ExitCode, Stdio};
@@ -70,6 +81,14 @@ struct Config {
     created_unix: Option<u64>,
     arm_timeout: Duration,
     arm_mode: ArmMode,
+    /// Tier-F (`--reference-only`): emit ONLY the unrestricted reference
+    /// search per tier (position + Layer-3 SearchObservations incl. the id
+    /// trajectory + provenance), SKIPPING the ~35× per-legal-move arm loop.
+    /// This is the "free layers always" capture (data-quality strategy
+    /// Dimension 1): a production relabel routed through obs gets the eval
+    /// trajectory + provenance for ~the cost of a scalar relabel, and the
+    /// scalar-cp corpus stays a cheap `obs-tool export-train` view.
+    reference_only: bool,
 }
 
 fn parse_args() -> Result<Config, String> {
@@ -83,6 +102,7 @@ fn parse_args() -> Result<Config, String> {
         created_unix: None,
         arm_timeout: Duration::from_secs(60),
         arm_mode: ArmMode::Searchmoves,
+        reference_only: false,
     };
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -130,6 +150,7 @@ fn parse_args() -> Result<Config, String> {
                         .map_err(|_| "bad timeout")?,
                 );
             }
+            "--reference-only" => config.reference_only = true,
             other => return Err(format!("unknown flag '{other}'")),
         }
     }
@@ -171,16 +192,23 @@ struct Engine {
     id_name: String,
 }
 
-/// One completed search: the last-seen info fields at bestmove time.
+/// One completed search: the last-seen info fields at bestmove time, plus
+/// (when requested) the per-depth id trajectory built from the info lines.
 #[derive(Default, Clone)]
 struct SearchResult {
     score: i32,
     depth: i32,
     seldepth: i32,
     nodes: u64,
+    time_ms: u64,
     pv: Vec<u16>,
     best: u16,
     timed_out: bool,
+    /// One entry per iterative-deepening depth (last summary line wins for a
+    /// depth that re-searched under aspiration). Empty unless the caller asked
+    /// `search(.., record_trajectory=true, ..)` — only the unrestricted
+    /// reference search records it; per-move arms stay point observations.
+    id_snapshots: Vec<IdSnapshot>,
 }
 
 impl Drop for Engine {
@@ -275,6 +303,7 @@ impl Engine {
         fen: &str,
         nodes: u64,
         searchmove: Option<&str>,
+        record_trajectory: bool,
         timeout: Duration,
     ) -> Result<SearchResult, String> {
         self.send("ucinewgame")?;
@@ -292,7 +321,25 @@ impl Engine {
             };
             let tokens: Vec<&str> = line.split_whitespace().collect();
             match tokens.first() {
-                Some(&"info") => parse_info(&tokens, &mut result),
+                Some(&"info") => {
+                    // A summary info line (one carrying a `pv`) is the depth's
+                    // final word; fold it into the trajectory, overwriting an
+                    // earlier line for the same depth (aspiration re-search).
+                    if parse_info(&tokens, &mut result) && record_trajectory && result.depth > 0 {
+                        let snap = IdSnapshot {
+                            depth: result.depth,
+                            score: result.score,
+                            best: result.pv.first().copied().unwrap_or(0),
+                            nodes: result.nodes,
+                            time_ms: result.time_ms,
+                            pv: result.pv.clone(),
+                        };
+                        match result.id_snapshots.last_mut() {
+                            Some(last) if last.depth == snap.depth => *last = snap,
+                            _ => result.id_snapshots.push(snap),
+                        }
+                    }
+                }
                 Some(&"bestmove") => {
                     if let Some(best) = tokens.get(1) {
                         result.best = parse_uci_move(best).unwrap_or(0);
@@ -314,7 +361,11 @@ impl Engine {
     }
 }
 
-fn parse_info(tokens: &[&str], result: &mut SearchResult) {
+/// Fold one `info` line into `result`. Returns true when the line carried a
+/// `pv` — the marker of a depth-summary line, used by the caller to snapshot
+/// the id trajectory.
+fn parse_info(tokens: &[&str], result: &mut SearchResult) -> bool {
+    let mut had_pv = false;
     let mut i = 1;
     while i < tokens.len() {
         match tokens[i] {
@@ -333,6 +384,12 @@ fn parse_info(tokens: &[&str], result: &mut SearchResult) {
             "nodes" => {
                 if let Some(n) = tokens.get(i + 1).and_then(|t| t.parse().ok()) {
                     result.nodes = n;
+                }
+                i += 2;
+            }
+            "time" => {
+                if let Some(t) = tokens.get(i + 1).and_then(|t| t.parse().ok()) {
+                    result.time_ms = t;
                 }
                 i += 2;
             }
@@ -358,11 +415,13 @@ fn parse_info(tokens: &[&str], result: &mut SearchResult) {
                     .iter()
                     .map_while(|t| parse_uci_move(t))
                     .collect();
+                had_pv = true;
                 break; // pv is last on the line
             }
             _ => i += 1,
         }
     }
+    had_pv
 }
 
 /// UCI move text → our packed u16, via the position-independent subset
@@ -552,19 +611,24 @@ fn run(config: &Config) -> Result<String, String> {
         let mut hash_chain = Vec::new();
 
         for &tier in &config.nodes {
-            // Unrestricted reference search for this tier.
-            let full = engine.search(&canonical_fen, tier, None, config.arm_timeout)?;
+            // Unrestricted reference search for this tier (records the id
+            // trajectory — the free Tier-F layer that rides along with any
+            // relabel routed through obs).
+            let full = engine.search(&canonical_fen, tier, None, true, config.arm_timeout)?;
             if full.timed_out {
                 timeouts += 1;
                 engine = respawn(engine, config)?;
             }
 
-            let mut moves_out = Vec::with_capacity(legal.len());
-            for mv in legal.iter() {
+            // Tier-F (`--reference-only`) captures ONLY the reference search;
+            // an empty arm set skips the ~35× per-legal-move cost.
+            let arm_moves: &[Move] = if config.reference_only { &[] } else { &legal };
+            let mut moves_out = Vec::with_capacity(arm_moves.len());
+            for mv in arm_moves.iter() {
                 let text = mv.to_string();
                 let arm = match config.arm_mode {
                     ArmMode::Searchmoves => {
-                        engine.search(&canonical_fen, tier, Some(&text), config.arm_timeout)?
+                        engine.search(&canonical_fen, tier, Some(&text), false, config.arm_timeout)?
                     }
                     ArmMode::Child => {
                         let mut child = board.clone();
@@ -576,8 +640,13 @@ fn run(config: &Config) -> Result<String, String> {
                                 ..Default::default()
                             }
                         } else {
-                            let mut result =
-                                engine.search(&child.to_fen(), tier, None, config.arm_timeout)?;
+                            let mut result = engine.search(
+                                &child.to_fen(),
+                                tier,
+                                None,
+                                false,
+                                config.arm_timeout,
+                            )?;
                             // The child search scores from the OPPONENT's
                             // side; the ±(MATE_BASE − n) encoding negates
                             // symmetrically (and `mate 0` cannot occur on a
@@ -633,7 +702,7 @@ fn run(config: &Config) -> Result<String, String> {
                     bound: Bound::Exact,
                     nodes: full.nodes,
                     seldepth: full.seldepth,
-                    id_snapshots: vec![],
+                    id_snapshots: full.id_snapshots.clone(),
                     completion: if full.timed_out {
                         Completion::Stopped
                     } else {
@@ -666,8 +735,14 @@ fn run(config: &Config) -> Result<String, String> {
         .finish()
         .map_err(|e| format!("finishing shard: {e}"))?;
     engine.quit();
+    let mode = if config.reference_only {
+        "reference-only"
+    } else {
+        "full-arms"
+    };
     Ok(format!(
-        "root-analysis: {episodes} episode(s), {arms_total} arm(s), {timeouts} timeout(s) -> {}",
+        "root-analysis: {mode}; {episodes} episode(s), {arms_total} arm(s), \
+         {timeouts} timeout(s) -> {}",
         config.out
     ))
 }
@@ -758,5 +833,29 @@ mod tests {
         assert_eq!(r.score, -MATE_BASE + 2);
         assert_eq!(parse_uci_move("e7e8q"), parse_uci_move("e7e8Q"));
         assert!(parse_uci_move("(none)").is_none());
+    }
+
+    #[test]
+    fn parse_info_reports_pv_lines_and_parses_time_for_the_trajectory() {
+        let mut r = SearchResult::default();
+        // A depth-summary line (carries a pv) → had_pv true, time captured.
+        let had = parse_info(
+            &[
+                "info", "depth", "7", "seldepth", "9", "score", "cp", "34", "nodes", "12000",
+                "time", "42", "pv", "e2e4", "e7e5",
+            ],
+            &mut r,
+        );
+        assert!(had, "a line with a pv must report had_pv");
+        assert_eq!(r.depth, 7);
+        assert_eq!(r.time_ms, 42);
+        assert_eq!(r.nodes, 12000);
+        assert_eq!(r.pv.len(), 2);
+        // A currmove line (no pv) → not a snapshot boundary.
+        let had2 = parse_info(
+            &["info", "depth", "7", "currmove", "d2d4", "currmovenumber", "2"],
+            &mut r,
+        );
+        assert!(!had2, "a currmove line has no pv and must not snapshot");
     }
 }

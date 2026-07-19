@@ -1,20 +1,25 @@
 {
   "schema": "archon.worker-image-inputs.v1",
+  "_sha_refresh_needed": true,
+  "_note": "M1 rebuild: before building, pin the sha256 of every artifact marked \"_sha_refresh_needed\" against the freshly-built production binaries. The 3 engine SHAs drifted (chessengine/reckless/stockfish-18 no longer match); root-analysis and obs-tool are new and unpinned. build_worker_image.py hard-fails on any pinned-but-drifted hash and hashes unpinned entries at build; add the pins there. Do NOT compute/build binaries here.",
   "artifacts": [
     {
       "source": "target/release/chessengine",
       "image_path": "bin/archon",
-      "sha256": "f55d0591666adcc6ad0e11fd9fb6e62978e5234ac2e4be81f1ee42622d4df698"
+      "sha256": "f55d0591666adcc6ad0e11fd9fb6e62978e5234ac2e4be81f1ee42622d4df698",
+      "_sha_refresh_needed": true
     },
     {
       "source": "reckless_reference/Reckless/target/release/reckless",
       "image_path": "bin/reckless",
-      "sha256": "8c4e36c012f4403f4441eead969a5e8dde182a2e45c69696170c85c11c2c66f9"
+      "sha256": "8c4e36c012f4403f4441eead969a5e8dde182a2e45c69696170c85c11c2c66f9",
+      "_sha_refresh_needed": true
     },
     {
       "source": "engines/stockfish-18-src/src/stockfish",
       "image_path": "bin/stockfish-18",
-      "sha256": "174270346ae9ed600713d165fa745dfa87fc084e44907c8084767f2b905e86d3"
+      "sha256": "174270346ae9ed600713d165fa745dfa87fc084e44907c8084767f2b905e86d3",
+      "_sha_refresh_needed": true
     },
     {
       "source": "data/nnue/nets/net-0.cenn",
@@ -22,8 +27,22 @@
       "sha256": "60138d33b5fe1f1c6345e4d77a3c88636d75634b0f6583ffb133e12178709111"
     },
     {
-      "source": "tools/nnue/relabel_lc0_uci.py",
-      "image_path": "tools/relabel_lc0_uci.py"
+      "source": "target/release/root-analysis",
+      "image_path": "bin/root-analysis",
+      "_sha_refresh_needed": true
+    },
+    {
+      "source": "target/release/obs-tool",
+      "image_path": "bin/obs-tool",
+      "_sha_refresh_needed": true
+    },
+    {
+      "source": "tools/ledger/ledger.py",
+      "image_path": "tools/ledger.py"
+    },
+    {
+      "source": "tools/cloud/obs_relabel_shard.py",
+      "image_path": "tools/obs_relabel_shard.py"
     },
     {
       "source": "tools/nnue/root_move_oracle.py",

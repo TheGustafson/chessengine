@@ -36,24 +36,70 @@ No service-account key is created. Batch uses the attached runtime identity.
 
 ## Worker image
 
-The image includes SHA-pinned ARCHON, Reckless, Stockfish 18, net-0, the value
-relabeler, the root-move oracle, and a hash-locked Python dependency graph. The
+The image includes SHA-pinned ARCHON, Reckless, Stockfish 18, net-0, the obs
+binaries (`root-analysis`, `obs-tool`), the D38 ledger CLI, the obs-relabel
+worker, the root-move oracle, and a hash-locked Python dependency graph. The
 build uses a temporary allow-list context, so datasets and unrelated worktree
 files cannot enter the image accidentally.
 
+One image identity is used everywhere — repository `archon-workers`, name
+`archon-worker`. There is no more `research-worker`/`data-worker` split or
+multi-digest drift; the README block below and every `submit_*.py`
+`DEFAULT_IMAGE` reference the same digest.
+
 ```bash
 python3 tools/cloud/build_worker_image.py \
-  --tag us-east1-docker.pkg.dev/archon-502500/archon-workers/research-worker:NEW_IMMUTABLE_TAG
+  --tag us-east1-docker.pkg.dev/archon-502500/archon-workers/archon-worker:NEW_IMMUTABLE_TAG
 ```
 
-Add `--push` only after the local verification and oracle smoke tests pass.
-Immutable tags deliberately prevent replacing an experimental environment.
+Before building, re-pin `worker/image_manifest.json`: every artifact marked
+`_sha_refresh_needed` (the 3 drifted engines + the new `root-analysis`/`obs-tool`
+bins) needs its `sha256` set to the freshly-built production binary. Add `--push`
+only after the local verification and oracle smoke tests pass. Immutable tags
+deliberately prevent replacing an experimental environment.
 
-Current validated image:
+Current validated image (digest stamped by the M1 rebuild):
 
 ```text
-us-east1-docker.pkg.dev/archon-502500/archon-workers/research-worker@sha256:55bb5dc258c98f3a928143d525ccef024fa600a115dd0eb8873bc45125089a24
+us-east1-docker.pkg.dev/archon-502500/archon-workers/archon-worker@sha256:REPLACE_AT_BUILD
 ```
+
+## Durable obs-relabel campaigns
+
+The production, TARGETED relabel path emits obs `.ceobs` shards (not scalar
+NPZ), so Tier-F layers (`PositionState` + `SearchObservations` trajectory + `pv`
++ `completion` + `Provenance`) ride along for free
+(data-schema-and-storage.md §5, §7 step 1).
+
+1. `partition_fen_manifest.py` chunks the LOCALLY disagreement-selected FEN
+   subset (`FEN|cp|result` or plain FEN) into immutable per-task FEN shards and
+   emits a `{fen_file_uri, rows, sha256, ordinal}` task manifest.
+2. `submit_obs_relabel.py` plans/submits the Batch array (dry-run default,
+   `--durable-data`, digest-pinned image, Spot-only, worst-case cost cap,
+   bounded retries, persisted plan artifact). Each task drives the packaged
+   `root-analysis` over one FEN shard at a pinned node budget, single-threaded,
+   packed one-per-vCPU on the locked `c2d-highcpu-16`.
+3. `obs_relabel_shard.py` (the worker) runs `root-analysis --reference-only`
+   (Tier-F) and publishes the `.ceobs` with the same sha256-metadata,
+   `if_generation_match=0`, validate-existing resume, and atomic-write
+   governance as `dual_label_shard.py`. Campaign discriminators
+   `{oracle, budget, date}` are stamped into the object metadata; the campaign
+   id is `{oracle}-{budget}-{date}` (e.g. `sf18-100k-2026-07-18`).
+4. `reconcile_obs_relabel.py` inventories the wave (count/hash/metadata,
+   optional `obs-tool verify` replay on a downloaded spread) and, with
+   `--ledger-add`, materializes + verifies the campaign locally then wires
+   `tools/ledger/ledger.py add-data` + `ledger.py verify` as the accept gate.
+5. **Build the training corpus from the reconciled shards (local):** a Tier-F
+   (`--reference-only`) shard carries no per-move arms, so the value corpus
+   comes out via `obs-tool export-value <out.txt> <shard>...` (`FEN | cp | wdl`,
+   White-relative, Bound::Exact + Completion::Complete quarantine) → `bf-convert`
+   → bullet `.bin`. Do NOT use `obs-tool export-train` on reference-only shards
+   — that is the per-move POLICY exporter (it needs Complete arms and skips a
+   reference-only shard). Rich (Tier-R) shards submitted without
+   `--reference-only` feed `export-train`.
+
+`dual_label_shard.py` / `shard_lc0_positions.py` / `partition_position_manifest.py`
+stay as historical controls (the LC0-feature, relabel-everything, scalar path).
 
 ## Durable paired-label campaigns
 

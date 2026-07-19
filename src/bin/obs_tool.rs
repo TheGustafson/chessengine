@@ -28,6 +28,7 @@ fn main() -> ExitCode {
         Some((cmd, rest)) if cmd == "disagree" && rest.len() == 2 => disagree(rest),
         Some((cmd, rest)) if cmd == "export" && !rest.is_empty() => export(rest),
         Some((cmd, rest)) if cmd == "export-train" && rest.len() >= 2 => export_train(rest),
+        Some((cmd, rest)) if cmd == "export-value" && rest.len() >= 2 => export_value(rest),
         Some((cmd, rest)) if cmd == "rank" && !rest.is_empty() => rank(rest),
         _ => {
             eprintln!("usage: obs-tool verify <shard.ceobs>...");
@@ -36,7 +37,10 @@ fn main() -> ExitCode {
             eprintln!("       obs-tool disagree <shardA.ceobs> <shardB.ceobs>");
             eprintln!("       obs-tool export <shard.ceobs>   (per-arm JSONL on stdout)");
             eprintln!(
-                "       obs-tool export-train <out-dir> <shard.ceobs>... [--all-tiers]  (D40-class value corpus, NumPy SoA)"
+                "       obs-tool export-train <out-dir> <shard.ceobs>... [--all-tiers]  (D40-class per-move policy corpus, NumPy SoA)"
+            );
+            eprintln!(
+                "       obs-tool export-value <out.txt> <shard.ceobs>... [--all-tiers]  (scalar value corpus: FEN | cp | wdl; the Tier-F view)"
             );
             eprintln!("       obs-tool rank <shard.ceobs>     (classical-ordering baseline)");
             ExitCode::FAILURE
@@ -1154,6 +1158,160 @@ fn print_train_stats(
     println!();
 }
 
+// ─── export-value: obs shards → scalar value corpus (the Tier-F view) ────────
+//
+// The scalar-value counterpart to export-train's per-move policy corpus. Where
+// export-train needs Complete ARMS (Tier-R/rich shards), export-value needs
+// only the unrestricted REFERENCE search — so it consumes Tier-F
+// (`root-analysis --reference-only`) shards, which carry no arms. Output is the
+// text schema the bullet corpus pipeline already ingests (tools/nnue/
+// build_corpus.sh → bf-convert): one `FEN | cp | wdl` line per accepted
+// position, cp WHITE-relative and clamped to ±2500 (mates collapse to the cap,
+// matching relabel_depth.py). QUARANTINE (CLAUDE.md / design/19 §5.4): only a
+// Bound::Exact + Completion::Complete reference emits a row — aspiration bounds
+// and partial (timed-out) searches never feed a scalar value loss. WDL is a
+// 0.5 placeholder (a teacher relabel has no game result, identical to
+// relabel_depth's default for FEN-only inputs); export-time WDL derivation is a
+// documented future lever (data-schema doc §extensions).
+
+const VALUE_SCORE_CAP: i32 = 2500;
+
+/// stm-relative UCI score → White-relative cp, clamped to ±cap (which also
+/// collapses the ±MATE_BASE mate encoding that root-analysis records down to
+/// ±cap, exactly as relabel_depth.py caps mates).
+fn value_cp_white(stm_score: i32, stm: u8) -> i32 {
+    let white = if stm == 0 { stm_score } else { -stm_score };
+    white.clamp(-VALUE_SCORE_CAP, VALUE_SCORE_CAP)
+}
+
+/// True only for an accepted scalar-value reference (PV-exact + completed).
+fn value_reference_ok(obs: &Observation) -> bool {
+    obs.search.bound == Bound::Exact && obs.search.completion == Completion::Complete
+}
+
+fn export_value(args: &[String]) -> ExitCode {
+    // `--all-tiers`: emit every accepted tier per position (default: only the
+    // deepest accepted reference — one clean label per position).
+    let all_tiers = args.iter().any(|a| a == "--all-tiers");
+    let positional: Vec<&String> = args.iter().filter(|a| a.as_str() != "--all-tiers").collect();
+    if positional.len() < 2 {
+        eprintln!("obs-tool: export-value needs <out.txt> <shard.ceobs>... [--all-tiers]");
+        return ExitCode::FAILURE;
+    }
+    let out_path = std::path::PathBuf::from(positional[0]);
+    let shards: Vec<String> = positional[1..].iter().map(|s| (*s).clone()).collect();
+
+    let mut lines: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    let (mut positions_in, mut skip_quarantined, mut skip_bad_fen, mut dedup_drops, mut skip_kind) =
+        (0u64, 0u64, 0u64, 0u64, 0u64);
+
+    // Emit one `FEN | cp | wdl` line for a chosen reference observation.
+    let emit = |obs: &Observation, position: &PositionState, lines: &mut Vec<String>| -> bool {
+        let fen = match fen_from_position(position) {
+            Ok(fen) => fen,
+            Err(_) => return false,
+        };
+        let cp = value_cp_white(obs.search.final_score, position.stm);
+        lines.push(format!("{fen} | {cp} | 0.5"));
+        true
+    };
+
+    for path in &shards {
+        let mut reader = match ShardReader::open(path) {
+            Ok(reader) => reader,
+            Err(error) => {
+                eprintln!("obs-tool: {path}: {error}");
+                return ExitCode::FAILURE;
+            }
+        };
+        loop {
+            let episode = match reader.next_episode() {
+                Ok(Some(episode)) => episode,
+                Ok(None) => break,
+                Err(error) => {
+                    eprintln!("obs-tool: {path}: {error}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            match episode.kind {
+                EpisodeKind::RootMoveAnalysis => {
+                    // One position (replay_root), one row per accepted tier.
+                    positions_in += 1;
+                    let key = episode.replay_root.canonical_key;
+                    if !seen.insert(key) {
+                        dedup_drops += 1;
+                        continue;
+                    }
+                    let accepted: Vec<&Observation> =
+                        episode.records.iter().filter(|o| value_reference_ok(o)).collect();
+                    if accepted.is_empty() {
+                        skip_quarantined += 1;
+                        continue;
+                    }
+                    let chosen: Vec<&Observation> = if all_tiers {
+                        accepted
+                    } else {
+                        // Deepest accepted tier by node budget.
+                        vec![*accepted
+                            .iter()
+                            .max_by_key(|o| o.context.node_budget.unwrap_or(0))
+                            .unwrap()]
+                    };
+                    for obs in chosen {
+                        if !emit(obs, &episode.replay_root, &mut lines) {
+                            skip_bad_fen += 1;
+                        }
+                    }
+                }
+                EpisodeKind::InSearchCapture => {
+                    // Each record is an independently-keyed interior node.
+                    for obs in &episode.records {
+                        positions_in += 1;
+                        if !value_reference_ok(obs) {
+                            skip_quarantined += 1;
+                            continue;
+                        }
+                        let key = obs.position.canonical_key;
+                        if !seen.insert(key) {
+                            dedup_drops += 1;
+                            continue;
+                        }
+                        if !emit(obs, &obs.position, &mut lines) {
+                            skip_bad_fen += 1;
+                        }
+                    }
+                }
+                _ => skip_kind += 1,
+            }
+        }
+    }
+
+    if let Some(parent) = out_path.parent()
+        && !parent.as_os_str().is_empty()
+        && let Err(error) = std::fs::create_dir_all(parent)
+    {
+        eprintln!("obs-tool: creating {}: {error}", parent.display());
+        return ExitCode::FAILURE;
+    }
+    let body = if lines.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", lines.join("\n"))
+    };
+    if let Err(error) = std::fs::write(&out_path, body) {
+        eprintln!("obs-tool: writing {}: {error}", out_path.display());
+        return ExitCode::FAILURE;
+    }
+    eprintln!(
+        "export-value: {} row(s) -> {} (positions_in {positions_in}, quarantined {skip_quarantined}, \
+         dedup {dedup_drops}, bad_fen {skip_bad_fen}, non-value-kind {skip_kind})",
+        lines.len(),
+        out_path.display()
+    );
+    ExitCode::SUCCESS
+}
+
 /// The design/19 §8.1 CLASSICAL-ORDERING baseline: where does the teacher's
 /// reference best move sit in ARCHON's own MovePicker order (fresh
 /// histories, no TT move — the cold ordering a Phase-1 model must beat)?
@@ -1545,6 +1703,39 @@ mod tests {
             completion,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn export_value_cp_is_white_relative_and_capped() {
+        // White to move (stm 0): score already White-relative.
+        assert_eq!(value_cp_white(340, 0), 340);
+        // Black to move (stm 1): a stm-relative +good-for-black flips negative.
+        assert_eq!(value_cp_white(340, 1), -340);
+        assert_eq!(value_cp_white(-340, 1), 340);
+        // Mate encoding (±MATE_BASE-ish) collapses to ±cap, either side.
+        assert_eq!(value_cp_white(31000 - 5, 0), VALUE_SCORE_CAP);
+        assert_eq!(value_cp_white(31000 - 5, 1), -VALUE_SCORE_CAP);
+        assert_eq!(value_cp_white(-(31000 - 5), 0), -VALUE_SCORE_CAP);
+        // Ordinary large-but-sub-cap value is preserved.
+        assert_eq!(value_cp_white(2000, 0), 2000);
+    }
+
+    #[test]
+    fn export_value_quarantines_bounded_and_incomplete_references() {
+        let mut obs = Observation {
+            search: SearchObservations {
+                bound: Bound::Exact,
+                completion: Completion::Complete,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(value_reference_ok(&obs), "exact+complete is accepted");
+        obs.search.bound = Bound::Lower; // an aspiration bound
+        assert!(!value_reference_ok(&obs), "a bounded label is quarantined");
+        obs.search.bound = Bound::Exact;
+        obs.search.completion = Completion::Stopped; // timed out
+        assert!(!value_reference_ok(&obs), "a partial search is quarantined");
     }
 
     /// Tau-b with heavy ties must not deflate toward zero (D33 round 1: the

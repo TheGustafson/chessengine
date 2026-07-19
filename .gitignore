@@ -15,6 +15,7 @@
 
 # Python bytecode from tools/
 __pycache__/
+tools/cloud/__pycache__/
 
 # NNUE training-data corpus (design/15, D28): the SF-labeled bootstrap
 # corpus is gigabytes of discardable dev scaffold — never committed. The

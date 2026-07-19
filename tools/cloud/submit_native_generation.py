@@ -13,9 +13,11 @@ import subprocess
 import tempfile
 
 
+# ONE collapsed worker image identity (M1/M7). The digest is a placeholder,
+# stamped by the M1 rebuild; README §"Worker image" + every submit_*.py share it.
 DEFAULT_IMAGE = (
-    "us-east1-docker.pkg.dev/archon-502500/archon-workers/data-worker@"
-    "sha256:187dacdf4a95ed2333a1c2cefc97cc9eb11548399ca54ac0a93e8ceed43aa4b1"
+    "us-east1-docker.pkg.dev/archon-502500/archon-workers/archon-worker@"
+    "sha256:REPLACE_AT_BUILD"
 )
 DEFAULT_SERVICE_ACCOUNT = "archon-batch-worker@archon-502500.iam.gserviceaccount.com"
 

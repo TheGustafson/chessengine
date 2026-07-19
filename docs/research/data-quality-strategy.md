@@ -109,12 +109,19 @@ through it (answers "capture now what future helm/beyond nets need"):
   generator_version, rng_seed, dataset_source, opening_source, hardware_identity}`
   — the versioned/additive-label requirement, fully covered.
 
-**THE ONLY GAP:** the relabel PILOT path (`relabel_depth.py`) bypasses all of it
-(python-chess `analyse` → scalar cp). The PRODUCTION relabel must route through
-`root-analysis`/obs so trajectory + per-move + provenance ride along for free;
-the scalar-cp corpus stays a cheap EXPORT VIEW (`obs-tool export-train`). So the
-forward-looking data plan is de-risked: the machinery to "capture the superset
-once" exists — we just stop using the scalar shortcut for production relabeling.
+**THE ONLY GAP (now closed, 2026-07-18):** the relabel PILOT path
+(`relabel_depth.py`) bypasses all of it (python-chess `analyse` → scalar cp).
+The PRODUCTION relabel routes through `root-analysis --reference-only`/obs
+(the **Tier-F** mode, built 2026-07-18) so trajectory + provenance ride along
+for ~the cost of a scalar relabel; the scalar-cp corpus is then a cheap EXPORT
+VIEW via **`obs-tool export-value`** (`FEN | cp | wdl`, White-relative,
+Bound::Exact + Completion::Complete quarantine, → bf-convert → bullet). NOTE:
+`obs-tool export-train` is the PER-MOVE POLICY exporter — it needs Complete
+arms (Tier-R/rich shards) and SKIPS a reference-only shard entirely, so it is
+NOT the value view; `export-value` is. The forward-looking data plan is
+de-risked: the machinery to "capture the superset once" exists and the
+value-export path is verified end-to-end (Tier-F shard → export-value →
+bf-convert 32B `.bin`).
 
 ## Value-tiered capture (recommended default, pending user steer)
 - EVERY deep search → the free layers (trajectory + PV + metadata + provenance).

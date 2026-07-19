@@ -74,7 +74,7 @@ cost" is the price of recovering the signal if we had NOT stored it.
 
 | Consumer (net / research target) | Reads (record.field) | Implemented? | Regen cost |
 |---|---|---|---|
-| **Value net** (eval, build-now) | `PositionState` (L1) + `SearchObservations.final_score`/`bound` (L3) + `Episode.game_result` (WDL) | Yes (export-train `value`, bullet `score`) | Expensive — a fresh deep search per position (the whole point) |
+| **Value net** (eval, build-now) | `PositionState` (L1) + `SearchObservations.final_score`/`bound` (L3) + `Episode.game_result` (WDL) | Yes — **`obs-tool export-value`** (`FEN\|cp\|wdl`, White-relative, Exact+Complete quarantine → bf-convert → bullet). NOT export-train (that needs Complete arms and skips reference-only shards) | Expensive — a fresh deep search per position (the whole point) |
 | **D41 helm / learned allocation** (`design/19`) | `SearchObservations.id_snapshots` (eval-vs-depth trajectory: `{depth,score,nodes,time_ms,pv}`), `SearchContext.{depth,node_budget,static_eval,correction_value,tt_*}`, `PerMoveObservation.{nodes,searched_depth}` (effort) | Schema yes; trajectory populated by real searches, effort by `root-analysis` per-arm and `InSearchCapture` | Very expensive — instrumented search; trajectory is unrecoverable after the fact |
 | **Policy / move-ordering** | `PerMoveObservation.{order_index,order_stage,order_score,returned_score,raised_alpha,caused_cutoff}`, `SearchObservations.{best_move,pv}`; `export-train` `value`/`margin`/`is_ref_best` | Yes (RootMoveAnalysis + export-train per-arm rows) | Very expensive — one search PER LEGAL MOVE (~35×) |
 | **Time-management** | `IdSnapshot.{time_ms,nodes}` per depth (time-to-depth curve), `SearchObservations.completion` | Schema yes; needs trajectory-carrying searches | Expensive — re-run timed searches; machine-relative (`Provenance.hardware_identity`) |
@@ -513,16 +513,19 @@ reality). Rules:
 
 ## 7. Migration / action plan (ordered)
 
-1. **Route PRODUCTION relabel through `root-analysis`/obs.** Stop using the
-   scalar shortcut (`tools/nnue/relabel_depth.py`, python-chess `analyse` →
-   scalar cp) for PRODUCTION relabels — that path bypasses the store and throws
-   away trajectory + per-move + provenance (the ONLY current gap per
-   data-quality-strategy VERIFIED). A production relabel emits `Observation`s so
-   Tier-F rides along for free; the scalar-cp corpus becomes a cheap EXPORT VIEW
-   (`obs-tool export`/`export-train`). Add a Tier-F ("reference-only") mode to
-   `root-analysis` so a plain deep relabel captures L1+L3 without paying the ~35×
-   per-arm `searchmoves` loop; reserve per-arm (Tier-R) for the high-value gate
-   (§5). **Keep the running scalar pilot AS-IS** — scalar cp is sufficient to
+1. **Route PRODUCTION relabel through `root-analysis`/obs.** ✅ DONE
+   (2026-07-18): `root-analysis --reference-only` (Tier-F) captures L1+L3 (with
+   the `id_snapshots` trajectory) + provenance WITHOUT the ~35× per-arm
+   `searchmoves` loop, and **`obs-tool export-value`** materializes the
+   scalar-cp corpus (`FEN | cp | wdl`, White-relative, Bound::Exact +
+   Completion::Complete quarantine → bf-convert → bullet), verified end-to-end.
+   Stop using the scalar shortcut (`tools/nnue/relabel_depth.py`) for PRODUCTION
+   relabels — that path bypasses the store and throws away trajectory +
+   provenance. NOTE the exporter split: `export-value` is the VALUE view
+   (reference-only shards); `export-train` is the PER-MOVE POLICY view (needs
+   Complete arms, skips reference-only shards) — do NOT use export-train for a
+   value corpus. Reserve per-arm (Tier-R, no `--reference-only`) for the
+   high-value gate (§5). **Keep the running scalar pilot AS-IS** — scalar cp is sufficient to
    answer the pilot's single question (do deep labels beat cheap labels), and it
    must not be disturbed mid-flight.
 2. **Add the GAME episode kind + outcome propagation.** `EpisodeKind::EngineGame`
