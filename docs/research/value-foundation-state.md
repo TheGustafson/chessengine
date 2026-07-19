@@ -41,8 +41,32 @@ Last updated: 2026-07-19 (post-compact resume block added)
 > PGO = plain for GAME-Elo (deploy form only, no extra Elo — exp-0103). Incumbents:
 > d40-uho-720sb (sota, the sped-up net), s3-farseer (classic). Bench pin 701605.
 >
-> **★ THE BIG FINDING (perf study #3, `profiling-study-3-creative-2026-07-19.md`):
-> FULLY-LAZY THREAT OBSERVER = +11-12% NPS, BIT-IDENTICAL, ~1-2 days (task #33).**
+> **★ LAZY OBSERVER IMPLEMENTED + MEASURED (2026-07-19, commit pending): the
+> +11-12% projection MISSED — clean measured = +3.6% NPS, bit-identical.** The
+> fully-lazy threat observer landed in `sota_threats.rs` (snapshot mailbox+occ+
+> king-squares at push, ~140 B; generation+resolution+fold all deferred to
+> `compute` against the snapshot; king-cross still eager; generation shared across
+> perspectives per folded ply). CORRECTNESS IRONCLAD: bench node-count 147691 (d8)
+> + 3515701 (d12) bit-identical both sides; all 636 sota lib tests + the 100k-node
+> `threats_replay_large` stress + per-node debug refresh-oracle green. SPEED (quiet
+> box, SIGSTOP'd the relabel, taskset -c 14, d12 median-of-6): **NEW 869k vs BASE
+> 836k = +3.6% NPS** (ratios 1.030-1.045, tight). **CALIBRATION LESSON: the
+> profiling cycle-attribution model over-projected ~3×.** Why: the study modeled
+> the 19.9% observer block shrinking 54%, but wall-clock ≠ cycles for a SCHEDULE
+> shift — deferred gen+resolve moves ONTO the eval critical path (was overlapped
+> with make_move at push) and every push now pays a ~140 B snapshot copy. Contrast
+> opt#1 (a KERNEL/instruction-count shrink) which hit its +13-15% projection dead-on
+> and paid +28.8 Elo. RULE: discount profiler projections for deferral/scheduling
+> changes ~3×; trust them for instruction-count kernel changes. Memory DID shrink
+> as projected (entry 5.1→3.2 KB, ~0.8 MB/thread). Still worth banking (free,
+> bit-identical, ~+1.5-3 external Elo, and it's the foundation the #2 prefetch
+> pipeline builds on) — BUT the study's +18-25% package is now suspect: the
+> schedule-y follow-ons (#2 prefetch, #3 cancel) should be discounted ~3× too;
+> only the kernel-y tail (#5 static dispatch, #4 out-params) likely holds. The
+> original projection + mechanism, for the record:
+>
+> **★ ORIGINAL FINDING (perf study #3, `profiling-study-3-creative-2026-07-19.md`,
+> PROJECTED +11-12% — measured +3.6%, see above):**
 > Round-1's "the observer must run at push time" is FALSE — SF18 generates events
 > eagerly, RESOLVES LAZILY at eval. Defer the WHOLE observer: its only inputs are
 > occ + mailbox (~150 B snapshot at push) + a 1-bit king mirror; every eval-time
