@@ -67,13 +67,28 @@ Twin net (variance head) with consumers ON vs the same twin with consumers OFF:
 **600g fixed-node + 300g 10+0.1**, a 2×2 (c1,c2) probe. Kill if no positive
 config. σ̄-EMA warmup makes early plies neutral, so no calibration run needed.
 
-## Post-match / post-Gate-1 execution checklist
+## STATUS 2026-07-19: BOTH CONSUMERS BUILT + Integral milestone
 
-1. Resume relabel (match trap does it); report + ledger the Integral result.
-2. Build-verify the logvar fix: copy tracked trainer → checkout, build, 2-SB
-   smoke with D40_HETERO_NLL=1, confirm the raw ckpt now has l3_varw/l3_varb
-   (`extract_unc_head.py <raw> <side> --validate <cenn>` passes the transpose).
-3. Train finishes → Gate-1 harness auto-fires (value parity vs control).
-4. If Gate 1 PASSES: Gate-2 retrain (same config + the logvar-save fix) → extract
-   sidecar → wire consumers 1+2 (this doc) + `EvalContext::last_sigma` (already
-   written) → build/clippy/test → Gate 2. If Gate 1 FAILS: kill EXP-UNC-1.
+- Consumer 1 (RFP margin) committed 20897a7; consumer 2 (TM soft-stop) committed
+  74a5104. Both cfg(sota)+env-gated, bit-identical off (sota bench 147691), unit-
+  tested, 639 sota tests + clippy clean. `EvalContext::last_sigma` = ebe4f80.
+- The EXP-UNC-1 *code* is COMPLETE; the rest is gated on Gate 1's verdict.
+- Integral: ARCHON +24.4±32.2 (exp-0104), from −70. logvar fix build OK.
+
+## Post-Gate-1 execution checklist
+
+1. Report + ledger the Integral result (DONE). logvar-verify auto: post-twin
+   smoke confirms l3_varw/l3_varb are in the raw ckpt (the fix works).
+2. Twin finishes → Gate-1 harness auto-fires (value parity vs control, kill ≤−15).
+3. If Gate 1 PASSES: **Gate-2 RETRAIN** — rerun `train_run.py --config
+   data/nnue/experiments/d40-uho-unc-v1/config.json` with the logvar-fixed
+   checkout trainer (already staged/built) so l3_var is saved (same seed →
+   identical mean → Gate 1 carries over). Then:
+   `extract_unc_head.py <retrain final-raw.bin> data/nnue/nets/d40-uho-unc-240sb.sidecar --validate data/nnue/nets/d40-uho-unc-240sb.cenn`.
+4. **Gate 2** — the variance net (CENN) + `D40_UNC_HEAD=<sidecar>`, a 2×2 probe
+   over the two env coeffs, each vs the same net with consumers OFF, at fixed-node
+   AND 10+0.1:
+   - `(0,0)` baseline (consumers off) ; `ARCHON_UNC_RFP_C1=<c1>` ;
+     `ARCHON_UNC_TM_C2=<c2>` ; both. Seed c1≈0.3, c2≈0.3, then refine.
+   Kill if no config is positive. If Gate 1 FAILS: kill EXP-UNC-1 (consumers stay
+   dormant — reusable for EXP-AUX-1 / any future uncertainty signal).
