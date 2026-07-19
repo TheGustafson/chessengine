@@ -10,14 +10,19 @@ use super::sota_head::{FT_QUANT, FT_SHIFT, THREAT_QUANT};
 use std::sync::LazyLock;
 
 type ApplyI16Fn = fn(&mut [i16; ACC], &[i16], &[usize], &[usize]);
-type ApplyI8Fn = fn(&mut [i16; ACC], &[i8], &[usize], &[usize]);
+// Fused copy+apply: read `src`, apply deltas, write `dst` in ONE pass — the
+// lazy fold's child = parent ± deltas without a separate ~1.5 KB memmove
+// (profiling-study §4.3/opt #2). `dst`/`src` may not alias.
+type ApplyI16IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i16], &[usize], &[usize]);
+type ApplyI8IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i8], &[usize], &[usize]);
 type L1DotFn = fn(&mut [i32; 16], &[u8; ACC], &[u16], &[i8]);
 type ActivateFn = fn(&mut [u8; ACC], &[[i16; ACC]; 2], &[[i16; ACC]; 2], usize);
 type FindNnzFn = fn(&[u8; ACC], &mut [u16; ACC / 4]) -> usize;
 
 struct Kernels {
     i16_deltas: ApplyI16Fn,
-    i8_deltas: ApplyI8Fn,
+    i16_deltas_into: ApplyI16IntoFn,
+    i8_deltas_into: ApplyI8IntoFn,
     l1_dot: L1DotFn,
     activate: ActivateFn,
     find_nnz: FindNnzFn,
@@ -52,14 +57,29 @@ pub(crate) fn apply_i16_deltas(
     (KERNELS.i16_deltas)(acc, weights, adds, subs);
 }
 
+/// Fused copy+apply for the HalfKA (i16) fold: `dst = src ± deltas` in one
+/// pass, avoiding the separate parent→child memmove.
 #[inline]
-pub(crate) fn apply_i8_deltas(
-    acc: &mut [i16; ACC],
+pub(crate) fn apply_i16_deltas_into(
+    dst: &mut [i16; ACC],
+    src: &[i16; ACC],
+    weights: &[i16],
+    adds: &[usize],
+    subs: &[usize],
+) {
+    (KERNELS.i16_deltas_into)(dst, src, weights, adds, subs);
+}
+
+/// Fused copy+apply for the FullThreats (i8-weight) fold.
+#[inline]
+pub(crate) fn apply_i8_deltas_into(
+    dst: &mut [i16; ACC],
+    src: &[i16; ACC],
     weights: &[i8],
     adds: &[usize],
     subs: &[usize],
 ) {
-    (KERNELS.i8_deltas)(acc, weights, adds, subs);
+    (KERNELS.i8_deltas_into)(dst, src, weights, adds, subs);
 }
 
 /// Sparse `[u8; 768] × [i8; 16]` dot product. `weights` is laid out as
@@ -108,16 +128,41 @@ mod scalar {
         }
     }
 
-    pub(super) fn i8_deltas(acc: &mut [i16; ACC], weights: &[i8], adds: &[usize], subs: &[usize]) {
+    pub(super) fn i16_deltas_into(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
         for lane in 0..ACC {
-            let mut value = acc[lane];
+            let mut value = src[lane];
+            for &feature in adds {
+                value = value.wrapping_add(weights[feature * ACC + lane]);
+            }
+            for &feature in subs {
+                value = value.wrapping_sub(weights[feature * ACC + lane]);
+            }
+            dst[lane] = value;
+        }
+    }
+
+    pub(super) fn i8_deltas_into(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i8],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        for lane in 0..ACC {
+            let mut value = src[lane];
             for &feature in adds {
                 value = value.wrapping_add(i16::from(weights[feature * ACC + lane]));
             }
             for &feature in subs {
                 value = value.wrapping_sub(i16::from(weights[feature * ACC + lane]));
             }
-            acc[lane] = value;
+            dst[lane] = value;
         }
     }
 
@@ -175,7 +220,8 @@ mod scalar {
 
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
-        i8_deltas,
+        i16_deltas_into,
+        i8_deltas_into,
         l1_dot,
         activate,
         find_nnz,
@@ -211,33 +257,6 @@ mod avx2 {
                 for &feature in subs {
                     let row = weights.as_ptr().add(feature * ACC + off);
                     value = _mm256_sub_epi16(value, _mm256_loadu_si256(row.cast()));
-                }
-                _mm256_storeu_si256(acc.as_mut_ptr().add(off).cast(), value);
-            }
-        }
-    }
-
-    #[target_feature(enable = "avx2")]
-    unsafe fn i8_deltas_inner(
-        acc: &mut [i16; ACC],
-        weights: &[i8],
-        adds: &[usize],
-        subs: &[usize],
-    ) {
-        // SAFETY: as above. Each 128-bit row load contains 16 in-bounds i8
-        // weights and is sign-extended to the accumulator's 16 i16 lanes.
-        unsafe {
-            for off in (0..ACC).step_by(LANES) {
-                let mut value = _mm256_loadu_si256(acc.as_ptr().add(off).cast());
-                for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    let bytes = _mm_loadu_si128(row.cast());
-                    value = _mm256_add_epi16(value, _mm256_cvtepi8_epi16(bytes));
-                }
-                for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    let bytes = _mm_loadu_si128(row.cast());
-                    value = _mm256_sub_epi16(value, _mm256_cvtepi8_epi16(bytes));
                 }
                 _mm256_storeu_si256(acc.as_mut_ptr().add(off).cast(), value);
             }
@@ -381,9 +400,78 @@ mod avx2 {
         unsafe { i16_deltas_inner(acc, weights, adds, subs) }
     }
 
-    fn i8_deltas(acc: &mut [i16; ACC], weights: &[i8], adds: &[usize], subs: &[usize]) {
+    #[target_feature(enable = "avx2")]
+    unsafe fn i16_deltas_into_inner(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // SAFETY: as i16_deltas_inner; reads `src`, writes the disjoint `dst`.
+        unsafe {
+            for off in (0..ACC).step_by(LANES) {
+                let mut value = _mm256_loadu_si256(src.as_ptr().add(off).cast());
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value = _mm256_add_epi16(value, _mm256_loadu_si256(row.cast()));
+                }
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value = _mm256_sub_epi16(value, _mm256_loadu_si256(row.cast()));
+                }
+                _mm256_storeu_si256(dst.as_mut_ptr().add(off).cast(), value);
+            }
+        }
+    }
+
+    #[target_feature(enable = "avx2")]
+    unsafe fn i8_deltas_into_inner(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i8],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // SAFETY: as i8_deltas_inner; reads `src`, writes the disjoint `dst`.
+        unsafe {
+            for off in (0..ACC).step_by(LANES) {
+                let mut value = _mm256_loadu_si256(src.as_ptr().add(off).cast());
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    let bytes = _mm_loadu_si128(row.cast());
+                    value = _mm256_add_epi16(value, _mm256_cvtepi8_epi16(bytes));
+                }
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    let bytes = _mm_loadu_si128(row.cast());
+                    value = _mm256_sub_epi16(value, _mm256_cvtepi8_epi16(bytes));
+                }
+                _mm256_storeu_si256(dst.as_mut_ptr().add(off).cast(), value);
+            }
+        }
+    }
+
+    fn i16_deltas_into(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
         // SAFETY: installed only after runtime AVX2 detection.
-        unsafe { i8_deltas_inner(acc, weights, adds, subs) }
+        unsafe { i16_deltas_into_inner(dst, src, weights, adds, subs) }
+    }
+
+    fn i8_deltas_into(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i8],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // SAFETY: installed only after runtime AVX2 detection.
+        unsafe { i8_deltas_into_inner(dst, src, weights, adds, subs) }
     }
 
     fn l1_dot(pre: &mut [i32; 16], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
@@ -404,7 +492,8 @@ mod avx2 {
 
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
-        i8_deltas,
+        i16_deltas_into,
+        i8_deltas_into,
         l1_dot,
         activate,
         find_nnz,
@@ -447,17 +536,42 @@ mod avx512 {
     }
 
     #[target_feature(enable = "avx512f,avx512bw")]
-    unsafe fn i8_deltas_inner(
-        acc: &mut [i16; ACC],
+    unsafe fn i16_deltas_into_inner(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // SAFETY: as i16_deltas_inner; reads `src`, writes the disjoint `dst`.
+        unsafe {
+            for off in (0..ACC).step_by(LANES) {
+                let mut value = _mm512_loadu_si512(src.as_ptr().add(off).cast());
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value = _mm512_add_epi16(value, _mm512_loadu_si512(row.cast()));
+                }
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
+                }
+                _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
+            }
+        }
+    }
+
+    #[target_feature(enable = "avx512f,avx512bw")]
+    unsafe fn i8_deltas_into_inner(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
         weights: &[i8],
         adds: &[usize],
         subs: &[usize],
     ) {
-        // SAFETY: as above. Each 256-bit row load contains 32 in-bounds i8
-        // weights and is sign-extended to the accumulator's 32 i16 lanes.
+        // SAFETY: as i8_deltas_inner; reads `src`, writes the disjoint `dst`.
         unsafe {
             for off in (0..ACC).step_by(LANES) {
-                let mut value = _mm512_loadu_si512(acc.as_ptr().add(off).cast());
+                let mut value = _mm512_loadu_si512(src.as_ptr().add(off).cast());
                 for &feature in adds {
                     let row = weights.as_ptr().add(feature * ACC + off);
                     let bytes = _mm256_loadu_si256(row.cast());
@@ -468,7 +582,7 @@ mod avx512 {
                     let bytes = _mm256_loadu_si256(row.cast());
                     value = _mm512_sub_epi16(value, _mm512_cvtepi8_epi16(bytes));
                 }
-                _mm512_storeu_si512(acc.as_mut_ptr().add(off).cast(), value);
+                _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
             }
         }
     }
@@ -559,9 +673,26 @@ mod avx512 {
         unsafe { i16_deltas_inner(acc, weights, adds, subs) }
     }
 
-    fn i8_deltas(acc: &mut [i16; ACC], weights: &[i8], adds: &[usize], subs: &[usize]) {
+    fn i16_deltas_into(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
-        unsafe { i8_deltas_inner(acc, weights, adds, subs) }
+        unsafe { i16_deltas_into_inner(dst, src, weights, adds, subs) }
+    }
+
+    fn i8_deltas_into(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i8],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // SAFETY: installed only after runtime avx512f+bw+vnni detection.
+        unsafe { i8_deltas_into_inner(dst, src, weights, adds, subs) }
     }
 
     fn l1_dot(pre: &mut [i32; 16], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
@@ -576,7 +707,8 @@ mod avx512 {
 
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
-        i8_deltas,
+        i16_deltas_into,
+        i8_deltas_into,
         l1_dot,
         activate,
         // The AVX2 movemask+compact form; a 512-bit variant needs
@@ -609,10 +741,10 @@ mod tests {
         apply_i16_deltas(&mut dispatched, &i16_weights, &adds, &subs);
         assert_eq!(dispatched, reference);
 
-        let mut reference = seed;
-        scalar::i8_deltas(&mut reference, &i8_weights, &adds, &subs);
-        let mut dispatched = seed;
-        apply_i8_deltas(&mut dispatched, &i8_weights, &adds, &subs);
+        let mut reference = [0i16; ACC];
+        scalar::i8_deltas_into(&mut reference, &seed, &i8_weights, &adds, &subs);
+        let mut dispatched = [0i16; ACC];
+        apply_i8_deltas_into(&mut dispatched, &seed, &i8_weights, &adds, &subs);
         assert_eq!(dispatched, reference);
     }
 
@@ -717,11 +849,17 @@ mod tests {
                 );
             }
 
-            let mut reference = seed;
-            scalar::i8_deltas(&mut reference, &i8_weights, &adds, &subs);
-            let mut got = seed;
-            (kernels.i8_deltas)(&mut got, &i8_weights, &adds, &subs);
-            assert_eq!(got, reference, "{name} i8_deltas");
+            let mut reference = [0i16; ACC];
+            scalar::i16_deltas_into(&mut reference, &seed, &i16_weights, &adds, &subs);
+            let mut got = [0i16; ACC];
+            (kernels.i16_deltas_into)(&mut got, &seed, &i16_weights, &adds, &subs);
+            assert_eq!(got, reference, "{name} i16_deltas_into");
+
+            let mut reference = [0i16; ACC];
+            scalar::i8_deltas_into(&mut reference, &seed, &i8_weights, &adds, &subs);
+            let mut got = [0i16; ACC];
+            (kernels.i8_deltas_into)(&mut got, &seed, &i8_weights, &adds, &subs);
+            assert_eq!(got, reference, "{name} i8_deltas_into");
 
             let mut reference = pre_seed;
             scalar::l1_dot(&mut reference, &ft, &nnz, &l1_weights);

@@ -72,7 +72,7 @@
 //! side (and every non-king move) stays incremental.
 
 use super::sota_features::{ACC, THREAT_DIMS, refresh_threat, threat_index};
-use super::sota_simd::apply_i8_deltas;
+use super::sota_simd::apply_i8_deltas_into;
 use crate::attacks::{
     attacks, bishop_attacks, knight_attacks, pawn_attacks, ray_pass, rook_attacks,
 };
@@ -707,9 +707,6 @@ impl<'a> ThreatContext<'a> {
         }
         let weights = self.weights;
         for child in (ancestor + 1)..=ply {
-            // The parent→child copy (one perspective, ~1.5 KB) is the cost we
-            // deferred off `do_move`; here it is paid only for evaluated plies.
-            let mut acc = self.stack[child - 1].acc[p];
             let add_len = self.stack[child].add_len[p] as usize;
             let sub_len = self.stack[child].sub_len[p] as usize;
             for i in 0..add_len {
@@ -718,14 +715,19 @@ impl<'a> ThreatContext<'a> {
             for i in 0..sub_len {
                 self.sub_scratch[i] = self.stack[child].subs[p][i] as usize;
             }
-            apply_i8_deltas(
-                &mut acc,
+            // Fused parent→child fold (opt #2): read parent lanes, apply
+            // deltas, write child lanes in one pass — the ~1.5 KB parent→child
+            // memmove we deferred off `do_move` is now eliminated, not just
+            // deferred. Paid only for evaluated plies.
+            let (before, after) = self.stack.split_at_mut(child);
+            apply_i8_deltas_into(
+                &mut after[0].acc[p],
+                &before[child - 1].acc[p],
                 weights,
                 &self.add_scratch[..add_len],
                 &self.sub_scratch[..sub_len],
             );
-            self.stack[child].acc[p] = acc;
-            self.stack[child].computed[p] = true;
+            after[0].computed[p] = true;
         }
     }
 

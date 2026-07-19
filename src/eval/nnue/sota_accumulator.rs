@@ -1,7 +1,7 @@
 //! Incremental HalfKAv2_hm accumulator with a per-king-state Finny cache.
 
 use super::sota_features::{ACC, halfka_index, halfka_king_key};
-use super::sota_simd::apply_i16_deltas;
+use super::sota_simd::{apply_i16_deltas, apply_i16_deltas_into};
 use crate::board::{Board, DirtyPiece};
 use crate::types::{Color, MAX_PLY, Piece, Square};
 
@@ -92,13 +92,21 @@ impl<'a> HalfkaContext<'a> {
             return;
         }
         let king_square = board.king_square(perspective);
+        let weights = self.weights;
         for child in (ancestor + 1)..=ply {
             let dirty = self.stack[child].dirty;
+            // Fused parent→child fold: read parent lanes, apply deltas, write
+            // child lanes in one pass — no separate ~1.5 KB memmove (opt #2).
             let (before, after) = self.stack.split_at_mut(child);
-            let mut acc = before[child - 1].acc[p];
-            apply_dirty(self.weights, &mut acc, &dirty, perspective, king_square);
-            after[0].acc[p] = acc;
-            self.stack[child].computed[p] = true;
+            apply_dirty_into(
+                weights,
+                &mut after[0].acc[p],
+                &before[child - 1].acc[p],
+                &dirty,
+                perspective,
+                king_square,
+            );
+            after[0].computed[p] = true;
         }
     }
 
@@ -160,9 +168,12 @@ impl<'a> HalfkaContext<'a> {
     }
 }
 
-fn apply_dirty(
+/// Fused fold: `dst = src ± dirty deltas` in one pass — the memmove-free form
+/// of "copy parent then [`apply_dirty`] in place" (profiling-study opt #2).
+fn apply_dirty_into(
     weights: &[i16],
-    acc: &mut [i16; ACC],
+    dst: &mut [i16; ACC],
+    src: &[i16; ACC],
     dirty: &DirtyPiece,
     perspective: Color,
     king: Square,
@@ -175,8 +186,9 @@ fn apply_dirty(
     for (i, &(piece, square)) in dirty.subs().iter().enumerate() {
         subs[i] = halfka_index(perspective, piece, square, king);
     }
-    apply_i16_deltas(
-        acc,
+    apply_i16_deltas_into(
+        dst,
+        src,
         weights,
         &adds[..dirty.adds().len()],
         &subs[..dirty.subs().len()],
