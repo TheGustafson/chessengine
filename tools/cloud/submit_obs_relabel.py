@@ -80,9 +80,20 @@ def main() -> None:
     parser.add_argument("--project", default="archon-502500")
     parser.add_argument("--region", default="us-east1")
     parser.add_argument("--zone")
-    parser.add_argument("--machine", default="c2d-highcpu-16")
-    parser.add_argument("--machine-vcpus", type=int, default=16)
-    parser.add_argument("--tasks-per-vm", type=int, default=16)
+    # Spot-availability adaptivity: `--machine` is a preferred->fallback list of
+    # c2d-highcpu-{8,16,32}. Per-vCPU spot cost is FLAT across these sizes, so the
+    # job is machine-size-independent: each task holds 1 vCPU (cpuMilli=1000) and
+    # `taskCountPerNode` auto-derives from the chosen machine's vCPU count, so the
+    # SAME shard array runs correctly on 8/16/32 and switching sizes is
+    # cost-neutral. GCE Batch pins one machine type per job (instances[0]); if the
+    # preferred size has no Spot capacity, resubmit with the next in the list (the
+    # driving wrapper does this on a provisioning stall) — no cost or work change.
+    parser.add_argument("--machine", default="c2d-highcpu-16,c2d-highcpu-32,c2d-highcpu-8",
+                        help="preferred->fallback machine list; per-vCPU packing makes any size correct + cost-neutral")
+    parser.add_argument("--machine-vcpus", type=int, default=16,
+                        help="vCPU count the --spot-vm-hourly-usd price is quoted for (per-vCPU pricing is flat; default 16)")
+    parser.add_argument("--tasks-per-vm", type=int, default=None,
+                        help="tasks per VM (default: the chosen machine's vCPU count — one task per vCPU)")
     parser.add_argument("--parallel-tasks", type=int, default=96)
     parser.add_argument("--memory-mib-per-task", type=int, default=1_536)
     parser.add_argument("--max-task-seconds", type=int, default=1_800)
@@ -104,7 +115,7 @@ def main() -> None:
     args = parser.parse_args()
 
     positive = (
-        args.nodes, args.machine_vcpus, args.tasks_per_vm, args.parallel_tasks,
+        args.nodes, args.machine_vcpus, args.parallel_tasks,
         args.memory_mib_per_task, args.max_task_seconds, args.hash_mb,
         args.spot_vm_hourly_usd, args.measured_rows_per_second, args.max_cost_usd,
     )
@@ -112,10 +123,20 @@ def main() -> None:
         parser.error("numeric resource, throughput, and budget arguments must be positive")
     if not args.image.startswith("us-east1-docker.pkg.dev/") or "@sha256:" not in args.image:
         parser.error("--image must be a digest-pinned us-east1 Artifact Registry image")
-    if args.machine != "c2d-highcpu-16" or args.machine_vcpus != 16:
-        parser.error("this measured resource profile is locked to c2d-highcpu-16")
-    if args.tasks_per_vm > args.machine_vcpus:
-        parser.error("tasks per VM cannot exceed the measured one-task-per-vCPU profile")
+    # Spot-adaptive machine list: preferred -> fallback across the measured
+    # c2d-highcpu profile. Per-vCPU spot cost is flat across these sizes, so the
+    # shard array is machine-size-independent (one task per vCPU); switching sizes
+    # is cost-neutral. Batch pins instances[0]; the driving wrapper resubmits with
+    # the next size on a Spot-provisioning stall.
+    ALLOWED_MACHINES = {"c2d-highcpu-8": 8, "c2d-highcpu-16": 16, "c2d-highcpu-32": 32}
+    machine_list = [m.strip() for m in args.machine.split(",") if m.strip()]
+    if not machine_list or any(m not in ALLOWED_MACHINES for m in machine_list):
+        parser.error(f"--machine must be a comma list drawn from {sorted(ALLOWED_MACHINES)}")
+    chosen_machine = machine_list[0]
+    chosen_vcpus = ALLOWED_MACHINES[chosen_machine]
+    tasks_per_vm = args.tasks_per_vm if args.tasks_per_vm is not None else chosen_vcpus
+    if tasks_per_vm <= 0 or tasks_per_vm > chosen_vcpus:
+        parser.error("--tasks-per-vm must be in 1..chosen-machine-vCPUs (one task per vCPU)")
     if not args.output.startswith("gs://"):
         parser.error("--output must be a GCS prefix")
     if not args.durable_data:
@@ -206,11 +227,11 @@ def main() -> None:
             },
             "taskCount": task_count,
             "parallelism": min(args.parallel_tasks, task_count),
-            "taskCountPerNode": args.tasks_per_vm,
+            "taskCountPerNode": tasks_per_vm,
         }],
         "allocationPolicy": {
             "instances": [{"policy": {
-                "machineType": args.machine,
+                "machineType": chosen_machine,
                 "provisioningModel": "SPOT",
             }}],
             "serviceAccount": {"email": args.service_account},
@@ -245,10 +266,12 @@ def main() -> None:
         "created_unix": created_unix,
         "seed": args.seed,
         "image": args.image,
-        "machine": args.machine,
-        "tasks_per_vm": args.tasks_per_vm,
+        "machine": chosen_machine,
+        "machine_fallback": machine_list[1:],
+        "machine_vcpus": chosen_vcpus,
+        "tasks_per_vm": tasks_per_vm,
         "parallel_tasks": effective_parallel_tasks,
-        "maximum_parallel_vms": math.ceil(effective_parallel_tasks / args.tasks_per_vm),
+        "maximum_parallel_vms": math.ceil(effective_parallel_tasks / tasks_per_vm),
         "tasks": task_count,
         "rows": total_rows,
         "uci_options": [f"{name}={options[name]}" for name in sorted(options)],
