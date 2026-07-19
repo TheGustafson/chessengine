@@ -81,6 +81,25 @@ Last updated: 2026-07-19 (post-compact resume block added)
 > GPU is idle (this + EXP-AUX-1 share the trainer plumbing). Runs alongside the
 > CPU relabel. D38 ledger the twin + both gates.
 >
+> **STATUS (2026-07-19, LAUNCHED — trainer fully validated):** The NLL trainer is
+> IMPLEMENTED + smoke-validated. Edit in `.archon-state/toolchains/bullet/examples/
+> d40_features.rs` (~line 708): behind `D40_HETERO_NLL=1`, a parallel `l3_var`
+> log-var head + loss `0.5*(exp(-s)*(sig-t)^2 + s)`; MEAN head + save tensors
+> UNCHANGED (default path byte-identical). Smoke (2 SB, real data): compiles,
+> feature-parity 65/65, loss 0.0444→0.0366 (no NaN), raw ckpt 256MB (has l3_var),
+> quantised 81MB standard mean-only. Gate-1 pack path validated: netpack → 81,354,848 B
+> CENN (exact control size, l3_var excluded) → engine loads+evals. **240sb twin
+> RUNNING** (`train_run.py --config data/nnue/experiments/d40-uho-unc-v1/config.json`,
+> pid 430823, log data/nnue/experiments/d40-uho-unc-v1/train.log; exact control
+> recipe + default power-2 loss, same seed 198273612 → identical mean-head init;
+> D40_SF_BUFFER_MB lowered 256→128 for RAM safety w/ the relabel; save_rate 30).
+> ~2.4h to SB240, then train_run.py packs (mean-only CENN) + parity. **NEXT on
+> completion:** GATE 1 = fixed-node value screen d40-uho-unc-240sb (mean) vs the
+> control d40-uho-v1-240sb (kill ≤−15); if pass → runtime plumbing (l3_var into
+> CENN format + loader + head forward + futility/RFP + TM soft-stop, env-gated) →
+> GATE 2. RAM tight (~1.95 GB avail, stable — don't add heavy jobs). Ledger the
+> twin after pack.
+>
 > **★ LAZY OBSERVER IMPLEMENTED + MEASURED (2026-07-19, commit 249e1b5): the
 > +11-12% projection MISSED — clean measured = +3.6% NPS, bit-identical.** The
 > fully-lazy threat observer landed in `sota_threats.rs` (snapshot mailbox+occ+
