@@ -67,6 +67,45 @@ Twin net (variance head) with consumers ON vs the same twin with consumers OFF:
 **600g fixed-node + 300g 10+0.1**, a 2×2 (c1,c2) probe. Kill if no positive
 config. σ̄-EMA warmup makes early plies neutral, so no calibration run needed.
 
+## ★ D33 REVIEW FINDINGS (2026-07-19) — runtime fixed; design open
+
+3-persona review (A correctness, B design, C rust/test) of the runtime code.
+RUNTIME fixes APPLIED + committed (d3e6b83), all bit-identical 147691:
+- σ̂ staleness: `last_sigma` invalidated at the top of `evaluate()` (material-draw
+  / non-SOTA nodes no longer fold a stale prior-position σ̂); `root_sigma` reset
+  per search at `refresh_root` (was leaking a prior MOVE's value into TM via the
+  persistent TT). NaN guard: `forward` returns σ̂=None if non-finite (garbage
+  sidecar). Mirror test `propagate_l3_var_mirrors_propagate_l3`. Comment fixes.
+
+DESIGN findings (need a retrain or a knob — DECIDE via the g2 Gate-1 verdict):
+- **B#1+2 [HIGH] the coupled NLL hurts the MEAN (Seitzer):** ∂loss/∂μ ∝ exp(−s),
+  so the mean underfits sharp/high-σ̂ positions — exactly the ones that decide
+  games. The discriminative head (l3_varw std 0.49) makes this LARGE, so the g2
+  mean may FAIL Gate 1, and "same seed → identical mean" is FALSE (the trunk gets
+  variance gradients + the mean is reweighted). **The g2 gate empirically tests
+  this.** If g2 Gate 1 FAILS → apply the DETACH fix and retrain: compute
+  `logvar` from a stop-gradient trunk (bullet `builder.with_no_grad`) and keep the
+  MEAN loss pure MSE → mean = control by construction (Gate 1 automatic + true),
+  variance = pure post-hoc residual predictor (its own weights still train). This
+  is the recommended design; EXP-UNC-1's value is in the consumers, not in helping
+  the mean, so protecting the mean is the right trade. Also add an explicit
+  `logvar.clamp` + exempt `l3_var` from the ±1.98 i8 weight-clip (B#7) so σ̂
+  discrimination isn't throttled, and add a reliability-diagram calibration check.
+- **B#4 [MED] WDL-vs-cp space:** σ̂ is a sigmoid/WDL-space std; near decisive evals
+  the sigmoid saturates → σ̂ reads LOW (overconfident) exactly where a static eval
+  is most likely wrong, and it scales a cp-space RFP margin. Options: train the
+  variance on the cp/logit residual, or restrict the σ̂ consumer to WDL-space
+  levers (TM) + keep it off the cp margin. Stratify the reliability check by |eval|.
+- **B#5 [MED] EMA α=1/1024 is too fast** — it self-centers within a search and
+  subtracts out the cross-phase/absolute component (endgames globally low-σ̂ →
+  prune-harder), which is likely the STRONGER Elo half. Sweep α (≥1/8192) or a
+  fixed calibrated σ̄ constant alongside c1/c2 in Gate 2.
+- **B#3 [MED] Gate-2 protocol:** a 2×2 "keep best of 4" invites a false positive
+  at ±13–18 resolution, and consumer 2 (TM) has zero fixed-node effect so only the
+  underpowered 300g equal-time arm sees it. Fix: PRE-REGISTER the package (both
+  consumers at seed coeffs) as the primary decision; treat the 2×2 as exploratory
+  requiring replication; power up / or defer consumer 2.
+
 ## STATUS 2026-07-19: BOTH CONSUMERS BUILT + Integral milestone
 
 - Consumer 1 (RFP margin) committed 20897a7; consumer 2 (TM soft-stop) committed
