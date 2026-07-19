@@ -41,7 +41,47 @@ Last updated: 2026-07-19 (post-compact resume block added)
 > PGO = plain for GAME-Elo (deploy form only, no extra Elo — exp-0103). Incumbents:
 > d40-uho-720sb (sota, the sped-up net), s3-farseer (classic). Bench pin 701605.
 >
-> **★ LAZY OBSERVER IMPLEMENTED + MEASURED (2026-07-19, commit pending): the
+> **★★ ACTIVE PIVOT (2026-07-19, user-chosen): EXP-UNC-1 — eval output columns
+> (the search study's #1 bet). ★★** After the lazy-observer landed (+3.6%, below
+> projection — see below) and the perf-3 tail was measured-exhausted (RVO'd /
+> ≤0.2% / unsafe / training-gated; the only large speed prize left is the
+> smallnet gate #8, which is itself a training project), the user chose to pivot
+> to EXP-UNC-1 over grinding the tail. **Pre-registered experiment (study §3.1.1 /
+> §5 bet 1):** train a twin of the 240sb control (d40-uho-v1-240sb, ledgered) with
+> the value head emitting **(mean, log-σ²)** under **heteroscedastic NLL** (label =
+> row's own score; optional WDL triple aux), deploy eval-only-mean for value +
+> wire σ̂ into exactly two consumers behind env-gated coeffs: (i) futility/RFP
+> `margin *= clamp(1 + c1·(σ̂−σ̄)/σ̄, 0.7, 1.5)`; (ii) TM soft-stop
+> `total_time *= (1 + c2·root-σ̂-normalized)`. **T≈1 by construction** (columns
+> ride the paid forward, ~30 FLOPs). **Cost class E0 — neither prior study priced
+> it; it's the class the frontier ships (SF complexity/optimism, KataGo
+> score-stddev, Lc0 WDL).** Consumer audit: ARCHON's TM has ZERO position-content
+> input (pure SF telemetry transplant) — the uncertainty column is complementary,
+> not a re-weight. GATE ORDER (trainer-first, cheap kill first): **Gate 1 = value
+> parity** — the NLL-mean twin must not lose to the MSE control at fixed nodes
+> (kill ≤ −15); uses the EXISTING runtime (export mean-only as a standard CENN).
+> **Gate 2** = consumers on/off, same net, 600g fixed-node + 300g 10+0.1. Expect
+> +3..+15 internal, P(≥+10)≈25-35%, P(parity)≈70%.
+> **BUILD PLAN (trainer→Gate1→plumbing→Gate2):**
+> 1. Re-establish the ephemeral bullet checkout (gitignored, currently ABSENT):
+>    re-clone + copy tools/nnue/bullet/*.rs into examples/ + register (README).
+> 2. Modify `d40_features.rs` (the PRODUCTION HalfKA+FullThreats trainer, NOT
+>    d40_eval.rs) to add the (mean, log-σ²) NLL head + optional WDL.
+>    **GATING UNKNOWN: does bullet's graph API express heteroscedastic NLL /
+>    multi-output custom loss?** — inspect the bullet source once re-cloned;
+>    workaround if not (separate log-var output + manual loss node). SMOKE-train
+>    tiny first (smoke-test memory).
+> 3. Train the 240sb twin on the same corpus/schedule as the control.
+> 4. Gate 1: netpack the mean-only → fixed-node value gate vs the 240sb control.
+> 5. If pass: extend CENN format + netpack.py + sota_loader.rs + sota_head.rs
+>    forward() to carry the log-σ column (bit-identical when absent/off); wire
+>    consumers (search/mod.rs futility/RFP + timeman.rs soft-stop), env-gated
+>    coeffs defaulting OFF.
+> 6. Gate 2: 2×2 coeff probe (c1,c2) fixed-node + equal-time. Kills precommitted.
+> GPU is idle (this + EXP-AUX-1 share the trainer plumbing). Runs alongside the
+> CPU relabel. D38 ledger the twin + both gates.
+>
+> **★ LAZY OBSERVER IMPLEMENTED + MEASURED (2026-07-19, commit 249e1b5): the
 > +11-12% projection MISSED — clean measured = +3.6% NPS, bit-identical.** The
 > fully-lazy threat observer landed in `sota_threats.rs` (snapshot mailbox+occ+
 > king-squares at push, ~140 B; generation+resolution+fold all deferred to
