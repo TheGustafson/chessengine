@@ -113,6 +113,30 @@ Last updated: 2026-07-19 (post-compact resume block added)
 > c2 (env-gated, read SotaContext.last_sigma). **Gate 1 needs NONE of this** (mean
 > value only). RAM tight — build with CARGO_BUILD_JOBS=2. Ledger the twin after pack.
 >
+> **★ CRITICAL FINDING (2026-07-19, later): the raw ckpt saves ONLY
+> output-reachable weights — a loss-only l3_var is DROPPED (empirically: the smoke
+> raw ckpt had no l3_varw/l3_varb).** So the SIDECAR-from-raw plan needs the
+> trainer to expose `logvar` as a SAVED OUTPUT. FIX committed (459a368, tracked
+> tools/nnue/bullet/d40_features.rs: `outputs.push(("logvar", logvar))` — NLL
+> training itself is smoke-verified; the logvar-SAVE fix is PENDING a post-match
+> build+smoke). **CONSEQUENCE: the currently-RUNNING d40-uho-unc-240sb train
+> (pre-fix binary) is GATE-1-ONLY — its l3_var is lost.** Gate 2 needs a RETRAIN
+> with the fix; the mean is identical under the same seed (198273612), so the
+> Gate-1 verdict carries over — not wasted. Also the sidecar extractor
+> tools/nnue/extract_unc_head.py is written + self-validating (--validate against
+> the mean head, no build). Consumer wiring plan (build-required, after builds
+> free): EvalContext (src/eval/mod.rs:38, holds `sota: Option<SotaContext>`) gets
+> `last_sigma()` → search reads it after static_eval → RFP margin
+> (search/mod.rs:214 `rfp_margin_with_threat`, scale by clamp(1+c1·(σ̂−σ̄)/σ̄,0.7,1.5))
+> + TM soft-stop (c2·root-σ̂). All env-gated, default off = bit-identical.
+>
+> **★ INTEGRAL EQUAL-TIME (user-requested "how far caught up", exp pending):**
+> ARCHON sota (d40-uho-720sb + opt1+opt2 + lazy observer) vs integral-v6, 100g
+> 10+0.1 (tools/nnue/integral_match_v1.sh, relabel-paused for clean timing).
+> THROUGH 28g: **~50% (≈0 Elo), draw-heavy (DrawRatio 80%)** — a large jump from
+> the **−70±22** anchor (speed package + stronger D40 net). Small sample (large
+> SE); final 100g + exact Elo±SE pending → ledger it then.
+>
 > **★ LAZY OBSERVER IMPLEMENTED + MEASURED (2026-07-19, commit 249e1b5): the
 > +11-12% projection MISSED — clean measured = +3.6% NPS, bit-identical.** The
 > fully-lazy threat observer landed in `sota_threats.rs` (snapshot mailbox+occ+
