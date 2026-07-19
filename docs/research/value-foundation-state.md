@@ -29,9 +29,35 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-18 ~02:35 America/New_York
+Last updated: 2026-07-18 (evening loop)
 
 ## TAKEOVER CHECKPOINT (2026-07-18 02:35 — read this first)
+
+> **EVENING UPDATE 2026-07-18 (persist checkpoint):** four items since 10:07.
+> (A) **STAGE-1 SATURATED at 720sb.** The warm-continue +360sb extension
+> `d40-uho-cont-1080sb` (1080sb total) screened **−9.3±15.4 vs 720sb** (300g
+> fixed-5k, exp-0100) → REJECTED; more stage-1 superbatches do not help (mirrors
+> the stage-2-dead finding). 720sb stays the D40 stage-1 incumbent; stop pouring
+> compute into stage-1 — the gains are in data-quality / arch / search.
+> (B) **Tier-F obs-relabel pipeline LANDED + verified (commit 4b59607).** M2:
+> `root-analysis --reference-only` emits one Observation/tier (position +
+> reference SearchObservations incl. the `id_snapshots` eval trajectory +
+> provenance), SKIPPING the ~35× per-move `searchmoves` loop — the "free layers
+> always" capture. NEW `obs-tool export-value` is the scalar VALUE view
+> (`FEN|cp|wdl`, White-relative, Exact+Complete quarantine → bf-convert → 32B
+> bin), verified end-to-end incl. the sign flip on decisive positions.
+> IMPORTANT: `export-train` is the PER-MOVE POLICY exporter (needs Complete
+> arms; it SKIPS reference-only shards) — the data docs were corrected. The GCP
+> obs-relabel factory (M3–M7: worker + partition + submit + reconcile, dry-run
+> /cost-capped/Spot-only/ledger-gated) is committed but **GATED** behind local
+> pilot validation. (C) **Fable profiling study LAUNCHED** (background subagent,
+> user ask): efficiency/NPS/cache/SIMD vs SF16/Reckless/Integral (WSL has no PMU
+> → valgrind callgrind/cachegrind + perf software sampling) → will write
+> `docs/research/profiling-study-2026-07-18.md`. (D) **Label-value pilot deep
+> relabel: 2/10 chunks done** (SF18 @100k, 13 workers, ~resumable); on
+> completion → cheap relabel → 2 corpora → deep-vs-cheap fixed-node A/B (gate
+> ≥+15 → SF18 relabeling validated). The 10:07 block below stands for the
+> speed/capture items.
 
 > **OVERNIGHT UPDATE 2026-07-18 10:07 (persist checkpoint):** two things
 > since 02:35. (A) SPEED PROGRAM CLOSED — R1 native REJECTED, R3 PGO SHIPPED
