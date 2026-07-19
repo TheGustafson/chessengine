@@ -50,6 +50,34 @@ the estimate. Campaign id `sf18-50k-<date>`.
 - **Worker image manifest:** assemble `worker/image_manifest.json` pinning SF18 + the ARCHON binaries so the build is one command once authed.
 - **Dry-run rehearsal:** run `submit_obs_relabel.py` in dry-run against a tiny manifest to confirm the cost estimate + Batch request shape (may need auth for the image digest lookup — will confirm).
 
+## Quota reality (user, 2026-07-19)
+A GCE Spot vCPU quota limits how many instances run at once. **This changes
+wall-clock, NOT cost** — cost is core-hours × price, independent of parallelism.
+Fewer instances just runs longer at the same total spend. Implications:
+- **Request a Spot vCPU (`c2d`/preemptible CPUs) quota increase** — that's the
+  real wall-clock unblock; new projects often start at ~24–32 vCPU.
+- Meanwhile, wall-clock ≈ core-hours ÷ quota-vCPUs. E.g. 100M @ 50k = ~3000
+  core-hr → 32 vCPU ≈ **~4 days**; 128 vCPU ≈ **~24 h**; 512 vCPU ≈ **~6 h**.
+- So the **first campaign should be sized to the granted quota + an acceptable
+  wall-clock**: start with **50–100M @ 25k nodes** (~$15–30) and let it run; scale
+  up once the quota is raised and the train+gate confirms the labels help.
+- `submit_obs_relabel.py --parallel-tasks` caps concurrent tasks — set it at (or
+  below) the quota vCPU count so Batch doesn't thrash against the limit.
+
+## Prep status (2026-07-19, local — no access needed)
+- ✅ **Pipeline** built + governed (`tools/cloud/`), verified end-to-end shape.
+- ✅ **FEN extraction** confirmed: `sfbinpack-audit/…/bulk_fens <UHO> <count>` emits
+  `FEN\twdl\tscore`; take col 1. (Slow under local I/O contention — runs on a quiet
+  box or as a cloud prep step; batched extract→partition→upload to fit 8G disk.)
+- ✅ **Worker image context present** (`tools/cloud/worker/`: Dockerfile,
+  archon_worker.py entrypoint, image_manifest.json, requirements.lock).
+- ⏳ **Image manifest SHA re-pin** — the pinned artifact SHAs drifted (binaries
+  rebuilt since). Re-pin = build fresh production `root-analysis` / `obs-tool` /
+  `chessengine` (+ the SF18 src build) and stamp their sha256 into the manifest.
+  This is the last local step before the (access-gated) image build+push.
+- ⛔ **Access-gated:** `bootstrap_gcp.sh`, image build+push to Artifact Registry,
+  and submit — all need `gcloud auth` + the billed project.
+
 ## The gate discipline
 The local pilot's train+gate (SF18-deep vs SF16 on 2M) is the cheap first read; but
 2M undertrains a net, so the fleet's 100–200M is what actually tests whether
