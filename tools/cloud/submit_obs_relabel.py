@@ -34,8 +34,7 @@ from typing import Any
 # production binaries. Every submit_*.py + README §"Worker image" reference this
 # same identity — no more research-worker/data-worker three-digest drift.
 DEFAULT_IMAGE = (
-    "us-east1-docker.pkg.dev/archon-502500/archon-workers/archon-worker@"
-    "sha256:REPLACE_AT_BUILD"
+    "us-east1-docker.pkg.dev/archon-502500/archon-workers/archon-worker@sha256:640b73509d6b8beba944c7c5e64c027cd3b8cf684e63bca2cf282fe5686d4b4e"
 )
 DEFAULT_SERVICE_ACCOUNT = "archon-batch-worker@archon-502500.iam.gserviceaccount.com"
 
