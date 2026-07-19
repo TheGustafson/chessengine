@@ -1,3 +1,25 @@
+> **★ CLOSING VERDICT (2026-07-19): the one-box training-method well is DRY.**
+> Every ranked experiment ran and none cleared the +15 fixed-node gate:
+> - X1 checkpoint/seed harvest → NULL (exp-0084: the final ckpt IS the best of a
+>   run; intra-run harvest adds nothing; multi-seed selection left as a future
+>   GPU-budget question, not a method gain).
+> - X2 loss exponent 2.5 → NEUTRAL **+5.0 ± 9.7** (exp-0077, 900g).
+> - X3 king-bucket factorization → WEAK **+6.9, CI [−29,+43]** (exp-0099), below
+>   gate — implemented + parity-verified (`D40_FACTORIZE`), banked-not-shipped.
+> - Stage-2 warm-retrain → **DEAD for the D40 threat arch** (exp-0095 −72.9;
+>   3-cell verdict); width → **saturated at 2048**; LR-shape / warmup / constant-WDL
+>   / batch-for-strength / optimizer → CLOSED (§D).
+>
+> So the ONLY eval levers left on one box are (a) **longer stage-1** (same UHO
+> distribution — a DATA-scale fact, +30/node proven but diminishing) and
+> (b) **better data** (SF18 relabel — the running label-value pilot — or the
+> fleet). This is the same wall the **SF16 gap diagnosis**
+> (`sf16-gap-diagnosis-2026-07-19.md`) hits from the game side: the −41.5 is a
+> fine-grained per-node eval deficit (0.2% blindspot rate, +1 ply depth), not a
+> method bug. **Two independent lines → the fleet + beyond-SF16 data is the
+> transformational lever; every one-box method knob is spent.** Task #27 is
+> answered: nothing material is being left on the table by method choice.
+>
 > **Reconciliation note (added at review, 2026-07-17 09:00):** Experiment #4
 > ("quant-tail robustness") was drafted before the same-day packing-tail
 > diagnosis (docs/research/d40-packing-tail-2026-07-17.md) landed. That
