@@ -97,6 +97,51 @@ Then: pack → `ARCHON_SMALLNET=<cheap.cenn> ARCHON_SMALLNET_THRESH=<t>` and swe
 `t` (start ~300-600cp: only clearly-decided nodes take the cheap path) at
 fixed-node (NPS + node-count) AND equal-time (the ship metric) vs `t=0`.
 
+## ★ COST-MODEL CAVEAT (2026-07-19, found during the infra correctness review)
+
+The "run the cheap net first, escalate to the big net when unclear" gate pays the
+cheap-net cost on **every eval'd node** (you must evaluate it to read its output-
+gate signal). SF wins with this because its small net is *tiny* — L1 ~128 vs the
+big net's 3072-lane trunk, so cheap ≈ 0.1× big. **Our affordable cheap net is
+NOT tiny:** the trainer's L1 is baked at 768, so a HalfKA-only cheap net only
+drops the FullThreats channel → cheap ≈ **0.5–0.6× big**, not 0.1×.
+
+Per-node cost with decided-fraction `p` and cheap≈0.6× (redundant cheap eval on
+the undecided `1−p`):
+```
+cost = p·0.6 + (1−p)·(0.6 + 1.0) = 1.6 − 1.0·p      (baseline = 1.0)
+```
+→ break-even at **p ≈ 0.6**. Most search nodes are NOT clearly decided, so the
+SF-style gate with a HalfKA-only-768 cheap net is likely a WASH or a small LOSS,
+not the +8–15% first assumed. The "+8–15%" presumed an SF-tiny cheap net.
+
+**Two fixes (the sweep should test both; the infra already supports the first
+with one added knob):**
+1. **Material prefilter** — gate the cheap-net RUN on a free signal (material
+   imbalance / a coarse decided-ness proxy), so the cheap net runs ONLY on
+   plausibly-decided nodes and the undecided majority pays zero cheap overhead:
+   ```
+   if |material| ≥ mat_gate { run cheap; if |cheap| ≥ eval_thresh { return cheap } }
+   big net
+   ```
+   Then `cost = p·0.6 + (1−p)·1.0 = 1.0 − 0.4·p` → a win for ANY p>0, even with a
+   0.6× cheap net. Cost: one added env knob `ARCHON_SMALLNET_MAT_GATE` (default 0
+   = today's always-run behavior → bit-identical preserved) + a cheap material
+   popcount in `evaluate`. Crude-signal Elo risk on material-decided-but-complex
+   positions, but those are rare and the cheap-eval confirm catches most.
+2. **A genuinely tiny cheap net** (narrow L1, e.g. 128–256) → cheap ≈ 0.1–0.3×,
+   restoring the SF economics. Needs a **generic-L1 arch change**: the trainer
+   needs an L1/width knob (today baked at 768), and the runtime `HalfkaContext` /
+   `SotaHead` are `[[i16; ACC]; 2]`-typed at ACC=768 — a narrow cheap net needs a
+   const-generic or a second narrow context type. Bigger change; deferred.
+
+**GATE ON THE DECISION: a clean NPS measurement first.** Before training any
+cheap net, measure (on a QUIET box) HalfKA-only-768's real per-eval cost vs the
+full net and the actual decided-fraction at a candidate threshold. That number
+picks fix (1) vs (2) and sets whether the cheap net is even worth training. The
+infra shipped (62102ca) is correct and reusable under either fix — the cost model
+just changes the cheap-net choice and the gate signal, not the plumbing.
+
 ## Relation to EXP-UNC-1
 
 Orthogonal + composable: EXP-UNC-1 improves the eval's *consumers*; the smallnet

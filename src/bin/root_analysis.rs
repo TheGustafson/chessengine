@@ -89,6 +89,15 @@ struct Config {
     /// trajectory + provenance for ~the cost of a scalar relabel, and the
     /// scalar-cp corpus stays a cheap `obs-tool export-train` view.
     reference_only: bool,
+    /// Warm mode (`--warm`): do NOT `ucinewgame` between positions, so the
+    /// transposition table persists across consecutive FENs. When the input is
+    /// GAME-ORDERED (position N+1 is one move off N), their search trees overlap
+    /// and reuse work — ~1.5-2x throughput at a reduced node budget, or better
+    /// labels at the same budget. TRADE-OFF: labels become history-dependent (a
+    /// function of the arrival path, not the position alone), so only use with
+    /// game-ordered input where that is acceptable (decision 2026-07-19). Cold
+    /// (default) stays independent/reproducible.
+    warm: bool,
 }
 
 fn parse_args() -> Result<Config, String> {
@@ -103,6 +112,7 @@ fn parse_args() -> Result<Config, String> {
         arm_timeout: Duration::from_secs(60),
         arm_mode: ArmMode::Searchmoves,
         reference_only: false,
+        warm: false,
     };
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -151,6 +161,7 @@ fn parse_args() -> Result<Config, String> {
                 );
             }
             "--reference-only" => config.reference_only = true,
+            "--warm" => config.warm = true,
             other => return Err(format!("unknown flag '{other}'")),
         }
     }
@@ -190,6 +201,9 @@ struct Engine {
     stdin: ChildStdin,
     lines: Receiver<String>,
     id_name: String,
+    /// When true, skip the per-position `ucinewgame` so the TT persists
+    /// (warm mode; see Config::warm).
+    warm: bool,
 }
 
 /// One completed search: the last-seen info fields at bestmove time, plus
@@ -251,6 +265,7 @@ impl Engine {
             stdin,
             lines,
             id_name: String::new(),
+            warm: config.warm,
         };
         engine.send("uci")?;
         let deadline = Duration::from_secs(10);
@@ -306,8 +321,14 @@ impl Engine {
         record_trajectory: bool,
         timeout: Duration,
     ) -> Result<SearchResult, String> {
-        self.send("ucinewgame")?;
-        self.sync(timeout)?;
+        // Cold (default): reset the TT before every position so each label is an
+        // independent function of the position. Warm (`--warm`): skip the reset so
+        // the TT carries over from the previous (game-ordered) position and its
+        // overlapping tree reuses work — faster / better, but history-dependent.
+        if !self.warm {
+            self.send("ucinewgame")?;
+            self.sync(timeout)?;
+        }
         self.send(&format!("position fen {fen}"))?;
         match searchmove {
             Some(mv) => self.send(&format!("go nodes {nodes} searchmoves {mv}"))?,

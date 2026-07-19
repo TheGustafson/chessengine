@@ -82,13 +82,15 @@ def main() -> None:
     client = storage_client(args.project)
     bucket = client.bucket(bucket_name)
 
-    fens: list[str] = []
+    # Pass 1: count valid FENs by STREAMING the input (O(1) memory). A
+    # 168M-FEN list would need ~17GB; this box has ~7GB. source_rows feeds
+    # config_hash, so we need the count before sharding.
+    source_rows = 0
     with args.input.open("r", encoding="utf-8") as handle:
         for line in handle:
-            fen = extract_fen(line)
-            if fen is not None:
-                fens.append(fen)
-    if not fens:
+            if extract_fen(line) is not None:
+                source_rows += 1
+    if source_rows == 0:
         raise SystemExit("curated subset has no positions")
 
     config = {
@@ -98,23 +100,24 @@ def main() -> None:
         "rows_per_task": args.rows_per_task,
         "source_file": str(args.input.resolve()),
         "source_sha256": sha256(args.input.resolve()),
-        "source_rows": len(fens),
+        "source_rows": source_rows,
     }
     config_hash = canonical_hash(config)
     manifest: dict[str, Any] = {**config, "config_hash": config_hash, "shards": []}
 
+    import concurrent.futures
+
+    total_shards_est = (source_rows + args.rows_per_task - 1) // args.rows_per_task
+    if args.max_tasks is not None:
+        total_shards_est = min(total_shards_est, args.max_tasks)
+
     with tempfile.TemporaryDirectory(prefix="archon-fen-task-") as temporary:
         temporary_root = Path(temporary)
-        # Phase 1: write every shard locally + hash + metadata (fast, serial CPU).
-        specs = []
-        for start in range(0, len(fens), args.rows_per_task):
-            if args.max_tasks is not None and len(specs) >= args.max_tasks:
-                break
-            stop = min(start + args.rows_per_task, len(fens))
-            ordinal = len(specs)
+
+        def _write_shard(ordinal: int, batch: list[str], start: int, stop: int):
             filename = f"{ordinal:06d}.fens"
             local_path = temporary_root / filename
-            local_path.write_text("\n".join(fens[start:stop]) + "\n", encoding="utf-8")
+            local_path.write_text("\n".join(batch) + "\n", encoding="utf-8")
             digest = sha256(local_path)
             object_name = f"{prefix}/tasks/{filename}"
             metadata = {
@@ -126,34 +129,67 @@ def main() -> None:
                 "source_stop": str(stop),
                 "rows": str(stop - start),
             }
-            specs.append((ordinal, filename, local_path, digest, object_name, metadata, start, stop))
-
-        # Phase 2: upload shards in PARALLEL — the per-object HTTP round-trip
-        # dominates (serial ~0.6 shards/s), so a thread pool is ~30x faster. The
-        # keyless client + immutable no-overwrite semantics are unchanged.
-        import concurrent.futures
+            return (ordinal, local_path, digest, object_name, metadata, start, stop)
 
         def _upload(spec):
-            ordinal, filename, local_path, digest, object_name, metadata, start, stop = spec
+            ordinal, local_path, digest, object_name, metadata, start, stop = spec
             generation, _ = upload_immutable(bucket, object_name, local_path, metadata)
+            size = local_path.stat().st_size
+            local_path.unlink(missing_ok=True)  # bounded disk: drop after upload
             return {
                 "ordinal": ordinal,
                 "fen_file_uri": f"gs://{bucket_name}/{object_name}",
                 "generation": generation,
                 "sha256": digest,
-                "bytes": local_path.stat().st_size,
+                "bytes": size,
                 "rows": stop - start,
                 "source_start": start,
                 "source_stop": stop,
             }
 
+        # Pass 2: stream shards out in batches. Each batch of shard files is
+        # uploaded in PARALLEL (per-object round-trip dominates) then unlinked,
+        # so at most UPLOAD_BATCH shard files exist on disk at once. The keyless
+        # client + immutable no-overwrite semantics are unchanged.
+        UPLOAD_BATCH = 256
         done = 0
-        with concurrent.futures.ThreadPoolExecutor(max_workers=32) as pool:
-            for shard in pool.map(_upload, specs):
-                manifest["shards"].append(shard)
-                done += 1
-                if done % 500 == 0:
-                    print(f"uploaded {done}/{len(specs)} shards", flush=True)
+
+        def _flush(batch):
+            nonlocal done
+            if not batch:
+                return
+            with concurrent.futures.ThreadPoolExecutor(max_workers=32) as pool:
+                for shard in pool.map(_upload, batch):
+                    manifest["shards"].append(shard)
+                    done += 1
+                    if done % 500 == 0:
+                        print(f"uploaded {done}/{total_shards_est} shards", flush=True)
+
+        pending: list = []
+        buf: list[str] = []
+        ordinal = 0
+        start = 0
+        with args.input.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                fen = extract_fen(line)
+                if fen is None:
+                    continue
+                buf.append(fen)
+                if len(buf) >= args.rows_per_task:
+                    stop = start + len(buf)
+                    pending.append(_write_shard(ordinal, buf, start, stop))
+                    ordinal += 1
+                    start = stop
+                    buf = []
+                    if args.max_tasks is not None and ordinal >= args.max_tasks:
+                        break
+                    if len(pending) >= UPLOAD_BATCH:
+                        _flush(pending)
+                        pending = []
+            if buf and (args.max_tasks is None or ordinal < args.max_tasks):
+                stop = start + len(buf)
+                pending.append(_write_shard(ordinal, buf, start, stop))
+        _flush(pending)
         manifest["shards"].sort(key=lambda item: item["ordinal"])
 
     manifest["total_rows"] = sum(int(shard["rows"]) for shard in manifest["shards"])

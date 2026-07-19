@@ -17,48 +17,46 @@ PREFIX="${1:?gs://.../shards prefix}"; ORIG="${2:?orig FEN\twdl\tscore tsv}"; WO
 OBS=target/release/obs-tool
 CONV=tools/nnue/bf-convert/target/release/nnue_convert
 mkdir -p "$WORK/ceobs"
-PULLED="$WORK/pulled.list"; touch "$PULLED"
 say(){ echo "[corpus $(date -u +%H:%M:%S)] $*"; }
 
-say "listing shards under $PREFIX"
-mapfile -t remote < <(gcloud storage ls -r "$PREFIX/" 2>/dev/null | grep "\.ceobs$")
-new=0
-for uri in "${remote[@]}"; do
-    base=$(basename "$uri")
-    grep -qxF "$base" "$PULLED" && continue
-    if gcloud storage cp "$uri" "$WORK/ceobs/$base" >/dev/null 2>&1; then
-        echo "$base" >> "$PULLED"; new=$((new+1))
-    fi
-done
-say "pulled $new new shards ($(wc -l < "$PULLED") total)"
-[ "$new" -eq 0 ] && [ -f "$WORK/corpus.bin" ] && { say "nothing new; corpus.bin current"; exit 0; }
+# Parallel incremental pull: gcloud storage rsync only fetches shards not already
+# local and runs many transfers at once (serial `cp` was ~4.6s/shard -> hours for
+# thousands). Within one job the .ceobs basenames are unique, so a flat mirror is
+# collision-free. Rebuild only when the shard count actually grew.
+say "rsync shards from $PREFIX/shards/"
+gcloud storage rsync "$PREFIX/shards/" "$WORK/ceobs/" >/dev/null 2>&1
+have=$(ls "$WORK/ceobs"/*.ceobs 2>/dev/null | wc -l)
+say "have $have .ceobs shards locally"
+[ "$have" -eq 0 ] && { say "no shards landed yet"; exit 0; }
+last=$(cat "$WORK/.last_count" 2>/dev/null || echo 0)
+if [ "$have" -eq "$last" ] && [ -s "$WORK/corpus.bin" ]; then
+    say "no new shards ($have); corpus.bin current"; exit 0
+fi
 
 # Export value labels from ALL pulled shards (one export handles many shards).
 say "export-value over $(ls "$WORK/ceobs"/*.ceobs 2>/dev/null | wc -l) shards"
 "$OBS" export-value "$WORK/values.raw" "$WORK"/ceobs/*.ceobs 2>&1 | tail -1
 
-# Merge the real WDL by FEN (relabel is eval-only). Load orig FEN->WDL once.
-say "merging original WDL by FEN"
-python3 - "$ORIG" "$WORK/values.raw" "$WORK/corpus.txt" <<'PY'
-import sys
-orig={}
-with open(sys.argv[1]) as f:
-    for line in f:
-        p=line.rstrip("\n").split("\t")
-        if len(p)>=2: orig[p[0]]=p[1]
-n=miss=0
-with open(sys.argv[2]) as fin, open(sys.argv[3],"w") as out:
-    for line in fin:
-        parts=[x.strip() for x in line.rstrip("\n").split("|")]
-        if len(parts)<3: continue
-        fen,cp=parts[0],parts[1]
-        wdl=orig.get(fen)
-        if wdl is None: miss+=1; continue
-        out.write(f"{fen} | {cp} | {wdl}\n"); n+=1
-print(f"  merged {n} rows, {miss} unmatched")
-PY
+# Merge the real WDL by FEN — memory-safe disk sort+join. A Python FEN->wdl
+# dict would need ~15GB for the full 188M corpus; this box has ~7GB. TAB is the
+# join delimiter so the whole space-containing FEN is a single key field. orig
+# is deduped on FEN (-u -k1,1: one wdl per position); the sorted orig is cached.
+say "merging original WDL by FEN (disk sort+join)"
+ORIGSORT="$WORK/orig.sorted"
+if [ ! -s "$ORIGSORT" ] || [ "$ORIG" -nt "$ORIGSORT" ]; then
+    say "  sorting orig (cached after first run)"
+    LC_ALL=C sort -t$'\t' -k1,1 -u -S 512M --parallel=4 -o "$ORIGSORT" <(cut -f1,2 "$ORIG")
+fi
+# values.raw rows are "FEN | cp | wdl"; keep FEN\tcp, sort on the FEN field.
+awk -F' \\| ' '{print $1"\t"$2}' "$WORK/values.raw" \
+  | LC_ALL=C sort -t$'\t' -k1,1 -S 512M --parallel=4 > "$WORK/values.sorted"
+LC_ALL=C join -t$'\t' -1 1 -2 1 "$WORK/values.sorted" "$ORIGSORT" \
+  | awk -F'\t' '{print $1" | "$2" | "$3}' > "$WORK/corpus.txt"
+merged=$(wc -l < "$WORK/corpus.txt"); vals=$(wc -l < "$WORK/values.sorted")
+say "  merged $merged rows (of $vals exported; unmatched dropped)"
 
 rows=$(wc -l < "$WORK/corpus.txt")
 say "bf-convert $rows rows -> corpus.bin"
 "$CONV" convert "$WORK/corpus.txt" "$WORK/corpus.bin" 2>&1 | tail -1
+echo "$have" > "$WORK/.last_count"
 say "DONE: $WORK/corpus.bin ($rows positions). Train on it now; re-run as more shards land."

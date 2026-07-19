@@ -94,18 +94,18 @@ fn main() -> ExitCode {
                 break;
             }
             let Ok(fen) = entry.pos.fen() else { continue };
-            let white_result = if entry.pos.side_to_move().ordinal() == 0 {
-                entry.result
-            } else {
-                -entry.result
-            };
+            let stm_white = entry.pos.side_to_move().ordinal() == 0;
+            let white_result = if stm_white { entry.result } else { -entry.result };
             let result_str = match white_result {
                 1 => "1.0",
                 0 => "0.5",
                 -1 => "0.0",
                 _ => continue,
             };
-            if writeln!(out, "{fen}\t{result_str}\t{}", entry.ply).is_err() {
+            // White-relative original (5k-node) label, for label-quality comparison
+            // against the fleet's SF18@50k relabel (which is also White-relative).
+            let white_score = if stm_white { entry.score } else { -entry.score };
+            if writeln!(out, "{fen}\t{result_str}\t{}\t{white_score}", entry.ply).is_err() {
                 return ExitCode::FAILURE;
             }
             emitted += 1;

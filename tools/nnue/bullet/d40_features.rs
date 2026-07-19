@@ -34,8 +34,9 @@ use bullet_trainer::{
     },
     optimiser::adam::{AdamW, AdamWParams},
     reader::{DataReader, ReadMapLoader},
-    run::{DefaultDevice, Step, TrainingSchedule, TrainingSteps, train},
+    run::{DefaultDevice, Step, TrainingSchedule, TrainingSteps, train, train_frozen},
 };
+use std::collections::BTreeSet;
 use bulletformat::ChessBoard;
 use chessengine::attacks::{attacks, pawn_attacks};
 use chessengine::eval::nnue::sota_features::{
@@ -722,7 +723,25 @@ fn main() {
             // l3_varw/l3_varb from the raw ckpt. Default path (flag unset) stays
             // squared_error -> existing recipes reproduce byte-identically.
             let mut outputs = vec![("output".to_string(), out)];
-            let loss = if std::env::var("D40_HETERO_NLL_DETACH").is_ok() {
+            let loss = if std::env::var("D40_FROZEN_VAR").is_ok() {
+                // EXP-UNC-1 FROZEN-mean post-hoc variance — the bulletproof fix
+                // after coupled (g2 −179) AND detach (−116) both leaked the
+                // variance gradient into the mean (with_no_grad did NOT isolate it).
+                // Here the mean/trunk are FROZEN via `train_frozen` (warm-started
+                // from the incumbent raw via D40_INIT_RAW), so ONLY l3_var trains —
+                // no stop-grad needed, freezing isolates it perfectly. l3_var learns
+                // to predict the FROZEN mean's squared residual (a clean post-hoc σ̂
+                // predictor); the mean stays == the incumbent BY CONSTRUCTION, so
+                // there is no Gate-1 mean parity to pass. Requires D40_INIT_RAW set
+                // AND the train-call site to use train_frozen with the mean tensors.
+                let l3_var = builder.new_affine("l3_var", L3, NUM_BUCKETS);
+                let logvar = l3_var.forward(hl3).select(buckets);
+                outputs.push(("logvar".to_string(), logvar));
+                let sq = sig.squared_error(targets);
+                let inv_var = (-logvar).exp();
+                let nll = (inv_var * sq + logvar) * 0.5;
+                nll.reduce_sum_batch()
+            } else if std::env::var("D40_HETERO_NLL_DETACH").is_ok() {
                 // EXP-UNC-1 DETACH variant (D33 reviewer B): protect the MEAN from
                 // the heteroscedastic-NLL reweighting (Seitzer). The mean+trunk
                 // train on PURE MSE, so the mean == the MSE control by construction
@@ -895,10 +914,22 @@ fn main() {
     }
     let save_out = out_dir.clone();
     let save_id = net_id.clone();
-    train(
+    // EXP-UNC-1 FROZEN_VAR: freeze the mean/trunk tensors so ONLY l3_var trains
+    // (warm-started from the incumbent → mean == incumbent). Empty set otherwise,
+    // which makes train_frozen behave exactly like train (byte-identical).
+    let frozen_tensors: BTreeSet<String> = if std::env::var("D40_FROZEN_VAR").is_ok() {
+        ["l0_pstw", "l0_pstb", "l0_threatw", "l1w", "l1b", "l2w", "l2b", "l3w", "l3b"]
+            .iter()
+            .map(|name| name.to_string())
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
+    train_frozen(
         &mut optimiser,
         schedule,
         loader,
+        &frozen_tensors,
         move |_, step, err| {
             if step.batch() % log_every == 0 {
                 println!(

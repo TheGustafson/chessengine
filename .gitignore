@@ -42,3 +42,7 @@ tools/nnue/runs/
 tools/*/target/
 tools/nnue/*/target/
 config.json
+
+# Extra build/log dirs (session artifacts, regenerable)
+/target-*/
+/logs/

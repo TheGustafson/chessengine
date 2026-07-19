@@ -108,6 +108,14 @@ def main() -> None:
     parser.add_argument("--max-cost-usd", type=float, default=50.0)
     parser.add_argument("--image", default=DEFAULT_IMAGE)
     parser.add_argument("--service-account", default=DEFAULT_SERVICE_ACCOUNT)
+    parser.add_argument("--network", default="default", help="VPC network name")
+    parser.add_argument("--subnet", default="default", help="VPC subnetwork (in --region)")
+    parser.add_argument("--external-ip", action="store_true",
+                        help="give VMs external IPs (consumes the IN_USE_ADDRESSES quota, "
+                             "default 8/region -> caps the fleet at ~6 VMs). Default is NO "
+                             "external IP: VMs reach GCS + Artifact Registry via Private Google "
+                             "Access, so the fleet scales on C2D_CPUS (300) instead of IPs. "
+                             "Requires PGA enabled on --subnet.")
     parser.add_argument("--durable-data", action="store_true")
     parser.add_argument("--submit", action="store_true")
     parser.add_argument("--plan-output", type=Path)
@@ -243,6 +251,19 @@ def main() -> None:
             "campaign": campaign,
         },
     }
+    if not args.external_ip:
+        # No external IP: VMs don't consume IN_USE_ADDRESSES (default 8/region),
+        # so the fleet scales on the C2D_CPUS quota (300) instead of ~6 VMs.
+        # Egress to GCS + Artifact Registry goes over Private Google Access.
+        job["allocationPolicy"]["network"] = {
+            "networkInterfaces": [{
+                "network": f"projects/{args.project}/global/networks/{args.network}",
+                "subnetwork": (
+                    f"projects/{args.project}/regions/{args.region}/subnetworks/{args.subnet}"
+                ),
+                "noExternalIpAddress": True,
+            }]
+        }
     if args.zone:
         job["allocationPolicy"]["location"] = {
             "allowedLocations": [f"zones/{args.zone}"]
@@ -268,6 +289,7 @@ def main() -> None:
         "machine": chosen_machine,
         "machine_fallback": machine_list[1:],
         "machine_vcpus": chosen_vcpus,
+        "no_external_ip": not args.external_ip,
         "tasks_per_vm": tasks_per_vm,
         "parallel_tasks": effective_parallel_tasks,
         "maximum_parallel_vms": math.ceil(effective_parallel_tasks / tasks_per_vm),

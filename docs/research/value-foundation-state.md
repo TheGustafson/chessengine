@@ -1,5 +1,24 @@
 # Value-Foundation Research State (B4: why we can't beat net-0, and the fix)
 
+> **★★★ 2026-07-19 PIVOT: the active plan is now the SF18-CANONICAL EPIC —
+> `docs/research/sf18-canonical-epic.md` (task #40).** Rebuild training around ONE
+> canonical SF18-labeled dataset (warm@20k full relabel → pipeline rewrite on one
+> scale → RETRAIN from scratch + PAIRED search retune → Archon-vs-SF18 hard
+> negatives → self-play). FINETUNING the incumbent on relabel data is a PROVEN
+> DEAD-END (eval-search co-adaptation; see the runbook 2026-07-19 PIVOT block for the
+> full evidence). Read the epic doc + the runbook pivot block before resuming. The
+> B4 history below remains the backdrop; the value work now flows through the epic.
+>
+> **DATA DOCS (2026-07-19):** `docs/research/data-index.md` = the catalog of every
+> corpus/net (layout, positions, label scale, local+GCS path, keep/drop).
+> `docs/research/post-relabel-data-strategy.md` = the strategy (budget-not-exhaustion,
+> tiered canonical set, storage math, training-on-everything reasoning, presentation
+> order). Phase-A relabel config finalized by `relabel-speed-study-2026-07.md`
+> (bmi2-PGO + warm@10k = ~9.5h/$10.5). The full official-stockfish/master-binpacks set
+> (12 standard files, ex-dfrc-960) is mirrored to GCS; shipped nets backed up to
+> gs://archon-main-bucket/nets/. Open data decisions (budget 500M/1B/2B, breadth
+> source, obs-in-relabel) in the strategy doc §6.
+
 > **CONTINUATION INVARIANT:** Read this file completely before every research
 > loop; update it after every completed, rejected, or redirected trial. This
 > file supersedes `policy-automl-state.md` as the ACTIVE log as of 2026-07-15
