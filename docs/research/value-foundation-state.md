@@ -29,9 +29,76 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-18 (evening loop, opt#1 landed)
+Last updated: 2026-07-19 (post-compact resume block added)
 
 ## TAKEOVER CHECKPOINT (2026-07-18 02:35 — read this first)
+
+> **★★ POST-COMPACT RESUME — CURRENT STATE + QUEUED WORK (2026-07-19, LATEST — READ THIS FIRST) ★★**
+>
+> **POSITION:** ARCHON opt1+opt2 speed package SHIPPED (+20.7% NPS, bit-identical,
+> commits 8287e90 / 1cc2147). Vs SF16 at EQUAL TIME = **−41.5 ± 12.3** (exp-0103;
+> was ~−70 pre-speed; the speed program bought ~+28 Elo, matching opt#1's +28.8).
+> PGO = plain for GAME-Elo (deploy form only, no extra Elo — exp-0103). Incumbents:
+> d40-uho-720sb (sota, the sped-up net), s3-farseer (classic). Bench pin 701605.
+>
+> **★ THE BIG FINDING (perf study #3, `profiling-study-3-creative-2026-07-19.md`):
+> FULLY-LAZY THREAT OBSERVER = +11-12% NPS, BIT-IDENTICAL, ~1-2 days (task #33).**
+> Round-1's "the observer must run at push time" is FALSE — SF18 generates events
+> eagerly, RESOLVES LAZILY at eval. Defer the WHOLE observer: its only inputs are
+> occ + mailbox (~150 B snapshot at push) + a 1-bit king mirror; every eval-time
+> fold is an ANCESTOR of the current node so sibling destruction never matters;
+> only 46% of pushes are ever folded → deferral deletes ~54% of the 19.9% observer
+> block, BIT-IDENTICAL via the existing `threats_replay` parity gates (HalfKA
+> already uses this lazy pattern). Unlocks +6-10% more (resolve→prefetch→fold
+> pipeline gives the null prefetch real distance vs the i8 fold #1 sink; SIMD batch
+> emit kills the observer's 44%-of-all-branch-mispredicts pathology; cross-ply
+> cancel; null-move fold aliasing). PACKAGE = +18-25% NPS on top of +20.7% →
+> ~1.0-1.07 Mnps (past Reckless same-shape, SF18-class cycles/node), +18-50
+> internal Elo. NEGATIVE that saves weeks: SVD of the 60720×768 threat table is
+> NOT low-rank → factorized-threat-embedding bet DEAD. Format bets (next CENN rev):
+> quant unification (kills 5.8% i32 activate tax) + SF smallnet gate (+8-15%,
+> SF-proven Elo+, loader already supports HalfKA-only). **To implement the
+> observer: needs a QUIET box for NPS benching — correctness via node-count 147691
+> + threats_replay parity is LOAD-IMMUNE, but NPS is not (the prefetch fooled me
+> under relabel load). Pause the relabel or wait for it.**
+>
+> **LEARNED SEARCH AUGMENTATION (D41 — user's #1 research interest, "bigger than
+> chess"):** three studies. (1) inference-time per-node = CLOSED (k>T tax;
+> `learned-search-augmentation-first-principles-2026-07-19.md`). (2)
+> train-time-aux / eval-only (H-AUX) = SURVIVES, +5-20 ET, T=1
+> (`d41-auxiliary-task-adversarial-2026-07-19.md`); free target = `entry.mv` (in
+> every official-binpack row); ledger has a +63 λ=0.01 EVAL-ONLY aux-twin prior;
+> decisive = EXP-AUX-1 (twin of d40-uho-v1-240sb + rank-8 best-move-CE aux head
+> @λ=0.01, pack eval-only, 300g @5k h2h vs the control). (3) COMPREHENSIVE
+> space-map (`learned-search-augmentation-comprehensive-2026-07-19.md`) RUNNING
+> (agent ae30cd05, model=fable) — user found studies 1+2 TOO NARROW/THIN; #3
+> covers the TRUE-MULTI-HEAD-USED-but-cheap region + non-ordering uses of a search
+> head (time-mgmt, LMR/extension-mod, eval-uncertainty, eval-correction) + paradigm
+> hybrids + invent-novel, ranked by EV×tractability. **EXP-AUX-1 PAUSED pending
+> #3's ranked map** (aux-drop is just one cell). User wants breadth+DEPTH — pressure-
+> test #3 against his objections before presenting it as done.
+>
+> **RUNNING JOBS:** comprehensive learned-search study (agent ae30cd05, Fable,
+> analytical); kill-switch relabel (`tools/nnue/label_value_pilot.sh`, 3/10 chunks,
+> ~12 SF18 workers, resumable — the label-value A/B gate: ≥+15 fixed-node → deep
+> SF18 relabel worth cloud money; null → HARD-STOP the relabel/obs-factory line).
+> GPU idle (held for EXP-AUX-1 / the study's top-ranked experiment).
+>
+> **CLOUD:** user-gated; access comes AFTER we consume+adjust the studies.
+> Highest-value cloud = **D36 TESTING FLEET** (~$100-300/mo, the strategic study's
+> slope-changer), NOT data relabel. Tooling ready (tools/cloud/ M2-M7, project
+> archon-502500). Strategic verdict (path-to-1-first-principles): binding
+> constraint = D36 distributed testing; one-box eval rungs tapped out; d41-gold-v2
+> CANCELLED; obs-factory FROZEN until the label-value pilot pays.
+>
+> **NEXT (post-compact, in order):** (a) comprehensive study returns → relay +
+> pressure-test depth vs the user's objections; (b) implement lazy-observer #33 on
+> a QUIET box; (c) finish the relabel → the label-value A/B verdict; (d) EXP-AUX-1
+> or the study's top experiment on the idle GPU; (e) await the user's cloud/fleet
+> decision. Every net/corpus/match → a D38 ledger row; LOCAL commits only, NEVER
+> push. Model overrides: subagents = `model: fable` for these studies (user
+> verified). Kills: do in a DEDICATED bash command + verify separately (exit-144
+> shell hiccup; see memory `kill-in-separate-command`).
 
 > **SPEED PROGRAM REOPENED — the profiler says SPEED is the D40 lever, and
 > opt#1 already banked +11% NPS (2026-07-18 evening, commit 8287e90).** The
