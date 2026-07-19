@@ -37,8 +37,8 @@ pause_relabel(){ pkill -STOP -f relabel_depth 2>/dev/null; pkill -STOP stockfish
 resume_relabel(){ pkill -CONT stockfish 2>/dev/null; pkill -CONT -f relabel_depth 2>/dev/null; say "resumed relabel workers"; }
 trap resume_relabel EXIT
 
-nps_of(){ # $1=extra env string  -> prints NPS
-    env $1 "$ENG" bench 16 1 8 default depth "$MEDIUM" 2>/dev/null | awk '/Nodes\/second/{print $3}'
+nps_of(){ # $1=extra env string  -> prints NPS. NB: bench prints to STDERR, so 2>&1.
+    env $1 "$ENG" bench 16 1 8 default depth "$MEDIUM" 2>&1 | awk '/Nodes\/second/{print $3}'
 }
 
 equal_time_elo(){ # $1=thresh $2=mat_gate $3=tag  -> appends Elo to journal
