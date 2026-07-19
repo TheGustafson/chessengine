@@ -5,16 +5,19 @@
 # (via a wrapper — fastchess has no per-engine env), so the baseline is
 # consumers-off = bit-identical eval. Run AFTER g2 Gate 1 passes.
 #
-#   $1 net.cenn   $2 sidecar   $3 c1 (RFP)   $4 c2 (TM)   [$5 tag]
+#   $1 net.cenn   $2 sidecar   $3 c1 (RFP)   $4 c2 (TM)   [$5 tag]  [$6 mode]
 # Fixed-node isolates the RFP consumer's per-node effect (TM is time-only, ~noop
 # at fixed nodes); equal-time (10+0.1) is the ship metric for both. The
 # equal-time half needs a QUIET box — pause the relabel first (this script does
 # NOT, so the caller controls timing).
+#   mode (default "both"): "fixed" = fixed-node arm ONLY (load-immune, safe on a
+#   busy box — an early RFP-consumer read); "both" = fixed-node + equal-time.
+# OUT derives from the net basename so different nets (g2, detach) never collide.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
-NET="${1:?net.cenn}"; SIDE="${2:?sidecar}"; C1="${3:-0.3}"; C2="${4:-0.3}"; TAG="${5:-c1_${3}_c2_${4}}"
+NET="${1:?net.cenn}"; SIDE="${2:?sidecar}"; C1="${3:-0.3}"; C2="${4:-0.3}"; TAG="${5:-c1_${3}_c2_${4}}"; MODE="${6:-both}"
 ENG=target/release/chessengine
-OUT="data/nnue/experiments/d40-uho-unc-g2/gate2-$TAG"
+OUT="data/nnue/experiments/$(basename "$NET" .cenn)-gate2-$TAG"
 BOOK=data/nnue/openings/policy-balanced-256.epd
 mkdir -p "$OUT"
 say(){ echo "[gate2-probe $(date -u +%H:%M:%S)] $*" | tee -a "$OUT/run.log"; }
@@ -46,7 +49,11 @@ run_match() { # $1 limit-flag  $2 tag  $3 games
     grep -E "Elo:|Score of|Games:" "$OUT/$2.log" | tail -3 | tee -a "$OUT/run.log"
 }
 
-run_match "nodes=5000" fixednode 600   # isolates the RFP consumer per-node
-run_match "tc=10+0.1"  equaltime 300   # ship metric (BOTH consumers); QUIET box
-say "GATE 2 DONE ($TAG). unc-on positive Elo = the uncertainty consumers help."
+run_match "nodes=5000" fixednode 600   # isolates the RFP consumer per-node (load-immune)
+if [ "$MODE" = "both" ]; then
+    run_match "tc=10+0.1"  equaltime 300   # ship metric (BOTH consumers); QUIET box only
+else
+    say "mode=$MODE — SKIPPED the equal-time arm (run it on a quiet box: mode=both)"
+fi
+say "GATE 2 DONE ($TAG, mode=$MODE). unc-on positive Elo = the uncertainty consumers help."
 touch "$OUT/DONE"
