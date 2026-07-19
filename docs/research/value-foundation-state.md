@@ -2058,3 +2058,15 @@ full D24 gate at HEAD (S1 correction history + R4 #2/#3 + obs stack):
 fmt/clippy/tests/release-perft all green, bench fingerprint **701605**
 reproduced. S1 is merge-clean; its equal-time SPRT (armed, [s1gate]) is
 the remaining deployment gate.
+
+## 2026-07-19 — SF16 north-star measured; 2 Fable studies running; cloud readiness
+- **exp-0102: ARCHON(opt1+opt2, 720sb) vs SF16 = −42.8 ± 14.6 equal-time (310g).** Speed
+  package closed ~+27 Elo of the SF16 gap (was ~−63/−78). North-star (SF16+30) now needs
+  ~+73 more → next from eval-quality (data) + search, per the strategic study.
+- **2 Fable studies LAUNCHED (background):** (1) STRATEGIC path-to-#1 first-principles review
+  (a0771f0b) → docs/research/path-to-1-first-principles-2026-07-19.md; (2) PROFILING round-2
+  on the opt1+opt2 binary (ab28d053) → docs/research/profiling-study-2026-07-19.md.
+- **Cloud data-gen readiness:** tooling (M2-M7) ready + compute path validated locally;
+  gcloud unlocks image build+push, auth (project archon-502500), FEN-manifest upload, submit.
+  Cost: pilot ~$6-12, targeted relabel ~$12, full 100M@100k ~$59. GATED on: strategic study
+  verdict + the label-value pilot (paused 3/10) finishing. Resume relabel after studies free box.
