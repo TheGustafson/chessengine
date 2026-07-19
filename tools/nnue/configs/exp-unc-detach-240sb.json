@@ -1,0 +1,59 @@
+{
+    "arch": "sf-halfkav2-hm-fullthreats-768x2-8bkt-hybrid",
+    "corpus": {
+        "id": "uho-stage1-full",
+        "raw_dir": null,
+        "train_bin": "data/corpora/official-stockfish-master-binpacks/main/raw/nodes5000pv2_UHO.binpack"
+    },
+    "engine_features": "sota",
+    "net_id": "d40-uho-unc-detach-240sb",
+    "notes": "EXP-UNC-1 DETACH variant (D40_HETERO_NLL_DETACH). g2 (coupled NLL) FAILED Gate 1 at -179 Elo once l3_var actually trained (Seitzer: coupled exp(-s) reweighting wrecks the mean). Detach keeps the MEAN loss pure MSE (same seed 198273612 -> mean = control by construction -> Gate 1 automatic + true) and trains l3_var off a stop-grad trunk (a clean post-hoc residual predictor). Smoke (3 SB) confirmed l3_var trains (std 0.285) + saves + no NaN. Provides the mean-parity variance net + sidecar for the Gate-2 consumer probe.",
+    "pack": {
+        "activation": "d40",
+        "strip_d40_threats": false
+    },
+    "parent": null,
+    "parity": {
+        "enable": true,
+        "fens": "data/nnue/parity/d40-local-4096.fens",
+        "max_abs_quantization_logit_error": 2.0,
+        "max_abs_runtime_logit_error": 0.2,
+        "mean_abs_quantization_logit_error": 0.3,
+        "mean_abs_runtime_logit_error": 0.03,
+        "raw": "/root/projects/learnrust/chessengine/data/nnue/experiments/d40-uho-unc-detach/ckpt/d40-uho-unc-detach-240sb-final-raw.bin"
+    },
+    "provenance": "sf-datagen",
+    "sprt": {
+        "enable": false
+    },
+    "train": {
+        "bullet_dir": ".archon-state/toolchains/bullet",
+        "checkpoint_dir": "/root/projects/learnrust/chessengine/data/nnue/experiments/d40-uho-unc-detach/ckpt",
+        "env": {
+            "D40_BATCH": "16384",
+            "D40_BPS": "1520",
+            "D40_DATA": "data/corpora/official-stockfish-master-binpacks/main/raw/nodes5000pv2_UHO.binpack",
+            "D40_EVAL_TARGET_SCALE": "400",
+            "D40_FORMAT": "sfbinpack",
+            "D40_HALFKA_ONLY": "0",
+            "D40_ID": "d40-uho-unc-detach-240sb",
+            "D40_LR": "0.001",
+            "D40_LR_END_SB": "240",
+            "D40_OUT": "/root/projects/learnrust/chessengine/data/nnue/experiments/d40-uho-unc-detach/ckpt",
+            "D40_SAVE_RATE": "30",
+            "D40_SCORE_MULTIPLIER": "1.0",
+            "D40_SEED": "198273612",
+            "D40_SF_BUFFER_MB": "128",
+            "D40_SUPERBATCHES": "240",
+            "D40_VERIFY_ROWS": "4096",
+            "D40_WDL": "0.3",
+            "SFBINPACK_SCORE_DIV": "1.9",
+            "D40_RANDOM_SKIP_PCT": "75",
+            "D40_HETERO_NLL_DETACH": "1"
+        },
+        "example": "bullet/d40_features.rs",
+        "example_name": "d40_features",
+        "quantised": "d40-uho-unc-detach-240sb-sb240-quant.bin"
+    },
+    "verify_out_clip": false
+}
