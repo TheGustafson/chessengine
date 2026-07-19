@@ -2090,3 +2090,32 @@ the remaining deployment gate.
   strongest solo/AI-built engine on record.
 - **Cloud reframe:** highest-value cloud spend = TESTING FLEET, not data relabel. Awaiting
   user decision on the fleet (cloud approval). Profiling round-2 (ab28d053) still running.
+
+## 2026-07-19 — D41 learned-search-augmentation VERDICT + SF16 PGO validation
+- **D41 DEEP STUDY (learned-search-augmentation-first-principles-2026-07-19.md):**
+  the PER-NODE helm (as deployed) is CLOSED, not parked — proven by our own data.
+  Governing inequality `k > T` (fixed-node gain-multiplier must exceed throughput
+  tax T=1+f·c_i/c_n). Measured: exp-0029's +68.6@2k = k≈1.4-1.6 vs tax T≈130-210;
+  cheapest shared-trunk T=7.4 => ~100× structural deficit vs a gain ceiling ~1.5
+  (falling with depth, capped by the free warm history/TT stack). Killing
+  mechanism MEASURED: affordability–informativeness ANTICORRELATION (cheap nodes =
+  where the free stack is already strongest); value latent adds ZERO reduction
+  signal over 39 scalars (ΔAUC −0.003 ×3); VOC target negative-R² => VOC-gating
+  dead. SURVIVORS (cost amortized ~0): R1 root-frozen distilled prior TABLE
+  (T≈1.002, untested), R2 learned root TIME-MGMT (~40-50% chance +5-15 ET, zero
+  cost), R4 "NNUE trick for policy" (incremental from/to embeddings, T≈1.1-1.3,
+  gated on K1). For #1: conditional-yes-modest (~+10-20 ET R1+R2; R4 could >+30 iff K1).
+- **DECISIVE EXPERIMENT K1+K2 (~3 box-days, NO training, NO cloud, reuses artifacts):**
+  K1 = gen-0 rank-8 head Elo-vs-node decay curve @2k/8k/32k/128k (design/19 §8.2,
+  never run); K2 = materialize its 64×64 logit table at root + add to quiet ordering
+  every node (~30 lines movepick.rs, <1% NPS) at fixed + 10+0.1. K2 retaining ±20%
+  of the gain at equal time = first learned allocator to beat mature hand-tuned
+  alpha-beta at equal wall-clock. RESEARCH CONTRIBUTION YES (reframed: measure the
+  viability frontier of learned compute allocation; k>T + viability index V portable;
+  chess = adversarial testbed V≈0.1 vs LLM inference V≈10^4). QUEUED behind SF16+30
+  per strategic sequencing — PENDING user decision (offered to run K1+K2 now).
+- **SF16 PGO VALIDATION RUNNING (user: validate speed gains now):** rebuilt
+  probe-sota-pgo = opt1+opt2+PGO (node 147691 bit-identical, ~966k NPS = +35% over
+  pre-speed base). Match archon-pgo vs SF16 10+0.1 (data/nnue/experiments/pgo-vs-sf16).
+  Prior plain-opt2 was −42.8; PGO ~+9% NPS => expect closer. Relabel PAUSED at 3/10
+  for the quiet box; resume after.
