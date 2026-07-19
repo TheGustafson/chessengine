@@ -29,9 +29,40 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-18 (evening loop)
+Last updated: 2026-07-18 (evening loop, opt#1 landed)
 
 ## TAKEOVER CHECKPOINT (2026-07-18 02:35 — read this first)
+
+> **SPEED PROGRAM REOPENED — the profiler says SPEED is the D40 lever, and
+> opt#1 already banked +11% NPS (2026-07-18 evening, commit 8287e90).** The
+> Fable profiling study (`docs/research/profiling-study-2026-07-18.md`,
+> committed 2acb8d8) found D40's problem is NOT net quality — the sota path
+> holds +30/node (exp-0067) but burns ~70% of cycles in NNUE inference and
+> runs 2.3× more instructions/node than SF18 (16.9k vs 7.4k); the same-shape
+> gap to Reckless is pure constant-factor engineering. Its bit-identical,
+> bench-node-preserving opt package sums to ~+20-30% NPS = ~the whole speed
+> gap, and per exp-0093 (D40 at equal-time PARITY purely for speed) is the most
+> direct route to equal-time Elo vs SF16 — do this BEFORE more net-quality
+> spend on the arch. **Ranked queue (do in order):**
+> - **#1 DONE (8287e90): vectorize the f32 head tail** (sota_head.rs) — flat
+>   `l2_weights[wbase+i*L3+j]` with a runtime bucket forced fully-scalar FMA
+>   (~10% runtime + 28% I1 misses). Per-bucket block/row fixed-size slices →
+>   LLVM vectorizes the 32-wide j-FMA; **bit-identical** (sota bench 147691
+>   nodes unchanged), **+11.0% NPS** measured (422568→468947, x86-64-v3 release
+>   under load).
+> - **#2 QUEUED: fused copy+apply fold kernels** — the lazy folds memmove 1.5KB
+>   parent→child before applying deltas (9.4% of runtime); add
+>   `apply_i16_deltas_into(dst,src,…)` / `apply_i8_deltas_into` to sota_simd.rs
+>   (classic add_sub_w shape, simd.rs:466-473), rewire sota_accumulator.rs:95-102
+>   + sota_threats.rs:709-729. +7-9% NPS, bit-identical, needs the
+>   threats_replay parity gate. Files are CLEAN vs HEAD (isolatable).
+> - **#3 QUEUED: prefetch + pair threat-fold rows** (sota_simd.rs:424-499) +2-5%.
+> - **#7 (trivial): bulk net parse** (sota_loader.rs:512-529) — 0.21s/spawn.
+> - **Deploy step:** rebuild `probe-sota-pgo` (tools/build_pgo.sh sota) with the
+>   opt package BEFORE the next equal-time gate — the PGO binary is what gates
+>   use; opt#1 is in-tree but not yet in the PGO binary.
+> Verification harness (reuse): build base+opt release, `bench 16 1 8 default
+> depth <net>` node-count = bit-identity anchor, benchmark_eval_nps.py for NPS.
 
 > **EVENING UPDATE 2026-07-18 (persist checkpoint):** four items since 10:07.
 > (A) **STAGE-1 SATURATED at 720sb.** The warm-continue +360sb extension
