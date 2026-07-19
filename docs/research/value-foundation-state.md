@@ -41,6 +41,20 @@ Last updated: 2026-07-19 (post-compact resume block added)
 > PGO = plain for GAME-Elo (deploy form only, no extra Elo — exp-0103). Incumbents:
 > d40-uho-720sb (sota, the sped-up net), s3-farseer (classic). Bench pin 701605.
 >
+> **★ SMALLNET GATE INFRA LANDED (2026-07-19, commit 62102ca) — the biggest
+> remaining one-box SPEED lever (perf study #3 #8, design smallnet-gate-design.md).**
+> Env-gated dual-accumulator: `ARCHON_SMALLNET` (a cheap HalfKA-only CENN-v2) +
+> `ARCHON_SMALLNET_THRESH`; a second `HalfkaContext` maintained in lockstep, and
+> `evaluate()` routes DECIDED positions (|cheap eval| ≥ thresh) to the cheap net,
+> skipping the big net's FullThreats fold + head (the big threat stack stays lazy
+> so decided nodes never fold it). Default OFF = bit-identical (sota 469205 ==
+> pre-gate baseline; default depth-6 701605 reproduced; change is 100% cfg(sota)).
+> 2 unit tests (transparent-when-agree, never-route-bit-identical) + runtime smoke
+> (armed-active 475383, never-route 469205), 637 sota tests + clippy clean.
+> **REMAINING (GPU-gated, after g2/EXP-UNC-1 frees the GPU):** train a real
+> HalfKA-only cheap net (`D40_HALFKA_ONLY=1`, smaller L1), gate-sweep the
+> threshold, equal-time vs big-net-only. Expected +8-15% NPS → +16-30 Elo.
+>
 > **★★ ACTIVE PIVOT (2026-07-19, user-chosen): EXP-UNC-1 — eval output columns
 > (the search study's #1 bet). ★★** After the lazy-observer landed (+3.6%, below
 > projection — see below) and the perf-3 tail was measured-exhausted (RVO'd /
