@@ -257,11 +257,13 @@ fn rfp_prune_margin(
     ) - params::RFP_THREAT_MARGIN() * Value::from(no_own_threat)
 }
 
-/// EXP-UNC-1 (search study bet 1): EMA smoothing for the running mean value
-/// uncertainty `σ̄`. α ≈ 1/1024 — slow enough to be a stable per-game reference,
-/// fast enough to track the phase distribution.
+/// EXP-UNC-1 (search study bet 1): default EMA shift for the running mean value
+/// uncertainty `σ̄` (α = 2⁻¹⁰ = 1/1024). Env-overridable via `ARCHON_UNC_EMA_SHIFT`
+/// so Gate 2 can sweep it — D33 reviewer B argued a fast α self-centers within a
+/// search and subtracts out the cross-phase (endgame-low-σ̂) component, likely the
+/// stronger Elo half, so a slower α (shift ≥ 13) or a fixed σ̄ is worth trying.
 #[cfg(feature = "sota")]
-const UNC_EMA_ALPHA: f32 = 1.0 / 1024.0;
+const UNC_EMA_SHIFT_DEFAULT: i32 = 10;
 
 /// EXP-UNC-1: the position-conditioned RFP/futility margin scale from the value
 /// uncertainty `σ̂` relative to its running mean `σ̄` (design: consumer 1). The
@@ -889,6 +891,10 @@ pub struct Worker {
     /// fresh eval), read by [`Worker::soft_stop`]. 0.0 until a root eval lands.
     #[cfg(feature = "sota")]
     root_sigma: f32,
+    /// EXP-UNC-1: the σ̄ EMA rate α (env `ARCHON_UNC_EMA_SHIFT`, default
+    /// [`UNC_EMA_SHIFT_DEFAULT`]). Read once at construction; swept in Gate 2.
+    #[cfg(feature = "sota")]
+    unc_ema_alpha: f32,
     /// Per-thread move-ordering statistics (design/09 §3.4, D23): butterfly/
     /// low-ply/capture/continuation/pawn/correction history. Read by the
     /// [`MovePicker`] scoring and written by [`Histories::update_all_stats`]
@@ -1021,6 +1027,13 @@ impl Worker {
                 .unwrap_or(0.0),
             #[cfg(feature = "sota")]
             root_sigma: 0.0,
+            #[cfg(feature = "sota")]
+            unc_ema_alpha: 2.0f32.powi(
+                -std::env::var("ARCHON_UNC_EMA_SHIFT")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(UNC_EMA_SHIFT_DEFAULT),
+            ),
             histories: Histories::new(),
             check_time_mask: params::CHECK_TIME_CALLS as u64 - 1,
             thread_idx: 0,
@@ -2212,7 +2225,7 @@ impl Worker {
                 {
                     node_sigma = s;
                     self.sigma_bar = if self.sigma_bar > 0.0 {
-                        self.sigma_bar + (s - self.sigma_bar) * UNC_EMA_ALPHA
+                        self.sigma_bar + (s - self.sigma_bar) * self.unc_ema_alpha
                     } else {
                         s
                     };
