@@ -53,13 +53,21 @@ node better than ARCHON's D40 net. (ARCHON is actually time-*efficient* — medi
   SF16 itself (SF18/deeper labels, more data, self-play) + the compute to consume
   them. This is exactly the value-foundation thesis and re-affirms the **D36
   distributed-test/training FLEET as the binding (transformational) lever.**
-- **Speed levers are INCREMENTAL for the SF16 goal, not decisive.** opt#1
-  (+13-15% NPS) gave +28.8 Elo in self-play (ARCHON vs slower ARCHON), and speed
-  still compounds generally — but against SF16 the depth gap is already only
-  +1 ply, so +8-15% NPS (~+0.1-0.2 ply) will NOT close a gap that survives at
-  equal depth. **The smallnet gate is still worth finishing for general Elo, but
-  it is not the SF16-closer** — I had over-framed it. Fair value: a few Elo, not
-  "closes the −41.5."
+- **Speed levers matter MORE than a naive depth-count suggests (correction
+  2026-07-19).** The −41.5 has two components: (a) a per-node eval-quality deficit
+  (SF16 judges each node slightly better) and (b) a **depth/inference-tax deficit**
+  — the D40 net (HalfKA+FullThreats+multi-layer head) is heavy per eval (it LOST
+  the equal-time gate to the lighter classic net by −57.9 on tax alone, exp-0073),
+  which is a real chunk of why ARCHON is +1 ply behind SF16. Speed attacks (b)
+  directly, and the empirical Elo-per-NPS is high: opt#1's +13-15% NPS bought
+  **+28.8 Elo** (exp-0101) — ~2 Elo per 1% NPS, FAR above what "+0.1-0.2 ply"
+  depth-math predicts (extra nodes buy ordering fills, qsearch, and TM headroom,
+  not just nominal depth). So the smallnet gate (+8-15% NPS if the cheap net is
+  cheap enough) plausibly banks **~+8 to +30 Elo**, not "a few" — its exact
+  vs-SF16 value is capped by (a) and is what the equal-time gate sweep measures.
+  Bottom line: speed closes the depth/tax component (meaningful, opt#1-proven);
+  it does NOT touch the per-node eval-quality component (a) — that is the fleet.
+  Both are real; neither alone closes −41.5.
 - **EXP-UNC-1 (eval-uncertainty consumers) is likewise incremental** — it makes
   search *use* the eval better; it does not make the eval better than SF16's.
 - **The endgame is the one phase where ARCHON is ~2 ply shallower** — a small,
@@ -92,8 +100,13 @@ nearer the SF16-implied value).
 
 ## What this changes
 
-Nothing already in flight is wasted (all incremental gains compound), but it
-reorders the *narrative*: the one-box program (speed + consumers) buys single-
-to-low-double-digit Elo; **the −41.5 → +30 jump needs the fleet + better-than-SF16
-training data.** Surface the fleet to the user as the highest-leverage next step
-whenever local levers are exhausted.
+Nothing already in flight is wasted, and the one-box program is worth MORE than
+first stated (see the speed correction above): speed (smallnet gate, ~+8–30 if
+the cheap net is cheap enough) + consumers (EXP-UNC-1, +3–15) plausibly recover a
+real chunk of −41.5 — best case to roughly parity, worst case single digits. But
+they attack the depth/tax component, not the per-node eval-quality component:
+**crossing SF16 to +30 still needs the fleet + better-than-SF16 training data,**
+because that is the only lever on component (a). So the honest sequence is: bank
+the one-box speed/consumer Elo (in flight) to close toward parity, then the fleet
+to cross. Surface the fleet to the user as the decisive lever; the local pipeline
+banks the approach.
