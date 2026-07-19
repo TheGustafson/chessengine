@@ -129,6 +129,22 @@ impl EvalContext {
         }
     }
 
+    /// EXP-UNC-1 (search study bet 1): the value-uncertainty σ̂ produced by the
+    /// most recent SOTA `evaluate()`, or `None` when SOTA is not the active eval
+    /// or the loaded net has no variance head. σ̂ is the per-position value std in
+    /// sigmoid (WDL) space; the search's uncertainty consumers (RFP/futility
+    /// margins, TM soft-stop) read it and fall back to their constants on `None`,
+    /// so a variance-less net is bit-identical to today. See
+    /// [`nnue::sota_context::SotaContext::last_sigma`].
+    #[inline]
+    pub fn last_sigma(&self) -> Option<f32> {
+        #[cfg(feature = "sota")]
+        if let Some(ctx) = self.sota.as_ref() {
+            return ctx.last_sigma();
+        }
+        None
+    }
+
     /// True iff NNUE (v1 or SOTA) is the active eval for this thread.
     #[inline]
     pub fn nnue_active(&self) -> bool {
