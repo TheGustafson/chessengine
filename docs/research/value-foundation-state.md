@@ -48,7 +48,60 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-22 NIGHT-4 (SF18 fold-in CLOSED: dose-2 −5.8±17.1, exp-0128; haux-pol1 TRAINING — first valid H-AUX run; morning runbook below)
+Last updated: 2026-07-22 D47 (STRAIGHT SHOT: 1536/256 shared-bottleneck multihead + 1858-class policy DEPLOYED-for-ordering; training attempt 4 stable; learnability 15% @ 1sb; full deploy chain + gate live)
+
+## 2026-07-22 D47 ★★★ THE STRAIGHT SHOT — SHARED-BOTTLENECK MULTIHEAD, BUILT AND TRAINING ★★★
+
+**User redirects (evening→night):** (1) the factored policy encoding is dead —
+STOP and redesign I/O from scratch; (2) expert spec adopted: complete
+categorical moves, compact 1858 vocabulary, accumulator-branched head,
+legal-rows-only; (3) **D47 pinned**: accumulators→1536, 256 shared bottleneck
+= the branch point, policy DEPLOYED for move ordering (first-searched move),
+WDL/σ stay sidecars, λ at policy≈eval parity; (4) "go big first — LEARNABILITY
+before NPS; we learn if we can learn"; (5) λ=0 twin blessed for attribution.
+(The haux-pol1/pol4 runs from NIGHT-4 were killed pre-readout — superseded.)
+
+**Built + committed tonight** (afcbec0..2483494 chain):
+- `policy_vocab.rs`: the 1858-class vocabulary (1792 geometric + 66
+  underpromo), trunk-normalized canonical frame (rank-flip + _hm file-mirror —
+  the deliberate Lc0 deviation), single shared implementation, 5/5 tests incl.
+  every-legal-move-maps on tactical fixtures.
+- Trainer at D47 dims (HL=1536, L2=256, L3=32): vocabulary head off hl2 +
+  additive legal mask (softened −30 after −1e4 NaN'd the CE — smoke catch #1)
+  + one-hot move_id targets from loader-packed oriented bytes (+promo code);
+  the every-position target-in-mask assert validated the frame over ~25M real
+  positions (smoke catch #0: zero fires). λ=0.005 = measured parity (polCE≈3.0
+  vs value 0.02→0.008; ±40% drift documented).
+- **Full deploy chain**: netpack splits quant → .cenn (value-only — all
+  scale-check tooling unchanged) + .cpol (CPL1, 483KB); engine consts to
+  1536/256 (suite green); policy_head.rs selected-row scorer (frame-safe BY
+  CONSTRUCTION: moves map into ids, never back — watchlist #6 retired);
+  Zobrist-stamped activation stash (stale-activation ordering poison killed);
+  **policy ordering v1 in search** (argmax fills the empty TT-slot, depth≥3);
+  sidecar-less builds bit-identical (Bench: 701605 reproduces; check.sh green).
+- Instruments: policy_accuracy_probe (top-1 vs SF18 teacher), gate_d47
+  (learnability-first: scale hard-gate → accuracy → fixed-node → NPS
+  reported-NOT-gated), self-measuring checkpoint watcher (pack+probe at each
+  60sb), TensorBoard shim (http://legion:6006 — loss/superbatch, loss/batch,
+  throughput).
+
+**FIRST LEARNABILITY DATAPOINT: 15.0% top-1 (60/401) vs SF18@50k after ONE
+superbatch** (random-legal ≈ 3-4%). The targets are learnable; the trajectory
+(sb60/120/180/240) is the primary readout of the run.
+
+**The OOM saga (3 trainer deaths, all mine):** the D47 trainer holds ~12GB host
+RAM (policy target+mask buffers); cargo builds during training OOM-killed it
+at sb2/sb2/sb3 — capping build memory does NOT protect the trainer (the kernel
+kills the biggest RSS). **Fix: batch 8192 × BPS 3040 (identical data schedule,
+half the buffers → 7.2GB headroom) + a hard no-compilation rule while
+training** (everything engine-side is committed, so nothing needs it).
+Attempt 4 stable at ~155k pos/s, ~10.5h, ckpt/60sb; λ=0 twin chained behind
+(same seed/recipe, policy off — arch-vs-head attribution).
+
+**Readout plan:** accuracy trajectory per checkpoint → sb240 gate_d47
+(scale + accuracy + fixed-node vs d40-uho-v1-240sb + NPS report) → twin
+completes → three-way attribution (incumbent / twin / d47). Equal-time
+deliberately deferred to the optimize/shrink phase (D47 posture).
 
 ## 2026-07-22 NIGHT-4 ★★ SF18 FOLD-IN CLOSED (exp-0128) — GPU IS 100% MULTI-HEAD ★★
 
