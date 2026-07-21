@@ -2,12 +2,14 @@
 """Tail a bullet trainer log into TensorBoard scalars, live.
 
     uv run --no-project --with tensorboardX python tools/nnue/tb_shim.py \
-        /tmp/d47_train.log data/nnue/tb/d47-v1
+        /tmp/d47_train.log data/nnue/tb/d47-v1/train
 
-Parses the per-superbatch summary lines:
-    superbatch N | time Ts | running loss L | P pos/sec | total time ...
-and the per-batch progress prints (finer loss trace, logged per 128 batches):
-    sb N batch B: loss L
+Emits:
+    loss/superbatch      running loss per superbatch (the headline curve)
+    loss/batch           fine-grained loss (per ~128-batch print)
+    throughput/pos_per_sec
+    time/superbatch_sec  wall seconds per superbatch (contention shows here)
+    lr/value             the decayed learning rate (parsed from LR drops)
 Follows across truncation/recreation (relaunches), strips ANSI codes.
 """
 import os
@@ -18,9 +20,12 @@ import time
 from tensorboardX import SummaryWriter
 
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\r")
-SB = re.compile(r"superbatch (\d+) \| time [\d.]+s \| running loss ([\d.]+|NaN) \| (\d+) pos/sec")
+SB = re.compile(
+    r"superbatch (\d+) \| time ([\d.]+)s \| running loss ([\d.]+|NaN) \| (\d+) pos/sec"
+)
 BATCH = re.compile(r"sb (\d+) batch (\d+): loss ([\d.]+|NaN)")
-BPS = 1520  # batches per superbatch (D40_BPS)
+LR = re.compile(r"LR dropped to ([\d.eE+-]+)")
+BPS = 3040  # batches per superbatch (D40_BPS of the current run)
 
 
 def follow(path):
@@ -46,17 +51,23 @@ def follow(path):
 def main():
     log_path, tb_dir = sys.argv[1], sys.argv[2]
     writer = SummaryWriter(tb_dir)
-    n_sb = n_b = 0
+    last_sb, n_b = 0, 0
     for raw in follow(log_path):
         line = ANSI.sub("", raw)
         m = SB.search(line)
         if m:
-            sb, loss, pps = int(m.group(1)), m.group(2), int(m.group(3))
+            sb, secs, loss, pps = (
+                int(m.group(1)),
+                float(m.group(2)),
+                m.group(3),
+                int(m.group(4)),
+            )
+            last_sb = sb
             if loss != "NaN":
                 writer.add_scalar("loss/superbatch", float(loss), sb)
             writer.add_scalar("throughput/pos_per_sec", pps, sb)
+            writer.add_scalar("time/superbatch_sec", secs, sb)
             writer.flush()
-            n_sb += 1
             continue
         m = BATCH.search(line)
         if m:
@@ -66,6 +77,11 @@ def main():
             n_b += 1
             if n_b % 50 == 0:
                 writer.flush()
+            continue
+        m = LR.search(line)
+        if m:
+            writer.add_scalar("lr/value", float(m.group(1)), last_sb)
+            writer.flush()
 
 
 if __name__ == "__main__":
