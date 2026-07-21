@@ -66,6 +66,35 @@ infrastructure the head program inherits.
 trunk-normalized frame, engagement-proven, λ=0.001). pol4 → wdl6 → wdl2 chain
 behind it, each scale-check hard-gated + 300g fixed-node.
 
+## OPEN QUESTION — λ dynamics are UNMEASURED (user + assistant agree: neither
+## of us knows how this plays out; recorded 2026-07-22 ~01:00)
+
+What we DON'T know about the aux-λ mechanism, stated so tomorrow's readouts
+aren't over-interpreted:
+
+1. **The aux's gradient share over training is unmeasured.** λ is constant,
+   but the influence ratio is λ·‖∇pol_CE‖/‖∇value‖ — and BOTH losses decay
+   (CE ≈4.85→~2.5-3; value ≈0.013→0.007). Loss magnitude is a weak proxy for
+   gradient norm; the true share trajectory is unknown. (Earlier claim that
+   the dose "decays on its own" was loose — retracted.)
+2. **LR decay is ratio-neutral** — it shrinks all updates equally and does NOT
+   fade the aux relative to value. If relative fading is wanted, it needs an
+   explicit λ schedule; nothing implements one today.
+3. **Whether fading is even desirable is an open design question.** For:
+   representation-shaping is an early/mid-training job; the final superbatches
+   calibrate the value output that every search margin is co-adapted to —
+   "shape early, calibrate pure late" (the same intuition as the two-stage
+   data recipe). Against: with <0.5-epoch streamed data, late-training
+   overfit pressure is low, and a schedule is a second knob on an unmeasured
+   first knob. DECISION: constant-λ first (tonight's runs); the annealed-vs-
+   flat A/B (same total aux exposure) runs ONLY IF constant-λ shows signal.
+4. **Missing instrument:** per-component loss logging. NOT the trivial print
+   assumed — the bullet training loop fetches one fused loss scalar
+   (trainer/src/run.rs:245-256); components need graph outputs + loop + logger
+   changes. Scheduled as a daytime task, tested, between GPU runs — not a
+   1am edit to the code a live run is executing. Until it exists, every λ
+   interpretation carries this caveat.
+
 ## MORNING RUNBOOK (for whichever session reads the gates)
 
 Per net, in order:
