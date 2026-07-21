@@ -34,8 +34,12 @@ if [ "$have" -eq "$last" ] && [ -s "$WORK/corpus.bin" ]; then
 fi
 
 # Export value labels from ALL pulled shards (one export handles many shards).
-say "export-value over $(ls "$WORK/ceobs"/*.ceobs 2>/dev/null | wc -l) shards"
-"$OBS" export-value "$WORK/values.raw" "$WORK"/ceobs/*.ceobs 2>&1 | tail -1
+# 2026-07-21: export-value now applies the trainer-parity quiet filter BY
+# DEFAULT (the unfiltered export from this very script fed the -582 corpus).
+# The explicit flag documents intent; the summary line shows the drop split —
+# expect ~26-30% and investigate outside that band (data-recipe-contract.md).
+say "export-value over $(ls "$WORK/ceobs"/*.ceobs 2>/dev/null | wc -l) shards (trainer-parity filter)"
+"$OBS" export-value "$WORK/values.raw" "$WORK"/ceobs/*.ceobs --filter-sfbinpack 2>&1 | tail -2
 
 # Merge the real WDL by FEN — memory-safe disk sort+join. A Python FEN->wdl
 # dict would need ~15GB for the full 188M corpus; this box has ~7GB. TAB is the

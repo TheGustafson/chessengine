@@ -655,3 +655,28 @@ strength. Two constraints in permanent tension, resolved in this order:
   equal-time strength testing. Optional future work: a rounding FT shift
   in sota_simd (R1 of the note) would shrink the divergence at its source
   but changes sota eval semantics — own verify + h2h when scheduled.
+
+- **D46**: The scalar-value data contract (2026-07-21, from the canon −582
+  post-mortem — `docs/research/sf18-canon-data-diagnosis-2026-07-21.md`).
+  Every pipeline producing scalar-value NNUE training data obeys ONE
+  contract, enforced by default in code: (1) the trainer-parity
+  five-criterion quiet filter (ply≥16, not-in-check, |raw score|≤10000
+  pre-clamp, best-move Normal, best-move non-capture) applied at the layer
+  that still holds raw scores + best moves — trainer load for binpacks,
+  `export-value` (default-ON) for shards, explicit `filter|nofilter` for
+  `fast_fens`, `--curate` for python relabels; (2) the scale law
+  `engine value ≈ training_score · SCORE_MULT` with MULT derived per label
+  source and COUPLED to WDL (binpack/1.9→1.0; SF-UCI→1.42 at WDL=0.3 /
+  1.94 at WDL=0), never guessed — `net_scale_check.sh` is a HARD pre-game
+  gate in every gate script; (3) filter-before-clamp (a ±2500 clamp ahead
+  of the filter hides mate labels — 86k found in the hardneg aux); (4)
+  real White-relative WDL or WDL=0-with-matching-MULT, never placeholders
+  into WDL>0; (5) every builder carries loud self-checks (drop-rate band,
+  join hit-rate, result-distribution, alignment) and a D38 ledger row.
+  The policy corpus (`export-train`) is deliberately EXEMPT from the
+  quiet filter — policy heads need tactical positions; the contract
+  governs the scalar value loss only. Operational one-pager:
+  `docs/research/data-recipe-contract.md` (its §7 tool table is the live
+  status). Motivation: both 2026-07 corpus poisonings (canon −582,
+  hardneg aux) were silent recipe drift on sound labels; safe-by-default
+  + loud opt-outs makes the failure class structural, not disciplinary.

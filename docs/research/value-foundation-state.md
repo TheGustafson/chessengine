@@ -48,7 +48,632 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-19 (post-compact resume block added)
+Last updated: 2026-07-21 PM-3 (TIGHTENING SPRINT: 1536 killed by user directive; scale-check authority built+validated; full filter at export; tight corpus + A/B in flight)
+
+## 2026-07-21 PM-3 ★★★ THE TIGHTENING SPRINT — fix training before spending GPU (user directive) ★★★
+
+**User: "Kill the GPU job and focus on this full time... If we can't get this right
+there is no use wasting GPU."** 1536 pipeline killed cleanly (autolauncher +
+trainer; arch work preserved, trainer source reverted to 768/L2=16 — resuming the
+bet = flip HL/L2 consts + rebuild). Everything below is CPU-side recipe hardening,
+each piece validated before use.
+
+**1. `tools/nnue/net_scale_check.sh` — the output-scale calibration authority.**
+Compares candidate vs incumbent static evals (nnue-eval) on a pinned 800-FEN set
+(`tools/nnue/calib/scale-check-800.fens`); PASS band 0.85–1.18 + sign-agree ≥95%.
+**Validation matrix confirmed the half-scale theory at the engine level:** healthy
+control 0.979/99.2% PASS; canon-v1-base **0.469**, canon-clean **0.478** (the
+predicted ~0.51× half-scale nets); canon-scale194 0.917 but sign 92.3% (scale fixed,
+residual deltas visible); canon24m 0.379. Catches in 4 s what cost days of games.
+**Wired as a HARD abort into `gate_canon.sh` [1a] + `gate_1536.sh`** (FORCE=1
+override) — the old advisory check printed "scale 0.505x" for canon-clean and the
+160-game match ran anyway; that can no longer happen.
+
+**2. WDL-coupled SCORE_MULT (train_canon.sh), derived not guessed:** engine value
+= l3·network_scale(=400 always, netpack-baked) and l3 ≈ score·MULT/400 ⇒ value ≈
+score·MULT. Binpack path: internal/1.9 (SFBINPACK_SCORE_DIV in sfbinpack.rs).
+Text path must supply the whole conversion via MULT = K/1.9, K = binpack/SF18-UCI
+= **2.64–2.76 measured** (re-derived independently from the diagnosis probe data,
+n=798, r=0.94) ⇒ **MULT=1.42 for WDL=0.3** (blend cancels; target construction
+then matches the incumbent exactly) vs **1.94 for WDL=0** (exp-0111's empirical
+output-match). train_canon.sh auto-couples; scale-check is the final authority.
+
+**3. Full trainer-parity filter AT EXPORT — `obs-tool export-value
+--filter-sfbinpack`** (+unit tests, 9/9): the exact 5 criteria of the trainer's
+`sfbinpack_filter`, incl. testing the RAW pre-clamp score (a mate label collapsed
+to ±2499 by the export clamp would otherwise slip the |score|≤10000 bound — and
+did: see hardnegs below). Probe on shard 0: 26.6% dropped (diagnosis predicted
+26.9%). `canon_filter` marked SUPERSEDED/partial in its header.
+
+**4. Tight canon corpus (`build_canon_tight.sh`) — deltas 2+3 fixed in one build:**
+filtered export (measured **27.5% dropped over all 113.9M**) + real game-WDL
+inner-join from uho_frs.tsv + self-checks that DIE on drift (filter-rate band,
+join hit-rate, degenerate-result guard, alignment). **Self-check caught a real
+find:** join hit-rate 53.29%, root-caused NOT as a key bug — canon_fens (Jul 19,
+old box) and uho_frs.tsv (Jul 20) are two different stratified-chunk samples of
+the same UHO binpack; overlap is quality-unbiased, kept rows are 100% real-WDL.
+(Full-coverage fix queued: fast_fens keys-mode over the whole binpack.) Result
+distribution matches source (W40/D49/L11 vs 42/47/11).
+
+**5. Hardneg aux rebuilt TIGHT (`hardneg-tight-v2`, ledger row added):** full
+filter dropped **32%** — capture-best 15.7% + **86,320 mate-scale labels (4.5%)
+that the ±2499 clamp had been hiding from every previous "clean" filter**. 1.31M
+rows, 100% real-WDL join. Supersedes hardneg-clean-shuf-v1 (partial filter).
+
+**6. Latent bug flagged in parked `build_fulldist_corpus.sh`:** its baked
+`sf18×1.94` next to `score5k/1.9` rows is a WITHIN-corpus 1.37× scale
+inconsistency (1.94 is the WDL=0 output constant, not the ×1.42 unit conversion).
+Header warning added; fix if the path revives.
+
+**IN FLIGHT:** full tight corpus build (sort/join of 78.4M filtered rows) →
+`ab_canon_tight.sh` armed: Cell A (WDL=0.3/MULT=1.42) vs Cell B (WDL=0/1.94),
+60sb each, scale-check hard-gated, fixed-node gates. Readout per the diagnosis:
+A≈repro-class ⇒ data was always fine; A≈−400 ⇒ volume ⇒ fold-in; B isolates WDL.
+End-to-end path pre-validated with a 3sb smoke (768 arch confirmed, MULT
+auto-set, netpack+engine load OK).
+
+## 2026-07-21 PM-2 ★★★ CANON −582 IS NOT A DATA BUG — INDEPENDENT FORENSICS REVERSE THE VERDICT ★★★
+
+**Full write-up: `docs/research/sf18-canon-data-diagnosis-2026-07-21.md`** (independent
+Fable audit, all priors re-derived from scratch, CPU-only, live GPU run untouched).
+
+**Verdict reversal: the SF18-canon DATA is sound.** All 9 integrity probes clean —
+the standout is a fresh SF18@50k rerun of 401 stratified rows reproducing the stored
+labels to **p50 10cp / 99.6% sign agreement**, which in one shot rules out sign/POV/
+scale-corruption/misalignment/oracle bugs. Encoding (232k records decoded, 0 mismatch),
+shuffle (autocorr 0.958→0.000), dedup (0 dups), FEN legality, and distribution shape
+(statistically identical to the known-good UHO binpack) all check out.
+
+**The −582/−400 collapse was a 4-way CONFOUNDED RECIPE** — each fix was serially
+mis-ruled-out because ≥2 other deltas stayed broken:
+1. **Target scale ×0.51** — the pinned "canon cp == binpack_cp/1.9" claim is **FALSE**.
+   Measured two ways: binpack = ~2.7× SF18-UCI cp, and canon labels = 0.506× the
+   incumbent's output scale. SCORE_MULT=1.0 trained a **half-scale** net (breaks every
+   co-adapted search margin). Fix: **SCORE_MULT ≈ 1.94** (matches exp-0111's net-side
+   result). Both canon runs used 1.0. *(Scripts corrected; default 1.0→1.94.)*
+2. **Quiet filter only removed in-check** — the healthy path drops 26.9% at load;
+   `canon_filter` drops only in-check, leaving **~22% best-move-capture poison**. ⇒
+   **exp-0123's "filter ruled out" is INVALID** (tested 2/5 criteria, scale still wrong).
+3. **WDL=0** (0.5-placeholder result byte) — present in every catastrophic run, absent
+   in every healthy one, **never isolated on clean data**. Open confound.
+4. **60-epoch replay of 100M uniques** vs <0.5 epoch streamed. Memorization signature;
+   also why "low loss" ≠ good — it's a **faithfully-learned wrong objective**, not corruption.
+
+**Actions taken:** `train_canon.sh` + `build_canon_corpus.sh` scale comments corrected +
+SCORE_MULT default fixed; memory + day-plan updated; quarantine **LIFTED pending the
+confirming A/B** below. The live 1536 run uses binpacks and is UNAFFECTED by all of this.
+
+**QUEUED confirming A/B (GPU, ~1.5h + 2 gates)** — from the diagnosis §"Minimal fix":
+rebuild canon with the **full 5-criterion filter** (extend `obs-tool export-value` to use
+the shard `best_move`) + **real game-WDL join**; **Cell A** SCORE_MULT=1.94 WDL=0.3,
+**Cell B** identical but WDL=0; gate both vs `d40-uho-v1-240sb`. A≈−150 ⇒ data was always
+fine (recipe was the whole story); A≈−400 ⇒ residual is volume ⇒ use canon as
+`D40_MIX_DATA` fold-in on the streamed base (don't materialize); B isolates WDL=0.
+**Not built yet** — needs the export-tool `best_move` change. This is
+[[no-verdicts-from-weak-tests]] in REVERSE: we condemned the DATA from confounded tests.
+
+## 2026-07-21 PM ★★ CANON −582 LOCALIZED + 1536 ARCH TRAINS ★★ [SUPERSEDED by PM-2 above — the "data bug" conclusion here is RETRACTED; kept for the audit trail]
+
+**canon-clean-240sb gate result (SF18-canonical, QUIET-FILTERED corpus) vs
+d40-uho-v1-240sb, 10+0.1:** **CONCLUSIVE — 160 games, W7/L132/D21 = 10.94%
+score, nElo ≈ −700** (gate stopped early to free CPU for the 1536 train; ledger
+exp-0123). **The quiet-filter fix did NOT reverse the −582.** Decisive tell: canon-clean's training loss **converged low (0.00067)**
+yet it plays at −381 — the net faithfully learned labels that produce terrible
+play. ⇒ **the bug is in the SF18-canonical DATA (labels/scale), NOT the quiet
+filter, trainer, or training.** Quiet-filter bypass is RULED OUT as the −582's
+cause. Prime remaining suspect: the train_canon scale assumption ("canon cp ==
+binpack_cp/1.9, so SCORE_MULT=1.0 + EVAL_TARGET_SCALE=400") — a scale error
+would fit the labels while miscalibrating every cp-threshold pruning margin.
+**SF18-canonical data stays QUARANTINED** (do NOT fold into the 1536 run).
+Full data-vs-env isolation (train_canon env on clean UHO) is deferred — the
+1536 arch (clean UHO+farseer) is the priority and doesn't need SF18-canon.
+
+**1536 HalfKA-only arch SMOKE PASSED (biggest risk resolved):** trains → packs →
+engine-loads (readyok) → searches, end-to-end. bullet handles the all-inactive
+threat input; the `halfka_only` save-fix is live. GPU-bound training ~447k pos/sec
+(vs canon's ~700k — 2× accumulator) ⇒ full 300+140sb ≈ 6.7h. Full stage-1
+(`h1536-uho-300sb`) now running.
+
+**★ NPS BET — early NEGATIVE lean (not the hoped-for win):** SMOKE-net NPS
+(startpos, 1 thread): **NEW-1536 HalfKA-only 720,847 vs INCUMBENT 768+threats
+835,087 = −13.7%.** Dropping threats did NOT make it faster — the 2× accumulator
+cost more per-eval (activate + find_nnz + l1_dot all scale with L1; l1_dot also 4×
+from L2 16→32) than the threat channel saved. CAVEAT (do not over-conclude,
+[[no-verdicts-from-weak-tests]]): this is SMOKE sparsity (3+3 SB → denser
+activations → inflated l1_dot → pessimistic for the new arch); the converged net
+will be faster (likely −5 to −10%). The **equal-time gate on the converged net is
+the arbiter** — at ~−10% NPS the arch must be clearly better in EVAL quality (the
+L2=32 / 2×-width bet) to win. If it loses on speed, the L2=16 ablation (halves
+l1_dot) and/or a narrower 1280 accumulator are the NPS-recovery levers.
+
+## 2026-07-21 AM ★★★ NEW ARCH: DROP THREATS + 2× ACCUMULATOR + WIDER L2 BOTTLENECK ★★★
+
+## 2026-07-21 AM ★★★ NEW ARCH: DROP THREATS + 2× ACCUMULATOR + WIDER L2 BOTTLENECK ★★★
+
+**Executive decision (user, away all day):** get the model as strong as possible
+using ALL the toys — every extra head (WDL, policy) + all the extra data (UHO,
+farseer, clean canon, re-filtered hard-negs). **Arch: DROP FullThreats, make the
+accumulator 2× bigger (768→1536).** Two follow-ups same day: **widen the L1→L2
+head bottleneck 16→32** ("I worry the 16-32 bottleneck was the thing preventing
+our bigger nets from learning" — now the LEADING hypothesis for width-saturation),
+and **later test a 32→32→16 extra tail layer**.
+
+**The bet:** FullThreats is the dominant NPS tax (~160 active feats/move,
+memory-bound i16 adds). Dropping it frees NPS to fund a 2× accumulator on a pure
+HalfKA net (≤32 active, cheap). The L2=16→32 widening removes a suspected
+capacity choke between the (now 2× wider) trunk and the head.
+
+**Built + verified today (all CPU, GPU stayed on canon-clean):**
+- **Engine** (`sota_head::L1=1536`, `L2=32`): `sota_simd::l1_dot` was hard-coded to
+  16 outputs (`[i32;16]`, `group*64`); generalized all three backends (scalar/
+  AVX2/AVX-512) to loop over `L2/16` output-blocks. **Parity-tested: scalar ==
+  AVX2 == AVX-512 at L2=32; all 88 nnue tests green** (single-threaded — parallel
+  OOM'd from the concurrent trainer × doubled synth-net allocs). Head layers
+  (propagate_l1/l2) were already const-driven. Binary → `engines/bin/archon-sota-1536`.
+- **netpack** (`tools/nnue/netpack.py`): arch dims now env-driven (`D40_ACC/L2/L3/
+  BUCKETS`, defaults = old 768+threats = backward-compatible) + `D40_HALFKA_ONLY=1`
+  path that skips the threat tensor, clears FLAG_HAS_THREATS, zeroes header
+  threat_dims. **No-threats payload = 69,638,176 B = the engine loader's
+  `payload_len_no_threats()` byte-for-byte.** Synth 1536-HalfKA net packs + the
+  engine LOADS it (readyok) + searches → **round-trip proven end-to-end.**
+- **Trainer** (`d40_features.rs`, `HL=1536`, `L2=32`): **BUG CAUGHT in pre-flight**
+  — `halfka_only` only skipped threat *feature extraction* (line 285) but still
+  BUILT + SAVED `l0_threatw` (zeros). A zero threat tensor in the quant.bin would
+  (a) misalign netpack's skip-threats AND (b) if packed with threats, still cost
+  the full threat-accumulator NPS → **defeating the entire bet.** Fixed: omit
+  `l0_threatw` from the quant `fmt` when `halfka_only` (raw save keeps it for
+  warm-start consistency). The inert tensor costs ~1.1GB GPU RAM — affordable
+  (canon 768+threats uses only 2.9GB of the 8GB card). Rebuilt.
+
+**Width REOPENED (per [[no-verdicts-from-weak-tests]]):** fixed-node re-gate 1024
+vs 768 @ 25k nodes = **+6.08 ± 23.68** — NOT negative (the equal-time −8 was the
+NPS confound). Width is not dead; L2=16 is the new prime suspect.
+
+**NPS bet — NOT yet called:** synth-net NPS is too confounded (random weights →
+search hit "mate" at 185ms, dense activations) to trust. Definitive NPS waits on
+the real trained 1536 net.
+
+**In flight:** `canon-clean-240sb` (OLD 768+threats arch on the FILTERED SF18
+corpus, ~113/240, auto-gate armed vs d40-uho-v1-240sb — the SF18-data-validity
+signal). `tools/nnue/autolaunch_1536.sh` (pid-waits on the canon trainer) will
+fire `tools/nnue/train_1536_halfka.sh` the instant the GPU frees: SMOKE (3+3 SB)
+→ NPS measure → FULL (UHO 240sb div1.9 skip75 WDL0.3 LR1e-3 → farseer 120sb warm
+div1.9 WDL0.25 LR5e-4). Ship candidate = `data/nnue/nets/h1536-s2-farseer-120sb.cenn`,
+gate vs incumbent (fixed-node then equal-time) then SF16.
+
+**Next levers queued:** heads co-trained (WDL built; policy REDONE from+to) gated
+vs value-only base; L2 ablation (16 vs 32 vs +layer, fixed 1536, fixed-node).
+
+**Clean fold-in data READY (2026-07-21):** re-filtered the hard-neg aux through
+`canon_filter` — dropped **176,821/1,928,011 (9.17%)** in-check/tactical poison
+(nearly identical to the canon −582's 9.1% rate — the SAME `bf-convert`-without-
+quiet-filter bypass poisoned both). Clean corpus =
+`data/nnue/hardneg/corpus/corpus.filtered.shuf.bin` (1,751,190 pos, ledger
+`hardneg-clean-shuf-v1`). This CONFIRMS the exp-0118 fold-in verdict was INVALID
+(poisoned aux); the clean fold-in test (`D40_MIX_DATA`) is valid for the first
+time — queued behind the 1536 base.
+
+## 2026-07-20 PM ★★ OVER-PRUNING / WASTED-COMPUTE + NPS DIAGNOSTICS + FOLD-IN SWEEP ★★
+
+## 2026-07-20 PM ★★ OVER-PRUNING / WASTED-COMPUTE + NPS DIAGNOSTICS + FOLD-IN SWEEP ★★
+
+User theory under test: the weaker raw net makes ARCHON prune subtrees SF keeps
+(blind spots), and on a faster box the extra compute is spent going DEEPER down
+those mis-pruned paths — wasted. Three probes (all d40-uho-720sb net, sota+tune
+`target/release/chessengine`):
+
+1. **RFP equal-time A/B** (wideRFP `RFP_MULT_BASE=70` vs default 40, 10+0.1-ish
+   st=0.25, 300g): **+4.6 ± 21 = NEUTRAL.** Widening the RFP margin at equal time
+   is a wash (depth-for-width trade cancels). ⇒ the RFP margin is already ~optimal
+   for our eval; over-pruning is NOT a mis-set RFP knob. Does NOT refute the theory
+   (equal-time confounds it), only kills the naive "widen margins" fix.
+2. **Fixed-nodes scaling** (ARCHON vs SF16 @ 20k vs 80k nodes) — the clean
+   isolation (no depth/width trade): deficit **GROWS** 20k→80k: Elo −55±29 → −64±28,
+   **nElo −85 → −120**. 4× compute makes us RELATIVELY WORSE vs SF16 ⇒ directional
+   support for wasted-compute / eval-amplification (NOT yet significant — bars
+   overlap; accumulating to ~240g/arm). Explains the native-box (faster) regression.
+3. **RFP fixed-nodes A/B** (wideRFP=70 vs 40 @ 50k nodes, 300g): **−2.3 ± 19 = NEUTRAL.**
+   Pruning-less finds NO better moves per node either.
+
+**CONCLUSION (pruning investigation, 2026-07-20 PM):** RFP over-pruning is **RULED
+OUT** — widening it is neutral both at equal time (±21) AND per-node (±19). The
+scaling test (final: 20k −55±29 / nElo −85; 80k −67±25 / nElo −121, 240g each) shows
+a directional-but-NOT-significant deficit-growth with more nodes. Since it's NOT the
+RFP knob, the wasted-compute / faster-box regression points to **EVAL-AMPLIFICATION**
+(a weaker/miscalibrated eval at the leaves → deeper search amplifies errors rather
+than correcting them), not mis-pruned trees. **⇒ the lever is EVAL QUALITY (fold-in +
+arch T6/T8 + NPS-via-arch to relieve pruning pressure), NOT search-knob tuning.** This
+reinforces the primary goal; do not tunnel on search params. (Caveat: only RFP tested;
+LMR/futility not individually ruled out, but the per-node neutrality of the dominant
+eval-margin prune is strong evidence pruning-calibration is not the bottleneck.)
+
+**NPS / SIMD reality (measured, single-thread, under load):** ARCHON **722k**, SF16
+2.36M (3.3×), SF18 1.26M, Reckless 1.10M. `archon-sota-native` is ALREADY a
+`target-cpu=native` AVX-512 build (5556 zmm) WITH a runtime VNNI path
+(`_mm512_dpbusd_epi32`, `sota_simd.rs:609`, gated on `is_x86_feature_detected!
+("avx512vnni")` → fires on this Zen4). So 722k IS our AVX-512-VNNI speed — NO free
+rebuild lever. The 3.3× gap vs SF16 is STRUCTURAL: the FullThreats accumulator
+update (~160 active feats/move, memory-bound i16 adds VNNI can't accelerate)
+dominates. Fair same-tech comparison = Reckless (AVX2 Rust, HalfKA-only): we're 1.5×
+slower = the threats tax. Lever to close it = ARCH (T6 threats-cost ablation, T8
+king-split to widen cheaply), NOT flags. Only the `x86-64-v3` gate/tune builds are
+AVX2-only (fine for A/Bs — both sides share it). ⇒ low NPS FORCES aggressive
+pruning (ARCHON reaches depth 42 on startpos @ 722k nps vs Reckless depth 37 @
+1.10M — we prune harder to compensate), which with a weaker net is where blind
+spots come from. Recovering NPS (arch) would relieve the pruning pressure.
+
+**Fold-in ratio sweep CONCLUDED — fold-in is a DEAD END on the UHO base.** The
+aux-epoch curve is monotonic-hurt: mix@4ep (0.231%) = −1.2±17 gate / +16±21 equal-time
+(≈neutral), mix@12ep (0.692%) = **−12.7±17**, mix5 (87 epochs) = −112. Folding the
+SF18/Reckless hard-negs into the full retrain does NOT help — it only hurts as you
+add more. Data-polish via fold-in is off the table; the binpack volume dominates.
+⇒ this redirects the effort to CAPACITY (width), the untested lever.
+
+**NET-GROWING (Net2WiderNet) — WORKS, validated, productionized (user ask 2026-07-20).**
+Grow a trained net's accumulator (768→1024) function-preservingly: copy the narrow
+net in with new neurons zero-init, placed to preserve the pairwise-mul (i,i+HL/2)
+pairing, so the wide net evals IDENTICALLY until fine-tuned — warm-start for the cost
+of a short fine-tune instead of a full from-scratch run. **Proven: frozen (LR=0) save
+of the grown net netpacks to a CENN that evals bit-identically to the 768 parent
+(rmse 0.00cp).** The bug en route: the RAW tensor layout ≠ the quant layout — `l1w`
+is HL-major `[HL,out]` in the raw (`transpose_saved`) while `l0_pstw/threatw` are
+feature-major `[feat,HL]`; nailed from d40_features.rs's own loader. Reusable tools:
+`tools/nnue/net2wider.py` (general transform — auto-detects source width + all arch
+dims) + `tools/nnue/grow_net.sh` (widen→preservation-gate→fine-tune pipeline).
+`netpack.py` gained a `D40_ACC` width-override. **Prereq:** width is a compile-time
+const — trainer HL + engine `sota_head::L1` + the `sota_features` ACC assert must be
+rebuilt at the new width (a width feature-flag ∼ `nnue-l1-*` is the clean successor;
+BACKLOG). Currently building: grown-1024 warm fine-tune (60sb) → gate vs 768 parent
+= the first real CAPACITY signal (does width pay, now that fold-in doesn't).
+
+## 2026-07-20 ★★★ CONCLUSIVE ROOT CAUSE — RECIPE-PARITY / QUIET-FILTER BYPASS ★★★
+
+**Every net trained this session failed for ONE reason, now PROVEN (Fable-agent
+investigation, 5 completion passes, all evidence measured — not the scale/
+distribution/WDL stories below, which were all downstream misreads).**
+
+**ROOT CAUSE:** the corpus-build scripts (`fast_fens` → `build_*_corpus.sh` →
+bf-convert) reproduce the sfbinpack path's *data* but silently DROP its *load-time
+quiet filter* (`tools/nnue/bullet/d40_features.rs:93-102`): `ply≥16 && !in_check &&
+|score|≤10000 && best_move==Normal && best_move_not_capture`. So **~10% of my
+training positions were in-check and ~25-30% best-move-capture** — positions whose
+deep search score describes a *tactical resolution* a STATIC net cannot represent.
+Under MSE the biggest errors dominate the gradient → the eval surface is warped
+exactly where sharp play lives → r=0.91 average but **p99 |diff|=1000cp, 5-7% of
+positions >400cp wrong** (control: r=0.986, p99=262, ZERO >400). Search minimaxes
+into those tails → steers into blind spots → −463..−662. (The filter's 5 checks
+mirror where ARCHON's search never trusts the static eval: qsearch never stands pat
+in check; quiescence resolves captures dynamically; pruning uses wide margins.)
+
+**EXONERATED (all measured):** trainer, CUDA/GPU, netpack (engine-vs-quant ≤0.057
+logit), .cenn/EvalFile load, gate harness. Proof: `repro-uho-sfbinpack-60sb` (exact
+control recipe, THIS box) → r=0.971, correct scale, **−143±23** vs the 240sb control
+(exp-0115) — a normal quarter-budget point. Same box/trainer/budget as the −463
+bulletformat net; only the data path (filter) differs.
+
+**RETRACTED misreads (do NOT re-derive; superseded below):** "scale compression"
+(exp-0109/0111 — real but minor), "disagreement-subset skew" (exp-0112/0113 —
+REFUTED: fulldist full-distribution was WORSE at −662, exp-0114), "WDL=0 breaks good
+data" (exp-0110 — INVALID: fishpack-wdl trained on `fishpack32.binpack`, a known-bad
+UCI-scale source, at 07:36/08:25 BEFORE the UHO download finished 12:26; WDL=0 remains
+untested-at-scale, NOT refuted). The fishpack red herring is what sent the whole
+diagnosis chasing data ghosts.
+
+**THE FIX (applied):** `fast_fens` now takes a `filter` arg applying the exact
+`sfbinpack_filter` (patched + built + smoke-verified: 26% dropped, 0% in-check out).
+`build_fulldist_corpus.sh` is now `UHO_FRS`/`WORK` env-overridable. `gate_canon.sh`
+step [1] now reports r + p99 + >400cp tail + PASS/WARN/FAIL (slope alone was the
+instrument that hid this).
+
+**IN FLIGHT:** filtered-twin confirming test (Fable's recommended next step) —
+`fast_fens UHO 188M filter` → `data/nnue/binpacks/uho_frs_filtered.tsv` (~139M, the
+188M unfiltered set minus poison) → rebuild via `UHO_FRS=…filtered WORK=data/nnue/
+fulldist-filtered/build build_fulldist_corpus.sh` → train 60sb → `gate_canon.sh`.
+**PREDICTION:** ≈−143 (repro-class) ⇒ filter is the dominant fix; ≈−400 ⇒ the
+volume/epoch term (109-197M unique × ~30 epochs vs billions-streamed-once, the B4
+constraint) dominates ⇒ stream the binpack / grow unique volume. Compounding term 3
+(canon-only): disagreement-selection sharpness-bias + SF18@50k half-contrast labels.
+
+**★ RESULT (exp-0116, 2026-07-20): filtered-60sb = −463** (r 0.910→0.946, p99
+1000→658, tails 66→47). **The filter helped +199 Elo (−662→−463) but VOLUME is the
+dominant remaining factor** — 137M unique × ~11 epochs vs the repro's billions-
+streamed-once (−143). **STRATEGIC CONCLUSION: the foundation must STREAM the filtered
+binpack (the repro recipe), NOT materialize small SF18 corpora — materializing is
+volume-starved.** SF18's value can't come from a small baked corpus; it comes via
+FINETUNE on top of a streamed foundation → the volume-bootstrap-then-quality-refine
+curriculum. Also (exp pending): PURE hard-neg finetune of a base REGRESSES −172.8
+(forgets even filtered) → the finetune must UPSAMPLE hard-negs into a retention mix,
+not pure-finetune. Finetune mix-vs-control test on the healthy repro base in flight.
+
+**AFTER the fix confirms:** the production SF18 net should apply the filter to the
+canon relabel selection too, and PREFER streaming ≥1B-unique corpora over multi-epoch
+replay of ~150M. Then gate fixed-node vs control → equal-time vs SF16.
+
+**BACKLOG (non-blocking, raised 2026-07-20):** find an efficient on-disk
+representation for the rich `.ceobs` store — it is ~566 B/record (uncompressed +
+standalone-position + per-record provenance strings), ~210× a compressed binpack
+position; zstd-at-rest alone recovers 2.48× (measured), and per-shard provenance +
+varint + position-chaining targets ~150–200 B. Shrinks the feasible canonical rich
+dataset's disk footprint (250M–1B: ~140–570 GB → ~40–230 GB) but does NOT move the
+labeling-compute wall. Full write-up: **design/16 §9 q7**.
+
+---
+
+## 2026-07-20 ★★ PIVOT: FROM-SCRATCH TRAINING + MIXED-READER FOLD-IN (user decision) ★★
+
+Finetuning is PARKED (no beneficial regime — see the FINETUNE INVESTIGATION section
+below). New direction (user): **train a new net from scratch and fold our SF18/
+hard-neg data in.** From-scratch sidesteps catastrophic forgetting entirely — the net
+learns volume + our data TOGETHER (no converged minimum to perturb), which is exactly
+why the finetune failure mode doesn't apply here.
+
+**NEW CAPABILITY — the mixed reader (`tools/nnue/bullet/d40_features.rs`):**
+`D40_FORMAT=sfbinpack D40_MIX_DATA=<pre-shuffled aux .bin> D40_MIX_PCT=5` folds a small
+aux set (self-play / SF18 hard-negs, bulletformat) into the streamed sfbinpack main at
+exactly PCT% (inject `n = chunk×pct/(100−pct)` per main chunk). The aux is read as
+random CONTIGUOUS windows straight off disk → the OS page-caches it when it fits RAM
+and pages it when it doesn't ⇒ **NO RAM CEILING** (the fold-in set can grow with the
+flywheel to any size). Measured **688k pos/sec vs ~700k non-mix (~1.5% overhead)** —
+fast. Ratio exact by construction. Built + smoke-validated; trainer rebuilt. (Also:
+`SfBinpackLoader::new_concat_multiple` exists but only *concatenates* — it can't spread
+a small source through a huge one, hence the custom reader.)
+
+**IN FLIGHT — paired from-scratch fold-in validation** (`/tmp/foldval.sh`): UHO 120sb,
+SAME seed, arm A `foldval-uho-120sb-ctrl` (no fold-in) vs arm B `foldval-uho-120sb-mix5`
+(SF18 hard-negs @5%). Gate B vs A = the ISOLATED fold-in effect. **B>A ⇒ scale to
+production** (UHO 720sb → farseer stage-2, combined SF18+Reckless hard-negs folded in,
+sweep the ratio) aiming at incumbent → SF16. **B≈A ⇒** the hard-neg lever is even more
+bounded / tune ratio+composition. Reckless labeling 42/64 → grows the fold-in set.
+
+---
+
+## 2026-07-20 ★★ FINETUNE INVESTIGATION — CONCLUDED (self-play data via finetuning) ★★
+
+**Question:** can we improve the eval by finetuning the converged net on self-play
+hard-negatives (ARCHON's losses to SF18 + Reckless, SF18-relabeled)?
+**Answer: NO via naive finetuning — it structurally can't work (catastrophic
+forgetting).** Triple-confirmed + expert-validated (continual-learning: LwF/EWC).
+
+- **No beneficial regime (LR ramp, healthy repro base, exp-0117):** LR≤3e-6 → net
+  unchanged (Elo 0); LR≥1e-5 → monotonic regression (−12→−212). Best case = no change.
+- **Three hypotheses RULED OUT by measurement:**
+  1. weight decay — exposed `D40_WEIGHT_DECAY`, wd=0 == wd=0.01 at both schedules
+     (−34.9 vs −36.6; −212.4 vs −209.9). Over a 3-ep finetune decay is only ~0.23%.
+  2. scale compression — scale ⊥ Elo (gentle 0.946×/−35 vs aggressive 0.993×/−212:
+     ANTI-correlated). Restoring scale made play WORSE.
+  3. built-in data shrink (the expert's α* dominant-cause) — α* on the real
+     WDL-blended target = **1.185** (mix) / 1.048 (5k), i.e. **>1, no shrink** (the
+     target wants EXPANSION); the observed 0.946× shrink moves OPPOSITE the objective
+     ⇒ an optimization side-effect, not a data property.
+- **=> the regression is catastrophic FORGETTING** (tracks training amount), not
+  scale/decay/data-bias. The static-eval metrics DON'T predict play: the aggressive
+  net looks great statically (r0.966, tails11, scale0.99) yet plays −212.
+- **The fix (expert + our data agree) = function-preserving finetuning, NOT LR/WD
+  knobs:** (a) **distillation anchoring / LwF** — add `β·E_anchor[(f_θ−f0)²]` on a
+  LARGE deployment stream (teacher=base net, no labels) while learning hard cases;
+  (b) **gold-standard = full mixed-stream retrain** (stream binpack + hardnegs
+  folded in, full schedule). The **affine-recalibration shortcut is OUT for us** (it
+  assumes a built-in shrink we don't have; α*>1 + scale⊥Elo).
+- **Caveat:** the hard-neg lever is BOUNDED (few-M positions; SF18 agrees with 5k
+  97.5%). Distillation anchoring's real value = the mechanism for the self-play
+  FLYWHEEL at scale (fold in ARCHON's mistakes without forgetting), not this small set.
+- **DECISION PENDING (user):** (a) implement distillation anchoring now; (b)
+  gold-standard mixed-stream retrain now; (c) park finetune + bank self-play data +
+  bigger lever (my lean: c now, a when the self-play set is larger).
+- **New tooling this arc:** `train_canon.sh` gained `INIT_RAW=` warm-start + `LR=` +
+  `WD=` overrides; trainer exposes `D40_WEIGHT_DECAY`; `fast_fens … filter` quiet
+  filter; `gate_canon.sh` reports r+p99+tail verdict; expert Q in
+  `docs/research/finetune-question-for-expert.md`. Reckless hardneg SF18-labeling
+  in progress (30/64) → `data/nnue/hardneg-reckless/v1/labeled/`.
+
+---
+
+## 2026-07-20 ★★ COMPACT CHECKPOINT (superseded above; kept for scripts/data/gotchas) ★★
+
+**~~IN FLIGHT (GPU):~~ [SUPERSEDED — fulldist-sf18-240sb gated −662 (exp-0114); it was
+NOT the fix. See the conclusive root cause above.]** `fulldist-sf18-240sb` training (chain `b55qrlfos`, log
+`/tmp/fulldist_trainchain.log`, ~31/240 sb when compacted, ~2h left). It is the
+FIX — full UHO distribution + SF18 cp on matched 26% + real WDL, on control scale.
+**ON COMPLETION:** `bash tools/nnue/gate_canon.sh data/nnue/nets/fulldist-sf18-240sb.cenn
+data/nnue/nets/d40-uho-v1-240sb.cenn 200` → eval-scale (want ~1.0×) + fixed-node Elo
+vs control. This is a CLEAN twin of the control differing ONLY by SF18 labels on 26%
+→ the definitive test of SF18 label value. If it WINS → gate vs SF16 equal-time
+(archon-sota-native vs stockfish16, 10+0.1, UHO book). If it FAILS/ties → SF18 labels
+are a small lever; pivot to other eval levers (factorization #27, longer stage-1).
+
+**THE FULL DIAGNOSIS (do not re-derive):**
+- Machine: native Arch, 7700X (AVX-512), RTX 4060 Ti 8GB, 15GB RAM. CUDA at /opt/cuda.
+- SF16 equal-time re-baseline (native) = **−129** (exp-0107); pure eval quality
+  (fixed-depth sweep exp-0108: even-to-ahead thru d14, −129 at d19; depth-16≈WSL2's
+  −41). native-box-regression-2026-07-20.md.
+- **BUG 1 eval-scale compression:** first canon net evaled 0.516× the incumbent →
+  search cp-margins broke → −582 (exp-0109). Cause: SF18@50k cp ~half the incumbent's
+  training-cp magnitude. Fixed via SCORE_MULT (net output ×1.94). exp-0111: scale
+  corrected 0.516→0.988 but still −463 (a 2nd bug).
+- **BUG 2 disagreement-subset skew:** canon-v1 is a "locally disagreement-selected
+  subset" → net never learned normal openings → loses in ~5 moves (exp-0112).
+  CONFIRMED budget-independent: full 240sb still −564 (exp-0113). Fix = full
+  distribution.
+- **THE FIX (training now):** full-distribution corpus. score5k is the binpack 5k
+  label (÷1.9 = control scale). SF18 cp is ~half that → multiply SF18 by **1.94** to
+  put it ON THE CONTROL SCALE, then train **SCORE_MULT=1.0** (NOT 1.94 — that was for
+  the disagreement corpus). WDL=0.3.
+
+**SCRIPTS (all written+tested this session):**
+- `tools/nnue/build_fulldist_corpus.sh` — the FIX corpus builder (uho_frs.tsv +
+  canon corpus.txt → sort+join → SF18×1.94/score5k÷1.9 → bf-convert → shuffle). Sort
+  temp forced to big disk (/tmp is 7.7G tmpfs RAM — will fail sorts otherwise).
+- `tools/nnue/train_canon.sh` — params via env: NET_ID, SB, SCORE_MULT, WDL, DATA,
+  FACTORIZE, SMOKE. netpack uses `uv run --no-project --with numpy` (pyproject has
+  tensorflow → plain `uv run` HANGS).
+- `tools/nnue/gate_canon.sh <cand.cenn> [baseline.cenn] [games]` — eval-scale + match.
+- `build_canon_corpus.sh` = the OLD disagreement-subset builder (DON'T use — bad dist).
+- `train_repro_incumbent.sh` = unused (superseded by the scale finding).
+
+**DATA (on disk, reuse):**
+- `data/nnue/fulldist/build/corpus.shuf.bin` = 197M control-scale corpus (the fix; DONE).
+- `data/nnue/fulldist/build/{canon.sorted 5.3G, uho.sorted 19.3G}` = sorted join inputs
+  (reuse to rebuild the join fast — ~15min, no re-sort).
+- `data/nnue/binpacks/nodes5000pv2_UHO.binpack` (40G, downloaded) + `uho_frs.tsv`
+  (188.5M FEN\tresult\tply\tscore5k, White-rel, from fast_fens).
+- `data/nnue/binpacks/{wrongIsRight_nodes5000pv2,farseerT76}.binpack_.gstmp` = partial
+  (canon also drew from these; only needed to raise SF18 match rate >26%).
+- `data/nnue/canon-v1/` = 91G .ceobs shards + `build/corpus.txt` (109M canon SF18
+  FEN|cp|0.5, White-rel).
+- `data/nnue/hardneg/all.tsv` = 2M ARCHON-vs-SF18 hard-neg positions w/ WDL (Phase D).
+- Nets: incumbent `d40-uho-720sb`, control `d40-uho-v1-240sb`, broken
+  `canon-v1-base-240sb`(−582)/`canon-scale194-{60,240}sb`(−463/−564). Engines:
+  archon-sota-native, stockfish16 (3.0Mnps), stockfish18 (vnni512), fastchess, ordo.
+
+**LEDGER:** exp-0107(SF16 −129) 0108(depth) 0109(canon −582) 0110(fishpack wdl0)
+0111(scale-fix −463) 0112(5-move losses) 0113(240sb −564). Add a row for the fulldist
+gate when done.
+
+**OPERATIONAL GOTCHAS:** (1) `pkill -f gcloud|"storage cp"|d40_features` SELF-MATCHES
+my own shell → use `pgrep -x <procname>` or explicit PIDs. (2) gcloud sliced download
+wedges near 100% → `gcloud config set storage/sliced_object_download_max_components 1`
+(single-stream, set). (3) verify `corpus.shuf.bin` mtime > `corpus.txt` before training
+(stale-corpus race bit me). (4) kill in a dedicated bash command (exit-144 hiccup).
+
+**LOOP:** cron `4f6da630` (15-min, eval focus). Directives: LOCAL compute only, cloud
+= GET-only storage, NO cloud jobs w/o approval. North star: SF16 +30 equal-time; then
+pivot to search-informed multi-head + aux-loss nets (D41).
+
+**★ DEFERRED TRAINING OPTIMIZATIONS (test AFTER the SF18-canonical net gates; user
+requested 2026-07-20).** Training is GPU **memory-bandwidth-bound** on the 4060 Ti
+(measured sm 100% / mem 96%; ~700k pos/sec = ~2.4h/240sb). Bullet is **F32-only**
+(matmul rejects non-F32 → no FP16 win without new kernels). Cause: the 83248×768 ≈
+64M-param FT (HalfKA+FullThreats) + Adam's 3 buffers = ~767 MB weight traffic PER
+BATCH. Levers, in priority:
+1. **Batch 16384→32768 (halve BPS, keep total positions)** — amortizes the fixed
+   per-batch Adam step → est **+20-50% throughput**. Risk: gradient dynamics change;
+   run a fixed-node quality A/B (batch32768 vs batch16384 same data) + maybe nudge LR
+   before trusting. Single biggest speed lever.
+2. **Upsample the SF18-relabeled positions** — the fulldist corpus is only ~26% SF18
+   (51M/197M); the rest reuse the 5k labels. For SF18-focused nets, upsample the 51M
+   2-4× (substitute_labels supports it) to concentrate the SF18 gradient/epoch. (Kept
+   at 1× here only for the clean control-twin comparison.)
+3. **Per-epoch reshuffle** (minor) — the bulletformat DirectSequentialDataLoader reads
+   the same shuffled order every epoch (no per-read random skip like the sfbinpack
+   path); a reshuffle would decorrelate the ~30 epochs slightly.
+PROCESS LESSON: confirming-NEGATIVES need only a short 60sb run — the 240sb
+disagreement-subset run (exp-0113) wasted ~2h re-confirming the 60sb −463.
+
+---
+
+## 2026-07-20 UPDATE — scale fix CONFIRMED but a SECOND issue remains (read first)
+
+The `SCORE_MULT=1.94` fix WORKS on eval-scale: `canon-scale194-60sb` = **0.988×
+incumbent** (was 0.516×, r=0.92, mean|cand|=365 vs |inc|=367). BUT the fixed-node
+gate vs the control only improved **−582 → −463** (exp-0111, 60sb WDL=0). So scale
+was *a* bug, not the *only* bug — a scale-correct net still loses 93.5% to the
+240sb control, far worse than a 60sb-vs-240sb budget deficit explains.
+
+**Leading suspect: disagreement-subset distribution skew.** canon-v1 is a
+"locally disagreement-selected subset" — training a general eval only on hard
+surprising positions plausibly miscalibrates it on the normal positions that
+dominate games. **Test in flight:** `canon-scale194-240sb` (WDL=0, SCORE_MULT=1.94,
+full 240sb budget) — if still −300s, the disagreement subset is the problem; if
+~0, the 60sb was just under-trained. **Likely fix if data is the problem:** the
+FULL-distribution corpus (substitute_labels: full UHO 188M + SF18 cp on the
+relabeled positions + real game WDL from the binpack) — needs UHO (downloading,
+99%) + a disk sort+join (109M SF18 labels can't fit an in-RAM dict on 15GB).
+Also still open: WDL (the +19 fishpack A/B was between two scale-broken nets, so
+it may under-read WDL's true effect on a scale-correct net).
+
+## 2026-07-20 ★ ROOT CAUSE FOUND: EVAL-SCALE COMPRESSION
+
+**The canon −582 failure is an EVAL-SCALE bug, now confirmed empirically.**
+`nnue-eval` on 1000 positions, canon-v1-base-240sb vs d40-uho-720sb:
+**canon ≈ 0.516 × incumbent** (slope through origin, r=0.88; mean|canon|=192 vs
+mean|incumbent|=367). The canon net's eval is COMPRESSED to ~half the scale the
+search's cp-denominated pruning (RFP/futility/razoring/LMR margins) is tuned for
+→ it under-rates how lost a losing position is → "optimistic on losing lines" →
+−582. Static evals looked "sane" because they're proportionally correct, just
+uniformly halved.
+
+**Why:** SF18@50k labels have ~half the magnitude of the incumbent's effective
+training cp (epic noted mean|cp| 515→189 for 5k→50k; deeper search = less extreme
+evals). My "SF18 cp = raw UCI cp = same scale as incumbent, so SCORE_DIV=1.0"
+reasoning was WRONG — the incumbent's eval lives on the ~1.9×-inflated binpack
+scale (the fix factor 1/0.516 = 1.94 ≈ the 1.9 SCORE_DIV I omitted). Formula:
+`target = sigmoid(cp × SCORE_MULTIPLIER / EVAL_TARGET_SCALE)` (d40_features.rs:669).
+
+**FIX (testing now):** retrain with **D40_SCORE_MULTIPLIER=1.94** (net outputs
+1.94× larger → matches incumbent scale → search margins valid again). Running:
+`canon-scale194-60sb` (60sb, WDL=0, SCORE_MULT=1.94, existing 109M corpus, ~35min).
+Then eval-compare (expect ~1.0× incumbent) + gate vs d40-uho-v1-240sb (expect ≫ −582).
+If confirmed → full 240sb at SCORE_MULT=1.94, then layer WDL (+19) + factorization.
+NOTE: this makes the env-reproduction diagnostic unnecessary (stopped it); WDL was
+never the main bug (only +19).
+
+## 2026-07-20 CANON NET FAILURE — CORRECTED DIAGNOSIS
+
+The first SF18-canonical net **FAILED**: exp-0109 canon-v1-base-240sb (WDL=0,
+bulletformat .bin from bf-convert, disagreement-subset, SCORE_DIV=1.0) = **−582.7
+vs the d40-uho-v1-240sb control** (same 240sb budget). Static evals SANE + CORRECTLY
+SIGNED (verified: black-to-move down-a-rook = −442, control −387; export-value emits
+White-relative `value_cp_white`), yet loses 96.6% in search ("optimistic on losing
+lines"). **NOT a sign bug.**
+
+**Prior tick blamed WDL=0. That is now DOUBTFUL:** a fresh fishpack A/B
+(fishpack-wdl03 vs fishpack-wdl0, fixed-node 5k, 200g) = **only +19.1 ± 24.0** —
+WDL is a MINOR effect, not the −582 killer. (Caveat: both fishpack-60sb nets are
+weak vs the 720sb incumbent, which can MASK WDL's true effect — do not fully
+dismiss WDL.) exp-0110's "WDL=0 breaks nets" over-read a small-net weakness.
+
+**The real anomaly = canon (240sb) losing −582 to the SAME-budget control.**
+Suspects, unresolved: (a) bf-convert/bulletformat data path bug, (b) disagreement-
+subset distribution skew, (c) SF18-cp scale/calibration, (d) WDL. **DECISIVE TEST
+(train_repro_incumbent.sh, fires when UHO downloads): reproduce the WORKING control
+recipe on sfbinpack UHO (SCORE_DIV=1.9, skip75, WDL=0.3, 240sb, seed 198273612).**
+If it reproduces (~0 vs the shipped control) → env is sound, bug is in the canon
+DATA path → then isolate by swapping ONE var at a time. If it also fails → trainer
+env broken. Source binpacks downloading (UHO 37/40G) for this + the substitute_labels
+full-distribution+real-WDL corpus path. `bulk_fens` built.
+
+## 2026-07-20 NATIVE-ARCH RESUME
+
+**Machine switched: WSL2 → native Arch Linux** (see memory machine-arch-box).
+7700X (16thr, **AVX-512**), RTX 4060 Ti 8GB, 15GB RAM, 878GB free. Repo is a
+clean GitHub clone in sync with origin/main. All gitignored artifacts restored
+fresh: engines rebuilt (SF16 bmi2-PGO 3.0Mnps, fastchess 1.8.1, ordo), UHO book,
+nets pulled from gs://…/nets/ (incumbent d40-uho-720sb + control d40-uho-v1-240sb
++ farseer). Code verified correct: `cargo test` 24/24, default bench **701605**
+bit-exact, sota bench **147691** bit-exact.
+
+**★ NATIVE SF16 EQUAL-TIME RE-BASELINE (the −41.5 was WSL2): now ~−130.**
+ARCHON sota (d40-uho-720sb, native+AVX512) vs SF16, 10+0.1, UHO book:
+conc-8 (400g) = 32.25% = **−129 Elo**; conc-4 one-proc-per-physical-core (60g
+partial) = 31.7% = −134 → **HT-contention ruled out; the gap is REAL, not a
+measurement artifact.** PGN depth analysis: at equal time both engines reach
+**median depth 19** (SF16 only +0.3 ply mean) — so the deficit is PURE EVAL
+QUALITY, now fully expressed because the fast box searches ~3 ply deeper (16→19)
+than WSL2 and SF16's per-node eval edge compounds over deeper trees. Confirms
+sf16-gap-diagnosis. Need ~+160 to reach SF16+30. Lever = better eval (data).
+
+**★ ACTIVE PLAN (user, 2026-07-20 /loop): canonical SF18 eval retrain.**
+canon-v1 relabel DONE on the cloud (fleet shut down). **canon-v1 = 113.96M
+positions, `locally disagreement-selected subset` (data-quality Dim 1) — a
+curated high-quality SF18-relabeled set**, 71GB of .ceobs shards +
+inputs/tasks/*.fens (FEN-only, 2280 shards). Downloading to
+data/nnue/canon-v1/ (GET-only auth). Pipeline RESTORED + wired this session:
+- bullet toolchain re-cloned (jw1912/bullet@cebc78a, bulletformat@cb6a3602),
+  patches applied, d40 examples copied+registered, chessengine path dep added,
+  `cargo check --example d40_features` **exit 0** (ready to build for CUDA).
+- CPU tools built: obs-tool (datagen), nnue_convert (bf-convert).
+- **CUDA toolkit BLOCKER**: not installed on Arch; user installing /opt/cuda now.
+  Needed for `cargo build --features cuda --example d40_features`.
+**Recipe decided (scale-compatibility, avoids co-adaptation trap):** fleet SF18
+cp = raw UCI cp = binpack_cp/1.9, and the incumbent trained binpack with
+SCORE_DIV=1.9 → SAME output scale. So canon-v1 .bin trains with SCORE_DIV=1.0,
+EVAL_TARGET_SCALE=400, SCORE_MULTIPLIER=1.0 → scale-matched to existing search.
+First net: D40_WDL=0 (pure SF18-cp regression, no binpack re-download for WDL
+join). Fold in king-bucket factorization (#27, D40_FACTORIZE=1) once baseline
+canonical net validates. Gate: fixed-node vs d40-uho-720sb, then equal-time vs
+SF16.
+
+
 
 ## TAKEOVER CHECKPOINT (2026-07-18 02:35 — read this first)
 

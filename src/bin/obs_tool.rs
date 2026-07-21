@@ -40,7 +40,7 @@ fn main() -> ExitCode {
                 "       obs-tool export-train <out-dir> <shard.ceobs>... [--all-tiers]  (D40-class per-move policy corpus, NumPy SoA)"
             );
             eprintln!(
-                "       obs-tool export-value <out.txt> <shard.ceobs>... [--all-tiers]  (scalar value corpus: FEN | cp | wdl; the Tier-F view)"
+                "       obs-tool export-value <out.txt> <shard.ceobs>... [--all-tiers] [--no-filter]  (scalar value corpus: FEN | cp | wdl; trainer-parity quiet filter ON by default, --no-filter = audit-only raw export)"
             );
             eprintln!("       obs-tool rank <shard.ceobs>     (classical-ordering baseline)");
             ExitCode::FAILURE
@@ -484,7 +484,11 @@ impl CorpusBuilder {
                 continue;
             }
             any_complete_ref = true;
-            if !record.moves.iter().any(|m| m.completion == Completion::Complete) {
+            if !record
+                .moves
+                .iter()
+                .any(|m| m.completion == Completion::Complete)
+            {
                 continue;
             }
             qualifying.push(record);
@@ -544,7 +548,11 @@ impl CorpusBuilder {
                 self.stats.skip_no_complete_reference += 1;
                 continue;
             }
-            if !record.moves.iter().any(|m| m.completion == Completion::Complete) {
+            if !record
+                .moves
+                .iter()
+                .any(|m| m.completion == Completion::Complete)
+            {
                 self.stats.skip_no_complete_arms += 1;
                 continue;
             }
@@ -579,8 +587,11 @@ impl CorpusBuilder {
         stm: u8,
         teacher_id: u8,
     ) {
-        let complete: Vec<&_> =
-            record.moves.iter().filter(|m| m.completion == Completion::Complete).collect();
+        let complete: Vec<&_> = record
+            .moves
+            .iter()
+            .filter(|m| m.completion == Completion::Complete)
+            .collect();
         self.stats.arms_skipped_stopped += (record.moves.len() - complete.len()) as u64;
         // Caller guarantees a non-empty Complete set for this record.
         let best_value = complete.iter().map(|m| m.returned_score).max().unwrap();
@@ -614,7 +625,10 @@ impl CorpusBuilder {
                 ref_score,
                 teacher_id,
                 arm_nodes: arm.nodes.min(u64::from(u32::MAX)) as u32,
-                arm_depth: arm.searched_depth.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16,
+                arm_depth: arm
+                    .searched_depth
+                    .clamp(i32::from(i16::MIN), i32::from(i16::MAX))
+                    as i16,
             });
             self.stats.arms_out += 1;
         }
@@ -815,7 +829,16 @@ fn write_corpus(
     }
     write_npy(dir, "arm_depth.npy", "<i2", &shape1, &buf)?;
 
-    write_manifest(dir, rows, teachers, stats, sources, per_teacher, tier_hist, all_tiers)
+    write_manifest(
+        dir,
+        rows,
+        teachers,
+        stats,
+        sources,
+        per_teacher,
+        tier_hist,
+        all_tiers,
+    )
 }
 
 #[allow(clippy::too_many_arguments)] // mirrors write_corpus's provenance columns
@@ -1037,7 +1060,10 @@ fn export_train(args: &[String]) -> ExitCode {
     // `--all-tiers` (D41 v1.1): emit every Complete tier per position, not just
     // the deepest. Flag may appear anywhere; the rest are out-dir + shards.
     let all_tiers = args.iter().any(|a| a == "--all-tiers");
-    let positional: Vec<&String> = args.iter().filter(|a| a.as_str() != "--all-tiers").collect();
+    let positional: Vec<&String> = args
+        .iter()
+        .filter(|a| a.as_str() != "--all-tiers")
+        .collect();
     if positional.len() < 2 {
         eprintln!("obs-tool: export-train needs <out-dir> <shard.ceobs>... [--all-tiers]");
         return ExitCode::FAILURE;
@@ -1189,13 +1215,98 @@ fn value_reference_ok(obs: &Observation) -> bool {
     obs.search.bound == Bound::Exact && obs.search.completion == Completion::Complete
 }
 
+/// Why `--filter-sfbinpack` dropped a row (one counter per criterion, in the
+/// trainer's short-circuit order — the summary line is how a silent
+/// filter-coverage regression gets noticed).
+#[derive(Default)]
+struct SfbFilterStats {
+    ply: u64,
+    check: u64,
+    score: u64,
+    kind: u64,
+    capture: u64,
+    bad_board: u64,
+}
+
+impl SfbFilterStats {
+    fn total(&self) -> u64 {
+        self.ply + self.check + self.score + self.kind + self.capture + self.bad_board
+    }
+}
+
+/// The `--filter-sfbinpack` predicate: the EXACT five criteria the trainer's
+/// `sfbinpack_filter` (d40_features.rs) applies to binpack entries at load
+/// time, so a text-corpus export reaches the loss with the same distribution
+/// a binpack does. Skipping this filter is how ~22% best-move-capture
+/// positions poisoned every canon run while "quiet-filtered" runs removed
+/// only the in-check ~9% (diagnosis 2026-07-21, delta 2). Returns
+/// `Some(drop-reason updater)` if the row must be dropped.
+///
+/// Criteria (trainer order): ply ≥ 16, side to move not in check,
+/// |raw score| ≤ 10000, best move `MoveKind::Normal` (no promo/ep/castling),
+/// best-move destination empty (non-capture). The score is tested on the RAW
+/// stm-relative value BEFORE `value_cp_white`'s ±2500 clamp — a mate label
+/// collapsed to ±2500 first would silently pass the ≤10000 criterion.
+fn sfbinpack_parity_drop(
+    obs: &Observation,
+    position: &PositionState,
+) -> Option<fn(&mut SfbFilterStats)> {
+    use chessengine::moves::{Move, MoveKind};
+    if position.game_ply < 16 {
+        return Some(|s| s.ply += 1);
+    }
+    let Ok(board) = checked_board(position) else {
+        return Some(|s| s.bad_board += 1);
+    };
+    if !board.checkers().is_empty() {
+        return Some(|s| s.check += 1);
+    }
+    if obs.search.final_score.unsigned_abs() > 10_000 {
+        return Some(|s| s.score += 1);
+    }
+    let mv = Move::from_raw16(obs.search.best_move);
+    if !mv.is_ok() || mv.kind() != MoveKind::Normal {
+        return Some(|s| s.kind += 1);
+    }
+    if board.is_capture(mv) {
+        return Some(|s| s.capture += 1);
+    }
+    None
+}
+
 fn export_value(args: &[String]) -> ExitCode {
     // `--all-tiers`: emit every accepted tier per position (default: only the
     // deepest accepted reference — one clean label per position).
+    //
+    // The trainer-parity quiet filter (`sfbinpack_parity_drop`) is ON BY
+    // DEFAULT (2026-07-21): two corpus poisonings in a row came from
+    // unfiltered exports feeding a scalar value loss (the canon −582 and the
+    // hardneg aux — docs/research/sf18-canon-data-diagnosis-2026-07-21.md), so
+    // the safe path is now the default path. `--no-filter` opts out for
+    // NON-TRAINING uses only (audits, label studies, key extraction) and warns
+    // loudly; `--filter-sfbinpack` is accepted as an explicit no-op for
+    // self-documenting call sites.
     let all_tiers = args.iter().any(|a| a == "--all-tiers");
-    let positional: Vec<&String> = args.iter().filter(|a| a.as_str() != "--all-tiers").collect();
+    let no_filter = args.iter().any(|a| a == "--no-filter");
+    let sfb_filter = !no_filter;
+    if no_filter {
+        eprintln!(
+            "obs-tool: export-value --no-filter: output is NOT training-grade for a scalar \
+             value loss (in-check/capture-best/mate-scale labels retained). Audit use only."
+        );
+    }
+    let positional: Vec<&String> = args
+        .iter()
+        .filter(|a| {
+            a.as_str() != "--all-tiers"
+                && a.as_str() != "--filter-sfbinpack"
+                && a.as_str() != "--no-filter"
+        })
+        .collect();
     if positional.len() < 2 {
-        eprintln!("obs-tool: export-value needs <out.txt> <shard.ceobs>... [--all-tiers]");
+        eprintln!(
+            "obs-tool: export-value needs <out.txt> <shard.ceobs>... [--all-tiers] [--no-filter]"
+        );
         return ExitCode::FAILURE;
     }
     let out_path = std::path::PathBuf::from(positional[0]);
@@ -1205,9 +1316,20 @@ fn export_value(args: &[String]) -> ExitCode {
     let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
     let (mut positions_in, mut skip_quarantined, mut skip_bad_fen, mut dedup_drops, mut skip_kind) =
         (0u64, 0u64, 0u64, 0u64, 0u64);
+    let mut filter_stats = SfbFilterStats::default();
 
     // Emit one `FEN | cp | wdl` line for a chosen reference observation.
-    let emit = |obs: &Observation, position: &PositionState, lines: &mut Vec<String>| -> bool {
+    // Returns false only on a bad FEN; a filter drop is recorded in
+    // `filter_stats` by the caller-supplied stats and counts as handled.
+    let emit = |obs: &Observation,
+                position: &PositionState,
+                lines: &mut Vec<String>,
+                filter_stats: &mut SfbFilterStats|
+     -> bool {
+        if sfb_filter && let Some(bump) = sfbinpack_parity_drop(obs, position) {
+            bump(filter_stats);
+            return true;
+        }
         let fen = match fen_from_position(position) {
             Ok(fen) => fen,
             Err(_) => return false,
@@ -1243,8 +1365,11 @@ fn export_value(args: &[String]) -> ExitCode {
                         dedup_drops += 1;
                         continue;
                     }
-                    let accepted: Vec<&Observation> =
-                        episode.records.iter().filter(|o| value_reference_ok(o)).collect();
+                    let accepted: Vec<&Observation> = episode
+                        .records
+                        .iter()
+                        .filter(|o| value_reference_ok(o))
+                        .collect();
                     if accepted.is_empty() {
                         skip_quarantined += 1;
                         continue;
@@ -1253,13 +1378,15 @@ fn export_value(args: &[String]) -> ExitCode {
                         accepted
                     } else {
                         // Deepest accepted tier by node budget.
-                        vec![*accepted
-                            .iter()
-                            .max_by_key(|o| o.context.node_budget.unwrap_or(0))
-                            .unwrap()]
+                        vec![
+                            *accepted
+                                .iter()
+                                .max_by_key(|o| o.context.node_budget.unwrap_or(0))
+                                .unwrap(),
+                        ]
                     };
                     for obs in chosen {
-                        if !emit(obs, &episode.replay_root, &mut lines) {
+                        if !emit(obs, &episode.replay_root, &mut lines, &mut filter_stats) {
                             skip_bad_fen += 1;
                         }
                     }
@@ -1277,7 +1404,7 @@ fn export_value(args: &[String]) -> ExitCode {
                             dedup_drops += 1;
                             continue;
                         }
-                        if !emit(obs, &obs.position, &mut lines) {
+                        if !emit(obs, &obs.position, &mut lines, &mut filter_stats) {
                             skip_bad_fen += 1;
                         }
                     }
@@ -1309,6 +1436,20 @@ fn export_value(args: &[String]) -> ExitCode {
         lines.len(),
         out_path.display()
     );
+    if sfb_filter {
+        let f = &filter_stats;
+        eprintln!(
+            "export-value: sfbinpack-parity filter dropped {} (ply<16 {}, in-check {}, |score|>10000 {}, \
+             non-normal-best {}, capture-best {}, bad_board {})",
+            f.total(),
+            f.ply,
+            f.check,
+            f.score,
+            f.kind,
+            f.capture,
+            f.bad_board
+        );
+    }
     ExitCode::SUCCESS
 }
 
@@ -1720,6 +1861,96 @@ mod tests {
         assert_eq!(value_cp_white(2000, 0), 2000);
     }
 
+    /// `--filter-sfbinpack` must reproduce the trainer's five criteria
+    /// exactly — this is the delta-2 regression tripwire (a canon corpus
+    /// that skips any criterion re-poisons the loss with tactical labels).
+    #[test]
+    fn export_value_sfbinpack_filter_matches_trainer_criteria() {
+        use chessengine::moves::Move;
+        use chessengine::obs::convert::position_from_board;
+        use chessengine::types::Square;
+
+        // A quiet middlegame position, White to move, e2e4 available & quiet.
+        let board =
+            Board::from_fen("r1bqkbnr/pppp1ppp/2n5/4p3/8/5N2/PPPPPPPP/RNBQKB1R w KQkq - 2 3")
+                .expect("valid fen");
+        let mut position = position_from_board(&board, 0, Vec::new());
+        position.game_ply = 20; // past the ply>=16 gate
+        let mut obs = Observation {
+            search: SearchObservations {
+                bound: Bound::Exact,
+                completion: Completion::Complete,
+                final_score: 35,
+                best_move: Move::normal(Square::E2, Square::E4).raw16(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        // Baseline: every criterion satisfied -> no drop.
+        assert!(
+            sfbinpack_parity_drop(&obs, &position).is_none(),
+            "quiet normal row is kept"
+        );
+
+        // ply < 16 -> dropped.
+        position.game_ply = 15;
+        assert!(
+            sfbinpack_parity_drop(&obs, &position).is_some(),
+            "ply<16 dropped"
+        );
+        position.game_ply = 20;
+
+        // |raw score| > 10000 (a mate-ish label that the ±2500 clamp would
+        // otherwise hide) -> dropped.
+        obs.search.final_score = 30_995;
+        assert!(
+            sfbinpack_parity_drop(&obs, &position).is_some(),
+            "mate-scale score dropped"
+        );
+        obs.search.final_score = 35;
+
+        // Capture best move -> dropped (Nxe5).
+        obs.search.best_move = Move::normal(Square::F3, Square::E5).raw16();
+        assert!(
+            sfbinpack_parity_drop(&obs, &position).is_some(),
+            "capture best-move dropped"
+        );
+
+        // Non-Normal kind (promotion encoding) -> dropped.
+        obs.search.best_move =
+            Move::promotion(Square::E2, Square::E4, chessengine::types::PieceType::Queen).raw16();
+        assert!(
+            sfbinpack_parity_drop(&obs, &position).is_some(),
+            "non-normal best-move dropped"
+        );
+
+        // Null best move -> dropped, not emitted.
+        obs.search.best_move = 0;
+        assert!(
+            sfbinpack_parity_drop(&obs, &position).is_some(),
+            "null best-move dropped"
+        );
+        obs.search.best_move = Move::normal(Square::E2, Square::E4).raw16();
+
+        // Side to move in check -> dropped (scholar's-mate-ish check).
+        let checked =
+            Board::from_fen("rnbqkbnr/ppp2Qpp/3p4/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 3")
+                .expect("valid fen");
+        let mut checked_pos = position_from_board(&checked, 0, Vec::new());
+        checked_pos.game_ply = 20;
+        assert!(
+            sfbinpack_parity_drop(&obs, &checked_pos).is_some(),
+            "in-check dropped"
+        );
+
+        // Stats route to the right counters.
+        let mut stats = SfbFilterStats::default();
+        position.game_ply = 3;
+        sfbinpack_parity_drop(&obs, &position).expect("drop")(&mut stats);
+        assert_eq!((stats.ply, stats.total()), (1, 1));
+    }
+
     #[test]
     fn export_value_quarantines_bounded_and_incomplete_references() {
         let mut obs = Observation {
@@ -2035,14 +2266,32 @@ mod tests {
         let tiers: std::collections::BTreeSet<u32> = all.rows.iter().map(|r| r.tier).collect();
         assert_eq!(tiers, [4000, 16000].into_iter().collect());
         for tier in [4000u32, 16000] {
-            let n_best = all.rows.iter().filter(|r| r.tier == tier && r.margin == 0).count();
-            let n_max = all.rows.iter().filter(|r| r.tier == tier && r.is_max_value == 1).count();
+            let n_best = all
+                .rows
+                .iter()
+                .filter(|r| r.tier == tier && r.margin == 0)
+                .count();
+            let n_max = all
+                .rows
+                .iter()
+                .filter(|r| r.tier == tier && r.is_max_value == 1)
+                .count();
             assert_eq!(n_best, 1, "exactly one margin-0 (best) arm per tier");
             assert_eq!(n_max, 1, "exactly one is_max_value per tier");
         }
         // Per-tier margins are vs THAT tier's best (-4-10=-14; 5-20=-15).
-        let m4 = all.rows.iter().find(|r| r.tier == 4000 && r.mv_raw16 == 0x0002).unwrap().margin;
-        let m16 = all.rows.iter().find(|r| r.tier == 16000 && r.mv_raw16 == 0x0002).unwrap().margin;
+        let m4 = all
+            .rows
+            .iter()
+            .find(|r| r.tier == 4000 && r.mv_raw16 == 0x0002)
+            .unwrap()
+            .margin;
+        let m16 = all
+            .rows
+            .iter()
+            .find(|r| r.tier == 16000 && r.mv_raw16 == 0x0002)
+            .unwrap()
+            .margin;
         assert_eq!(m4, -14);
         assert_eq!(m16, -15);
     }

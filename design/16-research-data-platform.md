@@ -713,6 +713,37 @@ This is the quantitative justification for §3.7's staging and §3.8's seam: we
 invest storage where preservation value is high (permanent deep analysis) and
 stay flat where it is low (discardable bootstrap).
 
+### 3.10 The scalar-value data contract (D46, 2026-07-21)
+
+Every projection of platform data into a **scalar value loss** obeys the D46
+contract (decisions.md; operational one-pager
+`docs/research/data-recipe-contract.md` — its §7 table tracks live tool
+status). The platform-level requirements:
+
+1. **Filter at the richest layer.** The trainer-parity five-criterion quiet
+   filter (ply≥16, not-in-check, |raw score|≤10000, best-move Normal,
+   best-move non-capture) is applied wherever raw scores AND best moves are
+   still available: the binpack loader (automatic), `obs-tool export-value`
+   (default-ON; `--no-filter` is audit-only and warns), `fast_fens` (explicit
+   mode required), `relabel_depth.py --curate`. Downstream text has lost the
+   move — a text-level filter is structurally partial (the `canon_filter`
+   lesson) and does not satisfy the contract.
+2. **Filter before clamp.** Format clamps (bf-convert's ±2500) run only after
+   the filter has seen the raw score; a clamp-first pipeline hides mate labels
+   from the magnitude criterion (86k found in the hardneg aux).
+3. **Scale is derived + verified, never guessed.** `engine value ≈
+   training_score · SCORE_MULT`, MULT per label source and coupled to WDL
+   (contract §2 table); `net_scale_check.sh` is a hard pre-game gate.
+4. **WDL honesty.** Real White-relative results, or WDL=0 with the matching
+   MULT. Placeholder results into a WDL>0 loss are corruption.
+5. **Self-checking builders + ledger rows.** Drop-rate band, join hit-rate,
+   result-distribution and alignment checks that DIE on drift; every corpus
+   registers in the D38 ledger with those numbers in its recipe.
+
+The **policy projection (`export-train`) is exempt from the quiet filter by
+design** — policy heads must see tactical positions. The exemption is scoped
+precisely: it is the scalar value loss that cannot represent tactical labels.
+
 ## 4. Implementation plan
 
 Commit-sized steps; build-now steps are done or design-only, the rest are
@@ -893,3 +924,23 @@ The Observation-Store build (deferred, gated on Tier-B) is done when:
    sketch) or a single record carrying an array of per-config observations. The
    former composes better with the sampled Internal Search Corpus; the latter is
    denser. Decided when the Counterfactual Corpus is first built.
+7. **BACKLOG — efficient on-disk representation for the rich store** (raised
+   2026-07-20). The TLV row-log rich `.ceobs` record measures **~566 B**, ~210×
+   a source binpack position (~2.7 B). Decomposed: (a) **standalone positions** —
+   the binpack game-chains and reconstructs the board from `(move,score)` deltas,
+   never storing it (≈12× of the gap; it is already the flat 32-B `ChessBoard`
+   baseline); (b) **rich payload + per-record provenance** — full ID trajectory /
+   PV / per-move + versioned provenance *strings baked into every record* (≈18×
+   on top); (c) **no compression** — the row-log is raw, and a sample recompresses
+   **2.48× with zstd-19** (measured; trajectory-heavy records should do better).
+   Candidate wins, cheapest first: **zstd-at-rest**; move provenance to
+   **once-per-shard** (a shard-header, not per-record); a compact varint schema;
+   optional **position-chaining** to recover the binpack's board-free trick.
+   Target ≈150–200 B/record. **Scope of the win:** this shrinks the *feasible*
+   canonical rich dataset on disk (250M–1B records: ~140–570 GB → ~40–230 GB) and
+   improves read ergonomics — it does **NOT** change the labeling-**compute** wall
+   (local SF18-rich labeling at ~222 pos/s caps the store at ~1B positions
+   regardless of bytes; §9 q3's Layer-4 sampling is the compute lever). So this is
+   a storage/ergonomics task, not a scale-unlock. Revisit when the canonical rich
+   store is first materialized at scale, or when disk pressure bites. Must not
+   break the D15 append-only write path or §3.5.2 old-reader tolerance.

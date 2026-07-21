@@ -7,6 +7,16 @@ depth. Input is `FEN | cp | result` OR `FEN` (one per line); the cp column, if
 present, is DISCARDED (we relabel fresh). Output: `FEN | cp | result`
 (cp = White-relative centipawns). Order is preserved so cheap/deep files stay
 line-aligned for the calibration corroborator.
+
+DATA-GRADE RULES (2026-07-21, docs/research/data-recipe-contract.md):
+* WITHOUT --curate the output is a PILOT INSTRUMENT, not training data: rows
+  are never dropped (line alignment is the contract) so mates are CLAMPED to
+  +-2500 — which hides them from any downstream |cp|-based filter (the exact
+  trap that put 86k mate labels in the hardneg aux). Never feed non-curate
+  output to bf-convert/training.
+* WITH --curate the output is training-grade: the filter mirrors the
+  trainer-parity criteria (ply>=16 from the FEN counters, not-in-check, mates
+  and |cp|>=2500 dropped, best-PV-move non-capture/non-promotion).
 """
 import argparse
 import math
@@ -41,8 +51,14 @@ def work(args):
         board = chess.Board(fen)
     except ValueError:
         return (idx, None)
-    if curate and (board.is_check() or not board.is_valid()):
-        return (idx, None)
+    if curate:
+        if board.is_check() or not board.is_valid():
+            return (idx, None)
+        # trainer-parity ply>=16 gate (game ply from the FEN counters; the
+        # inputs are real-game positions so the counters carry true game ply).
+        ply = 2 * (board.fullmove_number - 1) + (0 if board.turn == chess.WHITE else 1)
+        if ply < 16:
+            return (idx, None)
     try:
         info = init.eng.analyse(board, chess.engine.Limit(nodes=nodes))
     except (chess.engine.EngineError, chess.engine.EngineTerminatedError):
@@ -91,6 +107,12 @@ def main():
             if a.max_rows and len(rows) >= a.max_rows:
                 break
 
+    if not a.curate:
+        print(
+            "relabel_depth: --curate OFF -> pilot-instrument output (mates clamped to "
+            "+-2500, no quiet filter). NOT training-grade; never bf-convert this.",
+            file=sys.stderr,
+        )
     os.nice(10)
     with mp.Pool(a.workers, initializer=init, initargs=(a.sf,)) as pool:
         res = pool.map(work, rows, chunksize=256)

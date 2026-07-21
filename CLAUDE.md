@@ -49,6 +49,13 @@ When implementing a component, read its design doc first and follow it; if
 reality forces a deviation, update the doc (and decisions.md if a pinned
 decision changes) in the same commit.
 
+**Scalar-value training data is governed by D46** (design/16 §3.10): the
+trainer-parity quiet filter is default-ON at every export/extraction layer,
+scale multipliers are derived + verified (`tools/nnue/net_scale_check.sh` is a
+hard pre-game gate), filters run before clamps, WDL columns are real or
+WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
+`docs/research/data-recipe-contract.md` (one page; §7 = live tool status).
+
 ## Commands
 
 - `cargo test` — run all tests (the default check after any change);
