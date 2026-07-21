@@ -48,7 +48,39 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-21 NIGHT-2 (USER: ruthlessly prioritize MULTI-HEAD → H-AUX unblocked: from+to as ONE L3→128 two-hot head, cycle bug gone, engagement proven; 2 overnight co-trains queued behind dose-2. Also: SPRT null below.)
+Last updated: 2026-07-21 NIGHT-3 (fold-in AUTOPSY: labels never absorbed at 2.5% AND the payload is tiny — SF18-fold-in deprioritized below multi-head; WDL λ-sweep queued as GPU job 4-5)
+
+## 2026-07-21 NIGHT-3 ★★ FOLD-IN AUTOPSY: NO ABSORPTION + SMALL PAYLOAD — SF18-MIX DEPRIORITIZED ★★
+
+Two 5-minute CPU probes explain the SPRT null (exp-0127) mechanistically and
+re-rank the queue:
+
+1. **Absorption probe (2k aux rows):** the fold-in net is NO closer to its own
+   aux labels than the never-saw-them control — |Δ| mean 96.4 vs 96.2, foldin
+   closer on **48.3%** (50% = nothing took). At 2.5% mix / ~5.2 aux epochs the
+   signal washed out entirely. The SPRT null = **dose below absorption
+   threshold**, not "absorbed but worthless."
+2. **Payload probe (1.9k joined rows):** |SF18×1.42 − 5k/1.9| on the SAME
+   positions = **p50 31cp, mean 58cp** (>100cp on 18%) — while the net's own
+   fitting error there is ~96cp. The refinement SF18 offers is BELOW the net's
+   resolution floor. Even perfect absorption of a 31cp-median correction on
+   27.5M positions plausibly buys single-digit Elo.
+
+**Consequence (with the user's multi-head directive): SF18-fold-in is
+LOW-CEILING and drops below multi-head in the GPU queue.** Dose-2 (7.5%)
+completes as sunk cost — its gate + the SAME absorption probe give the
+dose-response point that either confirms the ceiling or surprises. No further
+SF18 GPU beyond that absent a surprise. (The stage-2-large-corpus idea also
+weakens: these were DISAGREEMENT-SELECTED positions and the label delta is
+still only 31cp median.) Artifact: `build-tight/uho_scores.sorted` (keyed 5k
+scores, cached for future payload probes).
+
+**GPU queue tonight (chained, sole-waiter chain):** dose-2 → haux-pol1(λ.001) →
+haux-pol4(λ.004) → **wdl-sweep λ∈{0.006, 0.02}** (derived: value-loss 0.007 /
+CE(3)≈1.1 ⇒ parity ≈0.006; each run auto-extracts the `l3_wdl` sidecar via
+extract_head.py so a good WDL head is deployable immediately). All gated
+scale-check + 300g fixed-node. By tomorrow midday: dose-response point 2 + four
+multi-head measurements (pol×2, wdl×2).
 
 ## 2026-07-21 NIGHT-2 ★★★ MULTI-HEAD PRIORITIZED (user /loop directive) — H-AUX UNBLOCKED TONIGHT ★★★
 
