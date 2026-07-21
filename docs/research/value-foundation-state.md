@@ -48,7 +48,36 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-21 PM-4 (A/B VERDICT: recipe validated in-dist, materialized-small-corpus coverage is THE killer; standalone SF18 corpora DEAD; first VALID fold-in launched)
+Last updated: 2026-07-21 PM-5 (FOLD-IN RUN 1: first non-negative SF18 result — +9.3±16.7, scale-check PASS at healthy-net level; SPRT [0,8] + 7.5% dose-2 in flight)
+
+## 2026-07-21 PM-5 ★★ FOLD-IN RUN 1: THE FIRST NON-NEGATIVE SF18 RESULT ★★
+
+**`foldin-tight-240sb` (exp-0126): +9.3 ± 16.7 (51.3%, 300g fixed-node 5k) vs
+d40-uho-v1-240sb.** Streamed UHO base + 2.5% unit-consistent tight SF18 aux
+(foldin-tight-aux-v1, ~5.2 aux epochs). The headline is twofold:
+1. **Scale-check PASS at healthy-net level** — 0.984 median / 99.6% sign,
+   indistinguishable from the incumbent control (0.979/99.2%). The aux did NOT
+   damage coverage: the fold-in premise (base = regularizer, aux = targeted
+   labels) is validated mechanically. Training loss 0.0066 = repro-class
+   learning, not the 0.0005 memorization signature of the doomed runs.
+2. **Point estimate +9.3 sits in the predicted +5–15 band** but the CI spans 0
+   at 300g — exactly the "needs power" branch. NO verdict yet
+   ([[no-verdicts-from-weak-tests]]).
+
+**IN FLIGHT (launched immediately):**
+- **`sprt-foldin-tight-25`** — powered SPRT, H0=0 / H1=8, fixed-node 5k, cap
+  6000g, CPU (node-limited ⇒ GPU contention can't bias it). The "is 2.5%
+  fold-in worth ≥~5-8 Elo" answer, expected by morning.
+- **`foldin-tight-p75-240sb`** — dose-2: same recipe at 7.5% (~15.6 aux
+  epochs), auto scale-check + 300g gate (~3h GPU). First point on the dose-
+  response curve; watch for coverage damage at the higher dose.
+
+**Next after these:** dose/schedule matrix per the PM-4 plan (end-ramped equal-
+dose needs a small trainer change; stage-2-style warm retrain on the full-
+coverage 77M corpus via fast_fens keys-mode is the best-suited shape). H-AUX
+policy/WDL co-train queued behind the SF18 matrix on GPU. Self-game (hard-neg)
+Elo attribution remains unmeasurable at 1.31M scale — flywheel grows it;
+"did the labels take" probe on the fold-in net is the cheap tomorrow check.
 
 ## 2026-07-21 PM-4 ★★★ A/B VERDICT — the recipe was clean; COVERAGE was the killer ★★★
 
