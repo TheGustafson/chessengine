@@ -46,8 +46,9 @@ engine value ≈ training_score · SCORE_MULT
 | Label source | training_score units | SCORE_MULT for incumbent-scale output |
 |---|---|---|
 | official binpack via sfbinpack loader | internal/1.9 (SFBINPACK_SCORE_DIV) | 1.0 |
-| SF18 UCI cp (canon/hardneg/relabel), WDL=0.3 | raw UCI cp | **1.42** (= K/1.9, K = binpack/UCI = 2.64–2.76 measured) |
-| SF18 UCI cp, WDL=0 | raw UCI cp | **1.94** (empirical output-match, exp-0111) |
+| SF18 UCI cp (canon/hardneg/relabel), WDL=0.3 | raw UCI cp | **1.42** (= K/1.9, K = binpack/UCI = 2.64–2.76 measured; **validated in-dist 1.004**, exp-0124) |
+| SF18 UCI cp, WDL=0 | raw UCI cp | **1.94** (empirical output-match, exp-0111; **validated in-dist 1.022**, exp-0125) |
+| `D40_MIX_DATA` aux beside an sfbinpack base | MUST be pre-scaled to binpack/1.9 units **at build time** (raw-UCI cp × 1.42, clamp ±2499) | 1.0 (the global MULT is shared — the trainer applies NO per-source scaling, so a raw-UCI aux would run at 0.51× its own base; this also invalidated exp-0118 a third way) |
 
 - **MULT is coupled to WDL** (the blend sharpens effective output scale);
   `train_canon.sh` auto-couples. Never copy a MULT between WDL settings.

@@ -48,7 +48,42 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-21 PM-3 (TIGHTENING SPRINT: 1536 killed by user directive; scale-check authority built+validated; full filter at export; tight corpus + A/B in flight)
+Last updated: 2026-07-21 PM-4 (A/B VERDICT: recipe validated in-dist, materialized-small-corpus coverage is THE killer; standalone SF18 corpora DEAD; first VALID fold-in launched)
+
+## 2026-07-21 PM-4 ★★★ A/B VERDICT — the recipe was clean; COVERAGE was the killer ★★★
+
+**The canon-tight A/B is done (exp-0124/0125).** Both cells on canon-tight-v1
+(27.5M rows, full filter, real WDL), each at its own scale-matched MULT:
+
+| Cell | Recipe | in-dist scale/sign | OOD scale/sign | fixed-node vs d40-uho-v1-240sb |
+|---|---|---|---|---|
+| A | WDL=0.3, MULT=1.42 | **1.004 / 96.1%** | 0.869 / 89.8% (FAIL) | **−727 ± 101** (FORCE=1) |
+| B | WDL=0, MULT=1.94 | **1.022 / 97.4%** | 0.863 / 93.1% (FAIL) | **−849 ± 130** (FORCE=1) |
+
+**Three questions closed:**
+1. **The scale law + WDL-coupled MULT table is EXACT** — both cells output at
+   ~1.0× the incumbent on their training distribution. Recipe deltas 1–3 are
+   genuinely fixed (and the hard scale gate blocked both nets from wasting
+   games until FORCE=1 was passed deliberately — the tripwire works).
+2. **WDL=0 is INNOCENT** (B ≈ A within noise). The exp-0110 "WDL=0 disaster"
+   framing is dead — that was the fishpack scale artifact all along.
+3. **Materialized-small-corpus COVERAGE is the dominant killer** — a net that
+   is scale-perfect and sign-healthy in-distribution collapses OOD (evals
+   compress 0.87×, sign drops to ~90%) and plays at −727..−849. The volume
+   curve is monotone: streamed 14.4B → −143; 137M×11ep → −463; 99.7M×60ep →
+   −400..−700; 27.5M×54ep → −727..−849. Recipe knobs move results WITHIN the
+   catastrophic band; materialization CREATES it. ⇒ **Standalone materialized
+   SF18 corpora are permanently dead. No more GPU on that question.**
+
+**The remaining SF18 path — first VALID fold-in test LAUNCHED
+(`foldin-tight-240sb`):** repro UHO streamed base + `foldin-tight-aux-v1`
+(28.8M = canon-tight 27.5M + hardneg-tight 1.31M) at D40_MIX_PCT=2.5 (~5.2 aux
+epochs). **New contract catch while designing it:** the D40_MIX aux shares the
+trainer's global SCORE_MULT with the binpack base (no per-source scaling), so
+the aux was pre-scaled ×1.42 to binpack/1.9 units AT BUILD TIME — a raw-UCI aux
+would run at 0.51× its own base. (This is also a third independent invalidation
+of exp-0118.) Contract §2 table updated. Gate: scale-check (should PASS — the
+base provides coverage) + 300g fixed-node vs d40-uho-v1-240sb. Verdict ≈ +2.5h.
 
 ## 2026-07-21 PM-3 ★★★ THE TIGHTENING SPRINT — fix training before spending GPU (user directive) ★★★
 
