@@ -123,3 +123,45 @@ NEEDS from+to redo — cycle-bug risk, smoke-test before committing); L2 ablatio
 - Data: UHO `data/nnue/binpacks/nodes5000pv2_UHO.binpack`, farseerT76 `data/nnue/binpacks/farseerT76.binpack`, clean canon `data/nnue/canon-v1/build/corpus.quiet.shuf.bin`, hard-negs `data/nnue/hardneg/` (NEEDS re-filter).
 - Incumbent `data/nnue/nets/d40-uho-720sb.cenn`; 768 engine `engines/bin/archon-sota-native`; SF16 `engines/bin/stockfish16`.
 - Log to `value-foundation-state.md` + ledger after each result. Update THIS doc's "in flight".
+
+## Convention-trap audit (2026-07-22 ~00:30, prompted by the _hm-orient catch)
+
+The class: producer/consumer representation mismatches that throw no errors and
+silently corrupt learning or measurement. Swept the multi-head + data surface:
+
+**FIXED tonight:**
+1. **Policy target _hm frame** (`6d3eae4`): targets now mirror with the trunk
+   (`^56` stm + `^7` king-on-a-d, = `orient_halfka` polarity). Was live in
+   exp-0121 and would have invalidated tonight's pol runs.
+2. **Extra-less rows → constant a1→a1 policy target**: any bf-converted .bin
+   (incl. every D40_MIX aux row) has extra=[0,0]; the mapper emitted a
+   two-hot at [0]+[64]. Guard added (`pf==pt` = missing sentinel → all-zero
+   target = row contributes no policy CE). Without it, MIX+POL_LAMBDA
+   combined would have silently poisoned the policy head.
+
+**DOCUMENTED (loud or self-limiting, no code change):**
+3. **Warm-start λ-mismatch** (`ModelWeights::load_from`): ckpt tensor absent
+   from graph → PANIC ("No weight with ID found!") — so stage-2 continuing an
+   H-AUX raw MUST set the same head λs (>0) or it crashes at load (loud, safe).
+   Reverse (graph head absent from ckpt) → silent fresh-init — correct for
+   attaching a new head to a trained trunk, but means tensor-name typos also
+   pass silently.
+
+**WATCHLIST (armed when the trigger lands):**
+4. **WDL [L,D,W] order parity** engine-vs-trainer: the TM consumer uses
+   |P(w)−P(l)| (symmetric — robust to an L/W swap), but any future signed
+   consumer (contempt, draw-steering) is NOT. Add a fixture parity test
+   (sidecar forward vs trainer forward on 2-3 positions) with the FIRST
+   gated WDL sidecar, before any signed consumer ships.
+5. **σ/WDL sidecar ↔ net pairing** is size- but not content-validated: a
+   sidecar trained against net A silently "works" on net B with garbage
+   output (consumers guard non-finite only). Every new incumbent invalidates
+   existing sidecars (retrain l3_var/l3_wdl frozen-trunk). Structural fix
+   when convenient: bake the paired net's sha into the sidecar header and
+   verify at load.
+6. **Future policy-head DEPLOY** (move ordering) must UNDO the trunk-
+   normalized frame engine-side (mirror state + stm flip at read time) — the
+   inverse of tonight's fix. Pin it in design/19 §4.4 when that head is built.
+7. **nnue-eval prints stm-relative cp**; labels are White-relative — every
+   comparison script converts by FEN stm (bit us twice today; the probe
+   scripts all do it now, new scripts must).
