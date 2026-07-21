@@ -128,6 +128,16 @@ Per net, in order:
    pol path, so a post-pol4 rebuild is safe). Run-6 candidates, pick by the
    pol readouts: (a) ft-attach at the better pol λ, (b) joint pol+wdl at
    winning λs, (c) λ-schedule A/B — in that order of information value.
+7. **Policy-shape ladder (user design discussion 2026-07-22 ~02:00):** the
+   current joint-128 softmax expresses MARGINALS only — no from↔to binding —
+   and its cross-half mass competition is a fossil of the dead cycle
+   constraint. Escalation order if policy signal exists: (i) per-half
+   softmaxes (clean marginals; buildable now — the cycle doesn't reproduce),
+   (ii) ft-attach 768-d input (rank ceiling removed), (iii) conditional
+   P(to | trunk, from) via teacher-forced concat — the first TRUE-binding
+   arm, ~1/10 the machinery of (iv) the full 4096-class joint head (dense-
+   target VRAM needs solving first: sparse targets or smaller batch). The
+   deployed ordering head remains design/19 §4.4 low-rank regardless.
 
 ## 2026-07-21 NIGHT-3 ★★ FOLD-IN AUTOPSY: NO ABSORPTION + SMALL PAYLOAD — SF18-MIX DEPRIORITIZED ★★
 
