@@ -680,3 +680,21 @@ strength. Two constraints in permanent tension, resolved in this order:
   status). Motivation: both 2026-07 corpus poisonings (canon −582,
   hardneg aux) were silent recipe drift on sound labels; safe-by-default
   + loud opt-outs makes the failure class structural, not disciplinary.
+
+- **D47** (user-directed, 2026-07-22): **The shared-bottleneck multihead
+  architecture — "straight shot."** Accumulators double to 1536/perspective
+  (SIMD-clean), FullThreats retained; trunk = pairwise → concat(1536) →
+  L1 → **256 shared bottleneck — the point where heads branch** → value
+  tail 256→32→1×8buckets. Policy = the D47 vocabulary head:
+  `score(m) = E[m]·h256 + b[m]` over the 1,858-class complete-move
+  vocabulary (`policy_vocab.rs`, trunk-normalized frame), legal-rows-only,
+  trained at λ scaled for POLICY≈EVAL loss parity throughout (λ decay
+  later). The policy head DEPLOYS: the engine orders the policy-argmax
+  move first (after TT move), via int8 selected-row inference against the
+  256 activation; policy tensors ship as a .cpol companion so the CENN and
+  its scale-check machinery stay unchanged. WDL and σ remain sidecars
+  (retrofit to the new trunk later). Known accepted cost: the 1536→256 L1
+  is ~16× the old dominant dense layer — NPS measured at smoke and gated
+  honestly at equal-time. Supersedes all factored policy encodings
+  (exp-0121, the killed joint-128). Amends D40/D41 arch lineage; the
+  768/L2=16 incumbent remains the fallback ship.
