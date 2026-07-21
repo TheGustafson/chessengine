@@ -178,10 +178,24 @@ FLAG_HAS_THREATS = 1
 # sota_features.rs.
 HALFKA_DIMS = 22528
 THREAT_DIMS = 60720
-D40_ACC = 768      # Accumulator width (= SotaHead::L1)
-D40_L2 = 16
-D40_L3 = 32
-D40_BUCKETS = 8
+# Arch dims are env-overridable so a single netpack tracks the trainer/engine
+# consts without a code edit (defaults = the original 768+threats D40 arch, so
+# packing an old net is unchanged). The D41 "drop threats, widen" arch sets
+# D40_ACC=1536 D40_L2=32 D40_HALFKA_ONLY=1 to match sota_head.rs.
+D40_ACC = int(os.environ.get("D40_ACC", "768"))      # Accumulator width (= SotaHead::L1)
+D40_L2 = int(os.environ.get("D40_L2", "16"))
+D40_L3 = int(os.environ.get("D40_L3", "32"))
+D40_BUCKETS = int(os.environ.get("D40_BUCKETS", "8"))
+# When set, the net has NO FullThreats channel (HalfKA-only): skip the threat
+# tensor entirely and clear FLAG_HAS_THREATS so the engine loader uses its
+# zero-threat accumulator path.
+D40_HALFKA_ONLY = os.environ.get("D40_HALFKA_ONLY", "0") not in ("0", "", "false", "False")
+# D47 (2026-07-22): the shared-bottleneck multihead quant carries the 1858-row
+# policy head BETWEEN l0_threatw and l1w (trainer fmt order). D40_POLICY=1
+# parses it and writes the .cpol companion (the CENN itself stays value-only,
+# so every scale-check/gate tool keeps working unchanged).
+D40_POLICY = os.environ.get("D40_POLICY", "0") not in ("0", "", "false", "False")
+POLICY_VOCAB = 1858
 D40_FT_QUANT = 255
 D40_THREAT_QUANT = 64
 D40_L1_QUANT = 64
@@ -198,7 +212,7 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
 
     raw = Path(quantised_path).read_bytes()
 
-    acc = D40_ACC
+    acc = int(os.environ.get("D40_ACC", str(D40_ACC)))  # width-override for grown nets (e.g. 1024)
     buckets = D40_BUCKETS
 
     # ── Parse bullet tensors ───────────────────────────────────────────
@@ -208,7 +222,8 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     # Tensor 1: l0_pstb i16 (ACC)
     n_pst_b = acc
     # Tensor 2: l0_threatw i8 (THREAT_DIMS × ACC) feature-major.
-    n_threat_w = acc * THREAT_DIMS
+    # HalfKA-only nets carry no threat tensor at all.
+    n_threat_w = 0 if D40_HALFKA_ONLY else acc * THREAT_DIMS
     # Tensor 3: l1w i8 (BUCKETS*L2 × ACC) — bullet stores TRANSPOSED
     n_l1w = buckets * D40_L2 * acc
     # Tensor 4: l1b f32 (BUCKETS*L2)
@@ -223,7 +238,10 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     n_l3b = buckets
 
     # Byte offsets
-    need_bytes = (n_pst_w + n_pst_b) * 2 + n_threat_w + n_l1w + (n_l1b + n_l2w + n_l2b + n_l3w + n_l3b) * 4
+    # D47 policy head (mid-stream, between threats and l1w when D40_POLICY=1)
+    n_polw = POLICY_VOCAB * D40_L2 if D40_POLICY else 0
+    n_polb = POLICY_VOCAB if D40_POLICY else 0
+    need_bytes = (n_pst_w + n_pst_b) * 2 + n_threat_w + n_polw + n_l1w + (n_polb + n_l1b + n_l2w + n_l2b + n_l3w + n_l3b) * 4
     if len(raw) < need_bytes:
         die(f"{quantised_path}: {len(raw)} bytes < {need_bytes} needed for D40 arch")
     # Dual-target checkpoints append one policy head after the eval tensors.
@@ -253,9 +271,22 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     pst_b = np.frombuffer(raw, dtype="<i2", count=n_pst_b, offset=off)
     off += n_pst_b * 2
 
-    # l0_threatw: i8 (THREAT, ACC), also already feature-major.
-    threat_w = np.frombuffer(raw, dtype="<i1", count=n_threat_w, offset=off).reshape(THREAT_DIMS, acc)
-    off += n_threat_w
+    # l0_threatw: i8 (THREAT, ACC), also already feature-major. Absent for
+    # HalfKA-only nets.
+    if D40_HALFKA_ONLY:
+        threat_w = None
+    else:
+        threat_w = np.frombuffer(raw, dtype="<i1", count=n_threat_w, offset=off).reshape(THREAT_DIMS, acc)
+        off += n_threat_w
+
+    # D47 policy head: polmovew i8 (POLICY_VOCAB, L2) row-major (TRANSPOSED),
+    # then polmoveb f32 (POLICY_VOCAB) — trainer fmt order places them here.
+    pol_w = pol_b = None
+    if D40_POLICY:
+        pol_w = np.frombuffer(raw, dtype="<i1", count=n_polw, offset=off).reshape(POLICY_VOCAB, D40_L2)
+        off += n_polw
+        pol_b = np.frombuffer(raw, dtype="<f4", count=n_polb, offset=off)
+        off += n_polb * 4
 
     # l1w: i8 — bullet stores as (BUCKETS*L2, ACC) row-major (TRANSPOSED flag)
     l1w_raw = np.frombuffer(raw, dtype="<i1", count=n_l1w, offset=off).reshape(buckets * D40_L2, acc)
@@ -282,7 +313,8 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     off += n_l3b * 4
 
     assert pst_w.shape == (HALFKA_DIMS, acc), pst_w.shape
-    assert threat_w.shape == (THREAT_DIMS, acc), threat_w.shape
+    if not D40_HALFKA_ONLY:
+        assert threat_w.shape == (THREAT_DIMS, acc), threat_w.shape
 
     # ── Rearrange L1 weights to group-interleaved layout ───────────────
     # Engine's propagate_l1 accesses: wb[group * (L2*4) + neuron * 4 + k]
@@ -322,7 +354,8 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     payload = bytearray()
     payload += pst_w.astype("<i2").tobytes()         # halfka_w feature-major i16
     payload += pst_b.astype("<i2").tobytes()          # ft_bias i16
-    payload += threat_w.astype("<i1").tobytes()       # threat_w feature-major i8
+    if not D40_HALFKA_ONLY:
+        payload += threat_w.astype("<i1").tobytes()   # threat_w feature-major i8
     payload += l1w_engine.tobytes()                   # l1_w i8 group-interleaved
     payload += l1b.astype("<f4").tobytes()             # l1_b f32
     payload += l2w_engine.astype("<f4").tobytes()      # l2_w f32
@@ -333,14 +366,14 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     checksum = fnv1a64(bytes(payload))
 
     # ── Build CENN-v2 header (64 bytes) ────────────────────────────────
-    flags = FLAG_HAS_THREATS  # always has threats for d40_features
+    flags = 0 if D40_HALFKA_ONLY else FLAG_HAS_THREATS
     header = bytearray()
     header += MAGIC_V2
     header += int(CENN_V2_VERSION).to_bytes(2, "little")
     header += int(flags).to_bytes(2, "little")
     header += int(HALFKA_DIMS).to_bytes(4, "little")
-    header += int(THREAT_DIMS).to_bytes(4, "little")
-    header += int(D40_ACC).to_bytes(4, "little")       # acc_width
+    header += int(0 if D40_HALFKA_ONLY else THREAT_DIMS).to_bytes(4, "little")
+    header += int(acc).to_bytes(4, "little")           # acc_width (width-override aware)
     header += int(D40_L2).to_bytes(4, "little")
     header += int(D40_L3).to_bytes(4, "little")
     header += int(D40_BUCKETS).to_bytes(4, "little")
@@ -358,7 +391,22 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
 
     total = HEADER_V2_LEN + len(payload)
     print(f"netpack-d40: wrote {out_path} ({total:,} bytes)")
-    print(f"  arch        halfka={HALFKA_DIMS} threats={THREAT_DIMS} acc={D40_ACC}")
+
+    # D47: emit the .cpol companion (policy rows OUTSIDE the CENN so every
+    # value-net tool — scale-check, gates, loaders — is untouched).
+    # Format CPL1: magic + u32 vocab + u32 dim + i8 rows[vocab][dim] (row-major,
+    # canonical-frame move_id order per policy_vocab.rs) + f32 bias[vocab].
+    if D40_POLICY:
+        cpol_path = os.environ.get("D40_CPOL_OUT") or str(Path(out_path).with_suffix(".cpol"))
+        with open(cpol_path, "wb") as f:
+            f.write(b"CPL1")
+            f.write(POLICY_VOCAB.to_bytes(4, "little"))
+            f.write(int(D40_L2).to_bytes(4, "little"))
+            f.write(pol_w.astype("<i1").tobytes())
+            f.write(pol_b.astype("<f4").tobytes())
+        print(f"netpack-d40: wrote {cpol_path} ({12 + pol_w.size + pol_b.size*4:,} bytes, vocab {POLICY_VOCAB} x {D40_L2})")
+    threats_desc = "OFF (HalfKA-only)" if D40_HALFKA_ONLY else THREAT_DIMS
+    print(f"  arch        halfka={HALFKA_DIMS} threats={threats_desc} acc={acc}")
     print(f"              L2={D40_L2} L3={D40_L3} buckets={D40_BUCKETS}")
     print(f"  quant       ft_quant={D40_FT_QUANT} threat_quant={D40_THREAT_QUANT} "
           f"l1_quant={D40_L1_QUANT} "

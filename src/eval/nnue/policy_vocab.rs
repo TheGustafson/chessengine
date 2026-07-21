@@ -62,15 +62,17 @@ static GEOM_TABLE: std::sync::LazyLock<[u16; 64 * 64]> = std::sync::LazyLock::ne
             let (tf, tr) = ((to % 8) as i32, (to / 8) as i32);
             let (df, dr) = (tf - ff, tr - fr);
             let queen_like = df == 0 || dr == 0 || df.abs() == dr.abs();
-            let knight_like =
-                (df.abs() == 1 && dr.abs() == 2) || (df.abs() == 2 && dr.abs() == 1);
+            let knight_like = (df.abs() == 1 && dr.abs() == 2) || (df.abs() == 2 && dr.abs() == 1);
             if queen_like || knight_like {
                 table[from * 64 + to] = id;
                 id += 1;
             }
         }
     }
-    assert_eq!(id as usize, GEOMETRIC_CLASSES, "queen+knight geometry must count 1792");
+    assert_eq!(
+        id as usize, GEOMETRIC_CLASSES,
+        "queen+knight geometry must count 1792"
+    );
     table
 });
 
@@ -110,7 +112,11 @@ fn underpromo_pair_index(from: u8, to: u8) -> Option<u16> {
 #[inline]
 pub fn canonical_orient(stm_is_black: bool, king_sq_mover_frame: Square) -> u8 {
     let vflip = if stm_is_black { 56u8 } else { 0u8 };
-    let hflip = if king_sq_mover_frame.file() <= 3 { 7u8 } else { 0u8 };
+    let hflip = if king_sq_mover_frame.file() <= 3 {
+        7u8
+    } else {
+        0u8
+    };
     vflip ^ hflip
 }
 
@@ -208,7 +214,10 @@ mod tests {
         let q = policy_move_id(48, 56, Some(PieceType::Queen)).unwrap();
         assert!(usize::from(q) < GEOMETRIC_CLASSES);
         // The last underpromotion id is exactly POLICY_VOCAB - 1 (h7h8 rook).
-        assert_eq!(policy_move_id(55, 63, Some(PieceType::Rook)), Some(POLICY_VOCAB as u16 - 1));
+        assert_eq!(
+            policy_move_id(55, 63, Some(PieceType::Rook)),
+            Some(POLICY_VOCAB as u16 - 1)
+        );
     }
 
     #[test]

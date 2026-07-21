@@ -70,6 +70,11 @@ pub struct SotaContext {
     /// the net has no WDL head or on the cheap smallnet path. Search/TM read it via
     /// [`last_wdl`](Self::last_wdl) for the decisiveness / optimism consumers.
     last_wdl: Option<[f32; 3]>,
+    /// D47: the shared-bottleneck (L2) activation of the most recent full
+    /// forward, stashed ONLY when a policy head is active — the policy
+    /// scorer dots legal-move rows against it. Same freshness contract as
+    /// `last_sigma`/`last_wdl` (invalidated when the full forward didn't run).
+    last_l2: Option<Box<[f32; super::sota_head::L2]>>,
     /// Smallnet gate (perf study #3 item #8): the cheap net used on DECIDED
     /// positions, or `None` when the gate is off (`ARCHON_SMALLNET` unset or
     /// `ARCHON_SMALLNET_THRESH` ≤ 0). When armed, [`evaluate`](Self::evaluate)
@@ -169,6 +174,7 @@ impl SotaContext {
             threats: ThreatContext::new(&net.threat_weights),
             last_sigma: None,
             last_wdl: None,
+            last_l2: None,
             smallnet,
             smallnet_halfka,
             smallnet_thresh: if smallnet.is_some() {
@@ -204,6 +210,7 @@ impl SotaContext {
             threats: ThreatContext::new(&net.threat_weights),
             last_sigma: None,
             last_wdl: None,
+            last_l2: None,
             smallnet: Some(smallnet),
             smallnet_halfka: Some(HalfkaContext::new(
                 &smallnet.halfka_weights,
@@ -233,6 +240,7 @@ impl SotaContext {
             threats: ThreatContext::new(&net.threat_weights),
             last_sigma: None,
             last_wdl: None,
+            last_l2: None,
             smallnet: None,
             smallnet_halfka: None,
             smallnet_thresh: 0,
@@ -270,6 +278,14 @@ impl SotaContext {
     pub fn invalidate_sigma(&mut self) {
         self.last_sigma = None;
         self.last_wdl = None;
+        self.last_l2 = None;
+    }
+
+    /// D47: the shared-bottleneck activation from the most recent full
+    /// forward (fresh-eval-only, like `last_wdl`). `None` when no policy head
+    /// is active or the last eval took a cheap path.
+    pub fn last_l2(&self) -> Option<&[f32; super::sota_head::L2]> {
+        self.last_l2.as_deref()
     }
 
     /// The net this context evaluates against.
@@ -351,13 +367,24 @@ impl SotaContext {
                 // since the uncertainty consumers no-op on decided positions.
                 self.last_sigma = None;
                 self.last_wdl = None;
+                self.last_l2 = None;
                 return small_value;
             }
         }
 
         let pst = self.halfka.current(board, ply);
         let threat = self.threats.at(ply);
-        let (value, sigma, wdl) = self.net.head.forward(pst, threat, stm, piece_count);
+        let (value, sigma, wdl) = if super::active_policy_head().is_some() {
+            // D47: the policy scorer needs the shared-bottleneck activation of
+            // this exact position; stash it (1 KiB copy) only when a head is
+            // loaded so headless builds/runs pay nothing.
+            let ((value, sigma, wdl), l2) =
+                self.net.head.forward_full(pst, threat, stm, piece_count);
+            self.last_l2 = Some(Box::new(l2));
+            (value, sigma, wdl)
+        } else {
+            self.net.head.forward(pst, threat, stm, piece_count)
+        };
         self.last_sigma = sigma;
         self.last_wdl = wdl;
 

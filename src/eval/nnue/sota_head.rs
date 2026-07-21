@@ -22,14 +22,16 @@
 use super::sota_simd::{activate, l1_dot};
 use crate::types::Color;
 
-/// Accumulator width per perspective (Reckless-proven; an SPRT knob, D40).
-/// INCUMBENT VALUE (2026-07-21): the 1536/L2=32 drop-threats arch bet is PARKED
-/// (patches/1536-arch-bet-full.patch preserves it; resuming = flip L1/L2 here +
-/// the ACC assert in sota_features.rs + trainer consts, then rebuild). The
-/// shipped nets and all current gating are 768+threats/L2=16.
-pub const L1: usize = 768;
-/// L1→L2 output width.
-pub const L2: usize = 16;
+/// Accumulator width per perspective — D47 (user-directed, 2026-07-22):
+/// the shared-bottleneck multihead arch. 1536/perspective (threats retained),
+/// L2=256 = the shared bottleneck where heads branch (value tail continues
+/// 256→32→1×buckets; the 1858-row policy head dots the 256 — see
+/// `policy_vocab`). "Go big first — learnability before NPS" is the pinned
+/// research posture; the 768/L2=16 incumbent remains the fallback ship
+/// (gate old nets with engines/bin/archon-sota-native.prev-era binaries).
+pub const L1: usize = 1536;
+/// L1→L2 output width (the D47 shared bottleneck).
+pub const L2: usize = 256;
 /// L2→L3 output width.
 pub const L3: usize = 32;
 /// Material/output buckets.
@@ -303,6 +305,19 @@ impl SotaHead {
         stm: Color,
         piece_count: usize,
     ) -> (i32, Option<f32>, Option<[f32; 3]>) {
+        self.forward_full(pst, threat, stm, piece_count).0
+    }
+
+    /// [`forward`](Self::forward) plus the shared-bottleneck activation (the
+    /// L2 output the D47 policy head dots against). The extra return is a
+    /// plain array copy; callers that don't need it use `forward`.
+    pub fn forward_full(
+        &self,
+        pst: &[[i16; L1]; 2],
+        threat: &[[i16; L1]; 2],
+        stm: Color,
+        piece_count: usize,
+    ) -> ((i32, Option<f32>, Option<[f32; 3]>), [f32; L2]) {
         let ft = activate_ft(pst, threat, stm);
         let (nnz, count) = find_nnz(&ft);
         let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
@@ -334,7 +349,7 @@ impl SotaHead {
             probs.iter_mut().for_each(|p| *p /= sum);
             probs.iter().all(|p| p.is_finite()).then_some(probs)
         });
-        (value, sigma, wdl)
+        ((value, sigma, wdl), l1)
     }
 }
 
