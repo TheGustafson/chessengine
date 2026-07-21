@@ -298,6 +298,23 @@ fn unc_tm_factor(root_sigma: f32, sigma_bar: f32, c2: f32) -> f64 {
     f64::from((1.0 + c2 * (root_sigma - sigma_bar) / sigma_bar).clamp(0.8, 1.25))
 }
 
+/// Multi-head consumer (D41 rich-net, 2026-07-21): TM soft-stop decisiveness
+/// scale from the ROOT WDL head. A root the head already calls decided
+/// (|P(win) − P(loss)| high) earns LESS clock — bank it for genuinely
+/// contested positions. Shrink-only ([0.8, 1.0]): the σ̂ factor above owns
+/// "unclear → think longer", so the two heads pull one lever from independent,
+/// independently-tunable directions. Returns exactly `1.0` (bit-identical)
+/// when disabled (`ARCHON_WDL_TM_C3`=0, the default), when the loaded net has
+/// no WDL sidecar, or before a root capture.
+#[cfg(feature = "sota")]
+#[inline]
+fn wdl_tm_factor(root_decisiveness: f32, c3: f32) -> f64 {
+    if c3 == 0.0 || root_decisiveness <= 0.0 {
+        return 1.0;
+    }
+    f64::from((1.0 - c3 * root_decisiveness).clamp(0.8, 1.0))
+}
+
 /// The late-move-pruning move-count threshold (design/10 §3.5, the move
 /// loop's LMP): once the running `move_count` reaches
 /// `(LMP_BASE + depth²) / (2 - improving)`, the picker is told to stop
@@ -891,6 +908,15 @@ pub struct Worker {
     /// fresh eval), read by [`Worker::soft_stop`]. 0.0 until a root eval lands.
     #[cfg(feature = "sota")]
     root_sigma: f32,
+    /// Multi-head WDL TM consumer: soft-stop decisiveness coefficient (env
+    /// `ARCHON_WDL_TM_C3`, default 0.0 = off). Read once at construction.
+    #[cfg(feature = "sota")]
+    wdl_tm_c3: f32,
+    /// Multi-head WDL TM consumer: the ROOT position's decisiveness
+    /// |P(win) − P(loss)| from the WDL head (ply-0 fresh eval), read by
+    /// [`Worker::soft_stop`]. 0.0 until a root eval lands.
+    #[cfg(feature = "sota")]
+    root_wdl_d: f32,
     /// EXP-UNC-1: the σ̄ EMA rate α (env `ARCHON_UNC_EMA_SHIFT`, default
     /// [`UNC_EMA_SHIFT_DEFAULT`]). Read once at construction; swept in Gate 2.
     #[cfg(feature = "sota")]
@@ -1027,6 +1053,13 @@ impl Worker {
                 .unwrap_or(0.0),
             #[cfg(feature = "sota")]
             root_sigma: 0.0,
+            #[cfg(feature = "sota")]
+            wdl_tm_c3: std::env::var("ARCHON_WDL_TM_C3")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0),
+            #[cfg(feature = "sota")]
+            root_wdl_d: 0.0,
             #[cfg(feature = "sota")]
             unc_ema_alpha: 2.0f32.powi(
                 -std::env::var("ARCHON_UNC_EMA_SHIFT")
@@ -1638,6 +1671,10 @@ impl Worker {
         #[cfg(feature = "sota")]
         {
             self.root_sigma = 0.0;
+            // Same leak guard for the WDL decisiveness: a TT-cached root eval
+            // on move N+1 would otherwise leave move N's |P(w)−P(l)| scaling
+            // move N+1's clock. 0.0 → wdl_tm_factor self-disables this search.
+            self.root_wdl_d = 0.0;
         }
         #[cfg(feature = "policy")]
         if crate::policy::root_order_enabled() {
@@ -2233,6 +2270,18 @@ impl Worker {
                     if ply == 0 {
                         self.root_sigma = s;
                     }
+                }
+                // Multi-head WDL TM consumer: capture the root decisiveness from
+                // the WDL head's fresh ply-0 eval (same freshness rules as σ̂:
+                // `last_wdl()` is invalidated at the top of `evaluate()`, so a
+                // TT-served root never folds a stale distribution).
+                #[cfg(feature = "sota")]
+                if self.wdl_tm_c3 != 0.0
+                    && ply == 0
+                    && !(tt_hit && is_valid(tt_data.eval))
+                    && let Some([l, _d, w]) = self.eval_ctx.last_wdl()
+                {
+                    self.root_wdl_d = (w - l).abs();
                 }
                 // S1 (design/10 N6, D22): `ss.static_eval` is the CORRECTED
                 // eval — raw plus the correction-history delta — and every
@@ -4489,6 +4538,9 @@ impl Worker {
         #[cfg(feature = "sota")]
         {
             total_time *= unc_tm_factor(self.root_sigma, self.sigma_bar, self.unc_tm_c2);
+            // Multi-head WDL consumer: bank clock on roots the WDL head calls
+            // decided. Exactly 1.0 when disabled / headless — golden tests hold.
+            total_time *= wdl_tm_factor(self.root_wdl_d, self.wdl_tm_c3);
         }
         if self.root_moves.len() == 1 {
             total_time = total_time.min(params::ONE_REPLY_TOTAL_TIME_CAP());
@@ -5010,6 +5062,26 @@ mod tests {
         // Clamped both ways.
         assert_eq!(unc_margin_scale(1.0, 0.10, 1.0), 1.5, "clamped high");
         assert_eq!(unc_margin_scale(0.01, 0.10, 1.0), 0.7, "clamped low");
+    }
+
+    /// Multi-head WDL TM consumer: 1.0 (off) when disabled or uncaptured;
+    /// decisive roots bank clock, clamped to [0.8, 1.0] (shrink-only).
+    #[cfg(feature = "sota")]
+    #[test]
+    fn wdl_tm_factor_signs_and_clamps() {
+        assert_eq!(wdl_tm_factor(0.9, 0.0), 1.0, "c3=0 is off");
+        assert_eq!(wdl_tm_factor(0.0, 0.5), 1.0, "no root capture is off");
+        assert_eq!(wdl_tm_factor(-1.0, 0.5), 1.0, "negative guard");
+        let f = wdl_tm_factor(0.8, 0.2);
+        assert!(f < 1.0 && f > 0.8, "decisive root banks time: {f}");
+        assert!(
+            (wdl_tm_factor(1.0, 5.0) - 0.8).abs() < 1e-6,
+            "floor clamp at 0.8"
+        );
+        assert!(
+            (wdl_tm_factor(0.05, 0.1) - 0.995).abs() < 1e-6,
+            "linear region"
+        );
     }
 
     /// EXP-UNC-1 consumer 2: the TM factor is 1.0 (off) when disabled/unwarmed,
