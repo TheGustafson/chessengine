@@ -6,7 +6,7 @@ set -uo pipefail
 cd "$(dirname "$0")/../.."
 NET="${1:?net.cenn with sibling .cpol}"
 TEACH=data/nnue/canon-v1/build/diag/canon400.sf18
-ENG=./target/release/chessengine
+ENG="${ENG:-engines/bin/archon-d47}"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 cut -f1 "$TEACH" > "$T/fens"
 "$ENG" nnue-eval "$NET" < "$T/fens" 2>/dev/null > "$T/out"
