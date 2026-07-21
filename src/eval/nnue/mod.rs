@@ -24,6 +24,9 @@
 pub mod accumulator;
 pub mod loader;
 pub mod network;
+/// D47 deployed policy head (CPL1 sidecar + selected-row scorer) — needs the
+/// sota trunk for its activation type.
+#[cfg(feature = "sota")]
 pub mod policy_head;
 pub mod policy_vocab;
 /// Frozen classic evaluator plus an exact HalfKAv2_hm residual (CENN-v4).

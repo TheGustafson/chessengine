@@ -75,6 +75,11 @@ pub struct SotaContext {
     /// scorer dots legal-move rows against it. Same freshness contract as
     /// `last_sigma`/`last_wdl` (invalidated when the full forward didn't run).
     last_l2: Option<Box<[f32; super::sota_head::L2]>>,
+    /// Zobrist key of the position `last_l2` belongs to — the per-node
+    /// freshness stamp. A node that skipped `evaluate()` (in-check, TT-served
+    /// eval) would otherwise read ANOTHER position's activation: silent
+    /// ordering poison (convention-trap class). Checked by `last_l2_for`.
+    last_l2_key: u64,
     /// Smallnet gate (perf study #3 item #8): the cheap net used on DECIDED
     /// positions, or `None` when the gate is off (`ARCHON_SMALLNET` unset or
     /// `ARCHON_SMALLNET_THRESH` ≤ 0). When armed, [`evaluate`](Self::evaluate)
@@ -175,6 +180,7 @@ impl SotaContext {
             last_sigma: None,
             last_wdl: None,
             last_l2: None,
+            last_l2_key: 0,
             smallnet,
             smallnet_halfka,
             smallnet_thresh: if smallnet.is_some() {
@@ -211,6 +217,7 @@ impl SotaContext {
             last_sigma: None,
             last_wdl: None,
             last_l2: None,
+            last_l2_key: 0,
             smallnet: Some(smallnet),
             smallnet_halfka: Some(HalfkaContext::new(
                 &smallnet.halfka_weights,
@@ -241,6 +248,7 @@ impl SotaContext {
             last_sigma: None,
             last_wdl: None,
             last_l2: None,
+            last_l2_key: 0,
             smallnet: None,
             smallnet_halfka: None,
             smallnet_thresh: 0,
@@ -286,6 +294,18 @@ impl SotaContext {
     /// is active or the last eval took a cheap path.
     pub fn last_l2(&self) -> Option<&[f32; super::sota_head::L2]> {
         self.last_l2.as_deref()
+    }
+
+    /// D47 per-node accessor: the activation ONLY if it belongs to exactly
+    /// `board`'s position (Zobrist-stamped at stash time). This is the one
+    /// the search's policy ordering must use — a stale activation from a
+    /// different node scores garbage silently.
+    pub fn last_l2_for(&self, board: &crate::Board) -> Option<&[f32; super::sota_head::L2]> {
+        if self.last_l2_key == board.key() {
+            self.last_l2.as_deref()
+        } else {
+            None
+        }
     }
 
     /// The net this context evaluates against.
@@ -381,6 +401,7 @@ impl SotaContext {
             let ((value, sigma, wdl), l2) =
                 self.net.head.forward_full(pst, threat, stm, piece_count);
             self.last_l2 = Some(Box::new(l2));
+            self.last_l2_key = board.key();
             (value, sigma, wdl)
         } else {
             self.net.head.forward(pst, threat, stm, piece_count)

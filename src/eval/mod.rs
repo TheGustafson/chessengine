@@ -157,6 +157,22 @@ impl EvalContext {
         None
     }
 
+    /// D47: the shared-bottleneck activation for exactly `board`'s position
+    /// (Zobrist-stamped freshness), for the policy-ordering consumer. `None`
+    /// when no policy head is active, the last eval took a cheap path, or the
+    /// stash belongs to a different node.
+    #[cfg(feature = "sota")]
+    #[inline]
+    pub fn last_l2_for(
+        &self,
+        board: &crate::Board,
+    ) -> Option<&[f32; crate::eval::nnue::sota_head::L2]> {
+        if let Some(ctx) = self.sota.as_ref() {
+            return ctx.last_l2_for(board);
+        }
+        None
+    }
+
     /// True iff NNUE (v1 or SOTA) is the active eval for this thread.
     #[inline]
     pub fn nnue_active(&self) -> bool {

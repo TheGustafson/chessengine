@@ -195,8 +195,8 @@ mod tests {
     #[test]
     fn knight_and_castle_and_ep_geometries_are_covered() {
         // e1g1 castling = king two-step, queen geometry.
-        let e1 = Square::E1.index() as u8;
-        let g1 = Square::G1.index() as u8;
+        let e1 = Square::E1.index();
+        let g1 = Square::G1.index();
         assert!(policy_move_id(e1, g1, None).is_some());
         // Knight b1c3.
         assert!(policy_move_id(1, 18, None).is_some());
@@ -233,8 +233,7 @@ mod tests {
             let board = Board::from_fen(fen).unwrap();
             let stm_black = board.side_to_move() == crate::Color::Black;
             let vflip = if stm_black { 56u8 } else { 0 };
-            let ksq_mover =
-                Square::new(board.king_square(board.side_to_move()).index() as u8 ^ vflip);
+            let ksq_mover = Square::new(board.king_square(board.side_to_move()).index() ^ vflip);
             let orient = canonical_orient(stm_black, ksq_mover);
             let mut list = crate::moves::MoveList::new();
             crate::movegen::generate_legal(&board, &mut list);

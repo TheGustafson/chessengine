@@ -2796,7 +2796,26 @@ impl Worker {
             self.stack[cur - 5].cont_hist,
             self.stack[cur - 6].cont_hist,
         ];
-        let mut mp = MovePicker::new(&self.board, tt_data.mv, depth, ply, cont_hist);
+        // D47 policy ordering (v1): when the TT offers no move, fill the slot
+        // with the policy-argmax — legal by construction; the picker treats it
+        // exactly like a TT move (pseudo-legality re-checked there). The
+        // Zobrist-stamped accessor guarantees the activation belongs to THIS
+        // node (a cheap-path/skipped eval yields None — correct, not stale).
+        // Depth-gated to keep movegen+dot off the shallow tree. Without a
+        // .cpol sidecar `active_policy_head()` is None => bit-identical.
+        #[cfg(feature = "sota")]
+        let picker_tt_move = if tt_data.mv == Move::NULL
+            && depth >= 3
+            && let Some(head) = crate::eval::nnue::active_policy_head()
+            && let Some(l2) = self.eval_ctx.last_l2_for(&self.board)
+        {
+            head.best_move(&self.board, l2).unwrap_or(Move::NULL)
+        } else {
+            tt_data.mv
+        };
+        #[cfg(not(feature = "sota"))]
+        let picker_tt_move = tt_data.mv;
+        let mut mp = MovePicker::new(&self.board, picker_tt_move, depth, ply, cont_hist);
         #[cfg(feature = "policy")]
         {
             mp.set_policy_net(self.policy_net.clone());
