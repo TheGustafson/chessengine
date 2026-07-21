@@ -18,4 +18,7 @@ apply_one() {
 }
 
 apply_one bullet-frozen-weights.patch
-apply_one bullet-sfbinpack-score-div.patch
+# bullet-sfbinpack-combined.patch SUPERSEDES bullet-sfbinpack-score-div.patch
+# (same file: score-div env rescale + the D41 extra-move packing's _hm-orient
+# target frame, 2026-07-21). The old patch is kept for archaeology only.
+apply_one bullet-sfbinpack-combined.patch
