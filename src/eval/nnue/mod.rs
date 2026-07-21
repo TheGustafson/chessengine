@@ -24,6 +24,7 @@
 pub mod accumulator;
 pub mod loader;
 pub mod network;
+pub mod policy_vocab;
 /// Frozen classic evaluator plus an exact HalfKAv2_hm residual (CENN-v4).
 #[cfg(feature = "sota")]
 pub mod protected_halfka;
