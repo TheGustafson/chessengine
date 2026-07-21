@@ -92,3 +92,41 @@ sensible after A/C validate the pipeline shape.
    for the TM consumer) or full stop?
 3. Sequence: A→C→D (recommended) or jump straight to C / D?
 4. GPU budget for the A pair before C lands.
+
+## RESOLUTION (2026-07-22 ~03:30) — expert spec adopted; options collapse
+
+The user supplied the definitive spec: **complete categorical moves over the
+compact 1,858-class vocabulary (1792 queen/knight-geometry from→to + 66
+underpromotions), policy branch off the concatenated accumulators with an
+H≈128-256 projection, per-move weight rows `score(m) = W[m]·h + b[m]`,
+legal-rows-only evaluation, uint16 move_id labels.** This is design/19 §4.4's
+low-rank form concretized with the Lc0 vocabulary. All factored from/to
+encodings (joint-128, per-half marginals, conditional P(to|from)) are DEAD.
+Option A/B collapse; C becomes "soft targets over the 1858 vocab"; D unchanged.
+
+**Adopted ARCHON deviation:** IDs are computed in the trunk-normalized frame
+(rank-flip + HalfKAv2_hm file-mirror) — Lc0 rank-flips only, but our
+accumulators mirror by king file and unmirrored IDs against mirrored features
+re-create the exp-0121 orientation tax. Documented in-module; symmetric under
+the vocabulary.
+
+**DONE tonight:** `src/eval/nnue/policy_vocab.rs` (c735588) — the single
+shared implementation (engine crate, trainer imports it like halfka_index),
+5/5 tests incl. every-legal-move-maps through the frame function on tactical
+fixtures. Clippy-clean.
+
+**REMAINING (daytime, in order):**
+1. Loader: pack oriented from/to + promo code (extra[2] 2 bits) — the loader
+   crate stays chessengine-free; the trainer example (which has the dep)
+   computes move_id from the packed bytes via policy_vocab.
+2. Trainer head: policy_projection (hl1→H, CReLU) + dense 1858 affine;
+   additive legal-mask input (VRAM to measure: ~122MB/tensor at batch 16384 —
+   halve batch if tight); softmax-CE vs one-hot move_id target; λ re-derived
+   for the masked CE scale (ln(~30) ≈ 3.4).
+3. Legal-mask generation in the mapper (Board reconstruction from the stored
+   stm-canonicalized ChessBoard; movegen ~2-4µs/pos; the every-target-is-legal
+   sampled assert = the frame tripwire).
+4. Per-component loss logging (trainer core) BEFORE any λ sweep.
+5. Smokes: build/engage/assert; then the λ pair on GPU.
+6. Deployed ordering head (later): selected-row int8 inference per the spec —
+   design/19 §4.4 unchanged.
