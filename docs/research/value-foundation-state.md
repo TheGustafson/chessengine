@@ -48,7 +48,30 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-21 PM-5 (FOLD-IN RUN 1: first non-negative SF18 result — +9.3±16.7, scale-check PASS at healthy-net level; SPRT [0,8] + 7.5% dose-2 in flight)
+Last updated: 2026-07-21 NIGHT (SPRT VERDICT: 2.5% fold-in = H0, -2.2±4.5 over 4454g — no gain, no harm; +9.3 was noise; dose-2 7.5% still training)
+
+## 2026-07-21 NIGHT ★ SPRT VERDICT: 2.5% FOLD-IN IS A NULL — H0 ACCEPTED ★
+
+**exp-0127:** SPRT(0, 8) fixed-node 5k, stopped early at **4454 games: score
+49.69%, Elo −2.18 ± 4.47 (1σ), W/D/L 1629/1168/1657** — recomputed from
+games.pgn (eval_match was orphaned by the session restart and never wrote
+summary.json; the PGN is the record). Trinomial LLR −2.47 vs the −2.94 bound;
+fastchess's pentanomial crossed it (early stop) ⇒ **H0**. The exp-0126
++9.3 ± 16.7 was noise, exactly as its CI warned.
+
+**What stands:** the fold-in *mechanism* is clean (scale PASS 0.984/99.6, no
+coverage damage, no harm) — but at 2.5% uniform dose the SF18 labels add
+**nothing measurable** (effect bracketed ~±7 Elo around −2). One dose point is
+not the family: **dose-2 (7.5%, foldin-tight-p75-240sb) is training now** —
+its 300g gate can't resolve ±10, so if it scale-passes it gets its own SPRT
+overnight. If dose-2 also nulls ⇒ the uniform-mix family CLOSES and the last
+SF18 shape standing is the **stage-2-style warm retrain on the full-coverage
+77M corpus** (fast_fens keys-mode build, ~1h CPU). If that nulls too ⇒ SF18
+relabeling at our scale adds nothing over official binpack labels — a clean
+close-out, GPU moves to H-AUX heads + width/arch on the proven streamed base.
+
+**Tooling note:** eval_match must survive orphaning — it should write partial
+summaries incrementally; the PGN-recompute path (this entry) is the fallback.
 
 ## 2026-07-21 PM-5 ★★ FOLD-IN RUN 1: THE FIRST NON-NEGATIVE SF18 RESULT ★★
 
