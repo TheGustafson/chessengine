@@ -145,6 +145,18 @@ impl EvalContext {
         None
     }
 
+    /// D41 rich-net: the WDL probabilities [L,D,W] from the most recent SOTA eval,
+    /// or `None` when the net has no WDL head / the cheap path ran. Search reads it
+    /// for the decisiveness / optimism consumers; `None` → those fall back to no-op.
+    #[inline]
+    pub fn last_wdl(&self) -> Option<[f32; 3]> {
+        #[cfg(feature = "sota")]
+        if let Some(ctx) = self.sota.as_ref() {
+            return ctx.last_wdl();
+        }
+        None
+    }
+
     /// True iff NNUE (v1 or SOTA) is the active eval for this thread.
     #[inline]
     pub fn nnue_active(&self) -> bool {

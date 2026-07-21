@@ -5021,11 +5021,23 @@ mod tests {
         assert_eq!(unc_tm_factor(0.2, 0.1, 0.0), 1.0, "c2=0 is off");
         assert_eq!(unc_tm_factor(0.0, 0.1, 1.0), 1.0, "no root sigma");
         assert_eq!(unc_tm_factor(0.2, 0.0, 1.0), 1.0, "sigma_bar unwarmed");
-        assert!(unc_tm_factor(0.12, 0.10, 1.0) > 1.0, "sharp root → think longer");
-        assert!(unc_tm_factor(0.08, 0.10, 1.0) < 1.0, "reliable root → think less");
+        assert!(
+            unc_tm_factor(0.12, 0.10, 1.0) > 1.0,
+            "sharp root → think longer"
+        );
+        assert!(
+            unc_tm_factor(0.08, 0.10, 1.0) < 1.0,
+            "reliable root → think less"
+        );
         // Clamp bounds round-trip f32→f64, so compare approximately.
-        assert!((unc_tm_factor(1.0, 0.10, 1.0) - 1.25).abs() < 1e-6, "clamped high");
-        assert!((unc_tm_factor(0.01, 0.10, 1.0) - 0.8).abs() < 1e-6, "clamped low");
+        assert!(
+            (unc_tm_factor(1.0, 0.10, 1.0) - 1.25).abs() < 1e-6,
+            "clamped high"
+        );
+        assert!(
+            (unc_tm_factor(0.01, 0.10, 1.0) - 0.8).abs() < 1e-6,
+            "clamped low"
+        );
     }
 
     #[test]

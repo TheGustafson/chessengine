@@ -259,6 +259,9 @@ fn install_eval_file(path: &str) -> Result<(), NnueError> {
             // EXP-UNC-1: attach the optional value-uncertainty head (D40_UNC_HEAD
             // sidecar) before leaking. No-op when the env is unset → bit-identical.
             sota_loader::load_uncertainty_sidecar(&mut net.head);
+            // D41 rich-net: attach the optional co-trained WDL head (D40_WDL_HEAD
+            // sidecar). No-op when unset → bit-identical; not in the CENN.
+            sota_loader::load_wdl_sidecar(&mut net.head);
             let leaked: &'static sota_loader::SotaNetwork = Box::leak(Box::new(net));
             *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = Some(leaked);
             *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = None;

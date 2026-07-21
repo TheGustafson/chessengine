@@ -1,0 +1,719 @@
+diff --git a/src/eval/mod.rs b/src/eval/mod.rs
+index e80a347..8482dbb 100644
+--- a/src/eval/mod.rs
++++ b/src/eval/mod.rs
+@@ -145,6 +145,18 @@ impl EvalContext {
+         None
+     }
+ 
++    /// D41 rich-net: the WDL probabilities [L,D,W] from the most recent SOTA eval,
++    /// or `None` when the net has no WDL head / the cheap path ran. Search reads it
++    /// for the decisiveness / optimism consumers; `None` → those fall back to no-op.
++    #[inline]
++    pub fn last_wdl(&self) -> Option<[f32; 3]> {
++        #[cfg(feature = "sota")]
++        if let Some(ctx) = self.sota.as_ref() {
++            return ctx.last_wdl();
++        }
++        None
++    }
++
+     /// True iff NNUE (v1 or SOTA) is the active eval for this thread.
+     #[inline]
+     pub fn nnue_active(&self) -> bool {
+diff --git a/src/eval/nnue/mod.rs b/src/eval/nnue/mod.rs
+index 969dcf7..4a1ceb9 100644
+--- a/src/eval/nnue/mod.rs
++++ b/src/eval/nnue/mod.rs
+@@ -259,6 +259,9 @@ fn install_eval_file(path: &str) -> Result<(), NnueError> {
+             // EXP-UNC-1: attach the optional value-uncertainty head (D40_UNC_HEAD
+             // sidecar) before leaking. No-op when the env is unset → bit-identical.
+             sota_loader::load_uncertainty_sidecar(&mut net.head);
++            // D41 rich-net: attach the optional co-trained WDL head (D40_WDL_HEAD
++            // sidecar). No-op when unset → bit-identical; not in the CENN.
++            sota_loader::load_wdl_sidecar(&mut net.head);
+             let leaked: &'static sota_loader::SotaNetwork = Box::leak(Box::new(net));
+             *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = Some(leaked);
+             *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
+diff --git a/src/eval/nnue/sota_context.rs b/src/eval/nnue/sota_context.rs
+index 8c16c36..269ccef 100644
+--- a/src/eval/nnue/sota_context.rs
++++ b/src/eval/nnue/sota_context.rs
+@@ -44,8 +44,7 @@ static ZERO_THREAT: [[i16; ACC]; 2] = [[0; ACC]; 2];
+ /// signed value keeps it a plain difference.
+ #[inline]
+ fn material_imbalance(board: &Board) -> Value {
+-    let non_pawn =
+-        board.non_pawn_material(Color::White) - board.non_pawn_material(Color::Black);
++    let non_pawn = board.non_pawn_material(Color::White) - board.non_pawn_material(Color::Black);
+     let pawns = board.pieces(Color::White, PieceType::Pawn).count() as Value
+         - board.pieces(Color::Black, PieceType::Pawn).count() as Value;
+     non_pawn + pawns * PAWN_VALUE
+@@ -66,6 +65,11 @@ pub struct SotaContext {
+     ///
+     /// [`evaluate`]: Self::evaluate
+     last_sigma: Option<f32>,
++    /// D41 rich-net: the WDL probabilities [L,D,W] from the last full eval (same
++    /// carry-out-of-band pattern as [`last_sigma`](Self::last_sigma)); `None` when
++    /// the net has no WDL head or on the cheap smallnet path. Search/TM read it via
++    /// [`last_wdl`](Self::last_wdl) for the decisiveness / optimism consumers.
++    last_wdl: Option<[f32; 3]>,
+     /// Smallnet gate (perf study #3 item #8): the cheap net used on DECIDED
+     /// positions, or `None` when the gate is off (`ARCHON_SMALLNET` unset or
+     /// `ARCHON_SMALLNET_THRESH` ≤ 0). When armed, [`evaluate`](Self::evaluate)
+@@ -164,9 +168,14 @@ impl SotaContext {
+             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
+             threats: ThreatContext::new(&net.threat_weights),
+             last_sigma: None,
++            last_wdl: None,
+             smallnet,
+             smallnet_halfka,
+-            smallnet_thresh: if smallnet.is_some() { smallnet_thresh } else { 0 },
++            smallnet_thresh: if smallnet.is_some() {
++                smallnet_thresh
++            } else {
++                0
++            },
+             smallnet_mat_gate,
+             largenet,
+             largenet_halfka,
+@@ -194,6 +203,7 @@ impl SotaContext {
+             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
+             threats: ThreatContext::new(&net.threat_weights),
+             last_sigma: None,
++            last_wdl: None,
+             smallnet: Some(smallnet),
+             smallnet_halfka: Some(HalfkaContext::new(
+                 &smallnet.halfka_weights,
+@@ -212,12 +222,17 @@ impl SotaContext {
+     /// the σ̂ escalation threshold; the large net carries its own HalfKA + threats
+     /// stacks (full-feature).
+     #[cfg(test)]
+-    fn new_with_large(net: &'static SotaNetwork, largenet: &'static SotaNetwork, sigma_gate: f32) -> Self {
++    fn new_with_large(
++        net: &'static SotaNetwork,
++        largenet: &'static SotaNetwork,
++        sigma_gate: f32,
++    ) -> Self {
+         SotaContext {
+             net,
+             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
+             threats: ThreatContext::new(&net.threat_weights),
+             last_sigma: None,
++            last_wdl: None,
+             smallnet: None,
+             smallnet_halfka: None,
+             smallnet_thresh: 0,
+@@ -239,6 +254,13 @@ impl SotaContext {
+         self.last_sigma
+     }
+ 
++    /// D41 rich-net: the WDL probabilities [L,D,W] from the most recent
++    /// [`evaluate`](Self::evaluate), or `None` when the net has no WDL head / the
++    /// cheap smallnet path ran. Same carry-out-of-band contract as `last_sigma`.
++    pub fn last_wdl(&self) -> Option<[f32; 3]> {
++        self.last_wdl
++    }
++
+     /// EXP-UNC-1: invalidate the cached σ̂ (set to `None`). Called at the top of
+     /// [`super::super::evaluate`] so any eval path that does NOT run the SOTA
+     /// forward this node (material-draw shortcut, a non-SOTA net) leaves σ̂ as
+@@ -247,6 +269,7 @@ impl SotaContext {
+     /// and root capture (reviewers A/C).
+     pub fn invalidate_sigma(&mut self) {
+         self.last_sigma = None;
++        self.last_wdl = None;
+     }
+ 
+     /// The net this context evaluates against.
+@@ -320,19 +343,23 @@ impl SotaContext {
+                 (self.smallnet, self.smallnet_halfka.as_mut())
+         {
+             let small_pst = small_halfka.current(board, ply);
+-            let (small_value, _) = small.head.forward(small_pst, &ZERO_THREAT, stm, piece_count);
++            let (small_value, _, _) = small
++                .head
++                .forward(small_pst, &ZERO_THREAT, stm, piece_count);
+             if small_value.abs() >= thresh {
+                 // Cheap path: no variance head, so σ̂ is unavailable — correct,
+                 // since the uncertainty consumers no-op on decided positions.
+                 self.last_sigma = None;
++                self.last_wdl = None;
+                 return small_value;
+             }
+         }
+ 
+         let pst = self.halfka.current(board, ply);
+         let threat = self.threats.at(ply);
+-        let (value, sigma) = self.net.head.forward(pst, threat, stm, piece_count);
++        let (value, sigma, wdl) = self.net.head.forward(pst, threat, stm, piece_count);
+         self.last_sigma = sigma;
++        self.last_wdl = wdl;
+ 
+         // T-shirt gate LARGE tier: on a CRITICAL position — one the medium net is
+         // least sure about (its EXP-UNC-1 σ̂ ≥ largenet_sigma_gate) — escalate to
+@@ -353,9 +380,12 @@ impl SotaContext {
+         {
+             let large_pst = large_halfka.current(board, ply);
+             let large_threat = large_threats.at(ply);
+-            let (large_value, large_sigma) =
+-                large.head.forward(large_pst, large_threat, stm, piece_count);
++            let (large_value, large_sigma, large_wdl) =
++                large
++                    .head
++                    .forward(large_pst, large_threat, stm, piece_count);
+             self.last_sigma = large_sigma;
++            self.last_wdl = large_wdl;
+             return large_value;
+         }
+         value
+@@ -491,7 +521,10 @@ mod tests {
+                 escalations += 1;
+             }
+         }
+-        assert!(escalations > 0, "expected the large tier to actually escalate");
++        assert!(
++            escalations > 0,
++            "expected the large tier to actually escalate"
++        );
+     }
+ 
+     #[test]
+@@ -713,16 +746,16 @@ mod tests {
+         // Startpos is materially symmetric.
+         assert_eq!(material_imbalance(&Board::startpos()), 0);
+         // White up a full queen (black has no queen): positive, ≈ a queen's value.
+-        let w_up = Board::from_fen("rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+-            .unwrap();
++        let w_up =
++            Board::from_fen("rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
+         assert!(
+             material_imbalance(&w_up) > 500,
+             "white up a queen should read strongly positive, got {}",
+             material_imbalance(&w_up)
+         );
+         // Black up a full rook: negative.
+-        let b_up = Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/1NBQKBNR w Kkq - 0 1")
+-            .unwrap();
++        let b_up =
++            Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/1NBQKBNR w Kkq - 0 1").unwrap();
+         assert!(
+             material_imbalance(&b_up) < -300,
+             "black up a rook should read strongly negative, got {}",
+diff --git a/src/eval/nnue/sota_features.rs b/src/eval/nnue/sota_features.rs
+index 309ef14..b00be92 100644
+--- a/src/eval/nnue/sota_features.rs
++++ b/src/eval/nnue/sota_features.rs
+@@ -38,7 +38,7 @@ use std::sync::LazyLock;
+ /// Accumulator width per perspective — must equal the SOTA head's `L1` (768) so
+ /// the refresh output feeds [`super::sota_head::SotaHead::forward`] directly.
+ pub const ACC: usize = super::sota_head::L1;
+-const _: () = assert!(ACC == 768, "refresh output width must match the head");
++const _: () = assert!(ACC == 1536, "refresh output width must match the head");
+ 
+ // ===========================================================================
+ // HalfKAv2_hm — 22,528 = 64 · PS_NB / 2   (half_ka_v2_hm.{h,cpp})
+@@ -801,9 +801,11 @@ mod tests {
+             network_scale: 380,
+             l3_var_weights: None,
+             l3_var_biases: None,
++            l3_wdl_weights: None,
++            l3_wdl_biases: None,
+         };
+         let piece_count = board.all_occupancy().count() as usize;
+-        let (cp, _sigma) = head.forward(&pst, &threat, Color::White, piece_count);
++        let (cp, _sigma, _wdl) = head.forward(&pst, &threat, Color::White, piece_count);
+         assert!(cp.abs() < 1_000_000, "finite centipawns");
+     }
+ }
+diff --git a/src/eval/nnue/sota_head.rs b/src/eval/nnue/sota_head.rs
+index 26bcef5..64b5e31 100644
+--- a/src/eval/nnue/sota_head.rs
++++ b/src/eval/nnue/sota_head.rs
+@@ -23,9 +23,10 @@ use super::sota_simd::{activate, l1_dot};
+ use crate::types::Color;
+ 
+ /// Accumulator width per perspective (Reckless-proven; an SPRT knob, D40).
+-pub const L1: usize = 768;
++/// Bumped 768→1024 (capacity re-test on corrected canonical data, 2026-07-20).
++pub const L1: usize = 1536;
+ /// L1→L2 output width.
+-pub const L2: usize = 16;
++pub const L2: usize = 32;
+ /// L2→L3 output width.
+ pub const L3: usize = 32;
+ /// Material/output buckets.
+@@ -84,6 +85,16 @@ pub struct SotaHead {
+     pub l3_var_weights: Option<Box<[f32]>>,
+     /// `[BUCKETS]` f32, paired with [`l3_var_weights`](Self::l3_var_weights).
+     pub l3_var_biases: Option<Box<[f32]>>,
++    /// D41 rich-net: OPTIONAL co-trained WDL head — a bucket-agnostic `[3·L3]` weight
++    /// block + `[3]` biases (W/D/L logits off the same bucket-selected L3 activation
++    /// the value head reads), trained additively (softmax-CE on the game result).
++    /// `None` for nets without it (⇒ [`forward`](Self::forward) returns `wdl = None`,
++    /// consumers fall back to their constants — bit-identical to today). Loaded from a
++    /// `D40_WDL_HEAD` sidecar, not the CENN, so the CENN + a WDL-less net stay
++    /// bit-identical. Layout: row-major `[o·L3 + j]`, o ∈ {L,D,W}.
++    pub l3_wdl_weights: Option<Box<[f32]>>,
++    /// `[3]` f32 biases paired with [`l3_wdl_weights`](Self::l3_wdl_weights).
++    pub l3_wdl_biases: Option<Box<[f32]>>,
+ }
+ 
+ /// Pairwise-multiply FT activation (design/11 §12.3 step 1): sum the two
+@@ -147,7 +158,9 @@ impl SotaHead {
+         // Fixed-size bucket slice hoists the bounds check out of the loop so
+         // the dequant+SCReLU vectorizes (perf: the flat `l1_biases[bb + j]`
+         // load kept a panic edge per element). Same per-j math → bit-identical.
+-        let bias: &[f32; L2] = self.l1_biases[bb..bb + L2].try_into().expect("l1 bias block");
++        let bias: &[f32; L2] = self.l1_biases[bb..bb + L2]
++            .try_into()
++            .expect("l1 bias block");
+         for j in 0..L2 {
+             let clipped = (pre[j] as f32).mul_add(DEQUANT, bias[j]).clamp(0.0, 1.0);
+             out[j] = clipped * clipped;
+@@ -173,7 +186,9 @@ impl SotaHead {
+             .try_into()
+             .expect("l2 weight block");
+         for i in 0..L2 {
+-            let row: &[f32; L3] = wblock[i * L3..i * L3 + L3].try_into().expect("l2 weight row");
++            let row: &[f32; L3] = wblock[i * L3..i * L3 + L3]
++                .try_into()
++                .expect("l2 weight row");
+             let li = l1[i];
+             for j in 0..L3 {
+                 out[j] = row[j].mul_add(li, out[j]);
+@@ -194,8 +209,9 @@ impl SotaHead {
+         let wbase = bucket * L3;
+         // Fixed-size bucket + per-lane slices hoist the bounds checks so the
+         // 16-wide FMA vectorizes; same lane assignment ⇒ bit-identical.
+-        let weights: &[f32; L3] =
+-            self.l3_weights[wbase..wbase + L3].try_into().expect("l3 weight block");
++        let weights: &[f32; L3] = self.l3_weights[wbase..wbase + L3]
++            .try_into()
++            .expect("l3 weight block");
+         let mut i = 0;
+         while i < L3 {
+             let wl: &[f32; LANES] = weights[i..i + LANES].try_into().expect("l3 weight lane");
+@@ -228,7 +244,9 @@ impl SotaHead {
+         let wbase = bucket * L3;
+         let vw = self.l3_var_weights.as_ref().expect("variance head present");
+         let vb = self.l3_var_biases.as_ref().expect("variance head present");
+-        let weights: &[f32; L3] = vw[wbase..wbase + L3].try_into().expect("l3 var weight block");
++        let weights: &[f32; L3] = vw[wbase..wbase + L3]
++            .try_into()
++            .expect("l3 var weight block");
+         let mut i = 0;
+         while i < L3 {
+             let wl: &[f32; LANES] = weights[i..i + LANES].try_into().expect("l3 var lane");
+@@ -248,6 +266,26 @@ impl SotaHead {
+         sums[0] + vb[bucket]
+     }
+ 
++    /// D41 rich-net WDL head: 3 raw logits (L,D,W) off the same bucket-selected L3
++    /// activation the value head reads. Bucket-agnostic weights `[3·L3]` row-major
++    /// (`w[o·L3 + j]`) + `[3]` biases — mirrors the trainer's `l3_wdl` affine
++    /// (`L3 → 3`). Softmax is left to the consumer. Caller guarantees the head is
++    /// present.
++    fn propagate_l3_wdl(&self, l2: &[f32; L3]) -> [f32; 3] {
++        let ww = self.l3_wdl_weights.as_ref().expect("wdl head present");
++        let wb = self.l3_wdl_biases.as_ref().expect("wdl head present");
++        let mut out = [0.0f32; 3];
++        for (o, slot) in out.iter_mut().enumerate() {
++            let base = o * L3;
++            let mut s = 0.0f32;
++            for j in 0..L3 {
++                s = ww[base + j].mul_add(l2[j], s);
++            }
++            *slot = s + wb[o];
++        }
++        out
++    }
++
+     /// The head forward: two per-perspective accumulators + side to move + total
+     /// piece count → (stm-relative centipawns, optional value-uncertainty σ̂).
+     /// The front-end (task #29 part 2) produces `pst`/`threat`; this is the
+@@ -261,7 +299,7 @@ impl SotaHead {
+         threat: &[[i16; L1]; 2],
+         stm: Color,
+         piece_count: usize,
+-    ) -> (i32, Option<f32>) {
++    ) -> (i32, Option<f32>, Option<[f32; 3]>) {
+         let ft = activate_ft(pst, threat, stm);
+         let (nnz, count) = find_nnz(&ft);
+         let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
+@@ -278,7 +316,22 @@ impl SotaHead {
+             let s = (0.5 * self.propagate_l3_var(&l2, bucket)).exp();
+             s.is_finite().then_some(s)
+         });
+-        (value, sigma)
++        // D41 rich-net: WDL probabilities [L,D,W] (softmax of the 3 logits). `None`
++        // if no head or a non-finite result (garbage sidecar) → consumers fall back
++        // to their no-op, same guard rationale as `sigma`.
++        let wdl = self.l3_wdl_weights.as_ref().and_then(|_| {
++            let logits = self.propagate_l3_wdl(&l2);
++            let m = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
++            let mut probs = [0.0f32; 3];
++            let mut sum = 0.0f32;
++            for (p, &z) in probs.iter_mut().zip(logits.iter()) {
++                *p = (z - m).exp();
++                sum += *p;
++            }
++            probs.iter_mut().for_each(|p| *p /= sum);
++            probs.iter().all(|p| p.is_finite()).then_some(probs)
++        });
++        (value, sigma, wdl)
+     }
+ }
+ 
+@@ -335,6 +388,8 @@ mod tests {
+             network_scale: 380,
+             l3_var_weights: None,
+             l3_var_biases: None,
++            l3_wdl_weights: None,
++            l3_wdl_biases: None,
+         }
+     }
+ 
+@@ -412,16 +467,16 @@ mod tests {
+     fn forward_deterministic_and_bucketed() {
+         let head = synth_head();
+         let (pst, threat) = synth_accs();
+-        let (a, _) = head.forward(&pst, &threat, Color::White, 20);
+-        let (b, _) = head.forward(&pst, &threat, Color::White, 20);
++        let (a, _, _) = head.forward(&pst, &threat, Color::White, 20);
++        let (b, _, _) = head.forward(&pst, &threat, Color::White, 20);
+         assert_eq!(a, b, "deterministic");
+         assert!(a.abs() < 100_000, "finite, sane cp");
+         // piece counts 20 and 32 map to different buckets (4 vs 7).
+         assert_eq!(OUTPUT_BUCKETS_LAYOUT[20], 4);
+         assert_eq!(OUTPUT_BUCKETS_LAYOUT[32], 7);
+         // stm flip changes which half leads → generally a different value.
+-        let (w, _) = head.forward(&pst, &threat, Color::White, 20);
+-        let (bl, _) = head.forward(&pst, &threat, Color::Black, 20);
++        let (w, _, _) = head.forward(&pst, &threat, Color::White, 20);
++        let (bl, _, _) = head.forward(&pst, &threat, Color::Black, 20);
+         assert!(w != bl, "side-to-move relativity is wired");
+     }
+ 
+@@ -434,19 +489,27 @@ mod tests {
+         let (pst, threat) = synth_accs();
+ 
+         let plain = synth_head();
+-        let (v0, s0) = plain.forward(&pst, &threat, Color::White, 20);
++        let (v0, s0, _) = plain.forward(&pst, &threat, Color::White, 20);
+         assert!(s0.is_none(), "no variance head => no sigma");
+ 
+         let mut head = synth_head();
+-        let vw: Vec<f32> = (0..BUCKETS * L3).map(|i| ((i % 7) as f32 - 3.0) * 0.05).collect();
++        let vw: Vec<f32> = (0..BUCKETS * L3)
++            .map(|i| ((i % 7) as f32 - 3.0) * 0.05)
++            .collect();
+         let vb: Vec<f32> = (0..BUCKETS).map(|i| i as f32 * 0.01 - 0.02).collect();
+         head.l3_var_weights = Some(vw.into_boxed_slice());
+         head.l3_var_biases = Some(vb.into_boxed_slice());
+-        let (v1, s1) = head.forward(&pst, &threat, Color::White, 20);
++        let (v1, s1, _) = head.forward(&pst, &threat, Color::White, 20);
+ 
+-        assert_eq!(v0, v1, "the value (mean) path is unchanged by the variance head");
++        assert_eq!(
++            v0, v1,
++            "the value (mean) path is unchanged by the variance head"
++        );
+         let sigma = s1.expect("variance head => Some(sigma)");
+-        assert!(sigma.is_finite() && sigma > 0.0, "sigma finite & positive, got {sigma}");
++        assert!(
++            sigma.is_finite() && sigma > 0.0,
++            "sigma finite & positive, got {sigma}"
++        );
+     }
+ 
+     /// EXP-UNC-1 (D33 review, reviewer C): propagate_l3_var must be a faithful
+diff --git a/src/eval/nnue/sota_loader.rs b/src/eval/nnue/sota_loader.rs
+index 4297c6c..c13f5cd 100644
+--- a/src/eval/nnue/sota_loader.rs
++++ b/src/eval/nnue/sota_loader.rs
+@@ -411,6 +411,8 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
+         network_scale,
+         l3_var_weights: None,
+         l3_var_biases: None,
++        l3_wdl_weights: None,
++        l3_wdl_biases: None,
+     };
+ 
+     Ok(SotaNetwork {
+@@ -467,6 +469,42 @@ pub(crate) fn load_uncertainty_sidecar(head: &mut SotaHead) {
+     eprintln!("D40_UNC_HEAD: loaded value-uncertainty head from {path:?}");
+ }
+ 
++/// D41 rich-net: load the co-trained WDL head from a `D40_WDL_HEAD` sidecar (flat
++/// LE f32: `[3·L3]` weights row-major `[o·L3+j]`, o ∈ {L,D,W}, then `[3]` biases —
++/// the layout `tools/nnue/extract_head.py l3_wdl` writes). Absent env ⇒ no head
++/// (`wdl = None`) ⇒ bit-identical to today; the head is NOT in the CENN, so the
++/// value net is unchanged. Called once at net-load, beside `load_uncertainty_sidecar`.
++pub(crate) fn load_wdl_sidecar(head: &mut SotaHead) {
++    let Some(path) = std::env::var_os("D40_WDL_HEAD") else {
++        return;
++    };
++    let bytes = match std::fs::read(&path) {
++        Ok(bytes) => bytes,
++        Err(error) => {
++            eprintln!("D40_WDL_HEAD: cannot read {path:?}: {error}");
++            return;
++        }
++    };
++    let n_weights = 3 * L3;
++    let expected = (n_weights + 3) * 4;
++    if bytes.len() != expected {
++        eprintln!(
++            "D40_WDL_HEAD: {path:?} is {} bytes, expected {expected} \
++             ({n_weights} weights + 3 biases, f32) — ignoring",
++            bytes.len()
++        );
++        return;
++    }
++    let mut floats = bytes
++        .chunks_exact(4)
++        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]));
++    let weights: Vec<f32> = (&mut floats).take(n_weights).collect();
++    let biases: Vec<f32> = floats.take(3).collect();
++    head.l3_wdl_weights = Some(weights.into_boxed_slice());
++    head.l3_wdl_biases = Some(biases.into_boxed_slice());
++    eprintln!("D40_WDL_HEAD: loaded WDL head from {path:?}");
++}
++
+ // ─── Serializer (tests + netpack cross-check) ──────────────────────────────
+ 
+ /// Serialize a `SotaNetwork` to CENN-v2 bytes (the inverse of [`load_v2_bytes`]).
+@@ -635,6 +673,8 @@ pub(crate) mod tests {
+                 network_scale: 380,
+                 l3_var_weights: None,
+                 l3_var_biases: None,
++                l3_wdl_weights: None,
++                l3_wdl_biases: None,
+             },
+         }
+     }
+diff --git a/src/eval/nnue/sota_simd.rs b/src/eval/nnue/sota_simd.rs
+index 2394e62..977f9c2 100644
+--- a/src/eval/nnue/sota_simd.rs
++++ b/src/eval/nnue/sota_simd.rs
+@@ -6,16 +6,26 @@
+ //! selected once at startup and preserves wrapping i16 arithmetic.
+ 
+ use super::sota_features::ACC;
+-use super::sota_head::{FT_QUANT, FT_SHIFT, THREAT_QUANT};
++use super::sota_head::{FT_QUANT, FT_SHIFT, L2, THREAT_QUANT};
+ use std::sync::LazyLock;
+ 
++/// The L1 sparse dot writes `L2` int32 accumulators. The kernels process the
++/// outputs in 16-wide blocks (one avx512 register / two avx256 registers each),
++/// so `L2` must be a multiple of 16. Widening the head bottleneck (D41) just
++/// bumps [`super::sota_head::L2`]; the block loop scales automatically.
++const L2_BLK: usize = 16;
++const _: () = assert!(
++    L2 % L2_BLK == 0,
++    "L2 must be a multiple of 16 for the l1_dot block loop"
++);
++
+ type ApplyI16Fn = fn(&mut [i16; ACC], &[i16], &[usize], &[usize]);
+ // Fused copy+apply: read `src`, apply deltas, write `dst` in ONE pass — the
+ // lazy fold's child = parent ± deltas without a separate ~1.5 KB memmove
+ // (profiling-study §4.3/opt #2). `dst`/`src` may not alias.
+ type ApplyI16IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i16], &[usize], &[usize]);
+ type ApplyI8IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i8], &[usize], &[usize]);
+-type L1DotFn = fn(&mut [i32; 16], &[u8; ACC], &[u16], &[i8]);
++type L1DotFn = fn(&mut [i32; L2], &[u8; ACC], &[u16], &[i8]);
+ type ActivateFn = fn(&mut [u8; ACC], &[[i16; ACC]; 2], &[[i16; ACC]; 2], usize);
+ type FindNnzFn = fn(&[u8; ACC], &mut [u16; ACC / 4]) -> usize;
+ 
+@@ -82,10 +92,11 @@ pub(crate) fn apply_i8_deltas_into(
+     (KERNELS.i8_deltas_into)(dst, src, weights, adds, subs);
+ }
+ 
+-/// Sparse `[u8; 768] × [i8; 16]` dot product. `weights` is laid out as
+-/// `[group][output][4]`, and `nnz` contains active four-byte group indices.
++/// Sparse `[u8; ACC] × [i8; L2]` dot product. `weights` is laid out as
++/// `[group][output][4]` (output ∈ 0..L2), and `nnz` contains active four-byte
++/// group indices.
+ #[inline]
+-pub(crate) fn l1_dot(pre: &mut [i32; 16], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
++pub(crate) fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
+     (KERNELS.l1_dot)(pre, ft, nnz, weights);
+ }
+ 
+@@ -166,14 +177,14 @@ mod scalar {
+         }
+     }
+ 
+-    pub(super) fn l1_dot(pre: &mut [i32; 16], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
++    pub(super) fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
+         for &group in nnz {
+             let group = usize::from(group);
+-            for output in 0..16 {
++            for output in 0..L2 {
+                 let mut dot = 0i32;
+                 for lane in 0..4 {
+                     dot += i32::from(ft[group * 4 + lane])
+-                        * i32::from(weights[group * 64 + output * 4 + lane]);
++                        * i32::from(weights[group * (L2 * 4) + output * 4 + lane]);
+                 }
+                 pre[output] += dot;
+             }
+@@ -264,34 +275,40 @@ mod avx2 {
+     }
+ 
+     #[target_feature(enable = "avx2")]
+-    unsafe fn l1_dot_inner(pre: &mut [i32; 16], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
++    unsafe fn l1_dot_inner(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
+         // maddubs forms adjacent two-product sums. With ft<=127 and an i8
+         // weight those sums fit i16 at both extrema; madd_epi16(..., 1) then
+         // widens each four-product dot to i32, matching Bullet exactly.
+-        // SAFETY: active groups address four FT bytes and sixteen complete
+-        // four-byte output rows in loader-validated storage.
++        // Each 16-output block is two 8-lane i32 registers; the outer loop
++        // walks the L2/16 blocks so a wider head bottleneck scales for free.
++        // SAFETY: active groups address four FT bytes and, per block, sixteen
++        // complete four-byte output rows in loader-validated storage.
+         unsafe {
+             let ones = _mm256_set1_epi16(1);
+-            let mut lo = _mm256_loadu_si256(pre.as_ptr().cast());
+-            let mut hi = _mm256_loadu_si256(pre.as_ptr().add(8).cast());
+-            for &group in nnz {
+-                let group = usize::from(group);
+-                let inputs = _mm256_set1_epi32(i32::from_le_bytes([
+-                    ft[group * 4],
+-                    ft[group * 4 + 1],
+-                    ft[group * 4 + 2],
+-                    ft[group * 4 + 3],
+-                ]));
+-                let base = weights.as_ptr().add(group * 64);
+-                let wlo = _mm256_loadu_si256(base.cast());
+-                let whi = _mm256_loadu_si256(base.add(32).cast());
+-                let plo = _mm256_maddubs_epi16(inputs, wlo);
+-                let phi = _mm256_maddubs_epi16(inputs, whi);
+-                lo = _mm256_add_epi32(lo, _mm256_madd_epi16(plo, ones));
+-                hi = _mm256_add_epi32(hi, _mm256_madd_epi16(phi, ones));
++            for blk in 0..(L2 / L2_BLK) {
++                let pbase = blk * L2_BLK; // 16 outputs per block
++                let wblk = blk * 64; // 16 outputs × 4 bytes within each group
++                let mut lo = _mm256_loadu_si256(pre.as_ptr().add(pbase).cast());
++                let mut hi = _mm256_loadu_si256(pre.as_ptr().add(pbase + 8).cast());
++                for &group in nnz {
++                    let group = usize::from(group);
++                    let inputs = _mm256_set1_epi32(i32::from_le_bytes([
++                        ft[group * 4],
++                        ft[group * 4 + 1],
++                        ft[group * 4 + 2],
++                        ft[group * 4 + 3],
++                    ]));
++                    let base = weights.as_ptr().add(group * (L2 * 4) + wblk);
++                    let wlo = _mm256_loadu_si256(base.cast());
++                    let whi = _mm256_loadu_si256(base.add(32).cast());
++                    let plo = _mm256_maddubs_epi16(inputs, wlo);
++                    let phi = _mm256_maddubs_epi16(inputs, whi);
++                    lo = _mm256_add_epi32(lo, _mm256_madd_epi16(plo, ones));
++                    hi = _mm256_add_epi32(hi, _mm256_madd_epi16(phi, ones));
++                }
++                _mm256_storeu_si256(pre.as_mut_ptr().add(pbase).cast(), lo);
++                _mm256_storeu_si256(pre.as_mut_ptr().add(pbase + 8).cast(), hi);
+             }
+-            _mm256_storeu_si256(pre.as_mut_ptr().cast(), lo);
+-            _mm256_storeu_si256(pre.as_mut_ptr().add(8).cast(), hi);
+         }
+     }
+ 
+@@ -474,7 +491,7 @@ mod avx2 {
+         unsafe { i8_deltas_into_inner(dst, src, weights, adds, subs) }
+     }
+ 
+-    fn l1_dot(pre: &mut [i32; 16], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
++    fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
+         // SAFETY: installed only after runtime AVX2 detection.
+         unsafe { l1_dot_inner(pre, ft, nnz, weights) }
+     }
+@@ -588,27 +605,33 @@ mod avx512 {
+     }
+ 
+     #[target_feature(enable = "avx512f,avx512bw,avx512vnni")]
+-    unsafe fn l1_dot_inner(pre: &mut [i32; 16], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
+-        // The 16 i32 outputs are exactly one 512-bit register, and dpbusd is
++    unsafe fn l1_dot_inner(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
++        // Each 16-output block is exactly one 512-bit register, and dpbusd is
+         // the whole kernel: for each dword lane it accumulates the u8×i8
+         // four-product dot directly into i32 — the maddubs+madd pair (and its
+         // i16 saturation reasoning) collapses into one instruction per group.
+-        // SAFETY: active groups address four FT bytes and sixteen complete
+-        // four-byte output rows in loader-validated storage.
++        // The outer loop walks the L2/16 output blocks (one register each).
++        // SAFETY: active groups address four FT bytes and, per block, sixteen
++        // complete four-byte output rows in loader-validated storage.
+         unsafe {
+-            let mut sums = _mm512_loadu_si512(pre.as_ptr().cast());
+-            for &group in nnz {
+-                let group = usize::from(group);
+-                let inputs = _mm512_set1_epi32(i32::from_le_bytes([
+-                    ft[group * 4],
+-                    ft[group * 4 + 1],
+-                    ft[group * 4 + 2],
+-                    ft[group * 4 + 3],
+-                ]));
+-                let rows = _mm512_loadu_si512(weights.as_ptr().add(group * 64).cast());
+-                sums = _mm512_dpbusd_epi32(sums, inputs, rows);
++            for blk in 0..(L2 / L2_BLK) {
++                let pbase = blk * L2_BLK; // 16 outputs per block
++                let wblk = blk * 64; // 16 outputs × 4 bytes within each group
++                let mut sums = _mm512_loadu_si512(pre.as_ptr().add(pbase).cast());
++                for &group in nnz {
++                    let group = usize::from(group);
++                    let inputs = _mm512_set1_epi32(i32::from_le_bytes([
++                        ft[group * 4],
++                        ft[group * 4 + 1],
++                        ft[group * 4 + 2],
++                        ft[group * 4 + 3],
++                    ]));
++                    let rows =
++                        _mm512_loadu_si512(weights.as_ptr().add(group * (L2 * 4) + wblk).cast());
++                    sums = _mm512_dpbusd_epi32(sums, inputs, rows);
++                }
++                _mm512_storeu_si512(pre.as_mut_ptr().add(pbase).cast(), sums);
+             }
+-            _mm512_storeu_si512(pre.as_mut_ptr().cast(), sums);
+         }
+     }
+ 
+@@ -695,7 +718,7 @@ mod avx512 {
+         unsafe { i8_deltas_into_inner(dst, src, weights, adds, subs) }
+     }
+ 
+-    fn l1_dot(pre: &mut [i32; 16], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
++    fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
+         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
+         unsafe { l1_dot_inner(pre, ft, nnz, weights) }
+     }
+@@ -754,7 +777,7 @@ mod tests {
+         for (i, value) in ft.iter_mut().enumerate() {
+             *value = (i as u8).wrapping_mul(113) & 127;
+         }
+-        let mut weights = vec![0i8; (ACC / 4) * 64];
++        let mut weights = vec![0i8; (ACC / 4) * (L2 * 4)];
+         for (i, value) in weights.iter_mut().enumerate() {
+             *value = (i as u8).wrapping_mul(197) as i8;
+         }
+@@ -804,7 +827,7 @@ mod tests {
+         for (i, value) in ft.iter_mut().enumerate() {
+             *value = (i as u8).wrapping_mul(113) & 127;
+         }
+-        let mut l1_weights = vec![0i8; (ACC / 4) * 64];
++        let mut l1_weights = vec![0i8; (ACC / 4) * (L2 * 4)];
+         for (i, value) in l1_weights.iter_mut().enumerate() {
+             *value = (i as u8).wrapping_mul(197) as i8;
+         }
+@@ -812,7 +835,7 @@ mod tests {
+             .filter(|group| group % 3 != 0)
+             .map(|group| group as u16)
+             .collect();
+-        let pre_seed: [i32; 16] = std::array::from_fn(|i| i as i32 * 123_457 - 700_000);
++        let pre_seed: [i32; L2] = std::array::from_fn(|i| i as i32 * 123_457 - 700_000);
+ 
+         let mut pst = [[0i16; ACC]; 2];
+         let mut threat = [[0i16; ACC]; 2];

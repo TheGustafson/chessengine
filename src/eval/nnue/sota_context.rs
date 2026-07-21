@@ -44,8 +44,7 @@ static ZERO_THREAT: [[i16; ACC]; 2] = [[0; ACC]; 2];
 /// signed value keeps it a plain difference.
 #[inline]
 fn material_imbalance(board: &Board) -> Value {
-    let non_pawn =
-        board.non_pawn_material(Color::White) - board.non_pawn_material(Color::Black);
+    let non_pawn = board.non_pawn_material(Color::White) - board.non_pawn_material(Color::Black);
     let pawns = board.pieces(Color::White, PieceType::Pawn).count() as Value
         - board.pieces(Color::Black, PieceType::Pawn).count() as Value;
     non_pawn + pawns * PAWN_VALUE
@@ -66,6 +65,11 @@ pub struct SotaContext {
     ///
     /// [`evaluate`]: Self::evaluate
     last_sigma: Option<f32>,
+    /// D41 rich-net: the WDL probabilities [L,D,W] from the last full eval (same
+    /// carry-out-of-band pattern as [`last_sigma`](Self::last_sigma)); `None` when
+    /// the net has no WDL head or on the cheap smallnet path. Search/TM read it via
+    /// [`last_wdl`](Self::last_wdl) for the decisiveness / optimism consumers.
+    last_wdl: Option<[f32; 3]>,
     /// Smallnet gate (perf study #3 item #8): the cheap net used on DECIDED
     /// positions, or `None` when the gate is off (`ARCHON_SMALLNET` unset or
     /// `ARCHON_SMALLNET_THRESH` ≤ 0). When armed, [`evaluate`](Self::evaluate)
@@ -164,9 +168,14 @@ impl SotaContext {
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
             threats: ThreatContext::new(&net.threat_weights),
             last_sigma: None,
+            last_wdl: None,
             smallnet,
             smallnet_halfka,
-            smallnet_thresh: if smallnet.is_some() { smallnet_thresh } else { 0 },
+            smallnet_thresh: if smallnet.is_some() {
+                smallnet_thresh
+            } else {
+                0
+            },
             smallnet_mat_gate,
             largenet,
             largenet_halfka,
@@ -194,6 +203,7 @@ impl SotaContext {
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
             threats: ThreatContext::new(&net.threat_weights),
             last_sigma: None,
+            last_wdl: None,
             smallnet: Some(smallnet),
             smallnet_halfka: Some(HalfkaContext::new(
                 &smallnet.halfka_weights,
@@ -212,12 +222,17 @@ impl SotaContext {
     /// the σ̂ escalation threshold; the large net carries its own HalfKA + threats
     /// stacks (full-feature).
     #[cfg(test)]
-    fn new_with_large(net: &'static SotaNetwork, largenet: &'static SotaNetwork, sigma_gate: f32) -> Self {
+    fn new_with_large(
+        net: &'static SotaNetwork,
+        largenet: &'static SotaNetwork,
+        sigma_gate: f32,
+    ) -> Self {
         SotaContext {
             net,
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
             threats: ThreatContext::new(&net.threat_weights),
             last_sigma: None,
+            last_wdl: None,
             smallnet: None,
             smallnet_halfka: None,
             smallnet_thresh: 0,
@@ -239,6 +254,13 @@ impl SotaContext {
         self.last_sigma
     }
 
+    /// D41 rich-net: the WDL probabilities [L,D,W] from the most recent
+    /// [`evaluate`](Self::evaluate), or `None` when the net has no WDL head / the
+    /// cheap smallnet path ran. Same carry-out-of-band contract as `last_sigma`.
+    pub fn last_wdl(&self) -> Option<[f32; 3]> {
+        self.last_wdl
+    }
+
     /// EXP-UNC-1: invalidate the cached σ̂ (set to `None`). Called at the top of
     /// [`super::super::evaluate`] so any eval path that does NOT run the SOTA
     /// forward this node (material-draw shortcut, a non-SOTA net) leaves σ̂ as
@@ -247,6 +269,7 @@ impl SotaContext {
     /// and root capture (reviewers A/C).
     pub fn invalidate_sigma(&mut self) {
         self.last_sigma = None;
+        self.last_wdl = None;
     }
 
     /// The net this context evaluates against.
@@ -320,19 +343,23 @@ impl SotaContext {
                 (self.smallnet, self.smallnet_halfka.as_mut())
         {
             let small_pst = small_halfka.current(board, ply);
-            let (small_value, _) = small.head.forward(small_pst, &ZERO_THREAT, stm, piece_count);
+            let (small_value, _, _) = small
+                .head
+                .forward(small_pst, &ZERO_THREAT, stm, piece_count);
             if small_value.abs() >= thresh {
                 // Cheap path: no variance head, so σ̂ is unavailable — correct,
                 // since the uncertainty consumers no-op on decided positions.
                 self.last_sigma = None;
+                self.last_wdl = None;
                 return small_value;
             }
         }
 
         let pst = self.halfka.current(board, ply);
         let threat = self.threats.at(ply);
-        let (value, sigma) = self.net.head.forward(pst, threat, stm, piece_count);
+        let (value, sigma, wdl) = self.net.head.forward(pst, threat, stm, piece_count);
         self.last_sigma = sigma;
+        self.last_wdl = wdl;
 
         // T-shirt gate LARGE tier: on a CRITICAL position — one the medium net is
         // least sure about (its EXP-UNC-1 σ̂ ≥ largenet_sigma_gate) — escalate to
@@ -353,9 +380,12 @@ impl SotaContext {
         {
             let large_pst = large_halfka.current(board, ply);
             let large_threat = large_threats.at(ply);
-            let (large_value, large_sigma) =
-                large.head.forward(large_pst, large_threat, stm, piece_count);
+            let (large_value, large_sigma, large_wdl) =
+                large
+                    .head
+                    .forward(large_pst, large_threat, stm, piece_count);
             self.last_sigma = large_sigma;
+            self.last_wdl = large_wdl;
             return large_value;
         }
         value
@@ -491,7 +521,10 @@ mod tests {
                 escalations += 1;
             }
         }
-        assert!(escalations > 0, "expected the large tier to actually escalate");
+        assert!(
+            escalations > 0,
+            "expected the large tier to actually escalate"
+        );
     }
 
     #[test]
@@ -713,16 +746,16 @@ mod tests {
         // Startpos is materially symmetric.
         assert_eq!(material_imbalance(&Board::startpos()), 0);
         // White up a full queen (black has no queen): positive, ≈ a queen's value.
-        let w_up = Board::from_fen("rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
-            .unwrap();
+        let w_up =
+            Board::from_fen("rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
         assert!(
             material_imbalance(&w_up) > 500,
             "white up a queen should read strongly positive, got {}",
             material_imbalance(&w_up)
         );
         // Black up a full rook: negative.
-        let b_up = Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/1NBQKBNR w Kkq - 0 1")
-            .unwrap();
+        let b_up =
+            Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/1NBQKBNR w Kkq - 0 1").unwrap();
         assert!(
             material_imbalance(&b_up) < -300,
             "black up a rook should read strongly negative, got {}",

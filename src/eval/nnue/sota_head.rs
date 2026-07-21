@@ -23,6 +23,10 @@ use super::sota_simd::{activate, l1_dot};
 use crate::types::Color;
 
 /// Accumulator width per perspective (Reckless-proven; an SPRT knob, D40).
+/// INCUMBENT VALUE (2026-07-21): the 1536/L2=32 drop-threats arch bet is PARKED
+/// (patches/1536-arch-bet-full.patch preserves it; resuming = flip L1/L2 here +
+/// the ACC assert in sota_features.rs + trainer consts, then rebuild). The
+/// shipped nets and all current gating are 768+threats/L2=16.
 pub const L1: usize = 768;
 /// L1→L2 output width.
 pub const L2: usize = 16;
@@ -84,6 +88,16 @@ pub struct SotaHead {
     pub l3_var_weights: Option<Box<[f32]>>,
     /// `[BUCKETS]` f32, paired with [`l3_var_weights`](Self::l3_var_weights).
     pub l3_var_biases: Option<Box<[f32]>>,
+    /// D41 rich-net: OPTIONAL co-trained WDL head — a bucket-agnostic `[3·L3]` weight
+    /// block + `[3]` biases (W/D/L logits off the same bucket-selected L3 activation
+    /// the value head reads), trained additively (softmax-CE on the game result).
+    /// `None` for nets without it (⇒ [`forward`](Self::forward) returns `wdl = None`,
+    /// consumers fall back to their constants — bit-identical to today). Loaded from a
+    /// `D40_WDL_HEAD` sidecar, not the CENN, so the CENN + a WDL-less net stay
+    /// bit-identical. Layout: row-major `[o·L3 + j]`, o ∈ {L,D,W}.
+    pub l3_wdl_weights: Option<Box<[f32]>>,
+    /// `[3]` f32 biases paired with [`l3_wdl_weights`](Self::l3_wdl_weights).
+    pub l3_wdl_biases: Option<Box<[f32]>>,
 }
 
 /// Pairwise-multiply FT activation (design/11 §12.3 step 1): sum the two
@@ -147,7 +161,9 @@ impl SotaHead {
         // Fixed-size bucket slice hoists the bounds check out of the loop so
         // the dequant+SCReLU vectorizes (perf: the flat `l1_biases[bb + j]`
         // load kept a panic edge per element). Same per-j math → bit-identical.
-        let bias: &[f32; L2] = self.l1_biases[bb..bb + L2].try_into().expect("l1 bias block");
+        let bias: &[f32; L2] = self.l1_biases[bb..bb + L2]
+            .try_into()
+            .expect("l1 bias block");
         for j in 0..L2 {
             let clipped = (pre[j] as f32).mul_add(DEQUANT, bias[j]).clamp(0.0, 1.0);
             out[j] = clipped * clipped;
@@ -173,7 +189,9 @@ impl SotaHead {
             .try_into()
             .expect("l2 weight block");
         for i in 0..L2 {
-            let row: &[f32; L3] = wblock[i * L3..i * L3 + L3].try_into().expect("l2 weight row");
+            let row: &[f32; L3] = wblock[i * L3..i * L3 + L3]
+                .try_into()
+                .expect("l2 weight row");
             let li = l1[i];
             for j in 0..L3 {
                 out[j] = row[j].mul_add(li, out[j]);
@@ -194,8 +212,9 @@ impl SotaHead {
         let wbase = bucket * L3;
         // Fixed-size bucket + per-lane slices hoist the bounds checks so the
         // 16-wide FMA vectorizes; same lane assignment ⇒ bit-identical.
-        let weights: &[f32; L3] =
-            self.l3_weights[wbase..wbase + L3].try_into().expect("l3 weight block");
+        let weights: &[f32; L3] = self.l3_weights[wbase..wbase + L3]
+            .try_into()
+            .expect("l3 weight block");
         let mut i = 0;
         while i < L3 {
             let wl: &[f32; LANES] = weights[i..i + LANES].try_into().expect("l3 weight lane");
@@ -228,7 +247,9 @@ impl SotaHead {
         let wbase = bucket * L3;
         let vw = self.l3_var_weights.as_ref().expect("variance head present");
         let vb = self.l3_var_biases.as_ref().expect("variance head present");
-        let weights: &[f32; L3] = vw[wbase..wbase + L3].try_into().expect("l3 var weight block");
+        let weights: &[f32; L3] = vw[wbase..wbase + L3]
+            .try_into()
+            .expect("l3 var weight block");
         let mut i = 0;
         while i < L3 {
             let wl: &[f32; LANES] = weights[i..i + LANES].try_into().expect("l3 var lane");
@@ -248,6 +269,26 @@ impl SotaHead {
         sums[0] + vb[bucket]
     }
 
+    /// D41 rich-net WDL head: 3 raw logits (L,D,W) off the same bucket-selected L3
+    /// activation the value head reads. Bucket-agnostic weights `[3·L3]` row-major
+    /// (`w[o·L3 + j]`) + `[3]` biases — mirrors the trainer's `l3_wdl` affine
+    /// (`L3 → 3`). Softmax is left to the consumer. Caller guarantees the head is
+    /// present.
+    fn propagate_l3_wdl(&self, l2: &[f32; L3]) -> [f32; 3] {
+        let ww = self.l3_wdl_weights.as_ref().expect("wdl head present");
+        let wb = self.l3_wdl_biases.as_ref().expect("wdl head present");
+        let mut out = [0.0f32; 3];
+        for (o, slot) in out.iter_mut().enumerate() {
+            let base = o * L3;
+            let mut s = 0.0f32;
+            for j in 0..L3 {
+                s = ww[base + j].mul_add(l2[j], s);
+            }
+            *slot = s + wb[o];
+        }
+        out
+    }
+
     /// The head forward: two per-perspective accumulators + side to move + total
     /// piece count → (stm-relative centipawns, optional value-uncertainty σ̂).
     /// The front-end (task #29 part 2) produces `pst`/`threat`; this is the
@@ -261,7 +302,7 @@ impl SotaHead {
         threat: &[[i16; L1]; 2],
         stm: Color,
         piece_count: usize,
-    ) -> (i32, Option<f32>) {
+    ) -> (i32, Option<f32>, Option<[f32; 3]>) {
         let ft = activate_ft(pst, threat, stm);
         let (nnz, count) = find_nnz(&ft);
         let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
@@ -278,7 +319,22 @@ impl SotaHead {
             let s = (0.5 * self.propagate_l3_var(&l2, bucket)).exp();
             s.is_finite().then_some(s)
         });
-        (value, sigma)
+        // D41 rich-net: WDL probabilities [L,D,W] (softmax of the 3 logits). `None`
+        // if no head or a non-finite result (garbage sidecar) → consumers fall back
+        // to their no-op, same guard rationale as `sigma`.
+        let wdl = self.l3_wdl_weights.as_ref().and_then(|_| {
+            let logits = self.propagate_l3_wdl(&l2);
+            let m = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+            let mut probs = [0.0f32; 3];
+            let mut sum = 0.0f32;
+            for (p, &z) in probs.iter_mut().zip(logits.iter()) {
+                *p = (z - m).exp();
+                sum += *p;
+            }
+            probs.iter_mut().for_each(|p| *p /= sum);
+            probs.iter().all(|p| p.is_finite()).then_some(probs)
+        });
+        (value, sigma, wdl)
     }
 }
 
@@ -335,6 +391,8 @@ mod tests {
             network_scale: 380,
             l3_var_weights: None,
             l3_var_biases: None,
+            l3_wdl_weights: None,
+            l3_wdl_biases: None,
         }
     }
 
@@ -412,16 +470,16 @@ mod tests {
     fn forward_deterministic_and_bucketed() {
         let head = synth_head();
         let (pst, threat) = synth_accs();
-        let (a, _) = head.forward(&pst, &threat, Color::White, 20);
-        let (b, _) = head.forward(&pst, &threat, Color::White, 20);
+        let (a, _, _) = head.forward(&pst, &threat, Color::White, 20);
+        let (b, _, _) = head.forward(&pst, &threat, Color::White, 20);
         assert_eq!(a, b, "deterministic");
         assert!(a.abs() < 100_000, "finite, sane cp");
         // piece counts 20 and 32 map to different buckets (4 vs 7).
         assert_eq!(OUTPUT_BUCKETS_LAYOUT[20], 4);
         assert_eq!(OUTPUT_BUCKETS_LAYOUT[32], 7);
         // stm flip changes which half leads → generally a different value.
-        let (w, _) = head.forward(&pst, &threat, Color::White, 20);
-        let (bl, _) = head.forward(&pst, &threat, Color::Black, 20);
+        let (w, _, _) = head.forward(&pst, &threat, Color::White, 20);
+        let (bl, _, _) = head.forward(&pst, &threat, Color::Black, 20);
         assert!(w != bl, "side-to-move relativity is wired");
     }
 
@@ -434,19 +492,27 @@ mod tests {
         let (pst, threat) = synth_accs();
 
         let plain = synth_head();
-        let (v0, s0) = plain.forward(&pst, &threat, Color::White, 20);
+        let (v0, s0, _) = plain.forward(&pst, &threat, Color::White, 20);
         assert!(s0.is_none(), "no variance head => no sigma");
 
         let mut head = synth_head();
-        let vw: Vec<f32> = (0..BUCKETS * L3).map(|i| ((i % 7) as f32 - 3.0) * 0.05).collect();
+        let vw: Vec<f32> = (0..BUCKETS * L3)
+            .map(|i| ((i % 7) as f32 - 3.0) * 0.05)
+            .collect();
         let vb: Vec<f32> = (0..BUCKETS).map(|i| i as f32 * 0.01 - 0.02).collect();
         head.l3_var_weights = Some(vw.into_boxed_slice());
         head.l3_var_biases = Some(vb.into_boxed_slice());
-        let (v1, s1) = head.forward(&pst, &threat, Color::White, 20);
+        let (v1, s1, _) = head.forward(&pst, &threat, Color::White, 20);
 
-        assert_eq!(v0, v1, "the value (mean) path is unchanged by the variance head");
+        assert_eq!(
+            v0, v1,
+            "the value (mean) path is unchanged by the variance head"
+        );
         let sigma = s1.expect("variance head => Some(sigma)");
-        assert!(sigma.is_finite() && sigma > 0.0, "sigma finite & positive, got {sigma}");
+        assert!(
+            sigma.is_finite() && sigma > 0.0,
+            "sigma finite & positive, got {sigma}"
+        );
     }
 
     /// EXP-UNC-1 (D33 review, reviewer C): propagate_l3_var must be a faithful
