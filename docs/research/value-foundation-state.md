@@ -117,6 +117,17 @@ Per net, in order:
    Then SPSA ARCHON_WDL_TM_C3 ∈ {0.1, 0.2} only if the net itself gated ≥ null.
 5. Warm-start warning: continuing ANY H-AUX raw at different λ set → loud
    load_from panic; repeat the head λs (traps register #3).
+6. **Policy attachment-point arm (user concern 2026-07-22 ~01:40, "rank
+   bottleneck"):** tonight's pol runs attach the head to hl3 (32-d) — every
+   expressible move distribution is rank-32-limited; the head's ceiling is
+   LOW by construction and a weak pol readout may reflect the attachment, not
+   the H-AUX idea. `D40_POL_ATTACH=ft` (implemented, cargo-checked, NOT yet
+   rebuilt) attaches to hl1 (768-d pairwise accumulator) — fully expressive,
+   shapes the accumulator directly. **REBUILD THE TRAINER ONLY AFTER pol4 HAS
+   EXEC'D** (pol1/pol4 must run identical code; the wdl runs don't read the
+   pol path, so a post-pol4 rebuild is safe). Run-6 candidates, pick by the
+   pol readouts: (a) ft-attach at the better pol λ, (b) joint pol+wdl at
+   winning λs, (c) λ-schedule A/B — in that order of information value.
 
 ## 2026-07-21 NIGHT-3 ★★ FOLD-IN AUTOPSY: NO ABSORPTION + SMALL PAYLOAD — SF18-MIX DEPRIORITIZED ★★
 
