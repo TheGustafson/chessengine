@@ -48,7 +48,34 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-21 NIGHT (SPRT VERDICT: 2.5% fold-in = H0, -2.2±4.5 over 4454g — no gain, no harm; +9.3 was noise; dose-2 7.5% still training)
+Last updated: 2026-07-21 NIGHT-2 (USER: ruthlessly prioritize MULTI-HEAD → H-AUX unblocked: from+to as ONE L3→128 two-hot head, cycle bug gone, engagement proven; 2 overnight co-trains queued behind dose-2. Also: SPRT null below.)
+
+## 2026-07-21 NIGHT-2 ★★★ MULTI-HEAD PRIORITIZED (user /loop directive) — H-AUX UNBLOCKED TONIGHT ★★★
+
+**User (evening, /loop 20m): "ruthlessly prioritize our multi-head models."**
+The policy from+to blocker was cleared the same evening:
+
+- **Redo shape:** ONE `L3→128` affine vs a two-hot `[from; 64+to]` target
+  (single softmax-CE, target mass 2, grad = 2p−t) — chosen because the recorded
+  constraint was "value+TWO extra heads = cyclic backward topo-sort"; one head
+  carries the full from+to signal. λ-gated (`D40_POL_LAMBDA`), loss-only,
+  dropped at deploy (H-AUX: shape the trunk, zero inference cost).
+- **Smokes (1sb streamed UHO, incumbent 768 arch):** value+pol ✓ trains;
+  value+WDL+pol ✓ — **the historical cycle does NOT reproduce** in the current
+  bullet toolchain (even the full 3-head shape is available); λ=0 control +
+  checkpoint diff **proves engagement** (A≠C, B≠C: aux grads reached the shared
+  trunk; raw sizes show the head tensors: +17KB pol, +428B wdl).
+- **Data constraint pinned:** H-AUX training MUST use the sfbinpack path — only
+  the binpack loader packs best-move into `ChessBoard.extra`; bf-converted bins
+  carry zeroed extras (a from=a1/to=a1 garbage target).
+- **λ derived, not guessed:** CE(128) ≈ ln128 ≈ 4.85 at init; λ=0.001 ⇒ aux
+  contribution ≈ 0.005 ≈ the value-loss scale. Sweep point 2 = 0.004.
+
+**OVERNIGHT QUEUE (sole waiter on the dose-2 GPU job, chain pid 2930758):**
+`haux-pol1-240sb` (λ=0.001) → hard scale-check + 300g gate vs d40-uho-v1-240sb,
+then `haux-pol4-240sb` (λ=0.004) → same. Policy aux ONLY (one variable; the WDL
+co-train λ-sweep takes the next GPU window). **By morning: dose-2 7.5% gate +
+the first two valid H-AUX measurements in project history.**
 
 ## 2026-07-21 NIGHT ★ SPRT VERDICT: 2.5% FOLD-IN IS A NULL — H0 ACCEPTED ★
 
