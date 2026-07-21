@@ -29,9 +29,9 @@ use crate::types::Color;
 /// `policy_vocab`). "Go big first — learnability before NPS" is the pinned
 /// research posture; the 768/L2=16 incumbent remains the fallback ship
 /// (gate old nets with engines/bin/archon-sota-native.prev-era binaries).
-pub const L1: usize = 1536;
+pub const L1: usize = 1280;
 /// L1→L2 output width (the D47 shared bottleneck).
-pub const L2: usize = 256;
+pub const L2: usize = 128;
 /// L2→L3 output width.
 pub const L3: usize = 32;
 /// Material/output buckets.

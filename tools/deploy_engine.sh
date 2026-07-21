@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DEST="${1:?dest path}"
-NET=data/nnue/nets/d40-uho-v1-240sb.cenn
+NET="${VERIFY_NET:-data/nnue/nets/d40-uho-v1-240sb.cenn}"
 cp target/release/chessengine "$DEST.new"
 echo "$(head -1 tools/nnue/calib/scale-check-800.fens)" | "$DEST.new" nnue-eval "$NET" >/dev/null 2>&1 \
   || { echo "DEPLOY REFUSED: $DEST.new cannot load CEN2 ($NET) — built without --features sota?"; rm -f "$DEST.new"; exit 1; }
