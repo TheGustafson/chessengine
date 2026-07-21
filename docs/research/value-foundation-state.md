@@ -48,7 +48,46 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-21 NIGHT-3 (fold-in AUTOPSY: labels never absorbed at 2.5% AND the payload is tiny — SF18-fold-in deprioritized below multi-head; WDL λ-sweep queued as GPU job 4-5)
+Last updated: 2026-07-22 NIGHT-4 (SF18 fold-in CLOSED: dose-2 −5.8±17.1, exp-0128; haux-pol1 TRAINING — first valid H-AUX run; morning runbook below)
+
+## 2026-07-22 NIGHT-4 ★★ SF18 FOLD-IN CLOSED (exp-0128) — GPU IS 100% MULTI-HEAD ★★
+
+**Dose-2 verdict (exp-0128): −5.8 ± 17.1 at 7.5% aux; scale-check 0.994/99.4%
+(coverage intact); absorption 52.2%/mean 90.9-vs-96.2 (vs 48.3%/nothing at
+2.5%).** The dose-response curve is mapped: absorption is weak per unit mix and
+the payload is 31cp median — below the ~96cp net resolution floor. Escalation
+buys fractions of a below-floor refinement while replay bias grows. **CLOSED;
+remaining SF18 shapes (stage-2 warm on the 77M full-coverage corpus) are LOW
+priority, revisited only if multi-head stalls.** The SF18 arc's real return:
+the D46 contract, the scale/filter/WDL machinery, and clean aux datasets —
+infrastructure the head program inherits.
+
+**haux-pol1-240sb IS TRAINING** (first valid H-AUX run: from+to two-hot,
+trunk-normalized frame, engagement-proven, λ=0.001). pol4 → wdl6 → wdl2 chain
+behind it, each scale-check hard-gated + 300g fixed-node.
+
+## MORNING RUNBOOK (for whichever session reads the gates)
+
+Per net, in order:
+1. `bash tools/nnue/haux_divergence_probe.sh data/nnue/nets/<id>.cenn` —
+   floor is 47.3 mean. Record the number BEFORE reading the gate Elo.
+2. Gate Elo from the chain log (300g, ±~17).
+3. Interpretation matrix:
+   - divergence ≈ floor AND Elo null → dose invisible: raise λ (pol: 0.01;
+     wdl: 0.05) before any verdict. NOT a refutation.
+   - divergence scales with λ AND Elo null (both pol runs) → trunk shaped,
+     eval unmoved at 240sb: try λ-mid + 720sb long-run before verdict; H-AUX
+     stays open.
+   - any run +Elo ≥ ~+15 → winner: rerun 600g to confirm, then joint
+     pol+wdl run at the winning λs (run 6), then equal-time gate.
+   - any run −Elo ≤ −15 with divergence >> floor → that λ damages value:
+     halve λ, one retry; two failures = that head's aux form refuted at 768.
+4. WDL runs additionally: sidecar landed at data/nnue/nets/<id>.wdl.sidecar —
+   BEFORE any signed consumer work run the [L,D,W] order parity check
+   (watchlist #4): engine last_wdl() vs trainer probe on 2-3 fixtures.
+   Then SPSA ARCHON_WDL_TM_C3 ∈ {0.1, 0.2} only if the net itself gated ≥ null.
+5. Warm-start warning: continuing ANY H-AUX raw at different λ set → loud
+   load_from panic; repeat the head λs (traps register #3).
 
 ## 2026-07-21 NIGHT-3 ★★ FOLD-IN AUTOPSY: NO ABSORPTION + SMALL PAYLOAD — SF18-MIX DEPRIORITIZED ★★
 
