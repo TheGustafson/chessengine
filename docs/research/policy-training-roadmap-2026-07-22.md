@@ -224,6 +224,26 @@ both an AB core and a root-PUCT allocator, plus the visit-distribution
 datagen flywheel — is pinned with its own experiment ladder (H0–H3) in
 `hybrid-ab-puct-search.md`.
 
+**Consumer menu for the Lc0-soft head (user q, 2026-07-22 — frozen-trunk
+heads get NO multi-task trunk benefit, so consumers ARE the value),
+ranked by expected Elo/effort:**
+1. **Prior-seeded quiet ordering**: `score = history + k·logit` for ALL
+   quiets — the consumer that uses the calibrated tail (ranks 2–35);
+   learned history that works from move one.
+2. **Policy-aware LMR**: `r -= f(prior)` — the field-proven Elo pool
+   (SF14→16 study: reductions dominate); design/19 front door.
+3. **Cumulative-prior LMP**: prune once searched moves cover ~90% of
+   prior mass — position-adaptive move-count pruning.
+4. **Prior entropy as node-shape signal**: sharp ⇒ reduce siblings
+   harder; flat ⇒ widen. This is the H2 regime trigger.
+5. **Root**: iteration-1 ordering; head-AGREEMENT (one-hot argmax ==
+   soft argmax, concentrated prior) ⇒ easy-move TM confidence;
+   disagreement ⇒ spend more time. Free signal.
+6. **H1 root-PUCT prior** when/if the hybrid runs.
+NOT worth it: captures (SEE is exact-ish), qsearch (NPS killer), never
+override a real TT move. Cost control: compute once per node above a
+depth floor, cache in the Zobrist-stamped activation stash.
+
 ## 7. Sequencing
 
 1. d47c → sb240, gate_d47.sh (learnability-first readouts).
