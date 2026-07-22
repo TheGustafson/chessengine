@@ -224,6 +224,22 @@ overfit detector between streaming loss and Elo. Equal-presentation twin
 comparisons remain the standard for attribution; the absorption axis is
 a separate, later experiment.
 
+**LR-SCHEDULING DOCTRINE (from the stage-2 restart evidence, 2026-07-22):**
+anneal-to-zero is only for ships — stage-1's dead cosine tail under-used
+the schedule AND forced stage-2 to pay a ~200-Elo/40sb SGDR bounce
+melting that polish. The sb1 held-out DIP (one 0.0005 superbatch
+improved generalization before the bounce) shows transit cost = dwell
+time at high LR, not magnitude. RULES: (1) interim/bullet-era: cosine to
+a FLOOR (0.1-0.2× peak) so stages compose bounce-free; final anneal only
+on ship candidates. (2) JAX-era end-state: warmup-stable-decay with
+COOLDOWN BRANCHES off a perpetual training line (ship on demand, no
+restart tax — the flywheel shape); trial schedule-free optimizers once.
+(3) Save optimizer state (orbax) — the fresh-Adam transient was paid 3×
+in one day. (4) Held-out loss↔Elo map (validated at stage-2 sb30:
+0.0073 ⇒ −151 exactly on the stage-1 curve) enables ADAPTIVE triggers —
+plateau-detected LR drops/extensions over pre-committed lengths (we
+guessed wrong twice).
+
 **Held-out design (user, 2026-07-22 — "grab positions we never use"):
 the set already exists BY CONSTRUCTION.** D40_RANDOM_SKIP_PCT=75 is a
 deterministic position-hash test (keep = hash%100 ≥ 75), so 75% of the
