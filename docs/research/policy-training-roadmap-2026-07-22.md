@@ -115,17 +115,34 @@ Data: storage.lczero.org (slice of a recent run, ~50-100M rows to start;
 public HTTP download, disk is ample).
 
 **Multi-output deployment ladder (user q, 2026-07-22): when does the head
-feed MORE than one move into search?** The head already ranks all 1858
-classes — top-k is free at inference; the blocker is that one-hot CE only
-supervises the argmax (ranks 2+ are incidental). Soft targets are the
-first real supervision of the tail ⇒ multi-output deployment sequences
-AFTER §2d: (1) engine top-k print [build window between runs] + baseline
-top-2/3 coverage; (2) Lc0 soft-CE finetune → re-measure (tail should gain
-more than top-1); (3) first consumer = slot-2 after good captures (§2b
-safe variant, ON/OFF ablated); (4) full-distribution consumers =
-prior-seeded history + policy-aware LMR (H0, design/19 on-ramp); (5) §2b
-hindsight min-over-K ONLY if soft-trained top-2 still hedges badly — Lc0
-distributions are multi-hypothesis by construction and may obviate it.
+feed MORE than one move into search?** The deployed head computes logits
+only for the LEGAL set (index-masked selected-row gather, ~35 rows), not
+all 1858 — but top-k of that computed set is still free; the blocker is
+that one-hot CE only supervises the argmax (ranks 2+ are incidental).
+Soft targets are the first real supervision of the tail ⇒ multi-output
+deployment sequences AFTER §2d: (1) engine top-k print [build window
+between runs] + baseline top-2/3 coverage; (2) Lc0 soft-CE finetune →
+re-measure (tail should gain more than top-1); (3) first consumer =
+slot-2 after good captures (§2b safe variant, ON/OFF ablated); (4)
+full-distribution consumers = prior-seeded history + policy-aware LMR
+(H0, design/19 on-ramp); (5) §2b hindsight min-over-K ONLY if
+soft-trained top-2 still hedges badly — Lc0 distributions are
+multi-hypothesis by construction and may obviate it.
+
+**HEAD BANK (user decision, 2026-07-22): the Lc0-soft head is a NEW,
+SEPARATE head — and "many cheap heads, one frozen trunk, per-consumer
+binding" is the standing pattern.** Each head ≈ 240k params / ~240KB int8
+sidecar; storage, frozen-trunk training, and inference (per-head row
+gather) are all trivial. The objectives differ: P(SF-best) [argmax,
+slot-1 — the PROVEN deployed head, never at risk] vs calibrated
+legal-move prior [Lc0-soft — slot-2/LMR/history consumers]. §2b hindsight
+pair, §2c bucketed specialists, §2d soft head = all instances of the
+bank; §3 trunk sufficiency is the shared foundation question.
+Consolidation rule: after soft trains, compare argmax vs the one-hot
+head on the SF18 probe — if soft wins argmax too, consolidate to ONE
+head; keep two only if they measurably specialize. Build-window item:
+sidecar format/loader currently assume a single policy matrix — needs a
+multi-head extension (N sidecars + binding convention).
 
 ## 3. The prerequisite experiment: trunk sufficiency (run after sb240 + twin)
 
