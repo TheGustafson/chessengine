@@ -415,6 +415,16 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > (value/heldout_mse). Policy realigning (pol_ce 2.554↓, top1 22.4%
 > @sb80).
 >
+> **METHOD NOTE (15:2x): sb90 Elo = −85.0 (27-22-51), DIGIT-IDENTICAL
+> to sb60 — nets verified distinct (hashes differ); with deterministic
+> fixed-node engines + the fixed book seed, near-identical nets replay
+> the same games ⇒ the paired-seed trajectory has a RESOLUTION FLOOR
+> for slowly-changing checkpoints.** Consequences: consecutive
+> identical readings are correlated (never average them); mid-anneal
+> Elo stays quantized until weight deltas grow (sb150+ / the 300g
+> endpoint decide); loss-side instruments carry the mid-anneal story
+> (train 0.00648@sb100, pol_ce 2.544↓, top1 22.4% — all improving).
+>
 > **SEQUENCING (user, 12:1x): JAX migration + testing happens AFTER
 > the full D47 training arc completes** (stage-2 → gate → equal-time
 > gauntlet). Branch parks until then; first JAX window = GPU throughput
