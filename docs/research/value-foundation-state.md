@@ -265,6 +265,14 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > + RAM-guarded, no exceptions; the sb120 conc-8 match that "worked"
 > was luck, not validation.** Twin sb180 pair carries a small fresh-Adam
 > confound (19sb post-resume) — mirror of main's sb95 resume.
+>
+> **PRE-REGISTERED PREDICTION (user, 2026-07-22 ~09:30): d47c —
+> unoptimized, untuned — takes the EQUAL-TIME crown once its training
+> arc (stage-2) finishes.** Arithmetic at registration: gap = −20±11
+> equal-time; stage-2 historical range +44..+55 equal-time on a MORE
+> saturated arch; end-slope maximal at sb240; λ-acceleration tailwind
+> retained at λ/4. Gate when stage-2 lands: real 10+0.1 gauntlet vs the
+> incumbent chain, DEPLOYED config (policy ON) — not NPS arithmetic.
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
