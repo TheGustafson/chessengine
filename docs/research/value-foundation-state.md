@@ -133,6 +133,21 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > sb120 DISCRIMINATOR: ≥−120 parity back in play; ≤−160 stage-2 scenario
 > firm. sb100 components: value 0.007116 | pol_ce 2.5785 (Adam transient
 > fully reabsorbed by sb97).
+>
+> **sb120 (04:5xZ): Elo −143.1±33.4 (21-19-60)** — the discriminator landed
+> in the GRAY ZONE (−160 < −143 < −120), but the closure model is now
+> 3-for-3: +135.4 → +69.1 → **+34.1** per 30sb — ratio 0.51, 0.49. The
+> geometric fade is CONFIRMED, not noise. Extrapolation: remaining closure
+> ≈ 34×(.5+.25+.125+.0625) ≈ +32 ⇒ **≈ −111 fixed-node at sb240**
+> (tight band now, ~±25) — short of parity, ~−170 equal-time after the NPS
+> tax. Verdict: the schedule ends while the net is still learning ⇒ the
+> **§5b stage-2@λ/4 path is the plan of record** (formally: confirm with
+> twin gap + end slope at sb240 per the pre-registration — but the closure
+> curve already says undertrained, exactly the B4 law shape). No rerun
+> needed: first post-resume point came in dead on trend (expected ~−140±40).
+> W-D-L drift 5-15-80 → 12-15-73 → 20-13-67 → 21-19-60: losses now
+> converting to DRAWS as well as wins. Top-1 23.2% (sb120, NEW HIGH);
+> value 0.006917 (falling every reading); pol_ce 2.546.
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
