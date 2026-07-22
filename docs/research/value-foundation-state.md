@@ -79,6 +79,23 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > Top-1 consolidating ~20% (sb35–60: 20.7/19.2/18.5/21.7/18.5/19.5).
 > Stage-2 decision rule pre-registered: roadmap §5b (twin gap + end slope
 > → warm retrain at λ/4 if value is owed gradient).
+>
+> **NPS MEASURED (23:00Z, movetime 4s startpos, sidecar loaded):** d47c
+> **363k** vs incumbent **647k** = −44% ≈ **~58 Elo equal-time tax** →
+> the sb240 equal-time BREAK-EVEN bar is **+60 fixed-node Elo** vs
+> d40-uho-v1-240sb (more to promote). Accepted go-big cost; recovery
+> levers post-learnability: AVX-512 (unused), FT quant/prune, distill-shrink.
+> **LOSS SAWTOOTH DIAGNOSED (user spotted):** period exactly 4sb =
+> **1.58GB of binpack** — nodes5000pv2_UHO is ~25 concatenated ~1.6GB
+> generation segments, each with the same internal difficulty gradient;
+> the 128MB shuffle buffer (~8% of a segment) can't hide the macro
+> profile. 394MB file/sb, ~15.8 B/used pos ⇒ ~16% keep rate ✓, ~2.35
+> epochs over 240sb, **loader wraps ≈ sb102 + sb204 (expect phase reset,
+> not a bug)**. Benign; someday-fix = offline global interleave. Also why
+> local loss deltas are untrustworthy across segment boundaries.
+> sb74 components: value 0.007373 | pol_ce 2.6235 | share ~1.78.
+> Ablation artifacts: `data/nnue/nets/ablate/` +
+> `data/nnue/experiments/ablate-sb30-{nopol,pol}-300g/`.
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
