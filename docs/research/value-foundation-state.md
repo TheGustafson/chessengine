@@ -164,6 +164,24 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > blunder-loss profile is dissolving. Top-1 23.2% (4th touch of the high).
 > Value 0.006667 / pol_ce 2.502 at sb150. Next model check: sb180
 > (halving-from-here says ≈ −73; old track says ≈ −105).
+>
+> **sb180 (02:5xZ): Elo −52.5±28.7 (26-33-41) — beat BOTH models.**
+> Closures: +135.4 → +69.1 → +34.1 → +46.9 → **+43.7**: two consecutive
+> ~flat readings ≈ +45/30sb. The "geometric halving" was an artifact —
+> **the +34.1 (sb90→120) interval contained the OOM resume at sb95**
+> (fresh Adam + data-stream restart), which depressed exactly the point
+> the halving story was built on; the deconfounded closure sequence reads
+> 135 → 69 → ~45 → ~45 → 44, a gentle fade, not geometric collapse.
+> (no-verdicts-from-weak-tests again: point 3 was confounded and I called
+> it a confirmation.) **Updated sb240 range: −20 (closure halves from
+> here) … +35 (closure holds ~44) fixed-node — PARITY IS IN PLAY.**
+> Equal-time bar +60 still above the optimistic edge ⇒ stage-2 remains
+> plan of record, but if sb240 lands ≥0 the stage-2 launches FROM parity
+> weights and equal-time promotion becomes the likely outcome of the
+> arc. W-D-L march: losses 60→50→41, draws 19→27→33 (blunder profile
+> dissolving into draws). sb210 check: flat-closure ≈ −9; halving ≈ −30.
+> Components at sb180: value 0.006476 / pol_ce 2.463 — new lows every
+> reading, LR ~0.00017 and STILL closing at +44/30sb.
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
