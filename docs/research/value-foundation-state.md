@@ -273,6 +273,17 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > saturated arch; end-slope maximal at sb240; λ-acceleration tailwind
 > retained at λ/4. Gate when stage-2 lands: real 10+0.1 gauntlet vs the
 > incumbent chain, DEPLOYED config (policy ON) — not NPS arithmetic.
+>
+> **TWIN sb180 (10:0x): −31.4±30.3 (33-25-42) vs joint −52.5±28.7 ⇒
+> twin AHEAD +21±42. Pair sequence +100 → +34 → −21 (sb60/120/180):
+> monotone convergence-and-crossover — the ACCELERATOR hypothesis wins.**
+> Joint carves trunk features faster early; twin converges by late
+> training (and its sb180 is 19sb post-fresh-Adam-resume — came in
+> ahead DESPITE the confound). Pending sb240 endpoint confirmation, the
+> λ verdict: **zero endpoint cost + large early acceleration + free
+> policy capability ⇒ λ stays in every recipe; stage-2 @λ/4 unchanged;
+> the ARCH is the value win.** No single pair significant; the monotone
+> trend is the evidence.
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
