@@ -284,6 +284,22 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > policy capability ⇒ λ stays in every recipe; stage-2 @λ/4 unchanged;
 > the ARCH is the value win.** No single pair significant; the monotone
 > trend is the evidence.
+>
+> **USER HYPOTHESIS (10:1x) — the joint net is MORE value-undertrained
+> than the twin at matched presentations, and has the higher ceiling.**
+> Gradient arithmetic: share ~1.8 ⇒ policy got ~64% of trunk gradient ⇒
+> joint's value function saw ~1/3 of the schedule's gradient budget vs
+> twin's 100%. Crossover re-read: twin nearing ITS asymptote; joint
+> still climbing toward a higher one on a richer representation whose
+> value refinement was DEFERRED. Stage-2@λ/4 (share→~0.45) = the first
+> value-gradient-majority phase = COMPLETION, not compensation.
+> Predictions: (1) twin sb240 300g (no-sidecar) ≈ joint nopol +52.5
+> [pessimistic alt: twin clearly above ⇒ policy dominance wasted value
+> capacity]; (2) stage-2 early value-slope STEEPER than twin's late
+> slope at matched loss ⇒ deferred refinement releasing. λ/4 stands;
+> hypothesis nudges the next cold run toward share-locked λ (~1.0)
+> rather than fixed λ (policy dominance was an accident of scale, not
+> a choice).
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
