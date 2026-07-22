@@ -393,7 +393,12 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > **SEQUENCING (user, 12:1x): JAX migration + testing happens AFTER
 > the full D47 training arc completes** (stage-2 → gate → equal-time
 > gauntlet). Branch parks until then; first JAX window = GPU throughput
-> benchmark + the 7% loss-readout reconciliation + sidecar wiring.
+> benchmark + the 7% loss-readout reconciliation + sidecar wiring
+> **+ PyO3 engine bindings (user 12:4x: part of the JAX workstream —
+> fast legal masks / activation dumps / movegen for notebooks).
+> Portability decisions: WASM + ARM/NEON TABLED for now but PINNED as
+> public-release prerequisites (both are targets of the one Rust
+> codebase, not ports).**
 >
 > **USER HYPOTHESIS (10:1x) — the joint net is MORE value-undertrained
 > than the twin at matched presentations, and has the higher ceiling.**
