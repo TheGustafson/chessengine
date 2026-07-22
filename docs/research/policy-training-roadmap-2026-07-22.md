@@ -219,10 +219,24 @@ multi-task gradient is a memorization brake (overfit onset later). This
 REFINES B4 (coverage-beats-epochs was measured on value-only nets — the
 constant is objective-dependent) and derisks long re-presentation
 stage-2 schedules. Exploration prerequisite: a HELD-OUT binpack slice
-(segments never streamed) with value-MSE + pol-CE evaluated per
-checkpoint — we currently have NO overfit detector between streaming
-loss and Elo. Equal-presentation twin comparisons remain the standard
-for attribution; the absorption axis is a separate, later experiment.
+with value-MSE + pol-CE evaluated per checkpoint — we currently have NO
+overfit detector between streaming loss and Elo. Equal-presentation twin
+comparisons remain the standard for attribution; the absorption axis is
+a separate, later experiment.
+
+**Held-out design (user, 2026-07-22 — "grab positions we never use"):
+the set already exists BY CONSTRUCTION.** D40_RANDOM_SKIP_PCT=75 is a
+deterministic position-hash test (keep = hash%100 ≥ 75), so 75% of the
+binpack is a fixed shadow population no run in this family has EVER
+trained on (d47c, twin, stage-2 all share the config). Slice = hash band
+[0,5) (~5%, sample ~1M rows), extracted with TRAINER-PARITY filters
+(identical quiet filter + score transforms — else divergence readings
+confound distribution shift with overfitting). Retroactivity bonus:
+SAVE_RATE=1 ⇒ held-out curves BACKFILL over the full checkpoint history
+of every run, including answering absorption on already-trained runs.
+Build-window items: hash-band dumper (invert the band in the trainer's
+reader), evaluator (engine nnue-eval covers value; pol-CE needs the
+logit print — same build as top-k).
 
 ## 6. Downstream consumers beyond first-move ordering (later, D41-adjacent)
 
