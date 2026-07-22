@@ -1,0 +1,22 @@
+# DESIGN ONLY — DO NOT BUILD while GPU training runs (build-window item).
+# Loader candidate (b): PyO3 bindings around the existing Rust loader+mapper.
+#
+# Build (later): maturin develop --release  (or maturin build + uv pip install)
+[package]
+name = "archon-loader"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "archon_loader"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"] }
+numpy = "0.22"
+# The engine crate: halfka_index/threat_index/policy_vocab + movegen, the SAME
+# single implementation the bullet trainer links (the convention-trap killer).
+chessengine = { path = "../..", features = ["sota"] }
+# The battle-tested sfbinpack streaming loader used by d40_features.rs:
+bullet_lib = { path = "../../.archon-state/toolchains/bullet/crates/bullet_lib" }
+bulletformat = "1.8.0"
