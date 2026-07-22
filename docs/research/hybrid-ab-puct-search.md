@@ -90,6 +90,18 @@ that do. This is the strongest single reason to build H1/H3.
 
 Prereqs: WDL/σ head (T9/D41 arc), policy calibration (a temperature on the
 logits), H0 evidence that priors transfer into search at all.
+
+**Prior source (user, 2026-07-22): the H1/H3 PUCT prior is the Lc0-SOFT
+head (policy roadmap §2d head bank), not the one-hot head — and the
+hybrid is where that head's full distribution earns its keep.** In AB a
+prior only modulates mechanisms that work without it (value compressed by
+overlap with history/LMR); in PUCT the prior IS the allocation mechanism
+(`U ∝ P·√N/(1+n)`) — quality converts linearly to search efficiency, and
+small visit budgets amplify it (too few visits for value to correct a bad
+prior). Soft-CE calibration is load-bearing (exploration constant ↔ prior
+temperature), and PUCT-visit targets → PUCT prior is on-policy use of the
+data. Sequencing: build the soft head EARLY (cheap, during stage-2); AB
+consumers (§6 menu) are the proving ground that de-risks H1.
 Relates: `policy-training-roadmap-2026-07-22.md` §2/§6, `design/19`,
 `rich-multihead-net-2026-07-21.md`, `wdl-head-design-2026-07-20.md`,
 `arch-ablation-suite.md` (T9).
