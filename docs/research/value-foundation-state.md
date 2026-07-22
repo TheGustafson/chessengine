@@ -68,6 +68,17 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > replaced by `tools/nnue/runs/d47c_ckpt_watch_v2.sh` (conc 1, RAM guard
 > 1.2G with 12×60s retry, resume-safe) — Elo instrument restored.
 > Fold-in dose-2 (p75) final: **−5.8±17.1 NULL** — fold-in arc stays CLOSED.
+>
+> **sb60 TRAJECTORY + ABLATION (22:25Z):** Elo **−246.3±38.4 (12-15-73)** —
+> gap closed **+135 in 30sb** from −381.7; on-track shape (contention
+> plausible in the back half; expect deceleration with LR decay).
+> **sb30 ON/OFF ablation (300g each, sidecar hidden vs present): identical
+> scores, 10.0% both (−381.7±29.5 vs −381.7±29.2)** — eval carries 100% at
+> this stage AND the ~17%-accuracy deployed policy costs ZERO (downside
+> capped by design; no reason to gate ordering while accuracy climbs).
+> Top-1 consolidating ~20% (sb35–60: 20.7/19.2/18.5/21.7/18.5/19.5).
+> Stage-2 decision rule pre-registered: roadmap §5b (twin gap + end slope
+> → warm retrain at λ/4 if value is owed gradient).
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
