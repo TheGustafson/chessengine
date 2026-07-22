@@ -250,6 +250,21 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > on checkpoint landing) discriminates: gap holds ⇒ λ = permanent
 > endpoint win; gap converges ⇒ multi-task = same-destination-sooner
 > (still buys schedule compression). Either way λ stays in the recipe.
+>
+> **★ TWIN OOM #2 (08:50:39, MY FAULT — logged as ops rule):** the twin
+> sb60 pair match I launched at **concurrency 8** (16 engines × 137MB
+> net) into 2.3G available invoked the oom-killer; it killed the twin
+> trainer (8.7G RSS, adj 200) at sb172. Compounding error: I then
+> reported the twin "healthy at sb168/170" twice from `tail` of the
+> \r-progress line — a DEAD process's log keeps yielding plausible
+> segments; liveness = pgrep + GPU% + log MTIME, never a log tail.
+> RESUMED 09:11 from sb160-raw (START=161, fresh-Adam ~2sb transient,
+> loss continuous 0.00625); sb240 ETA ~11:25. sb180 pair re-queued with
+> the WATCHER discipline (1.8G-guarded pack, 1.2G-guarded conc-1
+> match). **HARD RULES now: matches during ANY training run are conc 1
+> + RAM-guarded, no exceptions; the sb120 conc-8 match that "worked"
+> was luck, not validation.** Twin sb180 pair carries a small fresh-Adam
+> confound (19sb post-resume) — mirror of main's sb95 resume.
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
