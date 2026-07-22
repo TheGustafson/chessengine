@@ -402,6 +402,19 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > top1 holds 20.4-23.2% under λ/4 (no rot; CE calibration wobbles as
 > expected). RIDE; judge on sb60-90 recovery per pre-registration.
 >
+> **RECOVERY READS (14:1x-14:4x):** sb60 Elo **−85.0±31.5** — recovery
+> +66/30sb (faster than stage-1's +44 through the same band). Heldout
+> gap question RESOLVED by stage-1 backfill (sb80/120/180: gaps
+> 9.4%→8.1%→5.6%→1.5%): the ~10% train/heldout gap at high LR is the
+> recipe's NORMAL signature, closing with the anneal — stage-2's sb80
+> gap (+10.4%) is on-signature. Cross-run position: stage-2 heldout
+> @sb80 (0.007213) ≈ stage-1 @~sb145 — with 160sb of runway vs the 95
+> stage-1 had ⇒ projected endpoint heldout ~0.0061-0.0062 vs 0.006348
+> ⇒ **rough projection +40-90 Elo over the stage-1 net** (wide bars,
+> right shape). Heldout curves for both runs now in tb
+> (value/heldout_mse). Policy realigning (pol_ce 2.554↓, top1 22.4%
+> @sb80).
+>
 > **SEQUENCING (user, 12:1x): JAX migration + testing happens AFTER
 > the full D47 training arc completes** (stage-2 → gate → equal-time
 > gauntlet). Branch parks until then; first JAX window = GPU throughput
