@@ -122,6 +122,20 @@ bounded waste (phase-2-only, single-digit Elo global) vs intact upside.
 Decide by: wide-position coverage probe + H1 telemetry (wasted-visit
 fraction, best-move-starved counter) — NOT the top-1 number.
 
+**Refinement (user, 2026-07-22): recall is MANUFACTURABLE — concentration
+is the head's real currency.** PUCT consumes mass, not a top-k list; mix
+a uniform ε-floor into the prior (the Lc0 root-Dirichlet trick) and every
+legal move is guaranteed ≥ε ⇒ recall by construction, surfaced within
+2-3 AB-probe visits, at a bounded waste cost. The head's quality then
+buys EFFICIENCY: mass concentration on good moves = fewer wasted visits.
+Root budgets are generous (floor-probe everything); deeper phase-2 nodes
+have shrinking budgets ⇒ concentration becomes the binding resource =
+where head quality sets the ceiling. Corollary 1: §2b min-over-K is
+RECALL TRAINING — un-parked as the purpose-built hybrid-prior head shape
+(distinct from soft-CE calibration). Corollary 2: bars stay
+per-consumer (head bank): recall-shaped ⇒ PUCT prior; precision/argmax
+⇒ slot-1; calibrated mass ⇒ LMR/LMP.
+
 ## Experiment ladder (sequenced behind the value foundation + design/19 S-items)
 
 - **H0 — policy-aware AB allocation** (pure AB, no structure change):
