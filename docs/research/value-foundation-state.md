@@ -50,6 +50,11 @@
 
 Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-component loss metrics SHIPPED; policy-share drifting UP 0.81→1.28 by sb3 — λ decision point at sb30)
 
+> **Post-run policy plan:** `policy-training-roadmap-2026-07-22.md` — joint
+> forms the trunk, then independent frozen-trunk head finetunes on
+> policy-specialized (unfiltered/tactical) data; the d47c-vs-twin
+> trunk-sufficiency head-finetune experiment is the decision fork.
+
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
 **Arch pivots (user, rapid-fire):** d47-v1 (1536/256+threats, 155k pos/s, ~10.5h)
