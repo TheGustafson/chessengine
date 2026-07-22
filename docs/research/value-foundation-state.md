@@ -415,6 +415,16 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > (value/heldout_mse). Policy realigning (pol_ce 2.554↓, top1 22.4%
 > @sb80).
 >
+> **★ sb210 SURGE (19:5x): Elo +85.0±30.6 (49-26-25) — stage-2 passed
+> the ENTIRE stage-1 endpoint band (+49-56) with 30sb of anneal left.**
+> Trajectory: −151 → −85 → −85(floor) → −31 → −28 → −14 → +85; the
+> sb180→210 closure = +99/30sb (the anneal endgame surge). top1 band up
+> to 23-25% (24.7@sb215). Endpoint landing zone ≈ **+100-120 fixed-node
+> ⇒ equal-time ≈ +40-60 ABOVE the incumbent — the user's crown
+> prediction is now the BASE CASE** pending the 10+0.1 gauntlet.
+> (Heldout map cross-check: ~0.00625 ⇒ ~+70 predicted, +85 measured —
+> holding within noise.)
+>
 > **TM GAP (user field-report, 19:0x, GUI games vs SF16/SF18): ARCHON
 > front-loads clock and lives on increment late while SF banks time.**
 > Root cause: our P7/P10 TM lacks STABILITY-BASED EARLY TERMINATION
