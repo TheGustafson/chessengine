@@ -47,8 +47,8 @@ trap 'rm -rf "$TMP"' EXIT
 
 python3 - "$TMP/cand.ev" "$TMP/ref.ev" "$CAND" "$REF" <<'PY'
 import sys
-cand = [int(l) for l in open(sys.argv[1])]
-ref  = [int(l) for l in open(sys.argv[2])]
+cand = [int(l.split()[0]) for l in open(sys.argv[1]) if l.strip()]
+ref  = [int(l.split()[0]) for l in open(sys.argv[2]) if l.strip()]
 assert len(cand) == len(ref) and len(cand) >= 700, f"row mismatch {len(cand)} vs {len(ref)}"
 # Robust ratio: median of cand/ref where the reference is confidently nonzero.
 pairs = [(c, r) for c, r in zip(cand, ref) if abs(r) > 100]

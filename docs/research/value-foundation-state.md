@@ -182,6 +182,23 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > dissolving into draws). sb210 check: flat-closure ≈ −9; halving ≈ −30.
 > Components at sb180: value 0.006476 / pol_ce 2.463 — new lows every
 > reading, LR ~0.00017 and STILL closing at +44/30sb.
+>
+> **★★★ sb240 FINALE (04:2xZ): Elo +59.6±30.5 (46-25-29) — the multihead
+> net BEAT THE INCUMBENT at fixed nodes, first challenger to do it since
+> the incumbent chain was built.** TRAIN EXIT 0; final components value
+> 0.006236 / pol_ce 2.424 (new lows at the wire — NO plateau; end-slope
+> verdict for §5b: STILL FALLING ⇒ stage-2 fires). +112 Elo over the last
+> 60sb (+56/30sb — the closure ACCELERATED into the cosine tail).
+> **+59.6 fixed-node sits EXACTLY at the +60 equal-time break-even bar
+> (NPS −44%) ⇒ d47c-sb240 ≈ equal-time PARITY with the incumbent, with
+> policy ordering + threats + multihead riding along.** One 100g point,
+> ±30.5 — the 300g gate (launched 04:2x, conc 8 under twin; NPS section
+> junk from contention, ignore it) tightens to ±17. RAM-guard skip
+> cascade (sb205-235 packs) was raced post-exit: all backfilled (probes
+> logged, sb210 Elo match in flight). Twin launched clean. Top-1 endgame
+> band 21-23% (22.9% at 240). NEXT: gate result → nopol ablation 300g on
+> sb240 → twin gap (~11:30) → stage-2 launch (script ready, knob 1 now
+> answerable: end slope says LONG schedule).
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
