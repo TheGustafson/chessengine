@@ -97,6 +97,27 @@ ordering fills the empty-TT slot) is already built and does not change.
   high, LR low). Cheaper than full joint if joint's benefit concentrates
   late; risks eval-search-style co-adaptation issues — test, don't assume.
 
+## 5b. The λ tax and presentation count (stage-2 decision rule)
+
+Joint training dilutes value's share of the trunk gradient (~37% at the
+observed share plateau ~1.7), so a schedule calibrated for value-only
+training is in expectation slightly short for joint. Compensation = more
+presentations — via a **stage-2 warm retrain** (the most validated recipe we
+own: it built the incumbent chain), NOT by stretching a pinned schedule or
+raw-repeating epochs (B4: coverage beats epochs; stage-2 can add fresh data).
+
+Decision rule at sb240, two free measurements:
+1. **Twin gap**: d47c vs λ=0 twin at identical presentations — the value
+   component + fixed-node Elo gap IS the tax, measured exactly.
+2. **End slope**: `loss/value_component` still visibly falling at sb240 →
+   undertrained; flat since ~sb180 → tax absorbed, extension buys little.
+
+Either signal positive → launch `d47c-stage2`: warm start from sb240, LOW
+λ (~λ/4, not zero — at λ=0 the trunk drifts under frozen policy rows and
+accuracy silently rots; small λ keeps the head aligned while value takes
+~full gradient). This is "lambda decay can come later" materialized across
+stages.
+
 ## 6. Downstream consumers beyond first-move ordering (later, D41-adjacent)
 
 Once policy accuracy is credible, the same logits can inform more than the
