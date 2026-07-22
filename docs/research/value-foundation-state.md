@@ -240,6 +240,16 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > inverts (λ was never a tax) — stage-2 @λ/4 still right (undertraining
 > is its own justification), and §3's fork leans "joint trunk is
 > strictly better". Scale PASS 0.974 (twin sb120).
+>
+> **TWIN sb60 (09:1x, user-requested second pair): −346.1±45.5 (6-12-82)
+> vs d47c sb60 −246.3±38.4 ⇒ joint ahead +99.8±60.** Two pairs, both
+> one-directional; pooled joint advantage ≈ **+60±38**. Gap SHAPE:
+> +100 (sb60) → +34 (sb120) — either the policy gradient is an
+> ACCELERATOR (carves tactical trunk features early; twin partially
+> catches up) or inter-pair noise. sb180 pair queued (auto: pack+match
+> on checkpoint landing) discriminates: gap holds ⇒ λ = permanent
+> endpoint win; gap converges ⇒ multi-task = same-destination-sooner
+> (still buys schedule compression). Either way λ stays in the recipe.
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
