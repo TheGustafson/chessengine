@@ -415,6 +415,22 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > (value/heldout_mse). Policy realigning (pol_ce 2.554↓, top1 22.4%
 > @sb80).
 >
+> **★★★ STAGE-2 COMPLETE (20:4x, TRAIN EXIT 0) — GATE +82.6±17.6 ★★★**
+> Final train value 0.005908 / pol_ce 2.4748; **heldout 0.006094 raw /
+> 0.006131 quant (−3.5% vs stage-1's net — map predicted ≈+100
+> fixed-node; gate measured +82.6, within 1σ)**; train/heldout gap 3.1%.
+> **300g GATE: +82.6±17.6, score 0.617, scale PASS, top1 23.4% —
+> stage-2 bought +60 Elo over stage-1's +22.0 at identical standard.**
+> Clean NPS (uncontended): 506k vs 945k ⇒ equal-time bar ≈ +64 ⇒
+> **fixed-node arithmetic prices equal-time at ≈ +18 ± 18 ABOVE the
+> incumbent — crown math positive pre-gauntlet.** CROWN GAUNTLET
+> LAUNCHED: 400g @ 10+0.1 deployed config vs incumbent. Endpoint policy:
+> argmax band ended HIGHER than stage-1 (23-25% vs 21-23) with CE
+> slightly softer — sharper head, λ/4's intended trade. SF15.1 built:
+> classical HCE = 1.96M NPS vs our PSQT 2.99M ⇒ SHELL EXONERATED,
+> the entire NPS gap is the eval layer (T10 smallnet = the lever).
+> Six-engine RR (user-commissioned) queued behind the gauntlet.
+>
 > **★ sb210 SURGE (19:5x): Elo +85.0±30.6 (49-26-25) — stage-2 passed
 > the ENTIRE stage-1 endpoint band (+49-56) with 30sb of anneal left.**
 > Trajectory: −151 → −85 → −85(floor) → −31 → −28 → −14 → +85; the
