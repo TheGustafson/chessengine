@@ -164,7 +164,11 @@ TT-slot fill: policy-aware LMR (reduce less for high-prior moves),
 prior-scaled history seeding in the MovePicker, and eventually the design/19
 learned-search-allocation program (P15/M11) gets a native prior signal.
 Ordering-first is deliberate: it is the lowest-risk consumer (wrong policy =
-one wasted first move, not a pruning error).
+one wasted first move, not a pruning error). The radical endpoint of this
+ladder — a hybrid AB/PUCT search where a rich head (priors + WDL/σ) drives
+both an AB core and a root-PUCT allocator, plus the visit-distribution
+datagen flywheel — is pinned with its own experiment ladder (H0–H3) in
+`hybrid-ab-puct-search.md`.
 
 ## 7. Sequencing
 
