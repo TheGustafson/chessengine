@@ -51,6 +51,30 @@ feed policy what it actually needs:
   legal moves instead of one-hot. Softmax-CE already supports it; needs a
   target-format extension (top-k ids + weights per row) in the loader.
 
+## 2b. Two-move policy via hindsight loss (user idea, 2026-07-22 — NO new data)
+
+Adapt the head to propose TWO moves, scored so the loss rewards either being
+the teacher move — the classic **multiple-choice / hindsight (min-over-K)
+loss**: two embedding matrices E₁,E₂ (≈240k params each), per-position loss
+= min(CE₁, CE₂) + a small load-balance term (known failure mode: one head
+hogs every sample). Only the closer head gets gradient → heads SPECIALIZE
+(tactical vs positional candidate in ambiguous positions) instead of one
+calibrated distribution hedging. Under the 128-d bottleneck constraint this
+reallocates capacity toward exactly what AB ordering consumes: "was one of
+my first two tries right." Same one-hot labels — zero new data.
+
+Sequenced cheapest-first:
+1. **FREE measurement first**: the current CE head already ranks all 1858
+   classes — read its top-2/top-3 coverage (needs a tiny engine top-k print,
+   post-run; calibrated expectation ≈30% top-2 at pol_ce 2.58 vs 20% top-1).
+   Hindsight training only pays if it beats CE's own top-2 meaningfully.
+2. If warranted: **frozen-trunk head finetune** (§4 machinery) with min-CE —
+   minutes-to-hours, zero value risk, no full retrain.
+3. **Slot design + ablation**: move #1 keeps the empty-TT slot; move #2 goes
+   AFTER good captures / before quiets (safe variant) — ON/OFF ablate like
+   sb30. Note for joint training later: min-CE shrinks pol_ce's scale ⇒ λ
+   would need rebalancing; in head-only finetunes this doesn't arise.
+
 ## 3. The prerequisite experiment: trunk sufficiency (run after sb240 + twin)
 
 Both finished trunks — d47c (joint) and the λ=0 twin (value-only, same seed,
