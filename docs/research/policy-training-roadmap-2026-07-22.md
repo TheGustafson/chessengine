@@ -75,6 +75,21 @@ Sequenced cheapest-first:
    sb30. Note for joint training later: min-CE shrinks pol_ce's scale ⇒ λ
    would need rebalancing; in head-only finetunes this doesn't arise.
 
+## 2c. Bucketed policy specialists (user idea, 2026-07-22 — route on piece count)
+
+Per-bucket policy embeddings E_b[1858×128] routed on piece count, mirroring
+the value head's 8 output buckets. **Free at inference** (selected-row MACs
+with a bucket offset — zero NPS), ~1.9M params at 8 buckets, and the trainer
+already has the machinery (the value tail's `select(buckets)` applied to a
+per-bucket polmove affine). Case is arguably STRONGER than for value: move
+priors shift drastically by phase (king activity, pawn pushes, piece play).
+Warm-start every E_b from the trained shared E ⇒ runnable as a frozen-trunk
+head finetune, no new data. Known cost: bucket data imbalance (endgame
+buckets see less data — value head already tolerates this). Composes with
+§2b: buckets × hindsight hypotheses. T5-adjacent: queens-on/off may be a
+better routing axis for POLICY than piece count (tactical-regime flip) —
+cheap to A/B at head-finetune cost.
+
 ## 3. The prerequisite experiment: trunk sufficiency (run after sb240 + twin)
 
 Both finished trunks — d47c (joint) and the λ=0 twin (value-only, same seed,
