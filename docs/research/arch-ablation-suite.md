@@ -41,6 +41,13 @@ guesses; the point is to replace them with gated numbers.
 | **T6** | **Feature-set contribution** | (a) HalfKA-only (drop Threats) — *the actionable one*; (b) Threats-only (drop HalfKA) | HalfKA is the workhorse; Threats-only likely hurts a lot; HalfKA-only measures Threats' marginal value | **keep accumulator FIXED** — don't confound "drop features" with "bigger accumulator" |
 | **T6b** | **Pawn-pair features (SFNNv16 PP_3Wide adaptation)** — add a pawn-pair input family (pairs of pawns on same/adjacent files as explicit features) and DROP the pawn-pusher threat rows they supersede (SF: FullThreats 60720→59808) | one retrain of the current-best arch with pp-pairs swapped in, vs same-seed control | **small-positive at depth** — SF ran this ablation at fishtest scale (commit `f4bcd404`): STC FAIL, LTC/VLTC/VVLTC PASS, ~3.5% slowdown accepted. Depth-scaling eval gain = the D47 trade shape; our deep-TC gates should see it | ideas-only reimplementation (GPLv3 — never copy); needs the pp-pair mapper mirrored in the bullet trainer + a parity fixture pinning engine-vs-trainer indices (same anti-trap rule as policy_vocab); active-count delta is tiny so NPS cost ≈ table width only. Ref: `stockfish_reference/08-sfnnv16-pp3wide-pawn-pairs.md` |
 
+**Routing methodology (user, 2026-07-22): queens-on/off is the canonical
+FIRST ablation for ANY routing decision** — value buckets, policy
+specialists (policy roadmap §2c), learned routers (T7). Binary, balanced,
+cheap, orthogonal to piece count, and the hardest single-bit regime flip we
+have. If a routing mechanism shows nothing on the queens axis, don't bother
+with subtler axes — it's the canary.
+
 ### Routing heuristics for T5 (ranked — orthogonal to piece count, flips the eval regime, cheap, balanced)
 1. **Queens on vs off** — TOP pick. Eval is a different function with queens (king-safety/tactics) vs without (positional/endgame). Binary, balanced, cheap, orthogonal to material count. → 8×2 = 16 buckets.
 2. **King-safety regime** — same-side vs opposite-side castling (or castled/not). Attacking races vs maneuvering. ~4 levels → up to 32.
