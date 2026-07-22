@@ -225,6 +225,21 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > (equal-time ≈ −20±11 at the clean NPS ratio). The D47 bet's scorecard
 > at run end: eval per node clearly better, policy learnable + free,
 > NPS tax = the whole remaining gap.
+>
+> **TWIN sb120 (07:5x, mid-flight read on user ask): −177.2±35.5
+> (19-15-66) vs d47c sb120 −143.1±33.4 ⇒ joint AHEAD by 34±49 at
+> matched presentations — the λ tax on value is ZERO-to-NEGATIVE.**
+> Not significant (0.7σ) but directionally strong: d47c's sb120 was
+> the Adam-fresh post-resume point (depressed) and STILL beat the twin.
+> Supporting tea-leaf: twin train-loss ran ~3% BELOW main's value
+> component (sb110) yet plays worse — fits-better-plays-worse = the
+> classic multi-task-regularization signature (policy as auxiliary task
+> improving value generalization). Confound to note: twin ran 0→240
+> uninterrupted; main's data stream restarted at sb95. Full verdict at
+> twin sb240 (300g + final components). If it holds, §5b's premise
+> inverts (λ was never a tax) — stage-2 @λ/4 still right (undertraining
+> is its own justification), and §3's fork leans "joint trunk is
+> strictly better". Scale PASS 0.974 (twin sb120).
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
