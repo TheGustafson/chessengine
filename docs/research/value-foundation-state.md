@@ -390,6 +390,18 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > loss-normalization or target-detail difference to reconcile before
 > trusting its ABSOLUTE loss numbers (relative/per-position parity is
 > proven by the byte + engine oracles).
+> **STAGE-2 EARLY READS (13:1x):** heldout curve (1M rows, quant):
+> sb240-anchor 0.006348 → **sb1 0.006184 (DIP BELOW — one value-majority
+> superbatch improved generalization: cleanest deferred-refinement
+> datapoint yet)** → sb10 0.007183 → sb20 0.007301 (SGDR bounce, crest
+> forming: train slope +1.1%→+0.4%/10sb). **sb30 Elo −151.3±33.1 —
+> looks scary, IS consistent: heldout 0.0073 sits exactly at stage-1's
+> −150/−180 band ⇒ the loss↔Elo map holds across runs (instrument
+> doubles as Elo predictor). (loss,LR) framing: stage-2@sb30 ≈
+> stage-1@sb100 with 210sb of runway instead of 140 + a better trunk.**
+> top1 holds 20.4-23.2% under λ/4 (no rot; CE calibration wobbles as
+> expected). RIDE; judge on sb60-90 recovery per pre-registration.
+>
 > **SEQUENCING (user, 12:1x): JAX migration + testing happens AFTER
 > the full D47 training arc completes** (stage-2 → gate → equal-time
 > gauntlet). Branch parks until then; first JAX window = GPU throughput
