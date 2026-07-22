@@ -91,6 +91,15 @@ slice **distilled from our own big net's outputs** (teacher = a d47c
 checkpoint — zero new data; ideal early JAX job), output-disagreement
 fallback. Expected: the single largest recoverable chunk of the 2.8×
 NPS gap to SF18.
+**CRITICAL RECIPE DETAIL (user q, 2026-07-22): the slice filter is on
+SIMPLE_EVAL (material arithmetic), NEVER on the label.** The material-
+lies rows (fortress/compensation: simple_eval +1000, label ~0) are the
+companion's CORE curriculum — "does this material edge convert?" — and
+they're what make the output-check fallback non-circular (the net is
+trained to say "modest" exactly where escalation should fire; the only
+uncaught error direction is confidently-large-on-drawish, which the
+curriculum penalizes). Filtering by |label| would delete those rows and
+build that exact blind spot.
 
 Governing caveat: **data first.** A bigger/fancier net with nothing rich to learn from just
 overfits. The endgame is a differently-shaped net (T7/T8 + rich-data heads) that turns our
