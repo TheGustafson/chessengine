@@ -125,6 +125,14 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > oom_score_adj→900 (OOM prefers tabs over the trainer; trainer stuck at
 > 200, lowering needs CAP_SYS_RESOURCE). Twin re-chained on the new pid
 > with the fixed binary.
+>
+> **OVERNIGHT PLAN (user asleep ~sb100, 00:15 local):** run ends ~04:15 →
+> watcher v3 measures through sb240 (Elo at 120/150/180/210/240) → twin
+> auto-chains (~7h, fixed binary) → on wake: gate_d47.sh 300g on sb240,
+> sb240 ON/OFF ablation rerun, twin-gap read → §5b stage-2-vs-shrink fork.
+> sb120 DISCRIMINATOR: ≥−120 parity back in play; ≤−160 stage-2 scenario
+> firm. sb100 components: value 0.007116 | pol_ce 2.5785 (Adam transient
+> fully reabsorbed by sb97).
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
