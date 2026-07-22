@@ -214,6 +214,17 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > work) exactly as pre-registered. nopol 300g ablation launched
 > (`ablate-sb240-nopol-300g`, same seed/book as the gate ⇒ paired vs
 > its ON-side 300g).
+>
+> **sb240 NOPOL ablation (05:1x): +52.5±17.2 (131-83-86).** ON−OFF =
+> −30.5±~24 (1.3σ) ⇒ NOT significant; with the sb30 ablation's exact
+> zero as prior, verdict stays **policy ordering ≈ free** (flag: if a
+> tax shows up again at the stage-2 gate, check policy-argmax vs
+> picker-first agreement in empty-TT nodes before believing either
+> direction). Treating ON/OFF as equivalent and pooling all three sb240
+> points: **eval quality ≈ +40±11 fixed-node over the incumbent**
+> (equal-time ≈ −20±11 at the clean NPS ratio). The D47 bet's scorecard
+> at run end: eval per node clearly better, policy learnable + free,
+> NPS tax = the whole remaining gap.
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
