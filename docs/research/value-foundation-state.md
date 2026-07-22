@@ -294,14 +294,26 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > graph + loss nodes over the dump; prints value_mse + pol_ce; quant
 > loader extended for the D47 polmove layout, padding assert =
 > layout tripwire). Scripts: `tools/nnue/heldout_{extract,eval,
-> backfill}.sh`. **BUILD-WINDOW CHECKLIST (twin exit → stage-2
-> launch): (1) twin sb240 pack + 100g pair + 300g endpoint matches;
-> (2) `cargo build --release --features cuda --example d40_features`
-> (CUDA_PATH=/opt/cuda) — additive changes only, default path
-> untouched; (3) 1-sb smoke on a scratch D40_ID to prove the trainer
-> still trains; (4) heldout_extract.sh (1M rows); (5) heldout_eval.sh
-> on d47c sb240 quant (pol=1) + twin sb240 quant (pol=0) as
-> validation; (6) LAUNCH STAGE-2; (7) backfill curves retroactively
+> backfill}.sh`. **PRE-BUILD SMOKE (done 10:4x, user-ordered, all
+> without touching the running twin): quant-layout byte arithmetic
+> EXACT-MATCHES both real files (d47c 137,089,088 / twin 136,843,840);
+> netpack.py read order independently confirms polw(i8)→polb(f32)→l1w;
+> script guards exit 2 clean; backfill loop dry-run extracts sb + 
+> strides correctly (sort -V fix); control binary preserved at
+> /tmp/d40_features.pre-heldout.**
+> **BUILD-WINDOW CHECKLIST (twin exit → stage-2 launch): (1) twin
+> sb240 pack + 100g pair + 300g endpoint matches; (2) `cargo build
+> --release --features cuda --example d40_features` (CUDA_PATH=
+> /opt/cuda); (3) ★ NO-REGRESSION BYTE-DIFF: run OLD (/tmp control)
+> and NEW binaries on an IDENTICAL 1-sb scratch config (same seed,
+> D40_INIT_RAW=d47c sb240 — also exercises the exact stage-2 resume
+> path) and diff the emitted quants BYTE-FOR-BYTE; any diff = ABORT,
+> revert source, rebuild old, investigate; (4) D40_VERIFY_ONLY=1 with
+> band env (reader+filter smoke); (5) heldout_extract.sh 10k-row
+> scratch dump then the real 1M; (6) heldout_eval.sh on d47c sb240
+> raw AND quant (pol=1: value_mse raw≈quant, pol_ce ≈2.4 sanity) +
+> twin sb240 quant (pol=0); batch-size fallback to 1 if the evaluator
+> rejects batches; (7) ONLY THEN launch stage-2; (8) backfill curves
 > during stage-2 in RAM-guarded slots or after.**
 >
 > **USER HYPOTHESIS (10:1x) — the joint net is MORE value-undertrained

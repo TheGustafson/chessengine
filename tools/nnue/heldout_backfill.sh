@@ -13,7 +13,7 @@ PREFIX="${2:?ckpt prefix}"
 POL="${3:?0|1}"
 STRIDE="${4:-10}"
 TSV="$DIR/../heldout.tsv"
-for Q in $(ls "$DIR"/"$PREFIX"-sb*-quant.bin | sort -t b -k 3 -n); do
+for Q in $(ls "$DIR"/"$PREFIX"-sb*-quant.bin | sort -V); do
   SB=$(basename "$Q" | grep -oE 'sb[0-9]+' | grep -oE '[0-9]+')
   [ $((SB % STRIDE)) -eq 0 ] || continue
   LINE=$(bash tools/nnue/heldout_eval.sh "$Q" quant "$POL" | tail -1)
