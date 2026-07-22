@@ -199,6 +199,21 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > band 21-23% (22.9% at 240). NEXT: gate result → nopol ablation 300g on
 > sb240 → twin gap (~11:30) → stage-2 launch (script ready, knob 1 now
 > answerable: end slope says LONG schedule).
+>
+> **sb210 backfill: +3.5±29.8 (37-27-36)** — crossed zero at sb210; final
+> closures +56, +56 per 30sb (accelerating into the tail).
+> **300g GATE (04:5x): +22.0±17.1, score 0.532, CI95 [−10.4, +54.9] —
+> GATE PASSED; scale PASS 0.982; NPS section junk (twin contention),
+> use clean 363k/647k.** Pooled with the 100g point (compatible at
+> ~1.1σ): **best estimate +31±15 fixed-node ⇒ ≈ −29±15 equal-time** —
+> the 100g +59.6 was the top of its error bar; the run ends a clear
+> FIXED-NODE WIN (first challenger ever over the incumbent) but ~30
+> short of equal-time parity. Reading unchanged, now sharper: eval
+> quality per node now EXCEEDS the incumbent with policy+threats riding
+> along; the remaining gap is the NPS tax ⇒ stage-2 (+ later shrink/NPS
+> work) exactly as pre-registered. nopol 300g ablation launched
+> (`ablate-sb240-nopol-300g`, same seed/book as the gate ⇒ paired vs
+> its ON-side 300g).
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
