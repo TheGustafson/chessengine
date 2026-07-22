@@ -25,6 +25,8 @@ SB = re.compile(
 )
 BATCH = re.compile(r"sb (\d+) batch (\d+): loss ([\d.]+|NaN)")
 LR = re.compile(r"LR dropped to ([\d.eE+-]+)")
+COMP = re.compile(r"components sb (\d+) \| value ([\d.]+) \| pol_ce ([\d.]+)")
+LAMBDA = re.compile(r"pol_lambda=([\d.eE+-]+)")
 BPS = 3040  # batches per superbatch (D40_BPS of the current run)
 
 
@@ -52,6 +54,7 @@ def main():
     log_path, tb_dir = sys.argv[1], sys.argv[2]
     writer = SummaryWriter(tb_dir)
     last_sb, n_b = 0, 0
+    pol_lambda = 0.0
     for raw in follow(log_path):
         line = ANSI.sub("", raw)
         m = SB.search(line)
@@ -81,6 +84,19 @@ def main():
         m = LR.search(line)
         if m:
             writer.add_scalar("lr/value", float(m.group(1)), last_sb)
+            writer.flush()
+            continue
+        m = LAMBDA.search(line)
+        if m:
+            pol_lambda = float(m.group(1))
+            continue
+        m = COMP.search(line)
+        if m:
+            sb, v, ce = int(m.group(1)), float(m.group(2)), float(m.group(3))
+            writer.add_scalar("loss/value_component", v, sb)
+            writer.add_scalar("loss/policy_ce", ce, sb)
+            if v > 0 and pol_lambda > 0:
+                writer.add_scalar("loss/policy_share_of_value", pol_lambda * ce / v, sb)
             writer.flush()
 
 

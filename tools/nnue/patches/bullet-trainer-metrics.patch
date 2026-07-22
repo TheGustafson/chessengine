@@ -1,0 +1,167 @@
+diff --git a/crates/trainer/src/model/definition.rs b/crates/trainer/src/model/definition.rs
+index 5f63a1c..1697901 100644
+--- a/crates/trainer/src/model/definition.rs
++++ b/crates/trainer/src/model/definition.rs
+@@ -95,6 +95,14 @@ impl ModelDefinition {
+         let loss = self.loss.ok_or("Loss node not defined!")?;
+         let loss = *map.get(&loss).unwrap();
+         bwd.register_output(loss);
++        // ARCHON D47 granular metrics: keep "metric:*" scalar outputs alive
++        // through the backward lowering (otherwise optimise() prunes them and
++        // the run loop reads zeros).
++        for (node, name) in &self.outputs {
++            if name.starts_with("metric:") {
++                bwd.register_output(*map.get(node).unwrap());
++            }
++        }
+         bwd.optimise()?;
+         bwd.transform(CanonicalisePass::peephole_activations())?;
+ 
+diff --git a/crates/trainer/src/run.rs b/crates/trainer/src/run.rs
+index 7b73421..45ae8aa 100644
+--- a/crates/trainer/src/run.rs
++++ b/crates/trainer/src/run.rs
+@@ -5,7 +5,7 @@ mod schedule;
+ pub use dataloader::{DataLoader, DataLoadingError, HostPool, PreparedBatchHost};
+ pub use schedule::{Step, TrainingSchedule, TrainingSteps};
+ 
+-use std::{collections::BTreeMap, sync::mpsc, thread, time::Instant};
++use std::{collections::{BTreeMap, BTreeSet}, sync::mpsc, thread, time::Instant};
+ 
+ use bullet_compiler::{
+     model::Layout,
+@@ -76,6 +76,30 @@ pub fn train<G: Gpu, O: OptimiserState<G>>(
+     optimiser: &mut Optimiser<G, O>,
+     schedule: TrainingSchedule,
+     dataloader: impl DataLoader,
++    batch_callback: impl FnMut(&mut Optimiser<G, O>, Step, f32),
++    superbatch_callback: impl FnMut(&mut Optimiser<G, O>, Step),
++) -> Result<(), TrainingError<G>> {
++    train_frozen(
++        optimiser,
++        schedule,
++        dataloader,
++        &BTreeSet::new(),
++        batch_callback,
++        superbatch_callback,
++    )
++}
++
++/// Train while keeping complete named tensors bit-identical.
++///
++/// Frozen weights remain present in the forward graph, but autograd does not
++/// materialise their gradients and the optimiser never updates them.  This is
++/// useful for protected teacher trunks and adapters; freezing tensor slices is
++/// deliberately out of scope.
++pub fn train_frozen<G: Gpu, O: OptimiserState<G>>(
++    optimiser: &mut Optimiser<G, O>,
++    schedule: TrainingSchedule,
++    dataloader: impl DataLoader,
++    frozen_names: &BTreeSet<String>,
+     mut batch_callback: impl FnMut(&mut Optimiser<G, O>, Step, f32),
+     mut superbatch_callback: impl FnMut(&mut Optimiser<G, O>, Step),
+ ) -> Result<(), TrainingError<G>> {
+@@ -103,8 +127,19 @@ pub fn train<G: Gpu, O: OptimiserState<G>>(
+     });
+ 
+     let defn = optimiser.definition();
+-    let (func, gmap) =
+-        defn.lower_backward(&Default::default(), steps.batch_size).map_err(TrainingError::CompilingBackwards)?;
++    let known_names = defn.ir().weights().values().map(|(name, _)| name).collect::<BTreeSet<_>>();
++    for name in frozen_names {
++        assert!(known_names.contains(name), "unknown frozen weight tensor: {name}");
++    }
++    let frozen_ids = defn
++        .ir()
++        .weights()
++        .iter()
++        .filter_map(|(id, (name, _))| frozen_names.contains(name).then_some(*id))
++        .collect::<BTreeSet<_>>();
++    let (func, gmap) = defn
++        .lower_backward(&frozen_ids, steps.batch_size)
++        .map_err(TrainingError::CompilingBackwards)?;
+     let map = func.map();
+     let mut backwards = Function::new(device.clone(), func.ir().clone()).map_err(TrainingError::CompilingBackwards)?;
+     backwards.prealloc().map_err(TrainingError::Unexpected)?;
+@@ -114,17 +149,15 @@ pub fn train<G: Gpu, O: OptimiserState<G>>(
+     let mut gradients = BTreeMap::new();
+     for (mid, (name, _)) in defn.ir().weights() {
+         let tid = *map.get(mid).unwrap();
+-        let gid = *gmap.get(mid).unwrap();
+-
+-        let ty = defn.ir().node(*mid).ty();
+-        let Layout::Dense(dtype) = ty.layout() else { unreachable!() };
+-        let size = ty.shape().size();
+-        let grad = Buffer::zeroed(&device, dtype, size).map_err(TrainingError::Unexpected)?;
+-
+         tensor_map.insert(tid, optimiser.weights().get(name).unwrap().clone());
+-        tensor_map.insert(gid, grad.clone());
+-
+-        gradients.insert(name.clone(), grad);
++        if let Some(&gid) = gmap.get(mid) {
++            let ty = defn.ir().node(*mid).ty();
++            let Layout::Dense(dtype) = ty.layout() else { unreachable!() };
++            let size = ty.shape().size();
++            let grad = Buffer::zeroed(&device, dtype, size).map_err(TrainingError::Unexpected)?;
++            tensor_map.insert(gid, grad.clone());
++            gradients.insert(name.clone(), grad);
++        }
+     }
+ 
+     let tgf = TValue::F32(vec![1.0 / steps.batch_size as f32]);
+@@ -134,6 +167,19 @@ pub fn train<G: Gpu, O: OptimiserState<G>>(
+ 
+     tensor_map.insert(*map.get(&defn.loss().unwrap()).unwrap(), loss.clone());
+ 
++    // ARCHON D47 granular metrics: outputs named "metric:<name>" are (1,1)
++    // scalar loss components; give each a host-readable buffer and report
++    // them beside the fused loss every superbatch.
++    let mut metric_bufs: Vec<(String, _)> = Vec::new();
++    for (node, name) in defn.outputs() {
++        if let Some(short) = name.strip_prefix("metric:") {
++            let buf = Buffer::from_host(&device, &TValue::F32(vec![0.0])).map_err(TrainingError::Unexpected)?;
++            tensor_map.insert(*map.get(node).unwrap(), buf.clone());
++            metric_bufs.push((short.to_string(), buf));
++        }
++    }
++    let mut running_metrics = vec![0.0f32; metric_bufs.len()];
++
+     let first_batch =
+         receiver.recv().map_err(|_| TrainingError::DataLoadingError(DataLoadingError::NoBatchesReceived))?;
+     let mut batch_on_device = first_batch.to_device(&device).map_err(TrainingError::Unexpected)?;
+@@ -223,6 +269,16 @@ pub fn train<G: Gpu, O: OptimiserState<G>>(
+         running_loss += error;
+         superbatch_positions += steps.batch_size;
+ 
++        for (i, (_, buf)) in metric_bufs.iter().enumerate() {
++            if let Ok(v) = buf.to_host_async(&copy_stream).map(SyncOnValue::value) {
++                if let Ok(TValue::F32(v)) = v {
++                    if let [v] = v[..] {
++                        running_metrics[i] += v / steps.batch_size as f32;
++                    }
++                }
++            }
++        }
++
+         if step.batch().is_multiple_of(schedule.log_rate) {
+             logger::report_superbatch_progress(step, &superbatch_timer, superbatch_positions);
+         }
+@@ -232,6 +288,18 @@ pub fn train<G: Gpu, O: OptimiserState<G>>(
+         if step.batch() == step.batches_per_superbatch() - 1 {
+             let error = running_loss / steps.batches_per_superbatch as f32;
+             running_loss = 0.0;
++            if !metric_bufs.is_empty() {
++                let parts: Vec<String> = metric_bufs
++                    .iter()
++                    .zip(running_metrics.iter_mut())
++                    .map(|((name, _), v)| {
++                        let avg = *v / steps.batches_per_superbatch as f32;
++                        *v = 0.0;
++                        format!("{name} {avg:.6}")
++                    })
++                    .collect();
++                println!("components sb {} | {}", step.superbatch(), parts.join(" | "));
++            }
+ 
+             let total_time = timer.elapsed().as_secs_f32();
+             let sb_time = superbatch_timer.elapsed().as_secs_f32();

@@ -22,3 +22,4 @@ apply_one bullet-frozen-weights.patch
 # (same file: score-div env rescale + the D41 extra-move packing's _hm-orient
 # target frame, 2026-07-21). The old patch is kept for archaeology only.
 apply_one bullet-sfbinpack-combined.patch
+apply_one bullet-trainer-metrics.patch
