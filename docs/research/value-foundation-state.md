@@ -48,7 +48,50 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-22 D47 (STRAIGHT SHOT: 1536/256 shared-bottleneck multihead + 1858-class policy DEPLOYED-for-ordering; training attempt 4 stable; learnability 15% @ 1sb; full deploy chain + gate live)
+Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-component loss metrics SHIPPED; policy-share drifting UP 0.81→1.28 by sb3 — λ decision point at sb30)
+
+## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
+
+**Arch pivots (user, rapid-fire):** d47-v1 (1536/256+threats, 155k pos/s, ~10.5h)
+→ killed → **d47b** (halfka-only 1536/256: only +18% → GPU/host bound, threats
+aren't the training cost) → killed → **d47c-1280-240sb (LIVE)**: acc 1280
+(−17%, SIMD-clean), bottleneck 128, threats BACK, λ=0.005, legal mask,
+ckpt EVERY sb (raw-janitor keeps 5), batch 8192×BPS 3040, ~207k pos/s ≈ 8h.
+Why no 2× from dims: Amdahl — FT matmuls scale with HL only, AdamW with the
+~107M FT params, host pipeline dim-independent; the shrink pays at ENGINE NPS,
+not training. Batch 16384 measured ≈ +3% and re-risks OOM: rejected.
+
+**GRANULAR METRICS SHIPPED (bullet-core patch `bullet-trainer-metrics.patch`):**
+`metric:*` outputs survive the backward lowering; run loop reads per batch;
+`components sb N | value X | pol_ce Y` printed per sb; decomposition verified
+EXACT (value+λ·ce = fused to 1e-6). TB: loss/value_component, loss/policy_ce,
+**loss/policy_share_of_value** (the live λ-parity monitor) + all prior series.
+Checkpoint watcher: acc+scale every 5sb; **Elo every 30sb = 100g fixed-node
+with W-D-L** line.
+
+**★ FIRST FINDING — the share DRIFTS UP, fast:** sb1 0.81 → sb2 1.14 → sb3
+1.28 (value falls fast early, pol_ce grinds: 3.01→2.96). Constant λ=0.005 ⇒
+policy-DOMINANT training by mid-run (heading ~2×), NOT parity. **DECISION
+POINT sb30 (~50 min from 20:35Z):** if share >2 AND value-component/Elo look
+hurt → rerun at λ≈0.0025 or anneal; if accuracy+Elo track fine → let it ride
+(policy-heavy may be GOOD for the trunk — that's the experiment).
+
+**OPERATIONAL STATE (for the post-compact session):**
+- Train pid family: /tmp/d47c_train.sh (log /tmp/d47c_train.log); twin waiter
+  /tmp/d47c_twin.sh (fires on train exit; SAME dims, no policy, SAVE_RATE=20);
+  janitor; ckpt watcher /tmp/d47c_ckpt_watch.sh (log /tmp/d47c_ckpt.log).
+  **Repo copies: tools/nnue/runs/** (tmpfs /tmp dies on reboot).
+- TB at :6006 — run groups d47c/{train,system,checkpoints}; shims tb_shim.py
+  (components-aware) + tb_system.py (OOM canary sys/ram_available_gb).
+- Monitors: d47c logs (exits/ckpt lines), components every 10sb + NaN.
+- Engine: archon-d47 = 1280/128 CEN2-verified (tools/deploy_engine.sh —
+  VERIFY_NET param; uciok is NOT load-proof, trap fired twice).
+- **HARD RULE: no cargo builds while the trainer runs** (3 OOM kills; the
+  kernel kills the ~10-12GB trainer, not the build).
+- Gates: gate_d47.sh (learnability-first; NPS reported-not-gated). Probe:
+  policy_accuracy_probe.sh (ENG env). Baselines: sb1-class ≈ 15% top-1;
+  random ≈ 3-4%. Readout: accuracy trajectory + Elo trajectory + share curve
+  → sb240 gate → twin → attribution (incumbent/twin/d47c).
 
 ## 2026-07-22 D47 ★★★ THE STRAIGHT SHOT — SHARED-BOTTLENECK MULTIHEAD, BUILT AND TRAINING ★★★
 
