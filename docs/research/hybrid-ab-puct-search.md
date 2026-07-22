@@ -72,6 +72,37 @@ that do. This is the strongest single reason to build H1/H3.
   allocator must earn its keep at tiny visit counts (priors do the heavy
   lifting).
 
+## The staged architecture (user sketch, 2026-07-22 — the H1 endgame shape)
+
+User sketch: AB first a few layers deep → PUCT before the tree gets too
+wide → fast AB at leaves → back up, keep exploring → final AB pass to
+crystalize. **Adopted with one correction: the layering is TEMPORAL
+(phases), not spatial (depth bands).** Spatial AB-above-PUCT breaks on
+query mismatch: an AB parent asks bound questions ("subtree ≥ β?") and
+PUCT is structurally bad at one-sided proof (it spends visits reducing
+uncertainty everywhere); downstream, AB answers PUCT's point-value
+queries perfectly. Value-consumers stack on value-producers — never the
+reverse in the same query path.
+
+- **Phase 1 — AB warmup**: standard ID+aspiration for the first
+  iterations; fills TT; forced/easy positions END here (most moves pay
+  ZERO hybrid overhead — the Elo-neutrality guarantee).
+- **Phase 2 — PUCT allocation**: trigger on WIDENESS, not depth
+  (aspiration thrash ∧ flat prior ∧ close top-k ∧ head disagreement).
+  Explicit tree over the top plies, seeded from phase-1 TT values +
+  soft-head priors (roadmap §2d bank); **each leaf expansion = the
+  user's "fast AB" — a few-k-node reduced/zero-window probe** returning
+  a sound value; max-mixed backup; memory-bounded, TT-backed nodes.
+  Naturally anytime ⇒ fixes the AB iteration-cliff TM problem for free.
+- **Phase 3 — crystallization**: AB VERIFICATION search on the
+  PUCT-preferred line (chosen move full depth, rest reduced,
+  singular-style) to catch refutations averaging smoothed over; on
+  fail-low, the tree's ranked alternatives are the fallback.
+
+Datagen: phase-2 visit distributions = the H3 soft targets (same
+machinery, our data). Prototype path: H1 root-only first, then deepen
+the explicit tree ply by ply, gating Elo at each step.
+
 ## Experiment ladder (sequenced behind the value foundation + design/19 S-items)
 
 - **H0 — policy-aware AB allocation** (pure AB, no structure change):
