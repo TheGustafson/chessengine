@@ -331,6 +331,35 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > guards, emits → d47c-stage2/checkpoints) + a components/exit
 > Monitor on its log, armed AT LAUNCH.**
 >
+> **★★ WINDOW EXECUTED (11:26–11:45) — TWIN DONE, INSTRUMENT LIVE,
+> STAGE-2 LAUNCHED ★★**
+> **Twin endpoint (TRAIN EXIT 0, scale PASS 0.980): 100g +56.1±30.3
+> (45-26-29); 300g +49.0±17.2 (129-84-87) vs d47c-nopol 300g +52.5±17.2
+> ⇒ USER PREDICTION CONFIRMED: twin ≈ joint at endpoint (Δ3.5±24).
+> λ FINAL VERDICT: zero endpoint cost, +100 early acceleration, free
+> policy — λ stays in every recipe; share-locked λ noted for d47d.**
+> (Residual flag: ON 300g +22.0 vs the two no-ordering ~+50s — 1.3σ,
+> settle at the stage-2 gate with a bigger paired ablation.)
+> **Byte-diff gate: training is run-to-run NONDETERMINISTIC (atomic-add
+> sparse grads; old-vs-old differs in 4.4795M bytes) — corrected gate =
+> noise-envelope equivalence: old-vs-new 4.4830M, old2-vs-new 4.4744M
+> ⇒ new binary INSIDE the noise cloud ⇒ PASSED.** (Also fixed:
+> mapper.map's 3rd arg is THREADS not batch; ModelEvaluator grew
+> new_with_batch — evaluator.rs lowered batch was hardcoded 1.)
+> **Held-out instrument VALIDATED (1M rows @ data/nnue/heldout/
+> uho-band0-5.bin): d47c raw value_mse 0.006314 / pol_ce 2.4266 ≈
+> TRAIN LOSS (0.006236/2.4243) ⇒ ZERO overfit gap at 2.35 epochs (first
+> absorption data point — long stage-2 is safe); quant +0.5% (polmove
+> parse proven); twin 0.006315 ≈ d47c raw (loss-level mirror of the
+> identical endpoint Elos).**
+> **STAGE-2 LAUNCHED 11:45 (pid 2951629): warm from sb240-raw ✓, LR
+> 0.0005 fresh cosine, λ=0.00125, UHO, 240sb, 210k pos/s ≈ 9h ⇒ ends
+> ~20:45. Telemetry live from sb1 (shim+watcher+monitor). Deferred-
+> refinement test: watch early value-slope vs twin's late slope.**
+> **JAX pipeline study running** (user-commissioned, Fable subagent,
+> isolated worktree branch; parity-proof + loader benchmarks + adoption
+> framework; CPU-pinned, no-build guardrails).
+>
 > **USER HYPOTHESIS (10:1x) — the joint net is MORE value-undertrained
 > than the twin at matched presentations, and has the higher ceiling.**
 > Gradient arithmetic: share ~1.8 ⇒ policy got ~64% of trunk gradient ⇒

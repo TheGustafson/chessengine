@@ -1138,7 +1138,9 @@ fn main() {
             load_raw_weights(&mut weights, &path);
             path
         };
-        let mut evaluator = ModelEvaluator::new(&defn, device.clone()).expect("heldout evaluator");
+        let eval_batch = env_usize("D40_HELDOUT_BATCH", 16_384);
+        let mut evaluator = ModelEvaluator::new_with_batch(&defn, device.clone(), eval_batch)
+            .expect("heldout evaluator");
         evaluator.load_weights(&weights).expect("heldout weights");
         let bytes = std::fs::read(&dump_path).expect("read D40_HELDOUT_EVAL");
         let rec = std::mem::size_of::<ChessBoard>();
@@ -1146,16 +1148,20 @@ fn main() {
             !bytes.is_empty() && bytes.len() % rec == 0,
             "held-out dump must be a non-empty multiple of the record size"
         );
-        let n = bytes.len() / rec;
-        let mut rows: Vec<ChessBoard> = vec![ChessBoard::default(); n];
+        let total = bytes.len() / rec;
+        let mut rows: Vec<ChessBoard> = vec![ChessBoard::default(); total];
         unsafe {
             std::slice::from_raw_parts_mut(rows.as_mut_ptr() as *mut u8, bytes.len())
                 .copy_from_slice(&bytes)
         };
-        let eval_batch = env_usize("D40_HELDOUT_BATCH", 16_384);
+        // The graph is lowered at a FIXED batch size — evaluate full chunks
+        // only and report the evaluated count (the <batch remainder is
+        // dropped; at 1M rows / 16k batch that is <0.06%).
+        let n = (total / eval_batch) * eval_batch;
+        assert!(n > 0, "held-out dump smaller than one eval batch");
         let (mut value_sum, mut pol_sum) = (0f64, 0f64);
-        for batch in rows.chunks(eval_batch) {
-            let host = mapper.map(batch, Step::default(), batch.len());
+        for batch in rows[..n].chunks_exact(eval_batch) {
+            let host = mapper.map(batch, Step::default(), 4);
             let input = host.to_device(&device).expect("heldout inputs to device");
             let output = evaluator.evaluate(&input).expect("heldout evaluate");
             let scalar = |name: &str| -> f64 {
