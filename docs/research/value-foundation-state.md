@@ -415,6 +415,17 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > (value/heldout_mse). Policy realigning (pol_ce 2.554↓, top1 22.4%
 > @sb80).
 >
+> **TM GAP (user field-report, 19:0x, GUI games vs SF16/SF18): ARCHON
+> front-loads clock and lives on increment late while SF banks time.**
+> Root cause: our P7/P10 TM lacks STABILITY-BASED EARLY TERMINATION
+> (SF cuts stable moves short and banks the surplus); horizon divisor
+> may compound. Masked by our 10+0.1 test standard (everyone near
+> increment); bites at longer TC. NOT blocking the crown gauntlet
+> (archon-vs-archon ⇒ TM cancels); IS free Elo vs external anchors.
+> QUEUED: pre-S2 TM audit (stability/effort early-stop, fail-low
+> extension, horizon curve) in the next engine build window; constants
+> → S2 SPSA. User GUI-testing = valuable QA channel.
+>
 > **AXIS LAW (17:2x, from sb150 Elo −27.9±30.5): Elo tracks HELD-OUT
 > loss, not train loss.** Stage-2 crossed stage-1's TRAIN endpoint at
 > sb150 yet measured −27.9 — the stage-1 heldout↔Elo map (0.007476↔
