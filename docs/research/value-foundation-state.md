@@ -148,6 +148,22 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > W-D-L drift 5-15-80 → 12-15-73 → 20-13-67 → 21-19-60: losses now
 > converting to DRAWS as well as wins. Top-1 23.2% (sb120, NEW HIGH);
 > value 0.006917 (falling every reading); pol_ce 2.546.
+>
+> **sb150 (01:5xZ): Elo −96.2±30.5 (23-27-50) — the geometric fade BROKE,
+> good direction.** Closure sequence now +135.4 → +69.1 → +34.1 → **+46.9**
+> (model said +17; point landed ~30 ahead). Honesty per
+> no-verdicts-from-weak-tests: closure SE ≈ ±45 (two ±30ish points), so
+> this is ~0.7σ from the halving model — NOT proof of re-acceleration,
+> but the "halving CONFIRMED" language at sb120 was too strong and the
+> sb240 band must widen upward: **−55 (halving from the fresh +47) to
+> −110 (old model, sb150 = lucky) fixed-node**. Even the optimistic edge
+> stays short of the +60 equal-time bar ⇒ **stage-2 remains plan of
+> record**; if anything a still-fat closure at sb150 (LR ~0.00035 and
+> value still making new lows every sb) is MORE evidence the schedule is
+> the binding constraint. Draw surge 19→27 (losses 60→50): the
+> blunder-loss profile is dissolving. Top-1 23.2% (4th touch of the high).
+> Value 0.006667 / pol_ce 2.502 at sb150. Next model check: sb180
+> (halving-from-here says ≈ −73; old track says ≈ −105).
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
