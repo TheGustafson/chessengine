@@ -51,13 +51,57 @@ type SfReader = loader::SfBinpackLoader<fn(&loader::sfbinpack::TrainingDataEntry
 enum D40Reader {
     Bullet(DirectSequentialDataLoader),
     Sf(SfReader),
+    /// Fold a small "aux" bulletformat .bin (self-play / SF18 hard-negs) into the
+    /// streamed main binpack at `mix_pct`% of positions (the flywheel fold-in, D40).
+    /// The aux is read as random CONTIGUOUS windows straight off disk each injection:
+    /// the OS page-caches it when it fits RAM (→ RAM speed) and pages it when it does
+    /// not — so there is NO RAM ceiling and the fold-in set can grow with the flywheel.
+    /// Requires a PRE-SHUFFLED aux .bin (contiguous windows must be decorrelated).
+    Mixed { main: Box<SfReader>, aux_path: String, aux_len: usize, mix_pct: f64 },
 }
 
 impl DataReader<ChessBoard> for D40Reader {
-    fn read_chunks<F: FnMut(&[ChessBoard]) -> bool>(&self, skip_count: usize, f: F) {
+    fn read_chunks<F: FnMut(&[ChessBoard]) -> bool>(&self, skip_count: usize, mut f: F) {
         match self {
             Self::Bullet(reader) => DataReader::<ChessBoard>::read_chunks(reader, skip_count, f),
             Self::Sf(reader) => DataReader::<ChessBoard>::read_chunks(reader, skip_count, f),
+            Self::Mixed { main, aux_path, aux_len, mix_pct } => {
+                use std::io::{Read, Seek, SeekFrom};
+                let (aux_len, pct) = (*aux_len, *mix_pct);
+                let mut file = std::fs::File::open(aux_path).expect("open D40_MIX_DATA");
+                // xorshift64 seeded off the aux size (deterministic, decorrelated windows).
+                let mut seed: u64 = 0x9E37_79B9_7F4A_7C15 ^ (aux_len as u64).wrapping_mul(2_654_435_761);
+                // aligned scratch (Vec<ChessBoard> => 8-byte aligned; read raw bytes into it).
+                let mut aux: Vec<ChessBoard> = Vec::new();
+                DataReader::<ChessBoard>::read_chunks(main.as_ref(), skip_count, |chunk| {
+                    if f(chunk) {
+                        return true;
+                    }
+                    if pct <= 0.0 || aux_len == 0 {
+                        return false;
+                    }
+                    // inject an aux window sized so aux is exactly pct% of positions.
+                    let n = (((chunk.len() as f64) * pct / (100.0 - pct)) as usize).min(aux_len);
+                    if n == 0 {
+                        return false;
+                    }
+                    seed ^= seed << 13;
+                    seed ^= seed >> 7;
+                    seed ^= seed << 17;
+                    let start = (seed as usize) % (aux_len - n + 1);
+                    aux.resize(n, ChessBoard::default());
+                    let bytes = unsafe {
+                        std::slice::from_raw_parts_mut(
+                            aux.as_mut_ptr() as *mut u8,
+                            n * std::mem::size_of::<ChessBoard>(),
+                        )
+                    };
+                    file.seek(SeekFrom::Start((start * std::mem::size_of::<ChessBoard>()) as u64))
+                        .and_then(|_| file.read_exact(bytes))
+                        .expect("read aux window");
+                    f(&aux)
+                });
+            }
         }
     }
 }
@@ -90,6 +134,62 @@ fn position_hash(entry: &loader::sfbinpack::TrainingDataEntry) -> u64 {
     h
 }
 
+/// Held-out band (2026-07-22): `D40_HELDOUT_BAND="lo:hi"` selects rows with
+/// position_hash % 100 in [lo, hi) INSTEAD of the training keep-test
+/// (hash % 100 >= SKIP). Disjoint from every training run whenever
+/// hi <= D40_RANDOM_SKIP_PCT — the shadow population no net has trained on.
+static HELDOUT_BAND: std::sync::LazyLock<Option<(u64, u64)>> =
+    std::sync::LazyLock::new(|| {
+        let raw = std::env::var("D40_HELDOUT_BAND").ok()?;
+        let (lo, hi) = raw.split_once(':').expect("D40_HELDOUT_BAND must be lo:hi");
+        let (lo, hi): (u64, u64) =
+            (lo.parse().expect("band lo"), hi.parse().expect("band hi"));
+        assert!(lo < hi && hi <= 100, "D40_HELDOUT_BAND must satisfy 0 <= lo < hi <= 100");
+        println!("held-out band: hash%100 in [{lo},{hi})");
+        Some((lo, hi))
+    });
+
+/// D47: policy enabled? (read once; the mapper must not pay movegen when off).
+static POL_ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
+    std::env::var("D40_POL_LAMBDA").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0) > 0.0
+});
+/// D47: legal-move mask on? Default ON (the spec is legal-rows-only); turning
+/// it off is a deliberate ablation, not an accident.
+static POL_MASK_ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
+    std::env::var("D40_POL_LEGAL_MASK").map(|v| v != "0").unwrap_or(true)
+});
+
+/// D47: rebuild a chessengine `Board` from the STORED (stm-canonicalized)
+/// bulletformat position. The stored frame has the mover as White on a
+/// vertically-normalized board, so the reconstructed board is always
+/// White-to-move; castling/ep are NOT stored (bulletformat drops them), so
+/// the legal-move mask is conservatively missing castling/ep — harmless: the
+/// sfbinpack filter guarantees the TARGET move is Normal non-capture, and a
+/// mask that omits castling/ep only removes rows from the CE normalization.
+fn stored_board(pos: &ChessBoard) -> Board {
+    const PT: [PieceType; 6] = [
+        PieceType::Pawn,
+        PieceType::Knight,
+        PieceType::Bishop,
+        PieceType::Rook,
+        PieceType::Queen,
+        PieceType::King,
+    ];
+    let mut board = Board::empty();
+    let mut occ = pos.occ;
+    let mut idx = 0usize;
+    while occ != 0 {
+        let sq = occ.trailing_zeros() as u8;
+        occ &= occ - 1;
+        let nibble = (pos.pcs[idx / 2] >> (4 * (idx & 1))) & 0xF;
+        idx += 1;
+        let color = if nibble & 8 == 0 { Color::White } else { Color::Black };
+        let piece_type = PT[(nibble & 7) as usize];
+        board.put_piece(Piece::new(color, piece_type), Square::new(sq));
+    }
+    board
+}
+
 fn sfbinpack_filter(entry: &loader::sfbinpack::TrainingDataEntry) -> bool {
     use loader::sfbinpack::{MoveType, PieceType};
 
@@ -98,7 +198,15 @@ fn sfbinpack_filter(entry: &loader::sfbinpack::TrainingDataEntry) -> bool {
         && entry.score.unsigned_abs() <= 10_000
         && entry.mv.mtype() == MoveType::Normal
         && entry.pos.piece_at(entry.mv.to()).piece_type() == PieceType::None
-        && (*RANDOM_SKIP_PCT == 0 || position_hash(entry) % 100 >= *RANDOM_SKIP_PCT)
+        && match *HELDOUT_BAND {
+            // Held-out extraction: band REPLACES the skip test (quiet-filter
+            // criteria above stay identical — trainer-parity distribution).
+            Some((lo, hi)) => {
+                let h = position_hash(entry) % 100;
+                h >= lo && h < hi
+            }
+            None => *RANDOM_SKIP_PCT == 0 || position_hash(entry) % 100 >= *RANDOM_SKIP_PCT,
+        }
 }
 
 // --- Feature-space layout (design/11 §12.1) ---------------------------------
@@ -111,9 +219,14 @@ const MAX_ACTIVE: usize = HALFKA_MAX_ACTIVE + THREAT_MAX_ACTIVE; // 192
 const DEFAULT_SCALE: f32 = 400.0;
 const DEFAULT_WDL: f32 = 0.3;
 const NUM_BUCKETS: usize = 8;
-const L2: usize = 16;
+// D47 SHARED-BOTTLENECK MULTIHEAD ARCH (user-directed, 2026-07-22):
+// accumulators 1536/perspective (threats retained), pairwise -> concat(1536)
+// -> L1 -> 256 shared bottleneck (THE branch point for heads) -> value tail
+// 256->32->1x8buckets. Policy = 1858 embedding rows off the 256 (D47 vocab,
+// legal-rows-only). Engine consts in sota_head.rs must match (1536/256/32).
+const L2: usize = 128;
 const L3: usize = 32;
-const HL: usize = 768;
+const HL: usize = 1280;
 
 fn halfka_only() -> bool {
     static VALUE: OnceLock<bool> = OnceLock::new();
@@ -452,48 +565,60 @@ fn transpose_saved(rows: usize, cols: usize, saved: Vec<f32>) -> Vec<f32> {
     internal
 }
 
+fn take_i16s(raw: &[u8], offset: &mut usize, count: usize, scale: f32) -> Vec<f32> {
+    let end = *offset + count * 2;
+    let values = raw[*offset..end]
+        .chunks_exact(2)
+        .map(|bytes| f32::from(i16::from_le_bytes(bytes.try_into().unwrap())) / scale)
+        .collect();
+    *offset = end;
+    values
+}
+
+fn take_i8s(raw: &[u8], offset: &mut usize, count: usize, scale: f32) -> Vec<f32> {
+    let end = *offset + count;
+    let values = raw[*offset..end]
+        .iter()
+        .map(|&byte| f32::from(byte as i8) / scale)
+        .collect();
+    *offset = end;
+    values
+}
+
+fn take_f32s(raw: &[u8], offset: &mut usize, count: usize) -> Vec<f32> {
+    let end = *offset + count * 4;
+    let values = raw[*offset..end]
+        .chunks_exact(4)
+        .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
+        .collect();
+    *offset = end;
+    values
+}
+
 fn load_quantised_weights(weights: &mut ModelWeights, path: &str) {
     let raw = std::fs::read(path).expect("read D40_PROBE_QUANT");
     let mut offset = 0usize;
-    let mut i16s = |count: usize, scale: f32| {
-        let end = offset + count * 2;
-        let values = raw[offset..end]
-            .chunks_exact(2)
-            .map(|bytes| f32::from(i16::from_le_bytes(bytes.try_into().unwrap())) / scale)
-            .collect();
-        offset = end;
-        values
+    let pst = take_i16s(&raw, &mut offset, HALFKA_INPUTS * HL, 255.0);
+    let pst_bias = take_i16s(&raw, &mut offset, HL, 255.0);
+    let threat = take_i8s(&raw, &mut offset, THREAT_INPUTS * HL, 64.0);
+    // D47 quant layout: when the policy head is on, polmovew (i8, transposed
+    // [1858][L2]) + polmoveb (f32) ride BETWEEN the threat FT and l1 (the fmt
+    // push order at save time). Gate on the same *POL_ON as defn/mapper so the
+    // graph and the byte layout always agree; the padding tripwire below
+    // catches any mismatch.
+    let polmove = if *POL_ON {
+        let w = take_i8s(&raw, &mut offset, 1858 * L2, 64.0);
+        let b = take_f32s(&raw, &mut offset, 1858);
+        Some((w, b))
+    } else {
+        None
     };
-    let pst = i16s(HALFKA_INPUTS * HL, 255.0);
-    let pst_bias = i16s(HL, 255.0);
-    drop(i16s);
-    let mut i8s = |count: usize, scale: f32| {
-        let end = offset + count;
-        let values = raw[offset..end]
-            .iter()
-            .map(|&byte| f32::from(byte as i8) / scale)
-            .collect();
-        offset = end;
-        values
-    };
-    let threat = i8s(THREAT_INPUTS * HL, 64.0);
-    let l1_saved = i8s(NUM_BUCKETS * L2 * HL, 64.0);
-    drop(i8s);
-    let mut f32s = |count: usize| {
-        let end = offset + count * 4;
-        let values = raw[offset..end]
-            .chunks_exact(4)
-            .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
-            .collect();
-        offset = end;
-        values
-    };
-    let l1_bias = f32s(NUM_BUCKETS * L2);
-    let l2_saved = f32s(NUM_BUCKETS * L3 * L2);
-    let l2_bias = f32s(NUM_BUCKETS * L3);
-    let l3_saved = f32s(NUM_BUCKETS * L3);
-    let l3_bias = f32s(NUM_BUCKETS);
-    drop(f32s);
+    let l1_saved = take_i8s(&raw, &mut offset, NUM_BUCKETS * L2 * HL, 64.0);
+    let l1_bias = take_f32s(&raw, &mut offset, NUM_BUCKETS * L2);
+    let l2_saved = take_f32s(&raw, &mut offset, NUM_BUCKETS * L3 * L2);
+    let l2_bias = take_f32s(&raw, &mut offset, NUM_BUCKETS * L3);
+    let l3_saved = take_f32s(&raw, &mut offset, NUM_BUCKETS * L3);
+    let l3_bias = take_f32s(&raw, &mut offset, NUM_BUCKETS);
     let padding = &raw[offset..];
     assert!(padding.len() <= 63, "oversized quantized padding");
     assert!(
@@ -504,7 +629,7 @@ fn load_quantised_weights(weights: &mut ModelWeights, path: &str) {
         "invalid quantized padding"
     );
 
-    let tensors = [
+    let mut tensors = vec![
         ("l0_pstw", pst),
         ("l0_pstb", pst_bias),
         ("l0_threatw", threat),
@@ -515,6 +640,10 @@ fn load_quantised_weights(weights: &mut ModelWeights, path: &str) {
         ("l3w", transpose_saved(NUM_BUCKETS, L3, l3_saved)),
         ("l3b", l3_bias),
     ];
+    if let Some((w, b)) = polmove {
+        tensors.push(("polmovew", transpose_saved(1858, L2, w)));
+        tensors.push(("polmoveb", b));
+    }
     for (id, values) in tensors {
         assert!(
             weights.set(id, TValue::F32(values)),
@@ -530,16 +659,49 @@ fn main() {
     let format = std::env::var("D40_FORMAT").unwrap_or_else(|_| "bulletformat".into());
     let threads = env_usize("D40_THREADS", 6) as u8;
     let reader = match format.as_str() {
-        "bulletformat" => D40Reader::Bullet(DirectSequentialDataLoader::new(&[data.as_str()])),
+        "bulletformat" => {
+            // The bulletformat path applies NO load-time filter (sfbinpack_filter
+            // guards only the binpack path), so the corpus MUST be pre-filtered
+            // to trainer parity (built by a *_tight builder / export-value's
+            // default filter — docs/research/data-recipe-contract.md). An
+            // unfiltered corpus here reproduces the canon −582 class of failure.
+            println!(
+                "bulletformat input: NO load-time filter — corpus must be pre-filtered \
+                 (trainer-parity 5-criterion; see data-recipe-contract.md): {data}"
+            );
+            D40Reader::Bullet(DirectSequentialDataLoader::new(&[data.as_str()]))
+        }
         "sfbinpack" => {
             let buffer_mb = env_usize("D40_SF_BUFFER_MB", 256);
             println!("SF binpack input: buffer={buffer_mb}MiB quiet-filter=standard");
-            D40Reader::Sf(loader::SfBinpackLoader::new(
-                data.as_str(),
-                buffer_mb,
-                usize::from(threads),
-                sfbinpack_filter,
-            ))
+            // coerce the fn-item to a fn pointer so `main` has the `SfReader` type.
+            let filter: fn(&loader::sfbinpack::TrainingDataEntry) -> bool = sfbinpack_filter;
+            let main: SfReader =
+                loader::SfBinpackLoader::new(data.as_str(), buffer_mb, usize::from(threads), filter);
+            // D40_MIX_DATA=<pre-shuffled aux .bin> folds self-play/SF18 hard-negs into
+            // the stream at D40_MIX_PCT% (default 5). Empty/unset => plain sfbinpack.
+            match std::env::var("D40_MIX_DATA") {
+                Ok(aux_path) if !aux_path.is_empty() => {
+                    let sz = std::fs::metadata(&aux_path).expect("stat D40_MIX_DATA").len() as usize;
+                    let aux_len = sz / std::mem::size_of::<ChessBoard>();
+                    let mix_pct: f64 =
+                        std::env::var("D40_MIX_PCT").ok().and_then(|v| v.parse().ok()).unwrap_or(5.0);
+                    assert!((0.0..100.0).contains(&mix_pct), "D40_MIX_PCT must be 0-99 (float ok)");
+                    assert!(aux_len > 0, "D40_MIX_DATA is empty: {aux_path}");
+                    // Surface the aux-EPOCH count (the real overfit knob): with a small aux
+                    // a fixed % over-presents it (5% of 1.7M over 720sb ~= 521 epochs). Prefer
+                    // targeting ~2-6 aux epochs; grow the aux via the flywheel for more effect.
+                    let total = (env_usize("D40_SUPERBATCHES", 240)
+                        * env_usize("D40_BPS", 1520)
+                        * env_usize("D40_BATCH", 16384)) as f64;
+                    let aux_epochs = (total * mix_pct / 100.0) / aux_len as f64;
+                    println!(
+                        "FOLD-IN: {aux_len} aux @ {mix_pct}% => ~{aux_epochs:.1} aux epochs (on-demand windows, no RAM cap)"
+                    );
+                    D40Reader::Mixed { main: Box::new(main), aux_path, aux_len, mix_pct }
+                }
+                _ => D40Reader::Sf(main),
+            }
         }
         other => panic!("D40_FORMAT must be bulletformat or sfbinpack, got {other}"),
     };
@@ -559,6 +721,39 @@ fn main() {
     verify_feature_parity(&reader, verify_rows);
     if env_usize("D40_VERIFY_ONLY", 0) != 0 {
         println!("D40_VERIFY_ONLY complete");
+        return;
+    }
+
+    // Held-out dump (2026-07-22): stream the band-filtered reader to a raw
+    // bulletformat .bin — the fixed shadow-population probe set. Trainer-parity
+    // by construction: same loader, same filter body, same stm-canonicalized
+    // conversion (records carry score/result/packed move, so the eval mode
+    // below reproduces the exact training targets from them).
+    if let Ok(dump_path) = std::env::var("D40_HELDOUT_DUMP") {
+        assert!(
+            HELDOUT_BAND.is_some(),
+            "D40_HELDOUT_DUMP requires D40_HELDOUT_BAND (e.g. 0:5)"
+        );
+        let rows_cap = env_usize("D40_HELDOUT_ROWS", 1_000_000);
+        use std::io::Write;
+        let mut out = std::io::BufWriter::new(
+            std::fs::File::create(&dump_path).expect("create D40_HELDOUT_DUMP"),
+        );
+        let mut written = 0usize;
+        reader.read_chunks(0, |chunk: &[ChessBoard]| {
+            let take = chunk.len().min(rows_cap - written);
+            let bytes = unsafe {
+                std::slice::from_raw_parts(
+                    chunk.as_ptr() as *const u8,
+                    take * std::mem::size_of::<ChessBoard>(),
+                )
+            };
+            out.write_all(bytes).expect("write held-out rows");
+            written += take;
+            written == rows_cap
+        });
+        out.flush().expect("flush held-out dump");
+        println!("held-out dump: {written} rows -> {dump_path}");
         return;
     }
 
@@ -622,13 +817,26 @@ fn main() {
         .add_sparse("threat_stm", (THREAT_INPUTS, 1), THREAT_MAX_ACTIVE)
         .add_sparse("threat_ntm", (THREAT_INPUTS, 1), THREAT_MAX_ACTIVE)
         .add_sparse("buckets", (NUM_BUCKETS, 1), 1)
-        .add_dense("targets", (1, 1));
+        .add_dense("targets", (1, 1))
+        // D41 rich-net: 3-way game-result one-hot [L,D,W] (stm-relative), for the
+        // co-trained WDL output head. Always present; inert unless D40_WDL_LAMBDA>0
+        // (λ=0 => wdl head gets no gradient, value tensors identical => CENN parity).
+        .add_dense("wdl_target", (3, 1))
+        // D41 rich-net: teacher best-move from/to one-hots (stm-relative), for the
+        // co-trained POLICY aux head (the H-AUX bet: shape the trunk, drop at deploy).
+        // Sourced from the packed move in ChessBoard.extra. Inert unless D40_POL_LAMBDA>0.
+        // D47: complete-move policy target over the 1,858-class vocabulary
+        // (chessengine::policy_vocab — the shared single implementation) plus
+        // the additive legal-move mask (0.0 legal / -30.0 illegal — soft enough that exp() never underflows to an exact 0; -1e4 NaN'd the CE via 0*log(0)), so the CE
+        // normalizes over legal rows only. Both inert unless D40_POL_LAMBDA>0.
+        .add_dense("pol_target", (1858, 1))
+        .add_dense("pol_mask", (1858, 1));
 
     let mapper = ModelInputsMapper::build(
         &inputs,
         move |pos: &ChessBoard,
               _step,
-              (((((hk_stm, hk_ntm), th_stm), th_ntm), buckets), targets)| {
+              ((((((((hk_stm, hk_ntm), th_stm), th_ntm), buckets), targets), wdl_target), pol_target), pol_mask)| {
             let (mut hk, mut th) = (0usize, 0usize);
             feats.map_features(pos, |stm, ntm| {
                 if stm < HALFKA_INPUTS {
@@ -669,12 +877,77 @@ fn main() {
             let eval = sigmoid(f32::from(pos.score) * score_multiplier / target_scale);
             let result = f32::from(pos.result) / 2.0;
             targets[0] = wdl * result + (1.0 - wdl) * eval;
+            // WDL head target: one-hot over [L, D, W], stm-relative (pos.result ∈ {0,1,2}).
+            let r = (pos.result as usize).min(2);
+            wdl_target[0] = 0.0;
+            wdl_target[1] = 0.0;
+            wdl_target[2] = 0.0;
+            wdl_target[r] = 1.0;
+            // D47 policy target: complete-move class over the 1858 vocabulary,
+            // from the loader-packed ORIENTED from/to (extra[0..2]) + promo code
+            // (extra[2]). Rows with no packed move (bf-converted bins, aux rows:
+            // extra all zero => pf==pt) contribute an all-zero target and an
+            // all-zero mask => zero CE. The legal mask (0.0 legal / -1e4
+            // illegal) is generated from the stored position via the ENGINE's
+            // movegen and mapped through the SAME canonical frame; the
+            // every-target-is-legal assert below is the frame tripwire.
+            pol_target.iter_mut().for_each(|x| *x = 0.0);
+            pol_mask.iter_mut().for_each(|x| *x = 0.0);
+            if *POL_ON {
+                use chessengine::eval::nnue::policy_vocab::{self, POLICY_VOCAB};
+                let (pf, pt) = (pos.extra[0], pos.extra[1]);
+                let promo = match pos.extra[2] {
+                    1 => Some(PieceType::Knight),
+                    2 => Some(PieceType::Bishop),
+                    3 => Some(PieceType::Rook),
+                    _ => None,
+                };
+                let target_id = if pf < 64 && pt < 64 && pf != pt {
+                    policy_vocab::policy_move_id(pf, pt, promo)
+                } else {
+                    None
+                };
+                if let Some(id) = target_id {
+                    pol_target[id as usize] = 1.0;
+                }
+                if *POL_MASK_ON {
+                    // stored frame == mover frame; only the _hm file-mirror
+                    // remains, decided by the STORED king file (invariant to
+                    // the vertical flip, so it matches the pack-time orient).
+                    let board = stored_board(pos);
+                    let ksq = Square::new(pos.ksq & 63);
+                    let orient = policy_vocab::canonical_orient(false, ksq);
+                    pol_mask.iter_mut().for_each(|x| *x = -30.0);
+                    let mut list = chessengine::moves::MoveList::new();
+                    chessengine::movegen::generate_legal(&board, &mut list);
+                    for &m in list.iter() {
+                        let (fc, tc) =
+                            policy_vocab::canonical_from_to(m.from(), m.to(), orient);
+                        if let Some(mid) =
+                            policy_vocab::policy_move_id(fc, tc, m.promotion_piece())
+                        {
+                            pol_mask[mid as usize] = 0.0;
+                        }
+                    }
+                    // Frame tripwire: the packed target must be a legal row.
+                    if let Some(id) = target_id {
+                        assert!(
+                            pol_mask[id as usize] == 0.0,
+                            "D47 frame bug: target id {id} not in the legal mask \
+                             (pf {pf} pt {pt} promo {:?} ksq {})",
+                            promo,
+                            pos.ksq
+                        );
+                    }
+                    let _ = POLICY_VOCAB;
+                }
+            }
         },
     );
 
     let defn = ModelDefinition::build(
         &inputs,
-        |builder, (((((hk_stm, hk_ntm), th_stm), th_ntm), buckets), targets)| {
+        |builder, ((((((((hk_stm, hk_ntm), th_stm), th_ntm), buckets), targets), wdl_target), pol_target), pol_mask)| {
             // Two SEPARATE FT tensors (quantised i16 / i8 respectively). Per
             // design/11 §12.2 the threats transformer is seeded from ZERO and
             // carries NO bias (the shared FT bias lives on the HalfKA tensor);
@@ -708,6 +981,19 @@ fn main() {
             let hl3 = l2.forward(hl2).select(buckets).screlu();
             let out = l3.forward(hl3).select(buckets);
             let sig = out.sigmoid();
+
+            // D41 rich-net: co-trained WDL output head. L3->3 logits (bucket-specific
+            // via hl3), softmax-CE on the game-result one-hot. ADDITIVE loss
+            // (value_MSE + λ·CE), NOT the multiplicative NLL that distorted the mean
+            // in EXP-UNC-1. λ=0 (default) => the head is neither output-reachable nor
+            // in the loss => dropped from the raw ckpt => value CENN byte-identical.
+            // The WDL / policy heads are created ONLY inside their λ>0 loss branches
+            // below. An affine created but NOT reachable in the loss is an orphaned
+            // weight with no registered gradient → the backward pass panics
+            // (definition.rs unwrap). λ=0 (default) ⇒ no head tensors exist ⇒ the
+            // value net + graph are byte-identical to today.
+            let wdl_lambda = env_f32("D40_WDL_LAMBDA", 0.0);
+            let pol_lambda = env_f32("D40_POL_LAMBDA", 0.0);
 
             // EXP-UNC-1 (search study bet 1): heteroscedastic-NLL uncertainty head.
             // A PARALLEL log-variance head `l3_var` (same L3->NUM_BUCKETS shape as
@@ -783,11 +1069,119 @@ fn main() {
                     _ => sig.squared_error(targets).reduce_sum_batch(),
                 }
             };
+            // D47 granular metrics: report the raw components beside the fused
+            // loss (run.rs reads outputs named "metric:*" per batch).
+            outputs.push(("metric:value".to_string(), loss));
+            // D41 rich-net: fold the WDL cross-entropy into the loss (additive,
+            // λ-weighted). Gradients ADD — the WDL head does not reweight the eval
+            // gradient (contrast EXP-UNC-1's exp(−s) NLL). λ→0 recovers the control.
+            // D41 rich-net WDL head — created HERE (only when used): L3->3 logits off
+            // the bucket-selected hl3, softmax-CE on the game-result one-hot, ADDITIVE
+            // (no eval-gradient reweighting, contrast EXP-UNC-1's exp(−s) NLL). Pushed
+            // as a SAVED output so l3_wdl lands in the raw ckpt for extraction.
+            let loss = if wdl_lambda > 0.0 {
+                let l3_wdl = builder.new_affine("l3_wdl", L3, 3);
+                let wdl_logits = l3_wdl.forward(hl3);
+                outputs.push(("wdl".to_string(), wdl_logits));
+                let wdl_ce = wdl_logits
+                    .softmax_crossentropy_loss(wdl_target)
+                    .reduce_sum_rows()
+                    .reduce_sum_batch();
+                loss + wdl_ce * wdl_lambda
+            } else {
+                loss
+            };
+            // D41 rich-net POLICY aux head (H-AUX) — created HERE (only when used):
+            // two HL->64 heads off the shared trunk hl1 forcing it to encode the
+            // teacher's move preference; additive from+to CE, deploy EVAL-ONLY.
+            let loss = if pol_lambda > 0.0 {
+                // D47 vocabulary policy head: 1858 embedding rows dotted with
+                // the 256 shared bottleneck (hl2 — THE branch point), additive
+                // legal mask (-1e4 on illegal rows => the CE normalizes over
+                // legal moves only), softmax-CE vs the one-hot move_id target.
+                // λ (D40_POL_LAMBDA) is calibrated for POLICY≈EVAL loss parity
+                // (D47; decay later). Saved to quant (polmovew/b) so netpack
+                // emits the .cpol companion — the engine orders the
+                // policy-argmax move first via selected-row int8 inference.
+                let l_polmove = builder.new_affine("polmove", L2, 1858);
+                let pol_logits = l_polmove.forward(hl2) + pol_mask;
+                let pol_ce = pol_logits
+                    .softmax_crossentropy_loss(pol_target)
+                    .reduce_sum_rows()
+                    .reduce_sum_batch();
+                outputs.push(("metric:pol_ce".to_string(), pol_ce));
+                loss + pol_ce * pol_lambda
+            } else {
+                loss
+            };
             (Some(loss), outputs)
         },
     );
 
     let device = DefaultDevice::new(0).expect("device");
+
+    // Held-out eval (2026-07-22): run the EXACT training graph (same mapper,
+    // same loss nodes) over a dumped shadow-population .bin and report the
+    // per-row value MSE + policy CE — the overfit detector. Weights from
+    // D40_PROBE_RAW (f32-faithful) or D40_PROBE_QUANT (deploy-faithful).
+    // For a policy net set D40_POL_LAMBDA>0 (gates the graph + quant layout);
+    // leave it unset for value-only nets (the twin).
+    if let Ok(dump_path) = std::env::var("D40_HELDOUT_EVAL")
+        && (std::env::var("D40_PROBE_RAW").is_ok() || std::env::var("D40_PROBE_QUANT").is_ok())
+    {
+        let mut weights = ModelWeights::zeroed(&defn);
+        let which = if let Ok(path) = std::env::var("D40_PROBE_QUANT") {
+            load_quantised_weights(&mut weights, &path);
+            path
+        } else {
+            let path = std::env::var("D40_PROBE_RAW").unwrap();
+            load_raw_weights(&mut weights, &path);
+            path
+        };
+        let mut evaluator = ModelEvaluator::new(&defn, device.clone()).expect("heldout evaluator");
+        evaluator.load_weights(&weights).expect("heldout weights");
+        let bytes = std::fs::read(&dump_path).expect("read D40_HELDOUT_EVAL");
+        let rec = std::mem::size_of::<ChessBoard>();
+        assert!(
+            !bytes.is_empty() && bytes.len() % rec == 0,
+            "held-out dump must be a non-empty multiple of the record size"
+        );
+        let n = bytes.len() / rec;
+        let mut rows: Vec<ChessBoard> = vec![ChessBoard::default(); n];
+        unsafe {
+            std::slice::from_raw_parts_mut(rows.as_mut_ptr() as *mut u8, bytes.len())
+                .copy_from_slice(&bytes)
+        };
+        let eval_batch = env_usize("D40_HELDOUT_BATCH", 16_384);
+        let (mut value_sum, mut pol_sum) = (0f64, 0f64);
+        for batch in rows.chunks(eval_batch) {
+            let host = mapper.map(batch, Step::default(), batch.len());
+            let input = host.to_device(&device).expect("heldout inputs to device");
+            let output = evaluator.evaluate(&input).expect("heldout evaluate");
+            let scalar = |name: &str| -> f64 {
+                let TValue::F32(v) = output
+                    .get(name)
+                    .unwrap_or_else(|| panic!("missing output {name}"))
+                    .to_host()
+                    .expect("metric to host")
+                else {
+                    panic!("metric {name} must be f32");
+                };
+                f64::from(v[0])
+            };
+            value_sum += scalar("metric:value");
+            if *POL_ON {
+                pol_sum += scalar("metric:pol_ce");
+            }
+        }
+        let pol = if *POL_ON { pol_sum / n as f64 } else { f64::NAN };
+        println!(
+            "heldout\trows {n}\tvalue_mse {:.9}\tpol_ce {pol:.9}\tckpt {which}",
+            value_sum / n as f64
+        );
+        return;
+    }
+
     if let Ok(fen_path) = std::env::var("D40_PROBE_FENS")
         && (std::env::var("D40_PROBE_RAW").is_ok() || std::env::var("D40_PROBE_QUANT").is_ok())
     {
@@ -843,7 +1237,13 @@ fn main() {
         println!("initialised from raw checkpoint {path}");
     }
     // AdamW default clip +/-1.98 => i8 L1/threat weights * 64 <= 127 (no overflow).
-    let params = AdamWParams::default();
+    // D40_WEIGHT_DECAY overrides the default 0.01 (e.g. 0 for a finetune that must
+    // not shrink weights / output scale). Default preserves from-scratch behaviour.
+    let mut params = AdamWParams::default();
+    if let Ok(wd) = std::env::var("D40_WEIGHT_DECAY") {
+        params.decay = wd.parse().expect("D40_WEIGHT_DECAY must be f32");
+        println!("weight_decay override: {}", params.decay);
+    }
     let mut optimiser = AdamW::new(defn, weights, device, params).expect("optimiser");
 
     let loader = ReadMapLoader::new(reader, mapper, threads);
@@ -884,26 +1284,41 @@ fn main() {
     } else {
         SavedFormat::id("l0_pstw").round().quantise::<i16>(255)
     };
-    let fmt = vec![
+    // HalfKA-only nets (D41 drop-threats arch) never save the threat transformer.
+    // The tensor is still built and "trained" inert — its inputs are all inactive
+    // (line 285 emits no threat features), so it gets zero gradient and stays at its
+    // zero init — but OMITTING it from the saved quant.bin is what makes the packed
+    // .cenn genuinely threatless: netpack (D40_HALFKA_ONLY=1) and the engine loader
+    // (flags=0) both expect NO threat bytes, and the engine then skips the threat
+    // accumulator entirely (the NPS win). Saving a zero threat tensor instead would
+    // both misalign netpack's payload AND still cost the full threat-update NPS.
+    let mut fmt = vec![
         l0_pstw_saved,
         SavedFormat::id("l0_pstb").round().quantise::<i16>(255),
-        SavedFormat::id("l0_threatw").round().quantise::<i8>(64),
-        SavedFormat::id("l1w")
-            .transpose()
-            .round()
-            .quantise::<i8>(64),
-        SavedFormat::id("l1b"),
-        SavedFormat::id("l2w").transpose(),
-        SavedFormat::id("l2b"),
-        SavedFormat::id("l3w").transpose(),
-        SavedFormat::id("l3b"),
     ];
+    if !halfka_only() {
+        fmt.push(SavedFormat::id("l0_threatw").round().quantise::<i8>(64));
+    }
+    // D47: the deployed policy head rides the quant ckpt so netpack can emit
+    // the .cpol companion. Transposed to row-major [1858][L2]; int8 q64 —
+    // ordering needs relative scores only, so the exact scale is uncritical.
+    if *POL_ON {
+        fmt.push(SavedFormat::id("polmovew").transpose().round().quantise::<i8>(64));
+        fmt.push(SavedFormat::id("polmoveb"));
+    }
+    fmt.push(SavedFormat::id("l1w").transpose().round().quantise::<i8>(64));
+    fmt.push(SavedFormat::id("l1b"));
+    fmt.push(SavedFormat::id("l2w").transpose());
+    fmt.push(SavedFormat::id("l2b"));
+    fmt.push(SavedFormat::id("l3w").transpose());
+    fmt.push(SavedFormat::id("l3b"));
 
     println!(
         "--- D40 training: superbatches {start_superbatch}..={end_superbatch} x {batches_per_superbatch} batches x {batch_size} ---"
     );
     println!(
-        "--- D40 targets: scale={target_scale} wdl={wdl} score_multiplier={score_multiplier} seed={seed} ---"
+        "--- D40 targets: scale={target_scale} wdl={wdl} score_multiplier={score_multiplier} pol_lambda={} seed={seed} ---",
+        env_f32("D40_POL_LAMBDA", 0.0)
     );
     println!("--- D40 HalfKA-only ablation: {} ---", halfka_only());
     if factorize {

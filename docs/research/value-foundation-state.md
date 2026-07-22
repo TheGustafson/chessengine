@@ -285,6 +285,25 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > the ARCH is the value win.** No single pair significant; the monotone
 > trend is the evidence.
 >
+> **HELD-OUT INSTRUMENT (user-commissioned 10:3x, CODE READY — build in
+> the pre-stage-2 window):** three additive env-gated modes in
+> d40_features.rs (repo copy synced): `D40_HELDOUT_BAND=0:5` (band
+> REPLACES the keep-test in the same quiet filter — shadow population),
+> `D40_HELDOUT_DUMP` (stream band rows to a raw bulletformat .bin,
+> CPU-only), `D40_HELDOUT_EVAL` + `D40_PROBE_RAW/QUANT` (exact training
+> graph + loss nodes over the dump; prints value_mse + pol_ce; quant
+> loader extended for the D47 polmove layout, padding assert =
+> layout tripwire). Scripts: `tools/nnue/heldout_{extract,eval,
+> backfill}.sh`. **BUILD-WINDOW CHECKLIST (twin exit → stage-2
+> launch): (1) twin sb240 pack + 100g pair + 300g endpoint matches;
+> (2) `cargo build --release --features cuda --example d40_features`
+> (CUDA_PATH=/opt/cuda) — additive changes only, default path
+> untouched; (3) 1-sb smoke on a scratch D40_ID to prove the trainer
+> still trains; (4) heldout_extract.sh (1M rows); (5) heldout_eval.sh
+> on d47c sb240 quant (pol=1) + twin sb240 quant (pol=0) as
+> validation; (6) LAUNCH STAGE-2; (7) backfill curves retroactively
+> during stage-2 in RAM-guarded slots or after.**
+>
 > **USER HYPOTHESIS (10:1x) — the joint net is MORE value-undertrained
 > than the twin at matched presentations, and has the higher ceiling.**
 > Gradient arithmetic: share ~1.8 ⇒ policy got ~64% of trunk gradient ⇒
