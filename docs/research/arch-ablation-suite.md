@@ -76,6 +76,22 @@ bottleneck / threats / multihead), T9 is partially LIVE (policy head shipped;
 split-point question remains for WDL/σ), and T3's width question folds into
 the D47 shrink/optimize phase.
 
+## T10 — smallnet companion (the NPS fork's headline; SF dual-net blueprint, 2026-07-22)
+
+SF's recipe (open-chess t=3739 + our sota_context scaffold): tiny L1-128
+net trained ONLY on `abs(simple_eval) > 1000` rows — **solo strength −318
+Elo, system +Elo at SPRT** — because the ROUTER is free and external
+(material+PSQT arithmetic, pre-net), the net only ever sees its slice, and
+the "do we need the big net" instinct is implemented as an OUTPUT check
+(small net returns modest eval on a "decided" position ⇒ re-eval with big
+net — catches compensation/fortress), NOT as learned self-assessment
+(tiny nets are confidently wrong OOD). ARCHON plan: material prefilter
+(exists, `sota_context.rs`), companion trained on our binpacks' gated
+slice **distilled from our own big net's outputs** (teacher = a d47c
+checkpoint — zero new data; ideal early JAX job), output-disagreement
+fallback. Expected: the single largest recoverable chunk of the 2.8×
+NPS gap to SF18.
+
 Governing caveat: **data first.** A bigger/fancier net with nothing rich to learn from just
 overfits. The endgame is a differently-shaped net (T7/T8 + rich-data heads) that turns our
 search data into something no other engine has — but only once the data can fill it.
