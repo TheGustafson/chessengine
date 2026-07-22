@@ -96,6 +96,14 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > sb74 components: value 0.007373 | pol_ce 2.6235 | share ~1.78.
 > Ablation artifacts: `data/nnue/nets/ablate/` +
 > `data/nnue/experiments/ablate-sb30-{nopol,pol}-300g/`.
+>
+> **sb90 (23:30Z): Elo −177.2±36.1 (20-13-67)** — closure +69/30sb vs +135
+> the previous interval (~halved). Geometric projection ⇒ ~−100..−130
+> fixed-node at sb240 (short of parity; equal-time bar +60 beyond) — IF the
+> 0.5 ratio holds (3 noisy points; epoch-2 wrap ~sb102 + LR tail = real
+> uncertainty; sb120 sharpens). Reading if it holds: undertrained capacity
+> (B4 law) + λ share ⇒ the §5b stage-2 path, decomposed by the twin.
+> Top-1 20.4% (sb90). Value 0.007185 / pol_ce 2.5937 / share ~1.80.
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
