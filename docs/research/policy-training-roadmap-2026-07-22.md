@@ -211,6 +211,19 @@ accuracy silently rots; small λ keeps the head aligned while value takes
 ~full gradient). This is "lambda decay can come later" materialized across
 stages.
 
+**Presentation-absorption hypothesis (user, 2026-07-22): joint training
+raises the useful-epochs ceiling vs value-only.** Two mechanisms: (a)
+policy labels are additional supervision per row — re-presentations are
+less repetitive for joint (larger effective dataset at equal rows); (b)
+multi-task gradient is a memorization brake (overfit onset later). This
+REFINES B4 (coverage-beats-epochs was measured on value-only nets — the
+constant is objective-dependent) and derisks long re-presentation
+stage-2 schedules. Exploration prerequisite: a HELD-OUT binpack slice
+(segments never streamed) with value-MSE + pol-CE evaluated per
+checkpoint — we currently have NO overfit detector between streaming
+loss and Elo. Equal-presentation twin comparisons remain the standard
+for attribution; the absorption axis is a separate, later experiment.
+
 ## 6. Downstream consumers beyond first-move ordering (later, D41-adjacent)
 
 Once policy accuracy is credible, the same logits can inform more than the
