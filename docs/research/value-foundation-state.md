@@ -54,6 +54,20 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > forms the trunk, then independent frozen-trunk head finetunes on
 > policy-specialized (unfiltered/tactical) data; the d47c-vs-twin
 > trunk-sufficiency head-finetune experiment is the decision fork.
+>
+> **sb30 READOUTS (21:40Z): λ DECISION = RIDE.** Share plateaued ~1.68
+> (0.81→1.43→1.65→1.68 at sb1/5/20/30; +0.003/sb and flattening), value
+> component improved at EVERY reading (0.01022→0.008131 sb5→30) — neither
+> intervention condition (share>2 AND value hurt) fired. Constant λ is
+> self-annealing (λ·pol_ce shrinks as policy improves). Top-1: ~17% plateau
+> sb15–30 then **20.7% at sb35** (probe SE ±1.8%). First Elo line, 100g
+> fixed-node 5k vs FULLY-TRAINED incumbent: **−381.7±49.5 (5-10-85)** —
+> expected-early, trajectory sb30→60→90 is the signal, not the absolute.
+> OPS: trainer RSS plateaued ~8.5GB (warm-up, NOT a leak; zram 4G full,
+> avail ~1.1-1.4G). Stale d47/d47b watchers+tails killed; ckpt watcher
+> replaced by `tools/nnue/runs/d47c_ckpt_watch_v2.sh` (conc 1, RAM guard
+> 1.2G with 12×60s retry, resume-safe) — Elo instrument restored.
+> Fold-in dose-2 (p75) final: **−5.8±17.1 NULL** — fold-in arc stays CLOSED.
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
