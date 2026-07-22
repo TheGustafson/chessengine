@@ -46,6 +46,29 @@ conjunctions deserve capacity.**
    Hard part: the encoder's own runtime cost. If it works it's a genuine
    contribution: an SFA-regularized sparse feature layer in an NNUE engine.
 
+   **★ USER PICK (2026-07-22): path 3 is the bet — 1/2 judged not worth
+   the bump. SPIKE-1 COMMISSIONED (run after the D47 stage-2/shrink fork
+   resolves; ~1 GPU-day):**
+   - **Key design trick — per-group competition**: codes organized into
+     groups, each owning a FIXED local receptive field (3-file slice, king
+     neighborhood, piece-pair channel), one-of-N competition within the
+     group (Gumbel-softmax in training, hard argmax at export). A move can
+     only flip groups whose field intersects the changed squares ⇒
+     **incrementality by construction**; the slowness penalty just adds
+     within-group hysteresis. Sparsity = one code per group, also by
+     construction.
+   - Scale: ~512 groups × 64 codes (32k rows), fields ≤16 squares over the
+     768 piece-square planes; loss = eval-supervised small head + slowness
+     on successive pairs + usage-balancing (anti-collapse).
+   - Data synergy: sfbinpack is GAME-ORDERED — the existing loader already
+     yields the successive-position pairs the slowness loss needs.
+   - **Pre-registered success criteria**: (1) active ≈ 30–100 (HalfKA
+     class); (2) mean churn ≤ ~8 codes/move; (3) fair fight = same head on
+     learned vs HalfKA features at EQUAL active count + table size; ≥90–95%
+     of HalfKA's eval accuracy on spike-1 = strong GO (families COMPOSE —
+     hybrid learned+HalfKA is the follow-up, not either/or).
+   - Deployment shape: per-group int8 dot over its window, CPU-incremental.
+
 4. **Dense-teacher feature discovery** (flywheel-era). Train an
    unconstrained dense net; mine its attributions over candidate
    conjunction families; enumerate the winners into the table net (path 2).
