@@ -104,6 +104,27 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > uncertainty; sb120 sharpens). Reading if it holds: undertrained capacity
 > (B4 law) + λ share ⇒ the §5b stage-2 path, decomposed by the twin.
 > Top-1 20.4% (sb90). Value 0.007185 / pol_ce 2.5937 / share ~1.80.
+>
+> **★ OOM CRASH + RESUME (23:16–23:26 local):** kernel OOM-killed the trainer
+> at **sb95 b2560** (8.2GB RSS, inherited oom_score_adj +200; trigger = a
+> Chrome HeapHelper allocation on a ~1.2G-avail box). Twin auto-launch
+> misfired (can't tell crash from completion), ran garbage (headline loss
+> printed 0.000000 — tensor-map collision: with POL_ON=0, metric:value IS
+> the fused loss node and the metric buffer clobbered the loss mapping;
+> FIXED in run.rs by aliasing) and froze; killed. **RESUMED from
+> sb94-raw.bin via the pre-existing D40_INIT_RAW + D40_START_SUPERBATCH=95**
+> (T5 resume machinery) — first resumed batch loss 0.020343 ≈ pre-crash
+> 0.020562 ✓ continuous. Notes: Adam moments start FRESH (raw = weights
+> only — brief re-warm transient at the sb95 LR), and the DATA STREAM
+> restarts from the file start (stream offset isn't checkpointed) — the
+> epoch-2 wrap effectively happened at sb95 instead of ~sb102.
+> Gotcha for the ledger: rebuild needs `--features cuda` (a bare rebuild
+> makes a MOCK-runtime binary that exits 101 at the first gradient).
+> Protections: watcher v3 (`tools/nnue/runs/d47c_ckpt_watch_v3.sh`) RAM-guards
+> the PACK+probe too (1.8G, retry) not just matches; all 43 Chrome procs
+> oom_score_adj→900 (OOM prefers tabs over the trainer; trainer stuck at
+> 200, lowering needs CAP_SYS_RESOURCE). Twin re-chained on the new pid
+> with the fixed binary.
 
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
