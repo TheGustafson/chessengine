@@ -103,6 +103,25 @@ Datagen: phase-2 visit distributions = the H3 soft targets (same
 machinery, our data). Prototype path: H1 root-only first, then deepen
 the explicit tree ply by ply, gating Elo at each step.
 
+**Prior-quality bar (user q, 2026-07-22): the hybrid does NOT need an
+Lc0-class head — the bar is anti-starvation coverage, not top-1.**
+Why the bar is low: (1) our visit = an AB probe (near-deterministic
+value) ⇒ prior errors correct in 2-3 visits, ~50-100× Lc0's per-visit
+rate; (2) the prior only ranks RESIDUAL candidates — phase-1 AB seeds
+its favorite's Q, phase-3 verification bounds chosen-move misses (a
+fatal starvation needs to slip all three nets); (3) precedent floor:
+Dragon MCTS is viable on heuristic-grade priors with NO net. The head
+sets the CEILING in wide positions, not viability.
+**Pre-registered bar (measure on WIDE positions only — flat top-k evals,
+where phase 2 triggers): P(deep-SF best move gets ≥1-2% prior mass)
+≥ 85-90%; starvation rate (<1% on true best) ≤ 5-10%. ≈ top-1 30-40%;
+possibly already met by the 23% one-hot head at root; the soft head's
+fattened tail is exactly the anti-starvation property.** Compensating
+knob Lc0 lacks: trade weak prior for higher c_puct + deeper probes —
+bounded waste (phase-2-only, single-digit Elo global) vs intact upside.
+Decide by: wide-position coverage probe + H1 telemetry (wasted-visit
+fraction, best-move-starved counter) — NOT the top-1 number.
+
 ## Experiment ladder (sequenced behind the value foundation + design/19 S-items)
 
 - **H0 — policy-aware AB allocation** (pure AB, no structure change):
