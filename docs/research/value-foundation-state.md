@@ -415,6 +415,18 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > (value/heldout_mse). Policy realigning (pol_ce 2.554↓, top1 22.4%
 > @sb80).
 >
+> **AXIS LAW (17:2x, from sb150 Elo −27.9±30.5): Elo tracks HELD-OUT
+> loss, not train loss.** Stage-2 crossed stage-1's TRAIN endpoint at
+> sb150 yet measured −27.9 — the stage-1 heldout↔Elo map (0.007476↔
+> −143, 0.006836↔−52.5, 0.006348↔+49) predicts −24.0 from stage-2's
+> sb140 heldout 0.006699. Essentially exact. Train-axis readings lead
+> Elo by the generalization gap; the gap closes through the anneal
+> (stage-1: 6%→1.5% final quarter) so Elo catches up late. Projection
+> on the correct axis: endpoint heldout 0.0061-0.0062 ⇒ **≈+60-90 vs
+> incumbent = +15-40 over the stage-1 net.** The held-out instrument
+> is now formally the strength predictor; train components are a
+> throughput/health signal only.
+>
 > **METHOD NOTE (15:2x): sb90 Elo = −85.0 (27-22-51), DIGIT-IDENTICAL
 > to sb60 — nets verified distinct (hashes differ); with deterministic
 > fixed-node engines + the fixed book seed, near-identical nets replay
