@@ -100,6 +100,16 @@ trained to say "modest" exactly where escalation should fire; the only
 uncaught error direction is confidently-large-on-drawish, which the
 curriculum penalizes). Filtering by |label| would delete those rows and
 build that exact blind spot.
+**T10 GATE ADDITION (user methodology point, 2026-07-22): self-play
+SPRT is structurally blind to sac-handling if neither the book nor the
+engines' style generates deep-sac positions — a coverage hole (same
+species as the queens-canary rule).** Pre-registered: the companion
+ships only after a SACRIFICE SUITE gate — positions whose best line
+invests rook-plus material (the |simpleEval|>1000 gate only fires at
+rook-plus, so minor-piece sacs never reach the smallnet) — measuring
+depth-to-find + score stability, gate ON vs OFF. Book diversity (UHO)
+covers opening imbalance only; the suite covers the middlegame-sac
+class the gate could silently break.
 
 Governing caveat: **data first.** A bigger/fancier net with nothing rich to learn from just
 overfits. The endgame is a differently-shaped net (T7/T8 + rich-data heads) that turns our
