@@ -390,6 +390,10 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > loss-normalization or target-detail difference to reconcile before
 > trusting its ABSOLUTE loss numbers (relative/per-position parity is
 > proven by the byte + engine oracles).
+> **SEQUENCING (user, 12:1x): JAX migration + testing happens AFTER
+> the full D47 training arc completes** (stage-2 → gate → equal-time
+> gauntlet). Branch parks until then; first JAX window = GPU throughput
+> benchmark + the 7% loss-readout reconciliation + sidecar wiring.
 >
 > **USER HYPOTHESIS (10:1x) — the joint net is MORE value-undertrained
 > than the twin at matched presentations, and has the higher ceiling.**
