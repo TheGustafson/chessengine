@@ -360,6 +360,37 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > isolated worktree branch; parity-proof + loader benchmarks + adoption
 > framework; CPU-pinned, no-build guardrails).
 >
+> **★ OOM #3 (11:48, stage-2 killed at sb1 — TWO causes, both now
+> structurally fixed):** (1) MY byte-diff smoke runs wrote ~2.9GB of
+> checkpoints into tmpfs-backed scratchpad (/tmp = RAM!) right before
+> launching a 9GB trainer — zram was 4G/4G FULL at launch. **RULE:
+> model artifacts NEVER go to /tmp/tmpfs; smoke outputs go to disk.**
+> Purged: tmpfs 3.8G→43M, available 2G→11.7G. (2) The Chrome
+> oom_score_adj=900 sweep DECAYS (Chrome recycles processes; a fresh
+> [vkps] thread at default adj triggered the kill while the trainer sat
+> at adj 200 with max RSS). **Fixed: persistent chrome-adj guard loop
+> (re-applies 900 every 2 min, pid 2980358).** The JAX agent's jit
+> smoke overlapping the ramp contributed pressure (guardrails were
+> calibrated pre-launch). RELAUNCHED 11:52 from the original config
+> (lost 3 min; single fresh-Adam start, schedule clean); live at 6.2G
+> available during ramp; ends ~20:50.
+>
+> **JAX STUDY COMPLETE (12:05, branch `jax-pipeline-study` =
+> worktree-agent-a28f8eb76b1f1be8a, 5 commits):** quant export
+> BYTE-IDENTICAL to bullet on all 137,089,088 bytes from the real sb240
+> raw; full-graph forward runs the real 108M params (engine oracle:
+> |Δ| p50 3cp, 98% sign agree); training smoke converges and its quant
+> round-trips through unmodified netpack; numpy loader single-thread =
+> 206k pos/s (== the whole 6-thread Rust reference), 6 workers 640k.
+> Recommendation: adopt as EXPERIMENTATION SIDECAR now; promote to
+> production trainer only after a GPU-throughput window (≥0.8× bullet)
+> + byte/strength gates. Study: docs/research/jax-pipeline-study.md
+> (on the branch). Flag for review: its heldout value-MSE readout
+> (0.00588) sits ~7% below the trainer-graph number (0.00631) — a
+> loss-normalization or target-detail difference to reconcile before
+> trusting its ABSOLUTE loss numbers (relative/per-position parity is
+> proven by the byte + engine oracles).
+>
 > **USER HYPOTHESIS (10:1x) — the joint net is MORE value-undertrained
 > than the twin at matched presentations, and has the higher ceiling.**
 > Gradient arithmetic: share ~1.8 ⇒ policy got ~64% of trunk gradient ⇒
