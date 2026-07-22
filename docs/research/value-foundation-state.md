@@ -316,6 +316,21 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > rejects batches; (7) ONLY THEN launch stage-2; (8) backfill curves
 > during stage-2 in RAM-guarded slots or after.**
 >
+> **STAGE-2 LAUNCH DECISIONS (10:5x, user away — my judgment, per
+> "use your best judgement"):** DATA = same-UHO stream (script default).
+> Rationale: end slope still falling on UHO + the user's absorption
+> hypothesis ⇒ clear re-presentation headroom at ZERO new-data risk;
+> the farseer fold needs D46 verification (farseerT76 SCORE_DIV /
+> historical stage-2 env unconfirmed — dig the ledger recipe during
+> stage-2, prep it as stage-3). LENGTH = 240sb (end-slope rule).
+> λ = 0.00125 (pinned). **Telemetry (STANDING RULE, user: "all future
+> trainings visible in tensorboard"): tb_shim fixed (pol_ce now
+> optional + None-guarded), twin BACKFILLED (228 pts + 3 Elo →
+> data/nnue/tb/d47c/twin), stage-2 gets its own shim
+> (→ d47c-stage2/train) + watcher (runs/d47c_stage2_watch.sh, v3
+> guards, emits → d47c-stage2/checkpoints) + a components/exit
+> Monitor on its log, armed AT LAUNCH.**
+>
 > **USER HYPOTHESIS (10:1x) — the joint net is MORE value-undertrained
 > than the twin at matched presentations, and has the higher ceiling.**
 > Gradient arithmetic: share ~1.8 ⇒ policy got ~64% of trunk gradient ⇒

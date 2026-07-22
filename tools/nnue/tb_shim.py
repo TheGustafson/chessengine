@@ -25,7 +25,9 @@ SB = re.compile(
 )
 BATCH = re.compile(r"sb (\d+) batch (\d+): loss ([\d.]+|NaN)")
 LR = re.compile(r"LR dropped to ([\d.eE+-]+)")
-COMP = re.compile(r"components sb (\d+) \| value ([\d.]+) \| pol_ce ([\d.]+)")
+# pol_ce is OPTIONAL: value-only runs (twins, pure-value recipes) print
+# "components sb N | value X" with no policy field — they must still chart.
+COMP = re.compile(r"components sb (\d+) \| value ([\d.]+)(?: \| pol_ce ([\d.]+))?")
 LAMBDA = re.compile(r"pol_lambda=([\d.eE+-]+)")
 BPS = 3040  # batches per superbatch (D40_BPS of the current run)
 
@@ -92,11 +94,13 @@ def main():
             continue
         m = COMP.search(line)
         if m:
-            sb, v, ce = int(m.group(1)), float(m.group(2)), float(m.group(3))
+            sb, v = int(m.group(1)), float(m.group(2))
             writer.add_scalar("loss/value_component", v, sb)
-            writer.add_scalar("loss/policy_ce", ce, sb)
-            if v > 0 and pol_lambda > 0:
-                writer.add_scalar("loss/policy_share_of_value", pol_lambda * ce / v, sb)
+            if m.group(3) is not None:
+                ce = float(m.group(3))
+                writer.add_scalar("loss/policy_ce", ce, sb)
+                if v > 0 and pol_lambda > 0:
+                    writer.add_scalar("loss/policy_share_of_value", pol_lambda * ce / v, sb)
             writer.flush()
 
 
