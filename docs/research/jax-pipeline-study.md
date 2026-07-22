@@ -131,9 +131,20 @@ Every outlier is a sparse, extreme-eval endgame (|eval| ≈ 1000 cp) — the
 signature of the engine's fixed-point pipeline (u8 FT >>9, i8 L1) vs f32,
 NOT a graph discrepancy. The JAX graph is the faithful float reference; the
 int8 gap is a property of deployment shared by bullet-trained nets.
-(Not run against the heldout dump — `data/nnue/heldout/uho-band0-5.bin` had
-not appeared by end of session; `forward_parity.py` takes any corpus path and
-should be re-run on it for the in-distribution MSE the moment it exists.)
+
+**P3b — the heldout shadow population (appeared mid-session).**
+`data/nnue/heldout/uho-band0-5.bin` (1 M trainer-parity rows the net never
+trained on, WITH real packed teacher moves) — the in-distribution numbers:
+- value MSE **0.005878** vs the trainer's final training loss 0.006236
+  (within 6%, on held-out data — end-to-end target+graph parity);
+  sign agreement 98.1%.
+- policy (`tools/policy_heldout_check.py`, 512 rows): the frame tripwire
+  passed for **every** real packed teacher move (the strongest possible check
+  of the canonical-frame math — any orient/vocab bug asserts); masked
+  softmax-CE **2.343** vs the trainer's reported 2.424 on-train; masked
+  top-1 vs the teacher move 30.7% (random = 3.9% at 25.8 avg legal moves) —
+  the λ=0.005 co-trained head's genuine quality. (Unmasked argmax gives a
+  misleading 2.4% — it lands on illegal rows; always evaluate policy masked.)
 
 **P4 — training smoke (CPU, scaled arch).**
 `tools/train_smoke.py`: 10,240 real rows, ArchSpec(hl=256, l2=32, l3=16,
@@ -295,7 +306,8 @@ recurring jax/jaxlib breakage under the pinned lockfile.
 - Engine oracle: prebuilt `target/release/chessengine` (sota build,
   2026-07-21 19:47) + unmodified `tools/nnue/netpack.py`.
 - Bench corpus: `data/nnue/hardneg/corpus/corpus.filtered.shuf.bin`
-  (1.75 M rows, trainer-parity filtered, no packed moves).
+  (1.75 M rows, trainer-parity filtered, no packed moves); heldout:
+  `data/nnue/heldout/uho-band0-5.bin` (1 M rows, packed moves present).
 - All commands ran under `uv run --no-project --with jax --with optax`
   (+ `--with chess` for masks) with `JAX_PLATFORMS=cpu
   XLA_PYTHON_CLIENT_PREALLOCATE=false`; jax 0.11.0.

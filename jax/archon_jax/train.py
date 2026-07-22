@@ -57,11 +57,12 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig):
         return total_loss(value_logit, pol_logits, batch["target"],
                           batch.get("pol_target_id"), cfg.pol_lambda)
 
+    import optax
+
     @partial(jax.jit, donate_argnums=(0, 1))
     def step(params, opt_state, batch):
         (_, metrics), grads = jax.value_and_grad(loss_fn, has_aux=True)(params, batch)
         updates, opt_state = opt.update(grads, opt_state, params)
-        import optax
         params = optax.apply_updates(params, updates)
         return params, opt_state, metrics
 
@@ -88,8 +89,7 @@ def train(arch: ArchSpec, cfg: TrainConfig, batches, *, out_dir: str,
     running = {}
     t0 = time.time()
     for i, batch in enumerate(batches):
-        jbatch = {k: v for k, v in batch.items() if k != "pol_target_id" or True}
-        params, opt_state, metrics = step(params, opt_state, jbatch)
+        params, opt_state, metrics = step(params, opt_state, batch)
         for k, v in metrics.items():
             running[k] = running.get(k, 0.0) + float(v)
         bidx, sb = i % bps, i // bps + 1
