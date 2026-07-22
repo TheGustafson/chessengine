@@ -90,6 +90,30 @@ buckets see less data — value head already tolerates this). Composes with
 better routing axis for POLICY than piece count (tactical-regime flip) —
 cheap to A/B at head-finetune cost.
 
+## 2d. Lc0 soft policy targets (user idea, 2026-07-22 morning)
+
+The single richest FREE policy-data upgrade: Lc0 training chunks carry full
+visit distributions (soft targets from ~800-visit PUCT) — and **our 1858
+policy vocab IS Lc0's move encoding**, so their policy vectors map 1:1 onto
+our head. Precedent: official SF has trained on rescored Lc0 data since
+SF15 (provenance is community-standard). Plan, cheapest-first:
+1. **Frozen-trunk head finetune on Lc0 soft CE** (§4 route 1, cached
+   activations — CPU-scale, runnable DURING stage-2). This is the clean
+   version of "introduce their policy late in training": after the trunk.
+2. Gates: SF18 top-1 probe (deployment consumes ARGMAX — Lc0's argmax ≠ SF
+   best; watch for calibration-up/argmax-down) + ON/OFF ordering ablation.
+   Mitigation if argmax slips: mixed loss (Lc0 soft + SF one-hot).
+3. Mask Lc0 VALUE labels entirely (own-net Q/WDL, wrong scale; rescore
+   later if ever needed).
+4. If soft wins → wire soft-CE + mixed curriculum into the next cold joint
+   run (d47d); loader needs the top-k-ids+weights row extension (§2).
+5. Bridge to `hybrid-ab-puct-search.md` H3: same loader/loss later consumes
+   OUR root-PUCT visit distributions from self-play datagen.
+Domain-shift note: their self-play position distribution ≠ our UHO/AB tree;
+the frozen-trunk route sidesteps half of this (trunk stays on our data).
+Data: storage.lczero.org (slice of a recent run, ~50-100M rows to start;
+public HTTP download, disk is ample).
+
 ## 3. The prerequisite experiment: trunk sufficiency (run after sb240 + twin)
 
 Both finished trunks — d47c (joint) and the λ=0 twin (value-only, same seed,
