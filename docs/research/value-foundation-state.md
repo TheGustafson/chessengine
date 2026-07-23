@@ -431,6 +431,20 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > the entire NPS gap is the eval layer (T10 smallnet = the lever).
 > Six-engine RR (user-commissioned) queued behind the gauntlet.
 >
+> **★ STUDY #6 REPROFILE (01:0x, merged): VERIFICATION CONFIRMED —
+> end-to-end +30.9% [29.0..34.4], b46c026 +22.8%, 3555f57 +3.8%, bit
+> identity everywhere; ZERO search-path mallocs now.** New profile:
+> forward_into 37% but BYTES-bound (legit work); policy tax → 0.4%
+> cycles (+6.2% tree tax stands — search effect); search block now 30%
+> (never had a perf pass — next lever). **Deployment ladder (wl50/d14):
+> incumbent 1.239M vs stage2+cpol 797k ⇒ deficit 2.04×→1.56× ⇒ crown
+> equal-time bar ≈ 45-58 vs our +82.6±17.6 fixed-node edge ⇒ REMATCH
+> EV ≈ +25-38 EQUAL TIME.** Rematch HELD: user's cutechess gauntlet
+> owns the box; fire on a quiet box. Next-5: FT-sparsity retrain
+> (+12-14%, density-linear), search micro-pass (+3-5%), sidecar
+> decide-on-Elo (tree tax), T10 PARKED (bypass multiple 5.54→4.30,
+> needs tree-weighted p≥0.15), quant-unify at next format rev.
+>
 > **★★ OPTIMIZATION ARC LANDED (00:4x, merge c6e820d, check.sh GREEN,
 > Bench 701605 exact): +29% NPS total (383.7k→495.3k on the impl
 > workload), all four packages, bit-identical proven hard** (per-package
