@@ -431,7 +431,22 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > the entire NPS gap is the eval layer (T10 smallnet = the lever).
 > Six-engine RR (user-commissioned) queued behind the gauntlet.
 >
-> **CROWN GAUNTLET VERDICT (22:4x, 400g @ 10+0.1, deployed config vs
+> **★ STUDY #5 GROUND TRUTH (23:5x, merged; report
+> perf-study-5-measured-2026-07-23.md): the cost model INVERTED — head
+> 48.5% of cycles (l1_dot 34.4%), threats only 12.4%.** mca-validated
+> l1_dot rewrite (group-outer, 8 zmm accumulators) = 3.0× kernel ⇒
+> +15-25% NPS, bit-identical — fed to the implementer mid-flight. NEW
+> ROOT CAUSE: FT density 62% (200/320 active) — the 768-era sparsity
+> anchor is dead; trainer-side sparsity regularization = unpriced lever
+> (ties to learned-sparse-embeddings themes). NOT DRAM-bound
+> (L2-resident; int4 stays dead). **POLICY SIDECAR MEASURED: −3.5% NPS
+> AND +6.2% tree size at equal depth, for 0 measured Elo — the sb240
+> ON-vs-OFF 1.3σ cluster now has a MECHANISM. RECOMMENDATION: hide the
+> .cpol in future matches/anchors until a head-finetune makes it win an
+> ablation (deploy-config change — applying to future runs unless user
+> objects).** T10 re-priced: gate fire-rate 8-15% ⇒ +7-10% central
+> (down from +20). Implementer's landed packages verified bit-identical
+> (+3.5-4% real so far); THP demoted (box won't give hugepages).
 > incumbent): −30.5 ± 11.8 (74-217-109).** The pre-registered user
 > prediction ("equal-time crown, untuned") scores **NOT YET**: the
 > fixed-node crown is decisive (+82.6±17.6) but the NPS tax still wins
