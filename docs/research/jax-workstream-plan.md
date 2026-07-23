@@ -33,6 +33,9 @@ TPU path); PyO3 bindings are part of this workstream; WASM/ARM tabled.
 - [ ] D40_CONVERT dump mode in d40_features.rs (band-filter minus band =
       full-corpus sfbinpack→bulletformat converter; study sized it ~5
       lines) → convert fishpack32 (5.6GB) as the first JAX-native corpus.
+      **MUST include a shuffle pass** (data.py's contract: contiguous
+      windows at shuffled offsets over a PRE-SHUFFLED corpus — the
+      *.shuf.bin convention; game-ordered input would correlate batches).
 - [ ] PyO3 loader crate first build (`jax/rust-loader-design/` skeleton):
       exposes movegen/legal-mask + activation dumps at Rust speed (fixes
       the one below-reference loader component, 10k→fast legal masks).
