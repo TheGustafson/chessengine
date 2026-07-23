@@ -6,8 +6,18 @@
 //! selected once at startup and preserves wrapping i16 arithmetic.
 
 use super::sota_features::ACC;
-use super::sota_head::{FT_QUANT, FT_SHIFT, THREAT_QUANT};
+use super::sota_head::{FT_QUANT, FT_SHIFT, L2, THREAT_QUANT};
 use std::sync::LazyLock;
+
+/// The L1 sparse dot writes `L2` int32 accumulators. The kernels process the
+/// outputs in 16-wide blocks (one avx512 register / two avx256 registers each),
+/// so `L2` must be a multiple of 16. Widening the head bottleneck (D41) just
+/// bumps [`super::sota_head::L2`]; the block loop scales automatically.
+const L2_BLK: usize = 16;
+const _: () = assert!(
+    L2 % L2_BLK == 0,
+    "L2 must be a multiple of 16 for the l1_dot block loop"
+);
 
 type ApplyI16Fn = fn(&mut [i16; ACC], &[i16], &[usize], &[usize]);
 // Fused copy+apply: read `src`, apply deltas, write `dst` in ONE pass — the
@@ -15,7 +25,7 @@ type ApplyI16Fn = fn(&mut [i16; ACC], &[i16], &[usize], &[usize]);
 // (profiling-study §4.3/opt #2). `dst`/`src` may not alias.
 type ApplyI16IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i16], &[usize], &[usize]);
 type ApplyI8IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i8], &[usize], &[usize]);
-type L1DotFn = fn(&mut [i32; 16], &[u8; ACC], &[u16], &[i8]);
+type L1DotFn = fn(&mut [i32; L2], &[u8; ACC], &[u16], &[i8]);
 type ActivateFn = fn(&mut [u8; ACC], &[[i16; ACC]; 2], &[[i16; ACC]; 2], usize);
 type FindNnzFn = fn(&[u8; ACC], &mut [u16; ACC / 4]) -> usize;
 
@@ -82,10 +92,11 @@ pub(crate) fn apply_i8_deltas_into(
     (KERNELS.i8_deltas_into)(dst, src, weights, adds, subs);
 }
 
-/// Sparse `[u8; 768] × [i8; 16]` dot product. `weights` is laid out as
-/// `[group][output][4]`, and `nnz` contains active four-byte group indices.
+/// Sparse `[u8; ACC] × [i8; L2]` dot product. `weights` is laid out as
+/// `[group][output][4]` (output ∈ 0..L2), and `nnz` contains active four-byte
+/// group indices.
 #[inline]
-pub(crate) fn l1_dot(pre: &mut [i32; 16], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
+pub(crate) fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
     (KERNELS.l1_dot)(pre, ft, nnz, weights);
 }
 
@@ -166,14 +177,14 @@ mod scalar {
         }
     }
 
-    pub(super) fn l1_dot(pre: &mut [i32; 16], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
+    pub(super) fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
         for &group in nnz {
             let group = usize::from(group);
-            for output in 0..16 {
+            for output in 0..L2 {
                 let mut dot = 0i32;
                 for lane in 0..4 {
                     dot += i32::from(ft[group * 4 + lane])
-                        * i32::from(weights[group * 64 + output * 4 + lane]);
+                        * i32::from(weights[group * (L2 * 4) + output * 4 + lane]);
                 }
                 pre[output] += dot;
             }
@@ -264,34 +275,40 @@ mod avx2 {
     }
 
     #[target_feature(enable = "avx2")]
-    unsafe fn l1_dot_inner(pre: &mut [i32; 16], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
+    unsafe fn l1_dot_inner(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
         // maddubs forms adjacent two-product sums. With ft<=127 and an i8
         // weight those sums fit i16 at both extrema; madd_epi16(..., 1) then
         // widens each four-product dot to i32, matching Bullet exactly.
-        // SAFETY: active groups address four FT bytes and sixteen complete
-        // four-byte output rows in loader-validated storage.
+        // Each 16-output block is two 8-lane i32 registers; the outer loop
+        // walks the L2/16 blocks so a wider head bottleneck scales for free.
+        // SAFETY: active groups address four FT bytes and, per block, sixteen
+        // complete four-byte output rows in loader-validated storage.
         unsafe {
             let ones = _mm256_set1_epi16(1);
-            let mut lo = _mm256_loadu_si256(pre.as_ptr().cast());
-            let mut hi = _mm256_loadu_si256(pre.as_ptr().add(8).cast());
-            for &group in nnz {
-                let group = usize::from(group);
-                let inputs = _mm256_set1_epi32(i32::from_le_bytes([
-                    ft[group * 4],
-                    ft[group * 4 + 1],
-                    ft[group * 4 + 2],
-                    ft[group * 4 + 3],
-                ]));
-                let base = weights.as_ptr().add(group * 64);
-                let wlo = _mm256_loadu_si256(base.cast());
-                let whi = _mm256_loadu_si256(base.add(32).cast());
-                let plo = _mm256_maddubs_epi16(inputs, wlo);
-                let phi = _mm256_maddubs_epi16(inputs, whi);
-                lo = _mm256_add_epi32(lo, _mm256_madd_epi16(plo, ones));
-                hi = _mm256_add_epi32(hi, _mm256_madd_epi16(phi, ones));
+            for blk in 0..(L2 / L2_BLK) {
+                let pbase = blk * L2_BLK; // 16 outputs per block
+                let wblk = blk * 64; // 16 outputs × 4 bytes within each group
+                let mut lo = _mm256_loadu_si256(pre.as_ptr().add(pbase).cast());
+                let mut hi = _mm256_loadu_si256(pre.as_ptr().add(pbase + 8).cast());
+                for &group in nnz {
+                    let group = usize::from(group);
+                    let inputs = _mm256_set1_epi32(i32::from_le_bytes([
+                        ft[group * 4],
+                        ft[group * 4 + 1],
+                        ft[group * 4 + 2],
+                        ft[group * 4 + 3],
+                    ]));
+                    let base = weights.as_ptr().add(group * (L2 * 4) + wblk);
+                    let wlo = _mm256_loadu_si256(base.cast());
+                    let whi = _mm256_loadu_si256(base.add(32).cast());
+                    let plo = _mm256_maddubs_epi16(inputs, wlo);
+                    let phi = _mm256_maddubs_epi16(inputs, whi);
+                    lo = _mm256_add_epi32(lo, _mm256_madd_epi16(plo, ones));
+                    hi = _mm256_add_epi32(hi, _mm256_madd_epi16(phi, ones));
+                }
+                _mm256_storeu_si256(pre.as_mut_ptr().add(pbase).cast(), lo);
+                _mm256_storeu_si256(pre.as_mut_ptr().add(pbase + 8).cast(), hi);
             }
-            _mm256_storeu_si256(pre.as_mut_ptr().cast(), lo);
-            _mm256_storeu_si256(pre.as_mut_ptr().add(8).cast(), hi);
         }
     }
 
@@ -474,7 +491,7 @@ mod avx2 {
         unsafe { i8_deltas_into_inner(dst, src, weights, adds, subs) }
     }
 
-    fn l1_dot(pre: &mut [i32; 16], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
+    fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
         // SAFETY: installed only after runtime AVX2 detection.
         unsafe { l1_dot_inner(pre, ft, nnz, weights) }
     }
@@ -588,27 +605,33 @@ mod avx512 {
     }
 
     #[target_feature(enable = "avx512f,avx512bw,avx512vnni")]
-    unsafe fn l1_dot_inner(pre: &mut [i32; 16], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
-        // The 16 i32 outputs are exactly one 512-bit register, and dpbusd is
+    unsafe fn l1_dot_inner(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
+        // Each 16-output block is exactly one 512-bit register, and dpbusd is
         // the whole kernel: for each dword lane it accumulates the u8×i8
         // four-product dot directly into i32 — the maddubs+madd pair (and its
         // i16 saturation reasoning) collapses into one instruction per group.
-        // SAFETY: active groups address four FT bytes and sixteen complete
-        // four-byte output rows in loader-validated storage.
+        // The outer loop walks the L2/16 output blocks (one register each).
+        // SAFETY: active groups address four FT bytes and, per block, sixteen
+        // complete four-byte output rows in loader-validated storage.
         unsafe {
-            let mut sums = _mm512_loadu_si512(pre.as_ptr().cast());
-            for &group in nnz {
-                let group = usize::from(group);
-                let inputs = _mm512_set1_epi32(i32::from_le_bytes([
-                    ft[group * 4],
-                    ft[group * 4 + 1],
-                    ft[group * 4 + 2],
-                    ft[group * 4 + 3],
-                ]));
-                let rows = _mm512_loadu_si512(weights.as_ptr().add(group * 64).cast());
-                sums = _mm512_dpbusd_epi32(sums, inputs, rows);
+            for blk in 0..(L2 / L2_BLK) {
+                let pbase = blk * L2_BLK; // 16 outputs per block
+                let wblk = blk * 64; // 16 outputs × 4 bytes within each group
+                let mut sums = _mm512_loadu_si512(pre.as_ptr().add(pbase).cast());
+                for &group in nnz {
+                    let group = usize::from(group);
+                    let inputs = _mm512_set1_epi32(i32::from_le_bytes([
+                        ft[group * 4],
+                        ft[group * 4 + 1],
+                        ft[group * 4 + 2],
+                        ft[group * 4 + 3],
+                    ]));
+                    let rows =
+                        _mm512_loadu_si512(weights.as_ptr().add(group * (L2 * 4) + wblk).cast());
+                    sums = _mm512_dpbusd_epi32(sums, inputs, rows);
+                }
+                _mm512_storeu_si512(pre.as_mut_ptr().add(pbase).cast(), sums);
             }
-            _mm512_storeu_si512(pre.as_mut_ptr().cast(), sums);
         }
     }
 
@@ -695,7 +718,7 @@ mod avx512 {
         unsafe { i8_deltas_into_inner(dst, src, weights, adds, subs) }
     }
 
-    fn l1_dot(pre: &mut [i32; 16], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
+    fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
         unsafe { l1_dot_inner(pre, ft, nnz, weights) }
     }
@@ -754,7 +777,7 @@ mod tests {
         for (i, value) in ft.iter_mut().enumerate() {
             *value = (i as u8).wrapping_mul(113) & 127;
         }
-        let mut weights = vec![0i8; (ACC / 4) * 64];
+        let mut weights = vec![0i8; (ACC / 4) * (L2 * 4)];
         for (i, value) in weights.iter_mut().enumerate() {
             *value = (i as u8).wrapping_mul(197) as i8;
         }
@@ -804,7 +827,7 @@ mod tests {
         for (i, value) in ft.iter_mut().enumerate() {
             *value = (i as u8).wrapping_mul(113) & 127;
         }
-        let mut l1_weights = vec![0i8; (ACC / 4) * 64];
+        let mut l1_weights = vec![0i8; (ACC / 4) * (L2 * 4)];
         for (i, value) in l1_weights.iter_mut().enumerate() {
             *value = (i as u8).wrapping_mul(197) as i8;
         }
@@ -812,7 +835,7 @@ mod tests {
             .filter(|group| group % 3 != 0)
             .map(|group| group as u16)
             .collect();
-        let pre_seed: [i32; 16] = std::array::from_fn(|i| i as i32 * 123_457 - 700_000);
+        let pre_seed: [i32; L2] = std::array::from_fn(|i| i as i32 * 123_457 - 700_000);
 
         let mut pst = [[0i16; ACC]; 2];
         let mut threat = [[0i16; ACC]; 2];

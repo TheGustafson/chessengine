@@ -38,7 +38,7 @@ use std::sync::LazyLock;
 /// Accumulator width per perspective — must equal the SOTA head's `L1` (768) so
 /// the refresh output feeds [`super::sota_head::SotaHead::forward`] directly.
 pub const ACC: usize = super::sota_head::L1;
-const _: () = assert!(ACC == 768, "refresh output width must match the head");
+const _: () = assert!(ACC == 1280, "refresh output width must match the head");
 
 // ===========================================================================
 // HalfKAv2_hm — 22,528 = 64 · PS_NB / 2   (half_ka_v2_hm.{h,cpp})
@@ -801,9 +801,11 @@ mod tests {
             network_scale: 380,
             l3_var_weights: None,
             l3_var_biases: None,
+            l3_wdl_weights: None,
+            l3_wdl_biases: None,
         };
         let piece_count = board.all_occupancy().count() as usize;
-        let (cp, _sigma) = head.forward(&pst, &threat, Color::White, piece_count);
+        let (cp, _sigma, _wdl) = head.forward(&pst, &threat, Color::White, piece_count);
         assert!(cp.abs() < 1_000_000, "finite centipawns");
     }
 }

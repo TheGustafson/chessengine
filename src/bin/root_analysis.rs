@@ -648,9 +648,13 @@ fn run(config: &Config) -> Result<String, String> {
             for mv in arm_moves.iter() {
                 let text = mv.to_string();
                 let arm = match config.arm_mode {
-                    ArmMode::Searchmoves => {
-                        engine.search(&canonical_fen, tier, Some(&text), false, config.arm_timeout)?
-                    }
+                    ArmMode::Searchmoves => engine.search(
+                        &canonical_fen,
+                        tier,
+                        Some(&text),
+                        false,
+                        config.arm_timeout,
+                    )?,
                     ArmMode::Child => {
                         let mut child = board.clone();
                         let gives_check = child.gives_check(*mv);
@@ -874,7 +878,15 @@ mod tests {
         assert_eq!(r.pv.len(), 2);
         // A currmove line (no pv) → not a snapshot boundary.
         let had2 = parse_info(
-            &["info", "depth", "7", "currmove", "d2d4", "currmovenumber", "2"],
+            &[
+                "info",
+                "depth",
+                "7",
+                "currmove",
+                "d2d4",
+                "currmovenumber",
+                "2",
+            ],
             &mut r,
         );
         assert!(!had2, "a currmove line has no pv and must not snapshot");

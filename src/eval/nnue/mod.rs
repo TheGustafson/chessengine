@@ -24,6 +24,11 @@
 pub mod accumulator;
 pub mod loader;
 pub mod network;
+/// D47 deployed policy head (CPL1 sidecar + selected-row scorer) — needs the
+/// sota trunk for its activation type.
+#[cfg(feature = "sota")]
+pub mod policy_head;
+pub mod policy_vocab;
 /// Frozen classic evaluator plus an exact HalfKAv2_hm residual (CENN-v4).
 #[cfg(feature = "sota")]
 pub mod protected_halfka;
@@ -167,6 +172,29 @@ static ACTIVE_NET: RwLock<Option<&'static Network>> = RwLock::new(None);
 /// When a CENN-v2 net is installed the v1 ACTIVE_NET is cleared, and vice versa.
 #[cfg(feature = "sota")]
 static ACTIVE_SOTA_NET: RwLock<Option<&'static sota_loader::SotaNetwork>> = RwLock::new(None);
+/// D47: the deployed policy head (CPL1 sidecar auto-loaded beside the CENN;
+/// `None` ⇒ classical ordering, bit-identical to pre-D47).
+#[cfg(feature = "sota")]
+static ACTIVE_POLICY_HEAD: RwLock<Option<&'static policy_head::PolicyHead>> = RwLock::new(None);
+
+/// The active policy head, if a CPL1 sidecar accompanied the loaded net.
+#[cfg(feature = "sota")]
+pub fn active_policy_head() -> Option<&'static policy_head::PolicyHead> {
+    *ACTIVE_POLICY_HEAD.read().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Install the CPL1 sidecar sitting beside `eval_path` into the active slot
+/// (used by direct-load tools like `nnue-eval`; the UCI install path does
+/// this automatically). Returns whether a head is now active.
+#[cfg(feature = "sota")]
+pub fn install_policy_sidecar(eval_path: &std::path::Path) -> bool {
+    let head = policy_head::PolicyHead::sibling_of(eval_path).map(|h| &*Box::leak(Box::new(h)));
+    let loaded = head.is_some();
+    *ACTIVE_POLICY_HEAD
+        .write()
+        .unwrap_or_else(|e| e.into_inner()) = head;
+    loaded
+}
 #[cfg(feature = "sota")]
 static ACTIVE_SIMPLE_HALFKA_NET: RwLock<Option<&'static simple_halfka::SimpleHalfkaNetwork>> =
     RwLock::new(None);
@@ -259,8 +287,18 @@ fn install_eval_file(path: &str) -> Result<(), NnueError> {
             // EXP-UNC-1: attach the optional value-uncertainty head (D40_UNC_HEAD
             // sidecar) before leaking. No-op when the env is unset → bit-identical.
             sota_loader::load_uncertainty_sidecar(&mut net.head);
+            // D41 rich-net: attach the optional co-trained WDL head (D40_WDL_HEAD
+            // sidecar). No-op when unset → bit-identical; not in the CENN.
+            sota_loader::load_wdl_sidecar(&mut net.head);
             let leaked: &'static sota_loader::SotaNetwork = Box::leak(Box::new(net));
             *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = Some(leaked);
+            // D47: auto-load the CPL1 policy sidecar sitting beside the CENN
+            // (`x.cenn` -> `x.cpol`). Absent => None => classical ordering.
+            *ACTIVE_POLICY_HEAD
+                .write()
+                .unwrap_or_else(|e| e.into_inner()) =
+                policy_head::PolicyHead::sibling_of(std::path::Path::new(path))
+                    .map(|h| &*Box::leak(Box::new(h)));
             *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
             *ACTIVE_SIMPLE_HALFKA_NET
                 .write()
@@ -306,8 +344,11 @@ fn install_eval_file(path: &str) -> Result<(), NnueError> {
                 .unwrap_or_else(|e| e.into_inner()) = None;
             return Ok(());
         }
-        // Not CEN2 → fall through to v1 loader. Clear SOTA.
+        // Not CEN2 → fall through to v1 loader. Clear SOTA + policy.
         *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
+        *ACTIVE_POLICY_HEAD
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = None;
         *ACTIVE_SIMPLE_HALFKA_NET
             .write()
             .unwrap_or_else(|e| e.into_inner()) = None;
