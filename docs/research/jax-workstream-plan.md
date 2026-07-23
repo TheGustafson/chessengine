@@ -16,7 +16,10 @@ TPU path); PyO3 bindings are part of this workstream; WASM/ARM tabled.
       run); until then JAX absolute-loss numbers carry this caveat, while
       the byte/oracle parity proofs stand.
 
-## Quiet-window queue A (opens when the RR finishes; CPU free, GPU free)
+## Quiet-window queue A — RESEQUENCED (user, 22:0x): the RR is CANCELLED
+## (rerun later "when we are stronger": tools/run_rr_tournament.sh), and
+## this whole queue now waits behind perf study #4's report + the
+## PROFILING RUNS on the freed box (clean measurements outrank JAX bench).
 - [ ] Full-dump JAX heldout run on d47c-stage2-sb240 raw → must land
       ≈0.006094 (trainer-graph number) ⇒ reconciliation closed.
 - [ ] Pin the environment: lockfile for jax/jaxlib(+cuda) versions in
