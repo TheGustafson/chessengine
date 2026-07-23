@@ -70,6 +70,25 @@ and GPU training stages serialize. No early external anchoring
 (standing ruling) — the SF16 bracket exists to isolate the SPSA delta,
 not to anchor.
 
+## 5b. T11 — NET-ALONE DISAGREEMENT PROGRAM (user, 2026-07-23 ~08:4x:
+## "formally add this to the master plan pre launch. I see a lot of
+## latent potential in this idea")
+On the settled champion trunk (after the pump chain), IN the release:
+1. **Residual EDA**: forward-sweep the corpora (search values already
+   stored ⇒ labels ~free at 1.26M pos/s); bucket worst residuals by
+   phase/material/structure/king-state. Systematic clusters → v2
+   input/arch hypotheses; irreducible clusters → search's job.
+2. **Disagreement head**: frozen-trunk head on the residual target;
+   deploys through the dormant D40_UNC_HEAD sidecar seam. Gate: ON/OFF
+   ablation (heads must EARN deployment).
+3. **Allocation consumption** (D41/design-19 resumes here): deeper
+   search where predicted disagreement is high (extension/reduction/TM
+   modulation). Gate: SPRT. ORDERING: must land (or be dropped) BEFORE
+   phase 9's comprehensive SPSA so the final constants co-adapt with it.
+Full mechanics: arch-ablation-suite.md §T11. EDA caveat: v1 labels
+conflate net-error with SF-frame difference — fine for the head, but
+arch conclusions want an own-search oracle slice (self-play flywheel).
+
 ## 6b. SMALL SPSA (user amendment, 2026-07-23): TM + a compact
 high-leverage constant set, BEFORE the optimization/profiling phase —
 fixes the measured clock bleed so phases 7-9 measure true. The
