@@ -49,9 +49,15 @@ is the killer; low-LR fine-tuning is a proven dead-end). Training
 stages before release:
 - **Stage-4 (next pump): fold T60T70wIsRightFarseer + farseerT75** —
   their D46 unit audits are now ON THE CRITICAL PATH (run post-stage-3,
-  never during equal-time measurement). Recipe upgrades from the
-  stage-3 retro: EMA shadow weights (kills the bounce in the shippable
-  net), 1-2sb LR warmup ramp, same floor-anneal doctrine.
+  never during equal-time measurement). RECIPE PINNED (user: "don't
+  waste time on that AB. Just guess", 2026-07-23 ~08:0x): **peak LR
+  5e-4** (stage-2's proven pump height; stage-4's new-coverage fraction
+  is large and wants the stronger kick; EMA + floor-anneal insure the
+  deeper bounce), warm from stage-3 sb240, EMA shadow ON (the shippable
+  net), 1-2sb LR warmup ramp, λ_sparse 0.001, same stretched-cosine
+  floor-anneal (end ~0.2x), 240sb, mix = T60T70+T75+rehearsal (exact
+  weights set after audits size the packs). sb240 rule: NO extension —
+  gate, hand off warm, next pump absorbs any end-slope.
 - **Stage-5: remaining official packs** (data_pv-2, multinet_pv-2,
   pylon, test80, wrongNNUE — downloads launched 07:0x) and/or first
   self-play data — mix decision from stage-4's evidence.
