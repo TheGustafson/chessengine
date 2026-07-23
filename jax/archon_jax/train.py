@@ -54,7 +54,7 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
     bps = cfg.batches_per_superbatch
 
     def lr_fn(count):
-        sb = count // bps + 1  # 1-based superbatch
+        sb = count // bps + cfg.start_superbatch  # 1-based superbatch
         initial = cfg.lr
         final = initial * 0.3 ** 3
         if cfg.lr_end_superbatch <= 1:

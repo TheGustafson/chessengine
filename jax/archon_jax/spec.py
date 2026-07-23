@@ -216,6 +216,12 @@ class TrainConfig:
     # post-CReLU accumulators, driving deploy density down (density-linear
     # l1_dot cost). 0.0 = OFF = graph identical to the incumbent recipe.
     ft_sparsity_lambda: float = 0.0
+    # Resume: 1-based superbatch this run STARTS at (bullet's
+    # D40_START_SUPERBATCH). The LR schedule keys on
+    # start_superbatch + steps/bps so a resumed run continues the cosine
+    # instead of restarting it (fresh optimizer state = the accepted ~2sb
+    # transient, the d47c OOM-resume precedent).
+    start_superbatch: int = 1
 
 
 def cosine_lr(cfg: TrainConfig, superbatch: int) -> float:

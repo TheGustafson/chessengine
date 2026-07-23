@@ -94,7 +94,8 @@ def make_batches(bin_: BulletBin, cfg: TrainConfig, *, policy: bool,
 def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
                        threats: bool = True, legal_mask: bool = False,
                        seed: int = 0, workers: int = 4, prefetch: int = 8,
-                       total_batches: int | None = None):
+                       total_batches: int | None = None,
+                       skip_batches: int = 0):
     """Multi-corpus batch stream: ``mix`` = [(BulletBin, weight), ...].
 
     Each batch's corpus is drawn ~ weights; windows within a corpus follow an
@@ -125,6 +126,9 @@ def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
             cursors[c] = 0
         sched.append((c, int(orders[c][cursors[c]])))
         cursors[c] += 1
+    # Resume support: the schedule is a pure function of (seed, sizes), so a
+    # restarted run regenerates it and skips what the crashed run consumed.
+    sched = sched[skip_batches:]
 
     def map_one(job) -> dict:
         c, i = job

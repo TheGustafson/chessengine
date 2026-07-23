@@ -69,30 +69,41 @@ def heldout_value_loss(params, arch, ft_impl="pallas", batch_size=8192):
     return total / count
 
 
-def main(sparsity_lambda: float, superbatches: int = 240) -> int:
+def main(sparsity_lambda: float, superbatches: int = 240,
+         resume_sb: int = 0) -> int:
     import jax
 
     arch = dataclasses.replace(ArchSpec.full(), factorize=True, psqt=True)
+    start_sb = resume_sb + 1 if resume_sb else 1
     cfg = dataclasses.replace(
         TrainConfig(), lr=0.00025, lr_end_superbatch=331,
         superbatches=superbatches, pol_lambda=0.00125,
-        ft_sparsity_lambda=sparsity_lambda)
+        ft_sparsity_lambda=sparsity_lambda, start_superbatch=start_sb)
     OUT.mkdir(parents=True, exist_ok=True)
 
-    print(f"[stage3] warm load {WARM.name}", flush=True)
-    params = ck.load_warm(WARM, arch)
+    if resume_sb:
+        src = OUT / f"{NET_ID}-sb{resume_sb}-raw.bin"
+        print(f"[stage3] RESUME from {src.name} (start sb {start_sb}; "
+              f"fresh Adam = accepted ~2sb transient)", flush=True)
+        params = ck.load_warm(src, arch)
+    else:
+        print(f"[stage3] warm load {WARM.name}", flush=True)
+        params = ck.load_warm(WARM, arch)
 
-    print("[stage3] S1 pre-flight: heldout reproduce on the warm net", flush=True)
-    hv = heldout_value_loss(params, arch)
-    ok = abs(hv - HELDOUT_EXPECT) <= HELDOUT_TOL
-    print(f"[stage3] warm heldout {hv:.6f} (expect {HELDOUT_EXPECT}±{HELDOUT_TOL}) "
-          f"{'PASS' if ok else 'FAIL'}", flush=True)
-    if not ok:
-        print("[stage3] ABORT: warm net does not reproduce heldout", flush=True)
-        return 2
+        print("[stage3] S1 pre-flight: heldout reproduce on the warm net", flush=True)
+        hv = heldout_value_loss(params, arch)
+        ok = abs(hv - HELDOUT_EXPECT) <= HELDOUT_TOL
+        print(f"[stage3] warm heldout {hv:.6f} (expect {HELDOUT_EXPECT}±{HELDOUT_TOL}) "
+              f"{'PASS' if ok else 'FAIL'}", flush=True)
+        if not ok:
+            print("[stage3] ABORT: warm net does not reproduce heldout", flush=True)
+            return 2
 
     mix = [(BulletBin(str(p)), w) for p, w in MIX]
-    batches = make_mixed_batches(mix, cfg, policy=True, seed=SEED, workers=5)
+    batches = make_mixed_batches(
+        mix, cfg, policy=True, seed=SEED, workers=5,
+        total_batches=cfg.batches_per_superbatch * superbatches,
+        skip_batches=cfg.batches_per_superbatch * resume_sb)
 
     opt, step = make_update_step(arch, cfg)
     opt_state = opt.init(params)
@@ -102,14 +113,15 @@ def main(sparsity_lambda: float, superbatches: int = 240) -> int:
     running: dict = {}
     import time
     t0 = time.time()
+    remaining = bps * (cfg.superbatches - resume_sb)
     for i, batch in enumerate(batches):
         params, opt_state, metrics = step(params, opt_state, batch)
         for k, v in metrics.items():
             running[k] = running.get(k, 0.0) + float(v)
-        bidx, sb = i % bps, i // bps + 1
+        bidx, sb = i % bps, i // bps + start_sb
         if bidx == bps - 1:
             comp = {k: v / bps for k, v in running.items()}
-            rate = (sb * bps * cfg.batch_size) / (time.time() - t0)
+            rate = ((i + 1) * cfg.batch_size) / (time.time() - t0)
             print(f"components sb {sb} | value {comp.get('value', 0):.6f} | "
                   f"pol_ce {comp.get('pol_ce', 0):.6f} | "
                   f"ft_l1 {comp.get('ft_l1', 0):.6f} | "
@@ -122,7 +134,7 @@ def main(sparsity_lambda: float, superbatches: int = 240) -> int:
                 ck.write_quant(OUT / f"{NET_ID}-sb{sb}-quant.bin", host, arch)
                 hv = heldout_value_loss(host, arch)
                 print(f"heldout sb {sb} | value {hv:.6f}", flush=True)
-        if i + 1 >= bps * cfg.superbatches:
+        if i + 1 >= remaining:
             break
     print("[stage3] TRAIN EXIT 0", flush=True)
     return 0
@@ -131,4 +143,5 @@ def main(sparsity_lambda: float, superbatches: int = 240) -> int:
 if __name__ == "__main__":
     lam = float(sys.argv[1]) if len(sys.argv) > 1 else 0.001
     sbs = int(sys.argv[2]) if len(sys.argv) > 2 else 240
-    raise SystemExit(main(lam, sbs))
+    res = int(sys.argv[3]) if len(sys.argv) > 3 else 0
+    raise SystemExit(main(lam, sbs, res))
