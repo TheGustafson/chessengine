@@ -24,10 +24,15 @@ from .spec import ArchSpec, TrainConfig
 
 
 def _require_cpu():
+    # Safe-by-default: JAX grabs the GPU unless told otherwise, and for most
+    # of this package's life a bullet trainer owned it. Explicit opt-in for
+    # GPU sessions (benchmarks, shadow training) when the GPU is free:
+    if os.environ.get("ARCHON_JAX_ALLOW_GPU") == "1":
+        return
     if os.environ.get("JAX_PLATFORMS") != "cpu":
         raise RuntimeError(
             "refusing to import jax without JAX_PLATFORMS=cpu "
-            "(the GPU belongs to the live bullet trainer)")
+            "(set ARCHON_JAX_ALLOW_GPU=1 for a deliberate GPU session)")
 
 
 def make_update_step(arch: ArchSpec, cfg: TrainConfig):

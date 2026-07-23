@@ -31,11 +31,21 @@ TPU path); PyO3 bindings are part of this workstream; WASM/ARM tabled.
       head) — apply legal_move_masks before argmax.
 - [ ] Pin the environment: lockfile for jax/jaxlib(+cuda) versions in
       `jax/pyproject.toml` (§8 ops gate).
-- [ ] **Phase-2 GPU benchmark (the go/no-go gate):** step-bench at batch
-      8192, D47c shape — (a) cached-batch variant isolating the XLA step
-      (answers the sparse-gather question), (b) live-loader variant
-      (6 workers). Target ≥0.8× bullet's 210k pos/s ⇒ 168k. Abort signal:
-      sparse-gather <0.5× after reasonable tuning.
+- [x] **Phase-2 GPU benchmark FIRST RESULT (23:2x, gpu_step_bench.py):
+      9,481 pos/s at batch 1024 = 0.05× bullet — far below gate, and
+      batch 8192/2048 OOM (XLA materializes the gather: threats =
+      B×160×1280×f32; 6.7GB at 8192).** The pre-registered sparse-gather
+      risk is REAL and is a memory-materialization problem, not a
+      compute one. Host loader confirmed: 217k pos/s single-thread ✓.
+      **Gate NOT final until "reasonable tuning" runs:** (1) segment_sum
+      /embedding-bag reformulation of the FT forward+grad; (2) a Pallas
+      embedding-bag kernel (the known pattern for exactly this — ~50
+      lines, keeps everything else JAX); (3) mixed precision (bf16
+      gather halves traffic). If all three fail <0.5× ⇒ park per the
+      abort framework (JAX stays the experimentation sidecar — which
+      needs no GPU — and bullet remains the trainer). This tuning is a
+      clean bounded agent task; commission when the box frees.
+      ARCHON_JAX_ALLOW_GPU=1 opt-in added to the _require_cpu guard.
 - [ ] Wire `jax/tools/quant_byte_parity.py` + `engine_parity.py` into the
       gate-script family (every future net passes them pre-game).
 
