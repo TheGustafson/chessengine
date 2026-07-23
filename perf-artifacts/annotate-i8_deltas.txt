@@ -1,0 +1,358 @@
+ Percent |	Source code & Disassembly of chessengine for cpu/cycles/P (3263 samples, percent: local period)
+---------------------------------------------------------------------------------------------------------------
+         :
+         :
+         :
+         : 3     Disassembly of section .text:
+         :
+         : 5     0000000000070af0 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into>:
+    0.06 :   70af0:  push   %rbp
+    0.03 :   70af1:  push   %r15
+    0.12 :   70af3:  push   %r14
+    0.00 :   70af5:  push   %r13
+    0.00 :   70af7:  push   %r12
+    0.09 :   70af9:  push   %rbx
+    0.06 :   70afa:  mov    0x40(%rsp),%rcx
+    0.06 :   70aff:  mov    0x38(%rsp),%rax
+    0.09 :   70b04:  lea    0x0(,%rcx,8),%r12
+    0.12 :   70b0c:  lea    (%rax,%rcx,8),%r10
+    0.00 :   70b10:  test   %r9,%r9
+    0.00 :   70b13:  je     70de9 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x2f9>
+    0.10 :   70b19:  lea    (%r8,%r9,8),%r11
+    0.00 :   70b1d:  shl    $0x3,%r9
+    0.06 :   70b21:  mov    %r8,-0x20(%rsp)
+    0.00 :   70b26:  add    $0xfffffffffffffff8,%r9
+    0.00 :   70b2a:  mov    %r9,%r8
+    0.00 :   70b2d:  shr    $0x3,%r8
+    0.03 :   70b31:  inc    %r8
+    0.03 :   70b34:  test   %rcx,%rcx
+    0.00 :   70b37:  je     70f69 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x479>
+    0.00 :   70b3d:  add    $0xfffffffffffffff8,%r12
+    0.03 :   70b41:  and    $0x7,%r8d
+    0.00 :   70b45:  mov    %r9,%r15
+    0.09 :   70b48:  mov    %r9,-0x8(%rsp)
+    0.03 :   70b4d:  and    $0x38,%r15d
+    0.06 :   70b51:  mov    $0x28,%r13d
+    0.06 :   70b57:  xor    %ebp,%ebp
+    0.03 :   70b59:  mov    %r12d,%ecx
+    0.03 :   70b5c:  shr    $0x3,%ecx
+    0.03 :   70b5f:  mov    %r12,-0x10(%rsp)
+    0.00 :   70b64:  neg    %r8
+    0.00 :   70b67:  and    $0x38,%r12d
+    0.00 :   70b6b:  inc    %ecx
+    0.03 :   70b6d:  mov    %r8,-0x18(%rsp)
+    0.00 :   70b72:  and    $0x7,%ecx
+    0.00 :   70b75:  neg    %rcx
+    0.09 :   70b78:  mov    %rcx,%r9
+    0.00 :   70b7b:  jmp    70b94 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0xa4>
+    0.00 :   70b7d:  nopl   (%rax)
+    2.88 :   70b80:  vmovdqu64 %zmm0,(%rdi,%rbp,2)
+    1.38 :   70b87:  add    $0x20,%rbp
+    1.23 :   70b8b:  dec    %r13
+    0.00 :   70b8e:  je     710d9 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x5e9>
+    1.11 :   70b94:  vmovdqu64 (%rsi,%rbp,2),%zmm0
+    1.80 :   70b9b:  lea    (%rdx,%rbp,1),%rcx
+    1.60 :   70b9f:  cmp    $0x38,%r15d
+    0.00 :   70ba3:  jne    70bb0 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0xc0>
+    0.00 :   70ba5:  mov    -0x20(%rsp),%r8
+    0.00 :   70baa:  jmp    70bf0 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x100>
+    0.00 :   70bac:  nopl   0x0(%rax)
+    1.21 :   70bb0:  mov    -0x18(%rsp),%r14
+    1.19 :   70bb5:  mov    -0x20(%rsp),%r8
+    0.03 :   70bba:  nopw   0x0(%rax,%rax,1)
+    3.38 :   70bc0:  mov    (%r8),%rbx
+    3.42 :   70bc3:  add    $0x8,%r8
+    4.10 :   70bc7:  lea    (%rbx,%rbx,4),%rbx
+    4.45 :   70bcb:  shl    $0x8,%rbx
+    4.55 :   70bcf:  inc    %r14
+    4.50 :   70bd2:  vpmovsxbw (%rcx,%rbx,1),%zmm1
+    4.08 :   70bd9:  vpaddw %zmm1,%zmm0,%zmm0
+    3.31 :   70bdf:  jne    70bc0 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0xd0>
+    1.21 :   70be1:  cmpq   $0x38,-0x8(%rsp)
+    1.03 :   70be7:  jb     70cc4 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x1d4>
+    0.00 :   70bed:  nopl   (%rax)
+    0.00 :   70bf0:  mov    (%r8),%rbx
+    0.00 :   70bf3:  mov    0x8(%r8),%r14
+    0.00 :   70bf7:  lea    (%rbx,%rbx,4),%rbx
+    0.00 :   70bfb:  shl    $0x8,%rbx
+    0.00 :   70bff:  vpmovsxbw (%rcx,%rbx,1),%zmm1
+    0.00 :   70c06:  lea    (%r14,%r14,4),%rbx
+    0.00 :   70c0a:  shl    $0x8,%rbx
+    0.00 :   70c0e:  vpmovsxbw (%rcx,%rbx,1),%zmm3
+    0.00 :   70c15:  mov    0x10(%r8),%rbx
+    0.00 :   70c19:  lea    (%rbx,%rbx,4),%rbx
+    0.00 :   70c1d:  shl    $0x8,%rbx
+    0.00 :   70c21:  vpmovsxbw (%rcx,%rbx,1),%zmm2
+    0.00 :   70c28:  mov    0x18(%r8),%rbx
+    0.00 :   70c2c:  vpaddw %zmm1,%zmm0,%zmm0
+    0.00 :   70c32:  lea    (%rbx,%rbx,4),%rbx
+    0.03 :   70c36:  shl    $0x8,%rbx
+    0.00 :   70c3a:  vpmovsxbw (%rcx,%rbx,1),%zmm4
+    0.00 :   70c41:  mov    0x20(%r8),%rbx
+    0.00 :   70c45:  vpaddw %zmm2,%zmm3,%zmm1
+    0.00 :   70c4b:  vpaddw %zmm1,%zmm0,%zmm0
+    0.00 :   70c51:  lea    (%rbx,%rbx,4),%rbx
+    0.00 :   70c55:  shl    $0x8,%rbx
+    0.00 :   70c59:  vpmovsxbw (%rcx,%rbx,1),%zmm2
+    0.03 :   70c60:  mov    0x28(%r8),%rbx
+    0.00 :   70c64:  lea    (%rbx,%rbx,4),%rbx
+    0.00 :   70c68:  shl    $0x8,%rbx
+    0.00 :   70c6c:  vpmovsxbw (%rcx,%rbx,1),%zmm3
+    0.03 :   70c73:  mov    0x30(%r8),%rbx
+    0.00 :   70c77:  vpaddw %zmm2,%zmm4,%zmm1
+    0.00 :   70c7d:  lea    (%rbx,%rbx,4),%rbx
+    0.00 :   70c81:  shl    $0x8,%rbx
+    0.00 :   70c85:  vpaddw %zmm3,%zmm1,%zmm1
+    0.00 :   70c8b:  vpmovsxbw (%rcx,%rbx,1),%zmm3
+    0.00 :   70c92:  mov    0x38(%r8),%rbx
+    0.00 :   70c96:  add    $0x40,%r8
+    0.00 :   70c9a:  vpaddw %zmm1,%zmm0,%zmm0
+    0.00 :   70ca0:  lea    (%rbx,%rbx,4),%rbx
+    0.00 :   70ca4:  shl    $0x8,%rbx
+    0.00 :   70ca8:  vpmovsxbw (%rcx,%rbx,1),%zmm2
+    0.00 :   70caf:  vpaddw %zmm2,%zmm3,%zmm1
+    0.03 :   70cb5:  vpaddw %zmm1,%zmm0,%zmm0
+    0.00 :   70cbb:  cmp    %r11,%r8
+    0.00 :   70cbe:  jne    70bf0 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x100>
+    2.40 :   70cc4:  cmp    $0x38,%r12d
+    0.00 :   70cc8:  jne    70cd0 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x1e0>
+    0.03 :   70cca:  mov    %rax,%r8
+    0.00 :   70ccd:  jmp    70d10 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x220>
+    0.00 :   70ccf:  nop
+    1.03 :   70cd0:  mov    %r9,%r14
+    0.89 :   70cd3:  mov    %rax,%r8
+    0.00 :   70cd6:  cs nopw 0x0(%rax,%rax,1)
+    3.41 :   70ce0:  mov    (%r8),%rbx
+    3.00 :   70ce3:  add    $0x8,%r8
+    3.12 :   70ce7:  lea    (%rbx,%rbx,4),%rbx
+    3.46 :   70ceb:  shl    $0x8,%rbx
+    2.93 :   70cef:  inc    %r14
+    3.57 :   70cf2:  vpmovsxbw (%rcx,%rbx,1),%zmm1
+    5.29 :   70cf9:  vpsubw %zmm1,%zmm0,%zmm0
+    5.58 :   70cff:  jne    70ce0 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x1f0>
+    1.97 :   70d01:  cmpq   $0x38,-0x10(%rsp)
+    1.43 :   70d07:  jb     70b80 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x90>
+    0.00 :   70d0d:  nopl   (%rax)
+    0.03 :   70d10:  mov    (%r8),%rbx
+    0.19 :   70d13:  mov    0x8(%r8),%r14
+    0.00 :   70d17:  lea    (%rbx,%rbx,4),%rbx
+    0.06 :   70d1b:  shl    $0x8,%rbx
+    0.03 :   70d1f:  vpmovsxbw (%rcx,%rbx,1),%zmm1
+    0.00 :   70d26:  lea    (%r14,%r14,4),%rbx
+    0.00 :   70d2a:  shl    $0x8,%rbx
+    0.03 :   70d2e:  vpmovsxbw (%rcx,%rbx,1),%zmm2
+    0.00 :   70d35:  mov    0x10(%r8),%rbx
+    0.03 :   70d39:  lea    (%rbx,%rbx,4),%rbx
+    0.00 :   70d3d:  shl    $0x8,%rbx
+    0.20 :   70d41:  vpmovsxbw (%rcx,%rbx,1),%zmm5
+    0.03 :   70d48:  mov    0x18(%r8),%rbx
+    0.09 :   70d4c:  vpaddw %zmm2,%zmm1,%zmm1
+    0.00 :   70d52:  lea    (%rbx,%rbx,4),%rbx
+    0.09 :   70d56:  shl    $0x8,%rbx
+    0.03 :   70d5a:  vpmovsxbw (%rcx,%rbx,1),%zmm3
+    0.09 :   70d61:  mov    0x20(%r8),%rbx
+    0.00 :   70d65:  lea    (%rbx,%rbx,4),%rbx
+    0.03 :   70d69:  shl    $0x8,%rbx
+    0.06 :   70d6d:  vpmovsxbw (%rcx,%rbx,1),%zmm4
+    0.06 :   70d74:  mov    0x28(%r8),%rbx
+    0.03 :   70d78:  vpaddw %zmm3,%zmm5,%zmm2
+    0.03 :   70d7e:  vpaddw %zmm2,%zmm1,%zmm1
+    0.03 :   70d84:  lea    (%rbx,%rbx,4),%rbx
+    0.00 :   70d88:  shl    $0x8,%rbx
+    0.03 :   70d8c:  vpmovsxbw (%rcx,%rbx,1),%zmm3
+    0.03 :   70d93:  mov    0x30(%r8),%rbx
+    0.00 :   70d97:  lea    (%rbx,%rbx,4),%rbx
+    0.12 :   70d9b:  shl    $0x8,%rbx
+    0.09 :   70d9f:  vpaddw %zmm3,%zmm4,%zmm2
+    0.09 :   70da5:  vpmovsxbw (%rcx,%rbx,1),%zmm4
+    0.09 :   70dac:  mov    0x38(%r8),%rbx
+    0.04 :   70db0:  add    $0x40,%r8
+    0.09 :   70db4:  lea    (%rbx,%rbx,4),%rbx
+    0.03 :   70db8:  shl    $0x8,%rbx
+    0.00 :   70dbc:  vpmovsxbw (%rcx,%rbx,1),%zmm3
+    0.09 :   70dc3:  vpaddw %zmm4,%zmm2,%zmm2
+    0.09 :   70dc9:  vpaddw %zmm2,%zmm1,%zmm1
+    0.03 :   70dcf:  vpaddw %zmm3,%zmm1,%zmm1
+    0.03 :   70dd5:  vpsubw %zmm1,%zmm0,%zmm0
+    0.00 :   70ddb:  cmp    %r10,%r8
+    0.00 :   70dde:  jne    70d10 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x220>
+    0.03 :   70de4:  jmp    70b80 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x90>
+    0.06 :   70de9:  test   %rcx,%rcx
+    0.00 :   70dec:  je     710e7 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x5f7>
+    0.00 :   70df2:  mov    %r12,%r8
+    0.00 :   70df5:  add    $0xfffffffffffffff8,%r8
+    0.00 :   70df9:  mov    $0x28,%r9d
+    0.06 :   70dff:  xor    %r11d,%r11d
+    0.03 :   70e02:  mov    %r8d,%ecx
+    0.00 :   70e05:  shr    $0x3,%ecx
+    0.00 :   70e08:  mov    %r8,%r13
+    0.00 :   70e0b:  and    $0x38,%r8d
+    0.00 :   70e0f:  inc    %ecx
+    0.00 :   70e11:  and    $0x7,%ecx
+    0.03 :   70e14:  neg    %rcx
+    0.03 :   70e17:  jmp    70e34 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x344>
+    0.00 :   70e19:  nopl   0x0(%rax)
+    0.49 :   70e20:  vmovdqu64 %zmm0,(%rdi,%r11,2)
+    0.06 :   70e27:  add    $0x20,%r11
+    0.12 :   70e2b:  dec    %r9
+    0.00 :   70e2e:  je     710d9 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x5e9>
+    0.19 :   70e34:  vmovdqu64 (%rsi,%r11,2),%zmm0
+    0.25 :   70e3b:  lea    (%rdx,%r11,1),%rbx
+    0.31 :   70e3f:  cmp    $0x38,%r8d
+    0.00 :   70e43:  jne    70e50 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x360>
+    0.00 :   70e45:  mov    %rax,%r14
+    0.00 :   70e48:  jmp    70e90 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x3a0>
+    0.00 :   70e4a:  nopw   0x0(%rax,%rax,1)
+    0.12 :   70e50:  mov    %rcx,%r15
+    0.09 :   70e53:  mov    %rax,%r14
+    0.00 :   70e56:  cs nopw 0x0(%rax,%rax,1)
+    0.27 :   70e60:  mov    (%r14),%r12
+    0.21 :   70e63:  add    $0x8,%r14
+    0.09 :   70e67:  lea    (%r12,%r12,4),%r12
+    0.46 :   70e6b:  shl    $0x8,%r12
+    0.43 :   70e6f:  inc    %r15
+    0.30 :   70e72:  vpmovsxbw (%rbx,%r12,1),%zmm1
+    0.39 :   70e79:  vpsubw %zmm1,%zmm0,%zmm0
+    0.49 :   70e7f:  jne    70e60 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x370>
+    0.39 :   70e81:  cmp    $0x38,%r13
+    0.00 :   70e85:  jb     70e20 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x330>
+    0.00 :   70e87:  nopw   0x0(%rax,%rax,1)
+    0.00 :   70e90:  mov    (%r14),%r15
+    0.00 :   70e93:  mov    0x8(%r14),%r12
+    0.00 :   70e97:  lea    (%r15,%r15,4),%r15
+    0.00 :   70e9b:  shl    $0x8,%r15
+    0.00 :   70e9f:  vpmovsxbw (%rbx,%r15,1),%zmm1
+    0.00 :   70ea6:  lea    (%r12,%r12,4),%r15
+    0.00 :   70eaa:  shl    $0x8,%r15
+    0.00 :   70eae:  vpmovsxbw (%rbx,%r15,1),%zmm2
+    0.00 :   70eb5:  mov    0x10(%r14),%r15
+    0.00 :   70eb9:  lea    (%r15,%r15,4),%r15
+    0.00 :   70ebd:  shl    $0x8,%r15
+    0.00 :   70ec1:  vpmovsxbw (%rbx,%r15,1),%zmm5
+    0.00 :   70ec8:  mov    0x18(%r14),%r15
+    0.00 :   70ecc:  vpaddw %zmm2,%zmm1,%zmm1
+    0.00 :   70ed2:  lea    (%r15,%r15,4),%r15
+    0.00 :   70ed6:  shl    $0x8,%r15
+    0.00 :   70eda:  vpmovsxbw (%rbx,%r15,1),%zmm3
+    0.00 :   70ee1:  mov    0x20(%r14),%r15
+    0.00 :   70ee5:  lea    (%r15,%r15,4),%r15
+    0.00 :   70ee9:  shl    $0x8,%r15
+    0.00 :   70eed:  vpmovsxbw (%rbx,%r15,1),%zmm4
+    0.00 :   70ef4:  mov    0x28(%r14),%r15
+    0.00 :   70ef8:  vpaddw %zmm3,%zmm5,%zmm2
+    0.00 :   70efe:  vpaddw %zmm2,%zmm1,%zmm1
+    0.00 :   70f04:  lea    (%r15,%r15,4),%r15
+    0.00 :   70f08:  shl    $0x8,%r15
+    0.00 :   70f0c:  vpmovsxbw (%rbx,%r15,1),%zmm3
+    0.00 :   70f13:  mov    0x30(%r14),%r15
+    0.00 :   70f17:  lea    (%r15,%r15,4),%r15
+    0.00 :   70f1b:  shl    $0x8,%r15
+    0.00 :   70f1f:  vpaddw %zmm3,%zmm4,%zmm2
+    0.00 :   70f25:  vpmovsxbw (%rbx,%r15,1),%zmm4
+    0.00 :   70f2c:  mov    0x38(%r14),%r15
+    0.00 :   70f30:  add    $0x40,%r14
+    0.00 :   70f34:  lea    (%r15,%r15,4),%r15
+    0.00 :   70f38:  shl    $0x8,%r15
+    0.00 :   70f3c:  vpmovsxbw (%rbx,%r15,1),%zmm3
+    0.00 :   70f43:  vpaddw %zmm4,%zmm2,%zmm2
+    0.00 :   70f49:  vpaddw %zmm2,%zmm1,%zmm1
+    0.00 :   70f4f:  vpaddw %zmm3,%zmm1,%zmm1
+    0.00 :   70f55:  vpsubw %zmm1,%zmm0,%zmm0
+    0.00 :   70f5b:  cmp    %r10,%r14
+    0.00 :   70f5e:  jne    70e90 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x3a0>
+    0.00 :   70f64:  jmp    70e20 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x330>
+    0.06 :   70f69:  and    $0x7,%r8d
+    0.06 :   70f6d:  mov    %r9d,%eax
+    0.00 :   70f70:  and    $0x38,%eax
+    0.00 :   70f73:  mov    $0x28,%ecx
+    0.00 :   70f78:  mov    %r9,%rbx
+    0.00 :   70f7b:  xor    %r10d,%r10d
+    0.00 :   70f7e:  neg    %r8
+    0.00 :   70f81:  mov    %r8,%r9
+    0.03 :   70f84:  jmp    70fa4 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x4b4>
+    0.00 :   70f86:  cs nopw 0x0(%rax,%rax,1)
+    0.45 :   70f90:  vmovdqu64 %zmm0,(%rdi,%r10,2)
+    0.34 :   70f97:  add    $0x20,%r10
+    0.24 :   70f9b:  dec    %rcx
+    0.00 :   70f9e:  je     710d9 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x5e9>
+    0.15 :   70fa4:  vmovdqu64 (%rsi,%r10,2),%zmm0
+    0.19 :   70fab:  lea    (%rdx,%r10,1),%r14
+    0.15 :   70faf:  cmp    $0x38,%eax
+    0.00 :   70fb2:  jne    70fc0 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x4d0>
+    0.00 :   70fb4:  mov    -0x20(%rsp),%r15
+    0.00 :   70fb9:  jmp    71000 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x510>
+    0.00 :   70fbb:  nopl   0x0(%rax,%rax,1)
+    0.03 :   70fc0:  mov    -0x20(%rsp),%r15
+    0.06 :   70fc5:  mov    %r9,%r8
+    0.00 :   70fc8:  nopl   0x0(%rax,%rax,1)
+    0.21 :   70fd0:  mov    (%r15),%r12
+    0.22 :   70fd3:  add    $0x8,%r15
+    0.25 :   70fd7:  lea    (%r12,%r12,4),%r12
+    0.50 :   70fdb:  shl    $0x8,%r12
+    0.39 :   70fdf:  inc    %r8
+    0.60 :   70fe2:  vpmovsxbw (%r14,%r12,1),%zmm1
+    0.54 :   70fe9:  vpaddw %zmm1,%zmm0,%zmm0
+    0.32 :   70fef:  jne    70fd0 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x4e0>
+    0.27 :   70ff1:  cmp    $0x38,%rbx
+    0.00 :   70ff5:  jb     70f90 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x4a0>
+    0.00 :   70ff7:  nopw   0x0(%rax,%rax,1)
+    0.00 :   71000:  mov    (%r15),%r8
+    0.00 :   71003:  mov    0x8(%r15),%r12
+    0.00 :   71007:  lea    (%r8,%r8,4),%r8
+    0.00 :   7100b:  shl    $0x8,%r8
+    0.00 :   7100f:  vpmovsxbw (%r14,%r8,1),%zmm1
+    0.00 :   71016:  lea    (%r12,%r12,4),%r8
+    0.00 :   7101a:  shl    $0x8,%r8
+    0.00 :   7101e:  vpmovsxbw (%r14,%r8,1),%zmm3
+    0.00 :   71025:  mov    0x10(%r15),%r8
+    0.00 :   71029:  lea    (%r8,%r8,4),%r8
+    0.00 :   7102d:  shl    $0x8,%r8
+    0.00 :   71031:  vpmovsxbw (%r14,%r8,1),%zmm2
+    0.00 :   71038:  mov    0x18(%r15),%r8
+    0.00 :   7103c:  vpaddw %zmm1,%zmm0,%zmm0
+    0.00 :   71042:  lea    (%r8,%r8,4),%r8
+    0.00 :   71046:  shl    $0x8,%r8
+    0.00 :   7104a:  vpmovsxbw (%r14,%r8,1),%zmm4
+    0.00 :   71051:  mov    0x20(%r15),%r8
+    0.00 :   71055:  vpaddw %zmm2,%zmm3,%zmm1
+    0.00 :   7105b:  vpaddw %zmm1,%zmm0,%zmm0
+    0.00 :   71061:  lea    (%r8,%r8,4),%r8
+    0.00 :   71065:  shl    $0x8,%r8
+    0.00 :   71069:  vpmovsxbw (%r14,%r8,1),%zmm2
+    0.00 :   71070:  mov    0x28(%r15),%r8
+    0.00 :   71074:  lea    (%r8,%r8,4),%r8
+    0.00 :   71078:  shl    $0x8,%r8
+    0.00 :   7107c:  vpmovsxbw (%r14,%r8,1),%zmm3
+    0.00 :   71083:  mov    0x30(%r15),%r8
+    0.00 :   71087:  vpaddw %zmm2,%zmm4,%zmm1
+    0.00 :   7108d:  lea    (%r8,%r8,4),%r8
+    0.00 :   71091:  shl    $0x8,%r8
+    0.00 :   71095:  vpaddw %zmm3,%zmm1,%zmm1
+    0.00 :   7109b:  vpmovsxbw (%r14,%r8,1),%zmm3
+    0.00 :   710a2:  mov    0x38(%r15),%r8
+    0.00 :   710a6:  add    $0x40,%r15
+    0.00 :   710aa:  vpaddw %zmm1,%zmm0,%zmm0
+    0.00 :   710b0:  lea    (%r8,%r8,4),%r8
+    0.00 :   710b4:  shl    $0x8,%r8
+    0.00 :   710b8:  vpmovsxbw (%r14,%r8,1),%zmm2
+    0.00 :   710bf:  vpaddw %zmm2,%zmm3,%zmm1
+    0.00 :   710c5:  vpaddw %zmm1,%zmm0,%zmm0
+    0.00 :   710cb:  cmp    %r11,%r15
+    0.00 :   710ce:  jne    71000 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x510>
+    0.00 :   710d4:  jmp    70f90 <chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into+0x4a0>
+    0.49 :   710d9:  pop    %rbx
+    0.18 :   710da:  pop    %r12
+    0.31 :   710dc:  pop    %r13
+    0.18 :   710de:  pop    %r14
+    0.21 :   710e0:  pop    %r15
+    0.09 :   710e2:  pop    %rbp
+    0.13 :   710e3:  vzeroupper
+    0.18 :   710e6:  ret
+    0.13 :   710e7:  mov    $0xa00,%edx
+    0.00 :   710ec:  pop    %rbx
+    0.03 :   710ed:  pop    %r12
+    0.03 :   710ef:  pop    %r13
+    0.00 :   710f1:  pop    %r14
+    0.00 :   710f3:  pop    %r15
+    0.00 :   710f5:  pop    %rbp
+    0.00 :   710f6:  jmp    *0x6b7fc(%rip)        # dc8f8 <memcpy@GLIBC_2.14>

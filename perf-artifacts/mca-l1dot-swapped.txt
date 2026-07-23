@@ -1,0 +1,82 @@
+Iterations:        300
+Instructions:      4200
+Total Cycles:      2417
+Total uOps:        4200
+
+Dispatch Width:    6
+uOps Per Cycle:    1.74
+IPC:               1.74
+Block RThroughput: 8.0
+
+
+Instruction Info:
+[1]: #uOps
+[2]: Latency
+[3]: RThroughput
+[4]: MayLoad
+[5]: MayStore
+[6]: HasSideEffects (U)
+
+[1]    [2]    [3]    [4]    [5]    [6]    Instructions:
+ 1      5     0.33    *                   movzwl	(%rdx,%r9), %eax
+ 1      0     0.17                        movl	%eax, %r10d
+ 1      1     0.50                        shll	$9, %r10d
+ 1      8     1.00    *                   vpbroadcastd	(%rsi,%rax,4), %zmm8
+ 1      1     0.25                        addq	$2, %r9
+ 1      10    1.00    *                   vpdpbusd	(%r8,%r10), %zmm8, %zmm0
+ 1      10    1.00    *                   vpdpbusd	64(%r8,%r10), %zmm8, %zmm1
+ 1      10    1.00    *                   vpdpbusd	128(%r8,%r10), %zmm8, %zmm2
+ 1      10    1.00    *                   vpdpbusd	192(%r8,%r10), %zmm8, %zmm3
+ 1      10    1.00    *                   vpdpbusd	256(%r8,%r10), %zmm8, %zmm4
+ 1      10    1.00    *                   vpdpbusd	320(%r8,%r10), %zmm8, %zmm5
+ 1      10    1.00    *                   vpdpbusd	384(%r8,%r10), %zmm8, %zmm6
+ 1      10    1.00    *                   vpdpbusd	448(%r8,%r10), %zmm8, %zmm7
+ 1      1     0.25                        cmpq	%r9, %rcx
+
+
+Resources:
+[0]   - Zn4AGU0
+[1]   - Zn4AGU1
+[2]   - Zn4AGU2
+[3]   - Zn4ALU0
+[4]   - Zn4ALU1
+[5]   - Zn4ALU2
+[6]   - Zn4ALU3
+[7]   - Zn4BRU1
+[8]   - Zn4FP0
+[9]   - Zn4FP1
+[10]  - Zn4FP2
+[11]  - Zn4FP3
+[12.0] - Zn4FP45
+[12.1] - Zn4FP45
+[13]  - Zn4FPSt
+[14.0] - Zn4LSU
+[14.1] - Zn4LSU
+[14.2] - Zn4LSU
+[15.0] - Zn4Load
+[15.1] - Zn4Load
+[15.2] - Zn4Load
+[16.0] - Zn4Store
+[16.1] - Zn4Store
+
+
+Resource pressure per iteration:
+[0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]    [8]    [9]    [10]   [11]   [12.0] [12.1] [13]   [14.0] [14.1] [14.2] [15.0] [15.1] [15.2] [16.0] [16.1] 
+0.33   0.33   0.33   0.75   0.75   0.75   0.75    -     8.00   1.00    -     8.00   4.50   4.50    -     3.33   3.33   3.33   3.33   3.33   3.33    -      -     
+
+Resource pressure by instruction:
+[0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]    [8]    [9]    [10]   [11]   [12.0] [12.1] [13]   [14.0] [14.1] [14.2] [15.0] [15.1] [15.2] [16.0] [16.1] Instructions:
+0.33   0.33   0.33    -      -      -      -      -      -      -      -      -      -      -      -     0.34   0.33   0.33   0.34   0.33   0.33    -      -     movzwl	(%rdx,%r9), %eax
+ -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -     movl	%eax, %r10d
+ -      -      -      -     0.25   0.75    -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -     shll	$9, %r10d
+ -      -      -      -      -      -      -      -      -     1.00    -      -     0.50   0.50    -     0.33   0.34   0.33   0.33   0.34   0.33    -      -     vpbroadcastd	(%rsi,%rax,4), %zmm8
+ -      -      -     0.25   0.25    -     0.50    -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -     addq	$2, %r9
+ -      -      -      -      -      -      -      -      -      -      -     2.00   0.49   0.51    -     0.33   0.33   0.33   0.33   0.33   0.33    -      -     vpdpbusd	(%r8,%r10), %zmm8, %zmm0
+ -      -      -      -      -      -      -      -     2.00    -      -      -     0.51   0.49    -     0.33   0.33   0.33   0.33   0.33   0.33    -      -     vpdpbusd	64(%r8,%r10), %zmm8, %zmm1
+ -      -      -      -      -      -      -      -      -      -      -     2.00   0.49   0.51    -     0.33   0.34   0.33   0.33   0.34   0.33    -      -     vpdpbusd	128(%r8,%r10), %zmm8, %zmm2
+ -      -      -      -      -      -      -      -     2.00    -      -      -     0.51   0.49    -     0.34   0.33   0.33   0.34   0.33   0.33    -      -     vpdpbusd	192(%r8,%r10), %zmm8, %zmm3
+ -      -      -      -      -      -      -      -      -      -      -     2.00   0.49   0.51    -     0.33   0.33   0.33   0.33   0.33   0.33    -      -     vpdpbusd	256(%r8,%r10), %zmm8, %zmm4
+ -      -      -      -      -      -      -      -     2.00    -      -      -     0.51   0.49    -     0.33   0.33   0.33   0.33   0.33   0.33    -      -     vpdpbusd	320(%r8,%r10), %zmm8, %zmm5
+ -      -      -      -      -      -      -      -      -      -      -     2.00   0.49   0.51    -     0.33   0.33   0.34   0.33   0.33   0.34    -      -     vpdpbusd	384(%r8,%r10), %zmm8, %zmm6
+ -      -      -      -      -      -      -      -     2.00    -      -      -     0.51   0.49    -     0.33   0.34   0.33   0.33   0.34   0.33    -      -     vpdpbusd	448(%r8,%r10), %zmm8, %zmm7
+ -      -      -     0.50   0.25    -     0.25    -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -     cmpq	%r9, %rcx

@@ -1,0 +1,68 @@
+Iterations:        300
+Instructions:      2100
+Total Cycles:      916
+Total uOps:        2100
+
+Dispatch Width:    6
+uOps Per Cycle:    2.29
+IPC:               2.29
+Block RThroughput: 1.2
+
+
+Instruction Info:
+[1]: #uOps
+[2]: Latency
+[3]: RThroughput
+[4]: MayLoad
+[5]: MayStore
+[6]: HasSideEffects (U)
+
+[1]    [2]    [3]    [4]    [5]    [6]    Instructions:
+ 1      5     0.33    *                   movzwl	(%rdx,%r9), %eax
+ 1      0     0.17                        movl	%eax, %r10d
+ 1      1     0.50                        shll	$9, %r10d
+ 1      8     1.00    *                   vpbroadcastd	(%rsi,%rax,4), %zmm1
+ 1      1     0.25                        addq	$2, %r9
+ 1      10    1.00    *                   vpdpbusd	(%r8,%r10), %zmm1, %zmm0
+ 1      1     0.25                        cmpq	%r9, %rcx
+
+
+Resources:
+[0]   - Zn4AGU0
+[1]   - Zn4AGU1
+[2]   - Zn4AGU2
+[3]   - Zn4ALU0
+[4]   - Zn4ALU1
+[5]   - Zn4ALU2
+[6]   - Zn4ALU3
+[7]   - Zn4BRU1
+[8]   - Zn4FP0
+[9]   - Zn4FP1
+[10]  - Zn4FP2
+[11]  - Zn4FP3
+[12.0] - Zn4FP45
+[12.1] - Zn4FP45
+[13]  - Zn4FPSt
+[14.0] - Zn4LSU
+[14.1] - Zn4LSU
+[14.2] - Zn4LSU
+[15.0] - Zn4Load
+[15.1] - Zn4Load
+[15.2] - Zn4Load
+[16.0] - Zn4Store
+[16.1] - Zn4Store
+
+
+Resource pressure per iteration:
+[0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]    [8]    [9]    [10]   [11]   [12.0] [12.1] [13]   [14.0] [14.1] [14.2] [15.0] [15.1] [15.2] [16.0] [16.1] 
+0.33   0.33   0.33   0.75   0.75   0.75   0.75    -     1.00   1.00    -     1.00   1.00   1.00    -     1.00   1.00   1.00   1.00   1.00   1.00    -      -     
+
+Resource pressure by instruction:
+[0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]    [8]    [9]    [10]   [11]   [12.0] [12.1] [13]   [14.0] [14.1] [14.2] [15.0] [15.1] [15.2] [16.0] [16.1] Instructions:
+0.33   0.33   0.33    -      -      -      -      -      -      -      -      -      -      -      -     0.04   0.03   0.93   0.04   0.03   0.93    -      -     movzwl	(%rdx,%r9), %eax
+ -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -     movl	%eax, %r10d
+ -      -      -      -     0.70   0.30    -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -     shll	$9, %r10d
+ -      -      -      -      -      -      -      -      -     1.00    -      -     0.95   0.05    -     0.04   0.93   0.03   0.04   0.93   0.03    -      -     vpbroadcastd	(%rsi,%rax,4), %zmm1
+ -      -      -     0.25   0.02   0.23   0.50    -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -     addq	$2, %r9
+ -      -      -      -      -      -      -      -     1.00    -      -     1.00   0.05   0.95    -     0.92   0.04   0.04   0.92   0.04   0.04    -      -     vpdpbusd	(%r8,%r10), %zmm1, %zmm0
+ -      -      -     0.49   0.02   0.23   0.25    -      -      -      -      -      -      -      -      -      -      -      -      -      -      -      -     cmpq	%r9, %rcx

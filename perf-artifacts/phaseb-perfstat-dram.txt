@@ -1,0 +1,18 @@
+# started on Wed Jul 22 21:22:42 2026
+
+
+ Performance counter stats for '/home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine bench 16 1 15 /tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/wl50.fens depth /home/nick/projects/chessengine/data/nnue/nets/d47c-stage2-sb240.cenn':
+
+        72,065,021      ls_any_fills_from_sys.dram_io_all                                        (83.34%)
+    17,331,453,318      ls_any_fills_from_sys.local_l2                                          (83.33%)
+       596,247,510      ls_any_fills_from_sys.local_ccx                                         (83.33%)
+                 0      ls_any_fills_from_sys.near_cache                                        (83.34%)
+        17,047,210      dTLB-load-misses                                                        (83.34%)
+       453,941,590      dtlb-loads                                                              (83.32%)
+
+      13.967594451 seconds time elapsed
+
+      13.754983000 seconds user
+       0.109229000 seconds sys
+
+
