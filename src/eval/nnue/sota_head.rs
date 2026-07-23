@@ -19,7 +19,7 @@
 //! Behind the `sota` cargo feature; the default build never compiles it, so the
 //! depth-6 bench stays 548978.
 
-use super::sota_simd::{activate, l1_dot};
+use super::sota_simd::{activate, l1_dequant, l1_dot, l2_tail};
 use crate::types::Color;
 
 /// Accumulator width per perspective — D47 (user-directed, 2026-07-22):
@@ -162,48 +162,33 @@ impl SotaHead {
         let wb = &self.l1_weights[wbase..wbase + L2 * L1];
         l1_dot(&mut pre, ft, nnz, wb);
         let bb = bucket * L2;
-        // Fixed-size bucket slice hoists the bounds check out of the loop so
-        // the dequant+SCReLU vectorizes (perf: the flat `l1_biases[bb + j]`
-        // load kept a panic edge per element). Same per-j math → bit-identical.
         let bias: &[f32; L2] = self.l1_biases[bb..bb + L2]
             .try_into()
             .expect("l1 bias block");
-        for j in 0..L2 {
-            let clipped = (pre[j] as f32).mul_add(DEQUANT, bias[j]).clamp(0.0, 1.0);
-            out[j] = clipped * clipped;
-        }
+        // Explicit dequant+SCReLU kernel (perf study #4 item #2a); the scalar
+        // backend is the loop that used to live here — bit-identical.
+        l1_dequant(out, &pre, bias, DEQUANT);
     }
 
     /// Dense f32[L2]→f32[L3], bias-seeded FMA then SCReLU (step 4). The
     /// i-outer/j-inner order is load-bearing: it pins the accumulation order.
-    /// Per-bucket block + per-row fixed-size slices (hoisted out of the loop)
-    /// let LLVM vectorize the 32-wide j-FMA: the flat `l2_weights[wbase + i*L3
-    /// + j]` load with a runtime bucket kept a bounds-check panic edge on every
-    /// element and forced fully-scalar `vfmadd*ss` (~10% of eval runtime + 28%
-    /// of I1 misses; profiling-study §4.2). j-lane vectorization preserves each
-    /// `out[j]`'s sequential accumulation over i ⇒ bit-identical.
-    #[allow(clippy::needless_range_loop)]
+    /// Now an explicit dispatched kernel (perf study #4 item #2a — at D47
+    /// dims this is 4096 FMAs/eval, the last autovectorized hot path; the
+    /// AVX-512 backend holds the whole L3 row in two zmm accumulators with
+    /// one broadcast + two FMAs per i). The scalar backend is the loop that
+    /// used to live here — j-lane order and per-lane i-sequential
+    /// accumulation preserved ⇒ bit-identical.
     fn propagate_l2(&self, l1: &[f32; L2], bucket: usize) -> [f32; L3] {
         let mut out = [0.0f32; L3];
         let bb = bucket * L3;
-        out.copy_from_slice(&self.l2_biases[bb..bb + L3]);
+        let bias: &[f32; L3] = self.l2_biases[bb..bb + L3]
+            .try_into()
+            .expect("l2 bias block");
         let wbase = bucket * L2 * L3;
         let wblock: &[f32; L2 * L3] = self.l2_weights[wbase..wbase + L2 * L3]
             .try_into()
             .expect("l2 weight block");
-        for i in 0..L2 {
-            let row: &[f32; L3] = wblock[i * L3..i * L3 + L3]
-                .try_into()
-                .expect("l2 weight row");
-            let li = l1[i];
-            for j in 0..L3 {
-                out[j] = row[j].mul_add(li, out[j]);
-            }
-        }
-        for v in &mut out {
-            let clipped = v.clamp(0.0, 1.0);
-            *v = clipped * clipped;
-        }
+        l2_tail(&mut out, l1, wblock, bias);
         out
     }
 
