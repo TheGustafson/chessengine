@@ -39,6 +39,10 @@ def main() -> int:
     ap.add_argument("output", type=Path)
     ap.add_argument("--seed", type=int, default=0x00D40FEA)
     ap.add_argument("--buckets", type=int, default=64)
+    ap.add_argument("--unlink-input", action="store_true",
+                    help="delete the input after the scatter pass (halves peak "
+                         "disk: max(in+buckets, buckets+out) instead of all three); "
+                         "only for regenerable inputs — checksum still verifies")
     args = ap.parse_args()
 
     size = args.input.stat().st_size
@@ -76,6 +80,10 @@ def main() -> int:
         finally:
             for handle in buckets:
                 handle.close()
+
+        if args.unlink_input:
+            args.input.unlink()
+            print("input unlinked after scatter (disk peak halved)", flush=True)
 
         with args.output.open("wb") as dst:
             for i in range(args.buckets):

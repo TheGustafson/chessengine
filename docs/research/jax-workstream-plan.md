@@ -89,13 +89,17 @@ TPU path); PyO3 bindings are part of this workstream; WASM/ARM tabled.
 ## Phase 3 — shadow training (CONCRETE SPEC, 2026-07-23; ~7.4h GPU)
 Purpose: prove the JAX trainer trains a REAL net equivalent to bullet's —
 the promotion gate for inverting bullet to reference-oracle status.
-- [ ] **Data prerequisite: convert nodes5000pv2_UHO** (skip-5 dump →
-      global shuffle → `uho.shuf.bin`, ~38G + transient). Launch after
-      the fishpack32 shuffle frees the IO lanes. NOTE the distributional
-      caveat: bullet streamed UHO with skip-75 per-pass thinning across
-      ~2.35 epochs; the static corpus + JAX window sampling presents the
-      same filtered population under a different schedule — equivalence
-      is distributional, which is what the gates below measure.
+- [ ] **Data prerequisite: convert nodes5000pv2_UHO at skip-75**
+      (`uho-band75-100.bin` → shuffle `--unlink-input` → ~84G final).
+      SIZING (2026-07-23): UHO is ~16B raw positions — a skip-5 dump
+      would be ~322G and does NOT fit this disk. But skip-75 is BETTER,
+      not a compromise: the keep-test `hash%100 >= 75` is deterministic
+      per position, so bullet's d47c stage-1 trained on a FIXED 25%
+      subpopulation (~2.6B filtered rows, cycled ~2.3 epochs) — the
+      skip-75 dump reproduces that EXACT multiset. Shadow-twin data
+      equivalence is exact (same unique-position set); only sampling
+      order differs. Heldout band [0,5) sits inside the skipped mass.
+      [IN FLIGHT: conversion launched 2026-07-23 ~00:5x.]
 - [ ] **Run: exact TrainConfig defaults** (= d47c stage-1: batch 8192,
       BPS 3040, 240sb, LR 0.001 cosine→0.3³, λ=0.005 policy ON, WDL 0.3,
       scale 400, seed pinned) with `ARCHON_JAX_FT_IMPL=pallas`. 5.98B
