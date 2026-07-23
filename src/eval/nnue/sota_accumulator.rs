@@ -63,10 +63,26 @@ impl<'a> HalfkaContext<'a> {
     }
 
     pub(crate) fn current(&mut self, board: &Board, ply: usize) -> &[[i16; ACC]; 2] {
-        for perspective in Color::ALL {
-            self.compute(board, ply, perspective);
+        // Null-move alias (perf study #4 item #3, mirrored from the threat
+        // stack): an EMPTY dirty record's "fold" is a pure 2×2.5 KB parent
+        // copy — hand back the parent's accumulator instead. Sound because a
+        // null move changes no placement (identical features, identical king
+        // squares), so the parent entry IS this ply's accumulator. Only
+        // fully-unfolded EMPTY entries alias; partially-computed ones (a
+        // one-sided span fold passed through) are materialized and used as-is.
+        let mut target = ply;
+        while target > 0
+            && !self.stack[target].computed[0]
+            && !self.stack[target].computed[1]
+            && self.stack[target].dirty.adds().is_empty()
+            && self.stack[target].dirty.subs().is_empty()
+        {
+            target -= 1;
         }
-        &self.stack[ply].acc
+        for perspective in Color::ALL {
+            self.compute(board, target, perspective);
+        }
+        &self.stack[target].acc
     }
 
     fn compute(&mut self, board: &Board, ply: usize, perspective: Color) {
@@ -96,15 +112,21 @@ impl<'a> HalfkaContext<'a> {
             let dirty = self.stack[child].dirty;
             // Fused parent→child fold: read parent lanes, apply deltas, write
             // child lanes in one pass — no separate ~1.5 KB memmove (opt #2).
+            // An EMPTY record inside a span (a null move on the fold path)
+            // degenerates to the plain parent copy without the kernel call.
             let (before, after) = self.stack.split_at_mut(child);
-            apply_dirty_into(
-                weights,
-                &mut after[0].acc[p],
-                &before[child - 1].acc[p],
-                &dirty,
-                perspective,
-                king_square,
-            );
+            if dirty.adds().is_empty() && dirty.subs().is_empty() {
+                after[0].acc[p] = before[child - 1].acc[p];
+            } else {
+                apply_dirty_into(
+                    weights,
+                    &mut after[0].acc[p],
+                    &before[child - 1].acc[p],
+                    &dirty,
+                    perspective,
+                    king_square,
+                );
+            }
             after[0].computed[p] = true;
         }
     }

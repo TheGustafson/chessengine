@@ -82,7 +82,7 @@
 //! [`refresh`](ThreatContext::refresh)-rebuild only the crossing side; the other
 //! side (and every non-king move) stays incremental.
 
-use super::sota_features::{ACC, THREAT_DIMS, refresh_threat, threat_index};
+use super::sota_features::{ACC, THREAT_DIMS, ThreatResolver, refresh_threat};
 use super::sota_simd::apply_i8_deltas_into;
 use crate::attacks::{
     attacks, bishop_attacks, knight_attacks, pawn_attacks, ray_pass, rook_attacks,
@@ -630,9 +630,11 @@ pub struct ThreatContext<'a> {
     /// Fold-time resolved-index scratch for [`apply_i8_deltas`], written by
     /// [`resolve_into`] and reused every [`compute`](Self::compute) — never a
     /// per-node allocation, and never re-zeroed (only the `..len` prefix is
-    /// read).
-    add_scratch: [usize; DELTA_CAP],
-    sub_scratch: [usize; DELTA_CAP],
+    /// read). One pair per perspective so BOTH perspectives resolve (and
+    /// prefetch their weight rows) before either folds — the perf study #4
+    /// item #3 resolve→prefetch→fold pipeline.
+    add_scratch: [[usize; DELTA_CAP]; 2],
+    sub_scratch: [[usize; DELTA_CAP]; 2],
     /// Top-of-stack ply for the cursor form of the API
     /// ([`apply`](Self::apply)/[`current`](Self::current)/[`undo`](Self::undo),
     /// which the standalone tests drive). The search stack uses the explicit
@@ -648,8 +650,8 @@ impl<'a> ThreatContext<'a> {
             weights,
             stack: vec![ThreatEntry::default(); STACK_LEN].into_boxed_slice(),
             buf: DeltaBuf::new(),
-            add_scratch: [0usize; DELTA_CAP],
-            sub_scratch: [0usize; DELTA_CAP],
+            add_scratch: [[0usize; DELTA_CAP]; 2],
+            sub_scratch: [[0usize; DELTA_CAP]; 2],
             top: 0,
         }
     }
@@ -687,8 +689,25 @@ impl<'a> ThreatContext<'a> {
     /// ancestor. The search overwrites sibling plies rather than calling `undo`,
     /// so callers use this indexed form. Now `&mut self` (it may trigger a fold).
     pub fn at(&mut self, ply: usize) -> &[[i16; ACC]; 2] {
-        self.compute(ply);
-        &self.stack[ply].acc
+        // Null-move alias (perf study #4 item #3): an EMPTY dirty record's
+        // "fold" is a pure 2×2.5 KB parent copy — hand back the parent's
+        // accumulator instead of materializing the child. Only fully-unfolded
+        // EMPTY entries alias (an EMPTY push can never be king-crossed, so
+        // partially-computed EMPTY entries only arise from an earlier span
+        // fold — those are already materialized and used as-is). At most one
+        // hop in practice (no two null moves in a row); the loop is the
+        // honest invariant.
+        let mut target = ply;
+        while target > 0
+            && !self.stack[target].computed[0]
+            && !self.stack[target].computed[1]
+            && self.stack[target].dp.adds().is_empty()
+            && self.stack[target].dp.subs().is_empty()
+        {
+            target -= 1;
+        }
+        self.compute(target);
+        &self.stack[target].acc
     }
 
     /// Record (but do NOT fold) the move described by `dp` (made to reach
@@ -784,29 +803,50 @@ impl<'a> ThreatContext<'a> {
                 &self.stack[child].dp,
                 &self.stack[child].snapshot,
             );
+            // Phase 1 — resolve EVERY needed perspective before ANY fold runs
+            // (perf study #4 item #3). The [`ThreatResolver`] hoists the
+            // `THREAT_TABLES` LazyLock deref + orientation/color-swap out of
+            // the per-event loop. NOTE: the study's software row-prefetch was
+            // implemented here and MEASURED A LOSS (−2.5% NPS full-row, ~−0.4%
+            // first-two-lines, bench-with-net A/B on the Zen 4 box) — the OoO
+            // window + hardware stride prefetchers already cover the fold's
+            // row streams — so the pipeline keeps only the resolve/fold split
+            // and the constant-factor hoists.
+            let mut lens = [(0usize, 0usize); 2];
             for (p, &needs_fold) in need.iter().enumerate() {
                 if !needs_fold {
                     continue;
                 }
                 let ksq = self.stack[child].snapshot.kings[p];
-                let (add_len, sub_len) = resolve_into(
+                let resolver = ThreatResolver::new(Color::ALL[p], ksq);
+                lens[p] = resolve_into(
                     self.buf.events(),
-                    &mut self.add_scratch,
-                    &mut self.sub_scratch,
-                    Color::ALL[p],
-                    ksq,
+                    &mut self.add_scratch[p],
+                    &mut self.sub_scratch[p],
+                    &resolver,
                 );
-                // Fused parent→child fold (opt #2): read parent lanes, apply
-                // deltas, write child lanes in one pass. Paid only for evaluated
-                // plies.
+            }
+            // Phase 2 — fused parent→child folds (opt #2): read parent lanes,
+            // apply deltas, write child lanes in one pass. Paid only for
+            // evaluated plies. An empty delta list (a null move) degenerates
+            // to the plain parent copy without touching the kernel.
+            for (p, &needs_fold) in need.iter().enumerate() {
+                if !needs_fold {
+                    continue;
+                }
+                let (add_len, sub_len) = lens[p];
                 let (before, after) = self.stack.split_at_mut(child);
-                apply_i8_deltas_into(
-                    &mut after[0].acc[p],
-                    &before[child - 1].acc[p],
-                    weights,
-                    &self.add_scratch[..add_len],
-                    &self.sub_scratch[..sub_len],
-                );
+                if add_len == 0 && sub_len == 0 {
+                    after[0].acc[p] = before[child - 1].acc[p];
+                } else {
+                    apply_i8_deltas_into(
+                        &mut after[0].acc[p],
+                        &before[child - 1].acc[p],
+                        weights,
+                        &self.add_scratch[p][..add_len],
+                        &self.sub_scratch[p][..sub_len],
+                    );
+                }
                 after[0].computed[p] = true;
             }
         }
@@ -832,37 +872,34 @@ impl<'a> ThreatContext<'a> {
     }
 }
 
-/// Resolve the perspective-agnostic raw `events` to `persp`'s FullThreats
-/// feature-index lists, written as `usize` indices into the caller's
-/// `adds`/`subs` scratch and returned as `(add_len, sub_len)`. [`threat_index`]
-/// maps each raw event (dropping excluded pairs), and the simple
-/// intermediate-state replay's telescoping over-emission is cancelled pairwise
-/// before it reaches the fold. The resulting `(adds, subs)` multiset is exactly
-/// what the old eager path applied, so the [`apply_i8_deltas`] fold is
-/// bit-identical — only run later and per folded ply instead of at every push.
+/// Resolve the perspective-agnostic raw `events` to one perspective's
+/// FullThreats feature-index lists, written as `usize` indices into the
+/// caller's `adds`/`subs` scratch and returned as `(add_len, sub_len)`. The
+/// [`ThreatResolver`] maps each raw event (dropping excluded pairs) with the
+/// per-fold table/orientation state hoisted out of the loop (perf study #4
+/// item #3).
+///
+/// The replay's telescoping over-emission (a relation removed and re-added by
+/// the same move) is NOT cancelled here anymore: the fold's wrapping i16
+/// adds/subs cancel such ±pairs arithmetically, so keeping both sides is
+/// bit-identical at the accumulator (SF folds the same way). The old
+/// per-event O(n²) scan bought its extra row-folds back at a measured **0.48%
+/// of events** (bench-with-net, 106.5M events → 0.51M cancels) — ~1 pair per
+/// 12 perspective-folds — while its opposite-list walk taxed all 100%.
 fn resolve_into(
     events: &[ThreatDelta],
     adds: &mut [usize],
     subs: &mut [usize],
-    persp: Color,
-    ksq: Square,
+    resolver: &ThreatResolver,
 ) -> (usize, usize) {
     let mut add_len = 0usize;
     let mut sub_len = 0usize;
     for d in events {
-        if let Some(idx) = threat_index(persp, d.attacker, d.from, d.to, d.victim, ksq) {
+        if let Some(idx) = resolver.index(d.attacker, d.from, d.to, d.victim) {
             debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
             if d.add {
-                if let Some(pos) = subs[..sub_len].iter().position(|&old| old == idx) {
-                    sub_len -= 1;
-                    subs[pos] = subs[sub_len];
-                } else {
-                    adds[add_len] = idx;
-                    add_len += 1;
-                }
-            } else if let Some(pos) = adds[..add_len].iter().position(|&old| old == idx) {
-                add_len -= 1;
-                adds[pos] = adds[add_len];
+                adds[add_len] = idx;
+                add_len += 1;
             } else {
                 subs[sub_len] = idx;
                 sub_len += 1;

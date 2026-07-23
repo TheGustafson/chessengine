@@ -329,22 +329,56 @@ pub fn threat_index(
     attacked: Piece,
     ksq: Square,
 ) -> Option<usize> {
-    let t = &*THREAT_TABLES;
-    let p = perspective as u8;
-    let orientation = orient_threats(ksq) ^ (56 * p);
-    let from_o = (from.index() ^ orientation) as usize;
-    let to_o = (to.index() ^ orientation) as usize;
-    let swap = 8 * p as usize; // 0 or 8: flips the piece color bit
-    let att = sf_code(attacker) ^ swap;
-    let atd = sf_code(attacked) ^ swap;
-    let dir = (from_o < to_o) as usize;
+    ThreatResolver::new(perspective, ksq).index(attacker, from, to, attacked)
+}
 
-    let base = t.lut1[att][atd][dir];
-    if base >= THREAT_DIMS as u32 {
-        return None; // excluded / semi-excluded
+/// The per-(perspective, king) state of [`threat_index`], hoisted (perf study
+/// #4 item #3): the `THREAT_TABLES` `LazyLock` deref — round 2's single
+/// hottest instruction — plus the orientation and color-swap derivation were
+/// re-run per event; a resolve loop builds one of these per fold and pays
+/// them once. [`index`](Self::index) is the same arithmetic as
+/// [`threat_index`] (which now delegates here), so the two cannot drift.
+pub(crate) struct ThreatResolver {
+    tables: &'static ThreatTables,
+    orientation: u8,
+    swap: usize,
+}
+
+impl ThreatResolver {
+    #[inline]
+    pub(crate) fn new(perspective: Color, ksq: Square) -> Self {
+        let p = perspective as u8;
+        ThreatResolver {
+            tables: &THREAT_TABLES,
+            orientation: orient_threats(ksq) ^ (56 * p),
+            // 0 or 8: flips the piece color bit.
+            swap: 8 * p as usize,
+        }
     }
-    let idx = base + t.offsets[att][from_o] + t.lut2[att][from_o][to_o] as u32;
-    Some(idx as usize)
+
+    /// [`threat_index`] with the per-fold state precomputed.
+    #[inline]
+    pub(crate) fn index(
+        &self,
+        attacker: Piece,
+        from: Square,
+        to: Square,
+        attacked: Piece,
+    ) -> Option<usize> {
+        let t = self.tables;
+        let from_o = (from.index() ^ self.orientation) as usize;
+        let to_o = (to.index() ^ self.orientation) as usize;
+        let att = sf_code(attacker) ^ self.swap;
+        let atd = sf_code(attacked) ^ self.swap;
+        let dir = (from_o < to_o) as usize;
+
+        let base = t.lut1[att][atd][dir];
+        if base >= THREAT_DIMS as u32 {
+            return None; // excluded / semi-excluded
+        }
+        let idx = base + t.offsets[att][from_o] + t.lut2[att][from_o][to_o] as u32;
+        Some(idx as usize)
+    }
 }
 
 /// Force the threat LUTs to build now (parity with `attacks::init`). Optional —
