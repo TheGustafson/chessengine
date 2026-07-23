@@ -251,11 +251,11 @@ Endpoint step-8 is now execute-only:
   endpoint (hash-band width = disk knob; lo>=5 heldout guard).
 - **House-corpora units finding (verified today):** canon-tight-v1 +
   hardneg-tight-v2 carry SF18-UCI cp clamped ±2499 (canon audit slope
-  1.000; percentile + clamp check). Training frame is 1.484×UCI, so
-  both need `rescale_records.py --div 0.674` (×1.484, max 3708, no i16
-  overflow) — wired into the chain as rescale-a-copy; originals stay
-  canonical. hardneg still needs its own 400-pos D46 audit before its
-  1-3% slice is enabled (clamp match is inference, not an audit).
+  1.000; percentile + clamp check). Training frame is 1.484×UCI →
+  rescale-a-copy wired into the chain: canon-tight --div 0.674,
+  hardneg --div 0.699 (its OWN audit, 18:4x: slope 1.038 vs SF18-UCI,
+  Pearson 0.9936, sign 0.992 — PASS, ledger ann-0032/0033). No i16
+  overflow (clamp 2499 → max ~3708). Originals stay canonical.
 - `tools/nnue/runs/stage5_pump.json` skeleton: warm/heldout_expect/mix
   weights FILL AT ENDPOINT; placeholder split ≈59% new / 41% rehearsal.
 - Ops note: stage-4 janitor was found dead (another silent kill);
