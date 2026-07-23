@@ -20,8 +20,15 @@ TPU path); PyO3 bindings are part of this workstream; WASM/ARM tabled.
 ## (rerun later "when we are stronger": tools/run_rr_tournament.sh), and
 ## this whole queue now waits behind perf study #4's report + the
 ## PROFILING RUNS on the freed box (clean measurements outrank JAX bench).
-- [ ] Full-dump JAX heldout run on d47c-stage2-sb240 raw → must land
-      ≈0.006094 (trainer-graph number) ⇒ reconciliation closed.
+- [x] **RECONCILIATION CLOSED (23:0x, stronger than planned): same 4096
+      stride-sampled rows through BOTH instruments — JAX 0.005771 vs
+      trainer-graph 0.005771343, six-significant-figure agreement.**
+      The pipelines are numerically identical; the 7%/-5% readings were
+      prefix bias + stride-vs-full composition (row- vs game-weighted
+      difficulty). JAX absolute numbers now fully trusted WHEN the
+      sample is stated. TODO (cosmetic): forward_parity's top-1 print
+      is UNMASKED argmax (reads ~2%, meaningless for a mask-trained
+      head) — apply legal_move_masks before argmax.
 - [ ] Pin the environment: lockfile for jax/jaxlib(+cuda) versions in
       `jax/pyproject.toml` (§8 ops gate).
 - [ ] **Phase-2 GPU benchmark (the go/no-go gate):** step-bench at batch
