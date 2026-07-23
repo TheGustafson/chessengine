@@ -222,6 +222,12 @@ class TrainConfig:
     # instead of restarting it (fresh optimizer state = the accepted ~2sb
     # transient, the d47c OOM-resume precedent).
     start_superbatch: int = 1
+    # EMA shadow weights (stage-4+ pump-chain upgrade, 2026-07-23): the
+    # SHIPPABLE net is the exponential moving average, which barely
+    # bounces through a warm-restart pump and typically ends better than
+    # the live weights. 0.0 = off. Default horizon when on: ~2sb of
+    # steps (decay = 1 - 1/6080 ≈ 0.99984 at BPS 3040).
+    ema_decay: float = 0.0
 
 
 def cosine_lr(cfg: TrainConfig, superbatch: int) -> float:

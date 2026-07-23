@@ -95,7 +95,20 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
         params = optax.apply_updates(params, updates)
         return params, opt_state, metrics
 
-    return opt, step
+    if cfg.ema_decay <= 0.0:
+        return opt, step
+
+    d = cfg.ema_decay
+
+    @partial(jax.jit, donate_argnums=(0, 1, 2))
+    def step_ema(params, ema, opt_state, batch):
+        (_, metrics), grads = jax.value_and_grad(loss_fn, has_aux=True)(params, batch)
+        updates, opt_state = opt.update(grads, opt_state, params)
+        params = optax.apply_updates(params, updates)
+        ema = jax.tree.map(lambda e, p: d * e + (1.0 - d) * p, ema, params)
+        return params, ema, opt_state, metrics
+
+    return opt, step_ema
 
 
 def train(arch: ArchSpec, cfg: TrainConfig, batches, *, out_dir: str,

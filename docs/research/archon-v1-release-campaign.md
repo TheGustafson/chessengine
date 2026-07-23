@@ -40,10 +40,29 @@ data download is cheap), bucketed specialists (§2c), hindsight min-over-K
 argmax probe + ON/OFF ablation (the sidecar must EARN deployment — it
 currently buys 0 Elo and +6.2% tree).
 
-## 6. Settle the net; decide stage-4 (the SHIP ANNEAL)
-Pick the champion config (net + head set). If held-out still falling or
-the anneal was floored: stage-4 = LR→~0 ship anneal (doctrine: annealing
-to zero is a SHIPPING action — this is the one place it belongs).
+## 6. THE PUMP CHAIN (user amendment 2026-07-23 ~07:0x: "we need the
+## warm pump… insert a stage 5 and 6 before release")
+The warm-pump pattern is validated (stage-2 +60; stage-3 tracking the
+same arc); each stage breaks the annealed minimum open with an LR pump
++ ~40% rehearsal mix so NEW coverage restructures the net (B4: coverage
+is the killer; low-LR fine-tuning is a proven dead-end). Training
+stages before release:
+- **Stage-4 (next pump): fold T60T70wIsRightFarseer + farseerT75** —
+  their D46 unit audits are now ON THE CRITICAL PATH (run post-stage-3,
+  never during equal-time measurement). Recipe upgrades from the
+  stage-3 retro: EMA shadow weights (kills the bounce in the shippable
+  net), 1-2sb LR warmup ramp, same floor-anneal doctrine.
+- **Stage-5: remaining official packs** (data_pv-2, multinet_pv-2,
+  pylon, test80, wrongNNUE — downloads launched 07:0x) and/or first
+  self-play data — mix decision from stage-4's evidence.
+- **Stage-6 = the SHIP ANNEAL** (LR→~0; the one place annealing to
+  zero belongs). Settle-the-net = pick champion after stage-5.
+SEQUENCING NOTE: the TM-SPSA (6b) + its PRE/POST SF16 equal-time
+bracket must share ONE net — they slide to after the pump chain
+settles; equal-time anything requires an idle box, so SPSA/brackets
+and GPU training stages serialize. No early external anchoring
+(standing ruling) — the SF16 bracket exists to isolate the SPSA delta,
+not to anchor.
 
 ## 6b. SMALL SPSA (user amendment, 2026-07-23): TM + a compact
 high-leverage constant set, BEFORE the optimization/profiling phase —
