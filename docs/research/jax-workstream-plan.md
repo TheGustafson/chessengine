@@ -223,3 +223,18 @@ sb10 0.006759 → sb40 0.006806 — SHALLOWER + FLATTER than the winning
 run at matched phase. Gate recalibrated: intervene only if sb60 >
 0.00696 (+3% over sb10, beyond stage-2's peak drift); primary judgment
 = the TURN at sb90-120.
+
+## STAGE-3 CLOSED (11:0x 2026-07-23)
+TRAIN EXIT 0; 240sb @ 200.6k pos/s, zero interventions. Heldout
+0.006094(warm) -> 0.006850(bounce peak sb50) -> 0.006330(sb240).
+**300g endpoint gate: −4.6 ± 17.1 vs stage-2 = statistical parity at
+FIXED NODES.** Honest ledger: pump-2 bought +60, pump-3 bought ~0 on
+this instrument — BUT fixed nodes is blind to the run's real dividend:
+FT density 0.384→0.313 ≈ +6-10% deploy NPS net of the PSQ1 tax, which
+only equal-time shows (measured post-chain per protocol). Stage-3 also
+banked 2.8B-row novel coverage (fishpack/T74) and repositioned the
+trunk for the 5e-4 stage-4 pump. Chain doctrine satisfied: bank
+coverage, hand off warm, judge strength at the settle. Screens
+−17/−31/+14/−42/−31/0.0 (±30 each) = flat-at-parity series, matching
+the gate. Bench 701605 bit-exact through the timeman promotion;
+tune build lists 254 tunables; trainer rebuilt with D40_CONVERT_BAND.
