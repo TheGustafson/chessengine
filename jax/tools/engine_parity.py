@@ -12,15 +12,24 @@ optimism=0, rule50=0, i64 truncating division).
 The residual is then PURELY the engine's fixed-point pipeline (u8 FT >>9,
 i8 L1) vs f32 — the quantity to characterize for the study.
 
+T6c PSQT skip: a quant.bin carrying the trailing PSQ1 section (checkpoint.py)
+is autodetected — the section is split off, the psqt tables are dequantised
+(q / PSQT_FIXED_MULT) into l0_psqt_hkw/l0_psqt_thw, and the JAX forward runs
+with arch.psqt=True; the engine side reads the same section from the .cenn.
+The engine's extra truncation is the i32 `(stm-ntm) >> 8` (±1cp class).
+
 Run:
   cd jax && JAX_PLATFORMS=cpu XLA_PYTHON_CLIENT_PREALLOCATE=false \
     uv run --no-project --with jax --with optax -- python tools/engine_parity.py \
     <quant.bin> <cenn> <corpus.bin> [n]
+Env: ARCHON_ENGINE overrides the engine binary path.
 """
 
+import dataclasses
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -31,9 +40,12 @@ os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
 
 from archon_jax import checkpoint  # noqa: E402
 from archon_jax.features import DecodedBatch, map_batch  # noqa: E402
-from archon_jax.spec import RECORD_DTYPE, ArchSpec, TrainConfig  # noqa: E402
+from archon_jax.spec import (  # noqa: E402
+    HALFKA_DIMS, RECORD_DTYPE, THREAT_DIMS, ArchSpec, TrainConfig,
+)
 
-ENGINE = "/home/nick/projects/chessengine/target/release/chessengine"
+ENGINE = os.environ.get(
+    "ARCHON_ENGINE", "/home/nick/projects/chessengine/target/release/chessengine")
 PIECE_CHARS = "PNBRQK"
 PIECE_VALUES = np.array([0, 781, 825, 1276, 2538, 0])  # types.rs:636-644 (P/K excl)
 MATERIAL_PAWN_WEIGHT = 534   # eval/params.rs:20
@@ -87,10 +99,57 @@ def engine_evals(cenn: str, fens: list[str]) -> np.ndarray:
     return np.array(vals)
 
 
+def stream_len(arch: ArchSpec) -> int:
+    """Byte length of the bullet quant stream for ``arch`` (pre-pad)."""
+    sizes = {"i16": 2, "i8": 1, "f32": 4}
+    shapes = arch.param_shapes()
+    return sum(int(np.prod(shapes[name])) * sizes[kind]
+               for name, kind, _, _ in arch.quant_layout())
+
+
+def load_params(quant_path):
+    """Dequantise a quant.bin, autodetecting the policy head (by stream size)
+    and a trailing T6c PSQ1 section. Returns (params, arch) with arch.psqt
+    set iff the section is present (psqt tables dequantised f32)."""
+    raw = Path(quant_path).read_bytes()
+    for policy in (True, False):
+        arch = dataclasses.replace(ArchSpec.full(), policy=policy)
+        end = stream_len(arch)
+        pad = (64 - end % 64) % 64
+        if len(raw) < end + pad:
+            continue
+        expected_pad = bytes(checkpoint.spec_pad(pad))
+        if raw[end:end + pad] != expected_pad:
+            continue
+        rest = raw[end + pad:]
+        if rest and rest[:4] != checkpoint.PSQT_MAGIC:
+            continue
+        # Dequantise the base stream (dequantise_quant validates the pad).
+        with tempfile.NamedTemporaryFile(suffix=".quant") as tmp:
+            tmp.write(raw[:end + pad])
+            tmp.flush()
+            params = checkpoint.dequantise_quant(tmp.name, arch)
+        if not rest:
+            return params, arch
+        nb = int.from_bytes(rest[4:8], "little")
+        rows = int.from_bytes(rest[8:12], "little")
+        want_rows = HALFKA_DIMS + (0 if arch.halfka_only else THREAT_DIMS)
+        assert nb == arch.num_buckets and rows == want_rows, (nb, rows)
+        assert len(rest) == 12 + rows * nb * 4, len(rest)
+        q = np.frombuffer(rest, dtype="<i4", offset=12).reshape(rows, nb)
+        table = q.astype(np.float64) / checkpoint.PSQT_FIXED_MULT
+        params["l0_psqt_hkw"] = table[:HALFKA_DIMS].astype(np.float32)
+        if not arch.halfka_only:
+            params["l0_psqt_thw"] = table[HALFKA_DIMS:].astype(np.float32)
+        return params, dataclasses.replace(arch, psqt=True)
+    raise ValueError(f"{quant_path}: no arch variant matches the file layout")
+
+
 def main(quant_path, cenn, corpus, n=64):
-    arch = ArchSpec.full()
     cfg = TrainConfig()
-    params = checkpoint.dequantise_quant(quant_path, arch)
+    params, arch = load_params(quant_path)
+    if arch.psqt:
+        print("PSQ1 section detected: JAX forward runs with arch.psqt=True")
     recs = np.fromfile(corpus, dtype=RECORD_DTYPE, count=n)
     dec = DecodedBatch(recs)
     fens = [rec_to_fen(dec, i) for i in range(n)]

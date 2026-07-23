@@ -35,6 +35,7 @@ fn cenn_v2_round_trip_and_evaluate() {
         halfka_weights,
         ft_bias,
         threat_weights,
+        psqt_weights: Vec::new().into_boxed_slice(),
         head: SotaHead {
             l1_weights,
             l1_biases,

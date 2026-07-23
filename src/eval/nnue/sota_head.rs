@@ -37,6 +37,18 @@ pub const L3: usize = 32;
 /// Material/output buckets.
 pub const BUCKETS: usize = 8;
 
+/// A per-perspective pair of T6c PSQT-skip bucket sums (`[White, Black]`, like
+/// the accumulators): the i32 sums of the active features' PSQ1 rows. The
+/// stored rows fold in `0.5 · 400 · 256` (contract:
+/// `jax/archon_jax/checkpoint.py`), so the head adds
+/// `(psqt[stm][b] − psqt[ntm][b]) >> 8` centipawns — an UNCLAMPED linear
+/// channel that bypasses every nonlinearity.
+pub type PsqtPair = [[i32; BUCKETS]; 2];
+
+/// The all-zero skip pair — what a net without a PSQ1 section contributes.
+/// `(0 − 0) >> 8 == 0`, so passing this is bit-identical to the pre-T6c head.
+pub const ZERO_PSQT: PsqtPair = [[0; BUCKETS]; 2];
+
 pub(crate) const FT_QUANT: i32 = 255; // FT activation clamp ceiling / QA
 /// Quantization scale of the separately exported FullThreats transformer.
 /// CENN-v2 fixes this as an architecture constant so its weights fit in i8.
@@ -59,6 +71,14 @@ const OUTPUT_BUCKETS_LAYOUT: [usize; 33] = [
     6, 6, 6, // 26..28
     7, 7, 7, 7, // 29..32
 ];
+
+/// The output bucket the head selects for a total piece count — exposed so
+/// tests, tools, and the debug oracle can pin the T6c skip against the SAME
+/// bucket index the forward uses.
+#[inline]
+pub fn output_bucket(piece_count: usize) -> usize {
+    OUTPUT_BUCKETS_LAYOUT[piece_count]
+}
 
 /// The head's per-bucket weights + the net's output scale. Format-agnostic: the
 /// CENN-v2 loader (task #29) fills these from disk; tests fill them synthetically.
@@ -280,7 +300,9 @@ impl SotaHead {
     /// The head forward: two per-perspective accumulators + side to move + total
     /// piece count → (stm-relative centipawns, optional value-uncertainty σ̂).
     /// The front-end (task #29 part 2) produces `pst`/`threat`; this is the
-    /// shared trunk read for both eval and the policy heads. `sigma` is `Some`
+    /// shared trunk read for both eval and the policy heads. `psqt` is the T6c
+    /// skip pair the front-end accumulates alongside ([`ZERO_PSQT`] for a net
+    /// without one — bit-identical). `sigma` is `Some`
     /// only when the net carries the EXP-UNC-1 log-variance head; it is the
     /// per-position value std in sigmoid (WDL) space, `σ̂ = exp(½·log σ²)`,
     /// computed from the SAME `l2` activations at ~32 extra FLOPs (T ≈ 1).
@@ -290,9 +312,10 @@ impl SotaHead {
         threat: &[[i16; L1]; 2],
         stm: Color,
         piece_count: usize,
+        psqt: &PsqtPair,
     ) -> (i32, Option<f32>, Option<[f32; 3]>) {
         let mut l1 = [0.0f32; L2];
-        self.forward_into(pst, threat, stm, piece_count, &mut l1)
+        self.forward_into(pst, threat, stm, piece_count, psqt, &mut l1)
     }
 
     /// [`forward`](Self::forward), writing the shared-bottleneck activation
@@ -307,6 +330,7 @@ impl SotaHead {
         threat: &[[i16; L1]; 2],
         stm: Color,
         piece_count: usize,
+        psqt: &PsqtPair,
         l1_out: &mut [f32; L2],
     ) -> (i32, Option<f32>, Option<[f32; 3]>) {
         let mut ft = [0u8; L1];
@@ -318,7 +342,13 @@ impl SotaHead {
         let l1 = l1_out;
         let l2 = self.propagate_l2(l1, bucket);
         let l3 = self.propagate_l3(&l2, bucket);
-        let value = (l3 * self.network_scale as f32) as i32;
+        // T6c PSQT skip: the unclamped linear channel joins AFTER the clamped
+        // tail, straight in centipawns — `(stm − ntm) >> 8` (arithmetic shift;
+        // the rows fold in 0.5·400·256, see `PsqtPair`). Zero pair ⇒ +0 ⇒
+        // bit-identical for legacy nets.
+        let stm_i = stm as usize;
+        let value = (l3 * self.network_scale as f32) as i32
+            + ((psqt[stm_i][bucket] - psqt[stm_i ^ 1][bucket]) >> 8);
         // σ̂ = exp(½·logσ²). Guard against a non-finite result (only reachable
         // via a garbage/mismatched D40_UNC_HEAD sidecar, which is size- but not
         // content-validated): return None so every consumer falls back to its
@@ -485,17 +515,58 @@ mod tests {
     fn forward_deterministic_and_bucketed() {
         let head = synth_head();
         let (pst, threat) = synth_accs();
-        let (a, _, _) = head.forward(&pst, &threat, Color::White, 20);
-        let (b, _, _) = head.forward(&pst, &threat, Color::White, 20);
+        let (a, _, _) = head.forward(&pst, &threat, Color::White, 20, &ZERO_PSQT);
+        let (b, _, _) = head.forward(&pst, &threat, Color::White, 20, &ZERO_PSQT);
         assert_eq!(a, b, "deterministic");
         assert!(a.abs() < 100_000, "finite, sane cp");
         // piece counts 20 and 32 map to different buckets (4 vs 7).
         assert_eq!(OUTPUT_BUCKETS_LAYOUT[20], 4);
         assert_eq!(OUTPUT_BUCKETS_LAYOUT[32], 7);
         // stm flip changes which half leads → generally a different value.
-        let (w, _, _) = head.forward(&pst, &threat, Color::White, 20);
-        let (bl, _, _) = head.forward(&pst, &threat, Color::Black, 20);
+        let (w, _, _) = head.forward(&pst, &threat, Color::White, 20, &ZERO_PSQT);
+        let (bl, _, _) = head.forward(&pst, &threat, Color::Black, 20, &ZERO_PSQT);
         assert!(w != bl, "side-to-move relativity is wired");
+    }
+
+    /// T6c: the head adds EXACTLY `(psqt[stm][b] − psqt[ntm][b]) >> 8` cp on
+    /// top of the psqt-less value — pinned per bucket, per side to move, and
+    /// for negative differences (arithmetic shift = floor division by 256,
+    /// NOT truncation toward zero).
+    #[test]
+    fn psqt_skip_adds_exactly_the_shifted_difference() {
+        let head = synth_head();
+        let (pst, threat) = synth_accs();
+
+        // A distinct, sign-mixed pair per (perspective, bucket).
+        let mut psqt = ZERO_PSQT;
+        for (p, side) in psqt.iter_mut().enumerate() {
+            for (b, slot) in side.iter_mut().enumerate() {
+                *slot = (p as i32 * 2 - 1) * (1000 * b as i32 + 137) + b as i32 * 71;
+            }
+        }
+
+        for stm in Color::ALL {
+            for piece_count in [2usize, 9, 20, 32] {
+                let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
+                let (base, _, _) = head.forward(&pst, &threat, stm, piece_count, &ZERO_PSQT);
+                let (skip, _, _) = head.forward(&pst, &threat, stm, piece_count, &psqt);
+                let s = stm as usize;
+                let expected = (psqt[s][bucket] - psqt[s ^ 1][bucket]) >> 8;
+                assert_eq!(
+                    skip - base,
+                    expected,
+                    "stm {stm:?} pieces {piece_count} bucket {bucket}"
+                );
+            }
+        }
+
+        // Arithmetic-shift semantics on a negative difference: −1 >> 8 == −1
+        // (floor), never 0 (truncation).
+        let mut neg = ZERO_PSQT;
+        neg[0][OUTPUT_BUCKETS_LAYOUT[20]] = -1;
+        let (base, _, _) = head.forward(&pst, &threat, Color::White, 20, &ZERO_PSQT);
+        let (skip, _, _) = head.forward(&pst, &threat, Color::White, 20, &neg);
+        assert_eq!(skip - base, -1, "arithmetic shift floors toward −∞");
     }
 
     /// EXP-UNC-1: the optional variance head yields a finite, positive σ̂ and
@@ -507,7 +578,7 @@ mod tests {
         let (pst, threat) = synth_accs();
 
         let plain = synth_head();
-        let (v0, s0, _) = plain.forward(&pst, &threat, Color::White, 20);
+        let (v0, s0, _) = plain.forward(&pst, &threat, Color::White, 20, &ZERO_PSQT);
         assert!(s0.is_none(), "no variance head => no sigma");
 
         let mut head = synth_head();
@@ -517,7 +588,7 @@ mod tests {
         let vb: Vec<f32> = (0..BUCKETS).map(|i| i as f32 * 0.01 - 0.02).collect();
         head.l3_var_weights = Some(vw.into_boxed_slice());
         head.l3_var_biases = Some(vb.into_boxed_slice());
-        let (v1, s1, _) = head.forward(&pst, &threat, Color::White, 20);
+        let (v1, s1, _) = head.forward(&pst, &threat, Color::White, 20, &ZERO_PSQT);
 
         assert_eq!(
             v0, v1,

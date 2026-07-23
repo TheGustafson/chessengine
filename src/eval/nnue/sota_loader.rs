@@ -40,6 +40,21 @@
 //! l3_b:      f32[out_buckets]
 //! ```
 //!
+//! **Optional PSQ1 trailer (T6c FT PSQT skip; contract pinned in
+//! `jax/archon_jax/checkpoint.py`).** After the payload the container MAY carry
+//! ```text
+//! b"PSQ1" | u32 num_buckets (= out_buckets) | u32 rows | i32[rows · num_buckets]
+//! ```
+//! row-major, where `rows = halfka_dims + threat_dims` (HalfKA rows FIRST, then
+//! threats; a no-threats net carries only the HalfKA rows). Row indexing is the
+//! engine's canonical feature index: HalfKA feature `f` → row `f`, threat
+//! feature `t` → row `halfka_dims + t`. Each stored value is
+//! `round_half_away(w · 0.5 · 400 · 256)` — the stm-canonical 0.5 and the cp
+//! scale 400 are folded in, 8 fractional bits — so the head adds
+//! `(psqt_stm[b] − psqt_ntm[b]) >> 8` centipawns (arithmetic shift). The
+//! section rides OUTSIDE the header checksum (like its quant.bin counterpart);
+//! nets without it load and evaluate exactly as before.
+//!
 //! Parsing NEVER panics on user-supplied bytes — every anomaly is a
 //! [`SotaNnueError`]. The loader validates every dimension against the
 //! compile-time architecture constants from [`super::sota_head`] and
@@ -59,6 +74,10 @@ pub const CENN_V2_VERSION: u16 = 2;
 pub const HEADER_V2_LEN: usize = 64;
 /// Flag bit: threats feature transformer is present.
 pub const FLAG_HAS_THREATS: u16 = 1;
+/// Magic bytes of the optional trailing PSQT-skip section (T6c).
+pub const PSQT_MAGIC: [u8; 4] = *b"PSQ1";
+/// PSQ1 section header length: magic + u32 num_buckets + u32 rows.
+const PSQT_HEADER_LEN: usize = 12;
 
 // Compile-time assertions: the head and feature constants must agree.
 const _: () = assert!(
@@ -77,8 +96,37 @@ pub struct SotaNetwork {
     /// FullThreats FT weights, feature-major: `[THREAT_DIMS · ACC]` i8.
     /// Empty if the net has no threats channel.
     pub threat_weights: Box<[i8]>,
+    /// T6c FT PSQT skip table, row-major `[rows · BUCKETS]` i32 with the HalfKA
+    /// rows first, then the threat rows (module docs). Empty when the net has
+    /// no PSQ1 section — every psqt path is then inert and the eval is
+    /// bit-identical to a pre-T6c build.
+    pub psqt_weights: Box<[i32]>,
     /// The multi-layer bucketed head (owns its own weight boxes).
     pub head: SotaHead,
+}
+
+impl SotaNetwork {
+    /// The HalfKA slice of the PSQT skip table (`[HALFKA_DIMS · BUCKETS]`),
+    /// indexed by `halfka_index · BUCKETS + bucket`; empty when the net has no
+    /// skip.
+    pub fn halfka_psqt(&self) -> &[i32] {
+        if self.psqt_weights.is_empty() {
+            &[]
+        } else {
+            &self.psqt_weights[..HALFKA_DIMS * BUCKETS]
+        }
+    }
+
+    /// The threat slice of the PSQT skip table (`[THREAT_DIMS · BUCKETS]`),
+    /// indexed by `threat_index · BUCKETS + bucket`; empty when the net has no
+    /// skip or no threats channel.
+    pub fn threat_psqt(&self) -> &[i32] {
+        if self.psqt_weights.len() > HALFKA_DIMS * BUCKETS {
+            &self.psqt_weights[HALFKA_DIMS * BUCKETS..]
+        } else {
+            &[]
+        }
+    }
 }
 
 /// `PartialEq`/`Eq` are implemented for **bit-exact round-trip testing only**.
@@ -90,6 +138,7 @@ impl PartialEq for SotaNetwork {
         self.halfka_weights == other.halfka_weights
             && self.ft_bias == other.ft_bias
             && self.threat_weights == other.threat_weights
+            && self.psqt_weights == other.psqt_weights
             && self.head.network_scale == other.head.network_scale
             && self.head.l1_weights == other.head.l1_weights
             && self.head.l1_biases == other.head.l1_biases
@@ -401,6 +450,16 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         "payload cursor must consume all bytes"
     );
 
+    // ── Optional PSQ1 trailer (T6c FT PSQT skip; module docs) ──────────
+    // Only bytes that START with the PSQ1 magic are interpreted; any other
+    // trailing bytes are ignored exactly as this loader always has.
+    let rest = &bytes[total_need..];
+    let psqt_weights = if rest.len() >= 4 && rest[0..4] == PSQT_MAGIC {
+        parse_psqt_section(rest, has_threats)?
+    } else {
+        Vec::new().into_boxed_slice()
+    };
+
     let head = SotaHead {
         l1_weights,
         l1_biases,
@@ -419,8 +478,49 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         halfka_weights,
         ft_bias,
         threat_weights,
+        psqt_weights,
         head,
     })
+}
+
+/// Parse a PSQ1 section (starting at its magic). Strict: the bucket count must
+/// equal this build's [`BUCKETS`], the row count must equal the net's feature
+/// space (`HALFKA_DIMS` plus `THREAT_DIMS` iff threats), and the full
+/// `rows · BUCKETS` i32 table must be present.
+fn parse_psqt_section(sec: &[u8], has_threats: bool) -> Result<Box<[i32]>, SotaNnueError> {
+    if sec.len() < PSQT_HEADER_LEN {
+        return Err(SotaNnueError::TooShort {
+            need: PSQT_HEADER_LEN,
+            got: sec.len(),
+        });
+    }
+    let num_buckets = read_u32(sec, 4);
+    if num_buckets as usize != BUCKETS {
+        return Err(SotaNnueError::WrongDim {
+            field: "psqt_buckets",
+            expected: BUCKETS as u32,
+            found: num_buckets,
+        });
+    }
+    let expected_rows = HALFKA_DIMS + if has_threats { THREAT_DIMS } else { 0 };
+    let rows = read_u32(sec, 8);
+    if rows as usize != expected_rows {
+        return Err(SotaNnueError::WrongDim {
+            field: "psqt_rows",
+            expected: expected_rows as u32,
+            found: rows,
+        });
+    }
+    let count = expected_rows * BUCKETS;
+    let need = PSQT_HEADER_LEN + count * 4;
+    if sec.len() < need {
+        return Err(SotaNnueError::TooShort {
+            need,
+            got: sec.len(),
+        });
+    }
+    let mut cur = PSQT_HEADER_LEN;
+    Ok(read_i32s(sec, &mut cur, count))
 }
 
 /// Load and validate a CENN-v2 net from a file.
@@ -584,6 +684,19 @@ pub fn serialize_v2(net: &SotaNetwork) -> Vec<u8> {
     debug_assert_eq!(out.len(), HEADER_V2_LEN);
 
     out.extend_from_slice(&payload);
+
+    // Optional PSQ1 trailer (T6c): present only when the net carries a skip
+    // table, so a psqt-less net serializes byte-identically to before.
+    if !net.psqt_weights.is_empty() {
+        debug_assert_eq!(net.psqt_weights.len() % BUCKETS, 0);
+        out.extend_from_slice(&PSQT_MAGIC);
+        out.extend_from_slice(&(BUCKETS as u32).to_le_bytes());
+        let rows = net.psqt_weights.len() / BUCKETS;
+        out.extend_from_slice(&(rows as u32).to_le_bytes());
+        for &w in net.psqt_weights.iter() {
+            out.extend_from_slice(&w.to_le_bytes());
+        }
+    }
     out
 }
 
@@ -603,6 +716,20 @@ fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
     for _ in 0..count {
         v.push(payload[*cur] as i8);
         *cur += 1;
+    }
+    v.into_boxed_slice()
+}
+
+fn read_i32s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i32]> {
+    let mut v = Vec::with_capacity(count);
+    for _ in 0..count {
+        v.push(i32::from_le_bytes([
+            payload[*cur],
+            payload[*cur + 1],
+            payload[*cur + 2],
+            payload[*cur + 3],
+        ]));
+        *cur += 4;
     }
     v.into_boxed_slice()
 }
@@ -663,6 +790,7 @@ pub(crate) mod tests {
             halfka_weights,
             ft_bias,
             threat_weights,
+            psqt_weights: Vec::new().into_boxed_slice(),
             head: SotaHead {
                 l1_weights,
                 l1_biases,
@@ -686,6 +814,21 @@ pub(crate) mod tests {
         full
     }
 
+    /// A deterministic T6c PSQT skip table covering the full feature space
+    /// (`pub(crate)` so the context tests can arm the same fixture).
+    pub(crate) fn test_psqt_table() -> Box<[i32]> {
+        let mut prng = Prng::new(0x9541_7AB1_E000);
+        ((0..(HALFKA_DIMS + THREAT_DIMS) * BUCKETS).map(|_| (prng.rand64() % 20001) as i32 - 10000))
+            .collect()
+    }
+
+    /// The threats fixture with a PSQ1 skip table attached.
+    pub(crate) fn test_net_with_psqt_pub() -> SotaNetwork {
+        let mut net = test_net_with_threats();
+        net.psqt_weights = test_psqt_table();
+        net
+    }
+
     #[test]
     fn round_trip_with_threats() {
         let net = test_net_with_threats();
@@ -707,6 +850,89 @@ pub(crate) mod tests {
 
         let back = load_v2_bytes(&bytes).expect("valid no-threats net loads");
         assert_eq!(net, back);
+    }
+
+    #[test]
+    fn round_trip_with_psqt() {
+        let net = test_net_with_psqt_pub();
+        let bytes = serialize_v2(&net);
+        // The PSQ1 trailer sits after the checksummed payload.
+        let base_len = serialize_v2(&test_net_with_threats()).len();
+        assert_eq!(&bytes[base_len..base_len + 4], b"PSQ1");
+        assert_eq!(
+            bytes.len(),
+            base_len + 12 + (HALFKA_DIMS + THREAT_DIMS) * BUCKETS * 4
+        );
+
+        let back = load_v2_bytes(&bytes).expect("psqt net loads");
+        assert_eq!(net, back);
+        assert_eq!(back.halfka_psqt().len(), HALFKA_DIMS * BUCKETS);
+        assert_eq!(back.threat_psqt().len(), THREAT_DIMS * BUCKETS);
+        // Row split: HalfKA rows first, threat rows after.
+        assert_eq!(back.halfka_psqt()[5], net.psqt_weights[5]);
+        assert_eq!(
+            back.threat_psqt()[3],
+            net.psqt_weights[HALFKA_DIMS * BUCKETS + 3]
+        );
+    }
+
+    #[test]
+    fn round_trip_psqt_no_threats() {
+        let mut net = test_net_no_threats();
+        net.psqt_weights = test_psqt_table()[..HALFKA_DIMS * BUCKETS]
+            .to_vec()
+            .into_boxed_slice();
+        let bytes = serialize_v2(&net);
+        let back = load_v2_bytes(&bytes).expect("halfka-only psqt net loads");
+        assert_eq!(net, back);
+        assert_eq!(back.halfka_psqt().len(), HALFKA_DIMS * BUCKETS);
+        assert!(back.threat_psqt().is_empty());
+    }
+
+    #[test]
+    fn rejects_bad_psqt_section() {
+        let net = test_net_with_psqt_pub();
+        let base_len = serialize_v2(&test_net_with_threats()).len();
+
+        // Wrong bucket count.
+        let mut bytes = serialize_v2(&net);
+        bytes[base_len + 4..base_len + 8].copy_from_slice(&7u32.to_le_bytes());
+        assert!(matches!(
+            load_v2_bytes(&bytes),
+            Err(SotaNnueError::WrongDim {
+                field: "psqt_buckets",
+                ..
+            })
+        ));
+
+        // Wrong row count.
+        let mut bytes = serialize_v2(&net);
+        bytes[base_len + 8..base_len + 12].copy_from_slice(&(HALFKA_DIMS as u32).to_le_bytes());
+        assert!(matches!(
+            load_v2_bytes(&bytes),
+            Err(SotaNnueError::WrongDim {
+                field: "psqt_rows",
+                ..
+            })
+        ));
+
+        // Truncated table.
+        let bytes = serialize_v2(&net);
+        assert!(matches!(
+            load_v2_bytes(&bytes[..bytes.len() - 4]),
+            Err(SotaNnueError::TooShort { .. })
+        ));
+    }
+
+    /// A legacy net (no PSQ1 trailer) parses with an empty skip table — the
+    /// "nets without it behave exactly as today" half of the contract.
+    #[test]
+    fn legacy_net_has_no_psqt() {
+        let bytes = serialize_v2(&test_net_with_threats());
+        let back = load_v2_bytes(&bytes).expect("legacy net loads");
+        assert!(back.psqt_weights.is_empty());
+        assert!(back.halfka_psqt().is_empty());
+        assert!(back.threat_psqt().is_empty());
     }
 
     #[test]
