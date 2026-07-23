@@ -40,6 +40,16 @@ type FindNnzFn = fn(&[u8; ACC], &mut [u16; ACC / 4]) -> usize;
 // so every backend is bit-identical on finite inputs.
 type L1DequantFn = fn(&mut [f32; L2], &[i32; L2], &[f32; L2], f32);
 type L2TailFn = fn(&mut [f32; L3], &[f32; L2], &[f32; L2 * L3], &[f32; L3]);
+// The policy selected-row dot (perf study #4 item #4): i8 row × f32
+// bottleneck. Reduction shape is DEFINED as 16 partial lanes (lane k sums
+// elements k, k+16, …) + a halving tree — the same fixed-shape pattern as
+// `propagate_l3` — so every backend is bit-identical to the scalar
+// reference. NOTE this deliberately replaced the old serial element-order
+// sum in `PolicyHead::row_score` (a ~128-deep add dependency chain that
+// could never vectorize); the new shape's f32 rounding differs from the old
+// serial loop's, which was verified non-functional by the package's
+// 100-game fixed-node PGN-identity oracle before landing.
+type PolicyDotFn = fn(&[i8; L2], &[f32; L2]) -> f32;
 
 struct Kernels {
     i16_deltas: ApplyI16Fn,
@@ -50,6 +60,7 @@ struct Kernels {
     find_nnz: FindNnzFn,
     l1_dequant: L1DequantFn,
     l2_tail: L2TailFn,
+    policy_dot: PolicyDotFn,
 }
 
 static KERNELS: LazyLock<Kernels> = LazyLock::new(|| {
@@ -219,6 +230,13 @@ pub(crate) fn l2_tail(
     kernel_dispatch!(l2_tail(out, l1, weights, bias))
 }
 
+/// Policy selected-row dot: `Σ row[i]·h[i]` with the fixed 16-partial-lane +
+/// halving-tree reduction shape (see the [`PolicyDotFn`] note).
+#[inline]
+pub(crate) fn policy_dot(row: &[i8; L2], h: &[f32; L2]) -> f32 {
+    kernel_dispatch!(policy_dot(row, h))
+}
+
 mod scalar {
     use super::*;
 
@@ -366,6 +384,29 @@ mod scalar {
         }
     }
 
+    /// The bit-exact reference for the policy row dot: 16 partial lanes
+    /// (lane k accumulates elements k, k+16, …, each a fused mul-add) then
+    /// the same halving tree as `propagate_l3`.
+    pub(super) fn policy_dot(row: &[i8; L2], h: &[f32; L2]) -> f32 {
+        const LANES: usize = 16;
+        let mut sums = [0.0f32; LANES];
+        let mut i = 0;
+        while i < L2 {
+            for j in 0..LANES {
+                sums[j] = f32::from(row[i + j]).mul_add(h[i + j], sums[j]);
+            }
+            i += LANES;
+        }
+        let mut stride = LANES / 2;
+        while stride > 0 {
+            for k in 0..stride {
+                sums[k] += sums[k + stride];
+            }
+            stride /= 2;
+        }
+        sums[0]
+    }
+
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i16_deltas_into,
@@ -375,6 +416,7 @@ mod scalar {
         find_nnz,
         l1_dequant,
         l2_tail,
+        policy_dot,
     };
 }
 
@@ -719,6 +761,43 @@ mod avx2 {
         unsafe { l2_tail_inner(out, l1, weights, bias) }
     }
 
+    #[target_feature(enable = "avx2,fma")]
+    unsafe fn policy_dot_inner(row: &[i8; L2], h: &[f32; L2]) -> f32 {
+        // Two 8-lane accumulators = the 16 partial lanes of the scalar
+        // reference (acc_lo = lanes 0-7, acc_hi = lanes 8-15); the halving
+        // tree runs scalar over the spilled lanes, matching the reference
+        // reduction order exactly. SAFETY: loads cover in-bounds 8-byte /
+        // 8-lane blocks of the fixed-size inputs.
+        unsafe {
+            let mut acc_lo = _mm256_setzero_ps();
+            let mut acc_hi = _mm256_setzero_ps();
+            for i in (0..L2).step_by(16) {
+                let bytes_lo = _mm_loadl_epi64(row.as_ptr().add(i).cast());
+                let bytes_hi = _mm_loadl_epi64(row.as_ptr().add(i + 8).cast());
+                let w_lo = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(bytes_lo));
+                let w_hi = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(bytes_hi));
+                acc_lo = _mm256_fmadd_ps(w_lo, _mm256_loadu_ps(h.as_ptr().add(i)), acc_lo);
+                acc_hi = _mm256_fmadd_ps(w_hi, _mm256_loadu_ps(h.as_ptr().add(i + 8)), acc_hi);
+            }
+            let mut sums = [0.0f32; 16];
+            _mm256_storeu_ps(sums.as_mut_ptr(), acc_lo);
+            _mm256_storeu_ps(sums.as_mut_ptr().add(8), acc_hi);
+            let mut stride = 8;
+            while stride > 0 {
+                for k in 0..stride {
+                    sums[k] += sums[k + stride];
+                }
+                stride /= 2;
+            }
+            sums[0]
+        }
+    }
+
+    fn policy_dot(row: &[i8; L2], h: &[f32; L2]) -> f32 {
+        // SAFETY: installed only after runtime AVX2+FMA detection.
+        unsafe { policy_dot_inner(row, h) }
+    }
+
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i16_deltas_into,
@@ -728,6 +807,7 @@ mod avx2 {
         find_nnz,
         l1_dequant,
         l2_tail,
+        policy_dot,
     };
 }
 
@@ -1079,6 +1159,39 @@ mod avx512 {
         unsafe { find_nnz_vbmi2_inner(ft, out) }
     }
 
+    #[target_feature(enable = "avx512f")]
+    unsafe fn policy_dot_inner(row: &[i8; L2], h: &[f32; L2]) -> f32 {
+        // One zmm accumulator = the 16 partial lanes of the scalar reference
+        // (lane k sums elements k, k+16, …); the halving tree runs scalar
+        // over the spilled lanes, matching the reference reduction exactly.
+        // SAFETY: loads cover in-bounds 16-byte / 16-lane blocks of the
+        // fixed-size inputs.
+        unsafe {
+            let mut acc = _mm512_setzero_ps();
+            for i in (0..L2).step_by(16) {
+                let bytes = _mm_loadu_si128(row.as_ptr().add(i).cast());
+                let w = _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(bytes));
+                acc = _mm512_fmadd_ps(w, _mm512_loadu_ps(h.as_ptr().add(i)), acc);
+            }
+            let mut sums = [0.0f32; 16];
+            _mm512_storeu_ps(sums.as_mut_ptr(), acc);
+            let mut stride = 8;
+            while stride > 0 {
+                for k in 0..stride {
+                    sums[k] += sums[k + stride];
+                }
+                stride /= 2;
+            }
+            sums[0]
+        }
+    }
+
+    pub(super) fn policy_dot(row: &[i8; L2], h: &[f32; L2]) -> f32 {
+        // SAFETY: installed only after runtime avx512f+bw+vnni detection (or
+        // compiled with the features statically enabled).
+        unsafe { policy_dot_inner(row, h) }
+    }
+
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i16_deltas_into,
@@ -1090,6 +1203,7 @@ mod avx512 {
         find_nnz: avx2::find_nnz,
         l1_dequant,
         l2_tail,
+        policy_dot,
     };
 
     /// [`KERNELS`] plus the vpcompressw `find_nnz` — selected when the CPU
@@ -1288,6 +1402,14 @@ mod tests {
             let mut got = [0.0f32; L3];
             (kernels.l2_tail)(&mut got, &l1_act, l2w, &l3bias);
             assert_eq!(got, reference, "{name} l2_tail");
+
+            let prow: [i8; L2] = std::array::from_fn(|i| ((i as u8).wrapping_mul(89)) as i8);
+            let ph: [f32; L2] = std::array::from_fn(|i| ((i as f32 * 0.043).sin()) * 0.9);
+            assert_eq!(
+                (kernels.policy_dot)(&prow, &ph),
+                scalar::policy_dot(&prow, &ph),
+                "{name} policy_dot"
+            );
         }
     }
 
