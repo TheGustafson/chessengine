@@ -1,0 +1,70 @@
+--------------------------------------------------------------------------------
+Profile data file 'perf-artifacts-6/callgrind-tip-wl50d12.out' (creator: callgrind-3.25.1)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 5571459031
+Trigger: Program termination
+Profiled target:  /tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3 bench 16 1 12 /tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/verif/wl50.fens depth /home/nick/projects/chessengine/data/nnue/nets/d47c-stage2-sb240.cenn (PID 3461879, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+
+--------------------------------------------------------------------------------
+Ir                      
+--------------------------------------------------------------------------------
+39,315,152,863 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                       file:function
+--------------------------------------------------------------------------------
+13,893,231,748 (35.34%)  ???:chessengine::eval::nnue::sota_simd::avx2::l1_dot [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+ 5,194,994,746 (13.21%)  ???:chessengine::eval::nnue::sota_simd::avx2::i8_deltas_into [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+ 2,965,771,106 ( 7.54%)  ???:chessengine::eval::nnue::sota_simd::avx2::i16_deltas_into [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+ 2,864,994,804 ( 7.29%)  ???:chessengine::eval::nnue::sota_simd::avx2::activate [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+ 1,845,058,345 ( 4.69%)  ???:chessengine::eval::nnue::sota_simd::avx2::i16_deltas [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+ 1,470,778,599 ( 3.74%)  ???:<chessengine::movepick::MovePicker>::next_move [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+ 1,264,517,192 ( 3.22%)  ???:chessengine::eval::nnue::sota_loader::read_i8s [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   815,903,553 ( 2.08%)  ???:<chessengine::search::Worker>::search::<chessengine::search::NonPv>'2 [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   730,485,824 ( 1.86%)  ???:<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   711,815,354 ( 1.81%)  ???:<chessengine::eval::nnue::sota_threats::ThreatContext>::at [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   567,222,266 ( 1.44%)  ???:chessengine::eval::nnue::sota_simd::avx2::l2_tail [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   547,905,362 ( 1.39%)  ???:chessengine::eval::nnue::sota_loader::read_i16s [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   461,848,037 ( 1.17%)  ???:chessengine::eval::nnue::sota_loader::load_v2_bytes [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   413,765,934 ( 1.05%)  ???:chessengine::eval::nnue::sota_threats::record_square_touch [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   413,705,690 ( 1.05%)  /usr/src/debug/glibc/glibc/string/../sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S:__memcpy_avx_unaligned_erms [/usr/lib/libc.so.6]
+   393,026,952 ( 1.00%)  ???:<chessengine::movepick::MovePicker>::new [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   357,080,976 ( 0.91%)  ???:<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch> [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   323,863,634 ( 0.82%)  ???:chessengine::eval::nnue::sota_simd::avx2::find_nnz [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   317,135,365 ( 0.81%)  ???:<chessengine::board::Board>::set_check_info [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   284,047,182 ( 0.72%)  ???:chessengine::attacks::init_magics [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   259,273,957 ( 0.66%)  /usr/src/debug/glibc/glibc/string/../sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S:__memset_avx2_unaligned_erms [/usr/lib/libc.so.6]
+   253,729,535 ( 0.65%)  ???:<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::current [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   252,896,596 ( 0.64%)  ???:<chessengine::search::Worker>::do_move [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   239,056,838 ( 0.61%)  ???:<chessengine::eval::nnue::sota_head::SotaHead>::forward_into [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   207,803,023 ( 0.53%)  ???:<chessengine::eval::nnue::sota_threats::ThreatContext>::apply_at [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   196,237,128 ( 0.50%)  ???:<chessengine::history::Histories>::update_continuation_histories [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   172,372,731 ( 0.44%)  ???:<chessengine::board::Board>::see_ge [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   147,535,387 ( 0.38%)  ???:<chessengine::search::Worker>::search::<chessengine::search::NonPv> [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   137,612,128 ( 0.35%)  ???:<chessengine::history::Histories>::correction_value [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   125,086,027 ( 0.32%)  ???:<chessengine::board::Board>::gives_check [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+   119,833,170 ( 0.30%)  ???:<chessengine::board::Board>::legal [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+    96,369,065 ( 0.25%)  ???:<chessengine::board::Board>::attackers_to [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+    94,278,001 ( 0.24%)  ???:<chessengine::board::Board>::unmake_move [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+    91,574,595 ( 0.23%)  ???:<chessengine::search::Worker>::search::<chessengine::search::Pv>'2 [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+    82,662,232 ( 0.21%)  ???:chessengine::eval::nnue::sota_features::refresh_threat [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+    80,460,929 ( 0.20%)  ???:<chessengine::attacks::AttackTables>::attacks [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+    68,393,311 ( 0.17%)  ???:<chessengine::tt::TranspositionTable>::probe [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+    65,608,762 ( 0.17%)  ???:<chessengine::search::Worker>::stat_score [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+    62,068,742 ( 0.16%)  ???:chessengine::eval::nnue::sota_simd::avx2::l1_dequant [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+    61,087,212 ( 0.16%)  ???:<chessengine::eval::nnue::sota_context::SotaContext>::push [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+    56,832,464 ( 0.14%)  ???:<chessengine::search::Worker>::qsearch::<chessengine::search::NonPv> [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+    54,755,040 ( 0.14%)  ???:<chessengine::board::Board>::attackers_to_exist [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+    53,140,720 ( 0.14%)  ???:<chessengine::eval::nnue::sota_context::SotaContext>::evaluate [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+    41,125,099 ( 0.10%)  ???:chessengine::eval::evaluate [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]
+    39,910,621 ( 0.10%)  ???:<chessengine::search::Worker>::iterative_deepening [/tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/bins/new-tip-v3]

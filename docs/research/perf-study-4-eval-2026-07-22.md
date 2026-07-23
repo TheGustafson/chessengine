@@ -437,8 +437,6 @@ vs script baseline) → #4 → #3 → T10 measurement gate → T10 training →
 - threat_index LazyLock-per-event: `src/eval/nnue/sota_features.rs:324-348`.
 - Net artifact: `data/nnue/nets/d47c-sb*.cenn` = 136,843,872 B; `.cpol` =
   245,268 B (= 12 + 1858·128 + 1858·4 ✓).
-<<<<<<< HEAD
-=======
 
 ---
 
@@ -503,4 +501,3 @@ stage1+cpol 534k.
    this study's §3 cost model: head 48.5% / threats 12.4% / policy ~2-3.5%
    +6.2% tree. Its §11 independently confirmed bit-identity of the first
    two commits and re-priced them (+3.7% / +0.3%).
->>>>>>> worktree-agent-a7e7069d489335126
