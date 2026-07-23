@@ -20,9 +20,11 @@ policy = ["chess>=1.10"]
 notebook = ["jupyter", "matplotlib"]
 
 [tool.uv]
-# ALL work is CPU-only; the live GPU belongs to the bullet trainer.
-# Every entry point must run under:
-#   JAX_PLATFORMS=cpu XLA_PYTHON_CLIENT_PREALLOCATE=false
+# CPU-only by default (JAX_PLATFORMS=cpu XLA_PYTHON_CLIENT_PREALLOCATE=false);
+# GPU sessions opt in with ARCHON_JAX_ALLOW_GPU=1 + jax[cuda12] and use the
+# ft_kernel.py Pallas path (ARCHON_JAX_FT_IMPL=pallas) — the jnp.take
+# reference path OOMs/crawls on GPU. Bench: tools/gpu_step_bench.py;
+# measurements: docs/research/jax-gpu-kernel-2026-07-23.md.
 
 [build-system]
 requires = ["hatchling"]

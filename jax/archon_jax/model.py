@@ -74,6 +74,11 @@ def _ft_accumulate(params: dict, hk_idx: jnp.ndarray, th_idx: jnp.ndarray | None
 
     Sparse indices are -1-padded (the bullet sentinel, d40:872-875); padding
     rows are gathered at index 0 and masked to zero.
+
+    This is the REFERENCE path (and the only one exercised by default): XLA
+    materializes the B x S x H gather, which is fine on CPU / small batches
+    but OOMs the GPU at batch >= 2048 (6.7 GB for threats at 8192). GPU
+    training selects ``ft_impl="pallas"`` in ``forward`` (see ft_kernel.py).
     """
     hk_valid = (hk_idx >= 0)[..., None]
     hk_rows = jnp.take(params["l0_pstw"], jnp.maximum(hk_idx, 0), axis=0)
@@ -83,6 +88,31 @@ def _ft_accumulate(params: dict, hk_idx: jnp.ndarray, th_idx: jnp.ndarray | None
         th_rows = jnp.take(params["l0_threatw"], jnp.maximum(th_idx, 0), axis=0)
         acc = acc + jnp.sum(th_rows * th_valid, axis=-2)
     return acc
+
+
+def _ft_accumulate_pair(params: dict, batch: dict, arch: ArchSpec, ft_impl: str):
+    """Both perspectives' accumulators under the selected FT implementation.
+
+    ``ft_impl``: "reference" (default everywhere; the proven CPU path),
+    "pallas" (GPU embedding-bag kernel, ft_kernel.py) or "scan" (pure-XLA
+    slot scan, the measured fallback). The GPU impls stack stm+ntm along the
+    batch axis: one launch, shared grad buffers in the backward.
+    """
+    th_stm = batch.get("th_stm") if not arch.halfka_only else None
+    th_ntm = batch.get("th_ntm") if not arch.halfka_only else None
+    if ft_impl != "reference" and th_stm is not None:
+        from .ft_kernel import ft_accumulate_pallas, ft_accumulate_scan
+
+        fn = ft_accumulate_pallas if ft_impl == "pallas" else ft_accumulate_scan
+        b = batch["hk_stm"].shape[0]
+        hk = jnp.concatenate([batch["hk_stm"], batch["hk_ntm"]], axis=0)
+        th = jnp.concatenate([th_stm, th_ntm], axis=0)
+        acc = fn(params["l0_pstw"], params["l0_threatw"], params["l0_pstb"],
+                 hk, th)
+        return acc[:b], acc[b:]
+    # reference (also the halfka_only fallback: GPU impls are two-table only)
+    return (_ft_accumulate(params, batch["hk_stm"], th_stm),
+            _ft_accumulate(params, batch["hk_ntm"], th_ntm))
 
 
 def _crelu(x):
@@ -134,16 +164,21 @@ def _pairwise(c: jnp.ndarray, hl: int) -> jnp.ndarray:
     return c[..., : hl // 2] * c[..., hl // 2:]
 
 
-def forward(params: dict, arch: ArchSpec, batch: dict):
-    """Full graph: sparse features -> (value_logit, pol_logits)."""
-    th_stm = batch.get("th_stm") if not arch.halfka_only else None
-    th_ntm = batch.get("th_ntm") if not arch.halfka_only else None
-    acc_stm = _ft_accumulate(params, batch["hk_stm"], th_stm)
-    acc_ntm = _ft_accumulate(params, batch["hk_ntm"], th_ntm)
+def forward(params: dict, arch: ArchSpec, batch: dict,
+            ft_impl: str = "reference"):
+    """Full graph: sparse features -> (value_logit, pol_logits).
+
+    ``ft_impl`` selects the feature-transformer implementation (see
+    ``_ft_accumulate_pair``); everything downstream is identical. The default
+    stays "reference" — the GPU path is opt-in (train.make_update_step wires
+    ARCHON_JAX_FT_IMPL through; the head math never forks).
+    """
+    acc_stm, acc_ntm = _ft_accumulate_pair(params, batch, arch, ft_impl)
     return head_forward(params, arch, acc_stm, acc_ntm, batch["bucket"],
                         batch.get("pol_mask"))
 
 
-@partial(jax.jit, static_argnames=("arch",))
-def forward_jit(params: dict, arch: ArchSpec, batch: dict):
-    return forward(params, arch, batch)[:2]
+@partial(jax.jit, static_argnames=("arch", "ft_impl"))
+def forward_jit(params: dict, arch: ArchSpec, batch: dict,
+                ft_impl: str = "reference"):
+    return forward(params, arch, batch, ft_impl)[:2]
