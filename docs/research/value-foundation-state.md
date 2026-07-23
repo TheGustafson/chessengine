@@ -48,7 +48,26 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-component loss metrics SHIPPED; policy-share drifting UP 0.81→1.28 by sb3 — λ decision point at sb30)
+Last updated: 2026-07-23 ~00:45 — **v1 CAMPAIGN PHASE 1 (JAX unlock) COMPLETE.**
+
+> **2026-07-23 JAX-GPU UNBLOCKED (campaign phase 1 DONE, merged 34f639c):**
+> Pallas embedding-bag FT kernel (`jax/archon_jax/ft_kernel.py`) lands
+> **225k pos/s full train step @ batch 8192 = 1.07× bullet** (was 9.5k,
+> OOM ≥2048); forward-only 1.26M pos/s; parity max |Δlogit| 3.53e-4,
+> 0/512 argmax flips, optimiser trajectories match to atomic-float noise;
+> 400-step soak clean at 2.93 GiB GPU. Verified post-merge on main:
+> 11/11 GPU tests, bench reproduces 223.9k. Report:
+> `jax-gpu-kernel-2026-07-23.md`. Route 2 (pure-XLA) kept as portability
+> fallback; bf16 deliberately skipped (gate passed in f32). Real recipe
+> density confirmed ~26.5-29.6 rows/perspective (bench = recipe,
+> apples-to-apples). Next bottleneck: single-thread host mapper ~210k
+> (PyO3 loader queued). **Next: build-window queue B (D40_CONVERT
+> corpus converter + shuffle, PyO3 loader) → phase-3 shadow twin
+> (240sb, ~7.4h GPU) → promotion gates → campaign phase 2 (stage-3 on
+> JAX with full doctrine).** Data chain: wrongIsRight landed (sha ✓);
+> T60T70 resuming after a duplicate-fetcher corruption was truncated
+> away (final HF sha256 check is the integrity net); farseerT74/75
+> queued behind it.
 
 > **Post-run policy plan:** `policy-training-roadmap-2026-07-22.md` — joint
 > forms the trunk, then independent frozen-trunk head finetunes on
