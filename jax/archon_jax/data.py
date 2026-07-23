@@ -91,6 +91,75 @@ def make_batches(bin_: BulletBin, cfg: TrainConfig, *, policy: bool,
         stop.set()
 
 
+def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
+                       threats: bool = True, legal_mask: bool = False,
+                       seed: int = 0, workers: int = 4, prefetch: int = 8,
+                       total_batches: int | None = None):
+    """Multi-corpus batch stream: ``mix`` = [(BulletBin, weight), ...].
+
+    Each batch's corpus is drawn ~ weights; windows within a corpus follow an
+    independent shuffled permutation that re-permutes on exhaustion (a new
+    epoch of that corpus). The schedule is fully determined by ``seed`` —
+    reproducible and resumable by skipping consumed indices.
+
+    D46: every corpus must be pre-shuffled (*.shuf.bin) AND unit-normalized
+    to the SAME score frame before mixing (per-pack SFBINPACK_SCORE_DIV at
+    convert time, or rescale_records.py) — mixing frames silently corrupts
+    the value target.
+    """
+    bins = [b for b, _ in mix]
+    weights = np.asarray([wt for _, wt in mix], dtype=np.float64)
+    weights = weights / weights.sum()
+    counts = [len(b) // cfg.batch_size for b in bins]
+    total = (total_batches if total_batches is not None
+             else cfg.batches_per_superbatch * cfg.superbatches)
+    rng = np.random.default_rng(seed)
+    choice = rng.choice(len(bins), size=total, p=weights)
+    orders = [rng.permutation(c) for c in counts]
+    cursors = [0] * len(bins)
+    sched = []
+    for c in choice:
+        c = int(c)
+        if cursors[c] >= counts[c]:
+            orders[c] = rng.permutation(counts[c])
+            cursors[c] = 0
+        sched.append((c, int(orders[c][cursors[c]])))
+        cursors[c] += 1
+
+    def map_one(job) -> dict:
+        c, i = job
+        recs = bins[c].slice(i * cfg.batch_size, cfg.batch_size)
+        out = map_batch(recs, wdl=cfg.wdl, score_multiplier=cfg.score_multiplier,
+                        scale=cfg.scale, policy=policy, threats=threats)
+        if policy and legal_mask:
+            out["pol_mask"] = legal_move_masks(recs, out["pol_target_id"])
+        return out
+
+    if workers == 0:
+        for job in sched:
+            yield map_one(job)
+        return
+
+    q: queue.Queue = queue.Queue(maxsize=prefetch)
+    stop = threading.Event()
+
+    def producer():
+        with cf.ThreadPoolExecutor(workers) as pool:
+            for batch in _stream(pool, sched, prefetch, map_one, stop):
+                if stop.is_set():
+                    break
+                q.put(batch)
+        q.put(None)
+
+    t = threading.Thread(target=producer, daemon=True)
+    t.start()
+    try:
+        while (item := q.get()) is not None:
+            yield item
+    finally:
+        stop.set()
+
+
 def _stream(pool, order, prefetch, fn, stop):
     """Submit-ahead window of `prefetch` futures, yielding results in order."""
     futs = [pool.submit(fn, i) for i in order[:prefetch]]
