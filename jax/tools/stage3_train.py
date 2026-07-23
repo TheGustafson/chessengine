@@ -10,7 +10,16 @@ Recipe (pinned 2026-07-23, post user rulings — see archon-v1-release-campaign.
   LR    : peak 0.00025 (stage-2's restart halved again), cosine STRETCHED via
           lr_end_superbatch=331 so sb240 lands at ~0.2x peak — the
           anneal-to-FLOOR doctrine knob, NOT a to-zero ship anneal.
-  pol   : lambda 0.00125 (stage-2 continuation)
+  pol   : lambda 0.00125 (stage-2 continuation), UNMASKED — deliberate
+          deviation from bullet's D40_POL_LEGAL_MASK=1 recipe: the python
+          masker is ~15k pos/s (PyO3 loader not built yet). Twin evidence
+          says the value trajectory is λ-insensitive (sb1-10 within 0.5%,
+          endpoint within noise), so this deviation cannot move the value
+          gate; it changes only CE normalization (unmasked also suppresses
+          illegal logits — inference masks legality regardless). Kept >0
+          so the head keeps tracking the trunk (λ=0 would let AdamW decay
+          erode the frozen head ~3x over 240sb). PHASE-5 HOOK: first head
+          action = MASKED refinetune once the PyO3 masker exists.
   gates : pre-flight heldout reproduce (S1) hard-aborts a bad warm load;
           heldout eval at every save (the +/-4-Elo instrument, live).
 
