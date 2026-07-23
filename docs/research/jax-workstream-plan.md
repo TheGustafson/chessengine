@@ -111,6 +111,18 @@ directive.
       REVISED GATE: S2b heldout at sb5+sb10 within 2.5% of the twin's
       matched checkpoints. (First S2 attempt was killed by my own broad
       pgrep kill — ops rule added to memory.)
+      **S2b VERDICT (02:0x): PASS-WITH-FINDING — JAX BEATS bullet on
+      heldout at matched sb: sb5 −3.38%, sb10 −3.89%** (0.010384/
+      0.009345 vs 0.010747/0.009724). The symmetric band tripped in the
+      GOOD direction; the deficiency gate this test exists for passes
+      decisively. Leak ruled out by construction (heldout band [0,5) is
+      hash-disjoint from every corpus band). Two isolated effects:
+      (1) S2-vs-S2b delta ⇒ UNMASKED policy @λ=0.005 drags heldout ~5%
+      at sb5 (stage-3's λ/4 ⇒ ~1.3% early, endpoint-neutral per twin);
+      (2) iid sampling over the globally-shuffled corpus outperforms
+      bullet's windowed stream as a curriculum — a FREE structural win
+      of the migration (pin: candidate explanation for future
+      better-than-bullet curves; don't double-count it as a recipe win).
 - [ ] **S3 checkpoint/kill/resume**: 2sb → ckpt → kill → resume 1sb;
       metrics continuous, params within atomic-noise envelope of a
       straight-through 3sb run.
