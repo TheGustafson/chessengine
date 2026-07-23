@@ -6,7 +6,7 @@
 //! selected once at startup and preserves wrapping i16 arithmetic.
 
 use super::sota_features::ACC;
-use super::sota_head::{FT_QUANT, FT_SHIFT, L2, THREAT_QUANT};
+use super::sota_head::{FT_QUANT, FT_SHIFT, L2, L3, THREAT_QUANT};
 use std::sync::LazyLock;
 
 /// The L1 sparse dot writes `L2` int32 accumulators. The kernels process the
@@ -15,8 +15,13 @@ use std::sync::LazyLock;
 /// bumps [`super::sota_head::L2`]; the block loop scales automatically.
 const L2_BLK: usize = 16;
 const _: () = assert!(
-    L2 % L2_BLK == 0,
+    L2.is_multiple_of(L2_BLK),
     "L2 must be a multiple of 16 for the l1_dot block loop"
+);
+/// The f32 tail kernels likewise assume whole 16-lane blocks.
+const _: () = assert!(
+    L3.is_multiple_of(L2_BLK),
+    "L3 must be a multiple of 16 for the l2_tail block loop"
 );
 
 type ApplyI16Fn = fn(&mut [i16; ACC], &[i16], &[usize], &[usize]);
@@ -28,6 +33,23 @@ type ApplyI8IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i8], &[usize], &[usize])
 type L1DotFn = fn(&mut [i32; L2], &[u8; ACC], &[u16], &[i8]);
 type ActivateFn = fn(&mut [u8; ACC], &[[i16; ACC]; 2], &[[i16; ACC]; 2], usize);
 type FindNnzFn = fn(&[u8; ACC], &mut [u16; ACC / 4]) -> usize;
+// The explicit f32 head-tail kernels (perf study #4 item #2a — the one hot
+// path that still lived on autovectorization after the ×8 D47 head growth).
+// Per-lane op sequences match the scalar reference exactly (same fused
+// `mul_add`, same clamp order, same i-sequential accumulation per j lane),
+// so every backend is bit-identical on finite inputs.
+type L1DequantFn = fn(&mut [f32; L2], &[i32; L2], &[f32; L2], f32);
+type L2TailFn = fn(&mut [f32; L3], &[f32; L2], &[f32; L2 * L3], &[f32; L3]);
+// The policy selected-row dot (perf study #4 item #4): i8 row × f32
+// bottleneck. Reduction shape is DEFINED as 16 partial lanes (lane k sums
+// elements k, k+16, …) + a halving tree — the same fixed-shape pattern as
+// `propagate_l3` — so every backend is bit-identical to the scalar
+// reference. NOTE this deliberately replaced the old serial element-order
+// sum in `PolicyHead::row_score` (a ~128-deep add dependency chain that
+// could never vectorize); the new shape's f32 rounding differs from the old
+// serial loop's, which was verified non-functional by the package's
+// 100-game fixed-node PGN-identity oracle before landing.
+type PolicyDotFn = fn(&[i8; L2], &[f32; L2]) -> f32;
 
 struct Kernels {
     i16_deltas: ApplyI16Fn,
@@ -36,6 +58,9 @@ struct Kernels {
     l1_dot: L1DotFn,
     activate: ActivateFn,
     find_nnz: FindNnzFn,
+    l1_dequant: L1DequantFn,
+    l2_tail: L2TailFn,
+    policy_dot: PolicyDotFn,
 }
 
 static KERNELS: LazyLock<Kernels> = LazyLock::new(|| {
@@ -48,14 +73,57 @@ static KERNELS: LazyLock<Kernels> = LazyLock::new(|| {
             && std::arch::is_x86_feature_detected!("avx512bw")
             && std::arch::is_x86_feature_detected!("avx512vnni")
         {
+            // vbmi2+vl unlock the vpcompressw find_nnz (item #2d); both are
+            // present on every Zen 4 / Ice Lake+ part, but the plain table
+            // keeps pre-VBMI2 AVX-512 CPUs (e.g. Skylake-X never gets here —
+            // no VNNI — so this is belt-and-braces).
+            if std::arch::is_x86_feature_detected!("avx512vbmi2")
+                && std::arch::is_x86_feature_detected!("avx512vl")
+            {
+                return avx512::KERNELS_VBMI2;
+            }
             return avx512::KERNELS;
         }
-        if std::arch::is_x86_feature_detected!("avx2") {
+        // The f32 tail kernels use fused-multiply-add; every AVX2 chess-era
+        // CPU has FMA, and an exotic AVX2-without-FMA part falls to scalar.
+        if std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma")
+        {
             return avx2::KERNELS;
         }
     }
     scalar::KERNELS
 });
+
+/// Compile-time backend selection (perf study #4 item #2c; the design/11
+/// §3.4.6 escape hatch, Reckless pattern): when the build target statically
+/// carries the same AVX-512 features the runtime dispatcher would detect
+/// (`-C target-cpu=native` on a VNNI-era CPU), route straight to the avx512
+/// backend — no LazyLock initialized-check, no indirect call, and the kernel
+/// bodies can inline into their call sites. Portable and x86-64-v3 builds
+/// keep the runtime table: v3 has no AVX-512, and statically pinning AVX2
+/// there would LOSE the runtime-detected AVX-512 kernels.
+macro_rules! kernel_dispatch {
+    ($field:ident($($arg:expr),*)) => {{
+        #[cfg(all(
+            target_arch = "x86_64",
+            target_feature = "avx512f",
+            target_feature = "avx512bw",
+            target_feature = "avx512vnni"
+        ))]
+        {
+            avx512::$field($($arg),*)
+        }
+        #[cfg(not(all(
+            target_arch = "x86_64",
+            target_feature = "avx512f",
+            target_feature = "avx512bw",
+            target_feature = "avx512vnni"
+        )))]
+        {
+            (KERNELS.$field)($($arg),*)
+        }
+    }};
+}
 
 #[inline]
 pub(crate) fn apply_i16_deltas(
@@ -64,7 +132,7 @@ pub(crate) fn apply_i16_deltas(
     adds: &[usize],
     subs: &[usize],
 ) {
-    (KERNELS.i16_deltas)(acc, weights, adds, subs);
+    kernel_dispatch!(i16_deltas(acc, weights, adds, subs))
 }
 
 /// Fused copy+apply for the HalfKA (i16) fold: `dst = src ± deltas` in one
@@ -77,7 +145,7 @@ pub(crate) fn apply_i16_deltas_into(
     adds: &[usize],
     subs: &[usize],
 ) {
-    (KERNELS.i16_deltas_into)(dst, src, weights, adds, subs);
+    kernel_dispatch!(i16_deltas_into(dst, src, weights, adds, subs))
 }
 
 /// Fused copy+apply for the FullThreats (i8-weight) fold.
@@ -89,7 +157,7 @@ pub(crate) fn apply_i8_deltas_into(
     adds: &[usize],
     subs: &[usize],
 ) {
-    (KERNELS.i8_deltas_into)(dst, src, weights, adds, subs);
+    kernel_dispatch!(i8_deltas_into(dst, src, weights, adds, subs))
 }
 
 /// Sparse `[u8; ACC] × [i8; L2]` dot product. `weights` is laid out as
@@ -97,7 +165,7 @@ pub(crate) fn apply_i8_deltas_into(
 /// group indices.
 #[inline]
 pub(crate) fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
-    (KERNELS.l1_dot)(pre, ft, nnz, weights);
+    kernel_dispatch!(l1_dot(pre, ft, nnz, weights))
 }
 
 #[inline]
@@ -107,15 +175,66 @@ pub(crate) fn activate(
     threat: &[[i16; ACC]; 2],
     stm: usize,
 ) {
-    (KERNELS.activate)(out, pst, threat, stm);
+    kernel_dispatch!(activate(out, pst, threat, stm))
 }
 
 /// Compact the indices of the nonzero four-byte groups of `ft` into `out`
 /// (ascending), returning the count — the sparse-group set [`l1_dot`]
-/// consumes. Every backend produces the identical index set.
+/// consumes. Every backend produces the identical index set. Statically
+/// dispatched only when vbmi2+vl are ALSO compile-time present (the vbmi2
+/// variant is strictly better than the avx2 form the plain avx512 table
+/// reuses); otherwise the runtime table decides, which detects vbmi2 itself.
 #[inline]
 pub(crate) fn find_nnz(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
-    (KERNELS.find_nnz)(ft, out)
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "avx512f",
+        target_feature = "avx512bw",
+        target_feature = "avx512vl",
+        target_feature = "avx512vbmi2"
+    ))]
+    {
+        avx512::find_nnz_vbmi2(ft, out)
+    }
+    #[cfg(not(all(
+        target_arch = "x86_64",
+        target_feature = "avx512f",
+        target_feature = "avx512bw",
+        target_feature = "avx512vl",
+        target_feature = "avx512vbmi2"
+    )))]
+    {
+        (KERNELS.find_nnz)(ft, out)
+    }
+}
+
+/// Dequantize + SCReLU the L1 pre-activations: per lane,
+/// `out[j] = clamp(pre[j]·dequant + bias[j], 0, 1)²` with a fused mul-add —
+/// exactly the scalar head loop it replaces (perf study #4 item #2a).
+#[inline]
+pub(crate) fn l1_dequant(out: &mut [f32; L2], pre: &[i32; L2], bias: &[f32; L2], dequant: f32) {
+    kernel_dispatch!(l1_dequant(out, pre, bias, dequant))
+}
+
+/// The dense f32 L2→L3 tail: `out = SCReLU(bias + Σ_i weights[i]·l1[i])`,
+/// j-lane order preserved and i-sequential per lane — bit-identical to the
+/// scalar mul_add loop (perf study #4 item #2a: at D47 dims this is 4096
+/// FMAs/eval and was the last autovectorized hot path).
+#[inline]
+pub(crate) fn l2_tail(
+    out: &mut [f32; L3],
+    l1: &[f32; L2],
+    weights: &[f32; L2 * L3],
+    bias: &[f32; L3],
+) {
+    kernel_dispatch!(l2_tail(out, l1, weights, bias))
+}
+
+/// Policy selected-row dot: `Σ row[i]·h[i]` with the fixed 16-partial-lane +
+/// halving-tree reduction shape (see the [`PolicyDotFn`] note).
+#[inline]
+pub(crate) fn policy_dot(row: &[i8; L2], h: &[f32; L2]) -> f32 {
+    kernel_dispatch!(policy_dot(row, h))
 }
 
 mod scalar {
@@ -229,6 +348,65 @@ mod scalar {
         count
     }
 
+    /// The bit-exact reference for the L1 dequant+SCReLU (the loop moved here
+    /// verbatim from `SotaHead::propagate_l1`).
+    pub(super) fn l1_dequant(out: &mut [f32; L2], pre: &[i32; L2], bias: &[f32; L2], dequant: f32) {
+        for j in 0..L2 {
+            let clipped = (pre[j] as f32).mul_add(dequant, bias[j]).clamp(0.0, 1.0);
+            out[j] = clipped * clipped;
+        }
+    }
+
+    /// The bit-exact reference for the dense L2→L3 tail (moved verbatim from
+    /// `SotaHead::propagate_l2`): bias-seeded, i-outer/j-inner fused mul-add —
+    /// the i-sequential accumulation per j lane is the pinned order — then
+    /// SCReLU.
+    #[allow(clippy::needless_range_loop)]
+    pub(super) fn l2_tail(
+        out: &mut [f32; L3],
+        l1: &[f32; L2],
+        weights: &[f32; L2 * L3],
+        bias: &[f32; L3],
+    ) {
+        out.copy_from_slice(bias);
+        for i in 0..L2 {
+            let row: &[f32; L3] = weights[i * L3..i * L3 + L3]
+                .try_into()
+                .expect("l2 weight row");
+            let li = l1[i];
+            for j in 0..L3 {
+                out[j] = row[j].mul_add(li, out[j]);
+            }
+        }
+        for v in out.iter_mut() {
+            let clipped = v.clamp(0.0, 1.0);
+            *v = clipped * clipped;
+        }
+    }
+
+    /// The bit-exact reference for the policy row dot: 16 partial lanes
+    /// (lane k accumulates elements k, k+16, …, each a fused mul-add) then
+    /// the same halving tree as `propagate_l3`.
+    pub(super) fn policy_dot(row: &[i8; L2], h: &[f32; L2]) -> f32 {
+        const LANES: usize = 16;
+        let mut sums = [0.0f32; LANES];
+        let mut i = 0;
+        while i < L2 {
+            for j in 0..LANES {
+                sums[j] = f32::from(row[i + j]).mul_add(h[i + j], sums[j]);
+            }
+            i += LANES;
+        }
+        let mut stride = LANES / 2;
+        while stride > 0 {
+            for k in 0..stride {
+                sums[k] += sums[k + stride];
+            }
+            stride /= 2;
+        }
+        sums[0]
+    }
+
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i16_deltas_into,
@@ -236,6 +414,9 @@ mod scalar {
         l1_dot,
         activate,
         find_nnz,
+        l1_dequant,
+        l2_tail,
+        policy_dot,
     };
 }
 
@@ -507,6 +688,116 @@ mod avx2 {
         unsafe { find_nnz_inner(ft, out) }
     }
 
+    #[target_feature(enable = "avx2,fma")]
+    unsafe fn l1_dequant_inner(
+        out: &mut [f32; L2],
+        pre: &[i32; L2],
+        bias: &[f32; L2],
+        dequant: f32,
+    ) {
+        // SAFETY: each iteration touches one in-bounds 8-lane block. Per lane
+        // this is exactly the scalar reference: fused mul-add, then
+        // clamp(0,1) as max-then-min, then square — bit-identical for the
+        // finite values a loader-validated net produces.
+        unsafe {
+            let dq = _mm256_set1_ps(dequant);
+            let zero = _mm256_setzero_ps();
+            let one = _mm256_set1_ps(1.0);
+            for off in (0..L2).step_by(8) {
+                let p = _mm256_cvtepi32_ps(_mm256_loadu_si256(pre.as_ptr().add(off).cast()));
+                let b = _mm256_loadu_ps(bias.as_ptr().add(off));
+                let v = _mm256_fmadd_ps(p, dq, b);
+                let clipped = _mm256_min_ps(_mm256_max_ps(v, zero), one);
+                _mm256_storeu_ps(out.as_mut_ptr().add(off), _mm256_mul_ps(clipped, clipped));
+            }
+        }
+    }
+
+    fn l1_dequant(out: &mut [f32; L2], pre: &[i32; L2], bias: &[f32; L2], dequant: f32) {
+        // SAFETY: installed only after runtime AVX2+FMA detection.
+        unsafe { l1_dequant_inner(out, pre, bias, dequant) }
+    }
+
+    #[target_feature(enable = "avx2,fma")]
+    unsafe fn l2_tail_inner(
+        out: &mut [f32; L3],
+        l1: &[f32; L2],
+        weights: &[f32; L2 * L3],
+        bias: &[f32; L3],
+    ) {
+        // Four 8-lane accumulators = the L3=32 output row, seeded from the
+        // bias; per i one broadcast + four fused mul-adds — j-lane order
+        // preserved and i-sequential per lane, so the accumulation is
+        // bit-identical to the scalar reference. SAFETY: all loads/stores
+        // cover in-bounds 8-lane blocks of loader-validated storage.
+        unsafe {
+            let mut acc0 = _mm256_loadu_ps(bias.as_ptr());
+            let mut acc1 = _mm256_loadu_ps(bias.as_ptr().add(8));
+            let mut acc2 = _mm256_loadu_ps(bias.as_ptr().add(16));
+            let mut acc3 = _mm256_loadu_ps(bias.as_ptr().add(24));
+            for (i, &input) in l1.iter().enumerate() {
+                let li = _mm256_set1_ps(input);
+                let row = weights.as_ptr().add(i * L3);
+                acc0 = _mm256_fmadd_ps(_mm256_loadu_ps(row), li, acc0);
+                acc1 = _mm256_fmadd_ps(_mm256_loadu_ps(row.add(8)), li, acc1);
+                acc2 = _mm256_fmadd_ps(_mm256_loadu_ps(row.add(16)), li, acc2);
+                acc3 = _mm256_fmadd_ps(_mm256_loadu_ps(row.add(24)), li, acc3);
+            }
+            let zero = _mm256_setzero_ps();
+            let one = _mm256_set1_ps(1.0);
+            let screlu = |acc| {
+                let clipped = _mm256_min_ps(_mm256_max_ps(acc, zero), one);
+                _mm256_mul_ps(clipped, clipped)
+            };
+            _mm256_storeu_ps(out.as_mut_ptr(), screlu(acc0));
+            _mm256_storeu_ps(out.as_mut_ptr().add(8), screlu(acc1));
+            _mm256_storeu_ps(out.as_mut_ptr().add(16), screlu(acc2));
+            _mm256_storeu_ps(out.as_mut_ptr().add(24), screlu(acc3));
+        }
+    }
+
+    fn l2_tail(out: &mut [f32; L3], l1: &[f32; L2], weights: &[f32; L2 * L3], bias: &[f32; L3]) {
+        // SAFETY: installed only after runtime AVX2+FMA detection.
+        unsafe { l2_tail_inner(out, l1, weights, bias) }
+    }
+
+    #[target_feature(enable = "avx2,fma")]
+    unsafe fn policy_dot_inner(row: &[i8; L2], h: &[f32; L2]) -> f32 {
+        // Two 8-lane accumulators = the 16 partial lanes of the scalar
+        // reference (acc_lo = lanes 0-7, acc_hi = lanes 8-15); the halving
+        // tree runs scalar over the spilled lanes, matching the reference
+        // reduction order exactly. SAFETY: loads cover in-bounds 8-byte /
+        // 8-lane blocks of the fixed-size inputs.
+        unsafe {
+            let mut acc_lo = _mm256_setzero_ps();
+            let mut acc_hi = _mm256_setzero_ps();
+            for i in (0..L2).step_by(16) {
+                let bytes_lo = _mm_loadl_epi64(row.as_ptr().add(i).cast());
+                let bytes_hi = _mm_loadl_epi64(row.as_ptr().add(i + 8).cast());
+                let w_lo = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(bytes_lo));
+                let w_hi = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(bytes_hi));
+                acc_lo = _mm256_fmadd_ps(w_lo, _mm256_loadu_ps(h.as_ptr().add(i)), acc_lo);
+                acc_hi = _mm256_fmadd_ps(w_hi, _mm256_loadu_ps(h.as_ptr().add(i + 8)), acc_hi);
+            }
+            let mut sums = [0.0f32; 16];
+            _mm256_storeu_ps(sums.as_mut_ptr(), acc_lo);
+            _mm256_storeu_ps(sums.as_mut_ptr().add(8), acc_hi);
+            let mut stride = 8;
+            while stride > 0 {
+                for k in 0..stride {
+                    sums[k] += sums[k + stride];
+                }
+                stride /= 2;
+            }
+            sums[0]
+        }
+    }
+
+    fn policy_dot(row: &[i8; L2], h: &[f32; L2]) -> f32 {
+        // SAFETY: installed only after runtime AVX2+FMA detection.
+        unsafe { policy_dot_inner(row, h) }
+    }
+
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i16_deltas_into,
@@ -514,6 +805,9 @@ mod avx2 {
         l1_dot,
         activate,
         find_nnz,
+        l1_dequant,
+        l2_tail,
+        policy_dot,
     };
 }
 
@@ -606,31 +900,43 @@ mod avx512 {
 
     #[target_feature(enable = "avx512f,avx512bw,avx512vnni")]
     unsafe fn l1_dot_inner(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
-        // Each 16-output block is exactly one 512-bit register, and dpbusd is
-        // the whole kernel: for each dword lane it accumulates the u8×i8
-        // four-product dot directly into i32 — the maddubs+madd pair (and its
-        // i16 saturation reasoning) collapses into one instruction per group.
-        // The outer loop walks the L2/16 output blocks (one register each).
-        // SAFETY: active groups address four FT bytes and, per block, sixteen
-        // complete four-byte output rows in loader-validated storage.
+        // dpbusd is the whole kernel: for each dword lane it accumulates the
+        // u8×i8 four-product dot directly into i32 — the maddubs+madd pair
+        // (and its i16 saturation reasoning) collapses into one instruction
+        // per (group, block). Loop order is GROUP-outer with all L2/16 output
+        // blocks held in registers (perf study #4 item #2b): the blk-outer
+        // form re-walked the nnz list and re-broadcast each 4-byte FT group
+        // once per block — free at L2=16 (1 block), 7 redundant passes at the
+        // D47 L2=128 (8 blocks, 8 zmm accumulators — well inside the 32-reg
+        // file). i32 wrapping adds are order-independent ⇒ bit-identical.
+        // SAFETY: active groups address four FT bytes and L2 complete
+        // four-byte output rows in loader-validated storage.
         unsafe {
-            for blk in 0..(L2 / L2_BLK) {
-                let pbase = blk * L2_BLK; // 16 outputs per block
-                let wblk = blk * 64; // 16 outputs × 4 bytes within each group
-                let mut sums = _mm512_loadu_si512(pre.as_ptr().add(pbase).cast());
-                for &group in nnz {
-                    let group = usize::from(group);
-                    let inputs = _mm512_set1_epi32(i32::from_le_bytes([
-                        ft[group * 4],
-                        ft[group * 4 + 1],
-                        ft[group * 4 + 2],
-                        ft[group * 4 + 3],
-                    ]));
-                    let rows =
-                        _mm512_loadu_si512(weights.as_ptr().add(group * (L2 * 4) + wblk).cast());
-                    sums = _mm512_dpbusd_epi32(sums, inputs, rows);
+            const BLOCKS: usize = L2 / L2_BLK;
+            let mut sums = [_mm512_setzero_si512(); BLOCKS];
+            for (blk, sum) in sums.iter_mut().enumerate() {
+                *sum = _mm512_loadu_si512(pre.as_ptr().add(blk * L2_BLK).cast());
+            }
+            // NOTE: the study's "prefetch the next group's rows" was tried
+            // here and measured noise-to-negative (−0.3% over 4 interleaved
+            // pairs): the per-bucket L1 table is ~160 KB and L2-resident, so
+            // the loads never miss far enough to hide.
+            for &group in nnz {
+                let group = usize::from(group);
+                let inputs = _mm512_set1_epi32(i32::from_le_bytes([
+                    ft[group * 4],
+                    ft[group * 4 + 1],
+                    ft[group * 4 + 2],
+                    ft[group * 4 + 3],
+                ]));
+                let base = weights.as_ptr().add(group * (L2 * 4));
+                for (blk, sum) in sums.iter_mut().enumerate() {
+                    let rows = _mm512_loadu_si512(base.add(blk * 64).cast());
+                    *sum = _mm512_dpbusd_epi32(*sum, inputs, rows);
                 }
-                _mm512_storeu_si512(pre.as_mut_ptr().add(pbase).cast(), sums);
+            }
+            for (blk, sum) in sums.iter().enumerate() {
+                _mm512_storeu_si512(pre.as_mut_ptr().add(blk * L2_BLK).cast(), *sum);
             }
         }
     }
@@ -691,12 +997,17 @@ mod avx512 {
         }
     }
 
-    fn i16_deltas(acc: &mut [i16; ACC], weights: &[i16], adds: &[usize], subs: &[usize]) {
+    pub(super) fn i16_deltas(
+        acc: &mut [i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
         unsafe { i16_deltas_inner(acc, weights, adds, subs) }
     }
 
-    fn i16_deltas_into(
+    pub(super) fn i16_deltas_into(
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
         weights: &[i16],
@@ -707,7 +1018,7 @@ mod avx512 {
         unsafe { i16_deltas_into_inner(dst, src, weights, adds, subs) }
     }
 
-    fn i8_deltas_into(
+    pub(super) fn i8_deltas_into(
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
         weights: &[i8],
@@ -718,14 +1029,167 @@ mod avx512 {
         unsafe { i8_deltas_into_inner(dst, src, weights, adds, subs) }
     }
 
-    fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
+    pub(super) fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
         unsafe { l1_dot_inner(pre, ft, nnz, weights) }
     }
 
-    fn activate(out: &mut [u8; ACC], pst: &[[i16; ACC]; 2], threat: &[[i16; ACC]; 2], stm: usize) {
+    pub(super) fn activate(
+        out: &mut [u8; ACC],
+        pst: &[[i16; ACC]; 2],
+        threat: &[[i16; ACC]; 2],
+        stm: usize,
+    ) {
         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
         unsafe { activate_inner(out, pst, threat, stm) }
+    }
+
+    #[target_feature(enable = "avx512f")]
+    unsafe fn l1_dequant_inner(
+        out: &mut [f32; L2],
+        pre: &[i32; L2],
+        bias: &[f32; L2],
+        dequant: f32,
+    ) {
+        // SAFETY: each iteration touches one in-bounds 16-lane block. Per lane
+        // this is exactly the scalar reference: fused mul-add, then clamp(0,1)
+        // as max-then-min, then square — bit-identical for the finite values a
+        // loader-validated net produces.
+        unsafe {
+            let dq = _mm512_set1_ps(dequant);
+            let zero = _mm512_setzero_ps();
+            let one = _mm512_set1_ps(1.0);
+            for off in (0..L2).step_by(16) {
+                let p = _mm512_cvtepi32_ps(_mm512_loadu_si512(pre.as_ptr().add(off).cast()));
+                let b = _mm512_loadu_ps(bias.as_ptr().add(off));
+                let v = _mm512_fmadd_ps(p, dq, b);
+                let clipped = _mm512_min_ps(_mm512_max_ps(v, zero), one);
+                _mm512_storeu_ps(out.as_mut_ptr().add(off), _mm512_mul_ps(clipped, clipped));
+            }
+        }
+    }
+
+    pub(super) fn l1_dequant(out: &mut [f32; L2], pre: &[i32; L2], bias: &[f32; L2], dequant: f32) {
+        // SAFETY: installed only after runtime avx512f+bw+vnni detection (or
+        // compiled with the features statically enabled).
+        unsafe { l1_dequant_inner(out, pre, bias, dequant) }
+    }
+
+    #[target_feature(enable = "avx512f")]
+    unsafe fn l2_tail_inner(
+        out: &mut [f32; L3],
+        l1: &[f32; L2],
+        weights: &[f32; L2 * L3],
+        bias: &[f32; L3],
+    ) {
+        // Two 16-lane accumulators = the L3=32 output row, seeded from the
+        // bias; per i one broadcast + two fused mul-adds (perf study #4 item
+        // #2a: 4096 FMAs/eval at D47 dims, previously autovectorized).
+        // j-lane order preserved and i-sequential per lane ⇒ bit-identical
+        // to the scalar reference. SAFETY: all loads/stores cover in-bounds
+        // 16-lane blocks of loader-validated storage.
+        unsafe {
+            let mut acc0 = _mm512_loadu_ps(bias.as_ptr());
+            let mut acc1 = _mm512_loadu_ps(bias.as_ptr().add(16));
+            for (i, &input) in l1.iter().enumerate() {
+                let li = _mm512_set1_ps(input);
+                let row = weights.as_ptr().add(i * L3);
+                acc0 = _mm512_fmadd_ps(_mm512_loadu_ps(row), li, acc0);
+                acc1 = _mm512_fmadd_ps(_mm512_loadu_ps(row.add(16)), li, acc1);
+            }
+            let zero = _mm512_setzero_ps();
+            let one = _mm512_set1_ps(1.0);
+            let screlu = |acc| {
+                let clipped = _mm512_min_ps(_mm512_max_ps(acc, zero), one);
+                _mm512_mul_ps(clipped, clipped)
+            };
+            _mm512_storeu_ps(out.as_mut_ptr(), screlu(acc0));
+            _mm512_storeu_ps(out.as_mut_ptr().add(16), screlu(acc1));
+        }
+    }
+
+    pub(super) fn l2_tail(
+        out: &mut [f32; L3],
+        l1: &[f32; L2],
+        weights: &[f32; L2 * L3],
+        bias: &[f32; L3],
+    ) {
+        // SAFETY: installed only after runtime avx512f+bw+vnni detection (or
+        // compiled with the features statically enabled).
+        unsafe { l2_tail_inner(out, l1, weights, bias) }
+    }
+
+    /// `NNZ_IOTA` — the 16 u16 lane indices `0..16`, the vpcompressw source.
+    const NNZ_IOTA: [u16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+
+    #[target_feature(enable = "avx512f,avx512bw,avx512vl,avx512vbmi2")]
+    unsafe fn find_nnz_vbmi2_inner(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
+        // Sixteen 4-byte groups per iteration: one 64 B load, test the dwords
+        // against zero into a 16-bit mask, vpcompressw the constant iota to
+        // the mask's set positions (ascending), add the running group base —
+        // the same index set as the scalar scan and the AVX2 movemask+LUT
+        // form, at 20 iterations instead of 40 and no 4 KiB table
+        // (perf study #4 item #2d; Zen 4 / Ice Lake+ have vbmi2).
+        // SAFETY: each load reads 64 in-bounds FT bytes. Each store writes a
+        // full 16-lane row at `out[count]`: entering chunk c, count <= 16c <=
+        // ACC/4 - 16, so the row fits even when every group so far was
+        // nonzero; lanes past the popcount are dead padding overwritten by
+        // the next store or ignored via the returned count.
+        unsafe {
+            let iota = _mm256_loadu_si256(NNZ_IOTA.as_ptr().cast());
+            let mut count = 0usize;
+            for chunk in 0..ACC / 4 / 16 {
+                let groups = _mm512_loadu_si512(ft.as_ptr().add(chunk * 64).cast());
+                let mask = _mm512_test_epi32_mask(groups, groups);
+                let row = _mm256_maskz_compress_epi16(mask, iota);
+                let base = _mm256_set1_epi16((chunk * 16) as i16);
+                _mm256_storeu_si256(
+                    out.as_mut_ptr().add(count).cast(),
+                    _mm256_add_epi16(row, base),
+                );
+                count += mask.count_ones() as usize;
+            }
+            count
+        }
+    }
+
+    pub(super) fn find_nnz_vbmi2(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
+        // SAFETY: installed only after runtime avx512 vl+vbmi2 detection (or
+        // compiled with the features statically enabled).
+        unsafe { find_nnz_vbmi2_inner(ft, out) }
+    }
+
+    #[target_feature(enable = "avx512f")]
+    unsafe fn policy_dot_inner(row: &[i8; L2], h: &[f32; L2]) -> f32 {
+        // One zmm accumulator = the 16 partial lanes of the scalar reference
+        // (lane k sums elements k, k+16, …); the halving tree runs scalar
+        // over the spilled lanes, matching the reference reduction exactly.
+        // SAFETY: loads cover in-bounds 16-byte / 16-lane blocks of the
+        // fixed-size inputs.
+        unsafe {
+            let mut acc = _mm512_setzero_ps();
+            for i in (0..L2).step_by(16) {
+                let bytes = _mm_loadu_si128(row.as_ptr().add(i).cast());
+                let w = _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(bytes));
+                acc = _mm512_fmadd_ps(w, _mm512_loadu_ps(h.as_ptr().add(i)), acc);
+            }
+            let mut sums = [0.0f32; 16];
+            _mm512_storeu_ps(sums.as_mut_ptr(), acc);
+            let mut stride = 8;
+            while stride > 0 {
+                for k in 0..stride {
+                    sums[k] += sums[k + stride];
+                }
+                stride /= 2;
+            }
+            sums[0]
+        }
+    }
+
+    pub(super) fn policy_dot(row: &[i8; L2], h: &[f32; L2]) -> f32 {
+        // SAFETY: installed only after runtime avx512f+bw+vnni detection (or
+        // compiled with the features statically enabled).
+        unsafe { policy_dot_inner(row, h) }
     }
 
     pub(super) const KERNELS: Kernels = Kernels {
@@ -734,9 +1198,19 @@ mod avx512 {
         i8_deltas_into,
         l1_dot,
         activate,
-        // The AVX2 movemask+compact form; a 512-bit variant needs
-        // vpcompressw (avx512-vbmi2, outside our f+bw+vnni gate) to beat it.
+        // The AVX2 movemask+compact form; the 512-bit variant needs
+        // vpcompressw (avx512-vbmi2+vl — see KERNELS_VBMI2).
         find_nnz: avx2::find_nnz,
+        l1_dequant,
+        l2_tail,
+        policy_dot,
+    };
+
+    /// [`KERNELS`] plus the vpcompressw `find_nnz` — selected when the CPU
+    /// also reports avx512vl+vbmi2 (every Zen 4 / Ice Lake+ part).
+    pub(super) const KERNELS_VBMI2: Kernels = Kernels {
+        find_nnz: find_nnz_vbmi2,
+        ..KERNELS
     };
 }
 
@@ -800,7 +1274,8 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn every_available_backend_matches_scalar() {
         let mut backends: Vec<(&str, &Kernels)> = Vec::new();
-        if std::arch::is_x86_feature_detected!("avx2") {
+        if std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma")
+        {
             backends.push(("avx2", &avx2::KERNELS));
         }
         if std::arch::is_x86_feature_detected!("avx512f")
@@ -808,6 +1283,11 @@ mod tests {
             && std::arch::is_x86_feature_detected!("avx512vnni")
         {
             backends.push(("avx512", &avx512::KERNELS));
+            if std::arch::is_x86_feature_detected!("avx512vbmi2")
+                && std::arch::is_x86_feature_detected!("avx512vl")
+            {
+                backends.push(("avx512-vbmi2", &avx512::KERNELS_VBMI2));
+            }
         }
 
         // Shared fixtures spanning the wrapping / saturation corners.
@@ -897,6 +1377,39 @@ mod tests {
                 (kernels.activate)(&mut got, &pst, &threat, stm);
                 assert_eq!(got, reference, "{name} activate stm {stm}");
             }
+
+            // f32 head-tail kernels: finite fixtures spanning both clamp
+            // edges and interior values; exact f32 equality is the contract.
+            let pre: [i32; L2] = std::array::from_fn(|j| j as i32 * 87_643 - 4_000_000);
+            let fbias: [f32; L2] = std::array::from_fn(|j| (j as f32 * 0.037).sin() * 0.8);
+            let dequant = 1.7e-6f32;
+            let mut reference = [0.0f32; L2];
+            scalar::l1_dequant(&mut reference, &pre, &fbias, dequant);
+            let mut got = [0.0f32; L2];
+            (kernels.l1_dequant)(&mut got, &pre, &fbias, dequant);
+            assert_eq!(got, reference, "{name} l1_dequant");
+
+            let l1_act: [f32; L2] =
+                std::array::from_fn(|i| ((i as f32 * 0.071).cos() * 0.6).max(0.0));
+            let mut l2w = vec![0.0f32; L2 * L3];
+            for (i, value) in l2w.iter_mut().enumerate() {
+                *value = ((i as f32 * 0.013).sin() - 0.1) * 0.25;
+            }
+            let l2w: &[f32; L2 * L3] = l2w.as_slice().try_into().unwrap();
+            let l3bias: [f32; L3] = std::array::from_fn(|j| (j as f32 * 0.11).cos() * 0.5);
+            let mut reference = [0.0f32; L3];
+            scalar::l2_tail(&mut reference, &l1_act, l2w, &l3bias);
+            let mut got = [0.0f32; L3];
+            (kernels.l2_tail)(&mut got, &l1_act, l2w, &l3bias);
+            assert_eq!(got, reference, "{name} l2_tail");
+
+            let prow: [i8; L2] = std::array::from_fn(|i| ((i as u8).wrapping_mul(89)) as i8);
+            let ph: [f32; L2] = std::array::from_fn(|i| ((i as f32 * 0.043).sin()) * 0.9);
+            assert_eq!(
+                (kernels.policy_dot)(&prow, &ph),
+                scalar::policy_dot(&prow, &ph),
+                "{name} policy_dot"
+            );
         }
     }
 

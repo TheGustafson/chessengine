@@ -19,7 +19,7 @@
 //! Behind the `sota` cargo feature; the default build never compiles it, so the
 //! depth-6 bench stays 548978.
 
-use super::sota_simd::{activate, l1_dot};
+use super::sota_simd::{activate, l1_dequant, l1_dot, l2_tail};
 use crate::types::Color;
 
 /// Accumulator width per perspective — D47 (user-directed, 2026-07-22):
@@ -106,10 +106,10 @@ pub struct SotaHead {
 /// accumulators, clamp each half to `[0, FT_QUANT]`, multiply first×second half
 /// and `>> FT_SHIFT` → u8 ∈ [0,127]. STM half occupies `[0, L1/2)`. The
 /// `wrapping_add` reproduces the reference's wrapping i16 accumulator math.
-fn activate_ft(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color) -> [u8; L1] {
-    let mut out = [0u8; L1];
-    activate(&mut out, pst, threat, stm as usize);
-    out
+/// Out-param form (perf study #4 item #5): the kernel writes the caller's
+/// buffer directly instead of returning the 1280 B array by value.
+fn activate_ft(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color, out: &mut [u8; L1]) {
+    activate(out, pst, threat, stm as usize);
 }
 
 /// Float view of the quantized shared D40 trunk for the optional policy head.
@@ -119,7 +119,8 @@ fn activate_ft(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color) -> [u8
 /// from drifting on perspective order, threat scaling, or clamp semantics.
 #[cfg(feature = "policy")]
 pub fn policy_trunk(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color) -> [f32; L1] {
-    let quantized = activate_ft(pst, threat, stm);
+    let mut quantized = [0u8; L1];
+    activate_ft(pst, threat, stm, &mut quantized);
     let scale = (1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT) as f32;
     quantized.map(|value| f32::from(value) * scale)
 }
@@ -143,66 +144,51 @@ fn merge_transformers(pst: i16, threat: i16) -> i16 {
 /// (design/11 §12.3 step 2) — ~85–95% are zero after the clamp. Dispatched:
 /// the scalar scan's 192 data-dependent branches mispredict on the sparse
 /// pattern, so the SIMD backends compact via movemask instead (R4 #2).
-fn find_nnz(ft: &[u8; L1]) -> ([u16; L1 / 4], usize) {
-    let mut idx = [0u16; L1 / 4];
-    let count = super::sota_simd::find_nnz(ft, &mut idx);
-    (idx, count)
+/// Out-param form (perf study #4 item #5): no 640 B by-value return.
+fn find_nnz(ft: &[u8; L1], idx: &mut [u16; L1 / 4]) -> usize {
+    super::sota_simd::find_nnz(ft, idx)
 }
 
 impl SotaHead {
     /// int8 sparse matmul over the nonzero groups → dequantized SCReLU f32[L2]
     /// (design/11 §12.3 step 3). Products accumulate in i32, matching Bullet's
     /// affine layer and the `dpbusd` semantics used by the reference design.
-    fn propagate_l1(&self, ft: &[u8; L1], nnz: &[u16], bucket: usize) -> [f32; L2] {
+    /// Out-param form (perf study #4 item #5): writes the caller's L2 buffer —
+    /// which for the policy stash is the context's inline slot — instead of
+    /// returning 512 B by value.
+    fn propagate_l1(&self, ft: &[u8; L1], nnz: &[u16], bucket: usize, out: &mut [f32; L2]) {
         let mut pre = [0i32; L2];
         let wbase = bucket * L2 * L1;
         let wb = &self.l1_weights[wbase..wbase + L2 * L1];
         l1_dot(&mut pre, ft, nnz, wb);
-        let mut out = [0.0f32; L2];
         let bb = bucket * L2;
-        // Fixed-size bucket slice hoists the bounds check out of the loop so
-        // the dequant+SCReLU vectorizes (perf: the flat `l1_biases[bb + j]`
-        // load kept a panic edge per element). Same per-j math → bit-identical.
         let bias: &[f32; L2] = self.l1_biases[bb..bb + L2]
             .try_into()
             .expect("l1 bias block");
-        for j in 0..L2 {
-            let clipped = (pre[j] as f32).mul_add(DEQUANT, bias[j]).clamp(0.0, 1.0);
-            out[j] = clipped * clipped;
-        }
-        out
+        // Explicit dequant+SCReLU kernel (perf study #4 item #2a); the scalar
+        // backend is the loop that used to live here — bit-identical.
+        l1_dequant(out, &pre, bias, DEQUANT);
     }
 
     /// Dense f32[L2]→f32[L3], bias-seeded FMA then SCReLU (step 4). The
     /// i-outer/j-inner order is load-bearing: it pins the accumulation order.
-    /// Per-bucket block + per-row fixed-size slices (hoisted out of the loop)
-    /// let LLVM vectorize the 32-wide j-FMA: the flat `l2_weights[wbase + i*L3
-    /// + j]` load with a runtime bucket kept a bounds-check panic edge on every
-    /// element and forced fully-scalar `vfmadd*ss` (~10% of eval runtime + 28%
-    /// of I1 misses; profiling-study §4.2). j-lane vectorization preserves each
-    /// `out[j]`'s sequential accumulation over i ⇒ bit-identical.
-    #[allow(clippy::needless_range_loop)]
+    /// Now an explicit dispatched kernel (perf study #4 item #2a — at D47
+    /// dims this is 4096 FMAs/eval, the last autovectorized hot path; the
+    /// AVX-512 backend holds the whole L3 row in two zmm accumulators with
+    /// one broadcast + two FMAs per i). The scalar backend is the loop that
+    /// used to live here — j-lane order and per-lane i-sequential
+    /// accumulation preserved ⇒ bit-identical.
     fn propagate_l2(&self, l1: &[f32; L2], bucket: usize) -> [f32; L3] {
         let mut out = [0.0f32; L3];
         let bb = bucket * L3;
-        out.copy_from_slice(&self.l2_biases[bb..bb + L3]);
+        let bias: &[f32; L3] = self.l2_biases[bb..bb + L3]
+            .try_into()
+            .expect("l2 bias block");
         let wbase = bucket * L2 * L3;
         let wblock: &[f32; L2 * L3] = self.l2_weights[wbase..wbase + L2 * L3]
             .try_into()
             .expect("l2 weight block");
-        for i in 0..L2 {
-            let row: &[f32; L3] = wblock[i * L3..i * L3 + L3]
-                .try_into()
-                .expect("l2 weight row");
-            let li = l1[i];
-            for j in 0..L3 {
-                out[j] = row[j].mul_add(li, out[j]);
-            }
-        }
-        for v in &mut out {
-            let clipped = v.clamp(0.0, 1.0);
-            *v = clipped * clipped;
-        }
+        l2_tail(&mut out, l1, wblock, bias);
         out
     }
 
@@ -305,24 +291,32 @@ impl SotaHead {
         stm: Color,
         piece_count: usize,
     ) -> (i32, Option<f32>, Option<[f32; 3]>) {
-        self.forward_full(pst, threat, stm, piece_count).0
+        let mut l1 = [0.0f32; L2];
+        self.forward_into(pst, threat, stm, piece_count, &mut l1)
     }
 
-    /// [`forward`](Self::forward) plus the shared-bottleneck activation (the
-    /// L2 output the D47 policy head dots against). The extra return is a
-    /// plain array copy; callers that don't need it use `forward`.
-    pub fn forward_full(
+    /// [`forward`](Self::forward), writing the shared-bottleneck activation
+    /// (the L2-wide output the D47 policy head dots against) into `l1_out` —
+    /// an out-param so the policy stash lands directly in the caller's slot
+    /// with no by-value copy and no discarded return on the `forward` path
+    /// (perf study #4 item #5; the pre-restructure `forward` called
+    /// `forward_full(...).0` and threw the 512 B array away).
+    pub fn forward_into(
         &self,
         pst: &[[i16; L1]; 2],
         threat: &[[i16; L1]; 2],
         stm: Color,
         piece_count: usize,
-    ) -> ((i32, Option<f32>, Option<[f32; 3]>), [f32; L2]) {
-        let ft = activate_ft(pst, threat, stm);
-        let (nnz, count) = find_nnz(&ft);
+        l1_out: &mut [f32; L2],
+    ) -> (i32, Option<f32>, Option<[f32; 3]>) {
+        let mut ft = [0u8; L1];
+        activate_ft(pst, threat, stm, &mut ft);
+        let mut nnz = [0u16; L1 / 4];
+        let count = find_nnz(&ft, &mut nnz);
         let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
-        let l1 = self.propagate_l1(&ft, &nnz[..count], bucket);
-        let l2 = self.propagate_l2(&l1, bucket);
+        self.propagate_l1(&ft, &nnz[..count], bucket, l1_out);
+        let l1 = l1_out;
+        let l2 = self.propagate_l2(l1, bucket);
         let l3 = self.propagate_l3(&l2, bucket);
         let value = (l3 * self.network_scale as f32) as i32;
         // σ̂ = exp(½·logσ²). Guard against a non-finite result (only reachable
@@ -349,7 +343,7 @@ impl SotaHead {
             probs.iter_mut().for_each(|p| *p /= sum);
             probs.iter().all(|p| p.is_finite()).then_some(probs)
         });
-        ((value, sigma, wdl), l1)
+        (value, sigma, wdl)
     }
 }
 
@@ -372,7 +366,8 @@ mod tests {
         let mut head = synth_head();
         head.l1_weights.fill(0);
         head.l1_biases.fill(0.5);
-        let l1 = head.propagate_l1(&[0; L1], &[], 0);
+        let mut l1 = [0.0f32; L2];
+        head.propagate_l1(&[0; L1], &[], 0, &mut l1);
         assert_eq!(l1, [0.25; L2]);
 
         head.l2_weights.fill(0.0);
@@ -436,13 +431,15 @@ mod tests {
         const H: usize = L1 / 2;
         pst[0][H] = 200;
         threat[0][H] = 16; // rescaled to 64, so right sum = 264 → clamp 255
-        let ft = activate_ft(&pst, &threat, Color::White);
+        let mut ft = [0u8; L1];
+        activate_ft(&pst, &threat, Color::White, &mut ft);
         // (150 * 255) >> 9 = 38250 >> 9 = 74
         assert_eq!(ft[0], 74, "pairwise clamp+shift");
         // a negative sum clamps to 0 → product 0
         let mut pst2 = [[0i16; L1]; 2];
         pst2[0][1] = -500;
-        let ft2 = activate_ft(&pst2, &threat, Color::White);
+        let mut ft2 = [0u8; L1];
+        activate_ft(&pst2, &threat, Color::White, &mut ft2);
         assert_eq!(ft2[1], 0, "negative clamps to 0");
     }
 
@@ -452,10 +449,13 @@ mod tests {
     fn sparse_l1_equals_dense() {
         let head = synth_head();
         let (pst, threat) = synth_accs();
-        let ft = activate_ft(&pst, &threat, Color::White);
-        let (nnz, count) = find_nnz(&ft);
+        let mut ft = [0u8; L1];
+        activate_ft(&pst, &threat, Color::White, &mut ft);
+        let mut nnz = [0u16; L1 / 4];
+        let count = find_nnz(&ft, &mut nnz);
         let bucket = 3;
-        let sparse = head.propagate_l1(&ft, &nnz[..count], bucket);
+        let mut sparse = [0.0f32; L2];
+        head.propagate_l1(&ft, &nnz[..count], bucket, &mut sparse);
         // Dense: iterate every group with the same mathematical i32 dot.
         let mut pre = [0i32; L2];
         let wb = &head.l1_weights[bucket * L2 * L1..bucket * L2 * L1 + L2 * L1];

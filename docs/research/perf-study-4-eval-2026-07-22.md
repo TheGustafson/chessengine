@@ -437,3 +437,70 @@ vs script baseline) → #4 → #3 → T10 measurement gate → T10 training →
 - threat_index LazyLock-per-event: `src/eval/nnue/sota_features.rs:324-348`.
 - Net artifact: `data/nnue/nets/d47c-sb*.cenn` = 136,843,872 B; `.cpol` =
   245,268 B (= 12 + 1858·128 + 1858·4 ✓).
+<<<<<<< HEAD
+=======
+
+---
+
+## Appendix B — IMPLEMENTATION RESULTS (packages 2-5, 2026-07-23)
+
+Implemented on branch `worktree-agent-a7e7069d489335126` (baseline sync
+`32e0a9c` = ee12507 + the uncommitted d47c tree this study modeled). All
+four packages landed **bit-identical**: nnue-eval byte-parity on 800 FENs
+(cp + policy-argmax columns) for d47c-stage2-sb240 AND d47c-sb240, on both
+the x86-64-v3 and native builds; depth-12 bench-with-net node fingerprint
+4297837 unchanged; default depth-6 bench 701605 unchanged; package 4
+additionally passed a 100-game fixed-node (5k) PGN-identity oracle with the
+.cpol live (old-vs-old reference match == old-vs-new match, 100/100
+identical move sequences). `d40-uho-v1-240sb` is NOT loadable at d47c dims
+(loader: acc_width 768 != 1280), so the two d47c nets are the full loadable
+parity set.
+
+NPS method: `bench 16 1 12 default depth <net>` (net + .cpol live),
+native build, adjacent-pair interleaved A/B (before/after alternating per
+round) so box drift cancels. Study #5's pinned-workload re-measurement of
+the first two commits is the cross-check (its §11).
+
+| package | commit | landed | dropped (with evidence) | paired NPS |
+|---|---|---|---|---|
+| 5 copy elim | `9b695fb` | out-params (activate_ft/find_nnz/propagate_l1), forward-discard fix, Finny in-place | — | ~neutral in my contended window; **+3.7% on study #5's pinned re-measure** (my claim was undersold) |
+| 3 threats | `a3f892e` | ThreatResolver (LazyLock/orientation hoist), cancel-scan DELETED, resolve-all-then-fold, null-move alias (both stacks), empty-span copy | **prefetch: measured a LOSS** (full-row −2.5%, 2-line −0.4%); span merge (spans 1.34, forfeits sibling memoization) | +2.5% my A/B; **+0.3%±1 on study #5's workload** — treat as ~+0-2%, workload-dependent |
+| 2 head kernels | `b46c026` | l1_dot group-outer (8 zmm accs), explicit l1_dequant + l2_tail kernels (scalar/avx2+fma/avx512), static dispatch on compile-time AVX-512, VBMI2 find_nnz | l1_dot next-group prefetch (−0.3%, L2-resident table) | **+21.4%** (397.3k → 482.1k) |
+| 4 policy | `3555f57` | stash de-Box (inline array + valid flag), vectorized policy_dot (fixed 16-lane+tree shape) | **consultable-node stash gating BACKED OUT** (below); second-generate_legal removal (consult = 1.53% cycles total, study #5 §5 — not worth a MovePicker restructure) | +2.2% (477.8k → 488.1k) |
+
+**Total: 383.7k → 495.3k on the shared-conditions final A/B = +29%** vs the
+same-source baseline binary (5 adjacent pairs, all +28.5..29.1%). Absolute
+quiet-box ladder (native, bench-d12 median-of-3): PSQT 3.71M; stage2+cpol
+495k; stage2 no-cpol 540k (the sidecar tax ≈ 8-9% on this workload);
+stage1+cpol 534k.
+
+### Findings that change this study's ranking
+
+1. **§3.6's central premise is REFUTED: the consult gate is NOT knowable at
+   stash time.** Two mechanisms, both measured on the bench fingerprint:
+   (a) the hindsight adjustments mutate `depth` between the step-6 eval and
+   the step-9 consult (a depth-conditional hint moved the tree 4.30M →
+   5.25M nodes); (b) the consult regularly consumes stashes left by OTHER
+   evals of the same position — razoring/qsearch stand-pat at the node,
+   TT-eval-served re-visits — so even a tt-move-only hint is functional
+   (4.30M → 2.54M). Any conditional stash is a search change and must be
+   Elo-tested, not slipped into a "bit-identical" package. The de-Box half
+   stands alone and is free.
+2. **Software prefetch lost everywhere it was tried on this box** (threat
+   rows: full-row −2.5%, 2-line −0.4%; l1_dot next-group −0.3%). Zen 4's
+   HW prefetchers + OoO window already cover these access patterns.
+   Item #3's headline mechanism and item #2(b)'s prefetch rider are dead;
+   what survived of package 3 was the constant-factor hoists (~+0-2%).
+3. **Package 2 was under-priced ~2× (+6-12% claimed, +21% measured)** —
+   consistent with study #5's measured 48.5%-of-cycles head and its mca
+   3.0× l1_dot bound. The gain needs NO static dispatch: the v3 build
+   (runtime-dispatched) gained ~+24% too; the loop-order swap + explicit
+   f32 tail kernels dominate.
+4. The cancel scan almost never cancels: **0.48% of events** (106.5M events
+   → 0.51M cancels on bench-with-net). SF-style fold-both-ways is strictly
+   better here; the O(n²) scan is deleted.
+5. Study #5 (measured, `perf-study-5-measured-2026-07-23.md`) supersedes
+   this study's §3 cost model: head 48.5% / threats 12.4% / policy ~2-3.5%
+   +6.2% tree. Its §11 independently confirmed bit-identity of the first
+   two commits and re-priced them (+3.7% / +0.3%).
+>>>>>>> worktree-agent-a7e7069d489335126

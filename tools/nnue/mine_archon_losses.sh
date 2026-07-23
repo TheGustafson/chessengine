@@ -22,10 +22,11 @@
 #   # then WDL-merge mined.tsv by FEN + bf-convert (see build_corpus_from_shards.sh).
 set -uo pipefail
 cd "$(dirname "$0")/../.."
-ROUNDS="${1:?rounds}"; CONC="${2:?concurrency}"; WORK="${3:?workdir}"; LIMIT="${4:-nodes=40000}"
-ARCHON=engines/bin/probe-sota
-SF18=engines/stockfish-18-src/src/stockfish
-BOOK=data/nnue/openings/UHO_Lichess_4852_v1.epd
+ROUNDS="${1:?rounds}"; CONC="${2:?concurrency}"; WORK="${3:?workdir}"; LIMIT="${4:-nodes=20000}"
+ARCHON=engines/bin/archon-sota-native
+NET=data/nnue/nets/d40-uho-720sb.cenn
+SF18=engines/bin/stockfish18
+BOOK=engines/books/UHO_Lichess_4852_v1.epd
 FC=engines/bin/fastchess
 mkdir -p "$WORK"
 PGN="$WORK/games.pgn"
@@ -37,15 +38,17 @@ done
 
 say "fastchess: ARCHON vs SF18, $ROUNDS rounds x2, conc=$CONC, limit=$LIMIT"
 "$FC" \
-  -engine cmd="$ARCHON" name=ARCHON \
+  -engine cmd="$ARCHON" name=ARCHON option.EvalFile="$NET" \
   -engine cmd="$SF18" name=SF18 \
   -each "$LIMIT" option.Hash=64 option.Threads=1 \
   -openings file="$BOOK" format=epd order=random \
   -rounds "$ROUNDS" -games 2 -repeat -concurrency "$CONC" \
+  -resign movecount=4 score=500 twosided=true -draw movenumber=40 movecount=8 score=10 \
   -pgnout file="$PGN" notation=uci \
   -recover >> "$WORK/fastchess.log" 2>&1
 say "games -> $PGN ($(grep -c '^\[Event' "$PGN" 2>/dev/null || echo 0) games)"
 
 say "extracting ARCHON-loss decision points"
-uv run python tools/nnue/pgn_mine_losses.py "$PGN" --archon-name ARCHON --out "$WORK/mined.tsv"
+# keep ALL positions (no eval/loss filtering — data-hungry; SF18 labels every one)
+uv run --no-project --with chess python tools/nnue/pgn_extract_all.py "$PGN" --out "$WORK/mined.tsv" --min-ply 0
 say "DONE: $WORK/mined.tsv ($(wc -l < "$WORK/mined.tsv" 2>/dev/null || echo 0) positions). Deep-label next (see header)."

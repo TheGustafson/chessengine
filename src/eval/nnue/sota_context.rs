@@ -71,10 +71,24 @@ pub struct SotaContext {
     /// [`last_wdl`](Self::last_wdl) for the decisiveness / optimism consumers.
     last_wdl: Option<[f32; 3]>,
     /// D47: the shared-bottleneck (L2) activation of the most recent full
+<<<<<<< HEAD
     /// forward, stashed ONLY when a policy head is active — the policy
     /// scorer dots legal-move rows against it. Same freshness contract as
     /// `last_sigma`/`last_wdl` (invalidated when the full forward didn't run).
     last_l2: Option<Box<[f32; super::sota_head::L2]>>,
+=======
+    /// forward — the policy scorer dots legal-move rows against it. Inline
+    /// storage + validity flag (perf study #4 item #4): the old
+    /// `Option<Box<...>>` form was a heap allocation + 512 B copy per
+    /// evaluated node — measured at 1.00 alloc/eval, 99.93% of all search
+    /// temporaries (study #5 §3) — and the only allocation on the eval hot
+    /// path. `forward_into` now writes this buffer directly.
+    last_l2: [f32; super::sota_head::L2],
+    /// Whether [`last_l2`](Self::last_l2) holds the most recent eval's
+    /// activation. Same freshness contract as `last_sigma`/`last_wdl`
+    /// (cleared when the full forward didn't run or didn't stash).
+    last_l2_valid: bool,
+>>>>>>> worktree-agent-a7e7069d489335126
     /// Zobrist key of the position `last_l2` belongs to — the per-node
     /// freshness stamp. A node that skipped `evaluate()` (in-check, TT-served
     /// eval) would otherwise read ANOTHER position's activation: silent
@@ -179,7 +193,12 @@ impl SotaContext {
             threats: ThreatContext::new(&net.threat_weights),
             last_sigma: None,
             last_wdl: None,
+<<<<<<< HEAD
             last_l2: None,
+=======
+            last_l2: [0.0; super::sota_head::L2],
+            last_l2_valid: false,
+>>>>>>> worktree-agent-a7e7069d489335126
             last_l2_key: 0,
             smallnet,
             smallnet_halfka,
@@ -216,7 +235,12 @@ impl SotaContext {
             threats: ThreatContext::new(&net.threat_weights),
             last_sigma: None,
             last_wdl: None,
+<<<<<<< HEAD
             last_l2: None,
+=======
+            last_l2: [0.0; super::sota_head::L2],
+            last_l2_valid: false,
+>>>>>>> worktree-agent-a7e7069d489335126
             last_l2_key: 0,
             smallnet: Some(smallnet),
             smallnet_halfka: Some(HalfkaContext::new(
@@ -247,7 +271,12 @@ impl SotaContext {
             threats: ThreatContext::new(&net.threat_weights),
             last_sigma: None,
             last_wdl: None,
+<<<<<<< HEAD
             last_l2: None,
+=======
+            last_l2: [0.0; super::sota_head::L2],
+            last_l2_valid: false,
+>>>>>>> worktree-agent-a7e7069d489335126
             last_l2_key: 0,
             smallnet: None,
             smallnet_halfka: None,
@@ -286,14 +315,25 @@ impl SotaContext {
     pub fn invalidate_sigma(&mut self) {
         self.last_sigma = None;
         self.last_wdl = None;
+<<<<<<< HEAD
         self.last_l2 = None;
+=======
+        self.last_l2_valid = false;
+>>>>>>> worktree-agent-a7e7069d489335126
     }
 
     /// D47: the shared-bottleneck activation from the most recent full
     /// forward (fresh-eval-only, like `last_wdl`). `None` when no policy head
+<<<<<<< HEAD
     /// is active or the last eval took a cheap path.
     pub fn last_l2(&self) -> Option<&[f32; super::sota_head::L2]> {
         self.last_l2.as_deref()
+=======
+    /// is active, the stash wasn't requested, or the last eval took a cheap
+    /// path.
+    pub fn last_l2(&self) -> Option<&[f32; super::sota_head::L2]> {
+        self.last_l2_valid.then_some(&self.last_l2)
+>>>>>>> worktree-agent-a7e7069d489335126
     }
 
     /// D47 per-node accessor: the activation ONLY if it belongs to exactly
@@ -301,11 +341,15 @@ impl SotaContext {
     /// the search's policy ordering must use — a stale activation from a
     /// different node scores garbage silently.
     pub fn last_l2_for(&self, board: &crate::Board) -> Option<&[f32; super::sota_head::L2]> {
+<<<<<<< HEAD
         if self.last_l2_key == board.key() {
             self.last_l2.as_deref()
         } else {
             None
         }
+=======
+        (self.last_l2_valid && self.last_l2_key == board.key()).then_some(&self.last_l2)
+>>>>>>> worktree-agent-a7e7069d489335126
     }
 
     /// The net this context evaluates against.
@@ -387,7 +431,11 @@ impl SotaContext {
                 // since the uncertainty consumers no-op on decided positions.
                 self.last_sigma = None;
                 self.last_wdl = None;
+<<<<<<< HEAD
                 self.last_l2 = None;
+=======
+                self.last_l2_valid = false;
+>>>>>>> worktree-agent-a7e7069d489335126
                 return small_value;
             }
         }
@@ -396,11 +444,29 @@ impl SotaContext {
         let threat = self.threats.at(ply);
         let (value, sigma, wdl) = if super::active_policy_head().is_some() {
             // D47: the policy scorer needs the shared-bottleneck activation of
+<<<<<<< HEAD
             // this exact position; stash it (1 KiB copy) only when a head is
             // loaded so headless builds/runs pay nothing.
             let ((value, sigma, wdl), l2) =
                 self.net.head.forward_full(pst, threat, stm, piece_count);
             self.last_l2 = Some(Box::new(l2));
+=======
+            // this exact position; stash it (inline buffer, no Box, no heap
+            // traffic — perf study #4 item #4's de-Box half) whenever a head
+            // is loaded, so headless builds/runs pay nothing. NOT gated on a
+            // consultable-node hint: the consult regularly consumes stashes
+            // left by OTHER evals of the same position (razoring/qsearch
+            // stand-pat at this node, TT-eval-served re-visits), so any
+            // stash-time gating is functional — measured as ±20% bench tree
+            // swings; the study's "both gate conditions are knowable before
+            // evaluate" premise is refuted (hindsight also mutates depth
+            // between the eval and the consult).
+            let (value, sigma, wdl) =
+                self.net
+                    .head
+                    .forward_into(pst, threat, stm, piece_count, &mut self.last_l2);
+            self.last_l2_valid = true;
+>>>>>>> worktree-agent-a7e7069d489335126
             self.last_l2_key = board.key();
             (value, sigma, wdl)
         } else {

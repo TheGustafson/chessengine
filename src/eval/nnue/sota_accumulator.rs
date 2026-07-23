@@ -51,8 +51,7 @@ impl<'a> HalfkaContext<'a> {
 
     pub(crate) fn refresh_root(&mut self, board: &Board) {
         for perspective in Color::ALL {
-            let acc = self.finny_refresh(board, perspective);
-            self.stack[0].acc[perspective as usize] = acc;
+            self.finny_refresh_into(board, perspective, 0);
         }
         self.stack[0].dirty = DirtyPiece::EMPTY;
         self.stack[0].computed = [true; 2];
@@ -64,10 +63,26 @@ impl<'a> HalfkaContext<'a> {
     }
 
     pub(crate) fn current(&mut self, board: &Board, ply: usize) -> &[[i16; ACC]; 2] {
-        for perspective in Color::ALL {
-            self.compute(board, ply, perspective);
+        // Null-move alias (perf study #4 item #3, mirrored from the threat
+        // stack): an EMPTY dirty record's "fold" is a pure 2×2.5 KB parent
+        // copy — hand back the parent's accumulator instead. Sound because a
+        // null move changes no placement (identical features, identical king
+        // squares), so the parent entry IS this ply's accumulator. Only
+        // fully-unfolded EMPTY entries alias; partially-computed ones (a
+        // one-sided span fold passed through) are materialized and used as-is.
+        let mut target = ply;
+        while target > 0
+            && !self.stack[target].computed[0]
+            && !self.stack[target].computed[1]
+            && self.stack[target].dirty.adds().is_empty()
+            && self.stack[target].dirty.subs().is_empty()
+        {
+            target -= 1;
         }
-        &self.stack[ply].acc
+        for perspective in Color::ALL {
+            self.compute(board, target, perspective);
+        }
+        &self.stack[target].acc
     }
 
     fn compute(&mut self, board: &Board, ply: usize, perspective: Color) {
@@ -87,7 +102,7 @@ impl<'a> HalfkaContext<'a> {
                 .iter()
                 .any(|&(piece, _)| piece == king)
         }) {
-            self.stack[ply].acc[p] = self.finny_refresh(board, perspective);
+            self.finny_refresh_into(board, perspective, ply);
             self.stack[ply].computed[p] = true;
             return;
         }
@@ -97,20 +112,32 @@ impl<'a> HalfkaContext<'a> {
             let dirty = self.stack[child].dirty;
             // Fused parent→child fold: read parent lanes, apply deltas, write
             // child lanes in one pass — no separate ~1.5 KB memmove (opt #2).
+            // An EMPTY record inside a span (a null move on the fold path)
+            // degenerates to the plain parent copy without the kernel call.
             let (before, after) = self.stack.split_at_mut(child);
-            apply_dirty_into(
-                weights,
-                &mut after[0].acc[p],
-                &before[child - 1].acc[p],
-                &dirty,
-                perspective,
-                king_square,
-            );
+            if dirty.adds().is_empty() && dirty.subs().is_empty() {
+                after[0].acc[p] = before[child - 1].acc[p];
+            } else {
+                apply_dirty_into(
+                    weights,
+                    &mut after[0].acc[p],
+                    &before[child - 1].acc[p],
+                    &dirty,
+                    perspective,
+                    king_square,
+                );
+            }
             after[0].computed[p] = true;
         }
     }
 
-    fn finny_refresh(&mut self, board: &Board, perspective: Color) -> [i16; ACC] {
+    /// Finny-cached from-scratch refresh, written **in place** (perf study #4
+    /// item #5): the cache entry's accumulator is updated where it lives and
+    /// then copied ONCE into `stack[ply].acc[perspective]` — the old by-value
+    /// form round-tripped the ~2.5 KB accumulator through a local plus a fresh
+    /// `FinnyEntry` (~4 copies per refresh). Same deltas, same kernel, same
+    /// arithmetic ⇒ bit-identical cache and stack contents.
+    fn finny_refresh_into(&mut self, board: &Board, perspective: Color, ply: usize) {
         let king = board.king_square(perspective);
         let key = halfka_king_key(perspective, king);
         let mut features = [0u16; 32];
@@ -122,9 +149,9 @@ impl<'a> HalfkaContext<'a> {
         }
         features[..len].sort_unstable();
 
+        let weights = self.weights;
         let slot = &mut self.cache[perspective as usize * FINNY_KEYS + key];
-        let acc = if let Some(cached) = slot.as_ref() {
-            let mut acc = cached.acc;
+        if let Some(cached) = slot.as_mut() {
             let mut adds = [0usize; 32];
             let mut add_len = 0;
             let mut subs = [0usize; 32];
@@ -144,8 +171,11 @@ impl<'a> HalfkaContext<'a> {
                     add_len += 1;
                 }
             }
-            apply_i16_deltas(&mut acc, self.weights, &adds[..add_len], &subs[..sub_len]);
-            acc
+            apply_i16_deltas(&mut cached.acc, weights, &adds[..add_len], &subs[..sub_len]);
+            // Keep the cache's feature list bit-identical even if an exotic
+            // illegal position somehow contains duplicate feature ids.
+            cached.features = features;
+            cached.len = len as u8;
         } else {
             let mut acc = [0i16; ACC];
             acc.copy_from_slice(&self.bias[..ACC]);
@@ -153,18 +183,15 @@ impl<'a> HalfkaContext<'a> {
             for (dst, &feature) in adds.iter_mut().zip(&features[..len]) {
                 *dst = feature as usize;
             }
-            apply_i16_deltas(&mut acc, self.weights, &adds[..len], &[]);
-            acc
-        };
-        // Keep the cache's accumulator bit-identical even if an exotic illegal
-        // position somehow contains duplicate feature ids.
-        let entry = FinnyEntry {
-            acc,
-            features,
-            len: len as u8,
-        };
-        *slot = Some(entry);
-        acc
+            apply_i16_deltas(&mut acc, weights, &adds[..len], &[]);
+            *slot = Some(FinnyEntry {
+                acc,
+                features,
+                len: len as u8,
+            });
+        }
+        let cached = slot.as_ref().expect("slot filled above");
+        self.stack[ply].acc[perspective as usize] = cached.acc;
     }
 }
 

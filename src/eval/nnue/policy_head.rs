@@ -85,6 +85,7 @@ impl PolicyHead {
         }
     }
 
+<<<<<<< HEAD
     /// One selected row: `rows[id] · h + bias[id]`.
     #[inline]
     fn row_score(&self, id: usize, h: &[f32; L2]) -> f32 {
@@ -94,6 +95,21 @@ impl PolicyHead {
             acc += f32::from(*w) * x;
         }
         acc + self.bias[id]
+=======
+    /// One selected row: `rows[id] · h + bias[id]`, through the dispatched
+    /// [`policy_dot`](super::sota_simd::policy_dot) kernel (perf study #4
+    /// item #4 — the old serial element-order sum was a ~128-deep f32 add
+    /// dependency chain that could never vectorize). The kernel's fixed
+    /// 16-lane reduction rounds differently than that serial loop did; the
+    /// package's 100-game fixed-node PGN-identity oracle verified the change
+    /// non-functional before landing.
+    #[inline]
+    fn row_score(&self, id: usize, h: &[f32; L2]) -> f32 {
+        let row: &[i8; L2] = self.rows[id * L2..id * L2 + L2]
+            .try_into()
+            .expect("policy row");
+        super::sota_simd::policy_dot(row, h) + self.bias[id]
+>>>>>>> worktree-agent-a7e7069d489335126
     }
 
     /// The policy-argmax LEGAL move for `board`, scored against the fresh
