@@ -114,3 +114,20 @@ class the gate could silently break.
 Governing caveat: **data first.** A bigger/fancier net with nothing rich to learn from just
 overfits. The endgame is a differently-shaped net (T7/T8 + rich-data heads) that turns our
 search data into something no other engine has — but only once the data can fill it.
+
+## T11 — net-alone disagreement: EDA + head + allocation (user, 2026-07-23)
+Three-step program on the settled champion net:
+1. **Residual EDA**: one forward sweep over corpora/heldout computes
+   |stored_search_score − net_static_eval| for billions of rows at ~0 cost
+   (the corpus already carries the deep value). Bucket the worst residuals
+   by phase/material/structure/king-state: systematic clusters = v2
+   input/arch hypotheses (native feature discovery, not borrowing);
+   irreducible clusters = search's job, by design.
+2. **Disagreement head** (phase-5 head bank): frozen trunk, target =
+   the residual from (1). The dormant D40_UNC_HEAD sidecar seam in the
+   engine loader is the deployment path. Ships only via ON/OFF gates
+   (heads must EARN deployment — policy-sidecar lesson).
+3. **Allocation consumption** (first D41/design-19 experiment): search
+   harder where predicted disagreement is high — extension/reduction/TM
+   modulation; post-v1 unless probe numbers are startling. Same family
+   as T10's output-disagreement escalation, lifted to search allocation.
