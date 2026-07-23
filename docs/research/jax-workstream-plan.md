@@ -260,3 +260,17 @@ Endpoint step-8 is now execute-only:
   weights FILL AT ENDPOINT; placeholder split ≈59% new / 41% rehearsal.
 - Ops note: stage-4 janitor was found dead (another silent kill);
   swept manually at sb170 — keeps sb60/120 + last two, disk 19G→33G.
+
+## Screens-protocol finding (19:2x 2026-07-23, pre-endpoint)
+The engine auto-loads a sibling `.cpol` unconditionally (nnue/mod.rs:296;
+no option gate), and every packed candidate HAS one — so the v2 screen
+series AND the stage-3 300g gate ran candidate-WITH-sidecar vs
+base-WITHOUT. Not value-vs-value: each number carries the candidate's
+own sidecar state, which ROTS across pumps (top-1 23.4→20.0%), so the
+confound's sign is unknown and stage-dependent. Implications: (1) the
+"pump-3 bought ~0" read has an unquantified sidecar term; (2) tonight's
+endpoint battery strips .cpol from ALL sides (copies) — EMA-vs-LIVE,
+vs-stage3, vs-stage2 are the first clean cross-stage value-only deltas;
+(3) don't naively compare tonight's yardstick number to the old screen
+series; (4) sidecar worth stays a phase-5 question, measured by ON/OFF
+ablation + the top-1 probe, never mixed into value promotion gates.
