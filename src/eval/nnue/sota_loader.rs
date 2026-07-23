@@ -411,6 +411,8 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         network_scale,
         l3_var_weights: None,
         l3_var_biases: None,
+        l3_wdl_weights: None,
+        l3_wdl_biases: None,
     };
 
     Ok(SotaNetwork {
@@ -465,6 +467,42 @@ pub(crate) fn load_uncertainty_sidecar(head: &mut SotaHead) {
     head.l3_var_weights = Some(weights.into_boxed_slice());
     head.l3_var_biases = Some(biases.into_boxed_slice());
     eprintln!("D40_UNC_HEAD: loaded value-uncertainty head from {path:?}");
+}
+
+/// D41 rich-net: load the co-trained WDL head from a `D40_WDL_HEAD` sidecar (flat
+/// LE f32: `[3·L3]` weights row-major `[o·L3+j]`, o ∈ {L,D,W}, then `[3]` biases —
+/// the layout `tools/nnue/extract_head.py l3_wdl` writes). Absent env ⇒ no head
+/// (`wdl = None`) ⇒ bit-identical to today; the head is NOT in the CENN, so the
+/// value net is unchanged. Called once at net-load, beside `load_uncertainty_sidecar`.
+pub(crate) fn load_wdl_sidecar(head: &mut SotaHead) {
+    let Some(path) = std::env::var_os("D40_WDL_HEAD") else {
+        return;
+    };
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            eprintln!("D40_WDL_HEAD: cannot read {path:?}: {error}");
+            return;
+        }
+    };
+    let n_weights = 3 * L3;
+    let expected = (n_weights + 3) * 4;
+    if bytes.len() != expected {
+        eprintln!(
+            "D40_WDL_HEAD: {path:?} is {} bytes, expected {expected} \
+             ({n_weights} weights + 3 biases, f32) — ignoring",
+            bytes.len()
+        );
+        return;
+    }
+    let mut floats = bytes
+        .chunks_exact(4)
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]));
+    let weights: Vec<f32> = (&mut floats).take(n_weights).collect();
+    let biases: Vec<f32> = floats.take(3).collect();
+    head.l3_wdl_weights = Some(weights.into_boxed_slice());
+    head.l3_wdl_biases = Some(biases.into_boxed_slice());
+    eprintln!("D40_WDL_HEAD: loaded WDL head from {path:?}");
 }
 
 // ─── Serializer (tests + netpack cross-check) ──────────────────────────────
@@ -635,6 +673,8 @@ pub(crate) mod tests {
                 network_scale: 380,
                 l3_var_weights: None,
                 l3_var_biases: None,
+                l3_wdl_weights: None,
+                l3_wdl_biases: None,
             },
         }
     }

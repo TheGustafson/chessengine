@@ -165,7 +165,10 @@ fn bestmove(lines: &[String]) -> String {
 /// configured path.
 fn written_shard(configured: &Path) -> PathBuf {
     let dir = configured.parent().expect("temp dir");
-    let name = configured.file_name().and_then(|n| n.to_str()).expect("utf8 name");
+    let name = configured
+        .file_name()
+        .and_then(|n| n.to_str())
+        .expect("utf8 name");
     let stem = name.strip_suffix(".ceobs").expect(".ceobs temp path");
     let prefix = format!("{stem}.p");
     let mut hits: Vec<PathBuf> = std::fs::read_dir(dir)
@@ -177,7 +180,11 @@ fn written_shard(configured: &Path) -> PathBuf {
                 .is_some_and(|n| n.starts_with(&prefix) && n.ends_with(".ceobs"))
         })
         .collect();
-    assert_eq!(hits.len(), 1, "expected one pid-suffixed shard for {stem}: {hits:?}");
+    assert_eq!(
+        hits.len(),
+        1,
+        "expected one pid-suffixed shard for {stem}: {hits:?}"
+    );
     hits.pop().unwrap()
 }
 

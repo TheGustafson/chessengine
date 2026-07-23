@@ -44,8 +44,7 @@ static ZERO_THREAT: [[i16; ACC]; 2] = [[0; ACC]; 2];
 /// signed value keeps it a plain difference.
 #[inline]
 fn material_imbalance(board: &Board) -> Value {
-    let non_pawn =
-        board.non_pawn_material(Color::White) - board.non_pawn_material(Color::Black);
+    let non_pawn = board.non_pawn_material(Color::White) - board.non_pawn_material(Color::Black);
     let pawns = board.pieces(Color::White, PieceType::Pawn).count() as Value
         - board.pieces(Color::Black, PieceType::Pawn).count() as Value;
     non_pawn + pawns * PAWN_VALUE
@@ -66,6 +65,21 @@ pub struct SotaContext {
     ///
     /// [`evaluate`]: Self::evaluate
     last_sigma: Option<f32>,
+    /// D41 rich-net: the WDL probabilities [L,D,W] from the last full eval (same
+    /// carry-out-of-band pattern as [`last_sigma`](Self::last_sigma)); `None` when
+    /// the net has no WDL head or on the cheap smallnet path. Search/TM read it via
+    /// [`last_wdl`](Self::last_wdl) for the decisiveness / optimism consumers.
+    last_wdl: Option<[f32; 3]>,
+    /// D47: the shared-bottleneck (L2) activation of the most recent full
+    /// forward, stashed ONLY when a policy head is active — the policy
+    /// scorer dots legal-move rows against it. Same freshness contract as
+    /// `last_sigma`/`last_wdl` (invalidated when the full forward didn't run).
+    last_l2: Option<Box<[f32; super::sota_head::L2]>>,
+    /// Zobrist key of the position `last_l2` belongs to — the per-node
+    /// freshness stamp. A node that skipped `evaluate()` (in-check, TT-served
+    /// eval) would otherwise read ANOTHER position's activation: silent
+    /// ordering poison (convention-trap class). Checked by `last_l2_for`.
+    last_l2_key: u64,
     /// Smallnet gate (perf study #3 item #8): the cheap net used on DECIDED
     /// positions, or `None` when the gate is off (`ARCHON_SMALLNET` unset or
     /// `ARCHON_SMALLNET_THRESH` ≤ 0). When armed, [`evaluate`](Self::evaluate)
@@ -164,9 +178,16 @@ impl SotaContext {
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
             threats: ThreatContext::new(&net.threat_weights),
             last_sigma: None,
+            last_wdl: None,
+            last_l2: None,
+            last_l2_key: 0,
             smallnet,
             smallnet_halfka,
-            smallnet_thresh: if smallnet.is_some() { smallnet_thresh } else { 0 },
+            smallnet_thresh: if smallnet.is_some() {
+                smallnet_thresh
+            } else {
+                0
+            },
             smallnet_mat_gate,
             largenet,
             largenet_halfka,
@@ -194,6 +215,9 @@ impl SotaContext {
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
             threats: ThreatContext::new(&net.threat_weights),
             last_sigma: None,
+            last_wdl: None,
+            last_l2: None,
+            last_l2_key: 0,
             smallnet: Some(smallnet),
             smallnet_halfka: Some(HalfkaContext::new(
                 &smallnet.halfka_weights,
@@ -212,12 +236,19 @@ impl SotaContext {
     /// the σ̂ escalation threshold; the large net carries its own HalfKA + threats
     /// stacks (full-feature).
     #[cfg(test)]
-    fn new_with_large(net: &'static SotaNetwork, largenet: &'static SotaNetwork, sigma_gate: f32) -> Self {
+    fn new_with_large(
+        net: &'static SotaNetwork,
+        largenet: &'static SotaNetwork,
+        sigma_gate: f32,
+    ) -> Self {
         SotaContext {
             net,
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
             threats: ThreatContext::new(&net.threat_weights),
             last_sigma: None,
+            last_wdl: None,
+            last_l2: None,
+            last_l2_key: 0,
             smallnet: None,
             smallnet_halfka: None,
             smallnet_thresh: 0,
@@ -239,6 +270,13 @@ impl SotaContext {
         self.last_sigma
     }
 
+    /// D41 rich-net: the WDL probabilities [L,D,W] from the most recent
+    /// [`evaluate`](Self::evaluate), or `None` when the net has no WDL head / the
+    /// cheap smallnet path ran. Same carry-out-of-band contract as `last_sigma`.
+    pub fn last_wdl(&self) -> Option<[f32; 3]> {
+        self.last_wdl
+    }
+
     /// EXP-UNC-1: invalidate the cached σ̂ (set to `None`). Called at the top of
     /// [`super::super::evaluate`] so any eval path that does NOT run the SOTA
     /// forward this node (material-draw shortcut, a non-SOTA net) leaves σ̂ as
@@ -247,6 +285,27 @@ impl SotaContext {
     /// and root capture (reviewers A/C).
     pub fn invalidate_sigma(&mut self) {
         self.last_sigma = None;
+        self.last_wdl = None;
+        self.last_l2 = None;
+    }
+
+    /// D47: the shared-bottleneck activation from the most recent full
+    /// forward (fresh-eval-only, like `last_wdl`). `None` when no policy head
+    /// is active or the last eval took a cheap path.
+    pub fn last_l2(&self) -> Option<&[f32; super::sota_head::L2]> {
+        self.last_l2.as_deref()
+    }
+
+    /// D47 per-node accessor: the activation ONLY if it belongs to exactly
+    /// `board`'s position (Zobrist-stamped at stash time). This is the one
+    /// the search's policy ordering must use — a stale activation from a
+    /// different node scores garbage silently.
+    pub fn last_l2_for(&self, board: &crate::Board) -> Option<&[f32; super::sota_head::L2]> {
+        if self.last_l2_key == board.key() {
+            self.last_l2.as_deref()
+        } else {
+            None
+        }
     }
 
     /// The net this context evaluates against.
@@ -320,19 +379,35 @@ impl SotaContext {
                 (self.smallnet, self.smallnet_halfka.as_mut())
         {
             let small_pst = small_halfka.current(board, ply);
-            let (small_value, _) = small.head.forward(small_pst, &ZERO_THREAT, stm, piece_count);
+            let (small_value, _, _) = small
+                .head
+                .forward(small_pst, &ZERO_THREAT, stm, piece_count);
             if small_value.abs() >= thresh {
                 // Cheap path: no variance head, so σ̂ is unavailable — correct,
                 // since the uncertainty consumers no-op on decided positions.
                 self.last_sigma = None;
+                self.last_wdl = None;
+                self.last_l2 = None;
                 return small_value;
             }
         }
 
         let pst = self.halfka.current(board, ply);
         let threat = self.threats.at(ply);
-        let (value, sigma) = self.net.head.forward(pst, threat, stm, piece_count);
+        let (value, sigma, wdl) = if super::active_policy_head().is_some() {
+            // D47: the policy scorer needs the shared-bottleneck activation of
+            // this exact position; stash it (1 KiB copy) only when a head is
+            // loaded so headless builds/runs pay nothing.
+            let ((value, sigma, wdl), l2) =
+                self.net.head.forward_full(pst, threat, stm, piece_count);
+            self.last_l2 = Some(Box::new(l2));
+            self.last_l2_key = board.key();
+            (value, sigma, wdl)
+        } else {
+            self.net.head.forward(pst, threat, stm, piece_count)
+        };
         self.last_sigma = sigma;
+        self.last_wdl = wdl;
 
         // T-shirt gate LARGE tier: on a CRITICAL position — one the medium net is
         // least sure about (its EXP-UNC-1 σ̂ ≥ largenet_sigma_gate) — escalate to
@@ -353,9 +428,12 @@ impl SotaContext {
         {
             let large_pst = large_halfka.current(board, ply);
             let large_threat = large_threats.at(ply);
-            let (large_value, large_sigma) =
-                large.head.forward(large_pst, large_threat, stm, piece_count);
+            let (large_value, large_sigma, large_wdl) =
+                large
+                    .head
+                    .forward(large_pst, large_threat, stm, piece_count);
             self.last_sigma = large_sigma;
+            self.last_wdl = large_wdl;
             return large_value;
         }
         value
@@ -491,7 +569,10 @@ mod tests {
                 escalations += 1;
             }
         }
-        assert!(escalations > 0, "expected the large tier to actually escalate");
+        assert!(
+            escalations > 0,
+            "expected the large tier to actually escalate"
+        );
     }
 
     #[test]
@@ -713,16 +794,16 @@ mod tests {
         // Startpos is materially symmetric.
         assert_eq!(material_imbalance(&Board::startpos()), 0);
         // White up a full queen (black has no queen): positive, ≈ a queen's value.
-        let w_up = Board::from_fen("rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
-            .unwrap();
+        let w_up =
+            Board::from_fen("rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
         assert!(
             material_imbalance(&w_up) > 500,
             "white up a queen should read strongly positive, got {}",
             material_imbalance(&w_up)
         );
         // Black up a full rook: negative.
-        let b_up = Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/1NBQKBNR w Kkq - 0 1")
-            .unwrap();
+        let b_up =
+            Board::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/1NBQKBNR w Kkq - 0 1").unwrap();
         assert!(
             material_imbalance(&b_up) < -300,
             "black up a rook should read strongly negative, got {}",

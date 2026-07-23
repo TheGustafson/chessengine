@@ -274,7 +274,13 @@ fn cmd_nnue_eval_argv(args: &[String]) {
         #[cfg(feature = "sota")]
         {
             match nnue::sota_loader::load_v2_bytes(&raw) {
-                Ok(net) => LoadedNet::V2(Box::leak(Box::new(net))),
+                Ok(net) => {
+                    // D47: pick up a CPL1 policy sidecar beside the net.
+                    if nnue::install_policy_sidecar(std::path::Path::new(net_path)) {
+                        eprintln!("nnue-eval: policy sidecar active");
+                    }
+                    LoadedNet::V2(Box::leak(Box::new(net)))
+                }
                 Err(e) => exit_usage(format_args!("nnue-eval: {e}")),
             }
         }
@@ -341,7 +347,22 @@ fn cmd_nnue_eval_argv(args: &[String]) {
                 let ctx = sota_ctx.as_mut().unwrap();
                 ctx.refresh_root(&board);
                 let val = ctx.evaluate(&board, 0);
-                let _ = writeln!(out, "{val}");
+                // D47 learnability probe: with a CPL1 sidecar beside the net,
+                // append the policy-argmax move (plain cp output is unchanged
+                // for sidecar-less nets, so existing probe scripts keep parsing).
+                match (nnue::active_policy_head(), ctx.last_l2()) {
+                    (Some(head), Some(l2)) => match head.best_move(&board, l2) {
+                        Some(m) => {
+                            let _ = writeln!(out, "{val}\t{m}");
+                        }
+                        None => {
+                            let _ = writeln!(out, "{val}\t0000");
+                        }
+                    },
+                    _ => {
+                        let _ = writeln!(out, "{val}");
+                    }
+                }
             }
             #[cfg(feature = "sota")]
             LoadedNet::V3(_) => {
