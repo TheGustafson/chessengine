@@ -1479,6 +1479,21 @@ own `quantised.bin` layout; the packer (`tools/nnue/`) transcodes that → this
 CENN-v2 order at save time (task #28 reports bullet's exact tensor order; the
 table above is the loader-side contract that transcode must hit).
 
+**Optional PSQ1 trailer (T6c FT PSQT skip, 2026-07-23; authoritative contract:
+`jax/archon_jax/checkpoint.py`).** After the checksummed payload a CENN-v2 MAY
+carry `b"PSQ1" | u32 num_buckets (= out_buckets) | u32 rows |
+i32[rows·num_buckets]` row-major, `rows = halfka_dims + threat_dims` (HalfKA
+rows first; a no-threats net carries only the HalfKA rows). Rows are indexed by
+the engine's canonical feature indices (HalfKA `f` → row `f`, threat `t` → row
+`halfka_dims + t`). Stored values fold in `0.5·400·256`, so the head adds the
+unclamped linear channel `(psqt_stm[b] − psqt_ntm[b]) >> 8` cp (arithmetic
+shift) using its existing output bucket `b`. The accumulators (HalfKA stack +
+Finny cache, FullThreats stack) maintain the per-perspective `[i32; 8]` bucket
+sums incrementally over the same feature events. The section rides outside the
+header checksum, mirroring its position after the padded bullet quant stream
+(`netpack.py` passes it through verbatim); nets without it — and engines
+predating it — are byte-identical/bit-identical to pre-T6c behavior.
+
 ### 12.7 Trainer — bullet, extended
 
 bullet natively covers HalfKA + output buckets + pairwise + the mixed int8-FT/f32

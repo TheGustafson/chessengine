@@ -839,7 +839,13 @@ mod tests {
             l3_wdl_biases: None,
         };
         let piece_count = board.all_occupancy().count() as usize;
-        let (cp, _sigma, _wdl) = head.forward(&pst, &threat, Color::White, piece_count);
+        let (cp, _sigma, _wdl) = head.forward(
+            &pst,
+            &threat,
+            Color::White,
+            piece_count,
+            &super::super::sota_head::ZERO_PSQT,
+        );
         assert!(cp.abs() < 1_000_000, "finite centipawns");
     }
 }

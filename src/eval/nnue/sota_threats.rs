@@ -82,7 +82,9 @@
 //! [`refresh`](ThreatContext::refresh)-rebuild only the crossing side; the other
 //! side (and every non-king move) stays incremental.
 
-use super::sota_features::{ACC, THREAT_DIMS, ThreatResolver, refresh_threat};
+use super::sota_accumulator::{psqt_add, psqt_sub};
+use super::sota_features::{ACC, THREAT_DIMS, ThreatResolver, for_each_threat, refresh_threat};
+use super::sota_head::BUCKETS;
 use super::sota_simd::apply_i8_deltas_into;
 use crate::attacks::{
     attacks, bishop_attacks, knight_attacks, pawn_attacks, ray_pass, rook_attacks,
@@ -542,6 +544,23 @@ fn record_incoming_mutate(buf: &mut DeltaBuf, r: &Replay, old: Piece, new: Piece
     }
 }
 
+/// From-scratch FullThreats PSQT bucket sums for `perspective` (T6c skip):
+/// the sum of the 8-wide PSQ1 threat row of every active threat feature —
+/// the oracle the incremental fold must match. Zero when `table` is empty
+/// (legacy net, or a HalfKA-only psqt net).
+pub(crate) fn refresh_psqt_threat(
+    table: &[i32],
+    board: &Board,
+    perspective: Color,
+) -> [i32; BUCKETS] {
+    let mut out = [0i32; BUCKETS];
+    if table.is_empty() {
+        return out;
+    }
+    for_each_threat(board, perspective, |idx| psqt_add(&mut out, table, idx));
+    out
+}
+
 /// Does `color`'s king cross the d/e mirror boundary in this move? (If so,
 /// `color`'s threat accumulator must be rebuilt from scratch.)
 fn king_crossed(dp: &DirtyPiece, color: Color) -> bool {
@@ -579,6 +598,10 @@ const STACK_LEN: usize = MAX_PLY + 8;
 struct ThreatEntry {
     /// `[White, Black]` accumulator pair — valid only where `computed[p]`.
     acc: [[i16; ACC]; 2],
+    /// T6c PSQT bucket sums over the ACTIVE THREAT features, maintained by the
+    /// same fold events as `acc` (all-zero when the net carries no threat
+    /// PSQ1 rows). Valid where `computed[p]`, like `acc`.
+    psqt: [[i32; BUCKETS]; 2],
     /// The move that produced this entry, and the post-move board state its
     /// events regenerate against. Shared by both perspectives; a king-crossed
     /// perspective ignores them (it was refreshed from scratch eagerly at push).
@@ -595,6 +618,7 @@ impl Default for ThreatEntry {
     fn default() -> Self {
         ThreatEntry {
             acc: [[0i16; ACC]; 2],
+            psqt: [[0i32; BUCKETS]; 2],
             dp: DirtyPiece::EMPTY,
             snapshot: ThreatSnapshot::default(),
             computed: [false; 2],
@@ -621,6 +645,10 @@ impl Default for ThreatEntry {
 /// [`evaluate`]: super::sota_context::SotaContext::evaluate
 pub struct ThreatContext<'a> {
     weights: &'a [i8],
+    /// T6c PSQ1 rows for the THREAT feature space (`THREAT_DIMS · BUCKETS`
+    /// i32, row-major, indexed by the resolved threat feature index), or
+    /// empty ⇒ the skip channel is inert.
+    psqt_weights: &'a [i32],
     /// One lazily-folded entry per ply; `stack[0]` is the root. Indexed by
     /// absolute search ply and never truncated — a sibling simply overwrites its
     /// ply's entry — exactly like the HalfKA stack. Heap-allocated once.
@@ -643,11 +671,13 @@ pub struct ThreatContext<'a> {
 }
 
 impl<'a> ThreatContext<'a> {
-    /// A fresh context over `weights` (the `i8` FullThreats weight slice). Call
+    /// A fresh context over `weights` (the `i8` FullThreats weight slice) plus
+    /// the net's threat PSQ1 rows (`&[]` when it has none). Call
     /// [`refresh`](Self::refresh) to seed the root before any [`apply`](Self::apply).
-    pub fn new(weights: &'a [i8]) -> Self {
+    pub fn new(weights: &'a [i8], psqt_weights: &'a [i32]) -> Self {
         ThreatContext {
             weights,
+            psqt_weights,
             stack: vec![ThreatEntry::default(); STACK_LEN].into_boxed_slice(),
             buf: DeltaBuf::new(),
             add_scratch: [[0usize; DELTA_CAP]; 2],
@@ -668,10 +698,13 @@ impl<'a> ThreatContext<'a> {
         // ordinary FullThreats refresh path.
         if self.weights.is_empty() {
             self.stack[0].acc = [[0i16; ACC]; 2];
+            self.stack[0].psqt = [[0i32; BUCKETS]; 2];
         } else {
             let weights = self.weights;
+            let psqt_weights = self.psqt_weights;
             for (i, &persp) in Color::ALL.iter().enumerate() {
                 self.stack[0].acc[i] = refresh_threat(weights, board, persp);
+                self.stack[0].psqt[i] = refresh_psqt_threat(psqt_weights, board, persp);
             }
         }
         self.stack[0].computed = [true; 2];
@@ -685,10 +718,23 @@ impl<'a> ThreatContext<'a> {
         self.at(top)
     }
 
+    /// [`current`](Self::current) plus the T6c PSQT bucket sums (cursor form
+    /// of [`at_full`](Self::at_full)).
+    pub fn current_full(&mut self) -> (&[[i16; ACC]; 2], &[[i32; BUCKETS]; 2]) {
+        let top = self.top;
+        self.at_full(top)
+    }
+
     /// Accumulator at a search ply, folded lazily from the nearest computed
     /// ancestor. The search overwrites sibling plies rather than calling `undo`,
     /// so callers use this indexed form. Now `&mut self` (it may trigger a fold).
     pub fn at(&mut self, ply: usize) -> &[[i16; ACC]; 2] {
+        self.at_full(ply).0
+    }
+
+    /// [`at`](Self::at) plus the per-perspective T6c PSQT bucket sums of the
+    /// SAME entry (all-zero for a net without threat PSQ1 rows).
+    pub fn at_full(&mut self, ply: usize) -> (&[[i16; ACC]; 2], &[[i32; BUCKETS]; 2]) {
         // Null-move alias (perf study #4 item #3): an EMPTY dirty record's
         // "fold" is a pure 2×2.5 KB parent copy — hand back the parent's
         // accumulator instead of materializing the child. Only fully-unfolded
@@ -707,7 +753,8 @@ impl<'a> ThreatContext<'a> {
             target -= 1;
         }
         self.compute(target);
-        &self.stack[target].acc
+        let entry = &self.stack[target];
+        (&entry.acc, &entry.psqt)
     }
 
     /// Record (but do NOT fold) the move described by `dp` (made to reach
@@ -733,10 +780,12 @@ impl<'a> ThreatContext<'a> {
         debug_assert!(child < STACK_LEN, "ThreatContext ply {child} exceeds stack");
         self.top = child;
 
-        // HalfKA-only net: the threat channel is a constant all-zero accumulator.
-        // Inherit the (zero) parent and mark it computed — nothing to fold.
+        // HalfKA-only net: the threat channel is a constant all-zero accumulator
+        // (and all-zero PSQT sums). Inherit the (zero) parent and mark it
+        // computed — nothing to fold.
         if self.weights.is_empty() {
             self.stack[child].acc = self.stack[ply].acc;
+            self.stack[child].psqt = self.stack[ply].psqt;
             self.stack[child].computed = [true; 2];
             return;
         }
@@ -749,6 +798,7 @@ impl<'a> ThreatContext<'a> {
         self.stack[child].snapshot = ThreatSnapshot::from_board(board);
 
         let weights = self.weights;
+        let psqt_weights = self.psqt_weights;
         for (pi, &persp) in Color::ALL.iter().enumerate() {
             if king_crossed(dp, persp) {
                 // The perspective's king crossed the d/e mirror: its whole threat
@@ -758,6 +808,7 @@ impl<'a> ThreatContext<'a> {
                 // the common case stays fully lazy. The OTHER perspective still
                 // folds against the snapshot stored above.
                 self.stack[child].acc[pi] = refresh_threat(weights, board, persp);
+                self.stack[child].psqt[pi] = refresh_psqt_threat(psqt_weights, board, persp);
                 self.stack[child].computed[pi] = true;
             } else {
                 self.stack[child].computed[pi] = false;
@@ -787,6 +838,7 @@ impl<'a> ThreatContext<'a> {
             }
         }
         let weights = self.weights;
+        let psqt_weights = self.psqt_weights;
         for child in (anc[0].min(anc[1]) + 1)..=ply {
             let need = [
                 child > anc[0] && !self.stack[child].computed[0],
@@ -813,6 +865,14 @@ impl<'a> ThreatContext<'a> {
             // row streams — so the pipeline keeps only the resolve/fold split
             // and the constant-factor hoists.
             let mut lens = [(0usize, 0usize); 2];
+            // T6c: the psqt bucket-sum DELTA (Σ add rows − Σ sub rows) is
+            // accumulated during resolve — the row loads (one random 32 B line
+            // per event in the 2.7 MB PSQ1 table) overlap the per-event
+            // resolution compute in the OoO window instead of serializing as
+            // a second walk after the big fold. Phase 2 then applies
+            // `child = parent + delta` (8 adds). Zero when the net has no
+            // threat PSQ1 rows.
+            let mut psqt_deltas = [[0i32; BUCKETS]; 2];
             for (p, &needs_fold) in need.iter().enumerate() {
                 if !needs_fold {
                     continue;
@@ -824,30 +884,45 @@ impl<'a> ThreatContext<'a> {
                     &mut self.add_scratch[p],
                     &mut self.sub_scratch[p],
                     &resolver,
+                    psqt_weights,
+                    &mut psqt_deltas[p],
                 );
             }
             // Phase 2 — fused parent→child folds (opt #2): read parent lanes,
             // apply deltas, write child lanes in one pass. Paid only for
             // evaluated plies. An empty delta list (a null move) degenerates
-            // to the plain parent copy without touching the kernel.
+            // to the plain parent copy without touching the kernel. The T6c
+            // PSQT sums fold over the SAME resolved index lists, so the skip
+            // channel cannot drift from the accumulator.
             for (p, &needs_fold) in need.iter().enumerate() {
                 if !needs_fold {
                     continue;
                 }
                 let (add_len, sub_len) = lens[p];
                 let (before, after) = self.stack.split_at_mut(child);
+                let parent = &before[child - 1];
+                let entry = &mut after[0];
                 if add_len == 0 && sub_len == 0 {
-                    after[0].acc[p] = before[child - 1].acc[p];
+                    entry.acc[p] = parent.acc[p];
+                    entry.psqt[p] = parent.psqt[p];
                 } else {
                     apply_i8_deltas_into(
-                        &mut after[0].acc[p],
-                        &before[child - 1].acc[p],
+                        &mut entry.acc[p],
+                        &parent.acc[p],
                         weights,
                         &self.add_scratch[p][..add_len],
                         &self.sub_scratch[p][..sub_len],
                     );
+                    // T6c: apply the resolve-time psqt delta (zero for a
+                    // psqt-less net, so this is `parent + 0` — the copy).
+                    for (dst, (&src, &d)) in entry.psqt[p]
+                        .iter_mut()
+                        .zip(parent.psqt[p].iter().zip(psqt_deltas[p].iter()))
+                    {
+                        *dst = src + d;
+                    }
                 }
-                after[0].computed[p] = true;
+                entry.computed[p] = true;
             }
         }
     }
@@ -886,23 +961,46 @@ impl<'a> ThreatContext<'a> {
 /// per-event O(n²) scan bought its extra row-folds back at a measured **0.48%
 /// of events** (bench-with-net, 106.5M events → 0.51M cancels) — ~1 pair per
 /// 12 perspective-folds — while its opposite-list walk taxed all 100%.
+/// T6c: when `psqt_table` is non-empty, the psqt bucket-sum delta
+/// (Σ add rows − Σ sub rows) is accumulated into `psqt_delta` as events
+/// resolve — see the phase-1 comment in [`ThreatContext::compute`]. The
+/// legacy path (empty table) keeps its original loop untouched.
 fn resolve_into(
     events: &[ThreatDelta],
     adds: &mut [usize],
     subs: &mut [usize],
     resolver: &ThreatResolver,
+    psqt_table: &[i32],
+    psqt_delta: &mut [i32; BUCKETS],
 ) -> (usize, usize) {
     let mut add_len = 0usize;
     let mut sub_len = 0usize;
-    for d in events {
-        if let Some(idx) = resolver.index(d.attacker, d.from, d.to, d.victim) {
-            debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
-            if d.add {
-                adds[add_len] = idx;
-                add_len += 1;
-            } else {
-                subs[sub_len] = idx;
-                sub_len += 1;
+    if psqt_table.is_empty() {
+        for d in events {
+            if let Some(idx) = resolver.index(d.attacker, d.from, d.to, d.victim) {
+                debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
+                if d.add {
+                    adds[add_len] = idx;
+                    add_len += 1;
+                } else {
+                    subs[sub_len] = idx;
+                    sub_len += 1;
+                }
+            }
+        }
+    } else {
+        for d in events {
+            if let Some(idx) = resolver.index(d.attacker, d.from, d.to, d.victim) {
+                debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
+                if d.add {
+                    adds[add_len] = idx;
+                    add_len += 1;
+                    psqt_add(psqt_delta, psqt_table, idx);
+                } else {
+                    subs[sub_len] = idx;
+                    sub_len += 1;
+                    psqt_sub(psqt_delta, psqt_table, idx);
+                }
             }
         }
     }
@@ -1056,6 +1154,26 @@ mod tests {
         ]
     }
 
+    /// Distinct pseudo-random PSQ1 threat rows — same signature rationale as
+    /// [`signature_weights`]: one wrong feature event perturbs a distinct
+    /// 8-wide row and the bucket sums diverge.
+    fn signature_psqt() -> Vec<i32> {
+        (0..THREAT_DIMS * BUCKETS)
+            .map(|i| {
+                let mut z = (i as u64).wrapping_mul(0xD6E8_FEB8_6659_FD93);
+                z ^= z >> 32;
+                (z % 4001) as i32 - 2000
+            })
+            .collect()
+    }
+
+    fn refresh_psqt_pair(table: &[i32], board: &Board) -> [[i32; BUCKETS]; 2] {
+        [
+            refresh_psqt_threat(table, board, Color::White),
+            refresh_psqt_threat(table, board, Color::Black),
+        ]
+    }
+
     fn board(fen: &str) -> Board {
         Board::from_fen(fen).unwrap()
     }
@@ -1065,8 +1183,9 @@ mod tests {
     #[test]
     fn one_quiet_move_matches_refresh() {
         let w = signature_weights();
+        let q = signature_psqt();
         let mut b = board(START_FEN);
-        let mut ctx = ThreatContext::new(&w);
+        let mut ctx = ThreatContext::new(&w, &q);
         ctx.refresh(&b);
 
         let m = Move::normal(Square::E2, Square::E4);
@@ -1074,7 +1193,9 @@ mod tests {
         b.make_move(m, b.gives_check(m));
         ctx.apply(&dp, &b);
 
-        assert_eq!(*ctx.current(), refresh_pair(&w, &b));
+        let (acc, psqt) = ctx.current_full();
+        assert_eq!(*acc, refresh_pair(&w, &b));
+        assert_eq!(*psqt, refresh_psqt_pair(&q, &b));
     }
 
     /// A capture: the mover's from-square relations vanish, the victim→mover
@@ -1083,9 +1204,10 @@ mod tests {
     #[test]
     fn capture_matches_refresh() {
         let w = signature_weights();
+        let q = signature_psqt();
         let fen = "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2";
         let mut b = board(fen);
-        let mut ctx = ThreatContext::new(&w);
+        let mut ctx = ThreatContext::new(&w, &q);
         ctx.refresh(&b);
 
         let m = Move::normal(Square::E4, Square::D5);
@@ -1093,7 +1215,9 @@ mod tests {
         b.make_move(m, b.gives_check(m));
         ctx.apply(&dp, &b);
 
-        assert_eq!(*ctx.current(), refresh_pair(&w, &b));
+        let (acc, psqt) = ctx.current_full();
+        assert_eq!(*acc, refresh_pair(&w, &b));
+        assert_eq!(*psqt, refresh_psqt_pair(&q, &b));
     }
 
     /// Each of the trickier move kinds, one at a time, against a fresh refresh:
@@ -1129,17 +1253,20 @@ mod tests {
                 Move::castling(Square::E1, Square::C1),
             ),
         ];
+        let q = signature_psqt();
         for &(fen, m) in cases {
             let mut b = board(fen);
-            let mut ctx = ThreatContext::new(&w);
+            let mut ctx = ThreatContext::new(&w, &q);
             ctx.refresh(&b);
             let dp = DirtyPiece::from_move(&b, m);
             b.make_move(m, b.gives_check(m));
             ctx.apply(&dp, &b);
+            let (acc, psqt) = ctx.current_full();
+            assert_eq!(*acc, refresh_pair(&w, &b), "mismatch after {m} from {fen}");
             assert_eq!(
-                *ctx.current(),
-                refresh_pair(&w, &b),
-                "mismatch after {m} from {fen}"
+                *psqt,
+                refresh_psqt_pair(&q, &b),
+                "psqt mismatch after {m} from {fen}"
             );
         }
     }
@@ -1153,14 +1280,18 @@ mod tests {
         // d/e mirror, with sliders (Bd5, Rc4, Qc7, Rf7) rippling through e4/d4.
         let fen = "k7/2q2r2/8/3b4/2R1Kn2/8/8/8 w - - 0 1";
         let mut b = board(fen);
-        let mut ctx = ThreatContext::new(&w);
+        let q = signature_psqt();
+        let mut ctx = ThreatContext::new(&w, &q);
         ctx.refresh(&b);
         let m = Move::normal(Square::E4, Square::D4);
         assert!(king_crossed(&DirtyPiece::from_move(&b, m), Color::White));
         let dp = DirtyPiece::from_move(&b, m);
         b.make_move(m, b.gives_check(m));
         ctx.apply(&dp, &b);
-        assert_eq!(*ctx.current(), refresh_pair(&w, &b));
+        let (acc, psqt) = ctx.current_full();
+        assert_eq!(*acc, refresh_pair(&w, &b));
+        // The king-crossed eager rebuild must refresh the PSQT sums too.
+        assert_eq!(*psqt, refresh_psqt_pair(&q, &b));
     }
 
     // ---- Lazy-fold path (R4) ----
@@ -1172,8 +1303,9 @@ mod tests {
     #[test]
     fn lazy_fold_of_unevaluated_plies_matches_refresh() {
         let w = signature_weights();
+        let q = signature_psqt();
         let mut b = board(START_FEN);
-        let mut ctx = ThreatContext::new(&w);
+        let mut ctx = ThreatContext::new(&w, &q);
         ctx.refresh(&b);
 
         let mut rng = Rng(0x1A2F_F01D_C0DE);
@@ -1193,7 +1325,9 @@ mod tests {
         }
         assert!(ply > 4, "expected a non-trivial unevaluated run, got {ply}");
         // First fold happens here, spanning every deferred ply from the root.
-        assert_eq!(*ctx.at(ply), refresh_pair(&w, &b));
+        let (acc, psqt) = ctx.at_full(ply);
+        assert_eq!(*acc, refresh_pair(&w, &b));
+        assert_eq!(*psqt, refresh_psqt_pair(&q, &b));
     }
 
     /// Overwrite the same child ply with two different moves (the sibling-reuse
@@ -1204,8 +1338,9 @@ mod tests {
     #[test]
     fn sibling_overwrite_at_same_ply_matches_refresh() {
         let w = signature_weights();
+        let q = signature_psqt();
         let start = board(START_FEN);
-        let mut ctx = ThreatContext::new(&w);
+        let mut ctx = ThreatContext::new(&w, &q);
         ctx.refresh(&start);
 
         // Sibling A: 1.e4, folded (marks the ply-1 entry computed).
@@ -1241,10 +1376,16 @@ mod tests {
         let dpd = DirtyPiece::from_move(&bd, md);
         bd.make_move(md, bd.gives_check(md));
         ctx.apply_at(0, &dpd, &bd);
+        let (acc, psqt) = ctx.at_full(1);
         assert_eq!(
-            *ctx.at(1),
+            *acc,
             refresh_pair(&w, &bd),
             "overwrite of an unfolded sibling must reflect move D"
+        );
+        assert_eq!(
+            *psqt,
+            refresh_psqt_pair(&q, &bd),
+            "overwrite of an unfolded sibling must reflect move D's psqt"
         );
     }
 
@@ -1254,8 +1395,9 @@ mod tests {
     #[test]
     fn undo_after_unevaluated_push_restores_parent() {
         let w = signature_weights();
+        let q = signature_psqt();
         let mut b = board(START_FEN);
-        let mut ctx = ThreatContext::new(&w);
+        let mut ctx = ThreatContext::new(&w, &q);
         ctx.refresh(&b);
         let root = *ctx.current();
 
@@ -1276,15 +1418,16 @@ mod tests {
     }
 
     // Play `games` random legal games of up to `max_plies`, asserting at every
-    // node that the incrementally-maintained accumulator equals a from-scratch
-    // refresh for both perspectives, and that apply→undo restores the parent
-    // exactly (make→apply→unmake→undo == identity).
-    fn replay(weights: &[i8], games: usize, max_plies: usize, seed: u64) -> usize {
+    // node that the incrementally-maintained accumulator AND its T6c PSQT
+    // bucket sums equal a from-scratch refresh for both perspectives, and that
+    // apply→undo restores the parent exactly (make→apply→unmake→undo ==
+    // identity).
+    fn replay(weights: &[i8], psqt: &[i32], games: usize, max_plies: usize, seed: u64) -> usize {
         let mut rng = Rng(seed);
         let mut nodes = 0usize;
         for _ in 0..games {
             let mut b = board(START_FEN);
-            let mut ctx = ThreatContext::new(weights);
+            let mut ctx = ThreatContext::new(weights, psqt);
             ctx.refresh(&b);
 
             for _ in 0..max_plies {
@@ -1296,7 +1439,8 @@ mod tests {
                 let m = list[(rng.next() % list.len() as u64) as usize];
 
                 // Snapshot the pre-move accumulator so undo can be checked.
-                let before = *ctx.current();
+                let (before_acc, before_psqt) = ctx.current_full();
+                let (before_acc, before_psqt) = (*before_acc, *before_psqt);
 
                 let dp = DirtyPiece::from_move(&b, m);
                 let gc = b.gives_check(m);
@@ -1305,17 +1449,29 @@ mod tests {
                 nodes += 1;
 
                 // (a) incremental == from-scratch refresh at this node.
+                let (acc, got_psqt) = ctx.current_full();
                 assert_eq!(
-                    *ctx.current(),
+                    *acc,
                     refresh_pair(weights, &b),
                     "incremental != refresh after {m}\nfen (post): {}",
+                    b.to_fen(),
+                );
+                assert_eq!(
+                    *got_psqt,
+                    refresh_psqt_pair(psqt, &b),
+                    "psqt incremental != refresh after {m}\nfen (post): {}",
                     b.to_fen(),
                 );
 
                 // (b) unmake the board and undo the accumulator: identity.
                 b.unmake_move(m);
                 ctx.undo();
-                assert_eq!(*ctx.current(), before, "apply→undo not identity for {m}");
+                let (acc, got_psqt) = ctx.current_full();
+                assert_eq!(*acc, before_acc, "apply→undo not identity for {m}");
+                assert_eq!(
+                    *got_psqt, before_psqt,
+                    "psqt apply→undo not identity for {m}"
+                );
 
                 // Re-apply to continue the game down this line.
                 b.make_move(m, gc);
@@ -1330,7 +1486,8 @@ mod tests {
     #[test]
     fn threats_replay_matches_refresh() {
         let w = signature_weights();
-        let nodes = replay(&w, 60, 60, 0x00C0_FFEE_1234);
+        let q = signature_psqt();
+        let nodes = replay(&w, &q, 60, 60, 0x00C0_FFEE_1234);
         assert!(
             nodes > 1500,
             "expected a substantial corpus, got {nodes} nodes"
@@ -1344,7 +1501,8 @@ mod tests {
     #[ignore = "large corpus; run in release"]
     fn threats_replay_large() {
         let w = signature_weights();
-        let nodes = replay(&w, 4000, 120, 0x5EED_D00D_F00D);
+        let q = signature_psqt();
+        let nodes = replay(&w, &q, 4000, 120, 0x5EED_D00D_F00D);
         assert!(
             nodes > 100_000,
             "expected a large corpus, got {nodes} nodes"

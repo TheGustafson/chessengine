@@ -205,6 +205,31 @@ D40_FT_SHIFT = 9
 D40_NETWORK_SCALE = 400
 
 
+def _split_psq1_trailer(raw: bytes, stream_end: int):
+    """Validate the quant stream's trailer starting at ``stream_end``:
+    bullet's cyclic b"bullet" pad to the next 64-byte boundary, optionally
+    followed by a T6c ``PSQ1`` section (jax/archon_jax/checkpoint.py:
+    magic | u32 num_buckets | u32 rows | i32[rows*num_buckets]).
+
+    Returns the PSQ1 section bytes (``b""`` when absent) or ``None`` when the
+    trailer is malformed. Legacy quants (pad only) return ``b""`` — packing
+    them stays byte-identical."""
+    pad_len = (64 - stream_end % 64) % 64
+    pad = raw[stream_end:stream_end + pad_len]
+    if len(pad) != pad_len or pad != bytes(b"bullet"[i % 6] for i in range(pad_len)):
+        return None
+    rest = raw[stream_end + pad_len:]
+    if not rest:
+        return b""
+    if len(rest) < 12 or rest[:4] != b"PSQ1":
+        return None
+    nb = int.from_bytes(rest[4:8], "little")
+    rows = int.from_bytes(rest[8:12], "little")
+    if len(rest) != 12 + rows * nb * 4:
+        return None
+    return bytes(rest)
+
+
 def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> None:
     """Pack a bullet d40_features quantised.bin into CENN-v2."""
     if network_scale is None:
@@ -248,18 +273,25 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     # CENN contains eval only; a CPOL companion is produced by policy_pack.py.
     bilinear_bytes = 2 * (64 * 8 * acc + 64 * 8) * 4
     full_bytes = (4096 * acc + 4096) * 4
-    policy_bytes = next(
-        (size for size in (0, bilinear_bytes, full_bytes)
-         if len(raw) >= need_bytes + size and len(raw) - need_bytes - size <= 63),
-        None,
-    )
+    psq1 = None
+    policy_bytes = None
+    for size in (0, bilinear_bytes, full_bytes):
+        if len(raw) < need_bytes + size:
+            continue
+        sec = _split_psq1_trailer(raw, need_bytes + size)
+        if sec is not None:
+            policy_bytes = size
+            psq1 = sec
+            break
     if policy_bytes is None:
         die(f"{quantised_path}: unrecognized D40 trailing payload ({len(raw)-need_bytes} bytes)")
-    padding = raw[need_bytes + policy_bytes:]
-    expected_padding = bytes(b"bullet"[i % 6] for i in range(len(padding)))
-    if len(padding) > 63 or padding != expected_padding:
-        die(f"{quantised_path}: invalid trailing data after D40 eval/policy tensors "
-            f"({len(padding)} bytes; expected Bullet's <=63-byte padding)")
+    if psq1:
+        nb = int.from_bytes(psq1[4:8], "little")
+        rows = int.from_bytes(psq1[8:12], "little")
+        want_rows = HALFKA_DIMS + (0 if D40_HALFKA_ONLY else THREAT_DIMS)
+        if nb != D40_BUCKETS or rows != want_rows:
+            die(f"{quantised_path}: PSQ1 section buckets={nb} rows={rows} "
+                f"(want buckets={D40_BUCKETS} rows={want_rows})")
 
     off = 0
 
@@ -388,9 +420,18 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     with open(out_path, "wb") as f:
         f.write(header)
         f.write(payload)
+        # T6c: pass the PSQ1 section through VERBATIM, after the checksummed
+        # payload (mirroring its position after the padded bullet stream).
+        # Absent from the source ⇒ absent here ⇒ legacy .cenn byte-identical.
+        if psq1:
+            f.write(psq1)
 
-    total = HEADER_V2_LEN + len(payload)
+    total = HEADER_V2_LEN + len(payload) + (len(psq1) if psq1 else 0)
     print(f"netpack-d40: wrote {out_path} ({total:,} bytes)")
+    if psq1:
+        print(f"  psqt        PSQ1 section passed through ({len(psq1):,} bytes, "
+              f"{int.from_bytes(psq1[8:12], 'little')} rows x "
+              f"{int.from_bytes(psq1[4:8], 'little')} buckets)")
 
     # D47: emit the .cpol companion (policy rows OUTSIDE the CENN so every
     # value-net tool — scale-check, gates, loaders — is untouched).

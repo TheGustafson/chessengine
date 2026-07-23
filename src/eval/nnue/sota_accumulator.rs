@@ -1,6 +1,15 @@
 //! Incremental HalfKAv2_hm accumulator with a per-king-state Finny cache.
+//!
+//! T6c FT PSQT skip: alongside every `[i16; ACC]` accumulator lane set, this
+//! module maintains the per-perspective `[i32; BUCKETS]` PSQT bucket sums —
+//! the same add/sub feature events applied to the net's 8-wide PSQ1 rows
+//! (`sota_loader` module docs). The Finny cache stores/restores the sums with
+//! the same keys as the accumulator, so a cached refresh cannot desync the
+//! skip channel. A net without a PSQ1 table (`psqt_weights` empty) skips
+//! every psqt update and the sums stay zero — bit-identical to pre-T6c.
 
 use super::sota_features::{ACC, halfka_index, halfka_king_key};
+use super::sota_head::BUCKETS;
 use super::sota_simd::{apply_i16_deltas, apply_i16_deltas_into};
 use crate::board::{Board, DirtyPiece};
 use crate::types::{Color, MAX_PLY, Piece, Square};
@@ -8,9 +17,67 @@ use crate::types::{Color, MAX_PLY, Piece, Square};
 const STACK_LEN: usize = MAX_PLY + 8;
 const FINNY_KEYS: usize = 64;
 
+/// Add feature `feature`'s 8-wide PSQ1 row into `psqt`. `table` is row-major
+/// (`feature · BUCKETS + bucket`) and must be non-empty.
+#[inline]
+pub(crate) fn psqt_add(psqt: &mut [i32; BUCKETS], table: &[i32], feature: usize) {
+    let row = &table[feature * BUCKETS..(feature + 1) * BUCKETS];
+    for (a, &w) in psqt.iter_mut().zip(row) {
+        *a += w;
+    }
+}
+
+/// Subtract feature `feature`'s PSQ1 row from `psqt`.
+#[inline]
+pub(crate) fn psqt_sub(psqt: &mut [i32; BUCKETS], table: &[i32], feature: usize) {
+    let row = &table[feature * BUCKETS..(feature + 1) * BUCKETS];
+    for (a, &w) in psqt.iter_mut().zip(row) {
+        *a -= w;
+    }
+}
+
+/// Fused parent→child PSQT fold: `dst = src ± rows`, mirroring the
+/// accumulators' `apply_*_deltas_into` shape. No-op guard belongs to callers
+/// (`table` must be non-empty here).
+#[inline]
+pub(crate) fn psqt_fold(
+    dst: &mut [i32; BUCKETS],
+    src: &[i32; BUCKETS],
+    table: &[i32],
+    adds: &[usize],
+    subs: &[usize],
+) {
+    *dst = *src;
+    for &f in adds {
+        psqt_add(dst, table, f);
+    }
+    for &f in subs {
+        psqt_sub(dst, table, f);
+    }
+}
+
+/// From-scratch HalfKA PSQT bucket sums for `perspective` — the test/oracle
+/// reference the incremental path must match. Zero when `table` is empty.
+/// Consumed only by tests and the debug accumulator oracle, so release builds
+/// compile it out (unlike the threat twin, which the eager refresh paths use).
+#[cfg(any(test, debug_assertions))]
+pub(crate) fn refresh_psqt_halfka(
+    table: &[i32],
+    board: &Board,
+    perspective: Color,
+) -> [i32; BUCKETS] {
+    let mut out = [0i32; BUCKETS];
+    if table.is_empty() {
+        return out;
+    }
+    super::sota_features::for_each_halfka(board, perspective, |idx| psqt_add(&mut out, table, idx));
+    out
+}
+
 #[derive(Clone)]
 struct Entry {
     acc: [[i16; ACC]; 2],
+    psqt: [[i32; BUCKETS]; 2],
     dirty: DirtyPiece,
     computed: [bool; 2],
 }
@@ -19,6 +86,7 @@ impl Default for Entry {
     fn default() -> Self {
         Self {
             acc: [[0; ACC]; 2],
+            psqt: [[0; BUCKETS]; 2],
             dirty: DirtyPiece::EMPTY,
             computed: [false; 2],
         }
@@ -28,6 +96,7 @@ impl Default for Entry {
 #[derive(Clone)]
 struct FinnyEntry {
     acc: [i16; ACC],
+    psqt: [i32; BUCKETS],
     features: [u16; 32],
     len: u8,
 }
@@ -35,15 +104,19 @@ struct FinnyEntry {
 pub(crate) struct HalfkaContext<'a> {
     weights: &'a [i16],
     bias: &'a [i16],
+    /// T6c PSQ1 rows for the HalfKA feature space (`HALFKA_DIMS · BUCKETS`
+    /// i32, row-major), or empty ⇒ the skip channel is inert.
+    psqt_weights: &'a [i32],
     stack: Box<[Entry]>,
     cache: Box<[Option<FinnyEntry>]>,
 }
 
 impl<'a> HalfkaContext<'a> {
-    pub(crate) fn new(weights: &'a [i16], bias: &'a [i16]) -> Self {
+    pub(crate) fn new(weights: &'a [i16], bias: &'a [i16], psqt_weights: &'a [i32]) -> Self {
         Self {
             weights,
             bias,
+            psqt_weights,
             stack: vec![Entry::default(); STACK_LEN].into_boxed_slice(),
             cache: vec![None; 2 * FINNY_KEYS].into_boxed_slice(),
         }
@@ -62,7 +135,13 @@ impl<'a> HalfkaContext<'a> {
         self.stack[ply + 1].computed = [false; 2];
     }
 
-    pub(crate) fn current(&mut self, board: &Board, ply: usize) -> &[[i16; ACC]; 2] {
+    /// The current accumulator pair plus the per-perspective T6c PSQT bucket
+    /// sums of the SAME entry (all-zero for a net without a PSQ1 table).
+    pub(crate) fn current_full(
+        &mut self,
+        board: &Board,
+        ply: usize,
+    ) -> (&[[i16; ACC]; 2], &[[i32; BUCKETS]; 2]) {
         // Null-move alias (perf study #4 item #3, mirrored from the threat
         // stack): an EMPTY dirty record's "fold" is a pure 2×2.5 KB parent
         // copy — hand back the parent's accumulator instead. Sound because a
@@ -82,7 +161,8 @@ impl<'a> HalfkaContext<'a> {
         for perspective in Color::ALL {
             self.compute(board, target, perspective);
         }
-        &self.stack[target].acc
+        let entry = &self.stack[target];
+        (&entry.acc, &entry.psqt)
     }
 
     fn compute(&mut self, board: &Board, ply: usize, perspective: Color) {
@@ -108,6 +188,7 @@ impl<'a> HalfkaContext<'a> {
         }
         let king_square = board.king_square(perspective);
         let weights = self.weights;
+        let psqt_weights = self.psqt_weights;
         for child in (ancestor + 1)..=ply {
             let dirty = self.stack[child].dirty;
             // Fused parent→child fold: read parent lanes, apply deltas, write
@@ -115,19 +196,23 @@ impl<'a> HalfkaContext<'a> {
             // An EMPTY record inside a span (a null move on the fold path)
             // degenerates to the plain parent copy without the kernel call.
             let (before, after) = self.stack.split_at_mut(child);
+            let parent = &before[child - 1];
+            let entry = &mut after[0];
             if dirty.adds().is_empty() && dirty.subs().is_empty() {
-                after[0].acc[p] = before[child - 1].acc[p];
+                entry.acc[p] = parent.acc[p];
+                entry.psqt[p] = parent.psqt[p];
             } else {
                 apply_dirty_into(
                     weights,
-                    &mut after[0].acc[p],
-                    &before[child - 1].acc[p],
+                    psqt_weights,
+                    entry,
+                    parent,
                     &dirty,
                     perspective,
                     king_square,
                 );
             }
-            after[0].computed[p] = true;
+            entry.computed[p] = true;
         }
     }
 
@@ -150,6 +235,7 @@ impl<'a> HalfkaContext<'a> {
         features[..len].sort_unstable();
 
         let weights = self.weights;
+        let psqt_weights = self.psqt_weights;
         let slot = &mut self.cache[perspective as usize * FINNY_KEYS + key];
         if let Some(cached) = slot.as_mut() {
             let mut adds = [0usize; 32];
@@ -172,6 +258,17 @@ impl<'a> HalfkaContext<'a> {
                 }
             }
             apply_i16_deltas(&mut cached.acc, weights, &adds[..add_len], &subs[..sub_len]);
+            // T6c: the cache's PSQT sums see the SAME add/sub set, so a cached
+            // refresh restores the skip channel exactly (the corruption trap
+            // the deploy contract calls out).
+            if !psqt_weights.is_empty() {
+                for &f in &adds[..add_len] {
+                    psqt_add(&mut cached.psqt, psqt_weights, f);
+                }
+                for &f in &subs[..sub_len] {
+                    psqt_sub(&mut cached.psqt, psqt_weights, f);
+                }
+            }
             // Keep the cache's feature list bit-identical even if an exotic
             // illegal position somehow contains duplicate feature ids.
             cached.features = features;
@@ -184,27 +281,41 @@ impl<'a> HalfkaContext<'a> {
                 *dst = feature as usize;
             }
             apply_i16_deltas(&mut acc, weights, &adds[..len], &[]);
+            // T6c: seed the PSQT sums from zero (the skip has no bias term).
+            let mut psqt = [0i32; BUCKETS];
+            if !psqt_weights.is_empty() {
+                for &f in &adds[..len] {
+                    psqt_add(&mut psqt, psqt_weights, f);
+                }
+            }
             *slot = Some(FinnyEntry {
                 acc,
+                psqt,
                 features,
                 len: len as u8,
             });
         }
         let cached = slot.as_ref().expect("slot filled above");
         self.stack[ply].acc[perspective as usize] = cached.acc;
+        self.stack[ply].psqt[perspective as usize] = cached.psqt;
     }
 }
 
 /// Fused fold: `dst = src ± dirty deltas` in one pass — the memmove-free form
 /// of "copy parent then [`apply_dirty`] in place" (profiling-study opt #2).
+/// The resolved indices drive both the accumulator kernel and (when the net
+/// carries one) the T6c PSQT bucket-sum fold, so the two channels can never
+/// see different feature events.
 fn apply_dirty_into(
     weights: &[i16],
-    dst: &mut [i16; ACC],
-    src: &[i16; ACC],
+    psqt_weights: &[i32],
+    entry: &mut Entry,
+    parent: &Entry,
     dirty: &DirtyPiece,
     perspective: Color,
     king: Square,
 ) {
+    let p = perspective as usize;
     let mut adds = [0usize; 2];
     let mut subs = [0usize; 2];
     for (i, &(piece, square)) in dirty.adds().iter().enumerate() {
@@ -214,12 +325,21 @@ fn apply_dirty_into(
         subs[i] = halfka_index(perspective, piece, square, king);
     }
     apply_i16_deltas_into(
-        dst,
-        src,
+        &mut entry.acc[p],
+        &parent.acc[p],
         weights,
         &adds[..dirty.adds().len()],
         &subs[..dirty.subs().len()],
     );
+    if !psqt_weights.is_empty() {
+        psqt_fold(
+            &mut entry.psqt[p],
+            &parent.psqt[p],
+            psqt_weights,
+            &adds[..dirty.adds().len()],
+            &subs[..dirty.subs().len()],
+        );
+    }
 }
 
 #[cfg(test)]
@@ -235,11 +355,25 @@ mod tests {
             .collect()
     }
 
+    /// Distinct pseudo-random PSQ1 rows per feature (same signature-weights
+    /// rationale as the threat tests: one wrong/missing/swapped feature event
+    /// perturbs a distinct 8-wide row and the sums diverge).
+    fn psqt_table() -> Vec<i32> {
+        (0..HALFKA_DIMS * BUCKETS)
+            .map(|i| {
+                let mut z = (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+                z ^= z >> 31;
+                (z % 4001) as i32 - 2000
+            })
+            .collect()
+    }
+
     #[test]
     fn incremental_and_finny_match_refresh() {
         let weights = weights();
         let bias: Vec<i16> = (0..ACC).map(|i| (i % 19) as i16 - 9).collect();
-        let mut context = HalfkaContext::new(&weights, &bias);
+        let psqt = psqt_table();
+        let mut context = HalfkaContext::new(&weights, &bias, &psqt);
         let mut board = Board::startpos();
         context.refresh_root(&board);
         let mut seed = 0xD40F_1A11_5EEDu64;
@@ -257,11 +391,48 @@ mod tests {
             context.push(ply, dirty);
             let gives_check = board.gives_check(m);
             board.make_move(m, gives_check);
-            let got = *context.current(&board, ply + 1);
+            let (got, got_psqt) = context.current_full(&board, ply + 1);
+            let (got, got_psqt) = (*got, *got_psqt);
             for perspective in Color::ALL {
                 let fresh = refresh_pst(&weights, &bias, &board, perspective);
                 assert_eq!(got[perspective as usize], fresh, "ply {ply} {m}");
+                // T6c: the incremental + Finny-cached PSQT sums equal the
+                // from-scratch recompute at every node (gate 2b).
+                let fresh_psqt = refresh_psqt_halfka(&psqt, &board, perspective);
+                assert_eq!(
+                    got_psqt[perspective as usize], fresh_psqt,
+                    "psqt drift at ply {ply} {m}"
+                );
             }
+        }
+    }
+
+    /// A net without a PSQ1 table keeps all-zero sums forever (the inert
+    /// channel legacy bit-identity leans on).
+    #[test]
+    fn empty_psqt_table_stays_zero() {
+        let weights = weights();
+        let bias: Vec<i16> = (0..ACC).map(|i| (i % 19) as i16 - 9).collect();
+        let mut context = HalfkaContext::new(&weights, &bias, &[]);
+        let mut board = Board::startpos();
+        context.refresh_root(&board);
+        let mut seed = 0x0E11_D00D_5EEDu64;
+        for ply in 0..40usize {
+            let mut moves = MoveList::new();
+            generate_legal(&board, &mut moves);
+            if moves.is_empty() {
+                break;
+            }
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let m = moves[seed as usize % moves.len()];
+            let dirty = DirtyPiece::from_move(&board, m);
+            context.push(ply, dirty);
+            let gives_check = board.gives_check(m);
+            board.make_move(m, gives_check);
+            let (_, got_psqt) = context.current_full(&board, ply + 1);
+            assert_eq!(*got_psqt, [[0i32; BUCKETS]; 2], "ply {ply} {m}");
         }
     }
 }

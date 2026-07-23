@@ -19,6 +19,7 @@ use super::sota_accumulator::HalfkaContext;
 use super::sota_features::ACC;
 #[cfg(debug_assertions)]
 use super::sota_features::refresh_both;
+use super::sota_head::PsqtPair;
 use super::sota_loader::SotaNetwork;
 use super::sota_threats::ThreatContext;
 use crate::board::Board;
@@ -34,6 +35,20 @@ use crate::types::{Color, PAWN_VALUE, PieceType, Value};
 /// `static` so `&ZERO_THREAT` is a stable `'static` reference with no per-eval
 /// cost.
 static ZERO_THREAT: [[i16; ACC]; 2] = [[0; ACC]; 2];
+
+/// Sum the HalfKA and threat T6c PSQT bucket-sum pairs into the total the head
+/// consumes. 16 i32 adds — negligible, and the compiler vectorizes it. The sum
+/// must happen BEFORE the head's `>> 8` (the shift doesn't distribute).
+#[inline]
+fn combine_psqt(halfka: &PsqtPair, threat: &PsqtPair) -> PsqtPair {
+    let mut out = *halfka;
+    for (side, t) in out.iter_mut().zip(threat.iter()) {
+        for (a, &b) in side.iter_mut().zip(t.iter()) {
+            *a += b;
+        }
+    }
+    out
+}
 
 /// Signed material imbalance (White − Black) in centipawns: cached non-pawn
 /// material plus a pawn-count difference. Used as the smallnet gate's *material
@@ -157,8 +172,9 @@ impl SotaContext {
         } else {
             None
         };
-        let smallnet_halfka =
-            smallnet.map(|small| HalfkaContext::new(&small.halfka_weights, &small.ft_bias));
+        let smallnet_halfka = smallnet.map(|small| {
+            HalfkaContext::new(&small.halfka_weights, &small.ft_bias, small.halfka_psqt())
+        });
         let smallnet_mat_gate: Value = std::env::var("ARCHON_SMALLNET_MAT_GATE")
             .ok()
             .and_then(|value| value.parse::<Value>().ok())
@@ -177,13 +193,15 @@ impl SotaContext {
         } else {
             None
         };
-        let largenet_halfka =
-            largenet.map(|large| HalfkaContext::new(&large.halfka_weights, &large.ft_bias));
-        let largenet_threats = largenet.map(|large| ThreatContext::new(&large.threat_weights));
+        let largenet_halfka = largenet.map(|large| {
+            HalfkaContext::new(&large.halfka_weights, &large.ft_bias, large.halfka_psqt())
+        });
+        let largenet_threats =
+            largenet.map(|large| ThreatContext::new(&large.threat_weights, large.threat_psqt()));
         SotaContext {
             net,
-            halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
-            threats: ThreatContext::new(&net.threat_weights),
+            halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias, net.halfka_psqt()),
+            threats: ThreatContext::new(&net.threat_weights, net.threat_psqt()),
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
@@ -220,8 +238,8 @@ impl SotaContext {
     ) -> Self {
         SotaContext {
             net,
-            halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
-            threats: ThreatContext::new(&net.threat_weights),
+            halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias, net.halfka_psqt()),
+            threats: ThreatContext::new(&net.threat_weights, net.threat_psqt()),
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
@@ -231,6 +249,7 @@ impl SotaContext {
             smallnet_halfka: Some(HalfkaContext::new(
                 &smallnet.halfka_weights,
                 &smallnet.ft_bias,
+                smallnet.halfka_psqt(),
             )),
             smallnet_thresh,
             smallnet_mat_gate,
@@ -252,8 +271,8 @@ impl SotaContext {
     ) -> Self {
         SotaContext {
             net,
-            halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias),
-            threats: ThreatContext::new(&net.threat_weights),
+            halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias, net.halfka_psqt()),
+            threats: ThreatContext::new(&net.threat_weights, net.threat_psqt()),
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
@@ -267,8 +286,12 @@ impl SotaContext {
             largenet_halfka: Some(HalfkaContext::new(
                 &largenet.halfka_weights,
                 &largenet.ft_bias,
+                largenet.halfka_psqt(),
             )),
-            largenet_threats: Some(ThreatContext::new(&largenet.threat_weights)),
+            largenet_threats: Some(ThreatContext::new(
+                &largenet.threat_weights,
+                largenet.threat_psqt(),
+            )),
             largenet_sigma_gate: sigma_gate,
         }
     }
@@ -385,10 +408,13 @@ impl SotaContext {
             && let (Some(small), Some(small_halfka)) =
                 (self.smallnet, self.smallnet_halfka.as_mut())
         {
-            let small_pst = small_halfka.current(board, ply);
-            let (small_value, _, _) = small
-                .head
-                .forward(small_pst, &ZERO_THREAT, stm, piece_count);
+            let (small_pst, small_psqt) = small_halfka.current_full(board, ply);
+            // The cheap net's threat channel contributes nothing — its PSQT
+            // pair is exactly the HalfKA-side sums (zero for a psqt-less net).
+            let (small_value, _, _) =
+                small
+                    .head
+                    .forward(small_pst, &ZERO_THREAT, stm, piece_count, small_psqt);
             if small_value.abs() >= thresh {
                 // Cheap path: no variance head, so σ̂ is unavailable — correct,
                 // since the uncertainty consumers no-op on decided positions.
@@ -399,8 +425,11 @@ impl SotaContext {
             }
         }
 
-        let pst = self.halfka.current(board, ply);
-        let threat = self.threats.at(ply);
+        let (pst, halfka_psqt) = self.halfka.current_full(board, ply);
+        let (threat, threat_psqt) = self.threats.at_full(ply);
+        // T6c: total per-perspective PSQT bucket sums (HalfKA + threat rows).
+        // All-zero for a psqt-less net ⇒ the head adds 0 ⇒ bit-identical.
+        let psqt = combine_psqt(halfka_psqt, threat_psqt);
         let (value, sigma, wdl) = if super::active_policy_head().is_some() {
             // D47: the policy scorer needs the shared-bottleneck activation of
             // this exact position; stash it (inline buffer, no Box, no heap
@@ -416,12 +445,12 @@ impl SotaContext {
             let (value, sigma, wdl) =
                 self.net
                     .head
-                    .forward_into(pst, threat, stm, piece_count, &mut self.last_l2);
+                    .forward_into(pst, threat, stm, piece_count, &psqt, &mut self.last_l2);
             self.last_l2_valid = true;
             self.last_l2_key = board.key();
             (value, sigma, wdl)
         } else {
-            self.net.head.forward(pst, threat, stm, piece_count)
+            self.net.head.forward(pst, threat, stm, piece_count, &psqt)
         };
         self.last_sigma = sigma;
         self.last_wdl = wdl;
@@ -443,12 +472,13 @@ impl SotaContext {
                 self.largenet_threats.as_mut(),
             )
         {
-            let large_pst = large_halfka.current(board, ply);
-            let large_threat = large_threats.at(ply);
+            let (large_pst, large_hk_psqt) = large_halfka.current_full(board, ply);
+            let (large_threat, large_th_psqt) = large_threats.at_full(ply);
+            let large_psqt = combine_psqt(large_hk_psqt, large_th_psqt);
             let (large_value, large_sigma, large_wdl) =
                 large
                     .head
-                    .forward(large_pst, large_threat, stm, piece_count);
+                    .forward(large_pst, large_threat, stm, piece_count, &large_psqt);
             self.last_sigma = large_sigma;
             self.last_wdl = large_wdl;
             return large_value;
@@ -458,8 +488,17 @@ impl SotaContext {
 
     #[cfg(debug_assertions)]
     fn assert_matches_refresh(&mut self, board: &Board, ply: usize) {
-        let got_pst = *self.halfka.current(board, ply);
-        let got_threat = *self.threats.at(ply);
+        use super::sota_accumulator::refresh_psqt_halfka;
+        use super::sota_threats::refresh_psqt_threat;
+
+        let (got_pst, got_hk_psqt) = {
+            let (a, b) = self.halfka.current_full(board, ply);
+            (*a, *b)
+        };
+        let (got_threat, got_th_psqt) = {
+            let (a, b) = self.threats.at_full(ply);
+            (*a, *b)
+        };
         let expected = refresh_both(
             &self.net.halfka_weights,
             &self.net.ft_bias,
@@ -474,6 +513,21 @@ impl SotaContext {
             got_threat, expected.1,
             "SOTA FullThreats accumulator drift at ply {ply}"
         );
+        // T6c: the incremental PSQT bucket sums must equal a from-scratch
+        // recompute at every evaluated node (trivially zero == zero for a
+        // psqt-less net).
+        for (i, &persp) in Color::ALL.iter().enumerate() {
+            assert_eq!(
+                got_hk_psqt[i],
+                refresh_psqt_halfka(self.net.halfka_psqt(), board, persp),
+                "SOTA HalfKA PSQT drift at ply {ply}"
+            );
+            assert_eq!(
+                got_th_psqt[i],
+                refresh_psqt_threat(self.net.threat_psqt(), board, persp),
+                "SOTA FullThreats PSQT drift at ply {ply}"
+            );
+        }
     }
 }
 
@@ -589,6 +643,85 @@ mod tests {
         assert!(
             escalations > 0,
             "expected the large tier to actually escalate"
+        );
+    }
+
+    /// The threats fixture with a PSQ1 skip table (same trunk/head weights as
+    /// [`leaked_test_net`], so the two evals differ ONLY by the skip).
+    fn leaked_psqt_test_net() -> &'static SotaNetwork {
+        use super::super::sota_loader::tests::test_net_with_psqt_pub;
+        Box::leak(Box::new(test_net_with_psqt_pub()))
+    }
+
+    /// T6c end-to-end (gate 2): over a random game, the psqt-carrying net's
+    /// incrementally-maintained eval equals (a) a fresh-context eval (which the
+    /// debug oracle inside `evaluate` additionally pins to from-scratch PSQT
+    /// sums at every node) and (b) the SAME net without its PSQ1 table plus
+    /// exactly `(psqt_stm[b] − psqt_ntm[b]) >> 8`, with the sums recomputed
+    /// from scratch and the bucket taken from the head's own layout.
+    #[test]
+    fn psqt_net_matches_fresh_and_adds_exactly_the_skip() {
+        use super::super::sota_accumulator::refresh_psqt_halfka;
+        use super::super::sota_head::output_bucket;
+        use super::super::sota_threats::refresh_psqt_threat;
+
+        let psqt_net = leaked_psqt_test_net();
+        let plain_net = leaked_test_net();
+        let mut with_skip = SotaContext::new(psqt_net);
+        let mut without = SotaContext::new(plain_net);
+        let mut board = Board::startpos();
+        with_skip.refresh_root(&board);
+        without.refresh_root(&board);
+        let mut seed = 0x9541_0000_5EEDu64;
+        let mut nonzero_skips = 0usize;
+        for ply in 0..48usize {
+            let mut moves = MoveList::new();
+            generate_legal(&board, &mut moves);
+            if moves.is_empty() {
+                break;
+            }
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let m = moves[seed as usize % moves.len()];
+            let dirty = DirtyPiece::from_move(&board, m);
+            let gives_check = board.gives_check(m);
+            board.make_move(m, gives_check);
+            with_skip.push(dirty, ply, &board);
+            without.push(dirty, ply, &board);
+
+            let got = with_skip.evaluate(&board, ply + 1);
+
+            // (a) incremental == fresh context on the psqt net.
+            let mut fresh = SotaContext::new(psqt_net);
+            fresh.refresh_root(&board);
+            assert_eq!(
+                got,
+                fresh.evaluate(&board, 0),
+                "fresh mismatch ply {ply} {m}"
+            );
+
+            // (b) psqt eval == plain eval + the exact shifted difference.
+            let base = without.evaluate(&board, ply + 1);
+            let stm = board.side_to_move() as usize;
+            let bucket = output_bucket(board.all_occupancy().count() as usize);
+            let mut totals = [[0i32; super::super::sota_head::BUCKETS]; 2];
+            for (i, &persp) in Color::ALL.iter().enumerate() {
+                let hk = refresh_psqt_halfka(psqt_net.halfka_psqt(), &board, persp);
+                let th = refresh_psqt_threat(psqt_net.threat_psqt(), &board, persp);
+                for b in 0..super::super::sota_head::BUCKETS {
+                    totals[i][b] = hk[b] + th[b];
+                }
+            }
+            let expected = (totals[stm][bucket] - totals[stm ^ 1][bucket]) >> 8;
+            assert_eq!(got - base, expected, "skip delta mismatch ply {ply} {m}");
+            if expected != 0 {
+                nonzero_skips += 1;
+            }
+        }
+        assert!(
+            nonzero_skips > 0,
+            "the fixture skip table must actually move some evals"
         );
     }
 
