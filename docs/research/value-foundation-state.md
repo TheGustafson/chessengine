@@ -431,6 +431,20 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > the entire NPS gap is the eval layer (T10 smallnet = the lever).
 > Six-engine RR (user-commissioned) queued behind the gauntlet.
 >
+> **★★ OPTIMIZATION ARC LANDED (00:4x, merge c6e820d, check.sh GREEN,
+> Bench 701605 exact): +29% NPS total (383.7k→495.3k on the impl
+> workload), all four packages, bit-identical proven hard** (per-package
+> bench fingerprint + byte-parity + 100/100 identical PGNs + perft).
+> Package 2 (head kernels) delivered +21.4% — 2× the study-#4 estimate,
+> per study #5's mca prediction. Evidence-based drops: software
+> prefetch LOSES on this Zen4 (3 experiments), cancel scan deleted
+> (0.48% of events), stash-gating REFUTED (consult consumes stashes
+> from other evals — any conditional stash is functional; tree-size
+> proof). New ladder: PSQT 3.71M / stage2+cpol 495k / stage2-nocpol
+> 540k / stage1+cpol 534k. Reprofile agent (user-pinned) launched:
+> fresh hot-path map + independent verification of b46c026/3555f57 +
+> deployment ladder for the crown-rematch math.
+>
 > **★ STUDY #5 GROUND TRUTH (23:5x, merged; report
 > perf-study-5-measured-2026-07-23.md): the cost model INVERTED — head
 > 48.5% of cycles (l1_dot 34.4%), threats only 12.4%.** mca-validated
