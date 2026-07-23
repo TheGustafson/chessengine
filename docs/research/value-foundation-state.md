@@ -431,6 +431,20 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > the entire NPS gap is the eval layer (T10 smallnet = the lever).
 > Six-engine RR (user-commissioned) queued behind the gauntlet.
 >
+> **CROWN GAUNTLET VERDICT (22:4x, 400g @ 10+0.1, deployed config vs
+> incumbent): −30.5 ± 11.8 (74-217-109).** The pre-registered user
+> prediction ("equal-time crown, untuned") scores **NOT YET**: the
+> fixed-node crown is decisive (+82.6±17.6) but the NPS tax still wins
+> equal time by 30. **Finding: the node-ratio conversion OVERSHOT by
+> ~50 Elo** (predicted +18) — fixed-node→equal-time arithmetic
+> underestimates slowness costs in real timed play (iteration depth ×
+> time-pressure interactions; untuned TM likely amplifies). Critical
+> path to the crown = the NPS program: study #4's packages (+13-25%,
+> in implementation now) + T10 smallnet (+7-34%) + TM SPSA. At
+> +25-55% NPS the bar math flips deeply positive. RR cancelled by
+> user (rerun when stronger); profiling study #5 running with the
+> newly-installed toolkit.
+>
 > **★ sb210 SURGE (19:5x): Elo +85.0±30.6 (49-26-25) — stage-2 passed
 > the ENTIRE stage-1 endpoint band (+49-56) with 30sb of anneal left.**
 > Trajectory: −151 → −85 → −85(floor) → −31 → −28 → −14 → +85; the
