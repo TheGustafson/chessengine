@@ -37,7 +37,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .spec import ArchSpec, HALFKA_DIMS, THREAT_DIMS, POLICY_VOCAB
+from .spec import ArchSpec, HALFKA_DIMS, THREAT_DIMS, POLICY_VOCAB, PS_NB
 
 
 def init_params(arch: ArchSpec, seed: int) -> dict:
@@ -69,6 +69,42 @@ def init_params(arch: ArchSpec, seed: int) -> dict:
     return params
 
 
+def effective_pstw(params: dict, arch: ArchSpec) -> jnp.ndarray:
+    """The HalfKA table the FT actually gathers from. With T0 factorization
+    the real table and the PS_NB-wide bucket-agnostic factor table are summed
+    (merged[f] = real[f] + factor[f % PS_NB], the merge_factoriser contract);
+    tiling reproduces f % PS_NB exactly because the HalfKA layout is
+    king-bucket-major. Zero factor => identical to l0_pstw."""
+    if not arch.factorize:
+        return params["l0_pstw"]
+    reps = HALFKA_DIMS // PS_NB
+    return params["l0_pstw"] + jnp.tile(params["l0_factw"], (reps, 1))
+
+
+def _masked_gather_sum(table: jnp.ndarray, idx: jnp.ndarray) -> jnp.ndarray:
+    """Σ table[idx] over the -1-padded active-index axis."""
+    valid = (idx >= 0)[..., None]
+    rows = jnp.take(table, jnp.maximum(idx, 0), axis=0)
+    return jnp.sum(rows * valid, axis=-2)
+
+
+def _psqt_side_sums(params: dict, arch: ArchSpec, hk_idx, th_idx):
+    """One perspective's raw PSQT bucket sums (B, num_buckets), XLA path."""
+    s = _masked_gather_sum(params["l0_psqt_hkw"], hk_idx)
+    if th_idx is not None and not arch.halfka_only:
+        s = s + _masked_gather_sum(params["l0_psqt_thw"], th_idx)
+    return s
+
+
+def psqt_combine(psqt_stm: jnp.ndarray, psqt_ntm: jnp.ndarray,
+                 bucket: jnp.ndarray) -> jnp.ndarray:
+    """T6c skip: 0.5 * (psqt_stm - psqt_ntm)[bucket] — added to the value
+    logit OUTSIDE every nonlinearity (stm-canonical frame => SF's (us-0.5)
+    is the constant +0.5)."""
+    diff = psqt_stm - psqt_ntm
+    return 0.5 * jnp.take_along_axis(diff, bucket[:, None], axis=1)[:, 0]
+
+
 def _ft_accumulate(params: dict, hk_idx: jnp.ndarray, th_idx: jnp.ndarray | None):
     """acc = l0_pstb + Σ l0_pstw[active_halfka] + Σ l0_threatw[active_threat].
 
@@ -80,8 +116,9 @@ def _ft_accumulate(params: dict, hk_idx: jnp.ndarray, th_idx: jnp.ndarray | None
     but OOMs the GPU at batch >= 2048 (6.7 GB for threats at 8192). GPU
     training selects ``ft_impl="pallas"`` in ``forward`` (see ft_kernel.py).
     """
+    pstw = params.get("_pstw_eff", params["l0_pstw"])
     hk_valid = (hk_idx >= 0)[..., None]
-    hk_rows = jnp.take(params["l0_pstw"], jnp.maximum(hk_idx, 0), axis=0)
+    hk_rows = jnp.take(pstw, jnp.maximum(hk_idx, 0), axis=0)
     acc = params["l0_pstb"] + jnp.sum(hk_rows * hk_valid, axis=-2)
     if th_idx is not None:
         th_valid = (th_idx >= 0)[..., None]
@@ -100,6 +137,7 @@ def _ft_accumulate_pair(params: dict, batch: dict, arch: ArchSpec, ft_impl: str)
     """
     th_stm = batch.get("th_stm") if not arch.halfka_only else None
     th_ntm = batch.get("th_ntm") if not arch.halfka_only else None
+    pstw = effective_pstw(params, arch)
     if ft_impl != "reference" and th_stm is not None:
         from .ft_kernel import ft_accumulate_pallas, ft_accumulate_scan
 
@@ -107,12 +145,24 @@ def _ft_accumulate_pair(params: dict, batch: dict, arch: ArchSpec, ft_impl: str)
         b = batch["hk_stm"].shape[0]
         hk = jnp.concatenate([batch["hk_stm"], batch["hk_ntm"]], axis=0)
         th = jnp.concatenate([th_stm, th_ntm], axis=0)
-        acc = fn(params["l0_pstw"], params["l0_threatw"], params["l0_pstb"],
-                 hk, th)
-        return acc[:b], acc[b:]
+        acc = fn(pstw, params["l0_threatw"], params["l0_pstb"], hk, th)
+        if arch.psqt:
+            # T6c via a SECOND kernel invocation on the 8-wide psqt tables —
+            # the kernel is generic over width, and this dodges XLA's slow
+            # narrow scatter (measured -32% step throughput on the XLA path).
+            ps = fn(params["l0_psqt_hkw"], params["l0_psqt_thw"],
+                    jnp.zeros((arch.num_buckets,), jnp.float32), hk, th)
+            return acc[:b], acc[b:], ps[:b], ps[b:]
+        return acc[:b], acc[b:], None, None
     # reference (also the halfka_only fallback: GPU impls are two-table only)
-    return (_ft_accumulate(params, batch["hk_stm"], th_stm),
-            _ft_accumulate(params, batch["hk_ntm"], th_ntm))
+    p = {**params, "_pstw_eff": pstw}
+    acc_pair = (_ft_accumulate(p, batch["hk_stm"], th_stm),
+                _ft_accumulate(p, batch["hk_ntm"], th_ntm))
+    if arch.psqt:
+        return (*acc_pair,
+                _psqt_side_sums(params, arch, batch["hk_stm"], th_stm),
+                _psqt_side_sums(params, arch, batch["hk_ntm"], th_ntm))
+    return (*acc_pair, None, None)
 
 
 def _crelu(x):
@@ -165,17 +215,25 @@ def _pairwise(c: jnp.ndarray, hl: int) -> jnp.ndarray:
 
 
 def forward(params: dict, arch: ArchSpec, batch: dict,
-            ft_impl: str = "reference"):
+            ft_impl: str = "reference", with_acc: bool = False):
     """Full graph: sparse features -> (value_logit, pol_logits).
 
     ``ft_impl`` selects the feature-transformer implementation (see
     ``_ft_accumulate_pair``); everything downstream is identical. The default
     stays "reference" — the GPU path is opt-in (train.make_update_step wires
     ARCHON_JAX_FT_IMPL through; the head math never forks).
+    ``with_acc=True`` appends the raw accumulator pair to the return (the
+    FT-sparsity regularizer reads it; plain callers are unchanged).
     """
-    acc_stm, acc_ntm = _ft_accumulate_pair(params, batch, arch, ft_impl)
-    return head_forward(params, arch, acc_stm, acc_ntm, batch["bucket"],
-                        batch.get("pol_mask"))
+    acc_stm, acc_ntm, psqt_stm, psqt_ntm = _ft_accumulate_pair(
+        params, batch, arch, ft_impl)
+    out, pol_logits, hl2 = head_forward(params, arch, acc_stm, acc_ntm,
+                                        batch["bucket"], batch.get("pol_mask"))
+    if arch.psqt:
+        out = out + psqt_combine(psqt_stm, psqt_ntm, batch["bucket"])
+    if with_acc:
+        return out, pol_logits, hl2, (acc_stm, acc_ntm)
+    return out, pol_logits, hl2
 
 
 @partial(jax.jit, static_argnames=("arch", "ft_impl"))

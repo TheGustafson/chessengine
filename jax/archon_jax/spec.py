@@ -126,6 +126,19 @@ class ArchSpec:
     num_buckets: int = NUM_BUCKETS
     policy: bool = True          # POL_ON (D40_POL_LAMBDA > 0) -- gates head + quant layout
     halfka_only: bool = False    # D40_HALFKA_ONLY (drops the threat tensor entirely)
+    # T0 (task #27): king-bucket factorization. Training-time only: a
+    # PS_NB-wide bucket-agnostic factor table added to every real HalfKA row
+    # (real f shares factor f % PS_NB). Folded into l0_pstw at quant export
+    # (bullet merge_factoriser semantics, d40:271-283) -> deploy format
+    # UNCHANGED. Zero-init => exact no-op, warm-start safe.
+    factorize: bool = False
+    # T6c: FT PSQT skip connection (SF-style unclamped linear channel).
+    # Per-feature per-output-bucket columns summed straight into the output:
+    # out += 0.5 * (psqt_stm - psqt_ntm)[bucket]  (stm-canonical frame =>
+    # SF's (us - 0.5) is the constant +0.5). Zero-init => exact no-op,
+    # warm-start safe. Deploy: a versioned PSQ1 section after the bullet
+    # stream (see quant export) — old nets/engines unaffected.
+    psqt: bool = False
 
     @classmethod
     def full(cls) -> "ArchSpec":
@@ -152,6 +165,12 @@ class ArchSpec:
             # No bias: the shared FT bias lives on the HalfKA tensor only
             # (d40:951-956) -- landmine: do NOT give the threat FT a bias.
             shapes["l0_threatw"] = (THREAT_DIMS, self.hl)
+        if self.factorize:
+            shapes["l0_factw"] = (PS_NB, self.hl)
+        if self.psqt:
+            shapes["l0_psqt_hkw"] = (HALFKA_DIMS, self.num_buckets)
+            if not self.halfka_only:
+                shapes["l0_psqt_thw"] = (THREAT_DIMS, self.num_buckets)
         if self.policy:
             shapes["polmovew"] = (self.l2, POLICY_VOCAB)
             shapes["polmoveb"] = (POLICY_VOCAB,)
@@ -193,6 +212,10 @@ class TrainConfig:
     score_multiplier: float = 1.0    # D40_SCORE_MULTIPLIER
     pol_lambda: float = 0.005        # D40_POL_LAMBDA
     weight_decay: float = ADAM_DECAY
+    # FT-sparsity regularizer (perf study #6 #1 NPS lever): L1 on the
+    # post-CReLU accumulators, driving deploy density down (density-linear
+    # l1_dot cost). 0.0 = OFF = graph identical to the incumbent recipe.
+    ft_sparsity_lambda: float = 0.0
 
 
 def cosine_lr(cfg: TrainConfig, superbatch: int) -> float:

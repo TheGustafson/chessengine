@@ -65,6 +65,23 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
     opt = bullet_adamw(lr_fn)
 
     def loss_fn(params, batch):
+        if cfg.ft_sparsity_lambda > 0.0:
+            value_logit, pol_logits, _, (acc_stm, acc_ntm) = forward(
+                params, arch, batch, ft_impl, with_acc=True)
+            loss, metrics = total_loss(value_logit, pol_logits, batch["target"],
+                                       batch.get("pol_target_id"), cfg.pol_lambda)
+            # L1 on the post-CReLU activations = what the engine pays for
+            # (density-linear l1_dot). Density metric = deploy-relevant
+            # fraction of nonzero clamped activations.
+            act = 0.5 * (jnp.mean(jnp.clip(acc_stm, 0.0, 1.0))
+                         + jnp.mean(jnp.clip(acc_ntm, 0.0, 1.0)))
+            density = 0.5 * (jnp.mean((acc_stm > 0.0).astype(jnp.float32))
+                             + jnp.mean((acc_ntm > 0.0).astype(jnp.float32)))
+            loss = loss + cfg.ft_sparsity_lambda * act
+            metrics["ft_l1"] = act
+            metrics["ft_density"] = density
+            metrics["loss"] = loss
+            return loss, metrics
         value_logit, pol_logits, _ = forward(params, arch, batch, ft_impl)
         return total_loss(value_logit, pol_logits, batch["target"],
                           batch.get("pol_target_id"), cfg.pol_lambda)

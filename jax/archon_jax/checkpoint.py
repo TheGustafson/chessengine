@@ -109,12 +109,87 @@ def quantise(values: np.ndarray, multiplier: int, dtype: str,
     return qf.astype(dtype)
 
 
+def load_warm(path: str | Path, arch) -> dict[str, np.ndarray]:
+    """Warm-start load: raw checkpoint -> params for a possibly EXTENDED arch.
+
+    New additive tensors the checkpoint predates (l0_factw, l0_psqt_*) are
+    zero-filled — zero-init is an exact no-op for all three T0/T6c/sparsity
+    features, so warm-starting an extended arch from a bullet-era raw is
+    function-preserving at step 0. Tensors in the file but not the arch are
+    an error (that's a wrong-arch load, not a warm start)."""
+    shapes = arch.param_shapes()
+    flat = open_raw(path, shapes=None, mmap=False)
+    extra = set(flat) - set(shapes)
+    if extra:
+        raise ValueError(f"checkpoint has tensors the arch lacks: {extra}")
+    out = {}
+    for name, want in shapes.items():
+        if name in flat:
+            arr = flat[name]
+            if int(np.prod(want)) != arr.size:
+                raise ValueError(f"{name}: file count {arr.size} != shape {want}")
+            out[name] = arr.reshape(want)
+        else:
+            if name not in ("l0_factw", "l0_psqt_hkw", "l0_psqt_thw"):
+                raise ValueError(f"checkpoint missing non-additive tensor {name}")
+            print(f"warm-start: zero-init new tensor {name} {want}")
+            out[name] = np.zeros(want, dtype=np.float32)
+    return out
+
+
+def fold_for_export(params: dict[str, np.ndarray], arch) -> dict[str, np.ndarray]:
+    """Collapse training-only parameterization for the deploy stream:
+    merge the T0 factoriser into l0_pstw (merged[f] = real[f] + fact[f % PS_NB],
+    d40 merge_factoriser) so the bullet-format tensors are shape-identical to
+    an unfactorized net. PSQT tensors pass through untouched (they live in
+    their own PSQ1 section, not the bullet stream)."""
+    if not getattr(arch, "factorize", False) or "l0_factw" not in params:
+        return params
+    from .spec import HALFKA_DIMS, PS_NB
+    fact = np.asarray(params["l0_factw"], dtype=np.float32)
+    merged = np.asarray(params["l0_pstw"], dtype=np.float32) + np.tile(
+        fact, (HALFKA_DIMS // PS_NB, 1))
+    out = {k: v for k, v in params.items() if k != "l0_factw"}
+    out["l0_pstw"] = merged
+    return out
+
+
+# PSQ1 section (T6c deploy format, appended AFTER the padded bullet stream):
+#   b"PSQ1" | u32 num_buckets | u32 rows (HALFKA_DIMS + THREAT_DIMS; HalfKA
+#   rows first) | i32[rows * num_buckets] row-major.
+# Stored value = round_half_away(w * 0.5 * SCALE * 256) — the 0.5
+# stm-canonical factor and the cp scale (400) are folded in, 8 fractional
+# bits. Engine: value_cp += (psqt_stm[b] - psqt_ntm[b]) >> 8 (arithmetic).
+PSQT_MAGIC = b"PSQ1"
+PSQT_FIXED_MULT = 0.5 * 400.0 * 256.0
+
+
+def psqt_section_bytes(params: dict[str, np.ndarray], arch) -> bytes:
+    from .spec import HALFKA_DIMS, THREAT_DIMS
+    import struct as _s
+    hk = np.asarray(params["l0_psqt_hkw"], dtype=np.float64)
+    rows = [hk]
+    total_rows = HALFKA_DIMS
+    if not arch.halfka_only:
+        rows.append(np.asarray(params["l0_psqt_thw"], dtype=np.float64))
+        total_rows += THREAT_DIMS
+    table = np.concatenate(rows, axis=0) * PSQT_FIXED_MULT
+    q = _round_half_away(table)
+    if np.abs(q).max() >= 2 ** 31:
+        raise OverflowError("psqt quantisation overflow")
+    return (PSQT_MAGIC + _s.pack("<II", arch.num_buckets, total_rows)
+            + q.astype("<i4").tobytes())
+
+
 def quant_bytes_iter(params: dict[str, np.ndarray], arch, chunk_rows: int = 4096):
     """Yield the quant.bin byte stream for ``params`` under ``arch``
     (spec.ArchSpec), tensor by tensor, chunked so the 137 MB D47c export never
     materializes more than ~chunk_rows*HL floats at once (params may be
     memmaps). Layout = arch.quant_layout() == the d40 fmt vec (lines 1295-1314),
-    padded to a 64-byte multiple with cyclic b"bullet" (weights.rs:165-174)."""
+    padded to a 64-byte multiple with cyclic b"bullet" (weights.rs:165-174).
+    T0 factoriser tensors are folded into l0_pstw first (fold_for_export), so
+    the emitted stream is always shape-identical to an unfactorized net."""
+    params = fold_for_export(params, arch)
     total = 0
     for name, kind, mult, transpose in arch.quant_layout():
         arr = params[name]
@@ -142,12 +217,18 @@ def spec_pad(n: int) -> bytes:
 
 
 def write_quant(path: str | Path, params: dict[str, np.ndarray], arch) -> int:
-    """Write a byte-exact bullet quant.bin; returns total size."""
+    """Write a byte-exact bullet quant.bin; returns total size. When the arch
+    carries the T6c PSQT skip, the versioned PSQ1 section follows the padded
+    bullet stream (absent otherwise — legacy byte parity is untouched)."""
     total = 0
     with open(path, "wb") as f:
         for buf in quant_bytes_iter(params, arch):
             f.write(buf)
             total += len(buf)
+        if getattr(arch, "psqt", False):
+            sec = psqt_section_bytes(params, arch)
+            f.write(sec)
+            total += len(sec)
     return total
 
 
