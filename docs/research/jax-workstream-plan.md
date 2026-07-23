@@ -238,3 +238,25 @@ coverage, hand off warm, judge strength at the settle. Screens
 −17/−31/+14/−42/−31/0.0 (±30 each) = flat-at-parity series, matching
 the gate. Bench 701605 bit-exact through the timeman promotion;
 tune build lists 254 tunables; trainer rebuilt with D40_CONVERT_BAND.
+
+## STAGE-5 PREP (18:2x 2026-07-23, drafted while stage-4 trained)
+Endpoint step-8 is now execute-only:
+- `tools/nnue/runs/stage5_data_chain.sh` (tracked DRAFT): fetch→convert→
+  shuffle→rm-raw, one pack at a time, largest first, disk guards +
+  refuses while training is live. Menu with ledger-audited DIVs:
+  data_pv-2 2.25 (band 75:85), multinet 1.98 (75:85), pylon 1.95
+  (75:90), wrongIsRight 1.85 (75:95), wrongNNUE 1.49 (75:95); T76
+  optional (raw already local). Pre-cleanup deletes UHO+fishpack raws
+  (converted corpora ledgered; HF re-fetchable). Bands finalize at
+  endpoint (hash-band width = disk knob; lo>=5 heldout guard).
+- **House-corpora units finding (verified today):** canon-tight-v1 +
+  hardneg-tight-v2 carry SF18-UCI cp clamped ±2499 (canon audit slope
+  1.000; percentile + clamp check). Training frame is 1.484×UCI, so
+  both need `rescale_records.py --div 0.674` (×1.484, max 3708, no i16
+  overflow) — wired into the chain as rescale-a-copy; originals stay
+  canonical. hardneg still needs its own 400-pos D46 audit before its
+  1-3% slice is enabled (clamp match is inference, not an audit).
+- `tools/nnue/runs/stage5_pump.json` skeleton: warm/heldout_expect/mix
+  weights FILL AT ENDPOINT; placeholder split ≈59% new / 41% rehearsal.
+- Ops note: stage-4 janitor was found dead (another silent kill);
+  swept manually at sb170 — keeps sb60/120 + last two, disk 19G→33G.
