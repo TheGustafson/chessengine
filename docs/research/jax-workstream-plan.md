@@ -56,6 +56,16 @@ TPU path); PyO3 bindings are part of this workstream; WASM/ARM tabled.
       needs no GPU — and bullet remains the trainer). This tuning is a
       clean bounded agent task; commission when the box frees.
       ARCHON_JAX_ALLOW_GPU=1 opt-in added to the _require_cpu guard.
+- [x] **Phase-2 gate PASSED (2026-07-23, kernel agent): Pallas-Triton
+      embedding-bag + atomic scatter-add backward (custom VJP,
+      `jax/archon_jax/ft_kernel.py`) = 225k pos/s full train step at
+      batch 8192 = 1.07× bullet (gate was 0.8× = 168k); forward-only
+      1.26M pos/s; peak 2.93 GiB of 8 GB; parity vs CPU reference
+      3.5e-4 (< 1e-3 gate), 0/512 policy argmax flips. Route 2
+      (pure-XLA scan) measured dead: 11.7k @1024, OOM ≥4096; bf16 not
+      needed. Full numbers + go/no-go verdict:
+      `docs/research/jax-gpu-kernel-2026-07-23.md`. CPU path untouched
+      and default (`ARCHON_JAX_FT_IMPL=pallas` / `ft_impl=` opt-in).**
 - [ ] Wire `jax/tools/quant_byte_parity.py` + `engine_parity.py` into the
       gate-script family (every future net passes them pre-game).
 

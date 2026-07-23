@@ -35,7 +35,11 @@ def _require_cpu():
             "(set ARCHON_JAX_ALLOW_GPU=1 for a deliberate GPU session)")
 
 
-def make_update_step(arch: ArchSpec, cfg: TrainConfig):
+def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = None):
+    """``ft_impl``: feature-transformer implementation for model.forward —
+    "reference" (default), "pallas" (the GPU embedding-bag kernel,
+    ft_kernel.py) or "scan". Defaults to $ARCHON_JAX_FT_IMPL so GPU sessions
+    opt in by environment without touching call sites."""
     _require_cpu()
     import jax
     import jax.numpy as jnp
@@ -43,6 +47,9 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig):
     from .losses import total_loss
     from .model import forward
     from .optim import bullet_adamw
+
+    if ft_impl is None:
+        ft_impl = os.environ.get("ARCHON_JAX_FT_IMPL", "reference")
 
     bps = cfg.batches_per_superbatch
 
@@ -58,7 +65,7 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig):
     opt = bullet_adamw(lr_fn)
 
     def loss_fn(params, batch):
-        value_logit, pol_logits, _ = forward(params, arch, batch)
+        value_logit, pol_logits, _ = forward(params, arch, batch, ft_impl)
         return total_loss(value_logit, pol_logits, batch["target"],
                           batch.get("pol_target_id"), cfg.pol_lambda)
 
