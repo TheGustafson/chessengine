@@ -443,7 +443,10 @@ Last updated: 2026-07-22 D47c LIVE (cowboy dims 1280/128+threats; granular per-c
 > in implementation now) + T10 smallnet (+7-34%) + TM SPSA. At
 > +25-55% NPS the bar math flips deeply positive. RR cancelled by
 > user (rerun when stronger); profiling study #5 running with the
-> newly-installed toolkit.
+> newly-installed toolkit. **USER DIRECTIVE (pinned): when the
+> implementation agent lands packages 2-5, commission a FRESH
+> agent-run profile of the optimized binary** (new hot-path map —
+> did the bottleneck move; feeds study #6 / T10 priority).
 >
 > **★ sb210 SURGE (19:5x): Elo +85.0±30.6 (49-26-25) — stage-2 passed
 > the ENTIRE stage-1 endpoint band (+49-56) with 30sb of anneal left.**
