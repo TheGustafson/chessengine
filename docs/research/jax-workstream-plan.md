@@ -141,9 +141,14 @@ directive.
       is a 768 build — same fact the crown-rematch protocol flagged).
 - [x] S0 banked: kernel parity (3.53e-4, 0/512 flips), 400-step soak,
       corpus smoke at 4 offsets, 6-sig-fig loss reconciliation.
-- [ ] **S5 sparsity-λ probe (pre-launch)**: 2×3sb warm at λ∈{1e-3,3e-3};
-      pick the strongest λ with flat value component; density metric
-      live in tb thereafter.
+- [x] **S5 sparsity-λ probe — λ=0.001 PINNED (02:5x):** paired 3sb warm
+      probes: λ=3e-3 = real GROWING value drag (+0.09→+0.23% by sb3,
+      ~10× noise) — too hot; λ=1e-3 = value flat vs baseline (+0.02%,
+      within noise) with density falling 0.399→0.366 and accelerating.
+      **STAGE-3 LAUNCHED 02:5x** with λ=0.001: pre-flight PASS (0.006094
+      exact), tb live (d47d-stage3/train incl. loss/heldout + ft/*),
+      monitor armed (heldout/10sb + tripwires), GPU 93%, ~8.5h to sb240.
+      BUILD SILENCE IN EFFECT until TRAIN EXIT.
 On S1-S5 green → **launch stage-3** (driver: jax/tools/stage3_train.py,
 wrapper: tools/nnue/runs/stage3_jax_train.sh; mix UHO .40 / fishpack32
 .35 / farseerT74 .25 = 5.4B unique rows ≈ 1.1 epochs at 5.98B pres.;
