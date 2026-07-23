@@ -60,7 +60,12 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
         if cfg.lr_end_superbatch <= 1:
             return jnp.asarray(initial)
         t = jnp.clip((sb - 1.0) / (cfg.lr_end_superbatch - 1.0), 0.0, 1.0)
-        return final + 0.5 * (initial - final) * (1.0 + jnp.cos(jnp.pi * t))
+        lr = final + 0.5 * (initial - final) * (1.0 + jnp.cos(jnp.pi * t))
+        if cfg.warmup_superbatches > 0.0 and cfg.start_superbatch == 1:
+            # Per-step linear ramp over the first warmup_superbatches;
+            # deviates from constant-within-sb only during the ramp.
+            lr = lr * jnp.minimum(1.0, (count + 1.0) / (cfg.warmup_superbatches * bps))
+        return lr
 
     opt = bullet_adamw(lr_fn)
 

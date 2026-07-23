@@ -139,15 +139,31 @@ fn position_hash(entry: &loader::sfbinpack::TrainingDataEntry) -> u64 {
 /// (hash % 100 >= SKIP). Disjoint from every training run whenever
 /// hi <= D40_RANDOM_SKIP_PCT — the shadow population no net has trained on.
 static HELDOUT_BAND: std::sync::LazyLock<Option<(u64, u64)>> =
+    std::sync::LazyLock::new(|| parse_band("D40_HELDOUT_BAND", "held-out band"));
+
+/// Convert-mode keep band (2026-07-23, stage-4 data): `D40_CONVERT_BAND=
+/// "lo:hi"` bounds the dump to hash%100 in [lo,hi) — the UPPER bound is what
+/// D40_RANDOM_SKIP_PCT cannot express, and the big packs (T60T70/T75) need
+/// band-sized dumps to fit disk. Only consulted by D40_CONVERT_DUMP runs;
+/// lo >= 5 keeps the held-out shadow band [0,5) excluded by construction.
+static CONVERT_BAND: std::sync::LazyLock<Option<(u64, u64)>> =
     std::sync::LazyLock::new(|| {
-        let raw = std::env::var("D40_HELDOUT_BAND").ok()?;
-        let (lo, hi) = raw.split_once(':').expect("D40_HELDOUT_BAND must be lo:hi");
-        let (lo, hi): (u64, u64) =
-            (lo.parse().expect("band lo"), hi.parse().expect("band hi"));
-        assert!(lo < hi && hi <= 100, "D40_HELDOUT_BAND must satisfy 0 <= lo < hi <= 100");
-        println!("held-out band: hash%100 in [{lo},{hi})");
-        Some((lo, hi))
+        let band = parse_band("D40_CONVERT_BAND", "convert band");
+        if let Some((lo, _)) = band {
+            assert!(lo >= 5, "D40_CONVERT_BAND lo must be >= 5 (held-out shadow band)");
+        }
+        band
     });
+
+fn parse_band(var: &str, what: &str) -> Option<(u64, u64)> {
+    let raw = std::env::var(var).ok()?;
+    let (lo, hi) = raw.split_once(':').unwrap_or_else(|| panic!("{var} must be lo:hi"));
+    let (lo, hi): (u64, u64) =
+        (lo.parse().expect("band lo"), hi.parse().expect("band hi"));
+    assert!(lo < hi && hi <= 100, "{var} must satisfy 0 <= lo < hi <= 100");
+    println!("{what}: hash%100 in [{lo},{hi})");
+    Some((lo, hi))
+}
 
 /// D47: policy enabled? (read once; the mapper must not pay movegen when off).
 static POL_ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
@@ -198,9 +214,10 @@ fn sfbinpack_filter(entry: &loader::sfbinpack::TrainingDataEntry) -> bool {
         && entry.score.unsigned_abs() <= 10_000
         && entry.mv.mtype() == MoveType::Normal
         && entry.pos.piece_at(entry.mv.to()).piece_type() == PieceType::None
-        && match *HELDOUT_BAND {
-            // Held-out extraction: band REPLACES the skip test (quiet-filter
-            // criteria above stay identical — trainer-parity distribution).
+        && match HELDOUT_BAND.or(*CONVERT_BAND) {
+            // Held-out extraction / band-sized converts: the band REPLACES
+            // the skip test (quiet-filter criteria above stay identical —
+            // trainer-parity distribution). HELDOUT_BAND wins if both set.
             Some((lo, hi)) => {
                 let h = position_hash(entry) % 100;
                 h >= lo && h < hi

@@ -30,7 +30,7 @@ LR = re.compile(r"LR dropped to ([\d.eE+-]+)")
 COMP = re.compile(r"components sb (\d+) \| value ([\d.]+)(?: \| pol_ce ([\d.]+))?")
 LAMBDA = re.compile(r"pol_lambda=([\d.eE+-]+)")
 # stage-3 (JAX) extras: the heldout instrument + sparsity telemetry
-HELDOUT = re.compile(r"heldout sb (\d+) \| value ([\d.]+)")
+HELDOUT = re.compile(r"heldout sb (\d+) \| value ([\d.]+)(?: \| ema ([\d.]+))?")
 FT = re.compile(r"ft_l1 ([\d.]+) \| ft_density ([\d.]+)")
 BPS = 3040  # batches per superbatch (D40_BPS of the current run)
 
@@ -113,6 +113,8 @@ def main():
         m = HELDOUT.search(line)
         if m:
             writer.add_scalar("loss/heldout", float(m.group(2)), int(m.group(1)))
+            if m.group(3) is not None:
+                writer.add_scalar("loss/heldout_ema", float(m.group(3)), int(m.group(1)))
             writer.flush()
 
 

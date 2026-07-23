@@ -228,6 +228,11 @@ class TrainConfig:
     # the live weights. 0.0 = off. Default horizon when on: ~2sb of
     # steps (decay = 1 - 1/6080 ≈ 0.99984 at BPS 3040).
     ema_decay: float = 0.0
+    # LR warmup ramp (stage-4+): linear per-step ramp over the first N
+    # superbatches of a FRESH run (never re-applied on resume — gated on
+    # start_superbatch == 1). Softens the step-0 shock of pumping an
+    # annealed warm net at full peak LR. 0.0 = off (bullet parity).
+    warmup_superbatches: float = 0.0
 
 
 def cosine_lr(cfg: TrainConfig, superbatch: int) -> float:
