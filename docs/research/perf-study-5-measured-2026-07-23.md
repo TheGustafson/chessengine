@@ -119,6 +119,21 @@ prefetch-friendlier, so the mca number may even be conservative on misses).
 i32 adds commute exactly ⇒ **BIT-IDENTICAL**. This is now the #1
 engineering item in the codebase by a wide margin.
 
+**Why l1_dot exploded — the FT is no longer sparse.** From callgrind's
+deterministic Ir/call (22,417) and the exact 14-instruction AVX2 loop shape
+(8 unrolled bodies): **average nnz ≈ 200 of 320 groups = 62% density**.
+Study #4 (and the source comment "~85–95% are zero") carried the 768-era
+anchor of ~10–15% density / ~40 groups; the d47c net's activations are
+~5× denser. Consequences: (a) l1_dot streams ~200 × 512 B ≈ **100 KB of L1
+weights per eval** (not 20 KB) — the entire 160 KB bucket table effectively
+passes through cache every eval; (b) per-eval streamed bytes total ≈
+**180 KB, ~2× the #4 model** (≈ 42 GB/s nominal at current NPS — Phase B
+checks how much reaches DRAM); (c) the sparse-index machinery only saves
+~1/3 of the dense cost at this density; (d) **FT sparsity is a trainer-side
+lever nobody priced**: activation-sparsity regularization in the next
+retrain would cut l1_dot roughly linearly with density. Verify density on
+future nets before reusing any sparse-path cost intuition.
+
 ### 2b. f32 L2 tail — round-2 F4's "xmm-stuck" finding PERSISTS at d47c dims
 
 `propagate_l2` (inlined into forward_full) compiled to: per i (128
@@ -216,10 +231,10 @@ binary — those runs are retained in perf-artifacts as `wl50-d16-*` v1.)
   without = 13,287,259. **The consult makes the tree 6.2% BIGGER at equal
   depth on this set** — consistent with the sb30 ON/OFF 0-Elo ablation, but
   sharper: today's head doesn't just buy nothing, its orderings are
-  slightly worse than the classical stack it overrides, AND it pays ~2%
-  cycles for the privilege. C3 verdict: total cost ≈ 2% cycles + ~6% tree
-  (one workload sample) — **below #4's 3–7% cycle band, but the tree tax is
-  new and worse than the cycle tax.** Equal-conditions NPS delta: §8.
+  slightly worse than the classical stack it overrides, AND it pays for
+  the privilege. C3 verdict (with §8 B1's paired NPS ladder): total cost =
+  **+3.5% NPS + ~6% tree** — at the low edge of #4's cycle band, but the
+  tree tax is new and worse than the cycle tax.
 - Cheapest fix while accuracy climbs: keep the sidecar but gate the consult
   OFF (env) — zero cycle cost, zero tree distortion, stash skipped (the
   stash is `active_policy_head()`-gated already; no code change needed to
@@ -282,13 +297,91 @@ in expected value; its go/no-go should ride the in-tree histogram, not the
 
 ---
 
-## 8. Phase B — quiet-box precision (PENDING; filled in when the box clears)
+## 8. Phase B — precision runs (pinned core 4, interleaved-paired design)
 
-Planned per the box-sharing protocol: hyperfine NPS ladder (native vs v3,
-cpol vs nocpol, d47c vs PSQT), `perf stat -d` IPC/LLC/dTLB rates on the
-pinned workload, DRAM-bandwidth estimate vs a micro-benchmark ceiling
-(likwid-perfctr is broken: `/usr/local/bin/likwid-lua` missing), THP
-madvise prototype if time allows.
+The box never went fully quiet (an SF16 gauntlet + the implementing agent's
+test runs shared it throughout), so the ladder used an INTERLEAVED
+round-robin: one run of every config per round, ratios computed per round —
+load drift cancels in the pairing. Engine pinned `taskset -c 4`; per-round
+raw table in `perf-artifacts/phaseb-ladder-raw.txt` (round 2's baseline
+cell was hit by a 13-thread job and is excluded).
+
+### B1. NPS ladder (wl50/d14, medians of 5 clean rounds)
+
+| config | median NPS | vs baseline |
+|---|---:|---:|
+| baseline native + cpol (32e0a9c-equiv) | 591,802 | — |
+| **9b695fb (copy elimination)** | 613,674 | **+3.7%** |
+| **a3f892e (threat constants)** | 612,240 | **+3.5%** (≈ 0 over 9b695fb) |
+| baseline, sidecar hidden (nocpol) | 612,699 | **+3.5%** |
+| baseline x86-64-v3 build | 569,384 | −3.8% |
+| PSQT (no net) | 3,280,984 | 5.54× |
+
+Paired per-round ratios: 9b695fb/baseline = +2.4…+4.1% (mean +3.5%);
+a3f892e/9b695fb = −0.6…+1.2% (mean ≈ +0.3%); nocpol/baseline =
++1.6…+4.7% (mean +3.1%).
+
+Readings:
+- **C3 settled**: the sidecar's runtime tax is ≈ **3–3.5% NPS** (consult
+  1.5% cycles + stash + alloc + cache pollution), ON TOP of the +6.2%
+  equal-depth tree inflation from §5. Combined effective cost while the
+  head buys 0 Elo: ~9% — hiding the sidecar until it wins an ablation is
+  the cheapest "optimization" in this study.
+- **D16 note**: the strength-testing x86-64-v3 build is 3.8% slower than
+  the machine-local native build on this box (kernels are runtime-dispatched
+  AVX-512 either way; the delta is autovectorized + scalar code). SPRT
+  pairs are internally consistent (same flags both sides) so no action,
+  but absolute NPS quotes should name the build.
+- The d47c net costs 5.54× NPS vs the PSQT shell.
+
+### B3/B4. Counter rates (perf stat, wl50/d15, native + cpol, 14.0 s)
+
+| metric | value |
+|---|---|
+| IPC | **2.26** (164.4 G instr / 72.9 G cycles @ 5.2 GHz) |
+| L1-dcache miss rate | **25.9%** (17.8 G misses — the weight-row stream) |
+| L1-icache miss rate | 2.9% |
+| branch miss rate | 1.0% |
+| frontend idle | 8% |
+| L1D fills from local L2 | 17.3 G × 64 B ≈ **79 GB/s L2→L1** |
+| L1D fills from L3/CCX | 0.60 G (3.3% of fills) |
+| **fills from DRAM** | 72.1 M × 64 B ≈ **0.33 GB/s** |
+| L2-dTLB accesses (L1-dTLB misses) | 450 M (≈ 0.9% of loads) |
+| dTLB walks (L2-dTLB misses) | 17.0 M (3.8% of L2-dTLB accesses) |
+
+**Memory-bound verdict (the #4 §2 open question): the workload is
+L2-RESIDENT, not DRAM-bound.** The 77.7 MB threat table's *hot rows* and
+the per-bucket L1 weights live in L2/L3; DRAM sees 0.33 GB/s against a
+machine ceiling of tens of GB/s. int4/FT-compression stays REJECTED with
+prejudice; prefetch items are about hiding ~14-cycle L2→L1 latency, not
+bandwidth. The engine is compute/latency-bound with a healthy 2.26 IPC —
+which is exactly why the l1_dot dependency-chain fix (pure ILP) is the
+right #1.
+
+dTLB pressure is real but bounded: ~450 M L1-dTLB misses + 17 M walks ≈
+EST 2–5% of cycles. THP would reclaim most of that, BUT:
+
+### B5. THP experiment — blocked on this box
+
+`GLIBC_TUNABLES=glibc.malloc.hugetlb=1` (madvise path): **AnonHugePages
+stayed 0** — under this box's memory pressure/fragmentation even
+MADV_HUGEPAGE-at-fault gets no 2 MB blocks (defrag=madvise does direct
+compaction, which evidently failed), and the dTLB counters confirm nothing
+changed (17.5 M vs 17.0 M walks). Interleaved plain-vs-tunable rounds
+(6 rounds): median +0.9% for the tunable run — ambiguous allocator side
+effect, not THP. **Item #8 demoted**: an in-code aligned-alloc + madvise
+would still be the right implementation, but on this 15 GB box with
+training pipelines resident, expect hugepage allocation to fail routinely;
+the realistic upside is the 2–5% dTLB band and only when memory is
+unfragmented. Revisit after the l1_dot/L2-tail fixes.
+
+### B6. Bandwidth ceiling (likwid-bench is unusable on this box — broken
+AUR install, missing access daemon AND likwid-lua; used a gcc -O3
+-march=native C triad instead)
+
+Single-thread DRAM triad: **28.4 GB/s**. Workload DRAM demand: 0.33 GB/s =
+**1.2% of a one-core ceiling** — the DRAM-bound hypothesis is dead on
+arrival; see B4.
 
 ---
 
@@ -301,7 +394,7 @@ madvise prototype if time allows.
 | C2 | head co-equal at 20–30% | **REFUTED (too low)** | 48.5% measured |
 | C2' | f32 tail under-vectorized | **CONFIRMED, worse than claimed** | 2-lane xmm; 9.35 c/iter vs 4.06 ideal |
 | C2'' | l1_dot loop-order redundancy | **CONFIRMED + new dep-chain finding** | mca 3.0× kernel headroom |
-| C3 | policy machinery 3–7% cycles | **REVISED** | ~2% cycles, but +6.2% tree size (new) |
+| C3 | policy machinery 3–7% cycles | **REVISED** | +3.5% NPS (B1 paired), plus +6.2% tree size (new) |
 | C4 | smallnet p ∈ 0.25–0.40 | **REFUTED at position level** | 0.08–0.15 at 800–1000 cp gates |
 | — | Box::new per eval | **CONFIRMED exactly** | 1.00/eval, 99.93% of temporaries |
 | — | finny 4 copies/refresh | **CONFIRMED exactly** | 4.00 memcpys/refresh measured |
@@ -314,10 +407,10 @@ madvise prototype if time allows.
 |---|---|---:|---:|---|---|
 | 1 | **l1_dot group-outer swap** (8 zmm accumulators, kills 7 nnz re-walks + 7/8 bounds checks + the serial chain) | 34.4% | **+15–25%** (mca bound +29%) | LOW (one function, parity tests exist) | YES |
 | 2 | **explicit 2×zmm `propagate_l2` kernel** (preserve i-order) | 6.4% | +3–4% | LOW | YES |
-| 3 | **THP: madvise(MADV_HUGEPAGE) net+TT** | dTLB §8 | +1–4% (pending §8) | TRIVIAL | YES |
-| 4 | **threat-fold degenerate-copy alias** (28% of folds) + resolve→prefetch→fold (#4 item 3, base now 7.5% not 26%) | 7.5%+2.45% memcpy | +2–4% | MED | YES |
-| 5 | **consult gate review** (env-off until the head wins its ablation) — removes 1.5% cycles + the 6.2% tree tax | ~2%+tree | +2% NPS, ~+6% depth-speed | TRIVIAL | n/a (tree changes) |
-| 6 | stash de-Box + finny in-place (with #4 item 5's other copies) | ~1–2% total memcpy/alloc | +1–2% | LOW | YES |
+| 3 | **consult gate review** (hide/env-off the sidecar until the head wins its ablation) — measured +3.5% NPS (B1) plus the 6.2% equal-depth tree tax | 3.5%+tree | **+3.5% NPS, ~+6% depth-speed** | TRIVIAL | n/a (tree changes) |
+| 4 | **threat-fold degenerate-copy alias** (28% of folds) + resolve→prefetch→fold (#4 item 3, base now 7.5% not 26%; prefetch = L2→L1 latency, §8 B4) | 7.5%+2.45% memcpy | +2–4% | MED | YES |
+| 5 | THP madvise on net+TT — **demoted** (§8 B5: hugepages unobtainable on this box under load; upside = the 2–5% dTLB band when memory permits) | dTLB 2–5% | +0–3% | LOW | YES |
+| 6 | stash de-Box + finny in-place (with #4 item 5's other copies) — **largely LANDED as 9b695fb on the implementing branch, measured +3.5–4% (§11)** | ~1–2% residual | done/rider | LOW | YES |
 | 7 | T10 smallnet — AFTER in-tree p counter; position-weighted p says +7–10% not +20% | — | +7–10%? | HIGH | n/a |
 | 8 | quant unification (activate 5.9% → ~1%) — ride next format rev | 5.9% | +3–5% | MED-HIGH | NO |
 | 9 | bulk net parse | 0.4–0.5 s/spawn | QoL | TRIVIAL | YES |
@@ -328,11 +421,37 @@ single-function changes — the study-#4 "package #2" was correctly aimed but
 under-priced by ~2×: measured, it is worth **+20–30% NPS**, i.e. most of
 the d47c width tax, before any training-side lever.
 
-## 11. Verification of the implementing agent's branch — PENDING
+## 11. Verification of the implementing agent's branch (independent)
 
-Branch `worktree-agent-a7e7069d489335126` at time of writing:
-`32e0a9c` (baseline sync — bit-verified == this study's tree) +
-`9b695fb` "copy elimination in the SOTA head + Finny refresh — bit-identical,
-NPS ~neutral (371.4k → 371.7k median)". Verification (bit-parity on the
-800-FEN node-identity proxy + independent NPS A/B) runs when their branch
-settles; results will be appended here.
+Branch `worktree-agent-a7e7069d489335126`, verified commits: `32e0a9c`
+(baseline sync — bit-verified byte-equal to this study's tree) → `9b695fb`
+(copy elimination, claimed "bit-identical, NPS ~neutral 371.4k→371.7k") →
+`a3f892e` (threat-pipeline constants, claimed "bit-identical, +2.5%
+interleaved 383.7k→391.3k"). Each commit built from `git archive` in an
+isolated tree, same flags (native+sota release).
+
+| check | 9b695fb | a3f892e |
+|---|---|---|
+| static-eval parity, 800 FENs (`eval` cmd, d47c-stage2-sb240) | **800/800 identical** | **800/800 identical** |
+| search parity, node counts, wl50 × d13 | **50/50 identical** | **50/50 identical** |
+| NPS vs baseline (B1 paired-interleaved, wl50/d14, core-pinned) | **+3.7%** | **+3.5%** |
+| NPS vs previous commit | +3.7% | **+0.3% ± 1** |
+
+Verdicts:
+- **Bit-identical claims: CONFIRMED for both commits**, at both the eval
+  and the search level.
+- **9b695fb's "NPS ~neutral" UNDERSOLD ITSELF: it is +3.5–4% here.** Their
+  371 k baseline says their measurement ran under heavy contention (this
+  study measures the same binary at ~592 k pinned); the true copy-
+  elimination win was inside their noise floor.
+- **a3f892e's "+2.5%" is NOT REPRODUCED on this workload** (+0.3% ± 1 over
+  9b695fb, paired over 5 clean rounds). Discrepancy flagged: different FEN
+  set/depth and their contended environment are both plausible causes; the
+  patch is bit-identical so it carries no risk, but its standalone NPS
+  claim should not be quoted until re-measured on a quiet box. Their two
+  commits COMBINED are worth ≈ +3.5–4% NPS — real, just distributed
+  differently than their per-commit log claims.
+- Their remaining packages (p2 head kernels, p3 — binaries named
+  `engine-p2-*`/`engine-p3-*` were seen testing during this study) were not
+  committed by study close; verify them with the same recipe
+  (`scratchpad/verif/` + `parity800.uci` + B1 ladder).
