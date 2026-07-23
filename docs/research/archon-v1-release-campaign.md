@@ -5,7 +5,12 @@ Master sequence (user's numbering), each phase gated by the one before:
 
 ## 1. Unlock JAX  [IN FLIGHT]
 Kernel agent working the sparse-FT GPU bottleneck (Pallas embedding-bag /
-segment-sum / bf16; gate ≥168k pos/s @ batch 8192; park <0.5×).
+segment-sum / bf16; gate ≥168k pos/s @ batch 8192). **USER RULING: there
+is NO fallback — "I don't accept that we can't fix it. We must." A park
+verdict means escalation (new approaches, more agents, custom CUDA if
+needed), not a bullet detour.** Also ruled: NO early external anchoring —
+the release bar is "very good," and the campaign runs internal-gated
+until phase 7's battery.
 `jax-workstream-plan.md` governs. Data acquisition chain running in
 parallel (wrongIsRight + T60T70wIsRightFarseer + farseerT74/75; D46 gates
 before any training use).
@@ -39,6 +44,11 @@ currently buys 0 Elo and +6.2% tree).
 Pick the champion config (net + head set). If held-out still falling or
 the anneal was floored: stage-4 = LR→~0 ship anneal (doctrine: annealing
 to zero is a SHIPPING action — this is the one place it belongs).
+
+## 6b. SMALL SPSA (user amendment, 2026-07-23): TM + a compact
+high-leverage constant set, BEFORE the optimization/profiling phase —
+fixes the measured clock bleed so phases 7-9 measure true. The
+comprehensive tune stays at the end (phase 9), run exactly once.
 
 ## 7. Test, profile, optimize → final optimization agent
 Full gate battery (fixed-node, equal-time, external anchors on the
