@@ -1,0 +1,60 @@
+    _RINvNtNtCs2AWtUsOyxgP_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECsSl1RxSK0TU_11chessengine
+      in /home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine
+    main
+      in /home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine
+1 temporary allocations of 1 allocations in total (100.00%) from:
+    _RNvMs0_NtCsio7Oyl2UYcL_11chessengine3fenNtNtB7_5board5Board8from_fen
+      in /home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine
+    _RNvNtCsio7Oyl2UYcL_11chessengine5bench3run
+      in /home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine
+    _RNvCsSl1RxSK0TU_11chessengine4main
+      in /home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine
+    _RINvNtNtCs2AWtUsOyxgP_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECsSl1RxSK0TU_11chessengine
+      in /home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine
+    main
+      in /home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine
+
+1 temporary allocations of 1 allocations in total (100.00%) from
+0x7f40a48b17df
+  in /usr/lib/libstdc++.so.6
+1 temporary allocations of 1 allocations in total (100.00%) from:
+    0x7f40a51a41ae
+      in /lib64/ld-linux-x86-64.so.2
+    0x7f40a51a428c
+      in /lib64/ld-linux-x86-64.so.2
+    0x7f40a51bd15f
+      in /lib64/ld-linux-x86-64.so.2
+
+1 temporary allocations of 4 allocations in total (25.00%) from
+_RNvNtNtCs2AWtUsOyxgP_3std6thread9functions21available_parallelism
+  in /home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine
+1 temporary allocations of 1 allocations in total (100.00%) from:
+    _RNvMs_NtCsio7Oyl2UYcL_11chessengine3uciNtB4_7Options3new
+      in /home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine
+    _RNvMs8_NtCsio7Oyl2UYcL_11chessengine6searchNtB5_6Worker3new
+      in /home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine
+    _RNvNtCsio7Oyl2UYcL_11chessengine5bench3run
+      in /home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine
+    _RNvCsSl1RxSK0TU_11chessengine4main
+      in /home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine
+    _RINvNtNtCs2AWtUsOyxgP_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECsSl1RxSK0TU_11chessengine
+      in /home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine
+    main
+      in /home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine
+
+1 temporary allocations of 2 allocations in total (50.00%) from
+__getdelim
+  in /usr/lib/libc.so.6
+1 temporary allocations of 1 allocations in total (100.00%) from:
+    pthread_getattr_np
+      in /usr/lib/libc.so.6
+    main
+      in /home/nick/projects/chessengine/.claude/worktrees/agent-a2570718d99446e05/target/release/chessengine
+
+
+total runtime: 2.22s.
+calls to allocation functions: 415319 (186996/s)
+temporary memory allocations: 414145 (186467/s)
+peak heap memory consumption: 275.11M
+peak RSS (including heaptrack overhead): 273.41M
+total memory leaked: 138.02M
