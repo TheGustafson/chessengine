@@ -98,12 +98,19 @@ directive.
       through JAX = **BYTE-IDENTICAL PASS** (137,089,088 B). Heldout
       reproduce + one-step sanity are wired as HARD PRE-FLIGHT GATES in
       the stage-3 driver itself (stage3_train.py aborts on mismatch).
-- [ ] **S2 trajectory replay, 10sb (~23 min)** [RUNNING 01:1x]: cold
-      d47c config on the rescaled UHO skip-75 corpus; per-sb value vs
-      bullet's logged sb1-10 (baseline pinned:
-      experiments/jax-s2-replay/bullet-baseline-sb1-10.txt).
-      GATE: sb5-10 value within ±5% of bullet + monotone; sb1-2 ±15%
-      (init/data-order sensitive; trainings are not bit-reproducible).
+- [~] **S2 trajectory replay — GATE AMENDED ON EVIDENCE (01:4x):** the
+      train-loss comparison is CONFOUNDED: bullet's sb1-10 train loss is
+      measured on its own stream (file-head, window-shuffled) while the
+      JAX run samples the corpus uniformly — S2 read +8→11% on train
+      value, but on the FIXED heldout population at MATCHED sb5 the JAX
+      net is **+1.9%** from bullet's actual sb5 checkpoint (0.010949 vs
+      0.010747; quant-vs-quant, common-mode error). Heldout-at-matched-sb
+      is the correct instrument (axis law: Elo tracks heldout, ±4).
+      Residual +1.9% ≈ unmasked-policy pull @λ=0.005 + init/run noise —
+      S2b (value-only twin replay, RUNNING) pins the λ=0 residual.
+      REVISED GATE: S2b heldout at sb5+sb10 within 2.5% of the twin's
+      matched checkpoints. (First S2 attempt was killed by my own broad
+      pgrep kill — ops rule added to memory.)
 - [ ] **S3 checkpoint/kill/resume**: 2sb → ckpt → kill → resume 1sb;
       metrics continuous, params within atomic-noise envelope of a
       straight-through 3sb run.
