@@ -1,5 +1,15 @@
 # JAX workstream plan (activated 2026-07-22 evening, user directive)
 
+**DIRECTION DECISION (user, 2026-07-23 ~02:0x): the JAX-GPU kernel fix is
+THE next direction** ("obviously we have to fix the jax problem") — chosen
+over another-training-push-now and the search arc, because every queued
+research thread (sparsity retrain, doctrine run, T10, soft-policy heads,
+spike-1) converges on a GPU-speed JAX trainer. Kernel agent commissioned
+(Pallas embedding-bag / segment-sum / bf16 routes; gate ≥168k pos/s at
+batch 8192; park <0.5×). Parallel cheap threads: data acquisition
+(downloads) + TM SPSA as first quiet-night job. Crown rematch parked
+until user calls it (protocol: 400g sidecar-ON + 400g OFF).
+
 Source of truth for WHAT: `docs/research/jax-pipeline-study.md` (§7 phases,
 §8 go/no-go). This doc is the concrete task ledger for executing it.
 Standing user context: JAX is a committed direction (career + ambition +
