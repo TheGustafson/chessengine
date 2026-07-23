@@ -49,6 +49,14 @@ to zero is a SHIPPING action — this is the one place it belongs).
 high-leverage constant set, BEFORE the optimization/profiling phase —
 fixes the measured clock bleed so phases 7-9 measure true. The
 comprehensive tune stays at the end (phase 9), run exactly once.
+**USER MANDATE (05:5x): the small SPSA MUST address the poor time
+management** (measured: move-1 burns ~19s of a 60s clock; constants are
+SF-fitted for SF's search, never tuned for ours). **Measurement
+protocol: PRE-SPSA equal-time (10+0.1) match vs SF16 and a POST-SPSA
+one — same net, same binary, only the tuned constants differ; the pair
+isolates the SPSA delta. Matches run on an idle box (equal-time is
+corrupt under contention) WHILE the SPSA/TM code is being written —
+pre-measure launches the moment stage-3 training exits.**
 
 ## 7. Test, profile, optimize → final optimization agent
 Full gate battery (fixed-node, equal-time, external anchors on the

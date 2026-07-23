@@ -94,6 +94,7 @@ pub fn run() {
             for (name, value) in crate::search::params::tunables_list()
                 .into_iter()
                 .chain(crate::eval::params::tunables_list())
+                .chain(crate::timeman::tunables_list())
             {
                 println!("{name}\t{value}");
             }
@@ -1177,6 +1178,7 @@ fn dispatch<W: Write + Send + 'static>(
             for (name, value) in crate::search::params::tunables_list()
                 .into_iter()
                 .chain(crate::eval::params::tunables_list())
+                .chain(crate::timeman::tunables_list())
             {
                 writeln!(out, "option name {name} type string default {value}")?;
             }
@@ -1258,7 +1260,8 @@ fn cmd_setoption<W: Write>(
     #[cfg(feature = "tune")]
     if let Some(raw) = value.as_deref()
         && (crate::search::params::set_tunable(&name, raw).is_ok()
-            || crate::eval::params::set_tunable(&name, raw).is_ok())
+            || crate::eval::params::set_tunable(&name, raw).is_ok()
+            || crate::timeman::set_tunable(&name, raw).is_ok())
     {
         return Ok(());
     }

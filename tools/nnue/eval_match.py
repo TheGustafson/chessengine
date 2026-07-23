@@ -54,7 +54,16 @@ def estimate(games: int, wins: int, losses: int, draws: int) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate", required=True, type=absolute)
-    parser.add_argument("--baseline", required=True, type=absolute)
+    parser.add_argument("--baseline", required=True,
+                        type=lambda s: s if s == "default" else absolute(s),
+                        help="baseline net path, or the literal 'default' to let "
+                             "the baseline engine keep its own embedded/default "
+                             "net (external anchors like SF16)")
+    parser.add_argument("--candidate-option", action="append", default=[],
+                        metavar="NAME=VALUE",
+                        help="extra UCI option for the CANDIDATE engine only "
+                             "(repeatable; the TM-SPSA bracket passes tuned "
+                             "constants here)")
     parser.add_argument("--games", type=int, default=40)
     limit = parser.add_mutually_exclusive_group()
     limit.add_argument("--nodes", type=int)
@@ -132,10 +141,12 @@ def main() -> int:
                  "status": "created"}
 
     search_limit = [f"tc={args.tc}"] if args.tc else ["tc=inf", f"nodes={args.nodes}"]
+    baseline_eval = [] if args.baseline == "default" else [f"option.EvalFile={args.baseline}"]
     command = [
         str(args.fastchess),
         "-engine", f"cmd={args.candidate_engine}", "name=candidate", f"option.EvalFile={args.candidate}",
-        "-engine", f"cmd={args.baseline_engine}", "name=baseline", f"option.EvalFile={args.baseline}",
+        *[f"option.{opt}" for opt in args.candidate_option],
+        "-engine", f"cmd={args.baseline_engine}", "name=baseline", *baseline_eval,
         "-each", "proto=uci", *search_limit, "option.Threads=1", "option.Hash=16",
         *[f"option.{opt}" for opt in args.each_option],
         "-openings", f"file={args.openings}", "format=epd", "order=random",

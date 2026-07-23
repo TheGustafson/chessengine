@@ -37,34 +37,60 @@ const SUBSECOND_HORIZON: f64 = 0.05;
 /// overhead as a safety margin.
 const OVERHEAD_MARGIN_MOVES: i64 = 2;
 
-/// `original_time_adjust = 0.3272 * log10(time_left) - 0.4141`, computed
-/// once per game at the first timed `init` (§3.7 step 5).
-const ORIGINAL_TIME_ADJUST_LOG_COEFF: f64 = 0.3272;
-const ORIGINAL_TIME_ADJUST_OFFSET: f64 = 0.4141;
+// The sudden-death allocation curve + hard-wall family are RUNTIME TUNABLES
+// (phase-6b TM SPSA, user mandate 2026-07-23): every constant below was
+// SF-fitted for SF's search dynamics, and the measured move-1 burn
+// (~19s/60s = riding optimum's soft-stop factors all the way to the 6.873×
+// maximum wall) says they were never right for ours. Without the `tune`
+// feature these compile back to plain consts — zero-cost, Bench-identical.
+crate::tunables! {
 
-/// `opt_constant = min(0.0029869 + 0.00033554 * log10(time_in_sec), 0.004905)`
-const OPT_CONSTANT_BASE: f64 = 0.0029869;
-const OPT_CONSTANT_LOG_COEFF: f64 = 0.00033554;
-const OPT_CONSTANT_CAP: f64 = 0.004905;
+    /// `original_time_adjust = 0.3272 * log10(time_left) - 0.4141`, computed
+    /// once per game at the first timed `init` (§3.7 step 5).
+    pub ORIGINAL_TIME_ADJUST_LOG_COEFF: f64 = 0.3272;
+    /// original_time_adjust offset term.
+    pub ORIGINAL_TIME_ADJUST_OFFSET: f64 = 0.4141;
 
-/// `max_constant = max(3.3744 + 3.0608 * log10(time_in_sec), 3.1441)`
-const MAX_CONSTANT_BASE: f64 = 3.3744;
-const MAX_CONSTANT_LOG_COEFF: f64 = 3.0608;
-const MAX_CONSTANT_FLOOR: f64 = 3.1441;
+    /// `opt_constant = min(0.0029869 + 0.00033554 * log10(time_in_sec), 0.004905)`
+    pub OPT_CONSTANT_BASE: f64 = 0.0029869;
+    /// opt_constant log-clock coefficient.
+    pub OPT_CONSTANT_LOG_COEFF: f64 = 0.00033554;
+    /// opt_constant upper cap.
+    pub OPT_CONSTANT_CAP: f64 = 0.004905;
 
-/// Sudden-death `opt_scale`: `min(0.012112 + (ply + 3.22713)^0.46866 *
-/// opt_constant, 0.19404 * time / time_left) * original_time_adjust`.
-const OPT_SCALE_BASE: f64 = 0.012112;
-const OPT_SCALE_PLY_OFFSET: f64 = 3.22713;
-const OPT_SCALE_PLY_POW: f64 = 0.46866;
-const OPT_SCALE_CLOCK_CAP: f64 = 0.19404;
+    /// `max_constant = max(3.3744 + 3.0608 * log10(time_in_sec), 3.1441)`
+    pub MAX_CONSTANT_BASE: f64 = 3.3744;
+    /// max_constant log-clock coefficient.
+    pub MAX_CONSTANT_LOG_COEFF: f64 = 3.0608;
+    /// max_constant floor.
+    pub MAX_CONSTANT_FLOOR: f64 = 3.1441;
 
-/// Sudden-death `max_scale = min(6.873, max_constant + ply / 12.352)`.
-const MAX_SCALE_CAP: f64 = 6.873;
-const MAX_SCALE_PLY_DIV: f64 = 12.352;
+    /// Sudden-death `opt_scale`: `min(0.012112 + (ply + 3.22713)^0.46866 *
+    /// opt_constant, 0.19404 * time / time_left) * original_time_adjust`.
+    pub OPT_SCALE_BASE: f64 = 0.012112;
+    /// opt_scale ply-curve offset.
+    pub OPT_SCALE_PLY_OFFSET: f64 = 3.22713;
+    /// opt_scale ply-curve exponent.
+    pub OPT_SCALE_PLY_POW: f64 = 0.46866;
+    /// opt_scale early-game clock cap (fraction of the remaining clock the
+    /// SOFT budget may claim — one of the two move-1 burn levers).
+    pub OPT_SCALE_CLOCK_CAP: f64 = 0.19404;
+
+    /// Sudden-death `max_scale = min(6.873, max_constant + ply / 12.352)` —
+    /// the hard wall as a multiple of optimum; THE move-1 burn lever (the
+    /// observed ~19s/60s ≈ maximum being hit every early move).
+    pub MAX_SCALE_CAP: f64 = 6.873;
+    /// max_scale ply divisor.
+    pub MAX_SCALE_PLY_DIV: f64 = 12.352;
+
+    /// Never budget more than ~81% of the remaining clock for one move:
+    /// `maximum <= 0.8097 * time - move_overhead`. Tunable with a TIGHT
+    /// SPSA range only — raising it is forfeit risk, not strength.
+    pub MAX_CLOCK_FRACTION: f64 = 0.8097;
+}
 
 /// Repeating-TC `opt_scale = min((0.88 + ply / 116.4) / mtg,
-/// 0.88 * time / time_left)`.
+/// 0.88 * time / time_left)`. (Not tuned: the campaign plays sudden death.)
 const MTG_OPT_BASE: f64 = 0.88;
 const MTG_OPT_PLY_DIV: f64 = 116.4;
 const MTG_OPT_CLOCK_CAP: f64 = 0.88;
@@ -72,10 +98,6 @@ const MTG_OPT_CLOCK_CAP: f64 = 0.88;
 /// Repeating-TC `max_scale = 1.3 + 0.11 * mtg`.
 const MTG_MAX_SCALE_BASE: f64 = 1.3;
 const MTG_MAX_SCALE_PER_MOVE: f64 = 0.11;
-
-/// Never budget more than ~81% of the remaining clock for one move:
-/// `maximum <= 0.8097 * time - move_overhead`.
-const MAX_CLOCK_FRACTION: f64 = 0.8097;
 
 /// `Ponder` option bump: think `optimum / 4` longer, since pondering
 /// recoups time on average (§3.7 step 8).
@@ -316,19 +338,21 @@ impl TimeManager {
         if limits.movestogo == 0 {
             // Step 5: sudden death / increment — fitted log formulas.
             if persist.original_time_adjust < 0.0 {
-                persist.original_time_adjust = ORIGINAL_TIME_ADJUST_LOG_COEFF * time_left_f.log10()
-                    - ORIGINAL_TIME_ADJUST_OFFSET;
+                persist.original_time_adjust = ORIGINAL_TIME_ADJUST_LOG_COEFF()
+                    * time_left_f.log10()
+                    - ORIGINAL_TIME_ADJUST_OFFSET();
             }
             let log_time_in_sec = (scaled_time as f64 / 1000.0).log10();
-            let opt_constant = (OPT_CONSTANT_BASE + OPT_CONSTANT_LOG_COEFF * log_time_in_sec)
-                .min(OPT_CONSTANT_CAP);
-            let max_constant = (MAX_CONSTANT_BASE + MAX_CONSTANT_LOG_COEFF * log_time_in_sec)
-                .max(MAX_CONSTANT_FLOOR);
-            opt_scale = (OPT_SCALE_BASE
-                + (f64::from(ply) + OPT_SCALE_PLY_OFFSET).powf(OPT_SCALE_PLY_POW) * opt_constant)
-                .min(OPT_SCALE_CLOCK_CAP * time as f64 / time_left_f)
+            let opt_constant = (OPT_CONSTANT_BASE() + OPT_CONSTANT_LOG_COEFF() * log_time_in_sec)
+                .min(OPT_CONSTANT_CAP());
+            let max_constant = (MAX_CONSTANT_BASE() + MAX_CONSTANT_LOG_COEFF() * log_time_in_sec)
+                .max(MAX_CONSTANT_FLOOR());
+            opt_scale = (OPT_SCALE_BASE()
+                + (f64::from(ply) + OPT_SCALE_PLY_OFFSET()).powf(OPT_SCALE_PLY_POW())
+                    * opt_constant)
+                .min(OPT_SCALE_CLOCK_CAP() * time as f64 / time_left_f)
                 * persist.original_time_adjust;
-            max_scale = MAX_SCALE_CAP.min(max_constant + f64::from(ply) / MAX_SCALE_PLY_DIV);
+            max_scale = MAX_SCALE_CAP().min(max_constant + f64::from(ply) / MAX_SCALE_PLY_DIV());
         } else {
             // Step 6: repeating time control.
             opt_scale = ((MTG_OPT_BASE + f64::from(ply) / MTG_OPT_PLY_DIV) / f64::from(mtg))
@@ -339,7 +363,7 @@ impl TimeManager {
         // Step 7: budgets. (Rust f64->i64 `as` saturates, so even the
         // degenerate -inf/inf corners of the formulas stay panic-free.)
         self.optimum_ms = ((opt_scale * time_left_f) as i64).max(1);
-        self.maximum_ms = ((MAX_CLOCK_FRACTION * time as f64 - move_overhead as f64)
+        self.maximum_ms = ((MAX_CLOCK_FRACTION() * time as f64 - move_overhead as f64)
             .min(max_scale * self.optimum_ms as f64) as i64)
             .max(self.optimum_ms);
 
@@ -620,7 +644,7 @@ mod tests {
             let (tm, _) = init_tm(time, inc, movestogo, ply, &default_options(), &mut persist);
             prop_assert!(tm.optimum() >= 1);
             prop_assert!(tm.optimum() <= tm.maximum());
-            let clock_cap = (MAX_CLOCK_FRACTION * time as f64 - 10.0) as i64;
+            let clock_cap = (MAX_CLOCK_FRACTION() * time as f64 - 10.0) as i64;
             prop_assert!(tm.maximum() <= tm.optimum().max(clock_cap));
         }
 
