@@ -86,9 +86,53 @@ TPU path); PyO3 bindings are part of this workstream; WASM/ARM tabled.
 - [ ] Top-k logit print + multi-head sidecar loader extension (policy
       roadmap build-window items — same window, shared rebuild).
 
-## Phase 3 — shadow training (CONCRETE SPEC, 2026-07-23; ~7.4h GPU)
-Purpose: prove the JAX trainer trains a REAL net equivalent to bullet's —
-the promotion gate for inverting bullet to reference-oracle status.
+## Phase 3 — ~~shadow training~~ CANCELLED (user ruling, 2026-07-23):
+**"It isn't worth the time cost. Smoke test it aggressively then trust it
+with the real thing. If it fails we only lost the same amount of time."**
+The 7.4h replay is replaced by the smoke battery below (~45 min total);
+the first real JAX training IS stage-3. Efficiency is a standing
+directive.
+
+## Phase 3' — aggressive smoke battery (each item minutes, not hours)
+- [~] **S1 warm-start integrity**: quant re-export of d47c-stage2-sb240
+      through JAX = **BYTE-IDENTICAL PASS** (137,089,088 B). Heldout
+      reproduce + one-step sanity are wired as HARD PRE-FLIGHT GATES in
+      the stage-3 driver itself (stage3_train.py aborts on mismatch).
+- [ ] **S2 trajectory replay, 10sb (~23 min)** [RUNNING 01:1x]: cold
+      d47c config on the rescaled UHO skip-75 corpus; per-sb value vs
+      bullet's logged sb1-10 (baseline pinned:
+      experiments/jax-s2-replay/bullet-baseline-sb1-10.txt).
+      GATE: sb5-10 value within ±5% of bullet + monotone; sb1-2 ±15%
+      (init/data-order sensitive; trainings are not bit-reproducible).
+- [ ] **S3 checkpoint/kill/resume**: 2sb → ckpt → kill → resume 1sb;
+      metrics continuous, params within atomic-noise envelope of a
+      straight-through 3sb run.
+- [ ] **S4 export chain on a JAX-TRAINED artifact**: S2's sb10 ckpt →
+      netpack → net_scale_check PASS → engine oracle ≤5cp p50 (proves
+      JAX-trained weights survive deployment, not just imported ones).
+- [x] S0 banked: kernel parity (3.53e-4, 0/512 flips), 400-step soak,
+      corpus smoke at 4 offsets, 6-sig-fig loss reconciliation.
+- [ ] **S5 sparsity-λ probe (pre-launch)**: 2×3sb warm at λ∈{1e-3,3e-3};
+      pick the strongest λ with flat value component; density metric
+      live in tb thereafter.
+On S1-S5 green → **launch stage-3** (driver: jax/tools/stage3_train.py,
+wrapper: tools/nnue/runs/stage3_jax_train.sh; mix UHO .40 / fishpack32
+.35 / farseerT74 .25 = 5.4B unique rows ≈ 1.1 epochs at 5.98B pres.;
+~7.7h at 216k pos/s all-features).
+
+## 2026-07-23 BAKED-IN WINS (user: "do those three", commit 3640f5c)
+T0 factorization (-3% step), T6c PSQT skip (via 2nd pallas invocation —
+XLA narrow-scatter route measured -32%, kernel route ~-1%), FT-sparsity
+regularizer (λ knob + ft_density metric). All zero-init no-op proven,
+warm-safe; ALL-ON = 216.6k pos/s (96.6% of plain kernel). Engine-side
+PSQ1 consumer commissioned (worktree agent; format pinned in
+checkpoint.py). D46 incident caught+fixed: converts made WITHOUT
+SFBINPACK_SCORE_DIV carried raw units — rescale_records.py (f32-exact
+LUT) repaired UHO+fishpack in place (frame verified vs heldout p50/p99);
+T74 converted WITH DIV=1.66 at dump. Skip-75 dumps = the EXACT fixed
+25% subpopulation bullet trained on (deterministic hash keep-test).
+
+## (superseded spec kept for reference)
 - [ ] **Data prerequisite: convert nodes5000pv2_UHO at skip-75**
       (`uho-band75-100.bin` → shuffle `--unlink-input` → ~84G final).
       SIZING (2026-07-23): UHO is ~16B raw positions — a skip-5 dump
