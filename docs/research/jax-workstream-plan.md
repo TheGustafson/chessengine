@@ -114,9 +114,13 @@ directive.
 - [ ] **S3 checkpoint/kill/resume**: 2sb → ckpt → kill → resume 1sb;
       metrics continuous, params within atomic-noise envelope of a
       straight-through 3sb run.
-- [ ] **S4 export chain on a JAX-TRAINED artifact**: S2's sb10 ckpt →
-      netpack → net_scale_check PASS → engine oracle ≤5cp p50 (proves
-      JAX-trained weights survive deployment, not just imported ones).
+- [x] **S4 export chain — GREEN (01:5x, on the JAX-trained S2 sb5):**
+      netpack → .cenn (136.8MB) → engine loads → scale-check PASS
+      (median 0.871 in band, sign 97.1% vs incumbent) → engine oracle
+      p50 1cp / p90 4cp / 99% sign (gate ≤5cp p50; tail = the known
+      ≤7-piece quant-edge pattern). Candidate engine for 1280 nets =
+      engines/bin/archon-d47 (width is compile-time; target/release
+      is a 768 build — same fact the crown-rematch protocol flagged).
 - [x] S0 banked: kernel parity (3.53e-4, 0/512 flips), 400-step soak,
       corpus smoke at 4 offsets, 6-sig-fig loss reconciliation.
 - [ ] **S5 sparsity-λ probe (pre-launch)**: 2×3sb warm at λ∈{1e-3,3e-3};
