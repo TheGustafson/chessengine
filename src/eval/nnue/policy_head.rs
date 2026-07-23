@@ -85,17 +85,6 @@ impl PolicyHead {
         }
     }
 
-<<<<<<< HEAD
-    /// One selected row: `rows[id] · h + bias[id]`.
-    #[inline]
-    fn row_score(&self, id: usize, h: &[f32; L2]) -> f32 {
-        let row = &self.rows[id * L2..id * L2 + L2];
-        let mut acc = 0.0f32;
-        for (w, x) in row.iter().zip(h.iter()) {
-            acc += f32::from(*w) * x;
-        }
-        acc + self.bias[id]
-=======
     /// One selected row: `rows[id] · h + bias[id]`, through the dispatched
     /// [`policy_dot`](super::sota_simd::policy_dot) kernel (perf study #4
     /// item #4 — the old serial element-order sum was a ~128-deep f32 add
@@ -109,7 +98,6 @@ impl PolicyHead {
             .try_into()
             .expect("policy row");
         super::sota_simd::policy_dot(row, h) + self.bias[id]
->>>>>>> worktree-agent-a7e7069d489335126
     }
 
     /// The policy-argmax LEGAL move for `board`, scored against the fresh
