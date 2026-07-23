@@ -396,10 +396,14 @@ impl SotaContext {
         let threat = self.threats.at(ply);
         let (value, sigma, wdl) = if super::active_policy_head().is_some() {
             // D47: the policy scorer needs the shared-bottleneck activation of
-            // this exact position; stash it (1 KiB copy) only when a head is
-            // loaded so headless builds/runs pay nothing.
-            let ((value, sigma, wdl), l2) =
-                self.net.head.forward_full(pst, threat, stm, piece_count);
+            // this exact position; stash it only when a head is loaded so
+            // headless builds/runs pay nothing. `forward_into` writes the
+            // stash buffer directly (perf study #4 item #5 — no by-value hop).
+            let mut l2 = [0.0f32; super::sota_head::L2];
+            let (value, sigma, wdl) =
+                self.net
+                    .head
+                    .forward_into(pst, threat, stm, piece_count, &mut l2);
             self.last_l2 = Some(Box::new(l2));
             self.last_l2_key = board.key();
             (value, sigma, wdl)
