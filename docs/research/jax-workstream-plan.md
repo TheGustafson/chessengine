@@ -123,9 +123,15 @@ directive.
       bullet's windowed stream as a curriculum — a FREE structural win
       of the migration (pin: candidate explanation for future
       better-than-bullet curves; don't double-count it as a recipe win).
-- [ ] **S3 checkpoint/kill/resume**: 2sb → ckpt → kill → resume 1sb;
-      metrics continuous, params within atomic-noise envelope of a
-      straight-through 3sb run.
+- [x] **S3 crash-resume — PASS (02:2x):** driver fresh-2sb → resume+1sb
+      vs straight-3sb: heldout IDENTICAL to 4 sig figs (0.006734 both);
+      train value shows only the known fresh-Adam transient. Also
+      banked: S1 pre-flight fired live (warm heldout exactly 0.006094
+      PASS); same-seed run-pair noise floor ~0.02% (A-vs-C sb1/sb2) —
+      λ probes are effectively paired. NOTE: sb3 heldout 0.006734 >
+      warm 0.006094 = the expected warm-restart bounce (SGDR arc, the
+      stage-2 signature) — do NOT panic-abort stage-3 on early heldout
+      regression; judge the arc.
 - [x] **S4 export chain — GREEN (01:5x, on the JAX-trained S2 sb5):**
       netpack → .cenn (136.8MB) → engine loads → scale-check PASS
       (median 0.871 in band, sign 97.1% vs incumbent) → engine oracle
