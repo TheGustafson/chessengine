@@ -677,7 +677,8 @@ fn main() {
             // coerce the fn-item to a fn pointer so `main` has the `SfReader` type.
             let filter: fn(&loader::sfbinpack::TrainingDataEntry) -> bool = sfbinpack_filter;
             let main: SfReader =
-                loader::SfBinpackLoader::new(data.as_str(), buffer_mb, usize::from(threads), filter);
+                loader::SfBinpackLoader::new(data.as_str(), buffer_mb, usize::from(threads), filter)
+                    .with_single_pass(std::env::var("D40_CONVERT_DUMP").is_ok());
             // D40_MIX_DATA=<pre-shuffled aux .bin> folds self-play/SF18 hard-negs into
             // the stream at D40_MIX_PCT% (default 5). Empty/unset => plain sfbinpack.
             match std::env::var("D40_MIX_DATA") {
@@ -754,6 +755,46 @@ fn main() {
         });
         out.flush().expect("flush held-out dump");
         println!("held-out dump: {written} rows -> {dump_path}");
+        return;
+    }
+
+    // D40_CONVERT dump (2026-07-23, JAX queue B): ONE full trainer-parity pass
+    // of the sfbinpack stream -> raw bulletformat .bin (the JAX-native corpus
+    // format; 32-byte ChessBoard records). Uses the TRAINING keep-test, so run
+    // with D40_RANDOM_SKIP_PCT=5 to exclude the held-out shadow band [0,5).
+    // The loader's 2M-row buffer shuffle applies locally; the corpus still
+    // needs the GLOBAL pass (tools/nnue/shuffle_records.py -> *.shuf.bin) to
+    // satisfy data.py's pre-shuffled contract before any training use.
+    if let Ok(dump_path) = std::env::var("D40_CONVERT_DUMP") {
+        assert!(
+            HELDOUT_BAND.is_none(),
+            "D40_CONVERT_DUMP uses the training keep-test; unset D40_HELDOUT_BAND \
+             (set D40_RANDOM_SKIP_PCT=5 to exclude the held-out band)"
+        );
+        assert!(
+            matches!(reader, D40Reader::Sf(_)),
+            "D40_CONVERT_DUMP requires D40_FORMAT=sfbinpack without D40_MIX_DATA \
+             (single-pass EOF semantics live in the sfbinpack loader)"
+        );
+        use std::io::Write;
+        let mut out = std::io::BufWriter::new(
+            std::fs::File::create(&dump_path).expect("create D40_CONVERT_DUMP"),
+        );
+        let mut written = 0usize;
+        reader.read_chunks(0, |chunk: &[ChessBoard]| {
+            let bytes = unsafe {
+                std::slice::from_raw_parts(
+                    chunk.as_ptr() as *const u8,
+                    chunk.len() * std::mem::size_of::<ChessBoard>(),
+                )
+            };
+            out.write_all(bytes).expect("write convert rows");
+            written += chunk.len();
+            println!("convert: {written} rows");
+            false
+        });
+        out.flush().expect("flush convert dump");
+        println!("convert dump COMPLETE: {written} rows -> {dump_path}");
         return;
     }
 

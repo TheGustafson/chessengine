@@ -6,6 +6,16 @@ ephemeral scratchpad. To use: copy into the bullet checkout's `examples/` dir an
 register each as a `[[example]]` in `bullet_lib/Cargo.toml`, then
 `cargo run --release --features cuda --example d40_eval` (CUDA_PATH=/usr).
 
+**Toolchain patches**: `bullet-toolchain.patch` is the cumulative diff of OUR
+local modifications to the bullet checkout (upstream base commit
+`cebc78a093d92cbc87e56cfef049184c225270b0`): `ModelEvaluator::new_with_batch`
+(heldout eval batching), the sfbinpack loader `with_single_pass` mode +
+tail-buffer flush (the `D40_CONVERT_DUMP` corpus converter needs one-pass EOF
+semantics), and example registrations in `bullet_lib/Cargo.toml`. To rebuild
+the toolchain from scratch: clone bullet at that commit, `git apply` the
+patch, copy these examples in. Regenerate after any toolchain edit:
+`cd .archon-state/toolchains/bullet && git diff > <repo>/tools/nnue/bullet/bullet-toolchain.patch`.
+
 - `d40_eval.rs` — the D40 eval trunk, ALL-NATIVE bullet: `ChessBucketsMirrored`
   → affine → `.crelu().pairwise_mul()` → concat → custom non-uniform 8 output
   buckets → per-bucket L1(i8)/L2/L3(f32). Save order (CENN-v2 transcode target):
