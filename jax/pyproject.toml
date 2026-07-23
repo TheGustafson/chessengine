@@ -4,9 +4,12 @@ version = "0.1.0"
 description = "ARCHON NNUE training pipeline in JAX (D47c-parity prototype)"
 requires-python = ">=3.11"
 dependencies = [
-    "numpy>=1.26",
-    "jax>=0.4.30",
-    "optax>=0.2",
+    # PINNED 2026-07-22 (§8 ops gate): the floor pins silently resolved to
+    # these exact versions during the study; parity proofs ran on them.
+    # Bump deliberately, rerun quant_byte_parity + forward_parity after.
+    "numpy==2.5.1",
+    "jax==0.11.0",
+    "optax==0.2.8",
 ]
 
 [project.optional-dependencies]

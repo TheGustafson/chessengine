@@ -73,13 +73,24 @@ def run(params, batch, arch):
     return np.asarray(value_logit), np.asarray(pol_logits)
 
 
-def main(raw_path, quant_path, corpus, n_rows=256):
+def main(raw_path, quant_path, corpus, n_rows=256, sample="uniform"):
     arch = ArchSpec.full()
     cfg = TrainConfig()
     raw = checkpoint.open_raw(raw_path, arch.param_shapes(), mmap=True)
     quant = checkpoint.dequantise_quant(quant_path, arch)
 
-    recs = np.fromfile(corpus, dtype=RECORD_DTYPE, count=n_rows)
+    # sample="prefix" reproduces the historical behavior (np.fromfile prefix)
+    # but is BIASED on stream-ordered corpora: the dump inherits the binpack's
+    # segment order and early segments are measurably easier (the training
+    # sawtooth), which produced a spurious ~7% optimistic value-MSE readout
+    # on 2026-07-22. Default is now a uniform stride over the whole file.
+    if sample == "prefix":
+        recs = np.fromfile(corpus, dtype=RECORD_DTYPE, count=n_rows)
+    else:
+        all_recs = np.memmap(corpus, dtype=RECORD_DTYPE, mode="r")
+        idx = np.linspace(0, len(all_recs) - 1, num=min(int(n_rows), len(all_recs)),
+                          dtype=np.int64)
+        recs = np.array(all_recs[idx])
     batch = map_batch(recs, wdl=cfg.wdl, score_multiplier=cfg.score_multiplier,
                       scale=cfg.scale, policy=True)
     print(f"rows {len(recs)}  max active: halfka "
@@ -120,4 +131,5 @@ def main(raw_path, quant_path, corpus, n_rows=256):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:4], int(sys.argv[4]) if len(sys.argv) > 4 else 256)
+    main(*sys.argv[1:4], int(sys.argv[4]) if len(sys.argv) > 4 else 256,
+         sys.argv[5] if len(sys.argv) > 5 else "uniform")
