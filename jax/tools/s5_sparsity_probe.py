@@ -45,7 +45,7 @@ def probe(lam: float) -> None:
         pol_lambda=0.00125, ft_sparsity_lambda=lam)
     params = {k: jax.numpy.asarray(v) for k, v in ck.load_warm(WARM, arch).items()}
     mix = [(BulletBin(str(p)), w) for p, w in MIX]
-    batches = make_mixed_batches(mix, cfg, policy=True, seed=0x00D47D05, workers=5)
+    batches = make_mixed_batches(mix, cfg, policy=True, seed=0x00D47D03, workers=5)
     opt, step = make_update_step(arch, cfg)
     opt_state = opt.init(params)
     bps = cfg.batches_per_superbatch

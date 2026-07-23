@@ -29,6 +29,9 @@ LR = re.compile(r"LR dropped to ([\d.eE+-]+)")
 # "components sb N | value X" with no policy field — they must still chart.
 COMP = re.compile(r"components sb (\d+) \| value ([\d.]+)(?: \| pol_ce ([\d.]+))?")
 LAMBDA = re.compile(r"pol_lambda=([\d.eE+-]+)")
+# stage-3 (JAX) extras: the heldout instrument + sparsity telemetry
+HELDOUT = re.compile(r"heldout sb (\d+) \| value ([\d.]+)")
+FT = re.compile(r"ft_l1 ([\d.]+) \| ft_density ([\d.]+)")
 BPS = 3040  # batches per superbatch (D40_BPS of the current run)
 
 
@@ -101,6 +104,15 @@ def main():
                 writer.add_scalar("loss/policy_ce", ce, sb)
                 if v > 0 and pol_lambda > 0:
                     writer.add_scalar("loss/policy_share_of_value", pol_lambda * ce / v, sb)
+            mft = FT.search(line)
+            if mft:
+                writer.add_scalar("ft/l1", float(mft.group(1)), sb)
+                writer.add_scalar("ft/density", float(mft.group(2)), sb)
+            writer.flush()
+            continue
+        m = HELDOUT.search(line)
+        if m:
+            writer.add_scalar("loss/heldout", float(m.group(2)), int(m.group(1)))
             writer.flush()
 
 
