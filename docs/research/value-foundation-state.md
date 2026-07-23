@@ -48,7 +48,32 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-23 ~00:45 — **v1 CAMPAIGN PHASE 1 (JAX unlock) COMPLETE.**
+Last updated: 2026-07-23 ~02:4x — **SMOKE BATTERY S0-S4 GREEN; stage-3 launch
+imminent (S5 λ probe finishing).**
+
+> **2026-07-23 OVERNIGHT (autonomy window, user rulings: shadow twin
+> CANCELLED — smoke aggressively + trust; "do those three"):** T0
+> factorization + T6c PSQT skip + FT-sparsity λ BAKED into the JAX
+> trainer (3640f5c; zero-init no-op proven 8 ways; all-on 216.6k pos/s).
+> Engine-side PSQ1 consumer merged (ed84ecd; Bench 701605 bit-exact,
+> legacy nets node-identical, psqt parity p50 1cp, +1.9% NPS only for
+> psqt nets); fresh native engine installed (archon-d47 = optimized+
+> PSQ1; -preopt backup kept). D46 unit repair: converts lacked
+> SFBINPACK_SCORE_DIV → rescale_records.py fixed in place (frame
+> verified). Corpora: UHO band75-100 (2.56B = the EXACT d47c kept
+> subpopulation), fishpack32 (1.61B), farseerT74 (1.23B, DIV 1.66 at
+> dump) — all shuffled+checksummed+ledgered; all four HF packs local.
+> **Smokes: S1 warm heldout EXACTLY 0.006094; S2b JAX BEATS bullet
+> heldout at matched sb (−3.4/−3.9%; iid-sampling curriculum win
+> pinned); S3 resume heldout identical to 4 sig figs; S4 export chain
+> green (oracle p50 1cp).** Findings pinned: unmasked policy @λ=0.005
+> drags heldout ~5% early (stage-3 runs λ/4 unmasked; phase-5 hook =
+> masked refinetune via PyO3); warm-restart bounce expected (judge the
+> arc). Stage-3 = d47d: warm stage-2-sb240, mix UHO.40/fp32.35/T74.25,
+> LR 2.5e-4 → floor 0.2× (lr_end_sb=331), ~8.5h at ~195k pos/s,
+> heldout every 10sb, crash-resume certified. Driver:
+> jax/tools/stage3_train.py; log /tmp/d47d_stage3_train.log; tb
+> d47d-stage3/*.
 
 > **2026-07-23 JAX-GPU UNBLOCKED (campaign phase 1 DONE, merged 34f639c):**
 > Pallas embedding-bag FT kernel (`jax/archon_jax/ft_kernel.py`) lands
