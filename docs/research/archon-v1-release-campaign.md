@@ -58,9 +58,17 @@ stages before release:
   floor-anneal (end ~0.2x), 240sb, mix = T60T70+T75+rehearsal (exact
   weights set after audits size the packs). sb240 rule: NO extension —
   gate, hand off warm, next pump absorbs any end-slope.
-- **Stage-5: remaining official packs** (data_pv-2, multinet_pv-2,
-  pylon, test80, wrongNNUE — downloads launched 07:0x) and/or first
-  self-play data — mix decision from stage-4's evidence.
+- **Stage-5: remaining official packs + reconsidered house data.**
+  Audited PASS with DIVs: data_pv-2 (2.25), multinet (1.98), pylon
+  (1.95), wrongNNUE (1.49); test80 DEFECT (Lc0 atanh labels — waived,
+  nonlinear remap = future option). RECONSIDERED (user+analysis,
+  2026-07-23 ~16:0x): the SF18 RELABEL corpus is a first-class mix
+  candidate (clean 1.000 SF18-UCI units, our-play distribution — its
+  old failure was finetune-LR + co-adaptation, i.e. recipe not data);
+  LOSS-MINED data returns as (a) a small epoch-accounted value slice
+  (1-3%, deep-labeled only, never bounds) and (b) the seed corpus for
+  T11's residual EDA + disagreement head, where off-distribution is
+  the point. Mix decision from stage-4's evidence.
 - **Stage-6 = the SHIP ANNEAL** (LR→~0; the one place annealing to
   zero belongs). Settle-the-net = pick champion after stage-5.
 SEQUENCING NOTE: the TM-SPSA (6b) + its PRE/POST SF16 equal-time
