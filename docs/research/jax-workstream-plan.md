@@ -214,3 +214,12 @@ T74 converted WITH DIV=1.66 at dump. Skip-75 dumps = the EXACT fixed
   CPU contention. Fixed-node matches are immune.
 - GPU work needs `XLA_PYTHON_CLIENT_PREALLOCATE=false` habits until the
   box stops hosting mixed workloads.
+
+## Stage-3 live-arc calibration (03:5x)
+Stage-2 precedent heldout arc (quant ckpts, 102k-row instrument):
+sb10 0.007193 → sb30 0.007354 (STILL RISING) → sb60 0.007277 (turn) →
+sb90 0.007132 (descending) → endpoint 0.006094 (+82.6 Elo). Stage-3:
+sb10 0.006759 → sb40 0.006806 — SHALLOWER + FLATTER than the winning
+run at matched phase. Gate recalibrated: intervene only if sb60 >
+0.00696 (+3% over sb10, beyond stage-2's peak drift); primary judgment
+= the TURN at sb90-120.
