@@ -350,3 +350,16 @@ check). RESUMED plateau from sb150 at 5e-4 (judgment: middle-zone
 result + proven consolidation → stable phase stays hot). Cost: ~95
 min GPU + 5sb re-run. Screens now read as (level + ~37) when
 annealed; saturation rule still reads the TREND.
+
+## Saturation instrument v2: PROBE-VS-PROBE (08:1x 2026-07-24)
+The 100g plateau screens are a flat high-variance band (8 points,
+−74/−81/−56/−67/−74/−35/−63/−85 ≈ −67±noise) — constant-LR theory's
+prediction; they stay as a coarse tripwire only. THE saturation
+measurement: at the epoch boundary (~sb617) fire probe-2 (same 30sb
+snap-anneal config, warm from sb600/610-ema), then match probe-2 vs
+probe-1's artifact (d47g-probe-sb30, −37.2±17.2 vs stage4-winner)
+head-to-head 300g value-only. Probe-vs-probe IS the pump delta at ±17
+on annealed artifacts. Clear probe-2 win → plateau still paying,
+consider extending past sb720; flat → saturation, launch leg B (real
+120-180sb ship anneal) from the best checkpoint. Probe cost ~95 min
+each; decision quality worth it.
