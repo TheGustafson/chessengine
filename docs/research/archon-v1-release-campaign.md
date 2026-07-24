@@ -161,3 +161,20 @@ this is the last Elo pass before release.
   (EvalFile UX — a GUI user must not get silent PSQT).
 - Version: ARCHON 1.0. The bench trailer, perft suite, and full gate
   battery green on the release tag.
+
+## Post-release: OWNERSHIP PASS (user, 2026-07-23 — do not forget)
+A structured learning phase so the author reaches defend-it-anywhere
+ownership of the codebase and research program (resume/RE-pivot gate):
+1. Guided curriculum, concept-dependency order: bitboards → movegen +
+   perft oracle → search stack → NNUE inference/SIMD → JAX trainer →
+   Pallas kernel → the instrumentation layer (ledger/D46/heldout).
+   Each stop: the WHY of the design decisions, not just the what.
+2. Ownership exercises: implement one search heuristic solo end-to-end
+   (review-only assistance); rewrite the Pallas embedding-bag from its
+   spec; reproduce one ledgered result from scratch.
+3. Whiteboard-defense drill: EMA hot-endpoint harvest, the sidecar
+   confound + how it was caught, proportional-mix epoch guard, D46
+   units discipline — explained to a skeptic without notes.
+Write-up strategy (3 artifacts): engine release post; technical report
+on the training program (the ML-audience/resume piece); T11 paper if
+the head lands.
