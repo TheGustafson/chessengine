@@ -192,3 +192,29 @@ The public repo must read as a finished work, not a lab bench:
   post + technical report; honest about the agentic workflow).
 - Docs: README rewrite (results table, quick start), usage docs,
   CONTRIBUTING.md, LICENSE (GPLv3 per the release-strategy decision).
+
+## THE JOINT-TRAINING PIVOT (user ruling 2026-07-24 ~17:3x: "I thought
+## we were doing joint training this whole time... I think we have to
+## do it")
+Discovery: every value-era run trained policy at λ=0.00125 UNMASKED
+(ledger: pol_mask OFF) — the trunk is functionally value-only; the
+phase-2 "λ = free accelerator" thread was dropped after the unmasked
+drag finding instead of building the masker. PROCESS LESSON (standing):
+material deviations get surfaced for ratification, not ledger
+footnotes. New plan, supersedes frozen-trunk-only phase 5:
+1. PyO3 masker (Rust movegen → batch legal masks at loader speed;
+   bit-exact vs the python-chess reference in data.py). Prereq for all.
+2. λ smoke ladder: masked λ ∈ {0.05, 0.25, 1.0}, short runs; watch
+   value-drag / pol_ce slope / early top-1. No guessed λ.
+3. JOINT PUMP warm from d47f-union-sb410 (the ledgered plateau resume
+   point — hot, ideal for a new gradient source): ~240sb joint plateau
+   (masked policy at chosen λ) + 150sb ship anneal, EMA on, same union
+   mix. Proven pump→EMA→anneal machinery, second loss finally live.
+4. Gates: value heldout + value-only screens must hold vs d47h (the
+   VALUE-ONLY CONTROL, finishing 2026-07-24 evening; its settle
+   battery = baseline numbers); final bar equal-time (value dip only
+   if policy-driven search efficiency overpays it).
+5. Frozen-trunk refinetune (old phase 5) demotes to cheap control arm
+   → three-way ablation: value trunk / value trunk+refit head / joint
+   trunk (the write-up's core experiment).
+Timeline: ~2.5-3.5 days added. T11 rides the winning trunk.
