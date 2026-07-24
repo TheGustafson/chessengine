@@ -316,3 +316,20 @@ density 0.313->0.254. Endpoint battery (VALUE-ONLY protocol, all in
   free. Phase-5 recovery baseline moves up accordingly.
 Scale gates 0.988/0.997 (EMA quant+pack path clean). Data chain fired
 20:55 (fetch-skip: packs pre-staged; 207G free at start).
+
+## UNION RUN LAUNCHED (21:17 2026-07-23) — d47f-union LIVE
+Auto-pipeline end-to-end in 32 min: train exit 20:49 → battery 4 min →
+data chain 20 min (5 packs, fetch-skipped) → config auto-fill → launch.
+One incident: rescale_records LUT overflow for expanding divisors
+(div<1) — the table iterates all 65536 i16 inputs and ±32767/0.674
+overflows; fixed by i16 saturation (7b0f44c), both frames re-verified
+exactly (canon p50 153 = predicted 153, max 3708; hardneg p50 205).
+**UNION: 10,188,262,722 rows / 12 corpora, epoch ≈ 617sb**; proportional
+weights (uho .251 / fishpack .158 / T74 .121 / datapv2 .097 / T75 .090
+/ multinet .090 / t60t70 .082 / pylon .047 / wisr .035 / wrongnnue .026
+/ canon .0027 / hardneg .00013); new-coverage ≈ 31%. Warm gate EXACT
+PASS (0.006452). Ledger: 7 new corpus rows (datapv2/multinet/pylon/
+wisr/wrongnnue band corpora + canon-tight-frame/hardneg-frame).
+Watcher (30sb value-only screens vs stage4-winner-nocpol), janitor
+(sb%60+last2), tb shim, 3 monitors — all armed. Cap 720sb ≈ 18h;
+saturation rule decides the anneal-leg trigger (union_anneal.json).
