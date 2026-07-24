@@ -363,3 +363,17 @@ on annealed artifacts. Clear probe-2 win → plateau still paying,
 consider extending past sb720; flat → saturation, launch leg B (real
 120-180sb ship anneal) from the best checkpoint. Probe cost ~95 min
 each; decision quality worth it.
+
+## PLATEAU ENDED BY RULING → SHIP ANNEAL LIVE (14:1x-14:4x 2026-07-24)
+User call: "time we start prepping this network for release and
+annealing it" — plateau ended at sb410/720 (66% of one union epoch).
+RESUME POINT preserved + ledgered (d47f-union-sb410; keeps sb60..410;
+resume: pump_train union_plateau.json 410). Plateau final state: EMA
+0.006688 (floor arc 0.006727→0.006679), live band ~0.00700-0.00714,
+density 0.2079, pol_ce 3.40→3.28. d47h-anneal LIVE: 150sb cosine
+5e-4→0.027x, warm sb410-ema, warm gate EXACT PASS, same union mix.
+Settle battery armed (EMA-vs-live → vs stage4-winner → vs probe-1
+annealed-to-annealed → top-1 → finals) = the RELEASE VALUE NET
+decision, ~6h out. Ops lesson (bit twice today): kill/pgrep commands
+must never contain target patterns literally — heredoc/script text in
+argv self-matches; use [b]racket patterns in FRESH commands only.
