@@ -47,3 +47,4 @@ config.json
 /target-*/
 /logs/
 resume-builder-ideas.md
+pymask/target/
