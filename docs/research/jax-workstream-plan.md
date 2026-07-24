@@ -274,3 +274,23 @@ vs-stage3, vs-stage2 are the first clean cross-stage value-only deltas;
 (3) don't naively compare tonight's yardstick number to the old screen
 series; (4) sidecar worth stays a phase-5 question, measured by ON/OFF
 ablation + the top-1 probe, never mixed into value promotion gates.
+
+## THE UNION RUN (user ruling 20:4x 2026-07-23) — supersedes staged 5/6
+"Shuffle everything from every stage together and run one big stage over
+all of it." Design (campaign doc has the governing text): Leg A = WSD
+plateau, constant 5e-4 (lr_end_superbatch=0 hits the driver's constant
+branch — zero code changes), warm from the stage-4 battery winner, EMA
+0.99984, proportional-to-rows mix over the FULL union (auto-epoch-guard),
+sb cap 720 (~1.1 epochs of a ~10B-row union), extend by resume. Leg B =
+ship anneal config (cosine end==len -> 0.027x floor ~1.4e-5, warmup 0),
+warm from the chosen plateau ckpt, ~15-20% of plateau length. Saturation
+instrument = in-run heldout/EMA + tools/nnue/runs/d47f_union_watch.sh
+(30sb value-only 100g EMA screens vs stage4-winner-nocpol). Tools:
+make_union_mix.py (proportional weights from file sizes),
+union_plateau.json / union_anneal.json (FILL marks), stage5_pump.json
+superseded. Ops prep landed tonight: freed 148G (already-converted +
+waived raws; all 5 stage-5 packs were ALREADY in raw/ so the chain skips
+fetches) + 30G (d47c per-sb quant sweep to runbook keeps) -> 202G free;
+chain bands widened to 75:88 for the big three; chain training-guard
+pattern fixed (unanchored pump_train.py). Tomorrow: battery winner ->
+make_union_mix -> fill leg-A config -> launch plateau + watcher + janitor.

@@ -58,19 +58,38 @@ stages before release:
   floor-anneal (end ~0.2x), 240sb, mix = T60T70+T75+rehearsal (exact
   weights set after audits size the packs). sb240 rule: NO extension —
   gate, hand off warm, next pump absorbs any end-slope.
-- **Stage-5: remaining official packs + reconsidered house data.**
-  Audited PASS with DIVs: data_pv-2 (2.25), multinet (1.98), pylon
-  (1.95), wrongNNUE (1.49); test80 DEFECT (Lc0 atanh labels — waived,
-  nonlinear remap = future option). RECONSIDERED (user+analysis,
-  2026-07-23 ~16:0x): the SF18 RELABEL corpus is a first-class mix
-  candidate (clean 1.000 SF18-UCI units, our-play distribution — its
-  old failure was finetune-LR + co-adaptation, i.e. recipe not data);
-  LOSS-MINED data returns as (a) a small epoch-accounted value slice
-  (1-3%, deep-labeled only, never bounds) and (b) the seed corpus for
-  T11's residual EDA + disagreement head, where off-distribution is
-  the point. Mix decision from stage-4's evidence.
-- **Stage-6 = the SHIP ANNEAL** (LR→~0; the one place annealing to
-  zero belongs). Settle-the-net = pick champion after stage-5.
+- **Stages 5+6 SUPERSEDED → THE UNION RUN (user ruling 2026-07-23
+  ~20:4x: "shuffle everything from every stage together and run one
+  big stage over all of it… Let's do it. Set it up carefully").**
+  Rationale: the staged pumps paid the restructuring bounce at every
+  boundary and judged progress on confounded mid-chain gates; the
+  union run pays the bounce once, runs a true WSD stable phase over
+  the iid-shuffled union of ALL audited corpora, and folds the ship
+  anneal in as the tail. This IS the pump-until-saturation plan with
+  the saturation check moved inside one run.
+  - **Leg A (plateau)**: warm = stage-4 endpoint-battery winner;
+    constant LR 5e-4 (lr_end_superbatch=0), 2sb warmup, EMA 0.99984,
+    λ_pol 0.00125 unmasked, λ_sparse 0.001; mix = PROPORTIONAL-TO-ROWS
+    over the full union (existing 5 corpora + the stage-5 data-chain
+    output + canon-tight-frame/hardneg-frame rescales) — proportional
+    weighting = a genuine epoch of the union and satisfies the small-
+    corpus epoch guard by construction. Generous sb cap (~720),
+    extended by resume while the instrument still improves.
+  - **Saturation instrument**: heldout+EMA per 10sb (in-run) + every
+    30sb a VALUE-ONLY 100g screen (cpol stripped BOTH sides — the
+    2026-07-23 sidecar finding) of the EMA checkpoint vs the fixed
+    stage-4 winner. Trigger the anneal when the screen curve gains
+    <~10 Elo over a trailing ~90sb window AND heldout-EMA is flat —
+    judged with the no-verdicts-from-weak-tests rule, not automated.
+  - **Leg B (SHIP ANNEAL)**: new config warm-started from the chosen
+    plateau checkpoint; cosine lr_end_superbatch = leg length
+    (~120-180sb, ~15-20%% of plateau length), warmup 0 → lands at the
+    0.027x floor ≈ LR→~0. Settle-the-net = endpoint battery on the
+    anneal's EMA-vs-live pair; winner is the release value net.
+  - House data: SF18-relabel (canon-tight, DIV 0.674 frame fix) +
+    hardneg (DIV 0.699, audit ann-0032) ride at proportional weight;
+    their upweighted use returns in T11 (EDA seed), not here. test80
+    stays waived (Lc0 atanh labels; nonlinear remap = future option).
 SEQUENCING NOTE: the TM-SPSA (6b) + its PRE/POST SF16 equal-time
 bracket must share ONE net — they slide to after the pump chain
 settles; equal-time anything requires an idle box, so SPSA/brackets
