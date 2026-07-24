@@ -1,0 +1,21 @@
+[package]
+name = "archon-mask"
+version = "0.1.0"
+edition = "2024"
+
+# PyO3 legal-move masker for the JAX trainer (joint-training pivot,
+# 2026-07-24). Reimplements the proven d40_features.rs mask block
+# (stored_board -> generate_legal -> policy_vocab canonical mapping,
+# 0.0 legal / -30.0 illegal) behind a batch API at engine speed.
+# Build: cargo build --release  (from this dir), then copy
+# target/release/libarchon_mask.so -> jax/archon_mask.so
+
+[lib]
+name = "archon_mask"
+crate-type = ["cdylib"]
+
+[dependencies]
+chessengine = { path = ".." }
+pyo3 = { version = "0.23", features = ["abi3-py310", "extension-module"] }
+numpy = "0.23"
+rayon = "1"

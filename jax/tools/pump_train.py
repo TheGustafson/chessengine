@@ -112,7 +112,9 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
 
     mix = [(BulletBin(str(ROOT / p)), w) for p, w in spec["mix"]]
     batches = make_mixed_batches(
-        mix, cfg, policy=True, seed=int(spec["seed"]), workers=5,
+        mix, cfg, policy=True,
+        legal_mask=bool(spec.get("pol_mask", False)),
+        seed=int(spec["seed"]), workers=5,
         total_batches=cfg.batches_per_superbatch * cfg.superbatches,
         skip_batches=cfg.batches_per_superbatch * resume_sb)
 

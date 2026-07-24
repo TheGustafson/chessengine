@@ -207,7 +207,21 @@ _PROMO_CODE = {None: 0, 2: 1, 3: 2, 4: 3, 5: 0}  # chess.KNIGHT..QUEEN -> our co
 
 def legal_move_masks(recs: np.ndarray, pol_target_id: np.ndarray) -> np.ndarray:
     """(N, 1858) float32 additive masks. Rows without a packed move keep an
-    all-zero mask (their CE is identically zero either way — d40:891-895)."""
+    all-zero mask (their CE is identically zero either way — d40:891-895).
+
+    Fast path: the PyO3 engine-movegen masker (pymask/, bit-exact vs this
+    reference, >1M pos/s). Falls back to the python-chess prototype if the
+    module is absent. NOTE the fast path fixed a real bug the prototype
+    exposed: Board::empty+put_piece reconstruction leaks pinned-piece moves
+    (stale StateInfo); pymask reconstructs via Board::from_fen."""
+    try:
+        import archon_mask
+        flat = np.ascontiguousarray(recs).view(np.uint8).reshape(-1)
+        return np.asarray(
+            archon_mask.legal_move_masks(flat, pol_target_id.astype(np.int64)),
+            dtype=np.float32)
+    except ImportError:
+        pass
     chess = _chess()
     n = len(recs)
     masks = np.zeros((n, POLICY_VOCAB), dtype=np.float32)
