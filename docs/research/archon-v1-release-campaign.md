@@ -144,8 +144,20 @@ this is the last Elo pass before release.
 ## Release engineering (pinned prerequisites, from earlier decisions)
 - WASM + ARM/NEON targets (user: required before public release).
 - Windows cross-compile → CCRL/CEGT listability (external anchors forever).
-- License decision, README/docs pass, reproducibility statement (ledger
-  provides provenance), embedded-or-downloaded default net decision
+- **RELEASE STRATEGY DECIDED (user discussion 2026-07-23 ~22:3x): OPEN
+  SOURCE, license GPLv3 (working decision, reversible until tag —
+  ecosystem-matching, forks stay open; MIT/AGPL considered and
+  declined). Commercial paths (sell/cloud/acquisition) evaluated and
+  rejected — all require sustained dominance over SF dev. The prize is
+  reputation/research capital: resume asset for the author.** Ship the
+  ledger publicly (provable net provenance — first engine ever to);
+  free nets; WASM web demo for visibility. Research WRITE-UP is a
+  first-class deliverable, not an afterthought: JAX/Pallas training
+  stack on consumer hardware, pump-chain/EMA-harvest findings, D46
+  data discipline, T11 uncertainty-directed allocation (paper-shaped
+  if it lands).
+- README/docs pass, reproducibility statement (ledger provides
+  provenance), embedded-or-downloaded default net decision
   (EvalFile UX — a GUI user must not get silent PSQT).
 - Version: ARCHON 1.0. The bench trailer, perft suite, and full gate
   battery green on the release tag.
