@@ -32,7 +32,11 @@ def build_lut(div: float) -> np.ndarray:
     for s in range(-32768, 32768):
         q = float(np.float32(np.float32(s) / fdiv))  # exact f32 quotient
         r = math.floor(abs(q) + 0.5)  # exact in f64 => roundf semantics
-        lut[s & 0xFFFF] = int(math.copysign(r, q)) if q != 0.0 else 0
+        v = int(math.copysign(r, q)) if q != 0.0 else 0
+        # div<1 expands: entries for extreme inputs the data never contains
+        # would overflow i16 — saturate so the LUT is constructible. Callers
+        # must still verify the REAL data range stays in bounds (D46 audits).
+        lut[s & 0xFFFF] = max(-32768, min(32767, v))
     return lut
 
 
