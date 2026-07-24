@@ -333,3 +333,20 @@ wisr/wrongnnue band corpora + canon-tight-frame/hardneg-frame).
 Watcher (30sb value-only screens vs stage4-winner-nocpol), janitor
 (sb%60+last2), tb shim, 3 monitors — all armed. Cap 720sb ≈ 18h;
 saturation rule decides the anneal-leg trigger (union_anneal.json).
+
+## ANNEAL PROBE (03:1x-04:4x 2026-07-24) — plateau HEALTHY, harvest proven
+Screens sat flat at ≈−70 through sb150 (−74/−81/−56/−67/−74) with
+heldout-EMA netting zero (0.006716→0.006708 over 110sb) → fired the
+overnight-doctrine probe: killed plateau at sb155, 30sb mini-anneal
+(d47g-probe) from sb150-ema, warm gate exact. The anneal DOVE:
+heldout 0.006708 → 0.006512 live / 0.006500 ema at sb30. Screens:
+**live −37.2±17.2 (300g)**, ema −38.4±30.4 (100g) vs stage4-winner.
+VERDICT: +37 Elo harvested on demand from 25% of one union epoch —
+the flat plateau screens are hot-LR tax, not absent learning; too-hot
+hypothesis REFUTED; predictor validated again (forecast −20..−35).
+Calibrations banked: anneal-harvest offset ≈ +35-40 at this depth;
+EMA≈live at cold endpoints (leg-B pick becomes a coin-flip/cheap
+check). RESUMED plateau from sb150 at 5e-4 (judgment: middle-zone
+result + proven consolidation → stable phase stays hot). Cost: ~95
+min GPU + 5sb re-run. Screens now read as (level + ~37) when
+annealed; saturation rule still reads the TREND.
