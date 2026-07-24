@@ -46,3 +46,4 @@ config.json
 # Extra build/log dirs (session artifacts, regenerable)
 /target-*/
 /logs/
+resume-builder-ideas.md
