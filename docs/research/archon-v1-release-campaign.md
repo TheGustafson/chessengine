@@ -178,3 +178,17 @@ ownership of the codebase and research program (resume/RE-pivot gate):
 Write-up strategy (3 artifacts): engine release post; technical report
 on the training program (the ML-audience/resume piece); T11 paper if
 the head lands.
+
+## Pre-release: REPO CLEANUP (user, 2026-07-23 ~23:0x — do NOT start
+## until release engineering begins)
+The public repo must read as a finished work, not a lab bench:
+- Code pass: clean + easy to follow (comment density, naming, dead
+  code, wip/ branches pruned); file organization rationalized.
+- Curation: internal-only material removed or consolidated (raw
+  research logs, scratch run configs, tool sprawl in tools/nnue/) —
+  keep what serves the story, cut what serves only us. The design/
+  suite and the ledger STAY public (they ARE the story/provenance).
+- Narrative: a compelling how-it-was-built account (feeds the release
+  post + technical report; honest about the agentic workflow).
+- Docs: README rewrite (results table, quick start), usage docs,
+  CONTRIBUTING.md, LICENSE (GPLv3 per the release-strategy decision).
