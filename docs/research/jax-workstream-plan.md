@@ -294,3 +294,25 @@ fetches) + 30G (d47c per-sb quant sweep to runbook keeps) -> 202G free;
 chain bands widened to 75:88 for the big three; chain training-guard
 pattern fixed (unanchored pump_train.py). Tomorrow: battery winner ->
 make_union_mix -> fill leg-A config -> launch plateau + watcher + janitor.
+
+## STAGE-4 CLOSED (20:5x 2026-07-23) — the EMA night
+TRAIN EXIT 0, 240sb @183k pos/s, zero interventions. Heldout 0.00633
+(warm) -> live 0.006557 / EMA 0.006452 (EMA monotone sb30->end);
+density 0.313->0.254. Endpoint battery (VALUE-ONLY protocol, all in
+~4 min on the idle box — exp-0130..0132, nets d47e-stage4-sb240[-ema]):
+- **EMA vs LIVE +40.7±17.2** (127-81-92): EMA doctrine validated at
+  play level; the shadow harvests ~40 Elo of hot-endpoint bounce.
+  WINNER = d47e-stage4-sb240-ema (union warm start;
+  screens/stage4-winner-nocpol.cenn is the watcher baseline).
+- **vs stage-3 +5.8±16.9**: shippable-vs-shippable parity; by
+  composition the live trunk sits ~-35 vs stage-3 — the EMA carried
+  the stage. Banked instead: coverage + density + the EMA mechanism.
+- **vs stage-2 +52.5±17.0 — THE CHAIN REHABILITATED**: composition
+  puts stage-3 ~+47 value-only over stage-2, vs the old CONFOUNDED
+  -4.6 gate: the rotting sidecar was hiding ~50 Elo of real value
+  progress. The pump chain has been ascending all along.
+- **Top-1 probe (EMA net): 23.2%** vs the 23.4->20.4->20.0 live-era
+  rot series — EMA averaging repaired the policy head essentially for
+  free. Phase-5 recovery baseline moves up accordingly.
+Scale gates 0.988/0.997 (EMA quant+pack path clean). Data chain fired
+20:55 (fetch-skip: packs pre-staged; 207G free at start).
