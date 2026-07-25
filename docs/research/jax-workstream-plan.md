@@ -395,3 +395,16 @@ pol_ce slope + tripwire silence + throughput + top-1 movement.
 joint_plateau.json staged (d47j-joint, champion warm, 240sb cap,
 adaptive; FILL pol_lambda from ladder). Loss-scale caution: pol term
 ≈40% of value term even at whisper λ — dominance risk at 0.25.
+
+## LAMBDA LADDER + JOINT LAUNCH (20:0x-22:0x 2026-07-24)
+4-rung ladder from the champion (10sb, 2.5e-4 const): control 0.006636
+/ lam0.01 +0.00006 PASS / lam0.05 +0.0004 / lam0.25 +0.00136 (clean
+monotone dominance curve — the loss-scale caution was right). Masked
+learning is dramatic: pol_ce 3.11→2.43 in 10sb; TOP-1 20.0→**25.2%**
+in 10sb at lam0.01 — beats the whisper era's all-time best (23.4) from
+1/70th of a pump. Mask tax ~20% throughput (146k pos/s; mitigations
+known, deferred). d47j-joint LIVE (champion warm exact, lam0.01
+masked, 240sb cap, EMA, full union mix); watcher screens vs
+d47h-champion-nocpol; janitor+shim+monitors armed. Cutover to the 2nd
+ship anneal on value-stability + pol_ce flattening. d47h remains the
+untouchable release fallback.
