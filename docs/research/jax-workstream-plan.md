@@ -422,3 +422,52 @@ Settle battery v2 adds the sidecar ON/OFF ablation (fixed-node AND
 equal-time) — first trained-head deployment test. sb40 state: value
 drag ~nil (live 0.006683/EMA 0.006491), pol_ce 2.40, top-1 EMA 24.4%
 @sb30, density 0.258↑, 146k pos/s (mask tax ~20%).
+
+## D47J VERDICT + THE VALUE-TAX FINDING (2026-07-25 morning)
+d47j ran clean to sb240 (top-1 ~20→25% pooled, pol_ce 3.11→2.29, EMA
+heldout flat 0.0065 all run) and the cutover chain fired flawlessly
+(d47k anneal launched 60s after exit, warm PASS bit-exact 0.006506).
+Then the endpoint screen read −96 and forensics rewrote the story:
+**masked joint training at λ0.01 costs ~30-40 Elo of value-only play
+vs d47h from EARLY in the run** — invisible to quiet-heldout MSE, and
+the in-run 100g screens were too noisy to see it (sb150 −3.5 was
+noise; 200g rechecks: sb120 −38±18 pooled, sb210 −27±17, sb230
+−40±21, sb240 −86±18 — endpoint carries extra damage; density/ft_l1
+growth is the visible correlate). Pack determinism, quant/netpack clip
+gates, game logs, measurement env (sb210 control recheck) ALL ruled
+out. LESSONS: (1) 100g screens never carry narrative weight — 200g+
+or silence; (2) play-strength drift needs its own tripwire — MSE-flat
+is not play-flat.
+
+## HEAD AUDIT + P-ORD (2026-07-25 morning)
+User worry "25% could be dumb type-priors" REFUTED empirically
+(scratchpad/policy_skeptic.py, 1201 SF18-labeled positions): the head
+is a QUIET-MOVE SPECIALIST — quiet top-1 29.6%, checks 40.0%,
+captures 3.2% (below random; D46 quiet filter removed capture targets
+from training). Dumb baselines: random-legal 7.0%, MVV-LVA-else-random
+16.8%, phase/type-prior (hindsight-fit) 6.0%. Complementarity thesis:
+search already owns captures (SEE/MVV-LVA); history is weakest on
+quiets — point the head exactly there. **P-ORD landed (403bc18)**:
+QuietPrior = selected-row SIMD dot vs the picker-construction copy of
+the L2 stash, quiets only, CPL_ORD_W env (0=OFF bit-identical,
+verified at search level incl. MIN_DEPTH gate identity; ~6% NPS).
+W-sweep @5k fixed nodes, same net both sides: W=10 **+11.6±11.7
+(600g)**, W=32 −1.7±20.4, W=100 −13.9±20.6 — monotone: gentle nudge
+positive, override negative. Promising-not-proven → equal-time SPRT
+queued for the idle-box day.
+
+## D47K REPAIR TRAJECTORY + D47L PIVOT (2026-07-25 midday)
+d47k (anneal from the damaged sb240) is REPAIRING on schedule: screens
+−86 warm → −70±31 @sb30 → −52±32 @sb60 (+17/30sb, cold tail still
+ahead → parity-extrapolation at sb150), head SHARPENING through the
+anneal (pooled top-1 25.8% @sb60, uho800 26.1% best-ever @sb30), EMA
+heldout descending 0.006733→0.006642. KEEP ruling at sb60; kill case
+was flat. **D47L staged (95ce4d3)**: train_only param freezing in the
+JAX trainer (grads zeroed AND post-update restore — AdamW decay-proof;
+freeze oracle = non-head tensors byte-identical + heldout exactly
+0.006262) + frozen_head.json (masked head, λ1.0, lr 1e-3 cosine 90sb,
+champion-trunk warm = zero value tax by construction). Launches on GPU
+free (~17:15). Endgame: settle battery v2 compares (d47k joint net) vs
+(d47h + D47L head) vs d47h floor — value-only 300g + sidecar ON/OFF +
+P-ORD, fixed-node today, EQUAL-TIME tomorrow on the idle box. uho800
+added as second probe set everywhere (canon400 alone churns ±3pts).

@@ -48,7 +48,7 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-23 ~02:4x — **SMOKE BATTERY S0-S4 GREEN; stage-3 launch
+Last updated: 2026-07-25 ~13:0x — **JOINT VALUE-TAX FINDING + d47k repair trajectory + P-ORD landed + D47L frozen-head staged; running log = jax-workstream-plan.md (2026-07-25 sections).**
 imminent (S5 λ probe finishing).**
 
 > **2026-07-23 OVERNIGHT (autonomy window, user rulings: shadow twin
