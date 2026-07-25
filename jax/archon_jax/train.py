@@ -35,11 +35,18 @@ def _require_cpu():
             "(set ARCHON_JAX_ALLOW_GPU=1 for a deliberate GPU session)")
 
 
-def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = None):
+def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = None,
+                     train_only: list[str] | None = None):
     """``ft_impl``: feature-transformer implementation for model.forward —
     "reference" (default), "pallas" (the GPU embedding-bag kernel,
     ft_kernel.py) or "scan". Defaults to $ARCHON_JAX_FT_IMPL so GPU sessions
-    opt in by environment without touching call sites."""
+    opt in by environment without touching call sites.
+
+    ``train_only``: param names allowed to update (frozen-trunk head training,
+    D47L). Everything else is exactly frozen: grads are zeroed (Adam moments
+    stay 0) AND the post-update values are restored to the pre-step tensors —
+    the restore is what makes AdamW's grad-independent weight decay a no-op
+    on frozen params. None (default) = train everything, today's behavior."""
     _require_cpu()
     import jax
     import jax.numpy as jnp
@@ -93,11 +100,26 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
 
     import optax
 
+    allow = set(train_only) if train_only is not None else None
+    if allow is not None:
+        unknown = allow - set(arch.param_shapes())
+        if unknown:
+            raise ValueError(f"train_only names not in arch: {sorted(unknown)}")
+
+    def masked_update(params, opt_state, grads):
+        if allow is not None:
+            grads = {k: (g if k in allow else jnp.zeros_like(g))
+                     for k, g in grads.items()}
+        updates, opt_state = opt.update(grads, opt_state, params)
+        new = optax.apply_updates(params, updates)
+        if allow is not None:
+            new = {k: (v if k in allow else params[k]) for k, v in new.items()}
+        return new, opt_state
+
     @partial(jax.jit, donate_argnums=(0, 1))
     def step(params, opt_state, batch):
         (_, metrics), grads = jax.value_and_grad(loss_fn, has_aux=True)(params, batch)
-        updates, opt_state = opt.update(grads, opt_state, params)
-        params = optax.apply_updates(params, updates)
+        params, opt_state = masked_update(params, opt_state, grads)
         return params, opt_state, metrics
 
     if cfg.ema_decay <= 0.0:
@@ -108,8 +130,7 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
     @partial(jax.jit, donate_argnums=(0, 1, 2))
     def step_ema(params, ema, opt_state, batch):
         (_, metrics), grads = jax.value_and_grad(loss_fn, has_aux=True)(params, batch)
-        updates, opt_state = opt.update(grads, opt_state, params)
-        params = optax.apply_updates(params, updates)
+        params, opt_state = masked_update(params, opt_state, grads)
         ema = jax.tree.map(lambda e, p: d * e + (1.0 - d) * p, ema, params)
         return params, ema, opt_state, metrics
 

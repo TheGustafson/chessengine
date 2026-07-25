@@ -118,7 +118,7 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         total_batches=cfg.batches_per_superbatch * cfg.superbatches,
         skip_batches=cfg.batches_per_superbatch * resume_sb)
 
-    opt, step = make_update_step(arch, cfg)
+    opt, step = make_update_step(arch, cfg, train_only=spec.get("train_only"))
     opt_state = opt.init(params)
     params = {k: jax.numpy.asarray(v) for k, v in params.items()}
     if ema_on:
