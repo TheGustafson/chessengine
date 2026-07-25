@@ -536,3 +536,20 @@ probe now uses `systemd-run --user --scope -p MemoryMax=... -p
 MemorySwapMax=0`, which contains the kill to the probe's own cgroup
 (verified: "Memory cgroup out of memory" kills only the probe). Use that
 pattern for ANY analysis job that shares the box with a trainer.
+
+## OWED OPTIMIZATION: kill the dense policy mask (2026-07-25 ~19:1x)
+The masked-policy path costs ~25% throughput (145k pos/s vs 197k unmasked)
+and it is ALL redundancy, not legality computation (pymask is >1M pos/s).
+We materialize a dense (batch, 1858) float32 mask = **58 MB per batch** at
+batch 8192 — memset to -30, scatter ~30 zeros, copy over PCIe, add
+elementwise on GPU. At 17.7 batches/s that is ~1 GB/s of mask traffic.
+Measured: 41.6 ms/batch unmasked vs 56.5 ms masked = ~15 ms for 58 MB
+(~4 GB/s effective) — memory-bandwidth bound, on a box whose RAM also
+feeds the trainer. 1858 entries carrying ~30 bits of information.
+**FIX (do before ANY future policy run):** pass legal move INDICES as
+(batch, max_legal) int16 (~0.65 MB, 90x less) and compute CE by gathering
+logits at those indices + log-sum-exp over them; or build the mask
+on-device. Expect masked runs back to ~190k pos/s — hours per run.
+NOT done mid-D47P on purpose: changing the data path would void the
+controlled comparison vs D47M (identical schedule/mix), and a rushed edit
+to the loss path is where a silent correctness bug would hide.
