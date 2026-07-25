@@ -408,3 +408,17 @@ masked, 240sb cap, EMA, full union mix); watcher screens vs
 d47h-champion-nocpol; janitor+shim+monitors armed. Cutover to the 2nd
 ship anneal on value-stability + pol_ce flattening. d47h remains the
 untouchable release fallback.
+
+## JOINT RUN: going-long doctrine (23:5x 2026-07-24)
+User: net cooks as long as needed; post-anneal expectation = strongest
+net + ~arch/data ceiling → then T11 → TM-SPSA+bracket → profiling/
+external battery → comprehensive SPSA → release engineering (~2wk to
+tag). EXTENSION RULE: never edit superbatches+resume — the mix
+scheduler draws corpus-choice THEN permutations from one seeded
+stream, so changing the total reshuffles orders and breaks the
+skipped-prefix correspondence. Extend via warm-handoff leg
+(joint_ext.json staged). Cutover = top-1 flat 60sb+ AND value stable.
+Settle battery v2 adds the sidecar ON/OFF ablation (fixed-node AND
+equal-time) — first trained-head deployment test. sb40 state: value
+drag ~nil (live 0.006683/EMA 0.006491), pol_ce 2.40, top-1 EMA 24.4%
+@sb30, density 0.258↑, 146k pos/s (mask tax ~20%).
