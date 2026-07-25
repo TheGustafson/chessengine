@@ -100,16 +100,22 @@ impl PolicyHead {
         super::sota_simd::policy_dot(row, h) + self.bias[id]
     }
 
+    /// Canonical-frame orientation for `board`'s side to move — the shared
+    /// prologue of every per-move scoring path.
+    fn orient_for(board: &Board) -> u8 {
+        let stm_black = board.side_to_move() == Color::Black;
+        let vflip = if stm_black { 56u8 } else { 0 };
+        let ksq_mover = Square::new(board.king_square(board.side_to_move()).index() ^ vflip);
+        policy_vocab::canonical_orient(stm_black, ksq_mover)
+    }
+
     /// The policy-argmax LEGAL move for `board`, scored against the fresh
     /// shared-bottleneck activation `h256` of the SAME position. Returns the
     /// move in board frame (no inverse mapping exists by design). `None` on
     /// no legal moves or if every legal move falls outside the vocabulary
     /// (impossible for chess; defensive).
     pub fn best_move(&self, board: &Board, h256: &[f32; L2]) -> Option<Move> {
-        let stm_black = board.side_to_move() == Color::Black;
-        let vflip = if stm_black { 56u8 } else { 0 };
-        let ksq_mover = Square::new(board.king_square(board.side_to_move()).index() ^ vflip);
-        let orient = policy_vocab::canonical_orient(stm_black, ksq_mover);
+        let orient = PolicyHead::orient_for(board);
 
         let mut list = MoveList::new();
         generate_legal(board, &mut list);
@@ -126,6 +132,72 @@ impl PolicyHead {
         }
         best.map(|(_, m)| m)
     }
+
+    /// Build the per-node quiet-ordering prior (P-ORD experiment). Copies the
+    /// L2 activation because the eval context's stash is Zobrist-stamped and
+    /// will be overwritten by child evaluations long before the picker's
+    /// `QuietInit` stage fires; a borrow would also freeze `eval_ctx` for the
+    /// whole node. 512 B on the picker, paid only at nodes that opt in.
+    pub fn quiet_prior(&'static self, board: &Board, h256: &[f32; L2], weight: f32) -> QuietPrior {
+        QuietPrior {
+            head: self,
+            h: *h256,
+            orient: PolicyHead::orient_for(board),
+            weight,
+        }
+    }
+}
+
+/// Per-node quiet-move prior: one selected-row SIMD dot per scored move,
+/// against the activation captured at picker construction. Quiets only by
+/// design — the 2026-07-25 audit showed the trained head is a quiet-move
+/// specialist (29.6% top-1 on quiet teacher moves) and near-blind on captures
+/// (3.2%, below random; the D46 quiet filter removed capture targets from its
+/// training data), while captures are already well-ordered by MVV/SEE.
+pub struct QuietPrior {
+    head: &'static PolicyHead,
+    h: [f32; L2],
+    orient: u8,
+    weight: f32,
+}
+
+impl QuietPrior {
+    /// The ordering bonus for `m`, in history units (`weight * logit`).
+    /// Out-of-vocabulary moves (impossible for chess; defensive) score 0.
+    #[inline]
+    pub fn bonus(&self, m: Move) -> i32 {
+        let (fc, tc) = policy_vocab::canonical_from_to(m.from(), m.to(), self.orient);
+        match policy_vocab::policy_move_id(fc, tc, m.promotion_piece()) {
+            Some(id) => (self.weight * self.head.row_score(id as usize, &self.h)) as i32,
+            None => 0,
+        }
+    }
+}
+
+/// P-ORD experiment knobs (env, read once). `CPL_ORD_W` scales logits into
+/// history units; 0 (the default) disables the prior entirely — the search
+/// never constructs a [`QuietPrior`] and ordering is bit-identical to
+/// pre-P-ORD. `CPL_ORD_MIN_DEPTH` keeps the per-quiet dots off the shallow
+/// tree (default 1 = everywhere in main search; qsearch never scores quiets).
+pub fn ord_weight() -> f32 {
+    static W: std::sync::LazyLock<f32> = std::sync::LazyLock::new(|| {
+        std::env::var("CPL_ORD_W")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.0)
+    });
+    *W
+}
+
+/// See [`ord_weight`].
+pub fn ord_min_depth() -> i32 {
+    static D: std::sync::LazyLock<i32> = std::sync::LazyLock::new(|| {
+        std::env::var("CPL_ORD_MIN_DEPTH")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1)
+    });
+    *D
 }
 
 #[cfg(test)]
@@ -177,6 +249,43 @@ mod tests {
     }
 
     #[test]
+    fn quiet_prior_agrees_with_best_move_frame() {
+        // The prior and best_move must score through the same canonical
+        // mapping: argmax of bonus() over legal moves == best_move(). Uses a
+        // leaked head because QuietPrior wants 'static (as in the engine).
+        let head: &'static PolicyHead = Box::leak(Box::new(synth_head(7)));
+        let h = [0.31f32; L2];
+        for fen in [
+            START_FEN,
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 b - - 0 1",
+        ] {
+            let board = Board::from_fen(fen).unwrap();
+            // weight large enough that i32 truncation cannot create ties
+            let prior = head.quiet_prior(&board, &h, 1024.0);
+            let mut list = MoveList::new();
+            generate_legal(&board, &mut list);
+            let by_bonus = list
+                .iter()
+                .copied()
+                .max_by_key(|&m| prior.bonus(m))
+                .expect("legal moves exist");
+            assert_eq!(
+                Some(by_bonus),
+                head.best_move(&board, &h),
+                "prior argmax must match best_move in {fen}"
+            );
+        }
+    }
+
+    #[test]
+    fn ord_weight_defaults_off() {
+        // Env unset in the test runner ⇒ the experiment must be OFF.
+        assert_eq!(ord_weight(), 0.0);
+        assert_eq!(ord_min_depth(), 1);
+    }
+
+    #[test]
     fn different_activations_change_the_argmax_somewhere() {
         // Sanity that scores actually depend on h (not just bias/row norms):
         // across a few activations at least one position flips its argmax.
@@ -184,10 +293,8 @@ mod tests {
         let board = Board::from_fen(START_FEN).unwrap();
         let a = head.best_move(&board, &[0.9f32; L2]).unwrap();
         let mut h = [0.9f32; L2];
-        for i in 0..L2 {
-            if i % 2 == 0 {
-                h[i] = -0.9;
-            }
+        for v in h.iter_mut().step_by(2) {
+            *v = -0.9;
         }
         let b = head.best_move(&board, &h).unwrap();
         // Not guaranteed to differ for every seed, but for this fixed seed it

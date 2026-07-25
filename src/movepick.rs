@@ -242,6 +242,12 @@ pub struct MovePicker {
     /// the capture-policy experiment is enabled.
     #[cfg(feature = "policy")]
     policy_scores: Option<crate::policy::PolicyScores>,
+    /// P-ORD: the deployed D47 head's quiet-move prior for this node, set by
+    /// the search when `CPL_ORD_W != 0` and the node's L2 activation was
+    /// available at construction. `None` ⇒ pure history stack (the default —
+    /// the env knob ships OFF, so ordering is bit-identical unless opted in).
+    #[cfg(feature = "sota")]
+    quiet_prior: Option<crate::eval::nnue::policy_head::QuietPrior>,
     buf: [ExtMove; MAX_MOVES],
 }
 
@@ -320,6 +326,8 @@ impl MovePicker {
             policy_net: None,
             #[cfg(feature = "policy")]
             policy_scores: None,
+            #[cfg(feature = "sota")]
+            quiet_prior: None,
             buf: [ExtMove::NULL; MAX_MOVES],
         }
     }
@@ -337,6 +345,13 @@ impl MovePicker {
     #[inline]
     pub fn set_policy_scores(&mut self, scores: Option<crate::policy::PolicyScores>) {
         self.policy_scores = scores;
+    }
+
+    /// Attach the D47 trained-head quiet prior for this node (P-ORD).
+    #[cfg(feature = "sota")]
+    #[inline]
+    pub fn set_quiet_prior(&mut self, prior: crate::eval::nnue::policy_head::QuietPrior) {
+        self.quiet_prior = Some(prior);
     }
 
     /// Emit one pseudo-legal move per call, `None` once the active pipeline is
@@ -635,6 +650,14 @@ impl MovePicker {
             #[cfg(feature = "policy")]
             if let Some(ps) = &policy_scores {
                 value += (policy_weight as f32 * ps.move_score(m.from(), m.to())) as i32;
+            }
+
+            // P-ORD: the deployed D47 head's prior, quiets only (captures stay
+            // on MVV/SEE — the head is near-blind there by training-data
+            // construction). One selected-row SIMD dot per quiet.
+            #[cfg(feature = "sota")]
+            if let Some(qp) = &self.quiet_prior {
+                value += qp.bonus(m);
             }
 
             self.buf[base + i] = ExtMove { mv: m, value };

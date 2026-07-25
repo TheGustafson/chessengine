@@ -2816,6 +2816,22 @@ impl Worker {
         #[cfg(not(feature = "sota"))]
         let picker_tt_move = tt_data.mv;
         let mut mp = MovePicker::new(&self.board, picker_tt_move, depth, ply, cont_hist);
+        // P-ORD: attach the trained head's quiet-move prior. The activation is
+        // copied NOW — the Zobrist-stamped stash dies at the first child eval,
+        // long before QuietInit. `CPL_ORD_W` unset/0 ⇒ never constructed ⇒
+        // ordering bit-identical.
+        #[cfg(feature = "sota")]
+        if crate::eval::nnue::policy_head::ord_weight() != 0.0
+            && depth >= crate::eval::nnue::policy_head::ord_min_depth()
+            && let Some(head) = crate::eval::nnue::active_policy_head()
+            && let Some(l2) = self.eval_ctx.last_l2_for(&self.board)
+        {
+            mp.set_quiet_prior(head.quiet_prior(
+                &self.board,
+                l2,
+                crate::eval::nnue::policy_head::ord_weight(),
+            ));
+        }
         #[cfg(feature = "policy")]
         {
             mp.set_policy_net(self.policy_net.clone());
