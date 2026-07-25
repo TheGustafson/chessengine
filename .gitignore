@@ -48,3 +48,4 @@ config.json
 /logs/
 resume-builder-ideas.md
 pymask/target/
+jax/archon_mask.so
