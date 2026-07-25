@@ -118,7 +118,13 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         total_batches=cfg.batches_per_superbatch * cfg.superbatches,
         skip_batches=cfg.batches_per_superbatch * resume_sb)
 
-    opt, step = make_update_step(arch, cfg, train_only=spec.get("train_only"))
+    # Freeze control: "train_only" (allowlist) or "freeze" (deny-list — the
+    # complement against arch.param_shapes()); at most one may be present.
+    train_only = spec.get("train_only")
+    if spec.get("freeze"):
+        assert train_only is None, "config: use train_only OR freeze, not both"
+        train_only = sorted(set(arch.param_shapes()) - set(spec["freeze"]))
+    opt, step = make_update_step(arch, cfg, train_only=train_only)
     opt_state = opt.init(params)
     params = {k: jax.numpy.asarray(v) for k, v in params.items()}
     if ema_on:
