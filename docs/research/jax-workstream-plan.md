@@ -484,3 +484,55 @@ mirror lr warmup) — add before the next freeze-out leg. Meanwhile
 D47M crossed the champion's heldout at sb70 (EMA 0.006232 <
 0.006262), first net ever to do so; play verdict rides on sb90/120
 screens + settle.
+
+## SETTLE Q1 + THE POLICY-SUBSTRATE VERDICT + D47P (2026-07-25 evening)
+**Q1 SETTLED — D47M IS THE VALUE LEADER: +26.7±17.0 vs d47h champion
+(300g, 5k nodes, value-only, nocpol both sides; W-D-L 119-85-96)**,
+confirming the cold-endpoint screens (+26±21 pooled 200g). Heldout EMA
+0.006120 vs champion 0.006262; density 0.2007 (~24% sparser = unmeasured
+equal-time speed). Ledgered (net row + exp-0135).
+
+**BUT THE REPAIRED TRUNK WENT POLICY-HOSTILE.** d47n (head-only resync on
+D47M, train_only polmove*, λ1.0 masked) crawled: pol_ce 3.01→2.94 in
+10sb, top-1 15.6% pooled @sb10 (from the 9.7% rot floor). User correction
+that reframed it: with legal-move masking the CE scale is ln(~30)≈3.4,
+NOT ln(1858) — so 2.94 is only modestly better than random-legal, and the
+gap to the joint head's 2.29 is large. Freeze oracles both PASSED (byte
+level: 12 frozen tensors identical, only polmove* moved; metric level:
+heldout reproduced 0.006120 EXACTLY). d47n KILLED at sb10 by user call
+("dead to me") — the ceiling on D47M's trunk is not worth 3 more hours.
+
+**USER RULING: "it isn't a trade imo, we could have both."** Mechanism
+agrees: the value gain came from removing the gradient CONFLICT, not from
+the pruning; pruning policy-recruited features is ~neutral for value and
+fatal for policy. But a λ ramp ALONE is insufficient — with the head
+frozen AND pol_lambda 0, policy features have no gradient support at all;
+the L1 only accelerates a death that disuse would cause anyway.
+
+**D47P = VALUE REPAIR v2 (live 18:3x, value_repair_v2.json).** Same warm
+point as D47M (d47k-sb90-ema, warm gate PASS) = controlled comparison.
+Two changes: (1) ft_sparsity_lambda RAMPS 0→0.001 over 25sb (the new
+trainer knob, 949e065); (2) **pol_lambda 0.002 MASKED with the head still
+PARAM-FROZEN = a DISTILLATION ANCHOR** — the trunk keeps a gradient
+saying "preserve the features this good head uses" while the head cannot
+chase or annex capacity (that was the joint tax at λ0.01 with a TRAINABLE
+head). Anchor is 1/5 the joint strength.
+**KEY INSTRUMENT: with the head frozen, top-1 measures FEATURE
+PRESERVATION directly.** D47M control curve: 26.5% (warm) → 10.7 (sb30)
+→ 9.4 (sb60) → 9.7 (sb90). D47P read at sb30: >22% = anchor working;
+<18% = too weak, reassess rather than burn the run. Value instruments
+unchanged (heldout/10sb, 100g value-only screens/30sb vs champion) so an
+anchor that costs value shows up immediately.
+
+**RELEASE PATH STRUCTURE (user, 18:4x):** if we ever abandon the policy
+head for v1, **D47M is the release net**. For now we make the head work.
+Fallback ladder: D47P (both) → D47M (value-only, +26.7 banked) → d47h
+(untouchable original). Nothing promotes without settle_v2 q2/q3.
+
+**OPS INCIDENT:** a CPU linear-probe job OOM-killed the trainer at
+18:16 (15GB box; violated our own no-heavy-CPU-during-training rule).
+sb10 ckpt was already written → resumed with zero loss. Re-run of that
+probe now uses `systemd-run --user --scope -p MemoryMax=... -p
+MemorySwapMax=0`, which contains the kill to the probe's own cgroup
+(verified: "Memory cgroup out of memory" kills only the probe). Use that
+pattern for ANY analysis job that shares the box with a trainer.
