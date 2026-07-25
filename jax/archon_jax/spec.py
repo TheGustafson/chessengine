@@ -233,6 +233,15 @@ class TrainConfig:
     # start_superbatch == 1). Softens the step-0 shock of pumping an
     # annealed warm net at full peak LR. 0.0 = off (bullet parity).
     warmup_superbatches: float = 0.0
+    # FT-sparsity λ ramp (D47M lesson, 2026-07-25): a leg that REMOVES a
+    # gradient source which had been resisting the L1 (head freeze-out,
+    # trunk freeze) leaves the penalty unopposed on the features that
+    # source had recruited — D47M pruned density 0.29→0.19, overshooting
+    # the incumbent's 0.26 equilibrium, then spent ~60sb rebuilding.
+    # Ramps ft_sparsity_lambda linearly 0→target over the first N
+    # superbatches (fresh runs only, same gate as the LR warmup).
+    # 0.0 = off = the step-change behavior every pre-D47M leg used.
+    ft_sparsity_warmup_superbatches: float = 0.0
 
 
 def cosine_lr(cfg: TrainConfig, superbatch: int) -> float:

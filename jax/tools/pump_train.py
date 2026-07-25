@@ -81,6 +81,8 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         lr=spec["lr"], lr_end_superbatch=spec["lr_end_superbatch"],
         superbatches=spec["superbatches"], pol_lambda=spec["pol_lambda"],
         ft_sparsity_lambda=spec["ft_sparsity_lambda"],
+        ft_sparsity_warmup_superbatches=spec.get(
+            "ft_sparsity_warmup_superbatches", 0.0),
         warmup_superbatches=spec.get("warmup_superbatches", 0.0),
         ema_decay=spec.get("ema_decay", 0.0),
         start_superbatch=start_sb)

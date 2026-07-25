@@ -26,6 +26,11 @@ notebook = ["jupyter", "matplotlib"]
 # reference path OOMs/crawls on GPU. Bench: tools/gpu_step_bench.py;
 # measurements: docs/research/jax-gpu-kernel-2026-07-23.md.
 
+[tool.pytest.ini_options]
+markers = [
+    "slow: builds real params + runs optimizer steps (seconds, not ms)",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

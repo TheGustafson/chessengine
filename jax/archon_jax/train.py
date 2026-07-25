@@ -76,7 +76,19 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
 
     opt = bullet_adamw(lr_fn)
 
-    def loss_fn(params, batch):
+    def sparsity_lambda(count):
+        """ft_sparsity_lambda for this step, with the D47M ramp: linear
+        0→target over the first N superbatches of a FRESH run. Constant at
+        the target when the ramp is off or on resume (same gate as the LR
+        warmup — a resumed leg is past the freeze-out transient)."""
+        lam = cfg.ft_sparsity_lambda
+        if cfg.ft_sparsity_warmup_superbatches > 0.0 and cfg.start_superbatch == 1:
+            ramp = jnp.minimum(
+                1.0, (count + 1.0) / (cfg.ft_sparsity_warmup_superbatches * bps))
+            return lam * ramp
+        return jnp.asarray(lam)
+
+    def loss_fn(params, batch, lam):
         if cfg.ft_sparsity_lambda > 0.0:
             value_logit, pol_logits, _, (acc_stm, acc_ntm) = forward(
                 params, arch, batch, ft_impl, with_acc=True)
@@ -89,9 +101,10 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
                          + jnp.mean(jnp.clip(acc_ntm, 0.0, 1.0)))
             density = 0.5 * (jnp.mean((acc_stm > 0.0).astype(jnp.float32))
                              + jnp.mean((acc_ntm > 0.0).astype(jnp.float32)))
-            loss = loss + cfg.ft_sparsity_lambda * act
+            loss = loss + lam * act
             metrics["ft_l1"] = act
             metrics["ft_density"] = density
+            metrics["ft_lambda"] = lam
             metrics["loss"] = loss
             return loss, metrics
         value_logit, pol_logits, _ = forward(params, arch, batch, ft_impl)
@@ -118,7 +131,11 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
 
     @partial(jax.jit, donate_argnums=(0, 1))
     def step(params, opt_state, batch):
-        (_, metrics), grads = jax.value_and_grad(loss_fn, has_aux=True)(params, batch)
+        # opt_state = (BulletAdamWState, count) — the same step counter the
+        # LR schedule keys on (optim.py init/update).
+        lam = sparsity_lambda(opt_state[1])
+        (_, metrics), grads = jax.value_and_grad(loss_fn, has_aux=True)(
+            params, batch, lam)
         params, opt_state = masked_update(params, opt_state, grads)
         return params, opt_state, metrics
 
@@ -129,7 +146,9 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
 
     @partial(jax.jit, donate_argnums=(0, 1, 2))
     def step_ema(params, ema, opt_state, batch):
-        (_, metrics), grads = jax.value_and_grad(loss_fn, has_aux=True)(params, batch)
+        lam = sparsity_lambda(opt_state[1])
+        (_, metrics), grads = jax.value_and_grad(loss_fn, has_aux=True)(
+            params, batch, lam)
         params, opt_state = masked_update(params, opt_state, grads)
         ema = jax.tree.map(lambda e, p: d * e + (1.0 - d) * p, ema, params)
         return params, ema, opt_state, metrics
