@@ -377,3 +377,21 @@ annealed-to-annealed → top-1 → finals) = the RELEASE VALUE NET
 decision, ~6h out. Ops lesson (bit twice today): kill/pgrep commands
 must never contain target patterns literally — heredoc/script text in
 argv self-matches; use [b]racket patterns in FRESH commands only.
+
+## UNION SETTLED + JOINT PIVOT TOOLED (19:5x-20:1x 2026-07-24)
+d47h-anneal-sb150 = VALUE CHAMPION: +34.9±17.4 vs stage-4 (300g
+value-only, exp-0133), EMA-vs-live −3.5 tie (cold-endpoint convergence
+as probe-predicted; live wins tiebreak), +41.9±16.9 vs probe-1,
+heldout 0.006262, top-1 20.0% (rot floor — the joint baseline), gates
+0.981/0.984. Clean chain since stage-2 ≈ +87 fixed-node value-only.
+d47h = release fallback + joint warm. PIVOT TOOLING: pymask crate
+(bit-exact vs python-chess on 3 corpora incl. pin positions; >1M
+pos/s; fixed the pinned-move leak that silently afflicts the bullet
+d40 mask block; canon-tight has NO packed moves), data.py fast path,
+pump_train pol_mask flag. Smoke ladder RUNNING (control whisper-
+unmasked / lam0.05 masked / lam0.25 masked; 10sb each from the
+champion at 2.5e-4 const): gate = sb10 heldout drag vs control +
+pol_ce slope + tripwire silence + throughput + top-1 movement.
+joint_plateau.json staged (d47j-joint, champion warm, 240sb cap,
+adaptive; FILL pol_lambda from ladder). Loss-scale caution: pol term
+≈40% of value term even at whisper λ — dominance risk at 0.25.
