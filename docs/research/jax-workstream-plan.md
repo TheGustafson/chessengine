@@ -471,3 +471,16 @@ free (~17:15). Endgame: settle battery v2 compares (d47k joint net) vs
 (d47h + D47L head) vs d47h floor — value-only 300g + sidecar ON/OFF +
 P-ORD, fixed-node today, EQUAL-TIME tomorrow on the idle box. uho800
 added as second probe set everywhere (canon400 alone churns ±3pts).
+
+## λ-RAMP RULE FOR FREEZE-OUT LEGS (user ruling 2026-07-25 ~16:2x)
+D47M overshoot: full ft_sparsity_lambda from step 0 of a frozen-head
+leg let the L1 prune ex-policy features unresisted — density
+0.29→0.19 (below champion 0.26 equilibrium), then slow self-recovery;
+candidate cause of the residual −30 screen gap at heldout parity.
+RULE: any leg that removes a gradient source (head freeze-out, trunk
+freeze) starts ft_sparsity_lambda at 0 and ramps to target over
+~20-30sb. Needs a small trainer knob (ft_sparsity_warmup_superbatches,
+mirror lr warmup) — add before the next freeze-out leg. Meanwhile
+D47M crossed the champion's heldout at sb70 (EMA 0.006232 <
+0.006262), first net ever to do so; play verdict rides on sb90/120
+screens + settle.
