@@ -96,6 +96,22 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
             return lam * ramp
         return jnp.asarray(lam)
 
+    a_end = float(getattr(cfg, "distill_alpha_end", -1.0))
+
+    def distill_alpha_at(count):
+        """Per-step distill α: linear ramp distill_alpha → distill_alpha_end
+        over the WHOLE schedule (nnue-pytorch precedent: --start-lambda 1.0
+        --end-lambda 0.75 — start on the trusted denoised signal, fold the
+        ground truth in as training proceeds). Anchored on the ABSOLUTE
+        superbatch (start_superbatch + within-run count) so a resumed leg
+        lands on the same global ramp despite the fresh Adam count.
+        a_end < 0 (default) = constant α — every existing config unchanged."""
+        if a_end < 0.0 or d_alpha <= 0.0:
+            return jnp.asarray(d_alpha)
+        sb_abs = (cfg.start_superbatch - 1.0) + count / bps
+        frac = jnp.clip(sb_abs / float(cfg.superbatches), 0.0, 1.0)
+        return d_alpha + (a_end - d_alpha) * frac
+
     t_params = t_arch = None
     t_frame = None
     d_alpha = float(getattr(cfg, "distill_alpha", 0.0) or 0.0)
@@ -150,11 +166,11 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
         tp = None if tp is None else jax.lax.stop_gradient(tp)
         return tv, tp
 
-    def loss_fn(params, batch, lam):
+    def loss_fn(params, batch, lam, da):
         if t_params is not None and d_alpha > 0.0:
             tv, tp = _teacher_targets(batch)
             batch = dict(batch)
-            batch["target"] = d_alpha * tv + (1.0 - d_alpha) * batch["target"]
+            batch["target"] = da * tv + (1.0 - da) * batch["target"]
             if tp is not None:
                 # policy distill: soft targets via teacher softmax -> CE
                 # against student logits == KL + const. Reuses pol_lambda.
@@ -217,8 +233,9 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
         # opt_state = (BulletAdamWState, count) — the same step counter the
         # LR schedule keys on (optim.py init/update).
         lam = sparsity_lambda(opt_state[1])
+        da = distill_alpha_at(opt_state[1])
         (_, metrics), grads = jax.value_and_grad(loss_fn, has_aux=True)(
-            params, batch, lam)
+            params, batch, lam, da)
         params, opt_state = masked_update(params, opt_state, grads)
         return params, opt_state, metrics
 
@@ -230,8 +247,9 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
     @partial(jax.jit, donate_argnums=(0, 1, 2))
     def step_ema(params, ema, opt_state, batch):
         lam = sparsity_lambda(opt_state[1])
+        da = distill_alpha_at(opt_state[1])
         (_, metrics), grads = jax.value_and_grad(loss_fn, has_aux=True)(
-            params, batch, lam)
+            params, batch, lam, da)
         params, opt_state = masked_update(params, opt_state, grads)
         ema = jax.tree.map(lambda e, p: d * e + (1.0 - d) * p, ema, params)
         return params, ema, opt_state, metrics

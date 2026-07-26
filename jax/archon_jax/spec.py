@@ -278,6 +278,10 @@ class TrainConfig:
     # the 2026-07-26 D47V 1.378× output-scale gotcha.
     teacher_frame_offset: float = 0.0
     teacher_frame_scale: float = 0.0
+    # Linear ramp distill_alpha -> distill_alpha_end over the whole schedule
+    # (nnue-pytorch --start-lambda/--end-lambda precedent: fold ground truth
+    # in as training proceeds). Negative (default) = constant alpha.
+    distill_alpha_end: float = -1.0
     # ---- v1.5 warm-refinement knobs (2026-07-26). All default to the
     # historical behaviour, so every existing config is untouched. ----
     # Per-tensor weight clips derived from each tensor's export encoding
