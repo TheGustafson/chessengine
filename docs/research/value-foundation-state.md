@@ -761,6 +761,31 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~20:3x PHASE-1 AMENDMENT (user): TWO SQUEEZE LEGS, EACH
+## DISCARDABLE — "get the most out of the net; unproven; be prepared to
+## stop and discard"
+
+Slot into Phase 1 AFTER the main run stops, BEFORE the gates, in this
+order (A changes the trunk; B must train against the SHIPPED trunk):
+- **LEG A — value-only finetune, policy FROZEN** (freeze polmovew/
+  polmoveb, pol_lambda 0): value gets the trunk's remaining capacity
+  without MTL contention. ft_sparsity=0 now, so the frozen head's
+  features aren't actively zeroed (the old frozen-head λ failure mode —
+  see [[frozen-head-lambda-ramp]]) but trunk DRIFT under a frozen head
+  is still the risk. GATES: heldout ↓ AND panel headline ↑ vs main-run
+  final. **CUT: policy top-1 drops >3pp on the 401 probe (≈1.5σ) or
+  panels flat after ~10-15sb.**
+- **LEG B — frozen-trunk policy-head finetune** (train_only policy
+  tensors; hard-label CE; same mix first): pure policy upside, value
+  BIT-IDENTICAL by construction — VERIFY with nnue-eval identity on
+  probe FENs before/after. GATE: top-1 ↑ toward the 26.9-27.2 family
+  bar. **CUT: no top-1 gain in ~10sb.** B2 escalation (only if B works
+  but plateaus): unfiltered/tactical policy pack — needs a conversion
+  job (contract: the policy corpus is deliberately unfiltered).
+Both legs ride the existing freeze/train_only trainer machinery
+(v15_refine precedent). Each ~1-2h. Discard = revert to the pre-leg
+checkpoint, no sunk-cost defense.
+
 ## 2026-07-26 ~20:1x ★★ USER RULINGS: D47V IS THE RELEASE NET; TEACHERS
 ## ARE NOT LOAD-BEARING ★★
 
