@@ -710,6 +710,13 @@ deficit); global margin overlay REJECTED (−77.7); per-family repair =
 SPSA's job. TM fix LANDED+GATED. Match_report/arm_verify/inframe_heldout
 instruments committed — USE THEM (see INSTRUMENT INDEX below).
 
+**RULINGS ~22:5x (user):** (1) the d47s FLOOR-HOLD is AXED permanently —
+**sb230 is final d47s** (overfit indications seen); it is TEACHER +
+fallback, nothing more trains on that line. (2) **THE MASTER PLAN
+CONTINUES ON D47V** — conditional only on decent eval AND policy out of
+the leg; all downstream stages (settle, policy duel, knob gates, SPSA,
+baselines) target V.
+
 **POST-V RUNBOOK:** pack (D40_ACC=768 D40_L2=32 D40_L3=32 D40_POLICY=1
 + SKP1 passthrough ✓) → calibrate → panels (Spearman vs teacher) →
 matches (fixed-node, ET vs teacher + d47p, WAC) → verdict. Engine side
