@@ -761,6 +761,30 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-27 ~04:0x PERF PROGRAM (STUDY 2): TONIGHT'S SCOPE COMPLETE —
+## A+B+C LANDED ≈ +15%; E PLANNED, NOT FORCED
+
+Landed with full proofs: **A Finny set-diff +9.0% (7f0837a) · B fold
+register tile +2.3% (ad01657) · C MovePicker uninit +3.2% (9a508b4)**
+— every one bit-identical (sha + bench 701605 + search-identity; C
+additionally tracker-verified across 686 debug tests + a live debug
+search sweep). F′ prefetch: measured FLAT → reverted (drop-discipline).
+D1 deferred (fiddly +1%; real fix = D3 quant unification, next CENN
+rev). **Day total: ~+45% NPS on the V binary.**
+**OPTION E — PLAN WRITTEN, DEFERRED TO ITS OWN BLOCK (engineering, not
+schedule): the in-place StateInfo write fights borrowck through all
+~250 lines of make_move (spare-slot &mut blocks every self call) ⇒
+either raw-pointer sprawl through the engine's most safety-critical
+function or a states-stack redesign (Vec<MaybeUninit> + explicit len
+discipline — the cleaner path). The study's cheap partial is
+TRAP-CONFIRMED: parent check_squares/piece_threats ARE read after
+unmake (gives_check on later moves) ⇒ recompute-on-unmake pays
+set_threats twice per node. E's block = the redesign + D24 full perft
+ritual + assert_consistent + search-identity + 701605.** Also: leg
+lengths are now ADAPTIVE by rule (user challenge on the 12sb template):
+any leg still falling at its buzzer gets extended (~30-60min each);
+applied to S-LegA at the chain report, A2 already embodies it for V.
+
 ## 2026-07-27 ~03:1x LEG B VERDICT: RESTORE — SEQUENTIAL WINS; CUT RULE
 ## PASSES FOR THE A+B PAIR; S-LEGS + REMATCHES RUNNING
 
