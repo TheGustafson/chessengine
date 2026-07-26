@@ -14,7 +14,7 @@
 # reads the old scale). q1 before et (cheap verdict first). sf last.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
-STAGE="${1:?pack|calibrate|q1|et|sf}"
+STAGE="${1:?pack|calibrate|q1|et|sf|ledger}"
 EXP=data/nnue/experiments/d47s-v15
 ID=d47s-v15
 CENN=data/nnue/nets/${ID}.cenn
@@ -27,7 +27,11 @@ pack)
   Q=$(ls -t "$EXP"/${ID}-sb240-ema-quant.bin "$EXP"/${ID}-final-quant.bin 2>/dev/null | head -1)
   [ -n "${Q:-}" ] || { echo "no final quant checkpoint in $EXP"; exit 1; }
   echo "packing $Q"
-  .venv/bin/python tools/nnue/netpack.py "$Q" "$CENN" d40
+  # D40_POLICY=1: pump-format quants carry the policy head mid-stream;
+  # netpack splits it into the .cpol companion (found the hard way on the
+  # sb50 trajectory read — without it netpack rejects the trailing payload).
+  D40_ACC=1280 D40_L2=128 D40_L3=32 D40_BUCKETS=8 D40_POLICY=1 \
+    .venv/bin/python tools/nnue/netpack.py "$Q" "$CENN" d40
   cp "$CENN" "$NOCPOL"        # screens copy: NO .cpol sibling -> policy off
   ls -la "$CENN" "$NOCPOL"
   ;;
@@ -65,6 +69,20 @@ et)
   ;;
 sf)
   bash tools/nnue/sf_baseline.sh "$CENN" d47s-post-v15 200 4
+  ;;
+ledger)
+  # D38: one row per trained net; identity = sha256; regen recipe included.
+  # Run AFTER q1/et so --elo-vs-parent carries the measured number (pass it
+  # as $2, e.g. `d47s_pipeline.sh ledger "+18.4+-15.2 (q1 300g fixed-node)"`.
+  python3 tools/ledger/ledger.py add-net \
+    --id d47s-v15 --file "$CENN" \
+    --arch "halfkav2hm1280+fullthreats/128/32x8 + polmove sidecar (pump fmt, factorize+psqt)" \
+    --quant "ft255/th64/l1q64 shift9 (netpack d40)" \
+    --parent d47p-vrepair2-sb120-ema \
+    --provenance "jax pump_train v15_refine.json: warm d47p sb120-ema, 240sb cosine, lr 2.5e-4, double-sigmoid target a=163 b=76.9 (mixture MLE), per-tensor clips, no-bias decay, gradnorm 2.0, shuffle_chunk 128, ids masks, pol anchor 0.002 frozen-head, 12-corpus D46 mix" \
+    --elo-vs-parent "${2:-unmeasured}" \
+    --recipe "tools/nnue/runs/v15_refine.json + tools/nnue/d47s_pipeline.sh pack+calibrate @ $(git rev-parse --short HEAD)" \
+    --notes "v1.5 lessons-bundle warm refinement; in-frame heldout falling (inframe_heldout.py); network_scale calibrated empirically vs d47h (hard gate)"
   ;;
 *) echo "unknown stage $STAGE"; exit 1 ;;
 esac

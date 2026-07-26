@@ -640,6 +640,40 @@ point) deferred to SPSA: internal-scale ratio has two conflicting estimates
 (1.2× material probe vs 1.8× regression slopes) and fe rides its 0.572 floor
 ~80% of moves — not baking in a guessed constant.
 
+## POST-D47S RUNBOOK (assembled 2026-07-26 ~07:2x while training; every stage
+## staged + committed; execute IN ORDER when the completion watcher fires)
+
+0. Trainer end: verify `superbatch 240 done` + unit exit 0; if oom/crash,
+   postmortem via `systemctl --user status archon-d47s-r4`, resume
+   `pump_train <cfg> <last_sb>` (fresh Adam transient documented).
+1. `bash tools/nnue/d47s_pipeline.sh pack`        (recipe pinned 1280/128/32)
+2. `bash tools/nnue/d47s_pipeline.sh calibrate`   (HARD GATE — before ANY game)
+3. In-frame heldout final read: inframe_heldout.py 120 180 240 (must be falling).
+4. `bash tools/nnue/d47s_pipeline.sh q1`          (300g fixed-node vs D47P)
+   — verdict per no-verdicts-from-weak-tests: ±17 bars at 300g.
+5. `bash tools/nnue/d47s_pipeline.sh et`          (200g 10+0.1, idle box)
+6. `bash tools/nnue/d47s_pipeline.sh sf`          (SF16 both legs, pinned harness
+   — the before/after vs sfbase-d47p-pre-v15-* is the v1.5 headline number)
+7. `bash tools/nnue/d47s_pipeline.sh ledger "<q1/et numbers>"`  (D38 row)
+8. LAUNCH D47T (policy resync): inject warm/heldout into
+   tools/nnue/runs/d47t_policy_resync.json from the D47S final EMA +
+   in-frame... NOTE: heldout_expect uses the DEFAULT-frame function (gate
+   invariance) — read D47S's final old-frame heldout from its log for the
+   expect value. systemd unit + MemoryHigh=5G/Max=7G + tb shim armed
+   (tensorboard-all-runs). 60sb ≈ 4h.
+9. While D47T trains (box rules as tonight): knob-gate STAGE 1 only
+   (`tools/search_knob_gate.sh <d47s nocpol> both 200 4` — fixed-node leg;
+   equal-time stage 2 waits for idle box).
+10. D47T done → pack (same recipe) → pvm duel head-on/off at equal time
+    (200g min) → 2+1 TM sanity pair vs SF16 (the user's original GUI
+    complaint TC — eyeball the clock curve with loss_forensics).
+11. Knob-gate stage 2 (idle box) → s4-searchgap small SPSA (step 4) with
+    survivors as centers (wip/nmp-guards branch ready if tactics bleed).
+12. Perf study quiet window: tools/perf_study4_bench.sh NET=<d47s.cenn>
+    (skip smallnet lanes — VETOED) → decide #9 SIMD emission / compression.
+Standing: all landings post-gates; d47h fallback untouchable; ledger verify
+on idle box only; every trainer launch memory-capped under systemd.
+
 ## 2026-07-26 ~07:0x D47S MID-RUN HEALTH: TRIPWIRE DISARMED (in-frame
 ## instrument) + PACK RECIPE RECOVERED
 
