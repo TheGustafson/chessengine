@@ -800,6 +800,10 @@ teacher-copying. The α ablation must include policy (hard-CE arm).**
   constant-α line on heldout+panel+err-corr. Early supporting signal:
   post-frame-fix quiet err-corr DROPPED 0.839→0.825 (labels actively
   decorrelate the student when their gradient is consistent).
+  **RULING (user, ~15:5x): "Lets not decay now, I think next run we
+  might" — THIS run rides constant α=0.7 to the end; the ablation still
+  adjudicates at convergence; the decay is a next-generation recipe
+  candidate.**
 - **MIX LEVERS (named, previously implicit):** (a) deployment-
   distribution distillation — sharp/tension NON-CHECK positions with
   per-row α=1 (teacher forward defined everywhere; no bounded-label

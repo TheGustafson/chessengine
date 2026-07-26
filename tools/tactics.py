@@ -107,8 +107,13 @@ def main() -> int:
                      help="ms per position (default 1000)")
     lim.add_argument("--depth", type=int, metavar="D",
                      help="fixed depth instead of movetime")
+    lim.add_argument("--nodes", type=int, metavar="N",
+                     help="fixed nodes instead of movetime (contention-immune"
+                          " — the checkpoint-trajectory / gate mode)")
     p.add_argument("--hash", type=int, default=16, metavar="MB",
                    help="Hash option in MiB (default 16)")
+    p.add_argument("--option", action="append", default=[], metavar="K=V",
+                   help="extra UCI option(s), e.g. --option EvalFile=/x.cenn")
     p.add_argument("--log", action="store_true",
                    help="append the score to docs/strength-log.md")
     p.add_argument("-v", "--verbose", action="store_true",
@@ -129,16 +134,22 @@ def main() -> int:
         print(f"error: no EPD records in {suite}", file=sys.stderr)
         return 2
 
-    limit = (chess.engine.Limit(depth=args.depth) if args.depth is not None
-             else chess.engine.Limit(time=args.movetime / 1000))
-    limit_desc = (f"depth {args.depth}" if args.depth is not None
-                  else f"movetime {args.movetime}ms")
+    if args.nodes is not None:
+        limit, limit_desc = chess.engine.Limit(nodes=args.nodes), f"nodes {args.nodes}"
+    elif args.depth is not None:
+        limit, limit_desc = chess.engine.Limit(depth=args.depth), f"depth {args.depth}"
+    else:
+        limit, limit_desc = (chess.engine.Limit(time=args.movetime / 1000),
+                             f"movetime {args.movetime}ms")
 
     engine = chess.engine.SimpleEngine.popen_uci(args.engine)
     try:
         engine.configure({"Hash": args.hash})
     except chess.engine.EngineError:
         pass  # engines without a Hash option are fine
+    for kv in args.option:
+        k, _, v = kv.partition("=")
+        engine.configure({k: v})
     hits = 0
     try:
         for i, (board, bm, am, ident) in enumerate(records):
