@@ -761,6 +761,30 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~23:3x ★★ THE OPTIMIZATION PROGRAM IS LANDED — +30% NPS
+## IN ONE PASS (user: "Go do them all") ★★
+
+| option | commit | contended gain | identity class |
+|---|---|---|---|
+| S branchless skip | 7e76782 | +15.1% | bit-identical (sha) |
+| F fold-addr hoist | f220b90 | +0.7% | bit-identical (sha) |
+| T2 victim pre-mask | 8fc236b | ~0 (under noise) | search-identical (nodes/PV) |
+| S2a bucket-major | b1b9c6f | (enabler) | bit-identical (sha) |
+| S2 vectorized lane | b1b9c6f | +19.6% | int-cp identical; SPRT-gated |
+
+**Cumulative: 801k → 1038k contended ≈ +29.6%.** V-vs-teacher speed
+edge: 1.11× → ≈1.44× → ET-vs-teacher ≈ fn-gap + 55-75 Elo. **At the
+current fn −115 the ET gate projects ≈ −40..−60; at the user's −30 band
+it projects CLEARLY POSITIVE (+25..+45).** S2 caveat: zero int-cp diffs
+on 800-FEN + parity batteries, but rare f32-rounding flips diverge
+search paths (study-predicted) — a 200g fn50k S2-vs-S2a equivalence
+match is RUNNING and gates rated use of the S2 binary; panels/matches
+stay on the pre-S2 binary until it clears. skip_dot follows the
+policy_dot fixed-shape discipline (all backends bitwise-equal to
+scalar, unit-tested). T2 lesson: nnue-eval CANNOT see observer bugs —
+the replay tier caught a PieceType-indexing slip on first build.
+Idle-box re-measure of everything = P4 (F/T2's true gains TBD there).
+
 ## 2026-07-26 ~22:4x ★★ THREAT-CHANNEL STUDY LANDED (Opus 5;
 ## docs/research/threat-channel-perf-study.md, 1086 lines) — THE REAL
 ## SINK IS THE SKP1 SKIP LOOP, NOT THREATS ★★
