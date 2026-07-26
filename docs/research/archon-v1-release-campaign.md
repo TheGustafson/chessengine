@@ -1,7 +1,47 @@
 # ARCHON v1 public-release campaign (user directive, 2026-07-23)
 
 The net this campaign produces is **the first public release of ARCHON**.
-Master sequence (user's numbering), each phase gated by the one before:
+
+## ★★ THE APPROVED RELEASE SEQUENCE (user-approved 2026-07-26 ~20:4x;
+## supersedes the 2026-07-23 numbering below — that section is history) ★★
+
+**THE RELEASE NET IS D47V** (768·32·32·8+skip, ruled ~20:1x). Sequence:
+
+- **P0 — finish leg 2** (live): α ramp 0.7→0.1@100→0@240, stop-early on
+  two plateau strikes (LR triggers armed past sb100), per-10sb tables
+  relayed in chat, sb100 rematch armed.
+- **P1 — freeze + squeeze**: pick release checkpoint (best EMA at stop)
+  → **LEG A** value-only finetune, policy frozen (CUT: top-1 −3pp or
+  flat panels ~10-15sb) → **LEG B** frozen-trunk policy-head finetune
+  (value bit-identical, VERIFIED; CUT: no top-1 gain ~10sb; B2 =
+  unfiltered pack, needs conversion) → final pack + parity + scale
+  check (native frame PASSED at sb100 — header cal likely unnecessary)
+  + ledger add-net. **FREEZE BEFORE ANY TUNING.**
+- **P2 — play gates (idle box, ET)**: vs teacher (distill gate ≥0), vs
+  d47p (chain claim), vs SF16 ET **and** equal-nodes (**THE headline
+  gate**), vs SF18 ET (**measured, NOT gated** — gen-2's fight), WAC;
+  match_report on every match.
+- **P3 — search fit for V**: land wip/nmp-guards + wip/check-ext via
+  search_knob_gate; **P-ORD gate** (V's in-net policy as ordering —
+  near-free now, biggest queued search-fit upside); s4-searchgap small
+  SPSA (30 vetted priors).
+- **P4 — perf study**: NPS characterization + PGO/native release build
+  for arch-d47v.
+- **P5 — T11 DISAGREEMENT HEAD, PRE-RELEASE** (07-23 ruling reaffirmed
+  2026-07-26: "we do try to pull off the disagreement head before
+  release"): frozen-trunk head → search-allocation wiring → **+30 Elo
+  ET bar vs the same build without it**. Bounded attempt budget (two
+  head recipes × one wiring iteration); the bar is the exit — a miss
+  ships v1 without it, head lands post-v1.
+- **P6 — full SPSA** ("go hard"; with T11 active if it landed).
+- **P7 — release mechanics**: D24 extended perft tier, bench pin +
+  trailer, UCI naming/version, strength-log + milestones + ledger,
+  x86-64-v3 release build, tag.
+Ship option (approved): v1 may ship after P3-small-SPSA with P6 landing
+as v1.6 if the timeline demands.
+
+Master sequence (2026-07-23, user's numbering — HISTORICAL, superseded
+above), each phase gated by the one before:
 
 ## 1. Unlock JAX  [IN FLIGHT]
 Kernel agent working the sparse-FT GPU bottleneck (Pallas embedding-bag /
