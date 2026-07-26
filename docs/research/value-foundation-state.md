@@ -683,6 +683,22 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## 2026-07-26 ~18:5x THE CORRECTED NET-ALONE PANEL — d47s SWEEPS EVERY
+## COMMON-BASIS METRIC (sb210, mid-anneal)
+
+Two instrument fixes closed the last ambiguities: (1) monotone-adjusted
+MAE (cross-fitted isotonic) replaces affine rescale — the d47s "89.9
+regression" was pure curve-shape artifact; (2) sharp comparisons
+restricted to the common non-check basis (SF static REFUSES in-check;
+ours were carrying 566 harder positions alone). Corrected panel, SF18@50k
+labels: QUIET rank d47s 0.9054 > d47p 0.9000 > SF18 0.8982; SHARP rank
+d47s 0.8126 > d47p 0.8006 > SF18 0.7909; QUIET iso-MAE d47s 66.4 ≈ SF18
+66.2 (tie) < d47p 66.8; SHARP iso-MAE (n=1811) **d47s 107.8 < d47p 108.0
+< SF18 109.7 < SF16 119.3**. Clean sweep + exclusive in-check coverage,
+five checkpoints monotone, hold phase still ahead. The evaluator side of
+the identity bet is EARNED; the play deficit remains parked on
+search/margins/undertraining — ladder step 2 (finished-net ET) prices it.
+
 ## 2026-07-26 ~18:2x LADDER STEP 1 VERDICT: GLOBAL ×0.52 OVERLAY REJECTED
 ## (−77.7±31.0 vs baseline −59.6±30.3 — directionally WORSE, as the
 ## region-dependent map predicted: one scalar over-corrects the 0.85-0.95
