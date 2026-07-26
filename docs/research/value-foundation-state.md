@@ -761,6 +761,24 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~20:5x ★ PRE-REGISTERED: THE D47P-PARITY HELDOUT GATE
+## (user: "a key point will be if the smaller net can reach d47p levels")
+
+**TARGET: 0.006205** — d47p-vrepair2-sb120's value on the STANDING
+heldout instrument (data/nnue/heldout/uho-band0-5.bin, default frame,
+recorded as v15_refine heldout_expect and reproduce-asserted at that
+launch). Every pump run evaluates this same file in the same frame, so
+the comparison is exact. V: 0.008638@sb100 and falling (windows −5.5 /
+−6.9 / −4.3%). Needs −28.2%; at −4%/wnd ≈ sb183, at −3%/wnd ≈ sb210 —
+inside the 240 horizon IF the pace survives LR decay. THE READ: hitting
+0.0062 at 768+thin-head = the pound-for-pound bet cashed on the
+training metric (0.60× the accumulator, ~0.25× the head, same fit);
+stalling materially above it = the capacity ceiling made visible →
+priced against the speed edge at the P2 gates, and the D47U fallback
+gets its trigger. NOTE the instrument is OUT-OF-BAND (uho band0-5 vs
+training band75-100) — a generalization measure, identical basis for
+both nets.
+
 ## 2026-07-26 ~20:3x PHASE-1 AMENDMENT (user): TWO SQUEEZE LEGS, EACH
 ## DISCARDABLE — "get the most out of the net; unproven; be prepared to
 ## stop and discard"
