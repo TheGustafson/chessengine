@@ -753,6 +753,31 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~16:3x NET-ALONE PANEL REDONE (user ask) — d47v-sb50 joins;
+## + TOP-1 TABLE; two iso-MAE method artifacts caught and fixed
+
+Method pinned: labels clipped ±800 (eval_bench CLIP), evals UNCLIPPED —
+isotonic is monotone-invariant, clipping x only creates tie-block
+artifacts (raw 1.99× teacher pack momentarily showed sharp iso-MAE 168
+under x-clipping; unclipped-label variant inverted the whole column by
+rewarding conservative predictors on heavy tails. BOTH now documented).
+COMMON NON-CHECK BASIS, SF18@50k labels:
+- QUIET (n=2999): teacher .9054/67.8 | d47p .9000/67.7 | SF18 .8982/67.4
+  | SF16 .8797/72.8 | **d47v-sb50 .8701/79.1** (Spearman/iso-MAE)
+- SHARP-nc (n=1817): teacher .8126/108.9 | d47p .8006/107.2 | SF18
+  .7909/108.6 | SF16 .7563/119.0 | **d47v-sb50 .7520/120.8**
+- in-check exclusive (n=582, SF statics refuse): teacher .7296 > d47p
+  .7258 > V .7030
+- **TOP-1 (canon400 n=401, ±2.0-2.2):** teacher 27.2% ≈ **d47p 26.9%**
+  ≫ d47v-sb50 20.4%. d47p's hard-label-era frozen head MATCHES the
+  teacher's; the fresh thin-substrate pure-CE head trails ~7pp —
+  strengthens the ablation's policy hard-CE arm.
+READ: mid-train V sits at SF16-static-class on rank quality (just below
+SF16 both sets) at 84MB / ~3× teacher speed; the top cluster
+(teacher/d47p/SF18) is tight on iso-MAE (67.4-67.8 / 107-109). V's
+remaining eval gap = rank ~0.035 quiet / ~0.06 sharp + calibration
+~12cp — the anneal's job.
+
 ## 2026-07-26 ~15:1x ★ THE DISTILLATION ENDGAME PROTOCOL (user-ratified:
 ## "fold it in") — pre-registered rules for WHEN THE STUDENT IS DONE WITH
 ## THE TEACHER and WHETHER IT MUST LEARN ON ITS OWN ★
