@@ -761,6 +761,24 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~19:1x NETONLY_EVAL SHIPS (user directive) + TWO FINDINGS
+## FROM ITS FIRST RUN (sb70)
+
+tools/nnue/netonly_eval.py = the robust stratified net-alone table
+(candidate vs teacher/d47p/SF18/SF16 always; check basis + piece bins +
+label bands; pinned method: labels ±800 / evals unclipped / PAV 5-fold
+/ n<100 suppressed). Wired into the checkpoint watcher every 10sb from
+sb80. Teacher pack durable-ized:
+data/nnue/nets/screens/d47s-v15-sb230-ema-rawframe-nocpol.cenn.
+FINDINGS AT sb70: (1) **SF STATICS COLLAPSE ON ≤8-PIECE RANKING — SF18
+0.5006, SF16 0.6030 vs our family 0.7083(V)/0.8002(d47p)/0.8152(T)**
+(they lean on TB+search there; their trainer downweights endgames).
+V's endgame gap is FAMILY-INTERNAL HEADROOM, not competitive weakness —
+reframes the capacity fork's urgency down. (2) sb70 sharp-nc headline
+**0.7600** (best yet, +0.007/window — leg-1 was still improving at the
+cut); decided-band sharp: V 0.8618 > teacher 0.8130 (d47p 0.8718 tops —
+the labels-trained lineage owns the band the teacher's frame saturates).
+
 ## 2026-07-26 ~18:4x ENDGAME DEFICIT: THE SLICE IS EXONERATED — the
 ## elimination chain closes on CAPACITY
 
