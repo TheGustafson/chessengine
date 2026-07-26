@@ -632,11 +632,11 @@ mod avx2 {
                 }
                 for off in (0..ACC).step_by(LANES) {
                     let mut value = _mm256_loadu_si256(source.add(off).cast());
-                    for base in a_off[..an].iter().map(|m| unsafe { m.assume_init() }) {
+                    for base in a_off[..an].iter().map(|m| m.assume_init()) {
                         let row = weights.as_ptr().add(base + off);
                         value = _mm256_add_epi16(value, _mm256_loadu_si256(row.cast()));
                     }
-                    for base in s_off[..sn].iter().map(|m| unsafe { m.assume_init() }) {
+                    for base in s_off[..sn].iter().map(|m| m.assume_init()) {
                         let row = weights.as_ptr().add(base + off);
                         value = _mm256_sub_epi16(value, _mm256_loadu_si256(row.cast()));
                     }
@@ -682,11 +682,11 @@ mod avx2 {
                 }
                 for off in (0..ACC).step_by(LANES) {
                     let mut value = _mm256_loadu_si256(source.add(off).cast());
-                    for base in a_off[..an].iter().map(|m| unsafe { m.assume_init() }) {
+                    for base in a_off[..an].iter().map(|m| m.assume_init()) {
                         let bytes = _mm_loadu_si128(weights.as_ptr().add(base + off).cast());
                         value = _mm256_add_epi16(value, _mm256_cvtepi8_epi16(bytes));
                     }
-                    for base in s_off[..sn].iter().map(|m| unsafe { m.assume_init() }) {
+                    for base in s_off[..sn].iter().map(|m| m.assume_init()) {
                         let bytes = _mm_loadu_si128(weights.as_ptr().add(base + off).cast());
                         value = _mm256_sub_epi16(value, _mm256_cvtepi8_epi16(bytes));
                     }
@@ -928,11 +928,11 @@ mod avx512 {
                 }
                 for off in (0..ACC).step_by(LANES) {
                     let mut value = _mm512_loadu_si512(source.add(off).cast());
-                    for base in a_off[..an].iter().map(|m| unsafe { m.assume_init() }) {
+                    for base in a_off[..an].iter().map(|m| m.assume_init()) {
                         let row = weights.as_ptr().add(base + off);
                         value = _mm512_add_epi16(value, _mm512_loadu_si512(row.cast()));
                     }
-                    for base in s_off[..sn].iter().map(|m| unsafe { m.assume_init() }) {
+                    for base in s_off[..sn].iter().map(|m| m.assume_init()) {
                         let row = weights.as_ptr().add(base + off);
                         value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
                     }
@@ -978,11 +978,11 @@ mod avx512 {
                 }
                 for off in (0..ACC).step_by(LANES) {
                     let mut value = _mm512_loadu_si512(source.add(off).cast());
-                    for base in a_off[..an].iter().map(|m| unsafe { m.assume_init() }) {
+                    for base in a_off[..an].iter().map(|m| m.assume_init()) {
                         let bytes = _mm256_loadu_si256(weights.as_ptr().add(base + off).cast());
                         value = _mm512_add_epi16(value, _mm512_cvtepi8_epi16(bytes));
                     }
-                    for base in s_off[..sn].iter().map(|m| unsafe { m.assume_init() }) {
+                    for base in s_off[..sn].iter().map(|m| m.assume_init()) {
                         let bytes = _mm256_loadu_si256(weights.as_ptr().add(base + off).cast());
                         value = _mm512_sub_epi16(value, _mm512_cvtepi8_epi16(bytes));
                     }
