@@ -664,3 +664,33 @@ which is not in our clone. NO EVIDENCE SF uses any group-aware sparsity
 penalty; their sparsity is emergent (clipped ReLU + pairwise multiply).
 Signal worth weighing: the strongest team took the free post-hoc lunch
 and did not pay capacity for structured sparsity.
+
+## VERIFIED AGAINST nnue-pytorch (user cloned it, 2026-07-25 ~22:5x)
+`../nnue-pytorch/ftperm.py` (762 lines) — SF DOES do FT permutation, full
+pipeline: `gather` activation matrix (~1M positions) -> `find_perm` ->
+`eval_perm` -> apply via `serialize.py --ft_perm` (or one-shot
+`--ft_optimize`). Directly portable; our 4-grouping is identical.
+  * OBJECTIVE (`eval_act_mat`, :664): reshape (rows, L1/4, 4), `all()`
+    over the group, maximize the FRACTION OF ALL-ZERO GROUPS.
+  * SEARCH (`find_perm_impl`, :425): deterministic iterative local
+    search, stage 1 pairwise swaps (`make_swaps_2`), stage 2 3-cycles
+    (`make_swaps_3`) once swaps stall; <=50 rounds, a set of INDEPENDENT
+    improving moves applied per round.
+  * LAYOUT DETAIL TO COPY: they reshape to (rows*2, L1/2) — the two
+    perspectives become separate rows and only L1/2 neurons are
+    permuted, because the FT is shared. Ours is the same shape.
+
+**THE BIGGER FINDING: SF'S TRAINER HAS NO SPARSITY PENALTY AT ALL.**
+Grepped model/ trainer/ train.py for group-lasso / L1 / activation
+penalties — nothing. Loss is purely eval-fitting (`calculate_sf_loss`,
+model/nnue.py:39: weighted |pt-qf|^pow_exp + optional asymmetry). SF's
+sparsity is 100% EMERGENT (clipped ReLU + pairwise multiply) and they
+harvest it POST-HOC with permutation.
+=> We pay ft_sparsity_lambda=0.001 on every leg as an "NPS lever", but
+(a) our own A/B says density does not move NPS (57% vs 70% group
+occupancy benchmarked identically), and (b) SF, running the SAME sparse-
+L1 kernel, does not pay it. And that penalty is exactly what destroyed
+the policy substrate in D47M when left unopposed.
+**ACTION (post-release queue, ABOVE the permutation work in expected
+value): drop or sharply reduce ft_sparsity_lambda.** It is a capacity
+gain, not a speed gain. Do NOT change mid-D47P.
