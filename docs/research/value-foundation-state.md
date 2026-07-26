@@ -761,6 +761,36 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~19:4x sb80 FULL CYCLE — THE α TRANSITION IS WORKING;
+## + SSTATS VERDICT: NO SEARCH-FIT PATHOLOGY IN V
+
+**HELDOUT −5.52%/window (0.010260→0.009694, through the 0.010 floor;
+biggest drop since the frame fix; user called it live: "we are
+learning").** Train value loss RISES (0.0057@sb89) as α decays — noisier
+target, expected, NOT health. The transition trade in the strata:
+decided-band hits new bests (quiet 0.8561 — now ABOVE d47p/teacher/SFs;
+sharp 0.8696) while smoothed-consensus regions dip (quiet headline
+0.8713→0.8666, balanced 0.6631→0.6535) — rank churn under LR-raise +
+target shift; expect re-convergence with LR decay. **Native scale now
+RISING with the α decay: 0.656(sb60)→0.714(sb80)** — the output frame
+walks toward the label frame as the label term takes over (equilibrium
+is α-dependent, as suspected). WAC 163/200. **Endgame canary: V's
+endgame err-corr vs teacher = 0.5571** (vs 0.87 sharp) — the endgame is
+already label-led; watch the slice climb. LR-trigger 0/2 strikes
+(α-guard active). Minor: one position showed ext=-1783 (negative
+extension counter) — SSTATS accounting anomaly, noted not chased.
+
+**SSTATS 3-ARM SEARCH-FIT FINGERPRINT (30 pos × 300k nodes):**
+V-sb70 depth 17.2 / qshare .073 / fhf .856 / mv@cut 1.39 / research 54
+vs d47p 17.3 / .075 / .869 / 1.34 / 50 vs teacher-cal 17.2 / .082 /
+.861 / 1.35 / 50. **NO TREE PATHOLOGY: V inherits the family's search
+fit** (fhf −0.013, research +9% rel — polish-grade deltas). The play
+gap is EVAL QUALITY, not margin misfire — the V-era SPSA is a polish,
+not a rescue. CAVEAT: V ran on archon-d47v, 1280 nets on archon-sstats
+(different builds; same-code-era). OPS NOTE: SSTATS emits on STDERR
+(two silent-loss rounds before catching it — the 2>/dev/null trap,
+again). archon-d47 (play binary) has NO SSTATS — use archon-sstats.
+
 ## 2026-07-26 ~19:1x NETONLY_EVAL SHIPS (user directive) + TWO FINDINGS
 ## FROM ITS FIRST RUN (sb70)
 
