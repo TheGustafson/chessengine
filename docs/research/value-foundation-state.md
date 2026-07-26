@@ -918,6 +918,13 @@ cfut, pcut (~2h). sb120 in-frame heldout next firing.
     survivors as centers (wip/nmp-guards branch ready if tactics bleed).
 12. Perf study quiet window: tools/perf_study4_bench.sh NET=<d47s.cenn>
     (skip smallnet lanes — VETOED) → decide #9 SIMD emission / compression.
+12b. **UTILIZATION GATHER (A1/A3) on the settled net** — dead-neuron rates
+    + permutation structure over ~1M positions. Promoted (user, ~19:2x):
+    it lower-bounds the V2 width question for free (SF v10's 3072→1024
+    reversion is the prior; our 1280+threats likely oversized). Feeds the
+    V2 ladder: 1280→1152→1024 distill legs at EQUAL TIME + the
+    head-decouple variant (policy head gets its own projection; value L2
+    trims as quality allows).
 13. T11 / disagreement head (v5.5 step 8) INFRASTRUCTURE INVENTORY
     (2026-07-26 ~07:4x, so the design conversation starts warm): engine
     already carries the dormant D40_UNC_HEAD sidecar seam + sigma plumbing
