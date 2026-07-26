@@ -190,6 +190,12 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=20260725)
     ap.add_argument("--oracle", default=str(ROOT / "engines/bin/stockfish18"))
     ap.add_argument("--oracle-nodes", type=int, default=50000)
+    ap.add_argument("--labels", help="pre-labelled 'FEN<TAB>cp' file; skips the oracle "
+                                     "entirely. Use for corpora already labelled in bulk.")
+    ap.add_argument("--labels-white-pov", action="store_true",
+                    help="the --labels file is WHITE-relative, not side-to-move. "
+                         "canon-v1 corpus.quiet.txt IS white-POV (verified 2026-07-25): "
+                         "reading it as stm collapses every correlation to ~0.04.")
     ap.add_argument("--eval", action="append", required=True,
                     metavar="NAME=KIND:SPEC", help="repeatable; kind in " + "/".join(ADAPTERS))
     ap.add_argument("--cache", default=str(ROOT / "data/nnue/evalbench"))
@@ -214,9 +220,23 @@ def main() -> int:
     print(f"positions: {len(fens)}  (set {pos_key})", file=sys.stderr)
 
     # ---- oracle labels (the expensive part; always cached) --------------
-    lab = cached(cache, "lab", f"{pos_key}|{a.oracle}|{a.oracle_nodes}",
-                 lambda: label_with_oracle(a.oracle, a.oracle_nodes, fens))
-    print(f"oracle: {Path(a.oracle).name} @{a.oracle_nodes} nodes", file=sys.stderr)
+    if a.labels:
+        tbl = {}
+        for line in open(a.labels):
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) >= 2 and parts[1]:
+                tbl[parts[0]] = float(parts[1])
+        lab = [tbl.get(f) for f in fens]
+        if a.labels_white_pov:
+            lab = [None if v is None else (-v if f.split()[1] == "b" else v)
+                   for f, v in zip(fens, lab)]
+        miss = sum(x is None for x in lab)
+        print(f"oracle: pre-labelled {Path(a.labels).name}"
+              + (f"  ({miss} unlabelled)" if miss else ""), file=sys.stderr)
+    else:
+        lab = cached(cache, "lab", f"{pos_key}|{a.oracle}|{a.oracle_nodes}",
+                     lambda: label_with_oracle(a.oracle, a.oracle_nodes, fens))
+        print(f"oracle: {Path(a.oracle).name} @{a.oracle_nodes} nodes", file=sys.stderr)
 
     # ---- evaluators -----------------------------------------------------
     black = np.array([f.split()[1] == "b" for f in fens])
@@ -267,6 +287,12 @@ def main() -> int:
                 dict(fen=[f for f, k in zip(fens, ok) if k][int(i)],
                      label=float(c[i]), eval=float(e[i]), rescaled=float(r[i]))
                 for i in idx]
+
+    if rows and max(abs(r[5]) for r in rows) < 0.30:
+        print("\n!! WARNING: EVERY evaluator correlates < 0.30 with the labels.\n"
+              "   That is a data-alignment bug, not six bad evaluators. Check:\n"
+              "   (a) label POV — try --labels-white-pov (canon-v1 IS white-POV);\n"
+              "   (b) FEN/label row alignment; (c) label units.\n", file=sys.stderr)
 
     rows.sort(key=lambda t: t[2])
     print(f"{'evaluator':22s} {'rawMAE':>7s} {'RESCALED':>9s} {'95% CI':>15s} "
