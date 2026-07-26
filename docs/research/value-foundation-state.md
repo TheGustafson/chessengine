@@ -683,6 +683,24 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## 2026-07-26 ~14:0x ★ STRATEGIC IDENTITY RULING (user): BEAT SF18 AT EQUAL
+## TIME VIA QUALITY-PER-NODE — THE BIG-INTELLIGENT-TRUNK BET ★
+
+User (verbatim intent): we must beat SF18 at equal time; the bet is a
+bigger, more intelligent trunk with RICH OUTPUTS (policy/disagreement/WDL
+heads) — long-term identity, kept for output optionality. Implications
+ratified in chat: (1) the standing yardstick = SF18 equal-time, tracked at
+every gate (add the SF18 ET leg to the post-D47 baseline set); (2) the
+perf program is BOUNDED — keep the speed tax near ~2×, do not chase SF NPS
+(consistent with the smallnet veto); (3) search-fit grind is DEFENSIVE
+(neutralize their free advantages once, well), offense budget goes to
+trunk+heads: D47T, V2 trunk w/ flywheel + own-search labels, T11 as
+first-class. Math on record: equal-time = per-node edge − speed tax;
+today −119 − ~115; rich outputs are per-node MULTIPLIERS (P-ORD −20%
+tree today, more with the D47T head; allocation converts trunk
+self-knowledge into effective depth) — the slope-changers that make a
++250-300 per-node swing a campaign rather than a fantasy.
+
 ## 2026-07-26 ~13:0x BRACKET ROUND — BOTH WINNERS ARE CONFIRMED PEAKS
 ## SE: x0.40 +8.7 | x0.52 +22.6 | x0.65 -1.7 (sharp peak at 0.52).
 ## QS: 140 -5.2 | 174 +17.4 | 210 +7.0 (peak 174-190; start 174 stands).
