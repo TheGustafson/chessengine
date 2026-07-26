@@ -640,6 +640,27 @@ point) deferred to SPSA: internal-scale ratio has two conflicting estimates
 (1.2× material probe vs 1.8× regression slopes) and fe rides its 0.572 floor
 ~80% of moves — not baking in a guessed constant.
 
+## 2026-07-26 ~08:4x SPSA-PRIOR SCREENS ROUND 1 (fixed-node 200g self-play
+## arms vs base, d47p value-only, beside trainer — contention-safe setting;
+## §8 caveat carried: fixed-node UNDERVALUES pruning)
+
+| arm | overlay | Elo@50k | games verdict (arm_verify) |
+| sf16bar | NMP 140−12d | −17.4±25.4 | +0.55 ply, NO tactical spike — sound, setting-taxed |
+| bundle | +RED_BASE 2051 | −27.9±27.4 | +1.78 ply but tactical 32% vs 17% — flat-LMR bleed |
+| midbar | NMP 250−19d | **−5.2±27.5** | +0.34 ply, no spike; tree ×3.11→×2.32, cuts/k ×5 |
+| redonly | RED_BASE 2051 | −41.9±25.5 | collapse spike — REJECTED (twice-confirmed) |
+
+**Verdicts:** NMP bar SPSA center = (250, 19) — crossover ~13 at a higher
+base is fixed-node NEUTRAL while opening NMP 5×; the aggressive (140,12)
+stays in range for wall-clock SPSA to walk toward. FLAT RED_BASE bump is
+REJECTED — the LMR magnitude gap must come from SHAPED terms (the
+statScore discount ×445/4096 on our strong histories eats the base; flat
+bumps reduce good moves too). Round 2 RUNNING: RED_TABLE_NUM 3260 (late-
+weighted), RED_MOVECOUNT 85 (late-only), guards binary + (140,12) rescue.
+Then the 8-family ×0.52 screens (staged). All results = SPSA STARTS, not
+landings (user protocol 2026-07-26 ~08:0x: screen → verify in games →
+refine → pin priors; landing post-D47).
+
 ## POST-D47S RUNBOOK (assembled 2026-07-26 ~07:2x while training; every stage
 ## staged + committed; execute IN ORDER when the completion watcher fires)
 
