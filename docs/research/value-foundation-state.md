@@ -710,6 +710,17 @@ deficit); global margin overlay REJECTED (−77.7); per-family repair =
 SPSA's job. TM fix LANDED+GATED. Match_report/arm_verify/inframe_heldout
 instruments committed — USE THEM (see INSTRUMENT INDEX below).
 
+**13:11 D47V ENGINE CHAIN VERIFIED + FIRST EVOLUTION POINT:**
+deploy parity jax-vs-engine mean 3.3cp / max 6.8cp over ±1200cp evals
+(quant noise class), skip lane LIVE at sb10 (max|w| 1.93, 99.8% nonzero)
+— SKP1 loader + skip dot + 768 consts + pack all correct. Tooling fixed
+en route: dequant trailer tolerance, fen_probe arch env + trailer
+reconstruction, white-stm probe suite, eval_bench ARCHON_BIN for 768
+nets. sb10 Spearman: quiet 0.8675 / sharp 0.7169 (teacher 0.9054/0.8126;
+gaps 0.038/0.096 at 10% of schedule — already ≈SF16-class on quiet).
+Cadence CORRECTION: ~6.6 min/sb wall (teacher forward) → 100sb ≈ 11h;
+early-stop judgment at sb30 per user+assistant shared suspicion.
+
 **RULINGS ~22:5x (user):** (1) the d47s FLOOR-HOLD is AXED permanently —
 **sb230 is final d47s** (overfit indications seen); it is TEACHER +
 fallback, nothing more trains on that line. (2) **THE MASTER PLAN
