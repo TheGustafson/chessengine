@@ -169,6 +169,19 @@ const MAP: [[i8; 6]; 6] = [
     [-1, -1, -1, -1, -1, -1], // king
 ];
 
+/// Is the attacker→victim TYPE pair one `threat_index` keeps? Derived from
+/// [`MAP`] — the single source of truth — so the observer's push-time filter
+/// (perf study §6-T2: drop events at generation instead of buffering +
+/// resolving them twice and dropping at fold) can never diverge from the
+/// fold-time drop set. The pawn-PUSH asymmetry (push onto N/R would be kept
+/// by MAP but is never a threat) is guarded at the recording site, not here.
+#[inline]
+pub(crate) fn threat_pair_kept(attacker: PieceType, victim: PieceType) -> bool {
+    // Our PieceType is 0-based (Pawn=0..King=5); MAP is indexed the same way
+    // (its doc's "1..6" refers to SF's piece codes, not the array index).
+    MAP[attacker as usize][victim as usize] >= 0
+}
+
 /// FullThreats square orientation — the **opposite polarity** to HalfKA:
 /// `0` for a king on files a-d, `7` for files e-h (design/11 §12.1, the
 /// "a1/h1 polarity" fidelity trap: HalfKA's OrientTBL is a1→SQ_H1, threats' is

@@ -134,6 +134,17 @@ impl DeltaBuf {
 
     #[inline]
     fn push(&mut self, d: ThreatDelta) {
+        // §6-T2 (perf study): drop pairs `threat_index` would fold to None at
+        // the single choke point every recording site flows through — they
+        // were being buffered, resolved twice, then discarded (king victims
+        // on every touch, pawn-diagonal onto B/Q, bishop/rook onto Q).
+        // `threat_pair_kept` is derived from the SAME `MAP` table the fold
+        // consults, so the drop sets cannot diverge; add/sub use the same
+        // pure type predicate, so telescoping cancellation is preserved.
+        // The pawn-push-onto-N/R asymmetry stays guarded at the recorder.
+        if !super::sota_features::threat_pair_kept(d.attacker.piece_type, d.victim.piece_type) {
+            return;
+        }
         debug_assert!(self.len < DELTA_CAP, "threat delta buffer overflow");
         self.data[self.len] = d;
         self.len += 1;
