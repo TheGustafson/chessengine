@@ -74,7 +74,12 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
     import jax
 
     spec = json.loads(Path(cfg_path).read_text())
-    arch = dataclasses.replace(ArchSpec.full(), factorize=True, psqt=True)
+    # D47U arch overrides: spec-driven head width / output-skip so a head
+    # rebuild rides the standard driver (config keys arch_l2 / arch_out_skip).
+    arch = dataclasses.replace(
+        ArchSpec.full(), factorize=True, psqt=True,
+        l2=int(spec.get("arch_l2", ArchSpec.full().l2)),
+        out_skip=bool(spec.get("arch_out_skip", False)))
     start_sb = resume_sb + 1 if resume_sb else 1
     cfg = dataclasses.replace(
         TrainConfig(),

@@ -163,6 +163,19 @@ def fold_for_export(params: dict[str, np.ndarray], arch) -> dict[str, np.ndarray
 PSQT_MAGIC = b"PSQ1"
 PSQT_FIXED_MULT = 0.5 * 400.0 * 256.0
 
+# SKP1 section (D47U output-skip deploy format, appended after PSQ1 / the
+# padded bullet stream): b"SKP1" | u32 num_buckets | u32 hl |
+# f32[hl * num_buckets] row-major — the skipw lane in raw f32 (the engine
+# tail is f32; no quant gymnastics, mirrors SF's fwdOut semantics).
+SKIP_MAGIC = b"SKP1"
+
+
+def skip_section_bytes(params: dict[str, np.ndarray], arch) -> bytes:
+    import struct as _s
+    w = np.asarray(params["skipw"], dtype=np.float32)
+    return (SKIP_MAGIC + _s.pack("<II", arch.num_buckets, arch.hl)
+            + w.astype("<f4").tobytes())
+
 
 def psqt_section_bytes(params: dict[str, np.ndarray], arch) -> bytes:
     from .spec import HALFKA_DIMS, THREAT_DIMS
@@ -227,6 +240,10 @@ def write_quant(path: str | Path, params: dict[str, np.ndarray], arch) -> int:
             total += len(buf)
         if getattr(arch, "psqt", False):
             sec = psqt_section_bytes(params, arch)
+            f.write(sec)
+            total += len(sec)
+        if getattr(arch, "out_skip", False):
+            sec = skip_section_bytes(params, arch)
             f.write(sec)
             total += len(sec)
     return total
