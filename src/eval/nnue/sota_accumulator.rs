@@ -11,8 +11,9 @@
 use super::sota_features::{ACC, halfka_index, halfka_king_key};
 use super::sota_head::BUCKETS;
 use super::sota_simd::{apply_i16_deltas, apply_i16_deltas_into};
+use crate::bitboard::Bitboard;
 use crate::board::{Board, DirtyPiece};
-use crate::types::{Color, MAX_PLY, Piece, Square};
+use crate::types::{Color, MAX_PLY, Piece, PieceType, Square};
 
 const STACK_LEN: usize = MAX_PLY + 8;
 const FINNY_KEYS: usize = 64;
@@ -97,8 +98,11 @@ impl Default for Entry {
 struct FinnyEntry {
     acc: [i16; ACC],
     psqt: [i32; BUCKETS],
-    features: [u16; 32],
-    len: u8,
+    // Perf study #2 option A: the cached POSITION as per-(color,type)
+    // bitboards — the refresh diff is 12 XOR/AND-NOTs + index computation
+    // for CHANGED squares only, replacing two binary-search passes over
+    // sorted feature lists (was ~13% of all cycles; SF's shape).
+    by_piece: [[Bitboard; 6]; 2],
 }
 
 pub(crate) struct HalfkaContext<'a> {
@@ -225,36 +229,35 @@ impl<'a> HalfkaContext<'a> {
     fn finny_refresh_into(&mut self, board: &Board, perspective: Color, ply: usize) {
         let king = board.king_square(perspective);
         let key = halfka_king_key(perspective, king);
-        let mut features = [0u16; 32];
-        let mut len = 0usize;
-        for square in board.all_occupancy() {
-            let piece = board.piece_on(square).expect("occupied square");
-            features[len] = halfka_index(perspective, piece, square, king) as u16;
-            len += 1;
-        }
-        features[..len].sort_unstable();
-
         let weights = self.weights;
         let psqt_weights = self.psqt_weights;
         let slot = &mut self.cache[perspective as usize * FINNY_KEYS + key];
         if let Some(cached) = slot.as_mut() {
+            // Option A (perf study #2): bitboard set-diff against the cached
+            // position. Same add/sub SETS as the old sorted-list derivation
+            // (order may differ; wrapping i16/i32 adds commute => the
+            // accumulator and PSQT sums stay bit-identical).
             let mut adds = [0usize; 32];
             let mut add_len = 0;
             let mut subs = [0usize; 32];
             let mut sub_len = 0;
-            for &old in &cached.features[..cached.len as usize] {
-                if features[..len].binary_search(&old).is_err() {
-                    subs[sub_len] = old as usize;
-                    sub_len += 1;
-                }
-            }
-            for &new in &features[..len] {
-                if cached.features[..cached.len as usize]
-                    .binary_search(&new)
-                    .is_err()
-                {
-                    adds[add_len] = new as usize;
-                    add_len += 1;
+            for color in [Color::White, Color::Black] {
+                for pt in PieceType::ALL {
+                    let new_bb = board.pieces(color, pt);
+                    let old_bb = cached.by_piece[color as usize][pt as usize];
+                    if new_bb == old_bb {
+                        continue;
+                    }
+                    let piece = Piece::new(color, pt);
+                    for sq in new_bb & !old_bb {
+                        adds[add_len] = halfka_index(perspective, piece, sq, king);
+                        add_len += 1;
+                    }
+                    for sq in old_bb & !new_bb {
+                        subs[sub_len] = halfka_index(perspective, piece, sq, king);
+                        sub_len += 1;
+                    }
+                    cached.by_piece[color as usize][pt as usize] = new_bb;
                 }
             }
             apply_i16_deltas(&mut cached.acc, weights, &adds[..add_len], &subs[..sub_len]);
@@ -269,16 +272,18 @@ impl<'a> HalfkaContext<'a> {
                     psqt_sub(&mut cached.psqt, psqt_weights, f);
                 }
             }
-            // Keep the cache's feature list bit-identical even if an exotic
-            // illegal position somehow contains duplicate feature ids.
-            cached.features = features;
-            cached.len = len as u8;
         } else {
             let mut acc = [0i16; ACC];
             acc.copy_from_slice(&self.bias[..ACC]);
             let mut adds = [0usize; 32];
-            for (dst, &feature) in adds.iter_mut().zip(&features[..len]) {
-                *dst = feature as usize;
+            let mut len = 0usize;
+            let mut by_piece = [[Bitboard::EMPTY; 6]; 2];
+            for square in board.all_occupancy() {
+                let piece = board.piece_on(square).expect("occupied square");
+                adds[len] = halfka_index(perspective, piece, square, king);
+                len += 1;
+                by_piece[piece.color as usize][piece.piece_type as usize] |=
+                    Bitboard::from_square(square);
             }
             apply_i16_deltas(&mut acc, weights, &adds[..len], &[]);
             // T6c: seed the PSQT sums from zero (the skip has no bias term).
@@ -288,12 +293,7 @@ impl<'a> HalfkaContext<'a> {
                     psqt_add(&mut psqt, psqt_weights, f);
                 }
             }
-            *slot = Some(FinnyEntry {
-                acc,
-                psqt,
-                features,
-                len: len as u8,
-            });
+            *slot = Some(FinnyEntry { acc, psqt, by_piece });
         }
         let cached = slot.as_ref().expect("slot filled above");
         self.stack[ply].acc[perspective as usize] = cached.acc;
