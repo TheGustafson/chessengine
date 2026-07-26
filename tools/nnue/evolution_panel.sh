@@ -70,6 +70,23 @@ def spear(a, b, m0):
     yr = np.argsort(np.argsort(b[m])).astype(float)
     return float(np.corrcoef(xr, yr)[0, 1]), int(m.sum())
 
+def err_corr(x, t, L, m0):
+    """corr(student_err, teacher_err) in rank space (transform-invariant).
+    The Layer-2 exhaustion tripwire (distillation endgame protocol,
+    2026-07-26): oracle metrics PLATEAUED while this keeps CLIMBING means
+    the remaining distillation gradient is pure teacher-bias absorption —
+    time for the alpha ablation. While this sits high (~0.85+) the student
+    cannot meaningfully exceed the teacher vs the oracle."""
+    m = m0 & ~(np.isnan(x) | np.isnan(t) | np.isnan(L))
+    if m.sum() < 10:
+        return float("nan")
+    def zr(a):
+        r = np.argsort(np.argsort(a[m])).astype(float)
+        return (r - r.mean()) / r.std()
+    eS = zr(x) - zr(L)
+    eT = zr(t) - zr(L)
+    return float(np.corrcoef(eS, eT)[0, 1])
+
 tag, cenn, teach = os.environ["TAG"], os.environ["CENN"], os.environ["TEACH"]
 print(f"═══ EVOLUTION PANEL {tag} ═══  (net {cenn})")
 for path, name in ((os.environ["QUIET"], "QUIET"), (os.environ["SHARP"], "SHARP")):
@@ -88,7 +105,8 @@ for path, name in ((os.environ["QUIET"], "QUIET"), (os.environ["SHARP"], "SHARP"
         ro, n = spear(x, L, m0)
         rt, _ = spear(x, t, m0)
         to, _ = spear(t, L, m0)
-        print(f"  {name} [{cut:>26s} n={n:4d}]  vs-oracle {ro:.4f}   vs-teacher {rt:.4f}   (teacher-vs-oracle {to:.4f})")
+        ec = err_corr(x, t, L, m0)
+        print(f"  {name} [{cut:>26s} n={n:4d}]  vs-oracle {ro:.4f}   vs-teacher {rt:.4f}   err-corr {ec:.4f}   (teacher-vs-oracle {to:.4f})")
 PY
 
 # Policy top-1 (engine probe; needs the .cpol sidecar the pack emits).

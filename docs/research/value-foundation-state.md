@@ -753,6 +753,48 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~15:1x ★ THE DISTILLATION ENDGAME PROTOCOL (user-ratified:
+## "fold it in") — pre-registered rules for WHEN THE STUDENT IS DONE WITH
+## THE TEACHER and WHETHER IT MUST LEARN ON ITS OWN ★
+
+**NEW INSTRUMENT — teacher-error correlation** (now a standard
+evolution_panel column, `err-corr`): corr(student_err, teacher_err) in
+rank space vs the SF18@50k oracle. Measured sb10/20/30: quiet
+0.8283→0.8335→0.8392, sharp-nc 0.8565→0.8662→0.8702 (+~0.005/10sb).
+~70-76% of the student's error variance IS the teacher's error variance.
+While it sits this high the student CANNOT meaningfully exceed the
+teacher vs the oracle — exceeding requires decorrelation, which
+teacher-imitation cannot provide; only labels/self-generated data can.
+(In-check err-corr 0.9319 — blindest copying exactly where no training
+data exists; play-irrelevant, consistent with quiet-only transfer.)
+**DISCOVERED while wiring: the policy loss under distillation is PURE
+teacher-CE — pol_soft REPLACES the hard-label term entirely; the policy
+head has ZERO independent signal, its top-1 strictly bounded by
+teacher-copying. The α ablation must include policy (hard-CE arm).**
+
+- **LAYER 1 (convergence, this run):** over two consecutive 10sb panels:
+  Δvs-teacher < +0.001 (both sets) AND Δvs-oracle < +0.002 AND heldout
+  relative gain < 0.5% → distillation converged. Floor: sb100 anneal end.
+  Status: NOT converged (all still rising).
+- **LAYER 2 (exhaustion tripwire):** oracle metrics plateau per Layer 1
+  WHILE err-corr keeps climbing → remaining gradient is pure teacher-bias
+  absorption → trigger the α ablation immediately.
+- **LAYER 3 (own-learning verdict — by EXPERIMENT):** at convergence,
+  three arms from the same checkpoint, ~12sb each at the LR floor
+  (~2-3h GPU): α=0.7 control / α=0.3 / α=0.0 (raw labels; policy back to
+  hard-CE). Judge: heldout + panel + does α=0 DEcorrelate err-corr + 300g
+  fixed-node screen for the winner. α=0 wins → future generations get an
+  α-decay tail. α=0 regresses → teacher = denoised labels, rides to the
+  end. Mixed verdict → investigate before concluding (weak-test rule).
+- **LAYER 4 (generation-level):** student ≥ teacher at EQUAL TIME → this
+  teacher is exhausted in play; next lever = better teacher (bigger/
+  longer or student-search-labeled — the flywheel), never more epochs.
+  Converges clearly BELOW the ET gate with ablation exhausted → capacity
+  verdict → D47U 1280/64+skip.
+
+Timeline: sb40 panel (watcher, automatic) → sb50 fixed-node rematch vs
+the −206.7 baseline → Layer-1 call ~sb60-100 → α ablation → ET gates.
+
 ## 2026-07-26 ~14:4x sb30 PAUSE → TEACHER-FRAME FIX LANDED → RESUMED sb31+
 ## (user: "pause after sb30, fix the scale gotcha, relaunch warm")
 
@@ -1080,8 +1122,11 @@ cfut, pcut (~2h). sb120 in-frame heldout next firing.
 
 ## INSTRUMENT INDEX (2026-07-26 suite — USE THESE, habitually)
 - tools/nnue/evolution_panel.sh — the ONE per-checkpoint read (pack →
-  sweep → Spearman with EXPLICIT bases → top-1 probe). Never hand-roll a
-  panel again (the basis trap). Sets: data/nnue/evalbench/sets/.
+  sweep → Spearman with EXPLICIT bases + err-corr → top-1 probe). Never
+  hand-roll a panel again (the basis trap). err-corr = the Layer-2
+  exhaustion tripwire (endgame protocol ~15:1x). Sets:
+  data/nnue/evalbench/sets/. Auto-run per checkpoint by the
+  archon-d47v-panels watcher → /tmp/d47v_panels.log.
 - tools/nnue/eval_bench.py — now basis-guarded: separate labeled tables
   (non-check = play-relevant) whenever in-check rows exist.
 - tools/match_report.py — EVERY match gets the story, not just the score
