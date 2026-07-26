@@ -683,6 +683,24 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## 2026-07-26 ~16:5x THE DIALECT MAP — D47S COMPRESSES THE NEAR-ZERO
+## REGION ~40% (the honest-calibration signature); margins want ×0.6-0.75
+
+Quantile map, calibrated d47s-sb170 vs d47p, 5400 shared positions:
+ratio by d47p band: ±0-50 → 0.54-0.62 | ±50-100 → 0.72-0.84 | ±100-400 →
+0.79-0.87 | ±400-800 → 0.88-0.95. Smooth monotone compression, worst
+exactly where margins operate. READING: the win-prob-fitted target STOPPED
+EXAGGERATING small advantages (the calibration win); the search still
+expects exaggeration. FIX DIRECTION: never re-inflate the net — shrink
+near-zero margins (measured prior ×0.6-0.75 for THIS net; audit's
+independent unit analysis said ×0.52). Median header calibration (1.004)
+is insufficient BY SHAPE — medians live in the 0.85-0.95 bands. ET deficit
+mechanism (match_report: grind-with-equal-depth, 2.7× blunder rate) fits:
+margins mis-fire on honest small numbers. ASSESS-NOW/TUNE-LATER ruling:
+shape done (structural, transform-fixed); values at sb240 settle via SPSA
++ two bridge probes (margin-overlay arm ARMED; near-zero-band header
+recalibration arm proposed).
+
 ## 2026-07-26 ~16:0x ★ RULING (user, ratified): FT SPARSITY PENALTY —
 ## BURDEN OF PROOF FLIPPED; λ=0 IS THE DEFAULT ★
 
