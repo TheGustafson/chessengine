@@ -683,50 +683,51 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
-## ★★★ TAKEOVER CHECKPOINT 2026-07-26 ~22:3x — READ THIS FIRST ★★★
+## ★★★ TAKEOVER CHECKPOINT 2026-07-26 13:16 — READ THIS FIRST ★★★
 
-**LIVE NOW: D47V (archon-d47v unit, /tmp/d47v_train.log, tb armed)** —
-768·32·32·8 + output-skip, pair-respecting slice-warm from the TEACHER
-(**d47s-v15-sb230-ema** — user's overfit call stopped the base run at
-sb236), distill α=0.7 (blend + soft policy CE), 100sb ≈ 5h. First-sb
-watcher backgrounded. GATES (pre-registered): in-frame heldout falling;
-Spearman within ~0.003 of teacher (quiet+sharp panels); policy top-1 vs
-26.1 bar; WAC fixed-node; **DECISIVE: equal-time vs teacher ≥ 0**.
-Fallback ladder: V fails → D47U (1280/64+skip, fully staged) → sb230
-d47s ships. DOCTRINE (user): train big for real Elo → distill to
-competitive size; raw-label finetune (resume, distill_alpha=0) gets the
-last word if teacher-hugging shows.
+**LIVE: D47V** (unit `archon-d47v`, log /tmp/d47v_train.log, tb armed) —
+the MTL bet: 768·32·32·8 + output-skip (SF fc_0 mirror), pair-respecting
+slice-warm + teacher-distill α=0.7 (value blend + soft policy CE) from
+**TEACHER = d47s-v15-sb230-ema** (user stopped the base run at sb236 on
+overfit; sb230 is FINAL d47s — the floor-hold leg is AXED). ~6.6 min/sb
+wall (teacher forward) → 100sb ≈ 11h; **shared expectation: full 100sb
+won't be needed — judgment read at sb30** (in-frame heldout + Spearman
+panel; if plateaued → early stop + short resume-anneal).
 
-**THE DAY'S STANDING RESULTS:** teacher sb230 = clean-sweep evaluator
-(Spearman quiet 0.9054 / sharp 0.8126, iso-MAE parity/lead vs SF18, only
-in-check-capable net). Search gap SOLVED-IN-PRINCIPLE (NMP bar shape +
-LMR table = tree ×3.11→×1.06 vs SF16; knob gates staged). SPSA priors
-program COMPLETE (s4-searchgap 30 params, games-vetted starts: sefam
-×0.52 +22.6 peak-bracketed, qs 174 +17.4, combo +19.1, guards branch
-+3.5, check-ext branch +3.5/WAC+7). NPS ledger: eval 4.3×/shell 1.8× vs
-SF16; 768 projects ~0.9M NPS (+60%, ≈SF18 parity) at 84MB (−40%).
-ET attribution: sb170 −59.6 → sb210 −26.1 vs d47p (anneal ≈ half the
-deficit); global margin overlay REJECTED (−77.7); per-family repair =
-SPSA's job. TM fix LANDED+GATED. Match_report/arm_verify/inframe_heldout
-instruments committed — USE THEM (see INSTRUMENT INDEX below).
+**D47V STATE AT sb12:** value 0.00549 ↓, pol_ce 2.544 ↓ (teacher band
+2.34 ↔ 26.1% top-1; d47n precedent 3.01 ↔ 15.6% — student ≈ low-20s%
+already). sb10 Spearman: quiet 0.8675 / sharp 0.7470 (teacher
+0.9054/0.8126) — near-SF16-class at 10% of schedule. **ENGINE CHAIN
+VERIFIED at sb10: jax-vs-engine parity mean 3.3cp / max 6.8cp with the
+skip lane LIVE** (max|w| 1.93) — SKP1 loader + skip dot (policy_trunk
+dequant factor) + `arch-d47v` feature build (768/32 consts,
+engines/bin/archon-d47v) + netpack passthrough all correct. Checkpoint
+eval recipe: pack `D40_ACC=768 D40_L2=32 D40_L3=32 D40_BUCKETS=8
+D40_POLICY=1`, sweep with `ARCHON_BIN=engines/bin/archon-d47v` (purge
+stale ev-cache first if re-sweeping the same path).
 
-**13:11 D47V ENGINE CHAIN VERIFIED + FIRST EVOLUTION POINT:**
-deploy parity jax-vs-engine mean 3.3cp / max 6.8cp over ±1200cp evals
-(quant noise class), skip lane LIVE at sb10 (max|w| 1.93, 99.8% nonzero)
-— SKP1 loader + skip dot + 768 consts + pack all correct. Tooling fixed
-en route: dequant trailer tolerance, fen_probe arch env + trailer
-reconstruction, white-stm probe suite, eval_bench ARCHON_BIN for 768
-nets. sb10 Spearman: quiet 0.8675 / sharp 0.7169 (teacher 0.9054/0.8126;
-gaps 0.038/0.096 at 10% of schedule — already ≈SF16-class on quiet).
-Cadence CORRECTION: ~6.6 min/sb wall (teacher forward) → 100sb ≈ 11h;
-early-stop judgment at sb30 per user+assistant shared suspicion.
+**GATES (pre-registered):** in-frame heldout falling
+(tools/nnue/inframe_heldout.py — NOTE it hardcodes the v15 config/arch;
+adapt for V reads); Spearman within ~0.003 of teacher; policy top-1
+"decent" vs the 26.1 bar (user condition for V as MAINLINE); WAC
+fixed-node; **DECISIVE: equal-time vs teacher ≥ 0** (768 projects ~0.9M
+NPS ≈ SF18 parity, 84MB). Fallbacks: D47U (1280/64+skip, fully staged:
+config+assembler) → sb230 ships. **DOCTRINE (user): train too-big teacher
+for real Elo → distill to competitive size; raw-label finetune
+(resume, distill_alpha=0) last if teacher-hugging shows.**
 
-**RULINGS ~22:5x (user):** (1) the d47s FLOOR-HOLD is AXED permanently —
-**sb230 is final d47s** (overfit indications seen); it is TEACHER +
-fallback, nothing more trains on that line. (2) **THE MASTER PLAN
-CONTINUES ON D47V** — conditional only on decent eval AND policy out of
-the leg; all downstream stages (settle, policy duel, knob gates, SPSA,
-baselines) target V.
+**THE DAY'S STANDING RESULTS (all games/oracle-verified, entries below):**
+teacher sb230 ≈ clean-sweep evaluator vs SF16/SF18 statics (quiet 0.9054 /
+sharp 0.8126 / iso-MAE parity+lead / only in-check-capable). Search gap
+solved-in-principle (NMP bar shape + LMR table → tree ×3.11→×1.06 vs
+SF16). s4-searchgap SPSA campaign: 30 games-vetted priors (sefam ×0.52
++22.6 bracketed peak; qs 174 +17.4; combo +19.1; branches wip/nmp-guards
++3.5, wip/check-ext +3.5 & WAC 78.5→83). NPS ledger: eval 4.3×/shell
+1.8× vs SF16; SF18's edge = 15-wide head + smallnet (source-verified
+L2Big=15 + fc_0 skip lane). ET attribution vs d47p: sb170 −59.6 → sb210
+−26.1 (anneal ≈ half); global margin overlay REJECTED (−77.7); per-family
+= SPSA's job. TM depth-redenomination LANDED+GATED (+6.5 self-play,
+2+1 replay fixed). Instruments are MANDATORY: see INSTRUMENT INDEX below.
 
 **POST-V RUNBOOK:** pack (D40_ACC=768 D40_L2=32 D40_L3=32 D40_POLICY=1
 + SKP1 passthrough ✓) → calibrate → panels (Spearman vs teacher) →
