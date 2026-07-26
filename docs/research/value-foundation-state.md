@@ -683,6 +683,13 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## 2026-07-26 ~13:0x BRACKET ROUND — BOTH WINNERS ARE CONFIRMED PEAKS
+## SE: x0.40 +8.7 | x0.52 +22.6 | x0.65 -1.7 (sharp peak at 0.52).
+## QS: 140 -5.2 | 174 +17.4 | 210 +7.0 (peak 174-190; start 174 stands).
+## The priors are now as refined as fixed-node screening can make them.
+## Fresh equal-node legs vs SF18+SF16 running (user directive: do they
+## beat us differently); predictions on record in chat (~12:4x).
+
 ## 2026-07-26 ~12:2x COMBO VERDICT: +19.1±26.5 — THE PRE-SPSA PACKAGE
 ## EXISTS (SE×0.52 + QS 174 + PFUT×0.52 composed; sub-additive vs naive
 ## +45 — the families share the freed-node budget — but solidly positive,
