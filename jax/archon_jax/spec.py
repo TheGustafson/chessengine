@@ -314,6 +314,10 @@ class TrainConfig:
     # superbatches (fresh runs only, same gate as the LR warmup).
     # 0.0 = off = the step-change behavior every pre-D47M leg used.
     ft_sparsity_warmup_superbatches: float = 0.0
+    # D47V teacher distillation: value target = alpha*sigmoid(teacher) +
+    # (1-alpha)*label; policy CE against the teacher softmax when a teacher
+    # is passed to make_update_step. 0 = off (default, bit-identical).
+    distill_alpha: float = 0.0
 
 
 def cosine_lr(cfg: TrainConfig, superbatch: int) -> float:

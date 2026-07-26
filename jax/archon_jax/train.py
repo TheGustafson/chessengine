@@ -36,7 +36,8 @@ def _require_cpu():
 
 
 def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = None,
-                     train_only: list[str] | None = None):
+                     train_only: list[str] | None = None,
+                     teacher: tuple | None = None):
     """``ft_impl``: feature-transformer implementation for model.forward —
     "reference" (default), "pallas" (the GPU embedding-bag kernel,
     ft_kernel.py) or "scan". Defaults to $ARCHON_JAX_FT_IMPL so GPU sessions
@@ -95,13 +96,38 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
             return lam * ramp
         return jnp.asarray(lam)
 
+    t_params = t_arch = None
+    d_alpha = float(getattr(cfg, "distill_alpha", 0.0) or 0.0)
+    if teacher is not None:
+        t_params, t_arch = teacher
+        t_params = {k: jnp.asarray(v) for k, v in t_params.items()}
+
+    def _teacher_targets(batch):
+        """Teacher forward (no grad): blended value target + policy logits.
+        The teacher shares the batch's sparse indices — its FT gather is the
+        same cost class as the student's; total step ~2x, paid only on
+        distill legs (D47V)."""
+        tv, tp, _ = forward(t_params, t_arch, batch, ft_impl)
+        tv = jax.lax.stop_gradient(jax.nn.sigmoid(tv))
+        tp = None if tp is None else jax.lax.stop_gradient(tp)
+        return tv, tp
+
     def loss_fn(params, batch, lam):
+        if t_params is not None and d_alpha > 0.0:
+            tv, tp = _teacher_targets(batch)
+            batch = dict(batch)
+            batch["target"] = d_alpha * tv + (1.0 - d_alpha) * batch["target"]
+            if tp is not None:
+                # policy distill: soft targets via teacher softmax -> CE
+                # against student logits == KL + const. Reuses pol_lambda.
+                batch["_pol_soft"] = jax.nn.softmax(tp)
         if cfg.ft_sparsity_lambda > 0.0:
             value_logit, pol_logits, _, (acc_stm, acc_ntm) = forward(
                 params, arch, batch, ft_impl, with_acc=True)
             loss, metrics = total_loss(value_logit, pol_logits, batch["target"],
                                        batch.get("pol_target_id"), cfg.pol_lambda,
-                                       getattr(cfg, "pow_exp", 2.0))
+                                       getattr(cfg, "pow_exp", 2.0),
+                                       pol_soft=batch.get("_pol_soft"))
             # L1 on the post-CReLU activations = what the engine pays for
             # (density-linear l1_dot). Density metric = deploy-relevant
             # fraction of nonzero clamped activations.
@@ -118,7 +144,8 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
         value_logit, pol_logits, _ = forward(params, arch, batch, ft_impl)
         return total_loss(value_logit, pol_logits, batch["target"],
                           batch.get("pol_target_id"), cfg.pol_lambda,
-                          getattr(cfg, "pow_exp", 2.0))
+                          getattr(cfg, "pow_exp", 2.0),
+                          pol_soft=batch.get("_pol_soft"))
 
     import optax
 

@@ -57,12 +57,20 @@ def policy_loss(pol_logits: jnp.ndarray, pol_target_id: jnp.ndarray) -> jnp.ndar
 
 
 def total_loss(value_logit, pol_logits, target, pol_target_id, pol_lambda: float,
-               pow_exp: float = 2.0):
+               pow_exp: float = 2.0, pol_soft=None):
     v = value_loss(value_logit, target, pow_exp)
     metrics = {"value": v}
     loss = v
     if pol_logits is not None and pol_lambda > 0.0:
-        p = policy_loss(pol_logits, pol_target_id)
+        if pol_soft is not None:
+            # D47V distillation: CE against the teacher's softmax (== KL up
+            # to the teacher's constant entropy). Masking rides in the
+            # logits exactly as with hard targets.
+            import jax
+            logp = jax.nn.log_softmax(pol_logits)
+            p = -(pol_soft * logp).sum(axis=-1).mean()
+        else:
+            p = policy_loss(pol_logits, pol_target_id)
         metrics["pol_ce"] = p
         loss = loss + pol_lambda * p
     metrics["loss"] = loss
