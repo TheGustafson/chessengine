@@ -61,7 +61,8 @@ def make_batches(bin_: BulletBin, cfg: TrainConfig, *, policy: bool,
     def map_one(i: int) -> dict:
         recs = bin_.slice(int(i) * cfg.batch_size, cfg.batch_size)
         out = map_batch(recs, wdl=cfg.wdl, score_multiplier=cfg.score_multiplier,
-                        scale=cfg.scale, policy=policy, threats=threats)
+                        scale=cfg.scale, policy=policy, threats=threats,
+                        target_offset=getattr(cfg, "target_offset", 0.0))
         if policy and legal_mask:
             out["pol_mask"] = legal_move_masks(recs, out["pol_target_id"])
         return out
@@ -134,7 +135,8 @@ def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
         c, i = job
         recs = bins[c].slice(i * cfg.batch_size, cfg.batch_size)
         out = map_batch(recs, wdl=cfg.wdl, score_multiplier=cfg.score_multiplier,
-                        scale=cfg.scale, policy=policy, threats=threats)
+                        scale=cfg.scale, policy=policy, threats=threats,
+                        target_offset=getattr(cfg, "target_offset", 0.0))
         if policy and legal_mask:
             out["pol_mask"] = legal_move_masks(recs, out["pol_target_id"])
         return out

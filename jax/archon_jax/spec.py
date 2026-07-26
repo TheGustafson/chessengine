@@ -210,6 +210,13 @@ class TrainConfig:
     wdl: float = DEFAULT_WDL         # D40_WDL
     scale: float = DEFAULT_SCALE     # D40_EVAL_TARGET_SCALE
     score_multiplier: float = 1.0    # D40_SCORE_MULTIPLIER
+    # Draw-aware double-sigmoid target (2026-07-26 calibration). 0.0 = the
+    # historical plain sigmoid(s/scale). a>0 gives P(win)=sig((s-a)/scale),
+    # P(loss)=sig((-s-a)/scale), remainder draw, value = EXPECTED SCORE — the
+    # same quantity as `result`, so the wdl blend finally mixes like with like.
+    # MLE fits on our corpora: uho a=175.5 scale=71.9, fishpack a=160.2
+    # scale=33.2 (tools/nnue/fit_target_transform.py).
+    target_offset: float = 0.0
     pol_lambda: float = 0.005        # D40_POL_LAMBDA
     weight_decay: float = ADAM_DECAY
     # FT-sparsity regularizer (perf study #6 #1 NPS lever): L1 on the

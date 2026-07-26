@@ -502,13 +502,29 @@ def canonical_orient(ksq_mover_frame: np.ndarray) -> np.ndarray:
 
 def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
               scale: float, policy: bool = False,
-              threats: bool = True) -> dict:
+              threats: bool = True, target_offset: float = 0.0) -> dict:
     """records -> the dense/sparse training tensors, bullet-mapper-parity.
 
     Returns dict with:
       hk_stm/hk_ntm  (N,32) int32, th_stm/th_ntm (N,160) int32 (all -1 padded)
       bucket         (N,) int32
-      target         (N,) float32   wdl*result + (1-wdl)*sigmoid(score*mult/scale)
+      target         (N,) float32   wdl*result + (1-wdl)*transform(score)
+
+    ``target_offset`` selects the eval->expected-score transform (D47 target
+    calibration, 2026-07-26):
+      0.0  (default)  plain  sigmoid(s/scale)      — the historical recipe
+      a>0             draw-aware DOUBLE sigmoid
+                        0.5*(1 + sig((s-a)/scale) - sig((-s-a)/scale))
+                      i.e. P(win)=sig((s-a)/scale), P(loss)=sig((-s-a)/scale),
+                      remainder draw; the value is the EXPECTED SCORE, which
+                      is the same quantity as ``result``, so the wdl blend
+                      finally mixes like-with-like.
+    MLE fits on our own corpora (tools/nnue/fit_target_transform.py, held
+    out, 1.5M each): uho-band75-100 a=175.5 scale=71.9 (brier .0354 vs
+    .0532 for the current sigmoid(s/400)); fishpack32 a=160.2 scale=33.2
+    (.0233 vs .0499). SF's own 270/340 is no better for us than our 400.
+    NOTE the corpora disagree (scale 72 vs 33) — a single global transform
+    over a mix is itself a compromise.
       pol_target_id  (N,) int32     policy class id or -1 (no packed move)
     The legal-move mask is NOT produced here (needs movegen); see data.py.
     """
@@ -525,7 +541,13 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
 
     score = recs["score"].astype(np.float32)
     result = recs["result"].astype(np.float32) / 2.0
-    eval_t = 1.0 / (1.0 + np.exp(-score * score_multiplier / scale))
+    s = score * score_multiplier
+    if target_offset > 0.0:
+        pw = 1.0 / (1.0 + np.exp(-(s - target_offset) / scale))
+        pl = 1.0 / (1.0 + np.exp(-(-s - target_offset) / scale))
+        eval_t = 0.5 * (1.0 + pw - pl)
+    else:
+        eval_t = 1.0 / (1.0 + np.exp(-s / scale))
     out["target"] = (wdl * result + (1.0 - wdl) * eval_t).astype(np.float32)
 
     if policy:

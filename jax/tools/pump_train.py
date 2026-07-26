@@ -81,6 +81,8 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         lr=spec["lr"], lr_end_superbatch=spec["lr_end_superbatch"],
         superbatches=spec["superbatches"], pol_lambda=spec["pol_lambda"],
         ft_sparsity_lambda=spec["ft_sparsity_lambda"],
+        scale=float(spec.get("scale", TrainConfig().scale)),
+        target_offset=float(spec.get("target_offset", 0.0)),
         ft_sparsity_warmup_superbatches=spec.get(
             "ft_sparsity_warmup_superbatches", 0.0),
         warmup_superbatches=spec.get("warmup_superbatches", 0.0),
