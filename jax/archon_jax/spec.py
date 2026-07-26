@@ -182,6 +182,13 @@ class ArchSpec:
     # warm-start safe. Deploy: a versioned PSQ1 section after the bullet
     # stream (see quant export) — old nets/engines unaffected.
     psqt: bool = False
+    # D47U (2026-07-26): SF-style OUTPUT-SKIP lane — a per-bucket learned
+    # linear read of hl1 (the pairwise features, the same vector l1 consumes)
+    # added to the value logit outside every nonlinearity. Zero-init => exact
+    # no-op, warm-start safe. Deploy: SKP1 section after the bullet stream
+    # (PSQ1 pattern); old nets/engines unaffected. SF-verified enabler of
+    # thin value heads (their fc_0 +1 lane; nnue_architecture.h L2Big=15).
+    out_skip: bool = False
 
     @classmethod
     def full(cls) -> "ArchSpec":
@@ -217,6 +224,8 @@ class ArchSpec:
         if self.policy:
             shapes["polmovew"] = (self.l2, POLICY_VOCAB)
             shapes["polmoveb"] = (POLICY_VOCAB,)
+        if self.out_skip:
+            shapes["skipw"] = (self.hl, self.num_buckets)
         return shapes
 
     def quant_layout(self):

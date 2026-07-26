@@ -202,6 +202,11 @@ def head_forward(params: dict, arch: ArchSpec, acc_stm: jnp.ndarray,
 
     l3 = hl3 @ params["l3w"] + params["l3b"]                      # (B, 8)
     out = _select(l3, bucket, arch.num_buckets)[:, 0]             # (B,)
+    if arch.out_skip:
+        # D47U output-skip: per-bucket linear lane on hl1, outside every
+        # nonlinearity (zero-init => bit-exact no-op at leg start).
+        sk = hl1 @ params["skipw"]                                # (B, 8)
+        out = out + jnp.take_along_axis(sk, bucket[:, None], axis=1)[:, 0]
 
     pol_logits = None
     if arch.policy:
