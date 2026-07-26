@@ -112,6 +112,49 @@ RECORD_DTYPE = np.dtype([
 assert RECORD_DTYPE.itemsize == 32
 
 
+def clip_map_for_arch(arch) -> dict[str, float]:
+    """Per-tensor weight clip DERIVED FROM EACH TENSOR'S EXPORT ENCODING (v1.5).
+
+    The historical single WEIGHT_CLIP=1.98 is exactly 127/64 — correct for an
+    i8 tensor quantized at 64, and wrong for everything else:
+      * f32-exported tensors have NO quantization limit at all
+      * the i16 FT at scale 255 can hold |w| < 32767/255 = 128.5, not 1.98
+    Measured on d47p-vrepair2-sb80: l0_pstw / l0_threatw / polmovew / polmoveb
+    all pinned AT 1.98, i.e. the clip was an active capacity ceiling.
+
+    A tensor absent from this map keeps the caller's default clip.
+    `None` means "no clip".
+    """
+    m: dict[str, float | None] = {}
+    for name, kind, quant, _t in arch.quant_layout():
+        if kind == "f32":
+            m[name] = None                      # no quantization => no clip
+        elif kind == "i16":
+            # 32767/255 = 128.5 is the exact ceiling; leave ~2% headroom so the
+            # FACTORIZER MERGE (l0_factw folded into l0_pstw at export) cannot
+            # push the sum over it. netpack's clip gate is the backstop.
+            m[name] = 32000.0 / float(quant)    # FT @255 -> 125.5
+        else:                                   # i8
+            m[name] = 127.0 / float(quant)      # @64 -> 1.984 == the old 1.98
+    # Tensors outside quant_layout(): the factorizer shares the FT's i16
+    # budget (it is folded in); PSQT columns ship as f32 in the PSQ1 section.
+    if getattr(arch, "factorize", False):
+        m["l0_factw"] = m.get("l0_pstw", 125.0)
+    if getattr(arch, "psqt", False):
+        m["l0_psqt_hkw"] = None
+        if not getattr(arch, "halfka_only", False):
+            m["l0_psqt_thw"] = None
+    return m
+
+
+def decay_map_no_bias(arch, decay: float = ADAM_DECAY) -> dict[str, float]:
+    """AdamW decay on weights only. SF puts biases in their own param groups
+    and never decays them (and defaults weight decay to 0 entirely); we have
+    been decaying every tensor including the FT bias."""
+    return {n: (0.0 if n.endswith("b") and not n.endswith("w") else decay)
+            for n in arch.param_shapes()}
+
+
 @dataclasses.dataclass(frozen=True)
 class ArchSpec:
     """Parameterized architecture so scaled-down smokes reuse the exact graph.
@@ -217,6 +260,19 @@ class TrainConfig:
     # MLE fits on our corpora: uho a=175.5 scale=71.9, fishpack a=160.2
     # scale=33.2 (tools/nnue/fit_target_transform.py).
     target_offset: float = 0.0
+    # ---- v1.5 warm-refinement knobs (2026-07-26). All default to the
+    # historical behaviour, so every existing config is untouched. ----
+    # Per-tensor weight clips derived from each tensor's export encoding
+    # (clip_map_for_arch) instead of one global 1.98. MEASURED: the uniform
+    # clip is binding on nearly every tensor of a live net.
+    per_tensor_clip: bool = False
+    # SF never decays biases (and defaults weight decay to 0 entirely).
+    no_bias_decay: bool = False
+    # Global gradient-norm clip; 0.0 = off. SF hard-codes 2.0.
+    grad_clip_norm: float = 0.0
+    # Value-loss exponent |sigmoid(out) - target|^p. SF uses 2.5 (docs say 2.6
+    # also worked); higher = more weight on precision, less on outliers.
+    pow_exp: float = 2.0
     pol_lambda: float = 0.005        # D40_POL_LAMBDA
     weight_decay: float = ADAM_DECAY
     # FT-sparsity regularizer (perf study #6 #1 NPS lever): L1 on the

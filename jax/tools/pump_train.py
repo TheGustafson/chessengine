@@ -83,6 +83,10 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         ft_sparsity_lambda=spec["ft_sparsity_lambda"],
         scale=float(spec.get("scale", TrainConfig().scale)),
         target_offset=float(spec.get("target_offset", 0.0)),
+        per_tensor_clip=bool(spec.get("per_tensor_clip", False)),
+        no_bias_decay=bool(spec.get("no_bias_decay", False)),
+        grad_clip_norm=float(spec.get("grad_clip_norm", 0.0)),
+        pow_exp=float(spec.get("pow_exp", 2.0)),
         ft_sparsity_warmup_superbatches=spec.get(
             "ft_sparsity_warmup_superbatches", 0.0),
         warmup_superbatches=spec.get("warmup_superbatches", 0.0),

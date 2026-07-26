@@ -74,7 +74,14 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
             lr = lr * jnp.minimum(1.0, (count + 1.0) / (cfg.warmup_superbatches * bps))
         return lr
 
-    opt = bullet_adamw(lr_fn)
+    clip_map = decay_map = None
+    if getattr(cfg, "per_tensor_clip", False):
+        from .spec import clip_map_for_arch
+        clip_map = clip_map_for_arch(arch)
+    if getattr(cfg, "no_bias_decay", False):
+        from .spec import decay_map_no_bias
+        decay_map = decay_map_no_bias(arch, cfg.weight_decay)
+    opt = bullet_adamw(lr_fn, clip_map=clip_map, decay_map=decay_map)
 
     def sparsity_lambda(count):
         """ft_sparsity_lambda for this step, with the D47M ramp: linear
@@ -93,7 +100,8 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
             value_logit, pol_logits, _, (acc_stm, acc_ntm) = forward(
                 params, arch, batch, ft_impl, with_acc=True)
             loss, metrics = total_loss(value_logit, pol_logits, batch["target"],
-                                       batch.get("pol_target_id"), cfg.pol_lambda)
+                                       batch.get("pol_target_id"), cfg.pol_lambda,
+                                       getattr(cfg, "pow_exp", 2.0))
             # L1 on the post-CReLU activations = what the engine pays for
             # (density-linear l1_dot). Density metric = deploy-relevant
             # fraction of nonzero clamped activations.
@@ -109,7 +117,8 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
             return loss, metrics
         value_logit, pol_logits, _ = forward(params, arch, batch, ft_impl)
         return total_loss(value_logit, pol_logits, batch["target"],
-                          batch.get("pol_target_id"), cfg.pol_lambda)
+                          batch.get("pol_target_id"), cfg.pol_lambda,
+                          getattr(cfg, "pow_exp", 2.0))
 
     import optax
 
@@ -119,7 +128,16 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
         if unknown:
             raise ValueError(f"train_only names not in arch: {sorted(unknown)}")
 
+    gnorm = float(getattr(cfg, "grad_clip_norm", 0.0) or 0.0)
+
     def masked_update(params, opt_state, grads):
+        if gnorm > 0.0:
+            # global-norm clip (SF hard-codes 2.0). Applied BEFORE masking so
+            # the norm reflects the real gradient, and before the optimizer so
+            # Adam moments see the clipped values.
+            sq = sum(jnp.sum(g * g) for g in jax.tree.leaves(grads))
+            scale = jnp.minimum(1.0, gnorm / (jnp.sqrt(sq) + 1e-12))
+            grads = jax.tree.map(lambda g: g * scale, grads)
         if allow is not None:
             grads = {k: (g if k in allow else jnp.zeros_like(g))
                      for k, g in grads.items()}

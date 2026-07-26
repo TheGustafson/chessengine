@@ -24,11 +24,20 @@ import jax
 import jax.numpy as jnp
 
 
-def value_loss(value_logit: jnp.ndarray, target: jnp.ndarray) -> jnp.ndarray:
-    """Mean sigmoid-MSE (bullet: sig.squared_error(targets).reduce_sum_batch(),
-    d40:1069, then /B at reporting)."""
+def value_loss(value_logit: jnp.ndarray, target: jnp.ndarray,
+               pow_exp: float = 2.0) -> jnp.ndarray:
+    """Mean sigmoid power-error (bullet: sig.squared_error(targets)
+    .reduce_sum_batch(), d40:1069, then /B at reporting).
+
+    ``pow_exp`` 2.0 is the historical MSE. SF uses 2.5 (their docs report 2.6
+    also training well): a higher exponent weights precision more and outlier
+    accuracy less — the axis on which we trail SF18. Implemented on |.| so
+    non-integer exponents are well defined; eps keeps the gradient finite at
+    exactly zero error."""
     sig = jax.nn.sigmoid(value_logit)
-    return jnp.mean((sig - target) ** 2)
+    if pow_exp == 2.0:
+        return jnp.mean((sig - target) ** 2)
+    return jnp.mean((jnp.abs(sig - target) + 1e-12) ** pow_exp)
 
 
 def policy_loss(pol_logits: jnp.ndarray, pol_target_id: jnp.ndarray) -> jnp.ndarray:
@@ -47,8 +56,9 @@ def policy_loss(pol_logits: jnp.ndarray, pol_target_id: jnp.ndarray) -> jnp.ndar
     return jnp.mean(ce)
 
 
-def total_loss(value_logit, pol_logits, target, pol_target_id, pol_lambda: float):
-    v = value_loss(value_logit, target)
+def total_loss(value_logit, pol_logits, target, pol_target_id, pol_lambda: float,
+               pow_exp: float = 2.0):
+    v = value_loss(value_logit, target, pow_exp)
     metrics = {"value": v}
     loss = v
     if pol_logits is not None and pol_lambda > 0.0:
