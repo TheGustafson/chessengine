@@ -640,6 +640,144 @@ point) deferred to SPSA: internal-scale ratio has two conflicting estimates
 (1.2× material probe vs 1.8× regression slopes) and fe rides its 0.572 floor
 ~80% of moves — not baking in a guessed constant.
 
+## 2026-07-26 ~06:0x NPS GROUND-TRUTH LEDGER (flat perf shares, both engines,
+## same positions; trainer-contended box — SHARES only, absolutes from the
+## earlier idle-box game logs)
+
+Per-node cycle budget (1 thread, game config, d47p vs SF16-embedded):
+OURS 1724 ns/node = eval ~1240 (72% steady) + shell ~480. SF16 556 ns/node
+= eval ~289 (52%) + shell ~267. **Eval layer 4.3×, shell 1.8×, total 3.1×.**
+Inside our eval: threat channel ≈ 24% of ALL cycles (i8 fold 16.0 > halfka
+fold 7.3 + at_full 6.1 + record_square_touch 2.3) ≈ ⅓ of eval — SF16 pays
+ZERO (no threats). Threat-free we'd still be ~2.9× SF16's eval: residual =
+fold efficiency + split-quant activate (5.9%) + l1_dot 16.2 + f32 tail +
+evals/node. Shell 1.8× is partly INTERACTION: PSQT-mode shell = 334 ns/node
+vs 480 in-game — the 130 MB net tables evict the shell's cache. Perf-study-4
+#9 (SIMD event emission) QUALIFIES by its own gate (gen+resolve 8.4% ≥ 5%).
+Loader bulk-parse (#7) embarrassed itself in every short profile (90% of a
+spawn) — QoL fix worth taking. Post-D47 NPS queue (smallnet VETOED): #9,
+quiet-window LLC/dTLB run (decides threat-table compression reopen), #7,
+evals/node policies, quant unification (V2 rider). Both engines' MovePicker
+::next_move ≈ 13% of steady shell — ours is not anomalous with the net on
+(the 18% PSQT-mode MovePicker::new reading was shell-only amplification).
+
+## 2026-07-26 ~05:3x ★★★ SEARCH GAP SOLVED-IN-PRINCIPLE: ×3.11 → ×1.06 WITH
+## TWO KNOBS (NMP bar shape + LMR base) ★★★
+
+Full anatomy vs a LOCALLY-PATCHED SF16 (counters only, GPL-safe, gitignored
+worktree), 20 shared middlegames, fixed d13, deterministic:
+- qshare IDENTICAL (16.9% vs 16.5%) — the ×3 was uniform, composition equal.
+- fail-high-first: OURS BETTER (90.3% vs 84.1%) — ordering exonerated.
+- **NMP: 49× fewer cuts/node (1.25/k vs 61.8/k), equal success rate when
+  tried (0.77 vs 0.79)** — the mechanism is fine; the GATE starves it.
+- LMR applied reduction: 1.81 vs 2.78 plies/scout.
+Gate forensics: node-type (cutNode vs !PV) irrelevant (tries 3707→3743).
+The killer is the ELIGIBILITY BAR's SHAPE: ours/donor `beta+374−14·depth`
+crosses zero at depth ~27; SF16's `beta+258−21·depth` at ~12.3. Scaling the
+bar (×0.52) moves base AND slope → crossover unchanged → why the margin
+probe missed it. Donor (eca43a97) affords the stingy bar because ITS search
+has IIR + hotter cutNode reductions shrinking cut-subtrees first; we ported
+the constants without those siblings (chimera effect).
+**Causal ladder (nodes vs SF16):** control ×3.11 → SF16-shape bar (140−12d)
+×2.15 → + RED_BASE 1027→2051 (avg_red 1.81→2.37) ×**1.06**. Bar-zero
+ceiling: ×1.54 with cuts/k 60.6 ≈ SF16's 61.8 (anatomy match).
+**Caveats (pre-registered for the gate):** fixed-depth node parity ≠ Elo —
+both knobs prune harder and can discard wins (NMP success rate falls to
+0.63 at bar-zero = wasted tries + zugzwang risk; SF16 also carries guards
+we lack: `eval>=beta`, `eval>=staticEval`, `(ss-1)->statScore<17329`).
+POST-D47 plan per user v5.5: land as candidates → fixed-node self-play
+screen → wall-clock SPRT → hand the survivors to small-SPSA as seeds
+(NMP_EVAL_BASE/DEPTH shape, RED_BASE, plus the audit margin family).
+Instrumentation kept: SSTATS/SSTATS2 counters (bench pin 701605 unchanged),
+ARCHON_NMP_ALLNODE probe (default off), patched SF16 in the scratch
+worktree. All probe tooling: scratchpad ebf.py/margin_probe.py.
+
+## 2026-07-26 ~04:4x MARGIN-SCALE CAUSAL PROBE — HYPOTHESIS REFUTED (the ×3
+## tree is NOT the margin family)
+
+Pre-registered prediction: scaling the audit's 40-constant margin family
+×0.52 via setoption overlay (tune build) collapses the fixed-depth tree
+ratio vs SF16 from ~2.8 toward ~1.5. RESULT (20 middlegames, d13,
+deterministic): 1.00 → 2.81 | 0.69 → 2.74 | 0.52 → **2.63**. Six percent.
+Confound noted: ×0.52 also FIRES MORE singular extensions (deeper forced
+lines) partially masking pruning savings — but not a 2.6→1.5 masking.
+Additionally qshare (new SSTATS counter, bench-neutral, pin 701605
+unchanged) = **16%** at d8-16: no qsearch bloat. If SF16's share is the
+typical ~half, OUR MAIN TREE is ~4-5× theirs while qsearch is roughly par.
+
+**Sharpened suspects for the uniform ×3 (all testable with counters):**
+(1) interior-node ordering efficiency — fail-high-first rate / moves tried
+per cutoff (root flips were equal, but interior fhf% is the real metric);
+(2) IIR — SF has it, ours REGRESSED −15 Elo and was reverted (P9 item 9,
+parked on wip/p9-item9-iir-followpv) — a known deliberate absence that
+reduces TT-miss subtrees;
+(3) eval-noise cutoff churn — our scale-normalized eval volatility ~2× SF16
+at fast TC ⇒ less stable alpha/beta decisions ⇒ uniformly wider tree (also
+predicts more aspiration re-searches);
+(4) extension volume (check/SE totals per search).
+Next instrumentation: fh_first/fh_total, re-search counts, tt_cutoff count,
+extension count in SSTATS; patch a LOCAL SF16 with matching counters
+(GPL-safe: diagnosis only, nothing copied) for apples-to-apples fhf%.
+Margin family fixes stay queued post-D47 as real-unit hygiene (+SE firing
+parity), but expectations DOWNGRADED: they are not the tree-gap lever.
+
+## 2026-07-26 ~04:0x MASTER PLAN v5.5 (user, verbatim sequencing — supersedes
+## the campaign doc's ordering) + UNIT-SCALE AUDIT VERDICT
+
+**Plan v5.5:** (1) finish D47S — run to completion, anneal well, confirm
+stronger; (2) frozen-trunk POLICY train run; (3) Elo tests vs old d47 + SF16
+at equal time AND equal nodes; (4) small SPSA; (5) performance study — max
+NPS recovery; (6) TM already fixed; (7) FULL-ON SPSA, heuristics dialed in,
+test again; (8) disagreement head (T11) developed + integrated as test-time
+compute allocation in search, +30 Elo bar. Standing assistant lane while
+training: loop on the performance-gap + search-gap diagnosis continuously;
+**found code/config changes land only AFTER D47 finishes.** Smallnet: VETOED
+(user, 2026-07-26 ~03:5x).
+
+**Unit-scale audit (docs/research/unit-scale-audit.md, agent, 2026-07-26):
+CONFIRMED at ~1.91×.** Every eval-denominated search constant is verbatim
+SF-dev `eca43a97` (post-SF18, 2026-07-06) — probcut/singular/delta values
+match that commit exactly, not SF16 — and no tune was ever shipped over them
+(D45 = 8/8 ship-nothing). Donor internal unit ≈ 0.278 oracle-cp, ours ≈
+0.53 → every margin ~1.9× too wide in real terms → too little pruning
+everywhere → the uniform ×3 tree. Worst five: RFP family (42 vs 22
+oracle-cp/ply), QS_FUTILITY_MARGIN 335 (178 vs 93) + coupled see_ge gate,
+parent futility (73 vs 38), singular family (bar 2× too deep → FEWER
+extensions at forcing moments + thin multicuts), aspiration (wide-when-calm,
+slow-to-widen: base 2.7 vs 1.4 while the mss widener is 1.9× too weak).
+SEE-dimension constants are self-consistent — excluded from any rescale.
+Candidate fixes (POST-D47): (a′) rescale eval output once onto donor scale,
+or (a) ×0.52 on the ~40-margin family; two-frame conflict (0.52 slope vs
+0.69 material) → gate BOTH as real-clock SPRT, never fixed-node (fixed-node
+screens structurally undervalue pruning). Cross-confirmed by the EBF probe:
+tree-size ratio vs SF16 ≈ ×3 FLAT from d=4..16 with equal growth (~1.6) —
+constant leaf-layer multiplier, exactly what 1.9×-wide leaf margins predict;
+node-counting conventions verified identical (both count every do_move).
+
+## 2026-07-26 ~03:00 TM GATE PASS (truncated by box crash) + D47S OOM POSTMORTEM
+
+**TM gate (tmnew vs tmold self-play, 10+0.1, d47p policy-on both sides):**
+160/200 games completed before the box died: **+6.5 ±28.6 (50.94%)**,
+Ptnml [2,14,44,19,1]. Pre-registered criterion was "no regression" — PASS.
+Combined with the mechanical 2+1 replay evidence (53.6s-by-move-15 vs SF16's
+54.1s), the depth-redenomination (76b5ede) is GATED IN. Remaining games not
+worth re-running; the last ~60 ran beside a trainer (symmetric contention,
+fair but noisy).
+
+**D47S launch: 3 OOM deaths, then the box.** Every attempt died between the
+warm-heldout PASS and the first superbatch: nohup attempt (kernel kill
+02:42:39, anon-rss 7.6G), systemd attempt at workers 6/8 (cgroup-attributed
+oom-kill, peak 8.2G), systemd attempt at 4/4 (climbed again; box froze in
+global OOM thrash ~02:55, reboot 02:57). Kernel records pin the trainer
+python at ~7.5G RESIDENT during LOADER STARTUP — the 2026-07-25 OOM fix's
+"peak 1766MB" verification evidently did not cover this path at run scale
+(12-corpus mix + shuffle_chunk 128 + ids masks + warm+EMA on host). Root
+cause NOT yet identified — do not relaunch until a CPU-only capped
+instrumentation run locates the allocation. Standing rule sharpened: any
+trainer launch gets systemd MemoryHigh (throttle) + MemoryMax well under
+(total − desktop footprint), so the worst case is a dead trainer, never a
+dead box.
+
 ## 2026-07-26 LOSS FORENSICS vs SF16 (d47p, 200g/leg) — WHY WE LOSE, QUANTIFIED
 
 Tool: `tools/nnue/loss_forensics.py` (pnr = winner's eval ≥ +2.00 oracle-units

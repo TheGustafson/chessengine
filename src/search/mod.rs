@@ -804,6 +804,25 @@ pub struct Worker {
     /// SF and the `bench` fingerprint (D24). Plain `u64` until SMP lands
     /// (D23), same call sites.
     pub nodes: u64,
+    /// Qsearch slice of `nodes` (bumped at the qsearch `do_move` site only).
+    /// Diagnostic: read by the env-gated ARCHON_SEARCH_STATS report; a plain
+    /// add per qsearch node, no search decision reads it (bench-neutral).
+    pub qnodes: u64,
+    /// Search-anatomy diagnostics (ARCHON_SEARCH_STATS; plain adds on paths
+    /// that already write stack state — bench-neutral, no decision reads them):
+    /// main-search beta cutoffs, cutoffs on the FIRST move tried, total moves
+    /// tried at cutoff nodes, main-search TT-cutoff returns, net extension
+    /// plies granted, aspiration re-searches.
+    pub st_fh: u64,
+    pub st_fh_first: u64,
+    pub st_fh_moves: u64,
+    pub st_ttcut: u64,
+    pub st_ext: i64,
+    pub st_research: u64,
+    pub st_lmr_n: u64,
+    pub st_lmr_plies: i64,
+    pub st_nmp_try: u64,
+    pub st_nmp_cut: u64,
     /// Max ply reached on the current PV line, counted from 1 (§3.9).
     pub sel_depth: i32,
     /// Depth of the current iteration (§3.5).
@@ -1020,6 +1039,17 @@ impl Worker {
             stack: Box::new([Stack::default(); STACK_SIZE]),
             pv_table: Box::new([EMPTY_PV; MAX_PLY + 1]),
             nodes: 0,
+            qnodes: 0,
+            st_fh: 0,
+            st_fh_first: 0,
+            st_fh_moves: 0,
+            st_ttcut: 0,
+            st_ext: 0,
+            st_research: 0,
+            st_lmr_n: 0,
+            st_lmr_plies: 0,
+            st_nmp_try: 0,
+            st_nmp_cut: 0,
             sel_depth: 0,
             root_depth: 0,
             root_delta: 2 * VALUE_INFINITE,
@@ -1130,6 +1160,17 @@ impl Worker {
         self.multi_pv = self.options.multipv().max(1) as usize;
         self.minimal = self.options.minimal();
         self.nodes = 0;
+        self.qnodes = 0;
+        self.st_fh = 0;
+        self.st_fh_first = 0;
+        self.st_fh_moves = 0;
+        self.st_ttcut = 0;
+        self.st_ext = 0;
+        self.st_research = 0;
+        self.st_lmr_n = 0;
+        self.st_lmr_plies = 0;
+        self.st_nmp_try = 0;
+        self.st_nmp_cut = 0;
         self.counters.reset();
         *self.pool.shells[self.thread_idx]
             .report
@@ -1606,6 +1647,17 @@ impl Worker {
         // Per-`go` reset (§3.2.4, §3.9): stack, counters, root moves.
         init_stack(&mut self.stack);
         self.nodes = 0;
+        self.qnodes = 0;
+        self.st_fh = 0;
+        self.st_fh_first = 0;
+        self.st_fh_moves = 0;
+        self.st_ttcut = 0;
+        self.st_ext = 0;
+        self.st_research = 0;
+        self.st_lmr_n = 0;
+        self.st_lmr_plies = 0;
+        self.st_nmp_try = 0;
+        self.st_nmp_cut = 0;
         self.sel_depth = 0;
         self.root_depth = 0;
         self.completed_depth = 0;
@@ -1878,6 +1930,35 @@ impl Worker {
         // running value (this move's last iteration, or the 1.0 seed if the
         // factor block never ran) becomes next move's numerator.
         persist.previous_time_reduction = self.tm_time_reduction;
+
+        // Diagnostic node anatomy (env-gated, off by default => bench-neutral;
+        // 2026-07-26 search-gap investigation): one stderr line per completed
+        // search splitting `nodes` into main-search vs qsearch makes.
+        if std::env::var_os("ARCHON_SEARCH_STATS").is_some() {
+            eprintln!(
+                "SSTATS nodes={} qnodes={} qshare={:.3} depth={} fh={} fhf={} \
+                 fhf_rate={:.3} avg_moves_at_cut={:.2} ttcut={} ext={} research={}",
+                self.nodes,
+                self.qnodes,
+                self.qnodes as f64 / self.nodes.max(1) as f64,
+                self.completed_depth,
+                self.st_fh,
+                self.st_fh_first,
+                self.st_fh_first as f64 / self.st_fh.max(1) as f64,
+                self.st_fh_moves as f64 / self.st_fh.max(1) as f64,
+                self.st_ttcut,
+                self.st_ext,
+                self.st_research
+            );
+            eprintln!(
+                "SSTATS2 lmr_n={} lmr_avg_plies={:.3} nmp_try={} nmp_cut={} nmp_rate={:.3}",
+                self.st_lmr_n,
+                self.st_lmr_plies as f64 / self.st_lmr_n.max(1) as f64,
+                self.st_nmp_try,
+                self.st_nmp_cut,
+                self.st_nmp_cut as f64 / self.st_nmp_try.max(1) as f64
+            );
+        }
     }
 
     /// End-of-iteration root hygiene (design/07 §3.5, plan step 10):
@@ -2045,6 +2126,7 @@ impl Worker {
                 beta = alpha;
                 alpha = (best - delta).max(-VALUE_INFINITE);
                 failed_high_cnt = 0;
+                self.st_research += 1;
                 // A root fail-low may mean the pondered move is refuted;
                 // burning past the soft budget to find a replacement is right,
                 // so revoke any pending ponderhit stop (design/12 step 9).
@@ -2056,6 +2138,7 @@ impl Worker {
                 alpha = (beta - delta).max(alpha);
                 beta = (best + delta).min(VALUE_INFINITE);
                 failed_high_cnt += 1;
+                self.st_research += 1;
             } else {
                 break; // inside the window: done
             }
@@ -2456,9 +2539,11 @@ impl Worker {
                         };
                         self.board.unmake_move(m);
                         if !is_valid(child_value) || (tt_value >= beta) == (-child_value >= beta) {
+                            self.st_ttcut += 1;
                             return tt_value;
                         }
                     } else {
+                        self.st_ttcut += 1;
                         return tt_value;
                     }
                 }
@@ -2622,7 +2707,18 @@ impl Worker {
             // fail-high with a verification search that disables NMP up to
             // `nmp_min_ply` (recursion- and zugzwang-proof).
             let us = self.board.side_to_move();
-            if cut_node
+            // DIAGNOSTIC A/B (2026-07-26 search-gap study, env-gated, default
+            // off => bench-neutral): SF16 gates NMP on !PvNode; the donor
+            // (eca43a97) on cutNode — but the donor's OTHER machinery (IIR,
+            // hotter cutNode LMR) shrinks the trees that gate leaves behind,
+            // and we did not port those. ARCHON_NMP_ALLNODE=1 tries the
+            // SF16-style gate for measurement; landing is a post-D47 decision.
+            let nmp_node_ok = if crate::search::nmp_allnode_probe() {
+                !NT::PV
+            } else {
+                cut_node
+            };
+            if nmp_node_ok
                 && self.stack[cur].static_eval
                     >= beta
                         - params::NMP_EVAL_DEPTH() * depth
@@ -2654,6 +2750,7 @@ impl Worker {
                 // EMPTY delta at `ply + 1` (marks it uncomputed; the us/them
                 // perspective swap happens at `evaluate`). No-op when NNUE off.
                 self.eval_ctx.push_dirty(DirtyPiece::EMPTY, ply);
+                self.st_nmp_try += 1;
                 self.board.make_null_move();
                 #[cfg(feature = "sota")]
                 self.eval_ctx
@@ -2665,6 +2762,7 @@ impl Worker {
                 // Do not return an unproven mate/TB score: a null-move
                 // "mate" is an artifact of the illegal pass, never real.
                 if null_value >= beta && !is_win(null_value) {
+                    self.st_nmp_cut += 1;
                     // Below the verification depth — or already inside a
                     // verification (`nmp_min_ply != 0`, where recursive
                     // verification is disallowed) — trust the null value.
@@ -3175,6 +3273,7 @@ impl Worker {
                 }
             }
             new_depth += extension;
+            self.st_ext += i64::from(extension);
 
             // §3.7 — the per-node combined history statistic `ss.stat_score`
             // (design/10 Wave-C item 10), computed from PRE-move facts:
@@ -3296,6 +3395,8 @@ impl Worker {
                     .min(new_depth + params::RED_MAX_DEEPER())
                     .max(1)
                     + Depth::from(NT::PV);
+                self.st_lmr_n += 1;
+                self.st_lmr_plies += i64::from(new_depth - classical_d);
                 #[cfg(feature = "search-control")]
                 let d = {
                     intervention_classical_scout_depth = classical_d;
@@ -3569,6 +3670,9 @@ impl Worker {
                         update_pv(&mut self.pv_table[..], ply, m);
                     }
                     if value >= beta {
+                        self.st_fh += 1;
+                        self.st_fh_first += u64::from(move_count == 1);
+                        self.st_fh_moves += move_count as u64;
                         // A cutoff by a heavily-extended move is weaker evidence
                         // of a fail-high-prone child, so it does not bump the
                         // count (design/10 §3.9, Wave-D item 15).
@@ -4231,6 +4335,7 @@ impl Worker {
 
             // Step 8 — recurse: full window, same node type.
             self.do_move(tt, m, gives_check, ply);
+            self.qnodes += 1;
             let value = -self.qsearch::<NT>(tt, stop, -beta, -alpha, ply + 1);
             self.undo_move(m);
 
@@ -4682,6 +4787,13 @@ impl Worker {
 /// Linear interpolation with clamping left to the caller: maps `x` from the
 /// segment `[x0, x1]` onto `[y0, y1]` (design/12 §3.9's `lerp`). Extrapolates
 /// outside the segment — every soft-stop caller clamps the result.
+/// Cached env probe for the NMP node-gate A/B (read once; a per-node
+/// getenv would distort the very trees being measured).
+pub(crate) fn nmp_allnode_probe() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("ARCHON_NMP_ALLNODE").is_some())
+}
+
 fn lerp(x: f64, x0: f64, x1: f64, y0: f64, y1: f64) -> f64 {
     y0 + (x - x0) * (y1 - y0) / (x1 - x0)
 }
