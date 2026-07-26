@@ -97,10 +97,43 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
         return jnp.asarray(lam)
 
     t_params = t_arch = None
+    t_frame = None
     d_alpha = float(getattr(cfg, "distill_alpha", 0.0) or 0.0)
     if teacher is not None:
         t_params, t_arch = teacher
         t_params = {k: jnp.asarray(v) for k, v in t_params.items()}
+        f_off = float(getattr(cfg, "teacher_frame_offset", 0.0) or 0.0)
+        if f_off > 0.0:
+            # The teacher was trained in a DIFFERENT target frame (draw-aware
+            # double sigmoid, offset f_off / scale f_scl). Its sigmoid output
+            # estimates ITS transform of the eval, not ours; blending it raw
+            # with our plain-sigmoid(s/scale) label term mixes frames and the
+            # student settles between them (the 1.378x scale gotcha,
+            # 2026-07-26). Map teacher LOGIT -> implied cp (inverse of its
+            # transform) -> our frame, via a 1cp lookup table over ±12k cp.
+            # The table is indexed by LOGIT, not probability: logit(T(s)) is
+            # asymptotically linear in s (slope 1/f_scl), so the grid stays
+            # STRICTLY increasing in float32 across the whole range, where a
+            # probability-space grid saturates and develops ties beyond
+            # ~±1400cp. jnp.interp clamps beyond both ends = correct
+            # saturation. T(s) = 0.5(sig((s-a)/b) + sig((s+a)/b)) and
+            # 1-T(s) = 0.5(sig(-(s-a)/b) + sig(-(s+a)/b)) — both sums of
+            # positive stable terms, so log(T)-log(1-T) is float64-exact.
+            f_scl = float(cfg.teacher_frame_scale)
+            assert f_scl > 0.0, "teacher_frame_offset set without teacher_frame_scale"
+            s_grid = np.arange(-12000.0, 12001.0, dtype=np.float64)
+
+            def _sig(x):
+                return 1.0 / (1.0 + np.exp(-x))
+
+            t_hi = 0.5 * (_sig((s_grid - f_off) / f_scl)
+                          + _sig((s_grid + f_off) / f_scl))
+            t_lo = 0.5 * (_sig(-(s_grid - f_off) / f_scl)
+                          + _sig(-(s_grid + f_off) / f_scl))
+            x_grid = np.log(t_hi) - np.log(t_lo)
+            p_grid = _sig(s_grid / float(cfg.scale))
+            t_frame = (jnp.asarray(x_grid, jnp.float32),
+                       jnp.asarray(p_grid, jnp.float32))
 
     def _teacher_targets(batch):
         """Teacher forward (no grad): blended value target + policy logits.
@@ -108,7 +141,12 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
         same cost class as the student's; total step ~2x, paid only on
         distill legs (D47V)."""
         tv, tp, _ = forward(t_params, t_arch, batch, ft_impl)
-        tv = jax.lax.stop_gradient(jax.nn.sigmoid(tv))
+        if t_frame is not None:
+            # interp on the raw logit — see the frame-LUT construction above
+            tv = jnp.interp(tv, t_frame[0], t_frame[1])
+        else:
+            tv = jax.nn.sigmoid(tv)
+        tv = jax.lax.stop_gradient(tv)
         tp = None if tp is None else jax.lax.stop_gradient(tp)
         return tv, tp
 

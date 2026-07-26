@@ -269,6 +269,15 @@ class TrainConfig:
     # MLE fits on our corpora: uho a=175.5 scale=71.9, fishpack a=160.2
     # scale=33.2 (tools/nnue/fit_target_transform.py).
     target_offset: float = 0.0
+    # Frame of a DISTILL TEACHER trained with a different target transform
+    # (set them to the TEACHER run's target_offset/scale). When offset > 0,
+    # the teacher's predicted expected score is mapped through the inverse
+    # of its own transform back to cp and re-projected into THIS run's
+    # plain-sigmoid(s/scale) frame before the α-blend, so both blend terms
+    # live in one frame. Without this the student settles BETWEEN frames —
+    # the 2026-07-26 D47V 1.378× output-scale gotcha.
+    teacher_frame_offset: float = 0.0
+    teacher_frame_scale: float = 0.0
     # ---- v1.5 warm-refinement knobs (2026-07-26). All default to the
     # historical behaviour, so every existing config is untouched. ----
     # Per-tensor weight clips derived from each tensor's export encoding

@@ -694,10 +694,26 @@ wall (teacher forward) → 100sb ≈ 11h; **shared expectation: full 100sb
 won't be needed — judgment read at sb30** (in-frame heldout + Spearman
 panel; if plateaued → early stop + short resume-anneal).
 
+**UPDATE ~14:4x: PAUSED AT sb30 → TEACHER-FRAME FIX → RESUMED sb31+**
+(user directive). The distill blend now maps the teacher into the label
+frame (logit-LUT inverse of the v15 transform; see the ~14:4x entry) —
+pre/post-fix train losses are INCOMPARABLE (sb31 halved = frame
+arithmetic); heldout is the cross-fix instrument (sb30 = 0.011112).
+Panel reads via `tools/nnue/evolution_panel.sh <quant> <tag>` ONLY
+(bases always labeled). sb30: quiet 0.8694 (best), sharp-nc 0.7530
+(rising), top-1 21.7 (noise-flat, teacher 27.2). sb20 fn50k vs teacher:
+−206.7±28.4, 64% grind / 3.1× blunders = coarse-copy profile, expected
+mid-train. Both /tmp match packs were HEADER-CALIBRATED (V 400→267,
+teacher 400→189 — the raw teacher pack is 1.99× the d47p frame!); the
+frame fix should obsolete per-checkpoint V calibration by ~sb40
+(re-measure with net_scale_check).
+
 **D47V STATE AT sb12:** value 0.00549 ↓, pol_ce 2.544 ↓ (teacher band
 2.34 ↔ 26.1% top-1; d47n precedent 3.01 ↔ 15.6% — student ≈ low-20s%
 already). sb10 Spearman: quiet 0.8675 / sharp 0.7470 (teacher
-0.9054/0.8126) — near-SF16-class at 10% of schedule. **ENGINE CHAIN
+0.9054/0.8126; ALL sharp figures = NON-CHECK basis n=1817 — always state
+the basis, see the ~14:0x corrected-panel entry) — near-SF16-class at
+10% of schedule. **ENGINE CHAIN
 VERIFIED at sb10: jax-vs-engine parity mean 3.3cp / max 6.8cp with the
 skip lane LIVE** (max|w| 1.93) — SKP1 loader + skip dot (policy_trunk
 dequant factor) + `arch-d47v` feature build (768/32 consts,
@@ -736,6 +752,106 @@ STILL NEEDED before V can play: head skip-dot consumption + 768/32
 feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
+
+## 2026-07-26 ~14:4x sb30 PAUSE → TEACHER-FRAME FIX LANDED → RESUMED sb31+
+## (user: "pause after sb30, fix the scale gotcha, relaunch warm")
+
+**THE FIX (native, in-loss):** train.py blended `sigmoid(teacher_logit)`
+raw into the target — but the teacher lives in the v15 draw-aware
+double-sigmoid frame (a=163, b=76.9), the student's label term in plain
+sigmoid(s/400); the α=0.7 blend mixed frames → the student settled at
+1.378× the label frame (the measured gotcha). Fix: map teacher LOGIT →
+implied cp (inverse of its transform) → sigmoid(s/400), via a 1cp LUT
+over ±12k cp indexed by LOGIT (logit(T(s)) is asymptotically linear in
+s, strictly increasing in float32 — a probability-indexed LUT ties/
+saturates beyond ~±1400cp; T split as 0.5(sig((s−a)/b)+sig((s+a)/b))
+keeps log(T)−log(1−T) float64-stable). VERIFIED: round-trip implied-cp
+error 0.00cp over ±6000, correct clamping. Config keys
+teacher_frame_offset/scale (default 0 = old behavior, no-op for
+non-distill runs). Resume: `pump_train.py <cfg> 30` (fresh Adam
+transient, EMA carried, schedule position kept); sb31 value loss HALVED
+(0.004977→0.002669) — NOT an improvement, the standard frame has lower
+target variance; **pre/post-fix train losses are incomparable — the
+cross-fix instrument is heldout (label-only, sb30 = 0.011112)**.
+Expectation: the student's output scale drifts 1.378→~1.0 natively over
+the remaining 70sb; re-measure via net_scale_check at sb40 (should
+obsolete the header-267 patch for later checkpoints).
+
+**sb30 PANEL (tools/nnue/evolution_panel.sh — NEW standing instrument,
+bases always labeled):** QUIET all n=2999: 0.8675→0.8663→**0.8694**
+(new best); SHARP non-check n=1817: 0.7470→0.7506→**0.7530** (third
+consecutive rise); top-1 21.7% (22.7/20.2/21.7 — flat in ±2.0 noise;
+teacher 27.2). vs-teacher quiet 0.9614 / sharp-nc 0.9400, still rising.
+NOTE heldout raw was FLAT sb20→sb30 (0.011111→0.011112) — value
+learning had stalled ON THE MIXED FRAME; the fix gives the gradient a
+consistent direction. sb40 heldout adjudicates.
+
+**sb20 FIXED-NODE MATCH vs TEACHER (300g, 50k nodes, both packs
+median-calibrated to the d47p frame, nocpol both sides): −206.7±28.4
+(23.3%, Ptnml [43,76,29,2,0]).** match_report story: losses 64% GRIND
+(119/186), only 16% tactical; depth at decisive ply near-equal (12.1 vs
+12.6); blunder rate 3.1× (81 vs 26 own-eval 2-pawn drops). = the
+healthy-distillation profile: a uniformly coarser copy, not a broken
+one. Fixed-node deliberately strips V's ~2.5-3× speed edge (ET is the
+decisive gate); at this per-node gap ET would NOT yet close — the
+remaining 70sb + frame fix must shrink it. Next match point: sb40/50.
+
+**TOOLING HARDENED (user: "fix that eval net script"):** eval_bench.py
+now detects in-check rows, prints the basis warning, and emits SEPARATE
+labeled tables (non-check = PLAY-RELEVANT first, then all/mixed), each
+with n; json_out carries basis+n per entry. evolution_panel.sh is the
+one-command checkpoint read (pack→sweep→bases table→top-1 probe).
+Position sets persisted out of /tmp: data/nnue/evalbench/sets/.
+
+## 2026-07-26 ~14:0x sb20 EVOLUTION PANEL (CORRECTED) — HEALTHY ON EVERY
+## MATCHED BASIS; a basis-mismatch briefly faked "sharp erosion"
+
+**THE TRAP (third strike of the in-check basis):** the first read of this
+panel compared sb20 ALL-rows sharp (0.7218, n=2399) against the recorded
+sb10 figure 0.7470 — which is the NON-CHECK common basis (n=1817, the
+corrected-panel methodology) — and concluded "sharp eroding" + built a
+mechanism story on it. USER QUESTION ("the net should never see in-check
+positions?") exposed it. Matched-basis truth (identical cached vectors,
+python-chess check split):
+- SHARP non-check (n=1817): sb10 0.7470 → sb20 **0.7506 RISING**
+  (teacher 0.8126). This is the play-relevant basis — VERIFIED at
+  src/search/mod.rs:2327: in check, raw_eval=VALUE_NONE, static_eval
+  inherited from ply−2; the value head is NEVER consulted in check.
+- SHARP in-check (n=582): 0.6958 → 0.7032 rising (teacher 0.7296) —
+  measurable but PLAY-IRRELEVANT for value; report separately or not at
+  all. Only becomes relevant for the POLICY head if P-ORD ever orders
+  evasions at in-check nodes (not deployed).
+- QUIET (n=2999, zero in-check rows — clean all along): 0.8675 → 0.8663
+  flat/noise (teacher 0.9054).
+- vs TEACHER (rank): quiet 0.9584→0.9592, sharp 0.9421→0.9469 — rising;
+  distillation converging as designed.
+- Policy top-1 (ENGINE probe canon400.sf18, n=401): sb10 22.7% → sb20
+  20.2% (SE ±2.0 — noise, uncorroborated) vs teacher **27.2%** on this
+  probe (the 26.1 figure was the CE-interpolation estimate). pol_ce
+  falling (2.549→2.535).
+- Heldout (10sb cadence): raw falls 0.011269→0.011111; EMA rises
+  0.010531→0.010670 = EMA decaying away from the strong slice-warm init
+  during high-LR churn (LR ≈ 9e-4 at sb20). Watch, not alarm.
+**VERDICT: sb20 healthy — no erosion anywhere; ride to the sb30 read as
+planned.** STANDING RULE REINFORCED: any sharp-set Spearman quoted
+WITHOUT its basis (non-check n=1817 vs all n=2399) is uninterpretable —
+always state n. The quiet-only-transfer concern (distill mix is D46
+quiet-filtered → teacher knowledge transfers on quiet only) remains a
+REASONABLE FORWARD IDEA but currently has NO observed deficit backing
+it; if it ever fires, the target population is the EVALUATED-LEAF set
+(post-capture/tension NON-CHECK stand-pat positions), never in-check.
+- Scale finding (games prep): scratchpad teacher pack was RAW = 1.99× the
+  d47p frame (panels didn't care — rank-invariant); d47v-sb20 raw = 1.378×
+  (the α=0.7/0.3 blend lands the student between teacher frame and label
+  frame: 1.378/1.99 ≈ 0.69 ✓ matches the 0.68 V-vs-teacher gate FAIL).
+  Both /tmp match copies header-calibrated to d47p frame (V: 400→267,
+  teacher: 400→189, both ratio 1.004) BEFORE games. Fixed-node 50k
+  300g nocpol match d47v-sb20 vs teacher launched (fn strips V's speed
+  edge deliberately; prices per-node quality; ET gate stays idle-box).
+- **Parity errata:** the sb10 watcher's "mean|Δ|=547cp" was a HARNESS bug
+  (awk diffed against the move column / empty file), not parity; the
+  fixed run shows 3.3cp mean / 6.8cp max (a8e5204). sb20 numbers above
+  ran through that same verified chain.
 
 ## 2026-07-26 ~22:2x D47S STOPPED AT sb236 (user overfit call) — TEACHER =
 ## sb230 EMA; D47V LAUNCHED
@@ -963,6 +1079,11 @@ rightly shallower, quality arms rightly not-deeper. Remaining: asp, razor,
 cfut, pcut (~2h). sb120 in-frame heldout next firing.
 
 ## INSTRUMENT INDEX (2026-07-26 suite — USE THESE, habitually)
+- tools/nnue/evolution_panel.sh — the ONE per-checkpoint read (pack →
+  sweep → Spearman with EXPLICIT bases → top-1 probe). Never hand-roll a
+  panel again (the basis trap). Sets: data/nnue/evalbench/sets/.
+- tools/nnue/eval_bench.py — now basis-guarded: separate labeled tables
+  (non-check = play-relevant) whenever in-check rows exist.
 - tools/match_report.py — EVERY match gets the story, not just the score
   (user directive ~16:3x). Slope-aware; blunder ledger mate-safe.
 - tools/nnue/arm_verify.py — every A/B arm before its verdict.

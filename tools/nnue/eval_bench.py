@@ -261,45 +261,76 @@ def main() -> int:
     ok = ~np.isnan(y)
     for v in series.values():
         ok &= ~np.isnan(v)
-    c = np.clip(y[ok], -a.clip, a.clip)
     print(f"usable: {int(ok.sum())}/{len(fens)}\n", file=sys.stderr)
+
+    # ---- basis split (2026-07-26 trap, third strike) ---------------------
+    # The value head is NEVER consulted in check during play
+    # (src/search/mod.rs:2327: raw_eval=VALUE_NONE, static_eval inherited).
+    # A metric over a set that mixes in-check rows is NOT comparable to one
+    # over a non-check set — quoting either without basis+n produced a
+    # phantom "sharp erosion" verdict once. When in-check rows exist, this
+    # report prints BOTH tables, each labeled; the NON-CHECK one is the
+    # play-relevant basis.
+    try:
+        import chess as _chess
+        chk = np.array([_chess.Board(f).is_check() for f in fens])
+    except Exception:
+        chk = np.zeros(len(fens), bool)
+        print("!! python-chess unavailable — in-check basis split SKIPPED; "
+              "treat every number below as mixed-basis", file=sys.stderr)
+    n_chk = int((chk & ok).sum())
+    bases = [("all", ok)]
+    if n_chk:
+        bases = [("non-check (PLAY-RELEVANT)", ok & ~chk), ("all (mixed!)", ok)]
+        print(f"!! BASIS: {n_chk}/{int(ok.sum())} usable positions are IN CHECK, where\n"
+              f"   the value head is never consulted in play. Never quote a number\n"
+              f"   from this report without its basis label and n.\n", file=sys.stderr)
 
     # ---- metrics ---------------------------------------------------------
     rng = np.random.default_rng(0)
-    boot = rng.integers(0, ok.sum(), size=(400, int(ok.sum())))
-    rows, out = [], {}
-    for name, v in series.items():
-        e = np.clip(v[ok], -a.clip, a.clip)
-        slope, icpt = np.polyfit(e, c, 1)
-        r = slope * e + icpt
-        resc = np.abs(r - c)
-        ci = np.percentile([resc[b].mean() for b in boot], [2.5, 97.5])
-        rows.append((name, np.mean(np.abs(e - c)), resc.mean(), ci, slope,
-                     float(np.corrcoef(e, c)[0, 1]),
-                     100 * float(np.mean(np.sign(e) == np.sign(c))),
-                     float(np.percentile(resc, 90)), float(np.percentile(resc, 99))))
-        out[name] = dict(raw_mae=rows[-1][1], rescaled_mae=resc.mean(),
-                         ci95=list(ci), slope=slope, pearson=rows[-1][5],
-                         sign_pct=rows[-1][6], p90=rows[-1][7], p99=rows[-1][8])
-        if a.worst:
-            idx = np.argsort(-resc)[:a.worst]
-            out[name]["worst"] = [
-                dict(fen=[f for f, k in zip(fens, ok) if k][int(i)],
-                     label=float(c[i]), eval=float(e[i]), rescaled=float(r[i]))
-                for i in idx]
+    out = {}
+    for basis, bm in bases:
+        nb = int(bm.sum())
+        c = np.clip(y[bm], -a.clip, a.clip)
+        boot = rng.integers(0, nb, size=(400, nb))
+        rows = []
+        primary = basis == bases[0][0]
+        for name, v in series.items():
+            e = np.clip(v[bm], -a.clip, a.clip)
+            slope, icpt = np.polyfit(e, c, 1)
+            r = slope * e + icpt
+            resc = np.abs(r - c)
+            ci = np.percentile([resc[b].mean() for b in boot], [2.5, 97.5])
+            rows.append((name, np.mean(np.abs(e - c)), resc.mean(), ci, slope,
+                         float(np.corrcoef(e, c)[0, 1]),
+                         100 * float(np.mean(np.sign(e) == np.sign(c))),
+                         float(np.percentile(resc, 90)), float(np.percentile(resc, 99))))
+            key = name if primary else f"{name}@{basis.split()[0]}"
+            out[key] = dict(basis=basis, n=nb, raw_mae=rows[-1][1],
+                            rescaled_mae=resc.mean(), ci95=list(ci), slope=slope,
+                            pearson=rows[-1][5], sign_pct=rows[-1][6],
+                            p90=rows[-1][7], p99=rows[-1][8])
+            if a.worst and primary:
+                idx = np.argsort(-resc)[:a.worst]
+                out[key]["worst"] = [
+                    dict(fen=[f for f, k in zip(fens, bm) if k][int(i)],
+                         label=float(c[i]), eval=float(e[i]), rescaled=float(r[i]))
+                    for i in idx]
 
-    if rows and max(abs(r[5]) for r in rows) < 0.30:
-        print("\n!! WARNING: EVERY evaluator correlates < 0.30 with the labels.\n"
-              "   That is a data-alignment bug, not six bad evaluators. Check:\n"
-              "   (a) label POV — try --labels-white-pov (canon-v1 IS white-POV);\n"
-              "   (b) FEN/label row alignment; (c) label units.\n", file=sys.stderr)
+        if primary and rows and max(abs(r[5]) for r in rows) < 0.30:
+            print("\n!! WARNING: EVERY evaluator correlates < 0.30 with the labels.\n"
+                  "   That is a data-alignment bug, not six bad evaluators. Check:\n"
+                  "   (a) label POV — try --labels-white-pov (canon-v1 IS white-POV);\n"
+                  "   (b) FEN/label row alignment; (c) label units.\n", file=sys.stderr)
 
-    rows.sort(key=lambda t: t[2])
-    print(f"{'evaluator':22s} {'rawMAE':>7s} {'RESCALED':>9s} {'95% CI':>15s} "
-          f"{'slope':>7s} {'pearson':>8s} {'sign%':>6s} {'p90':>6s} {'p99':>6s}")
-    for n, raw, rs, ci, sl, pr, sg, p90, p99 in rows:
-        print(f"{n:22s} {raw:7.1f} {rs:9.1f} {f'[{ci[0]:.1f},{ci[1]:.1f}]':>15s} "
-              f"{sl:7.3f} {pr:8.4f} {sg:6.1f} {p90:6.1f} {p99:6.1f}")
+        rows.sort(key=lambda t: t[2])
+        print(f"── basis: {basis}  n={nb} ──")
+        print(f"{'evaluator':22s} {'rawMAE':>7s} {'RESCALED':>9s} {'95% CI':>15s} "
+              f"{'slope':>7s} {'pearson':>8s} {'sign%':>6s} {'p90':>6s} {'p99':>6s}")
+        for n, raw, rs, ci, sl, pr, sg, p90, p99 in rows:
+            print(f"{n:22s} {raw:7.1f} {rs:9.1f} {f'[{ci[0]:.1f},{ci[1]:.1f}]':>15s} "
+                  f"{sl:7.3f} {pr:8.4f} {sg:6.1f} {p90:6.1f} {p99:6.1f}")
+        print()
 
     print("\nCAVEATS: (1) positions from our own games flatter our nets; an oracle")
     print("that is one engine's search flatters that engine's static eval. Run")
