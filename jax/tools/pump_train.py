@@ -113,10 +113,14 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         ema = dict(params) if ema_on else None
 
     mix = [(BulletBin(str(ROOT / p)), w) for p, w in spec["mix"]]
+    # workers/prefetch trimmed 5/8 -> 4/4 (2026-07-25 OOM loop): each in-flight
+    # masked batch holds a (16384,1858) f32 mask ~122 MB; the old queue peaked
+    # >1 GB on a 15 GB box with zram already saturated. ~Halves loader RAM for
+    # a few % throughput.
     batches = make_mixed_batches(
         mix, cfg, policy=True,
         legal_mask=bool(spec.get("pol_mask", False)),
-        seed=int(spec["seed"]), workers=5,
+        seed=int(spec["seed"]), workers=4, prefetch=4,
         total_batches=cfg.batches_per_superbatch * cfg.superbatches,
         skip_batches=cfg.batches_per_superbatch * resume_sb)
 
