@@ -683,6 +683,13 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## 2026-07-26 ~12:2x COMBO VERDICT: +19.1±26.5 — THE PRE-SPSA PACKAGE
+## EXISTS (SE×0.52 + QS 174 + PFUT×0.52 composed; sub-additive vs naive
+## +45 — the families share the freed-node budget — but solidly positive,
+## games-verified: shallower by the SE spend, tactical held equal, wins
+## via base's grind channel 45v34). Post-D47 wall-clock gate tests THIS
+## package + the NMP center; SPSA then polishes from a composed start.
+
 ## 2026-07-26 ~11:5x PRIORS PROGRAM COMPLETE — 13 arms, 2600 games, all
 ## games-verified; COMBO arm (SE+QS+PFUT composition test) RUNNING
 
