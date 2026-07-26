@@ -205,6 +205,15 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
             metrics["ft_lambda"] = lam
             metrics["loss"] = loss
             return loss, metrics
+        if getattr(cfg, "dis_lambda", 0.0) > 0.0:
+            value_logit, pol_logits, _, dis_pred = forward(
+                params, arch, batch, ft_impl, with_dis=True)
+            return total_loss(value_logit, pol_logits, batch["target"],
+                              batch.get("pol_target_id"), cfg.pol_lambda,
+                              getattr(cfg, "pow_exp", 2.0),
+                              pol_soft=batch.get("_pol_soft"),
+                              dis_pred=dis_pred,
+                              dis_lambda=float(cfg.dis_lambda))
         value_logit, pol_logits, _ = forward(params, arch, batch, ft_impl)
         return total_loss(value_logit, pol_logits, batch["target"],
                           batch.get("pol_target_id"), cfg.pol_lambda,

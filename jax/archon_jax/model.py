@@ -58,7 +58,10 @@ def init_params(arch: ArchSpec, seed: int) -> dict:
         "l1w": np.sqrt(2.0 / arch.hl),
         "l2w": np.sqrt(2.0 / arch.l2),
         "l3w": np.sqrt(2.0 / arch.l3),
-        "polmovew": np.sqrt(2.0 / arch.l2),
+        "polmovew": np.sqrt(2.0 / (arch.pol_proj or arch.l2)),
+        "pol_projw": np.sqrt(2.0 / arch.hl),
+        "dis_projw": np.sqrt(2.0 / arch.hl),
+        "dis_outw": np.sqrt(2.0 / max(arch.dis_proj, 1)),
     }
     for name, shape in sorted(shapes.items()):
         key, sub = jax.random.split(key)
@@ -208,9 +211,23 @@ def head_forward(params: dict, arch: ArchSpec, acc_stm: jnp.ndarray,
         sk = hl1 @ params["skipw"]                                # (B, 8)
         out = out + jnp.take_along_axis(sk, bucket[:, None], axis=1)[:, 0]
 
+    dis_pred = None
+    if arch.dis_proj:
+        # PURE PROBE (2026-07-27 ruling): stop_gradient on the trunk input —
+        # the disagreement head observes the substrate, never steers it. The
+        # face-off's value/policy results stay uncontaminated; only
+        # dis_projw/dis_outw train from the dis loss.
+        h_in = jax.lax.stop_gradient(hl1)
+        dis_h = _crelu(h_in @ params["dis_projw"] + params["dis_projb"])
+        dis_pred = dis_h @ params["dis_outw"] + params["dis_outb"][0]  # (B,)
     pol_logits = None
     if arch.policy:
-        pol_logits = hl2 @ params["polmovew"] + params["polmoveb"]  # (B, 1858)
+        if arch.pol_proj:
+            # D48W: dedicated projection off the accumulator (hl1), not hl2.
+            pol_h = _crelu(hl1 @ params["pol_projw"] + params["pol_projb"])
+            pol_logits = pol_h @ params["polmovew"] + params["polmoveb"]
+        else:
+            pol_logits = hl2 @ params["polmovew"] + params["polmoveb"]  # (B, 1858)
         if pol_legal is not None:
             # Legal-move IDS -> the SAME dense additive mask, scattered HERE on
             # device (2026-07-26). The host-side (N,1858) f32 mask was 61 MB per
@@ -235,7 +252,7 @@ def head_forward(params: dict, arch: ArchSpec, acc_stm: jnp.ndarray,
             pol_logits = pol_logits + dense
         elif pol_mask is not None:
             pol_logits = pol_logits + pol_mask
-    return out, pol_logits, hl2
+    return out, pol_logits, hl2, dis_pred
 
 
 def _pairwise(c: jnp.ndarray, hl: int) -> jnp.ndarray:
@@ -243,7 +260,8 @@ def _pairwise(c: jnp.ndarray, hl: int) -> jnp.ndarray:
 
 
 def forward(params: dict, arch: ArchSpec, batch: dict,
-            ft_impl: str = "reference", with_acc: bool = False):
+            ft_impl: str = "reference", with_acc: bool = False,
+            with_dis: bool = False):
     """Full graph: sparse features -> (value_logit, pol_logits).
 
     ``ft_impl`` selects the feature-transformer implementation (see
@@ -252,16 +270,22 @@ def forward(params: dict, arch: ArchSpec, batch: dict,
     ARCHON_JAX_FT_IMPL through; the head math never forks).
     ``with_acc=True`` appends the raw accumulator pair to the return (the
     FT-sparsity regularizer reads it; plain callers are unchanged).
+    ``with_dis=True`` appends the disagreement-head prediction (D48W).
     """
     acc_stm, acc_ntm, psqt_stm, psqt_ntm = _ft_accumulate_pair(
         params, batch, arch, ft_impl)
-    out, pol_logits, hl2 = head_forward(params, arch, acc_stm, acc_ntm,
-                                        batch["bucket"], batch.get("pol_mask"),
-                                        batch.get("pol_legal"))
+    out, pol_logits, hl2, dis_pred = head_forward(
+        params, arch, acc_stm, acc_ntm,
+        batch["bucket"], batch.get("pol_mask"), batch.get("pol_legal"))
     if arch.psqt:
         out = out + psqt_combine(psqt_stm, psqt_ntm, batch["bucket"])
+    extras = []
+    if with_dis:
+        extras.append(dis_pred)
     if with_acc:
-        return out, pol_logits, hl2, (acc_stm, acc_ntm)
+        extras.append((acc_stm, acc_ntm))
+    if extras:
+        return (out, pol_logits, hl2, *extras)
     return out, pol_logits, hl2
 
 

@@ -29,7 +29,9 @@ old_arch = dataclasses.replace(
     l2=argval("--src-l2", ArchSpec.full().l2),
     l3=argval("--src-l3", ArchSpec.full().l3))
 new_arch = dataclasses.replace(old_arch, l2=l2, l3=l3, out_skip=True,
-                               hl=hl or old_arch.hl)
+                               hl=hl or old_arch.hl,
+                               pol_proj=argval("--pol-proj", 0),
+                               dis_proj=argval("--dis-proj", 0))
 
 old = ck.load_warm(src, old_arch)
 fresh = init_params(new_arch, seed=0xD470)
@@ -44,12 +46,26 @@ def slice_cols(w):
     return np.concatenate([w[..., :nh // 2], w[..., oh // 2: oh // 2 + nh // 2]],
                           axis=-1)
 
+def expand_cols(w, f):
+    """Pair-respecting width EXPANSION (D48W net2net): old pair (i, i+oh/2)
+    lands at (i, i+nh/2); the new lanes [oh/2:nh/2] and [nh/2+oh/2:nh/2*2]
+    take the FRESH init's columns (properly scaled random — the fresh value
+    head retrains anyway, so the trunk transfer, not exact function
+    preservation, is the contract; gradients shape the new lanes from sb1)."""
+    oh, nh = old_arch.hl, new_arch.hl
+    return np.concatenate([
+        w[..., : oh // 2], f[..., oh // 2: nh // 2],
+        w[..., oh // 2:], f[..., nh // 2 + oh // 2:],
+    ], axis=-1)
+
 params = {}
 for name, shape in new_arch.param_shapes().items():
     if name in TRUNK:
         w = old[name]
-        if hl and w.shape[-1] == old_arch.hl:
+        if w.shape[-1] == old_arch.hl and new_arch.hl < old_arch.hl:
             w = slice_cols(np.asarray(w))
+        elif w.shape[-1] == old_arch.hl and new_arch.hl > old_arch.hl:
+            w = expand_cols(np.asarray(w), np.asarray(fresh[name]))
         assert w.shape == shape, (name, w.shape, shape)
         params[name] = np.ascontiguousarray(w)
     elif name == "skipw":

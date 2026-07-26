@@ -189,6 +189,9 @@ class ArchSpec:
     # (PSQ1 pattern); old nets/engines unaffected. SF-verified enabler of
     # thin value heads (their fc_0 +1 lane; nnue_architecture.h L2Big=15).
     out_skip: bool = False
+    # Accumulator-branched head projections (D48W / gen-2 sketch 2026-07-27).
+    pol_proj: int = 0            # 0 = legacy polmove-on-L2
+    dis_proj: int = 0            # 0 = no disagreement head
 
     @classmethod
     def full(cls) -> "ArchSpec":
@@ -222,8 +225,23 @@ class ArchSpec:
             if not self.halfka_only:
                 shapes["l0_psqt_thw"] = (THREAT_DIMS, self.num_buckets)
         if self.policy:
-            shapes["polmovew"] = (self.l2, POLICY_VOCAB)
+            if self.pol_proj:
+                # D48W: policy branches OFF THE ACCUMULATOR through its own
+                # bottleneck — never through the value L2 (the measured V
+                # mistake: top-1 22.7->19 through the 32-wide chokepoint).
+                shapes["pol_projw"] = (self.hl, self.pol_proj)
+                shapes["pol_projb"] = (self.pol_proj,)
+                shapes["polmovew"] = (self.pol_proj, POLICY_VOCAB)
+            else:
+                shapes["polmovew"] = (self.l2, POLICY_VOCAB)
             shapes["polmoveb"] = (POLICY_VOCAB,)
+        if self.dis_proj:
+            # T11 seed: disagreement/uncertainty head off the accumulator,
+            # predicts |sigmoid(value) - target| (its own error magnitude).
+            shapes["dis_projw"] = (self.hl, self.dis_proj)
+            shapes["dis_projb"] = (self.dis_proj,)
+            shapes["dis_outw"] = (self.dis_proj,)
+            shapes["dis_outb"] = (1,)
         if self.out_skip:
             shapes["skipw"] = (self.hl, self.num_buckets)
         return shapes
@@ -305,6 +323,7 @@ class TrainConfig:
     # FT-sparsity regularizer (perf study #6 #1 NPS lever): L1 on the
     # post-CReLU accumulators, driving deploy density down (density-linear
     # l1_dot cost). 0.0 = OFF = graph identical to the incumbent recipe.
+    dis_lambda: float = 0.0          # disagreement-head loss weight (D48W)
     ft_sparsity_lambda: float = 0.0
     # Resume: 1-based superbatch this run STARTS at (bullet's
     # D40_START_SUPERBATCH). The LR schedule keys on

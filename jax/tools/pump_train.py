@@ -81,11 +81,14 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         hl=int(spec.get("arch_hl", ArchSpec.full().hl)),
         l2=int(spec.get("arch_l2", ArchSpec.full().l2)),
         l3=int(spec.get("arch_l3", ArchSpec.full().l3)),
-        out_skip=bool(spec.get("arch_out_skip", False)))
+        out_skip=bool(spec.get("arch_out_skip", False)),
+        pol_proj=int(spec.get("arch_pol_proj", 0)),
+        dis_proj=int(spec.get("arch_dis_proj", 0)))
     start_sb = resume_sb + 1 if resume_sb else 1
     cfg = dataclasses.replace(
         TrainConfig(),
         distill_alpha=float(spec.get("distill_alpha", 0.0)),
+        dis_lambda=float(spec.get("dis_lambda", 0.0)),
         distill_alpha_end=float(spec.get("distill_alpha_end", -1.0)),
         distill_alpha_ramp=tuple(
             (float(a), float(b)) for a, b in spec.get("distill_alpha_ramp", [])),

@@ -57,7 +57,8 @@ def policy_loss(pol_logits: jnp.ndarray, pol_target_id: jnp.ndarray) -> jnp.ndar
 
 
 def total_loss(value_logit, pol_logits, target, pol_target_id, pol_lambda: float,
-               pow_exp: float = 2.0, pol_soft=None):
+               pow_exp: float = 2.0, pol_soft=None,
+               dis_pred=None, dis_lambda: float = 0.0):
     v = value_loss(value_logit, target, pow_exp)
     metrics = {"value": v}
     loss = v
@@ -66,12 +67,20 @@ def total_loss(value_logit, pol_logits, target, pol_target_id, pol_lambda: float
             # D47V distillation: CE against the teacher's softmax (== KL up
             # to the teacher's constant entropy). Masking rides in the
             # logits exactly as with hard targets.
-            import jax
             logp = jax.nn.log_softmax(pol_logits)
             p = -(pol_soft * logp).sum(axis=-1).mean()
         else:
             p = policy_loss(pol_logits, pol_target_id)
         metrics["pol_ce"] = p
         loss = loss + pol_lambda * p
+    if dis_pred is not None and dis_lambda > 0.0:
+        # D48W disagreement head: predict the value head's own error
+        # magnitude in probability space. Target is stop-gradient so the
+        # head observes, never steers, the value fit.
+        err = jax.lax.stop_gradient(
+            jnp.abs(jax.nn.sigmoid(value_logit) - target))
+        d = jnp.mean((dis_pred - err) ** 2)
+        metrics["dis"] = d
+        loss = loss + dis_lambda * d
     metrics["loss"] = loss
     return loss, metrics
