@@ -761,6 +761,25 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-27 ~01:5x USER RULING: STOP THE V MTL AT sb190 ("we don't
+## need to fully converge and anneal under MTL. Just be careful the
+## bounce in the legs doesn't destroy what we got")
+
+Stop-and-launch ARMED (unit archon-d47v-stop190): sb190 EMA lands →
+trainer stops → Leg A launches automatically. **BOUNCE GUARDS (the
+caution, operationalized):** (1) Leg A = FRESH warm from the sb190 EMA
+(not a resume) with its own gentle 12sb cosine; (2) peak lr 1.2e-4 =
+LR-continuity with the run at sb190 (~1.3e-4) — the leg never
+re-raises; (3) 0.25sb Adam warmup; (4) heldout_expect auto-pinned to
+the sb190 EMA heldout — pump ABORTS on warm mismatch, and the first
+in-leg heldout vs that same number is the bounce verdict (regression
+>~1% = stop and reassess, we still hold sb190). Teacher DROPPED from
+the leg (residual α≈0.036 — negligible) → ~2× step speed, leg ≈
+35-40 min. S-leg configs staged (runs/d47s_leg{A,B}.json; S keeps its
+own v15 frame; S-LegB = first policy training since d47p). Sequence:
+V-LegA → V-LegB → S-LegA → S-LegB → V-vs-S face-off (fn+panels; ET
+when GPU frees) → D48W training → three-way.
+
 ## 2026-07-27 ~01:4x D48W IS BUILT AND LAUNCH-READY (user: "we could
 ## have D48W ready quick" — correct)
 
