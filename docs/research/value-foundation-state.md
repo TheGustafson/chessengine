@@ -683,6 +683,20 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## 2026-07-26 ~15:4x POUND-FOR-POUND RULING (user): bigger nets must be
+## DEMANDED MORE OF — quality-per-cycle, not absolute quality, is the bar
+
+Ledger: trunk ~2.5× SF18-big by weight, ~3× by cycles, for a small quality
+edge — their net is currently the better artifact per cycle. Owners:
+(1) DATA — self-play distillation compresses search-consumed knowledge;
+flywheel/own-search labels are an efficiency lever, not just quality;
+(2) UTILIZATION — A1/A3 gather on settled D47S gives the wasted-pounds
+number (dead neurons/permutation); (3) CHANNEL ACCOUNTING — the threat
+channel (⅓ of eval cycles) must earn its share AT EQUAL TIME (its old
+equal-time promotion gate never closed); V2 bar: every feature channel
+re-justifies in quality-per-cycle at equal time, utilization audited
+before width is chosen, data optimized for search-relevant density.
+
 ## 2026-07-26 ~15:1x "MISSING SOMETHING" HUNT — PATH-CONSISTENCY PROBE
 ## EXONERATES THE TRUNK; INTEGRATION-HELL CONFIRMED AS THE DIAGNOSIS
 
