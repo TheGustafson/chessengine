@@ -62,7 +62,17 @@ def fen_to_record(fen: str) -> np.ndarray:
 
 
 def main(quant_path, fen_path):
-    arch = ArchSpec.full()
+    # D47V parity: env-driven arch (quant layout = post-factorizer-fold, so
+    # factorize stays False here). PROBE_HL=768 PROBE_L2=32 PROBE_L3=32
+    # PROBE_SKIP=1 PROBE_PSQT=1 for the d47v family; unset = classic full().
+    import dataclasses, os
+    arch = dataclasses.replace(
+        ArchSpec.full(),
+        hl=int(os.environ.get("PROBE_HL", ArchSpec.full().hl)),
+        l2=int(os.environ.get("PROBE_L2", ArchSpec.full().l2)),
+        l3=int(os.environ.get("PROBE_L3", ArchSpec.full().l3)),
+        out_skip=bool(int(os.environ.get("PROBE_SKIP", "0"))),
+        psqt=bool(int(os.environ.get("PROBE_PSQT", "0"))))
     cfg = TrainConfig()
     params = checkpoint.dequantise_quant(quant_path, arch)
 
