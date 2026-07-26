@@ -1,0 +1,21 @@
+{
+  "name": "s4-searchgap",
+  "comment": "MASTER-PLAN v5.5 step 4 (small SPSA), drafted 2026-07-26 from the search-gap ground truth + unit-scale audit. Center = the MEASURED two-knob candidate (NMP bar SF16-shape, RED_BASE +1 ply), NOT current defaults: SPSA refines a point already known to reach tree parity (x1.06 vs SF16 at fixed depth), rather than crawling from the donor bar (crossover d~27, the starved-NMP regime). Ranges bracket both the donor and SF16 shapes so SPSA can walk back if games disagree with node counts. Bar shape is the lever, so BASE and DEPTH tune jointly (crossover = BASE/DEPTH: donor 27, sf16-shape 12). NMP_R_* (reduction R) included: with 15x more null searches their cost matters now. fallingEval coeffs included per the standing two-frame conflict (live log 2026-07-26) - SPSA settles the scale question empirically. Wall-clock TC ONLY (fixed-node structurally undervalues pruning, audit section 8). Run AFTER the step-3 Elo tests on an idle box.",
+  "params": [
+    {"name": "NMP_EVAL_BASE",       "min": 0,    "max": 400, "start": 140},
+    {"name": "NMP_EVAL_DEPTH",      "min": 4,    "max": 30,  "start": 12},
+    {"name": "NMP_EVAL_IMPROVING",  "min": 0,    "max": 90,  "start": 23},
+    {"name": "NMP_R_BASE",          "min": 3,    "max": 6,   "start": 4},
+    {"name": "NMP_R_DEPTH_DIV",     "min": 2,    "max": 5,   "start": 3},
+    {"name": "RED_BASE",            "min": 1027, "max": 2600, "start": 2051},
+    {"name": "RED_TABLE_NUM",       "min": 700,  "max": 1600},
+    {"name": "RED_CUTNODE",         "min": 512,  "max": 2048},
+    {"name": "LMR_DEEPER_MARGIN",   "min": 14,   "max": 104},
+    {"name": "LMR_SHALLOWER_MARGIN","min": 2,    "max": 18},
+    {"name": "ASPIRATION_BASE_DELTA","min": 2,   "max": 10},
+    {"name": "ASPIRATION_MSS_DIVISOR","min": 4000, "max": 21000, "start": 5546},
+    {"name": "QS_FUTILITY_MARGIN",  "min": 90,   "max": 400, "start": 174},
+    {"name": "FALLING_EVAL_PREV_AVG_COEFF", "min": 1.0, "max": 5.0},
+    {"name": "FALLING_EVAL_ITER_COEFF",     "min": 0.4, "max": 2.5}
+  ]
+}
