@@ -683,6 +683,20 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## 2026-07-26 ~22:0x ★ TRAINING-PIPELINE DOCTRINE (user): TRAIN BIG FOR
+## REAL ELO → DISTILL TO THE COMPETITIVE SIZE ★
+
+The long-term pipeline: (1) train an OVERSIZED teacher for absolute
+quality — capacity serves learning, unconstrained by NPS; (2) distill
+(slice-warm + blended teacher/label signal, the D47V recipe) down to
+whatever size the quality-per-cycle frontier demands; (3) deployment
+width chosen EMPIRICALLY (the ladder), never by attachment to the
+teacher's size. Resolves the identity tension: the big-intelligent-trunk
+bet lives in the TEACHER (research artifact + flywheel label generator);
+the shipped net is an economics decision. Composes with the flywheel
+(teacher = distill source AND own-search labeler). D47V = first instance;
+raw-label finetune (α→0 resume) gets the last word each generation.
+
 ## 2026-07-26 ~19:5x V2 HEAD ARCHITECTURE — assembled from the evening's
 ## threads (pound-for-pound + skip-lane insight)
 
