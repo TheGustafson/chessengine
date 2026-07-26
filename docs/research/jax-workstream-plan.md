@@ -577,3 +577,41 @@ a defect wastes the measurement and forces a redo. ORDER:
 Rationale for 5 sitting BEFORE 6/7: the anchor becomes the yardstick that
 prices the two biggest remaining levers instead of being confounded by
 them.
+
+## MULTI-HEAD TRAINING: POST-RELEASE RESEARCH QUEUE (user, 2026-07-25 ~22:0x)
+Ruling: note these, do NOT chase before release — go through the rest of
+the plan first to calibrate how strong the engine already is. Today's
+gains came from MECHANISM insight, not tuning, so more mechanism likely
+remains; but the TM fix alone probably outweighs all of it.
+
+Sorted by expected value per hour:
+**Cheap, probably real**
+1. ANCHOR STRENGTH UNSWEPT. pol_lambda 0.002 was intuition (1/5 of the
+   joint value), never measured. The λ ladder proved this knob is SHARP
+   (0.01 taxed value ~30-40 Elo; 0.25 dominated). Optimum could be
+   0.001 or 0.005. ~3 short legs to find out.
+2. ALTERNATION FREQUENCY. We ran ONE long value phase + ONE head phase.
+   True BCD alternates repeatedly (value 20sb → head 10sb → …), which
+   keeps the anchor FRESH instead of pinning the trunk to an
+   increasingly stale head. Same total compute — pure scheduling.
+3. L1 TARGET ITSELF. 0.19 density killed policy; ~0.27 preserves it.
+   Nobody has asked what density is jointly optimal for value+policy+NPS.
+**Structurally different**
+4. ANCHOR ON OUTPUTS, NOT LABELS: KL against the warm net's own policy
+   distribution ("don't change your policy behavior") instead of CE
+   against true moves through the frozen head.
+5. SEPARATE LR FOR THE HEAD during joint phases, so the head tracks the
+   trunk rather than the trunk being dragged toward the head.
+6. GRADIENT SURGERY (PCGrad / GradNorm / gradient vaccine) — the
+   literature's answer to task conflict; often loses to good weighting,
+   but never tried here.
+7. DEDICATED CAPACITY: give policy its own bottleneck slice so the
+   competition vanishes by construction (costs NPS).
+**The big unexplored region**
+8. FROM-SCRATCH JOINT TRAINING AT SCALE. Every joint experiment so far
+   fine-tuned a value-SATURATED trunk. AlphaZero-style co-training from
+   scratch is a different optimization problem and may reach a joint
+   optimum none of the above can. Flywheel era, not now.
+
+This list is also prime technical-report material — it turns the
+write-up from a changelog into a study of multi-head NNUE training.
