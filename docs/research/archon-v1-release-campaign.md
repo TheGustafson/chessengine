@@ -10,13 +10,20 @@ The net this campaign produces is **the first public release of ARCHON**.
 - **P0 — finish leg 2** (live): α ramp 0.7→0.1@100→0@240, stop-early on
   two plateau strikes (LR triggers armed past sb100), per-10sb tables
   relayed in chat, sb100 rematch armed.
-- **P1 — freeze + squeeze**: pick release checkpoint (best EMA at stop)
-  → **LEG A** value-only finetune, policy frozen (CUT: top-1 −3pp or
-  flat panels ~10-15sb) → **LEG B** frozen-trunk policy-head finetune
-  (value bit-identical, VERIFIED; CUT: no top-1 gain ~10sb; B2 =
-  unfiltered pack, needs conversion) → final pack + parity + scale
-  check (native frame PASSED at sb100 — header cal likely unnecessary)
-  + ledger add-net. **FREEZE BEFORE ANY TUNING.**
+- **P1 — freeze + squeeze, BOTH FINALISTS (user amendment 2026-07-27:
+  "a short frozen policy and a frozen value tune up on both V and S,
+  then they face off")**: pick V's release checkpoint (best EMA at
+  stop) → V-LegA (value-only, policy frozen; CUT: top-1 −3pp or flat
+  panels) → V-LegB (frozen-trunk policy, hard-CE; CUT: no gain ~10sb)
+  → **S-LegA/S-LegB same treatment on d47s-sb230** (S keeps its OWN
+  v15 frame; S-LegB = first real policy training since d47p — the head
+  rode frozen through v15 while the trunk drifted; configs staged:
+  runs/d47s_leg{A,B}.json) → final packs + parity + scale + ledger.
+  **THEN THE V-vs-S FACE-OFF (both squeezed): fn50k + panels first;
+  ET when the GPU frees.** → **D48W warm/teacher training launches on
+  the freed GPU (config+warm ready)** → THREE-WAY face-off V/S/W.
+  FREEZE BEFORE ANY TUNING; the release still rides V (ruled) — S and
+  W legs are the gen-2 research arm.
 - **P2 — play gates (idle box, ET)**: vs teacher (distill gate ≥0), vs
   d47p (chain claim), vs SF16 ET **and** equal-nodes (**THE headline
   gate**), vs SF18 ET (**measured, NOT gated** — gen-2's fight), WAC;
