@@ -761,6 +761,37 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~22:4x ★★ THREAT-CHANNEL STUDY LANDED (Opus 5;
+## docs/research/threat-channel-perf-study.md, 1086 lines) — THE REAL
+## SINK IS THE SKP1 SKIP LOOP, NOT THREATS ★★
+
+ALL THREE commission premises corrected by measurement: threats =
+15-18% of cycles (24% was the 1280 game config); **the incremental
+observer WAS BUILT** (sota_threats.rs, 1511 lines — my "designed but
+unbuilt" claim came from a stale header comment; refresh_threat fires
+0.0346×/node = 0.67%); the unbuilt piece is only §12.9.1's optimized
+driver. **THE FINDING: SotaHead's SKP1 output-skip loop = 19.3% of ALL
+cycles, fully scalar, branch-bound (66% of every mispredict in the
+engine; ~3093 c/eval for ~100c of vector work). Ablating it: +23.3%
+NPS. It explains the 1.11× width result — 768-vs-1280 goes 1.19×→1.45×
+without it (the 1280 has no SKP1).** SF18 differential (symbols,
+matched nodes): 6599 vs 3320 c/node = 1.99× total, 1.62× ex-skip;
+real gaps = HalfKA Finny refresh 2.7× + head math 4.5×; branch-misses
+ex-skip IDENTICAL (26.28 vs 26.34); we are COMPUTE-bound (our cache
+behavior beats theirs). Threat fold is width-LINEAR (elasticity 0.57,
+not 0). RECOMMENDED SEQUENCE: **S branchless skip (+16% NPS,
+bit-identical, hours) → F fold-address hoisting (+5-8%, bit-identical,
+1 day) → T2 victim pre-mask (+1-2%) → S2 vectorized skip (+6-8%,
+int-cp identity)**; T1 (3-primitive driver) explicitly deprioritized.
+D24 oracle pinned: nnue-eval sha256 0615d75e…c92eb + bench 701605.
+ET-MATH UPDATE: S alone lifts the V-vs-teacher edge ~1.11×→~1.29
+(≈+35-45 Elo at ET); S+F+S2 ≈ 1.4×+. Caveats from the agent:
+SF18 citations are via the clone's object store (origin/master, no
+checkout); nnue-pytorch full_threats.py is a STALE revision (59808
+dims) — never the feature-space authority. IMPLEMENTATION: per the
+standing rule (changes land after D47 finishes) → build S on
+wip/skip-branchless with the pinned oracle proofs, land at P4.
+
 ## 2026-07-26 ~21:5x EARLY PERF STUDY COMMISSIONED (user: "Commission
 ## Opus 5 on it — have it study in depth the threat channel needs to be
 ## faster") — P4's threat piece pulled forward, parallel with P0
