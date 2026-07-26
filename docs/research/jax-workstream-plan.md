@@ -968,3 +968,53 @@ conversion must apply the flip. That is now an explicit assumption worth a
 a single-engine oracle flatters that engine's static eval; and this metric
 ordered four ARCHON nets spanning 86 Elo WRONG — it answers "is this eval in
 the right class", never "is this net stronger".
+
+## ★★ WHERE SF18 BEATS US — AND WHY IT MOSTLY DOESN'T (2026-07-25 ~00:3x)
+Conditional error analysis on the 20k canon set, both evaluators affinely
+rescaled onto the oracle first (scale-free, about SHAPE).
+
+**FIRST: "their net is bigger" is FALSE.** stockfish18's binary is 107.8 MB
+with BOTH nets embedded (EvalFile + EvalFileSmall); ours is a 1 MB binary +
+133 MB .cenn. Same ballpark, ours likely larger. (An earlier claim that SF
+nets are ~3x smaller was WRONG — it measured SF15.1 and our older SF clone,
+not SF18. Retracted.)
+
+**WHERE THE GAP LIVES (all positions, clip ±800):**
+  phase: endgame <8 pieces  ARCHON 48.4 vs SF18 49.0 = **we win**
+         8-11  +10.8 | 12-15 +11.8 | 16-19 +8.3 | 24+ ~+2
+  one queen on board (asymmetric)      +20.1   (n=1050)
+  material imbalance 4+ pawns          +24.6   (n=2129)
+  3+ passed pawns                      +11.9
+
+**THEN THE RESTRICTION THAT CHANGES EVERYTHING (user's call: "I wonder if
+it even matters to be good at those, or just good enough... I almost like
+our decision to exclude them"):**
+  all positions      n=20000  ARCHON 68.2  SF18 61.9   gap **+6.3**
+  |label| <= 400     n=16780  ARCHON 52.1  SF18 50.0   gap +2.1
+  |label| <= 200     n=13095  ARCHON 35.6  SF18 36.5   gap **-0.9**
+  |label| <= 100     n= 9519  ARCHON 22.1  SF18 23.2   gap **-1.2**
+  SIGN AGREEMENT: ARCHON WINS AT EVERY LEVEL, widening as positions close
+  (81.1/80.9 → 78.4/77.2 → 73.8/72.0 → 66.7/63.9).
+  And material-imbalance 4+ pawns restricted to |label|<=400 (the
+  COMPENSATION cases — sacrifices, fortresses, genuinely hard): **ARCHON is
+  15.2 cp BETTER than SF18** (n=676).
+=> **SF18's entire advantage is in ALREADY-DECIDED positions.** In the range
+where the number can change a move, WE BEAT SF18. The "10% behind" headline
+was an artifact of blowout positions dominating unrestricted MAE.
+
+**CONSEQUENCES:**
+ * The training decision to clamp (±2499) and drop (|raw|>10000) blowouts
+   looks CORRECT — capacity went to the discriminating range.
+ * **V2 item 6 (remap mates/TB instead of dropping) is DOWNGRADED** from
+   near-top to low priority. Its rationale was "we truncate supervision
+   where we are weak"; that theory is dead — the excluded positions are not
+   even in this test set (canon labels clamp at 2499, nothing >10000), and
+   blowout precision demonstrably does not help. Only revisit if remapping
+   is argued to teach TRANSFERABLE concepts.
+ * ERROR STRUCTURE: corr(ARCHON err, SF18 err) = 0.747 vs corr(SF16, SF18)
+   = 0.813 — our mistakes are LESS SF-like than SF16's. A 50/50 rescaled
+   ensemble of ARCHON+SF18 scores 60.6 MAE, BEATING SF18's 61.9 alone. We
+   hold genuinely complementary knowledge.
+ * Remaining honest caveat: static-eval accuracy still does not rank nets
+   by playing strength (the 86-Elo null). This says our eval is well-SHAPED
+   for the decisions search faces, not that we would win the match.
