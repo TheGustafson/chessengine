@@ -116,10 +116,7 @@ pub struct SotaHead {
     /// `None` for nets without it (⇒ [`forward`](Self::forward) returns `wdl = None`,
     /// consumers fall back to their constants — bit-identical to today). Loaded from a
     /// `D40_WDL_HEAD` sidecar, not the CENN, so the CENN + a WDL-less net stay
-    /// bit-identical. Layout: row-major `[o·L3 + j]`, o ∈ {L,D,W    /// D47V output-skip lane (`[L1 · BUCKETS]` f32 row-major, jax `skipw`).
-    /// `None` = pre-skip net: the eval path is bit-identical to before.
-    pub skip_weights: Option<Box<[f32]>>,
-}.
+    /// bit-identical. Layout: row-major `[o·L3 + j]`, o ∈ {L,D,W}.
     pub l3_wdl_weights: Option<Box<[f32]>>,
     /// `[3]` f32 biases paired with [`l3_wdl_weights`](Self::l3_wdl_weights).
     pub l3_wdl_biases: Option<Box<[f32]>>,
