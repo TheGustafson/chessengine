@@ -812,6 +812,20 @@ arm_verify's depth check is a THEORY probe not a veto: extension arms are
 rightly shallower, quality arms rightly not-deeper. Remaining: asp, razor,
 cfut, pcut (~2h). sb120 in-frame heldout next firing.
 
+## INSTRUMENT INDEX (2026-07-26 suite — USE THESE, habitually)
+- tools/match_report.py — EVERY match gets the story, not just the score
+  (user directive ~16:3x). Slope-aware; blunder ledger mate-safe.
+- tools/nnue/arm_verify.py — every A/B arm before its verdict.
+- tools/nnue/inframe_heldout.py — retargeted-run health (built-in heldout
+  rises by design under retargeting).
+- tools/nnue/loss_forensics.py --winner-slope — cross-engine pnr in oracle units.
+- tools/nnue/d47s_pipeline.sh — pack|calibrate|q1|et|sf|ledger, in order.
+- tools/nnue/launch_d47t.sh — D47T injection+launch, one command.
+- tools/search_knob_gate.sh — knob candidates, fixed-node then wall-clock.
+- tools/spsa/campaigns/s4-searchgap.json — 30 games-vetted priors.
+- SSTATS/SSTATS2 (ARCHON_SEARCH_STATS=1) + ARCHON_NMP_ALLNODE probe.
+- Branches: wip/nmp-guards, wip/check-ext (evidence-backed, land post-D47).
+
 ## POST-D47S RUNBOOK (assembled 2026-07-26 ~07:2x while training; every stage
 ## staged + committed; execute IN ORDER when the completion watcher fires)
 
