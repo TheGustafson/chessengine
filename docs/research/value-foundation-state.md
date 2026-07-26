@@ -753,6 +753,26 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~16:5x WHERE V's DEFICIT LIVES (slice analysis, sb50 vs
+## teacher, cached vectors) — + THE FIRST STUDENT>TEACHER POCKET
+
+V-vs-teacher Spearman gap by slice (common non-check bases):
+- **LATE ENDGAME (≤8 pieces) is V's worst phase**: quiet gap +0.100
+  (V .7148 / teacher .8152) — 3× the middlegame gap (+0.036). The
+  768-slice/thin-head cut endgame knowledge hardest (and the mix is
+  middlegame-heavy — fewer reps to rebuild). Feeds the D47U capacity
+  fork + a possible endgame-weighted mix lever.
+- **BALANCED (|label|<100) carries the biggest band gap** (+0.068 quiet
+  / +0.096 sharp) — the same near-zero precision region the dialect map
+  flagged for margins; anneal's historical strength.
+- **DECIDED (|label|≥400): V BEATS THE TEACHER** — sharp .8666 vs .8132
+  (quiet .8489 vs .8154). MECHANISM: the teacher's v15 frame (b=76.9)
+  saturates above ~600cp and discards gradation; V's s/400-frame targets
+  keep it. The 0.3 label term adds REAL information beyond the teacher —
+  the decorrelation story confirmed in data. α-ABLATION PREDICTION
+  (pre-registered): α=0 arm extends the decided-band advantage; watch
+  balanced-band for regression.
+
 ## 2026-07-26 ~16:3x NET-ALONE PANEL REDONE (user ask) — d47v-sb50 joins;
 ## + TOP-1 TABLE; two iso-MAE method artifacts caught and fixed
 
