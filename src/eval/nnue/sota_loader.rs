@@ -76,6 +76,10 @@ pub const HEADER_V2_LEN: usize = 64;
 pub const FLAG_HAS_THREATS: u16 = 1;
 /// Magic bytes of the optional trailing PSQT-skip section (T6c).
 pub const PSQT_MAGIC: [u8; 4] = *b"PSQ1";
+/// SKP1 magic (D47V output-skip lane; contract: jax checkpoint.py
+/// skip_section_bytes — b"SKP1" | u32 num_buckets | u32 hl | f32[hl·buckets],
+/// row-major, raw f32; rides AFTER the PSQ1 section).
+pub const SKIP_MAGIC: [u8; 4] = *b"SKP1";
 /// PSQ1 section header length: magic + u32 num_buckets + u32 rows.
 const PSQT_HEADER_LEN: usize = 12;
 
@@ -101,6 +105,9 @@ pub struct SotaNetwork {
     /// no PSQ1 section — every psqt path is then inert and the eval is
     /// bit-identical to a pre-T6c build.
     pub psqt_weights: Box<[i32]>,
+    /// D47V output-skip lane, `[hl · BUCKETS]` f32 row-major (empty = no
+    /// SKP1 section = pre-skip net, eval bit-identical to before).
+    pub skip_weights: Box<[f32]>,
     /// The multi-layer bucketed head (owns its own weight boxes).
     pub head: SotaHead,
 }
@@ -459,6 +466,21 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     } else {
         Vec::new().into_boxed_slice()
     };
+    // D47V: optional SKP1 trailer after PSQ1 (or directly, on a psqt-less
+    // net). Empty slice = no skip lane = the pre-D47V eval, bit-identical.
+    let skip_weights = {
+        let psqt_len = if psqt_weights.is_empty() {
+            0
+        } else {
+            PSQT_HEADER_LEN + psqt_weights.len() * 4
+        };
+        let tail = &rest[psqt_len.min(rest.len())..];
+        if tail.len() >= 4 && tail[0..4] == SKIP_MAGIC {
+            parse_skip_section(tail)?
+        } else {
+            Vec::new().into_boxed_slice()
+        }
+    };
 
     let head = SotaHead {
         l1_weights,
@@ -479,8 +501,46 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         ft_bias,
         threat_weights,
         psqt_weights,
+        skip_weights,
         head,
     })
+}
+
+/// Parse an SKP1 section (starting at its magic). Strict on this build's
+/// [`BUCKETS`] and accumulator width [`crate::eval::nnue::sota_head::L1`];
+/// tolerant of further trailing bytes (future sections).
+fn parse_skip_section(sec: &[u8]) -> Result<Box<[f32]>, SotaNnueError> {
+    const HDR: usize = 12;
+    if sec.len() < HDR {
+        return Err(SotaNnueError::TooShort { need: HDR, got: sec.len() });
+    }
+    let num_buckets = read_u32(sec, 4);
+    if num_buckets as usize != BUCKETS {
+        return Err(SotaNnueError::WrongDim {
+            field: "skip_buckets",
+            expected: BUCKETS as u32,
+            found: num_buckets,
+        });
+    }
+    let hl = read_u32(sec, 8);
+    if hl as usize != crate::eval::nnue::sota_head::L1 {
+        return Err(SotaNnueError::WrongDim {
+            field: "skip_hl",
+            expected: crate::eval::nnue::sota_head::L1 as u32,
+            found: hl,
+        });
+    }
+    let count = hl as usize * BUCKETS;
+    let need = HDR + count * 4;
+    if sec.len() < need {
+        return Err(SotaNnueError::TooShort { need, got: sec.len() });
+    }
+    let mut out = Vec::with_capacity(count);
+    for i in 0..count {
+        let off = HDR + i * 4;
+        out.push(f32::from_le_bytes(sec[off..off + 4].try_into().unwrap()));
+    }
+    Ok(out.into_boxed_slice())
 }
 
 /// Parse a PSQ1 section (starting at its magic). Strict: the bucket count must
