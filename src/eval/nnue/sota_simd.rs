@@ -960,7 +960,37 @@ mod avx512 {
         // Feature indices originate from validated feature maps and each
         // transformer is loader-validated to contain complete ACC-wide rows.
         unsafe {
-            for off in (0..ACC).step_by(LANES) {
+            // Study-2 option B: REGS-wide tile — hold 8 blocks in registers
+            // across the feature loop (8x less loop control + feature-base
+            // traffic). Per-lane wrapping adds, same per-lane order =>
+            // bit-identical. ACC/LANES is a multiple of 8 for every arch we
+            // build (24/40/48/80); the remainder loop keeps it general.
+            const REGS: usize = 8;
+            let tile = LANES * REGS;
+            let mut off = 0;
+            while off + tile <= ACC {
+                let mut v = [_mm512_setzero_si512(); REGS];
+                for (k, vk) in v.iter_mut().enumerate() {
+                    *vk = _mm512_loadu_si512(acc.as_ptr().add(off + k * LANES).cast());
+                }
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    for (k, vk) in v.iter_mut().enumerate() {
+                        *vk = _mm512_add_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                    }
+                }
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    for (k, vk) in v.iter_mut().enumerate() {
+                        *vk = _mm512_sub_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                    }
+                }
+                for (k, vk) in v.iter().enumerate() {
+                    _mm512_storeu_si512(acc.as_mut_ptr().add(off + k * LANES).cast(), *vk);
+                }
+                off += tile;
+            }
+            while off < ACC {
                 let mut value = _mm512_loadu_si512(acc.as_ptr().add(off).cast());
                 for &feature in adds {
                     let row = weights.as_ptr().add(feature * ACC + off);
@@ -971,6 +1001,7 @@ mod avx512 {
                     value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
                 }
                 _mm512_storeu_si512(acc.as_mut_ptr().add(off).cast(), value);
+                off += LANES;
             }
         }
     }
@@ -1003,7 +1034,33 @@ mod avx512 {
                 for k in 0..sn {
                     s_off[k].write(subs[si + k] * ACC);
                 }
-                for off in (0..ACC).step_by(LANES) {
+                // Study-2 option B: 8-register tile (see i16_deltas_inner).
+                const REGS: usize = 8;
+                let tile = LANES * REGS;
+                let mut off = 0;
+                while off + tile <= ACC {
+                    let mut v = [_mm512_setzero_si512(); REGS];
+                    for (k, vk) in v.iter_mut().enumerate() {
+                        *vk = _mm512_loadu_si512(source.add(off + k * LANES).cast());
+                    }
+                    for base in a_off[..an].iter().map(|m| m.assume_init()) {
+                        let row = weights.as_ptr().add(base + off);
+                        for (k, vk) in v.iter_mut().enumerate() {
+                            *vk = _mm512_add_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                        }
+                    }
+                    for base in s_off[..sn].iter().map(|m| m.assume_init()) {
+                        let row = weights.as_ptr().add(base + off);
+                        for (k, vk) in v.iter_mut().enumerate() {
+                            *vk = _mm512_sub_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                        }
+                    }
+                    for (k, vk) in v.iter().enumerate() {
+                        _mm512_storeu_si512(dst.as_mut_ptr().add(off + k * LANES).cast(), *vk);
+                    }
+                    off += tile;
+                }
+                while off < ACC {
                     let mut value = _mm512_loadu_si512(source.add(off).cast());
                     for base in a_off[..an].iter().map(|m| m.assume_init()) {
                         let row = weights.as_ptr().add(base + off);
@@ -1014,6 +1071,7 @@ mod avx512 {
                         value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
                     }
                     _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
+                    off += LANES;
                 }
                 ai += an;
                 si += sn;
@@ -1053,7 +1111,35 @@ mod avx512 {
                 for k in 0..sn {
                     s_off[k].write(subs[si + k] * ACC);
                 }
-                for off in (0..ACC).step_by(LANES) {
+                // Study-2 option B: 8-register tile (see i16_deltas_inner).
+                const REGS: usize = 8;
+                let tile = LANES * REGS;
+                let mut off = 0;
+                while off + tile <= ACC {
+                    let mut v = [_mm512_setzero_si512(); REGS];
+                    for (k, vk) in v.iter_mut().enumerate() {
+                        *vk = _mm512_loadu_si512(source.add(off + k * LANES).cast());
+                    }
+                    for base in a_off[..an].iter().map(|m| m.assume_init()) {
+                        let row = weights.as_ptr().add(base + off);
+                        for (k, vk) in v.iter_mut().enumerate() {
+                            let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                            *vk = _mm512_add_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
+                        }
+                    }
+                    for base in s_off[..sn].iter().map(|m| m.assume_init()) {
+                        let row = weights.as_ptr().add(base + off);
+                        for (k, vk) in v.iter_mut().enumerate() {
+                            let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                            *vk = _mm512_sub_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
+                        }
+                    }
+                    for (k, vk) in v.iter().enumerate() {
+                        _mm512_storeu_si512(dst.as_mut_ptr().add(off + k * LANES).cast(), *vk);
+                    }
+                    off += tile;
+                }
+                while off < ACC {
                     let mut value = _mm512_loadu_si512(source.add(off).cast());
                     for base in a_off[..an].iter().map(|m| m.assume_init()) {
                         let bytes = _mm256_loadu_si256(weights.as_ptr().add(base + off).cast());
@@ -1064,6 +1150,7 @@ mod avx512 {
                         value = _mm512_sub_epi16(value, _mm512_cvtepi8_epi16(bytes));
                     }
                     _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
+                    off += LANES;
                 }
                 ai += an;
                 si += sn;
