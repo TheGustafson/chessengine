@@ -679,6 +679,10 @@ setoption/SPSA silently no-op'd (shapeA = perfect mirror Ptnml
 far: NMP bar (250,19) unguarded OR (140,12)+guards [prefer the latter on
 current evidence]; RED_* unchanged pending shapeA2.
 
+## 2026-07-26 ~11:2x D47S HALFWAY HEALTH — in-frame heldout ACCELERATING
+## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
+## 70sb as the cosine bites). Run healthy; anneal watch continues.
+
 ## 2026-07-26 ~10:4x FAMILY SCREENS — SEFAM ×0.52 IS THE HEADLINE (+22.6,
 ## tactical channel repaired); QS +17.4 via LEAF QUALITY not depth
 
