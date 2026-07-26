@@ -362,16 +362,15 @@ impl SotaHead {
         // before the cp scale — mirroring SF's fc_0 +1 lane. Dequant reuses
         // policy_trunk's proven factor: ft_u8 = hl1_f · FT_QUANT²/2^FT_SHIFT.
         let l3 = if let Some(sk) = &self.skip_weights {
-            // Branchless on purpose (perf study §6 option S): the old
-            // `if a != 0` guard cost ~72% of this loop's cycles in branch
-            // mispredicts (66% of ALL mispredicts in the engine). For a == 0
-            // the product is ±0.0 and `acc + ±0.0 == acc` exactly for every
-            // finite acc, so the unconditional form is bit-identical —
-            // summation order unchanged, no NaN/Inf path (validated section).
-            let mut acc = 0.0f32;
-            for (i, &a) in ft.iter().enumerate() {
-                acc += f32::from(a) * sk[i * BUCKETS + bucket];
-            }
+            // §6-S/S2a/S2 (perf study): branchless (the old `if a != 0`
+            // guard was 66% of ALL engine mispredicts), bucket-major
+            // contiguous lane (loader transposes at parse), vectorized via
+            // the fixed 16-lane + halving-tree shape shared by every
+            // backend (policy_dot discipline). The shape change vs the old
+            // serial sum alters f32 rounding once — gated by integer-cp
+            // identity on the 800-FEN battery at the S2 landing commit.
+            let lane = &sk[bucket * ft.len()..][..ft.len()];
+            let acc = super::sota_simd::skip_dot(&ft[..], lane);
             l3 + acc * ((1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT) as f32)
         } else {
             l3

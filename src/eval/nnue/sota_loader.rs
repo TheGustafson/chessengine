@@ -532,10 +532,17 @@ fn parse_skip_section(sec: &[u8]) -> Result<Box<[f32]>, SotaNnueError> {
     if sec.len() < need {
         return Err(SotaNnueError::TooShort { need, got: sec.len() });
     }
-    let mut out = Vec::with_capacity(count);
-    for i in 0..count {
-        let off = HDR + i * 4;
-        out.push(f32::from_le_bytes(sec[off..off + 4].try_into().unwrap()));
+    // §6-S2a (perf study): transpose the file's row-major [hl][BUCKETS] to
+    // bucket-major [BUCKETS][hl] at load, so the per-eval lane is hl
+    // contiguous f32 instead of a stride-BUCKETS gather. Values and the
+    // head's summation order are unchanged — bit-identical.
+    let hl = hl as usize;
+    let mut out = vec![0.0f32; count];
+    for i in 0..hl {
+        for b in 0..BUCKETS {
+            let off = HDR + (i * BUCKETS + b) * 4;
+            out[b * hl + i] = f32::from_le_bytes(sec[off..off + 4].try_into().unwrap());
+        }
     }
     Ok(out.into_boxed_slice())
 }

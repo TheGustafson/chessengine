@@ -50,6 +50,13 @@ type L2TailFn = fn(&mut [f32; L3], &[f32; L2], &[f32; L2 * L3], &[f32; L3]);
 // serial loop's, which was verified non-functional by the package's
 // 100-game fixed-node PGN-identity oracle before landing.
 type PolicyDotFn = fn(&[i8; L2], &[f32; L2]) -> f32;
+// The SKP1 skip-lane dot (perf study §6-S2): u8 activations × bucket-major
+// f32 lane. Reduction shape is DEFINED as 16 partial lanes + the halving
+// tree (the policy_dot discipline) so every backend is bit-identical to the
+// scalar reference. NOTE this replaced the head's serial element-order sum;
+// the rounding change was gated by integer-cp identity on the 800-FEN
+// battery (S2 landing commit).
+type SkipDotFn = fn(&[u8], &[f32]) -> f32;
 
 struct Kernels {
     i16_deltas: ApplyI16Fn,
@@ -61,6 +68,7 @@ struct Kernels {
     l1_dequant: L1DequantFn,
     l2_tail: L2TailFn,
     policy_dot: PolicyDotFn,
+    skip_dot: SkipDotFn,
 }
 
 static KERNELS: LazyLock<Kernels> = LazyLock::new(|| {
@@ -237,6 +245,15 @@ pub(crate) fn policy_dot(row: &[i8; L2], h: &[f32; L2]) -> f32 {
     kernel_dispatch!(policy_dot(row, h))
 }
 
+/// SKP1 skip-lane dot: `Σ ft[i]·lane[i]` in the fixed 16-lane + halving-tree
+/// shape. `lane` is the bucket-major contiguous slice (§6-S2a layout).
+#[inline]
+pub(crate) fn skip_dot(ft: &[u8], lane: &[f32]) -> f32 {
+    debug_assert_eq!(ft.len(), lane.len());
+    debug_assert_eq!(ft.len() % 16, 0);
+    kernel_dispatch!(skip_dot(ft, lane))
+}
+
 mod scalar {
     use super::*;
 
@@ -407,6 +424,29 @@ mod scalar {
         sums[0]
     }
 
+    /// The bit-exact reference for the skip-lane dot: 16 partial lanes
+    /// (lane k accumulates elements k, k+16, …, each a fused mul-add) then
+    /// the same halving tree as `policy_dot`/`propagate_l3`.
+    pub(super) fn skip_dot(ft: &[u8], lane: &[f32]) -> f32 {
+        const LANES: usize = 16;
+        let mut sums = [0.0f32; LANES];
+        let mut i = 0;
+        while i < ft.len() {
+            for j in 0..LANES {
+                sums[j] = f32::from(ft[i + j]).mul_add(lane[i + j], sums[j]);
+            }
+            i += LANES;
+        }
+        let mut stride = LANES / 2;
+        while stride > 0 {
+            for k in 0..stride {
+                sums[k] += sums[k + stride];
+            }
+            stride /= 2;
+        }
+        sums[0]
+    }
+
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i16_deltas_into,
@@ -417,6 +457,7 @@ mod scalar {
         l1_dequant,
         l2_tail,
         policy_dot,
+        skip_dot,
     };
 }
 
@@ -850,6 +891,41 @@ mod avx2 {
         unsafe { policy_dot_inner(row, h) }
     }
 
+
+    #[target_feature(enable = "avx2,fma")]
+    unsafe fn skip_dot_inner(ft: &[u8], lane: &[f32]) -> f32 {
+        // Two ymm accumulators = the reference's 16 partial lanes (lo: k=0..8,
+        // hi: k=8..16); the halving tree runs scalar over the spilled lanes.
+        // SAFETY: caller guarantees equal lengths, multiple of 16.
+        unsafe {
+            let mut lo = _mm256_setzero_ps();
+            let mut hi = _mm256_setzero_ps();
+            for i in (0..ft.len()).step_by(16) {
+                let bytes = _mm_loadu_si128(ft.as_ptr().add(i).cast());
+                let a_lo = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(bytes));
+                let a_hi = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128::<8>(bytes)));
+                lo = _mm256_fmadd_ps(a_lo, _mm256_loadu_ps(lane.as_ptr().add(i)), lo);
+                hi = _mm256_fmadd_ps(a_hi, _mm256_loadu_ps(lane.as_ptr().add(i + 8)), hi);
+            }
+            let mut sums = [0.0f32; 16];
+            _mm256_storeu_ps(sums.as_mut_ptr(), lo);
+            _mm256_storeu_ps(sums.as_mut_ptr().add(8), hi);
+            let mut stride = 8;
+            while stride > 0 {
+                for k in 0..stride {
+                    sums[k] += sums[k + stride];
+                }
+                stride /= 2;
+            }
+            sums[0]
+        }
+    }
+
+    pub(super) fn skip_dot(ft: &[u8], lane: &[f32]) -> f32 {
+        // SAFETY: installed only after runtime avx2+fma detection.
+        unsafe { skip_dot_inner(ft, lane) }
+    }
+
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i16_deltas_into,
@@ -860,6 +936,7 @@ mod avx2 {
         l1_dequant,
         l2_tail,
         policy_dot,
+        skip_dot,
     };
 }
 
@@ -1292,6 +1369,38 @@ mod avx512 {
         unsafe { policy_dot_inner(row, h) }
     }
 
+
+    #[target_feature(enable = "avx512f")]
+    unsafe fn skip_dot_inner(ft: &[u8], lane: &[f32]) -> f32 {
+        // One zmm accumulator = the reference's 16 partial lanes; the halving
+        // tree runs scalar over the spilled lanes (policy_dot discipline).
+        // SAFETY: caller guarantees equal lengths, multiple of 16.
+        unsafe {
+            let mut acc = _mm512_setzero_ps();
+            for i in (0..ft.len()).step_by(16) {
+                let bytes = _mm_loadu_si128(ft.as_ptr().add(i).cast());
+                let a = _mm512_cvtepi32_ps(_mm512_cvtepu8_epi32(bytes));
+                acc = _mm512_fmadd_ps(a, _mm512_loadu_ps(lane.as_ptr().add(i)), acc);
+            }
+            let mut sums = [0.0f32; 16];
+            _mm512_storeu_ps(sums.as_mut_ptr(), acc);
+            let mut stride = 8;
+            while stride > 0 {
+                for k in 0..stride {
+                    sums[k] += sums[k + stride];
+                }
+                stride /= 2;
+            }
+            sums[0]
+        }
+    }
+
+    pub(super) fn skip_dot(ft: &[u8], lane: &[f32]) -> f32 {
+        // SAFETY: installed only after runtime avx512f+bw+vnni detection (or
+        // compiled with the features statically enabled).
+        unsafe { skip_dot_inner(ft, lane) }
+    }
+
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i16_deltas_into,
@@ -1304,6 +1413,7 @@ mod avx512 {
         l1_dequant,
         l2_tail,
         policy_dot,
+        skip_dot,
     };
 
     /// [`KERNELS`] plus the vpcompressw `find_nnz` — selected when the CPU
@@ -1317,6 +1427,23 @@ mod avx512 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dispatched_skip_dot_matches_scalar_bitwise() {
+        // The fixed 16-lane + halving-tree shape must make every backend
+        // bit-identical to the scalar reference (policy_dot discipline).
+        let mut ft = vec![0u8; 768];
+        let mut lane = vec![0.0f32; 768];
+        for (i, v) in ft.iter_mut().enumerate() {
+            *v = (i as u8).wrapping_mul(97).wrapping_add(13);
+        }
+        for (i, v) in lane.iter_mut().enumerate() {
+            *v = ((i as f32) * 0.7311 - 250.0) * 0.013;
+        }
+        let want = scalar::skip_dot(&ft, &lane);
+        let got = skip_dot(&ft, &lane);
+        assert_eq!(want.to_bits(), got.to_bits(), "{want} vs {got}");
+    }
 
     #[test]
     fn dispatched_i16_and_i8_match_scalar_at_wrapping_extremes() {
