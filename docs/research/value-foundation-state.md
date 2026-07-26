@@ -761,6 +761,33 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-27 ~02:3x THE LEG-A EARTHQUAKE + sb190 ANCHORS + THE CUT-RULE
+## DEVIATION (surfaced)
+
+**LEG A (12sb, 40min): heldout 0.007972 → 0.006905 (−13.4%) — the
+campaign's biggest single move; d47p-parity gap now −10%. Panel: quiet
+0.8725→0.8854 (+0.013), sharp-nc 0.7563→0.7810 (+0.025), endgame
+0.672→0.696. MTL WAS TAXING VALUE HARD at 768.** But **top-1 crashed
+18.7→12.2 — the CUT RULE TRIPPED (−6.5pp ≫ 3pp).** DEVIATION, surfaced
+in chat: Leg A KEPT — the rule predates the committed A→B cascade; B
+retrains the head on this exact trunk, so the A+B PAIR is the artifact.
+**Leg B's restoration is now the BINDING gate (target ≥19-20, stretch
+26.9; can't-restore ⇒ the trip stands and we debate).** Leg B RUNNING
+(hard-label CE, train_only polmove*, warm = legA-sb12-ema). USER
+QUESTION ON THE TABLE: drop MTL entirely (sequential value-trunk →
+frozen-trunk heads)? Leg B = the old trunk-sufficiency fork, live;
+three pre-registered readings (restore/exceed/stall) decide; W's recipe
+decision HELD for the user until B lands.
+
+**sb190 ANCHORS (exp-0142/0143):** vs teacher −113.4±35 (fn50k) — FLAT
+from sb100's −115.2: the MTL sb100-190 tail bought nothing in play,
+stop call vindicated. vs SF16 EQUAL-NODES −141.2±36 (first direct
+external anchor). Post-legs rematches price the squeeze in play next.
+PERF PROGRAM tonight: A (+9.0%) + B (+2.3%) landed on top of +30%;
+running total ≈ +45% NPS today; F′/D/C/E queued (C carries the study's
+safety-argument + slot-tracker requirements; the >5%-NPS SPSA-freeze
+governance rule adopted).
+
 ## 2026-07-27 ~01:5x USER RULING: STOP THE V MTL AT sb190 ("we don't
 ## need to fully converge and anneal under MTL. Just be careful the
 ## bounce in the legs doesn't destroy what we got")
