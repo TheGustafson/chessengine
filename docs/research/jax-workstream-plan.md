@@ -1150,3 +1150,32 @@ selection-affected, not natural. For setting a TRAINING target that is
 arguably the right conditional — it is the distribution the net sees.
 => Promotes the loss-shape items to the top of the V2 program, and makes
 `perf_sigmoid_fitter`-style empirical fitting a prerequisite, not a nicety.
+
+## v1.5 LAUNCH PLAN + BOX CONTENTION ORDER (2026-07-26 ~00:5x)
+**WARM POINT SETTLED: D47P** (user call). Duel evidence: pvm-a value-only
+−15.1±17.2 and pvm-b head-on −13.9±16.9 both say D47M is the marginally
+better TRUNK (300g each) — but D47M's head is dead (9.7% top-1) and D47P's
+is intact at ~26%, and the user expects to recover policy value. pvm-c
+(equal time, THE deployment test) reached only 16/200 before being stopped
+for the SF16 baseline: W5 D9 L2 ≈ +66±88, i.e. NOTHING. Note the mechanism
+correction: better ordering shrinks the tree at BOTH fixed nodes and equal
+time; the asymmetry is that fixed nodes does not CHARGE P-ORD's ~6% NPS,
+so fixed-node FLATTERS the head. Plus D47M is sparser and thus if anything
+faster at equal time. Both effects predict D47P doing WORSE at equal time,
+so the +66 has no mechanistic support — it is noise, and no explanation
+should have been offered for it.
+
+**CONTENTION ORDER (only one equal-time consumer at a time):**
+ 1. SF16 BEFORE-snapshot, equal time 10+0.1 (RUNNING, conc 4). ~1.4 min/game
+    => 200g ≈ 4.6 h; interim read at 100g (±23) is sufficient for a
+    before/after and the caller may stop there.
+ 2. SF16 BEFORE-snapshot, equal NODES 50000 — immune to CPU contention, so
+    it MAY overlap the warm run.
+ 3. v1.5 warm leg (GPU) — starts after leg 1 only.
+ 4. pvm-c re-run to full 200g — owed; answers whether the head EARNS
+    deployment at equal time. Needs the box quiet again.
+
+**tools/nnue/sf_baseline.sh** pins net/tag/games/seed/book so the same
+command re-run after v1.5, after the optimization pass, and after SPSA
+yields four comparable snapshots. Policy is FULLY ON in all of them
+(sidecar .cpol + P-ORD via the archon-d47-pord10 wrapper).
