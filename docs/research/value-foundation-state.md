@@ -753,6 +753,28 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~17:3x SOURCING CHECK (user challenge) + THE ENDGAME-RARITY
+## HYPOTHESIS REFUTED BY DECODE
+
+User: "the claim that our teacher never saw tactical positions, where
+did you source that?" — honest answer: it was an INFERENCE from D46
+default-ON. NOW VERIFIED EMPIRICALLY: decoded 20k records from each of
+uho-band75-100 / fishpack32 / farseerT74 (RECORD_DTYPE direct):
+**in-check 0.00% / 0.00% / 0.00%; bestmove-is-capture 1.96/1.83/1.45%**
+(small leakage vs the destination-empty rule — measured, not material;
+possibly decode edge cases). Contract §1 five-criteria confirmed as the
+operative filter. NUANCE: the POLICY corpus is deliberately unfiltered
+by contract — the quiet claim applies to the VALUE loss path.
+
+**ENDGAME-RARITY REFUTED:** pieces≤8 = 25.5% (uho) / 14.5% (fishpack) /
+13.7% (farseer); ≤12 = 47/35/30%; median piece count 13/16/18. Endgames
+are ABUNDANT in the mix. The +0.100 late-endgame gap is therefore
+CAPACITY/ARCH triage under plentiful exposure, NOT sparsity — my
+"fewer reps to rebuild" line was wrong and is withdrawn. UPSAMPLING
+ENDGAMES HAS WEAK MECHANISTIC SUPPORT (user proposed it; measurement
+says exposure isn't the constraint). User's sequencing principle stands
+for any future mix change: mix changes go in BEFORE the final anneal.
+
 ## 2026-07-26 ~17:1x sb50 REMATCH: **−151.4±27.1 — +55 ELO IN 30sb**
 ## (exp-0140; sb20 baseline −206.7±28.4). GATE MATH: ET parity needs the
 ## fn gap at ≈−100 (speed edge ~2.5-3× ≈ +90-120); at +55/30sb with 50sb
