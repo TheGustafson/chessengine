@@ -745,3 +745,31 @@ non-eval node cost) settles THREE open questions at once: the
 ft_sparsity penalty, the FT permutation payoff, and the width question.
 RECOMMENDATION: pull this profile EARLY in the optimization phase — it
 is the measurement three decisions are blocked on.
+
+## WHY SPARSITY DOES NOT HELP THE ACCUMULATOR — AND THE VERSION THAT DOES
+(user Q 2026-07-25 ~23:2x: "seems like we could take advantage of it")
+  * The accumulator holds PRE-activation i16 sums; sparsity is a
+    POST-activation property. An entry at -800 contributes 0 after the
+    clipped ReLU but must still be maintained exactly — the next feature
+    delta may push it positive. You cannot skip maintaining a value
+    whose future sign is unknown.
+  * Conditional skipping would cost MORE than the work saved: the update
+    is `acc[i] +/- W[f][i]` over a contiguous 1280-elem i16 array (~40
+    AVX2 instructions, pure sequential SIMD). A per-element margin test
+    kills vectorization and needs per-entry bookkeeping.
+**THE VERSION THAT WORKS: dead-neuron (structured) pruning.** What cuts
+the accumulator update is WEIGHT sparsity — neurons dead across ALL
+positions. If accumulator entry i never fires, its whole weight column
+is useless: delete it, shrink the accumulator, save on BOTH the update
+AND the L1 matmul, at ZERO capacity cost.
+**HYPOTHESIS WE HAVE NEVER TESTED: our ft_sparsity penalty may already
+be producing always-dead neurons.** L1 penalties are known to kill units
+outright rather than merely quiet them. If ~10% of our 1280 entries
+never fire, that is a free 10% width cut targeting the cost that
+actually dominates — and it REFRAMES the penalty entirely: not an
+L1-skip lever (which our NPS data says is worthless) but an implicit
+STRUCTURAL PRUNER (which targets the real bottleneck).
+**FREE TO MEASURE:** the activation-matrix gather needed for the FT
+permutation yields per-neuron firing rates as a byproduct. ONE pass
+gives us the permutation AND the dead-neuron count. Do it in the same
+work item.
