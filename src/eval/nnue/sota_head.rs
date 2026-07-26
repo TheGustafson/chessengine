@@ -29,9 +29,17 @@ use crate::types::Color;
 /// `policy_vocab`). "Go big first — learnability before NPS" is the pinned
 /// research posture; the 768/L2=16 incumbent remains the fallback ship
 /// (gate old nets with engines/bin/archon-sota-native.prev-era binaries).
+#[cfg(not(feature = "arch-d47v"))]
 pub const L1: usize = 1280;
+/// D47V (2026-07-26): the distilled 768 deploy arch — see the doctrine
+/// entry in the live log (train big → distill to competitive size).
+#[cfg(feature = "arch-d47v")]
+pub const L1: usize = 768;
 /// L1→L2 output width (the D47 shared bottleneck).
+#[cfg(not(feature = "arch-d47v"))]
 pub const L2: usize = 128;
+#[cfg(feature = "arch-d47v")]
+pub const L2: usize = 32;
 /// L2→L3 output width.
 pub const L3: usize = 32;
 /// Material/output buckets.

@@ -23,6 +23,11 @@ required-features = ["datagen"]
 # expands the same entries to inline-folded constants and stays bench-
 # identical (D24). Tune builds are for the SPSA harness only, never shipped.
 tune = []
+# D47V deploy arch (768 accumulator, 32/32 head + skip). Mutually exclusive
+# with the default 1280/128/32 consts; build D47V-capable binaries with
+# `--features sota,arch-d47v`. Never combined into one binary — the CENN's
+# dims must match the build (the loader validates section sizes).
+arch-d47v = []
 # Distribution-only: embed net-0 as the default eval so the engine plays NNUE
 # with no `EvalFile` set (for GUIs that can't set UCI string options). OFF by
 # default, so runtime [dependencies] stays empty (D15) and the default build is
