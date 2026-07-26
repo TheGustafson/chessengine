@@ -1063,3 +1063,53 @@ Top three statistically indistinguishable; SF16 clearly behind. **The canon
 finding that we WIN the discriminating range did NOT clearly replicate
 here** — treat it as promising-but-not-robust, not banked. Note these are
 quiet SF-chosen positions, a different distribution again.
+
+## ★★ SMALL-NET CONFOUNDER RESOLVED + THE REGIME-SCALE FINDING (2026-07-26 ~01:1x)
+User: "I suspect that small net is a confounder. It is hyper specialized and
+probably good at the imbalanced ones." Read SF18's EXACT rule from the live
+clone (`git show sf_18:src/evaluate.cpp:43-72`; the clone's master is at
+ebcea3ef/dev-20260716 — HEAD was merely detached at sf_16):
+    simple_eval = PawnValue*(pawns_stm - pawns_opp) + npm_stm - npm_opp
+    use_smallnet = |simple_eval| > 962            (PawnValue=208 => ~4.6 pawns)
+    ...and if the small net then reports |nnue| < 277, SF RE-EVALUATES with
+    the big net. So small-net use is lopsided-material AND confirmed-decisive.
+
+**SPLIT BY THAT EXACT RULE:**
+  CANON 20k (small net on 2052 = 10.3%)
+    all                       n=20000  ARCHON  68.2  SF18  61.9  gap +6.3
+    SF BIG net                n=17948  ARCHON  55.7  SF18  53.6  gap +2.1
+    SF SMALL net              n= 2052  ARCHON 136.8  SF18 132.5  gap +4.3
+    BIG + |label|<=400        n=16103  ARCHON  48.5  SF18  44.5  gap +4.1
+    BIG + |label|<=200        n=12737  ARCHON  34.1  SF18  33.7  gap **+0.4**
+  NEUTRAL 1960 (small net on 44 = 2.2%)
+    all                       n= 1960  ARCHON  51.1  SF18  49.5  gap +1.7
+    SF BIG net                n= 1916  ARCHON  49.1  SF18  46.3  gap +2.8
+    SF SMALL net              n=   44  ARCHON  94.7  SF18 108.0  gap -13.3
+    BIG + |label|<=400        n= 1915  ARCHON  46.6  SF18  45.8  gap +0.7
+    BIG + |label|<=200        n= 1801  ARCHON  40.0  SF18  41.9  gap **-1.9**
+
+**VERDICT ON THE HYPOTHESIS: half right.** The small net is NOT beating us —
+in those positions both engines are bad (136.8 vs 132.5) and on the neutral
+set WE beat it. What lopsided positions actually do is DOMINATE the
+unrestricted mean with huge errors.
+**CORRECTION TO AN EARLIER CLAIM:** I said the "we win the discriminating
+range" result did not replicate on neutral positions. That was the
+UNRESTRICTED comparison. Restricted properly (SF big net, |label|<=200) it
+DOES replicate: canon +0.4 (tied), neutral **-1.9 (we win)**.
+
+**★ NEW, ACTIONABLE: OUR EVAL IS MORE REGIME-DEPENDENT THAN SF18's.** The
+overall canon gap is +6.3, but the weighted average of the two sub-gaps is
+only ~+2.4. The difference is the AFFINE FIT: when one global (a,b) must
+serve every regime, WE LOSE MORE THAN SF18 DOES. Fit each regime separately
+and most of our deficit evaporates. So our eval→target map is less
+uniformly linear across regimes, not merely differently scaled.
+=> Points straight at the loss/target design: our single fixed
+`scale=400` sigmoid vs SF's INDEPENDENTLY TUNED in_scaling 340 /
+out_scaling 380 / nnue2score 600, and their DRAW-AWARE DOUBLE SIGMOID
+`0.5(1+σ(q)−σ(qm))` with the ±270 offset — which is exactly a mechanism for
+making the eval↔target relationship uniform across regimes.
+**This PROMOTES the double-sigmoid item in the V2 program** from "uncertain,
+on the list anyway" to a specific, motivated hypothesis with a measurable
+prediction: it should flatten the regime-dependence of our affine fit.
+Cheap pre-test available before any retrain: check whether a per-regime
+affine fit still beats a global one after the change.
