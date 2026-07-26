@@ -1113,3 +1113,40 @@ on the list anyway" to a specific, motivated hypothesis with a measurable
 prediction: it should flatten the regime-dependence of our affine fit.
 Cheap pre-test available before any retrain: check whether a per-regime
 affine fit still beats a global one after the change.
+
+## ★★★ TARGET-TRANSFORM CALIBRATION — FITTED TO OUR OWN DATA (2026-07-26 ~01:3x)
+User: "lets test [the double sigmoid]... my instinct is we can do EVEN
+better than them." Confirmed. Fitted the expected-score curve on **3M
+records of uho-band75-100** (our largest training corpus; bulletformat
+carries the real game `result`, unlike canon whose wdl column is all 0.5).
+
+  transform                                        curve MAE
+  SF's double sigmoid, offset 270 / scale 340        0.1147
+  OUR CURRENT single sigmoid, scale 400              0.1183
+  best single sigmoid, scale 148                     0.0148
+  **double sigmoid fitted to us, offset -162.5 / scale 91   0.0057**
+
+**(1) OUR scale=400 IS BADLY MISCALIBRATED FOR OUR OWN DATA.** At score
++250 our target says expected score 0.65; the empirical curve says 0.80.
+Best single sigmoid is ~148 — our target curve is ~3x too flat.
+**(2) SF's CONSTANTS ARE NO BETTER FOR US** (0.1147 vs our 0.1183) —
+copying 270/340 would buy nothing. Fit our own.
+**(3) THE DOUBLE-SIGMOID FORM DOES EARN ITS PARAMETER** (0.0057 vs 0.0148,
+2.6x) — BUT the fitted offset is NEGATIVE, i.e. our data wants a curve
+STEEPER than a logistic, the OPPOSITE of SF's draw-band shape. At a<0 it is
+no longer a valid WDL decomposition (P(win)+P(loss)>1 near zero); it is a
+flexible 2-param shape. For a future real WDL head, constrain offset>=0 and
+accept the worse fit.
+
+**★ POSSIBLE LIVE TRAINING DEFECT:** we blend 30% game outcome with 70%
+σ(s/400). If that sigmoid says 0.65 where the outcome distribution says
+0.80, the two halves of the target DISAGREE SYSTEMATICALLY on every sample
+— a confused gradient present in every net we have trained. Worth an
+explicit experiment: (a) refit scale to ~148, (b) fitted double sigmoid,
+(c) wdl=0 control. Cheap: short legs from a common warm point, compare
+heldout + screens.
+CAVEAT: the corpus is quiet- AND band-filtered, so P(result|score) is
+selection-affected, not natural. For setting a TRAINING target that is
+arguably the right conditional — it is the distribution the net sees.
+=> Promotes the loss-shape items to the top of the V2 program, and makes
+`perf_sigmoid_fitter`-style empirical fitting a prerequisite, not a nicety.
