@@ -78,11 +78,14 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
     # rebuild rides the standard driver (config keys arch_l2 / arch_out_skip).
     arch = dataclasses.replace(
         ArchSpec.full(), factorize=True, psqt=True,
+        hl=int(spec.get("arch_hl", ArchSpec.full().hl)),
         l2=int(spec.get("arch_l2", ArchSpec.full().l2)),
+        l3=int(spec.get("arch_l3", ArchSpec.full().l3)),
         out_skip=bool(spec.get("arch_out_skip", False)))
     start_sb = resume_sb + 1 if resume_sb else 1
     cfg = dataclasses.replace(
         TrainConfig(),
+        distill_alpha=float(spec.get("distill_alpha", 0.0)),
         lr=spec["lr"], lr_end_superbatch=spec["lr_end_superbatch"],
         superbatches=spec["superbatches"], pol_lambda=spec["pol_lambda"],
         ft_sparsity_lambda=spec["ft_sparsity_lambda"],
@@ -123,6 +126,15 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
                 return 2
         ema = dict(params) if ema_on else None
 
+    teacher = None
+    if spec.get("teacher_warm"):
+        t_arch = dataclasses.replace(
+            ArchSpec.full(), factorize=True, psqt=True)
+        t_params = ck.load_warm(ROOT / spec["teacher_warm"], t_arch)
+        teacher = (t_params, t_arch)
+        print(f"[pump {net_id}] teacher loaded: {spec['teacher_warm']} "
+              f"(alpha {cfg.distill_alpha})", flush=True)
+
     mix = [(BulletBin(str(ROOT / p)), w) for p, w in spec["mix"]]
     # Loader parallelism. Trimmed 5/8 -> 4/4 during the 2026-07-25 OOM loop
     # because each in-flight MASKED batch held a dense (batch,1858) f32 mask.
@@ -145,7 +157,7 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
     if spec.get("freeze"):
         assert train_only is None, "config: use train_only OR freeze, not both"
         train_only = sorted(set(arch.param_shapes()) - set(spec["freeze"]))
-    opt, step = make_update_step(arch, cfg, train_only=train_only)
+    opt, step = make_update_step(arch, cfg, train_only=train_only, teacher=teacher)
     opt_state = opt.init(params)
     params = {k: jax.numpy.asarray(v) for k, v in params.items()}
     if ema_on:
