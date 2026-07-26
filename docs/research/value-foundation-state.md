@@ -737,7 +737,11 @@ cfut, pcut (~2h). sb120 in-frame heldout next firing.
    `pump_train <cfg> <last_sb>` (fresh Adam transient documented).
 1. `bash tools/nnue/d47s_pipeline.sh pack`        (recipe pinned 1280/128/32)
 2. `bash tools/nnue/d47s_pipeline.sh calibrate`   (HARD GATE — before ANY game)
-3. In-frame heldout final read: inframe_heldout.py 120 180 240 (must be falling).
+3. In-frame heldout final read: inframe_heldout.py 120 180 240 (must be
+   falling). PLUS the net-alone panel the user is waiting on: pack the
+   FINAL ema, eval_bench + the Spearman rank table (the transform-invariant
+   read; sb150 already leads the whole field at 0.9024 incl. both SF
+   statics — user: "Can't wait to see this again after it finishes").
 4. `bash tools/nnue/d47s_pipeline.sh q1`          (300g fixed-node vs D47P)
    — verdict per no-verdicts-from-weak-tests: ±17 bars at 300g.
 5. `bash tools/nnue/d47s_pipeline.sh et`          (200g 10+0.1, idle box)
