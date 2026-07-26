@@ -362,11 +362,15 @@ impl SotaHead {
         // before the cp scale — mirroring SF's fc_0 +1 lane. Dequant reuses
         // policy_trunk's proven factor: ft_u8 = hl1_f · FT_QUANT²/2^FT_SHIFT.
         let l3 = if let Some(sk) = &self.skip_weights {
+            // Branchless on purpose (perf study §6 option S): the old
+            // `if a != 0` guard cost ~72% of this loop's cycles in branch
+            // mispredicts (66% of ALL mispredicts in the engine). For a == 0
+            // the product is ±0.0 and `acc + ±0.0 == acc` exactly for every
+            // finite acc, so the unconditional form is bit-identical —
+            // summation order unchanged, no NaN/Inf path (validated section).
             let mut acc = 0.0f32;
             for (i, &a) in ft.iter().enumerate() {
-                if a != 0 {
-                    acc += f32::from(a) * sk[i * BUCKETS + bucket];
-                }
+                acc += f32::from(a) * sk[i * BUCKETS + bucket];
             }
             l3 + acc * ((1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT) as f32)
         } else {
