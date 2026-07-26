@@ -607,18 +607,47 @@ mod avx2 {
         subs: &[usize],
     ) {
         // SAFETY: as i16_deltas_inner; reads `src`, writes the disjoint `dst`.
+        // §6-F (perf study): pre-scale each feature's row offset ONCE — the
+        // block-outer nest re-derived `feature * ACC` per (block, feature)
+        // pair (the kernels' dominant scalar/GPR share, §2.4). Chunked so
+        // arbitrarily long event lists stay allocation-free; later passes
+        // fold onto dst (wrapping adds commute ⇒ bit-identical).
         unsafe {
-            for off in (0..ACC).step_by(LANES) {
-                let mut value = _mm256_loadu_si256(src.as_ptr().add(off).cast());
-                for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm256_add_epi16(value, _mm256_loadu_si256(row.cast()));
+            const CAP: usize = 96;
+            // MaybeUninit: only the written prefix is ever read — the zeroing
+            // memset of 2x96 usizes per call cost more than the hoist saved
+            // on the <=2-event HalfKA folds (measured flat on first cut).
+            let mut a_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
+            let mut s_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
+            let (mut ai, mut si) = (0usize, 0usize);
+            let mut source: *const i16 = src.as_ptr();
+            loop {
+                let an = (adds.len() - ai).min(CAP);
+                let sn = (subs.len() - si).min(CAP);
+                for k in 0..an {
+                    a_off[k].write(adds[ai + k] * ACC);
                 }
-                for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm256_sub_epi16(value, _mm256_loadu_si256(row.cast()));
+                for k in 0..sn {
+                    s_off[k].write(subs[si + k] * ACC);
                 }
-                _mm256_storeu_si256(dst.as_mut_ptr().add(off).cast(), value);
+                for off in (0..ACC).step_by(LANES) {
+                    let mut value = _mm256_loadu_si256(source.add(off).cast());
+                    for base in a_off[..an].iter().map(|m| unsafe { m.assume_init() }) {
+                        let row = weights.as_ptr().add(base + off);
+                        value = _mm256_add_epi16(value, _mm256_loadu_si256(row.cast()));
+                    }
+                    for base in s_off[..sn].iter().map(|m| unsafe { m.assume_init() }) {
+                        let row = weights.as_ptr().add(base + off);
+                        value = _mm256_sub_epi16(value, _mm256_loadu_si256(row.cast()));
+                    }
+                    _mm256_storeu_si256(dst.as_mut_ptr().add(off).cast(), value);
+                }
+                ai += an;
+                si += sn;
+                if ai >= adds.len() && si >= subs.len() {
+                    break;
+                }
+                source = dst.as_ptr();
             }
         }
     }
@@ -632,20 +661,43 @@ mod avx2 {
         subs: &[usize],
     ) {
         // SAFETY: as i8_deltas_inner; reads `src`, writes the disjoint `dst`.
+        // §6-F hoist + chunking — see i16_deltas_into_inner above.
         unsafe {
-            for off in (0..ACC).step_by(LANES) {
-                let mut value = _mm256_loadu_si256(src.as_ptr().add(off).cast());
-                for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    let bytes = _mm_loadu_si128(row.cast());
-                    value = _mm256_add_epi16(value, _mm256_cvtepi8_epi16(bytes));
+            const CAP: usize = 96;
+            // MaybeUninit: only the written prefix is ever read — the zeroing
+            // memset of 2x96 usizes per call cost more than the hoist saved
+            // on the <=2-event HalfKA folds (measured flat on first cut).
+            let mut a_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
+            let mut s_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
+            let (mut ai, mut si) = (0usize, 0usize);
+            let mut source: *const i16 = src.as_ptr();
+            loop {
+                let an = (adds.len() - ai).min(CAP);
+                let sn = (subs.len() - si).min(CAP);
+                for k in 0..an {
+                    a_off[k].write(adds[ai + k] * ACC);
                 }
-                for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    let bytes = _mm_loadu_si128(row.cast());
-                    value = _mm256_sub_epi16(value, _mm256_cvtepi8_epi16(bytes));
+                for k in 0..sn {
+                    s_off[k].write(subs[si + k] * ACC);
                 }
-                _mm256_storeu_si256(dst.as_mut_ptr().add(off).cast(), value);
+                for off in (0..ACC).step_by(LANES) {
+                    let mut value = _mm256_loadu_si256(source.add(off).cast());
+                    for base in a_off[..an].iter().map(|m| unsafe { m.assume_init() }) {
+                        let bytes = _mm_loadu_si128(weights.as_ptr().add(base + off).cast());
+                        value = _mm256_add_epi16(value, _mm256_cvtepi8_epi16(bytes));
+                    }
+                    for base in s_off[..sn].iter().map(|m| unsafe { m.assume_init() }) {
+                        let bytes = _mm_loadu_si128(weights.as_ptr().add(base + off).cast());
+                        value = _mm256_sub_epi16(value, _mm256_cvtepi8_epi16(bytes));
+                    }
+                    _mm256_storeu_si256(dst.as_mut_ptr().add(off).cast(), value);
+                }
+                ai += an;
+                si += sn;
+                if ai >= adds.len() && si >= subs.len() {
+                    break;
+                }
+                source = dst.as_ptr();
             }
         }
     }
@@ -855,18 +907,43 @@ mod avx512 {
         subs: &[usize],
     ) {
         // SAFETY: as i16_deltas_inner; reads `src`, writes the disjoint `dst`.
+        // §6-F hoist + chunking — see the avx2 twin for the rationale.
         unsafe {
-            for off in (0..ACC).step_by(LANES) {
-                let mut value = _mm512_loadu_si512(src.as_ptr().add(off).cast());
-                for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm512_add_epi16(value, _mm512_loadu_si512(row.cast()));
+            const CAP: usize = 96;
+            // MaybeUninit: only the written prefix is ever read — the zeroing
+            // memset of 2x96 usizes per call cost more than the hoist saved
+            // on the <=2-event HalfKA folds (measured flat on first cut).
+            let mut a_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
+            let mut s_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
+            let (mut ai, mut si) = (0usize, 0usize);
+            let mut source: *const i16 = src.as_ptr();
+            loop {
+                let an = (adds.len() - ai).min(CAP);
+                let sn = (subs.len() - si).min(CAP);
+                for k in 0..an {
+                    a_off[k].write(adds[ai + k] * ACC);
                 }
-                for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
+                for k in 0..sn {
+                    s_off[k].write(subs[si + k] * ACC);
                 }
-                _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
+                for off in (0..ACC).step_by(LANES) {
+                    let mut value = _mm512_loadu_si512(source.add(off).cast());
+                    for base in a_off[..an].iter().map(|m| unsafe { m.assume_init() }) {
+                        let row = weights.as_ptr().add(base + off);
+                        value = _mm512_add_epi16(value, _mm512_loadu_si512(row.cast()));
+                    }
+                    for base in s_off[..sn].iter().map(|m| unsafe { m.assume_init() }) {
+                        let row = weights.as_ptr().add(base + off);
+                        value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
+                    }
+                    _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
+                }
+                ai += an;
+                si += sn;
+                if ai >= adds.len() && si >= subs.len() {
+                    break;
+                }
+                source = dst.as_ptr();
             }
         }
     }
@@ -880,20 +957,43 @@ mod avx512 {
         subs: &[usize],
     ) {
         // SAFETY: as i8_deltas_inner; reads `src`, writes the disjoint `dst`.
+        // §6-F hoist + chunking — see the avx2 twin for the rationale.
         unsafe {
-            for off in (0..ACC).step_by(LANES) {
-                let mut value = _mm512_loadu_si512(src.as_ptr().add(off).cast());
-                for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    let bytes = _mm256_loadu_si256(row.cast());
-                    value = _mm512_add_epi16(value, _mm512_cvtepi8_epi16(bytes));
+            const CAP: usize = 96;
+            // MaybeUninit: only the written prefix is ever read — the zeroing
+            // memset of 2x96 usizes per call cost more than the hoist saved
+            // on the <=2-event HalfKA folds (measured flat on first cut).
+            let mut a_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
+            let mut s_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
+            let (mut ai, mut si) = (0usize, 0usize);
+            let mut source: *const i16 = src.as_ptr();
+            loop {
+                let an = (adds.len() - ai).min(CAP);
+                let sn = (subs.len() - si).min(CAP);
+                for k in 0..an {
+                    a_off[k].write(adds[ai + k] * ACC);
                 }
-                for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    let bytes = _mm256_loadu_si256(row.cast());
-                    value = _mm512_sub_epi16(value, _mm512_cvtepi8_epi16(bytes));
+                for k in 0..sn {
+                    s_off[k].write(subs[si + k] * ACC);
                 }
-                _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
+                for off in (0..ACC).step_by(LANES) {
+                    let mut value = _mm512_loadu_si512(source.add(off).cast());
+                    for base in a_off[..an].iter().map(|m| unsafe { m.assume_init() }) {
+                        let bytes = _mm256_loadu_si256(weights.as_ptr().add(base + off).cast());
+                        value = _mm512_add_epi16(value, _mm512_cvtepi8_epi16(bytes));
+                    }
+                    for base in s_off[..sn].iter().map(|m| unsafe { m.assume_init() }) {
+                        let bytes = _mm256_loadu_si256(weights.as_ptr().add(base + off).cast());
+                        value = _mm512_sub_epi16(value, _mm512_cvtepi8_epi16(bytes));
+                    }
+                    _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
+                }
+                ai += an;
+                si += sn;
+                if ai >= adds.len() && si >= subs.len() {
+                    break;
+                }
+                source = dst.as_ptr();
             }
         }
     }
