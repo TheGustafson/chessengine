@@ -683,6 +683,23 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## 2026-07-26 ~11:5x PRIORS PROGRAM COMPLETE — 13 arms, 2600 games, all
+## games-verified; COMBO arm (SE+QS+PFUT composition test) RUNNING
+
+Final fixed-node table (200g/arm vs base, d47p value-only):
+STARTS SET: sefam ×0.52 +22.6 | qsfam 174 +17.4 | pfutfam ×0.52 +5.2 |
+RED_TABLE_NUM 3260 −5.2-clean | NMP center (250,19) −5.2 [or (140,12)
++guards +3.5 if wip/nmp-guards lands]. DEFAULTS KEPT (wall-clock's job):
+pcut −5.2 | asp −13.9 | RFP −33.1 | razor −34.9 | cfut −34.9 (interior-
+margin fixed-node tax, strikingly uniform). REJECTED OUTRIGHT: flat
+RED_BASE (−41.9 solo, tactical/collapse bleed ×3 arms), RED_MOVECOUNT.
+Campaign s4-searchgap updated: 29 params, every range validated against
+current values AND starts (validator caught 3 stale ranges incl.
+NMP_R_BASE — donor R=7+d/3, not SF16's 4+d/3). Combo arm = the
+additivity question: naive sum +45; result gates whether a pre-SPSA
+package exists. Tooling hardened along the way: setoption-baked-table
+fix (tune builds), arm_verify game-level gate, pack recipe pinned.
+
 ## 2026-07-26 ~10:4x FAMILY SCREENS — SEFAM ×0.52 IS THE HEADLINE (+22.6,
 ## tactical channel repaired); QS +17.4 via LEAF QUALITY not depth
 
