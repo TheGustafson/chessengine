@@ -786,6 +786,30 @@ teacher-copying. The α ablation must include policy (hard-CE arm).**
   fixed-node screen for the winner. α=0 wins → future generations get an
   α-decay tail. α=0 regresses → teacher = denoised labels, rides to the
   end. Mixed verdict → investigate before concluding (weak-test rule).
+- **LAYER 3b (user amendment ~15:3x: "couldn't we decay the teacher
+  contribution?"):** YES — α-DECAY is now a first-class lever.
+  `distill_alpha_end` landed (7af2deb): linear α ramp over the whole
+  schedule, threaded per-step like the sparsity λ, anchored on ABSOLUTE
+  sb so resumes land on the same global ramp; default −1 = constant
+  (live run untouched). Precedent: nnue-pytorch `--start-lambda 1.0
+  --end-lambda 0.75` (start on the trusted denoised signal, fold ground
+  truth in over training — stockfish_reference/09 §λ). DECISION RULE for
+  flipping it on: evidence-gated, not assumed — the α ablation (Layer 3)
+  measures the endpoint first; a decay tail can also be tested by
+  resume-from-sb60ish with distill_alpha_end set, judged against the
+  constant-α line on heldout+panel+err-corr. Early supporting signal:
+  post-frame-fix quiet err-corr DROPPED 0.839→0.825 (labels actively
+  decorrelate the student when their gradient is consistent).
+- **MIX LEVERS (named, previously implicit):** (a) deployment-
+  distribution distillation — sharp/tension NON-CHECK positions with
+  per-row α=1 (teacher forward defined everywhere; no bounded-label
+  risk); PARKED until a trigger: sharp-nc converges far below teacher
+  while quiet closes. Needs per-row-α loader support + an unfiltered
+  pack — heavy, idle-box work. (b) POLICY-specific unfiltered data: the
+  D46 quiet filter's rationale is VALUE-label validity and does not
+  apply to policy targets; the policy head currently sees zero tactical
+  positions AND zero label signal (pure teacher-CE) — the ablation's
+  policy hard-CE arm should consider the unfiltered-data variant.
 - **LAYER 4 (generation-level):** student ≥ teacher at EQUAL TIME → this
   teacher is exhausted in play; next lever = better teacher (bigger/
   longer or student-search-labeled — the flywheel), never more epochs.
