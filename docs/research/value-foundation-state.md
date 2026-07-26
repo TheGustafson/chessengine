@@ -761,6 +761,31 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-27 ~01:4x D48W IS BUILT AND LAUNCH-READY (user: "we could
+## have D48W ready quick" — correct)
+
+The full V2 candidate exists end-to-end (25f8d56): jax arch fields
+pol_proj/dis_proj; policy = dedicated 16-wide projection off hl1
+(**user cost ruling: 128 ≈ 8× the whole L2=16 value head per
+consultation; 16 ≈ the value L1 itself; rank-8-bilinear precedent for
+thin-dedicated; my "128 = measured-sufficient" was an UPPER bound —
+d47p's 128 was SHARED**); disagreement = 64-wide PURE PROBE
+(stop_gradient trunk input — observes, never steers; T11 seed
+predicting |sigmoid(v)−target|); pow_exp 2.5 + v1.5 trainer trio;
+net2net expansion warm ASSEMBLED (520MB, old pairs intact); config
+runs/d48w_1536.json (teacher flat 0.7→sb30, →0@sb60; 60sb; full mix).
+SMOKE PASS (shapes/grad/finite; donation-safe harness; branch-local jax
+import unshadowed in losses). **ENGINE-DEPLOY RULE (user directive, the
+SKP1 lesson): the new heads land engine-side ONLY with fixed-shape SIMD
+kernels + a perf-share gate (<1% of cycles at their consultation
+rates) — never a scalar afterthought loop.** LAUNCH: after the release
+legs free the GPU (release-first sequencing). FACE-OFF pre-registered:
+V-final vs S-sb230 vs W-sb60, fn50k + panels + probes, ET on idle box.
+OPS: two OOM kills tonight — panels watcher (recapped 1.8/2.5G,
+recycled) and Chrome (kernel victim when my warm-assembly transient
+stacked on trainer+study2; capped units survived) — no more heavy
+CPU-side jobs while study 2 holds its buffers.
+
 ## 2026-07-27 ~00:5x ★ GEN-2 ARCHITECTURE SKETCH (user-driven design
 ## session) — WIDE SUBSTRATE, THIN VALUE, ACCUMULATOR-BRANCHED HEADS ★
 
