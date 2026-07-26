@@ -761,6 +761,18 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~21:1x sb100 REMATCH FINAL: **−115.2±25.2** (exp-0141) —
+## THE TRAJECTORY IS −206.7 → −151.4 → −115.2; ET-vs-teacher NOW
+## PROJECTS BORDERLINE-EVEN (speed edge +90-120 vs gap 115). User bands:
+## −30 = huge, even = lucky. INSIDE THE MATCH: draws 116 (38.7%, was
+## 29%@sb20); **ENDGAME DECISIVE LOSSES COLLAPSED 33→15** — the
+## label-led endgame learning is REAL IN PLAY (the panel slice wobble
+## was noise; play is the heavier instrument); OPENING is now the top
+## loss phase (66/140) = the balanced-band precision stratum, the
+## anneal's + margins-SPSA's home turf. Blunders 74v15 (was 100v19).
+## Same cycle: WAC 168/200 (jump from 162; teacher 176), scale 0.871
+## PASS, heldout 0.008638, strikes 0/2 live.
+
 ## 2026-07-26 ~20:5x ★ PRE-REGISTERED: THE D47P-PARITY HELDOUT GATE
 ## (user: "a key point will be if the smaller net can reach d47p levels")
 
