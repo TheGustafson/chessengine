@@ -54,3 +54,15 @@ ideas and measurements, not source.
 - `06-sf14-sf16-search-patch-study.md` — full mining of sf_14..sf_16 (480 commits, ~210 qualifying non-NNUE patches) + fishtest methodology + PR discussions: what classes of search change kept winning (extensions, cutnode/cutoffCnt reductions, re-search ladder, history-fed pruning, optimism, TM-by-uncertainty), what got simplified away, "gainer season" after evaluator jumps, and the ranked ARCHON port list; mined 2026-07-16 during the D41-prep study.
 - `07-s0-sf16-mechanics-audit.md` — S0 current-code verification pass over `src/search/mod.rs` vs the `eca43a97` reference (the same tree doc 10 specs): a LIVE/PARTIAL/DEFERRED/ABSENT inventory table with line refs and SF16-vs-post-SF16 attribution, an 8-item ranked gap shortlist (reduction-bundle un-deferral, IIR, history-buys-lmr, optimism), and top-3 implementation sketches. Findings: correction history + all 4 TM factors are LIVE; only IIR and Optimism are truly ABSENT; the biggest code lever is re-enabling the shelved post-SF16 reductions now that the eval jumped.
 - `08-sfnnv16-pp3wide-pawn-pairs.md` — SF commit f4bcd404 (SFNNv16, 2026-07): new PP_3Wide input family (pawn pairs on same/adjacent files as explicit features), FullThreats 60720→59808 (pawn-pusher threat rows removed as superseded), ~3.5% slower, STC FAIL but LTC/VLTC/VVLTC PASS — the same eval-quality-for-speed trade shape as our D47 bet. Queue post-D47c: pp-pair family in our stack replacing pawn-pusher rows (SF ran the ablation for us); needs mirrored bullet mapper + parity fixture.
+- `07-nnue-pytorch-trainer-study.md` — **the official SF TRAINER** (nnue-pytorch,
+  cloned 2026-07-25) vs our JAX stack, read-only comparative study. Recipe deltas
+  (no weight decay, biases never decayed, grad-clip 2.0, StepLR not cosine,
+  40–80 B presentations), the loss dissected (mate/TB **remapped** not dropped,
+  double-sigmoid WDL, in/out scaling 340/380, pow_exp 2.5, **λ ramped 1.0→0.75**),
+  the 9-stage skip predicate we lack (WLD-coherence thinning, soft ply ramp,
+  random_fen_skipping, piece-count balancing) + their 1M-position shuffle buffer
+  vs our frozen contiguous windows, per-layer quant-derived weight clips + QAT-by-
+  default, and **measured proof our uniform ±1.98 clip is binding on nearly every
+  tensor** (incl. f32-exported ones). Tooling we lack: `ftperm.py`,
+  `cross_check_eval.py`, `perf_sigmoid_fitter.py`, continuous UCB gauntlet + ordo
+  auto-prune. Ends with 14 ranked recommendations. Ideas only — GPLv3.
