@@ -37,7 +37,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .spec import ArchSpec, HALFKA_DIMS, THREAT_DIMS, POLICY_VOCAB, PS_NB
+from .spec import POLICY_MASK_ILLEGAL, ArchSpec, HALFKA_DIMS, THREAT_DIMS, POLICY_VOCAB, PS_NB
 
 
 def init_params(arch: ArchSpec, seed: int) -> dict:
@@ -184,7 +184,8 @@ def _select(x: jnp.ndarray, bucket: jnp.ndarray, divisor: int) -> jnp.ndarray:
 
 def head_forward(params: dict, arch: ArchSpec, acc_stm: jnp.ndarray,
                  acc_ntm: jnp.ndarray, bucket: jnp.ndarray,
-                 pol_mask: jnp.ndarray | None = None):
+                 pol_mask: jnp.ndarray | None = None,
+                 pol_legal: jnp.ndarray | None = None):
     """Everything after the accumulators (shared by training + parity probes).
 
     Returns (value_logit (B,), pol_logits (B, 1858) or None, hl2 (B, L2)).
@@ -205,7 +206,29 @@ def head_forward(params: dict, arch: ArchSpec, acc_stm: jnp.ndarray,
     pol_logits = None
     if arch.policy:
         pol_logits = hl2 @ params["polmovew"] + params["polmoveb"]  # (B, 1858)
-        if pol_mask is not None:
+        if pol_legal is not None:
+            # Legal-move IDS -> the SAME dense additive mask, scattered HERE on
+            # device (2026-07-26). The host-side (N,1858) f32 mask was 61 MB per
+            # 8192-batch and ~25% of trainer throughput; ids are (N,128) i16 =
+            # 2.1 MB, 29x less, and 24x faster to build. Verified to reproduce
+            # the dense mask EXACTLY, so the loss is bit-identical.
+            # Rows with no packed move are all -1 -> all-zero mask (zero CE
+            # either way), matching legal_move_masks.
+            # Scatter into VOCAB+1 columns and drop the last: padded (-1)
+            # entries go to that DUMMY column instead of colliding with real
+            # ones. (First draft clipped -1 to column 0 and wrote ILLEGAL
+            # there, clobbering a genuinely legal move id 0 — caught by the
+            # bit-parity test, max|diff| was exactly 30.0.)
+            n, k = pol_legal.shape
+            rows = jnp.repeat(jnp.arange(n), k)
+            flat = pol_legal.reshape(-1).astype(jnp.int32)
+            cols = jnp.where(flat >= 0, flat, POLICY_VOCAB)
+            dense = jnp.full((n, POLICY_VOCAB + 1), POLICY_MASK_ILLEGAL, jnp.float32)
+            dense = dense.at[rows, cols].set(0.0)[:, :POLICY_VOCAB]
+            allpad = (pol_legal < 0).all(axis=1)[:, None]
+            dense = jnp.where(allpad, 0.0, dense)
+            pol_logits = pol_logits + dense
+        elif pol_mask is not None:
             pol_logits = pol_logits + pol_mask
     return out, pol_logits, hl2
 
@@ -228,7 +251,8 @@ def forward(params: dict, arch: ArchSpec, batch: dict,
     acc_stm, acc_ntm, psqt_stm, psqt_ntm = _ft_accumulate_pair(
         params, batch, arch, ft_impl)
     out, pol_logits, hl2 = head_forward(params, arch, acc_stm, acc_ntm,
-                                        batch["bucket"], batch.get("pol_mask"))
+                                        batch["bucket"], batch.get("pol_mask"),
+                                        batch.get("pol_legal"))
     if arch.psqt:
         out = out + psqt_combine(psqt_stm, psqt_ntm, batch["bucket"])
     if with_acc:

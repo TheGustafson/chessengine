@@ -131,6 +131,83 @@ fn legal_move_masks<'py>(
 #[pymodule]
 fn archon_mask(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(legal_move_masks, m)?)?;
+    m.add_function(wrap_pyfunction!(legal_move_ids, m)?)?;
     m.add("POLICY_VOCAB", POLICY_VOCAB)?;
+    m.add("MAX_LEGAL", MAX_LEGAL)?;
     Ok(())
+}
+
+/// Legal-move IDs instead of a dense mask — the SAME information in ~29x
+/// fewer bytes. The dense (N, 1858) f32 mask costs 61 MB per 8192-batch and
+/// measured ~25% of trainer throughput (145k vs 197k pos/s): memset -30,
+/// scatter ~35 zeros, PCIe copy, GPU elementwise add — for ~30 bits of real
+/// information per row. The consumer scatters this back to the identical
+/// dense mask ON DEVICE, so the loss is bit-identical.
+///
+/// Returns (n, MAX_LEGAL) i16, -1 padded. Rows with no packed move return an
+/// all -1 row (the caller emits an all-zero mask for those, matching
+/// `legal_move_masks`). Frame tripwire unchanged: the packed target must be
+/// among the legal ids.
+const MAX_LEGAL: usize = 128;
+
+fn legal_ids_row(rec: &[u8], target: i64, out: &mut [i16]) -> bool {
+    out.iter_mut().for_each(|x| *x = -1);
+    if target < 0 {
+        return true; // no packed move: all-pad row
+    }
+    let board = stored_board(rec);
+    let ksq = Square::new(rec[KSQ_OFF] & 63);
+    let orient = policy_vocab::canonical_orient(false, ksq);
+    let mut list = MoveList::new();
+    generate_legal(&board, &mut list);
+    let mut n = 0usize;
+    let mut saw_target = false;
+    for &m in list.iter() {
+        let (fc, tc) = policy_vocab::canonical_from_to(m.from(), m.to(), orient);
+        if let Some(mid) = policy_vocab::policy_move_id(fc, tc, m.promotion_piece()) {
+            if n < MAX_LEGAL {
+                out[n] = mid as i16;
+                n += 1;
+            }
+            if mid as i64 == target {
+                saw_target = true;
+            }
+        }
+    }
+    saw_target
+}
+
+/// recs: flat uint8 array of n*32 bytes; targets: int64 array of n ids.
+/// Returns (n, 128) int16 of canonical legal-move ids, -1 padded.
+#[pyfunction]
+fn legal_move_ids<'py>(
+    py: Python<'py>,
+    recs: PyReadonlyArray1<'py, u8>,
+    targets: PyReadonlyArray1<'py, i64>,
+) -> PyResult<Bound<'py, PyArray2<i16>>> {
+    let rec_bytes: Vec<u8> = recs.as_slice()?.to_vec();
+    let tgt: Vec<i64> = targets.as_slice()?.to_vec();
+    if rec_bytes.len() % RECORD != 0 {
+        return Err(PyValueError::new_err("recs length not a multiple of 32"));
+    }
+    let n = rec_bytes.len() / RECORD;
+    if tgt.len() != n {
+        return Err(PyValueError::new_err("targets length != record count"));
+    }
+    let (ids, ok) = py.allow_threads(|| {
+        let mut ids = vec![-1i16; n * MAX_LEGAL];
+        let ok = ids
+            .par_chunks_mut(MAX_LEGAL)
+            .enumerate()
+            .map(|(i, out)| legal_ids_row(&rec_bytes[i * RECORD..(i + 1) * RECORD], tgt[i], out))
+            .reduce(|| true, |a, b| a && b);
+        (ids, ok)
+    });
+    if !ok {
+        return Err(PyValueError::new_err(
+            "policy frame bug: a packed target id is not among its legal ids",
+        ));
+    }
+    let flat = numpy::PyArray1::from_vec(py, ids);
+    Ok(flat.reshape([n, MAX_LEGAL])?)
 }

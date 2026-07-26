@@ -119,14 +119,17 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         ema = dict(params) if ema_on else None
 
     mix = [(BulletBin(str(ROOT / p)), w) for p, w in spec["mix"]]
-    # workers/prefetch trimmed 5/8 -> 4/4 (2026-07-25 OOM loop): each in-flight
-    # masked batch holds a (16384,1858) f32 mask ~122 MB; the old queue peaked
-    # >1 GB on a 15 GB box with zram already saturated. ~Halves loader RAM for
-    # a few % throughput.
+    # Loader parallelism. Trimmed 5/8 -> 4/4 during the 2026-07-25 OOM loop
+    # because each in-flight MASKED batch held a dense (batch,1858) f32 mask.
+    # That constraint is GONE: legal_mask="ids" ships (batch,128) i16 = 2.1 MB
+    # instead of 61 MB (29x) and scatters the identical mask on device. So the
+    # default goes back up; both are config-overridable.
     batches = make_mixed_batches(
         mix, cfg, policy=True,
-        legal_mask=bool(spec.get("pol_mask", False)),
-        seed=int(spec["seed"]), workers=4, prefetch=4,
+        legal_mask=(spec.get("pol_mask") if isinstance(spec.get("pol_mask"), str)
+                    else bool(spec.get("pol_mask", False))),
+        seed=int(spec["seed"]),
+        workers=int(spec.get("workers", 6)), prefetch=int(spec.get("prefetch", 8)),
         shuffle_chunk=int(spec.get("shuffle_chunk", 0)),
         total_batches=cfg.batches_per_superbatch * cfg.superbatches,
         skip_batches=cfg.batches_per_superbatch * resume_sb)
