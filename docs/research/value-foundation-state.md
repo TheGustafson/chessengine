@@ -761,6 +761,29 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-27 ~03:1x LEG B VERDICT: RESTORE — SEQUENTIAL WINS; CUT RULE
+## PASSES FOR THE A+B PAIR; S-LEGS + REMATCHES RUNNING
+
+**Leg B (12sb, ~25min, 520k pos/s): top-1 12.2 → 17.5 = statistical
+parity with pre-legs 18.7 (Δ1.2pp < probe SE ±2). CUT RULE PASSES for
+the pair. Value identity EXACT (identical payload checksums; my "11
+DIFFS" scare was a paste-column bug — value-vs-move comparison).**
+THE MTL QUESTION (user): the pre-registered "RESTORE" reading fires —
+**sequential (value trunk → frozen-trunk heads) WINS: value −13.4%
+heldout with policy statistically unchanged.** Not "exceed": 17.5 ≪
+d47p's 26.9 — the 32-wide L2 substrate is V's policy ceiling under ANY
+recipe (D48W's dedicated projection is the fix; W-recipe decision for
+the user: its trunk leg could now drop pol_lambda entirely). pol_ce
+moved only 2.72→2.70 — head capacity, not training time, binds.
+A+B pack: native scale 0.976 (cal 410) — Leg A finished the frame walk.
+NOW RUNNING: S-LegA (GPU; value tune on d47s-sb230, policy frozen, own
+v15 frame) + the A+B rematch pair (CPU; teacher + SF16-EN, same
+protocol as the sb190 anchors −113.4/−141.2). PERF: F′ prefetch
+measured FLAT (−0.8%±noise, 3 rounds) → REVERTED per drop-discipline
+(idea preserved for P4 idle-box retest); D1 deferred (fiddliest +1%,
+real fix = D3 quant unification at next CENN rev); next = C with its
+safety writeup, then E.
+
 ## 2026-07-27 ~02:3x THE LEG-A EARTHQUAKE + sb190 ANCHORS + THE CUT-RULE
 ## DEVIATION (surfaced)
 

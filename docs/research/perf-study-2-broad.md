@@ -13,6 +13,19 @@ never touched (verified: `git status` clean at start and end). Every number
 below marked **[proto]** comes from those scratch builds and is a measurement,
 not a landed change.
 
+> **ADDENDUM (written after the first commit of this file).** A parallel session
+> began landing these recommendations while the study was still being written.
+> **Option A landed as `7f0837a`** ("Finny refresh via bitboard set-diff") with a
+> contended A/B of **854 k → 930 k NPS = +9.0 %**, above the +4–6.5 % band in
+> §6 and above the +6.5–8.5 % band in the first draft — consistent with §5.5's
+> note that a less-contended measurement lands at the upper end. That commit also
+> added a gate this study should have specified: **a 4-position search-identity
+> check at 500 k nodes**, because the cached-diff path only executes inside a
+> search and the 800-FEN eval oracle cannot see it. Adopt that gate for options
+> B, C and G too. **Option B was in the working tree at the time of writing.**
+> Everything below describes the engine at **`b1b9c6f`**, which is the correct
+> baseline for the numbers but is no longer `HEAD`.
+
 ---
 
 ## 0. Headline
@@ -39,7 +52,10 @@ delivered ~3 %.
 | threat channel | 15.1 % | 20.6 % |
 
 **(3) We are 1.41× SF18 on cycles/node (was 1.99×), and the three biggest
-remaining gaps are none of study 1's three.** They are: the **HalfKA Finny
+*actionable* gaps are none of study 1's three.** (The largest aggregate gap is
+still head math, +569 c/n — but it decomposes into four pieces, the biggest of
+which is +145, and one of them, the SKP1 lane, is a term Stockfish simply does
+not have.) The three actionable ones are: the **HalfKA Finny
 refresh** (621 vs 248 c/n, 2.5×), **MovePicker construction** (215 c/n, against
 a Stockfish constructor that zeroes nothing and copies nothing — we zero 2 KB
 and then copy ~2.1 KB per node for a buffer whose unwritten slots are never
@@ -52,9 +68,24 @@ no chess, no arithmetic, no learned term.
 SF-style bitboard set-diff in the Finny refresh, (b) a wide register tile in
 the three fold kernels, and (c) an uninitialised MovePicker buffer produces
 the **identical 800-FEN eval hash**, the **identical 15,001,555-node** bench
-total, a green `cargo test` (660 lib + all integration + `threats_replay_large`),
-**−24.5 % instructions/node** and **≈ −9 to −10 % cycles**. Single best next
-move: **the Finny refresh diff (≈ +6–8 % NPS on its own, one file, bit-identical).**
+total, the **identical default-build depth-6 trailer 701605**, a green
+`cargo test` (660 lib + all integration + `threats_replay_large`),
+**−24.5 % instructions/node** (exact) and **−12 to −13 % cycles/node** →
+**≈ +14 % NPS**. The MovePicker item alone is worth **+16 to +34 % NPS in the
+classical PSQT build**, where the same fixed 215 c/n tax is ~25 % of a node
+instead of ~4.6 %.
+
+**Single best next move: the Finny refresh diff** — one function
+(`sota_accumulator.rs:225-301`), provably bit-identical, ≈ **+4 to +6.5 % NPS**,
+already written and green in the scratch tree.
+
+**(5) One study-1 recommendation is retired by measurement.** Study 1's option F
+(fold-kernel address hoisting) landed, delivered ~2 % of the program's gain, and
+**failed the abort criterion study 1 itself wrote for it**: the kernels'
+*dynamic* zmm share did not move (1.5 % → 1.45 %). The suspected skid was skid.
+And Stockfish has since **deleted** the compile-time count-specialisation that
+study 1 held up as the reference technique (`86beb0f5`, 2026-07-16). Do not
+pursue that line further; §6 option B replaces it.
 
 ---
 
@@ -272,6 +303,32 @@ The threat channel's *share* rose from 15.1 % to 20.6 % exactly as study 1 §7
 step 5 predicted ("~19–21 % purely by deflation of everything else"). Its
 absolute cost barely moved.
 
+### 2.3a Position-mix sensitivity (quote the workload with any share)
+
+Same binary, same fixed-node protocol, the **middlegame-heavy default bench
+FEN set** (14,101,474 nodes) instead of wl50. Shares only — that run overlapped
+another benchmark, so its absolute c/n is not usable:
+
+| symbol / block | wl50 (endgame-heavy) | default FENs (middlegame-heavy) |
+|---|---:|---:|
+| `i8_deltas_into_inner` (threat fold) | 10.00 % | **14.33 %** |
+| `ThreatContext::at_full` | 5.34 % | **7.01 %** |
+| `record_square_touch` | 2.94 % | 3.02 % |
+| **threat channel total** | **20.6 %** | **≈ 25.4 %** |
+| `finny_refresh_into` + `i16_deltas_inner` | 12.57 % | 10.47 % |
+| `i16_deltas_into_inner` (HalfKA fold) | 5.09 % | 6.06 % |
+| `next_move` | 10.39 % | 9.77 % |
+| `make_move_with` | 6.04 % | 6.79 % |
+| `activate_inner` | 5.08 % | 4.07 % |
+| `l1_dot_inner` | 5.29 % | 4.38 % |
+
+Real games sit at or beyond the default-FENs end. The threat channel is ~5
+points more expensive there (study 1 saw the same +3-point shift); the Finny
+refresh is ~2 points *less* expensive but still ~10.5 %; the shell items are
+mix-insensitive. **The option ranking in §6 does not change**, but the threat
+rows in §4 are the favourable end for us and the head rows the unfavourable
+end.
+
 ### 2.4 What the four landed options actually bought (matched profiles, c/n)
 
 | symbol | old (`bf3ec90`) | new (`b1b9c6f`) | Δ |
@@ -400,9 +457,9 @@ Prototype §5.2 tests the tile-width fix directly.
 
 | region | % of symbol | content |
 |---|---:|---|
-| +0x200 | **26.7 %** | `mov` 56 / `and` 5 / `lea` 5 — object field reload + stage dispatch |
-| +0x2600 | **23.1 %** | `mov` 34 / `add` 12 / `movswl` 8 — **the quiet scorer** |
-| +0x0 | 15.5 % | `mov` 45 / `and` 17 / `movabs` 7 / `push` 6 — prologue, spills, tunable-param loads |
+| +0x200 | **26.7 %** | `mov` 56 / `and` 5 / `lea` 5 — mov-dominated; by source line this is where `movepick.rs:361/363` (function entry + `match self.stage`) attribute, i.e. field reload and stage dispatch |
+| +0x2600 | **23.1 %** | `mov` 34 / `add` 12 / `movswl` 8 — **the quiet scorer** (`movepick.rs:605-608`) |
+| +0x0 | 15.5 % | `mov` 45 / `and` 17 / `movabs` 7 / `push` 6 — prologue, register spills, 64-bit immediates (the tunable-parameter reads) |
 | +0x2a00 | 7.2 % | stage transition |
 | +0x2800 | 6.3 % | good-capture SEE split |
 | +0x3000 | 5.4 % | epilogue |
@@ -439,9 +496,13 @@ Source-line attribution on the line-tables build, as **% of the whole program**:
 
 | line | % of program | what |
 |---|---:|---|
-| `board.rs:1068` | **3.22** | `StateInfo { copied: prev.copied, ..StateInfo::EMPTY }` — building a 224-byte record on the stack |
+| `board.rs:1068` | **3.22** | `StateInfo { copied: prev.copied, ..StateInfo::EMPTY }` — materialising a 224-byte record on the stack |
 | `alloc .../vec/mod.rs:1933` | **2.30** | `self.states.push(st)` — 7 × `vmovups ymm` load + 7 × store, i.e. **copying the same 224 bytes again** |
 | everything else in the symbol | ~0.8 | the actual chess |
+
+The first row is **not** all waste — §5.4 proves LLVM already dead-stores the
+`..StateInfo::EMPTY` zeroes, so 3.22 % is the carried-prefix copy plus the real
+per-move field writes. The second row is pure waste.
 
 Disassembly confirms both: `imul $0xe0,%rdi,%rdi` fixes `size_of::<StateInfo>()`
 at **0xe0 = 224 bytes**, and the +0xb0a region is a clean 7-register ymm
@@ -606,15 +667,21 @@ the PSQT rows, and the copy-out are untouched.
 
 | | baseline | **P4** |
 |---|---:|---:|
-| instructions/node | 9273.9 | **8831.5** (−4.8 %) |
-| branch-misses/node | 23.4 | **20.9** (−10.7 %) |
-| cycles/node (interleaved) | see §5.5 | **−6 to −8 %** |
+| instructions/node (deterministic) | 9273.9 | **8831.5 (−4.77 %)** |
+| branch-misses/node | 23.4 | **20.9 (−10.7 %)** |
+| cycles/node | — | **−4 to −6 %** (see §5.5 for the noise) |
 | 800-FEN hash | `0615d75e…c92eb` | **identical** |
 | bench node total | 15,001,555 | **identical** |
 
 The branch-miss drop is the tell: the 32-element sort and 64 binary searches are
 data-dependent branch storms, and their cost was being skidded onto neighbouring
 instructions (which is why source-line attribution only showed ~1.8 %).
+
+The −4 to −6 % band is the *physics* estimate, and it is the one to trust: 442
+instructions/node removed at the engine's measured IPC of ~1.95 is 227 c/n
+(4.8 %), plus 2.5 fewer mispredicts/node at ~15–18 cycles is another 38–45 c/n
+(0.8–1.0 %), minus overlap. Individual interleaved rounds ranged from −7.9 %
+to +6.7 % — that spread is box noise, not signal (§5.5).
 
 Not yet prototyped, and additive: **fuse the copy-out** (store the tile to both
 the cache entry and the ply slot inside one loop, SF-style) — that removes the
@@ -663,13 +730,36 @@ initialiser and is never zeroed**, the object is constructed in place as a
 `search()` local, and copy/assign are `= delete`d (`movepick.h:39-40`).
 
 **Prototype** (uninitialised buffer only; the constructor's return copy also
-disappears once the initialiser is gone):
+disappears once the initialiser is gone — the instruction saving is 327/node,
+far more than the ~70 a bare `memset` would account for):
 
 | | baseline | **P1** |
 |---|---:|---:|
-| instructions/node | 9273.9 | **8946.5** (−3.5 %) |
-| cycles/node | — | **−1.0 %** |
+| instructions/node (deterministic) | 9273.9 | **8946.5 (−3.53 %)** |
+| cycles/node | — | **−2.5 to −4.5 %** |
 | hash / node total | — | identical |
+
+The cycle band is wider than the instruction cut because the change also removes
+**~1.6 KB/node of store traffic** (2048 B zero + ~2.1 KB copy × 0.393 calls);
+at Zen 4's ~64 B/cycle L1 write bandwidth that alone is ~26 c/n before the loads.
+The 8-round order-balanced median was −4.7 %, individual rounds −9.2 % to +16 %.
+
+**Independent confirmation from the classical build.** `movepick.rs` is not
+feature-gated, so P1 also changes the **default (PSQT-eval) build** — where the
+MovePicker tax is a much larger share of a much cheaper node. Both binaries were
+built `--release` with no features:
+
+| default build, `bench 16 1 <d> default depth` | nodes | base NPS | P1 NPS | Δ |
+|---|---:|---:|---:|---:|
+| depth 6 (the pinned trailer) | **701,605** (both) | 2,840,506 | 3,813,070 | **+34 %** |
+| depth 9, median of 3 | **772,002** (both) | 2,980,702 | 3,461,892 | **+16 %** |
+
+Two things follow. First, **the pinned D24 trailer 701605 reproduces exactly on
+both sides** — the change is node-identical in the default build, which is the
+gate option C has to pass. Second, a ~215 c/n fixed tax is ~4.6 % of an
+NNUE node and ~25 % of a PSQT node, and the classical build measures exactly
+that. (These runs are 180–250 ms, so their NPS is individually noisy; the node
+totals are exact.)
 
 **The same pattern appears in three more places** (all from the callgrind
 call-site table, all deterministic):
@@ -714,21 +804,50 @@ child state in place through `states[n]` while the function still reads
 `self.st()` as the parent throughout. That is a genuine refactor of a 240-line
 safety-critical function, and it is priced as such in §6.
 
-### 5.5 Combined, and the correctness evidence
+### 5.5 Combined, the noise budget, and the correctness evidence
 
-`protoALL` = P4 + P2(REGS=8) + P1:
+`protoALL` = P4 + P2(REGS = 8) + P1:
 
 | | baseline | **protoALL** |
 |---|---:|---:|
-| instructions/node | 9273.9 | **7000.2 (−24.5 %)** |
+| instructions/node (deterministic) | 9273.9 | **7000.2 (−24.52 %)** |
 | branch-misses/node | 23.4 | **19.4 (−17 %)** |
-| cycles/node (interleaved pairs) | — | **−9 to −10 %** |
+| **cycles/node** | — | **−12 to −13 %** |
 | 800-FEN eval hash | `0615d75e…c92eb` | **identical** |
 | bench node total | 15,001,555 | **identical** |
-| `cargo test --release --features sota,arch-d47v` | — | **660 lib + 24 UCI + all integration: 0 failed** |
+| `cargo test --release --features sota,arch-d47v` | — | **660 lib + 24 UCI + all integration suites: 0 failed** |
 | `-- --ignored threats_replay_large` | — | **ok** |
 
-Sub-additivity is expected: P4 and P2 both target the same memory-bound region.
+**How the cycle band was derived, and why it is a band.** Twenty-four paired
+runs were taken: 4 rounds in the order `base, P4, P2, P1, ALL`, 4 rounds in the
+exact reverse order (to cancel any within-round drift), and 2 further ABBA
+blocks `base, ALL, ALL, base`. Order-balanced medians over the 8 rounds:
+
+| prototype | Δ instructions/node (exact) | Δ cycles/node, median of 8 | per-round range |
+|---|---:|---:|---:|
+| P4 (Finny diff) | **−4.77 %** | −1.6 % | −5.4 % … +6.7 % |
+| P2 (fold tile) | **−16.21 %** | −4.0 % | −9.0 % … +12.2 % |
+| P1 (MovePicker) | **−3.53 %** | −4.7 % | −9.2 % … +16.1 % |
+| **ALL** | **−24.52 %** | **−13.3 %** | −5.6 % … −20.9 % |
+
+The per-prototype medians are individually unreliable (P1 cannot really beat P2
+when it removes a fifth of the instructions P2 does) — the co-resident load rose
+from ~4 to ~7.7 during the session and swamped the small deltas. Three things
+make **−12 to −13 % for the combination** the defensible number:
+
+1. it is the median of the *largest* effect, the only one comfortably above the
+   noise floor, and it is negative in every one of the 10 paired blocks;
+2. the physics estimate from the deterministic counters agrees:
+   2274 fewer instructions/node, of which the fold-kernel share (1504) sits in
+   memory shadow and converts at ~20 %, while the Finny/MovePicker share (770)
+   converts near the engine IPC of 1.95, plus 4 fewer mispredicts/node →
+   ≈ −11 to −13 %;
+3. the sum of the individual physics estimates (−5, −3, −4) reproduces it.
+
+Sub-additivity is expected anyway: P4 and P2 target the same memory-bound region.
+**On a quiet box the number should sit at the upper end** — the contention
+penalises the memory-bound baseline and the memory-bound prototype about
+equally, which compresses the ratio.
 
 ---
 
@@ -743,8 +862,9 @@ multiplies NPS by `1/(1−f)`; house rule ~1 Elo per 1 % NPS at 10+0.1
 - **Measured basis:** `finny_refresh_into` 278 c/n + `i16_deltas_inner` 315 c/n
   + 1536 B copy-out ≈ 28 c/n = **621 c/n = 13.2 % of cycles**; SF's equivalent
   is 248 c/n.
-- **Measured gain [proto]: −4.8 % instructions/node, −10.7 % branch-misses/node,
-  −6 to −8 % cycles → ≈ +6.5 to +8.5 % NPS.**
+- **Measured gain [proto]: −4.77 % instructions/node and −10.7 %
+  branch-misses/node (both deterministic), ⇒ −4 to −6 % cycles →
+  ≈ +4 to +6.5 % NPS.**
 - **Effort:** low. One function (`sota_accumulator.rs:225-301`) plus the
   `FinnyEntry` field swap. Half a day.
 - **Correctness risk: low.** The accumulator arithmetic is untouched; only the
@@ -762,9 +882,11 @@ multiplies NPS by `1/(1−f)`; house rule ~1 Elo per 1 % NPS at 10+0.1
 
 - **Measured basis:** three kernels, 1026 c/n = 21.8 % of cycles; SF's
   equivalent tile is 16 registers wide.
-- **Measured gain [proto]: −16.2 % instructions/node, ≈ −2.5 to −3 % cycles →
-  ≈ +2.5 to +3 % NPS.** The instruction saving does **not** convert, because the
-  kernels are DRAM/L2-latency bound (53 % of all DRAM fills).
+- **Measured gain [proto]: −16.21 % instructions/node (deterministic), ≈ −3 to
+  −4 % cycles → ≈ +3 to +4 % NPS.** The instruction saving does **not** convert
+  1:1 — only about a fifth of it does — because the kernels are DRAM/L2-latency
+  bound (53 % of all DRAM fills). This is the single most useful negative
+  result in the study: *tile width fixes the issue pressure, not the stall.*
 - **Effort:** low (≈ 1 day; three avx512 kernels, and the avx2 twins for
   portability parity).
 - **Correctness risk: very low; bit-identity is provable** (per-lane wrapping
@@ -778,10 +900,13 @@ multiplies NPS by `1/(1−f)`; house rule ~1 Elo per 1 % NPS at 10+0.1
 - **Measured basis:** `MovePicker::new` 169 c/n + 42 % of the engine's memcpy
   (≈ 46 c/n) = **215 c/n = 4.6 % of cycles**, all of it zeroing and copying
   2 KB that no stage reads.
-- **Measured gain [proto, unsafe form]: −3.5 % instructions/node, −1.0 %
-  cycles → ≈ +1.0 to +1.5 % NPS.** (The prototype removed the zero-fill; the
-  return copy needs the in-place construction to fully vanish, so the landed
-  ceiling is somewhat higher than measured.)
+- **Measured gain [proto, unsafe form]: −3.53 % instructions/node
+  (deterministic) and ~1.6 KB/node less store traffic ⇒ −2.5 to −4.5 % cycles →
+  ≈ +2.5 to +4.5 % NPS.** This is larger than it first looks and is comparable
+  to option A — the 8-round order-balanced median was −4.7 % cycles. Note the
+  measured instruction saving (327/node) is ~4× what a bare `memset` would
+  account for, so removing the initialiser also let LLVM drop the constructor's
+  return copy.
 - **Effort: medium.** The correct implementation is
   `buf: [MaybeUninit<ExtMove>; MAX_MOVES]` with `write` at the fill sites and
   `assume_init_ref` at the five region reads — mechanical but it touches every
@@ -793,9 +918,11 @@ multiplies NPS by `1/(1−f)`; house rule ~1 Elo per 1 % NPS at 10+0.1
   asserted on every read, compiled out in release (the `assert_consistent`
   precedent).
 - **Validation class: bit-identical (sha) + node-identical.** Verified on the
-  prototype. Also re-run the **default-build depth-6 bench** (`tools/check.sh`,
-  trailer **701605**) — `movepick.rs` is not feature-gated, so this option
-  changes the default build too.
+  prototype in **both** builds: the sota build's 15,001,555-node total and the
+  **default build's pinned depth-6 trailer 701605** both reproduce exactly
+  (`movepick.rs` is not feature-gated). The classical build, where this tax is
+  ~25 % of a node instead of ~4.6 %, measured **+16 % to +34 % NPS** — an
+  independent confirmation of the mechanism (§5.3).
 
 ### Option D — `activate_inner`: i32 → i16 pipeline (split in two)
 
@@ -907,9 +1034,13 @@ inference change, and it must be scheduled with the trainer, not the engine.
 Ordering is (measured gain × confidence) ÷ (effort × risk), and puts every
 provably bit-identical item before every arguable one.
 
-**Step 1 — Option A (Finny bitboard diff).** ≈ **+6.5–8.5 % NPS**, half a day,
+**Step 1 — Option A (Finny bitboard diff).** ≈ **+4–6.5 % NPS**, half a day,
 bit-identical, already prototyped and green.
-*Acceptance:* (a) 800-FEN hash exactly `0615d75e5c9487b6f6c66255d3c1d67789f46471d4c8eaec41580e3c070c92eb`;
+*Acceptance:* (a) 800-FEN hash exactly `0615d75e5c9487b6f6c66255d3c1d67789f46471d4c8eaec41580e3c070c92eb`
+— **but note this oracle is blind to option A**: the cached-diff path only runs
+inside a search, so add a **multi-position search-identity check at ≥ 500 k
+nodes** (the gate `7f0837a` actually used, and the right gate for B, C and G as
+well);
 (b) fixed-node bench total exactly **15,001,555** on
 `bench 16 1 300000 wl50.fens nodes`; (c) `cargo test --release --features
 sota,arch-d47v` green including `--ignored threats_replay_large`;
@@ -918,7 +1049,7 @@ instructions/node from 9273.9 to ~8831.5 (both deterministic — they must match
 to the digit); (e) paired interleaved cycles/node ≥ −5 %.
 *Abort if:* the eval hash moves at all.
 
-**Step 2 — Option B (wide fold tile, REGS = 8).** ≈ **+2.5–3 % NPS**, 1 day,
+**Step 2 — Option B (wide fold tile, REGS = 8).** ≈ **+3–4 % NPS**, 1 day,
 bit-identical, prototyped and green.
 *Acceptance:* (a) hash unchanged; (b) node total unchanged;
 (c) instructions/node falls to ~7770 (≈ 7000 stacked on step 1);
@@ -934,17 +1065,24 @@ failure mode is a clean revert.
 *Abort if:* NPS does not improve — study 1's NNUE-prefetch attempt lost 2.5 %,
 so treat a null result as a real possibility and revert without argument.
 
-**Step 4 — re-measure.** After steps 1–3 the engine should be near
-**4200–4350 cycles/node** (from 4713), i.e. **1.25–1.30× SF18** rather than
-1.41×. Re-run the flat profile and the differential; the shell's share will rise
-past 40 % and the ranking below should be re-taken on fresh numbers.
-
-**Step 5 — Option C (MovePicker `MaybeUninit`).** +1.0–1.5 %, 1 day, needs the
-typed-`MaybeUninit` refactor and a `#[deny(unsafe_code)]` exemption with a
-written safety argument plus a debug-only written-tracker.
+**Step 4 — Option C (MovePicker `MaybeUninit`).** ≈ **+2.5–4.5 % NPS** — the
+second-largest single item, and comparable to step 1 — but it is third in the
+order because it is the first item that is not provably safe: it needs the typed
+`[MaybeUninit<ExtMove>; 256]` refactor, a `#[deny(unsafe_code)]` module
+exemption with a written safety argument, and a debug-only written-slot tracker.
+1 day. Extend the same treatment to `MoveList::new` and `forward_into`'s
+`ft`/`nnz` in the same commit (§5.3 table) — same fix, same argument,
+another ~0.5 %.
 *Acceptance:* hash + node total unchanged, **and the default-build depth-6 bench
 trailer reproduces 701605** (`tools/check.sh`) — this option is not
-feature-gated.
+feature-gated. Plus: `cargo +nightly miri` or at minimum a debug-assertions run
+of the full test suite, since the failure mode is UB, not a wrong score.
+
+**Step 5 — re-measure.** After steps 1–4 the engine should be near
+**4050–4250 cycles/node** (from 4713), i.e. **1.21–1.27× SF18** rather than
+1.41×. Re-run the flat profile and the differential on a **quiet box** (this is
+the single biggest improvement available to the measurement itself); the shell's
+share will rise past 40 % and the ranking should be re-taken on fresh numbers.
 
 **Step 6 — Option D (`activate` i16 pipeline).** +2–2.5 %, 1–2 days, and the
 only remaining item where our SIMD is genuinely half-width. Gate on a written
@@ -955,9 +1093,10 @@ exact-integer-equivalence proof plus a scalar-vs-SIMD parity test; if the
 `make_move` in-place refactor (+2–2.5 %, high effort, D24 perft ritual
 mandatory). Consider the cheaper `StateInfo`-shrink partial first.
 
-Cumulative, sub-additively: steps 1–3 ≈ **+10 %**, steps 1–6 ≈ **+14–16 %**,
-everything ≈ **+18 %**, which would put us at roughly **1.15–1.20× SF18
-cycles/node** on this workload.
+Cumulative, sub-additively: steps 1–2 ≈ **+8 %** (both provably bit-identical
+and both already written), steps 1–4 ≈ **+12–14 %** (this is the protoALL
+measurement plus the prefetch), steps 1–6 ≈ **+15 %**, everything ≈ **+18 %**,
+which would put us at roughly **1.15–1.20× SF18 cycles/node** on this workload.
 
 ### 7.1 Interaction with the v1 release campaign
 
@@ -966,20 +1105,25 @@ cycles/node** on this workload.
 **P3 — search fit** and *before* **P5 (T11 disagreement head)** and
 **P6 (full SPSA)**. Implications:
 
-1. **Steps 1–3 are safe to land during P2/P3.** All three are bit-identical or
-   architecturally inert, so they change **no** game result at fixed nodes and
-   cannot invalidate a running gate. They *do* change equal-time results — which
-   is the point — so any equal-time match already in flight (the S2a-vs-S2
-   equivalence match was live during this study) must be finished or restarted,
-   not straddled.
-2. **Do not land steps 5–7 between the SPSA baseline and the SPSA run.** Search
-   parameters tuned at one NPS do not transfer cleanly to another; anything that
-   moves NPS by > 5 % belongs *before* P6, not during it.
-3. **The bench trailer.** Steps 1, 2, 4 and 6 touch `sota`-gated code only and
-   cannot move the default-build depth-6 bench (**701605**); steps 3, 5 and 7
-   touch `board.rs`/`movepick.rs` in the default build and **must** reproduce
-   701605 bit-for-bit or be declared functional. Step 7 additionally triggers the
-   **D24 perft ritual** (`cargo test --release -- --ignored perft_full_suite`).
+1. **Steps 1–4 are safe to land during P2/P3.** Every one of them is
+   bit-identical at the eval, node-identical in the search, or architecturally
+   inert, so none changes a game result at **fixed nodes** and none can
+   invalidate a running fixed-node gate. They *do* change **equal-time**
+   results — which is the point — so any equal-time match already in flight
+   (an `S2a`-vs-`S2` equivalence match was live throughout this study) must be
+   finished or restarted, never straddled.
+2. **Do not land anything from steps 6–7 between the SPSA baseline and the SPSA
+   run.** Search parameters tuned at one NPS do not transfer cleanly to another;
+   anything moving NPS by > 5 % belongs *before* P6, not during it. By the same
+   logic, land steps 1–4 **before** the P3 `s4-searchgap` small SPSA if you want
+   its priors to be tuned at the shipping NPS.
+3. **The bench trailer.** Steps 1, 2, 6 and the `current_full` half of step 7
+   touch `sota`-gated code only and cannot move the default-build depth-6 bench
+   (**701605**). Steps 3 (`board.rs` prefetch hook), 4 (`movepick.rs`) and the
+   `make_move` half of step 7 **do** change the default build and must reproduce
+   **701605** bit-for-bit or be declared functional. The `make_move` item
+   additionally triggers the **D24 perft ritual**
+   (`cargo test --release -- --ignored perft_full_suite`).
 4. **PGO is still unmeasured and is P4's own item.** Nothing here overlaps it;
    PGO should be measured *after* steps 1–3 so it optimises the shape we ship.
 5. **The equal-time distillation gate benefits directly.** At 10+0.1 a +10 %
@@ -990,12 +1134,17 @@ cycles/node** on this workload.
 
 ## 8. UNCERTAINTIES AND THREATS TO VALIDITY
 
-1. **The box was busier than in study 1** — GPU trainer plus a live 4-process
-   fastchess match, load 4–7. NPS varied ±10 % and even `cycles:u` ±6 % for the
-   *same* binary within the hour. All A/B claims are interleaved; all
-   prototype claims are anchored on `instructions:u`, which is exactly
-   reproducible. Absolute NPS figures here must not be compared to any other
-   session's.
+1. **The box was busier than in study 1, and got worse during the session.**
+   A GPU trainer (93–96 % GPU, 176–258 % CPU) plus a live 4-process fastchess
+   match throughout; load average climbed 4.2 → 7.7 over the ~2 hours. The same
+   baseline binary on the same workload measured **4482 – 7147 cycles/node** and
+   **594 k – 1169 k NPS**. All A/B claims are interleaved and order-balanced; all
+   prototype claims are anchored on `instructions:u`, which reproduced to the
+   digit across every run. **No absolute NPS figure here should be compared to
+   any other session's**, and the cycle-delta bands in §5.5 are wide for a
+   reason. The single highest-value follow-up to this study is to re-run §5.5's
+   A/B on an idle box — it would turn ±5-point bands into ±1-point ones for
+   about 20 minutes of machine time.
 2. **One measurement round was silently contaminated** by an earlier background
    benchmark that had not exited; it showed P4 *slower* than baseline. It was
    discarded and re-run after killing the stray process. Mentioning it because
@@ -1017,11 +1166,12 @@ cycles/node** on this workload.
    `MoveSorter`, the mailbox-compare refresh diff — I said so at the citation.
    The tiling, TT geometry and `do_move` prefix-copy facts were confirmed
    identical at `sf_18`.
-6. **Position mix.** wl50 is endgame-heavy (study 1 §1.5 measured the threat
-   share ~3 points higher on middlegame-heavy positions). I did **not** re-run
-   the middlegame-heavy profile this session; treat the threat-channel rows as
-   the favourable end for us, and the Finny/MovePicker/state rows as roughly
-   mix-independent (they scale with nodes, not with material).
+6. **Position mix.** wl50 is endgame-heavy. §2.3a re-ran the middlegame-heavy
+   default-FEN profile: the threat channel is ~5 points more expensive there
+   (20.6 % → ~25.4 %) and the Finny refresh ~2 points cheaper (12.6 % → 10.5 %),
+   while the shell items are mix-insensitive. §4's threat rows are therefore the
+   favourable end for us. That profile ran concurrently with another benchmark,
+   so only its *shares* are quoted, never its absolutes.
 7. **Prototype P1 is UB as written** and its measured gain is therefore a
    *ceiling on the mechanism*, not a promise about the safe implementation. The
    typed-`MaybeUninit` version may retain a little of the cost.
@@ -1045,7 +1195,25 @@ Session-local, not committed, under
 - `cg-ours.out` — callgrind call counts (1,000,761 nodes, AVX2 path)
 - `opc2.py` (opcode / register-width / 512 B-region mix), `ann.py`
   (instruction-level annotate), `flat.sh`, `pair.sh`, `pstat.sh`
+- `p768-def.data` — middlegame-heavy (default-FEN) profile, §2.3a
+- `final-pstat.txt` / `rev-pstat.txt` / `abba-all.txt` — the order-balanced
+  prototype A/B rounds behind §5.5
 - `proto/` (option B), `proto2/` (C), `proto3/` (the dead end), `proto4/` (A),
   `protoALL/` (A+B+C) — throwaway `git archive HEAD` trees; binaries
-  `bin-p1/p2/p2r4/p2r12/p2r24/p3/p4/all`
+  `bin-p1/p2/p2r4/p2r12/p2r24/p3/p4/all`, plus `tgdef/` and `tgdef2/`
+  (default-build baseline and P1 for the 701605 trailer check)
 - `eval800-S2.txt` — the 800 integer-cp reference column
+
+**Reproduction one-liners.**
+
+```bash
+# the eval-identity gate
+./binary nnue-eval /tmp/d47v-sb100-nocpol.cenn < tools/nnue/calib/scale-check-800.fens | sha256sum
+#   -> 0615d75e5c9487b6f6c66255d3c1d67789f46471d4c8eaec41580e3c070c92eb
+# the search-identity gate (sota build)
+taskset -c 4 ./binary bench 16 1 300000 $S/wl50.fens nodes /tmp/d47v-sb100-nocpol.cenn
+#   -> Nodes searched  : 15001555
+# the D24 trailer (default build)
+taskset -c 4 ./target/release/chessengine bench 16 1 6 default depth
+#   -> Nodes searched  : 701605
+```
