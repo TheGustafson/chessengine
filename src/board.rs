@@ -1065,17 +1065,29 @@ impl Board {
         // "memcpy up to key" (D8). The push happens at the very end, so
         // `self.st()` refers to the PREVIOUS state throughout; its blockers
         // feed the ep-legality test in step 8, so grab them now.
-        let (mut st, mut k, prev_blockers) = {
-            let prev = self.st();
-            (
-                StateInfo {
-                    copied: prev.copied,
-                    ..StateInfo::EMPTY
-                },
-                prev.key ^ ZOBRIST.side,
-                prev.blockers_for_king,
-            )
+        // Perf study #2 option E: construct the child IN PLACE. The states
+        // Vec is taken out (a 24-byte pointer swap) so a &mut into its new
+        // tail can coexist with the &self/&mut self board calls below —
+        // none of which touch `states` (audited; the one states read, the
+        // step-13 repetition walk, runs against this same local vec after
+        // NLL ends the &mut). The old shape built a 224-byte stack temp and
+        // memcpy'd it at the end-push (2.30% of ALL cycles, study §5.4).
+        // Panic-safety: a panic mid-make leaves `self.states` empty — but a
+        // make_move panic is already a fatal invariant violation.
+        let mut states = std::mem::take(&mut self.states);
+        let (mut k, prev_blockers) = {
+            let prev = states.last().expect("state stack never empty");
+            (prev.key ^ ZOBRIST.side, prev.blockers_for_king)
         };
+        {
+            let prev_copied = states.last().expect("state stack never empty").copied;
+            states.push(StateInfo {
+                copied: prev_copied,
+                ..StateInfo::EMPTY
+            });
+        }
+        let child_idx = states.len() - 1;
+        let st = &mut states[child_idx];
 
         // Step 2: counters.
         self.game_ply += 1;
@@ -1269,7 +1281,7 @@ impl Board {
         // Step 12: flip the side to move, then rebuild the check
         // bookkeeping for the new side.
         self.side_to_move = them;
-        self.set_check_info(&mut st);
+        self.set_check_info(st);
 
         // Step 13: repetition scan (doc 04 §3.9). The window is
         // min(rule50, plies_from_null): a capture/pawn move makes earlier
@@ -1277,26 +1289,30 @@ impl Board {
         // its side of the boundary. RAW keys — rule50 folding is TT-only.
         // `plies_from_null` never exceeds the plies recorded on this stack,
         // so `n - i` cannot underflow (doc 04 §3.3).
-        st.repetition = 0;
+        let child_key = st.key;
         let end = st.copied.rule50.min(st.copied.plies_from_null);
+        let mut repetition = 0;
         if end >= 4 {
-            let n = self.states.len(); // the new state's index once pushed
+            // `st`'s borrow ends above (NLL); the walk reads ancestors in
+            // the same local vec. `child_idx` == the old pre-push len, so
+            // the `n - i` arithmetic is unchanged.
             let mut i = 4;
             while i <= end {
-                let earlier = &self.states[n - i as usize];
-                if earlier.key == st.key {
+                let earlier = &states[child_idx - i as usize];
+                if earlier.key == child_key {
                     // +d: first repeat, d plies back. -d: that occurrence
                     // was itself a repeat — at least threefold.
-                    st.repetition = if earlier.repetition != 0 { -i } else { i };
+                    repetition = if earlier.repetition != 0 { -i } else { i };
                     break;
                 }
                 i += 2;
             }
         }
+        states[child_idx].repetition = repetition;
 
         // Step 14: publish. Debug builds run the full invariant oracle at
         // every node (doc 04 §3.12, D24); release compiles it out.
-        self.states.push(st);
+        self.states = states;
         #[cfg(debug_assertions)]
         self.assert_consistent();
     }
