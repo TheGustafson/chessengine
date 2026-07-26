@@ -720,3 +720,28 @@ ft_sparsity_lambda 0.001 vs 0.0, comparing heldout value + screens +
 the packed nets' NPS measured properly on an IDLE box. That tests
 capacity, speed, and the regularization story at once. Do NOT change
 mid-D47P.
+
+## SPARSITY vs WIDTH: WHAT THE PROFILE MUST ANSWER (user Q, 2026-07-25 ~23:1x)
+"Does the sparse incentive just make our network smaller? Is it an
+argument for a smaller net?" — No, but the way it is no is actionable.
+  * Sparsity = CONDITIONAL COMPUTATION, not a smaller net. 1280-wide at
+    27% density and dense-345-wide do the same average L1 work, but the
+    sparse-wide net has a far larger DICTIONARY and picks a different
+    subset per position (endgame features dormant in middlegames). More
+    expressive at equal average FLOPs.
+  * BUT the equivalence covers only the L1 matmul. The INCREMENTAL
+    ACCUMULATOR UPDATE costs in proportion to accumulator WIDTH,
+    independent of density — sparsity buys nothing there.
+    - sparsity: cheaper L1, same accumulator, MORE capacity
+    - smaller net: cheaper L1 AND accumulator, LESS capacity
+  * So "smaller net" only wins if L1 matmul is the bottleneck. Our
+    evidence says it is NOT (D47M ~40% less real L1 work than the
+    champion, identical NPS). Uncomfortable implication: if L1 is not
+    the bottleneck, WIDTH (which also cuts accumulator cost) is the real
+    speed knob — and width is exactly where capacity lives.
+**=> WE ARE ARGUING FROM A PROFILE WE DO NOT HAVE.** One ~1h perf
+profile (accumulator update vs find_nnz scan vs L1 matmul vs L2/L3 vs
+non-eval node cost) settles THREE open questions at once: the
+ft_sparsity penalty, the FT permutation payoff, and the width question.
+RECOMMENDATION: pull this profile EARLY in the optimization phase — it
+is the measurement three decisions are blocked on.
