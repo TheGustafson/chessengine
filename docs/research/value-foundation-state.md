@@ -683,6 +683,23 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## 2026-07-26 ~14:4x LEAF-DUTY PANEL — THE BIG-TRUNK PREMIUM IS EARNED
+## (d47s out-ranks SF18's evaluator on BOTH populations, mid-training)
+
+2400 sharp positions (post-capture/in-check, the population search spends
+nodes on), fresh SF18@50k labels. TRAP CAUGHT: SF's static eval REFUSES
+in-check positions (582 silently skipped) — first read showed "SF18 leads
+sharp"; on the identical 1817-position intersection the verdict FLIPS:
+d47s-sb150 0.8070 > d47p 0.8006 > SF18 0.7909 > SF16 0.7563 (Spearman,
+transform-invariant). Quiet set: d47s 0.9024 > SF18 0.8982. d47s also
+ranks the 582 in-check positions at 0.7278 — SF static abstains entirely.
+READING: SF18's remaining EVAL edge is CALIBRATION ONLY (affine-MAE
+column) = exactly D47S's double-sigmoid target; their game dominance is
+therefore search-mechanical (enumerable — 3 chimera absences found
+tonight) + margin-calibration. The user's identity bet ("if our net is
+bigger it HAS to be better than SF18's") is CONFIRMED at the strongest
+static measure available, at sb150/240 with 90sb of cosine remaining.
+
 ## 2026-07-26 ~14:0x ★ STRATEGIC IDENTITY RULING (user): BEAT SF18 AT EQUAL
 ## TIME VIA QUALITY-PER-NODE — THE BIG-INTELLIGENT-TRUNK BET ★
 
