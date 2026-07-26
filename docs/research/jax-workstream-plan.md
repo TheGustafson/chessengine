@@ -909,8 +909,13 @@ DECLINED / DEPRIORITIZED:
    checkpoint, and (b) UCB — concentrate EXTRA games on leading
    checkpoints instead of spreading evenly (same budget, better spent).
    Our ±30 screens are too noisy to select on naively, which is exactly
-   what UCB fixes. Verdict: modest-EV process improvement, not a
-   priority. Revisit if checkpoint selection ever looks like it cost us.
+   what UCB fixes. **User accepted this reframing ("fair about the
+   gauntlet").** REVISED VERDICT: the concurrency objection is moot (we
+   already pay it, for free); what stays on the list is the cheap half —
+   SHIP THE ARGMAX of checkpoint screens rather than the final/EMA net,
+   with UCB concentrating extra games on the leaders. Modest EV, zero
+   extra GPU cost, folds naturally into settle-battery practice. Not a
+   priority; do it when a settle battery next needs designing.
  * RangerLite/PNM/Lookahead (EMA fills the role), SWA, L1-layer
    factorization, adaptive piece-count rebalancing, their head topology
    ([x²,x] concat + linear bypass — interesting but needs new SIMD +
