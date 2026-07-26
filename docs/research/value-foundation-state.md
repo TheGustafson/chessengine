@@ -920,7 +920,16 @@ cfut, pcut (~2h). sb120 in-frame heldout next firing.
 6. `bash tools/nnue/d47s_pipeline.sh sf`          (SF16 both legs, pinned harness
    — the before/after vs sfbase-d47p-pre-v15-* is the v1.5 headline number)
 7. `bash tools/nnue/d47s_pipeline.sh ledger "<q1/et numbers>"`  (D38 row)
-8. LAUNCH D47T (policy resync): inject warm/heldout into
+8. LAUNCH **D47U (head rebuild — SUPERSEDES D47T per user ~20:2x: skip
+   lane + 64-wide value head, 'mirror SF18's skip strategy')**: after the
+   hold leg, `python tools/nnue/assemble_d47u_warm.py <hold-best-ema-raw>
+   data/nnue/experiments/d47u-warm.bin` → inject into
+   tools/nnue/runs/d47u_headrebuild.json → systemd launch (caps + tb shim).
+   ONE leg trains {fresh 64 head + zero-init skip + polmove-on-64} on the
+   frozen trunk. Trainer side DONE+smoked (skip oracle, freeze oracle,
+   SKP1 quant). Engine side (SKP1 loader + 64-head kernels) built DURING
+   the leg. Health: inframe_heldout; policy top-1 vs the D47P 26.1% bar.
+   (Old D47T policy resync happens ON the 64 substrate inside this leg.): inject warm/heldout into
    tools/nnue/runs/d47t_policy_resync.json from the D47S final EMA +
    in-frame... NOTE: heldout_expect uses the DEFAULT-frame function (gate
    invariance) — read D47S's final old-frame heldout from its log for the
