@@ -683,6 +683,21 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## 2026-07-26 ~16:0x ★ RULING (user, ratified): FT SPARSITY PENALTY —
+## BURDEN OF PROOF FLIPPED; λ=0 IS THE DEFAULT ★
+
+ft_sparsity_lambda = 0 in every future config (D47T already 0; V2
+baseline 0). Evidence: NPS benefit measured-dead (D47M 15% vs champion
+25% groups benched IDENTICAL); magnitude penalty = expressiveness tax
+(destroyed D47M's policy substrate unopposed); mis-shaped (per-activation
+vs the engine's per-4-group cost); D47S density drifted 0.272→0.296
+AGAINST λ=0.001 all run (gradient budget spent on nothing); SF ships no
+activation penalty. Sparsity re-enters ONLY if a GROUP-shaped version
+demonstrates a deploy-path NPS win at equal time. C1 A/B (λ0.001 vs 0)
+demoted from blocker to cheap confirmation when GPU has slack. D47S
+finishes as configured (no mid-anneal loss changes). Supersedes the
+frozen-head λ-ramp guidance for future legs (ramp only matters if λ>0).
+
 ## 2026-07-26 ~15:4x POUND-FOR-POUND RULING (user): bigger nets must be
 ## DEMANDED MORE OF — quality-per-cycle, not absolute quality, is the bar
 
