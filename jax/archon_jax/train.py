@@ -100,18 +100,25 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
         return jnp.asarray(lam)
 
     a_end = float(getattr(cfg, "distill_alpha_end", -1.0))
+    a_ramp = tuple(getattr(cfg, "distill_alpha_ramp", ()) or ())
 
     def distill_alpha_at(count):
-        """Per-step distill α: linear ramp distill_alpha → distill_alpha_end
-        over the WHOLE schedule (nnue-pytorch precedent: --start-lambda 1.0
-        --end-lambda 0.75 — start on the trusted denoised signal, fold the
-        ground truth in as training proceeds). Anchored on the ABSOLUTE
-        superbatch (start_superbatch + within-run count) so a resumed leg
-        lands on the same global ramp despite the fresh Adam count.
-        a_end < 0 (default) = constant α — every existing config unchanged."""
-        if a_end < 0.0 or d_alpha <= 0.0:
+        """Per-step distill α, anchored on the ABSOLUTE superbatch
+        (start_superbatch + within-run count) so a resumed leg lands on the
+        same global schedule despite the fresh Adam count.
+
+        Priority: distill_alpha_ramp (piecewise-linear breakpoints, clamped
+        flat outside) > distill_alpha_end (linear over the whole schedule,
+        nnue-pytorch --start/--end-lambda precedent) > constant."""
+        if d_alpha <= 0.0:
             return jnp.asarray(d_alpha)
         sb_abs = (cfg.start_superbatch - 1.0) + count / bps
+        if a_ramp:
+            xp = jnp.asarray([p[0] for p in a_ramp], jnp.float32)
+            fp = jnp.asarray([p[1] for p in a_ramp], jnp.float32)
+            return jnp.interp(sb_abs, xp, fp)
+        if a_end < 0.0:
+            return jnp.asarray(d_alpha)
         frac = jnp.clip(sb_abs / float(cfg.superbatches), 0.0, 1.0)
         return d_alpha + (a_end - d_alpha) * frac
 

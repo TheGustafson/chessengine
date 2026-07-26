@@ -761,6 +761,40 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~18:2x ★ LEG 2 LAUNCHED (user directive): STOP@sb70 →
+## LONG HORIZON + TEACHER DECAY TO ZERO ★
+
+User: "stop at sb70 and restart with a decay on the teacher. start a
+LONG job of ALL the data we have and we can stop early. target the
+teacher to go to 10% by sb100, then slow decay to 0 by the end."
+EXECUTED: trainer stopped at sb74 (sb71-74 discarded), resumed from the
+sb70 checkpoint with: **distill_alpha_ramp [[70,0.7],[100,0.10],
+[240,0.0]]** (NEW piecewise capability, absolute-sb anchored,
+jnp.interp — smoke: 0.7@70 / 0.4@85 / 0.1@100 / 0.05@170 / 0@240);
+horizon 240sb with lr_end 240 (**LR re-plan raises restart LR ~3.5× to
+~8.1e-4 — warm-restart semantics, intended for the long leg**); 0.25sb
+resume warmup (first use); mix UNCHANGED — inventory confirmed the 12
+packs ARE all jax-format data (weights exactly size-proportional =
+uniform over ~10B positions; the 5k quarantine family was never
+converted). Stop-early per the LR triggers + Layer-1/2 instruments.
+NOTE heldout stays cross-leg comparable (same mix/frame); α-blend train
+loss does NOT (α changes per-sb now). Panels/WAC watcher rides along
+(checkpoints every 10sb). This leg IS the α-experiment at full scale —
+the 3-arm ablation is superseded for value (the ramp answers it); the
+POLICY hard-CE arm question stands (policy soft-CE weight now decays
+with α... VERIFY: pol_soft rides _teacher_targets which is gated on
+d_alpha>0 but the CE swap is NOT α-weighted — policy stays PURE
+teacher-CE until α hits exactly 0. Flagged for the sb100 read.)
+
+**SF ANSWER (user Q, from stockfish_reference/09 §3):** SF's loader
+ALSO drops best-move-captures + in-check (`filtered` ON) — they never
+train the value net on tension positions either; tactical strength
+lives in search, eval only prices "if no tactic fires." They ADD:
+wld_filtering (drop labels disagreeing with outcome), soft early-ply
+ramp, and **adaptive piece-count balancing** (Hermite target
+[0,0.4,1,1,0.75] at pc 0/8/16/24/32) — they actively DOWNWEIGHT ≤8-piece
+endgames vs midgame, more evidence against endgame upsampling.
+
 ## 2026-07-26 ~17:3x SOURCING CHECK (user challenge) + THE ENDGAME-RARITY
 ## HYPOTHESIS REFUTED BY DECODE
 

@@ -282,6 +282,11 @@ class TrainConfig:
     # (nnue-pytorch --start-lambda/--end-lambda precedent: fold ground truth
     # in as training proceeds). Negative (default) = constant alpha.
     distill_alpha_end: float = -1.0
+    # Piecewise-linear alpha over ABSOLUTE superbatch: ((sb, alpha), ...).
+    # Takes precedence over distill_alpha_end. Clamps flat outside the
+    # breakpoints. The 2026-07-26 D47V leg-2 schedule: ((70, 0.7),
+    # (100, 0.10), (240, 0.0)) — teacher to 10% by sb100, slow to 0.
+    distill_alpha_ramp: tuple = ()
     # ---- v1.5 warm-refinement knobs (2026-07-26). All default to the
     # historical behaviour, so every existing config is untouched. ----
     # Per-tensor weight clips derived from each tensor's export encoding

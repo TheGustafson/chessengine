@@ -87,6 +87,8 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         TrainConfig(),
         distill_alpha=float(spec.get("distill_alpha", 0.0)),
         distill_alpha_end=float(spec.get("distill_alpha_end", -1.0)),
+        distill_alpha_ramp=tuple(
+            (float(a), float(b)) for a, b in spec.get("distill_alpha_ramp", [])),
         lr=spec["lr"], lr_end_superbatch=spec["lr_end_superbatch"],
         superbatches=spec["superbatches"], pol_lambda=spec["pol_lambda"],
         ft_sparsity_lambda=spec["ft_sparsity_lambda"],
