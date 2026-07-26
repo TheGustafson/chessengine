@@ -671,6 +671,18 @@ point) deferred to SPSA: internal-scale ratio has two conflicting estimates
     survivors as centers (wip/nmp-guards branch ready if tactics bleed).
 12. Perf study quiet window: tools/perf_study4_bench.sh NET=<d47s.cenn>
     (skip smallnet lanes — VETOED) → decide #9 SIMD emission / compression.
+13. T11 / disagreement head (v5.5 step 8) INFRASTRUCTURE INVENTORY
+    (2026-07-26 ~07:4x, so the design conversation starts warm): engine
+    already carries the dormant D40_UNC_HEAD sidecar seam + sigma plumbing
+    (sota_context last_sigma/node_sigma) + THREE default-off search
+    consumers (unc_margin_scale @ RFP, unc_tm_factor + wdl_tm_factor @ TM,
+    mod.rs:278/294/311). Program spec: campaign §5b (residual EDA sweep →
+    frozen-trunk head on residual target → allocation consumption), with
+    the ordering constraint: lands or drops BEFORE comprehensive SPSA.
+    First concrete artifact to build in a post-D47T window: the residual
+    forward-sweep + bucketing tool (labels ~free at stored-value sweep
+    speed). User has ideas queued — inventory first, design theirs.
+
 Standing: all landings post-gates; d47h fallback untouchable; ledger verify
 on idle box only; every trainer launch memory-capped under systemd.
 
