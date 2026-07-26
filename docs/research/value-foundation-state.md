@@ -761,6 +761,37 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-27 ~00:5x ★ GEN-2 ARCHITECTURE SKETCH (user-driven design
+## session) — WIDE SUBSTRATE, THIN VALUE, ACCUMULATOR-BRANCHED HEADS ★
+
+The size-strategy discussion (D47S fear → fact-checked efficiency
+decomposition → topology) converged on the V2/gen-2 candidate:
+**accumulator ~1536 → value L1 32 (or SF-15/16) + skip+PSQT lanes;
+POLICY = dedicated ~128-wide projection OFF THE ACCUMULATOR (reuses the
+sparse nnz/dpbusd path; LAZY — fires only when MovePicker enters the
+quiet stage, so ordering pays per-consultation, not per-eval);
+DISAGREEMENT = dedicated 32-64 projection off the accumulator,
+consulted only at allocation points (root/TM/PV) = full substrate at
+negligible cost. NEVER branch heads off the value L2 — V measured that
+mistake (top-1 22.7→~19 through the 32-wide chokepoint; d47p's
+128-substrate head = 26.9 ≈ teacher = the one measured-sufficient
+point).** MTL contention moves to the substrate, where 1536 has room.
+Bilinear (rank-8, the gen-0 confirmed positive) vs per-move rows = a
+cheap A/B inside the same branch point. COST on the measured curve:
+~15-25% NPS below V-768 — the price the heads must earn back (P-ORD
+gate + T11 +30 bar). DECISION RULE (pre-registered): smallest width
+where HEAD quality saturates — value is teacher-suppliable via
+distill, head quality is not (pure teacher-CE capped V's policy BELOW
+the hard-label 1280 head). INPUTS PENDING: Leg B (768 sufficiency),
+P4 width-cost curve, T11 substrate hunger. HONEST KILL-CONDITION
+(named): if P-ORD and T11 both fail their gates, the optimal ship is a
+lean value net and differentiation lives in data/training (the
+D47S-fear-was-prophecy branch). CORRECTED FACT feeding all this: the
++30% program was V-only (SKP1 tax); D47S's ~2.3× c/n vs SF18 is
+substantially ARCHITECTURAL (L2=128 head, width-linear fold) — the
+teacher never needs to be fast; big nets are for knowing, small nets
+are for playing.
+
 ## 2026-07-27 ~00:2x S2 EQUIVALENCE PASS — THE +30% BINARY IS CLEARED
 ## AND PROMOTED
 
