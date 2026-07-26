@@ -1675,6 +1675,19 @@ impl Worker {
         self.last_best_move_pv.clear();
         self.last_best_move_score = -VALUE_INFINITE;
         self.last_best_move_depth = 0;
+        // TUNE-BUILD ONLY: rebuild the reductions table from the live
+        // tunables at search start. RED_TABLE_NUM/DEN bake in at Worker
+        // construction, which predates setoption in fastchess/SPSA drivers —
+        // the 2026-07-26 shapeA screen came back a PERFECT MIRROR (Ptnml
+        // [0,0,100,0,0]) because the option silently never applied. Release
+        // builds keep the constructed table (zero cost, D24-identical).
+        #[cfg(feature = "tune")]
+        {
+            for (i, r) in self.reductions.iter_mut().enumerate().skip(1) {
+                *r = (params::RED_TABLE_NUM() as f64 / params::RED_TABLE_DEN() as f64
+                    * (i as f64).ln()) as i32;
+            }
+        }
         // Soft-stop factor state (doc 12 §3.9, step 8). `increase_depth`
         // starts `true` so fixed-depth/fixed-node search never damps its
         // depth (bench-neutral, D24). The `iter_value` ring is seeded per
