@@ -69,6 +69,19 @@ et)
   ;;
 sf)
   bash tools/nnue/sf_baseline.sh "$CENN" d47s-post-v15 200 4
+  # THE STANDING YARDSTICK (user ruling 2026-07-26 ~14:0x): SF18 equal-time,
+  # tracked at every gate. Idle box required.
+  OUT=data/nnue/experiments/sfbase18-d47s-et; mkdir -p "$OUT"
+  engines/bin/fastchess \
+    -engine cmd=engines/bin/archon-d47-pord10 name=archon "option.EvalFile=$CENN" \
+    -engine cmd=engines/bin/stockfish18 name=sf18 \
+    -each proto=uci tc=10+0.1 option.Threads=1 option.Hash=16 \
+    -openings file="$BOOK" format=epd order=random \
+    -repeat -games 2 -rounds 100 -concurrency 4 -recover \
+    -draw movenumber=40 movecount=8 score=15 \
+    -resign movecount=4 score=700 -maxmoves 250 \
+    -srand 20260726 -pgnout file="$OUT/games.pgn" notation=lan \
+    -log file="$OUT/fastchess.log" level=warn 2>&1 | tail -22 | tee "$OUT/stdout.log"
   ;;
 ledger)
   # D38: one row per trained net; identity = sha256; regen recipe included.
