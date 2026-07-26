@@ -773,3 +773,45 @@ STRUCTURAL PRUNER (which targets the real bottleneck).
 permutation yields per-neuron firing rates as a byproduct. ONE pass
 gives us the permutation AND the dead-neuron count. Do it in the same
 work item.
+
+## ★ EVAL CALIBRATION FINDING (2026-07-25 ~23:3x) — user Q: "how does our
+## value loss compare to SF18's?"
+Ran SF18's STATIC eval (`eval` cmd, "Final evaluation", white-POV ->
+flipped to stm) over the same 1201 SF18-search-labelled positions we
+score our nets on. 1108 usable (93 in-check return "none").
+
+  net                raw MAE   RESCALED MAE   slope   pearson
+  SF18 static           64.3        62.4      1.146    0.9175
+  ARCHON d47m sb60     135.1        66.1      0.587    0.9131
+  ARCHON d47h champ    137.1        67.2      0.582    0.9059
+  ARCHON d47j joint    138.2        69.3      0.580    0.9026
+  (RESCALED = after optimal affine a*eval+b fit to the target)
+
+**VIRTUALLY THE ENTIRE EVAL-ACCURACY GAP VS SF18 IS CALIBRATION, NOT
+KNOWLEDGE.** Correlation is near-parity (0.913 vs 0.918) and our SIGN
+agreement is BETTER (82.3% vs 79.5%); rescaling closes 135->66 vs SF18's
+62. SF18 gains only 1.9 from rescaling (already calibrated); we gain 69.
+The slope is IDENTICAL across d47h/d47j/d47m (0.580-0.587) => baked into
+the TARGET DEFINITION, not a per-net accident.
+
+MECHANISM: training target = sigmoid(score/DEFAULT_SCALE=400) blended
+30% with outcome (DEFAULT_WDL=0.3, spec.py:61-62); engine maps net
+output back to cp with **network_scale = 380** (sota_head.rs:431,
+header offset 44). Empirically our cp land at 0.587x SF18's cp scale —
+so the mapping constant is ~1.7x too small RELATIVE TO SF'S SCALE.
+(Most likely our training labels' score scale differs from SF18's
+win-rate-normalized cp; the net faithfully reproduces ITS labels.)
+
+**WHY IT MAY COST ELO:** our pruning machinery is cp-denominated
+(futility, RFP, delta, aspiration) and those constants were ADAPTED
+FROM STOCKFISH, i.e. tuned against SF's cp scale. At 0.59x, every margin
+is effectively ~1.7x wider than designed — we prune systematically less
+than intended, and no eval improvement fixes it.
+**CAVEAT:** Wave A-G tuning may have already partially adapted the
+constants to OUR scale, in which case "correcting" the scale would break
+that calibration. Unknown — must be tested, not assumed.
+**EXPERIMENT (cheap, ONE constant):** A/B network_scale 380 vs ~650.
+Visible at FIXED NODES too (pruning changes reshape the tree). Comprehensive
+SPSA would eventually find this, but finding it FIRST means TM-SPSA and
+light SPSA tune against a correctly-scaled eval instead of compensating
+for a miscalibration. PROPOSED SLOT: right after the duel, before TM.
