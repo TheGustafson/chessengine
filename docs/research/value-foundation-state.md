@@ -694,19 +694,27 @@ wall (teacher forward) → 100sb ≈ 11h; **shared expectation: full 100sb
 won't be needed — judgment read at sb30** (in-frame heldout + Spearman
 panel; if plateaued → early stop + short resume-anneal).
 
-**UPDATE ~14:4x: PAUSED AT sb30 → TEACHER-FRAME FIX → RESUMED sb31+**
-(user directive). The distill blend now maps the teacher into the label
-frame (logit-LUT inverse of the v15 transform; see the ~14:4x entry) —
-pre/post-fix train losses are INCOMPARABLE (sb31 halved = frame
-arithmetic); heldout is the cross-fix instrument (sb30 = 0.011112).
-Panel reads via `tools/nnue/evolution_panel.sh <quant> <tag>` ONLY
-(bases always labeled). sb30: quiet 0.8694 (best), sharp-nc 0.7530
-(rising), top-1 21.7 (noise-flat, teacher 27.2). sb20 fn50k vs teacher:
-−206.7±28.4, 64% grind / 3.1× blunders = coarse-copy profile, expected
-mid-train. Both /tmp match packs were HEADER-CALIBRATED (V 400→267,
-teacher 400→189 — the raw teacher pack is 1.99× the d47p frame!); the
-frame fix should obsolete per-checkpoint V calibration by ~sb40
-(re-measure with net_scale_check).
+**UPDATE ~17:5x (supersedes ~14:4x): FRAME FIX PROVEN IN PLAY; ENDGAME
+PROTOCOL GOVERNS THE REST OF THE RUN.** State at sb67: teacher-frame fix
+landed at the sb30 pause (logit-LUT; ~14:4x entry) and PAID: heldout
+unstalled (−4.5% the first window; windows since −0.95/−1.18 — no
+Layer-1 plateau strike yet), **fn50k vs teacher −206.7 (sb20) →
+−151.4±27.1 (sb50), +55 Elo/30sb (exp-0139/0140); ET gate needs ≈−100 —
+IN REACH.** Native scale EQUILIBRIUM ≈ 0.66×d47p (NOT drifting to 1.0;
+V ships with header cal like every net in the family; per-checkpoint
+cal is automated). Rank panels asymptoting (quiet 0.8713 best, sharp-nc
+~0.753, top-1 ~20 vs teacher 27.2, WAC 161/200 vs teacher 176) while
+heldout+play still improve = calibration is the active front, the
+anneal's specialty. THE DISTILLATION ENDGAME PROTOCOL (~15:1x + 3b
+amendment + LR triggers) governs: Layer-1 convergence → α ablation
+(incl. policy hard-CE arm — d47p's hard-label head MATCHES teacher
+top-1) → ET gates. Constant α=0.7 to the end (user ruling); decay =
+next-gen candidate. Slice truths: endgame gap +0.100 is CAPACITY not
+sparsity (decode: endgames ABUNDANT, in-check 0.00% — filter verified);
+V BEATS teacher on decided band (labels add real info). AUTOMATION:
+archon-d47v (trainer) + archon-d47v-panels (per-ckpt panel/scale/WAC →
+/tmp/d47v_panels.log) + match runners as needed; panels now include the
+endgame≤8 canary slice.
 
 **D47V STATE AT sb12:** value 0.00549 ↓, pol_ce 2.544 ↓ (teacher band
 2.34 ↔ 26.1% top-1; d47n precedent 3.01 ↔ 15.6% — student ≈ low-20s%

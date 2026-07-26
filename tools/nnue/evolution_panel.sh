@@ -97,10 +97,15 @@ for path, name in ((os.environ["QUIET"], "QUIET"), (os.environ["SHARP"], "SHARP"
         print(f"{name}: NO CACHED LABELS for this set hash — label first"); continue
     x = vec(get("ev", f"{pk}|archon|{cenn}"))
     t = vec(get("ev", f"{pk}|archon|{teach}"))
-    chk = np.array([chess.Board(f).is_check() for f in fens])
+    boards = [chess.Board(f) for f in fens]
+    chk = np.array([b.is_check() for b in boards])
+    pieces = np.array([chess.popcount(b.occupied) for b in boards])
     cuts = [("all", np.ones(len(fens), bool))]
     if chk.any():
         cuts = [("non-check", ~chk), ("in-check(NOT play-relevant)", chk), ("all", np.ones(len(fens), bool))]
+    # the worst slice (2026-07-26 analysis): late endgame, capacity-triage
+    # canary for the D47U fork — non-check basis
+    cuts.append(("endgame<=8pc non-chk", (~chk) & (pieces <= 8)))
     for cut, m0 in cuts:
         ro, n = spear(x, L, m0)
         rt, _ = spear(x, t, m0)
