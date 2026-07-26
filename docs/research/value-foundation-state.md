@@ -679,6 +679,21 @@ setoption/SPSA silently no-op'd (shapeA = perfect mirror Ptnml
 far: NMP bar (250,19) unguarded OR (140,12)+guards [prefer the latter on
 current evidence]; RED_* unchanged pending shapeA2.
 
+## 2026-07-26 ~10:4x FAMILY SCREENS — SEFAM ×0.52 IS THE HEADLINE (+22.6,
+## tactical channel repaired); QS +17.4 via LEAF QUALITY not depth
+
+| family (×0.52) | Elo@50k | verification |
+| **sefam** | **+22.6±27.7** | −0.91 nominal depth (extensions SPEND budget on forcing lines) but base tactical losses 23 vs sefam 13 — THE SF16 loss channel, repaired. Audit SE diagnosis confirmed end-to-end. |
+| **qsfam 174** | **+17.4±27.6** | NOT deeper — wins via leaf quality (55 vs 65 losses); margins can pay through accuracy, second gain channel discovered |
+| pfutfam | +5.2±27.9 | mild; slight tactical uptick, fewer total losses |
+| shapeA2 (RED_TABLE 3260) | −5.2±27.9 | deeper, clean — the one sound LMR lever |
+| rfpfam | −33.1±28.3 | deeper but grind bleed (47v31) — REJECTED as start |
+| guards+(140,12) [r2] | +3.5±31.3 | deeper, tactical BELOW base — landing candidate |
+
+arm_verify's depth check is a THEORY probe not a veto: extension arms are
+rightly shallower, quality arms rightly not-deeper. Remaining: asp, razor,
+cfut, pcut (~2h). sb120 in-frame heldout next firing.
+
 ## POST-D47S RUNBOOK (assembled 2026-07-26 ~07:2x while training; every stage
 ## staged + committed; execute IN ORDER when the completion watcher fires)
 
