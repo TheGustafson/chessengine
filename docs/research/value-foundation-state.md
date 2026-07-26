@@ -640,6 +640,35 @@ point) deferred to SPSA: internal-scale ratio has two conflicting estimates
 (1.2× material probe vs 1.8× regression slopes) and fe rides its 0.572 floor
 ~80% of moves — not baking in a guessed constant.
 
+## 2026-07-26 LOSS FORENSICS vs SF16 (d47p, 200g/leg) — WHY WE LOSE, QUANTIFIED
+
+Tool: `tools/nnue/loss_forensics.py` (pnr = winner's eval ≥ +2.00 oracle-units
+and never back under +1.00; thresholds slope-corrected per winner — ARCHON
+reported cp ≈ 1.9× hotter than SF16's normalized cp, so raw +2.00 fired on
++1.0-real positions and faked an "opening collapse" taxonomy on first pass).
+
+**EQUAL TIME 10+0.1 (−121, W22 D89 L89):** 61/89 losses have OUR clock <2s at
+the decisive ply — median 0.64s vs SF16's 2.11s (they hold 3.3× our clock
+where games decide; old-TM front-load + NPS). Depth gap −4.1/−4.6/−5.9 by
+phase (widest in endgames). Taxonomy: timepressure 61, grind 51, tactical 37,
+**misjudgment 4**. **EQUAL NODES 50k (+5.2, W63 D77 L60):** our losses grind
+34 + tactical 22, misjudgment 2; depth at pnr 12.2 vs THEIR 15.3 — at equal
+nodes SF16 is ~3 plies deeper exactly where it decides. Control (their losses
+to us, slope-corrected): grind 53/63, tactical **3** — a 22-vs-3 asymmetry.
+
+**Reading:** we beat SF16 by grinding (eval quality), they beat us by tactics
+(depth). The eval-misjudgment channel is EMPTY in both legs — d47p does not
+lie at decision points. eval_bench, 3000 balanced positions, SF18@50k oracle:
+d47p ≥ SF16 on EVERY column (rescaled MAE 72.2 vs 73.9, pearson .891 vs .873,
+sign 84.0 vs 82.0, p99 400 vs 470; SF18 67.9 with oracle home-field). The
+user's "net is better than SF16's" claim is supported. Lever ranking for
+release Elo at 10+0.1: (1) TM fix [landed, gate running:
+`tm-gate-depthredenom-et`, tmnew vs tmold self-play 200g], (2) NPS (attacks
+tactical+timepressure at once; A1-A3 + profiling), (3) depth-per-node — SF16
+converts the same nodes into ~3 more plies at critical moments (S0 audit /
+D41 arc), (4) net v1.5 (D47S) — converts more grinds into wins; not the loss
+channel.
+
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
 **Arch pivots (user, rapid-fire):** d47-v1 (1536/256+threats, 155k pos/s, ~10.5h)
