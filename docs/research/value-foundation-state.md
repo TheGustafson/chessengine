@@ -761,6 +761,24 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~18:4x ENDGAME DEFICIT: THE SLICE IS EXONERATED — the
+## elimination chain closes on CAPACITY
+
+Teacher-activation analysis (949 endgame ≤10pc vs 600 middlegame FENs,
+white-stm non-check, raw teacher forward with factorize+psqt): kept
+columns [0:384]∪[640:1024] carry **58.6% of endgame activation mass vs
+60% expected by count** — proportional; specialists (affinity>.65)
+197 kept / 134 dropped ≈ the same 60/40; top-30 affinity lanes 20/10
+slightly FAVOR kept. The positional slice did NOT disproportionately
+cut endgame features. ELIMINATED: exposure (endgames abundant, ~17:3x),
+slice accident (here), off-support transfer (in-mix). REMAINING: pure
+capacity/head-width triage. LIVE LEVER: leg-2 α-decay (labels beat
+teacher on the decided band; endgames skew decided — the endgame≤8
+panel slice tracks whether label-led training lifts it). ESCALATIONS:
+per-bucket head width for low-pc buckets / D47U. Importance-aware
+slicing is NOT the endgame fix (though it may still help generally at
+the next distill — the analysis harness now exists).
+
 ## 2026-07-26 ~18:2x ★ LEG 2 LAUNCHED (user directive): STOP@sb70 →
 ## LONG HORIZON + TEACHER DECAY TO ZERO ★
 
