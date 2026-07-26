@@ -761,6 +761,18 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-27 ~00:2x S2 EQUIVALENCE PASS — THE +30% BINARY IS CLEARED
+## AND PROMOTED
+
+200g fn50k S2-vs-S2a: **47.75% = −15.6 ± ~25 Elo, consistent with
+zero** (Ptnml [3,21,59,16,1], draw-heavy/symmetric — the rounding-flip
+signature). +19.6% NPS is clean profit; cumulative program +29.6%.
+**engines/bin/archon-d47v is NOW the S2 build** (pre-S2 backup:
+archon-d47v-preS2); all automation (panels, WAC, matches) inherits the
+speed. Panel eval sweeps unaffected (int-cp identical); WAC may wobble
+±1 from rare path flips — tolerance noted for the trajectory
+instrument. Release-binary code path = current main HEAD.
+
 ## 2026-07-26 ~23:5x PLATEAU STRIKE 1 (sb160: −0.40%/window, guard
 ## lifted) — LEG A STAGED AS THE MERGED ANNEAL+SQUEEZE
 
