@@ -683,6 +683,16 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## 2026-07-26 ~18:2x LADDER STEP 1 VERDICT: GLOBAL ×0.52 OVERLAY REJECTED
+## (−77.7±31.0 vs baseline −59.6±30.3 — directionally WORSE, as the
+## region-dependent map predicted: one scalar over-corrects the 0.85-0.95
+## tail bands while fixing the 0.54-0.62 near-zero band). Weight moves to:
+## (a) undertrained-net term — tested by the finished-net ET (step 2,
+## post sb240+hold, stock margins); (b) PER-FAMILY repair via s4-searchgap
+## with the ×0.6-0.75 near-zero prior applied ONLY to near-zero-consulting
+## families (RFP/razor/futility), NOT tails. NOTE the dirty double-write
+## probe (327 duplicated games) was discarded; this is the clean 200.
+
 ## 2026-07-26 ~17:3x ET BASELINE PINNED: d47s-sb170(median-cal) vs d47p =
 ## −59.6±30.3 (200g) — grind 66/71 losses, DEEPER at own decisive plies
 ## (15.0 vs 14.4): out-searches and loses = the pure dialect signature.
