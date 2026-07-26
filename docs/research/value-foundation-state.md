@@ -661,6 +661,24 @@ Then the 8-family ×0.52 screens (staged). All results = SPSA STARTS, not
 landings (user protocol 2026-07-26 ~08:0x: screen → verify in games →
 refine → pin priors; landing post-D47).
 
+## 2026-07-26 ~09:4x SPSA-PRIOR ROUND 2 — GUARDS RESCUE THE AGGRESSIVE BAR;
+## UNSHAPED LMR FAILS AGAIN; SCAFFOLD BUG (baked reductions table) FIXED
+
+Round 2 (fixed-node 200g): **guards+(140,12) = +3.5±31.3, deeper (+0.49)
+AND tactical BELOW base (22% vs 27%)** — the eval≥beta/staticEval guards
+turn the −17.4 unguarded bar positive; wip/nmp-guards is now an
+EVIDENCE-BACKED post-D47 landing candidate, not insurance. shapeB
+(RED_MOVECOUNT 85): REJECTED (not deeper, tactical 36% vs 25%) — every
+unshaped LMR increase has now failed (flat base ×2, movecount ×1); if
+shapeA2 (table, valid re-run) fails too, LMR goes to wall-clock SPSA from
+current values. SCAFFOLD BUG: RED_TABLE_NUM/DEN baked into Worker::new →
+setoption/SPSA silently no-op'd (shapeA = perfect mirror Ptnml
+[0,0,100,0,0] = the tell); tune builds now rebuild the table per search
+(release bit-identical, commit in tree). ROUND 3 RUNNING: shapeA2 + all 8
+×0.52 family screens (~5h, lands ≈ D47S completion). SPSA centers so
+far: NMP bar (250,19) unguarded OR (140,12)+guards [prefer the latter on
+current evidence]; RED_* unchanged pending shapeA2.
+
 ## POST-D47S RUNBOOK (assembled 2026-07-26 ~07:2x while training; every stage
 ## staged + committed; execute IN ORDER when the completion watcher fires)
 
