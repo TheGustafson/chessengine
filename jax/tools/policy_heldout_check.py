@@ -26,7 +26,15 @@ from tools.forward_parity import run  # noqa: E402
 
 
 def main(raw_path, heldout, n=512):
-    arch = ArchSpec.full()
+    import dataclasses, os
+    arch = dataclasses.replace(
+        ArchSpec.full(),
+        factorize=bool(int(os.environ.get("PROBE_FACT", "0"))),
+        psqt=bool(int(os.environ.get("PROBE_PSQT", "0"))),
+        hl=int(os.environ.get("PROBE_HL", ArchSpec.full().hl)),
+        l2=int(os.environ.get("PROBE_L2", ArchSpec.full().l2)),
+        l3=int(os.environ.get("PROBE_L3", ArchSpec.full().l3)),
+        out_skip=bool(int(os.environ.get("PROBE_SKIP", "0"))))
     cfg = TrainConfig()
     params = checkpoint.open_raw(raw_path, arch.param_shapes(), mmap=True)
     recs = np.fromfile(heldout, dtype=RECORD_DTYPE, count=n)

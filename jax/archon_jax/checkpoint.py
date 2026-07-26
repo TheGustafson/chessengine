@@ -275,7 +275,14 @@ def dequantise_quant(path: str | Path, arch) -> dict[str, np.ndarray]:
         else:
             vals = vals.reshape(shape)
         out[name] = vals
-    padding = raw[off:]
-    if len(padding) > 63 or bytes(padding) != spec_pad(len(padding)):
+    # Pad to the next 64-byte boundary, then OPTIONAL trailers (PSQ1 then
+    # SKP1) — dequant parses the STREAM tensors only; trailer reconstruction
+    # is the caller's job (they carry folded/f32 encodings, not stream quant).
+    pad_len = (64 - off % 64) % 64
+    padding = raw[off:off + pad_len]
+    if bytes(padding) != spec_pad(pad_len):
         raise ValueError(f"invalid quant padding ({len(padding)} bytes)")
+    rest = bytes(raw[off + pad_len:])
+    if rest and rest[:4] not in (b"PSQ1", b"SKP1"):
+        raise ValueError(f"unrecognized quant trailer ({len(rest)} bytes)")
     return out
