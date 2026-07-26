@@ -863,3 +863,55 @@ Visible at FIXED NODES too (pruning changes reshape the tree). Comprehensive
 SPSA would eventually find this, but finding it FIRST means TM-SPSA and
 light SPSA tune against a correctly-scaled eval instead of compensating
 for a miscalibration. PROPOSED SLOT: right after the duel, before TM.
+
+## ★ V2 NET PROGRAM — FROM SCRATCH WITH THE SF-TRAINER LESSONS
+(user ruling 2026-07-25 ~23:5x, after the nnue-pytorch study
+`stockfish_reference/09-nnue-pytorch-trainer-study.md`)
+"All these make sense for us to implement as a SECOND RELEASE NET where we
+START FROM SCRATCH." Correct framing: most of these are from-scratch
+changes (data filters, loss shape, quant scales, init) that cannot be
+retrofitted into the D47 warm chain without voiding its comparability.
+**This is a post-v1 program. v1 ships from the D47P/D47M line.**
+
+INCLUDED (from the study's ranked list):
+ * per-tensor weight clips matched to export encoding (drop on f32
+   tensors, widen on i16 FT, ±1.98 only for i8@64) — MEASURED: our
+   uniform clip is saturating l0_pstw/l0_threatw/polmovew/polmoveb today
+ * mate/TB label REMAP (4000 + 4000·0.85^ply) instead of hard-dropping
+   |score|>10000 — recovers the "very winning" supervision we delete
+ * group lasso over the deploy 4-groups replacing flat activation L1
+   (current penalty is misaligned twice: charges per activation not per
+   group, and penalizes magnitude ⇒ capacity tax)
+ * position-level shuffle buffer (~1M) replacing frozen contiguous
+   windows — our batch composition is currently fixed for the life of a
+   corpus, on every leg, forever
+ * WLD-coherence probabilistic thinning + soft ply ramp replacing the
+   hard ply>=16 cut; random_fen_skipping for intra-game decorrelation
+ * threat quantization 64 → 128/255 + training-time clip on l0_threatw
+ * grad-norm clip 2.0, NaN/Inf abort, stop decaying biases
+ * λ ramp (wdl 0 → 0.3), pow_exp 2.5
+ * exponential LR decay for chained legs (schedule-length-agnostic)
+ * identical init across layer-stack buckets; HCE-value PSQT init
+ * fit our own eval→WDL scaling from data (their perf_sigmoid_fitter
+   approach) instead of inheriting 400
+UNCERTAIN, ON THE LIST ANYWAY (user: "I'm not sure about the draw aware
+double sigmoid, but lets add it to the list"):
+ * draw-aware DOUBLE SIGMOID target `0.5(1+σ(q)−σ(qm))` with independent
+   in/out scaling (SF: 340/380, net×nnue2score 600) replacing plain
+   σ(score/400). Run as a paired screen — it changes the loss scale, so
+   heldout stops comparing to the incumbent chain.
+DECLINED / DEPRIORITIZED:
+ * **Concurrent UCB gauntlet — user: "I'm not sure I want to slow down
+   training that much. I doubt it makes a big difference."** NOTE the
+   objection targets the wrong cost: we ALREADY run 100g screens every
+   30sb on CPU during training at no measurable GPU cost. The actual
+   upgrade is only (a) SHIP THE ARGMAX rather than the final/EMA
+   checkpoint, and (b) UCB — concentrate EXTRA games on leading
+   checkpoints instead of spreading evenly (same budget, better spent).
+   Our ±30 screens are too noisy to select on naively, which is exactly
+   what UCB fixes. Verdict: modest-EV process improvement, not a
+   priority. Revisit if checkpoint selection ever looks like it cost us.
+ * RangerLite/PNM/Lookahead (EMA fills the role), SWA, L1-layer
+   factorization, adaptive piece-count rebalancing, their head topology
+   ([x²,x] concat + linear bypass — interesting but needs new SIMD +
+   deploy format + full retrain), PP_3Wide.
