@@ -553,3 +553,27 @@ on-device. Expect masked runs back to ~190k pos/s — hours per run.
 NOT done mid-D47P on purpose: changing the data path would void the
 controlled comparison vs D47M (identical schedule/mix), and a rushed edit
 to the loss path is where a silent correctness bug would hide.
+
+## ANCHOR SEQUENCING RULING (user, 2026-07-25 ~20:5x)
+No external anchoring until the known-broken things are fixed — measuring
+a defect wastes the measurement and forces a redo. ORDER:
+  1. finish the net (D47P -> D47Q -> duel -> release candidate)
+  2. POLICY HEAD REFINEMENT (P-ORD equal-time SPRT, sidecar ON/OFF, any
+     further head work the duel motivates)
+  3. INITIAL TM FIX — user reports from MANUAL GUI PLAY that time
+     management "seems like a big problem", corroborating the analytic
+     finding (~19s burned on move 1). Manual play surfaces TM pathologies
+     that fixed-node testing structurally cannot see. Staged: tm-v1.json
+     (28 params), tm_bracket_measure.sh.
+  4. LIGHT SPSA
+  5. **BASELINE vs SF16 AND SF18** <- the first external anchor, on a
+     clean engine. Last real SF18 number (-191+/-23) is STALE: it was the
+     older 2048-wide farseer line, not the D47 architecture; current gap
+     is genuinely unknown (chain arithmetic suggests ~-90..-110 but
+     fixed-node value-only deltas do not compose into equal-time Elo).
+  6. first optimization/profiling pass
+  7. comprehensive SPSA
+  8. release engineering
+Rationale for 5 sitting BEFORE 6/7: the anchor becomes the yardstick that
+prices the two biggest remaining levers instead of being confounded by
+them.
