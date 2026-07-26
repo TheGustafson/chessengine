@@ -683,6 +683,25 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## 2026-07-26 ~15:1x "MISSING SOMETHING" HUNT — PATH-CONSISTENCY PROBE
+## EXONERATES THE TRUNK; INTEGRATION-HELL CONFIRMED AS THE DIAGNOSIS
+
+User suspicion: pieces all present but something structural missing. Test:
+the scariest candidate — rough eval landscape (would explain the four
+unexplained anomalies: −33 interior-margin paradox, residual ×1.5 tree,
+1.96-vs-1.45 re-search rate, 2× search-output volatility). Probe:
+|e(P)+e(P′)| along 40 real game paths, normalized by own median |eval|
+(scale-free): SF18 0.341, **ARCHON 0.359**, SF16 0.438. REFUTED — our
+static landscape is smoother than SF16's, ~5% behind SF18's, while
+out-ranking both. Re-attribution: the 1AM 2× volatility was SEARCH-BACKED
+values — smooth eval + jumpy search output = search resolves tactical
+tension LATE (same phenomenon as the WAC offense deficit → check-ext) +
+re-search churn (aspiration widener, audit #5) + RFP margins paying in
+time not nodes. Every remaining anomaly now has a named owner in the
+campaign. SF18's residual EVAL edges: calibration (D47S's job) + 5%
+smoothness (flywheel own-search labels' job). Verdict: integration hell —
+the good scenario — with an evidence trail per item.
+
 ## 2026-07-26 ~14:4x LEAF-DUTY PANEL — THE BIG-TRUNK PREMIUM IS EARNED
 ## (d47s out-ranks SF18's evaluator on BOTH populations, mid-training)
 
