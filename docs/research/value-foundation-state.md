@@ -761,7 +761,30 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
-## 2026-07-26 ~21:1x sb100 REMATCH FINAL: **−115.2±25.2** (exp-0141) —
+## 2026-07-26 ~21:3x ★ CORRECTION (user's NPS test exposed it): THE
+## SPEED EDGE IS ~1.11×, NOT "2.5-3×" — THE ET GATE MATH IS REWRITTEN ★
+
+Measured back-to-back under identical contention (4×1M-node searches):
+**V-768 764-768k nps vs teacher-1280 689-692k = 1.11×.** The "~2.5-3×
+speed edge" I stated repeatedly (and built the "borderline-even at
+−115" projection on) WAS NEVER MEASURED — classic verify-before-
+asserting failure. Mechanism (matches the number): threat-channel
+extraction (~24% of cycles) and the shell are WIDTH-INDEPENDENT; only
+accumulator+head scale with hl → 0.6× on ~35% ≈ 1.10-1.15×.
+**CORRECTED GATE MATH: ET-vs-teacher ≈ fn-gap + ~10-27 Elo (1.1-1.3×
+band, idle-box ratio TBD at P4). At fn −115: ET ≈ −90..−100 — NOT
+borderline-even. exp-0141's projection note is RETRACTED. The USER'S
+BANDS WERE THE CALIBRATED ONES ALL ALONG: fn −30 → ET ≈ −5..0; fn even
+→ ET +15..25. The P2 gate target = the −30-to-0 fn band**, carried by
+the anneal + squeeze legs + the d47p-parity heldout gate (near-parity
+per-node is what the doctrine now REQUIRES, not just hopes for).
+FORENSICS OF THE TEST ITSELF (all three traps in one hour): (1) first
+"fast" rebuild omitted the `sota` feature → net-load failed SILENTLY
+(2>/dev/null) → 2981k = PSQT-fallback garbage — the PARITY GATE caught
+it pre-conclusion; (2) fixed-node results are NPS-independent — every
+match/panel stands; (3) V-768 NPS ≈ SF18-class (~0.9M idle projection
+unchanged) — the SF18-parity NPS framing survives; the vs-TEACHER
+multiple does not.
 ## THE TRAJECTORY IS −206.7 → −151.4 → −115.2; ET-vs-teacher NOW
 ## PROJECTS BORDERLINE-EVEN (speed edge +90-120 vs gap 115). User bands:
 ## −30 = huge, even = lucky. INSIDE THE MATCH: draws 116 (38.7%, was
