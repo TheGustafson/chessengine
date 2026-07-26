@@ -74,7 +74,35 @@ def main(quant_path, fen_path):
         out_skip=bool(int(os.environ.get("PROBE_SKIP", "0"))),
         psqt=bool(int(os.environ.get("PROBE_PSQT", "0"))))
     cfg = TrainConfig()
-    params = checkpoint.dequantise_quant(quant_path, arch)
+    # Trailer-aware dequant (D47V): the bullet stream carries the classic
+    # layout; PSQ1/SKP1 ride as trailers. Parse the stream with a
+    # trailer-less arch, then reconstruct psqt/skip params from the trailers
+    # so the jax forward matches what the ENGINE actually computes.
+    stream_arch = dataclasses.replace(arch, psqt=False, out_skip=False)
+    params = checkpoint.dequantise_quant(quant_path, stream_arch)
+    if arch.psqt or arch.out_skip:
+        raw = open(quant_path, "rb").read()
+        i = raw.find(b"PSQ1")
+        if arch.psqt:
+            assert i >= 0, "psqt requested but no PSQ1 trailer"
+            import struct as _s
+            nb, rows = _s.unpack_from("<II", raw, i + 4)
+            q = np.frombuffer(raw, dtype="<i4", count=rows * nb,
+                              offset=i + 12).reshape(rows, nb)
+            from archon_jax.checkpoint import PSQT_FIXED_MULT
+            from archon_jax.spec import HALFKA_DIMS
+            w = q.astype(np.float64) / PSQT_FIXED_MULT
+            params["l0_psqt_hkw"] = w[:HALFKA_DIMS].astype(np.float32)
+            params["l0_psqt_thw"] = w[HALFKA_DIMS:].astype(np.float32)
+        if arch.out_skip:
+            j = raw.find(b"SKP1")
+            assert j >= 0, "out_skip requested but no SKP1 trailer"
+            import struct as _s
+            nb, hl = _s.unpack_from("<II", raw, j + 4)
+            assert hl == arch.hl, (hl, arch.hl)
+            params["skipw"] = np.frombuffer(
+                raw, dtype="<f4", count=hl * nb, offset=j + 12
+            ).reshape(hl, nb).copy()
 
     fens = [l.strip() for l in open(fen_path)
             if l.strip() and not l.startswith("#")]
