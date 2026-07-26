@@ -1,21 +1,173 @@
 {
   "name": "s4-searchgap",
-  "comment": "MASTER-PLAN v5.5 step 4 (small SPSA), drafted 2026-07-26 from the search-gap ground truth + unit-scale audit. Center = the MEASURED two-knob candidate (NMP bar SF16-shape, RED_BASE +1 ply), NOT current defaults: SPSA refines a point already known to reach tree parity (x1.06 vs SF16 at fixed depth), rather than crawling from the donor bar (crossover d~27, the starved-NMP regime). Ranges bracket both the donor and SF16 shapes so SPSA can walk back if games disagree with node counts. Bar shape is the lever, so BASE and DEPTH tune jointly (crossover = BASE/DEPTH: donor 27, sf16-shape 12). NMP_R_* (reduction R) included: with 15x more null searches their cost matters now. fallingEval coeffs included per the standing two-frame conflict (live log 2026-07-26) - SPSA settles the scale question empirically. Wall-clock TC ONLY (fixed-node structurally undervalues pruning, audit section 8). Run AFTER the step-3 Elo tests on an idle box.",
+  "comment": "MASTER-PLAN v5.5 step 4 (small SPSA), drafted 2026-07-26 from the search-gap ground truth + unit-scale audit. Center = the MEASURED two-knob candidate (NMP bar SF16-shape, RED_BASE +1 ply), NOT current defaults: SPSA refines a point already known to reach tree parity (x1.06 vs SF16 at fixed depth), rather than crawling from the donor bar (crossover d~27, the starved-NMP regime). Ranges bracket both the donor and SF16 shapes so SPSA can walk back if games disagree with node counts. Bar shape is the lever, so BASE and DEPTH tune jointly (crossover = BASE/DEPTH: donor 27, sf16-shape 12). NMP_R_* (reduction R) included: with 15x more null searches their cost matters now. fallingEval coeffs included per the standing two-frame conflict (live log 2026-07-26) - SPSA settles the scale question empirically. Wall-clock TC ONLY (fixed-node structurally undervalues pruning, audit section 8). Run AFTER the step-3 Elo tests on an idle box. || 2026-07-26 ~11:3x PRIOR-SCREEN RESULTS folded in (fixed-node 200g arms, games-verified): SE family x0.52 = +22.6 (tactical channel repaired) -> starts set; QS_FUTILITY 174 = +17.4 (leaf quality); PFUT x0.52 = +5.2 -> starts; NMP (140,12) sound with the wip/nmp-guards binary (+3.5) else center (250,19); RED_TABLE_NUM 3260 clean. REJECTED AS STARTS (stay at defaults, ranges keep them in wall-clock play): RFP/razor/cfut (-33..-35 uniform interior-margin fixed-node tax), aspiration (-13.9), flat RED_BASE + RED_MOVECOUNT (tactical bleed, 3x).",
   "params": [
-    {"name": "NMP_EVAL_BASE",       "min": 0,    "max": 400, "start": 140},
-    {"name": "NMP_EVAL_DEPTH",      "min": 4,    "max": 30,  "start": 12},
-    {"name": "NMP_EVAL_IMPROVING",  "min": 0,    "max": 90,  "start": 23},
-    {"name": "NMP_R_BASE",          "min": 3,    "max": 6,   "start": 4},
-    {"name": "NMP_R_DEPTH_DIV",     "min": 2,    "max": 5,   "start": 3},
-    {"name": "RED_BASE",            "min": 1027, "max": 2600, "start": 2051},
-    {"name": "RED_TABLE_NUM",       "min": 700,  "max": 1600},
-    {"name": "RED_CUTNODE",         "min": 512,  "max": 2048},
-    {"name": "LMR_DEEPER_MARGIN",   "min": 14,   "max": 104},
-    {"name": "LMR_SHALLOWER_MARGIN","min": 2,    "max": 18},
-    {"name": "ASPIRATION_BASE_DELTA","min": 2,   "max": 10},
-    {"name": "ASPIRATION_MSS_DIVISOR","min": 4000, "max": 21000, "start": 5546},
-    {"name": "QS_FUTILITY_MARGIN",  "min": 90,   "max": 400, "start": 174},
-    {"name": "FALLING_EVAL_PREV_AVG_COEFF", "min": 1.0, "max": 5.0},
-    {"name": "FALLING_EVAL_ITER_COEFF",     "min": 0.4, "max": 2.5}
+    {
+      "name": "NMP_EVAL_BASE",
+      "min": 0,
+      "max": 400,
+      "start": 250
+    },
+    {
+      "name": "NMP_EVAL_DEPTH",
+      "min": 4,
+      "max": 30,
+      "start": 19
+    },
+    {
+      "name": "NMP_EVAL_IMPROVING",
+      "min": 0,
+      "max": 90,
+      "start": 23
+    },
+    {
+      "name": "NMP_R_BASE",
+      "min": 5,
+      "max": 9
+    },
+    {
+      "name": "NMP_R_DEPTH_DIV",
+      "min": 2,
+      "max": 5,
+      "start": 3
+    },
+    {
+      "name": "RED_BASE",
+      "min": 1027,
+      "max": 2600,
+      "start": 2051
+    },
+    {
+      "name": "RED_TABLE_NUM",
+      "min": 2000,
+      "max": 4200,
+      "start": 3260
+    },
+    {
+      "name": "RED_CUTNODE",
+      "min": 2000,
+      "max": 6000
+    },
+    {
+      "name": "LMR_DEEPER_MARGIN",
+      "min": 14,
+      "max": 104
+    },
+    {
+      "name": "LMR_SHALLOWER_MARGIN",
+      "min": 2,
+      "max": 18
+    },
+    {
+      "name": "ASPIRATION_BASE_DELTA",
+      "min": 2,
+      "max": 10
+    },
+    {
+      "name": "ASPIRATION_MSS_DIVISOR",
+      "min": 4000,
+      "max": 21000,
+      "start": 5546
+    },
+    {
+      "name": "QS_FUTILITY_MARGIN",
+      "min": 90,
+      "max": 400,
+      "start": 174
+    },
+    {
+      "name": "FALLING_EVAL_PREV_AVG_COEFF",
+      "min": 1.0,
+      "max": 5.0
+    },
+    {
+      "name": "FALLING_EVAL_ITER_COEFF",
+      "min": 0.4,
+      "max": 2.5
+    },
+    {
+      "name": "SE_BETA_MULT",
+      "min": 15,
+      "max": 75,
+      "start": 31
+    },
+    {
+      "name": "SE_BETA_TTPV_MULT",
+      "min": 18,
+      "max": 85,
+      "start": 36
+    },
+    {
+      "name": "SE_DOUBLE_PV",
+      "min": 50,
+      "max": 250,
+      "start": 105
+    },
+    {
+      "name": "SE_DOUBLE_NON_TTCAP",
+      "min": 40,
+      "max": 200,
+      "start": 82
+    },
+    {
+      "name": "SE_DOUBLE_DEEP",
+      "min": 10,
+      "max": 55,
+      "start": 21
+    },
+    {
+      "name": "SE_TRIPLE_BASE",
+      "min": 18,
+      "max": 90,
+      "start": 37
+    },
+    {
+      "name": "SE_TRIPLE_PV",
+      "min": 80,
+      "max": 380,
+      "start": 159
+    },
+    {
+      "name": "SE_TRIPLE_NON_TTCAP",
+      "min": 50,
+      "max": 230,
+      "start": 98
+    },
+    {
+      "name": "SE_TRIPLE_TTPV",
+      "min": 22,
+      "max": 105,
+      "start": 44
+    },
+    {
+      "name": "SE_TRIPLE_DEEP",
+      "min": 11,
+      "max": 55,
+      "start": 23
+    },
+    {
+      "name": "PFUT_BASE",
+      "min": 10,
+      "max": 50,
+      "start": 21
+    },
+    {
+      "name": "PFUT_NO_BESTMOVE",
+      "min": 35,
+      "max": 170,
+      "start": 72
+    },
+    {
+      "name": "PFUT_LMRDEPTH_MULT",
+      "min": 30,
+      "max": 145,
+      "start": 61
+    },
+    {
+      "name": "PFUT_EVAL_ABOVE_ALPHA",
+      "min": 23,
+      "max": 110,
+      "start": 47
+    }
   ]
 }
