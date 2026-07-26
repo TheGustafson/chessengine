@@ -683,6 +683,19 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## 2026-07-26 ~22:2x D47S STOPPED AT sb236 (user overfit call) — TEACHER =
+## sb230 EMA; D47V LAUNCHED
+
+User called overfit onset watching the curves; old-frame heldout had
+plateaued sb200-230 (0.013565→0.013583 flat) supporting the read. Trainer
+stopped clean; **teacher/slice source = d47s-v15-sb230-ema** (in-frame
+instrument last read falling at sb180; sb230 panels were the clean-sweep
+ones). D47V running: 768·32·32·8 + skip, slice-warm, distill α=0.7,
+100sb. The d47s floor-hold leg is MOOT as originally specced (was resume
+sb240→280); if the d47s line still needs its own settle, re-spec from
+sb230. All d47s settle stages should now read sb230 wherever they said
+sb240/hold-best.
+
 ## 2026-07-26 ~22:0x ★ TRAINING-PIPELINE DOCTRINE (user): TRAIN BIG FOR
 ## REAL ELO → DISTILL TO THE COMPETITIVE SIZE ★
 
