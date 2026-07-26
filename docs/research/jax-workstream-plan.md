@@ -1018,3 +1018,48 @@ was an artifact of blowout positions dominating unrestricted MAE.
  * Remaining honest caveat: static-eval accuracy still does not rank nets
    by playing strength (the 86-Elo null). This says our eval is well-SHAPED
    for the decisions search faces, not that we would win the match.
+
+## ★★ NET SIZE / ARCHITECTURE — SETTLED FROM THE BINARY (2026-07-26 ~00:5x)
+User: "chase down who's net is actually bigger and why. I thought SF18 had
+a much bigger accumulator." Read from stockfish18's mangled symbols
+(`FeatureTransformerIXT_EE` instantiated at `Lj1024E` and `Lj128E`,
+HalfKAv2_hm) — not inferred from file size (SF nets are leb128-compressed,
+so bytes lie):
+
+              ARCHON      SF18 big    SF18 small
+  L1 (acc)      1280         1024         128
+  L2             128           32          -
+  L3              32           32          -
+  HalfKAv2_hm  22528        22528       22528
+  FullThreats  60720     yes(refined)     -
+**OUR ACCUMULATOR IS 25% WIDER THAN SF18's AND OUR L2 IS 4x THEIRS.** We
+are bigger in every dimension. "Their net is bigger" is FALSE (and my
+earlier "SF nets are ~3x smaller" was also wrong — that measured SF15.1
+and our stale SF clone; both claims retracted).
+
+**THE REASON THE ASSUMPTION FELT TRUE — and the real finding.** SF's
+architecture history (docs/nnue.md:2995-3121): SFNNv5 1024 → v6 1536 →
+v7 2048 → v8 2560 → **v9 3072**, then **SFNNv10: "Added FullThreats input
+features, L1 size reduced to 1024, and used 255 as the FT quantization
+scale."** SF scaled width to 3072 and then TRADED TWO-THIRDS OF IT AWAY to
+buy threat features. v11 removed piece-to-king threats, v12 removed
+king-to-piece threats, v13 raised L2 to 32, v14 added opposed-pawn
+features, v14.1 requantized, v16 added PP_3Wide.
+=> **Independent validation of our D40 FullThreats bet** — SF made the same
+call, harder. It also says the frontier is now FEATURE REFINEMENT, not
+width: every version since v10 changes the threat set, never L1.
+
+**CAPABILITY WE LACK: SF18 ships TWO nets with a switching policy** (big
+1024 for close positions, small 128 for already-decided ones). A speed
+lever we have no equivalent of — and a measurement caveat: SF's `eval` may
+have been scoring the SMALL net in exactly the lopsided positions where it
+"beat" us.
+
+**NEUTRAL-SET ROBUSTNESS CHECK (1960 positions from SF18-played UHO book
+lines, freshly labelled SF18@50k — no net trained on these):**
+  Reckless 47.8 [45.8,49.8] | SF18 49.5 [47.2,51.8] | ARCHON 51.1
+  [48.8,53.3] | SF16 61.8 [59.4,64.6]
+Top three statistically indistinguishable; SF16 clearly behind. **The canon
+finding that we WIN the discriminating range did NOT clearly replicate
+here** — treat it as promising-but-not-robust, not banked. Note these are
+quiet SF-chosen positions, a different distribution again.
