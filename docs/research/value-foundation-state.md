@@ -850,6 +850,12 @@ cfut, pcut (~2h). sb120 in-frame heldout next firing.
 0. Trainer end: verify `superbatch 240 done` + unit exit 0; if oom/crash,
    postmortem via `systemctl --user status archon-d47s-r4`, resume
    `pump_train <cfg> <last_sb>` (fresh Adam transient documented).
+0b. **FLOOR-HOLD LEG (user ~17:1x: anneal FULLY)**: immediately
+   `bash tools/nnue/launch_d47s_hold.sh` — sb241-280 at constant floor LR
+   (the base schedule had ZERO dwell at the floor). inframe_heldout per
+   10sb checkpoint; stop when flat twice running; ALL downstream stages
+   (pack/calibrate/screens/D47T warm) use the HOLD-BEST EMA, not sb240.
+   Hold-at-floor = default closing phase for all future runs.
 1. `bash tools/nnue/d47s_pipeline.sh pack`        (recipe pinned 1280/128/32)
 2. `bash tools/nnue/d47s_pipeline.sh calibrate`   (HARD GATE — before ANY game)
 3. In-frame heldout final read: inframe_heldout.py 120 180 240 (must be
