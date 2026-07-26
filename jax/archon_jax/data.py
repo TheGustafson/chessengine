@@ -170,6 +170,139 @@ def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
     stop = threading.Event()
 
     if shuffle_chunk:
+        # MEMORY DISCIPLINE (the 2026-07-26 OOM): shuffle the RAW records
+        # (32 B each, so a 128-batch pool is ~33 MB) but map them to tensors
+        # ONE BATCH AT A TIME. The first draft returned a whole chunk of
+        # MAPPED batches, and with the policy mask each of those is a
+        # (8192, 1858) f32 array = 61 MB -> 7.8 GB per chunk -> instant OOM.
+        chunks = [sched[i:i + shuffle_chunk]
+                  for i in range(0, len(sched), shuffle_chunk)]
+
+        def producer_chunked():
+            with cf.ThreadPoolExecutor(workers) as pool:
+                for ci, chunk in enumerate(chunks):
+                    if stop.is_set():
+                        break
+                    recs = np.concatenate(
+                        [bins[c].slice(i * cfg.batch_size, cfg.batch_size)
+                         for c, i in chunk])
+                    recs = recs[np.random.default_rng(seed + ci).permutation(len(recs))]
+                    slices = [recs[b:b + cfg.batch_size]
+                              for b in range(0, len(recs) - cfg.batch_size + 1,
+                                             cfg.batch_size)]
+                    # bounded in-flight mapped batches, exactly like the
+                    # non-shuffled path
+                    for b in _stream(pool, slices, prefetch, _map_recs, stop):
+                        if stop.is_set():
+                            break
+                        q.put(b)
+                    del recs, slices
+            q.put(None)
+
+        t = threading.Thread(target=producer_chunked, daemon=True)
+        t.start()
+        try:
+            while (item := q.get()) is not None:
+                yield item
+        finally:
+            stop.set()
+        return
+
+    def producer():
+        with cf.ThreadPoolExecutor(workers) as pool:
+            for batch in _stream(pool, order, prefetch, map_one, stop):
+                if stop.is_set():
+                    break
+                q.put(batch)
+        q.put(None)
+
+    t = threading.Thread(target=producer, daemon=True)
+    t.start()
+    try:
+        while (item := q.get()) is not None:
+            yield item
+    finally:
+        stop.set()
+
+
+def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
+                       threats: bool = True, legal_mask: bool = False,
+                       seed: int = 0, workers: int = 4, prefetch: int = 8,
+                       total_batches: int | None = None,
+                       skip_batches: int = 0, shuffle_chunk: int = 0):
+    """Multi-corpus batch stream: ``mix`` = [(BulletBin, weight), ...].
+
+    Each batch's corpus is drawn ~ weights; windows within a corpus follow an
+    independent shuffled permutation that re-permutes on exhaustion (a new
+    epoch of that corpus). The schedule is fully determined by ``seed`` —
+    reproducible and resumable by skipping consumed indices.
+
+    D46: every corpus must be pre-shuffled (*.shuf.bin) AND unit-normalized
+    to the SAME score frame before mixing (per-pack SFBINPACK_SCORE_DIV at
+    convert time, or rescale_records.py) — mixing frames silently corrupts
+    the value target.
+    """
+    bins = [b for b, _ in mix]
+    weights = np.asarray([wt for _, wt in mix], dtype=np.float64)
+    weights = weights / weights.sum()
+    counts = [len(b) // cfg.batch_size for b in bins]
+    total = (total_batches if total_batches is not None
+             else cfg.batches_per_superbatch * cfg.superbatches)
+    rng = np.random.default_rng(seed)
+    choice = rng.choice(len(bins), size=total, p=weights)
+    orders = [rng.permutation(c) for c in counts]
+    cursors = [0] * len(bins)
+    sched = []
+    for c in choice:
+        c = int(c)
+        if cursors[c] >= counts[c]:
+            orders[c] = rng.permutation(counts[c])
+            cursors[c] = 0
+        sched.append((c, int(orders[c][cursors[c]])))
+        cursors[c] += 1
+    # Resume support: the schedule is a pure function of (seed, sizes), so a
+    # restarted run regenerates it and skips what the crashed run consumed.
+    sched = sched[skip_batches:]
+
+    def _map_recs(recs) -> dict:
+        out = map_batch(recs, wdl=cfg.wdl, score_multiplier=cfg.score_multiplier,
+                        scale=cfg.scale, policy=policy, threats=threats,
+                        target_offset=getattr(cfg, "target_offset", 0.0))
+        if policy and legal_mask:
+            out["pol_mask"] = legal_move_masks(recs, out["pol_target_id"])
+        return out
+
+    def map_one(job) -> dict:
+        c, i = job
+        return _map_recs(bins[c].slice(i * cfg.batch_size, cfg.batch_size))
+
+    # ---- position-level shuffle buffer (v1.5, 2026-07-26) -----------------
+    # Without it a batch is one CONTIGUOUS 8192-record window, so records i and
+    # i+1 share a batch on every epoch of every leg, forever — our batch
+    # composition was frozen for the life of a corpus. SF fills a ~1M-record
+    # buffer, std::shuffles it, and emits batches from that, re-randomized each
+    # pass. `shuffle_chunk` = how many batches to pool before shuffling
+    # (0 = off = the historical contiguous behaviour). 128 batches x 8192 x 32 B
+    # ~= 33 MB, well under the mask arrays we already hold.
+    if shuffle_chunk and workers == 0:
+        for c0 in range(0, len(sched), shuffle_chunk):
+            recs = np.concatenate([bins[c].slice(i * cfg.batch_size, cfg.batch_size)
+                                   for c, i in sched[c0:c0 + shuffle_chunk]])
+            perm = np.random.default_rng(seed + c0).permutation(len(recs))
+            recs = recs[perm]
+            for b0 in range(0, len(recs) - cfg.batch_size + 1, cfg.batch_size):
+                yield _map_recs(recs[b0:b0 + cfg.batch_size])
+        return
+
+    if workers == 0:
+        for job in sched:
+            yield map_one(job)
+        return
+
+    q: queue.Queue = queue.Queue(maxsize=prefetch)
+    stop = threading.Event()
+
+    if shuffle_chunk:
         chunks = [sched[i:i + shuffle_chunk] for i in range(0, len(sched), shuffle_chunk)]
 
         def map_chunk(job):

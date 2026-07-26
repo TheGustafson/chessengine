@@ -543,8 +543,13 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
     result = recs["result"].astype(np.float32) / 2.0
     s = score * score_multiplier
     if target_offset > 0.0:
-        pw = 1.0 / (1.0 + np.exp(-(s - target_offset) / scale))
-        pl = 1.0 / (1.0 + np.exp(-(-s - target_offset) / scale))
+        # clip the exponent: float32 exp overflows past ~88.7, which happens
+        # for |score| > 88.7*scale - offset (~6.7k at scale 76.9). The overflow
+        # is BENIGN (inf -> 1/(1+inf) -> 0, the correct limit, verified finite
+        # and monotone to +/-30000) but it warns on every batch, and log noise
+        # masks real problems.
+        pw = 1.0 / (1.0 + np.exp(np.clip(-(s - target_offset) / scale, -80.0, 80.0)))
+        pl = 1.0 / (1.0 + np.exp(np.clip(-(-s - target_offset) / scale, -80.0, 80.0)))
         eval_t = 0.5 * (1.0 + pw - pl)
     else:
         eval_t = 1.0 / (1.0 + np.exp(-s / scale))
