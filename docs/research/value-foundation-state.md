@@ -683,6 +683,41 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## ★★★ TAKEOVER CHECKPOINT 2026-07-26 ~22:3x — READ THIS FIRST ★★★
+
+**LIVE NOW: D47V (archon-d47v unit, /tmp/d47v_train.log, tb armed)** —
+768·32·32·8 + output-skip, pair-respecting slice-warm from the TEACHER
+(**d47s-v15-sb230-ema** — user's overfit call stopped the base run at
+sb236), distill α=0.7 (blend + soft policy CE), 100sb ≈ 5h. First-sb
+watcher backgrounded. GATES (pre-registered): in-frame heldout falling;
+Spearman within ~0.003 of teacher (quiet+sharp panels); policy top-1 vs
+26.1 bar; WAC fixed-node; **DECISIVE: equal-time vs teacher ≥ 0**.
+Fallback ladder: V fails → D47U (1280/64+skip, fully staged) → sb230
+d47s ships. DOCTRINE (user): train big for real Elo → distill to
+competitive size; raw-label finetune (resume, distill_alpha=0) gets the
+last word if teacher-hugging shows.
+
+**THE DAY'S STANDING RESULTS:** teacher sb230 = clean-sweep evaluator
+(Spearman quiet 0.9054 / sharp 0.8126, iso-MAE parity/lead vs SF18, only
+in-check-capable net). Search gap SOLVED-IN-PRINCIPLE (NMP bar shape +
+LMR table = tree ×3.11→×1.06 vs SF16; knob gates staged). SPSA priors
+program COMPLETE (s4-searchgap 30 params, games-vetted starts: sefam
+×0.52 +22.6 peak-bracketed, qs 174 +17.4, combo +19.1, guards branch
++3.5, check-ext branch +3.5/WAC+7). NPS ledger: eval 4.3×/shell 1.8× vs
+SF16; 768 projects ~0.9M NPS (+60%, ≈SF18 parity) at 84MB (−40%).
+ET attribution: sb170 −59.6 → sb210 −26.1 vs d47p (anneal ≈ half the
+deficit); global margin overlay REJECTED (−77.7); per-family repair =
+SPSA's job. TM fix LANDED+GATED. Match_report/arm_verify/inframe_heldout
+instruments committed — USE THEM (see INSTRUMENT INDEX below).
+
+**POST-V RUNBOOK:** pack (D40_ACC=768 D40_L2=32 D40_L3=32 D40_POLICY=1
++ SKP1 passthrough ✓) → calibrate → panels (Spearman vs teacher) →
+matches (fixed-node, ET vs teacher + d47p, WAC) → verdict. Engine side
+STILL NEEDED before V can play: head skip-dot consumption + 768/32
+feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
+if V disappoints. Old runbook (below) for the d47s stages; read the
+~21-22h entries for the V arc.
+
 ## 2026-07-26 ~22:2x D47S STOPPED AT sb236 (user overfit call) — TEACHER =
 ## sb230 EMA; D47V LAUNCHED
 
