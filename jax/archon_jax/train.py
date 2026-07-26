@@ -69,9 +69,12 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
             return jnp.asarray(initial)
         t = jnp.clip((sb - 1.0) / (cfg.lr_end_superbatch - 1.0), 0.0, 1.0)
         lr = final + 0.5 * (initial - final) * (1.0 + jnp.cos(jnp.pi * t))
-        if cfg.warmup_superbatches > 0.0 and cfg.start_superbatch == 1:
-            # Per-step linear ramp over the first warmup_superbatches;
-            # deviates from constant-within-sb only during the ramp.
+        if cfg.warmup_superbatches > 0.0:
+            # Per-step linear ramp over the first warmup_superbatches OF THIS
+            # LEG (count is within-run, so a resumed leg warms up too when
+            # configured — the fresh-Adam transient at sb31 showed resumes
+            # hitting full LR with empty moments; ~0.25sb smooths it).
+            # Default 0.0 = no-op; fresh-run behavior unchanged.
             lr = lr * jnp.minimum(1.0, (count + 1.0) / (cfg.warmup_superbatches * bps))
         return lr
 

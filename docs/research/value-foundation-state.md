@@ -820,6 +820,22 @@ teacher-copying. The α ablation must include policy (hard-CE arm).**
   Converges clearly BELOW the ET gate with ablation exhausted → capacity
   verdict → D47U 1280/64+skip.
 
+- **LR TRIGGERS (pre-registered ~16:1x, from the "tie LR decay to
+  anything?" discussion — anneal timing keys off INSTRUMENTS, via
+  pause/resume, not new trainer machinery):**
+  (1) **PLATEAU-ANNEAL:** heldout relative gain <0.5% over two
+  consecutive 10sb windows while cosine LR >20% of peak → stop, resume
+  from best EMA with a short steep tail (12-15sb to the floor).
+  (2) **EXTEND:** at sb90 heldout still falling ≥1%/window → resume with
+  lr_end_superbatch pushed out; don't let the cosine strangle a
+  still-learning run. Evidence base: anneal recovered HALF the d47s ET
+  deficit (−59.6→−26.1); horizons guessed wrong both directions before
+  (v15 stretch-to-240; d47s overfit at 236). NOT tied to: train loss
+  (frame-dependent), per-step noise, wall-clock. Next-gen α-decay note:
+  finish the α ramp BEFORE the final anneal. Capability landed:
+  warmup_superbatches now applies on RESUME legs too (default 0 = no-op)
+  — smooths the fresh-Adam transient (sb31 wobble).
+
 Timeline: sb40 panel (watcher, automatic) → sb50 fixed-node rematch vs
 the −206.7 baseline → Layer-1 call ~sb60-100 → α ablation → ET gates.
 
