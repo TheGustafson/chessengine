@@ -761,6 +761,23 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~21:5x EARLY PERF STUDY COMMISSIONED (user: "Commission
+## Opus 5 on it — have it study in depth the threat channel needs to be
+## faster") — P4's threat piece pulled forward, parallel with P0
+
+Opus-5 subagent briefed: fresh perf ground truth (verify the 24% share),
+refresh_threat from-scratch analysis vs HalfKA's incremental path, the
+DESIGNED-BUT-UNBUILT §12.2 dirty-diff observer (≤80 add/remove events —
+find why it never landed), SF full_threats distillation (ideas only),
+options ranked by measured-share gain × effort × risk, D24 validation
+plan (bit-identical evals + bench reproduction). Report →
+docs/research/threat-channel-perf-study.md. Motivation: the 1.11×
+finding — threats are width-independent, so this gain multiplies EVERY
+future net. sb110 state at commission: heldout 0.008532 (−1.23% —
+DECELERATING, α-kick spent; strike watch live at sb120), top-1 drifting
+(18.7 — trunk moving under the frozen-CE policy head; Leg B's repair),
+WAC 160 (noise band 160-168), scale 0.888 PASS.
+
 ## 2026-07-26 ~21:3x ★ CORRECTION (user's NPS test exposed it): THE
 ## SPEED EDGE IS ~1.11×, NOT "2.5-3×" — THE ET GATE MATH IS REWRITTEN ★
 
