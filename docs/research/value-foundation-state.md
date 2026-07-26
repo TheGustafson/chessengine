@@ -761,6 +761,22 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~23:5x PLATEAU STRIKE 1 (sb160: −0.40%/window, guard
+## lifted) — LEG A STAGED AS THE MERGED ANNEAL+SQUEEZE
+
+heldout 0.008231→0.008198. Strike 2 at sb170 (<0.5%) fires the stop.
+PREPPED: tools/nnue/runs/d47v_legA.json — the plateau-anneal and the
+value-only squeeze are ONE leg: resume from the strike-2 checkpoint,
+steep ~12sb cosine tail to floor, policy FROZEN (freeze polmove* +
+pol_lambda 0 → value gets the trunk alone), 0.25sb resume warmup,
+residual teacher α ≈0.04 rides the ramp out. Launch-time TODO: set
+superbatches/lr_end = stop_sb+12, then `pump_train.py runs/d47v_legA.json
+<stop_sb>`. CUT rules per the Phase-1 amendment (top-1 −3pp / flat
+panels). After Leg A: Leg B (frozen-trunk policy). CONTEXT: equivalence
+match 42/200 (slow — box carries trainer + match + study 2), sb160
+watcher cycle delayed by the same contention; expected, all
+instruments fixed-node/share-based.
+
 ## 2026-07-26 ~23:3x ★★ THE OPTIMIZATION PROGRAM IS LANDED — +30% NPS
 ## IN ONE PASS (user: "Go do them all") ★★
 
