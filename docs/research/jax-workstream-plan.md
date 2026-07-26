@@ -920,3 +920,51 @@ DECLINED / DEPRIORITIZED:
    factorization, adaptive piece-count rebalancing, their head topology
    ([x²,x] concat + linear bypass — interesting but needs new SIMD +
    deploy format + full retrain), PP_3Wide.
+
+## ★ EVAL_BENCH — HOW OUR NET ALONE STACKS UP (tool: tools/nnue/eval_bench.py)
+Built 2026-07-25 at user request ("make this a reusable style test... a
+powerful indication of how a net alone stands up to others"). Scores STATIC
+evaluators against a deep-search oracle, independent of search and of each
+engine's arbitrary units. Pluggable adapters (archon/sf/reckless, each
+declaring POV), content-hash caching of positions/labels/evals, bootstrap
+95% CIs, p90/p99 tails, worst-offender dumps, --labels for bulk-labelled
+corpora, and a guard that shouts when all evaluators correlate <0.30.
+
+**METHOD (why RESCALED is the comparable column):** every engine reports in
+its own units — a rook advantage reads ~1326 ARCHON / ~1283 Reckless / ~498
+UCI cp SF18 (SF's UCI cp is win-rate-normalized and even differs SF16 vs
+SF18, slope 0.893 between them). So we fit least squares
+`target ≈ a·eval + b` and report MAE of the rescaled prediction; `a` is the
+multiplier onto the oracle's scale (a<1 ⇒ that engine's evals are LARGER).
+All series converted to stm-relative; clipped ±800cp.
+
+**RUN 1 — 2999 positions from OUR OWN GAMES, SF18@50k oracle:**
+ARCHON d47m 69.9 [67.1,73.1] ≈ SF18 71.1 [68.2,74.3] < SF16 76.9 ≈ Reckless
+77.7. Read at the time as "parity with SF18".
+**RUN 2 — 20000 positions from the canon corpus (SF18 relabel), the
+robustness check: THE PARITY WAS HOME-FIELD ADVANTAGE.**
+  SF18            61.9 [60.8,63.0]  pearson .9278  sign 81.6%  p99 400.7
+  ARCHON d47m     68.2 [67.1,69.3]  pearson .9192  sign 84.2%  p99 370.8
+  SF16            68.7 [67.4,69.9]  pearson .9059  sign 81.5%  p99 448.3
+  ARCHON d47h     69.4  / d47p90 69.7
+  Reckless        91.5 [90.2,92.9]  pearson .8676  sign 83.5%  p99 438.1
+=> On a broad distribution SF18's static eval is ~10% better than ours (CIs
+clear). **We are TIED WITH SF16 and clearly ahead of RECKLESS.** But ARCHON
+has the BEST SIGN AGREEMENT of any evaluator (84.2% vs SF18 81.6%) and the
+BEST p99 TAIL (370.8 vs 400.7): we get direction right more often and blow
+up less on hard positions; SF18 beats us on fine magnitude in the bulk.
+That is a specific, actionable profile for where eval work remains.
+
+**INCIDENT + PERMANENT LESSON: canon-v1 `corpus.quiet.txt` labels are
+WHITE-POV, not stm-relative.** Read as stm, every evaluator collapsed to
+pearson ~0.04 / sign ~47% (worse than chance). Flipping on black-to-move
+restored pearson .9192. Added `--labels-white-pov` + the <0.30 guard.
+**OPEN ITEM (assumption, not verified):** our trainer consumes the BINARY
+path, not this text dump, and the nets plainly work — so the .txt→.bin
+conversion must apply the flip. That is now an explicit assumption worth a
+5-minute verification rather than a silent belief.
+
+**CAVEATS the tool prints every run:** own-game positions flatter our nets;
+a single-engine oracle flatters that engine's static eval; and this metric
+ordered four ARCHON nets spanning 86 Elo WRONG — it answers "is this eval in
+the right class", never "is this net stronger".
