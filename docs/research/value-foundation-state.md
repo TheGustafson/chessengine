@@ -604,6 +604,42 @@ imminent (S5 λ probe finishing).**
 > rather than fixed λ (policy dominance was an accident of scale, not
 > a choice).
 
+## 2026-07-26 TM FRONT-LOAD BUG — DIAGNOSED + FIXED (depth-redenomination)
+
+**Symptom (user, GUI + 2+1 probe):** ARCHON burns 108s of a 120s base by move
+15 (SF16: 54s), then lives on increment; totals equal (225.1 vs 224.6). At
+10+0.1 it "looked good enough" — the defect scales with TC.
+
+**Exonerated by measurement (each was my hypothesis at some point):** eval
+drift (mean signed drift ~0 both engines); search indecision (root flips
+4.08/search vs SF16's 4.05; last change at ply 12.7 vs 12.3 on 60 shared
+middlegames at 3s); the allocator (ours is SF18-shaped, within 6% of SF18's
+own curve; SF16's is simply an older, more frugal one); soft-stop overshoot
+(ovr ≈ 1.1); wrong-side clock + stale TM state (probes: opt tracks OUR clock,
+re-inits per go). Harness lesson: the first replay pasted book-FEN game moves
+onto startpos — engine silently searched startpos for 20 moves (fix: use the
+PGN [FEN] header; tee stdin when a trace looks impossible).
+
+**Root cause:** TM's two save-time inputs are ITERATION-denominated with
+SF-tuned constants, and we complete ~3.3 fewer iterations at equal time
+(depth 24.2 vs 27.5 — pure NPS, not indecision). Stability arrives 3.6 lower
+(11.6 vs 15.2 — the lerp [5,18] reads us as permanently unstable), and each
+root flip suffers ~3.3 fewer /2 decays by the stop decision (~10× hotter
+inst). Replay of the real game: budgets approved at red=2.16 (cap) ×
+inst=3.06 → a 20.5s move with 96s left.
+
+**Fix (src/search/params.rs, derivations in comments):** stability window
+[5,18]→[2,15]; flip decay /2→/2.5 (d^11.6 = 2^15.2 ⇒ 2.48). Replay after:
+53.6s by move 15 (SF16 real: 54.1s), max move 20.5→11.1s, late-game depths
+UP (36-38 vs 30-34). check.sh green, bench 701605 bit-identical (TM is
+outside the depth-pinned bench path). Deviation from SF-exact is deliberate
+and documented in design/12 §3.9. **PENDING GATE: 200g 10+0.1 vs incumbent
+when the box is next idle** — TM changes touch the crown TC; no release
+binary until that screen is ≥0. fe eval-scale rescale (user's standing
+point) deferred to SPSA: internal-scale ratio has two conflicting estimates
+(1.2× material probe vs 1.8× regression slopes) and fe rides its 0.572 floor
+~80% of moves — not baking in a guessed constant.
+
 ## 2026-07-22 D47c ★★ COWBOY ITERATION + THE COMPONENT INSTRUMENT ★★ [RUNNING]
 
 **Arch pivots (user, rapid-fire):** d47-v1 (1536/256+threats, 155k pos/s, ~10.5h)

@@ -842,10 +842,20 @@ crate::tunables! {
     pub FALLING_EVAL_MAX: f64 = 1.708;
 
     /// reduction factor 2, stability lerp x0: best-move-stability in iterations
-    /// `root_depth − last_best_move_depth`, mapped 5→[TIME_REDUCTION_MIN].
-    pub TIME_REDUCTION_STABILITY_LO: f64 = 5.0;
-    /// reduction: stability lerp x1, mapped 18→[TIME_REDUCTION_MAX].
-    pub TIME_REDUCTION_STABILITY_HI: f64 = 18.0;
+    /// `root_depth − last_best_move_depth`, mapped LO→[TIME_REDUCTION_MIN].
+    ///
+    /// 2026-07-26 depth-redenomination (TM front-load fix): SF's window is
+    /// [5,18], tuned for SF's iteration counts. Measured on 60 shared
+    /// middlegames at 3 s (tools note in docs/research/value-foundation-state
+    /// 2026-07-26): we complete 3.3 fewer iterations than SF16 at equal time
+    /// (24.2 vs 27.5) while last-best-move-change ply is EQUAL (12.7 vs 12.3),
+    /// so our stability input runs ~3.6 iterations lower (11.6 vs 15.2) for
+    /// identical decision behavior — the lerp read us as "unstable" on moves
+    /// SF banks time on. Both endpoints shift down by the measured deficit;
+    /// the y-range is untouched.
+    pub TIME_REDUCTION_STABILITY_LO: f64 = 2.0;
+    /// reduction: stability lerp x1, mapped HI→[TIME_REDUCTION_MAX].
+    pub TIME_REDUCTION_STABILITY_HI: f64 = 15.0;
     /// reduction: `time_reduction` lower clamp (and lerp y at low stability).
     pub TIME_REDUCTION_MIN: f64 = 0.65;
     /// reduction: `time_reduction` upper clamp (and lerp y at high stability).
@@ -862,6 +872,17 @@ crate::tunables! {
     pub INSTABILITY_BASE: f64 = 1.096;
     /// bestMoveInstability: weight on the per-thread-averaged change count.
     pub INSTABILITY_CHANGES_COEFF: f64 = 2.29;
+    /// bestMoveInstability: per-iteration aging divisor of the accumulated
+    /// root best-move-change count (SF: `totBestMoveChanges /= 2`).
+    ///
+    /// 2026-07-26 depth-redenomination (TM front-load fix): a root flip's
+    /// weight at the stop decision is `decay^-(iterations since the flip)`.
+    /// We complete ~3.3 fewer iterations than SF16 at equal time with EQUAL
+    /// flip counts per search (4.08 vs 4.05, 60 shared middlegames at 3 s),
+    /// so the same wobble reads ~2^3.3 ≈ 10× hotter through SF's /2. Matching
+    /// SF's effective weight at our measured stability (d^11.6 = 2^15.2)
+    /// gives d ≈ 2.48; pinned at 2.5.
+    pub INSTABILITY_CHANGES_DECAY: f64 = 2.5;
 
     /// highBestMoveEffort factor 4, effort lerp x0 (per-100k node units):
     /// `nodes_effort = effort · 100000 / max(1, nodes)` mapped 79219→0.924.

@@ -1746,7 +1746,12 @@ impl Worker {
             if !self.pool.increase_depth.load(Ordering::Relaxed) {
                 search_again_counter += 1;
             }
-            tot_best_move_changes /= 2.0; // age the instability metric
+            // Age the instability metric (SF: /2). Our divisor is 2.5 — the
+            // depth-redenomination of 2026-07-26: we run ~3.3 fewer
+            // iterations per search than SF at equal time, so SF's /2 leaves
+            // the same root flip ~10× hotter at our stop decision (rationale
+            // at params::INSTABILITY_CHANGES_DECAY).
+            tot_best_move_changes /= params::INSTABILITY_CHANGES_DECAY();
 
             // Snapshot last iteration (§3.5).
             for (idx, rm) in self.root_moves.iter_mut().enumerate() {
@@ -4590,6 +4595,40 @@ impl Worker {
             >= mate_in(params::SOFT_STOP_MATE_PLIES())
             || self.root_moves[0].score == mated_in(params::SOFT_STOP_MATED_PLIES());
 
+        // TM TRACE (env-gated, off by default => bench-neutral, no effect on
+        // search): dumps the five soft-stop factors at every decision so a
+        // long think can be attributed to a specific term instead of guessed
+        // at. Enable with ARCHON_TM_TRACE=1 and read stderr.
+        if std::env::var_os("ARCHON_TM_TRACE").is_some() {
+            eprintln!(
+                "TMTRACE d={} opt={} max={} fe={:.3} red={:.3} inst={:.3} eff={:.3} \
+                 total={:.0} elapsed={:.0} chg={:.2} \
+                 bv={} prevavg={} iterold={} dprev={} diter={} stab={}",
+                self.root_depth,
+                self.tm.optimum(),
+                self.tm.maximum(),
+                falling_eval,
+                reduction,
+                instability,
+                effort,
+                total_time,
+                elapsed,
+                tot_best_move_changes,
+                // Raw fallingEval inputs. The factor is a clamped affine form
+                // in these two deltas, and both are in OUR internal Value
+                // units — the coefficients were taken from SF, whose units
+                // differ, so the deltas are the thing to look at directly
+                // rather than re-deriving a scale ratio (which has produced
+                // two contradictory answers).
+                best_value,
+                self.tm_best_previous_average_score,
+                self.iter_value[self.iter_idx],
+                self.tm_best_previous_average_score - best_value,
+                self.iter_value[self.iter_idx] - best_value,
+                self.root_depth - self.last_best_move_depth
+            );
+        }
+
         if elapsed > total_time.min(self.tm.maximum() as f64) || mate_stop {
             if pondering {
                 // While pondering the GUI owns the clock — never self-stop.
@@ -7098,10 +7137,19 @@ mod tests {
         let stop = AtomicBool::new(false);
         w.iterative_deepening(&test_tt(), &stop, &mut persist, &mut |_| {});
         assert!(stop.load(Ordering::Relaxed), "the soft stop must fire");
+        // A STABLE quiet search legitimately stops BELOW optimum — banking
+        // time is the point of the multiplier stack (fe rides its 0.572
+        // floor when the score isn't falling, red < 1 once the best move
+        // has been stable, so total_time ≈ 0.4-0.8 × optimum here; the
+        // 2026-07-26 depth-redenomination made the banking regime reachable
+        // at realistic depths). The multiplier product's theoretical floor
+        // is 0.572·0.637·1.096·0.71 ≈ 0.28, so anything above optimum/4
+        // is a real soft-stop verdict, not a degenerate early exit.
         assert!(
-            w.nodes as i64 > optimum,
-            "soft stop fired before optimum was spent: {} <= {optimum}",
-            w.nodes
+            w.nodes as i64 > optimum / 4,
+            "soft stop fired degenerately early: {} <= {}",
+            w.nodes,
+            optimum / 4
         );
         assert!(
             (w.nodes as i64) < maximum - params::CHECK_TIME_EPSILON_MS(),
@@ -7170,19 +7218,22 @@ mod tests {
 
     #[test]
     fn soft_stop_stability_reduction_pins_constants() {
-        // time_reduction = lerp(iters, 5,18, 0.65,1.55) clamped [0.65,1.55];
+        // time_reduction = lerp(iters, 2,15, 0.65,1.55) clamped [0.65,1.55];
         // reduction = (1.48 + prev) / (2.157 · time_reduction).
+        // Window [2,15] = SF's [5,18] shifted down by our measured ~3.3
+        // iteration deficit at equal time (2026-07-26 depth-redenomination;
+        // rationale at params::TIME_REDUCTION_STABILITY_LO).
         let (tr0, red0) = Worker::stability_reduction(0, 0.85); // below lo -> clamp 0.65
         assert!((tr0 - 0.65).abs() < 1e-12);
         assert!((red0 - 1.661_852_287_721_550_7).abs() < 1e-9);
-        let (tr5, _) = Worker::stability_reduction(5, 0.85); // lerp x0 -> 0.65
-        assert!((tr5 - 0.65).abs() < 1e-12);
+        let (tr2, _) = Worker::stability_reduction(2, 0.85); // lerp x0 -> 0.65
+        assert!((tr2 - 0.65).abs() < 1e-12);
         let (tr11, red11) = Worker::stability_reduction(11, 0.85);
-        assert!((tr11 - 1.065_384_615_384_615_4).abs() < 1e-9);
-        assert!((red11 - 1.013_909_879_512_426_4).abs() < 1e-9);
-        let (tr18, red18) = Worker::stability_reduction(18, 0.85); // lerp x1 -> 1.55
-        assert!((tr18 - 1.55).abs() < 1e-12);
-        assert!((red18 - 0.696_905_798_076_779_3).abs() < 1e-9);
+        assert!((tr11 - 1.273_076_923_076_923).abs() < 1e-9);
+        assert!((red11 - 0.848_498_600_075_353_7).abs() < 1e-9);
+        let (tr15, red15) = Worker::stability_reduction(15, 0.85); // lerp x1 -> 1.55
+        assert!((tr15 - 1.55).abs() < 1e-12);
+        assert!((red15 - 0.696_905_798_076_779_3).abs() < 1e-9);
         let (tr30, _) = Worker::stability_reduction(30, 0.85); // above hi -> clamp 1.55
         assert!((tr30 - 1.55).abs() < 1e-12);
     }

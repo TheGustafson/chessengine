@@ -709,11 +709,27 @@ Inputs maintained by the search doc's ID loop:
 - `tot_best_move_changes: f64` — per-worker `bestMoveChanges` counters
   (incremented when the best root move flips mid-iteration), summed into
   the main worker's accumulator each iteration, then the accumulator is
-  **halved at the start of every iteration** (exponential decay).
+  **divided by 2.5 at the start of every iteration** (exponential decay;
+  SF halves it — see the depth-redenomination note below).
 - `rootMoves[0].effort` — nodes searched under the best root move.
 
-The four factors (constants exact from `search.cpp`; `lerp(x, x0, x1,
-y0, y1)` is linear interpolation):
+The four factors (constants from `search.cpp`, with two deliberate
+2026-07-26 deviations; `lerp(x, x0, x1, y0, y1)` is linear interpolation):
+
+> **Depth-redenomination (2026-07-26).** Factors 2 and 3 take inputs
+> denominated in ITERATIONS, and SF's constants assume SF's iteration
+> counts. Measured on 60 shared middlegames at 3 s/move: we complete ~3.3
+> fewer iterations than SF16 at equal time (depth 24.2 vs 27.5) while the
+> ply of the last best-move change (12.7 vs 12.3) and root flips per search
+> (4.08 vs 4.05) are EQUAL — we are slower, not less decisive. Unadjusted,
+> the same wobble therefore reads as "unstable" (stability input 11.6 vs
+> 15.2) and each flip decays ~2^3.3 ≈ 10× less by the stop decision,
+> which front-loaded the clock (real 2+1 game: 108 s of base gone by move
+> 15 vs SF16's 54 s). Two compensations, both derived from the measured
+> deficit, both pinned in `params.rs` with the derivation: the stability
+> lerp window shifts down 3 ([5,18] → [2,15]) and the flip decay divisor
+> becomes 2.5 (`d^11.6 = 2^15.2 ⇒ d ≈ 2.48`). Replaying the probe game
+> with real draining clocks reproduced 53.6 s by move 15 (SF16: 54.1 s).
 
 1. **fallingEval** — think longer when the score is dropping:
    `fallingEval = (11.87 + 2.21*(best_previous_average_score - best_value)`
@@ -723,7 +739,9 @@ y0, y1)` is linear interpolation):
    been stable for many iterations, partially giving back last move's
    savings:
    `time_reduction = clamp(lerp(root_depth - last_best_move_depth,`
-   `                            5.0, 18.0, 0.65, 1.55), 0.65, 1.55)`
+   `                            2.0, 15.0, 0.65, 1.55), 0.65, 1.55)`
+   (SF's window is [5,18]; ours is shifted by the depth-redenomination
+   above)
    `reduction = (1.48 + previous_time_reduction) / (2.157 * time_reduction)`
    (`previous_time_reduction` = last move's `time_reduction`, initial
    0.85; **held constant for the whole search** — only the denominator's
