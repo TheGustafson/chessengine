@@ -640,6 +640,25 @@ point) deferred to SPSA: internal-scale ratio has two conflicting estimates
 (1.2× material probe vs 1.8× regression slopes) and fe rides its 0.572 floor
 ~80% of moves — not baking in a guessed constant.
 
+## 2026-07-26 ~07:0x D47S MID-RUN HEALTH: TRIPWIRE DISARMED (in-frame
+## instrument) + PACK RECIPE RECOVERED
+
+False-alarm anatomy: the trainer's heldout metric uses TrainConfig()
+DEFAULTS by design (transform-invariant warm gate) → it RISES while a
+retargeted net (offset 163/scale 76.9) fits its new frame (sb30→sb60 EMA
+0.013471→0.013540, three rising readings). eval_bench's affine-corrected
+MAE degrades under the NONLINEAR shape change too (sb50: 90.2 vs parent
+72.2) while sign% IMPROVED (84.9 vs 84.0) — ordering intact, magnitude
+curve retargeting. The correct instrument (new tool
+`tools/nnue/inframe_heldout.py`, same bin through the RUN'S transform):
+sb10 0.010787 → sb50 0.010768 **FALLING** = healthy; and the net already
+fits the new frame far better than the old (0.0108 vs 0.0135). Refinement
+pace is expectedly slower than D47P's repair leg. Re-check at sb120/180.
+Also recovered the hard way: pump-quant pack recipe is `D40_ACC=1280
+D40_L2=128 D40_L3=32 D40_BUCKETS=8 D40_POLICY=1` (arch is 1280/128/32,
+factorize+psqt ON per pump_train.py:77; netpack default 768 misparses;
+d47s_pipeline.sh pack stage fixed BEFORE it could fail at completion).
+
 ## 2026-07-26 ~06:0x NPS GROUND-TRUTH LEDGER (flat perf shares, both engines,
 ## same positions; trainer-contended box — SHARES only, absolutes from the
 ## earlier idle-box game logs)
