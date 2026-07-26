@@ -761,6 +761,22 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~20:1x ★★ USER RULINGS: D47V IS THE RELEASE NET; TEACHERS
+## ARE NOT LOAD-BEARING ★★
+
+(1) **"d47v is our release net"** — the release plan resumes after leg 2
+trains; the fallback ladder (D47U → sb230) becomes contingency-only.
+(2) **Teachers = warm-up accelerant, NOT load-bearing** ("I'll consider
+using them again in the future just to speed things up") — the α=0
+control experiment is CANCELLED by ruling; the tentative decomposition
+stands unproven-but-ruled: warm slice = the value; late constant-α was
+overweight; ramp = the correction. Next-gen recipe default: warm slice
++ short distill warm-up + early decay to labels. (3) Every 10sb panel
+gets relayed IN CHAT AS A TABLE. sb90 state at ruling time: heldout
+0.009028 (−6.87%/wnd, accelerating), scale 0.789 walking to label
+frame, decided-sharp 0.8761 = FAMILY BEST, rank headlines churning at
+high LR (re-convergence = LR decay's job).
+
 ## 2026-07-26 ~19:4x sb80 FULL CYCLE — THE α TRANSITION IS WORKING;
 ## + SSTATS VERDICT: NO SEARCH-FIT PATHOLOGY IN V
 
