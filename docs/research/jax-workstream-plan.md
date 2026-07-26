@@ -691,6 +691,32 @@ harvest it POST-HOC with permutation.
 occupancy benchmarked identically), and (b) SF, running the SAME sparse-
 L1 kernel, does not pay it. And that penalty is exactly what destroyed
 the policy substrate in D47M when left unopposed.
-**ACTION (post-release queue, ABOVE the permutation work in expected
-value): drop or sharply reduce ft_sparsity_lambda.** It is a capacity
-gain, not a speed gain. Do NOT change mid-D47P.
+**ACTION — CORRECTED (user pushback 2026-07-25 ~23:0x: "we can't assume
+just because they don't have the L1 penalty that we shouldn't — they
+aren't perfect and haven't tried everything").** SF's absence of the
+penalty is an APPEAL TO AUTHORITY, not an argument; retracted as a
+reason. The real state of the argument:
+  FOR keeping it: the mechanism is real; sparsity may also REGULARIZE
+  (entirely untested by us); and our NPS evidence is weak (3 positions,
+  2 passes, under training load, CROSS-NET so confounded by different
+  weights).
+  AGAINST: the only benefit we can articulate does not show up in the
+  one measurement we have; and the cost is demonstrated, not
+  hypothetical — D47M is what this penalty does to the policy substrate
+  when nothing opposes it.
+  STRUCTURAL DETAIL THAT SHARPENS BOTH SIDES: the engine's find_nnz
+  scans the POST-pairwise vector (`activate_ft` -> `ft:[u8;1280]` ->
+  `find_nnz`, sota_head.rs:338-339) but our penalty/metric act on the
+  PRE-pairwise accumulators. Post-pairwise density ~= pre-pairwise
+  SQUARED, so our reported 0.27 is ~0.07 where the hardware skips.
+  => the penalty has SQUARED LEVERAGE (argues FOR efficiency), but it
+  also means D47M (~15% active groups) vs champion (~25%) was a 40%
+  difference in real L1 work that produced ZERO measurable NPS delta
+  (argues the bottleneck is the O(L1) find_nnz scan + non-eval node
+  cost, not group count).
+**VERDICT: "unjustified by evidence", NOT "wrong". Settle it with an
+experiment, post-release:** two short legs from a shared warm point,
+ft_sparsity_lambda 0.001 vs 0.0, comparing heldout value + screens +
+the packed nets' NPS measured properly on an IDLE box. That tests
+capacity, speed, and the regularization story at once. Do NOT change
+mid-D47P.
