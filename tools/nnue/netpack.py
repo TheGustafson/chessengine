@@ -225,8 +225,20 @@ def _split_psq1_trailer(raw: bytes, stream_end: int):
         return None
     nb = int.from_bytes(rest[4:8], "little")
     rows = int.from_bytes(rest[8:12], "little")
-    if len(rest) != 12 + rows * nb * 4:
+    psq_len = 12 + rows * nb * 4
+    if len(rest) < psq_len:
         return None
+    # D47V: optional SKP1 section (output-skip lane, f32) after PSQ1 —
+    # b"SKP1" | u32 num_buckets | u32 hl | f32[hl*num_buckets]. Passed
+    # through verbatim with PSQ1; absent on pre-skip nets.
+    tail = rest[psq_len:]
+    if tail:
+        if len(tail) < 12 or tail[:4] != b"SKP1":
+            return None
+        snb = int.from_bytes(tail[4:8], "little")
+        shl = int.from_bytes(tail[8:12], "little")
+        if len(tail) != 12 + snb * shl * 4:
+            return None
     return bytes(rest)
 
 
