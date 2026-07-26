@@ -615,3 +615,52 @@ Sorted by expected value per hour:
 
 This list is also prime technical-report material — it turns the
 write-up from a changelog into a study of multi-head NNUE training.
+
+## FT PERMUTATION (SCHEDULED) + GROUP-AWARE PENALTY (RESEARCH ONLY)
+User ruling 2026-07-25 ~22:3x: **the permutation WILL happen — it is free.
+Slot: AFTER light SPSA, BEFORE the SF16/SF18 baselines** (so the first
+external anchor measures the engine we intend to keep).
+
+**Why permutation is free:** permuting FT output neurons and applying the
+inverse permutation to L1 input rows computes an IDENTICAL function —
+pure reindexing, no retraining, verifiable bit-exact. Our sparse L1
+(`sota_head.rs:163-183` find_nnz → l1_dot) skips a 4-byte group only if
+all 4 activations are zero, so which neurons share a group matters.
+Theory: grouping SIMILAR-rate neurons dominates mixing them — for rates
+{0.9,0.9,0.1,0.1}, {0.9,0.9}+{0.1,0.1} gives 1.18 expected active groups
+vs 1.82 for the mixed pairing (35% less work, same neurons).
+Procedure: activation stats over a large sample → clustering solve
+(co-occurrence-aware beats sort-by-rate) → permute exported net →
+assert bit-identical eval.
+
+**FIRST, THE CONTROLLED A/B** (~1h): permute ONE net, measure NPS before
+vs after. Today's cross-net evidence says this may be worth ~nothing:
+D47M at ~57% group occupancy and d47h at ~70% benchmarked IDENTICALLY
+(657.9k vs 655.7k nps, 3 positions x 2 passes under training load). If a
+13-point occupancy swing bought 0%, permutation may too. Likely the cost
+is dominated by the O(L1) find_nnz scan + accumulator update + non-eval
+node work, not by group count. NOTE: this also undercuts the ORIGINAL
+justification for the ft_sparsity penalty (adopted as "perf study #6 #1
+NPS lever") — revisit whether we should pay capacity for density at all.
+
+**GROUP-AWARE SPARSITY PENALTY — research queue, low priority.** Group
+lasso (L2 over each 4-block, summed) instead of element-wise L1 makes
+whole blocks die together. It is NOT redundant with permutation:
+permutation cannot create correlation, and correlation is what makes
+blocks skippable (independent neurons at rate 0.5 → 93.75% active groups
+under ANY permutation; block-correlated at the same rate → 50%). But it
+buys ONLY inference speed and it COSTS representational capacity (a
+strictly stronger constraint than L1 at equal sparsity). Given the A/B
+evidence that occupancy does not drive our NPS, this is probably a bad
+trade for us. Verdict: park unless the permutation A/B surprises.
+
+**WHAT STOCKFISH DOES (checked against the local clone):** VERIFIED —
+SF uses the same find_nnz sparse-input affine
+(`affine_transform_sparse_input.h:95-137`), and its `get_weight_index_
+scrambled` (:177-192) is pure SIMD LAYOUT arithmetic (dpbusd chunk
+interleave), NOT activation clustering. BELIEVED-NOT-VERIFIED — the
+activation-clustering permutation lives trainer-side in nnue-pytorch,
+which is not in our clone. NO EVIDENCE SF uses any group-aware sparsity
+penalty; their sparsity is emergent (clipped ReLU + pairwise multiply).
+Signal worth weighing: the strongest team took the free post-hoc lunch
+and did not pay capacity for structured sparsity.
