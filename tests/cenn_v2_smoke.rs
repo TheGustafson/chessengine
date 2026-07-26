@@ -47,6 +47,7 @@ fn cenn_v2_round_trip_and_evaluate() {
             l3_var_biases: None,
             l3_wdl_weights: None,
             l3_wdl_biases: None,
+            skip_weights: None,
             network_scale: 380,
         },
     };

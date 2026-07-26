@@ -837,6 +837,7 @@ mod tests {
             l3_var_biases: None,
             l3_wdl_weights: None,
             l3_wdl_biases: None,
+            skip_weights: None,
         };
         let piece_count = board.all_occupancy().count() as usize;
         let (cp, _sigma, _wdl) = head.forward(

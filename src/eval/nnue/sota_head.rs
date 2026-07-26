@@ -116,10 +116,16 @@ pub struct SotaHead {
     /// `None` for nets without it (⇒ [`forward`](Self::forward) returns `wdl = None`,
     /// consumers fall back to their constants — bit-identical to today). Loaded from a
     /// `D40_WDL_HEAD` sidecar, not the CENN, so the CENN + a WDL-less net stay
-    /// bit-identical. Layout: row-major `[o·L3 + j]`, o ∈ {L,D,W}.
+    /// bit-identical. Layout: row-major `[o·L3 + j]`, o ∈ {L,D,W    /// D47V output-skip lane (`[L1 · BUCKETS]` f32 row-major, jax `skipw`).
+    /// `None` = pre-skip net: the eval path is bit-identical to before.
+    pub skip_weights: Option<Box<[f32]>>,
+}.
     pub l3_wdl_weights: Option<Box<[f32]>>,
     /// `[3]` f32 biases paired with [`l3_wdl_weights`](Self::l3_wdl_weights).
     pub l3_wdl_biases: Option<Box<[f32]>>,
+    /// D47V output-skip lane (`[L1 · BUCKETS]` f32 row-major, jax `skipw`).
+    /// `None` = pre-skip net: the eval path is bit-identical to before.
+    pub skip_weights: Option<Box<[f32]>>,
 }
 
 /// Pairwise-multiply FT activation (design/11 §12.3 step 1): sum the two
@@ -346,6 +352,21 @@ impl SotaHead {
         // tail, straight in centipawns — `(stm − ntm) >> 8` (arithmetic shift;
         // the rows fold in 0.5·400·256, see `PsqtPair`). Zero pair ⇒ +0 ⇒
         // bit-identical for legacy nets.
+        // D47V output-skip: a learned linear read of the SAME activated
+        // pairwise features the L1 matmul consumes, added in LOGIT units
+        // before the cp scale — mirroring SF's fc_0 +1 lane. Dequant reuses
+        // policy_trunk's proven factor: ft_u8 = hl1_f · FT_QUANT²/2^FT_SHIFT.
+        let l3 = if let Some(sk) = &self.skip_weights {
+            let mut acc = 0.0f32;
+            for (i, &a) in ft.iter().enumerate() {
+                if a != 0 {
+                    acc += f32::from(a) * sk[i * BUCKETS + bucket];
+                }
+            }
+            l3 + acc * ((1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT) as f32)
+        } else {
+            l3
+        };
         let stm_i = stm as usize;
         let value = (l3 * self.network_scale as f32) as i32
             + ((psqt[stm_i][bucket] - psqt[stm_i ^ 1][bucket]) >> 8);
@@ -433,6 +454,7 @@ mod tests {
             l3_var_biases: None,
             l3_wdl_weights: None,
             l3_wdl_biases: None,
+            skip_weights: None,
         }
     }
 

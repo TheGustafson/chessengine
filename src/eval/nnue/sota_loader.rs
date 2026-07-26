@@ -105,9 +105,6 @@ pub struct SotaNetwork {
     /// no PSQ1 section — every psqt path is then inert and the eval is
     /// bit-identical to a pre-T6c build.
     pub psqt_weights: Box<[i32]>,
-    /// D47V output-skip lane, `[hl · BUCKETS]` f32 row-major (empty = no
-    /// SKP1 section = pre-skip net, eval bit-identical to before).
-    pub skip_weights: Box<[f32]>,
     /// The multi-layer bucketed head (owns its own weight boxes).
     pub head: SotaHead,
 }
@@ -494,6 +491,7 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         l3_var_biases: None,
         l3_wdl_weights: None,
         l3_wdl_biases: None,
+        skip_weights: (!skip_weights.is_empty()).then_some(skip_weights),
     };
 
     Ok(SotaNetwork {
@@ -501,7 +499,6 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         ft_bias,
         threat_weights,
         psqt_weights,
-        skip_weights,
         head,
     })
 }
@@ -863,6 +860,7 @@ pub(crate) mod tests {
                 l3_var_biases: None,
                 l3_wdl_weights: None,
                 l3_wdl_biases: None,
+            skip_weights: None,
             },
         }
     }

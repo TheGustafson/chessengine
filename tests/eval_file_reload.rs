@@ -34,6 +34,7 @@ fn tiny_net(scale: i32) -> SotaNetwork {
             l3_var_biases: None,
             l3_wdl_weights: None,
             l3_wdl_biases: None,
+            skip_weights: None,
             network_scale: scale,
         },
     }
