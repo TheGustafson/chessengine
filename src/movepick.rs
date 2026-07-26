@@ -28,7 +28,7 @@
 //!
 //! Hot-path rules (design/09 §6): no heap allocation on any [`next_move`]
 //! path (generation uses a stack [`MoveList`], scoring writes into the owned
-//! buffer), no `unsafe` (D14), and the picker holds no borrows — `&Board` and
+//! buffer), and the picker holds no borrows — `&Board` and
 //! `&Histories` are passed into each call so the search can freely
 //! make/unmake and update histories between calls.
 //!
@@ -60,15 +60,6 @@ pub(crate) struct ExtMove {
     pub mv: Move,
     /// The ordering score; sorted and filtered on this alone.
     pub value: i32,
-}
-
-impl ExtMove {
-    /// The buffer-fill placeholder: an inert slot no emission stage reads
-    /// (region indices guarantee only written slots are ever consumed).
-    const NULL: ExtMove = ExtMove {
-        mv: Move::NULL,
-        value: 0,
-    };
 }
 
 // design/09 §8 criterion 2 / doc 02 §3.8: 8 bytes, align 4. `#[repr(C)]` lays
@@ -248,10 +239,71 @@ pub struct MovePicker {
     /// the env knob ships OFF, so ordering is bit-identical unless opted in).
     #[cfg(feature = "sota")]
     quiet_prior: Option<crate::eval::nnue::policy_head::QuietPrior>,
-    buf: [ExtMove; MAX_MOVES],
+    /// Perf study #2 option C: UNINITIALISED buffer — the old
+    /// `[ExtMove::NULL; MAX_MOVES]` zeroed 2 KB per node (plus the
+    /// constructor's return copy) for slots no stage ever reads.
+    ///
+    /// SAFETY ARGUMENT (the D14a-style exemption this module carries):
+    /// every read goes through [`Self::slot`] / [`Self::slots_mut`] /
+    /// [`Self::swap_slots`], and the region-index invariant — reads only
+    /// ever address `[0, end_generated)` (emission windows, sorts, swaps),
+    /// which is exactly the union of the fill loops' written prefixes —
+    /// is machine-checked in debug builds by the `written` tracker below
+    /// (the `assert_consistent` precedent): every `set_slot` marks, every
+    /// read asserts. Release compiles the tracker out.
+    buf: [core::mem::MaybeUninit<ExtMove>; MAX_MOVES],
+    #[cfg(debug_assertions)]
+    written: [bool; MAX_MOVES],
 }
 
 impl MovePicker {
+    /// Read one buffer slot. Debug builds assert the slot was written.
+    #[inline]
+    fn slot(&self, i: usize) -> ExtMove {
+        #[cfg(debug_assertions)]
+        debug_assert!(self.written[i], "movepick read of unwritten slot {i}");
+        // SAFETY: the region-index invariant (see `buf`) guarantees `i` was
+        // written by a fill loop; the debug tracker machine-checks it.
+        #[allow(unsafe_code)]
+        unsafe {
+            self.buf[i].assume_init()
+        }
+    }
+
+    /// Write one buffer slot (and mark it in debug builds).
+    #[inline]
+    fn set_slot(&mut self, i: usize, e: ExtMove) {
+        self.buf[i].write(e);
+        #[cfg(debug_assertions)]
+        {
+            self.written[i] = true;
+        }
+    }
+
+    /// A `&mut [ExtMove]` view of a fully-written region (for the sorts).
+    #[inline]
+    fn slots_mut(&mut self, r: core::ops::Range<usize>) -> &mut [ExtMove] {
+        #[cfg(debug_assertions)]
+        debug_assert!(
+            self.written[r.clone()].iter().all(|&w| w),
+            "movepick slice over unwritten slots {r:?}"
+        );
+        // SAFETY: every index in `r` was written (region invariant +
+        // debug tracker); MaybeUninit<T> has the same layout as T.
+        #[allow(unsafe_code)]
+        unsafe {
+            core::slice::from_raw_parts_mut(self.buf.as_mut_ptr().add(r.start).cast(), r.len())
+        }
+    }
+
+    /// Swap two WRITTEN slots (the good/bad-capture parking swap).
+    #[inline]
+    fn swap_slots(&mut self, a: usize, b: usize) {
+        #[cfg(debug_assertions)]
+        debug_assert!(self.written[a] && self.written[b]);
+        self.buf.swap(a, b);
+    }
+
     /// Main search (`depth > 0`), quiescence (`depth <= 0`), and evasions
     /// (side to move in check) — one constructor, like Stockfish
     /// (design/09 §3.5). `cont_hist` are the six predecessor continuation-
@@ -328,7 +380,9 @@ impl MovePicker {
             policy_scores: None,
             #[cfg(feature = "sota")]
             quiet_prior: None,
-            buf: [ExtMove::NULL; MAX_MOVES],
+            buf: [core::mem::MaybeUninit::uninit(); MAX_MOVES],
+            #[cfg(debug_assertions)]
+            written: [false; MAX_MOVES],
         }
     }
 
@@ -391,7 +445,7 @@ impl MovePicker {
                 // bad-captures region for later and skipped here.
                 Stage::GoodCapture => {
                     while self.cur < self.end_cur {
-                        let ext = self.buf[self.cur];
+                        let ext = self.slot(self.cur);
                         // Dedup: the TT move was already emitted at MainTt.
                         if ext.mv == self.tt_move {
                             self.cur += 1;
@@ -404,7 +458,7 @@ impl MovePicker {
                         // Bad: park it in `[0, end_bad_captures)`. The stale,
                         // already-emitted element it displaces goes to `cur`,
                         // which `cur += 1` then steps past.
-                        self.buf.swap(self.end_bad_captures, self.cur);
+                        self.swap_slots(self.end_bad_captures, self.cur);
                         self.end_bad_captures += 1;
                         self.cur += 1;
                     }
@@ -492,7 +546,7 @@ impl MovePicker {
                         (policy_weight as f32 * scores.move_score(m.from(), m.to())) as i32
                     })
                     .unwrap_or(0);
-            self.buf[i] = ExtMove { mv: m, value };
+            self.set_slot(i, ExtMove { mv: m, value });
         }
         // Captures occupy `[0, n)`; nothing has been swapped into the
         // bad-captures region and no quiets exist yet.
@@ -501,7 +555,7 @@ impl MovePicker {
         self.end_captures = n;
         self.end_generated = n;
         self.end_cur = n;
-        partial_insertion_sort(&mut self.buf[..n], i32::MIN);
+        partial_insertion_sort(self.slots_mut(0..n), i32::MIN);
     }
 
     /// Late-move pruning (design/09 §3.5): abandon quiet generation and
@@ -660,16 +714,14 @@ impl MovePicker {
                 value += qp.bonus(m);
             }
 
-            self.buf[base + i] = ExtMove { mv: m, value };
+            self.set_slot(base + i, ExtMove { mv: m, value });
         }
 
         self.cur = base;
         self.end_cur = base + n;
         self.end_generated = base + n;
-        partial_insertion_sort(
-            &mut self.buf[base..base + n],
-            QUIET_SORT_DEPTH_FACTOR() * self.depth,
-        );
+        let sort_limit = QUIET_SORT_DEPTH_FACTOR() * self.depth;
+        partial_insertion_sort(self.slots_mut(base..base + n), sort_limit);
     }
 
     /// Generate + score check evasions into `buf[0..n]`, full-sort, and set the
@@ -694,7 +746,7 @@ impl MovePicker {
                     .expect("an evasion starts on a piece of the side to move");
                 main_plane[m.raw16() as usize].get() + c1[pc.index()][m.to().index() as usize].get()
             };
-            self.buf[i] = ExtMove { mv: m, value };
+            self.set_slot(i, ExtMove { mv: m, value });
         }
 
         self.cur = 0;
@@ -702,7 +754,7 @@ impl MovePicker {
         self.end_captures = 0;
         self.end_bad_captures = 0;
         self.end_generated = n;
-        partial_insertion_sort(&mut self.buf[..n], i32::MIN);
+        partial_insertion_sort(self.slots_mut(0..n), i32::MIN);
     }
 
     /// Scan the emission window `buf[cur..end_cur]` for the next element passing
@@ -716,7 +768,7 @@ impl MovePicker {
         mut ok: impl FnMut(&Board, ExtMove) -> bool,
     ) -> Option<Move> {
         while self.cur < self.end_cur {
-            let ext = self.buf[self.cur];
+            let ext = self.slot(self.cur);
             self.cur += 1;
             // Dedup: the TT move was already emitted at the `*Tt` stage.
             if ext.mv != self.tt_move && ok(board, ext) {
@@ -1423,7 +1475,7 @@ mod tests {
         let mut mp = MovePicker::new(b, Move::NULL, 8, ply, sentinels());
         mp.init_captures(b, hist);
         mp.init_quiets(b, hist);
-        mp.buf[mp.end_captures..mp.end_generated]
+        mp.slots_mut(mp.end_captures..mp.end_generated)
             .iter()
             .find(|e| e.mv == m)
             .unwrap_or_else(|| panic!("quiet {m} not generated"))
