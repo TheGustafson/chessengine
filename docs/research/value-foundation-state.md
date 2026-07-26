@@ -753,6 +753,18 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-26 ~17:1x sb50 REMATCH: **−151.4±27.1 — +55 ELO IN 30sb**
+## (exp-0140; sb20 baseline −206.7±28.4). GATE MATH: ET parity needs the
+## fn gap at ≈−100 (speed edge ~2.5-3× ≈ +90-120); at +55/30sb with 50sb
+## + anneal remaining, THE GATE IS IN REACH, not assured. Story deltas vs
+## sb20: still grind-dominant (62%), tactical share flat (18%); endgame
+## depth gap WIDENED to −0.8 (endgame = V's weak phase in play too,
+## matching the slice analysis); draws 93 with V better in 32 (was 25).
+## Blunder-ledger raw count rose 81→100 while every outcome metric
+## improved — own-eval-swing metric, don't over-read across checkpoints.
+## HELDOUT sb60: 0.010388 (−1.18%/window — NO plateau strike, still
+## learning; windows: −4.5, −0.95, −1.18).
+
 ## 2026-07-26 ~16:5x WHERE V's DEFICIT LIVES (slice analysis, sb50 vs
 ## teacher, cached vectors) — + THE FIRST STUDENT>TEACHER POCKET
 
