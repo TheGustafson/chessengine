@@ -774,7 +774,55 @@ permutation yields per-neuron firing rates as a byproduct. ONE pass
 gives us the permutation AND the dead-neuron count. Do it in the same
 work item.
 
-## ★ EVAL CALIBRATION FINDING (2026-07-25 ~23:3x) — user Q: "how does our
+## ~~EVAL CALIBRATION FINDING~~ — RETRACTED, SEE BELOW (2026-07-25 ~23:5x)
+An earlier version of this section claimed our eval was COMPRESSED ~0.59x
+vs SF and that cp-denominated margins were therefore ~1.7x too wide.
+**THAT WAS WRONG — two compounding errors:**
+  1. Misread the regression direction. `polyfit(eval, target)` slope
+     0.587 means target ~= 0.587*eval, i.e. our evals are ~1.7x LARGER
+     than the labels, not smaller.
+  2. Compared our output against SF's **UCI cp** when our margins live in
+     SF's **INTERNAL** units. SF internal = 3.28 x UCI cp
+     (uci.h:38 NormalizeToPawnValue=328).
+
+**WHAT THE DATA ACTUALLY SHOWS — WE ARE ALREADY WELL CALIBRATED.**
+Material probes (ARCHON static vs SF18 static, white-POV):
+    up a pawn   ARCHON  321   SF18 154 cp    (our PAWN_VALUE   208)
+    up a rook   ARCHON 1326   SF18 498 cp    (our ROOK_VALUE  1276)
+    up a knight ARCHON 1118   SF18 480 cp    (our KNIGHT_VALUE 781)
+A rook advantage reads 1326 against our own ROOK_VALUE of 1276 — our
+eval and our search constants are on the SAME scale, as intended.
+Median |value| over 1108 positions: labels 92.0, SF18 static 82.5 UCI cp
+(x0.90 of labels), ARCHON 181.5 (x1.97 of labels). Converting SF18 to
+internal (x3.28) gives 270.6, so ARCHON/SF18-internal = 0.67 — same
+frame, ~1.5x apart, and our margins were tuned in OUR frame through
+Waves A-G. No action indicated.
+
+**WHAT SURVIVES AND IS STILL USEFUL:**
+  * SF16 vs SF18 static differ in scale by 0.893 — there is NO canonical
+    "SF cp scale"; SF changes NormalizeToPawnValue between versions and
+    retunes. Matching an external scale is a category error; only
+    INTERNAL consistency matters, and SPSA measures that empirically.
+  * Both SF versions have near-identical static accuracy (MAE 63.5 vs
+    64.3 on our 1201-position set) despite different scales => scale
+    does not affect ranking quality.
+  * THE ACCURACY COMPARISON ITSELF STANDS and is the real result: after
+    an affine fit, ARCHON 66.1 MAE vs SF18 62.4 (correlation 0.913 vs
+    0.918; our SIGN agreement is BETTER, 82.3% vs 79.5%). Our static
+    eval is within ~6% of SF18's on SF18-search targets. That is a
+    genuinely strong position and worth keeping in the write-up.
+  * tools/nnue/rescale_net_header.py (commit e56fd86) still works and is
+    a cheap 1-D probe of collective margin tightness IF we ever want it
+    — but it is NOT a correction of a known error, and SPSA over the
+    margins is the principled version. Deprioritized.
+
+METHOD LESSON: check regression direction, and never compare against an
+engine's UI-normalized units when the question is about internal ones.
+Two sign/frame errors in the same direction produced a confident wrong
+answer that survived until a 3-position material probe killed it.
+
+## [SUPERSEDED — read the retraction above] original entry, kept for the record
+## EVAL CALIBRATION (2026-07-25 ~23:3x) — user Q: "how does our
 ## value loss compare to SF18's?"
 Ran SF18's STATIC eval (`eval` cmd, "Final evaluation", white-POV ->
 flipped to stm) over the same 1201 SF18-search-labelled positions we
