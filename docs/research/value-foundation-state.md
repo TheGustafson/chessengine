@@ -683,6 +683,13 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## 2026-07-26 ~17:3x ET BASELINE PINNED: d47s-sb170(median-cal) vs d47p =
+## −59.6±30.3 (200g) — grind 66/71 losses, DEEPER at own decisive plies
+## (15.0 vs 14.4): out-searches and loses = the pure dialect signature.
+## This is the attribution baseline: sb240+hold, then margin repair, then
+## D47T each get measured against it. Dialect probe (margin overlay arm)
+## fires next on the same pairing.
+
 ## 2026-07-26 ~16:5x THE DIALECT MAP — D47S COMPRESSES THE NEAR-ZERO
 ## REGION ~40% (the honest-calibration signature); margins want ×0.6-0.75
 
