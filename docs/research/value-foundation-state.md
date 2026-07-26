@@ -920,7 +920,13 @@ cfut, pcut (~2h). sb120 in-frame heldout next firing.
 6. `bash tools/nnue/d47s_pipeline.sh sf`          (SF16 both legs, pinned harness
    — the before/after vs sfbase-d47p-pre-v15-* is the v1.5 headline number)
 7. `bash tools/nnue/d47s_pipeline.sh ledger "<q1/et numbers>"`  (D38 row)
-8. LAUNCH **D47U (head rebuild — SUPERSEDES D47T per user ~20:2x: skip
+8. **EXECUTIVE ORDER (~21:1x): LAUNCH D47V** — 768·32·32·8 + skip,
+   teacher-distilled MTL bet (`bash tools/nnue/launch_d47v.sh
+   <hold-best-ema-raw>`; ~100sb @ ~230k ≈ 5h; plan + gates in chat ~21:1x,
+   decisive gate = equal-time vs hold-best ≥ 0). Fallback ladder: V fails →
+   D47U (1280/64+skip, staged) → hold-best d47s ships. Engine side (SKP1
+   loader + 768/32 consts) built DURING the leg.
+8-old. D47U (head rebuild — was: SUPERSEDES D47T per user ~20:2x: skip
    lane + 64-wide value head, 'mirror SF18's skip strategy')**: after the
    hold leg, `python tools/nnue/assemble_d47u_warm.py <hold-best-ema-raw>
    data/nnue/experiments/d47u-warm.bin` → inject into
