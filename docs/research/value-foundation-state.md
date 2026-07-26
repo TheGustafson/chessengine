@@ -683,6 +683,24 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## 2026-07-26 ~19:5x V2 HEAD ARCHITECTURE — assembled from the evening's
+## threads (pound-for-pound + skip-lane insight)
+
+SF18 source-verified: L1=1024, **L2=15**, L3=32, fc_0 outputs 15+1 — the
++1 is an OUTPUT-SKIP lane (learned linear read of the whole accumulator
+bypassing the head; the <30,32> symbol = 15 lin + 15 sqr concat). WE have
+the T6c PSQT skip but NOT the fc_0 skip ("no output-skip", sota_head.rs:3).
+The skip is plausibly WHY 15 lanes suffice: linear signal rides past the
+bottleneck, the head learns corrections only. Head-cost ledger: our L2=128
+vs their 15 => l1_dot 327k vs ~33k MACs (~10×) = the main reason SF18 is
+"too fast for its size" (+ smallnet on decided nodes; accumulator only
+1.25×). V2 HEAD PLAN: accumulator per the 12b utilization gather (~1024
+prior, SF v10 reversion) → PSQT skip + fc_0-style skip lane (2×W weights,
+~free) → THIN value head 15-32 → DEDICATED projections for policy/
+disagreement heads off the accumulator (decoupled from value width; rich
+outputs keep full substrate). Candidate reclaim: most of the 10× head gap
++ width term ≈ ~1.5× NPS at equal quality if priors hold.
+
 ## 2026-07-26 ~18:5x THE CORRECTED NET-ALONE PANEL — d47s SWEEPS EVERY
 ## COMMON-BASIS METRIC (sb210, mid-anneal)
 
