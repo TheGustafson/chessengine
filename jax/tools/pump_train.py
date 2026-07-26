@@ -127,6 +127,7 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         mix, cfg, policy=True,
         legal_mask=bool(spec.get("pol_mask", False)),
         seed=int(spec["seed"]), workers=4, prefetch=4,
+        shuffle_chunk=int(spec.get("shuffle_chunk", 0)),
         total_batches=cfg.batches_per_superbatch * cfg.superbatches,
         skip_batches=cfg.batches_per_superbatch * resume_sb)
 
