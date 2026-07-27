@@ -769,6 +769,43 @@ warm → quant.bin exporter so an un-launched arch can be packed and
 speed-tested BEFORE it costs GPU-days. That tool is what let the gate
 actually fire instead of being waived.
 
+**★★ WHERE THE GAP TO SF ACTUALLY IS: NOT TACTICS (02:5x). ★★**
+Calibrated our tactical solving against the engines we are chasing, at
+equal 50k nodes (fixed nodes ⇒ speed-independent, so this is a pure
+search-quality comparison and it is honest on a loaded box):
+
+| suite (n) | ARCHON | +check-ext | SF16 | SF18 |
+|---|---|---|---|---|
+| WAC revised (200) | 180 (90%) | 181 | 172 (86%) | 180 (90%) |
+| mate_in_3 (1277) | 1210 | **1227** | 1227 | 1191 |
+| mate_in_4 (1100) | 966 | **978** | 976 | 956 |
+| **total (2577)** | **2356** | **2386** | **2375** | **2327** |
+
+**We are tactically level with SF16 and ahead of SF18 at equal nodes.**
+Plain ARCHON sits just under SF16 (2356 vs 2375) and clearly over SF18
+(2327); with check-ext it goes past SF16 (2386). Note SF18 is
+tactically WEAKER than SF16 at fixed nodes — newer SF prunes harder and
+buys its strength back through evaluation, which is a useful sanity
+check that this metric is measuring what we think.
+
+**S0 is what did it, and this quantifies a win we had only estimated.**
+The check-ext branch was written on 07-26 morning citing "WAC 78.5% vs
+SF16's 86.5%". SF16 measures 86% today — the same number — while we
+have gone **78.5% → 90%**. S0's value was previously known only as
+"+40 fn Elo from a tripwire"; it also bought **+11.5pp of WAC** and
+erased the tactical deficit to Stockfish entirely.
+
+**The inference that should steer the remaining work.** V is −33 fn
+against SF16 overall, yet tactically level-or-better at the same node
+count. Those two facts together say the deficit is **quiet/positional
+evaluation, not search blindness** — consistent with the panels (V's
+quiet correlation trails S-post, and S-post is the one at SF16 fn
+parity). So: search-side effort should now be tuning and speed, not
+new tactical machinery; the Elo that is actually missing lives in the
+eval, which is exactly what D48X is for. The one search exception
+worth landing is check-ext, because it is what moves us from just
+under SF16 to just over it on the same positions.
+
 **P3'S TWO UNLANDED SEARCH BRANCHES, RE-MEASURED POST-S0 (02:4x).**
 The release plan's P3 ("search fit for V") names `wip/nmp-guards` and
 `wip/check-ext`, both authored 2026-07-26 morning — i.e. BEFORE the S0
