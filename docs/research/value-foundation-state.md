@@ -1026,6 +1026,35 @@ change the conclusion, and the mechanism is well understood, but read it
 as "roughly 2×, certainly well above 1.43×" rather than as three
 significant figures.
 
+**How much eval does the channel actually carry? Measured — but read
+the bound carefully.** Ran the stripped net through the eval suites:
+
+| | QUIET headline | SHARP headline | iso-MAE Q/S |
+|---|---|---|---|
+| d48x-sb60 with threats | 0.8811 | 0.7593 | 73.6 / 118.7 |
+| threats zeroed | **0.7120** | **0.5313** | **117.4 / 161.4** |
+
+The collapse is large (−0.169 quiet, −0.228 sharp). **This is an UPPER
+BOUND on what removing threats costs, and probably a loose one**, for a
+reason that matters: this net's value head was trained expecting threat
+contributions and is now being fed identical zeros, a systematic bias it
+never learned to handle. A net TRAINED without the channel would encode
+much of that information in HalfKA features and its head instead. The
+number says "the current net leans heavily on this channel", NOT "a
+HalfKA-only net would be 0.17 worse".
+
+Two external anchors say the recoverable fraction is large: **SF18 has
+no threat channel and out-evaluates every net we own**, and our own
+net-0 was a classic-feature net that reached ~3400. The only
+threat-adjacent measurement we have is exp-0065's **+32.5±17.3 fn** for
+the whole D40 arch over classic features — and even that bundles
+HalfKAv2_hm king buckets and the Reckless head shape, so the isolated
+threat contribution is ≤ that.
+
+**So the trade to test is roughly +32 fn of eval against ~100 Elo of
+speed.** That is the strongest expected-value case on the board, and it
+is why this outranks everything else queued.
+
 **So the bar for threats is now ~+100 fn Elo**, not +62. For
 context, that is a substantial fraction of the entire net-0 → today
 improvement arc, being asked of a single feature-set addition whose only
