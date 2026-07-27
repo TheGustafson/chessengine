@@ -130,6 +130,34 @@ json.dump(cfg, open("tools/spsa/campaigns/c3-focused.json", "w"), indent=2)
 print(f"[c3] wrote tools/spsa/campaigns/c3-focused.json with {len(ranked)} params")
 PY
 
+# ── CLEAR THE WORKER CACHES. This is not tidiness, it is a correctness fix.
+#
+# run_spsa_dist.sh stages workers into $HOME/.cache/spsa-workers/wN, and
+# worker.py's fetch_spec copies a spec file only `if not dest.exists()`. The
+# engine binary has the SAME NAME across campaigns, so c3's workers would
+# happily reuse c2's cached copy and never fetch the one c3 staged — silently.
+#
+# That would have been badly wrong here: c2's cache holds the 01:31 build,
+# while the binary c3 stages was rebuilt at 11:28 with the loader bulk-read
+# (the whole point, worth ~8.6% more games) and with upcoming-repetition. c3
+# would have measured the wrong engine and said nothing about it.
+#
+# Wait for c2's workers to exit first — its coordinator writes control/STOP at
+# completion and they leave within a poll interval plus whatever game is in
+# flight — because deleting these files out from under a running worker is its
+# own failure.
+for _ in $(seq 60); do
+    pgrep -f 'spsa/worker.py' >/dev/null 2>&1 || break
+    sleep 5
+done
+if pgrep -f 'spsa/worker.py' >/dev/null 2>&1; then
+    printf 'WARNING: c2 workers still alive after 5min; killing them before clearing caches\n'
+    pkill -f 'spsa/worker.py' || true
+    sleep 3
+fi
+printf 'clearing worker caches (stale-binary hazard) %s\n' "$(date -Is)"
+rm -rf "$HOME"/.cache/spsa-workers/w*
+
 EX=file://$HOME/.cache/spsa-ex-c3
 rm -rf "${EX#file://}"
 printf 'launching c3-focused: nodes=%s iters=%s %s\n' "$NODES" "$ITERS" "$(date -Is)"
