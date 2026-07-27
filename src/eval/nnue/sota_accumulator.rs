@@ -293,7 +293,11 @@ impl<'a> HalfkaContext<'a> {
                     psqt_add(&mut psqt, psqt_weights, f);
                 }
             }
-            *slot = Some(FinnyEntry { acc, psqt, by_piece });
+            *slot = Some(FinnyEntry {
+                acc,
+                psqt,
+                by_piece,
+            });
         }
         let cached = slot.as_ref().expect("slot filled above");
         self.stack[ply].acc[perspective as usize] = cached.acc;

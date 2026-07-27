@@ -891,7 +891,6 @@ mod avx2 {
         unsafe { policy_dot_inner(row, h) }
     }
 
-
     #[target_feature(enable = "avx2,fma")]
     unsafe fn skip_dot_inner(ft: &[u8], lane: &[f32]) -> f32 {
         // Two ymm accumulators = the reference's 16 partial lanes (lo: k=0..8,
@@ -1046,13 +1045,19 @@ mod avx512 {
                     for base in a_off[..an].iter().map(|m| m.assume_init()) {
                         let row = weights.as_ptr().add(base + off);
                         for (k, vk) in v.iter_mut().enumerate() {
-                            *vk = _mm512_add_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                            *vk = _mm512_add_epi16(
+                                *vk,
+                                _mm512_loadu_si512(row.add(k * LANES).cast()),
+                            );
                         }
                     }
                     for base in s_off[..sn].iter().map(|m| m.assume_init()) {
                         let row = weights.as_ptr().add(base + off);
                         for (k, vk) in v.iter_mut().enumerate() {
-                            *vk = _mm512_sub_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                            *vk = _mm512_sub_epi16(
+                                *vk,
+                                _mm512_loadu_si512(row.add(k * LANES).cast()),
+                            );
                         }
                     }
                     for (k, vk) in v.iter().enumerate() {
@@ -1258,7 +1263,8 @@ mod avx512 {
                     let merge = |offset: usize| {
                         let pv = _mm512_loadu_si512(p.as_ptr().add(offset).cast());
                         let tv = _mm512_loadu_si512(t.as_ptr().add(offset).cast());
-                        let t4 = _mm512_adds_epi16(_mm512_adds_epi16(tv, tv), _mm512_adds_epi16(tv, tv));
+                        let t4 =
+                            _mm512_adds_epi16(_mm512_adds_epi16(tv, tv), _mm512_adds_epi16(tv, tv));
                         let mag = _mm512_mulhrs_epi16(_mm512_abs_epi16(t4), mulr);
                         // no vpsignw in avx512bw: mask-negate where t < 0
                         // (t4 == 0 ⇒ mag == 0, sign irrelevant — matches signum)
@@ -1278,7 +1284,6 @@ mod avx512 {
             }
         }
     }
-
 
     pub(super) fn i16_deltas(
         acc: &mut [i16; ACC],
@@ -1474,7 +1479,6 @@ mod avx512 {
         // compiled with the features statically enabled).
         unsafe { policy_dot_inner(row, h) }
     }
-
 
     #[target_feature(enable = "avx512f")]
     unsafe fn skip_dot_inner(ft: &[u8], lane: &[f32]) -> f32 {
@@ -1692,7 +1696,8 @@ mod tests {
                 threat[perspective][lane] = (lane as u16)
                     .wrapping_mul(49711)
                     .wrapping_add(perspective as u16 * 251)
-                    as i16 % 8192; // option-D guaranteed domain
+                    as i16
+                    % 8192; // option-D guaranteed domain
             }
         }
 

@@ -509,7 +509,10 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
 fn parse_skip_section(sec: &[u8]) -> Result<Box<[f32]>, SotaNnueError> {
     const HDR: usize = 12;
     if sec.len() < HDR {
-        return Err(SotaNnueError::TooShort { need: HDR, got: sec.len() });
+        return Err(SotaNnueError::TooShort {
+            need: HDR,
+            got: sec.len(),
+        });
     }
     let num_buckets = read_u32(sec, 4);
     if num_buckets as usize != BUCKETS {
@@ -530,7 +533,10 @@ fn parse_skip_section(sec: &[u8]) -> Result<Box<[f32]>, SotaNnueError> {
     let count = hl as usize * BUCKETS;
     let need = HDR + count * 4;
     if sec.len() < need {
-        return Err(SotaNnueError::TooShort { need, got: sec.len() });
+        return Err(SotaNnueError::TooShort {
+            need,
+            got: sec.len(),
+        });
     }
     // §6-S2a (perf study): transpose the file's row-major [hl][BUCKETS] to
     // bucket-major [BUCKETS][hl] at load, so the per-eval lane is hl
@@ -867,7 +873,7 @@ pub(crate) mod tests {
                 l3_var_biases: None,
                 l3_wdl_weights: None,
                 l3_wdl_biases: None,
-            skip_weights: None,
+                skip_weights: None,
             },
         }
     }
