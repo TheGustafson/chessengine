@@ -362,3 +362,47 @@ the tree and sharpens tactics" but **"spends ~5% more nodes for slightly
 better play"** — a node-for-quality trade, the same shape as an extension.
 That is a coherent and testable thing for constants that gate a fail-low
 history bonus; it is simply not the thing we thought we had found.
+
+## 10. The dual formulation — scale the EVAL UP, not the margins down
+
+Every arm tested so far scales ~40 margin constants DOWN by s. The dual move
+is to scale the EVAL UP by 1/s ≈ 1.72 and leave every constant alone. For
+class 1 the two are algebraically identical — only the ratio margin/eval
+matters — but the dual is strictly better, for a reason that falls straight
+out of §5.2:
+
+| | scale 40 margins by s | scale eval by 1/s |
+|---|---|---|
+| class 1 (eval margins) | corrected | corrected (identical ratio) |
+| class 2 (eval² divisors) | corrected | corrected |
+| **class 4 (material vs eval)** | **impossible** | **corrected automatically** |
+| class 3 (cross-unit divisors) | needs 1/s | still needs its own handling |
+| class 5 (plies/counts) | untouched | untouched |
+| surface area | ~40 constants, 5 classes, per-site judgement | **one multiply** |
+
+Class 4 is the point. Our `PIECE_VALUES` are Stockfish's exactly (pawn 208)
+while our eval is 0.58× theirs, so a captured piece weighs 1.72× more against
+eval here than there (§5.2). No margin constant can absorb that, because the
+error rides on the piece-value term itself. Scaling the eval up moves material
+and eval back into Stockfish's proportion in one stroke.
+
+**Why this is safe in the way that matters.** A positive scalar is monotone,
+so the net's RANKING of positions is completely unchanged — the same move is
+best at every node. Only the eval's interaction with cp-denominated thresholds
+changes, which is precisely the thing under test and nothing else.
+
+**What still needs care:** mate/TT bounds and the dither must not be squeezed
+(they are far from the eval range, but check); class-3 correction divisors are
+unaffected by the dual and still need their own treatment; and the reported
+`cp` to the GUI changes by 1.72×, which is cosmetic but should be normalised
+before anyone reads a score.
+
+**The test is one tunable** — an `EVAL_SCALE` in 1024ths applied at the end of
+`evaluate()`, identity at 1024, swept upward. That is a far smaller surface
+than 40 wired constants across five classes, and it tests the *same*
+hypothesis plus the one part of it that was previously untestable.
+
+**Status: proposed, not built.** Recorded now because it is the most useful
+thing the day's work points at, and because the negative results above are
+evidence against the *implementation* we tried, not against the frame
+measurement itself.
