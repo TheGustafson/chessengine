@@ -534,14 +534,19 @@ impl MovePicker {
             self.policy_scores = self.policy_net.as_ref().and_then(|net| net.scores(board));
         }
         #[cfg(feature = "policy")]
-        let policy_scores = self.policy_scores.as_ref();
-        #[cfg(feature = "policy")]
         let policy_weight = crate::policy::capture_weight();
         for (i, &m) in list.iter().enumerate() {
             let value = score_capture(board, hist, m);
+            // Borrow `policy_scores` INSIDE the loop, not before it: binding it
+            // outside holds an immutable borrow of `*self` across the whole
+            // body, which collides with the `set_slot` below. Scoped here, NLL
+            // ends the borrow at the end of the expression — the same shape the
+            // `quiet_prior` read in `score_quiets` uses.
             #[cfg(feature = "policy")]
             let value = value
-                + policy_scores
+                + self
+                    .policy_scores
+                    .as_ref()
                     .map(|scores| {
                         (policy_weight as f32 * scores.move_score(m.from(), m.to())) as i32
                     })
@@ -642,8 +647,6 @@ impl MovePicker {
             self.policy_scores = self.policy_net.as_ref().and_then(|net| net.scores(board));
         }
         #[cfg(feature = "policy")]
-        let policy_scores = self.policy_scores.as_ref();
-        #[cfg(feature = "policy")]
         let policy_weight = crate::policy::quiet_weight();
 
         let base = self.end_captures;
@@ -701,8 +704,12 @@ impl MovePicker {
             // Learned move-prior (design/17 Thrust II), scaled into history
             // units. Additive, so it only nudges ties the history stack leaves
             // ambiguous rather than overriding a strong history signal.
+            // Read through `self` here rather than binding the borrow above
+            // the loop: an outer binding holds `*self` immutably across the
+            // whole body and collides with `set_slot`. This is the same shape
+            // as the `quiet_prior` read just below.
             #[cfg(feature = "policy")]
-            if let Some(ps) = &policy_scores {
+            if let Some(ps) = &self.policy_scores {
                 value += (policy_weight as f32 * ps.move_score(m.from(), m.to())) as i32;
             }
 

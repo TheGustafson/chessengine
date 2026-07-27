@@ -21,6 +21,39 @@ cargo fmt --check
 step "cargo clippy --all-targets -- -D warnings"
 cargo clippy --all-targets -- -D warnings
 
+# THE FEATURE MATRIX. The step above compiles DEFAULT features only, which
+# leaves roughly a third of src/ — everything behind sota/datagen/policy/
+# search-control/tune — never compiled, never linted, never type-checked by
+# this gate. That is precisely the code the match and training binaries run:
+# the NNUE head and SIMD kernels, the observation store, the SPSA tunables.
+# A `cargo check` per combination is far cheaper than clippy and catches the
+# failure mode that actually bites (a change that compiles under default
+# features and breaks a feature build). Set CHECK_FEATURE_MATRIX=0 to skip
+# when iterating; the merge gate should not skip it.
+#
+# NOTE the arch-* features are MUTUALLY EXCLUSIVE by construction (each sets
+# different L1/L2 consts and a CENN is only loadable by a matching build), so
+# they are checked one at a time, never unioned.
+if [ "${CHECK_FEATURE_MATRIX:-1}" != "0" ]; then
+    step "cargo check across the feature matrix (the ~1/3 of src/ the gate misses)"
+    for feats in \
+        "sota" \
+        "sota,arch-d47v" \
+        "sota,arch-d48x" \
+        "sota,arch-hka2048" \
+        "sota,tune" \
+        "datagen" \
+        "policy" \
+        "search-control"
+    do
+        printf '  checking --features %s\n' "$feats"
+        cargo check --quiet --all-targets --features "$feats" || {
+            printf 'FAIL: feature combination "%s" does not check\n' "$feats" >&2
+            exit 1
+        }
+    done
+fi
+
 step "cargo test  (debug: unit tests + fast perft tier)"
 cargo test
 
@@ -90,6 +123,25 @@ if [ -z "$bench_nodes" ]; then
     printf 'FAIL: bench printed no "Nodes searched" total\n' >&2
     exit 1
 fi
+# THE PIN. Until now this step printed the number and trusted a human to
+# notice when it moved — which made D24's central invariant enforceable only
+# by memory. It is a snapshot test, so treat it like one: a mismatch fails
+# loudly, and an INTENTIONAL functional change is landed by updating the pin
+# in the same commit that changes the number (that is exactly what the
+# `Bench:` trailer records). Set BENCH_PIN= (empty) to skip, e.g. while
+# bisecting.
+BENCH_PIN="${BENCH_PIN-385329}"
+if [ -n "$BENCH_PIN" ] && [ "$bench_nodes" != "$BENCH_PIN" ]; then
+    printf '\nFAIL: depth-6 bench is %s, pin is %s\n' "$bench_nodes" "$BENCH_PIN" >&2
+    printf '  If this change is INTENTIONALLY functional (search, eval,\n' >&2
+    printf '  movegen/make-unmake, ordering, TT), that is expected: update\n' >&2
+    printf '  BENCH_PIN in this script and CLAUDE.md to %s in the same\n' "$bench_nodes" >&2
+    printf '  commit, and put "Bench: %s" in the trailer.\n' "$bench_nodes" >&2
+    printf '  If it is meant to be NON-functional (refactor, speedup, docs),\n' >&2
+    printf '  the tree just changed search behaviour — investigate.\n' >&2
+    exit 1
+fi
+
 printf '\ncommit trailer for functional changes (TESTING.md, design/14 §3.2):\n'
 printf 'Bench: %s\n' "$bench_nodes"
 
