@@ -941,6 +941,26 @@ what we do next:**
    (~1% of range). Fixed to r_end 0.03. This affects the ENTIRE existing
    campaign library, which all carries the 0.002 default.
 
+**SMP SCALING IS UNMEASURED — my attempt was confounded, flagging it as
+an OPEN ITEM (06:1x).** Every speed number tonight is single-thread,
+but rating lists and users run multi-threaded, so SMP scaling is a real
+release-relevant dimension and it has not been checked. My attempt:
+
+| Threads | ARCHON | SF18 | ARCHON scaling |
+|---|---|---|---|
+| 1 | 704k | 1046k | — |
+| 2 | 1605k | 1898k | 2.28× |
+| 4 | 3566k | 3810k | **5.07×** |
+
+**5.07× on four threads is superlinear and therefore impossible**, which
+condemns the measurement rather than flattering it. The confound is
+mine: I ran the engines at nice 0 while the SPSA workers sit at nice 10,
+so a 4-thread run preempts disproportionately more CPU than a 1-thread
+run and the T1 baseline is depressed. Tempting reading — "we are 0.67×
+SF18 at T1 but 0.94× at T4, so our SMP scaling is better" — is exactly
+the kind of thing that would be wrong for a boring reason. **Needs a
+quiet box; do not quote these numbers.**
+
 **SPSA STAGE A IS A NULL — near-final read at k=2098, 16,784 games
 (06:0x).** Only RFP_MULT_CAP reaches 2.0σ (80 → 86); RAZOR_BASE 1.5σ
 (466 → 491), OPTIMISM_NUM 1.3σ (75 → 80), the other nine ≤1.1σ. mean z
