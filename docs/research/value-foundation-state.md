@@ -803,6 +803,51 @@ heldout. But it now rests on the game trajectory and the panels rather
 than on three legs, and the sb150 match is the thing to read before
 acting.
 
+## ★ FULL NET-ONLY COMPARISON, ALL NETS (user-requested, 2026-07-27 ~07:5x)
+
+Headline strata, n=2999 quiet / n=1817 sharp:
+
+| net | QUIET ρ | SHARP ρ | iso-MAE Q | iso-MAE S |
+|---|---|---|---|---|
+| **S-post** | **0.9068** | **0.8214** | 68.2 | **106.0** |
+| teacher-sb230 | 0.9054 | 0.8126 | 67.8 | 108.9 |
+| S-pre | 0.9041 | 0.8166 | 69.7 | 108.2 |
+| d47p | 0.9000 | 0.8006 | 67.7 | 107.2 |
+| SF18 | 0.8982 | 0.7909 | **67.4** | 108.6 |
+| V-release | 0.8920 | 0.7926 | 69.2 | 107.9 |
+| d48x-sb150 | 0.8831 | 0.7667 | 74.0 | 115.5 |
+| SF16 | 0.8797 | 0.7563 | 72.8 | 119.0 |
+
+**S-post remains the best evaluator we own** on both headlines, ahead of
+SF18. V is mid-pack — level-ish with SF18, above SF16, below every
+S-family net. **d48x-sb150 is the weakest of our nets.**
+
+**Two strata carry more information than the headline:**
+
+*Endgames (pieces≤8, quiet, n=384)* — our nets dominate:
+S-pre 0.8198, S-post 0.8164, teacher 0.8152, d47p 0.8002, d48x 0.7603,
+V 0.7149, **SF16 0.6030, SF18 0.5006**. SF18's static eval is close to
+useless on this slice by this metric, presumably because it leans on
+search and tablebases there instead.
+
+*Decisive positions (|label|≥400)* — **V is the BEST net on both sets**
+(quiet 0.8491, sharp 0.8817), ahead of every S variant and both
+Stockfishes. So V's profile is: comparatively weak on quiet near-equal
+positions, strongest of all on already-decided ones — a coherent
+signature for a net distilled down to 768. It kept the coarse
+judgements and lost some fine ones.
+
+**DESIGN IMPLICATION for the hka2048 probe.** d48x is the A3 trunk with
+a 16-wide head and it lost 0.024 of quiet ρ against its own teacher
+(0.8831 vs 0.9054) — so **the thin head cost real evaluation quality**,
+which is direct support for the probe's choice of l2=32 rather than 16.
+
+**Read the vs-SF rows cautiously.** Tonight established that these
+proxies rank reliably WITHIN a family (SHARP tracked d48x's five
+checkpoints at Spearman +1.000 against game order) but mislead ACROSS
+families — five of them put V above SF16 while the games put it 33
+below. The S-vs-V rows are trustworthy; the vs-SF rows are suggestive.
+
 ## ⛔⛔ THE STOP RECOMMENDATION IS WITHDRAWN (2026-07-27 ~07:3x, on the
 ## user's challenge). READ THIS BEFORE ANY "recommend stop" TEXT BELOW —
 ## all of it is SUPERSEDED. ⛔⛔
