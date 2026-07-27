@@ -769,6 +769,34 @@ warm → quant.bin exporter so an un-launched arch can be packed and
 speed-tested BEFORE it costs GPU-days. That tool is what let the gate
 actually fire instead of being waived.
 
+**CHECKPOINT OVERHEAD IS ~30% OF THE RUN — fix it in the NEXT run, not
+this one.** Every 10sb the trainer writes four files (raw + quant, then
+the same for the EMA, ~1.14GB) and runs two heldout passes. Measured at
+sb30: raw landed 02:11:04, quant 02:13:41 — minutes per file, because
+the cost is not disk but single-threaded numpy quantisation of ~83M FT
+parameters. GPU utilisation drops to 12% throughout. Across 38 saves
+that is roughly 5h of a ~15h run.
+
+Two safe fixes for next time, neither applied here: (1) save every
+30sb instead of 10 — that is exactly the instrument cadence, so nothing
+downstream wants the intermediate ones, and it would cut ~3.4h; (2)
+skip the NON-EMA quant file entirely — resume needs `raw` and
+`ema-raw`, the instruments read `ema-quant`, and plain `quant` is
+written for nobody (138MB x 38 = 5.2GB of pure waste).
+
+**Not applied mid-run on purpose.** It needs a trainer edit and a
+resume, the resume prints "fresh Adam transient" (a real perturbation
+to the optimisation), and the user's schedule ruling was explicit:
+"All this should be set as one run. I don't wana be starting and
+stopping things." Saving 3.4h is not worth violating that for a run
+already inside its window.
+
+Related housekeeping that IS applied: `tools/nnue/runs/d48x_prune.sh`
+(unit archon-d48x-prune) keeps every 30th checkpoint plus the two most
+recent and deletes the rest. 38 sets x 1.14GB is ~43GB against 69GB
+free on a disk already at 93%; running out at hour 12 would be an
+avoidable way to lose the run.
+
 **THE EQUAL-TIME WIDTH CURVE (2026-07-27 ~02:0x) — the width question is
 settled, and the answer is "it barely matters, so stop buying width".**
 With three measured speed points (768 1051k / 1280 893k / 1536 804k,
