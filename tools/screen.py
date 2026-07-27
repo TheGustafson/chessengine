@@ -252,11 +252,41 @@ def main() -> None:
                     help="also report first-move cutoff rate (cheap, targets "
                     "the measured ordering defect)")
     ap.add_argument("--oracle", default=ORACLE)
+    ap.add_argument("--fast", action="store_true",
+                    help="fhf + nodes only, skipping the cp oracle. Both are "
+                    "deterministic bench measurements taking SECONDS, against "
+                    "minutes for cp, so this is the right first pass over a "
+                    "large family. Neither is a strength measure on its own -- "
+                    "survivors must still face cp before an SPRT.")
     ap.add_argument("--no-record", action="store_true",
                     help="do not append results to the ledger")
     args = ap.parse_args()
 
     base_ov = parse_ov(args.base) if args.base else {}
+
+    if args.fast:
+        arms_f = [("control", {})]
+        for spec in args.arms:
+            nm, _, body = spec.partition(":")
+            arms_f.append((nm, parse_ov(body)))
+        if args.base:
+            print(f"base: {args.base}")
+        print(f"{'arm':<24}{'nodes':>10}{'fhf%':>9}{'d(fhf)':>9}")
+        ref_n = ref_f = None
+        for nm, ov in arms_f:
+            full = {**base_ov, **ov}
+            n, f = bench(args.depth, full), fhf(args.depth, full)
+            if ref_n is None:
+                ref_n, ref_f = n, f
+                print(f"{nm:<24}{'(base)':>10}{f:>9.2f}{'':>9}")
+            else:
+                print(f"{nm:<24}{n/ref_n-1:>+9.1%} {f:>9.2f}{f-ref_f:>+9.2f}",
+                      flush=True)
+        print("\nfhf = first-move cutoff rate, HIGHER is better; ours is 89.4% "
+              "against\nStockfish's typical 93-95%, and that gap is the same "
+              "fact as our 1.6-3.6x\nwider tree. Want fhf UP and nodes DOWN "
+              "together; either alone can be gamed.")
+        return
     tier_tables = json.load(open(args.oracle))["tiers"]
     keys = sorted(tier_tables, key=int)
     if args.limit:
