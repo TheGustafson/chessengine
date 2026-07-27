@@ -246,11 +246,22 @@ Concurrently: **stage-A SPSA** (12 params, V net + PGO tune binary,
 fn20k, 8 games × 2400 iters, exchange on DISK not tmpfs) — measured
 zero training interference.
 Engine: S0 search program COMPLETE (all six audit items; **depth-6
-bench pin now 445174**, −45% tree; tripwires clean); **PGO is THE
+bench pin now 445174**; tripwires clean); **PGO is THE
 standard build** (tools/build_pgo.sh WITH eval-file; pairs both-PGO;
 Bench: trailer stays portable-default); freebies landed (+~6% both
 arches); distributed-SPSA kit built+parked (D36 amended — no
-OpenBench). **The authoritative live state is the TAKEOVER CHECKPOINT
+OpenBench). **Landed 2026-07-27:** (a) `perf-impl-1` — threat events
+from bitboards instead of a mailbox replay + movepick stage-init
+outlining: **−6.17% instructions, −8.44% L1d loads**, node-identical
+and eval bit-exact. Both wins were mechanisms perf study 7 named
+WRONGLY (threats = representation not row count, overfold was 1.034;
+movepick = register pressure not icache) — see that study's two
+correction banners. (b) **upcoming-repetition** (P9 item 19's last
+piece): the cuckoo tables finally have a caller. Bench 385329 →
+445174, which is +15.5% ONLY because bench position 37 is the
+artificial pawnless max-mobility position where rule50 never resets;
+across the other 48 it is **−28.8% nodes**. Strength testing still
+owed on both — they need a quiet box. **The authoritative live state is the TAKEOVER CHECKPOINT
 atop `docs/research/value-foundation-state.md` — read it before
 anything.** The paragraph below is the pre-distillation-era history
 (2026-07-16 snapshot).
