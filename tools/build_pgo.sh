@@ -10,9 +10,16 @@
 # (measured 2026-07-18: pgo == native on the sota path). Pass the eval-file
 # the binary will actually serve; the workload is bench (search coverage,
 # default eval) + a UCI session on that net (deep startpos + kiwipete).
-# PGO binaries are MACHINE-LOCAL research tools (D16): never used for the
-# Bench: trailer (that stays on the portable default build) and SPRT pairs
-# must both be PGO or both not.
+# STANDARD BUILD RULING (user, 2026-07-26; perf study 3 §5.4 verification:
+# native+PGO = +8.1% NPS, 8/8 ABBA blocks, 800-FEN hash + fixed-depth node
+# totals bit-identical): PGO via this script is THE standard way match and
+# release engine binaries are built. The release build is a PGO'd arch
+# ladder (x86-64-v3 portable + native machine-local; set PGO_CPU=x86-64-v3
+# for the portable rung). Study 3 also moved P4's PGO AHEAD of the small
+# SPSA — the SPSA baseline must be the PGO'd binary (>5%-NPS freeze rule).
+# The Bench: trailer stays on the portable DEFAULT build (D24 — trailer
+# numbers are node counts and never come from PGO binaries) and SPRT pairs
+# must both be PGO or both not (D16).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 FEATURES=${1:?features (e.g. sota | nnue-l1-2048)}

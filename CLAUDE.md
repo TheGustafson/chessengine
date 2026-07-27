@@ -98,6 +98,13 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   `RUSTFLAGS="-C target-cpu=x86-64-v3" cargo build --release`
   (or `target-cpu=native` for a machine-local binary). Default builds stay
   portable — we deliberately don't commit these flags in `.cargo/config.toml`.
+  **PGO is the standard for match/release engine binaries (user ruling
+  2026-07-26; perf study 3: +8.1% NPS, proof-gated):** build them with
+  `bash tools/build_pgo.sh <features> <out> <eval-file>` — the eval-file
+  argument is REQUIRED for NNUE binaries (bench-only training leaves the
+  NNUE kernels unprofiled and PGO inert, measured 2026-07-18). SPRT pairs
+  both-PGO or both-not; the `Bench:` trailer stays on the portable default
+  build; the SPSA baseline is the PGO'd binary.
 - Profiling: `RUSTFLAGS="-C target-cpu=x86-64-v3 -C force-frame-pointers=yes"
   cargo build --profile profiling` (release codegen + line tables for
   perf/flamegraph)
