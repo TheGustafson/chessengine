@@ -370,6 +370,18 @@ strength. Two constraints in permanent tension, resolved in this order:
   SF starting points); (b) keep `bench` stdout OpenBench-parseable. Owning doc:
   `design/14` §11. Supersedes the §3.8 "local only" concession once the scaffold
   + a cloud OpenBench instance exist.
+  **AMENDED 2026-07-26 (user: OpenBench is "more plumbing than I wana
+  deal with"): the cloud-burst vehicle is the in-repo lite kit, not
+  OpenBench.** `tools/spsa/` now carries the full distributed SPSA
+  implementation (see its README.md): a dumb shared exchange
+  (`file://`/`gs://`), stateless preemption-safe workers, and a
+  coordinator that reuses `spsa_tune.py`'s exact math and never leaves
+  the local box. Fixed-node tuning makes heterogeneous spot fleets
+  measurement-safe. Built + smoke-tested end-to-end 2026-07-26; PARKED
+  by user ruling until D48W and the local SPSA rounds are done; gcloud
+  stays GET-only until the user lifts it (scoped: one bucket + a spot
+  MIG; ~$10-20 per 40k-game campaign). OpenBench remains an option for
+  full SPRT fleets later but is no longer on the critical path.
 
 - **D37**: Integral-study incorporation (2026-07-12). A 13-agent study of Integral
   (`integral_reference/`, top-6 solo-dev C++ engine, aronpetko; ALL-RIGHTS-

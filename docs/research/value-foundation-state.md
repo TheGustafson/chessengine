@@ -792,6 +792,24 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-27 ~11:2x DISTRIBUTED-SPSA KIT BUILT+SMOKED+PARKED (D36
+## amended: OpenBench out, lite kit in)
+
+User: "Goal is to just have a script we run… Right now no GCP access…
+just set things up" → built while phase-2 ET runs, then "Document it.
+We will not run it tonight. We will revisit once we are done with D48w
+and local SPSA." Kit = tools/spsa/{exchange,worker,spsa_dist}.py +
+run_spsa_dist.sh + gcp/RUNBOOK.md (commit 8ce89ac; toolchain README +
+D36 amendment follow-up). Same math as spsa_tune.py; brain stays local;
+stateless preemption-safe workers; file:// today, gs:// when GET-only
+lifts (~$10-20 per 40k-game campaign). Smoke (2 workers, 8 games,
+file://) caught a list_names prefix bug that would have hung a real
+fleet silently — fixed, re-verified. Stage-A campaign manifest
+(s2-stageA.json, 12 params) committed; stage-B = full set warm-started
+from stage-A vector. SEQUENCING: local SPSA first (post-campaign), then
+D48W, THEN revisit distribution. Tune binary: engines/bin/archon-d47v-tune
+(PGO v3+tune features) built and preflighted.
+
 ## 2026-07-27 ~10:0x ★ PHASE-1 fn PENTAGON COMPLETE (exp-0149..0153) —
 ## S-POST = SF16 PARITY + FAMILY-BEST EVALUATOR; 4-PHASE CAMPAIGN LIVE
 
