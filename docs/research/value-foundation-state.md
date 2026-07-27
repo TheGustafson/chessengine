@@ -717,7 +717,18 @@ partly hide behind GPU work. **Lesson: measure superbatch rate from
 checkpoint mtimes over ≥10sb, never from a short count window.**
 - `archon-d48x-watch` — every-30sb instruments vs a FROZEN V yardstick.
 - `archon-d48x-prune` — bounds checkpoints to ~15GB of the 66GB free.
-- `archon-spsa-stageA` — 12-param SPSA on V, ETA ~06:45.
+- `archon-spsa-stageA` — 12-param SPSA on V, ETA ~06:45. **Projection at
+  45% (k=1089, 8712 games): heading for a NULL result.** No parameter is
+  above 2σ, the leaders rotate between checks (RED_TTPV_BASE was −32 at
+  k=626 and +6 at k=1089 — a textbook random walk), and since σ grows as
+  √k the current 1.6σ leaders reach only ~2.4σ by k=2400, which is what
+  chance produces across 12 parameters. Two readings are consistent with
+  that: either **SF's search constants already transfer well to ARCHON**
+  (the "untuned transplant" premise was wrong), or the effect sizes are
+  below what ~19k games can resolve. The drift report cannot separate
+  those, but the chained 600-game 10+0.1 verify measures the VECTOR as a
+  whole and is the answer that matters. Worth noting this agrees with
+  tonight's other findings: the missing Elo is not in search parameters.
 - `archon-spsa-chain` — fires the 10+0.1 verify when stage A lands, then
   launches `c2-reduction` and verifies that too. Log `/tmp/spsa_chain.log`.
 
