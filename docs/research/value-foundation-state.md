@@ -840,6 +840,48 @@ c2-reduction should stay as configured — its null or otherwise is still
 informative, and switching mid-chain would confound the comparison with
 stage A.
 
+## ⛔⛔⛔ PERF STUDY 7 REFUTES THE THREAT-CHANNEL CLAIMS BELOW. Read this
+## before ANY "1.78×", "+100 Elo", or "SF18 has no threat channel" text in
+## this file — all of it is SUPERSEDED (2026-07-27 ~09:3x). ⛔⛔⛔
+
+Full study: `docs/research/perf-study-7-sf-side-by-side-2026-07-27.md`.
+Three of my claims from the small hours were wrong:
+
+**1. "SF18 has no threat channel" — FALSE, and it was load-bearing.** SF18
+carries FullThreats at **79,856 dims, LARGER than our 60,720** (verified in
+the sf_18 source and in its profile: threat updates = 11.3% of its
+instructions). The difference is cost, not presence: SF pays **half our
+per-node threat price** (1,725 vs 3,475 Ir/node at matched AVX2) at 1.33×
+the width, through **pure incremental maintenance with no per-eval replay**.
+**Our `at_full` replay is the gap.**
+
+**2. The 1.78× threat cost is REFUTED — it is 1.25–1.39×.** Node-verified
+same-checkpoint arms on the deterministic instruction counter: 768 →
+**1.247×** (wl50) / 1.301× (middlegame); 1280 → **1.317×** / 1.389×. That is
+**~45–70 Elo**, not +100. My figure came from a stripped net whose broken
+eval reshaped the tree — I published that caveat and then under-weighted it.
+
+**3. Threats are not the whole gap.** A threat-free ARCHON is still **1.21×
+SF18 cycles/node**; threats explain 56–71% of the instruction excess.
+
+**Also corrected:** the overall deficit is **1.31–1.45×, depth-dependent**
+(1.31× cycles / 1.497× instructions on matched 15M-node benches, widening in
+deep middlegames), not a flat 1.5×. The dual-net hypothesis is real but
+small — SF's small net (L1 128, HalfKA-only, gate |material| > 962) covers
+14–24% of evals and saves them only 3.65–6.5% of instructions. The valuable
+side-finding: **SF16 runs 74–82% classical HCE**, so its speed is not a valid
+NNUE target and must stop being used as one.
+
+**Where the residual actually is:** we WIN IPC (1.41 vs 1.27), branch misses,
+L3 and DRAM. We LOSE instructions 1.50×, branches 1.99×, **icache misses
+2.27×**. It is instruction count and code size, not code quality.
+
+**Net effect on the plan:** the hka2048 probe stays positive-EV at roughly
+half the claimed margin. The new ranked successor is **retiring the at_full
+replay for SF-style incremental threat maintenance** (+5–8% NPS, 1–2 weeks,
+high silent-wrong-eval risk, but the replay path itself is a bit-exact
+oracle), then an icache/code-size pass (+2–4%).
+
 ## ★ SCHEDULE CHANGED MID-RUN BY USER DIRECTION (09:1x) — D48X NOW RUNS
 ## TO sb520, NOT sb380
 
