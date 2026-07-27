@@ -840,6 +840,45 @@ c2-reduction should stay as configured — its null or otherwise is still
 informative, and switching mid-chain would confound the comparison with
 stage A.
 
+## ★ SCHEDULE CHANGED MID-RUN BY USER DIRECTION (09:1x) — D48X NOW RUNS
+## TO sb520, NOT sb380
+
+**User:** *"I actually like it a lot RIGHT NOW in its journey, and I think it
+needs to be held at this exact learning rate for 200sb longer before the
+anneal starts... an anneal to zero a little slower from there."*
+
+LR at the moment of the call (sb203) was **5.53e-4** — the original ramp was
+mid-glide from 1e-3 at sb60 toward 2.5e-4 at sb300, then 0 at sb380.
+
+**New shape (running):**
+
+| phase | superbatches | LR |
+|---|---|---|
+| plateau | sb200 → sb400 | **5.5625e-4 held** |
+| anneal | sb400 → sb520 | 5.5625e-4 → 0 |
+
+Both a 200sb hold at the chosen rate AND a gentler anneal than the original
+— it descends from a higher LR over 120sb rather than from 2.5e-4 over 80.
+Config `tools/nnue/runs/d48x_1280.json`, `_schedule_ruling_v2` carries the
+reasoning. ETA moves from ~16:00 to **~21:30**.
+
+**Two mechanical facts a later reader needs:**
+1. **Resumed from sb200, not sb203** — checkpoints save every 10sb, so ~3
+   superbatches are re-walked. LR at sb200 is 5.5625e-4 against 5.53e-4 at
+   sb203, a 0.6% difference.
+2. **Adam restarted fresh** ("RESUME from sb200 (fresh Adam transient)").
+   Moment estimates are gone and a brief bump is expected before it settles;
+   `warmup_superbatches: 0.25` is applied per-leg to smooth exactly this.
+   **A blip at the sb210 instrument round is the restart, not the schedule** —
+   do not read it as signal.
+
+Verified before relaunching: the ramp anchors on the ABSOLUTE superbatch
+(`sb_abs = start_superbatch − 1 + count/bps`, clamped flat outside the
+breakpoints), so the resumed leg lands on the intended global curve instead
+of restarting the schedule at zero. The resulting curve was checked
+numerically: flat 5.5625e-4 to sb400, 3.71e-4 at sb440, 1.85e-4 at sb480,
+0 at sb520. `distill_alpha_ramp` untouched (alpha has been 0 since sb60).
+
 ## ⚠ sb180: THE PANELS IMPROVED, THE GAMES DID NOT — AND MY PROXY CLAIM
 ## FAILED ITS FIRST OUT-OF-SAMPLE TEST (08:2x)
 
