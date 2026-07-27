@@ -66,6 +66,26 @@ AS = (-72.32565836, 185.93832038, -144.58862193, 416.44950446)
 SF16_NORM = 328.0  # constant NormalizeToPawnValue
 
 
+def drop_in_check(fens: list[str]) -> list[str]:
+    """Remove positions where the side to move is in check.
+
+    Stockfish's `eval` prints NO "NNUE evaluation" line for a position in
+    check -- it prints only a "Final evaluation: none (in check)". Since the
+    per-position values are recovered by INDEX from one batched session, a
+    single in-check position silently shifts every SF value after it onto the
+    wrong FEN. Measured on scale-check-800: 100 FENs, 7 in-check, 93 NNUE
+    lines. That corrupted an earlier run of this study badly enough to give a
+    7x wrong answer, and it corrupts any paired statistic computed the same
+    way.
+
+    Dropping them is also correct on the merits: a static eval in check is
+    not a quantity either engine uses -- search generates evasions instead --
+    so it has no bearing on how a margin should be scaled.
+    """
+    import chess
+    return [f for f in fens if not chess.Board(f).is_check()]
+
+
 def sf18_a(material: int) -> float:
     m = min(max(material, 17), 78) / 58.0
     return ((AS[0] * m + AS[1]) * m + AS[2]) * m + AS[3]
@@ -109,11 +129,131 @@ def archon_evals(fens: list[str], net: str) -> list[int | None]:
     return vals + [None] * (len(fens) - len(vals))
 
 
+def quantile_report(rows: list[tuple[str, int, int, float, float]]) -> None:
+    """Quantile-match ARCHON's eval distribution against SF18's.
+
+    This is the robust form of the band question, and it exists because the
+    obvious method is a trap.
+
+    Slicing positions by |SF eval| and regressing ARCHON on SF *within* each
+    slice attenuates every slope toward zero: conditioning on a narrow x-range
+    strips out the x-variance while leaving the y-noise, and with ~1/3 of
+    positions carrying an outright sign disagreement that noise is large. The
+    per-band slopes it produces are not comparable to each other, because the
+    attenuation differs with band width.
+
+    Quantile matching sidesteps both problems. Sort each engine's evals
+    independently and pair them by RANK: the p-th percentile of ours against
+    the p-th percentile of theirs. That compares the two marginal
+    DISTRIBUTIONS, so a position where the engines disagree about who stands
+    better contributes to each distribution's shape without poisoning a
+    paired residual, and there is no regression to attenuate.
+
+    The result is the calibration map T: their-frame -> our-frame. What a
+    margin needs is its LOCAL DERIVATIVE T' at the operating point, which is
+    the ratio of successive quantile gaps. A single global ratio is the right
+    conversion only if T is a straight line through the origin.
+    """
+    ours = sorted(av for _, _, av, _, _ in rows)
+    theirs = sorted(i18 for _, _, _, _, i18 in rows)
+    n = min(len(ours), len(theirs))
+    if n < 40:
+        print(f"\nquantile match: too few positions ({n})")
+        return
+    ours, theirs = ours[:n], theirs[:n]
+    pct = [2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 98]
+    print(f"\n{'pct':>5} {'SF18 int':>10} {'ARCHON':>9} {'T(x)/x':>8} {'local T′':>9}")
+    prev = None
+    for p in pct:
+        i = min(n - 1, max(0, round(p / 100 * (n - 1))))
+        x, y = theirs[i], ours[i]
+        ratio = y / x if abs(x) > 1e-9 else float("nan")
+        slope = float("nan")
+        if prev is not None:
+            dx, dy = x - prev[0], y - prev[1]
+            slope = dy / dx if abs(dx) > 1e-9 else float("nan")
+        print(f"{p:>5} {x:>10.1f} {y:>9.1f} {ratio:>8.3f} {slope:>9.3f}")
+        prev = (x, y)
+    # The operating band: margins compare eval against alpha/beta, and those
+    # sit near the eval of a roughly balanced position. Take the local slope
+    # across the middle of the distribution, where nearly every pruning
+    # decision is actually made.
+    lo = ours[round(0.30 * (n - 1))], theirs[round(0.30 * (n - 1))]
+    hi = ours[round(0.70 * (n - 1))], theirs[round(0.70 * (n - 1))]
+    central = (hi[0] - lo[0]) / (hi[1] - lo[1]) if abs(hi[1] - lo[1]) > 1e-9 else float("nan")
+    print(
+        f"\ncentral slope (30th->70th pct): {central:.3f}\n"
+        "This is the number a margin conversion would have to use. Compare it\n"
+        "with the global median ratio below: if they disagree, the global\n"
+        "ratio was measuring the tails, not the region margins operate in."
+    )
+
+
+def band_report(rows: list[tuple[str, int, int, float, float]]) -> None:
+    """Local slope d(ARCHON)/d(SF18), conditioned on |SF18 eval|.
+
+    Why this is the number that matters, and the global median is not.
+
+    A search margin never asks "how big is the eval". It asks whether a
+    DIFFERENCE clears a threshold: `eval - beta >= rfp_margin`,
+    `eval + margin <= alpha`. So the quantity a margin must be denominated in
+    is the local derivative d(ours)/d(theirs) in the band where that
+    comparison happens — a few hundred cp around alpha/beta — not the global
+    regression slope over the whole distribution.
+
+    The two coincide only if the relation is a straight line through the
+    origin. It need not be: a net trained toward a WDL-shaped target
+    saturates in the tails, which compresses large evals hard while leaving
+    the near-zero region close to linear. If that is what ours does, the
+    global 0.58 is dominated by the tails and the local slope where the
+    margins actually bite could be near 1.0 — which would explain why
+    Stockfish's raw constants measure as near-optimal for us and why every
+    attempt to rescale them lost Elo.
+
+    Reported per band: an ordinary least-squares slope WITH intercept (a
+    forced-through-origin fit would just re-derive the ratio), the median
+    ratio for comparison, and n. The intercept is printed because a large one
+    is itself the signal that ratio-thinking was wrong.
+    """
+    edges = [(0, 50), (50, 100), (100, 200), (200, 400), (400, 800), (800, 10**9)]
+    print(f"\n{'|SF18| band':>14} {'n':>5} {'slope':>7} {'intercept':>10} "
+          f"{'median ratio':>13}")
+    for lo, hi in edges:
+        pts = [(i18, av) for _, _, av, _, i18 in rows if lo <= abs(i18) < hi]
+        if len(pts) < 8:
+            print(f"{f'{lo}-{hi}':>14} {len(pts):>5}   (too few)")
+            continue
+        n = len(pts)
+        mx = sum(p[0] for p in pts) / n
+        my = sum(p[1] for p in pts) / n
+        sxx = sum((p[0] - mx) ** 2 for p in pts)
+        sxy = sum((p[0] - mx) * (p[1] - my) for p in pts)
+        slope = sxy / sxx if sxx > 1e-9 else float("nan")
+        icept = my - slope * mx
+        ratios = sorted(p[1] / p[0] for p in pts if abs(p[0]) >= 40)
+        med = statistics.median(ratios) if len(ratios) >= 5 else float("nan")
+        label = f"{lo}-{hi}" if hi < 10**9 else f"{lo}+"
+        print(f"{label:>14} {n:>5} {slope:>7.3f} {icept:>10.1f} {med:>13.3f}")
+    print(
+        "\nRead: if the slope is ~flat across bands, the eval really is a\n"
+        "uniform rescale and the global ratio is the right conversion. If it\n"
+        "RISES toward the low bands, the compression lives in the tails, the\n"
+        "margins operate in a near-1.0 region, and SF's raw constants are the\n"
+        "right ones for us — which is what every rescale experiment measured."
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("fens", nargs="?", default="tools/nnue/calib/wl50.fens")
     ap.add_argument("--net", default=NET)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument(
+        "--bands",
+        action="store_true",
+        help="local slope d(ARCHON)/d(SF18) conditioned on |SF18 eval| "
+        "instead of one global ratio (see band_report)",
+    )
     args = ap.parse_args()
 
     raw = [l.strip() for l in Path(args.fens).read_text().splitlines()
@@ -139,6 +279,10 @@ def main() -> None:
         return " ".join(head)
 
     fens = [normalise(l) for l in raw]
+    before = len(fens)
+    fens = drop_in_check(fens)
+    if before != len(fens):
+        print(f"dropped {before - len(fens)} in-check positions (see drop_in_check)")
     if args.limit:
         fens = fens[: args.limit]
     print(f"positions: {len(fens)}  ({args.fens})\n")
@@ -209,6 +353,9 @@ def main() -> None:
               if med < 1 else
               f"    -> our frame is {med:.2f}x EXPANDED vs theirs")
 
+    if args.bands:
+        quantile_report(rows)
+        band_report(rows)
     summarise("ARCHON / SF16 (internal)", r16)
     print(f"    sign disagreements excluded: {disagree16}"
           f" of {len(r16) + disagree16}")

@@ -444,3 +444,108 @@ That is a real answer to the question we asked, and it cost about a day. It
 also means the −33 Elo equal-node deficit is NOT search-margin
 mis-calibration, which removes a plausible-looking suspect and points the
 remaining effort at eval quality and instruction count.
+
+---
+
+## 11. Re-measurement (later same day): a tooling bug, and BOTH follow-up hypotheses refuted
+
+### 11.1 The bug: Stockfish prints no NNUE line in check
+
+`eval_scale_study.py` recovered SF's per-position eval **by index** from one
+batched `eval` session. Stockfish prints no `NNUE evaluation` line for a
+position in check — only `Final evaluation: none (in check)` — so a single
+in-check position shifts every later SF value onto the wrong FEN. On
+`scale-check-800`, 64 of 800 positions are in check.
+
+Effect on the numbers, same FENs, before and after `drop_in_check`:
+
+| statistic | before (misaligned) | after |
+|---|---|---|
+| ARCHON/SF18 median ratio | 0.617 | **0.642** |
+| IQR | [0.221, 1.526] | **[0.532, 0.795]** |
+| sign disagreements | 172 of 510 (**34%**) | **12 of 563 (2.1%)** |
+
+The central estimate barely moves — a median is robust, which is why §2's
+conclusion survives — but **the dispersion was almost entirely artifact**.
+The "our net and SF disagree about who stands better on a third of
+positions" reading was wrong by 16×; the real rate is 2%.
+
+### 11.2 Hypothesis A — "the compression lives in the tails" — REFUTED
+
+If our net saturated in the tails (what a WDL-shaped target tends to do), the
+global 0.64 would be a tail average and the local slope where margins
+actually bite could be near 1.0, which would explain everything.
+
+Tested by quantile-matching the two eval distributions — pairing the p-th
+percentile of ours with the p-th percentile of theirs, which is immune to
+both the regression dilution that ruins per-band OLS and to per-position
+disagreement:
+
+| pct | SF18 internal | ARCHON | T(x)/x |
+|---|---|---|---|
+| 5 | −1331 | −834 | 0.627 |
+| 20 | −447 | −299 | 0.669 |
+| 40 | −58 | −42 | 0.724 |
+| 70 | 130 | 86 | 0.663 |
+| 90 | 784 | 541 | 0.690 |
+| 98 | 1820 | 1018 | 0.559 |
+
+`T(x)/x` is **flat at ~0.64 across the whole range**, central slope
+(30th→70th pct) **0.649**. The map is a straight line through the origin.
+There is no tail saturation and no near-1.0 region. Refuted.
+
+*(A first attempt sliced by `|SF eval|` and ran OLS within each band, and
+produced slopes falling 0.51 → 0.10 — apparent tail compression. That was
+regression dilution: conditioning on a narrow x-range strips x-variance and
+attenuates the slope, differently per band width. Quantile matching is the
+correct instrument and it disagrees.)*
+
+### 11.3 Hypothesis B — "margins track error, not magnitude" — REFUTED
+
+The stronger idea: a margin's job is to bound how far static eval sits from
+the true search value, so it should be denominated in the eval's **error**,
+not its magnitude. If our absolute error matched SF's despite the compressed
+frame, SF's raw constants would already be right for us — which is what every
+rescale experiment measured.
+
+`tools/eval_error_study.py` measures each engine's static eval against **its
+own** depth-9 search, in its own internal frame (100 positions, in-check
+dropped):
+
+| engine | n | median abs error | p90 | mean |
+|---|---|---|---|---|
+| ARCHON | 100 | **87.0** | 318.0 | 137.8 |
+| SF18 | 100 | **142.8** | 469.7 | 190.5 |
+
+**Error ratio 0.609** against a magnitude ratio of 0.642. The error scales
+with the frame; relative calibration is 0.95× SF's — indistinguishable.
+Refuted.
+
+**Caveat that must travel with this number:** each engine is scored against
+*its own* search, and SF's depth-9 search is far stronger, so its static eval
+is predicting a harder target. That is exactly the right quantity for margin
+calibration — a margin predicts the engine's own search result — but it is
+**not** a claim that our net is as accurate as SF18's.
+
+### 11.4 Where that leaves it
+
+Both analytic escape routes are now closed, and the dimensional argument for
+rescaling is **sound**: magnitude and error both scale by ~0.62, margins do
+not scale at all, so in error-normalised units our margins really are ~1.6×
+Stockfish's. And correcting that still loses Elo, in both directions.
+
+The explanation that survives is not about units at all: **the constants sit
+at a joint optimum of the whole search program, not an independent one.** Our
+tree is already ~35% smaller than SF16's at equal depth (perf study 7 §1.2),
+so we prune harder than Stockfish elsewhere — LMR, NMP, LMP. Interior margins
+that look "too large" in isolation are compensating for that, and pushing
+them to SF's error-normalised equivalent moves the *whole program* past its
+optimum. That is exactly the shape of the recorded evidence: a uniform
+−33..−35 interior-margin fixed-node tax for RFP/razor/capture-futility
+(s4-searchgap), and every per-family sweep landing as a **wash** rather than
+a loss — a flat optimum, not a misplaced one.
+
+**Practical consequence: stop deriving margin corrections analytically.**
+Three independent analytic routes have now been tried and all three are
+dead. A flat joint optimum is a measurement problem, not a modelling one —
+it wants SPSA over families on an idle box, which is where this goes next.
