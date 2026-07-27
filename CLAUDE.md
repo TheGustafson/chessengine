@@ -124,6 +124,22 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
 - Profiling: `RUSTFLAGS="-C target-cpu=x86-64-v3 -C force-frame-pointers=yes"
   cargo build --profile profiling` (release codegen + line tables for
   perf/flamegraph)
+- **NEVER `pkill -f <pattern>`** (user instruction 2026-07-27, after it
+  happened twice in one session). `pkill -f` matches every process's FULL
+  command line — including the shell running the very command that typed the
+  pattern — so it kills its own caller. The turn dies with a bare exit 143/144
+  and no output, which then looks like an unrelated failure. The bracket dodge
+  (`'fastches[s]'`) is NOT sufficient: it only works while the name appears
+  once, and it silently fails the moment the same command line also mentions
+  the plain name (e.g. a kill followed by a relaunch). Kill by PID instead:
+  - a recorded PID file — `kill "$(cat run.pid)"` (the SPSA/trainer scripts
+    write them), or
+  - `systemctl --user stop <unit>` for anything from `systemd-run` (the
+    trainer, tb shims and watchers all are), or
+  - `pgrep -f 'PATTERN' | grep -vE "^($$|$PPID)$" | xargs -r kill` —
+    excluding `$$` and `$PPID` is what makes it safe.
+
+  And never put a kill and a relaunch of the same name in ONE command line.
 
 ## Layout
 
