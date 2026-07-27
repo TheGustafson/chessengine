@@ -769,6 +769,59 @@ warm → quant.bin exporter so an un-launched arch can be packed and
 speed-tested BEFORE it costs GPU-days. That tool is what let the gate
 actually fire instead of being waived.
 
+**★★★ THE THREAT FEATURES COST ~30% OF ALL CYCLES. Do they earn it at
+equal time? UNMEASURED — and it is worth ~60 Elo either way. ★★★**
+(2026-07-27 ~02:5x, profiling the shipped PGO build on a fixed-node
+search.) Symbol shares, PGO build, confirmed on the non-PGO build too
+(24.50% vs 25.32% for the top symbol — stable):
+
+| symbol | share | what |
+|---|---|---|
+| `ThreatContext::at_full` | **25.3%** | threat accumulator fold |
+| `sota_threats::record_square_touch` | 4.7% | threat event generation |
+| **threat total** | **~30.0%** | |
+| `HalfkaContext::current_full` | 7.9% | HalfKA accumulator |
+| `HalfkaContext::finny_refresh_into` | 7.0% | HalfKA refresh |
+| **HalfKA total** | **~14.9%** | |
+
+**Threats cost twice what the HalfKA features cost**, which tracks the
+table geometry: THREAT_DIMS 60720 against HALFKA_DIMS 22528, so the
+threat rows are 2.7× the HalfKA space and 73% of the whole FT.
+
+**The arithmetic that makes this a real question.** Removing threats
+gives 1/(1−0.30) = **1.43× speed = +62 Elo** at the measured 120
+Elo/doubling — probably more, since the FT table would shrink from
+83248 rows to 22528 and the random-row access is load-bound. So the
+threat feature set has to be worth **more than +62 fn Elo** to justify
+itself at equal time. The only number we have is exp-0065's +32.5±17.3
+fn, and that compared the WHOLE D40 arch (HalfKAv2_hm king buckets +
+FullThreats + Reckless head) against classic features — it does not
+isolate threats. **Their cost is now measured precisely; their benefit
+has never been measured at all.**
+
+Two things sharpen the suspicion. First, **SF18 has no separate threat
+feature space** and is the strongest engine in the comparison — so
+threats are demonstrably not necessary for top strength. Second, this
+composes with the tactical finding below: our search is already level
+with SF16 at equal nodes, so we are paying 30% of our clock for
+evaluation features while the measured deficit is in quiet eval, where
++62 Elo of extra search depth would also help.
+
+**Cheap to test later, and the engine is already ready for it.**
+`ThreatContext::apply_at` has a first-class HalfKA-only path — "the
+threat channel is a constant all-zero accumulator … nothing to fold"
+when `weights.is_empty()`. So the experiment needs NO engine work: train
+one HalfKA-only net at matched width and run it at equal time. **Filed
+as the top post-release research question**; it is a GPU-days experiment
+and the box is committed to D48X, so it is not for tonight.
+
+**B4 (dead-zero sweep) IS MOOT — closed for free.** The study said
+"B1's static dispatch may delete them for free. Measure B1 first and
+re-check." Measured: `memset`/`memcpy` have **zero** share in both the
+PGO and the plain native build, against the 3.06%-of-cycles libc block
+the study recorded. PGO/native already removed the dead stores, so the
+day of `MaybeUninit` unsafe work B4 called for buys nothing. Struck.
+
 **★★ WHERE THE GAP TO SF ACTUALLY IS: NOT TACTICS (02:5x). ★★**
 Calibrated our tactical solving against the engines we are chasing, at
 equal 50k nodes (fixed nodes ⇒ speed-independent, so this is a pure

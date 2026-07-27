@@ -934,7 +934,7 @@ been 2.1, so these are conservative).
 | **1** | **B1 — native + PGO release ladder** | **+8.1 % measured** (8/8 ABBA blocks) | 1 day, build system | low (build reproducibility, not correctness) | **hash + depth-13 + 701605 + node-identical** — all four verified |
 | **2** | **B2 — `#[repr(align(64))]` on `Entry`/`ThreatEntry`/`FinnyEntry`** | **+1–4 %** (−1.29 % L1d loads at equal instructions) | minutes | very low | **bit- and node-identical** — verified |
 | **3** | **P2 — relaxed-atomic policy-head slot** | **+0.5–1.2 %** (−1.17 % cycles at equal instructions) | 1 hour | very low | **bit- and node-identical** — verified |
-| 4 | B4 — finish the dead-zero sweep (`MoveList::new`, `forward_into`) | +1–2 % | 1 day | medium (UB class) | bit + node-identical, plus miri |
+| ~~4~~ | ~~B4 — dead-zero sweep~~ | **MOOT 2026-07-27: PGO already deleted them** — `memset`/`memcpy` show ZERO profile share in both the PGO and plain-native builds, against the 3.06 % libc block this study recorded. The doc's own hedge ("B1's static dispatch may delete them for free") was right. | — | — | struck |
 | 5 | **B3 — P-ORD with the argmax cost removed** | up to **+4 % effective** (−3.7 % nodes at ~0 tax) | 1–2 days | medium (search behaviour) | fixed-depth nodes on ≥800 FENs, then SPRT |
 | 6 | B6 — accumulator metadata split + `last_computed` index | +1–2 % | 1–2 days | medium | bit + node-identical |
 | 7 | B5 — FT-sparsity λ (trainer) / avg-nnz in the net gate | up to +3.4 % NPS | probe: hours; λ: a training run | low for the probe, high for λ (eval quality) | net-gate report; λ needs a full heldout + ET arc |
