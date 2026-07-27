@@ -941,6 +941,27 @@ what we do next:**
    (~1% of range). Fixed to r_end 0.03. This affects the ENTIRE existing
    campaign library, which all carries the 0.002 default.
 
+**SPSA STAGE A IS A NULL — near-final read at k=2098, 16,784 games
+(06:0x).** Only RFP_MULT_CAP reaches 2.0σ (80 → 86); RAZOR_BASE 1.5σ
+(466 → 491), OPTIMISM_NUM 1.3σ (75 → 80), the other nine ≤1.1σ. mean z
++0.0020 ± 0.0048, perfectly centred. **With 12 parameters, exactly one
+at 2.0σ is what chance produces** (P(|z|>2)≈4.6% each ⇒ ~42% chance of
+at least one), and the movements are tiny in absolute terms — 7.5% of
+default on the largest.
+
+**The finding: Stockfish's search constants transfer well to ARCHON.**
+The campaign's premise was that these were "untuned transplants" ripe
+for gains; 16.8k games say they were already close to right for our
+engine. That is a real negative result, and it agrees with the other
+four search instruments.
+
+**c2-reduction should still run** (it is chained next, and will).
+Stage A tuned the S0 terms and the eval-coupled margins; c2 tunes the
+reduction SHAPE — the log table's slope, the flat rebases, the
+node-type surcharges. Different hypothesis, and the SF14→16 study calls
+it the single biggest gainer pool. Stage A being null lowers the prior
+but does not test it.
+
 **★ AN HONEST TENSION: EVERY PROXY SAYS WE MATCH SF16, THE GAMES SAY
 −33. The proxies are missing something, and that gap is itself the
 finding (05:4x).** Laid side by side:
