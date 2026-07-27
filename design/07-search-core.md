@@ -901,6 +901,12 @@ make/unmake + Zobrist, perft green (their own docs), a phase-A `evaluate`
    NonPV TT cutoff with rule-50 guard, qsearch `DEPTH_QS` interaction.
    *Done when*: bench nodes drop materially vs step 5 at equal depth; TT-off
    vs TT-on return identical values on a test suite at fixed depth.
+   (Re-scoped by the S0 landing of doc 10 §3.9's sibling depth reduction,
+   2026-07-26: fixed-depth centipawn values are order-dependent once an
+   alpha raise cheapens later siblings, and the TT changes move order.
+   The bar holds exactly for DECISIVE values — the §3.9 rule exempts them
+   — and within a drift band for centipawn fixtures; the SPRT channel
+   arbitrates beyond that, as it already does for LMP/LMR lossiness.)
 7. **PVS zero-window** — three-call structure with `r = 0`, `cut_node`
    propagation, `all_node`, zero-window debug_asserts. *Done when*: fixed
    suite node counts drop vs pure negamax; scores unchanged at fixed depth.

@@ -678,9 +678,18 @@ belongs to the search-core doc. Then:
   `update_pv(ply, m)` on the worker's `pv_table` (doc 07 §3.3); if
   `value >= beta`: `ss.cutoff_cnt += ((extension < 2) || NT::PV) as i32`,
   break (fail high). Otherwise (alpha raise without cutoff): if
-  `depth > 2 && depth < 13 && !is_decisive(value)` → `depth -= 2` (all
-  remaining siblings get a cheaper search; `SIBLING_DEPTH_MIN = 2`,
-  `SIBLING_DEPTH_MAX = 13`), then `alpha = value`.
+  `!ROOT && depth > 2 && depth < 13 && !is_decisive(value)` →
+  `depth -= 2` (all remaining siblings get a cheaper search;
+  `SIBLING_DEPTH_MIN = 2`, `SIBLING_DEPTH_MAX = 13`), then
+  `alpha = value`. **Root exclusion is an ARCHON deviation (S0 landing,
+  2026-07-26):** the ID driver's iteration bookkeeping (doc 07) owns
+  root depth; mutating it mid-iteration corrupts the aspiration-trace
+  and PV invariants. **Consequence note:** this rule makes non-root
+  fixed-depth values order-dependent (an early alpha raise cheapens a
+  later, better sibling), so doc 07 §4 step 6's "TT-on/off identical
+  values at fixed depth" milestone bar is re-scoped to decisive values
+  from this landing on — the equal-time SPRT channel is the arbiter for
+  centipawn drift, as it already is for LMP/LMR lossiness.
 - Every searched non-best move is recorded into the 32-capacity quiet or
   capture list for end-of-node maluses.
 

@@ -3755,12 +3755,25 @@ impl Worker {
                         break; // fail high
                     }
                     // Sibling depth reduction (design/10 §3.9, Wave-D item
-                    // 15) stays DEFERRED one more commit: it makes the
-                    // fixed-depth value order-dependent (an early alpha
-                    // raise cheapens later siblings), which structurally
-                    // breaks doc 08 §8 criterion 6 (TT-on/off value
-                    // equality) — that oracle must be re-scoped in the doc
-                    // and the P6 test suite in the same change (S0 c2).
+                    // 15, un-deferred with S0): a quiet alpha raise without
+                    // a cutoff is evidence the node is already well-resolved
+                    // — the remaining siblings get a cheaper search.
+                    // Decisive scores are exempt (mate distances stay exact
+                    // at pinned depth). Root is exempt (ARCHON deviation,
+                    // §3.9 note): the ID driver's iteration bookkeeping
+                    // (doc 07) owns root depth, and mutating it mid-
+                    // iteration corrupts the aspiration trace invariants.
+                    // NB this makes non-root fixed-depth values ORDER-
+                    // DEPENDENT (an early raise cheapens a later, better
+                    // sibling) — doc 07 §4 step 6's TT-on/off equality bar
+                    // is re-scoped accordingly.
+                    if !NT::ROOT
+                        && depth > params::SIBLING_DEPTH_MIN()
+                        && depth < params::SIBLING_DEPTH_MAX()
+                        && !is_decisive(value)
+                    {
+                        depth -= 2;
+                    }
                     alpha = value;
                 }
             }
@@ -8537,15 +8550,15 @@ mod tests {
         let suite: &[(&str, Depth)] = &[
             // KRK mate-in-2: exercises mate-distance pruning soundness.
             ("k7/8/2K5/8/8/8/8/7R w - - 0 1", 3),
-            // Pawn ending: scouts inside scouts. The depth-3 row of this
-            // fixture migrated to the bench+SPRT channel with the S0 §3.7
-            // finalization terms (ttPv rebate + cutoffCnt + all_node,
-            // 2026-07-26): at the shallowest scout depths the heavier
-            // non-PV reductions floor a scout to depth 1 and the value
-            // legitimately parts from cutoff-free negamax (~40cp here, the
-            // same magnitude as the LMP-era minor-piece drift above). One
-            // ply deeper the scouts re-converge, so depth 4 stays.
-            ("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1", 4),
+            // The pawn-ending fixture (both depths) has migrated to the
+            // bench+SPRT channel with the S0 landings (2026-07-26): depth 3
+            // fell to the §3.7 finalization terms (heavier non-PV
+            // reductions floor the shallowest scouts, ~40cp) and depth 4 to
+            // §3.9 sibling depth reduction (an early alpha raise cheapens a
+            // later, better sibling — fixed-depth centipawn values are now
+            // order-dependent BY DESIGN; doc 07 §4 step 6 re-scope). The
+            // cutoff-free oracle's living bar is decisive fixtures, whose
+            // §3.9 exemption keeps mate distances exact.
             // Back-rank mate-in-1 with pawns on both sides.
             ("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", 2),
         ];
@@ -8639,8 +8652,13 @@ mod tests {
         let suite: &[(&str, Depth)] = &[
             // KRK mate-in-2: decisive scores through value_to_tt/from_tt.
             ("k7/8/2K5/8/8/8/8/7R w - - 0 1", 3),
-            // Tiny pawn ending: eval-cache traffic plus qsearch captures.
-            ("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1", 4),
+            // The pawn-ending fixture migrated to the bench+SPRT channel
+            // with the S0 §3.9 sibling depth reduction (2026-07-26): TT
+            // presence changes move order, and an early alpha raise now
+            // cheapens later siblings, so fixed-depth CENTIPAWN equality
+            // between TT-on and TT-off no longer holds by design (doc 07
+            // §4 step 6 re-scope). Decisive values stay exact — the §3.9
+            // rule exempts them — and remain this suite's living bar.
             // Back-rank mate with pawn shields on both sides.
             ("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", 3),
         ];
