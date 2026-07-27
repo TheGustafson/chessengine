@@ -329,7 +329,10 @@ fn wdl_tm_factor(root_decisiveness: f32, c3: f32) -> f64 {
 /// positive, so the truncation is a plain floor.
 #[inline]
 fn lmp_move_count(depth: Depth, improving: bool) -> i32 {
-    (params::LMP_BASE() + depth * depth) / (2 - i32::from(improving))
+    // The depth² term carries a coefficient (identity at 1024) because it,
+    // not LMP_BASE, is what actually sets this threshold — see LMP_DEPTH_MULT.
+    (params::LMP_BASE() + params::scale_1024(depth * depth, params::LMP_DEPTH_MULT()))
+        / (params::LMP_IMPROVING_DEN() - i32::from(improving))
 }
 
 /// The parent-futility bound (design/10 §3.5, the move loop's quiet branch):
@@ -2514,7 +2517,8 @@ impl Worker {
             let tt_cut_base = !NT::PV
                 && self.stack[cur].excluded_move == Move::NULL
                 && is_valid(tt_value)
-                && tt_data.depth > depth - Depth::from(tt_value <= beta);
+                && tt_data.depth
+                    > depth - params::TTCUT_BOUND_SLACK() * Depth::from(tt_value <= beta);
             let base_cutoff = tt_cut_base
                 && (if tt_value >= beta {
                     tt_data.bound.includes_lower()
@@ -2880,7 +2884,9 @@ impl Worker {
                 && self.stack[cur].excluded_move == Move::NULL
                 && !(is_valid(tt_value) && tt_value < probcut_beta)
             {
-                let probcut_depth = depth - params::PROBCUT_DEPTH_SUB() - Depth::from(improving);
+                let probcut_depth = depth
+                    - params::PROBCUT_DEPTH_SUB()
+                    - params::PROBCUT_IMPROVING_SUB() * Depth::from(improving);
                 // Class 4: an EVAL-frame gap fed to `see_ge`, whose threshold
                 // is in PIECE_VALUES. Identity at 1024.
                 let threshold = params::scale_1024(
@@ -3318,7 +3324,9 @@ impl Worker {
             if !NT::ROOT
                 && m == tt_data.mv
                 && self.stack[cur].excluded_move == Move::NULL
-                && depth >= params::SE_MIN_DEPTH() + Depth::from(self.stack[cur].tt_pv)
+                && depth
+                    >= params::SE_MIN_DEPTH()
+                        + params::SE_TTPV_DEPTH_BONUS() * Depth::from(self.stack[cur].tt_pv)
                 && is_valid(tt_value)
                 && !is_decisive(tt_value)
                 && tt_data.bound.includes_lower()
@@ -3327,7 +3335,8 @@ impl Worker {
             {
                 let singular_beta =
                     singular_verification_beta(tt_value, depth, self.stack[cur].tt_pv && !NT::PV);
-                let singular_depth = new_depth / 2;
+                let singular_depth =
+                    new_depth * params::SE_VERIFY_DEPTH_NUM() / params::SE_VERIFY_DEPTH_DEN();
                 self.stack[cur].excluded_move = m;
                 let value = self.search::<NonPv>(
                     tt,
@@ -3357,10 +3366,11 @@ impl Worker {
                         corr_adj,
                         deep,
                     );
-                    extension = 1
+                    extension = params::SE_EXT_BASE()
                         + Depth::from(value < singular_beta - double_margin)
                         + Depth::from(value < singular_beta - triple_margin);
-                    depth += 1; // the WHOLE node deepens, not just the ttMove
+                    // The WHOLE node deepens, not just the ttMove.
+                    depth += params::SE_NODE_DEEPEN();
                 } else if value >= beta && !is_decisive(value) {
                     // Multicut: multiple moves beat beta without the ttMove —
                     // the node is not singular; prune the whole subtree.
@@ -3538,8 +3548,8 @@ impl Worker {
             if depth >= 2 && move_count > 1 {
                 let classical_d = (new_depth - r / params::RED_UNIT())
                     .min(new_depth + params::RED_MAX_DEEPER())
-                    .max(1)
-                    + Depth::from(NT::PV);
+                    .max(params::LMR_MIN_SCOUT_DEPTH())
+                    + params::LMR_PV_DEPTH_BONUS() * Depth::from(NT::PV);
                 self.st_lmr_n += 1;
                 self.st_lmr_plies += i64::from(new_depth - classical_d);
                 #[cfg(feature = "search-control")]
@@ -3551,7 +3561,9 @@ impl Worker {
                         intervention_applied = true;
                         requested.clamp(
                             1,
-                            new_depth + params::RED_MAX_DEEPER() + Depth::from(NT::PV),
+                            new_depth
+                                + params::RED_MAX_DEEPER()
+                                + params::LMR_PV_DEPTH_BONUS() * Depth::from(NT::PV),
                         )
                     } else {
                         classical_d
@@ -3585,7 +3597,8 @@ impl Worker {
                     let do_deeper =
                         d < new_depth && value > best_value + params::LMR_DEEPER_MARGIN();
                     let do_shallower = value < best_value + params::LMR_SHALLOWER_MARGIN();
-                    new_depth += Depth::from(do_deeper) - Depth::from(do_shallower);
+                    new_depth += params::LMR_DEEPER_STEP() * Depth::from(do_deeper)
+                        - params::LMR_SHALLOWER_STEP() * Depth::from(do_shallower);
                     if new_depth > d {
                         #[cfg(feature = "search-control")]
                         let trace_nodes_before_research = self.nodes;
@@ -3626,8 +3639,13 @@ impl Worker {
                     r += params::RED_FULLDEPTH_NO_TTMOVE();
                 }
                 let d = new_depth
-                    - Depth::from(r > params::RED_FULLDEPTH_DOCK1())
-                    - Depth::from(r > params::RED_FULLDEPTH_DOCK2() && new_depth > 2);
+                    - params::LMR_FULLDEPTH_DOCK_STEP()
+                        * Depth::from(r > params::RED_FULLDEPTH_DOCK1())
+                    - params::LMR_FULLDEPTH_DOCK_STEP()
+                        * Depth::from(
+                            r > params::RED_FULLDEPTH_DOCK2()
+                                && new_depth > params::LMR_DOCK2_MIN_DEPTH(),
+                        );
                 value =
                     -self.search::<NonPv>(tt, stop, -(alpha + 1), -alpha, d, !cut_node, ply + 1);
             }
@@ -3821,7 +3839,8 @@ impl Worker {
                         // A cutoff by a heavily-extended move is weaker evidence
                         // of a fail-high-prone child, so it does not bump the
                         // count (design/10 §3.9, Wave-D item 15).
-                        self.stack[cur].cutoff_cnt += i32::from(extension < 2 || NT::PV);
+                        self.stack[cur].cutoff_cnt +=
+                            i32::from(extension < params::CUTOFFCNT_EXT_GATE() || NT::PV);
                         break; // fail high
                     }
                     // Sibling depth reduction (design/10 §3.9, Wave-D item

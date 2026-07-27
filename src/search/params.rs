@@ -477,10 +477,112 @@ crate::tunables! {
     // guard `!is_loss(best_value)` and the zugzwang guard
     // `non_pawn_material(us) != 0` (design/10 §3.5), never at the root.
 
+    // --- Implicit-coefficient tunables (2026-07-27) ---
+    //
+    // Every entry below gives a NAME and a knob to a term that carried an
+    // invisible x1 or a bare literal. They all default to exact identity, so
+    // the shipped engine is unchanged and each is a clean control.
+    //
+    // Why they were missing. Design/01 §3.8's rule is "any bare numeric
+    // literal in `search/` that a tuner could move is a defect" — and that
+    // rule STRUCTURALLY CANNOT catch these, because most of them are not
+    // literals at all. `+ Depth::from(pv_node)` is a coefficient of 1 that
+    // nobody ever wrote down, so it is invisible to a grep for numbers.
+    //
+    // Why it matters. The prune budget
+    // (`docs/research/prune-budget-2026-07-27.md`) forced the distinction
+    // between a mechanism's CONTRIBUTION (what happens if it vanishes) and
+    // its LEVERAGE (what happens if its parameter moves). LMP removes ~23-47%
+    // of the tree and had exactly one low-leverage parameter, because the
+    // term that actually sets its threshold — `depth²` — had no coefficient.
+    // No SPSA campaign can find what no parameter can express.
+    //
+    // Stockfish carries the same implicit 1s, and that is not evidence they
+    // are right: SF writes an explicit coefficient wherever it has bothered
+    // to tune one (`45 * improving` in the NMP bar, `138 * !bestMove` in
+    // parent futility). The ones still at an implicit 1 are simply untuned —
+    // and never tuned for OUR eval frame or OUR tree shape at all.
+
     /// Base term of the LMP move-count threshold `(LMP_BASE + depth²) /
     /// (2 - improving)` (design/10 §3.5): the constant floor of quiets always
     /// tried before movecount pruning can bite, before the depth² growth.
     pub LMP_BASE: i32 = 3;
+    /// **Coefficient of the depth² term, in 1024ths.** `1024` = 1.0 = exact
+    /// identity with Stockfish's shape.
+    ///
+    /// Why it exists: LMP removes **46.8% of our tree**
+    /// (`docs/research/prune-budget-2026-07-27.md` §1), second only to LMR,
+    /// and until now the entire mechanism had exactly ONE tunable —
+    /// [`LMP_BASE`] — whose leverage is almost nil, because `depth²`
+    /// dominates the sum at every depth that matters. Measured: `LMP_BASE`
+    /// 2 → 8 moves the tree by +0.4% to +4.6%, against LMP's 46.8%
+    /// contribution.
+    ///
+    /// That is the distinction the prune budget forced into the open:
+    /// **contribution is not leverage.** A mechanism can shape half the tree
+    /// and still be untunable, and no SPSA campaign can find what no
+    /// parameter can express. This coefficient gives the dominant term a
+    /// handle.
+    ///
+    /// Deviating from Stockfish's shape here is deliberate: their constants
+    /// are a prior, not a destination, and a coefficient pinned at identity
+    /// costs nothing until something measures a better value.
+    pub LMP_DEPTH_MULT: i32 = 1024;
+    /// Divisor base of the LMP threshold: `(… ) / (LMP_IMPROVING_DEN -
+    /// improving)`. At the default 2 a not-improving node prunes at half the
+    /// move count, which is a large structural asymmetry that was previously
+    /// hard-coded and therefore never tested.
+    pub LMP_IMPROVING_DEN: i32 = 2;
+
+    /// Numerator of the singular VERIFICATION depth, `new_depth *
+    /// SE_VERIFY_DEPTH_NUM / SE_VERIFY_DEPTH_DEN` (was a bare `/ 2`).
+    ///
+    /// The highest-leverage implicit constant in the search: this is the
+    /// depth of an entire extra search run at every singular candidate, so it
+    /// sets both the cost of singular extensions and how trustworthy their
+    /// verdict is. A bare `/ 2` fixed that trade-off with no way to measure
+    /// it.
+    pub SE_VERIFY_DEPTH_NUM: Depth = 1;
+    /// Denominator of the singular verification depth (see
+    /// [`SE_VERIFY_DEPTH_NUM`]).
+    pub SE_VERIFY_DEPTH_DEN: Depth = 2;
+    /// Base extension granted to a confirmed-singular move, before the
+    /// double/triple bonuses: `extension = SE_EXT_BASE + (double) + (triple)`.
+    pub SE_EXT_BASE: Depth = 1;
+    /// Extra depth the WHOLE node gains when its ttMove proves singular (was
+    /// a bare `depth += 1`). Distinct from [`SE_EXT_BASE`], which extends only
+    /// the singular move.
+    pub SE_NODE_DEEPEN: Depth = 1;
+    /// Depth surcharge for entering the singular test at a ttPv node
+    /// (`depth >= SE_MIN_DEPTH + SE_TTPV_DEPTH_BONUS * tt_pv`).
+    pub SE_TTPV_DEPTH_BONUS: Depth = 1;
+    /// Depth subtracted from the ProbCut verification search when improving
+    /// (`depth - PROBCUT_DEPTH_SUB - PROBCUT_IMPROVING_SUB * improving`).
+    pub PROBCUT_IMPROVING_SUB: Depth = 1;
+    /// Depth bonus given to the LMR scout at a PV node, applied to both the
+    /// reduced depth and its deeper cap.
+    pub LMR_PV_DEPTH_BONUS: Depth = 1;
+    /// Floor of the LMR scout depth (`.max(LMR_MIN_SCOUT_DEPTH)`), which
+    /// keeps a heavily-reduced scout from collapsing into qsearch.
+    pub LMR_MIN_SCOUT_DEPTH: Depth = 1;
+    /// Depth step added to the re-search when the LMR scout came back well
+    /// above `best_value` (`new_depth += LMR_DEEPER_STEP * do_deeper`).
+    pub LMR_DEEPER_STEP: Depth = 1;
+    /// Depth step removed from the re-search when the LMR scout came back
+    /// barely above `best_value`.
+    pub LMR_SHALLOWER_STEP: Depth = 1;
+    /// Depth docked from the skipped-LMR full-depth search at each of the two
+    /// reduction thresholds (`- LMR_FULLDEPTH_DOCK_STEP` per threshold met).
+    pub LMR_FULLDEPTH_DOCK_STEP: Depth = 1;
+    /// Minimum `new_depth` for the SECOND full-depth dock to apply — a bare
+    /// `new_depth > 2` guard that stops the dock eating a shallow search.
+    pub LMR_DOCK2_MIN_DEPTH: Depth = 2;
+    /// Depth slack allowed on a TT cutoff when the stored value is a lower
+    /// bound: `tt_depth > depth - TTCUT_BOUND_SLACK * (tt_value <= beta)`.
+    pub TTCUT_BOUND_SLACK: Depth = 1;
+    /// Extension level at or above which a node stops counting child cutoffs
+    /// (`cutoff_cnt += (extension < CUTOFFCNT_EXT_GATE || PV)`).
+    pub CUTOFFCNT_EXT_GATE: Depth = 2;
 
     // --- Move-loop pruning: capture futility + capture/check SEE (design/10 §3.5) ---
     //

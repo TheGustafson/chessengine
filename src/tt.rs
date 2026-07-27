@@ -64,17 +64,42 @@ const BOUND_SHIFT: u8 = GENERATION_BITS; // 5
 const PV_SHIFT: u8 = BOUND_SHIFT + 2; // 7
 const PV_MASK: u8 = 1 << PV_SHIFT; // 0x80
 
-/// Replacement weight (doc 08 §3.6): one generation of staleness outweighs
-/// this many plies of stored (internal) depth.
-const REPLACEMENT_AGE_WEIGHT: i32 = 8;
-/// Refresh-rule margin (doc 08 §3.7 rule 2c): a same-key, same-generation
-/// write may lose up to this much depth and still overwrite.
-const REFRESH_DEPTH_MARGIN: i32 = 4;
-/// PV writes get this depth credit in the refresh rule (doc 08 §3.7).
-const REFRESH_PV_CREDIT: i32 = 2;
-/// Secondary aging (doc 08 §3.7 rule 3) only erodes entries of at least
-/// this EXTERNAL depth.
-const SECONDARY_AGING_MIN_DEPTH: Depth = 5;
+crate::tunables! {
+    /// **The transposition table's replacement policy, made tunable
+    /// (2026-07-27).**
+    ///
+    /// The TT decides what the entire search is allowed to reuse, and until
+    /// now every number in that decision was a plain `const` — no SPSA
+    /// campaign could reach any of it. Two of the five were also *implicit*:
+    /// a coefficient of 1 that nobody wrote down, invisible to design/01
+    /// §3.8's "bare numeric literal" rule because they are not literals.
+    ///
+    /// All default to exact identity with the previous consts.
+
+    /// Weight on stored depth when choosing a replacement victim:
+    /// `TT_REPLACE_DEPTH_WEIGHT * depth - TT_REPLACE_AGE_WEIGHT * age`.
+    /// Was an implicit 1 — the depth term had no coefficient at all, so the
+    /// depth-vs-age exchange rate could only ever be moved from one side.
+    pub TT_REPLACE_DEPTH_WEIGHT: i32 = 1;
+    /// Plies of stored depth one generation of age is worth when choosing a
+    /// replacement victim. Was `REPLACEMENT_AGE_WEIGHT`.
+    pub TT_REPLACE_AGE_WEIGHT: i32 = 8;
+    /// How much shallower a re-write of the SAME position may be and still
+    /// overwrite. Was `REFRESH_DEPTH_MARGIN`.
+    pub TT_REFRESH_DEPTH_MARGIN: i32 = 4;
+    /// Depth credit a PV result carries into the refresh test. Was
+    /// `REFRESH_PV_CREDIT`.
+    pub TT_REFRESH_PV_CREDIT: i32 = 2;
+    /// Minimum stored depth for secondary aging to erode a stale decisive
+    /// entry. Was `SECONDARY_AGING_MIN_DEPTH`.
+    pub TT_SECONDARY_AGING_MIN_DEPTH: i32 = 5;
+    /// Plies of stored depth a rejected write erodes from a stale decisive
+    /// entry. Another implicit 1 (`old_d - 1`): it sets how fast a wrong mate
+    /// claim ages out, which is exactly what elementary-mate regressions turn
+    /// on, and it was never adjustable.
+    pub TT_SECONDARY_AGING_STEP: i32 = 1;
+}
+
 /// `hashfull` samples exactly this many leading clusters (doc 08 §3.10);
 /// `resize`'s [`MIN_HASH_MB`] floor guarantees they exist.
 const HASHFULL_SAMPLE_CLUSTERS: usize = 1000;
@@ -255,7 +280,7 @@ impl TtEntry {
         //   (d) the stored entry is from an older search.
         if b == Bound::Exact
             || !same_key
-            || new_d + REFRESH_PV_CREDIT * i32::from(pv) > old_d - REFRESH_DEPTH_MARGIN
+            || new_d + TT_REFRESH_PV_CREDIT() * i32::from(pv) > old_d - TT_REFRESH_DEPTH_MARGIN()
             || relative_age_bits(gen_bound, generation) != 0
         {
             debug_assert!(d > DEPTH_NONE && new_d < 256);
@@ -274,7 +299,7 @@ impl TtEntry {
         // non-EXACT entry holding a decisive (mate/TB-band) score erodes it
         // by one ply of stored depth, so stale mate claims age out instead
         // of squatting forever. Important for elementary mates.
-        else if old_d + DEPTH_NONE >= SECONDARY_AGING_MIN_DEPTH
+        else if old_d + DEPTH_NONE >= TT_SECONDARY_AGING_MIN_DEPTH()
             && Bound::from_bits(gen_bound >> BOUND_SHIFT) != Bound::Exact
         {
             let v16 = Value::from(self.value16.load(Relaxed));
@@ -283,7 +308,8 @@ impl TtEntry {
             if v16.abs() < VALUE_INFINITE && is_decisive(v16) {
                 // max(0) guards racy decrements from wrapping the u8;
                 // hitting 0 means "unoccupied" — the graceful failure mode.
-                self.depth8.store((old_d - 1).max(0) as u8, Relaxed);
+                self.depth8
+                    .store((old_d - TT_SECONDARY_AGING_STEP()).max(0) as u8, Relaxed);
             }
         }
     }
@@ -485,8 +511,8 @@ impl TranspositionTable {
 
         let generation = self.generation();
         let replace_score = |entry: &TtEntry| {
-            i32::from(entry.depth8.load(Relaxed))
-                - REPLACEMENT_AGE_WEIGHT * i32::from(entry.relative_age(generation))
+            TT_REPLACE_DEPTH_WEIGHT() * i32::from(entry.depth8.load(Relaxed))
+                - TT_REPLACE_AGE_WEIGHT() * i32::from(entry.relative_age(generation))
         };
         let mut victim = &cluster.entries[0];
         let mut victim_score = replace_score(victim);
