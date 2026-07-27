@@ -200,6 +200,48 @@ one tunable multiplier, fixed-node self-play against the s=1.0 control. The
 prediction is a monotone improvement toward ≈0.58 and a decline past it; a flat
 curve refutes the model outright and costs one afternoon.
 
+## 6.5 The SF16→SF18 natural experiment — and why it lowers the expected correction
+
+Stockfish changed its own eval frame between 16 and 18 (`a`: 328 → 385.5, a
+**1.175×** expansion) *and* retuned its constants. That is a natural experiment
+on exactly our question: when the frame moves, how much do the constants move
+with it? Restricting to constants whose formula shape is unchanged:
+
+| constant | SF16 | SF18 | ratio | ÷ frame |
+|---|---:|---:|---:|---:|
+| razor base | 456 | 485 | 1.064 | 0.905 |
+| razor depth² mult | 252 | 281 | 1.115 | 0.949 |
+| probcut beta base | 168 | 235 | 1.399 | 1.190 |
+| probcut improving | 61 | 63 | 1.033 | 0.879 |
+| probcut beta (2nd) | 413 | 418 | 1.012 | 0.861 |
+| | | **median** | **1.064** | **0.905** |
+
+(Excluded: qsearch `futilityBase`, which changed from `bestValue + 200` to
+`staticEval + 351`. Its 1.755× is a redesign, not a rescale.)
+
+Two readings, and both matter:
+
+**The frame effect is real.** All five constants grew, and the frame grew. If
+retuning were random with respect to the frame, five-for-five in the same
+direction has probability ~6%. Constants do follow the frame.
+
+**But they capture only part of it.** The median constant grew 1.064× against a
+frame that grew 1.175×. In log terms that is
+`ln(1.064)/ln(1.175) ≈ 0.38` — SF's own retune absorbed roughly **38%** of its
+own frame expansion, not 100%.
+
+If that transfer rate carries to us, the right correction is not the full
+`s = 0.58` but `0.58^0.38 ≈ 0.81`. **This materially changes the prediction.**
+The pre-registered sweep {1.0, 0.85, 0.70, 0.58, 0.46} already brackets both
+hypotheses, which is fortunate — but the expected optimum should now be stated
+as **a range, ≈0.6 to ≈0.85, rather than a point at 0.58**, and a best result
+at 0.85 must NOT be read as "no effect".
+
+Caveats, because n = 5 is thin: SF's retune conflates the frame change with
+genuine optimum drift, most formula shapes changed too much to compare at all,
+and the 0.38 exponent is a crude fit to five points. Treat it as evidence that
+the correction is **partial**, not as a second decimal place.
+
 ## 7. What would falsify this
 
 - The sweep is flat, or best at s = 1.0. Then either the frame measurement is
