@@ -328,3 +328,41 @@ empirically**, never a single scalar. The right diagnostic is not "what is
 this constant's value relative to SF's" but **"is this gate firing at the
 rate it was tuned for"** — an activation rate is scale-free, which is exactly
 why it survives a frame change that invalidates the raw values.
+
+### 6.1 The frontier, and depth scaling
+
+Pushing the two tunable winners further trades nodes against decisions
+(control 1193, σ ≈ 9.1):
+
+| arm | NMP | PFUT | nodes @ d10 | mate_in_3 @ 50k |
+|---|---|---|---|---|
+| control | 374 | 1.00× | — | 1193 |
+| **combo** | 168 | 0.64× | **−17.1%** | **1209 (+16)** |
+| — | 120 | 0.64× | −25.7% | 1205 (+12) |
+| — | 168 | 0.45× | −21.5% | 1206 (+13) |
+| **aggressive** | 120 | 0.45× | **−29.8%** | 1198 (+5) |
+
+Every arm is above control on both axes; the frontier is real but shallow.
+`NMP_EVAL_BASE 200` was tested and is worse than 168 on nodes (−11.6%),
+confirming 168 rather than an artifact of the grid edge. `IIR off` (−16.0%)
+and conthist at 0.64× (−14.3%) both make the combo *worse* and are excluded.
+
+WAC-revised at the same budget cannot discriminate — 159 / 159 / 157 of 200,
+σ ≈ 5.7 — so the tactical evidence rests on `mate_in_3`'s 1277 positions.
+
+**The saving grows with depth**, which is the direction that matters since
+real games search deeper than 10:
+
+| | depth 10 | depth 12 |
+|---|---|---|
+| combo | −17.06% | **−20.16%** |
+| aggressive | −29.78% | **−34.25%** |
+
+At ~120 Elo/doubling that is ~39 Elo (combo) and ~73 Elo (aggressive) of
+equal-time speed at depth 12, with the tactical improvement on top.
+
+**Both are SPRT candidates and neither should land without one.** The combo
+has the stronger decision-quality evidence (+16, ~1.8σ); the aggressive arm
+has nearly twice the speed and is still above control tactically. Neither is
+a code change — both are pure `setoption`, so one harness run can test both
+arms against the same baseline.
