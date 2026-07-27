@@ -1,0 +1,43 @@
+# samples total 5072  selected 3184 (62.78%)
+# objdump fn: Stockfish::(anonymous namespace)::trace_eval(Stockfish::Position&)  (3038 static instrs, 131 candidates)
+# unmapped 0
+## dynamic opcode mix (% of selected)
+   mov               51.70
+   add                9.17
+   lea                8.39
+   call               5.53
+   and                3.27
+   test               2.73
+   or                 2.54
+   xor                1.60
+   jmp                1.48
+   push               1.13
+   shlx               1.13
+   je                 0.85
+   cmp                0.85
+   sub                0.72
+   movabs             0.66
+   popcnt             0.63
+   jne                0.57
+   vmovdqa            0.53
+## register width: dynamic | static
+   zmm    dyn   0.00   static   0.00
+   ymm    dyn   0.00   static   0.00
+   xmm    dyn   1.54   static   0.95
+   gpr    dyn  98.46   static  99.05
+## mem class: dynamic | static  (load/store/both/none)
+   load   dyn  28.89   static  24.19
+   store  dyn  20.19   static  10.27
+   both   dyn   1.32   static   1.05
+   none   dyn  49.59   static  64.48
+## 512B regions (top 10): off, %sel, dominant mnemonics
+   +0x0       40.92  mov:43, lea:20, call:15, push:8, xor:5, cmp:3, je:3
+   +0x200     11.06  mov:53, and:7, or:5, call:3, lea:3, test:2, add:2
+   +0x600      7.66  mov:41, and:7, xor:5, lea:4, or:4, popcnt:3, add:3
+   +0x1200     7.22  mov:47, and:7, xor:5, lea:5, add:5, or:4, je:3
+   +0xe00      5.40  mov:52, xor:5, and:5, or:4, je:3, shl:3, lea:3
+   +0x800      5.09  mov:41, and:7, lea:6, xor:6, je:3, add:3, or:3
+   +0x1a00     4.71  mov:38, add:8, test:6, sub:6, and:5, movabs:4, jne:4
+   +0x400      3.58  mov:50, and:10, or:9, sar:2, vmovd:2, vmovdqa:2, cmovg:2
+   +0x1000     3.52  mov:28, and:9, lea:8, test:6, sub:6, je:5, popcnt:4
+   +0xc00      3.23  mov:31, xor:7, and:7, lea:6, test:6, add:5, je:3

@@ -1,0 +1,43 @@
+# samples total 358043  selected 57623 (16.09%)
+# objdump fn: int Stockfish::Search::Worker::search<(Stockfish::NodeType)0>(Stockfish::Position&, Stockfish::Search::Stack*,  (2851 static instrs, 2 candidates)
+# unmapped 0
+## dynamic opcode mix (% of selected)
+   mov               24.01
+   je                10.41
+   jne                6.72
+   add                5.72
+   movswl             5.15
+   lea                5.11
+   movzbl             4.78
+   cmp                4.49
+   test               3.48
+   sub                2.77
+   and                2.73
+   imul               2.48
+   xor                2.22
+   cmpb               1.88
+   jmp                1.75
+   shl                1.34
+   push               0.86
+   sar                0.83
+## register width: dynamic | static
+   zmm    dyn   0.00   static   0.00
+   ymm    dyn   0.16   static   0.07
+   xmm    dyn   0.85   static   0.42
+   gpr    dyn  98.99   static  99.51
+## mem class: dynamic | static  (load/store/both/none)
+   load   dyn  26.22   static  24.69
+   store  dyn   9.73   static   9.93
+   both   dyn   1.54   static   1.58
+   none   dyn  62.51   static  63.80
+## 512B regions (top 10): off, %sel, dominant mnemonics
+   +0x200     14.25  mov:23, add:14, and:9, movzbl:8, sub:8, cmp:7, shl:7
+   +0xc00     13.76  mov:24, movzbl:14, and:6, jne:6, test:5, imul:4, lea:4
+   +0xe00      9.59  mov:26, add:12, cmp:12, lea:4, movswl:4, cmpb:3, jne:3
+   +0x0        9.45  mov:41, cmp:9, push:8, test:7, jne:5, and:4, setne:4
+   +0x1200     6.85  mov:28, lea:10, movzbl:7, xor:6, imul:5, add:5, call:3
+   +0x600      6.44  mov:18, pop:7, imul:6, lea:6, je:6, cmp:5, jg:5
+   +0xa00      6.34  mov:34, lea:4, movzbl:4, and:4, add:3, xor:3, je:3
+   +0x1600     6.01  mov:29, movzbl:11, xor:7, cmp:7, jne:5, jmp:5, nopl:5
+   +0x1400     4.41  mov:32, lea:9, add:6, cmp:5, cmpb:4, movzbl:4, sub:4
+   +0x400      4.08  mov:22, add:11, cmp:11, jne:8, je:8, imul:5, cmpb:5

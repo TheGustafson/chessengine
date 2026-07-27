@@ -1,0 +1,31 @@
+# SF18 dual-net split — callgrind (exact call counts), sf_18 tag built ARCH=x86-64-avx2
+# from git-archive of stockfish_reference/Stockfish clone; nets exported byte-exact from
+# the official binary via export_net (sha256 prefixes match embedded names
+# c288c895ea92 / 37f18f62d772); AVX2 build verified node-identical to the official
+# vnni512 binary (wl50/d10: 511221 = 511221).
+#
+# Mechanism (sf_18 tag, src/evaluate.cpp + src/nnue/*):
+#   simple_eval  = PawnValue*(pawn diff) + non_pawn_material diff   (material only)
+#   use_smallnet = |simple_eval| > 962
+#   small net    = L1 128, HalfKAv2_hm ONLY (nnue_feature_transformer.h:83
+#                  UseThreats == (dims == Big)); big net = L1 1024,
+#                  HalfKAv2_hm 22528 + FullThreats 79856 dims.
+#   fallback     : if smallNet && |nnue| < 277 -> re-evaluate with big net.
+#   both nets keep incremental accumulators; only the selected one is updated (lazy).
+#
+# wl50 d10 (511,221 nodes):
+#   big  evaluate calls 192,827   small evaluate calls 32,366  -> small = 14.4% of evals
+#   subtree Ir/eval (AVX2): big 6,626  small 1,167  (5.7x cheaper)
+#   if small evals had run big: +3.65% of SF18's total instructions
+# default-FENs d10 (489,072 nodes):
+#   big 162,899   small 51,312  -> small = 24.0% of evals
+#   subtree Ir/eval: big 6,859  small 1,060 (6.5x cheaper)
+#   if small evals had run big: +6.50% of SF18's total instructions
+#
+# SF16 classical tier — callgrind on the OFFICIAL avx2/bmi2 SF16 binary:
+#   evaluate.cpp: useClassical = !useNNUE || abs(psq_eg_stm) > 2048; no NNUE re-entry.
+#   wl50 d10   (733,627 nodes): Eval::evaluate 406,341; classical Evaluation::value
+#              333,252 = 82.0% of evals run the HCE, not the net.
+#   default d10 (582,509 nodes): evaluate 301,669; classical 222,324 = 73.7%.
+# SF16's speed on these workloads is substantially a cheap-tier artifact: it runs
+# its 2560-wide net on only 18-26% of evaluated nodes.

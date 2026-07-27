@@ -1,0 +1,39 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 5K of event 'cycles:u'
+# Event count (approx.): 10223995414
+#
+# Overhead  Command      Shared Object         Symbol                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+# ........  ...........  ....................  ................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+#
+    17.67%  stockfish16  stockfish16           [.] Stockfish::Eval::evaluate(Stockfish::Position const&)
+    15.95%  stockfish16  stockfish16           [.] Stockfish::(anonymous namespace)::Evaluation<(Stockfish::Trace::Tracing)0>::value() [clone .constprop.0]
+    11.17%  stockfish16  stockfish16           [.] Stockfish::Position::do_move(Stockfish::Move, Stockfish::StateInfo&, bool)
+     6.93%  stockfish16  stockfish16           [.] Stockfish::MovePicker::next_move(bool)
+     5.41%  stockfish16  stockfish16           [.] void Stockfish::Eval::NNUE::read_leb_128<short>(std::istream&, short*, unsigned long) [clone .constprop.0]
+     4.75%  stockfish16  stockfish16           [.] Stockfish::Value Stockfish::(anonymous namespace)::search<(Stockfish::(anonymous namespace)::NodeType)0>(Stockfish::Position&, Stockfish::Search::Stack*, Stockfish::Value, Stockfish::Value, int, bool) [clone .constprop.0]
+     4.13%  stockfish16  stockfish16           [.] Stockfish::Value Stockfish::(anonymous namespace)::search<(Stockfish::(anonymous namespace)::NodeType)0>(Stockfish::Position&, Stockfish::Search::Stack*, Stockfish::Value, Stockfish::Value, int, bool)
+     3.81%  stockfish16  stockfish16           [.] Stockfish::MovePicker::next_move(bool) [clone .constprop.0]
+     3.36%  stockfish16  stockfish16           [.] void Stockfish::Eval::NNUE::FeatureTransformer::update_accumulator_refresh<(Stockfish::Color)0>(Stockfish::Position const&) const
+     3.06%  stockfish16  stockfish16           [.] Stockfish::Value Stockfish::(anonymous namespace)::search<(Stockfish::(anonymous namespace)::NodeType)0>(Stockfish::Position&, Stockfish::Search::Stack*, Stockfish::Value, Stockfish::Value, int, bool) [clone .constprop.1]
+     3.05%  stockfish16  stockfish16           [.] Stockfish::Position::see_ge(Stockfish::Move, unsigned long&, Stockfish::Value) const
+     2.72%  stockfish16  stockfish16           [.] void Stockfish::MovePicker::score<(Stockfish::GenType)1>()
+     1.79%  stockfish16  stockfish16           [.] Stockfish::Value Stockfish::(anonymous namespace)::qsearch<(Stockfish::(anonymous namespace)::NodeType)0>(Stockfish::Position&, Stockfish::Search::Stack*, Stockfish::Value, Stockfish::Value, int) [clone .constprop.0]
+     1.54%  stockfish16  stockfish16           [.] Stockfish::Position::attackers_to(Stockfish::Square, unsigned long) const
+     1.28%  stockfish16  stockfish16           [.] Stockfish::Position::undo_move(Stockfish::Move)
+     1.08%  stockfish16  stockfish16           [.] Stockfish::Pawns::probe(Stockfish::Position const&)
+     0.98%  stockfish16  stockfish16           [.] Stockfish::(anonymous namespace)::update_all_stats(Stockfish::Position const&, Stockfish::Search::Stack*, Stockfish::Move, Stockfish::Value, Stockfish::Value, Stockfish::Square, Stockfish::Move*, int, Stockfish::Move*, int, int)
+     0.98%  stockfish16  stockfish16           [.] Stockfish::ExtMove* Stockfish::(anonymous namespace)::generate_all<(Stockfish::Color)0, (Stockfish::GenType)0>(Stockfish::Position const&, Stockfish::ExtMove*)
+     0.86%  stockfish16  stockfish16           [.] Stockfish::ExtMove* Stockfish::(anonymous namespace)::generate_all<(Stockfish::Color)1, (Stockfish::GenType)0>(Stockfish::Position const&, Stockfish::ExtMove*)
+     0.81%  stockfish16  stockfish16           [.] Stockfish::ExtMove* Stockfish::generate<(Stockfish::GenType)3>(Stockfish::Position const&, Stockfish::ExtMove*)
+     0.53%  stockfish16  stockfish16           [.] Stockfish::Position::pseudo_legal(Stockfish::Move) const
+     0.53%  stockfish16  stockfish16           [.] Stockfish::ExtMove* Stockfish::(anonymous namespace)::generate_all<(Stockfish::Color)1, (Stockfish::GenType)1>(Stockfish::Position const&, Stockfish::ExtMove*)
+     0.51%  stockfish16  stockfish16           [.] Stockfish::Value Stockfish::(anonymous namespace)::qsearch<(Stockfish::(anonymous namespace)::NodeType)0>(Stockfish::Position&, Stockfish::Search::Stack*, Stockfish::Value, Stockfish::Value, int)
+
+
+#
+# (Tip: To show time in nanoseconds in record/report add --ns)
+#

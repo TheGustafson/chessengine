@@ -1,0 +1,43 @@
+# samples total 1156967  selected 129197 (11.17%)
+# objdump fn: <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into  (1442 static instrs, 1 candidates)
+# unmapped 0
+## dynamic opcode mix (% of selected)
+   vpaddw            26.67
+   cmp               25.72
+   vpsubw            11.62
+   vmovdqu64          6.94
+   vmovdqu            5.96
+   mov                4.40
+   vmovaps            3.67
+   lea                3.60
+   add                2.66
+   inc                2.04
+   je                 1.53
+   xor                0.90
+   push               0.61
+   jne                0.53
+   cmovne             0.41
+   tzcnt              0.36
+   movw               0.27
+   and                0.23
+## register width: dynamic | static
+   zmm    dyn  48.90   static  40.08
+   ymm    dyn   5.97   static   0.69
+   xmm    dyn   0.07   static   0.28
+   gpr    dyn  45.06   static  58.95
+## mem class: dynamic | static  (load/store/both/none)
+   load   dyn  46.94   static  41.40
+   store  dyn  12.21   static   9.99
+   both   dyn   0.00   static   0.21
+   none   dyn  40.84   static  48.40
+## 512B regions (top 10): off, %sel, dominant mnemonics
+   +0x400     19.38  vpaddw:32, mov:11, vmovdqu64:8, cmp:7, lea:6, je:6, shl:4
+   +0xe00     14.33  vpsubw:24, mov:10, cmp:8, vmovdqu64:8, shl:6, lea:5, add:5
+   +0x0       13.95  mov:32, lea:8, vmovaps:8, xor:7, push:6, cmp:6, je:5
+   +0xa00     13.58  vpsubw:31, vmovdqu64:16, mov:5, lea:5, vpaddw:5, cmp:4, shl:4
+   +0x800     11.20  vpaddw:40, vmovdqu64:8, shl:6, mov:6, cmp:5, lea:5, je:4
+   +0xc00     11.12  vpaddw:35, mov:11, vpsubw:8, cmp:6, lea:6, je:5, shl:5
+   +0x600      9.51  vpsubw:32, vpaddw:8, vmovdqu64:8, lea:7, mov:6, shl:5, cmp:5
+   +0x200      4.98  mov:30, cmp:16, lea:11, je:7, tzcnt:6, jae:4, xor:4
+   +0x1000     1.73  vmovdqu64:25, mov:17, pop:6, lea:5, cmp:5, vmovdqa64:5, jmp:4
+   +0x1c00     0.11  vmovdqu64:32, vpaddw:16, mov:8, vpsubw:7, jne:4, cmp:3, xor:2

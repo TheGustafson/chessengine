@@ -1,0 +1,43 @@
+# samples total 358043  selected 123151 (34.40%)
+# objdump fn: Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNU  (1909 static instrs, 1 candidates)
+# unmapped 0
+## dynamic opcode mix (% of selected)
+   vpmovsxbw         20.55
+   vmovdqa64         17.95
+   vpsubw            13.78
+   cmp                8.33
+   vpdpbusd           5.97
+   mov                4.69
+   add                4.45
+   vpaddw             4.03
+   lea                2.99
+   shl                2.04
+   vmovdqa32          1.72
+   xor                1.26
+   movzbl             1.20
+   jne                1.11
+   vpminsw            1.02
+   sub                0.77
+   vpmulhw            0.53
+   je                 0.51
+## register width: dynamic | static
+   zmm    dyn  67.79   static  32.69
+   ymm    dyn   0.88   static   1.94
+   xmm    dyn   0.78   static   2.20
+   gpr    dyn  30.55   static  63.17
+## mem class: dynamic | static  (load/store/both/none)
+   load   dyn  58.21   static  30.59
+   store  dyn  10.79   static   9.32
+   both   dyn   0.12   static   0.89
+   none   dyn  30.87   static  59.19
+## 512B regions (top 10): off, %sel, dominant mnemonics
+   +0x1000    12.94  vpmovsxbw:19, vpaddw:16, vmovdqa64:16, vpsubw:8, mov:5, add:4, cmp:3
+   +0x600     11.57  vpmovsxbw:29, vpsubw:16, vmovdqa64:12, vpaddw:8, mov:4, test:2, jle:2
+   +0x200      9.67  vmovdqa64:15, mov:13, vpaddw:7, vpsubw:7, jne:6, lea:5, add:4
+   +0x800      7.79  vmovdqa64:16, mov:16, vpaddw:8, cmp:6, jne:6, add:6, vpmovsxbw:3
+   +0x1a00     7.17  add:7, lea:7, vmovdqa32:5, vptestmd:5, vpcompressd:5, kmovw:5, popcnt:5
+   +0xa00      7.06  vmovdqa64:14, mov:12, lea:9, vpaddw:7, vpsubw:7, xor:6, movzbl:6
+   +0xe00      6.81  mov:18, vmovdqa64:16, vpmovsxbw:13, lea:9, add:8, vpsubw:8, shl:4
+   +0x400      5.65  mov:30, lea:17, add:8, cmp:5, shl:4, movzbl:4, vmovdqa64:4
+   +0x1200     5.42  mov:15, add:9, lea:8, vmovdqa64:8, vpaddw:7, vpminsw:6, movzbl:4
+   +0x1c00     4.53  vpdpbusd:17, vpbroadcastd:8, mov:7, lea:6, vmovdqa:6, vpsrlw:4, vmovdqa32:4

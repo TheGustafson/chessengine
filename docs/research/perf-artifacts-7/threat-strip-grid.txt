@@ -1,0 +1,21 @@
+# Threat-channel cost grid — my independent instrument (study 7)
+# Method: tools/nnue/strip_threats.py on a quant checkpoint -> netpack
+# D40_HALFKA_ONLY=1; full arm packed from the SAME quant with the same env, so
+# the two .cenn differ only by the threat tensors. Fixed-node interleaved
+# rounds (bench 16 1 300000 <fens> nodes), taskset -c 4, nice 19, engine
+# archon-d47v-pgo (768) / archon-d48x (1280). instructions:u is deterministic
+# (zero spread across rounds); cycles/NPS carry box noise.
+#
+# 768 = d47v-legA4-val-sb12-ema-quant (V trunk); 1280 = d48x-1280-sb180-quant.
+#
+# arch | fens    | rounds | instr full/halfka | cycles (band)   | NPS halfka/full
+# 768  | wl50    | 5      | 1.247 (det)       | 1.27 (1.18-1.44)| 1.265
+# 768  | default | 3      | 1.301 (det)       | 1.53 (1.35-1.56)| n/a
+# 1280 | wl50    | 3      | 1.317 (det)       | 1.39 (1.385-1.401)| 1.38 (1.378-1.395)
+# 1280 | default | 3      | 1.389 (det)       | ~1.55 (1.48-1.63)| n/a
+#
+# absolute per-node (wl50): 768 full i/n 6572 c/n ~5073; halfka i/n 5270 c/n ~4025
+#                           1280 full i/n 7157 c/n ~5033; halfka i/n 5433 c/n ~3610
+# sanity: study net (a4b2-cal400) vs full-from-quant: i/n ratio 0.986 — pack-equivalent.
+# The 2026-07-27 ~02:5x claim of 1.78x at 1280 (487k->868k, 3 reps, 2 positions,
+# loaded box) is NOT reproduced by this instrument; see study §5.

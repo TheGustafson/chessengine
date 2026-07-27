@@ -1,0 +1,37 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 358K of event 'cycles:u'
+# Event count (approx.): 1176243303074
+#
+# Overhead  Command      Shared Object         Symbol                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+# ........  ...........  ....................  ......................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+#
+    34.36%  stockfish18  stockfish18           [.] Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const
+    16.07%  stockfish18  stockfish18           [.] int Stockfish::Search::Worker::search<(Stockfish::NodeType)0>(Stockfish::Position&, Stockfish::Search::Stack*, int, int, int, bool)
+    13.06%  stockfish18  stockfish18           [.] Stockfish::MovePicker::next_move()
+     7.95%  stockfish18  stockfish18           [.] void Stockfish::Eval::NNUE::(anonymous namespace)::update_accumulator_refresh_cache<1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm>&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&)
+     5.39%  stockfish18  stockfish18           [.] Stockfish::Position::do_move(Stockfish::Move, Stockfish::StateInfo&, bool, Stockfish::DirtyPiece&, Stockfish::DirtyThreats&, Stockfish::TranspositionTable const*, Stockfish::SharedHistories const*)
+     3.18%  stockfish18  stockfish18           [.] Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<128u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<128u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<128u>&) const
+     2.12%  stockfish18  stockfish18           [.] int Stockfish::Search::Worker::qsearch<(Stockfish::NodeType)0>(Stockfish::Position&, Stockfish::Search::Stack*, int, int)
+     2.04%  stockfish18  stockfish18           [.] Stockfish::Position::see_ge(Stockfish::Move, int) const
+     1.86%  stockfish18  stockfish18           [.] void Stockfish::Position::update_piece_threats<false, true>(Stockfish::Piece, Stockfish::Square, Stockfish::DirtyThreats*, unsigned long) const
+     1.82%  stockfish18  stockfish18           [.] void Stockfish::Eval::NNUE::(anonymous namespace)::double_inc_update<1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Square, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats> const&, Stockfish::DirtyPiece const&) [clone .isra.0]
+     1.31%  stockfish18  stockfish18           [.] void Stockfish::Eval::NNUE::(anonymous namespace)::update_accumulator_refresh_cache<128u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<128u> const&, Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm>&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<128u>&)
+     1.21%  stockfish18  stockfish18           [.] void Stockfish::Position::update_piece_threats<true, true>(Stockfish::Piece, Stockfish::Square, Stockfish::DirtyThreats*, unsigned long) const
+     0.92%  stockfish18  stockfish18           [.] Stockfish::(anonymous namespace)::update_all_stats(Stockfish::Position const&, Stockfish::Search::Stack*, Stockfish::Search::Worker&, Stockfish::Move, Stockfish::Square, Stockfish::ValueList<Stockfish::Move, 32ul>&, Stockfish::ValueList<Stockfish::Move, 32ul>&, int, Stockfish::Move, int)
+     0.84%  stockfish18  stockfish18           [.] Stockfish::Position::swap_piece(Stockfish::Square, Stockfish::Piece, Stockfish::DirtyThreats*)
+     0.75%  stockfish18  stockfish18           [.] Stockfish::(anonymous namespace)::update_continuation_histories(Stockfish::Search::Stack*, Stockfish::Piece, Stockfish::Square, int)
+     0.74%  stockfish18  stockfish18           [.] Stockfish::Position::attackers_to_exist(Stockfish::Square, unsigned long, Stockfish::Color) const
+     0.67%  stockfish18  stockfish18           [.] void Stockfish::Eval::NNUE::(anonymous namespace)::double_inc_update<1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Square, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm> const&)
+     0.60%  stockfish18  stockfish18           [.] Stockfish::(anonymous namespace)::update_quiet_histories(Stockfish::Position const&, Stockfish::Search::Stack*, Stockfish::Search::Worker&, Stockfish::Move, int)
+     0.57%  stockfish18  stockfish18           [.] void Stockfish::Eval::NNUE::(anonymous namespace)::update_threats_accumulator_full<1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats>&)
+     0.55%  stockfish18  stockfish18           [.] void Stockfish::Eval::NNUE::(anonymous namespace)::update_accumulator_incremental<false, Stockfish::Eval::NNUE::Features::HalfKAv2_hm, 1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Square, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm> const&)
+     0.41%  stockfish18  stockfish18           [.] Stockfish::Position::upcoming_repetition(int) const
+
+
+#
+# (Tip: To show time in nanoseconds in record/report add --ns)
+#

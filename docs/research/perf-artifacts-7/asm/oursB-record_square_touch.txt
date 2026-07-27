@@ -1,0 +1,43 @@
+# samples total 1156967  selected 44886 (3.88%)
+# objdump fn: chessengine::eval::nnue::sota_threats::record_square_touch  (1980 static instrs, 1 candidates)
+# unmapped 0
+## dynamic opcode mix (% of selected)
+   mov               31.43
+   and               10.25
+   cmp                9.11
+   push               7.36
+   je                 6.41
+   lea                3.55
+   js                 3.45
+   shl                2.98
+   movzbl             2.82
+   test               2.79
+   jne                2.67
+   tzcnt              2.11
+   or                 2.02
+   ja                 2.01
+   cmpb               1.68
+   add                1.45
+   pop                1.45
+   sub                1.43
+## register width: dynamic | static
+   zmm    dyn   0.00   static   0.00
+   ymm    dyn   0.00   static   0.00
+   xmm    dyn   0.00   static   0.00
+   gpr    dyn 100.00   static 100.00
+## mem class: dynamic | static  (load/store/both/none)
+   load   dyn  14.80   static  21.52
+   store  dyn  17.11   static   4.14
+   both   dyn   0.68   static   0.66
+   none   dyn  67.42   static  73.69
+## 512B regions (top 10): off, %sel, dominant mnemonics
+   +0x0       24.58  mov:31, cmp:10, movzbl:9, lea:9, push:6, je:6, jmp:5
+   +0x400     18.08  mov:33, cmp:10, movzbl:9, and:7, lea:7, shl:7, or:6
+   +0x200     14.82  mov:29, cmp:12, movzbl:9, lea:8, ja:7, and:5, je:5
+   +0x800     11.48  mov:31, movzbl:9, lea:9, cmp:8, or:7, shl:6, je:5
+   +0x600      9.84  mov:35, cmp:11, lea:10, je:6, ja:5, shl:5, movzbl:5
+   +0xa00      8.76  mov:29, cmp:9, lea:8, shl:8, or:8, je:7, ja:5
+   +0xc00      4.85  mov:35, cmp:21, je:16, lea:4, jne:4, tzcnt:3, and:3
+   +0xe00      4.49  mov:35, cmp:21, je:16, movzbl:7, jne:6, pop:6, sub:4
+   +0x1200     1.71  mov:33, cmp:16, je:11, jne:5, jmp:5, lea:5, movzbl:5
+   +0x1000     0.61  mov:43, cmp:24, je:21, lea:3, jmp:3, ja:2, shl:2

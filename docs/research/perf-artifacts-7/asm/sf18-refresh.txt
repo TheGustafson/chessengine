@@ -1,0 +1,37 @@
+# samples total 5753  selected 338 (5.88%)
+# objdump fn: void Stockfish::Eval::NNUE::(anonymous namespace)::update_accumulator_refresh_cache<1024u>(Stockfish::Color, S  (361 static instrs, 1 candidates)
+# unmapped 0
+## dynamic opcode mix (% of selected)
+   vpaddw            33.14
+   vmovdqa64         23.08
+   vpsubw            14.20
+   mov                8.58
+   cmp                8.28
+   shl                2.66
+   add                2.37
+   test               1.48
+   xor                0.89
+   jne                0.89
+   lea                0.89
+   pop                0.59
+   vmovdqa            0.59
+   ret                0.30
+   sub                0.30
+   push               0.30
+   tzcnt              0.30
+   movslq             0.30
+## register width: dynamic | static
+   zmm    dyn  70.41   static  31.58
+   ymm    dyn   0.59   static   3.05
+   xmm    dyn   0.00   static   4.43
+   gpr    dyn  28.99   static  60.94
+## mem class: dynamic | static  (load/store/both/none)
+   load   dyn  62.13   static  33.24
+   store  dyn  16.57   static  14.13
+   both   dyn   0.00   static   0.00
+   none   dyn  21.30   static  52.63
+## 512B regions (top 10): off, %sel, dominant mnemonics
+   +0x200     52.66  vmovdqa64:17, vpaddw:15, vpsubw:13, mov:11, shl:7, lea:5, add:4
+   +0x400     32.84  vmovdqa64:32, mov:11, lea:8, cmp:6, jne:5, add:5, vpsubw:3
+   +0x600      7.40  vpaddw:16, vpsubw:16, pop:6, vmovq:4, lea:3, mov:3, vzeroupper:2
+   +0x0        7.10  mov:36, add:13, xor:10, lea:10, shl:9, push:6, movzbl:5

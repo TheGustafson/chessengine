@@ -1,0 +1,43 @@
+# samples total 1156967  selected 68295 (5.90%)
+# objdump fn: <chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>  (1153 static instrs, 1 candidates)
+# unmapped 0
+## dynamic opcode mix (% of selected)
+   vmovdqu64         44.09
+   mov               16.17
+   imul               5.88
+   push               5.10
+   xor                4.22
+   movq               3.60
+   test               2.86
+   lea                2.60
+   cmp                2.08
+   vmovups            2.02
+   vmovaps            1.30
+   vxorps             1.23
+   or                 1.15
+   sub                0.89
+   and                0.79
+   je                 0.76
+   movzbl             0.73
+   movl               0.62
+## register width: dynamic | static
+   zmm    dyn  44.65   static   0.69
+   ymm    dyn   1.31   static   0.69
+   xmm    dyn   3.07   static   1.21
+   gpr    dyn  50.97   static  97.40
+## mem class: dynamic | static  (load/store/both/none)
+   load   dyn  52.59   static  21.16
+   store  dyn  17.74   static   8.93
+   both   dyn   0.31   static   3.30
+   none   dyn  29.36   static  66.61
+## 512B regions (top 10): off, %sel, dominant mnemonics
+   +0x0       82.42  mov:19, vmovups:18, push:6, movq:4, je:4, vmovaps:3, movzbl:3
+   +0x600      5.16  mov:34, lea:9, shl:7, and:6, test:6, je:6, add:5
+   +0x800      4.39  mov:34, cmp:8, or:8, and:6, pop:6, add:5, jae:5
+   +0x400      3.93  mov:25, xor:12, movzbl:9, lea:7, jne:6, or:6, cmp:5
+   +0xa00      1.41  mov:30, and:12, cmp:12, add:5, xor:5, je:5, lea:5
+   +0x200      1.34  mov:27, movzbl:13, cmp:12, xor:11, je:6, lea:6, test:4
+   +0xc00      1.20  mov:22, or:12, and:8, lea:8, cmp:7, movzbl:6, shl:4
+   +0x1200     0.08  mov:35, lea:27, call:13, vzeroupper:12, jmp:10, xor:5, jne:2
+   +0xe00      0.05  mov:25, lea:13, cmp:9, xor:8, add:6, movzbl:5, shl:5
+   +0x1000     0.01  mov:28, xor:12, lea:7, shl:6, or:5, jmp:5, je:4

@@ -1,0 +1,43 @@
+# samples total 358043  selected 46807 (13.07%)
+# objdump fn: Stockfish::MovePicker::next_move()  (1763 static instrs, 2 candidates)
+# unmapped 0
+## dynamic opcode mix (% of selected)
+   mov               25.28
+   add               13.29
+   lea               11.82
+   sub                8.41
+   cmp                7.12
+   jle                5.94
+   and                4.68
+   je                 2.75
+   jne                2.70
+   push               2.28
+   movswl             2.04
+   pop                1.39
+   jmp                1.20
+   movzwl             1.16
+   blsr               0.94
+   xor                0.93
+   test               0.77
+   shlx               0.73
+## register width: dynamic | static
+   zmm    dyn   0.00   static   0.00
+   ymm    dyn   0.00   static   0.00
+   xmm    dyn   0.94   static   3.57
+   gpr    dyn  99.06   static  96.43
+## mem class: dynamic | static  (load/store/both/none)
+   load   dyn  17.71   static  15.20
+   store  dyn   6.03   static   8.79
+   both   dyn   0.00   static   0.23
+   none   dyn  76.26   static  75.78
+## 512B regions (top 10): off, %sel, dominant mnemonics
+   +0x800     33.71  mov:32, add:20, and:12, movswl:7, jmp:5, cmp:5, lea:4
+   +0x1200    19.26  mov:36, add:12, jmp:8, xor:7, lea:6, cmp:6, shl:5
+   +0x0       19.11  mov:30, and:8, add:7, push:6, cmp:6, movzwl:6, pop:6
+   +0xc00      8.10  mov:33, and:12, cmp:10, je:8, lea:8, shr:7, add:7
+   +0x200      6.63  mov:40, jne:11, lea:9, and:9, add:9, cmp:8, je:5
+   +0x400      3.16  mov:37, and:10, jne:9, lea:8, cmp:6, add:6, test:5
+   +0x600      2.51  mov:48, and:9, jne:8, add:6, xor:5, shl:5, tzcnt:4
+   +0xa00      2.23  mov:35, add:11, and:10, jne:9, je:7, xor:6, lea:5
+   +0x1000     1.77  mov:45, shl:8, add:8, and:7, jne:7, xor:6, je:5
+   +0xe00      1.72  mov:35, and:11, add:10, jne:8, lea:8, xor:7, tzcnt:6
