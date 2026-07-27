@@ -138,6 +138,23 @@ def build_oracle(fens: list[str], depth: int, multipv: int) -> dict:
     return table
 
 
+def play_all(fens: list[str], nodes: int, ov: dict[str, int]) -> dict[str, str]:
+    """One search per position; returns {fen: chosen move uci}."""
+    eng = chess.engine.SimpleEngine.popen_uci(ENGINE)
+    out: dict[str, str] = {}
+    try:
+        eng.configure({"EvalFile": NET})
+        for k, v in ov.items():
+            eng.configure({k: v})
+        for fen in fens:
+            res = eng.play(chess.Board(fen), chess.engine.Limit(nodes=nodes))
+            if res.move is not None:
+                out[fen] = res.move.uci()
+    finally:
+        eng.quit()
+    return out
+
+
 def score_arm(table: dict, nodes: int, ov: dict[str, int]) -> dict:
     eng = chess.engine.SimpleEngine.popen_uci(ENGINE)
     losses: list[float] = []
@@ -195,6 +212,13 @@ def main() -> None:
     )
     ap.add_argument("--fens", default=FENS)
     ap.add_argument("--cache", default=CACHE)
+    ap.add_argument("--tiers", action="store_true",
+                    help="cache is a TIERED ceobs oracle (obs_to_oracle.py): "
+                    "report mean cp loss against each oracle tier. An arm that "
+                    "improves vs 4k while worsening vs 64k is trading deep "
+                    "mistakes for shallow ones, which a single tier hides.")
+    ap.add_argument("--limit", type=int, default=0,
+                    help="cap positions (0 = all); the tiered oracle has ~10k")
     args = ap.parse_args()
 
     if args.build_oracle:
@@ -209,6 +233,59 @@ def main() -> None:
             return
 
     blob = json.load(open(args.cache))
+
+    if args.tiers or "tiers" in blob:
+        tier_tables = blob["tiers"]
+        tier_keys = sorted(tier_tables, key=int)
+        if args.limit:
+            tier_tables = {t: dict(list(tbl.items())[: args.limit])
+                           for t, tbl in tier_tables.items()}
+        n_pos = len(tier_tables[tier_keys[0]])
+        print(f"tiered oracle: {n_pos} positions x {len(tier_keys)} tiers "
+              f"({', '.join(tier_keys)} nodes), arms at {args.nodes} nodes\n")
+        arms = [("control", {})] + [parse_arm(a) for a in args.arms]
+        base: dict[str, float] = {}
+        # The arm's CHOICE does not depend on the tier -- only the scoring
+        # does -- so the engine runs once per position and the same move is
+        # priced against every tier. Scoring per tier would triple the search
+        # cost for identical answers.
+        fens = list(tier_tables[tier_keys[0]])
+        hdr = f"{'arm':<24}" + "".join(f"{'@'+t[:-3]+'k':>12}" for t in tier_keys)
+        print(hdr + f"{'top1@64k':>10}")
+        for name, ov in arms:
+            row = f"{name:<24}"
+            chosen = play_all(fens, args.nodes, ov)
+            t1 = float("nan")
+            for t in tier_keys:
+                tbl = tier_tables[t]
+                losses, top1 = [], 0
+                for fen, uci in chosen.items():
+                    moves = tbl.get(fen)
+                    if not moves:
+                        continue
+                    best = max(moves.values())
+                    # Every legal move is scored, so an unknown move means a
+                    # legality/parsing mismatch, not censoring: skip loudly
+                    # rather than silently flooring it.
+                    if uci not in moves:
+                        continue
+                    losses.append(best - moves[uci])
+                    top1 += int(moves[uci] == best)
+                m = statistics.fmean(losses) if losses else float("nan")
+                if not ov:
+                    base[t] = m
+                    row += f"{m:>12.2f}"
+                else:
+                    row += f"{m - base[t]:>+12.2f}"
+                if t == tier_keys[-1]:
+                    t1 = top1 / len(losses) if losses else float("nan")
+            print(row + f"{t1:>10.1%}", flush=True)
+        print("\nControl row is absolute mean cp loss per tier; arm rows are "
+              "deltas vs control\nat the SAME tier. LOWER is better, so "
+              "NEGATIVE deltas are improvements.\nEvery legal move is scored "
+              "in this oracle, so there is no censoring.")
+        return
+
     table = blob["table"]
     print(f"oracle: {len(table)} positions, depth {blob['depth']}, "
           f"MultiPV {blob['multipv']}; arms at {args.nodes} nodes\n")
