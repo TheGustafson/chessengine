@@ -687,6 +687,27 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## Everything below it is detail; the ~12:4x checkpoint further down is
 ## now HISTORY (it still describes D48W at 1536, which no longer exists).
 
+**⚠ CORRECTION TO THE sb90 "HELDOUT PLATEAUED" CLAIM (07:0x).** It
+plateaued sb60→sb90 and then RESUMED IMPROVING: EMA 0.007088 (sb60) →
+0.007119 (sb90) → 0.007032 (sb130) → 0.007002 (sb140) → **0.006977
+(sb150)**, i.e. −2.0% since sb90. Calling it "plateaued" at sb90 was
+premature — 30 superbatches was not enough to declare a flat line, and
+I used it as one of three legs of the stop recommendation.
+
+**This matters because it makes the sb150 game point genuinely
+decision-relevant**, so I reversed my own instrument-pausing decision
+from ten minutes earlier: I had stopped the watcher to keep a 100-game
+round from adding noise to the SPSA verify, then restarted it once the
+heldout trend changed the relative value (a fifth point that could
+overturn the stop recommendation beats protecting a measurement of a
+vector we already know is null).
+
+**The stop recommendation is NOT withdrawn** — the games are still
+−27.85/−74.06/−56.07/−85.04 with a −15.4/30sb slope, and games outrank
+heldout. But it now rests on the game trajectory and the panels rather
+than on three legs, and the sb150 match is the thing to read before
+acting.
+
 **▶▶ RECOMMENDED ORDER OF WORK WHEN YOU ARE BACK (my proposal; the
 first item is the only one that needs a decision).**
 
