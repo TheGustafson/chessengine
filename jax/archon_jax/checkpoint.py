@@ -120,6 +120,16 @@ def load_warm(path: str | Path, arch) -> dict[str, np.ndarray]:
     shapes = arch.param_shapes()
     flat = open_raw(path, shapes=None, mmap=False)
     extra = set(flat) - set(shapes)
+    # Dropping the FullThreats channel is a deliberate arch change, not a
+    # wrong-arch load: a halfka_only run warm-starting from a net that HAS
+    # threats is exactly the no-threats experiment, and the trained HalfKA
+    # rows are worth keeping. Only those two tensors may be discarded, and
+    # only when the arch has actually dropped the channel.
+    if extra and getattr(arch, "halfka_only", False):
+        droppable = {"l0_threatw", "l0_psqt_thw"}
+        if extra <= droppable:
+            print(f"warm-start: halfka_only — dropping {sorted(extra)}")
+            extra = set()
     if extra:
         raise ValueError(f"checkpoint has tensors the arch lacks: {extra}")
     out = {}

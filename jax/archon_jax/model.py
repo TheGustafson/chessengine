@@ -141,23 +141,42 @@ def _ft_accumulate_pair(params: dict, batch: dict, arch: ArchSpec, ft_impl: str)
     th_stm = batch.get("th_stm") if not arch.halfka_only else None
     th_ntm = batch.get("th_ntm") if not arch.halfka_only else None
     pstw = effective_pstw(params, arch)
-    if ft_impl != "reference" and th_stm is not None:
+    if ft_impl != "reference" and (th_stm is not None or arch.halfka_only):
         from .ft_kernel import ft_accumulate_pallas, ft_accumulate_scan
 
         fn = ft_accumulate_pallas if ft_impl == "pallas" else ft_accumulate_scan
         b = batch["hk_stm"].shape[0]
         hk = jnp.concatenate([batch["hk_stm"], batch["hk_ntm"]], axis=0)
-        th = jnp.concatenate([th_stm, th_ntm], axis=0)
-        acc = fn(pstw, params["l0_threatw"], params["l0_pstb"], hk, th)
+        if arch.halfka_only:
+            # The bag kernel is two-table by construction, and dropping to
+            # the reference path for a HalfKA-only net would cost ~24x
+            # throughput (9.5k pos/s against Pallas's 225k) — which would
+            # make the whole no-threats experiment unaffordable.
+            #
+            # Instead hand it a single all-zero threat row that nothing ever
+            # indexes. The kernel counts valid slots per row
+            # (`nb = thc_ref[b]`) and loops `fori_loop(0, nb, ...)`, so an
+            # all -1 index array makes the threat loop run ZERO iterations:
+            # no work, no contribution, and a gradient w.r.t. that row that
+            # is identically zero. Nothing is hardcoded to 160 slots — the
+            # kernel takes its dimensions from the shapes it is given.
+            thw = jnp.zeros((1, pstw.shape[1]), pstw.dtype)
+            th = jnp.full((hk.shape[0], 1), -1, jnp.int32)
+        else:
+            thw = params["l0_threatw"]
+            th = jnp.concatenate([th_stm, th_ntm], axis=0)
+        acc = fn(pstw, thw, params["l0_pstb"], hk, th)
         if arch.psqt:
             # T6c via a SECOND kernel invocation on the 8-wide psqt tables —
             # the kernel is generic over width, and this dodges XLA's slow
             # narrow scatter (measured -32% step throughput on the XLA path).
-            ps = fn(params["l0_psqt_hkw"], params["l0_psqt_thw"],
+            ps_thw = (jnp.zeros((1, arch.num_buckets), jnp.float32)
+                      if arch.halfka_only else params["l0_psqt_thw"])
+            ps = fn(params["l0_psqt_hkw"], ps_thw,
                     jnp.zeros((arch.num_buckets,), jnp.float32), hk, th)
             return acc[:b], acc[b:], ps[:b], ps[b:]
         return acc[:b], acc[b:], None, None
-    # reference (also the halfka_only fallback: GPU impls are two-table only)
+    # reference path (and the CPU fallback for halfka_only)
     p = {**params, "_pstw_eff": pstw}
     acc_pair = (_ft_accumulate(p, batch["hk_stm"], th_stm),
                 _ft_accumulate(p, batch["hk_ntm"], th_ntm))
