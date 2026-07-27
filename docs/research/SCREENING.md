@@ -439,3 +439,35 @@ re-measuring rather than re-reasoning:
 | "3.5x node explosion at depth 13" | the UCI `nodes` field is CUMULATIVE; the ratio is a normal branching factor, and our EBF is identical to SF18's |
 | "`ASPIRATION_MSS_DIVISOR` is 1.56x too weak" | algebra correct, term irrelevant — at real root scores it moves delta from 5.24 to 5.37 |
 | "SF18 has 0.00 aspiration re-searches" | Stockfish only publishes a fail line when `nodes > NODES_LIMIT_OUTPUT` (10M); the probe ran ~1M, so this measured its OUTPUT POLICY |
+
+---
+
+## 14. The width gap: what it is NOT
+
+We spend ~2-3x SF18's nodes to reach the same depth (1.87x at d14 on
+within-game control positions, 3.6x on loss positions). Four mechanisms were
+proposed and each was tested and eliminated:
+
+| proposed cause | test | verdict |
+|---|---|---|
+| move ordering (fhf 89.4% vs ~94%) | branching factor | **refuted** — EBF is 1.64/ply for BOTH engines. Ordering changes the growth RATE; ours is a CONSTANT factor present from depth 4. |
+| over-extension | seldepth vs SF18 | **refuted** — ours is 11.5/15/18/20 at d8/10/12/14 against their 12/14/20/24. We extend LESS. |
+| TT capacity | 16 -> 1024 MB | **refuted** — nodes and re-search rate unchanged across 64x. |
+| TT reuse / aging | search a position twice, no clear | **refuted** — both engines get MORE expensive on the repeat (ours 1.86x, SF's 1.59x); `new_search()` fires once per `go`. |
+
+**The width gap remains mechanically unexplained.** That is worth stating
+plainly rather than papering over: four plausible causes are gone, and the
+constant-factor signature (identical EBF, present at shallow depth) rules out
+anything that compounds with depth.
+
+What DOES close it is a wider aspiration window — `ASPIRATION_BASE_DELTA 20`
+takes d14 width from 1.87x to **1.08x**, SF18 parity — but that is a
+treatment, not a diagnosis, and it costs iteration stability (1.51x -> 1.75x).
+
+### The reasoning lesson
+
+Every one of the four was proposed because it explained the data. Each died
+on a direct test that took minutes. The discipline that matters is not
+generating better hypotheses — it is refusing to hold one for longer than it
+takes to falsify it, and never letting a plausible mechanism substitute for a
+measurement.
