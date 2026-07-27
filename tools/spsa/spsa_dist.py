@@ -71,6 +71,8 @@ def main() -> None:
                     help="game pairs PER UNIT (batch = units*pairs*2 games)")
     ap.add_argument("--nodes", type=int, default=20000)
     ap.add_argument("--unit-timeout", type=float, default=300.0)
+    ap.add_argument("--tc", default=None,
+                    help="real time control (e.g. 10+0.1) INSTEAD of fixed nodes. Right regime, but load-sensitive — quiet box only.")
     ap.add_argument("--poll", type=float, default=2.0,
                     help="seconds between result sweeps (drop it on a file:// "
                          "exchange, where a sweep is a handful of stat calls)")
@@ -126,7 +128,8 @@ def main() -> None:
         for u in range(args.units):
             uid = f"k{k:05d}-u{u:02d}"
             unit = {"unit": uid, "iter": k, "pairs": args.pairs,
-                    "nodes": args.nodes, "seed": args.seed + k * 1000 + u,
+                    "nodes": args.nodes, "tc": args.tc,
+                    "seed": args.seed + k * 1000 + u,
                     "plus_opts": plus_opts, "minus_opts": minus_opts}
             ex.put_bytes(args.exchange, f"units/{uid}.json",
                          json.dumps(unit).encode())
@@ -153,7 +156,7 @@ def main() -> None:
                         g_w_l[2] += res["losses"]
                 elif time.time() - t_issue > args.unit_timeout:
                     unit = {"unit": uid, "iter": k, "pairs": args.pairs,
-                            "nodes": args.nodes,
+                            "nodes": args.nodes, "tc": args.tc,
                             "seed": args.seed + k * 1000 + 777,
                             "plus_opts": plus_opts,
                             "minus_opts": minus_opts}

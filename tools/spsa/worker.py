@@ -49,7 +49,15 @@ def play_unit(meta: dict, cache: Path, unit: dict) -> tuple[int, int, int]:
         *unit["plus_opts"],
         "-engine", f"cmd={cache / meta['engine']}", "name=minus",
         *unit["minus_opts"],
-        "-each", "proto=uci", "tc=inf", f"nodes={unit['nodes']}",
+        # Fixed nodes by default (load-immune, which is what lets SPSA share
+        # a box with a trainer). An optional "tc" switches to real time
+        # control: the tuning condition then IS the deployment condition,
+        # which matters because many tuned constants are depth-scaled and
+        # fn20k searches ~12 ply against ~20 in a real 10+0.1 game. Real TC
+        # is load-SENSITIVE, so only use it on a quiet box.
+        "-each", "proto=uci",
+        *(["tc=" + str(unit["tc"])] if unit.get("tc") else
+          ["tc=inf", f"nodes={unit['nodes']}"]),
         "option.Threads=1", "option.Hash=16",
         f"option.EvalFile={cache / meta['net']}",
         "-openings", f"file={cache / meta['book']}", "format=epd",

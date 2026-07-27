@@ -43,6 +43,13 @@ POLL=${10:-3.0}
 # and the 0.002 default would return the starting vector. Rule of thumb:
 # r_end ~= 0.03 * (2400 / iters). Empty = leave the campaign/default alone.
 R_END=${11:-}
+# Real time control INSTEAD of fixed nodes. Empty = fixed nodes (the default,
+# and the right choice while anything else is using the box). Set it only on a
+# QUIET box: real TC is load-sensitive, which is exactly the property fixed
+# nodes was chosen for. Why it matters at all — we tune at fn20k (~12 ply) and
+# play at ~20, and many tuned constants are depth-scaled, so a fixed-node null
+# may only mean "right for depth 12".
+TC=${12:-}
 NAME=$(python3 -c "import json,sys; print(json.load(open('$CFG'))['name'])")
 OUT=tools/spsa/out/$NAME-$(date +%m%d-%H%M)
 mkdir -p "$OUT"
@@ -53,7 +60,7 @@ nohup python3 tools/spsa/spsa_dist.py --config "$CFG" --engine "$ENGINE" \
   --eval-file "$NET" --exchange "$EX" --out "$OUT" --iters "$ITERS" \
   --units "$UNITS" --pairs "$PAIRS" --nodes "$NODES" \
   --book engines/books/UHO_Lichess_4852_v1.epd --poll "$POLL" \
-  ${R_END:+--r-end "$R_END"} \
+  ${R_END:+--r-end "$R_END"} ${TC:+--tc "$TC"} \
   > "$OUT/coordinator.log" 2>&1 &
 echo $! > "$OUT/coordinator.pid"
 
