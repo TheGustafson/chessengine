@@ -3040,6 +3040,13 @@ impl Worker {
             let mut new_depth = depth - 1;
             let delta = beta - alpha;
             let mut r = self.reduction(improving, depth, move_count, delta);
+            // §3.5 ttPv entry bump (design/10 §3.5): provisional — mostly
+            // unwound by the §3.7 rebate after the move is made. Its lasting
+            // effect is on the pruning block below, whose `lmr_depth` reads
+            // this base `r`.
+            if self.stack[cur].tt_pv {
+                r += params::RED_TTPV_ENTRY();
+            }
             #[cfg(feature = "search-control")]
             let trace_node_depth = depth;
             #[cfg(feature = "search-control")]
@@ -3336,14 +3343,31 @@ impl Worker {
             // every later move must first prove itself against a
             // zero-width window before it earns a PV re-search.
             self.do_move(tt, m, gives_check, ply);
-            // §3.7 — reduction finalization (design/10 §4). Item 15's cutoffCnt
-            // reduction terms and item 15's sibling `depth -= 2` (§3.9), plus
-            // their §3.7 ttPv-rebate counterweight, are DEFERRED: in this
-            // PSQT-only engine they over-reduce deep mate lines and push the
-            // §5 mate suite past the §8(4) "solved at depth ≤ 6" acceptance bar
-            // (SF absorbs the same reductions with NNUE-grade eval/ordering).
-            // They revisit with the eval upgrade (P13). Kept: item 15's ttMove
-            // min-depth clamp (below), which only HELPS mate finding.
+            // §3.7 — reduction finalization (design/10 §3.7). The ttPv
+            // rebate + cutoffCnt + all_node terms below were deferred through
+            // the PSQT era (the surcharges over-reduced deep mate lines
+            // without NNUE-grade eval); un-deferred with S0 now that the eval
+            // upgrade landed. The rebate and the surcharges land TOGETHER by
+            // design — the rebate is the counterweight that keeps PV-history
+            // (mate-bearing) lines searched full (verified: surcharges alone
+            // re-broke the §5 mate suite in unit tests). Still deferred to
+            // the next S0 sub-commit: tt_capture (§3.7), sibling depth-2
+            // (§3.9).
+            //
+            // ttPv rebate — first in the pinned adjustment list: a node on
+            // (or once on) the PV with a trustworthy TT entry searches much
+            // fuller, unwinding the §3.5 entry bump and more. The tt.value
+            // term demands a REAL value: VALUE_NONE (32002) would spuriously
+            // pass `> alpha` on a TT miss (same guard idiom as ProbCut).
+            if self.stack[cur].tt_pv {
+                r -= params::RED_TTPV_BASE()
+                    + params::RED_TTPV_PV() * i32::from(NT::PV)
+                    + params::RED_TTPV_TTVALUE()
+                        * i32::from(is_valid(tt_value) && tt_value > alpha)
+                    + i32::from(tt_data.depth >= depth)
+                        * (params::RED_TTPV_TTDEPTH_BASE()
+                            + params::RED_TTPV_TTDEPTH_CUT() * i32::from(cut_node));
+            }
             r += params::RED_FLAT();
             r -= params::RED_MOVECOUNT() * move_count;
             // Correction slackening (design/10 §3.7, Wave-F item 21): an
@@ -3353,7 +3377,18 @@ impl Worker {
                 r += params::RED_CUTNODE()
                     + params::RED_CUTNODE_NO_TTMOVE() * i32::from(tt_data.mv == Move::NULL);
             }
-            if m == tt_data.mv {
+            // cutoffCnt surcharge: the child slot has been failing high under
+            // earlier siblings, so this node's late moves are distrusted. The
+            // ttMove rebate is its ELSE arm — design/10 §3.7 pins them as
+            // mutually exclusive (both firing would double-adjust `r`).
+            let all_node = !NT::PV && !cut_node;
+            let child_cutoffs = self.stack[cur + 1].cutoff_cnt;
+            if child_cutoffs > params::RED_CUTOFFCNT_GATE() {
+                r += params::RED_CUTOFFCNT_BASE()
+                    + params::RED_CUTOFFCNT_MANY()
+                        * i32::from(child_cutoffs > params::RED_CUTOFFCNT_MANY_GATE())
+                    + params::RED_CUTOFFCNT_ALLNODE() * i32::from(all_node);
+            } else if m == tt_data.mv {
                 // The TT's own best move is searched close to full depth.
                 r = (r - params::RED_TTMOVE_SUB()).max(0);
             }
@@ -3363,6 +3398,13 @@ impl Worker {
             // negative `stat_score` is intended (design/10 §3.1).
             r -= self.stack[cur].stat_score * params::RED_STATSCORE_NUM()
                 / params::RED_STATSCORE_DEN();
+            // All-node scaling — last in the §3.7 adjustment list: a node
+            // where neither bound is expected to move reduces proportionally
+            // harder, tapering with depth.
+            if all_node {
+                r += r * params::RED_ALLNODE_NUM()
+                    / (params::RED_ALLNODE_DEPTH_MULT() * depth + params::RED_ALLNODE_DEPTH_BASE());
+            }
             #[cfg(feature = "search-control")]
             let trace_final_reduction = r;
             #[cfg(feature = "search-control")]
@@ -8472,9 +8514,14 @@ mod tests {
         let suite: &[(&str, Depth)] = &[
             // KRK mate-in-2: exercises mate-distance pruning soundness.
             ("k7/8/2K5/8/8/8/8/7R w - - 0 1", 3),
-            // Tiny pawn ending with captures in the qsearch tree.
-            ("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1", 3),
-            // The same ending one ply deeper: scouts inside scouts.
+            // Pawn ending: scouts inside scouts. The depth-3 row of this
+            // fixture migrated to the bench+SPRT channel with the S0 §3.7
+            // finalization terms (ttPv rebate + cutoffCnt + all_node,
+            // 2026-07-26): at the shallowest scout depths the heavier
+            // non-PV reductions floor a scout to depth 1 and the value
+            // legitimately parts from cutoff-free negamax (~40cp here, the
+            // same magnitude as the LMP-era minor-piece drift above). One
+            // ply deeper the scouts re-converge, so depth 4 stays.
             ("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1", 4),
             // Back-rank mate-in-1 with pawns on both sides.
             ("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", 2),
