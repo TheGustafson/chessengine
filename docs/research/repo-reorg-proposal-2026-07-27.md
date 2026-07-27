@@ -1024,3 +1024,56 @@ pin proves.
 The cost of Tier A is roughly two days of writing and one careful pass with a
 build machine that is not fighting a GPU trainer for memory. It moves almost
 nothing, which is precisely why it is worth doing first.
+
+---
+
+## ADDENDUM — independent verification of the path findings (2026-07-27 ~10:2x)
+
+Added by the main session after spot-checking two of this proposal's
+automated claims. **One held, one did not.** Both matter for how much to
+trust the remaining path counts.
+
+### REFUTED: "a ledger regen recipe points at `tools/pump_train.py`, which doesn't exist"
+
+It exists and the recipe is correct. The recipe begins **`cd jax && …`**, so
+`tools/pump_train.py` resolves to `jax/tools/pump_train.py` from that working
+directory. Exactly one row cites it and it is correctly prefixed; zero rows
+are broken. The checker did not account for the `cd`. I was one step from
+appending a correction annotation to a correct row.
+
+The related claim that "eight ledger regen recipes point at untracked files"
+is a different and probably fair statement — *untracked* is not *missing*
+(e.g. `tools/nnue/train_canon.sh` exists but is gitignored). Worth keeping,
+but it is a versioning concern, not a broken-recipe concern.
+
+### CONFIRMED: the dangling documentation references are real
+
+An independent sweep of our own markdown (excluding the three reference
+clones — my first attempt scanned them by mistake and reported 1,992
+"missing" refs that were Reckless and Stockfish notes citing their own
+sources) finds **44 distinct dangling targets across 94 occurrences** in
+1,098 checked references. Same order as this proposal's ~61; the finding
+stands.
+
+**Most of the volume is four doc renames plus a file-extension change**, all
+with verified existing targets:
+
+| dangling reference | occurrences | actual file |
+|---|---:|---|
+| `design/07-search.md` | 7 | `design/07-search-core.md` |
+| `design/09-movepick-history.md` | 5 | `design/09-move-ordering-history.md` |
+| `design/04-state-make-unmake.md` | 3 | `design/04-position-state.md` |
+| `ledger/{data,nets,experiments}.json` | 10 | the same files with `.jsonl` |
+
+**One is NOT a rename and must not be sed-ed:** `design/05-movegen-perft.md`
+(12 occurrences) was **split into two files** — `05-movegen.md` and
+`06-perft-validation.md`. Each citation has to be routed by what it actually
+cites. That is the single largest cluster and it needs a human pass.
+
+### Implication for this proposal's other automated counts
+
+Two samples, one wrong. The structural observations in this document have
+been good; the automated path arithmetic is over-eager and should be
+re-verified per item before anyone spends time on it — particularly the
+"19 dangling `tools/*` refs" and the "31 files hardcoding
+`/root/projects/learnrust/`" figures, which nobody has checked yet.
