@@ -769,8 +769,79 @@ warm → quant.bin exporter so an un-launched arch can be packed and
 speed-tested BEFORE it costs GPU-days. That tool is what let the gate
 actually fire instead of being waived.
 
-**CHECKPOINT OVERHEAD IS ~30% OF THE RUN — fix it in the NEXT run, not
-this one.** Every 10sb the trainer writes four files (raw + quant, then
+**★ sb30 READ (02:2x) — BELOW the pre-registered expectation.
+fn vs the frozen V yardstick: −27.85 ± 39.37 (100g, 26W-40D-34L).**
+The pre-registration called +20..+35 "trunk came back, on track" and
+"≈0 or negative" the warning band. This is the warning band — though
+note the error bar spans −67..+12, so it is not yet distinguishable
+from parity.
+
+Supporting instruments at sb30 (calibration clean: scale 591, ratio
+0.995 in one pass):
+
+| stratum | d48x-sb30 | teacher-sb230 | d47p | SF18 | SF16 |
+|---|---|---|---|---|---|
+| QUIET non-check (n=2999) | 0.8861 | 0.9054 | 0.9000 | 0.8982 | 0.8797 |
+| iso-MAE | 72.3 | 67.8 | 67.7 | 67.4 | 72.8 |
+| SHARP non-check (n=1817) | 0.7702 | 0.8126 | — | — | — |
+| QUIET endgame ≤8pc (n=384) | 0.7039 | 0.8152 | — | — | — |
+
+**The diagnosis the numbers support.** vs-teacher agreement is high but
+NOT saturated (quiet 0.9791, sharp 0.9652) and the endgame slice is the
+outlier — vs-teacher only 0.7719 there against 0.9791 overall, and
+vs-oracle 0.7039 against the teacher's 0.8152. So the 16-wide head has
+mostly learned the teacher's function on ordinary positions and is
+still well short on endgames. That is consistent with the assembler's
+own note that heads converge in 30-60sb, and with the standing finding
+that anneals are what fix endgame slices. It does NOT yet distinguish
+"needs more time" from "16 is too thin to hold what 128 held" — sb60 is
+the read that separates them, which is exactly why the pre-registration
+said to judge the sb60→sb380 slope rather than this level.
+
+**The size of the hill.** X is −28 fn now and needs **+28 fn just to
+tie V at equal time**, so +56 from here. Its own teacher sits at +35 fn
+over V, i.e. 63 above X today. So the run has to close the gap to its
+teacher AND clear it by ~21. Not absurd for 350 remaining superbatches
+where the labels finally drive (α hits 0 at sb60, and the loss
+composition is already shifting — the value component moved 0.000344 →
+0.000412 across sb30→32 exactly as the ramp bit), but this is now a
+run to watch rather than a run to assume.
+
+**No action taken, per the ruling.** No automated stops; interventions
+are the user's judgement call. The honest status is "first read is
+below plan, mechanism is understood, decision point is sb60".
+
+**THE TRAINER WAS MEMORY-THROTTLED ITS ENTIRE LIFE — fixed live, no
+restart (2026-07-27 ~02:2x).** The saves looked like they were
+degrading (22s at sb10, 72s at sb20, 9 MINUTES at sb30) and the obvious
+suspects were wrong: the disk does 4.4 GB/s, and the numpy
+quantisation is not that slow. The cgroup told the real story:
+
+    memory.events  high 155940      <- throttled 155,940 times
+    memory.current 5.45GB  >  memory.high 5.37GB
+    memory.pressure some avg10=28.69 avg60=27.65 avg300=30.79
+
+`d48w_launch.sh` hardcoded `MemoryHigh=5G`, and the trainer's steady
+state is 5.45GB. It had been over the throttle watermark from the
+start, with tasks stalled on memory **~29% of the time, continuously**
+— not just during saves. Saves merely pushed it further over.
+
+`systemctl --user set-property` edits a RUNNING unit's cgroup, so the
+fix needed no restart and did not violate the one-run ruling. Raised to
+MemoryHigh=9G / MemoryMax=11G. Immediately after: **0 throttle events
+in 180s**, pressure avg10 28.69 → **0.00**, and memory.current climbed
+to 6.45GB — it genuinely wanted the headroom. Launchers updated so the
+next run starts correct.
+
+**The generalizable lesson:** when a job is mysteriously slow, read
+`memory.events` and `memory.pressure` in its cgroup before theorising
+about disk or CPU. A `MemoryHigh` breach does not appear in `free`, does
+not swap, does not OOM, and does not log anything — it just silently
+makes everything ~30% slower.
+
+**CHECKPOINT OVERHEAD (the original suspicion, now partly explained by
+the throttle above) — still worth fixing in the NEXT run, not this
+one.** Every 10sb the trainer writes four files (raw + quant, then
 the same for the EMA, ~1.14GB) and runs two heldout passes. Measured at
 sb30: raw landed 02:11:04, quant 02:13:41 — minutes per file, because
 the cost is not disk but single-threaded numpy quantisation of ~83M FT
