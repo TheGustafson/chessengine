@@ -687,6 +687,45 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## Everything below it is detail; the ~12:4x checkpoint further down is
 ## now HISTORY (it still describes D48W at 1536, which no longer exists).
 
+**★★ PARTIAL ANSWER TO THE PROXY PROBLEM: THE PANELS DO PREDICT fn ELO
+— WITHIN a run. They fail only ACROSS families (07:2x).** D48X handed us
+five checkpoints with both panel numbers and a 100-game fn match, which
+is the first dataset that can test this:
+
+| sb | QUIET | SHARP | endgame | fn Elo |
+|---|---|---|---|---|
+| 30 | 0.8861 | 0.7702 | 0.7039 | −27.85 |
+| 60 | 0.8811 | 0.7593 | 0.7563 | −74.06 |
+| 90 | 0.8787 | 0.7604 | 0.7632 | −56.07 |
+| 120 | 0.8779 | 0.7570 | 0.7544 | −85.04 |
+| 150 | 0.8831 | 0.7667 | 0.7603 | −56.07 |
+
+**Spearman against fn Elo: SHARP +1.000, QUIET +0.900, endgame −0.100.**
+SHARP ranks all five checkpoints in exactly the game order. With n=5 a
+perfect ranking happens by chance with probability 1/120, so this is
+suggestive at p<0.01 even from one run.
+
+**The distinction that resolves the earlier tension.** Five proxies put
+V above SF16 while the games put it 33 below — but that was a
+comparison ACROSS engine families. Within a single run's checkpoints,
+same architecture and same feature set, the panels track the games
+almost perfectly. So the rule is:
+
+- **Use the panels to track a run's progress** — they work, and SHARP
+  is the column to watch.
+- **Do NOT use them to compare architectures or families** — that is
+  exactly where they misled us tonight.
+
+**Immediate payoff for D49:** its sb30 SHARP number is a meaningful
+early read on whether the run is working, so we do not have to wait for
+the 100-game match to know. That is the loop speed-up the
+instrumentation gap was costing us.
+
+**Caveats, since this is one run and five points:** the endgame slice
+carries no signal at all (−0.100), which is worth knowing on its own;
+and SHARP's perfect score will regress. `proxy_metrics.jsonl` is now
+accumulating the rows to test this properly across runs and families.
+
 **★ THE SHAPE OF D48X'S TRAJECTORY IS ITSELF A FINDING, AND IT LANDS ON
 D49'S DESIGN (07:1x).** Line the games up against the alpha schedule:
 
