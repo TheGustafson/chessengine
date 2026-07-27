@@ -769,6 +769,49 @@ warm → quant.bin exporter so an un-launched arch can be packed and
 speed-tested BEFORE it costs GPU-days. That tool is what let the gate
 actually fire instead of being waived.
 
+**THE EQUAL-TIME WIDTH CURVE (2026-07-27 ~02:0x) — the width question is
+settled, and the answer is "it barely matters, so stop buying width".**
+With three measured speed points (768 1051k / 1280 893k / 1536 804k,
+idle box, one protocol, all PGO, all AVX-512 VBMI2) the per-node cost
+is near-affine in width: **0.659 + 0.000381·hl microseconds** (the
+1280 measurement sits 2.4% better than the fit, so if anything the
+middle is slightly favoured). Combining that with the measured 120
+Elo/speed-doubling and the ladder's +44 Elo/width-doubling:
+
+| hl | nps | speed Elo | width Elo | net ET vs a 768 trained the same |
+|------|-------|-----------|-----------|------------------|
+| 768  | 1051k |  0.0      |  0.0      |  0.0 |
+| 1024 |  953k | −16.9     | +18.3     | **+1.4** (model optimum) |
+| 1280 |  872k | −32.3     | +32.4     | +0.2 |
+| 1536 |  804k | −46.4     | +44.0     | −2.4 |
+| 2048 |  695k | −71.6     | +62.3     | −9.3 |
+
+**The entire 768→1536 range spans 1.4 Elo.** Width is not a lever for
+us; it is a wash that turns negative past ~1400. Two independent
+estimates of the width coefficient agree, which is why I trust the
+shape: the old ladder gave +44/doubling, and our own current-era
+S(1280) vs V(768) gap of +35 fn over 0.737 doublings implies
++47.5/doubling.
+
+**The asymmetry that should govern future arch calls:** the speed axis
+is MEASURED, to 0.01% reproducibility. The width axis is EXTRAPOLATED
+from a coefficient we know to maybe ±30%. At +60/doubling the optimum
+moves to ~1536; at +30/doubling plain 768 wins. So when the two axes
+trade off within a few Elo, **prefer the side that is measured** —
+take the speed, not the speculative capacity. That is an independent
+argument for 1280 over 1536 beyond the raw arithmetic, and the
+tiebreak for 1280 over the model's nominal 1024 optimum is that 1280
+is the A3 trunk's own width (verbatim transfer) while 1024 would need
+a lossy slice for a predicted +1.2 Elo.
+
+**Corollary — do NOT plan to distil X back to 768.** That reflex comes
+from V's own history (S-1280/128 sliced to 768 and retrained), where
+the slice cost 35 fn but bought 1.45× speed = +64 Elo, netting +29.
+X already has the cheap 16/32 head, so slicing it would buy only
+1051/893 = 1.177× = +28 Elo for the same ~35 fn slice cost — a net
+LOSS of ~7. **X's thin head already captured most of what the S→V
+distillation was buying.** Deploy X at 1280 if it earns its keep.
+
 **PRE-REGISTERED EXPECTATION FOR THE sb30 READ (write it down before
 the number arrives, so we judge instead of rationalize).** D48X starts
 as the A3 trunk verbatim plus a RANDOM 16/32 head, distilling at
