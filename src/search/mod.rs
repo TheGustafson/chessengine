@@ -3377,6 +3377,12 @@ impl Worker {
                 r += params::RED_CUTNODE()
                     + params::RED_CUTNODE_NO_TTMOVE() * i32::from(tt_data.mv == Move::NULL);
             }
+            // tt_capture surcharge (design/10 §3.7): a capturing ttMove
+            // means the position is tactical — quiet siblings are searched
+            // shallower still.
+            if tt_capture {
+                r += params::RED_TTCAPTURE();
+            }
             // cutoffCnt surcharge: the child slot has been failing high under
             // earlier siblings, so this node's late moves are distrusted. The
             // ttMove rebate is its ELSE arm — design/10 §3.7 pins them as
@@ -3734,10 +3740,13 @@ impl Worker {
                         self.stack[cur].cutoff_cnt += i32::from(extension < 2 || NT::PV);
                         break; // fail high
                     }
-                    // Sibling depth reduction (design/10 §3.9, Wave-D item 15)
-                    // is DEFERRED with the cutoffCnt terms (see the reduction
-                    // finalization note): it delays deep mate resolution past
-                    // the §8(4) depth bound in this PSQT-only engine.
+                    // Sibling depth reduction (design/10 §3.9, Wave-D item
+                    // 15) stays DEFERRED one more commit: it makes the
+                    // fixed-depth value order-dependent (an early alpha
+                    // raise cheapens later siblings), which structurally
+                    // breaks doc 08 §8 criterion 6 (TT-on/off value
+                    // equality) — that oracle must be re-scoped in the doc
+                    // and the P6 test suite in the same change (S0 c2).
                     alpha = value;
                 }
             }
