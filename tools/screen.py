@@ -44,6 +44,7 @@ import argparse
 import json
 import os
 import re
+import math
 import statistics
 import subprocess
 import sys
@@ -112,21 +113,41 @@ def play_all(fens: list[str], nodes: int, ov: dict[str, int]) -> dict[str, str]:
 
 
 def cp_loss(tier_tables: dict, fens: list[str], chosen: dict[str, str]):
-    per_tier, top1 = {}, float("nan")
+    """Per-tier mean loss, per-tier PER-POSITION losses, and top-1 rate.
+
+    The per-position vector is what makes a delta readable. Control and arm
+    see identical positions, so the paired difference
+    `loss_arm[i] - loss_control[i]` cancels position difficulty, and its
+    standard error is far smaller than either arm's own spread. Reading an
+    unpaired sem instead is how a set of 1-3 cp deltas at n=300 got mistaken
+    for signal on 2026-07-27; the same arms measured the OPPOSITE sign at
+    n=1500.
+    """
+    per_tier, per_pos, top1 = {}, {}, float("nan")
     keys = sorted(tier_tables, key=int)
     for t in keys:
-        tbl, losses, hits = tier_tables[t], [], 0
+        tbl, losses, hits = tier_tables[t], {}, 0
         for fen, uci in chosen.items():
             moves = tbl.get(fen)
             if not moves or uci not in moves:
                 continue
             best = max(moves.values())
-            losses.append(best - moves[uci])
+            losses[fen] = best - moves[uci]
             hits += int(moves[uci] == best)
-        per_tier[t] = statistics.fmean(losses) if losses else float("nan")
-        if t == keys[-1] and losses:
-            top1 = hits / len(losses)
-    return per_tier, top1
+        vals = list(losses.values())
+        per_tier[t] = statistics.fmean(vals) if vals else float("nan")
+        per_pos[t] = losses
+        if t == keys[-1] and vals:
+            top1 = hits / len(vals)
+    return per_tier, per_pos, top1
+
+
+def paired(arm: dict[str, float], ctrl: dict[str, float]) -> tuple[float, float]:
+    """(mean paired delta, its standard error) over positions both scored."""
+    d = [arm[f] - ctrl[f] for f in arm if f in ctrl]
+    if len(d) < 2:
+        return float("nan"), float("nan")
+    return statistics.fmean(d), statistics.stdev(d) / math.sqrt(len(d))
 
 
 def main() -> None:
@@ -144,7 +165,9 @@ def main() -> None:
     base_ov = parse_ov(args.base) if args.base else {}
     tier_tables = json.load(open(args.oracle))["tiers"]
     keys = sorted(tier_tables, key=int)
-    tier_tables = {t: dict(list(tbl.items())[: args.limit]) for t, tbl in tier_tables.items()}
+    if args.limit:
+        tier_tables = {t: dict(list(tbl.items())[: args.limit])
+                       for t, tbl in tier_tables.items()}
     fens = list(tier_tables[keys[0]])
 
     arms = [("control", {})]
@@ -154,24 +177,41 @@ def main() -> None:
 
     if base_ov:
         print(f"base: {args.base}")
-    print(f"{len(fens)} positions, arms at {args.nodes} nodes\n")
-    hdr = f"{'arm':<20}" + "".join(f"{'cp@' + t[:-3] + 'k':>9}" for t in keys) + f"{'top1':>8}"
+    # Power warning. Paired sem falls as 1/sqrt(n) and the effects worth
+    # chasing here are ~1 cp, so a small --limit cannot resolve them however
+    # confident the mean looks. Measured on this corpus: sem ~2.0 cp at 250
+    # positions, ~1.1 at 800, ~0.8 at 1500, ~0.3 at the full 9992.
+    if len(fens) < 3000:
+        approx = 2.0 * (250 / max(len(fens), 1)) ** 0.5
+        print(f"{len(fens)} positions, arms at {args.nodes} nodes  "
+              f"[EXPLORATORY: paired sem ~{approx:.1f} cp -- use --limit 0 "
+              f"for a verdict]\n")
+    else:
+        print(f"{len(fens)} positions, arms at {args.nodes} nodes\n")
+    hdr = f"{'arm':<20}" + "".join(f"{'cp@' + t[:-3] + 'k':>13}" for t in keys) + f"{'top1':>8}"
     if not args.no_nodes:
         hdr += f"{'nodes':>10}"
     if not args.no_tactics:
         hdr += f"{'tact':>8}"
     print(hdr)
 
-    ref_cp, ref_nodes, ref_tact = None, None, None
+    ref_cp, ref_pos, ref_nodes, ref_tact = None, None, None, None
     for name, ov in arms:
         full = {**base_ov, **ov}
-        per_tier, top1 = cp_loss(tier_tables, fens, play_all(fens, args.nodes, full))
+        per_tier, per_pos, top1 = cp_loss(
+            tier_tables, fens, play_all(fens, args.nodes, full)
+        )
         row = f"{name:<20}"
         if ref_cp is None:
-            ref_cp = per_tier
+            ref_cp, ref_pos = per_tier, per_pos
             row += "".join(f"{per_tier[t]:>9.2f}" for t in keys)
         else:
-            row += "".join(f"{per_tier[t] - ref_cp[t]:>+9.2f}" for t in keys)
+            # Paired delta and its sem: "+-" is one standard error of the
+            # PAIRED difference, so |delta| < sem is noise regardless of how
+            # large the absolute losses are.
+            for t in keys:
+                d, se = paired(per_pos[t], ref_pos[t])
+                row += f"{d:>+7.2f}+-{se:<4.2f}"
         row += f"{top1:>8.1%}"
         if not args.no_nodes:
             n = bench(args.depth, full)
@@ -189,9 +229,11 @@ def main() -> None:
                 row += f"{h - ref_tact:>+8}"
         print(row, flush=True)
 
-    print("\ncp = mean centipawn loss vs SF18 labels, LOWER is better, arm rows "
-          "are deltas.\nPromote on cp, sanity-check with nodes, and do not "
-          "promote on tactics alone.")
+    print("\ncp = mean centipawn loss vs SF18 labels; LOWER is better. Arm rows "
+          "are PAIRED\ndeltas +- one standard error of the paired difference: "
+          "|delta| < sem is noise.\nRequire the sign to hold across all three "
+          "tiers. Promote on cp, sanity-check\nwith nodes, never promote on "
+          "tactics alone.")
 
 
 if __name__ == "__main__":
