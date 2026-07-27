@@ -32,9 +32,9 @@ while :; do
 done
 echo "════ $(date '+%F %H:%M') verify: tuned vs default, 600g @ 10+0.1 ════"
 if [ -e "$RUN/theta_final.json" ]; then
-  bash tools/spsa/verify_theta.sh "$RUN/theta_final.json"
+  bash tools/spsa/verify_theta.sh "$RUN/theta_final.json" 600 10+0.1 3
 else
-  bash tools/spsa/verify_theta.sh
+  bash tools/spsa/verify_theta.sh "" 600 10+0.1 3
 fi
 
 # c2-reduction next rather than leaving the box idle. It is independent of
@@ -63,9 +63,9 @@ while [ ! -e "$A2RUN/theta_final.json" ]; do
 done
 echo "════ $(date '+%F %H:%M') verify A2: tuned vs default, 600g @ 10+0.1 ════"
 if [ -e "$A2RUN/theta_final.json" ]; then
-  bash tools/spsa/verify_theta.sh "$A2RUN/theta_final.json"
+  bash tools/spsa/verify_theta.sh "$A2RUN/theta_final.json" 600 10+0.1 3
 else
-  bash tools/spsa/verify_theta.sh "$HOME/.cache/archon-spsa-stageA2/state/theta-latest.json"
+  bash tools/spsa/verify_theta.sh "$HOME/.cache/archon-spsa-stageA2/state/theta-latest.json" 600 10+0.1 3
 fi
 echo "════ $(date '+%F %H:%M') SPSA BLOCK DONE (A + A2 both verified) ════"
 } >> "$LOG" 2>&1
