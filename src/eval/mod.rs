@@ -449,7 +449,11 @@ fn apply_outer_shape(inner: Value, optimism: Value, material: i64, rule50: i64) 
     // sides of the score differently.
     if EVAL_SCALE() != 1024 {
         let n = v * EVAL_SCALE();
-        v = if n >= 0 { (n + 512) / 1024 } else { -((-n + 512) / 1024) };
+        v = if n >= 0 {
+            (n + 512) / 1024
+        } else {
+            -((-n + 512) / 1024)
+        };
     }
 
     // Never collide with the TB/mate bands. This also bounds the scale above:

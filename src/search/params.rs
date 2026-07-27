@@ -1190,7 +1190,11 @@ pub fn frame_expand(d: Value) -> Value {
 /// is precisely what that test is for.
 #[inline(always)]
 fn round_div(n: i64, q: i64) -> i64 {
-    if n >= 0 { (n + q / 2) / q } else { -((-n + q / 2) / q) }
+    if n >= 0 {
+        (n + q / 2) / q
+    } else {
+        -((-n + q / 2) / q)
+    }
 }
 
 /// [`frame_scale`] for the i64 tunables (the aspiration mean-squared divisor).

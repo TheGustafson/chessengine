@@ -91,6 +91,81 @@ values.**
 
 ---
 
+## 2b. The reference error had already cost us a real regression
+
+Commit `9163032`, landed earlier the same day, "fixed" the triple-extension
+deep gate on the grounds that *"SF18 uses two different predicates"*. It
+does — at the `sf_18` tag. At `eca43a97` it does not:
+
+| revision | doubleMargin deep dock | tripleMargin deep dock |
+|---|---|---|
+| `sf_18` (tag) | `ply > rootDepth` × 42 | **`ply*2 > rootDepth*3`** × 50 |
+| **`eca43a97`** | `ply > rootDepth` × 41 | **`ply > rootDepth`** × 45 |
+
+Stockfish tried the `1.5·rootDepth` triple gate in the sf_18 era and had
+**reverted it** by our reference commit. Our `SE_DOUBLE_DEEP = 41` /
+`SE_TRIPLE_DEEP = 45` are eca43a97's values, not sf_18's 42/50 — so the
+original code, with both gates on `ply > rootDepth`, was an exact match to
+our reference and `9163032` broke that fidelity on a misread. It was a
+fidelity claim, not a measured one, and it moved the d13 NNUE pin
+2068701 → 2041687.
+
+**Reverted.** The pin returns to **2068701**; the depth-6 PSQT bench stays
+445174 (the singular block is behind the NNUE-blind default build, which is
+exactly why the NNUE gate exists).
+
+This is the audit paying for itself within the hour, and it is worth stating
+plainly: the mistake was not carelessness about *which line* to read, it was
+trusting a checkout as "the current Stockfish" when our own header named a
+different commit.
+
+---
+
+## 2c. Shape diff: no constant-bearing mechanism is missing
+
+If the values are right, the next place Elo could hide is a *mechanism* SF
+has and we do not. Screened in the inverse direction: every integer literal
+≥20 in SF@`eca43a97`'s `search.cpp` (comment lines excluded) against every
+integer literal in `search/`, `history.rs`, `movepick.rs`, `eval/`,
+`timeman.rs`, `see.rs`.
+
+**Two absences, both deliberate:**
+
+| constant | mechanism | why absent |
+|---|---|---|
+| `120 - 2 * level` | Skill Level / `UCI_LimitStrength` handicap | not implemented by choice |
+| — | Syzygy tablebase probe (SF Step 6) | declined, D19/D31 (FFI) |
+
+Everything else resolves, including the three structural tables that would
+be easy to have quietly missed and are present verbatim:
+
+- `LMR_DIVISOR[16]` = {3307, 2930, 2874, 2818, 3215, 3225, 3224, 2782, 2858,
+  2919, 3088, 3275, 3180, 2868, 3006, 3599}
+- `CONT_CONSISTENCY_MULT[7]` (SF `CMHCMultipliers`) = {96, 113, 101, 105,
+  127, 121, 126}
+- `CONT_OFFSET_WEIGHTS[6]` = {1040, 780, 300, 537, 129, 423}
+
+The step structure matches one-for-one as well (SF Steps 1–21 ↔ our N1–N14 +
+Steps 1–14), including the small in-check ProbCut (SF Step 12 ↔ our N14) and
+IIR (SF Step 10 ↔ our N12).
+
+**Caveat on strength of evidence.** With ~500 distinct integers across our
+sources, a value can collide by accident, so this screen proves *presence*,
+not *correct placement*. The three tables above were confirmed in place by
+hand. What the screen cannot see at all is a shape difference that reuses
+the same constants — a condition combined with `&&` where SF uses `||`, or a
+term applied at a different node type.
+
+**One shape SF has REMOVED that we should not add:** there is no check
+extension anywhere in SF@`eca43a97`'s Step 15 — the singular block is the
+whole of it. Our unmerged `wip/check-ext` branch adds an SF16-style one and
+measured WAC 78.5% → 82.0/83.0% but games **+3.5 ± 27.7** (fixed node) — the
+classic profile of a tactics-suite gain that does not convert, which is
+presumably why SF dropped it. It should stay unmerged, and `s4-searchgap`'s
+`CHECK_EXT_MIN_DEPTH` entry should be treated as dead rather than pending.
+
+---
+
 ## 3. Where the audit says to look instead
 
 ### 3a. ARCHON originals — the only constants with no external tuning behind them
@@ -140,15 +215,29 @@ splits ~−33 eval quality and ~−45 speed — is unaffected and now better
 supported: with margin calibration refuted *and* transcription verified,
 the −33 equal-node component cannot be explained by our constants at all.
 
+Four independent lines now agree that the search *program* is not where the
+deficit is:
+
+| hypothesis | verdict | evidence |
+|---|---|---|
+| margins mis-scaled vs our eval frame | refuted | frame study, 10/10 tactical arms worse |
+| the dual (scale eval up; repairs class 4) | refuted | mate_in_3 1211 → 1194 → 1177 |
+| constants stale or mis-transcribed | refuted | §2, faithful to the digit |
+| a constant-bearing mechanism is missing | refuted | §2c, two deliberate absences only |
+
 The tunables work that remains worth doing, in order:
 
-1. **Ablate the two ARCHON originals** (§3a) — cheap, clean null, genuinely
-   untested. Needs an idle box.
-2. **Shape diff, not value diff** — enumerate mechanisms present in
-   SF@`eca43a97`'s `search.cpp` that we do not implement. If the constants
-   are right and the tree is already smaller than SF's, missing *shapes* are
-   where search Elo is left.
-3. **ProbCut / LMR-finalization SPSA** (§3b) — the largest untuned
+1. **Ablate the two ARCHON originals** (§3a) — `QUIET_OFFENSE_FACTOR` and
+   `RFP_THREAT_MARGIN` are now the *only* constants in the engine with
+   neither Stockfish provenance nor an SPSA run behind them. Cheap, clean
+   null (set to 0 = remove the term), genuinely untested. Needs an idle box.
+2. **ProbCut / LMR-finalization SPSA** (§3b) — the largest untuned
    mechanisms, deferred until a box is free.
+3. **Shape differences the screen cannot see** — conditions that reuse the
+   same constants at different node types or with different boolean
+   combinations. This needs reading, not screening, and it is the only
+   remaining search-side avenue that has not been closed.
 
-Item 2 is the one that does not need compute, so it is next.
+Everything else points at eval quality and instruction count, per
+`where-the-sf16-gap-actually-is-2026-07-27.md`. With D48X in training and
+`perf-impl-1` already landed, both of those are being worked.
