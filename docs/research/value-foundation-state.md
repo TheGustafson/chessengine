@@ -727,6 +727,34 @@ slice is the outlier; head still converging). **X needs +56 fn from
 here to be worth shipping over V.** Decision point is sb60 — judge the
 SLOPE, not the level. No automated stops; intervention is the user's call.
 
+**sb30 LOSS FORENSICS (03:2x) — the losses are NOT where the panels
+pointed.** Ran `loss_forensics.py` over the 100-game sb30 match. Of 34
+losses: collapse 26, tactical 6, misjudgment 5, grind 1 — and **by
+phase: opening 28, middlegame 5, endgame 1.**
+
+That is a real surprise worth holding onto. The panel said the endgame
+slice was D48X's weak stratum (vs-oracle 0.7039 against the teacher's
+0.8152), and the natural inference was that endgames were costing the
+games. They are not: **28 of 34 losses are decided in the opening**,
+one in the endgame. On the UHO book that means the imbalanced book
+positions themselves are being mishandled — early evaluation, not
+technique. So the endgame panel weakness is real but currently
+IRRELEVANT to the score; do not spend the run's remaining budget
+optimising for it.
+
+The mechanism is visible too: **depth at the point of no return is 12.6
+for X against 13.9 for V** at the same 50k nodes (and −0.3 mean depth
+in the opening, converging to +0.0 by the endgame). A weaker evaluator
+orders moves worse, so it buys less depth per node, so it is both
+mis-evaluating AND searching shallower exactly where the games are
+decided. That compounding is why −28 fn looks worse than the panel
+correlations alone would suggest — and equally, why improving the eval
+should pay back double as training proceeds.
+
+Caveats: 34 losses is a small sample, the tags are tool-specific, and
+one loss can carry several. Treat the phase split as the signal and the
+tag mix as colour.
+
 **FIVE FINDINGS FROM TONIGHT, ranked by how much they should change
 what we do next:**
 1. **Threat features cost ~30% of all cycles** (at_full 25.3% +
