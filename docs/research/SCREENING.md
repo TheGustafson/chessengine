@@ -293,6 +293,17 @@ LMR reduction is expensive, TT cutoff slack is expensive for what it gives.
 
 ---
 
+## 10b. Harness validation
+
+The calibration run included a deliberate no-op arm
+(`RED_TABLE_NUM=2834`, the shipped default). It read **+0.00 ± 0.0 at every
+one of five node budgets**. A no-op producing exactly zero delta is the
+cheapest possible check that the pipeline is deterministic and correctly
+paired, and every conclusion in this document rests on that being true.
+Include a no-op arm whenever the harness changes.
+
+---
+
 ## 11. Converting cp loss to Elo — and why it changes the ranking
 
 A cp delta means nothing until it is priced against what it costs. Measured
