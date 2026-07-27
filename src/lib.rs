@@ -21,6 +21,7 @@ pub mod attacks;
 pub mod bench;
 pub mod bitboard;
 pub mod board;
+pub mod cuckoo;
 pub mod eval;
 pub mod fen;
 pub mod history;
