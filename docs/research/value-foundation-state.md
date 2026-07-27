@@ -857,10 +857,12 @@ tag mix as colour.
 
 **FIVE FINDINGS FROM TONIGHT, ranked by how much they should change
 what we do next:**
-1. **Threat features cost ~30% of all cycles** (at_full 25.3% +
-   record_square_touch 4.7%) against HalfKA's 14.9%. Dropping them =
-   1.43× = **+62 Elo** at equal time; they have never been measured to
-   be worth that. **Top post-release experiment**, needs no engine work.
+1. **Threat features cost HALF our speed — MEASURED, not inferred.**
+   Stripping the channel from a real checkpoint and timing it: **1.97×
+   nps** (617k → 1212k, alternated, same box). That is **+117 Elo** at
+   120/doubling. They have never been measured to be worth anything
+   like that. **The top question in the project**, and it needs no
+   engine work — only a matched HalfKA-only net.
 2. **The gap to SF is EVAL, not tactics.** At equal 50k nodes we are
    level with SF16 and ahead of SF18 across 2577 tactical positions. S0
    took WAC 78.5% → 90% while SF16 sits at 86%. So stop adding tactical
@@ -993,12 +995,38 @@ search.) Symbol shares, PGO build, confirmed on the non-PGO build too
 table geometry: THREAT_DIMS 60720 against HALFKA_DIMS 22528, so the
 threat rows are 2.7× the HalfKA space and 73% of the whole FT.
 
-**The arithmetic that makes this a real question.** Removing threats
-gives 1/(1−0.30) = **1.43× speed = +62 Elo** at the measured 120
-Elo/doubling — probably more, since the FT table would shrink from
-83248 rows to 22528 and the random-row access is load-bound. So the
-threat feature set has to be worth **more than +62 fn Elo** to justify
-itself at equal time. The only number we have is exp-0065's +32.5±17.3
+**NO LONGER ARITHMETIC — MEASURED, AND IT IS ~2×.** I hedged that
+1/(1−0.30) = 1.43× would understate it "since the FT table would shrink
+from 83248 rows to 22528 and the random-row access is load-bound". It
+understated it badly. `tools/nnue/strip_threats.py` deletes the threat
+channel from a quantised checkpoint (netpack re-validates both the
+stream length and the PSQ1 row count, so a bad strip fails loudly), and
+the engine already routes a threat-less net through its zero-threat
+path with no rebuild. Same engine, same positions, same loaded box,
+arms alternated:
+
+| net | nps |
+|---|---|
+| d48x-sb60 **with** threats | 617,757 / 613,738 |
+| same net, threats **stripped** | **1,220,164 / 1,204,937** |
+
+**1.97×.** At 120 Elo/doubling that is **+117 Elo of speed**. The extra
+over the 1.43% prediction is the table: 155MB → 58MB, so the surviving
+HalfKA work stops competing with the threat rows for cache and gets
+faster itself.
+
+**Caveat, stated honestly:** the stripped net evaluates badly (its value
+head expects threat contributions that are now identically zero), so its
+search tree differs and some of the NPS gain could be tree-shape rather
+than pure throughput. The ratio would have to be wrong by a lot to
+change the conclusion, and the mechanism is well understood, but read it
+as "roughly 2×, certainly well above 1.43×" rather than as three
+significant figures.
+
+**So the bar for threats is now +92 to +117 fn Elo**, not +62. For
+context, that is a substantial fraction of the entire net-0 → today
+improvement arc, being asked of a single feature-set addition whose only
+measurement (exp-0065, +32.5±17.3 fn) did not even isolate it. The only number we have is exp-0065's +32.5±17.3
 fn, and that compared the WHOLE D40 arch (HalfKAv2_hm king buckets +
 FullThreats + Reckless head) against classic features — it does not
 isolate threats. **Their cost is now measured precisely; their benefit
