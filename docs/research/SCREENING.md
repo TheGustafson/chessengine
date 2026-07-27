@@ -264,10 +264,29 @@ wrong is bounded rather than unbounded, and it was measurably **starved** at
 0.2% activation, i.e. far outside its operating range rather than slightly
 mis-set (`prune-budget-2026-07-27.md` §2).
 
-**Status: HYPOTHESIS, not a finding.** It fits five gates and is contradicted
-by nothing yet, but it was formed after seeing the data it explains. The test
-is whether it PREDICTS: move-level gates not yet screened (quiet SEE,
-conthist, capture futility, LMP) should improve when tightened, and
-node-level ones (ProbCut, IIR, TT cutoff) when loosened. Screening those is
-the next round, and a failure there kills the hypothesis rather than
-qualifying it.
+**Status after the prediction test: 6 of 7 correct.** The hypothesis was
+formed after seeing round 1, so round 2 screened seven gates it had never
+seen, and it called the direction on six (sign test p ≈ 0.06):
+
+| gate | class | predicted | measured (cp@4k / 16k / 64k) | nodes |
+|---|---|---|---|---|
+| **IIR 6→8** | node | loosen | **−0.86 / −1.50±0.64 / −0.99** | **+3.4%** |
+| ProbCut ×1.25 | node | loosen | −0.17 / −0.79 / −0.48 | +0.8% |
+| TT cutoff slack 0 | node | loosen | −0.05 / −0.42 / −0.26 | +8.8% |
+| capture futility ×0.64 | move | tighten | −0.36 / −0.60 / −0.28 | +0.6% |
+| conthist 4313→3000 | move | tighten | −0.20 / −0.79 / −0.38 | +3.1% |
+| quiet SEE 25→15 | move | tighten | −0.10 / −0.25 / −0.29 | −0.5% |
+| LMP depth coeff 850 | move | tighten | +0.11 / −0.19 / +0.29 ✗ | −3.1% |
+
+`IIR_MIN_DEPTH` 6→8 is the strongest single arm found so far — **−1.50±0.64
+(2.3σ) at the middle tier for +3.4% nodes** — and it was a genuine prediction,
+not a post-hoc fit. For comparison, `RED_TABLE_NUM 2700` buys −0.24 to −0.33
+cp for +12.4% nodes: roughly a quarter the gain at four times the cost.
+
+The one miss (LMP) is the same gate whose *contribution* is large and whose
+*leverage* is near nil (§8 of `prune-budget-2026-07-27.md`), so it may simply
+be too inert to move either way rather than a counterexample.
+
+**Cost-effectiveness is now the composing rule.** Rank by cp gained per node
+spent, not by cp alone: IIR and ProbCut and capture futility are nearly free,
+LMR reduction is expensive, TT cutoff slack is expensive for what it gives.
