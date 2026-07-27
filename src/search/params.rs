@@ -76,6 +76,14 @@ crate::tunables! {
     /// `thread_idx == 0` (main/detached/bench), keeping Threads=1 bit-identical
     /// (D24).
     pub ASPIRATION_JITTER_PERIOD: usize = 8;
+    /// Optimism numerator: `optimism = OPTIMISM_NUM·avg / (|avg| +
+    /// OPTIMISM_DEN_BASE)` at aspiration setup (design/11 §3.6's consumer,
+    /// S0). Priors are SF's 137/81 scaled by the measured winner-slope
+    /// ~0.55 (our engine frame is ~2× compressed vs SF's reported cp,
+    /// loss_forensics 2026-07-26); S2 SPSA owns the refinement.
+    pub OPTIMISM_NUM: Value = 75;
+    /// Optimism half-saturation denominator base (see OPTIMISM_NUM).
+    pub OPTIMISM_DEN_BASE: Value = 45;
     /// Numerator of the per-re-search widening `delta += delta * 44 / 128`.
     pub ASPIRATION_WIDEN_NUM: Value = 44;
     /// Denominator of the per-re-search widening (~x1.34 per fail).

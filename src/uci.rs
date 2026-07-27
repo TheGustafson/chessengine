@@ -2510,13 +2510,20 @@ option name EvalFile type string default <empty>
     #[test]
     fn bestmove_carries_a_ponder_move_when_the_pv_is_long_enough() {
         let mut engine = Engine::new();
-        let out = command_on(&mut engine, "go depth 3");
+        // KRK mate-in-2 rather than the startpos: after the S0 optimism
+        // landing, near-tie startpos roots can be dither-promoted (the
+        // documented §3.3 freshness truncation publishes an honestly
+        // length-1 PV). A forced mate PV is 3 plies, decisive scores are
+        // dither-exempt, and the property under test is the UCI ponder
+        // plumbing — so the fixture must make PV >= 2 deterministic.
+        let _ = command_on(&mut engine, "position fen k7/8/2K5/8/8/8/8/7R w - - 0 1");
+        let out = command_on(&mut engine, "go depth 6");
         assert_eq!(bestmoves(&out), 1, "{out}");
         let last = out.lines().last().unwrap();
-        assert!(last.contains(" ponder "), "depth-3 startpos PV >= 2: {out}");
+        assert!(last.contains(" ponder "), "mate-in-2 PV >= 2: {out}");
         // Both moves parse against the evolving position.
         let tokens: Vec<&str> = last.split_whitespace().collect();
-        let mut board = Board::startpos();
+        let mut board = Board::from_fen("k7/8/2K5/8/8/8/8/7R w - - 0 1").unwrap();
         let best = move_from_uci(&board, tokens[1]).expect("legal bestmove");
         board.make_move(best, board.gives_check(best));
         assert!(move_from_uci(&board, tokens[3]).is_some(), "{last}");

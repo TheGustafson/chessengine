@@ -845,6 +845,14 @@ pub struct Worker {
     /// recursively null-move its way back to the same (possibly zugzwang)
     /// cutoff, then resets it to 0. Per-worker (D23); reset to 0 each `go`.
     nmp_min_ply: i32,
+    /// Per-color eval optimism (design/11 §3.6's consumer, S0): set at
+    /// aspiration setup from the root move's average score —
+    /// `OPTIMISM_NUM·avg / (|avg| + OPTIMISM_DEN_BASE)` for the root side
+    /// to move, negated for the opponent — and passed to every in-search
+    /// `evaluate()` call, indexed by the node's side to move. Zero until
+    /// the first aspiration setup (bench/tests that bypass it see the
+    /// pre-S0 eval).
+    optimism: [Value; 2],
     /// MultiPV line currently searched (§3.5; the outer loop index).
     pub pv_idx: usize,
     /// Number of PV lines to search this `go` (design/12 §3.12, step 10):
@@ -1055,6 +1063,7 @@ impl Worker {
             root_delta: 2 * VALUE_INFINITE,
             reductions,
             nmp_min_ply: 0,
+            optimism: [VALUE_ZERO; 2],
             pv_idx: 0,
             multi_pv: 1,
             completed_depth: 0,
@@ -2055,8 +2064,8 @@ impl Worker {
     ///   full-window search, no special-casing. The lazy-SMP diversity
     ///   term `+ thread_idx % 8` is vacuous single-threaded and joins
     ///   with doc 13 (P11); the eval-doc hook
-    ///   `optimism = 137·avg / (|avg| + 81)` attaches here when
-    ///   design/11 phase B lands.
+    ///   `optimism = OPTIMISM_NUM·avg / (|avg| + OPTIMISM_DEN_BASE)` is
+    ///   ATTACHED (S0, 2026-07-26) — see the setup below and design/11 §3.6.
     /// - `adjusted_depth` shrinks by one ply per CONSECUTIVE fail-high
     ///   (fail-highs are usually resolved by move ordering, not depth —
     ///   this caps re-search cost) and by the TM's search-again damping
@@ -2097,6 +2106,18 @@ impl Worker {
             + rm.mean_squared_score.abs() / params::ASPIRATION_MSS_DIVISOR())
             as Value;
         let avg = rm.average_score;
+        // Optimism (design/11 §3.6's consumer, S0): lean the eval a few cp
+        // toward the side the search already favors, by root average score.
+        // SF-parity shape incl. the unguarded first-iteration sentinel
+        // (avg = -VALUE_INFINITE saturates to ≈ -OPTIMISM_NUM; iteration 1
+        // is full-window and self-corrects). Priors 75/45 = SF's 137/81
+        // scaled by the measured winner-slope ~0.55 (our engine frame is
+        // ~2× compressed vs SF's reported cp; loss_forensics 2026-07-26);
+        // S2 SPSA owns the refinement.
+        let us = self.board.side_to_move();
+        let opt = params::OPTIMISM_NUM() * avg / (avg.abs() + params::OPTIMISM_DEN_BASE());
+        self.optimism[us as usize] = opt;
+        self.optimism[us.flip() as usize] = -opt;
         let mut alpha = (avg - delta).max(-VALUE_INFINITE);
         let mut beta = (avg + delta).min(VALUE_INFINITE);
         let mut failed_high_cnt: i32 = 0;
@@ -2266,7 +2287,12 @@ impl Worker {
             // discards it.
             if stop.load(Ordering::Relaxed) || self.board.is_draw(ply as i32) || ply >= MAX_PLY {
                 return if ply >= MAX_PLY && !in_check {
-                    evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO, ply)
+                    evaluate(
+                        &self.board,
+                        &mut self.eval_ctx,
+                        self.optimism[self.board.side_to_move() as usize],
+                        ply,
+                    )
                 } else {
                     value_draw(self.nodes)
                 };
@@ -2347,7 +2373,12 @@ impl Worker {
                 raw_eval = if tt_hit && is_valid(tt_data.eval) {
                     tt_data.eval
                 } else {
-                    evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO, ply)
+                    evaluate(
+                        &self.board,
+                        &mut self.eval_ctx,
+                        self.optimism[self.board.side_to_move() as usize],
+                        ply,
+                    )
                 };
                 // EXP-UNC-1: on a FRESH sota eval, capture this node's value
                 // uncertainty σ̂ and fold it into the running mean σ̄. Env-gated —
@@ -4237,7 +4268,12 @@ impl Worker {
         // dithered (SF parity; see [`value_draw`]).
         if self.board.is_draw(ply as i32) || ply >= MAX_PLY {
             return if ply >= MAX_PLY && !in_check {
-                evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO, ply)
+                evaluate(
+                    &self.board,
+                    &mut self.eval_ctx,
+                    self.optimism[self.board.side_to_move() as usize],
+                    ply,
+                )
             } else {
                 VALUE_DRAW
             };
@@ -4289,7 +4325,12 @@ impl Worker {
             raw_eval = if tt_hit && is_valid(tt_data.eval) {
                 tt_data.eval
             } else {
-                evaluate(&self.board, &mut self.eval_ctx, VALUE_ZERO, ply)
+                evaluate(
+                    &self.board,
+                    &mut self.eval_ctx,
+                    self.optimism[self.board.side_to_move() as usize],
+                    ply,
+                )
             };
             // S1 (doc 07 §3.8 step 5, D22): stand pat on the CORRECTED eval;
             // the TT stores (fail-high cache above the loop, step-12 store
@@ -8367,6 +8408,16 @@ mod tests {
             }
             w.sel_depth = 0;
             w.root_delta = 2 * VALUE_INFINITE;
+            // Optimism is part of the production root setup (S0), attached
+            // to the ITERATION, not the window — a faithful "same search,
+            // no windowing" reference carries it identically (mirrors
+            // aspiration_search; decisive-fixture consumers are immune:
+            // optimism never moves mate bounds).
+            let avg = w.root_moves[0].average_score;
+            let us = w.board.side_to_move();
+            let opt = params::OPTIMISM_NUM() * avg / (avg.abs() + params::OPTIMISM_DEN_BASE());
+            w.optimism[us as usize] = opt;
+            w.optimism[us.flip() as usize] = -opt;
             w.search::<Root>(tt, &stop, -VALUE_INFINITE, VALUE_INFINITE, d, false, 0);
             sort_descending(&mut w.root_moves[..]);
         }
@@ -8414,16 +8465,26 @@ mod tests {
         // ones whose LMP-pruned value stays window-stable AND move-stable —
         // the queen-up MIRROR (whose ordering keeps every attempt inside its
         // window) and the low-branching knight endgame.
-        let suite: &[(&str, Depth)] = &[
-            // Black up a queen, black to move.
+        // S0 optimism re-scope (2026-07-26): on the queen-up mirror,
+        // optimism saturates (~+71 for the side up a queen) and its
+        // interplay with the window-width-coupled LMR drift lets the three
+        // near-tie winning replies reorder between drivers — bestmove
+        // identity no longer survives there (same fate as the queen-up
+        // OPENING under LMP, above). It still holds on the low-branching
+        // knight endgame, which keeps the bestmove bar alive; the mirror
+        // keeps the window-containment and value-band bars.
+        let suite: &[(&str, Depth, bool)] = &[
+            // Black up a queen, black to move (value band only).
             (
                 "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB1KBNR b KQkq - 0 1",
                 4,
+                false,
             ),
             // Black up a knight in a bare-kings endgame.
-            ("4k3/8/3n4/8/8/8/8/4K3 b - - 0 1", 3),
+            ("4k3/8/3n4/8/8/8/8/4K3 b - - 0 1", 3, true),
         ];
-        for &(fen, depth) in suite {
+        const WINDOW_DRIFT_CP: Value = 30;
+        for &(fen, depth, bestmove_bar) in suite {
             let asp = go_depth(fen, depth);
             assert_eq!(
                 asp.asp_trace.len(),
@@ -8431,13 +8492,19 @@ mod tests {
                 "score-stable fixture stayed inside every window: {fen}"
             );
             let full = go_depth_full_window(fen, depth);
-            // Best move survives the window-width-coupled LMR drift (above);
-            // exact score identity does not, so it is no longer asserted.
-            assert_eq!(
-                asp.best_move(),
-                full.best_move(),
-                "bestmove identity: {fen}"
+            assert!(
+                (best_score(&asp) - best_score(&full)).abs() <= WINDOW_DRIFT_CP,
+                "value band: {fen} (asp {}, full {})",
+                best_score(&asp),
+                best_score(&full)
             );
+            if bestmove_bar {
+                assert_eq!(
+                    asp.best_move(),
+                    full.best_move(),
+                    "bestmove identity: {fen}"
+                );
+            }
         }
     }
 
