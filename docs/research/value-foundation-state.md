@@ -786,6 +786,32 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-27 ~08:4x V PAIR FINAL (A4+B2-sb20) — ANNEAL FIXED ENDGAMES,
+## POLICY TAX HAS A DOSE-RESPONSE CURVE; B3 STOPPED; S-LegB CUT TO 10sb
+
+**User rulings:** B3 anneal STOPPED at ~sb5 ("making no progress" —
+pol_ce flat 2.86 since B2 sb10; no ckpt existed, so V policy = B2-sb20);
+S-LegB = 10sb NO anneal (V's B-legs proved policy repair converges by
+~sb10). chain-v6 runs the rest: S-A2 (cut@10) → S-A3 anneal → S-B 10sb.
+**W recipe RESOLVED: MTL-first (accumulator co-existence experiment,
+tripwire in d48w_1536.json _recipe_ruling).**
+
+**PANEL on the final V pair (pack /tmp/panel-legB2sb20.cenn, payload
+81.5MB, checksum 0x29024379b949d0ad):**
+- QUIET all n=2999: vs-oracle **0.8920** (A2-sb24 was 0.8891; sb190 was
+  0.8720) — new V best; vs-teacher 0.9831, err-corr 0.9183.
+- **ENDGAME≤8 nc n=384: 0.6461 → 0.7149** (teacher 0.8152) — the
+  A3-cut+A4-anneal legs bought +0.07 on the capacity slice.
+- SHARP nc n=1817: 0.7926 (≥ SF18's 0.7909).
+- **POLICY top-1: 13.7%** (55/401; LegB was 17.5, pre-legs 18.7, same
+  probe). DOSE-RESPONSE: 1 squeeze leg → −1.2pp recoverable; 4 legs →
+  −5pp. pol_ce is blind to it (2.86 both) — move-choice isn't. The
+  user's co-existence read, quantified.
+- FULL REMATCHES RUNNING (archon-a4b2-rematches, log
+  /tmp/d47v_a4b2_rematches.log): calibrate → 200g fn50k vs teacher →
+  200g vs SF16; pinned binary archon-d47v (exp-0144 continuity). The
+  net trade (value ↑↑ vs policy ↓) prices here against the −16 partial.
+
 ## 2026-07-27 ~08:1x S0 SEARCH-FIT PROGRAM COMPLETE (user-ratified after
 ## review): THE P9 DEFERRALS ARE ALL LIVE
 
