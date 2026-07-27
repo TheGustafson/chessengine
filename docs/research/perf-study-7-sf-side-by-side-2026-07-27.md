@@ -47,6 +47,46 @@ call counts); both are measurement instruments, not changes.
 >
 > The error is the study's, not the reader's: it had the right number in §3.2
 > and quoted the wrong one in §7.
+>
+> ### Round 2 — the implementation landed, and three more claims moved
+>
+> `perf-impl-1-threats` is merged (see `perf-impl-1-threats-and-icache.md`).
+> It is node-identical and eval bit-exact for **−6.17% instructions / −8.44%
+> L1d loads**. Both wins came from mechanisms this study named wrongly:
+>
+> **A. The item-2 win was REPRESENTATION, not row count.** With overfold at
+> 1.034 there was never a surplus to remove. What paid was storing the threat
+> snapshot as bitboards instead of replaying a mailbox, so slider/knight/pawn
+> discovery becomes an AND rather than up to eight `Option<Piece>` resolutions
+> through an override map. Bit-exactness holds because the fold is wrapping
+> i16/i32, so only the index *multiset* matters. The same measurement bounds
+> SF18's `noRaysContaining` trick before anyone builds it: ceiling ≤3.4% of
+> the fold, ≈0.2% of instructions. Not worth doing.
+>
+> **B. Item 3 was NOT an icache problem.** §7 framed it as a code-size diet.
+> The mechanism is **register pressure**: `next_move` was a single
+> 2,665-instruction blob spilling 13.5% stack-relative `mov`s; outlining the
+> three stage-inits took that to 386 instructions and 4.9% stack traffic,
+> −1.5 G retired loads, with total movepick text unchanged. Code size was
+> never the lever — spill traffic was.
+>
+> **C. §3.2's threat-cost grid is biased upward.** `tools/nnue/strip_threats.py`
+> silently dropped the **SKP1** section as well as the threat tensors, so
+> every full-vs-stripped arm in this study differed by the output-skip lane
+> too. The 1.247×/1.317× figures are therefore an OVER-estimate of the threat
+> channel's cost by an unmeasured margin. The script is fixed; the grid has
+> not been re-run. Treat those ratios as upper bounds.
+>
+> **D. On this study's `icache misses 2.27×` headline (§ the counter table).**
+> The implementation agent reported `L1-icache-load-misses` as unusable here,
+> having seen 86 M vs 56 M from two byte-identical binaries. I re-tested at
+> the depth-6 bench scale and measured a much smaller spread — ~6% across
+> byte-identical runs (157k–167k), against `instructions:u` stable to
+> 0.0001%. So the counter degrades badly at larger workloads but is not
+> worthless at this one. The practical rule: a 2.27× cross-engine ratio
+> survives ~6% noise and stands, but no few-percent icache claim should ever
+> be made on this box. Prefer `instructions:u` and retired loads, which is
+> what the merged work actually rests on.
 
 **Source state measured (all pinned, per user instruction):** engine
 `engines/bin/archon-d47v-pgo` (sha256 `57531e1bb53979dd…`, PGO+native,
