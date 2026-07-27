@@ -1669,6 +1669,27 @@ fn cmd_bench_session(tokens: SplitWhitespace, out: &mut impl Write) -> io::Resul
              use 'default' or a fen file"
         ),
         Ok(params) => {
+            // Load the optional 6th arg's net, exactly as the argv front door
+            // does (`cmd_bench_argv`). Without this the session `bench`
+            // PARSED the net and then silently ignored it, so every
+            // in-session bench ran on PSQT while reporting nothing amiss —
+            // `bench 16 1 13 wl50 depth <net>` returned 3536295 (PSQT) here
+            // against 2068701 (NNUE) from the identical argv invocation.
+            //
+            // That silence is what made it expensive: a whole day of
+            // node-count measurements (tools/frame_ablate.py and the
+            // frame-scale sweeps drive bench over a UCI pipe) were taken on
+            // the wrong evaluator and looked entirely plausible, because a
+            // PSQT tree is a perfectly reasonable-looking tree.
+            //
+            // A bad path answers `info string` and keeps the loop alive
+            // rather than exiting, per §3.3 — the argv door may exit, a
+            // session must not.
+            if let Some(net) = &params.net
+                && let Err(e) = nnue::set_eval_file(net)
+            {
+                return writeln!(out, "info string bench: loading net '{net}': {e}");
+            }
             bench::run(&params);
             Ok(())
         }

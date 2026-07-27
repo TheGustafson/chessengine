@@ -49,8 +49,20 @@ def defaults(engine: str) -> dict[str, int]:
 
 def bench(engine: str, net: str, depth: int, fens: str,
           overrides: dict[str, int]) -> int:
-    lines = [f"setoption name {k} value {v}" for k, v in overrides.items()]
-    lines.append(f"bench 16 1 {depth} {fens} depth {net}")
+    """Run one bench with `overrides` applied.
+
+    The net MUST be activated by `setoption name EvalFile`, not by bench's
+    6th argument. Until 2026-07-27 the in-session `bench` parsed that argument
+    and then silently ignored it, so every measurement driven over a UCI pipe
+    ran on PSQT while looking entirely plausible — a PSQT tree is a perfectly
+    reasonable-looking tree. The engine bug is fixed, but setting EvalFile
+    explicitly is the form that cannot regress, and it works on old binaries
+    too.
+    """
+    lines = [f"setoption name EvalFile value {net}"]
+    lines += [f"setoption name {k} value {v}" for k, v in overrides.items()]
+    # No net on the bench line — EvalFile above is what activates it.
+    lines.append(f"bench 16 1 {depth} {fens} depth")
     lines.append("quit")
     r = subprocess.run([engine], input="\n".join(lines) + "\n", text=True,
                        capture_output=True)
