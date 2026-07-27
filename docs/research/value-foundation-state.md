@@ -941,6 +941,25 @@ what we do next:**
    (~1% of range). Fixed to r_end 0.03. This affects the ENTIRE existing
    campaign library, which all carries the 0.002 default.
 
+**RELEASE MECHANICS (P7) — partial progress 05:0x.** The **D24 perft
+ritual is GREEN against the current tree**: full tier ok in 6.5s,
+**extended tier (~18G nodes) ok in 64s** — that is the pre-release gate
+CLAUDE.md requires, and it confirms the correctness foundation is
+release-clean (nothing has touched movegen/board/zobrist/attacks in
+weeks, and now that is verified rather than assumed). Bench pin holds at
+385329. **Still open on P7: the UCI version string still reports
+`ARCHON 0.1.0`** — bumping it is a release-time call, not something to
+do mid-campaign, but it must not be forgotten at tag time.
+
+**WHY D48X IS STILL RUNNING (05:0x, a positive decision not hesitation):**
+stopping it only pays if something better takes the GPU, and the
+replacement (D49) is a new architecture direction whose width, head,
+schedule and teacher are all my proposals rather than ratified choices.
+Until that is ratified, the alternative use of the card is IDLE, so
+running a low-value net beats running nothing. The recommendation to
+stop stands the moment D49 is approved; the two are one decision, not
+two.
+
 **QUEUED, needs box time we do not have tonight:** `check-ext` (top
 search item — +34/3279 tactical positions post-S0, would put us past
 SF16; binaries built at `engines/bin/archon-{basemain,checkext,nmpguards}`,
