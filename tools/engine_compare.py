@@ -131,6 +131,9 @@ def static_compare(fens: list[str], our_scale: float):
         print("  positive = our NET is more optimistic than SF18's, before any search")
 
 
+OUR_OPTS: dict[str, int] = {}
+
+
 def stability(fens: list[str], lo: int, hi: int, our_scale: float):
     """Iteration-to-iteration eval oscillation, both engines, same positions.
 
@@ -168,7 +171,7 @@ def stability(fens: list[str], lo: int, hi: int, our_scale: float):
             eng.quit()
         return per
 
-    o = wobble(ARCHON, {"EvalFile": NET})
+    o = wobble(ARCHON, {"EvalFile": NET, **OUR_OPTS})
     t = wobble(SF18, None)
     if o and t:
         om = st.median(o) / our_scale        # our cp is raw internal
@@ -189,6 +192,10 @@ def main() -> None:
     ap.add_argument("--our-scale", type=float, default=0.64)
     ap.add_argument("--stability", action="store_true",
                     help="iteration-to-iteration eval oscillation vs SF18")
+    ap.add_argument("--our-options", default="",
+                    help="K=V,K=V applied to ARCHON only -- lets a candidate "
+                    "be re-measured against the SAME forensics that diagnosed "
+                    "the defect, which is the point of having them")
     ap.add_argument("--static", action="store_true",
                     help="also compare raw NET output with no search")
     args = ap.parse_args()
@@ -205,12 +212,19 @@ def main() -> None:
             break
     print(f"{len(fens)} positions\n")
 
+    our_ov = {}
+    for tok in filter(None, (t.strip() for t in args.our_options.split(","))):
+        k, _, v = tok.partition("=")
+        our_ov[k.strip()] = int(v)
+    if our_ov:
+        print(f"ARCHON options: {our_ov}\n")
+
     depths = [int(d) for d in args.depths.split(",")] if args.depths else [args.depth]
 
     print(f"{'depth':>6}{'ARCHON nodes':>15}{'SF18 nodes':>13}{'width ratio':>13}"
           f"{'eval bias':>12}")
     for d in depths:
-        a = probe(ARCHON, fens, d, {"EvalFile": NET})
+        a = probe(ARCHON, fens, d, {"EvalFile": NET, **our_ov})
         s = probe(SF18, fens, d)
         an = [n for _, n in a if n]
         sn = [n for _, n in s if n]
@@ -224,6 +238,7 @@ def main() -> None:
               f"{ratio:>13.2f}{bias:>+12.2f}")
 
     if args.stability:
+        OUR_OPTS.update(our_ov)
         stability(fens, 6, 14, args.our_scale)
     if args.static:
         static_compare(fens, args.our_scale)
