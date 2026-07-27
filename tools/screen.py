@@ -43,6 +43,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import re
 import math
 import statistics
@@ -199,7 +200,20 @@ def main() -> None:
     tier_tables = json.load(open(args.oracle))["tiers"]
     keys = sorted(tier_tables, key=int)
     if args.limit:
-        tier_tables = {t: dict(list(tbl.items())[: args.limit])
+        # RANDOM sample, not a prefix. The corpus is ordered, and taking the
+        # first N systematically over-weights hard positions: the control's
+        # absolute mean loss fell monotonically with the prefix length --
+        # 19.50 / 19.10 / 18.51 / 17.81 / 17.29 cp at n = 250 / 1500 / 2000 /
+        # 4000 / 9992. That is BIAS, not noise, and it inflated every
+        # exploratory delta measured before 2026-07-27, because effects are
+        # larger on harder positions.
+        #
+        # Fixed seed so an exploratory run and its full-corpus follow-up
+        # remain comparable, and so two arms always see identical positions.
+        rng = random.Random(20260727)
+        keys0 = sorted(tier_tables[sorted(tier_tables, key=int)[0]])
+        pick = set(rng.sample(keys0, min(args.limit, len(keys0))))
+        tier_tables = {t: {f: mv for f, mv in tbl.items() if f in pick}
                        for t, tbl in tier_tables.items()}
     fens = list(tier_tables[keys[0]])
 

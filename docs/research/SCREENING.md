@@ -345,3 +345,51 @@ Caveats that travel with the conversion:
 - Full-corpus sem is 0.25 cp ≈ **19 Elo**. So a full-corpus arm is only
   resolvable to about ±19 Elo, and exploratory arms not at all. Nothing here
   substitutes for an SPRT; the conversion tells you what is *worth* an SPRT.
+
+---
+
+## 12. Prefix subsampling was BIASED — three instrument errors in one day
+
+`--limit N` took the first N positions of the corpus, not a random sample.
+The corpus is ordered, and the control's absolute mean loss fell
+monotonically with the prefix length:
+
+| n | 250 | 800 | 1500 | 2000 | 4000 | 9992 |
+|---|---|---|---|---|---|---|
+| control cp | 19.50 | 19.50 | 19.10 | 18.51 | 17.81 | **17.29** |
+
+Small prefixes over-weight **hard** positions, where effects are larger. That
+is **bias, not noise** — it inflated every exploratory delta rather than
+merely scattering them, and no amount of re-running would have revealed it.
+
+Fixed: `--limit` now draws a random sample under a fixed seed
+(`Random(20260727)`), so exploratory runs are unbiased and remain comparable
+with each other and with the full corpus. Verified — the n=1500 control now
+reads 16.72/17.12/17.52 against the full corpus's 17.29/17.28/17.74, instead
+of running ~2 cp high.
+
+### What it cost
+
+Two headline results died when re-measured at full power:
+
+| arm | biased exploratory | full corpus | verdict |
+|---|---|---|---|
+| `IIR_MIN_DEPTH 8` | −0.86 / −1.50 / −0.99 | **+0.20 / +0.05 / +0.29** | refuted |
+| `RFP ×1.25` | −0.70 / −0.71 / −0.78 | **−0.10 / −0.07 / +0.06** | refuted |
+| `razor off` | −0.63 / −0.52 / −0.36, "−12.7% nodes" | **−0.13 / +0.07 / +0.09, +0.1% nodes** | neutral |
+
+`IIR 8` was the strongest arm of the session at 2.3σ and it is gone. The
+razoring node figure came from a **50-position** bench (`wl50`); on 800
+positions the saving vanishes entirely.
+
+**The gate-class hypothesis (§10) must be considered unproven again** — its
+"6 of 7 correct predictions" were scored on prefix-biased samples. Re-run it
+before citing it.
+
+### The standing lesson
+
+Three separate instrument errors surfaced in one day: a censoring MultiPV
+oracle, unpaired standard errors, and prefix subsampling. Each one produced
+*confident, consistent, plausible* numbers. The only thing that caught any of
+them was **measuring the same claim a second way** — never reasoning harder
+about the first measurement.
