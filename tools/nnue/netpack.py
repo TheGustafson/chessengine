@@ -196,6 +196,14 @@ D40_HALFKA_ONLY = os.environ.get("D40_HALFKA_ONLY", "0") not in ("0", "", "false
 # so every scale-check/gate tool keeps working unchanged).
 D40_POLICY = os.environ.get("D40_POLICY", "0") not in ("0", "", "false", "False")
 POLICY_VOCAB = 1858
+# The policy head projects from its OWN bottleneck width, which is only equal
+# to L2 by coincidence in the archs shipped so far (d48w/d48x both have
+# pol_proj == l2 == 16). arch-hka2048 is the first with l2=32 and pol_proj=16,
+# and assuming L2 here made its checkpoints unpackable under EVERY value of
+# D40_POLICY: the stream over- or under-shot by exactly POLICY_VOCAB*|l2-dim|
+# bytes and the PSQ1 trailer split then failed with "unrecognized D40 trailing
+# payload". Defaults to L2, so every existing invocation is unchanged.
+D40_POL_DIM = int(os.environ.get("D40_POL_DIM", str(D40_L2)))
 D40_FT_QUANT = 255
 D40_THREAT_QUANT = 64
 D40_L1_QUANT = 64
@@ -276,7 +284,7 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
 
     # Byte offsets
     # D47 policy head (mid-stream, between threats and l1w when D40_POLICY=1)
-    n_polw = POLICY_VOCAB * D40_L2 if D40_POLICY else 0
+    n_polw = POLICY_VOCAB * D40_POL_DIM if D40_POLICY else 0
     n_polb = POLICY_VOCAB if D40_POLICY else 0
     need_bytes = (n_pst_w + n_pst_b) * 2 + n_threat_w + n_polw + n_l1w + (n_polb + n_l1b + n_l2w + n_l2b + n_l3w + n_l3b) * 4
     if len(raw) < need_bytes:
@@ -327,7 +335,7 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     # then polmoveb f32 (POLICY_VOCAB) — trainer fmt order places them here.
     pol_w = pol_b = None
     if D40_POLICY:
-        pol_w = np.frombuffer(raw, dtype="<i1", count=n_polw, offset=off).reshape(POLICY_VOCAB, D40_L2)
+        pol_w = np.frombuffer(raw, dtype="<i1", count=n_polw, offset=off).reshape(POLICY_VOCAB, D40_POL_DIM)
         off += n_polw
         pol_b = np.frombuffer(raw, dtype="<f4", count=n_polb, offset=off)
         off += n_polb * 4
@@ -454,10 +462,10 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
         with open(cpol_path, "wb") as f:
             f.write(b"CPL1")
             f.write(POLICY_VOCAB.to_bytes(4, "little"))
-            f.write(int(D40_L2).to_bytes(4, "little"))
+            f.write(int(D40_POL_DIM).to_bytes(4, "little"))
             f.write(pol_w.astype("<i1").tobytes())
             f.write(pol_b.astype("<f4").tobytes())
-        print(f"netpack-d40: wrote {cpol_path} ({12 + pol_w.size + pol_b.size*4:,} bytes, vocab {POLICY_VOCAB} x {D40_L2})")
+        print(f"netpack-d40: wrote {cpol_path} ({12 + pol_w.size + pol_b.size*4:,} bytes, vocab {POLICY_VOCAB} x {D40_POL_DIM})")
     threats_desc = "OFF (HalfKA-only)" if D40_HALFKA_ONLY else THREAT_DIMS
     print(f"  arch        halfka={HALFKA_DIMS} threats={threats_desc} acc={acc}")
     print(f"              L2={D40_L2} L3={D40_L3} buckets={D40_BUCKETS}")

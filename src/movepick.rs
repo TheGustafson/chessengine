@@ -522,6 +522,14 @@ impl MovePicker {
     /// captures region, and full-sort it (design/09 §3.6 item 2). Generation
     /// uses a stack [`MoveList`]; the scored moves are copied into the owned
     /// buffer — no heap allocation.
+    // OUTLINED (perf-impl-1). These three run at most once per stage per node;
+    // `select` and the stage machine around them run per emitted move. Inlined,
+    // they fused into one 2,665-instruction `next_move` whose register pressure
+    // cost ~1.5 G spill/reload loads over a 5 M-node bench. Splitting them out
+    // is pure code layout -- node counts are bit-identical -- and buys 6.2%
+    // fewer instructions and 8.4% fewer L1d loads. See
+    // docs/research/perf-impl-1-*.md.
+    #[inline(never)]
     fn init_captures(&mut self, board: &Board, hist: &Histories) {
         let mut list = MoveList::new();
         generate_captures(board, &mut list);
@@ -579,6 +587,7 @@ impl MovePicker {
     /// butterfly/low-ply planes, and the threat sets are resolved **once**
     /// here, not per move (design/09 §6): each move then costs a handful of
     /// array reads.
+    #[inline(never)]
     fn init_quiets(&mut self, board: &Board, hist: &Histories) {
         let mut list = MoveList::new();
         generate_quiets(board, &mut list);
@@ -734,6 +743,7 @@ impl MovePicker {
     /// Generate + score check evasions into `buf[0..n]`, full-sort, and set the
     /// emission window over the whole region (design/09 §3.6/§3.7). Capturing
     /// evasions are lifted above every quiet evasion by [`EVASION_CAPTURE_BONUS`].
+    #[inline(never)]
     fn init_evasions(&mut self, board: &Board, hist: &Histories) {
         let mut list = MoveList::new();
         generate_evasions(board, &mut list);

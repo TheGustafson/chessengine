@@ -39,6 +39,7 @@ if [ "${CHECK_FEATURE_MATRIX:-1}" != "0" ]; then
     for feats in \
         "sota" \
         "sota,arch-d47v" \
+        "sota,arch-d48w" \
         "sota,arch-d48x" \
         "sota,arch-hka2048" \
         "sota,tune" \

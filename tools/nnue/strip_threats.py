@@ -76,8 +76,21 @@ def main() -> int:
     out += b"PSQ1"
     out += struct.pack("<II", nb, HALFKA_DIMS)     # rewritten row count
     out += raw[psq_body:psq_body + keep_psq]       # HalfKA PSQT rows only
+    # ...and EVERYTHING AFTER the PSQ1 body, verbatim. This used to stop here,
+    # silently dropping the optional SKP1 output-skip section that follows —
+    # and because SKP1 is optional in both netpack and the engine loader
+    # (sota_loader.rs), nothing downstream complained. Any full-vs-stripped
+    # speed comparison built with the old version therefore differed by the
+    # skip lane as well as by the threat tensors, biasing the measured threat
+    # cost upward. The docstring's "netpack re-validates, so a mistake here
+    # fails loudly there" was never true for this particular mistake.
+    tail = raw[psq_body + rows * nb * 4:]
+    out += tail
 
     Path(args.dst).write_bytes(out)
+    if tail:
+        print(f"carried {len(tail)} trailing bytes through "
+              f"(section {tail[:4].decode('ascii', 'replace')!r})")
     print(f"stripped {threat/1e6:.1f}MB of threat weights and "
           f"{(rows - HALFKA_DIMS) * nb * 4 / 1e6:.1f}MB of threat PSQT rows")
     print(f"{args.src}: {len(raw)} bytes -> {args.dst}: {len(out)} bytes")

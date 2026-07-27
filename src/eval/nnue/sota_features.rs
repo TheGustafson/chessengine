@@ -182,6 +182,32 @@ pub(crate) fn threat_pair_kept(attacker: PieceType, victim: PieceType) -> bool {
     MAP[attacker as usize][victim as usize] >= 0
 }
 
+/// [`threat_pair_kept`] as a per-attacker **bit set over victim types**, so the
+/// incremental observer can turn "which victims count?" into a bitboard mask
+/// instead of a per-square predicate call — the same shape
+/// [`for_each_threat`]'s `pawn_targets` / `minor_slider_targets` /
+/// `queen_targets` already use on the from-scratch side.
+///
+/// Built from [`MAP`] in a `const` block (Rust's `const` blocks allow `while`
+/// but not `for`, hence the index loops), so it is materialised at compile time
+/// and cannot drift from the predicate; `kept_victim_masks_match_predicate`
+/// pins the two together for all 36 pairs.
+pub(crate) const KEPT_VICTIMS: [u8; PieceType::COUNT] = {
+    let mut out = [0u8; PieceType::COUNT];
+    let mut att = 0;
+    while att < PieceType::COUNT {
+        let mut vic = 0;
+        while vic < PieceType::COUNT {
+            if MAP[att][vic] >= 0 {
+                out[att] |= 1 << vic;
+            }
+            vic += 1;
+        }
+        att += 1;
+    }
+    out
+};
+
 /// FullThreats square orientation — the **opposite polarity** to HalfKA:
 /// `0` for a king on files a-d, `7` for files e-h (design/11 §12.1, the
 /// "a1/h1 polarity" fidelity trap: HalfKA's OrientTBL is a1→SQ_H1, threats' is
@@ -864,5 +890,36 @@ mod tests {
             &super::super::sota_head::ZERO_PSQT,
         );
         assert!(cp.abs() < 1_000_000, "finite centipawns");
+    }
+
+    /// The incremental observer filters victims with [`KEPT_VICTIMS`] where the
+    /// fold's `DeltaBuf::push` filters them with [`threat_pair_kept`]. If those
+    /// two ever disagreed, the incremental accumulator would silently keep (or
+    /// drop) a relation the from-scratch refresh does not — the exact class of
+    /// bug the replay oracle exists to catch, caught here at compile-time cost
+    /// instead. Both derive from `MAP`; this pins that they still do, for all
+    /// 36 ordered type pairs.
+    #[test]
+    fn kept_victim_masks_match_predicate() {
+        for attacker in PieceType::ALL {
+            for victim in PieceType::ALL {
+                let by_mask = KEPT_VICTIMS[attacker as usize] & (1 << victim as u8) != 0;
+                assert_eq!(
+                    by_mask,
+                    threat_pair_kept(attacker, victim),
+                    "KEPT_VICTIMS disagrees with threat_pair_kept for {attacker:?} -> {victim:?}"
+                );
+            }
+        }
+    }
+
+    /// `KEPT_VICTIMS` is indexed by `PieceType as usize`, and so is `MAP`; the
+    /// observer's per-type loops walk `PieceType::ALL`. All three only line up
+    /// if `ALL` is in discriminant order.
+    #[test]
+    fn piece_type_all_is_in_discriminant_order() {
+        for (i, pt) in PieceType::ALL.iter().enumerate() {
+            assert_eq!(i, *pt as usize, "PieceType::ALL[{i}] is {pt:?}");
+        }
     }
 }

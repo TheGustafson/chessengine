@@ -29,6 +29,26 @@ use crate::types::Color;
 /// `policy_vocab`). "Go big first — learnability before NPS" is the pinned
 /// research posture; the 768/L2=16 incumbent remains the fallback ship
 /// (gate old nets with engines/bin/archon-sota-native.prev-era binaries).
+// The arch-* features are MUTUALLY EXCLUSIVE: each pins a different (L1, L2,
+// L3) triple and a CENN is only loadable by a build whose dims match it.
+// Combining two used to fail with `E0428: the name L1 is defined multiple
+// times`, which is true but says nothing about why. Note the L2/L3 cfg arms
+// below deliberately SHARE (d47v with hka2048, d48w with d48x), so a guard
+// keyed on those alone would not catch every pair.
+#[cfg(any(
+    all(feature = "arch-d47v", feature = "arch-d48w"),
+    all(feature = "arch-d47v", feature = "arch-d48x"),
+    all(feature = "arch-d47v", feature = "arch-hka2048"),
+    all(feature = "arch-d48w", feature = "arch-d48x"),
+    all(feature = "arch-d48w", feature = "arch-hka2048"),
+    all(feature = "arch-d48x", feature = "arch-hka2048"),
+))]
+compile_error!(
+    "the arch-* cargo features are mutually exclusive: each sets a different \
+     L1/L2/L3 triple and a .cenn only loads into a build whose dims match. \
+     Pick exactly one (or none, for the default 1280/128/32)."
+);
+
 #[cfg(not(any(
     feature = "arch-d47v",
     feature = "arch-d48w",
@@ -53,10 +73,17 @@ pub const L1: usize = 1536;
 /// the trunk transfer exact (no net2net expansion) and buys the speed back.
 #[cfg(feature = "arch-d48x")]
 pub const L1: usize = 1280;
-/// HalfKA-only probe (2026-07-27, UNRATIFIED — not a pinned decision). The threat rows
-/// cost 1.78x engine speed at 1280 and 1.40x at 768 (measured), and losing
-/// them makes each unit of accumulator width 5.7x cheaper — so this arch
-/// spends the recovered budget on width instead. 2048/32/32 + skip.
+/// HalfKA-only probe (2026-07-27, UNRATIFIED — not a pinned decision).
+/// Dropping the threat rows buys **+25% instructions (768/wl50) to +39%
+/// (1280/middlegame)**, i.e. roughly 45–70 Elo of speed at the house
+/// 120/doubling — perf study 7 §5, deterministic `instructions:u`, 3/3 rounds.
+/// The earlier "1.78× at 1280 / 1.40× at 768" figure this comment used to
+/// quote was REFUTED by that study the same morning (a 2-position
+/// movetime-adjacent instrument on a loaded box, reading ~0.1–0.15 high on
+/// ratio, against a stripped net that also searched a different tree); the
+/// derived "width becomes 5.7× cheaper" multiplier came from the same session
+/// and does not survive either, so the choice of 2048 needs re-deriving from
+/// the study's grid before this arch is launched. 2048/32/32 + skip.
 #[cfg(feature = "arch-hka2048")]
 pub const L1: usize = 2048;
 /// L1→L2 output width (the D47 shared bottleneck).
