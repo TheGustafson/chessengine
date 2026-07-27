@@ -687,6 +687,39 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## Everything below it is detail; the ~12:4x checkpoint further down is
 ## now HISTORY (it still describes D48W at 1536, which no longer exists).
 
+**★ THE SHAPE OF D48X'S TRAJECTORY IS ITSELF A FINDING, AND IT LANDS ON
+D49'S DESIGN (07:1x).** Line the games up against the alpha schedule:
+
+| sb | fn vs V | alpha | phase |
+|---|---|---|---|
+| 30 | **−27.85** | 0.70 | teacher-dominated — **the best point of the run** |
+| 60 | −74.06 | 0.00 | handover complete |
+| 90 | −56.07 | 0 | labels only |
+| 120 | −85.04 | 0 | labels only |
+| 150 | −56.07 | 0 | labels only |
+
+**The net was at its best while the teacher was driving, and got worse
+when the labels took over.** Two readings, and they have different
+consequences:
+(a) the thin 16-wide head could never reproduce a teacher that is +35
+over V — even at peak imitation it sat 63 below it — and label training
+then failed to rescue it; or
+(b) for this arch the label signal is genuinely worse than the
+teacher's, so decaying alpha to 0 threw away the better target.
+
+**Either way it is an argument against the alpha→0 shape**, and **D49's
+staged config currently repeats it** (`[[0,0.7],[20,0.7],[60,0.0]]` —
+the same curve, reached faster). Flagging before launch rather than
+after: consider holding alpha at a floor (say 0.2–0.3) instead of
+decaying to zero, or extending the plateau well past sb60.
+
+One caveat that cuts against over-applying this to D49: D48X's teacher
+shares its feature set, whereas **D49's teacher HAS threats and its
+student will not**, so the student cannot converge on the teacher no
+matter how long alpha is held. Distillation there transfers useful
+signal but has a floor built in. That is a reason to test the schedule,
+not a reason to assume the same answer.
+
 **⚠⚠ sb150 CORRECTS "TRENDING DOWN" TOO — the run is FLAT at ~−57, not
 collapsing (07:1x).** Fifth point: **−56.07 ± 41.48**, better than
 sb120's −85 and equal to sb90. Panels improved on every axis
