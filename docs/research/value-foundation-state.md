@@ -690,9 +690,31 @@ current evidence]; RED_* unchanged pending shapeA2.
 **RUNNING RIGHT NOW (five systemd units, all survive a session compact):**
 - `archon-d48x` — the gen-2 training run, 380sb at 1280/16/32. **NOT
   D48W/1536**: the user's pre-registered NPS gate fired and the width
-  dropped to 1280 with the recipe untouched. ~1.67 min/sb after the
-  memory fix, ETA **~12:00 today**. Logs `/tmp/d48x_train.log`,
-  `/tmp/d48x_panels.log`; config `tools/nnue/runs/d48x_1280.json`.
+  dropped to 1280 with the recipe untouched. **2.29 min/sb, ETA ~15:50
+  today** (see the throughput correction below). Logs
+  `/tmp/d48x_train.log`, `/tmp/d48x_panels.log`; config
+  `tools/nnue/runs/d48x_1280.json`.
+
+**THROUGHPUT CORRECTION (03:2x) — I over-claimed the memory fix.** I
+reported "1.67 min/sb, +30%, ETA 12:00" off a 2-superbatch window,
+which is far too short to resolve anything. Checkpoint mtimes give
+exact 10-superbatch intervals and tell the real story:
+
+| interval | min/sb | context |
+|---|---|---|
+| sb10→sb20 | 2.41 | throttled |
+| sb20→sb30 | 2.79 | throttled |
+| sb30→sb40 | 2.63 | memory fix landed mid-interval (02:20) |
+| sb40→sb50 | **2.29** | post-fix, no gate |
+
+So the memory fix is worth **~12%** (≈2.6 → 2.29), not 30%, and the
+honest ETA is **~15:50**, not 12:00. The fix is still real and worth
+having — 0 throttle events, pressure 28.69 → 0.00, and the sb50
+checkpoint save took **22s against sb30's 9 minutes** — but the
+throughput gain is smaller than the 29% memory-stall figure implied,
+because the trainer is GPU-bound at ~96% utilisation and CPU stalls
+partly hide behind GPU work. **Lesson: measure superbatch rate from
+checkpoint mtimes over ≥10sb, never from a short count window.**
 - `archon-d48x-watch` — every-30sb instruments vs a FROZEN V yardstick.
 - `archon-d48x-prune` — bounds checkpoints to ~15GB of the 66GB free.
 - `archon-spsa-stageA` — 12-param SPSA on V, ETA ~06:45.
