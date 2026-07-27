@@ -769,6 +769,22 @@ warm → quant.bin exporter so an un-launched arch can be packed and
 speed-tested BEFORE it costs GPU-days. That tool is what let the gate
 actually fire instead of being waived.
 
+**THE PLAN'S "28.5B PRESENTATIONS" WAS 3× TOO HIGH — 380sb IS ACTUALLY
+9.5B (user decision owed).** `batch_size 8192 × batches_per_superbatch
+3040` (the spec default; the config never overrides it) = **24.9M
+positions per superbatch**, so 380sb = **9.46B**, not 28.5B (28.5B
+would need bps≈9155). Measured throughput agrees and cross-validates
+the arithmetic: 24.9M / 181k pos/s = 2.29 min/sb, against 9 superbatches
+in the first 21 minutes = 2.3 measured. **So the run finishes in ~14.6h
+(≈15:30 today), not the 2.2-2.5 days the plan projected.** 9.46B is
+still a big run by our standards — the winning official-binpack nets
+trained on 3-9B presentations, so this sits at the top of the proven
+band, and it is ~3× any stage-2 run we have done. But the user
+ratified "380sb" believing it was 28.5B, and the box now frees up a
+day earlier than planned. Options when it lands: accept 9.5B; or add a
+second annealed leg (the lr_ramp anneals to 0 AT sb380, so extending
+is a new leg, not a resume). **Flagged, not decided.**
+
 **A CONFOUND CAUGHT BEFORE IT COST US A DECISION (01:4x):** the
 every-30sb watcher was going to play the candidate against
 `engines/bin/archon-d47v` — the *pinned* V binary, built 07-26 18:03,
