@@ -809,8 +809,47 @@ L2=16 at 1280). Watch the SHARP row at sb90 and sb120:
   kill signal, and the fix would be a wider head (a new run), not more
   time on this one.
 
-**RECOMMENDATION (the user's call, per "no automated stops"): let it
-reach sb90, then decide on three points.** Two points cannot separate
+**★★★ sb90 IS IN, AND THE PRE-REGISTERED KILL SIGNAL HAS FIRED.
+RECOMMENDATION: STOP D48X. (User's call — not actioned.) ★★★**
+
+fn vs V: sb30 −27.85±39.37, sb60 −74.06±44.29, **sb90 −56.07±43.82**.
+Pooled **−50.7 ± 24.4 fn, with no upward trend across 60 superbatches.**
+To ship over V it must gain **+79 fn from here.**
+
+The pre-registration named SHARP as the discriminator: climbing toward
+V's 0.7926 means undertrained, flat while other strata move means
+capacity. Three points:
+
+| stratum | sb30 | sb60 | sb90 | verdict |
+|---|---|---|---|---|
+| SHARP nc | 0.7702 | 0.7593 | **0.7604** | FLAT |
+| QUIET nc | 0.8861 | 0.8811 | **0.8787** | slightly DOWN |
+| endgame ≤8pc | 0.7039 | 0.7563 | **0.7632** | climbing |
+
+**The net is redistributing capacity between strata, not gaining any.**
+That is the capacity branch, not the undertrained branch.
+
+The heldout says the same thing independently and more sharply — it
+**plateaued at sb60**: EMA 0.007088 (sb60) → 0.007134 → 0.007138 →
+0.007119 (sb90). Thirty superbatches of real-label training at LR
+≈0.0009, still near maximum, bought nothing. Three instruments —
+games, heldout, panels — agree.
+
+**Why I am recommending rather than acting.** The schedule ruling was
+explicit ("one run… I don't wana be starting and stopping things", "No
+automated stops. It is a real judgement call"). Stopping a 380sb run
+the user designed and ratified is theirs to call. It is also cheap to
+reverse if wanted — `pump_train --resume` from the sb90 checkpoint, at
+the cost of a fresh Adam transient.
+
+**What the GPU would do instead:** D49 HalfKA-only at 2048, expected
+**~+50 Elo vs V** (measured speed, ladder width, minus a bounded eval
+cost) against D48X's current −51 with no trend. That is the trade to
+weigh. Everything for D49 is staged; the remaining steps are one 3-line
+engine feature, a Pallas GPU smoke test, and the launch.
+
+**(superseded) earlier recommendation: let it reach sb90, then decide on
+three points.** Two points cannot separate
 noise from trend at these error bars; three can. If sb90 is still at or
 below −50, the run will not close +76 in the remaining budget and the
 GPU is better spent on the threat experiment (finding 1 below,
