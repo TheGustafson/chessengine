@@ -792,6 +792,37 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-27 ~10:0x ★ PHASE-1 fn PENTAGON COMPLETE (exp-0149..0153) —
+## S-POST = SF16 PARITY + FAMILY-BEST EVALUATOR; 4-PHASE CAMPAIGN LIVE
+
+**User redesigned the endgame into a 4-phase campaign
+(tools/nnue/runs/et_pord_campaign.md):** P1 fn ×5 parallel (DONE) → P2
+ET ×5 series 10+0.1 T4 100g PGO binaries (RUNNING, unit
+archon-et-phase2, /tmp/et_phase2.log, ~3-4h) → P3 fn ×5 P-ORD
+CPL_ORD_W=10 (sidecars STAGED as /tmp/*.cpol.staged — activate by mv;
+S-pre gets the ORIGINAL 27.2 head beside its byte-identical .cenn) →
+P4 ET ×5 P-ORD. Then STOP + full cross-phase report.
+
+**P1 table (fn50k, 200g, pinned binaries):** V−Spost **−35**;
+Spost−Spre **0.0** (DEAD EVEN); Spost−SF16 **0.0 (PARITY)**; V−SF16
+−33 (exp-0147); V−SF18 −133; Spost−SF18 −164. SF16 triangle closes
+within 2 Elo; SF18 triangle tension +31-vs-−35 (~1.6σ, noted).
+
+**SEQUENTIAL-DAMAGE VERDICT (user hypothesis):** value: legs made S
+STRICTLY BETTER on instruments — family bests on EVERY stratum (quiet
+0.9079 / sharp 0.8177 / endgame≤8 0.8194, all above sb230) — and play
+dead-even (gains under 200g resolution). Policy: 27.2 → 23.7 top-1
+(−3.5pp; V lost 5pp over its longer squeeze) — INERT in play until
+P-ORD (P3/P4 price it). NB the S panel initially read top-1 0/401 +
+empty sweeps: PANEL_ENGINE defaulted to the 768 binary — the ev-cache
+POISONED with empty vectors (2-byte ev-*.json); purged + re-swept.
+ALWAYS set PANEL_ENGINE for non-768 packs.
+
+**S-pre policy pack note:** repacking sb230 from ema-QUANT drifts
+values ±30cp non-uniformly vs the durable rawframe pack (different
+source rounding); netpack REJECTS ema-raw (trailing payload). Hence
+sidecar-beside-original-cenn is the ONLY clean S-pre P-ORD setup.
+
 ## 2026-07-27 ~09:3x REMATCHES FINAL + S0 FULLY COMPLETE (incl. OPTIMISM)
 ## + PERF FREEBIES & PGO STANDARD LANDED + HARD-PAUSE SEQUENCE SET
 
