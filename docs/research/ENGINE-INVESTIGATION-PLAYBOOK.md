@@ -110,9 +110,14 @@ is automatically fair. Nothing lands without an SPRT.
 - **Paired deltas.** Control and arm see identical positions; the paired
   difference cancels position difficulty. Reporting unpaired means is how
   noise gets read as signal.
-- **Power.** Paired sem on the ~10k corpus: ~2.0 cp at 250 positions, ~1.1 at
-  800, ~0.8 at 1500, ~0.3 at the full set. Effects worth chasing are ~1 cp,
-  so **anything under ~3000 positions ranks directions and settles nothing.**
+- **Power.** The sem figures quoted in older docs (~2.0 cp at 250 positions,
+  ~0.3 at the full set) were measured on a **PSQT** engine whose mean loss was
+  ~17.7 cp. With the net live the control's mean loss is ~4.6 cp, top-1
+  agreement ~66%, and the blunder rate ~0.1% — a different regime, with
+  smaller absolute effects **and** smaller variance. **Re-measure the power
+  curve before trusting any sample size**: run one arm at several `--limit`
+  values and watch the paired sem. The rule that survives is structural, not
+  numeric — exploratory runs rank directions, full-corpus runs settle them.
 - **Regression to the mean is severe.** Exploratory arms routinely shrink 2–5×
   at full corpus, and several flip sign. Never promote on an exploratory run.
 - **Multiple comparisons.** After ~30 arms the best-looking one is selected on
