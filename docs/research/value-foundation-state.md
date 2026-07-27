@@ -701,14 +701,20 @@ with value hugely better): MTL dropped for future trunks; teachers =
 warm-up accelerant only (ruled). GPU CHAIN (unit **archon-chain-v5**,
 log /tmp/chain_v2.log; anneal-era restructure, see ~07:2x entry):
 [V-A4 anneal running] → V-B2 (20sb) → V-B3 (20sb anneal) → S-LegA2
-(cut @ sb10) → S-LegA3 (12sb anneal @ 4e-5) → S-LegB (20sb) → S-LegB2
-(20sb anneal); then FULL rematches (paused partials kept), the squeezed
-V-vs-S FACE-OFF, then **D48W** (BUILT+SMOKED: 1536/16/32+skip,
-accumulator-branched pol16 + dis64 PURE-PROBE heads, expansion warm
-assembled, config d48w_1536.json; **recipe RESOLVED 2026-07-26 ~21:2x:
-MTL-FIRST by user ruling — the accumulator-branch co-existence
-experiment; pre-registered contention tripwire in the config's
-_recipe_ruling, V-playbook squeeze legs as fallback**) → three-way. **PERF: +55-60% NPS in two days** (S+S2 skip lane
+(cut @ sb10) → S-LegA3 (12sb anneal @ 4e-5) → S-LegB (10sb, no anneal);
+then S pair pack/panels → **V-vs-S FACE-OFF on the PINNED binaries
+(archon-d47v / archon-d47 — net-lineage comparability; none of the S0 or
+perf commits touch them) → HARD PAUSE (user ruling 2026-07-26 ~22:1x:
+"pause the queue after the V vs S face off … I will want to suggest a
+different testing plan after that, and we can decide exactly what that
+is after we see the results … and we have a clean box for some equal
+time experiments"). NOTHING launches after the face-off** — no D48W, no
+further matches; the box drains to clean. D48W stays staged
+(BUILT+SMOKED: 1536/16/32+skip, accumulator-branched pol16 + dis64
+PURE-PROBE heads, expansion warm assembled, config d48w_1536.json;
+recipe RESOLVED: MTL-FIRST with the pre-registered contention tripwire
+in _recipe_ruling, V-playbook legs as fallback) awaiting the post-pause
+plan. **PERF: +55-60% NPS in two days** (S+S2 skip lane
 program, then study-2 A/B/C/D/E all landed with proofs; F′ flat-
 reverted; sha oracle 0615d75e…c92eb still valid, bench 701605, D's
 contract: |threat lane| ≤ 8191 debug-asserted). Perf study 3
