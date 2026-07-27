@@ -232,15 +232,39 @@ then write a distilled markdown note in `stockfish_reference/` (tracked; index
 in `NOTES.md`) so the insight isn't lost. **Never copy Stockfish code** — it's
 GPLv3; take ideas, reimplement idiomatically in Rust.
 
-**The clone is checked out at `sf_18` (moved there 2026-07-27, user
-instruction, "to prevent mistakes").** It sat at `sf_16` before that, so a
-bare grep silently returned SF16 constants — which bit me once already:
-razoring is `alpha - 456 - 252·d²` in SF16 but `alpha - 485 - 281·d²` in SF18,
-and `futility_margin` went from `140·(d − improving)` to a
-`futilityMult = 76 − 23·!ttHit` form. **Any distilled note written before
-2026-07-27 was read against SF16** — check the era before quoting one as
-current. Read a specific version explicitly with
-`git show sf_16:src/search.cpp` rather than relying on the checkout.
+**For CONSTANTS, the reference is `eca43a97` — never the checkout, and never
+a release tag.** Our tunables were transcribed from Stockfish master at
+`eca43a97` (2026-07-06), which is **223 commits NEWER than the `sf_18` tag**
+(2026-01-31). Verified 2026-07-27: a full screen of all 260 tunables found
+every value ≥20 present at eca43a97 except two known ARCHON originals, and
+in-place spot checks (razoring, both ProbCut betas, the whole movepick
+scoring family) match exactly. **The transcription is faithful; there is no
+drift Elo to harvest.**
+
+Razoring is the canary, and it moved in BOTH directions:
+
+| revision | razoring margin |
+|---|---|
+| `sf_16` | `alpha − 456 − 252·d²` |
+| `sf_18` (tag) | `alpha − 485 − 281·d²` |
+| **`eca43a97` (our source)** | **`alpha − 465 − 300·d²`** ← what ARCHON ships |
+
+So reading a release tag for a parameter comparison is the SAME mistake as
+the old `sf_16` checkout, just in the other direction: the clone sat at
+`sf_16` until 2026-07-27 (bare greps silently returned SF16 constants), and
+it now sits at `sf_18`, which is *older* than our source. On 2026-07-27 this
+made the frame study report "razor 465 vs 485" as a deviation when 465 is an
+exact match to our real reference. **Read the reference explicitly:**
+`git -C stockfish_reference/Stockfish show eca43a97:src/search.cpp`.
+
+`python3 tools/spsa/param_provenance.py` checks all of this — reference
+canaries, the transcription screen, and SPSA campaign coverage (121 of 260
+tunables are in no campaign) — and exits non-zero on a mismatch or a stale
+campaign entry. Run it before quoting an SF constant as "ours" or "theirs".
+
+**Any distilled note written before 2026-07-27 was read against SF16** —
+check the era before quoting one as current. Shape/mechanism questions ("does
+SF do X") are fine against the checkout; only VALUES need eca43a97.
 
 `reckless_reference/Reckless/` similarly holds a clone of Reckless (a top-2
 Rust engine, ~3833 SPCC; **AGPLv3**, gitignored). Its distilled study notes
