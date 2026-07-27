@@ -290,3 +290,47 @@ be too inert to move either way rather than a counterexample.
 **Cost-effectiveness is now the composing rule.** Rank by cp gained per node
 spent, not by cp alone: IIR and ProbCut and capture futility are nearly free,
 LMR reduction is expensive, TT cutoff slack is expensive for what it gives.
+
+---
+
+## 11. Converting cp loss to Elo — and why it changes the ranking
+
+A cp delta means nothing until it is priced against what it costs. Measured
+on this corpus (control, deepest oracle tier, 2500 positions):
+
+| candidate budget | mean cp loss | Δ per doubling |
+|---|---|---|
+| 12.5k | 23.19 | — |
+| 25k | 20.79 | −2.40 |
+| 50k | 19.07 | −1.72 |
+| 100k | 17.25 | −1.82 |
+| 200k | 16.03 | −1.22 |
+
+Over 50k→200k that is **−1.52 cp per doubling**. Our measured strength gain
+is **~120 Elo per doubling** (exp-0154), so
+
+> **1 cp ≈ 79 Elo**, and a node-count change of `f` is worth
+> `−log2(1+f) × 120` Elo at equal time.
+
+Both halves must be counted, because they routinely cancel:
+
+| arm | quality | speed | net |
+|---|---|---|---|
+| `RED_TABLE_NUM 2700` | +22.9 | −20.2 | **+2.7** |
+| `RFP ×1.25` | +3.2 | −2.7 | +0.4 |
+| **`all5`** | +7.9 | **+17.1** | **+25.0** |
+
+**The best-confirmed cp arm is a wash.** `RED2700` buys real quality and pays
+for all of it in nodes. `all5` wins on being 9.4% *cheaper* while roughly
+cp-neutral. That reverses the search: look for changes that are
+cp-neutral-or-better **and** cheaper, not quality bought with nodes.
+
+Caveats that travel with the conversion:
+
+- It assumes a cp gain from a *parameter change* is worth the same Elo as a
+  cp gain from *more nodes*. Defensible first-order, unproven.
+- The curve is concave (−2.40 → −1.22 cp per doubling), so at a game's ~1.3M
+  nodes the cp-per-doubling is smaller and Elo-per-cp correspondingly larger.
+- Full-corpus sem is 0.25 cp ≈ **19 Elo**. So a full-corpus arm is only
+  resolvable to about ±19 Elo, and exploratory arms not at all. Nothing here
+  substitutes for an SPRT; the conversion tells you what is *worth* an SPRT.
