@@ -142,6 +142,29 @@ def cp_loss(tier_tables: dict, fens: list[str], chosen: dict[str, str]):
     return per_tier, per_pos, top1
 
 
+def tail_stats(losses: dict[str, float]) -> tuple[float, float]:
+    """(blunder rate, p90 loss) for one arm at one tier.
+
+    The mean is almost entirely tail: the control's MEDIAN loss is ~1-2 cp
+    against a mean of ~17. So "mean cp loss" is really a blunder-weighted
+    statistic wearing a misleading name, and the tail deserves to be visible
+    rather than inferred.
+
+    It also matters differently in games. A blunder loses a game outright; a
+    string of 3 cp inaccuracies usually does not. Two configs with the same
+    mean are not equally good if one gets there via a fatter tail, and mean
+    alone cannot separate them.
+
+    100 cp is the blunder line -- roughly a pawn, i.e. large enough that no
+    amount of subsequent accuracy reliably recovers it.
+    """
+    v = list(losses.values())
+    if not v:
+        return float("nan"), float("nan")
+    blunders = sum(1 for x in v if x >= 100) / len(v)
+    return blunders, sorted(v)[int(0.90 * (len(v) - 1))]
+
+
 def paired(arm: dict[str, float], ctrl: dict[str, float]) -> tuple[float, float]:
     """(mean paired delta, its standard error) over positions both scored."""
     d = [arm[f] - ctrl[f] for f in arm if f in ctrl]
@@ -198,7 +221,7 @@ def main() -> None:
               f"for a verdict]\n")
     else:
         print(f"{len(fens)} positions, arms at {args.nodes} nodes\n")
-    hdr = f"{'arm':<20}" + "".join(f"{'cp@' + t[:-3] + 'k':>13}" for t in keys) + f"{'top1':>8}"
+    hdr = f"{'arm':<20}" + "".join(f"{'cp@' + t[:-3] + 'k':>13}" for t in keys) + f"{'top1':>8}{'blund':>8}{'p90':>7}"
     if not args.no_nodes:
         hdr += f"{'nodes':>10}"
     if not args.no_tactics:
@@ -245,7 +268,8 @@ def main() -> None:
             for t in keys:
                 d, se = paired(per_pos[t], ref_pos[t])
                 row += f"{d:>+7.2f}+-{se:<4.2f}"
-        row += f"{top1:>8.1%}"
+        blunder, p90 = tail_stats(per_pos[keys[-1]])
+        row += f"{top1:>8.1%}{blunder:>8.1%}{p90:>7.0f}"
         if not args.no_nodes:
             n = bench(args.depth, full)
             if ref_nodes is None:
@@ -262,6 +286,11 @@ def main() -> None:
                 row += f"{h - ref_tact:>+8}"
         print(row, flush=True)
 
+    print("\nblund = share of moves losing >=100 cp; p90 = 90th-percentile loss, "
+          "both at the\ndeepest tier. The mean is mostly tail (median loss is "
+          "~1-2 cp), and a blunder\nloses a game where small inaccuracies "
+          "usually do not -- so prefer an arm that\nimproves the mean WITHOUT "
+          "fattening the tail.")
     print("\ncp = mean centipawn loss vs SF18 labels; LOWER is better. Arm rows "
           "are PAIRED\ndeltas +- one standard error of the paired difference: "
           "|delta| < sem is noise.\nRequire the sign to hold across all three "
