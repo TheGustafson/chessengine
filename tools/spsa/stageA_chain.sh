@@ -37,17 +37,22 @@ else
   bash tools/spsa/verify_theta.sh
 fi
 
-# Stage A2 next rather than leaving the box idle. It is independent of stage
-# A's outcome — different parameters, started from the compiled defaults
-# either way — so it is safe to run before a human has judged A's margin.
-# A2 is the core LMR reduction shape, the larger Elo pool of the two.
-echo "════ $(date '+%F %H:%M') launching stage A2 (core LMR shape) ════"
+# c2-reduction next rather than leaving the box idle. It is independent of
+# stage A's outcome — different parameters, started from the compiled
+# defaults either way — so it is safe to run before a human has judged A's
+# margin, and the SF14->16 study calls the reduction bundle the biggest
+# single gainer pool we have. It is the EXISTING D45 campaign, not a new
+# one; r_end is passed at launch because the right value depends on the
+# iteration budget, not on the campaign (the library's 0.002 default is
+# sized for ~30k-iteration Fishtest runs and would return the start vector
+# in an overnight 2400).
+echo "════ $(date '+%F %H:%M') launching c2-reduction (LMR bundle) ════"
 NET=data/nnue/nets/screens/d47v-a4b2-cal400.cenn
 ENGINE=engines/bin/archon-d47v-tune-pgo
 rm -rf "$HOME/.cache/archon-spsa-stageA2"
-bash tools/spsa/run_spsa_dist.sh tools/spsa/campaigns/s2-stageA2.json \
-  "file://$HOME/.cache/archon-spsa-stageA2" "$ENGINE" "$NET" 4 2400 4 1 20000 0.4
-A2RUN=$(ls -dt tools/spsa/out/s2-stageA2-* 2>/dev/null | head -1)
+bash tools/spsa/run_spsa_dist.sh tools/spsa/campaigns/c2-reduction.json \
+  "file://$HOME/.cache/archon-spsa-stageA2" "$ENGINE" "$NET" 4 2400 4 1 20000 0.4 0.03
+A2RUN=$(ls -dt tools/spsa/out/c2-reduction-* 2>/dev/null | head -1)
 echo "════ $(date '+%F %H:%M') stage A2 running in $A2RUN ════"
 while [ ! -e "$A2RUN/theta_final.json" ]; do
   pgrep -f 'spsa_dis[t].py' >/dev/null || {

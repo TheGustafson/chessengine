@@ -34,6 +34,15 @@ NODES=${9:-20000}
 # poll is a stat(), so the defaults just add ~3s of dead time to every
 # iteration — at 8-game iterations that is a third of the wall clock.
 POLL=${10:-3.0}
+# Step size. This belongs at LAUNCH time, not in the campaign file, because
+# the right value depends on the ITERATION BUDGET rather than on which
+# parameters you are tuning: total movement as a fraction of a parameter's
+# range is ~180 * r_end * E[z], independent of range width. Fishtest reaches
+# ~13% of range at ~30k iterations with the 0.002 default; an overnight run
+# here is ~2400 iterations, so it needs ~0.025-0.03 to explore comparably,
+# and the 0.002 default would return the starting vector. Rule of thumb:
+# r_end ~= 0.03 * (2400 / iters). Empty = leave the campaign/default alone.
+R_END=${11:-}
 NAME=$(python3 -c "import json,sys; print(json.load(open('$CFG'))['name'])")
 OUT=tools/spsa/out/$NAME-$(date +%m%d-%H%M)
 mkdir -p "$OUT"
@@ -44,6 +53,7 @@ nohup python3 tools/spsa/spsa_dist.py --config "$CFG" --engine "$ENGINE" \
   --eval-file "$NET" --exchange "$EX" --out "$OUT" --iters "$ITERS" \
   --units "$UNITS" --pairs "$PAIRS" --nodes "$NODES" \
   --book engines/books/UHO_Lichess_4852_v1.epd --poll "$POLL" \
+  ${R_END:+--r-end "$R_END"} \
   > "$OUT/coordinator.log" 2>&1 &
 echo $! > "$OUT/coordinator.pid"
 
