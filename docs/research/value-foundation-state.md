@@ -687,6 +687,29 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## Everything below it is detail; the ~12:4x checkpoint further down is
 ## now HISTORY (it still describes D48W at 1536, which no longer exists).
 
+**⚠⚠ sb150 CORRECTS "TRENDING DOWN" TOO — the run is FLAT at ~−57, not
+collapsing (07:1x).** Fifth point: **−56.07 ± 41.48**, better than
+sb120's −85 and equal to sb90. Panels improved on every axis
+(QUIET 0.8779 → 0.8831, SHARP 0.7570 → **0.7667** — best since sb30,
+endgame 0.7544 → 0.7603).
+
+| sb | 30 | 60 | 90 | 120 | 150 |
+|---|---|---|---|---|---|
+| fn vs V | −27.85 | −74.06 | −56.07 | −85.04 | **−56.07** |
+
+Pooled **−56.9 ± 19.4**; slope **−6.7 Elo/30sb, down from the −15.4 I
+quoted at sb120 and not significant.** So sb120 was a downward
+excursion in a noisy series, and "trending down" over-read it. Restarting
+the watcher to get this point was the right call — it changes the
+characterisation.
+
+**What has NOT changed: the run is not closing its gap.** It needs +28
+to tie V at equal time and sits at −57; across 120 superbatches it has
+gone from −28 to −56 and been flat since. The verdict is "stably behind
+and not converging", which still argues for stopping — but the honest
+words are FLAT, not COLLAPSING, and the case now rests on the level and
+the absence of progress rather than on a decline.
+
 **⚠ CORRECTION TO THE sb90 "HELDOUT PLATEAUED" CLAIM (07:0x).** It
 plateaued sb60→sb90 and then RESUMED IMPROVING: EMA 0.007088 (sb60) →
 0.007119 (sb90) → 0.007032 (sb130) → 0.007002 (sb140) → **0.006977
