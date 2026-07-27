@@ -13,6 +13,41 @@ were built into the session scratchpad (an ARCHON v3 twin for callgrind, and
 SF18 from the reference clone's `sf_18` tag at `ARCH=x86-64-avx2` for exact
 call counts); both are measurement instruments, not changes.
 
+> ## ⛔ CORRECTION 2026-07-27 — §7 item 2's framing is WRONG (and §3.2 already said so)
+>
+> The follow-on implementation agent (branch `perf-impl-1-threats`; its
+> `docs/research/perf-impl-1-plan.md` merges with that work) re-measured the
+> item-2 premises and refuted two of them. Both refutations are measurements,
+> not opinions, and they are **accepted**:
+>
+> **1. There is no 3× row surplus; our threat fold is already near-minimal.**
+> A new instrument computes, per move, the true minimal delta — the symmetric
+> difference of the from-scratch active threat feature sets before and after —
+> and compares it against the rows our fold actually touches: 5.99 resolved
+> vs 5.80 minimal per perspective-ply, an **overfold factor of 1.034** over
+> 76,651 perspective-plies. Any correct incremental scheme must fold
+> essentially the rows we already fold.
+>
+> **2. "`at_full` is 15.7% of deep cycles" conflates the fold with the replay.**
+> PGO inlines the fold kernel into that symbol — which this study's own §3.1
+> shows, since `at_full`'s top opcodes (`vpmovsxbw` 21.2, `vpaddw` 9.1,
+> `vpsubw` 8.6) *are* the fold. **§3.2 of this document already gives the
+> honest split** (`at_full` self 638 Ir/node against `i8_deltas_into` 2,354),
+> so §7 item 2 contradicts §3.2 and §3.2 is the correct one. Confirmed
+> directly by putting `#[inline(never)]` on `apply_i8_deltas_into` and
+> re-profiling: fold 6.28% of instructions, `at_full` plumbing 6.18%, of which
+> ~1.3pp is the PSQ1 skip-channel fold and not replay either.
+>
+> **Net effect on the recommendation:** the addressable replay surface is
+> **≈10.0% of instructions**, not 15.7% of cycles, and the fold (~7.6pp with
+> PSQ1) is irreducible in *any* scheme. Item 2's "+5–8% NPS" target is
+> therefore over-promised and should not be used for planning. Treat the
+> ranked table in §7 as superseded for item 2 until the implementation agent's
+> measured result lands. Items 1 and 3 are untouched by this correction.
+>
+> The error is the study's, not the reader's: it had the right number in §3.2
+> and quoted the wrong one in §7.
+
 **Source state measured (all pinned, per user instruction):** engine
 `engines/bin/archon-d47v-pgo` (sha256 `57531e1bb53979dd…`, PGO+native,
 `sota,arch-d47v` = 768/32/32) with net
@@ -385,7 +420,7 @@ conservative).
 | # | option | gain | effort | risk | validation class |
 |---|---|---|---|---|---|
 | 1 | **D49 HalfKA-only retrain** (already staged, `d49_halfka_2048.json`) | **+25–39% instructions measured** (grid §5; ~45–70 Elo speed) minus threats' eval value (≤ +32.5±17.3 fn, unisolated) | GPU-days (trainer ready; 10-line Pallas fix known) | HIGH on eval quality; speed side is now measured, not projected | fn pentagon + ET vs V, the campaign's own gates |
-| 2 | **Retire the `at_full` replay** — forward/backward incremental threat accumulator on the state stack, SF-scheme (§3.2) | at_full is 15.7% of deep cycles; SF's equivalent stage costs ~0; honest target **+5–8% NPS** | 1–2 weeks; the hardest engine surgery on the board | HIGH: a missed update is a silently wrong eval | bit-exactness vs the replay path as oracle (`assert_matches_refresh`), 800-FEN hash, node-identity, then SPRT |
+| 2 | ⛔ **SUPERSEDED — see the correction banner at the top.** ~~Retire the `at_full` replay~~ — the rationale below is wrong: 15.7% conflates the PGO-inlined fold with the replay (§3.2's 638 Ir/node is the honest figure), and the fold is irreducible. Addressable surface ≈10.0% of instructions; the +5–8% target is over-promised. Await the implementation agent's measured result. | ~~at_full is 15.7% of deep cycles; SF's equivalent stage costs ~0; honest target **+5–8% NPS**~~ | 1–2 weeks; the hardest engine surgery on the board | HIGH: a missed update is a silently wrong eval | bit-exactness vs the replay path as oracle (`assert_matches_refresh`), 800-FEN hash, node-identity, then SPRT — **plus `CHECK_NNUE_GATE=1`** (the depth-6 bench pin is a PSQT number and cannot see this work) |
 | 3 | **Icache/code-size pass** — `next_move` + `search` static-size diet: leaner PGO training corpus, outline cold blocks, de-duplicate tunable materialisation | icache misses 2.27× SF18 on 1.5× instructions; **+2–4%** | days | low-medium | node-identical + icache-counter delta (contention-immune) |
 | 4 | **Two-tier eval** (material-gated threat-free tier; §4) | **+4–8% NPS** honest ceiling at SF's measured split | weeks — a trained head, predicate, plumbing, fallback band | medium-high (eval quality on gated nodes) | probe first (predicate freq in our trees), then fn + ET |
 | 5 | B6 metadata split + `last_computed` index (carried; `current_full` 8.9% deep) | +1–2% | 1–2 days | medium | bit + node-identical |

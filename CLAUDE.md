@@ -84,6 +84,22 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   bit-for-bit — verify by rerunning check.sh on both sides. Commits that
   cannot affect search (docs, UCI I/O, build scripts) may omit the trailer.
   Details: TESTING.md, design/14 §3.2.
+- **The NNUE behavioural gate** — `CHECK_NNUE_GATE=1 bash tools/check.sh`,
+  **mandatory before merging anything under `src/eval/nnue/`.** The `Bench:`
+  pin above is BLIND to NNUE work: `Cargo.toml` has no `default = [...]`, so
+  the pinned `bench 16 1 6 default depth` is a default-feature build and the
+  whole SOTA path (accumulator, SIMD kernels, `sota_threats.rs`) is behind
+  `sota` — verified 2026-07-27 by `nm` finding zero threat symbols in the
+  default release binary. A no-net `bench` is a PSQT run (empty `EvalFile`
+  ⇒ NNUE off). So an incremental-accumulator rewrite can be arbitrarily
+  wrong and leave 385329 untouched. The gate pins two V-arch numbers, both
+  reproduced by a from-source non-PGO build: the **eval hash**
+  `cd190d1b…7f3d` (sha256 of the forward-pass score for all 50
+  `tools/nnue/calib/wl50.fens`) and the **d13 node total 2118123**
+  (`bench 16 1 13 <fens> depth <net>` — the net is the optional **6th arg**;
+  omit it and you silently measure PSQT, 3441859). Same update rule as the
+  bench pin: an intentional change moves the pin in the same commit. Default
+  OFF (needs a second release build + the gitignored 84 MB net).
 - **The D24 perft ritual** — any change touching `movegen`, `board`
   mutation, `zobrist`, or `attacks` must pass, before landing:
   `cargo test` (fast tier, automatic) AND

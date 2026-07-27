@@ -840,6 +840,46 @@ c2-reduction should stay as configured — its null or otherwise is still
 informative, and switching mid-chain would confound the comparison with
 stage A.
 
+## ▶▶▶ LIVE STATE — 2026-07-27 ~10:0x (the current picture; everything
+## below this block is history or detail)
+
+**RUNNING**
+- `archon-d48x` — sb224 of **520** (the user extended it: hold 5.5625e-4 to
+  sb400, then a 120sb anneal). 2.38 min/sb measured clean after the restart,
+  ETA **~21:30**. Latest fn reads: sb180 −77.71±38.26, **sb210 −45.42±43.84**
+  (best since sb30). Heldout EMA still falling: 0.006926 (sb170) → 0.006807
+  (sb220). Instruments every 30sb; watcher, pruner and tb shim all up.
+- `archon-spsa-*` — **c2-reduction** at k~450/2400 (the LMR reduction-shape
+  bundle). Stage A finished NULL: 19,200 games, verify **0.00 ± 13.14** over
+  600 games at 10+0.1 (exp-0161/0163). c2 at 16% shows RED_FULLDEPTH_DOCK2 at
+  1.9σ and nothing else above 1.2σ — too early to read.
+- **Implementation agent (Opus 5, own worktree)** — building perf study 7's
+  top three: audit the hka2048 path, retire the `at_full` replay for
+  incremental threat maintenance, icache/code-size diet. Has hit repeated
+  transient 529s; resumed each time, transcript accumulates.
+
+**DELIVERED TODAY**
+- `perf-study-7-sf-side-by-side-2026-07-27.md` — the SF side-by-side. Refuted
+  three of my claims (see the ⛔ banner below). Live conclusions: **1.31×
+  SF18 cycles/node, 1.497× instructions**, deficit **grows with depth**; the
+  gap is instruction COUNT and code SIZE (icache 2.27×, branches 1.99×) while
+  we WIN IPC 1.41 vs 1.27; SF's `at_full`-equivalent replay stage **does not
+  exist** — that is the structural item.
+- `repo-reorg-proposal-2026-07-27.md` — awaiting the user's tier selection.
+  Two urgent items already actioned: the **bench pin is now machine-checked**
+  in `check.sh` (it appeared once in the tree, as prose) and the gate now runs
+  a **feature matrix**, which immediately caught `--features policy` failing
+  to compile (two E0502s in movepick.rs, fixed, cfg-gated, bench unchanged).
+
+**AWAITING THE USER**
+- reorg proposal: which tier to adopt.
+- hka2048 probe: launch after the GPU frees (~21:30) and after the agent's
+  audit clears it.
+
+**BLOCKED ON A QUIET BOX** — real-TC SPSA (we tune at ~12 ply and play at
+~20), the TM campaign (`tm-v1`, never run), and SMP scaling (still
+unmeasurable; two sessions now).
+
 ## ⛔⛔⛔ PERF STUDY 7 REFUTES THE THREAT-CHANNEL CLAIMS BELOW. Read this
 ## before ANY "1.78×", "+100 Elo", or "SF18 has no threat channel" text in
 ## this file — all of it is SUPERSEDED (2026-07-27 ~09:3x). ⛔⛔⛔
@@ -1063,8 +1103,9 @@ confident and each came from calling a trend on a short window
 measurements held; the narratives did not. Quote levels with their
 bars, and do not project trends the bars cannot support.
 
-**▶▶ RECOMMENDED ORDER OF WORK WHEN YOU ARE BACK (my proposal; the
-first item is the only one that needs a decision).**
+**▶▶ (SUPERSEDED — written pre-dawn, before the two studies and the
+schedule change. The live picture is the LIVE STATE block immediately
+above this one. Kept for the reasoning, not the ordering.)**
 
 1. **D48X CONTINUES** (recommendation withdrawn — see the banner
    above). Five points, pooled −56.9±19.4, slope −6.7±13.9/30sb which

@@ -143,6 +143,81 @@ if [ -n "$BENCH_PIN" ] && [ "$bench_nodes" != "$BENCH_PIN" ]; then
     exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# THE NNUE BEHAVIOURAL GATE.
+#
+# The BENCH_PIN above cannot see NNUE work at all. `Cargo.toml` has no
+# `default = [...]`, so the pinned `bench 16 1 6 default depth` runs a
+# DEFAULT-FEATURE build, and every SOTA path — the accumulator, the SIMD
+# kernels, `sota_threats.rs` — sits behind `sota`. Verified 2026-07-27 three
+# ways: no `default` line in Cargo.toml, `#[cfg(feature = "sota")]` on the
+# module, and `nm` on the default release binary finding ZERO threat symbols.
+# A no-net `bench` is a PSQT run (`EvalFile` empty ⇒ NNUE off, uci.rs).
+#
+# So a rewrite of the incremental threat maintenance could be arbitrarily
+# wrong and still leave 385329 untouched. That is the hole this closes. Two
+# pins, both on the V arch, both established against `archon-d47v-pgo` and
+# reproduced by a from-source non-PGO build (PGO changes layout, not
+# semantics: the NNUE path is integer-quantised, so it is bit-exact):
+#
+#   1. EVAL IDENTITY — sha256 of the forward-pass score for all 50 wl50 FENs.
+#      Catches a wrong accumulator that search happens to paper over.
+#   2. NODE IDENTITY — the depth-13 wl50 node total with the net loaded.
+#      Catches an eval that is right per-position but perturbs the tree.
+#
+# Default OFF: it needs a second release build and an 84 MB gitignored net.
+# It is MANDATORY before merging anything touching src/eval/nnue/.
+if [ "${CHECK_NNUE_GATE:-0}" != "0" ]; then
+    nnue_net="${NNUE_GATE_NET:-data/nnue/nets/screens/d47v-a4b2-cal400.cenn}"
+    nnue_fens="${NNUE_GATE_FENS:-tools/nnue/calib/wl50.fens}"
+    if [ ! -f "$nnue_net" ]; then
+        printf 'FAIL: CHECK_NNUE_GATE=1 but the net is missing: %s\n' "$nnue_net" >&2
+        printf '  Point NNUE_GATE_NET at a V-arch CENN, or unset the gate.\n' >&2
+        exit 1
+    fi
+    step "NNUE behavioural gate (the sota build the bench pin cannot see)"
+    # A separate target dir: sharing one with the default build would force a
+    # full rebuild on every alternation between the two feature sets.
+    nnue_target="target/nnue-gate"
+    RUSTFLAGS="-C target-cpu=x86-64-v3" cargo build --release \
+        --features sota,arch-d47v --target-dir "$nnue_target" --quiet || {
+        printf 'FAIL: the sota,arch-d47v release build failed\n' >&2
+        exit 1
+    }
+    nnue_bin="$nnue_target/release/chessengine"
+
+    eval_hash=$("$nnue_bin" nnue-eval "$nnue_net" < "$nnue_fens" | sha256sum | cut -d' ' -f1)
+    NNUE_EVAL_PIN="${NNUE_EVAL_PIN-cd190d1b18e52f621cb0867e264359d3ce2cac2e6bdf65cdcdfc2005e9747f3d}"
+    printf '  eval hash  : %s\n' "$eval_hash"
+    if [ -n "$NNUE_EVAL_PIN" ] && [ "$eval_hash" != "$NNUE_EVAL_PIN" ]; then
+        printf '\nFAIL: NNUE eval hash is %s,\n      pin is %s\n' \
+            "$eval_hash" "$NNUE_EVAL_PIN" >&2
+        printf '  The forward pass changed. If that is INTENTIONAL (a new arch,\n' >&2
+        printf '  a quantisation change), update NNUE_EVAL_PIN in the same commit.\n' >&2
+        printf '  If it is meant to be a pure speedup, the eval is now WRONG.\n' >&2
+        exit 1
+    fi
+
+    # bench writes its whole report to STDERR (same idiom as the pin above:
+    # stderr to the capture, stdout discarded). Piping stdout instead yields
+    # an empty string and a spurious pass-turned-failure.
+    nnue_nodes=$("$nnue_bin" bench 16 1 13 "$nnue_fens" depth "$nnue_net" 2>&1 >/dev/null \
+        | sed -n 's/^Nodes searched  : //p')
+    NNUE_NODE_PIN="${NNUE_NODE_PIN-2118123}"
+    printf '  d13 nodes  : %s\n' "$nnue_nodes"
+    if [ -n "$NNUE_NODE_PIN" ] && [ "$nnue_nodes" != "$NNUE_NODE_PIN" ]; then
+        printf '\nFAIL: NNUE d13 wl50 node total is %s, pin is %s\n' \
+            "$nnue_nodes" "$NNUE_NODE_PIN" >&2
+        printf '  Same rule as the bench pin: intentional ⇒ update the pin here\n' >&2
+        printf '  in the same commit; unintentional ⇒ the tree changed, investigate.\n' >&2
+        exit 1
+    fi
+else
+    printf '\nNOTE: NNUE behavioural gate SKIPPED (CHECK_NNUE_GATE=0).\n'
+    printf '  The bench pin above is a PSQT number and cannot see NNUE changes.\n'
+    printf '  Run CHECK_NNUE_GATE=1 before merging anything under src/eval/nnue/.\n'
+fi
+
 printf '\ncommit trailer for functional changes (TESTING.md, design/14 §3.2):\n'
 printf 'Bench: %s\n' "$bench_nodes"
 
