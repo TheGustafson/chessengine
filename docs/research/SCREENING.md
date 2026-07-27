@@ -236,3 +236,38 @@ across budgets as well as across oracle tiers.
 
 Cost note: budget × positions is the whole expense, so trade them against
 each other — full corpus at 50k, or ~1000 positions at 800k, not both.
+
+---
+
+## 10. Hypothesis: node-level vs move-level gates want opposite treatment
+
+Round 1 produced an oddity worth explaining rather than just recording. RFP
+wants a **larger** margin (prune less) while parent futility wants a
+**smaller** one (prune more). Both are static-eval futility tests; a global
+"we over-prune" story cannot produce opposite signs.
+
+The distinction that does: **what a wrong prune costs.**
+
+| kind | gates | cost of a wrong prune |
+|---|---|---|
+| **node-level** | RFP, razoring, ProbCut, IIR, (NMP) | an entire subtree's worth of information — the node returns a value nothing else will correct |
+| **move-level** | parent futility, LMP, quiet SEE, conthist, capture futility | one move — the other moves at the node still get searched, and a good alternative usually survives |
+
+That predicts node-level gates should be tuned **conservatively** and
+move-level gates **aggressively**, and it matches what round 1 measured:
+RFP looser, razoring off entirely, parent futility tighter.
+
+**NMP is the apparent exception and probably a real one**: it wants to fire
+*more*, not less. Two reasons it is not a counterexample — its prune is
+*verified* by a re-search above `NMP_VERIFY_DEPTH`, so the cost of being
+wrong is bounded rather than unbounded, and it was measurably **starved** at
+0.2% activation, i.e. far outside its operating range rather than slightly
+mis-set (`prune-budget-2026-07-27.md` §2).
+
+**Status: HYPOTHESIS, not a finding.** It fits five gates and is contradicted
+by nothing yet, but it was formed after seeing the data it explains. The test
+is whether it PREDICTS: move-level gates not yet screened (quiet SEE,
+conthist, capture futility, LMP) should improve when tightened, and
+node-level ones (ProbCut, IIR, TT cutoff) when loosened. Screening those is
+the next round, and a failure there kills the hypothesis rather than
+qualifying it.
