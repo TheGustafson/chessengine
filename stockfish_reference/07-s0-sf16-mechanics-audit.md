@@ -1,5 +1,14 @@
 # S0 — SF16-late mechanics audit (current-code verification, 2026-07-16)
 
+> **LANDED 2026-07-26:** the §2 shortlist is fully implemented — §3.7
+> bundle + §3.9 sibling (825bc14/aabb406/8cd138d), IIR narrow (abacd62),
+> history-buys-lmr_depth (30be4e7), optimism (edd5771; priors 75/45 =
+> 137/81 × winner-slope 0.55). Depth-6 bench 701605 → 385329 (−45%
+> tree). fn tripwire exp-0145 clean (covers through IIR); sibling/buy/
+> optimism ride the post-chain ET gate; S2 SPSA co-tunes. NB the clone
+> is at the SF16 TAG (68e1e9b3) — this file's search.cpp line refs are
+> from an older master checkout; design/10 is the pinned authority.
+
 Extends `06-sf14-sf16-search-patch-study.md` §6a/§6b with a line-by-line
 verification pass against the **shipped** `src/search/mod.rs` (8252 lines) +
 `params.rs` + `stack.rs` + `timeman.rs`, cross-checked against the reference
