@@ -846,13 +846,12 @@ from doc 09; expected +20..60 combined).**
     `+1415` conthist bonus. SPRT `[0, 5]`.
 11. Continuation-history pruning (`history < -4313·depth`) +
     history-buys-lmrDepth via `LMR_DIVISOR`. SPRT `[0, 5]`.
-    **Partially deferred (P9 Waves C–G, 2026-07-12):** the continuation-history
-    pruning landed; the **history-buys-lmrDepth** half (`+2*main_history` then
-    `lmr_depth += history / LMR_DIVISOR[...]`) is **DEFERRED** — a distinct
-    tree-relaxing heuristic with no `LMR_DIVISOR` const yet, gated on its own
-    fixed-node proxy SPRT (doc 14 §9.4). See §3.5's quiet bullet for the full
-    note. The `lmr_depth` site in `search/mod.rs` uses the plain
-    `new_depth - r/1024` and flags the deferral in-line.
+    **NO LONGER DEFERRED — audited 2026-07-27.** This entry read "the
+    history-buys-lmrDepth half is DEFERRED, with no `LMR_DIVISOR` const yet".
+    That is stale: `params::LMR_DIVISOR` exists and is consumed at
+    `search/mod.rs:3260` (`lmr_depth += history / LMR_DIVISOR[depth.min(16)
+    - 1]`). It was wired up during the S0/S1 work and this note was never
+    updated.
 12. Eval-diff parent nudge (N8) + TT-cutoff quiet bonus/parent penalty (N6b
     extras). SPRT `[0, 3]`.
 
@@ -866,14 +865,19 @@ expected +15..40 combined).**
     double/triple extension margins. SPRT `[0, 5]`.
 15. ttMove min-depth clamp at PV re-search + cutoffCnt reduction terms +
     sibling `depth -= 2` on alpha raise. SPRT `[0, 3]`.
-    **Partially deferred (P9 Waves C–G, 2026-07-12):** the ttMove min-depth
-    clamp landed (it only helps mate finding); the **cutoffCnt reduction terms
-    and the §3.9 sibling `depth -= 2`** are **DEFERRED**. Their params
-    (`RED_CUTOFFCNT_*`, `RED_ALLNODE_*`, `RED_TTPV_*`, `RED_TTCAPTURE`,
-    `SIBLING_DEPTH_*`) are defined in `params.rs` but currently **unconsumed** —
-    in this PSQT-only engine they over-reduce deep mate lines past the doc 07
-    §8(4) "solved at depth ≤ 6" bar (SF absorbs the same reductions with NNUE-grade
-    eval/ordering). Revisit with the P13 eval upgrade.
+    **NO LONGER DEFERRED — audited 2026-07-27.** This entry read that the
+    cutoffCnt reduction terms and the §3.9 sibling `depth -= 2` were
+    DEFERRED with their params "defined in `params.rs` but currently
+    unconsumed", because in a PSQT-only engine they over-reduced deep mate
+    lines past the doc 07 §8(4) bar. Both halves of that are now stale. The
+    stated precondition was met — P13 shipped NNUE and the engine has not
+    been PSQT-only since — and the params ARE consumed:
+    `RED_CUTOFFCNT_BASE`/`_MANY` at `search/mod.rs:3471-3472`,
+    `RED_ALLNODE_NUM`, `RED_TTPV_ENTRY`/`_BASE`, `RED_TTCAPTURE` each at one
+    site, and `SIBLING_DEPTH_MIN`/`_MAX` at `search/mod.rs:3834-3835`.
+    Independently confirmed by `tools/spsa/leverage_screen.py`, which shows
+    every one of them moving the tree (e.g. `RED_CUTOFFCNT_MANY` 4.7–20.9%
+    depending on depth) — a genuinely unconsumed param would be bit-identical.
 
 **Wave E — flow refinements (each small; expected +10..30 aggregate).**
 16. ProbCut (N13) + in-check small ProbCut (N14). SPRT `[0, 3]`.
@@ -898,10 +902,22 @@ expected +15..40 combined).**
 19. Fail-low parent bonus (full `bonus_scale` formula) + fail-low capture
     bonus + ttPv backprop + TT `depth+6` no-moves store + upcoming-repetition
     early draw (needs cuckoo tables from the board doc). SPRT `[0, 3]`.
-    **Partially deferred (P9, 2026-07-12):** the fail-low bonuses, ttPv
-    backprop, and TT no-moves store landed; the **N1 upcoming-repetition /
-    cuckoo early draw** is **DEFERRED** — the board doc's cuckoo tables are not
-    yet built.
+    **LANDED IN FULL (2026-07-27).** The fail-low bonuses, ttPv backprop and
+    TT no-moves store landed in P9; the **N1 upcoming-repetition / cuckoo
+    early draw** landed 2026-07-27 once `src/cuckoo.rs` existed.
+    `Board::upcoming_repetition(ply)` is the query; search consumes it as
+    SF does — first statement of `search()`, above the depth-0 boundary, so
+    shallow nodes get the cutoff too: when `!ROOT && rule50 >= 3 &&
+    alpha < VALUE_DRAW` and a cycle is available, raise alpha to
+    `value_draw(nodes)` and cut if that meets beta. Validated against an
+    independent oracle (make every legal move, ask whether the resulting key
+    is already on the path) — 337 legal cycles over 5,751 positions, all
+    found, plus 38 legality-only firings, which is the same pin/legality tail
+    SF carries since neither checks full legality. Bench 385329 → 445174,
+    where the +15.5% is almost entirely bench position 37 (the artificial
+    pawnless max-mobility position, where rule50 never resets so the scan
+    window grows without bound); across the other 48 it is −28.8% nodes, and
+    on the endgame-heavy wl50 set at depth 13 it is −2.3%.
 20. TT-cutoff hardening: depth slack, cutNode agreement, rule50 ≥ 96 guard,
     depth ≥ 7 child verification, wrong-direction penalize. SPRT `[0, 3]`
     (some of these are safety, not Elo; accept on non-regression `[-3, 1]`).
@@ -1137,12 +1153,13 @@ Feeds:
 relaxed by decisions taken after §8 was written; recorded here so the bar
 matches the code:
 
-- *Criterion 2 (exact N0–N14 order)* holds for the **consumed** steps, but the
-  §3.7 all-node reduction extras (`cutoffCnt`, the ttPv rebate, `tt_capture`)
-  and the §3.9 sibling `depth -= 2` are **deferred** (params defined in
-  `params.rs`, currently unconsumed — §4 Wave-D/§842 note): in this PSQT-only
-  engine they over-reduce deep mate lines past the doc 07 §8(4) bar. They land
-  with the P13 eval upgrade. The N6b non-PV TT cutoff runs for **all** nodes
+- *Criterion 2 (exact N0–N14 order)* — **this deviation is CLOSED (audited
+  2026-07-27).** It recorded the §3.7 all-node reduction extras (`cutoffCnt`,
+  the ttPv rebate, `tt_capture`) and the §3.9 sibling `depth -= 2` as
+  deferred with params "currently unconsumed", pending the P13 eval upgrade.
+  P13 shipped, the params are all consumed (see the item-15 note above for
+  the sites), and the leverage screen confirms each one moves the tree.
+  Criterion 2 now holds for these steps too. The N6b non-PV TT cutoff runs for **all** nodes
   (in check or not), matching SF's placement of the early cutoff before the
   in-check jump — see §3.11.
 - *Criterion 3 (a passed SPRT per Wave A–E commit at the §4 bounds)* is
