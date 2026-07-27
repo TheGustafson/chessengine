@@ -2,6 +2,25 @@
 
 The net this campaign produces is **the first public release of ARCHON**.
 
+## ★★★ 2026-07-27 STATE AMENDMENT (supersedes P0-P2 below — they are
+## DONE or ALTERED; the live log's takeover checkpoint is authority) ★★★
+
+P0/P1 COMPLETE: legs done on both finalists (V pair = A4+B2; S pair =
+A3+B, both via user LR rulings: sb10 cuts + anneals; B-legs 10-20sb).
+The face-offs ran as the 4-phase campaign, then the user COLLAPSED the
+testing plan ("Only run SF16/18 vs V net at ET. Skip all other."):
+fn pentagon exp-0149..0153 (V−Spost −35; Spost=SF16 parity) + ET
+V-vs-Spost **+38** (exp-0154 — the 1.51× speed CONVERTED; ~120 Elo per
+speed doubling at 10+0.1 T4) + ET V-vs-SF18/SF16 anchors (finishing).
+P-ORD phases CANCELLED — **POLICY IS DITCHED for D48W** (user 35%-top-1
+bar; unreachable with played-move labels): pol_lambda 0, tensors as
+optionality; **disagreement head trains POST-FINALIZATION on the frozen
+net's own errors** ("derived from itself"). D48W = ONE 380sb run
+(lr_ramp curve, A3-trunk warm+teacher, every-30sb instruments vs frozen
+V yardstick, no automated stops), launch-gated on the NPS smoke
+("not much faster than S ⇒ adjust"), stage-A SPSA concurrent.
+P3's P-ORD gate: moot for v1 unless the dis-head era revives it.
+
 ## ★★ THE APPROVED RELEASE SEQUENCE (user-approved 2026-07-26 ~20:4x;
 ## supersedes the 2026-07-23 numbering below — that section is history) ★★
 

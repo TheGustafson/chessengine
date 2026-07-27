@@ -683,7 +683,82 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
-## ★★★ TAKEOVER CHECKPOINT 2026-07-27 ~06:0x — READ THIS FIRST ★★★
+## ★★★ TAKEOVER CHECKPOINT 2026-07-27 ~12:4x (pre-compact #2) — READ
+## THIS FIRST; the ~06:0x checkpoint below is HISTORY ★★★
+
+**ERA: the 4-PHASE CANDIDATE CAMPAIGN (user-designed) + D48W STAGED.
+Release net decided by testing; V's ET case is proven.**
+
+**RESULTS SO FAR (all ledgered):** Phase 1 fn pentagon exp-0149..0153:
+V−Spost −35; Spost−Spre 0.0; Spost−SF16 0.0 (PARITY); V−SF16 −33;
+V−SF18 −133; Spost−SF18 −164. Phase 2 ET (10+0.1 T4, PGO): **V beats
+S-post +38±48 (exp-0154) — fn −35 CONVERTED, 1.51× speed = +73 Elo =
+~120/doubling, THE calibration constant**; Spost−Spre killed at 70g
+(−25±55 partial, exp-0155, user: idc). S-post = family-best evaluator
+(quiet 0.9079/sharp 0.8177/endgame 0.8194, ALL above sb230) but top-1
+27.2→23.7 (V: 18.7→13.7 — squeeze dose-response). V pair = A4 trunk +
+B2-sb20 (packs: data/nnue/nets/screens/d47v-a4b2-cal400.cenn durable;
+/tmp/d47v-a4b2.cenn cal400 + /tmp/d47s-a3b-cal.cenn cal189 +
+/tmp/d47s-sb230-nocpol.cenn cal189 live).
+
+**TESTING PLAN ALTERED (user, final word: "Only run SF16/18 vs V net
+at ET. Skip all other. ALL others I said."): P-ORD PHASES 3-4
+CANCELLED** (coherent — policy ditched for W ⇒ their decision value is
+gone; unit archon-pord-phases stopped; the /tmp/*.cpol.staged sidecars
+stay INERT). Remaining campaign = V-vs-SF18 ET (RUNNING, unit
+archon-et-phase2, log /tmp/et_phase2.log, started 00:23) → **unit
+archon-et-finisher (systemd, SURVIVES COMPACT)** waits for the log's
+2nd 'Finished match', stops phase 2 (S-side ET skipped), runs
+V-vs-SF16 ET (100g, PGO binary), prints "CAMPAIGN DONE". Everything
+after that line is the runbook below. Monitors are session-local —
+re-arm on the two logs after compact.
+
+**AFTER "CAMPAIGN DONE" (the runbook):** (1) report the final tables
+(fn pentagon + ET: V-vs-Spost +38, V-vs-SF18, V-vs-SF16); ledger the
+two SF ET anchors. (2) **W NPS SMOKE** — the launch gate (user: "if we
+aren't much faster than S [539k], we have to adjust"): warm is RAW
+format — either a tiny load_warm→quant export then pack, or launch W
+and smoke from the sb10 quant ckpt (~1h in, acceptable); build the PGO
+W engine first: `bash tools/build_pgo.sh sota,arch-d48w archon-d48w
+<pack>` (feature committed, compile-clean). (3) user go → `bash
+tools/nnue/runs/d48w_launch.sh` (trainer+tb+30sb watcher) + `bash
+tools/spsa/launch_stageA.sh` (concurrent stage-A SPSA — approved).
+(4) Odds-and-ends parked: S-side ET anchors, F′ retest, idle-box PGO
+ladder, S0 ET SPRT (folds into the V-anchor reads), T11 pre-release.
+
+**D48W (fully staged, tools/nnue/runs/d48w_1536.json):** ONE 380sb run
+≈28.5B presentations ≈2.2-2.5d GPU. α 0.7→sb30→0@sb60; lr_ramp 1e-3
+flat→sb60, glide→2.5e-4@sb300, anneal→0@sb380 (knob committed 84c6e55,
+curve verified). Warm d48w-warm-a3.bin (520MB, A3 trunk) + teacher =
+A3 trunk. **POLICY DITCHED (pol_lambda 0; user 35%-top-1 bar) — tensors
+stay as optionality. DIS DEFERRED (dis_lambda 0; trains
+post-finalization on the frozen net's own errors — "derived from
+itself").** Every 30sb: d48w_watch.sh → pack/calibrate/panel/netonly +
+100g fn50k vs the FROZEN V yardstick. NO automated stops — user
+judgment only. Engine: arch-d48w = 1536/16/32+skip.
+
+**ENGINE/SEARCH STATE:** S0 COMPLETE (all six audit items; **the
+depth-6 bench pin is now 385329**, walk 701605→…→385329 = −45% tree;
+late-tranche tripwire +40±35 fn exp-0148; ET+S2-SPSA verdicts owed).
+PGO = THE STANDARD BUILD (ruled twice; tools/build_pgo.sh WITH
+eval-file; pairs both-PGO; memory pgo-default-build). Freebies landed
+(policy-head snapshot + align(64), bit-identical proofs). NPS ladder:
+V 655k→819k→849k (pre-perf→pinned→PGO), S 516k→513k→567k; V:S=1.50×.
+Perf study 3 = docs/research/perf-study-3-beyond.md (1.28× SF18 c/n;
+remaining: alignment done, PGO done, dead-zero sweep, P-ORD
+generate_legal fix, metadata split ⇒ ~1.10×). SPSA: stage-A campaign
+tools/spsa/campaigns/s2-stageA.json (12 params); distributed kit
+BUILT+SMOKED+PARKED (tools/spsa/README.md, D36 amended) — revisit
+after D48W + local SPSA. gcloud GET-ONLY stands.
+
+**STANDING RULES (recap):** PGO default; foreground poll loops banned
+outright; interim results proactive; per-10sb/30sb tables in chat;
+basis+n on every sharp number; PANEL_ENGINE for non-768 packs
+(ev-cache poisons with empty vectors — purge 2-byte ev-*.json); pinned
+binaries for net-lineage matches; no automated stops on W; P-ORD gate
+needs ≥800 FENs; verify-before-asserting (the night's repeat lesson).
+
+## ★★★ (HISTORICAL) TAKEOVER CHECKPOINT 2026-07-27 ~06:0x ★★★
 
 **THE RELEASE NET IS OPEN — DECIDED BY TESTING (user, 2026-07-27: V =
 incumbent candidate, D48W = the hope, S = yardstick; the three-way
