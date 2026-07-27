@@ -121,6 +121,67 @@ our frame on both sides of every comparison:
 It does **not** apply to history bonuses (their own units), to ply/count
 constants, or to `OPTIMISM_*` (already corrected).
 
+### 5.1 …but the exponent of `s` is NOT always 1 — the taxonomy
+
+`C_ours = s·C_sf` is right only for constants that live purely in eval space.
+A constant's exponent depends on what it is compared against, and there are
+five classes. Getting this wrong in either direction is worse than doing
+nothing, so each is derived rather than asserted.
+
+| class | form | exponent | why |
+|---|---|---|---|
+| **1. pure eval margin** | `eval ⋈ eval ± C` | **s¹** | C is a distance in eval space |
+| **2. eval² divisor** | `delta = mss / D`, `mss ~ v²` | **s¹** | D has units eval²/eval = eval — *derived, not obvious* |
+| **3. cross-unit divisor** | `eval_adj = \|corr\| / D` | **s⁻¹** | corr keeps its own units; D converts corr→eval, so it must GROW |
+| **4. material mixed into eval** | `staticEval + C + PieceValue[x] ⋈ alpha` | **not fixable by C** | see below |
+| **5. scale-free** | plies, depths, counts, SEE-vs-material, corr→ply divisors | **s⁰** | no eval on either side |
+
+Class 2 is the trap that looks like class 3: it *is* a divisor, so the reflex
+is to divide by `s`. Deriving the units shows `D_ours = s·D_sf` — the same
+direction as a plain margin. `ASPIRATION_MSS_DIVISOR` is ours (10588 against
+SF18's 9000, i.e. 1.18× raw where it should be 0.58×, so ~2.0× too large).
+
+Class 3 moves the **opposite way**. `correction_value` is in correction/history
+units, untouched by our eval frame, so a divisor turning it into an eval
+adjustment must get **larger** by 1/s ≈ 1.72 to yield the same effect. SF18
+uses `|correctionValue| / 174665` in its futility margin and `/182069`
+elsewhere; our `SE_CORR_DIV`-family divisors should be ~1.72× SF's, not 0.58×.
+(`RED_CORR_DIV` converts correction→*plies* and is class 5 — untouched.)
+
+### 5.2 Class 4 is a real defect and rescaling a constant cannot repair it
+
+Our material values are Stockfish's **exactly** (PAWN_VALUE 208), while our
+eval is 0.58× theirs. So material and eval sit in a different *relative*
+proportion in our engine than in SF:
+
+```
+eval units per pawn:  SF18 386   ARCHON 224     (ours = s x theirs)
+material per pawn:    SF18 208   ARCHON 208     (identical, unscaled)
+
+material as a fraction of a pawn-of-eval:
+  SF18   208/386 = 0.540
+  ARCHON 208/224 = 0.930      -> 1.72x = exactly 1/s
+```
+
+**A captured piece is 1.72× more influential relative to eval in our engine
+than in Stockfish's.** Every formula that adds a `PieceValue` to an eval-space
+quantity inherits this — SF18's qsearch `futilityValue = futilityBase +
+PieceValue[captured]` compared against alpha, and our `futility_base`
+equivalent, plus any SEE threshold weighed against an eval margin.
+
+Tuning the margin constant cannot fix it, because the error rides on the
+*piece-value term*, which varies with which piece was captured. The available
+repairs are (a) scale the PieceValue contribution by `s` at eval-space use
+sites only, leaving SEE's own material-vs-material comparisons alone, or
+(b) rescale `PIECE_VALUES` wholesale and re-derive every SEE threshold. (a) is
+far less invasive; (b) touches the SEE contract and D11.
+
+This class is also the most likely reason a single global sweep over `s` will
+**not** be flat but also will not find a clean optimum: it corrects classes 1
+and 2 while leaving 3 backwards and 4 untouched. The sweep is still worth
+running as a cheap directional test, but a null result would not falsify the
+frame measurement — only the assumption that one factor fixes everything.
+
 ## 6. Why this is the right answer to the SPSA problem
 
 The ranked search matrix puts "global SPSA retune of search constants vs the
