@@ -200,7 +200,73 @@ one tunable multiplier, fixed-node self-play against the s=1.0 control. The
 prediction is a monotone improvement toward ≈0.58 and a decline past it; a flat
 curve refutes the model outright and costs one afternoon.
 
-## 6.5 The SF16→SF18 natural experiment — and why it lowers the expected correction
+## 6.5 ⛔ REFUTED — the SF16→SF18 "natural experiment" carries no frame signal
+
+**Everything in this section is wrong and is kept only as a record of the
+error.** Skip to §6.6 for what replaces it.
+
+The refutation is the **co-movement test**, and it is decisive. A frame shift is
+a scalar multiply, so it must be *uniform within a single formula*. It is not:
+
+```
+singularBeta:  (82 + 65·ttPv)·depth/64  →  (53 + 75·ttPv)·depth/60
+               82→53 = 0.646 (SHRANK 35%)   65→75 = 1.154 (GREW 15%)
+
+optimism:      109·prev/(|prev| + 141)  →  142·avg/(|avg| + 91)
+               109→142 = 1.303 (GREW 30%)   141→91 = 0.645 (SHRANK 35%)
+```
+
+Two constants in the same expression moving in **opposite directions** cannot
+be a frame effect. Across four testable shape-clean formulas, none has its
+eval-space constants moving by a common factor; observed ratios span
+0.645–1.399 while the true frame ratio 1.175 sits mid-spread with nothing
+clustering on it. The dispersion is an order of magnitude larger than the
+effect being sought.
+
+**My error was a selection effect.** I sampled five constants — razoring and
+probcut — that happened to grow, and concluded "5 of 5 grew, p ≈ 6%". I never
+looked at singularBeta or optimism, both of which contain terms that *shrank*.
+The "median 1.064" and the "38% transfer rate" derived from it were reading
+tuning noise.
+
+Lineage is broken as well: `sf_16.1` razoring reads
+`alpha − 438 − (332 − 154·(cutoffCnt > 3))·d²`, a different shape from both
+endpoints, so the SF16↔SF18 shape match is endpoint coincidence rather than
+continuity. And the correction family changed dimensionality entirely
+(quadratic `cv·|cv|/12475` → linear `cv/131072`, with `cv` itself redefined
+from one table to a four-table blend), so no divisor pair there is comparable
+at all.
+
+## 6.6 What actually survives, and what it means
+
+**The frame ratio itself stands** — independently confirmed: sf_16 `a` =
+328.107, sf_16.1 = 355.855, sf_18 = 385.474, so sf_16→sf_18 = **1.175**. Note
+sf_18 removed `NormalizeToPawnValue` entirely and re-anchored `a` from game
+*ply* to *material*, so the three anchors are not quite the same quantity.
+
+**The core model is untouched**, because it never depended on SF's history.
+Our eval measures at ≈0.58× SF18's internal frame, and our cp constants are
+SF's raw values. What died is only the attempt to estimate a *damping factor*
+from how SF retuned itself.
+
+**And the refutation actually sharpens the case.** SF's constants are not a
+clean scalar family — each literal has been independently SPSA-tuned over
+years to SF's own frame. We imported that tuned set wholesale into a frame
+0.58× as wide and never retuned. So our constants sit at *SF's* empirical
+optimum expressed in *our* units, which is precisely the mismatch the model
+describes.
+
+**Consequence for the experiment:** the predicted optimum reverts to
+**s ≈ 0.58 with no empirical damping**, and there is no longer any basis for
+the 0.6–0.85 range. But one caveat the refutation raises is worth keeping: if
+SF's per-constant optima are genuinely non-uniform, a single global `s` is an
+approximation to a set of individually-correct factors, which is a further
+reason the sweep may be shallow rather than sharply peaked.
+
+**Method note for future use:** to compare frames across engine versions, read
+`a` / `NormalizeToPawnValue` directly. Do not try to back-solve a frame ratio
+out of tuned search constants — the tuning noise dominates by an order of
+magnitude.
 
 Stockfish changed its own eval frame between 16 and 18 (`a`: 328 → 385.5, a
 **1.175×** expansion) *and* retuned its constants. That is a natural experiment
