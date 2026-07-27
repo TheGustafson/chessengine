@@ -29,7 +29,7 @@ use crate::types::Color;
 /// `policy_vocab`). "Go big first — learnability before NPS" is the pinned
 /// research posture; the 768/L2=16 incumbent remains the fallback ship
 /// (gate old nets with engines/bin/archon-sota-native.prev-era binaries).
-#[cfg(not(any(feature = "arch-d47v", feature = "arch-d48w")))]
+#[cfg(not(any(feature = "arch-d47v", feature = "arch-d48w", feature = "arch-d48x")))]
 pub const L1: usize = 1280;
 /// D47V (2026-07-26): the distilled 768 deploy arch — see the doctrine
 /// entry in the live log (train big → distill to competitive size).
@@ -41,12 +41,19 @@ pub const L1: usize = 768;
 /// until their engine deploy clears the <1%-cycle rule.
 #[cfg(feature = "arch-d48w")]
 pub const L1: usize = 1536;
+/// D48X (2026-07-27): the same gen-2 recipe carried at the A3 trunk's own
+/// width. The pre-launch NPS smoke measured 1536/16/32 at 804k nps — only
+/// 1.11× the 1280/128 net and 0.77× the 768 deploy net, i.e. a ~45 Elo
+/// equal-time speed handicap at the measured ~120 Elo/doubling. 1280 keeps
+/// the trunk transfer exact (no net2net expansion) and buys the speed back.
+#[cfg(feature = "arch-d48x")]
+pub const L1: usize = 1280;
 /// L1→L2 output width (the D47 shared bottleneck).
-#[cfg(not(any(feature = "arch-d47v", feature = "arch-d48w")))]
+#[cfg(not(any(feature = "arch-d47v", feature = "arch-d48w", feature = "arch-d48x")))]
 pub const L2: usize = 128;
 #[cfg(feature = "arch-d47v")]
 pub const L2: usize = 32;
-#[cfg(feature = "arch-d48w")]
+#[cfg(any(feature = "arch-d48w", feature = "arch-d48x"))]
 pub const L2: usize = 16;
 /// L2→L3 output width.
 pub const L3: usize = 32;

@@ -208,18 +208,27 @@ mutates. Full mechanics: `design/14` §10.
 
 ## Status / roadmap
 
-**CURRENT (2026-07-27, third refresh): CAMPAIGN ENDGAME + D48W STAGED.**
-The 4-phase candidate campaign collapsed by user ruling to: fn pentagon
-(DONE — V−Spost −35, Spost = SF16 parity at fn, all exp-0149..0153) +
-ET **V-only vs S/SF16/SF18** (V beat S-post **+38 at equal time** —
-fn −35 CONVERTED; 1.51× speed ≈ +73 Elo at 10+0.1 T4 — exp-0154; SF
-anchors finishing via unit archon-et-finisher). **D48W is the staged
-successor: ONE 380sb run, POLICY DITCHED (pol_lambda 0; user 35%-top-1
-bar), disagreement head deferred to post-finalization ("derived from
-itself"), warm+teacher = the A3-annealed S trunk (family-best
-evaluator), lr_ramp in-config curve, every-30sb instruments vs a frozen
-V yardstick, NO automated stops.** Launch gate: NPS smoke ("not much
-faster than S ⇒ adjust"); stage-A SPSA (12 params) runs concurrent.
+**CURRENT (2026-07-27, fourth refresh): D48X TRAINING + STAGE-A SPSA,
+BOTH LIVE.** ET testing stopped mid-SF18 by user order ("I know how
+they will go… GOGO"); the fn pentagon stands (V−Spost −35, Spost =
+SF16 parity, exp-0149..0153) and so does the headline: **V beat S-post
++38 at equal time — 1.51× speed ≈ +73 Elo ≈ ~120 Elo/doubling, THE
+calibration constant (exp-0154)**. **The pre-registered NPS gate FIRED
+and D48W became D48X: width 1536 → 1280, recipe untouched.** Measured
+idle-box, one protocol, all PGO, all on the AVX-512 VBMI2 path: V-768
+1051k, **X-1280 893k**, W-1536 804k, S-1280/128 724k ⇒ 1536 was only
+1.11× S and 0.77× V (−45 Elo of equal-time speed, vs −28 at 1280), and
+1280 is additionally the A3 trunk's OWN width so the warm is a
+VERBATIM transfer instead of a net2net expansion. Standing finding:
+**inside 768–1536 width is ~Elo-NEUTRAL at equal time** (+44 fn per
+doubling vs −45 speed per doubling) — gen-2 must win on the RECIPE.
+Running: `archon-d48x` (380sb, ~178k pos/s, ~3.3 min/sb) + tb shim +
+every-30sb watcher vs a frozen V yardstick; POLICY DITCHED
+(pol_lambda 0; user 35%-top-1 bar), dis head deferred to
+post-finalization ("derived from itself"); NO automated stops.
+Concurrently: **stage-A SPSA** (12 params, V net + PGO tune binary,
+fn20k, 8 games × 2400 iters, exchange on DISK not tmpfs) — measured
+zero training interference.
 Engine: S0 search program COMPLETE (all six audit items; **depth-6
 bench pin now 385329**, −45% tree; tripwires clean); **PGO is THE
 standard build** (tools/build_pgo.sh WITH eval-file; pairs both-PGO;

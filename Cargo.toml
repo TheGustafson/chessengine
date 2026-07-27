@@ -31,6 +31,10 @@ arch-d47v = []
 # D48W gen-2 arch (1536 accumulator, 16/32 head + skip). Same exclusivity
 # rule: `--features sota,arch-d48w`, never combined with arch-d47v.
 arch-d48w = []
+# D48X: the W recipe at the A3 trunk's OWN width (1280 accumulator, 16/32 head
+# + skip) — the arch the pre-launch NPS gate selected over 1536 (2026-07-27).
+# Same exclusivity rule as the others.
+arch-d48x = []
 # Distribution-only: embed net-0 as the default eval so the engine plays NNUE
 # with no `EvalFile` set (for GUIs that can't set UCI string options). OFF by
 # default, so runtime [dependencies] stays empty (D15) and the default build is

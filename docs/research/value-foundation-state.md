@@ -683,6 +683,105 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## ★★★ 2026-07-27 ~01:0x — THE NPS GATE FIRED: D48W (1536) BECAME
+## D48X (1280), AND IT IS RUNNING. Stage-A SPSA launched alongside. ★★★
+
+**User order (00:5x): "I think the equal time matches can wait now. I
+know how they will go. Get started on our goals for D48w and SPSA.
+Don't wait for me, I will be way. GOGO."** → ET campaign STOPPED mid
+V-vs-SF18 (29g, V +4=10−15, ~−140 pace, DISCARDED as underpowered —
+the anchor read is deferred, not banked); units archon-et-phase2 +
+archon-et-finisher stopped; box drained for the two release jobs.
+
+**THE GATE FIRED — this is the material deviation of the night and it
+needs ratification.** The user's pre-registered launch condition was
+"if we aren't much faster than S, then we have to adjust." Measured it
+properly for the first time: an idle box, one protocol (movetime 4s,
+1 thread, Hash 64, startpos + a middlegame FEN, mean of the two), all
+PGO binaries, and — verified, not assumed — all three on the SAME
+AVX-512 VBMI2 kernel path (`/proc/cpuinfo` carries avx512_vnni +
+avx512_vbmi2; `sota_simd.rs` dispatches on exactly those). So the
+numbers are architecture, not a crippled fallback:
+
+| arch                   | nps   | vs V  | vs S  | ET speed vs V |
+|------------------------|-------|-------|-------|---------------|
+| V  768/32  (candidate) | 1051k | —     | 1.45× | —             |
+| **X 1280/16/32 (NEW)** | 893k  | 0.85× | 1.23× | **−28 Elo**   |
+| W  1536/16/32 (staged) | 804k  | 0.77× | 1.11× | −45 Elo       |
+| S  1280/128            | 724k  | 0.70× | —     | −65 Elo       |
+
+(W reproduced to 0.01% across two runs — 804037 then 803946 — so the
+ladder is measurement, not noise. Elo via the ~120/doubling constant
+that exp-0154 pinned.)
+
+**W-1536 FAILS the gate: 1.11× S is not "much faster than S", and it
+is 23% SLOWER than the net we would ship instead.** At −45 Elo of
+speed, W-1536 must beat V by +45 at FIXED NODES merely to tie it at
+equal time — and S, the best evaluator this project has ever trained,
+beats V by only +35 fn. That is a bad bet for 2.5 GPU-days.
+
+**ADJUSTMENT (mine, pending user ratification): width 1536 → 1280,
+everything else in the ratified recipe untouched.** Why 1280 and not
+some other number:
+- **It buys back 17 of the 45 Elo** (−28 vs −45) for ~11 fn Elo of
+  lost capacity (the width ladder's +44/doubling ⇒ 1280→1536 is worth
+  ~+11 fn). Expected ET: 1280 is ~+6 ahead of 1536, and it is the
+  cheaper, lower-variance side of a near-coin-flip.
+- **The warm becomes strictly higher fidelity.** 1280 is the A3
+  trunk's OWN width, so the assembler reports "full trunk (frozen)" —
+  a verbatim FT transfer. The 1536 warm needed net2net expansion,
+  which fills the new lanes with fresh random columns. We keep all of
+  A3's knowledge and none of the expansion noise.
+- **It trains ~15% faster** (measured 170.7k pos/s vs the 1536's
+  projected ~150k), so 380sb lands sooner — release timing is real.
+- **The design thesis is preserved, not abandoned.** W's whole pitch
+  was "wide substrate, thin head" to undo S's 128-head speed tax. At
+  1280/16/32 that thesis gets tested at **+23% NPS over S** instead of
+  +11% — a cleaner test of the same idea, since the trunk is now
+  literally S's trunk and the head is the only structural change.
+- The standing finding this hardens: **inside 768–1536, width is
+  roughly Elo-NEUTRAL at equal time for us** (+44 fn per doubling vs
+  −45 speed per doubling). The gen-2 win must come from the RECIPE
+  (380sb, teacher, anneal, no policy contention), not from width. That
+  is what this run tests, and it tests it faster and cheaper at 1280.
+- Reversal is cheap and total: the 1536 warm, config, and PGO binary
+  all still exist (`d48w-warm-a3.bin`, `d48w_1536.json`,
+  `engines/bin/archon-d48w`). One command relaunches it.
+
+**RUNNING NOW:** `archon-d48x` (trainer, 380sb, 170.7k pos/s, GPU 7.1/8.2
+GB at 96% util) + `archon-d48x-tb` (tb shim, standing rule) +
+`archon-d48x-watch` (every-30sb pack → calibrate → panel → netonly →
+100g fn50k vs the frozen V yardstick). Config
+`tools/nnue/runs/d48x_1280.json` (carries `_arch_ruling` with this
+reasoning); logs `/tmp/d48x_train.log`, `/tmp/d48x_panels.log`; tb
+`data/nnue/tb/d48x-1280/train`. sb1 distill loss 0.000612 — expected to
+look tiny and NOT comparable to the ~0.007 label-frame numbers: with
+alpha 0.7 against a teacher that shares the student's trunk verbatim,
+the first 30sb is mostly "fit a 16-wide head to A3's head". The real
+reads are the heldout and the every-30sb fn matches. NO automated
+stops — advisory flags only, user judgment.
+
+**Engine-side (committed):** new `arch-d48x` Cargo feature +
+`sota_head.rs` cfg (1280/16/32; default build's 1280/128 consts
+untouched, so the bench pin is unaffected); new
+`jax/tools/export_warm_quant.py` — the runbook's missing piece, a RAW
+warm → quant.bin exporter so an un-launched arch can be packed and
+speed-tested BEFORE it costs GPU-days. That tool is what let the gate
+actually fire instead of being waived.
+
+**Stage-A SPSA (launched, concurrent):** 12 params on the V net + PGO
+tune binary, fn20k (load-immune both ways, GPU untouched), 4 workers /
+4 units / 1 pair = 8 games per iteration x 2400 iterations ≈ 19k games
+in ~5-6h, MemoryMax 3G (RAM is the binding constraint at 12/15GB, not
+CPU). Shape reasoning: SPSA converges on the NUMBER of gradient steps,
+not the precision of any one of them (Fishtest tunes at 2 games/iter),
+so for a fixed budget many noisy iterations beat few precise ones —
+which makes per-iteration LATENCY the cap, hence the new `--poll`
+passthrough (3s worker / 2s coordinator defaults are gs://-sized; on a
+file:// exchange a sweep is a stat(), so 0.4s recovers ~30% of the
+wall clock). Verify gate unchanged: 10+0.1 SPRT vs untuned before
+anything lands in `params.rs`.
+
 ## ★★★ TAKEOVER CHECKPOINT 2026-07-27 ~12:4x (pre-compact #2) — READ
 ## THIS FIRST; the ~06:0x checkpoint below is HISTORY ★★★
 

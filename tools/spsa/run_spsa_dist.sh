@@ -29,6 +29,11 @@ ITERS=${6:-400}
 UNITS=${7:-8}
 PAIRS=${8:-4}
 NODES=${9:-20000}
+# Exchange poll period. The 3s worker / 2s coordinator defaults are sized for
+# a gs:// exchange (per-request cost, rate limits). On a file:// exchange a
+# poll is a stat(), so the defaults just add ~3s of dead time to every
+# iteration — at 8-game iterations that is a third of the wall clock.
+POLL=${10:-3.0}
 NAME=$(python3 -c "import json,sys; print(json.load(open('$CFG'))['name'])")
 OUT=tools/spsa/out/$NAME-$(date +%m%d-%H%M)
 mkdir -p "$OUT"
@@ -38,13 +43,13 @@ echo "[run] coordinator -> $OUT (exchange $EX)"
 nohup python3 tools/spsa/spsa_dist.py --config "$CFG" --engine "$ENGINE" \
   --eval-file "$NET" --exchange "$EX" --out "$OUT" --iters "$ITERS" \
   --units "$UNITS" --pairs "$PAIRS" --nodes "$NODES" \
-  --book engines/books/UHO_Lichess_4852_v1.epd \
+  --book engines/books/UHO_Lichess_4852_v1.epd --poll "$POLL" \
   > "$OUT/coordinator.log" 2>&1 &
 echo $! > "$OUT/coordinator.pid"
 
 for i in $(seq 1 "$NWORK"); do
   nohup nice -n 10 python3 tools/spsa/worker.py --exchange "$EX" \
-    --id "local-$i" --cache "/tmp/spsa-worker-$i" \
+    --id "local-$i" --cache "/tmp/spsa-worker-$i" --poll "$POLL" \
     > "$OUT/worker-$i.log" 2>&1 &
   echo $! >> "$OUT/workers.pid"
 done

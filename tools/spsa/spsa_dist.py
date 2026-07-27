@@ -71,6 +71,9 @@ def main() -> None:
                     help="game pairs PER UNIT (batch = units*pairs*2 games)")
     ap.add_argument("--nodes", type=int, default=20000)
     ap.add_argument("--unit-timeout", type=float, default=300.0)
+    ap.add_argument("--poll", type=float, default=2.0,
+                    help="seconds between result sweeps (drop it on a file:// "
+                         "exchange, where a sweep is a handful of stat calls)")
     ap.add_argument("--seed", type=int, default=20260727)
     ap.add_argument("--r-end", type=float, default=None)
     ap.add_argument("--resume", action="store_true")
@@ -158,7 +161,7 @@ def main() -> None:
                                  json.dumps(unit).encode())
                     issued[uid] = time.time()
                     print(f"[dist] reissued {uid}", flush=True)
-            time.sleep(2.0)
+            time.sleep(args.poll)
 
         games, wins, losses = g_w_l
         if games == 0:
