@@ -24,7 +24,9 @@ use crate::types::{
     BISHOP_VALUE, Color, KNIGHT_VALUE, PieceType, VALUE_DRAW, VALUE_TB_LOSS_IN_MAX_PLY,
     VALUE_TB_WIN_IN_MAX_PLY, Value,
 };
-use params::{EVAL_BLEND_BASE, MATERIAL_PAWN_WEIGHT, OPTIMISM_BLEND_BASE, RULE50_DAMPING_DEN};
+use params::{
+    EVAL_BLEND_BASE, EVAL_SCALE, MATERIAL_PAWN_WEIGHT, OPTIMISM_BLEND_BASE, RULE50_DAMPING_DEN,
+};
 
 /// Per-thread mutable evaluation state, owned by the search `Worker` (D23).
 ///
@@ -436,7 +438,22 @@ fn apply_outer_shape(inner: Value, optimism: Value, material: i64, rule50: i64) 
     // Rule-50 damping: shuffle toward zero as the counter grows.
     v -= v * rule50 / RULE50_DAMPING_DEN();
 
-    // Never collide with the TB/mate bands.
+    // Eval-frame scale (design note: eval-frame-scale-model §10). Identity at
+    // 1024, so this is a no-op in the shipped engine. Applied LAST, after the
+    // blend and the damping, so it scales the finished eval rather than
+    // re-weighting the blend against optimism — the blend's own constants are
+    // ratios and must not move with the frame.
+    //
+    // Rounded half away from zero rather than truncated: truncation would bias
+    // every eval toward zero and, being sign-asymmetric, would bias the two
+    // sides of the score differently.
+    if EVAL_SCALE() != 1024 {
+        let n = v * EVAL_SCALE();
+        v = if n >= 0 { (n + 512) / 1024 } else { -((-n + 512) / 1024) };
+    }
+
+    // Never collide with the TB/mate bands. This also bounds the scale above:
+    // a large EVAL_SCALE cannot push a normal eval into the decisive bands.
     v.clamp(
         i64::from(VALUE_TB_LOSS_IN_MAX_PLY) + 1,
         i64::from(VALUE_TB_WIN_IN_MAX_PLY) - 1,
