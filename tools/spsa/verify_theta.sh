@@ -38,12 +38,21 @@ fi
 [ -e "$THETA" ] || { echo "[verify] no theta anywhere; nothing to verify"; exit 1; }
 
 # theta_final.json carries {"final": {...}}; theta-latest.json carries
-# {"theta": {...}}. Accept either, and round to ints the way the engine will.
+# {"theta": {...}}. Accept either. Integer-valued params render as ints the
+# way the engine will read them, but genuinely fractional ones (the reduction
+# table's REDUCTION_BASE / REDUCTION_DEN_COEFF are f64) must NOT be rounded —
+# rounding 1.48 to 1 would be a large silent change to the reduction shape,
+# and the verify would then measure something the tuner never proposed.
 OPTS=$(python3 - "$THETA" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
 vals = d.get("final") or d.get("theta") or {}
-print(" ".join(f"option.{k}={int(round(float(v)))}" for k, v in sorted(vals.items())))
+out = []
+for k, v in sorted(vals.items()):
+    f = float(v)
+    out.append(f"option.{k}={int(round(f))}" if f == int(f) else
+               f"option.{k}={f:.6f}")
+print(" ".join(out))
 PY
 )
 [ -n "$OPTS" ] || { echo "[verify] theta had no parameters"; exit 1; }
