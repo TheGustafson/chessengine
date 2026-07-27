@@ -792,6 +792,49 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-27 ~09:3x REMATCHES FINAL + S0 FULLY COMPLETE (incl. OPTIMISM)
+## + PERF FREEBIES & PGO STANDARD LANDED + HARD-PAUSE SEQUENCE SET
+
+**REMATCHES (200g each, fn50k, pinned archon-d47v, pack cal 400):**
+vs TEACHER **−15.6±25** (+52=87−61; exp-0146) — statistically identical
+to pre-anneal exp-0144: A3/A4 value gains and the 13.7 top-1 policy tax
+NET TO ZERO at fixed nodes. match_report: losses are GRINDS (44/61),
+tactics even 9v9 — the 1280 out-maneuvers the 768 exactly in the
+|label|<100 slice. vs SF16 **−33±26** (+53=75−72; exp-0147). The squeeze
+arc = ~+100 Elo on BOTH axes from sb190 (−113/−141). ET is the decisive
+gate (V ~1.5× faster).
+
+**S0 COMPLETE — all six audit items live** (user asked "did S0 yield
+Elo": fn can't show tree-shaping gains by design; mechanism says +20-60
+ET before SPSA; ET SPRT decides): the five landings (~08:1x entry) plus
+**OPTIMISM (edd5771)** — the eval's §3.6 blend got its live consumer,
+priors 75/45 = SF 137/81 × measured winner-slope 0.55, applied ±20-30cp
+at typical material, `d` display unchanged; two fixture re-scopes
+(queen-up mirror bestmove bar → knight-endgame only; ponder test → KRK
+mate-in-2, dither-exempt). Final bench walk: 701605 → 385329 (**−45%
+depth-6 tree**). 150g tripwire s0-full vs s0-thru-IIR RUNNING
+(/tmp/s0b_tripwire.log).
+
+**PERF (user: "do the freebies now… PGO the standard"):**
+- Freebies landed (7cf2ca7): policy-head SNAPSHOT at net-set time (kills
+  the per-eval RwLock futex read, 1.53% cycles; D14-clean — no AtomicPtr
+  needed once the read honors the slot's own once-per-boundary contract)
+  + `#[repr(align(64))]` on Entry/FinnyEntry/ThreatEntry. PROOFS:
+  800-FEN sha identical both sidecar modes, d13 bit-identical (29796
+  nodes — yes, S0 shrank d13 from 2.94M to 30k), smoke +1.3% contended.
+- **PGO = THE STANDARD BUILD (d1c9aa2):** existing tools/build_pgo.sh
+  (D45a — it already knew bench-only training leaves NNUE kernels
+  unprofiled) + ruling in header + CLAUDE.md; llvm-tools installed.
+  First standard binary `engines/bin/archon-d47v-pgo` VERIFIED: shas +
+  d13 identical, smoke **+5.1% contended** (study: +8.1% idle). SPSA
+  baseline = PGO'd binary (freeze-rule reorder ratified).
+- P-ORD: decision DEFERRED by user until the policy story settles ("D48
+  might be the only thing that saves it").
+
+**SEQUENCE (user ruling): chain → S pack/panels → V-vs-S face-off on
+PINNED binaries → HARD PAUSE, clean box, user proposes the ET testing
+plan.** Tonight's perf gains ride ONLY future non-pinned binaries.
+
 ## 2026-07-27 ~08:4x V PAIR FINAL (A4+B2-sb20) — ANNEAL FIXED ENDGAMES,
 ## POLICY TAX HAS A DOSE-RESPONSE CURVE; B3 STOPPED; S-LegB CUT TO 10sb
 
