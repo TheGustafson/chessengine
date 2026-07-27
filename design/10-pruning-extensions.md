@@ -504,8 +504,12 @@ mostly cancelled at §3.7's ttPv subtraction).
     with the 16-entry tuned table
     `LMR_DIVISOR = [3307, 2930, 2874, 2818, 3215, 3225, 3224, 2782,
     2858, 2919, 3088, 3275, 3180, 2868, 3006, 3599]`.
-    **DEFERRED (P9 Waves C–G, 2026-07-12):** this history-buys-effective-depth
-    half of item 11 is NOT implemented — item 11 ships with only its
+    **LANDED (S0, 2026-07-26)** alongside the §3.7 reduction terms per the
+    revisit-as-a-unit note below (exp-0145's A/B tripwire covered the §3.7
+    terms + IIR; this buy and §3.9 landed after those binaries and ride
+    the post-chain game gate); S2 SPSA co-tunes the balance. *(Original deferral,
+    P9 Waves C–G, 2026-07-12:)* this history-buys-effective-depth
+    half of item 11 was NOT implemented — item 11 shipped with only its
     continuation-history-pruning half above. It is a distinct
     tree-*relaxing* heuristic (a good-history quiet earns effective depth and
     is thereby spared from parent-futility / quiet-SEE pruning), so it must

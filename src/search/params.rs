@@ -45,6 +45,14 @@ pub const CONT_OFFSET_WEIGHTS: [i32; 6] = [1040, 780, 300, 537, 129, 423];
 /// entries along the chain: an agreeing chain amplifies the update.
 pub const CONT_CONSISTENCY_MULT: [i32; 7] = [96, 113, 101, 105, 127, 121, 126];
 
+/// History-buys-lmr_depth divisor by depth (design/10 §3.5, item 11's
+/// second half, S0): `lmr_depth += history / LMR_DIVISOR[min(depth,16)-1]`
+/// where `history` is the quiet's combined continuation/pawn score plus
+/// `2·main_history`. A tuned per-depth table (SF-current shape).
+pub const LMR_DIVISOR: [i32; 16] = [
+    3307, 2930, 2874, 2818, 3215, 3225, 3224, 2782, 2858, 2919, 3088, 3275, 3180, 2868, 3006, 3599,
+];
+
 /// Cadence of the search's clock poll: every `CHECK_TIME_CALLS` calls.
 /// A plain const (not a tunable): the poll mask `x & (CALLS - 1)` needs a
 /// compile-time power-of-two guarantee, and cadence is not a strength knob.
@@ -514,6 +522,9 @@ crate::tunables! {
     pub QHIST_PRUNE_MULT: i32 = 4313;
 
     // --- Move-loop pruning: parent futility (design/10 §3.5) ---
+    //
+    // (The history-buys-lmr_depth divisor table sits below this macro block
+    // with the other const arrays — see `LMR_DIVISOR`.)
     //
     // "Futility pruning: parent node" — a shallow, not-in-check node writes off
     // a quiet whose most optimistic outcome still fails to reach alpha. The

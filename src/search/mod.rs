@@ -3196,6 +3196,19 @@ impl Worker {
                         continue;
                     }
 
+                    // History buys lmr_depth (design/10 §3.5, item 11's
+                    // deferred second half; S0, landed alongside the §3.7
+                    // reduction terms per the doc's revisit-as-a-unit note):
+                    // a quiet the combined history likes earns predicted
+                    // depth, sparing it from the parent-futility and SEE
+                    // prunings below; one it distrusts loses depth and is
+                    // pruned earlier.
+                    let history = cont_history
+                        + 2 * self.histories.main[self.board.side_to_move() as usize]
+                            [m.raw16() as usize]
+                            .get();
+                    lmr_depth += history / params::LMR_DIVISOR[depth.min(16) as usize - 1];
+
                     // Parent futility (design/10 §3.5): the most optimistic
                     // value this quiet could yield still cannot reach alpha at
                     // a shallow predicted depth. Lift `best_value` to that
