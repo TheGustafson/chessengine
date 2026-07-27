@@ -1614,6 +1614,40 @@ mod tests {
     }
 
     #[test]
+    fn dispatched_i16_deltas_match_scalar_on_long_feature_lists() {
+        // The wrapping-extremes test above runs 5 adds / 4 subs, which is the
+        // incremental-update shape. The Finny fold is the other caller and it
+        // arrives with feature lists an order of magnitude longer, where the
+        // per-lane i16 wrapping has many more chances to diverge from the
+        // scalar reference — and where the `_into_` kernels chunk their
+        // hoisted offsets at 96, so any future hoist here (perf study 3's
+        // ranked item 10, prototyped on perf/i16-deltas-hoist) must stay
+        // bit-exact across that boundary. Sizes below straddle it.
+        const ROWS: usize = 11;
+        let mut weights = vec![0i16; ROWS * ACC];
+        for (i, value) in weights.iter_mut().enumerate() {
+            *value = (i as u16).wrapping_mul(40503) as i16;
+        }
+        let seed: [i16; ACC] =
+            std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
+        let adds: Vec<usize> = (0..240).map(|i| (i * 7) % ROWS).collect();
+        let subs: Vec<usize> = (0..200).map(|i| (i * 5 + 3) % ROWS).collect();
+
+        for (a, s) in [
+            (&adds[..], &subs[..]),
+            (&adds[..96], &subs[..96]),
+            (&adds[..97], &subs[..1]),
+            (&adds[..0], &subs[..200]),
+        ] {
+            let mut reference = seed;
+            scalar::i16_deltas(&mut reference, &weights, a, s);
+            let mut dispatched = seed;
+            apply_i16_deltas(&mut dispatched, &weights, a, s);
+            assert_eq!(dispatched, reference, "adds={} subs={}", a.len(), s.len());
+        }
+    }
+
+    #[test]
     fn dispatched_l1_dot_matches_i32_scalar_at_extremes() {
         let mut ft = [0u8; ACC];
         for (i, value) in ft.iter_mut().enumerate() {
