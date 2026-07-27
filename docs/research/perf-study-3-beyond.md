@@ -940,8 +940,34 @@ been 2.1, so these are conservative).
 | 7 | B5 — FT-sparsity λ (trainer) / avg-nnz in the net gate | up to +3.4 % NPS | probe: hours; λ: a training run | low for the probe, high for λ (eval quality) | net-gate report; λ needs a full heldout + ET arc |
 | 8 | `skip_dot` / `l2_tail` chain split | +1–1.5 % | half a day | medium (f32 reorder) | int-cp identity on 800 FENs, else SPRT |
 | 9 | B7 — threat-PSQ1 i16 rows | +1 % | next CENN rev | medium | net-format gate |
-| 10 | `i16_deltas_inner` address hoist (the one kernel option F skipped) | +0.5–1 % | half a day | very low | bit-identical |
+| 10 | `i16_deltas_inner` address hoist (the one kernel option F skipped) | **BUILT, gain UNPROVEN — parked** (2026-07-27) | done | very low | **bit-identical: verified** |
 | — | AVX-512 `MoveSorter`, 512-bit `find_nnz` | +0.5 %, +0.25 % | medium | low | park |
+
+**Item 10 status (2026-07-27): implemented, proven correct, gain not
+measurable — parked on branch `perf/i16-deltas-hoist`.** The hoist chunks the
+feature lists at 96 like the `_into_` twin so `feature * ACC` is computed once
+instead of once per tile per feature. Correctness is settled: bit-identical by
+construction (the per-lane ops are wrapping i16 add/sub and wrapping addition
+is associative, so re-associating across chunks cannot move a lane), and
+bit-identical by measurement — 6 positions at fixed depth 13 and 6 runs of 4M
+nodes reproduce byte-for-byte, and a new test crosses the chunk boundary at
+240 adds / 200 subs.
+
+What could not be settled is the only thing the change is for. The box was
+running the D48X trainer plus a 4-worker SPSA, which puts about +-9 % of noise
+on a fixed-node timing; the paired difference landed at +1.8 % in the hoist's
+favour with t = 0.37, which is nothing. Separating a predicted 0.5-1 % from
+that noise needs hundreds of paired reps or, far cheaper, an idle box.
+
+Two things worth carrying forward. First, **fixed-node timing is the right
+instrument here and movetime-NPS is not**: because the two binaries are
+bit-identical they search exactly the same tree, so elapsed time at a fixed
+node count compares pure speed with the search variance removed. The first
+attempt used movetime and produced a 10 % "regression" that reversed when the
+run order was flipped — pure ordering bias. Second, the reason to park rather
+than land is that this is the hottest unsafe kernel in the engine, and perf
+items here land with proof of the gain, not just proof of safety. Rerun the
+paired fixed-node A/B when the box is idle and land it if it pays.
 
 **Rejected, with the measurement that kills each:**
 
