@@ -328,6 +328,29 @@ fn wdl_tm_factor(root_decisiveness: f32, c3: f32) -> f64 {
 /// this re-expresses (D27); the numerator `LMP_BASE + depth²` is always
 /// positive, so the truncation is a plain floor.
 #[inline]
+/// Feature-gated qsearch decision trace (`--features search-control`,
+/// enabled at runtime by `ARCHON_QTRACE=1`).
+///
+/// Compiled out of every shipped build, so it is a debugger rather than
+/// logging: it answers the one question reading the source cannot, namely
+/// which filter rejects which move at runtime. Aggregate node counts say we
+/// expand ~1.75x Stockfish's qsearch on identical positions with identical
+/// windows and verified-identical code; only a per-decision trace can say
+/// which branch differs.
+#[cfg(feature = "search-control")]
+#[inline]
+fn qtrace(ply: usize, alpha: Value, beta: Value, stand: Value, mv: &str, verdict: &str) {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    if *ON.get_or_init(|| std::env::var_os("ARCHON_QTRACE").is_some()) {
+        eprintln!("QT ply={ply} a={alpha} b={beta} sp={stand} {mv:<6} {verdict}");
+    }
+}
+
+#[cfg(not(feature = "search-control"))]
+#[inline(always)]
+fn qtrace(_: usize, _: Value, _: Value, _: Value, _: &str, _: &str) {}
+
 fn lmp_move_count(depth: Depth, improving: bool) -> i32 {
     // The depth² term carries a coefficient (identity at 1024) because it,
     // not LMP_BASE, is what actually sets this threshold — see LMP_DEPTH_MULT.
@@ -4493,6 +4516,14 @@ impl Worker {
                     // Late-move cutoff: after two such moves, skip them
                     // all (§3.8 step 7).
                     if move_count > params::QS_LATE_MOVE_LIMIT() {
+                        qtrace(
+                            ply,
+                            alpha,
+                            beta,
+                            best_value,
+                            &m.to_string(),
+                            "prune:latemove",
+                        );
                         continue;
                     }
 
@@ -4512,6 +4543,14 @@ impl Worker {
                             params::QS_PIECE_MULT(),
                         );
                     if futility_value <= alpha {
+                        qtrace(
+                            ply,
+                            alpha,
+                            beta,
+                            best_value,
+                            &m.to_string(),
+                            "prune:futility",
+                        );
                         best_value = best_value.max(futility_value);
                         continue;
                     }
@@ -4538,11 +4577,20 @@ impl Worker {
 
                 // The hard SEE floor for everything left (§3.8 step 7).
                 if !self.board.see_ge(m, params::QS_SEE_FLOOR()) {
+                    qtrace(
+                        ply,
+                        alpha,
+                        beta,
+                        best_value,
+                        &m.to_string(),
+                        "prune:seefloor",
+                    );
                     continue;
                 }
             }
 
             // Step 8 — recurse: full window, same node type.
+            qtrace(ply, alpha, beta, best_value, &m.to_string(), "SEARCH");
             self.do_move(tt, m, gives_check, ply);
             self.qnodes += 1;
             let value = -self.qsearch::<NT>(tt, stop, -beta, -alpha, ply + 1);
