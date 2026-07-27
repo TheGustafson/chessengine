@@ -89,10 +89,51 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from arm_screen import FAMILIES, round_away  # noqa: E402
 
 NET = "data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
-ENGINE = "target/release/chessengine"
+# target/release/chessengine silently IGNORES EvalFile unless built
+# with sota,arch-d47v -- see assert_net_live below.
+ENGINE = os.environ.get("ARCHON_BIN", "target/qtrace/release/chessengine")
 ORACLE = "tools/nnue/calib/oracle-obs.json"
 BENCH_FENS = "tools/nnue/calib/scale-check-800.fens"
 SUITE = "engines/suites/mate_in_3.epd"
+def assert_net_live(binary: str, net: str) -> None:
+    """Refuse to run unless the net actually changes the search.
+
+    Twice on 2026-07-27 an entire day of measurement was invalidated because
+    `setoption name EvalFile` silently did nothing and the engine kept using
+    PSQT. The first time it was a bench argument the UCI path ignored; the
+    second, a binary built without `sota,arch-d47v`, where the CEN2 reader is
+    absent and the load fails without a word.
+
+    A missing net does not error, does not warn, and produces perfectly
+    plausible numbers -- so the only defence is to prove the net is live
+    before trusting anything. Two identical searches with and without it mean
+    it is not.
+    """
+    import subprocess as _sp
+    def probe(with_net: bool) -> str:
+        cmd = "uci\n"
+        if with_net:
+            cmd += f"setoption name EvalFile value {net}\n"
+        cmd += "isready\nposition startpos\ngo depth 8\n"
+        p = _sp.Popen(["bash", "-c", f'{{ printf %s "$S"; sleep 4; }} | timeout 20 {binary}'],
+                      stdout=_sp.PIPE, text=True, env={**os.environ, "S": cmd})
+        out, _ = p.communicate()
+        for line in reversed(out.splitlines()):
+            if line.startswith("info depth 8 "):
+                return line.split(" nodes ")[1].split()[0] if " nodes " in line else line
+        return ""
+    off, on = probe(False), probe(True)
+    if off and off == on:
+        raise SystemExit(
+            f"REFUSING TO RUN: {binary} ignores EvalFile ({net}).\n"
+            f"  depth-8 nodes identical with and without the net: {off}\n"
+            f"  build one that can read it:\n"
+            f"    cargo build --release --features tune,sota,arch-d47v "
+            f"--target-dir target/qtrace\n"
+            f"  every measurement from a net-less binary is a PSQT measurement."
+        )
+
+
 NODES_RE = re.compile(r"^Nodes searched  : (\d+)", re.M)
 
 
@@ -261,6 +302,7 @@ def main() -> None:
     ap.add_argument("--no-record", action="store_true",
                     help="do not append results to the ledger")
     args = ap.parse_args()
+    assert_net_live(ENGINE if 'ENGINE' in globals() else ARCHON, NET)
 
     base_ov = parse_ov(args.base) if args.base else {}
 
