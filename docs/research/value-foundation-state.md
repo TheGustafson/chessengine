@@ -769,6 +769,45 @@ warm → quant.bin exporter so an un-launched arch can be packed and
 speed-tested BEFORE it costs GPU-days. That tool is what let the gate
 actually fire instead of being waived.
 
+**P3'S TWO UNLANDED SEARCH BRANCHES, RE-MEASURED POST-S0 (02:4x).**
+The release plan's P3 ("search fit for V") names `wip/nmp-guards` and
+`wip/check-ext`, both authored 2026-07-26 morning — i.e. BEFORE the S0
+program landed that evening and reshaped the tree by −45%. Both still
+merge cleanly onto main. Rebuilt each on top of current main and
+re-ran the tactical suites at fixed 50k nodes (fixed nodes = speed- and
+load-immune, so this is honest even with the trainer running):
+
+| suite (n) | main | +check-ext | +nmp-guards |
+|---|---|---|---|
+| mate_in_3 (1277) | 1210 | **1227** | 1212 |
+| mate_in_4 (1100) | 966 | **978** | 973 |
+| mate_in_5 (902) | 742 | **747** | — |
+| WAC revised (200) | 180 | 181 | 180 |
+| net vs main (first 3 shared suites, n=2577) | — | **+30** | +9 |
+
+**Finding 1 — check-ext's ORIGINAL motivation is dead, but the change
+still pays.** The branch was justified by "WAC 78.5% vs SF16's 86.5%".
+Post-S0 our baseline WAC is **90%**, so that gap is already closed and
+the stated rationale no longer holds. But the mate suites, which have
+16x the sample of WAC, show a consistent gain anyway: +17/+12/+5,
+positive in every suite, +34 of 3279 overall. Under a paired sign test
+that is a real effect, not noise (WAC alone at +1/200 could not have
+told us either way — it is simply too small a suite to resolve this).
+
+**Finding 2 — nmp-guards is tactically marginal** (+9 vs check-ext's
++30 on the same positions). That is roughly what it should look like:
+it is a pruning-SAFETY change, so its value, if any, lives in game
+strength rather than in mate-solving. It stays queued, below check-ext.
+
+**Neither is landed.** Tactics is not Elo — check extensions buy
+tactical depth by spending nodes that would otherwise widen the tree,
+and only games price that. Both need `search_knob_gate.sh` (fixed-node
+screen then 10+0.1), which needs box time we are spending on SPSA.
+Binaries are built and parked for that gate: `engines/bin/archon-basemain`,
+`archon-checkext`, `archon-nmpguards`, with branches
+`test/check-ext-on-main` and `test/nmp-on-main` holding the merges.
+**check-ext is now the top-ranked queued search item.**
+
 **★ sb30 READ (02:2x) — BELOW the pre-registered expectation.
 fn vs the frozen V yardstick: −27.85 ± 39.37 (100g, 26W-40D-34L).**
 The pre-registration called +20..+35 "trunk came back, on track" and
