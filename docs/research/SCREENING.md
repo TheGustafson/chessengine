@@ -561,3 +561,36 @@ reaches the loop, not in the loop.
   are Stockfish's exactly), so it carries **no** frame error — and it is the
   single largest lever of the three. The parameter with no scaling problem
   matters most.
+
+---
+
+## 16. Node savings that do not convert — three SPRTs
+
+| candidate | screen | SPRT |
+|---|---|---|
+| curated frame combo | +32 tactics @3.5σ | **−29.6 Elo** (211 g) |
+| `noRED+IIR8` | −14.6% nodes, cp −0.25 | **49.50%** (100 g) |
+| `ASPIRATION_BASE_DELTA 20` | −44% nodes, cp −0.26 | **49.17%** (240 g) |
+
+All three were **node-saving** changes that screened cp-neutral-or-better,
+and all three came out neutral or worse in games. The obvious explanation —
+that node savings do not convert to time — was tested and **refuted**: NPS is
+flat across the aspiration arms (3.11M / 3.01M / 2.91M), so 23.1M → 12.9M
+nodes really is 7.45s → 4.30s to depth 11.
+
+So the depth we buy is worth about what we pay for it. For `delta 20` that
+means the aspiration re-searches were **not waste**: they buy quality roughly
+equal to their cost, and removing them trades accuracy for depth at par.
+
+**The operational rule this implies:** a node saving at neutral cp is worth
+**zero** until proven otherwise. Only a **cp improvement** has predicted
+anything so far. Rank candidates by cp, treat nodes as a tie-breaker, and
+stop pricing node counts into an Elo estimate — the `−log2(1+f) × 120`
+conversion in §11 has now over-predicted three times running.
+
+### What has actually predicted
+
+`QUIET_LOW_PLY_WEIGHT 12` — a cp win (−0.31/−0.24/−0.18 full corpus) that
+also happened to be cheaper — remains the only candidate whose primary
+evidence is quality rather than node count. Candidates of that shape are what
+deserve games.
