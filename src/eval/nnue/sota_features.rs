@@ -182,6 +182,32 @@ pub(crate) fn threat_pair_kept(attacker: PieceType, victim: PieceType) -> bool {
     MAP[attacker as usize][victim as usize] >= 0
 }
 
+/// [`threat_pair_kept`] as a per-attacker **bit set over victim types**, so the
+/// incremental observer can turn "which victims count?" into a bitboard mask
+/// instead of a per-square predicate call — the same shape
+/// [`for_each_threat`]'s `pawn_targets` / `minor_slider_targets` /
+/// `queen_targets` already use on the from-scratch side.
+///
+/// Built from [`MAP`] in a `const` block (Rust's `const` blocks allow `while`
+/// but not `for`, hence the index loops), so it is materialised at compile time
+/// and cannot drift from the predicate; `kept_victim_masks_match_predicate`
+/// pins the two together for all 36 pairs.
+pub(crate) const KEPT_VICTIMS: [u8; PieceType::COUNT] = {
+    let mut out = [0u8; PieceType::COUNT];
+    let mut att = 0;
+    while att < PieceType::COUNT {
+        let mut vic = 0;
+        while vic < PieceType::COUNT {
+            if MAP[att][vic] >= 0 {
+                out[att] |= 1 << vic;
+            }
+            vic += 1;
+        }
+        att += 1;
+    }
+    out
+};
+
 /// FullThreats square orientation — the **opposite polarity** to HalfKA:
 /// `0` for a king on files a-d, `7` for files e-h (design/11 §12.1, the
 /// "a1/h1 polarity" fidelity trap: HalfKA's OrientTBL is a1→SQ_H1, threats' is

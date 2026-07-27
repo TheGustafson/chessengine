@@ -38,8 +38,8 @@
 //! resolution "must run at push time because it reads the post-move board" was
 //! false: event generation reads only occupancy + the mailbox, and resolution
 //! reads the king square only through a 1-bit mirror ([`orient_threats`]). So
-//! [`ThreatContext::apply_at`] snapshots exactly those inputs (mailbox +
-//! occupancy + both king squares, ~140 B — a [`ThreatSnapshot`]) plus the
+//! [`ThreatContext::apply_at`] snapshots exactly those inputs (the type/colour bitboards +
+//! occupancy + both king squares, 74 B — a [`ThreatPosition`]) plus the
 //! [`DirtyPiece`], and defers *everything else* — generation ([`build_deltas`]),
 //! per-perspective resolution ([`threat_index`]), and the 768-lane fold
 //! ([`apply_i8_deltas`]) — to [`ThreatContext::compute`], which runs them against
@@ -83,12 +83,13 @@
 //! side (and every non-king move) stays incremental.
 
 use super::sota_accumulator::{psqt_add, psqt_sub};
-use super::sota_features::{ACC, THREAT_DIMS, ThreatResolver, for_each_threat, refresh_threat};
+use super::sota_features::{
+    ACC, KEPT_VICTIMS, THREAT_DIMS, ThreatResolver, for_each_threat, refresh_threat,
+    threat_pair_kept,
+};
 use super::sota_head::BUCKETS;
 use super::sota_simd::apply_i8_deltas_into;
-use crate::attacks::{
-    attacks, bishop_attacks, knight_attacks, pawn_attacks, ray_pass, rook_attacks,
-};
+use crate::attacks::{AttackTables, knight_attacks, pawn_attacks, ray_pass, tables};
 use crate::bitboard::Bitboard;
 use crate::board::{Board, DirtyPiece};
 use crate::types::{Color, MAX_PLY, Piece, PieceType, Square};
@@ -161,27 +162,59 @@ impl DeltaBuf {
     }
 }
 
-/// The ~140-byte snapshot of the post-move board state the observer needs to
-/// (re)generate + resolve its events at fold time: the mailbox (piece
-/// identities), the all-occupancy bitboard, and both king squares. Captured at
-/// push by [`ThreatContext::apply_at`] and consumed by
+/// The 74-byte **bitboard** snapshot of the post-move position the observer
+/// needs to (re)generate + resolve its events at fold time: occupancy split by
+/// piece type and by colour, the all-occupancy union, and both king squares.
+/// Captured at push by [`ThreatContext::apply_at`] and consumed by
 /// [`ThreatContext::compute`], which runs [`build_deltas`]/[`resolve_into`]
 /// against it instead of the live [`Board`] a sibling would have destroyed in
-/// place. It carries exactly what [`build_deltas`] (occupancy + `piece_on`) and
-/// [`resolve_into`] (each perspective's king square) read — nothing else — so
-/// the deferred work is bit-identical to running it eagerly on the live board.
-#[derive(Clone)]
-struct ThreatSnapshot {
-    mailbox: [Option<Piece>; Square::COUNT],
+/// place. It carries exactly what [`build_deltas`] (geometry + piece identity)
+/// and [`resolve_into`] (each perspective's king square) read — nothing else —
+/// so the deferred work is bit-identical to running it eagerly on the live
+/// board.
+///
+/// # Why bitboards and not the mailbox (perf-impl-1)
+/// The original form snapshotted `board.mailbox` and asked "is the piece on
+/// this square a rook or a queen?" one square at a time — up to eight identity
+/// resolutions per touched square just to discover the zero-to-two sliders that
+/// actually x-ray it, and the same again for knights and pawns. The
+/// from-scratch enumeration [`for_each_threat`] never did that: it intersects
+/// with victim-type bitboards. Carrying the type/colour boards instead lets the
+/// incremental generator use exactly the same trick, and it deletes the
+/// per-square override map the mailbox form needed (see [`Replay`]).
+#[derive(Clone, Copy)]
+struct ThreatPosition {
+    /// Occupancy per piece type, indexed by `PieceType as usize`.
+    by_type: [Bitboard; PieceType::COUNT],
+    /// Occupancy per colour, indexed by `Color as usize`.
+    by_color: [Bitboard; Color::COUNT],
+    /// The union — derived, but materialised because every geometry query in
+    /// the generator takes it.
     occ: Bitboard,
     kings: [Square; 2],
 }
 
-impl ThreatSnapshot {
+/// The replay's working position: a plain by-value copy of a
+/// [`ThreatPosition`] that the edit replay mutates with [`ThreatPosition::toggle`].
+///
+/// The mailbox form needed a parallel override map (`over_sq`/`over_pc` plus a
+/// linear `find`) because a mailbox cannot represent "the state after edit *i*"
+/// without being copied wholesale. Bitboards can: one XOR per board.
+type Replay = ThreatPosition;
+
+impl ThreatPosition {
     #[inline]
     fn from_board(board: &Board) -> Self {
-        ThreatSnapshot {
-            mailbox: board.mailbox,
+        let mut by_type = [Bitboard::EMPTY; PieceType::COUNT];
+        for pt in PieceType::ALL {
+            by_type[pt as usize] = board.pieces(Color::White, pt) | board.pieces(Color::Black, pt);
+        }
+        ThreatPosition {
+            by_type,
+            by_color: [
+                board.occupancy(Color::White),
+                board.occupancy(Color::Black),
+            ],
             occ: board.all_occupancy(),
             kings: [
                 board.king_square(Color::White),
@@ -191,73 +224,115 @@ impl ThreatSnapshot {
     }
 
     #[inline]
-    fn all_occupancy(&self) -> Bitboard {
-        self.occ
+    fn typed(&self, pt: PieceType) -> Bitboard {
+        self.by_type[pt as usize]
     }
 
     #[inline]
-    fn piece_on(&self, sq: Square) -> Option<Piece> {
-        self.mailbox[sq.index() as usize]
+    fn colored(&self, c: Color) -> Bitboard {
+        self.by_color[c as usize]
+    }
+
+    /// Rook-movers (rooks + queens) and bishop-movers (bishops + queens) — the
+    /// two pre-masks the x-ray scan intersects its ray fans with.
+    #[inline]
+    fn rook_movers(&self) -> Bitboard {
+        self.typed(PieceType::Rook) | self.typed(PieceType::Queen)
+    }
+
+    #[inline]
+    fn bishop_movers(&self) -> Bitboard {
+        self.typed(PieceType::Bishop) | self.typed(PieceType::Queen)
+    }
+
+    /// Flip `piece`'s presence at `sq`. XOR is its own inverse, so this one
+    /// primitive serves both passes of the generic replay: "undo every edit to
+    /// recover the pre-move position", then "redo them one at a time".
+    #[inline]
+    fn toggle(&mut self, piece: Piece, sq: Square) {
+        let b = Bitboard::from_square(sq);
+        self.by_type[piece.piece_type as usize] ^= b;
+        self.by_color[piece.color as usize] ^= b;
+        self.occ ^= b;
+    }
+
+    /// The colour of the piece on `sq`; `sq` must be occupied.
+    #[inline]
+    fn color_on(&self, sq: Square) -> Color {
+        if self.colored(Color::White).contains(sq) {
+            Color::White
+        } else {
+            Color::Black
+        }
+    }
+
+    /// The whole piece on `sq`; `sq` must be occupied. Five type tests, versus
+    /// the mailbox form's one byte load — which is why the generator is
+    /// structured so this is reached only for a [`ripple`]'s discovered piece
+    /// (about one call per touch, against the ten the mailbox form needed).
+    #[inline]
+    fn piece_on(&self, sq: Square) -> Piece {
+        debug_assert!(self.occ.contains(sq), "piece_on an empty square");
+        let b = Bitboard::from_square(sq);
+        // King is the fallthrough: if none of the other five boards has the
+        // square, an occupied square must hold a king. No panic path.
+        let mut pt = PieceType::King;
+        for cand in [
+            PieceType::Pawn,
+            PieceType::Knight,
+            PieceType::Bishop,
+            PieceType::Rook,
+            PieceType::Queen,
+        ] {
+            if !(self.by_type[cand as usize] & b).is_empty() {
+                pt = cand;
+                break;
+            }
+        }
+        Piece::new(self.color_on(sq), pt)
     }
 }
 
-impl Default for ThreatSnapshot {
+impl Default for ThreatPosition {
     fn default() -> Self {
-        ThreatSnapshot {
-            mailbox: [None; Square::COUNT],
+        ThreatPosition {
+            by_type: [Bitboard::EMPTY; PieceType::COUNT],
+            by_color: [Bitboard::EMPTY; Color::COUNT],
             occ: Bitboard::EMPTY,
             kings: [Square::A1; 2],
         }
     }
 }
 
-/// The intermediate replay state: the running occupancy plus a small
-/// override map for the few squares the move touches, so identity lookups match
-/// the state *after the current edit* even though the underlying
-/// [`ThreatSnapshot`] is already fully post-move.
-struct Replay<'a> {
-    snap: &'a ThreatSnapshot,
-    /// Current (intermediate) occupancy — starts at the pre-move occupancy and
-    /// evolves one edit at a time.
-    occ: Bitboard,
-    /// Touched squares and their *current* occupant (`None` == empty). At most a
-    /// handful per move (castling: 4); padded.
-    over_sq: [Square; 8],
-    over_pc: [Option<Piece>; 8],
-    n_over: usize,
-}
-
-impl<'a> Replay<'a> {
-    fn find(&self, sq: Square) -> Option<usize> {
-        self.over_sq[..self.n_over].iter().position(|&s| s == sq)
-    }
-
-    /// Set the current occupant of a touched square, inserting a slot on first
-    /// touch. Keeps `occ` in lockstep.
-    fn set(&mut self, sq: Square, pc: Option<Piece>) {
-        let i = self.find(sq).unwrap_or_else(|| {
-            let i = self.n_over;
-            self.over_sq[i] = sq;
-            self.n_over += 1;
-            i
-        });
-        self.over_pc[i] = pc;
-        self.occ = match pc {
-            Some(_) => self.occ | Bitboard::from_square(sq),
-            None => self.occ & !Bitboard::from_square(sq),
-        };
-    }
-
-    /// The piece currently on `sq`. `sq` must be occupied in [`Self::occ`]
-    /// (callers only resolve occupied squares).
-    #[inline]
-    fn resolve(&self, sq: Square) -> Piece {
-        match self.find(sq) {
-            Some(i) => self.over_pc[i].expect("resolve on an empty touched square"),
-            None => self
-                .snap
-                .piece_on(sq)
-                .expect("resolve on an empty untouched square"),
+/// Emit every kept relation from `attacker` on `from` to a piece in `targets`,
+/// **iterating one victim type at a time** so the victim's type is a loop
+/// constant and the excluded pairs never materialise.
+///
+/// This is the incremental twin of [`for_each_threat`]'s victim-mask loops. The
+/// mask comes from [`KEPT_VICTIMS`], which is derived from the same `MAP` the
+/// resolver consults, so the two drop sets are the same by construction.
+#[inline]
+fn record_targets(
+    buf: &mut DeltaBuf,
+    pos: &Replay,
+    attacker: Piece,
+    from: Square,
+    targets: Bitboard,
+    add: bool,
+) {
+    let kept = KEPT_VICTIMS[attacker.piece_type as usize];
+    for vt in PieceType::ALL {
+        if kept & (1 << vt as u8) == 0 {
+            continue;
+        }
+        for to in targets & pos.typed(vt) {
+            buf.push(ThreatDelta {
+                attacker,
+                from,
+                victim: Piece::new(pos.color_on(to), vt),
+                to,
+                add,
+            });
         }
     }
 }
@@ -267,83 +342,78 @@ impl<'a> Replay<'a> {
 /// occupancy (design/11 §12.9.1). Over-generates freely; [`threat_index`] drops
 /// the excluded pairs at resolution time. The one non-over-generatable case —
 /// pawn pushes onto a non-pawn — is guarded here.
-fn record_square_touch(buf: &mut DeltaBuf, r: &Replay, p: Piece, s: Square, add: bool) {
+fn record_square_touch(
+    buf: &mut DeltaBuf,
+    tab: &AttackTables,
+    r: &Replay,
+    p: Piece,
+    s: Square,
+    add: bool,
+) {
     let occ = r.occ;
 
     // --- 1. Outgoing: what `p` threatens from `s`. Kings are never attackers.
     match p.piece_type {
         PieceType::King => {}
         PieceType::Pawn => {
-            // Diagonal captures (any occupant; threat_index filters to P/N/R).
-            for to in pawn_attacks(p.color, s) & occ {
-                buf.push(ThreatDelta {
-                    attacker: p,
-                    from: s,
-                    victim: r.resolve(to),
-                    to,
-                    add,
-                });
-            }
+            record_targets(buf, r, p, s, pawn_attacks(p.color, s), add);
             // Push relation: only a pawn directly in front is threatened
             // (matching for_each_threat's `all_pawns` guard — MAP would
             // otherwise wrongly keep pawn-push onto a knight/rook).
             if let Some(push) = s.shifted(p.color.pawn_push())
-                && occ.contains(push)
+                && r.typed(PieceType::Pawn).contains(push)
             {
-                let victim = r.resolve(push);
-                if victim.piece_type == PieceType::Pawn {
-                    buf.push(ThreatDelta {
-                        attacker: p,
-                        from: s,
-                        victim,
-                        to: push,
-                        add,
-                    });
-                }
-            }
-        }
-        pt => {
-            for to in attacks(pt, s, occ) & occ {
                 buf.push(ThreatDelta {
                     attacker: p,
                     from: s,
-                    victim: r.resolve(to),
-                    to,
+                    victim: Piece::new(r.color_on(push), PieceType::Pawn),
+                    to: push,
                     add,
                 });
             }
         }
+        pt => record_targets(buf, r, p, s, tab.attacks(pt, s, occ), add),
     }
 
     // --- 2. X-ray ripple: sliders whose ray reaches `s`. Each such slider `sl`
     // gains/loses its direct relation to `p@s`, and its relation to the first
     // occupant strictly beyond `s` flips the *other* way (removing p unblocks
-    // sl; adding p blocks it). Slider identity comes from `resolve`, not the
-    // board's post-move bitboards, so a moved slider is never miscounted.
-    let ratt = rook_attacks(s, occ);
-    let batt = bishop_attacks(s, occ);
+    // sl; adding p blocks it). The ray fans are pre-masked with the slider
+    // boards, so only real sliders are ever iterated — the mailbox form walked
+    // every occupied square on both fans and resolved each one to find out.
+    let ratt = tab.rook_attacks(s, occ);
+    let batt = tab.bishop_attacks(s, occ);
     let qatt = ratt | batt;
-    for sl_sq in ratt & occ {
-        let sl = r.resolve(sl_sq);
-        if matches!(sl.piece_type, PieceType::Rook | PieceType::Queen) {
-            ripple(buf, r, qatt, sl, sl_sq, p, s, add);
-        }
+    let queens = r.typed(PieceType::Queen);
+    for sl_sq in ratt & r.rook_movers() {
+        let pt = if queens.contains(sl_sq) {
+            PieceType::Queen
+        } else {
+            PieceType::Rook
+        };
+        let sl = Piece::new(r.color_on(sl_sq), pt);
+        ripple(buf, r, qatt, sl, sl_sq, p, s, add);
     }
-    for sl_sq in batt & occ {
-        let sl = r.resolve(sl_sq);
-        if matches!(sl.piece_type, PieceType::Bishop | PieceType::Queen) {
-            ripple(buf, r, qatt, sl, sl_sq, p, s, add);
-        }
+    for sl_sq in batt & r.bishop_movers() {
+        let pt = if queens.contains(sl_sq) {
+            PieceType::Queen
+        } else {
+            PieceType::Bishop
+        };
+        let sl = Piece::new(r.color_on(sl_sq), pt);
+        ripple(buf, r, qatt, sl, sl_sq, p, s, add);
     }
 
     // --- 3. Incoming: short-range attackers of `s` (pawns, knights). Kings are
     // never attackers, so no king incoming. Only meaningful when `p` can be a
-    // victim, i.e. not a king.
+    // victim, i.e. not a king. The victim is fixed here, so the
+    // attacker-type predicate is a loop-invariant and hoists out entirely: a
+    // bishop or queen victim skips the whole pawn scan.
     if p.piece_type != PieceType::King {
-        for a in knight_attacks(s) & occ {
-            if r.resolve(a).piece_type == PieceType::Knight {
+        if threat_pair_kept(PieceType::Knight, p.piece_type) {
+            for a in knight_attacks(s) & r.typed(PieceType::Knight) {
                 buf.push(ThreatDelta {
-                    attacker: r.resolve(a),
+                    attacker: Piece::new(r.color_on(a), PieceType::Knight),
                     from: a,
                     victim: p,
                     to: s,
@@ -351,43 +421,34 @@ fn record_square_touch(buf: &mut DeltaBuf, r: &Replay, p: Piece, s: Square, add:
                 });
             }
         }
-        // A white pawn attacking `s` sits on a down-diagonal of `s`
-        // (`pawn_attacks(Black, s)`), a black pawn on an up-diagonal.
-        for a in pawn_attacks(Color::Black, s) & occ {
-            let ap = r.resolve(a);
-            if ap.color == Color::White && ap.piece_type == PieceType::Pawn {
-                buf.push(ThreatDelta {
-                    attacker: ap,
-                    from: a,
-                    victim: p,
-                    to: s,
-                    add,
-                });
+        if threat_pair_kept(PieceType::Pawn, p.piece_type) {
+            let pawns = r.typed(PieceType::Pawn);
+            // A white pawn attacking `s` sits on a down-diagonal of `s`
+            // (`pawn_attacks(Black, s)`), a black pawn on an up-diagonal.
+            for (c, fan) in [
+                (Color::White, pawn_attacks(Color::Black, s)),
+                (Color::Black, pawn_attacks(Color::White, s)),
+            ] {
+                let attacker = Piece::new(c, PieceType::Pawn);
+                for a in fan & pawns & r.colored(c) {
+                    buf.push(ThreatDelta {
+                        attacker,
+                        from: a,
+                        victim: p,
+                        to: s,
+                        add,
+                    });
+                }
             }
-        }
-        for a in pawn_attacks(Color::White, s) & occ {
-            let ap = r.resolve(a);
-            if ap.color == Color::Black && ap.piece_type == PieceType::Pawn {
-                buf.push(ThreatDelta {
-                    attacker: ap,
-                    from: a,
-                    victim: p,
-                    to: s,
-                    add,
-                });
-            }
-        }
-        // Incoming pawn push: a pawn directly behind `s` threatens it — but only
-        // if `p@s` is itself a pawn (the push relation is pawn→pawn only).
-        if p.piece_type == PieceType::Pawn {
-            for c in Color::ALL {
-                if let Some(back) = s.shifted(c.flip().pawn_push())
-                    && occ.contains(back)
-                {
-                    let ap = r.resolve(back);
-                    if ap.color == c && ap.piece_type == PieceType::Pawn {
+            // Incoming pawn push: a pawn directly behind `s` threatens it — but
+            // only if `p@s` is itself a pawn (push is a pawn→pawn relation).
+            if p.piece_type == PieceType::Pawn {
+                for c in Color::ALL {
+                    if let Some(back) = s.shifted(c.flip().pawn_push())
+                        && (pawns & r.colored(c)).contains(back)
+                    {
                         buf.push(ThreatDelta {
-                            attacker: ap,
+                            attacker: Piece::new(c, PieceType::Pawn),
                             from: back,
                             victim: p,
                             to: s,
@@ -422,7 +483,7 @@ fn ripple(
         buf.push(ThreatDelta {
             attacker: sl,
             from: sl_sq,
-            victim: r.resolve(d),
+            victim: r.piece_on(d),
             to: d,
             add: !add,
         });
@@ -440,75 +501,99 @@ fn ripple(
 /// promotion). Only relations whose attacker or victim is that square change;
 /// x-rays beyond it do not. This is the compact counterpart to a remove+add
 /// pair, which needlessly emits and later cancels those unchanged x-rays.
-fn record_mutate(buf: &mut DeltaBuf, r: &Replay, old: Piece, new: Piece, square: Square) {
-    record_outgoing(buf, r, old, square, false);
-    record_outgoing(buf, r, new, square, true);
-    record_incoming_mutate(buf, r, old, new, square);
+fn record_mutate(
+    buf: &mut DeltaBuf,
+    tab: &AttackTables,
+    r: &Replay,
+    old: Piece,
+    new: Piece,
+    square: Square,
+) {
+    record_outgoing(buf, tab, r, old, square, false);
+    record_outgoing(buf, tab, r, new, square, true);
+    record_incoming_mutate(buf, tab, r, old, new, square);
 }
 
-fn record_outgoing(buf: &mut DeltaBuf, r: &Replay, piece: Piece, from: Square, add: bool) {
-    if piece.piece_type == PieceType::King {
-        return;
-    }
-    let occ = r.occ;
-    if piece.piece_type == PieceType::Pawn {
-        for to in pawn_attacks(piece.color, from) & occ {
-            buf.push(ThreatDelta {
-                attacker: piece,
-                from,
-                victim: r.resolve(to),
-                to,
-                add,
-            });
-        }
-        if let Some(to) = from.shifted(piece.color.pawn_push())
-            && occ.contains(to)
-        {
-            let victim = r.resolve(to);
-            if victim.piece_type == PieceType::Pawn {
+fn record_outgoing(
+    buf: &mut DeltaBuf,
+    tab: &AttackTables,
+    r: &Replay,
+    piece: Piece,
+    from: Square,
+    add: bool,
+) {
+    match piece.piece_type {
+        PieceType::King => {}
+        PieceType::Pawn => {
+            record_targets(buf, r, piece, from, pawn_attacks(piece.color, from), add);
+            if let Some(to) = from.shifted(piece.color.pawn_push())
+                && r.typed(PieceType::Pawn).contains(to)
+            {
                 buf.push(ThreatDelta {
                     attacker: piece,
                     from,
-                    victim,
+                    victim: Piece::new(r.color_on(to), PieceType::Pawn),
                     to,
                     add,
                 });
             }
         }
-    } else {
-        for to in attacks(piece.piece_type, from, occ) & occ {
-            buf.push(ThreatDelta {
-                attacker: piece,
-                from,
-                victim: r.resolve(to),
-                to,
-                add,
-            });
-        }
+        pt => record_targets(buf, r, piece, from, tab.attacks(pt, from, r.occ), add),
     }
 }
 
-fn record_incoming_mutate(buf: &mut DeltaBuf, r: &Replay, old: Piece, new: Piece, to: Square) {
+fn record_incoming_mutate(
+    buf: &mut DeltaBuf,
+    tab: &AttackTables,
+    r: &Replay,
+    old: Piece,
+    new: Piece,
+    to: Square,
+) {
     let occ = r.occ;
-    let rookers = rook_attacks(to, occ) & occ;
-    let bishops = bishop_attacks(to, occ) & occ;
-    let knights = knight_attacks(to) & occ;
-    let white_pawns = pawn_attacks(Color::Black, to) & occ;
-    let black_pawns = pawn_attacks(Color::White, to) & occ;
-    for from in rookers | bishops | knights | white_pawns | black_pawns {
-        let attacker = r.resolve(from);
-        let attacks_to = match attacker.piece_type {
-            PieceType::Rook => rookers.contains(from),
-            PieceType::Bishop => bishops.contains(from),
-            PieceType::Queen => rookers.contains(from) || bishops.contains(from),
-            PieceType::Knight => knights.contains(from),
-            PieceType::Pawn => {
-                (attacker.color == Color::White && white_pawns.contains(from))
-                    || (attacker.color == Color::Black && black_pawns.contains(from))
-            }
-            PieceType::King => false,
-        };
-        if attacks_to {
+    let queens = r.typed(PieceType::Queen);
+    let pawns = r.typed(PieceType::Pawn);
+    // Pre-masked attacker fans. They are pairwise disjoint — a square is either
+    // rank/file-aligned with `to` or diagonally aligned, never both, and a
+    // knight/pawn is neither a slider nor the other — so iterating them
+    // separately visits every attacker exactly once, like the old union walk,
+    // without resolving any identity or re-testing any geometry.
+    // (fan, the type its occupants have, whether a queen can also appear).
+    let fans = [
+        (
+            tab.rook_attacks(to, occ) & r.rook_movers(),
+            PieceType::Rook,
+            true,
+        ),
+        (
+            tab.bishop_attacks(to, occ) & r.bishop_movers(),
+            PieceType::Bishop,
+            true,
+        ),
+        (
+            knight_attacks(to) & r.typed(PieceType::Knight),
+            PieceType::Knight,
+            false,
+        ),
+        (
+            pawn_attacks(Color::Black, to) & pawns & r.colored(Color::White),
+            PieceType::Pawn,
+            false,
+        ),
+        (
+            pawn_attacks(Color::White, to) & pawns & r.colored(Color::Black),
+            PieceType::Pawn,
+            false,
+        ),
+    ];
+    for (fan, default_pt, slider) in fans {
+        for from in fan {
+            let pt = if slider && queens.contains(from) {
+                PieceType::Queen
+            } else {
+                default_pt
+            };
+            let attacker = Piece::new(r.color_on(from), pt);
             buf.push(ThreatDelta {
                 attacker,
                 from,
@@ -528,28 +613,26 @@ fn record_incoming_mutate(buf: &mut DeltaBuf, r: &Replay, old: Piece, new: Piece
     // The non-capture pawn-push relation exists only when the victim is a pawn.
     for color in Color::ALL {
         if let Some(from) = to.shifted(color.flip().pawn_push())
-            && occ.contains(from)
+            && (pawns & r.colored(color)).contains(from)
         {
-            let attacker = r.resolve(from);
-            if attacker.color == color && attacker.piece_type == PieceType::Pawn {
-                if old.piece_type == PieceType::Pawn {
-                    buf.push(ThreatDelta {
-                        attacker,
-                        from,
-                        victim: old,
-                        to,
-                        add: false,
-                    });
-                }
-                if new.piece_type == PieceType::Pawn {
-                    buf.push(ThreatDelta {
-                        attacker,
-                        from,
-                        victim: new,
-                        to,
-                        add: true,
-                    });
-                }
+            let attacker = Piece::new(color, PieceType::Pawn);
+            if old.piece_type == PieceType::Pawn {
+                buf.push(ThreatDelta {
+                    attacker,
+                    from,
+                    victim: old,
+                    to,
+                    add: false,
+                });
+            }
+            if new.piece_type == PieceType::Pawn {
+                buf.push(ThreatDelta {
+                    attacker,
+                    from,
+                    victim: new,
+                    to,
+                    add: true,
+                });
             }
         }
     }
@@ -602,7 +685,7 @@ const STACK_LEN: usize = MAX_PLY + 8;
 /// One per-ply FullThreats entry, folded **fully lazily** — the FullThreats
 /// mirror of [`super::sota_accumulator::HalfkaContext`]'s per-ply `Entry`. At
 /// push time we store only the move ([`dp`](Self::dp)) and a
-/// [`ThreatSnapshot`] of the post-move board; generation, resolution, and the
+/// [`ThreatPosition`] of the post-move board; generation, resolution, and the
 /// 768-lane fold are all deferred to [`ThreatContext::compute`], which runs
 /// them against the snapshot only for the plies that are actually evaluated.
 // Cache-line aligned with the accumulator entries (perf study 3 §5.3).
@@ -620,7 +703,7 @@ struct ThreatEntry {
     /// perspective ignores them (it was refreshed from scratch eagerly at push).
     /// Read only while folding a `!computed[p]` perspective.
     dp: DirtyPiece,
-    snapshot: ThreatSnapshot,
+    position: ThreatPosition,
     /// Per-perspective memoization flag — the FullThreats analogue of HalfKA's
     /// `Entry::computed`. Set by [`ThreatContext::compute`] (deferred fold) or
     /// eagerly at push (root, king cross, empty-weights net).
@@ -633,7 +716,7 @@ impl Default for ThreatEntry {
             acc: [[0i16; ACC]; 2],
             psqt: [[0i32; BUCKETS]; 2],
             dp: DirtyPiece::EMPTY,
-            snapshot: ThreatSnapshot::default(),
+            position: ThreatPosition::default(),
             computed: [false; 2],
         }
     }
@@ -646,7 +729,7 @@ impl Default for ThreatEntry {
 ///
 /// Like HalfKA — whose dirty record is re-resolved to feature indices at fold
 /// time — FullThreats now defers *everything*: [`apply_at`](Self::apply_at)
-/// snapshots the post-move board ([`ThreatSnapshot`]) + the [`DirtyPiece`], and
+/// snapshots the post-move board ([`ThreatPosition`]) + the [`DirtyPiece`], and
 /// [`compute`](Self::compute) regenerates the events, resolves the
 /// per-perspective indices, and folds forward from the nearest computed ancestor
 /// only for plies that reach an [`evaluate`]. Children that cut off (TT hits,
@@ -774,7 +857,7 @@ impl<'a> ThreatContext<'a> {
     /// `board`) into the child entry at `ply + 1`, advancing the cursor. A
     /// perspective whose own king crossed the d/e boundary is refreshed from
     /// scratch eagerly here (that rebuild reads the post-move board); every other
-    /// perspective just gets the post-move [`ThreatSnapshot`] stored for
+    /// perspective just gets the post-move [`ThreatPosition`] stored for
     /// [`compute`](Self::compute) to (re)generate and fold later. `board` is the
     /// fully post-move position. This is the cursor form of
     /// [`apply_at`](Self::apply_at).
@@ -808,7 +891,7 @@ impl<'a> ThreatContext<'a> {
         // fold-time (re)generation reads THIS, never the live board a sibling
         // will overwrite. Generation, resolution, and the fold are all deferred.
         self.stack[child].dp = *dp;
-        self.stack[child].snapshot = ThreatSnapshot::from_board(board);
+        self.stack[child].position = ThreatPosition::from_board(board);
 
         let weights = self.weights;
         let psqt_weights = self.psqt_weights;
@@ -833,7 +916,7 @@ impl<'a> ThreatContext<'a> {
     /// — the FullThreats mirror of
     /// [`super::sota_accumulator::HalfkaContext::compute`], but fully lazy:
     /// generation ([`build_deltas`]) and resolution ([`resolve_into`]) happen
-    /// here too, against each folded ply's stored [`ThreatSnapshot`]. Walks back
+    /// here too, against each folded ply's stored [`ThreatPosition`]. Walks back
     /// to the nearest computed ancestor per perspective (the root is always
     /// computed; any king-crossed ply was computed eagerly at push), then, for
     /// each child across the union span, regenerates the perspective-agnostic
@@ -852,6 +935,10 @@ impl<'a> ThreatContext<'a> {
         }
         let weights = self.weights;
         let psqt_weights = self.psqt_weights;
+        // Hoist the magic-table LazyLock deref out of the per-touch geometry
+        // queries (CLAUDE.md's documented hot-loop pattern for `attacks`): the
+        // guard was being re-checked several times per touched square.
+        let tab = tables();
         for child in (anc[0].min(anc[1]) + 1)..=ply {
             let need = [
                 child > anc[0] && !self.stack[child].computed[0],
@@ -865,8 +952,9 @@ impl<'a> ThreatContext<'a> {
             self.buf.clear();
             build_deltas(
                 &mut self.buf,
+                tab,
                 &self.stack[child].dp,
-                &self.stack[child].snapshot,
+                &self.stack[child].position,
             );
             // Phase 1 — resolve EVERY needed perspective before ANY fold runs
             // (perf study #4 item #3). The [`ThreatResolver`] hoists the
@@ -890,7 +978,7 @@ impl<'a> ThreatContext<'a> {
                 if !needs_fold {
                     continue;
                 }
-                let ksq = self.stack[child].snapshot.kings[p];
+                let ksq = self.stack[child].position.kings[p];
                 let resolver = ThreatResolver::new(Color::ALL[p], ksq);
                 lens[p] = resolve_into(
                     self.buf.events(),
@@ -1024,23 +1112,18 @@ fn resolve_into(
 /// replay the edits — every sub removed (in order), then every add — recording a
 /// `record_square_touch` per edit against the state *after* that edit. See the
 /// module docs for the telescoping argument.
-fn build_deltas(buf: &mut DeltaBuf, dp: &DirtyPiece, snap: &ThreatSnapshot) {
+fn build_deltas(buf: &mut DeltaBuf, tab: &AttackTables, dp: &DirtyPiece, post: &ThreatPosition) {
     // A non-capture (including a quiet promotion) changes occupancy only by
     // moving the blocker from `from` to `to`. Evaluate both endpoint changes
-    // against the shared occupancy with both endpoints empty; this is the
+    // against the shared position with both endpoints empty; this is the
     // compact move primitive and avoids intermediate endpoint interactions.
     if let ([(mover, from)], [(placed, to)]) = (dp.subs(), dp.adds())
         && from != to
     {
-        let between = Replay {
-            snap,
-            occ: snap.all_occupancy() & !Bitboard::from_square(*to),
-            over_sq: [Square::A1; 8],
-            over_pc: [None; 8],
-            n_over: 0,
-        };
-        record_square_touch(buf, &between, *mover, *from, false);
-        record_square_touch(buf, &between, *placed, *to, true);
+        let mut between = *post;
+        between.toggle(*placed, *to);
+        record_square_touch(buf, tab, &between, *mover, *from, false);
+        record_square_touch(buf, tab, &between, *placed, *to, true);
         return;
     }
 
@@ -1051,75 +1134,39 @@ fn build_deltas(buf: &mut DeltaBuf, dp: &DirtyPiece, snap: &ThreatSnapshot) {
         && victim_sq == to
         && from != to
     {
-        let mut after_remove = Replay {
-            snap,
-            occ: snap.all_occupancy(),
-            over_sq: [Square::A1; 8],
-            over_pc: [None; 8],
-            n_over: 0,
-        };
-        after_remove.set(*to, Some(*victim));
-        record_square_touch(buf, &after_remove, *mover, *from, false);
+        // The state the mover leaves: post-move occupancy (so `from` is already
+        // empty) but with the victim still standing on `to`.
+        let mut after_remove = *post;
+        after_remove.toggle(*placed, *to);
+        after_remove.toggle(*victim, *to);
+        record_square_touch(buf, tab, &after_remove, *mover, *from, false);
 
-        let final_state = Replay {
-            snap,
-            occ: snap.all_occupancy(),
-            over_sq: [Square::A1; 8],
-            over_pc: [None; 8],
-            n_over: 0,
-        };
-        record_mutate(buf, &final_state, *victim, *placed, *to);
+        record_mutate(buf, tab, post, *victim, *placed, *to);
         return;
     }
 
-    // Pre-move occupancy = post-move, with adds cleared then subs set. A square
-    // that is both a sub and an add (a capture's destination) ends up SET
-    // (occupied pre-move by the victim), because subs are applied last.
-    let mut pre_occ = snap.all_occupancy();
-    for &(_, sq) in dp.adds() {
-        pre_occ &= !Bitboard::from_square(sq);
-    }
-    for &(_, sq) in dp.subs() {
-        pre_occ |= Bitboard::from_square(sq);
-    }
-
-    let mut r = Replay {
-        snap,
-        occ: pre_occ,
-        over_sq: [Square::A1; 8],
-        over_pc: [None; 8],
-        n_over: 0,
-    };
-
-    // Seed touched-square identities to their pre-move occupants: a sub square
-    // held the sub piece; an add-only square was empty. (Subs seed last so a
-    // sub+add square keeps the victim.)
-    for &(_, sq) in dp.adds() {
-        if r.find(sq).is_none() {
-            r.over_sq[r.n_over] = sq;
-            r.over_pc[r.n_over] = None;
-            r.n_over += 1;
-        }
+    // Generic path (castling, en passant, anything else). Undo every edit to
+    // recover the pre-move position — `toggle` is XOR, so "undo" and "redo" are
+    // the same primitive — then replay the edits one at a time, recording each
+    // touch against the state *after its own edit*.
+    //
+    // Adds are undone before subs, so a square that is both (a capture
+    // destination) correctly ends up holding the victim.
+    let mut r = *post;
+    for &(pc, sq) in dp.adds() {
+        r.toggle(pc, sq);
     }
     for &(pc, sq) in dp.subs() {
-        let i = r.find(sq).unwrap_or_else(|| {
-            let i = r.n_over;
-            r.over_sq[i] = sq;
-            r.n_over += 1;
-            i
-        });
-        r.over_pc[i] = Some(pc);
+        r.toggle(pc, sq);
     }
 
-    // Removes first, then adds — each touch runs against the state after its own
-    // edit (`set` updates occ + identity before we record).
     for &(pc, sq) in dp.subs() {
-        r.set(sq, None);
-        record_square_touch(buf, &r, pc, sq, false);
+        r.toggle(pc, sq);
+        record_square_touch(buf, tab, &r, pc, sq, false);
     }
     for &(pc, sq) in dp.adds() {
-        r.set(sq, Some(pc));
-        record_square_touch(buf, &r, pc, sq, true);
+        r.toggle(pc, sq);
+        record_square_touch(buf, tab, &r, pc, sq, true);
     }
 }
 
@@ -1516,11 +1563,9 @@ mod tests {
     #[ignore = "measurement"]
     fn measure_fold_row_counts() {
         use std::collections::BTreeSet;
-        let w: Vec<i8> = Vec::new();
         let q: Vec<i32> = Vec::new();
-        let mut board = Board::startpos();
-        let mut seed = 0x1234_5678_9ABC_DEF0u64;
-        let mut rng = Rng(seed);
+        let tab = tables();
+        let base_seed = 0x1234_5678_9ABC_DEF0u64;
         let mut tot_rows = 0usize;
         let mut tot_min = 0usize;
         let mut tot_raw = 0usize;
@@ -1530,11 +1575,12 @@ mod tests {
         let mut buf = DeltaBuf::new();
         let mut adds = [0usize; DELTA_CAP];
         let mut subs = [0usize; DELTA_CAP];
-        let mut pd = [0i32; BUCKETS];
+        let mut pd;
         for game in 0..400u32 {
-            board = Board::startpos();
-            seed = seed.wrapping_add(u64::from(game)).wrapping_mul(0x2545_F491_4F6C_DD1D);
-            rng = Rng(seed);
+            let mut board = Board::startpos();
+            let mut rng = Rng(base_seed
+                .wrapping_add(u64::from(game))
+                .wrapping_mul(0x2545_F491_4F6C_DD1D));
             for _ in 0..100 {
                 let mut moves = MoveList::new();
                 generate_legal(&board, &mut moves);
@@ -1552,9 +1598,9 @@ mod tests {
                 }
                 let gc = board.gives_check(m);
                 board.make_move(m, gc);
-                let snap = ThreatSnapshot::from_board(&board);
+                let post = ThreatPosition::from_board(&board);
                 buf.clear();
-                build_deltas(&mut buf, &dp, &snap);
+                build_deltas(&mut buf, tab, &dp, &post);
                 tot_raw += buf.len;
                 for (i, &p) in Color::ALL.iter().enumerate() {
                     if king_crossed(&dp, p) {
@@ -1565,7 +1611,7 @@ mod tests {
                         after.insert(idx);
                     });
                     let minimal = before[i].symmetric_difference(&after).count();
-                    let resolver = ThreatResolver::new(p, snap.kings[i]);
+                    let resolver = ThreatResolver::new(p, post.kings[i]);
                     pd = [0i32; BUCKETS];
                     let (al, sl) =
                         resolve_into(buf.events(), &mut adds, &mut subs, &resolver, &q, &mut pd);
@@ -1575,7 +1621,6 @@ mod tests {
                     hist[(al + sl).min(79)] += 1;
                     minhist[minimal.min(79)] += 1;
                 }
-                let _ = &w;
             }
         }
         eprintln!("perspective-plies      : {n}");
