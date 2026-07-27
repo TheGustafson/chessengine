@@ -156,6 +156,16 @@ def main() -> None:
     ap.add_argument("--base", default="", help="config applied to control AND every arm")
     ap.add_argument("--limit", type=int, default=800, help="oracle positions")
     ap.add_argument("--nodes", type=int, default=50000, help="candidate budget")
+    ap.add_argument(
+        "--budgets",
+        default="",
+        help="comma-separated candidate budgets -> a SCALING check. A real "
+        "bullet move at 8+0.08 gets ~1.3M nodes on this box, 26x the 50k "
+        "default, and depth-gated mechanisms (RFP's depth<17, razoring's d^2, "
+        "LMP's depth^2, the NMP bar) behave differently at depth 13 and depth "
+        "19. An arm whose gain shrinks or flips as the budget grows was tuned "
+        "for a search shallower than the one it will play in.",
+    )
     ap.add_argument("--depth", type=int, default=10, help="bench depth")
     ap.add_argument("--no-nodes", action="store_true")
     ap.add_argument("--no-tactics", action="store_true")
@@ -194,6 +204,29 @@ def main() -> None:
     if not args.no_tactics:
         hdr += f"{'tact':>8}"
     print(hdr)
+
+    if args.budgets:
+        budgets = [int(b) for b in args.budgets.split(",")]
+        print(f"{'arm':<20}" + "".join(f"{str(b//1000)+'k':>12}" for b in budgets)
+              + "    (cp@64k tier, paired delta)")
+        ref_by_budget: dict[int, dict[str, float]] = {}
+        for name, ov in arms:
+            full = {**base_ov, **ov}
+            row = f"{name:<20}"
+            for b in budgets:
+                _, per_pos, _ = cp_loss(tier_tables, fens, play_all(fens, b, full))
+                deep = per_pos[keys[-1]]
+                if name == "control":
+                    ref_by_budget[b] = deep
+                    row += f"{statistics.fmean(list(deep.values())):>12.2f}"
+                else:
+                    d, se = paired(deep, ref_by_budget[b])
+                    row += f"{d:>+8.2f}+-{se:<3.1f}"
+            print(row, flush=True)
+        print("\nControl row is absolute cp loss at the deepest oracle tier; "
+              "arm rows are paired\ndeltas at the SAME budget. A gain that "
+              "shrinks with budget will not survive a\nreal time control.")
+        return
 
     ref_cp, ref_pos, ref_nodes, ref_tact = None, None, None, None
     for name, ov in arms:

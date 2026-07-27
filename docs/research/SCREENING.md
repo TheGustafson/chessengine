@@ -200,3 +200,39 @@ node cost compounds and cp gains do not obviously do so.
 **Caveat on all of the above:** these are n=800–1500 exploratory readings,
 ~1.1–1.7σ each. Consistent signs across three tiers is what makes them worth
 pursuing, not their individual significance.
+
+---
+
+## 9. Screen at a budget matched to the target time control
+
+Measured on this box: at **8+0.08** with ~40 moves, a move gets ~280 ms, and
+at 4.7 Mnps that is **~1.3M nodes**. The default screening budget of 50k is
+therefore **26× too small**.
+
+That is not a rounding error, because the mechanisms being tuned are
+**depth-gated**:
+
+- RFP applies only at `depth < RFP_MAX_DEPTH` (17). At 50k nodes we rarely
+  exceed depth ~13, so RFP is active nearly everywhere in the tree; at 1.3M
+  we reach depth 18–20, where it is inactive near the root.
+- razoring's margin grows as `d²`, LMP's threshold as `depth²`, and the NMP
+  bar moves with `−14·depth`.
+
+So a parameter screened at 50k is being asked a different question from the
+one it will face in a game, and an arm can win the shallow question and lose
+the deep one. This is a live candidate explanation for the 2026-07-27 SPRT
+failure, where a config screened at 50k lost at ~1.3M.
+
+**Use `--budgets` for anything you intend to game-test:**
+
+```bash
+python3 tools/screen.py --budgets 50000,200000,800000 --limit 1000 \
+    'RED2700:RED_TABLE_NUM=2700'
+```
+
+An arm whose gain shrinks or flips as the budget grows was tuned for a
+shallower search than the one it will play in. Require the sign to hold
+across budgets as well as across oracle tiers.
+
+Cost note: budget × positions is the whole expense, so trade them against
+each other — full corpus at 50k, or ~1000 positions at 800k, not both.
