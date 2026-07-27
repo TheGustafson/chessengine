@@ -891,4 +891,35 @@ mod tests {
         );
         assert!(cp.abs() < 1_000_000, "finite centipawns");
     }
+
+    /// The incremental observer filters victims with [`KEPT_VICTIMS`] where the
+    /// fold's `DeltaBuf::push` filters them with [`threat_pair_kept`]. If those
+    /// two ever disagreed, the incremental accumulator would silently keep (or
+    /// drop) a relation the from-scratch refresh does not — the exact class of
+    /// bug the replay oracle exists to catch, caught here at compile-time cost
+    /// instead. Both derive from `MAP`; this pins that they still do, for all
+    /// 36 ordered type pairs.
+    #[test]
+    fn kept_victim_masks_match_predicate() {
+        for attacker in PieceType::ALL {
+            for victim in PieceType::ALL {
+                let by_mask = KEPT_VICTIMS[attacker as usize] & (1 << victim as u8) != 0;
+                assert_eq!(
+                    by_mask,
+                    threat_pair_kept(attacker, victim),
+                    "KEPT_VICTIMS disagrees with threat_pair_kept for {attacker:?} -> {victim:?}"
+                );
+            }
+        }
+    }
+
+    /// `KEPT_VICTIMS` is indexed by `PieceType as usize`, and so is `MAP`; the
+    /// observer's per-type loops walk `PieceType::ALL`. All three only line up
+    /// if `ALL` is in discriminant order.
+    #[test]
+    fn piece_type_all_is_in_discriminant_order() {
+        for (i, pt) in PieceType::ALL.iter().enumerate() {
+            assert_eq!(i, *pt as usize, "PieceType::ALL[{i}] is {pt:?}");
+        }
+    }
 }
