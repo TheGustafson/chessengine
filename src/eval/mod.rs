@@ -90,6 +90,14 @@ impl EvalContext {
                 if !reuse {
                     self.sota = Some(nnue::sota_context::SotaContext::new(net));
                 }
+                // The policy-head snapshot refreshes even on context reuse: a
+                // sidecar can be (un)installed between `go`s with the same
+                // net, and this is the once-per-eval-boundary read the slot's
+                // contract prescribes (perf study 3 §5.2 — the hot path must
+                // never touch the RwLock).
+                if let Some(ctx) = &mut self.sota {
+                    ctx.refresh_policy_head();
+                }
             }
         }
     }

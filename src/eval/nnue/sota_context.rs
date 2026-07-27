@@ -71,6 +71,16 @@ pub struct SotaContext {
     /// The loaded net. Leaked to `'static` by `set_eval_file` so multiple
     /// threads can borrow it concurrently without lifetime gymnastics.
     net: &'static SotaNetwork,
+    /// Snapshot of [`super::active_policy_head`] taken at net-set time
+    /// (perf study 3 §5.2): the global slot is a futex-backed `RwLock`, and
+    /// reading it once per eval cost 1.53% of all cycles — for a boolean
+    /// gate. Every installer flow (UCI `EvalFile`, per-`go`
+    /// `refresh_eval_net`, direct-load tools) passes through
+    /// `EvalContext::set_sota_net`, which refreshes this snapshot even when
+    /// the context itself is reused — honoring the slot's own "read once at
+    /// the eval boundary, never per node" contract, with no new `unsafe`
+    /// (D14).
+    policy_head: Option<&'static super::policy_head::PolicyHead>,
     halfka: HalfkaContext<'static>,
     threats: ThreatContext<'static>,
     /// EXP-UNC-1: the value-uncertainty σ̂ from the most recent [`evaluate`], or
@@ -200,6 +210,7 @@ impl SotaContext {
             largenet.map(|large| ThreatContext::new(&large.threat_weights, large.threat_psqt()));
         SotaContext {
             net,
+            policy_head: super::active_policy_head(),
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias, net.halfka_psqt()),
             threats: ThreatContext::new(&net.threat_weights, net.threat_psqt()),
             last_sigma: None,
@@ -226,6 +237,14 @@ impl SotaContext {
         }
     }
 
+    /// Re-snapshot the global policy-head slot (called by
+    /// `EvalContext::set_sota_net` on every install, including context
+    /// reuse) — the once-per-eval-boundary read; the hot path reads only
+    /// the cached field.
+    pub fn refresh_policy_head(&mut self) {
+        self.policy_head = super::active_policy_head();
+    }
+
     /// Test-only constructor that arms the smallnet gate explicitly (bypassing the
     /// env), so gate correctness is unit-testable without a global env dependency.
     /// `mat_gate` is the material prefilter (0 = always run the cheap net).
@@ -238,6 +257,7 @@ impl SotaContext {
     ) -> Self {
         SotaContext {
             net,
+            policy_head: super::active_policy_head(),
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias, net.halfka_psqt()),
             threats: ThreatContext::new(&net.threat_weights, net.threat_psqt()),
             last_sigma: None,
@@ -271,6 +291,7 @@ impl SotaContext {
     ) -> Self {
         SotaContext {
             net,
+            policy_head: super::active_policy_head(),
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias, net.halfka_psqt()),
             threats: ThreatContext::new(&net.threat_weights, net.threat_psqt()),
             last_sigma: None,
@@ -430,7 +451,7 @@ impl SotaContext {
         // T6c: total per-perspective PSQT bucket sums (HalfKA + threat rows).
         // All-zero for a psqt-less net ⇒ the head adds 0 ⇒ bit-identical.
         let psqt = combine_psqt(halfka_psqt, threat_psqt);
-        let (value, sigma, wdl) = if super::active_policy_head().is_some() {
+        let (value, sigma, wdl) = if self.policy_head.is_some() {
             // D47: the policy scorer needs the shared-bottleneck activation of
             // this exact position; stash it (inline buffer, no Box, no heap
             // traffic — perf study #4 item #4's de-Box half) whenever a head

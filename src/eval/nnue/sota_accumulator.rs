@@ -75,7 +75,12 @@ pub(crate) fn refresh_psqt_halfka(
     out
 }
 
+// Cache-line aligned (perf study 3 §5.3): under arch-d47v this struct is
+// 3152 B / align 4 — 3152 mod 64 = 16, so every ply's accumulator started
+// 16 B further out of phase and 3 plies in 4 split cache lines in the fold
+// kernels. One attribute, identical instruction stream, −1.29% L1d loads.
 #[derive(Clone)]
+#[repr(align(64))]
 struct Entry {
     acc: [[i16; ACC]; 2],
     psqt: [[i32; BUCKETS]; 2],
@@ -95,6 +100,7 @@ impl Default for Entry {
 }
 
 #[derive(Clone)]
+#[repr(align(64))]
 struct FinnyEntry {
     acc: [i16; ACC],
     psqt: [i32; BUCKETS],

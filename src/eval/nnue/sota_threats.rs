@@ -605,7 +605,9 @@ const STACK_LEN: usize = MAX_PLY + 8;
 /// [`ThreatSnapshot`] of the post-move board; generation, resolution, and the
 /// 768-lane fold are all deferred to [`ThreatContext::compute`], which runs
 /// them against the snapshot only for the plies that are actually evaluated.
+// Cache-line aligned with the accumulator entries (perf study 3 §5.3).
 #[derive(Clone)]
+#[repr(align(64))]
 struct ThreatEntry {
     /// `[White, Black]` accumulator pair — valid only where `computed[p]`.
     acc: [[i16; ACC]; 2],
