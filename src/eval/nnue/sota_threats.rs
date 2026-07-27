@@ -211,10 +211,7 @@ impl ThreatPosition {
         }
         ThreatPosition {
             by_type,
-            by_color: [
-                board.occupancy(Color::White),
-                board.occupancy(Color::Black),
-            ],
+            by_color: [board.occupancy(Color::White), board.occupancy(Color::Black)],
             occ: board.all_occupancy(),
             kings: [
                 board.king_square(Color::White),
@@ -1624,10 +1621,16 @@ mod tests {
             }
         }
         eprintln!("perspective-plies      : {n}");
-        eprintln!("raw events / ply       : {:.2}", tot_raw as f64 / (n as f64 / 2.0));
+        eprintln!(
+            "raw events / ply       : {:.2}",
+            tot_raw as f64 / (n as f64 / 2.0)
+        );
         eprintln!("resolved rows / p-ply  : {:.2}", tot_rows as f64 / n as f64);
         eprintln!("MINIMAL rows / p-ply   : {:.2}", tot_min as f64 / n as f64);
-        eprintln!("overfold factor        : {:.3}", tot_rows as f64 / tot_min as f64);
+        eprintln!(
+            "overfold factor        : {:.3}",
+            tot_rows as f64 / tot_min as f64
+        );
         eprint!("rows hist  :");
         for (i, &c) in hist.iter().enumerate() {
             if c > 0 {

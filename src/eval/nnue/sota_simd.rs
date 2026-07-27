@@ -1628,8 +1628,7 @@ mod tests {
         for (i, value) in weights.iter_mut().enumerate() {
             *value = (i as u16).wrapping_mul(40503) as i16;
         }
-        let seed: [i16; ACC] =
-            std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
+        let seed: [i16; ACC] = std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
         let adds: Vec<usize> = (0..240).map(|i| (i * 7) % ROWS).collect();
         let subs: Vec<usize> = (0..200).map(|i| (i * 5 + 3) % ROWS).collect();
 
