@@ -2230,6 +2230,25 @@ impl Worker {
         cut_node: bool,
         ply: usize,
     ) -> Value {
+        // Step 1 — upcoming repetition (design/10 item 19 "N1", SF parity).
+        // If a draw is available in one move and we are currently worse than
+        // a draw, the draw is a LOWER BOUND on this node: raise alpha to it,
+        // and if that already beats beta the subtree needs no search at all.
+        // Cheap enough to sit above the qsearch dive (two table probes, no
+        // move generation) and placed there deliberately — SF runs it as the
+        // very first statement of search(), before the depth-0 boundary, so
+        // shallow nodes get the cutoff too.
+        if !NT::ROOT
+            && self.board.rule50_count() >= 3
+            && alpha < VALUE_DRAW
+            && self.board.upcoming_repetition(ply as i32)
+        {
+            alpha = value_draw(self.nodes);
+            if alpha >= beta {
+                return alpha;
+            }
+        }
+
         // Depth-0 boundary: drop into qsearch, preserving PV-ness.
         if depth <= 0 {
             return if NT::PV {

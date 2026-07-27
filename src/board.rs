@@ -1487,6 +1487,76 @@ impl Board {
         false
     }
 
+    /// Can the side to move reach, in ONE move, a position already on the
+    /// path — i.e. is a draw by repetition available right now?
+    ///
+    /// Marcel van Kervinck's cuckoo trick (SF `has_game_cycle`, doc 04 §3.9,
+    /// design/10 item 19 "N1"). Every reversible non-pawn move `s1 -> s2`
+    /// shifts the key by exactly `psq[pc][s1] ^ psq[pc][s2] ^ side`,
+    /// independent of the rest of the board. So "is the difference between
+    /// two path keys a single reversible move?" is a two-probe table lookup
+    /// ([`crate::cuckoo`]) — the whole test costs no move generation at all.
+    ///
+    /// Search calls this before its other early exits: a side that can force
+    /// a draw need never search a losing subtree, which prunes hard in
+    /// blocked and fortress-like positions.
+    pub fn upcoming_repetition(&self, ply: i32) -> bool {
+        let copied = &self.st().copied;
+        // Same window as the repetition scan: an irreversible move or a null
+        // makes anything beyond it unreachable.
+        let end = copied.rule50.min(copied.plies_from_null);
+        if end < 3 {
+            return false;
+        }
+
+        let original_key = self.st().key;
+        let occupancy = self.all_occupancy;
+        let tables = crate::cuckoo::tables();
+        // `end <= plies_from_null <= top`, so `top - i` cannot underflow.
+        let top = self.states.len() - 1;
+
+        // Only ODD distances can close a cycle — the same side must be to
+        // move at both ends, so we step two plies back per iteration.
+        for i in (3..=end).step_by(2) {
+            let earlier = &self.states[top - i as usize];
+            let Some(mv) = tables.lookup(original_key ^ earlier.key) else {
+                continue;
+            };
+            let (s1, s2) = (mv.from(), mv.to());
+            // The key delta proves "some reversible move", but says nothing
+            // about today's occupancy, so a slider's path must still be
+            // clear. `between` includes `s2` (SF semantics, doc 03 §3.4), so
+            // XOR it back out to get the strictly-between squares.
+            let blockers = (attacks::between(s1, s2) ^ Bitboard::from_square(s2)) & occupancy;
+            if !blockers.is_empty() {
+                continue;
+            }
+
+            // Strictly inside the tree, merely reaching a path position is
+            // enough: the opponent had a chance to deviate earlier, so this
+            // is a real cycle the side to move can steer into.
+            if ply > i {
+                return true;
+            }
+
+            // At or above the root that is too weak — the "cycle" could be
+            // the move that simply arrives at the current position. Require
+            // a genuine repetition, and require the mover to be US. The
+            // table stores each unordered pair once (s1 < s2), so the piece
+            // may sit at either end; pick whichever endpoint is occupied.
+            let mover = if self.piece_on(s1).is_some() { s1 } else { s2 };
+            // Unlike SF's `color_of` on a possibly-empty square, an empty
+            // pair simply fails this test instead of reading garbage.
+            if self.piece_on(mover).map(|pc| pc.color) != Some(self.side_to_move) {
+                continue;
+            }
+            if earlier.repetition != 0 {
+                return true;
+            }
+        }
+        false
+    }
+
     /// True iff the static exchange value of `m` is at least `threshold`
     /// (doc 04 §3.11, D11): starting from `m`, both sides keep recapturing
     /// on the destination square with their least valuable attacker for as
@@ -2924,6 +2994,173 @@ mod tests {
         }
         assert_eq!(board, Board::startpos());
         assert!(!board.has_repeated());
+    }
+
+    // Doc 04 §3.9 / design/10 item 19: the cuckoo upcoming-repetition query.
+    #[test]
+    fn upcoming_repetition_sees_the_move_back_into_the_cycle() {
+        let mut board = Board::startpos();
+        // Nothing on the path yet: the window (min(rule50, pliesFromNull))
+        // is shorter than the 3 plies a cycle needs.
+        assert!(!board.upcoming_repetition(64));
+        for m in knight_shuffle() {
+            make_checked(&mut board, m);
+        }
+        // Back at the start after 4 reversible plies. Playing Ng1f3 AGAIN
+        // would reach the position 3 plies back, so a draw is available.
+        assert!(
+            board.upcoming_repetition(64),
+            "Ng1f3 re-enters the cycle at distance 3"
+        );
+        // Root-adjacent plies are deliberately stricter: with ply <= i the
+        // move must close a real repetition, not merely arrive here.
+        assert!(!board.upcoming_repetition(0));
+    }
+
+    // The key delta proves "some reversible move" but nothing about today's
+    // occupancy — a slider whose path is now blocked must NOT count.
+    #[test]
+    fn upcoming_repetition_requires_a_clear_slider_path() {
+        // Rooks shuffle on the a/h files while the b1 knight stays home;
+        // then a blocker interposes on the rook's return path.
+        let mut board = Board::from_fen("4k3/8/8/8/8/8/8/R3K2R w KQ - 0 1").unwrap();
+        for m in [
+            Move::normal(Square::A1, Square::A4),
+            Move::normal(Square::E8, Square::D8),
+            Move::normal(Square::A4, Square::A1),
+            Move::normal(Square::D8, Square::E8),
+        ] {
+            make_checked(&mut board, m);
+        }
+        // Ra1a4 re-enters the cycle and the file is empty.
+        assert!(board.upcoming_repetition(64));
+
+        // Same shuffle, but a black rook sits on a3 blocking the a-file, so
+        // the a1-a4 delta is present in the table yet unreachable.
+        let mut blocked = Board::from_fen("4k3/8/8/8/8/r7/8/R3K2R w KQ - 0 1").unwrap();
+        for m in [
+            Move::normal(Square::H1, Square::H4),
+            Move::normal(Square::E8, Square::D8),
+            Move::normal(Square::H4, Square::H1),
+            Move::normal(Square::D8, Square::E8),
+        ] {
+            make_checked(&mut blocked, m);
+        }
+        // Rh1h4 is still clear, so this position DOES have a cycle — the
+        // point of the pair is that the query tracks occupancy, which the
+        // randomized oracle below pins down properly.
+        assert!(blocked.upcoming_repetition(64));
+    }
+
+    /// The real gate: an INDEPENDENT oracle. For every legal move, make it
+    /// and ask whether the resulting key already sits on the path inside the
+    /// scan window. That uses `make_move`'s key arithmetic and never touches
+    /// the cuckoo table, so agreement is meaningful.
+    ///
+    /// Direction matters. If the oracle finds a LEGAL cycling move, the query
+    /// must find it too — a miss is a lost draw. The converse may legitimately
+    /// differ: like SF, the query checks path-clearness and ownership but not
+    /// full legality, so it can also fire for a pinned piece's move. We count
+    /// those rather than assert on them.
+    #[test]
+    fn upcoming_repetition_matches_a_brute_force_legal_move_oracle() {
+        use crate::moves::MoveList;
+
+        // Same tiny SplitMix64 the other modules' tests use (D15: no
+        // dev-dependency just for deterministic randomness).
+        struct SplitMix64(u64);
+        impl SplitMix64 {
+            fn next_u64(&mut self) -> u64 {
+                self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+                let mut z = self.0;
+                z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+                z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+                z ^ (z >> 31)
+            }
+        }
+
+        fn oracle(board: &mut Board) -> bool {
+            let copied = &board.st().copied;
+            let end = copied.rule50.min(copied.plies_from_null);
+            if end < 3 {
+                return false;
+            }
+            let top = board.states.len() - 1;
+            let ancestors: Vec<Key> = (3..=end)
+                .step_by(2)
+                .map(|i| board.states[top - i as usize].key)
+                .collect();
+            let mut list = MoveList::new();
+            crate::movegen::generate_legal(board, &mut list);
+            let moves: Vec<Move> = list.iter().copied().collect();
+            for m in moves {
+                let gives_check = board.gives_check(m);
+                board.make_move(m, gives_check);
+                let reached = board.st().key;
+                board.unmake_move(m);
+                if ancestors.contains(&reached) {
+                    return true;
+                }
+            }
+            false
+        }
+
+        let mut rng = SplitMix64(0x0DDB_A11C_0FFE_E123);
+        let mut boards_seen = 0usize;
+        let mut oracle_hits = 0usize;
+        let mut query_only = 0usize;
+
+        // Short random games from a handful of reversible-heavy starts, so
+        // cycles actually occur (from a full startpos, pawn moves and
+        // captures reset the window constantly).
+        for start in [
+            "4k3/8/8/8/8/8/8/R3K2R w KQ - 0 1",
+            "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+            "4k3/6n1/8/8/8/8/1N6/4K3 w - - 0 1",
+            "2bqkb2/8/8/8/8/8/8/2BQKB2 w - - 0 1",
+        ] {
+            for _ in 0..60 {
+                let mut board = Board::from_fen(start).unwrap();
+                for _ in 0..24 {
+                    let mut list = MoveList::new();
+                    crate::movegen::generate_legal(&board, &mut list);
+                    if list.is_empty() {
+                        break;
+                    }
+                    // Compare BEFORE moving on: ply is well inside the tree.
+                    let query = board.upcoming_repetition(64);
+                    let truth = oracle(&mut board);
+                    boards_seen += 1;
+                    if truth {
+                        oracle_hits += 1;
+                        assert!(query, "missed a legal cycling move in {}", board.to_fen());
+                    } else if query {
+                        query_only += 1;
+                    }
+                    let m = list[(rng.next_u64() % list.len() as u64) as usize];
+                    let gives_check = board.gives_check(m);
+                    board.make_move(m, gives_check);
+                }
+            }
+        }
+        // Captured unless `-- --nocapture`: a statistical test should be able
+        // to show its own power rather than just pass.
+        eprintln!(
+            "upcoming_repetition census: {boards_seen} positions, \
+             {oracle_hits} legal cycles (all found), {query_only} legality-only"
+        );
+        // The suite is only meaningful if cycles actually showed up.
+        assert!(
+            oracle_hits > 50,
+            "oracle found only {oracle_hits} cycles in {boards_seen} positions — \
+             the corpus is not exercising the query"
+        );
+        // Legality-only disagreements should be a small tail, not the norm.
+        assert!(
+            query_only * 4 < oracle_hits,
+            "query fired without a legal cycling move {query_only} times against \
+             {oracle_hits} real cycles — that is too many to be pin/legality noise"
+        );
     }
 
     // Doc 04 §5: the scan window is min(rule50, plies_from_null) — a null

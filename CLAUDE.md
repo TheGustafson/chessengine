@@ -92,7 +92,7 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   `sota` — verified 2026-07-27 by `nm` finding zero threat symbols in the
   default release binary. A no-net `bench` is a PSQT run (empty `EvalFile`
   ⇒ NNUE off). So an incremental-accumulator rewrite can be arbitrarily
-  wrong and leave 385329 untouched. The gate pins two V-arch numbers, both
+  wrong and leave 445174 untouched. The gate pins two V-arch numbers, both
   reproduced by a from-source non-PGO build: the **eval hash**
   `cd190d1b…7f3d` (sha256 of the forward-pass score for all 50
   `tools/nnue/calib/wl50.fens`) and the **d13 node total 2118123**
@@ -246,7 +246,7 @@ Concurrently: **stage-A SPSA** (12 params, V net + PGO tune binary,
 fn20k, 8 games × 2400 iters, exchange on DISK not tmpfs) — measured
 zero training interference.
 Engine: S0 search program COMPLETE (all six audit items; **depth-6
-bench pin now 385329**, −45% tree; tripwires clean); **PGO is THE
+bench pin now 445174**, −45% tree; tripwires clean); **PGO is THE
 standard build** (tools/build_pgo.sh WITH eval-file; pairs both-PGO;
 Bench: trailer stays portable-default); freebies landed (+~6% both
 arches); distributed-SPSA kit built+parked (D36 amended — no
