@@ -213,6 +213,16 @@ then write a distilled markdown note in `stockfish_reference/` (tracked; index
 in `NOTES.md`) so the insight isn't lost. **Never copy Stockfish code** — it's
 GPLv3; take ideas, reimplement idiomatically in Rust.
 
+**The clone is checked out at `sf_18` (moved there 2026-07-27, user
+instruction, "to prevent mistakes").** It sat at `sf_16` before that, so a
+bare grep silently returned SF16 constants — which bit me once already:
+razoring is `alpha - 456 - 252·d²` in SF16 but `alpha - 485 - 281·d²` in SF18,
+and `futility_margin` went from `140·(d − improving)` to a
+`futilityMult = 76 − 23·!ttHit` form. **Any distilled note written before
+2026-07-27 was read against SF16** — check the era before quoting one as
+current. Read a specific version explicitly with
+`git show sf_16:src/search.cpp` rather than relying on the checkout.
+
 `reckless_reference/Reckless/` similarly holds a clone of Reckless (a top-2
 Rust engine, ~3833 SPCC; **AGPLv3**, gitignored). Its distilled study notes
 live in `reckless_reference/` (tracked; index `NOTES.md`, adaptation list
