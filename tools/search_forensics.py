@@ -157,6 +157,42 @@ def cmd_aspiration(args):
     print("than it saves at that setting.")
 
 
+def cmd_shallow(args):
+    """Node counts at depths 1-6, both engines, to locate a CONSTANT factor.
+
+    A constant node multiplier with an IDENTICAL branching factor cannot come
+    from anything that compounds with depth -- not move ordering, not
+    extensions, not the deep structure. The bulk of any tree lives near the
+    leaves, so a flat factor is BORN there. This walks the shallow ladder to
+    find the depth at which our excess first appears, which localises the
+    cause to the plies that create it.
+    """
+    import chess
+    import chess.engine
+    fens = [l.strip() for l in open(args.positions) if l.strip()][: args.limit]
+    print(f"{'depth':>6}{'ARCHON':>12}{'SF18':>10}{'ratio':>8}{'our step':>10}{'their step':>12}")
+    prev = None
+    for d in range(1, args.max_depth + 1):
+        tot = {}
+        for tag, binary, opts in (("a", ARCHON, {"EvalFile": NET}), ("s", SF18, {})):
+            eng = chess.engine.SimpleEngine.popen_uci(binary)
+            try:
+                for k, v in opts.items():
+                    eng.configure({k: v})
+                tot[tag] = sum((eng.analyse(chess.Board(f), chess.engine.Limit(depth=d))
+                                .get("nodes") or 0) for f in fens)
+            finally:
+                eng.quit()
+        step_a = tot["a"] / prev["a"] if prev else float("nan")
+        step_s = tot["s"] / prev["s"] if prev else float("nan")
+        print(f"{d:>6}{tot['a']:>12,}{tot['s']:>10,}{tot['a']/max(tot['s'],1):>8.2f}"
+              f"{step_a:>10.2f}{step_s:>12.2f}")
+        prev = tot
+    print("\nThe depth where `ratio` first reaches its plateau is where the")
+    print("constant factor is created. If it is already there at depth 1-2, the")
+    print("cause is leaf work (qsearch, the last main ply), not tree shape.")
+
+
 def cmd_ladder(args):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from tree_walk import ladder  # noqa: E402
@@ -193,6 +229,11 @@ def main() -> None:
     p = sub.add_parser("aspiration"); p.set_defaults(fn=cmd_aspiration)
     p.add_argument("--grid", default="5,10,20,40,200,100000")
     p.add_argument("--depth", type=int, default=11)
+
+    p = sub.add_parser("shallow"); p.set_defaults(fn=cmd_shallow)
+    p.add_argument("positions", nargs="?", default=FENS)
+    p.add_argument("--max-depth", type=int, default=6)
+    p.add_argument("--limit", type=int, default=60)
 
     p = sub.add_parser("ladder"); p.set_defaults(fn=cmd_ladder)
     p.add_argument("pos"); p.add_argument("--max-depth", type=int, default=14)
