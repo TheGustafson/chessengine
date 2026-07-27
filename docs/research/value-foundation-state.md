@@ -687,6 +687,55 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## Everything below it is detail; the ~12:4x checkpoint further down is
 ## now HISTORY (it still describes D48W at 1536, which no longer exists).
 
+> ### ENGINE-SIDE LANDINGS 2026-07-27 (~11:0x–12:0x) — all on main, all gated
+>
+> Four things landed while D48X trained and c2-reduction ran. None touched
+> the trainer or the SPSA in flight.
+>
+> 1. **`perf-impl-1` merged** — threat events from bitboards instead of a
+>    mailbox replay, plus movepick stage-init outlining. **−5.65%
+>    instructions / −8.65% L1d loads**, node-identical and eval bit-exact
+>    (my own interleaved re-measure; the agent reported −6.17%/−8.44% on its
+>    workload). NPS +5.8% median over 5 interleaved rounds — which agrees
+>    with the +5.98% the instruction cut predicts, the best confirmation a
+>    contended box allows. ≈ **+6 to +10 Elo** free.
+> 2. **Upcoming-repetition landed** (P9 item 19's last piece; cuckoo tables
+>    finally have a caller). Bench 385329 → **445174**; that +15.5% is almost
+>    entirely bench position 37 (artificial, pawnless, rule50 never resets) —
+>    across the other 48 it is −28.8%, and on wl50 at d13 it is −2.3%.
+> 3. **Loader bulk-read** — the payload readers looped per element, paying a
+>    bounds AND capacity check on each of ~84M. Load cost **1.677 G → 0.591 G
+>    instructions (−64.8%)**. This matters for RESEARCH throughput, not NPS:
+>    every screen/SPSA game pair spawns two engines, so the loader was
+>    **12.2% of an SPSA unit** and is now 4.7% — **≈8.6% more games per box
+>    hour**. Perf study 7 ranked this 8th on "0 NPS"; correct for NPS, wrong
+>    for our actual constraint.
+> 4. **The NNUE behavioural gate** (`CHECK_NNUE_GATE=1`) — the depth-6 bench
+>    pin is a PSQT number (no `default` feature set; `nm` finds zero threat
+>    symbols in the default binary), so it is BLIND to NNUE work. The gate
+>    pins the wl50 eval hash + the d13 node total. It caught a real pin move
+>    on its first outing.
+>
+> **Pins now: bench 445174, eval hash `cd190d1b…`, d13 wl50 2068701.**
+>
+> **SPSA strategy finding (acted on).** `tools/spsa/leverage_screen.py` nudges
+> each param by one c_end and measures tree movement — deterministic, so it
+> works on a loaded box. No dead dimensions in c2 (good: an inert param
+> degrades every other gradient, since cross-term noise grows like sqrt(n−1)).
+> But leverage RANKING does not survive a change of depth (Spearman +0.21
+> d6/d8, +0.20 d6/d10, +0.12 d8/d10), which killed the c_end-rescaling idea
+> the tool was built for. What survives is a quantified regime gap: **fn20k
+> ≈ depth 12, while 10+0.1 ≈ depth 18**. We tune six plies below where games
+> are played. Hence `c3_focused_chain.sh` (armed): when c2 ends (~16:34) it
+> takes c2's own top-6 by drift sigma and retunes at 40k nodes, rather than
+> running s2-stageB's 41 params at fn20k. Real-TC SPSA is the right answer
+> and waits for a quiet box.
+>
+> **Also:** design/10 had THREE stale DEFERRED markers (items 11, 15, and the
+> Criterion-2 deviation) claiming search features we have actually had since
+> P13. The search is materially complete; the lag is tuning + instruction
+> count, not missing mechanics.
+
 **★★ PARTIAL ANSWER TO THE PROXY PROBLEM: THE PANELS DO PREDICT fn ELO
 — WITHIN a run. They fail only ACROSS families (07:2x).** D48X handed us
 five checkpoints with both panel numbers and a 100-game fn match, which
