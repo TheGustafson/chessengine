@@ -770,6 +770,23 @@ decided in the opening/early middlegame — high piece count, sharp,
 unresolved — which is precisely the stratum where X trails V most. Two
 independent instruments, same answer.
 
+**Why SHARP is the hard stratum at all (context, not a complaint).** The
+scalar value loss is quiet-only BY CONTRACT (D46 / data-recipe-contract
+§1): a position is dropped if the side to move is in check, if the best
+move is a capture, promotion, castle or ep, or if ply<16. So no net of
+ours is ever *trained* on sharp positions — sharp evaluation is entirely
+generalisation, which is why every net in the table scores 0.76–0.81
+sharp against 0.88–0.91 quiet. That also explains the shape of the α
+handover: while the teacher was driving, X inherited its sharp
+generalisation; as α→0 it fell back on what quiet-only data generalises
+to, and SHARP slipped (0.7702 at sb30 → 0.7593 at sb60) while endgame
+climbed (0.7039 → 0.7563).
+
+**Do NOT read this as a systemic weakness in the program.** V's sharp
+0.7926 is level with SF18's 0.7909 and clearly above SF16's 0.7563 — we
+are competitive on the hard stratum. The deficit is X's specifically, and
+X currently sits at SF16's sharp level while V sits at SF18's.
+
 **The sb90 discriminator is now specific rather than vague.** The
 question is whether the thin 16-wide head is UNDERTRAINED or
 UNDER-CAPACITY for sharp positions (V carries L2=32 at 768; X carries
