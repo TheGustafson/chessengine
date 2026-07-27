@@ -2803,6 +2803,20 @@ impl Worker {
             // and IIR.
             improving |= self.stack[cur].static_eval >= beta;
 
+            // N12 — internal iterative reduction (design/10 §3.4; S0 re-land
+            // of reverted item 9 in the doc's narrow shape): a PV or cut node
+            // (= !all_node) with no ttMove searches one ply shallower rather
+            // than paying full price for a tree the TT can't seed. The P9
+            // revert was the broad follow-PV-shaped form under PSQT eval;
+            // `follow_pv` stays inert until doc 10's plumbing lands.
+            if !self.stack[cur].follow_pv
+                && (NT::PV || cut_node)
+                && depth >= params::IIR_MIN_DEPTH()
+                && tt_data.mv == Move::NULL
+            {
+                depth -= 1;
+            }
+
             // N13 — ProbCut (design/10 §3.4, Wave-E item 16): a cheap search
             // proving a capture beats a raised beta lets the node fail high
             // early. Skipped inside a singular verification; a stored value

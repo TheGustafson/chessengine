@@ -415,6 +415,12 @@ crate::tunables! {
     /// All-node scaling depth base.
     pub RED_ALLNODE_DEPTH_BASE: i32 = 285;
 
+    // --- Internal iterative reduction (N12, design/10 §3.4; S0) ---
+
+    /// Minimum depth for IIR: a PV/cut node with no ttMove at `depth >=
+    /// IIR_MIN_DEPTH` searches one ply shallower.
+    pub IIR_MIN_DEPTH: Depth = 6;
+
     // --- Move-loop pruning: late move pruning (design/10 §3.5) ---
     //
     // "Movecount pruning": once the running `move_count` clears a depth-scaled
