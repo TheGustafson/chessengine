@@ -840,6 +840,35 @@ c2-reduction should stay as configured — its null or otherwise is still
 informative, and switching mid-chain would confound the comparison with
 stage A.
 
+## ✅ sb180 CONFIRMS THE USER'S CALL — THE NET IS IMPROVING (08:1x)
+
+The user said "it is ahead of schedule, it will improve" while I was
+still quoting a −57 level. The panels now agree with them:
+
+| stratum | sb30 | sb60 | sb90 | sb120 | sb150 | **sb180** |
+|---|---|---|---|---|---|---|
+| QUIET | 0.8861 | 0.8811 | 0.8787 | 0.8779 | 0.8831 | **0.8856** |
+| SHARP | 0.7702 | 0.7593 | 0.7604 | 0.7570 | 0.7667 | **0.7690** |
+
+**Both have climbed monotonically since the sb120 trough and are back
+within a whisker of the sb30 peak** (QUIET −0.0005, SHARP −0.0012),
+having recovered the entire post-teacher dip. The heldout agrees:
+EMA 0.007119 (sb90) → 0.006926 (sb170), monotone.
+
+**This matters for how the run reads.** SHARP ranked the first five
+checkpoints at Spearman +1.000 against game order, so its climb
+predicts the sb180 match should come in ahead of sb150's −56. The
+earlier "flat at −57, not converging" characterisation was built on
+points that stopped at the trough.
+
+Endgame is the exception and moved the other way (0.7603 → 0.7393) —
+worth watching, but it is also the stratum with the weakest link to
+game outcomes (Spearman −0.100 against fn Elo across the five points).
+
+**Standing correction reinforced:** the low-noise instruments (heldout,
+panels) saw this turn well before the ±40 game matches could, and I had
+explicitly discounted them.
+
 ## ★ FULL NET-ONLY COMPARISON, ALL NETS (user-requested, 2026-07-27 ~07:5x)
 
 Headline strata, n=2999 quiet / n=1817 sharp:
