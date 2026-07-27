@@ -1055,6 +1055,32 @@ threat contribution is ≤ that.
 speed.** That is the strongest expected-value case on the board, and it
 is why this outranks everything else queued.
 
+**FEASIBILITY, CHECKED — it is NOT a flag flip, but it is close.**
+- ENGINE: nothing to do. `ThreatContext::apply_at` already routes a
+  threat-less net through an all-zero accumulator, and `netpack`'s
+  `D40_HALFKA_ONLY=1` emits the right pack. Verified end to end tonight
+  by actually running one.
+- TRAINER: `ArchSpec.halfka_only` exists and gates the shapes correctly
+  (no `l0_threatw`, no `l0_psqt_thw`), and `model.forward` honours it.
+  **But it then falls through to the "reference" FT path — `ft_kernel`'s
+  Pallas bag is two-table only** (model.py:160 says so outright). The
+  reference path is the pre-Pallas implementation that ran ~9.5k pos/s
+  against Pallas's 225k, so taking it as-is would make the run
+  unusable.
+- **The fix is small and known:** `_bag2_fwd(pstw, thw, pstb, hk, th)`
+  is generic over both tables' row counts, so `halfka_only` can pass a
+  **1-row zero threat table with all-(−1) indices** and keep full Pallas
+  throughput — the invalid-index mask already zeroes that contribution,
+  its gradient is identically zero, and the export drops the tensor.
+  Roughly a 10-line change in `model.py`, plus one line in `pump_train`
+  to read `arch_halfka_only` from the config (it currently ignores it).
+- WARM START: free. `strip_threats.py` already produces exactly the
+  HalfKA half of a trained checkpoint, so the run can warm from V's or
+  A3's HalfKA rows rather than starting cold.
+
+Budget the experiment at ~2h of engineering plus the GPU time, not
+"launch it tonight".
+
 **So the bar for threats is now ~+100 fn Elo**, not +62. For
 context, that is a substantial fraction of the entire net-0 → today
 improvement arc, being asked of a single feature-set addition whose only
