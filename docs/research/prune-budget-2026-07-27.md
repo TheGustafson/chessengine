@@ -366,3 +366,52 @@ has the stronger decision-quality evidence (+16, ~1.8σ); the aggressive arm
 has nearly twice the speed and is still above control tactically. Neither is
 a code change — both are pure `setoption`, so one harness run can test both
 arms against the same baseline.
+
+---
+
+## 7. The composite: spend the savings on less LMR
+
+§6 found gates that are *off* their frontier — starved (NMP), actively
+harmful (razoring), slightly mis-set (parent futility) — and correcting them
+frees nodes at no accuracy cost. §1 found that LMR *is* the tree and §6.1's
+sweep shows it sits **on** its frontier: every move along `RED_TABLE_NUM` or
+`RED_BASE` trades nodes against decisions, in both directions.
+
+| arm | nodes | tactics @ 50k |
+|---|---|---|
+| RED_TABLE_NUM 2600 (less reduction) | +16.0% | +13 |
+| RED_TABLE_NUM 3100 | −14.3% | −15 |
+| RED_TABLE_NUM 3400 | −30.9% | −63 |
+| RED_BASE 800 | +12.0% | +4 |
+| RED_BASE 1600 | −23.7% | −15 |
+
+Those two facts compose. **Use the off-frontier corrections to free nodes,
+then spend them moving along LMR's frontier toward accuracy.** Neither half
+does this alone: the pruning corrections only save nodes, LMR only trades.
+
+| arm | nodes | tactics @ 50k | Δ |
+|---|---|---|---|
+| control | — | 1193 | — |
+| combo (NMP 168, razor off, PFUT 0.64×) | −17.06% | 1209 | +16 |
+| combo + RED 2600 | −6.08% | 1209 | +16 |
+| aggressive + RED 2600 | −18.54% | 1213 | +20 |
+| **aggressive + RED 2450** | **−16.66%** | **1225** | **+32** |
+
+`aggressive` = NMP 120, razoring off, PFUT 0.45×.
+
+**+32 of 1277 at σ ≈ 9.1 is 3.5σ** — the first result in this line that is
+not a suggestive one-sigma wobble. And it costs nothing: the same ~17% node
+saving as the plain combo, with double the accuracy gain.
+
+The generalisable recipe, which is the useful part:
+
+1. Measure each mechanism's contribution by ablation (`prune_budget.py`).
+2. For each, ask whether it is ON its frontier — sweep it and see whether
+   both axes move together (off-frontier) or in opposition (on-frontier).
+3. Fix the off-frontier ones. That buys nodes for free.
+4. Spend the freed nodes on the dominant on-frontier mechanism, in the
+   accuracy direction.
+
+Step 2 is the one that needs both axes, and it is why fixed-depth tactics
+could never have found this: an off-frontier mechanism looks identical to an
+on-frontier one when you only measure decisions per depth.

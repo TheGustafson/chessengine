@@ -508,6 +508,45 @@ crate::tunables! {
     /// CFUT_MAX_LMRDEPTH`); deeper predicted searches are trusted to see the
     /// tactic themselves.
     pub CFUT_MAX_LMRDEPTH: Depth = 7;
+    /// **Class-4 converter: material units → eval units, in 1024ths.**
+    /// `1024` = 1.0 = exact identity, so the shipped engine is unchanged.
+    ///
+    /// `PIECE_VALUES` are Stockfish's exactly (pawn 208) while our static
+    /// eval measures ~0.64× Stockfish's frame
+    /// (`docs/research/eval-frame-scale-model-2026-07-27.md` §11.2, quantile-
+    /// matched and flat across the whole range). Every site that ADDS a piece
+    /// value to a static eval therefore over-weights the material term by
+    /// ~1/0.64 = 1.56×.
+    ///
+    /// This is the one mismatch class no margin constant can absorb — the
+    /// error rides on `captured_value`, which varies by piece, so a flat
+    /// margin adjustment cannot cancel it. The frame study could only test it
+    /// bundled inside `EVAL_SCALE`'s global rescale (§10.1), which lost for
+    /// other reasons; it has never been isolated.
+    ///
+    /// Applied in [`capture_futility_value`], where the prediction is
+    /// `static_eval + margins + captured_value <= alpha`. Over-weighting
+    /// `captured_value` inflates the bound, so capture futility prunes LESS —
+    /// consistent with its measured contribution of ~0.5% of the tree
+    /// (`docs/research/prune-budget-2026-07-27.md` §1), i.e. near-inert.
+    ///
+    /// Theory puts the interesting region near 655 (= 0.64); 1024 is the
+    /// control.
+    pub CFUT_PIECE_MULT: i32 = 1024;
+    /// **Class-4 converter: eval units → material units, in 1024ths.**
+    /// `1024` = identity. The inverse direction of [`CFUT_PIECE_MULT`], for
+    /// the two sites that feed an EVAL-frame difference to `see_ge`, whose
+    /// threshold is in `PIECE_VALUES` units:
+    ///
+    /// - ProbCut's capture filter, `probcut_beta - static_eval`
+    /// - qsearch futility's `see_ge(m, alpha - futility_base)`
+    ///
+    /// An eval-frame gap is ~0.64× the material-frame gap that means the same
+    /// thing, so both thresholds are too SMALL: ProbCut admits captures that
+    /// cannot really reach its raised beta, and qsearch futility declines to
+    /// prune exchanges it should. Theory puts the interesting region near
+    /// 1600 (= 1/0.64).
+    pub SEE_THRESH_MULT: i32 = 1024;
     /// Flat base of the capture-futility optimistic value over the static eval.
     pub CFUT_BASE: Value = 231;
     /// Per-lmr-depth slope of the capture-futility value (can be negative at
@@ -1182,6 +1221,22 @@ fn round_div_1024(n: i64) -> i64 {
 #[inline(always)]
 pub fn frame_expand(d: Value) -> Value {
     round_div(d as i64 * 1024, FRAME_S().max(1) as i64) as Value
+}
+
+/// Apply a 1024ths multiplier, rounding half AWAY from zero.
+///
+/// The rounding is not a detail. Truncation here turned `SE_DOUBLE_BASE`
+/// −3 into −1 under a 0.58 factor — a 0.33 ratio where 0.58 was intended —
+/// and made two arms of a sweep silently identical
+/// (`docs/research/eval-frame-scale-model-2026-07-27.md`, retraction 5).
+/// Class-4 converters run on small signed quantities, so they are exposed to
+/// exactly that failure.
+#[inline(always)]
+pub fn scale_1024(v: i32, mult: i32) -> i32 {
+    if mult == 1024 {
+        return v; // exact identity, and the only path the shipped engine takes
+    }
+    round_div(v as i64 * mult as i64, 1024) as i32
 }
 
 /// `n / q` rounded half away from zero. The sign-symmetric form matters: a
