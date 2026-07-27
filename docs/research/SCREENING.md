@@ -1,5 +1,19 @@
 # Screening tunables — the protocol
 
+> ## ⚠ INVALIDATED — MEASURED ON PSQT
+>
+> Sections 12–17 and most quantitative claims in this document were taken with
+> `target/release/chessengine`, which **silently ignores `setoption name
+> EvalFile`** unless built with `sota,arch-d47v`. They describe a PSQT engine,
+> not the one we ship. Corrected spot-checks show the tree is far closer to
+> Stockfish's shape than these numbers imply (e.g. width ratio at depth 14 is
+> ~0.93, not 1.87; qsearch amplification ~1.59, not 2.65).
+>
+> The **method** in this document stands; the **numbers** do not. Start from
+> `ENGINE-INVESTIGATION-PLAYBOOK.md`, which is the method with the corrupted
+> specifics removed.
+
+
 **Read this before proposing or promoting any search-parameter change.** It is
 written to be handed to an agent with no other context.
 

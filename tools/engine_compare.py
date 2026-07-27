@@ -33,6 +33,7 @@ corrupts a bias estimate.
 from __future__ import annotations
 
 import argparse
+import os
 import math
 import statistics as st
 
@@ -215,7 +216,12 @@ def stability(fens: list[str], lo: int, hi: int, our_scale: float):
     o = wobble(ARCHON, {"EvalFile": NET, **OUR_OPTS})
     t = wobble(SF18, None)
     if o and t:
-        om = st.median(o) / our_scale        # our cp is raw internal
+        # wobble() divides cp by 100, which is pawns for Stockfish but NOT for
+        # us: our UCI cp is RAW INTERNAL, where ~0.64*385 = 246 units is a
+        # pawn. Dividing by 100 and then by 0.64 over-reports our volatility by
+        # 246/64 = 3.8x -- which is how a ~1.1x difference was once reported as
+        # 4.27x. Convert our raw units to pawns properly instead.
+        om = st.median(o) * 100.0 / (our_scale * 385.5)
         tm = st.median(t)
         print(f"\nITERATION STABILITY, depths {lo}-{hi} ({len(o)} positions):")
         print(f"  ARCHON  mean |eval change| per iteration: {om:.3f} pawns")

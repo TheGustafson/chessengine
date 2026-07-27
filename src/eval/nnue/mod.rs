@@ -377,6 +377,37 @@ fn install_eval_file(path: &str) -> Result<(), NnueError> {
 /// used instead of falling back to PSQT — so the engine plays NNUE out of the
 /// box for GUIs that can't set UCI string options. The default build (no
 /// `embed-net`) ignores this entirely and stays PSQT/bench-neutral (548978).
+/// Which evaluator a `go` will actually use, as a short human-readable tag.
+///
+/// Exists because a net that fails to load is INVISIBLE. `setoption name
+/// EvalFile` can leave the engine on PSQT with no error -- a build without
+/// `sota,arch-d47v` cannot read a CEN2 net at all -- and a PSQT search
+/// produces entirely plausible numbers. That silence invalidated two full
+/// days of measurement on 2026-07-27 before anyone noticed, because nothing
+/// in the output distinguishes "NNUE" from "PSQT".
+///
+/// The UCI layer reports this on every `EvalFile` set and at the start of
+/// every search, so no harness has to infer it and no result can be
+/// attributed to the wrong evaluator.
+pub fn active_eval_kind() -> &'static str {
+    #[cfg(feature = "sota")]
+    {
+        if active_sota_net().is_some() {
+            return "NNUE(sota-v2)";
+        }
+        if active_simple_halfka_net().is_some() {
+            return "NNUE(halfka)";
+        }
+        if active_protected_halfka_net().is_some() {
+            return "NNUE(halfka-prot)";
+        }
+    }
+    if active_net().is_some() {
+        return "NNUE(v1)";
+    }
+    "PSQT"
+}
+
 pub fn active_net() -> Option<&'static Network> {
     let from_eval_file = *ACTIVE_NET.read().unwrap_or_else(|e| e.into_inner());
     #[cfg(feature = "embed-net")]

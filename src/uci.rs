@@ -1310,8 +1310,25 @@ fn cmd_setoption<W: Write>(
         Ok("EvalFile") => {
             let path = engine.options.eval_file().to_string();
             match nnue::set_eval_file(&path) {
-                Ok(()) => Ok(()),
-                Err(e) => writeln!(out, "info string EvalFile: {e}"),
+                // Always report which evaluator is now live. A load that
+                // fails silently -- or a build that cannot read the format --
+                // otherwise leaves the engine on PSQT with no sign of it, and
+                // every measurement taken afterwards is attributed to the
+                // wrong evaluator (2026-07-27, twice).
+                Ok(()) => {
+                    let kind = nnue::active_eval_kind();
+                    if !path.trim().is_empty() && kind == "PSQT" {
+                        writeln!(
+                            out,
+                            "info string ERROR EvalFile: '{path}' did not load; \
+                             eval is PSQT. This build may lack the reader \
+                             (try --features sota,arch-d47v)."
+                        )
+                    } else {
+                        writeln!(out, "info string eval: {kind}")
+                    }
+                }
+                Err(e) => writeln!(out, "info string ERROR EvalFile: {e}"),
             }
         }
         // `Threads` (re)builds the pool with the clamped count (design/13
