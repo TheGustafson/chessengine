@@ -721,11 +721,45 @@ checkpoint mtimes over ≥10sb, never from a short count window.**
 - `archon-spsa-chain` — fires the 10+0.1 verify when stage A lands, then
   launches `c2-reduction` and verifies that too. Log `/tmp/spsa_chain.log`.
 
-**THE ONE NUMBER THAT MATTERS SO FAR: sb30 = −27.85 ± 39.37 fn vs V.**
-Below the pre-registered +20..+35 band. Mechanism localised (endgame
-slice is the outlier; head still converging). **X needs +56 fn from
-here to be worth shipping over V.** Decision point is sb60 — judge the
-SLOPE, not the level. No automated stops; intervention is the user's call.
+**★ THE DECISION POINT HAS ARRIVED AND IT IS NEGATIVE. sb30 −27.85 ±
+39.37, sb60 −74.06 ± 44.29 fn vs V.** Pooled: **−48 fn**. The change
+between the two reads is −46.2 ± 59.3 = **0.78σ, NOT significant** — so
+this is not evidence that the run is DEGRADING, it is evidence that the
+level is roughly −50 and was never near the +20..+35 the
+pre-registration called "on track".
+
+**The bar, stated plainly: X needs +76 fn from here** (−48 now, +28
+required merely to tie V at equal time). Its own teacher is only +35 fn
+over V, so X must not merely reach its teacher — it must beat the best
+evaluator this project has ever trained by ~41 fn.
+
+**What is genuinely encouraging** (and why this is not a kill
+recommendation): only 60 of 380 superbatches are done, α reached 0
+exactly at sb60 so real-label training effectively starts NOW, the
+heldout has improved monotonically (EMA 0.008599 → 0.007088), and the
+endgame stratum — the panel outlier at sb30 — improved sharply
+(vs-oracle 0.7039 → 0.7563, vs-teacher 0.7719 → 0.8741). The quiet
+headline drifted slightly the other way (0.8861 → 0.8811) and the
+calibration scale moved 591 → 429, both consistent with a net mid-way
+through the frame handover rather than one going wrong.
+
+**RECOMMENDATION (the user's call, per "no automated stops"): let it
+reach sb90, then decide on three points.** Two points cannot separate
+noise from trend at these error bars; three can. If sb90 is still at or
+below −50, the run will not close +76 in the remaining budget and the
+GPU is better spent on the threat experiment (finding 1 below,
+plausibly +62 Elo). If sb90 shows a clear climb, the recipe is working
+and the run should have its full length. sb90 lands ~05:00.
+
+**CHECK-EXT IS REFUTED AS AN ELO CHANGE — do not land it.** The
+fixed-node gate finished at **exactly 0.00 ± 22.96 over 300 games**
+(85W-130D-85L). It buys +34 of 3279 tactical positions and precisely
+zero game strength: the extension spends on forcing-line depth what it
+takes from tree width, and at 300 games with a ±23 bar a real +10 would
+have shown a trend. It stays a tactical-suite curiosity, not a patch.
+That is the THIRD item closed by measurement tonight (perf item 10
+refuted, B4 moot, check-ext null) — and the queue is now honest rather
+than hopeful.
 
 **sb30 LOSS FORENSICS (03:2x) — the losses are NOT where the panels
 pointed.** Ran `loss_forensics.py` over the 100-game sb30 match. Of 34
