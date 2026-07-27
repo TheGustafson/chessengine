@@ -238,3 +238,93 @@ Ranking for a future SPSA, now evidence-based rather than guessed: **LMR
 first** (it is 64% of all tree reduction and `RED_*` is only partly covered by
 existing campaigns), then RFP and LMP. Tuning a gate that removes 1% of the
 tree cannot pay however mis-set it is.
+
+---
+
+## 6. The scale correction DOES work — per mechanism, not globally
+
+The global `FRAME_S` sweep scaled ~40 constants by one factor and lost. That
+result stands, and this section explains it rather than contradicting it.
+
+**Method.** For each eval-denominated gate, scale *its* constants together and
+measure two axes on large samples:
+
+- **nodes** — `bench` depth 10 over `scale-check-800` (800 positions, 4.3 s
+  per arm, deterministic). Baseline 14,442,305.
+- **tactics at EQUAL NODE BUDGET** — `mate_in_3.epd` (1277 positions) at
+  `--nodes 50000`. Control 1193, binomial σ ≈ 9.1.
+
+The second axis is the one that matters and the one earlier work got wrong.
+**Fixed-DEPTH tactics structurally cannot show the benefit of a pruning
+change**: it measures decision quality per depth, so a search that prunes
+more only ever looks worse. Fixed nodes asks the right question — same
+budget, does the search use it better? This is the same class of error that
+made the s4-searchgap NMP screen uninformative (§3).
+
+### The per-gate table
+
+| gate | scale | nodes | tactics @ 50k | Δ |
+|---|---|---|---|---|
+| **NMP** | 374 → 168 | **−13.6%** | **1203** | **+10** |
+| **razoring** | off | **−12.8%** | **1198** | **+5** |
+| **parent futility** | 0.64× | **−4.1%** | **1196** | **+3** |
+| *(control)* | — | — | 1193 | — |
+| QS futility | 0.45× | −1.5% | 1182 | −11 |
+| RFP | 0.55× | −12.8% | 1170 | −23 |
+| ProbCut | 0.64× | −5.4% | 1168 | −25 |
+| capture futility | any | ~0% | — | — |
+
+**This is why one global factor could not work.** The per-gate optima are not
+a common scalar — they are 0.45, ∞ (off), 0.64, and *1.0* (leave alone) — and
+three gates get actively worse when corrected. RFP is a bigger share of the
+tree than NMP (62.6% vs −4.1% contribution, §1), so a uniform correction is
+dominated by the arms that hurt. The global sweep was measuring the average
+of a set with both signs in it.
+
+The pattern that separates them is not the frame ratio, it is **whether the
+gate is starved**. NMP fires at 0.2% of nodes (§2) — the compressed frame put
+its bar out of reach, and correcting restores the mechanism. RFP and ProbCut
+fire at healthy rates already; their constants are doing their job, and
+tightening them just prunes good nodes.
+
+### The curated combination
+
+Taking only the three gates positive on *both* axes:
+
+```
+NMP_EVAL_BASE          374 -> 168
+RAZOR_BASE             465 -> 3000     (= off; see §5)
+PFUT_BASE               40 -> 26       0.64x
+PFUT_NO_BESTMOVE       138 -> 88
+PFUT_LMRDEPTH_MULT     117 -> 75
+PFUT_EVAL_ABOVE_ALPHA   90 -> 58
+```
+
+| | nodes | tactics @ 50k |
+|---|---|---|
+| control | 14,442,305 | 1193 |
+| **curated combo** | **11,978,037 (−17.06%)** | **1209 (+16)** |
+
+Better on both axes, and better than any single arm on tactics. The node
+saving is sub-multiplicative (−17.1% against a −27.7% independent
+prediction), which is expected: NMP and razoring both act on low-eval nodes
+and overlap.
+
+−17.1% nodes is ~0.27 doublings, worth ~32 Elo at our measured ~120
+Elo/doubling — and the +16 tactical improvement is *on top of* that, since it
+is measured at equal budget.
+
+**Confidence.** The node figures are deterministic over 800 positions. The
++16 is ~1.8σ — suggestive, not conclusive. **This needs an SPRT before it
+lands**, and the zugzwang risk from §4 applies to the NMP component. But it
+is the first combination that improves both axes simultaneously, and it is a
+pure `setoption` change requiring no code.
+
+### What this says about the frame question
+
+The scale difference is real, it does cost Elo, and it is correctable — but
+the correction is **per-mechanism, seeded by the frame ratio and settled
+empirically**, never a single scalar. The right diagnostic is not "what is
+this constant's value relative to SF's" but **"is this gate firing at the
+rate it was tuned for"** — an activation rate is scale-free, which is exactly
+why it survives a frame change that invalidates the raw values.
