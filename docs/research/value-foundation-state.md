@@ -683,6 +683,61 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
+## ★★★★ TAKEOVER CHECKPOINT 2026-07-27 ~03:0x — READ THIS FIRST.
+## Everything below it is detail; the ~12:4x checkpoint further down is
+## now HISTORY (it still describes D48W at 1536, which no longer exists).
+
+**RUNNING RIGHT NOW (five systemd units, all survive a session compact):**
+- `archon-d48x` — the gen-2 training run, 380sb at 1280/16/32. **NOT
+  D48W/1536**: the user's pre-registered NPS gate fired and the width
+  dropped to 1280 with the recipe untouched. ~1.67 min/sb after the
+  memory fix, ETA **~12:00 today**. Logs `/tmp/d48x_train.log`,
+  `/tmp/d48x_panels.log`; config `tools/nnue/runs/d48x_1280.json`.
+- `archon-d48x-watch` — every-30sb instruments vs a FROZEN V yardstick.
+- `archon-d48x-prune` — bounds checkpoints to ~15GB of the 66GB free.
+- `archon-spsa-stageA` — 12-param SPSA on V, ETA ~06:45.
+- `archon-spsa-chain` — fires the 10+0.1 verify when stage A lands, then
+  launches `c2-reduction` and verifies that too. Log `/tmp/spsa_chain.log`.
+
+**THE ONE NUMBER THAT MATTERS SO FAR: sb30 = −27.85 ± 39.37 fn vs V.**
+Below the pre-registered +20..+35 band. Mechanism localised (endgame
+slice is the outlier; head still converging). **X needs +56 fn from
+here to be worth shipping over V.** Decision point is sb60 — judge the
+SLOPE, not the level. No automated stops; intervention is the user's call.
+
+**FIVE FINDINGS FROM TONIGHT, ranked by how much they should change
+what we do next:**
+1. **Threat features cost ~30% of all cycles** (at_full 25.3% +
+   record_square_touch 4.7%) against HalfKA's 14.9%. Dropping them =
+   1.43× = **+62 Elo** at equal time; they have never been measured to
+   be worth that. **Top post-release experiment**, needs no engine work.
+2. **The gap to SF is EVAL, not tactics.** At equal 50k nodes we are
+   level with SF16 and ahead of SF18 across 2577 tactical positions. S0
+   took WAC 78.5% → 90% while SF16 sits at 86%. So stop adding tactical
+   machinery; the missing Elo is in quiet eval and in speed.
+3. **Width is a wash.** Measured speed at three widths + the ladder ⇒
+   the whole 768–1536 range spans 1.4 Elo, negative past ~1400. Prefer
+   the measured axis (speed) over the extrapolated one (capacity).
+4. **The trainer had been memory-throttled since launch** (~29% stalled,
+   silent). Fixed live via set-property, no restart: **+30% throughput**.
+5. **SPSA's default step size returns nothing** at our iteration budget
+   (~1% of range). Fixed to r_end 0.03. This affects the ENTIRE existing
+   campaign library, which all carries the 0.002 default.
+
+**QUEUED, needs box time we do not have tonight:** `check-ext` (top
+search item — +34/3279 tactical positions post-S0, would put us past
+SF16; binaries built at `engines/bin/archon-{basemain,checkext,nmpguards}`,
+branches `test/check-ext-on-main`, `test/nmp-on-main`; gate with
+`tools/search_knob_gate.sh`), then nmp-guards, then the SF16/SF18 ET
+anchors the user deferred.
+
+**CLOSED BY MEASUREMENT (do not re-attempt):** perf item 10 (the
+i16_deltas hoist — REFUTED, +0.47% instructions, branch
+`perf/i16-deltas-hoist`); perf item B4 (dead-zero sweep — MOOT, PGO
+already deleted them). The ranked perf list is now effectively
+exhausted except cache-locality items; **there is no easy speed left in
+the engine's current shape — the remaining 30% is the threat features.**
+
 ## ★★★ 2026-07-27 ~01:0x — THE NPS GATE FIRED: D48W (1536) BECAME
 ## D48X (1280), AND IT IS RUNNING. Stage-A SPSA launched alongside. ★★★
 
