@@ -951,11 +951,26 @@ the real-TC clock tracks out of PGNs we already had (`loss_forensics`,
 | V | 7.32 | 4.19 | 2.27 | 1.29 |
 | SF18 | 7.21 | **4.92** | **3.38** | **2.14** |
 
-**We burn the clock faster than SF18 — by move 30 we have 33% less time
-left.** The depth split shows what we buy with it: opening **+1.2**,
-middlegame **+0.9**, endgame **−2.2** ply. So our TM trades a ply early
-for two plies late, against an engine that is already 1.5× faster than
-us per second.
+**CORRECTED — I over-dramatised this on first read.** "33% less clock
+at move 30" is a ratio of small RESIDUALS and badly overstates it. The
+real quantity is spending: through move 40 the budget is 10 + 40×0.1 =
+14.0s, of which V spends **12.71s and SF18 spends 11.86s — 7.2% more,
+not 33%.** The depth split is opening **+1.2**, middlegame **+0.9**,
+endgame **−2.2** ply.
+
+So the honest statement is: **we spend modestly more of the clock early
+and are 2.2 ply shallower in the endgame.** Note SF18 being 1.5× faster
+only accounts for ~0.6 ply of that, so the endgame gap is larger than
+speed alone explains — but the sample is 29 games and endgame depth is
+the noisiest slice, so that residual is a lead, not a result.
+
+**And `MAX_SCALE_CAP` is NOT the lever at this TC**, despite the code
+comment fingering it: setting it 6.873 → 3.5 changed the first move
+from 796ms to 779ms. The comment's "~19s/60s move-1 burn" was measured
+at a 60s control where the maximum wall binds; at 10+0.1 the search
+finishes its iterations well inside the wall, so the cap never engages.
+Whatever front-loading exists here lives in the `OPT_*` allocation
+curve, not the hard-wall family.
 
 Against S-post (both ARCHON, identical TM) we are slightly AHEAD on the
 clock, which is the control: the curve shape is ours, and the deficit
