@@ -803,12 +803,51 @@ heldout. But it now rests on the game trajectory and the panels rather
 than on three legs, and the sb150 match is the thing to read before
 acting.
 
+## ⛔⛔ THE STOP RECOMMENDATION IS WITHDRAWN (2026-07-27 ~07:3x, on the
+## user's challenge). READ THIS BEFORE ANY "recommend stop" TEXT BELOW —
+## all of it is SUPERSEDED. ⛔⛔
+
+**User: "You are overreacting to Elo with huge error bars and also
+assuming it won't improve."** Both halves are correct, and I checked
+rather than just conceding:
+
+- **Slope across the five points is −6.7 ± 13.9 Elo per 30sb, 95% CI
+  [−34, +20.5].** Projected over the 230 remaining superbatches that
+  spans **−108 to +101** at sb380. **The upper end clears the +28
+  needed to tie V, so the data does NOT establish that it will not get
+  there.** What it establishes is the CURRENT LEVEL, −56.9 ± 19.4. I
+  conflated "behind now" with "won't improve" and built a
+  recommendation on the second while holding evidence only for the
+  first.
+- **The heldout is the low-noise instrument and it says IMPROVING** —
+  EMA 0.007119 (sb90) → 0.006977 (sb150) → 0.006947 (sb160), monotone.
+  A 100-game match at ±40 cannot resolve what that can. I wrote "games
+  outrank heldout" and used it to discount the one signal able to see a
+  trend at all.
+- **Most of the schedule is unspent.** LR is ~7.2e-4, glides to 2.5e-4
+  at sb300, anneals to 0 at sb380. Our anneals have historically paid.
+  Judging at sb150 of 380, before any annealing, was premature.
+
+**THE RUN CONTINUES.** Keep taking the every-30sb instruments — pooling
+more 100-game matches is what tightens the estimate, so do NOT cut the
+match cadence to save CPU. Watch the **SHARP** panel column between
+matches: across the five checkpoints it ranked them in exactly the game
+order (Spearman +1.000), so it is the cheap early read.
+
+**Standing lesson for me:** four characterisations tonight were too
+confident and each came from calling a trend on a short window
+(1.97×→1.78×, 33%→7.2%, "heldout plateaued", "trending down"). The
+measurements held; the narratives did not. Quote levels with their
+bars, and do not project trends the bars cannot support.
+
 **▶▶ RECOMMENDED ORDER OF WORK WHEN YOU ARE BACK (my proposal; the
 first item is the only one that needs a decision).**
 
-1. **Decide D48X.** Four points, trending DOWN at −15.4 Elo/30sb,
-   pooled −57.1±22.0, panels declining in every stratum. My
-   recommendation is stop. **If you agree, it is one sequence:**
+1. **D48X CONTINUES** (recommendation withdrawn — see the banner
+   above). Five points, pooled −56.9±19.4, slope −6.7±13.9/30sb which
+   cannot exclude improvement; heldout still falling; the anneal is
+   entirely ahead. Watch SHARP between matches. The stop sequence, if
+   it is ever wanted:
    `systemctl --user stop archon-d48x && bash tools/nnue/runs/d49_launch.sh`
    Resumable from sb120 if you disagree. *Everything below assumes this
    is settled first, because it is what frees the GPU.*
