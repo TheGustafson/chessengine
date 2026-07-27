@@ -201,17 +201,23 @@ mutates. Full mechanics: `design/14` §10.
 
 ## Status / roadmap
 
-**CURRENT (2026-07-27): the DISTILLATION era — doctrine: train a too-big
-teacher for absolute quality, distill to the competitive size.** TEACHER =
-`d47s-v15-sb230-ema` (1280+threats; clean-sweep evaluator vs SF16/SF18
-statics). LIVE: D47V (768·32·32·8 + SF-style output-skip, teacher-distilled
-MTL — value+policy on one trunk); decisive gate = equal-time vs teacher ≥ 0.
-Engine: `arch-d47v` feature build + SKP1 skip format, deploy parity proven.
-Search: unit-scale audit + games-vetted SPSA priors staged (s4-searchgap);
-TM depth-redenomination landed. **The authoritative live state is the
-TAKEOVER CHECKPOINT atop `docs/research/value-foundation-state.md` — read
-it before anything.** The paragraph below is the pre-distillation-era
-history (2026-07-16 snapshot).
+**CURRENT (2026-07-27, second refresh): the CANDIDATE-SELECTION era —
+doctrine: sequential training (value trunk → frozen-trunk heads; MTL
+ruled out by experiment), teachers as warm-up accelerant, release net
+DECIDED BY TESTING.** Candidates: **V** (768·32·32·8+skip; MTL run
+stopped at sb190, then the squeeze legs — value-only LegA/A2 cut heldout
+0.00797→0.00675, policy LegB restored top-1 — pair scored **−16 vs its
+1280 teacher at fixed nodes**, ET gate projects passing), **D48W**
+(1536/16/32+skip with accumulator-branched policy-16 + disagreement-64
+probe heads — built+smoked, trains after the S legs), **S**
+(d47s-sb230, the teacher, own squeeze legs running; yardstick/fallback).
+Engine: **+55-60% NPS banked in two days** (SKP1 skip-lane program +
+study-2 options A/B/C/D/E, all bit-identical/games-cleared; oracles:
+800-FEN sha 0615d75e…, bench 701605). Perf study 3 ("beyond SF18")
+commissioned. **The authoritative live state is the TAKEOVER CHECKPOINT
+atop `docs/research/value-foundation-state.md` — read it before
+anything.** The paragraph below is the pre-distillation-era history
+(2026-07-16 snapshot).
 
 **HISTORICAL (2026-07-16): D41 ARCHON era — value-foundation phase; net-0
 dethroned.**

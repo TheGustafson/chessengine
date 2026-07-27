@@ -685,8 +685,10 @@ current evidence]; RED_* unchanged pending shapeA2.
 
 ## ★★★ TAKEOVER CHECKPOINT 2026-07-27 ~06:0x — READ THIS FIRST ★★★
 
-**D47V IS THE RELEASE NET (ruled), its MTL run is OVER (stopped sb190 by
-ruling), and the SQUEEZE-LEG ERA is live.** The V trunk chain:
+**THE RELEASE NET IS OPEN — DECIDED BY TESTING (user, 2026-07-27: V =
+incumbent candidate, D48W = the hope, S = yardstick; the three-way
+face-off rules). V's MTL run is OVER (stopped sb190 by ruling); the
+SQUEEZE-LEG ERA is live.** The V trunk chain:
 MTL-sb190 (heldout 0.007972) → LegA value-only 12sb (0.006905, the
 −13.4% earthquake; policy frozen) → **LegA2 24sb gentle (running,
 0.006753@sb10; d47p-parity gate 0.006205 now −8%)** → LegB2 policy
@@ -778,6 +780,32 @@ STILL NEEDED before V can play: head skip-dot consumption + 768/32
 feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
+
+## 2026-07-27 ~06:3x ★ PRE-COMPACT PERSISTENCE + RULING AMENDMENT:
+## THE RELEASE NET IS OPEN ★
+
+USER (verbatim): "idk if v is still release net. It will depend on
+testing. I have hope for 48w, but we will see." → propagated to the
+campaign doc, CLAUDE.md, the checkpoint, and memory. V = incumbent
+candidate (its case: −16 fn vs teacher at exp-0144, heldout 0.00675
+and falling, +55-60% faster binary); D48W = the challenger (the full
+V2 topology, built+smoked, trains after the S legs — RECIPE QUESTION
+for the user: flip its trunk leg to sequential per the LegB ruling?);
+S = yardstick/fallback (own legs running).
+
+**IN-FLIGHT AT COMPACT (units/logs):** archon-chain-v2
+(/tmp/chain_v2.log): V-A2 (sb12+/24, /tmp/d47v_legA2_train.log) → V-B2
+→ S-LegA2 → S-LegB; perf-study-3 agent (report →
+docs/research/perf-study-3-beyond.md when done); waiter tasks re-arm
+from the chain log if lost. **PENDING DECISIONS:** release net (by
+face-offs); W recipe (sequential?); full rematches (paused partials:
+legAB-vs-teacher 131g at −16, kept in
+data/nnue/experiments/d47v-legAB-fn50k-vs-teacher/) + face-off protocol
+after the chain; option-E-class follow-ons only via perf study 3.
+**POST-CHAIN RUNBOOK:** pack A2+B2 pair → probes/panels → full 200g
+rematches (teacher + SF16-EN) → S pair packs → V-vs-S face-off (fn +
+panels; ET on idle box) → W training (GPU) → three-way → gates per the
+campaign doc APPROVED SEQUENCE.
 
 ## 2026-07-27 ~04:0x PERF PROGRAM (STUDY 2): TONIGHT'S SCOPE COMPLETE —
 ## A+B+C LANDED ≈ +15%; E PLANNED, NOT FORCED

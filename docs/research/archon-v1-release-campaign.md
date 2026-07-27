@@ -5,7 +5,10 @@ The net this campaign produces is **the first public release of ARCHON**.
 ## ★★ THE APPROVED RELEASE SEQUENCE (user-approved 2026-07-26 ~20:4x;
 ## supersedes the 2026-07-23 numbering below — that section is history) ★★
 
-**THE RELEASE NET IS D47V** (768·32·32·8+skip, ruled ~20:1x). Sequence:
+**THE RELEASE NET IS TBD BY TESTING (user amendment 2026-07-27: "idk if
+v is still release net. It will depend on testing. I have hope for
+48w") — V is the incumbent candidate, D48W the challenger, S the
+yardstick/fallback; the three-way face-off decides.** Sequence:
 
 - **P0 — finish leg 2** (live): α ramp 0.7→0.1@100→0@240, stop-early on
   two plateau strikes (LR triggers armed past sb100), per-10sb tables
@@ -22,8 +25,8 @@ The net this campaign produces is **the first public release of ARCHON**.
   **THEN THE V-vs-S FACE-OFF (both squeezed): fn50k + panels first;
   ET when the GPU frees.** → **D48W warm/teacher training launches on
   the freed GPU (config+warm ready)** → THREE-WAY face-off V/S/W.
-  FREEZE BEFORE ANY TUNING; the release still rides V (ruled) — S and
-  W legs are the gen-2 research arm.
+  FREEZE BEFORE ANY TUNING; the release candidate is decided by the
+  face-offs (2026-07-27 amendment above).
 - **P2 — play gates (idle box, ET)**: vs teacher (distill gate ≥0), vs
   d47p (chain claim), vs SF16 ET **and** equal-nodes (**THE headline
   gate**), vs SF18 ET (**measured, NOT gated** — gen-2's fight), WAC;
