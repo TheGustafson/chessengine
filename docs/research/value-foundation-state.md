@@ -769,6 +769,27 @@ warm → quant.bin exporter so an un-launched arch can be packed and
 speed-tested BEFORE it costs GPU-days. That tool is what let the gate
 actually fire instead of being waived.
 
+**PRE-REGISTERED EXPECTATION FOR THE sb30 READ (write it down before
+the number arrives, so we judge instead of rationalize).** D48X starts
+as the A3 trunk verbatim plus a RANDOM 16/32 head, distilling at
+α=0.7 against A3 itself. So sb30 is essentially "has a 16-wide head
+learned to reproduce A3's 128-wide head on the same features?" —
+head-only convergence, which the D47Q precedent puts at 30-60sb.
+Against the frozen V yardstick at fixed nodes, that predicts:
+- **+20 to +35 fn** = head converged, trunk knowledge intact, ON TRACK
+  (A3/S-post is +35 fn over V, so this is "we got the trunk back").
+- **≈0 or negative** = either the 16-wide bottleneck genuinely costs
+  something A3's 128 was buying, or convergence is slower than the
+  precedent. Not fatal at sb30 — but it makes sb60 the real tell.
+- **>+35** = the thin head is already beating its teacher; unlikely
+  this early, and would deserve suspicion of a harness error first.
+**The bar that actually matters:** X needs **+28 fn just to TIE V at
+equal time** (the 893k-vs-1051k speed gap). So landing at A3-level
+(+35) would be only ~+7 ET — NOT a release win. Everything past sb60,
+where α decays to 0 and real labels take over, is where the recipe
+has to earn the margin. Judge the sb60→sb380 slope, not the sb30
+level.
+
 **THE PLAN'S "28.5B PRESENTATIONS" WAS 3× TOO HIGH — 380sb IS ACTUALLY
 9.5B (user decision owed).** `batch_size 8192 × batches_per_superbatch
 3040` (the spec default; the config never overrides it) = **24.9M
