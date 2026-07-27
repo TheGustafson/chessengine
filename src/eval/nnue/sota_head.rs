@@ -29,17 +29,25 @@ use crate::types::Color;
 /// `policy_vocab`). "Go big first — learnability before NPS" is the pinned
 /// research posture; the 768/L2=16 incumbent remains the fallback ship
 /// (gate old nets with engines/bin/archon-sota-native.prev-era binaries).
-#[cfg(not(feature = "arch-d47v"))]
+#[cfg(not(any(feature = "arch-d47v", feature = "arch-d48w")))]
 pub const L1: usize = 1280;
 /// D47V (2026-07-26): the distilled 768 deploy arch — see the doctrine
 /// entry in the live log (train big → distill to competitive size).
 #[cfg(feature = "arch-d47v")]
 pub const L1: usize = 768;
+/// D48W (2026-07-27): the gen-2 candidate — wide substrate, thin head
+/// (the SF18 shape: accumulator capacity is amortized, head capacity is
+/// per-eval). 1536/16/32 + skip; pol16/dis64 heads are TRAINER-side
+/// until their engine deploy clears the <1%-cycle rule.
+#[cfg(feature = "arch-d48w")]
+pub const L1: usize = 1536;
 /// L1→L2 output width (the D47 shared bottleneck).
-#[cfg(not(feature = "arch-d47v"))]
+#[cfg(not(any(feature = "arch-d47v", feature = "arch-d48w")))]
 pub const L2: usize = 128;
 #[cfg(feature = "arch-d47v")]
 pub const L2: usize = 32;
+#[cfg(feature = "arch-d48w")]
+pub const L2: usize = 16;
 /// L2→L3 output width.
 pub const L3: usize = 32;
 /// Material/output buckets.

@@ -92,6 +92,8 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         distill_alpha_end=float(spec.get("distill_alpha_end", -1.0)),
         distill_alpha_ramp=tuple(
             (float(a), float(b)) for a, b in spec.get("distill_alpha_ramp", [])),
+        lr_ramp=tuple(
+            (float(a), float(b)) for a, b in spec.get("lr_ramp", [])),
         lr=spec["lr"], lr_end_superbatch=spec["lr_end_superbatch"],
         superbatches=spec["superbatches"], pol_lambda=spec["pol_lambda"],
         ft_sparsity_lambda=spec["ft_sparsity_lambda"],

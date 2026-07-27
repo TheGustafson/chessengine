@@ -63,6 +63,20 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
 
     def lr_fn(count):
         sb = count // bps + cfg.start_superbatch  # 1-based superbatch
+        l_ramp = tuple(getattr(cfg, "lr_ramp", ()) or ())
+        if l_ramp:
+            # Piecewise-linear LR on the ABSOLUTE superbatch (mirror of
+            # distill_alpha_at: continuous anchor, clamped flat outside
+            # the breakpoints; resumed legs land on the same global
+            # curve). Priority over the cosine below.
+            sb_abs = (cfg.start_superbatch - 1.0) + count / bps
+            xp = jnp.asarray([p[0] for p in l_ramp], jnp.float32)
+            fp = jnp.asarray([p[1] for p in l_ramp], jnp.float32)
+            lr = jnp.interp(jnp.asarray(sb_abs, jnp.float32), xp, fp)
+            if cfg.warmup_superbatches > 0.0:
+                lr = lr * jnp.minimum(
+                    1.0, (count + 1.0) / (cfg.warmup_superbatches * bps))
+            return lr
         initial = cfg.lr
         final = initial * 0.3 ** 3
         if cfg.lr_end_superbatch <= 1:

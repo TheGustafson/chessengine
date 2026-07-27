@@ -305,6 +305,12 @@ class TrainConfig:
     # breakpoints. The 2026-07-26 D47V leg-2 schedule: ((70, 0.7),
     # (100, 0.10), (240, 0.0)) — teacher to 10% by sb100, slow to 0.
     distill_alpha_ramp: tuple = ()
+    # Piecewise-linear LR on the absolute superbatch (same mechanism as
+    # distill_alpha_ramp; clamped flat outside the breakpoints). Takes
+    # priority over the lr/lr_end_superbatch cosine when non-empty — lets
+    # a warm-up/main/anneal curve live in ONE config so long runs never
+    # stop for an LR change (D48W schedule, user design 2026-07-27).
+    lr_ramp: tuple = ()
     # ---- v1.5 warm-refinement knobs (2026-07-26). All default to the
     # historical behaviour, so every existing config is untouched. ----
     # Per-tensor weight clips derived from each tensor's export encoding
