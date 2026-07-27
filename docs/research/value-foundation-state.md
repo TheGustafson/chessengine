@@ -784,6 +784,47 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-27 ~08:1x S0 SEARCH-FIT PROGRAM COMPLETE (user-ratified after
+## review): THE P9 DEFERRALS ARE ALL LIVE
+
+**User challenged the workstream mid-flight ("why are you touching
+mod.rs"), ratified after the value/safety case ("Okay finish that work.
+But run a quick test against a previous binary").** Five commits, all
+doc-governed, tests+clippy+gate green at each step:
+
+- `aabb406` §3.7 ttPv entry+rebate + cutoffCnt surcharge (ttMove rebate
+  → its ELSE arm, the audit's trap) + all_node scaling. PROOF THE PAIR
+  IS ONE UNIT: surcharges alone re-broke both §5 mate tests (slower
+  mates at pinned depth); with the rebate both pass. Bench 701605→558907.
+- `8cd138d` tt_capture surcharge. Bench 606118.
+- `abacd62` IIR re-land in design/10's narrow N12 shape (PV/cut, no
+  ttMove, depth≥6, −1; new param IIR_MIN_DEPTH; the P9 revert was the
+  broad follow-PV shape under PSQT). Bench 734066. NB the SF clone is at
+  the SF16 TAG (68e1e9b3), not eca43a97 master — the 07-audit's "ref
+  has it at :1030" line refs are wrong; design/10 is the authority.
+- `825bc14` §3.9 sibling depth−2 + the oracle re-scopes it forces:
+  non-root fixed-depth cp values are order-dependent BY DESIGN now, so
+  doc 07 §4 step 6 + the PVS/TT-equality suites keep DECISIVE values as
+  the exact living bar (LMP-era precedent). ARCHON deviation recorded:
+  ROOT EXEMPT (ID driver owns root depth; mutating it corrupted the
+  aspiration trace). Bench 408331.
+- `30be4e7` history-buys-lmr_depth (16-entry LMR_DIVISOR, +2·main),
+  the tree-relaxing counterweight, landed as a unit per the doc's
+  revisit note. Bench 535277 (net S0: −24% depth-6 tree).
+- **A/B tripwire exp-0145 (user-stopped at 117g, "signal enough"):
+  post-S0 (thru IIR) vs pre-S0, fn50k, same V pack: +35=48−34 = 50.4%
+  (~+3±40). NO bug-class regression; fn undervalues tree-shape; ET +
+  S2 SPSA co-tune arbitrate at the post-chain window.**
+- Remaining S0 item: OPTIMISM only — held on its amplitude
+  prerequisite (137/81 shape tuned to SF's eval amplitude; ours ≠).
+- **TRUNK-SHARING FINDING RATIFIED (user):** value-only trunk training
+  destroys policy features; head-only retrain recovers fast but NOT
+  fully (18.7→12.2→17.5 top-1; B2 pol_ce converges by sb10 then
+  flatlines 2.86). Refinement on the record: demonstrated at 768 WITH
+  DEEP-TRUNK policy branch; symmetric taxes (MTL cost value 13%, squeeze
+  cost policy ~1.2pp) = capacity contention. D48W's accumulator-branch
+  is the designed test: substrate-sharing vs deep-trunk-sharing.
+
 ## 2026-07-27 ~07:2x ANNEAL-ERA CHAIN RESTRUCTURE (user LR rulings) +
 ## A2/A3 RESULTS + NETONLY: V IS SF18-CLASS ON STATICS
 
