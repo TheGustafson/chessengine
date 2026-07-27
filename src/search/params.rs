@@ -216,6 +216,25 @@ crate::tunables! {
     pub RAZOR_BASE: Value = 465;
     /// Depth-quadratic term of the razoring margin (`* depth^2`).
     pub RAZOR_DEPTH_MULT: Value = 300;
+    /// **Eval-uncertainty coupling for razoring** — margin widens by
+    /// `|correction_value| / RAZOR_CORR_DIV`. Effectively OFF at the default
+    /// (the term floors to 0), so the shipped engine is unchanged.
+    ///
+    /// A deliberate deviation from Stockfish, which has no such term.
+    /// Reasoning: the eval-frame study established that what a margin must
+    /// track is the eval's ERROR, not its magnitude
+    /// (`eval-frame-scale-model-2026-07-27.md` §11.3), and correction history
+    /// is a per-position estimate of exactly that error. RFP, singular and
+    /// LMR already couple to it; razoring does not — despite being the most
+    /// destructive gate in the engine, since it replaces an entire node with
+    /// a qsearch value and nothing downstream corrects it.
+    ///
+    /// Under the node-level/move-level hypothesis (`SCREENING.md` §10) that
+    /// is precisely backwards: the gate with the largest cost-of-being-wrong
+    /// should be the MOST reluctant where the eval is historically
+    /// unreliable. Smaller divisor = stronger coupling = razor less often in
+    /// positions our eval has been getting wrong.
+    pub RAZOR_CORR_DIV: i32 = 1_000_000_000;
 
     // --- Reverse futility pruning (design/10 §3.4; node step N10) ---
     //
@@ -291,6 +310,15 @@ crate::tunables! {
     /// Flat base of the NMP static-eval bar (dominates at shallow depth, so the
     /// bar sits well above beta there).
     pub NMP_EVAL_BASE: Value = 374;
+    /// **Eval-uncertainty coupling for the null-move bar** — the bar rises by
+    /// `|correction_value| / NMP_CORR_DIV`, so NMP fires less readily where
+    /// our eval has been unreliable. Effectively OFF at the default.
+    ///
+    /// Same reasoning as [`RAZOR_CORR_DIV`], and NMP is the other node-level
+    /// gate with no correction coupling. NMP's whole premise is that the
+    /// static eval is trustworthy enough to skip a move — which is exactly
+    /// the assumption correction history measures.
+    pub NMP_CORR_DIV: i32 = 1_000_000_000;
     /// Base of the null-move dynamic reduction `R = NMP_R_BASE + depth /
     /// NMP_R_DEPTH_DIV` (in whole plies — this reduction is applied directly to
     /// depth, not in the 1024ths the LMR table uses).
@@ -463,6 +491,16 @@ crate::tunables! {
     /// Minimum depth for IIR: a PV/cut node with no ttMove at `depth >=
     /// IIR_MIN_DEPTH` searches one ply shallower.
     pub IIR_MIN_DEPTH: Depth = 6;
+    /// Plies the internal iterative reduction removes (was a bare
+    /// `depth -= 1`).
+    ///
+    /// The 17th implicit-x1 found: IIR's *threshold* was tunable while its
+    /// *magnitude* was not, so the only question anyone could ask about the
+    /// mechanism was "at what depth", never "by how much". `IIR_MIN_DEPTH`
+    /// 6 -> 8 is currently the strongest single arm measured
+    /// (`docs/research/SCREENING.md` §10), which makes the untunable half of
+    /// the same mechanism worth exposing.
+    pub IIR_REDUCTION: Depth = 1;
 
     // --- Move-loop pruning: late move pruning (design/10 §3.5) ---
     //

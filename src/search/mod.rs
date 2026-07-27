@@ -2704,7 +2704,12 @@ impl Worker {
             // confirms the loss. No `is_decisive` guard is needed: a winning
             // `eval` fails the `<` test outright, so wins are never razored.
             if !NT::PV
-                && eval < alpha - params::RAZOR_BASE() - params::RAZOR_DEPTH_MULT() * depth * depth
+                && eval
+                    < alpha
+                        - params::RAZOR_BASE()
+                        - params::RAZOR_DEPTH_MULT() * depth * depth
+                        // Widen where our eval has historically been wrong.
+                        - correction_value.abs() / params::RAZOR_CORR_DIV()
             {
                 return self.qsearch::<NonPv>(tt, stop, alpha, beta, ply);
             }
@@ -2793,6 +2798,10 @@ impl Worker {
                         - params::NMP_EVAL_DEPTH() * depth
                         - params::NMP_EVAL_IMPROVING() * Value::from(improving)
                         + params::NMP_EVAL_BASE()
+                        // Raise the bar where our eval has historically been
+                        // wrong: NMP's premise is that the static eval can be
+                        // trusted enough to skip a move.
+                        + correction_value.abs() / params::NMP_CORR_DIV()
                 && self.stack[cur].excluded_move == Move::NULL
                 && self.board.non_pawn_material(us) != 0
                 && ply as i32 >= self.nmp_min_ply
@@ -2870,7 +2879,7 @@ impl Worker {
                 && depth >= params::IIR_MIN_DEPTH()
                 && tt_data.mv == Move::NULL
             {
-                depth -= 1;
+                depth -= params::IIR_REDUCTION();
             }
 
             // N13 — ProbCut (design/10 §3.4, Wave-E item 16): a cheap search
