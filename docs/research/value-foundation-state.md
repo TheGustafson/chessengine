@@ -769,6 +769,33 @@ warm → quant.bin exporter so an un-launched arch can be packed and
 speed-tested BEFORE it costs GPU-days. That tool is what let the gate
 actually fire instead of being waived.
 
+**A CONFOUND CAUGHT BEFORE IT COST US A DECISION (01:4x):** the
+every-30sb watcher was going to play the candidate against
+`engines/bin/archon-d47v` — the *pinned* V binary, built 07-26 18:03,
+i.e. BEFORE the entire S0 search program landed (20:50→21:37).
+Verified rather than reasoned: same net, same position, depth 13 —
+**pinned 45615 nodes / cp 51 vs archon-d47v-pgo 31455 nodes / cp 68**
+(a 31% smaller tree). Every round would have credited D48X with all of
+S0's ~+40 fn Elo on top of whatever the net actually earned, and we
+could have promoted a mediocre net on it. Watcher now uses
+`archon-d47v-pgo` (post-S0, PGO, same search as the candidate binary —
+both differ only in the net, which is the whole point). The general
+rule this sharpens: **"pinned binary" is only a virtue while the
+engine is frozen; the moment search changes, a pinned yardstick
+becomes a confound.** Audited the other `archon-d47v` references —
+all are completed/cancelled runs or `evolution_panel.sh`, where the
+engine only computes static evals and search era is irrelevant.
+
+**Instrument chain dry-run (01:3x, before it mattered):** ran the full
+every-30sb path against the 1280 warm rather than waiting for sb30 to
+discover a config error. netpack@D40_ACC=1280 → valid pack; scale
+check → n=509, real ratio (0.052, as expected from an untrained head —
+the mechanism works, the rescale loop handles it); panel → real strata
+(QUIET all n=2999, SHARP nc n=1817) not the empty-vector failure mode
+that poisoned the S panel; netonly → full stratum table with every
+reference column populated. Cross-check that the harness is sane:
+teacher-vs-oracle 0.9054 here vs S-post's known 0.9079.
+
 **Stage-A SPSA (launched, concurrent):** 12 params on the V net + PGO
 tune binary, fn20k (load-immune both ways, GPU untouched), 4 workers /
 4 units / 1 pair = 8 games per iteration x 2400 iterations ≈ 19k games
