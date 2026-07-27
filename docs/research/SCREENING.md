@@ -148,3 +148,55 @@ This protocol is expected to change as ablations teach us more. When it does,
 update **this file and `tools/screen.py` together**, and record what
 measurement forced the change — every rule above exists because something
 was measured wrong first.
+
+---
+
+## 7. Power, and why most screening is exploratory
+
+Paired standard error on this corpus, measured:
+
+| positions (`--limit`) | paired sem |
+|---|---|
+| 250 | ~2.0 cp |
+| 800 | ~1.1 cp |
+| 1500 | ~0.8 cp |
+| **9992 (`--limit 0`)** | **~0.3 cp** |
+
+The effects worth chasing are **~1 cp**. So anything below ~3000 positions is
+**exploratory only** — good for ranking directions, useless for a verdict —
+and `screen.py` labels its own output that way. Use `--limit 0` before
+believing any single arm.
+
+This is not a theoretical caution. On 2026-07-27 a set of 1–3 cp deltas at
+n=300 was read as signal; the same arms measured the **opposite sign** at
+n=1500 on the uncensored oracle.
+
+---
+
+## 8. Per-gate directions measured so far
+
+The single most useful result: **there is no global direction.** Each gate
+has its own, and a uniform correction averages them into nothing — which is
+precisely why the global eval-frame rescale failed.
+
+| gate | direction that helps | measured |
+|---|---|---|
+| LMR (`RED_TABLE_NUM`) | **less** reduction, mildly — 2700, not 2500 | −1.79 / −1.76 / −1.60 |
+| RFP margin | **larger** (×1.25) — prune less | −0.70 / −0.71 / −0.78, +1.6% nodes |
+| parent futility | **smaller** (×0.64) — prune more | −0.78 / −0.87 / −1.20 |
+| NMP bar | **lower** (374→168) — fire more | −1.39 / −1.08 / −0.86 |
+| razoring | **off** | −0.63 / −0.52 / −0.36 |
+| LMP depth coeff | slightly larger (1200) | −0.22 / −0.71 / −0.30 |
+
+Note RFP and parent futility move in **opposite** directions, and RFP
+contradicts what the eval-frame model predicts for it (the model says scale
+margins *down*; RFP wants *up*). Treat the frame ratio as a hint about where
+to look, never as the answer.
+
+Also note the cost axis differs enormously: RFP buys −0.7 cp for +1.6% nodes,
+LMR buys −1.7 cp for +12.4%. Prefer cheap improvements when composing, since
+node cost compounds and cp gains do not obviously do so.
+
+**Caveat on all of the above:** these are n=800–1500 exploratory readings,
+~1.1–1.7σ each. Consistent signs across three tiers is what makes them worth
+pursuing, not their individual significance.
