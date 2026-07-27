@@ -818,25 +818,33 @@ safety-critical function, and it is priced as such in §6.
 | `cargo test --release --features sota,arch-d47v` | — | **660 lib + 24 UCI + all integration suites: 0 failed** |
 | `-- --ignored threats_replay_large` | — | **ok** |
 
-**How the cycle band was derived, and why it is a band.** Twenty-four paired
-runs were taken: 4 rounds in the order `base, P4, P2, P1, ALL`, 4 rounds in the
-exact reverse order (to cancel any within-round drift), and 2 further ABBA
-blocks `base, ALL, ALL, base`. Order-balanced medians over the 8 rounds:
+**How the cycle band was derived, and why it is a band.** Forty-eight timed runs
+were taken: 4 rounds in the order `base, P4, P2, P1, ALL` (20 runs), 4 rounds in
+the exact reverse order (20 runs, to cancel any within-round drift), and 2
+further ABBA blocks `base, ALL, ALL, base` (8 runs). Order-balanced medians over
+the 8 five-way rounds:
 
 | prototype | Δ instructions/node (exact) | Δ cycles/node, median of 8 | per-round range |
 |---|---:|---:|---:|
 | P4 (Finny diff) | **−4.77 %** | −1.6 % | −5.4 % … +6.7 % |
 | P2 (fold tile) | **−16.21 %** | −4.0 % | −9.0 % … +12.2 % |
 | P1 (MovePicker) | **−3.53 %** | −4.7 % | −9.2 % … +16.1 % |
-| **ALL** | **−24.52 %** | **−13.3 %** | −5.6 % … −20.9 % |
+| **ALL** | **−24.52 %** | **−13.3 %** | −18.3 % … **+1.1 %** |
+
+The two ABBA blocks (each averaging the two `base` runs that bracket the two
+`ALL` runs) gave **−5.7 %** and **−20.9 %** — the spread between two adjacent
+blocks of the *same* comparison is the cleanest single statement of how noisy
+this box was.
 
 The per-prototype medians are individually unreliable (P1 cannot really beat P2
 when it removes a fifth of the instructions P2 does) — the co-resident load rose
 from ~4 to ~7.7 during the session and swamped the small deltas. Three things
 make **−12 to −13 % for the combination** the defensible number:
 
-1. it is the median of the *largest* effect, the only one comfortably above the
-   noise floor, and it is negative in every one of the 10 paired blocks;
+1. it is the median of the *largest* effect — the only one comfortably above the
+   noise floor — and it is negative in **9 of the 10** paired blocks (the lone
+   outlier is +1.1 %, in the round where the baseline itself measured its
+   best-ever 4482 c/n);
 2. the physics estimate from the deterministic counters agrees:
    2274 fewer instructions/node, of which the fold-kernel share (1504) sits in
    memory shadow and converts at ~20 %, while the Finny/MovePicker share (770)

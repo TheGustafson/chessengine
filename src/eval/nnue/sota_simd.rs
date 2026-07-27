@@ -1213,53 +1213,72 @@ mod avx512 {
         stm: usize,
     ) {
         const H: usize = ACC / 2;
-        // SAFETY: each iteration consumes sixteen in-bounds i16 lanes from
-        // each half. The i32 arithmetic exactly implements signed nearest
-        // rounding, clamp, pairwise multiply, and shift from the scalar
-        // reference; there is no 512-bit `sign` instruction, so the sign
-        // reapplication uses a compare mask + masked subtract-from-zero.
+        // Study-2 option D (D1+D2 as one i16 pipeline, 32 lanes/zmm — the
+        // old path widened to i32 at 16 lanes/zmm, 2.54x SF's cost):
+        //   4t          via 2x vpaddsw   (saturates only for |t| > 8191 —
+        //                                 measured max |t| = 431 over the
+        //                                 800-FEN battery + 6k corpus
+        //                                 positions; debug builds trip the
+        //                                 assert below if a future net
+        //                                 breaks the bound)
+        //   |4t|        via vpabsw
+        //   round(|t|·255/64) = (|4t|·32640 + 2^14) >> 15  via vpmulhrsw —
+        //     EXACT: (4|t|·32640+16384)>>15 = 512·(|t|·255+32)>>15
+        //     = (|t|·255+32)>>6, the scalar reference's magnitude rounding.
+        //     NOTE the study's original recipe applied vpmulhrsw to the
+        //     SIGNED value; that rounds negative half-cases toward +inf and
+        //     diverges from the reference by 1 for every t ≡ 32 (mod 64),
+        //     t < 0 — hence abs/mulhrsw/sign, mirroring the i32 path's own
+        //     sign-reapplication shape.
+        //   sign        via vpsignw (t == 0 ⇒ 0, matching signum()·…)
+        //   p + r       via vpaddsw — saturation only occurs beyond the
+        //               [0,255] clamp, so the clamped result is exact
+        //   clamp       via vpmaxsw/vpminsw
+        //   (l·r)>>9    via vpsllw<7> + vpmulhw (l ≤ 255 ⇒ l·128 < 2^15)
+        //   store       via vpmovwb — products ≤ 127, truncation == value.
+        // SAFETY: each iteration consumes 32 in-bounds i16 lanes per half.
         unsafe {
-            debug_assert_eq!(THREAT_QUANT, 64);
-            let scale = _mm512_set1_epi32(FT_QUANT);
-            let rounding = _mm512_set1_epi32(THREAT_QUANT / 2);
+            #[cfg(debug_assertions)]
+            for side in threat {
+                for &t in side.iter() {
+                    debug_assert!(
+                        t.unsigned_abs() <= 8191,
+                        "threat lane {t} exceeds the i16 activate bound"
+                    );
+                }
+            }
             let zero = _mm512_setzero_si512();
-            let ceiling = _mm512_set1_epi32(FT_QUANT);
+            let ceiling = _mm512_set1_epi16(FT_QUANT as i16);
+            let mulr = _mm512_set1_epi16(32640);
             for flip in 0..2 {
                 let perspective = stm ^ flip;
                 let p = &pst[perspective];
                 let t = &threat[perspective];
-                for lane in (0..H).step_by(16) {
+                for lane in (0..H).step_by(32) {
                     let merge = |offset: usize| {
-                        let pv = _mm512_cvtepi16_epi32(_mm256_loadu_si256(
-                            p.as_ptr().add(offset).cast(),
-                        ));
-                        let tv = _mm512_cvtepi16_epi32(_mm256_loadu_si256(
-                            t.as_ptr().add(offset).cast(),
-                        ));
-                        let scaled = _mm512_mullo_epi32(tv, scale);
-                        let magnitude = _mm512_srai_epi32::<6>(_mm512_add_epi32(
-                            _mm512_abs_epi32(scaled),
-                            rounding,
-                        ));
-                        let negative = _mm512_cmplt_epi32_mask(scaled, zero);
-                        let signed = _mm512_mask_sub_epi32(magnitude, negative, zero, magnitude);
-                        _mm512_min_epi32(
-                            _mm512_max_epi32(_mm512_add_epi32(pv, signed), zero),
-                            ceiling,
-                        )
+                        let pv = _mm512_loadu_si512(p.as_ptr().add(offset).cast());
+                        let tv = _mm512_loadu_si512(t.as_ptr().add(offset).cast());
+                        let t4 = _mm512_adds_epi16(_mm512_adds_epi16(tv, tv), _mm512_adds_epi16(tv, tv));
+                        let mag = _mm512_mulhrs_epi16(_mm512_abs_epi16(t4), mulr);
+                        // no vpsignw in avx512bw: mask-negate where t < 0
+                        // (t4 == 0 ⇒ mag == 0, sign irrelevant — matches signum)
+                        let neg = _mm512_cmplt_epi16_mask(tv, zero);
+                        let signed = _mm512_mask_sub_epi16(mag, neg, zero, mag);
+                        let sum = _mm512_adds_epi16(pv, signed);
+                        _mm512_min_epi16(_mm512_max_epi16(sum, zero), ceiling)
                     };
                     let left = merge(lane);
                     let right = merge(lane + H);
-                    let product =
-                        _mm512_srai_epi32::<{ FT_SHIFT as u32 }>(_mm512_mullo_epi32(left, right));
-                    // vpmovdb truncates each i32 to its low byte — the scalar
-                    // reference's `as u8`.
-                    let bytes = _mm512_cvtepi32_epi8(product);
-                    _mm_storeu_si128(out.as_mut_ptr().add(flip * H + lane).cast(), bytes);
+                    let prod = _mm512_mulhi_epi16(_mm512_slli_epi16::<7>(left), right);
+                    _mm256_storeu_si256(
+                        out.as_mut_ptr().add(flip * H + lane).cast(),
+                        _mm512_cvtepi16_epi8(prod),
+                    );
                 }
             }
         }
     }
+
 
     pub(super) fn i16_deltas(
         acc: &mut [i16; ACC],
@@ -1516,6 +1535,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn dispatched_activate_matches_scalar_bitwise() {
+        // Option D gate: the i16 pipeline must equal the scalar reference
+        // on every lane, INCLUDING the negative half-cases (t ≡ 32 mod 64,
+        // t < 0) where the study's original recipe diverged, and values up
+        // to 4x the measured |t| bound.
+        let mut pst = [[0i16; ACC]; 2];
+        let mut threat = [[0i16; ACC]; 2];
+        for p in 0..2 {
+            for i in 0..ACC {
+                pst[p][i] = ((i as i32 * 2731 + p as i32 * 977) % 1200 - 300) as i16;
+                let t = ((i as i32 * 1543 + p as i32 * 389) % 3600) - 1800;
+                threat[p][i] = t as i16;
+            }
+            // plant exact negative half-cases and extremes
+            threat[p][0] = -32;
+            threat[p][1] = 32;
+            threat[p][2] = -96;
+            threat[p][3] = -1760;
+            threat[p][4] = 1760;
+            threat[p][5] = 0;
+        }
+        for stm in 0..2 {
+            let mut want = [0u8; ACC];
+            let mut got = [0u8; ACC];
+            scalar::activate(&mut want, &pst, &threat, stm);
+            activate(&mut got, &pst, &threat, stm);
+            assert_eq!(want, got, "stm {stm}");
+        }
+    }
+
+    #[test]
     fn dispatched_skip_dot_matches_scalar_bitwise() {
         // The fixed 16-lane + halving-tree shape must make every backend
         // bit-identical to the scalar reference (policy_dot discipline).
@@ -1642,7 +1692,7 @@ mod tests {
                 threat[perspective][lane] = (lane as u16)
                     .wrapping_mul(49711)
                     .wrapping_add(perspective as u16 * 251)
-                    as i16;
+                    as i16 % 8192; // option-D guaranteed domain
             }
         }
 
@@ -1768,6 +1818,13 @@ mod tests {
 
     #[test]
     fn dispatched_activation_matches_scalar_for_full_i16_domain_sample() {
+        // CONTRACT NARROWED (study-2 option D): the i16 activate pipeline is
+        // bit-identical to the scalar reference for |threat lane| <= 8191 —
+        // the domain the debug assert in the kernel enforces (measured real
+        // nets: max |t| = 431, a 19x margin). Beyond it the saturating 4t
+        // form diverges BY DESIGN; the old full-i16-domain sweep therefore
+        // now samples the guaranteed domain. pst keeps the full domain
+        // (saturating add is exact post-clamp for ALL pst).
         let mut pst = [[0i16; ACC]; 2];
         let mut threat = [[0i16; ACC]; 2];
         for perspective in 0..2 {
@@ -1776,10 +1833,10 @@ mod tests {
                     .wrapping_mul(40503)
                     .wrapping_add(perspective as u16 * 173)
                     as i16;
-                threat[perspective][lane] = (lane as u16)
+                let raw = (lane as u16)
                     .wrapping_mul(49711)
-                    .wrapping_add(perspective as u16 * 251)
-                    as i16;
+                    .wrapping_add(perspective as u16 * 251) as i16;
+                threat[perspective][lane] = raw % 8192;
             }
         }
         for stm in 0..2 {
