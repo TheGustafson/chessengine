@@ -1,18 +1,19 @@
 {
   "name": "s2-stageA",
-  "comment": "S2 STAGE A (coarse-then-joint design, user-discussed 2026-07-26 ~23:2x): the ~12 highest-leverage / least-trusted params — everything transplanted untuned this week (S0 §3.7 reduction terms; optimism = slope-scaled guess 75/45) plus the eval-scale-coupled pruning margins tuned in the PSQT era (eval replaced twice since). One overnight at bullet (12-15k games, conc 8, PGO binary baseline per ruling). STAGE B = the FULL constant set INCLUDING these again, warm-started from stage A's vector (interactions co-tune; never freeze stage-A winners). Verify at 10+0.1 between stages (screen->verify->bracket->pin). Priors: sefam x0.52 screen +22.6, qs 174 +17.4 (2026-07-26 rounds 1-2) inform RFP/futility brackets.",
+  "comment": "S2 STAGE A (coarse-then-joint design, user-discussed 2026-07-26 ~23:2x): the ~12 highest-leverage / least-trusted params — everything transplanted untuned this week (S0 §3.7 reduction terms; optimism = slope-scaled guess 75/45) plus the eval-scale-coupled pruning margins tuned in the PSQT era (eval replaced twice since). One overnight at bullet, PGO binary baseline per ruling. STAGE B = the FULL constant set INCLUDING these again, warm-started from stage A's vector (interactions co-tune; never freeze stage-A winners). Verify at 10+0.1 between stages (screen->verify->bracket->pin). Priors: sefam x0.52 screen +22.6, qs 174 +17.4 (2026-07-26 rounds 1-2) inform RFP/futility brackets.",
+  "r_end_note": "r_end = 0.03, i.e. 15x the 0.002 default, set 2026-07-27 01:2x after the first 69 iterations moved exactly one parameter by 1.5 units of a 1950-wide range. Derivation: total systematic movement as a FRACTION OF RANGE is 180 * r_end * E[z], independent of how wide the range is (c_end = range/20 and the step scales with c_end). Fishtest-scale tunes reach ~13% of range because they run ~30k iterations at 2 games each; our box affords ~2400 iterations at 8 games each in an overnight window, so matching that exploration needs r_end ~0.025. 0.03 is a shade above Fishtest-equivalent, justified because these are untuned transplants rather than a re-tune of already-good values. At E[z]=0.03 that is ~16% of range of systematic drift against ~3% of random walk — signal-dominated. The default 0.002 would have produced ~1% and a null result by construction. The 10+0.1 SPRT verify gate is what protects us if the larger steps wander.",
   "params": [
-    {"name": "OPTIMISM_NUM",         "min": 20,   "max": 180},
-    {"name": "OPTIMISM_DEN_BASE",    "min": 15,   "max": 120},
-    {"name": "RED_CUTOFFCNT_BASE",   "min": 60,   "max": 700},
-    {"name": "RED_CUTOFFCNT_MANY",   "min": 300,  "max": 2400},
-    {"name": "RED_TTPV_ENTRY",       "min": 250,  "max": 2200},
-    {"name": "RED_TTPV_BASE",        "min": 900,  "max": 5200},
-    {"name": "RED_ALLNODE_NUM",      "min": 60,   "max": 700},
-    {"name": "RFP_MULT_BASE",        "min": 15,   "max": 90},
-    {"name": "RFP_MULT_CAP",         "min": 40,   "max": 160},
-    {"name": "RAZOR_BASE",           "min": 200,  "max": 900},
-    {"name": "NMP_EVAL_BASE",        "min": 150,  "max": 700},
-    {"name": "PFUT_BASE",            "min": 15,   "max": 100}
+    {"name": "OPTIMISM_NUM",         "min": 20,   "max": 180,  "r_end": 0.03},
+    {"name": "OPTIMISM_DEN_BASE",    "min": 15,   "max": 120,  "r_end": 0.03},
+    {"name": "RED_CUTOFFCNT_BASE",   "min": 60,   "max": 700,  "r_end": 0.03},
+    {"name": "RED_CUTOFFCNT_MANY",   "min": 300,  "max": 2400, "r_end": 0.03},
+    {"name": "RED_TTPV_ENTRY",       "min": 250,  "max": 2200, "r_end": 0.03},
+    {"name": "RED_TTPV_BASE",        "min": 900,  "max": 5200, "r_end": 0.03},
+    {"name": "RED_ALLNODE_NUM",      "min": 60,   "max": 700,  "r_end": 0.03},
+    {"name": "RFP_MULT_BASE",        "min": 15,   "max": 90,   "r_end": 0.03},
+    {"name": "RFP_MULT_CAP",         "min": 40,   "max": 160,  "r_end": 0.03},
+    {"name": "RAZOR_BASE",           "min": 200,  "max": 900,  "r_end": 0.03},
+    {"name": "NMP_EVAL_BASE",        "min": 150,  "max": 700,  "r_end": 0.03},
+    {"name": "PFUT_BASE",            "min": 15,   "max": 100,  "r_end": 0.03}
   ]
 }
