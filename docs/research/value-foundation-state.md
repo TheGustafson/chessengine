@@ -840,7 +840,39 @@ c2-reduction should stay as configured — its null or otherwise is still
 informative, and switching mid-chain would confound the comparison with
 stage A.
 
-## ✅ sb180 CONFIRMS THE USER'S CALL — THE NET IS IMPROVING (08:1x)
+## ⚠ sb180: THE PANELS IMPROVED, THE GAMES DID NOT — AND MY PROXY CLAIM
+## FAILED ITS FIRST OUT-OF-SAMPLE TEST (08:2x)
+
+**I predicted, from SHARP's climb, that the sb180 match would beat
+sb150's −56. It came in at −77.71 ± 38.26.** That is the prediction
+failing, and it was a prediction I made explicitly one message earlier.
+
+**The proxy correlation collapses with the sixth point:**
+
+| | n=5 | **n=6** |
+|---|---|---|
+| Spearman(SHARP, fn Elo) | +1.000 | **+0.657** |
+| Spearman(QUIET, fn Elo) | +0.900 | **+0.600** |
+
+The +1.000 was a five-point coincidence — exactly the regression I said
+to expect but then relied on anyway, one message later. **SHARP is a
+weak-to-moderate predictor of fn Elo, not the cheap oracle I called
+it.** Do not use it to skip matches.
+
+**The six-point picture:** pooled **−61.2 ± 17.3**, slope **−6.4 ± 10.3
+per 30sb** — still consistent with flat and still consistent with
+modest improvement, so the honest reading is unchanged from the user's
+correction: the LEVEL is about −60, the TREND is unresolved, and the
+anneal is entirely ahead.
+
+**What genuinely improved and what did not.** Panels: QUIET 0.8779 →
+0.8856 and SHARP 0.7570 → 0.7690 across sb120→180, both monotone and
+near the sb30 peak. Heldout: EMA 0.007119 → 0.006926, monotone. Games:
+no corresponding gain. Three instruments now disagree, and the games
+are the ones that decide. Either the panel/heldout gains are real but
+not yet worth Elo, or they measure something the games do not reward.
+
+
 
 The user said "it is ahead of schedule, it will improve" while I was
 still quoting a −57 level. The panels now agree with them:
@@ -855,11 +887,10 @@ within a whisker of the sb30 peak** (QUIET −0.0005, SHARP −0.0012),
 having recovered the entire post-teacher dip. The heldout agrees:
 EMA 0.007119 (sb90) → 0.006926 (sb170), monotone.
 
-**This matters for how the run reads.** SHARP ranked the first five
-checkpoints at Spearman +1.000 against game order, so its climb
-predicts the sb180 match should come in ahead of sb150's −56. The
-earlier "flat at −57, not converging" characterisation was built on
-points that stopped at the trough.
+**(SUPERSEDED by the sb180 match — the prediction in this paragraph
+was wrong.)** SHARP ranked the first FIVE checkpoints at +1.000 and I
+used that to predict sb180 would beat −56; it came in at −77.71 and the
+correlation fell to +0.657.
 
 Endgame is the exception and moved the other way (0.7603 → 0.7393) —
 worth watching, but it is also the stratum with the weakest link to
