@@ -743,6 +743,44 @@ headline drifted slightly the other way (0.8861 → 0.8811) and the
 calibration scale moved 591 → 429, both consistent with a net mid-way
 through the frame handover rather than one going wrong.
 
+**HEAD-TO-HEAD EVAL DIAGNOSTIC (03:4x) — the −48 is real, and it is
+concentrated in SHARP positions.** The puzzle was that X agrees 0.9745
+with a teacher that is +35 fn over V, yet plays 48 BELOW V. Resolved by
+running netonly with V in the same table (X's agreement was measured
+against the teacher; its agreement with the ORACLE is what matters):
+
+| stratum | X-sb60 | V | teacher |
+|---|---|---|---|
+| QUIET headline (2999) | 0.8811 | **0.8920** | 0.9054 |
+| QUIET pieces≤8 endgame (384) | **0.7563** | 0.7149 | 0.8152 |
+| QUIET pieces 17-24 (1175) | 0.8732 | **0.8951** | 0.9007 |
+| **SHARP headline (1817)** | 0.7593 | **0.7926** | 0.8126 |
+| SHARP \|label\|<100 (673) | 0.3884 | **0.4411** | 0.4902 |
+| iso-MAE quiet / sharp | 73.6 / 118.7 | **69.2 / 107.9** | 67.8 / 108.9 |
+
+**V is the better evaluator on almost every stratum. X wins only on
+endgames** (pieces≤8, +0.041 — inherited from the A3 trunk, which was
+always strong there) and loses everywhere that matters for play, worst
+of all on SHARP positions (−0.033 headline, −0.053 on near-equal sharp
+ones). So the −48 fn is not a measurement artifact or a calibration
+problem: it is the eval, and it is honest.
+
+**This composes exactly with the loss forensics.** 28 of 34 losses were
+decided in the opening/early middlegame — high piece count, sharp,
+unresolved — which is precisely the stratum where X trails V most. Two
+independent instruments, same answer.
+
+**The sb90 discriminator is now specific rather than vague.** The
+question is whether the thin 16-wide head is UNDERTRAINED or
+UNDER-CAPACITY for sharp positions (V carries L2=32 at 768; X carries
+L2=16 at 1280). Watch the SHARP row at sb90 and sb120:
+- SHARP climbing toward V's 0.7926 ⇒ undertrained, the recipe is
+  working, give the run its length.
+- SHARP flat while QUIET/endgame keep improving ⇒ capacity, and no
+  amount of remaining superbatches fixes it. That would be a genuine
+  kill signal, and the fix would be a wider head (a new run), not more
+  time on this one.
+
 **RECOMMENDATION (the user's call, per "no automated stops"): let it
 reach sb90, then decide on three points.** Two points cannot separate
 noise from trend at these error bars; three can. If sb90 is still at or
