@@ -1507,6 +1507,98 @@ mod tests {
         );
     }
 
+    /// TEMPORARY MEASUREMENT (perf-impl-1): how many weight rows does the fold
+    /// touch per perspective-ply, and how does that compare with the *minimal*
+    /// delta — the symmetric difference of the from-scratch active feature sets
+    /// before and after the move? Anything above the minimum is a row we fold
+    /// and then cancel arithmetically.
+    #[test]
+    #[ignore = "measurement"]
+    fn measure_fold_row_counts() {
+        use std::collections::BTreeSet;
+        let w: Vec<i8> = Vec::new();
+        let q: Vec<i32> = Vec::new();
+        let mut board = Board::startpos();
+        let mut seed = 0x1234_5678_9ABC_DEF0u64;
+        let mut rng = Rng(seed);
+        let mut tot_rows = 0usize;
+        let mut tot_min = 0usize;
+        let mut tot_raw = 0usize;
+        let mut n = 0usize;
+        let mut hist = [0usize; 80];
+        let mut minhist = [0usize; 80];
+        let mut buf = DeltaBuf::new();
+        let mut adds = [0usize; DELTA_CAP];
+        let mut subs = [0usize; DELTA_CAP];
+        let mut pd = [0i32; BUCKETS];
+        for game in 0..400u32 {
+            board = Board::startpos();
+            seed = seed.wrapping_add(u64::from(game)).wrapping_mul(0x2545_F491_4F6C_DD1D);
+            rng = Rng(seed);
+            for _ in 0..100 {
+                let mut moves = MoveList::new();
+                generate_legal(&board, &mut moves);
+                if moves.is_empty() {
+                    break;
+                }
+                let m = moves[(rng.next() % moves.len() as u64) as usize];
+                let dp = DirtyPiece::from_move(&board, m);
+                // active sets BEFORE
+                let mut before = [BTreeSet::new(), BTreeSet::new()];
+                for (i, &p) in Color::ALL.iter().enumerate() {
+                    for_each_threat(&board, p, |idx| {
+                        before[i].insert(idx);
+                    });
+                }
+                let gc = board.gives_check(m);
+                board.make_move(m, gc);
+                let snap = ThreatSnapshot::from_board(&board);
+                buf.clear();
+                build_deltas(&mut buf, &dp, &snap);
+                tot_raw += buf.len;
+                for (i, &p) in Color::ALL.iter().enumerate() {
+                    if king_crossed(&dp, p) {
+                        continue;
+                    }
+                    let mut after = BTreeSet::new();
+                    for_each_threat(&board, p, |idx| {
+                        after.insert(idx);
+                    });
+                    let minimal = before[i].symmetric_difference(&after).count();
+                    let resolver = ThreatResolver::new(p, snap.kings[i]);
+                    pd = [0i32; BUCKETS];
+                    let (al, sl) =
+                        resolve_into(buf.events(), &mut adds, &mut subs, &resolver, &q, &mut pd);
+                    tot_rows += al + sl;
+                    tot_min += minimal;
+                    n += 1;
+                    hist[(al + sl).min(79)] += 1;
+                    minhist[minimal.min(79)] += 1;
+                }
+                let _ = &w;
+            }
+        }
+        eprintln!("perspective-plies      : {n}");
+        eprintln!("raw events / ply       : {:.2}", tot_raw as f64 / (n as f64 / 2.0));
+        eprintln!("resolved rows / p-ply  : {:.2}", tot_rows as f64 / n as f64);
+        eprintln!("MINIMAL rows / p-ply   : {:.2}", tot_min as f64 / n as f64);
+        eprintln!("overfold factor        : {:.3}", tot_rows as f64 / tot_min as f64);
+        eprint!("rows hist  :");
+        for (i, &c) in hist.iter().enumerate() {
+            if c > 0 {
+                eprint!(" {i}:{c}");
+            }
+        }
+        eprintln!();
+        eprint!("minrows hist:");
+        for (i, &c) in minhist.iter().enumerate() {
+            if c > 0 {
+                eprint!(" {i}:{c}");
+            }
+        }
+        eprintln!();
+    }
+
     /// The large-corpus stress gate — thousands of games. Slow in debug (the
     /// board's per-node `assert_consistent` oracle dominates); run in release:
     /// `cargo test --release --features sota -- --ignored threats_replay_large`.
