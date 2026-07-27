@@ -1081,6 +1081,44 @@ threat contribution is ≤ that.
 speed.** That is the strongest expected-value case on the board, and it
 is why this outranks everything else queued.
 
+**★ AND REMOVING THREATS RE-OPENS THE WIDTH LEVER (04:2x).** The threat
+cost is not a constant — it SCALES with accumulator width, because every
+extra width unit drags 60720 threat rows behind it. Measured both ways
+at both widths, same session and load:
+
+| width | with threats | HalfKA-only | ratio |
+|---|---|---|---|
+| 768 | 683k | 954k | 1.40× |
+| 1280 | 487k | 868k | 1.78× |
+
+Fitted per-node cost: **with threats 0.5796 + 0.001151·hl µs,
+HalfKA-only 0.8915 + 0.000203·hl µs — width is 5.7× cheaper without the
+channel.** That flips a conclusion from earlier tonight: width is a wash
+*with* threats (the whole 768–1536 range spans 1.4 Elo) and a genuine
+lever *without* them. Against V:
+
+| hl | nps | speed | width | net vs V |
+|---|---|---|---|---|
+| 768 | 954k | +57.9 | 0.0 | +57.9 |
+| 1280 | 868k | +41.5 | +32.4 | +73.9 |
+| **2048** | **765k** | +19.5 | +62.3 | **+81.7** |
+| 2560 | 708k | +6.2 | +76.4 | +82.6 |
+| 3072 | 660k | −6.1 | +88.0 | +81.9 |
+
+Optimum ~2048–2560, and the 1536–3072 span is 4 Elo wide so the pick is
+robust to the width coefficient — which remains the uncertain axis
+(±30%, and this extrapolates the ladder 1.4 doublings past where it was
+measured). Subtracting threats' eval contribution (≤ exp-0065's
++32.5±17.3 fn): **expected ~+50 Elo vs V, conservatively.**
+
+The staged config is now `tools/nnue/runs/d49_halfka_2048.json` —
+hl=2048, **l2 back to 32** (16 was chosen when the head WAS the speed
+tax; it no longer is, and D48X's sb60 panels suggest 16 is what is
+hurting SHARP). It needs **less** GPU memory than D48X despite being
+wider: FT params fall from 83248×1280 = 106.6M to 22528×2048 = 46.1M.
+Engine side needs one 3-line `arch-d49` feature, the same pattern as
+`arch-d48x`.
+
 **FEASIBILITY, CHECKED — it is NOT a flag flip, but it is close.**
 - ENGINE: nothing to do. `ThreatContext::apply_at` already routes a
   threat-less net through an all-zero accumulator, and `netpack`'s
