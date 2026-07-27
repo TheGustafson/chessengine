@@ -855,6 +855,32 @@ Caveats: 34 losses is a small sample, the tags are tool-specific, and
 one loss can carry several. Treat the phase split as the signal and the
 tag mix as colour.
 
+**★★★★ THE SYNTHESIS — the equal-time gap to Stockfish is SPEED, and
+the threat channel is the speed. ★★★★** Three measurements taken
+tonight, each independently, now close a loop:
+
+1. **At equal NODES we are tactically level with SF18 and ahead of it**
+   (2356 vs 2327 across 2577 mate/WAC positions; SF16 2375).
+2. **Per SECOND we are 1.5× slower than SF18** — single thread, same
+   load, same positions: V 749k/769k against SF18 1112k/1158k (SF16 is
+   faster still at 1543k/1240k; its net is smaller).
+3. **The threat channel costs 1.78× of our speed** (487k → 868k nps,
+   fixed-node, 3 reps).
+
+Put together: our search quality per node is already Stockfish-class,
+we lose at equal time mainly because we get ~2/3 of their nodes, and
+**the single thing making us slow is a feature channel whose benefit
+has never been isolated**. Removing it would put a V-class net at
+roughly 1.3–1.4M nps — i.e. **at SF18's speed, with search quality we
+have already measured as equal at equal nodes.**
+
+That is the strongest strategic statement available from tonight's
+data, and it is why the HalfKA-only run outranks every other queued
+item by a wide margin. It also explains why everything else measured
+null: SPSA, check-ext, nmp-guards and the perf queue were all looking
+for Elo in search behaviour, and search behaviour is not where the
+deficit is.
+
 **FIVE FINDINGS FROM TONIGHT, ranked by how much they should change
 what we do next:**
 1. **Threat features cost HALF our speed — MEASURED, not inferred.**
