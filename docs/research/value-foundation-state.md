@@ -705,8 +705,10 @@ log /tmp/chain_v2.log; anneal-era restructure, see ~07:2x entry):
 (20sb anneal); then FULL rematches (paused partials kept), the squeezed
 V-vs-S FACE-OFF, then **D48W** (BUILT+SMOKED: 1536/16/32+skip,
 accumulator-branched pol16 + dis64 PURE-PROBE heads, expansion warm
-assembled, config d48w_1536.json; recipe may flip to sequential — ask
-user) → three-way. **PERF: +55-60% NPS in two days** (S+S2 skip lane
+assembled, config d48w_1536.json; **recipe RESOLVED 2026-07-26 ~21:2x:
+MTL-FIRST by user ruling — the accumulator-branch co-existence
+experiment; pre-registered contention tripwire in the config's
+_recipe_ruling, V-playbook squeeze legs as fallback**) → three-way. **PERF: +55-60% NPS in two days** (S+S2 skip lane
 program, then study-2 A/B/C/D/E all landed with proofs; F′ flat-
 reverted; sha oracle 0615d75e…c92eb still valid, bench 701605, D's
 contract: |threat lane| ≤ 8191 debug-asserted). Perf study 3
