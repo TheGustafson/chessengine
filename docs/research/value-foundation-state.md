@@ -690,16 +690,19 @@ incumbent candidate, D48W = the hope, S = yardstick; the three-way
 face-off rules). V's MTL run is OVER (stopped sb190 by ruling); the
 SQUEEZE-LEG ERA is live.** The V trunk chain:
 MTL-sb190 (heldout 0.007972) → LegA value-only 12sb (0.006905, the
-−13.4% earthquake; policy frozen) → **LegA2 24sb gentle (running,
-0.006753@sb10; d47p-parity gate 0.006205 now −8%)** → LegB2 policy
-repair follows on the final trunk. **PLAY: the A+B pair scored −16 Elo
+−13.4% earthquake; policy frozen) → LegA2 24sb gentle (DONE, ema
+0.006658) → LegA3 ext cut @ sb10 by user LR ruling (ema 0.006620) →
+**LegA4 THE ANNEAL (running, 12sb @ 3e-5; d47p-parity gate 0.006205 now
+−6.3%)** → B2+B3 policy 20sb+20sb-anneal follow on the final trunk. **PLAY: the A+B pair scored −16 Elo
 vs the TEACHER at fn50k (131g partial — from −113 pre-squeeze!) — the
 ET gate projects PASSING with the measured ~1.5× speed edge.** SEQUENTIAL
 RECIPE RULED IN by experiment (LegB restored top-1 17.5 ≈ pre-legs 18.7
 with value hugely better): MTL dropped for future trunks; teachers =
-warm-up accelerant only (ruled). GPU CHAIN (unit archon-chain-v2, log
-/tmp/chain_v2.log): V-A2 → V-B2 → S-LegA2 (the S extension, user call)
-→ S-LegB; then FULL rematches (paused partials kept), the squeezed
+warm-up accelerant only (ruled). GPU CHAIN (unit **archon-chain-v5**,
+log /tmp/chain_v2.log; anneal-era restructure, see ~07:2x entry):
+[V-A4 anneal running] → V-B2 (20sb) → V-B3 (20sb anneal) → S-LegA2
+(cut @ sb10) → S-LegA3 (12sb anneal @ 4e-5) → S-LegB (20sb) → S-LegB2
+(20sb anneal); then FULL rematches (paused partials kept), the squeezed
 V-vs-S FACE-OFF, then **D48W** (BUILT+SMOKED: 1536/16/32+skip,
 accumulator-branched pol16 + dis64 PURE-PROBE heads, expansion warm
 assembled, config d48w_1536.json; recipe may flip to sequential — ask
@@ -780,6 +783,46 @@ STILL NEEDED before V can play: head skip-dot consumption + 768/32
 feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
+
+## 2026-07-27 ~07:2x ANNEAL-ERA CHAIN RESTRUCTURE (user LR rulings) +
+## A2/A3 RESULTS + NETONLY: V IS SF18-CLASS ON STATICS
+
+**User rulings (box-local 2026-07-26 ~20:2x-21:0x):** (1) "legA needs a
+lower learning rate — when it saves at sb10 … start an annealing"; (2)
+"do something similar with S's legA"; (3) "For B legs lets do a 20sb
+with normal then a 20 sb anneal." Chain restructured twice (v3→v4→v5,
+all on /tmp/chain_v2.log):
+
+- **V-A2 (24sb @ 1e-4) DONE:** ema 0.006918→0.006753(sb10)→0.006668
+  (sb20)→**0.006658 final** (−3.8% the leg; −16.5% cumulative from MTL).
+- **V-A3 (ext @ 8e-5) CUT @ sb10 by ruling:** ema 0.006620 (still
+  −0.6%/10sb when cut). sb10 EMA → A4 warm (gate PASS exact).
+- **V-A4 = THE ANNEAL, RUNNING:** 12sb @ 3e-5 (~37% of A3 peak)
+  cosine→floor. ENDS the V value arc; d47p-parity gate 0.006205 sits
+  −6.3% below the A3-sb10 ema.
+- **chain-v5 remaining flow:** V-B2 (20sb @ 5e-4) → V-B3 (20sb anneal @
+  2e-4; warm = B2-sb20-raw — policy legs have NO ema files) → S-LegA2
+  (24sb cfg, AUTO-CUT @ sb10 like V) → S-LegA3 (12sb anneal @ 4e-5, v15
+  retargeted frame carried — trainer heldout NOT comparable, use
+  inframe_heldout) → S-LegB (20sb @ 5e-4, warm repointed to A3-annealed
+  trunk) → S-LegB2 (20sb anneal @ 2e-4). Configs:
+  tools/nnue/runs/{d47v_legB3,d47s_legA3,d47s_legB2}.json (new) +
+  edited legB2/s_legB. ETA ≈ 7-8 h.
+- **NETONLY on A2-sb24 (user ask):** QUIET headline 0.8891 (sb190 was
+  0.8720 — legs closed HALF the teacher gap; teacher 0.9054, d47p
+  0.9000, SF18 0.8982, SF16 0.8797); SHARP 0.7913 = SF18's 0.7909 dead
+  tie; sharp iso-MAE 108.2 ≈ teacher 108.9; V BEATS teacher on
+  |label|≥400 both bases (0.851/0.877). Remaining gap concentrates in
+  |label|<100 (0.679 vs 0.730) + the ≤8-piece capacity slice (0.646 vs
+  0.815). Full table: /tmp/netonly_A2sb24.out.
+- **S0 search-fit implementation STARTED** (see next entries): the
+  07-note's un-deferral bundle (cutoffCnt/ttPv/tt_capture/all_node/
+  sibling-depth) going in per design/10 §3.7 pinned order; is_valid
+  guard added to the rebate's tt.value>alpha term (VALUE_NONE=32002
+  would spuriously fire on TT-miss PV nodes).
+- Process: foreground poll loops BANNED outright (user; memory
+  updated — no short-wait carve-out). Monitor bnfl810di watches all 7
+  leg logs + chain log.
 
 ## 2026-07-27 ~06:3x ★ PRE-COMPACT PERSISTENCE + RULING AMENDMENT:
 ## THE RELEASE NET IS OPEN ★
