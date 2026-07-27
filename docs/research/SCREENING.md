@@ -393,3 +393,49 @@ oracle, unpaired standard errors, and prefix subsampling. Each one produced
 *confident, consistent, plausible* numbers. The only thing that caught any of
 them was **measuring the same claim a second way** — never reasoning harder
 about the first measurement.
+
+
+---
+
+## 13. Hidden couplings: a parameter is not always what its name says
+
+`ASPIRATION_BASE_DELTA` measured as the largest single lever ever found here
+— `5 -> 200` cuts the depth-11 bench by **69%** at roughly neutral cp, which
+would naively price at +200 Elo. That is not credible, and the reason it is
+not is a **coupling**:
+
+```
+r -= delta * RED_DELTA_MULT / root_delta      // in the LMR reduction
+```
+
+`root_delta` is the ROOT window width, so widening the aspiration window
+shrinks that damping term and **increases LMR reductions everywhere**.
+Changing "the aspiration window" is therefore substantially a global LMR
+change wearing another name, and the node saving is mostly not from avoiding
+re-searches at all.
+
+**Standing rule: before believing a large node change, grep for every other
+consumer of the parameter and of anything it feeds.** Disentangle by pinning
+the coupled term (here `RED_DELTA_MULT=0`) and re-measuring; whatever
+survives is the parameter's own effect.
+
+Two more couplings worth remembering in this engine:
+
+- `ASPIRATION_BASE_DELTA` also drives **time management** through the
+  fail-high/fail-low counts and `search_again_counter`. Fixed-node screening
+  is structurally blind to that (rule 5), so this parameter can never be
+  promoted on a screen alone.
+- `RED_TABLE_NUM` / `RED_BASE` change the reduction table used by *every*
+  gate that reasons about `lmr_depth`, including the step-14 futility and SEE
+  bounds — so an "LMR" change moves several pruning gates at once.
+
+### Instrument artifacts found the same day
+
+Three claims in this document's earlier drafts were artifacts, all caught by
+re-measuring rather than re-reasoning:
+
+| claim | artifact |
+|---|---|
+| "3.5x node explosion at depth 13" | the UCI `nodes` field is CUMULATIVE; the ratio is a normal branching factor, and our EBF is identical to SF18's |
+| "`ASPIRATION_MSS_DIVISOR` is 1.56x too weak" | algebra correct, term irrelevant — at real root scores it moves delta from 5.24 to 5.37 |
+| "SF18 has 0.00 aspiration re-searches" | Stockfish only publishes a fail line when `nodes > NODES_LIMIT_OUTPUT` (10M); the probe ran ~1M, so this measured its OUTPUT POLICY |
