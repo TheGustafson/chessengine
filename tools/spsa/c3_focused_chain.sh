@@ -40,6 +40,31 @@
 # random-walk scale. Those are the dimensions where 19,200 games actually saw
 # a gradient; refining them at a better depth is worth more than opening 41
 # new ones at the wrong one.
+#
+# WHY c3 STARTS FROM ENGINE DEFAULTS RATHER THAN WARM-STARTING FROM c2's THETA
+#
+# spsa_dist has no warm-start hook — preflight reads theta from the binary's
+# compiled `tunables` — and that turns out to be the better experiment anyway.
+# Our real problem is not finding parameter values, it is BELIEVING them: a
+# 200-game verification match has a ~13 Elo error bar and cannot resolve the
+# few-Elo effects SPSA produces, which is exactly why stage A's verify came
+# back 0.00 +- 13.14 and told us nothing.
+#
+# Two independent campaigns starting from the same defaults, run at different
+# depths, give us something a single campaign cannot: REPLICATION. If c2 (d12)
+# and c3 (d13) independently push a parameter the same direction, that is real
+# evidence about the sign, gathered from ~26,000 games total rather than from a
+# match we cannot afford to make conclusive. If they disagree, the parameter is
+# depth-sensitive or noise, and either way we should not ship it. Warm-starting
+# would destroy that by construction — c3 would inherit c2's answer instead of
+# testing it.
+#
+# One confound to keep honest: c2 ran on the pre-upcoming-repetition engine and
+# c3 will run on the post one (the tune-PGO binary was rebuilt 2026-07-27 for
+# the loader fix and picked the feature up). Upcoming-repetition only fires in
+# positions with an available draw cycle, so it is unlikely to move reduction
+# optima much — but a disagreement between c2 and c3 has two possible causes,
+# not one, and should not be read as depth-sensitivity without checking.
 set -eu
 cd "$(dirname "$0")/../.."
 
