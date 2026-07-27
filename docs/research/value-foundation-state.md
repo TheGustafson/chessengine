@@ -683,16 +683,34 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
 
-## ★★★ TAKEOVER CHECKPOINT 2026-07-26 13:16 — READ THIS FIRST ★★★
+## ★★★ TAKEOVER CHECKPOINT 2026-07-27 ~06:0x — READ THIS FIRST ★★★
 
-**LIVE: D47V** (unit `archon-d47v`, log /tmp/d47v_train.log, tb armed) —
-the MTL bet: 768·32·32·8 + output-skip (SF fc_0 mirror), pair-respecting
-slice-warm + teacher-distill α=0.7 (value blend + soft policy CE) from
-**TEACHER = d47s-v15-sb230-ema** (user stopped the base run at sb236 on
-overfit; sb230 is FINAL d47s — the floor-hold leg is AXED). ~6.6 min/sb
-wall (teacher forward) → 100sb ≈ 11h; **shared expectation: full 100sb
-won't be needed — judgment read at sb30** (in-frame heldout + Spearman
-panel; if plateaued → early stop + short resume-anneal).
+**D47V IS THE RELEASE NET (ruled), its MTL run is OVER (stopped sb190 by
+ruling), and the SQUEEZE-LEG ERA is live.** The V trunk chain:
+MTL-sb190 (heldout 0.007972) → LegA value-only 12sb (0.006905, the
+−13.4% earthquake; policy frozen) → **LegA2 24sb gentle (running,
+0.006753@sb10; d47p-parity gate 0.006205 now −8%)** → LegB2 policy
+repair follows on the final trunk. **PLAY: the A+B pair scored −16 Elo
+vs the TEACHER at fn50k (131g partial — from −113 pre-squeeze!) — the
+ET gate projects PASSING with the measured ~1.5× speed edge.** SEQUENTIAL
+RECIPE RULED IN by experiment (LegB restored top-1 17.5 ≈ pre-legs 18.7
+with value hugely better): MTL dropped for future trunks; teachers =
+warm-up accelerant only (ruled). GPU CHAIN (unit archon-chain-v2, log
+/tmp/chain_v2.log): V-A2 → V-B2 → S-LegA2 (the S extension, user call)
+→ S-LegB; then FULL rematches (paused partials kept), the squeezed
+V-vs-S FACE-OFF, then **D48W** (BUILT+SMOKED: 1536/16/32+skip,
+accumulator-branched pol16 + dis64 PURE-PROBE heads, expansion warm
+assembled, config d48w_1536.json; recipe may flip to sequential — ask
+user) → three-way. **PERF: +55-60% NPS in two days** (S+S2 skip lane
+program, then study-2 A/B/C/D/E all landed with proofs; F′ flat-
+reverted; sha oracle 0615d75e…c92eb still valid, bench 701605, D's
+contract: |threat lane| ≤ 8191 debug-asserted). Perf study 3
+("beyond SF18" mandate) RUNNING. Leg lengths are ADAPTIVE by rule
+(still-falling at buzzer ⇒ extend). Instruments/habits: evolution_panel
+(bases+err-corr), netonly_eval (stratified, refs always), match_report,
+per-10sb tables IN CHAT, interim results reported PROACTIVELY (user
+meta-rule). sb190 anchors: teacher −113.4, SF16-EN −141.2
+(exp-0142/0143). The ~13:16 checkpoint below is HISTORY.
 
 **UPDATE ~17:5x (supersedes ~14:4x): FRAME FIX PROVEN IN PLAY; ENDGAME
 PROTOCOL GOVERNS THE REST OF THE RUN.** State at sb67: teacher-frame fix
