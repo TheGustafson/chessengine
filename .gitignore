@@ -49,3 +49,4 @@ config.json
 resume-builder-ideas.md
 pymask/target/
 jax/archon_mask.so
+tools/spsa/out/
