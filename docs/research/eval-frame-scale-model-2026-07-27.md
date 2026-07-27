@@ -323,3 +323,42 @@ the correction is **partial**, not as a second decimal place.
 Model only — **nothing changed in the engine.** The measurement tool is
 committed; the sweep is not yet built. Do not apply a blanket rescale on the
 strength of this document alone.
+
+## 9. Family localisation RE-MEASURED on NNUE (2026-07-27, after the bench-net fix)
+
+Every tree number in the original sweep was taken through a UCI pipe, where
+`bench` silently dropped its net argument (fixed in `36966dd`), so all of it
+was PSQT. Re-measured with `EvalFile` set explicitly, s = 0.58, depth-10 wl50,
+control 528,118:
+
+| family | PSQT (invalid) | **NNUE (correct)** |
+|---|---:|---:|
+| PRUNE | −11.9% | **−14.21%** |
+| EXTEND | +107.2% | **+25.62%** |
+| HISTMG | −10.8% | **+5.47%** |
+
+Three things change.
+
+**PRUNE survives and strengthens** — it still shrinks the tree, slightly more
+than PSQT suggested. The one family whose behaviour the wrong evaluator did
+not misrepresent.
+
+**EXTEND's +107% was mostly an artifact.** On NNUE it is +25.6%, four times
+smaller. It remains the family that grows the tree and should still not
+receive the correction, but "EXTEND is the entire problem" overstates it: the
+global knob's failure is no longer explained by one family swamping the
+others. The associated s=470 DNF and the "penalty compounds with depth"
+depth-ladder were measured the same way and are likewise unreliable.
+
+**HISTMG flips sign, and that matters most.** PSQT said it shrank the tree by
+10.8%; on NNUE it GROWS it by 5.5%. HISTMG was singled out as "the only arm
+improving both instruments" precisely because of that tree number, and the
+tree half of that claim is now gone.
+
+What survives for HISTMG is the half that was always measured on NNUE:
+tactics 1218/1277 against a 1211 control, and a game screen reading
++16.4 ± 23.3 Elo at 340 games. So the honest description is no longer "shrinks
+the tree and sharpens tactics" but **"spends ~5% more nodes for slightly
+better play"** — a node-for-quality trade, the same shape as an extension.
+That is a coherent and testable thing for constants that gate a fail-low
+history bonus; it is simply not the thing we thought we had found.
