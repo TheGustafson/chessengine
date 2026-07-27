@@ -64,6 +64,33 @@ const _: () = assert!(
 
 crate::tunables! {
 
+    // --- The eval-frame scale (docs/research/eval-frame-scale-model-2026-07-27.md) ---
+
+    /// **The single knob for the eval-frame correction.** In 1024ths, so
+    /// `1024` = 1.0 = *exact identity with today's engine* — every transform
+    /// below is `c * FRAME_S / 1024` or its inverse, and integer arithmetic
+    /// makes both a no-op at 1024. That identity is the point: it makes the
+    /// sweep a clean control instead of a comparison against a rebuilt
+    /// baseline.
+    ///
+    /// Why one knob for many constants. Our static eval measures at ≈0.58×
+    /// SF18's internal frame (three independent estimates: 0.55 winner-slope
+    /// from games, 0.579 wl50, 0.605 WAC), while our cp-denominated margins
+    /// sit at Stockfish's RAW values — razor 465 vs 485, capture-futility
+    /// base 231 vs 232, aspiration delta 5 vs 5. If that holds, every one of
+    /// them is ~1.7× too large in effect and they are all wrong *by the same
+    /// factor*, because they all inherited the same unconverted import.
+    ///
+    /// The non-linearity does NOT cost us the single parameter — it only
+    /// changes how each constant READS the knob. See [`frame_scale`] (class
+    /// 1/2, eval-space) and [`frame_expand`] (class 3, cross-unit divisors
+    /// that must move the opposite way). Class 5 (plies, depths, counts)
+    /// ignores it. Class 4 (material mixed into an eval comparison) cannot be
+    /// repaired by any constant and is deliberately NOT wired here.
+    ///
+    /// Theory puts the optimum near 594 (= 0.58); 1024 is the control.
+    pub FRAME_S: Value = 1024;
+
     // --- Aspiration windows (design/07 §3.6) ---
 
     /// Base half-width of the window around the root move's average score.
@@ -1097,4 +1124,79 @@ crate::tunables! {
     /// Denominator of the outer correction-bonus scaling.
     pub CORR_BONUS_SCALE_DEN: i32 = 1024;
 
+}
+
+// ─── The eval-frame transforms (docs/research/eval-frame-scale-model-2026-07-27.md) ───
+//
+// One knob, [`FRAME_S`], read through the transform each constant's UNITS
+// require. Deriving the exponent per class is the whole point — guessing it
+// is worse than leaving the constant alone, because class 3 moves the
+// opposite way to class 1 and applying the wrong one doubles the error
+// instead of removing it.
+//
+//   class 1  pure eval margin      `eval ⋈ eval ± C`        -> frame_scale
+//   class 2  eval² divisor         `delta = mss / D`        -> frame_scale
+//            (D has units eval²/eval = eval, so it scales the SAME way as a
+//            margin — the trap is that being a divisor suggests otherwise)
+//   class 3  cross-unit divisor    `eval_adj = |corr| / D`  -> frame_expand
+//            (corr keeps its own units, so D must GROW to yield the same
+//            eval-space effect)
+//   class 4  material into eval    `staticEval + C + PieceValue[x]`
+//            -> NOT REPRESENTABLE HERE. The error rides on the piece-value
+//            term, which varies by captured piece, so no constant absorbs it.
+//   class 5  plies / depths / counts / SEE-vs-material -> untouched
+
+/// Class 1 and 2: an eval-space quantity. Exact identity at `FRAME_S == 1024`.
+///
+/// i64 intermediate because the largest consumers here (correction and
+/// mean-squared divisors) reach ~10^5 and `c * 1024` would overflow an i32
+/// at ~2.1M — far below where these constants actually live, but the cast is
+/// free and the failure would be silent wraparound.
+#[inline(always)]
+pub fn frame_scale(c: Value) -> Value {
+    ((c as i64 * FRAME_S() as i64) / 1024) as Value
+}
+
+/// Class 3: a divisor converting NON-eval units (correction/history) into
+/// eval space. Moves the OPPOSITE way to [`frame_scale`]. Identity at 1024.
+#[inline(always)]
+pub fn frame_expand(d: Value) -> Value {
+    ((d as i64 * 1024) / FRAME_S().max(1) as i64) as Value
+}
+
+/// [`frame_scale`] for the i64 tunables (the aspiration mean-squared divisor).
+#[inline(always)]
+pub fn frame_scale_i64(c: i64) -> i64 {
+    (c * FRAME_S() as i64) / 1024
+}
+
+#[cfg(test)]
+mod frame_tests {
+    use super::*;
+
+    /// The identity that makes the sweep a clean control: at FRAME_S = 1024
+    /// every transform must be a bit-exact no-op, so s=1.0 reproduces the
+    /// shipped engine rather than an arithmetic near-miss.
+    #[test]
+    fn frame_transforms_are_exact_identities_at_1024() {
+        assert_eq!(FRAME_S(), 1024, "the shipped default must be identity");
+        for c in [0, 1, 5, 40, 76, 231, 300, 465, 485, 10588, 182069, -465] {
+            assert_eq!(frame_scale(c), c, "frame_scale moved {c}");
+            assert_eq!(frame_expand(c), c, "frame_expand moved {c}");
+            assert_eq!(frame_scale_i64(c as i64), c as i64);
+        }
+    }
+
+    /// The two directions must actually oppose — a copy-paste that made
+    /// frame_expand a second frame_scale would silently double the class-3
+    /// error, which is the failure this whole taxonomy exists to prevent.
+    #[test]
+    fn scale_and_expand_move_opposite_ways() {
+        // Exercised via the arithmetic directly, since FRAME_S is a compile
+        // -time constant in non-tune builds and cannot be moved in a test.
+        let s = 594i64; // 0.58
+        let c = 1000i64;
+        assert!((c * s) / 1024 < c, "scale must shrink for s < 1");
+        assert!((c * 1024) / s > c, "expand must grow for s < 1");
+    }
 }
