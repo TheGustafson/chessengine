@@ -941,6 +941,35 @@ what we do next:**
    (~1% of range). Fixed to r_end 0.03. This affects the ENTIRE existing
    campaign library, which all carries the 0.002 default.
 
+**EFFECTIVE BRANCHING FACTOR: OURS IS LOWER THAN STOCKFISH'S (05:3x).**
+Node counts at equal depth are not comparable across engines (depth
+means different things under different reduction conventions), but EBF
+is a within-engine growth ratio and therefore is. Geometric mean over
+the last 3 plies to depth 16, three positions:
+
+| engine | per-position | mean |
+|---|---|---|
+| **ARCHON V** | 1.38 / 1.53 / 1.30 | **1.40** |
+| SF18 | 1.27 / 1.50 / 1.75 | 1.51 |
+| SF16 | 1.73 / 1.54 / 1.56 | 1.61 |
+
+**Our tree grows more slowly per ply than either Stockfish**, i.e. we
+prune at least as aggressively. Normally that would raise the worry
+that we prune too hard and miss things — but the tactical suites
+already answered that: at equal nodes we are level with SF18 and ahead
+of it. So we get Stockfish-class tactical accuracy out of a
+tighter-growing tree.
+
+Caveat: 3 positions, and the spread within each engine (1.30–1.53 for
+us, 1.27–1.75 for SF18) is wider than the gap between engines, so read
+this as "not worse", not as "measurably better".
+
+**This is now the fourth independent instrument saying the same thing.**
+Search parameters (SPSA, null), search features (check-ext and
+nmp-guards, both null), tactical accuracy per node (level with SF18),
+and tree growth per ply (no worse than SF18). **The search is fit. The
+deficit is speed, and the speed is the threat channel.**
+
 **TIME MANAGEMENT IS FRONT-LOADED RELATIVE TO SF18 (05:2x) — the one
 search-adjacent area still unexamined, and it has a signal.** Pulled
 the real-TC clock tracks out of PGNs we already had (`loss_forensics`,
