@@ -141,6 +141,25 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
 
   And never put a kill and a relaunch of the same name in ONE command line.
 
+  **The `$$`/`$PPID` filter is NOT sufficient for DETECTION** (found
+  2026-07-27, after it twice reported a dead SPSA run as "running"): a
+  `pgrep` inside a shell function or `$(...)` runs in a SUBSHELL whose pid is
+  neither `$$` nor `$PPID`, so the wrapper still matches itself and the count
+  comes back non-zero for a process that does not exist. Every Claude-run
+  command sources `shell-snapshots`, which is a reliable signature to exclude:
+
+  ```bash
+  pgrep -f 'PATTERN' | while read -r p; do
+      tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q shell-snapshots && continue
+      echo "$p"
+  done
+  ```
+
+  Better still, don't pattern-match at all: `systemctl --user is-active <unit>`
+  for anything from `systemd-run`, or a PID file. When a count looks
+  surprising, confirm by reading `/proc/<pid>/cmdline` directly — that is what
+  finally settled it both times.
+
 ## Layout
 
 Library crate + thin binary. Modules (re-exported at the crate root by
