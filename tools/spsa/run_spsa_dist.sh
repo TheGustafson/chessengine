@@ -48,8 +48,11 @@ nohup python3 tools/spsa/spsa_dist.py --config "$CFG" --engine "$ENGINE" \
 echo $! > "$OUT/coordinator.pid"
 
 for i in $(seq 1 "$NWORK"); do
+  # Caches hold the engine + net + book (~90MB each). On this box /tmp is a
+  # RAM-backed tmpfs, so N worker caches there are N x 90MB of memory taken
+  # from the trainer — keep them on disk.
   nohup nice -n 10 python3 tools/spsa/worker.py --exchange "$EX" \
-    --id "local-$i" --cache "/tmp/spsa-worker-$i" --poll "$POLL" \
+    --id "local-$i" --cache "$HOME/.cache/spsa-workers/w$i" --poll "$POLL" \
     > "$OUT/worker-$i.log" 2>&1 &
   echo $! >> "$OUT/workers.pid"
 done

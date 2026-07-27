@@ -38,9 +38,19 @@ def put_bytes(uri: str, name: str, data: bytes) -> None:
     else:
         dest = _local(uri) / name
         dest.parent.mkdir(parents=True, exist_ok=True)
-        tmp = dest.with_suffix(dest.suffix + ".tmp")
-        tmp.write_bytes(data)
-        os.replace(tmp, dest)
+        # The temp name must be unique PER WRITER. Workers race to claim the
+        # same unit, so with a shared `<dest>.tmp` two of them write the same
+        # path, the first os.replace consumes it, and the rest die with
+        # FileNotFoundError. That is not theoretical: it killed 3 of 4 local
+        # workers at startup on 2026-07-27 and quartered SPSA throughput
+        # while the run looked healthy from the coordinator's side.
+        tmp = dest.with_suffix(f"{dest.suffix}.{os.getpid()}.tmp")
+        try:
+            tmp.write_bytes(data)
+            os.replace(tmp, dest)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
 
 
 def put_file(uri: str, name: str, src: Path) -> None:

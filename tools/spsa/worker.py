@@ -83,48 +83,57 @@ def main() -> None:
     meta = None
     idle_since = time.time()
     while True:
-        if ex.exists(args.exchange, "control/STOP"):
-            print("[worker] STOP seen — exiting", flush=True)
-            return
-        units = ex.list_names(args.exchange, "units/")
-        done = set(ex.list_names(args.exchange, "results/"))
-        claimed = None
-        for uname in units:
-            uid = uname.split("/", 1)[1].removesuffix(".json")
-            if f"results/{uid}.json" in done:
-                continue
-            age = ex.mtime_age(args.exchange, f"claims/{uid}.claim")
-            if age is not None and age < CLAIM_FRESH_S:
-                continue  # someone live has it
-            ex.put_bytes(args.exchange, f"claims/{uid}.claim",
-                         args.id.encode())
-            claimed = (uname, uid)
-            break
-        if claimed is None:
-            if time.time() - idle_since > 1800:
-                print("[worker] idle 30min — exiting", flush=True)
-                return
-            time.sleep(args.poll)
-            continue
-        idle_since = time.time()
-        uname, uid = claimed
-        if meta is None:
-            meta = fetch_spec(args.exchange, args.cache)
-        unit = json.loads(ex.get_bytes(args.exchange, uname))
-        t0 = time.time()
+        # A worker that dies is invisible: the coordinator just reissues its
+        # units to whoever is left and the run limps on at a fraction of the
+        # intended rate. Anything transient (a raced claim, a half-written
+        # file, a full disk) costs one poll interval instead of the worker.
         try:
-            games, wins, losses = play_unit(meta, args.cache, unit)
-        except RuntimeError as err:
-            print(f"[worker {args.id}] {uid}: {err}", flush=True)
+            if ex.exists(args.exchange, "control/STOP"):
+                print("[worker] STOP seen — exiting", flush=True)
+                return
+            units = ex.list_names(args.exchange, "units/")
+            done = set(ex.list_names(args.exchange, "results/"))
+            claimed = None
+            for uname in units:
+                uid = uname.split("/", 1)[1].removesuffix(".json")
+                if f"results/{uid}.json" in done:
+                    continue
+                age = ex.mtime_age(args.exchange, f"claims/{uid}.claim")
+                if age is not None and age < CLAIM_FRESH_S:
+                    continue  # someone live has it
+                ex.put_bytes(args.exchange, f"claims/{uid}.claim",
+                             args.id.encode())
+                claimed = (uname, uid)
+                break
+            if claimed is None:
+                if time.time() - idle_since > 1800:
+                    print("[worker] idle 30min — exiting", flush=True)
+                    return
+                time.sleep(args.poll)
+                continue
+            idle_since = time.time()
+            uname, uid = claimed
+            if meta is None:
+                meta = fetch_spec(args.exchange, args.cache)
+            unit = json.loads(ex.get_bytes(args.exchange, uname))
+            t0 = time.time()
+            try:
+                games, wins, losses = play_unit(meta, args.cache, unit)
+            except RuntimeError as err:
+                print(f"[worker {args.id}] {uid}: {err}", flush=True)
+                ex.put_bytes(args.exchange, f"results/{uid}.json", json.dumps(
+                    {"unit": uid, "error": str(err)[:500],
+                     "worker": args.id}).encode())
+                continue
             ex.put_bytes(args.exchange, f"results/{uid}.json", json.dumps(
-                {"unit": uid, "error": str(err)[:500],
-                 "worker": args.id}).encode())
-            continue
-        ex.put_bytes(args.exchange, f"results/{uid}.json", json.dumps(
-            {"unit": uid, "games": games, "wins": wins, "losses": losses,
-             "worker": args.id, "secs": round(time.time() - t0, 1)}).encode())
-        print(f"[worker {args.id}] {uid}: {games}g +{wins}-{losses} "
-              f"({time.time() - t0:.0f}s)", flush=True)
+                {"unit": uid, "games": games, "wins": wins, "losses": losses,
+                 "worker": args.id, "secs": round(time.time() - t0, 1)}).encode())
+            print(f"[worker {args.id}] {uid}: {games}g +{wins}-{losses} "
+                  f"({time.time() - t0:.0f}s)", flush=True)
+        except Exception as err:  # noqa: BLE001 - keep the worker alive
+            print(f"[worker {args.id}] transient: {type(err).__name__}: "
+                  f"{str(err)[:200]}", flush=True)
+            time.sleep(args.poll)
 
 
 if __name__ == "__main__":
