@@ -3340,7 +3340,18 @@ impl Worker {
                     // extensions harder to earn.
                     let corr_adj = correction_value.abs() / params::SE_CORR_DIV();
                     let tmh = self.histories.tt_move.get();
+                    // SF18 uses TWO DIFFERENT deep predicates here, not one
+                    // (search.cpp:1143-1146): the double margin docks at
+                    // `ss->ply > rootDepth`, the triple at
+                    // `ss->ply * 2 > rootDepth * 3` — i.e. ply > 1.5·rootDepth,
+                    // a strictly deeper threshold. We passed the double
+                    // predicate to both, so our triple dock fired EARLIER than
+                    // the reference and made triple extensions harder to earn
+                    // throughout (rootDepth, 1.5·rootDepth]. Found by the
+                    // frame-scale verification pass while checking whether
+                    // SE_*_DEEP were reachable at all.
                     let deep = ply > self.root_depth as usize;
+                    let deep_triple = ply * 2 > self.root_depth as usize * 3;
                     let double_margin =
                         singular_double_margin(NT::PV, tt_capture, corr_adj, tmh, deep);
                     let triple_margin = singular_triple_margin(
@@ -3348,7 +3359,7 @@ impl Worker {
                         tt_capture,
                         self.stack[cur].tt_pv,
                         corr_adj,
-                        deep,
+                        deep_triple,
                     );
                     extension = 1
                         + Depth::from(value < singular_beta - double_margin)
