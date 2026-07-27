@@ -1154,20 +1154,49 @@ crate::tunables! {
 /// free and the failure would be silent wraparound.
 #[inline(always)]
 pub fn frame_scale(c: Value) -> Value {
-    ((c as i64 * FRAME_S() as i64) / 1024) as Value
+    round_div_1024(c as i64 * FRAME_S() as i64) as Value
+}
+
+/// Divide by 1024 rounding HALF AWAY FROM ZERO, not truncating.
+///
+/// Truncation is not a rounding detail here, it is a correctness bug for small
+/// constants — found by the verification pass 2026-07-27. At s = 594:
+/// `SE_DOUBLE_BASE = -3` truncated to -1 against an exact -1.74, an effective
+/// ratio of 0.33 rather than 0.58; and `ASPIRATION_BASE_DELTA = 5` truncated
+/// to 2 at BOTH s = 594 and s = 470, silently making two sweep arms identical
+/// for that constant. A sweep whose arms are not actually distinct cannot
+/// measure what it claims to.
+///
+/// Symmetric about zero so a ±margin pair rounds the same way; truncation
+/// biases the two sides differently, which is its own quiet defect.
+///
+/// Identity at 1024 is preserved: `(c*1024 + 512) / 1024 == c` for every c,
+/// because the remainder can never reach 1024.
+#[inline(always)]
+fn round_div_1024(n: i64) -> i64 {
+    round_div(n, 1024)
 }
 
 /// Class 3: a divisor converting NON-eval units (correction/history) into
 /// eval space. Moves the OPPOSITE way to [`frame_scale`]. Identity at 1024.
 #[inline(always)]
 pub fn frame_expand(d: Value) -> Value {
-    ((d as i64 * 1024) / FRAME_S().max(1) as i64) as Value
+    round_div(d as i64 * 1024, FRAME_S().max(1) as i64) as Value
+}
+
+/// `n / q` rounded half away from zero. The sign-symmetric form matters: a
+/// naive `(n + q/2) / q` is correct only for positive `n` and silently breaks
+/// identity for negative constants — caught here by the identity test, which
+/// is precisely what that test is for.
+#[inline(always)]
+fn round_div(n: i64, q: i64) -> i64 {
+    if n >= 0 { (n + q / 2) / q } else { -((-n + q / 2) / q) }
 }
 
 /// [`frame_scale`] for the i64 tunables (the aspiration mean-squared divisor).
 #[inline(always)]
 pub fn frame_scale_i64(c: i64) -> i64 {
-    (c * FRAME_S() as i64) / 1024
+    round_div_1024(c * FRAME_S() as i64)
 }
 
 #[cfg(test)]
