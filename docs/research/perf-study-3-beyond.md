@@ -940,11 +940,10 @@ been 2.1, so these are conservative).
 | 7 | B5 — FT-sparsity λ (trainer) / avg-nnz in the net gate | up to +3.4 % NPS | probe: hours; λ: a training run | low for the probe, high for λ (eval quality) | net-gate report; λ needs a full heldout + ET arc |
 | 8 | `skip_dot` / `l2_tail` chain split | +1–1.5 % | half a day | medium (f32 reorder) | int-cp identity on 800 FENs, else SPRT |
 | 9 | B7 — threat-PSQ1 i16 rows | +1 % | next CENN rev | medium | net-format gate |
-| 10 | `i16_deltas_inner` address hoist (the one kernel option F skipped) | **BUILT, gain UNPROVEN — parked** (2026-07-27) | done | very low | **bit-identical: verified** |
+| ~~10~~ | ~~`i16_deltas_inner` address hoist~~ | **REFUTED 2026-07-27: +0.47% instructions** | done | — | bit-identical verified; instruction count worse |
 | — | AVX-512 `MoveSorter`, 512-bit `find_nnz` | +0.5 %, +0.25 % | medium | low | park |
 
-**Item 10 status (2026-07-27): implemented, proven correct, gain not
-measurable — parked on branch `perf/i16-deltas-hoist`.** The hoist chunks the
+**Item 10 status (2026-07-27): REFUTED. Implemented, proven correct, and measurably WORSE. Parked-and-dead on branch `perf/i16-deltas-hoist`; do not land it.** The hoist chunks the
 feature lists at 96 like the `_into_` twin so `feature * ACC` is computed once
 instead of once per tile per feature. Correctness is settled: bit-identical by
 construction (the per-lane ops are wrapping i16 add/sub and wrapping addition
@@ -958,6 +957,34 @@ running the D48X trainer plus a 4-worker SPSA, which puts about +-9 % of noise
 on a fixed-node timing; the paired difference landed at +1.8 % in the hoist's
 favour with t = 0.37, which is nothing. Separating a predicted 0.5-1 % from
 that noise needs hundreds of paired reps or, far cheaper, an idle box.
+
+**The measurement that killed it.** Wall-clock could not resolve 0.5-1 % under
+a loaded box, but instructions-retired can: because the two binaries are
+bit-identical they search exactly the same tree, so `perf stat -e instructions:u`
+on a fixed 4M-node search is a *load-immune* comparison. It is also nearly
+deterministic — two runs of the same binary differed by 58k instructions out of
+38.7 billion (0.00015 %). The result:
+
+| binary | nodes | instructions:u |
+|---|---|---|
+| main (no hoist) | 2,783,484 | 38,673,356,122 / 38,673,413,863 |
+| hoisted | 2,783,484 | **38,855,170,276 / 38,855,226,199** |
+
+**The hoist executes 181.8M MORE instructions, +0.47 %.** The chunked
+`MaybeUninit` offset table plus its per-tile reloads costs more than the
+`feature * ACC` multiplies it removes. Cycles were noise-dominated (27.8-28.5 G
+across four runs) and said nothing either way, which is exactly why the
+instruction counter was the right instrument.
+
+**Why the prediction was wrong, and the lesson.** The study inferred a cost from
+`lea` 19.9 % + `add` 8.2 % of dynamic samples in this kernel. That inference does
+not hold for a *load-bound* kernel: the address arithmetic issues in parallel
+with the memory accesses it feeds, so those samples are attribution/skid rather
+than a real serial cost, and removing the arithmetic buys nothing while the
+bookkeeping to remove it costs real instructions. **Dynamic sample share on
+cheap ALU ops is not evidence of a removable cost when the surrounding kernel is
+waiting on loads** — the same reasoning that already retired the `l1_dot` chain
+split in §5.1.
 
 Two things worth carrying forward. First, **fixed-node timing is the right
 instrument here and movetime-NPS is not**: because the two binaries are
