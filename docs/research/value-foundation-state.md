@@ -941,6 +941,43 @@ what we do next:**
    (~1% of range). Fixed to r_end 0.03. This affects the ENTIRE existing
    campaign library, which all carries the 0.002 default.
 
+**★ AN HONEST TENSION: EVERY PROXY SAYS WE MATCH SF16, THE GAMES SAY
+−33. The proxies are missing something, and that gap is itself the
+finding (05:4x).** Laid side by side:
+
+| instrument | V | SF16 | SF18 | reads as |
+|---|---|---|---|---|
+| quiet Spearman | 0.8920 | 0.8797 | 0.8982 | V > SF16 |
+| quiet iso-MAE | 69.2 | 72.8 | 67.4 | V > SF16 |
+| sharp Spearman | 0.7926 | 0.7563 | 0.7909 | V > SF16 |
+| tactics (n=2577) | 2356 | 2375 | 2327 | V ≈ SF16 |
+| EBF | 1.40 | 1.61 | 1.51 | V ≥ SF16 |
+| **FIXED-NODE GAMES** | — | — | — | **V −33 vs SF16** |
+
+Five proxies put V at or above SF16; the only instrument that decides
+anything puts V 33 Elo below it at the SAME node count. **Both cannot
+be right, and the games are the ground truth.**
+
+**What this does and does not license.** The game-based results still
+stand on their own: SPSA null, check-ext exactly 0.00, nmp-guards
+−3.47 — tuning search parameters and adding search features does not
+buy Elo, and those were measured in games, not proxies. So "further
+search-side tuning keeps returning nulls" is safe. What is NOT safe is
+the stronger claim I was drifting toward — that our search and eval
+"match SF18" — because the one measurement that counts disagrees.
+
+**The blind spot is worth naming.** Spearman rank correlation is
+insensitive to the magnitude errors that decide alpha-beta cutoffs;
+iso-MAE is PAV-calibrated and so forgives systematic bias that a real
+search cannot; the tactical suites score mate-finding, not positional
+judgement; EBF measures tree shape, not whether the tree is pointed at
+the right moves. None of them price move ORDERING quality or endgame
+technique, and both plausibly differ. **We currently have no cheap
+proxy that predicts fixed-node game strength**, which is why every
+promotion in this project has needed games — and it is a gap in the
+instrumentation worth closing, because a proxy that tracked fn Elo
+would make the whole research loop an order of magnitude faster.
+
 **EFFECTIVE BRANCHING FACTOR: OURS IS LOWER THAN STOCKFISH'S (05:3x).**
 Node counts at equal depth are not comparable across engines (depth
 means different things under different reduction conventions), but EBF
