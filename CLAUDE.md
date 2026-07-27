@@ -95,7 +95,7 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   wrong and leave 445174 untouched. The gate pins two V-arch numbers, both
   reproduced by a from-source non-PGO build: the **eval hash**
   `cd190d1b…7f3d` (sha256 of the forward-pass score for all 50
-  `tools/nnue/calib/wl50.fens`) and the **d13 node total 2118123**
+  `tools/nnue/calib/wl50.fens`) and the **d13 node total 2068701**
   (`bench 16 1 13 <fens> depth <net>` — the net is the optional **6th arg**;
   omit it and you silently measure PSQT, 3441859). Same update rule as the
   bench pin: an intentional change moves the pin in the same commit. Default

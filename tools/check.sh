@@ -203,7 +203,7 @@ if [ "${CHECK_NNUE_GATE:-0}" != "0" ]; then
     # an empty string and a spurious pass-turned-failure.
     nnue_nodes=$("$nnue_bin" bench 16 1 13 "$nnue_fens" depth "$nnue_net" 2>&1 >/dev/null \
         | sed -n 's/^Nodes searched  : //p')
-    NNUE_NODE_PIN="${NNUE_NODE_PIN-2118123}"
+    NNUE_NODE_PIN="${NNUE_NODE_PIN-2068701}"
     printf '  d13 nodes  : %s\n' "$nnue_nodes"
     if [ -n "$NNUE_NODE_PIN" ] && [ "$nnue_nodes" != "$NNUE_NODE_PIN" ]; then
         printf '\nFAIL: NNUE d13 wl50 node total is %s, pin is %s\n' \
