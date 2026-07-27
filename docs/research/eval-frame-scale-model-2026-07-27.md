@@ -406,3 +406,41 @@ hypothesis plus the one part of it that was previously untestable.
 thing the day's work points at, and because the negative results above are
 evidence against the *implementation* we tried, not against the frame
 measurement itself.
+
+### 10.1 The dual was built and it is ALSO refuted
+
+`EVAL_SCALE` landed (`293a581`, identity-verified at 1024) and was swept on
+NNUE, d10 wl50, control 528,118:
+
+| EVAL_SCALE | tree | mate_in_3 (n=1277) |
+|---:|---:|---:|
+| 1024 (control) | — | **1211** |
+| 1229 | −6.39% | — |
+| 1434 | −15.62% | 1194 |
+| 1764 (= 1/0.58, theory) | −4.28% | **1177** |
+| 2048 | −7.67% | — |
+
+The tree shrinks at every scale, which is the predicted direction — a larger
+eval makes every fixed margin relatively smaller, so more pruning. But tactics
+degrade **monotonically**, losing 34 positions at the theory point.
+
+**This is the same signature the margin-down formulation produced** (10 of 10
+tactical arms worse). Two algebraically-related but independently-implemented
+corrections, both shrinking the tree as predicted, both paying for it in
+tactical strength. The dual does not rescue the model, and it also carried the
+class-4 repair that the constant-side fix could not — so "class 4 was the
+missing piece" is now tested and does not explain the failure either.
+
+**Conclusion.** The frame measurement stands: our eval really is ≈0.58× SF18's
+internal frame, confirmed three ways, and our cp constants really are
+Stockfish's raw values. What is refuted is the inference that closing that gap
+by rescaling — in EITHER direction — is worth Elo. The most likely reading is
+that our constants, though imported at SF's raw values, are not far from OUR
+optimum for reasons the frame argument does not capture: the tree they produce
+is already smaller than Stockfish's at equal depth (perf study 7 §1.2), so
+there may simply be no under-pruning to recover.
+
+That is a real answer to the question we asked, and it cost about a day. It
+also means the −33 Elo equal-node deficit is NOT search-margin
+mis-calibration, which removes a plausible-looking suspect and points the
+remaining effort at eval quality and instruction count.
