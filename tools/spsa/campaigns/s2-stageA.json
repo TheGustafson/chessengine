@@ -1,0 +1,18 @@
+{
+  "name": "s2-stageA",
+  "comment": "S2 STAGE A (coarse-then-joint design, user-discussed 2026-07-26 ~23:2x): the ~12 highest-leverage / least-trusted params — everything transplanted untuned this week (S0 §3.7 reduction terms; optimism = slope-scaled guess 75/45) plus the eval-scale-coupled pruning margins tuned in the PSQT era (eval replaced twice since). One overnight at bullet (12-15k games, conc 8, PGO binary baseline per ruling). STAGE B = the FULL constant set INCLUDING these again, warm-started from stage A's vector (interactions co-tune; never freeze stage-A winners). Verify at 10+0.1 between stages (screen->verify->bracket->pin). Priors: sefam x0.52 screen +22.6, qs 174 +17.4 (2026-07-26 rounds 1-2) inform RFP/futility brackets.",
+  "params": [
+    {"name": "OPTIMISM_NUM",         "min": 20,   "max": 180},
+    {"name": "OPTIMISM_DEN_BASE",    "min": 15,   "max": 120},
+    {"name": "RED_CUTOFFCNT_BASE",   "min": 60,   "max": 700},
+    {"name": "RED_CUTOFFCNT_MANY",   "min": 300,  "max": 2400},
+    {"name": "RED_TTPV_ENTRY",       "min": 250,  "max": 2200},
+    {"name": "RED_TTPV_BASE",        "min": 900,  "max": 5200},
+    {"name": "RED_ALLNODE_NUM",      "min": 60,   "max": 700},
+    {"name": "RFP_MULT_BASE",        "min": 15,   "max": 90},
+    {"name": "RFP_MULT_CAP",         "min": 40,   "max": 160},
+    {"name": "RAZOR_BASE",           "min": 200,  "max": 900},
+    {"name": "NMP_EVAL_BASE",        "min": 150,  "max": 700},
+    {"name": "PFUT_BASE",            "min": 15,   "max": 100}
+  ]
+}
