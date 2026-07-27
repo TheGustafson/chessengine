@@ -211,6 +211,54 @@ def eval_bias(path: str, us: str, our_scale: float):
     return pairs, by_phase
 
 
+def compare(base_pgn: str, cand_pgn: str, us: str, our_scale: float,
+            hi: float, lo: float) -> None:
+    """Diff the loss taxonomy of two matches against the same opponent.
+
+    The closing loop of the whole method: a candidate is not validated by a
+    score alone but by whether it changes HOW we lose. A change that trades
+    "grind" losses for "tactical" ones is doing something quite different
+    from one that removes losses of both kinds, and the raw result cannot
+    tell them apart at any sample size we can afford.
+
+    Both matches must use the same opponent, book and time control, or the
+    taxonomies are not comparable.
+    """
+    from collections import Counter
+    out = {}
+    for tag, path in (("baseline", base_pgn), ("candidate", cand_pgn)):
+        losses, tally = analyse(path, us, our_scale, hi, lo)
+        cls = [l for l in losses if "fen" in l]
+        out[tag] = (tally, cls)
+        score = (tally["wins"] + 0.5 * tally["draws"]) / max(tally["games"], 1)
+        print(f"{tag:<10} {tally['games']:>3} games  "
+              f"{tally['wins']}W {tally['draws']}D {tally['losses']}L  "
+              f"score {score:.1%}  ({len(cls)} losses localised)")
+
+    print(f"\n{'tag':<14}{'baseline':>10}{'candidate':>11}{'delta':>8}")
+    tags = set()
+    for _, cls in out.values():
+        tags |= {t for l in cls for t in l["tags"]}
+    for t in sorted(tags):
+        b = sum(1 for l in out["baseline"][1] if t in l["tags"])
+        c = sum(1 for l in out["candidate"][1] if t in l["tags"])
+        nb = max(len(out["baseline"][1]), 1)
+        nc = max(len(out["candidate"][1]), 1)
+        print(f"{t:<14}{b/nb:>9.0%}{c/nc:>11.0%}{c/nc - b/nb:>+8.0%}")
+
+    for name, idx in (("eval disagreement at the losing move", "disagreement"),):
+        bv = [l[idx] for l in out["baseline"][1]]
+        cv = [l[idx] for l in out["candidate"][1]]
+        if bv and cv:
+            print(f"\n{name} (median, our POV):")
+            print(f"  baseline {st.median(bv):+.2f}   candidate {st.median(cv):+.2f}")
+            print("  positive = we thought we were better than we were")
+
+    print("\nShares are of LOCALISED losses, so they move even when the count "
+          "does not.\nRead the delta column with the score line: fewer losses "
+          "of the same shape is\nprogress, the same losses re-labelled is not.")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("pgn")
@@ -222,7 +270,15 @@ def main() -> None:
     ap.add_argument("--pnr-lo", type=float, default=1.0)
     ap.add_argument("--fens")
     ap.add_argument("--json")
+    ap.add_argument("--compare", metavar="CANDIDATE_PGN",
+                    help="diff this match's loss taxonomy against the "
+                    "positional argument (the baseline)")
     args = ap.parse_args()
+
+    if args.compare:
+        compare(args.pgn, args.compare, args.us, args.our_scale,
+                args.pnr_hi, args.pnr_lo)
+        return
 
     losses, tally = analyse(args.pgn, args.us, args.our_scale, args.pnr_hi, args.pnr_lo)
     cls = [l for l in losses if "fen" in l]

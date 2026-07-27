@@ -471,3 +471,54 @@ on a direct test that took minutes. The discipline that matters is not
 generating better hypotheses — it is refusing to hold one for longer than it
 takes to falsify it, and never letting a plausible mechanism substitute for a
 measurement.
+
+---
+
+## 15. The constant factor is per-leaf qsearch cost
+
+Section 14 left the width gap mechanically unexplained after four
+refutations. Going at it directly at depth 1 — where a search is just root +
+every legal move + one qsearch each, small enough to account for exactly —
+localises it:
+
+| | d1 nodes | legal | nodes per legal move |
+|---|---|---|---|
+| ARCHON | 98 | 39 | **2.53** |
+| SF18 | 56 | 39 | **1.40** |
+
+If qsearch always stand-pat-cut, a depth-1 search would cost `1 + 39 = 40`
+nodes. Stockfish spends 16 extra across 39 leaves; we spend 58. **Our qsearch
+expands ~3.6x more nodes per call.** Every leaf of every deeper tree pays
+that, which reproduces exactly as a flat multiplier — present at depth 4,
+invisible to the branching factor, and untouched by ordering, extensions or
+the TT.
+
+### How much is reachable
+
+| arm | nodes/leaf |
+|---|---|
+| baseline | 2.53 |
+| `QS_FUTILITY_MARGIN` 214 (frame-corrected) | 2.45 |
+| `QS_FUTILITY_MARGIN` 60 | 2.19 |
+| `QS_LATE_MOVE_LIMIT` 1 | 2.09 |
+| `QS_SEE_FLOOR` 0 | 1.97 |
+| all three tightened | **1.73** |
+| *SF18* | *1.40* |
+
+Tuning recovers roughly **55%** of the excess and cannot close it — the
+residual 1.73 vs 1.40 is structural. Our qsearch pruning block is a
+condition-for-condition transcription of SF's, so the remainder is in what
+reaches the loop, not in the loop.
+
+### Two frame notes that did NOT behave as predicted
+
+- SF uses `futilityBase = staticEval + 335`, the **same constant we have**.
+  In our compressed frame that is 1.36 pawns against their 0.87, so ours is
+  1.56x more permissive in real terms — a textbook class-1 mis-scaling, in
+  the one place where it is paid at every leaf. Yet the frame-corrected value
+  (214) buys almost nothing, while 60 buys a lot. The frame ratio again fails
+  to predict the optimum.
+- `QS_SEE_FLOOR` is material-denominated (SEE against `PIECE_VALUES`, which
+  are Stockfish's exactly), so it carries **no** frame error — and it is the
+  single largest lever of the three. The parameter with no scaling problem
+  matters most.
