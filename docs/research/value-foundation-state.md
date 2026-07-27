@@ -835,6 +835,18 @@ depth-6 tree**). 150g tripwire s0-full vs s0-thru-IIR RUNNING
 PINNED binaries → HARD PAUSE, clean box, user proposes the ET testing
 plan.** Tonight's perf gains ride ONLY future non-pinned binaries.
 
+**NPS-CLAIM RECONCILIATION (user challenge ~22:4x, 3-generation ladder
+measured live):** single-FEN movetime ladder under load: V pre-perf
+655k → pinned 819k (+25%) → PGO-full-stack 849k (**+30%**); S 516k →
+513k (**±0** — the program was V's: SKP1 skip lane doesn't exist in
+1280) → PGO 567k (+10%). V:S = 1.50× on the standard builds. The docs'
+"+55-60%" compounds per-landing A/Bs; study 3's load-insensitive
+800-FEN counters say −34.5% cycles/node (≈+53% suite-wide); one midgame
+FEN says +30% wall-clock. All three are real measurements of different
+things — skip-lane gains scale with threat density. DEFINITIVE idle-box
+PGO ladder = first measurement after the pause. Pinned-V vintage note:
+S2-promotion era (A–E live only in suffixed research builds + PGO).
+
 ## 2026-07-27 ~08:4x V PAIR FINAL (A4+B2-sb20) — ANNEAL FIXED ENDGAMES,
 ## POLICY TAX HAS A DOSE-RESPONSE CURVE; B3 STOPPED; S-LegB CUT TO 10sb
 
