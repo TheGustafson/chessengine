@@ -858,9 +858,9 @@ tag mix as colour.
 **FIVE FINDINGS FROM TONIGHT, ranked by how much they should change
 what we do next:**
 1. **Threat features cost HALF our speed — MEASURED, not inferred.**
-   Stripping the channel from a real checkpoint and timing it: **1.97×
-   nps** (617k → 1212k, alternated, same box). That is **+117 Elo** at
-   120/doubling. They have never been measured to be worth anything
+   Stripping the channel from a real checkpoint and timing it:
+   **1.78× nps** (487k → 868k, fixed-node, 3 reps, ±2%). That is
+   **+100 Elo** at 120/doubling. They have never been measured to be worth anything
    like that. **The top question in the project**, and it needs no
    engine work — only a matched HalfKA-only net.
 2. **The gap to SF is EVAL, not tactics.** At equal 50k nodes we are
@@ -1005,15 +1005,18 @@ the engine already routes a threat-less net through its zero-threat
 path with no rebuild. Same engine, same positions, same loaded box,
 arms alternated:
 
-| net | nps |
-|---|---|
-| d48x-sb60 **with** threats | 617,757 / 613,738 |
-| same net, threats **stripped** | **1,220,164 / 1,204,937** |
+| instrument | with threats | stripped | ratio |
+|---|---|---|---|
+| movetime 4s, 2 positions | 617,757 / 613,738 | 1,220,164 / 1,204,937 | 1.97× |
+| **fixed-node, 3 reps, node counts verified** | **487,207 mean** (2.55M nodes) | **868,267 mean** (2.31M nodes) | **1.78×** |
 
-**1.97×.** At 120 Elo/doubling that is **+117 Elo of speed**. The extra
-over the 1.43% prediction is the table: 155MB → 58MB, so the surviving
-HalfKA work stops competing with the threat rows for cache and gets
-faster itself.
+**Take 1.78× — the fixed-node instrument is the trustworthy one** (it
+reports the actual node counts so the comparison can be checked, and it
+reproduced to ±2% across three alternated reps; the movetime figure came
+off the engine's own nps field on different positions). At 120
+Elo/doubling, **1.78× = +100 Elo of speed**. The gain over the 1.43%
+prediction is the table itself: 155MB → 58MB, so the surviving HalfKA
+work stops competing with the threat rows for cache and speeds up too.
 
 **Caveat, stated honestly:** the stripped net evaluates badly (its value
 head expects threat contributions that are now identically zero), so its
@@ -1023,7 +1026,7 @@ change the conclusion, and the mechanism is well understood, but read it
 as "roughly 2×, certainly well above 1.43×" rather than as three
 significant figures.
 
-**So the bar for threats is now +92 to +117 fn Elo**, not +62. For
+**So the bar for threats is now ~+100 fn Elo**, not +62. For
 context, that is a substantial fraction of the entire net-0 → today
 improvement arc, being asked of a single feature-set addition whose only
 measurement (exp-0065, +32.5±17.3 fn) did not even isolate it. The only number we have is exp-0065's +32.5±17.3
