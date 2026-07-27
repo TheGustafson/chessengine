@@ -191,6 +191,29 @@ crate::tunables! {
     /// `futility_base = static_eval + 335` (§3.8 step 5). A capture whose
     /// victim cannot lift this base above alpha is skipped.
     pub QS_FUTILITY_MARGIN: Value = 335;
+    /// **Class-4 converter for the qsearch futility bound**, in 1024ths.
+    /// `1024` = identity, so the shipped engine is unchanged.
+    ///
+    /// `futility_value = static_eval + QS_FUTILITY_MARGIN + captured_value`
+    /// adds a MATERIAL quantity to an EVAL one. Both engines do that, but the
+    /// two frames differ by a different amount in each: Stockfish's eval pawn
+    /// is ~385 against a `PieceValue` pawn of 208, so a captured queen enters
+    /// its bound as ~6.6 pawns. Ours is ~246 against the SAME `PieceValue`,
+    /// so the same queen enters as ~10.3 pawns.
+    ///
+    /// We therefore inflate the captured piece by ~1.57x relative to
+    /// Stockfish, the bound is almost never below alpha, and qsearch futility
+    /// barely prunes. That is paid at EVERY LEAF: measured, our qsearch
+    /// expands 2.53 nodes per leaf against SF18's 1.40, which reproduces as
+    /// the flat ~2x node multiplier that survived four other explanations
+    /// (`docs/research/SCREENING.md` §14-15).
+    ///
+    /// Unlike the margin itself, this is not a tuning knob with an arbitrary
+    /// optimum — 0.64 is the derived value that puts our bound on Stockfish's
+    /// footing. `CFUT_PIECE_MULT` is the same correction for the main-loop
+    /// capture futility, where it measured neutral because that gate fires
+    /// far less often.
+    pub QS_PIECE_MULT: i32 = 1024;
     /// The hard SEE floor: any move whose static exchange value cannot reach
     /// this bar is never searched in qsearch (§3.8 step 7).
     pub QS_SEE_FLOOR: Value = -74;

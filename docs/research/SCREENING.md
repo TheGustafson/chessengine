@@ -10,6 +10,45 @@ unrepeatable.
 
 ---
 
+## 0. Read the code first
+
+**Before instrumenting anything, read our source and Stockfish's side by
+side.** This is the highest-yield step in the whole toolbox and it was
+learned the hard way: a day of counters, sweeps and node accounting narrowed
+the width gap to "per-leaf qsearch cost" and then stalled, because counters
+can say how many moves survived a filter but never why. Reading the two
+qsearch functions against each other took minutes and produced the mechanism:
+
+```
+futility_value = static_eval + 335 + PieceValue[captured]
+                 ^^^^^^^^^^^         ^^^^^^^^^^^^^^^^^^^
+                 EVAL frame          MATERIAL frame
+```
+
+Both engines mix those frames, but by DIFFERENT amounts. Stockfish's eval
+pawn is ~385 against a `PieceValue` pawn of 208, so a captured queen enters
+its bound as ~6.6 pawns; ours is ~246 against the same `PieceValue`, so the
+same queen enters as ~10.3. We inflate the captured piece ~1.57x, the bound
+almost never falls below alpha, qsearch futility barely prunes — and it is
+paid at **every leaf**.
+
+Reading also found, in the same few minutes, that SF's qsearch passes ONE
+continuation history where ours passes six.
+
+Practical rules:
+
+- Read the reference at **`eca43a97`**, not the checkout (§CLAUDE.md) — and
+  read the whole function, not the line you came for.
+- Compare **structure** first (what is generated, what is skipped, in what
+  order), then constants. Structure differences do not show up in any sweep.
+- Watch for **mixed frames in one expression**: eval + material, eval vs SEE,
+  eval² / divisor. Those are invisible to a constants diff because both
+  engines have the identical integer.
+- Prefer reading to adding engine logging. Counters go in the hot path, cost
+  NPS, and answer a narrower question than the source does.
+
+---
+
 ## 1. The one command
 
 ```bash

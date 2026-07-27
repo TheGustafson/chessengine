@@ -4501,11 +4501,16 @@ impl Worker {
                     // move's optimistic value still raises best_value
                     // (D11 SEE-scale piece values; empty destination —
                     // en passant — counts 0, SF parity).
+                    // Class 4: `piece_type.value()` is MATERIAL, `futility_base`
+                    // is EVAL, and the two frames differ by a different factor
+                    // here than in Stockfish. Identity at 1024.
                     let futility_value = futility_base
-                        + self
-                            .board
-                            .piece_on(m.to())
-                            .map_or(0, |victim| victim.piece_type.value());
+                        + params::scale_1024(
+                            self.board
+                                .piece_on(m.to())
+                                .map_or(0, |victim| victim.piece_type.value()),
+                            params::QS_PIECE_MULT(),
+                        );
                     if futility_value <= alpha {
                         best_value = best_value.max(futility_value);
                         continue;
