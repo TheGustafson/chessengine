@@ -687,6 +687,39 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## Everything below it is detail; the ~12:4x checkpoint further down is
 ## now HISTORY (it still describes D48W at 1536, which no longer exists).
 
+**▶▶ RECOMMENDED ORDER OF WORK WHEN YOU ARE BACK (my proposal; the
+first item is the only one that needs a decision).**
+
+1. **Decide D48X.** Four points, trending DOWN at −15.4 Elo/30sb,
+   pooled −57.1±22.0, panels declining in every stratum. My
+   recommendation is stop. **If you agree, it is one sequence:**
+   `systemctl --user stop archon-d48x && bash tools/nnue/runs/d49_launch.sh`
+   Resumable from sb120 if you disagree. *Everything below assumes this
+   is settled first, because it is what frees the GPU.*
+2. **Launch D49 (HalfKA-only, 2048).** Expected **~+50 Elo vs V** —
+   the largest single number on the board, from a measured 1.78× speed
+   recovery against an eval cost bounded at +32.5 fn. Fully de-risked
+   tonight: engine feature built and bench-verified, trainer fast path
+   parity-tested on CPU **and** GPU, warm-start working, width chosen
+   from four measurements. **Read `_width_ruling` in the config first
+   — width/head/schedule/teacher are my proposals, not your choices.**
+   First read at its sb30 instrument round.
+3. **Read the SPSA results.** Stage A is a null (16.8k games, one
+   parameter at 2.0σ of twelve, which is chance). Its 600-game verify
+   and then c2-reduction run unattended. c2 tests the reduction SHAPE,
+   a different hypothesis worth its own read.
+4. **Re-anchor once D49 has a net.** The SF16/SF18 equal-time anchors
+   you deferred become worth running again, because the speed picture
+   will have changed underneath them.
+5. **Parked on a quiet box:** the TM campaign (tm-v1, 28 params, never
+   run — and TM cannot be tuned at fixed nodes), the SMP scaling
+   measurement (my attempt was confounded), and the extended perft +
+   version bump at tag time.
+
+**THE ONE-LINE SUMMARY OF THE NIGHT:** search-side tuning is exhausted
+— five instruments, all null — and the deficit is speed, which is the
+threat channel, which is now testable.
+
 **RUNNING RIGHT NOW (five systemd units, all survive a session compact):**
 - `archon-d48x` — the gen-2 training run, 380sb at 1280/16/32. **NOT
   D48W/1536**: the user's pre-registered NPS gate fired and the width
