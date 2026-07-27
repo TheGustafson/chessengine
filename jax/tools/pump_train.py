@@ -82,7 +82,7 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         l2=int(spec.get("arch_l2", ArchSpec.full().l2)),
         l3=int(spec.get("arch_l3", ArchSpec.full().l3)),
         out_skip=bool(spec.get("arch_out_skip", False)),
-        # D49 (2026-07-27): drop the FullThreats channel entirely. Measured
+        # HalfKA-only probe (2026-07-27, unratified): drop the FullThreats channel. Measured
         # cost of keeping it is 1.78x engine speed (~100 Elo at equal time);
         # its measured benefit has never been isolated. Default False, so
         # every existing config is unaffected.

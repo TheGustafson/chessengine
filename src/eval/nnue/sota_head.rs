@@ -30,7 +30,7 @@ use crate::types::Color;
 /// research posture; the 768/L2=16 incumbent remains the fallback ship
 /// (gate old nets with engines/bin/archon-sota-native.prev-era binaries).
 #[cfg(not(any(feature = "arch-d47v", feature = "arch-d48w", feature = "arch-d48x",
-              feature = "arch-d49")))]
+              feature = "arch-hka2048")))]
 pub const L1: usize = 1280;
 /// D47V (2026-07-26): the distilled 768 deploy arch — see the doctrine
 /// entry in the live log (train big → distill to competitive size).
@@ -49,17 +49,17 @@ pub const L1: usize = 1536;
 /// the trunk transfer exact (no net2net expansion) and buys the speed back.
 #[cfg(feature = "arch-d48x")]
 pub const L1: usize = 1280;
-/// D49 (2026-07-27): HalfKA-only, no FullThreats channel. The threat rows
+/// HalfKA-only probe (2026-07-27, UNRATIFIED — not a pinned decision). The threat rows
 /// cost 1.78x engine speed at 1280 and 1.40x at 768 (measured), and losing
 /// them makes each unit of accumulator width 5.7x cheaper — so this arch
 /// spends the recovered budget on width instead. 2048/32/32 + skip.
-#[cfg(feature = "arch-d49")]
+#[cfg(feature = "arch-hka2048")]
 pub const L1: usize = 2048;
 /// L1→L2 output width (the D47 shared bottleneck).
 #[cfg(not(any(feature = "arch-d47v", feature = "arch-d48w", feature = "arch-d48x",
-              feature = "arch-d49")))]
+              feature = "arch-hka2048")))]
 pub const L2: usize = 128;
-#[cfg(any(feature = "arch-d47v", feature = "arch-d49"))]
+#[cfg(any(feature = "arch-d47v", feature = "arch-hka2048"))]
 pub const L2: usize = 32;
 #[cfg(any(feature = "arch-d48w", feature = "arch-d48x"))]
 pub const L2: usize = 16;

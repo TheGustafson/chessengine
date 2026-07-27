@@ -35,13 +35,14 @@ arch-d48w = []
 # + skip) — the arch the pre-launch NPS gate selected over 1536 (2026-07-27).
 # Same exclusivity rule as the others.
 arch-d48x = []
-# D49: HalfKA-only (NO FullThreats channel), 2048 accumulator, 32/32 head.
+# HalfKA-only PROBE (arch-hka2048) — NOT a pinned decision, an unratified
+# experiment. No FullThreats channel, 2048 accumulator, 32/32 head.
 # The threat channel costs 1.78x engine speed at 1280 and 1.40x at 768
 # (measured 2026-07-27), and removing it makes width 5.7x cheaper per unit —
 # which is why this arch is WIDER than anything we have shipped. The net
 # itself carries the no-threats flag, so the engine needs no runtime switch;
 # this feature only sets the dimensions. Same exclusivity rule.
-arch-d49 = []
+arch-hka2048 = []
 # Distribution-only: embed net-0 as the default eval so the engine plays NNUE
 # with no `EvalFile` set (for GUIs that can't set UCI string options). OFF by
 # default, so runtime [dependencies] stays empty (D15) and the default build is
