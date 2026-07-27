@@ -164,11 +164,75 @@ verification search above `NMP_VERIFY_DEPTH`) exist for this, but firing NMP
 51× more often exercises them 51× harder. The SPRT book should not be
 endgame-poor, and an endgame-weighted suite is worth running alongside.
 
-Second, smaller: **the four other negative-contribution mechanisms are
-unexplained.** Razoring at −12.7% is the largest. It may be the same story —
-razoring's `465` is also a raw SF eval margin — or it may be TT feedback.
-Worth the same treatment: check activation counts before assuming
+---
+
+## 5. Razoring is net-negative here — worse tactics AND more nodes
+
+The largest negative contributor got the same treatment, and the answer is
+cleaner than NMP's.
+
+Our razoring is an exact copy of SF@`eca43a97`
+(`!PvNode && eval < alpha - 465 - 300*depth^2` → `return qsearch`), so the
+shape is right. Sweeping `RAZOR_BASE` saturates cleanly — **3000 gives
+exactly the same node count as fully disabled (871,706)**, so above that it
+never fires, which makes the measurement trustworthy.
+
+| `RAZOR_BASE` | nodes vs baseline | mate_in_3 @ d10 |
+|---|---|---|
+| 100 (aggressive) | −5.1% | 1022 / 1277 |
+| **465 (current)** | −0.4% | **1045 / 1277** |
+| 800 | −11.0% | 1050 / 1277 |
+| 3000 (≡ off) | **−13.1%** | **1068 / 1277** |
+
+**Monotone in tactics: more razoring is worse.** So this is not a bad value
+sitting in a valley — the mechanism is net-negative across the whole range
+tested. And the usual trade is absent: razoring-off is *simultaneously* 13%
+cheaper and more accurate. A heuristic that costs nodes AND accuracy is doing
+active harm, not buying anything.
+
+Independent screens, all one direction:
+
+| screen | ON (465) | OFF (3000) | Δ |
+|---|---|---|---|
+| mate_in_3 @ d10 | 1045 / 1277 | 1068 / 1277 | **+23** |
+| mate_in_3 @ d8 | 908 / 1277 | 926 / 1277 | **+18** |
+| WAC-revised @ d10 | 143 / 200 | 147 / 200 | **+4** |
+
+Each is only ~1–1.7σ alone, and the two mate rows share positions so they are
+not independent of each other — but WAC is different content and agrees, and
+the node evidence is deterministic.
+
+**The mechanism is NOT what it looks like.** The obvious story is that
+razoring drops into an expensive qsearch, and that is measurably false:
+
+```
+RAZOR_BASE=465    nodes=998,495  qnodes=116,638  qshare=0.117
+RAZOR_BASE=3000   nodes=871,706  qnodes=111,109  qshare=0.127
+```
+
+Razoring adds only 5,529 qsearch nodes but 126,789 total — **the extra work
+is main-search, elsewhere in the tree.** Consistent with a razored node
+returning a qsearch estimate that is bad enough to send the search down wrong
+branches, which would cost both nodes and accuracy exactly as observed. That
+is a hypothesis, not a measurement, and it is recorded as one — two mechanism
+stories already died today.
+
+Nor does the frame explain it. The frame argument predicts our razoring is
+*more* conservative than SF's (it fires at a ~3.1-pawn deficit at depth 1
+where SF's fires at ~2.0), so it should be nearly inert — but it is active
+enough to cost 13% of the tree. Whatever is happening, it is not
 mis-scaling.
+
+**Action: queue an SPRT on `RAZOR_BASE` 465 → 3000.** This one needs no code
+change at all — it is a pure `setoption`, so it can ride the same harness as
+the NMP arm. Note Stockfish itself only ever claimed "~1 Elo" for razoring
+(SF16's own comment); a marginal heuristic there going net-negative in a
+reduction-dominated tree like ours is not surprising.
+
+Second, smaller: **the three remaining negative-contribution mechanisms are
+unexplained** — conthist pruning (−5.4%), ProbCut (−5.1%), IIR (−3.0%). Same
+treatment applies: sweep to saturation, check the tactical axis, and do not
+assume mis-scaling before checking activation.
 
 Ranking for a future SPSA, now evidence-based rather than guessed: **LMR
 first** (it is 64% of all tree reduction and `RED_*` is only partly covered by
