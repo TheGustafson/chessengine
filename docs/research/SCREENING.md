@@ -594,3 +594,62 @@ conversion in §11 has now over-predicted three times running.
 also happened to be cheaper — remains the only candidate whose primary
 evidence is quality rather than node count. Candidates of that shape are what
 deserve games.
+
+---
+
+## 17. Where the width gap actually comes from (the terminus)
+
+After eliminating move ordering, extensions, TT capacity, TT reuse, aspiration
+windowing, PVS, root ordering, and every qsearch parameter — and after reading
+our qsearch, SEE, MovePicker and TT paths line by line against `eca43a97` and
+finding them faithful — a feature-gated decision trace (`qtrace`,
+`--features search-control` + `ARCHON_QTRACE=1`) produced the accounting:
+
+```
+qsearch calls        10,298   (3,159 stand-pat cut + 7,139 entered the loop)
+stand-pat cut rate     30.7%
+moves searched          6,406  = 0.90 per loop-entering node
+children per node        0.62
+amplification            2.65 qsearch nodes per leaf   (SF18 needs ~1.5)
+```
+
+And the distribution of `stand_pat − beta` at every entry:
+
+| band | share |
+|---|---|
+| ≥ 0 → **cuts** | **32.2%** |
+| **−0.2…0 pawns (near miss)** | **24.7%** |
+| −0.8…−0.2 | 19.0% |
+| −2.0…−0.8 | 17.0% |
+| < −2.0 | 7.1% |
+
+Median **−0.12 pawns**: the distribution sits just barely below the bound, and
+a quarter of all entries miss cutting by under 0.2 pawns. Tree size is
+therefore acutely sensitive to eval precision at the bound.
+
+### Why no parameter can fix it
+
+`beta` is derived from our own search values, so it **scales with our eval**.
+A uniform rescale moves both sides of `stand_pat >= beta` identically — the
+comparison is frame-invariant. Measured: `EVAL_SCALE 1600` moves the cut rate
+30.7% → **28.9%**, i.e. not up at all.
+
+That single fact explains the whole day:
+
+- why all 11 parameter hypotheses were refuted;
+- why three node-saving SPRTs came back neutral — they shaved a tree whose
+  size is eval-determined;
+- why every frame correction was correctly derived and measured zero;
+- why qsearch tuning nets to zero — halving qsearch work leaves total nodes
+  unchanged because the main search re-expands to recover the leaf accuracy
+  it lost (observed: 6406 → 3473 searched moves, +0.5% total nodes);
+- why the gap is worst on the positions that decide games.
+
+### The falsifiable prediction
+
+Tree size is set by how often the static eval clears the bound, so a
+**better-calibrated net should raise the cut rate and shrink the tree for
+free**. Testable two ways: across training checkpoints of known relative
+strength, and against D48X on completion. **If the cut rate does not move with
+net quality, this theory is wrong too** — and that is the check to run before
+believing any of the above.

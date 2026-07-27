@@ -4435,6 +4435,7 @@ impl Worker {
             }
 
             if best_value >= beta {
+                qtrace(ply, alpha, beta, best_value, "-", "STANDPAT_CUT");
                 // Search-instability damping (§3.8 step 5): pull a
                 // non-decisive stand-pat cutoff partway back toward beta.
                 // Decisive scores are never blended (§8.11).
@@ -4490,6 +4491,7 @@ impl Worker {
         let prev_move = self.stack[cur - 1].current_move;
         let prev_sq = (prev_move != Move::NULL).then(|| prev_move.to());
 
+        qtrace(ply, alpha, beta, best_value, "-", "LOOP_ENTERED");
         let mut best_move = Move::NULL;
         let mut move_count = 0;
         while let Some(m) = mp.next_move(&self.board, &self.histories) {
