@@ -941,6 +941,36 @@ what we do next:**
    (~1% of range). Fixed to r_end 0.03. This affects the ENTIRE existing
    campaign library, which all carries the 0.002 default.
 
+**TIME MANAGEMENT IS FRONT-LOADED RELATIVE TO SF18 (05:2x) — the one
+search-adjacent area still unexamined, and it has a signal.** Pulled
+the real-TC clock tracks out of PGNs we already had (`loss_forensics`,
+10+0.1):
+
+| | move 10 | move 20 | move 30 | move 40 |
+|---|---|---|---|---|
+| V | 7.32 | 4.19 | 2.27 | 1.29 |
+| SF18 | 7.21 | **4.92** | **3.38** | **2.14** |
+
+**We burn the clock faster than SF18 — by move 30 we have 33% less time
+left.** The depth split shows what we buy with it: opening **+1.2**,
+middlegame **+0.9**, endgame **−2.2** ply. So our TM trades a ply early
+for two plies late, against an engine that is already 1.5× faster than
+us per second.
+
+Against S-post (both ARCHON, identical TM) we are slightly AHEAD on the
+clock, which is the control: the curve shape is ours, and the deficit
+against SF18 is a real difference in allocation policy, not a bug in
+how we count.
+
+**Not actioned, and deliberately so.** TM constants cannot be tuned at
+fixed nodes (the clock code never runs), so this needs the `tm-v1`
+campaign (28 params, staged, never run) at real TC — thousands of
+games on a quiet box. The V-vs-SF18 sample here is also only 29 games
+(the match the user curtailed), and depth comparisons confound TM with
+raw speed. Treat it as a well-founded hypothesis for the first quiet
+box, not a finding: **our allocation may be too front-loaded, and the
+endgame is where we are paying for it.**
+
 **RELEASE MECHANICS (P7) — partial progress 05:0x.** The **D24 perft
 ritual is GREEN against the current tree**: full tier ok in 6.5s,
 **extended tier (~18G nodes) ok in 64s** — that is the pre-release gate
