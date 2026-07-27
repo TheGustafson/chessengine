@@ -874,11 +874,23 @@ impl<'a> ThreatContext<'a> {
         self.top = child;
 
         // HalfKA-only net: the threat channel is a constant all-zero accumulator
-        // (and all-zero PSQT sums). Inherit the (zero) parent and mark it
-        // computed — nothing to fold.
+        // (and all-zero PSQT sums), so there is nothing to inherit and nothing
+        // to fold — just mark the child computed.
+        //
+        // This used to copy the parent's accumulator into the child, which is a
+        // provable no-op: every entry starts zero (`ThreatEntry::default`),
+        // `refresh` re-zeroes the root explicitly on this branch, and with empty
+        // weights no other site ever writes an accumulator (the eager
+        // king-cross refresh below is unreachable past this return, and
+        // `compute` exits immediately because every entry is already marked
+        // computed). The copy was therefore 2·ACC·2 bytes of pure memory
+        // traffic on every pushed node — 8 KB/node at the 2048 width the
+        // HalfKA-only probe exists to buy, i.e. a tax that grows with exactly
+        // the dimension the experiment is spending its speed budget on. It was
+        // also present in perf study 7's stripped arms, so the measured
+        // 1.25–1.39× threat cost UNDERSTATES what a properly-built
+        // HalfKA-only engine reaches.
         if self.weights.is_empty() {
-            self.stack[child].acc = self.stack[ply].acc;
-            self.stack[child].psqt = self.stack[ply].psqt;
             self.stack[child].computed = [true; 2];
             return;
         }
