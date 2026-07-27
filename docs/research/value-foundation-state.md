@@ -803,6 +803,43 @@ heldout. But it now rests on the game trajectory and the panels rather
 than on three legs, and the sb150 match is the thing to read before
 acting.
 
+## ★ WHY OUR SPSA MAY BE FINDING NULLS: WE TUNE 6 PLY SHALLOWER THAN WE
+## PLAY (strategic note, 2026-07-27 ~08:0x)
+
+Depths measured tonight from `loss_forensics` on real matches:
+
+| condition | depth reached |
+|---|---|
+| fn20k (the SPSA tuning condition) | ~12–13 ply |
+| fn50k (our screening condition) | 13.3–15.9 ply |
+| **10+0.1 (how we actually play)** | **19.3–22.8 ply** |
+
+**We tune at depth ~12 and deploy at depth ~20.** Many of the tuned
+constants are explicitly depth-scaled — the reduction table is a
+function of depth, futility and RFP margins multiply by depth, the LMR
+divisor is a per-depth table — so their optima need not be the same six
+plies apart. That is a live candidate explanation for stage A's null:
+not "the constants are already right", but **"they are already right
+for depth 12"**.
+
+**Closing the gap with fixed nodes is unaffordable.** At our measured
+EBF of 1.40, going from depth 14 to depth 20 costs 1.40⁶ = **7.5×**
+the nodes — about **376k nodes/move**, i.e. games 19× slower than
+fn20k. A 19k-game campaign becomes a 1k-game campaign.
+
+**The affordable route is tuning at real TC directly**, which is what
+Fishtest does and is correct by construction — the tuning condition IS
+the deployment condition. We did not do that tonight for a good reason:
+**fixed nodes is load-immune, and the box has been running the trainer
+throughout.** Real-TC tuning on a contended box measures the contention.
+
+**Recommendation: after the trainer finishes (~16:00), the next SPSA
+campaign should run at 10+0.1 rather than fixed nodes.** Same params,
+right regime. Until then fixed-node is the correct choice and
+c2-reduction should stay as configured — its null or otherwise is still
+informative, and switching mid-chain would confound the comparison with
+stage A.
+
 ## ★ FULL NET-ONLY COMPARISON, ALL NETS (user-requested, 2026-07-27 ~07:5x)
 
 Headline strata, n=2999 quiet / n=1817 sharp:
