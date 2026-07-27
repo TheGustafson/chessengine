@@ -792,6 +792,49 @@ feature consts (SKP1 LOADER done). d47s-line settle re-spec from sb230
 if V disappoints. Old runbook (below) for the d47s stages; read the
 ~21-22h entries for the V arc.
 
+## 2026-07-27 ~12:0x ★ THE D48W PLAN RATIFIED + THREE RULINGS: POLICY
+## DITCHED, DIS DEFERRED-TO-SELF, STAGE-A SPSA CONCURRENT
+
+**ET HEADLINE (phase-2 match 1): V beats S-post at EQUAL TIME +38±48
+(+33=45−22, 100g, 10+0.1 T4, PGO binaries)** — the −35 fn deficit
+CONVERTED: 1.51× speed ≈ +73 Elo swing ≈ ~120 Elo/doubling at this TC.
+This is the calibration constant for all arch decisions.
+
+**D48W FINAL PLAN (user-designed, all staged, launch after campaign +
+NPS smoke):** ONE RUN, 380sb (~28.5B presentations, ~2.2-2.5d GPU):
+α 0.7 flat→sb30→0@sb60; LR 1e-3 flat→sb60 → glide 2.5e-4@sb300 →
+anneal 0@sb380 (NEW lr_ramp trainer knob, mirror of alpha-ramp,
+committed 84c6e55 + verified point-by-point). Warm + teacher UPGRADED
+to the A3-annealed trunk (d48w-warm-a3.bin rebuilt, 520MB). Engine:
+arch-d48w consts (1536/16/32+skip) committed, compile-clean — SIMD
+kernels dimension-generic. Instruments every 30sb (d48w_watch.sh):
+pack→calibrate→panel+netonly→100g fn50k vs FROZEN V yardstick
+(data/nnue/nets/screens/d47v-a4b2-cal400.cenn). NO automated stops —
+tripwires advisory, interventions = user judgment. Launcher:
+d48w_launch.sh (refuses without warm + PGO engine). GATE: NPS smoke
+first (pack the warm itself); "if we aren't much faster than S [539k],
+we have to adjust."
+
+**RULING — POLICY DITCHED for D48W (user: "unless Top 1 gets to 35% I
+don't think it is worth it"):** 35% unreachable with played-move labels
+(teacher saturated 27.2; LC0-class top-1 needs search-derived targets =
+gen-3 program); P-ORD proper-sample value ≈ neutral. pol_lambda 0 —
+zero gradients, zero contention, full substrate to value; pol16 tensors
+stay as dead-weight optionality (B-style leg can activate later). The
+accumulator co-existence experiment retires as a v1 question.
+
+**RULING — DISAGREEMENT HEAD DEFERRED TO SELF (user: "we need the
+disagreement data to be derived from itself"):** dis targets
+|sigmoid(v)−label| are non-stationary while v trains → dis_lambda 0 for
+the main run; dis trains POST-FINALIZATION as a head-only leg
+(train_only dis_*) on the frozen net's own errors. Feeds design/19.
+
+**RULING — STAGE-A SPSA runs CONCURRENT with W training** (V net, PGO
+tune binary, fn20k = load-immune, conc 6, MemoryMax 4G:
+tools/spsa/launch_stageA.sh; ~12.8k games ≈ 3h). Constraints honored:
+no OOM (capped unit), minimal trainer impact (niced, 6 workers).
+Verify gate: 10+0.1 SPRT vs untuned before params.rs changes.
+
 ## 2026-07-27 ~11:2x DISTRIBUTED-SPSA KIT BUILT+SMOKED+PARKED (D36
 ## amended: OpenBench out, lite kit in)
 
