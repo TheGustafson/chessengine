@@ -53,6 +53,38 @@ import sys
 import chess
 import chess.engine
 
+LEDGER = "docs/research/screen-results.jsonl"
+
+
+def record(row: dict) -> None:
+    """Append one measured arm to the results ledger.
+
+    The point is compounding: a screening session produces numbers that are
+    otherwise lost to scrollback, so the same arm gets re-measured weeks later
+    and, worse, a REFUTED arm gets re-proposed because nobody remembers it
+    died. Every row here carries the config, the metric, the sample size and
+    the instrument settings, so a later run can be compared rather than
+    repeated.
+
+    Append-only JSONL, one row per arm per run, git-tracked. Cheap to grep,
+    impossible to silently overwrite.
+    """
+    import datetime as _dt
+    row = dict(row)
+    row["utc"] = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
+    with open(LEDGER, "a") as fh:
+        fh.write(json.dumps(row, sort_keys=True) + "\n")
+
+
+def prior(name: str, ov: dict) -> list[dict]:
+    """Past measurements of an identical config, newest first."""
+    if not os.path.exists(LEDGER):
+        return []
+    key = json.dumps(ov, sort_keys=True)
+    out = [r for line in open(LEDGER)
+           if (r := json.loads(line)).get("config") == key]
+    return list(reversed(out))
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from arm_screen import FAMILIES, round_away  # noqa: E402
 
@@ -85,6 +117,29 @@ def bench(depth: int, ov: dict[str, int]) -> int:
                        capture_output=True)
     m = NODES_RE.search(r.stdout + r.stderr)  # bench reports on stderr
     return int(m.group(1)) if m else 0
+
+
+def fhf(depth: int, ov: dict[str, int]) -> float:
+    """First-move cutoff rate: of all fail-highs, the share taken on move 1.
+
+    The cheapest meaningful search-quality metric we have -- one deterministic
+    bench, seconds -- and it targets a MEASURED defect: ours is 89.4% against
+    Stockfish's typical 93-95%, and we spend 1.6-3.6x their nodes to reach the
+    same depth. Those are the same fact. A cutoff taken on move 5 instead of
+    move 1 searched four subtrees for nothing, and that ratio compounds with
+    depth into the width gap.
+
+    Higher is better, and unlike cp loss it moves on runs that take seconds,
+    so it is the right first filter for move-ORDERING parameters.
+    """
+    lines = [f"setoption name EvalFile value {NET}"]
+    lines += [f"setoption name {k} value {v}" for k, v in ov.items()]
+    lines += [f"bench 16 1 {depth} {BENCH_FENS} depth", "quit"]
+    r = subprocess.run([ENGINE], input="\n".join(lines) + "\n", text=True,
+                       capture_output=True, env={**os.environ, "ARCHON_SEARCH_STATS": "1"})
+    fh = sum(int(x) for x in re.findall(r"\bfh=(\d+)", r.stderr))
+    hit = sum(int(x) for x in re.findall(r"\bfhf=(\d+)", r.stderr))
+    return 100.0 * hit / fh if fh else float("nan")
 
 
 def tactics(nodes: int, ov: dict[str, int]) -> int:
@@ -193,7 +248,12 @@ def main() -> None:
     ap.add_argument("--depth", type=int, default=10, help="bench depth")
     ap.add_argument("--no-nodes", action="store_true")
     ap.add_argument("--no-tactics", action="store_true")
+    ap.add_argument("--fhf", action="store_true",
+                    help="also report first-move cutoff rate (cheap, targets "
+                    "the measured ordering defect)")
     ap.add_argument("--oracle", default=ORACLE)
+    ap.add_argument("--no-record", action="store_true",
+                    help="do not append results to the ledger")
     args = ap.parse_args()
 
     base_ov = parse_ov(args.base) if args.base else {}
@@ -238,6 +298,8 @@ def main() -> None:
     hdr = f"{'arm':<20}" + "".join(f"{'cp@' + t[:-3] + 'k':>13}" for t in keys) + f"{'top1':>8}{'blund':>8}{'p90':>7}"
     if not args.no_nodes:
         hdr += f"{'nodes':>10}"
+    if args.fhf:
+        hdr += f"{'fhf%':>8}"
     if not args.no_tactics:
         hdr += f"{'tact':>8}"
     print(hdr)
@@ -291,6 +353,8 @@ def main() -> None:
                 row += f"{'(base)':>10}"
             else:
                 row += f"{n / ref_nodes - 1:>+9.1%} "
+        if args.fhf:
+            row += f"{fhf(args.depth, full):>8.2f}"
         if not args.no_tactics:
             h = tactics(args.nodes, full)
             if ref_tact is None:
@@ -299,6 +363,19 @@ def main() -> None:
             else:
                 row += f"{h - ref_tact:>+8}"
         print(row, flush=True)
+        if not args.no_record and ov:
+            hist = prior(name, full)
+            if hist:
+                h = hist[0]
+                print(f"{'':<20}  (seen {h['utc'][:10]}: "
+                      f"cp@deep {h.get('cp_deep'):+.2f} at n={h.get('n')})")
+            record({
+                "arm": name, "config": json.dumps(full, sort_keys=True),
+                "base": args.base, "n": len(fens), "nodes": args.nodes,
+                "cp_deep": round(per_tier[keys[-1]] - ref_cp[keys[-1]], 3),
+                "cp_by_tier": {t: round(per_tier[t] - ref_cp[t], 3) for t in keys},
+                "top1": round(top1, 4), "oracle": os.path.basename(args.oracle),
+            })
 
     print("\nblund = share of moves losing >=100 cp; p90 = 90th-percentile loss, "
           "both at the\ndeepest tier. The mean is mostly tail (median loss is "
