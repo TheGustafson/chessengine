@@ -60,6 +60,19 @@ print(d['_provenance'], len(d['rows']))"
 * `ours.json` may still be the **D47V-era 14-position set** if the chain never landed —
   it has no provenance stamp, which is how you tell.
 
+### COMMIT THE CORPUS once it lands
+
+`searchopt/positions/*.json` is tracked, but the mine was still writing when the previous
+session ended, so `losses.json` was deliberately left uncommitted rather than captured
+half-written. Once you have confirmed the corpus is complete:
+
+```bash
+git add searchopt/positions && git commit -m "searchopt: D48X loss corpus (N positions)"
+```
+
+Put the real counts in that message. The repo is also **7 commits ahead of origin/main** —
+push is a human decision, so leave it unless told otherwise.
+
 ## Do this first
 
 ```bash
