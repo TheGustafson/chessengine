@@ -67,6 +67,16 @@ pub struct SearchTrace {
     sample_log2: u8,
     min_depth: i32,
     max_rows: usize,
+    /// Debugger mode: omit the 1024-value latent from the output. The latent is
+    /// only meaningful to the D41 allocation datagen; for walking a failing
+    /// search it is pure noise and ~2 kB of JSON per row.
+    no_latent: bool,
+    /// Debugger mode: also record `move_count == 1`. The datagen deliberately
+    /// skips the first move (it is never LMR-reduced), but when debugging a
+    /// blunder the first move is exactly the one we are arguing with.
+    all_moves: bool,
+    /// Debug counter: how many times the sampler was consulted at all.
+    considered: std::cell::Cell<u64>,
     rows: Vec<LmrObservation>,
 }
 
@@ -83,12 +93,22 @@ impl SearchTrace {
             sample_log2,
             min_depth,
             max_rows,
+            no_latent: std::env::var_os("ARCHON_SEARCH_TRACE_NO_LATENT").is_some(),
+            all_moves: std::env::var_os("ARCHON_SEARCH_TRACE_ALL_MOVES").is_some(),
+            considered: std::cell::Cell::new(0),
             rows: Vec::with_capacity(max_rows.min(4096)),
         })
     }
 
+    /// Whether `move_count == 1` should be recorded (debugger mode).
+    #[inline]
+    pub fn all_moves(&self) -> bool {
+        self.all_moves
+    }
+
     #[inline]
     pub fn should_sample(&self, key: u64, raw_move: u16, depth: i32, ply: usize) -> bool {
+        self.considered.set(self.considered.get() + 1);
         if depth < self.min_depth || self.rows.len() >= self.max_rows {
             return false;
         }
@@ -135,8 +155,9 @@ impl SearchTrace {
         }
         writeln!(
             out,
-            "{{\"schema\":\"{SCHEMA}\",\"kind\":\"go\",\"root_position_key\":{},\"rows\":{count}}}",
+            "{{\"schema\":\"{SCHEMA}\",\"kind\":\"go\",\"root_position_key\":{},\"rows\":{count},\"considered\":{}}}",
             self.root_position_key,
+            self.considered.get(),
         )?;
         for row in self.rows.drain(..) {
             write!(
@@ -144,11 +165,13 @@ impl SearchTrace {
                 "{{\"schema\":\"{SCHEMA}\",\"kind\":\"row\",\"position_key\":{},\"fen\":\"{}\",\"latent\":[",
                 row.position_key, row.fen,
             )?;
-            for (i, value) in row.latent.iter().enumerate() {
-                if i != 0 {
-                    out.write_all(b",")?;
+            if !self.no_latent {
+                for (i, value) in row.latent.iter().enumerate() {
+                    if i != 0 {
+                        out.write_all(b",")?;
+                    }
+                    write!(out, "{value}")?;
                 }
-                write!(out, "{value}")?;
             }
             writeln!(
                 out,

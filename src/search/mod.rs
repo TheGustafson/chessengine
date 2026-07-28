@@ -3485,25 +3485,33 @@ impl Worker {
             // accumulator for a deterministic, bounded subset of real LMR
             // actions. This occurs before make-move, so the latent and all
             // context describe the action's parent position.
+            // WHY `trace_selected` is separate from `trace_latent`: the row used
+            // to be pushed only when `classic_policy_accumulators` returned
+            // Some, i.e. only when the D41 POLICY latent existed. Policy was
+            // ditched (pol_lambda 0), so on every sota-v2 net the accumulators
+            // are absent and the trace silently recorded ZERO rows — the file
+            // still got its header, which is what made it look armed. The
+            // latent matters only to the allocation datagen; walking a failing
+            // search needs the decision fields, so selection and latent are now
+            // independent.
             #[cfg(feature = "search-control")]
-            let trace_latent = {
-                let selected = depth >= 2
-                    && move_count > 1
-                    && self.search_trace.as_ref().is_some_and(|trace| {
-                        trace.should_sample(key, m.raw16(), trace_node_depth, ply)
-                    });
-                if selected {
-                    self.eval_ctx
-                        .classic_policy_accumulators(&self.board, ply)
-                        .map(|(stm, ntm, _)| {
-                            let mut latent = Box::new([0i16; crate::eval::nnue::L1 * 2]);
-                            latent[..crate::eval::nnue::L1].copy_from_slice(stm);
-                            latent[crate::eval::nnue::L1..].copy_from_slice(ntm);
-                            latent
-                        })
-                } else {
-                    None
-                }
+            let trace_selected = self.search_trace.as_ref().is_some_and(|trace| {
+                trace.should_sample(key, m.raw16(), trace_node_depth, ply)
+                    && depth >= 2
+                    && (move_count > 1 || trace.all_moves())
+            });
+            #[cfg(feature = "search-control")]
+            let trace_latent = if trace_selected {
+                self.eval_ctx
+                    .classic_policy_accumulators(&self.board, ply)
+                    .map(|(stm, ntm, _)| {
+                        let mut latent = Box::new([0i16; crate::eval::nnue::L1 * 2]);
+                        latent[..crate::eval::nnue::L1].copy_from_slice(stm);
+                        latent[crate::eval::nnue::L1..].copy_from_slice(ntm);
+                        latent
+                    })
+            } else {
+                None
             };
             #[cfg(feature = "search-control")]
             let trace_nominal_child_depth = new_depth;
@@ -3809,7 +3817,9 @@ impl Worker {
             }
 
             #[cfg(feature = "search-control")]
-            if let Some(latent) = trace_latent {
+            if trace_selected {
+                let latent = trace_latent
+                    .unwrap_or_else(|| Box::new([0i16; crate::eval::nnue::L1 * 2]));
                 let row = crate::search_trace::LmrObservation {
                     position_key: key,
                     fen: self.board.to_fen(),
