@@ -849,6 +849,38 @@ regime we do not play in. `--budgets` exists and its own help text warns that "a
 real bullet move at 8+0.08 gets ~1.3M nodes on this box, 26× the 50k default" —
 the warning was in the tool and I read past it for most of the night.
 
+## 3n. TWO SF DEVIATIONS REST ON THE DISCREDITED INSTRUMENT
+
+`params.rs` contains exactly two constants whose default was set by a cp screen,
+and both are **deliberate deviations from Stockfish parity**, left off because
+the screen said they cost ~0.4 cp:
+
+| constant | what parity would do | recorded reason |
+|---|---|---|
+| `QS_UPREP = 0` | run the upcoming-repetition alpha raise in qsearch too (SF `search.cpp:1606`) | "+0.47/+0.20/+0.23 cp WORSE by tier at +0.6% nodes — parity does not pay" |
+| `RED_TTPV_TTMISS_REBATE = 0` | grant the ttPv reduction rebate on a TT miss, as SF's `VALUE_NONE` sentinel does | "+0.44/+0.30/+0.34 cp WORSE at +5.3% nodes — parity does not pay" |
+
+Both were measured 2026-07-27 at **n=1600 paired**. That evidence is compromised
+three separate ways, every one of them established tonight:
+
+1. **Wrong population** — the openings corpus, which produced a coherent
+   four-arm false positive on the pfut family (§5c).
+2. **Wrong budget** — 12,500 nodes, where we reach depth 9.9 and the phase-by-
+   phase verdict differs measurably from the 200k regime (§3m).
+3. **Wrong power** — n=1600 gives ~0.8 cp of paired sem on this kind of corpus
+   against effects of 0.2–0.5 cp. The playbook's own rule is `--limit 0` (9,992)
+   for a verdict; 1600 is a fifth of that.
+
+So we are deviating from the reference engine on evidence that no longer stands.
+Both are cheap to re-test in the right regime, and both are in the 200k arm
+sweep (`sfparity_upre`, `sfparity_ttpv`, `sfparity_both`).
+
+This is a small audit with a general point: the invalidated instrument did not
+only waste screening time, it **set defaults**. Two is a reassuringly small
+number — most constants come from the SF transcription rather than from our
+screens — but it is not zero, and those two were chosen precisely where we chose
+to differ from Stockfish.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
