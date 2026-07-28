@@ -180,13 +180,13 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   wrong and leave 587683 untouched. The gate reads the CANONICAL net and arch
   from `engines/canonical/` (see below) and pins two numbers, both reproduced
   by a from-source non-PGO build: the **eval hash**
-  `07993850…41bd` (sha256 of the forward-pass score for all 50
-  `tools/nnue/calib/wl50.fens`) and the **d13 node total 1945095**
+  `5ca978e0…8b38` (sha256 of the forward-pass score for all 50
+  `tools/nnue/calib/wl50.fens`) and the **d13 node total 1922947**
   (`bench 16 1 13 <fens> depth <net>` — the net is the optional **6th arg**;
   omit it and you silently measure PSQT, 3441859). Both were re-pinned on
   2026-07-28 by perf study 8's threat-frame change (§4.6 — the FT merge now
   carries the 255/64 frame ratio as 4, a measured 0.14 SF cp mean shift); the
-  immediately preceding D48X pins were `d82caf8a…8163` / `1972607`, and the
+  immediately preceding D48X pins were `07993850…41bd` / `1945095`, and the
   D47V ones `cd190d1b…7f3d` / `2068701`.
   Same update rule as the bench pin: an intentional change moves the pin in the
   same commit. Default OFF (needs a second release build + the gitignored net).
