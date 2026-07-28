@@ -188,6 +188,40 @@ drift across 172 unconverted wins. That is the failure mode the standing bar in 
 explicitly deprioritised as "leaves no trace to debug" — on this corpus it is the whole
 story. **This is a finding for the owner to rule on, not for an agent to act on unilaterally.**
 
+## ★★★ THE ARM DESIGN USED ALL SESSION IS UNDERPOWERED BY 3–10× (2026-07-28)
+
+| n | 95% CI half-width |
+|---|---|
+| **406** (what I used for 8 arms) | **~24 Elo idealised; ~40–50 observed** |
+| 1,000 | ~15 |
+| 1,529 (this folder's `pfut-sprt-12k`) | ~12 |
+| 4,000 | ~8 |
+| 10,000 | ~5 |
+
+**A good Stockfish search patch is worth +1 to +4 Elo. A strong one is +5 to +10.**
+
+⇒ **Every "null" reported this session rules out only LARGE effects.** `corrgate` −17.1,
+`setrigger` −16.3, `redcorr110k` −13.3, `offense0` −1.7, `semindepth4` −1.2/+4.8,
+`asp30` +6.2 — not one of these had the resolution to distinguish "+3 Elo" from "0".
+They are **not** evidence that these levers are dead; they are evidence the instrument
+could not see them. Do not cite them as refutations of the underlying ideas.
+
+⇒ **What survives from them:** `asp100` (−49.6 at n=155) is large enough to read, and
+the DIRECTIONAL brackets (widening past ~30 hurts) are real because the effects there
+are big. Everything in the ±25 band is simply unmeasured.
+
+⇒ **Consequence for method — the arm-per-400-games workflow is unusable for real search
+work.** Either run SPRT (sequential, stops early when the result is clear, which is what
+`pfut-sprt` did) or budget n ≥ 1500 per arm. At fixed 30k nodes a game costs ~6s, so
+1500 games at concurrency 4 is ~40 min — affordable, and roughly what this folder's
+better-calibrated earlier arms already did (`pfut-sprt-12k` n=1529, `rfp-threat0`
+n=1200). **My n=406 runs were a regression from the folder's own standard.**
+
+⇒ **And it is the argument for SPSA.** SPSA never has to resolve one parameter against
+noise: it aggregates gradient information over thousands of cheap paired comparisons and
+moves all coordinates at once. For effects of +1 to +4 Elo that is the correct
+instrument, and single-arm A/B is the wrong one.
+
 ## ROOT-SCORE VOLATILITY RE-DERIVED IN THE GAME REGIME: 1.24×, not 3.2× (2026-07-28)
 
 `docs/research/aspiration-frame-bug.md` headlines "**3.2× the oscillation**" (our root
