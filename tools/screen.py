@@ -535,12 +535,15 @@ def main() -> None:
         print(f"{'arm':<20}" + "".join(f"{str(b//1000)+'k':>12}" for b in budgets)
               + "    (cp@64k tier, paired delta)")
         ref_by_budget: dict[int, dict[str, float]] = {}
+        top1_by_budget: dict[str, dict[int, float]] = {}
         for name, ov in arms:
             full = {**base_ov, **ov}
             row = f"{name:<20}"
+            top1_by_budget[name] = {}
             for b in budgets:
-                _, per_pos, _ = cp_loss(tier_tables, fens, play_all(fens, b, full))
+                _, per_pos, t1 = cp_loss(tier_tables, fens, play_all(fens, b, full))
                 deep = per_pos[keys[-1]]
+                top1_by_budget[name][b] = t1
                 if name == "control":
                     ref_by_budget[b] = deep
                     row += f"{statistics.fmean(list(deep.values())):>12.2f}"
@@ -553,7 +556,7 @@ def main() -> None:
             nm = nm or os.path.basename(path)
             row, prow = f"{'* ' + nm:<20}", f"{'  vs control':<20}"
             for b in budgets:
-                _, per_pos, _ = cp_loss(
+                _, per_pos, t1r = cp_loss(
                     tier_tables, fens, play_reference(path, fens, b))
                 deep = per_pos[keys[-1]]
                 row += f"{statistics.fmean(list(deep.values())):>12.2f}"
@@ -564,12 +567,26 @@ def main() -> None:
                 # ~1 cp and no trend can be read at all.
                 d, se = paired(deep, ref_by_budget[b])
                 prow += f"{d:>+8.2f}+-{se:<3.1f}"
+                top1_by_budget.setdefault(nm, {})[b] = t1r
             print(row, flush=True)
             print(prow, flush=True)
+
+        print("\nTOP-1 AGREEMENT with the deepest tier, by budget (robust: a rate,")
+        print("so a single mate score cannot move it the way it moves a mean):")
+        print(f"{'':<20}" + "".join(f"{str(b//1000)+'k':>12}" for b in budgets))
+        for nm, d in top1_by_budget.items():
+            print(f"{nm:<20}" + "".join(f"{100*d[b]:>11.1f}%" for b in budgets))
+        print("Read the SHAPE. If ours flattens while the reference keeps climbing,")
+        print("more search stops helping us and that is a search-shape problem. If")
+        print("both flatten together, the ceiling is the position set or the eval.")
 
         print("\nControl row is absolute cp loss at the deepest oracle tier; "
               "arm rows are paired\ndeltas at the SAME budget. A gain that "
               "shrinks with budget will not survive a\nreal time control.")
+        print("CAUTION on a loss-derived corpus: mate scores enter the mean at "
+              "+-20000,\nso a handful of mating positions dominate every cp figure "
+              "above. Trust the\ntop-1 rates and the paired deltas, not the "
+              "absolute means.")
         if args.reference:
             print("\nA REFERENCE engine swept across budgets is an eval-vs-search")
             print("decomposition, and it is the only instrument here that can do it.")
