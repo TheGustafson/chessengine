@@ -1617,6 +1617,60 @@ random — they are selected for being positions we got wrong. An eval can be at
 parity on average and systematically wrong on exactly the set where we err, and
 nothing measured so far would have caught that.
 
+## 4b. WHY US AND NOT STOCKFISH — we over-reduce the critical line
+
+The forced-move test (§4a) showed our search returns the WRONG verdict on 52% of
+the moves that lost us games, and a tie on 25%. Ordering is excluded (the move is
+forced at the root), so the fault is in the backed-up value. Re-asking the same
+question with reductions weakened:
+
+| arm | median verdict gap | prefers the right move |
+|---|---|---|
+| default | **−14 cp** | 13/44 |
+| **NULL** — `RED_TABLE_NUM` 2834 → **2835** | +4 | 20/44 |
+| LMR −30% | +60 | 25/44 |
+| LMR −60% | +74 | 25/44 |
+| **LMR ≈ off** | **+118** | **30/44** |
+
+**The null moves the median by 4 cp; LMR-off moves it by 132.** ~30× the noise
+floor, on a set where a ±1 change is known to flip 13–20% of positions. This is
+the first mechanism tonight to clear its own null panel by an order of magnitude.
+
+**And the direction is the opposite of what I predicted twice.** Our effective
+branching factor is **1.49 against Stockfish's 1.65** (1.42 vs 1.57 on random
+positions) — **we are the MORE selective engine.** On the positions we get wrong,
+that selectivity is precisely the defect: the refutation is a late, quiet move,
+LMR reduces it hard, and the reduced search returns a confident wrong number.
+
+**This is the Be2 shape and the g141 shape, named.** Not "the search never looked"
+— it looked at a *reduced* version of the line and was told the wrong thing. g141
+is the clean case: our search scores the losing move −303 and the winning move
+−317 at depth 15, a 14 cp tie where the oracle sees 226 cp.
+
+### Two corrections to my own reasoning that got here
+
+1. **"Our eval is compressed ~2×, so the margins meet it in the wrong space"
+   (§3x) is half wrong.** Measured against *its own* search, our static eval has
+   slope **1.05** and Stockfish's **1.14** — both calibrated. The 0.39–0.55 slope
+   was against *Stockfish's* deep value, which conflates a units difference with
+   a calibration error.
+2. **The units difference is still real and still matters for imported
+   constants** — our search scores run ~0.46× Stockfish's, so a transcribed
+   `465` demands ~2.2× the real gap and our eval-gated pruning fires *less* than
+   intended. That predicted a WIDER tree; the measurement says narrower. Both
+   hold only if reductions, not eval gates, set our shape: **we under-prune junk
+   and over-reduce the critical line.**
+
+### What to change
+
+`RED_TABLE_NUM` −30% recovers most of the verdict (25/44 vs 13/44) at a fraction
+of the depth cost of switching LMR off. But an aggregate cp screen at 12,500
+nodes already rated ±25% on this knob as worse — in the wrong regime and on the
+wrong metric (mean cp loss, not verdict correctness on the positions that decide
+games). **Those two disagree, and only games settle it.** That is the next match,
+and it is a sharper hypothesis than anything else tested tonight because it was
+derived from the losses rather than from a sweep.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
