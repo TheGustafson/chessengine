@@ -20,12 +20,18 @@ move is not why we lost.
 
 Also records the **top1-top2 separation** for both engines via MultiPV 2, because
 the character of the OURS class is the load-bearing finding: on those positions
-WE are the confident one (~55 cp separation vs SF's ~10), i.e. we commit to a
-losing move rather than failing to discriminate. Any fix that sharpens eval
-makes that worse.
+WE are the more confident one, i.e. we commit to a losing move rather than
+failing to discriminate. Any fix that sharpens eval makes that worse.
 
-Every score here stays inside one engine (ours vs ours, SF vs SF), so no
-cross-engine frame conversion is involved.
+**FRAME (fixed 2026-07-28).** The two gaps are NOT in the same frame: ARCHON
+prints raw internal values, Stockfish divides by `a ~ 385` before printing, so
+our number is ~2.07x theirs. The classify pass computes each gap inside one
+engine -- which is why this looked safe -- but then PRINTS them side by side,
+and the docs read a ratio straight off that table. That is exactly the R2
+failure ("normalise at the tool boundary, not in prose"), committed by the tool
+itself: the D47V-era headline "55.3 cp us vs 10.5 SF" is a 5.3x raw ratio and a
+**2.5x** real one. `our_gap` is now stored and printed in SF's PRINTED-cp frame;
+`our_gap_raw` keeps the unconverted value so old rows stay re-derivable.
 """
 
 from __future__ import annotations
@@ -37,7 +43,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from uciprobe import Engine, NET, REPO  # noqa: E402
+from uciprobe import Engine, NET, REPO, to_sf_frame  # noqa: E402
 
 INFO = re.compile(r"^info depth (\d+).*?multipv (\d+).*?score (cp|mate) (-?\d+)")
 BOUND = re.compile(r"\b(lowerbound|upperbound)\b")
@@ -99,8 +105,13 @@ def main() -> int:
         sf.newgame(); th = sf.go(fen=r["fen"], nodes=a.budget)["best"]
         we_bl, sf_bl = (we == r["played"]), (th == r["played"])
         cls = "OURS" if (we_bl and not sf_bl) else ("BOTH" if we_bl else "NEITHER")
+        # Convert OUR gap into SF's printed frame HERE, at the tool boundary --
+        # a difference of two scores scales exactly like a level, so the same
+        # /2.07 applies. `our_gap_raw` is kept so the conversion is auditable.
+        raw_gap = top2_gap(ar, r["fen"], a.budget)
         out.append({**r, "class": cls, "our_move_at_budget": we, "sf_move_at_budget": th,
-                    "our_gap": top2_gap(ar, r["fen"], a.budget),
+                    "our_gap_raw": raw_gap,
+                    "our_gap": to_sf_frame(raw_gap, "archon"),
                     "sf_gap": top2_gap(sf, r["fen"], a.budget)})
         if i % 20 == 0:
             print(f"  [{i}/{len(rows)}]", flush=True)
@@ -116,7 +127,7 @@ def main() -> int:
         sgaps = [r["sf_gap"] for r in sub if r["sf_gap"] is not None]
         med = lambda v: sorted(v)[len(v) // 2] if v else float("nan")
         print(f"  {cls:<8} {len(sub):>4}  ({100*len(sub)/max(1,len(out)):4.0f}%)   "
-              f"median top1-top2: ours {med(gaps):7.1f}  SF {med(sgaps):7.1f}")
+              f"median top1-top2 (SF frame): ours {med(gaps):7.1f}  SF {med(sgaps):7.1f}")
     print(f"\n-> {a.outdir}/{{classified,ours,both,neither}}.json")
     print("Work the OURS set. BOTH is position hardness; NEITHER is context/instability.")
     return 0

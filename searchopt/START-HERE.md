@@ -37,41 +37,32 @@ nothing else.**
 |---|---|
 | canonical net | **D48X** (gen-2, 1280 acc) — `engines/canonical/`, promoted 2026-07-28 |
 | D48X vs D47V | −9.1 [−34.4, +16.1] over 382 games. Promoted deliberately: D48X is the better eval and loses only because the search cannot exploit it. **This is settled and is not yours to revisit** — see OUT OF SCOPE above. |
-| loss corpus | **404 games vs SF18** (−132 Elo, 174 lost games, 10,112 moves oracle-scored) → `positions/{ours,both,neither}.json`. A blunder = **wp_loss ≥ 0.06 (~88 cp) from a position better than −2.5 pawns** — a move played from an already-lost game is not a blunder, it is a loss. Expect **roughly 20-50 positions** (soft estimate — see README); raise `--wp-min` to 0.10 for the severe subset. **Count what actually landed before quoting a number.** |
+| loss corpus | **DONE 2026-07-28.** 404 games vs SF18 (−132 Elo, 174 lost games, 10,112 moves probed) → **5,379 still-playable moves scored**, **25 blunders**, split **OURS 3 · BOTH 1 · NEITHER 21**. A blunder = **wp_loss ≥ 0.06 (~88 cp) from a position better than −2.5 pawns**. The old "20-50 positions" estimate was the *blunder* count (25, close), not the actionable subset. |
+| how bad are the blunders | wp ≥ 0.10: **6 of 5,379**. wp ≥ 0.20: **zero, corpus-wide.** We are not losing to catastrophic single moves — see LEDGER. |
 | validated search gains so far | **none.** Every arm tried is null or refuted (`LEDGER.md`) |
 
-## FIRST: is the corpus actually there?
+## The corpus is in — this section is now just how to verify it
 
-The mining run was left detached at the end of the previous session and takes ~100
-minutes. Check before you trust `positions/`:
+Committed 2026-07-28. To confirm what you have:
 
 ```bash
-ls -la searchopt/positions/{losses,ours,both,neither}.json
 python3 -c "import json;d=json.load(open('searchopt/positions/losses.json'));\
 print(d['_provenance'], len(d['rows']))"
 ```
 
-* **All four exist and provenance says `d48x-…`** — good, work `ours.json`.
-* **Only `losses.json`** — the mine finished, the classify did not. Run:
-  `python3 searchopt/tools/classify_losses.py --losses searchopt/positions/losses.json`
-* **Neither, or provenance names a different net** — re-mine:
-  `uv run --no-project --with chess python searchopt/tools/mine_losses.py --pgn engines/runs/corpus-d48x/games.pgn`
-  (the 404-game PGN is on disk, so this does not need another match).
-* `ours.json` may still be the **D47V-era 14-position set** if the chain never landed —
-  it has no provenance stamp, which is how you tell.
+Expect provenance `d48x-1280-sb520-ema.cenn` and 5,379 rows. **A bare list instead of a
+dict means a mine is mid-flight** — `mine_losses.py` checkpoints every 50 jobs as a plain
+list and only wraps it in `{_provenance, rows}` at the end, so that is how you tell
+"still running" from "done" (this tripped the check command that used to live here).
 
-### COMMIT THE CORPUS once it lands
-
-`searchopt/positions/*.json` is tracked, but the mine was still writing when the previous
-session ended, so `losses.json` was deliberately left uncommitted rather than captured
-half-written. Once you have confirmed the corpus is complete:
+Re-mine only if the canonical net changes — the 404-game PGN is on disk, so it needs no
+new match:
 
 ```bash
-git add searchopt/positions && git commit -m "searchopt: D48X loss corpus (N positions)"
+uv run --no-project --with chess python searchopt/tools/mine_losses.py \
+    --pgn engines/runs/corpus-d48x/games.pgn
+python3 searchopt/tools/classify_losses.py --losses searchopt/positions/losses.json
 ```
-
-Put the real counts in that message. The repo is also **7 commits ahead of origin/main** —
-push is a human decision, so leave it unless told otherwise.
 
 ## Do this first
 
@@ -103,23 +94,32 @@ all satisfiable by noise.
 
 ## What is known about the losses
 
-Split at the in-game budget (110k nodes), from the D47V corpus — **re-derive these shares
-on the new corpus, the numbers may move, the categories will not**:
+**Re-derived on the D48X corpus, 2026-07-28** (25 blunders; the D47V shares below it are
+kept only for comparison):
 
-| share | class | actionable |
+| n | class | actionable |
 |---|---|---|
-| ~14% | SF blunders there too | no — position hardness |
-| ~41% | near-tie for **both** engines (23 vs 28 cp separation) | no — anyone errs |
-| ~14% | warm history/aspiration flips it (the warm **TT helps**) | narrow |
-| **~32%** | **SF avoids at 110k, we don't** | **yes — work here** |
+| 21 | **NEITHER** — our own cold 110k search does not play the move | in-game context (warm history/aspiration) or argmax instability |
+| 3 | **OURS** — SF avoids at 110k, our cold search does not | **yes — start here** |
+| 1 | BOTH — SF blunders there too | no — position hardness |
 
-**The character of that 32% is the load-bearing finding: we are confidently wrong, not
-uncertain.** Top1−top2 separation ~55 cp for us vs ~10 for SF, SF near-tied in 64% of
-them. We commit conviction to a losing move; SF declines to commit.
+**Order of work (owner, 2026-07-28): fix OURS first, then move on to the other losing
+positions and see if those can be fixed too.** The corpus is a queue, not a ceiling.
 
-⇒ **Sharpening the eval would make this worse.** The lever is making refuting lines
-cheaper to resolve, so the danger reaches the root and flattens a confidence that should
-never have formed.
+Two cautions, both paid for:
+
+* **The classifier has not been nulled.** OURS-vs-NEITHER is one free-search argmax per
+  engine at one budget, and an inert ±1 flips ~25% of these positions (`walk.py`
+  docstring). `walk.py`'s 5-budget ladder re-adjudicates each position as you walk it —
+  trust that over the class label.
+* **"We are confidently wrong" is weaker than it was written.** The 55-vs-10.5 headline
+  compared OUR raw units against SF's printed cp; corrected it is 26.7 vs 10.5 = **2.54×,
+  not 5.27×**. On the D48X OURS set it is 70.0 vs 58.0 = 1.21× at n=3 — no conclusion
+  available. `classify_losses.py` now converts at the tool boundary.
+
+⇒ The lever remains making refuting lines cheaper to resolve, so danger reaches the root.
+But note the corpus says blunders are RARE (0.46%, none above wp 0.20): most of the −132
+Elo is elsewhere.
 
 ## Open, in priority order
 
