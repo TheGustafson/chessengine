@@ -23,18 +23,21 @@ Gap to SF18 at 10+0.1: **−171 to −191 Elo**. Decomposed, all terms measured:
 
 | question | answer | evidence |
 |---|---|---|
-| Where is our search weakest? | **Middlegame.** Headroom +2.81 cp at 21+, falling to **−2.01 (we are better)** at ≤7 | §3g |
+| Where is our search weakest? | **8–12 pieces** — −7.0 top-1 and −0.75 plies at a realistic 200k budget. The middlegame is **parity** (+1.5 / +2.0) | §3m |
 | Where do errors cost most? | **Endgame.** 0.31 wp lost per 100 moves at ≤7 vs 0.06 at 21+ | §1 |
-| Is the eval behind? | **No — parity in every phase**, slightly ahead at ≤7 | §3e |
-| Is it depth-limited? | **No.** Headroom is flat over a 16× node range; the top-1 gap WIDENS 1.4→3.7 pts | §3f |
+| Is the static eval behind? | **No — parity in every phase**, slightly ahead at ≤7 | §3e |
+| Is the QSEARCH behind? | **No — parity.** rho gaps −0.03 to −0.007 at depth 1; ahead in 3 of 4 buckets at depth 4 | §3m |
 | Is any pruning gate the culprit? | **No.** Refuted twice, independently | §5, playbook §14 |
 | Is it the clock? | Real deficit, but **not** the blunder mechanism | §2 |
-| Is it tunables? | **Not the 14 central ones.** Every ±25% move is worse | §5d |
+| Is it tunables? | **Unresolved.** The ±25% sweep said local optimum, but at 12,500 nodes — the wrong regime | §5d caveat, §3m |
+| **Was the instrument right?** | **No, twice.** Wrong population (100% openings) AND wrong budget (12.5k vs a real 100k–1M) | §1, §3m |
 
-**The one-sentence model:** our eval is at parity, our search costs ~1.3× more
-per node, and it converts the nodes it does get into correct moves less well than
-Stockfish's — worst in the middlegame — while our clock policy concentrates what
-remains into the endgame, where each error is most expensive.
+**The one-sentence model:** everything our search *computes* is at parity — the
+static eval at the root and the qsearch at the leaves — but our search costs
+~1.5× more instructions per node, and at a realistic budget it converts those
+nodes into correct moves as well as Stockfish's in the middlegame and
+**7 points worse at 8–12 pieces**, while our clock policy pushes what remains
+into the endgame, where each error costs the most win probability.
 
 **What that rules out:** better nets (eval is at parity in every phase), more
 depth (the gap does not shrink with 16× nodes), and tuning the central pruning
