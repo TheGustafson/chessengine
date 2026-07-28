@@ -28,7 +28,11 @@ tools/cloud/__pycache__/
 # books and EPD suites (never vendored, D15), and match-run output
 # (PGN/logs) from tools/sprt.sh + tools/gauntlet.sh. Install notes:
 # TESTING.md "Strength testing".
-/engines/
+/engines/*
+# ...except the canonical pointer: MANIFEST + arch + the two symlinks are METADATA
+# (which net/binary is the release pair) and must be versioned. Their targets stay
+# ignored; a symlink is just a path string.
+!/engines/canonical/
 
 # NNUE training dashboard tfevents (artifacts, P13)
 tools/nnue/runs/
