@@ -9,6 +9,41 @@ one, the earlier one is named and withdrawn.
 
 ---
 
+## 0. THE MODEL — every failure mode, and what each one needs
+
+Gap to SF18 at 10+0.1: **−171 to −191 Elo**. Decomposed, all terms measured:
+
+| term | Elo | how measured | what it needs |
+|---|---|---|---|
+| **Equal-node move quality** | **~78** | +1.30 cp weighted over phases, §3c/§3g | **Mechanism, not tuning** — 15 ±25% arms all worse (§5d) |
+| **Speed** — 1.26–1.39× cycles/node | **~64** | same-run cycles/node with a fairness check, §3b-FIXED | Per-node cost engineering |
+| Residual — TM, conversion | ~30–50 | by subtraction | TM: we reach move 45 with 35% of their clock (§2) |
+
+**Where each thing lives:**
+
+| question | answer | evidence |
+|---|---|---|
+| Where is our search weakest? | **Middlegame.** Headroom +2.81 cp at 21+, falling to **−2.01 (we are better)** at ≤7 | §3g |
+| Where do errors cost most? | **Endgame.** 0.31 wp lost per 100 moves at ≤7 vs 0.06 at 21+ | §1 |
+| Is the eval behind? | **No — parity in every phase**, slightly ahead at ≤7 | §3e |
+| Is it depth-limited? | **No.** Headroom is flat over a 16× node range; the top-1 gap WIDENS 1.4→3.7 pts | §3f |
+| Is any pruning gate the culprit? | **No.** Refuted twice, independently | §5, playbook §14 |
+| Is it the clock? | Real deficit, but **not** the blunder mechanism | §2 |
+| Is it tunables? | **Not the 14 central ones.** Every ±25% move is worse | §5d |
+
+**The one-sentence model:** our eval is at parity, our search costs ~1.3× more
+per node, and it converts the nodes it does get into correct moves less well than
+Stockfish's — worst in the middlegame — while our clock policy concentrates what
+remains into the endgame, where each error is most expensive.
+
+**What that rules out:** better nets (eval is at parity in every phase), more
+depth (the gap does not shrink with 16× nodes), and tuning the central pruning
+knobs (all worse). **What it points at:** per-node cost, and structural search
+mechanisms Stockfish has that we do not — ordering, extensions, what gets
+searched rather than how much.
+
+---
+
 ## 1. THE HEADLINE — our tuning instrument samples the wrong population
 
 `tools/nnue/calib/oracle-obs.json` is the corpus behind **every tunable screen
