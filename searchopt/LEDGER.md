@@ -258,6 +258,33 @@ the score is near zero is a real deviation from SF and nobody's standard TM does
      the symptom.
   Distinguishing them needs a measurement, not an argument.
 
+⇒ **DISCRIMINATED, free (2026-07-28).** Normalised time vs the engine's OWN previous
+score movement (ex ante, |eval| ≤ 3), which is what a TM stability factor responds to:
+
+| prev \|Δscore\| | ARCHON | SF18 |
+|---|---|---|
+| <0.02 | 0.880 | 0.928 |
+| 0.02–0.06 | 1.023 | 1.049 |
+| 0.06–0.15 | 1.047 | 1.013 |
+| 0.15–0.40 | 1.017 | 0.998 |
+| >0.40 | 0.978 | 0.846 |
+| **escalation slope (>0.40 ÷ <0.02)** | **1.112×** | **0.911×** |
+
+**The SYMPTOM hypothesis predicts the WRONG SIGN and is disfavoured.** We escalate *more*
+on score movement than SF (1.112× vs 0.911×) and we churn *more* in balanced positions —
+so if the allocation gap were merely churn flowing through SF-parity TM, we would spend
+MORE time there. We spend **18% less**. Explanation 1 (an independent allocation shape)
+is the better-supported one.
+
+**Caveat on the proxy:** SF's TM keys on best-MOVE changes, which the PGN does not expose;
+own-score movement is a proxy for that, not the mechanism itself. The sign argument
+survives the caveat — it only needs our escalation not to be *flatter* than SF's, and it
+is not.
+
+**Incidentally: NEITHER engine escalates much on score instability, and SF actively
+de-escalates (0.911×).** Whether "spend more when the score is unstable" is an unexploited
+axis is a separate question this proxy cannot settle, but it is cheap to ask properly.
+
 ⇒ **Blocked, and why:** testing this needs equal-TIME matches, which need a quiet box, and
 a perf study is currently waiting on one. **It is the highest-value untested lever I have**
 — it is orthogonal to everything tried this session, it points at the band both
