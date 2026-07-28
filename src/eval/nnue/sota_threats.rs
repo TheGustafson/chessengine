@@ -1099,20 +1099,30 @@ fn resolve_into(
             }
         }
     } else {
+        // Accumulate the T6c bucket delta in a LOCAL, written back once. The
+        // pairing is load-bearing and neither half works alone (perf study 8
+        // §4.5): with the row reached as a runtime-length slice the accumulate
+        // is 12 instructions split across xmm / vmovq / scalar, and hoisting
+        // the destination into a local then only adds copies (measured
+        // +1.31%); with the row FIXED-size the body is one ymm load-add-store,
+        // and only then does keeping the accumulator in registers across the
+        // event loop pay. Bit-identical either way: same i32 adds, same order.
+        let mut acc = *psqt_delta;
         for d in events {
             if let Some(idx) = resolver.index(d.attacker, d.from, d.to, d.victim) {
                 debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
                 if d.add {
                     adds[add_len] = idx;
                     add_len += 1;
-                    psqt_add(psqt_delta, psqt_table, idx);
+                    psqt_add(&mut acc, psqt_table, idx);
                 } else {
                     subs[sub_len] = idx;
                     sub_len += 1;
-                    psqt_sub(psqt_delta, psqt_table, idx);
+                    psqt_sub(&mut acc, psqt_table, idx);
                 }
             }
         }
+        *psqt_delta = acc;
     }
     (add_len, sub_len)
 }

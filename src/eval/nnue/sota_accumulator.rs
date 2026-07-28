@@ -18,12 +18,51 @@ use crate::types::{Color, MAX_PLY, Piece, PieceType, Square};
 const STACK_LEN: usize = MAX_PLY + 8;
 const FINNY_KEYS: usize = 64;
 
-/// Add feature `feature`'s 8-wide PSQ1 row into `psqt`. `table` is row-major
-/// (`feature · BUCKETS + bucket`) and must be non-empty.
+/// Feature `feature`'s PSQ1 row as a FIXED-size array reference. `table` is
+/// row-major (`feature · BUCKETS + bucket`) and must be non-empty.
+///
+/// The fixed size is the whole point, and it is worth a paragraph because the
+/// slice form looked identical and was not. `BUCKETS` i32 is exactly 32 bytes —
+/// one `ymm` — but handing the accumulate a `&[i32]` of merely *runtime* length
+/// left LLVM's SLP vectoriser unable to see a trip count of 8, so it found a
+/// 4-lane group, then a 2-lane group, then gave up:
+///
+/// ```text
+///     vmovdqu (%rsi),%xmm0            ; lanes 0..3
+///     vpaddd  (%r8,%rdx,4),%xmm0,%xmm0
+///     vmovdqu %xmm0,(%rsi)
+///     vmovq   0x10(%r8,%rdx,4),%xmm0  ; lanes 4..5
+///     vmovq   0x10(%rsi),%xmm1
+///     vpaddd  %xmm0,%xmm1,%xmm0
+///     vmovq   %xmm0,0x10(%rsi)
+///     mov     0x18(%r8,%rdx,4),%ecx   ; lane 6, SCALAR
+///     add     %ecx,0x18(%rsi)
+///     mov     0x1c(%rsi),%ecx         ; lane 7, SCALAR
+///     add     0x1c(%r8,%rdx,4),%ecx
+///     mov     %ecx,0x1c(%rsi)
+/// ```
+///
+/// Twelve instructions for a load / add / store. `psqt_add` + `psqt_sub` are
+/// ~3.0% of ALL engine instructions (perf study 8 §4.5) because they run once
+/// per resolved feature in *both* the threat fold and the HalfKA fold.
+/// # Safety-free form
+/// `BUCKETS` i32 is exactly 32 bytes — one `ymm` — but a `&[i32]` of merely
+/// RUNTIME length left LLVM's SLP vectoriser unable to see a trip count of 8,
+/// so it emitted a 4-lane group, a 2-lane `vmovq` group, and two SCALAR lanes:
+/// twelve instructions for a load / add / store. A fixed-size array reference
+/// fixes the shape. (A raw-pointer form removes the length check too, but
+/// measured +2.2% — it costs LLVM the aliasing facts the slice index gives it.)
+#[inline]
+fn psqt_row(table: &[i32], feature: usize) -> &[i32; BUCKETS] {
+    table[feature * BUCKETS..][..BUCKETS]
+        .try_into()
+        .expect("psqt rows are BUCKETS wide by construction")
+}
+
+/// Add feature `feature`'s 8-wide PSQ1 row into `psqt`.
 #[inline]
 pub(crate) fn psqt_add(psqt: &mut [i32; BUCKETS], table: &[i32], feature: usize) {
-    let row = &table[feature * BUCKETS..(feature + 1) * BUCKETS];
-    for (a, &w) in psqt.iter_mut().zip(row) {
+    for (a, &w) in psqt.iter_mut().zip(psqt_row(table, feature)) {
         *a += w;
     }
 }
@@ -31,8 +70,7 @@ pub(crate) fn psqt_add(psqt: &mut [i32; BUCKETS], table: &[i32], feature: usize)
 /// Subtract feature `feature`'s PSQ1 row from `psqt`.
 #[inline]
 pub(crate) fn psqt_sub(psqt: &mut [i32; BUCKETS], table: &[i32], feature: usize) {
-    let row = &table[feature * BUCKETS..(feature + 1) * BUCKETS];
-    for (a, &w) in psqt.iter_mut().zip(row) {
+    for (a, &w) in psqt.iter_mut().zip(psqt_row(table, feature)) {
         *a -= w;
     }
 }
@@ -48,13 +86,18 @@ pub(crate) fn psqt_fold(
     adds: &[usize],
     subs: &[usize],
 ) {
-    *dst = *src;
+    // Accumulate in a LOCAL and store once. Paired with `psqt_row`'s fixed-size
+    // row this keeps the eight buckets in one ymm register across the whole
+    // fold instead of round-tripping them to the parent entry on every feature
+    // (perf study 8 §4.5 — the pairing is what pays; neither half does alone).
+    let mut acc = *src;
     for &f in adds {
-        psqt_add(dst, table, f);
+        psqt_add(&mut acc, table, f);
     }
     for &f in subs {
-        psqt_sub(dst, table, f);
+        psqt_sub(&mut acc, table, f);
     }
+    *dst = acc;
 }
 
 /// From-scratch HalfKA PSQT bucket sums for `perspective` — the test/oracle
@@ -271,12 +314,15 @@ impl<'a> HalfkaContext<'a> {
             // refresh restores the skip channel exactly (the corruption trap
             // the deploy contract calls out).
             if !psqt_weights.is_empty() {
+                // Same register-resident accumulate as `psqt_fold`.
+                let mut acc = cached.psqt;
                 for &f in &adds[..add_len] {
-                    psqt_add(&mut cached.psqt, psqt_weights, f);
+                    psqt_add(&mut acc, psqt_weights, f);
                 }
                 for &f in &subs[..sub_len] {
-                    psqt_sub(&mut cached.psqt, psqt_weights, f);
+                    psqt_sub(&mut acc, psqt_weights, f);
                 }
+                cached.psqt = acc;
             }
         } else {
             let mut acc = [0i16; ACC];
