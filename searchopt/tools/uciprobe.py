@@ -88,7 +88,10 @@ class Engine:
             cwd=REPO,
         )
         self.send("uci")
-        self.wait_for("uciok")
+        # Keep the banner: it is the only place an engine states a tunable's
+        # DEFAULT, and a null arm has to nudge the real default rather than a
+        # value read out of a source file that may have moved on.
+        self.uci_lines = self.wait_for("uciok")
         self.net_line = None
         if net:
             self.send(f"setoption name EvalFile value {net}")

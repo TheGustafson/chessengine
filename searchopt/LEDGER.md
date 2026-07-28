@@ -188,6 +188,56 @@ drift across 172 unconverted wins. That is the failure mode the standing bar in 
 explicitly deprioritised as "leaves no trace to debug" — on this corpus it is the whole
 story. **This is a finding for the owner to rule on, not for an agent to act on unilaterally.**
 
+## THE SEARCH IS A FAITHFUL PORT — stop looking for a missing or mis-transcribed feature
+
+2026-07-28, second session. Fifteen independent components read line-by-line against
+`eca43a97` (SHAPE questions against the checkout, VALUES against eca43a97 per CLAUDE.md).
+**Every one matches.** Recorded so nobody spends another session on this axis.
+
+| component | verdict |
+|---|---|
+| correction history | all five tables present (pawn / minor / non-pawn ×2 / continuation) + `to_corrected_static_eval` + the gated bonus |
+| history suite | main, low-ply, capture, continuation, **pawn**, corr, cont-corr, tt-move — full SF set |
+| pawn history in the quiet-prune sum | present (`cont1 + cont2 + pawn < -4313·depth`) |
+| qsearch | faithful: TT cutoff at `DEPTH_QS`, ttValue-as-stand-pat, the `(467·best + 557·beta)/1024` damping, `futilityBase`, `moveCount > 2`, both SEE bars, prevSq recapture exemption |
+| rule50 eval damping | `v -= v·rule50/199` — exact |
+| upcoming repetition | faithful, including the `ply > i` / `stp->repetition` split; ours adds a *stricter* mover-is-us test at the root |
+| NMP | `R = 7 + depth/3`, bar `beta − 14·depth − 45·improving + 374` — exact |
+| TT replacement | 5-bit generation, low bits, `depth − 8·relative_age` — **exact**, including the age weight |
+| per-`go` butterfly decay 789/1024 | **exact** — this is SF `iterative_deepening` line 326, not an ARCHON original (I flagged it as one; a `grep mainHistory.fill` missed it) |
+| optimism | `75·avg/(|avg|+45)` vs SF's `137/81` — deliberately **frame-corrected at 0.55×**, matching our 0.538× internal frame |
+| aspiration mss divisor | 6776 vs SF's 10588 — frame-corrected (`docs/research/aspiration-frame-bug.md`) |
+
+⇒ Two of those are frame corrections that were applied *selectively*, which is the
+correct call: `docs/research/eval-frame-scale-model-2026-07-27.md` §11.4 killed the
+blanket rescale in **both directions** and concluded the constants sit at a joint
+optimum. Do not reopen it.
+
+## THE CONVERSION FRAME IS NOT A LOCALISATION (2026-07-28)
+
+Full writeup: `results/conversion-at-equal-nodes.md`. Tool: `tools/convert.py`.
+
+| claim | deciding evidence |
+|---|---|
+| **"We cannot convert" is a restatement of the Elo gap, not a defect location** | 615-game colour-paired match at **110k nodes** from `d48x-plateau.epd` (the corpus's own +0.50…+1.50 band, 2 positions per squandered win at the 33rd/66th percentile of its plateau — deliberately NOT the peak). Advantaged side labelled by SF18 @1M. Conversion gap **+29** (ARCHON 18%, SF18 47%) against **+72** at 10+0.1 — and the **salvage gap is +28** (53.2% vs 81.6%). **Equal in both directions.** A conversion-specific defect makes the conversion gap the larger one |
+| The plateau positions are not where the Elo is | same book, same budget: **−54 Elo [−70, −38]** vs **−68 [−93, −43]** on the corpus openings. Indistinguishable |
+| The equal-nodes ladder's instrument is sound | both engines honour `go nodes` comparably (median last-info nodes 89k vs 86k at a 110k ask, n=24) |
+| We are **not** shallower, and the tree shape is the same | 40 plateau positions at 110k: depth 14.65 vs 14.95, seldepth 22.7 vs 24.9, **seldepth/depth 1.61 vs 1.60** |
+
+⇒ `START-HERE.md` §4's "the failure is slow degradation of a held advantage" does not
+survive its own control. The honest statement is the one already in this file: a
+**uniform, budget-independent ~60 Elo** at equal nodes, with equal depth, equal tree
+shape and at-par static eval, and **no phase or advantage regime carrying more of it
+than any other**.
+
+## INSTRUMENTS BUILT (2026-07-28, second session)
+
+| tool | what it is, and its null |
+|---|---|
+| `tools/judge.py` | the first **neutral-judge** move comparison: play both engines at 110k, keep the disagreements, then have Reckless (never saw either eval) score BOTH moves under forced `searchmoves` at 1.5M. Primary statistic is a COUNT. Runs ours/SF/Reckless as three judges so the two biased ones bracket the neutral one. **NULL RUN FIRST, and it fired:** with SF replaced by an inert `RED_TABLE_NUM +1` ARCHON, all three judges came back **41–45% instead of 50%** (n=80) — a systematic bias toward the FIRST-probed move, because both moves are scored by the same judge process with no reset between them. Read arm-minus-null, and fix the tool (reset + alternate probe order) before its next use |
+| `tools/convert.py` | the paired conversion/salvage read above |
+| `tools/coldproxy.py` | a UCI pass-through that injects `ucinewgame` before every `go`, so an engine plays every move from COLD state (`--warm` passes through, so both arms of a match share the wrapper). Exists because **every instrument in this folder is a cold probe and every game is warm** — carried TT / histories / correction tables / aspiration seed are the one axis nothing on record has ever tested |
+
 ## REFUTED — do not rebuild
 
 | claim | what killed it |

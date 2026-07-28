@@ -212,3 +212,42 @@ fastchess -engine cmd=engines/canonical/archon name=archon \
 ```
 
 Baselines to beat, same book, same opponent: **−134 Elo at 10+0.1**, **−68 at 110k nodes**.
+
+### The plateau book — the +1.0-and-bleeding regime, colour-paired
+
+`engines/books/d48x-plateau.epd` (308 positions, also gitignored) is the second
+book: two positions per squandered win, drawn from the corpus's own +0.50…+1.50
+band. Take the 33rd and 66th percentile of each game's plateau plies, **never the
+peak** — a per-game maximum of a noisy series selects for regression to the mean
+and would manufacture "we fail to convert" out of nothing.
+
+```bash
+python3 - <<'PY'
+import json, collections
+d = json.load(open('searchopt/positions/plateau.json'))
+by = collections.defaultdict(list)
+for x in d:
+    if x['ply'] >= 20:
+        by[x['game']].append(x)
+fens, seen = [], set()
+for g, rows in sorted(by.items()):
+    rows.sort(key=lambda r: r['ply'])
+    n = len(rows)
+    for i in (sorted({int(n*0.33), int(n*0.66)}) if n >= 4 else [n//2]):
+        f = rows[i]['fen']
+        if f not in seen:
+            seen.add(f); fens.append(f)
+open('engines/books/d48x-plateau.epd','w').write('\n'.join(fens)+'\n')
+print(len(fens), 'plateau positions from', len(by), 'games')
+PY
+```
+
+`positions/plateau-advside.json` labels which side is better in each (SF18 @ 1M
+nodes, **white POV**) — `tools/convert.py` needs it, and the label cannot be
+recovered from the FEN or from the source game's colour without hitting the
+PGN-replay trap. Regenerate by scoring every book FEN at `nodes=1000000` and
+storing `cp` flipped to white POV when the FEN's side to move is black.
+
+Baseline on this book, same opponent: **−54 Elo at 110k nodes** (n=615) —
+statistically identical to the corpus openings, which is the point
+(`results/conversion-at-equal-nodes.md`).
