@@ -50,8 +50,18 @@ import statistics
 import subprocess
 import sys
 
-import chess
-import chess.engine
+# python-chess lives in the repo venv, not the system interpreter, and
+# `python3 tools/screen.py` is what everyone types. Re-exec instead of dying
+# on a ModuleNotFoundError that has nothing to do with the task at hand.
+try:
+    import chess
+    import chess.engine
+except ModuleNotFoundError:  # pragma: no cover
+    from pathlib import Path as _P
+    _venv = _P(__file__).resolve().parent.parent / ".venv" / "bin" / "python3"
+    if _venv.exists() and _P(sys.executable).resolve() != _venv.resolve():
+        os.execv(str(_venv), [str(_venv), *sys.argv])
+    raise
 
 LEDGER = "docs/research/screen-results.jsonl"
 
@@ -164,11 +174,17 @@ def fhf(depth: int, ov: dict[str, int]) -> float:
     """First-move cutoff rate: of all fail-highs, the share taken on move 1.
 
     The cheapest meaningful search-quality metric we have -- one deterministic
-    bench, seconds -- and it targets a MEASURED defect: ours is 89.4% against
-    Stockfish's typical 93-95%, and we spend 1.6-3.6x their nodes to reach the
-    same depth. Those are the same fact. A cutoff taken on move 5 instead of
-    move 1 searched four subtrees for nothing, and that ratio compounds with
-    depth into the width gap.
+    bench, seconds. A cutoff taken on move 5 instead of move 1 searched four
+    subtrees for nothing, so higher fhf is strictly better ordering.
+
+    Ours is 85.6% on a net-live binary. Do NOT compare that to the "93-95%"
+    this docstring used to quote for Stockfish: that figure is folklore, was
+    never measured with our definition, and the 89.4% it was compared against
+    was a PSQT measurement. The old claim that fhf and a "1.6-3.6x wider tree"
+    were the same fact died with the width gap itself -- net-live, our tree is
+    ~1.4x SF18's at depth 10 and ~0.93x at depth 14. Treat fhf as a RELATIVE
+    instrument: arm vs control on the same binary, never against a remembered
+    cross-engine constant.
 
     Higher is better, and unlike cp loss it moves on runs that take seconds,
     so it is the right first filter for move-ORDERING parameters.
@@ -200,6 +216,37 @@ def play_all(fens: list[str], nodes: int, ov: dict[str, int]) -> dict[str, str]:
         eng.configure({"EvalFile": NET})
         for k, v in ov.items():
             eng.configure({k: v})
+        for fen in fens:
+            res = eng.play(chess.Board(fen), chess.engine.Limit(nodes=nodes))
+            if res.move is not None:
+                out[fen] = res.move.uci()
+    finally:
+        eng.quit()
+    return out
+
+
+def play_reference(binary: str, fens: list[str], nodes: int) -> dict[str, str]:
+    """Same position set, same node budget, a DIFFERENT engine.
+
+    Why this row belongs on the table. Mean cp loss is a relative instrument:
+    it tells you arm-vs-control and nothing about how much is left to win.
+    Our control loses ~4.6 cp per move at 50k nodes -- is that close to what a
+    50k-node search can achieve, or is half of it recoverable? Without an
+    opponent at the same budget the number has no scale, and a screen with no
+    scale cannot tell "we tuned away the last 5%" from "we are leaving 3 cp on
+    the table".
+
+    BIAS, stated plainly: the oracle labels are Stockfish's, so scoring
+    Stockfish against them measures partly its agreement with ITSELF. An SF
+    reference is therefore an optimistic floor, not a fair target. Run a
+    non-Stockfish engine (Reckless) alongside it -- where the two disagree,
+    the truth is between them, and their SPREAD is the honest error bar on
+    "how much headroom exists".
+    """
+    eng = chess.engine.SimpleEngine.popen_uci(binary)
+    out: dict[str, str] = {}
+    try:
+        eng.configure({"Threads": 1, "Hash": 16})
         for fen in fens:
             res = eng.play(chess.Board(fen), chess.engine.Limit(nodes=nodes))
             if res.move is not None:
@@ -293,6 +340,10 @@ def main() -> None:
                     help="also report first-move cutoff rate (cheap, targets "
                     "the measured ordering defect)")
     ap.add_argument("--oracle", default=ORACLE)
+    ap.add_argument("--reference", action="append", default=[],
+                    metavar="[NAME=]BINARY",
+                    help="score another engine at the same node budget, to give "
+                         "cp loss an absolute scale (repeatable)")
     ap.add_argument("--fast", action="store_true",
                     help="fhf + nodes only, skipping the cp oracle. Both are "
                     "deterministic bench measurements taking SECONDS, against "
@@ -324,10 +375,10 @@ def main() -> None:
             else:
                 print(f"{nm:<24}{n/ref_n-1:>+9.1%} {f:>9.2f}{f-ref_f:>+9.2f}",
                       flush=True)
-        print("\nfhf = first-move cutoff rate, HIGHER is better; ours is 89.4% "
-              "against\nStockfish's typical 93-95%, and that gap is the same "
-              "fact as our 1.6-3.6x\nwider tree. Want fhf UP and nodes DOWN "
-              "together; either alone can be gamed.")
+        print("\nfhf = first-move cutoff rate, HIGHER is better (ours ~85.6% "
+              "net-live).\nRead it arm-vs-control only -- there is no verified "
+              "cross-engine number to\ncompare against. Want fhf UP and nodes "
+              "DOWN together; either alone can be gamed.")
         return
     tier_tables = json.load(open(args.oracle))["tiers"]
     keys = sorted(tier_tables, key=int)
@@ -448,6 +499,28 @@ def main() -> None:
                 "cp_by_tier": {t: round(per_tier[t] - ref_cp[t], 3) for t in keys},
                 "top1": round(top1, 4), "oracle": os.path.basename(args.oracle),
             })
+
+    for spec in args.reference:
+        nm, _, path = spec.rpartition("=")
+        nm = nm or os.path.basename(path)
+        per_tier, per_pos, top1 = cp_loss(
+            tier_tables, fens, play_reference(path, fens, args.nodes))
+        row = f"{'* ' + nm:<20}" + "".join(f"{per_tier[t]:>9.2f}" for t in keys)
+        blunder, p90 = tail_stats(per_pos[keys[-1]])
+        row += f"{top1:>8.1%}{blunder:>8.1%}{p90:>7.0f}"
+        print(row, flush=True)
+        d, se = paired(per_pos[keys[-1]], ref_pos[keys[-1]])
+        print(f"{'':<20}  headroom vs control at {args.nodes} nodes: "
+              f"{-d:+.2f} +- {se:.2f} cp")
+
+    if args.reference:
+        print("\n* reference rows are ABSOLUTE cp loss, same positions, same node")
+        print("budget, no tunables. They give the screen a scale: 'headroom' is how")
+        print("much a stronger engine saves per move at OUR budget, i.e. the most")
+        print("that search tuning could possibly recover. CAVEAT: the oracle labels")
+        print("are Stockfish's, so an SF reference is partly scoring its agreement")
+        print("with itself and reads optimistically. Use a non-SF engine too and")
+        print("treat the spread between them as the error bar on the headroom.")
 
     print("\nblund = share of moves losing >=100 cp; p90 = 90th-percentile loss, "
           "both at the\ndeepest tier. The mean is mostly tail (median loss is "
