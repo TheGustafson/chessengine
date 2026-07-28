@@ -75,10 +75,13 @@ def worker(job):
                 vals[mv] = r["ladder"][max(r["ladder"])]["score"]
         if vals.get(a) is None or vals.get(s) is None:
             continue
+        # clip BOTH sides into the decisive band: an unclipped mean measures
+        # mate distance, not move quality (measured: +-35 cp of noise)
+        C = 1000
+        cl = lambda v: max(-C, min(C, v))
         out.append((fen, a == best, s == best,
-                    min(bcp, 20000) - min(vals[a], 20000),
-                    min(bcp, 20000) - min(vals[s], 20000),
-                    wp(bcp) - wp(vals[a]), wp(bcp) - wp(vals[s])))
+                    cl(bcp) - cl(vals[a]), cl(bcp) - cl(vals[s]),
+                    wp(cl(bcp)) - wp(cl(vals[a])), wp(cl(bcp)) - wp(cl(vals[s])))) 
     ours.close()
     sf.close()
     return out
@@ -134,10 +137,14 @@ def main() -> None:
         awp = statistics.mean(x[4] for x in tot)
         swp = statistics.mean(x[5] for x in tot)
         sd = statistics.stdev([x[2] - x[3] for x in tot]) / math.sqrt(n_)
+        wsd = statistics.stdev([x[4] - x[5] for x in tot]) / math.sqrt(n_)
         print(f"\nALL      {n_:>5} | {100*sum(x[0] for x in tot)/n_:>6.1f}%"
               f"{100*sum(x[1] for x in tot)/n_:>6.1f}% | {acp:>7.1f}{scp:>7.1f}"
               f"{acp-scp:>7.1f} | {awp:>7.3f}{swp:>7.3f}{awp-swp:>8.3f}")
-        print(f"\nheadroom {acp-scp:+.2f} +- {sd:.2f} cp at {args.nodes} nodes")
+        print(f"\nheadroom {acp-scp:+.2f} +- {sd:.2f} cp   |   "
+              f"{awp-swp:+.4f} +- {wsd:.4f} wp   at {args.nodes} nodes")
+        print("  wp is the unbiased cross-engine metric: LOSS does not care which")
+        print("  engine proposed the reference, where top-1 AGREEMENT rewards being it.")
         print(f"  for comparison, at 12,500 nodes on the openings corpus it was "
               f"+1.24 +- 0.30 cp,\n  and the ~78 Elo quality term was derived from that.")
 

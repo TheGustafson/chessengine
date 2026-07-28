@@ -35,6 +35,7 @@ from uciprobe import Engine  # noqa: E402
 
 REPO = "/home/nick/projects/chessengine"
 SF = REPO + "/engines/bin/stockfish18"
+CLIP = 1000
 
 
 def npieces(fen: str) -> int:
@@ -55,7 +56,13 @@ def worker(job):
         if not r["ladder"]:
             continue
         top = r["ladder"][max(r["ladder"])]
-        out[fen] = [top["move"], top["score"]]
+        # Clip into the decisive band.  A phase-representative corpus contains
+        # endgames, where the oracle routinely returns +-20000, and an unclipped
+        # store made the downstream cp headroom read -11.76 +- 35.37 -- the mean
+        # was measuring mate DISTANCE.  The best MOVE is unaffected either way;
+        # only the value is clipped.  (Same fix the phase corpus needed; it was
+        # not carried over here, which is exactly how a known trap recurs.)
+        out[fen] = [top["move"], max(-CLIP, min(CLIP, top["score"]))]
     sf.close()
     return out
 
