@@ -26,6 +26,43 @@ we lost:
 And by move number: **zero errors before move 21**; 87% of win-probability loss
 after move 33; 64% after move 46.
 
+**Two unconfounded cross-checks, both stronger than the table above.** The
+table can be attacked two ways — lost games run long, so they over-sample the
+endgame by exposure, and conditioning on losses conditions on something. Both
+attacks fail:
+
+*(a) Where we simply play our moves*, over ALL games in both matches, no
+outcome conditioning and no error attribution at all (n = 22,828):
+
+| pieces | ≤7 | 8–12 | 13–20 | 21+ |
+|---|---|---|---|---|
+| share of our moves | 14.5% | 21.4% | 28.4% | 35.6% |
+| share of the oracle corpus | 0% | 0% | 0% | 100% |
+
+**64% of the moves we play are below 21 pieces and the screen cannot see any of
+them.** That statement needs no theory of where errors happen.
+
+*(b) Win probability lost PER MOVE* — a rate, which divides exposure out:
+
+| pieces | moves | wp lost | **per 100 moves** |
+|---|---|---|---|
+| ≤7 | 492 | 1.51 | **0.31** |
+| 8–12 | 679 | 0.35 | 0.05 |
+| 13–20 | 808 | 1.52 | **0.19** |
+| 21+ | 1223 | 0.74 | **0.06** |
+
+Our error rate per move at ≤7 pieces is **5× the rate at 21+**, and 13–20 is 3×
+it. The endgame concentration is not an exposure artifact.
+
+**A proxy I tried and threw away, because it is a good trap.** Taking "the ply
+where our own eval first drops below −3" as the decisive moment gives the
+opposite answer on corpus-v2: 74% at 21+ pieces, 50% by move 20. It is
+worthless. In games we lose, our eval at our FIRST move out of book (median
+move 8) is already **median −2.20**, 92% of them between −3 and −1 — the UHO
+book hands us the losing side, and the proxy was timing the book, not our play.
+Anything that thresholds our own eval in a UHO match measures the opening book
+first.
+
 So the screen measures the phase that holds ~18% of the damage and is blind to
 the other 82% — and the phase where we demonstrably make *no* mistakes at all.
 
