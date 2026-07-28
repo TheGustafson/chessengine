@@ -909,6 +909,13 @@ pub struct Worker {
     /// `bestmove` is always printable; [`Worker::root_hygiene`] both
     /// maintains it and rolls back to it.
     pub last_best_move_pv: Vec<Move>,
+    /// The previous iteration's PV for the line being searched (SF's
+    /// `lastIterationIdxPV`, search.cpp:367): snapshotted from
+    /// `root_moves[pv_idx].previous_pv` before every aspiration search, read
+    /// by the node-entry `follow_pv` recurrence when
+    /// [`params::FOLLOW_PV_MODE`] is on. Empty on iteration 1, so `follow_pv`
+    /// marks only the root there — same as SF.
+    last_iter_pv: Vec<Move>,
     /// Score belonging to [`Self::last_best_move_pv`] (§3.5).
     pub last_best_move_score: Value,
     /// Iteration at which the best root move last changed — the
@@ -1098,6 +1105,7 @@ impl Worker {
             limits: Limits::new(),
             tm: TimeManager::new(),
             last_best_move_pv: Vec::new(),
+            last_iter_pv: Vec::new(),
             last_best_move_score: -VALUE_INFINITE,
             last_best_move_depth: 0,
             iter_value: [VALUE_DRAW; ITER_VALUE_RING],
@@ -1872,6 +1880,12 @@ impl Worker {
             for pv_idx in 0..multi_pv {
                 self.pv_idx = pv_idx;
                 self.sel_depth = 0; // per PV line (§3.9)
+                // SF search.cpp:367 — arm the follow-PV recurrence with THIS
+                // line's previous-iteration PV. Unconditional (the snapshot is
+                // inert while FOLLOW_PV_MODE is 0, whose gate lives at the
+                // node-entry write).
+                self.last_iter_pv
+                    .clone_from(&self.root_moves[pv_idx].previous_pv);
                 root_best_value = self.aspiration_search(tt, stop, search_again_counter);
                 // Order the completed lines among themselves (§3.5) — a
                 // no-op at MultiPV 1, but the shape is load-bearing for
@@ -2302,6 +2316,17 @@ impl Worker {
         self.stack[cur].in_check = in_check;
         self.stack[cur].move_count = 0;
         self.stack[cur].stat_score = 0;
+        // followPV (SF search.cpp:752-755, toggled by FOLLOW_PV_MODE): this
+        // node sits on the previous iteration's PV path iff its parent did
+        // AND the parent's move was that PV's move at the parent's ply. Read
+        // by N12's IIR exemption and the quiet-pruning PV-path exemption.
+        // At mode 0 the flag stays `false` everywhere — bit-identical to the
+        // pre-toggle tree (the P9 item-9 parked state).
+        self.stack[cur].follow_pv = params::FOLLOW_PV_MODE() != 0
+            && (NT::ROOT
+                || (self.stack[cur - 1].follow_pv
+                    && ply - 1 < self.last_iter_pv.len()
+                    && self.stack[cur - 1].current_move == self.last_iter_pv[ply - 1]));
         // Parent-move facts (design/10 §3.4 N2): `prev_sq` is the parent's
         // destination (None after a null move / at the root), `prior_capture`
         // whether the parent's move captured. Read by N6b's TT-cutoff parent
@@ -2896,7 +2921,8 @@ impl Worker {
             // (= !all_node) with no ttMove searches one ply shallower rather
             // than paying full price for a tree the TT can't seed. The P9
             // revert was the broad follow-PV-shaped form under PSQT eval;
-            // `follow_pv` stays inert until doc 10's plumbing lands.
+            // `follow_pv` is live iff FOLLOW_PV_MODE=1 (node-entry write),
+            // exempting the previous iteration's PV path exactly like SF.
             if !self.stack[cur].follow_pv
                 && (NT::PV || cut_node)
                 && depth >= params::IIR_MIN_DEPTH()
@@ -2913,7 +2939,12 @@ impl Worker {
                 - params::PROBCUT_BETA_IMPROVING() * Value::from(improving);
             if depth >= params::PROBCUT_MIN_DEPTH()
                 && !is_decisive(beta)
-                && self.stack[cur].excluded_move == Move::NULL
+                // PROBCUT_IN_VERIF=1 restores SF parity: SF has no
+                // excluded-move gate on the block (search.cpp:1037) — it
+                // skips only the excluded move itself inside the loop, which
+                // our `m == excluded_move` continue below already does.
+                && (params::PROBCUT_IN_VERIF() != 0
+                    || self.stack[cur].excluded_move == Move::NULL)
                 && !(is_valid(tt_value) && tt_value < probcut_beta)
             {
                 let probcut_depth = depth
@@ -3207,9 +3238,9 @@ impl Worker {
                 // Captures and checking moves (Wave-B item 8, design/10 §3.5)
                 // take their own futility/SEE gates; quiets — spared only on
                 // the last iteration's PV path at a PV node (`!follow_pv ||
-                // !PV`; `follow_pv` is inert until item 9 plumbs it, so this OR
-                // is currently always true) — take parent futility then
-                // negative-SEE pruning. The `else` already implies a quiet
+                // !PV`; `follow_pv` is written at node entry iff
+                // FOLLOW_PV_MODE=1, else always false and this OR is always
+                // true) — take parent futility then negative-SEE pruning. The `else` already implies a quiet
                 // non-check, so its condition drops the `!is_capture &&
                 // !gives_check` the capture arm now consumes.
                 if is_capture || gives_check {
@@ -3486,10 +3517,19 @@ impl Worker {
             // term demands a REAL value: VALUE_NONE (32002) would spuriously
             // pass `> alpha` on a TT miss (same guard idiom as ProbCut).
             if self.stack[cur].tt_pv {
+                // RED_TTPV_TTMISS_REBATE=1 restores SF parity: SF's miss
+                // sentinel VALUE_NONE passes `ttData.value > alpha`
+                // unconditionally (search.cpp:1292), so SF grants this term
+                // at every PV-flagged TT-miss node; our `is_valid` guard
+                // (ProbCut idiom) withholds it there.
                 r -= params::RED_TTPV_BASE()
                     + params::RED_TTPV_PV() * i32::from(NT::PV)
                     + params::RED_TTPV_TTVALUE()
-                        * i32::from(is_valid(tt_value) && tt_value > alpha)
+                        * i32::from(if is_valid(tt_value) {
+                            tt_value > alpha
+                        } else {
+                            params::RED_TTPV_TTMISS_REBATE() != 0
+                        })
                     + i32::from(tt_data.depth >= depth)
                         * (params::RED_TTPV_TTDEPTH_BASE()
                             + params::RED_TTPV_TTDEPTH_CUT() * i32::from(cut_node));
@@ -4329,6 +4369,23 @@ impl Worker {
         debug_assert!(!NT::ROOT, "qsearch is never Root-typed (§3.7.1)");
         debug_assert!(NT::PV || alpha == beta - 1, "NonPV requires a zero window");
         debug_assert!(-VALUE_INFINITE <= alpha && alpha < beta && beta <= VALUE_INFINITE);
+
+        // Upcoming repetition (SF search.cpp:1605-1611, toggled by QS_UPREP):
+        // SF runs the same alpha-raise that opens search() as the FIRST
+        // statement of qsearch too; ours historically covered only the entry
+        // node above the dive, so recursive qsearch nodes below the horizon
+        // forfeited the cutoff. Same `rule50 >= 3` short-circuit as the
+        // search() copy (a cycle needs at least 3 reversible plies).
+        if params::QS_UPREP() != 0
+            && alpha < VALUE_DRAW
+            && self.board.rule50_count() >= 3
+            && self.board.upcoming_repetition(ply as i32)
+        {
+            alpha = value_draw(self.nodes);
+            if alpha >= beta {
+                return alpha;
+            }
+        }
 
         // Step 2 — init.
         let cur = ss(ply);

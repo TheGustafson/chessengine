@@ -1326,6 +1326,42 @@ crate::tunables! {
     /// Denominator of the outer correction-bonus scaling.
     pub CORR_BONUS_SCALE_DEN: i32 = 1024;
 
+    // --- SF-parity structural toggles (2026-07-27 D33 reference-fidelity pass) ---
+    //
+    // Four mechanisms where our transcription structurally deviates from SF
+    // `eca43a97`, found by side-by-side reading (not by constant diffing —
+    // none of these is visible to a constants screen). Each is a 0/1 toggle,
+    // OFF by default so the engine is bit-identical to the pre-toggle tree;
+    // 1 = the SF-parity behavior. Screen each with tools/screen.py, SPRT the
+    // survivors, then fold the winner into the default and delete the toggle.
+
+    /// `followPV` tracking (SF search.cpp:752-755): mark nodes on the previous
+    /// iteration's PV path. The two consumers (IIR's exemption, the quiet-
+    /// pruning PV-path exemption at `!follow_pv || !PV`) have been reading a
+    /// never-assigned `false` since P9 item 9 was parked — with the flag dead,
+    /// we IIR-reduce and quiet-prune the very path the last iteration proved.
+    /// 0 = flag stays false everywhere (today's behavior); 1 = SF parity.
+    pub FOLLOW_PV_MODE: i32 = 0;
+    /// Upcoming-repetition alpha raise at QSEARCH entry (SF search.cpp:1606).
+    /// We run it in `search` only; SF runs it in both, so every qsearch node
+    /// below the horizon that could force a repetition draw while losing
+    /// forfeits the cutoff. 0 = search only (today); 1 = SF parity.
+    pub QS_UPREP: i32 = 0;
+    /// The ttPv reduction rebate's tt-value term on a TT MISS (SF
+    /// search.cpp:1292 `(ttData.value > alpha) * 838`): SF's miss sentinel
+    /// VALUE_NONE (32002) passes `> alpha` unconditionally, so SF grants the
+    /// rebate at every PV-flagged TT-miss node. Our `is_valid` guard was added
+    /// as ProbCut-idiom hygiene but makes us search ~0.8 ply SHALLOWER than SF
+    /// exactly where the TT has no answer. 0 = require a real value (today);
+    /// 1 = SF parity (grant on miss).
+    pub RED_TTPV_TTMISS_REBATE: i32 = 0;
+    /// ProbCut inside a singular verification (SF search.cpp:1037: no
+    /// excluded-move gate on the whole block; only the excluded move itself is
+    /// skipped in the loop, which our loop already does at the `m ==
+    /// excluded_move` continue). 0 = skip ProbCut wholesale under an exclusion
+    /// (today); 1 = SF parity.
+    pub PROBCUT_IN_VERIF: i32 = 0;
+
 }
 
 // ─── The eval-frame transforms (docs/research/eval-frame-scale-model-2026-07-27.md) ───
