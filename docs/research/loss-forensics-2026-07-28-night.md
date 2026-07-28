@@ -913,6 +913,22 @@ must, since it was priced at 12,500 nodes). If quality falls toward zero, the
 decomposition needs ~78 Elo from somewhere, and TM at ~38 plus the residual is
 where it goes. `headroom200k.py` is measuring that now.
 
+**A tension with this thesis, stated rather than buried.** `tm10c` finished at
+400 games: arm **51.4%, +9.6 ± 12.3 Elo**, and its clock curve shows the arm held
+**less** clock at every single move (−0.07 to −0.34 s) and searched **shallower**
+late (ddep −0.25 at move 40, −0.26 at 45, −0.43 at 60). So an arm that moved the
+clock the WRONG way did not lose. If holding clock back were worth 38 Elo,
+spending it earlier should have cost some.
+
+Two things keep that from refuting the thesis, and neither is an excuse:
+- **The perturbation is a tenth the size.** tm10c shifted 0.2–0.3 s; the gap to
+  Stockfish is 1.29–1.50 s. It tested a nudge, not the thesis.
+- **±12.3 Elo.** +9.6 is consistent with anything from −3 to +22, so it does not
+  measure the sign of a 5–10 Elo effect either way.
+
+It is still the only game-truth datum pointing away from the thesis, and it lowers
+my confidence in the ~38 Elo estimate from "well-grounded" to "worth one match".
+
 **What is untested: an arm in the RIGHT direction.** `tm10c` tested
 frame-scaled `FALLING_EVAL_*` and scored +10.8 ± 13.5 over 400 games — but the
 arm-verify showed it holds **less** clock at every move (−0.10 to −0.36 s) and
