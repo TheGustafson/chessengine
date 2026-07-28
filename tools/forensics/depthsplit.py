@@ -4,7 +4,7 @@ changes AND matches what a deep SF18 says, more depth alone would have saved
 it -> DEPTH/TIME. If it never changes, our eval is simply wrong -> EVAL.
 """
 import json,os,re,subprocess
-S=os.environ["S"]; NET=os.getcwd()+"/data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
+S=os.environ["S"]; NET=os.getcwd()+"/engines/canonical/net.cenn"
 def go(binary,fen,depth,net=True,wait=9):
     s="uci\n"+(f"setoption name EvalFile value {NET}\n" if net else "")
     s+=f"isready\nposition fen {fen}\ngo depth {depth}\n"

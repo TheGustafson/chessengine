@@ -81,7 +81,7 @@ def main() -> None:
     ap.add_argument("--expand", action="store_true",
                     help="treat the named params as class 3 (divide by s)")
     ap.add_argument("--engine", default="engines/bin/archon-d47v-tune-pgo")
-    ap.add_argument("--net", default="data/nnue/nets/screens/d47v-a4b2-cal400.cenn")
+    ap.add_argument("--net", default="engines/canonical/net.cenn")
     ap.add_argument("--fens", default="tools/nnue/calib/wl50.fens")
     ap.add_argument("--depth", type=int, default=10)
     args = ap.parse_args()

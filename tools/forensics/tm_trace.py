@@ -32,7 +32,7 @@ import subprocess
 import sys
 
 REPO = "/home/nick/projects/chessengine"
-NET = REPO + "/data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
+NET = REPO + "/engines/canonical/net.cenn"
 ENG = REPO + "/engines/bin/archon-d47v-pgo"
 TRACE = re.compile(
     r"TMTRACE d=(\d+) opt=(\d+) max=(\d+) fe=([\d.-]+) red=([\d.-]+) "

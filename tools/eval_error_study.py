@@ -56,7 +56,7 @@ import chess
 import chess.engine
 
 ARCHON = "engines/bin/archon-d47v-pgo"
-NET = "data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
+NET = "engines/canonical/net.cenn"
 SF18 = "engines/bin/stockfish18"
 
 AS = (-72.32565836, 185.93832038, -144.58862193, 416.44950446)

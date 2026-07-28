@@ -1,8 +1,16 @@
 # Greedy Search-Tree Optimization
 
-Everything needed for this effort lives in this folder. **Do not go looking elsewhere.**
-Nothing outside `searchopt/` is required to do this work, and wandering into the wider
-docs tree is how the 2026-07-28 session lost a day.
+Everything needed for this effort lives in this folder — guide, ledger, tools, positions.
+
+**Scope rule.** Reading and changing **ARCHON's own source** (`src/`) is expected and
+encouraged: the whole point is to find the line of code that discards the right move, and
+you cannot do that from outside the engine. Read `src/search/mod.rs`, add a tunable, add
+instrumentation — that is the work.
+
+What you should *not* do is wander the wider **docs/research** tree looking for context.
+It is a large pile of half-refuted narrative from earlier sessions, and going shopping in
+it is how the 2026-07-28 session lost a day. `LEDGER.md` here holds everything from it
+that survived.
 
 ---
 

@@ -27,7 +27,7 @@ verdict carries almost no information without `uciprobe.NULL_ARMS` measured
 beside it.
 """
 import json,os,re,subprocess,statistics as st
-S=os.environ["S"]; NET=os.getcwd()+"/data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
+S=os.environ["S"]; NET=os.getcwd()+"/engines/canonical/net.cenn"
 BIN="engines/bin/archon-d47v-tune-pgo"
 OFF=("setoption name RAZOR_BASE value 30000\nsetoption name RFP_MAX_DEPTH value 0\n"
      "setoption name PFUT_BASE value 30000\n"

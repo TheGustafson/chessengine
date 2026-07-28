@@ -41,7 +41,7 @@ import re
 import subprocess
 
 NODES_RE = re.compile(r"^Nodes searched  : (\d+)", re.M)
-NET = "data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
+NET = "engines/canonical/net.cenn"
 ENGINE = "target/release/chessengine"
 FENS = "tools/nnue/calib/scale-check-800.fens"
 

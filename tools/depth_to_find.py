@@ -59,7 +59,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
 ANNOT = re.compile(r"([-+]?\d+(?:\.\d+)?|[+-]?M\d+)/(\d+)\s+([\d.]+)s")
 INFO = re.compile(r"^info depth (\d+) .*? pv (\S+)", re.M)
-NET = "data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
+NET = "engines/canonical/net.cenn"
 
 
 def ladder(binary: str, fen: str, nodes: int, net: str | None) -> dict[int, str]:

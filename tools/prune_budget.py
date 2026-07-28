@@ -93,7 +93,7 @@ def bench(engine: str, net: str, depth: int, fens: str,
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--engine", default="target/release/chessengine")
-    ap.add_argument("--net", default="data/nnue/nets/screens/d47v-a4b2-cal400.cenn")
+    ap.add_argument("--net", default="engines/canonical/net.cenn")
     ap.add_argument("--fens", default="tools/nnue/calib/wl50.fens")
     ap.add_argument("--depth", type=int, default=10)
     ap.add_argument("--only", nargs="*", help="restrict to these labels")

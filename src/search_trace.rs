@@ -240,6 +240,9 @@ mod tests {
             sample_log2: 0,
             min_depth: 3,
             max_rows: 2,
+            no_latent: false,
+            all_moves: false,
+            considered: std::cell::Cell::new(0),
             rows: Vec::new(),
         };
         assert!(trace.should_sample(1, 2, 3, 4));

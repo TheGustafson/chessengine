@@ -43,7 +43,7 @@ import chess.engine
 # target/release/chessengine silently IGNORES EvalFile unless built
 # with sota,arch-d47v -- see assert_net_live below.
 ARCHON = os.environ.get("ARCHON_BIN", "target/qtrace/release/chessengine")
-NET = "data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
+NET = "engines/canonical/net.cenn"
 def assert_net_live(binary: str, net: str) -> None:
     """Refuse to run unless the net actually changes the search.
 

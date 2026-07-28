@@ -40,7 +40,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 REPO = "/home/nick/projects/chessengine"
-NET = REPO + "/data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
+NET = REPO + "/engines/canonical/net.cenn"
 OURS = REPO + "/engines/bin/archon-d47v-pgo"
 SF = REPO + "/engines/bin/stockfish18"
 

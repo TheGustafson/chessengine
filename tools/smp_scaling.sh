@@ -33,7 +33,7 @@ cd "$(dirname "$0")/.."
 DEPTH=${1:-12}
 THREADS=${2:-"1 2 4 8"}
 REPEATS=${3:-3}
-NET=${NET:-data/nnue/nets/screens/d47v-a4b2-cal400.cenn}
+NET=${NET:-engines/canonical/net.cenn}
 FENS=${FENS:-tools/nnue/calib/wl50.fens}
 BIN=${BIN:-engines/bin/archon-d47v-pgo}
 HASH=${HASH:-256}   # generous: a too-small TT throttles SMP and understates it

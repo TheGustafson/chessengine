@@ -54,7 +54,7 @@ import sys
 from pathlib import Path
 
 ARCHON = "engines/bin/archon-d47v-pgo"
-NET = "data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
+NET = "engines/canonical/net.cenn"
 SF16 = "engines/bin/stockfish16"
 SF18 = "engines/bin/stockfish18"
 

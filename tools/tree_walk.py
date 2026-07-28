@@ -30,7 +30,7 @@ import chess
 import chess.engine
 
 ARCHON = "target/release/chessengine"
-NET = "data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
+NET = "engines/canonical/net.cenn"
 SF18 = "engines/bin/stockfish18"
 OUR_SCALE = 0.64          # our UCI cp is raw internal, ~0.64x SF18's frame
 

@@ -18,7 +18,7 @@ import subprocess
 import sys
 
 REPO = "/home/nick/projects/chessengine"
-NET = REPO + "/data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
+NET = REPO + "/engines/canonical/net.cenn"
 
 # ---------------------------------------------------------------------------
 # FRAME.  Our engine prints RAW INTERNAL values; Stockfish's `to_cp` divides its

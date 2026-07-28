@@ -168,11 +168,13 @@ fi
 # Default OFF: it needs a second release build and an 84 MB gitignored net.
 # It is MANDATORY before merging anything touching src/eval/nnue/.
 if [ "${CHECK_NNUE_GATE:-0}" != "0" ]; then
-    nnue_net="${NNUE_GATE_NET:-data/nnue/nets/screens/d47v-a4b2-cal400.cenn}"
+    # The CANONICAL net/arch (engines/canonical/) — one place to change.
+    nnue_net="${NNUE_GATE_NET:-engines/canonical/net.cenn}"
+    nnue_arch="${NNUE_GATE_ARCH:-$(cat engines/canonical/arch.txt)}"
     nnue_fens="${NNUE_GATE_FENS:-tools/nnue/calib/wl50.fens}"
     if [ ! -f "$nnue_net" ]; then
         printf 'FAIL: CHECK_NNUE_GATE=1 but the net is missing: %s\n' "$nnue_net" >&2
-        printf '  Point NNUE_GATE_NET at a V-arch CENN, or unset the gate.\n' >&2
+        printf '  Point NNUE_GATE_NET at a matching-arch CENN, or unset the gate.\n' >&2
         exit 1
     fi
     step "NNUE behavioural gate (the sota build the bench pin cannot see)"
@@ -180,14 +182,14 @@ if [ "${CHECK_NNUE_GATE:-0}" != "0" ]; then
     # full rebuild on every alternation between the two feature sets.
     nnue_target="target/nnue-gate"
     RUSTFLAGS="-C target-cpu=x86-64-v3" cargo build --release \
-        --features sota,arch-d47v --target-dir "$nnue_target" --quiet || {
-        printf 'FAIL: the sota,arch-d47v release build failed\n' >&2
+        --features "$nnue_arch" --target-dir "$nnue_target" --quiet || {
+        printf 'FAIL: the %s release build failed\n' "$nnue_arch" >&2
         exit 1
     }
     nnue_bin="$nnue_target/release/chessengine"
 
     eval_hash=$("$nnue_bin" nnue-eval "$nnue_net" < "$nnue_fens" | sha256sum | cut -d' ' -f1)
-    NNUE_EVAL_PIN="${NNUE_EVAL_PIN-cd190d1b18e52f621cb0867e264359d3ce2cac2e6bdf65cdcdfc2005e9747f3d}"
+    NNUE_EVAL_PIN="${NNUE_EVAL_PIN-d82caf8aa4e3cca8ea9be5dc9918e192733d14b76f0b2006c0da02b36e9f8163}"
     printf '  eval hash  : %s\n' "$eval_hash"
     if [ -n "$NNUE_EVAL_PIN" ] && [ "$eval_hash" != "$NNUE_EVAL_PIN" ]; then
         printf '\nFAIL: NNUE eval hash is %s,\n      pin is %s\n' \
@@ -203,7 +205,7 @@ if [ "${CHECK_NNUE_GATE:-0}" != "0" ]; then
     # an empty string and a spurious pass-turned-failure.
     nnue_nodes=$("$nnue_bin" bench 16 1 13 "$nnue_fens" depth "$nnue_net" 2>&1 >/dev/null \
         | sed -n 's/^Nodes searched  : //p')
-    NNUE_NODE_PIN="${NNUE_NODE_PIN-2068701}"
+    NNUE_NODE_PIN="${NNUE_NODE_PIN-1972607}"
     printf '  d13 nodes  : %s\n' "$nnue_nodes"
     if [ -n "$NNUE_NODE_PIN" ] && [ "$nnue_nodes" != "$NNUE_NODE_PIN" ]; then
         printf '\nFAIL: NNUE d13 wl50 node total is %s, pin is %s\n' \

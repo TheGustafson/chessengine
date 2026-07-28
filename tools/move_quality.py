@@ -61,7 +61,7 @@ import sys
 import chess
 import chess.engine
 
-NET = "data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
+NET = "engines/canonical/net.cenn"
 ENGINE = "target/release/chessengine"
 ORACLE = "engines/bin/stockfish18"
 CACHE = "tools/nnue/calib/oracle-multipv.json"

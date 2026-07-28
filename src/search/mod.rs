@@ -198,7 +198,7 @@ pub fn value_draw(nodes: u64) -> Value {
 #[inline]
 pub fn value_draw_contempt(nodes: u64, ply: usize) -> Value {
     let c = params::DRAW_CONTEMPT();
-    value_draw(nodes) + if ply % 2 == 0 { -c } else { c }
+    value_draw(nodes) + if ply.is_multiple_of(2) { -c } else { c }
 }
 
 /// Map the search/TT bound to the Observation-Store bound (design/16 §3.5.5).
@@ -3850,8 +3850,8 @@ impl Worker {
 
             #[cfg(feature = "search-control")]
             if trace_selected {
-                let latent = trace_latent
-                    .unwrap_or_else(|| Box::new([0i16; crate::eval::nnue::L1 * 2]));
+                let latent =
+                    trace_latent.unwrap_or_else(|| Box::new([0i16; crate::eval::nnue::L1 * 2]));
                 let row = crate::search_trace::LmrObservation {
                     position_key: key,
                     fen: self.board.to_fen(),

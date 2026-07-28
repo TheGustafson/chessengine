@@ -98,7 +98,7 @@ def prior(name: str, ov: dict) -> list[dict]:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from arm_screen import FAMILIES, round_away  # noqa: E402
 
-NET = "data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
+NET = "engines/canonical/net.cenn"
 # target/release/chessengine silently IGNORES EvalFile unless built
 # with sota,arch-d47v -- see assert_net_live below.
 ENGINE = os.environ.get("ARCHON_BIN", "target/qtrace/release/chessengine")

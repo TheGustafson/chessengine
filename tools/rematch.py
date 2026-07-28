@@ -74,7 +74,7 @@ except ModuleNotFoundError:  # pragma: no cover
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from screen import assert_net_live  # noqa: E402  (also the net-live guard)
 ARCHON = os.environ.get("ARCHON_MATCH_BIN", "engines/bin/archon-d47v-pgo")
-NET = os.environ.get("ARCHON_NET", "data/nnue/nets/screens/d47v-a4b2-cal400.cenn")
+NET = os.environ.get("ARCHON_NET", "engines/canonical/net.cenn")
 SF18 = "engines/bin/stockfish18"
 FASTCHESS = "engines/bin/fastchess"
 BOOK = "engines/books/UHO_Lichess_4852_v1.epd"

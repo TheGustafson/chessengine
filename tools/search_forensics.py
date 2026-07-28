@@ -46,7 +46,7 @@ import subprocess
 import sys
 
 ARCHON = "target/release/chessengine"
-NET = "data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
+NET = "engines/canonical/net.cenn"
 SF18 = "engines/bin/stockfish18"
 FENS = "tools/nnue/calib/scale-check-800.fens"
 OUR_SCALE = 0.64
