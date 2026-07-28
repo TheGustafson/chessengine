@@ -76,9 +76,38 @@ Two facts about it:
 - It costs a **magic attack lookup per quiet move**, at every main-search node
   where any undefended enemy piece exists — which is most of them.
 
-That combination (unvalidated, in the hot loop, ours to change freely) makes
-it the highest-value single knob in this file. The test is two-stage and the
-stages measure different things:
+**RESULT (4000 positions, net-live, `nice 19`).** My hypothesis was that this
+was dead weight in the hot loop. It is not, and the arm that was supposed to
+confirm it says the opposite:
+
+| arm | cp@4k | cp@16k | cp@64k | top-1 | nodes | fhf |
+|---|---:|---:|---:|---:|---:|---:|
+| control (=10) | 5.38 | 4.57 | 4.64 | 66.5% | base | 85.56 |
+| =0 | +0.07±0.18 | +0.10±0.18 | +0.20±0.19 | 65.5% | −0.2% | 86.05 |
+| =20 | +0.07±0.18 | +0.02±0.17 | −0.16±0.18 | 66.4% | **+7.8%** | 84.67 |
+
+Verdict: **leave it at 10.** Removing it holds its sign across all three tiers
+and costs a full point of top-1, so the term is doing something. Doubling it
+fails the tier-consistency rule outright (+0.07 / +0.02 / −0.16 — the sign
+flips), and buys its deep-tier flicker with **+7.8% nodes**, which at ~120 Elo
+per doubling is ~13 Elo of speed given away for a 0.9σ cp move.
+
+Two things worth keeping from it:
+
+- **fhf and cp moved in OPPOSITE directions.** Removing the term *raised* fhf
+  (85.56 → 86.05) while *worsening* every cp tier. A cheap ordering proxy and
+  decision quality are not the same axis, and this is a concrete instance —
+  more reason fhf stays a filter and never a verdict.
+- The node cost is strongly non-linear: 0 → −0.2%, 20 → +7.8%. A stronger
+  offense bonus displaces genuinely good moves rather than merely reordering
+  ties.
+
+The remaining half of the question — what the *computation* costs, as opposed
+to the bonus — is unpriced, and under the Elo decomposition
+(`elo-decomposition-2026-07-27.md`) it competes for the ~58 Elo speed pool
+rather than the ~133 Elo quality pool, so it drops down the queue.
+
+The original two-stage plan, kept because the distinction still matters:
 
 1. `QUIET_OFFENSE_FACTOR=0` — measures whether the **bonus** is worth
    anything. Cheap, deterministic, already tunable.
