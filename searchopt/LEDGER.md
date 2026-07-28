@@ -267,6 +267,17 @@ time — the arm's own 406-game PGN already contained it.
 mechanism-level account of why it lost 49.6 Elo, and independently reproduces the
 "too wide" end of the bracket.
 
+#### The churn statistic, nulled (2026-07-28)
+| check | result | what it means |
+|---|---|---|
+| within-match bootstrap on `asp30`'s ratio (2,000 resamples) | **0.877, 95% CI [0.814, 0.948]** | **excludes 1.0 — the reduction is real.** Arm and base play EACH OTHER in the same games, so this comparison is paired and opponent-controlled |
+| base side of `asp30` vs base side of `asp100` — both unmodified ARCHON | 0.898 (10.2% apart) | **NOT a null for the above.** It confounds opponent: base faced a different engine in each match, hence a different position mix. It IS the null for CROSS-match comparisons |
+
+⇒ Worth stating because I nearly talked myself out of a valid result with an invalid
+null: a 10% cross-match spread does not impeach a 12% within-match paired effect. It
+does confirm that the cross-match comparison declined below ("asp30 closes 85% of the
+gap to SF's 0.0281") would have been noise-dominated — declining it was correct.
+
 ⇒ **Caveat, because the story is now elegant (README §2 rule 6):** the arm/base numbers
 come from a SELF-PLAY match and the SF comparison from a different match against a
 different opponent, so "asp30 closes ~85% of the gap to SF's 0.0281" would be a
