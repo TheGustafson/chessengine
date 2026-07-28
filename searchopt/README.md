@@ -134,6 +134,34 @@ never have formed.
 
 ---
 
+## 4b. BUILDING A FRESH CORPUS (do this after any net change)
+
+The corpus is net-specific: positions mined from a D47V engine say nothing about
+where D48X discards moves. Full loop, all inside this folder:
+
+```bash
+# 1. play the canonical engine against the oracle (~700 games, 10+0.1, UHO book)
+engines/canonical/archon  vs  engines/bin/stockfish18       # see results/ for the cmd
+
+# 2. oracle-score EVERY one of our moves in every LOST game
+uv run --with chess python searchopt/tools/mine_losses.py \
+    --pgn engines/runs/<run>/games.pgn --out searchopt/positions/losses.json
+
+# 3. split by whose defect it is
+python3 searchopt/tools/classify_losses.py --losses searchopt/positions/losses.json
+```
+
+`mine_losses.py` scores every move with SF18 rather than triggering on our own
+eval collapsing: the previous detector did that and had **~9% recall**, because a
+refutation landing ten plies later is invisible to it. It ranks by **win
+probability**, not centipawns — cp does not sum into outcomes, and one large
+error at a decision point converts a result while many small ones are absorbed.
+
+`classify_losses.py` produces `ours.json` / `both.json` / `neither.json`.
+**Work `ours.json`.** `both.json` is position hardness (SF blunders there too at
+our budget) and `neither.json` is context or instability; neither is a search
+defect you can fix.
+
 ## 5. FILES
 
 ```
@@ -143,9 +171,10 @@ searchopt/
   tools/uciprobe.py    persistent-stdin UCI harness + frame conversion
   tools/searchdbg.py   the search debugger (needs archon-trace)
   tools/build.sh       build the instrumented binary correctly
-  positions/ours.json      the 14 that indict us  <- work here
-  positions/hard.json      the 15 needing >=4x SF's nodes
-  positions/decidable.json all 44, with oracle move and wp_loss
+  tools/mine_losses.py     oracle-score every move in every lost game
+  tools/classify_losses.py split into OURS / BOTH / NEITHER
+  positions/ours.json      the actionable set  <- work here
+  positions/*.json         both/neither/losses/classified, plus the D47V-era sets
   results/             one file per position walked, named by FEN slug
 ```
 

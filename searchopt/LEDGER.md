@@ -49,6 +49,21 @@ known.** Add to this file rather than to prose elsewhere.
 | `RFP_THREAT_MARGIN` 55→0 (an ARCHON original, never individually tested before) | **−3.5 ± 14.1**, n=1185 |
 | LMR −30% (`RED_TABLE_NUM` 1984) | **−11.6 Elo**, n=628 |
 
+## D48X TRANSITION (2026-07-28)
+
+The canonical net is now **D48X** (`engines/canonical/`), and **the corpus below was
+mined from D47V games** — it is stale until re-mined. Everything in ESTABLISHED that is a
+statement about *our engine's behaviour on specific positions* must be re-measured; the
+methodological entries (what instruments are admissible) carry over unchanged.
+
+Verified working under D48X: `searchdbg.py` (traces, 5,938 rows on a sample position),
+`uciprobe.NET` (resolves to `engines/canonical/net.cenn`), `mine_losses.py`,
+`classify_losses.py`. `engines/bin/archon-trace` was rebuilt for `arch-d48x` — the old
+D47V build failed with `acc_width 1280 != 768`, which is what an arch mismatch looks like.
+
+A fresh corpus match (canonical vs SF18, same protocol as the D47V one so the two are
+comparable) is running: `engines/runs/corpus-d48x/`.
+
 ## OPEN
 
 - **Which node discards the right move, on each of the 14 OURS positions.** Only P1 and
