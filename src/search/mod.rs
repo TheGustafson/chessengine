@@ -178,6 +178,29 @@ pub fn value_draw(nodes: u64) -> Value {
     VALUE_DRAW - 1 + (nodes & 0x2) as Value
 }
 
+/// [`value_draw`] with CONTEMPT: how much worse than equality a draw is judged,
+/// from the ROOT side's point of view.
+///
+/// 2026-07-28, walking loss P2 to its bottom. At the error node ARCHON plays
+/// `Rxh7+`, a genuine perpetual worth exactly −1, instead of `Qh3` which mates
+/// at d18. That −1 then becomes alpha and STARVES the winning sibling:
+/// `searchmoves={Qh3,Rxh7+}` spends 52,407 nodes and finds nothing, while
+/// `searchmoves={Qh3}` finds the mate in 260,666 — an order of magnitude of
+/// allocation lost to a move worth a draw. Stockfish never plays that blunder
+/// at ANY budget from 50k up; we still play it at 1M and need 2M to stop.
+///
+/// A draw scored slightly below equality cannot set alpha as cheaply, so the
+/// winning alternative keeps a usable window. Negamax returns values from the
+/// node's own perspective, so the sign alternates with ply parity: at even ply
+/// the side to move IS the root side and a draw is worth −contempt to it.
+///
+/// DEFAULT 0 ⇒ bit-identical to before; only a `--features tune` build moves it.
+#[inline]
+pub fn value_draw_contempt(nodes: u64, ply: usize) -> Value {
+    let c = params::DRAW_CONTEMPT();
+    value_draw(nodes) + if ply % 2 == 0 { -c } else { c }
+}
+
 /// Map the search/TT bound to the Observation-Store bound (design/16 §3.5.5).
 /// The two enums disagree on discriminants; `tt::Bound::None` (only seen when
 /// `!tt_hit`, where the field is not meaningful) maps to the store's default.
@@ -2291,7 +2314,7 @@ impl Worker {
             && alpha < VALUE_DRAW
             && self.board.upcoming_repetition(ply as i32)
         {
-            alpha = value_draw(self.nodes);
+            alpha = value_draw_contempt(self.nodes, ply);
             if alpha >= beta {
                 return alpha;
             }
@@ -2372,7 +2395,7 @@ impl Worker {
                         ply,
                     )
                 } else {
-                    value_draw(self.nodes)
+                    value_draw_contempt(self.nodes, ply)
                 };
             }
 
@@ -4416,7 +4439,7 @@ impl Worker {
             && self.board.rule50_count() >= 3
             && self.board.upcoming_repetition(ply as i32)
         {
-            alpha = value_draw(self.nodes);
+            alpha = value_draw_contempt(self.nodes, ply);
             if alpha >= beta {
                 return alpha;
             }

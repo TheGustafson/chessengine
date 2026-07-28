@@ -460,6 +460,21 @@ crate::tunables! {
     /// DEFAULT 0 — the default build is bit-identical and the `Bench:` pin is
     /// untouched. Only a `--features tune` build can move it.
     pub RED_GIVES_CHECK: i32 = 0;
+
+    /// Draw contempt: how much worse than equality a draw is judged, from the
+    /// ROOT side's point of view (our internal units).
+    ///
+    /// Motivated by loss P2 (2026-07-28): we take a perpetual worth −1 rather
+    /// than search for a win, and that −1 sets alpha and starves the winning
+    /// sibling by ~5× in nodes (52,407 vs 260,666 with the draw excluded). SF
+    /// never plays that blunder at any budget from 50k; we need 2M to stop.
+    ///
+    /// This is a NEW conditioning axis, not a re-tune: every existing global
+    /// pruning/reduction constant was shown to sit at a local optimum at equal
+    /// nodes (docs/research/TAKEOVER-2026-07-28.md §2d).
+    ///
+    /// DEFAULT 0 — bit-identical default build, `Bench:` pin untouched.
+    pub DRAW_CONTEMPT: Value = 0;
     /// Per-move-count reduction discount `r -= RED_MOVECOUNT * move_count`: later
     /// moves in the list reduce a little less than the raw log table implies
     /// (they were tried later precisely because ordering distrusted them, §3.7).
