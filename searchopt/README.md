@@ -180,3 +180,35 @@ engines/books/d48x-corpus-openings.epd   all 203 corpus openings — the test bo
 - `RED_GIVES_CHECK` as a validated arm — its evidence died to the opposite-direction control.
 - **Blunder-hunting as the organising frame.** 0.46% of moves, 44% of those artifacts,
   one actionable position in 404 games. It is not how we lose.
+
+---
+
+## 7. Regenerating the test book
+
+`engines/books/d48x-corpus-openings.epd` is the right book for any arm test — all 203
+corpus openings, wins included, so there is no selection bias. `engines/books/` is
+gitignored, so if it is missing:
+
+```bash
+python3 - <<'PY'
+import re
+txt=open('engines/runs/corpus-d48x/games.pgn',errors='ignore').read()
+fens=sorted({m.group(1) for m in re.finditer(r'\[FEN "([^"]+)"\]', txt)})
+open('engines/books/d48x-corpus-openings.epd','w').write('\n'.join(fens)+'\n')
+print(len(fens), 'openings')
+PY
+```
+
+Equal-nodes match template (contention-immune — several rungs can share the box):
+
+```bash
+fastchess -engine cmd=engines/canonical/archon name=archon \
+            option.EvalFile=engines/canonical/net.cenn option.Hash=64 option.Threads=1 \
+          -engine cmd=engines/bin/stockfish18 name=sf18 option.Hash=64 option.Threads=1 \
+          -each nodes=110000 proto=uci \
+          -openings file=engines/books/d48x-corpus-openings.epd format=epd order=sequential \
+          -rounds 203 -repeat -games 2 -concurrency 12 \
+          -pgnout file=engines/runs/<name>/games.pgn
+```
+
+Baselines to beat, same book, same opponent: **−134 Elo at 10+0.1**, **−68 at 110k nodes**.
