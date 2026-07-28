@@ -46,6 +46,13 @@ over D47V should *widen*. If search improves measurably and the margin stays fla
 worsens, the premise is wrong and the canonical net should revert. Re-run
 `engines/runs/d48x-vs-v` after any landed search gain and record the delta here.
 
+## Loss corpus for this net
+
+`searchopt/positions/` was re-mined for D48X from a **404-game** match vs SF18
+(`engines/runs/corpus-d48x`, −132.4 [−157.6, −108.4] Elo, 165 lost games). Corpora are
+net-specific and carry a provenance stamp; `classify_losses.py` warns if the corpus was
+mined with a different net than the one canonical at the time.
+
 ## Changing the canonical net
 
 1. `ln -sfn ../../data/nnue/nets/screens/<new>.cenn engines/canonical/net.cenn`
