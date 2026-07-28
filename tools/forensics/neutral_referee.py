@@ -58,6 +58,8 @@ def bucket(n: int) -> str:
 
 
 def worker(job):
+    import chess
+
     fens, nodes, probe = job
     a_eng = Engine(OURS, net=NET, hash_mb=16, name="archon")
     s_eng = Engine(SF, net=None, hash_mb=16, name="sf18")
@@ -77,18 +79,41 @@ def worker(job):
         if not rr["ladder"]:
             continue
         top = rr["ladder"][max(rr["ladder"])]
-        best, bcp = top["move"], top["score"]
+        best = top["move"]
+        # price the BEST move the same way as the others (child search, negated)
+        # so truth and candidates are on one scale
+        b0 = chess.Board(fen)
+        try:
+            b0.push(chess.Move.from_uci(best))
+        except Exception:  # noqa: BLE001
+            continue
+        r_eng.newgame()
+        pb = r_eng.go(fen=b0.fen(), nodes=probe)
+        if not pb["ladder"]:
+            continue
+        bcp = -pb["ladder"][max(pb["ladder"])]["score"]
+        # Price a move by searching the CHILD and negating, NOT by searchmoves:
+        # Reckless silently IGNORES searchmoves (verified -- forced to a bad move
+        # it still returns its own best), which made every probe return the free
+        # search value and every loss read exactly 0.  Pushing the move needs no
+        # engine cooperation and works for any UCI engine.
         vals = {best: bcp}
         ok = True
         for mv in {a, s}:
             if mv in vals:
                 continue
-            r_eng.newgame()
-            p = r_eng.go(fen=fen, nodes=probe, searchmoves=[mv])
-            if not p["ladder"]:
+            b = chess.Board(fen)
+            try:
+                b.push(chess.Move.from_uci(mv))
+            except Exception:  # noqa: BLE001
                 ok = False
                 break
-            vals[mv] = p["ladder"][max(p["ladder"])]["score"]
+            r_eng.newgame()
+            pr = r_eng.go(fen=b.fen(), nodes=probe)
+            if not pr["ladder"]:
+                ok = False
+                break
+            vals[mv] = -pr["ladder"][max(pr["ladder"])]["score"]
         if not ok:
             continue
         out.append((fen, a == best, s == best,
