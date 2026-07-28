@@ -237,6 +237,37 @@ fn unc_tm_factor(root_sigma: f32, sigma_bar: f32, c2: f32) -> f64 {
     f64::from((1.0 + c2 * (root_sigma - sigma_bar) / sigma_bar).clamp(0.8, 1.25))
 }
 
+/// Head-free TM soft-stop decisiveness scale (2026-07-28, searchopt): a root
+/// the SEARCH itself already calls decided earns less clock, banked for
+/// genuinely contested moves later in the game.
+///
+/// This is [`wdl_tm_factor`]'s idea without the net dependency. That one reads
+/// `|P(win) − P(loss)|` from a WDL sidecar and [`unc_tm_factor`] reads a σ̂
+/// head; **D48X carries neither, so both are measurably inert** — with the
+/// coefficients forced on, `ARCHON_TM_TRACE` emits byte-identical soft-stop
+/// sequences. The settled root score is already in hand at every soft-stop
+/// decision, so this factor works on any net and needs no retrain.
+///
+/// Shrink-only ([`TM_SCORE_FLOOR`], 1.0], mirroring `wdl_tm_factor`): the
+/// "unclear → think longer" direction belongs to `unc_tm_factor`, and keeping
+/// the two one-directional keeps them independently attributable.
+///
+/// Returns exactly `1.0` when disabled (`TM_SCORE_C == 0`, the default) or on a
+/// non-finite score, so `total_time` is bit-identical and the four-factor
+/// golden tests hold.
+#[inline]
+fn score_tm_factor(best_value: Value, c_num: i32, knee: Value) -> f64 {
+    if c_num == 0 || knee <= 0 || !is_valid(best_value) {
+        return 1.0;
+    }
+    // `saturating_abs` rather than `abs`: a mate score sits near `Value::MIN`
+    // and a plain negation would overflow in debug. Saturating is also the
+    // right semantics here — a mate IS maximally decided, and clamping to the
+    // knee below discards the magnitude anyway.
+    let decisiveness = f64::from(best_value.saturating_abs().min(knee)) / f64::from(knee);
+    (1.0 - f64::from(c_num) / 1024.0 * decisiveness).clamp(params::TM_SCORE_FLOOR(), 1.0)
+}
+
 /// Multi-head consumer (D41 rich-net, 2026-07-21): TM soft-stop decisiveness
 /// scale from the ROOT WDL head. A root the head already calls decided
 /// (|P(win) − P(loss)| high) earns LESS clock — bank it for genuinely
@@ -254,19 +285,6 @@ fn wdl_tm_factor(root_decisiveness: f32, c3: f32) -> f64 {
     f64::from((1.0 - c3 * root_decisiveness).clamp(0.8, 1.0))
 }
 
-/// The late-move-pruning move-count threshold (design/10 §3.5, the move
-/// loop's LMP): once the running `move_count` reaches
-/// `(LMP_BASE + depth²) / (2 - improving)`, the picker is told to stop
-/// emitting quiets ([`MovePicker::skip_quiet_moves`]). The threshold is
-/// quadratic in depth — a deeper node trusts its move ordering less, so it
-/// tries more moves before movecount pruning bites — and the `improving`
-/// flag halves the divisor: a node whose eval is not improving distrusts its
-/// late quiets and prunes them roughly twice as early.
-///
-/// Integer division truncates toward zero exactly like the Stockfish source
-/// this re-expresses (D27); the numerator `LMP_BASE + depth²` is always
-/// positive, so the truncation is a plain floor.
-#[inline]
 /// Feature-gated qsearch decision trace (`--features search-control`,
 /// enabled at runtime by `ARCHON_QTRACE=1`).
 ///
@@ -290,6 +308,19 @@ fn qtrace(ply: usize, alpha: Value, beta: Value, stand: Value, mv: &str, verdict
 #[inline(always)]
 fn qtrace(_: usize, _: Value, _: Value, _: Value, _: &str, _: &str) {}
 
+/// The late-move-pruning move-count threshold (design/10 §3.5, the move
+/// loop's LMP): once the running `move_count` reaches
+/// `(LMP_BASE + depth²) / (2 - improving)`, the picker is told to stop
+/// emitting quiets ([`MovePicker::skip_quiet_moves`]). The threshold is
+/// quadratic in depth — a deeper node trusts its move ordering less, so it
+/// tries more moves before movecount pruning bites — and the `improving`
+/// flag halves the divisor: a node whose eval is not improving distrusts its
+/// late quiets and prunes them roughly twice as early.
+///
+/// Integer division truncates toward zero exactly like the Stockfish source
+/// this re-expresses (D27); the numerator `LMP_BASE + depth²` is always
+/// positive, so the truncation is a plain floor.
+#[inline]
 fn lmp_move_count(depth: Depth, improving: bool) -> i32 {
     // The depth² term carries a coefficient (identity at 1024) because it,
     // not LMP_BASE, is what actually sets this threshold — see LMP_DEPTH_MULT.
@@ -4964,6 +4995,11 @@ impl Worker {
 
         let mut total_time =
             self.tm.optimum() as f64 * falling_eval * reduction * instability * effort;
+        // Head-free decisiveness scale (searchopt 2026-07-28). Unlike the two
+        // factors below it needs no net head, so it is NOT `sota`-gated and is
+        // live on every build. Exactly 1.0 at the default `TM_SCORE_C = 0`, so
+        // `total_time` is bit-identical and the four-factor golden tests hold.
+        total_time *= score_tm_factor(best_value, params::TM_SCORE_C(), params::TM_SCORE_KNEE());
         // EXP-UNC-1 consumer 2: position-condition the time budget by the root
         // value uncertainty. unc_tm_factor is exactly 1.0 when disabled or before
         // a root σ̂ exists, so total_time is unchanged and the four-factor golden
