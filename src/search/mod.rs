@@ -237,9 +237,8 @@ fn unc_tm_factor(root_sigma: f32, sigma_bar: f32, c2: f32) -> f64 {
     f64::from((1.0 + c2 * (root_sigma - sigma_bar) / sigma_bar).clamp(0.8, 1.25))
 }
 
-/// Head-free TM soft-stop decisiveness scale (2026-07-28, searchopt): a root
-/// the SEARCH itself already calls decided earns less clock, banked for
-/// genuinely contested moves later in the game.
+/// Head-free TM soft-stop **contestedness** scale (2026-07-28, searchopt):
+/// scale the clock by how *undecided* the SEARCH's own root score is.
 ///
 /// This is [`wdl_tm_factor`]'s idea without the net dependency. That one reads
 /// `|P(win) − P(loss)|` from a WDL sidecar and [`unc_tm_factor`] reads a σ̂
@@ -248,9 +247,24 @@ fn unc_tm_factor(root_sigma: f32, sigma_bar: f32, c2: f32) -> f64 {
 /// sequences. The settled root score is already in hand at every soft-stop
 /// decision, so this factor works on any net and needs no retrain.
 ///
-/// Shrink-only ([`TM_SCORE_FLOOR`], 1.0], mirroring `wdl_tm_factor`): the
-/// "unclear → think longer" direction belongs to `unc_tm_factor`, and keeping
-/// the two one-directional keeps them independently attributable.
+/// # Why it keys on CONTESTEDNESS and not decisiveness
+///
+/// The first cut of this was shrink-only on decided roots, mirroring
+/// `wdl_tm_factor`. **That has the wrong sign for the measurement that
+/// motivated it**, a point the NNUE architecture study made about
+/// `ARCHON_WDL_TM_C3` and which applies here identically. Measured at 10+0.1,
+/// normalised by each engine's own mean, we under-spend against SF18 at BOTH
+/// extremes — 0.559 vs 0.679 when balanced, 0.546 vs 0.819 when clearly winning
+/// — while over-spending in the 1.5–3.0 band. Shrinking decided roots pushes
+/// the winning band *further* from SF and only reaches the balanced band
+/// indirectly, by banking clock for later moves.
+///
+/// So the factor keys on `contested = 1 − min(|score|, KNEE)/KNEE`, which is 1
+/// at a dead-level root and 0 once the score reaches the knee. **The sign of
+/// `TM_SCORE_C` then selects the hypothesis** rather than the code assuming
+/// one: positive spends more on contested roots (the direct reading of the
+/// measurement), negative spends less (the bank-it-for-later reading). Both are
+/// reachable from one tunable, so the game decides which is right instead of me.
 ///
 /// Returns exactly `1.0` when disabled (`TM_SCORE_C == 0`, the default) or on a
 /// non-finite score, so `total_time` is bit-identical and the four-factor
@@ -264,8 +278,9 @@ fn score_tm_factor(best_value: Value, c_num: i32, knee: Value) -> f64 {
     // and a plain negation would overflow in debug. Saturating is also the
     // right semantics here — a mate IS maximally decided, and clamping to the
     // knee below discards the magnitude anyway.
-    let decisiveness = f64::from(best_value.saturating_abs().min(knee)) / f64::from(knee);
-    (1.0 - f64::from(c_num) / 1024.0 * decisiveness).clamp(params::TM_SCORE_FLOOR(), 1.0)
+    let contested = 1.0 - f64::from(best_value.saturating_abs().min(knee)) / f64::from(knee);
+    (1.0 + f64::from(c_num) / 1024.0 * contested)
+        .clamp(params::TM_SCORE_FLOOR(), params::TM_SCORE_CEIL())
 }
 
 /// Multi-head consumer (D41 rich-net, 2026-07-21): TM soft-stop decisiveness

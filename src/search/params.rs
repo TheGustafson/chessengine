@@ -1176,25 +1176,32 @@ crate::tunables! {
     // coefficients forced on). This one reads the SEARCH's own settled root
     // score, so it needs no head, no sidecar and no retrain.
     //
-    // SHAPE. `1 − (TM_SCORE_C/1024) · min(|score|, KNEE)/KNEE`, floored at
-    // `TM_SCORE_FLOOR`: a decided root earns less clock and the saving banks
-    // toward contested moves later in the game. Shrink-only, deliberately — the
-    // symmetric "spend more when unclear" direction is `unc_tm_factor`'s job, and
-    // keeping the two one-directional keeps them independently attributable.
+    // SHAPE. `1 + (TM_SCORE_C/1024) · contested`, where
+    // `contested = 1 − min(|score|, KNEE)/KNEE` is 1 at a dead-level root and 0
+    // once the score reaches the knee, clamped to [FLOOR, CEIL]. TWO-SIDED on
+    // purpose: the sign of TM_SCORE_C picks which hypothesis is under test
+    // rather than the code baking one in.
     //
     // DEFAULT 0 = EXACTLY 1.0, so `total_time` is bit-identical and the
     // four-factor golden tests hold. `bench` is depth-limited, so
     // `use_time_management()` is false and the soft stop never runs there — the
     // `Bench:` pin cannot move regardless.
-    /// Decisiveness shrink coefficient in 1024ths. **0 = off (default).**
+    /// Contestedness coefficient in 1024ths. **0 = off (default).**
+    /// **Signed, and the sign selects the hypothesis:** positive spends MORE on
+    /// contested roots (the direct reading of the allocation measurement),
+    /// negative spends LESS (the bank-clock-for-later reading). The first cut of
+    /// this knob was shrink-on-decided only, which has the wrong sign for its own
+    /// motivating measurement — see `score_tm_factor`'s docs.
     pub TM_SCORE_C: i32 = 0;
     /// Root score at which the shrink saturates, in OUR internal units (a pawn
     /// is ~207 here, not ~385 — this is an eval-frame quantity, so do NOT
     /// transcribe a Stockfish number into it).
     pub TM_SCORE_KNEE: Value = 400;
-    /// Floor on the factor, matching `wdl_tm_factor`'s [0.8, 1.0] band so a
-    /// decided root can never be starved below 80% of its budget.
+    /// Floor on the factor: a root can never be starved below 80% of its budget.
     pub TM_SCORE_FLOOR: f64 = 0.8;
+    /// Ceiling on the factor, matching `unc_tm_factor`'s upper clamp so a
+    /// contested root can never claim more than 125% of its budget.
+    pub TM_SCORE_CEIL: f64 = 1.25;
 
     // The four soft-stop factors multiply into the plain `optimum` budget
     // (design/12 §3.9, step 8). Each is an SF-current fitted value (D20); the
