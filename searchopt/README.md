@@ -1,258 +1,182 @@
-# Greedy Search-Tree Optimization
+# Search optimization — method
 
-Everything needed for this effort lives in this folder — guide, ledger, tools, positions.
+Everything for this effort lives in this folder: guide, ledger, tools, positions.
 
-**Scope rule.** Reading and changing **ARCHON's own source** (`src/`) is expected and
-encouraged: the whole point is to find the line of code that discards the right move, and
-you cannot do that from outside the engine. Read `src/search/mod.rs`, add a tunable, add
-instrumentation — that is the work.
+**Scope.** Reading and changing ARCHON's own source (`src/`) is the work. What you should
+NOT do is wander `docs/research/` for context — it is half-refuted narrative, and shopping
+in it is how 2026-07-28 lost a day. `LEDGER.md` holds everything that survived.
 
-**The net is OUT OF SCOPE.** NNUE training, architecture, accumulator width, retraining —
-none of it is searchopt work and none of it is the agent's decision. Those are human calls
-made outside this folder. You change search code in `src/` and nothing else.
-
-What you should *not* do is wander the wider **docs/research** tree looking for context.
-It is a large pile of half-refuted narrative from earlier sessions, and going shopping in
-it is how the 2026-07-28 session lost a day. `LEDGER.md` here holds everything from it
-that survived.
+**The net is out of scope.** NNUE training, architecture, width, retraining — human calls
+made outside this folder.
 
 ---
 
-## 0. The one-sentence problem
+## 0. The problem — RE-FOUNDED 2026-07-28
 
-**The search discards the right move too early.** The move is present, it is generated,
-and it is valued correctly once it is actually searched — it just is not given the search
-it needs to show its point, so a wrong move keeps the root.
+This folder was built on *"the search discards the right move too early."* That premise
+was tested to destruction and **does not describe how we lose**. One actionable blunder
+position in 404 games; the real failure is that we hold +1.0 and bleed it ~5 cp/move for
+forty moves with no identifiable error anywhere. See `START-HERE.md` §1.
 
-Everything below exists to find *which node and which decision* does the discarding, on
-one position at a time.
+**Work the degradation, not the blunder.**
 
 ---
 
-## 1. AXIOMS — not hypotheses. Do not re-test these.
+## 1. AXIOMS — do not re-test these
 
-**A1. The eval is at par with Stockfish or better. Eval is never the answer.**
+**A1. Eval is at par with Stockfish or better. Eval is never the answer.**
 
-This is a standing ruling from the project owner, and it is now also measured: our net's
-correlation with SF's deep scores is **+0.803 vs SF's own static eval at +0.722** on 2912
-positions from lost games. On 2026-07-28 I accused eval three times anyway. Every time it
-was at a moment when the search analysis had become hard and I wanted an exit, and every
-time it was wrong — the last time in direct contradiction of a static-eval comparison I
-had run myself ten minutes earlier.
+This is a standing ruling, and on 2026-07-28 it was independently re-measured *because an
+agent kept relitigating it*: static eval vs a deep oracle over 630 positions spanning all
+404 corpus games gives **MAE 97.1 (ours) vs 97.2 (SF18)**, correlation **0.899 vs 0.905**,
+and **our p90 error is LOWER** (149.5 vs 176) — a fatter middle, a thinner tail. The
+owner's training-time benches, on far more data, put D48X ahead of SF18's net.
 
-*If you find yourself about to write "the net misvalues X", stop. You are avoiding work.*
+### The eval trap, in full — because knowing the axiom is demonstrably not enough
 
-**A2. Our search constants are faithful to Stockfish `eca43a97`.** Verified line by line:
-reduction table `int(2834/128·log(i))`, the reduction formula
-`scale − delta·617/rootDelta + !improving·scale·194/512 + 1027`, statScore
-`2·main + contHist[0] + contHist[1]`, the coupling `r -= statScore·445/4096`, history clamp
-`7183`, bonus `min(134d−79,1572)+382·ttMove+statScore/30`, malus `min(1005d−205,2218)`,
-and the whole quiet ordering key. **Blunders are not mis-transcribed constants.**
+On 2026-07-28 an agent was given this axiom in its brief, read it here and in
+`START-HERE.md`, and was made by the owner to restate the commitment **in its own words
+five separate times** before starting. It then blamed eval **twice**, hours apart, in two
+different disguises, and was wrong both times:
+
+1. **"The bottleneck is eval cost."** Measured a 1.92× NPS gap, found 75% of node time in
+   evaluation, concluded the deficit was eval expense and therefore out of scope —
+   *committed it to git*. Equal-node matches then showed cost explains **at most half**.
+2. **"Therefore eval," by elimination.** After four hypotheses came back null, it declared
+   the residual must be eval because nothing else was left. The owner pointed out that
+   elimination is not measurement; the agent agreed and repeated the move two messages
+   later.
+
+The direct measurement — 630 positions, both engines' static eval against a deep oracle,
+**fifteen minutes of compute** — came back **at par or better for us**, exactly as the
+axiom always said. It could have been run in hour one instead of hour six.
+
+Three rules fall out, and they are the actual content of this axiom:
+
+* **The pull to eval arrives at one specific moment: when the search analysis runs out of
+  road.** It does not feel like quitting. It feels like a rigorous conclusion, arrived at
+  reluctantly, supported by numbers.
+* **A conclusion that ends "and therefore it is not my problem" requires MORE evidence
+  than one that doesn't.** Convenience is the tell. Both failures above had that shape and
+  neither was challenged by the person who wrote it.
+* **Rigour around a wrong conclusion makes it worse.** Both came with NPS decompositions,
+  bootstrap CIs and pre-registered thresholds, which made them harder to argue with. The
+  owner had to push back three separate times and was right on every one.
+
+If you are about to write *"the net misvalues X"* or *"this is an eval problem"*: run
+`staticeval.py` against a deep oracle first. Fifteen minutes. Then you will know instead
+of inferring.
+
+**A2. Our search constants are faithful to `eca43a97`.** Re-verified this session on the
+reduction family (`r -= moveCount * 62` matches exactly; SF later moved it to 73, which is
+a version difference, not drift). Blunders are not mis-transcribed constants.
 
 **A3. Every global pruning/reduction constant is at a local optimum at equal nodes.**
-Measured across `RED_TABLE_NUM`, `RED_BASE`, `RED_CUTNODE`, `RED_TABLE_OFFSET`, RFP,
-razoring, capture/parent/qsearch futility, and the whole quiet-ordering weight family.
-Global level changes are dead. Only *new conditioning axes* can move anything.
+Only *new conditioning axes* can move anything. Note SPSA has already swept more than the
+README used to list — check `tools/spsa/out/*/coordinator.log` for a parameter's drift
+before proposing it. `RED_MOVECOUNT` drifts ~0 over 3,280 games while its neighbours move
+100+, so it is not an opportunity.
 
 ---
 
-## 2. THE METHOD
+## 2. THE METHOD, AS REVISED BY WHAT FAILED
 
-One position. One question. No aggregate statistics anywhere in the turn.
+The old method was: pick one loss, walk it to the discarding node, arm it, game-test.
+**Steps 1–4 of that no longer apply** to the degradation failure — there is no discarding
+node. What survives:
 
-### Step 1 — pick a position that indicts us
-From `positions/ours.json`: SF plays a sound move at our in-game budget (110k nodes) and
-we play the losing one. If SF also blunders there, it is not our defect — skip it.
+### Characterise from the corpus, for free
+`lossshape.py` reads both engines' per-move evals out of the match PGN annotations. No
+engine time, all 404 games, **including the 204 draws the miner never scored — which is
+where the Elo actually is.** Use it before spending a single node.
 
-### Step 2 — walk to the discarding node (ONE command)
+### Prefer equal-NODES game matches over any proxy
+Fixed-node matches (`-each nodes=N`) neutralise the speed deficit, are contention-immune
+(so several can share the box), and — unlike every per-position proxy tried — actually
+resolve a 5 cp/move effect. A 400-game rung gives ±30 Elo.
 
-```bash
-python3 searchopt/tools/walk.py --index 0        # a row of positions/ours.json
-```
+### Null the metric, not just the arm, and do it FIRST
+Non-negotiable. This session killed **five** instruments on their own nulls:
 
-It answers the whole of step 2 by itself:
+| instrument | how it died |
+|---|---|
+| free-search argmax | flips **2/6** under inert ±1 |
+| `searchmoves` head-to-head | flips **2/6**; and 2 root moves vs 16 hands each ~8× the budget anyway |
+| root node allocation | ratio swings **8.1× → 0.1×** across the same inert panel |
+| annotation-based eval drop | claimed 141/174 lost games contain a blunder; **156/174 of those drops start from an already-lost position** |
+| pruning-bias cp-loss | the inert null arm captured **57%** of the candidate arm's effect |
 
-* **whose defect is this** — the budget each engine needs to stop playing the losing
-  move. If SF also plays it at 110k it says *NOT OUR DEFECT, skip*, before you spend
-  an hour on it.
-* **the forced ladder** — both candidate moves, both engines, across node budgets, so
-  you see which side of the comparison is wrong and from what depth.
-* **the descent** — it follows SF's refutation line ply by ply until both engines
-  AGREE. That node is the bottom; the ply above manufactures the error. It prints the
-  exact `searchdbg.py` command for that node.
+### Test the MECHANISM before you test the outcome
+The strongest discipline found this session. Build an arm from a measured mechanism, then
+**verify the arm acts on that mechanism** before spending games. A root-reduction arm was
+killed this way in minutes: dropping a starved move's reduction from 1020 to **3** moved
+its node allocation 440 → **414**. The reduction was never what starved it — the move was
+cheap because it failed low, and low cost was the *symptom*, not the cause.
 
-### Step 3 — read the decisions there, and take the verdict
-
-```bash
-python3 searchopt/tools/searchdbg.py --fen "<node>" --depth 14 --moves <sf>,<ours>
-```
-
-One line per (depth, move) — the *last* decision at that depth, since aspiration
-re-searches emit several and only the last one stood. Then a **VERDICT** block that
-writes the step-3 sentence for you:
-
-> At depth 12 (ply 0), `a5a3` is ordered #1, reduced by −0.88 plies, scouted at depth 0
-> of 12, returns 598 against alpha 500, and is RE-SEARCHED.
-
-and tells you where to go next — *"ordered late AND heavily reduced → ordering is
-upstream, reduction scales with ln(move_index)"*, or *"NOT reduced → ordering and LMR are
-innocent, the error is inside this move's subtree, walk one ply deeper"*, or *"NEVER
-SEARCHED → a gate deleted it, not a reduction"*.
-
-If the verdict says the move is innocent at this node, **descend**. Do not start
-measuring things.
-
-### Step 4 — test an arm with a tool that cannot flatter it
-
-```bash
-python3 searchopt/tools/arm.py --param RED_GIVES_CHECK --value 512
-```
-
-It runs the **ANTI-ARM** (the value mirrored about the default) automatically and
-**refuses a verdict without it**, plus six inert nulls, restoring every touched
-parameter to the engine's own reported default between arms, and repeating the base
-arm at the end to prove the harness is deterministic.
-
-Its three verdicts:
-
-* `METRIC INVALID` — the opposite change helps comparably, so the metric rewards
-  perturbation rather than quality. **This is what actually happened**: `+512` cleared a
-  seven-sample null band and was reported as the day's one solid result; `−512` then
-  cleared the same band. No null-panel size fixes that, because inert ±1s do not move
-  along the arm's axis.
-* `inside the inert null band` — no effect distinguishable from noise.
-* `clears the null band AND the anti-arm` — a **candidate**, not a result.
-
-It refuses to run at all on a non-`tune` build, where every arm would silently return
-identical numbers.
-
-### Step 5 — only proof-grade outcomes count
-Admissible: **a forced mate found**, or a value independently confirmed correct by SF at
-high depth. Inadmissible: "plays a different move", "score collapsed", "AUC improved",
-"collapse depth moved". All of those are satisfiable by noise.
-
-### Step 6 — games arbitrate
-
-```bash
-python3 searchopt/tools/match.py engines/runs/<run>
-```
-
-Equal binaries differing only by `setoption`. It always prints the CI, labels anything
-spanning zero `INCONCLUSIVE` however tempting the point estimate, and tells you how many
-more games a given resolution needs. **Never read a partial match**: `rfp-threat0` read
-−15.3 Elo at n=600 and finished at −3.2 ± 14 at n=1200.
+### Only proof-grade outcomes count
+A forced mate, or a value an independent engine confirms at high depth. "Plays a different
+move", "score collapsed", "AUC improved" are all satisfiable by noise.
 
 ---
 
-## 3. TRAPS — every one of these cost hours
+## 3. TRAPS — every one cost hours, several cost them twice
 
-| trap | the tell | the rule |
+| trap | tell | rule |
 |---|---|---|
-| **stdin EOF is a STOP** | every depth returns the same bestmove; trace file empty | drive through `uciprobe`'s persistent stdin, never `printf \| engine` |
-| **fail-soft zero-window returns are BOUNDS** | a suspiciously tiny margin ("fails low by 2 cp") | re-measure bound-free with `searchmoves`; the real margin was 402 |
-| **probe ceilings look like blindness** | "never finds it" where your loop stops | always extend the ladder past the claim before saying "never" |
-| **fixed depth is tautological for reduction knobs** | any "reduce less" arm wins | equal **nodes**, always |
-| **field semantics** | `tt_move` means "*this row's move is* the TT move", not "entry has a move" | read the struct definition before using a field |
-| **self-selected PV leaves** | comparing two engines' static eval at their own PV ends | circular; deep-search both fixed positions instead |
-| **`--features tune` missing** | every arm returns byte-identical results | params are inlined constants without it |
-| **default-feature rebuild** | tracer suddenly writes no rows | it overwrites `target/release/chessengine`; keep `engines/bin/archon-trace` |
-| **arm contamination** | a repeated arm gives two different answers | restore every touched param to its engine-reported default between arms |
+| **eval perspective** | absurd correlation (0.03) | ARCHON's `eval` is **side-to-move POV and the label changes**; SF's is always white POV. Use `staticeval.py`, never a hand-rolled regex. This trap has now been hit twice |
+| **frame** | a suspiciously large cross-engine ratio | ours ≈ **2.07×** SF's printed cp. `classify_losses.py` itself printed the two side by side and the docs read a ratio off it — the "55.3 vs 10.5" headline is **2.54×, not 5.27×** |
+| **stdin EOF is a STOP** | every count comes back 0 | never `printf \| engine`; persistent stdin only |
+| **partial matches** | a tempting point estimate | 10k read **−113 at n=194** and finished **−92 at n=406**. `match.py` refuses to over-read |
+| **fail-soft returns are BOUNDS** | a suspiciously small margin | re-measure bound-free with `searchmoves` |
+| **cheap oracles manufacture defects** | "blunders" that vanish on inspection | a 120k oracle gave a **44% false-positive rate**; 2 of 3 OURS positions were artifacts. Verify `best` at ≥1M before spending a walk |
+| **already-lost positions** | huge eval drops | at worse than −2.5 the game is gone; those drops are death throes (156/174) |
+| **one trace row ≠ a total** | a startling ratio | "a1b1 got 1 node" was one row at one depth; its real total was **17,478** |
+| **`--features tune` missing** | every arm identical | params are inlined constants without it |
+| **in-game evals ≠ cold probes** | disagreement with a fresh search | in-game numbers come from a warm TT after 60 moves |
 
 ---
 
 ## 4. WHAT THE CORPUS IS
 
-**A blunder is `wp_loss ≥ 0.06` (~88 cp) from a position better than −2.5 pawns.** Both
-halves matter: the floor stops trivia counting, and the −2.5 rule stops a lost game's
-death throes counting — at that point the game was gone against SF18-class opposition and
-the move is not why we lost. Expect **roughly 20-50 positions** from a 404-game match — the estimate is soft, since the
-first 613 rows of the corrected run give 0.33% against the 1.3% the earlier (buggy) scoring
-projected, and n=613 is far too small to choose between them. `--wp-min 0.10` selects the
-severe subset.
+404 games vs SF18 on colour-paired UHO openings (203 distinct, 201 played twice).
+`mine_losses.py` oracle-scores every ARCHON move in every LOST game; `classify_losses.py`
+splits OURS / BOTH / NEITHER **and now runs an oracle-verification gate** (a candidate's
+`best` is re-checked forced at 1M; without it 2 of 3 OURS positions were artifacts).
 
-**Rarity worth knowing before you start:** only ~1.3% of our moves in still-playable
-positions clear that bar (0.16% at wp ≥ 0.10). We may be losing to accumulated pressure
-more than to discrete errors — see LEDGER OPEN.
-
-### The D47V-era split (re-derive on the new corpus; the categories hold, the shares may not)
-
-44 decidable losing moves, split at the in-game budget (110k nodes), null-bounded:
-
-| share | class | ours? |
-|---|---|---|
-| 14% | SF blunders too | **no** — position hardness |
-| ~41% | near-ties for *both* engines (separation 23 vs 28 cp) | **no** — anyone errs |
-| ~14% | warm history/aspiration flips it (warm TT *helps*) | yes, narrow |
-| **32%** | **SF avoids at 110k, we don't** | **yes — work here** |
-
-**Character of the 32%: we are confidently wrong, not uncertain.** Top1−top2 separation
-**55 cp for us vs 10.5 cp for SF**, with SF near-tied in 64% of them. We commit conviction
-to a losing move; SF sees enough danger to decline to commit.
-
-⇒ **Sharpening the eval would make this worse.** The lever is making refuting lines
-cheaper to resolve so the danger reaches the root and flattens a confidence that should
-never have formed.
+**The miner only ever scored LOST games. The 204 draws — 172 of them squandered wins —
+were never touched, and that is where the deficit lives.** Use `lossshape.py` for those.
 
 ---
-
-## 4b. BUILDING A FRESH CORPUS (do this after any net change)
-
-The corpus is net-specific: positions mined from a D47V engine say nothing about
-where D48X discards moves. Full loop, all inside this folder:
-
-```bash
-# 1. play the canonical engine against the oracle (~700 games, 10+0.1, UHO book)
-engines/canonical/archon  vs  engines/bin/stockfish18       # see results/ for the cmd
-
-# 2. oracle-score EVERY one of our moves in every LOST game
-uv run --with chess python searchopt/tools/mine_losses.py \
-    --pgn engines/runs/<run>/games.pgn --out searchopt/positions/losses.json
-
-# 3. split by whose defect it is
-python3 searchopt/tools/classify_losses.py --losses searchopt/positions/losses.json
-```
-
-`mine_losses.py` scores every move with SF18 rather than triggering on our own
-eval collapsing: the previous detector did that and had **~9% recall**, because a
-refutation landing ten plies later is invisible to it. It ranks by **win
-probability**, not centipawns — cp does not sum into outcomes, and one large
-error at a decision point converts a result while many small ones are absorbed.
-
-`classify_losses.py` produces `ours.json` / `both.json` / `neither.json`.
-**Work `ours.json`.** `both.json` is position hardness (SF blunders there too at
-our budget) and `neither.json` is context or instability; neither is a search
-defect you can fix.
 
 ## 5. FILES
 
 ```
 searchopt/
-  README.md            this guide
-  LEDGER.md            what is established / refuted, with the number that decides it
-  tools/uciprobe.py    persistent-stdin UCI harness + frame conversion
-  tools/searchdbg.py   the search debugger (needs archon-trace)
-  tools/build.sh       build the instrumented binary correctly
-  tools/walk.py            STEP 2: descend a loss to the node that discards the move
-  tools/searchdbg.py       STEP 3: read the decisions there + auto-verdict
-  tools/arm.py             STEP 4: test a tunable, with a mandatory anti-arm control
-  tools/match.py           STEP 6: read a match, refuses to over-read a partial one
-  tools/mine_losses.py     oracle-score every move in every lost game
-  tools/classify_losses.py split into OURS / BOTH / NEITHER
-  positions/ours.json      the actionable set  <- work here
-  positions/*.json         both/neither/losses/classified, plus the D47V-era sets
-  results/             one file per position walked, named by FEN slug
+  START-HERE.md          the problem, the eliminated hypotheses, what to work on
+  README.md              this guide
+  LEDGER.md              every claim + what killed the dead ones
+  tools/lossshape.py     per-game eval trajectories from the PGN — free, all 404 games
+  tools/staticeval.py    perspective-safe static eval, both engines, one frame
+  tools/oracle_cache.py  persistent deep-search cache (oracle work is the expensive part)
+  tools/mine_losses.py   oracle-score every move in every lost game
+  tools/classify_losses.py  OURS/BOTH/NEITHER + the oracle-verification gate
+  tools/match.py         read a match; refuses to over-read a partial one
+  tools/walk.py          descend one loss (LEGACY — see §0, the premise it serves is dead)
+  tools/searchdbg.py     read the search's own decisions at a node
+  tools/arm.py           test a tunable with a mandatory anti-arm control
+  positions/             corpus + plateau + search_failures sets
+  results/               one file per investigation, including the negative ones
+engines/books/d48x-corpus-openings.epd   all 203 corpus openings — the test book
 ```
-
-Binary: `engines/bin/archon-trace` — build with `tools/build.sh`.
-Net: `data/nnue/nets/screens/d47v-a4b2-cal400.cenn`. Oracle: `engines/bin/stockfish18`.
 
 ---
 
 ## 6. RETIRED — do not resurrect
 
-- `shapeopt.py` — its metrics (AUC, collapse depth, budget-to-fix) are all
-  noise-satisfiable. Deleted, not moved.
-- Any aggregate screen over the corpus during *diagnosis*. Aggregates are for
-  characterising the corpus once, not for finding or judging mechanisms.
-- `RED_GIVES_CHECK` as a validated arm — the parameter still exists (default 0) but its
-  evidence was destroyed by the opposite-direction control (§2 step 4).
+- `shapeopt.py` — every metric noise-satisfiable. Deleted.
+- **Per-position argmax, head-to-head, and node-allocation instruments** — all died to
+  inert nulls (§2). They cannot resolve a 5 cp/move effect; nothing can, one position at
+  a time.
+- `RED_GIVES_CHECK` as a validated arm — its evidence died to the opposite-direction control.
+- **Blunder-hunting as the organising frame.** 0.46% of moves, 44% of those artifacts,
+  one actionable position in 404 games. It is not how we lose.

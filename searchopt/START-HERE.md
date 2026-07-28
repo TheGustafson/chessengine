@@ -1,142 +1,156 @@
 # START HERE — fresh session
 
-Read this, then `README.md` (the method), then `LEDGER.md` (every claim + what killed the
-dead ones). Do not go reading `docs/research/` for context; that is a pile of
-half-refuted narrative and going shopping in it is how 2026-07-28 lost a day.
+## ⛔ DO NOT BLAME EVAL. READ THIS FIRST — IT IS THE MOST EXPENSIVE MISTAKE IN THIS FOLDER.
+
+**Eval is an axiom. It is at par with Stockfish or better. It is measured. It is not your
+problem, it is not your suspect, and it is not the answer.**
+
+You will want to blame it anyway. Here is exactly how that went on 2026-07-28, so you can
+recognise yourself doing it:
+
+> The agent was told the axiom in its opening brief. It read this file and `README.md`,
+> both of which say it. The owner made it restate the commitment **in its own words, five
+> separate times** — *"I will not blame eval"* — before any work started.
+>
+> **Hour 3.** Four search hypotheses had come back null. The agent measured a 1.92× NPS
+> gap, found 75% of node time was evaluation, and concluded **"the bottleneck is eval
+> cost, which is out of scope."** It wrote that into a commit message.
+> ⇒ Equal-node matches later showed eval cost explains **at most half** the deficit.
+>
+> **Hour 5.** Cornered again, it ran a within-engine search-fidelity test, found search at
+> par, and concluded **"therefore eval"** — this time by *elimination*. Into the LEDGER it
+> went. The owner objected that elimination is not measurement. The agent agreed, then
+> did it again two messages later.
+>
+> **Hour 6.** The owner finally forced a *direct* measurement of eval quality. Result:
+> **MAE 97.1 (ours) vs 97.2 (SF18), correlation 0.899 vs 0.905, and OUR p90 error LOWER.**
+> At par or better — exactly as the axiom said. Both conclusions were wrong.
+>
+> That measurement takes **fifteen minutes**. It could have been run in hour one.
+
+**Three things to take from it:**
+
+1. **The pull toward eval arrives at a specific moment — when the search analysis runs out
+   of road.** It does not feel like giving up. It feels like a rigorous conclusion.
+2. **Any conclusion ending in "and therefore it is not my problem" needs MORE evidence
+   than one that doesn't, not less.** Convenience is the tell. Both eval conclusions above
+   had that shape and neither was challenged by their author.
+3. **Dressing it in measurements makes it worse, not better.** Both wrong conclusions came
+   with NPS splits, bootstrap CIs and pre-registered bands. That made them *harder for the
+   owner to push back on* — he had to do it three separate times, and was right every time.
+
+And when the same agent finally did build a search arm, it got the mechanism backwards
+too: it blamed root LMR for starving a move, then found that cutting that move's reduction
+from **1020 to 3** changed its node allocation from **440 to 414**. The reduction was
+never the cause. Low node count was the *symptom* of failing low, not the reason for it.
+**Test that your arm moves the mechanism before you spend games on the outcome.**
 
 ---
 
-## The problem, in one sentence
+Read this, then `README.md` (the method), then `LEDGER.md` (every claim + what killed the
+dead ones). Do not go reading `docs/research/` for context.
 
-**The search discards the right move too early.** The move is generated and is valued
-correctly once it is actually searched — it just never gets the search it needs, so a
-worse move keeps the root.
+**This folder was re-founded on 2026-07-28.** Its original premise — *"the search discards
+the right move too early"* — was tested to destruction on a 404-game D48X corpus and does
+not describe how we lose. What replaced it is below. If you are here to hunt blunders,
+stop and read §1.
 
-**Eval is NOT the problem.** This is a standing ruling and it is measured (our net
-correlates +0.803 with SF's deep scores; SF's own static eval manages +0.722). Treat it as
-an axiom. Every time the previous session reached for eval it was wrong, and it was always
-at the moment the search analysis got hard.
+---
 
-## OUT OF SCOPE — do not spend a minute on this
+## 1. The problem, in one sentence
 
-**The net is not your subject.** NNUE training, architecture, accumulator width, retraining
-D48 — **none of it is searchopt work, and none of it is your decision.** Those are human
-calls, made outside this folder.
+**We hold an advantage and bleed it, ~5 cp per move, for forty moves, without ever making
+a move you could call a mistake.**
 
-That includes the D48X width question below. It is recorded here only so you know the net
-under you is fixed and why; it is **not** a task, not a thing to reason about, and not a
-thing to have an opinion on. If a search experiment makes you want to change the net, the
-answer is no — write down what you found and move on.
+Not blunders. Measured on the full D48X corpus (404 games vs SF18, colour-paired UHO):
 
-Combined with the eval axiom, the rule is simple: **you change `src/` search code and
-nothing else.**
-
-## Where things stand
-
-| | |
-|---|---|
-| canonical net | **D48X** (gen-2, 1280 acc) — `engines/canonical/`, promoted 2026-07-28 |
-| D48X vs D47V | −9.1 [−34.4, +16.1] over 382 games. Promoted deliberately: D48X is the better eval and loses only because the search cannot exploit it. **This is settled and is not yours to revisit** — see OUT OF SCOPE above. |
-| loss corpus | **DONE 2026-07-28.** 404 games vs SF18 (−132 Elo, 174 lost games, 10,112 moves probed) → **5,379 still-playable moves scored**, **25 blunders**, split **OURS 3 · BOTH 1 · NEITHER 21**. A blunder = **wp_loss ≥ 0.06 (~88 cp) from a position better than −2.5 pawns**. The old "20-50 positions" estimate was the *blunder* count (25, close), not the actionable subset. |
-| how bad are the blunders | wp ≥ 0.10: **6 of 5,379**. wp ≥ 0.20: **zero, corpus-wide.** We are not losing to catastrophic single moves — see LEDGER. |
-| validated search gains so far | **none.** Every arm tried is null or refuted (`LEDGER.md`) |
-
-## The corpus is in — this section is now just how to verify it
-
-Committed 2026-07-28. To confirm what you have:
-
-```bash
-python3 -c "import json;d=json.load(open('searchopt/positions/losses.json'));\
-print(d['_provenance'], len(d['rows']))"
-```
-
-Expect provenance `d48x-1280-sb520-ema.cenn` and 5,379 rows. **A bare list instead of a
-dict means a mine is mid-flight** — `mine_losses.py` checkpoints every 50 jobs as a plain
-list and only wraps it in `{_provenance, rows}` at the end, so that is how you tell
-"still running" from "done" (this tripped the check command that used to live here).
-
-Re-mine only if the canonical net changes — the 404-game PGN is on disk, so it needs no
-new match:
-
-```bash
-uv run --no-project --with chess python searchopt/tools/mine_losses.py \
-    --pgn engines/runs/corpus-d48x/games.pgn
-python3 searchopt/tools/classify_losses.py --losses searchopt/positions/losses.json
-```
-
-## Do this first
-
-```bash
-python3 searchopt/tools/walk.py --index 0        # a position from positions/ours.json
-```
-
-That answers method step 2 by itself: whose defect the position is, the forced ladder for
-both candidate moves in both engines, and a descent to the node that manufactures the
-error — then it prints the exact `searchdbg.py` command for that node. Work `ours.json`
-only; `both.json` is position hardness (SF blunders there too) and `neither.json` is
-in-game context or instability. Neither is a search defect you can fix.
-
-## The three rules that were paid for in a lost day
-
-1. **Eval is an axiom, not a hypothesis.** See above.
-2. **Null the METRIC, not just the arm — and do it FIRST.** `arm.py` runs the
-   opposite-direction arm automatically and refuses a verdict without it. This is not
-   ceremony: `RED_GIVES_CHECK=+512` cleared a *seven*-sample inert null band and was
-   reported as the day's one solid result; then `−512` — reducing checks *more* — cleared
-   the same band. The metric was rewarding perturbation. Inert ±1 nulls cannot catch that,
-   because they do not move along the arm's axis.
-3. **Stay on ONE position.** No aggregate statistics during diagnosis. Aggregates always
-   return a number, which is exactly why they are the escape hatch when a trace gets hard.
-
-Only **proof-grade** outcomes count as evidence: a forced mate found, or a value SF
-independently confirms. "Plays a different move", "score collapsed", "AUC improved" are
-all satisfiable by noise.
-
-## What is known about the losses
-
-**Re-derived on the D48X corpus, 2026-07-28** (25 blunders; the D47V shares below it are
-kept only for comparison):
-
-| n | class | actionable |
+| | ARCHON | SF18 |
 |---|---|---|
-| 21 | **NEITHER** — our own cold 110k search does not play the move | in-game context (warm history/aspiration) or argmax instability |
-| 3 | **OURS** — SF avoids at 110k, our cold search does not | **yes — start here** |
-| 1 | BOTH — SF blunders there too | no — position hardness |
+| converts a won book (≥ +0.25) | **12%** (25W / 172D / 4L) | **84%** |
+| salvages a lost book | **16%** | **88%** |
 
-**Order of work (owner, 2026-07-28): fix OURS first, then move on to the other losing
-positions and see if those can be fixed too.** The corpus is a queue, not a ceiling.
+A +1 pawn book position is worth **92% to Stockfish and 55% to us.** That gap *is* the
+−132 Elo. 71% of opening pairs follow one pattern: we lose the bad side and draw the good
+one.
 
-Two cautions, both paid for:
+And the decay has no locus. Across the 172 squandered wins:
 
-* **The classifier has not been nulled.** OURS-vs-NEITHER is one free-search argmax per
-  engine at one budget, and an inert ±1 flips ~25% of these positions (`walk.py`
-  docstring). `walk.py`'s 5-budget ladder re-adjudicates each position as you walk it —
-  trust that over the class label.
-* **"We are confidently wrong" is weaker than it was written.** The 55-vs-10.5 headline
-  compared OUR raw units against SF's printed cp; corrected it is 26.7 vs 10.5 = **2.54×,
-  not 5.27×**. On the D48X OURS set it is 70.0 vs 58.0 = 1.21× at n=3 — no conclusion
-  available. `classify_losses.py` now converts at the tool boundary.
+* worst single move per game: **median 0.25 pawns**
+* games containing ANY move over the 0.88-pawn blunder bar: **2 of 172**
+* share of the total decline carried by the single worst move: **median 23%**
 
-⇒ The lever remains making refuting lines cheaper to resolve, so danger reaches the root.
-But note the corpus says blunders are RARE (0.46%, none above wp 0.20): most of the −132
-Elo is elsewhere.
+77% of the advantage disappears in moves that individually cost under a quarter of a pawn.
+**There is no node that discards the right move. There is no bad move to find.**
 
-## Open, in priority order
+The conversion profile is bimodal with nothing in between: squandered wins gain a median
+**+0.05** pawns over the book and **ZERO of 172 ever exceed +2.00**; converted wins gain
+**+10.07** and all 25 exceed +2.00. We convert by tactics or not at all. We never grind
++1.0 into +1.5 into +2.0.
 
-1. **Walk the OURS positions one at a time.** Only two were ever walked, and one produced
-   a mechanism later refuted. This is the work.
-2. Why RGC-style arms are non-monotone (512 misses what 256 and 1024 find) — a hint the
-   search is chaotic at ply-boundary granularity, unexplained.
-3. `DRAW_CONTEMPT` exists (default 0) with a real, measured mechanism — a perpetual worth
-   −1 sets alpha and starves the winning sibling, 52k nodes vs 260k with the draw
-   excluded — but **no admissible evidence**; its root effect died 0/6 under perturbation.
-*(There is deliberately no net/training item on this list. See OUT OF SCOPE.)*
+## 2. What the deficit is made of
 
-## Housekeeping
+Equal-**nodes** matches vs SF18 on the corpus's own 203 openings (`-each nodes=N`; nodes
+constrained, depth/time/shape free), n≈406 per rung:
 
-- Build the traced binary with `searchopt/tools/build.sh` (needs BOTH `search-control`
-  and `tune`; without `tune` every arm returns byte-identical numbers and you will
-  conclude "no effect").
-- `Bench: 587683` and `CHECK_NNUE_GATE=1 bash tools/check.sh` (eval `d82caf8a…`,
-  d13 `1972607`) must both hold after any change.
-- Disk sits at ~73%; `old/` holds 423 archived files and nothing there is trusted.
+| budget | Elo | 95% CI |
+|---|---|---|
+| 10k | −92 | [−121, −64] |
+| 30k | −64 | [−91, −38] |
+| 60k | −76 | [−103, −50] |
+| 110k | −68 | [−93, −43] |
+| 10+0.1 (time) | −134 | — |
+
+⇒ **~66 Elo is speed, ~68 Elo is per-node, and the per-node half SATURATES BY 30k.**
+More search does not close it. It is not a "needs more depth" problem.
+
+## 3. What has been ELIMINATED — do not re-run these
+
+Every one of these was measured this session. They are dead ends, not open questions.
+
+| hypothesis | verdict |
+|---|---|
+| discrete blunders | **25 in 5,379 moves (0.46%)**, 44% of those are oracle artifacts, **1 actionable position in 404 games** |
+| time management | **ZERO** losses on time or forfeit in 404 games |
+| draw adjudication was premature | both engines independently read ~0.00 in the last 3 moves of all 172 (max +0.10) |
+| eval **quality** | **AT PAR.** MAE 97.1 vs SF 97.2, corr 0.899 vs 0.905 — and our p90 error is LOWER (149.5 vs 176). Owner's training-time benches on far more data agree: D48X ≥ SF18's net |
+| eval **cost** / speed | real but ~66 Elo of 134, and neutralised entirely at equal nodes |
+| depth per node | **EQUAL** — 16.0 vs 16.0 at 110k over 8,219 game moves |
+| search self-consistency | equal (59.3% vs 58.7%; self cp-loss CI spans zero). **Weak test** — see README §3 |
+| systematic over-pruning | not detected; and the inert null arm captured **57%** of the candidate arm's effect |
+| root LMR starving late moves | **REFUTED at the mechanism level**: dropping a starved move's reduction from 1020 to **3** changed its node allocation 440 → 414. Reduction is not what starves it |
+
+**The remaining ~68 Elo at equal nodes, equal depth, and at-par eval is UNEXPLAINED.**
+That is the honest state. Say so rather than filling it in.
+
+## 4. What to work on
+
+The failure is *slow degradation of a held advantage*. That is a property of long move
+sequences, not of any single decision, so:
+
+1. **Instruments that read one position are the wrong tool** and have failed repeatedly
+   (README §3). The effect is ~5 cp/move; an inert ±1 moves any per-position statistic
+   further than that.
+2. **Aggregates over the corpus are cheap and honest** — `lossshape.py` reads every game's
+   eval trajectory straight out of the PGN annotations for free, all 404 games including
+   the 204 draws the miner never touched. **That is where the Elo is.**
+3. **Games arbitrate, and the corpus openings are the right book**
+   (`engines/books/d48x-corpus-openings.epd`, all 203, wins included — no selection bias).
+   Fixed-node matches are contention-immune and can share the box.
+
+Open questions worth real effort, in order:
+
+* **Where does 5 cp/move actually go?** Nobody has decomposed it. It is below the
+  resolution of every per-position instrument tried, but it is not below the resolution of
+  a 400-game equal-nodes match.
+* **Why does the per-node deficit saturate at 30k?** Something stops scaling there. That
+  is a shape question about the tree, and it has never been asked.
+* **What does SF do in a +1.0 plateau that we don't?** We match its move 79% of the time
+  at in-game budget and reach the same depth. The 21% is where the game goes.
+
+## 5. Housekeeping
+
+- Build the traced binary with `tools/build.sh` (needs BOTH `search-control` and `tune`).
+- `Bench: 587683` and `CHECK_NNUE_GATE=1 bash tools/check.sh` must hold after any change.
+- Corpus: `positions/{losses,classified,ours,both,neither}.json`, provenance-stamped.
+  `classify_losses.py` now carries an **oracle-verification gate** — without it, 2 of 3
+  OURS positions were artifacts of a 120k oracle that had not looked far enough.

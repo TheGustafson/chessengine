@@ -5,12 +5,42 @@ known.** Add to this file rather than to prose elsewhere.
 
 ---
 
+## THE EVAL TRAP — 2026-07-28, recorded because the axiom alone did not prevent it
+
+An agent briefed on A1 ("eval is at par or better"), which had read it in START-HERE.md and
+README.md, and which the owner made restate the commitment in its own words FIVE times
+before starting, blamed eval TWICE in one session and was wrong both times.
+
+| # | the claim | how it was reached | what killed it |
+|---|---|---|---|
+| 1 | "the bottleneck is eval COST, out of scope" | 1.92x NPS gap; 75% of node time is eval. **Committed to git.** | equal-NODES matches: cost explains **at most half** the 134 Elo (-134 time -> -68 equal nodes) |
+| 2 | "therefore eval", by ELIMINATION | four search hypotheses came back null, so the residual "must be" eval | **direct measurement**: static eval vs deep oracle, 630 positions — **MAE 97.1 ours vs 97.2 SF, corr 0.899 vs 0.905, our p90 LOWER**. At par or better |
+
+The direct measurement takes **fifteen minutes**. It was run in hour six, after the owner
+insisted, having been available since hour one.
+
+**Diagnosis worth keeping.** Both conclusions ended in *"and therefore it is not my
+problem."* Both arrived at the exact moment the search analysis ran out of road. Both were
+wrapped in real rigour — NPS decompositions, bootstrap CIs, pre-registered bands — which
+did not make them correct, only harder to challenge; the owner had to object three
+separate times and was right every time.
+
+**Rule: a conclusion that ends "not my problem" needs MORE evidence than one that doesn't.
+Convenience is the tell.** And run the direct eval measurement BEFORE concluding eval.
+
+Same session, same agent, one more mechanism error worth the same treatment: it blamed
+root LMR for starving a late-ordered move, built a tunable for it, and then found that
+cutting that move's reduction from **1020 to 3** moved its node allocation **440 -> 414**.
+Reduction was never the cause; the low node count was the SYMPTOM of failing low.
+**Verify an arm moves its mechanism before spending games on the outcome.**
+
+
 ## ESTABLISHED
 
 | claim | deciding evidence |
 |---|---|
-| The search discards the right move too early; the move is valued correctly once forced | project owner's standing statement; everything measured on 2026-07-28 reduces to it |
-| Eval is at par with SF or better | our static eval vs SF deep scores, slope **+0.803** vs SF's own static **+0.722**, n=2912 |
+| ~~The search discards the right move too early~~ — **THIS FOLDER'S FOUNDING PREMISE, AND IT IS NOT HOW WE LOSE** | it happens, but it is **1 actionable position in 404 games**. 25 blunders in 5,379 still-playable moves (0.46%), 44% of those are oracle artifacts. The real failure is distributed decay — see WHY WE LOSE below. Kept here only so nobody re-derives it |
+| **Eval is at par with SF or better — RE-CONFIRMED BY DIRECT MEASUREMENT** | original: slope **+0.803** vs SF's static **+0.722**, n=2912. Re-measured 2026-07-28 on 630 positions across all 404 corpus games: **MAE 97.1 (ours) vs 97.2 (SF18)**, corr **0.899 vs 0.905**, and **our p90 error is LOWER** (149.5 vs 176) — fatter middle, thinner tail. Owner's training-time benches on far more data agree. **See THE EVAL TRAP above before you doubt this** |
 | Search constants are faithful to `eca43a97` | line-by-line: reduction table, reduction formula, statScore, 445/4096 coupling, 7183 clamp, bonus/malus, quiet ordering key |
 | Global pruning/reduction constants are at a local optimum | no global knob beats an inert ±1 at equal nodes (RED_TABLE_NUM/BASE/CUTNODE/OFFSET, RFP, razor, cfut, pfut, qsfut, quiet weights) |
 | Only ~46% of our losses are our defect | at 110k: SF blunders on **11/44** of our own loss positions; nulls 19/20/21 (D47V) |
@@ -42,6 +72,73 @@ Full writeup: `searchopt/results/WHY-WE-LOSE-d48x.md`. Counted, not estimated.
 | Draw adjudication was NOT premature | in all 172, both engines independently reported ~0.00 in the last 3 moves (max +0.10); zero games where either still claimed ≥ +0.50 |
 | Time management is not a loss cause (D48X) | **ZERO** losses on time or forfeit in 404 games; every loss is adjudication-on-eval or mate |
 | Our eval is NOT the discriminator on these positions | at the in-game budget we match SF almost exactly on game 87's critical nodes: **+63 vs +64**, +78 vs +61, +98 vs +75 (SF cp). Both need ~8M nodes to see the draw; neither sees it at 110k |
+
+### SEARCH vs EVAL — NOT SETTLED (2026-07-28). The equal-nodes ladder stands; the
+### conclusion drawn from it was WRONG.
+
+**This section was originally titled "SETTLED" and concluded the residual was eval. That
+conclusion is retracted** — a direct static-eval measurement (see THE EVAL TRAP, top of
+file) put our eval at par or better. What survives is the LADDER, which is solid and
+important. What died is the inference built on top of it.
+
+The within-engine test below ALSO has a structural weakness the owner identified and I
+had underweighted: it measures search **convergence** (does 110k find what 1M finds),
+which a *systematically* biased search passes trivially — pruning heuristics are
+depth-scaled, so a search that discards a class of moves discards them at every budget.
+**Low power against the most likely form of search defect.** Do not treat "self-agreement
+at par" as "search at par".
+
+**The question:** is the -132 Elo a search defect or an eval one? **Still open.**
+
+**1. EQUAL-NODES LADDER vs SF18** (`-each nodes=N`, nodes constrained and NOTHING else —
+depth, time and tree shape all free). Same 203 corpus openings, both colours, n≈406 each:
+
+| budget | Elo | 95% CI |
+|---|---|---|
+| 10k | **−92** | [−121, −64] |
+| 30k | **−64** | [−91, −38] |
+| 60k | **−76** | [−103, −50] |
+| 110k | **−68** | [−93, −43] |
+| 10+0.1 (time) | **−134** | — |
+
+⇒ **The 134 Elo splits ~66 speed / ~68 per-node.** Removing a 1.92x speed handicap buys
+~66 Elo. The remaining ~68 Elo **saturates by 30k and does not close with more nodes**
+(30k/60k/110k all overlap) — so it is NOT a "needs more search" problem, and eval COST
+cannot explain it, because fixed nodes neutralises cost exactly.
+
+⇒ The 10k→30k rise (+28) is the shallow-budget inefficiency: at 10k SF reaches a full ply
+deeper on the same nodes (median 12.0 vs 11.0, EBF 2.154 vs 2.310, n=16,835 game moves);
+by 110k depth is **EQUAL** (16.0 vs 16.0, n=8,219). The D47V "wide shallow, narrow deep"
+entry reproduces on D48X — but it is spent by 30k and cannot account for the residual.
+
+**2. WITHIN-ENGINE SEARCH QUALITY — the decisive test.** Each engine compared against ITS
+OWN 1M-node search, so eval cancels EXACTLY (same eval on both sides of every comparison;
+no cross-engine frame, no oracle, no self-agreement artifact). 150 plateau positions:
+
+| engine | self-agree | mean self cp-loss | median | p90 | max | zeros | ≥50cp |
+|---|---|---|---|---|---|---|---|
+| ARCHON | 59.3% | 4.88 | 0.0 | 21.7 | 77.8 | 60% | 4/150 |
+| SF18 | 58.7% | 4.05 | 0.0 | 20.0 | 58.0 | 61% | 2/150 |
+
+Difference **+0.83 cp, bootstrap 95% CI [−2.31, +4.09] — NOT DISTINGUISHABLE FROM ZERO.**
+
+⇒ Our search recovers its own eval's deep answer as well as SF's recovers its own. At
+equal nodes we reach equal depth with equal self-consistency and are still 68 Elo worse.
+
+**DO NOT READ THAT AS "the residual is not in src/search/" — that is exactly the wrong
+conclusion this session drew from it.** The test cannot see a systematically biased
+search (see the header above). Combined with the direct eval measurement coming back AT
+PAR, the ~68 Elo at equal nodes, equal depth and at-par eval is **UNEXPLAINED**. That is
+the honest state. The only thing left that this session did not rule out is *selectivity*
+— WHICH nodes we spend on — and every aggregate probe of it came back null, which itself
+says the cause is not a single global knob or a broad statistical bias.
+
+Bounds, stated honestly: the CI bounds a real search deficit at **≤ ~4 cp/move**, it does
+not zero it. The position class is narrow (plateau positions from squandered wins). And
+the test measures convergence to OUR OWN answer — a search that explored a worse tree but
+self-consistently would pass it (equal depth at equal nodes argues against, does not
+exclude). Pre-registered bands were >1.5x = search defect, ≤1.0x = eval, 1.0–1.5x =
+partial; 1.20x landed in the partial band and the CI then spans zero.
 
 ### The two efficiency hypotheses, both KILLED by measurement (2026-07-28)
 
