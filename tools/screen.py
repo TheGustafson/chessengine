@@ -445,9 +445,31 @@ def main() -> None:
                     d, se = paired(deep, ref_by_budget[b])
                     row += f"{d:>+8.2f}+-{se:<3.1f}"
             print(row, flush=True)
+        for spec in args.reference:
+            nm, _, path = spec.rpartition("=")
+            nm = nm or os.path.basename(path)
+            row = f"{'* ' + nm:<20}"
+            for b in budgets:
+                _, per_pos, _ = cp_loss(
+                    tier_tables, fens, play_reference(path, fens, b))
+                deep = per_pos[keys[-1]]
+                row += f"{statistics.fmean(list(deep.values())):>12.2f}"
+            print(row, flush=True)
+
         print("\nControl row is absolute cp loss at the deepest oracle tier; "
               "arm rows are paired\ndeltas at the SAME budget. A gain that "
               "shrinks with budget will not survive a\nreal time control.")
+        if args.reference:
+            print("\nA REFERENCE engine swept across budgets is an eval-vs-search")
+            print("decomposition, and it is the only instrument here that can do it.")
+            print("At a tiny budget a search barely improves on its own static eval, so")
+            print("the gap to the reference is mostly EVAL QUALITY. As the budget grows,")
+            print("search contributes more, so a gap that WIDENS with budget is search")
+            print("and a gap that stays FLAT is eval.")
+            print("Read the SLOPE, not the level: the oracle labels are Stockfish's, so")
+            print("a Stockfish reference is partly scoring its agreement with itself and")
+            print("its level is flattered at every budget. That bias is roughly constant")
+            print("across budgets, which is exactly why the slope survives it.")
         return
 
     ref_cp, ref_pos, ref_nodes, ref_tact = None, None, None, None
