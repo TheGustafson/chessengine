@@ -56,8 +56,30 @@ slower per node, so its equal-node margin must be larger still.
 
 ## What this means for tunables
 
-Blunt version, and it is the honest one: **search-parameter tuning has a
-bounded ceiling here, and the bound is not large.**
+**RETRACTED, 2026-07-27.** This section originally opened "search-parameter
+tuning has a bounded ceiling here, and the bound is not large." That ceiling
+was never derived. I computed a ~58 Elo bound for the SPEED pool, then wrote
+off the per-node pool as untunable *because I had already misattributed it to
+the net* (see the correction below). Once the attribution is corrected the
+ceiling argument collapses: the per-node term is exactly what configuration
+tuning addresses.
+
+The evidence for LARGE tunable headroom was already in this document:
+
+- restoring Stockfish parity measured neutral-or-worse **four times out of
+  four** — which I described as "what a joint optimum looks like when it has
+  never been jointly optimised for this engine" and then failed to act on;
+- **42 eval-denominated constants** transcribed from an engine whose eval
+  frame is 1.56× ours, so every one of them sits in a different regime here;
+- **~46% of tunables have never been in any campaign**;
+- **time management was demonstrably mis-set on the first family examined
+  closely** (9.98s of a 10s bank spent before move 33; 47.3% of moves under one
+  second against SF18's 25.2%). If the first knob family inspected was wrong,
+  the prior that the other ~250 are collectively right is low.
+
+What remains true from the original section is only the narrow part: the SPEED
+pool is ~58 Elo and no parameter set captures all of it, so prefer changes that
+improve the CHOICE at a node over changes that only cut node count.
 
 - Closing the *entire* NPS gap to SF18 buys ~58 Elo, and no realistic set of
   parameter changes closes all of it. Node-saving tunables are worth tens of
