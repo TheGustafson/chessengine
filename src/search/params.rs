@@ -1159,6 +1159,43 @@ crate::tunables! {
     /// budget the soft stop compares against.
     pub ONE_REPLY_TOTAL_TIME_CAP: f64 = 561.7;
 
+    // ── Head-free decisiveness scale on the soft stop (2026-07-28, searchopt) ──
+    //
+    // WHY. Measured at 10+0.1 over the corpus match, conditioned EX ANTE on each
+    // engine's own previous eval and normalised by its own mean, we allocate
+    // **18% less** of our budget than SF18 in balanced positions (|eval| < 0.25)
+    // and **33% less** when clearly winning, while the conversion band is at
+    // parity. That is not a clock artifact (the gap is largest in the midgame,
+    // where we spend 14% MORE total time than SF) and not a symptom of our
+    // churnier scores (we escalate MORE on score movement than SF, so that story
+    // predicts the wrong sign). Details: `searchopt/LEDGER.md`, "TIME ALLOCATION".
+    //
+    // The engine already has two factors of exactly this shape — `unc_tm_factor`
+    // and `wdl_tm_factor` — but both read NET HEADS, and D48X carries neither, so
+    // both are measurably inert (identical `ARCHON_TM_TRACE` sequences with the
+    // coefficients forced on). This one reads the SEARCH's own settled root
+    // score, so it needs no head, no sidecar and no retrain.
+    //
+    // SHAPE. `1 − (TM_SCORE_C/1024) · min(|score|, KNEE)/KNEE`, floored at
+    // `TM_SCORE_FLOOR`: a decided root earns less clock and the saving banks
+    // toward contested moves later in the game. Shrink-only, deliberately — the
+    // symmetric "spend more when unclear" direction is `unc_tm_factor`'s job, and
+    // keeping the two one-directional keeps them independently attributable.
+    //
+    // DEFAULT 0 = EXACTLY 1.0, so `total_time` is bit-identical and the
+    // four-factor golden tests hold. `bench` is depth-limited, so
+    // `use_time_management()` is false and the soft stop never runs there — the
+    // `Bench:` pin cannot move regardless.
+    /// Decisiveness shrink coefficient in 1024ths. **0 = off (default).**
+    pub TM_SCORE_C: i32 = 0;
+    /// Root score at which the shrink saturates, in OUR internal units (a pawn
+    /// is ~207 here, not ~385 — this is an eval-frame quantity, so do NOT
+    /// transcribe a Stockfish number into it).
+    pub TM_SCORE_KNEE: Value = 400;
+    /// Floor on the factor, matching `wdl_tm_factor`'s [0.8, 1.0] band so a
+    /// decided root can never be starved below 80% of its budget.
+    pub TM_SCORE_FLOOR: f64 = 0.8;
+
     // The four soft-stop factors multiply into the plain `optimum` budget
     // (design/12 §3.9, step 8). Each is an SF-current fitted value (D20); the
     // formula SHAPES are documented at the use site in `search::soft_stop`.
