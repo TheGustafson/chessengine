@@ -1030,6 +1030,55 @@ the eval ones — same bias, opposite consequences, because in one case the
 reference favoured the party I was measuring against and in the other it favoured
 the party I was measuring.
 
+## 3s. THE TM THESIS IS REFUTED — by a correctly-built arm, and I know why
+
+The arm did exactly what it was designed to do. At 119 games of a timed 10+0.1
+match, `OPT_SCALE_BASE ×0.5`:
+
+| move | arm clock | base clock | diff | arm depth | base depth | Δdepth |
+|---|---|---|---|---|---|---|
+| 10 | 9.15 | 8.79 | +0.35 | 18.0 | 18.5 | **−0.51** |
+| 30 | 5.07 | 4.02 | +1.05 | 18.1 | 18.6 | **−0.47** |
+| 45 | 3.04 | 1.91 | **+1.12** | 21.1 | 20.6 | **+0.47** |
+| 60 | 1.64 | 0.96 | +0.68 | 23.1 | 22.3 | +0.83 |
+| 70 | 1.09 | 0.70 | +0.38 | 24.9 | 23.4 | **+1.50** |
+
+Time-trouble moves fall from ~35% to **16.4%**. Shallower early, banked clock,
+deeper late — the mechanism is exactly right. **Elo: −20.5 ± 20.8.**
+
+Not significant yet, but negative, and the reason is a flaw in my premise that the
+data I already had exposes immediately:
+
+| move | share of ALL errors | share of **DECIDABLE** errors | share of decidable wp lost |
+|---|---|---|---|
+| 1–20 | 1.8% | 9.1% | 8.8% |
+| **21–32** | 5.8% | **29.5%** | **30.4%** |
+| 33–45 | 11.9% | 25.0% | 24.5% |
+| 46+ | **80.6%** | 36.4% | 36.2% |
+
+**"87% of win-probability loss happens after move 33" came from the ALL-ERRORS
+column.** That column is 80.6% concentrated at move 46+ — and §3i already showed
+**78.4% of all errors sit in positions where the best move still leaves us under
+10% win probability.** Extra depth in an already-lost position converts nothing.
+
+Condition on decidability — the only errors that can change a result — and the
+mass moves forward: **39% of decidable errors happen before move 33**, and the
+densest early bucket is **moves 21–32 at 29.5%**. That is precisely the phase my
+arm took time out of (−0.47 plies at move 30). The Elo is not a mystery; it is
+the premise.
+
+**The lesson, and it is one I had already written down.** §3i established the
+78.4% already-lost share and even corrected the standing blunder rate for it. Then
+I built a 38-Elo thesis on the uncorrected column of the same table. Knowing about
+a contamination is not the same as remembering to apply it — **when a distribution
+is used to justify spending a resource, re-derive it over the subset where the
+resource can actually pay.**
+
+**Status:** the match continues for a tighter bound, but the thesis is
+mechanically understood and I expect it to settle negative. The clock deficit
+against Stockfish (§2) remains a real observation; what is dead is the inference
+that closing it is worth Elo.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
