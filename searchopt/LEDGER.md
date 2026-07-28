@@ -259,6 +259,38 @@ mechanism check said the arm does not do the thing it was built to do. **Verify 
 mechanism IN THE MATCH PGN before buying thousands of games**, not just in a cold probe —
 the cold probe said +11.8% and the games said 0%.
 
+## PLY PER DOUBLING, AND WHAT A SPEEDUP IS ACTUALLY WORTH (2026-07-28)
+
+Derived free from the stored equal-nodes ladder's IN-GAME depths (n≈29k moves per rung):
+
+| step | doublings | Δ depth | ply/doubling |
+|---|---|---|---|
+| 10k → 30k | 1.585 | +3.14 | **1.98** |
+| 30k → 110k | 1.874 | +3.87 | **2.06** |
+| | | | **mean 2.02** |
+
+⇒ **2.02 ply per node-doubling in games.** A cold EBF of ~1.6 predicts 1.47 — a 37%
+disagreement, and one more instance of the cold and game regimes measuring different
+things (see THE COLD-PROBE REGIME above).
+
+⇒ **Conversion, with the constant's own uncertainty carried through:**
+
+| Elo/doubling | Elo/ply | perf study 8+9's +0.101 ply |
+|---|---|---|
+| 120 (the folder's figure) | 59.3 | **+6.0 Elo** |
+| 70 (the NNUE study notes the 95% CI includes zero) | 34.6 | **+3.5 Elo** |
+
+⇒ **Method lesson, on my own test.** `engines/runs/s9-elo` runs SPRT `elo0=0 elo1=5`, and
+the expected effect is +3.5…+6 — i.e. the bound sits ON the effect size. That is a badly
+centred hypothesis: it needs thousands of games and can accept H0 while the change is
+genuinely +4. **Derive the expected effect BEFORE choosing SPRT bounds.** For a change
+with a strong positive prior and a small effect (a pure speedup), a fixed-n point estimate
+with a CI is more informative than a hypothesis test.
+
+⇒ **Independent corroboration of the perf work:** at equal time s9 reaches **+0.101 ply**
+over canonical (n=1008 moves), against **+0.13** predicted from its ~9.7% instruction
+saving. Prediction and measurement agree — the instruction savings do convert into depth.
+
 ## TIME ALLOCATION — the one lever fixed-node testing is structurally blind to (2026-07-28)
 
 Every arm in this folder is tested at fixed nodes, which **cannot see time management at
