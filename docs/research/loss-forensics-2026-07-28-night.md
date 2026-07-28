@@ -1519,6 +1519,52 @@ means different things on different corpora and the SF referee inflates the
 second. The top-1 route is neutral-refereed AND self-calibrated, and it agrees
 with the low end of the cp route. That agreement is the reason to believe it.
 
+## 3z6. THE NEUTRAL MEASUREMENT IS UNDERPOWERED — §3z5's closure was premature
+
+With the child-search pricing fixed, the neutral referee gives:
+
+| pieces | n | ARCHON cp | SF18 cp | headroom | top-1 gap |
+|---|---|---|---|---|---|
+| 21+ | 363 | 7.0 | 3.1 | +4.0 | −6.3 |
+| 13–20 | 280 | 3.3 | 4.0 | **−0.7** | −1.8 |
+| 8–12 | 166 | 5.9 | 5.1 | +0.8 | −7.3 |
+| ≤7 | 91 | −7.4 | −0.9 | **−6.5** | **+6.5** |
+| **ALL** | 900 | 4.2 | 3.3 | **+0.88 ± 1.21** | **−3.8** |
+
+**+0.88 ± 1.21 cp is 0.7σ — consistent with zero.** The SF-refereed version of
+the same quantity was +3.79 ± 0.74 (5.1σ). So the identity bias was real and
+large, exactly as §3z4 said.
+
+**But two things stop this from being a clean answer, and both are mine.**
+
+1. **It is underpowered.** ±1.21 cp at n=900 admits anything from −0.3 to +2.1
+   cp, which at the screen's own conversion is −18 to +126 Elo. That does not
+   settle a term worth up to a third of the gap; it only refutes the inflated
+   SF-refereed value.
+2. **The neutral top-1 gap is itself unstable**: −1.6 points at n=1100 with a
+   1.6M probe, −3.8 at n=900 with a 1M probe. Same referee, same engines, same
+   budget — only the probe depth changed. **So §3z4's headline "1.6 points" was
+   one draw from a distribution, and I reported it as the number.**
+
+**Which means §3z5's closure was premature.** That decomposition converted a
+single unstable top-1 reading (1.6 points → 76 Elo) and declared the model
+closed. Using the range instead, quality lands anywhere in **75–180 Elo** by the
+top-1 route and **≈0** by the cp route. Those are not reconcilable, and the honest
+statement is that **the equal-node quality term is not yet measured to a useful
+precision.**
+
+**Why the two routes can disagree by that much.** Top-1 counts disagreements
+without weighting them; cp weights by cost. If our disagreements are mostly
+*cheap* — a different but nearly equal move — top-1 shows a gap where cp shows
+none. The ≤7 row is that case in the extreme: we agree with the referee 6.5 points
+MORE often there and are 6.5 cp better, while the SF referee had us far worse.
+
+**What it would take.** ±0.4 cp needs roughly 8,000 positions rather than 900,
+which is about 40 minutes of the box. That is the measurement to run, and it is
+queued behind the thing that actually produces an answer: the EVAL_SCALE game
+match. **Games do not need a referee at all**, which is why they outrank every
+number in this section.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
