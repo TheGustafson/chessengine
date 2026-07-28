@@ -47,8 +47,8 @@ def bucket(n: int) -> str:
 
 
 def worker(job):
-    fens, nodes = job
-    sf = Engine(SF, net=None, hash_mb=64, name="sf18")
+    fens, nodes, engine = job
+    sf = Engine(engine, net=None, hash_mb=64, name="ref")
     out = {}
     for fen in fens:
         sf.newgame()
@@ -75,6 +75,10 @@ def main() -> None:
     ap.add_argument("--positions", type=int, default=3000)
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--seed", type=int, default=20260728)
+    ap.add_argument("--engine", default=SF,
+                    help="referee engine. Use engines/bin/reckless for a NEUTRAL\n"
+                         "oracle -- an SF oracle rewards arms that resemble SF,\n"
+                         "which does not cancel for arms that change calibration.")
     ap.add_argument("--out", default="tools/nnue/calib/deep-top1.json")
     args = ap.parse_args()
 
@@ -89,11 +93,12 @@ def main() -> None:
 
     n = args.workers
     with mp.Pool(n) as pool:
-        parts = pool.map(worker, [(fens[i::n], args.nodes) for i in range(n)])
+        parts = pool.map(worker, [(fens[i::n], args.nodes, args.engine) for i in range(n)])
     best = {}
     for p in parts:
         best.update(p)
-    json.dump({"nodes": args.nodes, "source": args.from_oracle, "best": best},
+    json.dump({"nodes": args.nodes, "source": args.from_oracle,
+               "engine": os.path.basename(args.engine), "best": best},
               open(args.out, "w"))
     print(f"{len(best)} positions -> {args.out}")
 
