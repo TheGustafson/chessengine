@@ -317,6 +317,25 @@ refuses to run until it re-detects game 18.
 
 ---
 
+## 6b. QUEUED, NEEDS A QUIET BOX
+
+1. **Re-measure the §3b NPS table idle.** Everything else tonight is fixed-node
+   and load-immune; this one is not, and the playbook has a logged case of an
+   NPS read being wrong by 12% under load.
+2. **The smallnet gate as an endgame speed lever.** `ARCHON_SMALLNET` +
+   `ARCHON_SMALLNET_THRESH` + `ARCHON_SMALLNET_MAT_GATE` are implemented and
+   off by default for want of a trained cheap net — but passing the EXISTING
+   d47v net as the cheap net already yields a HalfKA-only evaluation with the
+   FullThreats channel skipped, which the code says is "the gate's entire speed
+   win". So the speed side is testable tonight without training anything; the
+   accuracy side is not, because the head was trained with threats present and
+   its output is miscalibrated without them. Two obstacles to note before
+   anyone tries: the gate is ENV-driven, so `screen.py` cannot A/B it in one
+   run (env reaches control and arms alike, and the runs would be unpaired),
+   and a pure speed change has no deterministic proxy — node count does not
+   move with eval cost. Wall clock on a quiet box, or nothing.
+3. **Fix `param_provenance.py` coverage** to count runs, not config membership.
+
 ## 7. STATE
 
 | thing | state |
