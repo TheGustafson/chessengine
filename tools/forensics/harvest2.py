@@ -1,22 +1,21 @@
 """The gift corpus, calibrated -- every error we made in a lost game.
 
-WHY this supersedes `harvest.py`: that one asked Stockfish at 100k nodes, and a
-budget sweep on the single most-studied blunder we own (game 18, Be2) reads
+WHY this supersedes `harvest.py`: that one asked Stockfish at 100k nodes and
+analysed each position unrestricted-then-forced back to back, so the forced
+search inherits a TT already warmed on that exact position.  Same position,
+same 100k budget: 212 cp warm, 0 cp cold.  Its verdicts are therefore
+ORDER-DEPENDENT -- a 200 cp swing decided by what was analysed before it -- and
+the 100 cp threshold is part luck.  (An earlier version of this comment claimed
+the corpus was blind to game 18 outright.  It was not; that reading came from
+`uciprobe` recording aspiration bound lines as exact scores, now fixed.)
 
-      50k  -15      256k  +212      4M  +278
-     100k  +24      500k  +257     16M  +325
-     120k  +82        1M  +258
+A cold 1M-node budget reads game 18 at 258 cp and is reproducible.  The
+underlying discipline is the one the 2-ply own-eval detector (~9% recall)
+taught: a detector whose sensitivity is set by a COST budget rather than by a
+POSITIVE CONTROL is measuring its own budget, not the engine.
 
--- i.e. at the harvest budget our canonical blunder scores +24 cp and does not
-clear the 100 cp bar.  The refutation is a quiet deflection that only resolves
-past depth ~16, so a 100k-node oracle is BLIND to exactly the class of error we
-care most about.  That is the same failure as the 2-ply own-eval detector
-before it (~9% recall), one level up, and for the same root cause: both had
-their sensitivity set by a COST budget instead of by a POSITIVE CONTROL.
-
-So this script refuses to run unless it first re-detects game 18.  Any future
-detector in this directory should do the same: calibrate against a known
-positive, or you are measuring your own budget rather than the engine.
+So this script refuses to run unless it first re-detects game 18, cold.  Any
+future detector in this directory should do the same.
 
 Two-stage for cost: ask for the best move first (one search), and only pay for
 the forced-move probe when what we played is not it.
@@ -53,16 +52,19 @@ def wp(cp: float) -> float:
     return 1.0 / (1.0 + math.exp(-cp / 170.0))
 
 
-def collect() -> list[dict]:
-    """Every ARCHON move from a game ARCHON lost, both legs."""
+def collect(patterns=()) -> list[dict]:
+    """Every ARCHON move from a game ARCHON lost."""
+    import glob
+
     import chess
     import chess.pgn
 
+    paths = []
+    for pat in (patterns or (f"{REPO}/engines/runs/rematch-v1/*/games.pgn",)):
+        paths.extend(sorted(glob.glob(pat)))
     out = []
-    for leg in ("time", "nodes"):
-        p = f"{REPO}/engines/runs/rematch-v1/{leg}/games.pgn"
-        if not os.path.exists(p):
-            continue
+    for p in paths:
+        leg = os.path.basename(os.path.dirname(p))
         with open(p, errors="ignore") as fh:
             while (g := chess.pgn.read_game(fh)) is not None:
                 aw = "archon" in g.headers.get("White", "").lower()
@@ -127,6 +129,8 @@ def main() -> None:
     ap.add_argument("--min-loss", type=int, default=100)
     ap.add_argument("--out", default=os.environ.get("S", "/tmp") + "/gift_corpus_deep.json")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--pgn", action="append", default=[],
+                    help="glob(s) of PGNs to mine; default rematch-v1")
     args = ap.parse_args()
 
     # --- the positive control, before anything else --------------------------
@@ -142,7 +146,7 @@ def main() -> None:
     print(f"control OK: game-18 Be2 = {c['loss']} cp at {args.nodes} nodes "
           f"(best {c['best']} d{c['best_depth']})", flush=True)
 
-    rows = collect()
+    rows = collect(tuple(args.pgn))
     if args.limit:
         rows = rows[: args.limit]
     print(f"{len(rows)} ARCHON moves from lost games -> {args.workers} workers "
