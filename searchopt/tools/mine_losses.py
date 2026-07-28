@@ -15,12 +15,25 @@ METHOD, per ARCHON move in a lost game:
 Both at the same node budget, both from SF's own perspective, so no cross-engine
 frame conversion is involved anywhere (CLAUDE.md R2).
 
-  cp_loss = sf_best_score - sf_our_move_score      (>= 0 by construction)
+  cp_loss = sf_best_score - sf_our_move_score
+
+**cp_loss is NOT >= 0 by construction** -- an earlier version of this docstring
+claimed it was. The free search shares its budget across all moves while the
+forced search spends all of it on one, so the played move can score HIGHER than
+the free search's own best. Measured: 11% of rows, median -12 cp, worst -218.
+Both moves are therefore scored the SAME way now -- SF forced onto its own best
+move too -- so the comparison is symmetric.
   wp_loss = win_prob(sf_best) - win_prob(our move)
 
 **Win probability, not centipawns, is the ranking key.** Summing cp assumes
 small inaccuracies add linearly into outcomes; they mostly do not — they are
 absorbed — while one large error at a decision point converts a result.
+
+**A move played from an already-lost position is not a blunder.** At worse than
+-2.5 pawns against SF18-class opposition the game was gone regardless, so those
+positions are excluded entirely (`LOST`). Measured on 404 games: 56% of our moves
+in lost games are still from playable positions, and only 0.16% of THOSE are
+blunders by wp_loss >= 0.10 -- roughly 9 real candidates from the whole match.
 
 Output: `losses.json`, one row per scored move. Classification into
 OURS / BOTH / near-tie comes later (classify_losses.py) because it needs OUR
@@ -40,11 +53,25 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from uciprobe import Engine, REPO  # noqa: E402
 
 
+MATE_CLAMP = 1500          # cp beyond which the logistic is saturated anyway
+LOST = 250                 # cp: at -2.5 pawns the game is already gone vs SF18-class
+                           # opposition, and a "blunder" there is not why we lost
+                           # (owner ruling 2026-07-28). One-sided on purpose: being
+                           # WINNING and throwing it away still counts.
+
+
 def win_prob(cp: float) -> float:
-    """Logistic win probability from SF-printed cp. The 1/350 slope is the usual
-    engine-community fit; only DIFFERENCES of this are used, so the exact
-    constant matters far less than using probability at all."""
-    return 1.0 / (1.0 + math.exp(-cp / 350.0))
+    """Logistic win probability from SF-printed cp, with the input CLAMPED.
+
+    The clamp is not cosmetic. A mate score arrives as +-29xxx and saturates the
+    logistic to exactly 1.0 or 0.0, so EVERY position where SF sees a mate would
+    clear any wp threshold whether or not our move caused it. Measured on the
+    first 5,850 rows: 12 of 22 raw "candidates" were that artifact.
+
+    Clamping keeps genuine mate-allowing blunders (position playable, our move
+    forces mate) while stopping already-decided positions from flooding in --
+    positions already lost are additionally excluded by LOST below."""
+    return 1.0 / (1.0 + math.exp(-max(-MATE_CLAMP, min(MATE_CLAMP, cp)) / 350.0))
 
 
 def main() -> int:
@@ -110,16 +137,25 @@ def main() -> int:
         free = s.go(fen=j["fen"], nodes=a.nodes)
         if not free["ladder"]:
             continue
-        top = free["ladder"][max(free["ladder"])]
-        best_mv, best_cp = top["move"], top["score"]
+        best_mv = free["ladder"][max(free["ladder"])]["move"]
+        # Score BOTH moves the same way -- each forced, same budget. Comparing a
+        # forced score against a free-search score is asymmetric and biases toward
+        # the played move (see the docstring).
+        s.newgame()
+        fb = s.go(fen=j["fen"], nodes=a.nodes, searchmoves=[best_mv])
+        if not fb["ladder"]:
+            continue
+        best_cp = fb["ladder"][max(fb["ladder"])]["score"]
         if best_mv == j["played"]:
-            our_cp = best_cp                      # we played the oracle's move
+            our_cp = best_cp
         else:
             s.newgame()
             forced = s.go(fen=j["fen"], nodes=a.nodes, searchmoves=[j["played"]])
             if not forced["ladder"]:
                 continue
             our_cp = forced["ladder"][max(forced["ladder"])]["score"]
+        if best_cp < -LOST:
+            continue      # already lost before this move -- not a blunder, just a loss
         # both scores are SF's, from the mover's perspective
         rows.append({**j, "best": best_mv, "best_cp": best_cp, "our_cp": our_cp,
                      "cp_loss": best_cp - our_cp,

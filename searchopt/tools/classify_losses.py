@@ -9,6 +9,10 @@ wasted effort, so the corpus has to be split before anyone walks a position.
 
 At the IN-GAME budget (default 110k nodes):
 
+Positions already lost (worse than -2.5 pawns before the move) are excluded by
+the miner: at that point the game was gone against SF18-class opposition and the
+move is not why we lost.
+
   OURS      SF avoids the blunder, we play it        -> the actionable defect
   BOTH      SF plays it too                          -> position hardness, skip
   NEITHER   we avoid it from a cold search           -> in-game context or
@@ -65,7 +69,11 @@ def main() -> int:
     ap.add_argument("--losses", default="searchopt/positions/losses.json")
     ap.add_argument("--budget", type=int, default=110_000,
                     help="the in-game node budget; the whole split is defined AT it")
-    ap.add_argument("--wp-min", type=float, default=0.10)
+    ap.add_argument("--wp-min", type=float, default=0.06,
+                    help="win-probability loss to count as a blunder. 0.06 ~= 88 cp and "
+                         "yields ~47 positions from a 404-game match -- the same scale as "
+                         "the old D47V corpus. Raise to 0.10 (~170 cp) for the severe "
+                         "subset, which is only ~9 positions.")
     ap.add_argument("--outdir", default="searchopt/positions")
     ap.add_argument("--engine", default="engines/canonical/archon")
     ap.add_argument("--oracle", default="engines/bin/stockfish18")
