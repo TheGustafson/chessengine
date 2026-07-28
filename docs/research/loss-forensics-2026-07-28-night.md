@@ -304,8 +304,31 @@ number yet:
    running.
 3. `hind111` is the standing reminder that a screen number is not Elo.
 
-Sequence before it can be promoted: bracket → re-screen on the phase corpus →
-SPRT.
+**The node cost is ~zero, possibly negative.** A single middlegame position
+showed the arm building a 78% larger tree at depth 13, which would have cost
+~100 Elo of speed and killed it. Aggregated over 60 positions across phases at
+depth 12 it reverses:
+
+| pieces | base nodes | arm nodes | ratio |
+|---|---|---|---|
+| 21+ | 572,469 | 533,012 | 0.93 |
+| 13–20 | 418,672 | 410,042 | 0.98 |
+| 8–12 | 319,768 | 332,985 | 1.04 |
+| ≤7 | 399,404 | 346,870 | **0.87** |
+| **all** | 1,710,313 | 1,622,909 | **0.95** |
+
+Against the screen's +4.4% on its own bench suite, so the honest reading is
+**±5%, i.e. no meaningful node cost** — and the cp gain is not swamped. There
+is a mechanism for less pruning costing fewer nodes rather than more: when
+parent futility prunes it LIFTS `best_value` to the futility bound, and that
+inflated value is stored as a TT lower bound. Fewer inflated lifts means better
+TT data downstream. That also predicts the effect should be largest where trees
+are deepest and TT reuse heaviest, which matches the ≤7 column.
+
+Sequence before it can be promoted: bracket on the phase corpus → SPRT.
+A fixed-node SPRT (`tc=inf nodes=200000`, load-immune, legitimate here because
+a pruning margin has no NPS effect) is **running now** at `engines/runs/pfut-sprt`,
+arm verified live by tree change (20,622 → 36,654 nodes, restore exact).
 
 **Why a 4σ effect was still lying around — and a correction.** I first wrote
 that PFUT_\* were among the 164 of 303 tunables in no campaign. That is wrong:
