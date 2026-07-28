@@ -1,15 +1,36 @@
 """Failure-mode classifier, v2 — probe B removes pruning THROUGHOUT the tree.
 
 v1 used MultiPV, which only unhides moves at the root's immediate children. The
-game-18 mechanism (RFP discarding a refutation one ply down, inside the losing
+game-18 mechanism (a refutation discarded one ply down, inside the losing
 move's subtree) was invisible to it and misclassified as EVAL. Probe B is now
 all five eval gates disabled, which is what actually recovered that line.
+
+*** SUPERSEDED — DO NOT TRUST OUTPUT FROM THIS SCRIPT (2026-07-28). ***
+
+Two independent measurement bugs, either of which alone invalidates the table:
+
+1. `RFP_MULT_BASE/CAP = 30000` is NOT a disable — the trend discount
+   `2934*improving*futility_mult/1024` is ~2.87x futility_mult, so at depth 1-2
+   the margin goes hugely negative and RFP becomes an UNCONDITIONAL shallow
+   prune. Use `RFP_MAX_DEPTH = 0` (see `uciprobe.GATES_OFF`, which now carries
+   the verification).
+2. `sleep {wait}` then EOF: our engine treats stdin EOF as a STOP, so a search
+   that outruns the sleep is truncated and the last `info depth N` line parsed
+   is a partial re-search. That is why this script and `depthsplit.py` reported
+   DIFFERENT moves for the same position at the same depth with binaries later
+   verified bit-identical. Use `uciprobe.Engine`, which reads to `bestmove`.
+
+And one interpretation bug that outlives both: on this class of position the
+chosen move is a CHAOTIC function of the pruning constants — `RAZOR_BASE
+465->464` flips game 18 at depth 17. A per-position "arm X changes the move"
+verdict carries almost no information without `uciprobe.NULL_ARMS` measured
+beside it.
 """
 import json,os,re,subprocess,statistics as st
 S=os.environ["S"]; NET=os.getcwd()+"/data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
 BIN="engines/bin/archon-d47v-tune-pgo"
-OFF=("setoption name RAZOR_BASE value 30000\nsetoption name RFP_MULT_BASE value 30000\n"
-     "setoption name RFP_MULT_CAP value 30000\nsetoption name PFUT_BASE value 30000\n"
+OFF=("setoption name RAZOR_BASE value 30000\nsetoption name RFP_MAX_DEPTH value 0\n"
+     "setoption name PFUT_BASE value 30000\n"
      "setoption name CFUT_BASE value 30000\nsetoption name QS_FUTILITY_MARGIN value 30000\n")
 def probe(fen,depth,extra="",wait=7):
     s=f"uci\nsetoption name EvalFile value {NET}\n{extra}isready\nposition fen {fen}\ngo depth {depth}\n"

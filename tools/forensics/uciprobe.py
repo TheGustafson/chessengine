@@ -24,6 +24,16 @@ INFO = re.compile(
     r"^info depth (\d+) .*?score (cp|mate) (-?\d+).*? nodes (\d+) .*? pv (.+)$"
 )
 
+# WHY this filter matters more than it looks.  An aspiration re-search emits
+# `score cp X upperbound` / `lowerbound` lines, which are BOUNDS, not values.
+# Recording them as exact scores is harmless for a depth-limited ladder (the
+# last line at a completed depth is exact) but catastrophic for a NODE-limited
+# search, whose final iteration is usually cut off mid-window: the last line is
+# then a fail-low bound.  That is how a 100k-node probe of game 18 read "-40,
+# only 24 cp lost" when the true value was about -228 -- and it nearly got the
+# whole gift corpus thrown out as blind.
+BOUND = re.compile(r"\b(lowerbound|upperbound)\b")
+
 
 class Engine:
     def __init__(self, path, net=NET, hash_mb=16, options=None, name=""):
@@ -105,7 +115,7 @@ class Engine:
             if line.startswith("bestmove"):
                 best = line.split()[1]
                 break
-            m = INFO.match(line)
+            m = None if BOUND.search(line) else INFO.match(line)
             if m:
                 d, kind, sc, nd, pv = m.groups()
                 d = int(d)
@@ -125,11 +135,71 @@ class Engine:
             self.p.kill()
 
 
+# The five eval gates, DISABLED.
+#
+# WHY RFP is switched off with a depth cap and not with a huge margin: the
+# obvious recipe `RFP_MULT_BASE = RFP_MULT_CAP = 30000` is NOT a disable.  The
+# margin is
+#
+#     futility_mult*depth - (2934*improving + 343*opp_worsening)*futility_mult/1024
+#
+# so the trend discount is ~2.87 * futility_mult.  Blow futility_mult up to
+# 30000 and at depth 1-2 the discount (~86k) dwarfs `futility_mult*depth`
+# (30-60k) and the margin goes hugely NEGATIVE -- which turns RFP into an
+# UNCONDITIONAL prune at every shallow improving node instead of turning it
+# off.  Measured on the game-18 position (2026-07-28): the mult=30000 arm and
+# the two genuine disables disagree on the chosen move AND on node count
+# (152k vs 119k at depth 15), and the mult arm "recovered" the correct move
+# only as a side effect of pruning MORE somewhere else.  Every gate attribution
+# made with the old recipe has to be re-measured.
+#
+# `RFP_MAX_DEPTH = 0` makes the `depth < RFP_MAX_DEPTH` guard unsatisfiable and
+# is a true disable.  It is bit-identical (move, score AND node count at d12 /
+# d15 / d16) to the independent disable that raises the mult while zeroing the
+# two trend weights, which is how it was verified.
+#
+# The other four gates are additive margins compared against alpha with no
+# subtractive companion term, so raising them really does disable them.
 GATES_OFF = {
     "RAZOR_BASE": 30000,
-    "RFP_MULT_BASE": 30000,
-    "RFP_MULT_CAP": 30000,
+    "RFP_MAX_DEPTH": 0,
     "PFUT_BASE": 30000,
     "CFUT_BASE": 30000,
     "QS_FUTILITY_MARGIN": 30000,
+}
+
+# The defaults for everything GATES_OFF (and the per-family arms below) touch,
+# so a driver that reuses one engine process can restore a clean baseline
+# between arms instead of trusting the previous arm to have been additive.
+GATES_DEFAULT = {
+    "RAZOR_BASE": 465,
+    "RFP_MAX_DEPTH": 17,
+    "RFP_MULT_BASE": 40,
+    "RFP_MULT_CAP": 80,
+    "PFUT_BASE": 40,
+    "CFUT_BASE": 231,
+    "QS_FUTILITY_MARGIN": 335,
+}
+
+# Single-family disables, for the bisect rung.  Same caveat as above: prefer a
+# structural guard (a depth/lmr-depth cap) over a huge margin wherever the
+# margin has a subtractive term.
+GATE_FAMILIES = {
+    "razor": {"RAZOR_BASE": 30000},
+    "rfp": {"RFP_MAX_DEPTH": 0},
+    "pfut": {"PFUT_BASE": 30000},
+    "cfut": {"CFUT_BASE": 30000},
+    "qsfut": {"QS_FUTILITY_MARGIN": 30000},
+}
+
+# A semantically NULL perturbation: one unit on a constant that cannot matter.
+# WHY it belongs in the harness: on the game-18 position, `RAZOR_BASE 465->464`
+# changes the move the engine plays at depth 17.  The argmax of a single search
+# is a chaotic function of the pruning constants, so "arm X flips this position"
+# is worth nothing without the null band beside it.  Run these, see what the
+# baseline flip rate is, and only believe an arm that beats it.
+NULL_ARMS = {
+    "null_razor": {"RAZOR_BASE": 464},
+    "null_cfut": {"CFUT_BASE": 232},
+    "null_qsfut": {"QS_FUTILITY_MARGIN": 336},
 }
