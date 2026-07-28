@@ -42,6 +42,23 @@ knobs (all worse). **What it points at:** per-node cost, and structural search
 mechanisms Stockfish has that we do not — ordering, extensions, what gets
 searched rather than how much.
 
+**And the constraint that governs all of it (§3j):** on the positions where we
+make decidable errors, **our move choice is chaotic with respect to parameters** —
+a ±1 change to an unrelated constant moves the outcome as much as removing a
+whole pruning gate. So tuning cannot target specific failures, only shift the
+distribution the coin flip is drawn from. That is why single-position debugging,
+gate attribution and a 4σ screen result all came to nothing tonight, and it is
+why the two surviving levers are both non-parametric:
+
+| lever | size | state |
+|---|---|---|
+| **Threat channel** (D49) — 1.482× speed in the middlegame | **~68 Elo** | speed side measured tonight; eval side needs a threats-free net at the same width |
+| **Structural search mechanisms** — ordering, extensions | part of ~78 Elo | localized (§3f, §3i), not yet named |
+
+The corpus says the same thing independently: **two thirds of decidable errors
+are depth-fixable** (§3i). Make the search see more per second and the
+distribution improves. Nothing else on the table does.
+
 ---
 
 ## 1. THE HEADLINE — our tuning instrument samples the wrong population
