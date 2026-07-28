@@ -83,6 +83,13 @@ def main() -> int:
     ap.add_argument("--outdir", default="searchopt/positions")
     ap.add_argument("--engine", default="engines/canonical/archon")
     ap.add_argument("--oracle", default="engines/bin/stockfish18")
+    ap.add_argument("--verify-nodes", type=int, default=1_000_000,
+                    help="ORACLE-VERIFICATION GATE (2026-07-28). Re-check each candidate's "
+                         "`best` against the played move, forced, at this budget. The mine "
+                         "scores at 120k and this pass classifies at 110k -- both sit where "
+                         "SF's own preference is still unsettled, so a row can enter OURS "
+                         "purely because the oracle had not looked far enough. On the D48X "
+                         "corpus 2 of 3 OURS positions were exactly that. 0 disables.")
     a = ap.parse_args()
     os.chdir(REPO)
 
@@ -108,6 +115,21 @@ def main() -> int:
         # Convert OUR gap into SF's printed frame HERE, at the tool boundary --
         # a difference of two scores scales exactly like a level, so the same
         # /2.07 applies. `our_gap_raw` is kept so the conversion is auditable.
+        # ORACLE-VERIFICATION GATE: does `best` still beat the played move when the
+        # oracle is given real time? Forced on BOTH sides so the comparison is
+        # symmetric (same reason the miner forces both).
+        if a.verify_nodes and cls == "OURS":
+            sf.newgame()
+            vb = sf.go(fen=r["fen"], nodes=a.verify_nodes, searchmoves=[r["best"]])
+            sf.newgame()
+            vp = sf.go(fen=r["fen"], nodes=a.verify_nodes, searchmoves=[r["played"]])
+            if vb["ladder"] and vp["ladder"]:
+                b_cp = vb["ladder"][max(vb["ladder"])]["score"]
+                p_cp = vp["ladder"][max(vp["ladder"])]["score"]
+                if b_cp <= p_cp:
+                    cls = "ORACLE_ARTIFACT"   # the "blunder" is >= the "best" at depth
+                r = {**r, "verify_best_cp": b_cp, "verify_played_cp": p_cp}
+
         raw_gap = top2_gap(ar, r["fen"], a.budget)
         out.append({**r, "class": cls, "our_move_at_budget": we, "sf_move_at_budget": th,
                     "our_gap_raw": raw_gap,
@@ -119,7 +141,7 @@ def main() -> int:
 
     os.makedirs(a.outdir, exist_ok=True)
     json.dump(out, open(os.path.join(a.outdir, "classified.json"), "w"))
-    for cls in ("OURS", "BOTH", "NEITHER"):
+    for cls in ("OURS", "BOTH", "NEITHER", "ORACLE_ARTIFACT"):
         sub = [r for r in out if r["class"] == cls]
         json.dump([{k: r[k] for k in ("fen", "played", "best", "wp_loss")} for r in sub],
                   open(os.path.join(a.outdir, f"{cls.lower()}.json"), "w"))

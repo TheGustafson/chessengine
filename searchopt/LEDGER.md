@@ -29,6 +29,43 @@ known.** Add to this file rather than to prose elsewhere.
 | Blunders are RARE in still-playable positions | **0.16%** of our moves at wp ≥ 0.10 (6 of 3,698 scored). At the 0.06 bar it is ~1.3% |
 | 56% of our moves in lost games come from still-playable positions | 3,698 of 6,600 scored, `best_cp ≥ −250` |
 
+## WHY WE LOSE — the holistic answer (2026-07-28, full 404-game corpus)
+
+Full writeup: `searchopt/results/WHY-WE-LOSE-d48x.md`. Counted, not estimated.
+
+| claim | deciding evidence |
+|---|---|
+| **We lose because we cannot convert, not because we blunder** | on the SAME 201 colour-paired UHO openings: we convert a won book **12%** (25W/172D/4L), SF converts **84%**; we salvage a lost book **16%**, SF **88%**. A +1 book is worth **92% to SF, 55% to us** |
+| **Conversion is bimodal — tactics or nothing** | squandered wins (n=172) gain a median **+0.05** pawns over the book and **ZERO ever exceed +2.00**; converted wins (n=25) gain **+10.07** and all 25 exceed +2.00. We never grind +1.0 → +1.5 → +2.0 |
+| **The advantage decays DISTRIBUTED, not at a point** | worst single move per game: median **0.25 pawns**, only **2 of 172** games contain any move costing ≥ 0.88 (the blunder bar). The single worst move carries a median **23%** of the total decline — 77% bleeds away below a quarter pawn per move |
+| Game 87 audited move-by-move at 2M | largest single error in a 190 cp collapse is **32 cp**; at two moves our played move BEAT the free-search best. No locatable defect |
+| Draw adjudication was NOT premature | in all 172, both engines independently reported ~0.00 in the last 3 moves (max +0.10); zero games where either still claimed ≥ +0.50 |
+| Time management is not a loss cause (D48X) | **ZERO** losses on time or forfeit in 404 games; every loss is adjudication-on-eval or mate |
+| Our eval is NOT the discriminator on these positions | at the in-game budget we match SF almost exactly on game 87's critical nodes: **+63 vs +64**, +78 vs +61, +98 vs +75 (SF cp). Both need ~8M nodes to see the draw; neither sees it at 110k |
+
+### The two efficiency hypotheses, both KILLED by measurement (2026-07-28)
+
+After the "no localizable defect" result, the remaining in-scope story was efficiency:
+our moves are right in kind but short in depth (3/14 plateau positions flip to the 8M
+oracle's move with more nodes; **0/14 never converge**, so it is not eval disagreement).
+Two ways that could be true, both tested:
+
+| hypothesis | measurement | verdict |
+|---|---|---|
+| We reach less DEPTH per node (the D47V "wide shallow" claim) | 70 plateau positions at 110k: ARCHON median depth **15.0**, SF18 **15.0**; mean 14.73 vs 14.47. We are shallower in 21/70, EQUAL in 20, **deeper in 29** | **REFUTED.** No depth-per-node deficit. The n=44 D47V tree-shape claim does not reproduce |
+| Our SEARCH is slow (nps) | movetime 1000, equal contention: ARCHON+net **0.54 Mnps**, SF18 **1.03 Mnps** (1.92x) — but ARCHON on PSQT is **2.13 Mnps**, i.e. **2x SF18's total throughput**. **75% of our node time is eval** | **NOT A SEARCH DEFECT.** The search machinery is faster than SF's; the entire speed gap is net evaluation cost — the deliberate 1280-width tradeoff (out of scope) |
+
+⇒ At equal nodes we reach equal depth and pick the deep oracle's move ~79% of the time.
+The search machinery is not slow, not shallow, and not making locatable errors. **Every
+measured deficit is in eval cost or eval quality**, both out of scope for this folder.
+
+⇒ **Consequence for this folder.** The per-position "find the node that discards the right
+move" program has essentially no material on D48X: 1 actionable blunder position in 404
+games, and it resisted mechanism attribution. The Elo is in ~5 cp/move of distributed
+drift across 172 unconverted wins. That is the failure mode the standing bar in CLAUDE.md
+explicitly deprioritised as "leaves no trace to debug" — on this corpus it is the whole
+story. **This is a finding for the owner to rule on, not for an agent to act on unilaterally.**
+
 ## REFUTED — do not rebuild
 
 | claim | what killed it |
@@ -50,6 +87,8 @@ known.** Add to this file rather than to prose elsewhere.
 | A wp threshold alone finds blunders | mate scores saturate the logistic, so **12 of 22 raw candidates were positions where SF merely saw a mate**. `win_prob` now clamps its input |
 | **"top1−top2 is 55.3 cp us vs 10.5 SF" (the magnitude)** | **FRAME-CONTAMINATED, 2026-07-28.** `classify_losses.py` computed each gap inside one engine — which is why it looked safe — then PRINTED them side by side, and README/LEDGER read the ratio straight off that table. ARCHON prints raw internal values, SF divides by `a ≈ 385`, so ours is ~2.07× theirs. Real ratio is **2.54×, not 5.27×** (26.7 SF-frame cp vs 10.5). The *direction* survives; the magnitude was doubled. R2 violated by the tool itself — now converted at the boundary (`our_gap` is SF-frame, `our_gap_raw` retained) |
 | "We are confidently wrong on OURS" (as a D48X fact) | not established on this corpus: frame-corrected, OURS is **70.0 vs 58.0 SF-frame cp — a 1.21× ratio at n=3**. NEITHER is **0.79×** (we are *less* separated than SF). Too few positions to conclude anything; the D47V 2.54× is the only version of this claim with real support |
+| **Root node ALLOCATION is a sound per-position statistic** | it is not. On OURS index 0 the `b7b8/a1b1` node ratio swings **8.1× → 0.1×** across a 6-arm inert ±1 panel (RED_BASE/RED_FLAT/RED_DELTA_MULT), and one inert null makes the engine play the RIGHT move. Same failure class as "nodes to stop playing the blunder" |
+| **`searchmoves`-restricted head-to-head localises the defect** | it does not, at least not at one budget. Restricting the root to the two candidates flips the pick to the correct move — but that head-to-head argmax itself flips **2/6** under inert ±1, and restricting from 16 moves to 2 hands each ~8× the budget, which is a sufficient alternative explanation. This was P2's mechanism test; it does not survive its own control on a fresh position |
 
 ## MEASURED-NEUTRAL (game results)
 
@@ -84,10 +123,24 @@ comparable) ran as `engines/runs/corpus-d48x/`; the mine + classify **completed
   acted on: the owner's standing direction is to work OURS first, then widen to the other
   losing positions.
 
-- **Which node discards the right move, on each of the 3 D48X OURS positions.** This is
-  the work. (The D47V-era 14 are stale — different net.) Then widen to NEITHER/BOTH.
-  Index 0 `8/1r3kp1/R6p/1PR4P/6P1/8/p4P1K/r7 b - - 36 65`, played `b7b8`, best `a1b1`,
-  wp_loss 0.068.
+- **All 3 D48X OURS positions are WALKED (2026-07-28). Two are corpus false positives.**
+  Verified at 4M nodes forced, both engines (`searchopt/results/*-d48x-ours*.md`):
+
+  | idx | position | verdict |
+  |---|---|---|
+  | 0 | `8/1r3kp1/R6p/1PR4P/6P1/8/p4P1K/r7 b - - 36 65` | **REAL.** `a1b1` +0 (SF) / −13 (ours) vs `b7b8` −262/−264 — a 250 cp error, oracle confirmed by both engines, SF's free search plays `a1b1` at 4M. **No mechanism found: argmax, head-to-head and node-allocation instruments all died to their own inert nulls.** |
+  | 1 | `r4r2/6pk/b3Qq1p/pp1B4/5PP1/7P/PP6/4R1K1 w - - 0 29` | **ORACLE ARTIFACT.** SF18 plays the "blunder" itself at 250k/500k/1M; its own forced score for the "best" move collapses −15 → −216 |
+  | 2 | `5k2/pp3pb1/1q4p1/1B1p1bN1/1n1P3Q/1N2r3/PPR3P1/1K5R w - - 0 24` | **ORACLE ARTIFACT.** At 4M both engines rank the played move ABOVE the oracle's best (−519 vs −553 ours; −385 vs −409 SF) |
+
+  ⇒ **The actionable D48X corpus is ONE position**, and that one resisted mechanism
+  attribution. Next material must come from NEITHER (21) or a re-mined corpus.
+
+- **The corpus needs an ORACLE-VERIFICATION GATE.** `mine_losses.py` scores at 120k and
+  `classify_losses.py` classifies at 110k; both sit where SF's own preference is still
+  unsettled, so a row can enter OURS purely because the oracle had not looked far enough.
+  2 of 3 did. Any candidate's `best` must be re-checked forced at a budget well above the
+  mining budget (4M settled all three here) before a walk is spent on it. One forced
+  ladder per candidate — cheap next to an hour of tracing.
 
 - **The OURS/NEITHER classifier has never been nulled.** The whole 3-vs-21 split rests on
   one free-search argmax per engine at one budget, and `walk.py`'s own docstring records
