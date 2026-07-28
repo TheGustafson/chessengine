@@ -43,6 +43,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import math
 import re
 import sys
 from collections import Counter
@@ -71,6 +72,19 @@ def ev(tok: str) -> float:
     return float(tok)
 
 
+def wp(pawns: float) -> float:
+    """Pawns -> win probability. Logistic, ~1.7 pawn scale.
+
+    A raw-pawn threshold is WRONG for this job and the first version used one.
+    +16.2 -> +12.8 is a 3.4 pawn "collapse" between two totally won positions:
+    in win-probability terms it is a move from 1.000 to 0.999, i.e. nothing
+    happened. Sparse endgames carry far more extreme evals than middlegames, so
+    a pawn threshold manufactures blunders preferentially at low piece counts --
+    which is exactly the spurious concentration the first run reported.
+    """
+    return 1.0 / (1.0 + math.exp(-pawns / 1.7))
+
+
 def collapses(pgn: str, us: str, drop: float, scale: float):
     """Positions where OUR eval fell by `drop` pawns across our own moves.
 
@@ -92,7 +106,7 @@ def collapses(pgn: str, us: str, drop: float, scale: float):
             for i in range(len(seq) - 1):
                 if abs(seq[i][2]) > 25 or abs(seq[i + 1][2]) > 25:
                     continue
-                if seq[i][2] - seq[i + 1][2] >= drop:
+                if wp(seq[i][2]) - wp(seq[i + 1][2]) >= drop:
                     out.append({"game": g.headers.get("Round", "?"),
                                 "fen": seq[i][0], "move": seq[i][1].uci(),
                                 "before": round(seq[i][2], 2),
@@ -142,7 +156,11 @@ def main() -> None:
     ap.add_argument("--them", default="sf18")
     ap.add_argument("--oracle", default="engines/bin/stockfish18")
     ap.add_argument("--nodes", type=int, default=256000)
-    ap.add_argument("--drop", type=float, default=2.0, help="pawns, in oracle frame")
+    ap.add_argument("--drop", type=float, default=0.15,
+                    help="WIN-PROBABILITY drop, not pawns. 0.15 ~ giving away a "
+                         "sixth of the game. A pawn threshold manufactures "
+                         "blunders in blowout positions, which are commonest "
+                         "when the board is sparse.")
     ap.add_argument("--our-scale", type=float, default=0.64)
     ap.add_argument("--their-scale", type=float, default=1.07)
     ap.add_argument("--limit", type=int, default=0)
@@ -159,7 +177,7 @@ def main() -> None:
             recs = collapses(args.pgn, name, args.drop, scale)
             if args.limit:
                 recs = recs[: args.limit]
-            print(f"\n{name}: {len(recs)} own-eval collapses >= {args.drop} pawns"
+            print(f"\n{name}: {len(recs)} own-eval collapses >= {args.drop} win-prob"
                   f"  (adjudicating at {args.nodes} nodes/move)", flush=True)
             for i, r in enumerate(recs, 1):
                 adjudicate(eng, r, args.nodes)
