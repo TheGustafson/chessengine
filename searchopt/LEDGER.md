@@ -213,7 +213,15 @@ arm name.
 | `corrgate` (`RAZOR_CORR_DIV`/`NMP_CORR_DIV` 1e9 → 182069) | 30k | **−17.1 [−51.2, +16.7]**, n=406 |
 | `setrigger` (`SE_BETA_MULT` 60→32, `SE_BETA_TTPV_MULT` 70→38) | 30k | **−16.3 [−50.4, +17.5]**, n=406 |
 | `redcorr110k` (`RED_CORR_DIV` 26131→7029) | 110k | **−13.3 [−52.2, +25.2]**, n=313, STOPPED early for memory |
-| `offense0` (`QUIET_OFFENSE_FACTOR` 10→0) | 30k | running |
+| `offense0` (`QUIET_OFFENSE_FACTOR` 10→0) | 30k | **−1.7 [−36.0, +32.5]**, n=398 |
+
+⇒ **A real, nulled `fhf` improvement did NOT convert to Elo.** `QUIET_OFFENSE_FACTOR=0`
+raised the first-move cutoff rate by +0.0021 against a ±0.0011 null band, with the
+cutoff COUNT rising too (so not a ratio artifact) — and the games are flat. Consistent
+rather than contradictory: 0.2 percentage points of ordering is simply too small to
+show up as Elo. **The lesson is about the size of effect `fhf` must show before it is
+worth a match, not about `fhf` being invalid.** Do not spend 400 games on a sub-0.005
+fhf move again.
 
 ⇒ Four arms, every one neutral-to-negative with a CI spanning zero. Combined with the
 folder's own history (`pfut` +3.4 ± 14 at n=1529, `rfp-threat0` −3.2 ± 14 at n=1200,
