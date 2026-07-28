@@ -13,10 +13,16 @@ on the gift corpus:
     21+              4.0%                  17.9%                    100%
 
 So the instrument samples the phase that holds ~18% of our damage and is blind
-to the other 82%.  That is not merely low power -- it can be ANTI-correlated:
-HINDSIGHT_EVAL_SUM=111 screened at +0.03 cp on this corpus and lost 17.4 Elo in
-real games.  A screen is only as good as its population, and nobody had ever
-plotted this one.
+to the other 82%.  Two unconfounded cross-checks say the same thing without
+any error attribution: 64% of the moves we actually PLAY are below 21 pieces,
+and win probability lost per 100 moves runs 0.31 at <=7 pieces against 0.06 at
+21+ -- a 5x rate in the phase the instrument cannot see.
+
+That is not merely low power: the screen can be BLIND to a large real effect.
+HINDSIGHT_EVAL_SUM=111 came back +0.03 +- 0.15 cp at the full 9,992 positions
+-- a flat nothing -- on a change worth -17.4 Elo in games.  (Blindness, not
+inversion; be precise about which.)  A screen is only as good as its
+population, and nobody had ever plotted this one.
 
 Positions come from our OWN games (all results, not just losses -- conditioning
 the population on the outcome would bias every future screen toward whatever we
