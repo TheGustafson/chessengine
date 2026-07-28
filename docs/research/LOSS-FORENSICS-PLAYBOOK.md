@@ -840,6 +840,37 @@ handed more nodes.
   `-0.11 / -0.24 / -0.04 cp` by tier at **+7.4% nodes**. At ~120 Elo per node
   doubling that costs ~12 Elo to buy ~2. Not the fix either.
 
+### 14.2b One loose end that is a TUNING lead, not a fix
+
+The same full-corpus screen carried `PFUT_BASE 40 -> 120`, which came from the
+PFUT hypothesis this section refutes. It screened mildly positive anyway
+(`ARCHON_BIN=target/qtrace/release/chessengine`, `--limit 0`, n=9992):
+
+```
+arm            cp@4k         cp@16k        cp@64k       top1    blund  p90  nodes
+control        6.37          6.32          6.66         62.2%   0.2%   23   (base)
+fpv1          -0.11+-0.14   -0.24+-0.14   -0.04+-0.16   62.1%   0.2%   22   +7.4%
+pfutbase120   -0.14+-0.14   -0.38+-0.14   -0.26+-0.15   62.4%   0.2%   22   +3.0%
+```
+
+Priced: -0.26 cp at the deepest tier is roughly +16 Elo against ~5 Elo for
++3.0% nodes. **Do not promote it on this.** Three reasons, in order of force:
+
+1. It is **1.7 sigma**. §9's standing rule is that a mechanism at 3.6 sigma
+   beats an Elo at 1.7, and `hind111` is the cautionary case — full-corpus
+   neutral, -17 Elo in games.
+2. The screen corpus `oracle-obs.json` is **100% 21+ piece opening positions**,
+   so this number is the arm's behaviour in the opening only and says nothing
+   about the endgame and late-middlegame regime where the losses actually are.
+3. Its *motivation* is dead. It is now an unexplained tunable that happens to
+   screen slightly positive, which is an SPSA lead, not a loss-forensics
+   finding. WHY the distinction matters here specifically: the entire failure
+   of this investigation was treating a number that moved in a pleasing
+   direction as evidence of a mechanism.
+
+If someone wants it: bracket the neighbours (80 / 160 / 250), re-screen on a
+corpus that matches the loss piece-count distribution, then SPRT. Not before.
+
 ### 14.3 What survives, and where to go instead
 
 One fact from this investigation is node-controlled end to end and is not
