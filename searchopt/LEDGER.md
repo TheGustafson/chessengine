@@ -304,6 +304,32 @@ construction, so the balanced band is empty.)
 increment that is a real cost in its own right, and it is independent of the balanced-band
 shape.
 
+### The two existing TM levers are INERT on D48X — measured, not assumed
+
+`src/search/mod.rs` already implements two ARCHON-original soft-stop factors that do
+exactly what the allocation measurement asks for, both default off:
+
+* `ARCHON_UNC_TM_C2` — `1 + c2·(σ̂ − σ̄)/σ̄`, clamped [0.8, 1.25]: *unclear → think longer.*
+* `ARCHON_WDL_TM_C3` — `1 − c3·decisiveness`, clamped [0.8, 1.0]: *a decided root earns
+  less clock, banked for contested positions.*
+
+**Both are inert on the canonical net.** `ARCHON_TM_TRACE` soft-stop sequences are
+byte-identical across baseline / `C3=0.5` / `C2=0.5` (17 trace rows each, `opt=175`
+throughout). D48X carries neither the σ̂ head nor a WDL sidecar, so `last_wdl()` returns
+`None` and `root_sigma` stays 0.0 — the factors return exactly 1.0 by their own guard.
+
+⇒ **Two fully-implemented engine consumers are waiting on net heads that do not exist.**
+That is a concrete argument for a WDL/uncertainty sidecar and belongs in the NNUE
+architecture study's cost/benefit — the consumer side is already built and free.
+
+⇒ **The head-free alternative, which is what searchopt can actually build:** drive the same
+factor from the SEARCH's own root score rather than a net head — e.g. scale the soft stop
+by `|root score|` so a decided root earns less clock and the saving banks toward contested
+moves. No net change, no retrain, and it uses information the root already has. This is
+the direct implementation of the allocation finding, and `nodestime` makes it testable
+**deterministically and contention-immune** (`src/timeman.rs` rewrites TM budgets to node
+budgets), so it does NOT need the quiet box that equal-time testing needs.
+
 ⇒ **Blocked, and why:** testing this needs equal-TIME matches, which need a quiet box, and
 a perf study is currently waiting on one. **It is the highest-value untested lever I have**
 — it is orthogonal to everything tried this session, it points at the band both
