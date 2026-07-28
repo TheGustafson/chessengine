@@ -7,6 +7,10 @@ encouraged: the whole point is to find the line of code that discards the right 
 you cannot do that from outside the engine. Read `src/search/mod.rs`, add a tunable, add
 instrumentation — that is the work.
 
+**The net is OUT OF SCOPE.** NNUE training, architecture, accumulator width, retraining —
+none of it is searchopt work and none of it is the agent's decision. Those are human calls
+made outside this folder. You change search code in `src/` and nothing else.
+
 What you should *not* do is wander the wider **docs/research** tree looking for context.
 It is a large pile of half-refuted narrative from earlier sessions, and going shopping in
 it is how the 2026-07-28 session lost a day. `LEDGER.md` here holds everything from it

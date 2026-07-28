@@ -17,12 +17,26 @@ correlates +0.803 with SF's deep scores; SF's own static eval manages +0.722). T
 an axiom. Every time the previous session reached for eval it was wrong, and it was always
 at the moment the search analysis got hard.
 
+## OUT OF SCOPE — do not spend a minute on this
+
+**The net is not your subject.** NNUE training, architecture, accumulator width, retraining
+D48 — **none of it is searchopt work, and none of it is your decision.** Those are human
+calls, made outside this folder.
+
+That includes the D48X width question below. It is recorded here only so you know the net
+under you is fixed and why; it is **not** a task, not a thing to reason about, and not a
+thing to have an opinion on. If a search experiment makes you want to change the net, the
+answer is no — write down what you found and move on.
+
+Combined with the eval axiom, the rule is simple: **you change `src/` search code and
+nothing else.**
+
 ## Where things stand
 
 | | |
 |---|---|
 | canonical net | **D48X** (gen-2, 1280 acc) — `engines/canonical/`, promoted 2026-07-28 |
-| D48X vs D47V | **−9.1 [−34.4, +16.1]** over 382 games. Promoted deliberately anyway: the owner's position is that D48X is the better eval and loses only because the search cannot exploit it. `engines/canonical/MANIFEST.md` records the falsifiable prediction — **as search improves, that margin should WIDEN.** If it does not, the answer is to retrain at a SMALLER ACCUMULATOR (the 1280 width costs 0.76x NPS), **not** to revert to D47V. |
+| D48X vs D47V | −9.1 [−34.4, +16.1] over 382 games. Promoted deliberately: D48X is the better eval and loses only because the search cannot exploit it. **This is settled and is not yours to revisit** — see OUT OF SCOPE above. |
 | loss corpus | mined from **404 games vs SF18** (−132 Elo, 174 lost games, 10,112 moves oracle-scored) → `positions/{ours,both,neither}.json` |
 | validated search gains so far | **none.** Every arm tried is null or refuted (`LEDGER.md`) |
 
@@ -103,9 +117,7 @@ never have formed.
 3. `DRAW_CONTEMPT` exists (default 0) with a real, measured mechanism — a perpetual worth
    −1 sets alpha and starves the winning sibling, 52k nodes vs 260k with the draw
    excluded — but **no admissible evidence**; its root effect died 0/6 under perturbation.
-4. Re-run `engines/runs/d48x-vs-v` after any landed search gain and record the delta in
-   `engines/canonical/MANIFEST.md`. That is the promotion's falsification test — and if it
-   fails, the response is a **retrain at a smaller accumulator**, never a revert to D47V.
+*(There is deliberately no net/training item on this list. See OUT OF SCOPE.)*
 
 ## Housekeeping
 

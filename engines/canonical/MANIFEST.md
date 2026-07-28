@@ -45,6 +45,10 @@ are genuinely ours we are *confidently wrong*, discarding the right move early
 over D47V should *widen*. Re-run `engines/runs/d48x-vs-v` after any landed search gain and
 record the delta here.
 
+**This is a HUMAN decision and is not delegated.** Net choice, architecture, accumulator
+width and retraining are decided outside `searchopt/`; an agent doing search work must not
+spend time reasoning about them. Recorded here for context only.
+
 **If the prediction fails, DO NOT REVERT TO D47V** (owner ruling, 2026-07-28). The gen-2
 direction stands; what would be wrong in that case is the width, not the recipe. The
 response is to **retrain at a smaller accumulator** — the NPS cost of 1280 is real and
