@@ -98,16 +98,29 @@ SEARCHED → a gate deleted it, not a reduction"*.
 If the verdict says the move is innocent at this node, **descend**. Do not start
 measuring things.
 
-### Step 4 — BEFORE building an arm, break your own metric
-Write down the metric you would judge the arm on, then run the **opposite-direction arm
-first**. If reducing *more* helps as much as reducing *less*, your metric is measuring
-noise and the whole experiment is void.
+### Step 4 — test an arm with a tool that cannot flatter it
 
-This is not optional and it is not a formality. On 2026-07-28 five arms cleared a
-seven-sample null band on "nodes to stop playing the blunder" — and then
-`RED_GIVES_CHECK = −512` (reduce checks **more**) cleared it too. The metric rewarded any
-perturbation that shook the search off the losing move. A whole day's headline result
-evaporated on one control that should have been run first.
+```bash
+python3 searchopt/tools/arm.py --param RED_GIVES_CHECK --value 512
+```
+
+It runs the **ANTI-ARM** (the value mirrored about the default) automatically and
+**refuses a verdict without it**, plus six inert nulls, restoring every touched
+parameter to the engine's own reported default between arms, and repeating the base
+arm at the end to prove the harness is deterministic.
+
+Its three verdicts:
+
+* `METRIC INVALID` — the opposite change helps comparably, so the metric rewards
+  perturbation rather than quality. **This is what actually happened**: `+512` cleared a
+  seven-sample null band and was reported as the day's one solid result; `−512` then
+  cleared the same band. No null-panel size fixes that, because inert ±1s do not move
+  along the arm's axis.
+* `inside the inert null band` — no effect distinguishable from noise.
+* `clears the null band AND the anti-arm` — a **candidate**, not a result.
+
+It refuses to run at all on a non-`tune` build, where every arm would silently return
+identical numbers.
 
 ### Step 5 — only proof-grade outcomes count
 Admissible: **a forced mate found**, or a value independently confirmed correct by SF at
@@ -115,8 +128,15 @@ high depth. Inadmissible: "plays a different move", "score collapsed", "AUC impr
 "collapse depth moved". All of those are satisfiable by noise.
 
 ### Step 6 — games arbitrate
-Equal binaries differing only by `setoption`. 1200 games at 10+0.1. **Never read a
-partial match**: `rfp-threat0` read −15 Elo at n=600 and finished at −3.5 ± 14 at n=1185.
+
+```bash
+python3 searchopt/tools/match.py engines/runs/<run>
+```
+
+Equal binaries differing only by `setoption`. It always prints the CI, labels anything
+spanning zero `INCONCLUSIVE` however tempting the point estimate, and tells you how many
+more games a given resolution needs. **Never read a partial match**: `rfp-threat0` read
+−15.3 Elo at n=600 and finished at −3.2 ± 14 at n=1200.
 
 ---
 
@@ -194,6 +214,10 @@ searchopt/
   tools/uciprobe.py    persistent-stdin UCI harness + frame conversion
   tools/searchdbg.py   the search debugger (needs archon-trace)
   tools/build.sh       build the instrumented binary correctly
+  tools/walk.py            STEP 2: descend a loss to the node that discards the move
+  tools/searchdbg.py       STEP 3: read the decisions there + auto-verdict
+  tools/arm.py             STEP 4: test a tunable, with a mandatory anti-arm control
+  tools/match.py           STEP 6: read a match, refuses to over-read a partial one
   tools/mine_losses.py     oracle-score every move in every lost game
   tools/classify_losses.py split into OURS / BOTH / NEITHER
   positions/ours.json      the actionable set  <- work here

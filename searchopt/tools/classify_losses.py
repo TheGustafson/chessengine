@@ -72,7 +72,15 @@ def main() -> int:
     a = ap.parse_args()
     os.chdir(REPO)
 
-    rows = [r for r in json.load(open(a.losses)) if r["wp_loss"] >= a.wp_min]
+    raw = json.load(open(a.losses))
+    if isinstance(raw, dict):                       # provenance-stamped form
+        prov = raw.get("_provenance", {})
+        cur = os.path.basename(os.path.realpath("engines/canonical/net.cenn"))
+        if prov.get("net") and prov["net"] != cur:
+            print(f"!! STALE CORPUS: mined with {prov['net']}, canonical is now {cur}.")
+            print(f"   Positions mined from another net say nothing about this one. Re-mine.")
+        raw = raw["rows"]
+    rows = [r for r in raw if r["wp_loss"] >= a.wp_min]
     print(f"{len(rows)} moves with wp_loss >= {a.wp_min}")
 
     ar = Engine(a.engine, net=NET, hash_mb=64, name="archon"); ar.assert_net_live()

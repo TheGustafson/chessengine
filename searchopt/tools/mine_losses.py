@@ -121,7 +121,15 @@ def main() -> int:
             print(f"  [{i}/{len(jobs)}] scored", flush=True)
             json.dump(rows, open(a.out, "w"))
     s.close()
-    json.dump(rows, open(a.out, "w"))
+    # PROVENANCE STAMP: a corpus is net-specific. Positions mined from one net say
+    # nothing about where a different net discards moves, and after the D48X promotion
+    # I only noticed the D47V corpus was stale by reasoning about it. Now it announces.
+    import hashlib
+    net = os.path.realpath("engines/canonical/net.cenn")
+    h = hashlib.sha256(open(net, "rb").read(1 << 20)).hexdigest()[:16] if os.path.exists(net) else "?"
+    json.dump({"_provenance": {"net": os.path.basename(net), "net_head_sha256": h,
+                               "pgn": a.pgn, "oracle_nodes": a.nodes},
+               "rows": rows}, open(a.out, "w"))
 
     big = [r for r in rows if r["wp_loss"] >= 0.10]
     print(f"\n{len(rows)} moves scored -> {a.out}")
