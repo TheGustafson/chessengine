@@ -1,5 +1,12 @@
 # Loss forensics, night of 2026-07-28 — the population defect
 
+> **SESSION POST-MORTEM: this document records eight hours that produced ZERO
+> completed game results and NINE retracted claims.** Read
+> `RETROSPECTIVE-2026-07-28-the-circling.md` before using anything here, and check
+> each claim against the standing table in §8 — several headline facts in the earlier
+> sections (the frame inversion, the EBF gap, the LMR-follows-from-frame chain, the
+> `SEARCH_REJECTS` classifier) are REFUTED further down the same file.
+
 Companion to `LOSS-FORENSICS-PLAYBOOK.md` (method) and
 `TRANSITION-2026-07-28.md` (prior state). Read the two REFUTED banners in the
 playbook first: `bbc28fd` and `b22c9c9` retract the gate-attribution mode.

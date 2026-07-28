@@ -41,6 +41,50 @@ When a blunder is found, drive it to a mechanism with the WHY ladder in
 THREE independent losses of the same mode — one position is a patch, three is
 a fix.
 
+## Standing research-method bar: NULL FIRST, GAMES ARBITRATE (user, 2026-07-28)
+
+**On 2026-07-28 I spent eight hours producing ~130 measurement scripts, ZERO
+completed game results, zero strength changes, and NINE retracted claims.**
+The full post-mortem is
+`docs/research/RETROSPECTIVE-2026-07-28-the-circling.md`; read it before any
+long forensics session. Root cause: a slow arbiter (games) was available the
+whole time and I kept choosing fast instruments that could not resolve the
+question, then chained inferences on top of their noise.
+
+The eight rules, in priority order:
+
+1. **NULL FIRST, ALWAYS.** Run the null panel *before* the arm. If an inert
+   perturbation moves the statistic as much as the arm plausibly could, **the
+   instrument cannot answer this question — change instrument.** A gate, not a
+   footnote. (The 44-position forced-move instrument moves 13/44 → 20/44 under
+   an inert ±1; I read verdicts off it twice, in opposite directions.)
+2. **NORMALISE AT THE TOOL BOUNDARY, not in prose.** Our search scores are
+   **2.07× Stockfish's PRINTED cp** — SF's `to_cp` divides its internal value by
+   `a = p_a(material) ≈ 385` (`eca43a97:src/uci.cpp:554`), and we print raw
+   internal values. Use `uciprobe.to_sf_frame()` / `Engine(..., frame=...)`;
+   never hand-compare. A fact in a doc gets forgotten, a constructor cannot.
+3. **PREFER DISCRETE OUTCOMES** — nodes-to-find, does-it-find-it, argmax
+   agreement. Immune to frame, bounds, scale and chaos. Reach for a cp mean only
+   after a discrete statistic has shown the effect exists.
+4. **ONE INFERENCE DEEP, THEN MEASURE.** Never chain two unmeasured inferences.
+   Every rung of a causal chain gets its own measurement *before* the next rung
+   is written down.
+5. **GAMES ARBITRATE, AND THEY START EARLY.** A queued match costs nothing while
+   you think. Launch the best available candidate at hour 0. **A session that
+   ends with zero completed game results produced nothing**, however much was
+   learned.
+6. **WHEN THE STORY GETS BEAUTIFUL, ATTACK IT HARDEST.** Narrative coherence is
+   the warning sign, not the reward. An arm labelled "falsification control"
+   that *wins* is telling you your model's sign is wrong — this happened twice
+   in one night before I believed it.
+7. **PER-CLASS *AND* PER-POSITION, TOGETHER.** Never a lone median (a 1.0×
+   median hid a 16× subclass), never a lone position (one 190 cp gap did not
+   generalise: median −17 over 44). Both directions lie.
+8. **RE-DERIVE ANY NUMBER BEFORE BUILDING ON IT**, especially one whose `n` you
+   did not set. "Our EBF 1.49 vs SF 1.65" was an n=14 artifact; at n=44 it is
+   1.551 vs 1.497 and a proper geometric EBF is 1.629 vs 1.620 —
+   indistinguishable. It was load-bearing for hours.
+
 ## Design documents (read before implementing anything)
 
 `design/` holds the reviewed design suite that governs all implementation:

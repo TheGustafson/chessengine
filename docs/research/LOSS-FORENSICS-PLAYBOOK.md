@@ -64,6 +64,50 @@ Corollaries, all learned the hard way:
 
 ---
 
+## 0b. The counterweight rule — WHY ladders AMPLIFY instrument error
+
+**Added 2026-07-28 after eight hours that produced ~130 scripts, ZERO completed
+game results and NINE retractions. Post-mortem:
+`RETROSPECTIVE-2026-07-28-the-circling.md`.**
+
+§0 says ask WHY until you reach a mechanism. That rule is necessary and it is
+**not sufficient** — and the failure mode it leaves open is the expensive one.
+I asked WHY relentlessly for eight hours and produced nothing, because **a WHY
+ladder compounds instrument error**: each rung is built on the previous rung's
+answer, so one bad measurement near the bottom silently invalidates everything
+above it. I built a seven-rung ladder from "we lose" down to a single constant
+in a data loader. Rung 3's *direction* was backwards; rungs 4–7 were already in
+docs and commits.
+
+So pair every WHY with these four, or the ladder is fiction:
+
+1. **NULL FIRST.** Before believing rung N, run the inert perturbation on the
+   instrument that produced it. The 44-position forced-move instrument moves
+   13/44 → 20/44 under a semantically inert ±1 — I read verdicts off it twice,
+   in opposite directions, before panelling it. **If the null moves the
+   statistic as much as the arm could, that rung is unanswerable — change
+   instrument, do not proceed up the ladder.**
+2. **MEASURE EVERY RUNG INDEPENDENTLY.** Never let rung N+1 rest on an
+   *inferred* rung N. "Constants are too large ⇒ the tree is narrower" was
+   inference; measured, the sign is backwards (a larger margin is harder to
+   satisfy, so it prunes LESS). "LMR over-reduces because of the frame" was
+   inference; measured, LMR is frame-insensitive (5.7%, inside the null).
+3. **PREFER DISCRETE RUNGS.** *nodes-to-find-the-right-move* survived
+   everything all night; every cp-score instrument produced at least one
+   artifact. Scores here are frame-mismatched, bound-contaminated, chaotic at
+   ±136 cp and context-dependent. Establish the effect with a discrete
+   statistic first, then explain it with scores.
+4. **START THE GAME MATCH AT HOUR 0.** The ladder is a hypothesis generator,
+   not an arbiter. A queued match costs nothing while you climb. **A forensics
+   session that ends with zero completed game results produced nothing**,
+   however good the ladder looks.
+
+And the meta-signal: **when the ladder gets beautiful, attack it hardest.** "One
+division by 1.9 explains every loss" was so satisfying that I stopped
+falsifying it — and twice labelled the *correct* arm a "falsification control",
+then read its victory as evidence against the hypothesis, because the story
+said it should lose.
+
 ## 1. Verify the instrument before you believe it — every single time
 
 WHY does this come first? Because on 2026-07-27 five separate measurement bugs

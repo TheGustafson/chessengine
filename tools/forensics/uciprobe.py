@@ -20,6 +20,46 @@ import sys
 REPO = "/home/nick/projects/chessengine"
 NET = REPO + "/data/nnue/nets/screens/d47v-a4b2-cal400.cenn"
 
+# ---------------------------------------------------------------------------
+# FRAME.  Our engine prints RAW INTERNAL values; Stockfish's `to_cp` divides its
+# internal value by `a = p_a(material)` ~ 385 before printing
+# (eca43a97:src/uci.cpp:554).  So OUR printed score is ~2.07x SF's printed cp,
+# and a raw comparison of the two is meaningless.
+#
+# On 2026-07-28 this was diagnosed, written into a design doc -- and then the
+# SAME mistake was made three more times in the same session, manufacturing a
+# "266 cp gap at depth 1" and a "400 cp PV disagreement" that were both entirely
+# this factor.  A fact in a doc gets forgotten; a helper at the tool boundary
+# cannot.  CLAUDE.md rule R2: never hand-compare cross-engine scores.
+ARCHON_PER_SF_PRINTED = 2.07
+
+
+def to_sf_frame(score, engine="archon"):
+    """Put a printed score into Stockfish's PRINTED-cp frame.
+
+    engine="archon" divides by 2.07; engine="sf" is already there.  Use this on
+    BOTH sides of every cross-engine comparison -- including the ones that look
+    obviously safe, which is exactly where it went wrong before.
+    """
+    if score is None:
+        return None
+    if engine in ("sf", "stockfish", "sf18"):
+        return float(score)
+    if engine in ("archon", "ours"):
+        return float(score) / ARCHON_PER_SF_PRINTED
+    raise ValueError(f"unknown engine frame {engine!r}")
+
+
+def to_sf_internal(printed_cp, fen):
+    """SF's PRINTED cp -> SF's INTERNAL units, the frame its search constants
+    (razoring 465, LMR 52/9, ...) actually live in.  internal = printed * a/100.
+    Needed whenever comparing a transcribed constant against an eval value."""
+    w = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9}
+    mat = sum(w.get(c.lower(), 0) for c in fen.split()[0] if c.isalpha())
+    m = max(17, min(78, mat)) / 58.0
+    a = ((-72.32565836 * m + 185.93832038) * m - 144.58862193) * m + 416.44950446
+    return printed_cp * a / 100.0
+
 INFO = re.compile(
     r"^info depth (\d+) .*?score (cp|mate) (-?\d+).*? nodes (\d+) .*? pv (.+)$"
 )
