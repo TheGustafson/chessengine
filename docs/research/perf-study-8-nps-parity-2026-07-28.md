@@ -5,11 +5,19 @@ Date: 2026-07-28. Eighth commissioned study in the chain (1:
 4–7: `perf-study-{4,5,6,7}-*.md`, plus `perf-impl-1-threats-and-icache.md`).
 Raw artifacts and instruments: `perf-artifacts-8/`.
 
-**Unlike 1–7 this study was licensed to change code, and it did.** One change
-is kept and committed (`perf/s8-l1dot-bounds`), two were implemented, measured
-and reverted, one was implemented purely as an instrument and reverted. Every
-kept change is **eval bit-exact** (wl50 hash `d82caf8a…8163`) and
-**node-identical** (wl50/d13 total `1,972,607`) against the D48X pins.
+**Unlike 1–7 this study was licensed to change code, and it did.** Branch
+`perf-study-8-nps-parity`. One change is kept and committed, two were
+implemented, measured and reverted, one was implemented purely as an instrument
+and reverted. Every kept change is **eval bit-exact** (wl50 hash
+`d82caf8a…8163`, 800-FEN hash `53fc2de1…ad64`) and **node-identical**
+(wl50/d13 total `1,972,607`) against the D48X pins, and
+`CHECK_NNUE_GATE=1 bash tools/check.sh` exits 0 with `Bench: 587683`.
+
+**Binaries in the worktree** (all PGO, `sota,arch-d48x`, canonical net):
+`engines/bin/archon-s8-base` (HEAD before this study),
+`engines/bin/archon-s8-final` (HEAD after), plus the per-arm binaries named in
+§4. `archon-s8-base-dbg` is the same PGO build with line tables, used for
+`addr2line`/`srcline` work only.
 
 **Configuration under study.** Canonical net `engines/canonical/net.cenn` ->
 `d48x-1280-sb520-ema.cenn`, arch `sota,arch-d48x` (L1 1280 / L2 16 / L3 32,
@@ -59,14 +67,24 @@ story" and ranked a code-size diet #3. Our movepick is *split* across
 per-symbol comparison overstates us; totalled, movepick is 667 i/n against
 SF18's 734.
 
-**(3) Landed: −1.75% of ALL engine instructions and −5.25% of ALL engine
-branches, from deleting two instructions.** `l1_dot`'s sparse group loop is
-11 static instructions and runs ~39 times per node; two of the eleven were a
-bounds check LLVM could not hoist (`cmp $0x13f,%ecx; ja <panic>`) because it
+**(3) Landed: −1.77% of ALL engine instructions and −5.24% of ALL engine
+branches, from deleting three instructions.** `l1_dot`'s sparse group loop is
+11 static instructions and runs **42.79 times per node**; two of the eleven
+were a bounds check LLVM could not hoist (`cmp $0x13f,%ecx; ja <panic>`) because it
 cannot see `find_nnz`'s output range. Reading the group's four FT bytes as one
-unaligned 32-bit load removes it. Node-identical, eval bit-exact,
-`CHECK_NNUE_GATE=1 bash tools/check.sh` clean. **36,633,073,946 →
-35,991,058,878** instructions on an identical 5,001,629-node tree.
+unaligned 32-bit load removes it — and takes a third instruction with it, a
+`mov` that only existed to keep a second copy of the index alive across the
+check. Node-identical, eval bit-exact,
+`CHECK_NNUE_GATE=1 bash tools/check.sh` clean. On the matched 15.0 M-node
+wl50 panel (`counters-final-wl50.txt`, three arms interleaved, `instructions:u`
+spread 0.0000% on all three):
+
+| per node | before | after | SF18 |
+|---|---:|---:|---:|
+| instructions | 7,116.6 | **6,991.0** (−1.77%) | 4,329.6 |
+| ratio vs SF18 | 1.644× | **1.615×** | — |
+| branches | 797.1 | **755.3** (−5.24%) | 394.7 |
+| ratio vs SF18 | 2.020× | **1.914×** | — |
 
 **(4) The branch ratio is an EVAL number, and it is now explained.** 2.02×
 whole-engine splits into **eval 3.17×**, make/unmake 2.64×, shell **1.31×**.
@@ -240,18 +258,25 @@ Full tables: `perf-artifacts-8/block-decomposition.txt`,
 | `l2_tail` (16→32) + `l3` (32→1) | 13.03 | 2.16 |
 | `skip_dot` — DENSE 1280-lane u8 × f32 | 15.09 | 2.50 |
 
-Two derived facts fall straight out and both correct standing beliefs:
+Two derived facts fall straight out and both correct standing beliefs. Both
+rest on an **exact** count, not an estimate: §4.1's change removes exactly one
+conditional branch per active group, so the measured branch delta **is** the
+group count.
 
-**(a) FT group density is ~31%, not the "85–95% zero" the source comment
-claims.** The `l1_dot` group loop is 11 static instructions; 6.17% of 7,116.6
-i/n is 439 i/n; that is ~1,123 instructions per eval, i.e. ~100 active groups
-out of 320. The same arithmetic pins **evals/node = 0.366** (study 7 measured
-0.391 for D47V).
+**(a) The engine executes 42.79 active FT groups per node ⇒ group density is
+~36%, not the "~85–95% are zero" the `find_nnz` doc comment claims.**
+`(4,075,674,469 − 3,861,673,358) / 5,001,629 = 42.79` branches/node removed =
+groups/node. The instruction delta over the same arm is 128.36/node =
+**exactly 3.000 per group**, which is what the disassembly shows the change
+removed (`cmp`, `ja`, and a now-dead `mov`) — the arithmetic closes to three
+decimals, so the group count is not an inference. Dividing by
+evals/node = 0.366 (from `activate`'s 351.6 i/n over a 960-instruction
+per-eval kernel) gives **116.8 active groups of 320 = 36.5% density**.
 
-**(b) That kills the sparse-`skip_dot` idea before it is written.** At 31%
+**(b) That kills the sparse-`skip_dot` idea before it is written.** At 36.5%
 group density a 16-element block is nonzero with probability
-`1 − 0.69⁴ = 77%`, so gating `skip_dot` on the nnz list saves 23% of 2.50% =
-0.6% at best, for a mask-plumbing change. Carried option 6's `skip_dot` half is
+`1 − 0.635⁴ = 84%`, so gating `skip_dot` on the nnz list saves 16% of 2.50% =
+0.4% at best, for a mask-plumbing change. Carried option 6's `skip_dot` half is
 **dead**. (The right fix for `skip_dot` is SF's: fold the skip lane in as the
 `FC_0_OUTPUTS + 1`-th row of the *sparse* int8 matmul, which costs ~1/16 of
 `l1_dot` instead of 2.50% — a CENN format rev, see §6.)
@@ -329,7 +354,10 @@ cmp    $0x2,%rcx
 jne    <loop>
 ```
 
-Eleven instructions, of which three do the actual work. The check exists
+Eleven instructions, of which three do the actual work — after the change the
+body is **eight** (`movzwl`, `vpbroadcastd`, `shl`, `vpdpbusd`, `lea`, `add`,
+`cmp`, `jne`): the `cmp`/`ja` pair goes, and so does a `mov` that only existed
+to keep a second copy of the index alive across the check. The check exists
 because the kernel read the group's four bytes as
 `i32::from_le_bytes([ft[g*4], ft[g*4+1], ft[g*4+2], ft[g*4+3]])`, and LLVM
 cannot see that `find_nnz` — the only producer of `nnz` — emits indices in
@@ -351,8 +379,11 @@ Measured on an identical 5,001,629-node tree:
 | instructions | 36,633,073,946 | 35,991,058,878 | **−1.752%** |
 | branches | 4,075,674,469 | 3,861,673,358 | **−5.251%** |
 
-−214 M branches is 39 removed branches per node, which matches
-`0.366 evals/node × 100 groups` to within rounding — the arithmetic closes.
+−214 M branches is **42.79 removed branches per node** and −642 M instructions
+is **128.36 per node** — a ratio of **3.000**, exactly the three instructions
+the disassembly shows the loop body lost. The arithmetic closes to three
+decimals, which is what turns "42.79" from an inference into a measurement of
+the engine's active-group count (§3.2a).
 
 Verification: wl50 eval hash `d82caf8a…8163` (unchanged), 800-FEN eval hash
 `53fc2de1…ad64` (unchanged), wl50/d13 total 1,972,607 (unchanged),
@@ -384,7 +415,7 @@ Everything below is priced against the 2,438 i/n we are over budget.
 | 3 | `at_full`'s non-fold half — the per-eval threat replay plumbing | 5.73% of engine (408 i/n); SF18 has **no** equivalent stage | yes, in principle | hard; impl-1 already took the representation win |
 | 4 | Accumulator copies through libc `memmove` — §3.3 | 2.00% (157 i/n) | yes | call sites named; not attempted |
 | 5 | make/unmake at 2.26× SF18 (`make_move_with` + `Worker::do_move` = 783 i/n vs 346) | +437 i/n | yes | **never studied by anyone in this chain** |
-| 6 | `l2_tail` + `l3` at 2.16% of the engine for a 16→32→1 tail (544 MACs) | ≤ 2.16% | f32 reorder | study 3's chain-split half is rejected; the *size* is unexplained |
+| 6 | `l2_tail` + `l3` — 2.16% of the engine for a 16→32→1 tail (544 MACs) | ≤ 0.8% | f32 reorder | SF18's `fc_1`+`fc_2` are the same shape and, on the §1 tail assumption, ~1.4% of its engine — so this is only ~1.5×, the smallest ratio in the eval layer. Study 3's chain-split half is already rejected. **Lowest priority.** |
 | 7 | `search::<NonPv>` outlining (carried item #1, "~5%") | see §7.3 | yes | **downgraded** — the cold mass is inert policy code that never executes |
 
 Items 1+2 are the same commit in a CENN v3, and together they are **~4.9% of
@@ -460,6 +491,15 @@ rev as §6.1.
    `archon` vs `stockfish18` match). Every cycles/NPS number after 15:55 is
    unusable and none is quoted as a claim. `instructions:u` on a fixed-node
    tree is deterministic and unaffected; every kept conclusion rides on it.
+   The final three-arm panel is the cleanest demonstration of the difference
+   this chain has produced: over six interleaved rounds the **per-round paired
+   NPS ratio of `ours-base` vs SF18 ranged 0.585–0.777** — a 33% spread on a
+   pair of byte-identical binaries searching byte-identical trees — while
+   `instructions:u` on the same six rounds reproduced at **0.0000%** for all
+   three arms. The contended-box cycles ratio even moved the *wrong* way
+   across the kept change (1.493 → 1.515) purely from load drift. Anyone
+   reading a speed number off this box without the paired-round protocol is
+   reading noise.
 2. `f_w` for SF18 rests on one judgement call: that ~5% of
    `Network<1024>::evaluate` is the width-independent `fc_1`/`fc_2` tail.
    Sweeping that assumption 0.90–1.00 moves the parity target only 4,657–4,693
@@ -488,8 +528,12 @@ rev as §6.1.
 **Parity was NOT reached, and it is not reachable by patch work.**
 
 * Target: **4,677 instructions/node** (SF18 × the measured 1.080× width premium).
-* Before: **7,116.6**. After the kept change: **≈ 6,992** (−1.75%).
-* Residual: **1.495×** the parity target — we removed 5% of the gap.
+* Before: **7,116.6**. After the kept change: **6,991.0** (−1.77%), measured on
+  the same three-arm matched panel as SF18's 4,329.6.
+* Residual: **1.495×** the parity target — **5.1% of the gap removed**
+  (125.6 of 2,439.6 i/n).
+* Whole-engine ratio vs SF18: **1.644× → 1.615×** instructions,
+  **2.020× → 1.914×** branches.
 
 The residual is decomposed and named in §1.2 and §5. **None of it is
 architectural in the sense of "1280 is wider than 1024"** — that is fully paid
