@@ -113,6 +113,15 @@ def build_cmd(leg: str, args, out: Path, ours_label: str) -> list[str]:
 
     them = ["-engine", f"cmd={args.opponent}", f"name={args.opponent_name}",
             "option.Threads=1", f"option.Hash={args.hash}"]
+    # A self-play A/B (same binary, one option changed) is the normal way to
+    # measure an engine change, and it walks straight into the net-not-loaded
+    # trap: the opponent block carries no EvalFile, so the BASELINE would play
+    # PSQT while the candidate plays NNUE and the match would measure the net,
+    # not the change. --opponent-options is how the net gets onto that side.
+    for kv in (args.opponent_options or "").split(","):
+        if kv.strip():
+            k, _, v = kv.partition("=")
+            them.append(f"option.{k.strip()}={v.strip()}")
 
     if leg == "time":
         tc = ["-each", f"tc={args.tc}"]
@@ -265,6 +274,10 @@ def main() -> None:
     ap.add_argument("--opponent-name", default="sf18")
     ap.add_argument("--our-options", default="",
                     help="comma-separated K=V applied to ARCHON only")
+    ap.add_argument("--opponent-options", default="",
+                    help="comma-separated K=V applied to the OPPONENT only. For a "
+                         "self-play A/B you MUST pass EvalFile here or the baseline "
+                         "plays PSQT and the match measures the net, not the change.")
     ap.add_argument("--label", default=None)
     ap.add_argument("--hash", type=int, default=16)
     ap.add_argument("--book", default=BOOK)
@@ -289,6 +302,14 @@ def main() -> None:
     if not args.skip_net_check:
         assert_net_live(args.engine, args.net)
         print(f"net live: {args.engine} + {Path(args.net).name}")
+        if "archon" in Path(args.opponent).name.lower() \
+           and "EvalFile" not in (args.opponent_options or ""):
+            raise SystemExit(
+                f"REFUSING TO RUN: opponent {args.opponent} looks like an ARCHON "
+                f"binary but --opponent-options sets no EvalFile.\n"
+                f"  It would play PSQT while our side plays NNUE, so the match "
+                f"would measure the net rather than the change.\n"
+                f"  add:  --opponent-options EvalFile={args.net}")
 
     label = args.label or f"rematch-{time.strftime('%m%d-%H%M')}"
     root = REPO / "engines" / "runs" / label
@@ -322,11 +343,17 @@ def main() -> None:
             print("     node budget buys more. Look at what it does per node that")
             print("     we do not, starting with move ordering.")
         else:
-            print("  -> JUDGEMENT. Speed is not the story; we reach the position and")
-            print("     still choose worse. The lever is evaluation and ordering.")
-            print("     Node-saving tunables cannot help here and may hurt.")
-        print(f"  (threshold {thresh:.1f} Elo = 2x the combined error; below it this")
-        print("   comparison is not resolved and needs more games, not more theory.)")
+            # NOT a judgement verdict. An unresolved gap means this comparison
+            # alone cannot attribute the difference, and labelling it
+            # "JUDGEMENT" (as an earlier version did) turns a null result into
+            # a positive claim.
+            print(f"  -> UNRESOLVED at this sample size: |{gap:+.1f}| < {thresh:.1f} Elo.")
+            print(f"     The POINT ESTIMATE splits the gap as ~{gap:.0f} Elo speed and")
+            print(f"     ~{abs(rn['elo']):.0f} Elo per-node judgement, but this leg cannot")
+            print("     separate them on its own. Corroborate with the NPS ratio and")
+            print("     with cp loss across budgets before believing either share.")
+        print(f"  (threshold {thresh:.1f} Elo = 2x the combined error. More games narrow")
+        print("   it as 1/sqrt(n); theory does not.)")
 
     if len(tax_by_leg) == 2:
         a, b = tax_by_leg["time"], tax_by_leg["nodes"]
