@@ -99,6 +99,45 @@ Falsification, stated in advance:
 - **Anywhere in −115 to −150** — the decomposition holds, and the eval is
   confirmed as the dominant term.
 
+## Second instrument, arrived before the rematch: it agrees on the shape and
+## disagrees on the size
+
+A budget sweep with an SF18 reference row, 1500 positions, cp at the 64k tier:
+
+| nodes | 3125 | 6250 | 12500 | 25000 | 50000 | 100000 |
+|---|---:|---:|---:|---:|---:|---:|
+| ARCHON | 10.21 | 8.27 | 6.23 | 5.52 | 4.13 | 3.82 |
+| SF18 | 9.34 | 7.56 | 5.24 | 4.17 | 3.60 | 2.62 |
+| gap | 0.87 | 0.71 | 0.99 | 1.35 | 0.53 | 1.20 |
+
+**The gap does not widen with budget** — 0.86 mean over the first three
+budgets, 1.03 over the last three, across a 32× range. A gap that stays flat
+as search deepens is an eval difference; one that widens is a search
+difference. That is an independent confirmation of the same conclusion the Elo
+arithmetic reached, from a completely different instrument.
+
+On the size, the two disagree by about a factor of two. At the rough ~60 Elo
+per cp derived above, a 0.94 cp gap is ~56 Elo, against the ~133 Elo the
+anchors and the NPS table imply. Three candidate reconciliations, none yet
+settled:
+
+- The Elo-per-cp constant is an order of magnitude, not a number. Estimated
+  across the sweep it ranges 60–390 depending on which doubling you take.
+- The oracle labels are Stockfish's, so this comparison **flatters SF18** and
+  the measured 0.94 is if anything an over-estimate of the true gap. That
+  widens the discrepancy rather than closing it.
+- Mean cp loss over a generic corpus may simply not be what decides games.
+  Time management, the position mix of real play, and the distribution of
+  errors rather than their mean are all outside this instrument.
+
+Noise, stated honestly: each cell is an unpaired mean over a heavy-tailed
+distribution at n=1500, so roughly ±0.5 cp, and the gap roughly ±0.7. "Flat"
+is consistent with the data but a modest trend cannot be excluded. The
+reference row is now **paired** against the control per budget, which cancels
+position difficulty and should cut that noise substantially on the re-run.
+
+---
+
 One caveat I want on the record before the number arrives: equal-nodes matches
 are not a clean instrument for a speed decomposition, because the two engines
 count nodes differently and neither counts the *work per node* that the other
