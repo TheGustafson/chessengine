@@ -22,17 +22,11 @@
 
 use crate::types::{Depth, Value};
 
-/// Stand-pat fail-high softening `(467·best + 557·beta) / 1024` — applied
-/// to non-decisive stand pats at or above beta (§3.8 step 5).
-pub const QS_STANDPAT_BLEND: (Value, Value, Value) = (467, 557, 1024);
-/// Node-exit fail-high softening `(481·best + 543·beta) / 1024` — applied
-/// to non-decisive best values strictly above beta (§3.8 step 11).
-pub const QS_FAILHIGH_BLEND: (Value, Value, Value) = (481, 543, 1024);
-/// The verification's NMP-disable window `nmp_min_ply = ply +
-/// NMP_VERIFY_FRAC.0·(depth - R) / NMP_VERIFY_FRAC.1`: NMP stays off for the
-/// whole subtree up to that ply, so the verification (and its children)
-/// cannot recursively null-move their way back to the same false cutoff.
-pub const NMP_VERIFY_FRAC: (Depth, Depth) = (3, 4);
+// The qsearch return blends and the NMP verify fraction moved INTO the
+// `tunables!` block on 2026-07-27 (the tuple-const shape made them
+// structurally untunable — the macro only emits scalar atomics; D33
+// reviewer finding F1/#7). See QS_STANDPAT_BEST_W / QS_FAILHIGH_BEST_W /
+// NMP_VERIFY_NUM and friends below.
 /// The per-thread vote tempo (design/13 §3.8; SF-current `get_best_thread`).
 /// Each thread votes for its own best move with weight `score - min_score +
 /// VOTE_TEMPO`; the `+ VOTE_TEMPO` floor means even the weakest thread's
@@ -1361,6 +1355,77 @@ crate::tunables! {
     /// excluded_move` continue). 0 = skip ProbCut wholesale under an exclusion
     /// (today); 1 = SF parity.
     pub PROBCUT_IN_VERIF: i32 = 0;
+
+    // --- Implicit-coefficient batch 2 (2026-07-27 D33 reviewer findings) ---
+    //
+    // Terms that carried an invisible coefficient (a bare literal, a tuple
+    // const, or a hard-coded ×1) on high-traffic paths. All wired at identity:
+    // the pinned bench is bit-identical at these defaults.
+
+    /// Stand-pat fail-high softening `(BEST_W·best + BETA_W·beta) / DEN` —
+    /// applied to non-decisive stand pats at or above beta (§3.8 step 5).
+    /// Every qsearch stand-pat cutoff returns through this blend.
+    pub QS_STANDPAT_BEST_W: Value = 467;
+    /// Beta weight of the stand-pat blend.
+    pub QS_STANDPAT_BETA_W: Value = 557;
+    /// Denominator of the stand-pat blend.
+    pub QS_STANDPAT_DEN: Value = 1024;
+    /// Node-exit fail-high softening `(BEST_W·best + BETA_W·beta) / DEN` —
+    /// applied to non-decisive qsearch best values strictly above beta
+    /// (§3.8 step 11). Every qsearch fail-high returns through this blend.
+    pub QS_FAILHIGH_BEST_W: Value = 481;
+    /// Beta weight of the qsearch fail-high blend.
+    pub QS_FAILHIGH_BETA_W: Value = 543;
+    /// Denominator of the qsearch fail-high blend.
+    pub QS_FAILHIGH_DEN: Value = 1024;
+    /// Numerator of the verification's NMP-disable window `nmp_min_ply =
+    /// ply + NUM·(depth - R) / DEN`: NMP stays off for the whole subtree up
+    /// to that ply, so the verification cannot recursively null-move its way
+    /// back to the same false cutoff.
+    pub NMP_VERIFY_NUM: Depth = 3;
+    /// Denominator of the verification window fraction.
+    pub NMP_VERIFY_DEN: Depth = 4;
+    /// The singular block's negative extension when the non-excluded search
+    /// already proved `tt_value >= beta` (multicut-adjacent: the ttMove is
+    /// expected to fail high anyway, so it searches SHALLOWER in favor of
+    /// alternatives). SF's bare `-3`; fires on every ttMove at
+    /// `depth >= 6 + ttPv` that is neither singular nor multicut.
+    pub SE_NEG_EXT_TT_FAILHIGH: Depth = -3;
+    /// The singular block's negative extension at a cut node that is neither
+    /// singular nor tt-fail-high. SF's bare `-2`.
+    pub SE_NEG_EXT_CUTNODE: Depth = -2;
+    /// LMR entry gate: minimum depth (`depth >= 2 && move_count > 1`). The
+    /// largest tree-shaper's ENTRY condition, previously hard-coded.
+    pub LMR_MIN_DEPTH: Depth = 2;
+    /// LMR entry gate: minimum move count (strictly greater-than).
+    pub LMR_MIN_MOVECOUNT: i32 = 1;
+    /// Numerator of the main-history term in the history-buys-lmr_depth
+    /// formula `history += NUM·main / DEN` (SF writes `64·h/32`, deliberately
+    /// leaving 1/32 granularity for the tuner; ours had collapsed it to `2·`).
+    pub LMRDEPTH_MAIN_NUM: i32 = 64;
+    /// Denominator of the main-history lmr_depth term.
+    pub LMRDEPTH_MAIN_DEN: i32 = 32;
+    /// Additive offset of the log reduction table, in the table's own
+    /// pre-division units: `reductions[i] = (NUM/DEN)·ln(i) + OFFSET/DEN`.
+    /// The ONLY new degree of freedom the product form `f(d)·f(mn)` admits:
+    /// per-axis multipliers are all redundant with RED_TABLE_NUM (only the
+    /// product of the two slopes survives), while an additive constant
+    /// introduces independent linear `ln(depth)` / `ln(move_count)` terms —
+    /// the knob that weighs depth against move count. 0 = identity.
+    pub RED_TABLE_OFFSET: i32 = 0;
+    /// Multiplier on `failed_high_cnt` in the aspiration loop's
+    /// `adjusted_depth = root_depth - MULT·failed_high_cnt - …`: each
+    /// consecutive root fail-high re-searches this many plies shallower.
+    pub ASPIRATION_FAILHIGH_DEPTH_MULT: Depth = 1;
+    /// Beta weight of the MAIN-search fail-high softening `(best·depth +
+    /// W·beta) / (depth + W)` — the search() analogue of the qsearch
+    /// fail-high blend, which SF parameterised and this one never was.
+    pub FH_SOFTEN_BETA_W: i32 = 1;
+    /// The sibling depth-reduction step (`depth -= 2` on a non-cutoff alpha
+    /// raise inside the SIBLING_DEPTH_MIN..MAX window). The window was
+    /// tunable; the step was not — the mechanism could only be moved by
+    /// window, never softened.
+    pub SIBLING_DEPTH_STEP: Depth = 2;
 
 }
 

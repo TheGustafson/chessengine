@@ -1066,7 +1066,11 @@ impl Worker {
         // is a power of two so the table is bit-reproducible (D24).
         let mut reductions = [0i32; MAX_MOVES];
         for (i, r) in reductions.iter_mut().enumerate().skip(1) {
-            *r = (params::RED_TABLE_NUM() as f64 / params::RED_TABLE_DEN() as f64 * (i as f64).ln())
+            // The additive OFFSET (default 0 — adding literal 0.0 is exact,
+            // so the table is bit-identical at identity) is the one new
+            // degree of freedom the product form admits; see RED_TABLE_OFFSET.
+            *r = (params::RED_TABLE_NUM() as f64 / params::RED_TABLE_DEN() as f64 * (i as f64).ln()
+                + params::RED_TABLE_OFFSET() as f64 / params::RED_TABLE_DEN() as f64)
                 as i32;
         }
         // A detached worker (bench, unit tests) is its own 1-thread pool:
@@ -1730,7 +1734,9 @@ impl Worker {
         {
             for (i, r) in self.reductions.iter_mut().enumerate().skip(1) {
                 *r = (params::RED_TABLE_NUM() as f64 / params::RED_TABLE_DEN() as f64
-                    * (i as f64).ln()) as i32;
+                    * (i as f64).ln()
+                    + params::RED_TABLE_OFFSET() as f64 / params::RED_TABLE_DEN() as f64)
+                    as i32;
             }
         }
         // Soft-stop factor state (doc 12 §3.9, step 8). `increase_depth`
@@ -2169,7 +2175,7 @@ impl Worker {
 
         loop {
             let adjusted_depth = (self.root_depth
-                - failed_high_cnt
+                - params::ASPIRATION_FAILHIGH_DEPTH_MULT() * failed_high_cnt
                 - params::ASPIRATION_SEARCH_AGAIN_NUM() * (search_again_counter + 1)
                     / params::ASPIRATION_SEARCH_AGAIN_DEN())
             .max(1);
@@ -2901,7 +2907,7 @@ impl Worker {
                     // whole verification subtree, so it cannot recursively
                     // null-move back to the same (possibly zugzwang) cutoff.
                     self.nmp_min_ply = ply as i32
-                        + params::NMP_VERIFY_FRAC.0 * (depth - r) / params::NMP_VERIFY_FRAC.1;
+                        + params::NMP_VERIFY_NUM() * (depth - r) / params::NMP_VERIFY_DEN();
                     let v = self.search::<NonPv>(tt, stop, beta - 1, beta, depth - r, false, ply);
                     self.nmp_min_ply = 0;
                     if v >= beta {
@@ -3329,10 +3335,15 @@ impl Worker {
                     // depth, sparing it from the parent-futility and SEE
                     // prunings below; one it distrusts loses depth and is
                     // pruned earlier.
+                    // SF writes this weight as `64·h/32` — 1/32 granularity
+                    // the tuner can use; the product is formed before the
+                    // divide (identical to `2·h` at the 64/32 defaults).
                     let history = cont_history
-                        + 2 * self.histories.main[self.board.side_to_move() as usize]
-                            [m.raw16() as usize]
-                            .get();
+                        + params::LMRDEPTH_MAIN_NUM()
+                            * self.histories.main[self.board.side_to_move() as usize]
+                                [m.raw16() as usize]
+                                .get()
+                            / params::LMRDEPTH_MAIN_DEN();
                     lmr_depth += history / params::LMR_DIVISOR[depth.min(16) as usize - 1];
 
                     // Parent futility (design/10 §3.5): the most optimistic
@@ -3444,9 +3455,9 @@ impl Worker {
                 } else if tt_value >= beta {
                     // The ttMove is expected to fail high anyway — search it
                     // shallower in favor of alternatives.
-                    extension = -3;
+                    extension = params::SE_NEG_EXT_TT_FAILHIGH();
                 } else if cut_node {
-                    extension = -2;
+                    extension = params::SE_NEG_EXT_CUTNODE();
                 }
             }
             new_depth += extension;
@@ -3617,7 +3628,7 @@ impl Worker {
             // (N6) and is cleared after — the child clears it at its own entry
             // too, but resetting by hand keeps the protocol robust if a future
             // `d <= 0` were ever to drop the scout straight to qsearch.
-            if depth >= 2 && move_count > 1 {
+            if depth >= params::LMR_MIN_DEPTH() && move_count > params::LMR_MIN_MOVECOUNT() {
                 let classical_d = (new_depth - r / params::RED_UNIT())
                     .min(new_depth + params::RED_MAX_DEEPER())
                     .max(params::LMR_MIN_SCOUT_DEPTH())
@@ -3933,7 +3944,7 @@ impl Worker {
                         && depth < params::SIBLING_DEPTH_MAX()
                         && !is_decisive(value)
                     {
-                        depth -= 2;
+                        depth -= params::SIBLING_DEPTH_STEP();
                     }
                     alpha = value;
                 }
@@ -3965,7 +3976,8 @@ impl Worker {
         // decisive alpha means the window sits in the mate band, where
         // damping would corrupt mate distances.
         if best_value >= beta && !is_decisive(best_value) && !is_decisive(alpha) {
-            best_value = (best_value * depth + beta) / (depth + 1);
+            best_value = (best_value * depth + params::FH_SOFTEN_BETA_W() * beta)
+                / (depth + params::FH_SOFTEN_BETA_W());
         }
 
         // Step 14 — node result: ply-relative mate/stalemate terminals
@@ -4497,8 +4509,9 @@ impl Worker {
                 // non-decisive stand-pat cutoff partway back toward beta.
                 // Decisive scores are never blended (§8.11).
                 if !is_decisive(best_value) {
-                    let (w_best, w_beta, den) = params::QS_STANDPAT_BLEND;
-                    best_value = (w_best * best_value + w_beta * beta) / den;
+                    best_value = (params::QS_STANDPAT_BEST_W() * best_value
+                        + params::QS_STANDPAT_BETA_W() * beta)
+                        / params::QS_STANDPAT_DEN();
                 }
                 // A stand-pat fail high on a TT miss caches the raw eval
                 // as a Bound::Lower eval-only entry (§3.11).
@@ -4708,8 +4721,9 @@ impl Worker {
         // damping; the blended value is what gets stored below). Decisive
         // scores are never blended (§8.11).
         if !is_decisive(best_value) && best_value > beta {
-            let (w_best, w_beta, den) = params::QS_FAILHIGH_BLEND;
-            best_value = (w_best * best_value + w_beta * beta) / den;
+            best_value = (params::QS_FAILHIGH_BEST_W() * best_value
+                + params::QS_FAILHIGH_BETA_W() * beta)
+                / params::QS_FAILHIGH_DEN();
         }
 
         // Step 12 — TT store at DEPTH_QS: LOWER on a fail high, else
@@ -7000,7 +7014,11 @@ mod tests {
         let eval = static_eval(&w.board);
         let beta = eval - 100;
         let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
-        let (w_best, w_beta, den) = params::QS_STANDPAT_BLEND;
+        let (w_best, w_beta, den) = (
+            params::QS_STANDPAT_BEST_W(),
+            params::QS_STANDPAT_BETA_W(),
+            params::QS_STANDPAT_DEN(),
+        );
         assert_eq!(v, (w_best * eval + w_beta * beta) / den);
         assert_eq!(w.nodes, 0, "a stand-pat cutoff searches nothing");
         let cached = tt.probe(w.board.key());
@@ -7161,7 +7179,11 @@ mod tests {
         let beta = 0;
         let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
         assert_eq!(w.nodes, 1, "in check the evasion must be searched");
-        let (w_best, w_beta, den) = params::QS_FAILHIGH_BLEND;
+        let (w_best, w_beta, den) = (
+            params::QS_FAILHIGH_BEST_W(),
+            params::QS_FAILHIGH_BETA_W(),
+            params::QS_FAILHIGH_DEN(),
+        );
         assert_eq!(
             v,
             (w_best * -corrected_eval(&after, Some(kh2)) + w_beta * beta) / den
@@ -7184,7 +7206,11 @@ mod tests {
         let beta = eval + 100;
         let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
         assert_eq!(w.nodes, 1);
-        let (w_best, w_beta, den) = params::QS_FAILHIGH_BLEND;
+        let (w_best, w_beta, den) = (
+            params::QS_FAILHIGH_BEST_W(),
+            params::QS_FAILHIGH_BETA_W(),
+            params::QS_FAILHIGH_DEN(),
+        );
         assert_eq!(v, (w_best * -static_eval(&after) + w_beta * beta) / den);
     }
 
