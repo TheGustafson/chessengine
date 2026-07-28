@@ -188,6 +188,56 @@ drift across 172 unconverted wins. That is the failure mode the standing bar in 
 explicitly deprioritised as "leaves no trace to debug" — on this corpus it is the whole
 story. **This is a finding for the owner to rule on, not for an agent to act on unilaterally.**
 
+## ★ THE FIRST PARETO MOVE: the aspiration window is too narrow, and it under-reduces the WHOLE TREE (2026-07-28)
+
+Everything else this session moved us ALONG the (depth, seldepth) frontier. This moves
+us toward it. 100 plateau positions at **110k nodes** (the in-game budget), null band
+±0.15 from two inert arms:
+
+| arm | depth | seldepth |
+|---|---|---|
+| base | 14.54 | 22.91 |
+| inert `RED_TABLE_NUM +1` | 14.40 | 22.58 |
+| inert `RED_TABLE_NUM −1` | 14.40 | 22.47 |
+| `ASPIRATION_BASE_DELTA` 5→15 | 14.91 | 23.02 |
+| `ASPIRATION_BASE_DELTA` 5→30 | 15.50 | 23.72 |
+| **`ASPIRATION_BASE_DELTA` 5→60** | **15.62** | **24.27** |
+| `ASPIRATION_MSS_DIVISOR` 6776→3000 | 14.86 | 23.27 |
+| **SF18** | **14.80** | **25.22** |
+
+**BOTH statistics rise, monotonically, far outside the null band.** At delta=60 our
+nominal depth (15.62) EXCEEDS SF's (14.80) and seldepth nearly closes.
+
+### The mechanism, and why it is not merely "prune harder"
+
+Our reduction formula is `scale − delta * RED_DELTA_MULT / root_delta`
+(`src/search/mod.rs:4189`), byte-for-byte SF's `reductionScale - delta * 617 / rootDelta`
+(`eca43a97:search.cpp:1832`). **`root_delta` scales reductions across the whole tree.**
+
+`docs/research/aspiration-frame-bug.md` established our root window is **2.4× too
+narrow**: SF widens by `|meanSquaredScore| / 10588`, `mss` is a **squared** eval
+quantity, our eval frame is 0.64× SF's, so our `mss` is 0.64² = 0.41× theirs while the
+divisor was transcribed raw. That doc treated the consequence as root-score oscillation
+(ours 1.44 pawns of range vs SF's 0.45 — **3.2×**).
+
+**It has a second consequence that doc did not draw:** a too-small `root_delta` makes
+`delta * 617 / root_delta` too LARGE, which **systematically UNDER-reduces every node in
+the tree** — a wider, shallower search. That is exactly the measured deficit, and it is
+a *coupling* defect, not a level defect.
+
+**This matters for A3.** `lmr30` (−11.6, n=628) and `EVAL_SCALE` (both directions
+negative) tested the reduction LEVEL and found it at a local optimum. `root_delta` is a
+different axis — the level is right, its *scaling input* is wrong. A3 says only new
+conditioning axes can move anything; this is one.
+
+### The attack on it, stated because the story is now elegant (README §2 rule 6)
+Part of the depth gain IS a reduction increase, and "reduce more" is at a local optimum
+by game evidence. So the honest reading is: **the depth/seldepth gain is established;
+whether it converts to Elo is not.** `engines/runs/asp30` (110k, `ASPIRATION_BASE_DELTA`
+5→30) decides it. Note the aspiration doc's own bracket: 40 more than halved the
+oscillation but **400 was worse again**, so wider is not monotonically better and 30 is
+a deliberate middle rather than the largest mechanism move.
+
 ## THE SELDEPTH GAP CLOSES ON ONE KNOB: `SE_MIN_DEPTH` (2026-07-28)
 
 Bounding test (can ANY extension setting reach SF's sel−nom of 8.82 at d12?), 120
@@ -301,6 +351,9 @@ arm name.
 | `setrigger` (`SE_BETA_MULT` 60→32, `SE_BETA_TTPV_MULT` 70→38) | 30k | **−16.3 [−50.4, +17.5]**, n=406 |
 | `redcorr110k` (`RED_CORR_DIV` 26131→7029) | 110k | **−13.3 [−52.2, +25.2]**, n=313, STOPPED early for memory |
 | `offense0` (`QUIET_OFFENSE_FACTOR` 10→0) | 30k | **−1.7 [−36.0, +32.5]**, n=398 |
+| `semindepth4` (`SE_MIN_DEPTH` 6→4) | 60k | **−1.2 [−42.1, +39.6]**, n=281, stopped (null; decayed +43.7→+34.5→+19.2→−1.2 as n grew — a textbook positive partial dying) |
+| `semindepth4-110k` (same arm, in-game budget) | 110k | running |
+| `asp30` (`ASPIRATION_BASE_DELTA` 5→30) | 110k | running |
 
 ⇒ **A real, nulled `fhf` improvement did NOT convert to Elo.** `QUIET_OFFENSE_FACTOR=0`
 raised the first-move cutoff rate by +0.0021 against a ±0.0011 null band, with the
