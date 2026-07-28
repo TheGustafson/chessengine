@@ -128,22 +128,33 @@ def main() -> int:
         print("      every number above is meaningless. Fix that before interpreting.")
         return 2
 
-    b, arm, anti_s = res["base"]["score"], res["arm"]["score"], res["ANTI"]["score"]
-    nulls = [v["score"] for k, v in res.items() if k.startswith("null")]
-    d_arm, d_anti = b - arm, b - anti_s          # positive = better than base
-    band = (min(nulls) - b, max(nulls) - b) if nulls else (0, 0)
+    # ONE convention everywhere: improvement = base - score, so POSITIVE = better.
+    # A previous version mixed conventions (arm as base-score, nulls as score-base) and
+    # then compared the arm against the band's WIDTH instead of its EDGE — which is
+    # exactly the class of false positive this tool exists to prevent.
+    b = res["base"]["score"]
+    imp = lambda name: b - res[name]["score"]
+    d_arm, d_anti = imp("arm"), imp("ANTI")
+    null_imp = [imp(k) for k in res if k.startswith("null")]
+    best_null = max(null_imp) if null_imp else 0.0
 
-    print(f"  arm  moves the metric by {d_arm:+.1f}")
-    print(f"  ANTI moves the metric by {d_anti:+.1f}   <- the control")
-    print(f"  inert null band          [{band[0]:+.1f}, {band[1]:+.1f}]  (n={len(nulls)})")
+    print(f"  improvement over base (positive = better):")
+    print(f"    arm   {d_arm:+7.1f}")
+    print(f"    ANTI  {d_anti:+7.1f}    <- the control")
+    print(f"    nulls {'  '.join(f'{x:+.1f}' for x in sorted(null_imp, reverse=True))}"
+          f"   (best {best_null:+.1f}, n={len(null_imp)})")
     print()
-    if d_anti > 0 and abs(d_anti) >= 0.5 * abs(d_arm):
+    if d_arm <= 0:
+        print("VERDICT: the arm is not better than base at all.")
+        return 0
+    if d_anti > 0 and d_anti >= 0.5 * d_arm:
         print("VERDICT: METRIC INVALID. The OPPOSITE change helps comparably, so this")
         print("         metric rewards perturbation, not quality. Do not report the arm.")
         print("         Find a proof-grade outcome (a forced mate, or a value SF confirms).")
         return 3
-    if d_arm <= max(0.0, band[1] - band[0]):
-        print("VERDICT: inside the inert null band. No effect distinguishable from noise.")
+    if d_arm <= best_null:
+        print(f"VERDICT: inside the inert null band — an inert +-1 does as well "
+              f"({best_null:+.1f} vs {d_arm:+.1f}). No distinguishable effect.")
         return 0
     print("VERDICT: clears the null band AND the anti-arm control.")
     print("         This is a CANDIDATE, not a result — games arbitrate (1200 @ 10+0.1,")

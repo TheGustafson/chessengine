@@ -113,8 +113,14 @@ def main() -> int:
         print(f"  >> we already avoid it at the in-game budget; the GAME lost it "
               f"(warm context or instability), not a cold search deficit.")
     else:
-        ratio = (a_sw / s_sw) if (a_sw and s_sw) else float("inf")
-        print(f"  >> OURS. We need {'>=' if not a_sw else ''}{ratio:.1f}x SF's nodes here.")
+        if a_sw and s_sw:
+            print(f"  >> OURS. We need {a_sw/s_sw:.1f}x SF's nodes here.")
+        elif s_sw:
+            print(f"  >> OURS, and worse than the ladder can measure: we still play it at "
+                  f"{budgets[-1]//1000}k while SF stops at {s_sw//1000}k. Widen --budgets.")
+        else:
+            print(f"  >> neither engine stops playing it within {budgets[-1]//1000}k — "
+                  f"the oracle move may be wrong, or the ladder is too short.")
 
     # forced comparison of the two candidates at ply 0
     print(f"\n  {'budget':>8} | {'A '+played:>10} {'A '+oracle:>10} {'A picks':>8}"
