@@ -20,6 +20,31 @@
 # class of recipe bug. Exit 0 = PASS, 1 = FAIL, 2 = usage/infra error.
 #
 # RULE: every newly trained net passes this check BEFORE any gate match.
+#
+# ---------------------------------------------------------------------------
+# THE RELATIVE CHECK ABOVE IS SELF-REFERENTIAL (found 2026-07-28).
+#
+# It compares each candidate to OUR OWN INCUMBENT, so it certifies that a net
+# reproduces its ancestor's scale — it cannot see a scale that the whole lineage
+# shares. And the whole lineage does share one: our eval measures **0.538x
+# Stockfish's INTERNAL frame** (n=600), while every cp-threshold this header
+# names was transcribed verbatim from Stockfish and is therefore ~1.86x too
+# large in our units. Net-0's arbitrary scale became the lineage's scale, and
+# this gate has been actively enforcing it ever since. The tighter it passes,
+# the more perfectly the mismatch is preserved.
+#
+# So the check now ALSO reports an ABSOLUTE ratio against Stockfish's internal
+# frame. Note that Stockfish does not PRINT that frame: `UCIEngine::to_cp`
+# (eca43a97 uci.cpp:554) returns `100 * v / a` with `a = p_a(material)` ~ 385,
+# so its printed cp must be multiplied by a/100 to recover the units its search
+# constants actually live in. Comparing printed-cp to printed-cp measures
+# nothing and inverts the apparent direction — the mistake that cost most of a
+# night on 2026-07-28.
+#
+# ADVISORY, not fatal, and deliberately so: every net in the lineage fails it
+# today, so hard-failing would block all training work. It is here to make the
+# number impossible to not see. Set ABSOLUTE_STRICT=1 to make it fatal once the
+# lineage has been rescaled.  Skipped silently if $SF_BIN is absent.
 # ============================================================================
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -66,3 +91,64 @@ ok = 0.85 <= med <= 1.18 and 0.85 <= slope <= 1.18 and sign >= 0.95
 print(f"[scale-check] {'PASS' if ok else 'FAIL'} (band 0.85-1.18, sign>=95%)")
 sys.exit(0 if ok else 1)
 PY
+REL_RC=$?
+
+# --- ABSOLUTE: against Stockfish's INTERNAL frame ---------------------------
+SF_BIN="${SF_BIN:-engines/bin/stockfish18}"
+if [ -x "$SF_BIN" ]; then
+  # SF prints one "Final evaluation" line per `eval`, from WHITE's point of view.
+  awk '{print "position fen "$0"\neval"} END{print "quit"}' "$FENS" \
+    | "$SF_BIN" 2>/dev/null | grep -a "Final evaluation" > "$TMP/sf.ev" || true
+  python3 - "$TMP/cand.ev" "$TMP/sf.ev" "$FENS" "$CAND" <<'PY'
+import sys
+ours = [int(l.split()[0]) for l in open(sys.argv[1]) if l.strip()]
+sfl  = [l for l in open(sys.argv[2]) if "Final evaluation" in l]
+fens = [l.strip() for l in open(sys.argv[3]) if l.strip()]
+
+# a = p_a(material), the divisor UCIEngine::to_cp applies before printing.
+AS = (-72.32565836, 185.93832038, -144.58862193, 416.44950446)
+W = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9}
+def a_of(fen):
+    board = fen.split()[0]
+    mat = sum(W.get(ch.lower(), 0) for ch in board if ch.isalpha())
+    m = max(17, min(78, mat)) / 58.0
+    return ((AS[0] * m + AS[1]) * m + AS[2]) * m + AS[3]
+
+pairs = []
+for fen, o, line in zip(fens, ours, sfl):
+    tok = line.split()[2]
+    try:
+        white_cp = float(tok) * 100.0
+    except ValueError:      # "none" for in-check positions
+        continue
+    # our nnue-eval is side-to-move relative; SF's printout is white-relative
+    stm_cp = white_cp if fen.split()[1] == "w" else -white_cp
+    internal = stm_cp * a_of(fen) / 100.0
+    if abs(internal) > 100:
+        pairs.append((o, internal))
+
+if len(pairs) < 100:
+    print(f"[scale-check] ABSOLUTE skipped (only {len(pairs)} usable rows)")
+    sys.exit(0)
+ratios = sorted(o / s for o, s in pairs)
+med = ratios[len(ratios) // 2]
+slope = sum(o * s for o, s in pairs) / sum(s * s for _, s in pairs)
+print(f"[scale-check] ABSOLUTE vs SF INTERNAL frame (printed cp x a/100, a~385):")
+print(f"[scale-check]   n={len(pairs)}  median(ours/sf)={med:.3f}  slope={slope:.3f}")
+print(f"[scale-check]   -> transcribed cp constants are {1/slope:.2f}x too large "
+      f"in this net's units; EVAL_SCALE parity point = {round(1024/slope)}")
+good = 0.80 <= slope <= 1.25
+if good:
+    print("[scale-check]   ABSOLUTE PASS (band 0.80-1.25)")
+else:
+    print("[scale-check]   ABSOLUTE FAIL (band 0.80-1.25) — the net's frame does NOT")
+    print("[scale-check]   match the frame our search constants were transcribed for.")
+sys.exit(0 if good else 1)
+PY
+  ABS_RC=$?
+  if [ "${ABSOLUTE_STRICT:-0}" = "1" ] && [ "$ABS_RC" -ne 0 ]; then
+    echo "[scale-check] ABSOLUTE_STRICT=1 — failing on the absolute band."
+    exit 1
+  fi
+fi
+exit "$REL_RC"
