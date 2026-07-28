@@ -1671,7 +1671,64 @@ games). **Those two disagree, and only games settle it.** That is the next match
 and it is a sharper hypothesis than anything else tested tonight because it was
 derived from the losses rather than from a sweep.
 
-## 4c. THE FRAME RATIO WAS INVERTED ALL NIGHT — it is 2.28, not 0.46
+## 4c. RETRACTED — I forgot Stockfish's WDL normalization. The frame model stands.
+
+**Everything in the section below is wrong and is kept only as the record of the
+error.** I measured our printed cp against Stockfish's printed cp and read the
+2.07x/2.28x as proof our units were LARGER. But Stockfish does not print its
+internal frame. `eca43a97:src/uci.cpp:554`:
+
+```
+int UCIEngine::to_cp(Value v, const Position& pos) {
+    auto [a, b] = win_rate_params(pos);
+    return int(std::round(100 * int(v) / a));
+}
+```
+
+`a = p_a(material)` is **381-388 across our whole corpus** (median 385), so every
+cp Stockfish prints is its internal value divided by ~3.85. The razoring 465, the
+LMR 52/9 and all 260 transcribed constants live in the INTERNAL frame. We have no
+`to_cp` equivalent (grepped) — we print raw internal values. So the governing
+comparison is `ours_printed` against `SF_printed * a(pos)/100`, and it gives:
+
+> **OUR eval = 0.538 x SF INTERNAL eval** (n=600)
+
+which is exactly the four earlier independent estimates (0.55, 0.579, 0.605, 0.64)
+and the theory region already written into `EVAL_SCALE`'s doc comment (1764 =
+1/0.58; this measurement says 1904). **0.538 x 3.85 = 2.07 — my "discovery" was
+the normalization constant.**
+
+**So the original frame model was right all along, in the direction it always
+said:** our eval is ~0.54x Stockfish's internal frame, every transcribed cp
+constant is ~1.86x too large in our units, and the correction is `EVAL_SCALE` UP
+toward ~1764-1904 (equivalently, the constants down by 0.538) — **not** down.
+
+**And the `EVAL_SCALE` sweep agrees.** It favoured values ABOVE 1024 (+1.45 at
+1400), which I flagged as a "tension" one section ago. There is no tension: 1400
+is a step from 1024 toward 1764, and the sweep was pointing the right way the
+whole time.
+
+### What actually went wrong in my reasoning
+
+The two "frame-derived arms that failed" were the entire evidential basis for
+suspecting an inversion. Both were measured on the 44-position forced-move
+instrument, whose NULL panel moves the statistic from 13/44 to 15/44 and 13/44 to
+20/44 for a +-1 perturbation. **The whole observed spread, 13/44 to 20/44, sits
+inside that null.** That instrument decided nothing, in either direction, and I
+read a verdict out of it twice — first as "the frame is refuted", then as "the
+inverse is confirmed". The standing rule against verdicts from underpowered
+screens exists for precisely this, and I broke it while writing a section about
+being careful.
+
+**The actionable finding is unchanged from before I started:** game-test
+`EVAL_SCALE` in the 1764-1904 region. It is now supported by a fifth independent
+measurement, in the correct units, and by the only aggregate sweep that tested it.
+
+---
+
+<details><summary>ORIGINAL (WRONG) TEXT, retained as the error record</summary>
+
+### ~~THE FRAME RATIO WAS INVERTED ALL NIGHT — it is 2.28, not 0.46~~
 
 Two frame-derived corrections failed tonight with their falsification arms
 winning: the pfut margins (`pfinv`, constants ×1.56) and the LMR re-search
@@ -1723,6 +1780,8 @@ prescribes. That sweep is SF-refereed and `EVAL_SCALE` moves us toward the
 referee (§3z3), so it is exactly the arm whose bias does not cancel. **The
 Reckless-refereed re-run and a game match are the tests that decide**, and the
 game match needs no referee at all.
+
+</details>
 
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
