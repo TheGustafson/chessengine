@@ -449,16 +449,22 @@ crate::tunables! {
     pub RED_FLAT: i32 = 714;
     /// Reduction rebate (in 1024ths of a ply) for a move that GIVES CHECK.
     ///
-    /// 2026-07-28 trace finding: on the game-1 mating node the search debugger
-    /// found 244 rows whose move gives check, **zero** extended, and a median
-    /// final reduction of +180 on them — while the forced mate sits 8 plies
-    /// away in a node that has depth 9 available. The plies exist; they are
-    /// spent reducing the most forcing line on the board. Stockfish has no
-    /// check term in its LMR accretion either, so this is an ARCHON experiment
-    /// rather than a parity fix.
+    /// **Status: UNVALIDATED. Default 0 — leave it there unless a game result
+    /// says otherwise.** Stockfish has no check term in its LMR accretion, so
+    /// this is an ARCHON experiment, not a parity fix.
     ///
-    /// DEFAULT 0 — the default build is bit-identical and the `Bench:` pin is
-    /// untouched. Only a `--features tune` build can move it.
+    /// It was proposed on 2026-07-28 from a trace of one loss, and every
+    /// supporting argument for it has since been withdrawn:
+    /// * "checking moves are never extended" was an artifact — singular
+    ///   extension applies only to the ttMove, and fires on 8 of 33 eligible
+    ///   candidates, which is normal;
+    /// * "the futility gates hide the mate" held only at FIXED DEPTH; at equal
+    ///   nodes base and every arm find it at 100k;
+    /// * the corpus metric it later "won" on (nodes to stop playing the
+    ///   blunder) was shown to reward noise — setting this to **−512**, i.e.
+    ///   reducing checks MORE, clears the same null band.
+    ///
+    /// Keep the knob, distrust the story. See `searchopt/LEDGER.md`.
     pub RED_GIVES_CHECK: i32 = 0;
 
     /// Draw contempt: how much worse than equality a draw is judged, from the
