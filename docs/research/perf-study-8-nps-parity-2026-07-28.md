@@ -6,18 +6,20 @@ Date: 2026-07-28. Eighth commissioned study in the chain (1:
 Raw artifacts and instruments: `perf-artifacts-8/`.
 
 **Unlike 1–7 this study was licensed to change code, and it did.** Branch
-`perf-study-8-nps-parity`. One change is kept and committed, two were
-implemented, measured and reverted, one was implemented purely as an instrument
-and reverted. Every kept change is **eval bit-exact** (wl50 hash
+`perf-study-8-nps-parity`. **Three changes are kept and committed** (§4.1–4.3,
+−3.29% of all engine instructions together); **four more were implemented,
+measured and reverted** (§7.1, §7.2, §7.7, §7.8); two were implemented purely
+as pricing instruments and reverted (§4.3, §6.1). Every kept change is
+**eval bit-exact** (wl50 hash
 `d82caf8a…8163`, 800-FEN hash `53fc2de1…ad64`) and **node-identical**
 (wl50/d13 total `1,972,607`) against the D48X pins, and
 `CHECK_NNUE_GATE=1 bash tools/check.sh` exits 0 with `Bench: 587683`.
 
 **Binaries in the worktree** (all PGO, `sota,arch-d48x`, canonical net):
 `engines/bin/archon-s8-base` (HEAD before this study),
-`engines/bin/archon-s8-final` (HEAD after), plus the per-arm binaries named in
-§4. `archon-s8-base-dbg` is the same PGO build with line tables, used for
-`addr2line`/`srcline` work only.
+**`engines/bin/archon-s8-v2` (HEAD after, the deliverable)**, plus the per-arm
+binaries named in §4 and `arms.txt`. `archon-s8-base-dbg` is the same PGO build
+with line tables, used for `addr2line`/`srcline` work only.
 
 **Configuration under study.** Canonical net `engines/canonical/net.cenn` ->
 `d48x-1280-sb520-ema.cenn`, arch `sota,arch-d48x` (L1 1280 / L2 16 / L3 32,
@@ -67,24 +69,33 @@ story" and ranked a code-size diet #3. Our movepick is *split* across
 per-symbol comparison overstates us; totalled, movepick is 667 i/n against
 SF18's 734.
 
-**(3) Landed: −1.77% of ALL engine instructions and −5.24% of ALL engine
-branches, from deleting three instructions.** `l1_dot`'s sparse group loop is
-11 static instructions and runs **42.79 times per node**; two of the eleven
-were a bounds check LLVM could not hoist (`cmp $0x13f,%ecx; ja <panic>`) because it
-cannot see `find_nnz`'s output range. Reading the group's four FT bytes as one
-unaligned 32-bit load removes it — and takes a third instruction with it, a
-`mov` that only existed to keep a second copy of the index alive across the
-check. Node-identical, eval bit-exact,
-`CHECK_NNUE_GATE=1 bash tools/check.sh` clean. On the matched 15.0 M-node
-wl50 panel (`counters-final-wl50.txt`, three arms interleaved, `instructions:u`
-spread 0.0000% on all three):
+**(3) Landed: −3.29% of ALL engine instructions and −5.27% of ALL engine
+branches, in three changes, every one node-identical and eval bit-exact.**
+On the matched 15.0 M-node wl50 panel (`counters-v2-wl50.txt`, three arms
+interleaved, `instructions:u` spread 0.0000% on all three):
 
 | per node | before | after | SF18 |
 |---|---:|---:|---:|
-| instructions | 7,116.6 | **6,991.0** (−1.77%) | 4,329.6 |
-| ratio vs SF18 | 1.644× | **1.615×** | — |
-| branches | 797.1 | **755.3** (−5.24%) | 394.7 |
-| ratio vs SF18 | 2.020× | **1.914×** | — |
+| instructions | 7,116.6 | **6,882.7** (−3.29%) | 4,329.6 |
+| ratio vs SF18 | 1.644× | **1.590×** | — |
+| branches | 797.1 | **755.1** (−5.27%) | 394.7 |
+| ratio vs SF18 | 2.020× | **1.913×** | — |
+
+| # | change | Δ instructions | class |
+|---|---|---:|---|
+| 1 | `l1_dot`: read the group's four FT bytes as one unaligned 32-bit load, deleting a bounds check LLVM could not hoist out of an 11-instruction loop that runs **42.79 times per node** (§4.1) | **−1.77%** | bit-exact |
+| 2 | `activate`: `|4t|` as `slli::<2>(abs(t))` instead of `abs(adds(adds(t,t),adds(t,t)))` — one op fewer per merge, four merges per loop body (§4.2) | **−0.49%** | bit-exact |
+| 3 | The Wave-G threat map is filled **on demand** instead of on every `make_move`; ~52% of nodes never ask for it (§4.3) | **−1.01%** | node-identical |
+
+Change 1 alone removed −5.25% of all engine branches, which is most of the
+2.02× → 1.91× move in the branch ratio.
+
+The speed side, for completeness and **as a band only** — the box carried a
+user match throughout, and the paired per-round statistic is the only
+admissible form: cycles/node ratio v2/base **median 0.977, range
+[0.904, 1.018], 4 of 6 rounds favouring v2**; NPS ratio **median 1.025, 4 of
+6**. Directionally consistent with −3.29% instructions at unchanged IPC, and
+resolvable to nothing better than that on this box.
 
 **(4) The branch ratio is an EVAL number, and it is now explained.** 2.02×
 whole-engine splits into **eval 3.17×**, make/unmake 2.64×, shell **1.31×**.
@@ -103,14 +114,17 @@ two-accumulator shape (`HalfKAv2_hm` + `FullThreats`, both 1024-wide,
 A deliberately eval-changing arm that replaces the rescale with a plain add
 measured **−2.71% engine instructions**; static accounting says 2.47%.
 
-**(6) Three things were implemented and did not pay; all are reverted and all
-are in §7 with the number that killed them.** In particular, `perf annotate`
-sample share on stores and compares is **skid** on this box and must never be
-used to size a change: it valued the insertion sort's bounds checks at 9.7% of
-`init_quiets` (real: 0.045% of the engine) and the threat-PSQ1 store round-trip
-at 12.4% of `at_full` (real: promoting it to a register **cost +1.31%**). The
-`l1_dot` win was found by *counting the loop body and its trip count*, not by
-reading a percentage off an instruction.
+**(6) FOUR changes were implemented and did not pay; all are reverted and all
+are in §7 with the number that killed them** (−0.045%, **+1.31%**, nothing over
+9 paired rounds, **+0.19%**). Every one of the four was chosen by reading a
+percentage off an annotated instruction or off a code shape; every one of the
+three that *did* pay was chosen by counting — a loop body times its trip count,
+or a three-minute deliberately-wrong stub that prices the candidate before
+anyone designs the correct version (`scripts/probe8.sh`). On this box
+`perf annotate` percent on stores and compares is **skid**: it valued the
+insertion sort's bounds checks at 9.7% of `init_quiets` (real: 0.045% of the
+engine) and the threat-PSQ1 store round-trip at 12.4% of `at_full` (real:
+fixing it **cost +1.31%**). §4.4 is the procedure that replaces it.
 
 ---
 
@@ -390,17 +404,92 @@ Verification: wl50 eval hash `d82caf8a…8163` (unchanged), 800-FEN eval hash
 `cargo test --features sota,arch-d48x` 678 passed,
 `CHECK_NNUE_GATE=1 bash tools/check.sh` clean with `Bench: 587683`.
 
-### 4.2 Why this one paid when two similar-looking ones did not
+### 4.2 KEPT — `activate`: `|4t|` in two instructions instead of three
 
-The `l1_dot` check was found by **counting the loop body (11 static
-instructions) and deriving its trip count from the block's measured
-instruction share** — not by reading a percentage off an annotated
-instruction. The two changes that failed (§7.1, §7.2) were both selected by
-`perf annotate` sample share, and both share values were skid. This is study 3's
-lesson (`dynamic sample share on cheap ALU ops is not evidence`) recurring in a
-new costume, and it is now a *procedure*: `scripts/bcheck8.py` reports a
-bounds-check inventory, but its percentages are only a candidate list —
-**the ranking must come from `static instructions in the loop × trip count`.**
+The pairwise-FT merge has to rescale the threat accumulator by 255/64 before
+summing it with the HalfKA one (§6.1), and built `4t` with two saturating adds
+before taking the magnitude:
+
+```
+t4  = adds(adds(tv,tv), adds(tv,tv))      ; vpaddsw, vpaddsw
+mag = mulhrs(abs(t4), 32640)              ; vpabsw, vpmulhrsw
+```
+
+`|4t| == 4·|t|` for every representable `t`, so taking the absolute value first
+reaches `4t` with one shift:
+
+```
+mag = mulhrs(slli::<2>(abs(tv)), 32640)   ; vpabsw, vpsllw, vpmulhrsw
+```
+
+`vpsllw` wraps where `vpaddsw` saturates, which is exactly as safe here — both
+forms already rest on the documented `|t| ≤ 8191` bound (`4·8191 = 32764 <
+2^15`) and its debug assert. Four merges per loop body ⇒ −4 of the body's 48
+instructions. **−0.49% engine instructions**, both eval hashes and the d13 node
+total unchanged.
+
+### 4.3 KEPT — the Wave-G threat map is now filled on demand
+
+`Board::set_check_info` refilled the whole D30 threat map — every square
+attacked by the side-not-to-move, split by attacker type — inside **every**
+`make_move`: a pawn shift plus one magic lookup per enemy knight, bishop, rook
+and queen, plus the king. Priced by stubbing it out (`scripts/probe8.sh`,
+native non-PGO pair): **37,142,878,513 → 36,355,510,273 = 2.12% of all engine
+instructions.**
+
+Only two sites read it: `MovePicker::init_quiets` (the quiet scorer's threat
+escape/entry and offense terms) and the N10 reverse-futility "is one of my own
+pieces hanging" test. **No qsearch node touches either**, and neither does any
+node that cuts before N10 — so a large share of the nodes that paid for the
+fill never looked at it. Stockfish arrives at the same place from the other
+end: it maintains its threat state incrementally in `do_move`
+(`update_piece_threats`, 5.65% of its instructions) rather than refilling it.
+
+The map therefore moves out of `StateInfo` into a lazy cache on `Board`, keyed
+by the **raw Zobrist key**. Keying on the position hash rather than a
+generation counter is what makes it cheap and safe: make, unmake and null-move
+need no invalidation hook at all (a changed position is a changed key), and
+returning to a previously-seen position reuses the fill. A key collision
+(2^-64) can hand a stale ordering hint to a heuristic; it can never affect
+legality, and the TT already rests on that bound. The cache uses `Cell` — safe
+Rust, no `unsafe_code` exception — clones cold, and compares equal always,
+since two boards are the same position whether or not either has materialised
+its map. Dropping the two fields also shrinks `StateInfo` from 224 to 168
+bytes, which shrinks the per-make copy.
+
+**−1.01% engine instructions**; `make_move_with` 7.13% → 6.27% of the engine.
+Node-identical, eval bit-exact, full D24 perft ritual and
+`CHECK_NNUE_GATE=1 bash tools/check.sh` green.
+
+The gap between the 2.12% priced and the 1.01% delivered is the read rate:
+roughly 52% of nodes ask for the map. Making the two consumers cheaper — or
+unifying this map with the NNUE FullThreats event stream, which is a second,
+independent threat system (`record_square_touch`, 3.03%) — is where the rest
+is (§5 item 8).
+
+### 4.4 Why these paid when three similar-looking ones did not
+
+The three kept changes were selected by **counting**: the `l1_dot` check from
+the loop body (11 static instructions) and its trip count; the `activate` op
+from the loop body (48 instructions, 4 merges); the threat map from a
+**stub-and-diff price** (`scripts/probe8.sh`) taken *before* any design work.
+
+The four that failed (§7.1, §7.2, §7.7, §7.8) were every one of them selected
+by reading a percentage off an annotated instruction or off a code shape. Their
+outcomes: −0.045%, **+1.31%**, nothing (4/9 rounds), **+0.19%**. This is study
+3's lesson (`dynamic sample share on cheap ALU ops is not evidence`) recurring
+in four new costumes, and it is now a *procedure*:
+
+1. **Price first, design second.** A three-minute deliberately-wrong stub
+   (`probe8.sh`) puts a number on a candidate before anyone writes the correct
+   version. It cost 3 minutes and would have saved both §7.2 and §7.8.
+2. `scripts/bcheck8.py` and `annot8.py` produce a **candidate list**, never a
+   ranking. The ranking must come from `static instructions in the loop ×
+   trip count`, or from a stub-and-diff.
+3. On this box, `perf annotate` percent on **stores and compares is skid**.
+   It valued the insertion sort's checks at 9.7% of `init_quiets` (real:
+   0.045% of the engine) and the threat-PSQ1 store round trip at 12.4% of
+   `at_full` (real: fixing it costs 1.31%).
 
 ---
 
@@ -414,7 +503,8 @@ Everything below is priced against the 2,438 i/n we are over budget.
 | 2 | **Fold the skip lane into `l1_dot` as an extra output row** (SF's `FC_0_OUTPUTS + 1`) — §6.2 | up to **2.4%** (`skip_dot` 2.50 minus ~1/16 of `l1_dot`) | NO — needs i8 skip weights | rides the same format rev as #1 |
 | 3 | `at_full`'s non-fold half — the per-eval threat replay plumbing | 5.73% of engine (408 i/n); SF18 has **no** equivalent stage | yes, in principle | hard; impl-1 already took the representation win |
 | 4 | Accumulator copies through libc `memmove` — §3.3 | 2.00% (157 i/n) | yes | call sites named; not attempted |
-| 5 | make/unmake at 2.26× SF18 (`make_move_with` + `Worker::do_move` = 783 i/n vs 346) | +437 i/n | yes | **never studied by anyone in this chain** |
+| 5 | make/unmake at 2.26× SF18 (`make_move_with` + `Worker::do_move` = 783 i/n vs 346) | +437 i/n | yes | **never studied by anyone in this chain**; §4.3 took the first 67 i/n out of it |
+| 8 | **Unify the two threat systems.** We run *two* independent ones: the Wave-G board map for move ordering (`compute_threats`, ~2.1% of instructions, now lazy) and the NNUE FullThreats event stream (`record_square_touch` + `record_targets`, 3.55%). SF18 runs **one** (`update_piece_threats`, 5.65% of its instructions) that serves both its ordering and its net. Ours together are 397 i/n against SF18's 304 for the same two jobs. | ~90–160 i/n | yes | large; the two have different shapes (per-type attacked-square masks vs (attacker, from, to, victim) tuples) and the unification is a design exercise, not a patch |
 | 6 | `l2_tail` + `l3` — 2.16% of the engine for a 16→32→1 tail (544 MACs) | ≤ 0.8% | f32 reorder | SF18's `fc_1`+`fc_2` are the same shape and, on the §1 tail assumption, ~1.4% of its engine — so this is only ~1.5×, the smallest ratio in the eval layer. Study 3's chain-split half is already rejected. **Lowest priority.** |
 | 7 | `search::<NonPv>` outlining (carried item #1, "~5%") | see §7.3 | yes | **downgraded** — the cold mass is inert policy code that never executes |
 
@@ -481,6 +571,8 @@ rev as §6.1.
 | **7.6 "The remaining deficit is the shell / `next_move` + `search` code size" (study 7 §0.6, option 3)** | Totalled rather than compared per symbol, our movepick is **667 i/n against SF18's 734** and our whole shell is **1.163×**. 59% of the excess is eval, 18% make/unmake, 14% shell. The shell is not where parity lives. |
 | **1280/1024 = 1.25× as the justified width premium** | SF18's width-scaling instruction share is **32.03%**, so the justified premium is **1.080×**, not 1.25×. Assuming 1.25 would have hidden 660 i/n of real excess. |
 | **`perf annotate` percent as a sizing instrument on this box** | Two arms selected by it (7.1, 7.2) delivered −0.045% and **+1.31%**. The one arm selected by static-instructions × trip-count delivered −1.75%. Sample share locates *phases*; it does not price *changes*. |
+| **7.7 `skip_dot`'s 80-deep serial `vfmadd` chain is worth splitting** (carried option 6's other half, study 3 §6.11's "+1–1.5%") | A four-accumulator split was implemented — **battery-identical** (800-FEN integer-cp hash `53fc2de1…ad64` unchanged) and node-identical — and measured over **nine interleaved paired rounds**: 4 of 9 favoured it, median cycles/node ratio **1.023**, per-round range 0.818–1.111. Nothing. Same physics study 3 found when it split `l1_dot`'s chain: the kernel streams ~5 KB of f32 weights per eval and is **load-bound, not latency-bound**. REVERTED; the negative is now recorded in the kernel's own comment so it is not re-litigated. |
+| **7.8 The threat-PSQ1 row load is split into xmm + 2× `vmovq` and wants a fixed-size array reference** | `psqt_add`/`psqt_sub` took `&table[f*8..(f+1)*8]`, a runtime-length slice; giving them a `&[i32; BUCKETS]` via `try_into` — the codebase's own idiom for exactly this — measured **+0.185% instructions** (37,068,196,310 → 37,136,819,178, identical 5,001,629-node tree, native non-PGO pair). REVERTED. Second time in this study that the 8-bucket PSQ1 accumulate looked like free money and cost instructions (see 7.2). |
 | SMP scaling | still UNMEASURED; the box was quiet for 40 minutes of this session and contended for the rest. Unchanged since study 7. |
 
 ---
@@ -528,12 +620,14 @@ rev as §6.1.
 **Parity was NOT reached, and it is not reachable by patch work.**
 
 * Target: **4,677 instructions/node** (SF18 × the measured 1.080× width premium).
-* Before: **7,116.6**. After the kept change: **6,991.0** (−1.77%), measured on
-  the same three-arm matched panel as SF18's 4,329.6.
-* Residual: **1.495×** the parity target — **5.1% of the gap removed**
-  (125.6 of 2,439.6 i/n).
-* Whole-engine ratio vs SF18: **1.644× → 1.615×** instructions,
-  **2.020× → 1.914×** branches.
+* Before: **7,116.6**. After the three kept changes: **6,882.7** (−3.29%),
+  measured on the same three-arm matched panel as SF18's 4,329.6.
+* Residual: **1.472×** the parity target — **9.6% of the gap removed**
+  (233.9 of 2,439.6 i/n).
+* Whole-engine ratio vs SF18: **1.644× → 1.590×** instructions,
+  **2.020× → 1.913×** branches.
+* Per the house ~1 Elo per 1% NPS this is worth roughly +3 Elo — below any
+  match's resolution, offered as an instruction fact, not an Elo claim.
 
 The residual is decomposed and named in §1.2 and §5. **None of it is
 architectural in the sense of "1280 is wider than 1024"** — that is fully paid
@@ -549,10 +643,18 @@ implementation:
 * **~6.1% is make/unmake at 2.26×** — never once studied in eight studies.
 * **~2.0% is accumulator `memmove`** with the call sites now named.
 
-Sum: those four are ~18.7% of the engine against the 34.3% parity needs.
-Parity with SF18 at equal net width is therefore *approachable* but would take
-the whole list plus the shell's 14%, and nothing in this study suggests a
-single lever worth more than 5%.
+Sum: those four are ~18.7% of the engine against the 31.5% parity still needs
+after this study's 3.29%. Parity with SF18 at equal net width is therefore
+*approachable* but would take the whole list plus the shell's 14%, and nothing
+in this study suggests a single lever worth more than 5%.
+
+**The honest shape of the answer**: the engine is not losing to Stockfish on
+any one thing. It is losing ~5% to a net format that quantises its two
+transformers differently and bolts a dense f32 skip lane onto a sparse int8
+matmul, ~6% to a per-eval threat replay stage Stockfish does not have, ~6% to a
+make/unmake path nobody has looked at, ~2% to duplicated threat bookkeeping,
+and ~2% to accumulator memcpys. Each is small; the parity target only falls if
+all of them do.
 
 ### What I would do next, in order
 
@@ -560,14 +662,21 @@ single lever worth more than 5%.
    ~4.9% of instructions, one format rev, mechanism proven against SF18's own
    transform. Needs a retrain/requant and a new eval pin — but it is the only
    ~5% item on the board.
-2. **Study make/unmake.** 783 i/n against SF18's 346 on a subsystem that has
-   never been profiled in this chain. `Worker::do_move` is 10,190 B of text and
-   2.38× SF's `do_move`; `make_move_with` is another 5,585 B. Two of the four
-   hot 2560 B `memcpy`s live there.
-3. **Sweep the whole engine for the `l1_dot` defect class**, but rank by
-   `static loop body × trip count`, never by annotate share. `scripts/bcheck8.py`
-   produces the candidate list; §4.2 is the procedure.
-4. **Re-run the matched counter panel on an idle box** and finally take the SMP
+2. **Unify the two threat systems** (§5 item 8). We maintain the Wave-G board
+   map *and* the NNUE FullThreats event stream separately, 397 i/n for the two,
+   against SF18's single `update_piece_threats` at 304 for the same two jobs.
+   §4.3 showed the ordering half is only wanted by ~52% of nodes; the NNUE half
+   is wanted by 37% (evals/node 0.366). A single lazily-resolved threat delta
+   serving both is the shape SF has and we do not.
+3. **Study make/unmake.** Still 2.26× SF18 after §4.3 took 67 i/n out of it, on
+   a subsystem no study in this chain has profiled. `Worker::do_move` is
+   10,190 B of text and 2.38× SF's `do_move`; `make_move_with` is another
+   5,585 B.
+4. **Sweep the whole engine for the `l1_dot` defect class**, but rank by
+   `static loop body × trip count` or by a `probe8.sh` stub-and-diff, **never**
+   by annotate share — §4.4 is the procedure and §7 is the bill for ignoring
+   it (four candidates, −0.045%, +1.31%, nothing, +0.19%).
+5. **Re-run the matched counter panel on an idle box** and finally take the SMP
    scaling measurement, which is now four studies overdue.
 
 ---

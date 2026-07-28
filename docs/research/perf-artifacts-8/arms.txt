@@ -3,3 +3,6 @@ arm=l1nobc eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_no
 arm=sort eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=35974886358 cycles=26264565210 branches=3854481502 nps=1001928
 arm=uniquant eval_hash=56d6fe91313fa925 eval=**CHANGED** d13_nodes=1961283 node=**CHANGED** bench_nodes=5001556 instructions=35014708233 cycles=39411740203 branches=3886812141 nps=649215
 arm=psqtreg eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=36461356237 cycles=43783115557 branches=4087030274 nps=583893
+arm=kern2 eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001630 instructions=35814988397 cycles=27003002497 branches=3859267919 nps=970436
+arm=lazythreat eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001630 instructions=35454266456 cycles=26138208643 branches=3859073085 nps=1007174
+arm=lt2 eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=35459880225 cycles=38706027784 branches=3861565563 nps=661766
