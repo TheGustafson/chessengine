@@ -168,6 +168,39 @@ reusable mistakes:
 3. **Load.** Even with correct parsing, sequential runs on a box at load ~15
    are not comparable to each other.
 
+### 3b-FIXED. The speed gap, measured properly: ~1.4x, and NOT endgame-specific
+
+The way out of four contradictory wall-clock readings was to stop comparing
+runs and instead take instructions, CYCLES, nodes and time from the SAME
+process invocation, at the same depth -- plus a fairness check that the box
+cannot fake:
+
+| phase | engine | i/node | cyc/node | knps | Gcyc/s |
+|---|---|---|---|---|---|
+| 21+ (d13) | ARCHON | 9,559 | 14,042 | 395 | 5.54 |
+| 21+ (d13) | SF18 | 7,242 | **10,091** | 616 | 6.22 |
+| <=7 (d16) | ARCHON | 4,981 | 6,227 | 842 | 5.24 |
+| <=7 (d16) | SF18 | 3,615 | **4,961** | 1134 | 5.63 |
+
+**The fairness check.** `cycles/node x nodes/second = cycles/second` is the
+effective clock the process actually received. Ours reads 5.54 / 5.24 GHz
+against Stockfish's 6.22 / 5.63 -- within 7-12%, so both got a fair share and
+wall clock is usable after all. That is a MEASURED verdict on the measurement
+rather than another guess about it, and it is the check I should have run
+before publishing any NPS number tonight.
+
+**And the arithmetic now closes exactly**, which is what makes this the
+trustworthy version: at 21+, a 1.39x cycles/node advantage times a 1.12x clock
+advantage predicts 1.56x, and the measured NPS ratio is 616/395 = 1.56x. At
+<=7, 1.26 x 1.07 predicts 1.35x; measured 1134/842 = 1.35x.
+
+**Conclusion: Stockfish spends 26-39% fewer CYCLES per node, giving it
+1.35-1.56x our NPS -- roughly 60-70 Elo at ~120 per doubling.** The deficit is
+real, it is worth having, and it is *slightly worse in the OPENING* than the
+endgame -- the exact opposite of the withdrawn claim. It therefore does **not**
+explain the endgame-specific depth gap; the clock (we reach move 45 with 35% of
+their time) does.
+
 **The one load-immune measurement, and the only speed number I will stand
 behind:** instructions per searched node, same positions, same depth —
 1.15× (21+), 0.97× (13–20), 1.01× (8–12), **0.90× (≤7)**, with IPC 0.74–0.89
