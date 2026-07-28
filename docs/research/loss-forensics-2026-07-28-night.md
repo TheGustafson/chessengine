@@ -1289,6 +1289,44 @@ fixes every threshold simultaneously and coherently. Also, `FRAME_S` — the kno
 those campaigns swept — has **zero call sites** (§4 of the transition doc), so
 "the frame was tested" may be less true than the refuted list implies.
 
+## 3y. THE EQUAL-NODE DEFICIT IS REAL — +3.79 ± 0.74 cp at a realistic budget
+
+The model's one unexplained fact rested on a run that was mate-contaminated and
+had no error bars. Both fixed; re-run on the phase-representative corpus at 200k
+nodes, priced by a 1.6M-node probe against a 4M-node truth, all clipped to the
+decisive band:
+
+| pieces | n | ARCHON cp | SF18 cp | headroom | ARCHON wp | SF18 wp | wp head |
+|---|---|---|---|---|---|---|---|
+| 21+ | 1208 | 6.2 | 3.5 | 2.7 | 0.008 | 0.004 | **0.003** |
+| 13–20 | 936 | 4.2 | 3.0 | 1.2 | 0.004 | 0.003 | 0.001 |
+| 8–12 | 526 | 8.2 | 1.7 | **6.5** | 0.003 | 0.001 | **0.003** |
+| ≤7 | 330 | 14.3 | 3.7 | **10.5** | 0.003 | 0.001 | 0.001 |
+| **ALL** | 3000 | 6.8 | 3.0 | **+3.79 ± 0.74** | 0.005 | 0.003 | **+0.0023 ± 0.0004** |
+
+**5.1σ on centipawns, 5.75σ on win probability.** It is real, it is not an
+artefact of the biased top-1 metric (§3q), and it survives on the unbiased
+loss measure.
+
+**Read the two columns against each other, because they disagree on WHERE.** In
+centipawns the deficit is worst in the sparse buckets (10.5 at ≤7, 6.5 at 8–12);
+in win probability those same buckets are the *smallest* (0.001). That is not a
+contradiction — it is the non-linearity: a 10 cp error in a position already
+decided moves almost no win probability. **The wp column is the decision-relevant
+one**, and it puts the deficit at **21+ and 8–12, both 0.003**, with 13–20 and ≤7
+at a third of that.
+
+So the earlier per-phase readings were both partly right and measured different
+things: cp says "sparse", wp says "dense and mid-sparse". Anything that ranks
+phases by cp on a corpus containing endgames is ranking mate-adjacent noise.
+
+**What this does to the model.** The quality term moves from UNCERTAIN back to
+ESTABLISHED, at a realistic budget on the right population with an unbiased
+metric — but the size still needs converting to Elo, and the honest way is a
+budget calibration (measure our own wp loss at 100k and 200k; one doubling is
+~120 Elo, which prices a wp unit directly). That is the next measurement, not an
+assumption.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
