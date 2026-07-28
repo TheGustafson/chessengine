@@ -160,3 +160,24 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# ---------------------------------------------------------------------------
+# POST-BUILD STEP THAT IS NOT OPTIONAL — clip into the decisive band.
+#
+# A phase-representative corpus necessarily contains endgames, and there the
+# deep oracle routinely returns +-20000.  Mean cp loss is then dominated by mate
+# DISTANCES: measured 2026-07-28, the raw phase corpus gave a control of 48.06
+# cp and arm error bars of +-8.8 to +-21.4, against +-0.15 on the openings
+# corpus.  Clipping the same corpus to +-1000 moved the control to 15.11 and the
+# bars to +-0.90 -- a 20x improvement -- and FLIPPED the sign of the arm under
+# test from +18 to -1.10.  Only 2.8% of scored moves are touched.
+#
+# What it costs: mate-in-3 vs mate-in-20 becomes a tie.  Accepted, because this
+# corpus exists to rank tunables and mate distance is not the axis a pruning
+# margin moves.  If you ever need mate distance, use the unclipped file.
+#
+#   python -c "import json;CLIP=1000;\
+#     d=json.load(open('tools/nnue/calib/oracle-phase.json'));\
+#     [mv.update({k:max(-CLIP,min(CLIP,v)) for k,v in mv.items()}) \
+#      for t in d['tiers'].values() for mv in t.values()];\
+#     d.update(clip=CLIP);json.dump(d,open('tools/nnue/calib/oracle-phase-clip.json','w'))"
