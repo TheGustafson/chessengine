@@ -1514,6 +1514,20 @@ already-sufficient. **The indicated next net is threats-FREE at the same width**
 — which is also the one experiment that would close the D49 gate honestly, since
 exp-0065's +32.5 ± 17.3 was never isolated to threats.
 
+**Should the threats-free net be launched tonight?  No, and for two concrete
+reasons rather than caution.** The GPU is idle (0% util) and `d48x_launch.sh` +
+a JSON config is the whole launch path, so it looked tempting. But:
+
+1. **Disk.** 22 GB free; D48X's own footprint is 40 GB across 144 checkpoints. A
+   new run fills the disk and takes other things down with it.
+2. **It is not a config flag.** `d48x_1280.json` has no threats/feature key — the
+   feature set comes from the frozen warm-start trunk (`_arch_ruling`: "the A3
+   trunk transfers VERBATIM ... full trunk (frozen)"). A threats-free net at the
+   same width needs a feature-set design decision, not a parameter change.
+
+So it stays the recommended next experiment and an explicit ask, not something to
+start unattended.
+
 **Operational risk, flagged not acted on:** the disk is at **98%, 22 GB free of
 937 GB**. `data/nnue/experiments/` holds ~105 GB in its top five directories
 alone, and d48x-1280 is 40 GB across **144 checkpoints** of which four (the sb520
