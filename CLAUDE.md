@@ -27,6 +27,15 @@ lesser lever. Both halves of that reasoning were wrong:
   while one 126 cp error at a decision point converts a result. Use win
   probability.
 
+
+**And they are the cheapest defects to fix.** A catastrophic loss leaves a
+complete trace: a position, the move played, the move that was right, a
+measurable gap, and a reproducible search you can bisect gate by gate.
+Cumulative drift leaves none of that — there is nothing to load into a
+debugger. Rank work by TRACTABILITY x Elo, not by Elo share. Every blunder not
+dived into is free, high-resolution diagnostic information thrown away, and
+each one fixed removes a CLASS of failure rather than one position.
+
 When a blunder is found, drive it to a mechanism with the WHY ladder in
 `docs/research/LOSS-FORENSICS-PLAYBOOK.md`, and validate any fix on at least
 THREE independent losses of the same mode — one position is a patch, three is

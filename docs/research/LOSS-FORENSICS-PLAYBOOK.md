@@ -510,3 +510,17 @@ inaccuracies are absorbed and never converted, while one 126 cp error at a
 decision point converts a result outright. Do the channel accounting in **win
 probability**, and check which games the errors actually occurred in (four of
 five were in games we lost — they are not spread evenly).
+
+**WHY 3 — and this is the strongest reason: catastrophic losses are the
+CHEAPEST defects to fix.** Each one hands you a complete trace — a position,
+the move played, the move that was right, a measurable gap, and a reproducible
+search you can bisect gate by gate. That is why game 18 reached a mechanism in
+six WHYs. Cumulative drift offers none of it: there is no position to load, no
+gate to disable, no ladder to walk. WHY that inverts the priority I originally
+assigned: work should be ranked by **tractability x Elo**, not Elo share, and
+on tractability the two channels are not close. A blunder you do not dive into
+is free, high-resolution diagnostic information thrown away — and each one
+fixed removes a CLASS of failure, not a single position.
+
+`$SCRATCH/harvest.py` builds the full corpus: every >=100 cp error in every
+lost game, oracle-scored, sorted by win probability lost. Work it top-down.
