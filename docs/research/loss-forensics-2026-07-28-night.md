@@ -402,6 +402,50 @@ agreeing that we prune too much, the best halving the blunder rate) and this
 measurement are two views of one defect. That convergence is the strongest
 reason to believe the pfut direction is real rather than a screen artifact.
 
+## 3g. WHERE THE QUALITY GAP LIVES — the MIDDLEGAME, and my prediction was backwards
+
+Equal-node headroom against SF18, per phase, on the validated corpus:
+
+| phase | share of our moves | ARCHON cp | SF18 cp | **headroom** | ARCHON top-1 | SF18 top-1 |
+|---|---|---|---|---|---|---|
+| 21+ | 35.6% | 14.11 | 11.30 | **+2.81 ± 0.87** | 54.9% | 58.7% |
+| 13–20 | 28.4% | 13.43 | 11.91 | +1.52 ± 1.05 | 57.4% | 59.5% |
+| 8–12 | 21.4% | 13.42 | 12.66 | +0.76 ± 1.27 | 48.7% | 50.8% |
+| **≤7** | 14.5% | 18.69 | 20.70 | **−2.01 ± 2.51** | 37.4% | 38.2% |
+
+**Monotone in piece count, and at <=7 pieces we are BETTER than Stockfish at
+equal nodes.** §3c predicted the opposite ("the headroom should be LARGER in the
+endgame"); that prediction is refuted. The sign at <=7 is only 0.8σ on its own,
+but it agrees with the independent eval measurement (§3e: our rho 0.960 against
+SF18's 0.939 at <=7), so two unrelated instruments put us ahead there.
+
+Weighted by how often we play each phase, the quality gap is
+0.356·2.81 + 0.284·1.52 + 0.214·0.76 + 0.145·(−2.01) = **1.30 cp ≈ 78 Elo**,
+which with §3b-FIXED's ~64 Elo of speed accounts for ~142 of the observed
+171–191, the rest plausibly time management and conversion.
+
+### The apparent contradiction, and why both facts hold
+
+§1 says our win-probability loss per move is highest at ≤7 pieces (0.31 per 100
+moves against 0.06 at 21+). §3g says our search is *strongest* there. Both are
+true and they are not in tension:
+
+- **Where our search is weakest: the middlegame.** At equal nodes SF18 converts
+  21+ positions 3.8 top-1 points better than we do.
+- **Where our mistakes are most expensive: the endgame.** A single error in a
+  7-piece position turns a draw into a loss, so it costs far more win
+  probability per centipawn than the same error at move 25.
+
+So the two findings point at *different work*: the middlegame is where search
+quality is available, and the endgame is where error-avoidance pays. Neither is
+the "endgame eval weakness" I was circling for most of the night — that
+hypothesis is dead twice over (§3e, §3g).
+
+**Caveat on the ≤7 row:** cp loss is high for BOTH engines there (18.69 / 20.70)
+and top-1 is low for both (37.4% / 38.2%), because sparse positions have many
+equivalent moves and the oracle's single "best" is often one of several. The ≤7
+column is the noisiest in the table; trust its sign, not its size.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
