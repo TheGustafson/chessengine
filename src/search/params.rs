@@ -477,7 +477,7 @@ crate::tunables! {
     ///
     /// This is a NEW conditioning axis, not a re-tune: every existing global
     /// pruning/reduction constant was shown to sit at a local optimum at equal
-    /// nodes (docs/research/TAKEOVER-2026-07-28.md §2d).
+    /// nodes (searchopt/LEDGER.md).
     ///
     /// DEFAULT 0 — bit-identical default build, `Bench:` pin untouched.
     pub DRAW_CONTEMPT: Value = 0;

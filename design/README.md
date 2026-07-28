@@ -43,7 +43,7 @@ the note.
 The operational goal hierarchy, promotion thresholds, always-next rule, and
 current research checkpoint live in
 `docs/research/archon-execution-plan.md`; experimental continuation state lives
-in `docs/research/policy-automl-state.md` (legacy filename retained).
+in `old/docs/research/policy-automl-state.md` (legacy filename retained).
 
 (Some doc headers still read "Draft v1" from the drafting workflow; the
 review pass is complete and this table is authoritative until the header

@@ -1,5 +1,9 @@
 # D40 quantization "packing tail" — root cause + fix spec (2026-07-17)
 
+> **Note (2026-07-28 archive sweep):** several documents and scripts cited below were
+> moved to `old/`. Prefix a broken path with `old/` to find it. Nothing in `old/` is
+> loaded or trusted by the current engine; see `searchopt/LEDGER.md` for what survived.
+
 Task #26 / D45a. Investigate why `d40-uho-720sb` (HalfKAv2_hm+FullThreats
 CENN-v2, 720 SB / 18B presentations) fails the runtime-parity gate:
 runtime-vs-trainer eval error **mean 0.0121** (bar 0.03, OK) but

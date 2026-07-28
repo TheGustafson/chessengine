@@ -1,5 +1,9 @@
 # Value-Foundation Research State (B4: why we can't beat net-0, and the fix)
 
+> **Note (2026-07-28 archive sweep):** several documents and scripts cited below were
+> moved to `old/`. Prefix a broken path with `old/` to find it. Nothing in `old/` is
+> loaded or trusted by the current engine; see `searchopt/LEDGER.md` for what survived.
+
 > **★★★ 2026-07-19 PIVOT: the active plan is now the SF18-CANONICAL EPIC —
 > `docs/research/sf18-canonical-epic.md` (task #40).** Rebuild training around ONE
 > canonical SF18-labeled dataset (warm@20k full relabel → pipeline rewrite on one

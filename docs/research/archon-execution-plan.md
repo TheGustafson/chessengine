@@ -1,5 +1,9 @@
 # ARCHON Research Goal and Execution Plan
 
+> **Note (2026-07-28 archive sweep):** several documents and scripts cited below were
+> moved to `old/`. Prefix a broken path with `old/` to find it. Nothing in `old/` is
+> loaded or trusted by the current engine; see `searchopt/LEDGER.md` for what survived.
+
 Status: Active D41 operating plan
 
 Last updated: 2026-07-14 America/New_York

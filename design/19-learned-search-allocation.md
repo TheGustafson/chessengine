@@ -29,7 +29,7 @@ better strength–compute frontier for deterministic alpha–beta search.
 - Search semantics and existing heuristic seams (docs 07, 09, 10, and 12).
 - Match/SPRT mechanics (doc 14).
 - Historical direct-policy experiments (doc 17 and
-  `docs/research/policy-automl-state.md`).
+  `old/docs/research/policy-automl-state.md`).
 
 Where an implementation needs a new field or seam, its owning document changes
 before code. This roadmap specifies the research contract, not duplicate

@@ -537,7 +537,7 @@ strength. Two constraints in permanent tension, resolved in this order:
   integrated thesis, D40's feature/value architecture, and completed policy
   experiments remain useful foundations and controls. Owning roadmap:
   `design/19-learned-search-allocation.md`; experimental history remains in
-  `design/17-nnue-research.md` and `docs/research/policy-automl-state.md`.
+  `design/17-nnue-research.md` and `old/docs/research/policy-automl-state.md`.
 
 - **D42**: External value-oracle bootstrap and frozen value representation
   (user-directed implementation detail, 2026-07-14). When D41 work needs a
