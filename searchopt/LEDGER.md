@@ -285,6 +285,25 @@ is not.
 de-escalates (0.911×).** Whether "spend more when the score is unstable" is an unexploited
 axis is a separate question this proxy cannot settle, but it is cheap to ask properly.
 
+⇒ **CLOCK CONFOUND CONTROLLED — the effect strengthens (2026-07-28).** We average 0.274
+s/move vs SF's 0.248, so time pressure was the obvious alternative explanation. Split by
+phase:
+
+| phase | balanced-band ratio | raw s/move ARCHON | SF18 |
+|---|---|---|---|
+| mid (plies 40–69) | **0.865** | 0.277 | 0.242 (**we use +14%**) |
+| late (plies 70–99) | 0.952 | 0.156 | 0.175 (**we use −11%**) |
+
+**The under-allocation is strongest in the midgame, where we spend MORE total time than
+SF** — so it is not time pressure. Late, where we genuinely are squeezed, the ratio
+returns toward parity. (Plies 10–39 are untestable: the UHO book makes them unbalanced by
+construction, so the balanced band is empty.)
+
+⇒ **Second, separate finding: our time curve is FRONT-LOADED relative to SF's.** We burn
+14% more per move in the midgame and arrive 11% poorer late. At 10+0.1 with a 0.1s
+increment that is a real cost in its own right, and it is independent of the balanced-band
+shape.
+
 ⇒ **Blocked, and why:** testing this needs equal-TIME matches, which need a quiet box, and
 a perf study is currently waiting on one. **It is the highest-value untested lever I have**
 — it is orthogonal to everything tried this session, it points at the band both
