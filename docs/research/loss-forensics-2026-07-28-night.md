@@ -1155,6 +1155,54 @@ refuses to run until it re-detects game 18.
    move with eval cost. Wall clock on a quiet box, or nothing.
 3. **Fix `param_provenance.py` coverage** to count runs, not config membership.
 
+## 6b. THREE MORE DEAD ENDS, KILLED PROPERLY
+
+Chasing the retracted state effect to the bottom produced three sub-hypotheses.
+All three are dead; the reasons are worth more than the hypotheses were.
+
+**1. "The played move comes from an incomplete deeper iteration."** A timed
+search is aborted mid-iteration, so it can promote a move the last completed
+depth never chose — which would explain why a depth-limited replay cannot
+reproduce a time-limited game. Measured over 220 timed searches at the games'
+own per-move times: the final `bestmove` differs from the last completed depth's
+PV move in **8/220 = 4%** of searches. Of those 8, judged by SF18 @800k: 4 worse,
+2 better, 2 tie. **4% cannot explain a 39%-vs-16% fidelity gap**, and n=8 decides
+nothing about whether the switches help. Closed.
+
+**2. "The equal-value dither is the chaos source."** `search/mod.rs:3895` gives a
+move that TIES `best_value` an `inc=1` bonus when `(nodes & DITHER_NODE_MASK)==0`
+— so tie-breaks are keyed on the node counter, and any perturbation that shifts
+the node trajectory reshuffles them. That is a genuine chaos amplifier and it
+would explain §3j. Measured as flip rate under an inert ±1 change to
+`RAZOR_BASE`, 30 positions:
+
+| | flips (+1) | flips (−1) | mean |
+|---|---|---|---|
+| dither ON (mask 14, shipped) | 7/30 | 5/30 | **20%** |
+| dither OFF (mask 2⁶²−1) | 5/30 | 3/30 | **13%** |
+
+It contributes perhaps a third — but 12 vs 8 flips out of 60 comparisons
+establishes nothing, and **most of the chaos survives with the dither off.** And
+it is exact Stockfish parity: `eca43a97` line 1457 is
+`(value == bestValue && ss->ply + 2 >= rootDepth && (int(nodes) & 14) == 0 && ...)`,
+matching our `DITHER_PLY_MARGIN=2` / `DITHER_NODE_MASK=14` exactly. Not ours to
+remove, and Stockfish carries the same instability by construction. Closed.
+
+**3. "History-driven pruning cuts the right move."** Carried state shrinks the
+tree hard (median replay/cold nodes **0.66**, geomean 0.59) and the shrinkage
+coincided with the errors, which points at history buying reduction depth and
+pruning outright rather than at ordering. Relaxing exactly those knobs against
+the replay target: `QHIST_PRUNE_MULT` ×0.5 → 10 (no change), ×0.25 → 8 (worse).
+And weakening what history *remembers* — bonus ×0.5 → 9, malus ×1.5 → 9, quiet
+bonus ×0.5 → 8 — all worse. Then the harness itself was invalidated, so these are
+moot as well as negative. Closed.
+
+**What the three have in common:** each was a plausible mechanism with a clean
+story, and each died to a measurement rather than to an argument. The 4% number,
+the 13%-with-dither-off number and the SF-parity grep each took minutes. That is
+the whole method: the cheap check that could kill the idea, run before the
+expensive one that would confirm it.
+
 ## 6c. TRAINING RUN + AN OPERATIONAL RISK
 
 **D48X is complete and no trainer is running.** `TRAIN EXIT 0`, sb520/520,
