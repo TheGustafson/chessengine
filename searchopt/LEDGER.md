@@ -222,6 +222,48 @@ noise: it aggregates gradient information over thousands of cheap paired compari
 moves all coordinates at once. For effects of +1 to +4 Elo that is the correct
 instrument, and single-arm A/B is the wrong one.
 
+## TIME ALLOCATION — the one lever fixed-node testing is structurally blind to (2026-07-28)
+
+Every arm in this folder is tested at fixed nodes, which **cannot see time management at
+all**. Read free from the 10+0.1 corpus match, conditioned **EX ANTE** on the engine's own
+PREVIOUS eval (known before this move's search, so it cannot be an output of the time
+spent — conditioning on the *current* eval is reverse causation and inflates the balanced
+band from 0.823 to 0.917). Time as a multiple of each engine's OWN mean, so this is
+allocation SHAPE, speed-free:
+
+| prev \|eval\| | ARCHON | SF18 | ratio | n (a/s) |
+|---|---|---|---|---|
+| **< 0.25** | 0.559 | 0.679 | **0.823** | 2002 / 2692 |
+| 0.25–0.75 | 1.014 | 1.015 | 0.999 | 2385 / 3241 |
+| 0.75–1.5 | 1.249 | 1.223 | 1.021 | 7792 / 6538 |
+| 1.5–3.0 | 1.011 | 0.920 | 1.099 | 3013 / 2941 |
+| **> 3.0** | 0.546 | 0.819 | **0.667** | 2465 / 2249 |
+
+⇒ **We under-spend by 18% in balanced positions — the exact band where our root churns
+1.56× SF's and where the middlegame drift peaks — and by 33% when clearly winning.** The
+conversion band (0.75–1.5) is at parity, so this is not a restatement of the conversion
+story.
+
+⇒ **Both engines under-spend in balanced positions** (0.56 / 0.68 of their own mean).
+That is TM keying on best-move stability: a quiet position converges, the move stops
+changing, and the soft stop fires. Nobody allocates on *balance*. **Spending more where
+the score is near zero is a real deviation from SF and nobody's standard TM does it.**
+
+⇒ **Two candidate explanations, and they are NOT the same lever — do not chain them:**
+  1. *Independent TM defect* — our allocation shape is simply mis-set, and can be fixed
+     directly.
+  2. *Symptom of the churn* — our TM is SF-parity in code (design/12); its stability and
+     `fallingEval` factors read our own scores, and our scores churn 1.24× more. Then the
+     allocation difference is an OUTPUT of the instability, and fixing allocation treats
+     the symptom.
+  Distinguishing them needs a measurement, not an argument.
+
+⇒ **Blocked, and why:** testing this needs equal-TIME matches, which need a quiet box, and
+a perf study is currently waiting on one. **It is the highest-value untested lever I have**
+— it is orthogonal to everything tried this session, it points at the band both
+independent localisations identified, and fixed-node testing is blind to it by
+construction.
+
 ## THE 1.92× NPS GAP IS A COLD-PROBE ARTIFACT — in games it is ~1.4× (2026-07-28)
 
 The ledger's speed figure (ARCHON+net 0.54 Mnps vs SF18 1.03 Mnps, **1.92×**) comes from
