@@ -1,0 +1,1163 @@
+ Percent |	Source code & Disassembly of archon-s8-base for instructions:u (15322 samples, percent: local period)
+---------------------------------------------------------------------------------------------------------------------
+         :
+         :
+         :
+         : 3     Disassembly of section .text:
+         :
+         : 5     000000000005c220 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>>:
+    0.89 :   5c220:  push   %rbp
+    0.08 :   5c221:  push   %r15
+    0.44 :   5c223:  push   %r14
+    0.45 :   5c225:  push   %r13
+    0.66 :   5c227:  push   %r12
+    0.46 :   5c229:  push   %rbx
+    0.40 :   5c22a:  sub    $0x178,%rsp
+    0.02 :   5c231:  vmovups (%rdi),%xmm0
+    0.03 :   5c235:  mov    0x10(%rdi),%rax
+    0.06 :   5c239:  movq   $0x0,(%rdi)
+    0.99 :   5c240:  movq   $0x8,0x8(%rdi)
+    0.54 :   5c248:  mov    %rcx,0x48(%rsp)
+    0.40 :   5c24d:  mov    %esi,0x24(%rsp)
+    0.51 :   5c251:  movq   $0x0,0x10(%rdi)
+    1.31 :   5c259:  mov    %rax,0x60(%rsp)
+    0.16 :   5c25e:  vmovaps %xmm0,0x50(%rsp)
+    0.52 :   5c264:  mov    0x60(%rsp),%r15
+    0.56 :   5c269:  test   %r15,%r15
+    0.00 :   5c26c:  je     5d51b <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12fb>
+    0.00 :   5c272:  mov    0x58(%rsp),%rax
+    5.07 :   5c277:  imul   $0xe0,%r15,%r12
+    0.00 :   5c27e:  vmovups -0x4e07e(%rip),%xmm1        # e208 <GCC_except_table850+0x6750>
+    0.07 :   5c286:  movabs $0xa0f520a4c9fa5bcc,%r13
+    0.00 :   5c290:  vmovups -0x4e080(%rip),%xmm3        # e218 <GCC_except_table850+0x6760>
+    0.02 :   5c298:  vmovups -0x4e078(%rip),%ymm2        # e228 <GCC_except_table850+0x6770>
+    0.17 :   5c2a0:  mov    -0xe0(%rax,%r12,1),%rcx
+    2.99 :   5c2a8:  xor    -0x60(%rax,%r12,1),%r13
+    0.27 :   5c2ad:  vmovups -0x48(%rax,%r12,1),%zmm0
+    0.96 :   5c2b8:  mov    %rcx,0xa8(%rsp)
+    0.00 :   5c2c0:  mov    -0xd8(%rax,%r12,1),%rcx
+    0.10 :   5c2c8:  vmovaps %xmm1,0xb0(%rsp)
+    0.00 :   5c2d1:  vmovups -0x4e0a1(%rip),%ymm1        # e238 <GCC_except_table850+0x6780>
+    0.02 :   5c2d9:  vmovaps %xmm3,0xc0(%rsp)
+    0.02 :   5c2e2:  vmovups %ymm2,0xd0(%rsp)
+    0.07 :   5c2eb:  vmovups -0x4e09b(%rip),%ymm2        # e258 <GCC_except_table850+0x67a0>
+    0.01 :   5c2f3:  vmovups %zmm0,0x130(%rsp)
+    0.16 :   5c2fe:  mov    %rcx,0x78(%rsp)
+    0.02 :   5c303:  vmovups %ymm1,0xe0(%rsp)
+    0.03 :   5c30c:  vmovups -0x4e0ac(%rip),%ymm1        # e268 <GCC_except_table850+0x67b0>
+    0.08 :   5c314:  vmovups %ymm2,0x100(%rsp)
+    1.21 :   5c31d:  vmovups %ymm1,0x110(%rsp)
+    0.16 :   5c326:  cmp    0x50(%rsp),%r15
+    0.01 :   5c32b:  je     5d47d <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x125d>
+    0.03 :   5c331:  vmovups 0xb0(%rsp),%zmm0
+   58.09 :   5c33c:  vmovdqu64 0xf0(%rsp),%zmm1
+    2.79 :   5c347:  mov    %r15,%rcx
+    0.00 :   5c34a:  inc    %rcx
+    0.00 :   5c34d:  vmovups %zmm0,(%rax,%r12,1)
+    1.74 :   5c354:  vmovdqu64 %zmm1,0x40(%rax,%r12,1)
+    1.75 :   5c35c:  vxorps %xmm0,%xmm0,%xmm0
+    0.01 :   5c360:  vmovups %xmm0,0x80(%rax,%r12,1)
+    0.00 :   5c36a:  movq   $0x0,0x90(%rax,%r12,1)
+    0.00 :   5c376:  vmovups 0x130(%rsp),%zmm0
+    0.01 :   5c381:  vmovups %zmm0,0x98(%rax,%r12,1)
+    1.34 :   5c38c:  movl   $0x0,0xd8(%rax,%r12,1)
+    0.57 :   5c398:  movb   $0x2,0xdc(%rax,%r12,1)
+    0.00 :   5c3a1:  mov    %rcx,0x60(%rsp)
+    0.00 :   5c3a6:  je     5d533 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1313>
+    0.00 :   5c3ac:  lea    (%rax,%r12,1),%r14
+    0.00 :   5c3b0:  incl   0x170(%rdi)
+    0.02 :   5c3b6:  movzwl 0x24(%rsp),%esi
+    1.07 :   5c3bb:  vpcmpeqd %xmm1,%xmm1,%xmm1
+    0.00 :   5c3bf:  mov    %edx,0x84(%rsp)
+    0.29 :   5c3c6:  mov    %r15,0x90(%rsp)
+    0.00 :   5c3ce:  vmovq  0xc8(%r14),%xmm0
+    0.00 :   5c3d7:  mov    %esi,%r11d
+    0.00 :   5c3da:  and    $0x3f,%r11d
+    0.00 :   5c3de:  mov    %r11d,%ecx
+    0.00 :   5c3e1:  vpsubd %xmm1,%xmm0,%xmm0
+    0.01 :   5c3e5:  vmovq  %xmm0,0xc8(%r14)
+    1.31 :   5c3ee:  movzbl 0x18(%rdi,%rcx,2),%r8d
+    0.00 :   5c3f4:  cmp    $0x2,%r8
+    0.12 :   5c3f8:  je     5d547 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1327>
+    0.00 :   5c3fe:  lea    0x98(%rax,%r12,1),%r15
+    0.01 :   5c406:  movzbl 0x178(%rdi),%eax
+    0.00 :   5c40d:  movzbl 0x19(%rdi,%rcx,2),%ecx
+    0.01 :   5c412:  mov    %esi,%ebp
+    0.00 :   5c414:  shr    $0x6,%ebp
+    0.00 :   5c417:  mov    %r12,0x88(%rsp)
+    1.46 :   5c41f:  mov    %esi,%r12d
+    0.00 :   5c422:  shr    $0xe,%r12d
+    0.00 :   5c426:  mov    %rsi,0xa0(%rsp)
+    0.04 :   5c42e:  mov    %ebp,%r10d
+    0.00 :   5c431:  and    $0x3f,%r10d
+    0.00 :   5c435:  mov    %rax,0x38(%rsp)
+    0.00 :   5c43a:  movzbl %al,%eax
+    0.00 :   5c43d:  mov    %rax,0x18(%rsp)
+    0.00 :   5c442:  xor    $0x1,%al
+    0.00 :   5c444:  mov    %al,0x8(%rsp)
+    1.28 :   5c448:  movzbl %cl,%eax
+    0.00 :   5c44b:  mov    %rax,0x10(%rsp)
+    0.05 :   5c450:  cmp    $0x2,%r12w
+    0.00 :   5c455:  je     5d441 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1221>
+    0.00 :   5c45b:  movzbl %r10b,%r9d
+    0.00 :   5c45f:  movzbl 0x18(%rdi,%r9,2),%ebx
+    0.00 :   5c465:  movzbl 0x19(%rdi,%r9,2),%edx
+    0.01 :   5c46b:  cmp    $0x3,%r12w
+    0.00 :   5c470:  je     5d15b <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xf3b>
+    0.00 :   5c476:  cmp    $0x2,%bl
+    0.78 :   5c479:  je     5cd49 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xb29>
+    0.00 :   5c47f:  mov    %r10d,%esi
+    0.00 :   5c482:  mov    %r12d,0x40(%rsp)
+    0.00 :   5c487:  mov    %r8,%r12
+    0.00 :   5c48a:  movzbl %dl,%r9d
+    0.00 :   5c48e:  test   $0x1,%bl
+    0.00 :   5c491:  lea    0x6(%r9),%r8
+    0.00 :   5c495:  cmove  %r9,%r8
+    0.00 :   5c499:  cmp    $0xc,%r8
+    0.00 :   5c49d:  jae    5d6a3 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1483>
+    0.00 :   5c4a3:  mov    %r15,%rax
+    0.07 :   5c4a6:  shl    $0x9,%r8d
+    0.00 :   5c4aa:  lea    -0x339f1(%rip),%r15        # 28ac0 <chessengine::zobrist::ZOBRIST>
+    0.01 :   5c4b1:  mov    %esi,0x28(%rsp)
+    0.00 :   5c4b5:  mov    %edx,0x4(%rsp)
+    0.00 :   5c4b9:  add    %r8,%r15
+    0.00 :   5c4bc:  movzbl %sil,%r8d
+    0.00 :   5c4c0:  mov    (%r15,%r8,8),%rbp
+    0.00 :   5c4c4:  test   %dl,%dl
+    0.00 :   5c4c6:  je     5cee4 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xcc4>
+    0.00 :   5c4cc:  cmp    $0x5,%dl
+    0.05 :   5c4cf:  ja     5d6d5 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x14b5>
+    0.00 :   5c4d5:  mov    %ebx,%esi
+    0.00 :   5c4d7:  mov    %edx,%ebx
+    0.01 :   5c4d9:  lea    -0x4e1d0(%rip),%rdx        # e310 <GCC_except_table850+0x6858>
+    0.00 :   5c4e0:  movzbl 0x8(%rsp),%r8d
+    0.00 :   5c4e6:  mov    (%rdx,%r9,4),%edx
+    0.00 :   5c4ea:  sub    %edx,0xc0(%r14,%r8,4)
+    0.00 :   5c4f2:  xor    %rbp,0x98(%r14,%r8,8)
+    0.01 :   5c4fa:  cmp    $0x3,%bl
+    0.00 :   5c4fd:  jae    5c506 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x2e6>
+    0.00 :   5c4ff:  xor    %rbp,0xb8(%r14)
+    0.00 :   5c506:  mov    %esi,%ebx
+    0.00 :   5c508:  lea    (%r8,%r8,2),%rdx
+    0.00 :   5c50c:  shl    $0x4,%edx
+    0.00 :   5c50f:  add    %rdi,%rdx
+    0.00 :   5c512:  popcnt 0x98(%rdx,%r9,8),%r8
+    0.01 :   5c51c:  cmp    $0x38,%r8
+    0.00 :   5c520:  ja     5d6ba <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x149a>
+    0.00 :   5c526:  mov    0x38(%r15,%r8,8),%rdx
+    0.01 :   5c52b:  xor    %rbp,%r13
+    0.01 :   5c52e:  mov    %r12,%r8
+    0.00 :   5c531:  mov    0x18(%rsp),%rbp
+    0.00 :   5c536:  mov    0x40(%rsp),%r12d
+    0.00 :   5c53b:  movl   $0x0,0x30(%rsp)
+    0.00 :   5c543:  mov    %rax,%r15
+    0.00 :   5c546:  xor    %rdx,0xb0(%r14)
+    0.00 :   5c54d:  movl   $0x0,0xc8(%r14)
+    0.47 :   5c558:  mov    0x10(%rsp),%rax
+    0.03 :   5c55d:  test   $0x1,%r8b
+    0.03 :   5c561:  lea    0x6(%rax),%r9
+    0.00 :   5c565:  cmove  %rax,%r9
+    0.00 :   5c569:  cmp    $0xc,%r9
+    0.00 :   5c56d:  jae    5d562 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1342>
+    0.00 :   5c573:  shl    $0x9,%r9d
+    0.00 :   5c577:  lea    -0x33abe(%rip),%r8        # 28ac0 <chessengine::zobrist::ZOBRIST>
+    0.00 :   5c57e:  movzbl 0xd1(%r14),%edx
+    0.35 :   5c586:  movzbl 0xd2(%r14),%eax
+    0.00 :   5c58e:  add    %r8,%r9
+    0.01 :   5c591:  mov    (%r9,%r10,8),%rsi
+    0.02 :   5c595:  xor    (%r9,%r11,8),%rsi
+    0.02 :   5c599:  movb   $0x0,0xd1(%r14)
+    0.00 :   5c5a1:  xor    %rsi,%r13
+    0.00 :   5c5a4:  cmp    $0x1,%dl
+    0.00 :   5c5a7:  je     5d40d <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x11ed>
+    0.00 :   5c5ad:  movzbl 0xd0(%r14),%eax
+    0.01 :   5c5b5:  cmp    $0xf,%rax
+    0.16 :   5c5b9:  ja     5d579 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1359>
+    0.00 :   5c5bf:  movzbl 0x110(%rdi,%r10,1),%edx
+    0.00 :   5c5c8:  or     0x110(%rdi,%r11,1),%dl
+    0.04 :   5c5d0:  not    %dl
+    0.00 :   5c5d2:  and    %al,%dl
+    0.01 :   5c5d4:  mov    %dl,0xd0(%r14)
+    0.00 :   5c5db:  xor    0x1800(%r8,%rax,8),%r13
+    0.01 :   5c5e3:  movzbl %dl,%eax
+    0.01 :   5c5e6:  xor    0x1800(%r8,%rax,8),%r13
+    0.07 :   5c5ee:  test   %cl,%cl
+    0.00 :   5c5f0:  je     5cd66 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xb46>
+    0.00 :   5c5f6:  xor    %rsi,(%r15,%rbp,8)
+    0.05 :   5c5fa:  cmp    $0x2,%cl
+    0.00 :   5c5fd:  ja     5c606 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x3e6>
+    0.00 :   5c5ff:  xor    %rsi,0xb8(%r14)
+    0.01 :   5c606:  mov    0xc8(%r14),%eax
+    0.01 :   5c60d:  mov    %r13,0x80(%r14)
+    0.00 :   5c614:  cmp    $0xe,%eax
+    0.00 :   5c617:  jge    5d078 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xe58>
+    0.01 :   5c61d:  mov    0x48(%rsp),%rax
+    0.01 :   5c622:  mov    0x10(%rax),%rdx
+    0.04 :   5c626:  mulx   %r13,%rax,%rax
+    0.03 :   5c62b:  cmp    %rax,%rdx
+    0.00 :   5c62e:  jbe    5d590 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1370>
+    0.00 :   5c634:  mov    0x48(%rsp),%rcx
+    0.01 :   5c639:  shl    $0x5,%rax
+    0.00 :   5c63d:  mov    0x8(%rcx),%rcx
+    0.00 :   5c641:  prefetcht0 (%rcx,%rax,1)
+    0.08 :   5c645:  test   %r12w,%r12w
+    0.00 :   5c649:  jne    5cfa3 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xd83>
+    0.00 :   5c64f:  cmpb   $0x0,0x30(%rsp)
+    0.01 :   5c654:  jne    5c6a6 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x486>
+    0.00 :   5c656:  movzbl 0x28(%rsp),%ecx
+    0.00 :   5c65b:  movzbl 0x18(%rdi,%rcx,2),%edx
+    0.00 :   5c660:  movzbl 0x19(%rdi,%rcx,2),%eax
+    0.00 :   5c665:  movb   $0x2,0x18(%rdi,%rcx,2)
+    0.00 :   5c66a:  cmp    $0x2,%dl
+    0.00 :   5c66d:  je     5c6a6 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x486>
+    0.00 :   5c66f:  cmp    $0x6,%al
+    0.01 :   5c671:  jae    5d69a <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x147a>
+    0.00 :   5c677:  movzbl %dl,%edx
+    0.00 :   5c67a:  mov    $0x1,%esi
+    0.00 :   5c67f:  lea    (%rdx,%rdx,2),%r8
+    0.00 :   5c683:  shlx   %rcx,%rsi,%rcx
+    0.00 :   5c688:  shl    $0x4,%r8d
+    0.00 :   5c68c:  add    %rdi,%r8
+    0.00 :   5c68f:  xor    %rcx,0x98(%r8,%rax,8)
+    0.00 :   5c697:  xor    %rcx,0xf8(%rdi,%rdx,8)
+    0.00 :   5c69f:  xor    %rcx,0x108(%rdi)
+    0.05 :   5c6a6:  movzbl 0x18(%rdi,%r11,2),%r9d
+    0.05 :   5c6ac:  movzbl 0x19(%rdi,%r11,2),%ecx
+    0.00 :   5c6b2:  movb   $0x2,0x18(%rdi,%r11,2)
+    0.00 :   5c6b8:  cmp    $0x2,%r9
+    0.00 :   5c6bc:  je     5d668 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1448>
+    0.00 :   5c6c2:  movzbl %cl,%eax
+    0.00 :   5c6c5:  cmp    $0x6,%al
+    0.00 :   5c6c7:  jae    5d683 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1463>
+    0.00 :   5c6cd:  lea    (%r9,%r9,2),%rsi
+    0.00 :   5c6d1:  mov    $0x1,%edx
+    0.01 :   5c6d6:  shlx   %r10,%rdx,%rdx
+    0.01 :   5c6db:  shl    $0x4,%esi
+    0.01 :   5c6de:  bts    %r11,%rdx
+    0.00 :   5c6e2:  add    %rdi,%rsi
+    0.00 :   5c6e5:  xor    %rdx,0x98(%rsi,%rax,8)
+    0.03 :   5c6ed:  xor    %rdx,0xf8(%rdi,%r9,8)
+    0.01 :   5c6f5:  xor    %rdx,0x108(%rdi)
+    0.00 :   5c6fc:  mov    0x4(%rsp),%eax
+    0.01 :   5c700:  mov    %r9b,0x18(%rdi,%r10,2)
+    0.01 :   5c705:  mov    %cl,0x19(%rdi,%r10,2)
+    0.00 :   5c70a:  cmpb   $0x0,0x84(%rsp)
+    0.00 :   5c712:  mov    %bl,0xdc(%r14)
+    0.00 :   5c719:  mov    %al,0xdd(%r14)
+    0.00 :   5c720:  jne    5cd9d <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xb7d>
+    0.01 :   5c726:  xor    %ecx,%ecx
+    0.00 :   5c728:  movzbl 0x8(%rsp),%eax
+    0.01 :   5c72d:  mov    %rcx,0x88(%r14)
+    0.00 :   5c734:  mov    %al,0x178(%rdi)
+    0.00 :   5c73a:  mov    0xc0(%rdi),%rcx
+    0.00 :   5c741:  test   %rcx,%rcx
+    0.00 :   5c744:  je     5d4dc <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12bc>
+    0.00 :   5c74a:  mov    0xe8(%rdi),%r11
+    0.00 :   5c751:  mov    0xe0(%rdi),%r9
+    0.01 :   5c758:  tzcnt  %rcx,%r8
+    0.01 :   5c75d:  lea    -0x4cba4(%rip),%rcx        # fbc0 <chessengine::attacks::PSEUDO_ROOK>
+    0.00 :   5c764:  lea    -0x4c0ab(%rip),%rdx        # 106c0 <chessengine::attacks::PSEUDO_BISHOP>
+    0.00 :   5c76b:  mov    0x108(%rdi),%rax
+    0.00 :   5c772:  lea    0x0(,%r8,8),%esi
+    0.00 :   5c77a:  or     %r11,%r9
+    0.01 :   5c77d:  or     0xd8(%rdi),%r11
+    0.00 :   5c784:  and    (%rsi,%rcx,1),%r9
+    0.02 :   5c788:  and    (%rsi,%rdx,1),%r11
+    0.01 :   5c78c:  or     %r9,%r11
+    0.00 :   5c78f:  jne    5cb77 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x957>
+    0.00 :   5c795:  xor    %r11d,%r11d
+    0.00 :   5c798:  xor    %r8d,%r8d
+    0.00 :   5c79b:  mov    %r8,(%r14)
+    0.01 :   5c79e:  mov    %r11,0x18(%r14)
+    0.00 :   5c7a2:  mov    0xf0(%rdi),%rsi
+    0.00 :   5c7a9:  test   %rsi,%rsi
+    0.00 :   5c7ac:  je     5d4dc <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12bc>
+    0.00 :   5c7b2:  mov    0xb8(%rdi),%r10
+    0.03 :   5c7b9:  mov    0xb0(%rdi),%r9
+    0.01 :   5c7c0:  tzcnt  %rsi,%r8
+    0.01 :   5c7c5:  lea    0x0(,%r8,8),%esi
+    0.01 :   5c7cd:  or     %r10,%r9
+    0.01 :   5c7d0:  or     0xa8(%rdi),%r10
+    0.00 :   5c7d7:  and    (%rsi,%rcx,1),%r9
+    0.01 :   5c7db:  and    (%rsi,%rdx,1),%r10
+    0.01 :   5c7df:  or     %r9,%r10
+    0.03 :   5c7e2:  jne    5cc18 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x9f8>
+    0.00 :   5c7e8:  xor    %r8d,%r8d
+    0.01 :   5c7eb:  xor    %ecx,%ecx
+    0.00 :   5c7ed:  mov    %rcx,0x8(%r14)
+    0.00 :   5c7f1:  mov    %r8,0x10(%r14)
+    0.00 :   5c7f5:  mov    0xa3885(%rip),%eax        # 100080 <chessengine::attacks::TABLES+0x1040>
+    0.00 :   5c7fb:  test   %eax,%eax
+    0.00 :   5c7fd:  jne    5d5a8 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1388>
+    0.00 :   5c803:  movzbl 0x178(%rdi),%ebp
+    0.01 :   5c80a:  mov    %rbp,%rax
+    0.02 :   5c80d:  xor    $0x1,%rax
+    0.03 :   5c811:  lea    (%rax,%rax,2),%rcx
+    0.01 :   5c815:  shl    $0x4,%ecx
+    0.01 :   5c818:  mov    0xc0(%rdi,%rcx,1),%rcx
+    0.01 :   5c820:  test   %rcx,%rcx
+    0.00 :   5c823:  je     5d4dc <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12bc>
+    0.00 :   5c829:  tzcnt  %rcx,%rcx
+    0.00 :   5c82e:  shl    $0x9,%eax
+    0.01 :   5c831:  lea    -0x4c778(%rip),%rdx        # 100c0 <chessengine::attacks::PAWN_ATTACKS>
+    0.03 :   5c838:  mov    0x108(%rdi),%r12
+    0.05 :   5c83f:  lea    -0x4bf86(%rip),%r13        # 108c0 <chessengine::attacks::KNIGHT_ATTACKS>
+    0.00 :   5c846:  lea    0xa27f3(%rip),%rbx        # ff040 <chessengine::attacks::TABLES>
+    0.00 :   5c84d:  add    %rax,%rdx
+    0.01 :   5c850:  lea    0x0(,%rcx,8),%eax
+    0.01 :   5c857:  shl    $0x6,%ecx
+    0.00 :   5c85a:  mov    (%rax,%rdx,1),%rdx
+    0.05 :   5c85e:  mov    %rdx,0x20(%r14)
+    0.01 :   5c862:  mov    (%rax,%r13,1),%rax
+    0.06 :   5c866:  mov    %rax,0x28(%r14)
+    0.01 :   5c86a:  mov    (%rcx,%rbx,1),%rax
+    0.01 :   5c86e:  movzbl 0x14(%rcx,%rbx,1),%esi
+    0.00 :   5c873:  mov    0x10(%rcx,%rbx,1),%edx
+    0.00 :   5c877:  and    %r12,%rax
+    0.00 :   5c87a:  imul   0x8(%rcx,%rbx,1),%rax
+    0.01 :   5c880:  shrx   %rsi,%rax,%rax
+    0.32 :   5c885:  mov    0xa37bc(%rip),%rsi        # 100048 <chessengine::attacks::TABLES+0x1008>
+    0.01 :   5c88c:  add    %rdx,%rax
+    0.17 :   5c88f:  cmp    %rsi,%rax
+    0.06 :   5c892:  jae    5d509 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12e9>
+    0.00 :   5c898:  mov    0xa37a1(%rip),%r8        # 100040 <chessengine::attacks::TABLES+0x1000>
+    0.00 :   5c89f:  add    %rbx,%rcx
+    0.00 :   5c8a2:  mov    (%r8,%rax,8),%rdx
+    0.55 :   5c8a6:  mov    %rdx,0x30(%r14)
+    0.00 :   5c8aa:  mov    0x18(%rcx),%rax
+    0.01 :   5c8ae:  mov    0x28(%rcx),%r9d
+    0.02 :   5c8b2:  and    %r12,%rax
+    0.03 :   5c8b5:  imul   0x20(%rcx),%rax
+    0.00 :   5c8ba:  movzbl 0x2c(%rcx),%ecx
+    0.01 :   5c8be:  shrx   %rcx,%rax,%rax
+    0.01 :   5c8c3:  add    %r9,%rax
+    0.05 :   5c8c6:  cmp    %rsi,%rax
+    0.00 :   5c8c9:  jae    5d4f7 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12d7>
+    0.00 :   5c8cf:  mov    (%r8,%rax,8),%rax
+    0.23 :   5c8d3:  or     %rax,%rdx
+    0.03 :   5c8d6:  mov    %rax,0x38(%r14)
+    0.01 :   5c8da:  mov    %rdx,0x40(%r14)
+    0.00 :   5c8de:  movq   $0x0,0x48(%r14)
+    0.00 :   5c8e6:  mov    0xa3794(%rip),%eax        # 100080 <chessengine::attacks::TABLES+0x1040>
+    0.00 :   5c8ec:  test   %eax,%eax
+    0.00 :   5c8ee:  jne    5d5f5 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x13d5>
+    0.00 :   5c8f4:  lea    0x0(%rbp,%rbp,2),%rax
+    0.01 :   5c8f9:  shl    $0x4,%eax
+    0.00 :   5c8fc:  mov    0xc0(%rdi,%rax,1),%rax
+    0.03 :   5c904:  test   %rax,%rax
+    0.03 :   5c907:  je     5d4dc <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12bc>
+    0.00 :   5c90d:  mov    %ebp,%ecx
+    0.00 :   5c90f:  lea    0x98(%rdi),%rsi
+    0.01 :   5c916:  xor    $0x1,%cl
+    0.00 :   5c919:  movzbl %cl,%ecx
+    0.01 :   5c91c:  lea    (%rcx,%rcx,2),%rdx
+    0.00 :   5c920:  mov    %edx,%r8d
+    0.01 :   5c923:  shl    $0x4,%r8d
+    0.01 :   5c927:  mov    %rdx,0x48(%rsp)
+    0.04 :   5c92c:  lea    (%rsi,%r8,1),%rcx
+    0.02 :   5c930:  mov    (%rsi,%r8,1),%rsi
+    0.02 :   5c934:  mov    %rsi,%r8
+    0.00 :   5c937:  test   %rbp,%rbp
+    0.00 :   5c93a:  je     5cb53 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x933>
+    0.00 :   5c940:  shl    $0x9,%r8
+    0.00 :   5c944:  movabs $0xfefefefefefefe00,%r9
+    0.00 :   5c94e:  shl    $0x7,%rsi
+    0.01 :   5c952:  and    %r8,%r9
+    0.00 :   5c955:  movabs $0x7f7f7f7f7f7f7f00,%r8
+    0.02 :   5c95f:  blsi   %rax,%r10
+    0.01 :   5c964:  mov    0x8(%rcx),%rax
+    0.01 :   5c968:  and    %rsi,%r8
+    0.01 :   5c96b:  or     %r9,%r8
+    0.00 :   5c96e:  test   %rax,%rax
+    0.00 :   5c971:  je     5d4c4 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12a4>
+    0.00 :   5c977:  tzcnt  %rax,%rsi
+    0.01 :   5c97c:  blsr   %rax,%rax
+    0.00 :   5c981:  mov    0x0(%r13,%rsi,8),%r9
+    0.01 :   5c986:  je     5c999 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x779>
+    0.00 :   5c988:  tzcnt  %rax,%rsi
+    0.00 :   5c98d:  or     0x0(%r13,%rsi,8),%r9
+    0.00 :   5c992:  blsr   %rax,%rax
+    0.00 :   5c997:  jne    5c988 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x768>
+    0.00 :   5c999:  mov    0x10(%rcx),%r15
+    0.03 :   5c99d:  xor    %r12,%r10
+    0.03 :   5c9a0:  test   %r15,%r15
+    0.00 :   5c9a3:  je     5d4cc <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12ac>
+    0.00 :   5c9a9:  mov    0xa3698(%rip),%rsi        # 100048 <chessengine::attacks::TABLES+0x1008>
+    0.01 :   5c9b0:  mov    0xa3689(%rip),%r12        # 100040 <chessengine::attacks::TABLES+0x1000>
+    0.00 :   5c9b7:  blsr   %r15,%rax
+    0.02 :   5c9bc:  xor    %r11d,%r11d
+    0.00 :   5c9bf:  tzcnt  %r15,%r13
+    0.01 :   5c9c4:  mov    %rax,%r15
+    0.01 :   5c9c7:  shl    $0x6,%r13d
+    0.01 :   5c9cb:  mov    0x0(%r13,%rbx,1),%rax
+    0.02 :   5c9d0:  mov    0x10(%r13,%rbx,1),%ebp
+    0.01 :   5c9d5:  and    %r10,%rax
+    0.01 :   5c9d8:  imul   0x8(%r13,%rbx,1),%rax
+    0.01 :   5c9de:  movzbl 0x14(%r13,%rbx,1),%r13d
+    0.01 :   5c9e4:  shrx   %r13,%rax,%rax
+    0.03 :   5c9e9:  add    %rbp,%rax
+    0.02 :   5c9ec:  cmp    %rsi,%rax
+    0.01 :   5c9ef:  jae    5d509 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12e9>
+    0.00 :   5c9f5:  or     (%r12,%rax,8),%r11
+    0.15 :   5c9f9:  lea    -0x1(%r15),%rax
+    0.00 :   5c9fd:  and    %r15,%rax
+    0.00 :   5ca00:  cmp    $0x1,%r15
+    0.00 :   5ca04:  jae    5c9bf <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x79f>
+    0.00 :   5ca06:  mov    0x18(%rcx),%r15
+    0.02 :   5ca0a:  test   %r15,%r15
+    0.00 :   5ca0d:  je     5d4d4 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12b4>
+    0.00 :   5ca13:  mov    0xa362e(%rip),%rsi        # 100048 <chessengine::attacks::TABLES+0x1008>
+    0.03 :   5ca1a:  mov    0xa361f(%rip),%r13        # 100040 <chessengine::attacks::TABLES+0x1000>
+    0.01 :   5ca21:  blsr   %r15,%rax
+    0.00 :   5ca26:  xor    %r12d,%r12d
+    0.00 :   5ca29:  tzcnt  %r15,%rbp
+    0.01 :   5ca2e:  mov    %rax,%r15
+    0.01 :   5ca31:  shl    $0x6,%ebp
+    0.01 :   5ca34:  mov    0x18(%rbp,%rbx,1),%rax
+    0.03 :   5ca39:  mov    0x28(%rbp,%rbx,1),%edx
+    0.00 :   5ca3d:  and    %r10,%rax
+    0.01 :   5ca40:  imul   0x20(%rbp,%rbx,1),%rax
+    0.01 :   5ca46:  movzbl 0x2c(%rbp,%rbx,1),%ebp
+    0.01 :   5ca4b:  shrx   %rbp,%rax,%rax
+    0.04 :   5ca50:  add    %rdx,%rax
+    0.04 :   5ca53:  cmp    %rsi,%rax
+    0.00 :   5ca56:  jae    5d4f7 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12d7>
+    0.00 :   5ca5c:  or     0x0(%r13,%rax,8),%r12
+    0.47 :   5ca61:  lea    -0x1(%r15),%rax
+    0.01 :   5ca65:  and    %r15,%rax
+    0.00 :   5ca68:  cmp    $0x1,%r15
+    0.00 :   5ca6c:  jae    5ca29 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x809>
+    0.00 :   5ca6e:  mov    0x20(%rcx),%rbp
+    0.01 :   5ca72:  test   %rbp,%rbp
+    0.01 :   5ca75:  jne    5ccb4 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xa94>
+    0.00 :   5ca7b:  xor    %r13d,%r13d
+    0.01 :   5ca7e:  mov    0x48(%rsp),%rax
+    0.01 :   5ca83:  shl    $0x4,%eax
+    0.01 :   5ca86:  mov    0xc0(%rdi,%rax,1),%rax
+    0.03 :   5ca8e:  test   %rax,%rax
+    0.01 :   5ca91:  je     5d4dc <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12bc>
+    0.00 :   5ca97:  tzcnt  %rax,%rax
+    0.01 :   5ca9c:  lea    -0x4cbe3(%rip),%rcx        # fec0 <chessengine::attacks::KING_ATTACKS>
+    0.03 :   5caa3:  mov    (%rcx,%rax,8),%rax
+    0.02 :   5caa7:  mov    %r8,0x50(%r14)
+    0.01 :   5caab:  mov    %r9,0x58(%r14)
+    0.00 :   5caaf:  mov    %r11,0x60(%r14)
+    0.01 :   5cab3:  or     %r12,%r11
+    0.03 :   5cab6:  or     %r8,%r9
+    0.00 :   5cab9:  mov    %r12,0x68(%r14)
+    0.01 :   5cabd:  mov    %r13,0x70(%r14)
+    0.01 :   5cac1:  or     %r13,%r11
+    0.01 :   5cac4:  or     %r9,%r11
+    0.01 :   5cac7:  or     %rax,%r11
+    0.02 :   5caca:  mov    %rax,0x78(%r14)
+    0.01 :   5cace:  mov    %r11,0x90(%r14)
+    0.01 :   5cad5:  mov    0xc8(%r14),%r8d
+    0.00 :   5cadc:  mov    0xcc(%r14),%eax
+    0.01 :   5cae3:  mov    0x60(%rsp),%rsi
+    0.02 :   5cae8:  cmp    %r8d,%eax
+    0.00 :   5caeb:  cmovl  %eax,%r8d
+    0.00 :   5caef:  xor    %ecx,%ecx
+    0.01 :   5caf1:  cmp    $0x4,%r8d
+    0.00 :   5caf5:  jge    5cef6 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xcd6>
+    0.00 :   5cafb:  mov    0x90(%rsp),%rbx
+    0.05 :   5cb03:  mov    0x88(%rsp),%r14
+    0.01 :   5cb0b:  cmp    %rsi,%rbx
+    0.01 :   5cb0e:  jae    5d63b <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x141b>
+    0.00 :   5cb14:  mov    0x58(%rsp),%rax
+    0.00 :   5cb19:  mov    %ecx,0xd8(%rax,%r14,1)
+    0.03 :   5cb21:  cmpq   $0x0,(%rdi)
+    0.02 :   5cb25:  jne    5d64d <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x142d>
+    0.00 :   5cb2b:  vmovaps 0x50(%rsp),%xmm0
+    0.01 :   5cb31:  mov    0x60(%rsp),%rax
+    0.05 :   5cb36:  mov    %rax,0x10(%rdi)
+    0.02 :   5cb3a:  vmovups %xmm0,(%rdi)
+    0.01 :   5cb3e:  add    $0x178,%rsp
+    0.03 :   5cb45:  pop    %rbx
+    0.01 :   5cb46:  pop    %r12
+    0.00 :   5cb48:  pop    %r13
+    0.01 :   5cb4a:  pop    %r14
+    0.01 :   5cb4c:  pop    %r15
+    0.06 :   5cb4e:  pop    %rbp
+    0.04 :   5cb4f:  vzeroupper
+    0.01 :   5cb52:  ret
+    0.00 :   5cb53:  shr    $0x7,%r8
+    0.01 :   5cb57:  movabs $0xfefefefefefefe,%r9
+    0.01 :   5cb61:  shr    $0x9,%rsi
+    0.00 :   5cb65:  and    %r8,%r9
+    0.00 :   5cb68:  movabs $0x7f7f7f7f7f7f7f,%r8
+    0.00 :   5cb72:  jmp    5c95f <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x73f>
+    0.00 :   5cb77:  shl    $0x9,%r8d
+    0.00 :   5cb7b:  lea    -0x440c2(%rip),%r9        # 18ac0 <chessengine::attacks::BETWEEN>
+    0.01 :   5cb82:  mov    %r11,%rsi
+    0.00 :   5cb85:  blsr   %r11,%r10
+    0.00 :   5cb8a:  tzcnt  %r11,%r11
+    0.00 :   5cb8f:  mov    0xf8(%rdi),%rbx
+    0.01 :   5cb96:  xor    %rax,%rsi
+    0.00 :   5cb99:  mov    $0x1,%r13d
+    0.01 :   5cb9f:  add    %r8,%r9
+    0.00 :   5cba2:  mov    (%r9,%r11,8),%r8
+    0.09 :   5cba6:  shlx   %r11,%r13,%r11
+    0.00 :   5cbab:  and    %rsi,%r8
+    0.01 :   5cbae:  popcnt %r8,%r15
+    0.01 :   5cbb3:  mov    %r8,%r12
+    0.00 :   5cbb6:  and    %rbx,%r12
+    0.00 :   5cbb9:  cmove  %r12,%r11
+    0.01 :   5cbbd:  xor    %r12d,%r12d
+    0.00 :   5cbc0:  cmp    $0x1,%r15d
+    0.00 :   5cbc4:  cmovne %r12,%r11
+    0.00 :   5cbc8:  cmp    $0x1,%r15
+    0.00 :   5cbcc:  mov    %r10,%r15
+    0.00 :   5cbcf:  cmovne %r12,%r8
+    0.00 :   5cbd3:  sub    $0x1,%r15
+    0.00 :   5cbd7:  jb     5c79b <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x57b>
+    0.00 :   5cbdd:  and    %r10,%r15
+    0.00 :   5cbe0:  tzcnt  %r10,%r12
+    0.00 :   5cbe5:  mov    %r15,%r10
+    0.00 :   5cbe8:  mov    (%r9,%r12,8),%r15
+    0.00 :   5cbec:  and    %rsi,%r15
+    0.00 :   5cbef:  popcnt %r15,%r13
+    0.00 :   5cbf4:  cmp    $0x1,%r13d
+    0.00 :   5cbf8:  jne    5cc06 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x9e6>
+    0.00 :   5cbfa:  or     %r15,%r8
+    0.00 :   5cbfd:  test   %rbx,%r15
+    0.00 :   5cc00:  je     5cc06 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x9e6>
+    0.00 :   5cc02:  bts    %r12,%r11
+    0.00 :   5cc06:  lea    -0x1(%r10),%r15
+    0.01 :   5cc0a:  and    %r10,%r15
+    0.00 :   5cc0d:  cmp    $0x1,%r10
+    0.00 :   5cc11:  jae    5cbe0 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x9c0>
+    0.00 :   5cc13:  jmp    5c79b <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x57b>
+    0.00 :   5cc18:  shl    $0x9,%r8d
+    0.01 :   5cc1c:  lea    -0x44163(%rip),%rdx        # 18ac0 <chessengine::attacks::BETWEEN>
+    0.00 :   5cc23:  mov    0x100(%rdi),%r9
+    0.01 :   5cc2a:  xor    %r10,%rax
+    0.00 :   5cc2d:  mov    $0x1,%ebx
+    0.00 :   5cc32:  blsr   %r10,%rsi
+    0.01 :   5cc37:  add    %r8,%rdx
+    0.00 :   5cc3a:  tzcnt  %r10,%r8
+    0.01 :   5cc3f:  mov    (%rdx,%r8,8),%rcx
+    0.11 :   5cc43:  shlx   %r8,%rbx,%r8
+    0.00 :   5cc48:  and    %rax,%rcx
+    0.00 :   5cc4b:  popcnt %rcx,%r10
+    0.01 :   5cc50:  mov    %rcx,%r11
+    0.00 :   5cc53:  and    %r9,%r11
+    0.00 :   5cc56:  cmove  %r11,%r8
+    0.01 :   5cc5a:  xor    %r11d,%r11d
+    0.00 :   5cc5d:  cmp    $0x1,%r10d
+    0.01 :   5cc61:  cmovne %r11,%r8
+    0.01 :   5cc65:  cmp    $0x1,%r10
+    0.00 :   5cc69:  mov    %rsi,%r10
+    0.00 :   5cc6c:  cmovne %r11,%rcx
+    0.00 :   5cc70:  sub    $0x1,%r10
+    0.00 :   5cc74:  jb     5c7ed <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x5cd>
+    0.00 :   5cc7a:  and    %rsi,%r10
+    0.00 :   5cc7d:  tzcnt  %rsi,%r11
+    0.00 :   5cc82:  mov    %r10,%rsi
+    0.00 :   5cc85:  mov    (%rdx,%r11,8),%r10
+    0.00 :   5cc89:  and    %rax,%r10
+    0.00 :   5cc8c:  popcnt %r10,%rbx
+    0.00 :   5cc91:  cmp    $0x1,%ebx
+    0.00 :   5cc94:  jne    5cca2 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xa82>
+    0.00 :   5cc96:  or     %r10,%rcx
+    0.00 :   5cc99:  test   %r9,%r10
+    0.00 :   5cc9c:  je     5cca2 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xa82>
+    0.00 :   5cc9e:  bts    %r11,%r8
+    0.00 :   5cca2:  lea    -0x1(%rsi),%r10
+    0.00 :   5cca6:  and    %rsi,%r10
+    0.00 :   5cca9:  cmp    $0x1,%rsi
+    0.00 :   5ccad:  jae    5cc7d <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xa5d>
+    0.00 :   5ccaf:  jmp    5c7ed <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x5cd>
+    0.00 :   5ccb4:  mov    0xa3385(%rip),%rcx        # 100040 <chessengine::attacks::TABLES+0x1000>
+    0.00 :   5ccbb:  mov    0xa3386(%rip),%rsi        # 100048 <chessengine::attacks::TABLES+0x1008>
+    0.00 :   5ccc2:  blsr   %rbp,%rax
+    0.01 :   5ccc7:  xor    %r13d,%r13d
+    0.00 :   5ccca:  mov    %rcx,0x8(%rsp)
+    0.01 :   5cccf:  tzcnt  %rbp,%rcx
+    0.00 :   5ccd4:  mov    %rax,%rbp
+    0.01 :   5ccd7:  shl    $0x6,%ecx
+    0.00 :   5ccda:  mov    0x18(%rcx,%rbx,1),%rax
+    0.00 :   5ccdf:  movzbl 0x2c(%rcx,%rbx,1),%r15d
+    0.01 :   5cce5:  mov    0x28(%rcx,%rbx,1),%edx
+    0.01 :   5cce9:  and    %r10,%rax
+    0.00 :   5ccec:  imul   0x20(%rcx,%rbx,1),%rax
+    0.00 :   5ccf2:  shrx   %r15,%rax,%rax
+    0.01 :   5ccf7:  add    %rdx,%rax
+    0.00 :   5ccfa:  cmp    %rsi,%rax
+    0.00 :   5ccfd:  jae    5d4f7 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12d7>
+    0.00 :   5cd03:  add    %rbx,%rcx
+    0.02 :   5cd06:  mov    (%rcx),%r15
+    0.00 :   5cd09:  mov    0x10(%rcx),%edx
+    0.00 :   5cd0c:  and    %r10,%r15
+    0.01 :   5cd0f:  imul   0x8(%rcx),%r15
+    0.00 :   5cd14:  movzbl 0x14(%rcx),%ecx
+    0.01 :   5cd18:  shrx   %rcx,%r15,%rcx
+    0.00 :   5cd1d:  add    %rdx,%rcx
+    0.00 :   5cd20:  cmp    %rsi,%rcx
+    0.00 :   5cd23:  jae    5d6ec <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x14cc>
+    0.00 :   5cd29:  mov    0x8(%rsp),%rdx
+    0.00 :   5cd2e:  or     (%rdx,%rax,8),%r13
+    0.25 :   5cd32:  lea    -0x1(%rbp),%rax
+    0.00 :   5cd36:  or     (%rdx,%rcx,8),%r13
+    0.04 :   5cd3a:  and    %rbp,%rax
+    0.00 :   5cd3d:  cmp    $0x1,%rbp
+    0.00 :   5cd41:  jb     5ca7e <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x85e>
+    0.00 :   5cd47:  jmp    5cccf <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xaaf>
+    0.00 :   5cd49:  mov    0x18(%rsp),%rbp
+    0.00 :   5cd4e:  mov    %edx,0x4(%rsp)
+    0.04 :   5cd52:  mov    $0x2,%bl
+    0.00 :   5cd54:  mov    $0x1,%al
+    0.00 :   5cd56:  mov    %r10d,%edx
+    0.00 :   5cd59:  mov    %eax,0x30(%rsp)
+    0.01 :   5cd5d:  mov    %edx,0x28(%rsp)
+    0.00 :   5cd61:  jmp    5c558 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x338>
+    0.00 :   5cd66:  mov    %r10d,%eax
+    0.00 :   5cd69:  xor    %r11b,%al
+    0.00 :   5cd6c:  cmp    $0x10,%al
+    0.00 :   5cd6e:  je     5cf4c <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xd2c>
+    0.00 :   5cd74:  cmp    $0x1,%r12w
+    0.00 :   5cd79:  je     5d0a1 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xe81>
+    0.00 :   5cd7f:  xor    %rsi,0xa8(%r14)
+    0.00 :   5cd86:  movl   $0x0,0xc8(%r14)
+    0.00 :   5cd91:  mov    %r13,0x80(%r14)
+    0.00 :   5cd98:  jmp    5c61d <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x3fd>
+    0.00 :   5cd9d:  movzbl 0x8(%rsp),%eax
+    0.00 :   5cda2:  lea    (%rax,%rax,2),%rax
+    0.00 :   5cda6:  shl    $0x4,%eax
+    0.00 :   5cda9:  mov    0xc0(%rdi,%rax,1),%rax
+    0.01 :   5cdb1:  test   %rax,%rax
+    0.00 :   5cdb4:  je     5d4dc <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12bc>
+    0.00 :   5cdba:  mov    0x108(%rdi),%r15
+    0.00 :   5cdc1:  mov    0xa32b9(%rip),%ecx        # 100080 <chessengine::attacks::TABLES+0x1040>
+    0.00 :   5cdc7:  tzcnt  %rax,%rbx
+    0.00 :   5cdcc:  test   %ecx,%ecx
+    0.00 :   5cdce:  jne    5d6fe <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x14de>
+    0.00 :   5cdd4:  mov    %ebx,%edx
+    0.00 :   5cdd6:  shl    $0x6,%edx
+    0.00 :   5cdd9:  lea    0xa2260(%rip),%rcx        # ff040 <chessengine::attacks::TABLES>
+    0.00 :   5cde0:  mov    0x18(%rdx,%rcx,1),%rax
+    0.00 :   5cde5:  movzbl 0x2c(%rdx,%rcx,1),%r8d
+    0.00 :   5cdeb:  mov    0x28(%rdx,%rcx,1),%esi
+    0.00 :   5cdef:  and    %r15,%rax
+    0.00 :   5cdf2:  imul   0x20(%rdx,%rcx,1),%rax
+    0.01 :   5cdf8:  shrx   %r8,%rax,%rax
+    0.03 :   5cdfd:  add    %rsi,%rax
+    0.03 :   5ce00:  mov    0xa3241(%rip),%rsi        # 100048 <chessengine::attacks::TABLES+0x1008>
+    0.00 :   5ce07:  cmp    %rsi,%rax
+    0.01 :   5ce0a:  jae    5d4f7 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12d7>
+    0.00 :   5ce10:  add    %rdx,%rcx
+    0.00 :   5ce13:  and    (%rcx),%r15
+    0.00 :   5ce16:  mov    0x10(%rcx),%edx
+    0.00 :   5ce19:  imul   0x8(%rcx),%r15
+    0.00 :   5ce1e:  movzbl 0x14(%rcx),%ecx
+    0.00 :   5ce22:  shrx   %rcx,%r15,%rcx
+    0.01 :   5ce27:  add    %rdx,%rcx
+    0.05 :   5ce2a:  cmp    %rsi,%rcx
+    0.00 :   5ce2d:  jae    5d6ec <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x14cc>
+    0.00 :   5ce33:  mov    0xb8(%rdi),%rdx
+    0.00 :   5ce3a:  mov    0xe0(%rdi),%r8
+    0.00 :   5ce41:  mov    0xa8(%rdi),%r10
+    0.00 :   5ce48:  mov    0xa31f1(%rip),%rsi        # 100040 <chessengine::attacks::TABLES+0x1000>
+    0.00 :   5ce4f:  mov    0x98(%rdi),%r9
+    0.00 :   5ce56:  shl    $0x3,%ebx
+    0.00 :   5ce59:  or     0xe8(%rdi),%rdx
+    0.00 :   5ce60:  or     0xb0(%rdi),%r8
+    0.04 :   5ce67:  or     0xd8(%rdi),%r10
+    0.00 :   5ce6e:  or     %rdx,%r8
+    0.00 :   5ce71:  or     %rdx,%r10
+    0.00 :   5ce74:  and    (%rsi,%rcx,8),%r10
+    0.09 :   5ce78:  and    (%rsi,%rax,8),%r8
+    0.01 :   5ce7c:  lea    -0x4cdc3(%rip),%rcx        # 100c0 <chessengine::attacks::PAWN_ATTACKS>
+    0.00 :   5ce83:  mov    0xc8(%rdi),%rdx
+    0.00 :   5ce8a:  lea    -0x4cfd1(%rip),%rsi        # fec0 <chessengine::attacks::KING_ATTACKS>
+    0.00 :   5ce91:  and    (%rbx,%rcx,1),%rdx
+    0.00 :   5ce95:  and    0x200(%rbx,%rcx,1),%r9
+    0.00 :   5ce9d:  lea    -0x4c5e4(%rip),%rcx        # 108c0 <chessengine::attacks::KNIGHT_ATTACKS>
+    0.00 :   5cea4:  or     %r8,%r10
+    0.00 :   5cea7:  mov    0xd0(%rdi),%r8
+    0.00 :   5ceae:  or     0xa0(%rdi),%r8
+    0.00 :   5ceb5:  or     %rdx,%r9
+    0.00 :   5ceb8:  and    (%rbx,%rcx,1),%r8
+    0.00 :   5cebc:  mov    0xf0(%rdi),%rcx
+    0.00 :   5cec3:  or     0xc0(%rdi),%rcx
+    0.00 :   5ceca:  and    (%rbx,%rsi,1),%rcx
+    0.01 :   5cece:  or     %r9,%r8
+    0.00 :   5ced1:  or     %r8,%rcx
+    0.00 :   5ced4:  or     %r10,%rcx
+    0.01 :   5ced7:  and    0xf8(%rdi,%rbp,8),%rcx
+    0.00 :   5cedf:  jmp    5c728 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x508>
+    0.00 :   5cee4:  xor    %rbp,0xa8(%r14)
+    0.03 :   5ceeb:  movzbl 0x8(%rsp),%r8d
+    0.00 :   5cef1:  jmp    5c508 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x2e8>
+    0.00 :   5cef6:  mov    0x80(%r14),%r10
+    0.01 :   5cefd:  mov    0x58(%rsp),%r9
+    0.01 :   5cf02:  mov    0x90(%rsp),%rbx
+    0.00 :   5cf0a:  mov    0x88(%rsp),%r14
+    0.00 :   5cf12:  mov    $0x4,%edx
+    0.02 :   5cf17:  movslq %edx,%r11
+    0.00 :   5cf1a:  mov    %rbx,%rax
+    0.01 :   5cf1d:  sub    %r11,%rax
+    0.00 :   5cf20:  cmp    %rsi,%rax
+    0.01 :   5cf23:  jae    5d74b <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x152b>
+    0.00 :   5cf29:  imul   $0xe0,%rax,%rax
+    0.02 :   5cf30:  cmp    %r10,0x80(%r9,%rax,1)
+    0.17 :   5cf38:  je     5d429 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1209>
+    0.00 :   5cf3e:  add    $0x2,%edx
+    0.01 :   5cf41:  cmp    %r8d,%edx
+    0.01 :   5cf44:  jg     5cb0b <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x8eb>
+    0.00 :   5cf4a:  jmp    5cf17 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xcf7>
+    0.00 :   5cf4c:  cmpb   $0x0,0x38(%rsp)
+    0.00 :   5cf51:  jne    5d065 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xe45>
+    0.00 :   5cf57:  lea    -0x8(%r10),%eax
+    0.00 :   5cf5b:  cmp    $0x40,%al
+    0.00 :   5cf5d:  jae    5d75d <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x153d>
+    0.00 :   5cf63:  movzbl 0x8(%rsp),%edx
+    0.00 :   5cf68:  mov    %ebp,%r9d
+    0.00 :   5cf6b:  shl    $0x9,%r9d
+    0.00 :   5cf6f:  lea    -0x4ceb6(%rip),%rbp        # 100c0 <chessengine::attacks::PAWN_ATTACKS>
+    0.00 :   5cf76:  movzbl %al,%ecx
+    0.00 :   5cf79:  add    %r9,%rbp
+    0.00 :   5cf7c:  lea    (%rdx,%rdx,2),%r15
+    0.00 :   5cf80:  mov    %r15d,%edx
+    0.00 :   5cf83:  shl    $0x4,%edx
+    0.00 :   5cf86:  mov    0x98(%rdi,%rdx,1),%r9
+    0.00 :   5cf8e:  and    0x0(%rbp,%rcx,8),%r9
+    0.00 :   5cf93:  jne    5d332 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1112>
+    0.00 :   5cf99:  mov    0x18(%rsp),%rbp
+    0.00 :   5cf9e:  jmp    5cd7f <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xb5f>
+    0.00 :   5cfa3:  movzwl %r12w,%eax
+    0.00 :   5cfa7:  cmp    $0x1,%eax
+    0.00 :   5cfaa:  jne    5d149 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xf29>
+    0.00 :   5cfb0:  cmpb   $0x0,0x30(%rsp)
+    0.00 :   5cfb5:  mov    0x38(%rsp),%r9
+    0.00 :   5cfba:  je     5d3b6 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1196>
+    0.00 :   5cfc0:  mov    $0x20c,%eax
+    0.00 :   5cfc5:  lea    -0x4eca4(%rip),%rcx        # e328 <GCC_except_table850+0x6870>
+    0.00 :   5cfcc:  movzbl 0x18(%rdi,%r11,2),%edx
+    0.00 :   5cfd2:  bextr  %eax,0x24(%rsp),%eax
+    0.00 :   5cfd9:  movzbl 0x1(%rax,%rcx,1),%ecx
+    0.00 :   5cfde:  movzbl 0x19(%rdi,%r11,2),%eax
+    0.00 :   5cfe4:  movb   $0x2,0x18(%rdi,%r11,2)
+    0.00 :   5cfea:  cmp    $0x2,%rdx
+    0.00 :   5cfee:  je     5d778 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1558>
+    0.00 :   5cff4:  cmp    $0x5,%al
+    0.00 :   5cff6:  ja     5d69a <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x147a>
+    0.00 :   5cffc:  lea    (%rdx,%rdx,2),%r8
+    0.00 :   5d000:  mov    $0x1,%esi
+    0.00 :   5d005:  shlx   %r11,%rsi,%rsi
+    0.00 :   5d00a:  shl    $0x4,%r8d
+    0.00 :   5d00e:  add    %rdi,%r8
+    0.00 :   5d011:  xor    %rsi,0x98(%r8,%rax,8)
+    0.00 :   5d019:  xor    %rsi,0xf8(%rdi,%rdx,8)
+    0.00 :   5d021:  mov    0x108(%rdi),%rax
+    0.00 :   5d028:  btc    %r11,%rax
+    0.00 :   5d02c:  lea    0x0(%rbp,%rbp,2),%r8
+    0.00 :   5d031:  mov    $0x1,%esi
+    0.00 :   5d036:  movzbl %cl,%edx
+    0.00 :   5d039:  bts    %r10,%rax
+    0.00 :   5d03d:  shlx   %r10,%rsi,%rsi
+    0.00 :   5d042:  shl    $0x4,%r8d
+    0.00 :   5d046:  add    %rdi,%r8
+    0.00 :   5d049:  or     %rsi,0x98(%r8,%rdx,8)
+    0.00 :   5d051:  or     %rsi,0xf8(%rdi,%rbp,8)
+    0.00 :   5d059:  mov    %rax,0x108(%rdi)
+    0.00 :   5d060:  jmp    5c6fc <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x4dc>
+    0.00 :   5d065:  cmp    $0x38,%r10b
+    0.00 :   5d069:  jae    5d75d <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x153d>
+    0.00 :   5d06f:  lea    0x8(%r10),%eax
+    0.00 :   5d073:  jmp    5cf63 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xd43>
+    0.00 :   5d078:  add    $0xfffffff2,%eax
+    0.00 :   5d07b:  movabs $0x5851f42d4c957f2d,%rcx
+    0.00 :   5d085:  shr    $0x3,%eax
+    0.00 :   5d088:  imul   %rax,%rcx
+    0.00 :   5d08c:  movabs $0x14057b7ef767814f,%rax
+    0.00 :   5d096:  add    %rcx,%rax
+    0.00 :   5d099:  xor    %rax,%r13
+    0.00 :   5d09c:  jmp    5c61d <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x3fd>
+    0.00 :   5d0a1:  mov    $0x20c,%eax
+    0.00 :   5d0a6:  lea    -0x4ed85(%rip),%rcx        # e328 <GCC_except_table850+0x6870>
+    0.00 :   5d0ad:  lea    0x0(%rbp,%rbp,2),%r15
+    0.00 :   5d0b2:  bextr  %eax,0x24(%rsp),%eax
+    0.00 :   5d0b9:  movzbl 0x1(%rax,%rcx,1),%edx
+    0.00 :   5d0be:  mov    %r15d,%ecx
+    0.00 :   5d0c1:  shl    $0x4,%ecx
+    0.00 :   5d0c4:  lea    (%rdi,%rcx,1),%rax
+    0.00 :   5d0c8:  popcnt 0x98(%rax,%rdx,8),%rax
+    0.00 :   5d0d2:  cmp    $0x37,%rax
+    0.00 :   5d0d6:  ja     5d784 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1564>
+    0.00 :   5d0dc:  lea    0x98(%rdi,%rcx,1),%rcx
+    0.00 :   5d0e4:  popcnt (%rcx),%rcx
+    0.00 :   5d0e9:  cmp    $0x39,%rcx
+    0.00 :   5d0ed:  jae    5d79f <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x157f>
+    0.00 :   5d0f3:  mov    %edx,%ebp
+    0.00 :   5d0f5:  shl    $0x9,%ebp
+    0.00 :   5d0f8:  shl    $0xa,%r15d
+    0.00 :   5d0fc:  mov    0x38(%r9,%rcx,8),%rcx
+    0.00 :   5d101:  add    %rbp,%r8
+    0.00 :   5d104:  mov    0x18(%rsp),%rbp
+    0.00 :   5d109:  add    %r15,%r8
+    0.00 :   5d10c:  xor    0x40(%r8,%rax,8),%rcx
+    0.00 :   5d111:  mov    (%r8,%r10,8),%r15
+    0.00 :   5d115:  lea    -0x1(%rdx),%eax
+    0.00 :   5d118:  xor    %rcx,0xb0(%r14)
+    0.00 :   5d11f:  xor    %r15,0x98(%r14,%rbp,8)
+    0.00 :   5d127:  cmp    $0x2,%al
+    0.00 :   5d129:  jb     5d41d <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x11fd>
+    0.00 :   5d12f:  lea    -0x4ee26(%rip),%rax        # e310 <GCC_except_table850+0x6858>
+    0.00 :   5d136:  xor    %r15,%r13
+    0.00 :   5d139:  mov    (%rax,%rdx,4),%eax
+    0.00 :   5d13c:  add    %eax,0xc0(%r14,%rbp,4)
+    0.00 :   5d144:  jmp    5cd7f <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xb5f>
+    0.00 :   5d149:  cmp    $0x3,%eax
+    0.00 :   5d14c:  mov    0x4(%rsp),%eax
+    0.00 :   5d150:  je     5c70a <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x4ea>
+    0.00 :   5d156:  jmp    5c64f <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x42f>
+    0.00 :   5d15b:  mov    %edx,0x4(%rsp)
+    0.00 :   5d15f:  mov    0x18(%rsp),%rdx
+    0.00 :   5d164:  mov    %esi,%eax
+    0.00 :   5d166:  mov    %r8,0x70(%rsp)
+    0.00 :   5d16b:  mov    %r15,0x30(%rsp)
+    0.00 :   5d170:  and    $0x7,%bpl
+    0.00 :   5d174:  mov    $0x5,%r8d
+    0.00 :   5d17a:  mov    $0x3b,%esi
+    0.00 :   5d17f:  and    $0x7,%al
+    0.00 :   5d181:  lea    (%rdx,%rdx,1),%r15d
+    0.00 :   5d185:  test   %dl,%dl
+    0.00 :   5d187:  mov    $0x3d,%edx
+    0.00 :   5d18c:  cmovne %rdx,%r8
+    0.00 :   5d190:  mov    $0x3,%edx
+    0.00 :   5d195:  cmovne %rsi,%rdx
+    0.00 :   5d199:  cmp    %al,%bpl
+    0.00 :   5d19c:  cmova  %r8,%rdx
+    0.00 :   5d1a0:  mov    %rdx,0x28(%rsp)
+    0.00 :   5d1a5:  lea    0x1(%r15),%rdx
+    0.00 :   5d1a9:  cmovbe %rdx,%r15
+    0.00 :   5d1ad:  movzbl 0x174(%rdi,%r15,1),%ebp
+    0.00 :   5d1b6:  movb   $0x2,0x18(%rdi,%r11,2)
+    0.00 :   5d1bc:  cmp    $0x6,%cl
+    0.00 :   5d1bf:  jae    5d7ba <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x159a>
+    0.00 :   5d1c5:  mov    0x70(%rsp),%rdx
+    0.00 :   5d1ca:  mov    0x10(%rsp),%rsi
+    0.00 :   5d1cf:  mov    $0x1,%r8d
+    0.00 :   5d1d5:  shlx   %r11,%r8,%r8
+    0.00 :   5d1da:  lea    (%rdx,%rdx,2),%r15
+    0.00 :   5d1de:  shl    $0x4,%r15d
+    0.00 :   5d1e2:  lea    0x98(%rdi,%r15,1),%r15
+    0.00 :   5d1ea:  xor    %r8,(%r15,%rsi,8)
+    0.00 :   5d1ee:  xor    %r8,0xf8(%rdi,%rdx,8)
+    0.00 :   5d1f6:  xor    %r8,0x108(%rdi)
+    0.00 :   5d1fd:  mov    %r15,0x98(%rsp)
+    0.00 :   5d205:  cmp    $0x3f,%bpl
+    0.00 :   5d209:  ja     5d7d3 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x15b3>
+    0.00 :   5d20f:  movzbl 0x18(%rdi,%rbp,2),%r15d
+    0.00 :   5d215:  movzbl 0x19(%rdi,%rbp,2),%r8d
+    0.00 :   5d21b:  lea    0x98(%rdi),%rsi
+    0.00 :   5d222:  movb   $0x2,0x18(%rdi,%rbp,2)
+    0.00 :   5d227:  mov    %rbp,%rdx
+    0.00 :   5d22a:  cmp    $0x2,%r15
+    0.00 :   5d22e:  je     5d265 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1045>
+    0.00 :   5d230:  mov    %r8,%rax
+    0.00 :   5d233:  cmp    $0x5,%r8b
+    0.00 :   5d237:  ja     5d69a <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x147a>
+    0.00 :   5d23d:  lea    (%r15,%r15,2),%r8
+    0.00 :   5d241:  mov    $0x1,%ebp
+    0.00 :   5d246:  shlx   %rdx,%rbp,%rbp
+    0.00 :   5d24b:  shl    $0x4,%r8d
+    0.00 :   5d24f:  add    %rsi,%r8
+    0.00 :   5d252:  xor    %rbp,(%r8,%rax,8)
+    0.00 :   5d256:  xor    %rbp,0xf8(%rdi,%r15,8)
+    0.00 :   5d25e:  xor    %rbp,0x108(%rdi)
+    0.00 :   5d265:  mov    %rdx,0x40(%rsp)
+    0.00 :   5d26a:  mov    0x10(%rsp),%rdx
+    0.00 :   5d26f:  mov    0x98(%rsp),%rax
+    0.00 :   5d277:  mov    $0x1,%r8d
+    0.00 :   5d27d:  mov    0x28(%rsp),%rsi
+    0.00 :   5d282:  shlx   %r9,%r8,%r15
+    0.00 :   5d287:  or     %r15,(%rax,%rdx,8)
+    0.00 :   5d28b:  mov    0x70(%rsp),%rax
+    0.00 :   5d290:  mov    0x18(%rsp),%rdx
+    0.00 :   5d295:  shlx   %rsi,%r8,%r8
+    0.00 :   5d29a:  or     %r15,0xf8(%rdi,%rax,8)
+    0.00 :   5d2a2:  mov    0x108(%rdi),%r15
+    0.00 :   5d2a9:  mov    %al,0x18(%rdi,%r9,2)
+    0.00 :   5d2ae:  mov    %cl,0x19(%rdi,%r9,2)
+    0.00 :   5d2b3:  lea    0x98(%rdi),%rax
+    0.00 :   5d2ba:  bts    %r9,%r15
+    0.00 :   5d2be:  lea    (%rdx,%rdx,2),%r9
+    0.00 :   5d2c2:  mov    %r9d,%ebp
+    0.00 :   5d2c5:  shl    $0x4,%ebp
+    0.00 :   5d2c8:  bts    %rsi,%r15
+    0.00 :   5d2cc:  shl    $0xa,%r9d
+    0.00 :   5d2d0:  or     %r8,0x18(%rax,%rbp,1)
+    0.00 :   5d2d5:  lea    0x0(,%rdx,8),%ebp
+    0.00 :   5d2dc:  mov    0x38(%rsp),%rdx
+    0.00 :   5d2e1:  or     %r8,0xf8(%rdi,%rbp,1)
+    0.00 :   5d2e9:  mov    %r15,0x108(%rdi)
+    0.00 :   5d2f0:  lea    -0x34837(%rip),%r8        # 28ac0 <chessengine::zobrist::ZOBRIST>
+    0.00 :   5d2f7:  mov    0x30(%rsp),%r15
+    0.00 :   5d2fc:  add    %r9,%r8
+    0.00 :   5d2ff:  mov    0x600(%r8,%rsi,8),%r9
+    0.00 :   5d307:  mov    %dl,0x18(%rdi,%rsi,2)
+    0.00 :   5d30b:  mov    0x40(%rsp),%rdx
+    0.00 :   5d310:  movb   $0x3,0x19(%rdi,%rsi,2)
+    0.00 :   5d315:  xor    0x600(%r8,%rdx,8),%r9
+    0.00 :   5d31d:  mov    0x70(%rsp),%r8
+    0.00 :   5d322:  mov    0x4(%rsp),%edx
+    0.00 :   5d326:  xor    %r9,(%r15,%rbp,1)
+    0.00 :   5d32a:  xor    %r9,%r13
+    0.00 :   5d32d:  jmp    5c476 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x256>
+    0.00 :   5d332:  shl    $0x4,%r15d
+    0.00 :   5d336:  mov    0xc0(%rdi,%r15,1),%r15
+    0.00 :   5d33e:  test   %r15,%r15
+    0.00 :   5d341:  je     5d4dc <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x12bc>
+    0.00 :   5d347:  tzcnt  %r15,%rdx
+    0.00 :   5d34c:  cmpb   $0x0,0x38(%rsp)
+    0.00 :   5d351:  mov    0x78(%rsp),%r15
+    0.00 :   5d356:  mov    0x18(%rsp),%rbp
+    0.00 :   5d35b:  mov    %rdx,0x10(%rsp)
+    0.00 :   5d360:  cmovne 0xa8(%rsp),%r15
+    0.00 :   5d369:  bt     %r11,%r15
+    0.00 :   5d36d:  jb     5d4a0 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1280>
+    0.00 :   5d373:  shl    $0x9,%ecx
+    0.00 :   5d376:  lea    -0x4c8bd(%rip),%rdx        # 10ac0 <chessengine::attacks::LINE>
+    0.00 :   5d37d:  not    %r15
+    0.00 :   5d380:  add    %rcx,%rdx
+    0.00 :   5d383:  mov    0x10(%rsp),%rcx
+    0.00 :   5d388:  or     (%rdx,%rcx,8),%r15
+    0.00 :   5d38c:  test   %r9,%r15
+    0.00 :   5d38f:  je     5cd7f <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xb5f>
+    0.00 :   5d395:  movb   $0x1,0xd1(%r14)
+    0.00 :   5d39d:  mov    %al,0xd2(%r14)
+    0.00 :   5d3a4:  and    $0x7,%al
+    0.00 :   5d3a6:  movzbl %al,%eax
+    0.00 :   5d3a9:  xor    0x1880(%r8,%rax,8),%r13
+    0.00 :   5d3b1:  jmp    5cd7f <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xb5f>
+    0.00 :   5d3b6:  movzbl 0x28(%rsp),%edx
+    0.00 :   5d3bb:  movzbl 0x18(%rdi,%rdx,2),%ecx
+    0.00 :   5d3c0:  movzbl 0x19(%rdi,%rdx,2),%eax
+    0.00 :   5d3c5:  movb   $0x2,0x18(%rdi,%rdx,2)
+    0.00 :   5d3ca:  cmp    $0x2,%rcx
+    0.00 :   5d3ce:  je     5cfc0 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xda0>
+    0.00 :   5d3d4:  cmp    $0x5,%al
+    0.00 :   5d3d6:  ja     5d69a <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x147a>
+    0.00 :   5d3dc:  lea    (%rcx,%rcx,2),%r8
+    0.00 :   5d3e0:  mov    $0x1,%esi
+    0.00 :   5d3e5:  shlx   %rdx,%rsi,%rdx
+    0.00 :   5d3ea:  shl    $0x4,%r8d
+    0.00 :   5d3ee:  add    %rdi,%r8
+    0.00 :   5d3f1:  xor    %rdx,0x98(%r8,%rax,8)
+    0.00 :   5d3f9:  xor    %rdx,0xf8(%rdi,%rcx,8)
+    0.00 :   5d401:  xor    %rdx,0x108(%rdi)
+    0.00 :   5d408:  jmp    5cfc0 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xda0>
+    0.00 :   5d40d:  and    $0x7,%eax
+    0.00 :   5d410:  xor    0x1880(%r8,%rax,8),%r13
+    0.00 :   5d418:  jmp    5c5ad <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x38d>
+    0.00 :   5d41d:  xor    %r15,0xb8(%r14)
+    0.00 :   5d424:  jmp    5d12f <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xf0f>
+    0.00 :   5d429:  add    %rax,%r9
+    0.01 :   5d42c:  cmpl   $0x0,0xd8(%r9)
+    0.01 :   5d434:  jne    5d7ea <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x15ca>
+    0.00 :   5d43a:  mov    %edx,%ecx
+    0.00 :   5d43c:  jmp    5cb0b <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x8eb>
+    0.00 :   5d441:  cmpb   $0x0,0x38(%rsp)
+    0.00 :   5d446:  mov    %r12d,0x40(%rsp)
+    0.00 :   5d44b:  je     5d460 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1240>
+    0.00 :   5d44d:  cmp    $0x38,%r10b
+    0.00 :   5d451:  jae    5d75d <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x153d>
+    0.00 :   5d457:  mov    %r8,%r12
+    0.00 :   5d45a:  lea    0x8(%r10),%esi
+    0.00 :   5d45e:  jmp    5d471 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1251>
+    0.00 :   5d460:  lea    -0x8(%r10),%esi
+    0.00 :   5d464:  cmp    $0x40,%sil
+    0.01 :   5d468:  jae    5d75d <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x153d>
+    0.00 :   5d46e:  mov    %r8,%r12
+    0.00 :   5d471:  movzbl 0x8(%rsp),%ebx
+    0.00 :   5d476:  xor    %edx,%edx
+    0.00 :   5d478:  jmp    5c48a <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x26a>
+    0.00 :   5d47d:  lea    0x50(%rsp),%r14
+    0.00 :   5d482:  mov    %rdi,%rbx
+    0.00 :   5d485:  mov    %edx,%ebp
+    0.00 :   5d487:  mov    %r14,%rdi
+    0.00 :   5d48a:  vzeroupper
+    0.00 :   5d48d:  call   7d070 <<alloc::raw_vec::RawVec<chessengine::board::StateInfo>>::grow_one>
+    0.00 :   5d492:  mov    0x8(%r14),%rax
+    0.00 :   5d496:  mov    %ebp,%edx
+    0.00 :   5d498:  mov    %rbx,%rdi
+    0.00 :   5d49b:  jmp    5c331 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x111>
+    0.00 :   5d4a0:  mov    %r15,0x78(%rsp)
+    0.00 :   5d4a5:  mov    0x10(%rsp),%rdx
+    0.00 :   5d4aa:  xor    0xa0(%rsp),%dl
+    0.00 :   5d4b1:  mov    0x78(%rsp),%r15
+    0.00 :   5d4b6:  test   $0x7,%dl
+    0.00 :   5d4b9:  jne    5cd7f <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xb5f>
+    0.00 :   5d4bf:  jmp    5d373 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x1153>
+    0.00 :   5d4c4:  xor    %r9d,%r9d
+    0.03 :   5d4c7:  jmp    5c999 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x779>
+    0.00 :   5d4cc:  xor    %r11d,%r11d
+    0.00 :   5d4cf:  jmp    5ca06 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x7e6>
+    0.00 :   5d4d4:  xor    %r12d,%r12d
+    0.01 :   5d4d7:  jmp    5ca6e <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x84e>
+    0.00 :   5d4dc:  lea    -0x4e992(%rip),%rdi        # eb51 <GCC_except_table850+0x7099>
+    0.00 :   5d4e3:  lea    0x8a70e(%rip),%rdx        # e7bf8 <__frame_dummy_init_array_entry+0x1488>
+    0.00 :   5d4ea:  mov    $0xf,%esi
+    0.00 :   5d4ef:  vzeroupper
+    0.00 :   5d4f2:  call   3f8f0 <core::option::expect_failed>
+    0.00 :   5d4f7:  lea    0x89fda(%rip),%rdx        # e74d8 <__frame_dummy_init_array_entry+0xd68>
+    0.00 :   5d4fe:  mov    %rax,%rdi
+    0.00 :   5d501:  vzeroupper
+    0.00 :   5d504:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d509:  lea    0x89ff8(%rip),%rdx        # e7508 <__frame_dummy_init_array_entry+0xd98>
+    0.00 :   5d510:  mov    %rax,%rdi
+    0.00 :   5d513:  vzeroupper
+    0.00 :   5d516:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d51b:  lea    -0x4f338(%rip),%rdi        # e1ea <GCC_except_table850+0x6732>
+    0.00 :   5d522:  lea    0x894af(%rip),%rdx        # e69d8 <__frame_dummy_init_array_entry+0x268>
+    0.00 :   5d529:  mov    $0x17,%esi
+    0.00 :   5d52e:  call   3f8f0 <core::option::expect_failed>
+    0.00 :   5d533:  lea    0x894b6(%rip),%rdx        # e69f0 <__frame_dummy_init_array_entry+0x280>
+    0.00 :   5d53a:  mov    %r15,%rdi
+    0.00 :   5d53d:  xor    %esi,%esi
+    0.00 :   5d53f:  vzeroupper
+    0.00 :   5d542:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d547:  lea    -0x4f266(%rip),%rdi        # e2e8 <GCC_except_table850+0x6830>
+    0.00 :   5d54e:  lea    0x894b3(%rip),%rdx        # e6a08 <__frame_dummy_init_array_entry+0x298>
+    0.00 :   5d555:  mov    $0x26,%esi
+    0.00 :   5d55a:  vzeroupper
+    0.00 :   5d55d:  call   3f8f0 <core::option::expect_failed>
+    0.00 :   5d562:  lea    0x89517(%rip),%rdx        # e6a80 <__frame_dummy_init_array_entry+0x310>
+    0.00 :   5d569:  mov    $0xc,%esi
+    0.00 :   5d56e:  mov    %r9,%rdi
+    0.00 :   5d571:  vzeroupper
+    0.00 :   5d574:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d579:  lea    0x89518(%rip),%rdx        # e6a98 <__frame_dummy_init_array_entry+0x328>
+    0.00 :   5d580:  mov    $0x10,%esi
+    0.00 :   5d585:  mov    %rax,%rdi
+    0.00 :   5d588:  vzeroupper
+    0.00 :   5d58b:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d590:  lea    0x8a5a1(%rip),%rcx        # e7b38 <__frame_dummy_init_array_entry+0x13c8>
+    0.00 :   5d597:  mov    %rdx,%rsi
+    0.00 :   5d59a:  mov    %rax,%rdi
+    0.00 :   5d59d:  mov    %rcx,%rdx
+    0.00 :   5d5a0:  vzeroupper
+    0.00 :   5d5a3:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d5a8:  lea    0xa1a91(%rip),%rax        # ff040 <chessengine::attacks::TABLES>
+    0.00 :   5d5af:  lea    0x130(%rsp),%rcx
+    0.00 :   5d5b7:  lea    0xb0(%rsp),%rdx
+    0.00 :   5d5bf:  lea    0x8c4b2(%rip),%r8        # e9a78 <__frame_dummy_init_array_entry+0x3308>
+    0.00 :   5d5c6:  mov    $0x1,%esi
+    0.00 :   5d5cb:  mov    %rdi,%rbx
+    0.00 :   5d5ce:  mov    %rax,(%rcx)
+    0.00 :   5d5d1:  mov    %rcx,(%rdx)
+    0.00 :   5d5d4:  lea    0xa2aa5(%rip),%rax        # 100080 <chessengine::attacks::TABLES+0x1040>
+    0.00 :   5d5db:  lea    0x8930e(%rip),%rcx        # e68f0 <__frame_dummy_init_array_entry+0x180>
+    0.00 :   5d5e2:  mov    %rax,%rdi
+    0.00 :   5d5e5:  vzeroupper
+    0.00 :   5d5e8:  call   7aa10 <<std::sys::sync::once::futex::Once>::call>
+    0.00 :   5d5ed:  mov    %rbx,%rdi
+    0.00 :   5d5f0:  jmp    5c803 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x5e3>
+    0.00 :   5d5f5:  lea    0x130(%rsp),%rax
+    0.00 :   5d5fd:  lea    0xb0(%rsp),%rdx
+    0.00 :   5d605:  lea    0x892e4(%rip),%rcx        # e68f0 <__frame_dummy_init_array_entry+0x180>
+    0.00 :   5d60c:  lea    0x8c465(%rip),%r8        # e9a78 <__frame_dummy_init_array_entry+0x3308>
+    0.00 :   5d613:  mov    $0x1,%esi
+    0.00 :   5d618:  mov    %rdi,%r15
+    0.00 :   5d61b:  mov    %rbx,(%rax)
+    0.00 :   5d61e:  mov    %rax,(%rdx)
+    0.00 :   5d621:  lea    0xa2a58(%rip),%rax        # 100080 <chessengine::attacks::TABLES+0x1040>
+    0.00 :   5d628:  mov    %rax,%rdi
+    0.00 :   5d62b:  vzeroupper
+    0.00 :   5d62e:  call   7aa10 <<std::sys::sync::once::futex::Once>::call>
+    0.00 :   5d633:  mov    %r15,%rdi
+    0.00 :   5d636:  jmp    5c8f4 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x6d4>
+    0.00 :   5d63b:  lea    0x8949e(%rip),%rdx        # e6ae0 <__frame_dummy_init_array_entry+0x370>
+    0.00 :   5d642:  mov    %rbx,%rdi
+    0.00 :   5d645:  vzeroupper
+    0.00 :   5d648:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d64d:  mov    0x8(%rdi),%rax
+    0.00 :   5d651:  mov    %rdi,%rbx
+    0.00 :   5d654:  mov    %rax,%rdi
+    0.00 :   5d657:  vzeroupper
+    0.00 :   5d65a:  call   *0x8d738(%rip)        # ead98 <free@GLIBC_2.2.5>
+    0.00 :   5d660:  mov    %rbx,%rdi
+    0.00 :   5d663:  jmp    5cb2b <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x90b>
+    0.00 :   5d668:  lea    -0x4eb62(%rip),%rdi        # eb0d <GCC_except_table850+0x7055>
+    0.00 :   5d66f:  lea    0x8a53a(%rip),%rdx        # e7bb0 <__frame_dummy_init_array_entry+0x1440>
+    0.00 :   5d676:  mov    $0x1c,%esi
+    0.00 :   5d67b:  vzeroupper
+    0.00 :   5d67e:  call   3f8f0 <core::option::expect_failed>
+    0.00 :   5d683:  lea    0x8a53e(%rip),%rdx        # e7bc8 <__frame_dummy_init_array_entry+0x1458>
+    0.00 :   5d68a:  mov    $0x6,%esi
+    0.00 :   5d68f:  mov    %rax,%rdi
+    0.00 :   5d692:  vzeroupper
+    0.00 :   5d695:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d69a:  lea    0x8a5cf(%rip),%rdx        # e7c70 <__frame_dummy_init_array_entry+0x1500>
+    0.00 :   5d6a1:  jmp    5d68a <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x146a>
+    0.00 :   5d6a3:  lea    0x8938e(%rip),%rdx        # e6a38 <__frame_dummy_init_array_entry+0x2c8>
+    0.00 :   5d6aa:  mov    $0xc,%esi
+    0.00 :   5d6af:  mov    %r8,%rdi
+    0.00 :   5d6b2:  vzeroupper
+    0.00 :   5d6b5:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d6ba:  add    $0x7,%r8
+    0.00 :   5d6be:  lea    0x893a3(%rip),%rdx        # e6a68 <__frame_dummy_init_array_entry+0x2f8>
+    0.00 :   5d6c5:  mov    $0x40,%esi
+    0.00 :   5d6ca:  mov    %r8,%rdi
+    0.00 :   5d6cd:  vzeroupper
+    0.00 :   5d6d0:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d6d5:  lea    0x89374(%rip),%rdx        # e6a50 <__frame_dummy_init_array_entry+0x2e0>
+    0.00 :   5d6dc:  mov    $0x6,%esi
+    0.00 :   5d6e1:  mov    %r9,%rdi
+    0.00 :   5d6e4:  vzeroupper
+    0.00 :   5d6e7:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d6ec:  lea    0x89e15(%rip),%rdx        # e7508 <__frame_dummy_init_array_entry+0xd98>
+    0.00 :   5d6f3:  mov    %rcx,%rdi
+    0.00 :   5d6f6:  vzeroupper
+    0.00 :   5d6f9:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d6fe:  lea    0xa193b(%rip),%rax        # ff040 <chessengine::attacks::TABLES>
+    0.00 :   5d705:  lea    0x130(%rsp),%rcx
+    0.00 :   5d70d:  lea    0xb0(%rsp),%rdx
+    0.00 :   5d715:  lea    0x8c35c(%rip),%r8        # e9a78 <__frame_dummy_init_array_entry+0x3308>
+    0.00 :   5d71c:  mov    $0x1,%esi
+    0.00 :   5d721:  mov    %rdi,%r12
+    0.00 :   5d724:  mov    %rax,(%rcx)
+    0.00 :   5d727:  mov    %rcx,(%rdx)
+    0.00 :   5d72a:  lea    0xa294f(%rip),%rax        # 100080 <chessengine::attacks::TABLES+0x1040>
+    0.00 :   5d731:  lea    0x891b8(%rip),%rcx        # e68f0 <__frame_dummy_init_array_entry+0x180>
+    0.00 :   5d738:  mov    %rax,%rdi
+    0.00 :   5d73b:  vzeroupper
+    0.00 :   5d73e:  call   7aa10 <<std::sys::sync::once::futex::Once>::call>
+    0.00 :   5d743:  mov    %r12,%rdi
+    0.00 :   5d746:  jmp    5cdd4 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xbb4>
+    0.00 :   5d74b:  lea    0x89376(%rip),%rdx        # e6ac8 <__frame_dummy_init_array_entry+0x358>
+    0.00 :   5d752:  mov    %rax,%rdi
+    0.00 :   5d755:  vzeroupper
+    0.00 :   5d758:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d75d:  lea    -0x4ee40(%rip),%rdi        # e924 <GCC_except_table850+0x6e6c>
+    0.00 :   5d764:  lea    0x89e15(%rip),%rdx        # e7580 <__frame_dummy_init_array_entry+0xe10>
+    0.00 :   5d76b:  mov    $0x4b,%esi
+    0.00 :   5d770:  vzeroupper
+    0.00 :   5d773:  call   a0860 <core::panicking::panic_fmt>
+    0.00 :   5d778:  mov    0x108(%rdi),%rax
+    0.00 :   5d77f:  jmp    5d02c <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0xe0c>
+    0.00 :   5d784:  add    $0x8,%rax
+    0.00 :   5d788:  lea    0x892d9(%rip),%rdx        # e6a68 <__frame_dummy_init_array_entry+0x2f8>
+    0.00 :   5d78f:  mov    $0x40,%esi
+    0.00 :   5d794:  mov    %rax,%rdi
+    0.00 :   5d797:  vzeroupper
+    0.00 :   5d79a:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d79f:  add    $0x7,%rcx
+    0.00 :   5d7a3:  lea    0x892be(%rip),%rdx        # e6a68 <__frame_dummy_init_array_entry+0x2f8>
+    0.00 :   5d7aa:  mov    $0x40,%esi
+    0.00 :   5d7af:  mov    %rcx,%rdi
+    0.00 :   5d7b2:  vzeroupper
+    0.00 :   5d7b5:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d7ba:  mov    0x10(%rsp),%rdi
+    0.00 :   5d7bf:  lea    0x8a4aa(%rip),%rdx        # e7c70 <__frame_dummy_init_array_entry+0x1500>
+    0.00 :   5d7c6:  mov    $0x6,%esi
+    0.00 :   5d7cb:  vzeroupper
+    0.00 :   5d7ce:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d7d3:  lea    0x8a47e(%rip),%rdx        # e7c58 <__frame_dummy_init_array_entry+0x14e8>
+    0.00 :   5d7da:  mov    $0x40,%esi
+    0.00 :   5d7df:  mov    %rbp,%rdi
+    0.00 :   5d7e2:  vzeroupper
+    0.00 :   5d7e5:  call   a13bb <core::panicking::panic_bounds_check>
+    0.00 :   5d7ea:  neg    %edx
+    0.00 :   5d7ec:  jmp    5d43a <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>+0x121a>

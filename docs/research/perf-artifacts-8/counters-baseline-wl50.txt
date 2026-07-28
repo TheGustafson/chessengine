@@ -1,0 +1,17 @@
+# pstat8  rounds=6 nodes=300000 fens=tools/nnue/calib/wl50.fens
+# date=2026-07-28T15:24:59-04:00  uptime= 15:24:59 up 1 day,  2:57,  1 user,  load average: 0.62, 0.45, 2.00
+# arms:
+#   ours:./engines/bin/archon-s8-base @BENCH@ engines/canonical/net.cenn
+#   sf18:./engines/bin/stockfish18 @BENCH@
+round=1 arm=ours nodes=15001846 nps=1254859 instructions=106762016708 cycles=64049278925 branches=11958384006 branch_misses=330586827
+round=1 arm=sf18 nodes=15010238 nps=1913107 instructions=65003231648 cycles=42751950293 branches=5924628792 branch_misses=400277850
+round=2 arm=ours nodes=15001846 nps=1247658 instructions=106762009545 cycles=64419554405 branches=11958383931 branch_misses=338922009
+round=2 arm=sf18 nodes=15010238 nps=1890934 instructions=65003233585 cycles=43138726778 branches=5924629201 branch_misses=399372864
+round=3 arm=ours nodes=15001846 nps=1261931 instructions=106762048583 cycles=63666940076 branches=11958383792 branch_misses=332083755
+round=3 arm=sf18 nodes=15010238 nps=1923896 instructions=65003223650 cycles=42467458198 branches=5924628819 branch_misses=392869886
+round=4 arm=ours nodes=15001846 nps=1270804 instructions=106762022773 cycles=63233873315 branches=11958383123 branch_misses=330649944
+round=4 arm=sf18 nodes=15010238 nps=1933810 instructions=65003232937 cycles=42248396030 branches=5924628712 branch_misses=395050439
+round=5 arm=ours nodes=15001846 nps=1251300 instructions=106762034223 cycles=64116125358 branches=11958383660 branch_misses=332952727
+round=5 arm=sf18 nodes=15010238 nps=1899789 instructions=65003231669 cycles=42895640077 branches=5924628656 branch_misses=394923562
+round=6 arm=ours nodes=15001846 nps=1234516 instructions=106762002708 cycles=64943857710 branches=11958383824 branch_misses=338222919
+round=6 arm=sf18 nodes=15010238 nps=1897867 instructions=65003232671 cycles=42948020527 branches=5924628789 branch_misses=400900147

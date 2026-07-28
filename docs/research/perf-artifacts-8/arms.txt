@@ -1,0 +1,5 @@
+arm=base0 eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=36633073946 cycles=29697976663 branches=4075674469 nps=877940
+arm=l1nobc eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=35991058878 cycles=26520604905 branches=3861673358 nps=991993
+arm=sort eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=35974886358 cycles=26264565210 branches=3854481502 nps=1001928
+arm=uniquant eval_hash=56d6fe91313fa925 eval=**CHANGED** d13_nodes=1961283 node=**CHANGED** bench_nodes=5001556 instructions=35014708233 cycles=39411740203 branches=3886812141 nps=649215
+arm=psqtreg eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=36461356237 cycles=43783115557 branches=4087030274 nps=583893
