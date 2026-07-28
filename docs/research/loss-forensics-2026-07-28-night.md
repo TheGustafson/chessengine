@@ -1565,6 +1565,58 @@ queued behind the thing that actually produces an answer: the EVAL_SCALE game
 match. **Games do not need a referee at all**, which is why they outrank every
 number in this section.
 
+## 4a. THE SPECIFIC REASON WE LOSE — the search looks, and answers wrong
+
+Not an aggregate. For each of the 44 decidable errors, our own search was given
+the move we played and the correct move as forced root moves, at the depth the
+game actually reached:
+
+| | median |
+|---|---|
+| **oracle separation** between the two moves | **144 cp** |
+| **our search's separation** (positive = prefers the right move) | **−12 cp** |
+
+| outcome | n | share |
+|---|---|---|
+| our search actively **prefers the wrong move** | **23** | **52%** |
+| our search calls it a **tie** (< 30 cp) | 11 | 25% |
+| our search prefers the right move (and lost it anyway) | 10 | 23% |
+
+**In 77% of the moves that cost us games, more search of the same tree cannot
+help: the search already looked at both moves and returned the wrong answer or no
+answer.** That is a different defect from "we ran out of depth", and it is the one
+the classifier's DEPTH label was hiding — a move can be "found at d_find" and
+still be a move our search rates *below* the one we played.
+
+### The worked example that produced this question
+
+**g141, move 40, White** — `6k1/7p/2p5/1p3p2/1Pb1p1P1/p2rR3/P6P/4R1K1 w`.
+We played R1e2; gxf5 was correct by **226 cp**. The static evals looked damning
+(+15 for gxf5 against −416 for R1e2, a 431 cp gap in our own frame), and a clean
+search "finds" gxf5 at depth 18, so the classifier called it DEPTH.
+
+The ladder says otherwise. At depth 15 our search scores **R1e2 −303 and gxf5
+−317** — 14 cp apart, a tie — and the best move flips four times across the
+ladder (g4f5 → g1f2 → e1e2 → g4f5). **We did not miss gxf5. We looked at it, and
+our search could not tell it from the move that lost.** The 226 cp the oracle
+sees is invisible to us at every depth we can reach.
+
+### What it rules out, and what it points at
+
+- **Not depth.** 77% of these are answered wrongly at the depth we had; depth
+  changes which wrong answer, not whether it is wrong (§3j's chaos, with a
+  mechanism).
+- **Not move ordering.** Forcing the move as the only root move removes ordering
+  entirely, and the verdict is still wrong.
+- **It points at the backed-up VALUE of those specific lines** — either the eval
+  at their leaves or the pruning inside them distorting what comes back.
+
+**And it sharpens the eval question rather than closing it.** Our eval is at
+parity on random positions by three measures (§3e, §3m, §3u). These 44 are not
+random — they are selected for being positions we got wrong. An eval can be at
+parity on average and systematically wrong on exactly the set where we err, and
+nothing measured so far would have caught that.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
