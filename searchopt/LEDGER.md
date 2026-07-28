@@ -220,7 +220,8 @@ Full writeup: `results/conversion-at-equal-nodes.md`. Tool: `tools/convert.py`.
 | claim | deciding evidence |
 |---|---|
 | **"We cannot convert" is a restatement of the Elo gap, not a defect location** | 615-game colour-paired match at **110k nodes** from `d48x-plateau.epd` (the corpus's own +0.50…+1.50 band, 2 positions per squandered win at the 33rd/66th percentile of its plateau — deliberately NOT the peak). Advantaged side labelled by SF18 @1M. Conversion gap **+29** (ARCHON 18%, SF18 47%) against **+72** at 10+0.1 — and the **salvage gap is +28** (53.2% vs 81.6%). **Equal in both directions.** A conversion-specific defect makes the conversion gap the larger one |
-| The plateau positions are not where the Elo is | same book, same budget: **−54 Elo [−70, −38]** vs **−68 [−93, −43]** on the corpus openings. Indistinguishable |
+| The plateau positions are not where the Elo is | same budget: **−54.0 ± 12.8** (pentanomial, n=616) vs **−67.6 [−93, −43]** on the corpus openings. Indistinguishable. **Not** evidence we do *better* there — the plateau book draws 66% against the corpus book's 47%, and draws compress Elo; the safe claim is only that nothing about the plateau regime makes the deficit larger |
+| The whole equal-nodes ladder re-derives exactly (rule 8) | re-read today from the stored PGNs: 10k **−91.9**, 30k **−64.0**, 60k **−75.6**, 110k **−67.6**, all n=406. Unchanged |
 | The equal-nodes ladder's instrument is sound | both engines honour `go nodes` comparably (median last-info nodes 89k vs 86k at a 110k ask, n=24) |
 | We are **not** shallower, and the tree shape is the same | 40 plateau positions at 110k: depth 14.65 vs 14.95, seldepth 22.7 vs 24.9, **seldepth/depth 1.61 vs 1.60** |
 

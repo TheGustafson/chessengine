@@ -137,13 +137,25 @@ def main() -> int:
         row = {"fen": fen, "ours": m_us, "theirs": m_them, "judge": {}}
         ok = True
         for name, j in judges.items():
-            j.newgame()
-            su = forced_score(j, fen, m_us, a.judge_nodes)
-            st = forced_score(j, fen, m_them, a.judge_nodes)
+            # THE FIRST-PROBE BIAS, and why there are two defences against it.
+            # The 2026-07-28 null run came back 41-45% instead of 50% on all
+            # three judges: both moves were scored by the same judge process
+            # with no reset between them, so the second probe inherited a TT
+            # already filled by the first. Defence 1 -- reset between probes.
+            # Defence 2 -- alternate which move goes first, so whatever leaks
+            # through cancels across the sample instead of accumulating.
+            first_is_ours = (len(rows) % 2 == 0)
+            order = [m_us, m_them] if first_is_ours else [m_them, m_us]
+            sc = []
+            for mv in order:
+                j.newgame()
+                sc.append(forced_score(j, fen, mv, a.judge_nodes))
+            su, st = (sc[0], sc[1]) if first_is_ours else (sc[1], sc[0])
             if su is None or st is None:
                 ok = False
                 break
-            row["judge"][name] = {"ours": su, "theirs": st, "delta": st - su}
+            row["judge"][name] = {"ours": su, "theirs": st, "delta": st - su,
+                                  "ours_first": first_is_ours}
         if not ok:
             continue
         rows.append(row)

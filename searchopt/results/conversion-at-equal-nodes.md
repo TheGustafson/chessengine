@@ -60,9 +60,18 @@ hold, which is what a flat Elo deficit looks like — not a grinding defect.
 
 ## Overall Elo on this book
 
-**−54 Elo [−70, −38]** at 110k nodes (n=615), against **−68 [−93, −43]** on the
-corpus openings at the same budget. Statistically the same. **The positions the
-corpus says we squander are not positions we are specially bad at.**
+**−54.0 ± 12.8 Elo** at 110k nodes (n=616, fastchess pentanomial;
+`Ptnml [5, 110, 169, 23, 1]`, nElo −117.7 ± 27.4), against **−67.6 [−93, −43]**
+on the corpus openings at the same budget. Statistically the same. **The
+positions the corpus says we squander are not positions we are specially bad
+at.**
+
+Read that number *carefully in the right direction*, though: the plateau book
+draws **66%** of its games against the corpus book's **47%**, and a higher draw
+rate compresses Elo. So −54 on a 66%-draw book is **not evidence that we do
+better** in the plateau regime — if anything it understates the deficit there.
+The safe statement is the negative one: nothing about the plateau regime makes
+the deficit *larger*, which is what the "we cannot convert" framing predicts.
 
 ## What this changes
 
