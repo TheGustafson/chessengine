@@ -60,20 +60,43 @@ One position. One question. No aggregate statistics anywhere in the turn.
 From `positions/ours.json`: SF plays a sound move at our in-game budget (110k nodes) and
 we play the losing one. If SF also blunders there, it is not our defect — skip it.
 
-### Step 2 — walk the tree to the discarding node
-`tools/searchdbg.py` on the root, then follow the divergence down one ply at a time. At
-each node ask only: **does the right move get searched, and with what?** Record
-`move_index`, `final_reduction`, `scout_depth`, `lmr_research`, alpha/beta.
+### Step 2 — walk to the discarding node (ONE command)
 
-Descend while the engines disagree. Stop at the first node where the right move gets a
-full-depth search and is *still* rejected — the discarding happens at the ply above.
+```bash
+python3 searchopt/tools/walk.py --index 0        # a row of positions/ours.json
+```
 
-### Step 3 — state the decision in one sentence
-"At `<FEN>`, move `<X>` is ordered `<n>`th, reduced by `<r>`, scouted at depth `<d>` of
-`<D>`, returns `<v>` against alpha `<a>`, and is not re-searched."
+It answers the whole of step 2 by itself:
 
-If you cannot write that sentence, you have not found it yet. **Go back to step 2. Do not
-start measuring things.**
+* **whose defect is this** — the budget each engine needs to stop playing the losing
+  move. If SF also plays it at 110k it says *NOT OUR DEFECT, skip*, before you spend
+  an hour on it.
+* **the forced ladder** — both candidate moves, both engines, across node budgets, so
+  you see which side of the comparison is wrong and from what depth.
+* **the descent** — it follows SF's refutation line ply by ply until both engines
+  AGREE. That node is the bottom; the ply above manufactures the error. It prints the
+  exact `searchdbg.py` command for that node.
+
+### Step 3 — read the decisions there, and take the verdict
+
+```bash
+python3 searchopt/tools/searchdbg.py --fen "<node>" --depth 14 --moves <sf>,<ours>
+```
+
+One line per (depth, move) — the *last* decision at that depth, since aspiration
+re-searches emit several and only the last one stood. Then a **VERDICT** block that
+writes the step-3 sentence for you:
+
+> At depth 12 (ply 0), `a5a3` is ordered #1, reduced by −0.88 plies, scouted at depth 0
+> of 12, returns 598 against alpha 500, and is RE-SEARCHED.
+
+and tells you where to go next — *"ordered late AND heavily reduced → ordering is
+upstream, reduction scales with ln(move_index)"*, or *"NOT reduced → ordering and LMR are
+innocent, the error is inside this move's subtree, walk one ply deeper"*, or *"NEVER
+SEARCHED → a gate deleted it, not a reduction"*.
+
+If the verdict says the move is innocent at this node, **descend**. Do not start
+measuring things.
 
 ### Step 4 — BEFORE building an arm, break your own metric
 Write down the metric you would judge the arm on, then run the **opposite-direction arm

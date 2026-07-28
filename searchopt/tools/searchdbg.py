@@ -122,34 +122,60 @@ NODE_KIND = {0: "root", 1: "pv", 2: "nonpv"}
 
 
 def report_root(rows, interest, top=6):
-    """Per-iteration root decisions — the table that says why the root settled
-    where it did.  One line per (iteration depth, move)."""
+    """One line per (depth, move): the LAST decision at that depth.
+
+    Aspiration re-searches emit several rows per move per depth; printing them
+    all buries the decision in noise. The last row is the one that stood."""
     root = [r for r in rows if r["ply"] == 0]
     if not root:
-        print("  (no root rows — the root move loop pushes only searched moves)")
+        print("  (no root rows)")
         return
-    by_depth = defaultdict(list)
+    last = {}
     for r in root:
-        by_depth[r["depth"]].append(r)
-    print(f"\n{'d':>3} {'move':>6} {'#':>3} {'r_base':>6} {'r_fin':>5} {'ext':>3} "
-          f"{'scoutD':>6} {'scout':>7} {'final':>7} {'LMRre':>5} {'PVre':>4} "
-          f"{'a+':>2} {'b!':>2} {'nodes':>10}")
-    for d in sorted(by_depth):
-        rs = sorted(by_depth[d], key=lambda r: r["move_index"])
-        # ALL interest rows, never sliced.  A move can appear several times at
-        # one depth (aspiration re-searches), and slicing to len(interest) let
-        # two re-search rows for one move evict the other move entirely — which
-        # reads as "the move stopped being searched" and is pure display error.
-        shown = [r for r in rs if r["uci"] in interest]
-        shown += [r for r in rs if r["uci"] not in interest][:top]
-        for r in sorted(shown, key=lambda r: r["move_index"]):
+        last[(r["depth"], r["uci"])] = r        # later rows overwrite earlier
+    depths = sorted({d for d, _ in last})
+    print(f"\n{'d':>3} {'move':>7} {'idx':>4} {'reduc':>6} {'ext':>3} {'scoutD':>6} "
+          f"{'score':>7} {'re':>3} {'a+':>3} {'cut':>3} {'nodes':>9}")
+    for d in depths:
+        at_d = sorted([r for (dd, _), r in last.items() if dd == d],
+                      key=lambda r: r["move_index"])
+        shown = [r for r in at_d if r["uci"] in interest]
+        shown += [r for r in at_d if r["uci"] not in interest][:top]
+        for r in shown:
             mark = "*" if r["uci"] in interest else " "
-            print(f"{d:>3} {r['uci']:>5}{mark} {r['move_index']:>3} "
-                  f"{r['base_reduction']:>6} {r['final_reduction']:>5} {r['extension']:>3} "
-                  f"{r['scout_depth']:>6} {r['scout_score']:>7} {r['final_score']:>7} "
-                  f"{str(r['lmr_research'])[0]:>5} {str(r['pv_research'])[0]:>4} "
-                  f"{str(r['alpha_raise'])[0]:>2} {str(r['beta_cutoff'])[0]:>2} "
-                  f"{r['total_nodes']:>10,}")
+            print(f"{d:>3} {r['uci']:>6}{mark} {r['move_index']:>4} "
+                  f"{r['final_reduction']:>6} {r['extension']:>3} {r['scout_depth']:>6} "
+                  f"{r['final_score']:>7} "
+                  f"{'Y' if r['lmr_research'] or r['pv_research'] else '.':>3} "
+                  f"{'Y' if r['alpha_raise'] else '.':>3} "
+                  f"{'Y' if r['beta_cutoff'] else '.':>3} {r['total_nodes']:>9,}")
+
+
+def verdict(rows, mv):
+    """METHOD STEP 3: the one sentence, or an explicit statement of what is missing."""
+    hits = [r for r in rows if r["uci"] == mv]
+    print(f"\n=== VERDICT for {mv} ===")
+    if not hits:
+        print(f"  {mv} is NEVER SEARCHED anywhere in this trace. It is pruned before the")
+        print(f"  move loop's push at every node — a gate deleted it, not a reduction.")
+        return
+    deep = max(hits, key=lambda r: (r["depth"], -r["move_index"]))
+    RU = 1024
+    print(f"  At depth {deep['depth']} (ply {deep['ply']}), {mv} is ordered "
+          f"#{deep['move_index']}, reduced by {deep['final_reduction']/RU:+.2f} plies,")
+    print(f"  scouted at depth {deep['scout_depth']} of {deep['depth']}, returns "
+          f"{deep['final_score']} against alpha {deep['alpha']},")
+    researched = deep["lmr_research"] or deep["pv_research"]
+    print(f"  and is {'RE-SEARCHED' if researched else 'NOT re-searched'}.")
+    n_ext = sum(1 for r in hits if r["extension"] != 0)
+    print(f"  Seen at {len(hits)} nodes; extended at {n_ext}; "
+          f"median order #{sorted(r['move_index'] for r in hits)[len(hits)//2]}.")
+    if deep["move_index"] > 6 and deep["final_reduction"] > RU:
+        print(f"  >> ordered late AND heavily reduced — ordering is upstream of the reduction")
+        print(f"     (reduction scales with ln(move_index)); look at why it sorts there.")
+    elif deep["final_reduction"] <= 0:
+        print(f"  >> NOT reduced (extended, if anything). Ordering and LMR are innocent here;")
+        print(f"     the error is inside this move's SUBTREE — walk one ply deeper.")
 
 
 def report_move(rows, mv, limit=14):
@@ -202,6 +228,8 @@ def main():
                     help="NAME=VALUE, repeatable — for A/B against an arm")
     ap.add_argument("--top", type=int, default=6)
     ap.add_argument("--absent", action="store_true")
+    ap.add_argument("--verbose", action="store_true",
+                    help="also dump every node the move was searched at")
     a = ap.parse_args()
 
     interest = [m for m in a.moves.split(",") if m]
@@ -222,7 +250,9 @@ def main():
 
     report_root(rows, set(interest), top=a.top)
     for mv in interest:
-        report_move(rows, mv)
+        verdict(rows, mv)
+        if a.verbose:
+            report_move(rows, mv)
         if a.absent:
             report_absent(rows, mv)
     return 0
