@@ -508,7 +508,9 @@ arm name.
 | `offense0` (`QUIET_OFFENSE_FACTOR` 10→0) | 30k | **−1.7 [−36.0, +32.5]**, n=398 |
 | `semindepth4` (`SE_MIN_DEPTH` 6→4) | 60k | **−1.2 [−42.1, +39.6]**, n=281, stopped (null; decayed +43.7→+34.5→+19.2→−1.2 as n grew — a textbook positive partial dying) |
 | `semindepth4-110k` (same arm, in-game budget) | 110k | **+4.8 [−35.3, +44.9]**, n=291, stopped (null, matching its 60k twin) |
-| `asp30` (`ASPIRATION_BASE_DELTA` 5→30) | 110k | running |
+| `asp30` (`ASPIRATION_BASE_DELTA` 5→30) | 110k | **+10.3 [−23.5, +44.3]**, n=406 — best of the session, and UNRESOLVED: ±34 cannot separate +10 from 0. Escalated to SPRT |
+| `asp30-sprt` (same arm, properly powered) | 110k | SPRT elo0=0 elo1=5 logistic, α=β=0.05, full 2.6M-opening UHO book, random order. Running |
+| `asp100` (`ASPIRATION_BASE_DELTA` 5→100) | 110k | **−49.6 [−106.7, +4.8]**, n=155, stopped — large enough to read, and it confirms in GAMES the turnover the mechanism bracket predicted (and the aspiration doc's own "40 good, 400 worse") |
 | `asp100` (`ASPIRATION_BASE_DELTA` 5→100) | 110k | running |
 
 ⇒ **A real, nulled `fhf` improvement did NOT convert to Elo.** `QUIET_OFFENSE_FACTOR=0`
