@@ -37,7 +37,7 @@ nothing else.**
 |---|---|
 | canonical net | **D48X** (gen-2, 1280 acc) — `engines/canonical/`, promoted 2026-07-28 |
 | D48X vs D47V | −9.1 [−34.4, +16.1] over 382 games. Promoted deliberately: D48X is the better eval and loses only because the search cannot exploit it. **This is settled and is not yours to revisit** — see OUT OF SCOPE above. |
-| loss corpus | **404 games vs SF18** (−132 Elo, 174 lost games, 10,112 moves oracle-scored) → `positions/{ours,both,neither}.json`. A blunder = **wp_loss ≥ 0.06 (~88 cp) from a position better than −2.5 pawns** — a move played from an already-lost game is not a blunder, it is a loss. Expect **~47 positions**; raise `--wp-min` to 0.10 for the ~9 severe ones. |
+| loss corpus | **404 games vs SF18** (−132 Elo, 174 lost games, 10,112 moves oracle-scored) → `positions/{ours,both,neither}.json`. A blunder = **wp_loss ≥ 0.06 (~88 cp) from a position better than −2.5 pawns** — a move played from an already-lost game is not a blunder, it is a loss. Expect **roughly 20-50 positions** (soft estimate — see README); raise `--wp-min` to 0.10 for the severe subset. **Count what actually landed before quoting a number.** |
 | validated search gains so far | **none.** Every arm tried is null or refuted (`LEDGER.md`) |
 
 ## FIRST: is the corpus actually there?

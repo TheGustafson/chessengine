@@ -162,6 +162,20 @@ more games a given resolution needs. **Never read a partial match**: `rfp-threat
 
 ## 4. WHAT THE CORPUS IS
 
+**A blunder is `wp_loss ≥ 0.06` (~88 cp) from a position better than −2.5 pawns.** Both
+halves matter: the floor stops trivia counting, and the −2.5 rule stops a lost game's
+death throes counting — at that point the game was gone against SF18-class opposition and
+the move is not why we lost. Expect **roughly 20-50 positions** from a 404-game match — the estimate is soft, since the
+first 613 rows of the corrected run give 0.33% against the 1.3% the earlier (buggy) scoring
+projected, and n=613 is far too small to choose between them. `--wp-min 0.10` selects the
+severe subset.
+
+**Rarity worth knowing before you start:** only ~1.3% of our moves in still-playable
+positions clear that bar (0.16% at wp ≥ 0.10). We may be losing to accumulated pressure
+more than to discrete errors — see LEDGER OPEN.
+
+### The D47V-era split (re-derive on the new corpus; the categories hold, the shares may not)
+
 44 decidable losing moves, split at the in-game budget (110k nodes), null-bounded:
 
 | share | class | ours? |

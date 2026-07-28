@@ -17,12 +17,17 @@ frame conversion is involved anywhere (CLAUDE.md R2).
 
   cp_loss = sf_best_score - sf_our_move_score
 
-**cp_loss is NOT >= 0 by construction** -- an earlier version of this docstring
-claimed it was. The free search shares its budget across all moves while the
-forced search spends all of it on one, so the played move can score HIGHER than
-the free search's own best. Measured: 11% of rows, median -12 cp, worst -218.
-Both moves are therefore scored the SAME way now -- SF forced onto its own best
-move too -- so the comparison is symmetric.
+**cp_loss is NOT >= 0 by construction.** Both moves are forced at the same
+budget, so the comparison is symmetric -- but `best_mv` is chosen by the FREE
+search, and under individual forcing a different move sometimes scores higher.
+Measured: ~12% of rows are negative, median -18 cp, worst -136. That is a
+statement about the ORACLE's own search noise at 120k nodes, not a bug here, and
+it is harmless: a negative cp_loss gives a negative wp_loss and simply fails the
+blunder threshold.
+
+(Making the scoring symmetric did not reduce the negative rate -- 11.4% before,
+12.1% after -- which is how we learned the cause was the free-search pick rather
+than the budget asymmetry. The symmetric version is still the right comparison.)
   wp_loss = win_prob(sf_best) - win_prob(our move)
 
 **Win probability, not centipawns, is the ranking key.** Summing cp assumes
