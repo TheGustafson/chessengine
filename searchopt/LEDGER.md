@@ -188,6 +188,72 @@ drift across 172 unconverted wins. That is the failure mode the standing bar in 
 explicitly deprioritised as "leaves no trace to debug" — on this corpus it is the whole
 story. **This is a finding for the owner to rule on, not for an agent to act on unilaterally.**
 
+## THE JUDGE INSTRUMENT IS NOW VALIDATED (2026-07-28)
+
+After the `searchmoves` retraction above, `judge.py` scores the CHILD position
+(`position … moves <mv>`, plain `go`, negated) and resets + alternates probe order.
+Re-run of the NULL arm (ARCHON vs inert `RED_TABLE_NUM +1`), 2,473-position plateau
+set, judges at 1M nodes, **149 pairs**:
+
+**51.0% [42.9, 59.2]** — centred on 50, where the broken version sat at 41–45%.
+
+⇒ The instrument is sound. It was stopped short of its 340-pair arm to relieve memory
+pressure (see below); the arm is the outstanding measurement, and at ~340 pairs it
+resolves a true 55% rate, which is the size that matters (55% on the 32% of positions
+where the engines disagree, compounded over ~40 moves, is worth ~50 Elo).
+
+## ARMS (games) — running total, all signed explicitly
+
+`match.py` sorts engine names alphabetically and reports the FIRST one's score. That is
+a live sign trap; every number below was recomputed directly from the PGN against the
+arm name.
+
+| arm | budget | result |
+|---|---|---|
+| `corrgate` (`RAZOR_CORR_DIV`/`NMP_CORR_DIV` 1e9 → 182069) | 30k | **−17.1 [−51.2, +16.7]**, n=406 |
+| `setrigger` (`SE_BETA_MULT` 60→32, `SE_BETA_TTPV_MULT` 70→38) | 30k | **−16.3 [−50.4, +17.5]**, n=406 |
+| `redcorr110k` (`RED_CORR_DIV` 26131→7029) | 110k | **−13.3 [−52.2, +25.2]**, n=313, STOPPED early for memory |
+| `offense0` (`QUIET_OFFENSE_FACTOR` 10→0) | 30k | running |
+
+⇒ Four arms, every one neutral-to-negative with a CI spanning zero. Combined with the
+folder's own history (`pfut` +3.4 ± 14 at n=1529, `rfp-threat0` −3.2 ± 14 at n=1200,
+`lmr30` −11.6 at n=628), **single-knob tuning is exhausted**. Hence SPSA below.
+
+### `QUIET_OFFENSE_FACTOR = 0`: mechanism verified, tree cost noted
+The `fhf` gain is NOT a shrinking-denominator artifact — the cutoff COUNT rises too
+(fh 967,486 → 1,034,004; fhf 828,370 → 887,442; rate 0.8562 → 0.8583). But the tree
+grows with it (nodes +6.7%), and every tree-widening arm on record loses. The +6.7% is
+itself inside the 7.3% node chaos band, so it is not established either way — the game
+result is the only thing that settles this one.
+
+## SPSA `s5-ordering` LAUNCHED (2026-07-28)
+
+`tools/spsa/campaigns/s5-ordering.json` — the 16 ordering/history-shaping weights
+tuned JOINTLY, all SPSA-uncovered. Rationale: single-knob screening is exhausted
+(above), and unlike the eval-frame margins (blanket rescale refuted in BOTH directions,
+`docs/research/eval-frame-scale-model-2026-07-27.md` §11.4) these weights are
+denominated in OUR history units and scale with OUR history value distribution, so SF's
+tuned values carry no guarantee. Ordering is also the only lever that improves the tree
+WITHOUT enlarging it, which matters because the width optimum is pinned in both
+directions.
+
+Config: 3 local workers, 2000 iterations, 4 units × 1 pair, fn20k, `r_end` 0.036 (the
+launcher's own rule `r_end ≈ 0.03 × 2400/iters`; the 0.002 default returns the starting
+vector by construction). Exchange on DISK at `~/spsa-ex-s5`, never `/tmp` (tmpfs).
+Output `tools/spsa/out/s5-ordering-0728-1642/`; state in
+`~/spsa-ex-s5/state/theta-latest.json`; stop with `touch control/STOP` on the exchange.
+
+**A non-PGO `tune` build is correct here and is not a deviation from the standing PGO
+ruling:** SPSA plays fixed-NODE games with the same binary on both sides, and PGO
+changes speed, not the search tree — results are identical. PGO buys wall-clock only.
+
+**THE TOOLCHAIN WAS DEAD AND NOBODY KNEW.** `be4b6c9` ("archive 371 stale files to
+old/") moved `tools/spsa/exchange.py` into `old/`; `spsa_dist.py` imports it on line 29,
+so every distributed SPSA run since that commit dies with `ModuleNotFoundError`. That
+sweep verified "no live file references any moved path" — which cannot catch a Python
+`import`, because the module name never appears as a path. Restored in `732eac2`.
+**Re-run that sweep's check as an import check before trusting anything else in `old/`.**
+
 ## INSTRUMENT CALIBRATION — pooled nodes-to-depth is DEAD, `fhf_rate` is USABLE (2026-07-28)
 
 A 14-arm inert null panel on 120 plateau positions at fixed depth 13, using the
