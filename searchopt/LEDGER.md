@@ -214,6 +214,42 @@ SE_TT_DEPTH_SLACK` and a lower-bound entry, so a differently-populated TT change
 firing rate without any constant differing). Lowering our gate COMPENSATES for that
 without explaining it. Do not write this up as "we found the missing constant".
 
+### ⚠ AT FIXED NODES THE PICTURE CHANGES — and this is the sharper finding
+
+The "closes the whole gap" result above is at fixed DEPTH. Games run at fixed NODES,
+where every extension is paid for out of the same budget. Re-measured at fixed nodes,
+100 plateau positions:
+
+| 110k nodes | nominal depth | seldepth |
+|---|---|---|
+| ARCHON base | 14.54 | 22.91 |
+| `SE_MIN_DEPTH=4` | 14.02 (−0.52) | 23.37 (+0.46) |
+| `SE_TT_DEPTH_SLACK=6` | 13.60 (−0.94) | 23.12 (+0.21) |
+| **SF18** | **14.80** | **25.22** |
+
+(60k: base 13.09/20.01; se4 12.57/21.14; slack6 12.14/20.78.)
+
+Three consequences, in order of importance:
+
+1. **SF18 is PARETO-SUPERIOR on (nominal depth, selective depth) at equal nodes** —
+   more of BOTH (14.80/25.22 vs 14.54/22.91). Every knob of ours **trades along that
+   frontier**, buying selective depth only by spending nominal depth. **Nothing tried
+   this session moves us TOWARD the frontier; it all moves us ALONG it.** That is the
+   sharpest statement of the search deficit found so far, and it explains why five
+   consecutive arms came back null: a pure reallocation between two things that are
+   both already behind cannot gain.
+2. **`se4` closes ~20% of the seldepth gap at fixed nodes**, not ~100%. The fixed-depth
+   number (8.74 vs SF's 8.82) is real but answers a different question. **State which
+   budget regime a mechanism number was measured in — they disagree by 5×.**
+3. **`SE_TT_DEPTH_SLACK=6` is DOMINATED and is dropped without a match**: it costs
+   nearly twice the nominal depth of `SE_MIN_DEPTH=4` (−0.94 vs −0.52) and buys less
+   selective depth (+0.21 vs +0.46). One cheap measurement killed a queued 406-game run.
+
+⇒ The open question is no longer "how do we extend more" but **"how does SF get +2.3
+plies of selective depth at the SAME nominal depth and the same nodes"** — i.e. its
+extensions are better TARGETED, not merely more frequent. Firing rate is the wrong
+axis; which nodes get extended is the right one.
+
 ### Which gate condition binds? BOTH — and the TT one binds hard
 `SE_TT_DEPTH_SLACK` (the `tt.depth >= depth − slack` condition) relaxed alone, same
 120 positions, same ±0.15 null band:
