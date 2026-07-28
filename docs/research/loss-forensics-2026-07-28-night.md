@@ -685,6 +685,62 @@ Two thirds of decidable errors being depth-fixable (§3i) is the same statement
 arrived at from the corpus: make the search see more per second, and the
 distribution improves. Nothing else on the table does.
 
+## 3k. A NEW MODE — carried search state costs us moves, and it is the HISTORY tables
+
+The one thing tonight that survived its own null panel.
+
+**The observation.** 11 of 29 depth-fixable errors are found by a COLD search at
+or below the depth the game itself reached. That is not evidence on its own — the
+corpus selects positions where the game erred, and with a chaotic argmax a cold
+search would land right some of the time by luck. So the control holds position
+and depth fixed and varies ONLY the state: `cold` (ucinewgame, search directly)
+against `replay` (feed the real game's moves, searching at every one of ours, so
+TT and histories arrive as the game left them).
+
+| outcome | n | share |
+|---|---|---|
+| both_bad | 23 | 52.3% |
+| **cold_ok_replay_bad** | **11** | **25.0%** |
+| both_ok | 7 | 15.9% |
+| replay_ok_cold_bad | 3 | 6.8% |
+
+**11 vs 3 discordant, McNemar two-sided p ≈ 0.057.** Reproduced as counts:
+**cold 18/44, replay 10/44.** Carried state costs ~8 of 44 decidable errors.
+
+*(A round-indexing bug had to be fixed first: fastchess `-repeat -games 2` puts
+TWO games under one round number, and keeping only the first silently dropped 26
+of 44 rows. At half power the split was 5–3, p ≈ 0.23 — indistinguishable from
+noise. The finding exists only because the bug was found.)*
+
+**Which state?** Two candidates were separable by option, and both were tested:
+
+| arm | found /44 | what it isolates |
+|---|---|---|
+| cold | **18** | nothing carried |
+| replay + `Clear Hash` | 12 | histories carried, **TT fresh** |
+| replay | 10 | everything carried |
+| replay, correction history ZEROED | **6** | corr history removed |
+| cold, correction history ZEROED | 16 | — |
+
+- **TT staleness accounts for ~2 of the 8** (10 → 12 with a fresh TT).
+- **The move-ordering history tables account for ~6 of the 8 (75%).**
+- **Correction history is EXONERATED and is actively earning its place**: zeroing
+  it makes replay *worse* (10 → 6) and cold worse (18 → 16). That was my first
+  hypothesis and it is refuted in the opposite direction.
+
+**The mechanism, stated as a hypothesis with a test.** Butterfly / continuation /
+pawn / low-ply history generalise across positions by design, which is why they
+are not cleared between moves. The proposal is that ours decays too SLOWLY, so
+preferences learned earlier in the game mis-order moves later. That is testable
+with the history-update knobs (bonus, malus, decay numerators, the continuation
+divisor) against the 18-versus-10 target, with a null arm to keep it honest.
+
+**Why this one is worth believing when nothing else tonight was:** it is the only
+result that survived a null panel. The gate hypothesis died because inert ±1
+changes matched the real arms; here the comparison is not between parameter
+values at all — it is the same binary on the same positions at the same depth,
+differing only in what it was allowed to remember.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
