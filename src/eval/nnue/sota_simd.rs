@@ -30,6 +30,15 @@ type ApplyI16Fn = fn(&mut [i16; ACC], &[i16], &[usize], &[usize]);
 // (profiling-study §4.3/opt #2). `dst`/`src` may not alias.
 type ApplyI16IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i16], &[usize], &[usize]);
 type ApplyI8IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i8], &[usize], &[usize]);
+// TWO-DESTINATION in-place apply (perf study 9 item 4): `acc ±= deltas`, and
+// the result is ALSO written to `out`. The Finny cached refresh needs the same
+// bytes in two places — the cache entry (its memo for the next refresh with
+// this king key) and the search stack's accumulator slot — and used to get
+// there by folding in place and then `memmove`ing 2×1280 i16 to the stack.
+// Both destinations are written from the SAME registers the fold already
+// holds, so the second home costs one store per block instead of a whole
+// read+write pass. `acc` and `out` may not alias.
+type ApplyI16DualFn = fn(&mut [i16; ACC], &mut [i16; ACC], &[i16], &[usize], &[usize]);
 type L1DotFn = fn(&mut [i32; L2], &[u8; ACC], &[u16], &[i8]);
 type ActivateFn = fn(&mut [u8; ACC], &[[i16; ACC]; 2], &[[i16; ACC]; 2], usize);
 type FindNnzFn = fn(&[u8; ACC], &mut [u16; ACC / 4]) -> usize;
@@ -61,6 +70,7 @@ type SkipDotFn = fn(&[u8], &[i8]) -> i32;
 struct Kernels {
     i16_deltas: ApplyI16Fn,
     i16_deltas_into: ApplyI16IntoFn,
+    i16_deltas_dual: ApplyI16DualFn,
     i8_deltas_into: ApplyI8IntoFn,
     l1_dot: L1DotFn,
     activate: ActivateFn,
@@ -154,6 +164,20 @@ pub(crate) fn apply_i16_deltas_into(
     subs: &[usize],
 ) {
     kernel_dispatch!(i16_deltas_into(dst, src, weights, adds, subs))
+}
+
+/// Two-destination in-place apply: `acc ±= deltas`, and the same result is
+/// written to `out` as well (perf study 9 item 4). See [`ApplyI16DualFn`].
+/// `acc` and `out` must not alias.
+#[inline]
+pub(crate) fn apply_i16_deltas_dual(
+    acc: &mut [i16; ACC],
+    out: &mut [i16; ACC],
+    weights: &[i16],
+    adds: &[usize],
+    subs: &[usize],
+) {
+    kernel_dispatch!(i16_deltas_dual(acc, out, weights, adds, subs))
 }
 
 /// Fused copy+apply for the FullThreats (i8-weight) fold.
@@ -331,6 +355,26 @@ mod scalar {
         }
     }
 
+    pub(super) fn i16_deltas_dual(
+        acc: &mut [i16; ACC],
+        out: &mut [i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        for lane in 0..ACC {
+            let mut value = acc[lane];
+            for &feature in adds {
+                value = value.wrapping_add(weights[feature * ACC + lane]);
+            }
+            for &feature in subs {
+                value = value.wrapping_sub(weights[feature * ACC + lane]);
+            }
+            acc[lane] = value;
+            out[lane] = value;
+        }
+    }
+
     pub(super) fn i8_deltas_into(
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
@@ -473,6 +517,7 @@ mod scalar {
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i16_deltas_into,
+        i16_deltas_dual,
         i8_deltas_into,
         l1_dot,
         activate,
@@ -517,6 +562,45 @@ mod avx2 {
                 _mm256_storeu_si256(acc.as_mut_ptr().add(off).cast(), value);
             }
         }
+    }
+
+    #[target_feature(enable = "avx2")]
+    unsafe fn i16_deltas_dual_inner(
+        acc: &mut [i16; ACC],
+        out: &mut [i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // `i16_deltas_inner` with a second store per block — same loads, same
+        // per-lane wrapping adds in the same order, so bit-identical.
+        // SAFETY: as `i16_deltas_inner`; `out` is a disjoint ACC-wide array.
+        unsafe {
+            for off in (0..ACC).step_by(LANES) {
+                let mut value = _mm256_loadu_si256(acc.as_ptr().add(off).cast());
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value = _mm256_add_epi16(value, _mm256_loadu_si256(row.cast()));
+                }
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value = _mm256_sub_epi16(value, _mm256_loadu_si256(row.cast()));
+                }
+                _mm256_storeu_si256(acc.as_mut_ptr().add(off).cast(), value);
+                _mm256_storeu_si256(out.as_mut_ptr().add(off).cast(), value);
+            }
+        }
+    }
+
+    pub(super) fn i16_deltas_dual(
+        acc: &mut [i16; ACC],
+        out: &mut [i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // SAFETY: installed only after runtime avx2 detection.
+        unsafe { i16_deltas_dual_inner(acc, out, weights, adds, subs) }
     }
 
     #[target_feature(enable = "avx2")]
@@ -645,7 +729,12 @@ mod avx2 {
         }
     }
 
-    fn i16_deltas(acc: &mut [i16; ACC], weights: &[i16], adds: &[usize], subs: &[usize]) {
+    pub(super) fn i16_deltas(
+        acc: &mut [i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
         // SAFETY: installed only after runtime AVX2 detection.
         unsafe { i16_deltas_inner(acc, weights, adds, subs) }
     }
@@ -932,6 +1021,7 @@ mod avx2 {
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i16_deltas_into,
+        i16_deltas_dual,
         i8_deltas_into,
         l1_dot,
         activate,
@@ -1007,6 +1097,75 @@ mod avx512 {
                 off += LANES;
             }
         }
+    }
+
+    #[target_feature(enable = "avx512f,avx512bw")]
+    unsafe fn i16_deltas_dual_inner(
+        acc: &mut [i16; ACC],
+        out: &mut [i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // `i16_deltas_inner` with a second store per block. Same loads, same
+        // 8-register tile, same per-lane wrapping adds in the same order ⇒
+        // bit-identical to fold-then-copy, at one extra store per 32 lanes
+        // instead of a 2560 B memmove (perf study 9 item 4).
+        // SAFETY: as `i16_deltas_inner`; `out` is a disjoint ACC-wide array.
+        unsafe {
+            const REGS: usize = 8;
+            let tile = LANES * REGS;
+            let mut off = 0;
+            while off + tile <= ACC {
+                let mut v = [_mm512_setzero_si512(); REGS];
+                for (k, vk) in v.iter_mut().enumerate() {
+                    *vk = _mm512_loadu_si512(acc.as_ptr().add(off + k * LANES).cast());
+                }
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    for (k, vk) in v.iter_mut().enumerate() {
+                        *vk = _mm512_add_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                    }
+                }
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    for (k, vk) in v.iter_mut().enumerate() {
+                        *vk = _mm512_sub_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                    }
+                }
+                for (k, vk) in v.iter().enumerate() {
+                    _mm512_storeu_si512(acc.as_mut_ptr().add(off + k * LANES).cast(), *vk);
+                    _mm512_storeu_si512(out.as_mut_ptr().add(off + k * LANES).cast(), *vk);
+                }
+                off += tile;
+            }
+            while off < ACC {
+                let mut value = _mm512_loadu_si512(acc.as_ptr().add(off).cast());
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value = _mm512_add_epi16(value, _mm512_loadu_si512(row.cast()));
+                }
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
+                }
+                _mm512_storeu_si512(acc.as_mut_ptr().add(off).cast(), value);
+                _mm512_storeu_si512(out.as_mut_ptr().add(off).cast(), value);
+                off += LANES;
+            }
+        }
+    }
+
+    pub(super) fn i16_deltas_dual(
+        acc: &mut [i16; ACC],
+        out: &mut [i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // SAFETY: installed only after runtime avx512f+bw+vnni detection (or
+        // compiled with the features statically enabled).
+        unsafe { i16_deltas_dual_inner(acc, out, weights, adds, subs) }
     }
 
     #[target_feature(enable = "avx512f,avx512bw")]
@@ -1527,6 +1686,7 @@ mod avx512 {
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i16_deltas_into,
+        i16_deltas_dual,
         i8_deltas_into,
         l1_dot,
         activate,
@@ -1666,6 +1826,62 @@ mod tests {
             let mut dispatched = seed;
             apply_i16_deltas(&mut dispatched, &weights, a, s);
             assert_eq!(dispatched, reference, "adds={} subs={}", a.len(), s.len());
+        }
+    }
+
+    /// The two-destination Finny kernel (perf study 9 item 4) must equal
+    /// "fold in place, then copy" on BOTH of its homes, on every backend the
+    /// CPU offers. The point of the kernel is that the second destination is
+    /// written from the fold's own registers, so a backend that wired the
+    /// stores up wrongly would silently desync the search stack from the cache
+    /// — and that desync survives no test the engine had, because the two are
+    /// only compared at the NEXT refresh with the same king key.
+    #[test]
+    fn dual_kernel_writes_both_homes_identically_on_every_backend() {
+        const ROWS: usize = 11;
+        let mut weights = vec![0i16; ROWS * ACC];
+        for (i, value) in weights.iter_mut().enumerate() {
+            *value = (i as u16).wrapping_mul(40503) as i16;
+        }
+        let seed: [i16; ACC] = std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
+        let adds: Vec<usize> = (0..240).map(|i| (i * 7) % ROWS).collect();
+        let subs: Vec<usize> = (0..200).map(|i| (i * 5 + 3) % ROWS).collect();
+
+        #[allow(clippy::type_complexity)]
+        let mut backends: Vec<(&str, ApplyI16Fn, ApplyI16DualFn)> =
+            vec![("scalar", scalar::i16_deltas, scalar::i16_deltas_dual)];
+        #[cfg(target_arch = "x86_64")]
+        {
+            if std::arch::is_x86_feature_detected!("avx2") {
+                backends.push(("avx2", avx2::i16_deltas, avx2::i16_deltas_dual));
+            }
+            if std::arch::is_x86_feature_detected!("avx512f")
+                && std::arch::is_x86_feature_detected!("avx512bw")
+            {
+                backends.push(("avx512", avx512::i16_deltas, avx512::i16_deltas_dual));
+            }
+        }
+
+        for (a, s) in [
+            (&adds[..], &subs[..]),
+            (&adds[..96], &subs[..96]),
+            (&adds[..0], &subs[..0]),
+        ] {
+            let mut reference = seed;
+            scalar::i16_deltas(&mut reference, &weights, a, s);
+            for (name, single, dual) in &backends {
+                // The single-destination kernel is the same arithmetic, so it
+                // pins the dual against BOTH scalar and its own backend.
+                let mut own = seed;
+                single(&mut own, &weights, a, s);
+                assert_eq!(own, reference, "{name} single, adds={}", a.len());
+
+                let mut acc = seed;
+                let mut out = [0i16; ACC];
+                dual(&mut acc, &mut out, &weights, a, s);
+                assert_eq!(acc, reference, "{name} dual in-place home");
+                assert_eq!(out, reference, "{name} dual second home");
+            }
         }
     }
 

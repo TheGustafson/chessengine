@@ -10,7 +10,7 @@
 
 use super::sota_features::{ACC, halfka_index, halfka_king_key};
 use super::sota_head::BUCKETS;
-use super::sota_simd::{apply_i16_deltas, apply_i16_deltas_into};
+use super::sota_simd::{apply_i16_deltas, apply_i16_deltas_dual, apply_i16_deltas_into};
 use crate::bitboard::Bitboard;
 use crate::board::{Board, DirtyPiece};
 use crate::types::{Color, MAX_PLY, Piece, PieceType, Square};
@@ -280,7 +280,15 @@ impl<'a> HalfkaContext<'a> {
         let key = halfka_king_key(perspective, king);
         let weights = self.weights;
         let psqt_weights = self.psqt_weights;
-        let slot = &mut self.cache[perspective as usize * FINNY_KEYS + key];
+        // Split the borrow so the fold can write the cache entry AND the stack
+        // slot in one pass (perf study 9 item 4). `cache` and `stack` are
+        // distinct fields, so destructuring is what makes two `&mut` legal
+        // here — the idiomatic Rust answer to "I need two disjoint pieces of
+        // self at once", and no `unsafe`.
+        let Self {
+            cache, stack, bias, ..
+        } = self;
+        let slot = &mut cache[perspective as usize * FINNY_KEYS + key];
         if let Some(cached) = slot.as_mut() {
             // Option A (perf study #2): bitboard set-diff against the cached
             // position. Same add/sub SETS as the old sorted-list derivation
@@ -309,7 +317,22 @@ impl<'a> HalfkaContext<'a> {
                     cached.by_piece[color as usize][pt as usize] = new_bb;
                 }
             }
-            apply_i16_deltas(&mut cached.acc, weights, &adds[..add_len], &subs[..sub_len]);
+            // Two-destination fold (perf study 9 item 4): the cache entry is
+            // its own memo for the next refresh with this king key, and the
+            // stack slot is what the head reads — the same 2560 bytes in two
+            // places. Folding in place and then assigning the stack slot spent
+            // a full `memmove` (measured at **102.9 instructions/node**, i.e.
+            // 1.45% of ALL engine instructions, by a black_box'd doubled-copy
+            // probe; the naive doubled assignment measured +0.006% because
+            // dead-store elimination removed it). Writing both homes from the
+            // registers the fold already holds costs one store per 32 lanes.
+            apply_i16_deltas_dual(
+                &mut cached.acc,
+                &mut stack[ply].acc[perspective as usize],
+                weights,
+                &adds[..add_len],
+                &subs[..sub_len],
+            );
             // T6c: the cache's PSQT sums see the SAME add/sub set, so a cached
             // refresh restores the skip channel exactly (the corruption trap
             // the deploy contract calls out).
@@ -324,9 +347,13 @@ impl<'a> HalfkaContext<'a> {
                 }
                 cached.psqt = acc;
             }
+            // The accumulator is already in the stack slot (the dual fold put
+            // it there); only the 32-byte PSQT pair is left to publish.
+            stack[ply].psqt[perspective as usize] = cached.psqt;
+            return;
         } else {
             let mut acc = [0i16; ACC];
-            acc.copy_from_slice(&self.bias[..ACC]);
+            acc.copy_from_slice(&bias[..ACC]);
             let mut adds = [0usize; 32];
             let mut len = 0usize;
             let mut by_piece = [[Bitboard::EMPTY; 6]; 2];
@@ -351,9 +378,13 @@ impl<'a> HalfkaContext<'a> {
                 by_piece,
             });
         }
+        // COLD path only (the slot was empty): one from-scratch build, then the
+        // single copy into the stack. Leaving it as a copy is deliberate — the
+        // cold branch runs once per king key per search, so a second kernel
+        // variant here would buy nothing.
         let cached = slot.as_ref().expect("slot filled above");
-        self.stack[ply].acc[perspective as usize] = cached.acc;
-        self.stack[ply].psqt[perspective as usize] = cached.psqt;
+        stack[ply].acc[perspective as usize] = cached.acc;
+        stack[ply].psqt[perspective as usize] = cached.psqt;
     }
 }
 
