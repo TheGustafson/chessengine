@@ -687,6 +687,7 @@ rev as §6.1.
 | **7.9 The `l1_dot` raw-pointer trick generalises to the PSQ1 row** | It does not. Dropping the length check with a pointer cast measured **+2.2%** — the slice index is where LLVM gets the aliasing facts that keep the surrounding fold optimised. §4.4's safe `try_into` form, paired with a register-resident accumulator, is what pays. An instrument that won once is not a technique. |
 | **7.10 The null-move / empty-delta parent→child copy in a fold span is waste** | It is a MEMOIZATION, not waste. Skipping it (tracking a per-perspective source ply and leaving the empty ply uncomputed) is bit-exact and node-identical and measured **+1.04%**: every later fold from that ply then walks back past it and re-folds a longer span, repeatedly, instead of paying one 2560 B copy once. Implemented on both the HalfKA and threat stacks; REVERTED. |
 | **"the ~4.9% in the net format needs a retrain"** — this study's own §5, first revision | Wrong, and it was the most expensive wrong thing in the first write-up. Both items were implementable without touching the trainer: the frame ratio is a *constant* (§4.5, −2.43%) and the skip lane is *thirty lines in the loader* (§4.6, −1.89%). What they needed was not a retrain but a different gate — cp fidelity over 800 positions instead of a bit-exact hash. |
+| **7.11 Store the threat rows pre-widened as i16, deleting the fold's `vpmovsxbw`** | The fold is `vpmovsxbw` + `vpaddw` per 32 lanes per row — literally half its inner work is widening i8 to i16 — so storing the table at i16 halves it. Implemented (loader widens once at parse; the threat fold then calls the existing `apply_i16_deltas_into`), bit-exact, tests green, and measured **−2.10% instructions**. It still LOSES, and only a cache measurement can see why — the table goes 78 MB → 155 MB against a 32 MB L3: <br><br>`instructions 7105.7 → 6956.5/node (ratio 0.979, 5/5 rounds favouring i16)`<br>`cache-misses    65.0 →   88.7/node (ratio 1.299, 1/5)`<br>`cycles        4989.9 → 5392.6/node (ratio 1.078, 1/5)`<br><br>REVERTED. This is the one place in the study where instructions and the truth disagree, and it is worth stating plainly: **an instruction count cannot arbitrate a change that trades memory for ALU.** `scripts/cache8.sh` exists for exactly this shape and should be reached for whenever a candidate makes a table bigger. It also answers a question the study kept asking sideways — *why* the trainer exports threats at i8 rather than in HalfKA's frame. Not accuracy. Footprint. |
 | SMP scaling | still UNMEASURED; the box was quiet for 40 minutes of this session and contended for the rest. Unchanged since study 7. |
 
 ---
@@ -777,13 +778,12 @@ The four items below are what is left of the +2,438 i/n, after this study took
 study its first revision (§7, last row).
 
 1. **`at_full`'s replay plumbing** — ~5.7% of the engine, and SF18 has no
-   equivalent stage at all. Its fold half is at parity per instruction
-   (`vpmovsxbw` + `vpaddw` is the floor for i8 rows); the plumbing half —
-   `build_deltas` regenerating the events from a snapshot, then `resolve_into`
-   computing a perspective-relative index per event — is the target. The i16
-   threat-row variant (which would delete the `vpmovsxbw`) is priceable in an
-   afternoon and needs a cache measurement, not an argument: it doubles a 78 MB
-   table.
+   equivalent stage at all. Its fold half is now known to be at its floor: it
+   is `vpmovsxbw` + `vpaddw` per 32 lanes per row, and the obvious way to
+   delete the widen — storing the rows at i16 — was implemented and **loses on
+   cache** (§7.11). So the target is the plumbing half: `build_deltas`
+   regenerating events from a snapshot, then `resolve_into` computing a
+   perspective-relative index per event.
 2. **Unify the two threat systems** (§5 item 8). We maintain the Wave-G board
    map *and* the NNUE FullThreats event stream separately, 397 i/n for the two,
    against SF18's single `update_piece_threats` at 304 for the same two jobs.
