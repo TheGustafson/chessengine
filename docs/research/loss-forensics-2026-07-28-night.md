@@ -546,6 +546,67 @@ from a different comparison. **A net trained without the threat channel at the
 same width is the one experiment that would settle it**, and nothing tonight
 substitutes for it.
 
+## 3i. THE MECHANISM HISTOGRAM — every failure mode, counted
+
+`harvest2` over corpus-v2 (320 games, 8,548 of our moves in lost games, cold
+1M-node oracle, positive control passed at 258 cp) found **278 errors >= 100 cp
+(3.3%)**. `classify.py` then split them:
+
+| verdict | n | share of all |
+|---|---|---|
+| **ALREADY_LOST** (best move still leaves wp < 0.10) | **218** | **78.4%** |
+| MINOR_WP (< 0.08 wp lost) | 16 | 5.8% |
+| DEPTH_vs_EVAL | 15 | 5.4% |
+| DEPTH | 14 | 5.0% |
+| **SEARCH_REJECTS** | 10 | 3.6% |
+| EVAL | 5 | 1.8% |
+
+**Of the 44 DECIDABLE errors:**
+
+| verdict | n | share | what fixes it |
+|---|---|---|---|
+| DEPTH_vs_EVAL | 15 | 34.1% | plies (a better eval would do it cheaper) |
+| DEPTH | 14 | 31.8% | plies — speed or clock |
+| **SEARCH_REJECTS** | **10** | **22.7%** | **a search MECHANISM change, nothing else** |
+| EVAL | 5 | 11.4% | a better net |
+
+| phase | DEPTH | DEPTH_vs_EVAL | SEARCH_REJECTS | EVAL |
+|---|---|---|---|---|
+| 21+ | 4 | 6 | 3 | 1 |
+| 13–20 | 7 | 6 | **6** | 1 |
+| 8–12 | 3 | 2 | 1 | 1 |
+| ≤7 | 0 | 1 | 0 | **2** |
+
+### What it says, and it corroborates every aggregate finding
+
+- **Two thirds of real errors are depth-fixable** (29 of 44). That is the same
+  answer as §3b-FIXED (we are 1.24–1.51× slower) and §2 (we reach move 45 with
+  35% of their clock) arriving from a completely different direction.
+- **Only 11% are eval** — and 2 of those 5 sit at ≤7 pieces. Consistent with
+  §3e/§3g: eval is at parity, and what little eval weakness exists is in the
+  endgame.
+- **23% are SEARCH_REJECTS**, concentrated at 13–20 pieces (6 of 10). This is
+  the bucket §3f predicted from the marginal-return curve: the search discards
+  what the eval already knows. It is the only bucket a mechanism change is
+  needed for, and it now has **ten instances — enough for the
+  three-independent-losses rule** for the first time.
+
+### A correction to the standing blunder rate
+
+The bar in `CLAUDE.md` cites "1.5% of our moves lose >= 100 cp — about ONE per
+lost game", from a 260-move sample. At 8,548 moves the raw rate is 3.3%, but
+**78.4% of those are in positions where the best move still leaves us under 10%
+win probability.** Those are not defects; they are the consequence of a UHO book
+that hands us the losing side (§1: our eval at the first move out of book in a
+lost game is already median −2.20) plus having already lost.
+
+The decidable-error rate is **44/8,548 = 0.51% of moves, ~0.14 per lost game**.
+
+This does not soften the bar — 44 real errors in 320 games is 44 too many, and
+the bar is about not tolerating them rather than about their rate. But the rate
+should be quoted correctly, and "one blunder per lost game" is roughly 7× too
+high because it counted moves in dead positions.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
