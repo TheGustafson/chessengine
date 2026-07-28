@@ -83,6 +83,16 @@ crate::tunables! {
     /// repaired by any constant and is deliberately NOT wired here.
     ///
     /// Theory puts the optimum near 594 (= 0.58); 1024 is the control.
+    ///
+    /// **WARNING (2026-07-27, verified by grep): `frame_scale` /
+    /// `frame_expand` / `frame_scale_i64` have ZERO call sites outside this
+    /// file.** Moving FRAME_S changes NOTHING — a sweep of it measures a
+    /// guaranteed null (a false-negative generator, not just dead code). The
+    /// rescale hypothesis was refuted five other ways (tuning-audit
+    /// 2026-07-27), so the transforms were never wired; do not put this knob
+    /// in an SPSA campaign, and do not cite a FRAME_S sweep as evidence about
+    /// the frame. If the hypothesis ever returns with a new mechanism, wire
+    /// the transforms first and prove non-identity with a sweep that MOVES.
     pub FRAME_S: Value = 1024;
 
     // --- Aspiration windows (design/07 §3.6) ---
