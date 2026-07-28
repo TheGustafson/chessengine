@@ -43,6 +43,11 @@ a fix.
 
 ## Standing research-method bar: NULL FIRST, GAMES ARBITRATE (user, 2026-07-28)
 
+**Live session state: `docs/research/TAKEOVER-2026-07-28.md`** — running matches,
+what is established, what is REFUTED (several headline facts from that night's
+own notes are retracted later in the same file), and what to do next.
+
+
 **On 2026-07-28 I spent eight hours producing ~130 measurement scripts, ZERO
 completed game results, zero strength changes, and NINE retracted claims.**
 The full post-mortem is
