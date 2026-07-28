@@ -1155,6 +1155,37 @@ refuses to run until it re-detects game 18.
    move with eval cost. Wall clock on a quiet box, or nothing.
 3. **Fix `param_provenance.py` coverage** to count runs, not config membership.
 
+## 6c. TRAINING RUN + AN OPERATIONAL RISK
+
+**D48X is complete and no trainer is running.** `TRAIN EXIT 0`, sb520/520,
+heldout value 0.006350 = ema 0.006350; the final artifact is
+`data/nnue/experiments/d48x-1280/d48x-1280-sb520-ema-quant.bin`. The only live
+units are the TB shim and the TB server, both tailing a finished log — harmless
+but idle. Its already-recorded verdict stands: better than d47v *and* SF18 on the
+net-only suite, equal-node +8.9 ± 17, **equal-time −12.6 ± 17 — not a gain.**
+
+**Tonight's evidence bears directly on what that program should do next.** D48X
+is a 1280-wide FullThreats net, and the two measurements that matter for it now
+point the same way:
+
+- our eval is **at parity with Stockfish's in every phase** (§3e), so more eval
+  capacity is buying something we do not appear to be short of;
+- the threat channel costs **1.482× speed in the middlegame** (§3h), the phase
+  where our equal-node quality gap is worst (§3g).
+
+So the marginal net program is spending speed on eval quality that measures as
+already-sufficient. **The indicated next net is threats-FREE at the same width**
+— which is also the one experiment that would close the D49 gate honestly, since
+exp-0065's +32.5 ± 17.3 was never isolated to threats.
+
+**Operational risk, flagged not acted on:** the disk is at **98%, 22 GB free of
+937 GB**. `data/nnue/experiments/` holds ~105 GB in its top five directories
+alone, and d48x-1280 is 40 GB across **144 checkpoints** of which four (the sb520
+quartet) are the ones anything references. Pruning intermediate checkpoints is
+the obvious reclaim, but deleting training artifacts is not reversible and is not
+mine to decide. Nothing currently running is at risk (the 12k oracle writes
+~17 MB), but the next big build or PGO link could fail on ENOSPC.
+
 ## 7. STATE
 
 | thing | state |
