@@ -1223,6 +1223,51 @@ with an eval at parity and every compared structure identical. That is either th
 accumulation of many sub-parity differences, or something not yet compared — and
 it is the honest edge of the model, not a gap I can name.
 
+## 3x. THE PROPERTY NO rho COULD SEE — our eval is COMPRESSED ~2x
+
+Three eval measurements read "parity" (§3e, §3m, §3u). All three are rank
+correlations, and **a rank correlation is scale-free by construction.** So all
+three were structurally incapable of seeing a calibration error. The fitted
+slopes, which were sitting in the same tables the whole time, say there is one:
+
+| against deep truth | 21+ | 13–20 | 8–12 | ≤7 |
+|---|---|---|---|---|
+| ARCHON slope | 0.39 | 0.43 | 0.51 | 0.55 |
+| **SF18 slope** | **0.87** | **0.95** | **1.09** | **1.19** |
+
+**Stockfish's static eval is calibrated to the value it predicts (slope ≈ 1).
+Ours is compressed by roughly half.** Both engines' statics regress toward the
+deep mean, which is why neither is exactly 1 — but ours regresses twice as hard.
+
+**Why that is a search defect and not a cosmetic one.** Every cp threshold in the
+search — razoring 465, the futility bases, the RFP margins, the aspiration delta
+— was transcribed from Stockfish and meets our eval in a space where the same
+real advantage reads half as large. It is the same class as the aspiration
+`mss` divisor that shipped tonight, but global rather than one constant.
+
+**And the fix is one knob, not 260.** `EVAL_SCALE` (default 1024 = identity)
+multiplies the eval before it meets any threshold. It is **monotone**, so the
+net's ranking of positions and moves is untouched — which is precisely why the
+three rho measurements could not detect the problem and why this knob cannot
+break what they measured. Its own doc comment already reasoned to the region:
+"theory puts the interesting region near 1764 (= 1/0.58)". Tonight's slope ratio
+puts it near **2200**. **It is in the never-campaigned set.**
+
+**Verified live before planning around it**: at fixed depth the node count swings
+28k–108k in a middlegame position across 1024→2800, and the best move changes —
+a far larger structural effect than any margin arm tested tonight.
+
+**Under test now** at a realistic 200k budget, with `EVAL_SCALE=700` included as
+the falsification arm (compress *further*). `pfinv` earned that habit: the arm
+built to falsify a frame derivation was the one that won.
+
+**Honest caveat.** Five frame formulations are already on the refuted list, and
+the pfut margin rescale died in 1,483 games. But those moved MARGINS toward the
+eval; this moves the EVAL toward the margins, and it is the only formulation that
+fixes every threshold simultaneously and coherently. Also, `FRAME_S` — the knob
+those campaigns swept — has **zero call sites** (§4 of the transition doc), so
+"the frame was tested" may be less true than the refuted list implies.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
