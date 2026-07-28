@@ -367,6 +367,41 @@ the ~138 Elo are search.** Better nets address approximately none of the
 measured gap, in any phase. That is the sharpest strategic result of the night
 and it is now safe to act on.
 
+## 3f. THE MECHANISM — our marginal return on search effort is lower
+
+`--reference` across a 16x node range, openings corpus (no mate contamination
+there, so the cp means are clean):
+
+| budget | ARCHON cp | SF18 cp | headroom | ARCHON top-1 | SF18 top-1 | top-1 gap |
+|---|---|---|---|---|---|---|
+| 3k | 10.33 | 9.51 | −0.82 ± 0.5 | 56.6% | 58.0% | 1.4 pts |
+| 12.5k | 6.72 | 5.48 | −1.24 ± 0.3 | 62.1% | 64.3% | 2.2 pts |
+| 50k | 4.49 | 3.52 | −0.97 ± 0.2 | 66.9% | **70.6%** | **3.7 pts** |
+
+Two readings, and they agree:
+
+- **The cp headroom does not shrink with budget.** If our deficit were "we need
+  more nodes", 16x the nodes would close it. It does not move (0.82 / 1.24 /
+  0.97). Expressed in doublings-equivalent — dividing by the local cp-per-
+  doubling, 1.75 then 1.12 — the handicap is 0.47 / 0.89 / 0.87 doublings, i.e.
+  flat to slightly GROWING.
+- **The top-1 gap widens monotonically**, 1.4 → 2.2 → 3.7 points. Our top-1
+  climbs 10.3 points over the range where Stockfish's climbs 12.6.
+
+`screen.py`'s own guidance for this table is "if ours flattens while the
+reference keeps climbing, more search stops helping us and that is a search-
+shape problem." That is what it shows. **Stockfish converts marginal nodes into
+correct moves better than we do**, so the deficit is not depth-limited and not
+eval-limited (§3e): it is in what the search spends its nodes ON — ordering,
+pruning calibration, extensions.
+
+**And that is the same story as §5b.** Over-pruning is precisely a mechanism
+that caps marginal return: you spend more nodes and keep discarding the same
+lines, so extra budget buys less than it should. The pfut result (five arms
+agreeing that we prune too much, the best halving the blunder rate) and this
+measurement are two views of one defect. That convergence is the strongest
+reason to believe the pfut direction is real rather than a screen artifact.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
