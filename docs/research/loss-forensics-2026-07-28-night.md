@@ -1101,6 +1101,15 @@ does that ours does not, or does differently in structure — not a mis-tuning.
 That is a direct answer to "there is 90-ish Elo hidden in the tunables": not in
 these fourteen, at this resolution, on the corpus that predicts games.
 
+**CAVEAT ADDED LATER, and it is a big one (§3m).** Every arm here was scored at
+**12,500 nodes** — a budget at which we reach depth 9.9, where our real games
+reach 17–20, and at which the phase-by-phase verdict is measurably *different*
+from the 200k regime. So "the central knobs are at a local optimum" is
+established **for a search we do not play**. It has to be re-run at a realistic
+budget before it can be believed, which needs an oracle deeper than the arms
+(`deep_top1.py` / `arm_top1.py`). Until then this section is suggestive, not
+settled.
+
 **Honest limits of the claim.**
 - ±25% is coarse. A ±5–10% optimum could exist; it would be worth far less, and
   finding it needs SPSA rather than a grid.
