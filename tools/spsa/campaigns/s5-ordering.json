@@ -4,21 +4,91 @@
   "r_end_note": "r_end = 0.03, copied from s2-stageA for the same reason recorded there: the 0.002 default moves ~1% of range over the iteration count this box affords and produces a null BY CONSTRUCTION. These are SF-transcribed values that have never been tuned against our history scale, so the larger step is justified. Verify any winner at 10+0.1 before pinning (screen -> verify -> bracket -> pin).",
   "engine_note": "A non-PGO tune build is CORRECT here and this is not a deviation from the standing PGO ruling: SPSA plays fixed-NODE games, both sides are the same binary, and PGO changes only speed, not the search tree. Results are bit-identical between PGO and non-PGO at fixed nodes. PGO matters for wall-clock throughput only.",
   "params": [
-    {"name": "QUIET_MAIN_HISTORY_WEIGHT", "min": 1,     "max": 6,     "r_end": 0.03},
-    {"name": "QUIET_PAWN_HISTORY_WEIGHT", "min": 1,     "max": 6,     "r_end": 0.03},
-    {"name": "QUIET_CHECK_BONUS",         "min": 3000,  "max": 34000, "r_end": 0.03},
-    {"name": "QUIET_CHECK_SEE_MARGIN",    "min": -300,  "max": 0,     "r_end": 0.03},
-    {"name": "QUIET_THREAT_FACTOR",       "min": 5,     "max": 60,    "r_end": 0.03},
-    {"name": "QUIET_OFFENSE_FACTOR",      "min": 0,     "max": 40,    "r_end": 0.03},
-    {"name": "QUIET_LOW_PLY_WEIGHT",      "min": 2,     "max": 24,    "r_end": 0.03},
-    {"name": "CAPTURE_MVV_FACTOR",        "min": 3,     "max": 14,    "r_end": 0.03},
-    {"name": "QUIET_SORT_DEPTH_FACTOR",   "min": -8000, "max": -1000, "r_end": 0.03},
-    {"name": "QUIET_BEST_BONUS_NUM",      "min": 400,   "max": 1600,  "r_end": 0.03},
-    {"name": "QUIET_MALUS_START_NUM",     "min": 500,   "max": 2000,  "r_end": 0.03},
-    {"name": "QUIET_MALUS_DECAY_NUM",     "min": 400,   "max": 1800,  "r_end": 0.03},
-    {"name": "CAPTURE_BEST_BONUS_NUM",    "min": 600,   "max": 2400,  "r_end": 0.03},
-    {"name": "CAPTURE_MALUS_NUM",         "min": 700,   "max": 2600,  "r_end": 0.03},
-    {"name": "QUIET_LOW_PLY_UPDATE_NUM",  "min": 300,   "max": 1300,  "r_end": 0.03},
-    {"name": "QUIET_CONT_UPDATE_NUM",     "min": 400,   "max": 1600,  "r_end": 0.03}
-  ]
+    {
+      "name": "QUIET_CHECK_BONUS",
+      "min": 3000,
+      "max": 34000,
+      "r_end": 0.03
+    },
+    {
+      "name": "QUIET_CHECK_SEE_MARGIN",
+      "min": -300,
+      "max": 0,
+      "r_end": 0.03
+    },
+    {
+      "name": "QUIET_THREAT_FACTOR",
+      "min": 5,
+      "max": 60,
+      "r_end": 0.03
+    },
+    {
+      "name": "QUIET_OFFENSE_FACTOR",
+      "min": 0,
+      "max": 40,
+      "r_end": 0.03
+    },
+    {
+      "name": "QUIET_LOW_PLY_WEIGHT",
+      "min": 2,
+      "max": 24,
+      "r_end": 0.03
+    },
+    {
+      "name": "CAPTURE_MVV_FACTOR",
+      "min": 3,
+      "max": 14,
+      "r_end": 0.03,
+      "c_end": 1.0
+    },
+    {
+      "name": "QUIET_SORT_DEPTH_FACTOR",
+      "min": -8000,
+      "max": -1000,
+      "r_end": 0.03
+    },
+    {
+      "name": "QUIET_BEST_BONUS_NUM",
+      "min": 400,
+      "max": 1600,
+      "r_end": 0.03
+    },
+    {
+      "name": "QUIET_MALUS_START_NUM",
+      "min": 500,
+      "max": 2000,
+      "r_end": 0.03
+    },
+    {
+      "name": "QUIET_MALUS_DECAY_NUM",
+      "min": 400,
+      "max": 1800,
+      "r_end": 0.03
+    },
+    {
+      "name": "CAPTURE_BEST_BONUS_NUM",
+      "min": 600,
+      "max": 2400,
+      "r_end": 0.03
+    },
+    {
+      "name": "CAPTURE_MALUS_NUM",
+      "min": 700,
+      "max": 2600,
+      "r_end": 0.03
+    },
+    {
+      "name": "QUIET_LOW_PLY_UPDATE_NUM",
+      "min": 300,
+      "max": 1300,
+      "r_end": 0.03
+    },
+    {
+      "name": "QUIET_CONT_UPDATE_NUM",
+      "min": 400,
+      "max": 1600,
+      "r_end": 0.03
+    }
+  ],
+  "c_end_note": "c_end defaults to (max-min)/20 and non-float params render as int(round(v)), so a small-integer parameter goes INERT as c_k decays to c_end: QUIET_MAIN_HISTORY_WEIGHT has range 5 => c_end 0.25, and at theta=2.0 both perturbations (2.25, 1.75) round to 2. c_k runs from 2.16*c_end down to c_end (GAMMA=0.101, iters=2000), so such a dimension works early and dies late. Fix applied: the two range-5 history weights are DROPPED from SPSA -- with 6 legal values they are better screened exhaustively, and they already were (1/3/4 all worse-or-flat on fhf against a +-0.0011 null band). CAPTURE_MVV_FACTOR (range 11) keeps an explicit c_end of 1.0 so its perturbations always straddle an integer boundary. Raising c_end raises movement roughly linearly (update ~ r_end*c_end^2/c_k ~ c_end), which is intended for a coarse integer axis."
 }
