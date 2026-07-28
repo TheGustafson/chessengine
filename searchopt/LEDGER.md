@@ -222,6 +222,42 @@ noise: it aggregates gradient information over thousands of cheap paired compari
 moves all coordinates at once. For effects of +1 to +4 Elo that is the correct
 instrument, and single-arm A/B is the wrong one.
 
+## THE 1.92× NPS GAP IS A COLD-PROBE ARTIFACT — in games it is ~1.4× (2026-07-28)
+
+The ledger's speed figure (ARCHON+net 0.54 Mnps vs SF18 1.03 Mnps, **1.92×**) comes from
+a cold `movetime` probe. Re-derived in the GAME regime, free: at `-each nodes=N` both
+engines spend the same node budget per move, so the ratio of their per-move times in the
+PGN **is** the inverse NPS ratio, measured in real games, with contention hitting both
+symmetrically.
+
+| match | concurrency | time ratio | ARCHON nps | SF18 nps | n moves |
+|---|---|---|---|---|---|
+| `plateau-110k` | 4 | **1.394×** | 1.196M | 1.667M | 35,821 |
+| `equalnodes` (110k) | 12 | **1.487×** | 0.468M | 0.696M | 29,000 |
+| `eqnodes-30000` | 12 | 1.447× | 0.545M | 0.789M | 27,693 |
+| `eqnodes-10000` | 12 | 1.500× | 0.476M | 0.714M | 26,604 |
+| cold `movetime` probe | ~1 | **1.92×** | 0.54M | 1.03M | — |
+
+Three independent reasons the cold 1.92× is the outlier, not the truth:
+
+1. **It contradicts its own trend.** Contention WIDENS the ratio (1.394× at concurrency 4
+   → 1.487× at 12), so extrapolating toward a quiet box predicts ~1.35×, not 1.92×.
+2. **Both engines are far faster in games than cold** (ours 1.196M vs 0.54M) — warm-TT
+   nodes are cheaper. Same regime effect as the depth finding: cold probes are not the
+   game distribution.
+3. **Perf study 8's independent instructions/node ratio is 1.512×** (1.644× before its
+   six changes), measured on a matched fixed-node panel with `instructions:u` spread
+   0.0000%. That agrees with 1.39–1.49× and disagrees with 1.92×.
+
+⇒ **Do not quote 1.92×.** The in-game speed gap is **~1.4×**, and the instruction-count
+and wall-clock measurements now corroborate each other.
+
+⇒ The empirical Elo split is **unaffected** — "~66 Elo speed / ~68 per-node" comes from
+the −134 time vs −68 equal-nodes ladder, not from the NPS figure. What changes is the
+*interpretation*: the speed handicap we are actually playing under is smaller than the
+folder believed, so a given % of instruction savings is worth proportionally more of what
+remains.
+
 ## OPENING HETEROGENEITY: UNTESTABLE ON A COLOUR-PAIRED BOOK (2026-07-28)
 
 Question: is the −68 Elo uniform across openings, or concentrated in position types?
