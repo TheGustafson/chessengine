@@ -881,6 +881,57 @@ number — most constants come from the SF transcription rather than from our
 screens — but it is not zero, and those two were chosen precisely where we chose
 to differ from Stockfish.
 
+## 3p. TIME MANAGEMENT PRICES AT ~38-44 Elo — the best-grounded lever
+
+§2 established the clock deficit and then argued it is **not** the blunder
+mechanism, which is true and which caused me to leave it un-priced for the rest
+of the night. That was a mistake: "not the blunder mechanism" does not mean "not
+worth Elo". Converting the measured curve into a budget share:
+
+| by move | budget available | ARCHON spent | SF18 spent |
+|---|---|---|---|
+| 10 | 11.00 s | 2.35 (21.4%) | 2.37 (21.5%) |
+| 25 | 12.50 s | 8.20 (65.6%) | 7.49 (59.9%) |
+| 33 | 13.30 s | 10.92 (**82.1%**) | 9.63 (**72.4%**) |
+| 40 | 14.00 s | 12.72 (90.9%) | 11.24 (80.3%) |
+| 45 | 14.50 s | 13.70 (**94.5%**) | 12.20 (84.1%) |
+
+Identical through move 10, then we pull away. **By move 33 we have burned 1.29 s
+more of the same budget.** Redistributed over moves 33–60 that is +0.046 s/move
+against a measured baseline of 0.16 s/move — **+29% time, 0.37 doublings,
+≈44 Elo on those moves.** 87% of our win-probability loss from move errors happens
+after move 33, so ~38 Elo of it is realisable. Order of magnitude, not a constant.
+
+**And the trade looks favourable rather than merely neutral.** The time comes out
+of moves 1–32, which hold 13% of the win-probability loss — and §3m showed we
+already match Stockfish's top-1 in the middlegame at realistic budgets, so the
+marginal value of a millisecond is genuinely lower there. We would be moving time
+from where we are already good to where we are not.
+
+**This matters more if §3c's ~78 Elo quality term shrinks** (which §3m suggests it
+must, since it was priced at 12,500 nodes). If quality falls toward zero, the
+decomposition needs ~78 Elo from somewhere, and TM at ~38 plus the residual is
+where it goes. `headroom200k.py` is measuring that now.
+
+**What is untested: an arm in the RIGHT direction.** `tm10c` tested
+frame-scaled `FALLING_EVAL_*` and scored +10.8 ± 13.5 over 400 games — but the
+arm-verify showed it holds **less** clock at every move (−0.10 to −0.36 s) and
+searches shallower late. It moved the wrong way and still did not lose. The
+correctly-directed arm — spend less before move 33 — has never been run.
+
+The knob shape matters and the obvious ones are traps. `OPT_SCALE_CLOCK_CAP`
+looks right but binds in BOTH regimes (when it binds, `optimum = 0.19404 · time`
+regardless of ply, a flat 19.4%-per-move decay), and our measured spend is 4.9%
+early against 31.8% late, so the cap is not what governs either end.
+`OPT_CONSTANT_*` multiplies the ply term and so cuts LATE harder — backwards.
+`OPT_SCALE_BASE` is the only one that is differential in the right direction:
+per its own doc comment it is 42% of `opt_scale` at ply 10 and 30% at ply 40.
+Halving it cuts early ~21% and late ~15%. Mild, but the right sign.
+
+**Testing it needs TIMED games** — `sprt.sh` is explicit that fixed-node proxies
+are "never valid for time-management changes" — so this one cannot ride the
+node-based harness, and it wants the quiet box.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
