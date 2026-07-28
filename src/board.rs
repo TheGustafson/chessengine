@@ -1141,15 +1141,27 @@ impl Board {
             let prev = states.last().expect("state stack never empty");
             (prev.key ^ ZOBRIST.side, prev.blockers_for_king)
         };
-        {
-            let prev_copied = states.last().expect("state stack never empty").copied;
-            states.push(StateInfo {
-                copied: prev_copied,
-                ..StateInfo::EMPTY
-            });
-        }
+        // Perf study 9 item 3: push a CONSTANT and fill the carried block in
+        // place. `StateInfo { copied: prev_copied, ..EMPTY }` looks like the
+        // same thing but is not — a struct expression whose fields are not all
+        // constants is materialised as a 168-byte stack temporary and then
+        // copied into the vector's tail, so every make paid build + reload +
+        // store (the `vmovdqu64 0xc0(%rsp)` reload was the single hottest
+        // instruction in the symbol). Pushing `EMPTY` — every field a
+        // compile-time constant — lets the value be stored straight into the
+        // slot, and the one live field is then written through a `&mut` into
+        // the vector. Study #2 option E removed this round trip for the
+        // *field writes* and left it in place for the push itself.
+        //
+        // Every non-`copied` field is dead until it is written below (`key`
+        // step 9, `captured`/`checkers` step 11, blockers/pinners/check_squares
+        // in `set_check_info`, `repetition` step 13), so seeding them from
+        // `EMPTY` is exactly what the old form did.
+        states.push(StateInfo::EMPTY);
         let child_idx = states.len() - 1;
-        let st = &mut states[child_idx];
+        let (ancestors, tail) = states.split_at_mut(child_idx);
+        let st = &mut tail[0];
+        st.copied = ancestors[child_idx - 1].copied;
 
         // Step 2: counters.
         self.game_ply += 1;
@@ -1358,6 +1370,16 @@ impl Board {
             // `st`'s borrow ends above (NLL); the walk reads ancestors in
             // the same local vec. `child_idx` == the old pre-push len, so
             // the `n - i` arithmetic is unchanged.
+            //
+            // Perf study 9 item 3 tried to strength-reduce the `imul $0xa8`
+            // (sizeof(StateInfo), not a power of two) that this indexed form
+            // re-derives per iteration, by walking a reversed `step_by(2)`
+            // slice iterator instead. It measured **+0.042% engine
+            // instructions** (7094.6 -> 7097.6 i/n, identical tree): the
+            // iterator's setup outweighs the multiply because `end` is small
+            // in a search — `min(rule50, plies_from_null)` is bounded by the
+            // distance to the last null move, so the loop almost never runs
+            // enough iterations to amortise it. Left alone deliberately.
             let mut i = 4;
             while i <= end {
                 let earlier = &states[child_idx - i as usize];
