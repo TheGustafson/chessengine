@@ -400,11 +400,31 @@ refuses to run until it re-detects game 18.
 
 | thing | state |
 |---|---|
-| tm10c (frame-scaled `FALLING_EVAL_*`, 10+0.1) | arm 51.6% at 321 games = **+10.8 ± 13.5 Elo**. Not significant. Arm holds *less* clock and searches shallower — it does **not** validate the §2 story |
-| `pf64all` (all four PFUT terms ×0.64) | **−0.24 ± 0.15 cp @16k** on the *openings* corpus, −0.8% nodes. Needs re-screening on the phase corpus |
-| `pf64c` (constants only) | +0.19 ± 0.15 — worse. The four terms want scaling together or not at all |
+| **`pfut-sprt`** | **RUNNING** — `PFUT_BASE=62, NO_BESTMOVE=215, EVAL_ABOVE_ALPHA=140` vs base, fixed-node (`nodes=200000`), SPRT [0,6] normalized, cap 3000 games. `engines/runs/pfut-sprt`. Arm verified live behaviourally. This is the night's one real Elo test |
+| tm10c (frame-scaled `FALLING_EVAL_*`, 10+0.1) | finished 400 games; at 321 the arm was 51.6% = **+10.8 ± 13.5 Elo**. Not significant. The arm holds *less* clock and searches shallower, so it does **not** validate the §2 story |
+| corpus-v2 | ~290/700 vs SF18 at 10+0.1. Already 108 losses. NOT Elo-comparable to rematch-v1 (ran on a loaded box); fine as a corpus, since the oracle judges positions, not clocks |
 | phase oracle | building, 3,350 positions, 12.5/25/25/37.5% across the four buckets |
-| corpus-v2 | 700 games vs SF18, chained behind tm10c |
+| `harvest2` | chained behind corpus-v2 — cold 1M-node oracle over both matches, refuses to start unless it re-detects game 18 |
+| phase bracket | chained behind the oracle: `c1.56 / c2.5 / c4 / m75 / base120 / c2.5+m75 / off` |
+
+### The order to read results in, in the morning
+
+1. **`pfut-sprt`** — the only game-truth number. If it clears H1, that is the
+   night's Elo. If it is still running without a verdict past ~800 games, the
+   effect is under ~10 Elo whatever the screen said.
+2. **phase bracket** — does the pfut direction survive on the population that
+   matters, and where is the optimum?
+3. **`harvest2` output** — the corpus that finally makes the
+   three-independent-losses rule possible. The agent's blocking finding was
+   that the 120-game match contained only two clean cases.
+
+### What I would NOT spend more time on
+
+- Game 18 as a single position. It is localized (§4b) and further single-
+  position probes on a chaotic argmax produce confident nonsense; three of my
+  retractions tonight came from exactly that.
+- Gate attribution. Refuted twice, independently (§5).
+- The clock as a blunder mechanism (§2). Real deficit, wrong causal story.
 
 **Blocking constraint (the agent's finding, and it is right):** of 19
 adjudicated candidates in the 120-game match, only **two** had an oracle stable
