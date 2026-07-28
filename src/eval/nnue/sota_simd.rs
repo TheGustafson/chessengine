@@ -173,7 +173,40 @@ pub(crate) fn apply_i8_deltas_into(
 /// group indices.
 #[inline]
 pub(crate) fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
+    // The SIMD backends read each group's four FT bytes as ONE unaligned
+    // 32-bit load (see [`ft_group`]), which is what lets `vpbroadcastd` fold
+    // the load into the broadcast with no range check. `find_nnz` is the only
+    // producer of `nnz` and only ever emits group indices in `0..ACC/4`; this
+    // is the debug-time proof of that invariant — checked once per group over
+    // the whole test suite instead of once per group in the shipped kernel.
+    debug_assert!(
+        nnz.iter().all(|&g| usize::from(g) < ACC / 4),
+        "l1_dot: nnz group index out of range (find_nnz contract broken)"
+    );
     kernel_dispatch!(l1_dot(pre, ft, nnz, weights))
+}
+
+/// The four FT bytes of `group`, as the little-endian `i32` the `dpbusd` /
+/// `maddubs` kernels broadcast.
+///
+/// Written as one unaligned 32-bit read rather than
+/// `i32::from_le_bytes([ft[g * 4], …])` **for the codegen, not the arithmetic**
+/// — the two are bit-identical on any little-endian target. Indexing the array
+/// made LLVM emit a `cmp $0x13f,%ecx` / `ja <panic>` pair it could not hoist
+/// out of the group loop (it cannot see `find_nnz`'s range), and that loop is
+/// only ~11 instructions long and runs ~39 times per NODE. Removing the pair
+/// measured **−1.75% of all engine instructions and −5.25% of all engine
+/// branches**, node-identical and eval bit-exact (perf study 8 §4.1).
+///
+/// # Safety
+/// `group < ACC / 4`, i.e. `group` came from [`find_nnz`]. The `debug_assert`
+/// in [`l1_dot`] is the checked form of this contract.
+#[allow(unsafe_code)]
+#[inline(always)]
+unsafe fn ft_group(ft: &[u8; ACC], group: usize) -> i32 {
+    // SAFETY: `group < ACC/4` ⇒ `group * 4 + 3 < ACC`, so all four bytes lie
+    // inside `ft`. `read_unaligned` is required — `ft` is only byte-aligned.
+    unsafe { ft.as_ptr().add(group * 4).cast::<i32>().read_unaligned() }
 }
 
 #[inline]
@@ -514,12 +547,7 @@ mod avx2 {
                 let mut hi = _mm256_loadu_si256(pre.as_ptr().add(pbase + 8).cast());
                 for &group in nnz {
                     let group = usize::from(group);
-                    let inputs = _mm256_set1_epi32(i32::from_le_bytes([
-                        ft[group * 4],
-                        ft[group * 4 + 1],
-                        ft[group * 4 + 2],
-                        ft[group * 4 + 3],
-                    ]));
+                    let inputs = _mm256_set1_epi32(ft_group(ft, group));
                     let base = weights.as_ptr().add(group * (L2 * 4) + wblk);
                     let wlo = _mm256_loadu_si256(base.cast());
                     let whi = _mm256_loadu_si256(base.add(32).cast());
@@ -1192,12 +1220,7 @@ mod avx512 {
             // the loads never miss far enough to hide.
             for &group in nnz {
                 let group = usize::from(group);
-                let inputs = _mm512_set1_epi32(i32::from_le_bytes([
-                    ft[group * 4],
-                    ft[group * 4 + 1],
-                    ft[group * 4 + 2],
-                    ft[group * 4 + 3],
-                ]));
+                let inputs = _mm512_set1_epi32(ft_group(ft, group));
                 let base = weights.as_ptr().add(group * (L2 * 4));
                 for (blk, sum) in sums.iter_mut().enumerate() {
                     let rows = _mm512_loadu_si512(base.add(blk * 64).cast());
