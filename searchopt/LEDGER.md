@@ -55,6 +55,31 @@ Two ways that could be true, both tested:
 | We reach less DEPTH per node (the D47V "wide shallow" claim) | 70 plateau positions at 110k: ARCHON median depth **15.0**, SF18 **15.0**; mean 14.73 vs 14.47. We are shallower in 21/70, EQUAL in 20, **deeper in 29** | **REFUTED.** No depth-per-node deficit. The n=44 D47V tree-shape claim does not reproduce |
 | Our SEARCH is slow (nps) | movetime 1000, equal contention: ARCHON+net **0.54 Mnps**, SF18 **1.03 Mnps** (1.92x) — but ARCHON on PSQT is **2.13 Mnps**, i.e. **2x SF18's total throughput**. **75% of our node time is eval** | **NOT A SEARCH DEFECT.** The search machinery is faster than SF's; the entire speed gap is net evaluation cost — the deliberate 1280-width tradeoff (out of scope) |
 
+**Caveat on that 1.92x (owner, 2026-07-28): SF18's nps is INFLATED by its dual-net
+design and the ratio overstates its per-node compute.** Verified in the checkout
+(`src/evaluate.cpp:49`, Stockfish 18 / `cb3d4ee9`):
+
+```cpp
+bool Eval::use_smallnet(const Position& pos) { return std::abs(simple_eval(pos)) > 962; }
+auto [psqt, positional] = smallNet ? networks.small.evaluate(...) : networks.big.evaluate(...);
+if (smallNet && (std::abs(nnue) < 277))   // redo with the big net when it is close
+```
+
+SF runs a CHEAP net on every materially-lopsided position and pays for the big net only
+near equality; we run the full 1280-wide net on every node. They are still genuinely
+faster in wall-clock — adaptive eval cost is a real optimisation, not an accounting
+artifact — but the like-for-like compute gap is smaller than 1.92x.
+
+This makes the conclusion STRONGER, not weaker: if part of SF's nps is cheap evals, our
+search at 2.13 Mnps compares even better against their search, and the bottleneck is even
+more clearly our eval cost.
+
+**Idea for whoever owns the net (NOT searchopt work, recorded so it is not lost):**
+adaptive eval cost is a *conditioning axis* — precisely the shape A3 says is the only
+thing that can still move anything, since every global level is already at a local
+optimum. Era caveat: thresholds 962/277 are from the `cb3d4ee9` checkout, not our
+constants reference `eca43a97`; the SHAPE is what carries over, not the values.
+
 ⇒ At equal nodes we reach equal depth and pick the deep oracle's move ~79% of the time.
 The search machinery is not slow, not shallow, and not making locatable errors. **Every
 measured deficit is in eval cost or eval quality**, both out of scope for this folder.
