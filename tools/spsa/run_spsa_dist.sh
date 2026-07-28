@@ -55,11 +55,30 @@ OUT=tools/spsa/out/$NAME-$(date +%m%d-%H%M)
 mkdir -p "$OUT"
 case "$EX" in file://*) mkdir -p "${EX#file://}";; esac
 
+# RESUME / DIRTY-EXCHANGE GUARD (added 2026-07-28 after this bit us).
+# spsa_dist.py only resumes when passed --resume (spsa_dist.py:101). This
+# launcher never passed it, so "just restart the coordinator" silently began a
+# NEW run at k=1 -- and because the exchange still held the previous run's
+# unit/result files, the fresh coordinator CONSUMED THEM: 1,014 stale results
+# replayed at 11.8 games/s (impossible for real games), each attributed to a
+# perturbation vector that did not produce it. Garbage gradients, no error, and
+# state/theta-latest.json overwritten so the real vector was lost too.
+RESUME_FLAG=""
+if [ -e "${EX#file://}/state/theta-latest.json" ]; then
+  RESUME_FLAG="--resume"
+  echo "[run] RESUMING from ${EX#file://}/state/theta-latest.json"
+elif [ -n "$(ls -A "${EX#file://}/results" 2>/dev/null)" ]; then
+  echo "[run] REFUSING: $EX has results but no state/theta-latest.json." >&2
+  echo "[run] A fresh run on a dirty exchange replays stale results as if they" >&2
+  echo "[run] were fresh. Clear it first:  rm -rf ${EX#file://}" >&2
+  exit 1
+fi
+
 echo "[run] coordinator -> $OUT (exchange $EX)"
 nohup python3 tools/spsa/spsa_dist.py --config "$CFG" --engine "$ENGINE" \
   --eval-file "$NET" --exchange "$EX" --out "$OUT" --iters "$ITERS" \
   --units "$UNITS" --pairs "$PAIRS" --nodes "$NODES" \
-  --book engines/books/UHO_Lichess_4852_v1.epd --poll "$POLL" \
+  --book engines/books/UHO_Lichess_4852_v1.epd --poll "$POLL" ${RESUME_FLAG} \
   ${R_END:+--r-end "$R_END"} ${TC:+--tc "$TC"} \
   > "$OUT/coordinator.log" 2>&1 &
 echo $! > "$OUT/coordinator.pid"
