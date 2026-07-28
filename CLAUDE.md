@@ -5,6 +5,33 @@ A UCI chess engine in Rust (crate/dir name `chessengine`, engine name
 learning project: **prefer the idiomatic Rust way** over a transliteration of
 C++ patterns, and briefly explain non-obvious idioms when introducing them.
 
+## Standing quality bar: NO ACCEPTABLE BLUNDERS (user, 2026-07-28)
+
+**Work backwards from where we want to be — a top-tier engine — not forward
+from where we are. Top-tier engines almost never blunder big moves. Do not
+accept blunders; root them out with aggressive investigation.**
+
+Never triage a catastrophic loss by its aggregate Elo share. On 2026-07-28 I
+computed that five genuine move errors in a 120-game match were worth ~5.5 Elo
+against ~32 Elo of per-move drift, and used that ratio to rank blunders as the
+lesser lever. Both halves of that reasoning were wrong:
+
+- **The detector had ~9% recall.** `tools/blunder_forensics.py` only fires when
+  OUR OWN eval collapses within 2 plies, so a move whose refutation lands ten
+  plies later is invisible. A detector-independent oracle audit of moves from
+  LOST games (SF18 @120k, `searchmoves`, every move scored) found **1.5% of our
+  moves lose >=100 cp — about ONE per lost game**, and 0.40 game-equivalents of
+  win probability per lost game. Five in 120 games was a floor, not a count.
+- **Centipawns are not additive into outcomes.** Summing per-move cp loss
+  assumes small inaccuracies accumulate linearly; they are mostly absorbed,
+  while one 126 cp error at a decision point converts a result. Use win
+  probability.
+
+When a blunder is found, drive it to a mechanism with the WHY ladder in
+`docs/research/LOSS-FORENSICS-PLAYBOOK.md`, and validate any fix on at least
+THREE independent losses of the same mode — one position is a patch, three is
+a fix.
+
 ## Design documents (read before implementing anything)
 
 `design/` holds the reviewed design suite that governs all implementation:

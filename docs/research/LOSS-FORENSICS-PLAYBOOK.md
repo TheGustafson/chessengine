@@ -478,3 +478,35 @@ the reverse is true here. WHY does the reverse hold: because every conclusion
 reached in under four WHYs in this session was later retracted, and the two
 that survived took six. WHY should you believe that claim rather than test it:
 you should not — WHY not go and check the retraction notices in §5 yourself.
+
+---
+
+## 12. The quality bar — and the detector-recall trap
+
+**Work backwards from a top-tier engine, not forward from this one.** Top-tier
+engines almost never blunder big moves. A catastrophic loss is a DEFECT with a
+findable cause; it is never a line item to weigh against other channels by its
+current Elo share. WHY this needs saying: on 2026-07-28 I ranked blunders below
+cumulative drift on exactly that basis, and the ranking was wrong twice over.
+
+**WHY 1 — the detector had ~9% recall.** `blunder_forensics.py` fires on an
+own-eval collapse within 2 plies. A move whose refutation lands ten plies later
+never collapses our eval and is invisible. It reported 5 errors in 120 games. A
+**detector-independent audit** — ask SF18 @120k with `searchmoves` about EVERY
+move we played in LOST games — found:
+
+```
+260 moves audited      median cp loss 5.0    mean 10.7
+moves losing >=100 cp:  1.5%   ->  ~1.0 per LOST game
+win probability lost:   0.40 game-equivalents per lost game
+```
+
+WHY that is the number to trust: it does not depend on our engine noticing its
+own error. Always audit against an oracle before believing a blunder rate.
+
+**WHY 2 — centipawns do not add into outcomes.** Summing per-move cp loss into
+"cp per game" assumes losses accumulate linearly. They do not: most small
+inaccuracies are absorbed and never converted, while one 126 cp error at a
+decision point converts a result outright. Do the channel accounting in **win
+probability**, and check which games the errors actually occurred in (four of
+five were in games we lost — they are not spread evenly).
