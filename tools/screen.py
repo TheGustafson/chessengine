@@ -322,7 +322,9 @@ def main() -> None:
     ap.add_argument("arms", nargs="*", help="name:K=V,FAMILY*FACTOR")
     ap.add_argument("--base", default="", help="config applied to control AND every arm")
     ap.add_argument("--limit", type=int, default=800, help="oracle positions")
-    ap.add_argument("--nodes", type=int, default=50000, help="candidate budget")
+    ap.add_argument("--nodes", type=int, default=12500,
+                    help="candidate budget; keep it >=2 doublings BELOW the "
+                         "deepest oracle tier (see the headroom warning)")
     ap.add_argument(
         "--budgets",
         default="",
@@ -411,6 +413,34 @@ def main() -> None:
     # chasing here are ~1 cp, so a small --limit cannot resolve them however
     # confident the mean looks. Measured on this corpus: sem ~2.0 cp at 250
     # positions, ~1.1 at 800, ~0.8 at 1500, ~0.3 at the full 9992.
+    # ORACLE HEADROOM. Measured 2026-07-27 and it invalidates the old default.
+    # cp loss is agreement with the oracle, so an arm searched almost as deep
+    # as the oracle is being judged by a stick barely longer than itself. The
+    # budget sweep shows exactly where the stick runs out: cp improvement per
+    # doubling is ~2.0 at 3-12k nodes (2.4-3.4 doublings of headroom) and
+    # collapses to 0.31 at 50k->100k, where headroom is NEGATIVE. That collapse
+    # is the instrument saturating, not the engine ceasing to improve.
+    #
+    # Worse, a tier SHALLOWER than the arm inverts the question: at the 4k tier
+    # a 50k-node arm is 3.6 doublings deeper than its judge, so the tier scores
+    # "how well does this deep search agree with a shallow one" -- which rewards
+    # searching worse. The old "require the sign to hold across all three tiers"
+    # rule was therefore demanding agreement with two tiers pointed the wrong
+    # way.
+    deep_tier = int(keys[-1])
+    headroom = math.log2(deep_tier / max(args.nodes, 1))
+    if headroom < 2.0:
+        print(f"  WARNING: arms at {args.nodes} nodes vs a {deep_tier}-node deepest "
+              f"oracle tier\n  is only {headroom:.2f} doublings of headroom. "
+              f"Effects are compressed and anything that\n  only pays off deeper is "
+              f"invisible. Prefer --nodes {deep_tier // 4} or lower, or build a "
+              f"deeper oracle.\n")
+    shallow = [t for t in keys if int(t) < args.nodes]
+    if shallow:
+        print(f"  NOTE: tier(s) {', '.join(shallow)} are SHALLOWER than the arm — "
+              f"those columns\n  measure agreement with a weaker search and should "
+              f"not be required to agree.\n")
+
     if len(fens) < 3000:
         approx = 2.0 * (250 / max(len(fens), 1)) ** 0.5
         print(f"{len(fens)} positions, arms at {args.nodes} nodes  "
@@ -551,9 +581,15 @@ def main() -> None:
           "fattening the tail.")
     print("\ncp = mean centipawn loss vs SF18 labels; LOWER is better. Arm rows "
           "are PAIRED\ndeltas +- one standard error of the paired difference: "
-          "|delta| < sem is noise.\nRequire the sign to hold across all three "
-          "tiers. Promote on cp, sanity-check\nwith nodes, never promote on "
-          "tactics alone.")
+          "|delta| < sem is noise.\nRequire the sign to hold across every tier "
+          "DEEPER than the arm's budget -- a\nshallower tier scores agreement "
+          "with a weaker search and rewards the wrong\nthing. Promote on cp, "
+          "sanity-check with nodes, never promote on tactics alone.")
+    print("\nPricing a node cost: ~120 Elo per doubling of nodes, and in the band "
+          "where the\noracle still has headroom the sweep gives ~2 cp per doubling, "
+          "so 1 cp of mean\nloss is very roughly 60 Elo -- order of magnitude, not "
+          "a constant. An arm that\nsaves cp but costs nodes has to clear "
+          "log2(1+node_cost) * 120 Elo to be real.")
 
 
 if __name__ == "__main__":
