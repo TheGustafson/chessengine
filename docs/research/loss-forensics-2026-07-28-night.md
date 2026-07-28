@@ -948,6 +948,56 @@ Halving it cuts early ~21% and late ~15%. Mild, but the right sign.
 are "never valid for time-management changes" — so this one cannot ride the
 node-based harness, and it wants the quiet box.
 
+## 3q. TOP-1 AGREEMENT AGAINST AN SF ORACLE IS BIASED TOWARD SF — §3m WITHDRAWN
+
+Measured at 200k nodes on 3,000 positions, against a **4M-node Stockfish** oracle:
+
+| pieces | ARCHON top-1 | SF18 top-1 | ARCHON wp loss | SF18 wp loss |
+|---|---|---|---|---|
+| 21+ | 66.7% | **75.1%** | 0.008 | 0.004 |
+| 13–20 | 71.8% | **79.9%** | 0.004 | 0.003 |
+| 8–12 | 58.0% | **74.3%** | 0.003 | 0.001 |
+| ≤7 | 50.0% | **62.7%** | 0.003 | 0.001 |
+| **ALL** | **64.9%** | **75.1%** | 0.005 | 0.003 |
+
+That flatly contradicts §3m, which used a **64k** oracle and had SF at 60.0% and
+us at 61.5% in the middlegame. Same engines, same budget, same positions — only
+the oracle's depth changed. The reason is structural:
+
+| engine, at 200k | vs 64k oracle | vs 4M oracle | swing |
+|---|---|---|---|
+| SF18 | 60.0% | **75.1%** | **+15.1** |
+| ARCHON | 61.5% | 66.7% | +5.2 |
+
+**The oracle IS Stockfish, so "agreement" partly measures being Stockfish**, and
+the reward grows as the oracle deepens past the arm. SF@200k agrees with SF@4M
+because they are the same search; against a 64k oracle SF@200k OUTRUNS its judge
+and gets marked down for knowing better. Our agreement barely moves, because we
+were never the same search.
+
+**So §3m is withdrawn.** "At 200k we match or beat Stockfish in the middlegame"
+was SF being penalised for outrunning a shallow oracle, not us catching up. The
+§3g reading it overturned may stand after all — and both must be redone on a
+metric that is not identity-biased.
+
+**The metric that is not biased is LOSS, not agreement.** Cp/wp loss asks how
+much value the chosen move gives up, which does not care which engine proposed
+the reference. That is why `screen.py` uses cp loss, and I should not have
+introduced a top-1-based instrument without checking it against that.
+
+On loss, we give up **0.005 wp per move against Stockfish's 0.003** — a real but
+much smaller gap than the top-1 columns suggest, worst at 21+ (0.008 vs 0.004)
+and 8–12 (0.003 vs 0.001).
+
+**Two caveats before anyone uses those wp figures:**
+- **No error bars yet.** The magnitudes are 0.001–0.008 and I have not computed
+  their sem. Until I do they rank, they do not decide.
+- **The cp column is mate-contaminated and unusable** — 148.7 cp at 8–12 and
+  422.9 at ≤7, giving an aggregate headroom of **−11.76 ± 35.37 cp**. The
+  deep-top1 oracle stores raw Stockfish scores including mate values; the
+  ±1000 clip that fixed the phase corpus was never applied here. Fix the builder,
+  not the reader.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
