@@ -1398,6 +1398,26 @@ should not be touched — the margins would have to come to it, which is the
 formulation already refuted five times.** Either way the sweep discriminates,
 which is why the falsification arm is in it.
 
+## 3z3. A TRAP SPECIFIC TO THE EVAL_SCALE SWEEP
+
+The sweep scores arms by top-1 agreement against a Stockfish oracle. For a
+normal within-engine comparison that is fine: the SF-identity bias (§3q) is
+constant across arms and cancels.
+
+**It does not cancel here.** `EVAL_SCALE` moves our eval's calibration *toward
+Stockfish's*. An arm that makes us more SF-like would raise agreement-with-SF for
+reasons of resemblance rather than quality — the bias is a function of the arm,
+which is exactly the case where it stops cancelling. A positive result could be
+the knob working, or it could be the knob making us imitate the referee.
+
+**So a positive EVAL_SCALE result cannot be promoted on this sweep alone.** It
+has to be confirmed under the neutral referee (§3z4) or in games, and the sweep's
+role is reduced to picking which value to take forward.
+
+Worth writing down because it is subtle: "the bias is constant across arms, so it
+cancels" is true for almost every tunable and false for this one, and the
+difference is not visible in the output.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
