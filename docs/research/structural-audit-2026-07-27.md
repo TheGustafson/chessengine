@@ -245,7 +245,33 @@ but does not settle.
 | 3 | threat-conditioned LMR / futility | `screen.py`, then SPRT | free for us, costly for Stockfish |
 | 4 | `RAZOR_CORR_DIV` / `NMP_CORR_DIV` at 182069 | `screen.py` | SF applies `\|correctionValue\|` at 3 sites; we have plumbing for 5, inert at 1e9 |
 | 5 | `FRAME12` ×0.64, and `HINDSIGHT_EVAL_SUM=111` alone | `screen.py` | the 12 eval constants no frame formulation ever moved |
-| 6 | optimism boosted by WDL uncertainty | `screen.py` | replaces a dead SF term with a signal only we have |
+| 6 | revive `complexity` as \|material − nnue\| | `screen.py`, 2-param | two dead SF constants; a direct analogue, not a substitute |
+| 7 | threat-conditioned LMR | `screen.py`, then SPRT | verified NEW information at the reduction site |
+
+Notes on 6 and 7, both of which need a build and so are behind the
+no-build items:
+
+**6.** SF's `complexity = |psqt − positional|` measures the disagreement
+between the material view and the positional view. Our closest analogue is
+`|material_imbalance(board) − nnue_out|`, and `material_imbalance` already
+exists as the smallnet gate's O(1) prefilter. Better than the WDL idea I
+floated earlier, because it reproduces SF's *semantics* rather than
+substituting a different signal (draw probability measures decisiveness, not
+sharpness). **Unit trap:** `material_imbalance` is in PIECE_VALUES units
+(PAWN_VALUE 208) while `nnue_out` is in the eval frame (~247/pawn), so the
+difference is meaningless until one side is converted — exactly the
+mixed-units-in-one-expression failure the playbook warns about. And the
+divisors 476 / 18236 were tuned against SF's complexity distribution, so this
+is a two-parameter experiment, not a one-liner.
+
+**7.** Confirmed by reading `stat_score`: for quiets it is
+`2·main + cont[0] + cont[1]`, history only, exactly as in Stockfish. So the
+threat map reaches move ORDERING and the one RFP relaxation, and reaches
+neither reductions, futility, move-count pruning, nor extensions. A threat
+term at the reduction site is therefore genuinely new information, not a
+second application of a signal already present. Implementation note: factor
+`threat_by_lesser(pt)` onto `Board` and build movepick's hoisted array from
+it, so there is one definition rather than two that can drift.
 
 Experiment 1 is deterministic under load and can run on a busy box — verified
 2026-07-27, where a `nice 19` screen alongside a timed match reproduced the
