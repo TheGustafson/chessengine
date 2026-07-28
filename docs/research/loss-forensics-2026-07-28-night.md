@@ -2525,3 +2525,76 @@ position is a patch, three is a fix) the Rb2 mechanism explains Rb2 and not the 
   search effect, and now with a candidate mechanism (context-dependent subtree value).
 - **Search self-inconsistency up to 260 cp** — new, verified, unexplained.
 
+## 8. THE AUDIT VERDICTS — three of my premises die, and the right experiment appears
+
+A 3-agent code+measurement audit settled what my hand-built score instruments could
+not. All three ran their own null panels.
+
+### 8a. The ladder IS broken between rung 2 and rung 3
+
+**LMR reduction depth is frame-INSENSITIVE.** Correcting *every* cp-denominated input
+to the reduction by exactly 1/0.538 moves total reduction magnitude by **0.176 plies
+out of 3.109 = 5.7%**, against a chaos floor of 0.65% (4.46M real LMR actions per arm,
+deterministic, two nulls reproducing to 4 decimals). The full correction lands
+**inside the null band** on the 44-error corpus (18/44 vs nulls 17/44 and 20/44) while
+LMR-off is 30/44.
+
+Why: `improving` is a SIGN test between two same-frame static evals — frame-invariant,
+measured tie rate zero. `statScore` is pure history units and is the second-largest
+contributor (12.1%). The depth x movecount table is 38.4%; flat/boolean terms ~55%.
+**LMR and the eval-frame error are independent findings.** My §5 chain was wrong.
+
+### 8b. The direction claim is backwards, and EVAL_SCALE is the wrong instrument
+
+Every standard margin gate reads "prune UNLESS the eval clears MARGIN", so a
+too-large margin prunes **LESS**: our inflated constants make those sites prune less
+and the tree **wider**. Measured spans confirm it site by site (parent futility
++111.9%, RFP_MULT +124.9%, razoring +65.4%, ProbCut +10.3/+27.9%).
+
+Census: **13 of 32 gates frame-sensitive, 12 unit-free, 4 "class-4"** (eval mixed with
+material in one comparison), 3 already in material frame. So a global `EVAL_SCALE`
+reaches at most 41% of the machinery and **actively breaks the class-4 four** plus the
+reduction's delta/root_delta ratio. The extension/re-search family (singular beta, SE
+double/triple, LMR deeper/shallower, aspiration delta) carries the doc's sign but at
+1.86x is ~14x weaker (−2.9% vs −41.3%).
+
+### 8c. The EBF fact is refuted — it was an n=14 artifact
+
+**"SF 1.65 vs our 1.49" reproduces only at n=14.** At n=44 the same script gives SF
+1.551 vs ours 1.497; a proper geometric EBF over 84 positions gives **1.629 vs 1.620 —
+indistinguishable.** EBF is strongly depth-dependent in both engines: sliding the
+measurement window 4 plies moves it more than the entire claimed engine gap.
+
+With that gone the contradiction dissolves along the depth axis: we are **1.30x WIDER
+than SF at d8** (significant) and 0.82x narrower at d26. And dividing every additive
+cp margin by 1.86 moves our d8 width from 1.30x to **1.03x** — the frame error
+accounts for essentially all of our shallow over-width. **Fact (1) is confirmed
+exactly where cp gates live.**
+
+### 8d. What this makes the frame worth, and the experiment I should have run
+
+- **Reductions carry ~4.5x the elasticity of the cp frame on tree size.** The entire
+  1.86x frame error is worth about as much tree as a **16% change in
+  `RED_TABLE_NUM`.**
+- **`EVAL_SCALE` is not a units knob, it is a global pruning-aggressiveness knob**:
+  es2200 removes 30% of the shallow tree (monotone: es512 1.34 -> es2200 0.70, nulls
+  exactly 1.00 at every depth). **So −27.8 Elo was expected, not evidence about the
+  frame at all.** I tested the frame with an instrument that does something else.
+
+**The correct frame experiment is `margins x0.538`** — divide the 17 additive cp
+margins by 1.86 and do NOT rescale scores. That isolates the frame from pruning
+aggressiveness, leaves the class-4 gates alone, and is the arm the audit names as its
+own refutation test. It has never been run.
+
+### Standing after the audit
+
+| claim | status |
+|---|---|
+| eval = 0.538x SF internal, from `SFBINPACK_SCORE_DIV=1.9` | **TRUE** |
+| the frame explains our shallow tree width | **TRUE** (d8 1.30x -> 1.03x) |
+| the frame explains the losses | **FALSE** — 4.5x less elastic than reductions |
+| we are the narrower engine (EBF 1.49 vs 1.65) | **REFUTED** — n=14 artifact |
+| too-large constants make the tree narrower | **BACKWARDS** |
+| LMR over-reduction follows from the frame | **REFUTED** — 5.7%, inside the null |
+| LMR-off recovers 13/44 -> 30/44 | **STANDS** — the only large replicated effect |
+
