@@ -91,9 +91,16 @@ def main() -> None:
     ap.add_argument("--max-depth", type=int, default=26)
     ap.add_argument("--hash", type=int, default=64)
     ap.add_argument("--gates", default="", help="comma-separated subset")
+    ap.add_argument("--arm", action="append", default=[],
+                    help="extra arm, NAME:KNOB=VAL[,KNOB=VAL...]; repeatable. "
+                         "Use with --gates '' to run ONLY the custom arms.")
+    ap.add_argument("--only-arms", action="store_true",
+                    help="skip the standard gate arms, run control + --arm only")
     args = ap.parse_args()
 
-    gates = GATES if not args.gates else {k: GATES[k] for k in args.gates.split(",")}
+    # a copy: the reset loop below adds entries, and GATES is imported by
+    # gate_census -- mutating a shared module global is how probes get haunted
+    gates = dict(GATES) if not args.gates else {k: GATES[k] for k in args.gates.split(",")}
     dflts = engine_defaults(OURS)
     missing = [k for _n, (k, _o) in gates.items() if k not in dflts]
     if missing:
@@ -103,13 +110,29 @@ def main() -> None:
 
     allon = {k: off for _n, (k, off) in gates.items()}
     arms = [("control", {})]
-    arms += [(f"-{n}", {k: off}) for n, (k, off) in gates.items()]
-    arms += [("ALL-off", allon)]
-    # leave-one-in: everything off except this gate, which stays at default
-    for n, (k, _off) in gates.items():
-        o = dict(allon)
-        o[k] = dflts[k]
-        arms.append((f"only+{n}", o))
+    if not args.only_arms:
+        arms += [(f"-{n}", {k: off}) for n, (k, off) in gates.items()]
+        arms += [("ALL-off", allon)]
+        # leave-one-in: everything off except this gate, which stays at default
+        for n, (k, _off) in gates.items():
+            o = dict(allon)
+            o[k] = dflts[k]
+            arms.append((f"only+{n}", o))
+    for spec in args.arm:
+        label, _, body = spec.partition(":")
+        opts = {}
+        for kv in body.split(","):
+            k, _, v = kv.partition("=")
+            k = k.strip()
+            if k not in dflts:
+                raise SystemExit(f"--arm {label}: '{k}' is not a tunable")
+            opts[k] = v.strip()
+        arms.append((label, opts))
+    # every custom knob must also be reset to its default between arms
+    for _l, o in arms:
+        for k in o:
+            if k not in [g[0] for g in gates.values()]:
+                gates.setdefault("_x" + k, (k, dflts[k]))
 
     e = Engine(OURS, name="archon", hash_mb=args.hash)
     e.assert_net_live()
