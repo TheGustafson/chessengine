@@ -268,8 +268,25 @@ number yet:
 3. `hind111` is the standing reminder that a screen number is not Elo.
 
 Sequence before it can be promoted: bracket → re-screen on the phase corpus →
-SPRT. **PFUT_\* are among the 164 of 303 tunables in no campaign at all**,
-which is the most likely reason a 4σ effect was still lying around.
+SPRT.
+
+**Why a 4σ effect was still lying around — and a correction.** I first wrote
+that PFUT_\* were among the 164 of 303 tunables in no campaign. That is wrong:
+they are named in four campaign configs, and `c5-futility-see` bounds
+(`PFUT_BASE` [20,80], `NO_BESTMOVE` [65,280], `LMRDEPTH_MULT` [55,235],
+`EVAL_ABOVE_ALPHA` [45,180]) contain every value `pfinv` uses. The effect was
+reachable.
+
+It was never reached because **none of those campaigns was ever run.**
+`tools/spsa/out/` holds runs for exactly two: `c2-reduction` and `s2-stageA`,
+and stage-A's only PFUT entry is `PFUT_BASE`. `c5-futility-see`,
+`c6-gates-counters` and `s4-searchgap` have no output directory at all.
+
+So the coverage metric is itself misleading: `param_provenance.py` counts a
+tunable as "covered" when it is **named in a config file**, not when it has
+been tuned. It reports 139/303 covered; the number actually exercised by a run
+is far smaller. Worth fixing — a coverage number that counts intentions rather
+than runs will keep pointing campaigns away from unexplored ground.
 
 ## 6. INSTRUMENT BUGS FOUND TONIGHT (five, all mine)
 
