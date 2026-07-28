@@ -136,7 +136,8 @@ Depth reached at a fixed 200k nodes, Hash 16 (as in the match):
 
 We are *deeper* than Stockfish in the opening at equal nodes and 0.4–0.6 plies
 shallower in endgames. That accounts for roughly a third of the in-game
-endgame depth gap. The remainder is NPS and clock.
+endgame depth gap. **The remainder is UNEXPLAINED** — §3b withdrew the speed
+story it was originally attributed to, and the clock buys only ~0.26 plies.
 
 ---
 
