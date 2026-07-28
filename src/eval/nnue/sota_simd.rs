@@ -1286,9 +1286,17 @@ mod avx512 {
                     let merge = |offset: usize| {
                         let pv = _mm512_loadu_si512(p.as_ptr().add(offset).cast());
                         let tv = _mm512_loadu_si512(t.as_ptr().add(offset).cast());
-                        let t4 =
-                            _mm512_adds_epi16(_mm512_adds_epi16(tv, tv), _mm512_adds_epi16(tv, tv));
-                        let mag = _mm512_mulhrs_epi16(_mm512_abs_epi16(t4), mulr);
+                        // |4t| in TWO instructions instead of three: |4t| ==
+                        // 4·|t| for every representable t, so take the absolute
+                        // value first and reach 4x with a single shift. The
+                        // shift wraps rather than saturating, which is exactly
+                        // as safe as the `adds` pair it replaces — both rely on
+                        // the same documented |t| <= 8191 bound (4·8191 = 32764
+                        // < 2^15), and the debug assert above still guards it.
+                        // Bit-identical; −1 SIMD op per merge, 4 per loop body
+                        // (perf study 8 §4.3).
+                        let mag =
+                            _mm512_mulhrs_epi16(_mm512_slli_epi16::<2>(_mm512_abs_epi16(tv)), mulr);
                         // no vpsignw in avx512bw: mask-negate where t < 0
                         // (t4 == 0 ⇒ mag == 0, sign irrelevant — matches signum)
                         let neg = _mm512_cmplt_epi16_mask(tv, zero);
@@ -1507,6 +1515,14 @@ mod avx512 {
     unsafe fn skip_dot_inner(ft: &[u8], lane: &[f32]) -> f32 {
         // One zmm accumulator = the reference's 16 partial lanes; the halving
         // tree runs scalar over the spilled lanes (policy_dot discipline).
+        //
+        // A FOUR-accumulator split of this 80-deep serial `vfmadd` chain was
+        // prototyped and measured here (perf study 8 §7.7): battery-identical
+        // on the 800-FEN integer-cp hash and node-identical, and worth
+        // **nothing** — 4 of 9 interleaved paired rounds favoured it, median
+        // cycles/node ratio 1.023. Same physics study 3 found for `l1_dot`'s
+        // chain split: the kernel streams ~5 KB of f32 weights per eval and is
+        // load-bound, not latency-bound. Do not re-litigate.
         // SAFETY: caller guarantees equal lengths, multiple of 16.
         unsafe {
             let mut acc = _mm512_setzero_ps();
