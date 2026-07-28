@@ -122,6 +122,48 @@ is the surviving hypothesis and the next target.
 
 ---
 
+## 4b. GAME 18, closed out — it is null-window root promotion, not knowledge
+
+Two measurements finished this position off, and both went against the story I
+was building.
+
+**The eval is not merely adequate here, it is better than Stockfish's.**
+Ranking all 20 of Black's replies to Be2 against deep truth (SF @400k):
+
+| | Spearman vs deep truth | its value for the refutation `d7b5` |
+|---|---|---|
+| **ARCHON static** | **0.618** | **+45** (correctly positive for Black) |
+| SF18 static | 0.179 | −71 (wrong sign) |
+
+Both statics pick `c3c2` as Black's best; the truth is `d7b5`. Neither net
+understands the deflection — but ours ranks the field three times better and
+gets the key move's sign right. **No eval fix is available here, because our
+eval is already the better of the two.**
+
+**And Stockfish does not "know" the answer either.** Reading both candidates
+out of ONE tree at MultiPV 3:
+
+| depth | ARCHON a5c5 / h5e2 | SF18 a5c5 / h5e2 |
+|---|---|---|
+| 6 | −1 / **+63** | −12 / −25 |
+| 10 | −32 / **+1** | −6 / **+3** |
+| 12 | −25 / **−1** | −5 / **+3** |
+
+**Stockfish's own full-window values prefer `h5e2` from depth 10 on** — the
+losing move — while its single-PV search picks `a5c5` at depth 5 and never
+leaves it, at every node budget from 25k up. So SF's correctness here is not
+superior evaluation and not deeper resolution. In single-PV the second root
+move is scouted with a null window around alpha and must EXCEED it to be
+promoted; SF's scout proves `h5e2 <= alpha` and ours promotes it.
+
+The localization is therefore precise and narrow: **root-move promotion under
+the null window.** Not eval, not the gates (§5), not the clock (§2), not
+movepick structure — our stage list is an exact match to SF's at `eca43a97`,
+and neither engine has killers, so D17 stands.
+
+This is a localization, not a fix, and one position cannot support a change.
+It goes on the list for corpus-v2 to confirm or kill.
+
 ## 5. GATES — refuted, including my own attribution
 
 `gate_depth.py` on game 18 with defaults read out of the binary said parent
