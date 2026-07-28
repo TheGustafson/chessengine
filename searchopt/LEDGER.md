@@ -222,6 +222,35 @@ noise: it aggregates gradient information over thousands of cheap paired compari
 moves all coordinates at once. For effects of +1 to +4 Elo that is the correct
 instrument, and single-arm A/B is the wrong one.
 
+## OPENING HETEROGENEITY: UNTESTABLE ON A COLOUR-PAIRED BOOK (2026-07-28)
+
+Question: is the −68 Elo uniform across openings, or concentrated in position types?
+Attempted from the 110k equal-nodes PGN, 203 openings × 2 colour-swapped games.
+
+**The test I built is invalid and the data said so.** Observed pair-score variance is
+**0.547×** the value expected if the two games of a pair were independent — LESS
+dispersed, not more. On a colour-paired **unbalanced** book the two games are strongly
+**anti-correlated** by construction (the advantaged side usually scores), which is
+exactly what the pairing is for. That anti-correlation swamps any opening-level signal,
+so **a pair-variance test cannot detect opening heterogeneity on this book.** Recorded so
+nobody re-derives it; testing it properly needs many games per opening, not two.
+
+**What the pair-outcome distribution does show** (marginals W/D/L = 69/190/147,
+p = 0.170/0.468/0.362):
+
+| pair score | observed | expected if independent |
+|---|---|---|
+| 1.0 | 1 | 5.9 |
+| 0.75 | 26 | 32.3 |
+| 0.5 | 72 | 69.4 |
+| **0.25** | **102** | 68.8 |
+| 0.0 | **2** | 26.6 |
+
+**Half of all opening pairs (102/203) score exactly 0.25 — lose one, draw one.** We
+almost never lose both (2) and almost never win both (1). This reproduces AT EQUAL NODES
+the corpus's "we lose the bad side and draw the good one" pattern (71% of pairs at
+10+0.1), so it is not a speed artifact — it survives removing the 1.5–1.9× speed deficit.
+
 ## MOVE-TYPE ASYMMETRY: NOT ESTABLISHED — and the raw version reversed sign (2026-07-28)
 
 Do we play different KINDS of moves than SF? SAN is free in the PGN. Middlegame band
