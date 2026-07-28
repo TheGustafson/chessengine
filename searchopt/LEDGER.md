@@ -188,6 +188,30 @@ drift across 172 unconverted wins. That is the failure mode the standing bar in 
 explicitly deprioritised as "leaves no trace to debug" — on this corpus it is the whole
 story. **This is a finding for the owner to rule on, not for an agent to act on unilaterally.**
 
+## ROOT-SCORE VOLATILITY RE-DERIVED IN THE GAME REGIME: 1.24×, not 3.2× (2026-07-28)
+
+`docs/research/aspiration-frame-bug.md` headlines "**3.2× the oscillation**" (our root
+score ranging 1.44 pawns over 14 iterations vs SF's 0.45). That is **one position,
+searched cold**. Re-measured from the stored equal-nodes match PGNs — the game regime,
+frame-normalised at the parse boundary, decided positions (|score| ≥ 5 pawns) excluded:
+
+| budget | ARCHON | SF18 | ratio | n |
+|---|---|---|---|---|
+| 110k | 0.1271 | 0.1022 | **1.243×** | ~24k each |
+| 30k | 0.1622 | 0.1326 | **1.223×** | ~23k each |
+
+(mean |score change| between an engine's own consecutive moves, in SF-frame pawns.)
+
+**The phenomenon is REAL and reproduces at both budgets** — our root genuinely churns
+more than SF's, consistently. **But the magnitude is 1.24×, not 3.2×** — the doc
+overstated it 2.6× off a single cold position, and that number was load-bearing for the
+whole aspiration line, including my own arms this session.
+
+⇒ Rule 8 in practice: the deciding number was free the whole time (it is in the PGN
+annotations of matches that already existed) and had ~24,000× the sample of the number
+actually quoted. **Before building on a per-position figure, check whether the same
+quantity can be read out of a match that has already been played.**
+
 ## ★★ THE COLD-PROBE REGIME IS NOT THE GAME REGIME (2026-07-28) — read before trusting ANY per-position measurement in this folder
 
 **In-game depth at equal nodes, read from the stored match PGNs (n ≈ 29,000 moves per
