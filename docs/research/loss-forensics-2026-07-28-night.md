@@ -998,6 +998,38 @@ and 8–12 (0.003 vs 0.001).
   ±1000 clip that fixed the phase corpus was never applied here. Fix the builder,
   not the reader.
 
+## 3r. THE BIAS CUTS THE OTHER WAY FOR THE EVAL FINDINGS — they are CONSERVATIVE
+
+§3q established that comparing two engines against a Stockfish-generated
+reference rewards being Stockfish. That bias does not only invalidate things — it
+also means some findings are stronger than they were stated.
+
+**Both eval measurements are scored against SF's own deep search.** §3e correlates
+each engine's STATIC eval with SF@64k's value; §3m correlates each engine's
+depth-1 (qsearch) value with the same. Stockfish's static eval and its deep search
+share an evaluation function at the leaves, so any systematic quirk of that net
+appears in both terms and inflates SF's correlation. **Stockfish is marked by its
+own examiner.**
+
+And under that handicap we still came out level:
+
+| | ARCHON | SF18 | with the bias removed |
+|---|---|---|---|
+| static rho, 21+ → ≤7 | 0.764 / 0.848 / 0.951 / **0.960** | 0.802 / 0.850 / 0.957 / 0.939 | ours is **at least** this good |
+| qsearch rho at depth 1 | 0.821 / 0.705 / 0.863 / 0.900 | 0.835 / 0.733 / 0.871 / 0.907 | gaps of −0.03 shrink or reverse |
+
+So "our eval is at parity" is the **conservative** reading; the unbiased truth is
+parity-or-better. That makes the strategic conclusion firmer rather than shakier:
+**a better net addresses approximately none of the measured gap**, and the D48X
+result (equal-time −12.6 ± 17) is what that predicts.
+
+**The general rule this session earned:** when a measurement uses one of the
+compared parties as the reference, work out which way the bias runs BEFORE
+reading the result. It invalidated the top-1 comparisons (§3q) and it fortifies
+the eval ones — same bias, opposite consequences, because in one case the
+reference favoured the party I was measuring against and in the other it favoured
+the party I was measuring.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
