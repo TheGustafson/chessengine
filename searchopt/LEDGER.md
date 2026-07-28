@@ -188,6 +188,48 @@ drift across 172 unconverted wins. That is the failure mode the standing bar in 
 explicitly deprioritised as "leaves no trace to debug" — on this corpus it is the whole
 story. **This is a finding for the owner to rule on, not for an agent to act on unilaterally.**
 
+## ★★ THE COLD-PROBE REGIME IS NOT THE GAME REGIME (2026-07-28) — read before trusting ANY per-position measurement in this folder
+
+**In-game depth at equal nodes, read from the stored match PGNs (n ≈ 29,000 moves per
+engine — orders of magnitude more power than any per-position probe here):**
+
+| budget | ARCHON | SF18 | delta |
+|---|---|---|---|
+| 110k | **21.43** | **21.43** | **+0.01** |
+| 30k | 17.56 | 17.66 | −0.11 |
+| 10k | 14.42 | 14.53 | −0.11 |
+
+**Our depth EQUALS SF's at every budget in games.** Both engines see identical positions
+in these matches, so position mix cannot explain it.
+
+**But a COLD probe at 110k reads 14.54 (ours) / 14.80 (SF) — about SEVEN PLIES
+SHALLOWER than the same engines at the same node budget in a game.** Every per-position
+instrument in this folder — mine this session, and its predecessors — runs `ucinewgame`
+per position and therefore measures a regime games never occupy.
+
+### What this invalidates, and what it does not
+* **Deflated: the (depth, seldepth) Pareto framing.** The depth half does not reproduce
+  in games — in-game it is +0.01, not SF +0.26. Seldepth is not written to the PGN so it
+  cannot be cross-checked in the game regime at all; treat the +2.50 cold gap as
+  **unverified in the regime that matters**, not as an established fact.
+* **Confirmed directly: cold mechanism gains do not transfer.** `asp30` measured
+  **+0.96** depth cold and delivers **+0.08** in-game; `asp100` measured +1.24 and
+  delivers +0.75. Read the arm's mechanism out of the MATCH PGN, not out of a cold probe.
+* **Reported depth is an inflated proxy in the warm regime.** A warm TT lets shallow
+  iterations complete off TT hits without proportionate work, so +7 plies of reported
+  depth is NOT +7 plies of strength — this folder's own cold-vs-warm match prices warm
+  state at ~−132 to −145 Elo, nowhere near what 7 plies would be worth. **Never convert
+  a depth delta into Elo.**
+* **Not invalidated:** anything measured from games (the equal-nodes ladder, every arm
+  result, the conversion/salvage analysis). Those were always in the right regime.
+
+### The rule
+**Measure an arm's mechanism in the MATCH PGN.** `fastchess` writes `{score/depth time}`
+per move, so in-game depth per engine is free and needs no probe at all. A cold probe is
+admissible for a quick screen, but a mechanism that only exists cold is not a mechanism —
+it is an artifact of the instrument, and five mechanism-verified arms that converted to
+nothing this session are what that looks like from the outside.
+
 ## ★ THE FIRST PARETO MOVE: the aspiration window is too narrow, and it under-reduces the WHOLE TREE (2026-07-28)
 
 Everything else this session moved us ALONG the (depth, seldepth) frontier. This moves
