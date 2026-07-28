@@ -140,7 +140,50 @@ endgame depth gap. The remainder is NPS and clock.
 
 ---
 
-## 3b. THE BIGGEST LEVER — a 2× NPS deficit, worst exactly where we lose
+## 3b. RETRACTED — "a 2× NPS deficit, worst where we lose"
+
+**The NPS table below is withdrawn. Do not cite it.** I measured relative speed
+four times on a saturated box and got four incompatible answers:
+
+| method | 21+ | 13–20 | 8–12 | ≤7 |
+|---|---|---|---|---|
+| uciprobe, nodes-at-last-info ÷ wall | 1.64× | 1.49× | 1.67× | **2.01×** |
+| bench NPS, depth 11 | 1.33× | 1.17× | 1.56× | **0.72×** |
+| bench NPS, depth 14–18, first-match parse | 22× | 12× | 22× | 18× |
+| bench NPS, depth 14–18, correct parse | **2.18×** | 1.17× | 1.23× | 1.38× |
+
+Three separate faults, and it is worth naming each because they are all
+reusable mistakes:
+
+1. **Nodes-at-last-info ÷ wall time is not NPS.** Both engines emit roughly one
+   info line per completed depth, so the aborted final iteration — often near
+   half the work at EBF ~2 — is invisible. Which engine loses more is
+   *random*, depending on where each happened to be in its iteration when the
+   clock ran out. My first table was noise, not a 2× effect.
+2. **`re.search` takes the FIRST match.** Our bench prints per-position lines
+   before the summary, so the third row measured one position's nodes against
+   the whole run's time — 22×, an impossible number I should have rejected on
+   sight rather than tabulated.
+3. **Load.** Even with correct parsing, sequential runs on a box at load ~15
+   are not comparable to each other.
+
+**The one load-immune measurement, and the only speed number I will stand
+behind:** instructions per searched node, same positions, same depth —
+1.15× (21+), 0.97× (13–20), 1.01× (8–12), **0.90× (≤7)**, with IPC 0.74–0.89
+for us against 0.56–0.76 for Stockfish. Per-node cost is comparable, and if
+anything we are cheaper in the endgame. **There is no evidence of a large speed
+deficit.**
+
+What this costs the model: the endgame depth gap in games (17.7 vs 19.2 at
+moves 41–50; 14.7 vs 16.7 at the decisive ply) is real and observed by two
+independent instruments, but its CAUSE is now unexplained. Equal-node tree
+shape accounts for ~0.5 plies and the clock for ~0.26 of ~1.5. The residual is
+open. Re-measure NPS on a quiet box before building anything on it.
+
+<details>
+<summary>The withdrawn section, kept for the record</summary>
+
+## 3b-OLD. THE BIGGEST LEVER — a 2× NPS deficit, worst exactly where we lose
 
 corpus-v2 (129 games in, vs SF18 at 10+0.1) corroborates the phase story from
 an independent instrument: **51 of our 64 losses are decided in the endgame**
@@ -177,6 +220,12 @@ the truth was 0.845×). The ratio is interleaved and self-relative, which is the
 robust form, and it sanity-checks against a known idle figure: V-768 measures
 1051k idle, my loaded 271k is 3.9× depressed, implying SF ~1.7M idle, which is
 ordinary for SF18 single-threaded. Re-measure quiet before quoting it.
+
+*(That was the hedge I wrote at the time, and it was not enough: I then
+built a "biggest lever" heading on a number I had just called provisional.
+A hedge in the footnote does not license a claim in the title.)*
+
+</details>
 
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
