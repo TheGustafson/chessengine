@@ -2453,3 +2453,75 @@ clean experiment is rescale **plus** a retune of the co-adapted set, not rescale
 alone. Stated in advance, before the match finishes, so it cannot be fitted to the
 result afterwards.
 
+## 7. ONE POSITION, DRIVEN DOWN — and a frame error that invalidated my readings
+
+Aggregates hid everything tonight, so: one loss, to the bottom.
+
+`2Rn2r1/1p3p2/1P2pk2/5p2/p6P/3RP1P1/3rPKB1/8 b - - 1 32` — we played **Rb2**;
+the move is **Rxd3**. SF finds Rxd3 at 12,500 nodes. We do not find it at 3,200,000.
+
+### The correction that came first
+
+**Every search-ladder comparison I made tonight mixed frames.** Our engine prints raw
+internal values; Stockfish prints internal/a with a~385. Ours are 2.07x SF's printed
+cp. So "ARCHON −419 vs SF −153, a 266 cp gap at depth 1" was really −202 vs −153, a
+49 cp gap. The "400 cp disagreement on an identical PV" was likewise the frame — and
+the PV looked identical only because I had truncated the display to 12 plies while the
+search was at d24. **Two separate reading errors, same session as the section that
+diagnosed the frame.** Node-to-find results are unaffected (they compare which move,
+not scores); every score comparison needed redoing.
+
+### What the position actually shows, framed correctly
+
+| move | ARCHON | SF18 | oracle | our error |
+|---|---|---|---|---|
+| Rxd3 (right) | −293 | −244 | −212 | −81 |
+| **Rb2 (we played)** | **−166** | −390 | −364 | **+198** |
+
+**We do not undervalue the right move — we overvalue the one we played.** At d12 we
+had Rb2 correct (−358 vs −364); between d12 and d16 we "found" 200 cp and kept it.
+
+The refutation is at ply 1 and it is a hanging knight: after Rb2, White plays
+**Rdxd8**. Along the line our PV assumes instead, SF's evals sit at ±150 — exactly
+what we scored. Our line is correctly evaluated; it simply is not what White plays.
+
+### The mechanism: our search contradicts itself
+
+Search the position after Rb2 **directly** and we find it at once — +378 at d20,
+agreeing with SF's +365. Search it **through the root** and we say +166.
+
+Same position, same engine, matched effective depth (root@D+1 vs child@D):
+
+| child D | root@D+1 | direct child@D | gap |
+|---|---|---|---|
+| 12 | 232 | 224 | **+8 (consistent)** |
+| 16 | 178 | 354 | −176 |
+| 20 | 173 | 386 | **−213** |
+
+Identical at Hash 16 and 64, so not a TT artefact. Through d12 the search is
+self-consistent; past d14 the ply-1 subtree **stops improving** (232→173) while the
+truth keeps rising (224→386). Reductions inside the subtree grow faster than the
+depth added, so the node stops learning and we keep believing its stale value.
+
+### It does not replicate — this is a patch, not a fix
+
+Same test on the six worst losses, gap at D20: **+46, +4, +260, +120, +214, −1**.
+
+Large (to 260 cp) in four of six, but **the sign is not systematic** — Rb2's −213 is
+the opposite of the +260 and +214 cases. So the finding is not a directional
+reduction bug. It is that **our search returns materially different values for the
+same position at the same effective depth depending on context, in either
+direction.** That is a real defect and a real lead, but by the standing rule (one
+position is a patch, three is a fix) the Rb2 mechanism explains Rb2 and not the class.
+
+### Standing after this section
+
+- **Frame (0.538x, `SFBINPACK_SCORE_DIV=1.9`): TRUE, NOT CAUSAL.** es2200 scored
+  −27.8 +- 16.8 over 188 games; es1812 delays the refutation on the worst loss.
+  Keep the fact, drop it as an explanation of losses.
+- **Node-to-find: we are at parity or better on 34 of 44.** SF finds the right move
+  inside our own budget in 37/44.
+- **LMR-off: 13/44 -> 30/44**, ~30x the null floor — still the only large, replicated
+  search effect, and now with a candidate mechanism (context-dependent subtree value).
+- **Search self-inconsistency up to 260 cp** — new, verified, unexplained.
+
