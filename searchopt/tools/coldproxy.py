@@ -61,7 +61,14 @@ def main() -> int:
     # `position` round-trip. Controls of exactly this kind are what killed five
     # instruments in README S2; cheaper to build one in than to argue later.
     warm = "--warm" in argv
-    argv = [x for x in argv if x != "--warm"]
+    # --tt-only clears ONLY the transposition table (`setoption name Clear
+    # Hash`, which both engines expose) and leaves the histories, the five
+    # correction tables and the aspiration seed alone. Running warm / tt-only /
+    # fully-cold as three arms decomposes the carried-state gain into its TT
+    # half and its everything-else half, per engine, with no code change to
+    # either engine.
+    tt_only = "--tt-only" in argv
+    argv = [x for x in argv if x not in ("--warm", "--tt-only")]
     if not argv:
         print("usage: coldproxy.py [--warm] <engine> [args...]", file=sys.stderr)
         return 2
@@ -80,7 +87,9 @@ def main() -> int:
             held = line          # hold it: the reset has to come first
             continue
         if line.startswith("go"):
-            if not warm:
+            if tt_only:
+                send("setoption name Clear Hash")
+            elif not warm:
                 with _lock:
                     _owed += 1
                 send("ucinewgame")

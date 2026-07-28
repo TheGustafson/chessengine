@@ -188,6 +188,69 @@ drift across 172 unconverted wins. That is the failure mode the standing bar in 
 explicitly deprioritised as "leaves no trace to debug" — on this corpus it is the whole
 story. **This is a finding for the owner to rule on, not for an agent to act on unilaterally.**
 
+## SELDEPTH — THE FIRST CROSS-ENGINE STATISTIC THAT DISTINGUISHES (2026-07-28)
+
+Full writeup: `results/seldepth-gap.md`.
+
+| claim | deciding evidence |
+|---|---|
+| **At equal nodes AND equal nominal depth, SF's PV lines run 2.5 plies deeper than ours** | 150 plateau positions @110k: seldepth **22.72 vs 25.22**, nominal depth 14.59 vs 14.80, sel/nom **1.560 vs 1.709**. Δ = **+2.50 ± 0.78**. Accounting verified identical on both sides before use (PV-only `max(ply+1)` in search AND qsearch, reset per PV line) |
+| The statistic survives a SIX-arm inert null | `RED_TABLE_NUM ±1`, `RFP_CORR_DIV −1`, `QHIST_PRUNE_MULT +1`, `NMP_EVAL_BASE +1`, `SE_TRIPLE_DEEP +1` span **−0.03 .. +0.14** at d12. The gap is ~17× the band. **Every other cross-engine instrument in this folder either came back at par or died to its null; this one does neither** |
+| It is an EXTENSION signature, not a qsearch one | mean `seldepth − depth` by nominal depth: at d1–d6 **we are DEEPER** (−0.35, −0.17, −0.42, −0.09); the gap opens at d8 (+0.36), d10 (+1.05), d12 (+2.51). Zero at exactly the singular-extension gate `depth >= 6 + ttPv`, then compounds |
+| Frame-scaled extension margins move the mechanism — but recover only ~26% | vs the ±0.15 band: SE trigger (`SE_BETA_MULT` 60→32) **+0.60**, `LMR_DEEPER/SHALLOWER_MARGIN` 52/9→28/5 **+0.30**, `RED_CORR_DIV` 26131→14058 **+0.27** (→7029: +0.52) |
+| ~~SE double/triple margins are frame-mis-scaled and cost extensions~~ | **REFUTED by its own mechanism test: +0.11, inside the null band.** Only the singular *trigger* margin is live |
+| The three live knobs DO NOT COMPOSE | individually +0.60 / +0.30 / +0.27; **together −0.21**, below base. Extensions and reductions interact; do not stack them assuming additivity |
+| The remaining ~1.9 plies is unexplained, and these are excluded | qsearch (we dive deeper at shallow depth), IIR (`depth>=6`, `depth--`, exact parity), the LMR depth clamp (`LMR_PV_DEPTH_BONUS` = SF `+PvNode`; `RED_MAX_DEEPER` = SF `newDepth+2`), the ttMove min-depth clamp, and the SE block structure incl. `SE_NODE_DEEPEN` (= SF `depth++`) |
+
+⇒ **Why this shape and not another.** Every tree-WIDENING change with game evidence
+loses (`lmr30` −11.6 n=628; `EVAL_SCALE 2200` −27.8; `corrgate` −17.1 n=406), so the
+width optimum is pinned in both directions. An extension change is a REALLOCATION of
+the same budget toward critical lines, which is the only shape left that can win.
+
+## ARMS MEASURED THIS SESSION (games)
+
+| arm | result |
+|---|---|
+| `corrgate` — the two disabled ARCHON-original conditioning terms `RAZOR_CORR_DIV` / `NMP_CORR_DIV` switched on at SF's RFP divisor 182069 | **−17.1 [−51.2, +16.7]**, n=406, 30k nodes self-play. Arm-verified live first. Dead |
+| `setrigger` — SE trigger margin frame-scaled (`SE_BETA_MULT` 60→32, `SE_BETA_TTPV_MULT` 70→38) | running |
+
+## THE NEUTRAL-JUDGE ARM CAME BACK NULL (2026-07-28)
+
+`judge.py`, 80 disagreement pairs from 248 plateau positions, both engines at 110k,
+each candidate move then scored under forced `searchmoves` at 1.5M by three judges.
+
+| judge | null (archon vs inert archon) | arm (archon vs SF18) | arm − null |
+|---|---|---|---|
+| reckless (neutral) | 44.2% | 47.4% | +3.2 |
+| sf18 | 41.0% | 51.3% | +10.3 |
+| archon | 44.9% | 45.0% | +0.1 |
+
+se ≈ 5.7 points per cell ⇒ **none of these is a real difference.** ⇒ **At equal nodes,
+on the very positions the corpus says we squander, a neutral third engine cannot tell
+our move from SF's — and we still lose those games.** The method's own design check
+passed: the two biased judges (archon 45.0%, sf18 51.3%) bracket the neutral one.
+
+The NULL also earned its keep: at 41–45% instead of 50% it exposed a first-probe bias
+(both moves scored by one judge process with no reset between them). Fixed since —
+reset between probes plus alternating probe order — so these numbers must be read
+arm-minus-null, not absolutely.
+
+## WARM-STATE CARRYOVER — NO SIGNAL (2026-07-28, partial)
+
+Every instrument in this folder is a COLD probe; every game is WARM. `coldproxy.py`
+injects `ucinewgame` before every `go` (verified symmetric: ARCHON's `new_game` clears
+the TT *and* every worker's histories *and* TM, matching SF's `clear()`).
+
+| engine | cold vs warm, 110k nodes, corpus openings |
+|---|---|
+| ARCHON | −132.1 [−187.6, −82.3] (n=113) |
+| SF18 | −145.3 [−183.9, −109.8] (n=172) |
+
+Heavily overlapping ⇒ no evidence either engine extracts more from carried state.
+**Stopped early to free the box — these are PARTIAL and are recorded as "no signal",
+not as a verdict.** (An earlier read at n=17/30 showed −114 vs −167 and looked like a
+real gap; it closed as n grew. The partial-match trap, again.)
+
 ## THE SEARCH IS A FAITHFUL PORT — stop looking for a missing or mis-transcribed feature
 
 2026-07-28, second session. Fifteen independent components read line-by-line against
