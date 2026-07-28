@@ -261,6 +261,42 @@ A hedge in the footnote does not license a claim in the title.)*
 
 </details>
 
+## 3c. THE DECOMPOSITION — where the ~180 Elo actually goes
+
+`screen.py --reference` scores Stockfish on the SAME positions at the SAME node
+budget against the SAME oracle, which removes speed from the comparison and
+leaves pure move quality (eval + search shape):
+
+| at 12,500 nodes | cp loss @64k tier | top-1 |
+|---|---|---|
+| ARCHON | 6.72 | 62.1% |
+| SF18 | **5.48** | **64.3%** |
+| **headroom** | **+1.24 ± 0.30 cp** | +2.2 pts |
+
+Putting that beside the cycles/node result (§3b-FIXED):
+
+| term | Elo | how it was measured |
+|---|---|---|
+| **Move quality at equal nodes** | **~74** | +1.24 ± 0.30 cp at the screen's ~60 Elo/cp |
+| **Speed**, 1.35–1.56x cycles/node | **~64** | same-run cycles/node, fairness-checked |
+| residual — time management, conversion, slop | ~35–50 | by subtraction |
+| **total** | **~175** | against an observed 171–191 |
+
+The two measured terms are **roughly equal**, and together they account for most
+of the gap. That is a direct answer to the framing this investigation started
+from -- "an engine that is almost as fast and has almost as good a net is
+getting blown out, so search shape is all wrong." Measured: we are *not* almost
+as fast (1.4x, ~64 Elo) and at equal nodes we are *not* almost as good
+(1.24 cp, ~74 Elo). It is not one broken thing; it is two comparable deficits.
+
+**Caveat that matters, and a prediction.** This is measured on the openings
+corpus (§1) -- the population where our error rate per move is *lowest*
+(0.06 wp per 100 moves against 0.31 at <=7 pieces). So **+1.24 cp is most
+likely a FLOOR on the quality gap.** The prediction to test the moment the
+phase oracle lands: re-run this per phase bucket and the headroom should be
+LARGER in the endgame. If it is, the population finding and the quality gap are
+the same fact seen twice, and the endgame is where the Elo is.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
