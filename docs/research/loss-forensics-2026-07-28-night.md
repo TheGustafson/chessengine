@@ -2376,3 +2376,80 @@ time, guaranteeing the defect it was built to prevent.
 The mitigation is what tonight can test. The gate fix is what stops this class of
 defect from recurring, and it is a ~20-line change to a shell script.
 
+## 6. RUNG 7 — the factor has a name: `SFBINPACK_SCORE_DIV = 1.9`
+
+Section 5 ended at "the net's output scale, locked in by a self-referential
+gate". That is not the bottom. The bottom is a single constant, and our own docs
+already record it — the value was known, its consequence was not.
+
+**`docs/research/data-recipe-contract.md` §2, row 1:**
+
+| Label source | training_score units | SCORE_MULT for incumbent-scale output |
+|---|---|---|
+| official binpack via sfbinpack loader | **`internal/1.9 (SFBINPACK_SCORE_DIV)`** | 1.0 |
+
+**`tools/nnue/train_canon.sh:14`:**
+
+> `(SFBINPACK_SCORE_DIV, applied in sfbinpack.rs), MULT=1.0 => value ~= binpack_internal/1.9`
+
+So the chain is arithmetic:
+
+1. Official binpack scores are Stockfish **internal** units — the same frame as
+   razoring 465 and LMR 52/9.
+2. The sfbinpack loader divides every label by `SFBINPACK_SCORE_DIV = 1.9`.
+3. We train at `SCORE_MULT = 1.0`, so the net learns `internal / 1.9`.
+4. **Predicted output scale: 1/1.9 = 0.526 x SF internal.**
+5. **Measured: 0.538** (oracle-phase-clip, n=600) and **0.565** (scale-check-800,
+   different code path). The residual above 0.526 is the WDL=0.3 sharpening that
+   the canon diagnosis already identified.
+
+**Prediction and measurement agree to within the WDL term.** The 0.54x that makes
+every transcribed constant ~1.86x too large is one division by 1.9 in a data
+loader.
+
+### Why it was invisible for the whole lineage
+
+Nothing was hidden — every layer just measured against the wrong reference:
+
+- `train_canon.sh:16` — *"Scale-match **the incumbent** => MULT = K/1.9"*
+- `data-recipe-contract.md` §2 — the column is literally headed *"SCORE_MULT for
+  **incumbent-scale** output"*
+- `net_scale_check.sh` — `REF` defaults to our own incumbent net, band [0.85, 1.18]
+
+Three independent layers, one shared reference: **ourselves**. The project knew
+exactly what a wrong eval scale costs — the canon diagnosis says a half-scale net
+gives *"half-scale evals (breaking every co-adapted search margin)"* — and applied
+that reasoning rigorously to deviations **from the incumbent**, while the incumbent
+itself sat at 0.53x the frame its own search constants were transcribed from. The
+−582 incident was this exact bug caught one generation late; the fix pinned the
+lineage to the scale rather than to Stockfish.
+
+*(A caution on the diagnosis's own K: it reports "binpack score = 2.76x SF18-UCI
+cp" from re-searching binpack positions at 50k nodes. SF internal is 3.85x printed
+cp, so 2.76 is low — because a regression of stored labels against a **different
+search** conflates units with search depth. That is the same error class as my
+retracted §4c. The loader constant 1.9 is the clean statement; it needs no probe.)*
+
+### What this makes possible
+
+A retrain at `SCORE_MULT ~ 1.9` on the sfbinpack path puts the net directly in
+Stockfish's internal frame. Then all 260 transcribed constants are correct **as
+transcribed**, with `EVAL_SCALE` left at its 1024 identity — no correction layer.
+That is the real fix, and it is a one-number change to a training recipe.
+
+### The caveat that keeps this honest
+
+**Our constants are not purely Stockfish's any more.** SPSA campaigns
+(`c2-reduction`, stage-A) tuned a subset of them against our 0.54x frame, so those
+are already partially co-adapted to the error. `param_provenance.py` reports 121
+of 260 tunables in no campaign — meaning ~139 have been touched. A global rescale
+therefore does **not** cleanly recover the SF-intended behaviour: it corrects the
+untouched constants and *breaks* whatever adaptation the tuned ones had acquired.
+
+This predicts exactly what the in-flight match is showing — `EVAL_SCALE=2200` at
+**−29.0 +- 21.7** after 120 games — and it predicts a global rescale will
+under-deliver relative to the frame argument no matter which value is chosen. The
+clean experiment is rescale **plus** a retune of the co-adapted set, not rescale
+alone. Stated in advance, before the match finishes, so it cannot be fitted to the
+result afterwards.
+
