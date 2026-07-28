@@ -778,3 +778,92 @@ buys us a lot of tree. What is owed:
 - **An oracle needs its own instrument check**: fresh `ucinewgame`, MultiPV 1,
   a persistent process (no pipe-EOF), enough nodes, and a stability
   requirement across budgets.
+
+---
+
+## 14. REFUTED: "eval gates hide a refutation" is a node-count artifact
+
+WHY this section supersedes §13 and the §4 taxonomy row of the same name: the
+probe that defines the mode — search with all five eval gates off **at the same
+depth** and see whether the picture changes — silently hands the gates-off arm
+**3.47x the nodes** (median, measured). Any search given 3.5x the nodes finds
+more refutations. The mode was never a mechanism; it was a node budget wearing
+a mechanism's clothes.
+
+### 14.1 The measurement
+
+220 positions sampled from the scan corpus. For each, the forced value of the
+move we actually played, gates-off at depth 14, against control deepened until
+control has spent at least as many nodes:
+
+| control nodes / gates-off nodes | mean( V_control − V_gates_off ) |
+|---:|---:|
+| 0.29x — depth-matched, both d14 | **+24.1 ± 6.3** |
+| 0.58x — one ply pair below the node match | **+19.0 ± 4.8** |
+| 1.56x — first depth at or above the node match (median d18) | **−25.7 ± 5.1** |
+
+A clean monotone dose-response **in the node ratio**, crossing zero at about
+1.0x. The "+19.8 ± 1.6 over 2624 positions" headline in §13.6 is this and
+nothing else.
+
+**And it holds in the tail**, which is where the mode was supposed to live:
+
+```
+12 tail positions (depth-matched delta >= the 184 cp null p99.5)
+    depth-matched   +290.0 +- 25.5     <- looks like a huge hidden refutation
+    NODE-matched     -88.8 +- 35.6     <- control is BETTER by 89 cp
+```
+
+So even on the positions selected *for* looking like hidden refutations, a
+node-matched control beats gates-off. WHY that is the expected result and
+should have been the prior: the gates are in the engine because they buy Elo.
+An ablation that "improves" the search is nearly always an ablation that was
+handed more nodes.
+
+### 14.2 What this kills
+
+- **The §4 taxonomy row "eval gates hide a refutation, ~1/3 of errors."** That
+  share came from this probe. There is no measured support for the mode.
+- **Rung 4 of §3 as written.** "Compare the normal search against the same
+  depth with all five eval gates disabled" is not a valid probe. If you run it,
+  node-match it — deepen the control until its node count is at or above the
+  ablated arm's — and report the node ratio next to every number.
+- **The RFP attribution, in both directions.** §13.6 restored it on a
+  class-scale forced-value measurement; that measurement is this artifact, and
+  RFP-off blows the tree up for the same reason gates-off does. RFP is neither
+  convicted nor exonerated by anything in this document. It is unmeasured.
+- **The §10 plan** to gate the D30 threat relaxation on an advanced enemy
+  passer. Already dead in §13.6 on its own merits (`RFP_THREAT_MARGIN = 0` is
+  inside the null band at every probe); now the mode it was meant to fix is
+  dead too.
+- **`FOLLOW_PV_MODE = 1`**, screened full-corpus while this was being measured:
+  `-0.11 / -0.24 / -0.04 cp` by tier at **+7.4% nodes**. At ~120 Elo per node
+  doubling that costs ~12 Elo to buy ~2. Not the fix either.
+
+### 14.3 What survives, and where to go instead
+
+One fact from this investigation is node-controlled end to end and is not
+touched by any of the above:
+
+> **On the game-18 position, SF18 plays the correct move at 25k nodes. ARCHON
+> needs 600–800k. Both measured with `go nodes N`, `ucinewgame` per probe,
+> MultiPV 1, persistent processes. A 24x search-efficiency gap.**
+
+We spent ~50–70k nodes on that move in the game, a budget at which SF18 is
+already right — so it is not the time-management mode either. And it is not the
+pruning gates, because at matched nodes turning them off makes us worse.
+
+That leaves the things this investigation never instrumented: **move ordering**
+(our first-move cutoff rate is 89.4% against SF's 93–95%, and that gap compounds
+with depth), **extensions**, and the **eval's ordering of near-equal moves**.
+WHY those are the live suspects: they are exactly the mechanisms that change
+which nodes a fixed node budget is spent on, and node efficiency at a fixed
+budget is precisely what the surviving fact measures.
+
+The instrument to carry forward is **nodes-to-find against SF18 on an
+oracle-stable blunder set** — cross-engine, node-controlled, and immune to
+every trap in §13. Building that set is the prerequisite: of 19 candidates
+adjudicated here, only **2** had an oracle stable across 400k/1.6M/8M
+(`g35p98`, 276 cp; `g24p14`, 82 cp, where ARCHON never finds the move at any
+budget to 3.2M and SF18 has it at 25k). One 120-game match does not contain
+enough of them. Get more games first.
