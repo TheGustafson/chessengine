@@ -331,6 +331,42 @@ measured at 21+ pieces, where our error rate per move is lowest. If the endgame
 buckets show our eval falling behind, the conclusion flips. **Do not act on
 this until the per-phase version exists.**
 
+## 3e. CONFIRMED ON THE RIGHT POPULATION — eval is at parity in EVERY phase
+
+The §3d inference was flagged do-not-act-on because it was measured at 21+
+pieces. The phase oracle landed, so here it is per bucket (mate band excluded --
+see below):
+
+| pieces | ARCHON rho | SF18 rho | ARCHON resid | SF18 resid | slope ratio |
+|---|---|---|---|---|---|
+| 21+ | 0.764 | **0.802** | 72 | 66 | 0.45 |
+| 13–20 | 0.848 | 0.850 | 106 | 112 | 0.45 |
+| 8–12 | 0.951 | 0.957 | 99 | 100 | 0.47 |
+| **≤7** | **0.960** | 0.939 | 105 | 106 | 0.46 |
+
+**Our static eval is at parity in every phase and slightly BETTER at <=7
+pieces.** It does not degrade as the board empties. The endgame deficit is
+therefore not eval, on the population where the endgame is actually represented.
+
+Two side results worth keeping:
+
+- **The frame does not drift by phase.** Our slope against deep truth runs
+  0.39 / 0.43 / 0.51 / 0.55 and Stockfish's 0.87 / 0.95 / 1.09 / 1.19 -- both
+  rise as pieces come off (static evals regress toward the mean of the deep
+  value), but the RATIO is a near-constant 0.45–0.47. A single frame constant is
+  legitimate; it just is not the same estimator as the 0.55–0.64 figures, which
+  measure something else.
+- **The mate-band filter is load-bearing.** Unfiltered, the same table reported
+  RMS residuals of 1855 cp (8–12) and 4232 cp (<=7) and fitted slopes of 2.18
+  and 4.33 — it was measuring mate DISTANCES, not eval quality, exactly the
+  "sparse corpora are ±20000-dominated" trap already on the list. `--max-abs-truth`
+  now defaults to 1000.
+
+**So the conclusion in §3d survives the population check: both measured terms of
+the ~138 Elo are search.** Better nets address approximately none of the
+measured gap, in any phase. That is the sharpest strategic result of the night
+and it is now safe to act on.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at

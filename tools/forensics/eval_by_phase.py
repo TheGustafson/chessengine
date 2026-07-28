@@ -111,6 +111,14 @@ def main() -> None:
     ap.add_argument("--oracle", default="tools/nnue/calib/oracle-phase.json")
     ap.add_argument("--per-bucket", type=int, default=250)
     ap.add_argument("--seed", type=int, default=20260728)
+    ap.add_argument("--max-abs-truth", type=int, default=1000,
+                    help="drop positions whose oracle value is in the mate band. "
+                         "WHY this is not optional: in sparse positions the deep "
+                         "oracle routinely returns +-20000, which dominates any "
+                         "linear fit -- the first run of this tool reported RMS "
+                         "residuals of 1855 and 4232 cp and fitted slopes of 2.18 "
+                         "and 4.33, i.e. it was measuring mate distances, not eval "
+                         "quality. 0 disables the filter.")
     args = ap.parse_args()
 
     d = json.load(open(args.oracle))
@@ -121,7 +129,10 @@ def main() -> None:
     for fen, moves in top.items():
         if len(moves) < 2:
             continue
-        by[bucket(npieces(fen))].append((fen, max(moves.values())))
+        truth = max(moves.values())
+        if args.max_abs_truth and abs(truth) > args.max_abs_truth:
+            continue                      # mate band: measures distance, not eval
+        by[bucket(npieces(fen))].append((fen, truth))
     rng = random.Random(args.seed)
 
     print(f"oracle {args.oracle}, truth = deepest tier best-move value")
