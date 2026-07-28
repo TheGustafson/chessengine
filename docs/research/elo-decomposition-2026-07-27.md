@@ -78,6 +78,49 @@ competing for a ~58 Elo pool that we can only partly capture. Anything that
 improves the *choice* at a given node competes for a ~133 Elo pool. Prefer the
 latter when both are available at similar cost.
 
+## The Stockfish-parity well is dry, and that is now evidence rather than a mood
+
+Two independent lines of work converged on this within a few hours, which is
+why it is worth stating as a finding rather than an impression.
+
+**The transcription is faithful almost everywhere.** Read side by side against
+`eca43a97`: the movepick stage machine, `select()`, every quiet and capture
+scoring term, every history table dimension and bound, the whole LMR reduction
+assembly and its adjustment order, the `lmrDivisor` table, the move-loop
+futility/LMP/SEE block, hindsight depth adjustment, `correction_value`, and 42
+eval-denominated constants. All match. There is no pile of transcription
+errors waiting to be found.
+
+**And where we DO deviate, restoring parity has measured neutral-or-worse, four
+times out of four** (Fable's toggles, all wired at identity and screened
+net-live):
+
+| restored SF mechanism | result |
+|---|---|
+| `follow_pv` wired (was dead code, two live readers) | −0.09±0.10 cp at **+12.2% nodes** ≈ −15 Elo net |
+| qsearch upcoming-repetition | +0.23 cp deep tier |
+| ttPv rebate on TT miss | +0.34 cp, +5.3% nodes |
+| ProbCut in singular verification | de facto no-op in both engines |
+
+The `follow_pv` case is the instructive one. It looked like the find of the
+session — genuinely dead code with two live consumers — and its exploratory
+read was −0.40±0.26. At full corpus it shrank fourfold to −0.09±0.10 and its
+node cost sank it. That is regression to the mean behaving exactly as the
+playbook says it will, and it was correctly not promoted.
+
+The mechanism behind all four: **Stockfish's constants are co-tuned with
+Stockfish's mechanisms.** Importing a mechanism without importing the tuning
+that surrounds it imports the cost and not the benefit. Any of these could
+still pay inside a joint retune; none of them pays alone.
+
+The strategic consequence is direct. Further Stockfish-parity work has a poor
+expected value, and the case for ARCHON originals is now empirical rather than
+aesthetic: parity is measurably exhausted, so the remaining Elo has to come
+from things Stockfish does not do, or from tuning our own configuration as a
+whole rather than importing pieces of theirs.
+
+---
+
 ## The pre-registered prediction
 
 The rematch plays the same match twice — equal time and equal nodes. Equal
