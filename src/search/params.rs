@@ -100,7 +100,51 @@ crate::tunables! {
     /// Base half-width of the window around the root move's average score.
     pub ASPIRATION_BASE_DELTA: Value = 5;
     /// Divisor of `mean_squared_score`: unstable scores widen the base delta.
-    pub ASPIRATION_MSS_DIVISOR: i64 = 10588;
+    ///
+    /// **NOT Stockfish's 10588 — this is a frame correction, 2026-07-27.**
+    /// `mean_squared_score` is a SQUARED eval quantity, and our eval frame
+    /// measures 0.64x Stockfish's, so our mss is `0.64² = 0.41x` theirs. To
+    /// make the adaptive term mean the same thing in real pawns the divisor
+    /// must scale by `r`, not by `r²` and not at all:
+    ///
+    /// ```text
+    ///   our_delta  = BASE + r²·sf_mss / DIV     want  = r · sf_delta
+    ///   sf_delta   = 5 + sf_mss / 10588         =>    DIV = r · 10588 = 6776
+    /// ```
+    ///
+    /// Dividing by the transcribed 10588 made our adaptive widening 1.56x too
+    /// small, so the window stayed narrow, the root failed high repeatedly and
+    /// reported fail-soft bounds instead of exact scores. On the position that
+    /// exposed it, our root oscillated over a 1.44-pawn range across 14
+    /// iterations where SF18 held a 0.45-pawn range with the identical PV.
+    ///
+    /// **6776 is the derived value and it is what ships.** A 4000-position
+    /// screen preferred 3000 (-19% nodes, cp better on all tiers) and I very
+    /// nearly shipped that instead — but 3000 has a CATASTROPHIC TAIL that the
+    /// screen's mean could not see. On a quiet Italian middlegame, PSQT, going
+    /// from depth 6 to depth 8 costs 3,193 nodes at 10588 and at 6776, and
+    /// **25,554 nodes at 3000** — an 8x blow-up, EBF ratio 26.7 against a
+    /// sanity ceiling of 12. The window grows so wide that aspiration stops
+    /// cutting at the root at all. It was caught by
+    /// `lmr_shrinks_the_effective_branching_factor`, which is exactly the
+    /// loose regression guard that test exists to be.
+    ///
+    /// The two self-play runs of 3000 read +27.9 and -14.7 Elo — not merely
+    /// noise, but the signature of a change that is usually mildly good and
+    /// occasionally disastrous. At 6776 the depth-6/8 node counts are
+    /// IDENTICAL to the 10588 baseline, and a 4000-position screen at the
+    /// neighbouring 6500 gave -5.6% nodes with cp -0.08/-0.18/-0.13.
+    ///
+    /// Lesson worth keeping: the dimensional argument produced the safe value
+    /// and the empirical screen produced the dangerous one. A mean over a
+    /// corpus does not see a tail that fires on a minority of positions.
+    ///
+    /// Why five eval-frame rescale campaigns missed it: they scaled constants
+    /// LINEARLY, and a squared quantity's divisor cannot be fixed that way —
+    /// and this is typed `i64`, so the `Value`-typed frame audit in
+    /// `tools/frame_audit.py` never enumerated it.
+    /// See `docs/research/aspiration-frame-bug.md`.
+    pub ASPIRATION_MSS_DIVISOR: i64 = 6776;
     /// Period of the lazy-SMP aspiration jitter (design/13 §3.1): helper thread
     /// `t` adds `t % ASPIRATION_JITTER_PERIOD` to the base delta so helpers search
     /// slightly different windows and seed the shared TT divergently. Vacuous at

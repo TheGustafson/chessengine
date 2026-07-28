@@ -8516,7 +8516,7 @@ mod tests {
     #[test]
     fn aspiration_fail_low_slides_beta_to_old_alpha_at_full_depth() {
         // The startpos is worth far less than the seeded +300 average
-        // (delta = 5 + 90_000/10588 = 13, window (287, 313)): the first
+        // (delta = 5 + 90_000/6776 = 18, window (282, 318)): the first
         // attempt fails low. Beta drops exactly to the old alpha, alpha
         // backs off delta below the returned value, failed_high_cnt stays
         // 0 so the re-search keeps the FULL depth, and delta widens.
@@ -8526,15 +8526,15 @@ mod tests {
         let trace = &w.asp_trace;
         assert!(trace.len() >= 2, "the quiet score must fail low");
         let t0 = trace[0];
-        assert_eq!(t0.delta, 13);
-        assert_eq!((t0.alpha, t0.beta), (287, 313));
+        assert_eq!(t0.delta, 18);
+        assert_eq!((t0.alpha, t0.beta), (282, 318));
         assert!(t0.value <= t0.alpha, "attempt 0 fails low");
         let t1 = trace[1];
-        assert_eq!(t1.beta, 287, "beta slides down exactly to the old alpha");
-        assert_eq!(t1.alpha, (t0.value - 13).max(-VALUE_INFINITE));
+        assert_eq!(t1.beta, 282, "beta slides down exactly to the old alpha");
+        assert_eq!(t1.alpha, (t0.value - 18).max(-VALUE_INFINITE));
         assert_eq!(t1.failed_high_cnt, 0, "fail low resets failed_high_cnt");
         assert_eq!(t1.adjusted_depth, 2, "fail low keeps the full depth");
-        assert_eq!(t1.delta, 13 + 44 * 13 / 128); // widened to 17
+        assert_eq!(t1.delta, 18 + 44 * 18 / 128); // widened to 24
         check_asp_group(trace, Some((300, 300 * 300)));
     }
 
