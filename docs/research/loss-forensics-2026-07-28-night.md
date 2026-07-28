@@ -572,6 +572,50 @@ been tuned. It reports 139/303 covered; the number actually exercised by a run
 is far smaller. Worth fixing — a coverage number that counts intentions rather
 than runs will keep pointing campaigns away from unexplored ground.
 
+## 5c. THE pfut ARM IS DEAD — and killing it VALIDATED the new corpus
+
+Three measurements, and the candidate does not survive any of them:
+
+| instrument | verdict on the pfut relaxation |
+|---|---|
+| openings corpus, full power (n=9,992) | `c1.56` **−0.58 ± 0.14 cp**, `m75` −0.44 ± 0.15 → "≈ +27 Elo" |
+| **phase corpus, full power** | `m75` **+1.10 ± 0.68 cp** — WORSE. `m60` −0.10 ± 0.62 — neutral |
+| **games, 12,500-node SPRT** (the screen's own budget) | **−1.0 ± 15.1** Elo, n=348 |
+| games, 200,000-node SPRT | −5.3 ± 16.1 Elo, n=264 |
+
+The predicted +27 Elo is excluded. The arm is neutral to slightly negative.
+
+**One explanation was tested and refuted.** The obvious defence was budget
+mismatch — screened at 12.5k nodes, raced at 200k, and `screen.py` warns that
+"an arm whose gain shrinks or flips as the budget grows was tuned for a search
+shallower than the one it will play in." So I ran a second SPRT at 12,500 nodes,
+the screen's exact budget. Still zero. The arm is not shallow-tuned; it simply
+does not work.
+
+**A second self-inflicted lesson.** An exploratory 900-position run on the phase
+corpus read `m75` at **−1.10** and I reported it as confirmation. At full power
+the same arm reads **+1.10**. The sign flipped with sample size, at 900
+positions — the "4000 is a coin flip" trap, one level worse. `screen.py` printed
+the earlier value next to the new one, which is the only reason it was caught.
+
+**But the important result is what this says about the INSTRUMENT, not the arm.**
+The two corpora disagreed, and the games adjudicated:
+
+- openings corpus: −0.58 cp (better) — **contradicted by the games**
+- phase corpus: +1.10 cp (worse) — **consistent with the games** (−1.0 ± 15.1)
+
+So on the one case where the old and new instruments disagree, **the
+phase-representative corpus agrees with reality and the openings corpus produced
+a false positive.** That is exactly the failure mode §1 predicted, caught in the
+act, and it is empirical support for the population fix rather than merely
+theoretical support. It cost me the night's only Elo candidate to get it, which
+is a fair price: a screen that reports +27 Elo on nothing will keep doing so.
+
+**Standing consequence: no tunable should be promoted on `oracle-obs.json`
+again.** Re-screen the 139 tunables that were "covered" on openings, and treat
+the pfut family as unresolved rather than dead — the direction still has the
+§3f marginal-return mechanism behind it, but nothing has been demonstrated.
+
 ## 6. INSTRUMENT BUGS FOUND TONIGHT (five, all mine)
 
 1. **Bound lines read as scores.** `uciprobe` matched `score cp X upperbound`
