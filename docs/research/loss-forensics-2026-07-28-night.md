@@ -2275,3 +2275,39 @@ adjudicated candidates in the 120-game match, only **two** had an oracle stable
 across 400k/1.6M/8M nodes. One match does not contain three clean cases of any
 mode. More games is the prerequisite for the three-independent-losses rule, not
 more analysis of these.
+
+### 4d. The EVAL_SCALE game match, in flight — and an honest note on its arm
+
+The chained matcher waited for three consecutive quiet checks and launched at
+07:29: **`EVAL_SCALE=2200` vs default 1024**, 600 rounds x 2 games at 10+0.1 on the
+PGO tune binary for BOTH arms (identical atomics tax), UHO book, concurrency 6.
+~2 hours; `engines/runs/es2200/`.
+
+**Be honest about how that arm was chosen.** The chain picked it as the best row
+of the Reckless-neutral screen, and that screen is NULL:
+
+| arm | top-1 | delta | +- |
+|---|---|---|---|
+| NULL (default) | 65.75% | (base) | |
+| es700_falsify | 65.80% | +0.05 | 1.06 |
+| es1400 | 65.05% | −0.70 | 1.06 |
+| es1764 | 65.45% | −0.30 | 1.06 |
+| **es2200** | 66.35% | **+0.60** | 1.06 |
+
+**Nothing clears +-1.06.** The neutral screen neither corroborates nor refutes the
+frame direction; it is uninformative, and "2200 is best" is a draw from noise. So
+the state of the evidence is:
+
+- **frame measurement** (five independent estimates, now one in the correct
+  internal units at 0.538) says the correction is UP, near 1764-1904 — this is the
+  only strong signal;
+- the SF-refereed sweep favoured up (+1.45 at 1400) but is refereed by the engine
+  whose frame we are moving toward, the one bias that does not cancel;
+- the Reckless-neutral screen says nothing at all.
+
+2200 overshoots the 1904 parity point, so the match tests the direction rather
+than the optimum. **1200 games at 10+0.1 gives ~+-9 Elo, which settles the
+direction regardless of how the arm was picked** — and direction is the claim the
+frame model actually makes. If it wins, the follow-up is a bracket (1400 / 1764 /
+2200) to locate the optimum; if it loses, the frame model predicts search
+behaviour correctly in cp but not in Elo, and that is itself the finding.
