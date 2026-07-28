@@ -139,6 +139,89 @@ CLASS: dict[str, tuple[str, str]] = {
 }
 
 
+# CROSS-UNIT constants: they meet an eval quantity but are NOT typed `Value`,
+# because they are typed by their OWN unit (a divisor, a converter, a rate).
+# The Value-typed table above is structurally blind to them, which is exactly
+# how ASPIRATION_MSS_DIVISOR survived five eval-frame rescale campaigns.
+#
+# The correction is r^k where k is set by the constant's DIMENSIONAL ROLE, not
+# +1 everywhere:
+#     k = +1  divisor of a SQUARED eval quantity (the term then scales r^2)
+#     k = -1  coefficient converting eval into another unit (history, time)
+#     k =  0  ratio, or a converter whose input is already in our frame
+#
+# name -> (k, what it meets, status)
+CROSS_UNIT: dict[str, tuple[int, str, str]] = {
+    "ASPIRATION_MSS_DIVISOR":      (+1, "divides mean_squared_score (eval^2)",
+                                    "SHIPPED 10588 -> 6776, 2026-07-27"),
+    "EVALDIFF_MAIN_MULT":          (-1, "eval_diff -> main history bonus",
+                                    "tested 10 -> 16: 0.0 Elo over 140 games"),
+    "EVALDIFF_PAWN_MULT":          (-1, "eval_diff -> pawn history bonus",
+                                    "tested 13 -> 20: same arm, 0.0 Elo"),
+    "FALLING_EVAL_PREV_AVG_COEFF": (-1, "eval drop -> time multiplier",
+                                    "tested 2.21 -> 3.45: null at bullet"),
+    "FALLING_EVAL_ITER_COEFF":     (-1, "eval drop -> time multiplier",
+                                    "tested 1.0 -> 1.5625: same arm"),
+    "FALLING_EVAL_BASE":           (0, "constant term beside the coeffs above",
+                                    "dimensionless once the coeffs are corrected"),
+    "FALLING_EVAL_DIV":            (0, "scales the whole falling_eval expression",
+                                    "equivalent to scaling the coeffs; do one or the other"),
+    "CORR_BONUS_DIVISOR":          (0, "eval error -> correction units",
+                                    "corr is read back as cv/131072, so round-trip is consistent"),
+    "RFP_CORR_DIV":                (0, "|correction_value| -> eval margin",
+                                    "correction_value is already in OUR frame"),
+    "RED_CORR_DIV":                (0, "|correction_value| -> reduction", ""),
+    "SE_CORR_DIV":                 (0, "|correction_value| -> singular margin", ""),
+    "RAZOR_CORR_DIV":              (0, "|correction_value| -> razor margin",
+                                    "ARCHON original, inert at 1e9"),
+    "NMP_CORR_DIV":                (0, "|correction_value| -> NMP margin",
+                                    "ARCHON original, inert at 1e9"),
+    "STATSCORE_CAPT_NUM":          (0, "captured PIECE VALUE -> statScore",
+                                    "material carries no frame error"),
+    "STATSCORE_CAPT_DEN":          (0, "same", ""),
+}
+
+
+def cross_unit_report(repo: Path) -> int:
+    """Find constants that MEET an eval quantity, and check each is classified.
+
+    The guard the Value-typed table cannot provide: greps the search for every
+    `params::X` appearing on a line with an eval-derived identifier, and reports
+    any name classified in NEITHER table. Returns the count of unclassified.
+    """
+    import re as _re
+    evalish = _re.compile(r"static_eval|\beval\b|eval_diff|correction_value|"
+                          r"mean_squared|best_value|\bbeta\b|\balpha\b")
+    seen: set[str] = set()
+    for rel in ("src/search/mod.rs", "src/eval/mod.rs", "src/history.rs",
+                "src/timeman.rs"):
+        f = repo / rel
+        if not f.exists():
+            continue
+        for line in f.read_text().splitlines():
+            st = line.strip()
+            if st.startswith("//") or st.startswith("///"):
+                continue
+            if evalish.search(line):
+                seen.update(_re.findall(r"params::([A-Z_0-9]+)", line))
+    print("\n=== CROSS-UNIT constants (meet an eval quantity, not typed Value) ===")
+    print(f"{'constant':<30}{'k':>4}  {'meets':<40}")
+    for n, (k, meets, status) in sorted(CROSS_UNIT.items()):
+        flag = "" if k == 0 else "  <-- frame-corrected"
+        print(f"{n:<30}{k:>+4}  {meets:<40}{flag}")
+        if status:
+            print(f"{'':<36}{status}")
+    unknown = sorted(n for n in seen if n not in CLASS and n not in CROSS_UNIT)
+    if unknown:
+        print("\nUNCLASSIFIED constants that meet an eval quantity:")
+        for n in unknown:
+            print(f"    {n}")
+        print("Classify each in CLASS (if eval-denominated) or CROSS_UNIT (if it")
+        print("meets eval across a unit boundary). k=+1 for a squared-quantity")
+        print("divisor, k=-1 for an eval->other-unit converter, k=0 for a ratio.")
+    return len(unknown)
+
+
 def live_params(path: Path) -> dict[str, int]:
     src = path.read_text()
     return {m.group(1): int(m.group(2).replace("_", ""))
@@ -212,6 +295,7 @@ def main() -> None:
     print("five formulations found nothing -- but HINDSIGHT_EVAL_SUM is different in")
     print("kind from the rest: it changes DEPTH by a ply rather than moving a margin,")
     print("and a depth change is a much larger lever than a margin change.")
+    n_unknown = cross_unit_report(REPO)
     print("\nEvery row is mis-scaled by the SAME 1.56x, so the ratio cannot rank them.")
     print("What ranks them is CONSEQUENCE = frame error x firing rate x cost of a")
     print("wrong firing -- read the 'fires' column, not the pawn columns.")
