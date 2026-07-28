@@ -6,18 +6,21 @@ Date: 2026-07-28. Eighth commissioned study in the chain (1:
 Raw artifacts and instruments: `perf-artifacts-8/`.
 
 **Unlike 1–7 this study was licensed to change code, and it did.** Branch
-`perf-study-8-nps-parity`. **Three changes are kept and committed** (§4.1–4.3,
-−3.29% of all engine instructions together); **four more were implemented,
-measured and reverted** (§7.1, §7.2, §7.7, §7.8); two were implemented purely
-as pricing instruments and reverted (§4.3, §6.1). Every kept change is
-**eval bit-exact** (wl50 hash
-`d82caf8a…8163`, 800-FEN hash `53fc2de1…ad64`) and **node-identical**
-(wl50/d13 total `1,972,607`) against the D48X pins, and
+`perf-study-8-nps-parity`. **Six changes are kept and committed** (§4.1–4.6,
+**−8.02%** of all engine instructions together); **six more were implemented,
+measured and reverted** (§7.1, §7.2, §7.7–§7.10); three were implemented purely
+as pricing instruments and reverted (§4.3, §4.5, §6.1). Four of the six kept
+changes are **eval bit-exact or node-identical**; two are deliberate
+quantisation changes carrying a measured fidelity budget (§4.5, §4.6) and the
+gate pins were moved with them in the same commits. The starting pins were
+(wl50 hash
+`d82caf8a…8163`, d13 `1,972,607`); they now stand at
+**`5ca978e0…8b38` / `1,922,947`**, and
 `CHECK_NNUE_GATE=1 bash tools/check.sh` exits 0 with `Bench: 587683`.
 
 **Binaries in the worktree** (all PGO, `sota,arch-d48x`, canonical net):
 `engines/bin/archon-s8-base` (HEAD before this study),
-**`engines/bin/archon-s8-v2` (HEAD after, the deliverable)**, plus the per-arm
+**`engines/bin/archon-s8-v3` (HEAD after, the deliverable)**, plus the per-arm
 binaries named in §4 and `arms.txt`. `archon-s8-base-dbg` is the same PGO build
 with line tables, used for `addr2line`/`srcline` work only.
 
@@ -69,33 +72,31 @@ story" and ranked a code-size diet #3. Our movepick is *split* across
 per-symbol comparison overstates us; totalled, movepick is 667 i/n against
 SF18's 734.
 
-**(3) Landed: −3.29% of ALL engine instructions and −5.27% of ALL engine
-branches, in three changes, every one node-identical and eval bit-exact.**
-On the matched 15.0 M-node wl50 panel (`counters-v2-wl50.txt`, three arms
-interleaved, `instructions:u` spread 0.0000% on all three):
+**(3) Landed: −8.02% of ALL engine instructions, in six changes.** On the
+matched 15.0 M-node wl50 panel (`counters-v3-wl50.txt`, three arms interleaved,
+`instructions:u` spread 0.0000%):
 
-| per node | before | after | SF18 |
-|---|---:|---:|---:|
-| instructions | 7,116.6 | **6,882.7** (−3.29%) | 4,329.6 |
-| ratio vs SF18 | 1.644× | **1.590×** | — |
-| branches | 797.1 | **755.1** (−5.27%) | 394.7 |
-| ratio vs SF18 | 2.020× | **1.913×** | — |
+| per node | before | after | SF18 | parity target |
+|---|---:|---:|---:|---:|
+| instructions | 7,116.6 | **6,546.0** (−8.02%) | 4,329.6 | 4,677 |
+| ratio vs SF18 | 1.644× | **1.512×** | — | 1.080× |
+| residual vs parity | 1.522× | **1.400×** | — | 1.000× |
+| branches | 797.1 | **764.1** (−4.14%) | 394.7 | — |
 
-| # | change | Δ instructions | class |
+**23.4% of the distance to the derived parity target, closed.**
+
+| # | change | Δ instr | class |
 |---|---|---:|---|
-| 1 | `l1_dot`: read the group's four FT bytes as one unaligned 32-bit load, deleting a bounds check LLVM could not hoist out of an 11-instruction loop that runs **42.79 times per node** (§4.1) | **−1.77%** | bit-exact |
-| 2 | `activate`: `|4t|` as `slli::<2>(abs(t))` instead of `abs(adds(adds(t,t),adds(t,t)))` — one op fewer per merge, four merges per loop body (§4.2) | **−0.49%** | bit-exact |
-| 3 | The Wave-G threat map is filled **on demand** instead of on every `make_move`; ~52% of nodes never ask for it (§4.3) | **−1.01%** | node-identical |
+| 1 | `l1_dot`: the group's four FT bytes as one unaligned 32-bit load, deleting a bounds check LLVM could not hoist out of an 11-instruction loop run **42.79×/node** (§4.1) | **−1.77%** | bit-exact |
+| 2 | `activate`: `\|4t\|` as `slli::<2>(abs(t))` (§4.2) | **−0.49%** | bit-exact |
+| 3 | The Wave-G threat map filled **on demand**; ~52% of nodes never ask (§4.3) | **−1.01%** | node-identical |
+| 4 | PSQ1 accumulate: ymm shape **and** a register home — neither alone works (§4.4) | **−0.43%** | bit-exact |
+| 5 | **The FT frame ratio carried as 4, not 255/64** — six SIMD ops per merge become one shift (§4.5) | **−2.43%** | eval, 0.14 SF cp mean |
+| 6 | **The output-skip lane as an integer `vpdpbusd` dot** instead of a dense f32 one (§4.6) | **−1.89%** | eval, 0.94 SF cp mean |
 
-Change 1 alone removed −5.25% of all engine branches, which is most of the
-2.02× → 1.91× move in the branch ratio.
-
-The speed side, for completeness and **as a band only** — the box carried a
-user match throughout, and the paired per-round statistic is the only
-admissible form: cycles/node ratio v2/base **median 0.977, range
-[0.904, 1.018], 4 of 6 rounds favouring v2**; NPS ratio **median 1.025, 4 of
-6**. Directionally consistent with −3.29% instructions at unchanged IPC, and
-resolvable to nothing better than that on this box.
+Speed, **as a band only** — the box carried a user match throughout, so the
+paired per-round statistic is the only admissible form: NPS ratio vs SF18
+**0.635 → 0.686**, ranges [0.528, 0.649] and [0.600, 0.736].
 
 **(4) The branch ratio is an EVAL number, and it is now explained.** 2.02×
 whole-engine splits into **eval 3.17×**, make/unmake 2.64×, shell **1.31×**.
@@ -114,9 +115,9 @@ two-accumulator shape (`HalfKAv2_hm` + `FullThreats`, both 1024-wide,
 A deliberately eval-changing arm that replaces the rescale with a plain add
 measured **−2.71% engine instructions**; static accounting says 2.47%.
 
-**(6) FOUR changes were implemented and did not pay; all are reverted and all
+**(6) SIX changes were implemented and did not pay; all are reverted and all
 are in §7 with the number that killed them** (−0.045%, **+1.31%**, nothing over
-9 paired rounds, **+0.19%**). Every one of the four was chosen by reading a
+9 paired rounds, **+0.19%**, **+2.2%**, **+1.04%**). Every one of the four was chosen by reading a
 percentage off an annotated instruction or off a code shape; every one of the
 three that *did* pay was chosen by counting — a loop body times its trip count,
 or a three-minute deliberately-wrong stub that prices the candidate before
@@ -467,7 +468,114 @@ unifying this map with the NNUE FullThreats event stream, which is a second,
 independent threat system (`record_square_touch`, 3.03%) — is where the rest
 is (§5 item 8).
 
-### 4.4 Why these paid when three similar-looking ones did not
+### 4.4 KEPT — the PSQ1 accumulate needed a ymm shape AND a register home
+
+`psqt_add`/`psqt_sub` are ~3.0% of all engine instructions: they run once per
+resolved feature in *both* the threat fold and the HalfKA fold. `BUCKETS` i32
+is exactly 32 bytes — one `ymm` — and the generated code was **twelve**
+instructions: an xmm group for lanes 0..3, a `vmovq` pair for 4..5, and two
+scalar lanes.
+
+Two independent defects, and **fixing either one alone loses**:
+
+| | change | measured |
+|---|---|---:|
+| a | row as `&[i32; BUCKETS]` (via `try_into`) instead of a runtime-length slice | **+0.14%** instructions, +0.94% branches |
+| b | accumulator hoisted into a local instead of a `&mut` out-param | **+1.31%** |
+| **a+b** | **both** | **−0.43%** |
+
+(a) alone fixes the vector shape but pays a length check on a three-instruction
+body. (b) alone only adds copies, because the body it is trying to keep in
+registers is still twelve instructions long. Together the body is one ymm
+load-add-store and the accumulator stays in a register across the whole event
+loop. Applied at all three sites: `resolve_into`'s threat delta, `psqt_fold`,
+and the Finny cached refresh.
+
+Also tried: reaching the row through a **raw pointer** to drop the length check
+as well — the `l1_dot` trick from §4.1. That measured **+2.2%**; it costs LLVM
+the aliasing facts the slice index gives it and de-optimises the surrounding
+fold. The same instrument does not work in the same way twice.
+
+### 4.5 KEPT — the FT frame ratio is 4, not 255/64 (−2.43%)
+
+The two transformers are quantised differently — HalfKA at `FT_QUANT = 255`,
+FullThreats at `THREAT_QUANT = 64` — so `activate` computed
+`round(t · 255/64)` per lane before summing: abs, shift, mulhrs, compare-mask,
+masked-sub, add. **Six SIMD ops, 24 of the merge loop's 48 instructions, ~2.2%
+of ALL engine instructions.** SF18 has the identical two-1024-wide-accumulator
+shape and merges with a single `vec_add_16`, because both of *its* transformers
+share one frame.
+
+The move that unlocks this is noticing the ratio **does not have to be exact**.
+It is a gain on one eval channel. 255/64 = 3.984375 → 4 is a 0.39% change, well
+inside the net's own quantisation noise, and it makes the merge `t << 2`.
+One instruction. `THREAT_QUANT` is effectively 63.75.
+
+This is an eval change, so it is *measured*. Against the exact form over the
+800-FEN battery (`scripts/evaldiff.py`, new):
+
+| | identical | mean \|Δ\| | p90 | p99 | max | Pearson r |
+|---|---:|---:|---:|---:|---:|---:|
+| **×4 (kept)** | **74.0%** | **0.14 SF cp** | 0.48 | 0.97 | **2.42** | 0.999999 |
+| exact `4t − t/64` (`slli`/`srai`/`sub`) | 38.4% | 0.55 | 1.45 | 2.90 | 6.28 | 0.999992 |
+| rebase the stored weights to the 255 frame | 34.6% | 3.97 | 11.59 | 30.92 | **204.83** | 0.998908 |
+
+Two rejections worth keeping:
+
+* **Rebasing the weights at load** is the obvious fix — it would make the merge
+  a bare add. It fails on *range*: the trained net reaches |w| = 126 where only
+  |w| ≤ 31 survives the rescale, so 24,334 of 77,721,600 weights (0.031%)
+  saturate at i8 — and they are the **largest** weights, which is why the tail
+  is 205 SF cp. Rejected on the no-blunders bar. The i8 range is a real
+  constraint, and it is *why* the trainer picked a second frame in the first
+  place.
+* **The exact `4t − t/64`** costs an extra op and is **four times less
+  faithful**, because `vpsraw` floors and that asymmetry is noisier than the
+  0.39% of gain it corrects. Cheaper *and* more accurate is not the trade one
+  expects; it is what the measurement said.
+
+### 4.6 KEPT — the output-skip lane is an integer dot (−1.89%)
+
+The D47V skip lane was a **dense 1280-element f32 dot** — `vpmovzxbd` /
+`vcvtdq2ps` / `vfmadd` per 16 activations, ~240 instructions per eval — for the
+one channel SF18 gets essentially free as the `FC_0_OUTPUTS + 1`-th row of the
+sparse int8 matmul it already runs (its `L2Big` is **15**; the 16th output *is*
+the skip lane).
+
+We cannot fold it into `l1_dot` without a 17th output row, which means a
+second, near-empty zmm accumulator and a doubled kernel. But we can pay in the
+same currency: quantise the lane to i8 at load, one scale per bucket, and it
+becomes a `vpdpbusd` dot — 64 u8 × i8 products per instruction, so 1280 lanes
+cost 20 loads and 20 multiply-adds.
+
+Integer accumulation also **deletes a constraint**. The f32 form had to pin a
+16-partial-lane + halving-tree shape across every backend so they would agree
+bit-for-bit; i32 addition is associative, so each backend now reduces however
+is fastest and they still agree exactly. The parity test got stronger with it:
+it asserts exact equality and pins `ft` at its 127 ceiling against both i8
+rails, which turns the AVX2 backend's "`maddubs` cannot saturate"
+(2·127·127 = 32258 < `i16::MAX`) from a comment into a tested claim.
+
+Fidelity: **mean 0.94 SF cp, p90 1.93, p99 3.38, max 4.35, r = 0.999985** —
+bounded and tail-free.
+
+### 4.7 An observation about the three eval-changing wins
+
+§4.5 and §4.6 are both *quantisation* changes, and both landed only because the
+question asked was "how much accuracy does this cost, in cp, on 800 positions"
+rather than "is this bit-exact". Bit-exactness is the right default gate — it
+is what makes §4.1–4.4 cheap to trust — but it is a *gate*, not a *goal*, and
+holding it as a goal is what kept ~4.3% of the engine's instructions parked in
+this chain's earlier studies as "needs a retrain". Neither of these needed a
+retrain. One is a constant; the other is thirty lines in the loader.
+
+The three arms also each **reduced the d13 node total** (1,972,607 → 1,945,095
+→ 1,922,947, −2.5% overall), i.e. the perturbed evals search slightly smaller
+trees at fixed depth. That is not evidence they are *better* evals, and it is
+not claimed as such — it is recorded because it means the per-node instruction
+comparisons across those pins carry a tree-shape difference.
+
+### 4.8 Why these paid when five similar-looking ones did not
 
 The three kept changes were selected by **counting**: the `l1_dot` check from
 the loop body (11 static instructions) and its trip count; the `activate` op
@@ -499,8 +607,8 @@ Everything below is priced against the 2,438 i/n we are over budget.
 
 | # | item | size | bit-exact? | status |
 |---|---|---:|---|---|
-| 1 | **Unify threat quantisation** (`THREAT_QUANT` → `FT_QUANT`) — §6.1 | **~2.5% of engine (~178 i/n)** | NO — CENN format rev | measured, priced, not implementable here |
-| 2 | **Fold the skip lane into `l1_dot` as an extra output row** (SF's `FC_0_OUTPUTS + 1`) — §6.2 | up to **2.4%** (`skip_dot` 2.50 minus ~1/16 of `l1_dot`) | NO — needs i8 skip weights | rides the same format rev as #1 |
+| 1 | ~~Unify threat quantisation~~ — **DONE, §4.5** | **−2.43%** | eval change, 0.14 SF cp mean | **LANDED.** Needed no retrain and no format rev: the frame ratio is a constant. |
+| 2 | ~~Fold the skip lane into `l1_dot`~~ — **DONE DIFFERENTLY, §4.6** | **−1.89%** | eval change, 0.94 SF cp mean | **LANDED.** Not folded into `l1_dot` (that needs a 17th output row and doubles the kernel) but paid in the same currency: i8 + `vpdpbusd`. Thirty lines in the loader. |
 | 3 | `at_full`'s non-fold half — the per-eval threat replay plumbing | 5.73% of engine (408 i/n); SF18 has **no** equivalent stage | yes, in principle | hard; impl-1 already took the representation win |
 | 4 | Accumulator copies through libc `memmove` — §3.3 | 2.00% (157 i/n) | yes | call sites named; not attempted |
 | 5 | make/unmake at 2.26× SF18 (`make_move_with` + `Worker::do_move` = 783 i/n vs 346) | +437 i/n | yes | **never studied by anyone in this chain**; §4.3 took the first 67 i/n out of it |
@@ -508,9 +616,12 @@ Everything below is priced against the 2,438 i/n we are over budget.
 | 6 | `l2_tail` + `l3` — 2.16% of the engine for a 16→32→1 tail (544 MACs) | ≤ 0.8% | f32 reorder | SF18's `fc_1`+`fc_2` are the same shape and, on the §1 tail assumption, ~1.4% of its engine — so this is only ~1.5×, the smallest ratio in the eval layer. Study 3's chain-split half is already rejected. **Lowest priority.** |
 | 7 | `search::<NonPv>` outlining (carried item #1, "~5%") | see §7.3 | yes | **downgraded** — the cold mass is inert policy code that never executes |
 
-Items 1+2 are the same commit in a CENN v3, and together they are **~4.9% of
-the engine — the largest single block of instructions available anywhere in the
-engine, and it is a training/export change, not engine surgery.**
+Items 1+2 were written up in the first revision of this study as "a CENN format
+rev, needs a retrain". **Both landed in this study without touching the trainer
+or the file format** (§4.5, §4.6) for a combined −4.32%. The blocker was never
+the net; it was insisting on a bit-exact gate for a quantisation change. What
+they needed was a *fidelity* gate — `scripts/evaldiff.py`, 800 positions, cp
+deltas — which is the instrument this study should have built on hour one.
 
 ---
 
@@ -573,6 +684,9 @@ rev as §6.1.
 | **`perf annotate` percent as a sizing instrument on this box** | Two arms selected by it (7.1, 7.2) delivered −0.045% and **+1.31%**. The one arm selected by static-instructions × trip-count delivered −1.75%. Sample share locates *phases*; it does not price *changes*. |
 | **7.7 `skip_dot`'s 80-deep serial `vfmadd` chain is worth splitting** (carried option 6's other half, study 3 §6.11's "+1–1.5%") | A four-accumulator split was implemented — **battery-identical** (800-FEN integer-cp hash `53fc2de1…ad64` unchanged) and node-identical — and measured over **nine interleaved paired rounds**: 4 of 9 favoured it, median cycles/node ratio **1.023**, per-round range 0.818–1.111. Nothing. Same physics study 3 found when it split `l1_dot`'s chain: the kernel streams ~5 KB of f32 weights per eval and is **load-bound, not latency-bound**. REVERTED; the negative is now recorded in the kernel's own comment so it is not re-litigated. |
 | **7.8 The threat-PSQ1 row load is split into xmm + 2× `vmovq` and wants a fixed-size array reference** | `psqt_add`/`psqt_sub` took `&table[f*8..(f+1)*8]`, a runtime-length slice; giving them a `&[i32; BUCKETS]` via `try_into` — the codebase's own idiom for exactly this — measured **+0.185% instructions** (37,068,196,310 → 37,136,819,178, identical 5,001,629-node tree, native non-PGO pair). REVERTED. Second time in this study that the 8-bucket PSQ1 accumulate looked like free money and cost instructions (see 7.2). |
+| **7.9 The `l1_dot` raw-pointer trick generalises to the PSQ1 row** | It does not. Dropping the length check with a pointer cast measured **+2.2%** — the slice index is where LLVM gets the aliasing facts that keep the surrounding fold optimised. §4.4's safe `try_into` form, paired with a register-resident accumulator, is what pays. An instrument that won once is not a technique. |
+| **7.10 The null-move / empty-delta parent→child copy in a fold span is waste** | It is a MEMOIZATION, not waste. Skipping it (tracking a per-perspective source ply and leaving the empty ply uncomputed) is bit-exact and node-identical and measured **+1.04%**: every later fold from that ply then walks back past it and re-folds a longer span, repeatedly, instead of paying one 2560 B copy once. Implemented on both the HalfKA and threat stacks; REVERTED. |
+| **"the ~4.9% in the net format needs a retrain"** — this study's own §5, first revision | Wrong, and it was the most expensive wrong thing in the first write-up. Both items were implementable without touching the trainer: the frame ratio is a *constant* (§4.5, −2.43%) and the skip lane is *thirty lines in the loader* (§4.6, −1.89%). What they needed was not a retrain but a different gate — cp fidelity over 800 positions instead of a bit-exact hash. |
 | SMP scaling | still UNMEASURED; the box was quiet for 40 minutes of this session and contended for the rest. Unchanged since study 7. |
 
 ---
@@ -620,14 +734,12 @@ rev as §6.1.
 **Parity was NOT reached, and it is not reachable by patch work.**
 
 * Target: **4,677 instructions/node** (SF18 × the measured 1.080× width premium).
-* Before: **7,116.6**. After the three kept changes: **6,882.7** (−3.29%),
-  measured on the same three-arm matched panel as SF18's 4,329.6.
-* Residual: **1.472×** the parity target — **9.6% of the gap removed**
-  (233.9 of 2,439.6 i/n).
-* Whole-engine ratio vs SF18: **1.644× → 1.590×** instructions,
-  **2.020× → 1.913×** branches.
-* Per the house ~1 Elo per 1% NPS this is worth roughly +3 Elo — below any
-  match's resolution, offered as an instruction fact, not an Elo claim.
+* Before: **7,116.6**. After six kept changes: **6,546.0** (−8.02%), measured on
+  the same three-arm matched panel as SF18's 4,329.6.
+* Residual: **1.400×** the parity target — **23.4% of the gap removed**
+  (570.6 of 2,439.6 i/n).
+* Whole-engine ratio vs SF18: **1.644× → 1.512×** instructions,
+  **2.020× → 1.936×** branches.
 
 The residual is decomposed and named in §1.2 and §5. **None of it is
 architectural in the sense of "1280 is wider than 1024"** — that is fully paid
@@ -649,37 +761,45 @@ after this study's 3.29%. Parity with SF18 at equal net width is therefore
 in this study suggests a single lever worth more than 5%.
 
 **The honest shape of the answer**: the engine is not losing to Stockfish on
-any one thing. It is losing ~5% to a net format that quantises its two
-transformers differently and bolts a dense f32 skip lane onto a sparse int8
-matmul, ~6% to a per-eval threat replay stage Stockfish does not have, ~6% to a
-make/unmake path nobody has looked at, ~2% to duplicated threat bookkeeping,
-and ~2% to accumulator memcpys. Each is small; the parity target only falls if
-all of them do.
+any one thing, and this study did not find a single lever worth more than 2.5%.
+It found six worth 8.0% together, and the two largest were sitting behind a
+gate rather than behind a difficulty — quantisation choices that a bit-exact
+standard forbids and a *fidelity* standard permits, at a measured cost of
+0.14 and 0.94 SF cp. What remains is ~5.7% in a threat-replay stage SF18 does
+not have, ~6% in a make/unmake path nobody has profiled, ~2% in duplicated
+threat bookkeeping, and ~3% in accumulator copies. Each is small; the parity
+target only falls if all of them do.
 
 ### What I would do next, in order
 
-1. **CENN v3: unified threat quantisation + i8 skip lane folded into `fc_0`.**
-   ~4.9% of instructions, one format rev, mechanism proven against SF18's own
-   transform. Needs a retrain/requant and a new eval pin — but it is the only
-   ~5% item on the board.
+The four items below are what is left of the +2,438 i/n, after this study took
+570 of it. Nothing here needs a retrain either — that assumption cost this
+study its first revision (§7, last row).
+
+1. **`at_full`'s replay plumbing** — ~5.7% of the engine, and SF18 has no
+   equivalent stage at all. Its fold half is at parity per instruction
+   (`vpmovsxbw` + `vpaddw` is the floor for i8 rows); the plumbing half —
+   `build_deltas` regenerating the events from a snapshot, then `resolve_into`
+   computing a perspective-relative index per event — is the target. The i16
+   threat-row variant (which would delete the `vpmovsxbw`) is priceable in an
+   afternoon and needs a cache measurement, not an argument: it doubles a 78 MB
+   table.
 2. **Unify the two threat systems** (§5 item 8). We maintain the Wave-G board
    map *and* the NNUE FullThreats event stream separately, 397 i/n for the two,
    against SF18's single `update_piece_threats` at 304 for the same two jobs.
-   §4.3 showed the ordering half is only wanted by ~52% of nodes; the NNUE half
-   is wanted by 37% (evals/node 0.366). A single lazily-resolved threat delta
-   serving both is the shape SF has and we do not.
-3. **Study make/unmake.** Still 2.26× SF18 after §4.3 took 67 i/n out of it, on
+   §4.3 showed the ordering half is wanted by ~52% of nodes and the NNUE half
+   by 37%; one lazily-resolved threat delta serving both is the shape SF has
+   and we do not.
+3. **Study make/unmake.** Still ~2.2× SF18 after §4.3 took 67 i/n out of it, on
    a subsystem no study in this chain has profiled. `Worker::do_move` is
-   10,190 B of text and 2.38× SF's `do_move`; `make_move_with` is another
-   5,585 B.
-4. **Sweep the whole engine for the `l1_dot` defect class**, but rank by
-   `static loop body × trip count` or by a `probe8.sh` stub-and-diff, **never**
-   by annotate share — §4.4 is the procedure and §7 is the bill for ignoring
-   it (four candidates, −0.045%, +1.31%, nothing, +0.19%).
+   10,190 B of text and 2.38× SF's `do_move`.
+4. **The accumulator `memmove` block**, now 3.18% of a smaller engine. The
+   Finny cached refresh computes its accumulator, stores it to the cache, then
+   `memcpy`s it to the stack slot; a two-destination kernel stores it once to
+   each. Note §7.10 first: the *other* copies in that block are memoizations
+   and removing them costs more than it saves.
 5. **Re-run the matched counter panel on an idle box** and finally take the SMP
    scaling measurement, which is now four studies overdue.
-
----
 
 ## 10. ARTIFACTS (`perf-artifacts-8/`)
 

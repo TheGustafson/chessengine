@@ -1,0 +1,1546 @@
+ Percent |	Source code & Disassembly of archon-s8-x4merge for instructions:u (34500 samples, percent: local period)
+------------------------------------------------------------------------------------------------------------------------
+         :
+         :
+         :
+         : 3     Disassembly of section .text:
+         :
+         : 5     0000000000063560 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full>:
+    0.00 :   63560:  push   %rbp
+    0.00 :   63561:  push   %r15
+    0.01 :   63563:  push   %r14
+    0.02 :   63565:  push   %r13
+    0.05 :   63567:  push   %r12
+    0.05 :   63569:  push   %rbx
+    0.03 :   6356a:  sub    $0x7a8,%rsp
+    0.01 :   63571:  mov    %rsi,%rax
+    0.00 :   63574:  mov    0x730(%rdi),%rsi
+    0.12 :   6357b:  mov    %rdi,%r15
+    0.00 :   6357e:  test   %rax,%rax
+    0.00 :   63581:  je     65051 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1af1>
+    0.00 :   63587:  mov    0x728(%r15),%rcx
+    0.00 :   6358e:  imul   $0x14c0,%rax,%rdx
+    0.00 :   63595:  lea    0x149f(%rdx,%rcx,1),%rcx
+    0.02 :   6359d:  cmp    %rsi,%rax
+    0.00 :   635a0:  jae    654cb <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f6b>
+    0.00 :   635a6:  cmpb   $0x0,-0x1(%rcx)
+    0.08 :   635aa:  jne    635c9 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x69>
+    0.00 :   635ac:  cmpb   $0x0,(%rcx)
+    0.00 :   635af:  jne    635c9 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x69>
+    0.00 :   635b1:  movzbl -0x3(%rcx),%r8d
+    0.01 :   635b6:  cmp    $0x3,%r8
+    0.00 :   635ba:  jae    654da <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f7a>
+    0.00 :   635c0:  test   %r8,%r8
+    0.01 :   635c3:  je     65058 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1af8>
+    0.00 :   635c9:  mov    %rax,%rdi
+    0.01 :   635cc:  cmp    %rsi,%rdi
+    0.01 :   635cf:  jae    653ac <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1e4c>
+    0.00 :   635d5:  mov    0x728(%r15),%rax
+    0.00 :   635dc:  imul   $0x14c0,%rdi,%rcx
+    0.00 :   635e3:  mov    %rdi,0x70(%rsp)
+    0.00 :   635e8:  mov    %rcx,0x78(%rsp)
+    0.00 :   635ed:  cmpb   $0x0,0x149e(%rax,%rcx,1)
+    0.01 :   635f5:  jne    64fa4 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1a44>
+    0.02 :   635fb:  test   %rdi,%rdi
+    0.02 :   635fe:  je     65087 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1b27>
+    0.00 :   63604:  mov    0x78(%rsp),%rcx
+    0.01 :   63609:  lea    0x149e(%rcx,%rax,1),%rcx
+    0.00 :   63611:  mov    %rdi,0x30(%rsp)
+    0.03 :   63616:  cmp    %rsi,%rdi
+    0.01 :   63619:  jae    6539b <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1e3b>
+    0.00 :   6361f:  cmpb   $0x0,(%rcx)
+    0.13 :   63622:  jne    6363e <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0xde>
+    0.00 :   63624:  mov    0x30(%rsp),%rdi
+    0.10 :   63629:  add    $0xffffffffffffeb40,%rcx
+    0.01 :   63630:  dec    %rdi
+    0.01 :   63633:  jne    63611 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0xb1>
+    0.00 :   63635:  movq   $0x0,0x30(%rsp)
+    0.00 :   6363e:  mov    0x78(%rsp),%rcx
+    0.06 :   63643:  mov    0x70(%rsp),%rdi
+    0.00 :   63648:  lea    0x149f(%rcx,%rax,1),%rax
+    0.03 :   63650:  mov    %rdi,%rcx
+    0.00 :   63653:  cmp    %rsi,%rcx
+    0.01 :   63656:  jae    65396 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1e36>
+    0.00 :   6365c:  cmpb   $0x0,(%rax)
+    0.06 :   6365f:  jne    6366e <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x10e>
+    0.00 :   63661:  add    $0xffffffffffffeb40,%rax
+    0.02 :   63667:  dec    %rcx
+    0.01 :   6366a:  jne    63653 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0xf3>
+    0.00 :   6366c:  xor    %ecx,%ecx
+    0.00 :   6366e:  mov    0x708(%r15),%rax
+    0.02 :   63675:  mov    0x718(%r15),%rdx
+    0.01 :   6367c:  mov    %rax,0x138(%rsp)
+    0.01 :   63684:  mov    0x720(%r15),%rax
+    0.01 :   6368b:  mov    %rdx,0x100(%rsp)
+    0.01 :   63693:  mov    %rax,0x68(%rsp)
+    0.01 :   63698:  mov    0xa0d62(%rip),%eax        # 104400 <chessengine::attacks::TABLES+0x1040>
+    0.01 :   6369e:  mov    %rcx,0x98(%rsp)
+    0.02 :   636a6:  test   %eax,%eax
+    0.00 :   636a8:  jne    653c7 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1e67>
+    0.00 :   636ae:  mov    0x30(%rsp),%rax
+    0.03 :   636b3:  cmp    %rax,%rcx
+    0.00 :   636b6:  mov    %rax,%rbx
+    0.01 :   636b9:  cmovb  %rcx,%rbx
+    0.00 :   636bd:  cmp    %rdi,%rbx
+    0.01 :   636c0:  jae    64b03 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x15a3>
+    0.00 :   636c6:  inc    %rbx
+    0.01 :   636c9:  lea    0x738(%r15),%rdx
+    0.00 :   636d0:  lea    0x1738(%r15),%r8
+    0.01 :   636d7:  lea    0x4(%r15),%rsi
+    0.01 :   636db:  mov    %r15,0x18(%rsp)
+    0.01 :   636e0:  mov    %rbx,%r14
+    0.00 :   636e3:  mov    %rdx,0xf8(%rsp)
+    0.03 :   636eb:  mov    %r8,0xf0(%rsp)
+    0.06 :   636f3:  mov    %rsi,0xc8(%rsp)
+    0.06 :   636fb:  cmp    %rdi,%rbx
+    0.01 :   636fe:  adc    $0x0,%r14
+    0.04 :   63702:  cmp    %rax,%rbx
+    0.00 :   63705:  jbe    64ba6 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1646>
+    0.00 :   6370b:  mov    0x730(%r15),%rsi
+    0.06 :   63712:  cmp    %rsi,%rbx
+    0.01 :   63715:  jae    65415 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1eb5>
+    0.00 :   6371b:  mov    0x728(%r15),%rax
+    0.03 :   63722:  imul   $0x14c0,%rbx,%rcx
+    0.00 :   63729:  movzbl 0x149e(%rax,%rcx,1),%eax
+    0.31 :   63731:  mov    0x98(%rsp),%rcx
+    0.01 :   63739:  xor    $0x1,%al
+    0.06 :   6373b:  cmp    %rcx,%rbx
+    0.00 :   6373e:  jbe    64f9d <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1a3d>
+    0.00 :   63744:  mov    0x730(%r15),%rsi
+    0.02 :   6374b:  cmp    %rsi,%rbx
+    0.01 :   6374e:  jae    65427 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1ec7>
+    0.00 :   63754:  mov    0x728(%r15),%rcx
+    0.01 :   6375b:  imul   $0x14c0,%rbx,%rdx
+    0.02 :   63762:  movzbl 0x149f(%rcx,%rdx,1),%ecx
+    0.04 :   6376a:  xor    $0x1,%cl
+    0.05 :   6376d:  mov    %al,0x16(%rsp)
+    0.05 :   63771:  mov    %cl,0x17(%rsp)
+    0.06 :   63775:  test   %al,%al
+    0.00 :   63777:  jne    63781 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x221>
+    0.00 :   63779:  test   %cl,%cl
+    0.00 :   6377b:  je     644d2 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0xf72>
+    0.00 :   63781:  movq   $0x0,0x700(%r15)
+    0.11 :   6378c:  mov    0x730(%r15),%rsi
+    0.02 :   63793:  cmp    %rsi,%rbx
+    0.02 :   63796:  jae    65439 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1ed9>
+    0.00 :   6379c:  mov    0x728(%r15),%rax
+    0.01 :   637a3:  imul   $0x14c0,%rbx,%rdi
+    0.01 :   637aa:  mov    %r14,0x40(%rsp)
+    0.01 :   637af:  mov    %rbx,0x48(%rsp)
+    0.06 :   637b4:  movzbl 0x149d(%rax,%rdi,1),%r14d
+    0.08 :   637bd:  cmp    $0x3,%r14
+    0.03 :   637c1:  jae    6544b <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1eeb>
+    0.00 :   637c7:  lea    (%rax,%rdi,1),%r13
+    0.01 :   637cb:  movzbl 0x149c(%r13),%esi
+    0.03 :   637d3:  cmp    $0x3,%rsi
+    0.02 :   637d7:  jae    65464 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f04>
+    0.00 :   637dd:  mov    %r14d,%ecx
+    0.00 :   637e0:  mov    %esi,%edx
+    0.00 :   637e2:  lea    0x1440(%rax,%rdi,1),%r12
+    0.03 :   637ea:  mov    %rdi,0xa0(%rsp)
+    0.03 :   637f2:  xor    $0x1,%cl
+    0.03 :   637f5:  xor    $0x1,%dl
+    0.00 :   637f8:  or     %cl,%dl
+    0.01 :   637fa:  jne    64500 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0xfa0>
+    0.00 :   63800:  movzbl 0x1498(%r13),%edi
+    0.05 :   63808:  movzbl 0x1492(%r13),%ecx
+    0.00 :   63810:  cmp    %cl,%dil
+    0.03 :   63813:  je     65095 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1b35>
+    0.00 :   63819:  vmovdqu64 (%r12),%zmm0
+    0.10 :   63820:  vmovdqu64 0x10(%r12),%zmm1
+    0.07 :   6382b:  mov    $0x1,%eax
+    0.01 :   63830:  movzbl %dil,%r8d
+    0.00 :   63834:  lea    0x160(%rsp),%rbx
+    0.01 :   6383c:  mov    %r15,%rdi
+    0.00 :   6383f:  xor    %r9d,%r9d
+    0.00 :   63842:  shlx   %rcx,%rax,%rax
+    0.03 :   63847:  mov    %rbx,%rsi
+    0.00 :   6384a:  vmovdqu64 %zmm1,0x170(%rsp)
+    0.21 :   63855:  vmovdqu64 %zmm0,0x160(%rsp)
+    0.06 :   63860:  movzbl 0x1491(%r13),%ecx
+    0.00 :   63868:  movzbl 0x1490(%r13),%edx
+    0.00 :   63870:  xor    %rax,0x160(%rsp,%rcx,8)
+    0.57 :   63878:  xor    %rax,0x190(%rsp,%rdx,8)
+    0.09 :   63880:  xor    %rax,0x1a0(%rsp)
+    0.06 :   63888:  movzbl 0x1496(%r13),%edx
+    0.00 :   63890:  movzbl 0x1497(%r13),%ecx
+    0.00 :   63898:  vzeroupper
+    0.00 :   6389b:  call   40750 <chessengine::eval::nnue::sota_threats::record_square_touch>
+    0.02 :   638a0:  movzbl 0x1490(%r13),%edx
+    0.03 :   638a8:  movzbl 0x1492(%r13),%r8d
+    0.00 :   638b0:  movzbl 0x1491(%r13),%ecx
+    0.01 :   638b8:  mov    $0x1,%r9d
+    0.02 :   638be:  mov    %r15,%rdi
+    0.01 :   638c1:  mov    %rbx,%rsi
+    0.01 :   638c4:  call   40750 <chessengine::eval::nnue::sota_threats::record_square_touch>
+    0.01 :   638c9:  mov    0x48(%rsp),%rbx
+    0.03 :   638ce:  mov    0x40(%rsp),%r14
+    0.01 :   638d3:  mov    $0x1,%r12d
+    0.03 :   638d9:  vpxor  %xmm0,%xmm0,%xmm0
+    0.01 :   638dd:  vmovdqu %ymm0,0x140(%rsp)
+    0.05 :   638e6:  vpxor  %xmm0,%xmm0,%xmm0
+    0.01 :   638ea:  xor    %r13d,%r13d
+    0.01 :   638ed:  vmovdqu64 %zmm0,0x460(%rsp)
+    0.23 :   638f8:  cmpb   $0x0,0x16(%rsp,%r13,1)
+    0.06 :   638fe:  je     63b96 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x636>
+    0.04 :   63904:  mov    0x730(%r15),%rsi
+    0.08 :   6390b:  cmp    %rsi,%rbx
+    0.03 :   6390e:  jae    6515f <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1bff>
+    0.00 :   63914:  mov    0x728(%r15),%rax
+    0.01 :   6391b:  add    0xa0(%rsp),%rax
+    0.04 :   63923:  movzbl 0x1488(%r13,%rax,1),%ebx
+    0.17 :   6392c:  lea    -0x55338(%rip),%rax        # e5fb <GCC_except_table852+0x6b43>
+    0.01 :   63933:  movzbl 0x0(%r13,%rax,1),%ebp
+    0.16 :   63939:  mov    0xa43c9(%rip),%eax        # 107d08 <chessengine::eval::nnue::sota_features::THREAT_TABLES+0x1888>
+    0.15 :   6393f:  test   %eax,%eax
+    0.01 :   63941:  jne    6519e <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1c3e>
+    0.00 :   63947:  mov    0x700(%r15),%rsi
+    0.09 :   6394e:  cmp    $0x101,%rsi
+    0.06 :   63955:  jae    65171 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1c11>
+    0.00 :   6395b:  mov    0xf8(%rsp),%rax
+    0.01 :   63963:  movzbl %bpl,%r9d
+    0.02 :   63967:  shl    $0x5,%bl
+    0.05 :   6396a:  mov    %r13,%rcx
+    0.01 :   6396d:  shl    $0xb,%rcx
+    0.01 :   63971:  mov    %r12,0x60(%rsp)
+    0.03 :   63976:  mov    %r13,0x58(%rsp)
+    0.03 :   6397b:  imul   $0x38,%r9d,%r10d
+    0.06 :   6397f:  sar    $0x7,%bl
+    0.04 :   63982:  shl    $0x3,%r9b
+    0.03 :   63986:  and    $0x7,%bl
+    0.00 :   63989:  or     %bl,%r10b
+    0.09 :   6398c:  add    %rcx,%rax
+    0.01 :   6398f:  add    0xf0(%rsp),%rcx
+    0.03 :   63997:  cmpq   $0x0,0x68(%rsp)
+    0.04 :   6399d:  mov    %rax,0x28(%rsp)
+    0.06 :   639a2:  mov    %rcx,0x20(%rsp)
+    0.03 :   639a7:  je     651e7 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1c87>
+    0.02 :   639ad:  mov    %r13,%rax
+    0.00 :   639b0:  shl    $0x5,%rax
+    0.03 :   639b4:  lea    0x460(%rsp,%rax,1),%rax
+    0.03 :   639bc:  vmovdqu (%rax),%ymm0
+    0.17 :   639c0:  mov    %rax,0x50(%rsp)
+    0.07 :   639c5:  test   %rsi,%rsi
+    0.03 :   639c8:  je     650ca <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1b6a>
+    0.00 :   639ce:  lea    (%r15,%rsi,8),%r13
+    0.02 :   639d2:  mov    0xa2aa7(%rip),%rax        # 106480 <chessengine::eval::nnue::sota_features::THREAT_TABLES>
+    0.14 :   639d9:  mov    0xc8(%rsp),%r15
+    0.02 :   639e1:  xor    %edi,%edi
+    0.01 :   639e3:  sub    %rsi,%r13
+    0.00 :   639e6:  mov    %rax,0x8(%rsp)
+    0.03 :   639eb:  xor    %eax,%eax
+    0.05 :   639ed:  jmp    63a05 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x4a5>
+    0.00 :   639ef:  nop
+    0.01 :   639f0:  lea    -0x4(%r15),%rcx
+    0.11 :   639f4:  add    $0x7,%r15
+    0.03 :   639f8:  add    $0x7,%rcx
+    0.00 :   639fc:  cmp    %r13,%rcx
+    0.02 :   639ff:  je     63b60 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x600>
+    0.06 :   63a05:  movzbl -0x4(%r15),%edx
+    0.15 :   63a0a:  movzbl -0x3(%r15),%ebx
+    0.10 :   63a0f:  movzbl 0x1(%r15),%r8d
+    0.34 :   63a14:  movzbl 0x2(%r15),%r12d
+    0.04 :   63a19:  movzbl -0x2(%r15),%r11d
+    0.03 :   63a1e:  xor    %r14d,%r14d
+    0.05 :   63a21:  lea    0xa2a58(%rip),%rbp        # 106480 <chessengine::eval::nnue::sota_features::THREAT_TABLES>
+    0.06 :   63a28:  shl    $0x3,%dl
+    0.10 :   63a2b:  inc    %bl
+    0.05 :   63a2d:  mov    %r8d,%ecx
+    0.08 :   63a30:  mov    %r12d,%esi
+    0.39 :   63a33:  or     %dl,%bl
+    0.06 :   63a35:  xor    %r10b,%cl
+    0.01 :   63a38:  xor    %r10b,%sil
+    0.10 :   63a3b:  xor    %r9b,%bl
+    0.02 :   63a3e:  cmp    %sil,%cl
+    0.06 :   63a41:  movzbl %bl,%edx
+    0.07 :   63a44:  movzbl -0x1(%r15),%ebx
+    0.10 :   63a49:  setb   %r14b
+    0.29 :   63a4d:  shl    $0x3,%r11b
+    0.12 :   63a51:  inc    %bl
+    0.04 :   63a53:  or     %r11b,%bl
+    0.06 :   63a56:  mov    %edx,%r11d
+    0.12 :   63a59:  shl    $0x7,%r11d
+    0.00 :   63a5d:  xor    %r9b,%bl
+    0.03 :   63a60:  add    %rbp,%r11
+    0.06 :   63a63:  movzbl %bl,%ebx
+    0.12 :   63a66:  lea    (%r11,%rbx,8),%r11
+    0.39 :   63a6a:  mov    0x1088(%r11,%r14,4),%ebx
+    1.16 :   63a72:  cmp    $0xed2f,%ebx
+    0.10 :   63a78:  ja     639f0 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x490>
+    0.00 :   63a7e:  movzbl %cl,%ecx
+    0.08 :   63a81:  cmp    $0x3f,%r8b
+    0.00 :   63a85:  ja     65313 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1db3>
+    0.00 :   63a8b:  movzbl %sil,%r8d
+    0.08 :   63a8f:  cmp    $0x40,%r12b
+    0.03 :   63a93:  jae    6532a <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1dca>
+    0.00 :   63a99:  mov    %edx,%esi
+    0.01 :   63a9b:  shl    $0x8,%esi
+    0.00 :   63a9e:  lea    0xa29db(%rip),%r11        # 106480 <chessengine::eval::nnue::sota_features::THREAT_TABLES>
+    0.05 :   63aa5:  shl    $0xc,%edx
+    0.15 :   63aa8:  add    %r11,%rsi
+    0.21 :   63aab:  add    0x8(%rsi,%rcx,4),%ebx
+    0.50 :   63aaf:  shl    $0x6,%ecx
+    0.05 :   63ab2:  add    0x8(%rsp),%rcx
+    0.09 :   63ab7:  add    %rdx,%rcx
+    0.08 :   63aba:  movzbl (%r8,%rcx,1),%esi
+    2.52 :   63abf:  add    %ebx,%esi
+    0.17 :   63ac1:  cmpb   $0x0,(%r15)
+    0.11 :   63ac5:  jne    63b10 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x5b0>
+    0.01 :   63ac7:  cmp    $0x100,%rax
+    0.14 :   63acd:  jae    6510b <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1bab>
+    0.00 :   63ad3:  mov    0x20(%rsp),%rcx
+    0.05 :   63ad8:  mov    0x68(%rsp),%rdx
+    0.02 :   63add:  mov    %rsi,(%rcx,%rax,8)
+    0.13 :   63ae1:  shl    $0x3,%rsi
+    0.20 :   63ae5:  sub    %rsi,%rdx
+    0.00 :   63ae8:  jb     650db <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1b7b>
+    0.00 :   63aee:  cmp    $0x7,%rdx
+    0.12 :   63af2:  jbe    650f5 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1b95>
+    0.00 :   63af8:  mov    0x100(%rsp),%rcx
+    0.09 :   63b00:  inc    %rax
+    0.09 :   63b03:  vpsubd (%rcx,%rsi,4),%ymm0,%ymm0
+    5.53 :   63b08:  jmp    639f0 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x490>
+    0.00 :   63b0d:  nopl   (%rax)
+    0.01 :   63b10:  cmp    $0x100,%rdi
+    0.12 :   63b17:  jae    65122 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1bc2>
+    0.00 :   63b1d:  mov    0x28(%rsp),%rcx
+    0.02 :   63b22:  mov    0x68(%rsp),%rdx
+    0.01 :   63b27:  mov    %rsi,(%rcx,%rdi,8)
+    0.07 :   63b2b:  shl    $0x3,%rsi
+    0.11 :   63b2f:  sub    %rsi,%rdx
+    0.01 :   63b32:  jb     650db <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1b7b>
+    0.00 :   63b38:  cmp    $0x7,%rdx
+    0.08 :   63b3c:  jbe    650f5 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1b95>
+    0.01 :   63b42:  mov    0x100(%rsp),%rcx
+    0.08 :   63b4a:  inc    %rdi
+    0.05 :   63b4d:  vpaddd (%rcx,%rsi,4),%ymm0,%ymm0
+   10.76 :   63b52:  jmp    639f0 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x490>
+    0.00 :   63b57:  nopw   0x0(%rax,%rax,1)
+    0.00 :   63b60:  mov    0x50(%rsp),%rcx
+    0.13 :   63b65:  vmovdqu %ymm0,(%rcx)
+    0.16 :   63b69:  mov    0x58(%rsp),%rcx
+    0.07 :   63b6e:  mov    0x18(%rsp),%r15
+    0.00 :   63b73:  mov    0x48(%rsp),%rbx
+    0.01 :   63b78:  mov    0x40(%rsp),%r14
+    0.01 :   63b7d:  mov    0x60(%rsp),%r12
+    0.02 :   63b82:  shl    $0x4,%rcx
+    0.03 :   63b86:  mov    %rdi,0x140(%rsp,%rcx,1)
+    0.09 :   63b8e:  mov    %rax,0x148(%rsp,%rcx,1)
+    0.06 :   63b96:  xor    %eax,%eax
+    0.09 :   63b98:  cmp    $0x2,%r12
+    0.00 :   63b9c:  mov    %r12,%r13
+    0.00 :   63b9f:  setne  %al
+    0.01 :   63ba2:  add    %r12,%rax
+    0.01 :   63ba5:  cmp    $0x2,%r12
+    0.00 :   63ba9:  mov    %rax,%r12
+    0.00 :   63bac:  jne    638f8 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x398>
+    0.00 :   63bb2:  lea    -0x1(%rbx),%r12
+    0.05 :   63bb6:  mov    $0x1,%r13d
+    0.01 :   63bbc:  lea    0x140(%rsp),%rax
+    0.02 :   63bc4:  xor    %r8d,%r8d
+    0.03 :   63bc7:  xor    %edx,%edx
+    0.00 :   63bc9:  xor    %r11d,%r11d
+    0.00 :   63bcc:  mov    %r12,0x108(%rsp)
+    0.02 :   63bd4:  cmpb   $0x0,0x16(%rsp,%rdx,1)
+    0.06 :   63bd9:  je     644a6 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0xf46>
+    0.01 :   63bdf:  mov    0x730(%r15),%rcx
+    0.08 :   63be6:  cmp    %rcx,%rbx
+    0.04 :   63be9:  ja     65368 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1e08>
+    0.00 :   63bef:  je     65383 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1e23>
+    0.06 :   63bf5:  mov    0x8(%rax),%r10
+    0.03 :   63bf9:  mov    (%rax),%rsi
+    0.01 :   63bfc:  mov    0x728(%r15),%rbp
+    0.02 :   63c03:  mov    0xa0(%rsp),%rax
+    0.02 :   63c0b:  imul   $0x14c0,%r12,%r9
+    0.01 :   63c12:  mov    %rdx,%rcx
+    0.03 :   63c15:  shl    $0x9,%rcx
+    0.01 :   63c19:  mov    %r8,0xe8(%rsp)
+    0.03 :   63c21:  mov    %r11,0xe0(%rsp)
+    0.05 :   63c29:  lea    (%rcx,%rcx,4),%rdi
+    0.01 :   63c2d:  lea    0x0(%rbp,%rax,1),%rcx
+    0.04 :   63c32:  add    %rbp,%r9
+    0.02 :   63c35:  mov    %r10,%rax
+    0.02 :   63c38:  or     %rsi,%rax
+    0.01 :   63c3b:  mov    %rbp,0x38(%rsp)
+    0.11 :   63c40:  mov    %r10,0x8(%rsp)
+    0.14 :   63c45:  mov    %rcx,0xd8(%rsp)
+    0.19 :   63c4d:  mov    %r9,0xd0(%rsp)
+    0.16 :   63c55:  je     64f42 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x19e2>
+    0.02 :   63c5b:  cmp    $0x101,%rsi
+    0.00 :   63c62:  jae    6517a <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1c1a>
+    0.00 :   63c68:  cmpq   $0x101,0x8(%rsp)
+    0.39 :   63c71:  jae    65183 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1c23>
+    0.08 :   63c77:  mov    0xf8(%rsp),%r8
+    0.01 :   63c7f:  lea    (%rdx,%rdx,4),%rax
+    0.03 :   63c83:  shl    $0xb,%rdx
+    0.04 :   63c87:  add    %rcx,%rdi
+    0.00 :   63c8a:  xor    %r9d,%r9d
+    0.01 :   63c8d:  xor    %r10d,%r10d
+    0.00 :   63c90:  mov    %rsi,0x28(%rsp)
+    0.03 :   63c95:  shl    $0x9,%rax
+    0.05 :   63c99:  add    %rax,0x38(%rsp)
+    0.02 :   63c9e:  lea    (%r8,%rdx,1),%rax
+    0.02 :   63ca2:  add    0xf0(%rsp),%rdx
+    0.04 :   63caa:  mov    %rax,0x110(%rsp)
+    0.01 :   63cb2:  mov    %rdx,0x118(%rsp)
+    0.02 :   63cba:  mov    %r12,%rdx
+    0.00 :   63cbd:  mov    0x8(%rsp),%rcx
+    0.02 :   63cc2:  mov    %rsi,%r14
+    0.04 :   63cc5:  sub    %r10,%r14
+    0.00 :   63cc8:  mov    $0x60,%eax
+    0.01 :   63ccd:  mov    $0x60,%r15d
+    0.01 :   63cd3:  cmp    $0x60,%r14
+    0.01 :   63cd7:  cmovae %rax,%r14
+    0.03 :   63cdb:  mov    %rsi,%rax
+    0.02 :   63cde:  sub    %r9,%rcx
+    0.02 :   63ce1:  cmp    $0x60,%rcx
+    0.00 :   63ce5:  mov    %rcx,0x88(%rsp)
+    0.01 :   63ced:  cmovb  %rcx,%r15
+    0.01 :   63cf1:  sub    %r10,%rax
+    0.02 :   63cf4:  mov    %rax,0x90(%rsp)
+    0.01 :   63cfc:  je     63d35 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x7d5>
+    0.01 :   63cfe:  mov    0x110(%rsp),%rax
+    0.06 :   63d06:  xor    %ebx,%ebx
+    0.00 :   63d08:  lea    (%rax,%r10,8),%rax
+    0.01 :   63d0c:  lea    (%r10,%rbx,1),%rcx
+    0.08 :   63d10:  cmp    %rsi,%rcx
+    0.01 :   63d13:  jae    6514d <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1bed>
+    0.00 :   63d19:  mov    (%rax,%rbx,8),%rcx
+    0.06 :   63d1d:  shl    $0x8,%rcx
+    0.03 :   63d21:  lea    (%rcx,%rcx,4),%rcx
+    0.04 :   63d25:  mov    %rcx,0x4a0(%rsp,%rbx,8)
+    0.12 :   63d2d:  inc    %rbx
+    0.02 :   63d30:  cmp    %r14,%rbx
+    0.01 :   63d33:  jb     63d0c <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x7ac>
+    0.00 :   63d35:  lea    0x160(%rsp),%rcx
+    0.06 :   63d3d:  cmp    %r9,0x8(%rsp)
+    0.08 :   63d42:  je     63d85 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x825>
+    0.00 :   63d44:  mov    0x118(%rsp),%rax
+    0.02 :   63d4c:  xor    %ebx,%ebx
+    0.01 :   63d4e:  lea    (%rax,%r9,8),%rax
+    0.02 :   63d52:  lea    (%r9,%rbx,1),%rcx
+    0.07 :   63d56:  cmp    0x8(%rsp),%rcx
+    0.15 :   63d5b:  jae    65136 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1bd6>
+    0.01 :   63d61:  mov    (%rax,%rbx,8),%rcx
+    0.21 :   63d65:  shl    $0x8,%rcx
+    0.09 :   63d69:  lea    (%rcx,%rcx,4),%rcx
+    0.12 :   63d6d:  mov    %rcx,0x160(%rsp,%rbx,8)
+    0.15 :   63d75:  inc    %rbx
+    0.05 :   63d78:  cmp    %r15,%rbx
+    0.00 :   63d7b:  jb     63d52 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x7f2>
+    0.00 :   63d7d:  lea    0x168(%rsp),%rcx
+    0.14 :   63d85:  imul   $0x14c0,%rdx,%rbx
+    0.02 :   63d8c:  add    0x38(%rsp),%rbx
+    0.30 :   63d91:  xor    %eax,%eax
+    0.00 :   63d93:  cmp    %r10,%rsi
+    0.02 :   63d96:  lea    0x4a0(%rsp,%r14,8),%r8
+    0.04 :   63d9e:  lea    0x0(,%r14,8),%rdx
+    0.01 :   63da6:  lea    0x160(%rsp,%r15,8),%r11
+    0.05 :   63dae:  mov    %r13,0x130(%rsp)
+    0.11 :   63db6:  mov    %r15,0x120(%rsp)
+    0.05 :   63dbe:  mov    0x4a0(%rsp),%r15
+    0.10 :   63dc6:  mov    0x160(%rsp),%r13
+    0.23 :   63dce:  mov    %r14,0x128(%rsp)
+    0.09 :   63dd6:  setne  %al
+    0.01 :   63dd9:  shl    $0x3,%eax
+    0.02 :   63ddc:  mov    %r8,0x20(%rsp)
+    0.09 :   63de1:  mov    %rdx,0x58(%rsp)
+    0.20 :   63de6:  lea    0x4a0(%rsp,%rax,1),%r8
+    0.01 :   63dee:  cmp    %rdx,%rax
+    0.01 :   63df1:  mov    %rax,0x60(%rsp)
+    0.26 :   63df6:  lea    0x4b0(%rsp),%rax
+    0.00 :   63dfe:  lea    0x4c0(%rsp),%rdx
+    0.03 :   63e06:  cmove  %r8,%rax
+    0.01 :   63e0a:  cmpq   $0x3,0x90(%rsp)
+    0.12 :   63e13:  mov    %r8,0xc0(%rsp)
+    0.29 :   63e1b:  mov    %r11,%r8
+    0.01 :   63e1e:  mov    %rax,0xb8(%rsp)
+    0.15 :   63e26:  lea    0x4b8(%rsp),%rax
+    0.02 :   63e2e:  cmove  %rax,%rdx
+    0.01 :   63e32:  cmp    %r11,%rcx
+    0.00 :   63e35:  lea    0x178(%rsp),%rax
+    0.01 :   63e3d:  mov    %rdx,0xa8(%rsp)
+    0.20 :   63e45:  lea    0x170(%rsp),%rdx
+    0.04 :   63e4d:  cmove  %rcx,%rdx
+    0.12 :   63e51:  cmp    %r11,%rdx
+    0.00 :   63e54:  mov    %rdx,0x50(%rsp)
+    0.19 :   63e59:  cmove  %rdx,%rax
+    0.01 :   63e5d:  cmpq   $0x4,0x88(%rsp)
+    0.07 :   63e66:  lea    0x188(%rsp),%rdx
+    0.00 :   63e6e:  mov    %rax,0xb0(%rsp)
+    0.12 :   63e76:  lea    0x180(%rsp),%rax
+    0.01 :   63e7e:  cmove  %rax,%rdx
+    0.07 :   63e82:  mov    $0x100,%eax
+    0.10 :   63e87:  xor    %r11d,%r11d
+    0.03 :   63e8a:  mov    %rdx,0x80(%rsp)
+    0.11 :   63e92:  xor    %edx,%edx
+    0.02 :   63e94:  jmp    63ef8 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x998>
+    0.00 :   63e96:  cs nopw 0x0(%rax,%rax,1)
+    0.01 :   63ea0:  mov    0x28(%rsp),%rsi
+    0.06 :   63ea5:  lea    0x100(%r11),%rax
+    0.04 :   63eac:  inc    %rdx
+    0.03 :   63eaf:  vmovdqu64 %zmm7,(%rdi,%r14,1)
+    0.26 :   63eb6:  vmovdqu64 %zmm6,0x40(%rdi,%r14,1)
+    0.43 :   63ebe:  vmovdqu64 %zmm5,0x80(%rdi,%r14,1)
+    0.57 :   63ec6:  vmovdqu64 %zmm4,0xc0(%rdi,%r14,1)
+    1.08 :   63ece:  vmovdqu64 %zmm3,0x100(%rdi,%r14,1)
+    1.07 :   63ed6:  vmovdqu64 %zmm2,0x140(%rdi,%r14,1)
+    1.02 :   63ede:  vmovdqu64 %zmm1,0x180(%rdi,%r14,1)
+    0.91 :   63ee6:  vmovdqu64 %zmm0,0x1c0(%rdi,%r14,1)
+    0.63 :   63eee:  cmp    $0x5,%rdx
+    0.03 :   63ef2:  je     64410 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0xeb0>
+    0.00 :   63ef8:  mov    %rdx,%r14
+    0.03 :   63efb:  shl    $0x9,%r14
+    0.07 :   63eff:  mov    %r11,%r12
+    0.11 :   63f02:  add    0x138(%rsp),%r12
+    0.25 :   63f0a:  mov    %rax,%r11
+    0.06 :   63f0d:  vmovdqu64 (%rbx,%r14,1),%zmm7
+    1.81 :   63f14:  vmovdqu64 0x40(%rbx,%r14,1),%zmm6
+    0.44 :   63f1c:  vmovdqu64 0x80(%rbx,%r14,1),%zmm5
+    0.35 :   63f24:  vmovdqu64 0xc0(%rbx,%r14,1),%zmm4
+    0.28 :   63f2c:  vmovdqu64 0x100(%rbx,%r14,1),%zmm3
+    0.35 :   63f34:  vmovdqu64 0x140(%rbx,%r14,1),%zmm2
+    0.36 :   63f3c:  vmovdqu64 0x180(%rbx,%r14,1),%zmm1
+    0.30 :   63f44:  vmovdqu64 0x1c0(%rbx,%r14,1),%zmm0
+    0.36 :   63f4c:  cmp    %r10,%rsi
+    0.11 :   63f4f:  je     64172 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0xc12>
+    0.00 :   63f55:  vpmovsxbw 0x20(%r12,%r15,1),%zmm9
+    6.15 :   63f5d:  vpmovsxbw 0x40(%r12,%r15,1),%zmm10
+    0.18 :   63f65:  vpmovsxbw (%r12,%r15,1),%zmm8
+    0.12 :   63f6c:  mov    0x58(%rsp),%rax
+    0.07 :   63f71:  vpaddw %zmm9,%zmm6,%zmm6
+    0.19 :   63f77:  vpmovsxbw 0x60(%r12,%r15,1),%zmm9
+    0.99 :   63f7f:  vpaddw %zmm10,%zmm5,%zmm5
+    0.08 :   63f85:  vpmovsxbw 0x80(%r12,%r15,1),%zmm10
+    0.17 :   63f8d:  vpaddw %zmm8,%zmm7,%zmm7
+    0.06 :   63f93:  vpaddw %zmm9,%zmm4,%zmm4
+    0.13 :   63f99:  vpmovsxbw 0xa0(%r12,%r15,1),%zmm9
+    1.03 :   63fa1:  vpaddw %zmm10,%zmm3,%zmm3
+    0.06 :   63fa7:  vpmovsxbw 0xc0(%r12,%r15,1),%zmm10
+    0.17 :   63faf:  vpaddw %zmm9,%zmm2,%zmm2
+    0.13 :   63fb5:  vpmovsxbw 0xe0(%r12,%r15,1),%zmm9
+    3.57 :   63fbd:  vpaddw %zmm10,%zmm1,%zmm1
+    0.11 :   63fc3:  vpaddw %zmm9,%zmm0,%zmm0
+    0.28 :   63fc9:  cmp    %rax,0x60(%rsp)
+    0.02 :   63fce:  je     64172 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0xc12>
+    0.00 :   63fd4:  mov    0xc0(%rsp),%rax
+    0.03 :   63fdc:  mov    (%rax),%rax
+    0.04 :   63fdf:  vpmovsxbw 0x20(%r12,%rax,1),%zmm9
+    2.52 :   63fe7:  vpmovsxbw 0x40(%r12,%rax,1),%zmm10
+    0.13 :   63fef:  vpmovsxbw (%r12,%rax,1),%zmm8
+    0.08 :   63ff6:  vpaddw %zmm9,%zmm6,%zmm6
+    0.11 :   63ffc:  vpmovsxbw 0x60(%r12,%rax,1),%zmm9
+    0.58 :   64004:  vpaddw %zmm10,%zmm5,%zmm5
+    0.06 :   6400a:  vpmovsxbw 0x80(%r12,%rax,1),%zmm10
+    0.08 :   64012:  vpaddw %zmm8,%zmm7,%zmm7
+    0.03 :   64018:  vpaddw %zmm9,%zmm4,%zmm4
+    0.09 :   6401e:  vpmovsxbw 0xa0(%r12,%rax,1),%zmm9
+    0.74 :   64026:  vpaddw %zmm10,%zmm3,%zmm3
+    0.05 :   6402c:  vpmovsxbw 0xc0(%r12,%rax,1),%zmm10
+    0.14 :   64034:  vpaddw %zmm9,%zmm2,%zmm2
+    0.11 :   6403a:  vpmovsxbw 0xe0(%r12,%rax,1),%zmm9
+    1.93 :   64042:  mov    0xb8(%rsp),%rax
+    0.01 :   6404a:  vpaddw %zmm10,%zmm1,%zmm1
+    0.06 :   64050:  vpaddw %zmm9,%zmm0,%zmm0
+    0.18 :   64056:  cmp    0x20(%rsp),%rax
+    0.01 :   6405b:  je     64172 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0xc12>
+    0.00 :   64061:  mov    (%rax),%rax
+    0.01 :   64064:  mov    0xa8(%rsp),%rbp
+    0.02 :   6406c:  cmpq   $0x3,0x90(%rsp)
+    0.02 :   64075:  vpmovsxbw 0x20(%r12,%rax,1),%zmm9
+    1.09 :   6407d:  vpmovsxbw 0x40(%r12,%rax,1),%zmm10
+    0.06 :   64085:  vpmovsxbw (%r12,%rax,1),%zmm8
+    0.06 :   6408c:  vpaddw %zmm9,%zmm6,%zmm6
+    0.06 :   64092:  vpmovsxbw 0x60(%r12,%rax,1),%zmm9
+    0.29 :   6409a:  vpaddw %zmm10,%zmm5,%zmm5
+    0.03 :   640a0:  vpmovsxbw 0x80(%r12,%rax,1),%zmm10
+    0.05 :   640a8:  vpaddw %zmm8,%zmm7,%zmm7
+    0.01 :   640ae:  vpaddw %zmm9,%zmm4,%zmm4
+    0.04 :   640b4:  vpmovsxbw 0xa0(%r12,%rax,1),%zmm9
+    0.38 :   640bc:  vpaddw %zmm10,%zmm3,%zmm3
+    0.02 :   640c2:  vpmovsxbw 0xc0(%r12,%rax,1),%zmm10
+    0.07 :   640ca:  vpaddw %zmm9,%zmm2,%zmm2
+    0.07 :   640d0:  vpmovsxbw 0xe0(%r12,%rax,1),%zmm9
+    0.99 :   640d8:  vpaddw %zmm10,%zmm1,%zmm1
+    0.02 :   640de:  lea    0x4b8(%rsp),%rax
+    0.00 :   640e6:  vpaddw %zmm9,%zmm0,%zmm0
+    0.08 :   640ec:  je     64172 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0xc12>
+    0.00 :   640f2:  mov    (%rax),%rsi
+    0.01 :   640f5:  mov    %rbp,%rax
+    0.01 :   640f8:  add    $0x8,%rbp
+    0.01 :   640fc:  vpmovsxbw 0x20(%r12,%rsi,1),%zmm9
+    0.68 :   64104:  vpmovsxbw 0x40(%r12,%rsi,1),%zmm10
+    0.05 :   6410c:  vpmovsxbw (%r12,%rsi,1),%zmm8
+    0.04 :   64113:  vpaddw %zmm9,%zmm6,%zmm6
+    0.04 :   64119:  vpmovsxbw 0x60(%r12,%rsi,1),%zmm9
+    0.27 :   64121:  vpaddw %zmm10,%zmm5,%zmm5
+    0.01 :   64127:  vpmovsxbw 0x80(%r12,%rsi,1),%zmm10
+    0.03 :   6412f:  vpaddw %zmm8,%zmm7,%zmm7
+    0.03 :   64135:  vpaddw %zmm9,%zmm4,%zmm4
+    0.04 :   6413b:  vpmovsxbw 0xa0(%r12,%rsi,1),%zmm9
+    0.32 :   64143:  vpaddw %zmm10,%zmm3,%zmm3
+    0.04 :   64149:  vpmovsxbw 0xc0(%r12,%rsi,1),%zmm10
+    0.05 :   64151:  vpaddw %zmm9,%zmm2,%zmm2
+    0.05 :   64157:  vpmovsxbw 0xe0(%r12,%rsi,1),%zmm9
+    0.84 :   6415f:  vpaddw %zmm10,%zmm1,%zmm1
+    0.04 :   64165:  vpaddw %zmm9,%zmm0,%zmm0
+    0.06 :   6416b:  cmp    0x20(%rsp),%rax
+    0.01 :   64170:  jne    640f2 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0xb92>
+    0.01 :   64172:  cmp    %r9,0x8(%rsp)
+    0.12 :   64177:  je     63ea0 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x940>
+    0.00 :   6417d:  vpmovsxbw 0x20(%r12,%r13,1),%zmm9
+    1.02 :   64185:  vpmovsxbw 0x40(%r12,%r13,1),%zmm10
+    0.11 :   6418d:  vpmovsxbw (%r12,%r13,1),%zmm8
+    0.09 :   64194:  vpsubw %zmm9,%zmm6,%zmm6
+    0.09 :   6419a:  vpmovsxbw 0x60(%r12,%r13,1),%zmm9
+    0.30 :   641a2:  vpsubw %zmm10,%zmm5,%zmm5
+    0.15 :   641a8:  vpmovsxbw 0x80(%r12,%r13,1),%zmm10
+    0.12 :   641b0:  vpsubw %zmm8,%zmm7,%zmm7
+    0.10 :   641b6:  vpsubw %zmm9,%zmm4,%zmm4
+    0.11 :   641bc:  vpmovsxbw 0xa0(%r12,%r13,1),%zmm9
+    0.30 :   641c4:  vpsubw %zmm10,%zmm3,%zmm3
+    0.10 :   641ca:  vpmovsxbw 0xc0(%r12,%r13,1),%zmm10
+    0.09 :   641d2:  vpsubw %zmm9,%zmm2,%zmm2
+    0.17 :   641d8:  vpmovsxbw 0xe0(%r12,%r13,1),%zmm9
+    1.95 :   641e0:  vpsubw %zmm10,%zmm1,%zmm1
+    0.10 :   641e6:  vpsubw %zmm9,%zmm0,%zmm0
+    0.29 :   641ec:  cmp    %r8,%rcx
+    0.02 :   641ef:  je     63ea0 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x940>
+    0.00 :   641f5:  mov    (%rcx),%rax
+    0.02 :   641f8:  mov    %r8,%rsi
+    0.01 :   641fb:  vpmovsxbw 0x20(%r12,%rax,1),%zmm9
+    0.53 :   64203:  vpmovsxbw 0x40(%r12,%rax,1),%zmm10
+    0.11 :   6420b:  vpmovsxbw (%r12,%rax,1),%zmm8
+    0.10 :   64212:  vpsubw %zmm9,%zmm6,%zmm6
+    0.09 :   64218:  vpmovsxbw 0x60(%r12,%rax,1),%zmm9
+    0.26 :   64220:  vpsubw %zmm10,%zmm5,%zmm5
+    0.03 :   64226:  vpmovsxbw 0x80(%r12,%rax,1),%zmm10
+    0.04 :   6422e:  vpsubw %zmm8,%zmm7,%zmm7
+    0.05 :   64234:  vpsubw %zmm9,%zmm4,%zmm4
+    0.11 :   6423a:  vpmovsxbw 0xa0(%r12,%rax,1),%zmm9
+    0.26 :   64242:  vpsubw %zmm10,%zmm3,%zmm3
+    0.06 :   64248:  vpmovsxbw 0xc0(%r12,%rax,1),%zmm10
+    0.11 :   64250:  vpsubw %zmm9,%zmm2,%zmm2
+    0.13 :   64256:  vpmovsxbw 0xe0(%r12,%rax,1),%zmm9
+    1.42 :   6425e:  mov    0x50(%rsp),%rax
+    0.02 :   64263:  vpsubw %zmm10,%zmm1,%zmm1
+    0.08 :   64269:  vpsubw %zmm9,%zmm0,%zmm0
+    0.18 :   6426f:  cmp    %r8,%rax
+    0.04 :   64272:  je     63ea0 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x940>
+    0.00 :   64278:  mov    (%rax),%rax
+    0.02 :   6427b:  vpmovsxbw 0x20(%r12,%rax,1),%zmm9
+    0.37 :   64283:  vpmovsxbw 0x40(%r12,%rax,1),%zmm10
+    0.09 :   6428b:  vpmovsxbw (%r12,%rax,1),%zmm8
+    0.06 :   64292:  vpsubw %zmm9,%zmm6,%zmm6
+    0.06 :   64298:  vpmovsxbw 0x60(%r12,%rax,1),%zmm9
+    0.14 :   642a0:  vpsubw %zmm10,%zmm5,%zmm5
+    0.05 :   642a6:  vpmovsxbw 0x80(%r12,%rax,1),%zmm10
+    0.07 :   642ae:  vpsubw %zmm8,%zmm7,%zmm7
+    0.02 :   642b4:  vpsubw %zmm9,%zmm4,%zmm4
+    0.07 :   642ba:  vpmovsxbw 0xa0(%r12,%rax,1),%zmm9
+    0.20 :   642c2:  vpsubw %zmm10,%zmm3,%zmm3
+    0.06 :   642c8:  vpmovsxbw 0xc0(%r12,%rax,1),%zmm10
+    0.06 :   642d0:  vpsubw %zmm9,%zmm2,%zmm2
+    0.09 :   642d6:  vpmovsxbw 0xe0(%r12,%rax,1),%zmm9
+    1.14 :   642de:  mov    0xb0(%rsp),%rax
+    0.00 :   642e6:  vpsubw %zmm10,%zmm1,%zmm1
+    0.04 :   642ec:  vpsubw %zmm9,%zmm0,%zmm0
+    0.16 :   642f2:  cmp    %rsi,%rax
+    0.01 :   642f5:  je     63ea0 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x940>
+    0.00 :   642fb:  mov    (%rax),%rax
+    0.02 :   642fe:  cmpq   $0x4,0x88(%rsp)
+    0.01 :   64307:  lea    0x180(%rsp),%rbp
+    0.01 :   6430f:  vpmovsxbw 0x20(%r12,%rax,1),%zmm9
+    0.33 :   64317:  vpmovsxbw 0x40(%r12,%rax,1),%zmm10
+    0.04 :   6431f:  vpmovsxbw (%r12,%rax,1),%zmm8
+    0.06 :   64326:  vpsubw %zmm9,%zmm6,%zmm6
+    0.04 :   6432c:  vpmovsxbw 0x60(%r12,%rax,1),%zmm9
+    0.14 :   64334:  vpsubw %zmm10,%zmm5,%zmm5
+    0.05 :   6433a:  vpmovsxbw 0x80(%r12,%rax,1),%zmm10
+    0.02 :   64342:  vpsubw %zmm8,%zmm7,%zmm7
+    0.03 :   64348:  vpsubw %zmm9,%zmm4,%zmm4
+    0.06 :   6434e:  vpmovsxbw 0xa0(%r12,%rax,1),%zmm9
+    0.17 :   64356:  vpsubw %zmm10,%zmm3,%zmm3
+    0.01 :   6435c:  vpmovsxbw 0xc0(%r12,%rax,1),%zmm10
+    0.06 :   64364:  vpsubw %zmm9,%zmm2,%zmm2
+    0.05 :   6436a:  vpmovsxbw 0xe0(%r12,%rax,1),%zmm9
+    0.84 :   64372:  mov    0x80(%rsp),%rax
+    0.01 :   6437a:  vpsubw %zmm10,%zmm1,%zmm1
+    0.02 :   64380:  vpsubw %zmm9,%zmm0,%zmm0
+    0.10 :   64386:  je     63ea0 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x940>
+    0.00 :   6438c:  mov    0x0(%rbp),%rsi
+    0.01 :   64390:  mov    %rax,%rbp
+    0.01 :   64393:  add    $0x8,%rax
+    0.02 :   64397:  vpmovsxbw 0x20(%r12,%rsi,1),%zmm9
+    0.28 :   6439f:  vpmovsxbw 0x40(%r12,%rsi,1),%zmm10
+    0.04 :   643a7:  vpmovsxbw (%r12,%rsi,1),%zmm8
+    0.06 :   643ae:  vpsubw %zmm9,%zmm6,%zmm6
+    0.08 :   643b4:  vpmovsxbw 0x60(%r12,%rsi,1),%zmm9
+    0.17 :   643bc:  vpsubw %zmm10,%zmm5,%zmm5
+    0.04 :   643c2:  vpmovsxbw 0x80(%r12,%rsi,1),%zmm10
+    0.05 :   643ca:  vpsubw %zmm8,%zmm7,%zmm7
+    0.07 :   643d0:  vpsubw %zmm9,%zmm4,%zmm4
+    0.09 :   643d6:  vpmovsxbw 0xa0(%r12,%rsi,1),%zmm9
+    0.15 :   643de:  vpsubw %zmm10,%zmm3,%zmm3
+    0.03 :   643e4:  vpmovsxbw 0xc0(%r12,%rsi,1),%zmm10
+    0.12 :   643ec:  vpsubw %zmm9,%zmm2,%zmm2
+    0.08 :   643f2:  vpmovsxbw 0xe0(%r12,%rsi,1),%zmm9
+    1.22 :   643fa:  vpsubw %zmm10,%zmm1,%zmm1
+    0.06 :   64400:  vpsubw %zmm9,%zmm0,%zmm0
+    0.14 :   64406:  cmp    %r8,%rbp
+    0.01 :   64409:  jne    6438c <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0xe2c>
+    0.00 :   6440b:  jmp    63ea0 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x940>
+    0.00 :   64410:  add    0x120(%rsp),%r9
+    0.03 :   64418:  add    0x128(%rsp),%r10
+    0.02 :   64420:  cmp    0x8(%rsp),%r9
+    0.00 :   64425:  setae  %al
+    0.01 :   64428:  cmp    %rsi,%r10
+    0.00 :   6442b:  jb     65361 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1e01>
+    0.00 :   64431:  mov    0x48(%rsp),%rbx
+    0.01 :   64436:  mov    0x18(%rsp),%r15
+    0.02 :   6443b:  mov    0x40(%rsp),%r14
+    0.01 :   64440:  mov    0x108(%rsp),%r12
+    0.02 :   64448:  mov    0x130(%rsp),%r13
+    0.01 :   64450:  mov    0xe8(%rsp),%r8
+    0.01 :   64458:  mov    0xe0(%rsp),%r11
+    0.01 :   64460:  mov    %rbx,%rdx
+    0.01 :   64463:  test   %al,%al
+    0.00 :   64465:  je     63cbd <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x75d>
+    0.00 :   6446b:  mov    0xd0(%rsp),%rcx
+    0.02 :   64473:  mov    %r11,%rax
+    0.01 :   64476:  shl    $0x5,%rax
+    0.00 :   6447a:  vmovdqu 0x460(%rsp,%rax,1),%ymm0
+    0.11 :   64483:  vpaddd 0x1400(%rcx,%rax,1),%ymm0,%ymm0
+    0.16 :   6448c:  mov    0xd8(%rsp),%rcx
+    0.01 :   64494:  vmovdqu %ymm0,0x1400(%rcx,%rax,1)
+    0.07 :   6449d:  movb   $0x1,0x149e(%rcx,%r11,1)
+    0.04 :   644a6:  xor    %ecx,%ecx
+    0.01 :   644a8:  cmp    $0x2,%r13
+    0.00 :   644ac:  mov    $0x1,%edx
+    0.01 :   644b1:  lea    0x150(%rsp),%rax
+    0.01 :   644b9:  mov    %r13,%r11
+    0.01 :   644bc:  setne  %cl
+    0.08 :   644bf:  add    %r13,%rcx
+    0.00 :   644c2:  mov    %rcx,%r13
+    0.03 :   644c5:  test   $0x1,%r8b
+    0.00 :   644c9:  mov    $0x1,%r8b
+    0.03 :   644cc:  je     63bd4 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x674>
+    0.00 :   644d2:  mov    0x70(%rsp),%rdi
+    0.11 :   644d7:  mov    0x30(%rsp),%rax
+    0.01 :   644dc:  mov    0x98(%rsp),%rcx
+    0.00 :   644e4:  cmp    %rdi,%rbx
+    0.01 :   644e7:  jae    64b03 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x15a3>
+    0.00 :   644ed:  mov    %r14,%rbx
+    0.04 :   644f0:  cmp    %rdi,%r14
+    0.01 :   644f3:  ja     64b03 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x15a3>
+    0.00 :   644f9:  jmp    636fb <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x19b>
+    0.00 :   644fe:  xchg   %ax,%ax
+    0.00 :   64500:  cmp    $0x2,%r14d
+    0.06 :   64504:  jne    64c4f <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x16ef>
+    0.00 :   6450a:  cmp    $0x1,%sil
+    0.01 :   6450e:  jne    64c4f <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x16ef>
+    0.00 :   64514:  movzbl 0x149b(%r13),%ecx
+    0.02 :   6451c:  cmp    0x1492(%r13),%cl
+    0.01 :   64523:  jne    65095 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1b35>
+    0.00 :   64529:  movzbl 0x1498(%r13),%edi
+    0.00 :   64531:  cmp    %cl,%dil
+    0.00 :   64534:  je     65095 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1b35>
+    0.00 :   6453a:  vmovdqu64 (%r12),%zmm0
+    0.04 :   64541:  vmovdqu64 0x10(%r12),%zmm1
+    0.06 :   6454c:  mov    $0x1,%eax
+    0.00 :   64551:  movzbl %dil,%r8d
+    0.00 :   64555:  lea    0x4a0(%rsp),%rsi
+    0.00 :   6455d:  mov    %r15,%rdi
+    0.00 :   64560:  xor    %r9d,%r9d
+    0.00 :   64563:  shlx   %rcx,%rax,%rax
+    0.00 :   64568:  vmovdqu64 %zmm1,0x4b0(%rsp)
+    0.07 :   64573:  vmovdqu64 %zmm0,0x4a0(%rsp)
+    0.02 :   6457e:  movzbl 0x1491(%r13),%ecx
+    0.00 :   64586:  movzbl 0x1490(%r13),%edx
+    0.00 :   6458e:  xor    %rax,0x4a0(%rsp,%rcx,8)
+    0.18 :   64596:  xor    %rax,0x4d0(%rsp,%rdx,8)
+    0.06 :   6459e:  movzbl 0x149a(%r13),%ecx
+    0.00 :   645a6:  movzbl 0x1499(%r13),%edx
+    0.00 :   645ae:  xor    %rax,0x4a0(%rsp,%rcx,8)
+    0.04 :   645b6:  xor    %rax,0x4d0(%rsp,%rdx,8)
+    0.01 :   645be:  movzbl 0x1496(%r13),%edx
+    0.01 :   645c6:  movzbl 0x1497(%r13),%ecx
+    0.00 :   645ce:  vzeroupper
+    0.00 :   645d1:  call   40750 <chessengine::eval::nnue::sota_threats::record_square_touch>
+    0.00 :   645d6:  movzbl 0x1499(%r13),%eax
+    0.00 :   645de:  mov    %r15,%rbx
+    0.01 :   645e1:  movzbl 0x149a(%r13),%ecx
+    0.01 :   645e9:  movzbl 0x1492(%r13),%r15d
+    0.00 :   645f1:  movzbl 0x1490(%r13),%ebp
+    0.01 :   645f9:  movzbl 0x1491(%r13),%r14d
+    0.00 :   64601:  mov    %rbx,%rdi
+    0.00 :   64604:  mov    %r12,%rsi
+    0.00 :   64607:  xor    %r9d,%r9d
+    0.01 :   6460a:  movzbl %al,%edx
+    0.00 :   6460d:  mov    %rcx,0x28(%rsp)
+    0.00 :   64612:  mov    %eax,0x38(%rsp)
+    0.01 :   64616:  mov    %r15d,%r8d
+    0.01 :   64619:  mov    %edx,0x8(%rsp)
+    0.00 :   6461d:  call   40460 <chessengine::eval::nnue::sota_threats::record_outgoing>
+    0.01 :   64622:  mov    %ebp,0x80(%rsp)
+    0.00 :   64629:  movzbl %bpl,%ebp
+    0.00 :   6462d:  mov    $0x1,%r9d
+    0.00 :   64633:  mov    %rbx,%rdi
+    0.00 :   64636:  mov    %r12,%rsi
+    0.01 :   64639:  mov    %r14,0x20(%rsp)
+    0.00 :   6463e:  mov    %r14d,%ecx
+    0.01 :   64641:  mov    %r15d,%r8d
+    0.01 :   64644:  mov    %ebp,%edx
+    0.01 :   64646:  call   40460 <chessengine::eval::nnue::sota_threats::record_outgoing>
+    0.03 :   6464b:  cmp    $0x3f,%r15b
+    0.00 :   6464f:  ja     6547a <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f1a>
+    0.00 :   64655:  mov    %r15d,%ecx
+    0.00 :   64658:  shl    $0x6,%ecx
+    0.00 :   6465b:  lea    0x9ed5e(%rip),%r8        # 1033c0 <chessengine::attacks::TABLES>
+    0.00 :   64662:  mov    0x1480(%r13),%rax
+    0.02 :   64669:  mov    0x18(%rcx,%r8,1),%rsi
+    0.05 :   6466e:  movzbl 0x2c(%rcx,%r8,1),%edi
+    0.01 :   64674:  mov    0x28(%rcx,%r8,1),%edx
+    0.02 :   64679:  and    %rax,%rsi
+    0.01 :   6467c:  imul   0x20(%rcx,%r8,1),%rsi
+    0.02 :   64682:  shrx   %rdi,%rsi,%rdi
+    0.04 :   64687:  mov    0x9fd3a(%rip),%rsi        # 1043c8 <chessengine::attacks::TABLES+0x1008>
+    0.00 :   6468e:  add    %rdx,%rdi
+    0.03 :   64691:  cmp    %rsi,%rdi
+    0.00 :   64694:  jae    6548e <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f2e>
+    0.00 :   6469a:  add    %r8,%rcx
+    0.01 :   6469d:  and    (%rcx),%rax
+    0.00 :   646a0:  mov    0x10(%rcx),%edx
+    0.01 :   646a3:  imul   0x8(%rcx),%rax
+    0.01 :   646a8:  movzbl 0x14(%rcx),%ecx
+    0.00 :   646ac:  shrx   %rcx,%rax,%rax
+    0.01 :   646b1:  add    %rdx,%rax
+    0.01 :   646b4:  cmp    %rsi,%rax
+    0.00 :   646b7:  jae    6549a <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f3a>
+    0.00 :   646bd:  mov    0x1460(%r13),%rsi
+    0.01 :   646c4:  mov    0x1450(%r13),%rcx
+    0.01 :   646cb:  mov    0x9fcee(%rip),%rdx        # 1043c0 <chessengine::attacks::TABLES+0x1000>
+    0.01 :   646d2:  lea    -0x54699(%rip),%r8        # 10040 <chessengine::attacks::PAWN_ATTACKS>
+    0.01 :   646d9:  mov    0x1440(%r13),%r9
+    0.01 :   646e0:  mov    0x1470(%r13),%r11
+    0.00 :   646e7:  mov    0x1478(%r13),%r10
+    0.01 :   646ee:  xor    %r12d,%r12d
+    0.02 :   646f1:  or     %rsi,%rcx
+    0.00 :   646f4:  and    (%rdx,%rax,8),%rcx
+    0.25 :   646f8:  mov    0x1458(%r13),%rax
+    0.01 :   646ff:  mov    %rsi,0x60(%rsp)
+    0.01 :   64704:  mov    %r11,0xb0(%rsp)
+    0.00 :   6470c:  mov    %r10,0xa8(%rsp)
+    0.00 :   64714:  mov    %r9,0x88(%rsp)
+    0.00 :   6471c:  or     %rsi,%rax
+    0.00 :   6471f:  lea    0x0(,%r15,8),%esi
+    0.00 :   64727:  and    (%rdx,%rdi,8),%rax
+    0.17 :   6472b:  mov    0x1448(%r13),%rdx
+    0.00 :   64732:  lea    -0x53ef9(%rip),%rdi        # 10840 <chessengine::attacks::KNIGHT_ATTACKS>
+    0.01 :   64739:  movq   $0x0,0x160(%rsp)
+    0.00 :   64745:  movq   $0x5,0x168(%rsp)
+    0.00 :   64751:  and    (%rsi,%rdi,1),%rdx
+    0.03 :   64755:  mov    0x200(%rsi,%r8,1),%rbx
+    0.01 :   6475d:  mov    (%rsi,%r8,1),%rsi
+    0.01 :   64761:  mov    0x28(%rsp),%rdi
+    0.01 :   64766:  mov    %r15,%r8
+    0.00 :   64769:  shl    $0x30,%r8
+    0.00 :   6476d:  mov    %r8,0x50(%rsp)
+    0.01 :   64772:  mov    %rax,0x170(%rsp)
+    0.00 :   6477a:  mov    0x8(%rsp),%eax
+    0.00 :   6477e:  movw   $0x103,0x178(%rsp)
+    0.01 :   64788:  mov    %rcx,0x180(%rsp)
+    0.01 :   64790:  movw   $0x102,0x188(%rsp)
+    0.01 :   6479a:  mov    %rdx,0x190(%rsp)
+    0.03 :   647a2:  mov    0x20(%rsp),%rdx
+    0.00 :   647a7:  and    %r9,%rbx
+    0.01 :   647aa:  mov    %edi,%ecx
+    0.00 :   647ac:  and    %r10,%rsi
+    0.00 :   647af:  shl    $0x18,%ecx
+    0.00 :   647b2:  movw   $0x1,0x198(%rsp)
+    0.02 :   647bc:  and    %r11,%rbx
+    0.01 :   647bf:  not    %r11
+    0.03 :   647c2:  and    %r9,%rsi
+    0.00 :   647c5:  mov    %r11,0x58(%rsp)
+    0.01 :   647ca:  mov    %rbx,0x1a0(%rsp)
+    0.01 :   647d2:  movw   $0x0,0x1a8(%rsp)
+    0.00 :   647dc:  mov    %rsi,0x1b0(%rsp)
+    0.01 :   647e4:  lea    -0x5614f(%rip),%rsi        # e69c <GCC_except_table852+0x6be4>
+    0.00 :   647eb:  movw   $0x0,0x1b8(%rsp)
+    0.01 :   647f5:  shl    $0x10,%eax
+    0.01 :   647f8:  add    %rsi,%rdi
+    0.00 :   647fb:  or     %eax,%ecx
+    0.00 :   647fd:  mov    %ebp,%eax
+    0.00 :   647ff:  shl    $0x10,%eax
+    0.01 :   64802:  mov    %rdi,0xc0(%rsp)
+    0.01 :   6480a:  mov    %edx,%r11d
+    0.00 :   6480d:  shl    $0x18,%r11d
+    0.00 :   64811:  mov    %rcx,0x90(%rsp)
+    0.02 :   64819:  lea    0x170(%rsp),%rcx
+    0.00 :   64821:  or     %r8,%r11
+    0.01 :   64824:  or     %rax,%r11
+    0.00 :   64827:  movabs $0x100000000,%rax
+    0.00 :   64831:  or     %rax,%r11
+    0.00 :   64834:  lea    (%rsi,%rdx,1),%rax
+    0.01 :   64838:  mov    %rax,0xb8(%rsp)
+    0.03 :   64840:  mov    %r12,%rax
+    0.04 :   64843:  shl    $0x4,%rax
+    0.02 :   64847:  movzbl 0x9(%rcx,%rax,1),%r13d
+    0.13 :   6484d:  cmp    $0x2,%r13b
+    0.06 :   64851:  je     649f0 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1490>
+    0.00 :   64857:  add    %rax,%rcx
+    0.01 :   6485a:  mov    (%rcx),%rcx
+    0.02 :   6485d:  test   %rcx,%rcx
+    0.02 :   64860:  jne    64880 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1320>
+    0.00 :   64862:  inc    %r12
+    0.06 :   64865:  lea    0x170(%rsp),%rcx
+    0.02 :   6486d:  cmp    $0x5,%r12
+    0.01 :   64871:  jne    64840 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x12e0>
+    0.00 :   64873:  jmp    649f0 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1490>
+    0.00 :   64878:  nopl   0x0(%rax,%rax,1)
+    0.00 :   64880:  lea    0x170(%rsp),%rdx
+    0.07 :   64888:  blsr   %rcx,%rbx
+    0.00 :   6488d:  movzbl 0x8(%rdx,%rax,1),%esi
+    0.03 :   64892:  tzcnt  %rcx,%rdx
+    0.01 :   64897:  mov    0x60(%rsp),%rax
+    0.01 :   6489c:  shrx   %rdx,0x58(%rsp),%rcx
+    0.01 :   648a3:  mov    0x90(%rsp),%r9
+    0.00 :   648ab:  mov    $0x4,%edi
+    0.01 :   648b0:  mov    %ebp,%r10d
+    0.00 :   648b3:  bt     %rdx,%rax
+    0.00 :   648b7:  movzbl %sil,%eax
+    0.01 :   648bb:  cmovae %eax,%edi
+    0.01 :   648be:  test   $0x1,%r13b
+    0.01 :   648c2:  cmove  %eax,%edi
+    0.01 :   648c5:  and    $0x1,%ecx
+    0.00 :   648c8:  shl    $0x28,%rdx
+    0.00 :   648cc:  movzbl %dil,%eax
+    0.01 :   648d0:  or     %rcx,%r9
+    0.00 :   648d3:  movabs $0xffffffffffff00,%rdi
+    0.00 :   648dd:  shl    $0x8,%eax
+    0.01 :   648e0:  or     %rax,%r9
+    0.02 :   648e3:  or     %rdx,%r9
+    0.00 :   648e6:  or     0x50(%rsp),%r9
+    0.01 :   648eb:  mov    %r9,%rbp
+    0.00 :   648ee:  and    %rdi,%rbp
+    0.01 :   648f1:  shr    $0x8,%rbp
+    0.00 :   648f5:  movzbl %bpl,%edi
+    0.02 :   648f9:  cmp    $0x6,%rdi
+    0.00 :   648fd:  jae    654a9 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f49>
+    0.00 :   64903:  mov    0xc0(%rsp),%r8
+    0.01 :   6490b:  lea    (%rdi,%rdi,2),%rdi
+    0.00 :   6490f:  cmpb   $0x0,(%r8,%rdi,2)
+    0.08 :   64914:  js     64954 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x13f4>
+    0.00 :   64916:  mov    0x18(%rsp),%r8
+    0.01 :   6491b:  mov    0x700(%r8),%rdi
+    0.04 :   64922:  cmp    $0xff,%rdi
+    0.01 :   64929:  ja     654ba <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f5a>
+    0.00 :   6492f:  lea    (%r8,%rdi,8),%r14
+    0.00 :   64933:  shr    $0x18,%r9
+    0.01 :   64937:  sub    %rdi,%r14
+    0.00 :   6493a:  mov    0x8(%rsp),%edi
+    0.00 :   6493e:  mov    %cl,(%r14)
+    0.31 :   64941:  mov    %bpl,0x1(%r14)
+    0.03 :   64945:  mov    %dil,0x2(%r14)
+    0.02 :   64949:  mov    %r9d,0x3(%r14)
+    0.04 :   6494d:  incq   0x700(%r8)
+    0.02 :   64954:  mov    %rcx,%r9
+    0.00 :   64957:  or     %r11,%r9
+    0.00 :   6495a:  or     %rdx,%r9
+    0.00 :   6495d:  movabs $0xffffffffffff00,%rdx
+    0.00 :   64967:  or     %rax,%r9
+    0.01 :   6496a:  mov    %r9,%rax
+    0.00 :   6496d:  and    %rdx,%rax
+    0.00 :   64970:  shr    $0x8,%rax
+    0.01 :   64974:  movzbl %al,%edi
+    0.02 :   64977:  cmp    $0x6,%rdi
+    0.00 :   6497b:  jae    654a9 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f49>
+    0.00 :   64981:  mov    0xb8(%rsp),%r8
+    0.00 :   64989:  lea    (%rdi,%rdi,2),%rdx
+    0.00 :   6498d:  mov    %r10d,%ebp
+    0.00 :   64990:  cmpb   $0x0,(%r8,%rdx,2)
+    0.02 :   64995:  js     649cf <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x146f>
+    0.00 :   64997:  mov    0x18(%rsp),%r8
+    0.01 :   6499c:  mov    0x700(%r8),%rdi
+    0.03 :   649a3:  cmp    $0xff,%rdi
+    0.02 :   649aa:  ja     654ba <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f5a>
+    0.00 :   649b0:  lea    (%r8,%rdi,8),%rdx
+    0.01 :   649b4:  shr    $0x18,%r9
+    0.01 :   649b8:  sub    %rdi,%rdx
+    0.00 :   649bb:  mov    %cl,(%rdx)
+    0.07 :   649bd:  mov    %al,0x1(%rdx)
+    0.01 :   649c0:  mov    %bpl,0x2(%rdx)
+    0.01 :   649c4:  mov    %r9d,0x3(%rdx)
+    0.02 :   649c8:  incq   0x700(%r8)
+    0.00 :   649cf:  lea    -0x1(%rbx),%rax
+    0.02 :   649d3:  tzcnt  %rbx,%rdx
+    0.00 :   649d8:  and    %rbx,%rax
+    0.00 :   649db:  cmp    $0x1,%rbx
+    0.00 :   649df:  mov    %rax,%rbx
+    0.01 :   649e2:  jb     64862 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1302>
+    0.00 :   649e8:  jmp    64897 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1337>
+    0.00 :   649ed:  nopl   (%rax)
+    0.02 :   649f0:  lea    -0x8(%r15),%ecx
+    0.01 :   649f4:  mov    %r15d,%r9d
+    0.01 :   649f7:  shr    $0x3,%r9d
+    0.00 :   649fb:  lea    0x8(%r15),%r8
+    0.00 :   649ff:  mov    0x48(%rsp),%rbx
+    0.02 :   64a04:  mov    0x40(%rsp),%r14
+    0.01 :   64a09:  mov    0x88(%rsp),%r12
+    0.01 :   64a11:  mov    %ecx,%eax
+    0.00 :   64a13:  mov    %r9d,%edx
+    0.00 :   64a16:  shr    $0x3,%al
+    0.01 :   64a19:  movzbl %al,%eax
+    0.01 :   64a1c:  mov    %eax,%esi
+    0.01 :   64a1e:  sub    %r9d,%esi
+    0.00 :   64a21:  sub    %eax,%edx
+    0.00 :   64a23:  mov    %r8d,%eax
+    0.00 :   64a26:  cmovb  %esi,%edx
+    0.01 :   64a29:  shr    $0x3,%eax
+    0.00 :   64a2c:  mov    %eax,%esi
+    0.00 :   64a2e:  sub    %r9d,%esi
+    0.01 :   64a31:  sub    %eax,%r9d
+    0.00 :   64a34:  mov    %r15d,%eax
+    0.01 :   64a37:  cmovb  %esi,%r9d
+    0.00 :   64a3b:  shl    $0x10,%eax
+    0.00 :   64a3e:  lea    0x1(%rax),%esi
+    0.02 :   64a41:  cmp    $0x3f,%cl
+    0.00 :   64a44:  ja     64a66 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1506>
+    0.00 :   64a46:  cmp    $0x2,%edx
+    0.01 :   64a49:  ja     64a66 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1506>
+    0.00 :   64a4b:  mov    $0x1,%edx
+    0.01 :   64a50:  shlx   %rcx,%rdx,%rdx
+    0.01 :   64a55:  and    0xb0(%rsp),%rdx
+    0.03 :   64a5d:  test   %r12,%rdx
+    0.00 :   64a60:  jne    64b40 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x15e0>
+    0.00 :   64a66:  cmp    $0x37,%r15b
+    0.01 :   64a6a:  mov    0x18(%rsp),%r15
+    0.01 :   64a6f:  ja     638d3 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x373>
+    0.00 :   64a75:  cmp    $0x2,%r9d
+    0.02 :   64a79:  ja     638d3 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x373>
+    0.00 :   64a7f:  mov    $0x1,%ecx
+    0.02 :   64a84:  shlx   %r8,%rcx,%rcx
+    0.01 :   64a89:  and    0xa8(%rsp),%rcx
+    0.01 :   64a91:  test   %r12,%rcx
+    0.00 :   64a94:  je     638d3 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x373>
+    0.00 :   64a9a:  cmpb   $0x0,0x28(%rsp)
+    0.01 :   64a9f:  je     64c00 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x16a0>
+    0.00 :   64aa5:  cmpb   $0x0,0x20(%rsp)
+    0.00 :   64aaa:  jne    638d3 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x373>
+    0.00 :   64ab0:  mov    0x700(%r15),%rdi
+    0.00 :   64ab7:  cmp    $0xff,%rdi
+    0.00 :   64abe:  ja     654ba <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f5a>
+    0.00 :   64ac4:  vpbroadcastw -0x5c587(%rip),%xmm0        # 8546 <GCC_except_table852+0xa8e>
+    0.00 :   64acd:  movzbl %r8b,%eax
+    0.00 :   64ad1:  lea    (%r15,%rdi,8),%rcx
+    0.00 :   64ad5:  shl    $0x8,%eax
+    0.00 :   64ad8:  or     %esi,%eax
+    0.00 :   64ada:  sub    %rdi,%rcx
+    0.00 :   64add:  shr    $0x10,%esi
+    0.00 :   64ae0:  vpinsrb $0x2,0x80(%rsp),%xmm0,%xmm0
+    0.00 :   64aeb:  vmovd  %xmm0,(%rcx)
+    0.00 :   64aef:  mov    %sil,0x6(%rcx)
+    0.00 :   64af3:  mov    %ax,0x4(%rcx)
+    0.00 :   64af7:  incq   0x700(%r15)
+    0.00 :   64afe:  jmp    638d3 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x373>
+    0.00 :   64b03:  mov    0x730(%r15),%rsi
+    0.12 :   64b0a:  cmp    %rsi,%rdi
+    0.01 :   64b0d:  jae    653b8 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1e58>
+    0.00 :   64b13:  mov    0x728(%r15),%rcx
+    0.02 :   64b1a:  mov    0x78(%rsp),%rdx
+    0.02 :   64b1f:  lea    (%rcx,%rdx,1),%rax
+    0.03 :   64b23:  lea    0x1400(%rcx,%rdx,1),%rdx
+    0.01 :   64b2b:  add    $0x7a8,%rsp
+    0.02 :   64b32:  pop    %rbx
+    0.08 :   64b33:  pop    %r12
+    0.01 :   64b35:  pop    %r13
+    0.00 :   64b37:  pop    %r14
+    0.01 :   64b39:  pop    %r15
+    0.01 :   64b3b:  pop    %rbp
+    0.02 :   64b3c:  vzeroupper
+    0.00 :   64b3f:  ret
+    0.00 :   64b40:  cmpb   $0x0,0x28(%rsp)
+    0.01 :   64b45:  je     64bad <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x164d>
+    0.00 :   64b47:  cmpb   $0x0,0x20(%rsp)
+    0.00 :   64b4c:  jne    64a66 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1506>
+    0.00 :   64b52:  mov    0x18(%rsp),%r10
+    0.00 :   64b57:  mov    0x700(%r10),%rdi
+    0.00 :   64b5e:  cmp    $0xff,%rdi
+    0.00 :   64b65:  ja     654ba <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f5a>
+    0.00 :   64b6b:  vpxor  %xmm0,%xmm0,%xmm0
+    0.00 :   64b6f:  vpinsrb $0x2,0x80(%rsp),%xmm0,%xmm0
+    0.00 :   64b7a:  movzbl %cl,%ecx
+    0.00 :   64b7d:  lea    (%r10,%rdi,8),%rdx
+    0.00 :   64b81:  shl    $0x8,%ecx
+    0.00 :   64b84:  sub    %rdi,%rdx
+    0.00 :   64b87:  mov    %esi,%edi
+    0.00 :   64b89:  or     %esi,%ecx
+    0.00 :   64b8b:  shr    $0x10,%edi
+    0.00 :   64b8e:  vmovd  %xmm0,(%rdx)
+    0.01 :   64b92:  mov    %dil,0x6(%rdx)
+    0.00 :   64b96:  mov    %cx,0x4(%rdx)
+    0.00 :   64b9a:  incq   0x700(%r10)
+    0.00 :   64ba1:  jmp    64a66 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1506>
+    0.00 :   64ba6:  xor    %eax,%eax
+    0.01 :   64ba8:  jmp    6373b <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1db>
+    0.00 :   64bad:  mov    0x18(%rsp),%r11
+    0.00 :   64bb2:  mov    0x700(%r11),%rdi
+    0.00 :   64bb9:  cmp    $0xff,%rdi
+    0.00 :   64bc0:  ja     654ba <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f5a>
+    0.00 :   64bc6:  vpxor  %xmm0,%xmm0,%xmm0
+    0.00 :   64bca:  vpinsrb $0x2,0x38(%rsp),%xmm0,%xmm0
+    0.00 :   64bd2:  movzbl %cl,%edx
+    0.00 :   64bd5:  lea    (%r11,%rdi,8),%r10
+    0.00 :   64bd9:  shl    $0x8,%edx
+    0.00 :   64bdc:  sub    %rdi,%r10
+    0.00 :   64bdf:  mov    %eax,%edi
+    0.00 :   64be1:  or     %eax,%edx
+    0.00 :   64be3:  shr    $0x10,%edi
+    0.00 :   64be6:  vmovd  %xmm0,(%r10)
+    0.01 :   64beb:  mov    %dil,0x6(%r10)
+    0.00 :   64bef:  mov    %dx,0x4(%r10)
+    0.00 :   64bf4:  incq   0x700(%r11)
+    0.00 :   64bfb:  jmp    64b47 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x15e7>
+    0.00 :   64c00:  mov    0x700(%r15),%rdi
+    0.01 :   64c07:  cmp    $0xff,%rdi
+    0.00 :   64c0e:  ja     654ba <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f5a>
+    0.00 :   64c14:  vpbroadcastw -0x5c6d7(%rip),%xmm0        # 8546 <GCC_except_table852+0xa8e>
+    0.01 :   64c1d:  movzbl %r8b,%ecx
+    0.00 :   64c21:  lea    (%r15,%rdi,8),%rdx
+    0.00 :   64c25:  shl    $0x8,%ecx
+    0.00 :   64c28:  or     %eax,%ecx
+    0.00 :   64c2a:  sub    %rdi,%rdx
+    0.00 :   64c2d:  shr    $0x10,%eax
+    0.00 :   64c30:  vpinsrb $0x2,0x38(%rsp),%xmm0,%xmm0
+    0.00 :   64c38:  vmovd  %xmm0,(%rdx)
+    0.01 :   64c3c:  mov    %al,0x6(%rdx)
+    0.01 :   64c3f:  mov    %cx,0x4(%rdx)
+    0.00 :   64c43:  incq   0x700(%r15)
+    0.00 :   64c4a:  jmp    64aa5 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1545>
+    0.00 :   64c4f:  vmovdqu64 (%r12),%zmm0
+    0.01 :   64c56:  vmovdqu64 0x10(%r12),%zmm1
+    0.00 :   64c61:  lea    0x1490(%rsi,%rsi,2),%rbx
+    0.00 :   64c69:  vmovdqu64 %zmm1,0x170(%rsp)
+    0.00 :   64c74:  vmovdqu64 %zmm0,0x160(%rsp)
+    0.00 :   64c7f:  test   %rsi,%rsi
+    0.00 :   64c82:  je     650d3 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1b73>
+    0.00 :   64c88:  movzbl 0x1492(%r13),%edx
+    0.00 :   64c90:  movzbl 0x1491(%r13),%edi
+    0.00 :   64c98:  movzbl 0x1490(%r13),%r8d
+    0.00 :   64ca0:  mov    0x1a0(%rsp),%rcx
+    0.00 :   64ca8:  mov    $0x1,%r11d
+    0.00 :   64cae:  shlx   %rdx,%r11,%rsi
+    0.00 :   64cb3:  btc    %rdx,%rcx
+    0.00 :   64cb7:  xor    %rsi,0x160(%rsp,%rdi,8)
+    0.00 :   64cbf:  xor    %rsi,0x190(%rsp,%r8,8)
+    0.00 :   64cc7:  cmp    $0x1493,%ebx
+    0.00 :   64ccd:  jne    64fc3 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1a63>
+    0.00 :   64cd3:  xor    %ebp,%ebp
+    0.00 :   64cd5:  mov    %rcx,0x1a0(%rsp)
+    0.00 :   64cdd:  test   %r14,%r14
+    0.00 :   64ce0:  je     64e05 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x18a5>
+    0.00 :   64ce6:  movzbl 0x1498(%r13),%eax
+    0.00 :   64cee:  movzbl 0x1497(%r13),%edx
+    0.00 :   64cf6:  movzbl 0x1496(%r13),%esi
+    0.00 :   64cfe:  mov    0x1a0(%rsp),%r15
+    0.00 :   64d06:  mov    $0x1,%edi
+    0.00 :   64d0b:  shlx   %rax,%rdi,%rcx
+    0.00 :   64d10:  btc    %rax,%r15
+    0.00 :   64d14:  xor    %rcx,0x160(%rsp,%rdx,8)
+    0.00 :   64d1c:  xor    %rcx,0x190(%rsp,%rsi,8)
+    0.00 :   64d24:  cmp    $0x1,%r14d
+    0.00 :   64d28:  je     64d5b <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x17fb>
+    0.00 :   64d2a:  movzbl 0x149b(%r13),%eax
+    0.00 :   64d32:  movzbl 0x149a(%r13),%edx
+    0.00 :   64d3a:  movzbl 0x1499(%r13),%esi
+    0.00 :   64d42:  shlx   %rax,%rdi,%rcx
+    0.00 :   64d47:  btc    %rax,%r15
+    0.00 :   64d4b:  xor    %rcx,0x160(%rsp,%rdx,8)
+    0.00 :   64d53:  xor    %rcx,0x190(%rsp,%rsi,8)
+    0.00 :   64d5b:  movzbl 0x1498(%r13),%r8d
+    0.00 :   64d63:  movzbl 0x1496(%r13),%edx
+    0.00 :   64d6b:  movzbl 0x1497(%r13),%ecx
+    0.00 :   64d73:  lea    0x160(%rsp),%rsi
+    0.00 :   64d7b:  xor    %r9d,%r9d
+    0.00 :   64d7e:  shlx   %r8,%rdi,%rax
+    0.00 :   64d83:  mov    0x18(%rsp),%rdi
+    0.00 :   64d88:  btc    %r8,%r15
+    0.00 :   64d8c:  xor    %rax,0x160(%rsp,%rcx,8)
+    0.00 :   64d94:  xor    %rax,0x190(%rsp,%rdx,8)
+    0.00 :   64d9c:  mov    %r15,0x1a0(%rsp)
+    0.00 :   64da4:  vzeroupper
+    0.00 :   64da7:  call   40750 <chessengine::eval::nnue::sota_threats::record_square_touch>
+    0.00 :   64dac:  cmp    $0x1,%r14d
+    0.00 :   64db0:  je     64e05 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x18a5>
+    0.00 :   64db2:  movzbl 0x149b(%r13),%r8d
+    0.00 :   64dba:  movzbl 0x1499(%r13),%edx
+    0.00 :   64dc2:  movzbl 0x149a(%r13),%ecx
+    0.00 :   64dca:  mov    $0x1,%eax
+    0.00 :   64dcf:  mov    0x18(%rsp),%rdi
+    0.00 :   64dd4:  lea    0x160(%rsp),%rsi
+    0.00 :   64ddc:  xor    %r9d,%r9d
+    0.00 :   64ddf:  shlx   %r8,%rax,%rax
+    0.00 :   64de4:  btc    %r8,%r15
+    0.00 :   64de8:  xor    %rax,0x160(%rsp,%rcx,8)
+    0.00 :   64df0:  xor    %rax,0x190(%rsp,%rdx,8)
+    0.00 :   64df8:  mov    %r15,0x1a0(%rsp)
+    0.00 :   64e00:  call   40750 <chessengine::eval::nnue::sota_threats::record_square_touch>
+    0.00 :   64e05:  mov    0x18(%rsp),%r15
+    0.00 :   64e0a:  test   %bpl,%bpl
+    0.00 :   64e0d:  jne    638c9 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x369>
+    0.00 :   64e13:  movzbl 0x1492(%r13),%r8d
+    0.00 :   64e1b:  movzbl 0x1490(%r13),%edx
+    0.00 :   64e23:  movzbl 0x1491(%r13),%ecx
+    0.00 :   64e2b:  mov    0x1a0(%rsp),%r14
+    0.00 :   64e33:  mov    $0x1,%eax
+    0.00 :   64e38:  lea    0x160(%rsp),%rsi
+    0.00 :   64e40:  mov    $0x1,%r9d
+    0.00 :   64e46:  mov    %r15,%rdi
+    0.00 :   64e49:  shlx   %r8,%rax,%rax
+    0.00 :   64e4e:  btc    %r8,%r14
+    0.00 :   64e52:  xor    %rax,0x160(%rsp,%rcx,8)
+    0.00 :   64e5a:  xor    %rax,0x190(%rsp,%rdx,8)
+    0.00 :   64e62:  mov    %r14,0x1a0(%rsp)
+    0.00 :   64e6a:  vzeroupper
+    0.00 :   64e6d:  call   40750 <chessengine::eval::nnue::sota_threats::record_square_touch>
+    0.00 :   64e72:  cmp    $0x1493,%ebx
+    0.00 :   64e78:  je     638c9 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x369>
+    0.00 :   64e7e:  movzbl 0x1495(%r13),%r8d
+    0.00 :   64e86:  movzbl 0x1493(%r13),%edx
+    0.00 :   64e8e:  movzbl 0x1494(%r13),%ecx
+    0.00 :   64e96:  mov    $0x1,%eax
+    0.00 :   64e9b:  lea    0x160(%rsp),%rsi
+    0.00 :   64ea3:  mov    $0x1,%r9d
+    0.00 :   64ea9:  mov    %r15,%rdi
+    0.00 :   64eac:  shlx   %r8,%rax,%rax
+    0.00 :   64eb1:  btc    %r8,%r14
+    0.00 :   64eb5:  xor    %rax,0x160(%rsp,%rcx,8)
+    0.00 :   64ebd:  xor    %rax,0x190(%rsp,%rdx,8)
+    0.00 :   64ec5:  mov    %r14,0x1a0(%rsp)
+    0.00 :   64ecd:  call   40750 <chessengine::eval::nnue::sota_threats::record_square_touch>
+    0.00 :   64ed2:  cmp    $0x1496,%ebx
+    0.00 :   64ed8:  je     638c9 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x369>
+    0.00 :   64ede:  add    %r13,%rbx
+    0.00 :   64ee1:  add    $0x1496,%r13
+    0.00 :   64ee8:  movzbl 0x2(%r13),%r8d
+    0.00 :   64eed:  movzbl 0x0(%r13),%edx
+    0.00 :   64ef2:  movzbl 0x1(%r13),%ecx
+    0.00 :   64ef7:  mov    $0x1,%eax
+    0.00 :   64efc:  lea    0x160(%rsp),%rsi
+    0.00 :   64f04:  mov    $0x1,%r9d
+    0.00 :   64f0a:  mov    %r15,%rdi
+    0.00 :   64f0d:  shlx   %r8,%rax,%rax
+    0.00 :   64f12:  btc    %r8,%r14
+    0.00 :   64f16:  xor    %rax,0x160(%rsp,%rcx,8)
+    0.00 :   64f1e:  xor    %rax,0x190(%rsp,%rdx,8)
+    0.00 :   64f26:  mov    %r14,0x1a0(%rsp)
+    0.00 :   64f2e:  call   40750 <chessengine::eval::nnue::sota_threats::record_square_touch>
+    0.00 :   64f33:  add    $0x3,%r13
+    0.00 :   64f37:  cmp    %rbx,%r13
+    0.00 :   64f3a:  je     638c9 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x369>
+    0.00 :   64f40:  jmp    64ee8 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1988>
+    0.00 :   64f42:  lea    (%r9,%rdi,1),%rsi
+    0.03 :   64f46:  mov    %rdx,%rbp
+    0.00 :   64f49:  add    %rcx,%rdi
+    0.00 :   64f4c:  mov    $0xa00,%edx
+    0.00 :   64f51:  vzeroupper
+    0.01 :   64f54:  call   *0x89196(%rip)        # ee0f0 <memcpy@GLIBC_2.14>
+    0.01 :   64f5a:  mov    0xd0(%rsp),%rax
+    0.00 :   64f62:  shl    $0x5,%rbp
+    0.00 :   64f66:  mov    0xd8(%rsp),%rcx
+    0.00 :   64f6e:  mov    0xe8(%rsp),%r8
+    0.00 :   64f76:  vmovdqa 0x1400(%rax,%rbp,1),%ymm0
+    0.02 :   64f7f:  mov    0xe0(%rsp),%rax
+    0.02 :   64f87:  vmovdqa %ymm0,0x1400(%rcx,%rbp,1)
+    0.04 :   64f90:  movb   $0x1,0x149e(%rcx,%rax,1)
+    0.01 :   64f98:  jmp    644a6 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0xf46>
+    0.00 :   64f9d:  xor    %ecx,%ecx
+    0.00 :   64f9f:  jmp    6376d <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x20d>
+    0.00 :   64fa4:  mov    0x78(%rsp),%rcx
+    0.00 :   64fa9:  mov    0x70(%rsp),%rdi
+    0.00 :   64fae:  add    %rax,%rcx
+    0.00 :   64fb1:  cmpb   $0x0,0x149f(%rcx)
+    0.00 :   64fb8:  je     635fb <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x9b>
+    0.00 :   64fbe:  jmp    64b0a <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x15aa>
+    0.00 :   64fc3:  movzbl 0x1495(%r13),%edx
+    0.00 :   64fcb:  movzbl 0x1494(%r13),%edi
+    0.00 :   64fd3:  movzbl 0x1493(%r13),%r8d
+    0.00 :   64fdb:  shlx   %rdx,%r11,%rsi
+    0.00 :   64fe0:  btc    %rdx,%rcx
+    0.00 :   64fe4:  xor    %rsi,0x160(%rsp,%rdi,8)
+    0.00 :   64fec:  xor    %rsi,0x190(%rsp,%r8,8)
+    0.00 :   64ff4:  cmp    $0x1496,%ebx
+    0.00 :   64ffa:  je     64cd3 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1773>
+    0.00 :   65000:  mov    0xa0(%rsp),%rdx
+    0.00 :   65008:  xor    %esi,%esi
+    0.00 :   6500a:  lea    0x1498(%rax,%rdx,1),%rax
+    0.00 :   65012:  lea    -0x1496(%rbx),%rdx
+    0.00 :   65019:  movzbl (%rax,%rsi,1),%edi
+    0.00 :   6501d:  movzbl -0x1(%rax,%rsi,1),%r9d
+    0.00 :   65023:  movzbl -0x2(%rax,%rsi,1),%r10d
+    0.00 :   65029:  add    $0x3,%rsi
+    0.00 :   6502d:  shlx   %rdi,%r11,%r8
+    0.00 :   65032:  btc    %rdi,%rcx
+    0.00 :   65036:  xor    %r8,0x160(%rsp,%r9,8)
+    0.00 :   6503e:  xor    %r8,0x190(%rsp,%r10,8)
+    0.00 :   65046:  cmp    %rsi,%rdx
+    0.00 :   65049:  je     64cd3 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1773>
+    0.00 :   6504f:  jmp    65019 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1ab9>
+    0.00 :   65051:  xor    %edi,%edi
+    0.00 :   65053:  jmp    635cc <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x6c>
+    0.00 :   65058:  movzbl -0x2(%rcx),%r8d
+    0.01 :   6505d:  cmp    $0x3,%r8
+    0.00 :   65061:  jae    654e3 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f83>
+    0.00 :   65067:  test   %r8,%r8
+    0.00 :   6506a:  jne    635c9 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x69>
+    0.00 :   65070:  add    $0xffffffffffffeb40,%rcx
+    0.00 :   65077:  xor    %edi,%edi
+    0.00 :   65079:  dec    %rax
+    0.00 :   6507c:  jne    6359d <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x3d>
+    0.00 :   65082:  jmp    635cc <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x6c>
+    0.00 :   65087:  movq   $0x0,0x30(%rsp)
+    0.00 :   65090:  jmp    6366c <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x10c>
+    0.00 :   65095:  vmovdqu64 (%r12),%zmm0
+    0.00 :   6509c:  vmovdqu64 0x10(%r12),%zmm1
+    0.00 :   650a7:  lea    0x1490(%rsi,%rsi,2),%rbx
+    0.00 :   650af:  vmovdqu64 %zmm1,0x170(%rsp)
+    0.00 :   650ba:  vmovdqu64 %zmm0,0x160(%rsp)
+    0.00 :   650c5:  jmp    64c88 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1728>
+    0.00 :   650ca:  xor    %eax,%eax
+    0.02 :   650cc:  xor    %edi,%edi
+    0.00 :   650ce:  jmp    63b60 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x600>
+    0.00 :   650d3:  mov    $0x1,%bpl
+    0.00 :   650d6:  jmp    64cdd <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x177d>
+    0.00 :   650db:  mov    0x68(%rsp),%rdx
+    0.00 :   650e0:  lea    0x86ca1(%rip),%rcx        # ebd88 <__frame_dummy_init_array_entry+0x22a8>
+    0.00 :   650e7:  mov    %rsi,%rdi
+    0.00 :   650ea:  mov    %rdx,%rsi
+    0.00 :   650ed:  vzeroupper
+    0.00 :   650f0:  call   a5470 <core::slice::index::slice_index_fail>
+    0.00 :   650f5:  lea    0x86c74(%rip),%rcx        # ebd70 <__frame_dummy_init_array_entry+0x2290>
+    0.00 :   650fc:  mov    $0x8,%esi
+    0.00 :   65101:  xor    %edi,%edi
+    0.00 :   65103:  vzeroupper
+    0.00 :   65106:  call   a5470 <core::slice::index::slice_index_fail>
+    0.00 :   6510b:  lea    0x86b6e(%rip),%rdx        # ebc80 <__frame_dummy_init_array_entry+0x21a0>
+    0.00 :   65112:  mov    $0x100,%esi
+    0.00 :   65117:  mov    %rax,%rdi
+    0.00 :   6511a:  vzeroupper
+    0.00 :   6511d:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   65122:  lea    0x86b6f(%rip),%rdx        # ebc98 <__frame_dummy_init_array_entry+0x21b8>
+    0.00 :   65129:  mov    $0x100,%esi
+    0.00 :   6512e:  vzeroupper
+    0.00 :   65131:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   65136:  mov    0x8(%rsp),%rsi
+    0.00 :   6513b:  lea    0x86d06(%rip),%rdx        # ebe48 <__frame_dummy_init_array_entry+0x2368>
+    0.00 :   65142:  mov    %rcx,%rdi
+    0.00 :   65145:  vzeroupper
+    0.00 :   65148:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   6514d:  lea    0x86d0c(%rip),%rdx        # ebe60 <__frame_dummy_init_array_entry+0x2380>
+    0.00 :   65154:  mov    %rcx,%rdi
+    0.00 :   65157:  vzeroupper
+    0.00 :   6515a:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   6515f:  lea    0x85aea(%rip),%rdx        # eac50 <__frame_dummy_init_array_entry+0x1170>
+    0.00 :   65166:  mov    %rbx,%rdi
+    0.00 :   65169:  vzeroupper
+    0.00 :   6516c:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   65171:  lea    0x85af0(%rip),%rcx        # eac68 <__frame_dummy_init_array_entry+0x1188>
+    0.00 :   65178:  jmp    6518f <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1c2f>
+    0.00 :   6517a:  lea    0x85ab7(%rip),%rcx        # eac38 <__frame_dummy_init_array_entry+0x1158>
+    0.00 :   65181:  jmp    6518f <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1c2f>
+    0.00 :   65183:  mov    0x8(%rsp),%rsi
+    0.00 :   65188:  lea    0x85a91(%rip),%rcx        # eac20 <__frame_dummy_init_array_entry+0x1140>
+    0.00 :   6518f:  mov    $0x100,%edx
+    0.00 :   65194:  xor    %edi,%edi
+    0.00 :   65196:  vzeroupper
+    0.00 :   65199:  call   a5470 <core::slice::index::slice_index_fail>
+    0.00 :   6519e:  lea    0x160(%rsp),%rdx
+    0.00 :   651a6:  lea    0x4a0(%rsp),%rcx
+    0.00 :   651ae:  lea    0xa12cb(%rip),%rax        # 106480 <chessengine::eval::nnue::sota_features::THREAT_TABLES>
+    0.00 :   651b5:  lea    0xa2b4c(%rip),%rdi        # 107d08 <chessengine::eval::nnue::sota_features::THREAT_TABLES+0x1888>
+    0.00 :   651bc:  lea    0x87c25(%rip),%r8        # ecde8 <__frame_dummy_init_array_entry+0x3308>
+    0.00 :   651c3:  mov    $0x1,%esi
+    0.00 :   651c8:  mov    %rcx,(%rdx)
+    0.00 :   651cb:  lea    0x84ab6(%rip),%rcx        # e9c88 <__frame_dummy_init_array_entry+0x1a8>
+    0.00 :   651d2:  mov    %rax,0x4a0(%rsp)
+    0.00 :   651da:  vzeroupper
+    0.00 :   651dd:  call   8c250 <<std::sys::sync::once::futex::Once>::call>
+    0.00 :   651e2:  jmp    63947 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x3e7>
+    0.00 :   651e7:  test   %rsi,%rsi
+    0.00 :   651ea:  je     654f9 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f99>
+    0.00 :   651f0:  mov    0x18(%rsp),%rax
+    0.00 :   651f5:  mov    0xc8(%rsp),%r15
+    0.00 :   651fd:  xor    %edi,%edi
+    0.00 :   651ff:  lea    (%rax,%rsi,8),%r14
+    0.00 :   65203:  mov    0xa1276(%rip),%rax        # 106480 <chessengine::eval::nnue::sota_features::THREAT_TABLES>
+    0.00 :   6520a:  sub    %rsi,%r14
+    0.00 :   6520d:  mov    %rax,0x8(%rsp)
+    0.00 :   65212:  xor    %eax,%eax
+    0.00 :   65214:  mov    -0x4(%r15),%sil
+    0.00 :   65218:  mov    -0x3(%r15),%bl
+    0.00 :   6521c:  mov    0x1(%r15),%r8b
+    0.00 :   65220:  mov    0x2(%r15),%bpl
+    0.00 :   65224:  xor    %edx,%edx
+    0.00 :   65226:  lea    0xa1253(%rip),%r11        # 106480 <chessengine::eval::nnue::sota_features::THREAT_TABLES>
+    0.00 :   6522d:  shl    $0x3,%sil
+    0.00 :   65231:  inc    %bl
+    0.00 :   65233:  mov    %r8d,%ecx
+    0.00 :   65236:  mov    %ebp,%r13d
+    0.00 :   65239:  or     %sil,%bl
+    0.00 :   6523c:  mov    -0x1(%r15),%sil
+    0.00 :   65240:  xor    %r10b,%cl
+    0.00 :   65243:  xor    %r10b,%r13b
+    0.00 :   65246:  xor    %r9b,%bl
+    0.00 :   65249:  cmp    %r13b,%cl
+    0.00 :   6524c:  movzbl %bl,%r12d
+    0.00 :   65250:  mov    -0x2(%r15),%bl
+    0.00 :   65254:  setb   %dl
+    0.00 :   65257:  inc    %sil
+    0.00 :   6525a:  shl    $0x3,%bl
+    0.00 :   6525d:  or     %bl,%sil
+    0.00 :   65260:  mov    %r12d,%ebx
+    0.00 :   65263:  shl    $0x7,%ebx
+    0.00 :   65266:  xor    %r9b,%sil
+    0.00 :   65269:  add    %r11,%rbx
+    0.00 :   6526c:  movzbl %sil,%esi
+    0.00 :   65270:  lea    (%rbx,%rsi,8),%rsi
+    0.00 :   65274:  mov    0x1088(%rsi,%rdx,4),%esi
+    0.00 :   6527b:  cmp    $0xed2f,%esi
+    0.00 :   65281:  ja     652f9 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1d99>
+    0.00 :   65283:  movzbl %cl,%ecx
+    0.00 :   65286:  cmp    $0x3f,%r8b
+    0.00 :   6528a:  ja     65313 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1db3>
+    0.00 :   65290:  movzbl %r13b,%r8d
+    0.00 :   65294:  cmp    $0x40,%bpl
+    0.00 :   65298:  jae    6532a <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1dca>
+    0.00 :   6529e:  mov    %r12d,%edx
+    0.00 :   652a1:  shl    $0x8,%edx
+    0.00 :   652a4:  lea    0xa11d5(%rip),%r11        # 106480 <chessengine::eval::nnue::sota_features::THREAT_TABLES>
+    0.00 :   652ab:  shl    $0xc,%r12d
+    0.00 :   652af:  add    %r11,%rdx
+    0.00 :   652b2:  add    0x8(%rdx,%rcx,4),%esi
+    0.00 :   652b6:  shl    $0x6,%ecx
+    0.00 :   652b9:  add    0x8(%rsp),%rcx
+    0.00 :   652be:  add    %r12,%rcx
+    0.00 :   652c1:  movzbl (%r8,%rcx,1),%ecx
+    0.00 :   652c6:  add    %esi,%ecx
+    0.00 :   652c8:  cmpb   $0x0,(%r15)
+    0.00 :   652cc:  je     652e5 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1d85>
+    0.00 :   652ce:  cmp    $0x100,%rdi
+    0.00 :   652d5:  jae    65341 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1de1>
+    0.00 :   652d7:  mov    0x28(%rsp),%rdx
+    0.00 :   652dc:  mov    %rcx,(%rdx,%rdi,8)
+    0.00 :   652e0:  inc    %rdi
+    0.00 :   652e3:  jmp    652f9 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1d99>
+    0.00 :   652e5:  cmp    $0x100,%rax
+    0.00 :   652eb:  jae    65355 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1df5>
+    0.00 :   652ed:  mov    0x20(%rsp),%rdx
+    0.00 :   652f2:  mov    %rcx,(%rdx,%rax,8)
+    0.00 :   652f6:  inc    %rax
+    0.00 :   652f9:  lea    -0x4(%r15),%rcx
+    0.00 :   652fd:  add    $0x7,%r15
+    0.00 :   65301:  add    $0x7,%rcx
+    0.00 :   65305:  cmp    %r14,%rcx
+    0.00 :   65308:  jne    65214 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1cb4>
+    0.00 :   6530e:  jmp    63b69 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x609>
+    0.00 :   65313:  lea    0x85216(%rip),%rdx        # ea530 <__frame_dummy_init_array_entry+0xa50>
+    0.00 :   6531a:  mov    $0x40,%esi
+    0.00 :   6531f:  mov    %rcx,%rdi
+    0.00 :   65322:  vzeroupper
+    0.00 :   65325:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   6532a:  lea    0x85217(%rip),%rdx        # ea548 <__frame_dummy_init_array_entry+0xa68>
+    0.00 :   65331:  mov    $0x40,%esi
+    0.00 :   65336:  mov    %r8,%rdi
+    0.00 :   65339:  vzeroupper
+    0.00 :   6533c:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   65341:  lea    0x86920(%rip),%rdx        # ebc68 <__frame_dummy_init_array_entry+0x2188>
+    0.00 :   65348:  mov    $0x100,%esi
+    0.00 :   6534d:  vzeroupper
+    0.00 :   65350:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   65355:  lea    0x868f4(%rip),%rdx        # ebc50 <__frame_dummy_init_array_entry+0x2170>
+    0.00 :   6535c:  jmp    65112 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1bb2>
+    0.00 :   65361:  xor    %eax,%eax
+    0.00 :   65363:  jmp    64431 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0xed1>
+    0.00 :   65368:  lea    -0x33f78(%rip),%rdi        # 313f7 <core::num::imp::flt2dec::strategy::dragon::POW5TO256+0x8a3>
+    0.00 :   6536f:  lea    0x8587a(%rip),%rdx        # eabf0 <__frame_dummy_init_array_entry+0x1110>
+    0.00 :   65376:  mov    $0x13,%esi
+    0.00 :   6537b:  vzeroupper
+    0.00 :   6537e:  call   a3bd0 <core::panicking::panic_fmt>
+    0.00 :   65383:  lea    0x8587e(%rip),%rdx        # eac08 <__frame_dummy_init_array_entry+0x1128>
+    0.00 :   6538a:  xor    %edi,%edi
+    0.00 :   6538c:  xor    %esi,%esi
+    0.00 :   6538e:  vzeroupper
+    0.00 :   65391:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   65396:  mov    %rcx,0x30(%rsp)
+    0.00 :   6539b:  mov    0x30(%rsp),%rdi
+    0.00 :   653a0:  lea    0x858d9(%rip),%rdx        # eac80 <__frame_dummy_init_array_entry+0x11a0>
+    0.00 :   653a7:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   653ac:  lea    0x857dd(%rip),%rdx        # eab90 <__frame_dummy_init_array_entry+0x10b0>
+    0.00 :   653b3:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   653b8:  lea    0x857b9(%rip),%rdx        # eab78 <__frame_dummy_init_array_entry+0x1098>
+    0.00 :   653bf:  vzeroupper
+    0.00 :   653c2:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   653c7:  lea    0x9dff2(%rip),%rax        # 1033c0 <chessengine::attacks::TABLES>
+    0.00 :   653ce:  lea    0x4a0(%rsp),%rcx
+    0.00 :   653d6:  lea    0x160(%rsp),%rdx
+    0.00 :   653de:  lea    0x9f01b(%rip),%rdi        # 104400 <chessengine::attacks::TABLES+0x1040>
+    0.00 :   653e5:  lea    0x879fc(%rip),%r8        # ecde8 <__frame_dummy_init_array_entry+0x3308>
+    0.00 :   653ec:  mov    $0x1,%esi
+    0.00 :   653f1:  mov    %rax,(%rcx)
+    0.00 :   653f4:  mov    %rcx,(%rdx)
+    0.00 :   653f7:  lea    0x84862(%rip),%rcx        # e9c60 <__frame_dummy_init_array_entry+0x180>
+    0.00 :   653fe:  call   8c250 <<std::sys::sync::once::futex::Once>::call>
+    0.00 :   65403:  mov    0x98(%rsp),%rcx
+    0.00 :   6540b:  mov    0x70(%rsp),%rdi
+    0.00 :   65410:  jmp    636ae <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x14e>
+    0.00 :   65415:  lea    0x8578c(%rip),%rdx        # eaba8 <__frame_dummy_init_array_entry+0x10c8>
+    0.00 :   6541c:  mov    %rbx,%rdi
+    0.00 :   6541f:  vzeroupper
+    0.00 :   65422:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   65427:  lea    0x85792(%rip),%rdx        # eabc0 <__frame_dummy_init_array_entry+0x10e0>
+    0.00 :   6542e:  mov    %rbx,%rdi
+    0.00 :   65431:  vzeroupper
+    0.00 :   65434:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   65439:  lea    0x85798(%rip),%rdx        # eabd8 <__frame_dummy_init_array_entry+0x10f8>
+    0.00 :   65440:  mov    %rbx,%rdi
+    0.00 :   65443:  vzeroupper
+    0.00 :   65446:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   6544b:  lea    0x84dc6(%rip),%rcx        # ea218 <__frame_dummy_init_array_entry+0x738>
+    0.00 :   65452:  mov    $0x2,%edx
+    0.00 :   65457:  xor    %edi,%edi
+    0.00 :   65459:  mov    %r14,%rsi
+    0.00 :   6545c:  vzeroupper
+    0.00 :   6545f:  call   a5470 <core::slice::index::slice_index_fail>
+    0.00 :   65464:  lea    0x856f5(%rip),%rcx        # eab60 <__frame_dummy_init_array_entry+0x1080>
+    0.00 :   6546b:  mov    $0x2,%edx
+    0.00 :   65470:  xor    %edi,%edi
+    0.00 :   65472:  vzeroupper
+    0.00 :   65475:  call   a5470 <core::slice::index::slice_index_fail>
+    0.00 :   6547a:  lea    0x853af(%rip),%rdx        # ea830 <__frame_dummy_init_array_entry+0xd50>
+    0.00 :   65481:  mov    $0x40,%esi
+    0.00 :   65486:  mov    %r15,%rdi
+    0.00 :   65489:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   6548e:  lea    0x853b3(%rip),%rdx        # ea848 <__frame_dummy_init_array_entry+0xd68>
+    0.00 :   65495:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   6549a:  lea    0x853d7(%rip),%rdx        # ea878 <__frame_dummy_init_array_entry+0xd98>
+    0.00 :   654a1:  mov    %rax,%rdi
+    0.00 :   654a4:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   654a9:  lea    0x85050(%rip),%rdx        # ea500 <__frame_dummy_init_array_entry+0xa20>
+    0.00 :   654b0:  mov    $0x6,%esi
+    0.00 :   654b5:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   654ba:  lea    0x85057(%rip),%rdx        # ea518 <__frame_dummy_init_array_entry+0xa38>
+    0.00 :   654c1:  mov    $0x100,%esi
+    0.00 :   654c6:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   654cb:  lea    0x85676(%rip),%rdx        # eab48 <__frame_dummy_init_array_entry+0x1068>
+    0.00 :   654d2:  mov    %rax,%rdi
+    0.00 :   654d5:  call   a472b <core::panicking::panic_bounds_check>
+    0.00 :   654da:  lea    0x8567f(%rip),%rcx        # eab60 <__frame_dummy_init_array_entry+0x1080>
+    0.00 :   654e1:  jmp    654ea <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x1f8a>
+    0.00 :   654e3:  lea    0x84d2e(%rip),%rcx        # ea218 <__frame_dummy_init_array_entry+0x738>
+    0.00 :   654ea:  mov    $0x2,%edx
+    0.00 :   654ef:  xor    %edi,%edi
+    0.00 :   654f1:  mov    %r8,%rsi
+    0.00 :   654f4:  call   a5470 <core::slice::index::slice_index_fail>
+    0.00 :   654f9:  xor    %eax,%eax
+    0.00 :   654fb:  xor    %edi,%edi
+    0.00 :   654fd:  jmp    63b69 <<chessengine::eval::nnue::sota_threats::ThreatContext>::at_full+0x609>

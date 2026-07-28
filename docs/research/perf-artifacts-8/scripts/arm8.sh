@@ -17,8 +17,8 @@ NAME=${1:?arm name}
 FEAT=sota,arch-d48x
 NET=engines/canonical/net.cenn
 OUT=docs/research/perf-artifacts-8/arms.txt
-EVAL_PIN=d82caf8aa4e3cca8ea9be5dc9918e192733d14b76f0b2006c0da02b36e9f8163
-NODE_PIN=1972607
+EVAL_PIN=5ca978e012da1bb086799709c3ea5350cf6d49923c254f7975b6d780b0098b38
+NODE_PIN=1922947
 
 free -g | awk 'NR==2 {if ($7 < 3) {print "REFUSING: only " $7 " GB available (15 GB box, a PGO build beside a trainer OOMed it on 2026-07-27)"; exit 1}}'
 
