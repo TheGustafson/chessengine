@@ -188,6 +188,45 @@ drift across 172 unconverted wins. That is the failure mode the standing bar in 
 explicitly deprioritised as "leaves no trace to debug" — on this corpus it is the whole
 story. **This is a finding for the owner to rule on, not for an agent to act on unilaterally.**
 
+## INSTRUMENT CALIBRATION — pooled nodes-to-depth is DEAD, `fhf_rate` is USABLE (2026-07-28)
+
+A 14-arm inert null panel on 120 plateau positions at fixed depth 13, using the
+engine's own `ARCHON_SEARCH_STATS` counters:
+
+| statistic | inert null band | verdict |
+|---|---|---|
+| pooled nodes / base | **0.9761 .. 1.0488 (7.3% range)** | **DEAD.** `RAZOR_BASE ±1` alone spans −2.4% to +4.9%. Cannot resolve anything under ~7% |
+| `fhf_rate` (first-move cutoff rate) | **−0.0010 .. +0.0011** | **USABLE.** Resolves ~0.001 |
+
+⇒ **Killed by this: the `QUIET_CHECK_BONUS` 16384→8192 candidate (−3.0% nodes).** It is
+inside the band. Its dose response was already non-monotone (2048 +1.3%, 4096 −3.2%,
+8192 −3.0%, 12288 +2.5%) which is what prompted the panel.
+
+⇒ **Also retracted: "almost every ordering perturbation increases nodes, so base sits in
+a shallow node minimum."** That came from a 4-arm null that happened to be all-positive;
+at 14 arms the inert spread covers BOTH directions.
+
+⇒ **`ARCHON_SEARCH_STATS` returns all zeros under `printf | engine` or
+`subprocess.run(input=…)`** — both close stdin, and **stdin EOF is a STOP** (README §3
+trap 3). Persistent stdin only. I walked into this folder's own documented trap and it
+cost a full measurement round. Baseline with the counters actually live, 50 positions at
+depth 14: **fhf 0.8483**, qsearch share of makes **0.129**, NMP cutoff rate 0.637,
+extension plies/1k nodes 10.96.
+
+### The one ordering signal that survives the `fhf` band
+`QUIET_OFFENSE_FACTOR` (the Reckless-style "moving to attack a vulnerable enemy" term,
+default 10) is **monotone against fhf and every point is outside the band**:
+
+| value | 0 | 10 (base) | 20 | 40 |
+|---|---|---|---|---|
+| Δfhf | **+0.0020** | 0 | −0.0055 | −0.0147 |
+
+Lower is better-ordered. `engines/runs/offense0` game-tests 0 at 30k (screen → verify →
+bracket → pin; verify at 110k only if the screen is positive). **Caveat not yet closed:
+fhf is a RATIO, and a change that finds fewer cutoffs overall while making the ones it
+finds first-move would also raise it. Check the `fh` count, not just the ratio, before
+believing a winner.**
+
 ## SELDEPTH — THE FIRST CROSS-ENGINE STATISTIC THAT DISTINGUISHES (2026-07-28)
 
 Full writeup: `results/seldepth-gap.md`.

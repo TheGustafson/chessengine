@@ -1,0 +1,24 @@
+{
+  "name": "s5-ordering",
+  "comment": "MOVE ORDERING + HISTORY SHAPING, jointly (2026-07-28, searchopt). Why this family and why SPSA rather than more screening: a 15-arm single-knob screen against pooled nodes-to-depth-13 over 120 plateau positions found that EVERY perturbation increases nodes (base sits in a shallow minimum), and the one apparent winner (QUIET_CHECK_BONUS 16384->8192, -3.0%) has a non-monotone dose response (2048 +1.3%, 4096 -3.2%, 8192 -3.0%, 12288 +2.5%), i.e. it is inside the chaos band. Single-knob screening is exhausted; interactions are all that is left, which is what SPSA is for. These 16 are ALSO the right family on priors: unlike the eval-frame pruning margins (whose blanket rescale is refuted in both directions, see docs/research/eval-frame-scale-model-2026-07-27.md S11.4), ordering weights are denominated in OUR history units and scale with OUR history value distribution, so SF's tuned values carry no guarantee. All 16 are SPSA-uncovered (param_provenance: 256/305 uncovered). Ordering is also the one lever that improves the tree WITHOUT enlarging it -- every tree-widening arm with game evidence loses (lmr30 -11.6 n=628, EVAL_SCALE 2200 -27.8, corrgate -17.1 n=406, setrigger -16.3 n=406), so the width optimum is pinned and node-neutral gains are the only ones available.",
+  "r_end_note": "r_end = 0.03, copied from s2-stageA for the same reason recorded there: the 0.002 default moves ~1% of range over the iteration count this box affords and produces a null BY CONSTRUCTION. These are SF-transcribed values that have never been tuned against our history scale, so the larger step is justified. Verify any winner at 10+0.1 before pinning (screen -> verify -> bracket -> pin).",
+  "engine_note": "A non-PGO tune build is CORRECT here and this is not a deviation from the standing PGO ruling: SPSA plays fixed-NODE games, both sides are the same binary, and PGO changes only speed, not the search tree. Results are bit-identical between PGO and non-PGO at fixed nodes. PGO matters for wall-clock throughput only.",
+  "params": [
+    {"name": "QUIET_MAIN_HISTORY_WEIGHT", "min": 1,     "max": 6,     "r_end": 0.03},
+    {"name": "QUIET_PAWN_HISTORY_WEIGHT", "min": 1,     "max": 6,     "r_end": 0.03},
+    {"name": "QUIET_CHECK_BONUS",         "min": 3000,  "max": 34000, "r_end": 0.03},
+    {"name": "QUIET_CHECK_SEE_MARGIN",    "min": -300,  "max": 0,     "r_end": 0.03},
+    {"name": "QUIET_THREAT_FACTOR",       "min": 5,     "max": 60,    "r_end": 0.03},
+    {"name": "QUIET_OFFENSE_FACTOR",      "min": 0,     "max": 40,    "r_end": 0.03},
+    {"name": "QUIET_LOW_PLY_WEIGHT",      "min": 2,     "max": 24,    "r_end": 0.03},
+    {"name": "CAPTURE_MVV_FACTOR",        "min": 3,     "max": 14,    "r_end": 0.03},
+    {"name": "QUIET_SORT_DEPTH_FACTOR",   "min": -8000, "max": -1000, "r_end": 0.03},
+    {"name": "QUIET_BEST_BONUS_NUM",      "min": 400,   "max": 1600,  "r_end": 0.03},
+    {"name": "QUIET_MALUS_START_NUM",     "min": 500,   "max": 2000,  "r_end": 0.03},
+    {"name": "QUIET_MALUS_DECAY_NUM",     "min": 400,   "max": 1800,  "r_end": 0.03},
+    {"name": "CAPTURE_BEST_BONUS_NUM",    "min": 600,   "max": 2400,  "r_end": 0.03},
+    {"name": "CAPTURE_MALUS_NUM",         "min": 700,   "max": 2600,  "r_end": 0.03},
+    {"name": "QUIET_LOW_PLY_UPDATE_NUM",  "min": 300,   "max": 1300,  "r_end": 0.03},
+    {"name": "QUIET_CONT_UPDATE_NUM",     "min": 400,   "max": 1600,  "r_end": 0.03}
+  ]
+}
