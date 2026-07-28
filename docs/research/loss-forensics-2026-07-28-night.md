@@ -481,6 +481,71 @@ and top-1 is low for both (37.4% / 38.2%), because sparse positions have many
 equivalent moves and the oracle's single "best" is often one of several. The ≤7
 column is the noisiest in the table; trust its sign, not its size.
 
+## 3h. WHAT NEEDS TO CHANGE — and it is a decision the project already has queued
+
+The profile answers "which mechanism", on a quiet box, depth-14 middlegame bench:
+
+| % cycles | function |
+|---|---|
+| **20.9%** | `sota_threats::ThreatContext::at_full` |
+| 11.9% | `sota_head::SotaHead::forward_into` |
+| 11.7% | `search::Worker::search::<NonPv>` |
+| 10.4% | `sota_accumulator::HalfkaContext::current_full` |
+| 7.4% | `sota_loader::load_v2_bytes` *(startup, not search)* |
+| 5.9% | `movepick::init_quiets` |
+| 3.9% | `HalfkaContext::finny_refresh_into` |
+| 3.9% | `sota_threats::record_square_touch` |
+
+Eval is ~53% of cycles. **Correction to my first reading of this:** `at_full` and
+`current_full` are NOT from-scratch recomputes — they walk back to the nearest
+computed ancestor and fold deltas; "full" means the full accumulator VALUE, not
+full recompute. The incremental machinery works. The cost is inside the fold:
+`build_deltas` regenerates the threat EVENTS per ply through magic-table geometry
+queries, because our threat features are **relational** (piece-attacks-square) so
+one move changes many of them and finding which requires geometry — where
+Stockfish's positional features have O(pieces-moved) deltas. That is a
+consequence of the D40 feature design, not a bug.
+
+Priced by switching the threat channel off (the `ARCHON_SMALLNET` gate forced
+everywhere gives HalfKA-only evaluation; the head is miscalibrated that way but
+NPS does not care):
+
+| phase | threats on | HalfKA-only | speedup | Elo of speed |
+|---|---|---|---|---|
+| 21+ | 1,100k nps | 1,631k nps | **1.482×** | **+68** |
+| ≤7 | 2,304k nps | 2,468k nps | 1.071× | +12 |
+
+**This confirms rather than discovers.** `perf-study-7` already measured
+HalfKA-only at +25% to +39% instructions and "up to ~1.5–1.6× cycles on
+middlegames, ~45–70 Elo of speed", against threats' eval value "bounded above by
+exp-0065's +32.5 ± 17.3 (still never isolated)", and concluded the removal (D49)
+is positive-EV. My 1.482× on a different instrument (bench NPS via the gate,
+versus their instruction counting on a stripped net) lands inside their band.
+Credit where it belongs.
+
+**What tonight adds is the PHASE PROFILE, and it sharpens the decision.** The
+prior study measured wl50 and "middlegame". The cost nearly vanishes in the
+endgame — 1.071× at ≤7 against 1.482× at 21+. Put beside §3g:
+
+| phase | our quality gap vs SF | threat speed cost |
+|---|---|---|
+| 21+ | **+2.81 cp (worst)** | **1.482× (worst)** |
+| 13–20 | +1.52 cp | — |
+| 8–12 | +0.76 cp | — |
+| ≤7 | −2.01 cp (we are ahead) | 1.071× (negligible) |
+
+**The threat channel's cost and our quality deficit sit in the same phase.**
+Removing it buys ~68 Elo of speed exactly where we are weakest and costs almost
+nothing where we are already ahead. That alignment was not visible in either
+measurement alone, and it is the strongest argument for D49 on the table.
+
+**What is still missing to close the gate honestly:** the eval side has never
+been isolated. exp-0065's +32.5 ± 17.3 is the whole D40 arch against a classic
+net, not threats alone, and my speed number cannot be paired with an eval number
+from a different comparison. **A net trained without the threat channel at the
+same width is the one experiment that would settle it**, and nothing tonight
+substitutes for it.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
