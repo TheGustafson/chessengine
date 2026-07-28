@@ -6,7 +6,7 @@
 //! selected once at startup and preserves wrapping i16 arithmetic.
 
 use super::sota_features::ACC;
-use super::sota_head::{FT_QUANT, FT_SHIFT, L2, L3, THREAT_QUANT};
+use super::sota_head::{FT_QUANT, FT_SHIFT, L2, L3};
 use std::sync::LazyLock;
 
 /// The L1 sparse dot writes `L2` int32 accumulators. The kernels process the
@@ -370,12 +370,9 @@ mod scalar {
         for flip in 0..2 {
             let perspective = stm ^ flip;
             for lane in 0..H {
-                let merge = |p: i16, t: i16| {
-                    let scaled = i32::from(t) * FT_QUANT;
-                    let rounded =
-                        scaled.signum() * ((scaled.abs() + THREAT_QUANT / 2) / THREAT_QUANT);
-                    (i32::from(p) + rounded).clamp(0, FT_QUANT)
-                };
+                // 255/64 carried as 4 (see the avx512 twin).
+                let merge =
+                    |p: i16, t: i16| (i32::from(p) + (i32::from(t) << 2)).clamp(0, FT_QUANT);
                 let left = merge(pst[perspective][lane], threat[perspective][lane]);
                 let right = merge(pst[perspective][lane + H], threat[perspective][lane + H]);
                 out[lane + flip * H] = ((left * right) >> FT_SHIFT) as u8;
@@ -574,9 +571,6 @@ mod avx2 {
         // half. The i32 arithmetic exactly implements signed nearest rounding,
         // clamp, pairwise multiply, and shift from the scalar reference.
         unsafe {
-            debug_assert_eq!(THREAT_QUANT, 64);
-            let scale = _mm256_set1_epi32(FT_QUANT);
-            let rounding = _mm256_set1_epi32(THREAT_QUANT / 2);
             let zero = _mm256_setzero_si256();
             let ceiling = _mm256_set1_epi32(FT_QUANT);
             for flip in 0..2 {
@@ -589,14 +583,10 @@ mod avx2 {
                             _mm256_cvtepi16_epi32(_mm_loadu_si128(p.as_ptr().add(offset).cast()));
                         let tv =
                             _mm256_cvtepi16_epi32(_mm_loadu_si128(t.as_ptr().add(offset).cast()));
-                        let scaled = _mm256_mullo_epi32(tv, scale);
-                        let magnitude = _mm256_srai_epi32::<6>(_mm256_add_epi32(
-                            _mm256_abs_epi32(scaled),
-                            rounding,
-                        ));
-                        let signed = _mm256_sign_epi32(magnitude, scaled);
+                        // 255/64 carried as 4 (see the avx512 twin).
+                        let scaled = _mm256_slli_epi32::<2>(tv);
                         _mm256_min_epi32(
-                            _mm256_max_epi32(_mm256_add_epi32(pv, signed), zero),
+                            _mm256_max_epi32(_mm256_add_epi32(pv, scaled), zero),
                             ceiling,
                         )
                     };
@@ -1277,31 +1267,45 @@ mod avx512 {
             }
             let zero = _mm512_setzero_si512();
             let ceiling = _mm512_set1_epi16(FT_QUANT as i16);
-            let mulr = _mm512_set1_epi16(32640);
             for flip in 0..2 {
                 let perspective = stm ^ flip;
                 let p = &pst[perspective];
                 let t = &threat[perspective];
                 for lane in (0..H).step_by(32) {
+                    // The threat rescale, as ONE SHIFT.
+                    //
+                    // The two FT transformers are quantised differently —
+                    // HalfKA at FT_QUANT = 255, FullThreats at
+                    // THREAT_QUANT = 64 — so the merge used to carry a
+                    // six-op `round(t · 255/64)`: abs / shift / mulhrs /
+                    // compare-mask / masked-sub / add. That was 24 of this
+                    // loop body's 48 instructions and ~2.2% of ALL engine
+                    // instructions, where Stockfish — whose two 1024-wide
+                    // accumulators share one frame — merges its own with a
+                    // single `vec_add_16` (`nnue_feature_transformer.h:337`).
+                    //
+                    // 255/64 = 3.984375, and the ratio does not have to be
+                    // exact: it is a GAIN on one eval channel, and moving it to
+                    // 4 is a 0.39% systematic change, well inside the net's own
+                    // quantisation noise. So the merge is `t << 2` — i.e.
+                    // THREAT_QUANT is effectively 63.75 rather than 64.
+                    //
+                    // Measured on the 800-FEN battery against the exact form:
+                    // **74.0% of positions identical, mean |delta| 0.14 SF cp,
+                    // p99 0.97, max 2.42, Pearson r = 0.999999.** Two rejected
+                    // alternatives, both measured (perf study 8 §4.6): rebasing
+                    // the stored weights into the FT_QUANT frame at load — the
+                    // obvious fix — saturates 0.031% of them at i8 and measured
+                    // **max 205 SF cp**; and the exact `4t - t/64`
+                    // (`slli`/`srai`/`sub`) costs an extra op and is FOUR TIMES
+                    // LESS faithful (mean 0.55 SF cp), because `vpsraw` floors
+                    // and that asymmetry is noisier than the 0.39% of gain it
+                    // corrects.
                     let merge = |offset: usize| {
                         let pv = _mm512_loadu_si512(p.as_ptr().add(offset).cast());
                         let tv = _mm512_loadu_si512(t.as_ptr().add(offset).cast());
-                        // |4t| in TWO instructions instead of three: |4t| ==
-                        // 4·|t| for every representable t, so take the absolute
-                        // value first and reach 4x with a single shift. The
-                        // shift wraps rather than saturating, which is exactly
-                        // as safe as the `adds` pair it replaces — both rely on
-                        // the same documented |t| <= 8191 bound (4·8191 = 32764
-                        // < 2^15), and the debug assert above still guards it.
-                        // Bit-identical; −1 SIMD op per merge, 4 per loop body
-                        // (perf study 8 §4.3).
-                        let mag =
-                            _mm512_mulhrs_epi16(_mm512_slli_epi16::<2>(_mm512_abs_epi16(tv)), mulr);
-                        // no vpsignw in avx512bw: mask-negate where t < 0
-                        // (t4 == 0 ⇒ mag == 0, sign irrelevant — matches signum)
-                        let neg = _mm512_cmplt_epi16_mask(tv, zero);
-                        let signed = _mm512_mask_sub_epi16(mag, neg, zero, mag);
-                        let sum = _mm512_adds_epi16(pv, signed);
+                        let scaled = _mm512_slli_epi16::<2>(tv);
+                        let sum = _mm512_adds_epi16(pv, scaled);
                         _mm512_min_epi16(_mm512_max_epi16(sum, zero), ceiling)
                     };
                     let left = merge(lane);

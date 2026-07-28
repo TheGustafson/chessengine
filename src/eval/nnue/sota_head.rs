@@ -118,6 +118,13 @@ pub const ZERO_PSQT: PsqtPair = [[0; BUCKETS]; 2];
 pub(crate) const FT_QUANT: i32 = 255; // FT activation clamp ceiling / QA
 /// Quantization scale of the separately exported FullThreats transformer.
 /// CENN-v2 fixes this as an architecture constant so its weights fit in i8.
+///
+/// The RUNTIME carries the `FT_QUANT / THREAT_QUANT` frame ratio as exactly 4
+/// rather than 255/64 = 3.984375 — a 0.39% gain change on the threat channel
+/// that turns a six-op per-lane rescale into one shift (perf study 8 §4.6).
+/// This constant therefore documents the EXPORT frame, and is no longer read
+/// by the merge; `#[allow(dead_code)]` keeps it as the format's record.
+#[allow(dead_code)]
 pub(crate) const THREAT_QUANT: i32 = 64;
 pub(crate) const L1_QUANT: i32 = 64; // L1 weight scale / QB
 pub(crate) const FT_SHIFT: i32 = 9; // pairwise-multiply right shift
@@ -220,13 +227,11 @@ pub fn policy_trunk(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color) -
 #[cfg(test)]
 #[inline]
 fn merge_transformers(pst: i16, threat: i16) -> i16 {
-    let scaled = i32::from(threat) * FT_QUANT;
-    let rounded = if scaled >= 0 {
-        (scaled + THREAT_QUANT / 2) / THREAT_QUANT
-    } else {
-        (scaled - THREAT_QUANT / 2) / THREAT_QUANT
-    };
-    (i32::from(pst) + rounded).clamp(0, FT_QUANT) as i16
+    // One shift: the 255/64 frame ratio is carried as 4 (a 0.39% gain change
+    // on the threat channel), which is what every SIMD backend emits and what
+    // the 800-FEN fidelity check measured at mean 0.14 SF cp (study 8 §4.6).
+    let scaled = i32::from(threat) << 2;
+    (i32::from(pst) + scaled).clamp(0, FT_QUANT) as i16
 }
 
 /// Indices of the 4-byte groups (of `L1/4`) holding any nonzero activation
