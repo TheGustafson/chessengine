@@ -1005,6 +1005,49 @@ these fourteen, at this resolution, on the corpus that predicts games.
 - Single-parameter moves cannot find interactions. A joint optimum can sit where
   every one-at-a-time step is uphill; that is what SPSA is for.
 
+## 5e. THE PHASE CORPUS IS THE RIGHT POPULATION BUT UNDERPOWERED
+
+A 522-arm coarse ranking pass (`--limit 1500`) over every plausibly
+strength-relevant tunable produced **78 of the first 106 arms "better", best
+−2.40 cp**. That is not credible against §5d, where every ±25% arm on the central
+knobs was worse at full power. So I checked it with a control, and the control
+killed it:
+
+| arm | cp@16k | cp@64k | top-1 |
+|---|---|---|---|
+| `RED_BASE` **1027 → 1028** (a +1 change) | **−1.13 ± 0.83** | +0.36 ± 1.01 | 51.7% |
+| `RED_BASE` 1027 → 1284 (+25%) | −0.39 ± 0.92 | **−0.22 ± 1.00** | 52.3% |
+
+Two things follow, and both are fatal to the sweep:
+
+- **A ±1 change reads −1.13 cp** — the same magnitude as every "best" arm in the
+  ranking. Nothing in that top-14 list is separable from a semantically trivial
+  perturbation.
+- **`RED_BASE` +25% reads −0.22 at `--limit 1500` and +1.55 at `--limit 0`.** The
+  coarse limit does not merely lose power, it **flips signs**.
+
+**Root cause, and it is not a bug — it is corpus power:**
+
+| corpus | control cp | n | paired sem |
+|---|---|---|---|
+| openings (`oracle-obs`) | 6.72 | 9,992 | **0.15** |
+| phase (`oracle-phase-clip`) | 15.0 | 3,352 | **~0.55** |
+
+3× fewer positions (√3 = 1.7×) and 2.2× the cp variance, because the positions
+are genuinely harder and full of near-equal moves — the chaotic regime of §3j.
+1.7 × 2.2 ≈ 3.7, and 0.15 × 3.7 = 0.55. The arithmetic closes.
+
+**So the phase corpus is the right population (§5c proved that against games) and
+simultaneously too small to rank tunables on.** That is the honest state of the
+instrument, and it is why the sweep was retired rather than mined.
+
+**Fix in flight:** `oracle-phase2`, 12,000 positions from both matches
+(11.4 / 19.1 / 29.9 / 39.5% across the four phase buckets), which should give
+~0.28 cp sem — the openings corpus's power on the correct distribution. The build
+was also 4× too slow for a stupid reason: every move-search is preceded by
+`ucinewgame` for reproducibility, and clearing a **128 MB** hash dominated
+everything. At 16 MB the searches are the cost again.
+
 ## 6. INSTRUMENT BUGS FOUND TONIGHT (five, all mine)
 
 1. **Bound lines read as scores.** `uciprobe` matched `score cp X upperbound`

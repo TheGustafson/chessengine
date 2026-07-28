@@ -100,7 +100,10 @@ def collect(patterns, per_game, seed):
 def worker(chunk):
     import chess
 
-    sf = Engine(SF, net=None, hash_mb=128, name="sf18")
+    # 16 MB, not 128: every move-search is preceded by ucinewgame (cold TT for
+    # reproducibility), and clearing 128 MB dominated the build -- 3,350
+    # positions took ~2 h where the searches themselves are a fraction of that.
+    sf = Engine(SF, net=None, hash_mb=16, name="sf18")
     res = []
     for fen in chunk:
         b = chess.Board(fen)
