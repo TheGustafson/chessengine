@@ -800,6 +800,52 @@ reproduce the thing it claims to reproduce?* A control that validates the
 comparison is not the same as a control that validates the apparatus, and this
 mode needed both.
 
+## 3m. THE SCREEN'S BUDGET IS AS WRONG AS ITS POPULATION WAS — §3g OVERTURNED
+
+Two more parities first, both measured tonight:
+
+- **Static eval at the root: parity** in every phase (§3e).
+- **Qsearch at the leaves: parity.** rho against deep truth at depth 1 (the
+  qsearch-dominated probe) is 0.821 / 0.705 / 0.863 / 0.900 against Stockfish's
+  0.835 / 0.733 / 0.871 / 0.907 — gaps of −0.03 to −0.007. At depth 4 we are
+  AHEAD in three of four buckets. So nothing the search *computes* is behind.
+
+That leaves tree shape. Measuring depth AND top-1 together at two budgets, same
+corpus, same method:
+
+| pieces | Δdepth @12.5k | Δtop-1 @12.5k | Δdepth @200k | **Δtop-1 @200k** |
+|---|---|---|---|---|
+| 21+ | −0.38 | −1.0 | **+0.14** | **+1.5** |
+| 13–20 | −0.43 | −5.0 | −0.32 | **+2.0** |
+| 8–12 | −1.05 | −5.5 | −0.75 | **−7.0** |
+| ≤7 | −0.81 | −5.5 | −0.36 | −2.5 |
+
+**At 200k nodes we match or beat Stockfish in the middlegame and lose at 8–12
+pieces.** At 12,500 we lose everywhere. The verdict flips with budget.
+
+**So §3g is overturned.** "Our search is weakest in the middlegame (+2.81 cp at
+21+)" was measured at 12,500 nodes — where we reach depth **9.9**, against the
+17–20 our real games reach at 10+0.1. The screen's budget describes a different
+engine than the one that plays.
+
+**On the numbers that survive** (n=200/bucket, so a 7-point top-1 gap is ~2σ and
+a 2-point one is not): the only clear deficit at a realistic budget is **8–12
+pieces, −7.0 top-1 and −0.75 plies**. The middlegame reversal is inside noise;
+the honest statement there is parity.
+
+**And that finally agrees with the corpus.** §1 measured our win-probability loss
+per move as highest below 21 pieces (0.31 per 100 at ≤7, 0.19 at 13–20, against
+0.06 at 21+), and §3i put 13 of 44 decidable errors in the 8–12 and ≤7 buckets
+despite those being only 36% of our moves. Two instruments that disagreed under
+the 12,500-node lens agree at 200k.
+
+**The instrument lesson, which is the same one twice.** The screen was wrong
+about WHERE we play (100% openings, §1) and it is wrong about HOW HARD we think
+(12,500 nodes against a real 100k–1M). Both distort the same way: they describe a
+regime we do not play in. `--budgets` exists and its own help text warns that "a
+real bullet move at 8+0.08 gets ~1.3M nodes on this box, 26× the 50k default" —
+the warning was in the tool and I read past it for most of the night.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
