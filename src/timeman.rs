@@ -67,6 +67,19 @@ crate::tunables! {
 
     /// Sudden-death `opt_scale`: `min(0.012112 + (ply + 3.22713)^0.46866 *
     /// opt_constant, 0.19404 * time / time_left) * original_time_adjust`.
+    ///
+    /// DOSE WARNING (measured 2026-07-27). This is only the CONSTANT term, and
+    /// the ply term outgrows it immediately: at 10+0.1 the base is 42% of
+    /// `opt_scale` at ply 10, 32% at ply 30, 30% at ply 40. So moving this knob
+    /// alone changes the actual per-move allocation by roughly a THIRD of the
+    /// percentage applied — a "−15%" arm is a −5% experiment, which is how a
+    /// first attempt at correcting a measured 13.7% overspend came out
+    /// under-dosed by 2.5x.
+    ///
+    /// To scale the whole sudden-death allocation uniformly, move this together
+    /// with `OPT_CONSTANT_BASE`, `OPT_CONSTANT_LOG_COEFF` and
+    /// `OPT_CONSTANT_CAP`. The same applies to an SPSA campaign: perturbing
+    /// this one alone explores a much smaller range than its `c_end` suggests.
     pub OPT_SCALE_BASE: f64 = 0.012112;
     /// opt_scale ply-curve offset.
     pub OPT_SCALE_PLY_OFFSET: f64 = 3.22713;
