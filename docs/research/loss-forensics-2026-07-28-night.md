@@ -735,11 +735,42 @@ preferences learned earlier in the game mis-order moves later. That is testable
 with the history-update knobs (bonus, malus, decay numerators, the continuation
 divisor) against the 18-versus-10 target, with a null arm to keep it honest.
 
-**Why this one is worth believing when nothing else tonight was:** it is the only
-result that survived a null panel. The gate hypothesis died because inert ±1
-changes matched the real arms; here the comparison is not between parameter
-values at all — it is the same binary on the same positions at the same depth,
-differing only in what it was allowed to remember.
+### RETRACTED — the replay harness does not reproduce the game
+
+I ran two more controls and the second one killed it.
+
+**The selection control passed, impressively.** On positions where the game
+played the ORACLE's move (n=44), cold agrees 37/44 and replay only 20/44.
+Selection predicts the opposite (replay mimics the condition that was right), so
+the 18-vs-10 gap was not selection. The effect looked real and large.
+
+**The fidelity control killed it.** On the error set the game played a specific
+WRONG move in each position. If the replay carried the game's state, it should
+reproduce that move more often than a cold search does:
+
+| | reproduces the game's actual move |
+|---|---|
+| cold | **17/44 = 39%** |
+| replay | **8/44 = 18%** |
+
+**The replay reproduces the game's move LESS often than a cold search.** It is
+not a state-carrying version of the game; it is a third condition. So
+"84% → 45%" measures my harness, not the engine, and every number in this
+section is withdrawn.
+
+**Why the harness was wrong:** it searched every preceding move at the TARGET
+position's depth. In a real game the early moves get far less depth, so the
+replay did much more search, accumulated much more history and churned a 16 MB TT
+far harder than the game ever did. `tools/forensics/state_effect.py` replays each
+move at the depth the PGN records FOR THAT MOVE and re-runs both controls; until
+its fidelity number is good, there is no state finding.
+
+**The lesson worth keeping.** The selection control passing made this look solid,
+and I nearly wrote it up as the night's one survivor. What saved it was asking a
+question about the INSTRUMENT rather than the hypothesis: *does my replay
+reproduce the thing it claims to reproduce?* A control that validates the
+comparison is not the same as a control that validates the apparatus, and this
+mode needed both.
 
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
