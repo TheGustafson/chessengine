@@ -9,58 +9,58 @@ one, the earlier one is named and withdrawn.
 
 ---
 
-## 0. THE MODEL — every failure mode, and what each one needs
+## 0. THE MODEL — every failure mode, what it needs, and how sure I am
 
-Gap to SF18 at 10+0.1: **−171 to −191 Elo**. Decomposed, all terms measured:
+Gap to SF18 at 10+0.1: **−171 to −191 Elo**.
 
-| term | Elo | how measured | what it needs |
-|---|---|---|---|
-| **Equal-node move quality** | **~78** | +1.30 cp weighted over phases, §3c/§3g | **Mechanism, not tuning** — 15 ±25% arms all worse (§5d) |
-| **Speed** — 1.24–1.51× NPS, 1.45–1.66× instructions/node | **~51–70** | quiet box, startup differenced out, §3b-QUIET | Per-node cost engineering |
-| Residual — TM, conversion | ~30–50 | by subtraction | TM: we reach move 45 with 35% of their clock (§2) |
+### ESTABLISHED — measured, controlled, and survived a null or a bias check
 
-**Where each thing lives:**
-
-| question | answer | evidence |
+| finding | size | why it is solid |
 |---|---|---|
-| Where is our search weakest? | **8–12 pieces** — −7.0 top-1 and −0.75 plies at a realistic 200k budget. The middlegame is **parity** (+1.5 / +2.0) | §3m |
-| Where do errors cost most? | **Endgame.** 0.31 wp lost per 100 moves at ≤7 vs 0.06 at 21+ | §1 |
-| Is the static eval behind? | **No — parity in every phase**, slightly ahead at ≤7 | §3e |
-| Is the QSEARCH behind? | **No — parity.** rho gaps −0.03 to −0.007 at depth 1; ahead in 3 of 4 buckets at depth 4 | §3m |
-| Is any pruning gate the culprit? | **No.** Refuted twice, independently | §5, playbook §14 |
-| Is it the clock? | Real deficit, but **not** the blunder mechanism | §2 |
-| Is it tunables? | **Unresolved.** The ±25% sweep said local optimum, but at 12,500 nodes — the wrong regime | §5d caveat, §3m |
-| **Was the instrument right?** | **No, twice.** Wrong population (100% openings) AND wrong budget (12.5k vs a real 100k–1M) | §1, §3m |
+| **The tuning instrument sampled the wrong POPULATION** — 100% openings, while 64% of our moves are below 21 pieces and our wp loss per move there is 5× higher | — | Needs no oracle. Confirmed against games: it false-positived the whole pfut family at 4σ while the phase corpus agreed with 1,483 games (§1, §5c) |
+| **…and the wrong BUDGET** — 12,500 nodes reaching depth 9.9, where our games reach 17–20 | — | Arithmetic, plus a measured verdict flip between budgets (§3m/§3q) |
+| **Speed**: SF runs 1.24–1.51× our NPS, we execute 1.45–1.66× the instructions per node, our IPC is 15–17% BETTER | **~51–70 Elo** | Quiet box, startup differenced out, cycles/node ratio matches the NPS ratio exactly. Our 1108k at 21+ matches the known V-768 idle figure (§3b-QUIET) |
+| **Eval is at parity or better — static AND qsearch, in every phase** | ~0 | Scored against SF's own deep search, which favours SF, and we still drew level. Conservative (§3e, §3r) |
+| **Time management misallocates ~1.29 s** — 82.1% of budget burned by move 33 against SF's 72.4%, while 87% of our wp loss is after move 33 | **~38–44 Elo** (estimate) | Arithmetic on a per-game clock reconstruction. Elo conversion is order-of-magnitude, and one game datum pushes back (§3p) |
+| **Move choice is CHAOTIC in parameters** on the positions we get wrong — a ±1 change to an unrelated constant flips 13–20% of them | — | Null panels; and the dither that amplifies it is exact SF parity (§3j, §6b) |
+| **The error census**: 278 verified errors → 218 already-lost, **44 decidable** (66% depth-fixable, 23% search-rejects, 11% eval) | 0.51% of moves | Cold 1M oracle with a passing positive control (§3i) |
 
-**The one-sentence model:** everything our search *computes* is at parity — the
-static eval at the root and the qsearch at the leaves — but our search costs
-~1.5× more instructions per node, and at a realistic budget it converts those
-nodes into correct moves as well as Stockfish's in the middlegame and
-**7 points worse at 8–12 pieces**, while our clock policy pushes what remains
-into the endgame, where each error costs the most win probability.
+### UNCERTAIN — measured, then undermined by an instrument fault
 
-**What that rules out:** better nets (eval is at parity in every phase), more
-depth (the gap does not shrink with 16× nodes), and tuning the central pruning
-knobs (all worse). **What it points at:** per-node cost, and structural search
-mechanisms Stockfish has that we do not — ordering, extensions, what gets
-searched rather than how much.
+| claim | status |
+|---|---|
+| "Equal-node move quality is worth ~78 Elo" | Priced at 12,500 nodes on the openings corpus — **both** now known wrong. The unbiased replacement is wp loss: **0.005/move vs SF's 0.003**, no error bars yet |
+| "Our search is weakest in the middlegame" (§3g) | Same wrong budget/population. Withdrawn-adjacent |
+| "At 200k we match SF in the middlegame" (§3m) | **Withdrawn.** Top-1 against an SF oracle rewards being SF: +15.1 points of swing for SF vs +5.2 for us when the oracle deepened (§3q) |
+| "The 14 central knobs are at a local optimum" (§5d) | Measured at the wrong budget. Unresolved |
 
-**And the constraint that governs all of it (§3j):** on the positions where we
-make decidable errors, **our move choice is chaotic with respect to parameters** —
-a ±1 change to an unrelated constant moves the outcome as much as removing a
-whole pruning gate. So tuning cannot target specific failures, only shift the
-distribution the coin flip is drawn from. That is why single-position debugging,
-gate attribution and a 4σ screen result all came to nothing tonight, and it is
-why the two surviving levers are both non-parametric:
+### RETRACTED — six, all mine
 
-| lever | size | state |
-|---|---|---|
-| **Threat channel** (D49) — 1.482× speed in the middlegame | **~68 Elo** | speed side measured tonight; eval side needs a threats-free net at the same width |
-| **Structural search mechanisms** — ordering, extensions | part of ~78 Elo | localized (§3f, §3i), not yet named |
+2× NPS deficit · corpus blind to game 18 · the RFP attribution · the pfut
+relaxation (4σ screen, 0 Elo over 1,483 games) · the carried-state effect (its
+replay reproduced the game **less** than a cold search) · §3m.
 
-The corpus says the same thing independently: **two thirds of decidable errors
-are depth-fixable** (§3i). Make the search see more per second and the
-distribution improves. Nothing else on the table does.
+### WHAT NEEDS TO CHANGE, ranked by evidence × size
+
+1. **Time management** — spend less before move 33. ~38 Elo, favourable trade
+   (the time comes from where we already match SF), tunable today.
+   **A timed 1,400-game match is running now** on `OPT_SCALE_BASE ×0.5`, verified
+   to cut 22% early / 30% mid / 19% late.
+2. **Per-node cost** — 1.45–1.66× SF's instructions, of which the threat channel
+   is 1.482× in the middlegame (~68 Elo of speed). The eval side of that trade
+   has never been isolated; **a threats-free net at the same width** is the one
+   experiment that settles D49.
+3. **The instruments themselves** — nothing downstream is trustworthy until the
+   screen uses a phase-representative corpus at a realistic budget, judged by
+   LOSS rather than agreement. Two SF-parity deviations currently rest on the
+   old instrument (§3n).
+
+### WHAT DEMONSTRABLY DOES NOT NEED TO CHANGE
+
+The net (parity or better in every phase, and D48X's equal-time −12.6 ± 17 is
+what that predicts) · the pruning gates (refuted twice, independently) · NMP,
+the dither, movepick structure, rule50 handling (all exact SF parity) · qsearch
+(parity).
 
 ---
 
