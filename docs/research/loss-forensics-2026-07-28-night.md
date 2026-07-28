@@ -1168,6 +1168,61 @@ What remains is the search's use of an eval that is demonstrably as good as
 Stockfish's, and every structural component compared so far — gates, NMP, the
 dither, movepick staging, rule50, qsearch — is at exact SF parity.
 
+## 3v. TWO THINGS CALLED "THREATS", AND THE PROFILE RANKS THEM 5:1
+
+The structural audit (2026-07-27) flagged `Board::set_threats` as a real
+deviation: it runs from `set_check_info` on **every** `make_move`, including
+every qsearch node, doing ~6 magic slider lookups — and **qsearch never reads
+it**, so a large share of that work is provably discarded. Its recommended fix is
+"make it lazy — pure speed, node-identical, eval-identical."
+
+That is correct and still un-actioned, but the profile sizes it much smaller than
+the other thing with the same name:
+
+| cycles | what |
+|---|---|
+| 20.88% | `sota_threats::ThreatContext::at_full` — the **NNUE FullThreats** accumulator fold |
+| 3.87% | `sota_threats::record_square_touch` |
+| 0.97% | `sota_threats::record_targets` |
+| **25.7%** | **NNUE threat channel, total** |
+| 4.86% | `Board::make_move_with` — `set_threats` is inlined here, so the **board** threat map is *at most* this, and less |
+
+**The NNUE threat channel costs at least 5× the board threat map.** Making
+`set_threats` lazy is worth under 4.86% of NPS (≲7 Elo at 120/doubling) — real,
+free, and worth doing, but it is not the lever. The lever is the 25.7%, which is
+the D49 question.
+
+Worth stating because the names invite the confusion: the audit's "threat map is
+eager" item and tonight's "threat channel costs 1.482× in the middlegame" are
+**different code paths**, and only the second is order-50-Elo.
+
+---
+
+## 3w. WHAT ACTUALLY NEEDS TO CHANGE — the list, after everything refuted
+
+| # | change | size | state |
+|---|---|---|---|
+| 1 | **Remove the NNUE FullThreats channel** (D49) | **~68 Elo** of speed in the middlegame | Speed side measured. Eval side needs a threats-free net at the same width — blocked on 22 GB of disk and a feature-set design decision, not a config flag |
+| 2 | **Make `Board::set_threats` lazy** | ≲7 Elo | Node-identical and eval-identical by construction. Documented 2026-07-27, un-actioned, safe |
+| 3 | **Fix the instruments** | unlocks everything downstream | Phase-representative corpus (built) at a realistic budget (200k, not 12.5k), judged by LOSS not agreement (§3q). Two SF-parity deviations currently rest on the old one (§3n) |
+
+**And the list of things that demonstrably do NOT need to change**, each closed by
+measurement rather than argument:
+
+| ruled out | how |
+|---|---|
+| the net | parity or better across positions (§3e), at qsearch leaves (§3m), and within a position's move list (§3u) — three independent measurements, each against a reference that favours Stockfish (§3r) |
+| pruning gates | refuted twice independently; a ±1 null matches every real arm (§5, §3j) |
+| time management | correctly-built arm, verified mechanism, −23 Elo over 269 games; and the premise came from an already-lost-contaminated column (§3s) |
+| conversion | ≥+2 ⇒ ≥+5 for both engines; we convert what we get, we just reach it 8% of the time against 48% (§3t) |
+| NMP, the dither, movepick staging, rule50, history geometry | exact SF parity, verified against `eca43a97` |
+| depth-limitation | headroom flat over a 16× node range (§3f) |
+
+**What is left unexplained** is a uniform ~0.002 wp/move deficit at equal nodes
+with an eval at parity and every compared structure identical. That is either the
+accumulation of many sub-parity differences, or something not yet compared — and
+it is the honest edge of the model, not a gap I can name.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
