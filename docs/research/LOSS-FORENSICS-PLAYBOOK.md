@@ -898,3 +898,90 @@ adjudicated here, only **2** had an oracle stable across 400k/1.6M/8M
 (`g35p98`, 276 cp; `g24p14`, 82 cp, where ARCHON never finds the move at any
 budget to 3.2M and SF18 has it at 25k). One 120-game match does not contain
 enough of them. Get more games first.
+
+---
+
+## 15. The 2026-07-28 NIGHT session — the population defect, and five more lying probes
+
+Full write-up: `docs/research/loss-forensics-2026-07-28-night.md`. The headline
+belongs here because it invalidates the instrument the rest of this playbook
+leans on.
+
+### 15.1 THE SCREEN CORPUS IS 100% OPENINGS
+
+`tools/nnue/calib/oracle-obs.json` — behind every tunable screen ever run here
+— is 9,992 positions, **all 21+ pieces**, all around move 6–8. Three
+unconfounded statements about what that misses:
+
+- **64% of the moves we play are below 21 pieces** (n = 22,828, all games, both
+  matches, no outcome conditioning, no error attribution). The corpus is 0%
+  there.
+- **Win probability lost per 100 moves: 0.31 at ≤7 pieces, 0.19 at 13–20,
+  against 0.06 at 21+.** A rate, so exposure is divided out. A 5× error rate in
+  the phase the instrument cannot see.
+- 80% of our losses are decided in the endgame (`match_report`, corpus-v2), at
+  depth 14.7 against the winner's 16.7.
+
+It is not low power, it is the wrong population, and the difference matters:
+`hind111` came back **+0.03 ± 0.15 cp** — a flat nothing at full power — on a
+change worth **−17.4 Elo**. A corpus that cannot see 17 Elo is not weak.
+
+**Fix:** `tools/forensics/build_oracle.py` samples from our own games uniformly
+across each game (all results — conditioning on losses would bias every future
+screen), scores every legal move at the same 4k/16k/64k tiers, and emits the
+schema `screen.py --oracle` already accepts.
+
+### 15.2 Five more probes that were lying — all mine
+
+1. **Bound lines read as exact scores.** `uciprobe` matched
+   `score cp X upperbound`. Harmless for a depth ladder (the last line of a
+   completed depth is exact), fatal for a node-limited search, whose final
+   iteration is normally cut off mid-window. A position worth −228 read as −40.
+   Fixed; the `BOUND` filter is in `uciprobe.py` and must stay.
+2. **Cold vs warm TT.** `harvest.py` analyses unrestricted-then-forced back to
+   back, so the forced search inherits a TT warmed on that exact position: 212
+   cp warm, 0 cold, same 100k budget. Its verdicts are order-dependent.
+3. **A hand-typed control.** Three of eight gate "defaults" were invented
+   (`NMP_R_BASE` 4658 for 7, `RED_TABLE_NUM` 1155 for 2834, `LMP_BASE` 3387 for
+   3). Every delta in the resulting table was meaningless while looking
+   perfectly quantitative. **Read defaults from `<engine> tunables`. A control
+   you typed is not a control.**
+4. **MultiPV confound.** An SF ladder at MultiPV 6 compared against ours at
+   MultiPV 1. MultiPV gives every root move a full window and surfaces
+   refutations plies earlier; that alone manufactured an "11-ply gap".
+5. **Cumulated per-move means.** Averaging time-spent at move N across games of
+   different lengths and summing gives a *negative* time-left column. Clocks
+   must be simulated per game.
+
+### 15.3 NEW TRAP — in a UHO match, our own eval measures the BOOK first
+
+"The ply where our eval first drops below −3" looks like a decisive-moment
+detector. On corpus-v2 it reports 74% of losses decided at 21+ pieces and 50%
+by move 20 — the exact opposite of every other instrument. It is measuring the
+opening book: **in games we lose, our eval at our FIRST move out of book
+(median move 8) is already median −2.20, with 92% between −3 and −1.** UHO hands
+us the losing side. Any threshold on our own eval in a UHO match dates the book,
+not our play. Use an oracle asked about each move *given* its position.
+
+### 15.4 Single positions vs aggregates — the score this session
+
+Every single-position result that got checked against an aggregate was
+overturned: the RFP attribution (aggregate: no gate is systematic), the
+"11-ply gap" (instrument), `onlyMULT.64` helping game 18 while being the wrong
+direction on corpus, and a 78%-larger-tree reading on one middlegame position
+that became **0.95×** over 60 positions. Meanwhile the null panel showed
+`PFUT_BASE 40→41` "fixes" game 18 as well as a real change does.
+
+**Rule: a single position may propose a mechanism. It may never measure one.**
+
+### 15.5 What the night produced that is worth acting on
+
+- **`pfut` relaxation** — five arms ordered exactly by how much they relax the
+  parent-futility bound; the only tightening arm is the only loser and the only
+  one that fattens the tail. Best arm halves the blunder rate (0.2% → 0.1%) at
+  no node cost (0.95× over 60 positions). Under SPRT.
+- **A 2× NPS deficit against SF18, worst at ≤7 pieces (2.01×)**, in the phase
+  that decides 80% of our losses — with no small net on their side
+  (`eca43a97` has none). Provisional pending a quiet box.
+- The dimensional rule **locates candidates but does not predict signs**: the
+  arm built to falsify it beat every arm it proposed.
