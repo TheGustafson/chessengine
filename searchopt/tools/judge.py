@@ -61,15 +61,24 @@ def best_move(eng, fen, nodes):
 def forced_score(eng, fen, move, nodes):
     """The judge's own value for `move`, in the judge's own units, mover POV.
 
-    One root move + full window => the printed score is a value, not a bound.
-    Returns None if the engine emitted no usable info line (illegal move, mate
-    already on the board, ...) so the caller can drop the position rather than
-    silently score it 0.
+    PLAY THE MOVE AND SCORE THE CHILD, negated -- do NOT use `searchmoves`.
+
+    The obvious implementation is `go searchmoves <move>`, and it silently
+    produced garbage on 2026-07-28: **Reckless ignores `searchmoves` entirely**
+    (verified -- `go searchmoves h3h4` returns bestmove d5c4), so both candidate
+    moves came back with the IDENTICAL score and every non-zero delta the tool
+    reported was really TT warmth between the two probes. ARCHON and SF18 do
+    honour it; the neutral judge, the only one that mattered, did not.
+
+    Scoring the child position needs nothing but a plain `go`, so it is correct
+    for every engine, and the judge applies the move itself (we have no board
+    library here). The child is scored from the OPPONENT's point of view, hence
+    the negation.
     """
-    r = eng.go(fen=fen, nodes=nodes, searchmoves=[move])
+    r = eng.go(fen=fen, moves=[move], nodes=nodes)
     if not r["ladder"]:
         return None
-    return r["ladder"][max(r["ladder"])]["score"]
+    return -r["ladder"][max(r["ladder"])]["score"]
 
 
 def main() -> int:

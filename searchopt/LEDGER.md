@@ -212,9 +212,53 @@ the same budget toward critical lines, which is the only shape left that can win
 | arm | result |
 |---|---|
 | `corrgate` — the two disabled ARCHON-original conditioning terms `RAZOR_CORR_DIV` / `NMP_CORR_DIV` switched on at SF's RFP divisor 182069 | **−17.1 [−51.2, +16.7]**, n=406, 30k nodes self-play. Arm-verified live first. Dead |
-| `setrigger` — SE trigger margin frame-scaled (`SE_BETA_MULT` 60→32, `SE_BETA_TTPV_MULT` 70→38) | running |
+| `setrigger` — SE trigger margin frame-scaled (`SE_BETA_MULT` 60→32, `SE_BETA_TTPV_MULT` 70→38) | **−16.3 [−50.4, +17.5]**, n=406, 30k nodes. No gain. NOTE the budget is a flaw: the mechanism is 0 at depth 6 and +2.51 at depth 12, so 30k (~d11) under-samples it. `redcorr110k` re-tests the family at the in-game budget |
+| `redcorr110k` — `RED_CORR_DIV` 26131→7029 (mechanism +0.52 plies) at **110k** nodes | running |
 
-## THE NEUTRAL-JUDGE ARM CAME BACK NULL (2026-07-28)
+## THE NEUTRAL-JUDGE ARM — RETRACTED, THE INSTRUMENT WAS BROKEN (2026-07-28)
+
+**RETRACTION.** The first `judge.py` run is void and its numbers must not be used.
+`forced_score` used `go searchmoves <move>`, and **Reckless — the only NEUTRAL judge,
+the whole point of the design — ignores `searchmoves` entirely.** Verified directly:
+`go searchmoves h3h4` on a position whose free best is `d5c4` returns **bestmove
+d5c4**. ARCHON and SF18 honour it; Reckless does not.
+
+So both candidate moves were handed to Reckless as the same unrestricted search, came
+back with the IDENTICAL score, and every non-zero delta the tool printed for that row
+was **TT warmth between the two probes**, nothing else. Caught only because the
+first-probe fix (reset between probes) turned those deltas into a run of exact zeros.
+
+Retracted with it: the reported "the two biased judges bracket the neutral one, so the
+method works". The neutral row was noise, so there was nothing to bracket.
+
+**The null is what caught this.** It read 41–45% instead of 50%, which I first
+attributed only to probe ordering. The ordering fix removed the noise and exposed that
+the underlying signal was zero. An instrument whose null misses by 6 points is telling
+you something structural, not something cosmetic.
+
+**Fix, and the general lesson:** score the CHILD position (`position fen … moves <mv>`
+then a plain `go`, negated) instead of restricting the root. That needs nothing but
+`go`, so it is correct for every engine, and it does not depend on an optional UCI
+feature a third-party engine may silently skip. Re-verified live: deltas −4/+11/+44/−42
+where the broken version gave 0/0/0/0.
+
+**Never assume a third-party engine implements an optional UCI feature — make it
+demonstrate it.** One probe (`does bestmove equal the move I forced?`) would have
+caught this before the first run instead of after it.
+
+Superseded numbers, kept only so nobody re-derives them: reckless 44.2% null / 47.4%
+arm, sf18 41.0% / 51.3%, archon 44.9% / 45.0%, n=80 pairs.
+
+### Re-run with the fixed instrument: RUNNING
+(null 160 pairs, arm 340 pairs, 2,473-position plateau set, judges at 1M nodes)
+
+### The power point stands regardless
+At n=80 pairs the se is ~5.7 points per cell, so a TRUE 55% rate would have been
+invisible — and 55% on the 32% of positions where the two engines disagree, compounded
+over ~40 moves a game, is easily worth 50 Elo. The original run was underpowered even
+before it was broken. Hence 340 pairs.
+
+## (VOID — superseded above) THE NEUTRAL-JUDGE ARM CAME BACK NULL (2026-07-28)
 
 `judge.py`, 80 disagreement pairs from 248 plateau positions, both engines at 110k,
 each candidate move then scored under forced `searchmoves` at 1.5M by three judges.
