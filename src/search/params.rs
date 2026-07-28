@@ -447,6 +447,19 @@ crate::tunables! {
     pub RED_UNIT: i32 = 1024;
     /// Flat rebase added to every finalized reduction (§3.7).
     pub RED_FLAT: i32 = 714;
+    /// Reduction rebate (in 1024ths of a ply) for a move that GIVES CHECK.
+    ///
+    /// 2026-07-28 trace finding: on the game-1 mating node the search debugger
+    /// found 244 rows whose move gives check, **zero** extended, and a median
+    /// final reduction of +180 on them — while the forced mate sits 8 plies
+    /// away in a node that has depth 9 available. The plies exist; they are
+    /// spent reducing the most forcing line on the board. Stockfish has no
+    /// check term in its LMR accretion either, so this is an ARCHON experiment
+    /// rather than a parity fix.
+    ///
+    /// DEFAULT 0 — the default build is bit-identical and the `Bench:` pin is
+    /// untouched. Only a `--features tune` build can move it.
+    pub RED_GIVES_CHECK: i32 = 0;
     /// Per-move-count reduction discount `r -= RED_MOVECOUNT * move_count`: later
     /// moves in the list reduce a little less than the raw log table implies
     /// (they were tried later precisely because ordering distrusted them, §3.7).

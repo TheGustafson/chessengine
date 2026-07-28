@@ -3558,6 +3558,15 @@ impl Worker {
                             + params::RED_TTPV_TTDEPTH_CUT() * i32::from(cut_node));
             }
             r += params::RED_FLAT();
+            // Checking-move reduction rebate (2026-07-28 trace finding, D48).
+            // On the game-1 mating node (`4brk1/.../6K1 w - - 0 27`) the tracer
+            // found 244 rows whose move GIVES CHECK, ZERO of them extended, and
+            // a median final reduction of +180 on them. The mate is 8 plies away
+            // and the node has depth 9 available, so the plies exist — they are
+            // spent on reducing the forcing line. SF has no check term here
+            // either, so this is an ARCHON experiment, not a parity fix.
+            // DEFAULT 0 ⇒ bit-identical to before; only a tune build can move it.
+            r -= params::RED_GIVES_CHECK() * i32::from(gives_check);
             r -= params::RED_MOVECOUNT() * move_count;
             // Correction slackening (design/10 §3.7, Wave-F item 21): an
             // uncertain eval (large |correction_value|) reduces a touch LESS.

@@ -31,6 +31,7 @@ import argparse
 import json
 import os
 import subprocess
+from math import comb
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -56,20 +57,33 @@ def find_depth(best_by_depth, oracle):
     return None
 
 
-def measure(eng, tag, fen, played, oracle, depth):
+def measure(eng, tag, fen, played, oracle, depth, nodes=None):
     eng.newgame()
-    g = eng.go(fen=fen, depth=depth, searchmoves=[played])
+    g = eng.go(fen=fen, depth=None if nodes else depth, nodes=nodes,
+               searchmoves=[played])
     lad = {d: to_sf_frame(g["ladder"][d]["score"], tag) for d in g["ladder"]}
     eng.newgame()
-    f = eng.go(fen=fen, depth=depth)
+    f = eng.go(fen=fen, depth=None if nodes else depth, nodes=nodes)
     best = {d: f["ladder"][d]["move"] for d in f["ladder"]}
-    nodes = f["ladder"][max(f["ladder"])]["nodes"] if f["ladder"] else 0
+    nodes_used = f["ladder"][max(f["ladder"])]["nodes"] if f["ladder"] else 0
+    # AUC: mean forced score of the PLAYED move over the deep band.  WHY this and
+    # not collapse_d: a threshold crossing is chaotic in WHICH depth crosses --
+    # an inert +-1 moves collapse_d on 3-7 of 15 positions -- while the mean LEVEL
+    # across many depths averages that out.  Lower (more negative) is better: it
+    # means the search holds a correct low opinion of the losing move over the
+    # whole band, which is what stops it being played.
+    top = max(lad) if lad else 0
+    band = [d for d in lad if d >= max(8, top - 4)] if nodes else \
+           [d for d in lad if d >= max(8, depth - 8)]
+    auc = sum(lad[d] for d in band) / len(band) if band else None
     return {
         "collapse_d": collapse_depth(lad),
         "find_d": find_depth(best, oracle),
         "final": lad[max(lad)] if lad else None,
+        "auc": auc,
         "best": f["best"],
-        "nodes": nodes,
+        "nodes": nodes if nodes else nodes_used,
+        "reached": max(lad) if lad else 0,
     }
 
 
@@ -88,6 +102,13 @@ def main():
                          "hit, not a knee. Aggregate over positions or do not "
                          "conclude.")
     ap.add_argument("--depth", type=int, default=18)
+    ap.add_argument("--nodes", type=int,
+                    help="EQUAL-NODE mode. Use this for any verdict about reduction or "
+                         "pruning knobs: at fixed DEPTH, reducing less trivially "
+                         "improves every shape metric because the arm simply searches "
+                         "more (measured 2026-07-28: LMR-30%% won AUC by 37 cp while "
+                         "spending +158k nodes, and lost -11.6 Elo in real games). "
+                         "Equal nodes makes an arm pay for its shape.")
     ap.add_argument("--engine", default="engines/bin/archon-trace")
     ap.add_argument("--net", default=NET)
     ap.add_argument("--arms", required=True,
@@ -99,7 +120,7 @@ def main():
 
     if a.sf:
         s = Engine("engines/bin/stockfish18", net=None, hash_mb=64, name="sf")
-        r = measure(s, "sf", a.fen, a.played, a.oracle, a.depth)
+        r = measure(s, "sf", a.fen, a.played, a.oracle, a.depth, nodes=a.nodes)
         s.close()
         print(f"{'TARGET SF18':<22} collapse_d {str(r['collapse_d']):>4}  "
               f"find_d {str(r['find_d']):>4}  final {r['final']:+7.0f}  best {r['best']}")
@@ -134,21 +155,56 @@ def main():
     else:
         pos = [{"fen": a.fen, "played": a.played, "best": a.oracle}]
 
-    print(f"{len(pos)} position(s), depth {a.depth}\n")
-    print(f"{'arm':<22} {'collapsed':>10} {'found':>7} {'med final':>10} {'med nodes':>12}")
-    for name, opts in arms.items():
+    def run_arm(opts):
         for k in touched:
             e.setopt(k, defaults[k])
         for k, v in opts.items():
             e.setopt(k, v)
-        rs = [measure(e, "archon", p["fen"], p["played"], p["best"], a.depth) for p in pos]
-        coll = sum(1 for r in rs if r["collapse_d"] is not None)
-        found = sum(1 for r in rs if r["find_d"] is not None)
-        fin = sorted(r["final"] for r in rs if r["final"] is not None)
-        nds = sorted(r["nodes"] for r in rs)
-        med = lambda v: v[len(v) // 2] if v else float("nan")
-        print(f"{name:<22} {coll:>6}/{len(pos):<3} {found:>4}/{len(pos):<2} "
-              f"{med(fin):>10.0f} {med(nds):>12,.0f}", flush=True)
+        return [measure(e, "archon", p["fen"], p["played"], p["best"], a.depth,
+                        nodes=a.nodes) for p in pos]
+
+    def med(v):
+        v = sorted(v)
+        return v[len(v) // 2] if v else float("nan")
+
+    def sign_p(up, down):
+        # two-sided sign test; ties excluded, as usual
+        n = up + down
+        if n == 0:
+            return 1.0
+        tail = sum(comb(n, k) for k in range(max(up, down), n + 1))
+        return min(1.0, 2 * tail / 2 ** n)
+
+    # PAIRED against base on the SAME position.  WHY: between-position variance
+    # dominates -- some losses collapse at d8, some never -- so aggregate counts
+    # (11/15 vs 12/15) mix position difficulty into the arm effect and the null
+    # band swallows everything.  Pairing cancels the position term.
+    first = next(iter(arms))
+    base = run_arm(arms[first])
+    mode = f"{a.nodes:,} nodes" if a.nodes else f"depth {a.depth}"
+    print(f"{len(pos)} positions, {mode}; PAIRED vs '{first}'\n")
+    print(f"{'arm':<20} {'AUC better/worse':>18} {'p':>7} {'med d(AUC)':>11} "
+          f"{'collapse b/w':>13} {'d depth':>7}")
+    print(f"{first:<20} {'(reference)':>22}")
+    BIG = 99
+    for name, opts in list(arms.items())[1:]:
+        rs = run_arm(opts)
+        up = down = 0
+        for b, r in zip(base, rs):
+            bc = b["collapse_d"] if b["collapse_d"] is not None else BIG
+            rc = r["collapse_d"] if r["collapse_d"] is not None else BIG
+            if rc < bc:
+                up += 1
+            elif rc > bc:
+                down += 1
+        dauc = [r["auc"] - b["auc"] for b, r in zip(base, rs)
+                if b["auc"] is not None and r["auc"] is not None]
+        aup = sum(1 for d in dauc if d < 0)      # more negative AUC = better
+        adn = sum(1 for d in dauc if d > 0)
+        dnod = [r["nodes"] - b["nodes"] for b, r in zip(base, rs)]
+        print(f"{name:<20} {aup:>7} / {adn:<8} {sign_p(aup, adn):>7.3f} "
+              f"{med(dauc):>+11.0f} {up:>6} / {down:<4} "
+              f"{med([r['reached']-b['reached'] for b,r in zip(base,rs)]):>+6.1f}", flush=True)
     e.close()
 
 
