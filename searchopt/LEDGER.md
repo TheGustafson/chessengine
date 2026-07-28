@@ -246,6 +246,34 @@ annotations of matches that already existed) and had ~24,000× the sample of the
 actually quoted. **Before building on a per-position figure, check whether the same
 quantity can be read out of a match that has already been played.**
 
+### The arm's mechanism, checked IN THE GAME REGIME (free, from the arm's own PGN)
+
+Mean |score change| between an engine's own consecutive moves, arm vs base, both ARCHON:
+
+| arm, band | arm | base | ratio |
+|---|---|---|---|
+| `asp30`, **|s| < 0.25** | 0.0293 | 0.0335 | **0.877×** |
+| `asp30`, 0.25–1.0 | 0.1189 | 0.1180 | 1.007× |
+| `asp30`, 1.0–5.0 | 0.1681 | 0.1592 | 1.056× |
+| `asp100`, |s| < 0.25 | 0.0270 | 0.0301 | 0.899× |
+| `asp100`, 0.25–1.0 | 0.1391 | 0.1225 | **1.135×** |
+| `asp100`, 1.0–5.0 | 0.1768 | 0.1606 | **1.101×** |
+
+⇒ **`asp30` cuts churn 12.3% in exactly the band where our excess vs SF lives, and is
+flat elsewhere.** A targeted effect, in the regime the test runs, costing zero engine
+time — the arm's own 406-game PGN already contained it.
+
+⇒ **`asp100` improves the same band but DEGRADES both others**, which is a
+mechanism-level account of why it lost 49.6 Elo, and independently reproduces the
+"too wide" end of the bracket.
+
+⇒ **Caveat, because the story is now elegant (README §2 rule 6):** the arm/base numbers
+come from a SELF-PLAY match and the SF comparison from a different match against a
+different opponent, so "asp30 closes ~85% of the gap to SF's 0.0281" would be a
+CROSS-MATCH comparison of different position distributions and is NOT claimed.
+And churn reduction is not strength — **the SPRT is the arbiter and it must not be read
+early merely because the mechanism now looks tidy.**
+
 ### Where the excess volatility lives: BALANCED positions
 
 Same PGNs, same frame handling, split two ways (n in the thousands per cell):
