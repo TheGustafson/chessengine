@@ -42,9 +42,15 @@ are genuinely ours we are *confidently wrong*, discarding the right move early
 (`searchopt/LEDGER.md`), which is precisely the regime where a better eval buys nothing.
 
 **Falsifiable prediction this promotion makes:** as search quality improves, D48X's margin
-over D47V should *widen*. If search improves measurably and the margin stays flat or
-worsens, the premise is wrong and the canonical net should revert. Re-run
-`engines/runs/d48x-vs-v` after any landed search gain and record the delta here.
+over D47V should *widen*. Re-run `engines/runs/d48x-vs-v` after any landed search gain and
+record the delta here.
+
+**If the prediction fails, DO NOT REVERT TO D47V** (owner ruling, 2026-07-28). The gen-2
+direction stands; what would be wrong in that case is the width, not the recipe. The
+response is to **retrain at a smaller accumulator** — the NPS cost of 1280 is real and
+measured (907 vs D47V's 1192 knps, 0.76x), so if the search cannot convert the better eval
+into Elo, the fix is a net that costs less per node, not a rollback to the old generation.
+D47V remains on disk as a comparison yardstick only.
 
 ## Loss corpus for this net
 

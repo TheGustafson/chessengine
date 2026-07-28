@@ -22,7 +22,7 @@ at the moment the search analysis got hard.
 | | |
 |---|---|
 | canonical net | **D48X** (gen-2, 1280 acc) — `engines/canonical/`, promoted 2026-07-28 |
-| D48X vs D47V | **−9.1 [−34.4, +16.1]** over 382 games. Promoted deliberately anyway: the owner's position is that D48X is the better eval and loses only because the search cannot exploit it. `engines/canonical/MANIFEST.md` records the falsifiable prediction — **as search improves, that margin should WIDEN; if it doesn't, revert.** |
+| D48X vs D47V | **−9.1 [−34.4, +16.1]** over 382 games. Promoted deliberately anyway: the owner's position is that D48X is the better eval and loses only because the search cannot exploit it. `engines/canonical/MANIFEST.md` records the falsifiable prediction — **as search improves, that margin should WIDEN.** If it does not, the answer is to retrain at a SMALLER ACCUMULATOR (the 1280 width costs 0.76x NPS), **not** to revert to D47V. |
 | loss corpus | mined from **404 games vs SF18** (−132 Elo, 174 lost games, 10,112 moves oracle-scored) → `positions/{ours,both,neither}.json` |
 | validated search gains so far | **none.** Every arm tried is null or refuted (`LEDGER.md`) |
 
@@ -104,7 +104,8 @@ never have formed.
    −1 sets alpha and starves the winning sibling, 52k nodes vs 260k with the draw
    excluded — but **no admissible evidence**; its root effect died 0/6 under perturbation.
 4. Re-run `engines/runs/d48x-vs-v` after any landed search gain and record the delta in
-   `engines/canonical/MANIFEST.md`. That is the promotion's falsification test.
+   `engines/canonical/MANIFEST.md`. That is the promotion's falsification test — and if it
+   fails, the response is a **retrain at a smaller accumulator**, never a revert to D47V.
 
 ## Housekeeping
 
