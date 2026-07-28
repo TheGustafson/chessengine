@@ -1261,6 +1261,27 @@ a far larger structural effect than any margin arm tested tonight.
 the falsification arm (compress *further*). `pfinv` earned that habit: the arm
 built to falsify a frame derivation was the one that won.
 
+**WHY the compression persists — the scale gate is self-referential.**
+`tools/nnue/net_scale_check.sh` is described in its own header as "the
+OUTPUT-SCALE calibration authority", and it is a good check: it caught a
+half-scale recipe bug that loss curves could not. But it compares a candidate net
+against **the incumbent net** (`d40-uho-720sb` by default), with a PASS band of
+[0.85, 1.18]. It enforces consistency with our own lineage — so whatever scale
+the first net in that lineage had is inherited by every successor and *actively
+locked in* by the gate. Nothing in the pipeline ever compares our output scale to
+Stockfish's, which is the scale every transcribed margin assumes.
+
+**And this is already known here, in pieces that were never joined up.**
+`params.rs` states it outright — "our static eval measures at ≈0.58× SF18's
+internal frame (three independent estimates: 0.55 winner-slope from games, 0.579
+wl50, 0.605 WAC), while our cp-denominated margins sit at Stockfish's RAW
+values" — and `FRAME_S` was built to correct it and has **zero call sites**, so
+the correction was designed and never wired. What tonight adds is a fourth,
+independent estimate (the per-phase slope ratio, ~0.45) and the reason the
+contradiction survived: **every eval comparison we run is rank-based, and rank is
+blind to scale.** "Our eval is at parity" and "our eval is at 0.58× scale" are
+both true and were never in conflict.
+
 **Honest caveat.** Five frame formulations are already on the refuted list, and
 the pfut margin rescale died in 1,483 games. But those moved MARGINS toward the
 eval; this moves the EVAL toward the margins, and it is the only formulation that
