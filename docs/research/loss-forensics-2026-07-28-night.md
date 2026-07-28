@@ -1363,6 +1363,41 @@ loss at 200k is 0.005, so:
 The third outcome is the one that would keep the investigation open, and it is
 the one I would least expect — which is exactly why it is written down first.
 
+## 3z2. THE OBJECTION TO EVAL_SCALE, AND WHY THE DATA ANSWERS IT
+
+**The objection is serious.** Regression toward the mean is the *optimal*
+response to uncertainty under squared loss. A net that predicts 0.46× the deep
+value may be correctly hedging, in which case multiplying its output by 2.2×
+does not calibrate it — it makes it confidently wrong, and amplifies its noise
+along with its signal. If our compression is uncertainty-driven, `EVAL_SCALE`
+should HURT, and the falsification arm (700, compress further) should win.
+
+**The data distinguishes the two cases, and it was already collected.**
+
+- If the compression were **uncertainty-driven**, our eval would be noisier than
+  Stockfish's — and a noisier predictor has *lower rank correlation*, because
+  noise scrambles order.
+- If it is **systematic** — a multiplicative difference in what the net was
+  trained to predict — the ranking is untouched and only the scale differs.
+
+**Our rank correlation equals Stockfish's** in every phase, across positions
+(0.764/0.848/0.951/0.960 vs 0.802/0.850/0.957/0.939), at qsearch leaves, and
+within a position's move list — while our slope is half. **Equal ranking with
+half the scale is the signature of a systematic target difference, not of
+hedging.** A hedging net pays for its caution in rank; ours does not.
+
+**And there is a mechanism for a systematic target difference on file.** D46
+governs the scalar-value pipeline and turns on "scale multipliers derived +
+verified" and WDL blending. A net trained against a WDL-blended target predicts a
+compressed quantity by construction — and `net_scale_check.sh` then locks that
+scale to the lineage rather than to Stockfish's, so it never gets corrected.
+
+So the prediction is that `EVAL_SCALE` in the 1700–2200 region helps and 700
+hurts. **If 700 wins instead, the hedging story is right and the net's output
+should not be touched — the margins would have to come to it, which is the
+formulation already refuted five times.** Either way the sweep discriminates,
+which is why the falsification arm is in it.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
