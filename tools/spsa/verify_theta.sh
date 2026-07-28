@@ -39,13 +39,21 @@ GAMES=${2:-600}
 TC=${3:-10+0.1}
 CONC=${4:-6}
 
+# Pick the NEWEST vector by mtime across BOTH completed runs and live exchange
+# state. The earlier version preferred any completed theta_final.json over an
+# interim one, which silently verifies a STALE CAMPAIGN whenever an older run
+# has finished — caught 2026-07-28, when it reached for a previous day's
+# s2-stageA final while s5-ordering was mid-flight. Wrong vector, clean match,
+# no error. The chosen path is echoed below; read it before quoting a result.
 if [ -z "$THETA" ]; then
-  THETA=$(ls -t tools/spsa/out/*/theta_final.json 2>/dev/null | head -1 || true)
+  THETA=$(ls -t tools/spsa/out/*/theta_final.json \
+             "$HOME"/spsa-ex-*/state/theta-latest.json \
+             "$HOME"/.cache/archon-spsa-*/state/theta-latest.json 2>/dev/null | head -1 || true)
 fi
-[ -n "$THETA" ] && [ -e "$THETA" ] || {
-  THETA=$(ls -t "$HOME"/spsa-ex-*/state/theta-latest.json "$HOME"/.cache/archon-spsa-stageA/state/theta-latest.json 2>/dev/null | head -1 || true)
-  echo "[verify] no theta_final.json — falling back to the INTERIM vector $THETA"
-}
+[ -n "$THETA" ] && [ -e "$THETA" ] || { echo "[verify] no theta anywhere"; exit 1; }
+case "$THETA" in *theta-latest.json)
+  echo "[verify] NOTE: this is an INTERIM vector from a running campaign — say so when quoting it";;
+esac
 [ -e "$THETA" ] || { echo "[verify] no theta anywhere; nothing to verify"; exit 1; }
 
 # theta_final.json carries {"final": {...}}; theta-latest.json carries
