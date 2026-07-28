@@ -203,9 +203,27 @@ engine — orders of magnitude more power than any per-position probe here):**
 in these matches, so position mix cannot explain it.
 
 **But a COLD probe at 110k reads 14.54 (ours) / 14.80 (SF) — about SEVEN PLIES
-SHALLOWER than the same engines at the same node budget in a game.** Every per-position
-instrument in this folder — mine this session, and its predecessors — runs `ucinewgame`
-per position and therefore measures a regime games never occupy.
+SHALLOWER than the same engines at the same node budget in a game.**
+
+**⚠ SELF-CORRECTION on the CAUSE.** I first wrote that this 7-ply gap "isn't position
+mix — it's TT warmth." **That was wrong.** A controlled test — the SAME self-play line
+walked twice at 110k, `ucinewgame` before every move vs not, 320 searches each — prices
+warmth on IDENTICAL positions at:
+
+| | depth | seldepth |
+|---|---|---|
+| cold | 14.74 | 23.65 |
+| warm | 15.67 (**+0.93**) | 27.11 (**+3.46**) |
+
+Warmth is worth ~0.9 plies of depth, not 7. **Most of the cold-probe-vs-game gap is
+POSITION MIX** — a game's move list is dominated by simpler middlegame and endgame
+positions where depth is naturally far higher than on the hand-picked plateau set — plus
+warmth accumulating over 80 moves rather than the 16 this test walked.
+
+What survives, and it is the part that matters: **a cold probe on a curated position set
+is not the game distribution, so a mechanism measured there need not appear in a match.**
+And note `seldepth` is **3.7× more warmth-sensitive than depth** (+3.46 vs +0.93), which
+matters because seldepth is the statistic the SF comparison rests on.
 
 ### What this invalidates, and what it does not
 * **Deflated: the (depth, seldepth) Pareto framing.** The depth half does not reproduce
