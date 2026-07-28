@@ -37,8 +37,6 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from uciprobe import Engine, NET, REPO, to_sf_frame  # noqa: E402
 
-import chess
-
 
 def ladder(eng, tag, fen, mv, budgets):
     """Forced score for one move across a node ladder, in SF's printed frame."""
@@ -75,6 +73,16 @@ def main() -> int:
     ap.add_argument("--sf", default="engines/bin/stockfish18")
     a = ap.parse_args()
     os.chdir(REPO)
+    # python-chess is imported HERE, not at module level, so `--help` works in a plain
+    # interpreter. It is not in the repo venv by design; run under uv.
+    global chess
+    try:
+        import chess, chess.pgn                                        # noqa: F401
+    except ModuleNotFoundError:
+        print("needs python-chess. Run it as:\n"
+              "  uv run --no-project --with chess python " + sys.argv[0] + " ...",
+              file=sys.stderr)
+        return 1
     budgets = [int(x) for x in a.budgets.split(",")]
     INGAME = 110_000
 
