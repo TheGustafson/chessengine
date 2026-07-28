@@ -2311,3 +2311,68 @@ direction regardless of how the arm was picked** — and direction is the claim 
 frame model actually makes. If it wins, the follow-up is a bracket (1400 / 1764 /
 2200) to locate the optimum; if it loses, the frame model predicts search
 behaviour correctly in cp but not in Elo, and that is itself the finding.
+
+## 5. THE COMPLETE WHY LADDER — from a lost game to a process defect
+
+Every rung below is measured, not inferred, and each answers the one above.
+
+**1. We lose because our search prefers the wrong move.** On the 44 decidable
+errors from lost games, forced-move scoring gives an oracle separation of median
+**144 cp** while our search's own separation is **−12 cp**: we actively prefer the
+losing move in **23/44 (52%)** and tie in 11/44. We are not failing to see the
+right move by accident — we look at it and answer wrong.
+
+**2. WHY? Because the critical line is reduced away.** Turning LMR off moves the
+verdict from 13/44 to **30/44** and the median gap from −14 to **+118**, against a
+null panel worth +4/20. LMR is ~30x the noise floor; nothing else tested came
+close. And our EBF is **1.49 against Stockfish's 1.65** — *we are the more
+selective engine*, and that selectivity is the defect on exactly the positions we
+get wrong.
+
+**3. WHY do we over-reduce? Because every transcribed cp constant is ~1.86x too
+large in our units.** Reductions and prunings are gated by comparisons between a
+cp constant and an eval-frame value. If the constants are large relative to the
+frame, every gate fires more readily, and the tree narrows.
+
+**4. WHY are they too large? Our eval is 0.538x Stockfish's INTERNAL frame.**
+(n=600, measured against `SF_printed * a(pos)/100`, `a` = 381–388 over the corpus.
+Reproduces four earlier independent estimates: 0.55, 0.579, 0.605, 0.64.)
+
+**5. WHY is the frame off? It is entirely the NET's output scale — the outer shape
+is a bit-exact transcription.** Our `apply_outer_shape` and SF's `Eval::evaluate`
+share all four constants exactly — `MATERIAL_PAWN_WEIGHT 534`, `EVAL_BLEND_BASE
+77871`, `OPTIMISM_BLEND_BASE 7191`, `RULE50_DAMPING_DEN 199` — and the same
+structure. Same shape, same multiplier. The factor is upstream of it, in what the
+network emits.
+
+**6. WHY did the net's scale drift and never get caught? Because the gate that
+exists to catch it is self-referential.** `tools/nnue/net_scale_check.sh` describes
+itself as
+
+> "the OUTPUT-SCALE calibration authority (2026-07-21). Every cp-threshold in
+> search (RFP/razoring/futility margins, aspiration ...)"
+
+and then compares each candidate to `REF="${2:-data/nnue/nets/d40-uho-720sb.cenn}"`
+— **our own incumbent net** — with a PASS band of `[0.85, 1.18]`.
+
+**It never looks at Stockfish.** The tool whose stated purpose is keeping our eval
+compatible with our transcribed search constants validates each net against the
+previous net. Whatever scale net-0 happened to have became the lineage's scale and
+has been actively enforced ever since. **The tighter this gate passes, the more
+perfectly it preserves the mismatch.** A hard pre-game gate, run faithfully every
+time, guaranteeing the defect it was built to prevent.
+
+### The two fixes, and which is which
+
+- **Mitigation (in flight):** `EVAL_SCALE` up toward ~1904, which rescales the
+  finished eval into the constants' frame. Being game-tested now at 2200
+  (§4d). Cheap, reversible, no retrain — but it is a correction layer on top of a
+  net that is still mis-scaled.
+- **The actual fix:** give `net_scale_check.sh` an absolute reference. A net's
+  scale must be checked against Stockfish's internal frame, not against its own
+  ancestor. Until that changes, every future net inherits net-0's scale by
+  construction and rung 6 regenerates itself.
+
+The mitigation is what tonight can test. The gate fix is what stops this class of
+defect from recurring, and it is a ~20-line change to a shell script.
+
