@@ -1327,6 +1327,42 @@ budget calibration (measure our own wp loss at 100k and 200k; one doubling is
 ~120 Elo, which prices a wp unit directly). That is the next measurement, not an
 assumption.
 
+## 3z. PRE-REGISTERED: what the Elo calibration must show
+
+Written before the measurement, so it can fail.
+
+**The conversion problem.** The equal-node deficit is +0.0023 ± 0.0004 wp per
+move (§3y). Win probability per move has no standard Elo conversion, and wp does
+not accumulate linearly, so I will not assume one. The calibration: measure OUR
+OWN wp loss at 100k and at 200k nodes — one doubling, worth ~120 Elo at the
+house constant — on the same positions. Same engine both sides, so no
+cross-engine bias. Then 120 Elo ÷ (w₁₀₀ₖ − w₂₀₀ₖ) prices a wp unit.
+
+**The prediction.** At equal nodes speed is excluded by construction, so the
+equal-node deficit should account for the observed total minus the speed term:
+
+    total observed        −171 to −191 Elo
+    speed (§3b-QUIET)     ~51–70 Elo
+    ⇒ equal-node quality  ~110–130 Elo
+
+For the measured 0.0023 wp headroom to equal ~120 Elo, a wp unit must be worth
+≈52,000 Elo, so one doubling (120 Elo) must show up as **≈0.0023 wp**. Our wp
+loss at 200k is 0.005, so:
+
+> **Prediction: our wp loss at 100k nodes should be ≈0.0073 (range 0.0065–0.0085).**
+
+**What each outcome means.**
+- **≈0.0073** — the model closes: quality ~120 + speed ~60 ≈ 180, against an
+  observed 171–191. Every term accounted, nothing left over.
+- **Much smaller (say 0.0055)** — a wp unit is worth far more Elo than assumed,
+  the equal-node deficit alone exceeds the whole gap, and the speed term must be
+  double-counted or the two are not additive.
+- **Much larger (say 0.011)** — a wp unit is worth less, the equal-node deficit
+  is a minor term, and something else carries ~100 Elo that I have not found.
+
+The third outcome is the one that would keep the investigation open, and it is
+the one I would least expect — which is exactly why it is written down first.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
