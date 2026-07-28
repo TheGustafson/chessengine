@@ -24,15 +24,31 @@ played Be2 instead of Rc5. WHY? Because we did not see Black's refutation Bb5.
 WHY? Not because we cannot evaluate it — handed the move, our search scores it
 **+442 at depth 12**, better than Stockfish's +298. WHY, then, did we not see
 it? Because the normal search never entered that subtree. WHY? Because pruning
-discarded it. WHY, which pruning? Not LMR — reducing `RED_TABLE_NUM` to 1000
-does not help. It is **RFP**, and only RFP: disabling it flips the game
-position to the correct move. WHY does RFP specifically kill it? Because after
-the sacrifice White is up material, RFP's premise is "a big static lead means
-no need to search", and the compensation is a pawn three moves from queening.
-WHY does Stockfish not do this? Because at those nodes its eval is +353 where
-ours is +665, so as the margin grows with depth its RFP stops firing and ours
-keeps firing. **That** is a mechanism. Six WHYs deep. Nothing shallower would
-have found it.
+discarded it.
+
+> **RIGHT ANSWER, BROKEN EVIDENCE (audited 2026-07-28 — see §13).** The chain
+> continues "WHY, which pruning? It is **RFP**, and only RFP: disabling it
+> flips the game position to the correct move." The conclusion is **correct**
+> and now rests on a class-scale measurement (RFP alone is **81%** of the whole
+> gate effect over 2624 positions, +16.1 +- 1.8 cp against a null of 0.0 +-
+> 0.6). But **every word of the evidence quoted here was wrong**:
+>
+> - The arm called "disabling RFP" (`RFP_MULT_BASE = RFP_MULT_CAP = 30000`)
+>   does not disable RFP; it *inverts* it into an unconditional shallow prune
+>   (§13.1). Two verified clean disables do NOT flip the game position.
+> - "Disabling it flips the move" is not a measurable claim at all: a **+-1
+>   change to `RAZOR_BASE`** flips this position too (§13.3). The argmax of one
+>   search is chaotic.
+> - The closing "WHY does Stockfish not do this" is answered by an eval
+>   comparison that never needed to be made: SF18 simply **finds Rc5 at 25k
+>   nodes where we need 600k** (§13.5).
+>
+> WHY this stays in §0 instead of being quietly edited: it is the document's
+> showcase of the method, and it shows that six WHYs of a broken instrument can
+> land on a true conclusion and teach you nothing you can build on. The next
+> agent (me) followed the same chain with fixed probes, reached "it is PFUT",
+> and had to retract *that* too. Depth of questioning does not substitute for
+> verifying the probe. §1 is first for a reason, and both of us skipped §1.5.
 
 Corollaries, all learned the hard way:
 
@@ -524,3 +540,241 @@ fixed removes a CLASS of failure, not a single position.
 
 `$SCRATCH/harvest.py` builds the full corpus: every >=100 cp error in every
 lost game, oracle-scored, sorted by win probability lost. Work it top-down.
+
+---
+
+## 13. The 2026-07-28 instrument audit — five probes that were lying
+
+WHY this section exists: every measurement in §0-§5 that attributed a failure
+to a specific pruning gate was made with at least one broken probe. The
+findings that survive are re-derived below with the probes fixed. The pattern
+is the one §1 already warned about and it caught me anyway: **a broken probe
+produces smooth, plausible, self-consistent output.**
+
+### 13.1 `RFP_MULT_BASE/CAP = 30000` is not a disable — it inverts RFP
+
+The margin is
+
+```
+futility_mult*depth - (2934*improving + 343*opp_worsening)*futility_mult/1024
+```
+
+The trend discount is ~2.87 x `futility_mult`, so the whole expression is
+negative whenever `depth < 2.87`. At the transcribed `futility_mult` ~52 that
+is a harmless -100ish at depth 1-2. Blow `futility_mult` up to 30000 and the
+discount is ~86,000 against a `futility_mult*depth` of 30,000-60,000: the
+margin is about **-56,000**, so `eval - margin >= beta` is satisfied by every
+node that reaches the gate. The arm does not turn RFP off. It turns RFP into an
+**unconditional prune at every shallow improving non-ttPv node.**
+
+WHY it was not caught: it "worked" — it changed the move on game 18, in the
+direction that looked like a finding.
+
+The clean disable is `RFP_MAX_DEPTH = 0`. Verified two ways (both required —
+one disable that agrees with itself proves nothing):
+
+| arm | d12 | d15 | d16 |
+|---|---|---|---|
+| control | h5e2 / -1 / 17k | h5e2 / 32 / 54k | h5e2 / 8 / 115k |
+| `RFP_MULT_*=30000` (old) | h5e2 / 28 / 54k | **a5c5** / -11 / 152k | **a5c5** / -18 / 162k |
+| `RFP_MAX_DEPTH=0` | h5e2 / 34 / 33k | h5e2 / 1 / 119k | h5e2 / 1 / 120k |
+| mult=30000 **and** both trend weights = 0 | h5e2 / 34 / 33k | h5e2 / 1 / 119k | h5e2 / 1 / 120k |
+
+The two clean disables are bit-identical — same move, same score, same **node
+count** — and both leave game 18 unfixed. WHY node count is the load-bearing
+column: two arms can agree on a move by luck; agreeing on the node count to the
+digit means they are the same search.
+
+**Everything attributed to RFP with the old recipe has to be re-measured.**
+`tools/forensics/uciprobe.py:GATES_OFF` now carries the corrected recipe and
+this derivation.
+
+### 13.2 `printf | sleep | engine` truncates the search
+
+Our engine treats stdin EOF as a STOP. `classify2.py` (sleep 7) and
+`depthsplit.py` (sleep 9) reported **different moves for the same position at
+the same depth** — and the binaries were verified bit-identical first (17
+positions at depth 12: same move, same score, same node count, `archon-d47v-pgo`
+vs `archon-d47v-tune-pgo`). The difference was entirely the sleep. Hold stdin
+open and read to `bestmove` — `uciprobe.Engine` does.
+
+**The same trap applies to Stockfish.** `printf ... | stockfish18` on the
+game-18 position answers `g3g4`; the identical query through a persistent
+process answers `a5c5`. An oracle reading taken through a pipe is not an oracle
+reading.
+
+### 13.3 The argmax of a single search is CHAOTIC — always run a null panel
+
+Twelve semantically-null arms on game 18 (a 1-unit change to a constant that
+cannot matter here, plus five hash sizes):
+
+- **Hash 16/24/32/64/128: bit-identical output.** Good — the harness is
+  deterministic, so what follows is not measurement noise.
+- `RAZOR_BASE 465 -> 464` **changes the move played at depth 17.**
+  `PFUT_BASE 40 -> 41` changes it at depth 15.
+- Across all 2624 scanned positions the null argmax flip rate is **7.9%**
+  (`RAZOR_BASE-1`) and **14.9%** (`CFUT_BASE+1`), against **30.9%** for
+  all-gates-off. So roughly half of gates-off's move changes are chaos.
+
+WHY this is the most expensive lesson here: "arm X flips this position" was the
+unit of evidence for the whole gate-attribution effort, and on its own it is
+worth about one bit against a 8-15% background. **Never report a single-position
+argmax flip without the null band beside it.** `uciprobe.NULL_ARMS` exists so
+there is no excuse.
+
+The **forced value** of a named move (`searchmoves <move>`) is the instrument
+that survives: on game 18 all twelve nulls land in [-17, +126] while a clean
+gates-off gives **-619**. Class-wide, paired over 2624 positions:
+
+```
+mean( V_control - V_arm )   for the move we actually played, depth 14
+  all five eval gates off   +19.8 +- 1.6      <- 12 sigma
+  NULL RAZOR_BASE-1          +0.6 +- 0.6
+  NULL CFUT_BASE+1           -0.3 +- 0.7
+```
+
+**With the gates on, our search over-values the move it chose by ~20 cp.** That
+is the mode, measured as a class instead of anecdotally.
+
+### 13.4 A 120k-node SF18 is blind to exactly the errors we hunt
+
+On the game-18 position:
+
+| SF18 budget | verdict |
+|---|---|
+| 120k (MultiPV 4) | **h5e2 -14**, a5c5 -27 — prefers OUR losing move |
+| 1M | a5c5 -41, h5e2 -241 |
+| 8M | a5c5 -6, h5e2 outside the top 4 |
+| 50M | a5c5 -21, h5e2 **-345** |
+
+A deep-refutation blunder is by construction one a shallow search does not see,
+so a shallow oracle **systematically under-counts this failure mode** — the
+audit rate in §12 is a lower bound, biased against the very class it is meant
+to find. Two further oracle traps, both live in the §12 audit script: it reuses
+one engine across positions **without `ucinewgame`**, and `MultiPV > 1`
+materially weakens SF (MultiPV 4 at 120k prefers h5e2; MultiPV 1 at 25k plays
+a5c5). Adjudicate with: fresh `ucinewgame`, MultiPV 1, persistent process, and
+a **stability requirement** — the same best move at 400k, 1.6M and 8M. On
+near-equal endgames SF18's own argmax flips between budgets; those are close
+calls, not blunders, and 15 of 19 candidates died on that test.
+
+### 13.5 What game 18 actually is
+
+Node-to-find, both engines, `ucinewgame` per probe, truth = SF18 @8M (`a5c5`,
+stable at every budget from 25k):
+
+```
+                   25k  50k 100k 200k 400k 800k 1.6M 3.2M
+SF18                C    C    C    C    C    C    C    C
+ARCHON control      .    .    .    .    .    C    C    C
+ARCHON gates-off    .    C    C    C    C    C    C    C
+ARCHON -pfut        C    C    C    C    C    C    C    C
+ARCHON -rfp         .    .    .    .    .    .    C    C     <- WORSE than control
+```
+
+- **SF18 has no difficulty here at all.** It needs 25k nodes; we need 600-800k.
+  A 24x search-efficiency gap on one position, and the honest form of rung 11
+  ("WHY does Stockfish not have this problem") is not "its eval is lower" — it
+  is that its search finds the move at a budget we do not.
+- In the game we spent **0.049 s** (~50-70k nodes) on this move. At that budget
+  SF18 is already right and we are wrong, so this loss is **not** the
+  time-management mode. More clock would also have fixed it (600k nodes is
+  ~0.5 s) — but the search-efficiency gap is the bigger and more transferable
+  defect.
+- On the ARGMAX ladder `-rfp` looks WORSE than control here (1.6M vs 800k). It
+  is not. See 13.6 — the argmax was the wrong instrument and this row is the
+  clearest single demonstration of that in the whole document.
+
+### 13.6 Two instruments, opposite answers — and which one to believe
+
+The argmax ladder above says **PFUT**. It is wrong, and I published that
+conclusion internally before checking it against a second instrument. Do not
+repeat this.
+
+The right instrument is the **forced value** `V(P, our_move)` — search the move
+we actually played with `searchmoves` at fixed depth and read the score. It
+answers "does our search know this move is bad", which is the question, rather
+than "did the argmax happen to land elsewhere this time". The null panel proves
+it is the sound one: `RFP_OPP_WORSENING +1` is **bit-inert on all four
+positions**, and on the two null-quiet positions the other nulls move V by 0.
+
+Forced value at depth 14 / 16, four adjudicated blunders (control first):
+
+| arm | g35p98 | g2p81 | g41p35 | g24p14 |
+|---|---|---|---|---|
+| control | 11 / 18 | -345 / -784 | -273 / -362 | -266 / -404 |
+| all five gates off | **-594 / -612** | **-740 / -857** | **-504 / -524** | **-512 / -550** |
+| **rfp-off (clean)** | **-550 / -626** | -402 / -740 | **-470 / -559** | -292 / -251 |
+| -pfut | 1 / 11 | -340 / -734 | -240 / -240 | -366 / -406 |
+| pfut_lmrd<9 / <6 | 7 / 1 · 85 / 1 | ... | ... | ... |
+| pfutbase 120 / 250 | 1 / 14 · 31 / 0 | ... | ... | ... |
+| followpv=1 | 72 / 43 | -383 / -452 | -251 / -248 | -448 / -409 |
+| NULL razor-1 | 11 / 18 | -345 / -706 | -273 / -291 | -485 / -507 |
+| NULL rfpopp+1 | 11 / 18 | -345 / -784 | -273 / -362 | -266 / -404 |
+
+**Every PFUT arm sits inside the null band.** `-pfut` changed the move on game
+18 while leaving our valuation of the losing move exactly where control had it
+(1 vs 11) — it did not learn anything, it rolled the dice differently. Clean
+RFP-off, by contrast, produces the truth on both null-quiet positions at both
+depths.
+
+And at class scale, paired over 2624 positions (`modescan.py`), which is what
+turns this from two anecdotes into a finding:
+
+```
+mean( V_control - V_arm ), our own played move, depth 14
+  all five eval gates off   +19.77 +- 1.62   (12.2 sigma)
+  RFP off ALONE             +16.11 +- 1.77   ( 9.1 sigma)   <- 81% of the total
+  the other four, residual   +3.66 +- 1.69   ( 2.2 sigma)
+  NULL RAZOR_BASE-1          +0.65 +- 0.61
+  NULL CFUT_BASE+1           -0.27 +- 0.70
+
+on the 77 tail positions (dG >= the null p99.5 of 184 cp):
+  all five off  +298 +- 13     RFP alone  +197 +- 21     nulls  +17 +- 7
+```
+
+**So the original §0 verdict — RFP — is right after all.** It just could not
+have been established by anything that session or this one did until the
+forced-value instrument and the null panel existed together.
+
+Two corollaries worth keeping:
+
+- **The gates are partially redundant**, which is why single-gate ablation on
+  one position is hopeless: correlation between the gates-off and rfp-off
+  deltas is only 0.51, so on any given position a different gate may be the one
+  that happens to catch the refutation.
+- **`RFP_THREAT_MARGIN` is exonerated.** `RFP_THREAT_MARGIN = 0` moves the
+  forced value by +1 to -20 (null band) and changes the argmax at no node
+  budget from 25k to 400k. The §10 hypothesis — gate the D30 threat relaxation
+  on an advanced enemy passer — is aimed at a term that does not cause this.
+  Do not build it.
+
+### 13.7 Status of the fix — NOT established
+
+RFP is the mechanism; the dose is not known. RFP off entirely is not a patch,
+it is a diagnosis — RFP is a core pruning gate and the class number says it
+buys us a lot of tree. What is owed:
+
+1. A dose ladder on the RFP structure (`RFP_MAX_DEPTH`, `RFP_MULT_BASE`,
+   `RFP_IMPROVING` — the improving discount is ~2.87x `futility_mult`, so it
+   drives the margin NEGATIVE at depth 1-2 even at stock values), scored with
+   the **forced-value class instrument**, not the argmax.
+2. A **full-corpus** (`--limit 0`) screen of the survivor, reading the nodes
+   column as hard as the cp column.
+3. SPRT only after both.
+
+### 13.8 The rules this session adds
+
+- **Verify that a disable disables.** Switch the gate off two structurally
+  different ways and require the two to agree on the NODE COUNT, not just the
+  move. A margin with a subtractive companion term can be driven into an
+  inverted regime by the "obviously safe" huge value.
+- **Never attribute anything to an argmax flip.** Run `uciprobe.NULL_ARMS`
+  first and print the band. The flip rate for a semantically null change is
+  8-15%.
+- **Measure the forced value of the move you are indicting**, not the move the
+  engine happens to pick. It has a null band near zero and it answers the
+  actual question.
+- **An oracle needs its own instrument check**: fresh `ucinewgame`, MultiPV 1,
+  a persistent process (no pipe-EOF), enough nodes, and a stability
+  requirement across budgets.
