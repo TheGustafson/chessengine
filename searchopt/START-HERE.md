@@ -23,8 +23,28 @@ at the moment the search analysis got hard.
 |---|---|
 | canonical net | **D48X** (gen-2, 1280 acc) — `engines/canonical/`, promoted 2026-07-28 |
 | D48X vs D47V | **−9.1 [−34.4, +16.1]** over 382 games. Promoted deliberately anyway: the owner's position is that D48X is the better eval and loses only because the search cannot exploit it. `engines/canonical/MANIFEST.md` records the falsifiable prediction — **as search improves, that margin should WIDEN; if it doesn't, revert.** |
-| loss corpus | freshly mined from **404 games vs SF18 (−132 Elo, 165 lost games)** → `positions/{ours,both,neither}.json` |
+| loss corpus | mined from **404 games vs SF18** (−132 Elo, 174 lost games, 10,112 moves oracle-scored) → `positions/{ours,both,neither}.json` |
 | validated search gains so far | **none.** Every arm tried is null or refuted (`LEDGER.md`) |
+
+## FIRST: is the corpus actually there?
+
+The mining run was left detached at the end of the previous session and takes ~100
+minutes. Check before you trust `positions/`:
+
+```bash
+ls -la searchopt/positions/{losses,ours,both,neither}.json
+python3 -c "import json;d=json.load(open('searchopt/positions/losses.json'));\
+print(d['_provenance'], len(d['rows']))"
+```
+
+* **All four exist and provenance says `d48x-…`** — good, work `ours.json`.
+* **Only `losses.json`** — the mine finished, the classify did not. Run:
+  `python3 searchopt/tools/classify_losses.py --losses searchopt/positions/losses.json`
+* **Neither, or provenance names a different net** — re-mine:
+  `uv run --no-project --with chess python searchopt/tools/mine_losses.py --pgn engines/runs/corpus-d48x/games.pgn`
+  (the 404-game PGN is on disk, so this does not need another match).
+* `ours.json` may still be the **D47V-era 14-position set** if the chain never landed —
+  it has no provenance stamp, which is how you tell.
 
 ## Do this first
 
