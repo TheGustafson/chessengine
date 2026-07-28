@@ -190,6 +190,49 @@ mechanism claim on a chaotic argmax.**
 
 ---
 
+## 5b. THE ONE ELO LEAD — parent futility prunes too much, and my sign was wrong
+
+Full corpus (n=9,992, openings — see §1 for why that matters), arms at 12,500
+nodes:
+
+| arm | what it does to the margin | cp@16k | nodes | blunder rate |
+|---|---|---|---|---|
+| control | — | 6.32 | — | 0.2% |
+| `pf64c` constants ×0.64 | prune MORE | **+0.19 ± 0.15** | −1.8% | 0.3% |
+| `pf64all` all four ×0.64 | mixed | −0.24 ± 0.15 | −0.8% | 0.2% |
+| `pfutbase120` base ×3 (agent) | prune less | −0.38 ± 0.14 | +3.0% | — |
+| `pfmult64` ply coeff ×0.64 | prune less when `lmr_depth<0` | −0.44 ± 0.15 | +4.4% | 0.2% |
+| **`pfinv` constants ×1.56** | **prune less** | **−0.58 ± 0.14** | +4.4% | **0.1%** |
+
+Five arms, four of them independently derived, and they order themselves
+perfectly by how much they RELAX the bound. The one arm that tightens it
+(`pf64c`) is the only one that hurts, and it is also the only one that fattens
+the tail (0.3%). The best arm halves the blunder rate, 0.2% → 0.1%, which is
+the property the screen's own trailer says to prefer: the mean is mostly tail,
+and a blunder converts a game where a 2 cp inaccuracy does not.
+
+**`pfinv` was built as a falsification control for my own hypothesis, and it
+won.** I derived from the frame that our margins were too LARGE and should be
+scaled by 0.64; the data says they are too SMALL. The dimensional argument
+picked the right constants to move and the wrong direction — worth recording
+precisely, because the same rule shipped the aspiration fix and will be reached
+for again. It locates candidates; it does not predict signs.
+
+At the screen's own conversion (~60 Elo per cp, and `log2(1+node_cost)·120`
+against) `pfinv` is nominally ~35 − 7.5 ≈ **+27 Elo**. Do not believe that
+number yet:
+
+1. It is measured on the openings corpus (§1), which is the wrong population
+   and is the very instrument this document exists to indict.
+2. Relaxation cannot be monotone — gates-off is worse once node-matched — so
+   the optimum is bracketed but not located. `c1.56 / c2.5 / c4 / c6 / off` is
+   running.
+3. `hind111` is the standing reminder that a screen number is not Elo.
+
+Sequence before it can be promoted: bracket → re-screen on the phase corpus →
+SPRT. **PFUT_\* are among the 164 of 303 tunables in no campaign at all**,
+which is the most likely reason a 4σ effect was still lying around.
+
 ## 6. INSTRUMENT BUGS FOUND TONIGHT (five, all mine)
 
 1. **Bound lines read as scores.** `uciprobe` matched `score cp X upperbound`
