@@ -669,6 +669,47 @@ again.** Re-screen the 139 tunables that were "covered" on openings, and treat
 the pfut family as unresolved rather than dead — the direction still has the
 §3f marginal-return mechanism behind it, but nothing has been demonstrated.
 
+## 5d. THE 78 Elo OF QUALITY IS NOT PARAMETRIC — 15 arms, every one worse
+
+With a corpus that has been shown to agree with games (§5c), a +-25% sweep of the
+central pruning / reduction / ordering knobs. cp@64k, paired deltas:
+
+| arm | −25% | +25% | | arm | −25% | +25% |
+|---|---|---|---|---|---|---|
+| `RED_TABLE_NUM` | +0.41 | +1.02 | | `RFP_MULT_BASE` | +1.26 | **+0.23** |
+| `RED_BASE` | +1.28 | +1.55 | | `RFP_MULT_SLOPE` | +0.84 | +0.67 |
+| `RED_MOVECOUNT` | +1.24 | +0.88 | | `LMP_BASE` | +0.37 | +1.32 |
+| `RAZOR_BASE` | +0.45 | +0.81 | | `IIR_REDUCTION` | +0.96 | — |
+
+**Every single arm is worse.** The best is `RFP_MULT_BASE` +25% at +0.23 ± 0.68,
+i.e. neutral. Nothing is negative at the deepest tier.
+
+**The instrument was verified before this was believed.** A null arm — setting a
+parameter to its OWN default — reads `+0.00 ± 0.00` at all three tiers and
+reproduces the control's top-1, blunder rate, p90 and node count exactly. So the
+uniform positive sign is the engine, not a bias in the screen. (This is the same
+self-check that caught a real TT-carryover bug in `spsa_cp.py`; it earns its
+keep every time.)
+
+**What it means.** These values were transcribed from Stockfish's tuner, which
+optimised them against a similar objective, so finding them at a local optimum
+is the expected result rather than a surprise. But combined with §3g it says
+something sharper: **the ~78 Elo of equal-node quality gap is not reachable by
+moving these knobs.** It is a MECHANISM difference — something Stockfish's search
+does that ours does not, or does differently in structure — not a mis-tuning.
+
+That is a direct answer to "there is 90-ish Elo hidden in the tunables": not in
+these fourteen, at this resolution, on the corpus that predicts games.
+
+**Honest limits of the claim.**
+- ±25% is coarse. A ±5–10% optimum could exist; it would be worth far less, and
+  finding it needs SPSA rather than a grid.
+- 14 of 303 tunables. The other 289 are untested here — and the 139 previously
+  "covered" were screened on the corpus §5c just discredited, so they are
+  effectively untested too.
+- Single-parameter moves cannot find interactions. A joint optimum can sit where
+  every one-at-a-time step is uphill; that is what SPSA is for.
+
 ## 6. INSTRUMENT BUGS FOUND TONIGHT (five, all mine)
 
 1. **Bound lines read as scores.** `uciprobe` matched `score cp X upperbound`
