@@ -125,7 +125,10 @@ CLASS: dict[str, tuple[str, str]] = {
     "RFP_OPP_WORSENING":           ("ratio", "scaled by futility_mult / 1024"),
     "RFP_TREND_DEN":               ("ratio", ""),
     "FRAME_S":                     ("ratio", "fixed-point scale"),
+    "FH_SOFTEN_BETA_W":            ("ratio", "weighted against DEPTH, not eval"),
     "SE_BETA_DIV":                 ("ratio", "divides a depth-scaled margin"),
+    "TTCUT_BOUND_SLACK":           ("depth", "Depth-typed; meets beta only via a predicate"),
+    "TTCUT_AGREE_DEPTH":           ("depth", "Depth-typed, compared against depth"),
 
     # ---- history units: a separate frame, verified identical to eca43a97 ----
     "QUIET_MAIN_HISTORY_WEIGHT":   ("history", ""),
@@ -179,6 +182,11 @@ CROSS_UNIT: dict[str, tuple[int, str, str]] = {
     "STATSCORE_CAPT_NUM":          (0, "captured PIECE VALUE -> statScore",
                                     "material carries no frame error"),
     "STATSCORE_CAPT_DEN":          (0, "same", ""),
+    # Found by this tool's own guard on its first run, 2026-07-27.
+    "SEE_THRESH_MULT":             (-1, "eval margin -> SEE threshold (MATERIAL)",
+                                    "1024 identity; our eval is 0.64x SF's while "
+                                    "PIECE_VALUES are identical, so we prune 36% "
+                                    "tighter. Derived value 1600 -- UNDER TEST"),
 }
 
 
