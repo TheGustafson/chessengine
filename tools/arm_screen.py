@@ -64,6 +64,23 @@ FAMILIES: dict[str, dict[str, int]] = {
     "RAZOR": {"RAZOR_BASE": 465, "RAZOR_DEPTH_MULT": 300},
     "QSFUT": {"QS_FUTILITY_MARGIN": 335},
     "NMP": {"NMP_EVAL_BASE": 374, "NMP_EVAL_DEPTH": 14, "NMP_EVAL_IMPROVING": 45},
+    # The twelve eval-denominated constants that were in NONE of the families
+    # above -- so the five refuted frame formulations (global, dual,
+    # per-family, per-mechanism, class-4) never moved them. Found 2026-07-27
+    # by deriving the constant list from the `Value` type instead of a
+    # hand-written table; see tools/frame_audit.py, which now exits non-zero on
+    # an unclassified tunable so this hole cannot reopen.
+    #
+    # The prior that these matter is LOW -- five formulations found nothing --
+    # with one exception worth separating out: HINDSIGHT_EVAL_SUM gates a
+    # depth+-1, not a margin, and a ply is a much larger lever than a few
+    # centipawns of threshold.
+    "FRAME12": {"ASPIRATION_BASE_DELTA": 5, "EVALDIFF_CLAMP_HI": 180,
+                "EVALDIFF_CLAMP_LO": -183, "EVALDIFF_OFFSET": 62,
+                "FL_BELOW_EVAL_MARGIN": 103, "FL_BELOW_PARENT_EVAL_MARGIN": 78,
+                "HINDSIGHT_EVAL_SUM": 173, "LMR_DEEPER_MARGIN": 52,
+                "LMR_SHALLOWER_MARGIN": 9, "OPTIMISM_DEN_BASE": 45,
+                "OPTIMISM_NUM": 75, "RFP_THREAT_MARGIN": 55},
 }
 
 
