@@ -33,9 +33,15 @@ The count column overstates the endgame share (a pawn-threshold detector
 inflates sparse positions — a trap already on the refuted list), which is why
 the decision rests on the win-probability column. It survives the correction.
 
-**This is not merely low power. It can be anti-correlated with Elo, and we have
-the case on file:** `HINDSIGHT_EVAL_SUM=111` screened **+0.03 cp** on this
-corpus and lost **17.4 Elo** in games. It also reframes every dry campaign —
+**This is not merely low power — the screen can be BLIND to a large real
+effect**, and the case is on file: `HINDSIGHT_EVAL_SUM=111` came back
+**+0.03 ± 0.15 cp** at the full 9,992 positions — a flat nothing — and then
+lost **17.4 Elo** in games. (Precision matters here: that is blindness, not
+inversion. The screen's honest verdict was "no effect" on a change worth −17
+Elo. The playbook records the separate reason it was ever believed — a 4000-
+position run read −0.32 ± 0.23 and 1.4σ was mistaken for a find.) A corpus that
+cannot see a 17-Elo change is not a weak instrument, it is the wrong
+instrument. It also reframes every dry campaign —
 139 of 303 tunables were screened, all of them on openings, and the other 164
 were never screened at all.
 
