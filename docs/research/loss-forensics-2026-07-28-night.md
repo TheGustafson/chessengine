@@ -16,7 +16,7 @@ Gap to SF18 at 10+0.1: **−171 to −191 Elo**. Decomposed, all terms measured:
 | term | Elo | how measured | what it needs |
 |---|---|---|---|
 | **Equal-node move quality** | **~78** | +1.30 cp weighted over phases, §3c/§3g | **Mechanism, not tuning** — 15 ±25% arms all worse (§5d) |
-| **Speed** — 1.26–1.39× cycles/node | **~64** | same-run cycles/node with a fairness check, §3b-FIXED | Per-node cost engineering |
+| **Speed** — 1.24–1.51× NPS, 1.45–1.66× instructions/node | **~51–70** | quiet box, startup differenced out, §3b-QUIET | Per-node cost engineering |
 | Residual — TM, conversion | ~30–50 | by subtraction | TM: we reach move 45 with 35% of their clock (§2) |
 
 **Where each thing lives:**
@@ -312,6 +312,34 @@ built a "biggest lever" heading on a number I had just called provisional.
 A hedge in the footnote does not license a claim in the title.)*
 
 </details>
+
+## 3b-QUIET. The speed measurement, redone on an idle box
+
+The §3b-FIXED numbers were taken at load ~15. Repeated on a quiet box, with
+startup differenced out (perf counts the whole process; bench times only the
+search, and loading an 84 MB net is real work SF's embedded net does not do — so
+each figure is a depth-D run minus a depth-1 run of the same command):
+
+| phase | ARCHON knps | SF18 knps | **NPS ratio** | i/node ratio | our IPC | SF IPC |
+|---|---|---|---|---|---|---|
+| 21+ | 1108 | 1420 | **1.28** | 1.50 | **1.73** | 1.50 |
+| 13–20 | 1301 | 1611 | 1.24 | 1.45 | 1.67 | 1.44 |
+| 8–12 | 1517 | 2021 | 1.33 | 1.57 | 1.69 | 1.45 |
+| ≤7 | 1950 | 2944 | **1.51** | 1.66 | 1.83 | 1.68 |
+
+**Our 1108k NPS at 21+ matches the documented V-768 idle figure of 1051k**, which
+is the sanity check the loaded measurements never had.
+
+The diagnosis is precise and it is not what I assumed: **we execute ~1.5× more
+INSTRUCTIONS per node, while our IPC is 15–17% BETTER than Stockfish's.** So the
+deficit is work done, not memory behaviour — data layout and cache use are fine,
+and the fix is doing less per node, not laying it out better. That is what makes
+the threat channel (§3h) the right target rather than, say, prefetching.
+
+*(Before startup was differenced out, the same run reported an "effective clock"
+of 6.4–8.3 GHz — above the 7700X's maximum boost, which is proof the measurement
+was wrong rather than merely noisy. An impossible intermediate is worth more than
+a plausible one.)*
 
 ## 3c. THE DECOMPOSITION — where the ~180 Elo actually goes
 
