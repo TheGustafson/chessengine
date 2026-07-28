@@ -177,14 +177,28 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   `sota` — verified 2026-07-27 by `nm` finding zero threat symbols in the
   default release binary. A no-net `bench` is a PSQT run (empty `EvalFile`
   ⇒ NNUE off). So an incremental-accumulator rewrite can be arbitrarily
-  wrong and leave 587683 untouched. The gate pins two V-arch numbers, both
-  reproduced by a from-source non-PGO build: the **eval hash**
-  `cd190d1b…7f3d` (sha256 of the forward-pass score for all 50
-  `tools/nnue/calib/wl50.fens`) and the **d13 node total 2068701**
+  wrong and leave 587683 untouched. The gate reads the CANONICAL net and arch
+  from `engines/canonical/` (see below) and pins two numbers, both reproduced
+  by a from-source non-PGO build: the **eval hash**
+  `d82caf8a…8163` (sha256 of the forward-pass score for all 50
+  `tools/nnue/calib/wl50.fens`) and the **d13 node total 1972607**
   (`bench 16 1 13 <fens> depth <net>` — the net is the optional **6th arg**;
-  omit it and you silently measure PSQT, 3441859). Same update rule as the
-  bench pin: an intentional change moves the pin in the same commit. Default
-  OFF (needs a second release build + the gitignored 84 MB net).
+  omit it and you silently measure PSQT, 3441859). Both were re-measured for
+  D48X on 2026-07-28; the previous D47V pins were `cd190d1b…7f3d` / `2068701`.
+  Same update rule as the bench pin: an intentional change moves the pin in the
+  same commit. Default OFF (needs a second release build + the gitignored net).
+- **The canonical net and engine — `engines/canonical/`.** ONE place names the
+  release pair, so switching nets is a symlink change with no stragglers:
+  `net.cenn` -> the release net, `archon` -> the release PGO binary, `arch.txt`
+  -> the cargo features the binary MUST be built with (a mismatched net/arch
+  pair fails the CENN section-size check at load). **Scripts and docs must
+  reference `engines/canonical/net.cenn`, never a bare filename.**
+  `uciprobe.NET` already resolves to it. Current: **D48X** (gen-2, 1280
+  accumulator, `sota,arch-d48x`), promoted 2026-07-28 at a measured
+  **-9.1 [-34.4, +16.1] Elo over 382 games vs D47V** — deliberately, on the
+  ruling that D48X is the stronger eval and loses only because the search
+  cannot yet exploit it. Rationale, evidence and the falsifiable prediction it
+  makes are in `engines/canonical/MANIFEST.md`.
 - **The D24 perft ritual** — any change touching `movegen`, `board`
   mutation, `zobrist`, or `attacks` must pass, before landing:
   `cargo test` (fast tier, automatic) AND
@@ -244,6 +258,26 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   for anything from `systemd-run`, or a PID file. When a count looks
   surprising, confirm by reading `/proc/<pid>/cmdline` directly — that is what
   finally settled it both times.
+
+## Search optimization — `searchopt/`
+
+**All search / loss-forensics work happens in `searchopt/`** — the method guide
+(`README.md`), the claim ledger (`LEDGER.md`, every surviving claim with the
+number that decides it, plus the refuted list), the tools, and the position
+sets. Reading and changing `src/` is expected; what you should NOT do is go
+shopping in `docs/research/` for context — that is how 2026-07-28 lost a day.
+Three standing rules from that day, each paid for: **eval is an AXIOM, not a
+hypothesis**; **null the METRIC (run the opposite-direction arm) BEFORE the
+arm**; **stay on ONE position, no aggregates during diagnosis**.
+
+## `old/` — archived, not deleted
+
+2026-07-28: 371 files (206 one-shot campaign scripts, 129 per-session research
+docs, raw perf artifacts) were moved to `old/` because nothing live referenced
+them. Verified: no live file references any moved path, and
+`CHECK_NNUE_GATE=1 bash tools/check.sh` still exits 0 with `Bench: 587683`.
+**Nothing in `old/` is loaded or trusted**; several of its documents contain
+conclusions that were later refuted.
 
 ## Layout
 
