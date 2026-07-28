@@ -103,6 +103,44 @@ endgame depth gap. The remainder is NPS and clock.
 
 ---
 
+## 3b. THE BIGGEST LEVER — a 2× NPS deficit, worst exactly where we lose
+
+corpus-v2 (129 games in, vs SF18 at 10+0.1) corroborates the phase story from
+an independent instrument: **51 of our 64 losses are decided in the endgame**
+(80%), and at the decisive ply we are at depth **14.7 against the winner's
+16.7** — two plies short.
+
+Equal-node tree shape (§3) accounts for ~0.5 plies and the 13% time difference
+for ~0.26. The remainder is raw speed, and it is large. NPS measured
+interleaved on identical positions, alternating engines:
+
+| pieces | ARCHON | SF18 | SF / ours | ours vs own 21+ | SF vs own 21+ |
+|---|---|---|---|---|---|
+| 21+ | 271k | 445k | 1.64× | 1.00 | 1.00 |
+| 13–20 | 337k | 504k | 1.49× | 1.24 | 1.13 |
+| 8–12 | 448k | 746k | 1.67× | 1.65 | 1.68 |
+| **≤7** | 545k | **1094k** | **2.01×** | 2.01 | **2.46** |
+
+Stockfish is 1.5–2× faster at every phase, and **its NPS scales up better as
+the board empties** (2.46× from its own opening baseline against our 2.01×), so
+the deficit is worst in the phase that decides 80% of our losses. At the
+project's ~120 Elo per doubling, a 2× endgame speed gap is on the order of
+100 Elo in exactly the wrong place.
+
+It is not that Stockfish has a cheap path: **`eca43a97` has no small net** —
+zero matches for `smallNet` in `evaluate.cpp`, one network for everything. We
+have a smallnet gate (`ARCHON_SMALLNET`, perf study 3 item 8) and it is off by
+default for want of a trained cheap net. The standing hypothesis for the gap is
+already on file in memory: SF maintains its threat features incrementally where
+we replay them.
+
+**Provisional — measured on a box at load ~11, and the playbook is explicit
+that NPS needs a quiet one** (there is a logged case of reading 0.755× where
+the truth was 0.845×). The ratio is interleaved and self-relative, which is the
+robust form, and it sanity-checks against a known idle figure: V-768 measures
+1051k idle, my loaded 271k is 3.9× depressed, implying SF ~1.7M idle, which is
+ordinary for SF18 single-threaded. Re-measure quiet before quoting it.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
