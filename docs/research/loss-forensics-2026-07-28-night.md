@@ -1079,6 +1079,55 @@ mechanically understood and I expect it to settle negative. The clock deficit
 against Stockfish (§2) remains a real observation; what is dead is the inference
 that closing it is worth Elo.
 
+## 3t. THE CLEAREST PICTURE — we do not fail to convert; we never get ahead
+
+A failure mode I had not examined all night: conversion. The first attempt
+triggered on each engine's OWN eval and reported Stockfish converting **100.0%**
+at every threshold — impossible, and the tell that two different frames were
+being compared. Re-run with SF's annotations as a single referee for both sides
+it looked real: at +1.0 sustained, ARCHON converts 29.9% and SF 92.7%, with 64.4%
+of ours becoming draws.
+
+**That collapsed too.** Those +1.0 advantages were first reached at **median ply
+10** — the UHO book — and their peak was **median 1.20, max 1.65**. A book-assigned
+edge, not a won game. (The same book trap as §1, in a new costume: in a UHO match,
+anything triggered on an early eval is measuring the book.)
+
+Asking the prior question instead — do we ever get winning at all? Peak advantage
+in SF's frame over all 320 games:
+
+| | median | p75 | p90 | **≥+2** | ≥+3 | ≥+5 |
+|---|---|---|---|---|---|---|
+| ARCHON | 0.84 | 1.12 | 1.51 | **8%** | 8% | 8% |
+| SF18 | 1.25 | 12.39 | 30.00 | **48%** | 48% | 48% |
+
+From move 20 on (past the book) our median peak is **0.24** against SF's **1.23**.
+
+**Two things fall out, and the second is the important one.**
+
+1. **`≥+2` = `≥+3` = `≥+5` for BOTH engines.** Once either side reaches +2 it goes
+   all the way. So an advantage of +2 simply *is* a win at this level, and
+   **neither engine has a conversion problem.** Conversion is not a failure mode;
+   it is not on the list.
+2. **Stockfish reaches a winning position in 48% of games. We reach one in 8%.**
+
+**So the dominant failure mode is not discrete at all.** It is that we never build
+an advantage — a small, uniform, per-move deficit, exactly the 0.005-vs-0.003 wp
+per move of §3q, amplified by the ~1.5× per-node cost of §3b-QUIET.
+
+**Sizing it against the blunders**, which is the comparison the standing bar
+cares about: 44 decidable errors across 320 games is **0.14 per game**, carrying
+~6.35 wp in total, or **0.02 wp per game**. The per-move quality gap is 0.002 wp
+× ~60 of our moves ≈ **0.12 wp per game** of pressure — an order of magnitude
+more, even allowing that wp does not accumulate linearly.
+
+**This is in tension with the framing of the standing bar, though not with its
+instruction.** "Rank by tractability × Elo" still holds and blunders are still the
+tractable ones — but in THIS matchup the drift is roughly 6× the blunder
+contribution, and a night spent entirely on blunders would have been a night
+spent on the smaller term. The bar's real value tonight was procedural: it forced
+the detector-independent census that produced these numbers.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
