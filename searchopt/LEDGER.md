@@ -214,9 +214,30 @@ SE_TT_DEPTH_SLACK` and a lower-bound entry, so a differently-populated TT change
 firing rate without any constant differing). Lowering our gate COMPENSATES for that
 without explaining it. Do not write this up as "we found the missing constant".
 
-Arm in games: `engines/runs/semindepth4`, 60k nodes (chosen over 30k because the
+### Which gate condition binds? BOTH — and the TT one binds hard
+`SE_TT_DEPTH_SLACK` (the `tt.depth >= depth − slack` condition) relaxed alone, same
+120 positions, same ±0.15 null band:
+
+| arm | sel−nom (d12) |
+|---|---|
+| base | 6.31 |
+| `SE_MIN_DEPTH` 6→5 | 6.92 |
+| **`SE_TT_DEPTH_SLACK` 3→6** | **8.47** |
+| `SE_TT_DEPTH_SLACK` 3→10 | 10.37 |
+| `SE_TT_DEPTH_SLACK` 3→99 (condition effectively removed) | 10.32 (saturated) |
+
+⇒ The test does NOT cleanly discriminate — relaxing ANY SE gate condition raises the
+firing rate and hence seldepth. What it does establish is that **the TT-depth condition
+alone suppresses ~4 plies** (removing it reaches 10.32 from 6.31), so it is a hard
+binding constraint, not a formality. That gives a SECOND candidate that reaches SF's
+value without adding singular verification searches at shallow nodes:
+`SE_TT_DEPTH_SLACK = 6` → 8.47 vs SF's 8.82.
+
+Arms in games: `engines/runs/semindepth4`, 60k nodes (chosen over 30k because the
 mechanism is zero at depth 6 and grows to +2.51 by depth 12 — the `setrigger` test at
-30k under-sampled its own mechanism).
+30k under-sampled its own mechanism), plus `engines/runs/semindepth4-110k` running the
+same arm at the in-game budget IN PARALLEL. Agreement across two budgets is much harder
+to fake than either alone, and the box was free when they were launched.
 
 ## THE JUDGE INSTRUMENT IS NOW VALIDATED (2026-07-28)
 
