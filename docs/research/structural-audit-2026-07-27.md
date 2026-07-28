@@ -145,6 +145,68 @@ sunk cost on more use sites.
 
 ---
 
+## 3b. The eval side: two things Stockfish has that we do not run
+
+### `nnueComplexity` is dead code in ARCHON
+
+Stockfish derives a free uncertainty signal from its architecture — its
+feature transformer emits a PSQT head alongside the positional head, so
+`complexity = |psqt − positional|` costs nothing — and spends it twice:
+
+```
+optimism += optimism * complexity / 476;
+nnue     -= nnue     * complexity / 18236;
+```
+
+We have both constants (`COMPLEXITY_OPTIMISM_DIV = 476`,
+`COMPLEXITY_EVAL_DIV = 18236`, exact matches) and **neither term ever fires**:
+`complexity` is hardcoded 0 because our CENN-v2 net has no psqt/positional
+split. So a signal Stockfish uses at every evaluated node is simply absent
+from ours.
+
+We do have a substitute Stockfish does not: a **WDL head**, already computed
+per eval and already consumed at the root for time management
+(`wdl_tm_factor`, behind `ARCHON_WDL_TM_C3`). Draw probability is a calibrated
+uncertainty measure rather than a proxy for one.
+
+Honest prior, split by term:
+
+- The **eval damping** half is probably near-neutral. `|eval|` and draw
+  probability are strongly inversely related, so `eval × (1 − k·p_draw)` is
+  close to a monotone squash of `eval`, and a monotone reshape cannot change
+  move order within a node. It only moves pruning thresholds — which is the
+  same class of change the five frame formulations already failed to profit
+  from.
+- The **optimism** half is not a reshape of eval at all, so that objection
+  does not apply to it. Test the two separately; a combined arm would confound
+  them.
+
+### Stockfish deleted its dual net; we still have the machinery
+
+At `eca43a97` there is a single `Network` — no `NetworkBig`/`NetworkSmall`, no
+`smallNet` threshold anywhere in `evaluate.cpp`. Stockfish removed the
+adaptive-eval routing it used to have.
+
+ARCHON still has it, twice over, both inert:
+
+- `active_smallnet()` — a cheap-net gate (perf study #3 item #8), env-driven
+  via `ARCHON_SMALLNET` / `ARCHON_SMALLNET_THRESH`, `None` unless armed. Runs
+  the cheap net's HalfKA channel and returns early on decided positions,
+  skipping the big net's FullThreats fold. That skip *is* the win.
+- a "t-shirt" S/M/L tier gate for critical positions.
+
+Both are blocked on the same missing artifact: **no cheap net has been
+trained**. That is a training task, not a tuning one, and the box is committed
+to D48X.
+
+Worth stating plainly: Stockfish removing this is evidence it was not worth
+the complexity *at their operating point*. Ours differs — we carry an 84 MB
+net and, if the rematch says the gap is speed, a cheaper eval on decided
+positions is aimed exactly at that. It is a hypothesis their deletion weakens
+but does not settle.
+
+---
+
 ## 4. Queued experiments
 
 | # | experiment | instrument | why it is worth a slot |
@@ -152,6 +214,16 @@ sunk cost on more use sites.
 | 1 | `QUIET_OFFENSE_FACTOR=0` | `screen.py` cp + fhf + nodes | unvalidated ARCHON original in the hot loop |
 | 2 | lazy threat map | perf + bench NPS, node-identical | provably discarded work at every qsearch node |
 | 3 | threat-conditioned LMR / futility | `screen.py`, then SPRT | free for us, costly for Stockfish |
+| 4 | `RAZOR_CORR_DIV` / `NMP_CORR_DIV` at 182069 | `screen.py` | SF applies `\|correctionValue\|` at 3 sites; we have plumbing for 5, inert at 1e9 |
+| 5 | `FRAME12` ×0.64, and `HINDSIGHT_EVAL_SUM=111` alone | `screen.py` | the 12 eval constants no frame formulation ever moved |
+| 6 | optimism boosted by WDL uncertainty | `screen.py` | replaces a dead SF term with a signal only we have |
 
-Experiment 1 is deterministic under load and can run on a busy box.
-Experiment 2 needs a quiet box, because its whole claim is wall-clock.
+Experiment 1 is deterministic under load and can run on a busy box — verified
+2026-07-27, where a `nice 19` screen alongside a timed match reproduced the
+control row exactly (cp@64k 4.64, top-1 66.5%). Fixed-node cp loss, fixed-depth
+bench and fhf counters do not depend on wall clock. Experiment 2 is the
+exception: its whole claim is wall-clock, so it needs a quiet box.
+
+That distinction is worth keeping as a rule. **Deterministic instruments can
+be niced onto a busy box; wall-clock instruments cannot run at all.** It is the
+difference between waiting an hour and not.
