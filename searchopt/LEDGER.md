@@ -222,6 +222,34 @@ noise: it aggregates gradient information over thousands of cheap paired compari
 moves all coordinates at once. For effects of +1 to +4 Elo that is the correct
 instrument, and single-arm A/B is the wrong one.
 
+## MOVE-TYPE ASYMMETRY: NOT ESTABLISHED — and the raw version reversed sign (2026-07-28)
+
+Do we play different KINDS of moves than SF? SAN is free in the PGN. Middlegame band
+(plies 20–79) of the 110k equal-nodes match, n ≈ 12,000 moves per engine.
+
+**Raw**, both engines' middlegame moves: king moves **1.106×** (13.93% vs 12.60%, ~4σ)
+and checks **0.881×** (6.53% vs 7.41%, ~4σ). Two clean four-sigma behavioural differences.
+
+**Both are position artifacts.** The engines occupy different positions — being worse
+*causes* defensive move types. Conditioning on the mover's OWN eval being within ±0.5
+(balanced, both sides, frame-normalised at the boundary):
+
+| class | raw ratio | conditioned | σ |
+|---|---|---|---|
+| K | 1.106 | 1.096 | **1.5** — gone |
+| **CHECK** | **0.881** | **1.251** | 2.7 — **SIGN REVERSED** |
+| Q | 0.988 | 1.221 | 2.8 |
+| P / N / B / R / CAPTURE | — | 1.002 / 0.875 / 0.887 / 0.963 / 1.039 | ≤1.7 |
+
+⇒ **Nothing is established.** The two survivors sit at 2.7–2.8σ with **eight classes
+tested**, i.e. right at the Bonferroni line (z ≈ 2.73 for α = 0.05/8). Treat as noise.
+
+⇒ **The lesson is the sign reversal.** "We give 12% fewer checks than SF" was a 4σ
+result and is the exact opposite of the truth once position is controlled. Any
+behavioural comparison between two engines PLAYING EACH OTHER is confounded by who is
+winning, because the loser is handed different positions. **Condition on the eval band
+before believing any move-distribution claim.**
+
 ## WHERE THE DRIFT GOES — decomposed at last (2026-07-28)
 
 `START-HERE` §4 open question 1 was "Where does 5 cp/move actually go? Nobody has
