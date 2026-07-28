@@ -607,6 +607,67 @@ the bar is about not tolerating them rather than about their rate. But the rate
 should be quoted correctly, and "one blunder per lost game" is roughly 7× too
 high because it counted moves in dead positions.
 
+## 3j. THE CAPSTONE — on the positions where we err, our move choice is CHAOTIC
+
+The SEARCH_REJECTS bucket (§3i) is the only one needing a mechanism change, and
+it had a clean-looking hypothesis. Its 10 instances are **7 quiet moves**, and in
+**8 of 10 both statics are strongly negative** — we are already worse and the
+right move is a quiet that limits the damage. Razoring and parent/capture
+futility all fire on `eval << alpha`, which IS the losing regime. So: the gates
+prune the quiet that would hold the position.
+
+Tested over all 10 at the depth reached in game, with a null panel:
+
+| arm | found /10 | | null arm (semantically inert) | found /10 |
+|---|---|---|---|---|
+| control | 2 | | `RAZOR_BASE` 465→464 | 3 |
+| −razor | 4 | | `RAZOR_BASE` 465→466 | 2 |
+| −pfut | 3 | | **`PFUT_BASE` 40→41** | **5** |
+| −cfut | 4 | | `PFUT_BASE` 40→39 | 2 |
+| −qsfut | **5** | | `CFUT_BASE` 231→232 | 4 |
+| −razor −pfut | 2 | | `QS_FUTILITY_MARGIN` 335→334 | 2 |
+| ALL eval gates off | 4 | | | |
+
+**Real arms span 2–5. Nulls span 2–5.** `PFUT_BASE 40→41` ties the best real arm
+and beats turning every eval gate off. The hypothesis is refuted on its own
+evidence set, and so is any gate explanation of this bucket.
+
+### What that actually means — and it is the night's most useful conclusion
+
+**On the positions where we make decidable errors, our move choice is chaotic
+with respect to parameters.** A ±1 change to an unrelated constant moves the
+outcome as much as removing a whole pruning gate. These are positions where
+several moves are close, the oracle's single "best" is one of a near-equal set,
+and which one our search lands on is effectively a coin flip.
+
+That single fact explains every dead end of the night:
+
+- **why single-position debugging kept failing** — game 18, the gate census, the
+  pfut attribution: all were reading a coin flip as a mechanism;
+- **why gate attribution was refuted twice, independently** — there was never a
+  gate signal to find;
+- **why a 4σ screen result converted to 0 Elo** — tuning moved the aggregate
+  statistic slightly and the per-position outcomes shuffled underneath it.
+
+**And it tells you what tuning can and cannot do.** It cannot target specific
+failures, because the parameter → move-played map is chaotic on exactly the
+positions that matter. It can only shift the DISTRIBUTION the coin flip is drawn
+from. Aggregate statistics say the central knobs are already at a local optimum
+(§5d), so the distribution is not movable by tuning them.
+
+**Therefore the remaining levers are non-parametric**, and both are already
+identified and quantified:
+
+1. **Speed** — the threat channel at 1.482× in the middlegame, ~68 Elo, the
+   phase where our quality gap is worst (§3h). This is the D49 decision.
+2. **Structural search mechanisms** — whatever Stockfish does that converts
+   marginal nodes into correct moves better than ours (§3f). Not a constant;
+   a mechanism.
+
+Two thirds of decidable errors being depth-fixable (§3i) is the same statement
+arrived at from the corpus: make the search see more per second, and the
+distribution improves. Nothing else on the table does.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
