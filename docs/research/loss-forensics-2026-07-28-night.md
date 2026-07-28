@@ -1418,6 +1418,48 @@ Worth writing down because it is subtle: "the bias is constant across arms, so i
 cancels" is true for almost every tunable and false for this one, and the
 difference is not visible in the output.
 
+## 3z4. A NEUTRAL REFEREE COLLAPSES THE QUALITY GAP — 10.2 points to 1.6
+
+Every cross-engine number tonight was refereed by Stockfish. §3q showed top-1
+agreement against an SF oracle rewards being SF. `engines/bin/reckless` is an
+unrelated engine — different codebase, different net — so refereeing both sides
+with it removes the shared-error term entirely.
+
+Top-1 agreement with **Reckless's** best move, both engines at 200k nodes:
+
+| pieces | n | ARCHON | SF18 | gap |
+|---|---|---|---|---|
+| 21+ | 442 | 66.5% | 69.5% | −3.0 |
+| 13–20 | 343 | **76.7%** | 75.5% | **+1.2** |
+| 8–12 | 200 | 58.0% | 64.0% | −6.0 |
+| ≤7 | 115 | **53.0%** | 49.6% | **+3.4** |
+| **ALL** | 1100 | **66.7%** | **68.3%** | **−1.6** |
+
+**The SF-refereed version of this comparison read 64.9% vs 75.1% — a 10.2-point
+gap. Neutral, it is 1.6 points.** Roughly **85% of the apparent equal-node
+quality gap was Stockfish-identity bias**, and under a neutral judge we are
+*ahead* in two of four phase buckets.
+
+**A bug had to be found first, and it is worth recording.** Reckless silently
+**ignores `searchmoves`** — forced to a deliberately bad move it still returns its
+own best (Stockfish honours the same command). Every loss probe therefore returned
+the free-search value and every cp/wp column read exactly `0.000`. My first
+verification could not catch it because I used Reckless's *own best move* as the
+target, which cannot distinguish honoured from ignored. **The top-1 column was
+never affected** — it uses only the referee's own best move — which is why the
+result above stands while the loss columns were discarded. Fixed by pricing a move
+through a child search and negating, which needs no engine cooperation.
+
+**What this does and does not settle.** Top-1 is coarse: it counts disagreements
+without weighting how costly each is, so a small top-1 gap is compatible with a
+large loss gap. The neutral cp/wp headroom — the number that would actually
+re-price §3y's +3.79 cp — is being measured with the corrected pricing now.
+
+**But the direction is already a serious correction.** §3y put the equal-node
+quality term back to ESTABLISHED at 5.1σ; that measurement was SF-refereed, and
+this says such measurements carry an ~85% inflation on the metric we can compare.
+The number to trust will be the neutral one.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
