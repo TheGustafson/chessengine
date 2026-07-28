@@ -1,0 +1,32 @@
+# smp9 rounds=3 depth=16 threads='1 2 4 8 16'
+# date=2026-07-28T18:27:45-04:00 uptime= 18:27:45 up 1 day,  6:00,  1 user,  load average: 0.43, 2.17, 5.26
+round=1 arm=ours threads=1 nodes=7183656 nps=1353109 ms=5309 wall=5.959
+round=1 arm=sf18 threads=1 nodes=9206622 nps=1776311 ms=5183 wall=5.961
+round=1 arm=ours threads=2 nodes=7183656 nps=1359510 ms=5284 wall=5.869
+round=1 arm=sf18 threads=2 nodes=18562233 nps=3990161 ms=4652 wall=5.312
+round=1 arm=ours threads=4 nodes=7183656 nps=1372498 ms=5234 wall=5.818
+round=1 arm=sf18 threads=4 nodes=44234346 nps=8147788 ms=5429 wall=6.049
+round=1 arm=ours threads=8 nodes=7183656 nps=1357968 ms=5290 wall=5.876
+round=1 arm=sf18 threads=8 nodes=210066980 nps=18661009 ms=11257 wall=11.916
+round=1 arm=ours threads=16 nodes=7183656 nps=1348030 ms=5329 wall=5.920
+round=1 arm=sf18 threads=16 nodes=210160081 nps=22312355 ms=9419 wall=10.193
+round=2 arm=ours threads=1 nodes=7183656 nps=1348030 ms=5329 wall=5.927
+round=2 arm=sf18 threads=1 nodes=9206622 nps=1760348 ms=5230 wall=6.020
+round=2 arm=ours threads=2 nodes=7183656 nps=1354384 ms=5304 wall=5.896
+round=2 arm=sf18 threads=2 nodes=19182088 nps=3984646 ms=4814 wall=5.476
+round=2 arm=ours threads=4 nodes=7183656 nps=1349296 ms=5324 wall=5.910
+round=2 arm=sf18 threads=4 nodes=37222379 nps=8048081 ms=4625 wall=5.251
+round=2 arm=ours threads=8 nodes=7183656 nps=1345002 ms=5341 wall=5.931
+round=2 arm=sf18 threads=8 nodes=108282614 nps=16273311 ms=6654 wall=7.313
+round=2 arm=ours threads=16 nodes=7183656 nps=1326376 ms=5416 wall=6.008
+round=2 arm=sf18 threads=16 nodes=362186411 nps=25665136 ms=14112 wall=14.887
+round=3 arm=ours threads=1 nodes=7183656 nps=1324176 ms=5425 wall=6.019
+round=3 arm=sf18 threads=1 nodes=9206622 nps=1728943 ms=5325 wall=6.110
+round=3 arm=ours threads=2 nodes=7183656 nps=1348283 ms=5328 wall=5.922
+round=3 arm=sf18 threads=2 nodes=18853947 nps=3803499 ms=4957 wall=5.627
+round=3 arm=ours threads=4 nodes=7183656 nps=1322226 ms=5433 wall=6.025
+round=3 arm=sf18 threads=4 nodes=35574530 nps=7546569 ms=4714 wall=5.343
+round=3 arm=ours threads=8 nodes=7183656 nps=1336991 ms=5373 wall=5.968
+round=3 arm=sf18 threads=8 nodes=111327482 nps=16898524 ms=6588 wall=7.251
+round=3 arm=ours threads=16 nodes=7183656 nps=1320525 ms=5440 wall=6.033
+round=3 arm=sf18 threads=16 nodes=368060230 nps=23987241 ms=15344 wall=16.124

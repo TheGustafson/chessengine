@@ -1,0 +1,10 @@
+round=1 bin=archon-s9-base nodes=5001562 instructions=33796784480 cycles=26160075719 cache_refs=5946030521 cache_misses=374378527
+round=1 bin=archon-s9-nosnap nodes=5001562 instructions=34035238287 cycles=24695715896 cache_refs=5972572930 cache_misses=348836705
+round=2 bin=archon-s9-base nodes=5001562 instructions=33796971096 cycles=24333326654 cache_refs=5925148830 cache_misses=351260602
+round=2 bin=archon-s9-nosnap nodes=5001562 instructions=34024301972 cycles=28263448349 cache_refs=6022712712 cache_misses=382399164
+round=3 bin=archon-s9-base nodes=5001562 instructions=33795763985 cycles=28375057610 cache_refs=6245426447 cache_misses=425461914
+round=3 bin=archon-s9-nosnap nodes=5001562 instructions=34024322755 cycles=26814094153 cache_refs=6091432202 cache_misses=386137118
+round=4 bin=archon-s9-base nodes=5001562 instructions=33796423106 cycles=30152569928 cache_refs=6251324393 cache_misses=428594132
+round=4 bin=archon-s9-nosnap nodes=5001562 instructions=34036644121 cycles=30468938675 cache_refs=6289612495 cache_misses=431013156
+round=5 bin=archon-s9-base nodes=5001562 instructions=33796401617 cycles=32007187584 cache_refs=6480320718 cache_misses=458967423
+round=5 bin=archon-s9-nosnap nodes=5001562 instructions=34036645875 cycles=33238906314 cache_refs=6317207092 cache_misses=439048806
