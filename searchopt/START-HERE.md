@@ -57,7 +57,63 @@ stop and read §1.
 
 ---
 
-## 1. The problem, in one sentence
+## 0. ⛔ READ THIS BEFORE YOU RUN A SINGLE ARM (2026-07-28, second session)
+
+**A 406-game match resolves ±24 Elo idealised, ±40–50 as actually observed here. A good
+Stockfish search patch is worth +1 to +4 Elo; a strong one +5 to +10.** The arm-per-400-
+games workflow is therefore **3–10× too coarse to detect any realistic search
+improvement**, and eight arms run that way in one session produced eight uninformative
+nulls.
+
+* **Use SPRT** (`fastchess -sprt elo0=0 elo1=5 alpha=0.05 beta=0.05 model=logistic`) or
+  budget **n ≥ 1500**. At 30k nodes that is ~40 min at concurrency 4.
+* **`model=normalized` puts the bounds in nElo, not Elo** — `elo1=5` there silently tests
+  ~2.5 real Elo.
+* Do **not** cite this session's nulls (`corrgate` −17.1, `setrigger` −16.3,
+  `redcorr110k` −13.3, `offense0` −1.7, `semindepth4` −1.2/+4.8, `asp30` +10.3) as
+  refutations of their ideas. They rule out only LARGE effects.
+
+**Measure an arm's mechanism in the MATCH PGN, not in a cold probe.** `fastchess` writes
+`{score/depth time}` per move, so in-game depth and score-volatility per engine are free.
+A cold `ucinewgame`-per-position probe on a curated set is **not the game distribution**:
+cold probes at 110k read depth ~14.5 where games at the same budget read ~21.4. A
+mechanism that exists only cold is an instrument artifact — `asp30` measured **+0.96**
+depth cold and delivers **+0.08** in games.
+
+## 1. The problem — and what the previous framing got wrong
+
+The framing below ("we cannot convert") is a **description, not a localisation**, and it
+does not survive its own control. See `results/conversion-at-equal-nodes.md`.
+
+**At equal nodes, colour-paired, from the corpus's own plateau positions (n=615):**
+
+| | ARCHON | SF18 | gap |
+|---|---|---|---|
+| converts an advantage | 18% | 47% | **29** |
+| salvages a disadvantage | 53.2% | 81.6% | **28** |
+
+**The gap is the same size in both directions.** A conversion-specific defect would make
+the conversion gap the larger one. We are uniformly weaker whichever end of the imbalance
+we hold — which is what a flat Elo deficit looks like, not a grinding defect. The
+plateau positions themselves are not special either: **−54 Elo there vs −68 on the corpus
+openings**, statistically identical.
+
+**What is actually established about the search gap**, all from games (the right regime):
+
+* **In-game depth EQUALS SF's at every budget** — 21.43 vs 21.43 at 110k, 17.56/17.66 at
+  30k, 14.42/14.53 at 10k, n≈29,000 moves per engine. Same nodes, same depth, ~68 Elo
+  worse.
+* **Our root score churns 1.24× SF's**, and the excess is **concentrated in balanced
+  positions** — 1.561× at |score| < 0.25, 1.336× at 0.25–1.0, 1.107× at 1.0–5.0. Flat by
+  game phase. We are least stable exactly where games are decided.
+* **The search is a faithful port** — 18 components read line-by-line against `eca43a97`,
+  all matching (correction history, qsearch, TT replacement, rule50 folding, NMP,
+  optimism, the per-`go` butterfly decay, …). Stop looking for a missing constant.
+
+The old text is kept below because its counting is sound; only its status as a
+*localisation* is retracted.
+
+### (retracted as a localisation, retained as description)
 
 **We hold an advantage and bleed it, ~5 cp per move, for forty moves, without ever making
 a move you could call a mistake.**
@@ -69,23 +125,11 @@ Not blunders. Measured on the full D48X corpus (404 games vs SF18, colour-paired
 | converts a won book (≥ +0.25) | **12%** (25W / 172D / 4L) | **84%** |
 | salvages a lost book | **16%** | **88%** |
 
-A +1 pawn book position is worth **92% to Stockfish and 55% to us.** That gap *is* the
-−132 Elo. 71% of opening pairs follow one pattern: we lose the bad side and draw the good
-one.
-
-And the decay has no locus. Across the 172 squandered wins:
-
-* worst single move per game: **median 0.25 pawns**
-* games containing ANY move over the 0.88-pawn blunder bar: **2 of 172**
-* share of the total decline carried by the single worst move: **median 23%**
-
-77% of the advantage disappears in moves that individually cost under a quarter of a pawn.
-**There is no node that discards the right move. There is no bad move to find.**
-
-The conversion profile is bimodal with nothing in between: squandered wins gain a median
-**+0.05** pawns over the book and **ZERO of 172 ever exceed +2.00**; converted wins gain
-**+10.07** and all 25 exceed +2.00. We convert by tactics or not at all. We never grind
-+1.0 into +1.5 into +2.0.
+That 12%/84% is measured at 10+0.1, where we also carry the ~1.5–1.9× speed handicap; at
+equal nodes it becomes 18%/47%, and symmetric with salvage. The decay has no locus:
+worst single move per game median **0.25 pawns**, only **2 of 172** games contain a move
+over the 0.88-pawn blunder bar, and the single worst move carries a median **23%** of the
+decline.
 
 ## 2. What the deficit is made of
 
