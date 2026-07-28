@@ -514,11 +514,21 @@ def main() -> None:
     tier_err = tier_errors(tier_tables)
     print("  oracle tier strength (own best move vs deepest tier): "
           + ", ".join(f"{int(t)//1000}k={e:.2f}cp" for t, e in tier_err.items()))
+    # POWER. Measured on this corpus: paired sem ~0.23 cp at 4000 positions and
+    # ~0.15 at the full 9992. The effects worth acting on are 0.2-0.3 cp, so a
+    # 4000-position screen runs at roughly ONE sigma -- a coin flip dressed as a
+    # measurement. On 2026-07-27 that produced hind111 at -0.32+-0.23 (read as
+    # the find of the day) which went to +0.03+-0.15 at full corpus and -17 Elo
+    # in games. Use --limit only to RANK directions; never to decide one.
     if len(fens) < 3000:
         approx = 2.0 * (250 / max(len(fens), 1)) ** 0.5
         print(f"{len(fens)} positions, arms at {args.nodes} nodes  "
               f"[EXPLORATORY: paired sem ~{approx:.1f} cp -- use --limit 0 "
               f"for a verdict]\n")
+    elif len(fens) < 9000:
+        print(f"  NOTE: {len(fens)} positions is ~{0.15*(9992/len(fens))**0.5:.2f} cp of paired sem. "
+              f"Effects of interest are 0.2-0.3 cp,\n  so this is near one sigma. "
+              f"Rank directions here; confirm with --limit 0.\n")
     else:
         print(f"{len(fens)} positions, arms at {args.nodes} nodes\n")
     hdr = f"{'arm':<20}" + "".join(f"{'cp@' + t[:-3] + 'k':>13}" for t in keys) + f"{'top1':>8}{'blund':>8}{'p90':>7}"
