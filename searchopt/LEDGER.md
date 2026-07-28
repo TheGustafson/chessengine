@@ -246,6 +246,37 @@ annotations of matches that already existed) and had ~24,000× the sample of the
 actually quoted. **Before building on a per-position figure, check whether the same
 quantity can be read out of a match that has already been played.**
 
+### Where the excess volatility lives: BALANCED positions
+
+Same PGNs, same frame handling, split two ways (n in the thousands per cell):
+
+| |score| before the move | ARCHON | SF18 | ratio |
+|---|---|---|---|---|
+| **< 0.25 (balanced)** | 0.0439 | 0.0281 | **1.561×** |
+| 0.25–1.0 | 0.1334 | 0.0998 | 1.336× |
+| 1.0–5.0 | 0.1667 | 0.1507 | 1.107× |
+
+| game phase (ply of later move) | ratio |
+|---|---|
+| opening (<20) | 1.152× |
+| middle (20–59) | 1.278× |
+| late (60+) | 1.234× |
+
+⇒ **Flat by phase, strongly graded by score.** The excess is not an opening-book or
+endgame artifact; it is concentrated in **near-equal positions**, where we churn 56%
+more than SF and where games are actually decided. Once a game is decided (|s| > 1) we
+are nearly as stable as SF (1.11×).
+
+⇒ **It lands on the arm already under SPRT.** At |score| < 0.25 the `mss` term is ~0
+(`mss ≈ score·|score|`), so our aspiration window collapses to the bare base of **5** —
+exactly what `ASPIRATION_BASE_DELTA` 5→30 widens. The `asp30` SPRT was launched before
+this was measured, so this is a post-hoc coherence, not the reason for the test;
+**it does not license reading the SPRT early.**
+
+⇒ Caveat kept explicit: churn is not automatically badness — a search that revises its
+opinion may be revising it correctly. What is established is an ASYMMETRY vs SF in the
+most decision-critical band, measured in the game regime with high n.
+
 ## ★★ THE COLD-PROBE REGIME IS NOT THE GAME REGIME (2026-07-28) — read before trusting ANY per-position measurement in this folder
 
 **In-game depth at equal nodes, read from the stored match PGNs (n ≈ 29,000 moves per
