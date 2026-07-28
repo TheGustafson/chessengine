@@ -230,6 +230,43 @@ negative) tested the reduction LEVEL and found it at a local optimum. `root_delt
 different axis — the level is right, its *scaling input* is wrong. A3 says only new
 conditioning axes can move anything; this is one.
 
+### ⚠ CORRECTION: the mss/frame argument is a RED HERRING for this effect
+
+Bracketed at 110k, n=100, null band ±0.15:
+
+| arm | depth | seldepth |
+|---|---|---|
+| base (5 / 6776) | 14.54 | 22.91 |
+| `BASE_DELTA` 30 | 15.50 | 23.72 |
+| `BASE_DELTA` 60 | 15.62 | 24.27 |
+| **`BASE_DELTA` 100** | **15.78** | **24.82** |
+| `BASE_DELTA` 200 | 15.87 | 24.30 ← seldepth TURNS OVER |
+| **`ASPIRATION_MSS_DIVISOR` 6776→4341 (the frame-principled value)** | **14.72** | **22.84** ← INERT |
+| `MSS_DIV` 4341 + `BASE_DELTA` 30 | 15.25 | 23.85 |
+| `MSS_DIV` 3000 | 14.86 | 23.27 |
+| **SF18** | **14.80** | **25.22** |
+
+**The frame-derived mss divisor moves nothing** (+0.18 depth, −0.07 seldepth — inside
+the null band). The *arbitrary linear base term* does all the work. So the elegant
+"our mss is 0.41× because it is a SQUARED eval quantity" story, which is arithmetically
+correct and which I used to justify this whole line, **does not explain this effect.**
+
+Why: at a typical root score (~200 in our units) `mss ≈ 40,000`, so `mss/6776 ≈ 6`
+against a base of 5. Re-scaling the divisor moves delta from ~11 to ~14. Raising the
+base term to 100 moves it to ~106. The base term dominates by an order of magnitude,
+and it is not a frame quantity at all.
+
+⇒ **The honest mechanism is simply "our root window is far too narrow", full stop.**
+The squared-frame analysis in `docs/research/aspiration-frame-bug.md` may still be
+right about root-score OSCILLATION; it is not what produces the depth/seldepth gain.
+**Recorded because the frame story was the reason I looked here, and it turned out to
+be the wrong reason for the right place.**
+
+⇒ `BASE_DELTA=100` is the best joint point measured (15.78/24.82 vs SF's 14.80/25.22 —
+ahead on depth, nearly level on seldepth) and 200 shows the turnover, matching the
+aspiration doc's own bracket (40 halved oscillation, 400 was worse). Arms in games:
+`asp30` and `asp100`, both 110k.
+
 ### The attack on it, stated because the story is now elegant (README §2 rule 6)
 Part of the depth gain IS a reduction increase, and "reduce more" is at a local optimum
 by game evidence. So the honest reading is: **the depth/seldepth gain is established;
@@ -352,8 +389,9 @@ arm name.
 | `redcorr110k` (`RED_CORR_DIV` 26131→7029) | 110k | **−13.3 [−52.2, +25.2]**, n=313, STOPPED early for memory |
 | `offense0` (`QUIET_OFFENSE_FACTOR` 10→0) | 30k | **−1.7 [−36.0, +32.5]**, n=398 |
 | `semindepth4` (`SE_MIN_DEPTH` 6→4) | 60k | **−1.2 [−42.1, +39.6]**, n=281, stopped (null; decayed +43.7→+34.5→+19.2→−1.2 as n grew — a textbook positive partial dying) |
-| `semindepth4-110k` (same arm, in-game budget) | 110k | running |
+| `semindepth4-110k` (same arm, in-game budget) | 110k | **+4.8 [−35.3, +44.9]**, n=291, stopped (null, matching its 60k twin) |
 | `asp30` (`ASPIRATION_BASE_DELTA` 5→30) | 110k | running |
+| `asp100` (`ASPIRATION_BASE_DELTA` 5→100) | 110k | running |
 
 ⇒ **A real, nulled `fhf` improvement did NOT convert to Elo.** `QUIET_OFFENSE_FACTOR=0`
 raised the first-move cutoff rate by +0.0021 against a ±0.0011 null band, with the
