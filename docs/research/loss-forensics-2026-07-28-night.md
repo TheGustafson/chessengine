@@ -576,14 +576,23 @@ than runs will keep pointing campaigns away from unexplored ground.
 
 Three measurements, and the candidate does not survive any of them:
 
-| instrument | verdict on the pfut relaxation |
-|---|---|
-| openings corpus, full power (n=9,992) | `c1.56` **−0.58 ± 0.14 cp**, `m75` −0.44 ± 0.15 → "≈ +27 Elo" |
-| **phase corpus, full power** | `m75` **+1.10 ± 0.68 cp** — WORSE. `m60` −0.10 ± 0.62 — neutral |
-| **games, 12,500-node SPRT** (the screen's own budget) | **−1.0 ± 15.1** Elo, n=348 |
-| games, 200,000-node SPRT | −5.3 ± 16.1 Elo, n=264 |
+| arm | openings corpus (n=9,992) | **phase corpus (n=3,352)** |
+|---|---|---|
+| `m75` PFUT_LMRDEPTH_MULT 75 | −0.26 ± 0.16 | **+1.10 ± 0.68** |
+| `c1.56` constants ×1.56 | **−0.35 ± 0.15** | **+0.80 ± 0.54** |
+| `base120` PFUT_BASE 120 | −0.26 ± 0.15 | **+0.54 ± 0.62** |
+| `m60` PFUT_LMRDEPTH_MULT 60 | — | −0.10 ± 0.62 |
 
-The predicted +27 Elo is excluded. The arm is neutral to slightly negative.
+Every relaxation arm flips sign. And the games agree with the phase corpus:
+
+| games | Elo |
+|---|---|
+| **12,500-node SPRT** (the screen's own budget), n=676 | **−1.5 ± 10.7** |
+| 200,000-node SPRT, n=264 | −5.3 ± 16.1 |
+
+**The predicted +27 Elo is excluded at 2.7σ.** This is not one arm going wrong:
+the openings corpus produced a false positive on the ENTIRE FAMILY, four arms,
+all in the same direction, at up to 4σ.
 
 **One explanation was tested and refuted.** The obvious defence was budget
 mismatch — screened at 12.5k nodes, raced at 200k, and `screen.py` warns that
