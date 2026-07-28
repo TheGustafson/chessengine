@@ -21,18 +21,29 @@
 # box when the margin matters, and always quote games + error bars.
 set -eu
 cd "$(dirname "$0")/../.."
-ENGINE=engines/bin/archon-d47v-tune-pgo
-NET=data/nnue/nets/screens/d47v-a4b2-cal400.cenn
+# Defaults follow the CANONICAL pointer (CLAUDE.md: scripts reference
+# engines/canonical/net.cenn, never a bare filename). They were pinned to the
+# D47V pair, which silently became WRONG when D48X was promoted on 2026-07-28:
+# a vector tuned on arch-d48x would have been verified on a 768-wide D47V
+# engine+net, i.e. a different engine entirely, and the mismatch is invisible
+# because both sides of the A/B would have used it.
+#
+# archon-trace is the only tune-feature build for the canonical arch. It is
+# non-PGO, which is a deviation from the standing PGO ruling but not a bias:
+# both sides are the SAME binary, so at equal time both simply search fewer
+# nodes. Rebuild a PGO tune binary if absolute strength matters here.
+ENGINE=${ARCHON_VERIFY_ENGINE:-engines/bin/archon-trace}
+NET=${ARCHON_VERIFY_NET:-engines/canonical/net.cenn}
 THETA=${1:-}
 GAMES=${2:-600}
 TC=${3:-10+0.1}
 CONC=${4:-6}
 
 if [ -z "$THETA" ]; then
-  THETA=$(ls -t tools/spsa/out/s2-stageA-*/theta_final.json 2>/dev/null | head -1 || true)
+  THETA=$(ls -t tools/spsa/out/*/theta_final.json 2>/dev/null | head -1 || true)
 fi
 [ -n "$THETA" ] && [ -e "$THETA" ] || {
-  THETA="$HOME/.cache/archon-spsa-stageA/state/theta-latest.json"
+  THETA=$(ls -t "$HOME"/spsa-ex-*/state/theta-latest.json "$HOME"/.cache/archon-spsa-stageA/state/theta-latest.json 2>/dev/null | head -1 || true)
   echo "[verify] no theta_final.json — falling back to the INTERIM vector $THETA"
 }
 [ -e "$THETA" ] || { echo "[verify] no theta anywhere; nothing to verify"; exit 1; }
