@@ -222,6 +222,43 @@ noise: it aggregates gradient information over thousands of cheap paired compari
 moves all coordinates at once. For effects of +1 to +4 Elo that is the correct
 instrument, and single-arm A/B is the wrong one.
 
+### ⚠ THE MULTIPLICATIVE TM KNOB IS HEAVILY DAMPED — measured, and it kills the arm
+
+`TM_SCORE_C` (landed, default 0, bit-identical) scales the soft-stop budget by
+contestedness. Cold, it works exactly as designed: a balanced root goes 9163 → 10245 at
+C=+256 and → 8081 at C=−256, with a winning root unchanged at 1153.
+
+**In GAMES it barely moves anything.** `nodestime=150`, tc 20+0.2, mechanism read from the
+match PGN (median, and share-of-own-clock, conditioned ex ante):
+
+| setting | budget multiplier at a level root | in-game share of clock, \|eval\| < 0.25 |
+|---|---|---|
+| C=256 (ceiling 1.25) | 1.25× | **0.944** (median ratio 1.000 — nothing) |
+| C=1024, ceiling 2.5 | **2.50×** | **1.081** (median ratio 1.064) |
+
+⇒ **A 2.5× budget multiplier buys +8% of real time.** The two rows are consistent: at
+1.25× the predicted effect is ~+1–2%, which is what "nothing" looks like.
+
+⇒ **The budget is NOT the binding constraint.** The soft stop's other factors — stability,
+effort, `fallingEval` — end the search before the budget matters, and a balanced quiet
+position is exactly where the best move is stable and those factors fire first. **Any
+multiplicative factor on `optimum()` inherits this damping**, which also predicts that
+`ARCHON_WDL_TM_C3` and `unc_tm_factor` would be weak even on a net that fed them —
+relevant to the NNUE study's R6.
+
+⇒ **Consequence:** to move allocation by the ~20% the measurement calls for, the change has
+to be to the STOP CONDITIONS (which factor dominates in quiet positions), not to the
+budget they are compared against. That is a different and larger piece of work.
+
+⇒ **The knob stays in at default 0** (exactly 1.0, bit-identical, gate green) as a
+documented, measured dead end rather than a deletion — the damping number is the useful
+artifact.
+
+⇒ **Method note:** the SPRT was stopped at n=27 rather than run to completion, because the
+mechanism check said the arm does not do the thing it was built to do. **Verify the
+mechanism IN THE MATCH PGN before buying thousands of games**, not just in a cold probe —
+the cold probe said +11.8% and the games said 0%.
+
 ## TIME ALLOCATION — the one lever fixed-node testing is structurally blind to (2026-07-28)
 
 Every arm in this folder is tested at fixed nodes, which **cannot see time management at
