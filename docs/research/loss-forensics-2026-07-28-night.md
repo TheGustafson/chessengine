@@ -1671,6 +1671,59 @@ games). **Those two disagree, and only games settle it.** That is the next match
 and it is a sharper hypothesis than anything else tested tonight because it was
 derived from the losses rather than from a sweep.
 
+## 4c. THE FRAME RATIO WAS INVERTED ALL NIGHT — it is 2.28, not 0.46
+
+Two frame-derived corrections failed tonight with their falsification arms
+winning: the pfut margins (`pfinv`, constants ×1.56) and the LMR re-search
+margins (`INVERSE`, 114/20 ≈ ×2.2). Twice in the same direction is not luck. So I
+measured the ratio directly instead of inferring it:
+
+**Same positions, both engines at depth 12, our search score against
+Stockfish's:**
+
+> **OUR score = 2.28 × SF score** (rank rho 0.962, n=132)
+>
+> stable across bands: |SF| 50–150 → k=2.18, 150–400 → k=2.29, 0–50 → k=3.49
+
+**Our units are LARGER than Stockfish's, not smaller.** Every previous estimate
+(0.55 / 0.579 / 0.605 / my 0.46) came from comparing a STATIC eval against a DEEP
+SEARCH value — which measures how much a static eval regresses toward the mean of
+a deeper search, and only incidentally the units. The number a transcribed
+constant actually cares about is score-vs-score at equal depth, and nobody had
+measured it.
+
+### Everything that contradicted me now fits
+
+| observation | under k = 0.46 | under **k = 2.28** |
+|---|---|---|
+| our EBF 1.49 vs SF's 1.65 (we are NARROWER) | contradiction — we should prune less | ✓ our margins are 2.28× too small, so every gate fires too readily |
+| we over-reduce the critical line (§4b) | unexplained | ✓ same cause |
+| `pfinv` (constants ×1.56) beat every derived arm | "the control won" | ✓ it WAS the frame-correct arm |
+| LMR `INVERSE` 114/20 beat the derived 24/4 | "the control won again" | ✓ likewise |
+| static-vs-own-search slope 1.05 (§ above) | — | ✓ consistent: our eval is calibrated to our own search; both are in our larger units |
+
+**Two "falsification controls" won because they were right.** I labelled them
+controls because I had the sign backwards, and then read their victories as
+evidence *against* the frame hypothesis. They were evidence for it.
+
+### The consequence
+
+**Every cp constant transcribed from Stockfish is ~2.28× too small in our units**,
+so razoring, futility, RFP, LMP, the LMR re-search margins and the aspiration
+deltas all fire more readily than Stockfish intends. That is one coherent cause
+for: a narrower tree, over-reduction of the critical line, and a search that
+returns a confident wrong verdict on the moves that lose us games (§4a).
+
+**The single-knob form is `EVAL_SCALE ≈ 1024/2.28 ≈ 449`** — scale our eval DOWN
+so our units match the constants, rather than moving 260 constants up.
+
+**Flagged tension, not resolved:** the `EVAL_SCALE` sweep favoured values ABOVE
+1024 (+1.45 at 1400) and rated 700 at only +0.25 — the opposite of what k=2.28
+prescribes. That sweep is SF-refereed and `EVAL_SCALE` moves us toward the
+referee (§3z3), so it is exactly the arm whose bias does not cancel. **The
+Reckless-refereed re-run and a game match are the tests that decide**, and the
+game match needs no referee at all.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
