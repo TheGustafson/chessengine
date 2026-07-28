@@ -225,6 +225,81 @@ def play_all(fens: list[str], nodes: int, ov: dict[str, int]) -> dict[str, str]:
     return out
 
 
+def tier_errors(tier_tables: dict) -> dict[str, float]:
+    """Each tier's own mean cp loss under the deepest tier. See oracle_audit."""
+    keys = sorted(tier_tables, key=int)
+    deep = tier_tables[keys[-1]]
+    out: dict[str, float] = {}
+    for t in keys:
+        losses = []
+        for fen, moves in tier_tables[t].items():
+            dm = deep.get(fen)
+            if not dm:
+                continue
+            best_t = max(moves, key=moves.get)
+            if best_t in dm:
+                losses.append(max(dm.values()) - dm[best_t])
+        if losses:
+            out[t] = statistics.fmean(losses)
+    return out
+
+
+def oracle_audit(tier_tables: dict) -> None:
+    """How good is the measuring stick? Answered from the oracle file alone.
+
+    Score each tier's OWN best move under the DEEPEST tier. That is the tier's
+    mean cp loss -- its strength expressed in exactly the unit an arm is
+    measured in, so tiers and arms become directly comparable.
+
+    This exists because a plausible-sounding headroom argument I made from node
+    counts was wrong. Node counts do not compare across engines, and these
+    tiers are `searchmoves` (every legal move searched separately at the tier's
+    budget), which is a far stronger analysis than one search of that size. The
+    only honest comparison is in cp, and it needs no engine runs at all.
+
+    Two things it tells you, both of which change how a screen is read:
+
+      * whether a tier is a WEAKER judge than the arm it is judging -- if so,
+        requiring the arm's sign to hold there rewards searching worse;
+      * the deepest tier's own error, by extrapolating the tier-to-tier ratio.
+        cp loss cannot fall below that floor no matter how good the engine
+        gets, so it bounds the dynamic range a screen can ever resolve.
+    """
+    keys = sorted(tier_tables, key=int)
+    deep = tier_tables[keys[-1]]
+    print(f"ORACLE AUDIT — each tier's own best move, scored by the {keys[-1]}-node tier\n")
+    print(f"{'tier':>8}{'mean cp':>10}{'median':>9}{'top1':>8}{'blunder':>9}")
+    errs = []
+    for t in keys:
+        losses, hits = [], 0
+        for fen, moves in tier_tables[t].items():
+            dm = deep.get(fen)
+            if not dm:
+                continue
+            best_t = max(moves, key=moves.get)
+            if best_t not in dm:
+                continue
+            losses.append(max(dm.values()) - dm[best_t])
+            hits += int(dm[best_t] == max(dm.values()))
+        if not losses:
+            continue
+        errs.append((int(t), statistics.fmean(losses)))
+        print(f"{int(t)//1000:>7}k{statistics.fmean(losses):>10.2f}"
+              f"{statistics.median(losses):>9.2f}{hits/len(losses):>7.1%}"
+              f"{sum(1 for x in losses if x >= 100)/len(losses):>9.1%}")
+    if len(errs) >= 3:
+        ratio = errs[0][1] / errs[1][1] if errs[1][1] else float("nan")
+        floor = errs[1][1] / ratio if ratio else float("nan")
+        print(f"\nTier error falls ~{ratio:.2f}x per 2x nodes, so the deepest tier's OWN")
+        print(f"error against a hypothetical deeper oracle extrapolates to ~{floor:.1f} cp.")
+        print("It reads 0.00 above only because it is the reference, not because it is")
+        print("right. An arm's measured cp loss contains that floor and cannot go below")
+        print("it, which is what compresses every delta as an arm approaches it.")
+    print("\nCompare an arm's absolute cp against these rows. A tier whose own loss is")
+    print("HIGHER than the arm's is a weaker judge than the thing it is judging --")
+    print("do not require the arm's sign to hold there.")
+
+
 def play_reference(binary: str, fens: list[str], nodes: int) -> dict[str, str]:
     """Same position set, same node budget, a DIFFERENT engine.
 
@@ -324,7 +399,7 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=800, help="oracle positions")
     ap.add_argument("--nodes", type=int, default=12500,
                     help="candidate budget; keep it >=2 doublings BELOW the "
-                         "deepest oracle tier (see the headroom warning)")
+                         "deepest oracle tier; --oracle-audit prints tier strengths")
     ap.add_argument(
         "--budgets",
         default="",
@@ -342,6 +417,8 @@ def main() -> None:
                     help="also report first-move cutoff rate (cheap, targets "
                     "the measured ordering defect)")
     ap.add_argument("--oracle", default=ORACLE)
+    ap.add_argument("--oracle-audit", action="store_true",
+                    help="print how strong each oracle tier is, in cp, and exit")
     ap.add_argument("--reference", action="append", default=[],
                     metavar="[NAME=]BINARY",
                     help="score another engine at the same node budget, to give "
@@ -384,6 +461,9 @@ def main() -> None:
         return
     tier_tables = json.load(open(args.oracle))["tiers"]
     keys = sorted(tier_tables, key=int)
+    if args.oracle_audit:
+        oracle_audit(tier_tables)
+        return
     if args.limit:
         # RANDOM sample, not a prefix. The corpus is ordered, and taking the
         # first N systematically over-weights hard positions: the control's
@@ -413,34 +493,27 @@ def main() -> None:
     # chasing here are ~1 cp, so a small --limit cannot resolve them however
     # confident the mean looks. Measured on this corpus: sem ~2.0 cp at 250
     # positions, ~1.1 at 800, ~0.8 at 1500, ~0.3 at the full 9992.
-    # ORACLE HEADROOM. Measured 2026-07-27 and it invalidates the old default.
-    # cp loss is agreement with the oracle, so an arm searched almost as deep
-    # as the oracle is being judged by a stick barely longer than itself. The
-    # budget sweep shows exactly where the stick runs out: cp improvement per
-    # doubling is ~2.0 at 3-12k nodes (2.4-3.4 doublings of headroom) and
-    # collapses to 0.31 at 50k->100k, where headroom is NEGATIVE. That collapse
-    # is the instrument saturating, not the engine ceasing to improve.
+    # ORACLE STRENGTH. `--oracle-audit` scores each tier's own best move under
+    # the deepest tier, which puts tiers and arms in the SAME unit. Measured
+    # 2026-07-27 on oracle-obs: 4k tier 6.42 cp, 16k 3.48, 64k 0.00 (reference,
+    # not merit -- its own error extrapolates to ~1.9 cp).
     #
-    # Worse, a tier SHALLOWER than the arm inverts the question: at the 4k tier
-    # a 50k-node arm is 3.6 doublings deeper than its judge, so the tier scores
-    # "how well does this deep search agree with a shallow one" -- which rewards
-    # searching worse. The old "require the sign to hold across all three tiers"
-    # rule was therefore demanding agreement with two tiers pointed the wrong
-    # way.
-    deep_tier = int(keys[-1])
-    headroom = math.log2(deep_tier / max(args.nodes, 1))
-    if headroom < 2.0:
-        print(f"  WARNING: arms at {args.nodes} nodes vs a {deep_tier}-node deepest "
-              f"oracle tier\n  is only {headroom:.2f} doublings of headroom. "
-              f"Effects are compressed and anything that\n  only pays off deeper is "
-              f"invisible. Prefer --nodes {deep_tier // 4} or lower, or build a "
-              f"deeper oracle.\n")
-    shallow = [t for t in keys if int(t) < args.nodes]
-    if shallow:
-        print(f"  NOTE: tier(s) {', '.join(shallow)} are SHALLOWER than the arm — "
-              f"those columns\n  measure agreement with a weaker search and should "
-              f"not be required to agree.\n")
-
+    # Two consequences. A tier whose own loss exceeds the arm's is a WEAKER
+    # judge than the thing it judges, so requiring the arm's sign to hold there
+    # rewards searching worse -- at 50000 nodes ARCHON scores ~4.1 cp, better
+    # than the 4k tier, so that column was actively misleading. And the ~1.9 cp
+    # floor sits inside every measurement, so deltas compress as an arm
+    # approaches it: 12500 nodes (~6.2 cp) has far more resolvable range than
+    # 50000 (~4.1 cp), which is why the default moved down.
+    #
+    # An earlier version of this comment justified the same change by counting
+    # DOUBLINGS between the arm's budget and the tier's. That reasoning was
+    # wrong -- node counts do not compare across engines, and these tiers are
+    # `searchmoves`, a far stronger analysis than one search of that size. The
+    # conclusion survived; the argument did not. Compare in cp, never in nodes.
+    tier_err = tier_errors(tier_tables)
+    print("  oracle tier strength (own best move vs deepest tier): "
+          + ", ".join(f"{int(t)//1000}k={e:.2f}cp" for t, e in tier_err.items()))
     if len(fens) < 3000:
         approx = 2.0 * (250 / max(len(fens), 1)) ** 0.5
         print(f"{len(fens)} positions, arms at {args.nodes} nodes  "
@@ -478,13 +551,21 @@ def main() -> None:
         for spec in args.reference:
             nm, _, path = spec.rpartition("=")
             nm = nm or os.path.basename(path)
-            row = f"{'* ' + nm:<20}"
+            row, prow = f"{'* ' + nm:<20}", f"{'  vs control':<20}"
             for b in budgets:
                 _, per_pos, _ = cp_loss(
                     tier_tables, fens, play_reference(path, fens, b))
                 deep = per_pos[keys[-1]]
                 row += f"{statistics.fmean(list(deep.values())):>12.2f}"
+                # PAIRED against the control at the same budget. Both engines
+                # saw identical positions, so pairing cancels position
+                # difficulty -- without it the per-cell noise on this
+                # heavy-tailed distribution (~0.5 cp at n=1500) swamps a gap of
+                # ~1 cp and no trend can be read at all.
+                d, se = paired(deep, ref_by_budget[b])
+                prow += f"{d:>+8.2f}+-{se:<3.1f}"
             print(row, flush=True)
+            print(prow, flush=True)
 
         print("\nControl row is absolute cp loss at the deepest oracle tier; "
               "arm rows are paired\ndeltas at the SAME budget. A gain that "
@@ -512,6 +593,11 @@ def main() -> None:
         if ref_cp is None:
             ref_cp, ref_pos = per_tier, per_pos
             row += "".join(f"{per_tier[t]:>9.2f}" for t in keys)
+            weak = [t for t in keys[:-1] if tier_err.get(t, 0) >= per_tier[keys[-1]]]
+            if weak:
+                print(f"  NOTE: tier(s) {', '.join(str(int(t)//1000) + 'k' for t in weak)} "
+                      f"are WEAKER judges than the control ({per_tier[keys[-1]]:.2f} cp)."
+                      f"\n  Do not require an arm's sign to hold there.")
         else:
             # Paired delta and its sem: "+-" is one standard error of the
             # PAIRED difference, so |delta| < sem is noise regardless of how
