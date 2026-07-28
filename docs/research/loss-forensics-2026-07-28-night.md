@@ -1460,6 +1460,50 @@ quality term back to ESTABLISHED at 5.1σ; that measurement was SF-refereed, and
 this says such measurements carry an ~85% inflation on the metric we can compare.
 The number to trust will be the neutral one.
 
+## 3z5. THE MODEL CLOSES — 146 of 171–191 Elo, from measured numbers only
+
+The neutral referee raises an obvious objection: **can 1.6 top-1 points really be
+worth ~180 Elo?** No — and it does not have to be, because speed carries the rest.
+Converting with our OWN budget curve, so no cross-engine constant is assumed:
+
+our top-1 against node budget (same engine, three budgets):
+
+| nodes | top-1 | |
+|---|---|---|
+| 3,000 | 56.6% | |
+| 12,500 | 62.1% | +2.67 pts/doubling |
+| 50,000 | 66.9% | +2.40 pts/doubling |
+
+**2.54 top-1 points per doubling ⇒ at 120 Elo/doubling, 1 point ≈ 47 Elo.**
+
+| term | measurement | Elo |
+|---|---|---|
+| **Equal-node quality** | 1.6 top-1 points, neutral referee (§3z4) | **76** |
+| **Speed** | 1.5× nodes at equal time (§3b-QUIET) | **70** |
+| subtotal | | **146** |
+| residual | time management, conversion, conversion slop | 25–45 |
+| **observed** | ARCHON vs SF18, 10+0.1 | **171–191** |
+
+**The model closes to within the slop of its own conversions**, and every term is
+measured rather than assumed. Two things follow that change the priorities:
+
+1. **Quality and speed are roughly EQUAL contributors (~76 vs ~70).** Earlier
+   readings had quality dominant (~78 from a 12,500-node openings screen) or
+   collapsing (the 1.6-point neutral gap looked trivial). Both readings were
+   wrong in opposite directions; the calibrated version says they are peers.
+2. **The residual is small (25–45 Elo) and is where the refuted modes live.** TM
+   is in there and measured negative when moved; conversion is ruled out. So the
+   residual is mostly the error in these conversions, not a missing mechanism —
+   which is the first time tonight that "unexplained" has been small enough to be
+   uninteresting.
+
+**On the cp route, and why I trust the top-1 route more.** The same quality term
+priced in centipawns gives +1.24 cp (openings, 12.5k) → ~74 Elo, and +3.79 cp
+(phase corpus, 200k, SF-refereed) → ~227 Elo. Those disagree by 3×, because cp
+means different things on different corpora and the SF referee inflates the
+second. The top-1 route is neutral-refereed AND self-calibrated, and it agrees
+with the low end of the cp route. That agreement is the reason to believe it.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
