@@ -175,6 +175,63 @@ def report(r, A, B):
           f"blunder counts {len(r['blunders'][A])}({A}) vs {len(r['blunders'][B])}({B}).")
 
 
+def clock_story(path, A, B, base_s, inc_s):
+    """Reconstruct each side's remaining clock and report time trouble.
+
+    fastchess PGNs carry time SPENT per move, not time REMAINING, so the
+    trajectory has to be integrated: clock = base - sum(spent) + inc*moves.
+    Worth doing, because it is the only view that catches a time-management
+    fault -- every fixed-node instrument we have is blind to the clock by
+    construction, which is exactly how this went unnoticed.
+
+    On 2026-07-27 over 120 games vs SF18 it showed ARCHON at 0.49 s remaining
+    by move 40 against SF18's 2.33 s, and 47.3% of our moves played under one
+    second against their 25.2%. The bank was gone before the endgame, and 93%
+    of our losses were grinds.
+    """
+    import chess
+    import chess.pgn as _pgn
+    from collections import defaultdict as _dd
+    # NOT the module-level TOK: that one is anchored on `{...}` because it
+    # scans raw movetext, and python-chess STRIPS the braces from
+    # `node.comment`. Reusing it here matched nothing and the whole section
+    # silently printed no output -- the exact trap loss_positions.py documents,
+    # walked into by reusing the wrong regex.
+    _ANNOT = re.compile(r"([-+]?\d+(?:\.\d+)?|[+-]?M\d+)/(\d+)\s+([\d.]+)s")
+    rem = _dd(lambda: _dd(list))
+    low = _dd(int)
+    tot = _dd(int)
+    with open(path, errors="ignore") as fh:
+        while (g := _pgn.read_game(fh)) is not None:
+            a_white = A.lower() in g.headers.get("White", "").lower()
+            clock = {A: base_s, B: base_s}
+            node = g
+            while node.variations:
+                node = node.variations[0]
+                m = _ANNOT.search(node.comment or "")
+                if not m:
+                    continue
+                board = node.parent.board()
+                who = A if ((board.turn == chess.WHITE) == a_white) else B
+                clock[who] = clock[who] - float(m.group(3)) + inc_s
+                rem[who][min(board.fullmove_number // 10 * 10, 80)].append(clock[who])
+                tot[who] += 1
+                low[who] += int(clock[who] < 1.0)
+    if not tot:
+        return
+    print(f"\n── clock story (base {base_s}s + {inc_s}s, reconstructed) ──")
+    print(f"  {'move#':>6}{A[:9]:>11}{B[:9]:>10}{'diff':>8}")
+    for bk in sorted(rem[A]):
+        if not rem[A][bk] or not rem[B].get(bk):
+            continue
+        a, b = st.median(rem[A][bk]), st.median(rem[B][bk])
+        print(f"  {bk:>4}+ {a:>10.2f}{b:>10.2f}{a - b:>+8.2f}")
+    for w in (A, B):
+        print(f"  moves under 1.0s: {w:<10}{low[w]:>6}/{tot[w]} = {100*low[w]/max(tot[w],1):.1f}%")
+    print("  A side that runs low EARLIER plays the rest of the game on increment;")
+    print("  no fixed-node screen can see that, so it has to be checked here.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("pgn")
@@ -183,9 +240,14 @@ def main():
     ap.add_argument("--a-slope", type=float, default=0.548)
     ap.add_argument("--b-slope", type=float, default=0.548)
     ap.add_argument("--base-ms", type=int, default=10000)
+    ap.add_argument("--tc", default="", metavar="BASE+INC",
+                    help="time control, e.g. 10+0.1 -- enables the clock story")
     args = ap.parse_args()
     r = analyse(args.pgn, args.a, args.b, args.a_slope, args.b_slope, args.base_ms)
     report(r, args.a, args.b)
+    if args.tc:
+        base, _, inc = args.tc.partition("+")
+        clock_story(args.pgn, args.a, args.b, float(base), float(inc or 0))
 
 
 if __name__ == "__main__":
