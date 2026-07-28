@@ -25,11 +25,26 @@ Gap to SF18 at 10+0.1: **−171 to −191 Elo**.
 | **Move choice is CHAOTIC in parameters** on the positions we get wrong — a ±1 change to an unrelated constant flips 13–20% of them | — | Null panels; and the dither that amplifies it is exact SF parity (§3j, §6b) |
 | **The error census**: 278 verified errors → 218 already-lost, **44 decidable** (66% depth-fixable, 23% search-rejects, 11% eval) | 0.51% of moves | Cold 1M oracle with a passing positive control (§3i) |
 
+### THE DECOMPOSITION, CLOSED (§3z5)
+
+| term | measurement | Elo |
+|---|---|---|
+| **Equal-node quality** | 1.6 top-1 points against a **neutral** referee | **76** |
+| **Speed** | 1.5× nodes at equal time | **70** |
+| subtotal | | **146** |
+| residual | TM, conversion, conversion slop | 25–45 |
+| **observed** | | **171–191** |
+
+Converted with our own budget curve (2.54 top-1 points per node-doubling ⇒
+1 point ≈ 47 Elo), so no cross-engine constant is assumed. **Quality and speed
+are peers**, not one dominant term.
+
 ### UNCERTAIN — measured, then undermined by an instrument fault
 
 | claim | status |
 |---|---|
-| "Equal-node move quality is worth ~78 Elo" | Priced at 12,500 nodes on the openings corpus — **both** now known wrong. The unbiased replacement is wp loss: **0.005/move vs SF's 0.003**, no error bars yet |
+| "Equal-node move quality is worth ~78 Elo" | **Resolved (§3z5): ~76 Elo**, by a route that is both neutral-refereed and self-calibrated. The SF-refereed cp route gave 74–227 Elo depending on corpus and budget, which is why it was never trustworthy |
+| "Cross-engine comparisons refereed by Stockfish" | **~85% of the apparent gap was identity bias** — the top-1 gap is 10.2 points SF-refereed and **1.6 neutral** (§3z4). Every SF-refereed cross-engine number in this document is suspect by that factor |
 | "Our search is weakest in the middlegame" (§3g) | Same wrong budget/population. Withdrawn-adjacent |
 | "At 200k we match SF in the middlegame" (§3m) | **Withdrawn.** Top-1 against an SF oracle rewards being SF: +15.1 points of swing for SF vs +5.2 for us when the oracle deepened (§3q) |
 | "The 14 central knobs are at a local optimum" (§5d) | Measured at the wrong budget. Unresolved |
