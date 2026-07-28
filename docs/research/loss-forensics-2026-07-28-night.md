@@ -1128,6 +1128,46 @@ contribution, and a night spent entirely on blunders would have been a night
 spent on the smaller term. The bar's real value tonight was procedural: it forced
 the detector-independent census that produced these numbers.
 
+## 3u. THE EVAL QUESTION, CLOSED IN BOTH FORMS
+
+Every eval comparison tonight — and the net-only suite before it — correlates an
+engine's eval with deep truth **ACROSS positions**. That is what a training loss
+measures. **A search never does that.** It compares the CHILDREN of one position,
+and needs the eval to order those children the way a deep search would. An eval
+can be excellent across positions and nearly useless within one, if sibling
+differences are small relative to its noise. I measured the first property all
+night and never the second.
+
+Measured now — the tiered oracle already scores every legal move, so the per-move
+truth was free. Spearman between each engine's static eval of the children and
+the oracle's value of each move, within each position:
+
+| pieces | n | moves/pos | ARCHON rho | SF18 rho | gap | ARCHON top-1 | SF18 top-1 |
+|---|---|---|---|---|---|---|---|
+| 21+ | 77 | 35.4 | 0.510 | 0.546 | −0.036 | **18.2%** | 15.6% |
+| 13–20 | 40 | 27.6 | 0.499 | 0.497 | +0.001 | 20.0% | **22.5%** |
+| 8–12 | 25 | 17.9 | 0.413 | 0.402 | +0.011 | **24.0%** | 16.0% |
+
+**Parity again**, with us ahead on top-1 in two buckets of three. Frame-free by
+construction: a rank correlation within a position cannot be moved by any
+monotone rescaling, so the 0.46× frame difference cannot touch it.
+
+Two things worth keeping beyond the verdict:
+
+- **Within-position ranking is a far harder problem than across-position.** Both
+  engines score rho ~0.41–0.55 here against ~0.76–0.96 across positions, and a
+  static eval picks the oracle's best child only **15–24%** of the time. That is
+  the quantitative reason search exists, and it is a useful calibration for any
+  future "the net should just know" argument.
+- **The eval hypothesis is now dead in every form tested**: across positions
+  (§3e), at the leaves after qsearch (§3m), and within a position's move list
+  (here) — each of them against a reference that favours Stockfish (§3r).
+
+**So the equal-node deficit is not the eval, by three independent measurements.**
+What remains is the search's use of an eval that is demonstrably as good as
+Stockfish's, and every structural component compared so far — gates, NMP, the
+dither, movepick staging, rule50, qsearch — is at exact SF parity.
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
