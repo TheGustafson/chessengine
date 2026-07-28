@@ -62,10 +62,36 @@ bounded ceiling here, and the bound is not large.**
 - Closing the *entire* NPS gap to SF18 buys ~58 Elo, and no realistic set of
   parameter changes closes all of it. Node-saving tunables are worth tens of
   Elo, not hundreds.
-- The other ~133 Elo is per-node decision quality. Our search is a verified
-  faithful transcription of `eca43a97` — stage machine, ordering terms, history
-  geometry, and 42 eval-denominated constants all check out — so that 133 is
-  mostly **eval**, i.e. the net.
+- The other ~133 Elo (revised to ~98 below) is per-node decision quality.
+
+**CORRECTION, 2026-07-27, prompted by the user.** An earlier version of this
+line read "so that is mostly **eval**, i.e. the net". That was an inference by
+elimination — search structure checks out, therefore the residual must be the
+net — and it was stated as a finding when it is not one. **There is no
+measurement here showing our net is worse than SF18's**, and the user reports
+that every net-to-net metric they have puts d47v near parity.
+
+The evidence in this very document points the same way as theirs: over 7,686
+move pairs from a 120-game match, our eval's median disagreement with SF18's
+in a common frame is **−0.02 pawns**. That is a parity result, and it is
+unselected, so it is the trustworthy kind.
+
+The honest reading of a per-node deficit that is **flat across a 32× budget
+range** is narrower than I wrote: it says the deficit is
+*depth-independent*, and eval is only one depth-independent cause. Mistuned
+search constants are another, and they fit better here, because:
+
+- the constants were transcribed from Stockfish, where they are co-tuned with
+  Stockfish's **eval frame** (ours measures 0.64× theirs) and Stockfish's
+  mechanisms;
+- restoring Stockfish parity mechanism-by-mechanism measured neutral-or-worse
+  four times out of four, which is what you expect when a configuration is a
+  joint optimum that has never been jointly optimised for *this* engine;
+- ~46% of our tunables have never been in any SPSA campaign.
+
+So the residual is best read as **configuration tuning of our own engine**,
+not net quality. That is a more actionable conclusion and it raises the value
+of the tuning work rather than lowering it.
 
 Which is exactly what the project's own history says: net-0 was +696 over
 PSQT, the width ladder and the data-volume finding moved hundreds, and D48X is
@@ -139,8 +165,11 @@ Falsification, stated in advance:
 - **Worse than −170** — speed contributes almost nothing, the ~120 Elo per
   doubling constant does not transfer to this comparison, and NPS work is close
   to worthless for Elo. Retire it from the queue.
-- **Anywhere in −115 to −150** — the decomposition holds, and the eval is
-  confirmed as the dominant term.
+- **Anywhere in the predicted band** — the SPEED/quality split holds. Note
+  what that does and does not license: it confirms the size of the per-node
+  term, not its *cause*. Attributing that term to eval rather than to
+  configuration tuning needs a separate measurement, which this leg does not
+  provide. (See the correction above.)
 
 ## Second instrument, arrived before the rematch: it agrees on the shape and
 ## disagrees on the size
