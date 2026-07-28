@@ -188,6 +188,36 @@ drift across 172 unconverted wins. That is the failure mode the standing bar in 
 explicitly deprioritised as "leaves no trace to debug" — on this corpus it is the whole
 story. **This is a finding for the owner to rule on, not for an agent to act on unilaterally.**
 
+## THE SELDEPTH GAP CLOSES ON ONE KNOB: `SE_MIN_DEPTH` (2026-07-28)
+
+Bounding test (can ANY extension setting reach SF's sel−nom of 8.82 at d12?), 120
+plateau positions, null band ±0.15:
+
+| arm | sel−nom (d12) |
+|---|---|
+| base | 6.31 |
+| `SE_BETA_MULT` 60→15 | 6.93 |
+| **`SE_MIN_DEPTH` 6→4** | **8.74** |
+| both | 8.89 |
+| + `SE_EXT_BASE` 1→2 | 16.59 (overshoots) |
+
+**`SE_MIN_DEPTH` 6→4 lands on SF18's value almost exactly (8.74 vs 8.82).** Every other
+extension knob tried this session recovered ≤26% of the gap; this one recovers ~100%,
+and `SE_EXT_BASE` shows the axis has range to spare, so the gap is not a ceiling effect.
+
+**The paradox, stated rather than smoothed over:** SF's gate is `depth >= 6 + ttPv` and
+ours is `SE_MIN_DEPTH = 6` + `SE_TTPV_DEPTH_BONUS = 1` — **an exact match**. So SF
+reaches 8.82 with gate 6 while we need gate 4 to get there. The gate is therefore NOT
+the underlying difference; something else makes SF's singular extensions fire more often
+at the same gate (candidate: TT content — the SE gate also requires `tt.depth >= depth −
+SE_TT_DEPTH_SLACK` and a lower-bound entry, so a differently-populated TT changes the
+firing rate without any constant differing). Lowering our gate COMPENSATES for that
+without explaining it. Do not write this up as "we found the missing constant".
+
+Arm in games: `engines/runs/semindepth4`, 60k nodes (chosen over 30k because the
+mechanism is zero at depth 6 and grows to +2.51 by depth 12 — the `setrigger` test at
+30k under-sampled its own mechanism).
+
 ## THE JUDGE INSTRUMENT IS NOW VALIDATED (2026-07-28)
 
 After the `searchmoves` retraction above, `judge.py` scores the CHILD position
