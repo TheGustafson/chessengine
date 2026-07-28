@@ -297,6 +297,40 @@ phase oracle lands: re-run this per phase bucket and the headroom should be
 LARGER in the endgame. If it is, the population finding and the quality gap are
 the same fact seen twice, and the endgame is where the Elo is.
 
+## 3d. THE QUALITY GAP IS SEARCH, NOT EVAL
+
+Static eval quality against the deep oracle, frame-free (Spearman is immune to
+any monotone rescale; the slope is fitted per engine, so no frame conversion can
+be got wrong), n = 600 at 21+ pieces:
+
+| | Spearman vs deep truth | RMS residual | fitted slope |
+|---|---|---|---|
+| ARCHON | 0.742 | 65 cp | **0.56** |
+| SF18 | 0.756 | 60 cp | 0.95 |
+
+**Our net is at parity with Stockfish's** -- 1.9% worse in rank correlation, 8%
+in residual. That independently corroborates the net-only suite's "near parity"
+by a completely different method. As a bonus the fitted slope of 0.56
+reproduces the documented frame constant (0.55 / 0.579 / 0.605 from three prior
+estimates) without being told it, which is a good sign the method is sound.
+
+Put beside §3c, that closes an inference:
+
+- static eval quality: **parity**
+- move quality at equal nodes: **we are 1.24 cp worse**
+- therefore the equal-node deficit is in **what the search does with a
+  comparable eval**, not in the eval
+
+And §3b-FIXED's speed gap is also a search/implementation property. So **both
+measured terms of the ~138 Elo are search.** On this population, better nets
+address approximately none of it.
+
+That is a live tension with the current phase focus (the eval-foundation
+program), and it is exactly the claim the phase oracle can overturn: this is
+measured at 21+ pieces, where our error rate per move is lowest. If the endgame
+buckets show our eval falling behind, the conclusion flips. **Do not act on
+this until the per-phase version exists.**
+
 ## 4. WHAT SURVIVES — the search-efficiency gap
 
 Like-for-like MultiPV-1 ladders on game 18: **Stockfish commits to `a5c5` at
