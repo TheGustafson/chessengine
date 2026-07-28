@@ -222,6 +222,42 @@ noise: it aggregates gradient information over thousands of cheap paired compari
 moves all coordinates at once. For effects of +1 to +4 Elo that is the correct
 instrument, and single-arm A/B is the wrong one.
 
+## WHERE THE DRIFT GOES — decomposed at last (2026-07-28)
+
+`START-HERE` §4 open question 1 was "Where does 5 cp/move actually go? Nobody has
+decomposed it." Decomposed here from the stored equal-nodes PGNs, free, in the game
+regime, using **SF18's own evals as the judge throughout** (one engine, one frame, no
+cross-engine conversion), signs to ARCHON's POV, decided positions (|eval| ≥ 5) excluded:
+
+| plies | mean Δ per move-pair @110k | @30k |
+|---|---|---|
+| 0–9 | −0.0119 | −0.0091 |
+| 10–19 | −0.0149 | −0.0115 |
+| 20–29 | −0.0184 | −0.0213 |
+| **30–39** | **−0.0316** | −0.0173 |
+| 40–49 | −0.0200 | **−0.0284** |
+| 50–59 | −0.0263 | −0.0251 |
+| 60–79 | ≈ −0.014 | ≈ −0.022 |
+| 80–129 | −0.001 … −0.014 | −0.002 … −0.014 |
+| 130+ | ≈ 0 / slightly positive | ≈ 0 |
+
+n ≈ 1,000–2,000 per bucket.
+
+⇒ **The bleed is a MIDDLEGAME phenomenon.** It is present from ply 0 but ~2.6× worse at
+its peak, concentrated in plies ~20–80, and effectively over by ply ~100. Both budgets
+reproduce the shape (the peak sits later at 30k). Accumulated across the peak stretch it
+is ~0.6 pawns — the right order of magnitude to account for the corpus's "hold +1.0 and
+lose it".
+
+⇒ **Consistent with the volatility localisation**: excess root churn is 1.56× in balanced
+positions, and the drift peaks in the middlegame. Middlegame + balanced is where both
+independent in-regime measurements point.
+
+⇒ **Caveat, stated not buried:** the near-zero drift after ply ~100 is partly a selection
+effect — games still running that long are the drawish ones, and decided positions are
+filtered out by the |eval| < 5 cut. The claim is about positions still in play, not about
+endgame skill.
+
 ## ROOT-SCORE VOLATILITY RE-DERIVED IN THE GAME REGIME: 1.24×, not 3.2× (2026-07-28)
 
 `docs/research/aspiration-frame-bug.md` headlines "**3.2× the oscillation**" (our root
