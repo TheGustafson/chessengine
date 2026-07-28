@@ -27,15 +27,22 @@ get deep enough in time); one that survives both is a JUDGEMENT problem (we
 got there and still chose wrong). Those two findings send you to completely
 different tunables, and no single leg can tell them apart.
 
-    python3 tools/rematch.py --games 100
+    python3 tools/rematch.py --games 120
     python3 tools/rematch.py --games 60 --legs time --our-options QS_FUTILITY_MARGIN=260
-    python3 tools/rematch.py --compare engines/runs/rematch-A/time/games.pgn \
-                             engines/runs/rematch-B/time/games.pgn
+    python3 tools/rematch.py --games 120 --loss-oracle     # label the losses too
 
 Outputs land in engines/runs/<label>/<leg>/ : games.pgn, fastchess.log,
 report.txt, losses.json and loss-positions.fens — the last being a corpus of
-the exact positions where games were decided, ready for
-`screen.py --positions`.
+the exact positions where games were decided.
+
+To screen tunables on that corpus you must LABEL it first; `screen.py` takes
+an oracle, not a position list (there is no `--positions` flag):
+
+    python3 tools/move_quality.py --build-oracle --fens <loss-positions.fens> \
+        --cache oracle-losses.json --multipv 20 --oracle-depth 18
+    python3 tools/screen.py --oracle oracle-losses.json 'arm:PARAM=V'
+
+`--loss-oracle` does both steps for you.
 """
 
 from __future__ import annotations
@@ -44,6 +51,7 @@ import argparse
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -144,10 +152,50 @@ def run_leg(leg: str, args, root: Path, ours_label: str) -> Path:
           f"concurrency={cmd[cmd.index('-concurrency') + 1]}", flush=True)
     t0 = time.time()
     p = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
-    tail = [l for l in p.stdout.splitlines() if "Score of" in l or "Elo" in l][-6:]
-    print("\n".join(tail) or p.stdout[-800:])
+    (out / "stdout.log").write_text(p.stdout)
+    res = parse_result(p.stdout)
+    if res:
+        print(f"  {res['games']} games  {res['pct']:.2f}%  "
+              f"Elo {res['elo']:+.1f} +/- {res['err']:.1f}   "
+              f"(+{res['w']} ={res['d']} -{res['l']})")
+    else:
+        print(p.stdout[-800:])
     print(f"  ({time.time() - t0:.0f}s)")
+    LEG_RESULT[leg] = res
     return out / "games.pgn"
+
+
+LEG_RESULT: dict[str, dict | None] = {}
+# (?<!n) matters: fastchess prints "Elo: 9.27 +/- 17.73, nElo: 14.55 +/- 27.80"
+# on ONE line, and a bare `Elo:` matches the nElo too -- findall then hands back
+# the normalized figure last, so the reported Elo is silently the wrong
+# statistic. Caught by unit-checking the parser against a real log line.
+RE_ELO = re.compile(r"(?<!n)Elo:\s*([-\d.]+)\s*\+/-\s*([-\d.naN]+)")
+RE_NELO = re.compile(r"nElo:\s*([-\d.]+)\s*\+/-\s*([-\d.naN]+)")
+RE_GAMES = re.compile(r"Games:\s*(\d+), Wins:\s*(\d+), Losses:\s*(\d+), "
+                      r"Draws:\s*(\d+), Points:\s*[\d.]+\s*\(([\d.]+)\s*%\)")
+
+
+def parse_result(stdout: str) -> dict | None:
+    """Last reported score block. fastchess reprints it every few games, so
+    only the final one is the whole match."""
+    g = RE_GAMES.findall(stdout)
+    if not g:
+        return None
+    n, w, l, d, pct = g[-1]
+
+    def last(rx):
+        m = rx.findall(stdout)
+        try:
+            return float(m[-1][0]), float(m[-1][1])
+        except (IndexError, ValueError):
+            return float("nan"), float("nan")
+
+    elo, err = last(RE_ELO)
+    nelo, nerr = last(RE_NELO)
+    return {"games": int(n), "w": int(w), "l": int(l), "d": int(d),
+            "pct": float(pct), "elo": elo, "err": err,
+            "nelo": nelo, "nerr": nerr}
 
 
 def forensics(pgn: Path, out: Path, ours_label: str, args) -> dict:
@@ -250,6 +298,35 @@ def main() -> None:
         pgn = run_leg(leg, args, root, ours)
         if pgn.exists() and pgn.stat().st_size:
             tax_by_leg[leg] = forensics(pgn, root / leg, ours, args)
+
+    rt, rn = LEG_RESULT.get("time"), LEG_RESULT.get("nodes")
+    if rt and rn:
+        # The headline. Our tree shape now measures close to Stockfish's at
+        # equal depth, so the ~190 Elo gap has to come from somewhere else,
+        # and there are only two candidates: nodes per second, or the quality
+        # of the decision made with each node. These two legs separate them
+        # cleanly, because the nodes leg holds throughput constant by fiat.
+        gap = rn["elo"] - rt["elo"]
+        print("\n=== equal-time vs equal-nodes: where the gap lives ===")
+        print(f"  timed  {rt['pct']:6.2f}%   Elo {rt['elo']:+7.1f} +/- {rt['err']:.1f}")
+        print(f"  nodes  {rn['pct']:6.2f}%   Elo {rn['elo']:+7.1f} +/- {rn['err']:.1f}")
+        print(f"  gap    {gap:+7.1f} Elo recovered by removing the speed difference")
+        thresh = 2 * math.hypot(rt["err"], rn["err"])
+        if gap > thresh:
+            print("  -> SPEED. We make comparable decisions per node and lose because")
+            print("     we get fewer of them. The lever is NPS and time management,")
+            print("     not search quality. At ~120 Elo per doubling, price any")
+            print("     candidate by its throughput cost before its node count.")
+        elif gap < -thresh:
+            print("  -> Stockfish gains MORE from equal nodes than we do, i.e. its")
+            print("     node budget buys more. Look at what it does per node that")
+            print("     we do not, starting with move ordering.")
+        else:
+            print("  -> JUDGEMENT. Speed is not the story; we reach the position and")
+            print("     still choose worse. The lever is evaluation and ordering.")
+            print("     Node-saving tunables cannot help here and may hurt.")
+        print(f"  (threshold {thresh:.1f} Elo = 2x the combined error; below it this")
+        print("   comparison is not resolved and needs more games, not more theory.)")
 
     if len(tax_by_leg) == 2:
         a, b = tax_by_leg["time"], tax_by_leg["nodes"]
