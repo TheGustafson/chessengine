@@ -181,6 +181,61 @@ position difficulty and should cut that noise substantially on the re-run.
 
 ---
 
+## UPDATE: the timed leg landed, and one of my inputs was stale
+
+**Measured: −143.8 ± 27.0 Elo, 30.42% over 120 games (+7 =59 −54)**, 10+0.1,
+UHO book, PGO binary, d47v net, concurrency 3 with everything else on the box
+niced.
+
+The anchor this whole decomposition was built on — SF18 −191 ± 23 — is from
+**2026-07-16** and a different net (`stage2-v1-s3-2048-farseer-120sb`). Since
+then: the d47v net, the S0 search program, PGO as standard, the perf-impl-1
+wins, and upcoming-repetition. −143.8 vs −191 is 47 Elo of apparent progress
+at 1.3σ, so it is not a *significant* difference in isolation, but it is the
+current number and the 2026-07-16 figure should not be quoted as live again.
+**The anchors in `CLAUDE.md` need refreshing.**
+
+Redoing the arithmetic with the measured value:
+
+| | old (stale anchor) | measured |
+|---|---:|---:|
+| observed gap | −191 | **−143.8** |
+| speed term (1.40× NPS) | −58 | −58 |
+| **per-node quality** | −133 | **−86** |
+
+**This reconciles the two instruments.** The budget sweep put the per-node gap
+at 0.94 cp, which at the rough ~60 Elo per cp is ~56 Elo. Against the old
+−133 that was a factor-of-2.4 disagreement I recorded but could not explain;
+against −86 it is a factor of 1.5, comfortably inside the uncertainty on a
+constant I only know to an order of magnitude. The discrepancy was a stale
+input, not a broken instrument.
+
+**Revised prediction for the equal-nodes leg: ≈ −86, range −70 to −105.** The
+original −133 (range −115 to −150) is left standing above rather than edited
+out: it was pre-registered in good faith from the best number available, and
+the failure mode it illustrates — a stale anchor quietly propagating through
+an otherwise sound derivation — is worth more as a visible record than as a
+tidy document. The *method* is unchanged and still falsifiable: equal-nodes
+should equal the timed result plus the speed term.
+
+### From the timed leg's forensics
+
+- **Draw-heavy: 59 of 120.** We are hard to beat and struggle to win — 7 wins.
+- Loss taxonomy is an exact 50/50 tactical/grind split, 52% endgame.
+- **Eval bias over all 7,686 move pairs: median −0.02 pawns.** Across a full
+  match, in a common frame, our eval agrees with SF18's on average. The
+  opening is the exception at −1.09 (we are more pessimistic out of book).
+  This is the unselected number and therefore the trustworthy one.
+- Depth at the losing move: ours 17, theirs 16. We are not searching shallower
+  in plies.
+- The "−5.04 pawns disagreement at the losing move" headline is **partly an
+  artefact of the selection rule** and should not be quoted alone: the point
+  of no return is *detected* by our own eval trail crossing a threshold, so
+  the position is chosen partly for having a very negative eval of ours. The
+  unselected all-pairs median above is the honest version.
+
+---
+
 One caveat I want on the record before the number arrives: equal-nodes matches
 are not a clean instrument for a speed decomposition, because the two engines
 count nodes differently and neither counts the *work per node* that the other
