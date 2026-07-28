@@ -1350,6 +1350,8 @@ crate::tunables! {
     /// We run it in `search` only; SF runs it in both, so every qsearch node
     /// below the horizon that could force a repetition draw while losing
     /// forfeits the cutoff. 0 = search only (today); 1 = SF parity.
+    /// MEASURED 2026-07-27 (net-live, n=1600 paired): +0.47/+0.20/+0.23 cp
+    /// WORSE by tier at +0.6% nodes — parity does not pay here; left off.
     pub QS_UPREP: i32 = 0;
     /// The ttPv reduction rebate's tt-value term on a TT MISS (SF
     /// search.cpp:1292 `(ttData.value > alpha) * 838`): SF's miss sentinel
@@ -1358,13 +1360,15 @@ crate::tunables! {
     /// as ProbCut-idiom hygiene but makes us search ~0.8 ply SHALLOWER than SF
     /// exactly where the TT has no answer. 0 = require a real value (today);
     /// 1 = SF parity (grant on miss).
+    /// MEASURED 2026-07-27 (net-live, n=1600 paired): +0.44/+0.30/+0.34 cp
+    /// WORSE by tier at +5.3% nodes — parity does not pay here; left off.
     pub RED_TTPV_TTMISS_REBATE: i32 = 0;
-    /// ProbCut inside a singular verification (SF search.cpp:1037: no
-    /// excluded-move gate on the whole block; only the excluded move itself is
-    /// skipped in the loop, which our loop already does at the `m ==
-    /// excluded_move` continue). 0 = skip ProbCut wholesale under an exclusion
-    /// (today); 1 = SF parity.
-    pub PROBCUT_IN_VERIF: i32 = 0;
+    // PROBCUT_IN_VERIF was here briefly (2026-07-27) and was DELETED the same
+    // day: inside a verification `probcut_beta ≈ tt_value - margin +
+    // PROBCUT_BETA_BASE` and margin ≪ base at any practical depth, so the
+    // stored-value clause blocks the ProbCut block in both engines and the
+    // apparent SF deviation is a de facto no-op — measured bit-identical at
+    // 50k nodes and depth 13. Recorded so it is not re-proposed.
 
     // --- Implicit-coefficient batch 2 (2026-07-27 D33 reviewer findings) ---
     //

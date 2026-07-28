@@ -2943,14 +2943,18 @@ impl Worker {
             // already below the threshold says "don't bother".
             let probcut_beta = beta + params::PROBCUT_BETA_BASE()
                 - params::PROBCUT_BETA_IMPROVING() * Value::from(improving);
+            // Our `excluded_move == NULL` fence looks like a deviation from
+            // SF (which has no such gate on the block, search.cpp:1037) but
+            // is a DE FACTO no-op: inside a verification, beta is
+            // `tt_value - margin`, so `probcut_beta ≈ tt_value - margin +
+            // PROBCUT_BETA_BASE`, and with margin ≪ base at any practical
+            // depth the `tt_value < probcut_beta` clause below blocks the
+            // block in BOTH engines. Toggled + measured 2026-07-27
+            // (PROBCUT_IN_VERIF): bit-identical trees at 50k nodes and at
+            // depth 13 on wl50 — the toggle was deleted as dead surface.
             if depth >= params::PROBCUT_MIN_DEPTH()
                 && !is_decisive(beta)
-                // PROBCUT_IN_VERIF=1 restores SF parity: SF has no
-                // excluded-move gate on the block (search.cpp:1037) — it
-                // skips only the excluded move itself inside the loop, which
-                // our `m == excluded_move` continue below already does.
-                && (params::PROBCUT_IN_VERIF() != 0
-                    || self.stack[cur].excluded_move == Move::NULL)
+                && self.stack[cur].excluded_move == Move::NULL
                 && !(is_valid(tt_value) && tt_value < probcut_beta)
             {
                 let probcut_depth = depth
