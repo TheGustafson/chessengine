@@ -1,0 +1,585 @@
+Stockfish dev-20260729-nogit by the Stockfish developers (see AUTHORS file)
+info string Using 1 thread
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 2 multipv 1 score cp -382 nodes 15 nps 340 hashfull 0 tbhits 0 time 44 pv d3c4
+info depth 2 seldepth 7 multipv 1 score cp -380 nodes 141 nps 1931 hashfull 0 tbhits 0 time 73 pv d3e4 f4c1
+info depth 3 seldepth 6 multipv 1 score cp -415 nodes 303 nps 3695 hashfull 0 tbhits 0 time 82 pv d3c4 f4f7 d5d4 f7g7 d4d3
+info depth 4 seldepth 6 multipv 1 score cp -415 nodes 331 nps 3987 hashfull 0 tbhits 0 time 83 pv d3c4 f4f7 d5d4 f7g7 d4d3
+info depth 5 seldepth 6 multipv 1 score cp -422 nodes 458 nps 5325 hashfull 0 tbhits 0 time 86 pv d3c4 f4f5 d5d4
+info depth 6 seldepth 10 multipv 1 score cp -466 nodes 1092 nps 11030 hashfull 0 tbhits 0 time 99 pv d3e4 b7b6 d5d4 f4f8
+info depth 7 seldepth 10 multipv 1 score cp -488 nodes 2067 nps 17973 hashfull 0 tbhits 0 time 115 pv d3e4 f4g5 d5e6 b7b6 e4f5
+info depth 8 seldepth 10 multipv 1 score cp -500 nodes 2636 nps 21430 hashfull 1 tbhits 0 time 123 pv d3e4 f4g5 d5e6 b7b6 e6d6
+info depth 9 seldepth 10 multipv 1 score cp -500 nodes 3000 nps 21739 hashfull 1 tbhits 0 time 138 pv d3e4 f4g5 d5e6 b7b6 e6d6
+bestmove d3e4 ponder f4g5
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 3 multipv 1 score cp -320 nodes 22 nps 3666 hashfull 0 tbhits 0 time 6 pv g3g4 c4b3
+info depth 2 seldepth 6 multipv 1 score cp -380 nodes 162 nps 14727 hashfull 0 tbhits 0 time 11 pv g3g2 c4b5 g2b2
+info depth 3 seldepth 4 multipv 1 score cp -380 nodes 188 nps 15666 hashfull 0 tbhits 0 time 12 pv g3g2 c4b5 g2b2
+info depth 4 seldepth 6 multipv 1 score cp -358 nodes 216 nps 18000 hashfull 0 tbhits 0 time 12 pv g3g2 c4b5 g2b2 c5c1
+info depth 5 seldepth 6 multipv 1 score cp -325 nodes 276 nps 19714 hashfull 0 tbhits 0 time 14 pv g3g2 c4b5 g2b2 c5c1 e6d7
+info depth 6 seldepth 8 multipv 1 score cp -385 nodes 363 nps 21352 hashfull 0 tbhits 0 time 17 pv g3g2 c4b5 g2b2 b5a5 e6d7 c5c4
+info depth 7 seldepth 9 multipv 1 score cp -389 nodes 502 nps 26421 hashfull 0 tbhits 0 time 19 pv g3g2 c4b5 g2b2 b5a5 e6d7 c5c4 b2d2
+info depth 8 seldepth 12 multipv 1 score cp -431 nodes 1058 nps 37785 hashfull 0 tbhits 0 time 28 pv g3g2 c4b5 g2b2 c5c4 e6d5 c4h4 d5d6 b5b6 d6d7
+info depth 9 seldepth 12 multipv 1 score cp -417 nodes 1656 nps 43578 hashfull 0 tbhits 0 time 38 pv g3g2 c4b5 g2b2 c5c4 e6d5 c4h4 d5e6 b5b6
+info depth 10 seldepth 18 multipv 1 score cp -423 nodes 3001 nps 44132 hashfull 0 tbhits 0 time 68 pv g3g2 c4b5 g2b2 c5c4 e6d6 b5b6 d6d7 b4b5 d7d8 c4c6 d8d7
+bestmove g3g2 ponder c4b5
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 3 multipv 1 score cp -96 nodes 29 nps 4142 hashfull 0 tbhits 0 time 7 pv d6e4
+info depth 2 seldepth 7 multipv 1 score cp -179 nodes 352 nps 15304 hashfull 0 tbhits 0 time 23 pv e8e4 d1c1 c7b6
+info depth 3 seldepth 5 multipv 1 score cp -179 nodes 402 nps 16080 hashfull 0 tbhits 0 time 25 pv e8e4 d1c1 c7b6
+info depth 4 seldepth 7 multipv 1 score cp -87 nodes 473 nps 16310 hashfull 0 tbhits 0 time 29 pv d6e4 d1c1 c7b6
+info depth 5 seldepth 7 multipv 1 score cp -118 nodes 891 nps 23447 hashfull 0 tbhits 0 time 38 pv d6e4 d1c1 c7b8
+info depth 6 seldepth 9 multipv 1 score cp -127 nodes 1202 nps 27318 hashfull 0 tbhits 0 time 44 pv d6e4 b3a4 e8a8 d1c1 c7b6
+info depth 7 seldepth 11 multipv 1 score cp -80 nodes 1634 nps 30259 hashfull 0 tbhits 0 time 54 pv d6e4 b3a4 e8e6 a4d7
+info depth 8 seldepth 12 multipv 1 score cp -83 upperbound nodes 3000 nps 35714 hashfull 0 tbhits 0 time 84 pv d6e4 d1c1
+bestmove d6e4 ponder d1c1
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 4 multipv 1 score cp -1 nodes 21 nps 5250 hashfull 0 tbhits 0 time 4 pv g7g6
+info depth 2 seldepth 3 multipv 1 score cp 3 nodes 50 nps 8333 hashfull 0 tbhits 0 time 6 pv g7g6
+info depth 3 seldepth 4 multipv 1 score cp 2 nodes 91 nps 13000 hashfull 0 tbhits 0 time 7 pv g7g6 h2h3 f6f5
+info depth 4 seldepth 6 multipv 1 score cp 3 nodes 428 nps 32923 hashfull 0 tbhits 0 time 13 pv b5b4 d3d7 g7g6
+info depth 5 seldepth 6 multipv 1 score cp 6 nodes 773 nps 40684 hashfull 0 tbhits 0 time 19 pv g7h7
+info depth 6 seldepth 7 multipv 1 score cp 5 nodes 1314 nps 48666 hashfull 0 tbhits 0 time 27 pv b2b1
+info depth 7 seldepth 7 multipv 1 score cp 8 nodes 2206 nps 56564 hashfull 0 tbhits 0 time 39 pv b5b4 d3d7 g7g6
+info depth 8 seldepth 10 multipv 1 score cp 9 nodes 2607 nps 57933 hashfull 0 tbhits 0 time 45 pv b5b4 d3d7 g7g6 d7d6 b4a3 d6a6 b2a2 a6a8
+info depth 9 seldepth 10 multipv 1 score cp 9 nodes 3003 nps 58882 hashfull 1 tbhits 0 time 51 pv b5b4 d3d7 g7g6 d7d6 b4a3 d6a6 b2a2 a6a8
+bestmove b5b4 ponder d3d7
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 3 multipv 1 score cp -339 nodes 36 nps 12000 hashfull 0 tbhits 0 time 3 pv b6e3
+info depth 2 seldepth 4 multipv 1 score cp -292 nodes 73 nps 18250 hashfull 0 tbhits 0 time 4 pv b6e3 a8a5 e3b6
+info depth 3 seldepth 4 multipv 1 score cp -272 nodes 111 nps 22200 hashfull 0 tbhits 0 time 5 pv b6e3 a8a5 c7d6
+info depth 4 seldepth 6 multipv 1 score cp -318 nodes 321 nps 35666 hashfull 0 tbhits 0 time 9 pv b6e3 a8a5 c7d7 a5a4
+info depth 5 seldepth 7 multipv 1 score cp -322 nodes 380 nps 38000 hashfull 0 tbhits 0 time 10 pv b6e3 a8a5 c7d6 a5b4 d6c7 b4a4
+info depth 6 seldepth 7 multipv 1 score cp -322 nodes 433 nps 39363 hashfull 0 tbhits 0 time 11 pv b6e3 a8a5 c7d6 a5b4 d6c7 b4a4
+info depth 7 seldepth 10 multipv 1 score cp -319 nodes 626 nps 44714 hashfull 0 tbhits 0 time 14 pv b6e3 a8a5 c7d7 a5b4 e3h6
+info depth 8 seldepth 12 multipv 1 score cp -322 nodes 876 nps 48666 hashfull 0 tbhits 0 time 18 pv b6e3 a8a4 e3h6 h3h4 h6g7 a4b4 g7f8 b4a5 c7d7
+info depth 9 seldepth 12 multipv 1 score cp -301 nodes 1191 nps 54136 hashfull 0 tbhits 0 time 22 pv b6e3 a8a5 c7d7 a5b4 e3h6 h3h4 h6f8
+info depth 10 seldepth 12 multipv 1 score cp -330 nodes 1580 nps 58518 hashfull 0 tbhits 0 time 27 pv b6e3 a8a5 c7d7 a5b4 e3h6 h3h4 h6g7 b4g4 d7e7
+info depth 11 seldepth 12 multipv 1 score cp -330 nodes 3001 nps 60020 hashfull 0 tbhits 0 time 50 pv b6e3 a8a5 c7d7 a5b4 e3h6 h3h4 h6g7 b4g4 d7e7
+bestmove b6e3 ponder a8a5
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 2 multipv 1 score cp -36 nodes 30 nps 10000 hashfull 0 tbhits 0 time 3 pv b4c3
+info depth 2 seldepth 3 multipv 1 score cp -27 nodes 62 nps 12400 hashfull 0 tbhits 0 time 5 pv b4c3
+info depth 3 seldepth 4 multipv 1 score cp -19 nodes 111 nps 15857 hashfull 0 tbhits 0 time 7 pv b4c3
+info depth 4 seldepth 7 multipv 1 score cp -49 nodes 1460 nps 52142 hashfull 0 tbhits 0 time 28 pv a2a5 f1g2 b4c3
+info depth 5 seldepth 8 multipv 1 score cp -40 nodes 1902 nps 52833 hashfull 0 tbhits 0 time 36 pv b4c3 e8e7
+info depth 6 seldepth 8 multipv 1 score cp -39 nodes 2132 nps 54666 hashfull 0 tbhits 0 time 39 pv f4d6 e8e2 a2a5 e2e6
+info depth 7 seldepth 8 multipv 1 score cp -41 nodes 2736 nps 55836 hashfull 0 tbhits 0 time 49 pv b4c3 e8e7 g5g4 a6a7
+info depth 8 seldepth 8 multipv 1 score cp -41 nodes 3001 nps 55574 hashfull 0 tbhits 0 time 54 pv b4c3 e8e7 g5g4 a6a7
+bestmove b4c3 ponder e8e7
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 4 multipv 1 score cp 687 nodes 33 nps 8250 hashfull 0 tbhits 0 time 4 pv f4e6 a6e6 f5e6
+info depth 2 seldepth 4 multipv 1 score cp 657 nodes 116 nps 19333 hashfull 0 tbhits 0 time 6 pv f5e4 a6a4
+info depth 3 seldepth 5 multipv 1 score cp 677 nodes 223 nps 27875 hashfull 0 tbhits 0 time 8 pv f5e4 a6a4 e4d3
+info depth 4 seldepth 6 multipv 1 score cp 664 nodes 317 nps 31700 hashfull 0 tbhits 0 time 10 pv e5e6 a6a5 f5e4
+info depth 5 seldepth 6 multipv 1 score cp 658 nodes 448 nps 37333 hashfull 0 tbhits 0 time 12 pv e5e6 f8e7 f5e4
+info depth 6 seldepth 8 multipv 1 score cp 641 nodes 588 nps 39200 hashfull 0 tbhits 0 time 15 pv e5e6 f8e7 f5e5 a6a5
+info depth 7 seldepth 9 multipv 1 score cp 633 nodes 771 nps 42833 hashfull 0 tbhits 0 time 18 pv f2f3 a6a7
+info depth 8 seldepth 10 multipv 1 score cp 640 nodes 1087 nps 47260 hashfull 0 tbhits 0 time 23 pv f2f3 a6a7 f5g5 a7g7 f4g6 g7g6 g5g6
+info depth 9 seldepth 10 multipv 1 score cp 618 nodes 1481 nps 51068 hashfull 0 tbhits 0 time 29 pv f2f3 a6a5 f5f6 a5d5 f4d5 f8g8 d5f4
+info depth 10 seldepth 13 multipv 1 score cp 633 nodes 1961 nps 53000 hashfull 1 tbhits 0 time 37 pv f5g5 a6a5 g5g6 a5a6 g6f5
+info depth 11 seldepth 14 multipv 1 score cp 634 nodes 2818 nps 56360 hashfull 1 tbhits 0 time 50 pv f2f3 a6a7 e5e6 f8e7 f5e5 a7a5
+info depth 12 seldepth 14 multipv 1 score cp 634 nodes 3000 nps 56603 hashfull 1 tbhits 0 time 53 pv f2f3 a6a7 e5e6 f8e7 f5e5 a7a5
+bestmove f2f3 ponder a6a7
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 4 multipv 1 score cp 21 nodes 43 nps 14333 hashfull 0 tbhits 0 time 3 pv e1b1
+info depth 2 seldepth 4 multipv 1 score cp 24 nodes 80 nps 16000 hashfull 0 tbhits 0 time 5 pv e1b1
+info depth 3 seldepth 4 multipv 1 score cp 28 nodes 128 nps 18285 hashfull 0 tbhits 0 time 7 pv e1b1
+info depth 4 seldepth 6 multipv 1 score cp 35 nodes 199 nps 18090 hashfull 0 tbhits 0 time 11 pv e1b1
+info depth 5 seldepth 6 multipv 1 score cp 45 nodes 361 nps 22562 hashfull 0 tbhits 0 time 16 pv e1b1
+info depth 6 seldepth 7 multipv 1 score cp 62 nodes 670 nps 29130 hashfull 0 tbhits 0 time 23 pv e1b1
+info depth 7 seldepth 9 multipv 1 score cp 69 nodes 1705 nps 39651 hashfull 0 tbhits 0 time 43 pv e7e6 e5c4 e1b1 c4a5 b6a5 a3a5
+info depth 8 seldepth 12 multipv 1 score cp 62 upperbound nodes 3000 nps 46875 hashfull 1 tbhits 0 time 64 pv e7e6 e5c4
+bestmove e7e6 ponder e5c4
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 4 multipv 1 score cp 347 nodes 7 nps 7000 hashfull 0 tbhits 0 time 1 pv f7e7
+info depth 2 seldepth 4 multipv 1 score cp 363 nodes 15 nps 15000 hashfull 0 tbhits 0 time 1 pv f7e7 f3e3 e7f7
+info depth 3 seldepth 4 multipv 1 score cp 371 nodes 31 nps 15500 hashfull 0 tbhits 0 time 2 pv f7e7 f3e3 e7d7
+info depth 4 seldepth 6 multipv 1 score cp 329 nodes 86 nps 28666 hashfull 0 tbhits 0 time 3 pv f7e7 f3e3 e7f7 e3f3 f7e6
+info depth 5 seldepth 6 multipv 1 score cp 328 nodes 122 nps 40666 hashfull 0 tbhits 0 time 3 pv f7e7 f3e3 e7d8
+info depth 6 seldepth 8 multipv 1 score cp 370 nodes 234 nps 46800 hashfull 0 tbhits 0 time 5 pv f7e7 f3e3 e7d8 e3e4 d4d5 h5h4
+info depth 7 seldepth 8 multipv 1 score cp 432 nodes 687 nps 57250 hashfull 0 tbhits 0 time 12 pv b6f6 f3b3 d4d5 b3b2
+info depth 8 seldepth 9 multipv 1 score cp 412 nodes 890 nps 59333 hashfull 0 tbhits 0 time 15 pv b6f6 f3b3 d4d5 b3b8 f6g6 h6h7 g6c6 h5h4
+info depth 9 seldepth 14 multipv 1 score cp 420 nodes 1735 nps 61964 hashfull 0 tbhits 0 time 28 pv b6f6 f3b3 f6g6 h6h7 d4d5 b3b8 g6g7 h7h6 g7g8 b8b6 g8a8 b6d6
+info depth 10 seldepth 13 multipv 1 score cp 461 nodes 2215 nps 65147 hashfull 0 tbhits 0 time 34 pv b6f6 f3b3 f6g6 h6h7 d4d5 b3b8 d5d6 h5h4 d6d7 h4h3
+info depth 11 seldepth 13 multipv 1 score cp 461 nodes 3001 nps 53589 hashfull 1 tbhits 0 time 56 pv b6f6 f3b3 f6g6 h6h7 d4d5 b3b8 d5d6 h5h4 d6d7 h4h3
+bestmove b6f6 ponder f3b3
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 2 multipv 1 score cp 469 nodes 4 nps 4000 hashfull 0 tbhits 0 time 1 pv d6c7
+info depth 2 seldepth 3 multipv 1 score cp 492 nodes 10 nps 5000 hashfull 0 tbhits 0 time 2 pv d6c7 h5h4
+info depth 3 seldepth 5 multipv 1 score cp 503 nodes 30 nps 10000 hashfull 0 tbhits 0 time 3 pv d6c7 h5h4 c5d4 g7f8
+info depth 4 seldepth 5 multipv 1 score cp 470 nodes 49 nps 16333 hashfull 0 tbhits 0 time 3 pv d6c7 h5h4 c5d4 g7g6
+info depth 5 seldepth 6 multipv 1 score cp 480 nodes 104 nps 20800 hashfull 0 tbhits 0 time 5 pv d6c7 a6b5 c5d4 g7h6
+info depth 6 seldepth 7 multipv 1 score cp 520 nodes 145 nps 20714 hashfull 0 tbhits 0 time 7 pv d6c7 a6b5 e6h3 h5h4
+info depth 7 seldepth 9 multipv 1 score cp 516 nodes 286 nps 26000 hashfull 0 tbhits 0 time 11 pv d6c7 a6b5 c5d4 g7h6 d5d6
+info depth 8 seldepth 9 multipv 1 score cp 497 nodes 474 nps 29625 hashfull 0 tbhits 0 time 16 pv d6c7 h5h4 c5d4 g7h6
+info depth 9 seldepth 11 multipv 1 score cp 495 nodes 728 nps 30333 hashfull 0 tbhits 0 time 24 pv d6c7 a6b5 c5d4 g7h7 e6f5 h7h6 d5d6
+info depth 10 seldepth 12 multipv 1 score cp 499 nodes 1117 nps 31914 hashfull 0 tbhits 0 time 35 pv d6c7 h5h4 d5d6 h4h3 e6h3 c4b6 c7b6
+info depth 11 seldepth 13 multipv 1 score cp 502 nodes 1978 nps 35963 hashfull 1 tbhits 0 time 55 pv d6e7 h5h4 d5d6 h4h3 e6c4 h3h2 c4d5 a6c4
+info depth 12 seldepth 13 multipv 1 score cp 486 nodes 3001 nps 40554 hashfull 1 tbhits 0 time 74 pv d6e7 g7g6 d5d6 c4e5 e6d5 a6c8 d5e4 g6h6
+bestmove d6e7 ponder g7g6
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 3 multipv 1 score cp 11 nodes 20 nps 6666 hashfull 0 tbhits 0 time 3 pv g3h3
+info depth 2 seldepth 4 multipv 1 score cp 13 nodes 95 nps 19000 hashfull 0 tbhits 0 time 5 pv a6d6 a2a5
+info depth 3 seldepth 4 multipv 1 score cp 14 nodes 299 nps 29900 hashfull 0 tbhits 0 time 10 pv a6b6
+info depth 4 seldepth 6 multipv 1 score cp 18 nodes 365 nps 33181 hashfull 0 tbhits 0 time 11 pv a6b6 a2a1
+info depth 5 seldepth 7 multipv 1 score cp 19 nodes 757 nps 39842 hashfull 0 tbhits 0 time 19 pv a6b6 a2a1 b6b2
+info depth 6 seldepth 10 multipv 1 score cp 20 nodes 1411 nps 48655 hashfull 0 tbhits 0 time 29 pv a6c6 a2a3 g3h2 a3a5
+info depth 7 seldepth 9 multipv 1 score cp 19 nodes 2303 nps 54833 hashfull 1 tbhits 0 time 42 pv a6a8 g7h7 a8c8 a2a3 g3h2
+info depth 8 seldepth 9 multipv 1 score cp 19 nodes 2898 nps 54679 hashfull 1 tbhits 0 time 53 pv a6b6 a2a3 g3h2 g7h7
+info depth 9 seldepth 9 multipv 1 score cp 19 nodes 3000 nps 53571 hashfull 1 tbhits 0 time 56 pv a6b6 a2a3 g3h2 g7h7
+bestmove a6b6 ponder a2a3
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 7 multipv 1 score cp -393 nodes 72 nps 12000 hashfull 0 tbhits 0 time 6 pv d6g3 g5h5 f1e1 f2e1q g3e1
+info depth 2 seldepth 7 multipv 1 score cp -579 nodes 259 nps 25900 hashfull 0 tbhits 0 time 10 pv d6g3 f5g4
+info depth 3 seldepth 8 multipv 1 score cp -603 nodes 329 nps 27416 hashfull 0 tbhits 0 time 12 pv f1f2 f5f2 d6g6 g5h4
+info depth 4 seldepth 6 multipv 1 score cp -603 nodes 381 nps 29307 hashfull 0 tbhits 0 time 13 pv f1f2 f5f2 d6g6 g5h4
+info depth 5 seldepth 8 multipv 1 score cp -631 nodes 488 nps 32533 hashfull 0 tbhits 0 time 15 pv d6g3 f5g4 f1f2 g4g3
+info depth 6 seldepth 8 multipv 1 score cp -532 nodes 543 nps 33937 hashfull 0 tbhits 0 time 16 pv d6g3 f5g4 f1f2 g4g3 f2f8 g5h5
+info depth 7 seldepth 10 multipv 1 score cp -616 nodes 621 nps 36529 hashfull 0 tbhits 0 time 17 pv d6g3 f5g4 f1f2 g4g3 f2f8 g5h5 f8f5 h5g4
+info depth 8 seldepth 13 multipv 1 score cp -772 nodes 1172 nps 39066 hashfull 0 tbhits 0 time 30 pv d6g3 f5g4 f1f2 g4g3 f2f8 g5h4 f8h8
+info depth 9 seldepth 11 multipv 1 score cp -768 nodes 1307 nps 40843 hashfull 0 tbhits 0 time 32 pv d6g3 f5g4 f1f2 g4g3 f2f8 g5h4 f8g8
+info depth 10 seldepth 16 multipv 1 score cp -605 nodes 2085 nps 46333 hashfull 0 tbhits 0 time 45 pv f1f2 f5f2 d6g6 g5h4 b7c5 f2g1 g6g1 e1g1
+info depth 11 seldepth 13 multipv 1 score cp -509 lowerbound nodes 3001 nps 46169 hashfull 0 tbhits 0 time 65 pv f1f2 f5f2
+bestmove f1f2 ponder f5f2
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 3 multipv 1 score cp -58 nodes 10 nps 10000 hashfull 0 tbhits 0 time 1 pv g5h5 g2h3
+info depth 2 seldepth 3 multipv 1 score cp -58 nodes 23 nps 11500 hashfull 0 tbhits 0 time 2 pv g5h5 g2h3
+info depth 3 seldepth 6 multipv 1 score cp -63 nodes 99 nps 33000 hashfull 0 tbhits 0 time 3 pv g5h4 e5f6 h4h5 g2h3
+info depth 4 seldepth 8 multipv 1 score cp -69 nodes 509 nps 63625 hashfull 0 tbhits 0 time 8 pv g5h4 g2h3 a2b4 f4f5
+info depth 5 seldepth 7 multipv 1 score cp -64 nodes 588 nps 65333 hashfull 0 tbhits 0 time 9 pv g5h4 e3f5 h4g4 g2h3 g4h3 f5e3
+info depth 6 seldepth 9 multipv 1 score cp -51 nodes 809 nps 73545 hashfull 0 tbhits 0 time 11 pv g5h5 g2h3 a2b4 f4f5 b4d3 f5f6 d3e5 e6e5
+info depth 7 seldepth 10 multipv 1 score cp -55 nodes 1287 nps 71500 hashfull 0 tbhits 0 time 18 pv g5h4 g2h3 a2c1 f4f5 c1d3 f5f6 c6e8 f6f7
+info depth 8 seldepth 11 multipv 1 score cp -55 nodes 1706 nps 74173 hashfull 0 tbhits 0 time 23 pv g5h4 g2h3 a2c1 f4f5 c1d3 f5f6 c6e8
+info depth 9 seldepth 11 multipv 1 score cp -51 nodes 2252 nps 77655 hashfull 0 tbhits 0 time 29 pv g5h4 g2h3 a2c1 f4f5 c1d3 f5f6 c6e8 f6f7
+info depth 10 seldepth 11 multipv 1 score cp -50 lowerbound nodes 3001 nps 73195 hashfull 0 tbhits 0 time 41 pv g5h4 g2h3
+bestmove g5h4 ponder g2h3
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 8 multipv 1 score cp 724 nodes 36 nps 12000 hashfull 0 tbhits 0 time 3 pv e7e4 f6f4 e4f4 g4f4 f2g3 f4g3
+info depth 2 seldepth 8 multipv 1 score cp 142 nodes 177 nps 29500 hashfull 0 tbhits 0 time 6 pv e7e4 g4h3 h7b7
+info depth 3 seldepth 4 multipv 1 score cp 146 nodes 290 nps 32222 hashfull 0 tbhits 0 time 9 pv e7e4 g4h3 h7b7
+info depth 4 seldepth 6 multipv 1 score cp 163 nodes 334 nps 33400 hashfull 0 tbhits 0 time 10 pv e7e4 g4f5 f2g3 f5e4 f1g2
+info depth 5 seldepth 6 multipv 1 score cp 179 nodes 452 nps 37666 hashfull 0 tbhits 0 time 12 pv e7e4 g4h3 h7b7
+info depth 6 seldepth 7 multipv 1 score cp 183 nodes 495 nps 38076 hashfull 0 tbhits 0 time 13 pv e7e4 g4h3 h7b7 g3f3 e4e2 h3h4
+info depth 7 seldepth 9 multipv 1 score cp 202 nodes 729 nps 40500 hashfull 0 tbhits 0 time 18 pv e7e4 g4h3 h7b7 g3f3 e4e2 f3c3
+info depth 8 seldepth 11 multipv 1 score cp 201 nodes 2269 nps 52767 hashfull 0 tbhits 0 time 43 pv e7f7 f6f7 h7f7 g3c3 f7b7 g4h4 a2a4
+info depth 9 seldepth 11 multipv 1 score cp 222 nodes 2438 nps 54177 hashfull 0 tbhits 0 time 45 pv e7f7 f6f7 h7f7 g3c3 f7b7 g4h4 a2a4 h4g4 b7b4 g4f5
+info depth 10 seldepth 14 multipv 1 score cp 234 lowerbound nodes 3000 nps 55555 hashfull 0 tbhits 0 time 54 pv e7f7 f6f7
+bestmove e7f7 ponder f6f7
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 3 multipv 1 score cp -27 nodes 53 nps 13250 hashfull 0 tbhits 0 time 4 pv f1f3
+info depth 2 seldepth 3 multipv 1 score cp -8 nodes 106 nps 15142 hashfull 0 tbhits 0 time 7 pv f1f3
+info depth 3 seldepth 7 multipv 1 score cp 59 nodes 751 nps 26821 hashfull 0 tbhits 0 time 28 pv e2f3 d7f8
+info depth 4 seldepth 8 multipv 1 score cp 23 nodes 1232 nps 32421 hashfull 0 tbhits 0 time 38 pv e2f3 b7b5 g5h6 g7g3 f3g3
+info depth 5 seldepth 9 multipv 1 score cp 44 nodes 1585 nps 31700 hashfull 0 tbhits 0 time 50 pv e2f3 b7b5 a4b5
+info depth 6 seldepth 9 multipv 1 score cp 44 nodes 1838 nps 31689 hashfull 1 tbhits 0 time 58 pv e2f3 c5c4 g5h6 g7g3 f3g3 f6h5 g3g4
+info depth 7 seldepth 10 multipv 1 score cp 17 upperbound nodes 3000 nps 37037 hashfull 1 tbhits 0 time 81 pv e2f3 d7f8
+bestmove e2f3 ponder d7f8
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 4 multipv 1 score cp -90 nodes 30 nps 10000 hashfull 0 tbhits 0 time 3 pv d6f5
+info depth 2 seldepth 4 multipv 1 score cp -84 nodes 65 nps 13000 hashfull 0 tbhits 0 time 5 pv d6f5 a4a5 b6a7
+info depth 3 seldepth 4 multipv 1 score cp -93 nodes 154 nps 22000 hashfull 0 tbhits 0 time 7 pv d6f5 e3f4 d8d5
+info depth 4 seldepth 7 multipv 1 score cp -85 nodes 209 nps 23222 hashfull 0 tbhits 0 time 9 pv d6f5 e3f4 d8d4
+info depth 5 seldepth 8 multipv 1 score cp -180 nodes 644 nps 30666 hashfull 0 tbhits 0 time 21 pv d8e8 c5d7 b6b7 d7f6 g7f6 c1c5 f6f5
+info depth 6 seldepth 7 multipv 1 score cp -180 nodes 706 nps 32090 hashfull 0 tbhits 0 time 22 pv d8e8 c5d7 b6b7 d7f6 g7f6 c1c5
+info depth 7 seldepth 9 multipv 1 score cp -176 nodes 1089 nps 35129 hashfull 0 tbhits 0 time 31 pv d8e8 c5b3 b6b7 b3a5 b7c8 c1c6 e8e4
+info depth 8 seldepth 12 multipv 1 score cp -204 lowerbound nodes 3000 nps 44776 hashfull 0 tbhits 0 time 67 pv d8e8 c5b3
+bestmove d8e8 ponder c5b3
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 5 multipv 1 score cp 665 nodes 33 nps 16500 hashfull 0 tbhits 0 time 2 pv f4f1 e3g1 f1g1 h1g1
+info depth 2 seldepth 5 multipv 1 score cp 19 nodes 228 nps 32571 hashfull 0 tbhits 0 time 7 pv f4f1 h1h2
+info depth 3 seldepth 4 multipv 1 score cp 5 nodes 529 nps 44083 hashfull 0 tbhits 0 time 12 pv g7h8
+info depth 4 seldepth 7 multipv 1 score cp 9 nodes 1867 nps 60225 hashfull 0 tbhits 0 time 31 pv f4f1 h1h2 g7g8 e3e2
+info depth 5 seldepth 6 multipv 1 score cp 3 upperbound nodes 3002 nps 66711 hashfull 1 tbhits 0 time 45 pv f4f1 h1h2
+bestmove f4f1 ponder h1h2
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 8 multipv 1 score cp -21 nodes 79 nps 19750 hashfull 0 tbhits 0 time 4 pv f8e8 b5c6 b7c6
+info depth 2 seldepth 4 multipv 1 score cp -17 nodes 226 nps 32285 hashfull 0 tbhits 0 time 7 pv c8e8
+info depth 3 seldepth 4 multipv 1 score cp -18 nodes 283 nps 35375 hashfull 0 tbhits 0 time 8 pv g7g5 f3e1
+info depth 4 seldepth 6 multipv 1 score cp -15 nodes 568 nps 37866 hashfull 0 tbhits 0 time 15 pv d7f6 f3e5 b8e5
+info depth 5 seldepth 8 multipv 1 score cp -15 nodes 861 nps 39136 hashfull 0 tbhits 0 time 22 pv d7f6 f3d2 c8c7
+info depth 6 seldepth 10 multipv 1 score cp -24 upperbound nodes 3001 nps 49196 hashfull 0 tbhits 0 time 61 pv d7f6 f3e5
+bestmove d7f6 ponder f3e5
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 4 multipv 1 score cp 23 nodes 23 nps 11500 hashfull 0 tbhits 0 time 2 pv h3d3
+info depth 2 seldepth 3 multipv 1 score cp 28 nodes 50 nps 12500 hashfull 0 tbhits 0 time 4 pv h3d3
+info depth 3 seldepth 5 multipv 1 score cp 29 nodes 99 nps 19800 hashfull 0 tbhits 0 time 5 pv h3d3 a6a5
+info depth 4 seldepth 5 multipv 1 score cp 29 nodes 230 nps 32857 hashfull 0 tbhits 0 time 7 pv h3g3
+info depth 5 seldepth 7 multipv 1 score cp 27 nodes 516 nps 39692 hashfull 0 tbhits 0 time 13 pv h3e3 g8f7
+info depth 6 seldepth 7 multipv 1 score cp 26 nodes 716 nps 47733 hashfull 0 tbhits 0 time 15 pv h3e3 g8f7 e3d3 a6a5 a2a3 f7g7
+info depth 7 seldepth 10 multipv 1 score cp 20 upperbound nodes 3000 nps 71428 hashfull 0 tbhits 0 time 42 pv h3e3 g8f7
+bestmove h3e3 ponder g8f7
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 5 multipv 1 score cp 422 nodes 24 nps 12000 hashfull 0 tbhits 0 time 2 pv h5h4
+info depth 2 seldepth 4 multipv 1 score cp 567 nodes 49 nps 16333 hashfull 0 tbhits 0 time 3 pv h5h4 b5c3
+info depth 3 seldepth 4 multipv 1 score cp 476 nodes 85 nps 21250 hashfull 0 tbhits 0 time 4 pv h5h4 b5a7 h4g4
+info depth 4 seldepth 6 multipv 1 score cp 436 nodes 155 nps 31000 hashfull 0 tbhits 0 time 5 pv h5h4 d2e3 h4g4 e3f3
+info depth 5 seldepth 7 multipv 1 score cp 523 nodes 236 nps 33714 hashfull 0 tbhits 0 time 7 pv h5h4 g4f5
+info depth 6 seldepth 7 multipv 1 score cp 479 nodes 305 nps 38125 hashfull 0 tbhits 0 time 8 pv h5h4 g4f3 h4h2 d2d1
+info depth 7 seldepth 10 multipv 1 score cp 535 nodes 536 nps 44666 hashfull 0 tbhits 0 time 12 pv h5h4 g4e2 f4e2 d2e2 h4e4 e2f2 e4c4
+info depth 8 seldepth 9 multipv 1 score cp 528 nodes 726 nps 48400 hashfull 0 tbhits 0 time 15 pv h5h4 g4e2 f4e2 d2e2 h4c4 e2d1
+info depth 9 seldepth 13 multipv 1 score cp 536 nodes 1450 nps 51785 hashfull 1 tbhits 0 time 28 pv h5h4 d2e3 f4g6 g4e2 g6e5 b5c3
+info depth 10 seldepth 13 multipv 1 score cp 415 nodes 2045 nps 53815 hashfull 1 tbhits 0 time 38 pv h5h4 g4f5 h4h5 f5g4 h5e5 g4f3 e5g5 d2e3 f4g6 f3e4 g5g3 e4f3
+info depth 11 seldepth 13 multipv 1 score cp 415 nodes 3001 nps 56622 hashfull 1 tbhits 0 time 53 pv h5h4 g4f5 h4h5 f5g4 h5e5 g4f3 e5g5 d2e3 f4g6 f3e4 g5g3 e4f3
+bestmove h5h4 ponder g4f5
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 3 multipv 1 score cp 3 nodes 30 nps 10000 hashfull 0 tbhits 0 time 3 pv h4h3 g2f2
+info depth 2 seldepth 3 multipv 1 score cp 4 nodes 178 nps 29666 hashfull 0 tbhits 0 time 6 pv e3e5
+info depth 3 seldepth 4 multipv 1 score cp 3 nodes 249 nps 31125 hashfull 0 tbhits 0 time 8 pv h4h3 g2f2
+info depth 4 seldepth 5 multipv 1 score cp 15 nodes 366 nps 30500 hashfull 0 tbhits 0 time 12 pv h4h3 g2f2
+info depth 5 seldepth 9 multipv 1 score cp 13 nodes 1756 nps 51647 hashfull 1 tbhits 0 time 34 pv e3b3 b1f5
+info depth 6 seldepth 9 multipv 1 score cp 11 nodes 2432 nps 55272 hashfull 1 tbhits 0 time 44 pv e3c3 b1d3 g5g4 d3f5
+info depth 7 seldepth 9 multipv 1 score cp 11 nodes 3001 nps 55574 hashfull 1 tbhits 0 time 54 pv h4h3 g2h2 g5g4 b1f5 g4g3 h2h3 g3g2 h3g2
+bestmove h4h3 ponder g2h2
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 2 multipv 1 score cp 183 nodes 21 nps 10500 hashfull 0 tbhits 0 time 2 pv f3f4
+info depth 2 seldepth 3 multipv 1 score cp 222 nodes 47 nps 11750 hashfull 0 tbhits 0 time 4 pv f3f4
+info depth 3 seldepth 5 multipv 1 score cp 232 nodes 91 nps 18200 hashfull 0 tbhits 0 time 5 pv f3f4 b5b4
+info depth 4 seldepth 6 multipv 1 score cp 219 nodes 139 nps 23166 hashfull 0 tbhits 0 time 6 pv f3f4 b7c6
+info depth 5 seldepth 7 multipv 1 score cp 169 nodes 940 nps 49473 hashfull 0 tbhits 0 time 19 pv e3d3 b7c6 g5e5 c6d6
+info depth 6 seldepth 8 multipv 1 score cp 178 nodes 1229 nps 51208 hashfull 0 tbhits 0 time 24 pv f3f4 b7c6 f4f5 g6f5 e4f5 c6d6
+info depth 7 seldepth 9 multipv 1 score cp 181 nodes 1468 nps 52428 hashfull 0 tbhits 0 time 28 pv f3f4 b7c6 f4f5 g6f5 e4f5 c6d6
+info depth 8 seldepth 9 multipv 1 score cp 220 nodes 1950 nps 54166 hashfull 0 tbhits 0 time 36 pv f3f4 b7c6 f4f5 g6f5 e4f5 c6d6
+info depth 9 seldepth 11 multipv 1 score cp 203 nodes 2241 nps 56025 hashfull 0 tbhits 0 time 40 pv f3f4 b7c6 f4f5 g6f5 e4f5 a6a5 e3e4 e7d5 g5g6 d7d6
+info depth 10 seldepth 14 multipv 1 score cp 225 lowerbound nodes 3000 nps 58823 hashfull 0 tbhits 0 time 51 pv f3f4 b7c6
+bestmove f3f4 ponder b7c6
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 6 multipv 1 score cp 255 nodes 55 nps 18333 hashfull 0 tbhits 0 time 3 pv c3d2
+info depth 2 seldepth 3 multipv 1 score cp 369 nodes 97 nps 24250 hashfull 0 tbhits 0 time 4 pv c3d2
+info depth 3 seldepth 8 multipv 1 score cp 247 nodes 287 nps 35875 hashfull 0 tbhits 0 time 8 pv f3g5 e7g5 f4g5
+info depth 4 seldepth 7 multipv 1 score cp 250 nodes 342 nps 34200 hashfull 0 tbhits 0 time 10 pv f3g5 e7g5 f4g5 b7b5 e1h4 h8g8
+info depth 5 seldepth 7 multipv 1 score cp 250 nodes 406 nps 36909 hashfull 0 tbhits 0 time 11 pv f3g5 e7g5 f4g5 b7b5 e1h4 h8g8
+info depth 6 seldepth 7 multipv 1 score cp 250 nodes 476 nps 36615 hashfull 0 tbhits 0 time 13 pv f3g5 e7g5 f4g5 b7b5 e1h4 h8g8
+info depth 7 seldepth 8 multipv 1 score cp 248 nodes 590 nps 36875 hashfull 0 tbhits 0 time 16 pv f3g5 e7g5 f4g5 b7b5 e1h4 g7h7 h4g3
+info depth 8 seldepth 11 multipv 1 score cp 302 nodes 987 nps 37961 hashfull 0 tbhits 0 time 26 pv f3h4 d7f8 h4f3 f8g6 c3d2
+info depth 9 seldepth 12 multipv 1 score cp 302 nodes 1636 nps 43052 hashfull 1 tbhits 0 time 38 pv f3h4 e7d8 h4f3 d7f8 f3g5 d8g5 f4g5 f8h7 e1h4 g7g5
+info depth 10 seldepth 15 multipv 1 score cp 292 nodes 2772 nps 47793 hashfull 1 tbhits 0 time 58 pv f3h4 d7f8 c3d2 e7d8 h4f3 f8g6 b2b3
+info depth 11 seldepth 15 multipv 1 score cp 292 nodes 3001 nps 46890 hashfull 1 tbhits 0 time 64 pv f3h4 d7f8 c3d2 e7d8 h4f3 f8g6 b2b3
+bestmove f3h4 ponder d7f8
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 8 multipv 1 score cp 126 nodes 45 nps 11250 hashfull 0 tbhits 0 time 4 pv e2e4 e8e4 e1e4
+info depth 2 seldepth 4 multipv 1 score cp 126 nodes 81 nps 16200 hashfull 0 tbhits 0 time 5 pv e2e4 e8e4 e1e4
+info depth 3 seldepth 4 multipv 1 score cp 126 nodes 118 nps 23600 hashfull 0 tbhits 0 time 5 pv e2e4 e8e4 e1e4
+info depth 4 seldepth 5 multipv 1 score cp 149 nodes 176 nps 25142 hashfull 0 tbhits 0 time 7 pv e2e4 e8e4 e1e4
+info depth 5 seldepth 7 multipv 1 score cp 178 nodes 278 nps 27800 hashfull 0 tbhits 0 time 10 pv e2e4 e8e4 e1e4
+info depth 6 seldepth 7 multipv 1 score cp 161 nodes 329 nps 27416 hashfull 0 tbhits 0 time 12 pv e2e4 e8e4 e1e4 d8d6
+info depth 7 seldepth 10 multipv 1 score cp 128 nodes 766 nps 38300 hashfull 0 tbhits 0 time 20 pv e2e4 e8e4 c2e4 f7c4 e4e6 c4e6 e1e6 d8d4 e6c6
+info depth 8 seldepth 13 multipv 1 score cp 123 nodes 1083 nps 41653 hashfull 0 tbhits 0 time 26 pv e2e4 e8e4 e1e4 f7d5 c2e2 c6c5 e4e8 d8e8 e2e8 g8h7 d4c5 d5c5
+info depth 9 seldepth 13 multipv 1 score cp 132 nodes 2127 nps 46239 hashfull 1 tbhits 0 time 46 pv e2e4 e8e4 e1e4 f7d5 c2e2 a6a5 h2h4 a5a4
+info depth 10 seldepth 13 multipv 1 score cp 132 nodes 3001 nps 49196 hashfull 2 tbhits 0 time 61 pv e2e4 e8e4 e1e4 f7d5 c2e2 a6a5 h2h4 a5a4
+bestmove e2e4 ponder e8e4
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 3 multipv 1 score cp -381 nodes 39 nps 9750 hashfull 0 tbhits 0 time 4 pv e8d8
+info depth 2 seldepth 4 multipv 1 score cp -319 nodes 78 nps 15600 hashfull 0 tbhits 0 time 5 pv e8d8 f5f6
+info depth 3 seldepth 5 multipv 1 score cp -329 nodes 152 nps 21714 hashfull 0 tbhits 0 time 7 pv g2g1 c1d2 e8d8 f5f6
+info depth 4 seldepth 5 multipv 1 score cp -329 nodes 201 nps 25125 hashfull 0 tbhits 0 time 8 pv g2g1 c1d2 e8d8 f5f6
+info depth 5 seldepth 6 multipv 1 score cp -361 nodes 401 nps 30846 hashfull 0 tbhits 0 time 13 pv g2g1 c1d2 g1f1 e5g3 g8h8
+info depth 6 seldepth 7 multipv 1 score cp -414 nodes 486 nps 30375 hashfull 0 tbhits 0 time 16 pv g2g1 c1d2 g1f1 f5f6 f1f3 e3e2
+info depth 7 seldepth 10 multipv 1 score cp -404 nodes 1076 nps 33625 hashfull 0 tbhits 0 time 32 pv g2g1 c1d2 g1g4 d2e1 g4e4 e5e4 b7e4 e3e4
+info depth 8 seldepth 9 multipv 1 score cp -431 nodes 1186 nps 33885 hashfull 0 tbhits 0 time 35 pv g2g1 c1d2 g1g4 a2a3 g4e4 e5e4 b7e4 e3e4
+info depth 9 seldepth 12 multipv 1 score cp -387 nodes 1614 nps 35086 hashfull 0 tbhits 0 time 46 pv g2g4 c1d2 b7a8 d2e1
+info depth 10 seldepth 11 multipv 1 score cp -482 upperbound nodes 3000 nps 39473 hashfull 0 tbhits 0 time 76 pv g2g4 e5c7
+bestmove g2g4 ponder e5c7
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 2 multipv 1 score cp -123 nodes 7 nps 7000 hashfull 0 tbhits 0 time 1 pv a5a6
+info depth 2 seldepth 3 multipv 1 score cp -51 nodes 21 nps 21000 hashfull 0 tbhits 0 time 1 pv a5a6
+info depth 3 seldepth 4 multipv 1 score cp -45 nodes 48 nps 24000 hashfull 0 tbhits 0 time 2 pv a5a6 g4c8
+info depth 4 seldepth 5 multipv 1 score cp -28 nodes 105 nps 35000 hashfull 0 tbhits 0 time 3 pv a5a6 e3d4
+info depth 5 seldepth 7 multipv 1 score cp -317 nodes 567 nps 94500 hashfull 0 tbhits 0 time 6 pv a5a6 g4c8 a6a7 c8b7 g1f1
+info depth 6 seldepth 11 multipv 1 score cp -377 nodes 843 nps 93666 hashfull 0 tbhits 0 time 9 pv a5a6 g4c8 a6a7 c8b7 g1h2 e3d3
+info depth 7 seldepth 11 multipv 1 score cp -386 nodes 915 nps 91500 hashfull 0 tbhits 0 time 10 pv a5a6 g4c8 a6a7 c8b7 a2a3
+info depth 8 seldepth 13 multipv 1 score cp -284 nodes 2633 nps 84935 hashfull 0 tbhits 0 time 31 pv a5a6 g4c8 a6a7 c8b7 a2a4 e3d3 a4a5 d3d4
+info depth 9 seldepth 11 multipv 1 score cp -314 upperbound nodes 3003 nps 85800 hashfull 0 tbhits 0 time 35 pv a5a6 g4c8
+bestmove a5a6 ponder g4c8
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 4 multipv 1 score cp -33 nodes 33 nps 16500 hashfull 0 tbhits 0 time 2 pv e3f4 d4c2
+info depth 2 seldepth 3 multipv 1 score cp -33 nodes 62 nps 20666 hashfull 0 tbhits 0 time 3 pv e3f4 d4c2
+info depth 3 seldepth 5 multipv 1 score cp -7 nodes 104 nps 17333 hashfull 0 tbhits 0 time 6 pv e3f4 d4c2
+info depth 4 seldepth 5 multipv 1 score cp 10 nodes 161 nps 16100 hashfull 0 tbhits 0 time 10 pv e3f4
+info depth 5 seldepth 7 multipv 1 score cp 31 nodes 276 nps 19714 hashfull 0 tbhits 0 time 14 pv e3f4
+info depth 6 seldepth 7 multipv 1 score cp 44 nodes 846 nps 22864 hashfull 0 tbhits 0 time 37 pv e3f4 c5e7 c4a5 c6c5
+info depth 7 seldepth 10 multipv 1 score cp 49 nodes 1957 nps 27180 hashfull 0 tbhits 0 time 72 pv e3f4 c5e7 c4a5 d4c2 a5c4
+info depth 8 seldepth 13 multipv 1 score cp 44 upperbound nodes 3008 nps 34181 hashfull 0 tbhits 0 time 88 pv e3f4 c5e7
+bestmove e3f4 ponder c5e7
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 2 multipv 1 score cp 100 nodes 8 nps 4000 hashfull 0 tbhits 0 time 2 pv f6g5
+info depth 2 seldepth 3 multipv 1 score cp 169 nodes 24 nps 12000 hashfull 0 tbhits 0 time 2 pv f6g5
+info depth 3 seldepth 4 multipv 1 score cp 210 nodes 62 nps 15500 hashfull 0 tbhits 0 time 4 pv f6g5
+info depth 4 seldepth 6 multipv 1 score cp 247 nodes 154 nps 25666 hashfull 0 tbhits 0 time 6 pv f6g5 d5e4
+info depth 5 seldepth 9 multipv 1 score cp 153 nodes 337 nps 30636 hashfull 0 tbhits 0 time 11 pv f6g6 d5e4 g6h5 e4f3 h5g6 f3g3 h4h5 g3h4
+info depth 6 seldepth 7 multipv 1 score cp 153 nodes 371 nps 33727 hashfull 0 tbhits 0 time 11 pv f6g6 d5e4 g6h5 e4f3 h5g6 f3g3
+info depth 7 seldepth 8 multipv 1 score cp 153 nodes 412 nps 34333 hashfull 0 tbhits 0 time 12 pv f6g6 d5e4 g6h5 e4f3 h5g6 f3g3 h4h5
+info depth 8 seldepth 11 multipv 1 score cp 200 nodes 641 nps 40062 hashfull 0 tbhits 0 time 16 pv f6g6 d5e4 g6h5 e4f3 h5g6 f3g3
+info depth 9 seldepth 18 multipv 1 score cp 172 nodes 2636 nps 48814 hashfull 1 tbhits 0 time 54 pv f6g5 d5e4 g5h5 e4f3 h5g5 f3g3 h4h5 b3c5 h5h6 c5e6 g5g6
+info depth 10 seldepth 14 multipv 1 score cp 180 lowerbound nodes 3001 nps 50864 hashfull 1 tbhits 0 time 59 pv f6g5 d5e4
+bestmove f6g5 ponder d5e4
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 3 multipv 1 score cp 5 nodes 33 nps 16500 hashfull 0 tbhits 0 time 2 pv f3g4
+info depth 2 seldepth 3 multipv 1 score cp 55 nodes 72 nps 18000 hashfull 0 tbhits 0 time 4 pv f3g4
+info depth 3 seldepth 4 multipv 1 score cp 55 nodes 156 nps 26000 hashfull 0 tbhits 0 time 6 pv f3g4 c8c3 d3f4
+info depth 4 seldepth 5 multipv 1 score cp 46 nodes 420 nps 42000 hashfull 0 tbhits 0 time 10 pv f3g4 c8c3 d3f4 b8c7
+info depth 5 seldepth 9 multipv 1 score cp 39 nodes 1001 nps 47666 hashfull 0 tbhits 0 time 21 pv e2g2 g7h8 g2g4 b8c7
+info depth 6 seldepth 9 multipv 1 score cp 48 nodes 2272 nps 45440 hashfull 0 tbhits 0 time 50 pv f1g1 g7h8 g1g4
+info depth 7 seldepth 10 multipv 1 score cp 47 upperbound nodes 3005 nps 44191 hashfull 0 tbhits 0 time 68 pv f1g1 g7h8
+bestmove f1g1 ponder g7h8
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 2 multipv 1 score cp 26 nodes 16 nps 5333 hashfull 0 tbhits 0 time 3 pv f4h4
+info depth 2 seldepth 3 multipv 1 score cp 44 nodes 40 nps 13333 hashfull 0 tbhits 0 time 3 pv f4h4
+info depth 3 seldepth 6 multipv 1 score cp 37 nodes 205 nps 29285 hashfull 0 tbhits 0 time 7 pv g2f3 c2c3 f3e2
+info depth 4 seldepth 6 multipv 1 score cp 39 nodes 264 nps 33000 hashfull 0 tbhits 0 time 8 pv g2f3 c2c3 f3e2
+info depth 5 seldepth 6 multipv 1 score cp 44 nodes 383 nps 38300 hashfull 0 tbhits 0 time 10 pv g2f3 c2c3 f3e2
+info depth 6 seldepth 8 multipv 1 score cp 52 nodes 624 nps 41600 hashfull 0 tbhits 0 time 15 pv g2f3 c2c3 f3e2
+info depth 7 seldepth 7 multipv 1 score cp 65 nodes 983 nps 46809 hashfull 0 tbhits 0 time 21 pv g2f3 c2c3 f3e2
+info depth 8 seldepth 13 multipv 1 score cp 60 nodes 2659 nps 54265 hashfull 1 tbhits 0 time 49 pv g2f3 c2a2 f4h4 a2a3 f3g2
+info depth 9 seldepth 10 multipv 1 score cp 59 upperbound nodes 3000 nps 56603 hashfull 1 tbhits 0 time 53 pv g2f3 c2a2
+bestmove g2f3 ponder c2a2
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 3 multipv 1 score cp 16 nodes 22 nps 11000 hashfull 0 tbhits 0 time 2 pv g4g5
+info depth 2 seldepth 5 multipv 1 score cp 20 nodes 55 nps 13750 hashfull 0 tbhits 0 time 4 pv g4g5
+info depth 3 seldepth 6 multipv 1 score cp 21 nodes 216 nps 30857 hashfull 0 tbhits 0 time 7 pv f5d7 e8e4 g4g5
+info depth 4 seldepth 5 multipv 1 score cp 19 nodes 546 nps 45500 hashfull 0 tbhits 0 time 12 pv h7h8q g7h8 f5g6
+info depth 5 seldepth 8 multipv 1 score cp 13 nodes 2001 nps 64548 hashfull 1 tbhits 0 time 31 pv h7h8b g7g8
+info depth 6 seldepth 7 multipv 1 score cp 15 nodes 2323 nps 64527 hashfull 1 tbhits 0 time 36 pv h7h8q g7h8 g4h3 e8e5 f5c2
+info depth 7 seldepth 10 multipv 1 score cp 14 nodes 2742 nps 66878 hashfull 1 tbhits 0 time 41 pv h7h8q e8h8 f5c2 h8c8 c2d3 g7h8 d3f1
+info depth 8 seldepth 10 multipv 1 score cp 14 nodes 3000 nps 66666 hashfull 1 tbhits 0 time 45 pv h7h8q e8h8 f5c2 h8c8 c2d3 g7h8 d3f1
+bestmove h7h8q ponder e8h8
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 4 multipv 1 score cp 243 nodes 15 nps 7500 hashfull 0 tbhits 0 time 2 pv d7e8
+info depth 2 seldepth 4 multipv 1 score cp 222 nodes 71 nps 23666 hashfull 0 tbhits 0 time 3 pv d7e8 f8d6
+info depth 3 seldepth 4 multipv 1 score cp 202 nodes 143 nps 35750 hashfull 0 tbhits 0 time 4 pv d7f5
+info depth 4 seldepth 5 multipv 1 score cp 200 nodes 169 nps 33800 hashfull 0 tbhits 0 time 5 pv d7f5 f8d6 f5d7 d2c2
+info depth 5 seldepth 6 multipv 1 score cp 210 nodes 231 nps 38500 hashfull 0 tbhits 0 time 6 pv d7f5 f8d6 f5d7 d6b8 c4d5
+info depth 6 seldepth 8 multipv 1 score cp 210 nodes 448 nps 49777 hashfull 0 tbhits 0 time 9 pv d7c6 d2c1 c6d7 c1c2
+info depth 7 seldepth 9 multipv 1 score cp 179 nodes 1250 nps 62500 hashfull 0 tbhits 0 time 20 pv d7c6 d2c1 c6d7 f8d6 d7f5 d6f8 f5e4 f8d6
+info depth 8 seldepth 14 multipv 1 score cp 140 upperbound nodes 3001 nps 81108 hashfull 0 tbhits 0 time 37 pv d7c6 d2c2
+bestmove d7c6 ponder d2c2
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 5 multipv 1 score cp 57 nodes 62 nps 15500 hashfull 1 tbhits 0 time 4 pv e5g3
+info depth 2 seldepth 3 multipv 1 score cp 113 nodes 128 nps 14222 hashfull 1 tbhits 0 time 9 pv e5g3
+info depth 3 seldepth 5 multipv 1 score cp 96 nodes 324 nps 21600 hashfull 1 tbhits 0 time 15 pv f2g4 g1g2
+info depth 4 seldepth 5 multipv 1 score cp 98 nodes 464 nps 24421 hashfull 1 tbhits 0 time 19 pv f2g4 c2d3
+info depth 5 seldepth 5 multipv 1 score cp 185 nodes 800 nps 27586 hashfull 1 tbhits 0 time 29 pv f2g4 g1g2
+info depth 6 seldepth 10 multipv 1 score cp 224 nodes 1618 nps 35955 hashfull 1 tbhits 0 time 45 pv f2g4 c4e5 c8c2 e5g4 h5g4 e1e8 g8h7 d2c2 d7d5
+info depth 7 seldepth 10 multipv 1 score cp 227 lowerbound nodes 3001 nps 38974 hashfull 2 tbhits 0 time 77 pv f2g4 c4e5
+bestmove f2g4 ponder c4e5
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 5 multipv 1 score cp 254 nodes 23 nps 7666 hashfull 0 tbhits 0 time 3 pv a4a5 c1c5 a5c5 d5c5
+info depth 2 seldepth 5 multipv 1 score cp 35 nodes 208 nps 29714 hashfull 0 tbhits 0 time 7 pv a4a8
+info depth 3 seldepth 7 multipv 1 score cp 52 nodes 591 nps 39400 hashfull 0 tbhits 0 time 15 pv b2b4 f5f4
+info depth 4 seldepth 6 multipv 1 score cp 29 nodes 1193 nps 49708 hashfull 0 tbhits 0 time 24 pv b2b4 c1d1 d3e2 d1c1
+info depth 5 seldepth 9 multipv 1 score cp 33 nodes 2411 nps 58804 hashfull 0 tbhits 0 time 41 pv a4a5 d5e6 b2b4 g5g4
+info depth 6 seldepth 9 multipv 1 score cp 27 lowerbound nodes 3000 nps 61224 hashfull 0 tbhits 0 time 49 pv a4b4 c1f1
+bestmove a4b4 ponder c1f1
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 4 multipv 1 score cp 31 nodes 56 nps 14000 hashfull 0 tbhits 0 time 4 pv e4g3
+info depth 2 seldepth 4 multipv 1 score cp 34 nodes 107 nps 17833 hashfull 0 tbhits 0 time 6 pv e4g3
+info depth 3 seldepth 5 multipv 1 score cp 89 nodes 271 nps 24636 hashfull 0 tbhits 0 time 11 pv c1g5
+info depth 4 seldepth 5 multipv 1 score cp 113 nodes 354 nps 25285 hashfull 0 tbhits 0 time 14 pv c1g5
+info depth 5 seldepth 9 multipv 1 score cp 72 nodes 1173 nps 39100 hashfull 0 tbhits 0 time 30 pv c1g5 e7e5 f2f4 e5d4 d3d4 c5d4 g5f6 g7f6
+info depth 6 seldepth 9 multipv 1 score cp 80 nodes 1298 nps 40562 hashfull 0 tbhits 0 time 32 pv c1g5 e7e5 e4f6 g7f6 g5h4 e5h5
+info depth 7 seldepth 13 multipv 1 score cp 81 nodes 2599 nps 44810 hashfull 1 tbhits 0 time 58 pv e4g5 h7h6 g5e6 c8e6 d5e6 e7e6 a1b1 d6d5 b1b7 d5c4 d3g6 f8f7
+info depth 8 seldepth 9 multipv 1 score cp 70 upperbound nodes 3002 nps 45484 hashfull 1 tbhits 0 time 66 pv e4g5 e7e5
+bestmove e4g5 ponder e7e5
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 4 multipv 1 score cp -75 nodes 19 nps 6333 hashfull 1 tbhits 0 time 3 pv h8g8
+info depth 2 seldepth 4 multipv 1 score cp -88 nodes 75 nps 18750 hashfull 1 tbhits 0 time 4 pv c6e8
+info depth 3 seldepth 4 multipv 1 score cp -87 nodes 160 nps 26666 hashfull 1 tbhits 0 time 6 pv c6e8 f3d1
+info depth 4 seldepth 7 multipv 1 score cp -106 nodes 603 nps 43071 hashfull 1 tbhits 0 time 14 pv c6d7 f3d5 e6d5 g6a6 f7e7 a6b6
+info depth 5 seldepth 6 multipv 1 score cp -106 nodes 635 nps 42333 hashfull 1 tbhits 0 time 15 pv c6d7 f3d5 e6d5 g6a6 f7e7
+info depth 6 seldepth 7 multipv 1 score cp -106 nodes 674 nps 42125 hashfull 1 tbhits 0 time 16 pv c6d7 f3d5 e6d5 g6a6 f7e7 a6b6
+info depth 7 seldepth 9 multipv 1 score cp -103 nodes 757 nps 42055 hashfull 1 tbhits 0 time 18 pv c6d7 f3d5 e6d5 g6a6 f7e7 a6b6 h8g8 b6h6
+info depth 8 seldepth 11 multipv 1 score cp -104 nodes 1620 nps 49090 hashfull 2 tbhits 0 time 33 pv h8h7 f3g4 c6d7 g4d1 f7e7 d1c2
+info depth 9 seldepth 11 multipv 1 score cp -98 lowerbound nodes 3000 nps 50847 hashfull 3 tbhits 0 time 59 pv h8h7 f3g4
+bestmove h8h7 ponder f3g4
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 4 multipv 1 score cp 126 nodes 66 nps 16500 hashfull 0 tbhits 0 time 4 pv c2c4
+info depth 2 seldepth 3 multipv 1 score cp 160 nodes 121 nps 17285 hashfull 0 tbhits 0 time 7 pv c2c4
+info depth 3 seldepth 7 multipv 1 score cp 175 nodes 373 nps 28692 hashfull 0 tbhits 0 time 13 pv a1b1 b7b6
+info depth 4 seldepth 8 multipv 1 score cp 175 nodes 600 nps 33333 hashfull 0 tbhits 0 time 18 pv a1b1 b7b6 c2c3
+info depth 5 seldepth 7 multipv 1 score cp 114 nodes 2005 nps 42659 hashfull 0 tbhits 0 time 47 pv h4h5 b5d4 e6c7 d7c7
+info depth 6 seldepth 9 multipv 1 score cp 114 nodes 2484 nps 42101 hashfull 0 tbhits 0 time 59 pv h4h5 f7f6 a2a4 b5d4 e6c7 c8c7
+info depth 7 seldepth 8 multipv 1 score cp 111 upperbound nodes 3002 nps 41694 hashfull 0 tbhits 0 time 72 pv h4h5 f7f6
+bestmove h4h5 ponder f7f6
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 3 multipv 1 score cp 56 nodes 23 nps 11500 hashfull 0 tbhits 0 time 2 pv e7f5
+info depth 2 seldepth 6 multipv 1 score cp 50 nodes 152 nps 25333 hashfull 0 tbhits 0 time 6 pv e8c8
+info depth 3 seldepth 4 multipv 1 score cp 68 nodes 196 nps 21777 hashfull 0 tbhits 0 time 9 pv e8c8
+info depth 4 seldepth 8 multipv 1 score cp 62 nodes 527 nps 35133 hashfull 0 tbhits 0 time 15 pv e8c8 d4d8 e7g6 d8c8 b8c8
+info depth 5 seldepth 6 multipv 1 score cp 62 nodes 570 nps 35625 hashfull 0 tbhits 0 time 16 pv e8c8 d4d8 e7g6 d8c8 b8c8
+info depth 6 seldepth 9 multipv 1 score cp 59 nodes 676 nps 37555 hashfull 0 tbhits 0 time 18 pv e8c8 d4d8 e7g6 d1d7 f8b4 d8h8 c8h8
+info depth 7 seldepth 9 multipv 1 score cp 59 nodes 754 nps 39684 hashfull 0 tbhits 0 time 19 pv e8c8 d4d8 e7g6 d1d7 f8b4 d8h8 c8h8
+info depth 8 seldepth 13 multipv 1 score cp 69 nodes 1222 nps 43642 hashfull 0 tbhits 0 time 28 pv e8c8 d4d8 e7g6 d1d7 f8b4 d8h8
+info depth 9 seldepth 14 multipv 1 score cp 63 upperbound nodes 3001 nps 49196 hashfull 0 tbhits 0 time 61 pv e8c8 d4d8
+bestmove e8c8 ponder d4d8
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 3 multipv 1 score cp -313 nodes 34 nps 11333 hashfull 1 tbhits 0 time 3 pv h3c3
+info depth 2 seldepth 6 multipv 1 score cp -254 nodes 82 nps 16400 hashfull 1 tbhits 0 time 5 pv g7g6 f4f6 g6h7
+info depth 3 seldepth 4 multipv 1 score cp -254 nodes 111 nps 22200 hashfull 1 tbhits 0 time 5 pv g7g6 f4f6 g6h7
+info depth 4 seldepth 7 multipv 1 score cp -252 nodes 220 nps 27500 hashfull 1 tbhits 0 time 8 pv g7g6 f4f6 g6h7 f6f7 h7h6
+info depth 5 seldepth 7 multipv 1 score cp -252 nodes 262 nps 29111 hashfull 1 tbhits 0 time 9 pv g7g6 f4f6 g6h7 f6f7 h7h6
+info depth 6 seldepth 10 multipv 1 score cp -266 nodes 767 nps 40368 hashfull 1 tbhits 0 time 19 pv g7g6 f2g1 h3a3 f4g4 g6f7 g4f5 f7e8
+info depth 7 seldepth 8 multipv 1 score cp -263 nodes 867 nps 41285 hashfull 1 tbhits 0 time 21 pv g7g6 f2g1 h3e6 g1g2 g6h5 f4f3 h5g6
+info depth 8 seldepth 15 multipv 1 score cp -208 nodes 1875 nps 52083 hashfull 2 tbhits 0 time 36 pv g7g6 f4f6 g6h7 f6f7 h7h6 f7f3
+info depth 9 seldepth 11 multipv 1 score cp -200 lowerbound nodes 3002 nps 55592 hashfull 2 tbhits 0 time 54 pv g7g6 f4f6
+bestmove g7g6 ponder f4f6
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 3 multipv 1 score cp -4 nodes 8 nps 4000 hashfull 1 tbhits 0 time 2 pv a8d5
+info depth 2 seldepth 4 multipv 1 score cp -1 nodes 23 nps 11500 hashfull 1 tbhits 0 time 2 pv a8d5 f2e1
+info depth 3 seldepth 5 multipv 1 score cp -1 nodes 66 nps 22000 hashfull 1 tbhits 0 time 3 pv a8d5 f2d4
+info depth 4 seldepth 7 multipv 1 score cp -1 nodes 279 nps 46500 hashfull 1 tbhits 0 time 6 pv a8d5 f2e3
+info depth 5 seldepth 7 multipv 1 score cp -1 nodes 460 nps 51111 hashfull 1 tbhits 0 time 9 pv a8b7 d6e5
+info depth 6 seldepth 8 multipv 1 score cp 0 nodes 948 nps 55764 hashfull 1 tbhits 0 time 17 pv e4e5 d6e6 a8d5 e6d7
+info depth 7 seldepth 10 multipv 1 score cp 0 nodes 1316 nps 59818 hashfull 1 tbhits 0 time 22 pv a8d5 f2d4
+info depth 8 seldepth 9 multipv 1 score cp 0 nodes 2048 nps 64000 hashfull 1 tbhits 0 time 32 pv h3g2 f2h4 e4e5 d6e5
+info depth 9 seldepth 10 multipv 1 score cp -1 nodes 3003 nps 63893 hashfull 1 tbhits 0 time 47 pv h3g2 f2d4 a8b7 d4f6 g2f1
+bestmove h3g2 ponder f2d4
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 2 multipv 1 score cp -92 nodes 26 nps 13000 hashfull 1 tbhits 0 time 2 pv h5h4
+info depth 2 seldepth 4 multipv 1 score cp -49 nodes 58 nps 14500 hashfull 1 tbhits 0 time 4 pv h5h4
+info depth 3 seldepth 6 multipv 1 score cp -203 nodes 571 nps 38066 hashfull 1 tbhits 0 time 15 pv g7g5
+info depth 4 seldepth 8 multipv 1 score cp -197 nodes 712 nps 39555 hashfull 1 tbhits 0 time 18 pv h5h4 c5c6 h4h3 g2h3 d3h3
+info depth 5 seldepth 6 multipv 1 score cp -197 nodes 758 nps 39894 hashfull 1 tbhits 0 time 19 pv h5h4 c5c6 h4h3 g2h3 d3h3
+info depth 6 seldepth 8 multipv 1 score cp -116 nodes 942 nps 40956 hashfull 1 tbhits 0 time 23 pv h5h4 c5c6 h4h3 g2h3 d3h3
+info depth 7 seldepth 8 multipv 1 score cp -146 nodes 1707 nps 44921 hashfull 1 tbhits 0 time 38 pv h5h4 c5c6 g7g5 c7c8 h4h3 c6c7
+info depth 8 seldepth 11 multipv 1 score cp -145 nodes 1869 nps 46725 hashfull 1 tbhits 0 time 40 pv h5h4 c5c6 g7g5 c7b8 d3b3 b8a7 b3a3 a7b7 a3b3 b7a6
+info depth 9 seldepth 20 multipv 1 score cp -139 lowerbound nodes 3000 nps 52631 hashfull 2 tbhits 0 time 57 pv g7g5 c5c6
+bestmove g7g5 ponder c5c6
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 4 multipv 1 score cp -231 nodes 30 nps 10000 hashfull 1 tbhits 0 time 3 pv h8e8 e1e8 d7e8
+info depth 2 seldepth 4 multipv 1 score cp -220 nodes 72 nps 18000 hashfull 1 tbhits 0 time 4 pv h8h7 b2b3
+info depth 3 seldepth 5 multipv 1 score cp -227 nodes 102 nps 20400 hashfull 1 tbhits 0 time 5 pv h8h7 b2b3 b5b4
+info depth 4 seldepth 5 multipv 1 score cp -195 nodes 164 nps 23428 hashfull 1 tbhits 0 time 7 pv h8e8 e1e8 d7e8 b2b3
+info depth 5 seldepth 7 multipv 1 score cp -207 nodes 214 nps 26750 hashfull 1 tbhits 0 time 8 pv h8e8 e1e8 d7e8 b2b3 e8d7
+info depth 6 seldepth 9 multipv 1 score cp -181 nodes 387 nps 29769 hashfull 1 tbhits 0 time 13 pv h8e8 e1e8 d7e8 b2b4
+info depth 7 seldepth 9 multipv 1 score cp -157 nodes 1121 nps 41518 hashfull 1 tbhits 0 time 27 pv h8e8 e1e8
+info depth 8 seldepth 16 multipv 1 score cp -199 nodes 2823 nps 48672 hashfull 1 tbhits 0 time 58 pv h8e8 e1e8 d7e8 h1e1 g5g8 e1e6 h6g5 d3e3
+info depth 9 seldepth 11 multipv 1 score cp -231 upperbound nodes 3000 nps 48387 hashfull 1 tbhits 0 time 62 pv h8e8 e1e8
+bestmove h8e8 ponder e1e8
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 5 multipv 1 score cp -58 nodes 62 nps 15500 hashfull 1 tbhits 0 time 4 pv b8e8
+info depth 2 seldepth 5 multipv 1 score cp -98 nodes 665 nps 51153 hashfull 1 tbhits 0 time 13 pv b8e8 f2f4
+info depth 3 seldepth 6 multipv 1 score cp -106 nodes 1049 nps 55210 hashfull 1 tbhits 0 time 19 pv b8f8 f2f4
+info depth 4 seldepth 6 multipv 1 score cp -112 nodes 1254 nps 57000 hashfull 1 tbhits 0 time 22 pv b8f8 f2f4 f8a8 a2a8 g8a8
+info depth 5 seldepth 7 multipv 1 score cp -149 nodes 2491 nps 56613 hashfull 1 tbhits 0 time 44 pv c7b6 d2c1 b8f8 a2e2
+info depth 6 seldepth 8 multipv 1 score cp -131 nodes 2959 nps 55830 hashfull 1 tbhits 0 time 53 pv c7d8 f2f4 d8e7 d2e1
+info depth 7 seldepth 8 multipv 1 score cp -131 nodes 3001 nps 55574 hashfull 1 tbhits 0 time 54 pv c7d8 f2f4 d8e7 d2e1
+bestmove c7d8 ponder f2f4
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 2 multipv 1 score cp -218 nodes 13 nps 13000 hashfull 0 tbhits 0 time 1 pv g5c1
+info depth 2 seldepth 4 multipv 1 score cp -158 nodes 62 nps 31000 hashfull 0 tbhits 0 time 2 pv e4e3
+info depth 3 seldepth 4 multipv 1 score cp -164 nodes 145 nps 48333 hashfull 0 tbhits 0 time 3 pv e4e3 c4f1
+info depth 4 seldepth 6 multipv 1 score cp -243 nodes 586 nps 58600 hashfull 0 tbhits 0 time 10 pv d1c1 c4b5 g5d2 a5d2 c1d2
+info depth 5 seldepth 6 multipv 1 score cp -243 nodes 750 nps 57692 hashfull 0 tbhits 0 time 13 pv g5c1 a5b6 c1g5
+info depth 6 seldepth 7 multipv 1 score cp -241 nodes 829 nps 59214 hashfull 0 tbhits 0 time 14 pv g5c1 a5b6 c1d2
+info depth 7 seldepth 12 multipv 1 score cp -268 nodes 1625 nps 67708 hashfull 0 tbhits 0 time 24 pv g5c1 a5b6 c1d2 b6c7 e4e3 g4f3 d2c1
+info depth 8 seldepth 12 multipv 1 score cp -285 upperbound nodes 3001 nps 69790 hashfull 0 tbhits 0 time 43 pv g5c1 a5c7
+bestmove g5c1 ponder a5c7
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 8 multipv 1 score cp 8 nodes 65 nps 16250 hashfull 0 tbhits 0 time 4 pv e5c4
+info depth 2 seldepth 6 multipv 1 score cp 19 nodes 190 nps 21111 hashfull 0 tbhits 0 time 9 pv a3a4
+info depth 3 seldepth 5 multipv 1 score cp 41 nodes 245 nps 20416 hashfull 0 tbhits 0 time 12 pv a3a4
+info depth 4 seldepth 5 multipv 1 score cp 63 nodes 1108 nps 39571 hashfull 0 tbhits 0 time 28 pv c1b1 h7e4
+info depth 5 seldepth 9 multipv 1 score cp 34 nodes 2721 nps 51339 hashfull 0 tbhits 0 time 53 pv h2h4 g5h4 g3h4 g7f6 e5g4 f6g7
+info depth 6 seldepth 9 multipv 1 score cp 33 nodes 3001 nps 52649 hashfull 1 tbhits 0 time 57 pv h2h4 g5h4 g3h4 g7f6 e5g4 f6g7
+bestmove h2h4 ponder g5h4
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 4 multipv 1 score cp 77 nodes 62 nps 15500 hashfull 0 tbhits 0 time 4 pv f6d7
+info depth 2 seldepth 3 multipv 1 score cp 112 nodes 114 nps 19000 hashfull 0 tbhits 0 time 6 pv f6d7
+info depth 3 seldepth 4 multipv 1 score cp 147 nodes 178 nps 19777 hashfull 0 tbhits 0 time 9 pv f6d7
+info depth 4 seldepth 7 multipv 1 score cp 149 nodes 474 nps 27882 hashfull 0 tbhits 0 time 17 pv b8b6 c4c2
+info depth 5 seldepth 7 multipv 1 score cp 147 nodes 593 nps 28238 hashfull 0 tbhits 0 time 21 pv b8b6 b2b3 e8b8 g4g5 h6g5 f3g5
+info depth 6 seldepth 7 multipv 1 score cp 147 nodes 681 nps 30954 hashfull 0 tbhits 0 time 22 pv b8b6 b2b3 e8b8 g4g5 h6g5 f3g5
+info depth 7 seldepth 9 multipv 1 score cp 79 upperbound nodes 3000 nps 41095 hashfull 1 tbhits 0 time 73 pv b8b6 c4c1
+bestmove b8b6 ponder c4c1
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 4 multipv 1 score cp -130 nodes 71 nps 17750 hashfull 1 tbhits 0 time 4 pv f8f7
+info depth 2 seldepth 4 multipv 1 score cp -92 nodes 117 nps 19500 hashfull 1 tbhits 0 time 6 pv f8f7
+info depth 3 seldepth 6 multipv 1 score cp -153 nodes 801 nps 38142 hashfull 1 tbhits 0 time 21 pv g8g7
+info depth 4 seldepth 7 multipv 1 score cp -161 nodes 1093 nps 40481 hashfull 1 tbhits 0 time 27 pv c6a7 d1g1 f8f7 a3a4
+info depth 5 seldepth 10 multipv 1 score cp -139 nodes 1510 nps 43142 hashfull 1 tbhits 0 time 35 pv c6a7 d1g1 f8f7 c2d1
+info depth 6 seldepth 7 multipv 1 score cp -144 nodes 1585 nps 44027 hashfull 1 tbhits 0 time 36 pv c6a7 d1c1 f8f7
+info depth 7 seldepth 9 multipv 1 score cp -145 nodes 1736 nps 44512 hashfull 1 tbhits 0 time 39 pv c6a7 d1c1 f8f7 a3a4 f7g7 c2d1 c8c1 a1c1
+info depth 8 seldepth 14 multipv 1 score cp -153 upperbound nodes 3000 nps 44776 hashfull 1 tbhits 0 time 67 pv c6a7 d1c1
+bestmove c6a7 ponder d1c1
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 10 multipv 1 score cp 246 nodes 52 nps 17333 hashfull 0 tbhits 0 time 3 pv d2f3 g5g6 f3e5 g6f6 h8h4 h2h1q h4h1
+info depth 2 seldepth 9 multipv 1 score cp 129 nodes 202 nps 33666 hashfull 0 tbhits 0 time 6 pv d2f3 g5f6
+info depth 3 seldepth 7 multipv 1 score cp 448 nodes 289 nps 24083 hashfull 0 tbhits 0 time 12 pv d2f3 g5f6 h8h4 h2h1q h4h1
+info depth 4 seldepth 8 multipv 1 score cp 464 nodes 449 nps 29933 hashfull 0 tbhits 0 time 15 pv d2f3 g5f6 h8h4
+info depth 5 seldepth 7 multipv 1 score cp 476 nodes 495 nps 30937 hashfull 0 tbhits 0 time 16 pv d2f3 g5f6 h8h4 h2h1q h4h1
+info depth 6 seldepth 7 multipv 1 score cp 498 nodes 556 nps 32705 hashfull 0 tbhits 0 time 17 pv d2f3 g5f6 h8h4 d5c4 e2f2
+info depth 7 seldepth 11 multipv 1 score cp 468 nodes 697 nps 34850 hashfull 0 tbhits 0 time 20 pv d2f3 g5f4 h8h4 f4g3 e4d5 e5e4 f3h2
+info depth 8 seldepth 12 multipv 1 score cp 535 nodes 1183 nps 43814 hashfull 0 tbhits 0 time 27 pv d2f3 g5g6 h8h4 h2h1q h4h1 d5e4 h1h2
+info depth 9 seldepth 10 multipv 1 score cp 529 nodes 1391 nps 44870 hashfull 0 tbhits 0 time 31 pv d2f3 g5g6 h8h4 h2h1q h4h1 d5e4 h1h4 e4f3 e2f3
+info depth 10 seldepth 14 multipv 1 score cp 556 nodes 2041 nps 49780 hashfull 0 tbhits 0 time 41 pv d2f3 g5f4 h8h4 f4g3 e4d5 e5e4 f3h2
+info depth 11 seldepth 12 multipv 1 score cp 519 nodes 2264 nps 50311 hashfull 0 tbhits 0 time 45 pv d2f3 g5f6 h8h4 h2h1q h4h1 d5e4 h1h4 e4c6 e2f2
+info depth 12 seldepth 17 multipv 1 score cp 526 nodes 2974 nps 53107 hashfull 1 tbhits 0 time 56 pv d2f3 g5f6 h8h4 h2h1q h4h1 d5e4 h1h3 f6g7 h3h4 e4f3 e2f3
+info depth 13 seldepth 17 multipv 1 score cp 526 nodes 3003 nps 52684 hashfull 1 tbhits 0 time 57 pv d2f3 g5f6 h8h4 h2h1q h4h1 d5e4 h1h3 f6g7 h3h4 e4f3 e2f3
+bestmove d2f3 ponder g5f6
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 2 multipv 1 score cp 8 nodes 27 nps 9000 hashfull 1 tbhits 0 time 3 pv a1b1
+info depth 2 seldepth 4 multipv 1 score cp 6 nodes 260 nps 32500 hashfull 1 tbhits 0 time 8 pv a1b1 c6e6 e2f2
+info depth 3 seldepth 4 multipv 1 score cp 9 nodes 336 nps 30545 hashfull 1 tbhits 0 time 11 pv a1b1 h7h5
+info depth 4 seldepth 5 multipv 1 score cp 6 nodes 671 nps 35315 hashfull 1 tbhits 0 time 19 pv a1b1 h7h5 d4d5 c6c5
+info depth 5 seldepth 8 multipv 1 score cp 3 nodes 2367 nps 38177 hashfull 2 tbhits 0 time 62 pv d2f4
+info depth 6 seldepth 8 multipv 1 score cp 1 upperbound nodes 3000 nps 37974 hashfull 3 tbhits 0 time 79 pv d2f4 h7h5
+bestmove d2f4 ponder h7h5
+info string NNUE evaluation using nn-0ee0657fb25e.nnue (106MiB, (83248, 1024, 32, 32, 1))
+info string Network replica 1: Shared memory.
+info depth 1 seldepth 3 multipv 1 score cp 24 nodes 22 nps 11000 hashfull 0 tbhits 0 time 2 pv d7f7
+info depth 2 seldepth 5 multipv 1 score cp 24 nodes 186 nps 31000 hashfull 0 tbhits 0 time 6 pv d7d3 e3d3
+info depth 3 seldepth 4 multipv 1 score cp 26 nodes 224 nps 32000 hashfull 0 tbhits 0 time 7 pv d7d3 e3d3
+info depth 4 seldepth 5 multipv 1 score cp 29 nodes 291 nps 29100 hashfull 0 tbhits 0 time 10 pv d7d3 e3d3 c6d7
+info depth 5 seldepth 6 multipv 1 score cp 23 nodes 1174 nps 53363 hashfull 1 tbhits 0 time 22 pv d7d3 e3d3 c6d7 c3b5 d7d8
+info depth 6 seldepth 7 multipv 1 score cp 23 nodes 1237 nps 53782 hashfull 1 tbhits 0 time 23 pv d7d3 e3d3 c6d7 c3b5 d7d8 b5d6
+info depth 7 seldepth 10 multipv 1 score cp 19 upperbound nodes 3001 nps 66688 hashfull 1 tbhits 0 time 45 pv d7d3 e3d3
+bestmove d7d3 ponder e3d3

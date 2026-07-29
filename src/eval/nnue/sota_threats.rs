@@ -912,18 +912,7 @@ impl<'a> ThreatContext<'a> {
                 *a -= 1;
             }
             if self.stack[*a].fold[p] == Fold::Refresh {
-                // Field-disjoint borrows: `acc[p]`/`psqt[p]` are written while
-                // `position` is read, and the borrow checker splits struct
-                // fields, so no copy of the 80-byte snapshot is needed.
-                let entry = &mut self.stack[*a];
-                refresh_threat_into_at(
-                    &mut entry.acc[p],
-                    weights,
-                    &entry.position,
-                    Color::ALL[p],
-                );
-                entry.psqt[p] = refresh_psqt_threat_at(psqt_weights, &entry.position, Color::ALL[p]);
-                entry.fold[p] = Fold::Done;
+                discharge_refresh(&mut self.stack[*a], weights, psqt_weights, p);
             }
         }
         // Hoist the magic-table LazyLock deref out of the per-touch geometry
@@ -1138,6 +1127,30 @@ impl<'a> ThreatContext<'a> {
 /// The one-sided case (a king-crossed ply computes one perspective eagerly at
 /// push) keeps calling [`resolve_into`] — folding a `need` test into this
 /// loop would tax the common both-sided path with a branch per event.
+/// Rebuild ONE perspective of ONE entry from its own snapshot — the discharge
+/// half of [`Fold::Refresh`], out of line.
+///
+/// `#[cold]` because it fires on ~5% of `compute` calls (0.0214 of 0.4151 per
+/// node, measured) while everything it touches — the 60,720-dim feature
+/// enumeration's locals, both weight slices, a `ThreatPosition` — would
+/// otherwise set the register pressure of `compute`, which is inlined into
+/// `at_full`, the single largest symbol in this block. Study 17 §5.2's rule
+/// says an arm may be outlined when the caller already holds every argument it
+/// needs, and it does: `weights`, `psqt_weights` and `p` are already live, and
+/// the entry is the one the walk just stopped at. Four arguments, well under
+/// the six-register SysV limit (§5.1c).
+#[cold]
+#[inline(never)]
+fn discharge_refresh(entry: &mut ThreatEntry, weights: &[i8], psqt_weights: &[i32], p: usize) {
+    // Field-disjoint borrows: `acc[p]`/`psqt[p]` are written while `position`
+    // is read, and the borrow checker splits struct fields, so no copy of the
+    // 80-byte snapshot is needed.
+    let persp = Color::ALL[p];
+    refresh_threat_into_at(&mut entry.acc[p], weights, &entry.position, persp);
+    entry.psqt[p] = refresh_psqt_threat_at(psqt_weights, &entry.position, persp);
+    entry.fold[p] = Fold::Done;
+}
+
 #[allow(clippy::too_many_arguments)]
 fn resolve_both(
     events: &[ThreatDelta],
