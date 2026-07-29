@@ -17,8 +17,12 @@ import sys
 from collections import defaultdict
 
 
-def parse(path):
-    """Return (self_ir_by_fn, calls_by_callee, calls_by_edge, inclusive_by_edge)."""
+def parse(path, event=0):
+    """Return (self_by_fn, calls_by_callee, calls_by_edge, inclusive_by_edge).
+
+    `event` selects a column when the file carries several (`--branch-sim=yes`
+    emits `Ir Bc Bcm Bi Bim`); the `events:` header line names them.
+    """
     names = {}          # (kind, id) -> name
     self_ir = defaultdict(int)
     calls_by_callee = defaultdict(int)
@@ -56,10 +60,10 @@ def parse(path):
                 continue
             if line[0].isdigit() or line[0] in "+-*":
                 parts = line.split()
-                if len(parts) < 2:
+                if len(parts) < 2 + event:
                     continue
                 try:
-                    cost = int(parts[1])
+                    cost = int(parts[1 + event])
                 except ValueError:
                     continue
                 if pending_calls:
@@ -85,6 +89,7 @@ def main():
     pat = None
     callers_of = None
     incl_of = None
+    event = 0
     args = sys.argv[3:]
     i = 0
     while i < len(args):
@@ -96,10 +101,12 @@ def main():
             callers_of = args[i + 1]; i += 2
         elif args[i] == "--incl":
             incl_of = args[i + 1]; i += 2
+        elif args[i] == "--event":
+            event = int(args[i + 1]); i += 2
         else:
             i += 1
 
-    self_ir, calls, edges, incl = parse(path)
+    self_ir, calls, edges, incl = parse(path, event)
 
     if incl_of:
         # Exact inclusive cost of a call tree: sum every incoming edge.  This is
@@ -133,7 +140,7 @@ def main():
     rows.sort(key=lambda r: -r[1])
     tot = sum(ir for _, ir in self_ir.items())
     print(f"# nodes={nodes:,.0f}  total_Ir={tot:,}  total_i/n={tot/nodes:.1f}")
-    print(f"{'self i/n':>10} {'calls/node':>11} {'i/call':>9}  function")
+    print(f"{'self/node':>10} {'calls/node':>11} {'per_call':>9}  function")
     for fn, ir in rows[:top]:
         c = calls.get(fn, 0)
         ipc = ir / c if c else float("nan")

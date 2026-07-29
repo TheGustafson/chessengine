@@ -1,2 +1,9 @@
 fast=null-1                           instr=31,688,912,647 nodes= 5,001,562 per_node=  6335.8 brs_per_node=  673.6 hash=5ca978e012da1bb0
 fast=null-2-rebuild                   instr=31,688,924,538 nodes= 5,001,562 per_node=  6335.8 brs_per_node=  673.6 hash=5ca978e012da1bb0
+fast=n0-NULLB-alias                   instr=31,688,991,453 nodes= 5,001,562 per_node=  6335.8 brs_per_node=  673.6 hash=5ca978e012da1bb0
+fast=a1-promo-raw                     instr=31,691,715,403 nodes= 5,001,562 per_node=  6336.4 brs_per_node=  673.6 hash=5ca978e012da1bb0
+fast=a2-capstage-3case                instr=31,692,496,893 nodes= 5,001,562 per_node=  6336.5 brs_per_node=  673.7 hash=5ca978e012da1bb0
+fast=a2b-capstage-pairtest            instr=31,796,144,657 nodes= 5,001,562 per_node=  6357.2 brs_per_node=  678.3 hash=5ca978e012da1bb0
+fast=a3-promoraw-only                 instr=31,691,620,416 nodes= 5,001,562 per_node=  6336.3 brs_per_node=  673.6 hash=5ca978e012da1bb0
+fast=a3r-revert-control               instr=31,689,010,215 nodes= 5,001,562 per_node=  6335.8 brs_per_node=  673.6 hash=5ca978e012da1bb0
+fast=b1-one-entry-borrow              instr=31,693,927,543 nodes= 5,001,562 per_node=  6336.8 brs_per_node=  673.6 hash=5ca978e012da1bb0
