@@ -133,6 +133,35 @@ def _ft_accumulate(params: dict, hk_idx: jnp.ndarray, th_idx: jnp.ndarray | None
     return acc
 
 
+def fake_quant(w: jnp.ndarray, scale: float, qmax: float) -> jnp.ndarray:
+    """Straight-through fake quantisation: forward returns the value the ENGINE
+    will actually use, backward passes gradient through as identity.
+
+    Why (2026-07-29). We train in float and quantise afterwards, so the loss
+    never sees quantisation damage — and it is not small. Measured on
+    d48y2-sb190: the threat channel is 72.9% of the input space and carries
+    **86% of all accumulator quantisation noise** (5.58% relative error, 25.1 dB
+    SNR, against HalfKA's 0.51% / 45.8 dB). Worse, the scale is not tuned: the
+    exporter RAISES on overflow rather than clipping, our max |threat w| is
+    1.978, and 127/1.978 = 64.2 — so **one outlier out of 77.7 M weights sets
+    the precision for all of them**.
+
+    Post-hoc rescaling can only trade resolution against clipping on a
+    distribution that was never chosen with quantisation in mind (measured
+    optimum: scale 128, 1.65x better than 64; Stockfish's 255 is *worse* for our
+    weights at 0.82x, because their trainer produces a distribution that fits
+    +/-0.5 and ours does not). QAT removes that trade: the network learns to
+    place mass where the levels are, which is how Stockfish uses a 255-frame
+    productively (`nnue-training-gap-study-2026-07-28.md` §2.5).
+
+    STE identity: `w + stop_gradient(q(w) - w)` is exactly `q(w)` in the forward
+    pass and exactly `w` in the backward, which is what lets gradients reach
+    weights whose quantised value did not move.
+    """
+    q = jnp.clip(jnp.round(w * scale), -qmax, qmax) / scale
+    return w + jax.lax.stop_gradient(q - w)
+
+
 def _ft_accumulate_pair(params: dict, batch: dict, arch: ArchSpec, ft_impl: str):
     """Both perspectives' accumulators under the selected FT implementation.
 
@@ -140,10 +169,23 @@ def _ft_accumulate_pair(params: dict, batch: dict, arch: ArchSpec, ft_impl: str)
     "pallas" (GPU embedding-bag kernel, ft_kernel.py) or "scan" (pure-XLA
     slot scan, the measured fallback). The GPU impls stack stm+ntm along the
     batch axis: one launch, shared grad buffers in the backward.
+
+    QAT (``arch.qat_threat_scale`` / ``arch.qat_ft_scale``, 0 = off) is applied
+    HERE, to the effective tables, so BOTH the reference and the Pallas paths
+    get quantised weights from one site and cannot drift apart.
     """
     th_stm = batch.get("th_stm") if not arch.halfka_only else None
     th_ntm = batch.get("th_ntm") if not arch.halfka_only else None
     pstw = effective_pstw(params, arch)
+    # QAT: quantise the FOLDED HalfKA table, not l0_pstw — the factoriser is
+    # merged at export, so the deployed weight is the sum and that is what must
+    # be made representable.
+    if arch.qat_ft_scale > 0.0:
+        pstw = fake_quant(pstw, arch.qat_ft_scale, 32767.0)   # i16
+    if arch.qat_threat_scale > 0.0 and not arch.halfka_only:
+        params = {**params,
+                  "l0_threatw": fake_quant(params["l0_threatw"],
+                                           arch.qat_threat_scale, 127.0)}  # i8
     if ft_impl != "reference" and (th_stm is not None or arch.halfka_only):
         from .ft_kernel import ft_accumulate_pallas, ft_accumulate_scan
 
@@ -232,8 +274,17 @@ def head_forward(params: dict, arch: ArchSpec, acc_stm: jnp.ndarray,
     stm_hidden = _pairwise(_crelu(acc_stm), arch.hl)
     ntm_hidden = _pairwise(_crelu(acc_ntm), arch.hl)
     hl1 = jnp.concatenate([stm_hidden, ntm_hidden], axis=-1)      # (B, HL)
+    # QAT, activation side: the engine truncates the pairwise product to u8
+    # (>> FT_SHIFT leaves 127 levels). This is the single largest unmodelled
+    # quantisation step in the whole forward pass — everything downstream of
+    # L1's dequant is f32 and needs no emulation.
+    if arch.qat_act_levels > 0.0:
+        hl1 = fake_quant_act(hl1, arch.qat_act_levels)
 
-    l1 = hl1 @ params["l1w"] + params["l1b"]                      # (B, 8*L2)
+    l1w = params["l1w"]
+    if arch.qat_l1_scale > 0.0:
+        l1w = fake_quant(l1w, arch.qat_l1_scale, 127.0)           # i8 @ L1_QUANT
+    l1 = hl1 @ l1w + params["l1b"]                                # (B, 8*L2)
     if arch.dual_tail:
         # R2: dual activation + inter-layer concat skip (study §4.4). L1/L2
         # unchanged, so `l1` above — the expensive part — is untouched.
@@ -303,6 +354,71 @@ def head_forward(params: dict, arch: ArchSpec, acc_stm: jnp.ndarray,
 
 def _pairwise(c: jnp.ndarray, hl: int) -> jnp.ndarray:
     return c[..., : hl // 2] * c[..., hl // 2:]
+
+
+def fake_quant_act(x: jnp.ndarray, levels: float) -> jnp.ndarray:
+    """Straight-through quantisation of an ACTIVATION onto a `levels`-step grid
+    over [0, 1]. Same STE identity as `fake_quant`.
+
+    Weight-only QAT is the weak version. The lossy steps in NNUE inference are
+    the ACTIVATION boundaries, and the engine's are enumerable
+    (`sota_head.rs:3` — "int8 L1 -> f32 L2/L3 tail"):
+
+      * FT accumulator clamps to [0, FT_QUANT=255]. Already implicit: a sum of
+        quantised weights lands on the grid, so no extra error.
+      * **pairwise multiply then `>> FT_SHIFT(9)` -> u8 in [0, 127].** Float
+        computes the exact product; the engine keeps **127 levels**. Nothing in
+        training has ever seen this, and it is the largest unmodelled step.
+      * L1 weights i8 @ L1_QUANT=64, i32 dot, then a single f32 dequant by
+        `(1<<9)/(255^2 * 64)`.
+      * L2/L3 are f32 in our engine — no analogue to quantise.
+
+    So the emulation is bounded: FT weights, the pairwise grid, and L1 weights.
+
+    **FLOOR, not round.** The engine's `>> FT_SHIFT` is an integer shift, i.e. a
+    floor, and Stockfish's own QAT floors activations for exactly this reason
+    (`nnue-pytorch/model/quantize.py:36-56` — "activations *floored* to match
+    the inference bitshift"). Rounding here would train against a pipeline the
+    engine does not have. Weights still use round-to-nearest, which is what both
+    their quantiser and ours do.
+    """
+    q = jnp.clip(jnp.floor(x * levels), 0.0, levels) / levels
+    return x + jax.lax.stop_gradient(q - x)
+
+
+def clip_qat_weights(params: dict, arch: ArchSpec) -> dict:
+    """Clip weights into their quantised range — Stockfish's QAT CALLBACK half.
+
+    This is the mechanism that makes a fine scale usable, and we do not have it.
+    `nnue-pytorch/trainer/callbacks.py:67-79` clips layer stacks **after every
+    batch** and the feature transformer **once per epoch**, to ranges
+    l1 +/-0.9922 @128, l2 +/-1.9844 @64, output +/-0.9922 @128 and
+    **threat FT +/-0.4961 @256**. Export is then hard-gated (`_safe_convert`
+    RAISES on any clipping) — the callback guarantees it never fires.
+
+    Why it matters here (measured 2026-07-29): our threat weights drift to
+    +/-1.978 because NOTHING constrains them, and since our exporter also raises
+    on overflow, the scale is forced down to 127/1.978 = 64.2 -> 64. One outlier
+    out of 77.7 M weights sets the precision for all of them. With this callback
+    the weights stay in range and the 256-class scale Stockfish uses becomes
+    available; without it, post-hoc rescaling can only trade resolution against
+    clipping (measured optimum 128, and SF's 256 is *worse* at 0.82x).
+
+    SF's justification, `docs/nnue.md`: "Because threat feature weights are
+    typically not high in absolute value..., we can clip them during training
+    with negligible loss in evaluation quality" — worth +10% ARM / +5% x86 from
+    the reduced accumulation bandwidth.
+
+    Call between optimiser steps; a no-op when the corresponding scale is 0.
+    """
+    out = dict(params)
+    if arch.qat_threat_scale > 0.0 and not arch.halfka_only:
+        lim = 127.0 / arch.qat_threat_scale
+        out["l0_threatw"] = jnp.clip(out["l0_threatw"], -lim, lim)
+    if arch.qat_l1_scale > 0.0:
+        lim = 127.0 / arch.qat_l1_scale
+        out["l1w"] = jnp.clip(out["l1w"], -lim, lim)
+    return out
 
 
 def forward(params: dict, arch: ArchSpec, batch: dict,

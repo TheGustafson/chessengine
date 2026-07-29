@@ -182,6 +182,21 @@ class ArchSpec:
     # warm-start safe. Deploy: a versioned PSQ1 section after the bullet
     # stream (see quant export) — old nets/engines unaffected.
     psqt: bool = False
+    # --- QAT (2026-07-29, owner ruling: "QAT should happen between every
+    # operation"). Straight-through fake quantisation of the ACTUAL integer
+    # pipeline, not just the weights. 0.0 = off everywhere => bit-exact no-op,
+    # warm-start safe. Engine reference: sota_head.rs:118-133.
+    #   qat_ft_scale     FT HalfKA table -> i16 @ FT_QUANT     (255)
+    #   qat_threat_scale FT threat table -> i8  @ THREAT_QUANT (64 today;
+    #                    128 is the measured optimum, 1.65x less error)
+    #   qat_act_levels   pairwise product -> u8, 127 levels    (the >>9 step;
+    #                    the largest previously unmodelled loss)
+    #   qat_l1_scale     L1 weights -> i8 @ L1_QUANT           (64)
+    # L2/L3 are f32 in our engine, so there is nothing below L1 to emulate.
+    qat_ft_scale: float = 0.0
+    qat_threat_scale: float = 0.0
+    qat_act_levels: float = 0.0
+    qat_l1_scale: float = 0.0
     # D47U (2026-07-26): SF-style OUTPUT-SKIP lane — a per-bucket learned
     # linear read of hl1 (the pairwise features, the same vector l1 consumes)
     # added to the value logit outside every nonlinearity. Zero-init => exact
