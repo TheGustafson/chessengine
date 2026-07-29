@@ -1231,3 +1231,40 @@ reasoning forward from my own config choice instead of checking it against the
 reference run's RESOLVED schedule. The check was one command.
 
 D48Y2 sb19/190, value 0.007476, 198k pos/s, no OOM with two parallel studies.
+
+### ★★★ PARALLEL STUDIES WERE A MISTAKE — 4th training loss, zero commits returned
+
+Ran perf studies 16 and 17 concurrently on disjoint files. Outcome:
+
+- **Trainer OOM-killed a 4th time** (08:25:08), then the box went into hard
+  swap thrash — **swap 4095/4095 MB, 0 free**, available RAM 2 GB.
+- Throughput collapsed **198k → 72k pos/s** while thrashing.
+- **Study 17: stalled on a watchdog, ZERO commits.** Study 16: killed mid-gate,
+  **ZERO commits.** Both agents' work is gone.
+- Stopping both restored available RAM 2 GB → 4.3 GB immediately.
+
+**The guard was working and was still not enough.** Study builds correctly
+showed `oom_score_adj=1000` via `tools/oomlast.sh`; the trainer at 200 was still
+chosen, because at the spike moment the largest process was not a `rustc`.
+
+**This is a hard resource limit, not a tuning problem.** The box is 15 GB:
+
+| consumer | size |
+|---|---|
+| trainer | ~3.0 GB |
+| `codex resume` | ~1.5 GB |
+| `claude` | ~0.7 GB |
+| Chrome + gnome | ~0.8 GB |
+| **fixed floor** | **~6 GB** |
+
+That leaves ~9 GB, and a single `lto="fat"` link can take 4–5 GB. **One study
+fits. Two do not.** No `oom_score_adj` arrangement changes that.
+
+**POLICY, now with four receipts:**
+1. **ONE perf study at a time. Never two.**
+2. During a training run, the study must use `cargo check` / thin-LTO only;
+   defer every `lto="fat"` gate + PGO build until the trainer finishes.
+3. Check `free -m` **including SWAP** — swap exhaustion is the earlier warning
+   and I had not been watching it.
+4. `tools/oomlast.sh` stays mandatory, but as a second line of defence, not a
+   licence to oversubscribe.
