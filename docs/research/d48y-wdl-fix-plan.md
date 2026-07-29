@@ -1950,3 +1950,62 @@ incomplete *objective* (instruction parity alone still leaves ~1.16x slower),
 not about it being an imprecise *instrument*. Two different criticisms; only the
 first one is true. **Study 19 must therefore treat any cycles/cache-miss number
 as needing many more rounds than an instructions number** — tell it so.
+
+### ★★★ THE SF-COMPARATIVE METHOD HAS A BLIND SPOT — self-profile finds 22% of cycles nobody ranked (owner hypothesis, 2026-07-29)
+
+Owner: *"The agents that profile Stockfish must be blind to something. I bet
+there is a large hot path bottleneck in our engine that we haven't seen because
+we are too focused on Stockfish comparisons."* **Correct, and here is the
+mechanism plus the numbers.**
+
+**First, the arithmetic that motivated looking.** Threat generation — the block
+studies 17, 18 and 19 have all worked — is only **14% of the instruction gap**:
+
+| | i/n |
+|---|---|
+| ours (study probe frame, post-17) | 8910.1 |
+| SF (from the studies' own 1.3285x) | 6706.9 |
+| **total gap** | **2203.2** |
+| threat gen ours 897.6 − SF 598.1 | 299.5 = **14% of the gap** |
+| **everything else** | **1903.7 = 86%, never profiled** |
+
+**Then the SELF-profile** — `perf record` on OUR d16 bench, 7.86 M nodes, no
+Stockfish in the measurement at all:
+
+| symbol | % cycles | in any ranked remainder? |
+|---|---|---|
+| `search::NonPv` | 19.90 | — |
+| `at_full` | **18.56** | yes (study 19 primary) |
+| **`sota_simd::avx512::i16_deltas_into`** | **13.14** | **NO** |
+| **`finny_refresh_into`** | **9.15** | **NO** |
+| `sota_head::forward_into` | 8.77 | no |
+| **`MovePicker::init_quiets`** | **6.35** | ranked **item 8, "low confidence"** |
+| `current_full` | 3.28 | no |
+| `record_square_touch` | 1.98 | yes (study 19 SECONDARY) |
+
+**THREE FINDINGS:**
+
+1. **Accumulator MAINTENANCE is 44.1% of cycles; the network head is 8.77%.**
+   (`at_full` + `i16_deltas_into` + `finny_refresh_into` + `current_full`.) We
+   are not slow because the net is 1280 wide — we spend **5x more keeping the
+   accumulator current than using it**. This reframes the whole eval-cost story
+   and it is the first time anyone has looked at the split.
+2. **Study 19's secondary target was misranked ~6x.** `record_square_touch` is
+   1.98%; `i16_deltas_into` is 13.14%. Amendment sent.
+3. **The instrument was choosing the work.** `record_square_touch` has a clean
+   SF counterpart (`update_piece_threats`) so the comparative method priced it.
+   `i16_deltas_into`/`finny_refresh_into` have none, and study 18 §5.2c wrote off
+   the SIMD half as beyond any instrument on this box. **Work flowed to what was
+   comparable, not to what was expensive.**
+
+**STANDING RULE ADDED: rank on OUR OWN profile share FIRST; use the SF
+comparison only to say how much of that share is recoverable.**
+
+**Two hypotheses of mine died on the way, recorded so they are not re-run:**
+- *"We lack SF's Finny/accumulator cache."* **FALSE** — `sota_accumulator.rs`
+  has one, 64 keys, per-king-state.
+- *"Our head is bigger than SF's."* **FALSE** — ours is 1280→16→32→1, SF's is
+  1024→32→32→1. Ours is SMALLER.
+- *"`load_v2_bytes` at 5.49% is a hot-path bug."* **FALSE — startup
+  amortisation.** At d16 it falls to 1.51% and `init_magics` drops off entirely.
+  **Profile long enough that startup washes out before ranking anything.**
