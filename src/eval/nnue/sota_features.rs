@@ -497,17 +497,168 @@ pub fn for_each_halfka(board: &Board, perspective: Color, mut f: impl FnMut(usiz
     }
 }
 
+/// The 74-byte **bitboard** snapshot of a position that the FullThreats feature
+/// space reads: occupancy split by piece type and by colour, the all-occupancy
+/// union, and both king squares. It carries exactly what [`for_each_threat_at`]
+/// (the from-scratch enumeration) and [`super::sota_threats`]'s incremental
+/// generator/resolver read — nothing else.
+///
+/// Two consumers, one definition:
+///
+/// * [`super::sota_threats::ThreatContext::apply_at`] captures it at push time,
+///   so fold-time (re)generation runs against the post-move geometry even after
+///   a sibling has destroyed the live [`Board`] in place; and
+/// * the from-scratch refresh runs off the *same* struct, which is what lets a
+///   king-cross rebuild be **deferred** to the ply that actually evaluates
+///   (perf study 18 §3) instead of paid eagerly at push.
+///
+/// # Why bitboards and not the mailbox (perf-impl-1)
+/// The original form snapshotted `board.mailbox` and asked "is the piece on
+/// this square a rook or a queen?" one square at a time — up to eight identity
+/// resolutions per touched square just to discover the zero-to-two sliders that
+/// actually x-ray it, and the same again for knights and pawns. The
+/// from-scratch enumeration never did that: it intersects with victim-type
+/// bitboards. Carrying the type/colour boards instead lets the incremental
+/// generator use exactly the same trick.
+#[derive(Clone, Copy)]
+pub(super) struct ThreatPosition {
+    /// Occupancy per piece type, indexed by `PieceType as usize`.
+    pub(super) by_type: [Bitboard; PieceType::COUNT],
+    /// Occupancy per colour, indexed by `Color as usize`.
+    pub(super) by_color: [Bitboard; Color::COUNT],
+    /// The union — derived, but materialised because every geometry query in
+    /// the generator takes it.
+    pub(super) occ: Bitboard,
+    pub(super) kings: [Square; 2],
+}
+
+impl ThreatPosition {
+    #[inline]
+    pub(super) fn from_board(board: &Board) -> Self {
+        let mut by_type = [Bitboard::EMPTY; PieceType::COUNT];
+        for pt in PieceType::ALL {
+            by_type[pt as usize] = board.pieces_of_type(pt);
+        }
+        ThreatPosition {
+            by_type,
+            by_color: [board.occupancy(Color::White), board.occupancy(Color::Black)],
+            occ: board.all_occupancy(),
+            kings: [
+                board.king_square(Color::White),
+                board.king_square(Color::Black),
+            ],
+        }
+    }
+
+    #[inline]
+    pub(super) fn typed(&self, pt: PieceType) -> Bitboard {
+        self.by_type[pt as usize]
+    }
+
+    #[inline]
+    pub(super) fn colored(&self, c: Color) -> Bitboard {
+        self.by_color[c as usize]
+    }
+
+    /// The pieces of one colour and type — the snapshot's `Board::pieces`.
+    #[inline]
+    pub(super) fn pieces(&self, c: Color, pt: PieceType) -> Bitboard {
+        self.typed(pt) & self.colored(c)
+    }
+
+    /// Rook-movers (rooks + queens) and bishop-movers (bishops + queens) — the
+    /// two pre-masks the x-ray scan intersects its ray fans with.
+    #[inline]
+    pub(super) fn rook_movers(&self) -> Bitboard {
+        self.typed(PieceType::Rook) | self.typed(PieceType::Queen)
+    }
+
+    #[inline]
+    pub(super) fn bishop_movers(&self) -> Bitboard {
+        self.typed(PieceType::Bishop) | self.typed(PieceType::Queen)
+    }
+
+    /// Flip `piece`'s presence at `sq`. XOR is its own inverse, so this one
+    /// primitive serves both passes of the generic replay: "undo every edit to
+    /// recover the pre-move position", then "redo them one at a time".
+    #[inline]
+    pub(super) fn toggle(&mut self, piece: Piece, sq: Square) {
+        let b = Bitboard::from_square(sq);
+        self.by_type[piece.piece_type as usize] ^= b;
+        self.by_color[piece.color as usize] ^= b;
+        self.occ ^= b;
+    }
+
+    /// The colour of the piece on `sq`; `sq` must be occupied.
+    #[inline]
+    pub(super) fn color_on(&self, sq: Square) -> Color {
+        if self.colored(Color::White).contains(sq) {
+            Color::White
+        } else {
+            Color::Black
+        }
+    }
+
+    /// The whole piece on `sq`; `sq` must be occupied. Five type tests, versus
+    /// the mailbox form's one byte load — which is why both the generator and
+    /// [`for_each_threat_at`] are structured so this is reached only where the
+    /// victim's type is *not* already a loop constant.
+    #[inline]
+    pub(super) fn piece_on(&self, sq: Square) -> Piece {
+        debug_assert!(self.occ.contains(sq), "piece_on an empty square");
+        let b = Bitboard::from_square(sq);
+        // King is the fallthrough: if none of the other five boards has the
+        // square, an occupied square must hold a king. No panic path.
+        let mut pt = PieceType::King;
+        for cand in [
+            PieceType::Pawn,
+            PieceType::Knight,
+            PieceType::Bishop,
+            PieceType::Rook,
+            PieceType::Queen,
+        ] {
+            if !(self.by_type[cand as usize] & b).is_empty() {
+                pt = cand;
+                break;
+            }
+        }
+        Piece::new(self.color_on(sq), pt)
+    }
+}
+
+impl Default for ThreatPosition {
+    fn default() -> Self {
+        ThreatPosition {
+            by_type: [Bitboard::EMPTY; PieceType::COUNT],
+            by_color: [Bitboard::EMPTY; Color::COUNT],
+            occ: Bitboard::EMPTY,
+            kings: [Square::A1; 2],
+        }
+    }
+}
+
 /// Call `f` with the FullThreats index of every active directed threat on the
 /// board, from `perspective`. Mirrors SF `append_active_indices`: every piece of
 /// both colors is an attacker; victim sets are pre-filtered to the legal types;
 /// excluded / semi-excluded relations are skipped ([`threat_index`] returns
 /// `None`).
-pub fn for_each_threat(board: &Board, perspective: Color, mut f: impl FnMut(usize)) {
-    let ksq = board.king_square(perspective);
-    let occ = board.all_occupancy();
+pub fn for_each_threat(board: &Board, perspective: Color, f: impl FnMut(usize)) {
+    for_each_threat_at(&ThreatPosition::from_board(board), perspective, f);
+}
 
-    let bb = |c: Color, pt: PieceType| board.pieces(c, pt);
-    let both = |pt: PieceType| bb(Color::White, pt) | bb(Color::Black, pt);
+/// [`for_each_threat`] over a [`ThreatPosition`] snapshot rather than a live
+/// [`Board`] — the form the deferred king-cross rebuild needs, since the board
+/// that produced the crossing ply is long gone by the time it is evaluated.
+pub(super) fn for_each_threat_at(
+    pos: &ThreatPosition,
+    perspective: Color,
+    mut f: impl FnMut(usize),
+) {
+    let ksq = pos.kings[perspective as usize];
+    let occ = pos.occ;
+
+    let bb = |c: Color, pt: PieceType| pos.pieces(c, pt);
+    let both = |pt: PieceType| pos.typed(pt);
     let all_pawns = both(PieceType::Pawn);
     // Victim masks (both colors — a threat can land on a friendly piece too).
     let pawn_targets = both(PieceType::Pawn) | both(PieceType::Knight) | both(PieceType::Rook);
@@ -523,17 +674,15 @@ pub fn for_each_threat(board: &Board, perspective: Color, mut f: impl FnMut(usiz
     for c in Color::ALL {
         // --- Pawns: two diagonal captures + a straight push-threat ---------
         let attacker = Piece::new(c, PieceType::Pawn);
-        for from in board.pieces(c, PieceType::Pawn) {
+        for from in bb(c, PieceType::Pawn) {
             for to in pawn_attacks(c, from) & pawn_targets {
-                let attacked = board.piece_on(to).expect("target mask ⇒ a piece");
-                emit(attacker, from, to, attacked);
+                emit(attacker, from, to, pos.piece_on(to));
             }
             // Push threat: a pawn directly in front (own or enemy) is threatened.
             if let Some(to) = from.shifted(c.pawn_push())
                 && all_pawns.contains(to)
             {
-                let attacked = board.piece_on(to).expect("pawn in front");
-                emit(attacker, from, to, attacked);
+                emit(attacker, from, to, Piece::new(pos.color_on(to), PieceType::Pawn));
             }
         }
 
@@ -550,10 +699,9 @@ pub fn for_each_threat(board: &Board, perspective: Color, mut f: impl FnMut(usiz
             } else {
                 minor_slider_targets
             };
-            for from in board.pieces(c, pt) {
+            for from in bb(c, pt) {
                 for to in attacks(pt, from, occ) & targets {
-                    let attacked = board.piece_on(to).expect("target mask ⇒ a piece");
-                    emit(attacker, from, to, attacked);
+                    emit(attacker, from, to, pos.piece_on(to));
                 }
             }
         }
@@ -635,6 +783,23 @@ pub fn refresh_threat_into(
     board: &Board,
     perspective: Color,
 ) {
+    refresh_threat_into_at(
+        dst,
+        threat_weights,
+        &ThreatPosition::from_board(board),
+        perspective,
+    );
+}
+
+/// [`refresh_threat_into`] over a [`ThreatPosition`] snapshot — what the
+/// deferred king-cross rebuild calls (perf study 18 §3), since by the time the
+/// crossing ply is evaluated the live board has moved on.
+pub(super) fn refresh_threat_into_at(
+    dst: &mut [i16; ACC],
+    threat_weights: &[i8],
+    pos: &ThreatPosition,
+    perspective: Color,
+) {
     dst.fill(0);
     if threat_weights.is_empty() {
         return;
@@ -644,7 +809,7 @@ pub fn refresh_threat_into(
         THREAT_DIMS * ACC,
         "FullThreats transformer has the wrong size"
     );
-    for_each_threat(board, perspective, |idx| {
+    for_each_threat_at(pos, perspective, |idx| {
         add_column(dst, threat_weights, idx)
     });
 }

@@ -1,0 +1,5 @@
+fast=null-1                           instr=30,970,000,227 nodes= 5,001,562 per_node=  6192.1 brs_per_node=  663.0 hash=5ca978e012da1bb0
+fast=null-2-rebuild                   instr=30,970,000,964 nodes= 5,001,562 per_node=  6192.1 brs_per_node=  663.0 hash=5ca978e012da1bb0
+fast=n0-NULLB-reborrow                instr=30,970,001,099 nodes= 5,001,562 per_node=  6192.1 brs_per_node=  663.0 hash=5ca978e012da1bb0
+fast=a1a-snapshot-enum-eager          instr=31,005,695,930 nodes= 5,001,562 per_node=  6199.2 brs_per_node=  665.3 hash=5ca978e012da1bb0
+fast=a1b-lazy-king-cross              instr=30,784,714,532 nodes= 5,001,562 per_node=  6155.0 brs_per_node=  658.3 hash=5ca978e012da1bb0

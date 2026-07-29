@@ -84,10 +84,10 @@
 
 use super::sota_accumulator::{psqt_add, psqt_sub};
 #[cfg(test)]
-use super::sota_features::refresh_threat;
+use super::sota_features::{for_each_threat, refresh_threat};
 use super::sota_features::{
-    ACC, KEPT_VICTIMS, THREAT_DIMS, ThreatResolver, for_each_threat, refresh_threat_into, sf_code,
-    threat_pair_kept,
+    ACC, KEPT_VICTIMS, THREAT_DIMS, ThreatPosition, ThreatResolver, for_each_threat_at,
+    refresh_threat_into_at, sf_code, threat_pair_kept,
 };
 use super::sota_head::BUCKETS;
 use super::sota_simd::apply_i8_deltas_into;
@@ -164,144 +164,18 @@ impl DeltaBuf {
     }
 }
 
-/// The 74-byte **bitboard** snapshot of the post-move position the observer
-/// needs to (re)generate + resolve its events at fold time: occupancy split by
-/// piece type and by colour, the all-occupancy union, and both king squares.
-/// Captured at push by [`ThreatContext::apply_at`] and consumed by
-/// [`ThreatContext::compute`], which runs [`build_deltas`]/[`resolve_into`]
-/// against it instead of the live [`Board`] a sibling would have destroyed in
-/// place. It carries exactly what [`build_deltas`] (geometry + piece identity)
-/// and [`resolve_into`] (each perspective's king square) read — nothing else —
-/// so the deferred work is bit-identical to running it eagerly on the live
-/// board.
-///
-/// # Why bitboards and not the mailbox (perf-impl-1)
-/// The original form snapshotted `board.mailbox` and asked "is the piece on
-/// this square a rook or a queen?" one square at a time — up to eight identity
-/// resolutions per touched square just to discover the zero-to-two sliders that
-/// actually x-ray it, and the same again for knights and pawns. The
-/// from-scratch enumeration [`for_each_threat`] never did that: it intersects
-/// with victim-type bitboards. Carrying the type/colour boards instead lets the
-/// incremental generator use exactly the same trick, and it deletes the
-/// per-square override map the mailbox form needed (see [`Replay`]).
-#[derive(Clone, Copy)]
-struct ThreatPosition {
-    /// Occupancy per piece type, indexed by `PieceType as usize`.
-    by_type: [Bitboard; PieceType::COUNT],
-    /// Occupancy per colour, indexed by `Color as usize`.
-    by_color: [Bitboard; Color::COUNT],
-    /// The union — derived, but materialised because every geometry query in
-    /// the generator takes it.
-    occ: Bitboard,
-    kings: [Square; 2],
-}
-
 /// The replay's working position: a plain by-value copy of a
 /// [`ThreatPosition`] that the edit replay mutates with [`ThreatPosition::toggle`].
 ///
 /// The mailbox form needed a parallel override map (`over_sq`/`over_pc` plus a
 /// linear `find`) because a mailbox cannot represent "the state after edit *i*"
 /// without being copied wholesale. Bitboards can: one XOR per board.
+///
+/// The struct itself lives in [`super::sota_features`] — it is the position
+/// view the FullThreats feature space reads, and perf study 18 made the
+/// from-scratch enumeration run off it too, so there is exactly one definition
+/// of "what the threat features see".
 type Replay = ThreatPosition;
-
-impl ThreatPosition {
-    #[inline]
-    fn from_board(board: &Board) -> Self {
-        let mut by_type = [Bitboard::EMPTY; PieceType::COUNT];
-        for pt in PieceType::ALL {
-            by_type[pt as usize] = board.pieces_of_type(pt);
-        }
-        ThreatPosition {
-            by_type,
-            by_color: [board.occupancy(Color::White), board.occupancy(Color::Black)],
-            occ: board.all_occupancy(),
-            kings: [
-                board.king_square(Color::White),
-                board.king_square(Color::Black),
-            ],
-        }
-    }
-
-    #[inline]
-    fn typed(&self, pt: PieceType) -> Bitboard {
-        self.by_type[pt as usize]
-    }
-
-    #[inline]
-    fn colored(&self, c: Color) -> Bitboard {
-        self.by_color[c as usize]
-    }
-
-    /// Rook-movers (rooks + queens) and bishop-movers (bishops + queens) — the
-    /// two pre-masks the x-ray scan intersects its ray fans with.
-    #[inline]
-    fn rook_movers(&self) -> Bitboard {
-        self.typed(PieceType::Rook) | self.typed(PieceType::Queen)
-    }
-
-    #[inline]
-    fn bishop_movers(&self) -> Bitboard {
-        self.typed(PieceType::Bishop) | self.typed(PieceType::Queen)
-    }
-
-    /// Flip `piece`'s presence at `sq`. XOR is its own inverse, so this one
-    /// primitive serves both passes of the generic replay: "undo every edit to
-    /// recover the pre-move position", then "redo them one at a time".
-    #[inline]
-    fn toggle(&mut self, piece: Piece, sq: Square) {
-        let b = Bitboard::from_square(sq);
-        self.by_type[piece.piece_type as usize] ^= b;
-        self.by_color[piece.color as usize] ^= b;
-        self.occ ^= b;
-    }
-
-    /// The colour of the piece on `sq`; `sq` must be occupied.
-    #[inline]
-    fn color_on(&self, sq: Square) -> Color {
-        if self.colored(Color::White).contains(sq) {
-            Color::White
-        } else {
-            Color::Black
-        }
-    }
-
-    /// The whole piece on `sq`; `sq` must be occupied. Five type tests, versus
-    /// the mailbox form's one byte load — which is why the generator is
-    /// structured so this is reached only for a [`ripple`]'s discovered piece
-    /// (about one call per touch, against the ten the mailbox form needed).
-    #[inline]
-    fn piece_on(&self, sq: Square) -> Piece {
-        debug_assert!(self.occ.contains(sq), "piece_on an empty square");
-        let b = Bitboard::from_square(sq);
-        // King is the fallthrough: if none of the other five boards has the
-        // square, an occupied square must hold a king. No panic path.
-        let mut pt = PieceType::King;
-        for cand in [
-            PieceType::Pawn,
-            PieceType::Knight,
-            PieceType::Bishop,
-            PieceType::Rook,
-            PieceType::Queen,
-        ] {
-            if !(self.by_type[cand as usize] & b).is_empty() {
-                pt = cand;
-                break;
-            }
-        }
-        Piece::new(self.color_on(sq), pt)
-    }
-}
-
-impl Default for ThreatPosition {
-    fn default() -> Self {
-        ThreatPosition {
-            by_type: [Bitboard::EMPTY; PieceType::COUNT],
-            by_color: [Bitboard::EMPTY; Color::COUNT],
-            occ: Bitboard::EMPTY,
-            kings: [Square::A1; 2],
-        }
-    }
-}
 
 /// Emit every kept relation from `attacker` on `from` to a piece in `targets`,
 /// **iterating one victim type at a time** so the victim's type is a loop
@@ -657,11 +531,21 @@ pub(crate) fn refresh_psqt_threat(
     board: &Board,
     perspective: Color,
 ) -> [i32; BUCKETS] {
+    refresh_psqt_threat_at(table, &ThreatPosition::from_board(board), perspective)
+}
+
+/// [`refresh_psqt_threat`] over a [`ThreatPosition`] snapshot — the deferred
+/// king-cross rebuild's half of the skip channel (perf study 18 §3).
+fn refresh_psqt_threat_at(
+    table: &[i32],
+    pos: &ThreatPosition,
+    perspective: Color,
+) -> [i32; BUCKETS] {
     let mut out = [0i32; BUCKETS];
     if table.is_empty() {
         return out;
     }
-    for_each_threat(board, perspective, |idx| psqt_add(&mut out, table, idx));
+    for_each_threat_at(pos, perspective, |idx| psqt_add(&mut out, table, idx));
     out
 }
 
@@ -702,22 +586,47 @@ const STACK_LEN: usize = MAX_PLY + 8;
 #[derive(Clone)]
 #[repr(align(64))]
 struct ThreatEntry {
-    /// `[White, Black]` accumulator pair — valid only where `computed[p]`.
+    /// `[White, Black]` accumulator pair — valid only where `fold[p]` is
+    /// [`Fold::Done`].
     acc: [[i16; ACC]; 2],
     /// T6c PSQT bucket sums over the ACTIVE THREAT features, maintained by the
     /// same fold events as `acc` (all-zero when the net carries no threat
-    /// PSQ1 rows). Valid where `computed[p]`, like `acc`.
+    /// PSQ1 rows). Valid where `fold[p]` is [`Fold::Done`], like `acc`.
     psqt: [[i32; BUCKETS]; 2],
     /// The move that produced this entry, and the post-move board state its
-    /// events regenerate against. Shared by both perspectives; a king-crossed
-    /// perspective ignores them (it was refreshed from scratch eagerly at push).
-    /// Read only while folding a `!computed[p]` perspective.
+    /// events regenerate against. Shared by both perspectives.
+    ///
+    /// `position` is read by BOTH deferred paths: [`Fold::FromParent`] runs
+    /// [`build_deltas`] against it, and [`Fold::Refresh`] rebuilds the whole
+    /// accumulator out of it. `dp` is read only by the former.
     dp: DirtyPiece,
     position: ThreatPosition,
-    /// Per-perspective memoization flag — the FullThreats analogue of HalfKA's
-    /// `Entry::computed`. Set by [`ThreatContext::compute`] (deferred fold) or
-    /// eagerly at push (root, king cross, empty-weights net).
-    computed: [bool; 2],
+    /// Per-perspective fold state — the FullThreats analogue of HalfKA's
+    /// `Entry::computed`, with one extra state a relational, king-oriented
+    /// feature set needs. Written by [`ThreatContext::apply_at`] and cleared to
+    /// [`Fold::Done`] by [`ThreatContext::compute`].
+    fold: [Fold; 2],
+}
+
+/// How [`ThreatContext::compute`] must materialise one perspective of one
+/// [`ThreatEntry`].
+///
+/// The third state is perf study 18's arm: a king-crossed ply *used* to be
+/// rebuilt eagerly inside [`ThreatContext::apply_at`], i.e. on every made move,
+/// even though only ~41.5% of made moves are ever evaluated. Recording the
+/// obligation instead of discharging it makes the rebuild obey the same laziness
+/// as everything else in this module.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Fold {
+    /// `acc[p]`/`psqt[p]` already hold this ply's value.
+    Done,
+    /// Fold the parent's value forward through this ply's `dp`/`position`.
+    FromParent,
+    /// The perspective's own king crossed the d/e mirror on this move, so every
+    /// one of its feature indices is re-oriented and the parent's accumulator is
+    /// worthless: rebuild from scratch out of `position`. Cannot be folded, and
+    /// terminates `compute`'s ancestor walk exactly as [`Fold::Done`] does.
+    Refresh,
 }
 
 impl Default for ThreatEntry {
@@ -727,7 +636,7 @@ impl Default for ThreatEntry {
             psqt: [[0i32; BUCKETS]; 2],
             dp: DirtyPiece::EMPTY,
             position: ThreatPosition::default(),
-            computed: [false; 2],
+            fold: [Fold::FromParent; 2],
         }
     }
 }
@@ -794,7 +703,7 @@ impl<'a> ThreatContext<'a> {
 
     /// Rebuild the root accumulator from scratch for `board`, both perspectives,
     /// and reset the cursor to that single entry. The from-scratch build reuses
-    /// [`refresh_threat_into`] so the incremental and refresh paths share one
+    /// [`refresh_threat_into_at`] so the incremental and refresh paths share one
     /// definition of the feature set.
     pub fn refresh(&mut self, board: &Board) {
         self.top = 0;
@@ -808,12 +717,14 @@ impl<'a> ThreatContext<'a> {
         } else {
             let weights = self.weights;
             let psqt_weights = self.psqt_weights;
+            // One snapshot for all four rebuilds, not four.
+            let pos = ThreatPosition::from_board(board);
             for (i, &persp) in Color::ALL.iter().enumerate() {
-                refresh_threat_into(&mut self.stack[0].acc[i], weights, board, persp);
-                self.stack[0].psqt[i] = refresh_psqt_threat(psqt_weights, board, persp);
+                refresh_threat_into_at(&mut self.stack[0].acc[i], weights, &pos, persp);
+                self.stack[0].psqt[i] = refresh_psqt_threat_at(psqt_weights, &pos, persp);
             }
         }
-        self.stack[0].computed = [true; 2];
+        self.stack[0].fold = [Fold::Done; 2];
     }
 
     /// The current (cursor top) accumulator pair, `[White, Black]` — the input
@@ -901,7 +812,7 @@ impl<'a> ThreatContext<'a> {
         // 1.25–1.39× threat cost UNDERSTATES what a properly-built
         // HalfKA-only engine reaches.
         if self.weights.is_empty() {
-            self.stack[child].computed = [true; 2];
+            self.stack[child].fold = [Fold::Done; 2];
             return;
         }
 
@@ -932,28 +843,27 @@ impl<'a> ThreatContext<'a> {
         self.stack[child].dp = *dp;
         self.stack[child].position = ThreatPosition::from_board(board);
 
-        let weights = self.weights;
-        let psqt_weights = self.psqt_weights;
+        // A perspective whose king crossed the d/e mirror cannot fold from its
+        // parent — every index is re-oriented — so it must be rebuilt from
+        // scratch out of the snapshot above. RECORD that obligation; do not
+        // discharge it (perf study 18 §3).
+        //
+        // This used to call `refresh_threat_into` + `refresh_psqt_threat`
+        // RIGHT HERE, on the live post-move board. Study 17 §3.3 priced that:
+        // **222.7 i/n, 25% of the entire make side**, 6,240 instructions per
+        // call at 0.0357 calls/node — and only ~41.5% of made moves are ever
+        // evaluated, so ~58% of it was thrown away. The reason it was eager was
+        // that the rebuild took a `&Board` and the live board is gone by fold
+        // time; the fix is that the snapshot beside it already carries every
+        // input the enumeration reads (`ThreatPosition` is now the from-scratch
+        // path's own argument type — `for_each_threat_at`), so `compute` can do
+        // the rebuild at its leisure.
         for (pi, &persp) in Color::ALL.iter().enumerate() {
-            if king_crossed(dp, persp) {
-                // The perspective's king crossed the d/e mirror: its whole threat
-                // accumulator must be rebuilt from scratch, which reads the king
-                // square + occupancy of the live post-move board. Do it eagerly
-                // here and mark the perspective computed; a king cross is rare, so
-                // the common case stays fully lazy. The OTHER perspective still
-                // folds against the snapshot stored above.
-                // In place, not `= refresh_threat(..)`: the by-value form
-                // returns 2560 bytes and the assignment was a libc `memcpy`
-                // the LD_PRELOAD census counted at 0.0357 calls/node and
-                // 91 bytes/node — the largest surviving copy in the engine BY
-                // BYTES (perf study 16 §3; two more sites are larger by call
-                // rate and move 2.4 bytes each).
-                refresh_threat_into(&mut self.stack[child].acc[pi], weights, board, persp);
-                self.stack[child].psqt[pi] = refresh_psqt_threat(psqt_weights, board, persp);
-                self.stack[child].computed[pi] = true;
+            self.stack[child].fold[pi] = if king_crossed(dp, persp) {
+                Fold::Refresh
             } else {
-                self.stack[child].computed[pi] = false;
-            }
+                Fold::FromParent
+            };
         }
     }
 
@@ -962,32 +872,51 @@ impl<'a> ThreatContext<'a> {
     /// [`super::sota_accumulator::HalfkaContext::compute`], but fully lazy:
     /// generation ([`build_deltas`]) and resolution ([`resolve_into`]) happen
     /// here too, against each folded ply's stored [`ThreatPosition`]. Walks back
-    /// to the nearest computed ancestor per perspective (the root is always
-    /// computed; any king-crossed ply was computed eagerly at push), then, for
-    /// each child across the union span, regenerates the perspective-agnostic
-    /// events ONCE and resolves + folds each perspective that still needs it.
+    /// to the nearest **foldable-from** ancestor per perspective — one that is
+    /// either already [`Fold::Done`] or a [`Fold::Refresh`] ply this call
+    /// discharges on the spot (the root is always `Done`, so the walk always
+    /// terminates) — then, for each child across the union span, regenerates the
+    /// perspective-agnostic events ONCE and resolves + folds each perspective
+    /// that still needs it.
     fn compute(&mut self, ply: usize) {
-        if self.stack[ply].computed[0] && self.stack[ply].computed[1] {
+        if self.stack[ply].fold[0] == Fold::Done && self.stack[ply].fold[1] == Fold::Done {
             return;
-        }
-        // Nearest computed ancestor per perspective (spans differ only across a
-        // king-crossed ply, which computes one perspective eagerly at push).
-        let mut anc = [ply; 2];
-        for (p, a) in anc.iter_mut().enumerate() {
-            while *a > 0 && !self.stack[*a].computed[p] {
-                *a -= 1;
-            }
         }
         let weights = self.weights;
         let psqt_weights = self.psqt_weights;
+        // Nearest ancestor per perspective that is not a fold-from-parent ply.
+        // `Refresh` stops the walk exactly like `Done` does — it is a ply whose
+        // value does not come from its parent — and is then materialised here,
+        // out of its own snapshot, so the child loop below sees a `Done`
+        // ancestor either way.
+        let mut anc = [ply; 2];
+        for (p, a) in anc.iter_mut().enumerate() {
+            while *a > 0 && self.stack[*a].fold[p] == Fold::FromParent {
+                *a -= 1;
+            }
+            if self.stack[*a].fold[p] == Fold::Refresh {
+                // Field-disjoint borrows: `acc[p]`/`psqt[p]` are written while
+                // `position` is read, and the borrow checker splits struct
+                // fields, so no copy of the 80-byte snapshot is needed.
+                let entry = &mut self.stack[*a];
+                refresh_threat_into_at(
+                    &mut entry.acc[p],
+                    weights,
+                    &entry.position,
+                    Color::ALL[p],
+                );
+                entry.psqt[p] = refresh_psqt_threat_at(psqt_weights, &entry.position, Color::ALL[p]);
+                entry.fold[p] = Fold::Done;
+            }
+        }
         // Hoist the magic-table LazyLock deref out of the per-touch geometry
         // queries (CLAUDE.md's documented hot-loop pattern for `attacks`): the
         // guard was being re-checked several times per touched square.
         let tab = tables();
         for child in (anc[0].min(anc[1]) + 1)..=ply {
             let need = [
-                child > anc[0] && !self.stack[child].computed[0],
-                child > anc[1] && !self.stack[child].computed[1],
+                child > anc[0] && self.stack[child].fold[0] == Fold::FromParent,
+                child > anc[1] && self.stack[child].fold[1] == Fold::FromParent,
             ];
             if !need[0] && !need[1] {
                 continue;
@@ -1115,7 +1044,7 @@ impl<'a> ThreatContext<'a> {
                         d.copy_from_slice(s);
                     }
                     entry.psqt[p] = parent.psqt[p];
-                    entry.computed[p] = true;
+                    entry.fold[p] = Fold::Done;
                     continue;
                 }
                 apply_i8_deltas_into(
@@ -1133,7 +1062,7 @@ impl<'a> ThreatContext<'a> {
                 {
                     *dst = src + d;
                 }
-                entry.computed[p] = true;
+                entry.fold[p] = Fold::Done;
             }
         }
     }
@@ -1544,6 +1473,105 @@ mod tests {
         assert_eq!(*acc, refresh_pair(&w, &b));
         // The king-crossed eager rebuild must refresh the PSQT sums too.
         assert_eq!(*psqt, refresh_psqt_pair(&q, &b));
+    }
+
+    /// A king-crossed ply that is **never evaluated itself**, with ordinary
+    /// plies folded on top of it — the shape perf study 18's deferred refresh
+    /// created and the eager one could not produce (the eager form marked the
+    /// crossing ply computed at push, so a fold could never reach it in the
+    /// `Refresh` state).
+    ///
+    /// `compute` must stop its ancestor walk AT the crossing ply, rebuild that
+    /// ply from its own stored [`ThreatPosition`], and only then fold the
+    /// children forward. Walking past it, or folding it from its parent, mixes
+    /// two mirror orientations of a king-oriented feature space and the
+    /// accumulator diverges silently — there is no assertion inside the fold
+    /// that could notice.
+    #[test]
+    fn deferred_king_cross_as_an_unevaluated_ancestor_matches_refresh() {
+        let w = signature_weights();
+        let q = signature_psqt();
+        // Ke4–d4 crosses the d/e mirror for White, and the sliders (Bd5, Rc4,
+        // Qc7, Rf7) ripple through both e4 and d4, so the plies stacked on top
+        // of the crossing are not trivial either.
+        let fen = "k7/2q2r2/8/3b4/2R1Kn2/8/8/8 w - - 0 1";
+        let mut b = board(fen);
+        let mut ctx = ThreatContext::new(&w, &q);
+        ctx.refresh(&b);
+
+        let cross = Move::normal(Square::E4, Square::D4);
+        let dp = DirtyPiece::from_move(&b, cross);
+        assert!(
+            king_crossed(&dp, Color::White),
+            "fixture no longer crosses the mirror"
+        );
+        b.make_move(cross, b.gives_check(cross));
+        // Pushed, NOT read: the crossing ply's rebuild is now an obligation.
+        ctx.apply_at(0, &dp, &b);
+
+        // Stack ordinary plies on top of it, still without ever evaluating.
+        let mut rng = Rng(0x0BAD_F00D_5EED);
+        let mut ply = 1usize;
+        for _ in 0..5 {
+            let mut list = MoveList::new();
+            generate_legal(&b, &mut list);
+            if list.is_empty() {
+                break;
+            }
+            let m = list[(rng.next() % list.len() as u64) as usize];
+            let dp = DirtyPiece::from_move(&b, m);
+            b.make_move(m, b.gives_check(m));
+            ctx.apply_at(ply, &dp, &b);
+            ply += 1;
+        }
+        assert!(ply >= 4, "expected plies stacked above the cross, got {ply}");
+
+        // The FIRST read of the whole line: it must discharge the deferred
+        // refresh at ply 1 and then fold plies 2..=ply on top of it.
+        let (acc, psqt) = ctx.at_full(ply);
+        assert_eq!(*acc, refresh_pair(&w, &b), "deferred king-cross diverged");
+        assert_eq!(
+            *psqt,
+            refresh_psqt_pair(&q, &b),
+            "deferred king-cross psqt diverged"
+        );
+    }
+
+    /// A **non**-crossing ply, folded and memoized, then overwritten at the same
+    /// ply by a sibling that DOES cross. The dangerous direction: if the
+    /// overwrite left the stale `Fold::Done`, the read would hand back the first
+    /// sibling's accumulator. (The other direction — a stale `Fold::Refresh`
+    /// surviving onto a non-crossing sibling — is undetectable by value, since
+    /// rebuilding from the overwritten snapshot happens to give the right
+    /// answer; it only costs speed.)
+    #[test]
+    fn a_crossing_sibling_overwrites_a_folded_ply() {
+        let w = signature_weights();
+        let q = signature_psqt();
+        let fen = "k7/2q2r2/8/3b4/2R1Kn2/8/8/8 w - - 0 1";
+        let start = board(fen);
+        let mut ctx = ThreatContext::new(&w, &q);
+        ctx.refresh(&start);
+
+        // Sibling A: Rc4–c5, no cross — folded here, which marks ply 1 done.
+        let quiet = Move::normal(Square::C4, Square::C5);
+        let dp_a = DirtyPiece::from_move(&start, quiet);
+        let mut b = start.clone();
+        b.make_move(quiet, b.gives_check(quiet));
+        ctx.apply_at(0, &dp_a, &b);
+        let _ = ctx.at_full(1);
+
+        // Sibling B at the SAME ply: Ke4–d4, which crosses.
+        let cross = Move::normal(Square::E4, Square::D4);
+        let mut b = start.clone();
+        let dp_b = DirtyPiece::from_move(&b, cross);
+        assert!(king_crossed(&dp_b, Color::White));
+        b.make_move(cross, b.gives_check(cross));
+        ctx.apply_at(0, &dp_b, &b);
+
+        let (acc, psqt) = ctx.at_full(1);
+        assert_eq!(*acc, refresh_pair(&w, &b), "stale sibling accumulator");
+        assert_eq!(*psqt, refresh_psqt_pair(&q, &b), "stale sibling psqt");
     }
 
     // ---- Lazy-fold path (R4) ----
