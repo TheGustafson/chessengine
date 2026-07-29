@@ -156,6 +156,43 @@ impl DeltaBuf {
         if !super::sota_features::threat_pair_kept(d.attacker.piece_type, d.victim.piece_type) {
             return;
         }
+        self.push_kept(d);
+    }
+
+    /// [`push`](Self::push) for a site that has **already** established the
+    /// attacker→victim type pair is one `MAP` keeps — perf study 19 arm g2.
+    ///
+    /// Most recording sites cannot emit a dropped pair at all, because the pair
+    /// is a structural property of the site rather than of the event:
+    /// [`record_targets`] iterates `KEPT_VICTIMS[attacker]`, so every victim
+    /// type it visits is kept by construction; the pawn-push emitters are
+    /// pawn→pawn, and `MAP[Pawn][Pawn] = 0`; and the two incoming scans in
+    /// [`record_square_touch`] are already inside hoisted
+    /// `threat_pair_kept(Knight | Pawn, p.piece_type)` guards — the same test,
+    /// evaluated once per touch instead of once per emitted event.
+    ///
+    /// Re-testing at the choke point was therefore a `MAP[a][v]` load plus a
+    /// sign test on the majority of pushes, to re-derive a fact the caller had
+    /// just proved. The four sites that CAN drop — [`ripple`]'s two emissions,
+    /// and [`record_incoming_mutate`]'s fan-loop pair, whose rook/bishop/queen
+    /// attackers meet an `old`/`new` victim that may itself be a queen — keep
+    /// calling [`push`](Self::push). The shipped tree is 8 `push_kept`, 4
+    /// `push`.
+    ///
+    /// **This does not duplicate the drop set.** There is still exactly one
+    /// definition (`MAP`, via `threat_pair_kept`); this is an assertion that
+    /// the caller has consulted it, and the `debug_assert` below re-checks that
+    /// claim on every event in every debug build — which is what the whole
+    /// `sota` test suite, including the per-node `assert_matches_refresh`
+    /// oracle, runs under.
+    #[inline]
+    fn push_kept(&mut self, d: ThreatDelta) {
+        debug_assert!(
+            super::sota_features::threat_pair_kept(d.attacker.piece_type, d.victim.piece_type),
+            "push_kept on a pair MAP drops: {:?} -> {:?}",
+            d.attacker.piece_type,
+            d.victim.piece_type
+        );
         debug_assert!(self.len < DELTA_CAP, "threat delta buffer overflow");
         self.data[self.len] = d;
         self.len += 1;
@@ -192,8 +229,24 @@ type Replay = ThreatPosition;
 /// This is the incremental twin of [`for_each_threat`]'s victim-mask loops. The
 /// mask comes from [`KEPT_VICTIMS`], which is derived from the same `MAP` the
 /// resolver consults, so the two drop sets are the same by construction.
+///
+/// `KEPT` is that mask as a **const parameter** rather than a runtime load
+/// (perf study 19 arm g3). Every caller but one already knows the attacker's
+/// type at compile time — `record_square_touch`'s outgoing section reaches this
+/// from inside a `match p.piece_type` arm, and `record_outgoing`'s pawn arm is
+/// literally `PieceType::Pawn` — so `KEPT_VICTIMS[attacker.piece_type]` was a
+/// table load feeding six runtime bit tests to re-derive a compile-time
+/// constant. With the mask as a const parameter the `PieceType::ALL` loop
+/// disappears entirely: the body is emitted once per victim type actually in
+/// the set (3 for a pawn, 4 for a bishop/rook, 5 for a knight/queen) with no
+/// test at all.
+///
+/// The idiom is the same const-generic specialisation `movegen::generate::<GT>`
+/// uses, and it is why `KEPT` is `u8` rather than a `PieceType`: const generics
+/// cannot yet be user enums, so callers pass `KEPT_VICTIMS[…]` — still the one
+/// `MAP`-derived table, just consulted by the compiler instead of the CPU.
 #[inline]
-fn record_targets(
+fn record_targets<const KEPT: u8>(
     buf: &mut DeltaBuf,
     pos: &Replay,
     attacker: Piece,
@@ -201,13 +254,18 @@ fn record_targets(
     targets: Bitboard,
     add: bool,
 ) {
-    let kept = KEPT_VICTIMS[attacker.piece_type as usize];
+    debug_assert_eq!(
+        KEPT, KEPT_VICTIMS[attacker.piece_type as usize],
+        "record_targets const mask disagrees with the attacker's KEPT_VICTIMS row"
+    );
     for vt in PieceType::ALL {
-        if kept & (1 << vt as u8) == 0 {
+        if KEPT & (1 << vt as u8) == 0 {
             continue;
         }
         for to in targets & pos.typed(vt) {
-            buf.push(ThreatDelta {
+            // `vt` came out of `KEPT_VICTIMS[attacker]`, so the pair is kept by
+            // construction — see `DeltaBuf::push_kept`.
+            buf.push_kept(ThreatDelta {
                 attacker,
                 from,
                 victim: Piece::new(pos.color_on(to), vt),
@@ -247,19 +305,40 @@ fn record_square_touch(
     // --- 1. Outgoing: what `p` threatens from `s`. Kings are never attackers.
     match p.piece_type {
         PieceType::King => {}
-        PieceType::Rook => record_targets(buf, r, p, s, ratt, add),
-        PieceType::Bishop => record_targets(buf, r, p, s, batt, add),
-        PieceType::Queen => record_targets(buf, r, p, s, qatt, add),
-        PieceType::Knight => record_targets(buf, r, p, s, knight_attacks(s), add),
+        PieceType::Rook => {
+            record_targets::<{ KEPT_VICTIMS[PieceType::Rook as usize] }>(buf, r, p, s, ratt, add)
+        }
+        PieceType::Bishop => {
+            record_targets::<{ KEPT_VICTIMS[PieceType::Bishop as usize] }>(buf, r, p, s, batt, add)
+        }
+        PieceType::Queen => {
+            record_targets::<{ KEPT_VICTIMS[PieceType::Queen as usize] }>(buf, r, p, s, qatt, add)
+        }
+        PieceType::Knight => record_targets::<{ KEPT_VICTIMS[PieceType::Knight as usize] }>(
+            buf,
+            r,
+            p,
+            s,
+            knight_attacks(s),
+            add,
+        ),
         PieceType::Pawn => {
-            record_targets(buf, r, p, s, pawn_attacks(p.color, s), add);
+            record_targets::<{ KEPT_VICTIMS[PieceType::Pawn as usize] }>(
+                buf,
+                r,
+                p,
+                s,
+                pawn_attacks(p.color, s),
+                add,
+            );
             // Push relation: only a pawn directly in front is threatened
             // (matching for_each_threat's `all_pawns` guard — MAP would
             // otherwise wrongly keep pawn-push onto a knight/rook).
             if let Some(push) = s.shifted(p.color.pawn_push())
                 && r.typed(PieceType::Pawn).contains(push)
             {
-                buf.push(ThreatDelta {
+                // pawn -> pawn: `MAP[Pawn][Pawn] = 0`, always kept.
+                buf.push_kept(ThreatDelta {
                     attacker: p,
                     from: s,
                     victim: Piece::new(r.color_on(push), PieceType::Pawn),
@@ -302,9 +381,21 @@ fn record_square_touch(
     // attacker-type predicate is a loop-invariant and hoists out entirely: a
     // bishop or queen victim skips the whole pawn scan.
     if p.piece_type != PieceType::King {
-        if threat_pair_kept(PieceType::Knight, p.piece_type) {
+        // The knight scan needs NO victim-type guard (perf study 19 arm g4).
+        // `MAP`'s knight row is `[0, 1, 2, 3, 4, -1]` — a knight threatens every
+        // victim type EXCEPT a king — and this whole block is already inside
+        // `p.piece_type != King`, so `threat_pair_kept(Knight, p.piece_type)`
+        // could only ever be true here. It was a `MAP` load and a branch per
+        // touch to re-derive the condition of the enclosing `if`.
+        //
+        // The pawn scan below is NOT the same case and keeps its guard: `MAP`'s
+        // pawn row is `[0, 1, -1, 2, -1, -1]`, so a pawn threatens only
+        // {pawn, knight, rook} and a bishop or queen victim really does skip it.
+        {
+            debug_assert!(threat_pair_kept(PieceType::Knight, p.piece_type));
             for a in knight_attacks(s) & r.typed(PieceType::Knight) {
-                buf.push(ThreatDelta {
+                // Knight -> non-king: kept by the argument above.
+                buf.push_kept(ThreatDelta {
                     attacker: Piece::new(r.color_on(a), PieceType::Knight),
                     from: a,
                     victim: p,
@@ -323,7 +414,8 @@ fn record_square_touch(
             ] {
                 let attacker = Piece::new(c, PieceType::Pawn);
                 for a in fan & pawns & r.colored(c) {
-                    buf.push(ThreatDelta {
+                    // Inside the hoisted `threat_pair_kept(Pawn, p)` guard.
+                    buf.push_kept(ThreatDelta {
                         attacker,
                         from: a,
                         victim: p,
@@ -339,7 +431,8 @@ fn record_square_touch(
                     if let Some(back) = s.shifted(c.flip().pawn_push())
                         && (pawns & r.colored(c)).contains(back)
                     {
-                        buf.push(ThreatDelta {
+                        // pawn -> pawn, always kept.
+                        buf.push_kept(ThreatDelta {
                             attacker: Piece::new(c, PieceType::Pawn),
                             from: back,
                             victim: p,
@@ -417,11 +510,19 @@ fn record_outgoing(
     match piece.piece_type {
         PieceType::King => {}
         PieceType::Pawn => {
-            record_targets(buf, r, piece, from, pawn_attacks(piece.color, from), add);
+            record_targets::<{ KEPT_VICTIMS[PieceType::Pawn as usize] }>(
+                buf,
+                r,
+                piece,
+                from,
+                pawn_attacks(piece.color, from),
+                add,
+            );
             if let Some(to) = from.shifted(piece.color.pawn_push())
                 && r.typed(PieceType::Pawn).contains(to)
             {
-                buf.push(ThreatDelta {
+                // pawn -> pawn, always kept.
+                buf.push_kept(ThreatDelta {
                     attacker: piece,
                     from,
                     victim: Piece::new(r.color_on(to), PieceType::Pawn),
@@ -430,7 +531,26 @@ fn record_outgoing(
                 });
             }
         }
-        pt => record_targets(buf, r, piece, from, tab.attacks(pt, from, r.occ), add),
+        // The remaining four types, spelled out so each gets its own const
+        // `KEPT` mask. Knight and Queen share a row of `KEPT_VICTIMS`
+        // ({P,N,B,R,Q}) and bishop and rook share the other ({P,N,B,R}), so this
+        // is two specialisations, not four.
+        pt => {
+            let targets = tab.attacks(pt, from, r.occ);
+            match pt {
+                PieceType::Knight | PieceType::Queen => {
+                    record_targets::<{ KEPT_VICTIMS[PieceType::Queen as usize] }>(
+                        buf, r, piece, from, targets, add,
+                    );
+                }
+                _ => {
+                    debug_assert!(matches!(pt, PieceType::Bishop | PieceType::Rook));
+                    record_targets::<{ KEPT_VICTIMS[PieceType::Rook as usize] }>(
+                        buf, r, piece, from, targets, add,
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -508,8 +628,10 @@ fn record_incoming_mutate(
             && (pawns & r.colored(color)).contains(from)
         {
             let attacker = Piece::new(color, PieceType::Pawn);
+            // Both emissions are pawn -> pawn under their own guards, and
+            // `MAP[Pawn][Pawn] = 0`, so the choke-point filter cannot drop them.
             if old.piece_type == PieceType::Pawn {
-                buf.push(ThreatDelta {
+                buf.push_kept(ThreatDelta {
                     attacker,
                     from,
                     victim: old,
@@ -518,7 +640,7 @@ fn record_incoming_mutate(
                 });
             }
             if new.piece_type == PieceType::Pawn {
-                buf.push(ThreatDelta {
+                buf.push_kept(ThreatDelta {
                     attacker,
                     from,
                     victim: new,
