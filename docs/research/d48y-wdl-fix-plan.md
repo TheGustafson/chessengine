@@ -2305,3 +2305,53 @@ tables were 16 B off a cache line."** Exactly the class of defect the
 SF-comparative method cannot see — there is no Stockfish counterpart to diff
 against for our own table alignment. Owner's blind-spot hypothesis continues to
 pay out.
+
+### ★★ THE FIX: scale 128, not Stockfish's 255 — and SF's would make us WORSE
+
+Owner asked to try Stockfish's scale. **Measured, and it is the wrong move for
+our weights.** Exact sweep on sb170 using the real quantiser rounding
+(`_round_half_away`, confirmed in `checkpoint.py:92`):
+
+| scale | clipped | rel err | SNR | vs today |
+|---|---|---|---|---|
+| **64 (today)** | 0 | 5.58% | 25.1 dB | 1.00x |
+| 112 | 735 | 3.49% | 29.1 dB | 1.60x |
+| **128 — OPTIMUM** | **1,549 (0.0020%)** | **3.39%** | **29.4 dB** | **1.65x** |
+| 160 | 4,613 | 3.77% | 28.5 dB | 1.48x |
+| **255 (Stockfish's)** | 37,791 | 6.80% | 23.3 dB | **0.82x — WORSE** |
+
+**Why SF's 255 loses:** an i8 at 255 tops out at ±0.498; our threat weights span
+**±1.9778**. Their trainer PRODUCES a distribution that fits that container —
+that is precisely what QAT buys them — while ours does not, so 255 just clips our
+tail and the clipping costs more than the resolution gains. **We cannot adopt
+their scale without adopting their training.** 128 is the optimum for the
+distribution we actually have. The curve is FLAT 112–144 (1.59–1.65x), so this is
+robust, not a knife-edge.
+
+**WHY 64 WAS CHOSEN — it was never tuned.** `checkpoint.quantise` **RAISES on
+overflow rather than clipping** (`checkpoint.py:104-108`). Max |threat w| =
+1.9778, and 127/1.9778 = **64.2**. So 64 is simply the largest scale that does
+not throw. **One outlier out of 77.7 M weights is setting the precision for all
+of them.**
+
+**CHANGE SET (small, but it spans two layers):**
+1. Export: clip threats to ±127/scale, set `QUANT_THREAT = 128`
+   (`spec.py:82`). Tool written: **`tools/nnue/requant_threats.py`** — clips,
+   patches the constant at call time, and never mutates `spec.py` on disk.
+2. Engine: the 255/64 ratio is a literal `<< 2` at **`sota_head.rs:248`** and
+   **`sota_simd.rs:423`** → `<< 1` (255/128 = 1.992, the same 0.39% gain
+   approximation as today's 3.984→4).
+3. Loader validates quant constants (`sota_loader.rs:361-375`), so both sides
+   must move together.
+4. **The NNUE gate pins MOVE** — intentionally, same rule as any behavioural
+   change.
+
+**SCOPE CONFLICT, deliberately deferred:** `sota_head.rs` and `sota_simd.rs` are
+**study 20's files**. The engine half waits until study 20 lands rather than
+racing it.
+
+**THE A/B THIS ENABLES — and it is the clean Elo measurement we lacked.** Same
+trained weights, two quantisations, fixed nodes:
+`d48y2-sb190 @ scale 64` vs `d48y2-sb190 @ scale 128`. No confound from
+training, data, architecture or search. It prices quantisation damage **in Elo**
+rather than dB, and it is the test that decides whether QAT is worth a retrain.
