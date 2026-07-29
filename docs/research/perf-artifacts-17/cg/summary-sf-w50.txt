@@ -1,5 +1,5 @@
 # nodes=150,053  total_Ir=2,245,323,640  total_i/n=14963.5
-  self i/n  calls/node    i/call  function
+ self/node  calls/node  per_call  function
    5118.15      0.0000 767993088.0  void Stockfish::Eval::NNUE::read_leb_128<std::array<short, 23068672ul> >(std::istream&, std::array<short, 23068672ul>&)
    1422.31      0.9485    1499.6  Stockfish::Eval::NNUE::(anonymous namespace)::apply_combined(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer const&, Stockfish::Eval::NNUE::AccumulatorState const&, Stockfish::Eval::NNUE::AccumulatorState&, Stockfish::ValueList<unsigned int, 32ul> const&, Stockfish::ValueList<unsigned int, 32ul> const&, Stockfish::ValueList<unsigned int, 128ul> const&, Stockfish::ValueList<unsigned int, 128ul> const&)
    1114.29      0.4110    2711.2  Stockfish::Eval::NNUE::NetworkArchitecture::propagate(unsigned char const*, Stockfish::Eval::NNUE::NNZInfo<1024ul> const&) const

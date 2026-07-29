@@ -60,12 +60,21 @@ def parse(path, event=0):
                 continue
             if line[0].isdigit() or line[0] in "+-*":
                 parts = line.split()
-                if len(parts) < 2 + event:
+                # Callgrind OMITS TRAILING ZERO EVENT COLUMNS. Treating a short
+                # line as unparseable and `continue`-ing was a real bug: it left
+                # `pending_calls` unconsumed, so that `calls=` record was lost
+                # AND the next genuine self-cost line was charged to the call
+                # edge. Exact for `Ir` (which is never zero on a cost line) and
+                # wrong for every other event -- measured against the files'
+                # own `totals:` line at -2.7% for SF's Bc, -49% for its Bi, and
+                # 100x smaller on ARCHON, i.e. biased in the direction of the
+                # conclusion. D33 reviewer C, and `--audit` now checks it.
+                if len(parts) < 2:
                     continue
                 try:
-                    cost = int(parts[1 + event])
+                    cost = int(parts[1 + event]) if 1 + event < len(parts) else 0
                 except ValueError:
-                    continue
+                    cost = 0
                 if pending_calls:
                     calls_by_callee[cur_cfn] += pending_calls
                     calls_by_edge[(cur_fn, cur_cfn)] += pending_calls
@@ -75,6 +84,20 @@ def parse(path, event=0):
                     self_ir[cur_fn] += cost
                 continue
     return self_ir, calls_by_callee, calls_by_edge, incl_by_edge
+
+
+def totals(path):
+    """The file's own `totals:` line -- the ground truth every parse must match.
+
+    Study 17's headline rule is that a bucketing which does not sum to the
+    engine's total cannot be audited. The same applies one level down: a PARSER
+    that does not sum to the file's own total cannot be audited either, and this
+    one was wrong for every event except `Ir` until D33 reviewer C summed it.
+    """
+    for line in open(path):
+        if line.startswith("totals:"):
+            return [int(x) for x in line.split(":", 1)[1].split()]
+    return None
 
 
 def demangle(n):
@@ -107,6 +130,17 @@ def main():
             i += 1
 
     self_ir, calls, edges, incl = parse(path, event)
+
+    # ALWAYS audit against the file's own totals line -- one assertion that
+    # would have caught the `--event` bug on its first run (D33 reviewer C).
+    tt = totals(path)
+    if tt is not None and event < len(tt):
+        got = sum(self_ir.values())
+        if got != tt[event]:
+            print(f"# PARSE AUDIT FAILED: self-cost sum {got:,} != totals[{event}] "
+                  f"{tt[event]:,}  ({100.0 * (got - tt[event]) / tt[event]:+.3f}%)",
+                  file=sys.stderr)
+            sys.exit(2)
 
     if incl_of:
         # Exact inclusive cost of a call tree: sum every incoming edge.  This is

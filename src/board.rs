@@ -383,7 +383,6 @@ impl DirtyPiece {
             return dp; // null move: empty record
         }
         let us = board.side_to_move;
-        let them = us.flip();
         let (from, to) = (m.from(), m.to());
         let mover = board
             .piece_on(from)
@@ -396,23 +395,8 @@ impl DirtyPiece {
             // is paid on every node while this arm almost never is — the same
             // trade `Board::make_castling`/`unmake_castling` make.
             MoveKind::Castling => return Self::castling_record(board, us, mover, from, to),
-            MoveKind::EnPassant => {
-                // The captured pawn sits one rank from `to`, toward our home.
-                let capsq = to.offset(them.pawn_push());
-                dp.sub(mover, from);
-                dp.sub(Piece::new(them, PieceType::Pawn), capsq);
-                dp.add(mover, to);
-            }
-            MoveKind::Promotion => {
-                let promoted = Piece::new(
-                    us,
-                    m.promotion_piece().expect("promotion kind carries a piece"),
-                );
-                dp.sub(mover, from);
-                if let Some(victim) = board.piece_on(to) {
-                    dp.sub(victim, to); // capture-promotion
-                }
-                dp.add(promoted, to);
+            MoveKind::EnPassant | MoveKind::Promotion => {
+                return Self::special_record(board, m, us, mover, from, to);
             }
             MoveKind::Normal => {
                 dp.sub(mover, from);
@@ -421,6 +405,41 @@ impl DirtyPiece {
                 }
                 dp.add(mover, to);
             }
+        }
+        dp
+    }
+
+    /// The en-passant and promotion arms of [`DirtyPiece::from_move`], out of
+    /// line for the same reason as [`DirtyPiece::castling_record`].
+    #[cold]
+    #[inline(never)]
+    fn special_record(
+        board: &Board,
+        m: Move,
+        us: Color,
+        mover: Piece,
+        from: Square,
+        to: Square,
+    ) -> DirtyPiece {
+        // `them` re-derived, not passed — six-register limit (D33 reviewer C).
+        let them = us.flip();
+        let mut dp = DirtyPiece::EMPTY;
+        if m.kind() == MoveKind::EnPassant {
+            // The captured pawn sits one rank from `to`, toward our home.
+            let capsq = to.offset(them.pawn_push());
+            dp.sub(mover, from);
+            dp.sub(Piece::new(them, PieceType::Pawn), capsq);
+            dp.add(mover, to);
+        } else {
+            let promoted = Piece::new(
+                us,
+                m.promotion_piece().expect("promotion kind carries a piece"),
+            );
+            dp.sub(mover, from);
+            if let Some(victim) = board.piece_on(to) {
+                dp.sub(victim, to); // capture-promotion
+            }
+            dp.add(promoted, to);
         }
         dp
     }
@@ -1012,7 +1031,7 @@ impl Board {
         if m.kind() == MoveKind::Normal {
             return false;
         }
-        self.gives_check_special(m, us, ksq, from, to)
+        self.gives_check_special(m, ksq, from, to)
     }
 
     /// The promotion / en-passant / castling arms of [`Board::gives_check`].
@@ -1020,14 +1039,10 @@ impl Board {
     /// and en passant everywhere, honest for promotions outside a pawn endgame.
     #[cold]
     #[inline(never)]
-    fn gives_check_special(
-        &self,
-        m: Move,
-        us: Color,
-        ksq: Square,
-        from: Square,
-        to: Square,
-    ) -> bool {
+    fn gives_check_special(&self, m: Move, ksq: Square, from: Square, to: Square) -> bool {
+        // `us` is re-read from the board rather than passed, to stay clear of
+        // the six-register argument limit (D33 reviewer C, measured).
+        let us = self.side_to_move;
         match m.kind() {
             MoveKind::Normal => false,
             // Does the promoted piece attack the king from `to`, with the
@@ -1631,7 +1646,7 @@ impl Board {
                 }
             }
             MoveKind::Castling => self.unmake_castling(us, from, to),
-            _ => self.unmake_special(m, us, moved, captured, from, to),
+            _ => self.unmake_special(m, us, moved, captured),
         }
         #[cfg(debug_assertions)]
         self.assert_consistent();
@@ -1672,15 +1687,13 @@ impl Board {
     /// up in a régime-split measurement, split `Promotion` back out.
     #[cold]
     #[inline(never)]
-    fn unmake_special(
-        &mut self,
-        m: Move,
-        us: Color,
-        moved: Piece,
-        captured: Option<Piece>,
-        from: Square,
-        to: Square,
-    ) {
+    fn unmake_special(&mut self, m: Move, us: Color, moved: Piece, captured: Option<Piece>) {
+        // `from`/`to` are re-derived rather than passed: with them this took
+        // SEVEN integer arguments, one past the six SysV registers, so every
+        // call site wrote a stack slot for a path it almost never takes --
+        // which is §5.2's own failure mode (D33 reviewer C). `Move::from`/`to`
+        // are a shift and a mask.
+        let (from, to) = (m.from(), m.to());
         if m.kind() == MoveKind::Promotion {
             let promo = Piece::new(us, m.promotion_piece().expect("promotion kind has a piece"));
             self.remove_piece_known(promo, to);

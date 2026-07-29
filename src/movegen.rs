@@ -490,9 +490,7 @@ impl Board {
             //      `attackers_to_exist` loop, and they are a fraction of a
             //      percent of the moves `legal` is asked about; inline, they
             //      set this function's prologue and spill.
-            MoveKind::Castling | MoveKind::EnPassant => {
-                self.legal_special(m, us, them, ksq, from, to)
-            }
+            MoveKind::Castling | MoveKind::EnPassant => self.legal_special(m, us, ksq, from, to),
 
             // 3. King steps: the destination must be safe with the king
             //    REMOVED from occupancy, so a checking slider's ray extends
@@ -513,15 +511,15 @@ impl Board {
     /// The castling and en-passant arms of [`Board::legal`].
     #[cold]
     #[inline(never)]
-    fn legal_special(
-        &self,
-        m: Move,
-        us: Color,
-        them: Color,
-        ksq: Square,
-        from: Square,
-        to: Square,
-    ) -> bool {
+    fn legal_special(&self, m: Move, us: Color, ksq: Square, from: Square, to: Square) -> bool {
+        // `them` is re-derived, not passed: with it this took SEVEN integer
+        // arguments, one past the six SysV registers, so every call site wrote
+        // a stack slot for a path it almost never takes (D33 reviewer C).
+        // `Color::flip` is one `xor`. Splitting the two arms into separate
+        // helpers -- the reviewer's preferred shape -- was also tried and cost
+        // **+19.4 i/n**, because it turns one cold call site into two and hands
+        // the caller's `match` back its four-way dispatch. Measured, not argued.
+        let them = us.flip();
         match m.kind() {
             // 1. Castling: the two squares the king crosses/lands on must
             //    be unattacked. `from` (e1/e8) is not tested — castling is

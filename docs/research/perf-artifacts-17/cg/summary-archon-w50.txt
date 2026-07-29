@@ -1,5 +1,5 @@
 # nodes=150,059  total_Ir=3,287,194,864  total_i/n=21906.0
-  self i/n  calls/node    i/call  function
+ self/node  calls/node  per_call  function
    3725.61      0.8518    4373.7  chessengine::eval::nnue::sota_simd::avx2::i8_deltas_into
    3072.73      0.9635    3189.1  chessengine::eval::nnue::sota_simd::avx2::i16_deltas_into
    3049.32      0.0000 457578222.0  chessengine::eval::nnue::sota_loader::load_v2_bytes

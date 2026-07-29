@@ -27,19 +27,29 @@ result.
 | | probe frame (thin LTO, 4 CGU, non-PGO, `-C target-cpu=native`) |
 |---|---:|
 | baseline (`main` @ `0f820a0`) | 6335.8 i/n |
-| **shipped tree** | **6238.1 i/n** |
-| **delta** | **−97.7** |
-| branches | 673.6 → **667.3** per node |
+| **shipped tree** | **6221.3 i/n** |
+| **delta** | **−114.5** |
+| branches | 673.6 → **667.0** per node |
 | node count, every line | 5,001,562 |
 | eval hash, every line | `5ca978e012da1bb0` |
 
-**Falsifiable PGO prediction.** Studies 12–15 measured the probe frame
-overstating the PGO delta by **1.12–2.0×**. Applying that band to −97.7 predicts
-**−49 to −87 i/n in the PGO frame**, i.e. 5950.1 → 5863–5901, and the ratio
-1.3364× → **1.3170–1.3256×**. Study 16's own −29.2 (probe) predicts a further
-−15 to −26. If the owner's PGO run lands outside −49…−87 for this study's diff,
-the band itself is wrong and should be re-derived rather than the result
-replaced.
+**Falsifiable PGO prediction — TWO-SIDED, and it includes zero.** Studies 12–15
+measured the probe frame overstating the PGO delta by **1.12–2.0×**, which would
+put −114.5 at **−57 to −102**. That band is **not** appropriate here and is not
+what is predicted, because those studies measured data-layout and `memcpy`
+changes while this one measures **inlining-boundary** changes — the one class
+where PGO can move a delta *through zero* (D33 reviewer C). `#[inline(never)]`
+is a hard constraint that *overrides* profile-guided inlining; with fat LTO, one
+CGU and real branch weights, LLVM already sinks a never-taken arm to
+`.text.unlikely` **inline**, at no call or argument-setup cost, in which case
+these splits buy nothing and pay a `call`/`ret` on the cold path.
+
+**Predicted: −100 to +15 i/n in the PGO frame, most likely −40 to −80.** The
+falsifiable part is the SIGN: if the PGO panel comes back positive, the
+`#[cold]` class is dead in the shipped build and §5's rule is a thin-LTO
+artifact — which is a finding, and a cheap one to act on (revert five
+attributes). Study 16's own −29.2 (probe) predicts a further −15 to −26 by the
+old band, and that one IS a layout/`memcpy` change, so the old band fits it.
 
 **AND THE HONEST QUALIFIER, which the box forced (§10).** The full D24 perft
 ritual and both gates are **deferred to the owner**: this box OOM-killed four of
@@ -69,7 +79,9 @@ it.
 | u5 | `gives_check`'s promotion/ep/castling arms → `#[cold] gives_check_special` | **−34.6** | `board.rs` |
 | u6 | `legal`'s castling+ep arms → `#[cold] legal_special` | **−48.3** | `movegen.rs` |
 | u7 | `unmake_move`'s promotion/ep arms → `#[cold] unmake_special` | −1.4 | `board.rs` |
-| | **total, probe frame** | **−97.7** | |
+| u8 | `DirtyPiece::from_move`'s ep+promotion arms → `#[cold] special_record` | −2.6 | `board.rs` |
+| u9 | **four helpers taken back under the six-register argument limit** (D33 reviewer C) — `legal_special` 7→6, `unmake_special` 7→4, `gives_check_special` 6→5, `special_record` 7→6 | **−14.2** | both |
+| | **total, probe frame** | **−114.5** | |
 
 ### 0.3 What this study is actually about
 
@@ -105,8 +117,10 @@ dispatch is *runtime*, so the AVX2 build still runs the AVX-512 kernels natively
 and only falls back under valgrind. §6.2 is the near-miss headline this
 produced and how it was caught.
 
-**(d) The cheapest lever in the engine turned out to be `#[cold]`.** −97.7 i/n
-for six call-site splits, no algorithm changed, no semantics touched, three
+**(d) The cheapest lever in the engine turned out to be `#[cold]` plus the
+six-register argument limit.** In the probe frame (thin LTO / 4 CGU / non-PGO —
+never quotable as a result, study 12 §0.3), −114.5 i/n
+for seven call-site splits and four argument-list trims, no algorithm changed, no semantics touched, three
 node-identity checks green. §5 also draws the boundary: the sixth split of the
 same shape cost **+64.0**, and the difference between them is a rule.
 
@@ -524,6 +538,37 @@ recorded rather than acted on:
   path and u5 made that path slightly more expensive. A terminal return is the
   faithful and cheaper spelling; not measured here.
 
+### 5.1c THE SIX-REGISTER ARGUMENT LIMIT — −14.2, and a reviewer's fix that lost
+
+D33 reviewer C observed that two of the helpers took **seven** integer
+arguments. SysV passes six in registers; the seventh is a **stack argument**,
+written at every call site for a path that is almost never taken — which is
+§5.2's own failure mode, arriving through the back door. `Piece` and
+`Option<Piece>` are 2 bytes and niche-packed, so each is one register.
+
+Trimming four helpers back under the limit, each by re-deriving one value that
+costs a single instruction:
+
+| helper | before | after | how | probe Δ |
+|---|---:|---:|---|---:|
+| `legal_special` | 7 | 6 | `them` ← `us.flip()` | **−5.7** |
+| `gives_check_special` | 6 | 5 | `us` ← `self.side_to_move` | ⎫ |
+| `special_record` | 7 | 6 | `them` ← `us.flip()` | ⎬ **−7.4** |
+| `unmake_special` | 7 | 4 | `from`/`to` ← `m.from()`/`m.to()` | **−1.1** |
+| | | | **total** | **−14.2** |
+
+**And the reviewer's preferred shape for `legal_special` — split it into
+`legal_castling` and `legal_en_passant`, which removes the argument, removes the
+unreachable `_` arm, and reads better — measured +19.4 i/n and was rejected.**
+One cold call site became two, and the caller's `match` got its four-way
+dispatch back. The reviewer's *mechanism* is confirmed twice over; the reviewer's
+*refactor* is refuted. That is the D33 loop doing its job in both directions,
+and it is why an idiom finding still has to go through `probe17.sh`.
+
+The `_ => { debug_assert!(false); false }` arm therefore stays, with its
+fail-soft direction documented at the site. It is the one thing in this diff no
+test can reach in release, and §11 item 9 carries it.
+
 ### 5.2 The boundary — u3 cost +64.0, and the rule is narrower than "outline cold code"
 
 `make_move_with` step 8's promotion-key block is by any static measure the best
@@ -866,7 +911,7 @@ spellings). **Re-opened by this study:** threat generation — at +250…+400, n
 
 ## 12. THREATS TO VALIDITY
 
-1. **Nothing here is PGO-measured** (§0.1). The −97.7 is a probe-frame number
+1. **Nothing here is PGO-measured** (§0.1). The −114.5 is a probe-frame number
    and the PGO figure is a prediction with a 1.8× spread. Machine constraint,
    not choice.
 2. **The callgrind frame is AVX2 and shallow** (§2.2). Every number quoted from
