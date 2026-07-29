@@ -1546,3 +1546,49 @@ perft tier run — for those it is evidence, not proof. **I must run
 `cargo test --release -- --ignored perft_full_suite` before merging.**
 
 D48Y2: sb87, 171k pos/s, heldout EMA 0.011685.
+
+### ★ STUDY 17 GATED + PGO'd + MERGED; its prediction HELD; study 16 merged too
+
+**Gates run one at a time under `MemoryMax` + `oomlast.sh`, trainer untouched
+throughout (sb93 → sb97 across all of it):**
+
+| gate | required for study 17? | result |
+|---|---|---|
+| `Bench: 587683` | yes | ✅ reproduced |
+| D24 `perft_full_suite` | yes (touches movegen/board) | ✅ **passed, 1 test, 6.34 s** |
+| `CHECK_NNUE_GATE=1` | **NO** — study 17 touches only `src/board.rs` + `src/movegen.rs` | OOM-killed; not required |
+
+**The perft pass is the important one** — it closes the hole the study itself
+flagged: u7/u8/u9 touch make/unmake and had NO release-perft verification, so
+node identity for them was evidence rather than proof. It is proof now.
+
+**Reading trap I nearly fell into:** the log's TAIL was the doc-tests line
+showing `0 passed`; the real perft result sat 20 lines earlier at
+`test perft_full_suite ... ok`. Reporting the tail would have failed a good
+branch. **Never read a cargo-test verdict off the tail — grep for the binary.**
+
+**The OOM guard proved itself under real pressure:** the gate's own test binary
+died with `oom_score_adj:1000` and `Result=oom-kill`, and **the trainer lived**.
+Six earlier incidents took the trainer instead.
+
+**PGO measured, and study 17's falsifiable prediction HELD:**
+
+| | i/n (nodes IDENTICAL 329,318) |
+|---|---|
+| post-15 | 8963.0 |
+| **post-17** | **8910.1** |
+| delta | **−52.8 (−0.59%)** |
+
+Predicted −100…+15, most likely −40…−80 ⇒ measured **−52.8, inside the
+most-likely band**. **The SIGN was the falsifiable claim and it is negative**, so
+the `#[cold]` outlining class is real rather than a thin-LTO artifact — no
+revert. First study to make a two-sided prediction INCLUDING ZERO and be
+confirmed.
+
+**Cumulative 12–17: −6.61%.** Ratio ≈ 1.3364× → **~1.3285×**.
+
+**Study 16 also merged** (disjoint files, verified before merging). Its NNUE
+pins were verified by the study itself post-review against an on-disk binary
+(d13 `1922947`, full eval hash), and its full gate passed on the pre-review
+tree. **I still owe it one clean `CHECK_NNUE_GATE=1` run** once the GPU frees —
+tracked in the PENDING list.
