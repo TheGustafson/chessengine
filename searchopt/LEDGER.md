@@ -355,6 +355,40 @@ is workload-controlled in the way my wall-clock comparison was not.
 ⇒ **Whether it converts to Elo is open** and is being answered directly by an equal-time
 match (`engines/runs/s9-convert`, new vs old at 10+0.1), which needs neither NPS figure.
 
+## ★ THE PARITY TARGET INCLUDES A FEATURE WE DO NOT HAVE (2026-07-28)
+
+Every perf study prices ARCHON against **SF18's 4,329.6 instructions/node**. Verified in
+the checkout at `cb3d4ee9` — the binary we actually play:
+
+```
+src/evaluate.cpp:49   use_smallnet(pos) { return abs(simple_eval(pos)) > 962; }
+src/evaluate.cpp:62   smallNet ? networks.small.evaluate(...) : networks.big.evaluate(...)
+src/evaluate.cpp:68   if (smallNet && abs(nnue) < 277)   // redo with the big net near equality
+```
+
+**SF18 runs a 128-wide net on any position more than ~2.5 pawns lopsided**, and pays for
+the 1024-wide net only near equality. Its instructions/node is a **blend of a cheap path
+and an expensive one**. We run the full 1280-wide net on every node.
+
+⇒ **Part of the measured "gap" is not inefficiency — it is an architectural feature we
+lack**, and no amount of optimising the expensive path can close it. Any statement of the
+form "parity is not reachable by patch work" should say *this* rather than gesturing at
+difficulty.
+
+⇒ **`eca43a97` — our own constants reference — DELETED the small net** (`git grep
+use_smallnet` returns nothing). SF later judged it not worth the complexity. So
+benchmarking against SF18 specifically sets a bar SF no longer holds itself to.
+
+⇒ **A version of it is available to us with NO retrain, and it is uncosted.** We already
+have a PSQT-only path (the default build uses it), measured at **2.13 Mnps vs 0.54 Mnps
+with the net**. Gating it on `|simple_eval| > T` with SF's near-equality recheck is the
+same shape using machinery that exists. **The ceiling is a one-hour stub-and-diff:**
+(a) what fraction of NODES trip the gate at various T — node-level, not root-level, since
+deeper nodes are more lopsided; (b) instructions/node PSQT vs full net; (c) multiply;
+(d) only then price the fidelity cost with `evaldiff.py`, exactly as study 8 priced its
+quantisation items. **Not asserted to pay** — (a) could come back at 5% and kill it, and
+gating eval on a cheap proxy risks losing more Elo than the speed buys.
+
 ## ★ INSTRUCTIONS → DEPTH CONVERTS AT ~0.45×, NOT 1:1 (2026-07-28)
 
 Nobody in this chain had measured the end-to-end conversion; every perf study priced its
