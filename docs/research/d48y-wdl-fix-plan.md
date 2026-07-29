@@ -1268,3 +1268,36 @@ fits. Two do not.** No `oom_score_adj` arrangement changes that.
    and I had not been watching it.
 4. `tools/oomlast.sh` stays mandatory, but as a second line of defence, not a
    licence to oversubscribe.
+
+### ⚠ THROUGHPUT 3× DEGRADED — swap exhausted, page cache evicted
+
+After stopping both studies the trainer is alive and GPU-busy (94%), but:
+
+| | normal | now |
+|---|---|---|
+| throughput | 198–208k pos/s | **72–127k** |
+| per superbatch | ~2 min | **~6 min** |
+| ETA for remaining ~170sb | ~6 h | **~19 h** |
+
+**Cause: swap is 4095/4095 MB with ZERO free.** The kernel cannot page anything
+else out, so it evicts PAGE CACHE instead — and every read of the memmap'd
+corpora then hits disk. This does not self-heal while the pressure holds.
+
+Current consumers: trainer 2.4 GB, **`codex resume` 1.5 GB**, `claude` 0.7 GB,
+Chrome 0.5 GB. The two largest non-trainer processes are the user's tools.
+
+**Decision required from the user (the lever is theirs):** closing `codex
+resume` + Chrome frees ~2 GB and should restore full throughput — the
+difference between ~6 h and ~19 h to finish.
+
+**Fallback within my control:** restart the trainer with a smaller loader
+footprint (`workers` 4→2, `prefetch` 4→2, `shuffle_chunk` 128→32). Costs another
+restart + fresh-Adam transient and shrinks buffers rather than the real
+pressure — partial at best.
+
+**No study restarts until throughput recovers.** Adding a build now would be
+indefensible after four losses.
+
+Note for later ticks: `grep -c '^components sb'` over-counts because the log
+retains the aborted run's lines. Read the LAST `components sb` line for true
+progress (currently sb19 of the resumed leg).
