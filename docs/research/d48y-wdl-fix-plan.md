@@ -319,3 +319,28 @@ vs SF's 4.7631** — FEWER, on an identical feature set.
 unopened blocks (`forward_into` ~616 i/n, HalfKA+Finny ~873 i/n, the eval gate
 157–732 i/n), an explicit instruction to collapse study 11's 200 i/n PGO/non-PGO
 frame bracket, and a hard requirement to LAND reductions — study 11 landed none.
+
+### CORRECTION — "our feature set is smaller" is the wrong framing
+
+User pushed back on study 11's phrasing; checking it properly, the numbers hold
+but the FRAMING was misleading and is hereby corrected.
+
+| | threat dims | king in the threat space? |
+|---|---|---|
+| `sf_18` tag | 79,856 | **YES** — king attacks (8 targets), and N/B/R/Q may target the king |
+| `eca43a97` (current dev) | 60,720 | **NO** — king removed as attacker AND as victim (row and column all −1) |
+| **ARCHON** | **60,720** | **NO — identical to current SF** |
+
+Our full input space is 22,528 + 60,720 = **83,248**, which is exactly the arch
+string `stockfish-eca43a97` prints for its own net: `(83248, 1024, 32, 32, 1)`.
+
+**So we are NOT smaller than Stockfish.** Stockfish SHRANK its threat space
+between SF18 and current dev by deleting the king from it, and we match where
+they landed. They had the larger space and chose to drop it — weak evidence
+that the extra king features did not pay for their cost.
+
+What is unchanged, and is the load-bearing part: `engines/bin/stockfish18`
+(`id name Stockfish 18`) carries the 79,856 space, so studies 8/9/10 compared
+our threat channel against a 31%-larger workload. Those comparisons are
+mismatched and their threat numbers do not stand. `eca43a97` is the correct
+target BECAUSE it matches us exactly.
