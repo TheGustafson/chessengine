@@ -920,6 +920,38 @@ Mutation-verified both ways (`mutations.txt`): deleting `gives_check_special`'s
 `perft.epd` route **passed** — which is how the hole was found to be still
 open.
 
+### 9.0 THE ARM LOG
+
+`probes-fast.txt`, in order, probe frame. Node count **5,001,562** and eval hash
+**`5ca978e012da1bb0`** on **every** line, including all five rejected arms.
+
+```
+null-1                       6335.8            baseline, main @ 0f820a0 (= studies 15 and 16's 6335.8)
+null-2-rebuild               6335.8   +-0.0024 rebuild null
+n0-NULLB-alias               6335.8   +-0.0158 SSA-identical source-perturbation null
+a1-promo-raw                 6336.4     +0.6   rejected (S6.1) -- promotion_piece_raw at 5 hot sites
+a2-capstage-3case            6336.5     +0.7   rejected (S6.1) -- SF's own three-case if chain
+a2b-capstage-pairtest        6357.2    +21.4   rejected (S6.1) -- +4.7 branches/node too
+a3-promoraw-only             6336.3     +0.5   rejected (S6.1)
+a3r-revert-control           6335.8   +-0.0195 revert control
+b1-one-entry-borrow          6336.8     +1.0   rejected (S6.3) -- one &mut instead of two IndexMut
+u1-unmake-castling-cold      6326.3     -9.5   LANDED
+u2-make-castling-cold        6325.4     -0.9   LANDED
+u3-make-promo-keys-cold      6389.4    +64.0   REJECTED (S5.2) -- the nested-block boundary
+u4-dp-castling-cold          6322.4     -3.0   LANDED
+u5-giveschk-special-cold     6287.8    -34.6   LANDED
+u6-legal-special-cold        6239.5    -48.3   LANDED  (-7.1 branches/node)
+u7-unmake-special-cold       6238.1     -1.4   LANDED
+a9-D33-round-A               6238.1   -0.004   the D33 reviewer-A round: free
+u8-dp-special-cold           6235.5     -2.6   LANDED
+u9-D33-C-argcount            6253.8    +18.3   the reviewer's SHAPE, rejected -- decomposed below
+u9a-unmake-args-only         6234.4     -1.1   LANDED   (7 -> 4 args)
+u9b-legal-args-only          6228.7     -5.7   LANDED   (7 -> 6 args; the two-helper split alone was +19.4)
+u9c-more-argcount            6221.3     -7.4   LANDED   (gives_check_special 6->5, special_record 7->6)
+u9d-shipped                  6221.3     -0.0   drop an unused local
+u9e-with-new-tests           6221.3     -0.0   the two new S9.2 fixtures -- release-invisible, as expected
+```
+
 ### 9.1 What actually ran, and on which tree
 
 The box OOM-killed four of this session's binaries at ~3.1 GB anon-rss while a
