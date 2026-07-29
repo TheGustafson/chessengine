@@ -1,0 +1,12 @@
+fast=null-1                           instr=32,509,246,605 nodes= 5,001,562 per_node=  6499.8 brs_per_node=  714.1 hash=5ca978e012da1bb0
+fast=null-2-rebuild                   instr=32,503,673,801 nodes= 5,001,562 per_node=  6498.7 brs_per_node=  714.0 hash=5ca978e012da1bb0
+fast=a0-NULLB-st-respell              instr=32,941,090,702 nodes= 5,001,562 per_node=  6586.2 brs_per_node=  724.8 hash=5ca978e012da1bb0
+fast=a0b-NULLB-st-reborrow            instr=32,509,253,617 nodes= 5,001,562 per_node=  6499.8 brs_per_node=  714.1 hash=5ca978e012da1bb0
+fast=a1-state-inline                  instr=32,325,605,188 nodes= 5,001,562 per_node=  6463.1 brs_per_node=  700.9 hash=5ca978e012da1bb0
+fast=a2-fold-kernel-copies            instr=32,439,372,803 nodes= 5,001,562 per_node=  6485.8 brs_per_node=  692.9 hash=5ca978e012da1bb0
+fast=a2b-chunked-inline-copy          instr=32,212,151,946 nodes= 5,001,562 per_node=  6440.4 brs_per_node=  694.8 hash=5ca978e012da1bb0
+fast=a3-known-piece-placement         instr=32,010,304,159 nodes= 5,001,562 per_node=  6400.1 brs_per_node=  684.0 hash=5ca978e012da1bb0
+fast=a4-type-occupancy                instr=31,992,363,929 nodes= 5,001,562 per_node=  6396.5 brs_per_node=  684.6 hash=5ca978e012da1bb0
+fast=a5-check-squares-by-ref          instr=31,988,484,578 nodes= 5,001,562 per_node=  6395.7 brs_per_node=  684.6 hash=5ca978e012da1bb0
+fast=CONTROL-j2-frame                 instr=31,988,472,998 nodes= 5,001,562 per_node=  6395.7 brs_per_node=  684.6 hash=5ca978e012da1bb0
+fast=a6-post-review-moved-in-state    instr=31,973,144,202 nodes= 5,001,562 per_node=  6392.6 brs_per_node=  683.6 hash=5ca978e012da1bb0

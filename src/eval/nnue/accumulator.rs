@@ -24,7 +24,7 @@ use crate::board::{Board, DirtyPiece};
 use crate::types::{Color, MAX_PLY, Piece, Square, Value};
 
 /// Accumulator-stack length: one entry per search ply (root = 0) plus margin.
-/// Indexed by SEARCH ply, never by `board.states.len()` (which includes
+/// Indexed by SEARCH ply, never by `board.history.len()` (which includes
 /// UCI-replayed game history and can exceed `MAX_PLY`) — design/11 §3.4.4.
 pub const NNUE_STACK_LEN: usize = MAX_PLY + 8;
 

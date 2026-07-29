@@ -57,3 +57,4 @@ tools/spsa/out/
 # SF18 root-analysis oracle caches (regenerable: obs-tool export | obs_to_oracle.py)
 tools/nnue/calib/oracle-obs.json
 tools/nnue/calib/oracle-multipv.json
+bin14/

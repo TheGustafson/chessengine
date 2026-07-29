@@ -207,7 +207,7 @@ impl ThreatPosition {
     fn from_board(board: &Board) -> Self {
         let mut by_type = [Bitboard::EMPTY; PieceType::COUNT];
         for pt in PieceType::ALL {
-            by_type[pt as usize] = board.pieces(Color::White, pt) | board.pieces(Color::Black, pt);
+            by_type[pt as usize] = board.pieces_of_type(pt);
         }
         ThreatPosition {
             by_type,
@@ -1030,10 +1030,35 @@ impl<'a> ThreatContext<'a> {
             }
             // Phase 2 — fused parent→child folds (opt #2): read parent lanes,
             // apply deltas, write child lanes in one pass. Paid only for
-            // evaluated plies. An empty delta list (a null move) degenerates
-            // to the plain parent copy without touching the kernel. The T6c
-            // PSQT sums fold over the SAME resolved index lists, so the skip
-            // channel cannot drift from the accumulator.
+            // evaluated plies. The T6c PSQT sums fold over the SAME resolved
+            // index lists, so the skip channel cannot drift from the
+            // accumulator.
+            //
+            // Perf study 14 §3: the EMPTY-delta branch below used to be
+            // `entry.acc[p] = parent.acc[p]`. `[i16; 1280]` is 2560 bytes, far
+            // past any inline-store threshold, so that assignment lowered to a
+            // **libc `memcpy` call** — an LD_PRELOAD interposer measured 46,903
+            // of them, 2560 bytes each, over 150,059 nodes, and they are the
+            // whole of the unsymbolised libc block studies 12 and 13 saw in
+            // their flat profiles and could not attribute.
+            //
+            // TWO fixes were measured, and only one works. Deleting this branch
+            // so the kernel does the copy (which with empty lists is
+            // bit-identically `load 20 zmm, store 20 zmm` per 640-lane tile,
+            // and is what Stockfish's `apply_combined` does —
+            // `eca43a97:src/nnue/nnue_accumulator.cpp:183-244` has no
+            // empty-list special case on the SIMD path at all) measured
+            // **+22.7 i/n**. Keeping the branch and chunking the copy by hand
+            // measured **−22.7**. Both are bit-identical to the old code and to
+            // each other; the 45.4 i/n between them is spelling, not
+            // semantics. Do not "simplify" this back into the kernel call
+            // without re-measuring — that experiment has been run.
+            //
+            // The bigger lever is not to reach this branch at all: SF never
+            // pushes an accumulator entry for a null move (`do_null_move` has
+            // no `push`, `undo_null_move` no `pop` —
+            // `eca43a97:src/search.cpp:657-669`), so it never materialises an
+            // empty-delta child. See study 14 §8 item 1.
             for (p, &needs_fold) in need.iter().enumerate() {
                 if !needs_fold {
                     continue;
@@ -1043,24 +1068,40 @@ impl<'a> ThreatContext<'a> {
                 let parent = &before[child - 1];
                 let entry = &mut after[0];
                 if add_len == 0 && sub_len == 0 {
-                    entry.acc[p] = parent.acc[p];
-                    entry.psqt[p] = parent.psqt[p];
-                } else {
-                    apply_i8_deltas_into(
-                        &mut entry.acc[p],
-                        &parent.acc[p],
-                        weights,
-                        &self.add_scratch[p][..add_len],
-                        &self.sub_scratch[p][..sub_len],
-                    );
-                    // T6c: apply the resolve-time psqt delta (zero for a
-                    // psqt-less net, so this is `parent + 0` — the copy).
-                    for (dst, (&src, &d)) in entry.psqt[p]
-                        .iter_mut()
-                        .zip(parent.psqt[p].iter().zip(psqt_deltas[p].iter()))
+                    // Chunked so LLVM emits 40 inline 64-byte moves instead of
+                    // one 2560-byte libc `memcpy` call.
+                    //
+                    // `chunks_exact` DROPS a remainder, so a width that is not
+                    // a multiple of 32 would silently leave the tail of
+                    // `entry.acc[p]` holding a stale sibling's lanes. The
+                    // AVX-512 module carries the same invariant, but behind
+                    // `cfg(target_arch = "x86_64")` — this one is local and
+                    // holds on every target (D33 reviewer A, m1).
+                    const { assert!(ACC.is_multiple_of(32)) };
+                    for (d, s) in entry.acc[p]
+                        .chunks_exact_mut(32)
+                        .zip(parent.acc[p].chunks_exact(32))
                     {
-                        *dst = src + d;
+                        d.copy_from_slice(s);
                     }
+                    entry.psqt[p] = parent.psqt[p];
+                    entry.computed[p] = true;
+                    continue;
+                }
+                apply_i8_deltas_into(
+                    &mut entry.acc[p],
+                    &parent.acc[p],
+                    weights,
+                    &self.add_scratch[p][..add_len],
+                    &self.sub_scratch[p][..sub_len],
+                );
+                // T6c: apply the resolve-time psqt delta (zero for a
+                // psqt-less net, so this is `parent + 0` — the copy).
+                for (dst, (&src, &d)) in entry.psqt[p]
+                    .iter_mut()
+                    .zip(parent.psqt[p].iter().zip(psqt_deltas[p].iter()))
+                {
+                    *dst = src + d;
                 }
                 entry.computed[p] = true;
             }

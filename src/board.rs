@@ -185,6 +185,17 @@ pub struct StateInfo {
     pub check_squares: [Bitboard; 6],
     /// Piece captured by the move that produced this state.
     pub captured: Option<Piece>,
+    /// The piece that MOVED to produce this state (the pre-promotion mover),
+    /// so `unmake_move` does not have to re-read it from the mailbox.
+    ///
+    /// Perf study 14 §4.4: it is the last placement edit on the make/unmake
+    /// path that still paid a mailbox load, an `Option` test and a panic edge
+    /// (§4.3 removed the others by threading a value the caller already held;
+    /// unmake had nothing to thread). Carrying it costs nothing in memory —
+    /// `StateInfo` had 2 bytes of tail padding and `size_of` is still 168, so
+    /// the per-make/per-unmake copies do not grow. Meaningless at the root
+    /// state, where `EMPTY` seeds it with a white pawn and nothing reads it.
+    pub moved: Piece,
     /// Repetition encoding: 0 / +distance / -distance (doc 04 §3.9).
     pub repetition: i32,
 }
@@ -210,8 +221,73 @@ impl StateInfo {
         pinners: [Bitboard::EMPTY; 2],
         check_squares: [Bitboard::EMPTY; 6],
         captured: None,
+        moved: Piece::new(Color::White, PieceType::Pawn),
         repetition: 0,
     };
+}
+
+/// The check bookkeeping (doc 04 §3.5) computed from a placement, before it
+/// is stored into a [`StateInfo`]. Exists so the computation can be a `&self`
+/// query and the store a separate `&mut` write — see
+/// [`Board::refresh_check_info`].
+struct CheckInfo {
+    blockers_for_king: [Bitboard; 2],
+    pinners: [Bitboard; 2],
+    check_squares: [Bitboard; 6],
+}
+
+impl CheckInfo {
+    fn of(board: &Board) -> Self {
+        let mut blockers_for_king = [Bitboard::EMPTY; 2];
+        let mut pinners = [Bitboard::EMPTY; 2];
+        for c in Color::ALL {
+            let (b, p) = board.slider_blockers(c);
+            blockers_for_king[c as usize] = b;
+            pinners[c.flip() as usize] = p;
+        }
+
+        let tables = attacks::tables();
+        let them = board.side_to_move.flip();
+        let ksq = board.king_square(them);
+        let occ = board.all_occupancy;
+        let bishop = tables.bishop_attacks(ksq, occ);
+        let rook = tables.rook_attacks(ksq, occ);
+        // Pawn attack symmetry again: an enemy pawn ON `ksq` attacks exactly
+        // the squares from which one of our pawns would check `ksq`. The
+        // array literal is in `PieceType` discriminant order — the same order
+        // the per-index writes used. NOTE (D33 reviewer C, M-5): what pins
+        // that order is NOT `check_squares_all`'s test — that compares two
+        // reads of the same array and is a tautology w.r.t. ordering — it is
+        // `perft::perft_checked`'s independent `gives_check` oracle, which
+        // runs in the fast tier and fires on any swapped slot.
+        let check_squares = [
+            attacks::pawn_attacks(them, ksq),
+            attacks::knight_attacks(ksq),
+            bishop,
+            rook,
+            bishop | rook,
+            Bitboard::EMPTY,
+        ];
+        Self {
+            blockers_for_king,
+            pinners,
+            check_squares,
+        }
+    }
+
+    /// Destructured on purpose: adding a field to [`CheckInfo`] without
+    /// storing it becomes a compile error under `-D warnings` instead of a
+    /// field that silently stops being maintained (D33 reviewer C, M-4).
+    fn store(self, st: &mut StateInfo) {
+        let CheckInfo {
+            blockers_for_king,
+            pinners,
+            check_squares,
+        } = self;
+        st.blockers_for_king = blockers_for_king;
+        st.pinners = pinners;
+        st.check_squares = check_squares;
+    }
 }
 
 /// From-scratch key/material computation result — `init_state` applies it,
@@ -456,9 +532,18 @@ pub struct Board {
     castling_rook_square: [Square; 4],
     castling_path: [Bitboard; 4],
 
-    // Ply-indexed state history; NEVER empty — every constructor pushes the
-    // root state (D8). `make_move` pushes, `unmake_move` pops.
-    states: Vec<StateInfo>,
+    // The CURRENT ply's state (D8), held INLINE rather than as the top of a
+    // stack. Perf study 14 §4.1: `st()` ran 29.07x per node as
+    // `Vec::last().expect(...)` — a pointer load, a length load, an emptiness
+    // test, a panic edge and an `imul $0xa8` before any useful field read.
+    // As a field it is a constant offset the consuming load folds in, and the
+    // "never empty" invariant stops being an assertion the optimiser has to
+    // disbelieve: it is structural. This is Stockfish's `Position::st`
+    // pointer minus the pointer.
+    state: StateInfo,
+    // Everything BELOW `state`, oldest first: `make_move` pushes the parent,
+    // `unmake_move` pops it back. Empty at the root.
+    history: Vec<StateInfo>,
 
     /// Lazily-filled Wave-G threat map — see [`ThreatCache`]. Not part of the
     /// position: cloned cold, ignored by equality.
@@ -469,8 +554,7 @@ impl Board {
     pub fn empty() -> Self {
         // Reserved past MAX_PLY so mid-search pushes never reallocate
         // (doc 04 §3.3; growth would be correct, just a latency spike).
-        let mut states = Vec::with_capacity(MAX_PLY + 64);
-        states.push(StateInfo::EMPTY);
+        let history = Vec::with_capacity(MAX_PLY + 64);
         let mut board = Board {
             pieces: [[Bitboard::EMPTY; PieceType::COUNT]; Color::COUNT],
             color_occupancy: [Bitboard::EMPTY; Color::COUNT],
@@ -481,7 +565,8 @@ impl Board {
             castling_rights_mask: [CastlingRights::NONE; Square::COUNT],
             castling_rook_square: [Square::A1; 4],
             castling_path: [Bitboard::EMPTY; 4],
-            states,
+            state: StateInfo::EMPTY,
+            history,
             threats: ThreatCache::default(),
         };
         // Even the empty board's root state is self-consistent (its key is
@@ -513,13 +598,13 @@ impl Board {
         self.side_to_move
     }
 
-    /// The current (top-of-stack) state. The stack is never empty (D8).
+    /// The current ply's state (D8) — a field, so this is free.
     fn st(&self) -> &StateInfo {
-        self.states.last().expect("state stack never empty")
+        &self.state
     }
 
     fn st_mut(&mut self) -> &mut StateInfo {
-        self.states.last_mut().expect("state stack never empty")
+        &mut self.state
     }
 
     pub fn castling_rights(&self) -> CastlingRights {
@@ -675,8 +760,8 @@ impl Board {
     /// of which this loop is a large share on any node that stages quiets.
     /// Reading the whole 48-byte block once makes the hoist a property of the
     /// source instead of a hope about the optimiser.
-    pub fn check_squares_all(&self) -> [Bitboard; 6] {
-        self.st().check_squares
+    pub fn check_squares_all(&self) -> &[Bitboard; 6] {
+        &self.st().check_squares
     }
 
     /// The piece captured by the last made move (None at the root state).
@@ -758,7 +843,7 @@ impl Board {
     }
 
     /// The squares holding `piece_type` pieces of both colors.
-    fn pieces_of_type(&self, piece_type: PieceType) -> Bitboard {
+    pub(crate) fn pieces_of_type(&self, piece_type: PieceType) -> Bitboard {
         self.pieces[Color::White as usize][piece_type as usize]
             | self.pieces[Color::Black as usize][piece_type as usize]
     }
@@ -806,26 +891,22 @@ impl Board {
     /// every make/null-move, AFTER `side_to_move` has been flipped. Does
     /// NOT touch `st.checkers`; that is the caller's job (from scratch at
     /// setup, incrementally in `make_move`). Both kings must exist.
-    fn set_check_info(&self, st: &mut StateInfo) {
-        for c in Color::ALL {
-            let (blockers, pinners) = self.slider_blockers(c);
-            st.blockers_for_king[c as usize] = blockers;
-            st.pinners[c.flip() as usize] = pinners;
-        }
-
-        let tables = attacks::tables();
-        let them = self.side_to_move.flip();
-        let ksq = self.king_square(them);
-        let occ = self.all_occupancy;
-        // Pawn attack symmetry again: an enemy pawn ON `ksq` attacks exactly
-        // the squares from which one of our pawns would check `ksq`.
-        st.check_squares[PieceType::Pawn as usize] = attacks::pawn_attacks(them, ksq);
-        st.check_squares[PieceType::Knight as usize] = attacks::knight_attacks(ksq);
-        st.check_squares[PieceType::Bishop as usize] = tables.bishop_attacks(ksq, occ);
-        st.check_squares[PieceType::Rook as usize] = tables.rook_attacks(ksq, occ);
-        st.check_squares[PieceType::Queen as usize] = st.check_squares[PieceType::Bishop as usize]
-            | st.check_squares[PieceType::Rook as usize];
-        st.check_squares[PieceType::King as usize] = Bitboard::EMPTY;
+    /// Recompute the check bookkeeping (doc 04 §3.5) into the CURRENT state:
+    /// blockers/pinners around both kings, plus the squares from which each
+    /// piece type of the side to move would check the enemy king. Called at
+    /// setup and at the end of every make/null-move, AFTER `side_to_move` has
+    /// been flipped. Does NOT touch `checkers` — that is the caller's job
+    /// (from scratch at setup, incrementally in `make_move`). Both kings must
+    /// exist.
+    ///
+    /// It cannot be spelled as one function taking `&self` and
+    /// `&mut self.state`: that would hold a `&mut` into one field across
+    /// `&self` reads of the others. Computing the block by value first
+    /// ([`CheckInfo::of`]) and storing it second is the idiomatic Rust answer
+    /// to a partial-borrow conflict — and it is what let the state stack's
+    /// `mem::take` trick go away (perf study 14 §2).
+    fn refresh_check_info(&mut self) {
+        CheckInfo::of(self).store(&mut self.state);
     }
 
     /// Compute the Wave-G threat map (D30): squares attacked by `them` (the
@@ -1020,13 +1101,16 @@ impl Board {
         st.repetition = 0;
         // Check bookkeeping needs both kings; incomplete boards
         // (`Board::empty()`, mid-construction tests) keep the empty stubs.
-        if self.has_both_kings() {
+        let both_kings = self.has_both_kings();
+        if both_kings {
             let stm = self.side_to_move;
             st.checkers = self.attackers_to(self.king_square(stm), self.all_occupancy)
                 & self.occupancy(stm.flip());
-            self.set_check_info(&mut st);
         }
         *self.st_mut() = st;
+        if both_kings {
+            self.refresh_check_info();
+        }
     }
 
     /// Compute all six keys + material from scratch off the placement and
@@ -1132,32 +1216,60 @@ impl Board {
 
     /// Remove and return the piece on `sq`, keeping bitboards and mailbox in sync.
     pub fn remove_piece(&mut self, sq: Square) -> Option<Piece> {
-        let piece = self.mailbox[sq.index() as usize].take()?;
+        let piece = self.mailbox[sq.index() as usize]?;
+        self.remove_piece_known(piece, sq);
+        Some(piece)
+    }
+
+    /// [`Board::remove_piece`] when the caller ALREADY holds the piece.
+    ///
+    /// Perf study 14 §4.3: make/unmake know every piece they touch — the
+    /// mover from step 3, the victim from `captured`, the castling rook by
+    /// construction — and then threw that away and re-derived it from the
+    /// mailbox, paying a redundant load plus an `Option` discriminant test
+    /// per placement edit. Passing the value it already has in a register is
+    /// what the low-level primitive should have taken all along; the
+    /// `Option`-returning form stays for the callers that genuinely query.
+    #[inline]
+    pub(crate) fn remove_piece_known(&mut self, piece: Piece, sq: Square) {
+        debug_assert_eq!(
+            self.piece_on(sq),
+            Some(piece),
+            "remove_piece_known: {piece:?} is not on {sq}"
+        );
         let bb = Bitboard::from_square(sq);
         self.pieces[piece.color as usize][piece.piece_type as usize] ^= bb;
         self.color_occupancy[piece.color as usize] ^= bb;
         self.all_occupancy ^= bb;
-        Some(piece)
+        self.mailbox[sq.index() as usize] = None;
     }
 
     /// Move a piece between squares in one pass: from-bit ^ to-bit on three
-    /// bitboards plus two mailbox writes (doc 04 §3.3). The internal fast
-    /// path of make/unmake — the destination must be empty (captures and
-    /// promotions go through `remove_piece`/`put_piece` instead). Placement-
-    /// only like its two siblings: Zobrist deltas live in `make_move`, not
-    /// here (doc 04 §9.1).
-    pub(crate) fn move_piece(&mut self, from: Square, to: Square) {
+    /// bitboards plus two mailbox writes (doc 04 §3.3). The internal fast path
+    /// of make/unmake — the destination must be empty (captures and promotions
+    /// go through `remove_piece`/`put_piece` instead). Placement-only like its
+    /// siblings: Zobrist deltas live in `make_move`, not here (doc 04 §9.1).
+    ///
+    /// Takes the piece rather than reading it back out of the mailbox — see
+    /// [`Board::remove_piece_known`]. Perf study 14 §4.4 gave `unmake_move` the
+    /// mover via `StateInfo::moved`, which left the querying `move_piece`
+    /// with no callers at all, so it is gone.
+    #[inline]
+    pub(crate) fn move_piece_known(&mut self, pc: Piece, from: Square, to: Square) {
+        debug_assert_eq!(
+            self.piece_on(from),
+            Some(pc),
+            "move_piece_known: {pc:?} is not on {from}"
+        );
         debug_assert!(
             self.piece_on(to).is_none(),
             "move_piece to occupied square {to}"
         );
-        let pc = self.mailbox[from.index() as usize]
-            .take()
-            .expect("move_piece from empty square");
         let from_to = Bitboard::from_square(from) | Bitboard::from_square(to);
         self.pieces[pc.color as usize][pc.piece_type as usize] ^= from_to;
         self.color_occupancy[pc.color as usize] ^= from_to;
         self.all_occupancy ^= from_to;
+        self.mailbox[from.index() as usize] = None;
         self.mailbox[to.index() as usize] = Some(pc);
     }
 
@@ -1180,51 +1292,38 @@ impl Board {
     /// can overlap memory prefetches with the rest of the move. The
     /// [`NoHooks`] instantiation is exactly `make_move`.
     pub fn make_move_with<H: MakeMoveHooks>(&mut self, m: Move, gives_check: bool, hooks: &mut H) {
-        // Step 1: derive the child key from the parent's, and copy the
-        // carried-over prefix block — this assignment IS Stockfish's
-        // "memcpy up to key" (D8). The push happens at the very end, so
-        // `self.st()` refers to the PREVIOUS state throughout; its blockers
-        // feed the ep-legality test in step 8, so grab them now.
-        // Perf study #2 option E: construct the child IN PLACE. The states
-        // Vec is taken out (a 24-byte pointer swap) so a &mut into its new
-        // tail can coexist with the &self/&mut self board calls below —
-        // none of which touch `states` (audited; the one states read, the
-        // step-13 repetition walk, runs against this same local vec after
-        // NLL ends the &mut). The old shape built a 224-byte stack temp and
-        // memcpy'd it at the end-push (2.30% of ALL cycles, study §5.4).
-        // Panic-safety: a panic mid-make leaves `self.states` empty — but a
-        // make_move panic is already a fatal invariant violation.
-        let mut states = std::mem::take(&mut self.states);
-        let (mut k, prev_blockers) = {
-            let prev = states.last().expect("state stack never empty");
-            (prev.key ^ ZOBRIST.side, prev.blockers_for_king)
-        };
-        // Perf study 9 item 3: push a CONSTANT and fill the carried block in
-        // place. `StateInfo { copied: prev_copied, ..EMPTY }` looks like the
-        // same thing but is not — a struct expression whose fields are not all
-        // constants is materialised as a 168-byte stack temporary and then
-        // copied into the vector's tail, so every make paid build + reload +
-        // store (the `vmovdqu64 0xc0(%rsp)` reload was the single hottest
-        // instruction in the symbol). Pushing `EMPTY` — every field a
-        // compile-time constant — lets the value be stored straight into the
-        // slot, and the one live field is then written through a `&mut` into
-        // the vector. Study #2 option E removed this round trip for the
-        // *field writes* and left it in place for the push itself.
+        // Step 1: archive the parent and edit the current state IN PLACE into
+        // the child. Stockfish's "memcpy up to key" (D8) is this push: the
+        // carried-over block is already where it needs to be, so there is no
+        // prefix assignment, no 168-byte `StateInfo::EMPTY` constant store,
+        // and — because nothing below holds a borrow INTO the stack — no
+        // `mem::take` of it either. Perf study #2 option E and study 9 item 3
+        // both existed to work around that borrow; study 14 removed the
+        // borrow instead.
         //
-        // Every non-`copied` field is dead until it is written below (`key`
-        // step 9, `captured`/`checkers` step 11, blockers/pinners/check_squares
-        // in `set_check_info`, `repetition` step 13), so seeding them from
-        // `EMPTY` is exactly what the old form did.
-        states.push(StateInfo::EMPTY);
-        let child_idx = states.len() - 1;
-        let (ancestors, tail) = states.split_at_mut(child_idx);
-        let st = &mut tail[0];
-        st.copied = ancestors[child_idx - 1].copied;
+        // `self.state`'s non-`copied` fields are dead from here until they are
+        // written below (`key` step 9, `captured`/`checkers` step 11,
+        // blockers/pinners/check_squares in step 12, `repetition` step 13),
+        // which is exactly what seeding them from `EMPTY` used to buy.
+        // `blockers_for_king` is the one exception: step 8's ep-legality test
+        // wants the PARENT's, and it still holds them until step 12.
+        //
+        // Panic-safety, since the old shape documented its own: a panic between
+        // here and step 13 now leaves `history` one entry deep and `self.state`
+        // half-built (counters bumped, ep cleared, rights revoked) — a board
+        // that passes every structural check. The old `mem::take` left
+        // `self.states` EMPTY, so the next `st()` panicked loudly instead. This
+        // is survivable only because a worker panic is caught
+        // (`threads.rs`) and every `go` re-seeds each shell with a fresh
+        // `Job::Setup { board: board.clone() }`; a make_move panic is a fatal
+        // invariant violation either way.
+        self.history.push(self.state);
+        let mut k = self.state.key ^ ZOBRIST.side;
 
         // Step 2: counters.
         self.game_ply += 1;
-        st.copied.rule50 += 1;
-        st.copied.plies_from_null += 1;
+        self.state.copied.rule50 += 1;
+        self.state.copied.plies_from_null += 1;
 
         // Step 3: actors. Our castling encoding is king-to-G1/C1 (D2), not
         // SF's king-captures-rook, so `piece_on(to)` is None for castling
@@ -1261,27 +1360,28 @@ impl Board {
             let rto = if kingside { Square::F1 } else { Square::D1 }.relative_to(us);
             let rook = Piece::new(us, PieceType::Rook);
 
-            self.remove_piece(from);
-            self.remove_piece(rfrom);
+            self.remove_piece_known(pc, from);
+            self.remove_piece_known(rook, rfrom);
             self.put_piece(pc, to);
             self.put_piece(rook, rto);
 
             let rook_delta = ZOBRIST.psq[rook.index()][rfrom.index() as usize]
                 ^ ZOBRIST.psq[rook.index()][rto.index() as usize];
             k ^= rook_delta;
-            st.copied.non_pawn_key[us as usize] ^= rook_delta;
+            self.state.copied.non_pawn_key[us as usize] ^= rook_delta;
         }
 
         // Step 5: capture (mutually exclusive with castling).
         if let Some(cap) = captured {
             let cap_psq = ZOBRIST.psq[cap.index()][capsq.index() as usize];
             if cap.piece_type == PieceType::Pawn {
-                st.copied.pawn_key ^= cap_psq;
+                self.state.copied.pawn_key ^= cap_psq;
             } else {
-                st.copied.non_pawn_material[them as usize] -= PIECE_VALUES[cap.piece_type as usize];
-                st.copied.non_pawn_key[them as usize] ^= cap_psq;
+                self.state.copied.non_pawn_material[them as usize] -=
+                    PIECE_VALUES[cap.piece_type as usize];
+                self.state.copied.non_pawn_key[them as usize] ^= cap_psq;
                 if matches!(cap.piece_type, PieceType::Knight | PieceType::Bishop) {
-                    st.copied.minor_key ^= cap_psq;
+                    self.state.copied.minor_key ^= cap_psq;
                 }
             }
             k ^= cap_psq;
@@ -1290,8 +1390,8 @@ impl Board {
             // step 10 (unlike SF, which lifts the ep pawn early for
             // piece-list reasons we don't have).
             let count = self.pieces(them, cap.piece_type).count() as usize;
-            st.copied.material_key ^= ZOBRIST.material(cap, count - 1);
-            st.copied.rule50 = 0;
+            self.state.copied.material_key ^= ZOBRIST.material(cap, count - 1);
+            self.state.copied.rule50 = 0;
         }
 
         // Step 6: mover key — for castling this is the king pair; for
@@ -1299,7 +1399,7 @@ impl Board {
         // special case (D9). Then clear a stale ep square out of the key.
         k ^= ZOBRIST.psq[pc.index()][from.index() as usize]
             ^ ZOBRIST.psq[pc.index()][to.index() as usize];
-        if let Some(ep) = st.copied.ep_square.take() {
+        if let Some(ep) = self.state.copied.ep_square.take() {
             k ^= ZOBRIST.en_passant[ep.file() as usize];
         }
 
@@ -1308,9 +1408,9 @@ impl Board {
         // castling key makes any change two XORs (a no-op change cancels).
         let mut touched = self.castling_rights_mask[from.index() as usize];
         touched.add(self.castling_rights_mask[to.index() as usize]);
-        k ^= ZOBRIST.castling[st.copied.castling_rights.bits() as usize];
-        st.copied.castling_rights.remove(touched);
-        k ^= ZOBRIST.castling[st.copied.castling_rights.bits() as usize];
+        k ^= ZOBRIST.castling[self.state.copied.castling_rights.bits() as usize];
+        self.state.copied.castling_rights.remove(touched);
+        k ^= ZOBRIST.castling[self.state.copied.castling_rights.bits() as usize];
 
         // Step 8: pawn extras, or the non-pawn specialized-key upkeep.
         if pc.piece_type == PieceType::Pawn {
@@ -1322,7 +1422,10 @@ impl Board {
                 let pawns = attacks::pawn_attacks(us, ep) & self.pieces(them, PieceType::Pawn);
                 if !pawns.is_empty() {
                     let ksq = self.king_square(them);
-                    let not_blockers = !prev_blockers[them as usize];
+                    // Step 12 has not run yet, so these are still the
+                    // PARENT's blockers — which is exactly what this test
+                    // wants (see the comment below).
+                    let not_blockers = !self.state.blockers_for_king[them as usize];
                     // If the double push itself delivers discovered check,
                     // ep can never be the legal reply.
                     let no_discovery = not_blockers.contains(from) || from.file() == ksq.file();
@@ -1334,7 +1437,7 @@ impl Board {
                     // already registered as a blocker.
                     if no_discovery && !(pawns & (not_blockers | attacks::line(ep, ksq))).is_empty()
                     {
-                        st.copied.ep_square = Some(ep);
+                        self.state.copied.ep_square = Some(ep);
                         k ^= ZOBRIST.en_passant[ep.file() as usize];
                     }
                 }
@@ -1348,25 +1451,25 @@ impl Board {
                 // post-removal count out (popcounts still pre-mutation).
                 let promo_count = self.pieces(us, promo_pt).count() as usize;
                 let pawn_count = self.pieces(us, PieceType::Pawn).count() as usize;
-                st.copied.material_key ^=
+                self.state.copied.material_key ^=
                     ZOBRIST.material(promo, promo_count) ^ ZOBRIST.material(pc, pawn_count - 1);
-                st.copied.non_pawn_key[us as usize] ^= promo_psq;
+                self.state.copied.non_pawn_key[us as usize] ^= promo_psq;
                 if matches!(promo_pt, PieceType::Knight | PieceType::Bishop) {
-                    st.copied.minor_key ^= promo_psq;
+                    self.state.copied.minor_key ^= promo_psq;
                 }
-                st.copied.non_pawn_material[us as usize] += PIECE_VALUES[promo_pt as usize];
+                self.state.copied.non_pawn_material[us as usize] += PIECE_VALUES[promo_pt as usize];
             }
             // Always: the `to` term is zero on the promotion rank, so this
             // degenerates to a from-only update for promotions.
-            st.copied.pawn_key ^= ZOBRIST.psq[pc.index()][from.index() as usize]
+            self.state.copied.pawn_key ^= ZOBRIST.psq[pc.index()][from.index() as usize]
                 ^ ZOBRIST.psq[pc.index()][to.index() as usize];
-            st.copied.rule50 = 0;
+            self.state.copied.rule50 = 0;
         } else {
             let mover_delta = ZOBRIST.psq[pc.index()][from.index() as usize]
                 ^ ZOBRIST.psq[pc.index()][to.index() as usize];
-            st.copied.non_pawn_key[us as usize] ^= mover_delta;
+            self.state.copied.non_pawn_key[us as usize] ^= mover_delta;
             if matches!(pc.piece_type, PieceType::Knight | PieceType::Bishop) {
-                st.copied.minor_key ^= mover_delta;
+                self.state.copied.minor_key ^= mover_delta;
             }
         }
 
@@ -1376,33 +1479,35 @@ impl Board {
         // 5/8). NOT `fold_rule50_after` — that models "parent clock + 1",
         // which is wrong after any capture or pawn move and exists solely
         // for the speculative [`Board::prefetch_key`] (doc 04 §3.8 step 9).
-        st.key = k;
-        hooks.on_key(zobrist::fold_rule50(k, st.copied.rule50));
+        self.state.key = k;
+        hooks.on_key(zobrist::fold_rule50(k, self.state.copied.rule50));
         // Hook B: the specialized keys are final too.
-        hooks.on_state(&st.copied);
+        hooks.on_state(&self.state.copied);
 
         // Step 10: board mutation (castling already mutated in step 4).
         if m.kind() != MoveKind::Castling {
-            if captured.is_some() {
-                self.remove_piece(capsq);
+            if let Some(cap) = captured {
+                self.remove_piece_known(cap, capsq);
             }
             if m.kind() == MoveKind::Promotion {
                 let promo_pt = m.promotion_piece().expect("promotion kind has a piece");
-                self.remove_piece(from);
+                self.remove_piece_known(pc, from);
                 self.put_piece(Piece::new(us, promo_pt), to);
             } else {
-                self.move_piece(from, to);
+                self.move_piece_known(pc, from, to);
             }
         }
 
         // Step 11: captured piece and checkers. Trusting the caller's
         // `gives_check` keeps quiet moves free of any attack query.
-        st.captured = captured;
-        st.checkers = if gives_check {
+        let checkers = if gives_check {
             self.attackers_to(self.king_square(them), self.all_occupancy) & self.occupancy(us)
         } else {
             Bitboard::EMPTY
         };
+        self.state.captured = captured;
+        self.state.moved = pc;
+        self.state.checkers = checkers;
         debug_assert_eq!(
             gives_check,
             !(self.attackers_to(self.king_square(them), self.all_occupancy) & self.occupancy(us))
@@ -1413,7 +1518,7 @@ impl Board {
         // Step 12: flip the side to move, then rebuild the check
         // bookkeeping for the new side.
         self.side_to_move = them;
-        self.set_check_info(st);
+        self.refresh_check_info();
 
         // Step 13: repetition scan (doc 04 §3.9). The window is
         // min(rule50, plies_from_null): a capture/pawn move makes earlier
@@ -1421,13 +1526,18 @@ impl Board {
         // its side of the boundary. RAW keys — rule50 folding is TT-only.
         // `plies_from_null` never exceeds the plies recorded on this stack,
         // so `n - i` cannot underflow (doc 04 §3.3).
-        let child_key = st.key;
-        let end = st.copied.rule50.min(st.copied.plies_from_null);
+        let child_key = self.state.key;
+        let end = self
+            .state
+            .copied
+            .rule50
+            .min(self.state.copied.plies_from_null);
         let mut repetition = 0;
         if end >= 4 {
-            // `st`'s borrow ends above (NLL); the walk reads ancestors in
-            // the same local vec. `child_idx` == the old pre-push len, so
-            // the `n - i` arithmetic is unchanged.
+            // The child is `self.state`; the ancestor `i` plies back is
+            // `history[len - i]`, because the push in step 1 made
+            // `history.len()` equal the child's ply index.
+            let hist_len = self.history.len();
             //
             // Perf study 9 item 3 tried to strength-reduce the `imul $0xa8`
             // (sizeof(StateInfo), not a power of two) that this indexed form
@@ -1440,7 +1550,7 @@ impl Board {
             // enough iterations to amortise it. Left alone deliberately.
             let mut i = 4;
             while i <= end {
-                let earlier = &states[child_idx - i as usize];
+                let earlier = &self.history[hist_len - i as usize];
                 if earlier.key == child_key {
                     // +d: first repeat, d plies back. -d: that occurrence
                     // was itself a repeat — at least threefold.
@@ -1450,11 +1560,11 @@ impl Board {
                 i += 2;
             }
         }
-        states[child_idx].repetition = repetition;
+        self.state.repetition = repetition;
 
-        // Step 14: publish. Debug builds run the full invariant oracle at
-        // every node (doc 04 §3.12, D24); release compiles it out.
-        self.states = states;
+        // Step 14: debug builds run the full invariant oracle at every node
+        // (doc 04 §3.12, D24); release compiles it out. There is nothing to
+        // publish any more — the child has been the live state since step 1.
         #[cfg(debug_assertions)]
         self.assert_consistent();
     }
@@ -1464,11 +1574,14 @@ impl Board {
     /// key or check-info work, everything derived lives in the popped
     /// record and the parent state is intact underneath.
     pub fn unmake_move(&mut self, m: Move) {
-        let st = self.states.pop().expect("state stack never empty");
-        debug_assert!(
-            !self.states.is_empty(),
-            "unmake_move must leave the root state"
-        );
+        // The child's `captured` is the only field that survives the restore,
+        // so read it before the parent overwrites it.
+        let captured = self.state.captured;
+        let moved = self.state.moved;
+        self.state = self
+            .history
+            .pop()
+            .expect("unmake_move must have a parent state to restore");
         self.side_to_move = self.side_to_move.flip();
         let us = self.side_to_move;
         self.game_ply -= 1;
@@ -1480,22 +1593,24 @@ impl Board {
             let right = CastlingRights::single(us, kingside);
             let rfrom = self.castling_rook_square[right.index()];
             let rto = if kingside { Square::F1 } else { Square::D1 }.relative_to(us);
-            let king = self
-                .remove_piece(to)
-                .expect("king on the castling to-square");
-            let rook = self
-                .remove_piece(rto)
-                .expect("rook on the castling destination");
+            // Both pieces are known by construction — this is the inverse of a
+            // castling we ourselves made (§4.3).
+            let king = Piece::new(us, PieceType::King);
+            let rook = Piece::new(us, PieceType::Rook);
+            self.remove_piece_known(king, to);
+            self.remove_piece_known(rook, rto);
             self.put_piece(king, from);
             self.put_piece(rook, rfrom);
         } else {
             if m.kind() == MoveKind::Promotion {
-                self.remove_piece(to);
+                let promo =
+                    Piece::new(us, m.promotion_piece().expect("promotion kind has a piece"));
+                self.remove_piece_known(promo, to);
                 self.put_piece(Piece::new(us, PieceType::Pawn), from);
             } else {
-                self.move_piece(to, from);
+                self.move_piece_known(moved, to, from);
             }
-            if let Some(cap) = st.captured {
+            if let Some(cap) = captured {
                 let capsq = if m.kind() == MoveKind::EnPassant {
                     to.offset(us.flip().pawn_push())
                 } else {
@@ -1519,7 +1634,10 @@ impl Board {
     /// `rule50` and `game_ply` are deliberately unchanged (SF behavior).
     pub fn make_null_move(&mut self) {
         debug_assert!(self.checkers().is_empty(), "make_null_move while in check");
-        let mut st = *self.st();
+        // Same shape as `make_move_with` step 1: archive the parent, then
+        // edit the live state in place.
+        self.history.push(self.state);
+        let st = &mut self.state;
         if let Some(ep) = st.copied.ep_square.take() {
             st.key ^= ZOBRIST.en_passant[ep.file() as usize];
         }
@@ -1528,11 +1646,10 @@ impl Board {
         st.captured = None;
         st.repetition = 0;
         self.side_to_move = self.side_to_move.flip();
-        // `st.checkers` keeps the copied EMPTY set: the mover wasn't in
+        // `state.checkers` keeps the carried EMPTY set: the mover wasn't in
         // check (precondition) and the new side's king can't be either —
         // it wasn't attackable while the opponent was to move.
-        self.set_check_info(&mut st);
-        self.states.push(st);
+        self.refresh_check_info();
         #[cfg(debug_assertions)]
         self.assert_consistent();
     }
@@ -1543,11 +1660,10 @@ impl Board {
             self.checkers().is_empty(),
             "unmake_null_move while in check"
         );
-        self.states.pop();
-        debug_assert!(
-            !self.states.is_empty(),
-            "unmake_null_move must leave the root state"
-        );
+        self.state = self
+            .history
+            .pop()
+            .expect("unmake_null_move must have a parent state to restore");
         self.side_to_move = self.side_to_move.flip();
         #[cfg(debug_assertions)]
         self.assert_consistent();
@@ -1615,18 +1731,20 @@ impl Board {
     /// step back.
     pub fn has_repeated(&self) -> bool {
         let copied = &self.st().copied;
-        let mut end = copied.rule50.min(copied.plies_from_null);
-        // `end <= plies_from_null <= top index`, and both shrink in
-        // lockstep, so `idx` cannot underflow.
-        let mut idx = self.states.len() - 1;
-        while end >= 4 {
-            if self.states[idx].repetition != 0 {
-                return true;
-            }
-            idx -= 1;
-            end -= 1;
+        let end = copied.rule50.min(copied.plies_from_null);
+        if end < 4 {
+            return false;
         }
-        false
+        // The current state, then `end - 4` ancestors, newest first — the
+        // window shrinks by one per step back. `end <= plies_from_null <=
+        // history.len()`, so `take` never runs off the front.
+        self.state.repetition != 0
+            || self
+                .history
+                .iter()
+                .rev()
+                .take((end - 4) as usize)
+                .any(|s| s.repetition != 0)
     }
 
     /// Can the side to move reach, in ONE move, a position already on the
@@ -1654,13 +1772,13 @@ impl Board {
         let original_key = self.st().key;
         let occupancy = self.all_occupancy;
         let tables = crate::cuckoo::tables();
-        // `end <= plies_from_null <= top`, so `top - i` cannot underflow.
-        let top = self.states.len() - 1;
+        // `end <= plies_from_null <= history.len()`, so this cannot underflow.
+        let hist_len = self.history.len();
 
         // Only ODD distances can close a cycle — the same side must be to
         // move at both ends, so we step two plies back per iteration.
         for i in (3..=end).step_by(2) {
-            let earlier = &self.states[top - i as usize];
+            let earlier = &self.history[hist_len - i as usize];
             let Some(mv) = tables.lookup(original_key ^ earlier.key) else {
                 continue;
             };
@@ -1878,14 +1996,14 @@ impl Board {
         let mailbox_count = self.mailbox.iter().filter(|p| p.is_some()).count();
         assert_eq!(mailbox_count as u32, self.all_occupancy().count());
 
-        // --- State stack (doc 04 §3.3): never empty, sane counters -------
-        assert!(!self.states.is_empty(), "state stack must never be empty");
+        // --- State stack (doc 04 §3.3): sane counters ---------------------
+        // "Never empty" is no longer an assertion: the live state is a field.
         let st = self.st();
         assert!(st.copied.rule50 >= 0);
         assert!(st.copied.plies_from_null >= 0);
         // The repetition scan indexes `plies_from_null` states back.
         assert!(
-            st.copied.plies_from_null < self.states.len() as i32,
+            st.copied.plies_from_null <= self.history.len() as i32,
             "plies_from_null must not exceed the recorded history"
         );
         assert!(self.game_ply >= 0);
@@ -1960,8 +2078,13 @@ impl Board {
                 & self.occupancy(stm.flip()),
             "checkers drifted"
         );
-        let mut expected = *st;
-        self.set_check_info(&mut expected);
+        // Seeded from EMPTY, NOT from `*st` (D33 reviewer C, M-4): if
+        // `CheckInfo::store` ever stops writing one of these three fields, a
+        // `*st` seed would leave `expected` already equal to the stored value
+        // and this oracle would pass while `make_move` silently stopped
+        // maintaining it.
+        let mut expected = StateInfo::EMPTY;
+        CheckInfo::of(self).store(&mut expected);
         assert_eq!(
             st.blockers_for_king, expected.blockers_for_king,
             "blockers_for_king drifted"
@@ -2284,12 +2407,14 @@ mod tests {
         fn assert_copy<T: Copy>() {}
         assert_copy::<CopiedState>();
         assert_copy::<StateInfo>();
-        // The bound grew from 192 with the Wave-G threat map (D30): `all_threats`
-        // + `piece_threats[6]` add 7 bitboards (56 bytes). These are recomputed
-        // per state (not carried in `copied`), so make_move does not copy them;
-        // only make_null_move's whole-record clone and the Vec entry pay the
-        // size — an accepted cost for O(1) threat queries.
-        const { assert!(size_of::<StateInfo>() <= 256) }
+        // Pinned EXACTLY, not bounded (D33 reviewer C). Perf study 14 §2 made
+        // every make copy this record onto `history` and every unmake copy it
+        // back, so a new field is ~1 instruction per node of real cost — a
+        // loose `<= 256` would absorb that silently. `moved` (§4.4) landed in
+        // the existing tail padding and did not move this number. The old
+        // comment claimed the Wave-G threat map's 7 bitboards were in here;
+        // they moved to `ThreatCache` and are not.
+        const { assert!(size_of::<StateInfo>() == 168) }
     }
 
     // Doc 04 §8 item 7: make_move performs no heap allocation — the state
@@ -2299,7 +2424,7 @@ mod tests {
     #[test]
     fn state_stack_is_prereserved_and_never_reallocates() {
         let mut board = Board::startpos();
-        let cap = board.states.capacity();
+        let cap = board.history.capacity();
         assert!(
             cap >= MAX_PLY + 64,
             "state stack must be reserved past MAX_PLY ({cap} < {})",
@@ -2315,9 +2440,9 @@ mod tests {
         }
         board.make_null_move();
         board.make_null_move();
-        assert!(board.states.len() > MAX_PLY - 10);
+        assert!(board.history.len() > MAX_PLY - 11);
         assert_eq!(
-            board.states.capacity(),
+            board.history.capacity(),
             cap,
             "make_move/make_null_move must never reallocate the state stack"
         );
@@ -3168,14 +3293,14 @@ mod tests {
         let mut board = Board::startpos();
         make_checked(&mut board, Move::normal(Square::G1, Square::F3));
         let before = board.clone();
-        assert_eq!(before.states.last().unwrap().copied.plies_from_null, 1);
+        assert_eq!(before.state.copied.plies_from_null, 1);
         board.make_null_move();
         board.assert_consistent();
         assert_eq!(board.raw_key(), before.raw_key() ^ ZOBRIST.side);
         assert_eq!(board.side_to_move(), Color::White);
         assert_eq!(board.rule50_count(), before.rule50_count());
         assert_eq!(board.game_ply(), before.game_ply());
-        assert_eq!(board.states.last().unwrap().copied.plies_from_null, 0);
+        assert_eq!(board.state.copied.plies_from_null, 0);
         assert!(board.checkers().is_empty());
         assert_eq!(board.captured_piece(), None);
         board.unmake_null_move();
@@ -3199,6 +3324,64 @@ mod tests {
         assert_eq!(board, before);
     }
 
+    // `has_repeated` must find a repetition that is NOT the current state —
+    // i.e. it must actually walk `history`. Every other test in this file
+    // either short-circuits on `self.state.repetition != 0` or returns early on
+    // `end < 4`, so without this one the ancestor walk is dead to the suite
+    // (D33 reviewer A, M1) and perf study 14's rewrite of it from an index loop
+    // to `.rev().take(end - 4)` would be unverified.
+    //
+    // Mutation-verified: `.take(0)` (the whole rewrite) and dropping the
+    // `.rev()` each make this test fail, and neither fails anything else in the
+    // suite. `.take(end - 3)` — an over-scan of exactly one ancestor — does
+    // NOT fail it, and appears to be unobservable rather than untested: the
+    // extra state sits at distance `end - 3`, and since `end <= rule50` and
+    // `rule50` only ever increments by one per reversible ply or resets to
+    // zero, a repetition marker cannot land at exactly that distance while the
+    // true answer is still `false`. That is an argument, not a measurement.
+    #[test]
+    fn has_repeated_walks_past_the_current_state_into_history() {
+        let mut board = Board::startpos();
+        for m in knight_shuffle() {
+            make_checked(&mut board, m);
+        }
+        // The shuffle's last ply IS the repetition, so `has_repeated` here is
+        // answered by the short-circuit — that is the case every other test
+        // covers.
+        assert_eq!(board.state.repetition, 4);
+
+        // One more reversible move. The current state is now a fresh position
+        // (`repetition == 0`), so the ONLY way to answer `true` is to inspect
+        // the ancestor one ply back — `history.iter().rev().take(1)`.
+        make_checked(&mut board, Move::normal(Square::B1, Square::C3));
+        assert_eq!(
+            board.state.repetition, 0,
+            "the new position is not itself a repeat"
+        );
+        let copied = &board.state.copied;
+        assert_eq!(
+            copied.rule50.min(copied.plies_from_null),
+            5,
+            "the window must reach exactly one ancestor past the current state"
+        );
+        assert!(
+            board.has_repeated(),
+            "has_repeated must find the repetition one ply back in history"
+        );
+
+        // Negative control: an irreversible move slams the window shut
+        // (`rule50 == 0`), so the same board reports false.
+        let mut fresh = Board::startpos();
+        for m in knight_shuffle() {
+            make_checked(&mut fresh, m);
+        }
+        make_checked(&mut fresh, Move::normal(Square::E2, Square::E4));
+        assert!(
+            !fresh.has_repeated(),
+            "a pawn move resets rule50, so the window cannot reach the repeat"
+        );
+    }
+
     // Doc 04 §5 repetition: the shuffle produces +d, then -d; is_draw is
     // ply-relative (in-tree twofold draws, root-side twofold does not,
     // threefold draws anywhere); unmaking rewinds cleanly.
@@ -3210,7 +3393,7 @@ mod tests {
             make_checked(&mut board, m);
         }
         // First return: +distance.
-        assert_eq!(board.states.last().unwrap().repetition, 4);
+        assert_eq!(board.state.repetition, 4);
         assert_eq!(board.raw_key(), Board::startpos().raw_key());
         assert!(board.has_repeated());
         // Strictly inside the search tree (repetition < ply) it is a draw;
@@ -3226,7 +3409,7 @@ mod tests {
         for m in knight_shuffle() {
             make_checked(&mut board, m);
         }
-        assert_eq!(board.states.last().unwrap().repetition, -4);
+        assert_eq!(board.state.repetition, -4);
         assert!(board.is_repetition(0));
         assert!(board.is_draw(0));
 
@@ -3330,10 +3513,10 @@ mod tests {
             if end < 3 {
                 return false;
             }
-            let top = board.states.len() - 1;
+            let hist_len = board.history.len();
             let ancestors: Vec<Key> = (3..=end)
                 .step_by(2)
-                .map(|i| board.states[top - i as usize].key)
+                .map(|i| board.history[hist_len - i as usize].key)
                 .collect();
             let mut list = MoveList::new();
             crate::movegen::generate_legal(board, &mut list);
@@ -3424,7 +3607,7 @@ mod tests {
         // cancel) — but positions on the far side of a null are unreachable
         // by real play, so the reset plies_from_null clips the scan.
         assert_eq!(board.raw_key(), root_key);
-        assert_eq!(board.states.last().unwrap().repetition, 0);
+        assert_eq!(board.state.repetition, 0);
         assert!(!board.has_repeated());
         assert!(!board.is_draw(4));
     }
@@ -3443,12 +3626,12 @@ mod tests {
         ] {
             make_checked(&mut board, m);
         }
-        assert_eq!(board.states.last().unwrap().repetition, 4);
+        assert_eq!(board.state.repetition, 4);
         assert!(board.has_repeated());
 
         // RxP: irreversible — the accumulated repeat is out of the window.
         make_checked(&mut board, Move::normal(Square::H1, Square::H6));
-        assert_eq!(board.states.last().unwrap().repetition, 0);
+        assert_eq!(board.state.repetition, 0);
         assert!(!board.has_repeated());
 
         // Repeats of POST-capture positions count again.
@@ -3460,7 +3643,7 @@ mod tests {
         ] {
             make_checked(&mut board, m);
         }
-        assert_eq!(board.states.last().unwrap().repetition, 4);
+        assert_eq!(board.state.repetition, 4);
         assert!(board.is_draw(5));
         assert!(!board.is_draw(0));
     }
@@ -3478,7 +3661,7 @@ mod tests {
         }
         assert_eq!(board.raw_key(), root.raw_key());
         assert_ne!(board.key(), root.key(), "clocks 12 vs 16 fold differently");
-        assert_eq!(board.states.last().unwrap().repetition, 4);
+        assert_eq!(board.state.repetition, 4);
         assert!(board.is_draw(5));
     }
 
@@ -3515,7 +3698,7 @@ mod tests {
     #[should_panic(expected = "main key drifted")]
     fn assert_consistent_catches_key_corruption() {
         let mut board = Board::startpos();
-        board.states.last_mut().unwrap().key ^= 1;
+        board.state.key ^= 1;
         board.assert_consistent();
     }
 
@@ -3523,7 +3706,7 @@ mod tests {
     #[should_panic(expected = "pawn_key drifted")]
     fn assert_consistent_catches_pawn_key_corruption() {
         let mut board = Board::startpos();
-        board.states.last_mut().unwrap().copied.pawn_key ^= 1;
+        board.state.copied.pawn_key ^= 1;
         board.assert_consistent();
     }
 
@@ -3531,7 +3714,7 @@ mod tests {
     #[should_panic(expected = "checkers drifted")]
     fn assert_consistent_catches_checkers_corruption() {
         let mut board = Board::startpos();
-        board.states.last_mut().unwrap().checkers = Bitboard::from_square(Square::E4);
+        board.state.checkers = Bitboard::from_square(Square::E4);
         board.assert_consistent();
     }
 
@@ -3539,8 +3722,7 @@ mod tests {
     #[should_panic(expected = "blockers_for_king drifted")]
     fn assert_consistent_catches_blockers_corruption() {
         let mut board = Board::startpos();
-        board.states.last_mut().unwrap().blockers_for_king[Color::White as usize] =
-            Bitboard::from_square(Square::E2);
+        board.state.blockers_for_king[Color::White as usize] = Bitboard::from_square(Square::E2);
         board.assert_consistent();
     }
 
@@ -3591,7 +3773,7 @@ mod tests {
             );
             assert_eq!(
                 hooks.copied.last().unwrap(),
-                &hooked.states.last().unwrap().copied,
+                &hooked.state.copied,
                 "hook B must see the final CopiedState after {m}"
             );
         }

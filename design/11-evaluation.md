@@ -639,7 +639,7 @@ pub struct AccumulatorEntry {
 pub struct NnueContext {
     stack: Box<[AccumulatorEntry]>,   // MAX_PLY + margin entries, indexed by
                                       // SEARCH ply (root = 0) — never by
-                                      // board.states.len(), which includes
+                                      // board.history.len(), which includes
                                       // UCI-replayed game history and can
                                       // exceed MAX_PLY in a long game
     net: &'static Network,            // loaded once (LazyLock / UCI EvalFile)
@@ -666,7 +666,7 @@ ancestor entry `k` (guaranteed to exist — `stack[0]` is always computed),
 then for each `i in k+1..=p` apply `stack[i].dirty`'s subs/adds forward as
 column add/subs on the 256-wide vector. Dirty records are addressed entirely
 within the stack — no reach into `Board`'s StateInfo history, no
-root-offset arithmetic against `board.states.len()`. With unbucketed 768
+root-offset arithmetic against `board.history.len()`. With unbucketed 768
 inputs a refresh is never *forced* by a king move — that starts only with
 king buckets (upgrade path), which is also when a refresh-cache (per-bucket
 cached accumulator + diff) earns its keep.
