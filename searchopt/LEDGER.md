@@ -238,6 +238,45 @@ their own bench frame; this measures 1.69x on 20 calib fens at fixed nodes.
 Different position mixes give different ratios — do NOT treat the two as the
 same number, and quote the frame with the figure.
 
+**★ THE NULL THAT MAKES THIS QUOTABLE (owner challenged the reversal, 2026-07-29).**
+Owner's objection was correct on its face: "you were all over the place from us
+ahead and back to 2x slower". So the instrument was nulled properly — each
+engine raced against ITSELF under a different name, 5 rounds, WITH the study-18
+gate running (i.e. heavy contention):
+
+| pairing | measured | must be |
+|---|---|---|
+| ARCHON_A / ARCHON_B (same binary) | **1.0100x** | 1.000 |
+| SF_A / SF_B (same binary) | **0.9905x** | 1.000 |
+
+**Null error ~1%. Effect ~93%. Margin ~50:1.** Four independent ARCHON/SF
+pairings agree: 0.5180, 0.5131, 0.5129, 0.5080.
+
+Side by side, this is exactly why the first answer was wrong:
+
+| instrument | null | effect claimed | verdict |
+|---|---|---|---|
+| match-PGN nps | **1.237x** | 1.06x | **null EXCEEDS the effect — unusable** |
+| paired, fixed nodes | **1.010x** | 1.97x | effect ~50x null — usable |
+
+The match instrument could never have resolved 6% — its noise floor was ~4x the
+claim it produced.
+
+**Timing-INDEPENDENT confirmation** (hardware counters, no wall clock at all):
+
+| | cycles/node | instr/node | IPC |
+|---|---|---|---|
+| ARCHON | 5,975.8 | 7,359.0 | 1.231 |
+| SF | 3,058.3 | 4,360.1 | 1.426 |
+| ratio | **1.954x** | 1.688x | 0.863x |
+
+Three independent lines converge: paired nps **2.02x**, cycles/node **1.954x**,
+the ORIGINAL ledger measurement from another session **1.92x**.
+
+Still held loosely: 20 calib fens at fixed nodes; other position mixes shift the
+ratio (studies see 1.33x instr/node on their bench frame vs 1.688x here). And
+nps is throughput, NOT strength.
+
 Tools: `tools/paired_nps.py` (valid). `tools/nps_from_pgn.py` (**match nps —
 do NOT use for engine-speed comparisons**; kept only for describing throughput
 actually realised in a given match). Raw: `engines/runs/nps-ratio/`,
