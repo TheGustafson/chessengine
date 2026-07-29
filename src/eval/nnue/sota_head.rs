@@ -19,6 +19,7 @@
 //! Behind the `sota` cargo feature; the default build never compiles it, so the
 //! depth-6 bench stays 548978.
 
+use super::aligned::Aligned;
 use super::sota_simd::{activate, l1_dequant, l1_dot, l2_tail};
 use crate::types::Color;
 
@@ -163,7 +164,7 @@ pub fn output_bucket(piece_count: usize) -> usize {
 #[derive(Debug)]
 pub struct SkipLane {
     /// `[BUCKETS][L1]` i8, bucket-major contiguous.
-    pub q: Box<[i8]>,
+    pub q: Aligned<i8>,
     /// Per-bucket dequantisation scale, `[BUCKETS]`.
     pub scale: Box<[f32]>,
 }

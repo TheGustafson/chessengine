@@ -60,6 +60,7 @@
 //! compile-time architecture constants from [`super::sota_head`] and
 //! [`super::sota_features`].
 
+use super::aligned::Aligned;
 use super::sota_features::{ACC, HALFKA_DIMS, THREAT_DIMS};
 use super::sota_head::{self, BUCKETS, L1, L2, L3, SotaHead};
 use std::error::Error;
@@ -94,17 +95,17 @@ const _: () = assert!(
 #[derive(Debug)]
 pub struct SotaNetwork {
     /// HalfKAv2_hm FT weights, feature-major: `[HALFKA_DIMS · ACC]` i16.
-    pub halfka_weights: Box<[i16]>,
+    pub halfka_weights: Aligned<i16>,
     /// Shared FT bias: `[ACC]` i16 (seeds the HalfKA accumulator; threats seed 0).
-    pub ft_bias: Box<[i16]>,
+    pub ft_bias: Aligned<i16>,
     /// FullThreats FT weights, feature-major: `[THREAT_DIMS · ACC]` i8.
     /// Empty if the net has no threats channel.
-    pub threat_weights: Box<[i8]>,
+    pub threat_weights: Aligned<i8>,
     /// T6c FT PSQT skip table, row-major `[rows · BUCKETS]` i32 with the HalfKA
     /// rows first, then the threat rows (module docs). Empty when the net has
     /// no PSQ1 section — every psqt path is then inert and the eval is
     /// bit-identical to a pre-T6c build.
-    pub psqt_weights: Box<[i32]>,
+    pub psqt_weights: Aligned<i32>,
     /// The multi-layer bucketed head (owns its own weight boxes).
     pub head: SotaHead,
 }
@@ -426,9 +427,9 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
 
     // Threats FT weights: i8[THREAT_DIMS · ACC], feature-major (if present).
     let threat_weights = if has_threats {
-        read_i8s(payload, &mut cur, THREAT_DIMS * ACC)
+        read_i8s_aligned(payload, &mut cur, THREAT_DIMS * ACC)
     } else {
-        Vec::new().into_boxed_slice()
+        Aligned::from_iter_len(0, std::iter::empty())
     };
 
     // L1 weights: i8[BUCKETS · L2 · L1], bucket-major, group-interleaved.
@@ -461,7 +462,7 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     let psqt_weights = if rest.len() >= 4 && rest[0..4] == PSQT_MAGIC {
         parse_psqt_section(rest, has_threats)?
     } else {
-        Vec::new().into_boxed_slice()
+        Aligned::from_iter_len(0, std::iter::empty())
     };
     // D47V: optional SKP1 trailer after PSQ1 (or directly, on a psqt-less
     // net). Empty slice = no skip lane = the pre-D47V eval, bit-identical.
@@ -521,7 +522,10 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
 /// the `FC_0_OUTPUTS + 1`-th row of the sparse matmul it already runs.
 fn quantise_skip_lane(w: &[f32]) -> sota_head::SkipLane {
     let hl = w.len() / BUCKETS;
-    let mut q = vec![0i8; w.len()].into_boxed_slice();
+    // Built as a plain `Vec` and converted once: the i8 lane is read by
+    // `skip_dot_i8` as 32-byte loads, so it is one of the tables that has to
+    // start on a cache line (perf study 20 §5).
+    let mut q = vec![0i8; w.len()];
     let mut scale = vec![0.0f32; BUCKETS].into_boxed_slice();
     for b in 0..BUCKETS {
         let row = &w[b * hl..(b + 1) * hl];
@@ -536,7 +540,7 @@ fn quantise_skip_lane(w: &[f32]) -> sota_head::SkipLane {
             }
         }
     }
-    sota_head::SkipLane { q, scale }
+    sota_head::SkipLane { q: q.into(), scale }
 }
 
 fn parse_skip_section(sec: &[u8]) -> Result<Box<[f32]>, SotaNnueError> {
@@ -590,7 +594,7 @@ fn parse_skip_section(sec: &[u8]) -> Result<Box<[f32]>, SotaNnueError> {
 /// equal this build's [`BUCKETS`], the row count must equal the net's feature
 /// space (`HALFKA_DIMS` plus `THREAT_DIMS` iff threats), and the full
 /// `rows · BUCKETS` i32 table must be present.
-fn parse_psqt_section(sec: &[u8], has_threats: bool) -> Result<Box<[i32]>, SotaNnueError> {
+fn parse_psqt_section(sec: &[u8], has_threats: bool) -> Result<Aligned<i32>, SotaNnueError> {
     if sec.len() < PSQT_HEADER_LEN {
         return Err(SotaNnueError::TooShort {
             need: PSQT_HEADER_LEN,
@@ -825,7 +829,7 @@ pub fn serialize_v2(net: &SotaNetwork) -> Vec<u8> {
 // the element index before and panics on the slice range now. Section sizes are
 // validated upstream; this is a speed patch, not an error-model change.
 
-fn read_i16s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i16]> {
+fn read_i16s(payload: &[u8], cur: &mut usize, count: usize) -> Aligned<i16> {
     let end = *cur + 2 * count;
     let out = payload[*cur..end]
         .chunks_exact(2)
@@ -844,7 +848,17 @@ fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
     out
 }
 
-fn read_i32s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i32]> {
+/// [`read_i8s`] into a cache-line-aligned buffer — for the FullThreats FT
+/// table, whose 1280 B rows `i8_deltas_into` walks as whole `zmm` loads.
+/// See `super::aligned` for why the base pointer decides every one of them.
+fn read_i8s_aligned(payload: &[u8], cur: &mut usize, count: usize) -> Aligned<i8> {
+    let end = *cur + count;
+    let out = Aligned::from_iter_len(count, payload[*cur..end].iter().map(|&b| b as i8));
+    *cur = end;
+    out
+}
+
+fn read_i32s(payload: &[u8], cur: &mut usize, count: usize) -> Aligned<i32> {
     let end = *cur + 4 * count;
     let out = payload[*cur..end]
         .chunks_exact(4)
@@ -883,11 +897,11 @@ pub(crate) mod tests {
         let small_i8 = |prng: &mut Prng| -> i8 { (prng.rand64() % 121) as i8 - 60 };
         let small_f32 = |prng: &mut Prng| -> f32 { ((prng.rand64() % 201) as f32 - 100.0) * 0.01 };
 
-        let halfka_weights: Box<[i16]> = (0..HALFKA_DIMS * ACC)
+        let halfka_weights: Aligned<i16> = (0..HALFKA_DIMS * ACC)
             .map(|_| small_i16(&mut prng))
             .collect();
-        let ft_bias: Box<[i16]> = (0..ACC).map(|_| small_i16(&mut prng)).collect();
-        let threat_weights: Box<[i8]> = (0..THREAT_DIMS * ACC)
+        let ft_bias: Aligned<i16> = (0..ACC).map(|_| small_i16(&mut prng)).collect();
+        let threat_weights: Aligned<i8> = (0..THREAT_DIMS * ACC)
             .map(|_| small_i8(&mut prng))
             .collect();
         let l1_weights: Box<[i8]> = (0..BUCKETS * L2 * L1)
@@ -905,7 +919,7 @@ pub(crate) mod tests {
             halfka_weights,
             ft_bias,
             threat_weights,
-            psqt_weights: Vec::new().into_boxed_slice(),
+            psqt_weights: Vec::new().into(),
             head: SotaHead {
                 l1_weights,
                 l1_biases,
@@ -926,13 +940,13 @@ pub(crate) mod tests {
     /// A no-threats variant: tests the `flags=0` path.
     fn test_net_no_threats() -> SotaNetwork {
         let mut full = test_net_with_threats();
-        full.threat_weights = Vec::new().into_boxed_slice();
+        full.threat_weights = Vec::new().into();
         full
     }
 
     /// A deterministic T6c PSQT skip table covering the full feature space
     /// (`pub(crate)` so the context tests can arm the same fixture).
-    pub(crate) fn test_psqt_table() -> Box<[i32]> {
+    pub(crate) fn test_psqt_table() -> Aligned<i32> {
         let mut prng = Prng::new(0x9541_7AB1_E000);
         ((0..(HALFKA_DIMS + THREAT_DIMS) * BUCKETS).map(|_| (prng.rand64() % 20001) as i32 - 10000))
             .collect()
@@ -995,9 +1009,7 @@ pub(crate) mod tests {
     #[test]
     fn round_trip_psqt_no_threats() {
         let mut net = test_net_no_threats();
-        net.psqt_weights = test_psqt_table()[..HALFKA_DIMS * BUCKETS]
-            .to_vec()
-            .into_boxed_slice();
+        net.psqt_weights = test_psqt_table()[..HALFKA_DIMS * BUCKETS].to_vec().into();
         let bytes = serialize_v2(&net);
         let back = load_v2_bytes(&bytes).expect("halfka-only psqt net loads");
         assert_eq!(net, back);

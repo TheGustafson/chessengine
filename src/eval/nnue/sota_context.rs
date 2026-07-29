@@ -652,7 +652,7 @@ mod tests {
     fn leaked_halfka_only_test_net() -> &'static SotaNetwork {
         use super::super::sota_loader::tests::test_net_with_threats_pub;
         let mut net = test_net_with_threats_pub();
-        net.threat_weights = Vec::new().into_boxed_slice();
+        net.threat_weights = Vec::new().into();
         Box::leak(Box::new(net))
     }
 
