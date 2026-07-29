@@ -1670,3 +1670,54 @@ quantum on 18/24 positions) with the only PERFECT null in this file (24/24
 bit-identical node counts under `nodestime`). Not yet run: the box has been at
 20 engine processes / 4.8 GB with 4 GB free, which is the pre-OOM condition
 that has already cost one global OOM. It runs when the SF swap finishes.
+
+## TM: THE ARM IS NOT WHAT ITS NAME SAYS (2026-07-28) — mechanism corrected
+
+Both directions ran at `nodestime=100`, 406 games, same book, same binary.
+
+| arm | Elo | n |
+|---|---|---|
+| `C=+2048` (spend MORE when contested) | **−64.9 ± 20.9** | 406, FINAL |
+| `C=−2048` (spend LESS when contested) | **+60.4 ± 30.4** | 180, running |
+
+Validity checked on the plus arm before reading it: **0 forfeits, mean 148
+plies** (the broken TM run of earlier today was 11 plies and 100% time losses
+behind a grep for the wrong string). The instrument is measuring time
+management, not harness failure.
+
+**But the arm is mis-named, and crediting it to contestedness would be wrong.**
+The factor is `clamp(1 − 2·contested, 0.6, 2.4)`, which SATURATES at the floor
+once `contested ≥ 0.2`, i.e. for any `|eval| ≤ 320` — essentially every real
+position. Proof rather than argument: the deterministic node-count instrument
+gives **byte-identical** counts for `KNEE=400` and `KNEE=30000` (median 0.689,
+identical range and spread), so removing the contestedness keying entirely
+changes nothing.
+
+⇒ The `C=−2048` arm is a **near-global 0.6× per-move time multiplier**. The
+mechanism under test is NOT contestedness; it is how much clock we spend per
+move.
+
+**And that makes the result suspicious, not exciting.** Spending 0.6× as much
+time should be WEAKER. Our TM constants are a faithful SF transcription and
+heavily tuned upstream, so a blunt global 0.6× buying ~60 Elo points at a
+defect in how we measure, not a free lunch:
+
+**Prime suspect — the instrument.** Under `nodestime` the clock is derived from
+node counts. If any part of the time manager reads REAL elapsed time while the
+rest reads simulated time, allocation is internally inconsistent and the engine
+over-spends — a real bug, but one that exists ONLY under `nodestime`, which
+would make the whole +60 an artifact of the measuring device.
+
+**Next arm, and it is a control, not a follow-up:** the same configuration at a
+REAL time control on a quiet box. Persists ⇒ real Elo and our TM over-allocates.
+Vanishes ⇒ the instrument lied, exactly as the 44-position forced-move
+instrument did twice in one night.
+
+DO NOT ship a TM change off the nodestime number alone.
+
+## SF NET SWAP — FINAL
+
+**+90.7 ± 16.9 Elo over 380 scored games** (62.8%, Ptnml [1, 10, 72, 105, 2]).
+Stockfish `eca43a97`'s weights in ARCHON's search at fixed 110k nodes, port
+gated 47/47 bit-exact against their own binary, frame measured at 0.5126 with
+LS and median agreeing to 0.6%.
