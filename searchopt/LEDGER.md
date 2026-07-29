@@ -171,6 +171,52 @@ This makes the conclusion STRONGER, not weaker: if part of SF's nps is cheap eva
 search at 2.13 Mnps compares even better against their search, and the bottleneck is even
 more clearly our eval cost.
 
+**★ THE CAVEAT IS NOW A MEASUREMENT, AND IT INVERTS THE HEADLINE (2026-07-29).**
+Real contested gauntlet, 18 games, TC 10+0.1, Hash 64, concurrency 2, UHO book,
+D48X net, canonical `archon-s17pgo` (studies 12-17 merged). Per-move `n=`/`nps=`
+from the PGN, aggregated as **Sum(nodes)/Sum(time)** -- not a mean over moves,
+which would weight a 0.05 s book reply like a 3 s think:
+
+| engine | aggregate Mnps | median Mnps | moves |
+|---|---|---|---|
+| SF18 (**dual-net**) | **1.482** | 1.230 | 397 |
+| **ARCHON + D48X** | **1.091** | 1.190 | 866 |
+| SF `eca43a97` (**single-net**) | **1.028** | 1.024 | 409 |
+
+| ratio | value |
+|---|---|
+| **ARCHON / SF-eca43a97** | **1.061x — WE ARE FASTER** |
+| SF18 / SF-eca43a97 | 1.442x (this IS the smallnet inflation) |
+| SF18 / ARCHON | 1.359x |
+
+**Against the Stockfish architecture we actually reference, ARCHON is 6% FASTER
+in raw throughput.** The single-net premise is verified in source, not assumed:
+`eca43a97:src/evaluate.cpp` contains NO `use_smallnet` and the binary exposes
+zero `EvalFileSmall` options, while `sf_18` has both. **Stockfish REMOVED the
+dual-net design between the tag and our reference revision** -- they took the
+same nps-for-eval-quality trade we did.
+
+So the old "1.92x slower" framing compared us against a build whose cheap evals
+inflate its node count by a measured **1.44x**. It was never a like-for-like
+speed gap.
+
+**Caveats, and the first is not small:**
+- **n=18 games and the ratios were still moving.** SF18/SF-eca went 1.700x
+  (n=8) -> 1.442x (n=18), so that one is NOT settled. ARCHON/SF-eca moved only
+  1.033x -> 1.061x, which is why the parity conclusion is the one worth
+  quoting and SF18's exact figure is not.
+- **Contested by design** (trainer running + 2 concurrent games). Engines were
+  interleaved in the same games so contention is roughly symmetric, but that is
+  an argument, not a measurement -- a more bandwidth-bound engine loses more.
+- **NPS IS NOT STRENGTH.** A node is not a fixed unit of work across engines;
+  SF may search more selectively. This is throughput only, and the D48X
+  promotion ruling (search cannot yet exploit the eval) is untouched by it.
+- **Do NOT compare these absolutes to the 0.54 Mnps above.** Different TC,
+  different position mix (real games incl. cheap endgames vs one movetime
+  probe), different contention. Only the within-run ratio is valid.
+
+Tool: `tools/nps_from_pgn.py`. Raw: `engines/runs/nps-ratio/`.
+
 **Idea for whoever owns the net (NOT searchopt work, recorded so it is not lost):**
 adaptive eval cost is a *conditioning axis* — precisely the shape A3 says is the only
 thing that can still move anything, since every global level is already at a local
