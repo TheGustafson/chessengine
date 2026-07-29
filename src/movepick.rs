@@ -598,11 +598,15 @@ impl MovePicker {
         // by an enemy piece strictly cheaper than each of our types (cumulative
         // union — the same structure the old local `threats_by_lesser`
         // produced, now read O(1) from the precomputed per-node map).
-        let by_pawn = board.piece_threats(PieceType::Pawn);
-        let by_minor = by_pawn
-            | board.piece_threats(PieceType::Knight)
-            | board.piece_threats(PieceType::Bishop);
-        let by_rook = by_minor | board.piece_threats(PieceType::Rook);
+        // ONE fill check for all five reads (perf study 13 §4.4): the four
+        // `piece_threats` calls and the `all_threats` below were five separate
+        // `ensure_threats` calls, of which four could only ever find the cache
+        // already filled.
+        let (all_threats, by_type) = board.threat_map();
+        let by_pawn = by_type[PieceType::Pawn as usize];
+        let by_minor =
+            by_pawn | by_type[PieceType::Knight as usize] | by_type[PieceType::Bishop as usize];
+        let by_rook = by_minor | by_type[PieceType::Rook as usize];
         let threat: [Bitboard; 6] = [
             Bitboard::EMPTY, // Pawn: no cheaper attacker
             by_pawn,         // Knight
@@ -617,7 +621,7 @@ impl MovePicker {
         // square attacking one earns the offense bonus.
         let them = us.flip();
         let occ = board.all_occupancy();
-        let undefended = board.occupancy(them) & !board.all_threats();
+        let undefended = board.occupancy(them) & !all_threats;
         let eq = board.pieces(them, PieceType::Queen);
         let er = eq | board.pieces(them, PieceType::Rook);
         let eb = er | board.pieces(them, PieceType::Bishop);
@@ -692,6 +696,10 @@ impl MovePicker {
         #[cfg(feature = "policy")]
         let policy_weight = crate::policy::quiet_weight();
 
+        // One `st()` for all ~30 scored quiets (perf study 13 §4.6) instead of
+        // one per quiet: `pt` varies per move, so the query cannot be hoisted
+        // at the call site.
+        let check_squares = board.check_squares_all();
         let base = self.end_captures;
         for (i, &m) in list.iter().enumerate() {
             let pc = board
@@ -712,7 +720,8 @@ impl MovePicker {
 
             // Check bonus, gated so a checking quiet that hangs material earns
             // nothing (design/09 §3.7).
-            if board.check_squares(pt).contains(m.to()) && board.see_ge(m, QUIET_CHECK_SEE_MARGIN())
+            if check_squares[pt as usize].contains(m.to())
+                && board.see_ge(m, QUIET_CHECK_SEE_MARGIN())
             {
                 value += QUIET_CHECK_BONUS();
             }

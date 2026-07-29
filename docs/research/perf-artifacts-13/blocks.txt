@@ -1,0 +1,32 @@
+block              ARCHON       SF    delta
+search                690      672      +17
+movepick              740      734       +6
+eval head             572      572       -0
+acc fold             1232     1099     +133
+threat gen            718      686      +33
+eval glue             376      171     +205
+make/unmake           661      302     +359
+board queries         493      380     +113
+movegen               110       47      +63
+histories             331      230     +101
+tt                     56       81      -25
+startup/io             91       62      +29
+unbucketed            238       23     +215
+TOTAL                6307     5059    +1248
+
+-- ARCHON unbucketed, top 12 --
+      36.9  chessengine::eval::nnue::sota_simd::avx512::l2_tail
+      26.7  <chessengine::search::Worker>::stat_score
+      24.8  chessengine::eval::nnue::active_policy_head
+      22.3  <chessengine::board::Board>::move_piece
+      21.6  0x0000000000189e76
+      19.7  core::fmt::write
+      17.8  <chessengine::tt::TtWriter>::write
+      15.9  0x0000000000189e7d
+      13.4  0x0000000000189e68
+      12.7  0x0000000000189e6f
+       7.6  chessengine::eval::evaluate
+       6.4  <alloc::string::String as core::fmt::Write>::write_char
+-- SF unbucketed, top 12 --
+      18.8  Stockfish::Search::SearchManager::check_time(Stockfish::Search::Worker&)
+       4.1  Stockfish::(anonymous namespace)::value_from_tt(int, int, int)

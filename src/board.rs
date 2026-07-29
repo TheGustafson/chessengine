@@ -634,6 +634,24 @@ impl Board {
         self.threats.by_type.get()[pt as usize]
     }
 
+    /// The WHOLE Wave-G threat map behind ONE fill check: `(all, by_type)`.
+    ///
+    /// Perf study 13 §4.4. [`MovePicker::init_quiets`] used to build its
+    /// escape/entry tiers with four [`piece_threats`](Self::piece_threats)
+    /// calls plus one [`all_threats`](Self::all_threats), i.e. **five**
+    /// `ensure_threats` calls per node — and `ensure_threats` is not inlined,
+    /// so each one re-materialised `self.st()` (a `Vec::last` with its own
+    /// emptiness test and panic edge; 29.07 `st()` calls per node,
+    /// `counters-r2.txt`), re-read the `Cell` key and re-compared it. Four of
+    /// the five could only ever observe a filled cache, because the first call
+    /// filled it. Both `Cell`s are read here in one go.
+    ///
+    /// [`MovePicker::init_quiets`]: crate::movepick::MovePicker
+    pub fn threat_map(&self) -> (Bitboard, [Bitboard; 6]) {
+        self.ensure_threats();
+        (self.threats.all.get(), self.threats.by_type.get())
+    }
+
     /// `color`'s sliders pinning a piece of the OTHER color against its own
     /// king (doc 04 §3.5): the snipers whose sole blocker is an enemy piece.
     pub fn pinners(&self, color: Color) -> Bitboard {
@@ -646,6 +664,20 @@ impl Board {
         self.st().check_squares[pt as usize]
     }
 
+    /// All six check-square sets in one [`Board::st`] materialisation.
+    ///
+    /// Perf study 13 §4.6: the quiet scorer asks `check_squares(pt)` once per
+    /// scored quiet — ~30 per node — with `pt` varying, so the query cannot be
+    /// hoisted by hand at the call site and LLVM only hoists `st()` out of the
+    /// loop when nothing in the body could have invalidated it. `st()` is
+    /// `Vec::last().expect(...)`: a length load, an emptiness test and a panic
+    /// edge, 29.07 times per node across the engine (`counters-r2.txt`).
+    /// Reading the whole 48-byte block once makes the hoist a property of the
+    /// source instead of a hope about the optimiser.
+    pub fn check_squares_all(&self) -> [Bitboard; 6] {
+        self.st().check_squares
+    }
+
     /// The piece captured by the last made move (None at the root state).
     pub fn captured_piece(&self) -> Option<Piece> {
         self.st().captured
@@ -654,9 +686,18 @@ impl Board {
     /// `color`'s king square. Panics on king-less boards — every position
     /// the engine operates on has exactly one king per side.
     pub fn king_square(&self, color: Color) -> Square {
-        self.pieces(color, PieceType::King)
-            .lsb()
-            .expect("king must exist")
+        // Perf study 13 §4.5. Every position this engine can construct has both
+        // kings — `from_fen` validates it and no move can capture one — but
+        // `lsb().expect(...)` states that twice for the optimizer to disbelieve
+        // twice: `lsb` tests the board for zero and returns an `Option`, and
+        // `expect` re-tests it. Two panic edges on a query that runs several
+        // times per node (`set_check_info` alone takes three). `trailing_zeros`
+        // of a non-zero u64 is already in `0..64`; the mask says so to LLVM, so
+        // `Square::new`'s own `assert!` folds away too, and the `debug_assert`
+        // below is where the invariant actually lives.
+        let bb = self.pieces(color, PieceType::King).to_u64();
+        debug_assert!(bb != 0, "king must exist");
+        Square::new((bb.trailing_zeros() as u8) & 63)
     }
 
     /// Squares that must be empty for `right`'s castling move
@@ -1990,6 +2031,89 @@ mod tests {
                 union |= b.piece_threats(pt);
             }
             assert_eq!(union, b.all_threats(), "piece_threats union for {fen}");
+        }
+    }
+
+    /// Perf study 13 §4.4. [`Board::threat_map`] exists to serve five reads
+    /// from ONE `ensure_threats`, so the thing that can break is the fill:
+    /// every board here is FRESH, i.e. its `ThreatCache` is cold, and
+    /// `threat_map` is the FIRST threat query made on it. Drop the
+    /// `ensure_threats()` from `threat_map` and every assertion below reads the
+    /// default-constructed all-zero cache and fails.
+    ///
+    /// It also pins the agreement with the per-type accessors it replaced, so a
+    /// swapped or truncated return value cannot pass either.
+    #[test]
+    fn threat_map_on_a_cold_cache_agrees_with_the_per_type_accessors() {
+        let fens = [
+            crate::fen::START_FEN,
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "6k1/8/8/8/3q4/8/8/4K3 b - - 0 1",
+        ];
+        for fen in fens {
+            // Cold board #1: threat_map is the first threat query.
+            let cold = Board::from_fen(fen).unwrap();
+            let (all, by_type) = cold.threat_map();
+            assert_eq!(all, threat_oracle(&cold), "threat_map().0 for {fen}");
+            assert_ne!(all, Bitboard::EMPTY, "no position here is threat-free");
+
+            // Cold board #2: the per-type accessors, each filling for itself.
+            let warm = Board::from_fen(fen).unwrap();
+            for pt in PieceType::ALL {
+                assert_eq!(
+                    by_type[pt as usize],
+                    warm.piece_threats(pt),
+                    "threat_map().1[{pt:?}] for {fen}"
+                );
+            }
+            assert_eq!(all, warm.all_threats(), "all_threats agreement for {fen}");
+        }
+    }
+
+    /// Perf study 13 §4.6: same argument for the six check-square sets — the
+    /// quiet scorer reads them from one `st()` instead of one per scored quiet.
+    /// A stale, zeroed or mis-ordered return fails against the accessor it
+    /// replaced, on a position where five of the six sets are non-empty.
+    #[test]
+    fn check_squares_all_agrees_with_the_per_type_accessor() {
+        for fen in [
+            crate::fen::START_FEN,
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        ] {
+            let b = Board::from_fen(fen).unwrap();
+            let all = b.check_squares_all();
+            let mut nonempty = 0;
+            for pt in PieceType::ALL {
+                assert_eq!(
+                    all[pt as usize],
+                    b.check_squares(pt),
+                    "check_squares_all[{pt:?}] for {fen}"
+                );
+                nonempty += usize::from(!all[pt as usize].is_empty());
+            }
+            assert!(
+                nonempty >= 4,
+                "{fen} must exercise several piece types, got {nonempty}"
+            );
+        }
+    }
+
+    /// Perf study 13 §4.5: [`Board::king_square`] dropped `lsb().expect(...)`
+    /// for `trailing_zeros() & 63`. The mask is the part that can be wrong —
+    /// `& 62` or `& 31` still compiles and still returns a plausible square —
+    /// so pin the exact square for kings on both colours across the index
+    /// range, including index 63 (h8), which any narrower mask corrupts.
+    #[test]
+    fn king_square_is_exact_across_the_index_range() {
+        for (fen, white, black) in [
+            (crate::fen::START_FEN, Square::E1, Square::E8),
+            ("7k/8/8/8/8/8/8/K7 w - - 0 1", Square::A1, Square::H8),
+            ("k7/8/8/8/8/8/8/7K w - - 0 1", Square::H1, Square::A8),
+            ("8/8/8/3k4/4K3/8/8/8 w - - 0 1", Square::E4, Square::D5),
+        ] {
+            let b = Board::from_fen(fen).unwrap();
+            assert_eq!(b.king_square(Color::White), white, "white king in {fen}");
+            assert_eq!(b.king_square(Color::Black), black, "black king in {fen}");
         }
     }
 
