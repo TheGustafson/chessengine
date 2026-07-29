@@ -131,10 +131,26 @@ def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
     # restarted run regenerates it and skips what the crashed run consumed.
     sched = sched[skip_batches:]
 
-    def _map_recs(recs) -> dict:
+    # D48Y per-corpus transform. `shuffle_chunk` pools records from SEVERAL
+    # corpora and shuffles them, so a batch is NOT single-corpus and the
+    # transform params must ride along PER RECORD, not per batch.
+    _pct = getattr(cfg, "per_corpus_target", None)
+    if _pct is not None:
+        if len(_pct) != len(bins):
+            raise ValueError(
+                f"per_corpus_target has {len(_pct)} entries for {len(bins)} corpora")
+        _off = np.asarray([o for o, _ in _pct], dtype=np.float32)
+        _scl = np.asarray([b for _, b in _pct], dtype=np.float32)
+
+    def _map_recs(recs, src=None) -> dict:
+        if _pct is not None and src is not None:
+            t_off, t_scl = _off[src], _scl[src]
+        else:
+            t_off = getattr(cfg, "target_offset", 0.0)
+            t_scl = cfg.scale
         out = map_batch(recs, wdl=cfg.wdl, score_multiplier=cfg.score_multiplier,
-                        scale=cfg.scale, policy=policy, threats=threats,
-                        target_offset=getattr(cfg, "target_offset", 0.0))
+                        scale=t_scl, policy=policy, threats=threats,
+                        target_offset=t_off)
         if policy and legal_mask:
             if str(legal_mask) == "ids":
                 out["pol_legal"] = legal_move_ids(recs, out["pol_target_id"])
@@ -144,7 +160,8 @@ def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
 
     def map_one(job) -> dict:
         c, i = job
-        return _map_recs(bins[c].slice(i * cfg.batch_size, cfg.batch_size))
+        recs = bins[c].slice(i * cfg.batch_size, cfg.batch_size)
+        return _map_recs(recs, np.full(len(recs), c, dtype=np.int32))
 
     # ---- position-level shuffle buffer (v1.5, 2026-07-26) -----------------
     # Without it a batch is one CONTIGUOUS 8192-record window, so records i and
@@ -156,12 +173,16 @@ def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
     # ~= 33 MB, well under the mask arrays we already hold.
     if shuffle_chunk and workers == 0:
         for c0 in range(0, len(sched), shuffle_chunk):
+            chunk = sched[c0:c0 + shuffle_chunk]
             recs = np.concatenate([bins[c].slice(i * cfg.batch_size, cfg.batch_size)
-                                   for c, i in sched[c0:c0 + shuffle_chunk]])
+                                   for c, i in chunk])
+            src = np.concatenate([np.full(cfg.batch_size, c, dtype=np.int32)
+                                  for c, _ in chunk])
             perm = np.random.default_rng(seed + c0).permutation(len(recs))
-            recs = recs[perm]
+            recs, src = recs[perm], src[perm]
             for b0 in range(0, len(recs) - cfg.batch_size + 1, cfg.batch_size):
-                yield _map_recs(recs[b0:b0 + cfg.batch_size])
+                yield _map_recs(recs[b0:b0 + cfg.batch_size],
+                                src[b0:b0 + cfg.batch_size])
         return
 
     if workers == 0:
@@ -189,13 +210,18 @@ def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
                     recs = np.concatenate(
                         [bins[c].slice(i * cfg.batch_size, cfg.batch_size)
                          for c, i in chunk])
-                    recs = recs[np.random.default_rng(seed + ci).permutation(len(recs))]
-                    slices = [recs[b:b + cfg.batch_size]
+                    src = np.concatenate(
+                        [np.full(cfg.batch_size, c, dtype=np.int32)
+                         for c, _ in chunk])
+                    perm = np.random.default_rng(seed + ci).permutation(len(recs))
+                    recs, src = recs[perm], src[perm]
+                    slices = [(recs[b:b + cfg.batch_size], src[b:b + cfg.batch_size])
                               for b in range(0, len(recs) - cfg.batch_size + 1,
                                              cfg.batch_size)]
                     # bounded in-flight mapped batches, exactly like the
                     # non-shuffled path
-                    for b in _stream(pool, slices, prefetch, _map_recs, stop):
+                    for b in _stream(pool, slices, prefetch,
+                                    lambda t: _map_recs(t[0], t[1]), stop):
                         if stop.is_set():
                             break
                         q.put(b)

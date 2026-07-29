@@ -192,6 +192,21 @@ class ArchSpec:
     # Accumulator-branched head projections (D48W / gen-2 sketch 2026-07-27).
     pol_proj: int = 0            # 0 = legacy polmove-on-L2
     dis_proj: int = 0            # 0 = no disagreement head
+    # R2 (nnue-architecture-study-2026-07-28 §4.4/§7): SF `eca43a97`'s tail —
+    # DUAL ACTIVATION + inter-layer concat skip. Our tail is the `sf_18`-era
+    # shape: one activation per layer, and the neck's only route to the output
+    # is fc_1's CReLU. SF master hands every hidden unit forward as BOTH
+    # SqrCReLU(x) and CReLU(x), and lets fc_2 read layer 0's pair directly
+    # (eca43a97:src/nnue/nnue_architecture.h:56-67 —
+    #   ac_sqr_0/ac_0 <FC_0_OUTPUTS>, fc_1 <FC_0_OUTPUTS*2, FC_1_OUTPUTS>,
+    #   ac_sqr_1/ac_1 <FC_1_OUTPUTS>, fc_2 <FC_0_OUTPUTS*2 + FC_1_OUTPUTS*2, 1>).
+    # Shape only: SF's per-layer WeightScaleBits(+1) shifts are int8
+    # quantisation bookkeeping and have no f32 analogue.
+    # L1 and L2 are UNCHANGED (l1_dot untouched); only l2w/l3w grow:
+    #   l2w (l2,   B*l3) -> (2*l2,        B*l3)
+    #   l3w (l3,   B)    -> (2*l2 + 2*l3, B)
+    # False = today's single-activation tail, byte-for-byte.
+    dual_tail: bool = False
 
     @classmethod
     def full(cls) -> "ArchSpec":
@@ -204,14 +219,18 @@ class ArchSpec:
     # merge_factoriser comment in d40:262-266 pins "feature-major
     # w[feature*HL + neuron]").
     def param_shapes(self) -> dict[str, tuple[int, ...]]:
+        # dual_tail widens only the two tail fan-ins (see the field comment):
+        # fc_1 reads the neck's dual activation, fc_2 reads BOTH layers' pairs.
+        l2_fan_in = 2 * self.l2 if self.dual_tail else self.l2
+        l3_fan_in = 2 * self.l2 + 2 * self.l3 if self.dual_tail else self.l3
         shapes = {
             "l0_pstw": (HALFKA_DIMS, self.hl),
             "l0_pstb": (self.hl,),
             "l1w": (self.hl, self.num_buckets * self.l2),
             "l1b": (self.num_buckets * self.l2,),
-            "l2w": (self.l2, self.num_buckets * self.l3),
+            "l2w": (l2_fan_in, self.num_buckets * self.l3),
             "l2b": (self.num_buckets * self.l3,),
-            "l3w": (self.l3, self.num_buckets),
+            "l3w": (l3_fan_in, self.num_buckets),
             "l3b": (self.num_buckets,),
         }
         if not self.halfka_only:
@@ -233,7 +252,8 @@ class ArchSpec:
                 shapes["pol_projb"] = (self.pol_proj,)
                 shapes["polmovew"] = (self.pol_proj, POLICY_VOCAB)
             else:
-                shapes["polmovew"] = (self.l2, POLICY_VOCAB)
+                # legacy policy-on-L2 reads hl2, which dual_tail widens to 2*l2
+                shapes["polmovew"] = (l2_fan_in, POLICY_VOCAB)
             shapes["polmoveb"] = (POLICY_VOCAB,)
         if self.dis_proj:
             # T11 seed: disagreement/uncertainty head off the accumulator,
@@ -287,6 +307,9 @@ class TrainConfig:
     # MLE fits on our corpora: uho a=175.5 scale=71.9, fishpack a=160.2
     # scale=33.2 (tools/nnue/fit_target_transform.py).
     target_offset: float = 0.0
+    # D48Y: [[offset, scale], ...] aligned with the mix order. When set it
+    # OVERRIDES target_offset/scale per record. None = unchanged behaviour.
+    per_corpus_target: tuple | None = None
     # Frame of a DISTILL TEACHER trained with a different target transform
     # (set them to the TEACHER run's target_offset/scale). When offset > 0,
     # the teacher's predicted expected score is mapped through the inverse

@@ -542,7 +542,11 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
     score = recs["score"].astype(np.float32)
     result = recs["result"].astype(np.float32) / 2.0
     s = score * score_multiplier
-    if target_offset > 0.0:
+    # target_offset/scale may be SCALARS (one global transform) or per-record
+    # ARRAYS (D48Y: one fitted draw-aware transform PER CORPUS, since the
+    # score->outcome relation is a property of the labelling process and the
+    # position population, not of chess).
+    if np.ndim(target_offset) > 0 or target_offset > 0.0:
         # clip the exponent: float32 exp overflows past ~88.7, which happens
         # for |score| > 88.7*scale - offset (~6.7k at scale 76.9). The overflow
         # is BENIGN (inf -> 1/(1+inf) -> 0, the correct limit, verified finite
