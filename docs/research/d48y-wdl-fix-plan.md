@@ -564,3 +564,47 @@ should land near 400 / 1.78 ≈ **225**, subject to the empirical loop.
 
 Training healthy: sb42, value 0.008154, 194k pos/s. Heldout improving
 monotonically — sb10 0.013963, sb20 0.013867, sb30 0.013743.
+
+### Perf study 12 — VERIFIED, GATED, MERGED (2026-07-29)
+
+**First study since #10 to land anything.** 1.4300× → **1.3733×** vs
+`stockfish-eca43a97` (6367.1 → 6114.6 i/n), −252.5 i/n = 13.2% of the gap.
+
+**I ran the gate myself rather than trusting the report** (it touches three
+files under `src/eval/nnue/`, so the bench pin alone is blind to it):
+
+- `Bench: 587683` ✓
+- eval hash `5ca978e0…0b38` ✓
+- d13 nodes `1922947` ✓
+
+All three unchanged. That triple IS the node-identity proof — five changes
+across the accumulator, SIMD kernels, threats and movepick, and behaviour is
+bit-for-bit identical. Merge verified not to clobber the live D48Y trainer
+fixes; trainer undisturbed throughout (sb50→53 during the gate + PGO builds,
+memory held 5–6 GB, no OOM).
+
+**What landed:** AVX-512 fold tile 8→20 registers (−314.4), `_into` kernel
+offset-hoist removal (−114.1), threat ray-fan reuse (−44.4), movepick reverse
+attack fan (−33.8), HalfKA backward-fill (−2.5).
+
+**More valuable than the delta: three "large remaining items" from studies
+10–11 were CLOSED BY MEASUREMENT.** By `noinline`-splitting Stockfish's OWN
+eval it priced their transform+propagate at 572 i/n vs our 556 — **our head is
+at parity and study 11's top-ranked item was empty.** Same for the search block
+(606 vs 617) and movepick (730 vs 734). Deterministic counters on both engines:
+evals/node equivalent (0.4315 vs 0.4412), and **we already fold FEWER rows**
+(0.929×). The gap is accumulator PASSES, not rows.
+
+**Rejected on evidence, not vibes:** merging the two accumulators (~350 i/n)
+would cost our 0.167× threat-refresh rate — an advantage SF's own source says
+it knows about and cannot exploit.
+
+**It did not reach 1.1× and said so without declaring it impossible** — the
+behaviour the corrected brief demanded. ~327 of the remaining 1217 i/n is the
+1280-vs-1024 accumulator width (a retrain, not a perf lever); the rest is a
+tail with no single item above ~150 i/n.
+
+Self-reported failures, which is why I trust the rest: it destroyed its own
+tree with `git checkout -- src/` (recovered, byte-for-byte), its probe deltas
+overstate PGO deltas ~2× so only the PGO panel is quoted, and D33 review found
+both semantic changes had NO test that could fail — now mutation-verified.
