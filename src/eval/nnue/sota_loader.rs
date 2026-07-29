@@ -433,13 +433,13 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     };
 
     // L1 weights: i8[BUCKETS · L2 · L1], bucket-major, group-interleaved.
-    let l1_weights = read_i8s(payload, &mut cur, BUCKETS * L2 * L1);
+    let l1_weights = read_i8s_aligned(payload, &mut cur, BUCKETS * L2 * L1);
 
     // L1 biases: f32[BUCKETS · L2].
     let l1_biases = read_f32s(payload, &mut cur, BUCKETS * L2);
 
     // L2 weights: f32[BUCKETS · L2 · L3].
-    let l2_weights = read_f32s(payload, &mut cur, BUCKETS * L2 * L3);
+    let l2_weights = read_f32s_aligned(payload, &mut cur, BUCKETS * L2 * L3);
 
     // L2 biases: f32[BUCKETS · L3].
     let l2_biases = read_f32s(payload, &mut cur, BUCKETS * L3);
@@ -868,6 +868,20 @@ fn read_i32s(payload: &[u8], cur: &mut usize, count: usize) -> Aligned<i32> {
     out
 }
 
+/// [`read_f32s`] into a cache-line-aligned buffer — for the L2 weight block,
+/// which `l2_tail` reads as whole `zmm` operands (perf study 20 arm 5).
+fn read_f32s_aligned(payload: &[u8], cur: &mut usize, count: usize) -> Aligned<f32> {
+    let end = *cur + 4 * count;
+    let out = Aligned::from_iter_len(
+        count,
+        payload[*cur..end]
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])),
+    );
+    *cur = end;
+    out
+}
+
 fn read_f32s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[f32]> {
     let end = *cur + 4 * count;
     let out = payload[*cur..end]
@@ -904,11 +918,11 @@ pub(crate) mod tests {
         let threat_weights: Aligned<i8> = (0..THREAT_DIMS * ACC)
             .map(|_| small_i8(&mut prng))
             .collect();
-        let l1_weights: Box<[i8]> = (0..BUCKETS * L2 * L1)
+        let l1_weights: Aligned<i8> = (0..BUCKETS * L2 * L1)
             .map(|_| small_i8(&mut prng))
             .collect();
         let l1_biases: Box<[f32]> = (0..BUCKETS * L2).map(|_| small_f32(&mut prng)).collect();
-        let l2_weights: Box<[f32]> = (0..BUCKETS * L2 * L3)
+        let l2_weights: Aligned<f32> = (0..BUCKETS * L2 * L3)
             .map(|_| small_f32(&mut prng))
             .collect();
         let l2_biases: Box<[f32]> = (0..BUCKETS * L3).map(|_| small_f32(&mut prng)).collect();
