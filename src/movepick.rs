@@ -642,11 +642,45 @@ impl MovePicker {
         let c6 = hist.cont_ref(self.cont_hist[5]);
         let ply = self.ply;
         let low_ply_plane = (ply < LOW_PLY_SIZE).then(|| &hist.low_ply[ply]);
-        // Hoist the slider-table `LazyLock` deref out of the per-quiet loop
-        // (CLAUDE.md hot-loop rule): the offense term calls `attacks()` for
-        // every non-pawn quiet, and the free function re-derefs `tables()` on
-        // each call.
+        // Hoist the slider-table `LazyLock` deref (CLAUDE.md hot-loop rule).
+        // Since perf study 12 §5 the offense term no longer calls `attacks()`
+        // per quiet — it builds one reverse fan per piece type below — so this
+        // is now paid once per `init_quiets` and read only inside that fan.
         let att_tables = crate::attacks::tables();
+
+        // Perf study 12 §5 — the offense term, turned inside out.
+        //
+        // The test is `attacks(pt, to, occ) & vulnerable[pt] != 0`, which cost
+        // ONE magic-bitboard lookup per scored quiet (Stockfish's `score<QUIETS>`
+        // has no analogue at all — this is an ARCHON original, D30). The attack
+        // relation is SYMMETRIC under a fixed occupancy: `sq ∈ attacks(pt, to,
+        // occ)` iff `to ∈ attacks(pt, sq, occ)`, because both say "sq and to lie
+        // on a pt-ray and every square strictly between them is empty in occ".
+        // So the union of the *reverse* fans over the (few) vulnerable enemy
+        // squares is a per-piece-type bitboard, and the per-move test collapses
+        // to one `contains`. Lookups drop from ~one per quiet to
+        // Σ_pt popcount(vulnerable[pt]) — and those sets are nested and usually
+        // near-empty. Bit-identical by the symmetry above; measured −34 i/n,
+        // node-identical.
+        //
+        // Pawns are the one asymmetric case: `target ∈ pawn_attacks(us, to)`
+        // iff `to ∈ pawn_attacks(them, target)` — the reverse fan flips colour.
+        let offense_from: [Bitboard; 6] = std::array::from_fn(|i| {
+            let targets = vulnerable[i];
+            if targets.is_empty() {
+                return Bitboard::EMPTY;
+            }
+            let pt = PieceType::ALL[i];
+            let mut fan = Bitboard::EMPTY;
+            for sq in targets {
+                fan |= if pt == PieceType::Pawn {
+                    crate::attacks::pawn_attacks(them, sq)
+                } else {
+                    att_tables.attacks(pt, sq, occ)
+                };
+            }
+            fan
+        });
 
         // Experiment (design/17 Thrust II): one policy forward per node, reused
         // by every quiet below. Owned (borrows `self.policy_net` only for the
@@ -692,17 +726,10 @@ impl MovePicker {
             // Offense (D30): moving to a square from which the piece attacks a
             // vulnerable enemy earns a modest reward. `occ` is the pre-move
             // occupancy (a heuristic approximation — the mover still sits on
-            // `from`); acceptable for ordering.
-            let targets = vulnerable[pt as usize];
-            if !targets.is_empty() {
-                let att = if pt == PieceType::Pawn {
-                    crate::attacks::pawn_attacks(us, m.to())
-                } else {
-                    att_tables.attacks(pt, m.to(), occ)
-                };
-                if !(att & targets).is_empty() {
-                    value += pt.value() * QUIET_OFFENSE_FACTOR();
-                }
+            // `from`); acceptable for ordering. Precomputed as a reverse fan
+            // above, so this is one bit test instead of a magic lookup.
+            if offense_from[pt as usize].contains(m.to()) {
+                value += pt.value() * QUIET_OFFENSE_FACTOR();
             }
 
             // Low-ply history (plies 0..4 only), damped toward the leaves.
@@ -1582,6 +1609,60 @@ mod tests {
             quiet_score(&defended, &fresh, nc6, 7),
             BASE,
             "a DEFENDED enemy is not a vulnerable target — the offense bonus is disarmed"
+        );
+    }
+
+    /// Perf study 12 §5 rewrote the offense term as a REVERSE attack fan. The
+    /// knight case above cannot catch the two things that rewrite actually
+    /// changed, because a knight's fan is both occupancy- and colour-independent:
+    ///
+    ///  * the **pawn colour flip** — the reverse fan of `pawn_attacks(us, to)`
+    ///    is `pawn_attacks(them, target)`, not `pawn_attacks(us, target)`;
+    ///  * **slider occupancy symmetry** — the reverse fan must see the same
+    ///    blockers the forward lookup did.
+    ///
+    /// Writing `us` for `them`, or fanning with an empty occupancy, passes every
+    /// other test in the suite. This is the only place either is pinned.
+    #[test]
+    fn offense_reverse_fan_pins_the_pawn_flip_and_slider_blockers() {
+        const BASE: i32 = 2 * -5 + 2 * -1262 + 5 * -552; // −5294, as above
+        let fresh = Histories::new();
+
+        // PAWN. b3–b4 attacks the undefended rook on c5: b4 ∈ pawn_attacks(us=White, c5)
+        // forward, i.e. c5 ∈ pawn_attacks(them=Black, b4) reversed. The reverse fan
+        // of c5 for a White pawn mover is pawn_attacks(Black, c5) = {b4, d4}.
+        // Fanning with `us` gives pawn_attacks(White, c5) = {b6, d6} and silently
+        // withholds the bonus.
+        let pawn = board("7k/8/8/2r5/8/1P6/8/K7 w - - 0 1");
+        assert!(
+            !pawn.all_threats().contains(Square::C5),
+            "the lone rook must be undefended for the term to arm"
+        );
+        assert_eq!(
+            quiet_score(&pawn, &fresh, Move::normal(Square::B3, Square::B4), 7),
+            BASE + PieceType::Pawn.value() * QUIET_OFFENSE_FACTOR(),
+            "a pawn attacking an undefended rook must earn the offense bonus"
+        );
+
+        // SLIDER, clear ray. Re1–d1 attacks the undefended queen on d8 down an
+        // empty d-file.
+        let open = board("3q3k/8/8/8/8/8/8/K3R3 w - - 0 1");
+        assert!(!open.all_threats().contains(Square::D8));
+        assert_eq!(
+            quiet_score(&open, &fresh, Move::normal(Square::E1, Square::D1), 7),
+            BASE + PieceType::Rook.value() * QUIET_OFFENSE_FACTOR(),
+            "a rook attacking an undefended queen down a clear file earns the bonus"
+        );
+
+        // SLIDER, blocked. The same move with a pawn on d5: the reverse fan
+        // `rook_attacks(d8, occ)` stops at d5 and never reaches d1, exactly as
+        // the forward `rook_attacks(d1, occ)` stopped at d5 and never reached d8.
+        // An occupancy-blind fan would wrongly pay the bonus here.
+        let blocked = board("3q3k/8/8/3p4/8/8/8/K3R3 w - - 0 1");
+        assert_eq!(
+            quiet_score(&blocked, &fresh, Move::normal(Square::E1, Square::D1), 7),
+            BASE,
+            "a blocked ray must NOT earn the offense bonus"
         );
     }
 

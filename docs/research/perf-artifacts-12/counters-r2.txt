@@ -1,0 +1,24 @@
+# perf study 12 — deterministic counter panel, ROUND 2 (after the landed changes)
+# ARCHON target-fast12 (thin-LTO native, sota,arch-d48x), bench 16 1 30000 wl50, nodes=1,500,780
+--- perfcount12r2 ---
+HEAD_FWD                     647556      0.4315/node   (evals/node — unchanged, SF 0.4412)
+HKA_FOLD                    1405776      0.9367/node
+HKA_ROWS                    3196189      2.1297/node
+HKA_COPY                       6306      0.0042/node
+HKA_REFRESH                  241725      0.1611/node   <- was 0.3167; SF eca43a97 = 0.1673
+HKA_REFRESH_ROWS            1360251      0.9064/node   <- was 1.5183; SF = 0.9268
+HKA_BACKFILL                  79879      0.0532/node   (new: reverse folds that buy the above)
+HKA_BACKFILL_ROWS            174390      0.1162/node
+THR_FOLD                    1298185      0.8650/node
+THR_ROWS                    6075247      4.0481/node
+THR_COPY                     503456      0.3355/node   (zero-row parent copies, 2560 B each)
+
+DERIVED
+  HalfKA rows/node   2.1297 + 0.9064 = 3.0361   (SF 2.2585 + 0.9268 = 3.1853)  -> 0.953x
+  threat rows/node                     4.0481   (SF 3.8005 + 0.9626 = 4.7631)  -> 0.850x
+  ALL rows/node                        7.0842   (SF                    7.9484) -> 0.891x
+  accumulator passes/node
+     HKA  0.9367 + 0.0042 + 0.1611 = 1.1020
+     THR  0.8650 + 0.3355          = 1.2005
+     TOTAL                           2.3025     (SF 0.9982 + 0.1673 = 1.1655)  -> 1.975x
+  ... x lanes (1280 vs 1024): 2947 vs 1194 lane-copies/node                    -> 2.47x

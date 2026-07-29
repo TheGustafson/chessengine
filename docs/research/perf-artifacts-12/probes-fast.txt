@@ -1,0 +1,20 @@
+fast=landed-3                         instr=34,490,275,961 nodes= 5,001,562 per_node=  6895.9 brs_per_node=  796.6 hash=5ca978e012da1bb0
+fast=landed-3-null                    instr=34,490,300,193 nodes= 5,001,562 per_node=  6895.9 brs_per_node=  796.6 hash=5ca978e012da1bb0
+fast=regs20-tile                      instr=32,917,836,706 nodes= 5,001,562 per_node=  6581.5 brs_per_node=  740.9 hash=5ca978e012da1bb0
+fast=regs40-tile                      instr=37,957,614,391 nodes= 5,001,562 per_node=  7589.2 brs_per_node=  828.8 hash=5ca978e012da1bb0
+fast=regs20-confirm                   instr=32,917,839,524 nodes= 5,001,562 per_node=  6581.5 brs_per_node=  740.9 hash=5ca978e012da1bb0
+fast=reconstructed                    instr=32,917,835,050 nodes= 5,001,562 per_node=  6581.5 brs_per_node=  740.9 hash=5ca978e012da1bb0
+fast=+slider-fan-reuse                instr=32,695,849,684 nodes= 5,001,562 per_node=  6537.1 brs_per_node=  728.6 hash=5ca978e012da1bb0
+fast=+cuckoo-other-filter             instr=33,135,616,982 nodes= 5,001,624 per_node=  6625.0 brs_per_node=  732.7 hash=5ca978e012da1bb0
+
+# --- arms measured and REJECTED (kept for the record) ---
+# regs40-tile          7589.2  REJECTED: 40 zmm accumulators spill (+1007.7)
+# +cuckoo-other-filter 6625.0  REJECTED: node count CHANGED 5,001,562 -> 5,001,624.
+#                              Transcribing Stockfish's `other` prefilter into
+#                              upcoming_repetition (eca43a97:src/position.cpp:1560)
+#                              is a FIDELITY change, not a speed change: our
+#                              version probes the cuckoo table unconditionally and
+#                              therefore detects cycles SF's filter rejects.
+#                              Needs an Elo test, not a probe. Instructions rose too.
+fast=+tile-asserts                    instr=32,695,839,752 nodes= 5,001,562 per_node=  6537.1 brs_per_node=  728.6 hash=5ca978e012da1bb0
+fast=post-review-fixes                instr=32,701,541,514 nodes= 5,001,562 per_node=  6538.3 brs_per_node=  728.8 hash=5ca978e012da1bb0

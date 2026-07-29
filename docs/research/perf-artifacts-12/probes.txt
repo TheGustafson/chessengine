@@ -1,0 +1,6 @@
+probe=base-main                      instr=34,744,783,338 nodes= 5,001,562 per_node=  6946.8 brs_per_node=  843.2 hash=5ca978e012da1bb0
+probe=null-rerun-1                   instr=34,743,796,494 nodes= 5,001,562 per_node=  6946.6 brs_per_node=  843.1 hash=5ca978e012da1bb0
+probe=null-rerun-2                   instr=34,743,279,003 nodes= 5,001,562 per_node=  6946.5 brs_per_node=  843.1 hash=5ca978e012da1bb0
+probe=dehoist-into-avx512            instr=34,173,006,170 nodes= 5,001,562 per_node=  6832.5 brs_per_node=  807.6 hash=5ca978e012da1bb0
+probe=dehoist+offense-fan            instr=34,004,064,610 nodes= 5,001,562 per_node=  6798.7 brs_per_node=  791.1 hash=5ca978e012da1bb0
+probe=+backfill-halfka               instr=33,991,688,551 nodes= 5,001,562 per_node=  6796.2 brs_per_node=  786.3 hash=5ca978e012da1bb0

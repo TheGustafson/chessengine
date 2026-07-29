@@ -1,0 +1,36 @@
+diff --git a/src/bench.rs b/src/bench.rs
+index 72b0a83..2fa4902 100644
+--- a/src/bench.rs
++++ b/src/bench.rs
+@@ -306,6 +306,7 @@ fn run_to(params: &BenchParams, out: &mut impl Write) -> io::Result<BenchResult>
+         nodes * 1000 / elapsed_ms.max(1)
+     )?;
+ 
++    crate::perfcount12::dump(nodes);
+     Ok(BenchResult { nodes, elapsed_ms })
+ }
+ 
+diff --git a/src/eval/nnue/sota_head.rs b/src/eval/nnue/sota_head.rs
+index 00f99b8..680b4aa 100644
+--- a/src/eval/nnue/sota_head.rs
++++ b/src/eval/nnue/sota_head.rs
+@@ -426,6 +426,7 @@ impl SotaHead {
+         activate_ft(pst, threat, stm, &mut ft);
+         let mut nnz = [0u16; L1 / 4];
+         let count = find_nnz(&ft, &mut nnz);
++        crate::perfcount12::bump(&crate::perfcount12::HEAD_FWD, 1);
+         let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
+         self.propagate_l1(&ft, &nnz[..count], bucket, l1_out);
+         let l1 = l1_out;
+diff --git a/src/lib.rs b/src/lib.rs
+index 41a39c8..f53a9d8 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -19,6 +19,7 @@
+ 
+ pub mod attacks;
+ pub mod bench;
++pub mod perfcount12;
+ pub mod bitboard;
+ pub mod board;
+ pub mod cuckoo;

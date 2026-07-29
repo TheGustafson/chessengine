@@ -1,0 +1,65 @@
+//! perf study 12 — TEMPORARY deterministic rate counters for the eval layer
+//! (head + HalfKA). Added, measured, and reverted (the diff is kept as
+//! `docs/research/perf-artifacts-12/counters12.patch`).
+//!
+//! Study 11 retracted `perf annotate`'s per-opcode attribution (wrong by 1.44x
+//! on this box). Its replacement rule is "count it, do not sample it", and its
+//! open item #2 was "the HalfKA fold was never counted deterministically".
+//! This module is that count, plus the head-side rates (`evals/node`,
+//! `nnz groups/eval`) needed to convert any per-eval kernel saving into i/n.
+//!
+//! Not behind a cargo feature on purpose: it is meant to be reverted.
+
+use std::sync::atomic::{AtomicU64, Ordering};
+
+macro_rules! counters {
+    ($($name:ident),+ $(,)?) => {
+        $(pub static $name: AtomicU64 = AtomicU64::new(0);)+
+        const ALL: &[(&str, &AtomicU64)] = &[$((stringify!($name), &$name)),+];
+    };
+}
+
+counters! {
+    // --- head ---
+    HEAD_FWD,          // forward/forward_into calls (big net)
+    HEAD_NNZ,          // nonzero 4-byte FT groups summed over those calls
+    // --- HalfKA incremental fold ---
+    HKA_FOLD,          // perspective-child folds that reached the kernel
+    HKA_ADD,           // add rows handed to the i16 kernel
+    HKA_SUB,           // sub rows handed to the i16 kernel
+    HKA_COPY,          // perspective-child folds that were a pure parent copy
+    // --- HalfKA finny refresh ---
+    HKA_REFRESH,       // finny_refresh_into calls
+    HKA_REFRESH_WARM,  // ... of which hit a populated cache slot
+    HKA_REFRESH_ADD,   // warm-path add rows
+    HKA_REFRESH_SUB,   // warm-path sub rows
+    HKA_REFRESH_COLD,  // cold slot builds
+    HKA_REFRESH_COLD_ROWS,
+    // --- gate ---
+    EVAL_ENTRY,        // SotaContext::evaluate calls
+}
+
+#[inline]
+pub fn bump(c: &AtomicU64, n: u64) {
+    c.fetch_add(n, Ordering::Relaxed);
+}
+
+/// Print every counter, raw and per node, to stderr.
+pub fn dump(nodes: u64) {
+    let n = nodes.max(1) as f64;
+    eprintln!("--- perfcount12 (nodes={nodes}) ---");
+    for (name, c) in ALL {
+        let v = c.load(Ordering::Relaxed);
+        eprintln!("{name:<22} {v:>14}  {:>10.4}/node", v as f64 / n);
+    }
+    let fwd = HEAD_FWD.load(Ordering::Relaxed).max(1);
+    eprintln!(
+        "DERIVED nnz_groups/eval {:.4}   hka_delta_rows/node {:.4}   hka_refresh_rows/node {:.4}",
+        HEAD_NNZ.load(Ordering::Relaxed) as f64 / fwd as f64,
+        (HKA_ADD.load(Ordering::Relaxed) + HKA_SUB.load(Ordering::Relaxed)) as f64 / n,
+        (HKA_REFRESH_ADD.load(Ordering::Relaxed)
+            + HKA_REFRESH_SUB.load(Ordering::Relaxed)
+            + HKA_REFRESH_COLD_ROWS.load(Ordering::Relaxed)) as f64
+            / n
+    );
+}

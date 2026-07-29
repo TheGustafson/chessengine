@@ -1,0 +1,21 @@
+# pstat8  rounds=5 nodes=300000 fens=tools/nnue/calib/wl50.fens
+# date=2026-07-29T01:58:30-04:00  uptime= 01:58:30 up 1 day, 13:31,  1 user,  load average: 3.47, 3.08, 3.61
+# arms:
+#   archon12:./bin12/archon-s12final @BENCH@ engines/canonical/net.cenn
+#   sfeca:./engines/bin/stockfish-eca43a97 @BENCH@
+#   archon11:./engines/bin/archon-s10-final @BENCH@ engines/canonical/net.cenn
+round=1 arm=archon12 nodes=15001568 nps=1201952 instructions=91730018058 cycles=65743974793 branches=10015525536 branch_misses=307873841
+round=1 arm=sfeca nodes=15008494 nps=1841307 instructions=66823566158 cycles=42760318338 branches=5442963213 branch_misses=296446436
+round=1 arm=archon11 nodes=15001568 nps=1190411 instructions=95517316864 cycles=66217656782 branches=11014544761 branch_misses=332689511
+round=2 arm=archon12 nodes=15001568 nps=1195820 instructions=91694309394 cycles=65983173735 branches=10010424697 branch_misses=308329185
+round=2 arm=sfeca nodes=15008494 nps=1827852 instructions=66823566061 cycles=43075083837 branches=5442963240 branch_misses=296282923
+round=2 arm=archon11 nodes=15001568 nps=1195629 instructions=95515894145 cycles=65994381052 branches=11014339307 branch_misses=332437558
+round=3 arm=archon12 nodes=15001568 nps=1199837 instructions=91730039918 cycles=65739341244 branches=10015525695 branch_misses=307653577
+round=3 arm=sfeca nodes=15008494 nps=1832091 instructions=66823565856 cycles=43123928974 branches=5442963211 branch_misses=295396182
+round=3 arm=archon11 nodes=15001568 nps=1193632 instructions=95517318084 cycles=65960526900 branches=11014544221 branch_misses=333313375
+round=4 arm=archon12 nodes=15001568 nps=1192683 instructions=91729084307 cycles=66074257129 branches=10015390037 branch_misses=308712809
+round=4 arm=sfeca nodes=15008494 nps=1847881 instructions=66823561439 cycles=42634197177 branches=5442962298 branch_misses=295681358
+round=4 arm=archon11 nodes=15001568 nps=1198208 instructions=95515888438 cycles=65812953670 branches=11014339706 branch_misses=332219978
+round=5 arm=archon12 nodes=15001568 nps=1215883 instructions=91725821254 cycles=64846162715 branches=10014926578 branch_misses=308303670
+round=5 arm=sfeca nodes=15008494 nps=1811088 instructions=66823559948 cycles=43458814904 branches=5442961943 branch_misses=297187678
+round=5 arm=archon11 nodes=15001568 nps=1185332 instructions=95514457920 cycles=66506428387 branches=11014130378 branch_misses=334395985

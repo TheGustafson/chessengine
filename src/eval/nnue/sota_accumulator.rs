@@ -213,8 +213,11 @@ impl<'a> HalfkaContext<'a> {
         // copy — hand back the parent's accumulator instead. Sound because a
         // null move changes no placement (identical features, identical king
         // squares), so the parent entry IS this ply's accumulator. Only
-        // fully-unfolded EMPTY entries alias; partially-computed ones (a
-        // one-sided span fold passed through) are materialized and used as-is.
+        // fully-unfolded EMPTY entries alias; partially-computed ones are
+        // materialized and used as-is. Two things produce those: a one-sided
+        // span fold passing through, and `compute`'s backward fill, which marks
+        // EMPTY-dirty plies computed by plain copy. Both are value-identical to
+        // the ancestor this walk would otherwise have returned.
         let mut target = ply;
         while target > 0
             && !self.stack[target].computed[0]
@@ -241,15 +244,77 @@ impl<'a> HalfkaContext<'a> {
             ancestor -= 1;
         }
         let king = Piece::new(perspective, crate::types::PieceType::King);
-        if ((ancestor + 1)..=ply).any(|child| {
+        // The LAST king move in the span, if any. Every ply from there to `ply`
+        // shares the post-move king square, so all of them are reachable from
+        // the refreshed leaf by plain reverse folds.
+        let last_king_move = ((ancestor + 1)..=ply).rev().find(|&child| {
             self.stack[child]
                 .dirty
                 .subs()
                 .iter()
                 .any(|&(piece, _)| piece == king)
-        }) {
+        });
+        if let Some(king_ply) = last_king_move {
             self.finny_refresh_into(board, perspective, ply);
             self.stack[ply].computed[p] = true;
+            // Perf study 12 §6 — BACKWARD FILL, the thing Stockfish does and we
+            // did not: `AccumulatorStack::evaluate_side` /
+            // `backward_update_incremental`,
+            // `eca43a97:src/nnue/nnue_accumulator.cpp:86-101, 138-154`.
+            // Refreshing only the
+            // leaf leaves every ply between the king move and this node
+            // uncomputed, so the NEXT sibling below any of them walks its
+            // ancestor search straight past the king move and refreshes from
+            // scratch again.
+            //
+            // Measured: 0.3167 finny refreshes per node against `eca43a97`'s
+            // 0.1673 — 1.89x — on a feature set whose refresh TRIGGER is
+            // identical (`HalfKAv2_hm::requires_refresh` is "this perspective's
+            // king moved", exactly ours). After this change: **0.1611
+            // refreshes and 0.9064 refresh rows per node, against Stockfish's
+            // 0.1673 and 0.9268** — parity. (The 3.7% is measured on two
+            // different search trees, so parity is the claim, not an edge.)
+            //
+            // Reconstructing the ancestors from the leaf costs one reverse fold
+            // each (measured 0.0532 per node) and makes them computed, so the
+            // siblings take the incremental path. Bit-identical: a reverse fold
+            // subtracts exactly the rows the forward fold added, and wrapping
+            // i16 addition is exactly invertible.
+            let weights = self.weights;
+            let psqt_weights = self.psqt_weights;
+            let king_square = board.king_square(perspective);
+            for child in (king_ply..ply).rev() {
+                // `child` is reconstructed from `child + 1` by undoing the move
+                // that LED to `child + 1`.
+                let dirty = self.stack[child + 1].dirty;
+                // The whole loop bucket-indexes on ONE king square, which is
+                // sound only because `king_ply` is the LAST king move in the
+                // span. Pin it: the natural next optimisation — refreshing on a
+                // king BUCKET change rather than any king move — would silently
+                // break this and compute wrong HalfKA indices.
+                debug_assert!(
+                    !dirty.subs().iter().any(|&(piece, _)| piece == king),
+                    "backward span must not contain a king move"
+                );
+                let (before, after) = self.stack.split_at_mut(child + 1);
+                let entry = &mut before[child];
+                let source = &after[0];
+                if dirty.adds().is_empty() && dirty.subs().is_empty() {
+                    entry.acc[p] = source.acc[p];
+                    entry.psqt[p] = source.psqt[p];
+                } else {
+                    apply_dirty_directed::<false>(
+                        weights,
+                        psqt_weights,
+                        entry,
+                        source,
+                        &dirty,
+                        perspective,
+                        king_square,
+                    );
+                }
+                entry.computed[p] = true;
+            }
             return;
         }
         let king_square = board.king_square(perspective);
@@ -436,6 +501,39 @@ fn apply_dirty_into(
     perspective: Color,
     king: Square,
 ) {
+    apply_dirty_directed::<true>(
+        weights,
+        psqt_weights,
+        entry,
+        parent,
+        dirty,
+        perspective,
+        king,
+    )
+}
+
+/// [`apply_dirty_into`] in either direction. `FORWARD` is the ordinary
+/// parent → child fold; `!FORWARD` reconstructs a **parent** from its already
+/// computed child by swapping the add and sub lists — the inverse of the same
+/// move, which is exact because the fold is a sum of whole rows and wrapping
+/// i16 addition is invertible.
+///
+/// The backward direction is what lets [`HalfkaContext::compute`] fill the
+/// plies BETWEEN a king move and the refreshed leaf (perf study 12 §6, after
+/// `AccumulatorStack::backward_update_incremental` at `eca43a97`
+/// `src/nnue/nnue_accumulator.cpp`). `king` is the CURRENT king square in both
+/// directions, which is sound precisely because the backward span starts at the
+/// king move: no ply inside it moves the king again, so every HalfKA index in
+/// the span is bucketed on the same square.
+fn apply_dirty_directed<const FORWARD: bool>(
+    weights: &[i16],
+    psqt_weights: &[i32],
+    entry: &mut Entry,
+    parent: &Entry,
+    dirty: &DirtyPiece,
+    perspective: Color,
+    king: Square,
+) {
     let p = perspective as usize;
     let mut adds = [0usize; 2];
     let mut subs = [0usize; 2];
@@ -445,21 +543,14 @@ fn apply_dirty_into(
     for (i, &(piece, square)) in dirty.subs().iter().enumerate() {
         subs[i] = halfka_index(perspective, piece, square, king);
     }
-    apply_i16_deltas_into(
-        &mut entry.acc[p],
-        &parent.acc[p],
-        weights,
-        &adds[..dirty.adds().len()],
-        &subs[..dirty.subs().len()],
-    );
+    let (a, s) = if FORWARD {
+        (&adds[..dirty.adds().len()], &subs[..dirty.subs().len()])
+    } else {
+        (&subs[..dirty.subs().len()], &adds[..dirty.adds().len()])
+    };
+    apply_i16_deltas_into(&mut entry.acc[p], &parent.acc[p], weights, a, s);
     if !psqt_weights.is_empty() {
-        psqt_fold(
-            &mut entry.psqt[p],
-            &parent.psqt[p],
-            psqt_weights,
-            &adds[..dirty.adds().len()],
-            &subs[..dirty.subs().len()],
-        );
+        psqt_fold(&mut entry.psqt[p], &parent.psqt[p], psqt_weights, a, s);
     }
 }
 
@@ -526,6 +617,98 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The BACKWARD FILL (perf study 12 §6) reconstructs every ply between a
+    /// king move and the refreshed leaf. **`incremental_and_finny_match_refresh`
+    /// cannot reach that code**: it calls `current_full` at every ply, so the
+    /// span is always length 1, `king_ply == ply`, and the fill loop is empty.
+    /// This test walks a line WITHOUT evaluating, so the span is long and
+    /// contains a king move, then checks every reconstructed ancestor against a
+    /// from-scratch refresh of the position at that ply.
+    ///
+    /// It fails if the reverse fold does not swap adds/subs, if the fill stops
+    /// at the wrong ply, or if the king square used to bucket the reconstructed
+    /// indices is wrong.
+    #[test]
+    fn backward_fill_reconstructs_the_span_exactly() {
+        let weights = weights();
+        let bias: Vec<i16> = (0..ACC).map(|i| (i % 19) as i16 - 9).collect();
+        let psqt = psqt_table();
+
+        // Kings are free to move on both sides, and there is enough material
+        // that the plies after the king move still change the accumulator.
+        let start = "r3k2r/pppq1ppp/2n1bn2/3pp3/3PP3/2N1BN2/PPPQ1PPP/R3K2R w KQkq - 0 1";
+
+        // Play a line where SOME ply moves a king, evaluating only at the end.
+        // Try several seeds so at least one line actually contains a king move
+        // in the unevaluated span (asserted below).
+        let mut exercised = 0usize;
+        for seed0 in [0xA11C_E5EEu64, 0xB0B0_CAFE, 0xF00D_BEEF, 0x1234_5678] {
+            let mut context = HalfkaContext::new(&weights, &bias, &psqt);
+            let mut board = Board::from_fen(start).expect("valid fen");
+            context.refresh_root(&board);
+
+            let mut boards = vec![board.clone()];
+            let mut seed = seed0;
+            let mut saw_king_move = false;
+            const SPAN: usize = 6;
+            for ply in 0..SPAN {
+                let mut moves = MoveList::new();
+                generate_legal(&board, &mut moves);
+                if moves.is_empty() {
+                    break;
+                }
+                seed ^= seed << 13;
+                seed ^= seed >> 7;
+                seed ^= seed << 17;
+                let m = moves[seed as usize % moves.len()];
+                if board.piece_on(m.from()).map(|p| p.piece_type) == Some(PieceType::King) {
+                    saw_king_move = true;
+                }
+                let dirty = DirtyPiece::from_move(&board, m);
+                // PUSH ONLY — no `current_full`, so nothing in the span is
+                // computed and the leaf's ancestor walk runs all the way back.
+                context.push(ply, dirty);
+                let gives_check = board.gives_check(m);
+                board.make_move(m, gives_check);
+                boards.push(board.clone());
+            }
+            if !saw_king_move || boards.len() <= SPAN {
+                continue;
+            }
+            exercised += 1;
+
+            // Evaluate ONLY at the leaf. This is what triggers the refresh and
+            // the backward fill.
+            let leaf = boards.len() - 1;
+            let _ = context.current_full(&board, leaf);
+
+            // Every ply in the span must now agree with a from-scratch refresh
+            // of ITS OWN position. `current_full` at an already-computed ply is
+            // a pure read, so this reads back exactly what the fill wrote.
+            for (ply, b) in boards.iter().enumerate() {
+                let (got, got_psqt) = context.current_full(b, ply);
+                let (got, got_psqt) = (*got, *got_psqt);
+                for perspective in Color::ALL {
+                    assert_eq!(
+                        got[perspective as usize],
+                        refresh_pst(&weights, &bias, b, perspective),
+                        "backward-filled accumulator wrong at ply {ply} (seed {seed0:#x})"
+                    );
+                    assert_eq!(
+                        got_psqt[perspective as usize],
+                        refresh_psqt_halfka(&psqt, b, perspective),
+                        "backward-filled psqt wrong at ply {ply} (seed {seed0:#x})"
+                    );
+                }
+            }
+        }
+        assert!(
+            exercised > 0,
+            "no seed produced a king move inside the unevaluated span — the test \
+             would silently cover nothing"
+        );
     }
 
     /// A net without a PSQ1 table keeps all-zero sums forever (the inert

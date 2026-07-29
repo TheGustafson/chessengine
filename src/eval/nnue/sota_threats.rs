@@ -349,9 +349,24 @@ fn record_square_touch(
 ) {
     let occ = r.occ;
 
+    // The two ray fans from `s`. Section 2 needs them unconditionally, and
+    // section 1's outgoing set for a SLIDER is exactly one of them — perf
+    // study 12 §8: computing the outgoing set with `tab.attacks(pt, s, occ)`
+    // re-ran the identical magic lookup a few lines before `ratt`/`batt` did
+    // (twice over, for a queen). Hoisting them above the match and reusing
+    // them is bit-identical: `AttackTables::attacks` IS `rook_attacks` /
+    // `bishop_attacks` / their union for R/B/Q (`src/attacks.rs`).
+    let ratt = tab.rook_attacks(s, occ);
+    let batt = tab.bishop_attacks(s, occ);
+    let qatt = ratt | batt;
+
     // --- 1. Outgoing: what `p` threatens from `s`. Kings are never attackers.
     match p.piece_type {
         PieceType::King => {}
+        PieceType::Rook => record_targets(buf, r, p, s, ratt, add),
+        PieceType::Bishop => record_targets(buf, r, p, s, batt, add),
+        PieceType::Queen => record_targets(buf, r, p, s, qatt, add),
+        PieceType::Knight => record_targets(buf, r, p, s, knight_attacks(s), add),
         PieceType::Pawn => {
             record_targets(buf, r, p, s, pawn_attacks(p.color, s), add);
             // Push relation: only a pawn directly in front is threatened
@@ -369,7 +384,6 @@ fn record_square_touch(
                 });
             }
         }
-        pt => record_targets(buf, r, p, s, tab.attacks(pt, s, occ), add),
     }
 
     // --- 2. X-ray ripple: sliders whose ray reaches `s`. Each such slider `sl`
@@ -378,9 +392,6 @@ fn record_square_touch(
     // sl; adding p blocks it). The ray fans are pre-masked with the slider
     // boards, so only real sliders are ever iterated — the mailbox form walked
     // every occupied square on both fans and resolved each one to find out.
-    let ratt = tab.rook_attacks(s, occ);
-    let batt = tab.bishop_attacks(s, occ);
-    let qatt = ratt | batt;
     let queens = r.typed(PieceType::Queen);
     for sl_sq in ratt & r.rook_movers() {
         let pt = if queens.contains(sl_sq) {
