@@ -344,3 +344,51 @@ What is unchanged, and is the load-bearing part: `engines/bin/stockfish18`
 our threat channel against a 31%-larger workload. Those comparisons are
 mismatched and their threat numbers do not stand. `eca43a97` is the correct
 target BECAUSE it matches us exactly.
+
+### State log — tick @ sb18: EXPORT PATH PROVEN (was the last unknown)
+
+D48Y sb18/300, value 0.008287, 189k pos/s, GPU 97%. Heldout sb10:
+value 0.013963, **ema 0.012647** — down from the smoke's ema 0.020507, i.e. the
+net is shedding the old-frame warm start as predicted.
+
+**`quant.bin` is NOT a CENN** (zero header vs `CEN2`), so packing is a real
+step. `netpack.py` takes the arch from ENVIRONMENT VARIABLES and defaults to
+`D40_ACC=768` — run bare against a 1280 net it dies with
+`unrecognized D40 trailing payload (56966008 bytes)`. The recipe is in
+`tools/nnue/runs/d48x_watch.sh` (what D48X itself used).
+
+**PROVEN on the smoke checkpoint — output is byte-for-byte the same SIZE as the
+canonical D48X CENN (138,283,640), same header, and the engine loads it:**
+
+```bash
+env D40_ACC=1280 D40_L2=16 D40_L3=32 D40_BUCKETS=8 D40_POLICY=1 \
+  .venv/bin/python tools/nnue/netpack.py \
+    data/nnue/experiments/d48y-1280/d48y-1280-sb300-ema-quant.bin \
+    data/nnue/nets/screens/d48y-1280-sb300-ema.cenn d40
+```
+
+### POST-TRAINING RUNBOOK (mechanical — every unknown now resolved)
+
+```bash
+# 1. pack (env is MANDATORY; bare netpack assumes 768 and dies)
+env D40_ACC=1280 D40_L2=16 D40_L3=32 D40_BUCKETS=8 D40_POLICY=1 \
+  .venv/bin/python tools/nnue/netpack.py <quant.bin> <cand.cenn> d40
+
+# 2. scale check vs the incumbent  (pass engine + ref EXPLICITLY — the script's
+#    defaults are archon-d47, a 768 binary that CANNOT load a 1280 net)
+REF_ENGINE=engines/canonical/archon bash tools/nnue/net_scale_check.sh \
+  <cand.cenn> data/nnue/nets/screens/d48x-1280-sb520-ema.cenn engines/canonical/archon
+
+# 3. calibrate network_scale until median(cand/ref) ~ 1.000  — MANDATORY.
+#    A changed target transform shifts cp output scale, and every cp margin
+#    (futility/RFP/delta/aspiration) is co-adapted to the incumbent's. Skipping
+#    this measures MY frame error, not the net — the Reckless frame-null priced
+#    that at -12.0 +/- 18.2 Elo for a 0.73x de-frame.
+bash tools/nnue/calibrate_network_scale.sh <cand.cenn> \
+  data/nnue/nets/screens/d48x-1280-sb520-ema.cenn 4
+
+# 4. fixed-node screen vs D48X (attribution), then real TC (the gate).
+```
+
+Report the confound: D48Y differs from D48X in TWO ways — calibrated per-corpus
+target AND no teacher.
