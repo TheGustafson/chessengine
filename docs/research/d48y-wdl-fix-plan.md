@@ -911,3 +911,40 @@ at `sota_accumulator.rs:303` and `:333`. Carries the spelling-is-the-arm lesson,
 the structural-null requirement, and the cgroup guard as mandatory.
 
 D48Y: sb132, alive through both builds.
+
+### D48Y IS FLAT SO FAR — observation, NOT a verdict (sb141)
+
+Two instruments, both ~zero:
+
+| instrument | reading |
+|---|---|
+| heldout EMA, sb10 → sb120 | 0.012647 → 0.012591 = **−0.44% over 110sb** (last 40sb: −0.13%, noise) |
+| **sb120 vs sb30 head-to-head**, 180 games @60k nodes | **+3.9 ± 32.6 Elo** — dead heat |
+| train value, sb1 → sb117 | 0.009640 → 0.008105 = **−16%** |
+
+So ~90 superbatches (≈2.25 B positions) produced no measurable strength gain,
+while train loss fell 16%.
+
+**NOT calling this a failed run, on the user's own standing guidance:**
+*"never judge a run before its anneal"* and *"the heldout beats 100-game
+matches for TREND; stop over-reading Elo with big bars."* A ±32.6 CI is exactly
+that over-reading. The anneal (sb240→300) is where this project's runs
+historically converge, and it has not started.
+
+**What to watch, in priority order:**
+1. **The anneal drop.** If heldout does not move materially between sb240 and
+   sb300, the run produced nothing and 300sb was the wrong shape for a
+   warm-started net.
+2. If it does drop, the final test proceeds as planned (pack → scale check →
+   fixed-node screen → real TC).
+
+**Plausible readings of the flatness, none yet tested:**
+- The warm trunk (D48X's A3) was already near-optimal for this data, so the
+  calibrated target buys accuracy of LABELS without buying strength.
+- The heldout slice (`uho-band0-5`) is narrow and saturated early.
+- The run genuinely stalled at LR 1e-3 and needs the anneal to move.
+
+**Method note:** the progress match ran under
+`systemd-run --user --scope -p MemoryMax=3G`. This is the exact job class that
+killed the trainer last time (a match beside training); the cgroup meant it
+could only kill itself. Trainer alive at sb141 throughout.
