@@ -22,3 +22,7 @@ A baseline                       n=9 cyc_n=  4996.4 ins_n=  6151.2 ipc=1.231 l1m
 B a2-align64                     n=9 cyc_n=  4747.0 ins_n=  6193.2 ipc=1.305 l1m_n= 673.58 ma64_n= 1101.80
   paired dcyc_n (B-A): median=  -332.2 min=  -672.9 max=  -106.8 all_same_sign=True
   medians: dcyc_n=  -249.4 (-4.99%) dins_n=  +41.95 dl1m_n= -24.01 dma64_n= -520.02
+A a2-align64                     n=7 cyc_n=  4692.8 ins_n=  6193.2 ipc=1.320 l1m_n= 671.86 ma64_n= 1091.05
+B a4b-movelist                   n=7 cyc_n=  4704.3 ins_n=  6186.6 ipc=1.315 l1m_n= 670.35 ma64_n= 1102.88
+  paired dcyc_n (B-A): median=   -15.9 min=  -198.1 max=  +207.3 all_same_sign=False
+  medians: dcyc_n=   +11.5 (+0.25%) dins_n=   -6.53 dl1m_n=  -1.50 dma64_n=  +11.83

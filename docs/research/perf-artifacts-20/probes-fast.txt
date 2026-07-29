@@ -5,3 +5,6 @@ fast=baseline-rebuild                   instr=30,765,511,705 nodes= 5,001,562 pe
 fast=a2-align64-tables                  instr=30,974,510,472 nodes= 5,001,562 per_node=  6193.0 brs_per_node=  658.5 hash=5ca978e012da1bb0
 fast=a2C-misaligned-control             instr=30,974,507,291 nodes= 5,001,562 per_node=  6193.0 brs_per_node=  658.5 hash=5ca978e012da1bb0
 fast=a2C16-glibc-offset-control         instr=30,974,507,545 nodes= 5,001,562 per_node=  6193.0 brs_per_node=  658.5 hash=5ca978e012da1bb0
+fast=a3-perpiece-quiet-hoist            instr=30,979,635,309 nodes= 5,001,562 per_node=  6194.0 brs_per_node=  660.6 hash=5ca978e012da1bb0
+fast=a4-movelist-uninit                 instr=30,973,529,068 nodes= 5,001,562 per_node=  6192.8 brs_per_node=  658.5 hash=5ca978e012da1bb0
+fast=a4b-movelist-uninit-alloca         instr=30,941,871,382 nodes= 5,001,562 per_node=  6186.4 brs_per_node=  658.5 hash=5ca978e012da1bb0
