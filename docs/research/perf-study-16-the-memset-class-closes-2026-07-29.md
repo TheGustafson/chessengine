@@ -241,9 +241,43 @@ pub fn refresh_threat_into(dst: &mut [i16; ACC], w: &[i8], board: &Board, persp:
 `refresh_threat` stays, as a thin wrapper for the oracle and the tests, so no
 caller outside the two hot sites changes.
 
-**−14.6 i/n.** The post-arm census has no `ThreatContext` row at all, and the
-static census shows LLVM inlined the `dst.fill(0)` rather than re-materialising
-a `memset` — the thing that would have made this a wash.
+**−14.6 i/n**, node-identical and eval-hash-identical.
+
+### 3.1 It did NOT remove the libc call — and the census says so
+
+The post-arm census (`memspy-final.txt`) has no `ThreatContext::apply_at` row at
+all. It has a new one:
+
+```
+5,452 calls  13,957,120 bytes  2560.0 B  0.0363/node  memset  refresh_threat_into +0x2f
+```
+
+**Same size, same rate, different libc function.** `dst.fill(0)` on a
+`&mut [i16; 1280]` is above LLVM's inline threshold, so it compiles to a call —
+`memset` where there used to be a `memcpy`. Total libc traffic is **757.0
+bytes/node before and 757.0 after**: unchanged to the tenth of a byte.
+
+So the arm did not win by removing a call. It won by removing a **pass**:
+
+| | before | after |
+|---|---|---|
+| zero a 2560 B buffer | inline, in the stack local | libc `memset`, in the entry |
+| accumulate the threat columns | into the stack local | into the entry |
+| copy to the entry | **libc `memcpy`, 2560 B** | — |
+
+One full 2560-byte pass per king cross, gone; the call stayed. That is the whole
+−14.6, and it means **the remaining `memset` is still on the table** — §12
+item 2. Reviewer C asked exactly this question in review ("does `dst.fill(0)`
+re-materialise a `memset`?"); the honest answer needed the interposer, and the
+first draft of this section asserted the opposite from a static census taken
+before the review round moved the function out of line.
+
+Two spellings are worth trying, in this order: study 14 §3.1's winning idiom
+applied to a fill rather than a copy —
+`for c in dst.chunks_exact_mut(32) { c.fill(0) }`, 40 chunks of 64 bytes, each
+below the inline threshold — and, better, fusing the zero into the first
+`add_column` so the buffer is *written* once instead of zeroed and then
+accumulated.
 
 The estimate study 15 handed over was 4–8. The measurement is 3× that. §6.3
 explains why the estimate was low, and it is not the reason anyone would guess.
@@ -580,8 +614,10 @@ Run in this order, on an idle box, once training finishes:
    (`pstat8.sh 5 300000 tools/nnue/calib/wl50.fens counters-headline.txt …`) —
    the deliverable frame, and the test of §0.1's −15…−26 prediction.
 3. `bash docs/research/perf-artifacts-16/scripts/memspy16.sh final 3000` on the
-   PGO binary — confirms the two `ThreatContext::apply_at` rows are gone, which
-   the thin-LTO static census already shows.
+   PGO binary — the thin-LTO run is already committed
+   (`memspy-final.txt`): the two `ThreatContext::apply_at` rows are gone and a
+   `refresh_threat_into` `memset` row took their place (§3.1). Worth repeating
+   on the PGO binary, because inlining decisions are exactly what differ.
 
 Nothing in 1–3 can change the code; they are all measurements of a tree that is
 already committed.
@@ -696,7 +732,8 @@ item 8 (`upcoming_repetition` — +17.8, node-changing, and now EXPLAINED — §
 | # | item | size | confidence | cheapest next test |
 |---|---|---:|---|---|
 | 1 | **Pack `Piece` into ONE byte.** `Piece { color: Color, piece_type: PieceType }` is **2 bytes**, so `mailbox: [Option<Piece>; 64]` is **128 B = two cache lines** and every `piece_on` is **two `movzbl`s** — visible in `do_move` at `+0x4e`/`+0x56`. Stockfish's is one byte, one line, one load. At study 13's **20.44 `piece_on` calls/node** that is ~20 i/n of loads alone, plus `index()` (currently a compare + `lea` + `cmove` from the two bytes; free if the byte IS the index), plus a real L1 win nobody has priced | **20–40** | medium-high | the biggest structural item left, and it hits BOTH of study 13's two largest non-parity blocks (make/unmake +359, board queries +113). Cost: `#[repr(u8)]` with SF's `color*8 + pt` layout keeps `color()`/`piece_type()` at one instruction each but makes `index()` a 16-byte lookup; a dense `color*6 + pt` makes `index()` free and `piece_type()` a lookup. **101 `piece_on` sites, 128 `Piece::new`, 60 `.piece_type`, 29 `.color`, 13 struct literals.** Touches `movegen`/`board` ⇒ full D24 perft ritual |
-| 2 | **The 2.4-byte libc `memcpy`.** `Worker::iterative_deepening` calls libc `memcpy` **0.0662 times per node for 2.4 bytes**, and `search::<Pv>` 0.0312 times for 2.2 (`memspy-baseline.txt`). A call, a dispatch and a `vzeroupper` to move two bytes | 2–4 | **high — counted** | find the two sites (`objdump` offsets are in the census) and make the payload a typed store. Small, but it is the only remaining *hot* interposer row after §3 |
+| 2 | **The `memset` arm 2 left behind.** `refresh_threat_into`'s `dst.fill(0)` is a **2560-byte libc `memset` at 0.0363 calls/node** (`memspy-final.txt`, §3.1) — the same rate and size as the `memcpy` arm 2 removed. Arm 2 won by deleting a pass, not the call | ~5–10 | **high — counted, and arm 2 already priced the twin at −14.6** | two spellings, in order: `for c in dst.chunks_exact_mut(32) { c.fill(0) }` (study 14 §3.1's winning idiom, applied to a fill); then fuse the zero into the first `add_column` so the buffer is written once rather than zeroed and accumulated. One `probe16.sh` cycle each — 16 s |
+| 2b | **The 2.4-byte libc `memcpy`.** `Worker::iterative_deepening` calls libc `memcpy` **0.0662 times per node for 2.4 bytes**, and `search::<Pv>` 0.0312 times for 2.2 (`memspy-baseline.txt`). A call, a dispatch and a `vzeroupper` to move two bytes | 2–4 | **high — counted** | find the two sites (`objdump` offsets are in the census) and make the payload a typed store. Small, but it is the only remaining *hot* interposer row after §3 |
 | 3 | **`capture_stage`'s jump table, for BRANCHES not instructions** | −2.0 branches/node for +0.7 instructions | **high — priced, §7.2** | already implemented and measured; needs a cycles instrument and an idle box to decide. Our branch ratio is ~1.6× SF's and this is the cheapest known lever on it |
 | 4 | **Land Stockfish's `6b782211` WHOLE** — the `other` filter AND the semantics change it shipped with | ~10 i/n at best; **a correctness class** | **high — §7.1, D33 reviewer B** | NOT a perf arm. Our `upcoming_repetition` is the pre-`6b782211` shape and its `ply > i` branch can report a draw the side to move cannot force. Take the whole commit and arbitrate with games, not with `instructions:u`. Note the speed half is likely still negative for us: our 168-byte-stride indexed state walk makes `other` touch twice the cache lines SF's linked list already had in hand (§7.1) |
 | 5 | `Worker::do_move`'s spill | ~5 | medium | §7.5. Read, not estimated. The only spelling that removes the double copy trades a stack slot for a struct field |
@@ -736,7 +773,8 @@ item 8 (`upcoming_repetition` — +17.8, node-changing, and now EXPLAINED — §
   both nulls, the revert control, the three rejected arms and the neutral one.
 * *(no `counters-headline.txt` — the PGO panel is owed, §0.1)*
 * `memspy-baseline.txt`, `memspy-final.txt` — the `memcpy`/`memmove`/**`memset`**
-  census by caller and calls-per-node, before and after.
+  census by caller and calls-per-node, before and after. Read them together:
+  total bytes/node is **identical** at 757.0, which is §3.1's point.
 * `startup.txt` — §7's fixed-cost split for both engines.
 * `flat-s16base-instructions.txt` — instruction-attributed flat profile.
 * `mutations.txt` — the seven mutation-verification runs.
