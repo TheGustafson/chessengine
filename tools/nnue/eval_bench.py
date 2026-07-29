@@ -72,15 +72,30 @@ def _run(binary: str, script: str, timeout: int = 7200) -> list[str]:
 
 
 def eval_archon(spec: str, fens: list[str]) -> list[float | None]:
-    """archon:<net.cenn> — engine `nnue-eval`, one value per line, stm-POV."""
+    """archon:<net.cenn> — engine `nnue-eval`, one `value<TAB>move` line per
+    FEN, stm-POV.
+
+    Defaults to the CANONICAL binary, never a bare version name: a net and a
+    binary are an arch-matched PAIR (a 1280-wide net in the retired 768-wide
+    `archon-d47` dies with 'l2_width 16 != 128'), and the pair is what
+    `engines/canonical/` exists to name.
+
+    `nnue-eval` also prints diagnostic banners ('nnue-eval: policy sidecar
+    active') to stdout, so we keep only lines that ARE a value and drop the
+    rest — mapping a banner to None would inflate the count by one and the
+    caller's length check would silently skip this evaluator entirely.
+    """
     net = spec
-    engine = os.environ.get("ARCHON_BIN", str(ROOT / "engines/bin/archon-d47"))
+    engine = os.environ.get("ARCHON_BIN", str(ROOT / "engines/canonical/archon"))
     p = subprocess.run([engine, "nnue-eval", net], input="\n".join(fens) + "\n",
                        capture_output=True, text=True, timeout=7200)
-    out = []
-    for line in p.stdout.splitlines():
-        tok = line.split("\t")[0].strip()
-        out.append(float(tok) if re.fullmatch(r"-?\d+", tok) else None)
+    out = [float(m.group(1))
+           for line in p.stdout.splitlines()
+           if (m := re.match(r"(-?\d+)(?:\t|$)", line.strip()))]
+    if len(out) != len(fens):
+        tail = " | ".join(p.stderr.strip().splitlines()[-3:]) or "(no stderr)"
+        print(f"  !! archon nnue-eval: {len(out)}/{len(fens)} values; "
+              f"rc={p.returncode}; stderr: {tail}", file=sys.stderr)
     return out
 
 
@@ -174,6 +189,13 @@ def cached(cache: Path, kind: str, key: str, produce):
     if p.exists():
         return json.loads(p.read_text())
     val = produce()
+    # NEVER cache a failure. An adapter that dies (wrong binary, arch
+    # mismatch, missing net) returns [] or all-None; persisting that makes the
+    # evaluator permanently "SKIPPED" and the next run reports the same hole
+    # WITHOUT re-invoking the adapter — so fixing the adapter appears to change
+    # nothing. Cost us a full debug cycle on the archon row, 2026-07-28.
+    if not val or all(x is None for x in val):
+        return val
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(val))
     return val
