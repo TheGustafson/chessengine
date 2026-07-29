@@ -1393,3 +1393,92 @@ comparable) ran as `engines/runs/corpus-d48x/`; the mine + classify **completed
 - `DRAW_CONTEMPT` exists (default 0) with a documented mechanism but **no admissible
   evidence**; its root effect died 0/6 under inert perturbation.
 - D48X vs V: first game evidence on a training generation, running.
+
+---
+
+## CROSS-ENGINE PER-NODE LADDER (2026-07-28, third session) — ESTABLISHED
+
+Same book (`d48x-corpus-openings.epd`, all 203 corpus openings), same 110k-node
+budget, 406 games each. Fixed NODES, so these are contention-immune and were
+run on a loaded box without prejudice.
+
+| opponent @110k nodes | Elo | n |
+|---|---|---|
+| SF18 | **−68** | (prior rung) |
+| **Reckless 0.9.0** | **−36.9 ± 18.4** | 406 |
+
+Ptnml(0-2) vs Reckless: [3, 75, 88, 36, 1], WL/DD 1.44. Reckless's per-node
+edge over us is roughly HALF SF18's. Both beat us with the clock removed, so
+the deficit is not only speed — speed is a separate, already-measured 1.47×
+(perf study 10).
+
+**This number does not attribute.** It prices search+eval jointly. The split is
+what the net-swap arm below is for; do not read either half off this row.
+
+## EVAL-QUALITY PANEL, ARCHON RESTORED (2026-07-28)
+
+`tools/nnue/eval_bench.py`, 1199 positions, oracle SF18 @50k, rescaled MAE in
+SF-printed cp (lower better):
+
+| SF-eca43a97 | SF18 | **ARCHON-D48X** | SF16 | Reckless |
+|---|---|---|---|---|
+| 54.6 | 57.4 | **57.7** | 61.2 | 73.4 |
+
+ARCHON ties SF18 and leads the panel on sign agreement (89.7%). The ARCHON row
+had been silently ABSENT from every prior run of this tool — three stacked
+failures (retired default binary, a banner line counted as a value, and a cache
+that persisted the failure so fixing the first two changed nothing). Fixed in
+`ba28e78`.
+
+**Do not read Reckless's last place as a net verdict.** The positions are from
+OUR games and the oracle is an SF, so Reckless is judged on neither its own
+positions nor its own family's oracle. This same metric ordered four ARCHON
+nets spanning 86 Elo WRONG (2026-07-25). It says "right class", not "stronger".
+
+## THE ARCHON/RECKLESS EVAL FRAME — MEASURED (2026-07-28)
+
+Two independent instruments agree:
+
+- Paired direct regression, n=184 positions: **ours = 0.7316 × theirs** (LS).
+- Ratio of the two slopes fitted against an SF18@50k oracle over 1199
+  positions: 0.373 / 0.511 = **0.730**.
+
+Different data, different instrument, 0.2% apart. Use 0.7316 at any
+ARCHON↔Reckless tool boundary; never hand-compare.
+
+**But it is not a constant, and rule 7 caught it.** The median paired ratio is
+0.554 with IQR [0.393, 0.739] — least squares is dominated by large-|eval|
+positions, the median by small ones. The two nets differ in CURVATURE, not just
+gain. Least squares is the right pick where pruning margins bite, but anything
+converted this way is measured *through* the conversion.
+
+Incidentally re-derives our own frame: slope 0.511 ⇒ our printed scores are
+1.96× SF-printed, against the 2.07× on record.
+
+## NET SWAP — THE WEIGHTS/SEARCH SPLIT (2026-07-28, RUNNING)
+
+Branch `experiment/reckless-net-2` (firewalled, never merges). Reckless
+v0.9.0's actual net evaluated inside ARCHON's search.
+
+Correctness gate passed before a single game: our Rust port reproduces
+`engines/bin/reckless`'s OWN `eval` output exactly — **0 mismatches / 50**,
+debug and release; the Python reference it was ported from is 12/12 and 50/50.
+Two structural predictions were confirmed before any weight was read (feature
+count 66864; file size 63,266,880 bytes).
+
+Control quality:
+- ONE binary serves both arms; `$RECKLESS_NET` selects. Nothing else differs.
+- The hook substitutes the INNER eval and then takes the same
+  `apply_outer_shape` as every other path. The first version returned early and
+  would have given the swapped arm no optimism blend, no material blend and no
+  rule-50 damping — a second difference that would have been read as net
+  quality. Caught on self-review, before the match.
+- Refresh-only accumulator (3.3× slower: 214 knps vs 704). Irrelevant at fixed
+  nodes, and it deletes the stale-accumulator bug class from the one
+  measurement whose whole value is being believable.
+- Arms verified to actually diverge: 2/8 differing best moves at 50k nodes.
+
+**Reading rule, written BEFORE the result (pre-registration):** the swap arm
+winning ⇒ our WEIGHTS are the weaker half and net training is the lever; losing
+or tying ⇒ the weights are not the problem and the −36.9 is our SEARCH. Either
+way the frame caveat above rides along.
