@@ -987,3 +987,36 @@ close in 60 superbatches of annealing.
 pair** — two short runs from the same warm, same sb count, no teacher in
 either, differing ONLY in `per_corpus_target`. That is the test the plan should
 have specified from the start.
+
+### Targets are SANE — the implementation is not the bug (sb164)
+
+Checked before spending more GPU, on real batches from the live mix:
+
+| target | mean | std | frac in [0.45, 0.55] |
+|---|---|---|---|
+| OLD `sigmoid(s/400)` | 0.4976 | 0.2025 | 37.6% |
+| **NEW per-corpus draw-aware** | 0.4991 | **0.2561** | **29.1%** |
+
+Higher variance, fewer labels bunched at 0.5 — exactly the intended effect of a
+sharper transform with an explicit draw band. **No degenerate-target bug.** So
+D48Y's weakness is undertraining, or the transform genuinely not helping. Only
+a matched pair separates those.
+
+### ★ MATCHED PAIR PREPARED — `d48z_old.json` / `d48z_new.json`
+
+The experiment D48Y cannot be: **identical warm (A3 trunk), identical seed, mix
+and budget, NO teacher in either — the ONLY difference is `per_corpus_target`.**
+
+- 40sb each (D48Y learns in ~sb0–30 then flattens, so 40 captures the window).
+- LR flat 1e-3 to sb32, anneal to 0 at sb40 — a scaled version of the user's shape.
+- **ARBITER IS GAMES.** The two heldouts are in DIFFERENT FRAMES and are not
+  comparable — play `old` vs `new` head-to-head at fixed nodes. This is the
+  frame trap that would otherwise silently decide the result.
+- Cost ≈ 2.9 h GPU + one match.
+
+**Launch AFTER D48Y completes** (user specified 300sb in one go; ~4.9 h left,
+anneal starts in 76sb). Not pre-empting that — but D48Y's remaining value is
+now only "does the anneal move a stalled run", which is worth knowing and is
+cheap to observe since the GPU is committed anyway.
+
+D48Y at sb164: heldout ema **identically 0.012580 at sb140 AND sb150** — dead flat.
