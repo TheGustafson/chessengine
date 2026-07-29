@@ -171,8 +171,13 @@ pub struct Board {
     castling_rook_square: [Square; 4],   // indexed by right bit position 0..4
     castling_path: [Bitboard; 4],        // squares that must be empty
 
-    // Ply-indexed history; NEVER empty (root state pushed at setup) (D8).
-    states: Vec<StateInfo>,
+    // The CURRENT ply's state, held inline (D8 as amended by perf study 14
+    // §2): "never empty" is structural, and `st()` is a field offset rather
+    // than `Vec::last().expect(...)` at 29 calls per node.
+    state: StateInfo,
+    // Everything BELOW `state`, oldest first. `make_move` pushes the parent,
+    // `unmake_move` pops it back. Empty at the root.
+    history: Vec<StateInfo>,
 }
 ```
 
@@ -184,7 +189,7 @@ Changes from today's `board.rs`:
 
 ```rust
 impl Board {
-    fn st(&self) -> &StateInfo { self.states.last().expect("state stack never empty") }
+    fn st(&self) -> &StateInfo { &self.state }   // study 14 §2; was states.last().expect(..)
 
     pub fn castling_rights(&self) -> CastlingRights { self.st().copied.castling_rights }
     pub fn en_passant_square(&self) -> Option<Square> { self.st().copied.ep_square }
@@ -486,13 +491,16 @@ impl Board {
 }
 ```
 
-`make_move_with` (hook seam in §3.10) builds a local `StateInfo` and pushes
-it at the end; `self.states.last()` therefore refers to the PREVIOUS state
-throughout, which the ep-legality step needs. Steps, mirroring SF `do_move`:
+**Amended by perf study 14 §2.** `make_move_with` archives the PARENT onto
+`history` up front and then edits `self.state` in place into the child; the
+older shape (build a local `StateInfo`, push it at the end, so `states.last()`
+was the parent throughout) is gone, along with the `mem::take` of the stack it
+required. `blockers_for_king` still holds the parent's value until step 12,
+which is what the ep-legality step needs. Steps, mirroring SF `do_move`:
 
-1. `let prev = self.st();` (borrow ends before mutation); start the new key:
-   `k = prev.key ^ ZOBRIST.side`. Create
-   `let mut st = StateInfo { copied: prev.copied, ..zeroed derived };`
+1. `self.history.push(self.state);` then `k = self.state.key ^ ZOBRIST.side`.
+   The carried `copied` block is already in place — there is no prefix copy and
+   no `StateInfo::EMPTY` push; every derived field is overwritten below.
    — this assignment IS the "memcpy the prefix" (D8).
 2. Counters: `self.game_ply += 1; st.copied.rule50 += 1;
    st.copied.plies_from_null += 1;`
@@ -586,18 +594,23 @@ throughout, which the ep-legality step needs. Steps, mirroring SF `do_move`:
     all_occupancy) & occupancy(us) } else { Bitboard::EMPTY };` — trusting
     the caller keeps quiet moves free of any attack query (debug_assert it
     against a from-scratch check).
-12. `self.side_to_move = them;` then `set_check_info(&mut st)` (§3.5).
-13. **Repetition** (§3.9): `st.repetition = 0`; `end = min(rule50,
-    plies_from_null)`; if `end >= 4`, with `n = self.states.len()` (the new
-    state's future index), scan `i = 4, 6, 8, ... <= end` comparing
-    `self.states[n - i].key == st.key`; on first hit set `st.repetition =
-    if states[n - i].repetition != 0 { -(i as i32) } else { i as i32 }` and
-    stop.
-14. `self.states.push(st);` (debug builds: `self.assert_consistent()`).
+12. `self.side_to_move = them;` then `self.refresh_check_info()` (§3.5) —
+    the `&mut self` form of `set_check_info`, which computes the block as a
+    value (`CheckInfo::of`) and then stores it, so no `&mut StateInfo` has to
+    live across a `&self` query.
+13. **Repetition** (§3.9): `self.state.repetition = 0`; `end = min(rule50,
+    plies_from_null)`; if `end >= 4`, with `n = self.history.len()` (which the
+    step-1 push made equal to the child's ply index), scan
+    `i = 4, 6, 8, ... <= end` comparing `self.history[n - i].key == state.key`;
+    on first hit set `repetition = if history[n - i].repetition != 0
+    { -(i as i32) } else { i as i32 }` and stop.
+14. Nothing to publish — the child has been the live state since step 1
+    (debug builds: `self.assert_consistent()`).
 
 `unmake_move(m)` — deliberately dumb-cheap; no key or check-info work:
 
-1. `let st = self.states.pop()` (assert the root state remains);
+1. `let captured = self.state.captured;` (the only field of the child that
+   outlives the restore), then `self.state = self.history.pop()`;
    `self.side_to_move = self.side_to_move.flip()`; `us = side_to_move`;
    `self.game_ply -= 1`.
 2. Castling: remove king at `to` and rook at `rto`, place king at `from` and
@@ -806,8 +819,9 @@ bitboards-vs-mailbox only) to `#[cfg(any(test, debug_assertions))]` and add:
 - Structural sanity: exactly one king per color; no pawns on ranks 1/8;
   castling rights imply king and rook on their recorded squares; ep square
   (if set) on the correct relative rank with the double-pushed pawn in
-  front; `states.len() >= 1`; `rule50 >= 0`; blockers/pinners recomputed
-  and compared.
+  front; `rule50 >= 0`; `plies_from_null <= history.len()`;
+  blockers/pinners recomputed and compared. ("The state stack is non-empty" is
+  no longer asserted — perf study 14 §2 made it structural.)
 
 Debug `make_move`/`unmake_move` call it after mutation (step 14), so a
 debug-mode perft run exercises the oracle at every node (D24). Release

@@ -53,10 +53,22 @@ strength. Two constraints in permanent tension, resolved in this order:
 - **D8**: `StateInfo` is split into two structs: `CopiedState` (Copy: the five
   Zobrist keys, non-pawn material, castling rights, rule50, plies_from_null,
   ep square) and derived fields (checkers, blockers, pinners, check_squares,
-  captured piece, repetition). History is a ply-indexed `Vec<StateInfo>`
-  **owned by `Board`** — no pointer chains. `make_move` pushes, `unmake_move`
-  pops. `Board::clone()` therefore clones history; search threads each own
-  their Board copy.
+  captured piece, repetition). History is ply-indexed and **owned by `Board`**
+  — no pointer chains. `make_move` pushes, `unmake_move` pops.
+  `Board::clone()` therefore clones history; search threads each own their
+  Board copy.
+
+  **Amended 2026-07-29 (perf study 14 §2).** The *live* state is no longer the
+  top of that vector: `Board` holds `state: StateInfo` inline plus
+  `history: Vec<StateInfo>` for everything below it. `make_move` pushes the
+  parent onto `history` and edits `state` in place; `unmake_move` restores
+  `state` from `history.pop()`. Rationale: `st()` was
+  `states.last().expect(...)` — a length load, an emptiness test, a panic edge
+  and an `imul` — **29.07 times per node**; as a field it is a constant offset,
+  and "never empty" becomes structural instead of asserted. Measured −36.7
+  instructions/node, node-identical. The trade is +168 bytes copied per unmake
+  (Stockfish's `st = st->previous` is free, `eca43a97:src/position.cpp:1120`);
+  see the study's §8 item 1 for the shape that may recover it.
 - **D9**: Wire ALL five Zobrist keys from the start: `key`, `pawn_key`,
   `material_key`, `minor_key`, `non_pawn_key[2]`, with Stockfish's tricks:
   zeroed pawn psq on promotion ranks, castling keyed by the whole 4-bit mask,

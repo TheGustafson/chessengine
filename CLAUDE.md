@@ -318,7 +318,9 @@ Library crate + thin binary. Modules (re-exported at the crate root by
   debug oracle.
 - **Game state** (castling rights, ep square, halfmove clock, all Zobrist
   keys, check info) lives in a `StateInfo` stack owned by `Board`
-  (`states: Vec<StateInfo>`, never empty; D8) — not in `Board` fields. The
+  (the live ply inline as `state: StateInfo` plus a `history: Vec<StateInfo>`
+  of everything below it; D8 as amended by perf study 14) — not in `Board`
+  fields. The
   public accessors delegate to the top state.
 - **Move encoding** (Stockfish-style, must fit u16): bits 0-5 from, 6-11 to,
   12-13 promotion piece (0 = knight ... 3 = queen), 14-15 kind
