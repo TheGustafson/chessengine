@@ -1,0 +1,175 @@
+diff --git a/src/eval/nnue/sota_accumulator.rs b/src/eval/nnue/sota_accumulator.rs
+index 4da15a5..7c18b29 100644
+--- a/src/eval/nnue/sota_accumulator.rs
++++ b/src/eval/nnue/sota_accumulator.rs
+@@ -68,8 +68,45 @@ const FINNY_KEYS: usize = 64;
+ /// a shift. Same row, same arithmetic, bit-identical output.
+ #[inline]
+ fn psqt_row(table: &[i32], feature: usize) -> &[i32; BUCKETS] {
++    &psqt_rows(table)[feature]
++}
++
++/// The PSQ1 table viewed as what it structurally IS — a slice of `BUCKETS`-wide
++/// rows — so a caller that resolves MANY features against ONE table performs the
++/// reshape once instead of once per feature.
++///
++/// Perf study 11: `psqt_row` was called from inside the threat resolver's
++/// per-event loop, so every event-perspective re-ran `as_chunks` — which is a
++/// length division (a shift) plus the slice reconstruction — for a table that is
++/// invariant across the whole fold. Hoisting it to the loop's caller is a
++/// source-level change LLVM will not make, because `psqt_table` arrives as a
++/// plain `&[i32]` whose length it cannot prove loop-invariant against the
++/// `&mut` accumulator writes in the same body.
++///
++/// `as_chunks` (stable since 1.88) returns `(&[[T; N]], &[T])`; the tail is
++/// empty by construction here — both tables are an exact multiple of `BUCKETS`
++/// (`THREAT_DIMS · BUCKETS` / `HALFKA_DIMS · BUCKETS`) — and dropping it is what
++/// states the row shape to the optimizer.
++#[inline]
++pub(crate) fn psqt_rows(table: &[i32]) -> &[[i32; BUCKETS]] {
+     let (rows, _tail) = table.as_chunks::<BUCKETS>();
+-    &rows[feature]
++    rows
++}
++
++/// [`psqt_add`] against a pre-reshaped table (see [`psqt_rows`]).
++#[inline]
++pub(crate) fn psqt_add_row(psqt: &mut [i32; BUCKETS], rows: &[[i32; BUCKETS]], feature: usize) {
++    for (a, &w) in psqt.iter_mut().zip(&rows[feature]) {
++        *a += w;
++    }
++}
++
++/// [`psqt_sub`] against a pre-reshaped table (see [`psqt_rows`]).
++#[inline]
++pub(crate) fn psqt_sub_row(psqt: &mut [i32; BUCKETS], rows: &[[i32; BUCKETS]], feature: usize) {
++    for (a, &w) in psqt.iter_mut().zip(&rows[feature]) {
++        *a -= w;
++    }
+ }
+ 
+ /// Add feature `feature`'s 8-wide PSQ1 row into `psqt`.
+diff --git a/src/eval/nnue/sota_threats.rs b/src/eval/nnue/sota_threats.rs
+index 6a44adf..d516507 100644
+--- a/src/eval/nnue/sota_threats.rs
++++ b/src/eval/nnue/sota_threats.rs
+@@ -82,7 +82,7 @@
+ //! [`refresh`](ThreatContext::refresh)-rebuild only the crossing side; the other
+ //! side (and every non-king move) stays incremental.
+ 
+-use super::sota_accumulator::{psqt_add, psqt_sub};
++use super::sota_accumulator::{psqt_add, psqt_add_row, psqt_rows, psqt_sub_row};
+ use super::sota_features::{
+     ACC, KEPT_VICTIMS, THREAT_DIMS, ThreatResolver, for_each_threat, refresh_threat, sf_code,
+     threat_pair_kept,
+@@ -1119,14 +1119,39 @@ fn resolve_both(
+     psqt_table: &[i32],
+     psqt_deltas: &mut [[i32; BUCKETS]; 2],
+ ) -> [(usize, usize); 2] {
+-    let mut len = [(0usize, 0usize); 2];
+     let has_psqt = !psqt_table.is_empty();
+-    // Register-resident PSQT accumulators, the §4.5 pairing that only pays
+-    // alongside `psqt_row`'s fixed-size row.
+-    let mut acc = *psqt_deltas;
++    // Perf study 11: reshape the PSQ1 table to its row form ONCE for the whole
++    // event stream instead of once per event-perspective inside `psqt_row`.
++    let rows = psqt_rows(psqt_table);
++
++    // Perf study 11 — SELECT the destination instead of BRANCHING to it.
++    //
++    // The `if d.add { .. } else { .. }` form gave each arm its own store, its
++    // own cursor increment and its own PSQT accumulate, so LLVM laid the two
++    // arms out as separate blocks that both `jmp` to a common tail: three
++    // unconditional jumps carried 8.5% of `at_full`'s instructions (perf study
++    // 11 §3), on a data-dependent branch (add-vs-sub alternates with the
++    // replay, so it also mispredicts).
++    //
++    // Indexing a two-element array of `&mut` buffers by `d.add as usize` is the
++    // idiomatic Rust way to turn that choice into a `cmov` on the base pointer:
++    // one store site, one cursor site, one accumulate site, no jump. `[subs,
++    // adds]` moves the two `&mut` borrows into the array (they are distinct
++    // arrays, so the borrow checker is satisfied without any unsafe).
++    let bufs: [&mut [[usize; DELTA_CAP]; 2]; 2] = [subs, adds];
++    // `[is_add][perspective]`, matching `bufs`.
++    let mut len = [[0usize; 2]; 2];
++    // Two PSQT partial sums per perspective — the adds and the subs — combined
++    // as `add - sub` after the loop. Splitting one interleaved `+/-` chain into
++    // two same-sign chains reorders the additions, which is BIT-IDENTICAL for
++    // i32 (integer addition is associative and commutative, and the release
++    // profile wraps), and it is what lets the accumulate become a single
++    // selected `vpaddd` instead of a branchy add-or-subtract pair.
++    let mut acc = [[[0i32; BUCKETS]; 2]; 2];
+     for d in events {
+         let att = sf_code(d.attacker);
+         let atd = sf_code(d.victim);
++        let k = usize::from(d.add);
+         for p in 0..2 {
+             let Some(idx) = resolvers[p].index_decoded(att, atd, d.from, d.to) else {
+                 continue;
+@@ -1143,27 +1168,28 @@ fn resolve_both(
+             // per event per perspective. DELTA_CAP is a power of two, which is
+             // what makes the mask free.
+             debug_assert!(
+-                len[p].0 < DELTA_CAP && len[p].1 < DELTA_CAP,
++                len[0][p] < DELTA_CAP && len[1][p] < DELTA_CAP,
+                 "resolve cursor overflow: {len:?} events={}",
+                 events.len()
+             );
+-            if d.add {
+-                adds[p][len[p].0 & (DELTA_CAP - 1)] = idx;
+-                len[p].0 += 1;
+-                if has_psqt {
+-                    psqt_add(&mut acc[p], psqt_table, idx);
+-                }
+-            } else {
+-                subs[p][len[p].1 & (DELTA_CAP - 1)] = idx;
+-                len[p].1 += 1;
+-                if has_psqt {
+-                    psqt_sub(&mut acc[p], psqt_table, idx);
+-                }
++            bufs[k][p][len[k][p] & (DELTA_CAP - 1)] = idx;
++            len[k][p] += 1;
++            if has_psqt {
++                psqt_add_row(&mut acc[k][p], rows, idx);
++            }
++        }
++    }
++    if has_psqt {
++        for p in 0..2 {
++            for (b, (&a, &s)) in psqt_deltas[p]
++                .iter_mut()
++                .zip(acc[1][p].iter().zip(acc[0][p].iter()))
++            {
++                *b = b.wrapping_add(a.wrapping_sub(s));
+             }
+         }
+     }
+-    *psqt_deltas = acc;
+-    len
++    [(len[1][0], len[0][0]), (len[1][1], len[0][1])]
+ }
+ 
+ fn resolve_into(
+@@ -1199,17 +1225,20 @@ fn resolve_into(
+         // and only then does keeping the accumulator in registers across the
+         // event loop pay. Bit-identical either way: same i32 adds, same order.
+         let mut acc = *psqt_delta;
++        // Perf study 11: one reshape for the whole event stream (see
++        // `psqt_rows`), not one per resolved event.
++        let rows = psqt_rows(psqt_table);
+         for d in events {
+             if let Some(idx) = resolver.index(d.attacker, d.from, d.to, d.victim) {
+                 debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
+                 if d.add {
+                     adds[add_len] = idx;
+                     add_len += 1;
+-                    psqt_add(&mut acc, psqt_table, idx);
++                    psqt_add_row(&mut acc, rows, idx);
+                 } else {
+                     subs[sub_len] = idx;
+                     sub_len += 1;
+-                    psqt_sub(&mut acc, psqt_table, idx);
++                    psqt_sub_row(&mut acc, rows, idx);
+                 }
+             }
+         }
