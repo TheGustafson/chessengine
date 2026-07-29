@@ -1539,3 +1539,41 @@ margin has to survive a contended box or fastchess calls a real-time forfeit —
 the failure that once made a TM match 100% forfeits with a mean game length of
 11 plies, past a forfeit grep that gave a false all-clear (fastchess writes
 "loses on time", not "time forfeit").
+
+## THE NET SWAP HAS A CONFOUND, AND IT IS THE SAME SIZE AS THE ARM (2026-07-28)
+
+Attacking the swap while it was still winning (rule 6), two alternative
+explanations were run down BEFORE reading the result.
+
+**1. Is the CONTROL arm handicapped by a stale incremental accumulator?** The
+swap evaluates from scratch every node; the control uses our incremental
+accumulator. If ours drifts in play, the control loses for a reason that has
+nothing to do with weights. **Dead:** 8/8 positions searched under the per-node
+refresh oracle (`sota_context.rs:407`, `debug_assertions`) with zero
+assertions. Caveat kept: that validates the debug build; release shares the
+update logic but not the SIMD kernels.
+
+**2. Does the FRAME CONVERSION alone move the game?** It must be suspected:
+our pruning margins (razoring `465 + 300 d²`, futility, delta) are fixed
+centipawns in OUR frame, so feeding the search an eval compressed by 0.7316
+changes the eval-to-margin RATIO and therefore how hard the tree is pruned —
+with no net quality involved.
+
+**It is NOT a small perturbation.** Scaling OUR OWN net by the same 0.7316
+changes **3/10 best moves** at 60k nodes. Swapping in an entirely different
+net changes **2/8**. The confound is the same size as the arm.
+
+⇒ **The swap result is UNINTERPRETABLE on its own.** Running the null:
+`d48x-scaled` (our net × 0.7316) vs `d48x-plain`, same book, same 110k nodes,
+406 games. Read the swap only as swap-vs-plain MINUS scaled-vs-plain.
+
+This is not the discredited "test the eval frame with EVAL_SCALE" move. There,
+a global scale was used to test whether our frame CAUSES losses, which it
+cannot. Here the scale is not a hypothesis — it is a known perturbation the
+experiment unavoidably applies, and it is being priced on its own.
+
+**Process note, recorded because it nearly cost a match:** I rebuilt the engine
+binary while a match was USING it. It happened to be harmless (the edit was
+identity by construction, the gate still read 0/50, and running processes keep
+the old inode), but that is luck, not method. Match binaries now get copied to
+a stable path (`engines/bin/archon-swapbin`) that no build writes to.
