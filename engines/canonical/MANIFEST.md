@@ -74,3 +74,36 @@ mined with a different net than the one canonical at the time.
 
 The `Bench:` trailer (D24) stays on the **portable default build**, not on PGO binaries,
 and is unaffected by any of the above.
+
+---
+
+## 2026-07-28 (evening) — engine binary updated to the merged perf work
+
+`archon` now points at **`archon-d48x-s10pgo`**, a PGO build of `main` after perf
+studies 8 and 9 were merged (`274f0ad`). The net is unchanged — this is a **speed and
+quantisation change only**, not a new generation.
+
+| | before | after |
+|---|---|---|
+| binary | `archon-d48x-pgo` | **`archon-d48x-s10pgo`** |
+| instructions / node | 7,116.6 | **6,429.9 (−9.65%)** |
+| ratio vs SF18 | 1.644× | **1.4851×** |
+| NPS vs SF18 | — | **0.7014** (measured on an idle box, study 9) |
+
+**Verified through the pointer:** `bench 16 1 13 … depth net.cenn` = **1,922,947**, and
+`CHECK_NNUE_GATE=1 bash tools/check.sh` exits 0 with eval hash `5ca978e0…8b38` and
+`Bench: 587683`.
+
+**The eval is NOT bit-identical to the previous canonical.** Studies 8 and 9 landed two
+quantisation changes (FT frame ratio carried as 4 rather than 255/64; the output-skip lane
+as an integer `vpdpbusd` dot) measured at **0.14 and 0.94 SF cp mean** against an 800-position
+fidelity panel. Both were adopted on a *fidelity* gate rather than a bit-exactness gate —
+that distinction is what unblocked them, and the same gate rejected a third variant at
+max 205 SF cp.
+
+**Strength is not yet independently confirmed.** The mechanism is: **+0.099 ± 0.226 ply at
+equal time**, paired within games (n=4,479 moves), against **+0.13** predicted from the
+instruction saving — prediction and measurement agree. At 2.02 ply/doubling (measured in
+games) that is worth **+3.5 to +6.0 Elo** depending on the Elo/doubling constant, whose
+95% CI includes zero. An adoption SPRT (`elo0=-5 elo1=0`) was paused at n=117 for memory
+pressure and should be resumed.
