@@ -1900,3 +1900,53 @@ Decision rule fixed BEFORE the measurement, so it cannot be rationalised after:
 - noise ≳ ±100 i/n ⇒ **the PGO panel cannot resolve single-study deltas at all**,
   which retroactively puts a band on studies 12–18's PGO-frame numbers too and
   is a bigger finding than study 18's own result.
+
+### ★ NULL RESULT: PGO profile noise is EXACTLY ZERO — −120.1 stands, −2.01% cyc/n RETRACTED
+
+Ran the pre-registered null. `archon-s18b` = **identical source**, second
+independent PGO profile run. Two rounds each:
+
+| binary | round 1 i/n | round 2 i/n | mean |
+|---|---|---|---|
+| s17pgo | 7358.4 | 7358.4 | 7358.4 |
+| s18 | 7238.2 | 7238.2 | 7238.2 |
+| **s18b** (same source as s18) | **7238.2** | **7238.2** | **7238.2** |
+
+**PGO PROFILE NOISE = 0.0 i/n. STUDY 18 EFFECT = 120.1 i/n.**
+
+The two builds are byte-DIFFERENT (different sha256 — PGO changed layout) yet
+execute an IDENTICAL instruction count. And `instructions:u` is deterministic
+round-to-round. Against the rule fixed before the measurement (≤15 ⇒ stands),
+**−120.1 i/n is real and quotable.** The confound flagged at merge time is
+CLOSED.
+
+**★ RETRACTION IN THE SAME BREATH — my `cyc/n −116.4 (−2.01%)` is withdrawn.**
+It came from ONE round. At two rounds, cycles/node is wildly noisy:
+
+| binary | cyc/n round 1 | cyc/n round 2 | swing |
+|---|---|---|---|
+| s17pgo | 5769.8 | 5871.9 | 1.8% |
+| s18 | 5809.6 | **6113.3** | **5.2%** |
+| s18b | 5744.4 | 5979.5 | 4.1% |
+
+Means put s18 (5961.5) ABOVE s17pgo (5820.9) — i.e. the cycles data, read
+naively, says study 18 made things *worse*. It says nothing of the kind; it
+says **cycles/node carries ~±300 i/n-equivalent noise on this box and cannot
+resolve a 120 effect in 2 rounds.** Only the instruction count survives.
+
+**Instrument noise ranking measured on this box today — keep this table:**
+
+| instrument | noise floor | can it resolve a ~120 i/n / few-% effect? |
+|---|---|---|
+| `instructions:u` @ fixed nodes | **0.0** | **yes, trivially** |
+| cycles/node @ fixed nodes | ~5% (~±300) | **no**, not at n=2 |
+| paired nps, alternating, n=5 | ~1% | yes for a 2x effect, marginal for 5% |
+| match-PGN nps | **~24%** | **no — it fabricated a reversed result** |
+
+**This vindicates `instructions:u` as the studies' primary metric** — it is the
+only one here with a zero noise floor. It does NOT retract the study-19 brief to
+ALSO carry cache-misses/IPC: that brief is about instructions:u being an
+incomplete *objective* (instruction parity alone still leaves ~1.16x slower),
+not about it being an imprecise *instrument*. Two different criticisms; only the
+first one is true. **Study 19 must therefore treat any cycles/cache-miss number
+as needing many more rounds than an instructions number** — tell it so.
