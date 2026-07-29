@@ -1120,3 +1120,30 @@ been run at the wrong LR too and produced another uninterpretable result.
 from too high a rate can still land somewhere useful, so the anneal remains
 worth observing — but it is now a test of "can a hot run be rescued by
 annealing", not a test of the target transform.
+
+### ★ D48Y RE-LAUNCHED AS D48Y2 — three fixes (user direction, 2026-07-29)
+
+Old run stopped at sb189. New config `tools/nnue/runs/d48y2_1280.json`:
+
+| | D48Y (stopped) | **D48Y2** |
+|---|---|---|
+| warm | A3 trunk (what D48X STARTED from) | **`d48x-1280-sb520-ema-raw.bin` — D48X itself** |
+| LR | flat 1e-3 (**1.80× too high**) | **5.5625e-4** (D48X's actual working rate) |
+| schedule | 240 flat + 60 anneal | **100 flat + 40 anneal (140 total, ~5 h)** |
+
+**This is now the clean test:** warming from D48X's own final checkpoint, the
+ONLY difference from D48X is the calibrated per-corpus target. (No teacher is
+moot when warming from a finished net.)
+
+**The trade-off, recorded because the user challenged it and the challenge has
+merit:** warming from D48X discards D48Y's ~30sb of frame adaptation, so D48Y2
+pays that cost again. The counter is that D48Y did its adaptation at 1.80× LR,
+so those weights are adapted *and thrashed* — inheriting them inherits the
+damage. Starting 111 Elo down with weights of unknown quality looked worse than
+paying ~30sb of clean re-adaptation from a strong settled net.
+
+**Caution against my own choice:** `value-foundation-state.md` records that
+FINETUNING THE INCUMBENT is a proven dead-end (eval–search co-adaptation). That
+finding was about relabel DATA, not a target-transform change, so it likely does
+not apply — but it is the strongest argument for warming from a D48Y checkpoint
+instead, and `d48y-1280-sb180-ema-raw.bin` is preserved for that switch.
