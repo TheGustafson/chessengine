@@ -2009,3 +2009,56 @@ comparison only to say how much of that share is recoverable.**
 - *"`load_v2_bytes` at 5.49% is a hot-path bug."* **FALSE — startup
   amortisation.** At d16 it falls to 1.51% and `init_magics` drops off entirely.
   **Profile long enough that startup washes out before ranking anything.**
+
+### ★★ CATEGORY PROFILE vs SF — "our search machinery is faster" is REFUTED, movepick is genuinely ahead
+
+Both engines profiled on the SAME positions (`wl50.fens`, d16 bench), with
+cycles/node measured on the SAME workload as the profile so the percentages can
+be converted to absolutes:
+
+| | ARCHON | SF | ratio |
+|---|---|---|---|
+| cycles/node | 4843.6 | 3123.9 | **1.550x** |
+| instructions/node | 5863.8 | 4404.4 | **1.331x** |
+
+| category | ARCHON cyc/node | SF cyc/node | ratio |
+|---|---|---|---|
+| eval (accumulator + head + threats) | 2819 | 1778 | **1.59x** |
+| **search** (+`do_move`, history updates) | **1129** | **667** | **1.69x — OUR WORST** |
+| **movepick** (+sort, `see_ge`) | **368** | **432** | **0.85x — WE ARE AHEAD** |
+
+**★ THIS REFUTES A STANDING LEDGER CLAIM.** The ledger says of nps: *"NOT A
+SEARCH DEFECT. The search machinery is faster than SF's; the entire speed gap is
+net evaluation cost."* On matched positions with absolute cycles, **search is our
+WORST category at 1.69x** — worse than eval's 1.59x. The old conclusion came from
+comparing ARCHON-on-PSQT throughput against SF18's total, which is not a
+like-for-like search comparison.
+
+**And a genuine win nobody had noticed: our movepick is 0.85x SF's** — we are
+15% cheaper per node there. First category where we lead.
+
+**THE SHAPES ARE NOT ANOMALOUS.** Eval is 58.2% of our cycles and 56.9% of SF's;
+search 23.3% vs 21.3%. **We do not have one pathological hot spot — we are
+broadly ~1.5–1.7x slower across eval and search.** That tempers (does not
+cancel) the blind-spot finding: the 22% of cycles in unranked symbols are real
+targets, but no single fix closes this.
+
+**★ THE FRAME EFFECT IS LARGE AND MUST BE QUOTED.** Same two binaries,
+two workloads:
+
+| frame | i/n ratio | cyc/node ratio |
+|---|---|---|
+| d16 bench, 50 fens | **1.331x** | 1.550x |
+| 20 fens @ 400k nodes | **1.688x** | 1.954x |
+
+**We get relatively WORSE as per-position search deepens** (1.33x → 1.69x). Open
+question, unmeasured, do NOT chain on it: candidate causes are TT/memory
+behaviour deeper in the tree or accumulator maintenance scaling with tree depth.
+Note the d16-bench figure 1.331x matches the studies' own 1.3285x — their frame
+is the shallow one, so **the studies have been optimising against our FLATTERING
+frame.**
+
+**Caveats:** category sums are LOWER BOUNDS (the 1.0% percent-limit drops small
+symbols); `see_ge` is assigned to movepick but is also a search-pruning call;
+SF's `Network::evaluate` is one fused symbol so its accumulator/head split cannot
+be read directly, while ours is split across four symbols.
