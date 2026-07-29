@@ -74,3 +74,32 @@ gap exceeds that null, so the fits get a units sanity check before use.
 ## State log
 
 - (start) plan written; corpora verified present; GPU free.
+
+### State log — implementation complete, awaiting fits
+
+- **Per-corpus transform wired and verified** (`51fe78e`). Design change forced
+  by the code: `shuffle_chunk=128` pools records from SEVERAL corpora and
+  shuffles them, so a batch is NOT single-corpus — params ride PER RECORD via
+  an int32 `src` array carried through the same permutation/slicing in both the
+  serial and threaded paths. Verified: per-record == scalar bit-exact;
+  mixed-corpus batch splits correctly; `per_corpus_target=None` reproduces the
+  old pipeline BIT-IDENTICALLY.
+- **Two silent failures caught in `pump_train.py` before spending GPU:**
+  1. It builds `TrainConfig` from an EXPLICIT field list, so `per_corpus_target`
+     was being dropped — the run would have trained the OLD target while the
+     config claimed the new one. Now threaded.
+  2. `heldout_value_loss` used `TrainConfig()` defaults
+     (`wdl 0.3 / scale 400 / offset 0`) — the uncalibrated frame. It would have
+     scored a calibrated net as a REGRESSION BY CONSTRUCTION. Now takes the
+     run's own transform via `heldout_target`.
+- **Heldout corpus fitted**: `uho-band0-5` a=175.1 b=71.6, brier 0.03537 vs
+  0.05317 (−33%), bootstrap a [173.6, 175.6] b [70.9, 72.0].
+- **Fits so far** (all improve; `a` ~143–176, `b` ~52–91):
+  datapv2 166.9/70.3 (−32%), farseerT75 142.8/91.2 (−15%),
+  multinet 168.6/69.5 (−32%), t60t70 148.4/81.2 (−17%),
+  wisr 167.6/52.4 (−37%).
+- **Confound to state plainly when reporting:** D48X had a TEACHER for sb0–60;
+  D48Y has none (user ruling). So D48Y-vs-D48X differs in two ways, not one —
+  target transform AND teacher. Warm start is held identical
+  (`d48x-warm-a3.bin`) and the seed is reused (220480001) so the batch schedule
+  matches, which removes the other two obvious differences.

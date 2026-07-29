@@ -44,21 +44,36 @@ from archon_jax.train import make_update_step                # noqa: E402
 ROOT = Path(__file__).resolve().parents[2]
 HELDOUT = ROOT / "data/nnue/heldout/uho-band0-5.bin"
 HELDOUT_TOL = 0.00012
+# (offset, scale) for the HELDOUT corpus's own fitted transform. Set from the
+# run spec so the heldout is scored in the same frame the run trains in.
+HELDOUT_TARGET = (0.0, None)
 
 
-def heldout_value_loss(params, arch, ft_impl="pallas", batch_size=8192):
+def heldout_value_loss(params, arch, ft_impl="pallas", batch_size=8192,
+                       target_offset=0.0, scale=None):
+    """Heldout value MSE.
+
+    **The frame matters and this is a trap.** This metric was pinned at
+    `wdl 0.3 / scale 400 / offset 0`, which is the UNCALIBRATED target. A net
+    trained on the calibrated draw-aware target predicts a different (correct)
+    quantity, so scoring it against the old target reads as a REGRESSION BY
+    CONSTRUCTION. Pass the run's own transform; cross-frame comparison of this
+    number between runs is meaningless.
+    """
     import jax
     from archon_jax.model import forward
 
     cfg = TrainConfig()
+    if scale is None:
+        scale = cfg.scale
     recs = np.memmap(HELDOUT, dtype=RECORD_DTYPE, mode="r")
     n = (len(recs) // batch_size) * batch_size
     total = 0.0
     jparams = {k: jax.numpy.asarray(v) for k, v in params.items()}
     for off in range(0, n, batch_size):
         b = map_batch(np.array(recs[off:off + batch_size]), wdl=cfg.wdl,
-                      score_multiplier=cfg.score_multiplier, scale=cfg.scale,
-                      policy=False)
+                      score_multiplier=cfg.score_multiplier, scale=scale,
+                      policy=False, target_offset=target_offset)
         b = {k: np.asarray(v) for k, v in b.items()}
         out = forward(jparams, arch, b, ft_impl)[0]
         total += float(np.sum((np.asarray(jax.nn.sigmoid(out)) - b["target"]) ** 2))
@@ -104,6 +119,12 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         ft_sparsity_lambda=spec["ft_sparsity_lambda"],
         scale=float(spec.get("scale", TrainConfig().scale)),
         target_offset=float(spec.get("target_offset", 0.0)),
+        # D48Y: [[offset, scale], ...] aligned with the mix. Without this line
+        # the field is silently dropped and the run trains the OLD target while
+        # the config claims the new one.
+        per_corpus_target=(tuple((float(a), float(b))
+                                 for a, b in spec["per_corpus_target"])
+                           if spec.get("per_corpus_target") else None),
         teacher_frame_offset=float(spec.get("teacher_frame_offset", 0.0)),
         teacher_frame_scale=float(spec.get("teacher_frame_scale", 0.0)),
         per_tensor_clip=bool(spec.get("per_tensor_clip", False)),
@@ -115,6 +136,12 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         warmup_superbatches=spec.get("warmup_superbatches", 0.0),
         ema_decay=spec.get("ema_decay", 0.0),
         start_superbatch=start_sb)
+    global HELDOUT_TARGET
+    if spec.get("heldout_target"):
+        HELDOUT_TARGET = (float(spec["heldout_target"][0]),
+                          float(spec["heldout_target"][1]))
+        print(f"[pump] heldout scored in the RUN frame "
+              f"a={HELDOUT_TARGET[0]} b={HELDOUT_TARGET[1]}", flush=True)
     out = ROOT / spec["out"]
     out.mkdir(parents=True, exist_ok=True)
     net_id = spec["net_id"]
@@ -131,7 +158,9 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         params = ck.load_warm(ROOT / spec["warm"], arch)
         expect = float(spec.get("heldout_expect", 0.0))
         if expect > 0.0:
-            hv = heldout_value_loss(params, arch)
+            hv = heldout_value_loss(params, arch,
+                                    target_offset=HELDOUT_TARGET[0],
+                                    scale=HELDOUT_TARGET[1])
             ok = abs(hv - expect) <= HELDOUT_TOL
             print(f"[pump {net_id}] warm heldout {hv:.6f} "
                   f"(expect {expect}±{HELDOUT_TOL}) {'PASS' if ok else 'FAIL'}",
@@ -202,11 +231,15 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
             if sb % 10 == 0 or sb == cfg.superbatches:
                 host = jax.tree.map(np.asarray, params)
                 save_pair(host, arch, out, f"{net_id}-sb{sb}")
-                hv = heldout_value_loss(host, arch)
+                hv = heldout_value_loss(host, arch,
+                                        target_offset=HELDOUT_TARGET[0],
+                                        scale=HELDOUT_TARGET[1])
                 if ema_on:
                     ema_host = jax.tree.map(np.asarray, ema)
                     save_pair(ema_host, arch, out, f"{net_id}-sb{sb}-ema")
-                    he = heldout_value_loss(ema_host, arch)
+                    he = heldout_value_loss(ema_host, arch,
+                                            target_offset=HELDOUT_TARGET[0],
+                                            scale=HELDOUT_TARGET[1])
                     print(f"heldout sb {sb} | value {hv:.6f} | ema {he:.6f}",
                           flush=True)
                 else:
