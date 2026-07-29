@@ -188,6 +188,40 @@ if [ "${CHECK_NNUE_GATE:-0}" != "0" ]; then
     }
     nnue_bin="$nnue_target/release/chessengine"
 
+    # RUN the sota tests, don't just type-check them (perf study 14 §8's
+    # process item, landed by study 15). `cargo test` above is a DEFAULT-feature
+    # build, under which src/eval/nnue/'s sota half is not compiled at all, and
+    # the feature matrix only `cargo check`s it. So ~20 tests were never
+    # EXECUTED by any gate — among them `threats_replay_matches_refresh` and
+    # `search_sota_accumulator_stays_consistent_across_the_tree`, which is the
+    # only thing anywhere that runs `SotaContext::assert_matches_refresh`
+    # (a from-scratch recompute of BOTH accumulators and both PSQT channels)
+    # inside a real search.
+    #
+    # Scope, stated precisely (D33 reviewer A): the per-node oracle that the
+    # DEFAULT `cargo test` above already runs is the **v1** one. This step's new
+    # coverage is the sota unit tests plus that one sota search test.
+    #
+    # `--test-threads` is capped (override with CHECK_TEST_THREADS). The honest
+    # reason is the box, not the suite: a `Worker` owns ~20 MiB of history
+    # tables, ~700 tests at one thread per core spike several GB, and this
+    # machine routinely runs a trainer at ~5 GB RSS — the uncapped run
+    # OOM-killed its own cgroup. `stop_latency_is_bounded` (a 50 ms wall bound
+    # with Threads=8) is load-sensitive by construction and also fails there;
+    # the cap makes it pass but does NOT fix it, and it is not the reason for
+    # the cap. The default-feature `cargo test` above is still uncapped, which
+    # is an inconsistency worth resolving rather than defending.
+    #
+    # Cost: this is a from-scratch DEBUG build in `$nnue_target` (which held
+    # only a release profile) plus ~700 tests — minutes, not the ~10 s the
+    # study-14 handoff estimated.
+    step "cargo test --features $nnue_arch  (the sota tests no other gate runs)"
+    cargo test --features "$nnue_arch" --target-dir "$nnue_target" --quiet \
+        -- --test-threads="${CHECK_TEST_THREADS:-4}" || {
+        printf 'FAIL: the %s test suite failed\n' "$nnue_arch" >&2
+        exit 1
+    }
+
     eval_hash=$("$nnue_bin" nnue-eval "$nnue_net" < "$nnue_fens" | sha256sum | cut -d' ' -f1)
     NNUE_EVAL_PIN="${NNUE_EVAL_PIN-5ca978e012da1bb086799709c3ea5350cf6d49923c254f7975b6d780b0098b38}"
     printf '  eval hash  : %s\n' "$eval_hash"

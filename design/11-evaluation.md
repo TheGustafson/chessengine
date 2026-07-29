@@ -154,8 +154,8 @@ interior mutability or `thread_local!`, both banned on the search path (doc
 >   (`push_dirty`, the §3.4.4 invalidation rule) from the search's `do_move`
 >   wrapper (NOT the `on_dirty` hook — the direct wrapper avoids the
 >   borrow-split and the NoHooks-codegen perturbation the §3.4.4 note flagged;
->   both are permitted, this is the chosen one). Null moves push
->   `DirtyPiece::EMPTY`.
+>   both are permitted, this is the chosen one). **Null moves push nothing**
+>   (amended by perf study 15 — see §3.4.4's ACCUMULATOR PLY note).
 > - **`EvalFile` is opt-in (design/11 §3.4.5), NOT an embedded default net
 >   this step.** A UCI `EvalFile` string option (empty = PSQT) and an optional
 >   6th `bench` positional arg both load a CENN net into a
@@ -646,12 +646,32 @@ pub struct NnueContext {
 }
 ```
 
+**ACCUMULATOR PLY vs SEARCH PLY (amended by perf study 15, 2026-07-29).**
+The stacks are indexed by the **accumulator ply**, which is the search ply
+minus the number of null moves on the path from the root to this node
+(`EvalContext::null_plies`; `acc_ply(ply) = ply - null_plies`, translated once
+at the `EvalContext` boundary). A null move leaves every piece where it stands,
+so its entry would be a bit-identical copy of its parent's: **it is not pushed
+at all**, and the null-move node and its child share one entry. This is
+Stockfish's shape — `do_null_move` has no `accumulatorStack.push()` and
+`undo_null_move` no `pop()` (`eca43a97:src/search.cpp:657-669`) — reached with a
+ply-derived index rather than SF's stack-owned cursor. The search brackets it
+with `push_null`/`pop_null` exactly as it brackets `make_null_move`/
+`unmake_null_move`, and `refresh_root` resets the counter, so a panic caught by
+the pool cannot leak one. The measured cost of the old shape was a
+`ThreatPosition` snapshot per null plus a 2560-byte parent copy per perspective
+per stack at fold time.
+
+**INVARIANT: every search ply that reaches an accumulator stack goes through
+`acc_ply`.** A wrong index is *representable* in this shape (SF's cursor makes
+it unrepresentable), and `acc_ply`'s `debug_assert` catches an unbalanced
+counter but cannot catch a missing call.
+
 **Invalidation rule (the correctness linchpin).** An entry may be trusted
 only while the path that produced it is still the current search path.
-Every `do_move` from search ply `k` — via the `on_dirty` hook; null moves
-directly in the `do_null_move` wrapper — stores
-`stack[k + 1].dirty = dp; stack[k + 1].computed = [false, false];` before
-the child node runs. Without this, unmaking back to ply `k` and making a
+Every `do_move` from search ply `k` — via the `on_dirty` hook — stores
+`stack[a + 1].dirty = dp; stack[a + 1].computed = [false, false];` (where `a`
+is `k`'s accumulator ply) before the child node runs. Without this, unmaking back to ply `k` and making a
 *different* move would silently reuse the stale accumulator a sibling
 subtree left at `k + 1`. (Stockfish gets the same guarantee structurally by
 storing the accumulator inside `StateInfo`, which is fresh per `do_move`;

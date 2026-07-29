@@ -1050,6 +1050,15 @@ mod avx512 {
 
     const LANES: usize = 32;
     const _: () = assert!(ACC.is_multiple_of(LANES));
+    /// `activate_inner` walks the HALF-accumulator `0..ACC / 2` in `LANES`-wide
+    /// steps with no remainder handling, so it needs `ACC % (2 * LANES) == 0`
+    /// — one factor stronger than the assert above, which guards the FOLD
+    /// kernels. Every defined `L1` (768/1280/1536/2048) satisfies it; the point
+    /// is that a future width cannot silently leave the tail of `ft` UNWRITTEN.
+    /// That went from cosmetic to load-bearing with perf study 15 arm 4: `ft` is
+    /// now a reused buffer, so an unwritten lane is the PREVIOUS position's
+    /// activation rather than a deterministic zero (D33 reviewer A, A4).
+    const _: () = assert!(ACC.is_multiple_of(2 * LANES));
 
     /// zmm blocks in one accumulator (40 at the shipping ACC = 1280). NOT
     /// `BLOCKS` — `l1_dot_inner` has a local const of that name meaning
@@ -1755,8 +1764,15 @@ mod tests {
             threat[p][5] = 0;
         }
         for stm in 0..2 {
-            let mut want = [0u8; ACC];
-            let mut got = [0u8; ACC];
+            // POISONED with two DIFFERENT fills, not zeroed (D33 reviewer C,
+            // T3). ~85-95% of activations are zero after the clamp, so with
+            // both buffers starting at 0 a lane that NEITHER kernel wrote
+            // compared equal and the test passed. Perf study 15 arm 4 made
+            // `ft` a reused buffer, so an unwritten lane is now a stale
+            // activation from the previous position rather than a harmless
+            // zero — this test is what says every backend writes all of it.
+            let mut want = [0xABu8; ACC];
+            let mut got = [0x5Cu8; ACC];
             scalar::activate(&mut want, &pst, &threat, stm);
             activate(&mut got, &pst, &threat, stm);
             assert_eq!(want, got, "stm {stm}");

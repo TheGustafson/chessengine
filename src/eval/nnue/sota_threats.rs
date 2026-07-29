@@ -839,25 +839,22 @@ impl<'a> ThreatContext<'a> {
     /// [`at`](Self::at) plus the per-perspective T6c PSQT bucket sums of the
     /// SAME entry (all-zero for a net without threat PSQ1 rows).
     pub fn at_full(&mut self, ply: usize) -> (&[[i16; ACC]; 2], &[[i32; BUCKETS]; 2]) {
-        // Null-move alias (perf study #4 item #3): an EMPTY dirty record's
-        // "fold" is a pure 2×2.5 KB parent copy — hand back the parent's
-        // accumulator instead of materializing the child. Only fully-unfolded
-        // EMPTY entries alias (an EMPTY push can never be king-crossed, so
-        // partially-computed EMPTY entries only arise from an earlier span
-        // fold — those are already materialized and used as-is). At most one
-        // hop in practice (no two null moves in a row); the loop is the
-        // honest invariant.
-        let mut target = ply;
-        while target > 0
-            && !self.stack[target].computed[0]
-            && !self.stack[target].computed[1]
-            && self.stack[target].dp.adds().is_empty()
-            && self.stack[target].dp.subs().is_empty()
-        {
-            target -= 1;
-        }
-        self.compute(target);
-        let entry = &self.stack[target];
+        // There USED to be a null-move alias walk here (perf study #4 item #3):
+        // an EMPTY dirty record's "fold" is a pure 2 x 2.5 KB parent copy, so
+        // the walk handed back the parent instead of materialising the child.
+        // Perf study 15 arm 1 removed the entry itself — the search pushes
+        // nothing for a null move (`EvalContext::null_plies`), which is
+        // Stockfish's shape (`do_null_move` at `eca43a97:src/search.cpp:657-662`
+        // pushes no accumulator entry, `undo_null_move` at `:669` pops none) —
+        // so no EMPTY record ever reaches this stack from a search and the walk
+        // could never move. It cost ~4 tests per evaluated node to prove that.
+        //
+        // The cursor API (`apply`) can still be handed an empty record by a
+        // caller outside the search; that entry is now MATERIALISED by the fold
+        // below (`build_deltas` yields no events, so the empty-list branch
+        // copies it), which is the same value the alias returned.
+        self.compute(ply);
+        let entry = &self.stack[ply];
         (&entry.acc, &entry.psqt)
     }
 
@@ -906,10 +903,30 @@ impl<'a> ThreatContext<'a> {
             return;
         }
 
-        // Snapshot the post-move inputs the observer needs at fold time (mailbox
-        // + occupancy + king squares, ~140 B) plus the move itself. Every
-        // fold-time (re)generation reads THIS, never the live board a sibling
-        // will overwrite. Generation, resolution, and the fold are all deferred.
+        // Snapshot the post-move inputs the observer needs at fold time
+        // (occupancy by type/colour + king squares, 74 B used of 80 padded)
+        // plus the move itself.
+        // Every fold-time (re)generation reads THIS, never the live board a
+        // sibling will overwrite. Generation, resolution, and the fold are all
+        // deferred.
+        //
+        // Rebuilt from `board`, NOT derived from the parent's by XOR. Perf
+        // study 15 arm 3 measured that derivation — study 14 §8 item 5, which
+        // predicted 15-25 i/n of savings from "<=4 `toggle`s" instead of six
+        // `pieces_of_type` unions — and it cost **+106 i/n**, node- and
+        // eval-identical (perf-artifacts-15/probes-fast.txt,
+        // `a3-threatpos-from-parent`, with `a3r-revert-control` reproducing the
+        // baseline to 0.005 i/n). The arithmetic favoured it, ~18 ops against
+        // ~25, so the arithmetic is not what decides here.
+        //
+        // WHY it lost is NOT established (D33 reviewer B, m2). Two candidates,
+        // neither measured: the parent and child snapshots are two elements of
+        // the SAME `Box<[ThreatEntry]>`, so LLVM has no disjointness fact for
+        // the 80-byte read against the 80-byte write; and the edit list is a
+        // runtime-length loop where `from_board` is straight-line. The
+        // codebase's own aliasing idiom for exactly this shape —
+        // `split_at_mut`, as `HalfkaContext::compute` uses — was NOT tried.
+        // Do not re-derive this without re-measuring.
         self.stack[child].dp = *dp;
         self.stack[child].position = ThreatPosition::from_board(board);
 
@@ -1054,11 +1071,16 @@ impl<'a> ThreatContext<'a> {
             // semantics. Do not "simplify" this back into the kernel call
             // without re-measuring — that experiment has been run.
             //
-            // The bigger lever is not to reach this branch at all: SF never
-            // pushes an accumulator entry for a null move (`do_null_move` has
-            // no `push`, `undo_null_move` no `pop` —
-            // `eca43a97:src/search.cpp:657-669`), so it never materialises an
-            // empty-delta child. See study 14 §8 item 1.
+            // **This branch is NOT dead, and it is not the null-move branch.**
+            // Study 14's `entry.acc[p] = parent.acc[p]` reached it 0.313 times
+            // per node, almost all of them null moves; study 15 removed the
+            // null-move entry entirely (`EvalContext::null_plies`), so what
+            // reaches it now is the rare REAL case — a move whose resolved
+            // threat events cancel to nothing for THIS perspective, which
+            // happens because the threat features are relational and a mover
+            // that neither attacks nor is attacked changes none of them.
+            // Measure the surviving rate before touching it; the two spellings
+            // of this copy are 45.4 i/n apart (D33 reviewer C, M6/N4).
             for (p, &needs_fold) in need.iter().enumerate() {
                 if !needs_fold {
                     continue;
@@ -1637,6 +1659,54 @@ mod tests {
             root,
             "undo of an unevaluated push must leave the root intact"
         );
+    }
+
+    /// The alias walk perf study 15 arm 2 deleted from [`ThreatContext::at_full`]
+    /// existed to hand back the parent for an EMPTY dirty record. The search no
+    /// longer produces one, but the CURSOR API still can, and the deletion rests
+    /// on a specific claim: such an entry is now MATERIALISED by the fold to the
+    /// same value the alias returned. That claim had nothing behind it (D33
+    /// reviewer C, T4); this is the something.
+    ///
+    /// Mutations it catches: `build_deltas` emitting an event for an empty
+    /// record; the empty-list branch copying the wrong slot; reinstating an
+    /// alias walk that returns an ANCESTOR rather than this entry.
+    #[test]
+    fn an_empty_record_materialises_to_the_parent() {
+        let w = signature_weights();
+        let q = signature_psqt();
+        let b = board(START_FEN);
+        let mut ctx = ThreatContext::new(&w, &q);
+        ctx.refresh(&b);
+        let (root_acc, root_psqt) = {
+            let (a, p) = ctx.current_full();
+            (*a, *p)
+        };
+
+        // A null move changes no placement, so the post-move board IS this
+        // board — exactly the shape of the search's old null-move push.
+        ctx.apply(&DirtyPiece::EMPTY, &b);
+        assert_eq!(ctx.depth(), 1, "the cursor advanced on an empty push");
+
+        let (child_acc, child_psqt) = {
+            let (a, p) = ctx.current_full();
+            (*a, *p)
+        };
+        assert_eq!(
+            child_acc, root_acc,
+            "empty-record fold must equal the parent"
+        );
+        assert_eq!(child_psqt, root_psqt, "and so must its PSQT bucket sums");
+
+        // ...and it agrees with a from-scratch refresh, which is what makes this
+        // a correctness statement rather than a self-consistency one.
+        for (i, &persp) in Color::ALL.iter().enumerate() {
+            assert_eq!(
+                child_acc[i],
+                refresh_threat(&w, &b, persp),
+                "empty-record fold diverged from a from-scratch refresh"
+            );
+        }
     }
 
     // Play `games` random legal games of up to `max_plies`, asserting at every

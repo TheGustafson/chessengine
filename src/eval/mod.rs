@@ -54,6 +54,36 @@ pub struct EvalContext {
     simple_halfka: Option<nnue::simple_halfka::SimpleHalfkaContext>,
     #[cfg(feature = "sota")]
     protected_halfka: Option<nnue::protected_halfka::ProtectedHalfkaContext>,
+    /// How many plies of the CURRENT line are null moves (perf study 15 arm 1).
+    ///
+    /// Counted over the path from the root to the current node — NOT the
+    /// subtree below it.
+    ///
+    /// A null move leaves every piece where it stands, so its accumulator entry
+    /// would be a bit-identical copy of its parent's. Stockfish therefore pushes
+    /// **no** accumulator entry for one — `do_null_move` has no
+    /// `accumulatorStack.push()` and `undo_null_move` no `pop()`
+    /// (`eca43a97:src/search.cpp:657-669`) — and neither do we. The accumulator
+    /// stacks are consequently indexed by `ply - null_plies`, not by the search
+    /// ply, and the two diverge by one for every null move between the root and
+    /// the current node.
+    ///
+    /// A scalar is enough because the search is a depth-first walk: the "current
+    /// line" is exactly the recursion stack, so [`push_null`](Self::push_null)
+    /// and [`pop_null`](Self::pop_null) bracket it the same way `make_null_move`
+    /// / `unmake_null_move` bracket the board.
+    ///
+    /// **INVARIANT: every search ply that reaches an accumulator stack goes
+    /// through [`acc_ply`](Self::acc_ply).** Both references keep the cursor
+    /// inside the accumulator stack itself instead — Stockfish's
+    /// `AccumulatorStack::size` (`eca43a97:src/nnue/nnue_accumulator.h:135`),
+    /// moved only by its own `push`/`pop` — which makes a wrong index
+    /// unrepresentable, where this shape makes it merely wrong at four
+    /// translation sites (D33 reviewer B, M1). The `debug_assert` in `acc_ply`
+    /// catches an unbalanced counter; it CANNOT catch a missing `acc_ply` call,
+    /// so a new accumulator-indexed accessor must add one. Moving the cursor
+    /// into the contexts is the follow-up that would close it structurally.
+    null_plies: usize,
 }
 
 impl EvalContext {
@@ -206,6 +236,10 @@ impl EvalContext {
     /// search; a no-op when NNUE is off. Both v1 and SOTA seed their ply-zero
     /// stacks here.
     pub fn refresh_root(&mut self, board: &Board) {
+        // The root is ply 0 AND accumulator ply 0 — every search starts with an
+        // empty null-move stack, whatever the last one left behind (a panic
+        // caught by the pool's `catch_unwind` can skip a `pop_null`).
+        self.null_plies = 0;
         if let Some(ctx) = self.nnue.as_mut() {
             ctx.refresh_root(board);
         }
@@ -223,15 +257,60 @@ impl EvalContext {
         }
     }
 
-    /// Record a move's placement deltas into the child accumulator entry at
-    /// `ply + 1`, marking it uncomputed (the §3.4.4 invalidation rule). A no-op
-    /// when NNUE is off. Pass [`DirtyPiece::EMPTY`] for a null move.
+    /// The ACCUMULATOR ply for search ply `ply` — see [`Self::null_plies`].
+    ///
+    /// `null_plies` counts the null moves on the path from the root to this
+    /// node, so a balanced `push_null`/`pop_null` bracketing keeps it `<= ply`
+    /// and the subtraction exact. That is a SEARCH invariant, not a
+    /// construction-level one (D33 reviewer A, A8), so release does not rely on
+    /// it: `saturating_sub` clamps to accumulator ply 0 — a stale but IN-RANGE
+    /// entry — instead of underflowing `usize` and wrapping
+    /// `HalfkaContext::push`'s `stack[ply + 1]` back onto the ROOT entry, which
+    /// would silently poison every later fold. Same reasoning, and the same
+    /// choice, as `NnueContext::compute`'s saturating ancestor walk.
+    #[inline]
+    fn acc_ply(&self, ply: usize) -> usize {
+        debug_assert!(
+            self.null_plies <= ply,
+            "null_plies {} exceeds ply {ply} — push_null/pop_null are unbalanced",
+            self.null_plies
+        );
+        ply.saturating_sub(self.null_plies)
+    }
+
+    /// Enter a null move: the accumulator stacks do NOT advance, so this ply and
+    /// its child share one entry. Must be paired with [`Self::pop_null`], which
+    /// the search brackets exactly like `make_null_move`/`unmake_null_move`.
+    #[inline]
+    pub fn push_null(&mut self) {
+        self.null_plies += 1;
+    }
+
+    /// Leave a null move — the inverse of [`Self::push_null`].
+    #[inline]
+    pub fn pop_null(&mut self) {
+        debug_assert!(self.null_plies > 0, "pop_null without a matching push_null");
+        // `saturating_sub` for the same reason as `acc_ply`'s: an unmatched pop
+        // would wrap to `usize::MAX` and turn every later `acc_ply` into
+        // `ply + 1` — a silent off-by-one into a stale sibling entry.
+        self.null_plies = self.null_plies.saturating_sub(1);
+    }
+
+    /// Record a move's placement deltas into the child accumulator entry,
+    /// marking it uncomputed (the §3.4.4 invalidation rule). A no-op when NNUE
+    /// is off. Null moves do NOT come through here — they use
+    /// [`push_null`](Self::push_null), which pushes no entry at all.
     /// SOTA consumes the same record after board mutation via
     /// [`EvalContext::push_sota_dirty`].
     #[inline]
     pub fn push_dirty(&mut self, dp: DirtyPiece, ply: usize) {
+        debug_assert!(
+            !(dp.adds().is_empty() && dp.subs().is_empty()),
+            "an empty dirty record is a null move; use push_null"
+        );
+        let acc = self.acc_ply(ply);
         if let Some(ctx) = self.nnue.as_mut() {
-            ctx.push(ply, dp);
+            ctx.push(acc, dp);
         }
     }
 
@@ -248,9 +327,10 @@ impl EvalContext {
         if self.sota.is_some() {
             return None;
         }
+        let acc = self.acc_ply(ply);
         self.nnue
             .as_mut()
-            .map(|ctx| ctx.policy_accumulators(board, ply))
+            .map(|ctx| ctx.policy_accumulators(board, acc))
     }
 
     /// Fold a just-made move into the SOTA HalfKA and FullThreats child stacks.
@@ -258,14 +338,23 @@ impl EvalContext {
     #[cfg(feature = "sota")]
     #[inline]
     pub fn push_sota_dirty(&mut self, dp: DirtyPiece, ply: usize, board: &Board) {
+        // The same tripwire as `push_dirty`'s, and it matters MORE here: these
+        // are the two stacks whose null-move alias walks perf study 15 deleted,
+        // so an empty record arriving from a search would now be materialised
+        // rather than aliased (D33 reviewer C, M8).
+        debug_assert!(
+            !(dp.adds().is_empty() && dp.subs().is_empty()),
+            "an empty dirty record is a null move; use push_null"
+        );
+        let acc = self.acc_ply(ply);
         if let Some(ctx) = self.sota.as_mut() {
-            ctx.push(dp, ply, board);
+            ctx.push(dp, acc, board);
         }
         if let Some(ctx) = self.simple_halfka.as_mut() {
-            ctx.push(dp, ply);
+            ctx.push(dp, acc);
         }
         if let Some(ctx) = self.protected_halfka.as_mut() {
-            ctx.push(dp, ply);
+            ctx.push(dp, acc);
         }
     }
 
@@ -327,14 +416,22 @@ pub fn evaluate(board: &Board, ctx: &mut EvalContext, optimism: Value, ply: usiz
     // consumption verbatim (the raw-vs-corrected boundary is unchanged, D22).
     // SOTA (D40) takes priority over v1 NNUE, which takes priority over PSQT.
     // The cfg(feature) gate compiles this branch out of default builds entirely.
+    //
+    // Every accumulator stack below is indexed by the ACCUMULATOR ply, which is
+    // the search ply minus the null moves on the current line — a null move
+    // pushes no entry (`EvalContext::null_plies`). Bound to a DIFFERENT name,
+    // not shadowing `ply`: `ply`'s doc comment above says "the SEARCH ply", and
+    // a future ply-dependent term in the outer shape must not silently pick up
+    // the accumulator index instead (D33 reviewer B, M2).
+    let acc = ctx.acc_ply(ply);
     #[cfg(feature = "sota")]
     if let Some(residual) = ctx.protected_halfka.as_mut() {
         let base = ctx
             .nnue
             .as_mut()
             .expect("CENN-v4 always installs its frozen classic base")
-            .evaluate(board, ply);
-        let inner = base + residual.evaluate_residual(board, ply);
+            .evaluate(board, acc);
+        let inner = base + residual.evaluate_residual(board, acc);
         return apply_outer_shape(
             inner,
             optimism,
@@ -344,7 +441,7 @@ pub fn evaluate(board: &Board, ctx: &mut EvalContext, optimism: Value, ply: usiz
     }
     #[cfg(feature = "sota")]
     if let Some(sota) = ctx.sota.as_mut() {
-        let inner = sota.evaluate(board, ply);
+        let inner = sota.evaluate(board, acc);
         return apply_outer_shape(
             inner,
             optimism,
@@ -354,7 +451,7 @@ pub fn evaluate(board: &Board, ctx: &mut EvalContext, optimism: Value, ply: usiz
     }
     #[cfg(feature = "sota")]
     if let Some(simple) = ctx.simple_halfka.as_mut() {
-        let inner = simple.evaluate(board, ply);
+        let inner = simple.evaluate(board, acc);
         return apply_outer_shape(
             inner,
             optimism,
@@ -371,8 +468,8 @@ pub fn evaluate(board: &Board, ctx: &mut EvalContext, optimism: Value, ply: usiz
             // Compiled out of release (the AVX2/scalar forward is the shipping
             // path).
             #[cfg(debug_assertions)]
-            nnue.assert_matches_refresh(board, ply);
-            nnue.evaluate(board, ply)
+            nnue.assert_matches_refresh(board, acc);
+            nnue.evaluate(board, acc)
         }
         None => psqt::psqt_eval(board),
     };

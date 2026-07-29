@@ -208,29 +208,23 @@ impl<'a> HalfkaContext<'a> {
         board: &Board,
         ply: usize,
     ) -> (&[[i16; ACC]; 2], &[[i32; BUCKETS]; 2]) {
-        // Null-move alias (perf study #4 item #3, mirrored from the threat
-        // stack): an EMPTY dirty record's "fold" is a pure 2×2.5 KB parent
-        // copy — hand back the parent's accumulator instead. Sound because a
-        // null move changes no placement (identical features, identical king
-        // squares), so the parent entry IS this ply's accumulator. Only
-        // fully-unfolded EMPTY entries alias; partially-computed ones are
-        // materialized and used as-is. Two things produce those: a one-sided
-        // span fold passing through, and `compute`'s backward fill, which marks
-        // EMPTY-dirty plies computed by plain copy. Both are value-identical to
-        // the ancestor this walk would otherwise have returned.
-        let mut target = ply;
-        while target > 0
-            && !self.stack[target].computed[0]
-            && !self.stack[target].computed[1]
-            && self.stack[target].dirty.adds().is_empty()
-            && self.stack[target].dirty.subs().is_empty()
-        {
-            target -= 1;
-        }
+        // There USED to be a null-move alias walk here (perf study #4 item #3,
+        // mirrored from the threat stack): an EMPTY dirty record's "fold" is a
+        // pure 2 x 2.5 KB parent copy, so the walk handed back the parent
+        // instead. Perf study 15 arm 1 removed the entry itself — the search
+        // pushes nothing for a null move (`EvalContext::null_plies`), which is
+        // Stockfish's shape (`do_null_move` at `eca43a97:src/search.cpp:657-662`
+        // pushes no accumulator entry, `undo_null_move` at `:669` pops none;
+        // SF's stack is a cursor, `nnue_accumulator.h:135`) — so no EMPTY record
+        // ever reaches this stack from a search and the walk could never move.
+        // SF has no aliasing walk of its own: the only walk in its equivalent
+        // region, `find_last_usable_accumulator`
+        // (`eca43a97:src/nnue/nnue_accumulator.cpp:105-119`), is our `compute`
+        // ancestor walk, not this one. Deleting it is convergence.
         for perspective in Color::ALL {
-            self.compute(board, target, perspective);
+            self.compute(board, ply, perspective);
         }
-        let entry = &self.stack[target];
+        let entry = &self.stack[ply];
         (&entry.acc, &entry.psqt)
     }
 

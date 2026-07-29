@@ -1,0 +1,22 @@
+# pstat8  rounds=5 nodes=300000 fens=tools/nnue/calib/wl50.fens
+# date=2026-07-29T06:36:27-04:00  uptime= 06:36:27 up 1 day, 18:09,  1 user,  load average: 0.78, 1.76, 2.47
+# arms:
+#   archon-s15:./bin15/archon-s15 @BENCH@ engines/canonical/net.cenn
+#   sf-eca43a97:./engines/bin/stockfish-eca43a97 @BENCH@
+round=1 arm=archon-s15 nodes=15001568 nps=1443291 instructions=89260841731 cycles=55687665690 branches=8710696345 branch_misses=311042364
+round=1 arm=sf-eca43a97 nodes=15008494 nps=2112384 instructions=66823563175 cycles=37888236375 branches=5442961243 branch_misses=295130098
+round=2 arm=archon-s15 nodes=15001568 nps=1436381 instructions=89260882450 cycles=56107561665 branches=8710696315 branch_misses=311299194
+round=2 arm=sf-eca43a97 nodes=15008494 nps=2125246 instructions=66823562790 cycles=37671933140 branches=5442960963 branch_misses=295150767
+round=3 arm=archon-s15 nodes=15001568 nps=1435556 instructions=89260890090 cycles=56132912639 branches=8710696365 branch_misses=310861791
+round=3 arm=sf-eca43a97 nodes=15008494 nps=2130072 instructions=66823563322 cycles=37588713186 branches=5442960969 branch_misses=295443812
+round=4 arm=archon-s15 nodes=15001568 nps=1438585 instructions=89260956958 cycles=56039342442 branches=8710696421 branch_misses=313704815
+round=4 arm=sf-eca43a97 nodes=15008494 nps=2122241 instructions=66823562664 cycles=37729178376 branches=5442960967 branch_misses=293680984
+round=5 arm=archon-s15 nodes=15001568 nps=1445516 instructions=89260943966 cycles=55772623075 branches=8710696430 branch_misses=312133124
+round=5 arm=sf-eca43a97 nodes=15008494 nps=2125849 instructions=66823557683 cycles=37663302964 branches=5442959901 branch_misses=295091309
+
+# --- parsed (study 15 SHIPPED tree, both PGO, taskset -c 4, nice -n 19, 5 rounds) ---
+arm                      nodes rounds instructions/node       cycles/node     branches/nodebranch_misses/node    NPS(med)  instr spread
+archon-s15            15001568      5            5950.1            3735.6             580.7              20.8     1438585       0.0001%
+sf-eca43a97           15008494      5            4452.4            2510.0             362.7              19.7     2125246       0.0000%
+# ratio vs eca43a97 = 5950.1 / 4452.4 = 1.3364x  (14: 1.3446x, 13: 1.3658x, 12: 1.3733x)
+# remaining gap 1497.7 i/n; branches 580.7 vs 362.7 = 1.601x (1.84x at study 12)
