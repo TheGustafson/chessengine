@@ -1,0 +1,54 @@
+# perf study 12 — deterministic counter panel, BOTH engines, same bench
+#   bench 16 1 30000 tools/nnue/calib/wl50.fens nodes
+# ARCHON: target-count12 (native non-PGO, sota,arch-d48x), nodes=1,500,780
+# SF eca43a97: /home/nick/sfcount12 (x86-64-avx512icl), nodes=1,501,025
+# Row counts are WORKLOAD quantities — immune to codegen, PGO, sampling, box load.
+
+--- ARCHON (perfcount12) ---
+HEAD_FWD                       647556      0.4315/node
+HEAD_NNZ                     64094957     42.7078/node
+HKA_FOLD                      1071165      0.7137/node
+HKA_ADD                       1071165      0.7137/node
+HKA_SUB                       1413560      0.9419/node
+HKA_COPY                         6045      0.0040/node
+HKA_REFRESH                    475338      0.3167/node
+HKA_REFRESH_WARM               475210      0.3166/node
+HKA_REFRESH_ADD               1139045      0.7590/node
+HKA_REFRESH_SUB               1138898      0.7589/node
+HKA_REFRESH_COLD                  128      0.0001/node
+HKA_REFRESH_COLD_ROWS             656      0.0004/node
+EVAL_ENTRY                     647556      0.4315/node
+DERIVED nnz_groups/eval 98.9798   hka_delta_rows/node 1.6556   hka_refresh_rows/node 1.5183
+
+--- SF eca43a97 (sfcount12) ---
+EVALS                        662230      0.4412/node
+NNZ                        68997460     45.9669/node
+REFRESH                      251171      0.1673/node
+REFRESH_PSQ_ROWS            1391144      0.9268/node
+REFRESH_THR_ROWS            1444856      0.9626/node
+DELTA_CALLS                 1498348      0.9982/node
+DELTA_PSQ_ROWS              3390062      2.2585/node
+DELTA_THR_ROWS              5704654      3.8005/node
+DERIVED nnz_groups/eval 104.1896  psq_delta_rows/node 2.2585  thr_delta_rows/node 3.8005
+
+# Threat rows (study 11, re-used): ARCHON delta 4.0481 refresh 0.1609 (total 4.2089)
+
+--- SIDE BY SIDE ---
+quantity                       ARCHON        SF        ratio
+evals / node                   0.4315     0.4412      0.978
+nnz groups / eval              98.98      104.19      0.950
+   ... of how many groups        320         256      1.250
+HalfKA delta rows / node       1.6556     2.2585      0.733
+HalfKA refresh calls / node    0.3167     0.1673      1.893
+HalfKA refresh rows / node     1.5183     0.9268      1.638
+HalfKA rows total / node       3.1739     3.1853      0.996
+threat delta rows / node       4.0481     3.8005      1.065
+threat refresh rows / node     0.1609     0.9626      0.167
+threat rows total / node       4.2089     4.7631      0.884
+ALL accumulator rows / node    7.3828     7.9484      0.929
+  ... x accumulator width       1280        1024      1.250
+ALL lane-updates / node         9450        8139      1.161
+parent->child fold passes/node
+  HalfKA (fold+copy)           0.7177          -
+  threat (perspective folds)   1.2005          -
+  ARCHON total                 1.9182     0.9982      1.921

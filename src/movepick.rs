@@ -648,6 +648,40 @@ impl MovePicker {
         // each call.
         let att_tables = crate::attacks::tables();
 
+        // Perf study 12 §5 — the offense term, turned inside out.
+        //
+        // The test is `attacks(pt, to, occ) & vulnerable[pt] != 0`, which cost
+        // ONE magic-bitboard lookup per scored quiet (Stockfish's `score<QUIETS>`
+        // has no analogue at all — this is an ARCHON original, D30). The attack
+        // relation is SYMMETRIC under a fixed occupancy: `sq ∈ attacks(pt, to,
+        // occ)` iff `to ∈ attacks(pt, sq, occ)`, because both say "sq and to lie
+        // on a pt-ray and every square strictly between them is empty in occ".
+        // So the union of the *reverse* fans over the (few) vulnerable enemy
+        // squares is a per-piece-type bitboard, and the per-move test collapses
+        // to one `contains`. Lookups drop from ~one per quiet to
+        // Σ_pt popcount(vulnerable[pt]) — and those sets are nested and usually
+        // near-empty. Bit-identical by the symmetry above; measured −34 i/n,
+        // node-identical.
+        //
+        // Pawns are the one asymmetric case: `target ∈ pawn_attacks(us, to)`
+        // iff `to ∈ pawn_attacks(them, target)` — the reverse fan flips colour.
+        let offense_from: [Bitboard; 6] = std::array::from_fn(|i| {
+            let targets = vulnerable[i];
+            if targets.is_empty() {
+                return Bitboard::EMPTY;
+            }
+            let pt = PieceType::ALL[i];
+            let mut fan = Bitboard::EMPTY;
+            for sq in targets {
+                fan |= if pt == PieceType::Pawn {
+                    crate::attacks::pawn_attacks(them, sq)
+                } else {
+                    att_tables.attacks(pt, sq, occ)
+                };
+            }
+            fan
+        });
+
         // Experiment (design/17 Thrust II): one policy forward per node, reused
         // by every quiet below. Owned (borrows `self.policy_net` only for the
         // `map`), so the mutable `self.buf[..]` writes in the loop stay clean.
@@ -692,17 +726,10 @@ impl MovePicker {
             // Offense (D30): moving to a square from which the piece attacks a
             // vulnerable enemy earns a modest reward. `occ` is the pre-move
             // occupancy (a heuristic approximation — the mover still sits on
-            // `from`); acceptable for ordering.
-            let targets = vulnerable[pt as usize];
-            if !targets.is_empty() {
-                let att = if pt == PieceType::Pawn {
-                    crate::attacks::pawn_attacks(us, m.to())
-                } else {
-                    att_tables.attacks(pt, m.to(), occ)
-                };
-                if !(att & targets).is_empty() {
-                    value += pt.value() * QUIET_OFFENSE_FACTOR();
-                }
+            // `from`); acceptable for ordering. Precomputed as a reverse fan
+            // above, so this is one bit test instead of a magic lookup.
+            if offense_from[pt as usize].contains(m.to()) {
+                value += pt.value() * QUIET_OFFENSE_FACTOR();
             }
 
             // Low-ply history (plies 0..4 only), damped toward the leaves.

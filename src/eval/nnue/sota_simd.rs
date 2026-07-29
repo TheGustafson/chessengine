@@ -753,6 +753,14 @@ mod avx2 {
         // pair (the kernels' dominant scalar/GPR share, §2.4). Chunked so
         // arbitrarily long event lists stay allocation-free; later passes
         // fold onto dst (wrapping adds commute ⇒ bit-identical).
+        //
+        // KEEP THE HOIST HERE. Perf study 12 §4 removed it from the AVX-512
+        // twins and measured −114 i/n, but the two backends have different
+        // nests and the hoist's value scales with the OUTER trip count: this
+        // one is block-outer, `ACC / LANES` = 40 iterations, so the hoist saves
+        // 39 x rows multiplies against ~91 instructions of prologue; the
+        // AVX-512 form holds a 20-register tile and runs its outer loop TWICE,
+        // where it saved only 1 x rows and the prologue dominated.
         unsafe {
             const CAP: usize = 96;
             // MaybeUninit: only the written prefix is ever read — the zeroing
@@ -1042,6 +1050,38 @@ mod avx512 {
     const LANES: usize = 32;
     const _: () = assert!(ACC.is_multiple_of(LANES));
 
+    /// zmm blocks in one accumulator (40 at the shipping ACC = 1280).
+    const BLOCKS: usize = ACC / LANES;
+
+    /// Accumulator blocks held in registers across the feature loop.
+    ///
+    /// Perf study 12 §7 — **−314 i/n, the study's largest single win.** The
+    /// fold's arithmetic is fixed (`rows x BLOCKS` load/add pairs) but its LOOP
+    /// CONTROL is `tiles x rows x ~6` — load the feature, `lea`+`shl` for
+    /// `feature * ACC`, bump, compare, branch — so it scales with the number of
+    /// tiles and not with the work. Study 2 chose `REGS = 8`, i.e. **five**
+    /// tiles at ACC = 1280, spending ~220 i/n of control on ~7.1 rows per node.
+    /// AVX-512 has 32 zmm and the body needs only one live register beyond the
+    /// accumulators, so the tile can be far wider.
+    ///
+    /// Exact divisors of `BLOCKS` only: a non-dividing tile pushes the
+    /// remainder into the one-block tail loop, which costs more control than it
+    /// saves. 1280 -> 20 (2 tiles), 768 -> 12 (2), 1536 -> 16 (3), 2048 -> 16 (4).
+    /// Measured: 20 is the optimum at 1280 and the largest divisor that fits.
+    /// `REGS = 40` (one tile, no tile loop at all) was measured too and is a
+    /// **disaster** — 6581.5 -> 7589.2 i/n — because 40 accumulators spill.
+    const fn pick_regs() -> usize {
+        let mut r = 20;
+        while r > 8 {
+            if BLOCKS.is_multiple_of(r) {
+                return r;
+            }
+            r -= 1;
+        }
+        8
+    }
+    const REGS: usize = pick_regs();
+
     #[target_feature(enable = "avx512f,avx512bw")]
     unsafe fn i16_deltas_inner(
         acc: &mut [i16; ACC],
@@ -1058,7 +1098,6 @@ mod avx512 {
             // traffic). Per-lane wrapping adds, same per-lane order =>
             // bit-identical. ACC/LANES is a multiple of 8 for every arch we
             // build (24/40/48/80); the remainder loop keeps it general.
-            const REGS: usize = 8;
             let tile = LANES * REGS;
             let mut off = 0;
             while off + tile <= ACC {
@@ -1113,7 +1152,6 @@ mod avx512 {
         // instead of a 2560 B memmove (perf study 9 item 4).
         // SAFETY: as `i16_deltas_inner`; `out` is a disjoint ACC-wide array.
         unsafe {
-            const REGS: usize = 8;
             let tile = LANES * REGS;
             let mut off = 0;
             while off + tile <= ACC {
@@ -1177,76 +1215,61 @@ mod avx512 {
         subs: &[usize],
     ) {
         // SAFETY: as i16_deltas_inner; reads `src`, writes the disjoint `dst`.
-        // §6-F hoist + chunking — see the avx2 twin for the rationale.
+        //
+        // Perf study 12 §4: this used to hoist `feature * ACC` into a
+        // `[MaybeUninit<usize>; 96]` stack array, chunking the feature lists to
+        // fit it. The hoist saves `(tiles - 1) * rows` multiplies — 4 x 2.1 for
+        // a HalfKA fold — and cost **91 executed instructions of prologue** per
+        // call: a 1656-byte stack frame, six callee-saved pushes, the CAP
+        // min/cmov pair per list, and (because the trip count is a runtime
+        // value) LLVM's fully generic vectorized offset loop, a `vpmullq`
+        // 8-wide body plus its scalar remainder, emitted twice — for a loop
+        // whose measured trip count is ONE. `feature * ACC` with ACC = 1280 is
+        // `lea (f,f,4)` + `shl $8`, and it is now paid once per tile. The
+        // in-place twins (`i16_deltas_inner`, `i16_deltas_dual_inner`) never
+        // had the hoist, which is why only the `_into` pair carried the cost.
+        //
+        // Bit-identical: same rows, same per-lane wrapping i16 adds, same
+        // order. Dropping the chunking is also bit-identical — mod-2^16
+        // addition is associative, so applying all rows in one pass equals
+        // applying them 96 at a time through `dst`.
         unsafe {
-            const CAP: usize = 96;
-            // MaybeUninit: only the written prefix is ever read — the zeroing
-            // memset of 2x96 usizes per call cost more than the hoist saved
-            // on the <=2-event HalfKA folds (measured flat on first cut).
-            let mut a_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
-            let mut s_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
-            let (mut ai, mut si) = (0usize, 0usize);
-            let mut source: *const i16 = src.as_ptr();
-            loop {
-                let an = (adds.len() - ai).min(CAP);
-                let sn = (subs.len() - si).min(CAP);
-                for k in 0..an {
-                    a_off[k].write(adds[ai + k] * ACC);
+            let tile = LANES * REGS;
+            let mut off = 0;
+            while off + tile <= ACC {
+                let mut v = [_mm512_setzero_si512(); REGS];
+                for (k, vk) in v.iter_mut().enumerate() {
+                    *vk = _mm512_loadu_si512(src.as_ptr().add(off + k * LANES).cast());
                 }
-                for k in 0..sn {
-                    s_off[k].write(subs[si + k] * ACC);
-                }
-                // Study-2 option B: 8-register tile (see i16_deltas_inner).
-                const REGS: usize = 8;
-                let tile = LANES * REGS;
-                let mut off = 0;
-                while off + tile <= ACC {
-                    let mut v = [_mm512_setzero_si512(); REGS];
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature * ACC + off);
                     for (k, vk) in v.iter_mut().enumerate() {
-                        *vk = _mm512_loadu_si512(source.add(off + k * LANES).cast());
+                        *vk = _mm512_add_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
                     }
-                    for base in a_off[..an].iter().map(|m| m.assume_init()) {
-                        let row = weights.as_ptr().add(base + off);
-                        for (k, vk) in v.iter_mut().enumerate() {
-                            *vk = _mm512_add_epi16(
-                                *vk,
-                                _mm512_loadu_si512(row.add(k * LANES).cast()),
-                            );
-                        }
-                    }
-                    for base in s_off[..sn].iter().map(|m| m.assume_init()) {
-                        let row = weights.as_ptr().add(base + off);
-                        for (k, vk) in v.iter_mut().enumerate() {
-                            *vk = _mm512_sub_epi16(
-                                *vk,
-                                _mm512_loadu_si512(row.add(k * LANES).cast()),
-                            );
-                        }
-                    }
-                    for (k, vk) in v.iter().enumerate() {
-                        _mm512_storeu_si512(dst.as_mut_ptr().add(off + k * LANES).cast(), *vk);
-                    }
-                    off += tile;
                 }
-                while off < ACC {
-                    let mut value = _mm512_loadu_si512(source.add(off).cast());
-                    for base in a_off[..an].iter().map(|m| m.assume_init()) {
-                        let row = weights.as_ptr().add(base + off);
-                        value = _mm512_add_epi16(value, _mm512_loadu_si512(row.cast()));
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    for (k, vk) in v.iter_mut().enumerate() {
+                        *vk = _mm512_sub_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
                     }
-                    for base in s_off[..sn].iter().map(|m| m.assume_init()) {
-                        let row = weights.as_ptr().add(base + off);
-                        value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
-                    }
-                    _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
-                    off += LANES;
                 }
-                ai += an;
-                si += sn;
-                if ai >= adds.len() && si >= subs.len() {
-                    break;
+                for (k, vk) in v.iter().enumerate() {
+                    _mm512_storeu_si512(dst.as_mut_ptr().add(off + k * LANES).cast(), *vk);
                 }
-                source = dst.as_ptr();
+                off += tile;
+            }
+            while off < ACC {
+                let mut value = _mm512_loadu_si512(src.as_ptr().add(off).cast());
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value = _mm512_add_epi16(value, _mm512_loadu_si512(row.cast()));
+                }
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
+                }
+                _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
+                off += LANES;
             }
         }
     }
@@ -1260,72 +1283,49 @@ mod avx512 {
         subs: &[usize],
     ) {
         // SAFETY: as i8_deltas_inner; reads `src`, writes the disjoint `dst`.
-        // §6-F hoist + chunking — see the avx2 twin for the rationale.
+        // Perf study 12 §4 — the offset hoist + CAP chunking is gone; see the
+        // i16 twin above for the full rationale and the bit-identity argument.
         unsafe {
-            const CAP: usize = 96;
-            // MaybeUninit: only the written prefix is ever read — the zeroing
-            // memset of 2x96 usizes per call cost more than the hoist saved
-            // on the <=2-event HalfKA folds (measured flat on first cut).
-            let mut a_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
-            let mut s_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
-            let (mut ai, mut si) = (0usize, 0usize);
-            let mut source: *const i16 = src.as_ptr();
-            loop {
-                let an = (adds.len() - ai).min(CAP);
-                let sn = (subs.len() - si).min(CAP);
-                for k in 0..an {
-                    a_off[k].write(adds[ai + k] * ACC);
+            let tile = LANES * REGS;
+            let mut off = 0;
+            while off + tile <= ACC {
+                let mut v = [_mm512_setzero_si512(); REGS];
+                for (k, vk) in v.iter_mut().enumerate() {
+                    *vk = _mm512_loadu_si512(src.as_ptr().add(off + k * LANES).cast());
                 }
-                for k in 0..sn {
-                    s_off[k].write(subs[si + k] * ACC);
-                }
-                // Study-2 option B: 8-register tile (see i16_deltas_inner).
-                const REGS: usize = 8;
-                let tile = LANES * REGS;
-                let mut off = 0;
-                while off + tile <= ACC {
-                    let mut v = [_mm512_setzero_si512(); REGS];
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature * ACC + off);
                     for (k, vk) in v.iter_mut().enumerate() {
-                        *vk = _mm512_loadu_si512(source.add(off + k * LANES).cast());
+                        let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                        *vk = _mm512_add_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
                     }
-                    for base in a_off[..an].iter().map(|m| m.assume_init()) {
-                        let row = weights.as_ptr().add(base + off);
-                        for (k, vk) in v.iter_mut().enumerate() {
-                            let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
-                            *vk = _mm512_add_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
-                        }
-                    }
-                    for base in s_off[..sn].iter().map(|m| m.assume_init()) {
-                        let row = weights.as_ptr().add(base + off);
-                        for (k, vk) in v.iter_mut().enumerate() {
-                            let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
-                            *vk = _mm512_sub_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
-                        }
-                    }
-                    for (k, vk) in v.iter().enumerate() {
-                        _mm512_storeu_si512(dst.as_mut_ptr().add(off + k * LANES).cast(), *vk);
-                    }
-                    off += tile;
                 }
-                while off < ACC {
-                    let mut value = _mm512_loadu_si512(source.add(off).cast());
-                    for base in a_off[..an].iter().map(|m| m.assume_init()) {
-                        let bytes = _mm256_loadu_si256(weights.as_ptr().add(base + off).cast());
-                        value = _mm512_add_epi16(value, _mm512_cvtepi8_epi16(bytes));
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    for (k, vk) in v.iter_mut().enumerate() {
+                        let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                        *vk = _mm512_sub_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
                     }
-                    for base in s_off[..sn].iter().map(|m| m.assume_init()) {
-                        let bytes = _mm256_loadu_si256(weights.as_ptr().add(base + off).cast());
-                        value = _mm512_sub_epi16(value, _mm512_cvtepi8_epi16(bytes));
-                    }
-                    _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
-                    off += LANES;
                 }
-                ai += an;
-                si += sn;
-                if ai >= adds.len() && si >= subs.len() {
-                    break;
+                for (k, vk) in v.iter().enumerate() {
+                    _mm512_storeu_si512(dst.as_mut_ptr().add(off + k * LANES).cast(), *vk);
                 }
-                source = dst.as_ptr();
+                off += tile;
+            }
+            while off < ACC {
+                let mut value = _mm512_loadu_si512(src.as_ptr().add(off).cast());
+                for &feature in adds {
+                    let bytes =
+                        _mm256_loadu_si256(weights.as_ptr().add(feature * ACC + off).cast());
+                    value = _mm512_add_epi16(value, _mm512_cvtepi8_epi16(bytes));
+                }
+                for &feature in subs {
+                    let bytes =
+                        _mm256_loadu_si256(weights.as_ptr().add(feature * ACC + off).cast());
+                    value = _mm512_sub_epi16(value, _mm512_cvtepi8_epi16(bytes));
+                }
+                _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
+                off += LANES;
             }
         }
     }

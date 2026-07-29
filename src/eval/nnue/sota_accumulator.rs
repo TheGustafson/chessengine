@@ -241,15 +241,66 @@ impl<'a> HalfkaContext<'a> {
             ancestor -= 1;
         }
         let king = Piece::new(perspective, crate::types::PieceType::King);
-        if ((ancestor + 1)..=ply).any(|child| {
+        // The LAST king move in the span, if any. Every ply from there to `ply`
+        // shares the post-move king square, so all of them are reachable from
+        // the refreshed leaf by plain reverse folds.
+        let last_king_move = ((ancestor + 1)..=ply).rev().find(|&child| {
             self.stack[child]
                 .dirty
                 .subs()
                 .iter()
                 .any(|&(piece, _)| piece == king)
-        }) {
+        });
+        if let Some(king_ply) = last_king_move {
             self.finny_refresh_into(board, perspective, ply);
             self.stack[ply].computed[p] = true;
+            // Perf study 12 §6 — BACKWARD FILL, the thing Stockfish does and we
+            // did not (`AccumulatorStack::backward_update_incremental`,
+            // `eca43a97:src/nnue/nnue_accumulator.cpp`). Refreshing only the
+            // leaf leaves every ply between the king move and this node
+            // uncomputed, so the NEXT sibling below any of them walks its
+            // ancestor search straight past the king move and refreshes from
+            // scratch again.
+            //
+            // Measured: 0.3167 finny refreshes per node against `eca43a97`'s
+            // 0.1673 — 1.89x — on a feature set whose refresh TRIGGER is
+            // identical (`HalfKAv2_hm::requires_refresh` is "this perspective's
+            // king moved", exactly ours). After this change: **0.1611
+            // refreshes and 0.9064 refresh rows per node, against Stockfish's
+            // 0.1673 and 0.9268** — the rate is now marginally better than the
+            // engine we copied the idea from.
+            //
+            // Reconstructing the ancestors from the leaf costs one reverse fold
+            // each (measured 0.0532 per node) and makes them computed, so the
+            // siblings take the incremental path. Bit-identical: a reverse fold
+            // subtracts exactly the rows the forward fold added, and wrapping
+            // i16 addition is exactly invertible.
+            let weights = self.weights;
+            let psqt_weights = self.psqt_weights;
+            let king_square = board.king_square(perspective);
+            for child in (king_ply..ply).rev() {
+                // `child` is reconstructed from `child + 1` by undoing the move
+                // that LED to `child + 1`.
+                let dirty = self.stack[child + 1].dirty;
+                let (before, after) = self.stack.split_at_mut(child + 1);
+                let entry = &mut before[child];
+                let source = &after[0];
+                if dirty.adds().is_empty() && dirty.subs().is_empty() {
+                    entry.acc[p] = source.acc[p];
+                    entry.psqt[p] = source.psqt[p];
+                } else {
+                    apply_dirty_directed::<false>(
+                        weights,
+                        psqt_weights,
+                        entry,
+                        source,
+                        &dirty,
+                        perspective,
+                        king_square,
+                    );
+                }
+                entry.computed[p] = true;
+            }
             return;
         }
         let king_square = board.king_square(perspective);
@@ -436,6 +487,40 @@ fn apply_dirty_into(
     perspective: Color,
     king: Square,
 ) {
+    apply_dirty_directed::<true>(
+        weights,
+        psqt_weights,
+        entry,
+        parent,
+        dirty,
+        perspective,
+        king,
+    )
+}
+
+/// [`apply_dirty_into`] in either direction. `FORWARD` is the ordinary
+/// parent → child fold; `!FORWARD` reconstructs a **parent** from its already
+/// computed child by swapping the add and sub lists — the inverse of the same
+/// move, which is exact because the fold is a sum of whole rows and wrapping
+/// i16 addition is invertible.
+///
+/// The backward direction is what lets [`HalfkaContext::compute`] fill the
+/// plies BETWEEN a king move and the refreshed leaf (perf study 12 §6, after
+/// `AccumulatorStack::backward_update_incremental` at `eca43a97`
+/// `src/nnue/nnue_accumulator.cpp`). `king` is the CURRENT king square in both
+/// directions, which is sound precisely because the backward span starts at the
+/// king move: no ply inside it moves the king again, so every HalfKA index in
+/// the span is bucketed on the same square.
+#[allow(clippy::too_many_arguments)]
+fn apply_dirty_directed<const FORWARD: bool>(
+    weights: &[i16],
+    psqt_weights: &[i32],
+    entry: &mut Entry,
+    parent: &Entry,
+    dirty: &DirtyPiece,
+    perspective: Color,
+    king: Square,
+) {
     let p = perspective as usize;
     let mut adds = [0usize; 2];
     let mut subs = [0usize; 2];
@@ -445,21 +530,14 @@ fn apply_dirty_into(
     for (i, &(piece, square)) in dirty.subs().iter().enumerate() {
         subs[i] = halfka_index(perspective, piece, square, king);
     }
-    apply_i16_deltas_into(
-        &mut entry.acc[p],
-        &parent.acc[p],
-        weights,
-        &adds[..dirty.adds().len()],
-        &subs[..dirty.subs().len()],
-    );
+    let (a, s) = if FORWARD {
+        (&adds[..dirty.adds().len()], &subs[..dirty.subs().len()])
+    } else {
+        (&subs[..dirty.subs().len()], &adds[..dirty.adds().len()])
+    };
+    apply_i16_deltas_into(&mut entry.acc[p], &parent.acc[p], weights, a, s);
     if !psqt_weights.is_empty() {
-        psqt_fold(
-            &mut entry.psqt[p],
-            &parent.psqt[p],
-            psqt_weights,
-            &adds[..dirty.adds().len()],
-            &subs[..dirty.subs().len()],
-        );
+        psqt_fold(&mut entry.psqt[p], &parent.psqt[p], psqt_weights, a, s);
     }
 }
 

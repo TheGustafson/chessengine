@@ -1,0 +1,67 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 38K of event 'instructions:u'
+# Event count (approx.): 76400114600
+#
+# Overhead  Symbol                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+# ........  ................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+#
+    12.12%  [.] int Stockfish::Search::Worker::search<(Stockfish::NodeType)0>(Stockfish::Position&, Stockfish::Search::Stack*, int, int, int, bool)
+    10.88%  [.] Stockfish::MovePicker::next_move()
+     8.86%  [.] Stockfish::Eval::NNUE::NetworkArchitecture::propagate(unsigned char const*, Stockfish::Eval::NNUE::NNZInfo<1024ul> const&) const
+     7.64%  [.] void Stockfish::Position::update_piece_threats<true>(Stockfish::Piece, bool, Stockfish::Square, Stockfish::DirtyThreats*, unsigned long) const
+     7.57%  [.] void Stockfish::Eval::NNUE::(anonymous namespace)::update_accumulator_incremental<true>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer const&, Stockfish::Square, Stockfish::Eval::NNUE::AccumulatorState&, Stockfish::Eval::NNUE::AccumulatorState const&)
+     7.12%  [.] Stockfish::Eval::NNUE::(anonymous namespace)::apply_combined(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer const&, Stockfish::Eval::NNUE::AccumulatorState const&, Stockfish::Eval::NNUE::AccumulatorState&, Stockfish::ValueList<unsigned int, 32ul> const&, Stockfish::ValueList<unsigned int, 32ul> const&, Stockfish::ValueList<unsigned int, 128ul> const&, Stockfish::ValueList<unsigned int, 128ul> const&)
+     5.62%  [.] Stockfish::Eval::NNUE::(anonymous namespace)::update_accumulator_refresh_cache(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer const&, Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorState&, Stockfish::Eval::NNUE::AccumulatorCaches&)
+     3.54%  [.] Stockfish::(anonymous namespace)::partial_insertion_sort(Stockfish::ExtMove*, Stockfish::ExtMove*, int)
+     3.48%  [.] Stockfish::Eval::NNUE::Features::FullThreats::append_changed_indices(Stockfish::Color, Stockfish::Square, Stockfish::DirtyThreats const&, Stockfish::ValueList<unsigned int, 128ul>&, Stockfish::ValueList<unsigned int, 128ul>&, signed char const*, unsigned int) [clone .constprop.0]
+     3.08%  [.] Stockfish::Eval::NNUE::Network::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches&) const
+     2.49%  [.] Stockfish::Position::do_move(Stockfish::Move, Stockfish::StateInfo&, bool, Stockfish::DirtyPiece&, Stockfish::DirtyThreats&, Stockfish::TranspositionTable const*, Stockfish::SharedHistories const*)
+     2.38%  [.] Stockfish::Eval::NNUE::FeatureTransformer::transform(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches&, unsigned char*, int, Stockfish::Eval::NNUE::NNZInfo<1024ul>&) const [clone .constprop.0]
+     2.36%  [.] Stockfish::(anonymous namespace)::update_continuation_histories(Stockfish::Search::Stack*, Stockfish::Piece, Stockfish::Square, int)
+     2.35%  [.] void Stockfish::Position::update_piece_threats<false>(Stockfish::Piece, bool, Stockfish::Square, Stockfish::DirtyThreats*, unsigned long) const [clone .constprop.0]
+     2.32%  [.] Stockfish::Search::Worker::do_move(Stockfish::Position&, Stockfish::Move, Stockfish::StateInfo&, bool, Stockfish::Search::Stack*)
+     1.47%  [.] Stockfish::Position::see_ge(Stockfish::Move, int) const
+     1.43%  [.] Stockfish::(anonymous namespace)::correction_value(Stockfish::Search::Worker const&, Stockfish::Position const&, Stockfish::Search::Stack const*)
+     1.30%  [.] Stockfish::TranspositionTable::probe(unsigned long) const
+     1.16%  [.] Stockfish::Position::legal(Stockfish::Move) const
+     0.94%  [.] void Stockfish::Eval::NNUE::read_leb_128<std::array<short, 23068672ul> >(std::istream&, std::array<short, 23068672ul>&)
+     0.91%  [.] Stockfish::Eval::NNUE::AccumulatorStack::evaluate_side(Stockfish::Color, Stockfish::Position const&, Stockfish::Eval::NNUE::FeatureTransformer const&, Stockfish::Eval::NNUE::AccumulatorCaches&)
+     0.85%  [.] Stockfish::Position::attackers_to_exist(Stockfish::Square, unsigned long, Stockfish::Color) const
+     0.85%  [.] Stockfish::Position::gives_check(Stockfish::Move) const
+     0.63%  [.] Stockfish::Position::attackers_to(Stockfish::Square, unsigned long) const
+     0.63%  [.] int Stockfish::Search::Worker::qsearch<(Stockfish::NodeType)0>(Stockfish::Position&, Stockfish::Search::Stack*, int, int)
+     0.59%  [.] Stockfish::Attacks::DualMagic::both_attacks_bb(unsigned long) const
+     0.58%  [.] Stockfish::Position::upcoming_repetition(int) const
+     0.56%  [.] Stockfish::Position::undo_move(Stockfish::Move)
+     0.55%  [.] Stockfish::Attacks::attacks_bb(Stockfish::PieceType, Stockfish::Square, unsigned long)
+     0.48%  [.] Stockfish::Position::is_draw(int) const
+     0.46%  [.] int Stockfish::Search::Worker::search<(Stockfish::NodeType)1>(Stockfish::Position&, Stockfish::Search::Stack*, int, int, int, bool) [clone .constprop.0]
+     0.37%  [.] void Stockfish::Eval::NNUE::(anonymous namespace)::update_accumulator_incremental<false>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer const&, Stockfish::Square, Stockfish::Eval::NNUE::AccumulatorState&, Stockfish::Eval::NNUE::AccumulatorState const&)
+     0.37%  [.] Stockfish::Search::SearchManager::check_time(Stockfish::Search::Worker&)
+     0.32%  [.] Stockfish::(anonymous namespace)::update_all_stats(Stockfish::Position const&, Stockfish::Search::Stack*, Stockfish::Search::Worker&, Stockfish::Move, Stockfish::Square, Stockfish::ValueList<Stockfish::Move, 32ul>&, Stockfish::ValueList<Stockfish::Move, 32ul>&, int, Stockfish::Move, bool)
+     0.30%  [.] Stockfish::TTEntry::save(unsigned long, int, bool, Stockfish::Bound, int, Stockfish::Move, int, unsigned char)
+     0.30%  [.] Stockfish::Position::pseudo_legal(Stockfish::Move) const
+     0.29%  [.] Stockfish::Position::set_check_info() const
+     0.27%  [.] Stockfish::Search::Worker::evaluate(Stockfish::Position const&)
+     0.24%  [.] Stockfish::Move* Stockfish::generate<(Stockfish::GenType)2>(Stockfish::Position const&, Stockfish::Move*)
+     0.21%  [.] Stockfish::(anonymous namespace)::update_correction_history(Stockfish::Position const&, Stockfish::Search::Stack*, Stockfish::Search::Worker&, int)
+     0.20%  [.] Stockfish::(anonymous namespace)::update_quiet_histories(Stockfish::Position const&, Stockfish::Search::Stack*, Stockfish::Search::Worker&, Stockfish::Move, int)
+     0.20%  [.] Stockfish::Move* Stockfish::(anonymous namespace)::generate_moves<(Stockfish::Color)0, (Stockfish::PieceType)3>(Stockfish::Position const&, Stockfish::Move*, unsigned long)
+     0.18%  [.] Stockfish::Position::update_slider_blockers(Stockfish::Color) const
+     0.15%  [.] Stockfish::Move* Stockfish::(anonymous namespace)::generate_moves<(Stockfish::Color)0, (Stockfish::PieceType)4>(Stockfish::Position const&, Stockfish::Move*, unsigned long)
+     0.15%  [.] Stockfish::Move* Stockfish::(anonymous namespace)::generate_moves<(Stockfish::Color)1, (Stockfish::PieceType)4>(Stockfish::Position const&, Stockfish::Move*, unsigned long)
+     0.15%  [.] Stockfish::hash_bytes(char const*, unsigned long)
+     0.13%  [.] Stockfish::Move* Stockfish::(anonymous namespace)::generate_moves<(Stockfish::Color)1, (Stockfish::PieceType)3>(Stockfish::Position const&, Stockfish::Move*, unsigned long)
+     0.13%  [.] Stockfish::Search::Worker::clear()
+     0.09%  [.] Stockfish::Position::remove_piece(Stockfish::Square, Stockfish::DirtyThreats*)
+     0.08%  [.] Stockfish::(anonymous namespace)::value_from_tt(int, int, int)
+     0.06%  [.] Stockfish::Move* Stockfish::(anonymous namespace)::generate_moves<(Stockfish::Color)0, (Stockfish::PieceType)5>(Stockfish::Position const&, Stockfish::Move*, unsigned long)
+
+
+#
+# (Tip: Sample related events with: perf record -e '{cycles,instructions}:S')
+#
