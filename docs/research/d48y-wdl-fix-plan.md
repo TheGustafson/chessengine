@@ -2249,3 +2249,59 @@ Related open item from the same study: **G5 — our threat FT is quantised 4x
 coarser than BOTH comparison engines and nothing in training knows about it.**
 That gap was written down on 2026-07-28 and not acted on. This is the same
 finding, now with the weight distribution measured.
+
+### ★★ QUANTISATION ERROR MEASURED PER CHANNEL — threats carry 86% of the noise
+
+Owner's theory, now with the premise measured on `d48y2-1280-sb170`
+(raw vs quant, factoriser folded):
+
+| channel | share of inputs | weight RMS | quant-err RMS | rel err | SNR | eff. bits |
+|---|---|---|---|---|---|---|
+| HalfKA | 27.1% | 0.21517 | 0.001099 | **0.51%** | **45.8 dB** | ~7.6 |
+| **threats** | **72.9%** | 0.07208 | 0.004025 | **5.58%** | **25.1 dB** | **~4.2** |
+
+**Threats carry 11x the relative quantisation error and 20.7 dB less SNR.** At
+the accumulator (~32 HalfKA + ~90 threat features active) threats contribute
+**86% of all quantisation noise, 6.14x HalfKA's share**.
+
+**TWO causes compound**, which is why it is worse than the 4x scale ratio alone:
+(1) threats are quantised 4x coarser (scale 64 vs 255); (2) threat weights are
+**3x SMALLER in magnitude** (RMS 0.072 vs 0.215), so the same absolute step is a
+proportionally larger error. 3x smaller x 4x coarser ~= 12x; measured **11x**.
+
+**Robustness:** the accumulator split uses ESTIMATED active-feature counts
+(~32/~90, not measured). The raw error ratio is already **3.66x** before any
+count weighting, so threats dominate even if the counts are equal or reversed.
+The conclusion does not rest on the estimate.
+
+**CORRECTION to my own earlier figure:** I first said "~2.2 bits" for threats
+from a crude step-count. The SNR-based number is **~4.2 bits** (vs HalfKA's
+~7.6). Still a 3.4-bit deficit over 73% of the network, but 4.2 is the right
+number and 2.2 was wrong.
+
+**TWO MEASUREMENT TRAPS PAID FOR HERE, both mine:**
+1. The raw checkpoint is a **NAMED TENSOR STREAM** with per-tensor headers
+   (`<Q` count + name), NOT a flat f4 array. Offset arithmetic on it returns
+   NaN/inf. Use `archon_jax.checkpoint.open_raw(path, None, mmap=True)`.
+2. **HalfKA has a FACTORISER** (`l0_factw`, 704x1280) that is folded into the
+   main weights at export. Comparing raw `l0_pstw` against quantised HalfKA
+   without folding gives a nonsense **208% error / −6.4 dB**. Fold with
+   `pst + tile(fact, (22528/704, 1))` first. Threats have no factoriser, so that
+   channel was unaffected.
+
+**STILL AN INFERENCE: that any of this costs Elo.** Shown is that the threat
+channel is far noisier under quantisation and dominates accumulator noise.
+The cp cost is NOT measured. Next test (needs the GPU, free at sb190): eval
+divergence float-vs-quantised on heldout positions, to price it before anyone
+commits to a QAT retrain.
+
+### Tick @ sb185 — training nearly done, study 20 landing real finds
+
+Trainer alive, **sb185/190**, GPU 95%. Heldout EMA 0.011069 (sb170) →
+**0.010971 (sb180)**, R² **0.8899** vs D48X's fully-annealed 0.8815.
+
+**Study 20 (ARCHON-only, no SF comparison) has landed arm 2: "the NNUE weight
+tables were 16 B off a cache line."** Exactly the class of defect the
+SF-comparative method cannot see — there is no Stockfish counterpart to diff
+against for our own table alignment. Owner's blind-spot hypothesis continues to
+pay out.
