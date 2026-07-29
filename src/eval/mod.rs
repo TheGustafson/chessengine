@@ -84,6 +84,17 @@ pub struct EvalContext {
     /// so a new accumulator-indexed accessor must add one. Moving the cursor
     /// into the contexts is the follow-up that would close it structurally.
     null_plies: usize,
+    /// `true` iff either experimental side net is installed — the cached
+    /// disjunction of `simple_halfka.is_some()` and
+    /// `protected_halfka.is_some()`.
+    ///
+    /// Neither is ever installed in a shipped configuration, so
+    /// [`push_sota_dirty`](Self::push_sota_dirty) ran two dead `Option` tests
+    /// on every node (perf study 16 §6). Maintained by the two setters, which
+    /// are the only writers of either field, and by the `debug_assert_eq!` in
+    /// [`push_sota_dirty`](Self::push_sota_dirty).
+    #[cfg(feature = "sota")]
+    side_nets: bool,
 }
 
 impl EvalContext {
@@ -134,6 +145,14 @@ impl EvalContext {
         }
     }
 
+    /// Recompute the [`side_nets`](Self::side_nets) cache from the two fields
+    /// it summarises. Called by both setters — which are the only writers of
+    /// either field — so the flag cannot drift.
+    #[cfg(feature = "sota")]
+    fn refresh_side_net_flag(&mut self) {
+        self.side_nets = self.simple_halfka.is_some() || self.protected_halfka.is_some();
+    }
+
     #[cfg(feature = "sota")]
     pub fn set_simple_halfka_net(
         &mut self,
@@ -149,6 +168,7 @@ impl EvalContext {
                 }
             }
         }
+        self.refresh_side_net_flag();
     }
 
     #[cfg(feature = "sota")]
@@ -167,6 +187,7 @@ impl EvalContext {
                 }
             }
         }
+        self.refresh_side_net_flag();
     }
 
     /// EXP-UNC-1 (search study bet 1): the value-uncertainty σ̂ produced by the
@@ -350,11 +371,28 @@ impl EvalContext {
         if let Some(ctx) = self.sota.as_mut() {
             ctx.push(dp, acc, board);
         }
-        if let Some(ctx) = self.simple_halfka.as_mut() {
-            ctx.push(dp, acc);
-        }
-        if let Some(ctx) = self.protected_halfka.as_mut() {
-            ctx.push(dp, acc);
+        // ONE test for both experimental side nets (perf study 16 §6). They are
+        // installed only by `set_simple_halfka_net` / `set_protected_halfka_net`,
+        // which fire only for a CENN-v3/v4 `EvalFile` (`uci.rs`) — never for the
+        // canonical net — and both maintain `side_nets`.
+        //
+        // A cached predicate that is WRONG here does not crash: it silently
+        // skips a side net's accumulator push and the net then evaluates from
+        // stale lanes. So the cache is pinned at its consumer, which runs at
+        // every node of every debug search — the same place
+        // `assert_matches_refresh` catches a stale accumulator.
+        debug_assert_eq!(
+            self.side_nets,
+            self.simple_halfka.is_some() || self.protected_halfka.is_some(),
+            "side_nets drifted from the side-net contexts"
+        );
+        if self.side_nets {
+            if let Some(ctx) = self.simple_halfka.as_mut() {
+                ctx.push(dp, acc);
+            }
+            if let Some(ctx) = self.protected_halfka.as_mut() {
+                ctx.push(dp, acc);
+            }
         }
     }
 
@@ -559,6 +597,116 @@ fn apply_outer_shape(inner: Value, optimism: Value, material: i64, rule50: i64) 
         i64::from(VALUE_TB_LOSS_IN_MAX_PLY) + 1,
         i64::from(VALUE_TB_WIN_IN_MAX_PLY) - 1,
     ) as Value
+}
+
+// Gated on `sota` as a whole: both items inside are, so at default features
+// the module would be empty and `use super::*` an unused import.
+#[cfg(all(test, feature = "sota"))]
+mod side_net_flag_tests {
+    use super::*;
+    use std::sync::LazyLock;
+
+    /// POISON fixtures: structurally valid networks with EMPTY weight tables.
+    ///
+    /// `SimpleHalfkaContext::new` / `ProtectedHalfkaContext::new` only store
+    /// the pointer and allocate a stack, so nothing here is ever indexed —
+    /// which is the whole point: these exist to exercise the INSTALLED branch
+    /// of the two setters, which no other test in the repo reaches.
+    ///
+    /// **Never `refresh_root` or `evaluate` through one** (D33 reviewer C,
+    /// F2): `SimpleHalfkaContext::refresh` does
+    /// `acc.copy_from_slice(&self.net.ft_bias)` into a `[i16; SIMPLE_ACC]`,
+    /// which PANICS on a length mismatch — and a dimensionally-valid zero net
+    /// would be 25 MB, so shrinking is not the fix. Test the flag, not the
+    /// forward pass.
+    ///
+    /// `LazyLock` rather than `Box::leak` so the pointer is STABLE across
+    /// calls (D33 reviewer C, F1) — that is what makes the second install of
+    /// the "same" net actually take `set_simple_halfka_net`'s `reuse` path.
+    static POISON_SIMPLE: LazyLock<nnue::simple_halfka::SimpleHalfkaNetwork> =
+        LazyLock::new(|| nnue::simple_halfka::SimpleHalfkaNetwork {
+            halfka_weights: Box::new([]),
+            ft_bias: Box::new([]),
+            out_weights: Box::new([]),
+            out_bias: 0,
+        });
+
+    /// The `protected_halfka` twin. Needed because the two setters maintain
+    /// `side_nets` INDEPENDENTLY, and `Worker::refresh_eval_net` calls the
+    /// protected one LAST — so for a protected-only configuration it is the
+    /// protected setter's refresh that decides the flag (D33 reviewer A).
+    static POISON_PROTECTED: LazyLock<nnue::protected_halfka::ProtectedHalfkaNetwork> =
+        LazyLock::new(|| nnue::protected_halfka::ProtectedHalfkaNetwork {
+            base: nnue::network::Network {
+                ft_weights: Box::new([]),
+                ft_bias: Box::new([]),
+                out_weights: Box::new([]),
+                out_bias: 0,
+                activation: nnue::network::Activation::SCReLU,
+                qa: 1,
+                qb: 1,
+                scale: 1,
+            },
+            halfka_weights: Box::new([]),
+            ft_bias: Box::new([]),
+            out_weights: Box::new([]),
+            out_bias: 0,
+        });
+
+    // `side_nets` is a CACHE of `simple_halfka.is_some() ||
+    // protected_halfka.is_some()`, and `push_sota_dirty` skips both pushes when
+    // it is false — so a stale `false` is a silent wrong-eval bug, not a crash
+    // (perf study 16 §6). Drive it through the only two writers.
+    #[test]
+    fn side_net_flag_tracks_the_optional_contexts() {
+        let mut ctx = EvalContext::new();
+        assert!(!ctx.side_nets, "a fresh context has no side nets");
+
+        ctx.set_simple_halfka_net(Some(&POISON_SIMPLE));
+        assert!(ctx.side_nets, "installing a side net must arm the flag");
+
+        // A second install of the same net takes the `reuse` path, which does
+        // not touch the field — the flag must survive it.
+        ctx.set_simple_halfka_net(Some(&POISON_SIMPLE));
+        assert!(ctx.side_nets, "reuse must leave the flag armed");
+
+        ctx.set_simple_halfka_net(None);
+        assert!(!ctx.side_nets, "removing the last side net must disarm it");
+
+        // And the flag is the DISJUNCTION: the other setter must not clear it.
+        ctx.set_simple_halfka_net(Some(&POISON_SIMPLE));
+        ctx.set_protected_halfka_net(None);
+        assert!(
+            ctx.side_nets,
+            "clearing the OTHER side net must not disarm the flag"
+        );
+    }
+
+    // The PROTECTED leg, which the test above cannot reach: it only ever hands
+    // `set_protected_halfka_net` a `None`, and with `simple` armed the expected
+    // flag is `true` either way — so deleting that setter's refresh passes it.
+    // That is the dangerous direction: `Worker::refresh_eval_net` installs the
+    // protected net LAST, so on a protected-only configuration a stale `false`
+    // makes `push_sota_dirty` skip the protected push for a whole search — a
+    // wrong eval with no crash (D33 reviewer A).
+    #[test]
+    fn side_net_flag_arms_from_the_protected_setter_alone() {
+        let mut ctx = EvalContext::new();
+        assert!(!ctx.side_nets);
+
+        ctx.set_protected_halfka_net(Some(&POISON_PROTECTED));
+        assert!(
+            ctx.side_nets,
+            "the protected setter must arm the flag on its own"
+        );
+
+        // The other setter clearing its own (absent) slot must not disarm it.
+        ctx.set_simple_halfka_net(None);
+        assert!(ctx.side_nets, "protected is still installed");
+
+        ctx.set_protected_halfka_net(None);
+        assert!(!ctx.side_nets, "removing the last side net disarms it");
+    }
 }
 
 #[cfg(test)]

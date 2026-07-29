@@ -1,0 +1,15 @@
+fast=null-1                           instr=31,688,987,821 nodes= 5,001,562 per_node=  6335.8 brs_per_node=  673.6 hash=5ca978e012da1bb0
+fast=null-2-rebuild                   instr=31,688,925,327 nodes= 5,001,562 per_node=  6335.8 brs_per_node=  673.6 hash=5ca978e012da1bb0
+fast=n0-NULLB-stack-reborrow          instr=31,688,949,583 nodes= 5,001,562 per_node=  6335.8 brs_per_node=  673.6 hash=5ca978e012da1bb0
+fast=a1-conthist-shift                instr=31,684,310,073 nodes= 5,001,562 per_node=  6334.9 brs_per_node=  675.7 hash=5ca978e012da1bb0
+fast=a2-refresh-threat-in-place       instr=31,611,215,705 nodes= 5,001,562 per_node=  6320.3 brs_per_node=  675.6 hash=5ca978e012da1bb0
+fast=a3-halfka-drop-empty-branch      instr=31,567,867,187 nodes= 5,001,562 per_node=  6311.6 brs_per_node=  672.6 hash=5ca978e012da1bb0
+fast=a4-tier-and-sidenet-flags        instr=31,542,860,771 nodes= 5,001,562 per_node=  6306.6 brs_per_node=  669.6 hash=5ca978e012da1bb0
+fast=a5-uprep-other-earlyout          instr=31,632,110,530 nodes= 5,001,624 per_node=  6324.4 brs_per_node=  670.7 hash=5ca978e012da1bb0
+fast=a5r-revert-control               instr=31,542,859,652 nodes= 5,001,562 per_node=  6306.6 brs_per_node=  669.6 hash=5ca978e012da1bb0
+fast=a6-capture-stage-peel            instr=31,574,643,852 nodes= 5,001,562 per_node=  6313.0 brs_per_node=  671.2 hash=5ca978e012da1bb0
+fast=a6b-capture-stage-hoist-occ      instr=31,546,481,813 nodes= 5,001,562 per_node=  6307.3 brs_per_node=  667.6 hash=5ca978e012da1bb0
+fast=a7-threatpos-in-place            instr=31,542,857,048 nodes= 5,001,562 per_node=  6306.6 brs_per_node=  669.6 hash=5ca978e012da1bb0
+fast=a8-shipped-tree                  instr=31,542,857,637 nodes= 5,001,562 per_node=  6306.6 brs_per_node=  669.6 hash=5ca978e012da1bb0
+fast=a8b-shipped-tree-fmt             instr=31,542,858,202 nodes= 5,001,562 per_node=  6306.6 brs_per_node=  669.6 hash=5ca978e012da1bb0
+fast=a9-post-D33-review               instr=31,542,858,483 nodes= 5,001,562 per_node=  6306.6 brs_per_node=  669.6 hash=5ca978e012da1bb0

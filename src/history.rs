@@ -127,6 +127,9 @@ pub const LOW_PLY_SIZE: usize = 5;
 const VICTIM_NB: usize = 7; // 6 piece types + a "no victim" slot (ep, quiet promos)
 const CONT_NB: usize = 3328; // in_check(2) × capture(2) × piece13 × to(64)
 const CONT_CORR_NB: usize = 832; // piece13 × to(64)
+/// The `(in_check, capture)` axis pair — the LOW axis of [`ContHistId`], which
+/// is what makes [`ContHistId::piece_to`] a shift (see that type's doc).
+const QUADRANT_NB: usize = 4;
 const PAWN_HIST_SIZE: usize = 8192; // power of two, masked by the pawn key
 const CORR_SIZE: usize = 65536; // power of two, masked by each correction key
 
@@ -188,11 +191,19 @@ impl CorrBundle {
 ///
 /// The index flattens `(in_check, capture, prior piece, prior to-square)` —
 /// with a 13th "no piece" slot (index 12) for null moves and the pre-root
-/// padding — as `((in_check*2 + capture) * 13 + piece13) * 64 + to`, landing
-/// in `0..3328`. The `(piece13, to)` sub-index occupies the low `13*64 = 832`
-/// positions of each quadrant, which is exactly why
-/// [`piece_to`](Self::piece_to) — shared with the continuation *correction*
-/// history — is a plain `% 832`.
+/// padding — as `(piece13 * 64 + to) * 4 + (in_check*2 + capture)`, landing in
+/// `0..3328`.
+///
+/// **The axis order is chosen for [`piece_to`](Self::piece_to), not for
+/// readability** (perf study 16 §5). The `(piece13, to)` sub-index — which the
+/// continuation *correction* history indexes by, four times per node — is the
+/// HIGH part of the flat index, so recovering it is a `>> 2`. The natural
+/// order, `((in_check*2 + capture) * 13 + piece13) * 64 + to`, puts it in the
+/// low `13*64 = 832` positions of each quadrant, making the same accessor a
+/// `% 832` — a non-power-of-two modulus, which LLVM lowers to a
+/// multiply-shift-multiply-subtract chain. The tensor is a flat slab either
+/// way, both orders are bijections onto `0..3328`, and nothing outside this
+/// impl observes the ordering.
 ///
 /// Idiom note: this replaces Stockfish's stack-stored pointer with an index,
 /// the standard Rust move to keep an aliasing-heavy data structure both
@@ -202,12 +213,13 @@ impl CorrBundle {
 pub struct ContHistId(u16);
 
 impl ContHistId {
-    /// The inert `[false][false][no-piece][A1]` slab (flat index 768):
+    /// The inert `[false][false][no-piece][A1]` slab (flat index 3072):
     /// installed at the pre-root padding slots and after null moves. It is
     /// filled like every other slab and *read* by scoring, but never
     /// *written* (updates gate on `current_move.is_ok()`), so it behaves as a
     /// constant baseline — mirroring Stockfish's sentinel continuation table.
-    pub const SENTINEL: ContHistId = ContHistId(768); // ((0*2+0)*13 + 12) * 64 + 0
+    // (no-piece, A1) in quadrant 0 == 3072.
+    pub const SENTINEL: ContHistId = ContHistId((12 * 64 * QUADRANT_NB) as u16);
 
     /// Flatten `(in_check, capture, piece, to)` to the slab index. `piece` is
     /// `None` for the null-move / padding sentinel (the 13th "no piece" slot,
@@ -215,17 +227,32 @@ impl ContHistId {
     #[inline]
     pub fn new(in_check: bool, capture: bool, piece: Option<Piece>, to: Square) -> Self {
         let pc = piece.map_or(12, |p| p.index()); // 12 = "no piece"
-        let flat =
-            ((in_check as usize * 2 + capture as usize) * 13 + pc) * 64 + to.index() as usize;
+        let flat = (pc * 64 + to.index() as usize) * QUADRANT_NB
+            + (in_check as usize * 2 + capture as usize);
+        // The old `% 832` mapped ANY `u16` back into range, so a corrupt id
+        // could not walk `cont_corr` out of bounds; `/ QUADRANT_NB` only stays
+        // in range because ids are `< CONT_NB`. That fail-soft property is
+        // gone, so the invariant is stated where it is established (D33
+        // reviewer A). It holds: `pc <= 12`, and `Square::new` asserts `< 64`
+        // in release too, so the maximum is `(12*64 + 63)*4 + 3 = 3327` and
+        // the `as u16` cannot truncate.
+        debug_assert!(flat < CONT_NB, "ContHistId {flat} out of range");
         ContHistId(flat as u16)
     }
 
     /// The `(piece13 * 64 + to)` sub-index (`0..832`), shared verbatim with
     /// the continuation-correction history's outer index (design/09 §3.10).
-    /// The `% 832` is a constant modulus (compiles to a multiply-shift).
+    ///
+    /// A shift, because the type doc's axis order puts `(piece13, to)` in the
+    /// high bits. Run twice per evaluated node in
+    /// [`Histories::correction_value`], plus twice more on each node whose
+    /// correction history is actually updated — the pair in
+    /// [`Histories::update_correction_history`] is gated on `prev.is_ok()` AND
+    /// on [`correction_bonus`] having returned `Some`, so "four per node"
+    /// would overstate it (D33 reviewer C, D3).
     #[inline]
     pub fn piece_to(self) -> usize {
-        self.0 as usize % CONT_CORR_NB
+        self.0 as usize / QUADRANT_NB
     }
 }
 
@@ -754,8 +781,12 @@ const _: () = assert!(size_of::<[[StatEntry<MAIN_D>; BUTTERFLY_SIZE]; 2]>() == 2
 const _: () = assert!(size_of::<[[[StatEntry<CAPT_D>; VICTIM_NB]; 64]; 12]>() == 12 * 64 * 7 * 2);
 const _: () = assert!(CONT_NB == 4 * 13 * 64);
 const _: () = assert!(CONT_CORR_NB == 13 * 64);
+const _: () = assert!(CONT_NB == CONT_CORR_NB * QUADRANT_NB);
+// `piece_to()`'s divisor is the LOW axis span, and it must be a power of two
+// or the accessor stops being a shift (perf study 16 §5).
+const _: () = assert!(QUADRANT_NB.is_power_of_two());
 // The sentinel slab must be a real, in-bounds continuation index.
-const _: () = assert!(ContHistId::SENTINEL.0 == (12 * 64) as u16);
+const _: () = assert!(ContHistId::SENTINEL.0 == (12 * 64 * QUADRANT_NB) as u16);
 const _: () = assert!((ContHistId::SENTINEL.0 as usize) < CONT_NB);
 
 /// Total heap footprint of one [`Histories`] (design/09 §8 criterion 2:
@@ -938,31 +969,47 @@ mod tests {
         }
     }
 
-    // `ContHistId::new` is exactly the §3.2 flat formula: sweeping the four
-    // axes in nested order enumerates 0..CONT_NB with no gaps or collisions,
-    // and `piece_to()` recovers the (piece, to) sub-index of every id.
+    // `ContHistId::new` is a BIJECTION onto `0..CONT_NB`, and `piece_to()`
+    // recovers the (piece, to) sub-index of every id.
+    //
+    // Deliberately written without naming the axis order (perf study 16 §5
+    // permuted it, and the previous spelling — `assert_eq!(id.0, expected)`
+    // against a nested sweep counter — asserted the ORDER, which is a free
+    // implementation choice, instead of the two properties the search actually
+    // depends on). A collision or an out-of-range id is what corrupts the
+    // tensor; `seen` catches both.
+    //
+    // Deliberately NOT covered, so nobody "restores" it: swapping the
+    // `in_check` and `capture` axes is now caught by nothing (D33 reviewer C,
+    // M5). That is correct — it is a bijective relabelling of the tensor,
+    // identical on read and on write, and both `piece_to()` and `SENTINEL` are
+    // invariant under it.
     #[test]
     fn cont_hist_id_is_the_flat_index_bijection() {
-        let mut expected = 0usize;
+        let mut seen = [false; CONT_NB];
+        let mut n = 0usize;
         for in_check in [false, true] {
             for capture in [false, true] {
                 for pc in 0..13usize {
                     let piece = piece_for_slot(pc);
                     for to in 0..64u8 {
                         let id = ContHistId::new(in_check, capture, piece, Square::new(to));
-                        assert_eq!(id.0 as usize, expected, "flat index off");
+                        let flat = id.0 as usize;
+                        assert!(flat < CONT_NB, "id {flat} out of range");
+                        assert!(!seen[flat], "flat index {flat} collides");
+                        seen[flat] = true;
                         assert_eq!(id.piece_to(), pc * 64 + to as usize, "piece_to off");
-                        assert!((id.0 as usize) < CONT_NB);
                         assert!(id.piece_to() < CONT_CORR_NB);
-                        expected += 1;
+                        n += 1;
                     }
                 }
             }
         }
-        assert_eq!(expected, CONT_NB, "sweep did not cover exactly CONT_NB ids");
+        assert_eq!(n, CONT_NB, "sweep did not cover exactly CONT_NB ids");
+        assert!(seen.iter().all(|&s| s), "sweep left a slab unreachable");
     }
 
-    // SENTINEL is the real, in-bounds `[false][false][None][A1]` slab (768),
+    // SENTINEL is the real, in-bounds `[false][false][None][A1]` slab (3072),
     // distinct from any real move's slab; reading through it is inert.
     #[test]
     fn cont_hist_id_sentinel_is_no_piece_a1() {
@@ -970,7 +1017,7 @@ mod tests {
             ContHistId::SENTINEL,
             ContHistId::new(false, false, None, Square::A1)
         );
-        assert_eq!(ContHistId::SENTINEL.0, 768);
+        assert_eq!(ContHistId::SENTINEL.0, 3072);
         assert!((ContHistId::SENTINEL.0 as usize) < CONT_NB);
         assert_eq!(ContHistId::SENTINEL.piece_to(), 12 * 64);
 

@@ -1,0 +1,3 @@
+# startup16 2026-07-29T08:30:10-04:00
+  archon: small=    1,853n   1,031,655,520i | big=1,000,820n   7,167,797,678i || per_node=  6142.5  FIXED= 1,020,273,491  (=   68.0 i/n of the 15,001,568-node headline bench)
+      sf: small=    1,712n   1,064,683,294i | big=1,000,484n   5,574,980,268i || per_node=  4515.8  FIXED= 1,056,952,172  (=   70.5 i/n of the 15,001,568-node headline bench)
