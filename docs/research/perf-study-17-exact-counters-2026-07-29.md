@@ -56,8 +56,9 @@ ritual and both gates are **deferred to the owner**: this box OOM-killed four of
 this session's binaries at ~3.1 GB while a 3 GB trainer holds it, and the owner
 revised the commission mid-session to defer the release perft tier rather than
 fight for it. What that means arm by arm is in §10.1 — **u1–u6 have the full D24
-release perft tier green; u7 has only the fast tier**, and for a change to
-`unmake_move` node identity on the probe tree is evidence, not proof.
+release perft tier green; u7, u8 and u9 have only the fast tier**, and for a
+change to `unmake_move`'s and `legal`'s arm dispatch, node identity on the probe
+tree is evidence, not proof.
 
 An earlier draft argued these arms should survive PGO *better* than the band,
 "because PGO makes exactly that call more aggressively". **That was unsupported
@@ -576,7 +577,7 @@ and it is why an idiom finding still has to go through `probe17.sh`.
 
 The `_ => { debug_assert!(false); false }` arm therefore stays, with its
 fail-soft direction documented at the site. It is the one thing in this diff no
-test can reach in release, and §11 item 9 carries it.
+test can reach in release, and §11 item 8b carries it.
 
 ### 5.1d THE MECHANISM, MEASURED — and it is TWO mechanisms, not one
 
@@ -898,17 +899,19 @@ The box OOM-killed four of this session's binaries at ~3.1 GB anon-rss while a
 3 GB trainer held it, so this table is not a formality — it is the difference
 between what is proven and what is asserted.
 
-| check | u1–u6 tree | u7 tree (HEAD) |
+| check | u1–u6 tree | HEAD (u1–u9 + the new tests) |
 |---|---|---|
-| `cargo test` (default features — includes the FAST perft tier + checked mini-tier) | **PASS** | **PASS** — 607 passed, 0 failed |
-| `cargo test --features sota,arch-d48x` | **PASS** — 690 passed, 0 failed, 8 ignored | not re-run |
+| `cargo test` (default features — includes the FAST perft tier + checked mini-tier) | **PASS** | **PASS** — 608 passed, 0 failed |
+| `cargo test --features sota,arch-d48x` | **PASS** — 690 passed, 0 failed, 8 ignored | **PASS** (`--test-threads=1`) |
 | `cargo test --release -- --ignored perft_full_suite` (**D24 ritual**) | **PASS** | **not run — deferred to the owner** |
-| `cargo clippy --all-targets` | **PASS** | not re-run |
-| `cargo clippy --all-targets --features sota,arch-d48x` | **PASS** | not re-run |
+| `cargo clippy --all-targets` | **PASS** | **PASS** |
+| `cargo clippy --all-targets --features sota,arch-d48x` | **PASS** | **PASS** |
+| `cargo fmt --check` | — | **PASS** |
 | probe-tree node identity (5,001,562) + eval hash | PASS | PASS |
 
-**Read that honestly: for u7, node identity on the probe tree is EVIDENCE, NOT
-PROOF.** u7 rewrites `unmake_move`'s arm dispatch. A 5 M-node search over 50
+**Read that honestly: for u7–u9, node identity on the probe tree is EVIDENCE,
+NOT PROOF.** u7 rewrites `unmake_move`'s arm dispatch and u9 changes what
+`legal`'s and `gives_check`'s helpers derive rather than receive. A 5 M-node search over 50
 positions exercises promotions and en-passant captures, so a wrong arm would
 almost certainly move the node count — but "almost certainly" is what the D24
 ritual exists to replace. It is item 1 of §10.
@@ -961,6 +964,8 @@ Optional, and the cheapest thing that would extend this study: rerun
 | u5 `gives_check_special` | yes | yes | **yes** |
 | u6 `legal_special` | yes | yes | **yes** |
 | u7 `unmake_special` | yes | yes | **NO — owner must run it** |
+| u8 `special_record` | yes | yes | **NO — owner must run it** |
+| u9 argument trims (4 helpers) | yes | yes | **NO — owner must run it** |
 
 ---
 
@@ -977,15 +982,16 @@ spellings). **Re-opened by this study:** threat generation — at +250…+400, n
 | 1b | **Threat generation overall, 1.30×–1.59× SF.** §4 as corrected by §4.4. Our eight symbols cost 1074.8 i/n against SF's `674.8 + X`, where `0 ≤ X ≤ 433.4` is the share of `update_accumulator_refresh_cache` that is the inlined `append_active_indices`. The designs differ (lazy regenerate-at-fold on 41.5% of nodes vs eager maintenance on 100%), so part of the gap is the design and part is the spelling, and **nobody knows the split** | **+250 to +400** | **high on the direction, BRACKETED on the size** | **first, resolve `X`**: rebuild SF with `__attribute__((noinline))` on `FullThreats::append_active_indices` (`eca43a97:src/nnue/features/full_threats.cpp:210`) and re-run `cg17.sh` — `sfbuild17.sh` already does the rebuild, this is a one-line patch on top and 30 s. **Then** split ours: `at_full` is 466.19 i/n at 1123 i/call and inlines `compute`; put `#[inline(never)]` on `compute`, `build_deltas`, `resolve_both` and the fold, re-run `cg17.sh`, price the four stages |
 | 2 | **The libc `memcpy` inside `at_full`** — 0.3111 calls/node, 83.7 i/n inclusive, ~269 instructions per call, counted not estimated. Not the empty-delta copy (study 14 already chunked that one) | 20–80 | **high — counted** | `memspy16.sh` from study 16, whose interposer already tags the caller and the payload size. The class it belongs to has paid twice (study 15 −22.7, study 16 −14.6) |
 | 3 | **`unmake_move`'s 168-byte state restore** — the other half of study 14's trade. 79.2 i/call vs SF's 53.6 | **+25.5** | **high — exact** | not a respelling: SF restores by pointer. The honest options are (a) leave it, since study 14's make-side win was larger, or (b) make `StateInfo`'s *restored* prefix smaller by moving the fields `unmake` does not need (blockers, pinners, check_squares — 48 B) out of the copied block. (b) is a design change to doc 04 and wants its own study |
-| 3b | **Stockfish's `legal` has NO en-passant arm at all**, and ours is the biggest thing left in that function (D33 reviewer B, verified at `eca43a97:src/position.cpp:660-697`). SF proves ep legality twice over instead: the `do_move` ep-validity gate that only sets `st->epSquare` when a legal ep capture provably exists (`:930-946` — **we have the same gate**, D9, `board.rs` step 8), plus the ordinary pin test reached through `generate<LEGAL>`. We still rebuild the occupancy and run a slider probe per ep move | delete an arm, not shrink one | medium — the reference is unambiguous, the equivalence is NOT | this is a FUNCTIONAL change: our gate proves *some* ep capture is legal, not that *this* one is, and the horizontal both-pawns-off-the-rank pin is exactly the case that separates them (`movegen.rs`'s own `horizontal_ep_double_removal_is_illegal` test). Full D24 ritual **including the extended tier**, then games. Do not take it on the reference alone |
+| 3b | **Stockfish's `legal` has NO en-passant arm at all**, and ours is the biggest thing left in that function (D33 reviewer B, verified at `eca43a97:src/position.cpp:660-697`). SF proves ep legality twice over instead: the `do_move` ep-validity gate that only sets `st->epSquare` when a legal ep capture provably exists (`:930-946` — **we have the same gate**, D9, `board.rs` step 8), plus the ordinary pin test reached through `generate<LEGAL>`. We still rebuild the occupancy and run a slider probe per ep move | delete an arm, not shrink one | medium — the reference is unambiguous, the equivalence is NOT | this is a FUNCTIONAL change: our gate proves *some* ep capture is legal, not that *this* one is, and the horizontal both-pawns-off-the-rank pin is exactly the case that separates them (`movegen.rs`'s own `horizontal_ep_double_removal_is_illegal` test, and now `diagonal_ep_pin_is_illegal_for_the_pinned_capturer_only`, which was BUILT for this — §9.2 measured the gate subsuming the arm on a one-capturer position and NOT subsuming it on a two-capturer one). Full D24 ritual **including the extended tier**, then games. Do not take it on the reference alone |
 | 3c | **`ripple` emits cancelling threat pairs that Stockfish suppresses.** SF's `move_piece` passes `noRaysContaining = fromTo` (`eca43a97:src/position.h:407,416`) and `update_piece_threats` skips the discovered-threat emission when the slider's ray contains BOTH endpoints (`:1197`) — the piece never left that ray, so nothing was discovered. Our `ripple` (`sota_threats.rs:479-523`) has no such guard: for a slider collinear with `from` and `to` we emit the same relation twice with opposite signs, and **each surviving delta costs a full accumulator column op in the fold** (D33 reviewer B) | ? — count it first | **medium-high; a directly transplantable idea** | before implementing: instrument `resolve_both` to count add/sub pairs that cancel, per node. If the rate is material this is a cheap win in item 1b's block AND in §6.2.1's branch column. `ripple` runs 0.4907 calls/node |
 | 4 | **The `#[cold]` sweep is not finished.** §5's rule (a whole arm of a top-level kind dispatch) has more sites: `movepick`'s scoring loops, `see_ge`'s non-Normal short circuit, `pseudo_legal`'s non-Normal branch (which allocates a 520-byte `MoveList` frame) | 10–40 | medium | one `probe17.sh` cycle each, 6 s. Watch for u3's failure mode: if the caller has to materialise arguments it otherwise never computes, it loses |
 | 5 | **The branch ratio: most of the integer half is answered and it is item 1's block.** §6.2.1, re-derived after the parser fix. Exact, both engines, integer code only: ARCHON **437.6** br/node vs SF **288.0**, of which **threat generation is +94.4 of the +149.6** — and SF's unsplittable refresh-cache symbol carries 27.0 more that is part threat, so the true share is 45–63%. What is still open is the SIMD half, because no instrument on this box can count branches in an AVX-512 kernel | +94 of +150 measured; the SIMD half open | **high for the integer half** | the SIMD half needs a *compile-time* AVX2 build of both engines (force the dispatch, do not let it read CPUID) so `--branch-sim` sees the shipped loop shape. The integer half needs no more measurement — it is item 1 |
 | 6 | **`6b782211` whole**, as a games question | a missed-detection class, not a false-draw one (§8) | high | unchanged from study 16 item 4 except the direction. Note the speed half is measured negative for us (+17.8) |
 | 7 | **Pack `Piece` into one byte** | 5–20 | medium | unchanged from study 16 item 1. Confirmed live: `Worker::do_move` at `+0x40`/`+0x48` reads both mailbox bytes with two `movzbl` |
-| 8 | **`tools/check.sh` clippies DEFAULT features only** | 0 i/n | high | unchanged from study 15 item 12 and study 16 item 10. Still open, still the dangerous direction |
+| 8 | **`tools/check.sh` clippies DEFAULT features only** | 0 i/n | high | unchanged from study 15 item 12 and study 16 item 10. Still open, still the dangerous direction. This study ran the `sota` clippy by hand and it is clean; the two warnings the box does report are pre-existing, in `simple_halfka.rs` and `protected_halfka.rs`, neither touched here |
+| 8b | **`legal_special`'s `_ => { debug_assert!(false); false }` is unreachable and untestable in release.** A future re-route of the caller's `match` would make `legal` silently drop legal moves with nothing able to fail (D33 reviewers A and C). The reviewer's fix — split into `legal_castling`/`legal_en_passant` so the caller's own match IS the dispatch — was implemented and **measured +19.4 i/n** (§5.1c), so it is not free | 0 i/n; a defect class | high | the cheap alternative nobody tried: keep one helper but have the caller pass a two-variant enum instead of `Move`, so the `_` arm cannot be written |
 
-**Four method rules this study hands over.**
+**Six method rules this study hands over.**
 
 1. **A BLOCK IS NOT A SYMBOL LIST.** §4.2. If the bucketing does not sum to the
    engine's total, it cannot be audited, and two hand-built lists will err in
