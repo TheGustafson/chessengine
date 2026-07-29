@@ -1403,3 +1403,25 @@ four studies had only inferred from its effects.
 re-verify then attack), and the **1.84× branch ratio whose cause is unknown
 after three refutations** — that one would be a discovery rather than an
 increment. D24 perft ritual mandatory for it since it touches movegen.
+
+### Tick — D48Y2 sb53, converging with a decelerating (healthy) slope
+
+| sb10 | sb20 | sb30 | sb40 | sb50 |
+|---|---|---|---|---|
+| 0.012129 | 0.011977 | 0.011892 | 0.011844 | **0.011792** |
+
+Per-superbatch slope by window: −1.52e-5, −8.5e-6, −4.8e-6, −5.2e-6. **The slope
+is decelerating and then holding steady at ~−5e-6/sb** — the normal shape of a
+run settling, not one stalling (D48Y's slope was ~0 from sb10 onward).
+
+Linear projection at the recent slope puts sb120 (end of the light-decay leg)
+at **~0.01144**, before the 70sb anneal contributes anything. D48Y's best in 190
+superbatches was 0.012580.
+
+Throughput recovered to **152k pos/s** (normal 198k); ETA ~6.2 h. Available RAM
+3.0 GB with study 17 building; swap still exhausted.
+
+**Deliberately did NOT run a mid-run quality match this tick.** A match is the
+exact job class that killed the trainer at incident #2, memory is tight, and a
+pre-anneal checkpoint measured with ±25 Elo bars would need so many caveats it
+could not change any decision. Completion is worth more than the datapoint.
