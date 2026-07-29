@@ -90,18 +90,39 @@ pub(crate) fn partial_insertion_sort(moves: &mut [ExtMove], limit: i32) {
     // Element 0 anchors the prefix: `sorted_end` is the last sorted index.
     let mut sorted_end = 0;
     for p in 1..moves.len() {
-        if moves[p].value >= limit {
-            let tmp = moves[p];
-            sorted_end += 1;
-            // Hole-punch: the element leaving the prefix edge goes to `p`.
-            moves[p] = moves[sorted_end];
-            let mut q = sorted_end;
-            while q > 0 && moves[q - 1].value < tmp.value {
-                moves[q] = moves[q - 1];
-                q -= 1;
-            }
-            moves[q] = tmp;
+        // One read of `moves[p]`, not two — the old form loaded `.value` for
+        // the test and then loaded the whole `ExtMove` again for `tmp`.
+        let tmp = moves[p];
+        if tmp.value < limit {
+            continue;
         }
+        sorted_end += 1;
+        // INVARIANT: `sorted_end <= p`. Before this iteration `sorted_end` is
+        // the number of insertions among `1..p`, which is at most `p - 1`, so
+        // after the increment it is at most `p`.
+        debug_assert!(sorted_end <= p, "partial sort prefix outran its scan");
+        // Perf study 20 arm 7 — spelled so LLVM can DISCHARGE the bounds
+        // checks rather than emit them. The old form indexed the full slice
+        // with `sorted_end` and `q`, neither of which the compiler can relate
+        // to `moves.len()`, so the shipped binary carried two `cmp`/`jae`
+        // pairs and two panic edges per INSERTED element (measured: the sort
+        // is 36% of `init_quiets`, itself 9.3% of all engine instructions).
+        //
+        // `head` has length `p + 1` — a length LLVM derives from the loop
+        // range — and every index touched below (`p`, `se`, `q <= se`) is
+        // provably inside it. `.min(p)` is a no-op by the invariant just
+        // asserted, and it is precisely the fact the compiler was missing: one
+        // `cmov` in place of a check plus a panic block.
+        let se = sorted_end.min(p);
+        let head = &mut moves[..=p];
+        // Hole-punch: the element leaving the prefix edge goes to `p`.
+        head[p] = head[se];
+        let mut q = se;
+        while q > 0 && head[q - 1].value < tmp.value {
+            head[q] = head[q - 1];
+            q -= 1;
+        }
+        head[q] = tmp;
     }
 }
 

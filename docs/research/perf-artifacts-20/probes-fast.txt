@@ -10,3 +10,5 @@ fast=a4-movelist-uninit                 instr=30,973,529,068 nodes= 5,001,562 pe
 fast=a4b-movelist-uninit-alloca         instr=30,941,871,382 nodes= 5,001,562 per_node=  6186.4 brs_per_node=  658.5 hash=5ca978e012da1bb0
 fast=a5-head-align64                    instr=30,631,340,017 nodes= 5,001,562 per_node=  6124.4 brs_per_node=  651.7 hash=5ca978e012da1bb0
 fast=a5C16-glibc-offset-control         instr=30,631,339,909 nodes= 5,001,562 per_node=  6124.4 brs_per_node=  651.7 hash=5ca978e012da1bb0
+fast=a6-dirtypiece-align8               instr=30,574,685,498 nodes= 5,001,562 per_node=  6113.0 brs_per_node=  651.3 hash=5ca978e012da1bb0
+fast=a7-sort-bounds                     instr=30,621,964,304 nodes= 5,001,562 per_node=  6122.5 brs_per_node=  650.4 hash=5ca978e012da1bb0
