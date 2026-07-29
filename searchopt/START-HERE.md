@@ -80,6 +80,38 @@ cold probes at 110k read depth ~14.5 where games at the same budget read ~21.4. 
 mechanism that exists only cold is an instrument artifact — `asp30` measured **+0.96**
 depth cold and delivers **+0.08** in games.
 
+### The five traps that cost this session the most, in the order they bit
+
+1. **A cold probe is not the game regime.** `ucinewgame`-per-position on a curated set
+   reads depth ~14.5 at 110k where real games at the same budget read ~21.4, and the two
+   disagree on more than depth (2.02 ply/doubling in games vs 1.47 from a cold EBF).
+   **Every mechanism that only exists cold evaporated in games** — `TM_SCORE_C` measured
+   +11.8% cold and 0% in the match.
+2. **n=406 cannot see a real search patch.** ±24 Elo idealised, ±40–50 observed, against
+   patches worth +1 to +4. **Derive the expected effect BEFORE choosing SPRT bounds** — a
+   bound that lands on the effect size needs ~10k games and can reject a genuine +4. For
+   a change with a strong prior, test the DECISION (non-inferiority) rather than a round
+   number.
+3. **Check a positive invariant, not the absence of an error string.** A match that was
+   100% time forfeits passed my forfeit grep, because fastchess writes "loses on time"
+   and I searched for "time forfeit". What exposed it was mean game length: **11 plies is
+   not a chess game.** Prefer a termination-reason histogram and a plies/game number.
+4. **Condition on what was known BEFORE the decision.** Two engines playing each other
+   occupy different positions, so anything conditioned on the current eval is reverse
+   causation. Raw move-type stats gave "we check 12% less than SF" at **4σ**; conditioning
+   ex ante **reversed the sign**.
+5. **Multiplicative factors on the TM budget are damped ~30×.** A 2.5× budget multiplier
+   buys +8% of real time — the soft stop's stability/effort/`fallingEval` factors end the
+   search before the budget matters. Any `optimum()` multiplier inherits this, including
+   `ARCHON_WDL_TM_C3` and `unc_tm_factor`.
+
+### Numbers corrected this session — do not quote the old ones
+| was | now | how |
+|---|---|---|
+| NPS gap 1.92× | **~1.4×** | fixed-node match PGNs, n≈28k moves/budget; perf study's independent 1.512× instructions/node agrees |
+| root oscillation 3.2× SF | **1.24×** (1.56× in balanced positions) | game regime, n≈24k, vs one cold position |
+| "we cannot convert" (12% vs 84%) | conversion gap **29** vs salvage gap **28** at equal nodes | colour-paired, n=615 — symmetric, so not a localisation |
+
 ## 1. The problem — and what the previous framing got wrong
 
 The framing below ("we cannot convert") is a **description, not a localisation**, and it
