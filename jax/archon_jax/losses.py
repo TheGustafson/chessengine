@@ -24,8 +24,41 @@ import jax
 import jax.numpy as jnp
 
 
+def expected_score(x: jnp.ndarray, offset: float, scale: float) -> jnp.ndarray:
+    """Stockfish's OFFSET TWO-SIGMOID: a score -> an expected score in [0,1].
+
+        0.5 * (1 + sig((x-offset)/scale) - sig((-x-offset)/scale))
+
+    The offset is what creates the draw band; a plain `sigmoid(x/k)` is
+    draw-blind and pins every quiet position near 0.5.
+
+    **SF applies this on BOTH sides of the loss and we only did the label side**
+    (`nnue-pytorch/model/nnue.py:39-70`):
+
+        qf = 0.5*(1 + sig((scorenet-in_offset)/in_scaling) - sig(...))   # NETWORK
+        pf = 0.5*(1 + sig((score-out_offset)/out_scaling) - sig(...))    # LABEL
+        pt = pf*lambda + t*(1-lambda)
+
+    D48Y2 fitted per-corpus constants for `pf` and left `qf` a plain sigmoid.
+    That is very likely why its heldout R² improved monotonically (0.8815 ->
+    0.8906) while its strength did not move: **the network-output frame stayed
+    uncorrected.** The training-gap study is explicit that the network side is
+    what absorbs a systematic frame mismatch between the net's output units and
+    the labelling engine's — i.e. exactly our 2.07x frame problem.
+
+    SF's shipped constants (HPO-tuned, `nettest/threats.yaml:78-102`):
+    in_scaling 295.65 / in_offset 285.27; out_scaling 379.99 / out_offset
+    289.13. Ours must be fitted in OUR units — `value_logit` is not cp — so
+    these are a shape reference, not values to copy.
+    """
+    return 0.5 * (1.0 + jax.nn.sigmoid((x - offset) / scale)
+                      - jax.nn.sigmoid((-x - offset) / scale))
+
+
 def value_loss(value_logit: jnp.ndarray, target: jnp.ndarray,
-               pow_exp: float = 2.0) -> jnp.ndarray:
+               pow_exp: float = 2.0,
+               net_offset: float = 0.0, net_scale: float = 0.0,
+               qp_asymmetry: float = 0.0) -> jnp.ndarray:
     """Mean sigmoid power-error (bullet: sig.squared_error(targets)
     .reduce_sum_batch(), d40:1069, then /B at reporting).
 
@@ -33,11 +66,25 @@ def value_loss(value_logit: jnp.ndarray, target: jnp.ndarray,
     also training well): a higher exponent weights precision more and outlier
     accuracy less — the axis on which we trail SF18. Implemented on |.| so
     non-integer exponents are well defined; eps keeps the gradient finite at
-    exactly zero error."""
-    sig = jax.nn.sigmoid(value_logit)
-    if pow_exp == 2.0:
+    exactly zero error.
+
+    ``net_scale`` > 0 switches the NETWORK side from a plain sigmoid to the
+    offset two-sigmoid (see ``expected_score``) — the half of SF's transform we
+    were missing. 0.0 keeps the historical behaviour bit-exact.
+
+    ``qp_asymmetry`` reproduces SF's `qp_asymmetry = 0.2287`: overestimation is
+    penalised ~23% harder than underestimation. 0.0 = symmetric = unchanged.
+    """
+    if net_scale > 0.0:
+        sig = expected_score(value_logit, net_offset, net_scale)
+    else:
+        sig = jax.nn.sigmoid(value_logit)
+    if qp_asymmetry == 0.0 and pow_exp == 2.0:
         return jnp.mean((sig - target) ** 2)
-    return jnp.mean((jnp.abs(sig - target) + 1e-12) ** pow_exp)
+    err = (jnp.abs(sig - target) + 1e-12) ** pow_exp
+    if qp_asymmetry != 0.0:
+        err = err * ((sig > target) * qp_asymmetry + 1.0)
+    return jnp.mean(err)
 
 
 def policy_loss(pol_logits: jnp.ndarray, pol_target_id: jnp.ndarray) -> jnp.ndarray:

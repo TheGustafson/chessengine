@@ -502,7 +502,10 @@ def canonical_orient(ksq_mover_frame: np.ndarray) -> np.ndarray:
 
 def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
               scale: float, policy: bool = False,
-              threats: bool = True, target_offset: float = 0.0) -> dict:
+              threats: bool = True, target_offset: float = 0.0,
+              piece_rebalance: bool = False,
+              wdl_filter: bool = False,
+              wdl_filter_floor: float = 0.0) -> dict:
     """records -> the dense/sparse training tensors, bullet-mapper-parity.
 
     Returns dict with:
@@ -558,6 +561,45 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
     else:
         eval_t = 1.0 / (1.0 + np.exp(-s / scale))
     out["target"] = (wdl * result + (1.0 - wdl) * eval_t).astype(np.float32)
+
+    # --- SF-style distribution SHAPING (2026-07-29) -------------------------
+    # Our filter is a pure accept/reject predicate with no shaping at all; SF's
+    # loader carries three probabilistic mechanisms on top (study §2.3), and
+    # they are REWEIGHTING, not discarding. Emitted here as a per-record weight
+    # so a fixed-size batch pipeline gets the same effect in expectation as
+    # their probabilistic skip.
+    w = None
+
+    # (a) PIECE-COUNT REBALANCING — SF PR #4942, "an attempt to reduce the
+    # skewed dataset piece count distribution where there are much more
+    # positions with less than 16 pieces". MEASURED on our mix: mean piece
+    # count 15.6 against SF's target 19.5, and the 31-32 bucket gets 4.25% of
+    # our data where SF targets 13.95% — a ~3x endgame skew. Alexandria
+    # measured +5.08 Elo STC / +2.28 LTC for fixing exactly this, as a
+    # data-loader change alone.
+    if piece_rebalance:
+        npc = np.unpackbits(
+            recs["occ"].view(np.uint8).reshape(-1, 8), axis=1).sum(1).astype(np.float32)
+        # SF's 5-point spline over piece counts 0/8/16/24/32. The -0.20 at 0 is
+        # a control point, not a probability — clamp after interpolating.
+        knots = np.array([0.0, 8.0, 16.0, 24.0, 32.0], dtype=np.float32)
+        vals = np.array([-0.20, 0.45, 1.00, 0.95, 0.75], dtype=np.float32)
+        w = np.clip(np.interp(npc, knots, vals), 0.0, 1.0).astype(np.float32)
+
+    # (b) WDL FILTERING — SF skips with probability 1 - score_result_prob(),
+    # i.e. down-weights positions whose EVAL DISAGREES WITH THE GAME RESULT.
+    # NOTE: this is OUR formulation of that shape, not a transcription — the
+    # exact SF predicate lives in a GPL loader we do not copy, and its precise
+    # constants are unverified here. We already have a calibrated draw-aware
+    # model per corpus, so agreement is scored under it: `eval_t` is the
+    # expected score implied by the eval, `result` is what happened.
+    if wdl_filter:
+        agree = 1.0 - np.abs(eval_t - result)
+        aw = np.clip(agree, wdl_filter_floor, 1.0).astype(np.float32)
+        w = aw if w is None else (w * aw).astype(np.float32)
+
+    if w is not None:
+        out["weight"] = w
 
     if policy:
         pf = recs["extra"][:, 0].astype(np.int64)

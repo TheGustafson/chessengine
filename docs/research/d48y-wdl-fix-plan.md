@@ -2355,3 +2355,75 @@ trained weights, two quantisations, fixed nodes:
 `d48y2-sb190 @ scale 64` vs `d48y2-sb190 @ scale 128`. No confound from
 training, data, architecture or search. It prices quantisation damage **in Elo**
 rather than dB, and it is the test that decides whether QAT is worth a retrain.
+
+## ★★★ TRAINING PROPOSAL — D49, the "do it properly" net (2026-07-29)
+
+Owner's requested batch, implemented and verified this session. **All knobs
+default OFF => every change is a bit-exact no-op until deliberately enabled.**
+
+### IMPLEMENTED AND VERIFIED
+
+| # | mechanism | where | verified |
+|---|---|---|---|
+| 1 | **QAT, full integer pipeline** (not weight-only): FT weights, the pairwise `>>9` -> 127-level activation grid, L1 weights | `model.py: fake_quant / fake_quant_act` | STE grads flow through unmoved weights; floor gives 0.5 -> 0.4961 |
+| 2 | **QAT clipping callback** — SF's missing half | `model.py: clip_qat_weights` | reproduces SF's ranges exactly (threat +/-0.4961@256, l1 +/-1.9844@64) |
+| 3 | **Double sigmoid on the NETWORK side** — the half of SF's transform D48Y2 lacked | `losses.py: expected_score` | `expected_score(0)=0.5`; off => bit-exact |
+| 4 | **`qp_asymmetry`** (SF ships 0.2287) | `losses.py: value_loss` | off => bit-exact |
+| 5 | **Piece-count rebalancing**, SF's 5-point spline 0/8/16/24/32 -> −0.20/0.45/1.0/0.95/0.75 | `features.py` | weight emitted only when enabled |
+| 6 | **WDL filtering** (down-weight eval/result disagreement) | `features.py` | OUR formulation of SF's shape, NOT a transcription |
+
+**Activations FLOOR, weights ROUND** — the engine's `>>` is a floor and SF floors
+for the same reason. I had written `round`; caught by reading their quantiser.
+
+### BLOCKED, WITH THE REASON
+
+**7. Soft early-ply spline — CANNOT BE DONE AT LOAD TIME.** `RECORD_DTYPE` is
+32 bytes (`occ, pcs[16], score, result, ksq, opp_ksq, extra[3]`) and `extra` is
+spent on policy. **Ply is not stored.** Needs a corpus re-convert.
+**The gap this leaves is not small:** our convert filter drops ply < 16, and SF's
+spline accepts only ~5-20% of ply 16-29, so we OVER-WEIGHT early middlegame
+badly relative to SF.
+
+### THE OPEN QUESTION THAT SHOULD BE SETTLED FIRST
+
+**What does `band` mean?** Training corpora are `band75-100` / `band75-88` /
+`band75-95` / `band75-83`; the heldout is `band0-5`. I could NOT find a
+definition in `data-recipe-contract.md`, the study, or the tooling. The study's
+percentages are MIX WEIGHTS, not retention rates. If bands are percentile slices
+with heldout disjoint, **band 5-75 is unused entirely** — potentially the largest
+lever available and consistent with the owner's "we only use a band". **Do not
+build a run plan on a guess: resolve this first.** It is cheap.
+
+### PROPOSED RUN — D49
+
+**Do NOT enable everything at once.** D48Y2 is the cautionary case: it bundled a
+target change with a schedule change and landed unattributable (−40.7 +/- 35.9
+final, R² 0.8906 vs D48X's 0.8815 — metric moved, strength did not).
+
+**Arm A (the mechanism most likely to explain D48Y2's null):** network-side
+double sigmoid ONLY, warm from d48y2-sb190, same schedule. If D48Y2's R²-without-
+strength was the uncorrected output frame, this is where it shows.
+
+**Arm B:** QAT (all four knobs) at threat scale **256** with the clipping
+callback, warm from d48y2-sb190. Scale 128 was the right answer to the wrong
+question — it is optimal for POST-HOC quantisation of unconstrained weights;
+with the callback holding weights in range, 256 is correct and matches SF.
+
+**Arm C:** data shaping (piece-count + WDL weighting) ONLY.
+
+**Then combine what wins.** Each arm is ~100sb warm (the owner's own finding:
+nets plateau ~100sb until anneal) + a 70sb anneal.
+
+### MEASUREMENT RULES FOR D49 — non-negotiable
+
+1. **GAMES ARBITRATE.** D48Y2 improved R² monotonically for 190sb and gained
+   nothing. **No arm is accepted on heldout, R², or dB.**
+2. **The screen is ~100x underpowered** (study G0): we run 120-400 games at
+   +/-35 Elo; Reckless screens every net at 25,000 fixed nodes over ~40,000
+   games at +/-2 Elo, and the study says that is affordable here. **Fix the
+   instrument before running the arms**, or none of them will resolve.
+3. **Self-null is clean** (0.00 +/- 0.00, W29/L29/D62) — the harness is symmetric
+   and the engine deterministic at fixed nodes. That is a symmetry check, NOT a
+   noise floor: paired openings force cancellation.
+4. **QAT parity check before any strength claim:** all knobs off must reproduce a
+   QAT-off run bit-exactly.
