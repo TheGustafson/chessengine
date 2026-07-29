@@ -56,9 +56,12 @@ def init_params(arch: ArchSpec, seed: int) -> dict:
     stdevs = {
         "l0_pstw": np.sqrt(2.0 / 32.0),
         "l1w": np.sqrt(2.0 / arch.hl),
-        "l2w": np.sqrt(2.0 / arch.l2),
-        "l3w": np.sqrt(2.0 / arch.l3),
-        "polmovew": np.sqrt(2.0 / (arch.pol_proj or arch.l2)),
+        # fan_in from the SHAPE, not from arch.l2/l3 — identical without
+        # dual_tail, correct with it (fan-ins 2*L2 and 2*L2+2*L3).
+        "l2w": np.sqrt(2.0 / shapes["l2w"][0]),
+        "l3w": np.sqrt(2.0 / shapes["l3w"][0]),
+        "polmovew": np.sqrt(2.0 / (arch.pol_proj
+                                   or shapes.get("polmovew", (arch.l2,))[0])),
         "pol_projw": np.sqrt(2.0 / arch.hl),
         "dis_projw": np.sqrt(2.0 / arch.hl),
         "dis_outw": np.sqrt(2.0 / max(arch.dis_proj, 1)),
@@ -196,6 +199,20 @@ def _screlu(x):
     return c * c
 
 
+def _dual(x):
+    """SF `eca43a97`'s dual activation: hand BOTH SqrCReLU(x) and CReLU(x)
+    forward, concatenated (nnue_architecture.h:56-67 — ac_sqr_N writes the
+    low half of fc_{N+1}'s input buffer, ac_N the high half, so sqr comes
+    FIRST). Doubles what each unit contributes at one extra multiply per
+    unit; adds routes rather than width (study §4.3/§4.4).
+
+    SHAPE ONLY. SF's `WeightScaleBits+1` / `WeightScaleBits` per-layer shifts
+    are int8 requantisation bookkeeping; our tail is f32 and has no analogue.
+    """
+    c = jnp.clip(x, 0.0, 1.0)
+    return jnp.concatenate([c * c, c], axis=-1)
+
+
 def _select(x: jnp.ndarray, bucket: jnp.ndarray, divisor: int) -> jnp.ndarray:
     """SelectRows: pick contiguous chunk `bucket` of size rows/divisor."""
     b, rows = x.shape
@@ -217,12 +234,22 @@ def head_forward(params: dict, arch: ArchSpec, acc_stm: jnp.ndarray,
     hl1 = jnp.concatenate([stm_hidden, ntm_hidden], axis=-1)      # (B, HL)
 
     l1 = hl1 @ params["l1w"] + params["l1b"]                      # (B, 8*L2)
-    hl2 = _screlu(_select(l1, bucket, arch.num_buckets))          # (B, L2)
+    if arch.dual_tail:
+        # R2: dual activation + inter-layer concat skip (study §4.4). L1/L2
+        # unchanged, so `l1` above — the expensive part — is untouched.
+        hl2 = _dual(_select(l1, bucket, arch.num_buckets))        # (B, 2*L2)
+        l2 = hl2 @ params["l2w"] + params["l2b"]                  # (B, 8*L3)
+        hl3 = _dual(_select(l2, bucket, arch.num_buckets))        # (B, 2*L3)
+        # fc_2 reads BOTH layers' pairs: a neck direction reaches the output
+        # without passing through fc_1's nonlinearity.
+        l3 = jnp.concatenate([hl2, hl3], axis=-1) @ params["l3w"] + params["l3b"]
+    else:
+        hl2 = _screlu(_select(l1, bucket, arch.num_buckets))      # (B, L2)
 
-    l2 = hl2 @ params["l2w"] + params["l2b"]                      # (B, 8*L3)
-    hl3 = _screlu(_select(l2, bucket, arch.num_buckets))          # (B, L3)
+        l2 = hl2 @ params["l2w"] + params["l2b"]                  # (B, 8*L3)
+        hl3 = _screlu(_select(l2, bucket, arch.num_buckets))      # (B, L3)
 
-    l3 = hl3 @ params["l3w"] + params["l3b"]                      # (B, 8)
+        l3 = hl3 @ params["l3w"] + params["l3b"]                  # (B, 8)
     out = _select(l3, bucket, arch.num_buckets)[:, 0]             # (B,)
     if arch.out_skip:
         # D47U output-skip: per-bucket linear lane on hl1, outside every
