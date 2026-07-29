@@ -1616,3 +1616,57 @@ stopped it at 13 games (`engines/runs/framenull-aborted-13g`) and it re-runs
 after the swap. "One instrument at a time" is a resource rule as much as an
 epistemic one, and I broke it for a match that was never going to be readable
 before the swap finished anyway.
+
+## THE NET-SWAP LADDER — OUR WEIGHTS ARE THE DEFICIT (2026-07-28)
+
+All three arms are ARCHON's OWN SEARCH at fixed 110k nodes, same book, same
+binary per pair, differing only in the weights. Speed is fully controlled out.
+
+| weights in our search | Elo vs D48X | n | status |
+|---|---|---|---|
+| **Stockfish `eca43a97`** (1024-wide) | **+81.4 ± 32.6** | 102 | RUNNING |
+| **Reckless 0.9.0** (768-wide) | **+30.0 ± 18.0** | 406 | FINAL |
+| our own net × 0.7316 (frame null) | **−12.0 ± 18.2** | 406 | FINAL |
+
+**The null is what makes the middle row safe.** De-framing our own net costs
+~12 Elo, so the Reckless arm ran through a handicap of the same kind ⇒ **+30 is
+a FLOOR on their net's advantage, not an overstatement.** The SF conversion is
+better behaved than the Reckless one (LS 0.5126 vs median 0.5096, agreeing to
+0.6%, pearson 0.96; the Reckless pair diverged 0.7316 vs 0.554), so the SF row
+carries a materially weaker frame caveat than the Reckless row.
+
+Both ports were gated bit-exact against the opponent's OWN binary before a
+single game: Reckless 0/50 mismatches, Stockfish 47/47 exact in Rust and
+244/244 in the Python oracle.
+
+**Converging evidence, four independent instruments, same conclusion:**
+1. Frame-free rank correlation: we are indistinguishable from Reckless
+   (Δρ −0.0131, CI [−0.043, +0.017]) and significantly BELOW SF18-static
+   (Δρ −0.0364, CI [−0.068, −0.005]).
+2. Reckless's 768 net beats our 1280 at equal nodes.
+3. SF's 1024 net beats it by more.
+4. `sf-features` proves ARCHON's HalfKA and FullThreats indices are IDENTICAL
+   to SF's (40/40 × 2 perspectives) — our FEATURES are provably correct, and
+   the search is an established faithful port.
+
+⇒ The deficit is not architecture, not features, not search. **It is the
+weights**, i.e. the training recipe. That is now a measured claim rather than
+an inference, and it is what `docs/research/nnue-training-gap-study-2026-07-28.md`
+exists to fix. Its sharpest lead: the calibrated target transform was BUILT,
+measured at −33% Brier, shipped on the D47S line that was **+35 Elo in
+function**, and then dropped when D48X took V's speed fix instead.
+
+## PERF STUDY 10 MERGED, BOTH GATES GREEN (2026-07-28)
+
+`a0b2bc9`. −0.858% instructions ⇒ ≈ +0.8 Elo. Gates reproduced exactly:
+`Bench: 587683`, eval hash `5ca978e0…0b38`, d13 nodes `1922947`. The NNUE gate
+was mandatory here (the work touches `src/eval/nnue/`) and the bench pin is
+blind to it by construction.
+
+## STILL OWED — the TM arm
+
+Sized (`C=±2048`, ceil 2.4 ⇒ realized 1.620× median, clears the 1.409× one-ply
+quantum on 18/24 positions) with the only PERFECT null in this file (24/24
+bit-identical node counts under `nodestime`). Not yet run: the box has been at
+20 engine processes / 4.8 GB with 4 GB free, which is the pre-OOM condition
+that has already cost one global OOM. It runs when the SF swap finishes.
