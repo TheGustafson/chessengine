@@ -608,3 +608,30 @@ Self-reported failures, which is why I trust the rest: it destroyed its own
 tree with `git checkout -- src/` (recovered, byte-for-byte), its probe deltas
 overstate PGO deltas ~2× so only the PGO panel is quoted, and D33 review found
 both semantic changes had NO test that could fail — now mutation-verified.
+
+### Study 12 PGO built; study 13 commissioned
+
+`engines/bin/archon-s12pgo` (1,226,952 B, `sota,arch-d48x`, PGO with the
+eval-file argument as CLAUDE.md requires) built and sanity-checked — loads the
+canonical net and evaluates (`166  a2a3`).
+
+**Note for the runbook:** `tools/build_pgo.sh` takes a BARE OUTPUT NAME, not a
+path — it prepends `engines/bin/` itself. Passing a path produces
+`engines/bin/engines/bin/<name>` and the build fails only at the final `cp`,
+after the whole compile. Cost one full build cycle.
+
+**Study 13 commissioned** against the residual that study 12 identified by
+measurement rather than assumption: **accumulator PASSES** (the head, search and
+movepick are all at parity, and we already fold FEWER rows than SF). Also told
+to verify-then-attack make/unmake (1.93× in study 11, never attacked, and that
+number rests on a partially-retracted instrument), to EXCLUDE the ~327 i/n of
+1280-vs-1024 width as a retrain rather than fight it, and to write a
+mutation-verified failing test for every semantic change from the start — the
+hole D33 caught in study 12.
+
+Build discipline carried forward verbatim: `free -g` before every build, refuse
+under 6 GB, `-j 2 nice`, thin-LTO or `cargo check` for measurement work, never
+two builds at once.
+
+D48Y healthy throughout all of this: sb57, heldout still improving
+(sb40 0.013682 → sb50 0.013659, ema 0.012645 → 0.012627).
