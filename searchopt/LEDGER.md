@@ -1721,3 +1721,30 @@ DO NOT ship a TM change off the nodestime number alone.
 Stockfish `eca43a97`'s weights in ARCHON's search at fixed 110k nodes, port
 gated 47/47 bit-exact against their own binary, frame measured at 0.5126 with
 LS and median agreeing to 0.6%.
+
+### CORRECTION — the "instrument mixes clocks" suspicion is REFUTED
+
+I tested it by checking whether the engine's `info time` equalled
+`nodes / nodestime`. It did not (ratio ~825, i.e. real NPS in nodes/ms), and I
+briefly recorded that as "CLOCK IS MIXED, real time leaking in".
+
+**That was the wrong quantity.** `timeman.rs:401-406` documents the TM clock
+explicitly — *"TM-elapsed: nodes searched under `nodestime`, else wall ms"* —
+and `timeman.rs:300` arms it (`use_nodes_time = npmsec > 0`). The `info time`
+field is wall-clock REPORTING and was never the TM's clock. Under `nodestime`
+the time manager reads node counts only, which is why the null is 24/24
+bit-identical and why zero forfeits occurred.
+
+So the instrument is sound and the artifact hypothesis dies. What survives from
+that entry is only the weaker, standard caution: `nodestime` measures budget
+ALLOCATION in a nodes-as-clock frame, and a real time control additionally
+exposes NPS variation across game phases. The real-TC arm is therefore still
+worth running as confirmation — but as due diligence, not because a specific
+defect is suspected.
+
+**What the result actually says, then:** redistributing the node budget AWAY
+from early moves and toward later ones is worth real Elo. Our TM front-loads.
+That is a genuine, actionable search finding — the first of this session — and
+the honest next step is to locate it in the PRINCIPLED parameters
+(`OPT_SCALE_*`, `OPT_SCALE_CLOCK_CAP`, `MAX_SCALE_*`) rather than shipping a
+blunt 0.6× multiplier bolted onto a mis-named contestedness knob.
