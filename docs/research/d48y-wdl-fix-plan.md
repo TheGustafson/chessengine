@@ -540,3 +540,27 @@ Run when the net packs:
 D48Y healthy at sb28 post-recovery: 192k pos/s, 7 GB available, no new OOM.
 Trainer RSS reads 5.6 GB but that is reclaimable memmap page cache, not a leak
 (buff/cache 8 GB); `available` is the number that matters.
+
+### Early shape read @ sb30 — favourable direction, weak evidence
+
+Packed the sb30 EMA checkpoint (no GPU, no interference) and ran the three-way
+test. Same instrument, same sample as the baseline:
+
+| pair | LS | median | LS/med | verdict |
+|---|---|---|---|---|
+| D48X vs SF | 0.4905 | 0.6583 | **1.342×** | shape mismatch (the baseline) |
+| **D48Y-sb30 vs SF** | 0.8752 | 1.1106 | **1.269×** | mismatch, but CLOSER |
+| D48X vs D48Y-sb30 | 0.5487 | 0.5650 | 1.030× | scalar fine |
+
+**Shape gap to Stockfish narrowed 1.342 → 1.269** — the direction the user
+predicted. **Do not bank it:** at sb30/300 the net is still ~the warm trunk
+(D48X-vs-D48Y is 1.030×, i.e. nearly the same net), so a 5% shape move is a
+hint, not evidence. Re-run at sb300 after the anneal; that is the real test.
+
+**Already solid and actionable — the GAIN has moved a lot.** D48X ≈ 0.49 × SF
+while D48Y-sb30 ≈ 0.88 × SF, so D48Y's raw output runs **~1.78× larger** than
+D48X's. Calibration is confirmed mandatory and roughly sized: `network_scale`
+should land near 400 / 1.78 ≈ **225**, subject to the empirical loop.
+
+Training healthy: sb42, value 0.008154, 194k pos/s. Heldout improving
+monotonically — sb10 0.013963, sb20 0.013867, sb30 0.013743.
