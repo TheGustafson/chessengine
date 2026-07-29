@@ -1059,3 +1059,33 @@ set**, and delete torn ones. Resumed from sb150; the torn sb160 pair removed.
 Cost of this incident: 21 superbatches (sb150→171) plus a fresh-Adam transient.
 Running total lost to OOM across three incidents: ~4 + 7 + 21 = **32
 superbatches**, roughly 70 minutes of GPU.
+
+### ★ THE OOM GUARD, CORRECTED AND VERIFIED — `tools/oomlast.sh`
+
+My previous fix did NOT work. **`systemd-run --user --scope -p
+OOMScoreAdjust=1000` silently has no effect** — verified 2026-07-29: the build
+launched under it still read `oom_score_adj=200`, identical to the trainer.
+Nor can you patch it afterwards: `cargo`/`rustc` children are transient and
+gone before you can write to their `/proc` entry.
+
+**Working fix — set it once, before exec, so children inherit at fork:**
+
+```sh
+tools/oomlast.sh <cmd>                                    # or
+systemd-run --user --scope -p MemoryMax=5G tools/oomlast.sh <cmd>
+```
+
+Verified: wrapped process reads **adj=1000**, its child **inherits 1000**, and
+the trainer stays at **200** — so the kernel picks the build first and the
+trainer survives.
+
+**The reasoning, recorded so it is not re-derived:** everything in this
+session's process tree inherits `oom_score_adj=200`, and the trainer is the
+largest RSS among them, so it is the preferred victim every time. An
+unprivileged process may RAISE its own `oom_score_adj` but never lower it — so
+you cannot protect the trainer, only make everything else more killable.
+
+**Use `tools/oomlast.sh` for EVERY build, match and sweep from here.** Cgroup
+`MemoryMax` alone is not enough: it bounds a runaway but does nothing when
+total demand simply exceeds RAM, which is what killed the trainer all three
+times.
