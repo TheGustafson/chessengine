@@ -13,3 +13,4 @@ fast=u3-make-promo-keys-cold          instr=31,957,210,294 nodes= 5,001,562 per_
 fast=u4-dp-castling-cold              instr=31,621,805,043 nodes= 5,001,562 per_node=  6322.4 brs_per_node=  673.5 hash=5ca978e012da1bb0
 fast=u5-giveschk-special-cold         instr=31,448,585,757 nodes= 5,001,562 per_node=  6287.8 brs_per_node=  673.5 hash=5ca978e012da1bb0
 fast=u6-legal-special-cold            instr=31,207,243,029 nodes= 5,001,562 per_node=  6239.5 brs_per_node=  666.5 hash=5ca978e012da1bb0
+fast=u7-unmake-special-cold           instr=31,200,195,080 nodes= 5,001,562 per_node=  6238.1 brs_per_node=  667.3 hash=5ca978e012da1bb0

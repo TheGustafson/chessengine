@@ -1619,25 +1619,17 @@ impl Board {
         self.game_ply -= 1;
         let (from, to) = (m.from(), m.to());
 
-        if m.kind() == MoveKind::Castling {
-            self.unmake_castling(us, from, to);
-        } else {
-            if m.kind() == MoveKind::Promotion {
-                let promo =
-                    Piece::new(us, m.promotion_piece().expect("promotion kind has a piece"));
-                self.remove_piece_known(promo, to);
-                self.put_piece(Piece::new(us, PieceType::Pawn), from);
-            } else {
+        // The NORMAL arm is straight-line and the other three are calls, for
+        // the reason given on `unmake_castling` (perf study 17 §5).
+        match m.kind() {
+            MoveKind::Normal => {
                 self.move_piece_known(moved, to, from);
+                if let Some(cap) = captured {
+                    self.put_piece(cap, to);
+                }
             }
-            if let Some(cap) = captured {
-                let capsq = if m.kind() == MoveKind::EnPassant {
-                    to.offset(us.flip().pawn_push())
-                } else {
-                    to
-                };
-                self.put_piece(cap, capsq);
-            }
+            MoveKind::Castling => self.unmake_castling(us, from, to),
+            _ => self.unmake_special(m, us, moved, captured, from, to),
         }
         #[cfg(debug_assertions)]
         self.assert_consistent();
@@ -1664,6 +1656,37 @@ impl Board {
 
         ZOBRIST.psq[rook.index()][rfrom.index() as usize]
             ^ ZOBRIST.psq[rook.index()][rto.index() as usize]
+    }
+
+    /// The promotion and en-passant arms of [`Board::unmake_move`] — the exact
+    /// inverse of `make_move_with` step 10 for those two kinds. Castling has
+    /// its own [`Board::unmake_castling`]; `Normal` stays inline in the caller.
+    #[cold]
+    #[inline(never)]
+    fn unmake_special(
+        &mut self,
+        m: Move,
+        us: Color,
+        moved: Piece,
+        captured: Option<Piece>,
+        from: Square,
+        to: Square,
+    ) {
+        if m.kind() == MoveKind::Promotion {
+            let promo = Piece::new(us, m.promotion_piece().expect("promotion kind has a piece"));
+            self.remove_piece_known(promo, to);
+            self.put_piece(Piece::new(us, PieceType::Pawn), from);
+        } else {
+            self.move_piece_known(moved, to, from);
+        }
+        if let Some(cap) = captured {
+            let capsq = if m.kind() == MoveKind::EnPassant {
+                to.offset(us.flip().pawn_push())
+            } else {
+                to
+            };
+            self.put_piece(cap, capsq);
+        }
     }
 
     /// The castling arm of [`Board::unmake_move`], out of line — the exact
