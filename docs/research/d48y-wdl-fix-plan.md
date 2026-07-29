@@ -1326,3 +1326,34 @@ anon — `available` is the number that matters (3.4 GB).
 **Still no study restart.** The perf loop stays paused until throughput is back
 near 198k. Four training losses make that the correct trade even though it
 stalls the loop.
+
+### Tick — D48Y2 healthy, ONE study resumed under hard build limits
+
+**D48Y2 converging steadily:**
+
+| | sb10 | sb20 | sb30 |
+|---|---|---|---|
+| heldout EMA | 0.012129 | 0.011977 | **0.011892** |
+
+Monotone, **5.5% below D48Y's best-ever (0.012580)**. Throughput recovering
+72k → **135k pos/s** (normal 198k); ETA ~7.7 h. Swap still exhausted; available
+3.3 GB.
+
+**Study 16 resumed (its context intact — it had no commits, so a cold start
+would have lost its reasoning too) with constraints that address the actual
+failure mode rather than restating the old ones:**
+
+1. **NO `lto="fat"` builds at all** — that 4–5 GB link spike is what killed the
+   trainer. `cargo check` + thin-LTO (`CARGO_PROFILE_RELEASE_LTO=thin`,
+   `CODEGEN_UNITS=4`, ~13 s) only. Thin-vs-thin is a valid measurement frame if
+   declared.
+2. **DEFER all gates and PGO.** It commits with gates marked PENDING; **I run
+   `check.sh` / `CHECK_NNUE_GATE=1` / PGO myself once training finishes.**
+3. **`free -m` before every build, including the SWAP line.** Wait if available
+   < 3 GB or swap free is 0. Swap exhaustion is the earlier signal and I missed
+   it four times.
+4. **Commit early and often** — losing two studies' entire output to kills is
+   what uncommitted batching costs.
+
+This keeps the perf loop turning without re-creating the condition that cost
+four training runs.
