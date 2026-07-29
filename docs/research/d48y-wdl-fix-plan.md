@@ -26,13 +26,18 @@
 >
 > | job | where | how to check |
 > |---|---|---|
-> | **D48Y training, 300sb** | `data/nnue/experiments/d48y-1280/` | `tail data/nnue/experiments/d48y-1280/train.log`; `pgrep -f pump_train` |
-> | TB telemetry shim | `data/nnue/tb/d48y-1280/` | `pgrep -f tb_shim` |
-> | **Perf study 11** (subagent) | its own git worktree | it reports back on its own |
-> | 30-min loop `228ae9ea` | session cron | `CronList` |
+> | **D48Y2 training, 190sb** | `data/nnue/experiments/d48y2-1280/` | `tail .../d48y2-1280/train.log`; `/proc/1397093/cmdline` |
+> | TB telemetry shim | `data/nnue/tb/d48y2-1280/` | `pgrep -f tb_shim` |
+> | **Perf study 18** (threat generation, subagent) | its own git worktree | reports back on its own |
+> | 30-min loop | session cron | `CronList` |
 >
-> Launcher PID is in `train.pid` (`698058`); the actual python trainer was
-> `698078`. **Kill by PID only — never bare `pkill -f`.**
+> Trainer PID **1397093** (launcher) / **1397108** (python).
+> **Kill by PID only — never bare `pkill -f`.**
+>
+> **Detection trap:** `systemctl --user is-active archon-d48y2` returns
+> `inactive` — that unit name does not exist, so the QUERY is wrong, not the run
+> dead. Confirm liveness by reading `/proc/<pid>/cmdline`, never by a unit name
+> you did not create yourself.
 >
 > Relaunch/resume: from `jax/`,
 > `PYTHONUNBUFFERED=1 ARCHON_JAX_ALLOW_GPU=1 ARCHON_JAX_FT_IMPL=pallas uv run
@@ -43,10 +48,16 @@
 >
 > ### The THREE traps that will burn you
 >
-> 1. **Heldout frame.** D48Y's heldout is scored at ITS OWN frame
->    (`a=175.1, b=71.6`). D48X's logged `0.006350` is the UNCALIBRATED frame.
->    **They are not comparable.** Early D48Y heldout reads HIGH (~0.014) because
->    the warm trunk was trained in the old frame — expected, NOT a regression.
+> 1. **Heldout frame — inflated by a KNOWN 1.860×, so DO compare, via R².**
+>    D48Y's heldout is scored at ITS OWN frame (`a=175.1, b=71.6`); D48X's logged
+>    `0.006350` is the UNCALIBRATED frame. Raw MSE is not comparable and reads
+>    HIGH (~0.012) — expected, NOT a regression. **But the frames differ by a
+>    measured factor**: on the actual heldout corpus the calibrated target's
+>    variance is `0.099650` vs the old `0.053570` = **1.860×**, and MSE scales
+>    with target variance. Divide it out with **R² = 1 − MSE/Var(target)**, which
+>    is frame-independent. D48X sb520 annealed = **0.8815**; D48Y2 sb90
+>    pre-anneal = **0.8832**. *(Earlier ticks in this doc say flatly "not
+>    comparable" and stop there — that was a caveat mistaken for a wall.)*
 > 2. **`nodestime` is not a proxy for real-clock strength.** It gave TM
 >    +52.6 ± 21.2; the real clock gave −31.4 ± 18.9. Both significant, opposite.
 >    Third instrument in `searchopt/LEDGER.md` to return a confident, significant,
@@ -1592,3 +1603,104 @@ pins were verified by the study itself post-review against an on-disk binary
 (d13 `1922947`, full eval hash), and its full gate passed on the pre-review
 tree. **I still owe it one clean `CHECK_NNUE_GATE=1` run** once the GPU frees —
 tracked in the PENDING list.
+
+### ★★ THE HELDOUT FRAME TRAP IS NOW SOLVABLE — R² makes the frames comparable (2026-07-29)
+
+**This RETRACTS a caveat I repeated for days.** Every tick above says D48Y's
+heldout and D48X's logged 0.006350 are "NOT comparable" because they are scored
+in different target frames. That is true of **raw MSE** and it was wrong as a
+stopping point — the frames differ by a *measurable* factor, and dividing it out
+gives a directly comparable number. It is a two-line computation and I should
+have done it the first time I wrote the caveat instead of restating it.
+
+**The inflation factor, measured on the ACTUAL heldout corpus** (`uho-band0-5`,
+n=327,680, both transforms applied to the same records):
+
+| target frame | mean | variance |
+|---|---|---|
+| OLD (`sigmoid(s/400)`, offset 0) | 0.4992 | 0.053570 |
+| NEW (draw-aware, a=175.1 b=71.6) | 0.5001 | 0.099650 |
+| | | **ratio 1.860×** |
+
+The calibrated target is *sharper* — it pushes labels away from 0.5 — so its
+variance is 1.86× higher. MSE against a higher-variance target is arithmetically
+larger at equal fit quality. **That is the entire inflation; it says nothing
+about net quality.**
+
+**Normalise with R² = 1 − MSE/Var(target), which is frame-independent:**
+
+| net | frame | MSE | **R²** |
+|---|---|---|---|
+| D48X, sb520, **fully annealed** | old | 0.006350 | **0.8815** |
+| D48Y2, sb90, **pre-anneal** | new | 0.011640 | **0.8832** |
+
+Equivalently: D48X's MSE translated into the new frame is **0.011812**, and
+D48Y2 sits at **0.011640 — 0.985× of it**.
+
+**D48Y2 matched a fully-annealed D48X at sb90 of 190, with the whole 70sb anneal
+still ahead.**
+
+**Caveat that rides along, and it is not small:** R² normalises for target
+VARIANCE, not for intrinsic DIFFICULTY. A sharper target could be harder or
+easier to fit at equal skill, and nothing here measures that. This is strong
+evidence, not proof.
+
+**And the games currently DISAGREE** — see the tiny match below. Loss-family
+metric says parity, games say −44. That disagreement is the exact pattern this
+project keeps getting burned by. **Games arbitrate.** The anneal resolves it.
+
+### Tiny equal-nodes match — the LR fix converted to STRENGTH (2026-07-29)
+
+`d48y2-sb90.cenn` vs D48X, **120 games @ 40k nodes**, Hash 16, native scale
+(NOT calibrated down — per the asymmetry finding, shrinking eval cost 80 Elo):
+
+| run | result |
+|---|---|
+| D48Y @ sb120, **broken 1.80× LR** | **−111.4 ± 26.3** (300 games, 60k) |
+| **D48Y2 @ sb90, LR fixed** | **−43.7 ± 33.4** (120 games, 40k) |
+
+Ptnml(0-2) [2, 19, 32, 6, 1], W28/L43/D49. **~68 Elo recovered**, intervals
+barely overlapping. The LR diagnosis was correct and the fix is real.
+
+**Still behind D48X** — CI (−77, −10) is entirely below zero. At sb90/190
+pre-anneal that is not damning, but it is NOT "already winning" and must not be
+reported as such. Different node counts (40k vs 60k) mean the two rows are not
+strictly paired; the sb190 rerun uses the identical protocol for a clean
+before/after.
+
+### Study 16's owed NNUE gate — RUN, PASSED, DEBT CLEARED
+
+`CHECK_NNUE_GATE=1 bash tools/check.sh` under the OOM guard:
+
+```
+eval hash  : 5ca978e012da1bb086799709c3ea5350cf6d49923c254f7975b6d780b0098b38
+d13 nodes  : 1922947
+Bench: 587683              All checks passed.
+```
+
+Both pins match CLAUDE.md exactly; zero FAIL/error/panic lines.
+
+**Read this trap before trusting a scope's status:** the unit reports
+`Result=oom-kill`, which looks like a failed gate. It is not — the kill landed
+*after* check.sh printed its terminal `All checks passed.` line. `oomlast.sh`
+worked as designed (wrapper carries `oom_score_adj=1000`, takes the bullet, the
+trainer lived). **Judge a gate by its LOG CONTENT, not its unit Result.**
+
+### Trainer state @ sb111 — and one deferred measurement
+
+`archon-d48y2` PID 1397093 alive, 176k pos/s, sb111/190. Heldout EMA monotone:
+0.012129 (sb10) → 0.011640 (sb90) → 0.011621 (sb100) → **0.011590 (sb110)**.
+No plateau. D48Y's best-ever was 0.012580 and never improved across 190sb.
+
+**Detection trap:** `systemctl --user is-active archon-d48y2` returns
+`inactive` — the unit does not exist under that name and the query is simply
+wrong. The process is alive. **Confirm with `/proc/<pid>/cmdline`, never with a
+unit name you did not create.** I briefly reported the run dead on this.
+
+**DEFERRED (RAM, not doubt): measure what D48X's anneal was actually worth.**
+Its train.log did NOT survive, but **all its checkpoints did** (sb30…sb520, its
+anneal ran sb440→520). Scoring sb440 and sb520 on the heldout gives the
+historical anneal gain and turns "the anneal is where runs gain" from folklore
+into a number — and into a prediction for D48Y2. Requires loading a 433 MB raw
+net into JAX; `available` is **1 GB** with the trainer running. Running exactly
+this beside the trainer is how six runs died. **Do it after sb190, not before.**
