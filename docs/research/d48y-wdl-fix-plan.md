@@ -2427,3 +2427,49 @@ nets plateau ~100sb until anneal) + a 70sb anneal.
    noise floor: paired openings force cancellation.
 4. **QAT parity check before any strength claim:** all knobs off must reproduce a
    QAT-off run bit-exactly.
+
+## ★★★ G0 CLOSED — the screening instrument was the binding constraint all along
+
+`tools/screen.sh`. **Every net conclusion this session was read off 120-game
+screens returning +/-33..53 Elo.** D48Y2's entire trend — sb90 −43.7, sb170
+−11.6, sb190 −40.7 — fits inside ONE error bar. The training-gap study filed this
+as **G0: "our net-screening instrument is ~100x underpowered, and the fix is
+cheap"**, and it was right.
+
+**The bar, CALIBRATED against our own observed screens rather than a textbook
+rule.** Our 120-game runs returned ~+/-35, so `k = 35*sqrt(120) = 383` and
+`bar ~= 383/sqrt(n)`. **Cross-check: that predicts +/-1.9 at n=40,000 and
+Reckless report +/-2 at exactly that n. It matches.** (My first attempt used a
+generic `1600/sqrt(n)`, which was wrong by **4.2x**; the observed data corrected
+it.)
+
+**MEASURED throughput: 104 games/min** at concurrency 14, 25k nodes, PGO:
+
+| target | games | wall time |
+|---|---|---|
+| +/-10 Elo | 1,466 | **14 min** |
+| **+/-5 Elo** | 5,867 | **56 min** |
+| +/-3 Elo | 16,298 | 2.6 h |
+| +/-2 Elo (Reckless's bar) | 36,672 | 5.9 h |
+
+**A 100x power gain for one hour of wall clock.** This should have been built
+before any of tonight's net decisions.
+
+**THE PROBE ALREADY SHOWS THE DAMAGE.** 200 games @25k: D48Y2-sb190 vs D48X
+= **+6.95 +/- 29.34** — POSITIVE, where the 120-game @40k screen said
+**−40.7 +/- 35.9**. Not a contradiction: the same effect inside one bar, sign
+flipping on noise. **We do not currently know whether D48Y2 is better or worse
+than D48X.** The 5,880-game screen is running to settle it.
+
+**TWO IMPLEMENTATION TRAPS PAID FOR:**
+1. **CONCURRENCY IS MEMORY-BOUND, NOT CPU-BOUND.** Each engine process loads the
+   net into PRIVATE heap, so the cost is `2 * CONC * 138 MB` — conc=14 wants
+   ~3.9 GB of nets before hash. First run was **oom-killed** under
+   `MemoryMax=4G`. The script now derives the cap from free memory and the actual
+   net size, and takes the min with cores-2.
+2. `EvalFile` must be passed EXPLICITLY for both sides — it defaults to
+   `<empty>`, which silently evaluates PSQT (~2.13 Mnps vs ~1.0) and would
+   measure nothing.
+
+**STANDING RULE: no net verdict from a screen under ~1,500 games.** At 120 games
+the bar is +/-35 and every effect we care about is smaller than that.
