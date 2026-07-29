@@ -1132,14 +1132,29 @@ fn resolve_both(
                 continue;
             };
             debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
+            // `& (DELTA_CAP - 1)` is a NO-OP on the value and a range fact for
+            // the optimizer, the same move as `index_decoded`'s `& 63`.
+            // `adds`/`subs` are `[usize; DELTA_CAP]` and each event pushes at
+            // most ONE index into ONE of them, so a cursor can only reach
+            // `events.len() <= DELTA_CAP` — and the last *write* is therefore
+            // at `DELTA_CAP - 1`. LLVM cannot see that (the cursor is carried
+            // across a loop whose trip count it does not relate to the array
+            // length), so the store carried a `cmp $0xff` / `ja panic` pair
+            // per event per perspective. DELTA_CAP is a power of two, which is
+            // what makes the mask free.
+            debug_assert!(
+                len[p].0 < DELTA_CAP && len[p].1 < DELTA_CAP,
+                "resolve cursor overflow: {len:?} events={}",
+                events.len()
+            );
             if d.add {
-                adds[p][len[p].0] = idx;
+                adds[p][len[p].0 & (DELTA_CAP - 1)] = idx;
                 len[p].0 += 1;
                 if has_psqt {
                     psqt_add(&mut acc[p], psqt_table, idx);
                 }
             } else {
-                subs[p][len[p].1] = idx;
+                subs[p][len[p].1 & (DELTA_CAP - 1)] = idx;
                 len[p].1 += 1;
                 if has_psqt {
                     psqt_sub(&mut acc[p], psqt_table, idx);

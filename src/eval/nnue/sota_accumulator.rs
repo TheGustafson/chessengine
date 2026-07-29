@@ -52,11 +52,24 @@ const FINNY_KEYS: usize = 64;
 /// twelve instructions for a load / add / store. A fixed-size array reference
 /// fixes the shape. (A raw-pointer form removes the length check too, but
 /// measured +2.2% — it costs LLVM the aliasing facts the slice index gives it.)
+///
+/// # One bounds check, not three
+/// The `table[f*BUCKETS..][..BUCKETS].try_into()` spelling reaches the same
+/// `&[i32; BUCKETS]` but pays for it three times: the open range checks
+/// `f*BUCKETS <= len`, the closed range checks `BUCKETS <= len - f*BUCKETS`,
+/// and `try_into` checks the length again (it folds, but the first two do
+/// not). In the threat resolver that is a `sub`/`jb`/`cmp $7`/`jbe` quartet
+/// per resolved event per perspective — measured in perf study 10 §2.1 as
+/// two of the five panic edges in that ~40-instruction loop.
+///
+/// `as_chunks` states the shape once: the table IS a slice of BUCKETS-wide
+/// rows (`THREAT_DIMS · BUCKETS` / `HALFKA_DIMS · BUCKETS` by construction),
+/// so the row index is a single `cmp`/`jae` against a length LLVM derives by
+/// a shift. Same row, same arithmetic, bit-identical output.
 #[inline]
 fn psqt_row(table: &[i32], feature: usize) -> &[i32; BUCKETS] {
-    table[feature * BUCKETS..][..BUCKETS]
-        .try_into()
-        .expect("psqt rows are BUCKETS wide by construction")
+    let (rows, _tail) = table.as_chunks::<BUCKETS>();
+    &rows[feature]
 }
 
 /// Add feature `feature`'s 8-wide PSQ1 row into `psqt`.

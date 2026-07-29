@@ -426,8 +426,17 @@ impl ThreatResolver {
         to: Square,
     ) -> Option<usize> {
         let t = self.tables;
-        let from_o = (from.index() ^ self.orientation) as usize;
-        let to_o = (to.index() ^ self.orientation) as usize;
+        // `& 63` is a NO-OP on the value and a RANGE FACT for the optimizer.
+        // Both operands are already 6-bit — `Square::index() < 64` by the
+        // newtype's constructor assert, and `orientation` is
+        // `orient_threats(ksq) ^ 56·p ∈ {0, 7, 56, 63}` — but LLVM only sees
+        // `u8 ^ u8 → 0..=255`, so every `offsets[att][from_o]` and
+        // `lut2[att][from_o][to_o]` index carried a `cmp $63` / `ja panic`
+        // pair it could not hoist (the bound depends on the loaded event).
+        // This is perf study 8 §4.1's `l1_dot` shape in the resolver: the
+        // loop is ~40 instructions and runs once per event per perspective.
+        let from_o = ((from.index() ^ self.orientation) & 63) as usize;
+        let to_o = ((to.index() ^ self.orientation) & 63) as usize;
         let att = attacker_code ^ self.swap;
         let atd = attacked_code ^ self.swap;
         let dir = (from_o < to_o) as usize;
