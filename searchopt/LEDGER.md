@@ -281,30 +281,46 @@ contention-immune; cycles, NPS and SMP are not, and no amount of pairing fixes t
 internally consistent and externally invalid because its *conditions* differ from the
 conditions of the claim.
 
-## THE MERGED PERF WORK: +23% NPS, MEASURED (2026-07-28)
+## ⛔ RETRACTED — BOTH OF MY NPS NUMBERS FOR THE PERF WORK (2026-07-28)
 
-Paired, 8 alternating rounds, 14 calib positions at 600k nodes, low load, canonical net:
+I reported, in order, **−2.9%** ("the merged perf work is a regression") and then **+23%**
+("it is a large win"), and blamed the difference on box load. **Both are void and the load
+explanation was wrong.** A low-load re-run of the first configuration still gave −1.6%,
+while the other configuration gave +21% at the same load, on the same pair of binaries.
 
-| binary | median Mnps |
-|---|---|
-| `archon-d48x-pgo` (pre-study-8) | 0.8004 |
-| `archon-s9-final` (studies 8+9) | **0.9900** |
-| `archon-d48x-s10pgo` (my PGO of merged main) | 0.9728 |
+**The cause is the eval change, and it makes fixed-node NPS meaningless between these two
+binaries.** Net-only fidelity panel, 800 positions (`tools/nnue/calib/scale-check-800.fens`,
+`perf-artifacts-8/scripts/evaldiff.py`), old canonical vs studies 8+9:
 
-| ratio | paired median | range |
+| | ours | SF cp |
 |---|---|---|
-| **s9-final / old — the perf CODE** | **1.2299** | [1.2142, 1.2631] |
-| s10pgo / s9-final — **PGO run-to-run variance, same source** | **0.9826** | [0.9584, 1.0012] |
-| s10pgo / old — net through my build | 1.2103 | [1.1813, 1.2585] |
+| identical | 129 / 800 (16.1%) | |
+| mean signed delta | +0.376 | **+0.182** |
+| mean \|delta\| | 2.179 | **1.053** |
+| p99 / max \|delta\| | 8 / 11 | 3.86 / **5.31** |
+| Pearson r | **0.999983** | |
 
-⇒ **A ~9.65% instruction reduction bought ~23% wall-clock NPS** — MORE than the instruction
-count alone predicts, consistent with study 9's finding that our IPC is better than SF18's.
+**The eval differs on 84% of positions**, so at fixed nodes the two binaries **search
+different trees** — different pruning, different node mix, different per-node cost. A
+fixed-node NPS ratio between them is not a like-for-like workload, which is exactly why two
+scripts differing only in node count (800k vs 600k) and panel size (20 vs 14) reversed the
+sign, and why the ABSOLUTE numbers moved for BOTH binaries between scripts.
 
-⇒ **PGO run-to-run variance is ~1.7% and is not noise in a search-patch budget.** The two
-binaries are the same source (`main` adds only a default-0 TM tunable and a doc reorder;
-d13 = 1,922,947 on both) and differ by 1.7% purely from a different PGO training run.
-**Rank changes on instructions; treat wall clock as confirmation, and build both arms in
-the same session if you must rank on it.**
+⇒ **Rule: never compare NPS at fixed nodes across an eval-changing arm.** Use instructions
+per node on a matched panel (workload-controlled), or compare at fixed DEPTH, or measure
+the outcome directly in equal-time games.
+
+⇒ The eval change itself is small and unbiased — 1.05 SF cp mean against a mean |score| of
+339, max 5.31, correlation 0.999983, and a signed mean of +0.18 vs a 1.05 absolute mean, so
+it is perturbation rather than drift. It is consistent with the studies' own claim (0.14 +
+0.94 SF cp for the two quantisation changes).
+
+⇒ **The surviving speed evidence is perf study 8+9's own:** 7,116.6 → 6,429.9 instructions
+per node (−9.65%) on a matched fixed-node panel with `instructions:u` spread ≤0.01%. That
+is workload-controlled in the way my wall-clock comparison was not.
+
+⇒ **Whether it converts to Elo is open** and is being answered directly by an equal-time
+match (`engines/runs/s9-convert`, new vs old at 10+0.1), which needs neither NPS figure.
 
 ## PLY PER DOUBLING, AND WHAT A SPEEDUP IS ACTUALLY WORTH (2026-07-28)
 
