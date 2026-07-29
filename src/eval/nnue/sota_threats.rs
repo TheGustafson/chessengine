@@ -549,27 +549,44 @@ fn refresh_psqt_threat_at(
     out
 }
 
-/// Does `color`'s king cross the d/e mirror boundary in this move? (If so,
-/// `color`'s threat accumulator must be rebuilt from scratch.)
-fn king_crossed(dp: &DirtyPiece, color: Color) -> bool {
-    let king = Piece::new(color, PieceType::King);
-    let mut from = None;
-    let mut to = None;
+/// Which perspectives' kings cross the d/e mirror boundary in this move? (Such
+/// a perspective's whole threat accumulator must be rebuilt from scratch —
+/// every one of its feature indices is re-oriented.)
+///
+/// **One pass per LIST, not one pass per COLOUR.** The predecessor
+/// `king_crossed(dp, color)` was called once per perspective from `apply_at`,
+/// i.e. at 2.0 calls per made move, and each call re-scanned both the sub and
+/// the add list for a fact the other call already had in hand. A move moves one
+/// piece, so at most one colour's king can appear at all; scanning per colour
+/// bought nothing but a second walk.
+fn king_cross(dp: &DirtyPiece) -> [bool; 2] {
+    let mut from = [None; 2];
+    let mut to = [None; 2];
     for &(pc, sq) in dp.subs() {
-        if pc == king {
-            from = Some(sq);
+        if pc.piece_type == PieceType::King {
+            from[pc.color as usize] = Some(sq);
         }
     }
     for &(pc, sq) in dp.adds() {
-        if pc == king {
-            to = Some(sq);
+        if pc.piece_type == PieceType::King {
+            to[pc.color as usize] = Some(sq);
         }
     }
-    match (from, to) {
-        // orient_threats splits on file <= 3 (a–d) vs >= 4 (e–h).
-        (Some(f), Some(t)) => (f.file() <= 3) != (t.file() <= 3),
-        _ => false,
+    let mut out = [false; 2];
+    for (c, o) in out.iter_mut().enumerate() {
+        if let (Some(f), Some(t)) = (from[c], to[c]) {
+            // orient_threats splits on file <= 3 (a–d) vs >= 4 (e–h).
+            *o = (f.file() <= 3) != (t.file() <= 3);
+        }
     }
+    out
+}
+
+/// Does `color`'s king cross the mirror? The single-colour form the tests read
+/// against, kept out of the hot path so `apply_at` does one scan, not two.
+#[cfg(test)]
+fn king_crossed(dp: &DirtyPiece, color: Color) -> bool {
+    king_cross(dp)[color as usize]
 }
 
 /// Fixed per-thread stack length: `MAX_PLY` search plies plus headroom, matching
@@ -858,8 +875,8 @@ impl<'a> ThreatContext<'a> {
         // input the enumeration reads (`ThreatPosition` is now the from-scratch
         // path's own argument type — `for_each_threat_at`), so `compute` can do
         // the rebuild at its leisure.
-        for (pi, &persp) in Color::ALL.iter().enumerate() {
-            self.stack[child].fold[pi] = if king_crossed(dp, persp) {
+        for (pi, crossed) in king_cross(dp).into_iter().enumerate() {
+            self.stack[child].fold[pi] = if crossed {
                 Fold::Refresh
             } else {
                 Fold::FromParent
