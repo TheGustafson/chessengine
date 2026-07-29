@@ -64,8 +64,8 @@ unchanged.
 
 ### 0.3 What this study is actually about
 
-**(a) The `memset` class is EXHAUSTED, and that is the study's most useful
-negative.** Study 15 §8 ranked it #1 at high confidence — "there are almost
+**(a) The inherited `memset` class is EXHAUSTED, and that is the study's most
+useful negative** — though this study's own arm 2 refilled it by one (§3.1). Study 15 §8 ranked it #1 at high confidence — "there are almost
 certainly more of these" — and prescribed two instruments: extend `memspy.c` to
 interpose `memset`, and bucket `objdump`'s `call *…mem*@` by enclosing symbol.
 Both were built (§2) and both say the same thing: **269 `memset` calls over
@@ -193,6 +193,12 @@ memset : calls=   269  bytes=18,369,032  per_node=0.0018
 
 18.4 MB in 269 calls is the history tables and the TT being zeroed once. **Zero
 `memset` calls come from a search path.** Study 15's item 1 is closed.
+
+One caveat the title of this study should not be allowed to hide: the class was
+empty *at the baseline*, and **this study's own arm 2 then created a new
+member** — a 2560-byte `memset` at 0.0363 calls/node, which is §3.1 and handoff
+item 2. "Closed" means the inherited lead was empty, not that the class can
+never refill. It refilled within one arm.
 
 One implementation note for whoever inherits the tool: the interposer's
 replacement bodies cannot call libc's `mem*` (infinite recursion), and the
