@@ -1357,3 +1357,49 @@ failure mode rather than restating the old ones:**
 
 This keeps the perf loop turning without re-creating the condition that cost
 four training runs.
+
+### Study 16 done (HELD, ungated); study 17 commissioned; D48Y2 still converging
+
+**D48Y2:** sb44, heldout EMA **0.011844** (sb10 0.012129 → sb20 0.011977 →
+sb30 0.011892 → sb40 0.011844). Monotone, now **5.9% below D48Y's best-ever**.
+Throughput recovered to **142k pos/s**.
+
+**Study 16 — landed 4 arms, −29.2 i/n in the THIN probe frame**, node-identical
+(node count 5,001,562 and eval hash `5ca978e012da1bb0` on every arm line):
+king-cross threat refresh writing in place (−14.6), two provably-dead
+`HalfkaContext::compute` branches (−8.7), five dead per-node `Option` tests
+(−5.0), `ContHistId` permuted so `piece_to()` is a shift not `% 832` (−0.9).
+
+**It honoured the constraints exactly**: no fat-LTO, gates deferred, thin-vs-thin
+declared, and it made a **falsifiable PGO prediction** (−15…−26 i/n ⇒
+~1.3306–1.3331×) instead of claiming a ratio it could not measure. It also
+committed incrementally rather than batching — the fix for losing two studies'
+entire output to kills.
+
+**MERGE DELIBERATELY HELD.** The gate needs the fat-LTO link banned while
+training is live, and ungated code must not land on `main`. Work is safe on
+`worktree-agent-a9f533e89bd5d8242` (4 commits). **When training finishes, run
+its §10.1**: `check.sh` + `CHECK_NNUE_GATE=1`, then PGO, then merge — and check
+its PGO prediction against the measurement.
+
+**It closed my commissioned #1 lead with a number:** the `memset` class is
+EMPTY — 269 calls over 150,059 nodes, 0.0018/node, all at start-up. Study 15
+got the only one there was.
+
+**Three self-corrections worth keeping:** its own §3 claim was wrong (`dst.fill(0)`
+DOES re-materialise a libc call — total libc traffic 757.0 B/node before AND
+after; the arm won by deleting a PASS, not the call); it revised its own handoff
+item 20–40 → 5–20 i/n after a census found only 53% of `piece_on` sites read
+both mailbox bytes; and an `upcoming_repetition` arm measured **+17.8 AND
+changed the node count**, reclassified as a CORRECTNESS item — our function is
+the pre-`6b782211` shape, and SF deleted the mover-colour test in that commit.
+
+Also newly explained: the thin probe emits **4,429 indirect calls vs the PGO
+binary's 1,288** — a concrete mechanism for the probe-overstatement band that
+four studies had only inferred from its effects.
+
+**Study 17 commissioned** on the move-making side under the same limits:
+`Worker::do_move` (~300 i/n, never split by anyone), make/unmake (1.93×,
+re-verify then attack), and the **1.84× branch ratio whose cause is unknown
+after three refutations** — that one would be a discovery rather than an
+increment. D24 perft ritual mandatory for it since it touches movegen.
