@@ -4,3 +4,4 @@ fast=regs20-tile                      instr=32,917,836,706 nodes= 5,001,562 per_
 fast=regs40-tile                      instr=37,957,614,391 nodes= 5,001,562 per_node=  7589.2 brs_per_node=  828.8 hash=5ca978e012da1bb0
 fast=regs20-confirm                   instr=32,917,839,524 nodes= 5,001,562 per_node=  6581.5 brs_per_node=  740.9 hash=5ca978e012da1bb0
 fast=reconstructed                    instr=32,917,835,050 nodes= 5,001,562 per_node=  6581.5 brs_per_node=  740.9 hash=5ca978e012da1bb0
+fast=+slider-fan-reuse                instr=32,695,849,684 nodes= 5,001,562 per_node=  6537.1 brs_per_node=  728.6 hash=5ca978e012da1bb0

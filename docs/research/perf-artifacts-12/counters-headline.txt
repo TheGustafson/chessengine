@@ -1,0 +1,18 @@
+# pstat8  rounds=4 nodes=300000 fens=tools/nnue/calib/wl50.fens
+# date=2026-07-29T01:31:40-04:00  uptime= 01:31:40 up 1 day, 13:04,  1 user,  load average: 1.90, 2.51, 7.26
+# arms:
+#   archon12:./bin12/archon-s12final @BENCH@ engines/canonical/net.cenn
+#   sfeca:./engines/bin/stockfish-eca43a97 @BENCH@
+#   archon11:./engines/bin/archon-s10-final @BENCH@ engines/canonical/net.cenn
+round=1 arm=archon12 nodes=15001568 nps=1221626 instructions=91730020548 cycles=64765874434 branches=10015525940 branch_misses=308052186
+round=1 arm=sfeca nodes=15008494 nps=1831197 instructions=66823566132 cycles=43067312859 branches=5442963473 branch_misses=295438884
+round=1 arm=archon11 nodes=15001568 nps=1177794 instructions=95514424811 cycles=67012851777 branches=11014130919 branch_misses=333777445
+round=2 arm=archon12 nodes=15001568 nps=1227825 instructions=91729105714 cycles=64303616772 branches=10015389659 branch_misses=308485245
+round=2 arm=sfeca nodes=15008494 nps=1835676 instructions=66823565670 cycles=42956666831 branches=5442962761 branch_misses=296548019
+round=2 arm=archon11 nodes=15001568 nps=1183368 instructions=95515930403 cycles=66664140321 branches=11014339782 branch_misses=333313041
+round=3 arm=archon12 nodes=15001568 nps=1221526 instructions=91694324225 cycles=64683496200 branches=10010425074 branch_misses=309233750
+round=3 arm=sfeca nodes=15008494 nps=1830304 instructions=66823565633 cycles=43033300565 branches=5442962811 branch_misses=296013789
+round=3 arm=archon11 nodes=15001568 nps=1174566 instructions=95517641399 cycles=67161490326 branches=11014589990 branch_misses=334707888
+round=4 arm=archon12 nodes=15001568 nps=1218450 instructions=91694331877 cycles=64860188155 branches=10010424339 branch_misses=308549980
+round=4 arm=sfeca nodes=15008494 nps=1839727 instructions=66823565922 cycles=42869682822 branches=5442963084 branch_misses=296765963
+round=4 arm=archon11 nodes=15001568 nps=1175487 instructions=95517627524 cycles=67102109062 branches=11014590610 branch_misses=333047410
