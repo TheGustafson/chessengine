@@ -1200,3 +1200,34 @@ move the ratio and buy ~zero Elo. **~1171 i/n is genuine addressable
 inefficiency.** Per-study yield is declining (252 → 33 → 94 → 37), so the big
 structural wins are largely taken; the counter-evidence is that study 15 found
 undiscovered pure waste, which is the class worth hunting hardest.
+
+### ★ THE LR WAS THE PROBLEM — confirmed at sb10 of D48Y2
+
+| run | heldout EMA (same metric, same frame a=175.1/b=71.6) |
+|---|---|
+| D48Y @ 1e-3 | **0.012580 – 0.012677** across sb10→sb160 — never left that band in 190sb |
+| **D48Y2 @ 5.5625e-4** | **0.012129 at sb10** |
+
+**−3.6% below anything the hot run reached, in TEN superbatches**, from the same
+weight lineage (D48Y2 warms from D48Y-sb160). The only change is the learning
+rate. A metric pinned flat for ~7 hours started moving immediately.
+
+⇒ D48Y's flatness was **not** the calibrated target failing, and not a saturated
+heldout slice. It was an LR 1.80× too high to settle — my configuration error,
+diagnosed only after the user asked why D48Y was behind.
+
+**Consequences:**
+1. D48Y's **−111.4 ± 26.3 vs D48X must not be cited** as evidence about the WDL
+   transform. It confounded four things, one of them broken.
+2. The WDL/target question is now genuinely OPEN again and being tested properly
+   for the first time.
+3. The matched pair (`d48z_old`/`d48z_new`) was corrected to 5.5625e-4 before
+   launch, so it cannot inherit the fault.
+
+**Standing lesson: a flat heldout is a CONFIGURATION ALARM, not a phase to wait
+out.** I explained it away three times ("expected plateau at flat LR", "the
+anneal is where convergence happens", "the slice is saturated") — each time
+reasoning forward from my own config choice instead of checking it against the
+reference run's RESOLVED schedule. The check was one command.
+
+D48Y2 sb19/190, value 0.007476, 198k pos/s, no OOM with two parallel studies.
