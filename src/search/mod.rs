@@ -974,6 +974,23 @@ pub struct Worker {
     /// at node exit. `new_search()` decays it each `go`; `ucinewgame` clears
     /// it (uci.rs). ~20 MiB behind a `Box` so it never transits the stack.
     pub histories: Box<Histories>,
+    /// Per-search snapshot of the D47 policy head (perf study 13 §4.1).
+    ///
+    /// The two hot call sites used to reach for
+    /// [`crate::eval::nnue::active_policy_head`] directly, which takes a
+    /// **process-wide `RwLock` read lock** — two atomic read-modify-writes and
+    /// a poison check — at every interior node with no TT move **at depth >= 3**,
+    /// and once more per node whenever `CPL_ORD_W` is set (it defaults to 0, so
+    /// the measured −4.8 i/n is the first site alone). Nets are
+    /// installed once per `go` (`refresh_eval_net`), never mid-search, so the
+    /// value is a per-search constant; [`SotaContext`] already snapshots the
+    /// same handle at net-set time, and this is that pattern applied to the
+    /// search. `None` (the production case, no `.cpol` sidecar) collapses both
+    /// sites to one predictable `test`/`jne`.
+    ///
+    /// [`SotaContext`]: crate::eval::nnue::sota_context::SotaContext
+    #[cfg(feature = "sota")]
+    policy_head: Option<&'static crate::eval::nnue::policy_head::PolicyHead>,
     /// Poll-cadence bitmask for [`Worker::check_time`] (design/12 §3.8;
     /// Reckless bundle D31): the real clock/limit check runs when `nodes &
     /// mask == mask`. Recomputed per `go` — tighter (a smaller power of
@@ -1132,6 +1149,8 @@ impl Worker {
                     .unwrap_or(UNC_EMA_SHIFT_DEFAULT),
             ),
             histories: Histories::new(),
+            #[cfg(feature = "sota")]
+            policy_head: None,
             check_time_mask: params::CHECK_TIME_CALLS as u64 - 1,
             thread_idx: 0,
             counters,
@@ -1306,6 +1325,12 @@ impl Worker {
         #[cfg(feature = "sota")]
         self.eval_ctx
             .set_protected_halfka_net(crate::eval::nnue::active_protected_halfka_net());
+        // Perf study 13 §4.1: snapshot the policy head here, with the nets, so
+        // the per-node sites never take the process-wide `RwLock`.
+        #[cfg(feature = "sota")]
+        {
+            self.policy_head = crate::eval::nnue::active_policy_head();
+        }
     }
 
     /// Lazily create the in-search observation recorder (design/16 §3.5.5) when
@@ -3057,7 +3082,7 @@ impl Worker {
         #[cfg(feature = "sota")]
         let picker_tt_move = if tt_data.mv == Move::NULL
             && depth >= 3
-            && let Some(head) = crate::eval::nnue::active_policy_head()
+            && let Some(head) = self.policy_head
             && let Some(l2) = self.eval_ctx.last_l2_for(&self.board)
         {
             head.best_move(&self.board, l2).unwrap_or(Move::NULL)
@@ -3074,7 +3099,7 @@ impl Worker {
         #[cfg(feature = "sota")]
         if crate::eval::nnue::policy_head::ord_weight() != 0.0
             && depth >= crate::eval::nnue::policy_head::ord_min_depth()
-            && let Some(head) = crate::eval::nnue::active_policy_head()
+            && let Some(head) = self.policy_head
             && let Some(l2) = self.eval_ctx.last_l2_for(&self.board)
         {
             mp.set_quiet_prior(head.quiet_prior(
@@ -4783,10 +4808,22 @@ impl Worker {
         // NNUE accumulator maintenance (design/11 §3.4.4): record this move's
         // placement deltas into the child entry at `ply + 1` and mark it
         // uncomputed (the invalidation rule), so a sibling subtree can never
-        // reuse a stale accumulator across LMR/PVS re-searches. Derived from the
-        // PRE-move board, so this must run before `make_move_with`. A no-op —
-        // and no `DirtyPiece::from_move` cost — when NNUE is off, keeping the
-        // PSQT hot path and the depth-6 bench bit-identical.
+        // reuse a stale accumulator across LMR/PVS re-searches.
+        //
+        // Derived from the PRE-move board, so this must run before
+        // `make_move_with`. A no-op — and no `DirtyPiece::from_move` cost —
+        // when NNUE is off, keeping the PSQT hot path and the depth-6 bench
+        // bit-identical.
+        //
+        // Perf study 13 §5.1 MEASURED and REJECTED moving this construction
+        // into `make_move_with` behind the (previously unused) Hook C, which
+        // would have deleted the duplicate derivation of the mover, victim, ep
+        // capture square and castling rook geometry: **+41.5 i/n**, and +38.2
+        // for a second variant that re-derived the castling geometry inside the
+        // guarded block instead of carrying it in an `Option` local. Both were
+        // node- and eval-identical. The duplication is real; paying it out here
+        // where the register pressure is low is cheaper than paying it inside a
+        // 650-instruction function that is already spilling.
         let dirty = self
             .eval_ctx
             .nnue_active()

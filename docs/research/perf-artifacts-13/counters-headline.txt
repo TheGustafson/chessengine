@@ -1,0 +1,24 @@
+# pstat8  rounds=5 nodes=300000 fens=tools/nnue/calib/wl50.fens
+# date=2026-07-29T03:44:13-04:00  uptime= 03:44:13 up 1 day, 15:16,  1 user,  load average: 2.08, 2.21, 2.21
+# arms:
+#   archon13:./bin13/archon-s13final @BENCH@ engines/canonical/net.cenn
+#   sfeca:./engines/bin/stockfish-eca43a97 @BENCH@
+round=1 arm=archon13 nodes=15001568 nps=1206204 instructions=91227283900 cycles=65648951712 branches=9786404104 branch_misses=315797239
+round=1 arm=sfeca nodes=15008494 nps=1851528 instructions=66823566049 cycles=42618581091 branches=5442963013 branch_misses=295990581
+round=2 arm=archon13 nodes=15001568 nps=1207466 instructions=91227274815 cycles=65531945499 branches=9786404364 branch_misses=314342260
+round=2 arm=sfeca nodes=15008494 nps=1856108 instructions=66823565130 cycles=42475908978 branches=5442962448 branch_misses=295334762
+round=3 arm=archon13 nodes=15001568 nps=1213326 instructions=91227258740 cycles=65203747995 branches=9786404048 branch_misses=317240431
+round=3 arm=sfeca nodes=15008494 nps=1853129 instructions=66823565624 cycles=42647454463 branches=5442962898 branch_misses=295213707
+round=4 arm=archon13 nodes=15001568 nps=1213228 instructions=91227466755 cycles=65016413327 branches=9786435397 branch_misses=312188813
+round=4 arm=sfeca nodes=15008494 nps=1804990 instructions=66823556461 cycles=43426097786 branches=5442960028 branch_misses=296345421
+round=5 arm=archon13 nodes=15001568 nps=1205816 instructions=91227246965 cycles=65504743707 branches=9786403599 branch_misses=313281053
+round=5 arm=sfeca nodes=15008494 nps=1856338 instructions=66823565061 cycles=42471977887 branches=5442962481 branch_misses=295326873
+arm                      nodes rounds instructions/node       cycles/node     branches/nodebranch_misses/node    NPS(med)  instr spread
+archon13              15001568      5            6081.2            4366.5             652.4              21.0     1207466       0.0002%
+sfeca                 15008494      5            4452.4            2839.6             362.7              19.7     1853129       0.0000%
+
+ratios vs sfeca (per-node medians):
+  archon13            instructions=1.3658  cycles=1.5377  branches=1.7988  branch_misses=1.0649
+
+per-round paired NPS ratio vs sfeca:
+  archon13           median=0.6515  range=[0.6496,0.6722]
