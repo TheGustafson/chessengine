@@ -222,6 +222,39 @@ noise: it aggregates gradient information over thousands of cheap paired compari
 moves all coordinates at once. For effects of +1 to +4 Elo that is the correct
 instrument, and single-arm A/B is the wrong one.
 
+### ⚠⚠ CORRECTION (2026-07-28, later): THE DAMPING HAS A QUANTUM, AND MY CEILING WAS BELOW IT
+
+I wrote below that "any multiplicative factor on `optimum()` inherits this damping" and
+killed the arm. **That conclusion was wrong, and the reason is arithmetic I had not yet
+derived when I wrote it.**
+
+**One extra ply costs 2^(1/2.02) = 1.409× nodes** (from the 2.02 ply/doubling measured in
+games). A TM budget multiplier below ~1.41× therefore buys **nothing on average** — the
+search cannot start an iteration it cannot finish, so the budget increase is quantised
+away entirely.
+
+| arm | factor across the balanced band | verdict |
+|---|---|---|
+| `TM_SCORE_C=256`, ceiling **1.25** | 1.13 – 1.25 | **entirely below the quantum — absorbed** |
+| `TM_SCORE_C=1024`, ceiling 2.5 | 1.50 – 2.00 | above it; measured **+8%** share of clock |
+
+**I set `TM_SCORE_CEIL = 1.25` by copying `unc_tm_factor`'s clamp, without checking it
+against the cost of an iteration.** The knob could not work at C=256 by construction, and
+the games correctly reported 0%. The correct statement is:
+
+* **below ~1.41×: absorbed completely** (not "damped" — absorbed);
+* **above it: works, but coarsely**, one ply at a time.
+
+⇒ **The lever is NOT refuted — it was never tested at a workable magnitude.** The only
+configuration whose mechanism was verified in games (C=1024, ceiling 2.5, +8% clock share
+in the balanced band and flat elsewhere) has **no game result**. That is the arm worth
+running.
+
+⇒ **General rule, and it applies to `ARCHON_WDL_TM_C3` and `unc_tm_factor` too:** both are
+clamped to [0.8, 1.25] and [0.8, 1.25]. **Both ceilings sit below the 1.41× quantum**, so
+both would be absorbed even on a net that fed them. Any TM budget factor must be able to
+reach ~1.5× to do anything at all.
+
 ### ⚠ THE MULTIPLICATIVE TM KNOB IS HEAVILY DAMPED — measured, and it kills the arm
 
 `TM_SCORE_C` (landed, default 0, bit-identical) scales the soft-stop budget by
