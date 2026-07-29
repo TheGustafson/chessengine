@@ -661,3 +661,38 @@ would conclude the opposite of the truth.
 
 D48Y healthy: sb71/300, 198.8k pos/s (throughput UP as the box quietened),
 heldout ema 0.012620.
+
+### ★ RETRACTION — the shape readings were INSIDE the instrument's noise
+
+I quoted "shape gap to SF narrowed 1.342 → 1.269 at sb30" as favourable to the
+user's hypothesis, then "1.310 at sb80" as it drifting back. **Both readings
+were noise.** I had not nulled the instrument before reading verdicts off it —
+the exact failure this ledger documents for the 44-position forced-move set.
+
+**Null: the SAME pair (D48X vs SF), three position samples, n=300:**
+
+| seed | LS/med |
+|---|---|
+| 29 | 1.342× |
+| 71 | 1.335× |
+| 113 | 1.312× |
+
+Sampling alone moves it **1.312–1.342**. D48Y-sb80's "1.310" is INSIDE that
+band; sb30's "1.269" is barely outside a 3-point null. The instrument cannot
+resolve a ~5% shape difference at n=300.
+
+**Fixed by sample size.** At n=1500 (≈940 usable pairs) the same null tightens
+to **1.313 / 1.298 — a 1.2% spread, ~2.5× tighter.** So the final sb300 test
+must run at **n≥1500**, not 300, and even then only differences >~2% are real.
+
+**Standing correction to how the D48Y verdict gets read:** the shape question is
+NOT yet answered in either direction. The honest statement today is *"D48X
+mismatches SF's shape by ~1.30–1.34×, and D48Y is not yet distinguishable from
+it."* Anything stronger is over-reading. Re-run at sb300, n≥1500, and null the
+run itself with two seeds before quoting a verdict.
+
+D48Y meanwhile healthy: sb85/300, 199k pos/s, no OOM. Train value and heldout
+both nearly flat at the held LR (heldout ema 0.012665 @sb20 → 0.012608 @sb80,
+~0.5% over 60sb) — the designed shape for a flat-LR plateau; the anneal from
+sb240 is where convergence is expected. If the anneal produces no drop, 300sb
+was short, and that is the thing to watch.
