@@ -1704,3 +1704,85 @@ historical anneal gain and turns "the anneal is where runs gain" from folklore
 into a number — and into a prediction for D48Y2. Requires loading a 433 MB raw
 net into JAX; `available` is **1 GB** with the trainer running. Running exactly
 this beside the trainer is how six runs died. **Do it after sb190, not before.**
+
+### ★★ NPS: I PUBLISHED A REVERSED RESULT, THE OWNER'S QUESTION CAUGHT IT (2026-07-29)
+
+Owner asked for ARCHON-vs-SF nps "in a real match, even contested". I ran a
+gauntlet, parsed per-move `nps=` from the PGN, and reported **ARCHON 6% FASTER
+than single-net Stockfish**, with SF18's apparent edge explained away as a
+1.44x smallnet accounting artifact. **All of that is RETRACTED. Stockfish is
+2.02x faster than us.**
+
+**What killed it was the owner's next question** — "Is that SF binary compiled
+right? With PGO and avx512?" Answering it produced the null I should have run
+first.
+
+- **AVX-512: yes** (`compiler` reports `x86-64-vnni512`, VNNI AVX512 BMI2).
+- **PGO: yes.** I could NOT tell from the binary — the hot/cold `.text` section
+  fingerprint I tried has **zero discriminating power** (our own known-PGO
+  `archon-s17pgo` looks identical). So I built one:
+  `make profile-build ARCH=x86-64-vnni512`. **Paired bench: 1,704,620 vs
+  1,693,361 nps = 0.9934x.** Same speed ⇒ the shipped binary was already
+  profile-built. **The binary is fine.**
+
+**But those two binaries are an INERT PERTURBATION, and the match-PGN instrument
+put them 1.237x apart** — bigger than the 1.06x effect I had read off it.
+Rule 1 fires: the instrument cannot answer this question. Match nps confounds
+engine speed with each engine's own TIME MANAGER, its resulting POSITION MIX
+(endgames are cheap per node), and which side drew the long thinks.
+
+**CORRECT INSTRUMENT — `tools/paired_nps.py`** (identical fens, identical node
+budget, engines alternate to split drift/contention evenly):
+
+| engine | mean Mnps | spread |
+|---|---|---|
+| SF `eca43a97` shipped | 1.916 | 1.5% |
+| SF `eca43a97` known-PGO | 1.895 | 4.8% |
+| **ARCHON + D48X** | **0.951** | 8.5% |
+
+**ARCHON / SF = 0.496x.** SF-shipped / SF-PGO = 1.0113x, inside spread — **null
+PASSES**. And this REPRODUCES the ledger's original 1.92x: the standing number
+was right, my "inversion" was the instrument.
+
+**WHY 2x, decomposed with perf on the same 20 positions:**
+
+| | ARCHON | SF | ratio |
+|---|---|---|---|
+| instructions/node | 7,358 | 4,360 | **1.69x ours** |
+| **IPC** | 1.231 | 1.426 | **0.86x ours** |
+| cache-misses/node | 99.97 | 49.34 | **2.03x ours** |
+| branch-misses/node | 26.77 | 20.41 | 1.31x ours |
+
+`(1/1.688) x 0.863 = 0.511` = the measured nps ratio. **TWO deficits, and that
+kills a tempting inference: instruction-count parity alone would NOT make us
+faster** — it closes the 1.69x and leaves IPC, landing ~1.16x SLOWER. We run
+more instructions AND stall more running them. Stall source is explicit: 2.03x
+the cache misses/node, consistent with 138 MB/1280-wide vs SF's 90 MB/1024-wide
+and with "75% of node time is eval". Both are width consequences, not search
+defects.
+
+**Frame caveat:** perf studies quote ~1.33x instructions/node on their bench
+frame; this is 1.69x on 20 calib fens at fixed nodes. Different position mix,
+different ratio — never quote one as the other.
+
+**The method lesson, paid for twice today.** Both of today's errors were the
+same shape: reading a verdict off an instrument whose noise I had not bounded
+(the earlier one was declaring a live agent/trainer dead off a file mtime and a
+wrong unit name). **`tools/nps_from_pgn.py` is kept but is now documented as
+INVALID for engine-speed comparison.**
+
+### Tick state @ sb131 — anneal is engaged and the curve responded
+
+Trainer PID 1397093 alive, 180.5k pos/s, **sb131/190**. The 70sb anneal began at
+sb120 and the heldout EMA immediately steepened:
+
+| sb | heldout EMA |
+|---|---|
+| 110 | 0.011590 |
+| 120 | 0.011568 |
+| **130** | **0.011507** |
+
+**DEFERRED AGAIN (correctly): the D48X anneal measurement.** RAM is now fine
+(5.4 GB) but it needs the GPU the trainer is on, and "do not disturb the
+training" outranks a prediction that 59 more superbatches will supply directly.
+Do it after sb190.
