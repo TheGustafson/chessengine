@@ -635,3 +635,29 @@ two builds at once.
 
 D48Y healthy throughout all of this: sb57, heldout still improving
 (sb40 0.013682 → sb50 0.013659, ema 0.012645 → 0.012627).
+
+### Study 12 INDEPENDENTLY VERIFIED by me, not just gate-passed
+
+I had reported 1.3733× to the user on the agent's word. Measured it myself on a
+different bench protocol (`bench 16 1 9 default depth`, canonical net, both PGO):
+
+| binary | nodes | instructions:u | i/n |
+|---|---|---|---|
+| pre-study-12 (`canonical/archon`, s10 PGO) | **329,318** | 3,141,966,990 | 9540.8 |
+| post-study-12 (`archon-s12pgo`) | **329,318** | 3,004,051,461 | **9122.0** |
+
+- **Node counts IDENTICAL (329,318 both)** — node-identity confirmed
+  independently of the gate triple.
+- **−418.8 i/n, −4.39%.** The study claimed −252.5 i/n on ITS panel = **−3.97%**.
+  Absolute i/n differs because the bench protocol differs; the RELATIVE
+  reduction is what transfers, and the two agree to ~0.4 pp.
+
+⇒ Study 12's headline is real. The 1.3733× figure stands.
+
+Note NPS did NOT improve in this measurement (1.120 M → 1.105 M) — the box is
+running a GPU training job, which is exactly why `instructions:u` is the metric
+and why wall-clock is not quotable here. A reader comparing the NPS column
+would conclude the opposite of the truth.
+
+D48Y healthy: sb71/300, 198.8k pos/s (throughput UP as the box quietened),
+heldout ema 0.012620.
