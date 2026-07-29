@@ -1301,3 +1301,28 @@ indefensible after four losses.
 Note for later ticks: `grep -c '^components sb'` over-counts because the log
 retains the aborted run's lines. Read the LAST `components sb` line for true
 progress (currently sb19 of the resumed leg).
+
+### D48Y2 IS CONVERGING — heldout falling steadily (sb24)
+
+| checkpoint | heldout EMA (same metric/frame throughout) |
+|---|---|
+| D48Y @ 1e-3, all 190sb | **0.012580 – 0.012677** — never left the band |
+| D48Y2 sb10 | 0.012129 |
+| **D48Y2 sb20** | **0.011977** |
+
+**−1.25% across ten superbatches, and 4.8% below D48Y's best-ever.** This is the
+second independent confirmation that the flatness was the learning rate, not
+the calibrated target: a converging curve where there was a flat line, from the
+same weights, with only the LR changed.
+
+Throughput partially recovering as page cache refills: 72k → **99k pos/s**
+(normal 198k). Swap still 4095/4095 with zero free; `codex resume` 1.4 GB +
+Chrome 0.5 GB hold the memory that would restore it. At 99k the remaining
+~166sb is ~11.6 h; at full speed ~5.8 h.
+
+Trainer RSS reads 5.4 GB but most is reclaimable memmap page cache, not
+anon — `available` is the number that matters (3.4 GB).
+
+**Still no study restart.** The perf loop stays paused until throughput is back
+near 198k. Four training losses make that the correct trade even though it
+stalls the loop.
