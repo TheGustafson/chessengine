@@ -1,10 +1,10 @@
 block               ARCHON        SF     delta
 startup/io          6483.5    7260.3    -776.7
-search              1208.5     940.9    +267.7
+search              1208.3     940.9    +267.4
 movepick             860.0     699.1    +160.9
 eval head           2207.6    1376.1    +831.5
 acc fold            7850.4    1926.9   +5923.5
-threat gen           908.3     598.1    +310.2
+threat gen           897.6     598.1    +299.5
 eval glue            168.0      44.3    +123.7
 make/unmake          421.6     384.5     +37.1
 board queries        302.2     548.3    -246.1
@@ -12,8 +12,8 @@ movegen               23.0      89.9     -66.9
 histories            254.7     162.2     +92.4
 tt                    65.2     150.4     -85.2
 libc                 263.0     653.8    -390.8
-unbucketed           234.4     136.1     +98.3
-TOTAL              21250.5   14971.0   +6279.5
+unbucketed           235.3     136.1     +99.3
+TOTAL              21240.5   14971.0   +6269.6
 
 -- ARCHON unbucketed, top 10 --
     148.14  chessengine::attacks::sliding_attack

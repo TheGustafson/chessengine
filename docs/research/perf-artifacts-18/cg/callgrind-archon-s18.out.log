@@ -1,9 +1,9 @@
-==1674330== Callgrind, a call-graph generating cache profiler
-==1674330== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
-==1674330== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
-==1674330== Command: target-cg18/release/chessengine bench 16 1 3000 docs/research/perf-artifacts-18/cg/fens-50.txt nodes engines/canonical/net.cenn
-==1674330== 
-==1674330== For interactive control, run 'callgrind_control -h'.
+==1706858== Callgrind, a call-graph generating cache profiler
+==1706858== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==1706858== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==1706858== Command: target-cg18/release/chessengine bench 16 1 3000 docs/research/perf-artifacts-18/cg/fens-50.txt nodes engines/canonical/net.cenn
+==1706858== 
+==1706858== For interactive control, run 'callgrind_control -h'.
 Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
 Nodes searched: 3001
 Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
@@ -105,11 +105,11 @@ Nodes searched: 3001
 Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
 Nodes searched: 3002
 ===========================
-Total time (ms) : 7011
+Total time (ms) : 7546
 Nodes searched  : 150059
-Nodes/second    : 21403
-==1674330== 
-==1674330== Events    : Ir
-==1674330== Collected : 3188828580
-==1674330== 
-==1674330== I   refs:      3,188,828,580
+Nodes/second    : 19885
+==1706858== 
+==1706858== Events    : Ir
+==1706858== Collected : 3187334104
+==1706858== 
+==1706858== I   refs:      3,187,334,104

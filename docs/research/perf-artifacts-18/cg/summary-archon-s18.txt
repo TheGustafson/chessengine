@@ -1,4 +1,4 @@
-# nodes=150,059  total_Ir=3,188,828,580  total_i/n=21250.5
+# nodes=150,059  total_Ir=3,187,334,104  total_i/n=21240.5
  self/node  calls/node  per_call  function
    3725.61      0.8518    4373.7  chessengine::eval::nnue::sota_simd::avx2::i8_deltas_into
    3072.73      0.9635    3189.1  chessengine::eval::nnue::sota_simd::avx2::i16_deltas_into
@@ -9,7 +9,7 @@
     765.86      0.1544    4959.0  chessengine::eval::nnue::sota_simd::avx2::i16_deltas_dual
     575.95      0.7159     804.5  <chessengine::search::Worker>::search::<chessengine::search::NonPv>'2
     552.42      0.1624    3401.3  <chessengine::movepick::MovePicker>::init_quiets
-    480.27      0.4151    1157.0  <chessengine::eval::nnue::sota_threats::ThreatContext>::at_full
+    470.82      0.4151    1134.2  <chessengine::eval::nnue::sota_threats::ThreatContext>::at_full
     436.31      0.4151    1051.1  chessengine::eval::nnue::sota_simd::avx2::l1_dot
     218.77      0.4151     527.0  chessengine::eval::nnue::sota_simd::avx2::find_nnz
     209.19      0.4151     503.9  <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::current_full
@@ -28,12 +28,12 @@
     103.05      1.0000     103.1  <chessengine::search::Worker>::do_move
      91.86      0.9818      93.6  <chessengine::history::Histories>::correction_value
      88.42      0.4151     213.0  chessengine::eval::nnue::sota_simd::avx2::skip_dot_i8
-     83.02      1.0000      83.0  <chessengine::eval::nnue::sota_threats::ThreatContext>::apply_at
+     81.02      1.0000      81.0  <chessengine::eval::nnue::sota_threats::ThreatContext>::apply_at
      78.14      0.3302     236.6  <chessengine::movepick::MovePicker>::init_captures
      73.17      0.1553     471.2  <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into
      70.47      0.5783     121.9  <chessengine::board::Board>::ensure_threats
      69.78      1.0006      69.7  <chessengine::board::Board>::unmake_move
-     68.13      0.0487    1398.0  <chessengine::search::Worker>::search::<chessengine::search::Pv>'2
+     67.89      0.0487    1393.1  <chessengine::search::Worker>::search::<chessengine::search::Pv>'2
      66.43      0.9628      69.0  <chessengine::board::Board>::attackers_to
      55.03      0.2050     268.5  <chessengine::search::Worker>::qsearch::<chessengine::search::NonPv>
      47.89      0.0214    2234.6  chessengine::eval::nnue::sota_features::refresh_threat_into_at

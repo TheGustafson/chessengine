@@ -25,9 +25,9 @@ at all.
 | | probe frame (thin LTO, 4 CGU, non-PGO, `-C target-cpu=native`) |
 |---|---:|
 | baseline (`main` @ `8f556ee`) | 6192.1 i/n |
-| **shipped tree** | **6151.7 i/n** |
-| **delta** | **−40.4 (−0.65%)** |
-| branches | 663.0 → **649.5** per node (**−13.5, −2.0%**) |
+| **shipped tree** | **6151.2 i/n** |
+| **delta** | **−40.9 (−0.66%)** |
+| branches | 663.0 → **647.9** per node (**−15.1, −2.3%**) |
 | node count, every line | 5,001,562 |
 | eval hash, every line | `5ca978e012da1bb0` |
 
@@ -45,20 +45,26 @@ the last digit the instrument can print.
 | a1b | **the king-cross refresh becomes LAZY** — `Fold::Refresh` recorded at push, discharged in `compute` | **−44.2** | `sota_threats.rs` |
 | a3 | `king_cross(dp) -> [bool; 2]` — one pass per `DirtyPiece` list instead of one per colour | −2.1 (**−8.8 br/node**) | `sota_threats.rs` |
 | a4 | `#[cold] discharge_refresh` | −1.2 | `sota_threats.rs` |
-| | **total, probe frame** | **−40.4** | |
+| a6 | the D33 round — P-1 (fuse the walk's terminal `fold` load), P-4 (`[T; N]::map`), plus reviewer A's fixes | −0.5 (**−1.6 br/node**) | both |
+| | **total, probe frame** | **−40.9** | |
 | a2 | *(rejected, +22.7)* victim-type inner loop in `for_each_threat_at` | — | §6.1 |
+| a5 | *(rejected, +0.1)* `#[cold]` on `pseudo_legal`'s non-Normal arm | — | §6.1b |
 
 ### 0.3 What this study is actually about
 
-**(a) The commissioned target closed, at 1.6× its estimate in its own frame and
-0.31× in the shipped one — and the discrepancy is fully explained.** Study 17
-§11 item 1 sized the eager king-cross refresh at **~130 i/n**, on a callgrind
-measurement of 222.7 i/n and the model "only 41.5% of nodes evaluate, so ~58% is
-thrown away". In the callgrind frame this study removes **128.8 i/n** — dead on.
-In the probe frame it removes **40.4**. §5 is the reconciliation, and it
-contains one genuine correction to the model: **the saving is 41.0%, not 58.5%,
-because a crossing ply that is never evaluated ITSELF is still refreshed if any
-DESCENDANT evaluates.** The obligation propagates down the subtree.
+**(a) The commissioned target closed — and study 17's ~130 estimate is NOT
+vindicated, though the first draft of §5 said it was.** Study 17 §11 item 1
+sized the eager king-cross refresh at **~130 i/n**, on a callgrind measurement
+of 222.7 and the model "only 41.5% of nodes evaluate, so ~58% is thrown away".
+This study removes **−138.8 in the callgrind frame and −40.9 in the probe
+frame**, and the temptation to report "dead on, then a 3.2× frame effect" is
+exactly what §5 now retracts: **~84 of that −138.8 is one instrument artifact
+and one codegen difference**, not work the shipped build stops doing. §5.2.
+
+The model itself also needed correcting, in a way that generalises: **the saving
+is 41.0%, not 58.5%, because a crossing ply that is never evaluated ITSELF is
+still refreshed if any DESCENDANT evaluates.** The obligation propagates down
+the subtree.
 
 **(b) Stockfish's threat-generation column is no longer a lower bound.** Study
 17 §4.4 had to publish a BRACKET — "+250 to +400 i/n, 1.30×–1.59×" — because
@@ -67,12 +73,13 @@ one SF symbol, `update_accumulator_refresh_cache`, contained an inlined
 `0 ≤ X ≤ 433.4`. Its §11 item 1b named the fix and called it the first thing
 study 18 should do. Done, in 90 seconds of build time: **X = 85.5**. §4.
 
-**(c) With X measured, the honest number is worse than the corrected bracket and
-better than the first cut.** On an exhaustive bucketing over every symbol in
-both engines, one frame, same 50 positions, same node budget: threat generation
-was **ARCHON 1004.9 vs SF 598.1 — 1.680×, +406.8**, i.e. *above* study 17's
-corrected upper bound of 1.59×. After this study: **908.3 vs 598.1, 1.519×,
-+310.2.** §4.3.
+**(c) With X measured, threat generation is 1.500× and it is still the largest
+addressable block.** On an exhaustive bucketing over every symbol in both
+engines, one frame, same 50 positions, same node budget: threat generation was
+**ARCHON 1004.9 vs SF 598.1 — 1.680×, +406.8**, and is now **897.6 vs 598.1 —
+1.500×, +299.5**. §4.3, including why that pair of ratios is *not* directly
+comparable to study 17 §4.4's "1.30×–1.59×" bracket (three different
+bucketings — D33 reviewer C, N-5).
 
 **(d) One block that looks enormous in the callgrind frame is not measurable
 there at all**, and saying so is the point. `acc fold` reads ARCHON 7850.4 vs SF
@@ -320,18 +327,18 @@ magnitude on the second, and its published bracket (1.30×–1.59×) **contains*
 inside it: it treated X = 150 as the pessimistic case and X = 433.4 as
 "implausible", when the real answer was below both.
 
-### 4.3 The auditable form — exhaustive bucketing, and it says something worse
+### 4.3 The auditable form — exhaustive bucketing
 
-The table above mixes inclusive and self costs on both sides, which is why study
+The §4.2 table mixes inclusive and self costs on both sides, which is why study
 17 also built `blocks17.py`: bucket **every** symbol by regex, print the
 unbucketed row, and check that the columns sum to each engine's own total. That
 is the form a reader can audit. Both engines, one frame, 150,059 vs 150,053
 nodes, `cg/blocks-base.txt` and `cg/blocks-s18.txt`:
 
-| block | ARCHON base | **ARCHON s18** | SF | s18 delta |
+| block | ARCHON base | **ARCHON HEAD** | SF | HEAD delta |
 |---|---:|---:|---:|---:|
-| **threat gen** | **1004.9** | **908.3** | **598.1** | **+310.2 (1.519×)** |
-| search | 1208.5 | 1208.5 | 940.9 | +267.7 |
+| **threat gen** | **1004.9** | **897.6** | **598.1** | **+299.5 (1.500×)** |
+| search | 1208.5 | 1208.3 | 940.9 | +267.4 |
 | movepick | 860.0 | 860.0 | 699.1 | +160.9 |
 | make/unmake | 421.6 | 421.6 | 384.5 | +37.1 |
 | board queries | 303.9 | 302.2 | 548.3 | −246.1 |
@@ -342,112 +349,207 @@ nodes, `cg/blocks-base.txt` and `cg/blocks-s18.txt`:
 | eval head | 2207.6 | 2207.6 | 1376.1 | +831.5 |
 | acc fold | 7850.4 | 7850.4 | 1926.9 | **not measurable here — §7** |
 | startup/io | 6483.5 | 6483.5 | 7260.3 | −776.7 |
-| unbucketed | 234.4 | 234.4 | 136.1 | +98.3 |
-| **TOTAL** | **21379.3** | **21250.5** | **14971.0** | |
+| unbucketed | 234.4 | 235.3 | 136.1 | +99.3 |
+| **TOTAL** | **21379.3** | **21240.5** | **14971.0** | |
 
 `598.1` is exactly `update_piece_threats<true>` 229.01 + `<false>` 60.06 +
 `append_changed_indices` 216.19 + `append_active_indices` 92.83 — the bucketing
-closes to the cent, which is the whole point of doing it this way.
+closes to the cent, which is the whole point of doing it this way. Our column
+closes too (reviewer C re-summed both independently).
 
-**The pre-study-18 threat ratio was 1.680× (+406.8), above study 17's corrected
-upper bound of 1.59×.** The two forms disagree (1.680× vs the inclusive form's
-1.680→1.414×) for a stateable reason: the self-cost form leaves each engine's
-attack lookups outside the block on *both* sides (ours in `board queries` and
-`unbucketed`'s `sliding_attack`, SF's `both_attacks_bb` in `board queries`),
-which is like-for-like; the inclusive form pulls SF's inlined lookups *into*
-its threat column and leaves ours out, which is not. **The self-cost bucketing
-is the number to quote.** It is also the one that sums to the total.
+**Two caveats on those ratios, both from D33 reviewer C, both taken:**
 
-### 4.4 So: threat generation is +310.2 i/n at 1.519×, and it is still the largest addressable block
+* **N-4 — SF's 598.1 carries its own `noinline` overhead.** 7.37 of
+  `append_active_indices`'s 92.83 is the call/prologue the inlined build never
+  pays (§4.1's whole-binary +7.5 is exactly that). Like-for-like SF is **590.7**
+  and the ratios are **1.701× → 1.520×**, not 1.680× → 1.500×. The error runs in
+  SF's favour so the reported gap is conservative — but the point of the rebuild
+  was to stop quoting bounds, so both forms are printed.
+* **N-5 — do NOT read "1.500× lands inside study 17's 1.30–1.59× bracket" as
+  confirmation.** Three different bucketings are in play: §4.4 used SF 674.8 /
+  ARCHON 1074.8 (hand-picked, mixed inclusive/self); study 17's own
+  `blocks-w50.txt` used 505.3 / 1066.4; `blocks18.py` uses 598.1 / 1004.9. The
+  containment is a coincidence of denominators. **Every ratio in this study is a
+  `blocks18.py` self-cost ratio**; that is the one that sums to each engine's
+  total, and it is the only one to carry forward.
+
+The self-cost form leaves each engine's attack lookups outside the block on
+*both* sides (ours in `board queries` and `unbucketed`'s `sliding_attack`, SF's
+`both_attacks_bb` in `board queries`), which is like-for-like. The inclusive
+form of §4.2 pulls SF's inlined lookups *into* its threat column and leaves ours
+out, which is not. **Quote the self-cost bucketing.**
+
+### 4.4 So: threat generation is +299.5 i/n at 1.500×, and it is still the largest addressable block
 
 Excluding `acc fold` (§7) and `startup/io` (irrelevant to a game), the ranked
-gaps are: **eval head +831.5**, **threat gen +310.2**, search +267.7, movepick
+gaps are: **eval head +831.5**, **threat gen +299.5**, search +267.4, movepick
 +160.9, histories +92.4, make/unmake +37.1. `eval head` is dominated by the
 1280-vs-1024 accumulator width the commission excludes as a retrain; threat gen
 is not.
 
----
+**A fidelity result that reframes the whole block (D33 reviewer B, verified
+against `eca43a97`): Stockfish's threat refresh was ALREADY lazy, and the eager
+form this study deleted was the ARCHON deviation.** `AccumulatorStack::push`
+(`nnue_accumulator.cpp:64-71`) does no accumulator work at all; everything
+happens in `evaluate_side` (`:78-101`). SF also has **no Finny cache for
+threats** — `AccumulatorCaches::Entry` (`nnue_accumulator.h:65-78`) is
+piece-placement only, and `:538-539` says so in a comment — so it rebuilds the
+threat half from scratch exactly as we now do.
 
-## 5. RECONCILING THE ESTIMATE — 128.8 IN ONE FRAME, 40.4 IN THE OTHER
+And one place where **we are ahead of the reference by construction**: SF's
+refresh trigger is `HalfKAv2_hm::requires_refresh`, i.e. **any own-king move**,
+because its accumulator fuses HalfKA and threats into one vector. Its own
+comment at `nnue_accumulator.cpp:112-113` concedes that "threat feature set
+refreshes require a king move across the center, i.e., a subset of halfka
+refreshes" — a saving it cannot take. Our split accumulators let `king_cross`
+use the narrow d/e predicate. That is a real architectural advantage already in
+the bank, and it is worth knowing before anyone proposes fusing the two.
 
-Study 17 §11 item 1 predicted **~130 i/n**. Both numbers below are this study's,
-measured, on the same tree:
+## 5. RECONCILING THE TWO FRAMES — AND THE FIRST DRAFT OF THIS SECTION WAS WRONG
+
+Study 17 §11 item 1 predicted **~130 i/n**. This study measures, on the same
+tree:
 
 | frame | delta |
 |---|---:|
-| callgrind (AVX2, 3000 nodes/position) | **−128.8 i/n** |
-| probe (AVX-512 native, 100,000 nodes/position) | **−40.4 i/n** |
+| callgrind (AVX2 `x86-64-v3`, 3000 nodes/position) | **−138.8 i/n** |
+| probe (AVX-512 native, 100,000 nodes/position) | **−40.9 i/n** |
 
-**The estimate was right, in the frame it was made in, to 1%.** It is 3.2×
-optimistic in the shipped frame, and study 17 §4.3 had already written down
-exactly why and told the reader not to quote its i/n as headroom: a
-3000-node-per-position tree evaluates far more often per node than a 100k one,
-so every eval-rate-coupled symbol is inflated. This is that warning cashing out
-with a number on it: **3.2× for this block, this arm.**
+**The first draft of this section said "the estimate was right in its own frame
+to 1%, and the callgrind frame is 3.2× optimistic because a shallow tree
+evaluates more often per node".** That is a single-cause story, it is quotable,
+and D33 reviewer C broke it. It is retracted. The real answer is three causes
+with very different characters, and **only one of them is a frame effect**.
 
-### 5.1 Where the callgrind 128.8 goes, per symbol and exactly
+### 5.1 The per-symbol decomposition, corrected
 
-`cg/summary-archon-base.txt` vs `cg/summary-archon-s18.txt`:
+`cg/summary-archon-base.txt` vs `cg/summary-archon-s18.txt`, 150,059 nodes both:
 
-| symbol | baseline | study 18 | Δ |
-|---|---|---|---:|
-| `ThreatContext::apply_at` | 152.16 @ 1.0000 (152.2 i/call) | **83.02 @ 1.0000 (83.0 i/call)** | **−69.1** |
-| `refresh_threat_into` → `_at` | 79.29 @ **0.0363** (2182.4 i/call) | 47.89 @ **0.0214** (2234.6 i/call) | **−31.4** |
-| `__memset_avx2_unaligned_erms` | 141.31 @ 0.6391 | 111.78 @ 0.6259 | **−29.5** |
-| `ThreatContext::at_full` | 465.28 @ 0.4151 (1120.8 i/call) | 480.27 @ 0.4151 (1157.0 i/call) | **+15.0** |
-| `record_square_touch` | 199.06 @ 1.0644 | 199.06 @ 1.0644 | 0.0 |
-| `__memcpy_avx_unaligned_erms` | 136.83 @ 0.4409 | 135.94 @ 0.4392 | −0.9 |
-| | | **sum** | **−115.9** of −128.8 |
+| symbol | baseline | HEAD | Δ | which arm |
+|---|---|---|---:|---|
+| `ThreatContext::apply_at` | 152.16 @ 1.0000 | **81.02 @ 1.0000** | **−71.1** | mostly **a3**, see below |
+| `refresh_threat_into` → `_at` | 79.29 @ **0.0363** | 47.89 @ **0.0214** | **−31.4** | a1b |
+| `__memset_avx2_unaligned_erms` | 141.31 @ 0.6391 | 111.78 @ 0.6259 | **−29.5** | a1b — **but see §5.2** |
+| `ThreatContext::at_full` | 465.28 @ 0.4151 | 470.82 @ 0.4151 | **+5.5** | the toll, net of a4 + P-1 |
+| `record_square_touch` | 199.06 @ 1.0644 | 199.06 @ 1.0644 | 0.0 | untouched |
+| `__memcpy_avx_unaligned_erms` | 136.83 | 135.94 | −0.9 | |
+| | | **sum** | **−127.4** of −138.8 | |
 
-Four separate things, and only one of them is "the refresh runs less often":
+`discharge_refresh` appears as a call edge at **0.0208 calls/node, 117.7 i/n
+inclusive** — the whole deferred rebuild, priced in one place.
 
-1. **`apply_at` per call: 152.2 → 83.0.** The refresh calls it stopped making
-   account for only `0.0149 × ~2200 = 32.8` of that 69.1. **The other ~36 is
-   `apply_at`'s own register pressure** — the eager branch held the only code in
-   the function that touched two weight slices and an 80-byte snapshot, and it
-   set the prologue for a path taken 3.6% of the time. That is study 17 §5's
-   mechanism arriving in a function study 17 never split.
-2. **The refresh call rate: 0.0363 → 0.0214.** §5.2.
-3. **`memset` −29.5.** `refresh_threat_into_at` opens with `dst.fill(0)` over
-   2560 bytes; 41% fewer refreshes is 41% fewer of those. The call rate moves
-   0.6391 → 0.6259, i.e. −0.0132 against the refresh rate's −0.0149. This is
-   the third payment the `memset` class has made (study 15 −22.7, study 16
-   −14.6) and study 16 declared the class closed — correctly, for the class it
-   was looking at. This one is not a redundant `memset`; it is a *necessary*
-   `memset` that is now performed less often.
-4. **`at_full` +15.0, the toll.** `compute` grew the enum walk and the
-   discharge branch. Priced, and a4's `#[cold]` bought 1.2 of it back in the
-   probe frame.
+### 5.2 THREE CAUSES, NOT ONE — and two of them are not "the arm working"
 
-### 5.2 THE MODEL CORRECTION — 41.0%, not 58.5%, and this generalises
+**(i) `apply_at`'s −71.1 is dominated by arm a3, which the probe frame prices at
+−2.1.** Verified here independently of the reviewer, from
+`callgrind_annotate`'s per-file attribution:
+
+```
+base   src/types.rs:…::apply_at    8,148,311 Ir  (= 54.30 i/n)
+HEAD   src/types.rs:…::apply_at    absent        (=  0.00 i/n)
+```
+
+That line is `Piece`'s **derived `PartialEq`** — `pc == king` inside the old
+`king_crossed`, run `2 × (|subs| + |adds|)` times per made move. `king_cross`
+compares `pc.piece_type` instead and runs the lists once. `king_cross` has **no
+symbol** (`nm` confirms it is inlined into `apply_at`), so the work did not move
+to another bucket; `apply_at`'s own self cost genuinely fell.
+
+So one arm reads **−54.3 in the callgrind frame and −2.1 in the probe frame — a
+26× disagreement**, on a function called exactly 1.0000 times per node in both.
+It is not an eval-rate effect; there is no eval rate in it. It is a **codegen
+difference between the two builds** (`-C target-cpu=x86-64-v3` + line tables vs
+`-C target-cpu=native`), plus the ordinary fuzziness of line attribution in an
+optimised build.
+
+My §5.1's first draft instead claimed the −71.1 was "the eager refresh leaving,
+0.0149 × ~2200 = 32.8 of it, and ~36 of `apply_at`'s own register pressure".
+**Both halves were wrong**: `refresh_threat_into` is a *separate symbol*, so its
+2,182 i/call was never inside `apply_at`'s self cost and the table already lists
+that saving as its own −31.4 row — the draft double-counted it.
+
+**(ii) The `__memset` −29.5 is an INSTRUMENT ARTIFACT and is worth ≈ 0 in the
+shipped frame.** The removed calls price at `29.53 / 0.0132 = 2,237 Ir each`,
+for a `dst.fill(0)` of **2,560 bytes** — **1.14 bytes per counted instruction**.
+That is glibc's `rep stosb` ERMS path, which **callgrind counts once per byte**
+while `perf stat -e instructions:u` retires the whole `rep stosb` as ~one
+instruction. The work really is eliminated; the *count* is an artifact of the
+instrument, and it does not appear in the −40.9.
+
+**(iii) What is left is the arm, and it is the smallest of the three numbers.**
+Strip (i) and (ii) from −138.8 and about **−55** remains: the refresh call rate
+(−31.4), `apply_at`'s genuine share (~−17), the `at_full` toll (+5.5), and
+change. The probe says the whole study is −40.9. Those are compatible without
+any scalar conversion.
+
+**So: is study 17's ~130 vindicated?** No. It agreed with a number that is
+~84 i/n artifact and codegen. **The agreement was a coincidence**, and saying so
+is the point of §12's rule 3 rather than an embarrassment to bury.
+
+### 5.2b THE MODEL CORRECTION — 41.0%, not 58.5%, and this generalises
 
 Study 17's item 1 said: "It runs at PUSH time, i.e. on every made move; only
 **41.5%** of nodes ever evaluate, so **~58%** of it is thrown away."
 
-Measured, exactly: the refresh call rate falls **0.0363 → 0.0214**, a factor of
-**0.590**. **41.0% eliminated, not 58.5%.**
+Measured exactly, and this one is NOT frame-dependent — it is a call-rate ratio
+inside one profile: the refresh call rate falls **0.0363 → 0.0214**, a factor of
+**0.590**. **41.0% eliminated, not 58.5%.** (Call-edge cross-check, reviewer C:
+base 0.0357 from `apply_at` + 0.0007 from the root refresh = 0.0364; HEAD 0.0208
+from `discharge_refresh` + 0.0007 = 0.0215.)
 
-The model is wrong in a way that is worth writing down because it applies to
-every future laziness argument on this stack: **a crossing ply that is never
-evaluated itself is still refreshed if any DESCENDANT evaluates**, because
-`compute` walks *back* to it from the descendant. The obligation propagates down
-the subtree. Only a crossing whose **entire subtree** cuts off is saved.
+The model is wrong in a way worth writing down because it applies to every
+future laziness argument on this stack: **a crossing ply that is never evaluated
+itself is still refreshed if any DESCENDANT evaluates**, because `compute` walks
+*back* to it from the descendant. The obligation propagates down the subtree.
+Only a crossing whose **entire subtree** cuts off is saved.
 
 So the correct form of "defer it and the nodes that never evaluate stop paying"
 is **"…and the SUBTREES that never evaluate stop paying"**, and the two differ
 by 17.5 percentage points here. Any item ranked on the node-level form is
 over-ranked.
 
-### 5.3 Branches
+### 5.2c Branches — and the integer decomposition, re-run per block on BOTH engines
 
-Probe frame, exact per node: **663.0 → 649.5, −13.5 (−2.0%)**. Of that, a3's
-one-pass `king_cross` alone is **−8.8**, which is more than its −2.1
-instructions would suggest and is the reason it stays. Study 17 §6.2.1 put
-**+94.4 of the +149.6 integer branch gap in this block**; a −13.5 whole-engine
-move is a real dent in it, though the branch decomposition has not been re-run
-per block (§9 item 5).
+Probe frame, exact per node: **663.0 → 647.9, −15.1 (−2.3%)**. Of that, a3's
+one-pass `king_cross` alone is **−8.8**, far more than its −2.1 instructions
+would suggest and the reason it stays; the D33 round added another −1.6.
 
----
+Study 17 §6.2.1 left this as a bracket ("between 67 and 94 of the +149.6 integer
+branch gap is threat generation… the true share is 45–63%") because the same
+unsplittable Stockfish symbol carried 27.0 branches of mixed threat and fold.
+**The `noinline` rebuild splits that too**, so the branch table has no bracket
+left either. `--branch-sim=yes` on all three binaries, exact conditional
+branches per node, SIMD kernels and start-up excluded (§7):
+
+| block | ARCHON base | **ARCHON HEAD** | SF | HEAD delta |
+|---|---:|---:|---:|---:|
+| **threat gen** | **108.8** | **97.0** | **29.3** | **+67.7** |
+| movepick | 105.9 | 105.9 | 67.1 | +38.8 |
+| search body | 88.5 | 88.5 | 71.6 | +16.9 |
+| make/unmake | 35.8 | 35.8 | 23.7 | +12.1 |
+| board queries | 34.2 | 34.1 | 29.6 | +4.4 |
+| histories | 22.1 | 22.1 | 12.4 | +9.6 |
+| movegen | 3.8 | 3.8 | 8.3 | −4.5 |
+| tt | 3.0 | 3.0 | 8.3 | −5.3 |
+| SF refresh-cache (HalfKA half only now) | 0.0 | 0.0 | 20.2 | −20.2 |
+| other | 48.2 | 48.2 | 17.5 | +30.6 |
+| **TOTAL, integer code** | **450.4** | **438.4** | **288.1** | **+150.3** |
+
+**Threat generation is 45.0% of the whole surviving integer branch gap** —
+exactly, not "45–63%" — and this study took 11.8 branches/node out of it. It is
+the same block the instruction table finds, measured with a completely
+independent statistic, on both engines, with no unsplittable symbol left on
+either side.
+
+### 5.3 THE RULE THIS PAYS FOR — a frame ratio is not a scalar
+
+Study 17 §4.3 said callgrind i/n must not be quoted as headroom because the
+shallow tree inflates eval-coupled symbols. True, and insufficient. Here the
+two frames disagree by **26× on one arm, ~1× on another, and ∞ on a third**
+(the `memset` row does not exist in the probe frame at all). **You cannot divide
+a callgrind delta by anything to get a probe delta.** Use callgrind for
+*attribution* — which function, how many calls, how many instructions per call —
+and the probe for *deltas*, and never convert between them.
 
 ## 6. WHAT DID NOT LAND
 
@@ -556,13 +658,19 @@ The probe frame overstated the PGO delta by **1.12–2.0×** in studies 12–15
 (layout and `memcpy` changes) and by **2.17×** in study 17 (−114.5 probe →
 −52.8 PGO, inlining-boundary changes).
 
-**This study's arms are neither.** −37.1 of the −40.4 is *work elimination*:
+**This study's arms are neither.** −37.1 of the −40.9 is *work elimination*:
 41% of a ~2200-instruction rebuild simply does not happen. PGO cannot make
 un-executed work cheaper, and the rebuild's cost is dominated by
 `add_column`'s SIMD accumulation, which profile data barely touches. The two
-small arms are different: a3 (−2.1) is loop fusion, which should survive; a4
-(−1.2) is an `#[inline(never)]` and is exactly the class study 17 showed PGO can
-push through zero.
+small arms are different: a3 (−2.1) and a6's P-1 (−0.5) are loop/load fusion,
+which should survive; a4 (−1.2) is an `#[inline(never)]` and is exactly the
+class study 17 showed PGO can push through zero.
+
+One thing §5.2 changes about this prediction, and it is a warning rather than a
+hedge: the callgrind frame priced a3 at −54.3 where the probe prices it at −2.1.
+If the same codegen sensitivity exists between thin LTO and fat-LTO PGO, a3's
+contribution could move in either direction by more than its own size. It is
+2.1 of 40.9, so it cannot flip the total.
 
 **Predicted: −25 to −45 i/n in the PGO frame, most likely −33 to −42.**
 
@@ -583,7 +691,8 @@ of "do not do the work" that PGO turns into a cost.
 ## 9. RANKED REMAINDER — handoff to study 19
 
 **Closed by this study, with numbers:** study 17 item 1 (the eager king-cross
-refresh — done, −40.4 probe / −128.8 callgrind); study 17 item 1b's first half
+refresh — done, −40.9 probe / −138.8 callgrind, but read §5.2 before
+quoting the second number); study 17 item 1b's first half
 (**X = 85.5**, SF's threat column is no longer a lower bound); study 17's
 threat-to-validity item 5 (s16 + s17 compose additively).
 
@@ -593,11 +702,11 @@ spellings), the branch ratio as a bounds-check story.
 
 | # | item | size | confidence | cheapest next test |
 |---|---|---:|---|---|
-| 1 | **`at_full` is now the block's whole story: 480.27 i/n at 0.4151 calls/node — 1157 instructions per evaluated ply.** It inlines `compute` AND `resolve_both`, i.e. the ancestor walk, the per-event index resolution for both perspectives, the psqt delta, and the chunked empty-list copy. Nobody has ever split it. Stockfish's counterpart, `append_changed_indices`, is **227.9 i/call**, and its generator `update_piece_threats<true>` is **126.9 i/call against our `record_square_touch`'s 187.0** | **the residual +310.2 lives here and in `record_square_touch`** | **high — exact, both engines** | study 17 item 1b's SECOND half, still owed and now the top item: `#[inline(never)]` on `compute`, `resolve_both`, `build_deltas` and the fold, re-run `cg18.sh`, price the four stages. **Run it at the 30k budget, not 3k** (study 17 §4.3) |
+| 1 | **`at_full` is now the block's whole story: 470.82 i/n at 0.4151 calls/node — 1134 instructions per evaluated ply.** It inlines `compute` AND `resolve_both`, i.e. the ancestor walk, the per-event index resolution for both perspectives, the psqt delta, and the chunked empty-list copy. Nobody has ever split it. Stockfish's counterpart, `append_changed_indices`, is **227.9 i/call**, and its generator `update_piece_threats<true>` is **126.9 i/call against our `record_square_touch`'s 187.0** | **the residual +310.2 lives here and in `record_square_touch`** | **high — exact, both engines** | study 17 item 1b's SECOND half, still owed and now the top item: `#[inline(never)]` on `compute`, `resolve_both`, `build_deltas` and the fold, re-run `cg18.sh`, price the four stages. **Run it at the 30k budget, not 3k** (study 17 §4.3) |
 | 2 | **`record_square_touch` did not move: 199.06 i/n at 1.0644 calls/node, 187.0 i/call**, against SF's `update_piece_threats<true>` at 126.9. It inlines `record_targets`, `ripple` and `record_outgoing`. **1.47× on the per-call cost of the same job** | ~60 i/n at parity, callgrind frame | high | it is one symbol at ~1.0 calls/node, so `dis18.sh` + a counter is enough to attribute it. Compare against `eca43a97:src/position.cpp`'s `update_piece_threats` shape directly |
-| 3 | **Study 17 item 3c (`ripple`'s cancelling pairs) is CAPPED, and the cap is small.** Measured here with the existing `measure_fold_row_counts` oracle over 78,422 perspective-plies: resolved rows **6.05** per perspective-ply against a minimal symmetric difference of **5.85** — **overfold 1.034**. So SF's `noRaysContaining` guard can claim at most **3.4% of folded rows**, and only the collinear-slider subset of that | **≤ ~127 i/n callgrind, realistically a fraction** | **high — counted, not estimated** | **DOWN-RANKED. Do item 1 first.** If taken: instrument `resolve_both` to split the 3.4% into collinear-slider pairs vs everything else before writing any code |
+| 3 | **Study 17 item 3c (`ripple`'s cancelling pairs) is CAPPED, VERIFIED, and SCOPED — and the cap is small.** Three separate results. (i) Measured here with the existing `measure_fold_row_counts` oracle over 78,422 perspective-plies: resolved rows **6.05** per perspective-ply against a minimal symmetric difference of **5.85** — **overfold 1.034**, so at most **3.4% of folded rows** is on the table. (ii) D33 reviewer B verified SF's guard exactly: `move_piece` passes `noRaysContaining = from \| to` (`eca43a97:src/position.h:402-417`) and `update_piece_threats` skips the discovered emission iff `ray ⊇ {from, to}` (`:1201`); our `ripple` (`sota_threats.rs`) has no parameter that could express it. (iii) **But its SCOPE is far narrower than study 17 implied**: SF applies it only on `move_piece`, i.e. **quiet non-promotion moves plus the mover leg of en passant**. Captures go through `remove_piece` (default `-1ULL`, unguarded) + `swap_piece` (`ComputeRay=false`, so the ray scan never runs) — and that capture decomposition is one we already match exactly. Our own `resolve_into` doc records the cancel rate at **0.48% of events** (106.5 M → 0.51 M) | **≤ ~127 i/n callgrind; realistically ~0.5% of the fold** | **high — counted twice and verified against the reference** | **DOWN-RANKED. Do item 1 first.** If taken, it is one AND + CMP per slider at generation time, applied ONLY to `build_deltas`'s first branch and the ep mover leg — never to the capture branch, where SF has no guard either |
 | 4 | **Re-try §6.1's victim-type loop under SIX arguments.** The rejected spelling passed seven to `emit_targets`; study 17 §5.1c measured the seventh argument alone at −14.2 (i.e. +14.2 to have it). +22.7 − 14.2 is still positive, so this is a long shot — but it is 20 seconds and the fidelity argument (both oracle sides reading `MAP`) is worth having | −14 of +22.7 at best | low | fold `perspective` and `ksq` into one struct, or hoist the `pos.typed(vt)` loads out of the `from` loop |
-| 5 | **The branch decomposition has not been re-run per block.** Study 17 §6.2.1 put +94.4 of the +149.6 integer branch gap in threat generation; this study moved the whole-engine count −13.5/node but did not re-bucket | measurement only | high | `cgbr18.sh` on both engines + `brint18.py`, ~8 min of valgrind, no build |
+| 5 | ~~The branch decomposition has not been re-run per block.~~ **DONE — §5.2c.** Exact, both engines, no unsplittable symbol left: threat gen **108.8 → 97.0 vs SF 29.3**, and it is **45.0% of the whole +150.3 integer branch gap**. What is still open is only the SIMD half, which no instrument on this box can reach (§7) | closed for integer code | high | the SIMD half needs a COMPILE-TIME AVX2 build of ours that forces the dispatch instead of reading CPUID |
 | 6 | **SF's shifted-bitboard pawn enumeration** (`eca43a97:src/nnue/features/full_threats.cpp:225-250`) vs our per-pawn loop, in `for_each_threat_at`. Real divergence, genuinely cheaper, now on a 0.0214-calls/node path | < 15 callgrind, < 5 probe | high on the shape, low on the value | only worth doing if item 1 finds the same shape inside `build_deltas`, where it runs at 1.06 calls/node |
 | 7 | **`apply_at`'s remaining 83.0 i/call at 1.0 calls/node** — `ThreatPosition::from_board` (11 bitboard reads → an 80-byte store) plus the `DirtyPiece` copy plus `king_cross`. Study 15 arm 3's parent-XOR derivation measured **+106** and its own note says the codebase's idiom for that shape (`split_at_mut`) was never tried | 20–40 | medium | note it also breaks at ply 0, whose `position` is never written by `refresh()` — any retry must seed it |
 | 8 | **Study 17 item 4's `#[cold]` sweep is two-thirds closed** (§6.1b): `see_ge`'s arm is a two-instruction terminal return with nothing to outline, and `pseudo_legal`'s measured **+0.1**. Only `movepick`'s scoring loops remain untested — and `MovePicker::init_quiets` is **552.42 i/n at 0.1624 calls/node, 3401.3 instructions per call**, the largest single non-SIMD symbol outside the threat block | 0–40 | low, after two nulls | one `probe18.sh` cycle. But `init_quiets` at 3401 i/call deserves a `cg18.sh` split before anyone outlines anything inside it |
@@ -682,24 +791,39 @@ certainly".
 1. **Nothing here is PGO-measured** (§0.1, §8). Machine constraint, not choice.
 2. **The `acc fold` row of §4.3 is not measurable in this frame** and is the
    biggest number in the table (§7).
-3. **The callgrind frame is AVX2 and shallow.** §5 quantifies the frame effect
-   on this block at **3.2×**, which is a warning about every other i/n in §9's
-   table too — they are callgrind-frame numbers unless stated otherwise.
+3. **THE PER-SYMBOL CALLGRIND DECOMPOSITION CANNOT BE CONVERTED INTO PROBE
+   DELTAS.** §5.2, and this study got it wrong in its own first draft before the
+   D33 round caught it. Two of the three largest rows in §5.1 are an ERMS
+   counting artifact and a codegen difference; the frames disagree by 26× on one
+   arm. Every i/n in §9's table is a callgrind-frame number and none of them is
+   headroom.
 4. **`X = 85.5` is measured on a `noinline` rebuild**, so it is the cost of the
    enumeration *plus* whatever GCC would have specialised away by inlining it
-   into one call site. The whole-binary total moved only +0.05%, which bounds
-   that error, but it is not zero.
-5. **The +7.1 toll of a1a was measured against the EAGER refresh** (0.0357
-   calls/node). On the shipped lazy path it runs at 0.0214, so the surviving
-   toll is nearer +4. It was not separately re-measured.
-6. **The rejected arm a2 has an unresolved confound** — a seven-argument
+   into one call site — bounded by the +0.05% whole-binary move, but not zero.
+   §4.3's N-4 note prints the like-for-like ratio alongside.
+5. **The three published threat ratios come from three different bucketings**
+   (§4.3, N-5). Only the `blocks18.py` self-cost pair carries forward.
+6. **The +7.1 toll of a1a was measured against the EAGER refresh** (0.0357
+   calls/node). On the shipped lazy path it runs at 0.0208, so the surviving
+   toll is nearer +4. Not separately re-measured.
+7. **The rejected arm a2 has an unresolved confound** — a seven-argument
    `#[inline]` helper (§6.1). Its verdict (+22.7) stands; its *explanation* is
-   one experiment short.
-7. **Box state**: a GPU training run shared the box for the entire session and
+   one experiment short, and D33 reviewer C's arithmetic says the stated
+   mechanism should have cost far more than 22.7, so something else is also in
+   play. The patch is preserved at
+   `scripts/a2-victim-type-loops-REJECTED.py` so the spelling can be re-run.
+8. **The `Fold::Refresh` path depends on the snapshot being the true post-move
+   position** (D33 reviewer B). Today `apply_at` always receives a real
+   `&Board`, so it is; unlike the fold, a wrong snapshot here has no telescoping
+   identity that would make the error cancel. A future synthetic push would
+   break it silently.
+9. **Box state**: a GPU training run shared the box for the entire session and
    swap was exhausted throughout. No wall-clock or NPS number is quoted as a
    claim.
-
----
+10. **The first `archon-s18` callgrind panel measured the a3 tree, not HEAD**
+    (D33 reviewer C, N-1) — `discharge_refresh` had zero occurrences in it. It
+    was re-run on HEAD and every number in §4.3 and §5.1 is from the re-run. The
+    superseded panel is not in the artifacts.
 
 ## 12. ARTIFACTS (`perf-artifacts-18/`)
 
