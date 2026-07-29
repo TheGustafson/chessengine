@@ -3324,6 +3324,20 @@ mod tests {
             "8/8/8/k2pP2R/8/8/8/4K3 w - d6 0 2",
             Move::en_passant(Square::E5, Square::D6)
         ));
+        // The BISHOP half of the same arm. Every ep fixture in this file was a
+        // rook/rank case, so deleting `gives_check_special`'s `bishop_attacks`
+        // term was killed only by an aggregate perft count (D33 reviewer C).
+        // Here exd6 e.p. clears d5, and the a2-g8 diagonal opens onto the black
+        // king: a discovery through the CAPTURED pawn's square, diagonally.
+        assert!(check(
+            "6k1/8/8/3pP3/8/8/B7/4K3 w - d6 0 1",
+            Move::en_passant(Square::E5, Square::D6)
+        ));
+        // Same board, king one file over and off the diagonal: no check.
+        assert!(!check(
+            "7k/8/8/3pP3/8/8/B7/4K3 w - d6 0 1",
+            Move::en_passant(Square::E5, Square::D6)
+        ));
         // The same capture with no slider behind it: no check.
         assert!(!check(
             "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1",

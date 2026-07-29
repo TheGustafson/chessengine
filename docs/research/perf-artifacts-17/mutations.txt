@@ -5,3 +5,10 @@ M4 gives_check_special: false for Promotion  FAILED-AS-REQUIRED  rc=101  ---- bo
 M5 legal_special: always legal  FAILED-AS-REQUIRED  rc=101  ---- bench::tests::spawned_bench_perft_runs_are_byte_identical stdout ---- thread 'bench::tests::spawned_bench_perft_runs_are_byte_identical' (1554433) panicked at src/bench.rs:816:9: 
 M6 unmake_special: pawn back on to, not from  FAILED-AS-REQUIRED  rc=101  ---- board::tests::gives_check_fixture_cases stdout ---- thread 'board::tests::gives_check_fixture_cases' (1557239) panicked at src/board.rs:1225:9: 
 --- git status after (must be clean) ---
+M7 gives_check_special ep: drop the bishop term  FAILED-AS-REQUIRED  rc=101  ---- board::tests::gives_check_fixture_cases stdout ---- 
+M8 legal_special ep: drop the bishop term  *** MUTATION SURVIVED ***
+--- git status after (must be clean) ---
+ M src/perft.rs
+=== round 2: the diagonal coverage hole (perf study 17 S9.2) ===
+M8b legal_en_passant: drop the bishop term (after the new unit test)  FAILED-AS-REQUIRED  rc=101  ---- movegen::tests::diagonal_ep_pin_is_illegal_for_the_pinned_capturer_only stdout ---- 
+--- git status after (must be clean) ---

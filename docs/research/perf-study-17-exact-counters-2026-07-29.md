@@ -417,9 +417,18 @@ prints an `unbucketed` row for exactly this reason.
 
 * Not that our design is wrong. Lazy regenerate-at-fold pays on 41.5% of nodes
   where SF pays on 100%; that trade may still be right at a different width.
-* Not a PGO number. This is the callgrind frame (§2.2), so it carries the 4.8%
-  v3-vs-native inflation and nothing else from §2.2's "not usable" column —
-  every symbol in the table is integer code.
+* **Not a per-node MAGNITUDE that survives a change of tree depth.** An earlier
+  draft claimed this table carries "the 4.8% v3-vs-native inflation and nothing
+  else" from §2.2's not-usable column. **False** (D33 reviewer C): §2.2's other
+  not-usable row — a 3000-node-per-position tree evaluates far more often per
+  node than the probe's 100k — bites every eval-rate-coupled symbol here.
+  Cross-checked against this study's own 30k-per-position run: `at_full` 466.19
+  → **343.51** i/n (−26%), SF's `append_changed_indices` 216.19 → **118.98**
+  (−45%). What survives is the **RATIO**, and it moves in the uncomfortable
+  direction: ARCHON ≈ 961 vs SF ≈ 512 at the 30k budget, i.e. **1.88×**, worse
+  for us than the 3k frame's 1.59×. Quote the ratio with the frame named; do
+  not quote the i/n as headroom, and run item 1b's stage split at the 30k
+  budget, not 3k.
 * Not headroom. It is a **difference**, and the first job of study 18 is to find
   out how much of it is the design choice and how much is the spelling.
 
@@ -569,6 +578,44 @@ The `_ => { debug_assert!(false); false }` arm therefore stays, with its
 fail-soft direction documented at the site. It is the one thing in this diff no
 test can reach in release, and §11 item 9 carries it.
 
+### 5.1d THE MECHANISM, MEASURED — and it is TWO mechanisms, not one
+
+D33 reviewer C called §5's single explanation ("those arms set the function's
+register pressure … seven pushes and seven pops") **quantitatively impossible**
+for the two arms that carry most of the win: a prologue cannot be 62% of a
+43-instruction function. Right, and the study had built the instrument that
+settles it and then measured its own diff with the aggregate probe only. So:
+`cg17.sh` re-run on the shipped tree, same frame as §3 and §4.
+
+| | baseline | shipped | |
+|---|---|---|---|
+| `Board::legal` | 77.34 i/n @ **1.7969 calls/node** | **0.47 i/n @ 0.0203 calls/node** | the symbol nearly **vanished** |
+| `gives_check` | 82.52 i/n @ 1.6406, **50.3 i/call** | 47.48 i/n @ **1.6406**, **28.9 i/call** | same call rate, **43% cheaper per call** |
+| `unmake_move` | 79.27 @ 1.0006, 79.2 i/call | 69.78 @ 1.0006, **69.7 i/call** | |
+| `DirtyPiece::from_move` | 52.07 @ 1.0000 | 38.06 @ 1.0000, **38.1 i/call** | |
+| `make_move_with` | 215.00 | 208.74 | |
+| the five cold helpers, together | — | **1.02 i/n** @ 0.008–0.02 calls/node | the outlined work really is rare |
+
+**Two different mechanisms, and the reviewer was half right.**
+
+* **`legal` is an inlining cascade.** Its call rate fell from 1.80 to 0.02 per
+  node: shrinking the function took it under its callers' inline threshold, so
+  `movegen::generate_legal` and movepick now carry it inline — and it is cheaper
+  there, because the caller already holds `us`, `ksq`, `from` and `to`. The work
+  did not disappear; it moved and got cheaper. That is why −48.3 could exceed
+  what any prologue could account for.
+* **`gives_check` is the prologue/register-pressure story after all.** Its call
+  rate is **identical** (1.6406 both sides) and its cost per call fell 50.3 →
+  28.9. Nothing moved; the function simply got cheaper to enter and run.
+
+So §5's original one-line explanation is correct for u1/u2/u4/u5 and wrong for
+u6, and neither is "layout luck" — `instructions:u` counts retired instructions
+and basic-block placement cannot change that count. The real threat to validity
+is the opposite one, and it is now named: **thin LTO with 4 CGUs is the
+configuration where inlining decisions are least stable, and u6's win is an
+inlining decision.** That is a second, independent reason §0.1's PGO band is
+two-sided.
+
 ### 5.2 The boundary — u3 cost +64.0, and the rule is narrower than "outline cold code"
 
 `make_move_with` step 8's promotion-key block is by any static measure the best
@@ -583,10 +630,20 @@ has every argument live in a register. u3's block is nested inside the
 *materialise* `pc`, `us`, `m` and `to` for a call it otherwise never makes —
 and to keep them live across it.
 
-**Outline a whole arm of the function's own top-level kind dispatch. Do not
-outline a nested block.** Study 13 §5.3 hit the same wall from the other side
-(+106.3 for "the same trick one level down"); this is the same rule with the
-boundary drawn.
+**The rule, in the form that explains all the data:** *outline an arm only when
+the caller already holds every argument it needs.* u3's block is nested inside
+the pawn branch, so the caller had to materialise four values for a call it
+otherwise never makes — and §5.1c's argument-limit result is the same rule at
+one register's remove, since a seventh argument is a stack write at the call
+site. Study 13 §5.3 hit the same wall from the other side (+106.3 for "the same
+trick one level down").
+
+"Outline a whole arm of the function's own top-level kind dispatch, never a
+nested block" is the **observed proxy**, and it is n = 1 in the negative
+direction (D33 reviewer C). Prefer the dataflow form: the proxy will mispredict
+the first time a top-level arm needs a value the hot path does not compute, and
+`legal_special`/`unmake_special` were already partway to u3's failure mode via
+the argument limit and still won.
 
 ---
 
@@ -797,6 +854,44 @@ a test of itself, it is not a refactor.
 The panel ran under the fast tier, so it proves the mutations are *detectable*,
 not that HEAD is perft-clean. Both statements are in §9.1 and §10.
 
+### 9.2 TWO COVERAGE HOLES CLOSED — the diagonal half of both en-passant arms
+
+D33 reviewer C found the gap the mutation panel could not: **every en-passant
+fixture in the repo was a rook/rank case.** `legal_en_passant` and
+`gives_check_special` each probe `bishop_attacks(ksq, occ)` as well as
+`rook_attacks`, and deleting the bishop term was killed only by an *aggregate*
+perft total — a number that cannot localise a fault to either helper. Two
+additions:
+
+* `board::tests::gives_check_fixture_cases` gains an ep capture that opens the
+  **a2–g8 diagonal** onto the enemy king through the captured pawn's square
+  (`6k1/8/8/3pP3/8/8/B7/4K3 w - d6 0 1`, `exd6 e.p.`), plus the paired negative
+  with the king one file off the diagonal.
+* `movegen::tests::diagonal_ep_pin_is_illegal_for_the_pinned_capturer_only` —
+  **new**, and it needed TWO capturers.
+
+**The obvious fix did not work, and the reason is a finding.** The first attempt
+put `perft.epd`'s existing `ep-pin-diag`
+(`8/8/4k3/8/2p5/8/B2P2K1/8 w - - 0 1`) into `perft_checked_mini_tier`, so the
+fast tier would run it under the per-node oracle. **The mutation survived.**
+Because that position has exactly one possible ep capturer and it is the pinned
+one, **D9's ep-validity gate** in `make_move_with` step 8 proves no ep capture
+can be legal and **never sets the ep square at all** — so `legal_en_passant` is
+never called, and `bishop_attacks` there is dead for that FEN. The new unit test
+therefore places a *second*, unpinned capturer on e4: the gate passes, the ep
+square is set, and `legal` has to reject `c4xd3` while accepting `e4xd3`.
+
+That is direct corroboration of §11 item 3b: on the single-capturer position the
+D9 gate really does subsume the arm, which is the argument for Stockfish having
+no en-passant arm in `legal` at all. It does **not** subsume it on the
+two-capturer position, which is exactly the case item 3b has to survive.
+
+Mutation-verified both ways (`mutations.txt`): deleting `gives_check_special`'s
+`bishop_attacks` term now fails `gives_check_fixture_cases`, deleting
+`legal_en_passant`'s now fails the new test, and the same mutation against the
+`perft.epd` route **passed** — which is how the hole was found to be still
+open.
+
 ### 9.1 What actually ran, and on which tree
 
 The box OOM-killed four of this session's binaries at ~3.1 GB anon-rss while a
@@ -885,7 +980,7 @@ spellings). **Re-opened by this study:** threat generation — at +250…+400, n
 | 3b | **Stockfish's `legal` has NO en-passant arm at all**, and ours is the biggest thing left in that function (D33 reviewer B, verified at `eca43a97:src/position.cpp:660-697`). SF proves ep legality twice over instead: the `do_move` ep-validity gate that only sets `st->epSquare` when a legal ep capture provably exists (`:930-946` — **we have the same gate**, D9, `board.rs` step 8), plus the ordinary pin test reached through `generate<LEGAL>`. We still rebuild the occupancy and run a slider probe per ep move | delete an arm, not shrink one | medium — the reference is unambiguous, the equivalence is NOT | this is a FUNCTIONAL change: our gate proves *some* ep capture is legal, not that *this* one is, and the horizontal both-pawns-off-the-rank pin is exactly the case that separates them (`movegen.rs`'s own `horizontal_ep_double_removal_is_illegal` test). Full D24 ritual **including the extended tier**, then games. Do not take it on the reference alone |
 | 3c | **`ripple` emits cancelling threat pairs that Stockfish suppresses.** SF's `move_piece` passes `noRaysContaining = fromTo` (`eca43a97:src/position.h:407,416`) and `update_piece_threats` skips the discovered-threat emission when the slider's ray contains BOTH endpoints (`:1197`) — the piece never left that ray, so nothing was discovered. Our `ripple` (`sota_threats.rs:479-523`) has no such guard: for a slider collinear with `from` and `to` we emit the same relation twice with opposite signs, and **each surviving delta costs a full accumulator column op in the fold** (D33 reviewer B) | ? — count it first | **medium-high; a directly transplantable idea** | before implementing: instrument `resolve_both` to count add/sub pairs that cancel, per node. If the rate is material this is a cheap win in item 1b's block AND in §6.2.1's branch column. `ripple` runs 0.4907 calls/node |
 | 4 | **The `#[cold]` sweep is not finished.** §5's rule (a whole arm of a top-level kind dispatch) has more sites: `movepick`'s scoring loops, `see_ge`'s non-Normal short circuit, `pseudo_legal`'s non-Normal branch (which allocates a 520-byte `MoveList` frame) | 10–40 | medium | one `probe17.sh` cycle each, 6 s. Watch for u3's failure mode: if the caller has to materialise arguments it otherwise never computes, it loses |
-| 5 | **The branch ratio: HALF of it is answered and it is item 1's block.** §6.2.1. Exact, both engines, integer code only: ARCHON 436.8 br/node vs SF 222.5, of which **threat generation is +109.0 of the +214.3** — `at_full` spends 117.1 branches per call where SF's `update_piece_threats<true>` spends 3.7. What is still open is the SIMD half, because no instrument on this box can count branches in an AVX-512 kernel | +109 of +214 measured; the rest open | **high for the integer half** | the SIMD half needs a *compile-time* AVX2 build of both engines (force the dispatch, do not let it read CPUID) so `--branch-sim` sees the shipped loop shape. The integer half needs no more measurement — it is item 1 |
+| 5 | **The branch ratio: most of the integer half is answered and it is item 1's block.** §6.2.1, re-derived after the parser fix. Exact, both engines, integer code only: ARCHON **437.6** br/node vs SF **288.0**, of which **threat generation is +94.4 of the +149.6** — and SF's unsplittable refresh-cache symbol carries 27.0 more that is part threat, so the true share is 45–63%. What is still open is the SIMD half, because no instrument on this box can count branches in an AVX-512 kernel | +94 of +150 measured; the SIMD half open | **high for the integer half** | the SIMD half needs a *compile-time* AVX2 build of both engines (force the dispatch, do not let it read CPUID) so `--branch-sim` sees the shipped loop shape. The integer half needs no more measurement — it is item 1 |
 | 6 | **`6b782211` whole**, as a games question | a missed-detection class, not a false-draw one (§8) | high | unchanged from study 16 item 4 except the direction. Note the speed half is measured negative for us (+17.8) |
 | 7 | **Pack `Piece` into one byte** | 5–20 | medium | unchanged from study 16 item 1. Confirmed live: `Worker::do_move` at `+0x40`/`+0x48` reads both mailbox bytes with two `movzbl` |
 | 8 | **`tools/check.sh` clippies DEFAULT features only** | 0 i/n | high | unchanged from study 15 item 12 and study 16 item 10. Still open, still the dangerous direction |
@@ -906,6 +1001,15 @@ spellings). **Re-opened by this study:** threat generation — at +250…+400, n
 4. **Pair every disassembly reading with a counter.** §6.3. Two duplicated
    bounds checks sat in `do_move`'s hot-looking disassembly and executed zero
    times per node.
+5. **A PARSER IS A BUCKETING.** §4.2's rule — a bucketing that does not sum to
+   the total cannot be audited — applies one level below where it was written.
+   `cgsum17.py` was exact for `Ir` and silently wrong for every other event for
+   the whole session, and one `assert sum(self) == totals[event]` would have
+   caught it on the first run. It is in the tool now.
+6. **Commit before you mutate.** The mutation harness reverts with
+   `git checkout -- <file>`, which quietly deleted two brand-new uncommitted
+   tests. Twice-paid lesson this session, the other half being the owner's
+   "commit what you have now".
 
 ---
 
@@ -940,6 +1044,9 @@ spellings). **Re-opened by this study:** threat generation — at +250…+400, n
   including all three nulls, the revert control, and the five rejected arms.
 * `cg/summary-archon-w50.txt`, `cg/summary-sf-w50.txt` — the exact per-function
   self-Ir, calls/node and i/call tables both engines' numbers come from.
+* `cg/summary-archon-final.txt`, `cg/callgrind-archon-final.out.gz` — the same
+  measurement on the SHIPPED tree, which is what §5.1d is built on.
+* `cg/branches-integer-only.txt` — §6.2.1's bucketed exact branch table.
 * `cg/blocks-w50.txt` — the re-derived block table (read §2.2 first).
 * `cg/callgrind-*.out.gz`, `cg/br-*.out.gz` — the raw callgrind files, both
   engines, two node budgets each, plus the branch-sim pair.
@@ -947,9 +1054,14 @@ spellings). **Re-opened by this study:** threat generation — at +250…+400, n
 * `flat-archon-native-branches.txt`, `flat-sf512-branches.txt` — the shipped-frame
   branch flat profiles (sampled).
 * `flat-cg17bin-instructions.txt` — the profile that caught §6.2's dispatch trap.
-* `mutations.txt` — the six mutation-verification runs.
+* `mutations.txt` — the eight mutation-verification runs, including the one
+  that SURVIVED (§9.2's first attempt) and is the reason the coverage hole was
+  found to be still open.
 * `scripts/cg17.sh`, `cgsum17.py`, `cgbr17.sh`, `cgbuild17.sh`, `sfbuild17.sh`,
-  `blocks17.py`, `probe17.sh`, `probeany17.sh`, `dis17.sh` — new.
+  `blocks17.py`, `brint17.py`, `probe17.sh`, `probeany17.sh`, `dis17.sh` — new.
+  `cgsum17.py` now **exits non-zero** if its self-cost sum does not equal the
+  callgrind file's own `totals:` line, for the selected event; that assertion is
+  §4.2's rule applied one level down, and it is what the `--event` bug needed.
 * `scripts/pstat8.sh`, `parse8.py`, `flat8.sh`, `annot8.py`, `opcount11.py`,
   `blocks13.py`, `sfshow.sh`, `memspy*.sh`, `pgo16.sh`, `startup16.sh` —
   inherited.

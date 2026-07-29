@@ -22,3 +22,4 @@ fast=u9b-legal-args-only              instr=31,153,059,758 nodes= 5,001,562 per_
 fast=u9c-more-argcount                instr=31,153,088,272 nodes= 5,001,562 per_node=  6228.7 brs_per_node=  667.0 hash=5ca978e012da1bb0
 fast=u9c-more-argcount                instr=31,116,060,467 nodes= 5,001,562 per_node=  6221.3 brs_per_node=  667.0 hash=5ca978e012da1bb0
 fast=u9d-shipped                      instr=31,116,133,110 nodes= 5,001,562 per_node=  6221.3 brs_per_node=  667.0 hash=5ca978e012da1bb0
+fast=u9e-with-new-tests               instr=31,116,145,407 nodes= 5,001,562 per_node=  6221.3 brs_per_node=  667.0 hash=5ca978e012da1bb0

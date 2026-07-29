@@ -2004,6 +2004,60 @@ mod tests {
         assert_legal_matches_oracle(&forced, "forced horizontal ep pin");
     }
 
+    /// The DIAGONAL half of [`Board::legal_en_passant`], which nothing in the
+    /// repo reached (D33 reviewer C, perf study 17 §9.2). Every other
+    /// en-passant fixture — here, in `board.rs`, and in `tests/data/perft.epd`
+    /// — is a rook/rank case, so deleting that arm's `bishop_attacks` term was
+    /// killed only by an aggregate perft total, which cannot localise a fault.
+    ///
+    /// Two capturers, and only one of them is pinned: the black king sits on
+    /// e6, a white bishop on a2, and the a2–e6 diagonal runs a2-b3-c4-d5-e6.
+    /// `c4xd3` e.p. steps the c4 pawn OFF that diagonal and exposes the king;
+    /// `e4xd3` e.p. does not. **The second capturer is what makes the test
+    /// work**: with only the pinned one, D9's ep-validity gate
+    /// (`make_move_with` step 8) proves no ep capture can be legal and never
+    /// sets the ep square at all, so this arm is never reached. That is why
+    /// `perft.epd`'s `ep-pin-diag` does NOT cover it — verified by mutation,
+    /// deleting the bishop term leaves that FEN's perft totals unchanged.
+    #[test]
+    fn diagonal_ep_pin_is_illegal_for_the_pinned_capturer_only() {
+        let mut forced = Board::empty();
+        for (piece, sq) in [
+            (Piece::new(Color::White, PieceType::King), Square::G2),
+            (Piece::new(Color::White, PieceType::Bishop), Square::A2),
+            (Piece::new(Color::White, PieceType::Pawn), Square::D4),
+            (Piece::new(Color::Black, PieceType::King), Square::E6),
+            (Piece::new(Color::Black, PieceType::Pawn), Square::C4),
+            (Piece::new(Color::Black, PieceType::Pawn), Square::E4),
+        ] {
+            forced.put_piece(piece, sq);
+        }
+        forced.side_to_move = Color::Black;
+        forced.finish_setup(Some(Square::D3), 0, 1);
+        assert_eq!(forced.en_passant_square(), Some(Square::D3));
+        assert!(
+            forced.checkers().is_empty(),
+            "the bishop's a2-e6 diagonal is blocked by the c4 pawn"
+        );
+
+        let pinned = Move::en_passant(Square::C4, Square::D3);
+        let free = Move::en_passant(Square::E4, Square::D3);
+        let pseudo = move_set(&pseudo_list(&forced));
+        assert!(pseudo.contains(&pinned) && pseudo.contains(&free));
+
+        assert!(
+            !forced.legal(pinned),
+            "cxd3 e.p. leaves the a2-e6 diagonal open onto the black king"
+        );
+        assert!(
+            forced.legal(free),
+            "exd3 e.p. is off the pin line and legal"
+        );
+        assert!(!legal_set(&forced).contains(&pinned));
+        assert!(legal_set(&forced).contains(&free));
+        assert_legal_matches_oracle(&forced, "forced diagonal ep pin");
+    }
+
     /// Doc 05 §5.2 "ep as evasion": the checker IS the double-pushed pawn,
     /// so exd3 must survive the legality filter.
     #[test]

@@ -30,7 +30,10 @@ BLOCKS = [
                     r"streambuf", r"istream", r"build_threat_tables", r"AttackTables>::new",
                     r"Cuckoo", r"::main", r"lang_start", r"bench", r"from_fen", r"Board>::new",
                     r"init_state", r"TranspositionTable>::resize", r"TranspositionTable::resize",
-                    r"tt::", r"::clear\(\)"]),
+                    # NOT a bare `tt::` -- it shadowed the whole `tt` bucket, which
+                    # came out at exactly 0.0 for ARCHON. A bucket at zero is a bug in
+                    # the filter, not a finding (D33 reviewer C).
+                    r"tt::tests", r"::clear\(\)"]),
     ("search", [r"Worker>::search", r"Worker::search", r"Worker>::qsearch", r"Worker::qsearch",
                 r"iterative_deepening", r"stat_score", r"update_all_stats", r"value_to_tt",
                 r"Worker>::do_move", r"Worker::do_move\(", r"undo_move\(Stockfish::Move\)$"]),
