@@ -1020,3 +1020,42 @@ now only "does the anneal move a stalled run", which is worth knowing and is
 cheap to observe since the GPU is committed anyway.
 
 D48Y at sb164: heldout ema **identically 0.012580 at sb140 AND sb150** — dead flat.
+
+### ★★★ THIRD OOM — and the cgroup guard did NOT prevent it. Root cause found.
+
+Trainer killed at **06:28:44** (pid 1020872) during the study-15 gate build,
+despite that build running inside `systemd-run --scope -p MemoryMax=5G`.
+
+**Why the cgroup failed:** it caps the BUILD. The build stayed under 5 GB while
+TOTAL system demand still exhausted RAM, so the GLOBAL OOM killer ran and chose
+its victim by score — and the kernel line names the reason:
+
+```
+Killed process 1020872 (python) ... oom_score_adj:200
+```
+
+**Everything in this session's process tree inherits `oom_score_adj=200`**, and
+the trainer is the largest RSS in that group, so it is the *preferred* victim
+every time. The cgroup was protecting the wrong process.
+
+**The real fix, and it needs no root:** an unprivileged process may RAISE its
+own `oom_score_adj` but not lower it. So do not try to protect the trainer —
+**make every build and match MORE killable than it**:
+
+```bash
+systemd-run --user --scope -p MemoryMax=5G -p OOMScoreAdjust=1000 <cmd>
+# or, inside a wrapper:  echo 1000 > /proc/self/oom_score_adj; exec <cmd>
+```
+
+With adj=1000 the build is chosen first and dies alone; the trainer at 200
+survives. **This is the guard that should have been used from the first
+incident.** Cgroup + OOMScoreAdjust together, not cgroup alone.
+
+**Second lesson — checkpoints can be TORN.** sb160 was written 2/4 (raw +
+quant, no ema pair) because the kill landed mid-write, and resuming from it
+died with `FileNotFoundError`. **Always resume from the highest COMPLETE 4-file
+set**, and delete torn ones. Resumed from sb150; the torn sb160 pair removed.
+
+Cost of this incident: 21 superbatches (sb150→171) plus a fresh-Adam transient.
+Running total lost to OOM across three incidents: ~4 + 7 + 21 = **32
+superbatches**, roughly 70 minutes of GPU.
