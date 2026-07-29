@@ -5,6 +5,23 @@
 > **If you are resuming with no memory of this session, everything you need is
 > in this block. Verify live state before acting on any of it.**
 >
+> ### ⚠ SUPERSEDED: the live run is **D48Y2**, not D48Y
+>
+> D48Y (`d48y-1280`, 300sb, flat 1e-3) was STOPPED at sb189. It was
+> misconfigured: LR flat 1e-3 = **1.80× D48X's actual working rate**, because
+> D48X's `lr_ramp` first breakpoint is sb200 and `jnp.interp` clamps flat below
+> it. Train loss fell 16% while heldout stayed flat — an LR too high to settle.
+>
+> **Live run: `d48y2-1280`** — log `data/nnue/experiments/d48y2-1280/train.log`,
+> PID in that dir, TB `data/nnue/tb/d48y2-1280`.
+> - warm: `d48y-1280-sb160-ema-raw.bin` (D48Y's own lineage — user ruling
+>   "Swap it"; preserves the ~30sb of output-frame adaptation already paid)
+> - LR: **30sb flat @ 5.5625e-4 → light decay to 4.5e-4 by sb120 → 70sb anneal
+>   to 0 at sb190** (user schedule)
+> - 190sb total, ~6.4 h at ~208k pos/s
+> - First evidence the LR was the whole problem: **sb5 value 0.007585**, below
+>   anything the hot run reached in 150 superbatches.
+>
 > ### What is RUNNING right now
 >
 > | job | where | how to check |
@@ -1147,3 +1164,39 @@ FINETUNING THE INCUMBENT is a proven dead-end (eval–search co-adaptation). Tha
 finding was about relabel DATA, not a target-transform change, so it likely does
 not apply — but it is the strongest argument for warming from a D48Y checkpoint
 instead, and `d48y-1280-sb180-ema-raw.bin` is preserved for that switch.
+
+### Tick — D48Y2 running, TWO perf studies in parallel
+
+D48Y2 sb5/190, value 0.007585, 208k pos/s, no OOM. Box load 1.37 with the
+trainer plus two study agents — the `oomlast.sh` guard is holding.
+
+**Perf loop status — studies 12–15 all verified by me, not relayed:**
+
+| binary | i/n (my bench, nodes IDENTICAL 329,318) |
+|---|---|
+| pre-12 (canonical) | 9540.8 |
+| post-12 | 9122.8 |
+| post-13 | 9083.3 |
+| post-14 | 9002.3 |
+| **post-15** | **8963.0** |
+
+**Cumulative −6.06%.** Ratio vs `stockfish-eca43a97`: 1.4301× → **1.3364×**.
+
+**Two studies now run IN PARALLEL on disjoint files** (they merge to the same
+`main`, so file-level disjointness is what keeps it clean):
+- **16 — eval/NNUE**: `src/eval/**`, sweeping the `memset`/`memcpy` waste class
+  that produced study 15's best find (a 1280-byte `memset` on EVERY eval).
+- **17 — move-making**: `board.rs`, `movepick.rs`, `movegen.rs`, `attacks.rs`,
+  search-except-eval. Forbidden from `src/eval/`; hands findings there to 16.
+  Targets `Worker::do_move` (~300 i/n, still unsplit), make/unmake (1.93×, never
+  attacked), and the 1.84× branch ratio whose cause is unknown after three
+  refutations of the bounds-check hypothesis. **D24 perft ritual mandatory** for
+  17 since it touches movegen.
+
+**Honest arithmetic on what is left:** 1498 i/n remain, but **~327 is the
+1280-vs-1024 accumulator width** — a retrain, and Elo-NEUTRAL by our own
+standing measurement (+44 function vs −45 speed per doubling). Closing it would
+move the ratio and buy ~zero Elo. **~1171 i/n is genuine addressable
+inefficiency.** Per-study yield is declining (252 → 33 → 94 → 37), so the big
+structural wins are largely taken; the counter-evidence is that study 15 found
+undiscovered pure waste, which is the class worth hunting hardest.
