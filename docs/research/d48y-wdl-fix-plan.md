@@ -137,3 +137,28 @@ keys removed, `superbatches 300`, `lr_ramp [[0,1e-3],[240,1e-3],[300,0]]`,
 
 **Smoke (3sb) launched** and the heldout fix is confirmed live in its log:
 `[pump] heldout scored in the RUN frame a=175.1 b=71.6`.
+
+### State log — D48Y LAUNCHED (300sb)
+
+- Smoke (3sb) passed clean: `TRAIN EXIT 0`, value 0.009649 → 0.008460 →
+  0.008394, ~190k pos/s. Log confirms the frame fix is live:
+  `[pump] heldout scored in the RUN frame a=175.1 b=71.6`.
+- **Full run launched.** `data/nnue/experiments/d48y-1280/train.log`, PID in
+  `train.pid`, TB shim armed at launch → `data/nnue/tb/d48y-1280`.
+  GPU 95% / 7.1 GB. sb1 value 0.009640 @ 189,822 pos/s.
+- **ETA, measured not guessed:** 8192 × 3040 = 24.9M positions/superbatch ⇒
+  ~131 s/sb ⇒ **300sb ≈ 11 h**. At the 8-hour mark expect ~sb 215–225, i.e.
+  the anneal (sb240→300) will NOT have started yet. Running the full 300 rather
+  than truncating, because the gentle anneal is the part that sets final
+  quality and compressing it would change the requested experiment.
+- **Do not misread the heldout.** D48Y's is scored at its own frame
+  (a=175.1, b=71.6); D48X's logged 0.006350 is the UNCALIBRATED frame. Not
+  comparable. Early D48Y heldout reads HIGH (smoke: 0.0141) because the warm
+  trunk was trained in the old frame and is being scored against new-frame
+  targets — expected, and it falls as the net adapts.
+- **TM real-TC stopped at n=300, final −31.4 ± 18.9.** The question was already
+  settled and the match was consuming CPU next to an 11-hour training run. The
+  refutation stands: nodestime +52.6 ± 21.2 vs real clock −31.4 ± 18.9.
+  `TM_SCORE_C` stays 0.
+- Perf study 11 running in an isolated worktree against the single-net
+  `stockfish-eca43a97` target.
