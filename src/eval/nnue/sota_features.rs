@@ -121,10 +121,36 @@ fn piece_square_index(persp: Color, piece: Piece) -> usize {
 /// `bucket·704`. Range: `[0, 22528)`.
 #[inline]
 pub fn halfka_index(perspective: Color, piece: Piece, sq: Square, king_sq: Square) -> usize {
-    let flip = 56 * perspective as u8; // 0 or 56 (vertical mirror for black)
-    let oriented_sq = (sq.index() ^ orient_halfka(king_sq) ^ flip) as usize;
+    halfka_row_base(perspective, piece, king_sq) + halfka_oriented(perspective, sq, king_sq)
+}
+
+/// The part of [`halfka_index`] that depends only on `(perspective, piece,
+/// king_sq)` — i.e. everything a whole BITBOARD of one piece type shares.
+///
+/// Split out because the Finny set-diff refresh walks one piece type's added
+/// and removed squares as two separate bitboard loops, and recomputed the
+/// slot + bucket base inside each of them: nine instructions
+/// (`shl`/`test`/`lea`/`cmove`/`cmp`/`mov`/`cmove`/`add`) per differing piece
+/// type per direction, for a value that cannot change across either loop.
+/// Hoisting it is a source-level change LLVM will not make for you, because
+/// `piece_square_index`'s two `cmove`s make the expression look cheap enough
+/// to sink.
+#[inline]
+pub fn halfka_row_base(perspective: Color, piece: Piece, king_sq: Square) -> usize {
+    let flip = 56 * perspective as u8;
     let bucket = KING_BUCKETS[(king_sq.index() ^ flip) as usize] as usize;
-    oriented_sq + piece_square_index(perspective, piece) + bucket * PS_NB
+    piece_square_index(perspective, piece) + bucket * PS_NB
+}
+
+/// The per-square half of [`halfka_index`]: `sq` mirrored into the king's
+/// half of the board, `0..64`.
+///
+/// `& 63` is a no-op on the value (both operands are 6-bit) and a range fact
+/// for the optimizer — the same move as [`ThreatResolver::index_decoded`].
+#[inline]
+pub fn halfka_oriented(perspective: Color, sq: Square, king_sq: Square) -> usize {
+    let flip = 56 * perspective as u8;
+    ((sq.index() ^ orient_halfka(king_sq) ^ flip) & 63) as usize
 }
 
 // ===========================================================================
