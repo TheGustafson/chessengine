@@ -281,3 +281,41 @@ engine `engines/canonical/archon` (sota,arch-d48x).
 4. ONLY THEN: fixed-node screen vs D48X (attribution), then real TC (the gate).
 5. Report the confound: D48Y differs from D48X in TWO ways — calibrated
    per-corpus target AND no teacher.
+
+### State log — perf study 11 merged, study 12 commissioned
+
+D48Y at sb7/300, ~192k pos/s, unaffected by the merge.
+
+**Perf study 11 verified and merged** (docs-only, `src/` untouched, so no gates
+or PGO applied — there was no code change to test). I independently re-derived
+its most load-bearing claim before merging:
+
+| | threat dims |
+|---|---|
+| SF18 tag | **79,856** |
+| SF `eca43a97` | **60,720** |
+| ARCHON | **60,720** |
+
+⇒ **SF18 was never our workload.** Studies 8/9/10 compared our threat channel
+against a feature set 31% larger than ours. The retraction is correct, and
+`eca43a97` is confirmed as the only fair target.
+
+Merge safety checked before running it: the branch was BEHIND main and had no
+commits touching `jax/tools/pump_train.py` or `searchopt/LEDGER.md`, so the
+D48Y trainer fixes and the TM refutation survived intact (verified after).
+
+**Headline: 1.4301× vs the fair target** (6367.2 vs 4452.4 i/n), and study 10's
+small-net excuse is over-priced 1.6–3.7× — the real relief is 197.7 i/n, 11.9%
+of the required reduction. The task is HARDER than study 10 claimed, with no
+structural excuse left.
+
+**Also retracted by study 11:** `perf annotate` per-opcode attribution is wrong
+by 1.44× on this box (`movzwl` reads 4–7% while the adjacent `vpdpbusd` reads
+0.00%). Every studies-8–10 cross-engine eval number that rested on it is gone.
+Deterministic counters inverted the threat answer: we fold **4.2089 rows/node
+vs SF's 4.7631** — FEWER, on an identical feature set.
+
+**Study 12 commissioned** with: deterministic counters only, the three genuinely
+unopened blocks (`forward_into` ~616 i/n, HalfKA+Finny ~873 i/n, the eval gate
+157–732 i/n), an explicit instruction to collapse study 11's 200 i/n PGO/non-PGO
+frame bracket, and a hard requirement to LAND reductions — study 11 landed none.
