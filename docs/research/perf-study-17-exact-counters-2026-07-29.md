@@ -49,10 +49,15 @@ fight for it. What that means arm by arm is in §10.1 — **u1–u6 have the ful
 release perft tier green; u7 has only the fast tier**, and for a change to
 `unmake_move` node identity on the probe tree is evidence, not proof.
 
-There is a specific reason to expect this study's arms to survive PGO **better**
-than the band suggests: every one of them is a cold-path outlining, and PGO's
-own profile data makes exactly that call more aggressively, not less. The
-prediction is stated at the band anyway.
+An earlier draft argued these arms should survive PGO *better* than the band,
+"because PGO makes exactly that call more aggressively". **That was unsupported
+and it is withdrawn** (D33 reviewer B): `#[inline(never)]` does not help a
+profile-guided inliner, it *removes its choice* — and it forecloses partial
+inlining, which is the decision PGO would otherwise make here. Stockfish carries
+no `cold`/`noinline` attribute anywhere in `eca43a97:src/`; GCC's PGO moves its
+castling and promotion arms to `.text.unlikely` on its own. So the band is the
+prediction, with no thumb on it, and the PGO run may legitimately come in below
+it.
 
 ### 0.2 What landed
 
@@ -496,6 +501,29 @@ Same shape as u5/u6, applied to the last inline special arm in the file: the
 capture restore) and promotion/en-passant go out of line together. It is small
 because u1 had already taken the expensive half of the same function.
 
+### 5.1b Two shape divergences from the reference the splits did NOT fix
+
+D33 reviewer B read `eca43a97` against the new shapes and found two, both
+recorded rather than acted on:
+
+* **Stockfish does not outline anything.** There is no `cold` or `noinline`
+  attribute anywhere in `eca43a97:src/`. Its `do_castling<Do>` is a
+  `template<bool Do>` for do/undo **code sharing**, not a cold split, and GCC
+  inlines it back into both callers — it has no symbol in this study's own SF
+  profile. Our five splits are a divergence in mechanism, not a convergence.
+  What SF gets instead is PGO putting those arms in `.text.unlikely` by itself.
+* **`gives_check`'s discovered branch is a terminal return in SF and a
+  fall-through in ours.** SF (`eca43a97:src/position.cpp:768-769`) returns
+  `!aligned(from,to,ksq) || type == CASTLING` the moment `from` is a blocker;
+  we return `true` only when that expression is true and otherwise fall through
+  into the kind dispatch — which, after u5, is a `#[cold]` call. The outcomes
+  agree (perft's independent `gives_check` oracle would have caught otherwise,
+  and for a promotion the fall-through state is geometrically unreachable: a
+  promotion's `from`/`to` cannot be collinear with the enemy king while `from`
+  blocks a slider aimed at it), but our shape does strictly more work on that
+  path and u5 made that path slightly more expensive. A terminal return is the
+  faithful and cheaper spelling; not measured here.
+
 ### 5.2 The boundary — u3 cost +64.0, and the rule is narrower than "outline cold code"
 
 `make_move_with` step 8's promotion-key block is by any static measure the best
@@ -809,6 +837,8 @@ spellings). **Re-opened by this study:** threat generation — at +250…+400, n
 | 1b | **Threat generation overall, 1.30×–1.59× SF.** §4 as corrected by §4.4. Our eight symbols cost 1074.8 i/n against SF's `674.8 + X`, where `0 ≤ X ≤ 433.4` is the share of `update_accumulator_refresh_cache` that is the inlined `append_active_indices`. The designs differ (lazy regenerate-at-fold on 41.5% of nodes vs eager maintenance on 100%), so part of the gap is the design and part is the spelling, and **nobody knows the split** | **+250 to +400** | **high on the direction, BRACKETED on the size** | **first, resolve `X`**: rebuild SF with `__attribute__((noinline))` on `FullThreats::append_active_indices` (`eca43a97:src/nnue/features/full_threats.cpp:210`) and re-run `cg17.sh` — `sfbuild17.sh` already does the rebuild, this is a one-line patch on top and 30 s. **Then** split ours: `at_full` is 466.19 i/n at 1123 i/call and inlines `compute`; put `#[inline(never)]` on `compute`, `build_deltas`, `resolve_both` and the fold, re-run `cg17.sh`, price the four stages |
 | 2 | **The libc `memcpy` inside `at_full`** — 0.3111 calls/node, 83.7 i/n inclusive, ~269 instructions per call, counted not estimated. Not the empty-delta copy (study 14 already chunked that one) | 20–80 | **high — counted** | `memspy16.sh` from study 16, whose interposer already tags the caller and the payload size. The class it belongs to has paid twice (study 15 −22.7, study 16 −14.6) |
 | 3 | **`unmake_move`'s 168-byte state restore** — the other half of study 14's trade. 79.2 i/call vs SF's 53.6 | **+25.5** | **high — exact** | not a respelling: SF restores by pointer. The honest options are (a) leave it, since study 14's make-side win was larger, or (b) make `StateInfo`'s *restored* prefix smaller by moving the fields `unmake` does not need (blockers, pinners, check_squares — 48 B) out of the copied block. (b) is a design change to doc 04 and wants its own study |
+| 3b | **Stockfish's `legal` has NO en-passant arm at all**, and ours is the biggest thing left in that function (D33 reviewer B, verified at `eca43a97:src/position.cpp:660-697`). SF proves ep legality twice over instead: the `do_move` ep-validity gate that only sets `st->epSquare` when a legal ep capture provably exists (`:930-946` — **we have the same gate**, D9, `board.rs` step 8), plus the ordinary pin test reached through `generate<LEGAL>`. We still rebuild the occupancy and run a slider probe per ep move | delete an arm, not shrink one | medium — the reference is unambiguous, the equivalence is NOT | this is a FUNCTIONAL change: our gate proves *some* ep capture is legal, not that *this* one is, and the horizontal both-pawns-off-the-rank pin is exactly the case that separates them (`movegen.rs`'s own `horizontal_ep_double_removal_is_illegal` test). Full D24 ritual **including the extended tier**, then games. Do not take it on the reference alone |
+| 3c | **`ripple` emits cancelling threat pairs that Stockfish suppresses.** SF's `move_piece` passes `noRaysContaining = fromTo` (`eca43a97:src/position.h:407,416`) and `update_piece_threats` skips the discovered-threat emission when the slider's ray contains BOTH endpoints (`:1197`) — the piece never left that ray, so nothing was discovered. Our `ripple` (`sota_threats.rs:479-523`) has no such guard: for a slider collinear with `from` and `to` we emit the same relation twice with opposite signs, and **each surviving delta costs a full accumulator column op in the fold** (D33 reviewer B) | ? — count it first | **medium-high; a directly transplantable idea** | before implementing: instrument `resolve_both` to count add/sub pairs that cancel, per node. If the rate is material this is a cheap win in item 1b's block AND in §6.2.1's branch column. `ripple` runs 0.4907 calls/node |
 | 4 | **The `#[cold]` sweep is not finished.** §5's rule (a whole arm of a top-level kind dispatch) has more sites: `movepick`'s scoring loops, `see_ge`'s non-Normal short circuit, `pseudo_legal`'s non-Normal branch (which allocates a 520-byte `MoveList` frame) | 10–40 | medium | one `probe17.sh` cycle each, 6 s. Watch for u3's failure mode: if the caller has to materialise arguments it otherwise never computes, it loses |
 | 5 | **The branch ratio: HALF of it is answered and it is item 1's block.** §6.2.1. Exact, both engines, integer code only: ARCHON 436.8 br/node vs SF 222.5, of which **threat generation is +109.0 of the +214.3** — `at_full` spends 117.1 branches per call where SF's `update_piece_threats<true>` spends 3.7. What is still open is the SIMD half, because no instrument on this box can count branches in an AVX-512 kernel | +109 of +214 measured; the rest open | **high for the integer half** | the SIMD half needs a *compile-time* AVX2 build of both engines (force the dispatch, do not let it read CPUID) so `--branch-sim` sees the shipped loop shape. The integer half needs no more measurement — it is item 1 |
 | 6 | **`6b782211` whole**, as a games question | a missed-detection class, not a false-draw one (§8) | high | unchanged from study 16 item 4 except the direction. Note the speed half is measured negative for us (+17.8) |
