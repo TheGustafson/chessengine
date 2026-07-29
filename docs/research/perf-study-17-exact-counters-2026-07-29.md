@@ -27,19 +27,27 @@ result.
 | | probe frame (thin LTO, 4 CGU, non-PGO, `-C target-cpu=native`) |
 |---|---:|
 | baseline (`main` @ `0f820a0`) | 6335.8 i/n |
-| **shipped tree** | **6239.5 i/n** |
-| **delta** | **−96.3** |
-| branches | 673.6 → **666.5** per node |
+| **shipped tree** | **6238.1 i/n** |
+| **delta** | **−97.7** |
+| branches | 673.6 → **667.3** per node |
 | node count, every line | 5,001,562 |
 | eval hash, every line | `5ca978e012da1bb0` |
 
 **Falsifiable PGO prediction.** Studies 12–15 measured the probe frame
-overstating the PGO delta by **1.12–2.0×**. Applying that band to −96.3 predicts
-**−48 to −86 i/n in the PGO frame**, i.e. 5950.1 → 5864–5902, and the ratio
-1.3364× → **1.3172–1.3258×**. Study 16's own −29.2 (probe) predicts a further
-−15 to −26. If the owner's PGO run lands outside −48…−86 for this study's diff,
+overstating the PGO delta by **1.12–2.0×**. Applying that band to −97.7 predicts
+**−49 to −87 i/n in the PGO frame**, i.e. 5950.1 → 5863–5901, and the ratio
+1.3364× → **1.3170–1.3256×**. Study 16's own −29.2 (probe) predicts a further
+−15 to −26. If the owner's PGO run lands outside −49…−87 for this study's diff,
 the band itself is wrong and should be re-derived rather than the result
 replaced.
+
+**AND THE HONEST QUALIFIER, which the box forced (§10).** The full D24 perft
+ritual and both gates are **deferred to the owner**: this box OOM-killed four of
+this session's binaries at ~3.1 GB while a 3 GB trainer holds it, and the owner
+revised the commission mid-session to defer the release perft tier rather than
+fight for it. What that means arm by arm is in §10.1 — **u1–u6 have the full D24
+release perft tier green; u7 has only the fast tier**, and for a change to
+`unmake_move` node identity on the probe tree is evidence, not proof.
 
 There is a specific reason to expect this study's arms to survive PGO **better**
 than the band suggests: every one of them is a cold-path outlining, and PGO's
@@ -55,8 +63,8 @@ prediction is stated at the band anyway.
 | u4 | `DirtyPiece::from_move`'s castling arm → `#[cold] castling_record` | −3.0 | `board.rs` |
 | u5 | `gives_check`'s promotion/ep/castling arms → `#[cold] gives_check_special` | **−34.6** | `board.rs` |
 | u6 | `legal`'s castling+ep arms → `#[cold] legal_special` | **−48.3** | `movegen.rs` |
-| u7 | `unmake_move`'s promotion/ep arms → `#[cold] unmake_special` | (see §5.1) | `board.rs` |
-| | **total, probe frame** | **−96.3** | |
+| u7 | `unmake_move`'s promotion/ep arms → `#[cold] unmake_special` | −1.4 | `board.rs` |
+| | **total, probe frame** | **−97.7** | |
 
 ### 0.3 What this study is actually about
 
@@ -379,18 +387,20 @@ u2-make-castling-cold          6325.4    -0.9   LANDED
 u3-make-promo-keys-cold        6389.4   +64.0   REJECTED  (S5.2)
 u4-dp-castling-cold            6322.4    -3.0   LANDED
 u5-giveschk-special-cold       6287.8   -34.6   LANDED
-u6-legal-special-cold          6239.5   -48.3   LANDED   (-7.0 branches/node)
+u6-legal-special-cold          6239.5   -48.3   LANDED   (-7.1 branches/node)
+u7-unmake-special-cold         6238.1    -1.4   LANDED
 ```
 
 `gives_check` and `legal` pay the most because they are called 1.64 and 1.80
 times per node — more often than `do_move` itself — and because their special
 arms are the biggest of the five.
 
-### 5.1 `unmake_move`'s promotion/ep arm (u7)
+### 5.1 `unmake_move`'s promotion/ep arm (u7) — −1.4
 
 Same shape as u5/u6, applied to the last inline special arm in the file: the
 `Normal` case becomes straight-line (`move_piece_known` plus the ordinary
-capture restore) and promotion/en-passant go out of line together.
+capture restore) and promotion/en-passant go out of line together. It is small
+because u1 had already taken the expensive half of the same function.
 
 ### 5.2 The boundary — u3 cost +64.0, and the rule is narrower than "outline cold code"
 
@@ -553,44 +563,100 @@ question, still not a perf arm, but it is not a false-draw defect. §11 item 6.
 ## 9. TESTS, AND EACH LANDED CHANGE HAS ONE THAT CAN FAIL
 
 Every landed change is a call-site split with identical semantics, so the
-existing suites are the oracle and the question is whether they can FAIL. Six
-mutations, each applied, built, run and reverted (`mutations.txt`).
+existing suites are the oracle and the only question that matters is whether
+they can FAIL. Six mutations, each applied, built, run under the FAST
+`cargo test` and reverted (`mutations.txt`). **All six failed a test, and the
+naming matters — not one of them was caught by a test written for the function
+I split:**
 
-| change | oracle | mutation |
+| helper | mutation | caught by |
 |---|---|---|
-| `unmake_castling` | `perft_full_suite` + `assert_consistent` | swap `rfrom`/`rto` |
-| `make_castling` | the Zobrist from-scratch oracle in `assert_consistent` | return `0` instead of the rook delta |
-| `castling_record` | the SOTA/NNUE accumulator refresh oracle | drop `dp.sub(rook, rook_from)` |
-| `gives_check_special` | `make_move`'s `gives_check` `debug_assert_eq!`, at every node of every debug search | return `false` for `Promotion` |
-| `legal_special` | `perft_full_suite` | return `true` unconditionally |
-| `unmake_special` | `perft_full_suite` + `assert_consistent` | restore the pawn on `to` instead of `from` |
+| `unmake_castling` | swap `rfrom`/`rto` | `bench::tests::spawned_bench_perft_runs_are_byte_identical` (`bench.rs:791`) |
+| `make_castling` | return `0` instead of the rook delta | same |
+| `castling_record` | drop `dp.sub(rook, rook_from)` | `eval::nnue::accumulator::tests::dirty_piece_covers_every_move_kind` (`accumulator.rs:379`) |
+| `gives_check_special` | return `false` for `Promotion` | `board::tests::gives_check_fixture_cases` (`board.rs:1539`) |
+| `legal_special` | return `true` unconditionally | `bench::tests::spawned_bench_perft_runs_are_byte_identical` (`bench.rs:816`) |
+| `unmake_special` | restore the pawn on `to`, not `from` | `board::tests::gives_check_fixture_cases`, via `move_piece_known`'s occupied-square `debug_assert` (`board.rs:1225`) |
 
-Plus the three node-identity checks that no mutation can pass: the 5,001,562-node
-probe tree, the wl50 eval hash `5ca978e012da1bb0`, and the D24 release perft
-ritual.
+Two things worth keeping. `make_castling`'s mutation is a pure **Zobrist key**
+error with no placement consequence, and perft caught it — because the bench
+perft runs go through the TT and a wrong key changes the tree. And four of the
+six were caught by tests in files this study did not touch, which is what "the
+refactor is covered" is supposed to look like: if a split can only be caught by
+a test of itself, it is not a refactor.
 
-**Gate status and what is owed: §10.**
+The panel ran under the fast tier, so it proves the mutations are *detectable*,
+not that HEAD is perft-clean. Both statements are in §9.1 and §10.
+
+### 9.1 What actually ran, and on which tree
+
+The box OOM-killed four of this session's binaries at ~3.1 GB anon-rss while a
+3 GB trainer held it, so this table is not a formality — it is the difference
+between what is proven and what is asserted.
+
+| check | u1–u6 tree | u7 tree (HEAD) |
+|---|---|---|
+| `cargo test` (default features — includes the FAST perft tier + checked mini-tier) | **PASS** | **PASS** — 607 passed, 0 failed |
+| `cargo test --features sota,arch-d48x` | **PASS** — 690 passed, 0 failed, 8 ignored | not re-run |
+| `cargo test --release -- --ignored perft_full_suite` (**D24 ritual**) | **PASS** | **not run — deferred to the owner** |
+| `cargo clippy --all-targets` | **PASS** | not re-run |
+| `cargo clippy --all-targets --features sota,arch-d48x` | **PASS** | not re-run |
+| probe-tree node identity (5,001,562) + eval hash | PASS | PASS |
+
+**Read that honestly: for u7, node identity on the probe tree is EVIDENCE, NOT
+PROOF.** u7 rewrites `unmake_move`'s arm dispatch. A 5 M-node search over 50
+positions exercises promotions and en-passant captures, so a wrong arm would
+almost certainly move the node count — but "almost certainly" is what the D24
+ritual exists to replace. It is item 1 of §10.
+
+The single-threaded `sota` run is also worth recording as a box fact: the same
+suite was SIGTERM'd twice at ~218/698 under
+`systemd-run -p MemoryMax=4G -p MemorySwapMax=0` before it completed at
+`--test-threads=1` in 135 s. The `sota_loader` tests allocate 138 MB nets; four
+of them in parallel is the cap.
 
 ---
 
-## 10. WHAT IS OWED BEFORE THIS MERGES
+## 10. WHAT IS OWED BEFORE THIS MERGES — THE PENDING CHECKLIST
 
-Run in this order, on an idle box, once training finishes:
+Everything here is deferred to the owner on a quiet box, per the mid-session
+revision of the commission. **Nothing in this list can change the code**; they
+are all measurements of a tree that is already committed. In this order:
 
-1. `CHECK_NNUE_GATE=1 CHECK_TEST_THREADS=4 bash tools/check.sh` — expect
-   `Bench: 587683`, eval hash `5ca978e0…0b38`, d13 nodes `1922947`, **all
-   unchanged**. Every arm here is node-identical on three independent trees, so
-   a change in any pin is a bug in this study, not a new pin.
-2. `bash tools/build_pgo.sh sota,arch-d48x engines/bin/archon-s17 engines/canonical/net.cenn`
+1. **`cargo test --release -- --ignored perft_full_suite` — the D24 ritual, on
+   HEAD.** This is the one that matters most and the only one whose failure
+   would mean a real bug: this study touches `movegen` and `board` mutation, and
+   u7 has not had it. Takes ~7 s once built.
+2. **`cargo test --features sota,arch-d48x` on HEAD** (`--test-threads=1` if the
+   box is busy) — expect 690 passed, 0 failed, 8 ignored.
+3. **`CHECK_NNUE_GATE=1 CHECK_TEST_THREADS=4 bash tools/check.sh`** — expect
+   `Bench: 587683`, eval hash `5ca978e0…0b38`, d13 nodes `1922947`, **all three
+   unchanged**. Every arm here is supposed to be node-identical, so a change in
+   any pin is a bug in this study, not a new pin.
+4. **`bash tools/build_pgo.sh sota,arch-d48x engines/bin/archon-s17 engines/canonical/net.cenn`**
    then the two-arm panel against `engines/bin/stockfish-eca43a97`
    (`pstat8.sh 5 300000 tools/nnue/calib/wl50.fens counters-headline.txt …`) —
-   the deliverable frame, and the test of §0.1's **−48…−86** prediction.
-3. Nothing in this study touches `src/eval/nnue/`, so the NNUE behavioural gate
-   is a formality here — but run it anyway, because `DirtyPiece::castling_record`
-   feeds the accumulator.
+   the deliverable frame, and the test of §0.1's **−49…−87** prediction.
+5. **`cargo clippy --all-targets --features sota,arch-d48x`** on HEAD. Note
+   `check.sh` clippies default features ONLY (study 15 item 12, still open), so
+   this one has to be typed by hand.
 
-Nothing in 1–3 can change the code; they are all measurements of a tree that is
-already committed.
+Optional, and the cheapest thing that would extend this study: rerun
+`docs/research/perf-artifacts-17/scripts/cg17.sh` on an idle box with
+`#[inline(never)]` on `ThreatContext::compute`, `build_deltas` and
+`resolve_both` — that splits §4's 1148.9 i/n into four priced stages and is
+§11 item 1's whole cheapest-next-test.
+
+### 10.1 Node identity, arm by arm
+
+| arm | probe tree identical | fast perft tier | **D24 full perft** |
+|---|---|---|---|
+| u1 `unmake_castling` | yes | yes | **yes** |
+| u2 `make_castling` | yes | yes | **yes** |
+| u4 `castling_record` | yes | yes | **yes** |
+| u5 `gives_check_special` | yes | yes | **yes** |
+| u6 `legal_special` | yes | yes | **yes** |
+| u7 `unmake_special` | yes | yes | **NO — owner must run it** |
 
 ---
 
