@@ -948,3 +948,42 @@ historically converge, and it has not started.
 `systemd-run --user --scope -p MemoryMax=3G`. This is the exact job class that
 killed the trainer last time (a match beside training); the cgroup meant it
 could only kill itself. Trainer alive at sb141 throughout.
+
+### ★★ D48Y IS FAR BEHIND D48X — −111.4 ± 26.3 at sb120 (300 games, 60k nodes)
+
+| comparison | result |
+|---|---|
+| sb120 vs **sb30** | **+3.9 ± 32.6** — no improvement across 90sb |
+| **sb120 vs D48X** | **−111.4 ± 26.3** (45W-138L-117D, 34.5%, Ptnml [20,69,46,14,1]) |
+| heldout EMA sb10→130 | −0.5%, flat |
+
+**Structural fact I under-weighted when planning: the warm is
+`d48x-warm-a3.bin`, the A3 trunk D48X STARTED FROM — not D48X.** So at sb120
+D48Y has 120sb from the same origin where D48X had **520sb plus a teacher**.
+Being behind is expected. **Being FLAT is not** — the sb30-vs-sb120 dead heat
+says it learned in roughly the first 30sb (adapting to the new target frame)
+and nothing since.
+
+**The frame is RULED OUT as the cause.** The frame experiment measured a 1.74×
+rescale of D48X at **+7.7 ± 17.7 (neutral)**, and D48Y's native output is 1.69×
+D48X's. A −111 gap cannot be cp scale; it is net quality.
+
+**NOT concluded: that the calibrated target is wrong.** The confounds were
+declared before the run and now include a third: D48Y differs from D48X in the
+TARGET, the absent TEACHER, and the TRAINING BUDGET (120 vs 520 sb). This run
+was never a clean single-variable test of the transform.
+
+**Continuing to the anneal** per the standing rule (never judge before the
+anneal), but recording plainly: a −111 gap on a flat trajectory is unlikely to
+close in 60 superbatches of annealing.
+
+**What this run can still deliver, honestly:**
+1. Whether the anneal moves a stalled run at all — useful regardless.
+2. A clean measurement of the calibrated target's effect REQUIRES a matched
+   comparison: same warm, same budget, same teacher setting, transform as the
+   ONLY difference. That experiment has not been run. This one cannot answer it.
+
+**If the anneal does not move it, the right next experiment is the matched
+pair** — two short runs from the same warm, same sb count, no teacher in
+either, differing ONLY in `per_corpus_target`. That is the test the plan should
+have specified from the start.
