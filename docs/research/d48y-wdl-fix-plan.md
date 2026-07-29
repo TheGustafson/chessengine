@@ -1786,3 +1786,38 @@ sb120 and the heldout EMA immediately steepened:
 (5.4 GB) but it needs the GPU the trainer is on, and "do not disturb the
 training" outranks a prediction that 59 more superbatches will supply directly.
 Do it after sb190.
+
+### ★ COMMISSIONING NOTE FOR STUDY 19 — the metric needs a second axis
+
+Studies 12–18 all optimise **`instructions:u`**, which is correct for
+reproducibility (contention-immune) and has delivered: cumulative −6.61%,
+1.4301x → ~1.3285x on their frame. **Keep it.** But today's paired measurement
+shows it cannot finish the job alone:
+
+| | ARCHON | SF | ratio |
+|---|---|---|---|
+| instructions/node | 7,358 | 4,360 | **1.69x ours** |
+| IPC | 1.231 | 1.426 | **0.86x ours** |
+| **cache-misses/node** | **99.97** | **49.34** | **2.03x ours** |
+
+**Driving instructions/node to parity and stopping there lands us at ~1.16x
+SLOWER, not faster**, because the IPC half is untouched. Worse, the two axes can
+FIGHT: `instructions:u` systematically overvalues deleting cheap wide SIMD work
+and undervalues deleting stall-y pointer-chasing work, so an
+instruction-optimal patch can be time-neutral or negative.
+
+**So study 19 should carry `cache-misses:u` and `cycles:u` alongside
+`instructions:u`, and report IPC per arm.** An arm that cuts instructions while
+raising cache misses is not automatically a win and must be timed, not just
+counted.
+
+**Where the misses plausibly live** (hypothesis for the study to test, NOT a
+finding): 2.03x the misses per node is consistent with a 138 MB / 1280-wide net
+against SF's 90 MB / 1024-wide, and with the standing "75% of node time is
+eval". Candidate mechanisms worth a look: accumulator refresh traffic, the
+threat replay path (`at_full` vs SF's incremental maintenance — see the
+threat-cost memory), and FT row locality.
+
+**Do not read this as "the width was a mistake".** Width is a pinned product
+decision (D48X, gen-2) and is out of scope; the question is how much of its
+memory cost is recoverable at fixed width.
