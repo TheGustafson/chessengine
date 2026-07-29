@@ -781,3 +781,39 @@ budgeted 1–2 h refactor. Plus ~68 i/n of untraced libc `memmove`. Six dead end
 are listed as closed so it cannot repeat them.
 
 D48Y unaffected throughout: sb104, memory held 4–5 GB, no OOM.
+
+### ★ TESTING THE FRAME HYPOTHESIS TODAY — no D48Y needed
+
+The frame finding implies something testable RIGHT NOW on the EXISTING net: if
+our SF-transcribed margins are 1.75× too large for D48X's frame, then moving
+D48X into SF's frame should be worth Elo BY ITSELF.
+
+That is a 4-byte edit — `network_scale` at CENN offset 44, 400 → **696**
+(= 400 / 0.575). Verified it lands where intended:
+
+| net | median(ours / SF-internal) | verdict |
+|---|---|---|
+| D48X @ scale 400 | 0.575 | ABSOLUTE FAIL |
+| **D48X @ scale 696** | **0.954** | **ABSOLUTE PASS** |
+
+**sign-agreement 100.0%** — identical move preferences, only cp magnitude
+differs. Same weights, same search, same binary, ONE HEADER FIELD apart. This
+is as clean a control as this project has ever had.
+
+Match running: `engines/runs/sfframe/` — 406 games, fixed 110k nodes, same book.
+
+**Why this matters regardless of D48Y:**
+- If SF-frame WINS: free Elo available immediately on the shipped net, and the
+  D48Y frame reasoning is independently confirmed.
+- If it LOSES: our margins have been de-facto retuned for the 0.575× frame over
+  the D48X era, so D48Y's native SF frame is a HANDICAP and calibration arm (a)
+  (rescale to match D48X) is the right choice — which changes the D48Y test
+  plan before we run it.
+- Either outcome decides the D48Y calibration decision with a cleaner instrument
+  than D48Y itself provides, because here the WEIGHTS are held fixed.
+
+Related prior: the Reckless frame-null measured **−12.0 ± 18.2 Elo** for a
+0.73× DE-framing (away from correct). This arm goes the other way, 1.74× toward
+SF's frame.
+
+D48Y meanwhile: sb115/300, healthy.
