@@ -503,3 +503,40 @@ a training run unless ≥6 GB is available, and instruct any such agent to
 `free -g` before EVERY build, cap at `-j 2 nice`, and prefer thin-LTO or
 `cargo check` over the pinned `lto = "fat"` profile, whose LINK step is the
 spike. Study 12 has been resumed from its transcript with exactly these gates.
+
+### CORRECTION — "D48X already agrees with SF to 0.6%" was a SAMPLING ARTIFACT
+
+Built `tools/nnue/frame_compare.py` (the three-way test for the user's shape
+hypothesis) and validated it against the known baseline. It disagreed with me:
+
+| sample | D48X vs SF |
+|---|---|
+| corpus openings + 0–20 random plies (my earlier measurement) | LS 0.5126 / median 0.5096 — **0.6% apart** |
+| **whole-game sample, plies 8+, 3/game (this tool)** | **LS 0.4906 / median 0.6452 — 1.315× apart** |
+
+**The 0.6% was an artifact of sampling near-equal positions**, where every net
+looks linear. Curvature lives in the tails — endgames and large advantages —
+which the opening-biased sample never visited. Same failure the ledger already
+names: never a lone aggregate on one slice.
+
+**Consequence, and it favours the user's hypothesis:** D48X ALREADY has a
+1.315× shape mismatch with Stockfish, on a par with the Reckless case. So there
+is real room for the calibrated target to move us CLOSER to SF's shape — and
+the cp margins we run are SF's.
+
+**Baseline to beat, measured on the SAME instrument and SAME sample that will
+judge D48Y: D48X vs SF = 1.315× (LS 0.4906 / median 0.6452, pearson 0.9605).**
+If D48Y vs SF comes in BELOW 1.315×, the new target moved us toward Stockfish
+and the cp-scale worry shrinks. Above it, we overshot sharpness.
+
+Run when the net packs:
+```bash
+.venv/bin/python tools/nnue/frame_compare.py --count 400 \
+  --net D48X=archon:data/nnue/nets/screens/d48x-1280-sb520-ema.cenn \
+  --net D48Y=archon:data/nnue/nets/screens/d48y-1280-sb300-ema.cenn \
+  --net SF=sfnet:/home/nick/sf-eca43a97/src/nn-0ee0657fb25e.nnue
+```
+
+D48Y healthy at sb28 post-recovery: 192k pos/s, 7 GB available, no new OOM.
+Trainer RSS reads 5.6 GB but that is reclaimable memmap page cache, not a leak
+(buff/cache 8 GB); `available` is the number that matters.
