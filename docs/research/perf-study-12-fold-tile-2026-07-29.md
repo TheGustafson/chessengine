@@ -423,7 +423,7 @@ study should expect to grind, not to find.
 ## 12. THREATS TO VALIDITY
 
 1. **Probe deltas overstate PGO deltas by ~2×** (§0.3). The per-arm figures in
-   §0.2 are probe-frame; only the −253.6 total is PGO-measured. Per-arm PGO
+   §0.2 are probe-frame; only the −252.5 total is PGO-measured. Per-arm PGO
    attribution was not run (5 extra PGO builds on a 15 GB box).
 2. **§10's ARCHON/SF block table still mixes two PGO builds** of different
    compilers; block *ordering* is safe, absolute i/n are ±.
