@@ -390,19 +390,12 @@ impl DirtyPiece {
             .expect("DirtyPiece::from_move: no piece on the from-square");
 
         match m.kind() {
-            MoveKind::Castling => {
-                // King to G1/C1 (D2); the rook jumps to F1/D1. Same geometry
-                // as make_move_with step 4.
-                let kingside = to.file() > from.file();
-                let rook_from =
-                    board.castling_rook_square[CastlingRights::single(us, kingside).index()];
-                let rook_to = if kingside { Square::F1 } else { Square::D1 }.relative_to(us);
-                let rook = Piece::new(us, PieceType::Rook);
-                dp.sub(mover, from);
-                dp.sub(rook, rook_from);
-                dp.add(mover, to);
-                dp.add(rook, rook_to);
-            }
+            // Out of line: this is the only arm that needs the rook-square
+            // table and a second constructed `Piece`, and castling is under 1%
+            // of made moves. `from_move` runs once per node, so its prologue
+            // is paid on every node while this arm almost never is — the same
+            // trade `Board::make_castling`/`unmake_castling` make.
+            MoveKind::Castling => return Self::castling_record(board, us, mover, from, to),
             MoveKind::EnPassant => {
                 // The captured pawn sits one rank from `to`, toward our home.
                 let capsq = to.offset(them.pawn_push());
@@ -429,6 +422,29 @@ impl DirtyPiece {
                 dp.add(mover, to);
             }
         }
+        dp
+    }
+
+    /// The castling arm of [`DirtyPiece::from_move`]. King to G1/C1 (D2); the
+    /// rook jumps to F1/D1 — the same geometry as `make_move_with` step 4.
+    #[cold]
+    #[inline(never)]
+    fn castling_record(
+        board: &Board,
+        us: Color,
+        mover: Piece,
+        from: Square,
+        to: Square,
+    ) -> DirtyPiece {
+        let mut dp = DirtyPiece::EMPTY;
+        let kingside = to.file() > from.file();
+        let rook_from = board.castling_rook_square[CastlingRights::single(us, kingside).index()];
+        let rook_to = if kingside { Square::F1 } else { Square::D1 }.relative_to(us);
+        let rook = Piece::new(us, PieceType::Rook);
+        dp.sub(mover, from);
+        dp.sub(rook, rook_from);
+        dp.add(mover, to);
+        dp.add(rook, rook_to);
         dp
     }
 }
@@ -988,6 +1004,28 @@ impl Board {
             return true;
         }
 
+        // Everything above answers a NORMAL move, which is what >95% of made
+        // moves are; the three special kinds go out of line together (perf
+        // study 17 §5 — a slider table deref, an `attacks::attacks` dispatch
+        // and a `Square::from_coords` all live only down there, and inline
+        // they set this function's prologue).
+        if m.kind() == MoveKind::Normal {
+            return false;
+        }
+        self.gives_check_special(m, us, ksq, from, to)
+    }
+
+    /// The promotion / en-passant / castling arms of [`Board::gives_check`].
+    #[cold]
+    #[inline(never)]
+    fn gives_check_special(
+        &self,
+        m: Move,
+        us: Color,
+        ksq: Square,
+        from: Square,
+        to: Square,
+    ) -> bool {
         match m.kind() {
             MoveKind::Normal => false,
             // Does the promoted piece attack the king from `to`, with the
@@ -1354,19 +1392,13 @@ impl Board {
         // standard squares nothing overlaps, but the shape is ready for
         // Chess960's overlapping king/rook squares (D10).
         if m.kind() == MoveKind::Castling {
-            let kingside = to.file() > from.file();
-            let right = CastlingRights::single(us, kingside);
-            let rfrom = self.castling_rook_square[right.index()];
-            let rto = if kingside { Square::F1 } else { Square::D1 }.relative_to(us);
-            let rook = Piece::new(us, PieceType::Rook);
-
-            self.remove_piece_known(pc, from);
-            self.remove_piece_known(rook, rfrom);
-            self.put_piece(pc, to);
-            self.put_piece(rook, rto);
-
-            let rook_delta = ZOBRIST.psq[rook.index()][rfrom.index() as usize]
-                ^ ZOBRIST.psq[rook.index()][rto.index() as usize];
+            // Out of line, and for the same reason as `unmake_castling`: this
+            // arm needs the rook-square table, two derived squares and a
+            // constructed `Piece`, and inline it widened the live range that
+            // `make_move_with`'s prologue has to spill. Castling is under 1% of
+            // made moves. The rook key delta comes back so the two XORs stay
+            // where every other key update in this function is.
+            let rook_delta = self.make_castling(pc, us, from, to);
             k ^= rook_delta;
             self.state.copied.non_pawn_key[us as usize] ^= rook_delta;
         }
@@ -1588,19 +1620,7 @@ impl Board {
         let (from, to) = (m.from(), m.to());
 
         if m.kind() == MoveKind::Castling {
-            // Remove both, place both — the exact inverse of step 4.
-            let kingside = to.file() > from.file();
-            let right = CastlingRights::single(us, kingside);
-            let rfrom = self.castling_rook_square[right.index()];
-            let rto = if kingside { Square::F1 } else { Square::D1 }.relative_to(us);
-            // Both pieces are known by construction — this is the inverse of a
-            // castling we ourselves made (§4.3).
-            let king = Piece::new(us, PieceType::King);
-            let rook = Piece::new(us, PieceType::Rook);
-            self.remove_piece_known(king, to);
-            self.remove_piece_known(rook, rto);
-            self.put_piece(king, from);
-            self.put_piece(rook, rfrom);
+            self.unmake_castling(us, from, to);
         } else {
             if m.kind() == MoveKind::Promotion {
                 let promo =
@@ -1621,6 +1641,55 @@ impl Board {
         }
         #[cfg(debug_assertions)]
         self.assert_consistent();
+    }
+
+    /// The castling arm of `make_move_with` step 4, out of line (same
+    /// motivation as [`Board::unmake_castling`]). Moves king and rook —
+    /// remove both, then place both, so the shape is ready for Chess960's
+    /// overlapping king/rook squares (D10) — and returns the rook's Zobrist
+    /// `psq` delta for the caller to fold into the main and non-pawn keys.
+    #[cold]
+    #[inline(never)]
+    fn make_castling(&mut self, pc: Piece, us: Color, from: Square, to: Square) -> Key {
+        let kingside = to.file() > from.file();
+        let right = CastlingRights::single(us, kingside);
+        let rfrom = self.castling_rook_square[right.index()];
+        let rto = if kingside { Square::F1 } else { Square::D1 }.relative_to(us);
+        let rook = Piece::new(us, PieceType::Rook);
+
+        self.remove_piece_known(pc, from);
+        self.remove_piece_known(rook, rfrom);
+        self.put_piece(pc, to);
+        self.put_piece(rook, rto);
+
+        ZOBRIST.psq[rook.index()][rfrom.index() as usize]
+            ^ ZOBRIST.psq[rook.index()][rto.index() as usize]
+    }
+
+    /// The castling arm of [`Board::unmake_move`], out of line — the exact
+    /// inverse of `make_move_with` step 4: remove both, place both.
+    ///
+    /// Split out because it is the arm that sets `unmake_move`'s REGISTER
+    /// PRESSURE. It needs the rook square table, the derived rook from/to, and
+    /// two constructed `Piece`s, so inline it forces seven callee-saved pushes
+    /// and seven pops onto every unmake — and castling is under 1% of moves.
+    /// The `#[cold]` is the honest annotation and it is also what stops LLVM
+    /// hoisting any of this back into the caller's prologue.
+    #[cold]
+    #[inline(never)]
+    fn unmake_castling(&mut self, us: Color, from: Square, to: Square) {
+        let kingside = to.file() > from.file();
+        let right = CastlingRights::single(us, kingside);
+        let rfrom = self.castling_rook_square[right.index()];
+        let rto = if kingside { Square::F1 } else { Square::D1 }.relative_to(us);
+        // Both pieces are known by construction — this is the inverse of a
+        // castling we ourselves made (§4.3).
+        let king = Piece::new(us, PieceType::King);
+        let rook = Piece::new(us, PieceType::Rook);
+        self.remove_piece_known(king, to);
+        self.remove_piece_known(rook, rto);
+        self.put_piece(king, from);
+        self.put_piece(rook, rfrom);
     }
 
     /// Switch the side to move without moving anything (doc 04 §3.8, SF

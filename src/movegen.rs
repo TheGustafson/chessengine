@@ -484,6 +484,45 @@ impl Board {
         );
 
         match m.kind() {
+            // 1+2. Castling and en passant, out of line together (perf study
+            //      17 §5). Between them they are the only arms that need the
+            //      slider tables, a rebuilt occupancy and an
+            //      `attackers_to_exist` loop, and they are a fraction of a
+            //      percent of the moves `legal` is asked about; inline, they
+            //      set this function's prologue and spill.
+            MoveKind::Castling | MoveKind::EnPassant => {
+                self.legal_special(m, us, them, ksq, from, to)
+            }
+
+            // 3. King steps: the destination must be safe with the king
+            //    REMOVED from occupancy, so a checking slider's ray extends
+            //    through the vacated square (fleeing along the ray is
+            //    illegal).
+            _ if from == ksq => !self.attackers_to_exist(
+                to,
+                self.all_occupancy() ^ Bitboard::from_square(from),
+                them,
+            ),
+
+            // 4. Everything else: legal iff not pinned, or moving along
+            //    the pin ray (toward or away from the king).
+            _ => !self.blockers_for_king(us).contains(from) || attacks::aligned(from, to, ksq),
+        }
+    }
+
+    /// The castling and en-passant arms of [`Board::legal`].
+    #[cold]
+    #[inline(never)]
+    fn legal_special(
+        &self,
+        m: Move,
+        us: Color,
+        them: Color,
+        ksq: Square,
+        from: Square,
+        to: Square,
+    ) -> bool {
+        match m.kind() {
             // 1. Castling: the two squares the king crosses/lands on must
             //    be unattacked. `from` (e1/e8) is not tested — castling is
             //    never generated nor pseudo_legal-validated while in check.
@@ -522,19 +561,12 @@ impl Board {
                         .is_empty()
             }
 
-            // 3. King steps: the destination must be safe with the king
-            //    REMOVED from occupancy, so a checking slider's ray extends
-            //    through the vacated square (fleeing along the ray is
-            //    illegal).
-            _ if from == ksq => !self.attackers_to_exist(
-                to,
-                self.all_occupancy() ^ Bitboard::from_square(from),
-                them,
-            ),
-
-            // 4. Everything else: legal iff not pinned, or moving along
-            //    the pin ray (toward or away from the king).
-            _ => !self.blockers_for_king(us).contains(from) || attacks::aligned(from, to, ksq),
+            // Unreachable: the caller only routes the two kinds above here.
+            _ => {
+                debug_assert!(false, "legal_special called with {m:?}");
+                let _ = (us, ksq);
+                false
+            }
         }
     }
 
