@@ -1869,3 +1869,34 @@ SF's `append_changed_indices` at 227.9 i/call; secondary item 2
 today's finding that instruction parity alone still leaves us ~1.16x slower, and
 that the two axes can fight. Also briefed with the no-escape-hatch rules and
 with today's own instrument failure as the cautionary case.
+
+### Tick @ sb141 — the anneal is delivering, and I am nulling MY OWN number
+
+**Trainer:** PID 1397093 alive, 182.0k pos/s, **sb141/190**. Heldout EMA is
+accelerating through the anneal (began sb120):
+
+| sb | heldout EMA | Δ per 10sb |
+|---|---|---|
+| 120 | 0.011568 | — |
+| 130 | 0.011507 | −0.000061 |
+| **140** | **0.011407** | **−0.000100** |
+
+The per-10sb drop nearly doubled once the anneal engaged. 49 superbatches left.
+
+**IN FLIGHT: the PGO-profile-noise null on study 18's −120.1.** I merged study 18
+flagging profile noise as an unquantified confound. That is not good enough to
+leave standing, so it is being closed the same way every other instrument on
+this project gets closed — with a null:
+
+**Build the IDENTICAL source a second time with PGO (`archon-s18b`) and panel it
+against `archon-s18`. Same code, different profile run ⇒ the delta IS the
+profile-noise floor.** Source identity verified first
+(`git diff HEAD worktree-agent-a924f204d93925485 -- src/` is empty; my later
+commits were docs/tools/symlink only).
+
+Decision rule fixed BEFORE the measurement, so it cannot be rationalised after:
+- noise ≲ ±15 i/n ⇒ **−120.1 stands** as a real, quotable delta;
+- noise ~±40 i/n ⇒ direction stands, magnitude quoted with a band;
+- noise ≳ ±100 i/n ⇒ **the PGO panel cannot resolve single-study deltas at all**,
+  which retroactively puts a band on studies 12–18's PGO-frame numbers too and
+  is a bigger finding than study 18's own result.
