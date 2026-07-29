@@ -244,3 +244,40 @@ keys removed, `superbatches 300`, `lr_ramp [[0,1e-3],[240,1e-3],[300,0]]`,
   `TM_SCORE_C` stays 0.
 - Perf study 11 running in an isolated worktree against the single-net
   `stockfish-eca43a97` target.
+
+### State log — tick @ sb5: the TESTING GOTCHA found early
+
+D48Y healthy: sb5/300, value 0.008378, 192k pos/s steady, GPU 94%, 5 GB free.
+
+**Validated the post-training chain now rather than in 11 hours**, and found
+the thing that would have invalidated the whole test:
+
+**`tools/nnue/calibrate_network_scale.sh` is MANDATORY before any D48Y match.**
+Its own header states the reason and cites a user ruling: *"a changed target
+transform (v1.5's double sigmoid) has no clean closed-form inverse, and every
+cp-denominated search margin — futility, RFP, delta, aspiration — is calibrated
+to the incumbent's scale"*, and *"we MUST adjust for scale (it is a big gotcha
+everytime) before we eval this thing"*.
+
+D48Y changes exactly that transform, so its cp output scale WILL shift.
+Matching it uncalibrated would measure MY frame error, not the net — the same
+mechanism the Reckless frame-null priced at **−12.0 ± 18.2 Elo** for a 0.73×
+de-framing. That null is now doing double duty: it is the quantitative warning
+for this exact mistake.
+
+**Two stale defaults in that script — do NOT run it bare:**
+- `ENG=engines/bin/archon-d47` — a 768-wide binary that CANNOT load a 1280 net
+  (fails `CENN-v2 l2_width 16 != 128`).
+- `REF=…d47h-anneal-sb150-nocpol.cenn` — the wrong incumbent.
+Pass explicitly: reference `data/nnue/nets/screens/d48x-1280-sb520-ema.cenn`,
+engine `engines/canonical/archon` (sota,arch-d48x).
+
+**Test sequence when the run finishes (in this order):**
+1. take `d48y-1280-sb300-ema-quant.bin` → CENN (note: quant.bin is 138,320,792 B
+   vs the canonical .cenn's 138,283,640 B — a 37,152 B delta, so the packing
+   step is NOT a rename; resolve before assuming).
+2. `net_scale_check.sh` vs D48X → read `median(cand/ref)`.
+3. `calibrate_network_scale.sh` until the ratio is ~1.000.
+4. ONLY THEN: fixed-node screen vs D48X (attribution), then real TC (the gate).
+5. Report the confound: D48Y differs from D48X in TWO ways — calibrated
+   per-corpus target AND no teacher.
