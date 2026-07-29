@@ -138,7 +138,7 @@ pub const THREAT_DIMS: usize = 60720;
 /// gap layout is deliberate — XOR-8 flips color, which is the trick FullThreats
 /// uses to swap perspective (`attacker ^ 8·persp`).
 #[inline]
-const fn sf_code(piece: Piece) -> usize {
+pub(crate) const fn sf_code(piece: Piece) -> usize {
     ((piece.color as usize) << 3) | (piece.piece_type as usize + 1)
 }
 
@@ -407,11 +407,29 @@ impl ThreatResolver {
         to: Square,
         attacked: Piece,
     ) -> Option<usize> {
+        self.index_decoded(sf_code(attacker), sf_code(attacked), from, to)
+    }
+
+    /// [`index`](Self::index) with the two SF piece codes already decoded.
+    ///
+    /// The decode is **perspective-independent** — the perspective enters only
+    /// as the `^ swap` colour flip below — so a resolve that walks one event
+    /// list for BOTH perspectives pays `sf_code` once instead of twice
+    /// (perf study 9 item 1). Same arithmetic as [`index`](Self::index), which
+    /// now delegates here, so the two cannot drift.
+    #[inline]
+    pub(crate) fn index_decoded(
+        &self,
+        attacker_code: usize,
+        attacked_code: usize,
+        from: Square,
+        to: Square,
+    ) -> Option<usize> {
         let t = self.tables;
         let from_o = (from.index() ^ self.orientation) as usize;
         let to_o = (to.index() ^ self.orientation) as usize;
-        let att = sf_code(attacker) ^ self.swap;
-        let atd = sf_code(attacked) ^ self.swap;
+        let att = attacker_code ^ self.swap;
+        let atd = attacked_code ^ self.swap;
         let dir = (from_o < to_o) as usize;
 
         let base = t.lut1[att][atd][dir];

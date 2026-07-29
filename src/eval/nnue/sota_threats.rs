@@ -84,7 +84,7 @@
 
 use super::sota_accumulator::{psqt_add, psqt_sub};
 use super::sota_features::{
-    ACC, KEPT_VICTIMS, THREAT_DIMS, ThreatResolver, for_each_threat, refresh_threat,
+    ACC, KEPT_VICTIMS, THREAT_DIMS, ThreatResolver, for_each_threat, refresh_threat, sf_code,
     threat_pair_kept,
 };
 use super::sota_head::BUCKETS;
@@ -983,20 +983,39 @@ impl<'a> ThreatContext<'a> {
             // `child = parent + delta` (8 adds). Zero when the net has no
             // threat PSQ1 rows.
             let mut psqt_deltas = [[0i32; BUCKETS]; 2];
-            for (p, &needs_fold) in need.iter().enumerate() {
-                if !needs_fold {
-                    continue;
-                }
-                let ksq = self.stack[child].position.kings[p];
-                let resolver = ThreatResolver::new(Color::ALL[p], ksq);
-                lens[p] = resolve_into(
+            if need[0] && need[1] {
+                // Both perspectives wanted — the common case. One pass over
+                // the buffer, sharing the per-event decode (perf study 9
+                // item 1).
+                let kings = self.stack[child].position.kings;
+                let resolvers = [
+                    ThreatResolver::new(Color::White, kings[0]),
+                    ThreatResolver::new(Color::Black, kings[1]),
+                ];
+                lens = resolve_both(
                     self.buf.events(),
-                    &mut self.add_scratch[p],
-                    &mut self.sub_scratch[p],
-                    &resolver,
+                    &mut self.add_scratch,
+                    &mut self.sub_scratch,
+                    &resolvers,
                     psqt_weights,
-                    &mut psqt_deltas[p],
+                    &mut psqt_deltas,
                 );
+            } else {
+                for (p, &needs_fold) in need.iter().enumerate() {
+                    if !needs_fold {
+                        continue;
+                    }
+                    let ksq = self.stack[child].position.kings[p];
+                    let resolver = ThreatResolver::new(Color::ALL[p], ksq);
+                    lens[p] = resolve_into(
+                        self.buf.events(),
+                        &mut self.add_scratch[p],
+                        &mut self.sub_scratch[p],
+                        &resolver,
+                        psqt_weights,
+                        &mut psqt_deltas[p],
+                    );
+                }
             }
             // Phase 2 — fused parent→child folds (opt #2): read parent lanes,
             // apply deltas, write child lanes in one pass. Paid only for
@@ -1075,6 +1094,63 @@ impl<'a> ThreatContext<'a> {
 /// (Σ add rows − Σ sub rows) is accumulated into `psqt_delta` as events
 /// resolve — see the phase-1 comment in [`ThreatContext::compute`]. The
 /// legacy path (empty table) keeps its original loop untouched.
+/// [`resolve_into`] for BOTH perspectives in ONE pass over `events`.
+///
+/// The two perspectives resolve the same event list to different indices, so
+/// the old shape walked the buffer twice. Everything before the perspective
+/// enters is shared, though: the five event-field loads and the two `sf_code`
+/// decodes are perspective-independent (the perspective is only the `^ swap`
+/// colour flip inside [`ThreatResolver::index_decoded`]), so hoisting them out
+/// of a fused loop pays them once instead of twice.
+///
+/// Bit-identical to two [`resolve_into`] calls: same arithmetic per
+/// perspective, and the index lists and PSQT accumulate still see events in
+/// buffer order, which is what fixes the i32 sum.
+///
+/// The one-sided case (a king-crossed ply computes one perspective eagerly at
+/// push) keeps calling [`resolve_into`] — folding a `need` test into this
+/// loop would tax the common both-sided path with a branch per event.
+#[allow(clippy::too_many_arguments)]
+fn resolve_both(
+    events: &[ThreatDelta],
+    adds: &mut [[usize; DELTA_CAP]; 2],
+    subs: &mut [[usize; DELTA_CAP]; 2],
+    resolvers: &[ThreatResolver; 2],
+    psqt_table: &[i32],
+    psqt_deltas: &mut [[i32; BUCKETS]; 2],
+) -> [(usize, usize); 2] {
+    let mut len = [(0usize, 0usize); 2];
+    let has_psqt = !psqt_table.is_empty();
+    // Register-resident PSQT accumulators, the §4.5 pairing that only pays
+    // alongside `psqt_row`'s fixed-size row.
+    let mut acc = *psqt_deltas;
+    for d in events {
+        let att = sf_code(d.attacker);
+        let atd = sf_code(d.victim);
+        for p in 0..2 {
+            let Some(idx) = resolvers[p].index_decoded(att, atd, d.from, d.to) else {
+                continue;
+            };
+            debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
+            if d.add {
+                adds[p][len[p].0] = idx;
+                len[p].0 += 1;
+                if has_psqt {
+                    psqt_add(&mut acc[p], psqt_table, idx);
+                }
+            } else {
+                subs[p][len[p].1] = idx;
+                len[p].1 += 1;
+                if has_psqt {
+                    psqt_sub(&mut acc[p], psqt_table, idx);
+                }
+            }
+        }
+    }
+    *psqt_deltas = acc;
+    len
+}
+
 fn resolve_into(
     events: &[ThreatDelta],
     adds: &mut [usize],
@@ -1099,20 +1175,30 @@ fn resolve_into(
             }
         }
     } else {
+        // Accumulate the T6c bucket delta in a LOCAL, written back once. The
+        // pairing is load-bearing and neither half works alone (perf study 8
+        // §4.5): with the row reached as a runtime-length slice the accumulate
+        // is 12 instructions split across xmm / vmovq / scalar, and hoisting
+        // the destination into a local then only adds copies (measured
+        // +1.31%); with the row FIXED-size the body is one ymm load-add-store,
+        // and only then does keeping the accumulator in registers across the
+        // event loop pay. Bit-identical either way: same i32 adds, same order.
+        let mut acc = *psqt_delta;
         for d in events {
             if let Some(idx) = resolver.index(d.attacker, d.from, d.to, d.victim) {
                 debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
                 if d.add {
                     adds[add_len] = idx;
                     add_len += 1;
-                    psqt_add(psqt_delta, psqt_table, idx);
+                    psqt_add(&mut acc, psqt_table, idx);
                 } else {
                     subs[sub_len] = idx;
                     sub_len += 1;
-                    psqt_sub(psqt_delta, psqt_table, idx);
+                    psqt_sub(&mut acc, psqt_table, idx);
                 }
             }
         }
+        *psqt_delta = acc;
     }
     (add_len, sub_len)
 }

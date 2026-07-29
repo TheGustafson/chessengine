@@ -1,0 +1,16 @@
+arm=base0 eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=36633073946 cycles=29697976663 branches=4075674469 nps=877940
+arm=l1nobc eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=35991058878 cycles=26520604905 branches=3861673358 nps=991993
+arm=sort eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=35974886358 cycles=26264565210 branches=3854481502 nps=1001928
+arm=uniquant eval_hash=56d6fe91313fa925 eval=**CHANGED** d13_nodes=1961283 node=**CHANGED** bench_nodes=5001556 instructions=35014708233 cycles=39411740203 branches=3886812141 nps=649215
+arm=psqtreg eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=36461356237 cycles=43783115557 branches=4087030274 nps=583893
+arm=kern2 eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001630 instructions=35814988397 cycles=27003002497 branches=3859267919 nps=970436
+arm=lazythreat eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001630 instructions=35454266456 cycles=26138208643 branches=3859073085 nps=1007174
+arm=lt2 eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=35459880225 cycles=38706027784 branches=3861565563 nps=661766
+arm=psqtymm eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=35507949539 cycles=37437910227 branches=3897884035 nps=680493
+arm=psqtraw eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=36250754851 cycles=39408084487 branches=3830713647 nps=646790
+arm=psqtboth eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=35331806566 cycles=37044905251 branches=3909237335 nps=683469
+arm=psqtall eval_hash=d82caf8aa4e3cca8 eval=OK d13_nodes=1972607 node=OK bench_nodes=5001629 instructions=35306811565 cycles=40689810748 branches=3909238321 nps=611446
+arm=shsub eval_hash=c95a2aecd46faa39 eval=**CHANGED** d13_nodes=1873634 node=**CHANGED** bench_nodes=5001559 instructions=35156622957 cycles=37063621188 branches=3983620364 nps=686084
+arm=x4merge eval_hash=07993850ee314679 eval=**CHANGED** d13_nodes=1945095 node=**CHANGED** bench_nodes=5001571 instructions=34447944351 cycles=34600202367 branches=3946190497 nps=733690
+arm=skipq eval_hash=5ca978e012da1bb0 eval=**CHANGED** d13_nodes=1922947 node=**CHANGED** bench_nodes=5001562 instructions=33795751269 cycles=25204199529 branches=3919691513 nps=1041341
+arm=spanskip eval_hash=5ca978e012da1bb0 eval=**CHANGED** d13_nodes=1922947 node=**CHANGED** bench_nodes=5001562 instructions=34147248520 cycles=28047467298 branches=3982594614 nps=927417

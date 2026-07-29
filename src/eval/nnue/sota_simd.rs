@@ -6,7 +6,7 @@
 //! selected once at startup and preserves wrapping i16 arithmetic.
 
 use super::sota_features::ACC;
-use super::sota_head::{FT_QUANT, FT_SHIFT, L2, L3, THREAT_QUANT};
+use super::sota_head::{FT_QUANT, FT_SHIFT, L2, L3};
 use std::sync::LazyLock;
 
 /// The L1 sparse dot writes `L2` int32 accumulators. The kernels process the
@@ -30,6 +30,15 @@ type ApplyI16Fn = fn(&mut [i16; ACC], &[i16], &[usize], &[usize]);
 // (profiling-study §4.3/opt #2). `dst`/`src` may not alias.
 type ApplyI16IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i16], &[usize], &[usize]);
 type ApplyI8IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i8], &[usize], &[usize]);
+// TWO-DESTINATION in-place apply (perf study 9 item 4): `acc ±= deltas`, and
+// the result is ALSO written to `out`. The Finny cached refresh needs the same
+// bytes in two places — the cache entry (its memo for the next refresh with
+// this king key) and the search stack's accumulator slot — and used to get
+// there by folding in place and then `memmove`ing 2×1280 i16 to the stack.
+// Both destinations are written from the SAME registers the fold already
+// holds, so the second home costs one store per block instead of a whole
+// read+write pass. `acc` and `out` may not alias.
+type ApplyI16DualFn = fn(&mut [i16; ACC], &mut [i16; ACC], &[i16], &[usize], &[usize]);
 type L1DotFn = fn(&mut [i32; L2], &[u8; ACC], &[u16], &[i8]);
 type ActivateFn = fn(&mut [u8; ACC], &[[i16; ACC]; 2], &[[i16; ACC]; 2], usize);
 type FindNnzFn = fn(&[u8; ACC], &mut [u16; ACC / 4]) -> usize;
@@ -56,11 +65,12 @@ type PolicyDotFn = fn(&[i8; L2], &[f32; L2]) -> f32;
 // scalar reference. NOTE this replaced the head's serial element-order sum;
 // the rounding change was gated by integer-cp identity on the 800-FEN
 // battery (S2 landing commit).
-type SkipDotFn = fn(&[u8], &[f32]) -> f32;
+type SkipDotFn = fn(&[u8], &[i8]) -> i32;
 
 struct Kernels {
     i16_deltas: ApplyI16Fn,
     i16_deltas_into: ApplyI16IntoFn,
+    i16_deltas_dual: ApplyI16DualFn,
     i8_deltas_into: ApplyI8IntoFn,
     l1_dot: L1DotFn,
     activate: ActivateFn,
@@ -68,7 +78,7 @@ struct Kernels {
     l1_dequant: L1DequantFn,
     l2_tail: L2TailFn,
     policy_dot: PolicyDotFn,
-    skip_dot: SkipDotFn,
+    skip_dot_i8: SkipDotFn,
 }
 
 static KERNELS: LazyLock<Kernels> = LazyLock::new(|| {
@@ -156,6 +166,20 @@ pub(crate) fn apply_i16_deltas_into(
     kernel_dispatch!(i16_deltas_into(dst, src, weights, adds, subs))
 }
 
+/// Two-destination in-place apply: `acc ±= deltas`, and the same result is
+/// written to `out` as well (perf study 9 item 4). See [`ApplyI16DualFn`].
+/// `acc` and `out` must not alias.
+#[inline]
+pub(crate) fn apply_i16_deltas_dual(
+    acc: &mut [i16; ACC],
+    out: &mut [i16; ACC],
+    weights: &[i16],
+    adds: &[usize],
+    subs: &[usize],
+) {
+    kernel_dispatch!(i16_deltas_dual(acc, out, weights, adds, subs))
+}
+
 /// Fused copy+apply for the FullThreats (i8-weight) fold.
 #[inline]
 pub(crate) fn apply_i8_deltas_into(
@@ -173,7 +197,40 @@ pub(crate) fn apply_i8_deltas_into(
 /// group indices.
 #[inline]
 pub(crate) fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
+    // The SIMD backends read each group's four FT bytes as ONE unaligned
+    // 32-bit load (see [`ft_group`]), which is what lets `vpbroadcastd` fold
+    // the load into the broadcast with no range check. `find_nnz` is the only
+    // producer of `nnz` and only ever emits group indices in `0..ACC/4`; this
+    // is the debug-time proof of that invariant — checked once per group over
+    // the whole test suite instead of once per group in the shipped kernel.
+    debug_assert!(
+        nnz.iter().all(|&g| usize::from(g) < ACC / 4),
+        "l1_dot: nnz group index out of range (find_nnz contract broken)"
+    );
     kernel_dispatch!(l1_dot(pre, ft, nnz, weights))
+}
+
+/// The four FT bytes of `group`, as the little-endian `i32` the `dpbusd` /
+/// `maddubs` kernels broadcast.
+///
+/// Written as one unaligned 32-bit read rather than
+/// `i32::from_le_bytes([ft[g * 4], …])` **for the codegen, not the arithmetic**
+/// — the two are bit-identical on any little-endian target. Indexing the array
+/// made LLVM emit a `cmp $0x13f,%ecx` / `ja <panic>` pair it could not hoist
+/// out of the group loop (it cannot see `find_nnz`'s range), and that loop is
+/// only ~11 instructions long and runs ~39 times per NODE. Removing the pair
+/// measured **−1.75% of all engine instructions and −5.25% of all engine
+/// branches**, node-identical and eval bit-exact (perf study 8 §4.1).
+///
+/// # Safety
+/// `group < ACC / 4`, i.e. `group` came from [`find_nnz`]. The `debug_assert`
+/// in [`l1_dot`] is the checked form of this contract.
+#[allow(unsafe_code)]
+#[inline(always)]
+unsafe fn ft_group(ft: &[u8; ACC], group: usize) -> i32 {
+    // SAFETY: `group < ACC/4` ⇒ `group * 4 + 3 < ACC`, so all four bytes lie
+    // inside `ft`. `read_unaligned` is required — `ft` is only byte-aligned.
+    unsafe { ft.as_ptr().add(group * 4).cast::<i32>().read_unaligned() }
 }
 
 #[inline]
@@ -245,13 +302,17 @@ pub(crate) fn policy_dot(row: &[i8; L2], h: &[f32; L2]) -> f32 {
     kernel_dispatch!(policy_dot(row, h))
 }
 
-/// SKP1 skip-lane dot: `Σ ft[i]·lane[i]` in the fixed 16-lane + halving-tree
-/// shape. `lane` is the bucket-major contiguous slice (§6-S2a layout).
+/// SKP1 skip-lane dot, INTEGER: `Σ ft[i]·lane[i]` with `ft` u8 and `lane` the
+/// i8-quantised bucket-major slice ([`super::sota_head::SkipLane`]).
+///
+/// i32 accumulation, so the sum is exact and the reduction ORDER is free —
+/// unlike the f32 form this replaces, which had to pin a 16-lane + halving-tree
+/// shape across every backend to keep the backends agreeing with each other.
 #[inline]
-pub(crate) fn skip_dot(ft: &[u8], lane: &[f32]) -> f32 {
+pub(crate) fn skip_dot_i8(ft: &[u8], lane: &[i8]) -> i32 {
     debug_assert_eq!(ft.len(), lane.len());
-    debug_assert_eq!(ft.len() % 16, 0);
-    kernel_dispatch!(skip_dot(ft, lane))
+    debug_assert_eq!(ft.len() % 64, 0);
+    kernel_dispatch!(skip_dot_i8(ft, lane))
 }
 
 mod scalar {
@@ -291,6 +352,26 @@ mod scalar {
                 value = value.wrapping_sub(weights[feature * ACC + lane]);
             }
             dst[lane] = value;
+        }
+    }
+
+    pub(super) fn i16_deltas_dual(
+        acc: &mut [i16; ACC],
+        out: &mut [i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        for lane in 0..ACC {
+            let mut value = acc[lane];
+            for &feature in adds {
+                value = value.wrapping_add(weights[feature * ACC + lane]);
+            }
+            for &feature in subs {
+                value = value.wrapping_sub(weights[feature * ACC + lane]);
+            }
+            acc[lane] = value;
+            out[lane] = value;
         }
     }
 
@@ -337,12 +418,9 @@ mod scalar {
         for flip in 0..2 {
             let perspective = stm ^ flip;
             for lane in 0..H {
-                let merge = |p: i16, t: i16| {
-                    let scaled = i32::from(t) * FT_QUANT;
-                    let rounded =
-                        scaled.signum() * ((scaled.abs() + THREAT_QUANT / 2) / THREAT_QUANT);
-                    (i32::from(p) + rounded).clamp(0, FT_QUANT)
-                };
+                // 255/64 carried as 4 (see the avx512 twin).
+                let merge =
+                    |p: i16, t: i16| (i32::from(p) + (i32::from(t) << 2)).clamp(0, FT_QUANT);
                 let left = merge(pst[perspective][lane], threat[perspective][lane]);
                 let right = merge(pst[perspective][lane + H], threat[perspective][lane + H]);
                 out[lane + flip * H] = ((left * right) >> FT_SHIFT) as u8;
@@ -424,32 +502,22 @@ mod scalar {
         sums[0]
     }
 
-    /// The bit-exact reference for the skip-lane dot: 16 partial lanes
-    /// (lane k accumulates elements k, k+16, …, each a fused mul-add) then
-    /// the same halving tree as `policy_dot`/`propagate_l3`.
-    pub(super) fn skip_dot(ft: &[u8], lane: &[f32]) -> f32 {
-        const LANES: usize = 16;
-        let mut sums = [0.0f32; LANES];
-        let mut i = 0;
-        while i < ft.len() {
-            for j in 0..LANES {
-                sums[j] = f32::from(ft[i + j]).mul_add(lane[i + j], sums[j]);
-            }
-            i += LANES;
+    /// The reference for the skip-lane dot: a plain i32 sum. Integer addition
+    /// is associative, so unlike the f32 form this replaced there is no lane
+    /// shape to pin — every backend is free to reduce in whatever order is
+    /// fastest and they still agree bit-for-bit.
+    pub(super) fn skip_dot_i8(ft: &[u8], lane: &[i8]) -> i32 {
+        let mut acc = 0i32;
+        for (&a, &w) in ft.iter().zip(lane) {
+            acc += i32::from(a) * i32::from(w);
         }
-        let mut stride = LANES / 2;
-        while stride > 0 {
-            for k in 0..stride {
-                sums[k] += sums[k + stride];
-            }
-            stride /= 2;
-        }
-        sums[0]
+        acc
     }
 
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i16_deltas_into,
+        i16_deltas_dual,
         i8_deltas_into,
         l1_dot,
         activate,
@@ -457,7 +525,7 @@ mod scalar {
         l1_dequant,
         l2_tail,
         policy_dot,
-        skip_dot,
+        skip_dot_i8,
     };
 }
 
@@ -497,6 +565,45 @@ mod avx2 {
     }
 
     #[target_feature(enable = "avx2")]
+    unsafe fn i16_deltas_dual_inner(
+        acc: &mut [i16; ACC],
+        out: &mut [i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // `i16_deltas_inner` with a second store per block — same loads, same
+        // per-lane wrapping adds in the same order, so bit-identical.
+        // SAFETY: as `i16_deltas_inner`; `out` is a disjoint ACC-wide array.
+        unsafe {
+            for off in (0..ACC).step_by(LANES) {
+                let mut value = _mm256_loadu_si256(acc.as_ptr().add(off).cast());
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value = _mm256_add_epi16(value, _mm256_loadu_si256(row.cast()));
+                }
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value = _mm256_sub_epi16(value, _mm256_loadu_si256(row.cast()));
+                }
+                _mm256_storeu_si256(acc.as_mut_ptr().add(off).cast(), value);
+                _mm256_storeu_si256(out.as_mut_ptr().add(off).cast(), value);
+            }
+        }
+    }
+
+    pub(super) fn i16_deltas_dual(
+        acc: &mut [i16; ACC],
+        out: &mut [i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // SAFETY: installed only after runtime avx2 detection.
+        unsafe { i16_deltas_dual_inner(acc, out, weights, adds, subs) }
+    }
+
+    #[target_feature(enable = "avx2")]
     unsafe fn l1_dot_inner(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
         // maddubs forms adjacent two-product sums. With ft<=127 and an i8
         // weight those sums fit i16 at both extrema; madd_epi16(..., 1) then
@@ -514,12 +621,7 @@ mod avx2 {
                 let mut hi = _mm256_loadu_si256(pre.as_ptr().add(pbase + 8).cast());
                 for &group in nnz {
                     let group = usize::from(group);
-                    let inputs = _mm256_set1_epi32(i32::from_le_bytes([
-                        ft[group * 4],
-                        ft[group * 4 + 1],
-                        ft[group * 4 + 2],
-                        ft[group * 4 + 3],
-                    ]));
+                    let inputs = _mm256_set1_epi32(ft_group(ft, group));
                     let base = weights.as_ptr().add(group * (L2 * 4) + wblk);
                     let wlo = _mm256_loadu_si256(base.cast());
                     let whi = _mm256_loadu_si256(base.add(32).cast());
@@ -546,9 +648,6 @@ mod avx2 {
         // half. The i32 arithmetic exactly implements signed nearest rounding,
         // clamp, pairwise multiply, and shift from the scalar reference.
         unsafe {
-            debug_assert_eq!(THREAT_QUANT, 64);
-            let scale = _mm256_set1_epi32(FT_QUANT);
-            let rounding = _mm256_set1_epi32(THREAT_QUANT / 2);
             let zero = _mm256_setzero_si256();
             let ceiling = _mm256_set1_epi32(FT_QUANT);
             for flip in 0..2 {
@@ -561,14 +660,10 @@ mod avx2 {
                             _mm256_cvtepi16_epi32(_mm_loadu_si128(p.as_ptr().add(offset).cast()));
                         let tv =
                             _mm256_cvtepi16_epi32(_mm_loadu_si128(t.as_ptr().add(offset).cast()));
-                        let scaled = _mm256_mullo_epi32(tv, scale);
-                        let magnitude = _mm256_srai_epi32::<6>(_mm256_add_epi32(
-                            _mm256_abs_epi32(scaled),
-                            rounding,
-                        ));
-                        let signed = _mm256_sign_epi32(magnitude, scaled);
+                        // 255/64 carried as 4 (see the avx512 twin).
+                        let scaled = _mm256_slli_epi32::<2>(tv);
                         _mm256_min_epi32(
-                            _mm256_max_epi32(_mm256_add_epi32(pv, signed), zero),
+                            _mm256_max_epi32(_mm256_add_epi32(pv, scaled), zero),
                             ceiling,
                         )
                     };
@@ -634,7 +729,12 @@ mod avx2 {
         }
     }
 
-    fn i16_deltas(acc: &mut [i16; ACC], weights: &[i16], adds: &[usize], subs: &[usize]) {
+    pub(super) fn i16_deltas(
+        acc: &mut [i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
         // SAFETY: installed only after runtime AVX2 detection.
         unsafe { i16_deltas_inner(acc, weights, adds, subs) }
     }
@@ -892,42 +992,36 @@ mod avx2 {
     }
 
     #[target_feature(enable = "avx2,fma")]
-    unsafe fn skip_dot_inner(ft: &[u8], lane: &[f32]) -> f32 {
-        // Two ymm accumulators = the reference's 16 partial lanes (lo: k=0..8,
-        // hi: k=8..16); the halving tree runs scalar over the spilled lanes.
-        // SAFETY: caller guarantees equal lengths, multiple of 16.
+    #[target_feature(enable = "avx2")]
+    unsafe fn skip_dot_i8_inner(ft: &[u8], lane: &[i8]) -> i32 {
+        // maddubs forms adjacent u8 x i8 two-product sums; with ft <= 127 and
+        // |w| <= 127 each pair is at most 2*127*127 = 32258 < i16::MAX, so the
+        // saturating step never fires. madd_epi16 then widens to i32.
+        // SAFETY: caller guarantees equal lengths, a multiple of 64.
         unsafe {
-            let mut lo = _mm256_setzero_ps();
-            let mut hi = _mm256_setzero_ps();
-            for i in (0..ft.len()).step_by(16) {
-                let bytes = _mm_loadu_si128(ft.as_ptr().add(i).cast());
-                let a_lo = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(bytes));
-                let a_hi = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128::<8>(bytes)));
-                lo = _mm256_fmadd_ps(a_lo, _mm256_loadu_ps(lane.as_ptr().add(i)), lo);
-                hi = _mm256_fmadd_ps(a_hi, _mm256_loadu_ps(lane.as_ptr().add(i + 8)), hi);
+            let ones = _mm256_set1_epi16(1);
+            let mut acc = _mm256_setzero_si256();
+            for i in (0..ft.len()).step_by(32) {
+                let a = _mm256_loadu_si256(ft.as_ptr().add(i).cast());
+                let w = _mm256_loadu_si256(lane.as_ptr().add(i).cast());
+                let prod = _mm256_maddubs_epi16(a, w);
+                acc = _mm256_add_epi32(acc, _mm256_madd_epi16(prod, ones));
             }
-            let mut sums = [0.0f32; 16];
-            _mm256_storeu_ps(sums.as_mut_ptr(), lo);
-            _mm256_storeu_ps(sums.as_mut_ptr().add(8), hi);
-            let mut stride = 8;
-            while stride > 0 {
-                for k in 0..stride {
-                    sums[k] += sums[k + stride];
-                }
-                stride /= 2;
-            }
-            sums[0]
+            let mut out = [0i32; 8];
+            _mm256_storeu_si256(out.as_mut_ptr().cast(), acc);
+            out.iter().sum()
         }
     }
 
-    pub(super) fn skip_dot(ft: &[u8], lane: &[f32]) -> f32 {
+    pub(super) fn skip_dot_i8(ft: &[u8], lane: &[i8]) -> i32 {
         // SAFETY: installed only after runtime avx2+fma detection.
-        unsafe { skip_dot_inner(ft, lane) }
+        unsafe { skip_dot_i8_inner(ft, lane) }
     }
 
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i16_deltas_into,
+        i16_deltas_dual,
         i8_deltas_into,
         l1_dot,
         activate,
@@ -935,7 +1029,7 @@ mod avx2 {
         l1_dequant,
         l2_tail,
         policy_dot,
-        skip_dot,
+        skip_dot_i8,
     };
 }
 
@@ -1003,6 +1097,75 @@ mod avx512 {
                 off += LANES;
             }
         }
+    }
+
+    #[target_feature(enable = "avx512f,avx512bw")]
+    unsafe fn i16_deltas_dual_inner(
+        acc: &mut [i16; ACC],
+        out: &mut [i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // `i16_deltas_inner` with a second store per block. Same loads, same
+        // 8-register tile, same per-lane wrapping adds in the same order ⇒
+        // bit-identical to fold-then-copy, at one extra store per 32 lanes
+        // instead of a 2560 B memmove (perf study 9 item 4).
+        // SAFETY: as `i16_deltas_inner`; `out` is a disjoint ACC-wide array.
+        unsafe {
+            const REGS: usize = 8;
+            let tile = LANES * REGS;
+            let mut off = 0;
+            while off + tile <= ACC {
+                let mut v = [_mm512_setzero_si512(); REGS];
+                for (k, vk) in v.iter_mut().enumerate() {
+                    *vk = _mm512_loadu_si512(acc.as_ptr().add(off + k * LANES).cast());
+                }
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    for (k, vk) in v.iter_mut().enumerate() {
+                        *vk = _mm512_add_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                    }
+                }
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    for (k, vk) in v.iter_mut().enumerate() {
+                        *vk = _mm512_sub_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                    }
+                }
+                for (k, vk) in v.iter().enumerate() {
+                    _mm512_storeu_si512(acc.as_mut_ptr().add(off + k * LANES).cast(), *vk);
+                    _mm512_storeu_si512(out.as_mut_ptr().add(off + k * LANES).cast(), *vk);
+                }
+                off += tile;
+            }
+            while off < ACC {
+                let mut value = _mm512_loadu_si512(acc.as_ptr().add(off).cast());
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value = _mm512_add_epi16(value, _mm512_loadu_si512(row.cast()));
+                }
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
+                }
+                _mm512_storeu_si512(acc.as_mut_ptr().add(off).cast(), value);
+                _mm512_storeu_si512(out.as_mut_ptr().add(off).cast(), value);
+                off += LANES;
+            }
+        }
+    }
+
+    pub(super) fn i16_deltas_dual(
+        acc: &mut [i16; ACC],
+        out: &mut [i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // SAFETY: installed only after runtime avx512f+bw+vnni detection (or
+        // compiled with the features statically enabled).
+        unsafe { i16_deltas_dual_inner(acc, out, weights, adds, subs) }
     }
 
     #[target_feature(enable = "avx512f,avx512bw")]
@@ -1192,12 +1355,7 @@ mod avx512 {
             // the loads never miss far enough to hide.
             for &group in nnz {
                 let group = usize::from(group);
-                let inputs = _mm512_set1_epi32(i32::from_le_bytes([
-                    ft[group * 4],
-                    ft[group * 4 + 1],
-                    ft[group * 4 + 2],
-                    ft[group * 4 + 3],
-                ]));
+                let inputs = _mm512_set1_epi32(ft_group(ft, group));
                 let base = weights.as_ptr().add(group * (L2 * 4));
                 for (blk, sum) in sums.iter_mut().enumerate() {
                     let rows = _mm512_loadu_si512(base.add(blk * 64).cast());
@@ -1254,23 +1412,45 @@ mod avx512 {
             }
             let zero = _mm512_setzero_si512();
             let ceiling = _mm512_set1_epi16(FT_QUANT as i16);
-            let mulr = _mm512_set1_epi16(32640);
             for flip in 0..2 {
                 let perspective = stm ^ flip;
                 let p = &pst[perspective];
                 let t = &threat[perspective];
                 for lane in (0..H).step_by(32) {
+                    // The threat rescale, as ONE SHIFT.
+                    //
+                    // The two FT transformers are quantised differently —
+                    // HalfKA at FT_QUANT = 255, FullThreats at
+                    // THREAT_QUANT = 64 — so the merge used to carry a
+                    // six-op `round(t · 255/64)`: abs / shift / mulhrs /
+                    // compare-mask / masked-sub / add. That was 24 of this
+                    // loop body's 48 instructions and ~2.2% of ALL engine
+                    // instructions, where Stockfish — whose two 1024-wide
+                    // accumulators share one frame — merges its own with a
+                    // single `vec_add_16` (`nnue_feature_transformer.h:337`).
+                    //
+                    // 255/64 = 3.984375, and the ratio does not have to be
+                    // exact: it is a GAIN on one eval channel, and moving it to
+                    // 4 is a 0.39% systematic change, well inside the net's own
+                    // quantisation noise. So the merge is `t << 2` — i.e.
+                    // THREAT_QUANT is effectively 63.75 rather than 64.
+                    //
+                    // Measured on the 800-FEN battery against the exact form:
+                    // **74.0% of positions identical, mean |delta| 0.14 SF cp,
+                    // p99 0.97, max 2.42, Pearson r = 0.999999.** Two rejected
+                    // alternatives, both measured (perf study 8 §4.6): rebasing
+                    // the stored weights into the FT_QUANT frame at load — the
+                    // obvious fix — saturates 0.031% of them at i8 and measured
+                    // **max 205 SF cp**; and the exact `4t - t/64`
+                    // (`slli`/`srai`/`sub`) costs an extra op and is FOUR TIMES
+                    // LESS faithful (mean 0.55 SF cp), because `vpsraw` floors
+                    // and that asymmetry is noisier than the 0.39% of gain it
+                    // corrects.
                     let merge = |offset: usize| {
                         let pv = _mm512_loadu_si512(p.as_ptr().add(offset).cast());
                         let tv = _mm512_loadu_si512(t.as_ptr().add(offset).cast());
-                        let t4 =
-                            _mm512_adds_epi16(_mm512_adds_epi16(tv, tv), _mm512_adds_epi16(tv, tv));
-                        let mag = _mm512_mulhrs_epi16(_mm512_abs_epi16(t4), mulr);
-                        // no vpsignw in avx512bw: mask-negate where t < 0
-                        // (t4 == 0 ⇒ mag == 0, sign irrelevant — matches signum)
-                        let neg = _mm512_cmplt_epi16_mask(tv, zero);
-                        let signed = _mm512_mask_sub_epi16(mag, neg, zero, mag);
-                        let sum = _mm512_adds_epi16(pv, signed);
+                        let scaled = _mm512_slli_epi16::<2>(tv);
+                        let sum = _mm512_adds_epi16(pv, scaled);
                         _mm512_min_epi16(_mm512_max_epi16(sum, zero), ceiling)
                     };
                     let left = merge(lane);
@@ -1481,39 +1661,32 @@ mod avx512 {
     }
 
     #[target_feature(enable = "avx512f")]
-    unsafe fn skip_dot_inner(ft: &[u8], lane: &[f32]) -> f32 {
-        // One zmm accumulator = the reference's 16 partial lanes; the halving
-        // tree runs scalar over the spilled lanes (policy_dot discipline).
-        // SAFETY: caller guarantees equal lengths, multiple of 16.
+    #[target_feature(enable = "avx512f,avx512bw,avx512vnni")]
+    unsafe fn skip_dot_i8_inner(ft: &[u8], lane: &[i8]) -> i32 {
+        // `vpdpbusd` is the whole kernel: 64 u8 x i8 products accumulated into
+        // 16 i32 lanes per instruction. 1280 lanes = 20 loads + 20 multiply-adds
+        // where the f32 form needed 80 x (widen, convert, fma).
+        // SAFETY: caller guarantees equal lengths, a multiple of 64.
         unsafe {
-            let mut acc = _mm512_setzero_ps();
-            for i in (0..ft.len()).step_by(16) {
-                let bytes = _mm_loadu_si128(ft.as_ptr().add(i).cast());
-                let a = _mm512_cvtepi32_ps(_mm512_cvtepu8_epi32(bytes));
-                acc = _mm512_fmadd_ps(a, _mm512_loadu_ps(lane.as_ptr().add(i)), acc);
+            let mut acc = _mm512_setzero_si512();
+            for i in (0..ft.len()).step_by(64) {
+                let a = _mm512_loadu_si512(ft.as_ptr().add(i).cast());
+                let w = _mm512_loadu_si512(lane.as_ptr().add(i).cast());
+                acc = _mm512_dpbusd_epi32(acc, a, w);
             }
-            let mut sums = [0.0f32; 16];
-            _mm512_storeu_ps(sums.as_mut_ptr(), acc);
-            let mut stride = 8;
-            while stride > 0 {
-                for k in 0..stride {
-                    sums[k] += sums[k + stride];
-                }
-                stride /= 2;
-            }
-            sums[0]
+            _mm512_reduce_add_epi32(acc)
         }
     }
 
-    pub(super) fn skip_dot(ft: &[u8], lane: &[f32]) -> f32 {
-        // SAFETY: installed only after runtime avx512f+bw+vnni detection (or
-        // compiled with the features statically enabled).
-        unsafe { skip_dot_inner(ft, lane) }
+    pub(super) fn skip_dot_i8(ft: &[u8], lane: &[i8]) -> i32 {
+        // SAFETY: installed only after runtime avx512f+bw+vnni detection.
+        unsafe { skip_dot_i8_inner(ft, lane) }
     }
 
     pub(super) const KERNELS: Kernels = Kernels {
         i16_deltas,
         i16_deltas_into,
+        i16_deltas_dual,
         i8_deltas_into,
         l1_dot,
         activate,
@@ -1523,7 +1696,7 @@ mod avx512 {
         l1_dequant,
         l2_tail,
         policy_dot,
-        skip_dot,
+        skip_dot_i8,
     };
 
     /// [`KERNELS`] plus the vpcompressw `find_nnz` — selected when the CPU
@@ -1570,20 +1743,30 @@ mod tests {
     }
 
     #[test]
-    fn dispatched_skip_dot_matches_scalar_bitwise() {
-        // The fixed 16-lane + halving-tree shape must make every backend
-        // bit-identical to the scalar reference (policy_dot discipline).
+    fn dispatched_skip_dot_i8_matches_scalar_exactly() {
+        // i32 accumulation: every backend must agree with the scalar reference
+        // EXACTLY, whatever order it reduces in. Uses the real extremes — ft at
+        // its 127 ceiling and weights at both i8 rails — so the avx2 backend's
+        // `maddubs` no-saturation argument (2*127*127 < i16::MAX) is exercised.
         let mut ft = vec![0u8; 768];
-        let mut lane = vec![0.0f32; 768];
+        let mut lane = vec![0i8; 768];
         for (i, v) in ft.iter_mut().enumerate() {
-            *v = (i as u8).wrapping_mul(97).wrapping_add(13);
+            *v = ((i as u32 * 97 + 13) % 128) as u8;
         }
         for (i, v) in lane.iter_mut().enumerate() {
-            *v = ((i as f32) * 0.7311 - 250.0) * 0.013;
+            *v = (((i as i32 * 61 + 7) % 255) - 127) as i8;
         }
-        let want = scalar::skip_dot(&ft, &lane);
-        let got = skip_dot(&ft, &lane);
-        assert_eq!(want.to_bits(), got.to_bits(), "{want} vs {got}");
+        ft[0] = 127;
+        ft[1] = 127;
+        lane[0] = 127;
+        lane[1] = 127;
+        ft[2] = 127;
+        ft[3] = 127;
+        lane[2] = -128;
+        lane[3] = -128;
+        let want = scalar::skip_dot_i8(&ft, &lane);
+        let got = skip_dot_i8(&ft, &lane);
+        assert_eq!(want, got, "{want} vs {got}");
     }
 
     #[test]
@@ -1643,6 +1826,62 @@ mod tests {
             let mut dispatched = seed;
             apply_i16_deltas(&mut dispatched, &weights, a, s);
             assert_eq!(dispatched, reference, "adds={} subs={}", a.len(), s.len());
+        }
+    }
+
+    /// The two-destination Finny kernel (perf study 9 item 4) must equal
+    /// "fold in place, then copy" on BOTH of its homes, on every backend the
+    /// CPU offers. The point of the kernel is that the second destination is
+    /// written from the fold's own registers, so a backend that wired the
+    /// stores up wrongly would silently desync the search stack from the cache
+    /// — and that desync survives no test the engine had, because the two are
+    /// only compared at the NEXT refresh with the same king key.
+    #[test]
+    fn dual_kernel_writes_both_homes_identically_on_every_backend() {
+        const ROWS: usize = 11;
+        let mut weights = vec![0i16; ROWS * ACC];
+        for (i, value) in weights.iter_mut().enumerate() {
+            *value = (i as u16).wrapping_mul(40503) as i16;
+        }
+        let seed: [i16; ACC] = std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
+        let adds: Vec<usize> = (0..240).map(|i| (i * 7) % ROWS).collect();
+        let subs: Vec<usize> = (0..200).map(|i| (i * 5 + 3) % ROWS).collect();
+
+        #[allow(clippy::type_complexity)]
+        let mut backends: Vec<(&str, ApplyI16Fn, ApplyI16DualFn)> =
+            vec![("scalar", scalar::i16_deltas, scalar::i16_deltas_dual)];
+        #[cfg(target_arch = "x86_64")]
+        {
+            if std::arch::is_x86_feature_detected!("avx2") {
+                backends.push(("avx2", avx2::i16_deltas, avx2::i16_deltas_dual));
+            }
+            if std::arch::is_x86_feature_detected!("avx512f")
+                && std::arch::is_x86_feature_detected!("avx512bw")
+            {
+                backends.push(("avx512", avx512::i16_deltas, avx512::i16_deltas_dual));
+            }
+        }
+
+        for (a, s) in [
+            (&adds[..], &subs[..]),
+            (&adds[..96], &subs[..96]),
+            (&adds[..0], &subs[..0]),
+        ] {
+            let mut reference = seed;
+            scalar::i16_deltas(&mut reference, &weights, a, s);
+            for (name, single, dual) in &backends {
+                // The single-destination kernel is the same arithmetic, so it
+                // pins the dual against BOTH scalar and its own backend.
+                let mut own = seed;
+                single(&mut own, &weights, a, s);
+                assert_eq!(own, reference, "{name} single, adds={}", a.len());
+
+                let mut acc = seed;
+                let mut out = [0i16; ACC];
+                dual(&mut acc, &mut out, &weights, a, s);
+                assert_eq!(acc, reference, "{name} dual in-place home");
+                assert_eq!(out, reference, "{name} dual second home");
+            }
         }
     }
 

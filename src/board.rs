@@ -183,14 +183,6 @@ pub struct StateInfo {
     pub pinners: [Bitboard; 2],
     /// Per `PieceType`: from-squares that would check the enemy king.
     pub check_squares: [Bitboard; 6],
-    /// Wave-G threat map (D30): every square attacked by the side-NOT-to-move,
-    /// unioned (`all_threats`) and split by attacker `PieceType`
-    /// (`piece_threats[pt]`). Whole-army setwise fills with the side-to-move's
-    /// king removed from slider occupancy (sliders see through it). Recomputed
-    /// per state; read by threat-aware move ordering (§3.4/§3.7) and the
-    /// threat-coupled RFP margin (design/10 §3.4).
-    pub all_threats: Bitboard,
-    pub piece_threats: [Bitboard; 6],
     /// Piece captured by the move that produced this state.
     pub captured: Option<Piece>,
     /// Repetition encoding: 0 / +distance / -distance (doc 04 §3.9).
@@ -217,8 +209,6 @@ impl StateInfo {
         blockers_for_king: [Bitboard::EMPTY; 2],
         pinners: [Bitboard::EMPTY; 2],
         check_squares: [Bitboard::EMPTY; 6],
-        all_threats: Bitboard::EMPTY,
-        piece_threats: [Bitboard::EMPTY; 6],
         captured: None,
         repetition: 0,
     };
@@ -404,6 +394,49 @@ pub struct NoHooks;
 
 impl MakeMoveHooks for NoHooks {}
 
+/// The Wave-G threat map (D30) — every square attacked by the side-NOT-to-move,
+/// unioned (`all`) and split by attacker `PieceType` (`by_type[pt]`) — held as a
+/// LAZY, position-keyed cache rather than a `StateInfo` field.
+///
+/// It used to be refilled inside `set_check_info` on **every** `make_move`, a
+/// whole-army setwise fill costing ~2.1% of all engine instructions (perf study
+/// 8 §4.4, measured by stubbing it out). But only two sites read it — the
+/// quiet scorer's escape/entry and offense terms (`MovePicker::init_quiets`)
+/// and the N10 reverse-futility "is any of my own pieces hanging" test — and
+/// **no qsearch node touches either**, so a large share of the nodes that paid
+/// for it never looked at it. Filling on first read instead makes each node pay
+/// at most once, and only if it asks.
+///
+/// Keyed by the RAW position hash, so `make` / `unmake` need no invalidation
+/// hook at all and a return to a previously-seen position reuses the fill. A
+/// hash collision (2^-64) can hand a stale ordering hint to a heuristic; it can
+/// never affect legality, and the TT already rests on the same bound.
+///
+/// `Clone` deliberately returns a COLD cache and `PartialEq` ignores the
+/// contents: two boards are the same position whether or not either has
+/// materialised its map.
+#[derive(Debug, Default)]
+struct ThreatCache {
+    /// The `st().key` the fill belongs to; `None` until first use.
+    key: std::cell::Cell<Option<Key>>,
+    all: std::cell::Cell<Bitboard>,
+    by_type: std::cell::Cell<[Bitboard; 6]>,
+}
+
+impl Clone for ThreatCache {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl PartialEq for ThreatCache {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for ThreatCache {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Board {
     // Primary representation: bitboards.
@@ -426,6 +459,10 @@ pub struct Board {
     // Ply-indexed state history; NEVER empty — every constructor pushes the
     // root state (D8). `make_move` pushes, `unmake_move` pops.
     states: Vec<StateInfo>,
+
+    /// Lazily-filled Wave-G threat map — see [`ThreatCache`]. Not part of the
+    /// position: cloned cold, ignored by equality.
+    threats: ThreatCache,
 }
 
 impl Board {
@@ -445,6 +482,7 @@ impl Board {
             castling_rook_square: [Square::A1; 4],
             castling_path: [Bitboard::EMPTY; 4],
             states,
+            threats: ThreatCache::default(),
         };
         // Even the empty board's root state is self-consistent (its key is
         // ZOBRIST.castling[0], its pawn key ZOBRIST.no_pawns, ...).
@@ -565,8 +603,26 @@ impl Board {
 
     /// Every square attacked by the side NOT to move (Wave-G threat map, D30),
     /// with the side-to-move's king x-rayed out of slider occupancy.
+    ///
+    /// Filled on first read for this position and cached — see [`ThreatCache`].
     pub fn all_threats(&self) -> Bitboard {
-        self.st().all_threats
+        self.ensure_threats();
+        self.threats.all.get()
+    }
+
+    /// Fill [`Board::threats`] for the current position unless it already holds
+    /// it. Takes `&self` because every consumer is a `&self` accessor; the
+    /// interior mutability is a `Cell`, so this stays inside safe Rust and
+    /// costs one compare-and-branch on the hot (already-filled) path.
+    fn ensure_threats(&self) {
+        let key = self.st().key;
+        if self.threats.key.get() == Some(key) {
+            return;
+        }
+        let (by_type, all) = self.compute_threats();
+        self.threats.by_type.set(by_type);
+        self.threats.all.set(all);
+        self.threats.key.set(Some(key));
     }
 
     /// Squares attacked by the side-not-to-move's pieces of type `pt`
@@ -574,7 +630,8 @@ impl Board {
     /// attacks; kings/pawns have no cheaper attacker so the ordering scorer
     /// unions the relevant tiers itself (design/09 §3.7).
     pub fn piece_threats(&self, pt: PieceType) -> Bitboard {
-        self.st().piece_threats[pt as usize]
+        self.ensure_threats();
+        self.threats.by_type.get()[pt as usize]
     }
 
     /// `color`'s sliders pinning a piece of the OTHER color against its own
@@ -711,17 +768,21 @@ impl Board {
         st.check_squares[PieceType::Queen as usize] = st.check_squares[PieceType::Bishop as usize]
             | st.check_squares[PieceType::Rook as usize];
         st.check_squares[PieceType::King as usize] = Bitboard::EMPTY;
-
-        self.set_threats(st);
     }
 
-    /// Populate the Wave-G threat map (D30): squares attacked by `them` (the
+    /// Compute the Wave-G threat map (D30): squares attacked by `them` (the
     /// side NOT to move), by piece type and unioned. Whole-army setwise fills;
     /// the side-to-move's own king is removed from slider occupancy so a
     /// slider's threat extends THROUGH it (the king cannot shield the square
-    /// behind it — it must move). Called from [`set_check_info`], so it is
-    /// maintained once per make/unmake/setup, AFTER `side_to_move` is flipped.
-    fn set_threats(&self, st: &mut StateInfo) {
+    /// behind it — it must move). Reads `side_to_move`, so it is only valid
+    /// AFTER a make/null-move has flipped it.
+    ///
+    /// **Called on demand, not per move** (perf study 8 §4.4): this used to run
+    /// inside [`set_check_info`] on every `make_move` for ~2.1% of all engine
+    /// instructions, while every qsearch node and every node that cut before
+    /// the reverse-futility test threw the result away. [`ThreatCache`] has the
+    /// rationale and the invalidation argument.
+    fn compute_threats(&self) -> ([Bitboard; 6], Bitboard) {
         let tables = attacks::tables();
         let us = self.side_to_move;
         let them = us.flip();
@@ -748,13 +809,14 @@ impl Board {
         }
         let king = attacks::king_attacks(self.king_square(them));
 
-        st.piece_threats[PieceType::Pawn as usize] = pawns;
-        st.piece_threats[PieceType::Knight as usize] = knights;
-        st.piece_threats[PieceType::Bishop as usize] = bishops;
-        st.piece_threats[PieceType::Rook as usize] = rooks;
-        st.piece_threats[PieceType::Queen as usize] = queens;
-        st.piece_threats[PieceType::King as usize] = king;
-        st.all_threats = pawns | knights | bishops | rooks | queens | king;
+        let mut by_type = [Bitboard::EMPTY; 6];
+        by_type[PieceType::Pawn as usize] = pawns;
+        by_type[PieceType::Knight as usize] = knights;
+        by_type[PieceType::Bishop as usize] = bishops;
+        by_type[PieceType::Rook as usize] = rooks;
+        by_type[PieceType::Queen as usize] = queens;
+        by_type[PieceType::King as usize] = king;
+        (by_type, pawns | knights | bishops | rooks | queens | king)
     }
 
     /// Does this pseudo-legal move of the side to move give check?
@@ -1079,15 +1141,27 @@ impl Board {
             let prev = states.last().expect("state stack never empty");
             (prev.key ^ ZOBRIST.side, prev.blockers_for_king)
         };
-        {
-            let prev_copied = states.last().expect("state stack never empty").copied;
-            states.push(StateInfo {
-                copied: prev_copied,
-                ..StateInfo::EMPTY
-            });
-        }
+        // Perf study 9 item 3: push a CONSTANT and fill the carried block in
+        // place. `StateInfo { copied: prev_copied, ..EMPTY }` looks like the
+        // same thing but is not — a struct expression whose fields are not all
+        // constants is materialised as a 168-byte stack temporary and then
+        // copied into the vector's tail, so every make paid build + reload +
+        // store (the `vmovdqu64 0xc0(%rsp)` reload was the single hottest
+        // instruction in the symbol). Pushing `EMPTY` — every field a
+        // compile-time constant — lets the value be stored straight into the
+        // slot, and the one live field is then written through a `&mut` into
+        // the vector. Study #2 option E removed this round trip for the
+        // *field writes* and left it in place for the push itself.
+        //
+        // Every non-`copied` field is dead until it is written below (`key`
+        // step 9, `captured`/`checkers` step 11, blockers/pinners/check_squares
+        // in `set_check_info`, `repetition` step 13), so seeding them from
+        // `EMPTY` is exactly what the old form did.
+        states.push(StateInfo::EMPTY);
         let child_idx = states.len() - 1;
-        let st = &mut states[child_idx];
+        let (ancestors, tail) = states.split_at_mut(child_idx);
+        let st = &mut tail[0];
+        st.copied = ancestors[child_idx - 1].copied;
 
         // Step 2: counters.
         self.game_ply += 1;
@@ -1296,6 +1370,16 @@ impl Board {
             // `st`'s borrow ends above (NLL); the walk reads ancestors in
             // the same local vec. `child_idx` == the old pre-push len, so
             // the `n - i` arithmetic is unchanged.
+            //
+            // Perf study 9 item 3 tried to strength-reduce the `imul $0xa8`
+            // (sizeof(StateInfo), not a power of two) that this indexed form
+            // re-derives per iteration, by walking a reversed `step_by(2)`
+            // slice iterator instead. It measured **+0.042% engine
+            // instructions** (7094.6 -> 7097.6 i/n, identical tree): the
+            // iterator's setup outweighs the multiply because `end` is small
+            // in a search — `min(rule50, plies_from_null)` is bounded by the
+            // distance to the last null move, so the loop almost never runs
+            // enough iterations to amortise it. Left alone deliberately.
             let mut i = 4;
             while i <= end {
                 let earlier = &states[child_idx - i as usize];

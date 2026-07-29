@@ -10,7 +10,7 @@
 
 use super::sota_features::{ACC, halfka_index, halfka_king_key};
 use super::sota_head::BUCKETS;
-use super::sota_simd::{apply_i16_deltas, apply_i16_deltas_into};
+use super::sota_simd::{apply_i16_deltas, apply_i16_deltas_dual, apply_i16_deltas_into};
 use crate::bitboard::Bitboard;
 use crate::board::{Board, DirtyPiece};
 use crate::types::{Color, MAX_PLY, Piece, PieceType, Square};
@@ -18,12 +18,51 @@ use crate::types::{Color, MAX_PLY, Piece, PieceType, Square};
 const STACK_LEN: usize = MAX_PLY + 8;
 const FINNY_KEYS: usize = 64;
 
-/// Add feature `feature`'s 8-wide PSQ1 row into `psqt`. `table` is row-major
-/// (`feature · BUCKETS + bucket`) and must be non-empty.
+/// Feature `feature`'s PSQ1 row as a FIXED-size array reference. `table` is
+/// row-major (`feature · BUCKETS + bucket`) and must be non-empty.
+///
+/// The fixed size is the whole point, and it is worth a paragraph because the
+/// slice form looked identical and was not. `BUCKETS` i32 is exactly 32 bytes —
+/// one `ymm` — but handing the accumulate a `&[i32]` of merely *runtime* length
+/// left LLVM's SLP vectoriser unable to see a trip count of 8, so it found a
+/// 4-lane group, then a 2-lane group, then gave up:
+///
+/// ```text
+///     vmovdqu (%rsi),%xmm0            ; lanes 0..3
+///     vpaddd  (%r8,%rdx,4),%xmm0,%xmm0
+///     vmovdqu %xmm0,(%rsi)
+///     vmovq   0x10(%r8,%rdx,4),%xmm0  ; lanes 4..5
+///     vmovq   0x10(%rsi),%xmm1
+///     vpaddd  %xmm0,%xmm1,%xmm0
+///     vmovq   %xmm0,0x10(%rsi)
+///     mov     0x18(%r8,%rdx,4),%ecx   ; lane 6, SCALAR
+///     add     %ecx,0x18(%rsi)
+///     mov     0x1c(%rsi),%ecx         ; lane 7, SCALAR
+///     add     0x1c(%r8,%rdx,4),%ecx
+///     mov     %ecx,0x1c(%rsi)
+/// ```
+///
+/// Twelve instructions for a load / add / store. `psqt_add` + `psqt_sub` are
+/// ~3.0% of ALL engine instructions (perf study 8 §4.5) because they run once
+/// per resolved feature in *both* the threat fold and the HalfKA fold.
+/// # Safety-free form
+/// `BUCKETS` i32 is exactly 32 bytes — one `ymm` — but a `&[i32]` of merely
+/// RUNTIME length left LLVM's SLP vectoriser unable to see a trip count of 8,
+/// so it emitted a 4-lane group, a 2-lane `vmovq` group, and two SCALAR lanes:
+/// twelve instructions for a load / add / store. A fixed-size array reference
+/// fixes the shape. (A raw-pointer form removes the length check too, but
+/// measured +2.2% — it costs LLVM the aliasing facts the slice index gives it.)
+#[inline]
+fn psqt_row(table: &[i32], feature: usize) -> &[i32; BUCKETS] {
+    table[feature * BUCKETS..][..BUCKETS]
+        .try_into()
+        .expect("psqt rows are BUCKETS wide by construction")
+}
+
+/// Add feature `feature`'s 8-wide PSQ1 row into `psqt`.
 #[inline]
 pub(crate) fn psqt_add(psqt: &mut [i32; BUCKETS], table: &[i32], feature: usize) {
-    let row = &table[feature * BUCKETS..(feature + 1) * BUCKETS];
-    for (a, &w) in psqt.iter_mut().zip(row) {
+    for (a, &w) in psqt.iter_mut().zip(psqt_row(table, feature)) {
         *a += w;
     }
 }
@@ -31,8 +70,7 @@ pub(crate) fn psqt_add(psqt: &mut [i32; BUCKETS], table: &[i32], feature: usize)
 /// Subtract feature `feature`'s PSQ1 row from `psqt`.
 #[inline]
 pub(crate) fn psqt_sub(psqt: &mut [i32; BUCKETS], table: &[i32], feature: usize) {
-    let row = &table[feature * BUCKETS..(feature + 1) * BUCKETS];
-    for (a, &w) in psqt.iter_mut().zip(row) {
+    for (a, &w) in psqt.iter_mut().zip(psqt_row(table, feature)) {
         *a -= w;
     }
 }
@@ -48,13 +86,18 @@ pub(crate) fn psqt_fold(
     adds: &[usize],
     subs: &[usize],
 ) {
-    *dst = *src;
+    // Accumulate in a LOCAL and store once. Paired with `psqt_row`'s fixed-size
+    // row this keeps the eight buckets in one ymm register across the whole
+    // fold instead of round-tripping them to the parent entry on every feature
+    // (perf study 8 §4.5 — the pairing is what pays; neither half does alone).
+    let mut acc = *src;
     for &f in adds {
-        psqt_add(dst, table, f);
+        psqt_add(&mut acc, table, f);
     }
     for &f in subs {
-        psqt_sub(dst, table, f);
+        psqt_sub(&mut acc, table, f);
     }
+    *dst = acc;
 }
 
 /// From-scratch HalfKA PSQT bucket sums for `perspective` — the test/oracle
@@ -237,7 +280,15 @@ impl<'a> HalfkaContext<'a> {
         let key = halfka_king_key(perspective, king);
         let weights = self.weights;
         let psqt_weights = self.psqt_weights;
-        let slot = &mut self.cache[perspective as usize * FINNY_KEYS + key];
+        // Split the borrow so the fold can write the cache entry AND the stack
+        // slot in one pass (perf study 9 item 4). `cache` and `stack` are
+        // distinct fields, so destructuring is what makes two `&mut` legal
+        // here — the idiomatic Rust answer to "I need two disjoint pieces of
+        // self at once", and no `unsafe`.
+        let Self {
+            cache, stack, bias, ..
+        } = self;
+        let slot = &mut cache[perspective as usize * FINNY_KEYS + key];
         if let Some(cached) = slot.as_mut() {
             // Option A (perf study #2): bitboard set-diff against the cached
             // position. Same add/sub SETS as the old sorted-list derivation
@@ -266,21 +317,43 @@ impl<'a> HalfkaContext<'a> {
                     cached.by_piece[color as usize][pt as usize] = new_bb;
                 }
             }
-            apply_i16_deltas(&mut cached.acc, weights, &adds[..add_len], &subs[..sub_len]);
+            // Two-destination fold (perf study 9 item 4): the cache entry is
+            // its own memo for the next refresh with this king key, and the
+            // stack slot is what the head reads — the same 2560 bytes in two
+            // places. Folding in place and then assigning the stack slot spent
+            // a full `memmove` (measured at **102.9 instructions/node**, i.e.
+            // 1.45% of ALL engine instructions, by a black_box'd doubled-copy
+            // probe; the naive doubled assignment measured +0.006% because
+            // dead-store elimination removed it). Writing both homes from the
+            // registers the fold already holds costs one store per 32 lanes.
+            apply_i16_deltas_dual(
+                &mut cached.acc,
+                &mut stack[ply].acc[perspective as usize],
+                weights,
+                &adds[..add_len],
+                &subs[..sub_len],
+            );
             // T6c: the cache's PSQT sums see the SAME add/sub set, so a cached
             // refresh restores the skip channel exactly (the corruption trap
             // the deploy contract calls out).
             if !psqt_weights.is_empty() {
+                // Same register-resident accumulate as `psqt_fold`.
+                let mut acc = cached.psqt;
                 for &f in &adds[..add_len] {
-                    psqt_add(&mut cached.psqt, psqt_weights, f);
+                    psqt_add(&mut acc, psqt_weights, f);
                 }
                 for &f in &subs[..sub_len] {
-                    psqt_sub(&mut cached.psqt, psqt_weights, f);
+                    psqt_sub(&mut acc, psqt_weights, f);
                 }
+                cached.psqt = acc;
             }
+            // The accumulator is already in the stack slot (the dual fold put
+            // it there); only the 32-byte PSQT pair is left to publish.
+            stack[ply].psqt[perspective as usize] = cached.psqt;
+            return;
         } else {
             let mut acc = [0i16; ACC];
-            acc.copy_from_slice(&self.bias[..ACC]);
+            acc.copy_from_slice(&bias[..ACC]);
             let mut adds = [0usize; 32];
             let mut len = 0usize;
             let mut by_piece = [[Bitboard::EMPTY; 6]; 2];
@@ -305,9 +378,13 @@ impl<'a> HalfkaContext<'a> {
                 by_piece,
             });
         }
+        // COLD path only (the slot was empty): one from-scratch build, then the
+        // single copy into the stack. Leaving it as a copy is deliberate — the
+        // cold branch runs once per king key per search, so a second kernel
+        // variant here would buy nothing.
         let cached = slot.as_ref().expect("slot filled above");
-        self.stack[ply].acc[perspective as usize] = cached.acc;
-        self.stack[ply].psqt[perspective as usize] = cached.psqt;
+        stack[ply].acc[perspective as usize] = cached.acc;
+        stack[ply].psqt[perspective as usize] = cached.psqt;
     }
 }
 

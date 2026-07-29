@@ -118,6 +118,13 @@ pub const ZERO_PSQT: PsqtPair = [[0; BUCKETS]; 2];
 pub(crate) const FT_QUANT: i32 = 255; // FT activation clamp ceiling / QA
 /// Quantization scale of the separately exported FullThreats transformer.
 /// CENN-v2 fixes this as an architecture constant so its weights fit in i8.
+///
+/// The RUNTIME carries the `FT_QUANT / THREAT_QUANT` frame ratio as exactly 4
+/// rather than 255/64 = 3.984375 — a 0.39% gain change on the threat channel
+/// that turns a six-op per-lane rescale into one shift (perf study 8 §4.6).
+/// This constant therefore documents the EXPORT frame, and is no longer read
+/// by the merge; `#[allow(dead_code)]` keeps it as the format's record.
+#[allow(dead_code)]
 pub(crate) const THREAT_QUANT: i32 = 64;
 pub(crate) const L1_QUANT: i32 = 64; // L1 weight scale / QB
 pub(crate) const FT_SHIFT: i32 = 9; // pairwise-multiply right shift
@@ -144,6 +151,21 @@ const OUTPUT_BUCKETS_LAYOUT: [usize; 33] = [
 #[inline]
 pub fn output_bucket(piece_count: usize) -> usize {
     OUTPUT_BUCKETS_LAYOUT[piece_count]
+}
+
+/// The D47V output-skip lane, quantised to i8 at load (perf study 8 §4.7).
+///
+/// `w[b][i] ≈ q[b · L1 + i] · scale[b]`, with a per-bucket scale so a bucket
+/// whose weights are small keeps its full i8 resolution. Quantising costs
+/// accuracy — measured, not assumed, on the 800-FEN battery — and buys a
+/// 6x cheaper lane: `vpdpbusd` consumes 64 u8 x i8 pairs per instruction where
+/// the f32 form needed a widen, a convert and an FMA per 16.
+#[derive(Debug)]
+pub struct SkipLane {
+    /// `[BUCKETS][L1]` i8, bucket-major contiguous.
+    pub q: Box<[i8]>,
+    /// Per-bucket dequantisation scale, `[BUCKETS]`.
+    pub scale: Box<[f32]>,
 }
 
 /// The head's per-bucket weights + the net's output scale. Format-agnostic: the
@@ -186,9 +208,9 @@ pub struct SotaHead {
     pub l3_wdl_weights: Option<Box<[f32]>>,
     /// `[3]` f32 biases paired with [`l3_wdl_weights`](Self::l3_wdl_weights).
     pub l3_wdl_biases: Option<Box<[f32]>>,
-    /// D47V output-skip lane (`[L1 · BUCKETS]` f32 row-major, jax `skipw`).
+    /// D47V output-skip lane, QUANTISED TO i8 at load ([`SkipLane`]).
     /// `None` = pre-skip net: the eval path is bit-identical to before.
-    pub skip_weights: Option<Box<[f32]>>,
+    pub skip_weights: Option<SkipLane>,
 }
 
 /// Pairwise-multiply FT activation (design/11 §12.3 step 1): sum the two
@@ -220,13 +242,11 @@ pub fn policy_trunk(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color) -
 #[cfg(test)]
 #[inline]
 fn merge_transformers(pst: i16, threat: i16) -> i16 {
-    let scaled = i32::from(threat) * FT_QUANT;
-    let rounded = if scaled >= 0 {
-        (scaled + THREAT_QUANT / 2) / THREAT_QUANT
-    } else {
-        (scaled - THREAT_QUANT / 2) / THREAT_QUANT
-    };
-    (i32::from(pst) + rounded).clamp(0, FT_QUANT) as i16
+    // One shift: the 255/64 frame ratio is carried as 4 (a 0.39% gain change
+    // on the threat channel), which is what every SIMD backend emits and what
+    // the 800-FEN fidelity check measured at mean 0.14 SF cp (study 8 §4.6).
+    let scaled = i32::from(threat) << 2;
+    (i32::from(pst) + scaled).clamp(0, FT_QUANT) as i16
 }
 
 /// Indices of the 4-byte groups (of `L1/4`) holding any nonzero activation
@@ -420,15 +440,20 @@ impl SotaHead {
         // before the cp scale — mirroring SF's fc_0 +1 lane. Dequant reuses
         // policy_trunk's proven factor: ft_u8 = hl1_f · FT_QUANT²/2^FT_SHIFT.
         let l3 = if let Some(sk) = &self.skip_weights {
-            // §6-S/S2a/S2 (perf study): branchless (the old `if a != 0`
-            // guard was 66% of ALL engine mispredicts), bucket-major
-            // contiguous lane (loader transposes at parse), vectorized via
-            // the fixed 16-lane + halving-tree shape shared by every
-            // backend (policy_dot discipline). The shape change vs the old
-            // serial sum alters f32 rounding once — gated by integer-cp
-            // identity on the 800-FEN battery at the S2 landing commit.
-            let lane = &sk[bucket * ft.len()..][..ft.len()];
-            let acc = super::sota_simd::skip_dot(&ft[..], lane);
+            // §6-S/S2a/S2 (perf study): branchless, bucket-major contiguous
+            // lane (the loader transposes at parse).
+            //
+            // INTEGER since perf study 8 §4.7. The f32 form was a dense
+            // 1280-lane `vpmovzxbd`/`vcvtdq2ps`/`vfmadd` chain — three
+            // instructions per 16 elements, ~240 per eval — for the one lane
+            // Stockfish gets free as the `FC_0_OUTPUTS + 1`-th row of the
+            // sparse int8 matmul it already runs. We cannot fold it into
+            // `l1_dot` without a 17th output row (a second, near-empty `zmm`
+            // accumulator, which doubles that kernel), but we CAN pay for it
+            // in the same currency: `vpdpbusd` over u8 x i8 does 64 lanes per
+            // instruction, so 1280 lanes cost 20 loads and 20 multiply-adds.
+            let lane = &sk.q[bucket * ft.len()..][..ft.len()];
+            let acc = super::sota_simd::skip_dot_i8(&ft[..], lane) as f32 * sk.scale[bucket];
             l3 + acc * ((1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT) as f32)
         } else {
             l3

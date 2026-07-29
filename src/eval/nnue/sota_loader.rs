@@ -491,7 +491,7 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         l3_var_biases: None,
         l3_wdl_weights: None,
         l3_wdl_biases: None,
-        skip_weights: (!skip_weights.is_empty()).then_some(skip_weights),
+        skip_weights: (!skip_weights.is_empty()).then(|| quantise_skip_lane(&skip_weights)),
     };
 
     Ok(SotaNetwork {
@@ -506,6 +506,39 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
 /// Parse an SKP1 section (starting at its magic). Strict on this build's
 /// [`BUCKETS`] and accumulator width [`crate::eval::nnue::sota_head::L1`];
 /// tolerant of further trailing bytes (future sections).
+/// Quantise the D47V output-skip lane to i8, one scale per bucket
+/// (perf study 8 §4.7).
+///
+/// `w[b][i] ≈ q[b·L1 + i] · scale[b]`, with `scale[b] = max|w[b]| / 127` so each
+/// bucket spends its full i8 range on its own dynamic range. The lane arrives
+/// bucket-major and contiguous from [`parse_skip_section`], so a bucket is one
+/// slice.
+///
+/// This is a lossy step and it is measured, not asserted: the study reports the
+/// cp deltas over the 800-FEN battery. It buys a ~6x cheaper lane — `vpdpbusd`
+/// takes 64 u8 x i8 pairs per instruction, where the f32 form needed a widen, a
+/// convert and an FMA per 16 lanes — for the one channel Stockfish gets free as
+/// the `FC_0_OUTPUTS + 1`-th row of the sparse matmul it already runs.
+fn quantise_skip_lane(w: &[f32]) -> sota_head::SkipLane {
+    let hl = w.len() / BUCKETS;
+    let mut q = vec![0i8; w.len()].into_boxed_slice();
+    let mut scale = vec![0.0f32; BUCKETS].into_boxed_slice();
+    for b in 0..BUCKETS {
+        let row = &w[b * hl..(b + 1) * hl];
+        let peak = row.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+        // An all-zero bucket keeps scale 0 and q 0 — it contributes nothing
+        // either way, and this avoids a 0/0.
+        let s = if peak > 0.0 { peak / 127.0 } else { 0.0 };
+        scale[b] = s;
+        if s > 0.0 {
+            for (dst, &v) in q[b * hl..(b + 1) * hl].iter_mut().zip(row) {
+                *dst = (v / s).round().clamp(-127.0, 127.0) as i8;
+            }
+        }
+    }
+    sota_head::SkipLane { q, scale }
+}
+
 fn parse_skip_section(sec: &[u8]) -> Result<Box<[f32]>, SotaNnueError> {
     const HDR: usize = 12;
     if sec.len() < HDR {
