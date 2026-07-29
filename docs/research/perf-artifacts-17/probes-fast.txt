@@ -1,0 +1,2 @@
+fast=null-1                           instr=31,688,912,647 nodes= 5,001,562 per_node=  6335.8 brs_per_node=  673.6 hash=5ca978e012da1bb0
+fast=null-2-rebuild                   instr=31,688,924,538 nodes= 5,001,562 per_node=  6335.8 brs_per_node=  673.6 hash=5ca978e012da1bb0

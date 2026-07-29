@@ -1,0 +1,40 @@
+block               ARCHON        SF     delta
+startup/io          6980.0    7260.3    -280.2
+search              1188.8     940.9    +248.0
+movepick             685.5     699.0     -13.5
+eval head           2207.6    1376.1    +831.5
+acc fold            7858.9    2012.4   +5846.5
+threat gen          1140.5     505.3    +635.3
+eval glue            167.6      44.3    +123.2
+make/unmake          452.8     384.5     +68.3
+board queries        415.4     548.3    -133.0
+movegen              154.6      89.9     +64.6
+histories            254.6     162.2     +92.4
+tt                     0.0     150.4    -150.4
+libc                 312.9     653.8    -340.9
+unbucketed            86.8     136.1     -49.3
+TOTAL              21906.0   14963.5   +6942.5
+
+-- ARCHON unbucketed, top 10 --
+     24.42  core::fmt::write'2
+     12.41  core::fmt::write
+     12.10  <alloc::string::String as core::fmt::Write>::write_char
+      7.45  <alloc::raw_vec::RawVecInner>::finish_grow
+      6.46  <chessengine::types::Square as core::fmt::Display>::fmt
+      5.48  <alloc::raw_vec::RawVecInner<_>>::reserve::do_reserve_and_handle::<alloc::alloc::Global>
+      4.51  <char as core::fmt::Display>::fmt
+      2.95  core::slice::sort::stable::drift::sort::<chessengine::search::rootmoves::RootMove, <[chessengine
+      1.09  chessengine::cuckoo::build
+      0.95  core::slice::sort::stable::quicksort::quicksort::<chessengine::search::rootmoves::RootMove, <[ch
+
+-- SF unbucketed, top 10 --
+     31.45  Stockfish::Search::SearchManager::check_time(Stockfish::Search::Worker&)
+      8.44  tolower
+      6.97  _dl_lookup_symbol_x
+      5.90  std::chrono::_V2::steady_clock::now()
+      5.84  std::_Rb_tree<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, s
+      5.54  do_lookup_x
+      5.19  void std::__insertion_sort<__gnu_cxx::__normal_iterator<Stockfish::Search::RootMove*, std::vecto
+      4.97  Stockfish::StatsEntry<short, 8192, true>::operator<<(int)
+      4.79  main
+      4.06  clock_gettime@@GLIBC_2.17
