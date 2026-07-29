@@ -34,16 +34,30 @@ BLOCKS = [
     ("search", [r"Worker>::search", r"Worker::search", r"Worker>::qsearch", r"Worker::qsearch",
                 r"iterative_deepening", r"stat_score", r"update_all_stats", r"value_to_tt",
                 r"Worker>::do_move", r"Worker::do_move\(", r"undo_move\(Stockfish::Move\)$"]),
-    ("movepick", [r"MovePicker", r"partial_insertion_sort", r"movepick"]),
+    ("movepick", [r"MovePicker", r"partial_insertion_sort", r"movepick",
+                  r"ensure_threats", r"compute_threats"]),
     ("eval head", [r"forward_into", r"::propagate", r"FeatureTransformer::transform",
                    r"l1_dot", r"l2_tail", r"find_nnz", r"activate", r"skip_dot",
                    r"Network::evaluate", r"SotaHead"]),
+    # WARNING: SF's `update_accumulator_refresh_cache` also contains the INLINED
+    # `FullThreats::append_active_indices`
+    # (eca43a97:src/nnue/nnue_accumulator.cpp:577) -- a from-scratch enumeration
+    # of every active threat feature, i.e. SF's counterpart of our
+    # `refresh_threat`. It lands in "acc fold" here and NO regex can split it.
+    # SF's "threat gen" row is therefore a LOWER BOUND (D33 reviewer B).
     ("acc fold", [r"i8_deltas", r"i16_deltas", r"apply_combined",
                   r"update_accumulator_incremental", r"update_accumulator_refresh_cache",
                   r"finny_refresh_into", r"HalfkaContext", r"AccumulatorStack",
                   r"halfka", r"HalfKA"]),
-    ("threat gen", [r"sota_threats", r"ThreatContext", r"refresh_threat", r"ensure_threats",
-                    r"compute_threats", r"update_piece_threats", r"append_changed_indices",
+    # `ensure_threats`/`compute_threats` are the Wave-G MOVE-ORDERING attack map
+    # (D30), consumed by `MovePicker::init_quiets` -- NOT the NNUE FullThreats
+    # feature set. Stockfish's counterpart is `attacks_by<>` inlined into
+    # `MovePicker::score`, which lands in "movepick". Bucketing ours into
+    # "threat gen" was a like-for-unlike comparison and inflated our threat
+    # column by 74.1 i/n (D33 reviewer B). They now go to movepick, which is
+    # listed above this row so it wins.
+    ("threat gen", [r"sota_threats", r"ThreatContext", r"refresh_threat",
+                    r"update_piece_threats", r"append_changed_indices",
                     r"FullThreats", r"record_square_touch", r"record_targets",
                     r"ThreatPosition"]),
     ("eval glue", [r"SotaContext", r"EvalContext", r"Worker::evaluate", r"Worker>::evaluate",

@@ -1,21 +1,22 @@
 # branch buckets, integer code only, EXACT
-block              ARCHON       SF    delta
-threat gen          123.6     14.6   +109.0
-movepick             81.2     54.8    +26.4
-search body          85.0     68.5    +16.5
-make/unmake          34.1     12.8    +21.3
-board queries        37.5     25.8    +11.7
-movegen              21.9      8.3    +13.7
-histories            20.0     12.4     +7.6
-tt                    3.0      8.3     -5.3
-other                30.5     17.1    +13.5
-TOTAL               436.8    222.5   +214.3
+block                                            ARCHON       SF    delta
+movepick                                           88.0     54.8    +33.2
+threat gen                                        116.7     14.6   +102.1
+SF refresh-cache (threat+fold, UNSPLITTABLE)        0.0     27.0    -27.0
+search body                                        85.0     68.5    +16.5
+make/unmake                                        34.1     12.8    +21.3
+board queries                                      37.5     25.8    +11.7
+movegen                                            21.9      8.3    +13.7
+histories                                          20.0     12.4     +7.6
+tt                                                  3.0      8.3     -5.3
+other                                              30.5     17.1    +13.5
+TOTAL                                             436.8    249.5   +187.3
 
 # EXACT conditional branches per node (callgrind Bc); SIMD kernels and
 # start-up EXCLUDED -- see perf study 17 section 6.2 for why the SIMD
 # rows in this frame are an artifact and must not be read.
 # all rows, including the excluded ones: ARCHON 3030.2  SF 1518.2
-# integer-only subtotal:                 ARCHON 436.8  SF 222.5
+# integer-only subtotal:                 ARCHON 436.8  SF 249.5
 
 == ARCHON ==
   br/node  calls/node   br/call  function
@@ -48,6 +49,7 @@ TOTAL               436.8    222.5   +214.3
   br/node  calls/node   br/call  function
     36.39      0.6598      55.2  int Stockfish::Search::Worker::search<(Stockfish::NodeType)0>(Stockfish::Position&, Stoc
     28.80      0.5753      50.1  Stockfish::(anonymous namespace)::partial_insertion_sort(Stockfish::ExtMove*, Stockfish:
+    27.00      0.1513     178.4  Stockfish::Eval::NNUE::(anonymous namespace)::update_accumulator_refresh_cache(Stockfish
     25.94      2.2221      11.7  Stockfish::MovePicker::next_move()
     10.44      0.2232      46.8  int Stockfish::Search::Worker::search<(Stockfish::NodeType)0>(Stockfish::Position&, Stoc
      8.61      0.4182      20.6  Stockfish::(anonymous namespace)::update_continuation_histories(Stockfish::Search::Stack
@@ -69,4 +71,3 @@ TOTAL               436.8    222.5   +214.3
      2.91      1.4488       2.0  Stockfish::Attacks::attacks_bb(Stockfish::PieceType, Stockfish::Square, unsigned long)
      2.82      1.0000       2.8  Stockfish::Search::Worker::do_move(Stockfish::Position&, Stockfish::Move, Stockfish::Sta
      2.08      1.0381       2.0  Stockfish::Position::is_draw(int) const
-     1.94      0.9757       2.0  Stockfish::(anonymous namespace)::correction_value(Stockfish::Search::Worker const&, Sto

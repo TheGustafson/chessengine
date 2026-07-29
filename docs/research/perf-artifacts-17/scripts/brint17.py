@@ -23,7 +23,7 @@ from cgsum17 import parse, demangle  # noqa: E402
 SKIP = re.compile(
     r"avx2::|avx512::|::sse\d?::|read_leb_128|load_v2_bytes|init_magics|FromIterator|"
     r"Worker::clear|Worker>::clear|NNUE::permute|hash_bytes|get_process_affinity|"
-    r"Network::load|apply_combined|update_accumulator_refresh_cache|"
+    r"Network::load|apply_combined|"
     r"NetworkArchitecture::propagate|streambuf|istream|__mem|read_i16s|read_i32s|"
     r"iterative_deepening|SearchManager|_dl_|do_lookup|tolower|clock_gettime|"
     r"Rb_tree|cuckoo::build|core::fmt|Display>::fmt|String as|RawVec|"
@@ -46,9 +46,21 @@ def rows(path, nodes):
 
 
 BUCKETS = [
-    ("threat gen", r"sota_threats|ThreatContext|refresh_threat|ensure_threats|ripple|"
+    # `ensure_threats`/`compute_threats` are the Wave-G MOVE-ORDERING attack map
+    # (D30, `board.rs` `all_threats`/`piece_threats`), not the NNUE FullThreats
+    # feature set -- their consumer is `MovePicker::init_quiets`. Stockfish's
+    # counterpart is `attacks_by<>` inlined into `MovePicker::score`, which is
+    # bucketed to movepick. Putting ours in "threat gen" was a like-for-unlike
+    # comparison (D33 reviewer B). Movepick is listed FIRST so it wins.
+    ("movepick", r"MovePicker|partial_insertion_sort|ensure_threats|compute_threats"),
+    ("threat gen", r"sota_threats|ThreatContext|refresh_threat|ripple|"
                    r"record_|update_piece_threats|append_changed_indices|FullThreats"),
-    ("movepick", r"MovePicker|partial_insertion_sort"),
+    # SF inlines `FullThreats::append_active_indices` -- a from-scratch
+    # enumeration of every active threat feature, the counterpart of our
+    # `refresh_threat` -- into `update_accumulator_refresh_cache`
+    # (eca43a97:src/nnue/nnue_accumulator.cpp:577). No regex can split that
+    # symbol; it is reported on its own row so the ambiguity is visible.
+    ("SF refresh-cache (threat+fold, UNSPLITTABLE)", r"update_accumulator_refresh_cache"),
     ("search body", r"Worker>::search|Worker::search|Worker>::qsearch|Worker::qsearch"),
     ("make/unmake", r"make_move_with|unmake_move|Position::do_move|Position::undo_move|"
                     r"set_check_info|refresh_check_info|from_move|update_slider_blockers|"
@@ -85,11 +97,11 @@ def main():
     ab, ao = bucket(a)
     sb, so = bucket(s)
     print("# branch buckets, integer code only, EXACT")
-    print(f"{'block':<16}{'ARCHON':>9}{'SF':>9}{'delta':>9}")
+    print(f"{'block':<46}{'ARCHON':>9}{'SF':>9}{'delta':>9}")
     for n, _ in BUCKETS:
-        print(f"{n:<16}{ab[n]:>9.1f}{sb[n]:>9.1f}{ab[n] - sb[n]:>+9.1f}")
-    print(f"{'other':<16}{ao:>9.1f}{so:>9.1f}{ao - so:>+9.1f}")
-    print(f"{'TOTAL':<16}{sum(ab.values()) + ao:>9.1f}{sum(sb.values()) + so:>9.1f}"
+        print(f"{n:<46}{ab[n]:>9.1f}{sb[n]:>9.1f}{ab[n] - sb[n]:>+9.1f}")
+    print(f"{'other':<46}{ao:>9.1f}{so:>9.1f}{ao - so:>+9.1f}")
+    print(f"{'TOTAL':<46}{sum(ab.values()) + ao:>9.1f}{sum(sb.values()) + so:>9.1f}"
           f"{sum(ab.values()) + ao - sum(sb.values()) - so:>+9.1f}")
     print()
     print("# EXACT conditional branches per node (callgrind Bc); SIMD kernels and")

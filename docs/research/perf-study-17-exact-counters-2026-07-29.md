@@ -84,16 +84,12 @@ node budget on the same 50 positions:
 `unmake_move`'s 168-byte `StateInfo` restore against Stockfish's pointer hop.
 
 **(b) The block the gap IS in was on the do-not-reopen list.** Threat
-generation, which study 13 §7 ranked "at parity (+33), not a defect":
-
-| | ARCHON | SF |
-|---|---:|---:|
-| threat generation / maintenance, per node | **1148.9** (1232.6 with the libc `memcpy` inside `at_full`) | **674.8** |
-
-**1.70–1.83×, +474 to +558 i/n.** §4 shows exactly how a +474 gap read as +33:
-study 13 hand-picked three of our nine threat symbols and compared them against
-a sampled SF number that is 1.31× the exact one. Two errors, same direction,
-multiplied.
+generation, which study 13 §7 ranked "at parity (+33), not a defect", is
+**+250 to +400 i/n, 1.30× to 1.59×** — the largest addressable block found.
+§4 shows how a gap of that size read as +33, and §4.4 is the **partial
+retraction of this study's own first number**, which was +474 to +558 and was
+over-stated by exactly the class of error it accuses study 13 of. Read §4.4
+before quoting §4.
 
 **(c) An instrument, and the trap inside it.** `callgrind` counts every executed
 instruction exactly, per function, on any binary — so ARCHON and Stockfish go
@@ -104,8 +100,8 @@ dispatch is *runtime*, so the AVX2 build still runs the AVX-512 kernels natively
 and only falls back under valgrind. §6.2 is the near-miss headline this
 produced and how it was caught.
 
-**(d) The cheapest lever in the engine turned out to be `#[cold]`.** −96.3 i/n
-for five call-site splits, no algorithm changed, no semantics touched, three
+**(d) The cheapest lever in the engine turned out to be `#[cold]`.** −97.7 i/n
+for six call-site splits, no algorithm changed, no semantics touched, three
 node-identity checks green. §5 also draws the boundary: the sixth split of the
 same shape cost **+64.0**, and the difference between them is a rule.
 
@@ -334,9 +330,17 @@ precisely what a self-cost profile then attributes differently.
 
 ---
 
-## 4. WHERE THE GAP ACTUALLY IS — THREAT GENERATION, 1.70–1.83×
+## 4. WHERE THE GAP ACTUALLY IS — THREAT GENERATION, 1.30×–1.59×
 
-### 4.1 The measurement
+> **READ §4.4 FIRST.** The table in §4.1 is this study's first cut and it is
+> **over-stated**. §4.4 is the D33 round-B correction, verified against the
+> reference and against this study's own call graph: our column counted a
+> move-ordering structure that is not the NNUE feature set at all, and
+> Stockfish's column is missing an inlined from-scratch threat enumeration that
+> no regex can reach. The corrected statement is **+250 to +400 i/n,
+> 1.30×–1.59×**, and the bracket cannot be narrowed without one SF rebuild.
+
+### 4.1 The measurement, as first taken (over-stated — see §4.4)
 
 Same frame, same 50 positions, same budget, self-costs (which sum exactly to the
 engine's total, so a bucket can be checked):
@@ -356,7 +360,8 @@ engine's total, so a bucket can be checked):
 | **total** | **1148.9** | | **total** | **674.8** |
 | (+ the libc `memcpy` `at_full` calls, 0.3111/node) | 1232.6 | | | |
 
-**+474 to +558 i/n. 1.70× to 1.83×.** Neither side includes the SIMD
+**As first taken: +474 to +558 i/n, 1.70×–1.83×. §4.4 corrects this to
++250…+400 and 1.30×–1.59×.** Neither side includes the SIMD
 accumulator fold: ARCHON's `at_full` has an inclusive cost of 4618.3 i/n but
 3725.6 of that is `i8_deltas_into`, and SF's fold is `apply_combined`. Both
 sides' attack lookups are included (SF's `both_attacks_bb` is called 3.61 times
@@ -381,7 +386,7 @@ Two independent errors, both pointing the same way:
    self / 674.8 inclusive** exactly, against the profile's 686. A 1.31×
    overstatement.
 
-0.65 × 1.31 ≈ 0.85, and a +474 gap reads as +33.
+0.65 × 1.31 ≈ 0.85, and a gap of a few hundred i/n reads as +33.
 
 **The rule this pays for: A BLOCK IS NOT A SYMBOL LIST.** A bucketing that does
 not sum to the engine's total cannot be audited, and when the two engines' lists
@@ -396,9 +401,67 @@ prints an `unbucketed` row for exactly this reason.
 * Not a PGO number. This is the callgrind frame (§2.2), so it carries the 4.8%
   v3-vs-native inflation and nothing else from §2.2's "not usable" column —
   every symbol in the table is integer code.
-* Not that it is 474 i/n of available headroom. It is 474 i/n of **difference**,
-  and the first job of study 18 is to find out how much of it is the design
-  choice and how much is the spelling.
+* Not headroom. It is a **difference**, and the first job of study 18 is to find
+  out how much of it is the design choice and how much is the spelling.
+
+### 4.4 THE CORRECTION — §4.1 was over-stated, by the error §4.2 names
+
+The D33 round-B reviewer attacked §4.1 with the reference open and broke it in
+two places. **Both were verified here before being accepted**, and together they
+take the gap from +474…+558 down to **+250…+400**.
+
+**(i) `Board::ensure_threats` (74.10 i/n) is not the NNUE feature set at all.**
+It fills `Board::threats` — the **Wave-G move-ordering attack map** (D30):
+squares attacked by the side not to move, with our king x-rayed out of slider
+occupancy. Verified at `board.rs:709-728`: its consumers are
+`all_threats`/`piece_threats`/`threat_map`, and this study's own call graph shows
+its callers are `search::<NonPv>` (0.3316/node) and `MovePicker::init_quiets`
+(0.1624/node) — never the accumulator. Stockfish's counterpart is
+`attacks_by<>` (`eca43a97:src/movepick.cpp:205-208`), inlined into
+`MovePicker::score`, and `blocks17.py` buckets it into **movepick**. Ours was in
+threat gen. **A like-for-unlike comparison, and it inflated our column by 74.1.**
+
+**(ii) Stockfish's column is missing an inlined from-scratch threat
+enumeration.** `ThreatFeatureSet::append_active_indices` — verified present at
+`eca43a97:src/nnue/features/full_threats.cpp:210` and called **unconditionally**
+at `eca43a97:src/nnue/nnue_accumulator.cpp:577`, inside
+`update_accumulator_refresh_cache`. It is our `refresh_threat`'s counterpart. It
+has **no symbol in the profile** — GCC inlined it — so its cost is inside that
+function's **433.43 i/n self at 0.1513 calls/node**, which `blocks17.py` buckets
+as *acc fold*. **No regex can split that symbol.** SF's threat number is
+therefore a **lower bound**, and its true value is `674.8 + X` for some
+`0 ≤ X ≤ 433.4`.
+
+| | ARCHON | SF | ratio |
+|---|---:|---:|---:|
+| §4.1 as first taken | 1148.9 | 674.8 | 1.70× |
+| − `ensure_threats` (i) | **1074.8** | 674.8 | 1.59× |
+| … with `X` = 100 | 1074.8 | 774.8 | 1.39× |
+| … with `X` = 150 | 1074.8 | 824.8 | **1.30×** |
+| … with `X` = 433.4 (all of it, implausible — the symbol also does the HalfKA cache diff) | 1074.8 | 1108.2 | 0.97× |
+
+**The honest statement is 1.30×–1.59×, +250 to +400 i/n**, with the residual
+uncertainty living entirely in one unsplittable Stockfish symbol.
+
+**One half of the reviewer's correction was NOT taken, and it is worth saying
+why.** It also argued that `update_piece_threats<true>`'s inclusive 371.0
+over-credits SF by ~41, because only 3.61 of `both_attacks_bb`'s 5.02 calls/node
+come from that edge. That is a misreading of the instrument: callgrind's
+inclusive figure is **measured per call edge**, not computed as self + all of a
+callee. The arithmetic closes exactly — 229.01 self + 101.1 (`both_attacks_bb`
+edge) + 40.9 (`attacks_bb` edge) = 371.0 — so the other 1.41 calls/node are
+already attributed elsewhere. Rejected, with the number.
+
+**And the meta-point, which is the most useful thing in this study.** §4.2
+diagnoses study 13 as having hand-picked symbols on one side and trusted a
+sampler on the other. §4.1 then committed a *variant* of the same fault, in an
+instrument built specifically to prevent it: an exhaustive regex bucketing over
+every symbol cannot be audited when the *reference* engine has inlined half a
+block into a function belonging to a different block. **Exhaustive bucketing
+solves incompleteness, not mis-attribution.** The fix is not a better regex; it
+is one Stockfish rebuild with `__attribute__((noinline))` on
+`append_active_indices` — §11 item 1b's cheapest next test, now the first thing
+study 18 should do.
 
 ---
 
@@ -524,22 +587,25 @@ rest (`cg/branches-integer-only.txt`):
 
 | block | ARCHON | SF | Δ |
 |---|---:|---:|---:|
-| **threat generation** | **123.6** | **14.6** | **+109.0** (8.5×) |
-| movepick | 81.2 | 54.8 | +26.4 |
+| **threat generation** | **116.7** | **14.6** | **+102.1** (8.0×) |
+| movepick (incl. the Wave-G attack map both sides, §4.4) | 88.0 | 54.8 | +33.2 |
 | make/unmake | 34.1 | 12.8 | +21.3 |
 | search body | 85.0 | 68.5 | +16.5 |
 | movegen | 21.9 | 8.3 | +13.7 |
 | board queries | 37.5 | 25.8 | +11.7 |
 | histories | 20.0 | 12.4 | +7.6 |
 | tt | 3.0 | 8.3 | −5.3 |
+| SF's `update_accumulator_refresh_cache` (threat + fold, **unsplittable** — §4.4) | 0.0 | 27.0 | −27.0 |
 | other | 30.5 | 17.1 | +13.5 |
-| **TOTAL, integer code** | **436.8** | **222.5** | **+214.3 (1.96×)** |
+| **TOTAL, integer code** | **436.8** | **249.5** | **+187.3 (1.75×)** |
 
-**Half of the integer branch gap — 109.0 of 214.3 — is threat generation, and it
-is the same block §4 found with an entirely different statistic.** Two
-independent exact measurements, instructions and branches, on both engines,
-converge on one subsystem. That is the answer to "something else generates them"
-and it is not bounds checks, not movegen, not the search.
+**Between 75 and 102 of the +187.3 integer branch gap is threat generation** —
+the range is the same unsplittable SF symbol as §4.4, whose 27.0 branches/node
+are part threat enumeration and part accumulator fold. **It is the same block
+§4 found with an entirely different statistic.** Two independent exact
+measurements, instructions and branches, on both engines, converge on one
+subsystem. That is the answer to "something else generates them", and it is not
+bounds checks, not movegen, not the search.
 
 The mechanism is visible in the call rates: our threat features are *re-derived*
 per fold with per-square loops (`record_square_touch` 1.06 calls/node,
@@ -735,12 +801,12 @@ Optional, and the cheapest thing that would extend this study: rerun
 **Closed by this study, with numbers:** make/unmake (0.970× inclusive — do not
 reopen), `refresh_check_info` (0.771×), `attacks::tables()` (0.0000
 force-calls/node), `capture_stage`'s jump table for instructions (five
-spellings). **Re-opened by this study:** threat generation.
+spellings). **Re-opened by this study:** threat generation — at +250…+400, not the +474…+558 §4.1 first reported (§4.4).
 
 | # | item | size | confidence | cheapest next test |
 |---|---|---:|---|---|
 | 1 | **THE EAGER KING-CROSS THREAT REFRESH IS PAID ON NODES THAT NEVER EVALUATE.** §3.3. `ThreatContext::apply_at` rebuilds a perspective's whole threat accumulator from scratch when that perspective's king crosses the d/e mirror — **222.7 i/n, 25% of the entire make side, at 0.0357 calls/node (6,240 instructions per call)**. It runs at PUSH time, i.e. on every made move; only **41.5%** of nodes ever evaluate, so **~58% of it is thrown away**. Everything else in that module is already lazy; this is the one eager path | **~130** | **high — exact, and the mechanism is a one-line design choice** | it is eager only because `refresh_threat` takes a `&Board` and the live board is gone by fold time — but `apply_at` **already stores a `ThreatPosition` snapshot in the same entry**, and that struct carries exactly what `for_each_threat` reads (`by_type`, `by_color`, `occ`, `kings` vs `board.pieces(c,pt)`, `all_occupancy()`, `king_square()`). So: make `for_each_threat` take the snapshot instead of the board, mark the crossed ply "needs refresh" rather than `computed`, and teach `compute`'s ancestor walk to do the refresh when it reaches such a ply. **Needs the NNUE gate, so it is not a gate-frozen session's work**, and it collides with study 16's unmerged `refresh_threat_into` — do them in one study |
-| 1b | **Threat generation overall, 1.70–1.83× SF.** §4. Our nine symbols cost 1148.9 i/n against SF's 674.8. The designs differ (lazy regenerate-at-fold on 41.5% of nodes vs eager maintenance on 100%), so part of the gap is the design and part is the spelling, and **nobody knows the split** | **+474 to +558** | **high — exact, matched, both engines** | split it before attacking it: `at_full` is 466.19 i/n at 1123 i/call and inlines `compute`; put `#[inline(never)]` on `compute`, `build_deltas`, `resolve_both` and the fold, re-run `cg17.sh`, and price the four stages. One 6 s build and one 10 s callgrind run. **Only then** decide between a cheaper regeneration and SF's eager shape |
+| 1b | **Threat generation overall, 1.30×–1.59× SF.** §4 as corrected by §4.4. Our eight symbols cost 1074.8 i/n against SF's `674.8 + X`, where `0 ≤ X ≤ 433.4` is the share of `update_accumulator_refresh_cache` that is the inlined `append_active_indices`. The designs differ (lazy regenerate-at-fold on 41.5% of nodes vs eager maintenance on 100%), so part of the gap is the design and part is the spelling, and **nobody knows the split** | **+250 to +400** | **high on the direction, BRACKETED on the size** | **first, resolve `X`**: rebuild SF with `__attribute__((noinline))` on `FullThreats::append_active_indices` (`eca43a97:src/nnue/features/full_threats.cpp:210`) and re-run `cg17.sh` — `sfbuild17.sh` already does the rebuild, this is a one-line patch on top and 30 s. **Then** split ours: `at_full` is 466.19 i/n at 1123 i/call and inlines `compute`; put `#[inline(never)]` on `compute`, `build_deltas`, `resolve_both` and the fold, re-run `cg17.sh`, price the four stages |
 | 2 | **The libc `memcpy` inside `at_full`** — 0.3111 calls/node, 83.7 i/n inclusive, ~269 instructions per call, counted not estimated. Not the empty-delta copy (study 14 already chunked that one) | 20–80 | **high — counted** | `memspy16.sh` from study 16, whose interposer already tags the caller and the payload size. The class it belongs to has paid twice (study 15 −22.7, study 16 −14.6) |
 | 3 | **`unmake_move`'s 168-byte state restore** — the other half of study 14's trade. 79.2 i/call vs SF's 53.6 | **+25.5** | **high — exact** | not a respelling: SF restores by pointer. The honest options are (a) leave it, since study 14's make-side win was larger, or (b) make `StateInfo`'s *restored* prefix smaller by moving the fields `unmake` does not need (blockers, pinners, check_squares — 48 B) out of the copied block. (b) is a design change to doc 04 and wants its own study |
 | 4 | **The `#[cold]` sweep is not finished.** §5's rule (a whole arm of a top-level kind dispatch) has more sites: `movepick`'s scoring loops, `see_ge`'s non-Normal short circuit, `pseudo_legal`'s non-Normal branch (which allocates a 520-byte `MoveList` frame) | 10–40 | medium | one `probe17.sh` cycle each, 6 s. Watch for u3's failure mode: if the caller has to materialise arguments it otherwise never computes, it loses |
@@ -770,18 +836,19 @@ spellings). **Re-opened by this study:** threat generation.
 
 ## 12. THREATS TO VALIDITY
 
-1. **Nothing here is PGO-measured** (§0.1). The −96.3 is a probe-frame number
+1. **Nothing here is PGO-measured** (§0.1). The −97.7 is a probe-frame number
    and the PGO figure is a prediction with a 1.8× spread. Machine constraint,
    not choice.
 2. **The callgrind frame is AVX2 and shallow** (§2.2). Every number quoted from
    it is either an integer-code self-cost (up to 4.8% inflated) or a
    ~1.0-call/node inclusive cost. No total and no ratio from that frame is
    quoted as a result — including the 2.10× the frame's own slope shows.
-3. **§4's threat comparison depends on the bucketing being complete on both
-   sides.** It was built by grepping every symbol containing a threat token in
-   each engine, not by hand-picking; that is the fix for §4.2's failure mode,
-   but a threat symbol named something else on either side would still be
-   missed.
+3. **§4's threat comparison was WRONG WHEN FIRST WRITTEN and is corrected in
+   §4.4.** Exhaustive regex bucketing fixes incompleteness but not
+   mis-attribution: Stockfish has inlined `append_active_indices` into a
+   function that belongs to a different block, and no bucketing can reach it.
+   The surviving number is a bracket, not a point, and the bracket is only
+   closable by rebuilding Stockfish.
 4. **The branch decomposition in §6.2's last paragraph is sampled**, therefore
    soft, therefore ranked at low confidence.
 5. **Study 16's −29.2 is not in this baseline.** The two branches touch disjoint

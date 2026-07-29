@@ -1,10 +1,10 @@
 block               ARCHON        SF     delta
 startup/io          6980.0    7260.3    -280.2
 search              1188.8     940.9    +248.0
-movepick             685.5     699.0     -13.5
+movepick             759.6     699.0     +60.6
 eval head           2207.6    1376.1    +831.5
 acc fold            7858.9    2012.4   +5846.5
-threat gen          1140.5     505.3    +635.3
+threat gen          1066.4     505.3    +561.2
 eval glue            167.6      44.3    +123.2
 make/unmake          452.8     384.5     +68.3
 board queries        415.4     548.3    -133.0
