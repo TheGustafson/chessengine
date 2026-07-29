@@ -83,12 +83,12 @@
 //! side (and every non-king move) stays incremental.
 
 use super::sota_accumulator::{psqt_add, psqt_sub};
-#[cfg(test)]
-use super::sota_features::{for_each_threat, refresh_threat};
 use super::sota_features::{
     ACC, KEPT_VICTIMS, THREAT_DIMS, ThreatPosition, ThreatResolver, for_each_threat_at,
     refresh_threat_into_at, sf_code, threat_pair_kept,
 };
+#[cfg(test)]
+use super::sota_features::{for_each_threat, refresh_threat};
 use super::sota_head::BUCKETS;
 use super::sota_simd::apply_i8_deltas_into;
 use crate::attacks::{AttackTables, knight_attacks, pawn_attacks, ray_pass, tables};
@@ -1554,7 +1554,10 @@ mod tests {
             ctx.apply_at(ply, &dp, &b);
             ply += 1;
         }
-        assert!(ply >= 4, "expected plies stacked above the cross, got {ply}");
+        assert!(
+            ply >= 4,
+            "expected plies stacked above the cross, got {ply}"
+        );
 
         // The FIRST read of the whole line: it must discharge the deferred
         // refresh at ply 1 and then fold plies 2..=ply on top of it.

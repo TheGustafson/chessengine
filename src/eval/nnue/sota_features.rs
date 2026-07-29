@@ -682,7 +682,12 @@ pub(super) fn for_each_threat_at(
             if let Some(to) = from.shifted(c.pawn_push())
                 && all_pawns.contains(to)
             {
-                emit(attacker, from, to, Piece::new(pos.color_on(to), PieceType::Pawn));
+                emit(
+                    attacker,
+                    from,
+                    to,
+                    Piece::new(pos.color_on(to), PieceType::Pawn),
+                );
             }
         }
 
@@ -809,9 +814,7 @@ pub(super) fn refresh_threat_into_at(
         THREAT_DIMS * ACC,
         "FullThreats transformer has the wrong size"
     );
-    for_each_threat_at(pos, perspective, |idx| {
-        add_column(dst, threat_weights, idx)
-    });
+    for_each_threat_at(pos, perspective, |idx| add_column(dst, threat_weights, idx));
 }
 
 /// Build both accumulators for both perspectives — the `(pst, threat)` pair
