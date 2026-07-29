@@ -1748,3 +1748,42 @@ That is a genuine, actionable search finding — the first of this session — a
 the honest next step is to locate it in the PRINCIPLED parameters
 (`OPT_SCALE_*`, `OPT_SCALE_CLOCK_CAP`, `MAX_SCALE_*`) rather than shipping a
 blunt 0.6× multiplier bolted onto a mis-named contestedness knob.
+
+## TM BACK-LOADING — REFUTED BY ITS OWN CONFIRMATION ARM (2026-07-28)
+
+**DO NOT SHIP. The +52.6 was an instrument artifact.**
+
+| instrument | arm `C=−2048` (back-load) | n |
+|---|---|---|
+| `nodestime=100` (nodes as clock) | **+52.6 ± 21.2** | 406 |
+| **real time control 10+0.1** | **−36.6 ± 22.5** | 200 |
+
+Both significant, opposite signs. Same binary, same book, same options, same
+opponent — only the clock differs. The real-TC run was on a QUIET box (load
+0.19 at launch) with **0 forfeits**, so it is not a harness failure.
+
+The mechanism I proposed for a possible divergence was tested and **killed**
+before this result: NPS is FLAT across game phases (opening/middlegame ratio
+**1.01×**, 5 ply bands), so "time-redistribution ≠ node-redistribution because
+middlegame nodes are costlier" is false.
+
+So the divergence is real and currently UNEXPLAINED. What is established:
+
+- Under a nodes-as-clock, moving budget from the opening into the middlegame
+  helps. The allocation profile confirms that IS what the arm does — plies 0–15
+  at 0.73–0.84× and plies 16–31 at 1.42–2.09×, total nodes within 5% (0.949).
+- Under a real clock, the same change LOSES.
+
+⇒ `nodestime` is fine for what it was built for (bit-reproducible TM decisions;
+its null is 24/24 identical) but it is **not a proxy for real-clock strength**,
+and no TM verdict may be read off it alone again. Add it to the instrument
+list: contention-immune, deterministic, and **not** transferable.
+
+This is the third instrument in this ledger to give a confident, significant,
+WRONG answer (after the 44-position forced-move set and the eval-MAE panel that
+ordered four nets across 86 Elo backwards). The confirmation arm is what caught
+it, and it cost one hour.
+
+**Standing consequence:** `TM_SCORE_C` stays at its default 0. The front-load
+arm (`C=+2048`, −64.9 ± 20.9 at nodestime) is NOT re-tested at real TC — it
+lost on both the instrument and the hypothesis, so there is nothing to confirm.
