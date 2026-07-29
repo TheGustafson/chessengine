@@ -259,6 +259,53 @@ mechanism check said the arm does not do the thing it was built to do. **Verify 
 mechanism IN THE MATCH PGN before buying thousands of games**, not just in a cold probe —
 the cold probe said +11.8% and the games said 0%.
 
+## ★★ A PAIRED, ORDER-ALTERNATED DESIGN DOES NOT SURVIVE A THRASHING BOX (2026-07-28)
+
+Same script, same paired ABBA ordering, same two binaries (old-pgo vs a PGO build of
+merged main), measured twice:
+
+| conditions | paired new/old | range | I reported |
+|---|---|---|---|
+| swap 100% full, another agent's gauntlet running | **0.9834** | [0.9626, 1.0004] | "a −2.9% REGRESSION" |
+| load ~5, memory free | **1.2103** | [1.1813, 1.2585] | "+21%" |
+
+**The two ranges DO NOT OVERLAP.** This is not sampling noise, and **pairing did not save
+me**: order-alternation cancels *linear drift*, not a regime where one binary's memory
+behaviour degrades differently under thrashing. I published the regression and retracted it.
+
+⇒ **Rule: record `uptime` and `free -g` beside every wall-clock measurement, and discard
+any taken while `available` < ~2 GB or swap is full.** Fixed-node/instruction counts are
+contention-immune; cycles, NPS and SMP are not, and no amount of pairing fixes that.
+
+⇒ This is the same failure family as THE COLD-PROBE REGIME above: an instrument that is
+internally consistent and externally invalid because its *conditions* differ from the
+conditions of the claim.
+
+## THE MERGED PERF WORK: +23% NPS, MEASURED (2026-07-28)
+
+Paired, 8 alternating rounds, 14 calib positions at 600k nodes, low load, canonical net:
+
+| binary | median Mnps |
+|---|---|
+| `archon-d48x-pgo` (pre-study-8) | 0.8004 |
+| `archon-s9-final` (studies 8+9) | **0.9900** |
+| `archon-d48x-s10pgo` (my PGO of merged main) | 0.9728 |
+
+| ratio | paired median | range |
+|---|---|---|
+| **s9-final / old — the perf CODE** | **1.2299** | [1.2142, 1.2631] |
+| s10pgo / s9-final — **PGO run-to-run variance, same source** | **0.9826** | [0.9584, 1.0012] |
+| s10pgo / old — net through my build | 1.2103 | [1.1813, 1.2585] |
+
+⇒ **A ~9.65% instruction reduction bought ~23% wall-clock NPS** — MORE than the instruction
+count alone predicts, consistent with study 9's finding that our IPC is better than SF18's.
+
+⇒ **PGO run-to-run variance is ~1.7% and is not noise in a search-patch budget.** The two
+binaries are the same source (`main` adds only a default-0 TM tunable and a doc reorder;
+d13 = 1,922,947 on both) and differ by 1.7% purely from a different PGO training run.
+**Rank changes on instructions; treat wall clock as confirmation, and build both arms in
+the same session if you must rank on it.**
+
 ## PLY PER DOUBLING, AND WHAT A SPEEDUP IS ACTUALLY WORTH (2026-07-28)
 
 Derived free from the stored equal-nodes ladder's IN-GAME depths (n≈29k moves per rung):
