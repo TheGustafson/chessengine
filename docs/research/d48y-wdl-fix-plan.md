@@ -2111,3 +2111,50 @@ first attempt. That is exactly the standard this project needs.
 exposed. `compute`'s comment rejects this at "−0.4% NPS" — **study-4 era, inside
 today's measured noise floor, therefore not evidence.** This arm EXPECTS
 instructions to rise and must be gated on cycles/cache-misses, not `instructions:u`.
+
+### ★★ sb170 SCALE CHECK — the calibrated target landed us IN STOCKFISH'S FRAME
+
+Packed `d48y2-1280-sb170-ema.cenn` (138,283,640 B, checksum `0x51906e4e0aae20e2`)
+and ran `net_scale_check.sh` against D48X:
+
+```
+n=520  median(cand/ref)=1.788  IQR=(1.48,2.03)  slope=1.807  sign-agree=99.8%
+  -> FAIL the RELATIVE band (0.85-1.18)          [expected: the target changed]
+ABSOLUTE vs SF INTERNAL: n=518  median(ours/sf)=1.026  slope=1.030
+  -> ABSOLUTE PASS (band 0.80-1.25)
+```
+
+**D48Y2's eval is 1.79x D48X's and sits at 1.026x STOCKFISH'S INTERNAL FRAME.**
+The sb80 observation is confirmed at sb170 with n=518. Consequence worth stating
+plainly: our search margins were transcribed from SF, so against D48Y2 they are
+only **0.97x off**, where against D48X they are ~1.74x off. **The new net is
+better matched to our own pruning constants than the incumbent is.**
+`sign-agree 99.8%` says the two nets almost never disagree about WHO is better —
+this is a scale change, not a behaviour change.
+
+**RAN AT NATIVE SCALE, deliberately, and the runbook's step 3 was NOT followed.**
+The runbook calls calibration mandatory. Two measured reasons to override it
+here, both recorded earlier in this doc: (1) **the frame effect is ASYMMETRIC** —
+enlarging eval measured +7.7 ± 17.7 (free), shrinking it cost **80 Elo**
+(−111 → −191), because pruning margins are fixed cp subtractions so a smaller
+eval over-prunes; D48Y2 native is the LARGER direction. (2) The absolute check
+PASSES, so native is the frame our constants were written for. Calibrating down
+to D48X's frame would deliberately move us away from SF's.
+
+**Match launched at the IDENTICAL protocol to the sb90 one** (120 games, 40k
+nodes, Hash 16, UHO, native scale) so the trend is readable. Note the binary
+changed (s10pgo → s19) but every study 12–19 change was **node-identical**, so at
+FIXED NODES both matches search the same trees and remain comparable.
+
+Trend so far:
+
+| checkpoint | result |
+|---|---|
+| D48Y sb120 (broken 1.80x LR) | −111.4 ± 26.3 (300 games, 60k) |
+| D48Y2 sb90 (LR fixed) | −43.7 ± 33.4 |
+| **D48Y2 sb170 (deep in anneal)** | **running** |
+
+Heldout R² alongside: sb150 **0.8866**, sb160 **0.8877**, sb170 **0.8889**, vs
+D48X's fully-annealed **0.8815**. The loss metric says D48Y2 passed the incumbent
+around sb130. **Games arbitrate — this match is the test of whether that
+converts.**
