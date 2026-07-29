@@ -718,19 +718,24 @@ rest (`cg/branches-integer-only.txt`):
 
 | block | ARCHON | SF | Δ |
 |---|---:|---:|---:|
-| **threat generation** | **116.7** | **14.6** | **+102.1** (8.0×) |
-| movepick (incl. the Wave-G attack map both sides, §4.4) | 88.0 | 54.8 | +33.2 |
-| make/unmake | 34.1 | 12.8 | +21.3 |
-| search body | 85.0 | 68.5 | +16.5 |
+| **threat generation** | **116.7** | **22.4** | **+94.4** (5.2×) |
+| movepick (incl. the Wave-G attack map on both sides, §4.4) | 88.0 | 67.1 | +20.9 |
+| search body | 85.0 | 71.6 | +13.4 |
 | movegen | 21.9 | 8.3 | +13.7 |
-| board queries | 37.5 | 25.8 | +11.7 |
+| make/unmake | 34.1 | 23.7 | +10.4 |
+| board queries | 37.5 | 29.6 | +7.8 |
 | histories | 20.0 | 12.4 | +7.6 |
 | tt | 3.0 | 8.3 | −5.3 |
 | SF's `update_accumulator_refresh_cache` (threat + fold, **unsplittable** — §4.4) | 0.0 | 27.0 | −27.0 |
-| other | 30.5 | 17.1 | +13.5 |
-| **TOTAL, integer code** | **436.8** | **249.5** | **+187.3 (1.75×)** |
+| other | 31.4 | 17.5 | +13.8 |
+| **TOTAL, integer code** | **437.6** | **288.0** | **+149.6 (1.52×)** |
 
-**Between 75 and 102 of the +187.3 integer branch gap is threat generation** —
+*(These are the numbers AFTER D33 reviewer C's parser blocker was fixed — see
+§6.2.2. The first run of this table read SF 222.5 / +214.3, because
+`cgsum17.py` mis-handled callgrind's omitted trailing zero columns for every
+event except `Ir`, and the error was 100× larger on Stockfish than on us.)*
+
+**Between 67 and 94 of the +149.6 integer branch gap is threat generation** —
 the range is the same unsplittable SF symbol as §4.4, whose 27.0 branches/node
 are part threat enumeration and part accumulator fold. **It is the same block
 §4 found with an entirely different statistic.** Two independent exact
@@ -741,8 +746,30 @@ bounds checks, not movegen, not the search.
 The mechanism is visible in the call rates: our threat features are *re-derived*
 per fold with per-square loops (`record_square_touch` 1.06 calls/node,
 `record_targets` 1.02, `ripple` 0.49), while Stockfish maintains an incremental
-`DirtyThreats` list and its `update_piece_threats<true>` spends **3.7 branches
-per call** where our `at_full` spends **117.1**.
+`DirtyThreats` list — its `update_piece_threats<true>` spends **8.0 branches per
+call** where our `at_full` spends **117.1**.
+
+### 6.2.2 THE PARSER BLOCKER, and the rule it hands over
+
+D33 reviewer C summed `cgsum17.py`'s output against each callgrind file's own
+`totals:` line and found the `--event N` path wrong for **every event except
+`Ir`**. Callgrind **omits trailing zero event columns**; the parser treated a
+short line as unparseable and `continue`d, which left `pending_calls` unconsumed
+— so that `calls=` record was lost **and the next genuine self-cost line was
+charged to a call edge**. Measured against the ground truth: SF's `Bc` −2.71%,
+SF's `Bi` −49%, ARCHON's `Bc` −0.027%. **The error was 100× larger on Stockfish
+than on ARCHON, i.e. biased in the direction of the conclusion**, and it
+concentrated in exactly the buckets this section compares (`SF make/unmake` was
+understated by nearly 2×, and `MovePicker::next_move` — SF's second-largest
+integer branch consumer — fell out of the top rows entirely).
+
+The tool now parses `totals:` and **exits non-zero unless its self-cost sum
+equals it**, for the selected event; all twelve (file, event) pairs audit clean.
+`Ir` was never affected, so §3, §4 and §5 stand as measured.
+
+**A PARSER IS A BUCKETING.** §4.2's rule — a bucketing that does not sum to the
+total cannot be audited — applies one level below where it was written. One
+assertion would have caught this on the first `--event 1` run.
 
 One caveat, and this study's own headline rule caught it: the first run of this
 bucketing reported SF's `histories` row as exactly **0.0**, because the movegen
