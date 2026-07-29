@@ -1,0 +1,80 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 34K of event 'instructions:u'
+# Event count (approx.): 68100102150
+#
+# Overhead  Symbol                                                                                      
+# ........  ............................................................................................
+#
+    16.44%  [.] <chessengine::eval::nnue::sota_threats::ThreatContext>::at_full
+    10.33%  [.] <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+     8.87%  [.] <chessengine::eval::nnue::sota_head::SotaHead>::forward_into
+     7.62%  [.] <chessengine::movepick::MovePicker>::init_quiets
+     7.16%  [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::current_full
+     6.01%  [.] <chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>
+     5.42%  [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into
+     2.51%  [.] <chessengine::movepick::MovePicker>::next_move
+     2.48%  [.] <chessengine::history::Histories>::correction_value
+     1.92%  [.] <chessengine::eval::nnue::sota_context::SotaContext>::evaluate
+     1.59%  [.] chessengine::eval::nnue::sota_threats::record_targets
+     1.52%  [.] chessengine::eval::nnue::sota_threats::record_square_touch
+     1.52%  [.] <chessengine::attacks::AttackTables>::attacks
+     1.47%  [.] <chessengine::board::Board>::see_ge
+     1.46%  [.] <chessengine::eval::nnue::sota_context::SotaContext>::push
+     1.38%  [.] <chessengine::search::Worker>::do_move
+     1.35%  [.] <chessengine::history::Histories>::update_continuation_histories
+     1.27%  [.] <chessengine::board::Board>::attackers_to
+     1.27%  [.] <chessengine::board::Board>::set_check_info
+     1.19%  [.] <chessengine::tt::TranspositionTable>::probe
+     1.12%  [.] <chessengine::movepick::MovePicker>::init_captures
+     1.08%  [.] <chessengine::board::Board>::ensure_threats
+     1.05%  [.] chessengine::eval::nnue::sota_features::refresh_threat
+     1.05%  [.] <chessengine::board::Board>::legal
+     1.03%  [.] <chessengine::board::Board>::gives_check
+     1.02%  [.] <chessengine::board::Board>::attackers_to_exist
+     0.87%  [.] <chessengine::search::Worker>::qsearch::<chessengine::search::NonPv>
+     0.77%  [.] <chessengine::board::Board>::upcoming_repetition
+     0.69%  [.] <chessengine::movepick::MovePicker>::init_evasions
+     0.67%  [.] chessengine::eval::nnue::sota_loader::load_v2_bytes
+     0.67%  [.] <chessengine::board::Board>::unmake_move
+     0.67%  [.] chessengine::eval::nnue::sota_threats::ripple
+     0.58%  [.] <chessengine::search::Worker>::stat_score
+     0.48%  [.] <chessengine::eval::nnue::sota_threats::ThreatContext>::apply_at
+     0.44%  [.] <chessengine::search::Worker>::search::<chessengine::search::Pv>
+     0.42%  [.] chessengine::attacks::init_magics
+     0.33%  [.] core::fmt::write
+     0.32%  [.] 0x0000000000189e76
+     0.26%  [.] 0x0000000000189e7d
+     0.26%  [.] chessengine::eval::nnue::active_policy_head
+     0.23%  [.] <char as core::fmt::Display>::fmt
+     0.23%  [.] <chessengine::history::Histories>::update_correction_history
+     0.22%  [.] chessengine::movegen::generate::<2>
+     0.19%  [.] chessengine::eval::nnue::sota_threats::refresh_psqt_threat
+     0.19%  [.] 0x0000000000189e68
+     0.18%  [.] <chessengine::history::Histories>::update_quiet_histories
+     0.17%  [.] 0x0000000000189e6f
+     0.17%  [.] <chessengine::tt::TtWriter>::write
+     0.14%  [.] <chessengine::board::Board>::pseudo_legal
+     0.12%  [.] malloc
+     0.11%  [.] 0x0000000000189e5b
+     0.09%  [.] chessengine::eval::nnue::sota_threats::record_outgoing
+     0.09%  [.] <alloc::string::String as core::fmt::Write>::write_char.13
+     0.08%  [.] <chessengine::search::Worker>::check_time
+     0.08%  [.] chessengine::eval::evaluate
+     0.07%  [.] <chessengine::board::Board>::make_null_move
+     0.06%  [.] <alloc::raw_vec::RawVecInner>::finish_grow
+     0.06%  [.] <chessengine::search::Worker>::iterative_deepening
+     0.06%  [.] <chessengine::types::Square as core::fmt::Display>::fmt
+     0.06%  [.] <chessengine::history::Histories>::update_all_stats
+     0.06%  [.] 0x0000000000189e90
+     0.06%  [.] 0x0000000000189ea4
+     0.05%  [.] cfree
+     0.05%  [.] chessengine::history::correction_bonus
+
+
+#
+# (Tip: To show time in nanoseconds in record/report add --ns)
+#
