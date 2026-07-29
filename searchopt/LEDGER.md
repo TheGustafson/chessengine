@@ -1482,3 +1482,60 @@ Control quality:
 winning ⇒ our WEIGHTS are the weaker half and net training is the lever; losing
 or tying ⇒ the weights are not the problem and the −36.9 is our SEARCH. Either
 way the frame caveat above rides along.
+
+## TM CONTESTEDNESS ARM — SIZED, NULL CLEAN, READY TO RUN (2026-07-28)
+
+Time management is the one lever every fixed-node instrument in this file is
+blind to by construction. The first attempt was killed by its own ceiling
+(`TM_SCORE_CEIL = 1.25` sits BELOW the 1.409× one-ply node quantum, so the arm
+could not buy the extra ply it was hypothesising) — see `f19bb54`. This is the
+re-sizing.
+
+**Instrument: `nodestime=150` + a `tune` build. Its null is PERFECT** — two
+identical-configuration runs over 24 positions produced **24/24 bit-identical
+node counts**. Zero noise floor. That makes it the strongest instrument in this
+file: every other one here had to be discounted for its own inert-null drift,
+and several were killed by it. Time is derived from nodes, so contention cannot
+move the statistic.
+
+Realized effect (paired vs C=0, 24 corpus openings, `10+0.1` simulated):
+
+| setting | arm+ median | clears 1.409× | arm− median | clears 0.71× |
+|---|---|---|---|---|
+| C=±1024, ceil 1.8 | 1.285 | — | 0.799 | — |
+| **C=±2048, ceil 2.4** | **1.620** [1.00, 2.75] | **18/24** | **0.689** [0.23, 1.38] | 14/24 |
+| C=±3072, ceil 3.0 | 1.913 [1.00, 2.94] | 23/24 | 0.590 [0.23, 1.37] | 20/24 |
+
+Note the DAMPING, and that it is why the first attempt failed silently: an
+intended 1.8× ceiling realizes as a 1.285× median, because `soft_stop` is only
+one of several stopping conditions. Intended magnitude is not realized
+magnitude — size arms on the realized number, always.
+
+**C=±2048 / ceil 2.4 is the arm.** It clears the quantum on 3/4 of positions
+while staying inside a policy a real engine could ship; ±3072 spends ~2× on
+contested moves, which starves the rest of the game.
+
+The sign is the built-in null: `TM_SCORE_C` is signed precisely so both
+hypotheses run as arms of one experiment (+ = spend MORE when contested, − =
+bank the clock for later). **Both directions get run.** If both lose about
+equally, the honest reading is that current TM is at a local optimum in this
+dimension — which is a result, not a failure.
+
+Prepared, held until the net-swap match finishes (one instrument at a time):
+
+```bash
+engines/bin/fastchess \
+  -engine cmd=engines/bin/archon-tune-tm name=tm-plus  option.TM_SCORE_C=2048  \
+     option.TM_SCORE_CEIL=2.4 option.TM_SCORE_FLOOR=0.6 \
+  -engine cmd=engines/bin/archon-tune-tm name=tm-null  option.TM_SCORE_C=0 \
+  -each tc=10+0.1 option.nodestime=100 option.Hash=64 option.Threads=1 \
+     option.EvalFile=engines/canonical/net.cenn proto=uci \
+  -openings file=engines/books/d48x-corpus-openings.epd format=epd order=sequential \
+  -rounds 203 -repeat -games 2 -concurrency 6
+```
+
+`nodestime=100` not 150 for the match: real NPS is ~700 nodes/ms, and the
+margin has to survive a contended box or fastchess calls a real-time forfeit —
+the failure that once made a TM match 100% forfeits with a mean game length of
+11 plies, past a forfeit grep that gave a false all-clear (fastchess writes
+"loses on time", not "time forfeit").
