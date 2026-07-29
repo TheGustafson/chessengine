@@ -469,3 +469,37 @@ would make the cp-scale risk a non-issue. If it agrees WORSE, we overshot
 sharpness and the screen understates D48Y.
 
 Cost: minutes, no games. Run it immediately after packing, before any match.
+
+### ★ INCIDENT — global OOM killed the D48Y trainer at sb24 (2026-07-29 01:03)
+
+**Cause: mine.** I commissioned perf study 12 — a study that BUILDS — to run
+alongside an 11-hour GPU training job on a 15 GB box, having personally written
+the rule against exactly this. Kernel log:
+
+```
+00:57:15  killed node-MainThread          (3.9 GB)
+00:59:11  killed chessengine-e71          (3.9 GB)  <- a perf study 12 build
+01:03:03  killed python pid 698078        (2.3 GB)  <- THE D48Y TRAINER
+```
+
+**Detection:** the log went stale (last write 00:57:23), GPU fell 7000 MiB/97%
+→ 1063 MiB/32%, and the only surviving `pump_train` matches were my own shell
+snapshots. Note `pgrep -f pump_train | wc -l` returned a NON-ZERO count for a
+DEAD trainer — the shell-snapshot false positive documented in CLAUDE.md.
+Always confirm via `/proc/<pid>/cmdline` and the log mtime, never a bare count.
+
+**Recovery:** stopped the study, verified the box clear (6 GB free, no stray
+builds), resumed from the sb20 checkpoint set (raw + ema-raw + quant, all
+present). Trainer is back: PID 737207, 3.1 GB host / 6002 MiB GPU, GPU 95%.
+Confirmed EXACTLY ONE trainer — the double `RESUME` banner in the log is the uv
+wrapper echoing, not a second process.
+
+**Cost:** ~4 superbatches (sb20→24 re-walked) plus a fresh-Adam transient, which
+`warmup_superbatches 0.25` is there to smooth. Cheap because checkpoints are
+written every 10sb.
+
+**Standing rule going forward:** do NOT run a compiling study concurrently with
+a training run unless ≥6 GB is available, and instruct any such agent to
+`free -g` before EVERY build, cap at `-j 2 nice`, and prefer thin-LTO or
+`cargo check` over the pinned `lto = "fat"` profile, whose LINK step is the
+spike. Study 12 has been resumed from its transcript with exactly these gates.
