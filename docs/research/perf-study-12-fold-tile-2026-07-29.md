@@ -13,24 +13,24 @@ Raw artifacts and instruments: `perf-artifacts-12/`. Baseline: `main` at `29cd9c
 ### 0.1 The ratio moved
 
 `bench 16 1 300000 tools/nnue/calib/wl50.fens nodes`, three arms interleaved,
-`taskset -c 4`, `nice -n 19`, 4 rounds, all arms PGO. Raw:
-`counters-headline.txt`.
+`taskset -c 4`, `nice -n 19`, 5 rounds, all arms PGO, measured on the FINAL
+post-review tree. Raw: `counters-headline.txt`.
 
 | per node | **ARCHON study 12** | ARCHON study 11 | **SF `eca43a97`** |
 |---|---:|---:|---:|
-| **instructions** | **6113.5** | 6367.1 | **4452.4** |
-| **ratio vs `eca43a97`** | **1.3731×** | 1.4301× | — |
-| branches | 667.5 | 734.2 | 362.7 |
+| **instructions** | **6114.6** | 6367.1 | **4452.4** |
+| **ratio vs `eca43a97`** | **1.3733×** | 1.4300× | — |
+| branches | 667.6 | 734.2 | 362.7 |
 | branch-misses | 20.6 | 22.2 | 19.7 |
-| paired NPS ratio | 0.6673 | 0.6425 | — |
-| `instructions:u` spread | 0.0389% | 0.0034% | 0.0000% |
+| nodes | 15,001,568 | 15,001,568 | 15,008,494 |
+| `instructions:u` spread | 0.0390% | 0.0030% | 0.0000% |
 
-The instrument is validated by its own controls, twice: **SF reproduces 4452.4
-exactly**, and study 11's own binary reproduces **6367.1 against its published
-6367.2**.
+The instrument is validated by its own controls, twice, in the same run: **SF
+reproduces 4452.4 exactly (0.0000% spread)**, and study 11's own binary
+reproduces **6367.1 against its published 6367.2**.
 
-**1.4301× → 1.3731×. −253.6 i/n, 13.2% of the 1,914.7 i/n gap, in five
-node-identical changes.** Branches fell 9.1%.
+**1.4300× → 1.3733×. −252.5 i/n, 13.2% of the 1,914.7 i/n gap, in five
+node-identical changes.** Branches fell 9.1%, branch-misses 7.2%.
 
 ### 0.2 What landed
 
@@ -47,12 +47,12 @@ instrument is a fixed-tree `instructions:u` probe whose own null band is
 | 4 | **AVX-512 fold tile 8 → 20 registers** | **−314.4** | `sota_simd.rs` |
 | 5 | threat generator: reuse the ray fans instead of re-running the magic lookup | **−44.4** | `sota_threats.rs` |
 | | **total, probe frame** | **−509.2** | |
-| | **total, PGO frame (the number that counts)** | **−253.6** | |
+| | **total, PGO frame (the number that counts)** | **−252.5** | |
 
 ### 0.3 The methodological correction this study owes the next one
 
 **The non-PGO probe overstates these wins by ~2×.** −509.2 i/n of probe delta
-became −253.6 i/n of PGO delta, because PGO was already recovering roughly half
+became −252.5 i/n of PGO delta, because PGO was already recovering roughly half
 of each defect on its own. The probe is still the right *screening* instrument —
 it is exact, its null is ±0.15 i/n, and it costs one minute — but **no probe
 delta may be quoted as a result.** Only the PGO panel decides.
@@ -142,12 +142,31 @@ both feature sets into one array in one `apply_combined` pass. That is the singl
 largest structural difference in the eval layer.
 
 **It is nonetheless the right design, and this study priced it rather than
-assuming.** Merging would save the second pass (~109 i/n) and simplify
-`activate` from 11 to ~7 instructions per 32 products (~69 i/n) — but it would
-force the threat channel onto HalfKA's refresh trigger, and our lazy
-king-cross scheme is the reason we pay **0.1609 threat refresh rows per node
-against Stockfish's 0.9626**. Restoring SF's rate costs ~64 i/n back. Net ~114
-i/n for a rewrite of three modules. **Do not merge the accumulators** — §8 item 6.
+assuming.** Merging would save the second pass (~109 i/n) and remove the merge
+arithmetic from `activate`, taking it from 11 to ~7 instructions per 32 products
+(~69 i/n) — but it would force the threat channel onto HalfKA's refresh trigger,
+and our lazy king-cross scheme is the reason we pay **0.1609 threat refresh rows
+per node against Stockfish's 0.9626**. Restoring SF's rate costs ~64 i/n back.
+Net ~114 i/n for a rewrite of three modules. **Do not merge the accumulators** —
+§11 item 6.
+
+Stockfish's own comment concedes the point:
+`eca43a97:src/nnue/nnue_accumulator.cpp:112-113` says *"Threat feature set
+refreshes require a king move across the center, i.e., a subset of halfka
+refreshes"* — SF knows the cross-only condition and does not exploit it, because
+its merged accumulator cannot. Ours does (`sota_threats.rs::king_crossed`).
+
+**A separate ~25 i/n is available in `activate` today, and it is NOT the merge.**
+Of the 11 instructions we spend per 32 products against Stockfish's ~5.5 (AVX-512
+`vec_t`), only ~4 are the dual-accumulator merge. The rest is that SF pairs two
+lane-steps under `packus` — 64 output bytes per op against our `vpmovwb`'s 32 —
+and drops the `max` on the second operand because `packus` clamps negatives to
+zero anyway (`nnue_feature_transformer.h:245-256, 328-336`). Adopting just that
+takes us 11 → ~9.5 without touching the accumulator split. The cost is the
+interleaved output lane order, which SF absorbs into a load-time weight
+permutation (`:97-110`); for us the cheaper absorber is a `vpermq` on the packed
+result, or permuting the (163 KB) L1 weights rather than the (57 MB) FT table.
+§11 item 5.
 
 ---
 
@@ -172,6 +191,12 @@ copy keeps the hoist and now carries a comment saying why.**
 
 Bit-identical: same rows, same per-lane wrapping i16 adds, same order. Dropping
 the chunking is bit-identical too — mod-2^16 addition is associative.
+
+**This moves toward the reference, not away from it.** Stockfish's own fold
+computes the row pointer inline, per row per tile —
+`&psqWeights[psqRemoved[i] * Dimensions + tileOff]`
+(`eca43a97:src/nnue/nnue_accumulator.cpp:194-195, 202-203`). There is no hoisted
+offset array anywhere in SF.
 
 ---
 
@@ -230,10 +255,11 @@ Measured after (`counters-r2.txt`):
 | finny refresh rows | 1.5183 | **0.9064** | 0.9268 |
 | reverse folds (new cost) | — | 0.0532 | — |
 
-**The rate is now marginally better than the engine the idea came from.** The
-instruction win is small (−2.5 i/n) because a refresh and two reverse folds cost
-about the same; the win is the mechanism, and it removes 57 MB of random weight
-traffic per 1000 nodes.
+**The rate is now at parity with the engine the idea came from** — 0.1611 vs
+0.1673 is 3.7%, measured on two different search trees, so parity is the claim
+and not an edge. The instruction win is small (−2.5 i/n) because a refresh and
+two reverse folds cost about the same; the win is the mechanism, and the
+weight-traffic reduction that comes with it.
 
 ---
 
@@ -255,7 +281,15 @@ REGS = 20   6581.5 i/n   (2 tiles)   -314.4
 REGS = 40   7589.2 i/n   (1 tile)    +1007.7   <- 40 accumulators spill
 ```
 
-`pick_regs()` takes the largest divisor of `BLOCKS` in `[9, 20]`, so the
+**This lands on Stockfish's own tile structure.** SF sizes its tile with
+`SIMDTiling::NumRegs = BestRegisterCount<...>` capped at `NumRegistersSIMD = 16`
+for AVX-512 (`eca43a97:src/nnue/simd.h:93, 630-631`): ideal is 1024·2/64 = 32,
+capped to 16, giving `TileHeight = 512` and **two tiles** at L1 = 1024. Our new
+20 at ACC = 1280 is also two tiles — the same structure, using the register file
+slightly harder than SF's conservative cap.
+
+`pick_regs()` takes the largest divisor of `ACC_BLOCKS` (down to 1, so the
+compile-time exactness assert can never fire on a future width), so the
 remainder never falls into the one-block tail loop: 1280 → 20, 768 → 12,
 1536 → 16, 2048 → 16. The resulting kernel is what you would write by hand —
 20 `vmovdqu64` loads, then 20 `vpaddw (mem)` per row with the row base as
@@ -296,8 +330,7 @@ point: every arm is node-identical and eval-bit-identical.
 
 ## 10. WHAT THE PROFILE SAYS NOW, AND WHAT IT LIES ABOUT
 
-PGO flat profile of the final binary (`flat-s12final-pgo-instructions.txt`,
-6114.6 i/n). ARCHON blocks against SF's PGO profile
+PGO flat profile of the final binary (`flat-s12final-pgo-instructions.txt`, 6114.6 i/n). ARCHON blocks against SF's PGO profile
 (`perf-artifacts-11/flat-sfeca-instructions.txt`, 4452.4 i/n):
 
 | block | ARCHON | SF | excess |
@@ -305,7 +338,7 @@ PGO flat profile of the final binary (`flat-s12final-pgo-instructions.txt`,
 | eval layer | ~2976 | 1975 | **+1001** |
 | search + histories + see | ~2440 | ~1945 | **+495** |
 | make / unmake | 417 | 262 | **+155** |
-| **engine** | **6113.5** | **4452.4** | **+1661** |
+| **engine** | **6114.6** | **4452.4** | **+1662** |
 
 **Two corrections to study 11's table, both from measuring in one frame instead
 of two:**
@@ -352,14 +385,15 @@ the largest of which is `correction_value` at 127 vs SF's 73.
 | 2 | **make/unmake 417 vs 262** | +155 | medium | the `states.push(StateInfo::EMPTY)` constant store is **provably dead** — 3 zmm loads + 3 zmm stores of 168 B per node, confirmed in the disassembly, and LLVM will not DSE it across `set_check_info`. Needs `states` to become a pre-sized array with a `top` index instead of a `Vec` push/pop (D8 change) |
 | 3 | **`at_full` 954** | ≤ +400 | medium | the threat channel's fold is inlined here; split it with `#[inline(never)]` and price the generator/resolver separately. Note §10's warning before believing any of it |
 | 4 | Fold-kernel loop control, second cut | ~44 | medium | unroll the row loop by 2 (halves the remaining `tiles × rows × 6`) |
-| 5 | `record_mutate`'s duplicated fans | ~5 | high | same fix as arm #5, one level up: `record_outgoing` × 2 + `record_incoming_mutate` recompute `ratt`/`batt` at the same square up to three times |
+| 5 | **`packus` pairing in `activate`** — orthogonal to item 6, available now | ~25 | high — read off SF's kernel | pair two lane-steps under `_mm512_packus_epi16`, drop the right-hand `max`, and restore lane order with one `vpermq` per 64 bytes (or permute the 163 KB L1 weights at load, as SF permutes its FT). §3 |
+| 5b | `record_mutate`'s duplicated fans | ~5 | high | same fix as arm #5, one level up: `record_outgoing` × 2 + `record_incoming_mutate` recompute `ratt`/`batt` at the same square up to three times |
 | 6 | ~~Merge the two accumulators~~ | **+114, then −64** | **priced and REJECTED** | §3. Merging costs our 0.167× threat refresh rate. Do not spend a session on it |
 | 7 | ~~The head (`forward_into`)~~ | **0** | **closed** | §10 — 556 vs Stockfish's 572, measured |
 | 8 | ~~`upcoming_repetition`'s missing `other` prefilter~~ | 0 | **REJECTED as a speed item** | transcribed and measured: the node count MOVES (5,001,562 → 5,001,624), so our version detects cycles SF's filter rejects. That is a **fidelity** question for `searchopt/`, with an Elo test, not a probe |
 | 9 | Accumulator width 1280 → 1024 | ~327 | n/a | a retrain, not an optimisation |
 
-**Honest arithmetic on the 1.1× bar.** 1.1× is 4897.6 i/n; we are at 6113.5, so
-**−1215.9 remains.** After this study's measurements, here is where it actually
+**Honest arithmetic on the 1.1× bar.** 1.1× is 4897.6 i/n; we are at 6114.6, so
+**−1217.0 remains.** After this study's measurements, here is where it actually
 lives, and none of it is one big defect:
 
 * **~327 i/n — accumulator width, 1280 vs 1024.** A retrain, not a code change.
@@ -411,7 +445,64 @@ study should expect to grind, not to find.
 
 ---
 
-## 13. ARTIFACTS (`perf-artifacts-12/`)
+## 13. THE D33 REVIEW ROUND
+
+Three read-only reviewer personas ran against the landed diff (A correctness/
+safety, B reference-fidelity vs `eca43a97`, C Rust-idiom/perf/test-quality).
+**No blockers.** Both A and C independently found the same material defect, and
+it was a hole in this study's own verification, not in the code:
+
+**The two changes with real semantic content had no test that could fail.**
+
+* **The backward fill was unreachable from `cargo test`.** Every existing caller
+  (`incremental_and_finny_match_refresh`, `empty_psqt_table_stays_zero`,
+  `explore_siblings`) reads the accumulator at *every* ply, so the ancestor span
+  is always length 1, `king_ply == ply`, and the fill loop's range is always
+  empty. Un-swapping the reverse fold's add/sub lists would have passed the
+  entire suite. Fixed: `backward_fill_reconstructs_the_span_exactly` plays a line
+  **without** evaluating, then checks every reconstructed ancestor against a
+  from-scratch refresh. **Mutation-verified** — flipping
+  `apply_dirty_directed::<false>` to `::<true>` makes it fail.
+* **The offense fan's value was pinned only for a knight**, whose fan is both
+  occupancy- and colour-independent — i.e. for the one case where the rewrite is
+  trivially symmetric. The two things the rewrite actually changed, the pawn
+  colour flip and slider occupancy symmetry, were untested; reviewer C verified
+  that writing `us` for `them` passes every other test in the suite. Fixed:
+  `offense_reverse_fan_pins_the_pawn_flip_and_slider_blockers`, also
+  **mutation-verified** in both directions (wrong pawn colour → fail;
+  occupancy-blind fan → fail).
+* Reviewer C also caught that the de-chunking's own invariant — "all rows in one
+  pass" vs "96 at a time" — was only exercised on the *dispatched* backend, so on
+  any given box one of the two shapes went unrun. The long lists now go through
+  **every** available backend.
+
+Reference-fidelity (B) confirmed every SF claim this study makes, with line
+numbers, and corrected three:
+
+* a **pre-existing wrong citation** in `sota_simd.rs` — SF's threat merge is
+  `nnue_accumulator.cpp:237-238`, not `nnue_feature_transformer.h:337`, and SF
+  has **one** 1024-wide accumulator, not "two sharing a frame";
+* §6's "marginally better than the engine we copied the idea from" was an
+  **overstatement** — 3.7% on two different trees is parity, and it now says so;
+* the ~25 i/n `packus` opportunity is **orthogonal** to the accumulator merge and
+  available today; §3 previously implied the whole 11-vs-5.5 gap was merge-caused.
+
+B also confirmed **no GPL code was copied**, and supplied two pieces of support
+this study had not claimed: arm #1 moves *toward* the reference (SF computes its
+row pointer inline, with no offset array anywhere), and arm #4 lands on SF's own
+two-tile structure (`simd.h:630-631`).
+
+Remaining reviewer items deliberately **not** taken, with reasons: extracting a
+`Fold` struct to drop `apply_dirty_directed`'s argument count (the
+`#[allow(clippy::too_many_arguments)]` was inert at exactly 7 args and has simply
+been deleted); a single-pass nested-`vulnerable` fan and an "own this piece type"
+guard in `init_quiets` (both plausible, both unmeasured, both belong to whoever
+takes §11 item 5); and `PieceType::ALL.map(...)` over the indexed `from_fn` (a
+readability preference with no precedent in the crate yet).
+
+---
+
+## 14. ARTIFACTS (`perf-artifacts-12/`)
 
 * `counters-headline.txt` — the §0.1 three-arm PGO panel, 4 rounds.
 * `probes.txt`, `probes-fast.txt` — every arm with its eval hash and node count.
