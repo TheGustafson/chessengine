@@ -604,10 +604,40 @@ pub fn refresh_pst(
 /// Build the threats accumulator for `perspective` from scratch: seed with zero,
 /// then add the weight column of every active threat feature (§12.2).
 /// `threat_weights` is feature-major (`[THREAT_DIMS · ACC]` i8).
+///
+/// **Test-only.** Every production caller uses [`refresh_threat_into`]: this
+/// wrapper zeroes `acc` and then `refresh_threat_into` zeroes it again, which
+/// is 2 x 2560 bytes of `memset` per call (D33 reviewer C, P4). It survives
+/// because the assertions in this module and in `sota_threats` read more
+/// clearly against a returned value.
+#[cfg(test)]
 pub fn refresh_threat(threat_weights: &[i8], board: &Board, perspective: Color) -> [i16; ACC] {
     let mut acc = [0i16; ACC];
+    refresh_threat_into(&mut acc, threat_weights, board, perspective);
+    acc
+}
+
+/// [`refresh_threat`] writing through a caller-owned destination.
+///
+/// The by-value form returns 2560 bytes, so `entry.acc[p] = refresh_threat(..)`
+/// builds the accumulator in a stack local and then copies it into the entry —
+/// a libc `memcpy` the `LD_PRELOAD` census counted at **0.0357 calls/node,
+/// 91 bytes/node**, the largest surviving copy in the engine after perf study
+/// 14 (perf study 15 §8 item 3, `docs/research/perf-artifacts-16/memspy-baseline.txt`).
+/// Writing in place is what [`super::sota_accumulator::HalfkaContext`]'s
+/// `finny_refresh_into` already does for the HalfKA twin.
+///
+/// `dst` is fully overwritten (zeroed first, then accumulated into), so a
+/// caller may pass a stale buffer.
+pub fn refresh_threat_into(
+    dst: &mut [i16; ACC],
+    threat_weights: &[i8],
+    board: &Board,
+    perspective: Color,
+) {
+    dst.fill(0);
     if threat_weights.is_empty() {
-        return acc;
+        return;
     }
     assert_eq!(
         threat_weights.len(),
@@ -615,9 +645,8 @@ pub fn refresh_threat(threat_weights: &[i8], board: &Board, perspective: Color) 
         "FullThreats transformer has the wrong size"
     );
     for_each_threat(board, perspective, |idx| {
-        add_column(&mut acc, threat_weights, idx)
+        add_column(dst, threat_weights, idx)
     });
-    acc
 }
 
 /// Build both accumulators for both perspectives — the `(pst, threat)` pair
@@ -632,7 +661,7 @@ pub fn refresh_both(
     let mut threat = [[0i16; ACC]; 2];
     for (i, &persp) in Color::ALL.iter().enumerate() {
         pst[i] = refresh_pst(halfka_weights, ft_bias, board, persp);
-        threat[i] = refresh_threat(threat_weights, board, persp);
+        refresh_threat_into(&mut threat[i], threat_weights, board, persp);
     }
     (pst, threat)
 }

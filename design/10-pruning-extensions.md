@@ -147,13 +147,13 @@ pub struct Stack {
 ```
 
 `ContHistId` is doc 09 §3.2's `Copy` `u16` flat index —
-`((in_check*2 + capture)*13 + piece_idx)*64 + to`, range 0..3328, with a
+`(piece_idx*64 + to)*4 + (in_check*2 + capture)`, range 0..3328, with a
 `SENTINEL` installed at the padding slots and after null moves — resolved
 against the worker's tables in one load; no borrows across recursion, no
 `unsafe`. (Doc 07 §3.2.3 sketches the same handle as a packed-bitfield
 `ContHistRef`; doc 09's flat index is the representation of record.) There
 is no separate `cont_corr_hist` field: the continuation-correction outer
-index is derived on use as `ContHistId::piece_to()` (`id % 832`) — doc 09
+index is derived on use as `ContHistId::piece_to()` (`id / 4`) — doc 09
 §9 Q2; the final call rests with docs 07/09 when `Stack` is frozen.
 
 **Searched-move lists** for end-of-node maluses — fixed capacity 32 each

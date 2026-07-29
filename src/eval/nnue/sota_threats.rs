@@ -8,7 +8,7 @@
 //! endpoint), so unlike the ≤2-add/≤2-sub HalfKA update this observer emits a
 //! *raw event list* per move, resolved to feature indices per perspective at
 //! consumption time via the very same [`super::sota_features::threat_index`] the
-//! from-scratch [`super::sota_features::refresh_threat`] uses.
+//! from-scratch [`super::sota_features::refresh_threat_into`] uses.
 //!
 //! # Structure (Reckless) / content (Stockfish)
 //! The event-generation *shape* — the `record_square_touch` primitive with its
@@ -83,8 +83,10 @@
 //! side (and every non-king move) stays incremental.
 
 use super::sota_accumulator::{psqt_add, psqt_sub};
+#[cfg(test)]
+use super::sota_features::refresh_threat;
 use super::sota_features::{
-    ACC, KEPT_VICTIMS, THREAT_DIMS, ThreatResolver, for_each_threat, refresh_threat, sf_code,
+    ACC, KEPT_VICTIMS, THREAT_DIMS, ThreatResolver, for_each_threat, refresh_threat_into, sf_code,
     threat_pair_kept,
 };
 use super::sota_head::BUCKETS;
@@ -733,7 +735,7 @@ impl Default for ThreatEntry {
 /// A per-ply stack of FullThreats accumulators, maintained **lazily** — the
 /// FullThreats counterpart of [`super::sota_accumulator::HalfkaContext`]
 /// (design/11 §12.9.1, R4). Format-agnostic: it borrows the `i8` threat-weight
-/// slice (feature-major, `THREAT_DIMS · ACC`), exactly like [`refresh_threat`].
+/// slice (feature-major, `THREAT_DIMS · ACC`), exactly like [`refresh_threat_into`].
 ///
 /// Like HalfKA — whose dirty record is re-resolved to feature indices at fold
 /// time — FullThreats now defers *everything*: [`apply_at`](Self::apply_at)
@@ -792,7 +794,7 @@ impl<'a> ThreatContext<'a> {
 
     /// Rebuild the root accumulator from scratch for `board`, both perspectives,
     /// and reset the cursor to that single entry. The from-scratch build reuses
-    /// [`refresh_threat`] so the incremental and refresh paths share one
+    /// [`refresh_threat_into`] so the incremental and refresh paths share one
     /// definition of the feature set.
     pub fn refresh(&mut self, board: &Board) {
         self.top = 0;
@@ -807,7 +809,7 @@ impl<'a> ThreatContext<'a> {
             let weights = self.weights;
             let psqt_weights = self.psqt_weights;
             for (i, &persp) in Color::ALL.iter().enumerate() {
-                self.stack[0].acc[i] = refresh_threat(weights, board, persp);
+                refresh_threat_into(&mut self.stack[0].acc[i], weights, board, persp);
                 self.stack[0].psqt[i] = refresh_psqt_threat(psqt_weights, board, persp);
             }
         }
@@ -940,7 +942,13 @@ impl<'a> ThreatContext<'a> {
                 // here and mark the perspective computed; a king cross is rare, so
                 // the common case stays fully lazy. The OTHER perspective still
                 // folds against the snapshot stored above.
-                self.stack[child].acc[pi] = refresh_threat(weights, board, persp);
+                // In place, not `= refresh_threat(..)`: the by-value form
+                // returns 2560 bytes and the assignment was a libc `memcpy`
+                // the LD_PRELOAD census counted at 0.0357 calls/node and
+                // 91 bytes/node — the largest surviving copy in the engine BY
+                // BYTES (perf study 16 §3; two more sites are larger by call
+                // rate and move 2.4 bytes each).
+                refresh_threat_into(&mut self.stack[child].acc[pi], weights, board, persp);
                 self.stack[child].psqt[pi] = refresh_psqt_threat(psqt_weights, board, persp);
                 self.stack[child].computed[pi] = true;
             } else {

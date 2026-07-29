@@ -107,24 +107,31 @@ stack. We store a **compact flat index** instead (coordinating with
 ```rust
 /// Identifies one inner piece-to table of the continuation history:
 /// (in_check, capture, prior piece incl. a "none" sentinel, prior to-square)
-/// flattened to ((in_check*2 + capture)*13 + piece_idx)*64 + to  (0..3328).
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct ContHistId(u16);
+/// flattened to (piece_idx*64 + to)*4 + (in_check*2 + capture)  (0..3328).
+///
+/// The axis ORDER is chosen for `piece_to()` (perf study 16 §5): the
+/// (piece13, to) sub-index is the HIGH part, so recovering it is a shift.
+/// The natural order puts it in the low 832 of each quadrant and makes the
+/// same accessor a `% 832` -- a non-power-of-two modulus, ~5 instructions,
+/// run 4x per node. Both orders are bijections onto 0..3328 and nothing
+/// outside this impl observes the ordering.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ContHistId(u16);   // both methods are #[inline] in the code
 
 impl ContHistId {
-    pub const SENTINEL: ContHistId = ContHistId(768); // (false,false,None,A1)
+    pub const SENTINEL: ContHistId = ContHistId(3072); // (false,false,None,A1)
 
     pub fn new(in_check: bool, capture: bool, piece: Option<Piece>, to: Square) -> Self {
         let pc = piece.map_or(12, |p| p.index());          // 12 = "no piece"
-        let flat = ((in_check as usize * 2 + capture as usize) * 13 + pc) * 64
-                 + to.index() as usize;
+        let flat = (pc * 64 + to.index() as usize) * 4
+                 + (in_check as usize * 2 + capture as usize);
         ContHistId(flat as u16)
     }
 
     /// Sub-index (piece13 * 64 + to), shared with the continuation
-    /// *correction* history. Derivable because the flat layout puts
-    /// (piece, to) in the low `13*64 = 832` positions of each quadrant.
-    pub fn piece_to(self) -> usize { self.0 as usize % 832 }
+    /// *correction* history. A shift, because the layout puts (piece, to)
+    /// in the high bits of the flat index.
+    pub fn piece_to(self) -> usize { self.0 as usize / 4 }
 }
 ```
 
@@ -141,8 +148,8 @@ impl ContHistId {
 - **Lookup cost:** one `u16` load from the stack entry (already hot), one
   indexed load into a boxed array `tables[id.0 as usize]`, then `[pc][to]`.
   Versus SF's stored pointer this adds a single add+shift to form the
-  address; the `% 832` for the correction sub-index compiles to a
-  multiply-high — both negligible. There is no separate `ContCorrId` needed
+  address; the correction sub-index is a `>> 2` — both negligible. There
+  is no separate `ContCorrId` needed
   in the stack: doc 07/10 can derive it via `piece_to()` (see §9).
 
 ### 3.3 The gravity operator — one generic bounded update
@@ -190,7 +197,7 @@ bijection on u16, so statistically equivalent), victim axis 0..6 where 6 =
 | `main` (butterfly) | `[[E; 65536]; 2]` by `[stm][move.raw16()]` | 7183 | fill(−5) | decay: `e = e * 789 / 1024` | 256 KiB |
 | `low_ply` | `[[E; 65536]; 5]` by `[ply][raw16]`, plies 0–4 | 7183 | — | fill(100) | 640 KiB |
 | `capture` | `[[[E; 7]; 64]; 12]` by `[pc][to][victim_type]` | 10692 | fill(−699) | — | 10.5 KiB |
-| `cont` (continuation) | `Box<[PieceToHist; 3328]>`, outer = `ContHistId` (`[in_check][capture][piece13][to]`), inner `PieceToHist = [[E; 64]; 12]` | 30000 | fill(−552) | — | 4.88 MiB |
+| `cont` (continuation) | `Box<[PieceToHist; 3328]>`, outer = `ContHistId` (`[piece13][to][in_check][capture]`), inner `PieceToHist = [[E; 64]; 12]` | 30000 | fill(−552) | — | 4.88 MiB |
 | `pawn` | `[[[E; 64]; 12]; 8192]` by `[pawn_key & 8191][pc][to]` | 8192 | fill(−1262) | — | 12 MiB |
 | `corr` (unified correction) | `[[CorrBundle; 2]; 65536]` by `[key & 65535][stm]`; bundle = {pawn, minor, non_pawn_white, non_pawn_black} entries, each field read/written under its own key | 1024 | fill(−6) | — | 1 MiB |
 | `cont_corr` | `Box<[PieceToCorr; 832]>`, outer = `ContHistId::piece_to()`, inner `[[E; 64]; 12]` | 1024 | fill(5) | — | 1.22 MiB |
@@ -689,8 +696,12 @@ every step.
    *Done when:* fill values verified by spot reads; `new_search` decay
    verified (e.g. 1024 → 789).
 4. **`ContHistId`**: constructor, `SENTINEL`, `piece_to()`. *Done when:*
-   round-trip and sentinel tests pass; `piece_to` cross-checked against the
-   flat formula for all 3328 ids.
+   round-trip and sentinel tests pass; over all 3328 ids, `ContHistId::new` is
+   a BIJECTION onto `0..3328` (in range, no collisions, full cover) and
+   `piece_to()` recovers `piece13*64 + to`. Deliberately not "cross-checked
+   against the flat formula": the axis ORDER is a free implementation choice
+   (perf study 16 §5 permuted it), and asserting it would block a relabelling
+   that is identical on read and on write.
 5. **`movepick.rs`: `ExtMove` + `partial_insertion_sort`.** *Done when:*
    randomized tests confirm the exact prefix/limit contract of §3.8 and
    multiset preservation.
@@ -774,8 +785,9 @@ every step.
   checks; only reach for `get_unchecked` after a profile shows a specific
   hot check (D14).
 - **Division quirks:** `-value / 18` and `8 * lp / (1 + ply)` are Rust
-  truncating divisions — same as C++ — keep them as written; `% 832` is a
-  constant modulus (compiles to multiply-shift).
+  truncating divisions — same as C++ — keep them as written. The correction
+  sub-index used to be a `% 832`; perf study 16 §5 permuted the `ContHistId`
+  axes so it is a `>> 2` instead.
 - **What to measure:** bench NPS and node count before/after each wave;
   `perf` attribution of `next_move` + `score_*` + `partial_insertion_sort`;
   first-move-cutoff rate and average moves emitted per node (instrumented

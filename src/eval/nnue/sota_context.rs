@@ -159,6 +159,20 @@ pub struct SotaContext {
     /// medium net to carry a variance head (else σ̂ is `None` and nothing
     /// escalates).
     largenet_sigma_gate: f32,
+    /// `true` iff EITHER optional tier is armed — i.e. iff any of
+    /// `smallnet_halfka` / `largenet_halfka` / `largenet_threats` is `Some`.
+    ///
+    /// Both tiers are off in every shipped configuration, so [`push`](Self::push)
+    /// used to run three dead `Option` tests on every node. One cached `bool`
+    /// collapses them to one (perf study 16 §6).
+    ///
+    /// **No constructor sets this field.** Every one ends in
+    /// [`with_tier_flag`](Self::with_tier_flag), which RECOMPUTES it from the
+    /// three contexts, so a disagreement is unrepresentable rather than merely
+    /// asserted (D33 reviewer C, I1 — a `checked()` that only `debug_assert`s
+    /// is invisible in release AND untested here, because no test arms a tier
+    /// through `SotaContext::new`).
+    tiers_armed: bool,
 }
 
 impl std::fmt::Debug for SotaContext {
@@ -240,7 +254,23 @@ impl SotaContext {
             } else {
                 0.0
             },
+            tiers_armed: false, // recomputed by `with_tier_flag`
         }
+        .with_tier_flag()
+    }
+
+    /// Derive the [`tiers_armed`](Self::tiers_armed) cache from the three tier
+    /// contexts. Every constructor ends in this, so the cache cannot disagree
+    /// with what [`push`](Self::push) gates on — a *recompute*, deliberately,
+    /// not a `debug_assert` (D33 reviewer C, I1): a wrong flag here silently
+    /// skips a tier's accumulator push and the tier then evaluates from stale
+    /// lanes, and an assertion would neither fire in release nor be reached by
+    /// any test, since no test arms a tier through [`Self::new`].
+    fn with_tier_flag(mut self) -> Self {
+        self.tiers_armed = self.smallnet_halfka.is_some()
+            || self.largenet_halfka.is_some()
+            || self.largenet_threats.is_some();
+        self
     }
 
     /// Re-snapshot the global policy-head slot (called by
@@ -284,7 +314,9 @@ impl SotaContext {
             largenet_halfka: None,
             largenet_threats: None,
             largenet_sigma_gate: 0.0,
+            tiers_armed: false, // recomputed by `with_tier_flag`
         }
+        .with_tier_flag()
     }
 
     /// Test-only constructor that arms the LARGE tier explicitly. `sigma_gate` is
@@ -322,7 +354,9 @@ impl SotaContext {
                 largenet.threat_psqt(),
             )),
             largenet_sigma_gate: sigma_gate,
+            tiers_armed: false, // recomputed by `with_tier_flag`
         }
+        .with_tier_flag()
     }
 
     /// The value-uncertainty σ̂ produced by the most recent [`evaluate`](Self::evaluate),
@@ -395,14 +429,28 @@ impl SotaContext {
     pub fn push(&mut self, dirty: DirtyPiece, ply: usize, post_move_board: &Board) {
         self.halfka.push(ply, dirty);
         self.threats.apply_at(ply, &dirty, post_move_board);
-        if let Some(small_halfka) = self.smallnet_halfka.as_mut() {
-            small_halfka.push(ply, dirty);
-        }
-        if let Some(large_halfka) = self.largenet_halfka.as_mut() {
-            large_halfka.push(ply, dirty);
-        }
-        if let Some(large_threats) = self.largenet_threats.as_mut() {
-            large_threats.apply_at(ply, &dirty, post_move_board);
+        // ONE test for all three optional tier stacks (perf study 16 §6). They
+        // are armed together with their nets in the constructors, and
+        // `tiers_armed` is DERIVED from them by `with_tier_flag`; both tiers are
+        // off in every shipped configuration, so this is a single predicted
+        // not-taken branch per node instead of three.
+        //
+        // The reference's answer to the same question is DELETION, not a flag:
+        // at `eca43a97` Stockfish has no optional sub-net at all — the small
+        // net was removed outright in `ab8f901d`, and `Eval::evaluate` takes a
+        // single `const NNUE::Network&` (`eca43a97:src/evaluate.cpp:42-50`).
+        // If these tiers are never armed in a shipped build, deleting them
+        // takes all five dead tests instead of three (D33 reviewer B).
+        if self.tiers_armed {
+            if let Some(small_halfka) = self.smallnet_halfka.as_mut() {
+                small_halfka.push(ply, dirty);
+            }
+            if let Some(large_halfka) = self.largenet_halfka.as_mut() {
+                large_halfka.push(ply, dirty);
+            }
+            if let Some(large_threats) = self.largenet_threats.as_mut() {
+                large_threats.apply_at(ply, &dirty, post_move_board);
+            }
         }
     }
 

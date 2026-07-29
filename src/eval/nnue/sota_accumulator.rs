@@ -293,20 +293,24 @@ impl<'a> HalfkaContext<'a> {
                 let (before, after) = self.stack.split_at_mut(child + 1);
                 let entry = &mut before[child];
                 let source = &after[0];
-                if dirty.adds().is_empty() && dirty.subs().is_empty() {
-                    entry.acc[p] = source.acc[p];
-                    entry.psqt[p] = source.psqt[p];
-                } else {
-                    apply_dirty_directed::<false>(
-                        weights,
-                        psqt_weights,
-                        entry,
-                        source,
-                        &dirty,
-                        perspective,
-                        king_square,
-                    );
-                }
+                // The backward loop's own bound, which the forward loop's
+                // argument below does NOT cover (D33 reviewer B): this reads
+                // `stack[child + 1]`, and `child + 1 >= king_ply + 1 >=
+                // ancestor + 2 >= 2`, so `stack[0]`'s permanently-empty record
+                // is out of reach here for a different reason than there.
+                debug_assert!(
+                    !(dirty.adds().is_empty() && dirty.subs().is_empty()),
+                    "empty HalfKA dirty record on the backward fold path"
+                );
+                apply_dirty_directed::<false>(
+                    weights,
+                    psqt_weights,
+                    entry,
+                    source,
+                    &dirty,
+                    perspective,
+                    king_square,
+                );
                 entry.computed[p] = true;
             }
             return;
@@ -318,25 +322,50 @@ impl<'a> HalfkaContext<'a> {
             let dirty = self.stack[child].dirty;
             // Fused parent→child fold: read parent lanes, apply deltas, write
             // child lanes in one pass — no separate ~1.5 KB memmove (opt #2).
-            // An EMPTY record inside a span (a null move on the fold path)
-            // degenerates to the plain parent copy without the kernel call.
+            //
+            // There is NO empty-record special case any more (perf study 16
+            // §4, from study 15 §8 item 10). For HalfKA a dirty record is
+            // empty only for a null move — every real move emits at least one
+            // add and one sub, which is pinned by `DirtyPiece::from_move`'s
+            // construction (`board.rs`, every `m.is_ok()` arm) and by
+            // `dirty_piece_covers_every_move_kind` in `accumulator.rs`, NOT by
+            // this module's own tests (D33 reviewers B and C) — and since
+            // study 15 arm 1 a null move pushes no
+            // entry at all. `stack[0]`'s record is never read: this loop
+            // starts at `ancestor + 1 >= 1`. So the branch was taken 0x per
+            // node, and its `else` arm is unchanged — which is why this
+            // cannot re-materialise the `memcpy` study 14 §3.1 fought. That
+            // arm deleted a special case on a path TAKEN 31% of the time.
+            //
+            // WHAT THE TRIPWIRE PROTECTS IS THE PERF CLAIM, NOT CORRECTNESS
+            // (D33 reviewers A and C, independently). The deleted branch was
+            // bit-identical to its `else` arm even when taken:
+            // `apply_i16_deltas_into(dst, src, w, &[], &[])` is `dst = src`
+            // lane for lane, and `psqt_fold` with empty lists is `*dst = *src`.
+            // So this deletion cannot be WRONG, only slower.
+            //
+            // The corollary is a real future hazard, and it is the reason this
+            // paragraph exists: **the empty-list case of the delta kernels
+            // must remain a copy.** Adding an `if adds.is_empty() &&
+            // subs.is_empty() { return; }` fast path to `apply_i16_deltas_into`
+            // looks like a free win and would, at that moment, turn this into
+            // a stale-child bug — in release, silently.
             let (before, after) = self.stack.split_at_mut(child);
             let parent = &before[child - 1];
             let entry = &mut after[0];
-            if dirty.adds().is_empty() && dirty.subs().is_empty() {
-                entry.acc[p] = parent.acc[p];
-                entry.psqt[p] = parent.psqt[p];
-            } else {
-                apply_dirty_into(
-                    weights,
-                    psqt_weights,
-                    entry,
-                    parent,
-                    &dirty,
-                    perspective,
-                    king_square,
-                );
-            }
+            debug_assert!(
+                !(dirty.adds().is_empty() && dirty.subs().is_empty()),
+                "empty HalfKA dirty record on the forward fold path"
+            );
+            apply_dirty_into(
+                weights,
+                psqt_weights,
+                entry,
+                parent,
+                &dirty,
+                perspective,
+                king_square,
+            );
             entry.computed[p] = true;
         }
     }
