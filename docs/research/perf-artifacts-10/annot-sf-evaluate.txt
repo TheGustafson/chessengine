@@ -1,0 +1,1917 @@
+ Percent |	Source code & Disassembly of stockfish18 for instructions:u (12606 samples, percent: local period)
+------------------------------------------------------------------------------------------------------------------
+         :
+         :
+         :
+         : 3     Disassembly of section .text:
+         :
+         : 5     0000000000022940 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const>:
+    0.02 :   22940:  lea    0x8(%rsp),%r10
+    0.02 :   22945:  and    $0xffffffffffffffc0,%rsp
+    0.01 :   22949:  mov    %rdx,%r11
+    0.00 :   2294c:  push   -0x8(%r10)
+    0.07 :   22950:  push   %rbp
+    0.01 :   22951:  mov    %rsp,%rbp
+    0.00 :   22954:  push   %r15
+    0.03 :   22956:  push   %r14
+    0.00 :   22958:  mov    %rsi,%r14
+    0.01 :   2295b:  push   %r13
+    0.03 :   2295d:  push   %r12
+    0.08 :   2295f:  push   %r10
+    0.01 :   22961:  push   %rbx
+    0.04 :   22962:  sub    $0x900,%rsp
+    0.00 :   22969:  mov    %rdi,-0x8d0(%rbp)
+    0.06 :   22970:  mov    %r8,-0x8f8(%rbp)
+    0.06 :   22977:  mov    0x269800(%rcx),%r8
+    0.02 :   2297e:  mov    %rcx,-0x8a0(%rbp)
+    0.03 :   22985:  mov    %r8,%rdi
+    0.00 :   22988:  mov    %fs:0x28,%rax
+    0.02 :   22991:  mov    %rax,-0x38(%rbp)
+    0.02 :   22995:  mov    0xb0(%rdx),%eax
+    0.02 :   2299b:  add    0x90(%rdx),%eax
+    0.01 :   229a1:  lea    0x2(%rax),%edx
+    0.01 :   229a4:  sub    $0x1,%eax
+    0.00 :   229a7:  cmovs  %edx,%eax
+    0.02 :   229aa:  sar    $0x2,%eax
+    0.00 :   229ad:  mov    %eax,-0x8e4(%rbp)
+    0.01 :   229b3:  sub    $0x1,%rdi
+    0.01 :   229b7:  je     25116 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x27d6>
+    0.00 :   229bd:  imul   $0x1340,%r8,%r15
+    0.02 :   229c4:  mov    %rdi,%r12
+    0.00 :   229c7:  add    %rcx,%r15
+    0.00 :   229ca:  cmpb   $0x0,-0x300(%r15)
+    0.17 :   229d2:  jne    22a01 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xc1>
+    0.00 :   229d4:  cmpb   $0x6,-0x40(%r15)
+    0.10 :   229d9:  je     24e50 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2510>
+    0.02 :   229df:  sub    $0x1340,%r15
+    0.01 :   229e6:  sub    $0x1,%r12
+    0.01 :   229ea:  jne    229ca <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x8a>
+    0.00 :   229ec:  mov    -0x8a0(%rbp),%r10
+    0.00 :   229f3:  cmpb   $0x0,0x1040(%r10)
+    0.02 :   229fb:  je     24e50 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2510>
+    0.00 :   22a01:  lea    0x1(%r12),%r12
+    0.07 :   22a06:  cmp    %r8,%r12
+    0.00 :   22a09:  jae    22ce8 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x3a8>
+    0.00 :   22a0f:  mov    0x80(%r11),%r9
+    0.01 :   22a16:  xor    %r10d,%r10d
+    0.02 :   22a19:  mov    %r14,%r13
+    0.00 :   22a1c:  mov    %r8,%rsi
+    0.00 :   22a1f:  and    0x70(%r11),%r9
+    0.00 :   22a23:  mov    %r11,-0x8b0(%rbp)
+    0.02 :   22a2a:  tzcnt  %r9,%r10
+    0.01 :   22a2f:  mov    -0x8a0(%rbp),%r15
+    0.02 :   22a36:  mov    %r10d,%r14d
+    0.00 :   22a39:  imul   $0x1340,%r12,%r8
+    0.01 :   22a40:  lea    -0x1(%r12),%r11
+    0.02 :   22a45:  imul   $0x1340,%r11,%rdx
+    0.00 :   22a4c:  lea    0x1(%r12),%r10
+    0.01 :   22a51:  lea    (%r15,%r8,1),%rbx
+    0.02 :   22a55:  movzbl 0x1302(%rbx),%eax
+    0.03 :   22a5c:  add    %r15,%rdx
+    0.01 :   22a5f:  cmp    %rsi,%r10
+    0.00 :   22a62:  jb     249bb <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x207b>
+    0.00 :   22a68:  movslq %r14d,%rcx
+    0.00 :   22a6b:  lea    0x6b7b38e(%rip),%rdi        # 6b9de00 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::OrientTBL>
+    0.02 :   22a72:  movzbl 0x1300(%rbx),%r9d
+    0.00 :   22a7a:  lea    0x6b7b2ff(%rip),%r11        # 6b9dd80 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::PieceSquareIndex>
+    0.00 :   22a81:  mov    (%rdi,%rcx,4),%esi
+    0.04 :   22a84:  lea    0x6b7b1f5(%rip),%rdi        # 6b9dc80 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::KingBuckets>
+    0.02 :   22a8b:  mov    %r14d,%ecx
+    0.00 :   22a8e:  mov    (%rdi,%rcx,4),%ecx
+    0.03 :   22a91:  movzbl 0x1301(%rbx),%edi
+    0.00 :   22a98:  mov    (%r11,%r9,4),%r8d
+    0.05 :   22a9c:  xor    %esi,%edi
+    0.02 :   22a9e:  add    %r8d,%edi
+    0.00 :   22aa1:  add    %ecx,%edi
+    0.02 :   22aa3:  cmp    $0x40,%al
+    0.00 :   22aa5:  je     24ea9 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2569>
+    0.00 :   22aab:  movq   $0x1,-0x8a8(%rbp)
+    0.02 :   22ab6:  xor    %esi,%eax
+    0.00 :   22ab8:  add    %r8d,%eax
+    0.01 :   22abb:  add    %ecx,%eax
+    0.00 :   22abd:  mov    %eax,-0x680(%rbp)
+    0.02 :   22ac3:  imul   $0x1340,%r12,%rax
+    0.00 :   22aca:  mov    $0x1,%r9d
+    0.00 :   22ad0:  add    %r15,%rax
+    0.01 :   22ad3:  movzbl 0x1303(%rax),%r8d
+    0.01 :   22adb:  cmp    $0x40,%r8b
+    0.02 :   22adf:  jne    248f8 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1fb8>
+    0.00 :   22ae5:  imul   $0x1340,%r12,%r12
+    0.02 :   22aec:  add    %r15,%r12
+    0.00 :   22aef:  movzbl 0x1304(%r12),%r8d
+    0.02 :   22af8:  cmp    $0x40,%r8b
+    0.02 :   22afc:  jne    2504f <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x270f>
+    0.00 :   22b02:  mov    -0x680(%rbp),%r8d
+    0.03 :   22b09:  cmp    $0x1,%r9
+    0.00 :   22b0d:  jne    24bef <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x22af>
+    0.01 :   22b13:  mov    %edi,%esi
+    0.01 :   22b15:  mov    %r8d,%ecx
+    0.00 :   22b18:  lea    0x800(%r13),%r11
+    0.00 :   22b1f:  xor    %eax,%eax
+    0.00 :   22b21:  shl    $0xa,%esi
+    0.02 :   22b24:  shl    $0xa,%ecx
+    0.01 :   22b27:  lea    (%r11,%rsi,2),%r12
+    0.00 :   22b2b:  lea    (%r11,%rcx,2),%r9
+    0.01 :   22b2f:  vmovdqa64 (%rdx,%rax,1),%zmm7
+    0.17 :   22b36:  vpaddw (%r9,%rax,1),%zmm7,%zmm3
+    1.44 :   22b3d:  vpsubw (%r12,%rax,1),%zmm3,%zmm4
+    0.13 :   22b44:  vmovdqa64 %zmm4,(%rbx,%rax,1)
+    0.19 :   22b4b:  vmovdqa64 0x40(%rdx,%rax,1),%zmm5
+    0.06 :   22b53:  vpaddw 0x40(%r9,%rax,1),%zmm5,%zmm8
+    0.39 :   22b5b:  vpsubw 0x40(%r12,%rax,1),%zmm8,%zmm9
+    0.16 :   22b63:  vmovdqa64 %zmm9,0x40(%rax,%rbx,1)
+    0.16 :   22b6b:  vmovdqa64 0x80(%rdx,%rax,1),%zmm10
+    0.08 :   22b73:  vpaddw 0x80(%r9,%rax,1),%zmm10,%zmm11
+    0.28 :   22b7b:  vpsubw 0x80(%r12,%rax,1),%zmm11,%zmm12
+    0.13 :   22b83:  vmovdqa64 %zmm12,0x80(%rax,%rbx,1)
+    0.17 :   22b8b:  vmovdqa64 0xc0(%rdx,%rax,1),%zmm13
+    0.07 :   22b93:  vpaddw 0xc0(%r9,%rax,1),%zmm13,%zmm14
+    0.19 :   22b9b:  vpsubw 0xc0(%r12,%rax,1),%zmm14,%zmm15
+    0.13 :   22ba3:  vmovdqa64 %zmm15,0xc0(%rax,%rbx,1)
+    0.17 :   22bab:  vmovdqa64 0x100(%rdx,%rax,1),%zmm6
+    0.09 :   22bb3:  vpaddw 0x100(%r9,%rax,1),%zmm6,%zmm0
+    0.21 :   22bbb:  vpsubw 0x100(%r12,%rax,1),%zmm0,%zmm1
+    0.19 :   22bc3:  vmovdqa64 %zmm1,0x100(%rax,%rbx,1)
+    0.13 :   22bcb:  vmovdqa64 0x140(%rdx,%rax,1),%zmm2
+    0.10 :   22bd3:  vpaddw 0x140(%r9,%rax,1),%zmm2,%zmm7
+    0.28 :   22bdb:  vpsubw 0x140(%r12,%rax,1),%zmm7,%zmm3
+    0.16 :   22be3:  vmovdqa64 %zmm3,0x140(%rax,%rbx,1)
+    0.15 :   22beb:  vmovdqa64 0x180(%rdx,%rax,1),%zmm4
+    0.02 :   22bf3:  vpaddw 0x180(%r9,%rax,1),%zmm4,%zmm5
+    0.13 :   22bfb:  vpsubw 0x180(%r12,%rax,1),%zmm5,%zmm8
+    0.06 :   22c03:  vmovdqa64 %zmm8,0x180(%rax,%rbx,1)
+    0.15 :   22c0b:  vmovdqa64 0x1c0(%rdx,%rax,1),%zmm9
+    0.04 :   22c13:  vpaddw 0x1c0(%r9,%rax,1),%zmm9,%zmm10
+    0.25 :   22c1b:  vpsubw 0x1c0(%r12,%rax,1),%zmm10,%zmm11
+    0.09 :   22c23:  add    $0x200,%rax
+    0.00 :   22c29:  vmovdqa64 %zmm11,-0x40(%rax,%rbx,1)
+    0.17 :   22c31:  cmp    $0x800,%rax
+    0.02 :   22c37:  jne    22b2f <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1ef>
+    0.00 :   22c3d:  lea    0x79fc800(%r13),%r11
+    0.00 :   22c44:  lea    0x0(,%r8,8),%r8d
+    0.00 :   22c4c:  vmovdqa (%r11,%r8,4),%ymm12
+    0.14 :   22c52:  vpaddd 0x1000(%rdx),%ymm12,%ymm13
+    0.00 :   22c5a:  lea    0x0(,%rdi,8),%edx
+    0.00 :   22c61:  vpsubd (%r11,%rdx,4),%ymm13,%ymm14
+    0.01 :   22c67:  vmovdqa %ymm14,0x1000(%rbx)
+    0.05 :   22c6f:  movb   $0x1,0x1040(%rbx)
+    0.01 :   22c76:  mov    %r10,%r12
+    0.02 :   22c79:  mov    0x269800(%r15),%rsi
+    0.00 :   22c80:  cmp    %rsi,%r12
+    0.00 :   22c83:  jb     22a39 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xf9>
+    0.00 :   22c89:  mov    -0x8b0(%rbp),%r11
+    0.00 :   22c90:  mov    %rsi,%r8
+    0.00 :   22c93:  mov    %r13,%r14
+    0.00 :   22c96:  lea    -0x1(%rsi),%rdi
+    0.03 :   22c9a:  mov    -0x8a0(%rbp),%r13
+    0.02 :   22ca1:  add    $0x1292c0,%r13
+    0.00 :   22ca8:  mov    %r13,-0x8a8(%rbp)
+    0.01 :   22caf:  test   %rdi,%rdi
+    0.00 :   22cb2:  jne    22cfd <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x3bd>
+    0.00 :   22cb4:  mov    -0x8a0(%rbp),%rbx
+    0.00 :   22cbb:  lea    -0x680(%rbp),%r15
+    0.00 :   22cc2:  mov    %r15,-0x8c0(%rbp)
+    0.00 :   22cc9:  cmpb   $0x0,0x12a300(%rbx)
+    0.00 :   22cd0:  jne    25156 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2816>
+    0.00 :   22cd6:  xor    %r13d,%r13d
+    0.00 :   22cd9:  vzeroupper
+    0.00 :   22cdc:  jmp    25086 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2746>
+    0.00 :   22ce1:  nopl   0x0(%rax)
+    0.00 :   22ce8:  mov    -0x8a0(%rbp),%rsi
+    0.00 :   22cef:  add    $0x1292c0,%rsi
+    0.00 :   22cf6:  mov    %rsi,-0x8a8(%rbp)
+    0.00 :   22cfd:  imul   $0x14c0,%rdi,%rcx
+    0.00 :   22d04:  mov    -0x8a0(%rbp),%r9
+    0.00 :   22d0b:  mov    %rdi,%r13
+    0.00 :   22d0e:  add    %r9,%rcx
+    0.04 :   22d11:  cmpb   $0x0,0x12a300(%rcx)
+    0.10 :   22d18:  jne    22d5a <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x41a>
+    0.01 :   22d1a:  cmpb   $0x0,0x12a748(%rcx)
+    0.11 :   22d21:  jne    22d39 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x3f9>
+    0.00 :   22d23:  movzbl 0x12a749(%rcx),%eax
+    0.01 :   22d2a:  xor    0x12a74a(%rcx),%al
+    0.00 :   22d30:  and    $0x4,%eax
+    0.01 :   22d33:  jne    25083 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2743>
+    0.02 :   22d39:  sub    $0x14c0,%rcx
+    0.03 :   22d40:  sub    $0x1,%r13
+    0.01 :   22d44:  jne    22d11 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x3d1>
+    0.00 :   22d46:  mov    -0x8a0(%rbp),%rdx
+    0.00 :   22d4d:  cmpb   $0x0,0x12a300(%rdx)
+    0.00 :   22d54:  je     25083 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2743>
+    0.02 :   22d5a:  lea    0x1(%r13),%rbx
+    0.02 :   22d5e:  cmp    %r8,%rbx
+    0.00 :   22d61:  jae    247c4 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1e84>
+    0.00 :   22d67:  mov    0x80(%r11),%rax
+    0.02 :   22d6e:  xor    %edx,%edx
+    0.02 :   22d70:  and    0x70(%r11),%rax
+    0.02 :   22d74:  lea    -0x680(%rbp),%r12
+    0.00 :   22d7b:  tzcnt  %rax,%rdx
+    0.02 :   22d80:  mov    %r12,-0x8c0(%rbp)
+    0.02 :   22d87:  lea    0x6b796b2(%rip),%r13        # 6b9c440 <Stockfish::Eval::NNUE::Features::offsets>
+    0.00 :   22d8e:  vmovq  %r11,%xmm18
+    0.00 :   22d94:  mov    %rdx,-0x8f0(%rbp)
+    0.02 :   22d9b:  lea    -0x1(%rbx),%r10
+    0.02 :   22d9f:  mov    -0x8a8(%rbp),%rdi
+    0.02 :   22da6:  lea    0x1(%rbx),%r11
+    0.00 :   22daa:  imul   $0x14c0,%r10,%rdx
+    0.01 :   22db1:  mov    %r11,-0x8d8(%rbp)
+    0.06 :   22db8:  imul   $0x14c0,%rbx,%r15
+    0.03 :   22dbf:  add    %rdi,%rdx
+    0.02 :   22dc2:  add    %r15,%rdi
+    0.01 :   22dc5:  mov    %rdi,-0x8b8(%rbp)
+    0.02 :   22dcc:  cmp    %r8,%r11
+    0.02 :   22dcf:  jb     247d7 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1e97>
+    0.00 :   22dd5:  mov    -0x8a8(%rbp),%rbx
+    0.03 :   22ddc:  movq   $0x0,-0x690(%rbp)
+    0.11 :   22de7:  movq   $0x0,-0x480(%rbp)
+    0.11 :   22df2:  lea    0x1300(%rbx,%r15,1),%r8
+    0.02 :   22dfa:  mov    0x180(%r8),%r10
+    0.05 :   22e01:  shl    $0x2,%r10
+    0.02 :   22e05:  lea    (%r8,%r10,1),%r11
+    0.01 :   22e09:  je     24dd8 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2498>
+    0.01 :   22e0f:  movslq -0x8f0(%rbp),%rdi
+    0.04 :   22e16:  lea    0x6b7ae23(%rip),%r15        # 6b9dc40 <Stockfish::Eval::NNUE::Features::FullThreats::OrientTBL>
+    0.00 :   22e1d:  lea    -0x890(%rbp),%r10
+    0.04 :   22e24:  vmovq  %r14,%xmm15
+    0.00 :   22e29:  movsbl (%r15,%rdi,1),%edi
+    0.13 :   22e2e:  xchg   %ax,%ax
+    0.00 :   22e30:  mov    (%r8),%eax
+    0.11 :   22e33:  mov    %r10,%rbx
+    0.05 :   22e36:  mov    %eax,%ecx
+    0.01 :   22e38:  mov    %eax,%esi
+    0.00 :   22e3a:  movzbl %al,%r9d
+    0.03 :   22e3e:  shr    $0x14,%ecx
+    0.05 :   22e41:  shr    $0x10,%esi
+    0.04 :   22e44:  test   %eax,%eax
+    0.00 :   22e46:  movzbl %ah,%eax
+    0.02 :   22e49:  cmovs  %r12,%rbx
+    0.02 :   22e4d:  and    $0xf,%ecx
+    0.05 :   22e50:  xor    %edi,%r9d
+    0.00 :   22e53:  xor    %edi,%eax
+    0.01 :   22e55:  mov    %rcx,%r14
+    0.00 :   22e58:  and    $0xf,%esi
+    0.07 :   22e5b:  mov    %r9d,%r15d
+    0.02 :   22e5e:  shl    $0x4,%r14
+    0.03 :   22e62:  add    %r14,%rsi
+    0.02 :   22e65:  cmp    %eax,%r9d
+    0.04 :   22e68:  setb   %r9b
+    0.03 :   22e6c:  shl    $0x6,%rcx
+    0.02 :   22e70:  add    %r15,%rcx
+    0.00 :   22e73:  movzbl %r9b,%r14d
+    0.05 :   22e77:  lea    0x6b695c2(%rip),%r15        # 6b8c440 <Stockfish::Eval::NNUE::Features::index_lut2>
+    0.02 :   22e7e:  lea    (%r14,%rsi,2),%r9
+    0.05 :   22e82:  mov    %rcx,%rsi
+    0.00 :   22e85:  lea    0x6b7a5b4(%rip),%r14        # 6b9d440 <Stockfish::Eval::NNUE::Features::index_lut1>
+    0.02 :   22e8c:  shl    $0x6,%rsi
+    0.02 :   22e90:  add    %r15,%rsi
+    0.00 :   22e93:  movzbl (%rsi,%rax,1),%eax
+    0.85 :   22e97:  add    (%r14,%r9,4),%eax
+    0.11 :   22e9b:  add    0x0(%r13,%rcx,4),%eax
+    0.24 :   22ea0:  cmp    $0x137ef,%eax
+    0.01 :   22ea5:  ja     22ebc <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x57c>
+    0.00 :   22ea7:  mov    0x200(%rbx),%rcx
+    0.17 :   22eae:  lea    0x1(%rcx),%r9
+    0.05 :   22eb2:  mov    %r9,0x200(%rbx)
+    0.02 :   22eb9:  mov    %eax,(%rbx,%rcx,4)
+    0.81 :   22ebc:  add    $0x4,%r8
+    0.09 :   22ec0:  cmp    %r8,%r11
+    0.03 :   22ec3:  jne    22e30 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x4f0>
+    0.01 :   22ec9:  mov    -0x690(%rbp),%r8d
+    0.22 :   22ed0:  mov    -0x480(%rbp),%r11d
+    0.09 :   22ed7:  vmovq  %xmm15,%r14
+    0.00 :   22edc:  mov    %r8d,-0x8b0(%rbp)
+    0.00 :   22ee3:  lea    0x800(%rdx),%rdi
+    0.00 :   22eea:  movslq %r11d,%r15
+    0.06 :   22eed:  mov    %rdx,%rcx
+    0.00 :   22ef0:  mov    %r10,%r8
+    0.03 :   22ef3:  mov    %rdi,-0x8c8(%rbp)
+    0.06 :   22efa:  mov    %r12,%r9
+    0.01 :   22efd:  lea    (%r12,%r15,4),%r15
+    0.01 :   22f01:  movslq -0x8b0(%rbp),%rbx
+    0.80 :   22f08:  mov    -0x8b8(%rbp),%rsi
+    0.00 :   22f0f:  mov    %rdx,-0x8e0(%rbp)
+    0.01 :   22f16:  lea    0x2c00800(%r14),%rax
+    0.00 :   22f1d:  mov    %r10,%rdx
+    0.01 :   22f20:  lea    (%r10,%rbx,4),%rbx
+    0.18 :   22f24:  mov    -0x8b0(%rbp),%r10d
+    0.02 :   22f2b:  vmovdqa64 (%rcx),%zmm15
+    0.17 :   22f31:  vmovdqa64 0x40(%rcx),%zmm14
+    0.06 :   22f38:  vmovdqa64 0x80(%rcx),%zmm13
+    0.06 :   22f3f:  vmovdqa64 0xc0(%rcx),%zmm12
+    0.21 :   22f46:  vmovdqa64 0x100(%rcx),%zmm11
+    0.14 :   22f4d:  vmovdqa64 0x140(%rcx),%zmm10
+    0.17 :   22f54:  vmovdqa64 0x180(%rcx),%zmm9
+    0.34 :   22f5b:  vmovdqa64 0x1c0(%rcx),%zmm8
+    0.18 :   22f62:  vmovdqa64 0x200(%rcx),%zmm7
+    0.10 :   22f69:  vmovdqa64 0x240(%rcx),%zmm6
+    0.17 :   22f70:  vmovdqa64 0x280(%rcx),%zmm5
+    0.09 :   22f77:  vmovdqa64 0x2c0(%rcx),%zmm4
+    0.06 :   22f7e:  vmovdqa64 0x300(%rcx),%zmm3
+    0.05 :   22f85:  vmovdqa64 0x340(%rcx),%zmm2
+    0.01 :   22f8c:  vmovdqa64 0x380(%rcx),%zmm1
+    0.17 :   22f93:  vmovdqa64 0x3c0(%rcx),%zmm0
+    0.11 :   22f9a:  test   %r10d,%r10d
+    0.01 :   22f9d:  jle    23099 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x759>
+    0.00 :   22fa3:  mov    %rdx,%r10
+    0.01 :   22fa6:  mov    (%r10),%edi
+    0.06 :   22fa9:  add    $0x4,%r10
+    0.02 :   22fad:  shl    $0xa,%rdi
+    0.01 :   22fb1:  vpmovsxbw (%rax,%rdi,1),%zmm16
+    0.54 :   22fb8:  vpmovsxbw 0x20(%rax,%rdi,1),%zmm17
+    0.13 :   22fc0:  vpmovsxbw 0x40(%rax,%rdi,1),%zmm19
+    0.46 :   22fc8:  vpmovsxbw 0x60(%rax,%rdi,1),%zmm20
+    0.10 :   22fd0:  vpmovsxbw 0x80(%rax,%rdi,1),%zmm21
+    0.25 :   22fd8:  vpmovsxbw 0xa0(%rax,%rdi,1),%zmm22
+    0.16 :   22fe0:  vpsubw %zmm16,%zmm15,%zmm15
+    0.02 :   22fe6:  vpsubw %zmm17,%zmm14,%zmm14
+    0.03 :   22fec:  vpmovsxbw 0xc0(%rax,%rdi,1),%zmm23
+    0.21 :   22ff4:  vpmovsxbw 0xe0(%rax,%rdi,1),%zmm24
+    0.18 :   22ffc:  vpsubw %zmm19,%zmm13,%zmm13
+    0.02 :   23002:  vpsubw %zmm20,%zmm12,%zmm12
+    0.06 :   23008:  vpmovsxbw 0x100(%rax,%rdi,1),%zmm25
+    0.12 :   23010:  vpmovsxbw 0x120(%rax,%rdi,1),%zmm26
+    0.10 :   23018:  vpsubw %zmm21,%zmm11,%zmm11
+    0.02 :   2301e:  vpsubw %zmm22,%zmm10,%zmm10
+    0.06 :   23024:  vpmovsxbw 0x140(%rax,%rdi,1),%zmm27
+    0.22 :   2302c:  vpmovsxbw 0x160(%rax,%rdi,1),%zmm28
+    0.16 :   23034:  vpsubw %zmm23,%zmm9,%zmm9
+    0.02 :   2303a:  vpsubw %zmm24,%zmm8,%zmm8
+    0.05 :   23040:  vpmovsxbw 0x180(%rax,%rdi,1),%zmm29
+    0.23 :   23048:  vpmovsxbw 0x1a0(%rax,%rdi,1),%zmm30
+    0.08 :   23050:  vpsubw %zmm25,%zmm7,%zmm7
+    0.03 :   23056:  vpsubw %zmm26,%zmm6,%zmm6
+    0.06 :   2305c:  vpsubw %zmm27,%zmm5,%zmm5
+    0.06 :   23062:  vpsubw %zmm28,%zmm4,%zmm4
+    0.10 :   23068:  vpmovsxbw 0x1c0(%rax,%rdi,1),%zmm31
+    0.21 :   23070:  vpmovsxbw 0x1e0(%rax,%rdi,1),%zmm16
+    0.10 :   23078:  vpsubw %zmm29,%zmm3,%zmm3
+    0.04 :   2307e:  vpsubw %zmm30,%zmm2,%zmm2
+    0.07 :   23084:  vpsubw %zmm31,%zmm1,%zmm1
+    0.04 :   2308a:  vpsubw %zmm16,%zmm0,%zmm0
+    0.10 :   23090:  cmp    %r10,%rbx
+    0.03 :   23093:  jne    22fa6 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x666>
+    0.00 :   23099:  test   %r11d,%r11d
+    0.02 :   2309c:  jle    23198 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x858>
+    0.00 :   230a2:  mov    %r12,%r10
+    0.01 :   230a5:  mov    (%r10),%edi
+    0.02 :   230a8:  add    $0x4,%r10
+    0.01 :   230ac:  shl    $0xa,%rdi
+    0.00 :   230b0:  vpmovsxbw (%rax,%rdi,1),%zmm17
+    2.71 :   230b7:  vpmovsxbw 0x20(%rax,%rdi,1),%zmm19
+    0.13 :   230bf:  vpmovsxbw 0x40(%rax,%rdi,1),%zmm20
+    0.53 :   230c7:  vpmovsxbw 0x60(%rax,%rdi,1),%zmm21
+    0.09 :   230cf:  vpmovsxbw 0x80(%rax,%rdi,1),%zmm22
+    0.40 :   230d7:  vpmovsxbw 0xa0(%rax,%rdi,1),%zmm23
+    0.09 :   230df:  vpaddw %zmm15,%zmm17,%zmm15
+    0.00 :   230e5:  vpaddw %zmm14,%zmm19,%zmm14
+    0.02 :   230eb:  vpmovsxbw 0xc0(%rax,%rdi,1),%zmm24
+    0.48 :   230f3:  vpmovsxbw 0xe0(%rax,%rdi,1),%zmm25
+    0.14 :   230fb:  vpaddw %zmm13,%zmm20,%zmm13
+    0.04 :   23101:  vpaddw %zmm12,%zmm21,%zmm12
+    0.05 :   23107:  vpmovsxbw 0x100(%rax,%rdi,1),%zmm26
+    0.41 :   2310f:  vpmovsxbw 0x120(%rax,%rdi,1),%zmm27
+    0.10 :   23117:  vpaddw %zmm11,%zmm22,%zmm11
+    0.01 :   2311d:  vpaddw %zmm10,%zmm23,%zmm10
+    0.00 :   23123:  vpmovsxbw 0x140(%rax,%rdi,1),%zmm28
+    0.47 :   2312b:  vpmovsxbw 0x160(%rax,%rdi,1),%zmm29
+    0.12 :   23133:  vpaddw %zmm9,%zmm24,%zmm9
+    0.04 :   23139:  vpaddw %zmm8,%zmm25,%zmm8
+    0.03 :   2313f:  vpmovsxbw 0x180(%rax,%rdi,1),%zmm30
+    0.33 :   23147:  vpmovsxbw 0x1a0(%rax,%rdi,1),%zmm31
+    0.06 :   2314f:  vpaddw %zmm7,%zmm26,%zmm7
+    0.02 :   23155:  vpaddw %zmm6,%zmm27,%zmm6
+    0.01 :   2315b:  vpaddw %zmm5,%zmm28,%zmm5
+    0.06 :   23161:  vpaddw %zmm4,%zmm29,%zmm4
+    0.06 :   23167:  vpmovsxbw 0x1c0(%rax,%rdi,1),%zmm16
+    0.41 :   2316f:  vpmovsxbw 0x1e0(%rax,%rdi,1),%zmm17
+    0.09 :   23177:  vpaddw %zmm3,%zmm30,%zmm3
+    0.01 :   2317d:  vpaddw %zmm2,%zmm31,%zmm2
+    0.06 :   23183:  vpaddw %zmm1,%zmm16,%zmm1
+    0.02 :   23189:  vpaddw %zmm0,%zmm17,%zmm0
+    0.10 :   2318f:  cmp    %r10,%r15
+    0.00 :   23192:  jne    230a5 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x765>
+    0.00 :   23198:  vmovdqa64 %zmm15,(%rsi)
+    0.06 :   2319e:  add    $0x200,%rax
+    0.02 :   231a4:  add    $0x400,%rcx
+    0.00 :   231ab:  add    $0x400,%rsi
+    0.02 :   231b2:  vmovdqa64 %zmm14,-0x3c0(%rsi)
+    0.02 :   231b9:  vmovdqa64 %zmm13,-0x380(%rsi)
+    0.10 :   231c0:  vmovdqa64 %zmm12,-0x340(%rsi)
+    0.30 :   231c7:  vmovdqa64 %zmm11,-0x300(%rsi)
+    0.10 :   231ce:  vmovdqa64 %zmm10,-0x2c0(%rsi)
+    0.10 :   231d5:  vmovdqa64 %zmm9,-0x280(%rsi)
+    0.06 :   231dc:  vmovdqa64 %zmm8,-0x240(%rsi)
+    0.06 :   231e3:  vmovdqa64 %zmm7,-0x200(%rsi)
+    0.06 :   231ea:  vmovdqa64 %zmm6,-0x1c0(%rsi)
+    0.09 :   231f1:  vmovdqa64 %zmm5,-0x180(%rsi)
+    0.08 :   231f8:  vmovdqa64 %zmm4,-0x140(%rsi)
+    0.13 :   231ff:  vmovdqa64 %zmm3,-0x100(%rsi)
+    0.18 :   23206:  vmovdqa64 %zmm2,-0xc0(%rsi)
+    0.21 :   2320d:  vmovdqa64 %zmm1,-0x80(%rsi)
+    0.20 :   23214:  vmovdqa64 %zmm0,-0x40(%rsi)
+    0.29 :   2321b:  cmp    %rcx,-0x8c8(%rbp)
+    0.01 :   23222:  jne    22f24 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x5e4>
+    0.00 :   23228:  mov    -0x8e0(%rbp),%rax
+    0.02 :   2322f:  mov    -0x8b0(%rbp),%ecx
+    0.00 :   23235:  vmovdqa 0x1000(%rax),%ymm15
+    0.06 :   2323d:  test   %ecx,%ecx
+    0.00 :   2323f:  jle    2325b <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x91b>
+    0.00 :   23241:  mov    (%r8),%esi
+    0.02 :   23244:  add    $0x4,%r8
+    0.06 :   23248:  shl    $0x5,%rsi
+    0.00 :   2324c:  vpsubd 0x7aac800(%r14,%rsi,1),%ymm15,%ymm15
+    0.44 :   23256:  cmp    %r8,%rbx
+    0.00 :   23259:  jne    23241 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x901>
+    0.00 :   2325b:  test   %r11d,%r11d
+    0.00 :   2325e:  jle    2327a <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x93a>
+    0.00 :   23260:  mov    (%r9),%r11d
+    0.02 :   23263:  add    $0x4,%r9
+    0.00 :   23267:  shl    $0x5,%r11
+    0.00 :   2326b:  vpaddd 0x7aac800(%r14,%r11,1),%ymm15,%ymm15
+    1.32 :   23275:  cmp    %r9,%r15
+    0.00 :   23278:  jne    23260 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x920>
+    0.00 :   2327a:  mov    -0x8b8(%rbp),%r8
+    0.02 :   23281:  mov    -0x8d8(%rbp),%rbx
+    0.04 :   23288:  movb   $0x1,0x1040(%r8)
+    0.05 :   23290:  vmovdqa %ymm15,0x1000(%r8)
+    0.15 :   23299:  mov    -0x8a0(%rbp),%r9
+    0.00 :   232a0:  mov    0x269800(%r9),%r8
+    0.02 :   232a7:  cmp    %r8,%rbx
+    0.02 :   232aa:  jb     22d9b <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x45b>
+    0.00 :   232b0:  vmovq  %xmm18,%r11
+    0.02 :   232b6:  lea    -0x1(%r8),%rdi
+    0.00 :   232ba:  test   %rdi,%rdi
+    0.02 :   232bd:  je     25156 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2816>
+    0.00 :   232c3:  imul   $0x1340,%rdi,%r13
+    0.01 :   232ca:  mov    -0x8a0(%rbp),%r15
+    0.03 :   232d1:  mov    %rdi,%r12
+    0.01 :   232d4:  add    %r15,%r13
+    0.01 :   232d7:  cmpb   $0x0,0x1041(%r13)
+    0.13 :   232df:  jne    23311 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x9d1>
+    0.01 :   232e1:  cmpb   $0xe,0x1300(%r13)
+    0.13 :   232e9:  je     24df6 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x24b6>
+    0.02 :   232ef:  sub    $0x1340,%r13
+    0.02 :   232f6:  sub    $0x1,%r12
+    0.01 :   232fa:  jne    232d7 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x997>
+    0.00 :   232fc:  mov    -0x8a0(%rbp),%r10
+    0.00 :   23303:  cmpb   $0x0,0x1041(%r10)
+    0.00 :   2330b:  je     24df6 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x24b6>
+    0.00 :   23311:  lea    0x1(%r12),%r9
+    0.06 :   23316:  cmp    %r8,%r9
+    0.00 :   23319:  jae    235d9 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xc99>
+    0.00 :   2331f:  mov    0x88(%r11),%rdx
+    0.02 :   23326:  xor    %r12d,%r12d
+    0.02 :   23329:  mov    %r9,%rbx
+    0.01 :   2332c:  mov    %r14,%r15
+    0.00 :   2332f:  and    0x70(%r11),%rdx
+    0.03 :   23333:  mov    %r11,-0x8c8(%rbp)
+    0.01 :   2333a:  tzcnt  %rdx,%r12
+    0.02 :   2333f:  mov    -0x8a0(%rbp),%r13
+    0.02 :   23346:  mov    %r12d,-0x8b0(%rbp)
+    0.01 :   2334d:  xor    $0x38,%r12d
+    0.05 :   23351:  mov    %r12d,-0x8b8(%rbp)
+    0.03 :   23358:  imul   $0x1340,%rbx,%r11
+    0.02 :   2335f:  lea    -0x1(%rbx),%r14
+    0.02 :   23363:  imul   $0x1340,%r14,%rdx
+    0.02 :   2336a:  lea    0x1(%rbx),%r10
+    0.05 :   2336e:  lea    0x0(%r13,%r11,1),%rcx
+    0.01 :   23373:  movzbl 0x1302(%rcx),%r12d
+    0.06 :   2337b:  add    %r13,%rdx
+    0.02 :   2337e:  cmp    %r8,%r10
+    0.00 :   23381:  jb     24947 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2007>
+    0.00 :   23387:  movslq -0x8b0(%rbp),%rdi
+    0.25 :   2338e:  mov    -0x8b8(%rbp),%r8d
+    0.00 :   23395:  lea    0x6b7aa64(%rip),%rax        # 6b9de00 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::OrientTBL>
+    0.01 :   2339c:  lea    0x6b7a8dd(%rip),%r9        # 6b9dc80 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::KingBuckets>
+    0.01 :   233a3:  lea    0x6b7a9d6(%rip),%r14        # 6b9dd80 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::PieceSquareIndex>
+    0.00 :   233aa:  mov    (%rax,%rdi,4),%esi
+    0.21 :   233ad:  movzbl 0x1300(%rcx),%edi
+    0.01 :   233b4:  mov    (%r9,%r8,4),%r11d
+    0.00 :   233b8:  movzbl 0x1301(%rcx),%r9d
+    0.00 :   233c0:  mov    0x40(%r14,%rdi,4),%r8d
+    0.04 :   233c5:  xor    %esi,%r9d
+    0.01 :   233c8:  add    %r11d,%r8d
+    0.00 :   233cb:  xor    $0x38,%r9d
+    0.00 :   233cf:  add    %r8d,%r9d
+    0.02 :   233d2:  cmp    $0x40,%r12b
+    0.00 :   233d6:  je     24ea1 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2561>
+    0.00 :   233dc:  movzbl %r12b,%r12d
+    0.00 :   233e0:  xor    %esi,%r12d
+    0.02 :   233e3:  xor    $0x38,%r12d
+    0.00 :   233e7:  add    %r8d,%r12d
+    0.00 :   233ea:  mov    %r12d,-0x680(%rbp)
+    0.02 :   233f1:  mov    $0x1,%r12d
+    0.01 :   233f7:  imul   $0x1340,%rbx,%rax
+    0.00 :   233fe:  mov    $0x1,%edi
+    0.01 :   23403:  add    %r13,%rax
+    0.00 :   23406:  movzbl 0x1303(%rax),%r8d
+    0.01 :   2340e:  cmp    $0x40,%r8b
+    0.00 :   23412:  jne    2491d <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1fdd>
+    0.00 :   23418:  imul   $0x1340,%rbx,%rbx
+    0.00 :   2341f:  add    %r13,%rbx
+    0.00 :   23422:  movzbl 0x1304(%rbx),%r8d
+    0.02 :   2342a:  cmp    $0x40,%r8b
+    0.01 :   2342e:  jne    25211 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x28d1>
+    0.01 :   23434:  mov    -0x680(%rbp),%r8d
+    0.02 :   2343b:  cmp    $0x1,%rdi
+    0.00 :   2343f:  jne    24a1b <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x20db>
+    0.00 :   23445:  mov    %r9d,%edi
+    0.00 :   23448:  mov    %r8d,%eax
+    0.01 :   2344b:  lea    0x800(%r15),%rbx
+    0.00 :   23452:  xor    %r14d,%r14d
+    0.00 :   23455:  shl    $0xa,%edi
+    0.01 :   23458:  shl    $0xa,%eax
+    0.00 :   2345b:  lea    (%rbx,%rdi,2),%r11
+    0.00 :   2345f:  lea    (%rbx,%rax,2),%rsi
+    0.00 :   23463:  vmovdqa64 0x800(%rdx,%r14,1),%zmm10
+    0.16 :   2346b:  vpaddw (%rsi,%r14,1),%zmm10,%zmm9
+    0.83 :   23472:  vpsubw (%r11,%r14,1),%zmm9,%zmm8
+    0.07 :   23479:  vmovdqa64 %zmm8,0x800(%rcx,%r14,1)
+    0.11 :   23481:  vmovdqa64 0x840(%rdx,%r14,1),%zmm7
+    0.03 :   23489:  vpaddw 0x40(%rsi,%r14,1),%zmm7,%zmm6
+    0.23 :   23491:  vpsubw 0x40(%r11,%r14,1),%zmm6,%zmm5
+    0.10 :   23499:  vmovdqa64 %zmm5,0x840(%r14,%rcx,1)
+    0.07 :   234a1:  vmovdqa64 0x880(%rdx,%r14,1),%zmm4
+    0.03 :   234a9:  vpaddw 0x80(%rsi,%r14,1),%zmm4,%zmm3
+    0.12 :   234b1:  vpsubw 0x80(%r11,%r14,1),%zmm3,%zmm2
+    0.07 :   234b9:  vmovdqa64 %zmm2,0x880(%r14,%rcx,1)
+    0.10 :   234c1:  vmovdqa64 0x8c0(%rdx,%r14,1),%zmm1
+    0.10 :   234c9:  vpaddw 0xc0(%rsi,%r14,1),%zmm1,%zmm0
+    0.18 :   234d1:  vpsubw 0xc0(%r11,%r14,1),%zmm0,%zmm15
+    0.10 :   234d9:  vmovdqa64 %zmm15,0x8c0(%r14,%rcx,1)
+    0.13 :   234e1:  vmovdqa64 0x900(%rdx,%r14,1),%zmm14
+    0.09 :   234e9:  vpaddw 0x100(%rsi,%r14,1),%zmm14,%zmm13
+    0.18 :   234f1:  vpsubw 0x100(%r11,%r14,1),%zmm13,%zmm12
+    0.17 :   234f9:  vmovdqa64 %zmm12,0x900(%r14,%rcx,1)
+    0.13 :   23501:  vmovdqa64 0x940(%rdx,%r14,1),%zmm11
+    0.06 :   23509:  vpaddw 0x140(%rsi,%r14,1),%zmm11,%zmm10
+    0.18 :   23511:  vpsubw 0x140(%r11,%r14,1),%zmm10,%zmm9
+    0.10 :   23519:  vmovdqa64 %zmm9,0x940(%r14,%rcx,1)
+    0.12 :   23521:  vmovdqa64 0x980(%rdx,%r14,1),%zmm8
+    0.05 :   23529:  vpaddw 0x180(%rsi,%r14,1),%zmm8,%zmm7
+    0.10 :   23531:  vpsubw 0x180(%r11,%r14,1),%zmm7,%zmm6
+    0.10 :   23539:  vmovdqa64 %zmm6,0x980(%r14,%rcx,1)
+    0.09 :   23541:  vmovdqa64 0x9c0(%rdx,%r14,1),%zmm5
+    0.08 :   23549:  vpaddw 0x1c0(%rsi,%r14,1),%zmm5,%zmm4
+    0.14 :   23551:  vpsubw 0x1c0(%r11,%r14,1),%zmm4,%zmm3
+    0.07 :   23559:  add    $0x200,%r14
+    0.00 :   23560:  vmovdqa64 %zmm3,0x7c0(%r14,%rcx,1)
+    0.16 :   23568:  cmp    $0x800,%r14
+    0.01 :   2356f:  jne    23463 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xb23>
+    0.00 :   23575:  lea    0x79fc800(%r15),%r12
+    0.00 :   2357c:  lea    0x0(,%r8,8),%r8d
+    0.00 :   23584:  vmovdqa (%r12,%r8,4),%ymm2
+    0.10 :   2358a:  vpaddd 0x1020(%rdx),%ymm2,%ymm1
+    0.02 :   23592:  lea    0x0(,%r9,8),%edx
+    0.02 :   2359a:  vpsubd (%r12,%rdx,4),%ymm1,%ymm0
+    0.02 :   235a0:  vmovdqa %ymm0,0x1020(%rcx)
+    0.00 :   235a8:  movb   $0x1,0x1041(%rcx)
+    0.01 :   235af:  mov    %r10,%rbx
+    0.00 :   235b2:  mov    0x269800(%r13),%r8
+    0.00 :   235b9:  cmp    %r8,%rbx
+    0.00 :   235bc:  jb     23358 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xa18>
+    0.00 :   235c2:  mov    -0x8c8(%rbp),%r11
+    0.00 :   235c9:  mov    %r15,%r14
+    0.00 :   235cc:  lea    -0x1(%r8),%rdi
+    0.00 :   235d0:  test   %rdi,%rdi
+    0.01 :   235d3:  je     2516c <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x282c>
+    0.00 :   235d9:  imul   $0x14c0,%rdi,%r10
+    0.01 :   235e0:  mov    -0x8a0(%rbp),%r9
+    0.01 :   235e7:  mov    %rdi,%r13
+    0.01 :   235ea:  add    %r9,%r10
+    0.01 :   235ed:  cmpb   $0x0,0x12a301(%r10)
+    0.05 :   235f5:  jne    2363a <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xcfa>
+    0.01 :   235f7:  cmpb   $0x1,0x12a748(%r10)
+    0.07 :   235ff:  jne    23619 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xcd9>
+    0.00 :   23601:  movzbl 0x12a749(%r10),%eax
+    0.02 :   23609:  xor    0x12a74a(%r10),%al
+    0.01 :   23610:  and    $0x4,%eax
+    0.01 :   23613:  jne    25186 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2846>
+    0.01 :   23619:  sub    $0x14c0,%r10
+    0.03 :   23620:  sub    $0x1,%r13
+    0.00 :   23624:  jne    235ed <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xcad>
+    0.00 :   23626:  mov    -0x8a0(%rbp),%rsi
+    0.00 :   2362d:  cmpb   $0x0,0x12a301(%rsi)
+    0.00 :   23634:  je     25186 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2846>
+    0.00 :   2363a:  add    $0x1,%r13
+    0.04 :   2363e:  cmp    %r8,%r13
+    0.00 :   23641:  jae    23bc0 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1280>
+    0.00 :   23647:  mov    0x88(%r11),%r9
+    0.02 :   2364e:  xor    %eax,%eax
+    0.02 :   23650:  and    0x70(%r11),%r9
+    0.01 :   23654:  vmovq  %r11,%xmm19
+    0.00 :   2365a:  tzcnt  %r9,%rax
+    0.00 :   2365f:  mov    -0x8c0(%rbp),%rbx
+    0.02 :   23666:  lea    0x6b78dd3(%rip),%r15        # 6b9c440 <Stockfish::Eval::NNUE::Features::offsets>
+    0.00 :   2366d:  mov    %r14,%r11
+    0.02 :   23670:  mov    %rax,-0x8e0(%rbp)
+    0.02 :   23677:  lea    -0x1(%r13),%rsi
+    0.03 :   2367b:  mov    -0x8a8(%rbp),%r12
+    0.01 :   23682:  lea    0x1(%r13),%rdi
+    0.01 :   23686:  imul   $0x14c0,%rsi,%rdx
+    0.02 :   2368d:  imul   $0x14c0,%r13,%rcx
+    0.00 :   23694:  add    %r12,%rdx
+    0.00 :   23697:  add    %rcx,%r12
+    0.01 :   2369a:  vmovq  %r12,%xmm18
+    0.01 :   236a0:  cmp    %r8,%rdi
+    0.03 :   236a3:  jb     24861 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1f21>
+    0.00 :   236a9:  mov    -0x8a8(%rbp),%r13
+    0.03 :   236b0:  movq   $0x0,-0x690(%rbp)
+    0.02 :   236bb:  movq   $0x0,-0x480(%rbp)
+    0.04 :   236c6:  lea    0x1300(%r13,%rcx,1),%r9
+    0.01 :   236ce:  mov    0x180(%r9),%r12
+    0.01 :   236d5:  shl    $0x2,%r12
+    0.01 :   236d9:  lea    (%r9,%r12,1),%r14
+    0.06 :   236dd:  je     24dbf <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x247f>
+    0.00 :   236e3:  movslq -0x8e0(%rbp),%rcx
+    0.08 :   236ea:  lea    0x6b7a54f(%rip),%r8        # 6b9dc40 <Stockfish::Eval::NNUE::Features::FullThreats::OrientTBL>
+    0.00 :   236f1:  mov    %rdx,-0x8b0(%rbp)
+    0.04 :   236f8:  lea    -0x890(%rbp),%r10
+    0.00 :   236ff:  vmovq  %r11,%xmm15
+    0.00 :   23704:  movsbl (%r8,%rcx,1),%r13d
+    0.12 :   23709:  xor    $0x38,%r13d
+    0.02 :   2370d:  nopl   (%rax)
+    0.00 :   23710:  mov    (%r9),%ecx
+    0.14 :   23713:  mov    %r10,%rdx
+    0.02 :   23716:  mov    %ecx,%eax
+    0.06 :   23718:  mov    %ecx,%esi
+    0.02 :   2371a:  movzbl %cl,%r8d
+    0.02 :   2371e:  shr    $0x14,%eax
+    0.06 :   23721:  shr    $0x10,%esi
+    0.11 :   23724:  test   %ecx,%ecx
+    0.00 :   23726:  movzbl %ch,%ecx
+    0.02 :   23729:  cmovs  %rbx,%rdx
+    0.01 :   2372d:  and    $0xf,%eax
+    0.02 :   23730:  and    $0xf,%esi
+    0.02 :   23733:  xor    %r13d,%r8d
+    0.06 :   23736:  xor    $0x8,%rax
+    0.01 :   2373a:  xor    %r13d,%ecx
+    0.06 :   2373d:  xor    $0x8,%rsi
+    0.03 :   23741:  mov    %rax,%r11
+    0.00 :   23744:  mov    %r8d,%r12d
+    0.02 :   23747:  shl    $0x4,%r11
+    0.12 :   2374b:  add    %r11,%rsi
+    0.00 :   2374e:  cmp    %ecx,%r8d
+    0.00 :   23751:  setb   %r8b
+    0.01 :   23755:  shl    $0x6,%rax
+    0.08 :   23759:  add    %r12,%rax
+    0.00 :   2375c:  movzbl %r8b,%r11d
+    0.01 :   23760:  lea    0x6b79cd9(%rip),%r12        # 6b9d440 <Stockfish::Eval::NNUE::Features::index_lut1>
+    0.00 :   23767:  lea    (%r11,%rsi,2),%r8
+    0.03 :   2376b:  mov    (%r15,%rax,4),%esi
+    0.34 :   2376f:  lea    0x6b68cca(%rip),%r11        # 6b8c440 <Stockfish::Eval::NNUE::Features::index_lut2>
+    0.00 :   23776:  shl    $0x6,%rax
+    0.07 :   2377a:  add    %r11,%rax
+    0.02 :   2377d:  add    (%r12,%r8,4),%esi
+    0.20 :   23781:  movzbl (%rax,%rcx,1),%eax
+    0.42 :   23785:  add    %esi,%eax
+    0.08 :   23787:  cmp    $0x137ef,%eax
+    0.02 :   2378c:  ja     237a3 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xe63>
+    0.01 :   2378e:  mov    0x200(%rdx),%rcx
+    0.21 :   23795:  lea    0x1(%rcx),%r8
+    0.06 :   23799:  mov    %r8,0x200(%rdx)
+    0.02 :   237a0:  mov    %eax,(%rdx,%rcx,4)
+    0.52 :   237a3:  add    $0x4,%r9
+    0.15 :   237a7:  cmp    %r9,%r14
+    0.00 :   237aa:  jne    23710 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xdd0>
+    0.00 :   237b0:  mov    -0x480(%rbp),%r9d
+    0.21 :   237b7:  mov    -0x8b0(%rbp),%rdx
+    0.01 :   237be:  vmovq  %xmm15,%r11
+    0.00 :   237c3:  mov    -0x690(%rbp),%r14d
+    0.19 :   237ca:  mov    %r9d,-0x8b0(%rbp)
+    0.01 :   237d1:  lea    0x1000(%rdx),%r13
+    0.00 :   237d8:  movslq %r14d,%r12
+    0.06 :   237db:  mov    %r10,%r8
+    0.01 :   237de:  mov    %rbx,%r9
+    0.01 :   237e1:  mov    %r13,-0x8b8(%rbp)
+    0.01 :   237e8:  movslq -0x8b0(%rbp),%r13
+    0.32 :   237ef:  vmovq  %xmm18,%rsi
+    0.03 :   237f5:  lea    0x800(%rdx),%rcx
+    0.00 :   237fc:  mov    %rdi,-0x8c8(%rbp)
+    0.01 :   23803:  lea    0x2c00800(%r11),%rax
+    0.04 :   2380a:  lea    (%r10,%r12,4),%r12
+    0.03 :   2380e:  add    $0x800,%rsi
+    0.01 :   23815:  mov    %rdx,-0x8d8(%rbp)
+    0.00 :   2381c:  lea    (%rbx,%r13,4),%r13
+    0.06 :   23820:  mov    %r10,%rdx
+    0.02 :   23823:  vmovdqa64 (%rcx),%zmm15
+    0.14 :   23829:  vmovdqa64 0x40(%rcx),%zmm14
+    0.06 :   23830:  vmovdqa64 0x80(%rcx),%zmm13
+    0.06 :   23837:  vmovdqa64 0xc0(%rcx),%zmm12
+    0.14 :   2383e:  vmovdqa64 0x100(%rcx),%zmm11
+    0.23 :   23845:  vmovdqa64 0x140(%rcx),%zmm10
+    0.23 :   2384c:  vmovdqa64 0x180(%rcx),%zmm9
+    0.19 :   23853:  vmovdqa64 0x1c0(%rcx),%zmm8
+    0.17 :   2385a:  vmovdqa64 0x200(%rcx),%zmm7
+    0.10 :   23861:  vmovdqa64 0x240(%rcx),%zmm6
+    0.10 :   23868:  vmovdqa64 0x280(%rcx),%zmm5
+    0.10 :   2386f:  vmovdqa64 0x2c0(%rcx),%zmm4
+    0.11 :   23876:  vmovdqa64 0x300(%rcx),%zmm3
+    0.06 :   2387d:  vmovdqa64 0x340(%rcx),%zmm2
+    0.12 :   23884:  vmovdqa64 0x380(%rcx),%zmm1
+    0.11 :   2388b:  vmovdqa64 0x3c0(%rcx),%zmm0
+    0.12 :   23892:  test   %r14d,%r14d
+    0.00 :   23895:  jle    23991 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1051>
+    0.00 :   2389b:  mov    %rdx,%r10
+    0.01 :   2389e:  mov    (%r10),%edi
+    0.09 :   238a1:  add    $0x4,%r10
+    0.04 :   238a5:  shl    $0xa,%rdi
+    0.02 :   238a9:  vpmovsxbw (%rax,%rdi,1),%zmm20
+    0.65 :   238b0:  vpmovsxbw 0x20(%rax,%rdi,1),%zmm21
+    0.15 :   238b8:  vpmovsxbw 0x40(%rax,%rdi,1),%zmm22
+    0.35 :   238c0:  vpmovsxbw 0x60(%rax,%rdi,1),%zmm23
+    0.13 :   238c8:  vpmovsxbw 0x80(%rax,%rdi,1),%zmm24
+    0.24 :   238d0:  vpmovsxbw 0xa0(%rax,%rdi,1),%zmm25
+    0.13 :   238d8:  vpsubw %zmm20,%zmm15,%zmm15
+    0.05 :   238de:  vpsubw %zmm21,%zmm14,%zmm14
+    0.06 :   238e4:  vpmovsxbw 0xc0(%rax,%rdi,1),%zmm26
+    0.31 :   238ec:  vpmovsxbw 0xe0(%rax,%rdi,1),%zmm27
+    0.25 :   238f4:  vpsubw %zmm22,%zmm13,%zmm13
+    0.07 :   238fa:  vpsubw %zmm23,%zmm12,%zmm12
+    0.04 :   23900:  vpmovsxbw 0x100(%rax,%rdi,1),%zmm28
+    0.14 :   23908:  vpmovsxbw 0x120(%rax,%rdi,1),%zmm29
+    0.19 :   23910:  vpsubw %zmm24,%zmm11,%zmm11
+    0.02 :   23916:  vpsubw %zmm25,%zmm10,%zmm10
+    0.05 :   2391c:  vpmovsxbw 0x140(%rax,%rdi,1),%zmm30
+    0.19 :   23924:  vpmovsxbw 0x160(%rax,%rdi,1),%zmm31
+    0.20 :   2392c:  vpsubw %zmm26,%zmm9,%zmm9
+    0.05 :   23932:  vpsubw %zmm27,%zmm8,%zmm8
+    0.03 :   23938:  vpmovsxbw 0x180(%rax,%rdi,1),%zmm16
+    0.23 :   23940:  vpmovsxbw 0x1a0(%rax,%rdi,1),%zmm17
+    0.18 :   23948:  vpsubw %zmm28,%zmm7,%zmm7
+    0.02 :   2394e:  vpsubw %zmm29,%zmm6,%zmm6
+    0.04 :   23954:  vpsubw %zmm30,%zmm5,%zmm5
+    0.06 :   2395a:  vpsubw %zmm31,%zmm4,%zmm4
+    0.06 :   23960:  vpmovsxbw 0x1c0(%rax,%rdi,1),%zmm20
+    0.16 :   23968:  vpmovsxbw 0x1e0(%rax,%rdi,1),%zmm21
+    0.11 :   23970:  vpsubw %zmm16,%zmm3,%zmm3
+    0.08 :   23976:  vpsubw %zmm17,%zmm2,%zmm2
+    0.12 :   2397c:  vpsubw %zmm20,%zmm1,%zmm1
+    0.06 :   23982:  vpsubw %zmm21,%zmm0,%zmm0
+    0.15 :   23988:  cmp    %r10,%r12
+    0.02 :   2398b:  jne    2389e <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xf5e>
+    0.00 :   23991:  mov    -0x8b0(%rbp),%r10d
+    0.02 :   23998:  test   %r10d,%r10d
+    0.00 :   2399b:  jle    23a97 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1157>
+    0.00 :   239a1:  mov    %rbx,%r10
+    0.01 :   239a4:  mov    (%r10),%edi
+    0.02 :   239a7:  add    $0x4,%r10
+    0.02 :   239ab:  shl    $0xa,%rdi
+    0.01 :   239af:  vpmovsxbw (%rax,%rdi,1),%zmm22
+    2.84 :   239b6:  vpmovsxbw 0x20(%rax,%rdi,1),%zmm23
+    0.05 :   239be:  vpmovsxbw 0x40(%rax,%rdi,1),%zmm24
+    0.52 :   239c6:  vpmovsxbw 0x60(%rax,%rdi,1),%zmm25
+    0.09 :   239ce:  vpmovsxbw 0x80(%rax,%rdi,1),%zmm26
+    0.36 :   239d6:  vpmovsxbw 0xa0(%rax,%rdi,1),%zmm27
+    0.08 :   239de:  vpaddw %zmm15,%zmm22,%zmm15
+    0.03 :   239e4:  vpaddw %zmm14,%zmm23,%zmm14
+    0.03 :   239ea:  vpmovsxbw 0xc0(%rax,%rdi,1),%zmm28
+    0.64 :   239f2:  vpmovsxbw 0xe0(%rax,%rdi,1),%zmm29
+    0.09 :   239fa:  vpaddw %zmm13,%zmm24,%zmm13
+    0.02 :   23a00:  vpaddw %zmm12,%zmm25,%zmm12
+    0.03 :   23a06:  vpmovsxbw 0x100(%rax,%rdi,1),%zmm30
+    0.40 :   23a0e:  vpmovsxbw 0x120(%rax,%rdi,1),%zmm31
+    0.06 :   23a16:  vpaddw %zmm11,%zmm26,%zmm11
+    0.02 :   23a1c:  vpaddw %zmm10,%zmm27,%zmm10
+    0.02 :   23a22:  vpmovsxbw 0x140(%rax,%rdi,1),%zmm16
+    0.53 :   23a2a:  vpmovsxbw 0x160(%rax,%rdi,1),%zmm17
+    0.11 :   23a32:  vpaddw %zmm9,%zmm28,%zmm9
+    0.00 :   23a38:  vpaddw %zmm8,%zmm29,%zmm8
+    0.02 :   23a3e:  vpmovsxbw 0x180(%rax,%rdi,1),%zmm20
+    0.33 :   23a46:  vpmovsxbw 0x1a0(%rax,%rdi,1),%zmm21
+    0.08 :   23a4e:  vpaddw %zmm7,%zmm30,%zmm7
+    0.00 :   23a54:  vpaddw %zmm6,%zmm31,%zmm6
+    0.02 :   23a5a:  vpaddw %zmm5,%zmm16,%zmm5
+    0.02 :   23a60:  vpaddw %zmm4,%zmm17,%zmm4
+    0.04 :   23a66:  vpmovsxbw 0x1c0(%rax,%rdi,1),%zmm22
+    0.41 :   23a6e:  vpmovsxbw 0x1e0(%rax,%rdi,1),%zmm23
+    0.11 :   23a76:  vpaddw %zmm3,%zmm20,%zmm3
+    0.02 :   23a7c:  vpaddw %zmm2,%zmm21,%zmm2
+    0.00 :   23a82:  vpaddw %zmm1,%zmm22,%zmm1
+    0.04 :   23a88:  vpaddw %zmm0,%zmm23,%zmm0
+    0.14 :   23a8e:  cmp    %r10,%r13
+    0.00 :   23a91:  jne    239a4 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1064>
+    0.00 :   23a97:  vmovdqa64 %zmm15,(%rsi)
+    0.11 :   23a9d:  add    $0x200,%rax
+    0.04 :   23aa3:  add    $0x400,%rcx
+    0.00 :   23aaa:  add    $0x400,%rsi
+    0.02 :   23ab1:  vmovdqa64 %zmm14,-0x3c0(%rsi)
+    0.09 :   23ab8:  vmovdqa64 %zmm13,-0x380(%rsi)
+    0.14 :   23abf:  vmovdqa64 %zmm12,-0x340(%rsi)
+    0.24 :   23ac6:  vmovdqa64 %zmm11,-0x300(%rsi)
+    0.13 :   23acd:  vmovdqa64 %zmm10,-0x2c0(%rsi)
+    0.10 :   23ad4:  vmovdqa64 %zmm9,-0x280(%rsi)
+    0.10 :   23adb:  vmovdqa64 %zmm8,-0x240(%rsi)
+    0.05 :   23ae2:  vmovdqa64 %zmm7,-0x200(%rsi)
+    0.06 :   23ae9:  vmovdqa64 %zmm6,-0x1c0(%rsi)
+    0.07 :   23af0:  vmovdqa64 %zmm5,-0x180(%rsi)
+    0.10 :   23af7:  vmovdqa64 %zmm4,-0x140(%rsi)
+    0.10 :   23afe:  vmovdqa64 %zmm3,-0x100(%rsi)
+    0.17 :   23b05:  vmovdqa64 %zmm2,-0xc0(%rsi)
+    0.25 :   23b0c:  vmovdqa64 %zmm1,-0x80(%rsi)
+    0.27 :   23b13:  vmovdqa64 %zmm0,-0x40(%rsi)
+    0.25 :   23b1a:  cmp    %rcx,-0x8b8(%rbp)
+    0.02 :   23b21:  jne    23823 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xee3>
+    0.00 :   23b27:  mov    -0x8d8(%rbp),%rax
+    0.00 :   23b2e:  mov    -0x8c8(%rbp),%rcx
+    0.01 :   23b35:  vmovdqa 0x1020(%rax),%ymm15
+    0.03 :   23b3d:  test   %r14d,%r14d
+    0.00 :   23b40:  jle    23b5c <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x121c>
+    0.01 :   23b42:  mov    (%r8),%r14d
+    0.03 :   23b45:  add    $0x4,%r8
+    0.10 :   23b49:  shl    $0x5,%r14
+    0.01 :   23b4d:  vpsubd 0x7aac800(%r11,%r14,1),%ymm15,%ymm15
+    0.42 :   23b57:  cmp    %r8,%r12
+    0.04 :   23b5a:  jne    23b42 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1202>
+    0.00 :   23b5c:  mov    -0x8b0(%rbp),%esi
+    0.02 :   23b62:  test   %esi,%esi
+    0.02 :   23b64:  jle    23b80 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1240>
+    0.00 :   23b66:  mov    (%r9),%r8d
+    0.01 :   23b69:  add    $0x4,%r9
+    0.02 :   23b6d:  shl    $0x5,%r8
+    0.01 :   23b71:  vpaddd 0x7aac800(%r11,%r8,1),%ymm15,%ymm15
+    1.10 :   23b7b:  cmp    %r13,%r9
+    0.01 :   23b7e:  jne    23b66 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1226>
+    0.00 :   23b80:  vmovq  %xmm18,%r12
+    0.02 :   23b86:  mov    %rcx,%r13
+    0.02 :   23b89:  movb   $0x1,0x1041(%r12)
+    0.03 :   23b92:  vmovdqa %ymm15,0x1020(%r12)
+    0.06 :   23b9c:  mov    -0x8a0(%rbp),%r9
+    0.01 :   23ba3:  mov    0x269800(%r9),%r8
+    0.02 :   23baa:  cmp    %r8,%r13
+    0.03 :   23bad:  jb     23677 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xd37>
+    0.00 :   23bb3:  mov    %r11,%r14
+    0.01 :   23bb6:  lea    -0x1(%r8),%rdi
+    0.00 :   23bba:  vmovq  %xmm19,%r11
+    0.02 :   23bc0:  movzbl 0x26c(%r11),%eax
+    0.01 :   23bc8:  imul   $0x1340,%rdi,%r15
+    0.04 :   23bcf:  movslq -0x8e4(%rbp),%r9
+    0.00 :   23bd6:  mov    $0xff,%esi
+    0.01 :   23bdb:  imul   $0x14c0,%rdi,%rbx
+    0.03 :   23be2:  mov    -0x8a0(%rbp),%r8
+    0.01 :   23be9:  mov    -0x8a8(%rbp),%r13
+    0.00 :   23bf0:  vpbroadcastw %esi,%zmm14
+    0.04 :   23bf6:  mov    %eax,%edx
+    0.02 :   23bf8:  lea    (%r9,%rax,8),%r10
+    0.02 :   23bfc:  vpxor  %xmm13,%xmm13,%xmm13
+    0.02 :   23c01:  movzbl %al,%ecx
+    0.00 :   23c04:  xor    $0x1,%edx
+    0.05 :   23c07:  add    %r15,%r8
+    0.00 :   23c0a:  mov    -0x8c0(%rbp),%r15
+    0.00 :   23c11:  mov    %dl,%ch
+    0.01 :   23c13:  movzbl %dl,%r11d
+    0.03 :   23c17:  add    %rbx,%r13
+    0.01 :   23c1a:  mov    0x1000(%r8,%r10,4),%r12d
+    0.09 :   23c22:  mov    %cx,-0x680(%rbp)
+    0.02 :   23c29:  lea    (%r9,%r11,8),%rdi
+    0.04 :   23c2d:  lea    -0x470(%rbp),%rbx
+    0.00 :   23c34:  sub    0x1000(%r8,%rdi,4),%r12d
+    0.02 :   23c3c:  lea    -0x70(%rbp),%r11
+    0.02 :   23c40:  add    0x1000(%r13,%r10,4),%r12d
+    0.38 :   23c48:  sub    0x1000(%r13,%rdi,4),%r12d
+    0.40 :   23c50:  movzbl (%r15),%eax
+    0.01 :   23c54:  add    $0x200,%rbx
+    0.00 :   23c5b:  add    $0x1,%r15
+    0.00 :   23c5f:  shl    $0xb,%rax
+    0.00 :   23c63:  lea    (%r8,%rax,1),%r10
+    0.06 :   23c67:  lea    0x400(%rax),%rdx
+    0.02 :   23c6e:  add    %r13,%rax
+    0.02 :   23c71:  vmovdqa64 (%r10),%zmm12
+    0.44 :   23c77:  vmovdqa64 0x40(%r10),%zmm7
+    0.06 :   23c7e:  lea    (%r8,%rdx,1),%rcx
+    0.00 :   23c82:  add    %r13,%rdx
+    0.00 :   23c85:  vpaddw (%rax),%zmm12,%zmm11
+    0.09 :   23c8b:  vpaddw 0x40(%rax),%zmm7,%zmm6
+    0.05 :   23c92:  vmovdqa64 (%rcx),%zmm2
+    0.09 :   23c98:  vpaddw (%rdx),%zmm2,%zmm1
+    0.07 :   23c9e:  vmovdqa64 0x40(%rcx),%zmm15
+    0.05 :   23ca5:  vpminsw %zmm14,%zmm11,%zmm10
+    0.01 :   23cab:  vpaddw 0x40(%rdx),%zmm15,%zmm12
+    0.07 :   23cb2:  vpminsw %zmm14,%zmm6,%zmm5
+    0.00 :   23cb8:  vpmaxsw %zmm13,%zmm10,%zmm9
+    0.01 :   23cbe:  vmovdqa64 0x80(%rax),%zmm7
+    0.02 :   23cc5:  vpmaxsw %zmm13,%zmm5,%zmm4
+    0.03 :   23ccb:  vpsllw $0x7,%zmm9,%zmm8
+    0.02 :   23cd2:  vpminsw %zmm14,%zmm1,%zmm0
+    0.02 :   23cd8:  vpsllw $0x7,%zmm4,%zmm3
+    0.03 :   23cdf:  vpminsw %zmm14,%zmm12,%zmm11
+    0.03 :   23ce5:  vpaddw 0x80(%r10),%zmm7,%zmm6
+    0.05 :   23cec:  vpmulhw %zmm11,%zmm3,%zmm9
+    0.03 :   23cf2:  vpmulhw %zmm0,%zmm8,%zmm10
+    0.01 :   23cf8:  vmovdqa64 0xc0(%rax),%zmm3
+    0.01 :   23cff:  vpaddw 0xc0(%r10),%zmm3,%zmm1
+    0.08 :   23d06:  vmovdqa64 0x80(%rcx),%zmm11
+    0.03 :   23d0d:  vpminsw %zmm14,%zmm6,%zmm5
+    0.02 :   23d13:  vmovdqa64 0x100(%r10),%zmm3
+    0.06 :   23d1a:  vpminsw %zmm14,%zmm1,%zmm0
+    0.02 :   23d20:  vpmaxsw %zmm13,%zmm5,%zmm4
+    0.01 :   23d26:  vpmaxsw %zmm13,%zmm0,%zmm15
+    0.02 :   23d2c:  vpsllw $0x7,%zmm4,%zmm2
+    0.02 :   23d33:  vpaddw 0x100(%rax),%zmm3,%zmm1
+    0.06 :   23d3a:  vpsllw $0x7,%zmm15,%zmm12
+    0.04 :   23d41:  vpackuswb %zmm9,%zmm10,%zmm8
+    0.02 :   23d47:  vpminsw %zmm14,%zmm1,%zmm0
+    0.02 :   23d4d:  vpaddw 0x80(%rdx),%zmm11,%zmm10
+    0.04 :   23d54:  vmovdqa64 0x140(%r10),%zmm11
+    0.05 :   23d5b:  vmovdqa64 %zmm8,-0x200(%rbx)
+    0.00 :   23d62:  vpmaxsw %zmm13,%zmm0,%zmm15
+    0.00 :   23d68:  vmovdqa64 0xc0(%rcx),%zmm8
+    0.02 :   23d6f:  vpaddw 0xc0(%rdx),%zmm8,%zmm7
+    0.07 :   23d76:  vpminsw %zmm14,%zmm10,%zmm9
+    0.02 :   23d7c:  vpaddw 0x140(%rax),%zmm11,%zmm10
+    0.12 :   23d83:  vmovdqa64 0x180(%r10),%zmm11
+    0.05 :   23d8a:  vpminsw %zmm14,%zmm7,%zmm6
+    0.04 :   23d90:  vpmulhw %zmm9,%zmm2,%zmm5
+    0.02 :   23d96:  vmovdqa64 0x100(%rcx),%zmm7
+    0.04 :   23d9d:  vpmulhw %zmm6,%zmm12,%zmm4
+    0.01 :   23da3:  vpminsw %zmm14,%zmm10,%zmm9
+    0.02 :   23da9:  vpaddw 0x100(%rdx),%zmm7,%zmm6
+    0.06 :   23db0:  vpmaxsw %zmm13,%zmm9,%zmm8
+    0.01 :   23db6:  vpsllw $0x7,%zmm15,%zmm12
+    0.01 :   23dbd:  vpaddw 0x180(%rax),%zmm11,%zmm10
+    0.05 :   23dc4:  vpsllw $0x7,%zmm8,%zmm3
+    0.02 :   23dcb:  vpminsw %zmm14,%zmm10,%zmm9
+    0.01 :   23dd1:  vpmaxsw %zmm13,%zmm9,%zmm8
+    0.04 :   23dd7:  vpackuswb %zmm4,%zmm5,%zmm2
+    0.02 :   23ddd:  vpminsw %zmm14,%zmm6,%zmm5
+    0.01 :   23de3:  vmovdqa64 0x140(%rcx),%zmm4
+    0.04 :   23dea:  vmovdqa64 %zmm2,-0x1c0(%rbx)
+    0.02 :   23df1:  vpmulhw %zmm5,%zmm12,%zmm0
+    0.04 :   23df7:  vpaddw 0x140(%rdx),%zmm4,%zmm2
+    0.03 :   23dfe:  vpminsw %zmm14,%zmm2,%zmm1
+    0.03 :   23e04:  vpsllw $0x7,%zmm8,%zmm2
+    0.01 :   23e0b:  vpmulhw %zmm1,%zmm3,%zmm15
+    0.02 :   23e11:  vmovdqa64 0x1c0(%r10),%zmm3
+    0.02 :   23e18:  vpaddw 0x1c0(%rax),%zmm3,%zmm7
+    0.10 :   23e1f:  vpminsw %zmm14,%zmm7,%zmm6
+    0.05 :   23e25:  vpmaxsw %zmm13,%zmm6,%zmm5
+    0.04 :   23e2b:  vpsllw $0x7,%zmm5,%zmm1
+    0.02 :   23e32:  vpackuswb %zmm15,%zmm0,%zmm12
+    0.05 :   23e38:  vmovdqa64 %zmm12,-0x180(%rbx)
+    0.03 :   23e3f:  vmovdqa64 0x180(%rcx),%zmm4
+    0.02 :   23e46:  vmovdqa64 0x1c0(%rcx),%zmm12
+    0.04 :   23e4d:  vpaddw 0x180(%rdx),%zmm4,%zmm0
+    0.04 :   23e54:  vpaddw 0x1c0(%rdx),%zmm12,%zmm11
+    0.04 :   23e5b:  vmovdqa64 0x200(%r10),%zmm3
+    0.07 :   23e62:  vmovdqa64 0x240(%r10),%zmm4
+    0.04 :   23e69:  vpminsw %zmm14,%zmm0,%zmm15
+    0.02 :   23e6f:  vpminsw %zmm14,%zmm11,%zmm10
+    0.02 :   23e75:  vpmulhw %zmm10,%zmm1,%zmm8
+    0.02 :   23e7b:  vpmulhw %zmm15,%zmm2,%zmm9
+    0.01 :   23e81:  vpaddw 0x200(%rax),%zmm3,%zmm7
+    0.05 :   23e88:  vmovdqa64 0x200(%rcx),%zmm10
+    0.02 :   23e8f:  vpaddw 0x240(%rax),%zmm4,%zmm0
+    0.09 :   23e96:  vmovdqa64 0x280(%r10),%zmm4
+    0.06 :   23e9d:  vpminsw %zmm14,%zmm7,%zmm6
+    0.02 :   23ea3:  vpminsw %zmm14,%zmm0,%zmm15
+    0.05 :   23ea9:  vpmaxsw %zmm13,%zmm6,%zmm5
+    0.04 :   23eaf:  vpmaxsw %zmm13,%zmm15,%zmm12
+    0.02 :   23eb5:  vpsllw $0x7,%zmm5,%zmm1
+    0.01 :   23ebc:  vpaddw 0x280(%rax),%zmm4,%zmm0
+    0.07 :   23ec3:  vpackuswb %zmm8,%zmm9,%zmm2
+    0.02 :   23ec9:  vpsllw $0x7,%zmm12,%zmm11
+    0.01 :   23ed0:  vpaddw 0x200(%rdx),%zmm10,%zmm9
+    0.05 :   23ed7:  vmovdqa64 0x2c0(%r10),%zmm10
+    0.02 :   23ede:  vmovdqa64 %zmm2,-0x140(%rbx)
+    0.04 :   23ee5:  vpminsw %zmm14,%zmm0,%zmm15
+    0.04 :   23eeb:  vmovdqa64 0x240(%rcx),%zmm2
+    0.04 :   23ef2:  vpaddw 0x240(%rdx),%zmm2,%zmm3
+    0.02 :   23ef9:  vpminsw %zmm14,%zmm9,%zmm8
+    0.01 :   23eff:  vpmaxsw %zmm13,%zmm15,%zmm12
+    0.02 :   23f05:  vpminsw %zmm14,%zmm3,%zmm7
+    0.05 :   23f0b:  vpmulhw %zmm8,%zmm1,%zmm6
+    0.03 :   23f11:  vpaddw 0x2c0(%rax),%zmm10,%zmm9
+    0.06 :   23f18:  vmovdqa64 0x300(%r10),%zmm10
+    0.04 :   23f1f:  vpmulhw %zmm7,%zmm11,%zmm5
+    0.08 :   23f25:  vpsllw $0x7,%zmm12,%zmm11
+    0.00 :   23f2c:  vmovdqa64 0x280(%rcx),%zmm7
+    0.02 :   23f33:  vpminsw %zmm14,%zmm9,%zmm8
+    0.00 :   23f39:  vpaddw 0x300(%rax),%zmm10,%zmm9
+    0.07 :   23f40:  vpmaxsw %zmm13,%zmm8,%zmm2
+    0.05 :   23f46:  vpsllw $0x7,%zmm2,%zmm3
+    0.02 :   23f4d:  vpminsw %zmm14,%zmm9,%zmm8
+    0.02 :   23f53:  vpmaxsw %zmm13,%zmm8,%zmm2
+    0.04 :   23f59:  vpackuswb %zmm5,%zmm6,%zmm1
+    0.01 :   23f5f:  vpaddw 0x280(%rdx),%zmm7,%zmm6
+    0.07 :   23f66:  vmovdqa64 %zmm1,-0x100(%rbx)
+    0.03 :   23f6d:  vmovdqa64 0x2c0(%rcx),%zmm1
+    0.02 :   23f74:  vpaddw 0x2c0(%rdx),%zmm1,%zmm4
+    0.08 :   23f7b:  vpsllw $0x7,%zmm2,%zmm1
+    0.00 :   23f82:  vpminsw %zmm14,%zmm6,%zmm5
+    0.02 :   23f88:  vpminsw %zmm14,%zmm4,%zmm0
+    0.04 :   23f8e:  vpmulhw %zmm5,%zmm11,%zmm15
+    0.03 :   23f94:  vmovdqa64 0x300(%rcx),%zmm4
+    0.04 :   23f9b:  vpmulhw %zmm0,%zmm3,%zmm12
+    0.06 :   23fa1:  vmovdqa64 0x340(%r10),%zmm3
+    0.06 :   23fa8:  vpaddw 0x340(%rax),%zmm3,%zmm7
+    0.02 :   23faf:  vpminsw %zmm14,%zmm7,%zmm6
+    0.03 :   23fb5:  vpmaxsw %zmm13,%zmm6,%zmm5
+    0.06 :   23fbb:  vpsllw $0x7,%zmm5,%zmm0
+    0.08 :   23fc2:  vpackuswb %zmm12,%zmm15,%zmm11
+    0.05 :   23fc8:  vpaddw 0x300(%rdx),%zmm4,%zmm15
+    0.05 :   23fcf:  vmovdqa64 %zmm11,-0xc0(%rbx)
+    0.02 :   23fd6:  vmovdqa64 0x340(%rcx),%zmm11
+    0.05 :   23fdd:  vpaddw 0x340(%rdx),%zmm11,%zmm10
+    0.12 :   23fe4:  vpminsw %zmm14,%zmm15,%zmm12
+    0.00 :   23fea:  vpminsw %zmm14,%zmm10,%zmm9
+    0.03 :   23ff0:  vpmulhw %zmm12,%zmm1,%zmm8
+    0.02 :   23ff6:  vpmulhw %zmm9,%zmm0,%zmm2
+    0.06 :   23ffc:  vpackuswb %zmm2,%zmm8,%zmm1
+    0.11 :   24002:  vmovdqa64 %zmm1,-0x80(%rbx)
+    0.06 :   24009:  vmovdqa64 0x380(%r10),%zmm3
+    0.02 :   24010:  vmovdqa64 0x3c0(%r10),%zmm4
+    0.00 :   24017:  vpaddw 0x380(%rax),%zmm3,%zmm7
+    0.03 :   2401e:  vpaddw 0x3c0(%rax),%zmm4,%zmm15
+    0.02 :   24025:  vmovdqa64 0x380(%rcx),%zmm9
+    0.02 :   2402c:  vmovdqa64 0x3c0(%rcx),%zmm1
+    0.05 :   24033:  vpminsw %zmm14,%zmm7,%zmm6
+    0.03 :   24039:  vpminsw %zmm14,%zmm15,%zmm12
+    0.02 :   2403f:  vpaddw 0x380(%rdx),%zmm9,%zmm8
+    0.03 :   24046:  vpmaxsw %zmm13,%zmm6,%zmm5
+    0.02 :   2404c:  vpaddw 0x3c0(%rdx),%zmm1,%zmm3
+    0.03 :   24053:  vpmaxsw %zmm13,%zmm12,%zmm11
+    0.02 :   24059:  vpsllw $0x7,%zmm5,%zmm0
+    0.02 :   24060:  vpsllw $0x7,%zmm11,%zmm10
+    0.02 :   24067:  vpminsw %zmm14,%zmm8,%zmm2
+    0.00 :   2406d:  vpminsw %zmm14,%zmm3,%zmm7
+    0.01 :   24073:  vpmulhw %zmm2,%zmm0,%zmm6
+    0.03 :   24079:  vpmulhw %zmm7,%zmm10,%zmm5
+    0.10 :   2407f:  vpackuswb %zmm5,%zmm6,%zmm0
+    0.13 :   24085:  vmovdqa64 %zmm0,-0x40(%rbx)
+    0.02 :   2408c:  cmp    %rbx,%r11
+    0.00 :   2408f:  jne    23c50 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1310>
+    0.00 :   24095:  mov    %fs:0x0,%r15
+    0.01 :   2409e:  imul   $0x45c0,%r9,%rbx
+    0.00 :   240a5:  cmpb   $0x0,%fs:0xffffffffffffffc0
+    0.06 :   240ae:  lea    0x7d1c600(%r14,%rbx,1),%r13
+    0.02 :   240b6:  je     25295 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2955>
+    0.00 :   240bc:  vmovdqa32 -0x470(%rbp),%zmm14
+    0.01 :   240c6:  xor    %esi,%esi
+    0.00 :   240c8:  xor    %edx,%edx
+    0.01 :   240ca:  xor    %edi,%edi
+    0.00 :   240cc:  vmovdqa32 -0x430(%rbp),%zmm15
+    0.02 :   240d6:  mov    -0x8c0(%rbp),%rcx
+    0.00 :   240dd:  xor    %r9d,%r9d
+    0.01 :   240e0:  vptestmd %zmm14,%zmm14,%k1
+    0.02 :   240e6:  vmovdqa32 0x6b7b050(%rip),%zmm13        # 6b9f140 <Stockfish::(anonymous namespace)::Pieces+0xa0>
+    0.06 :   240f0:  vmovdqa32 0x6b7b086(%rip),%zmm12        # 6b9f180 <Stockfish::(anonymous namespace)::Pieces+0xe0>
+    0.05 :   240fa:  vptestmd %zmm15,%zmm15,%k2
+    0.00 :   24100:  vmovdqa32 0x6b7b0b6(%rip),%zmm9        # 6b9f1c0 <Stockfish::(anonymous namespace)::Pieces+0x120>
+    0.02 :   2410a:  vmovdqa32 0x6b7b0ec(%rip),%zmm1        # 6b9f200 <Stockfish::(anonymous namespace)::Pieces+0x160>
+    0.02 :   24114:  vmovdqa32 0x6b7b122(%rip),%zmm6        # 6b9f240 <Stockfish::(anonymous namespace)::Pieces+0x1a0>
+    0.05 :   2411e:  vmovdqa32 0x6b7b158(%rip),%zmm14        # 6b9f280 <Stockfish::(anonymous namespace)::Pieces+0x1e0>
+    0.03 :   24128:  vmovdqa32 0x6b7b18e(%rip),%zmm15        # 6b9f2c0 <Stockfish::(anonymous namespace)::Pieces+0x220>
+    0.03 :   24132:  vpcompressd %zmm13,%zmm4{%k1}{z}
+    0.03 :   24138:  kmovw  %k1,%r8d
+    0.00 :   2413c:  popcnt %r8,%r9
+    0.01 :   24141:  xor    %r8d,%r8d
+    0.00 :   24144:  vpcompressd %zmm12,%zmm11{%k2}{z}
+    0.02 :   2414a:  kmovw  %k2,%r11d
+    0.01 :   2414e:  popcnt %r11,%rsi
+    0.00 :   24153:  vpmovdw %zmm4,-0x680(%rbp)
+    0.10 :   2415a:  vpmovdw %zmm11,(%rcx,%r9,2)
+    0.07 :   24161:  add    %r9d,%esi
+    0.00 :   24164:  xor    %r11d,%r11d
+    0.00 :   24167:  vmovdqa32 -0x3f0(%rbp),%zmm10
+    0.01 :   24171:  vptestmd %zmm10,%zmm10,%k3
+    0.01 :   24177:  vmovdqa32 0x6b7b17f(%rip),%zmm10        # 6b9f300 <Stockfish::(anonymous namespace)::Pieces+0x260>
+    0.03 :   24181:  vpcompressd %zmm9,%zmm8{%k3}{z}
+    0.02 :   24187:  kmovw  %k3,%r10d
+    0.00 :   2418b:  popcnt %r10,%rdx
+    0.01 :   24190:  add    %esi,%edx
+    0.00 :   24192:  vpmovdw %zmm8,(%rcx,%rsi,2)
+    0.02 :   24199:  xor    %r10d,%r10d
+    0.00 :   2419c:  vmovdqa32 -0x3b0(%rbp),%zmm2
+    0.02 :   241a6:  vptestmd %zmm2,%zmm2,%k4
+    0.02 :   241ac:  vmovdqa32 0x6b7b18a(%rip),%zmm2        # 6b9f340 <Stockfish::(anonymous namespace)::Pieces+0x2a0>
+    0.00 :   241b6:  vpcompressd %zmm1,%zmm3{%k4}{z}
+    0.00 :   241bc:  kmovw  %k4,%r9d
+    0.02 :   241c0:  popcnt %r9,%rdi
+    0.00 :   241c5:  add    %edx,%edi
+    0.00 :   241c7:  vpmovdw %zmm3,(%rcx,%rdx,2)
+    0.12 :   241ce:  xor    %r9d,%r9d
+    0.00 :   241d1:  vmovdqa32 -0x370(%rbp),%zmm7
+    0.00 :   241db:  vptestmd %zmm7,%zmm7,%k5
+    0.01 :   241e1:  vmovdqa32 0x6b7b195(%rip),%zmm7        # 6b9f380 <Stockfish::(anonymous namespace)::Pieces+0x2e0>
+    0.02 :   241eb:  vpcompressd %zmm6,%zmm5{%k5}{z}
+    0.00 :   241f1:  kmovw  %k5,%esi
+    0.01 :   241f5:  popcnt %rsi,%r10
+    0.00 :   241fa:  add    %edi,%r10d
+    0.00 :   241fd:  vpmovdw %zmm5,(%rcx,%rdi,2)
+    0.19 :   24204:  xor    %esi,%esi
+    0.02 :   24206:  vmovdqa32 -0x330(%rbp),%zmm0
+    0.01 :   24210:  vptestmd %zmm0,%zmm0,%k6
+    0.00 :   24216:  vpcompressd %zmm14,%zmm13{%k6}{z}
+    0.02 :   2421c:  kmovw  %k6,%edx
+    0.00 :   24220:  popcnt %rdx,%r8
+    0.02 :   24225:  add    %r10d,%r8d
+    0.00 :   24228:  vpmovdw %zmm13,(%rcx,%r10,2)
+    0.07 :   2422f:  xor    %edx,%edx
+    0.01 :   24231:  vmovdqa32 -0x2f0(%rbp),%zmm4
+    0.00 :   2423b:  vptestmd %zmm4,%zmm4,%k7
+    0.00 :   24241:  vpcompressd %zmm15,%zmm12{%k7}{z}
+    0.00 :   24247:  kmovw  %k7,%edi
+    0.00 :   2424b:  popcnt %rdi,%r11
+    0.02 :   24250:  add    %r8d,%r11d
+    0.00 :   24253:  vpmovdw %zmm12,(%rcx,%r8,2)
+    0.12 :   2425a:  vmovdqa32 -0x2b0(%rbp),%zmm11
+    0.02 :   24264:  vptestmd %zmm11,%zmm11,%k1
+    0.01 :   2426a:  vpcompressd %zmm10,%zmm9{%k1}{z}
+    0.02 :   24270:  kmovw  %k1,%r10d
+    0.02 :   24274:  popcnt %r10,%rdx
+    0.02 :   24279:  add    %r11d,%edx
+    0.00 :   2427c:  vpmovdw %zmm9,(%rcx,%r11,2)
+    0.05 :   24283:  vmovdqa32 -0x270(%rbp),%zmm8
+    0.02 :   2428d:  vptestmd %zmm8,%zmm8,%k2
+    0.00 :   24293:  vpcompressd %zmm2,%zmm1{%k2}{z}
+    0.04 :   24299:  kmovw  %k2,%r8d
+    0.01 :   2429d:  popcnt %r8,%r9
+    0.01 :   242a2:  add    %edx,%r9d
+    0.00 :   242a5:  vpmovdw %zmm1,(%rcx,%rdx,2)
+    0.08 :   242ac:  xor    %r8d,%r8d
+    0.00 :   242af:  vmovdqa32 -0x230(%rbp),%zmm3
+    0.02 :   242b9:  vptestmd %zmm3,%zmm3,%k3
+    0.00 :   242bf:  vpcompressd %zmm7,%zmm6{%k3}{z}
+    0.06 :   242c5:  kmovw  %k3,%r11d
+    0.00 :   242c9:  popcnt %r11,%rsi
+    0.00 :   242ce:  add    %r9d,%esi
+    0.00 :   242d1:  vpmovdw %zmm6,(%rcx,%r9,2)
+    0.17 :   242d8:  vmovdqa32 -0x1f0(%rbp),%zmm5
+    0.02 :   242e2:  vmovdqa32 0x6b7b0d4(%rip),%zmm14        # 6b9f3c0 <Stockfish::(anonymous namespace)::Pieces+0x320>
+    0.01 :   242ec:  vmovdqa32 0x6b7b10a(%rip),%zmm4        # 6b9f400 <Stockfish::(anonymous namespace)::Pieces+0x360>
+    0.01 :   242f6:  vmovdqa32 0x6b7b140(%rip),%zmm11        # 6b9f440 <Stockfish::(anonymous namespace)::Pieces+0x3a0>
+    0.01 :   24300:  vptestmd %zmm5,%zmm5,%k4
+    0.02 :   24306:  vmovdqa32 0x6b7b170(%rip),%zmm8        # 6b9f480 <Stockfish::(anonymous namespace)::Pieces+0x3e0>
+    0.02 :   24310:  vmovdqa32 0x6b7b1a6(%rip),%zmm3        # 6b9f4c0 <Stockfish::(anonymous namespace)::Pieces+0x420>
+    0.04 :   2431a:  vmovdqa32 0x6b7b1dc(%rip),%zmm5        # 6b9f500 <Stockfish::(anonymous namespace)::Pieces+0x460>
+    0.01 :   24324:  vpcompressd %zmm14,%zmm0{%k4}{z}
+    0.02 :   2432a:  kmovw  %k4,%edx
+    0.00 :   2432e:  popcnt %rdx,%r8
+    0.02 :   24333:  add    %esi,%r8d
+    0.00 :   24336:  vpmovdw %zmm0,(%rcx,%rsi,2)
+    0.13 :   2433d:  xor    %edi,%edi
+    0.02 :   2433f:  xor    %r10d,%r10d
+    0.01 :   24342:  xor    %r11d,%r11d
+    0.00 :   24345:  vmovdqa32 -0x1b0(%rbp),%zmm13
+    0.01 :   2434f:  vptestmd %zmm13,%zmm13,%k5
+    0.01 :   24355:  vpxor  %xmm13,%xmm13,%xmm13
+    0.00 :   2435a:  vpcompressd %zmm4,%zmm15{%k5}{z}
+    0.00 :   24360:  kmovw  %k5,%r9d
+    0.02 :   24364:  popcnt %r9,%rdi
+    0.00 :   24369:  add    %r8d,%edi
+    0.00 :   2436c:  vpmovdw %zmm15,(%rcx,%r8,2)
+    0.06 :   24373:  xor    %r9d,%r9d
+    0.02 :   24376:  xor    %r8d,%r8d
+    0.00 :   24379:  vmovdqa32 -0x170(%rbp),%zmm12
+    0.00 :   24383:  vmovdqa64 %zmm13,%zmm4
+    0.01 :   24389:  vptestmd %zmm12,%zmm12,%k6
+    0.00 :   2438f:  vpcompressd %zmm11,%zmm10{%k6}{z}
+    0.02 :   24395:  kmovw  %k6,%esi
+    0.00 :   24399:  popcnt %rsi,%r10
+    0.01 :   2439e:  add    %edi,%r10d
+    0.00 :   243a1:  vpmovdw %zmm10,(%rcx,%rdi,2)
+    0.05 :   243a8:  vmovdqa32 -0x130(%rbp),%zmm9
+    0.00 :   243b2:  vptestmd %zmm9,%zmm9,%k7
+    0.00 :   243b8:  vpcompressd %zmm8,%zmm2{%k7}{z}
+    0.01 :   243be:  kmovw  %k7,%edx
+    0.02 :   243c2:  popcnt %rdx,%r9
+    0.03 :   243c7:  add    %r10d,%r9d
+    0.00 :   243ca:  vpmovdw %zmm2,(%rcx,%r10,2)
+    0.05 :   243d1:  vmovdqa32 -0xf0(%rbp),%zmm1
+    0.02 :   243db:  vptestmd %zmm1,%zmm1,%k1
+    0.01 :   243e1:  vpcompressd %zmm3,%zmm7{%k1}{z}
+    0.04 :   243e7:  kmovw  %k1,%edi
+    0.00 :   243eb:  popcnt %rdi,%r11
+    0.02 :   243f0:  add    %r9d,%r11d
+    0.01 :   243f3:  vpmovdw %zmm7,(%rcx,%r9,2)
+    0.13 :   243fa:  mov    %r11,%rsi
+    0.01 :   243fd:  vmovdqa32 -0xb0(%rbp),%zmm6
+    0.02 :   24407:  lea    0x7d1c640(%r14,%rbx,1),%rdi
+    0.02 :   2440f:  vptestmd %zmm6,%zmm6,%k2
+    0.00 :   24415:  kmovw  %k2,%r10d
+    0.00 :   24419:  popcnt %r10,%r8
+    0.05 :   2441e:  add    %r8d,%esi
+    0.00 :   24421:  vpcompressd %zmm5,%zmm14{%k2}{z}
+    0.01 :   24427:  lea    (%rcx,%rsi,2),%rdx
+    0.00 :   2442b:  vpmovdw %zmm14,(%rcx,%r11,2)
+    0.11 :   24432:  vmovdqa64 0x0(%r13),%zmm0
+    0.13 :   24439:  lea    -0x4(%rdx),%r11
+    0.00 :   2443d:  cmp    %r11,%rcx
+    0.01 :   24440:  jae    25043 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2703>
+    0.02 :   24446:  cs nopw 0x0(%rax,%rax,1)
+    0.01 :   24450:  movzwl (%rcx),%esi
+    0.10 :   24453:  movzwl 0x2(%rcx),%eax
+    0.06 :   24457:  add    $0x6,%rcx
+    0.00 :   2445b:  movzwl -0x2(%rcx),%r9d
+    0.06 :   24460:  vpbroadcastd -0x470(%rbp,%rsi,4),%zmm15
+    0.67 :   2446b:  shl    $0x6,%rsi
+    0.00 :   2446f:  vpbroadcastd -0x470(%rbp,%rax,4),%zmm12
+    1.18 :   2447a:  shl    $0x6,%rax
+    0.16 :   2447e:  vpbroadcastd -0x470(%rbp,%r9,4),%zmm11
+    0.66 :   24489:  shl    $0x6,%r9
+    0.02 :   2448d:  vpdpbusd (%rdi,%rsi,1),%zmm15,%zmm0
+    4.13 :   24494:  vpdpbusd (%rdi,%rax,1),%zmm12,%zmm4
+    4.58 :   2449b:  vpdpbusd (%rdi,%r9,1),%zmm11,%zmm13
+    2.57 :   244a2:  cmp    %r11,%rcx
+    0.00 :   244a5:  jb     24450 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1b10>
+    0.00 :   244a7:  vpaddd %zmm4,%zmm0,%zmm10
+    0.08 :   244ad:  vpaddd %zmm13,%zmm10,%zmm9
+    0.06 :   244b3:  cmp    %rdx,%rcx
+    0.00 :   244b6:  jae    244db <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1b9b>
+    0.00 :   244b8:  movzwl (%rcx),%r10d
+    0.00 :   244bc:  add    $0x2,%rcx
+    0.00 :   244c0:  vpbroadcastd -0x470(%rbp,%r10,4),%zmm8
+    0.00 :   244cb:  shl    $0x6,%r10
+    0.00 :   244cf:  vpdpbusd (%rdi,%r10,1),%zmm8,%zmm9
+    0.29 :   244d6:  cmp    %rdx,%rcx
+    0.00 :   244d9:  jb     244b8 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1b78>
+    0.00 :   244db:  vextracti32x4 $0x1,%zmm9,%xmm7
+    0.21 :   244e2:  vextracti32x4 $0x3,%zmm9,%xmm6
+    0.01 :   244e9:  vextracti32x4 $0x2,%zmm9,%xmm2
+    0.09 :   244f0:  vmovdqa64 %zmm9,%fs:0xfffffffffffffd80
+    0.02 :   244fc:  vpackssdw %xmm7,%xmm9,%xmm1
+    0.05 :   24500:  vpackssdw %xmm6,%xmm2,%xmm5
+    0.06 :   24504:  vpackusdw %xmm7,%xmm9,%xmm12
+    0.02 :   24509:  vpmulhw %xmm1,%xmm1,%xmm3
+    0.02 :   2450d:  vpmulhw %xmm5,%xmm5,%xmm13
+    0.05 :   24511:  vpackusdw %xmm6,%xmm2,%xmm10
+    0.00 :   24516:  vpsrlw $0x6,%xmm12,%xmm11
+    0.01 :   2451c:  vpsrlw $0x6,%xmm10,%xmm8
+    0.07 :   24522:  lea    0x7d20700(%r14,%rbx,1),%rdi
+    0.00 :   2452a:  vpacksswb %xmm8,%xmm11,%xmm7
+    0.04 :   2452f:  lea    0x7d20780(%r14,%rbx,1),%r11
+    0.01 :   24537:  lea    0x7d20800(%r14,%rbx,1),%rcx
+    0.00 :   2453f:  lea    0x7d20880(%r14,%rbx,1),%rsi
+    0.00 :   24547:  lea    0x7d20900(%r14,%rbx,1),%r10
+    0.04 :   2454f:  valignd $0xf,%zmm9,%zmm9,%zmm9
+    0.01 :   24556:  vpsrlw $0x3,%xmm3,%xmm0
+    0.00 :   2455b:  vpsrlw $0x3,%xmm13,%xmm4
+    0.01 :   24561:  vpacksswb %xmm4,%xmm0,%xmm15
+    0.01 :   24565:  vpbroadcastd %xmm15,%zmm14
+    0.12 :   2456b:  vpsrldq $0x4,%xmm15,%xmm2
+    0.02 :   24571:  vmovdqa %xmm15,%fs:0xfffffffffffffe00
+    0.02 :   2457b:  vpsrldq $0x8,%xmm15,%xmm3
+    0.02 :   24581:  vmovdqa %xmm7,-0x8a0(%rbp)
+    0.00 :   24589:  vpbroadcastd %xmm2,%zmm5
+    0.03 :   2458f:  vpbroadcastd %xmm3,%zmm0
+    0.06 :   24595:  vmovdqa %xmm7,%fs:0xfffffffffffffe40
+    0.01 :   2459f:  mov    -0x1c0(%r15),%r8
+    0.17 :   245a6:  mov    -0x1b9(%r15),%rdx
+    0.05 :   245ad:  mov    -0x8a0(%rbp),%r9
+    0.02 :   245b4:  mov    %r8,-0x1f1(%r15)
+    0.00 :   245bb:  mov    -0x898(%rbp),%r8
+    0.02 :   245c2:  mov    %rdx,-0x1ea(%r15)
+    0.00 :   245c9:  lea    0x7d20680(%r14,%rbx,1),%r15
+    0.02 :   245d1:  mov    %r9,%rax
+    0.01 :   245d4:  vpbroadcastd %fs:0xfffffffffffffe0c,%zmm13
+    2.05 :   245e0:  vmovdqa32 (%r15),%zmm6
+    0.02 :   245e6:  vmovdqa32 0x40(%r15),%zmm1
+    0.00 :   245ed:  shl    $0x18,%rax
+    0.00 :   245f1:  movzbl %r8b,%edx
+    0.00 :   245f5:  sar    $0x20,%rax
+    0.00 :   245f9:  lea    0x7d20980(%r14,%rbx,1),%r15
+    0.00 :   24601:  shld   $0x18,%r9,%rdx
+    0.35 :   24606:  vpbroadcastd %fs:0xfffffffffffffe1c,%zmm11
+    0.08 :   24612:  vpdpbusd (%rdi),%zmm14,%zmm6
+    0.02 :   24618:  vpbroadcastd %eax,%zmm4
+    0.00 :   2461e:  vpbroadcastd %edx,%zmm15
+    0.56 :   24624:  shl    $0x18,%r8
+    0.00 :   24628:  vpdpbusd 0x40(%rdi),%zmm14,%zmm1
+    0.01 :   2462f:  sar    $0x20,%r8
+    0.00 :   24633:  lea    0x7d20a00(%r14,%rbx,1),%rdi
+    0.02 :   2463b:  lea    0x7d20a80(%r14,%rbx,1),%r14
+    0.02 :   24643:  vpbroadcastd %r8d,%zmm12
+    0.58 :   24649:  lea    0x1f(%r12),%r8d
+    0.00 :   2464e:  vpdpbusd (%r11),%zmm5,%zmm6
+    0.01 :   24654:  vpdpbusd 0x40(%r11),%zmm5,%zmm1
+    0.01 :   2465b:  vpdpbusd (%rcx),%zmm0,%zmm6
+    0.10 :   24661:  vpdpbusd 0x40(%rcx),%zmm0,%zmm1
+    0.03 :   24668:  vpdpbusd (%rsi),%zmm13,%zmm6
+    1.21 :   2466e:  vpdpbusd 0x40(%rsi),%zmm13,%zmm1
+    0.45 :   24675:  vpdpbusd (%r10),%zmm4,%zmm6
+    1.96 :   2467b:  vpdpbusd 0x40(%r10),%zmm4,%zmm1
+    0.30 :   24682:  vpdpbusd (%r15),%zmm15,%zmm6
+    0.32 :   24688:  vpdpbusd 0x40(%r15),%zmm15,%zmm1
+    0.07 :   2468f:  vpdpbusd (%rdi),%zmm12,%zmm6
+    0.03 :   24695:  vpdpbusd 0x40(%rdi),%zmm12,%zmm1
+    0.01 :   2469c:  vpdpbusd (%r14),%zmm11,%zmm6
+    0.00 :   246a2:  vpdpbusd 0x40(%r14),%zmm11,%zmm1
+    0.00 :   246a9:  vextracti64x4 $0x1,%zmm6,%ymm8
+    0.00 :   246b0:  vmovdqa32 %zmm6,%fs:0xfffffffffffffe80
+    0.00 :   246bc:  vpackusdw %ymm8,%ymm6,%ymm7
+    0.01 :   246c1:  vmovdqa32 %zmm1,%fs:0xfffffffffffffec0
+    0.00 :   246cd:  vmovdqa %ymm1,%ymm6
+    0.00 :   246d1:  vextracti64x4 $0x1,%zmm1,%ymm1
+    0.00 :   246d8:  vpackusdw %ymm1,%ymm6,%ymm2
+    0.00 :   246dd:  vpsrlw $0x6,%ymm7,%ymm14
+    0.00 :   246e2:  vpxor  %xmm1,%xmm1,%xmm1
+    0.00 :   246e6:  vmovdqa 0x6b80b12(%rip),%ymm0        # 6ba5200 <Stockfish::(anonymous namespace)::Pieces+0x6160>
+    0.00 :   246ee:  vpsrlw $0x6,%ymm2,%ymm5
+    0.01 :   246f3:  vpacksswb %ymm5,%ymm14,%ymm3
+    0.00 :   246f7:  vpermd %ymm3,%ymm0,%ymm13
+    0.00 :   246fc:  vmovdqa %ymm13,%fs:0xffffffffffffff00
+    0.00 :   24706:  vpdpbusd 0x4580(%r13),%ymm13,%ymm1
+    0.00 :   24710:  vextracti64x2 $0x1,%ymm1,%xmm4
+    0.00 :   24717:  vpaddd %xmm4,%xmm1,%xmm15
+    0.00 :   2471b:  vpshufd $0x4e,%xmm15,%xmm12
+    0.00 :   24721:  vpaddd %xmm15,%xmm12,%xmm11
+    0.00 :   24726:  vpshufd $0xb1,%xmm11,%xmm10
+    0.00 :   2472c:  vpaddd %xmm11,%xmm10,%xmm8
+    0.00 :   24731:  vmovd  %xmm8,%ebx
+    0.00 :   24735:  add    0x4540(%r13),%ebx
+    0.00 :   2473c:  vmovd  %xmm9,%r13d
+    0.00 :   24741:  imul   $0x2580,%r13d,%r11d
+    0.00 :   24748:  mov    %ebx,%fs:0xffffffffffffff40
+    0.00 :   24750:  mov    -0x8d0(%rbp),%r10
+    0.00 :   24757:  movslq %r11d,%rcx
+    0.00 :   2475a:  imul   $0xffffffff81020409,%rcx,%rsi
+    0.00 :   24761:  shr    $0x20,%rsi
+    0.00 :   24765:  add    %r11d,%esi
+    0.00 :   24768:  sar    $0x1f,%r11d
+    0.00 :   2476c:  sar    $0xc,%esi
+    0.00 :   2476f:  sub    %r11d,%esi
+    0.00 :   24772:  lea    (%rsi,%rbx,1),%r9d
+    0.00 :   24776:  test   %r9d,%r9d
+    0.00 :   24779:  lea    0xf(%r9),%eax
+    0.00 :   2477d:  cmovs  %eax,%r9d
+    0.00 :   24781:  sar    $0x4,%r9d
+    0.00 :   24785:  test   %r12d,%r12d
+    0.00 :   24788:  cmovns %r12d,%r8d
+    0.00 :   2478c:  mov    %r9d,(%r10)
+    0.00 :   2478f:  sar    $0x5,%r8d
+    0.00 :   24793:  mov    %r8d,0x4(%r10)
+    0.00 :   24797:  mov    -0x38(%rbp),%rax
+    0.00 :   2479b:  sub    %fs:0x28,%rax
+    0.00 :   247a4:  jne    25380 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2a40>
+    0.00 :   247aa:  vzeroupper
+    0.00 :   247ad:  lea    -0x30(%rbp),%rsp
+    0.00 :   247b1:  mov    %r10,%rax
+    0.00 :   247b4:  pop    %rbx
+    0.00 :   247b5:  pop    %rdx
+    0.00 :   247b6:  pop    %r12
+    0.00 :   247b8:  pop    %r13
+    0.00 :   247ba:  pop    %r14
+    0.00 :   247bc:  pop    %r15
+    0.00 :   247be:  pop    %rbp
+    0.00 :   247bf:  lea    -0x8(%rdx),%rsp
+    0.00 :   247c3:  ret
+    0.00 :   247c4:  lea    -0x680(%rbp),%rcx
+    0.00 :   247cb:  mov    %rcx,-0x8c0(%rbp)
+    0.00 :   247d2:  jmp    232c3 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x983>
+    0.00 :   247d7:  imul   $0x1340,%r11,%r8
+    0.01 :   247de:  mov    -0x8a0(%rbp),%rsi
+    0.02 :   247e5:  add    %rsi,%r8
+    0.01 :   247e8:  movzbl 0x1303(%r8),%ecx
+    0.02 :   247f0:  cmp    $0x40,%cl
+    0.00 :   247f3:  je     22dd5 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x495>
+    0.00 :   247f9:  mov    $0x1,%eax
+    0.03 :   247fe:  shlx   %rcx,%rax,%r11
+    0.01 :   24803:  and    0x12a758(%rsi,%r15,1),%r11
+    0.01 :   2480b:  je     22dd5 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x495>
+    0.00 :   24811:  vmovq  %xmm18,-0x8b0(%rbp)
+    0.01 :   2481b:  xor    %edi,%edi
+    0.00 :   2481d:  mov    %r14,%rsi
+    0.00 :   24820:  push   %r9
+    0.01 :   24822:  mov    %rdx,%r9
+    0.00 :   24825:  push   %rcx
+    0.00 :   24826:  mov    -0x8a8(%rbp),%rdx
+    0.00 :   2482d:  mov    -0x8b8(%rbp),%rcx
+    0.00 :   24834:  lea    0x14c0(%rdx,%r15,1),%r8
+    0.00 :   2483c:  mov    -0x8f0(%rbp),%edx
+    0.00 :   24842:  vzeroupper
+    0.00 :   24845:  add    $0x2,%rbx
+    0.00 :   24849:  call   34080 <void Stockfish::Eval::NNUE::(anonymous namespace)::double_inc_update<1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Square, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats> const&, Stockfish::DirtyPiece const&) [clone .isra.0]>
+    0.00 :   2484e:  pop    %r10
+    0.00 :   24850:  pop    %r11
+    0.00 :   24852:  vmovq  -0x8b0(%rbp),%xmm18
+    0.00 :   2485c:  jmp    23299 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x959>
+    0.00 :   24861:  imul   $0x1340,%rdi,%r8
+    0.04 :   24868:  mov    -0x8a0(%rbp),%r14
+    0.00 :   2486f:  add    %r14,%r8
+    0.01 :   24872:  movzbl 0x1303(%r8),%eax
+    0.03 :   2487a:  cmp    $0x40,%al
+    0.01 :   2487c:  je     236a9 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xd69>
+    0.00 :   24882:  mov    $0x1,%r9d
+    0.03 :   24888:  shlx   %rax,%r9,%rsi
+    0.00 :   2488d:  and    0x12a758(%r14,%rcx,1),%rsi
+    0.00 :   24895:  je     236a9 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xd69>
+    0.00 :   2489b:  vmovq  %xmm19,-0x8b8(%rbp)
+    0.02 :   248a5:  mov    %r11,%rsi
+    0.00 :   248a8:  mov    $0x1,%edi
+    0.00 :   248ad:  push   %r9
+    0.00 :   248af:  mov    %rdx,%r9
+    0.00 :   248b2:  push   %rax
+    0.00 :   248b3:  mov    -0x8a8(%rbp),%rdx
+    0.01 :   248ba:  mov    %r11,-0x8b0(%rbp)
+    0.02 :   248c1:  lea    0x14c0(%rdx,%rcx,1),%r8
+    0.00 :   248c9:  mov    -0x8e0(%rbp),%edx
+    0.00 :   248cf:  mov    %r12,%rcx
+    0.00 :   248d2:  vzeroupper
+    0.00 :   248d5:  call   34080 <void Stockfish::Eval::NNUE::(anonymous namespace)::double_inc_update<1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Square, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats> const&, Stockfish::DirtyPiece const&) [clone .isra.0]>
+    0.00 :   248da:  add    $0x2,%r13
+    0.00 :   248de:  pop    %r10
+    0.00 :   248e0:  vmovq  -0x8b8(%rbp),%xmm19
+    0.00 :   248ea:  pop    %r11
+    0.00 :   248ec:  mov    -0x8b0(%rbp),%r11
+    0.00 :   248f3:  jmp    23b9c <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x125c>
+    0.00 :   248f8:  movzbl 0x1305(%rax),%r9d
+    0.01 :   24900:  movzbl %r8b,%eax
+    0.00 :   24904:  xor    %esi,%eax
+    0.00 :   24906:  add    (%r11,%r9,4),%eax
+    0.04 :   2490a:  mov    $0x2,%r9d
+    0.00 :   24910:  add    %ecx,%eax
+    0.01 :   24912:  mov    %eax,-0x8b8(%rbp)
+    0.00 :   24918:  jmp    22ae5 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1a5>
+    0.00 :   2491d:  movzbl 0x1305(%rax),%edi
+    0.01 :   24924:  movzbl %r8b,%eax
+    0.00 :   24928:  xor    %esi,%eax
+    0.00 :   2492a:  mov    0x40(%r14,%rdi,4),%edi
+    0.00 :   2492f:  xor    $0x38,%eax
+    0.00 :   24932:  add    %r11d,%edi
+    0.00 :   24935:  add    %edi,%eax
+    0.00 :   24937:  mov    $0x2,%edi
+    0.00 :   2493c:  mov    %eax,-0x8e8(%rbp)
+    0.00 :   24942:  jmp    23418 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xad8>
+    0.00 :   24947:  cmp    $0x40,%r12b
+    0.02 :   2494b:  je     252b2 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2972>
+    0.00 :   24951:  imul   $0x1340,%r10,%rsi
+    0.00 :   24958:  lea    0x0(%r13,%rsi,1),%r14
+    0.02 :   2495d:  cmp    %r12b,0x1303(%r14)
+    0.02 :   24964:  je     24f15 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x25d5>
+    0.00 :   2496a:  movslq -0x8b0(%rbp),%rax
+    0.02 :   24971:  lea    0x6b79488(%rip),%r8        # 6b9de00 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::OrientTBL>
+    0.00 :   24978:  lea    0x6b79301(%rip),%rdi        # 6b9dc80 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::KingBuckets>
+    0.00 :   2497f:  lea    0x6b793fa(%rip),%r14        # 6b9dd80 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::PieceSquareIndex>
+    0.00 :   24986:  mov    %eax,%r9d
+    0.00 :   24989:  mov    (%r8,%rax,4),%esi
+    0.05 :   2498d:  movzbl 0x1300(%rcx),%eax
+    0.00 :   24994:  xor    $0x38,%r9d
+    0.00 :   24998:  mov    (%rdi,%r9,4),%r11d
+    0.00 :   2499c:  movzbl 0x1301(%rcx),%r9d
+    0.00 :   249a4:  mov    0x40(%r14,%rax,4),%r8d
+    0.02 :   249a9:  xor    %esi,%r9d
+    0.00 :   249ac:  add    %r11d,%r8d
+    0.00 :   249af:  xor    $0x38,%r9d
+    0.00 :   249b3:  add    %r8d,%r9d
+    0.00 :   249b6:  jmp    233dc <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xa9c>
+    0.00 :   249bb:  cmp    $0x40,%al
+    0.01 :   249bd:  je     25388 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2a48>
+    0.01 :   249c3:  imul   $0x1340,%r10,%rsi
+    0.00 :   249ca:  lea    (%r15,%rsi,1),%rcx
+    0.02 :   249ce:  cmp    %al,0x1303(%rcx)
+    0.01 :   249d4:  je     24eb7 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2577>
+    0.00 :   249da:  movslq %r14d,%r8
+    0.01 :   249dd:  lea    0x6b7941c(%rip),%rdi        # 6b9de00 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::OrientTBL>
+    0.00 :   249e4:  mov    %r14d,%ecx
+    0.00 :   249e7:  movzbl 0x1300(%rbx),%r9d
+    0.00 :   249ef:  mov    (%rdi,%r8,4),%esi
+    0.02 :   249f3:  lea    0x6b79286(%rip),%rdi        # 6b9dc80 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::KingBuckets>
+    0.00 :   249fa:  lea    0x6b7937f(%rip),%r11        # 6b9dd80 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::PieceSquareIndex>
+    0.00 :   24a01:  mov    (%rdi,%rcx,4),%ecx
+    0.00 :   24a04:  movzbl 0x1301(%rbx),%edi
+    0.00 :   24a0b:  mov    (%r11,%r9,4),%r8d
+    0.01 :   24a0f:  xor    %esi,%edi
+    0.00 :   24a11:  add    %r8d,%edi
+    0.00 :   24a14:  add    %ecx,%edi
+    0.00 :   24a16:  jmp    22aab <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x16b>
+    0.00 :   24a1b:  cmp    $0x1,%r12
+    0.01 :   24a1f:  jne    25303 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x29c3>
+    0.00 :   24a25:  mov    -0x8e8(%rbp),%r14d
+    0.01 :   24a2c:  mov    %r9d,%edi
+    0.00 :   24a2f:  mov    %r8d,%eax
+    0.00 :   24a32:  lea    0x800(%r15),%rsi
+    0.00 :   24a39:  shl    $0xa,%edi
+    0.00 :   24a3c:  shl    $0xa,%eax
+    0.00 :   24a3f:  shl    $0xa,%r14d
+    0.00 :   24a43:  lea    (%rsi,%rdi,2),%rbx
+    0.00 :   24a47:  lea    (%rsi,%rax,2),%r11
+    0.00 :   24a4b:  lea    (%rsi,%r14,2),%r12
+    0.00 :   24a4f:  xor    %esi,%esi
+    0.00 :   24a51:  vmovdqa64 0x800(%rdx,%rsi,1),%zmm14
+    0.04 :   24a59:  vpaddw (%r11,%rsi,1),%zmm14,%zmm13
+    0.33 :   24a60:  vpsubw (%r12,%rsi,1),%zmm13,%zmm12
+    0.10 :   24a67:  vpsubw (%rbx,%rsi,1),%zmm12,%zmm11
+    0.08 :   24a6e:  vmovdqa64 %zmm11,0x800(%rcx,%rsi,1)
+    0.02 :   24a76:  vmovdqa64 0x840(%rdx,%rsi,1),%zmm10
+    0.00 :   24a7e:  vpaddw 0x40(%r11,%rsi,1),%zmm10,%zmm9
+    0.05 :   24a86:  vpsubw 0x40(%r12,%rsi,1),%zmm9,%zmm8
+    0.06 :   24a8e:  vpsubw 0x40(%rbx,%rsi,1),%zmm8,%zmm7
+    0.04 :   24a96:  vmovdqa64 %zmm7,0x840(%rsi,%rcx,1)
+    0.02 :   24a9e:  vmovdqa64 0x880(%rdx,%rsi,1),%zmm6
+    0.00 :   24aa6:  vpaddw 0x80(%r11,%rsi,1),%zmm6,%zmm5
+    0.05 :   24aae:  vpsubw 0x80(%r12,%rsi,1),%zmm5,%zmm4
+    0.03 :   24ab6:  vpsubw 0x80(%rbx,%rsi,1),%zmm4,%zmm3
+    0.05 :   24abe:  vmovdqa64 %zmm3,0x880(%rsi,%rcx,1)
+    0.03 :   24ac6:  vmovdqa64 0x8c0(%rdx,%rsi,1),%zmm2
+    0.00 :   24ace:  vpaddw 0xc0(%r11,%rsi,1),%zmm2,%zmm1
+    0.06 :   24ad6:  vpsubw 0xc0(%r12,%rsi,1),%zmm1,%zmm0
+    0.04 :   24ade:  vpsubw 0xc0(%rbx,%rsi,1),%zmm0,%zmm15
+    0.02 :   24ae6:  vmovdqa64 %zmm15,0x8c0(%rsi,%rcx,1)
+    0.02 :   24aee:  vmovdqa64 0x900(%rdx,%rsi,1),%zmm14
+    0.02 :   24af6:  vpaddw 0x100(%r11,%rsi,1),%zmm14,%zmm13
+    0.06 :   24afe:  vpsubw 0x100(%r12,%rsi,1),%zmm13,%zmm12
+    0.08 :   24b06:  vpsubw 0x100(%rbx,%rsi,1),%zmm12,%zmm11
+    0.06 :   24b0e:  vmovdqa64 %zmm11,0x900(%rsi,%rcx,1)
+    0.02 :   24b16:  vmovdqa64 0x940(%rdx,%rsi,1),%zmm10
+    0.01 :   24b1e:  vpaddw 0x140(%r11,%rsi,1),%zmm10,%zmm9
+    0.05 :   24b26:  vpsubw 0x140(%r12,%rsi,1),%zmm9,%zmm8
+    0.03 :   24b2e:  vpsubw 0x140(%rbx,%rsi,1),%zmm8,%zmm7
+    0.04 :   24b36:  vmovdqa64 %zmm7,0x940(%rsi,%rcx,1)
+    0.01 :   24b3e:  vmovdqa64 0x980(%rdx,%rsi,1),%zmm6
+    0.00 :   24b46:  vpaddw 0x180(%r11,%rsi,1),%zmm6,%zmm5
+    0.05 :   24b4e:  vpsubw 0x180(%r12,%rsi,1),%zmm5,%zmm4
+    0.02 :   24b56:  vpsubw 0x180(%rbx,%rsi,1),%zmm4,%zmm3
+    0.08 :   24b5e:  vmovdqa64 %zmm3,0x980(%rsi,%rcx,1)
+    0.02 :   24b66:  vmovdqa64 0x9c0(%rdx,%rsi,1),%zmm2
+    0.02 :   24b6e:  vpaddw 0x1c0(%r11,%rsi,1),%zmm2,%zmm1
+    0.04 :   24b76:  vpsubw 0x1c0(%r12,%rsi,1),%zmm1,%zmm0
+    0.02 :   24b7e:  vpsubw 0x1c0(%rbx,%rsi,1),%zmm0,%zmm15
+    0.04 :   24b86:  add    $0x200,%rsi
+    0.00 :   24b8d:  vmovdqa64 %zmm15,0x7c0(%rsi,%rcx,1)
+    0.03 :   24b95:  cmp    $0x800,%rsi
+    0.00 :   24b9c:  jne    24a51 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2111>
+    0.00 :   24ba2:  lea    0x79fc800(%r15),%r14
+    0.00 :   24ba9:  lea    0x0(,%r8,8),%r8d
+    0.00 :   24bb1:  vmovdqa (%r14,%r8,4),%ymm14
+    0.03 :   24bb7:  vpaddd 0x1020(%rdx),%ymm14,%ymm13
+    0.00 :   24bbf:  lea    0x0(,%r9,8),%edx
+    0.00 :   24bc7:  mov    -0x8e8(%rbp),%r9d
+    0.00 :   24bce:  lea    0x0(,%r9,8),%r12d
+    0.00 :   24bd6:  vpsubd (%r14,%r12,4),%ymm13,%ymm12
+    0.02 :   24bdc:  vpsubd (%r14,%rdx,4),%ymm12,%ymm11
+    0.02 :   24be2:  vmovdqa %ymm11,0x1020(%rcx)
+    0.00 :   24bea:  jmp    235a8 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xc68>
+    0.00 :   24bef:  cmpq   $0x1,-0x8a8(%rbp)
+    0.00 :   24bf7:  jne    25349 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2a09>
+    0.00 :   24bfd:  mov    -0x8b8(%rbp),%ecx
+    0.00 :   24c03:  mov    %edi,%eax
+    0.00 :   24c05:  mov    %r8d,%esi
+    0.00 :   24c08:  lea    0x800(%r13),%r12
+    0.00 :   24c0f:  shl    $0xa,%eax
+    0.00 :   24c12:  shl    $0xa,%esi
+    0.00 :   24c15:  shl    $0xa,%ecx
+    0.00 :   24c18:  lea    (%r12,%rax,2),%r11
+    0.00 :   24c1c:  lea    (%r12,%rcx,2),%r9
+    0.00 :   24c20:  lea    (%r12,%rsi,2),%r12
+    0.00 :   24c24:  xor    %ecx,%ecx
+    0.00 :   24c26:  vmovdqa64 (%rdx,%rcx,1),%zmm6
+    0.03 :   24c2d:  vpaddw (%r12,%rcx,1),%zmm6,%zmm0
+    0.27 :   24c34:  vpsubw (%r9,%rcx,1),%zmm0,%zmm1
+    0.05 :   24c3b:  vpsubw (%r11,%rcx,1),%zmm1,%zmm2
+    0.06 :   24c42:  vmovdqa64 %zmm2,(%rbx,%rcx,1)
+    0.02 :   24c49:  vmovdqa64 0x40(%rdx,%rcx,1),%zmm7
+    0.00 :   24c51:  vpaddw 0x40(%r12,%rcx,1),%zmm7,%zmm3
+    0.04 :   24c59:  vpsubw 0x40(%r9,%rcx,1),%zmm3,%zmm4
+    0.05 :   24c61:  vpsubw 0x40(%r11,%rcx,1),%zmm4,%zmm5
+    0.04 :   24c69:  vmovdqa64 %zmm5,0x40(%rcx,%rbx,1)
+    0.03 :   24c71:  vmovdqa64 0x80(%rdx,%rcx,1),%zmm8
+    0.00 :   24c79:  vpaddw 0x80(%r12,%rcx,1),%zmm8,%zmm9
+    0.05 :   24c81:  vpsubw 0x80(%r9,%rcx,1),%zmm9,%zmm10
+    0.02 :   24c89:  vpsubw 0x80(%r11,%rcx,1),%zmm10,%zmm11
+    0.06 :   24c91:  vmovdqa64 %zmm11,0x80(%rcx,%rbx,1)
+    0.02 :   24c99:  vmovdqa64 0xc0(%rdx,%rcx,1),%zmm12
+    0.03 :   24ca1:  vpaddw 0xc0(%r12,%rcx,1),%zmm12,%zmm13
+    0.10 :   24ca9:  vpsubw 0xc0(%r9,%rcx,1),%zmm13,%zmm14
+    0.03 :   24cb1:  vpsubw 0xc0(%r11,%rcx,1),%zmm14,%zmm15
+    0.02 :   24cb9:  vmovdqa64 %zmm15,0xc0(%rcx,%rbx,1)
+    0.05 :   24cc1:  vmovdqa64 0x100(%rdx,%rcx,1),%zmm6
+    0.02 :   24cc9:  vpaddw 0x100(%r12,%rcx,1),%zmm6,%zmm0
+    0.04 :   24cd1:  vpsubw 0x100(%r9,%rcx,1),%zmm0,%zmm1
+    0.09 :   24cd9:  vpsubw 0x100(%r11,%rcx,1),%zmm1,%zmm2
+    0.05 :   24ce1:  vmovdqa64 %zmm2,0x100(%rcx,%rbx,1)
+    0.02 :   24ce9:  vmovdqa64 0x140(%rdx,%rcx,1),%zmm7
+    0.04 :   24cf1:  vpaddw 0x140(%r12,%rcx,1),%zmm7,%zmm3
+    0.06 :   24cf9:  vpsubw 0x140(%r9,%rcx,1),%zmm3,%zmm4
+    0.05 :   24d01:  vpsubw 0x140(%r11,%rcx,1),%zmm4,%zmm5
+    0.05 :   24d09:  vmovdqa64 %zmm5,0x140(%rcx,%rbx,1)
+    0.01 :   24d11:  vmovdqa64 0x180(%rdx,%rcx,1),%zmm8
+    0.00 :   24d19:  vpaddw 0x180(%r12,%rcx,1),%zmm8,%zmm9
+    0.05 :   24d21:  vpsubw 0x180(%r9,%rcx,1),%zmm9,%zmm10
+    0.02 :   24d29:  vpsubw 0x180(%r11,%rcx,1),%zmm10,%zmm11
+    0.04 :   24d31:  vmovdqa64 %zmm11,0x180(%rcx,%rbx,1)
+    0.02 :   24d39:  vmovdqa64 0x1c0(%rdx,%rcx,1),%zmm12
+    0.02 :   24d41:  vpaddw 0x1c0(%r12,%rcx,1),%zmm12,%zmm13
+    0.06 :   24d49:  vpsubw 0x1c0(%r9,%rcx,1),%zmm13,%zmm14
+    0.09 :   24d51:  vpsubw 0x1c0(%r11,%rcx,1),%zmm14,%zmm15
+    0.02 :   24d59:  add    $0x200,%rcx
+    0.00 :   24d60:  vmovdqa64 %zmm15,-0x40(%rcx,%rbx,1)
+    0.02 :   24d68:  cmp    $0x800,%rcx
+    0.00 :   24d6f:  jne    24c26 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x22e6>
+    0.00 :   24d75:  lea    0x79fc800(%r13),%r9
+    0.00 :   24d7c:  lea    0x0(,%r8,8),%r8d
+    0.00 :   24d84:  vmovdqa (%r9,%r8,4),%ymm6
+    0.02 :   24d8a:  vpaddd 0x1000(%rdx),%ymm6,%ymm0
+    0.01 :   24d92:  lea    0x0(,%rdi,8),%edx
+    0.00 :   24d99:  mov    -0x8b8(%rbp),%edi
+    0.00 :   24d9f:  lea    0x0(,%rdi,8),%eax
+    0.01 :   24da6:  vpsubd (%r9,%rax,4),%ymm0,%ymm1
+    0.01 :   24dac:  vpsubd (%r9,%rdx,4),%ymm1,%ymm2
+    0.00 :   24db2:  vmovdqa %ymm2,0x1000(%rbx)
+    0.00 :   24dba:  jmp    22c6f <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x32f>
+    0.00 :   24dbf:  movl   $0x0,-0x8b0(%rbp)
+    0.02 :   24dc9:  xor    %r14d,%r14d
+    0.00 :   24dcc:  lea    -0x890(%rbp),%r10
+    0.00 :   24dd3:  jmp    237d1 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xe91>
+    0.00 :   24dd8:  movl   $0x0,-0x8b0(%rbp)
+    0.00 :   24de2:  xor    %r11d,%r11d
+    0.00 :   24de5:  lea    -0x890(%rbp),%r10
+    0.00 :   24dec:  jmp    22ee3 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x5a3>
+    0.00 :   24df1:  xor    %edi,%edi
+    0.00 :   24df3:  xor    %r12d,%r12d
+    0.01 :   24df6:  imul   $0x1340,%rdi,%rdi
+    0.06 :   24dfd:  mov    %r11,%rdx
+    0.01 :   24e00:  mov    %r14,%rsi
+    0.01 :   24e03:  mov    %r11,-0x8b0(%rbp)
+    0.01 :   24e0a:  mov    -0x8a0(%rbp),%rbx
+    0.00 :   24e11:  mov    -0x8f8(%rbp),%r8
+    0.00 :   24e18:  lea    (%rbx,%rdi,1),%rcx
+    0.01 :   24e1c:  mov    $0x1,%edi
+    0.00 :   24e21:  vzeroupper
+    0.00 :   24e24:  call   253d0 <void Stockfish::Eval::NNUE::(anonymous namespace)::update_accumulator_refresh_cache<1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm>&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&)>
+    0.00 :   24e29:  mov    0x269800(%rbx),%r8
+    0.01 :   24e30:  mov    -0x8b0(%rbp),%r11
+    0.00 :   24e37:  lea    -0x2(%r8),%r13
+    0.00 :   24e3b:  cmp    %r12,%r13
+    0.00 :   24e3e:  jge    24f6a <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x262a>
+    0.00 :   24e44:  lea    -0x1(%r8),%rdi
+    0.00 :   24e48:  jmp    235d0 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xc90>
+    0.00 :   24e4d:  xor    %r12d,%r12d
+    0.01 :   24e50:  imul   $0x1340,%rdi,%rax
+    0.03 :   24e57:  mov    -0x8a0(%rbp),%rbx
+    0.00 :   24e5e:  mov    %r11,%rdx
+    0.00 :   24e61:  xor    %edi,%edi
+    0.00 :   24e63:  mov    -0x8f8(%rbp),%r8
+    0.01 :   24e6a:  mov    %r14,%rsi
+    0.00 :   24e6d:  mov    %r11,-0x8a8(%rbp)
+    0.00 :   24e74:  lea    (%rbx,%rax,1),%rcx
+    0.00 :   24e78:  call   253d0 <void Stockfish::Eval::NNUE::(anonymous namespace)::update_accumulator_refresh_cache<1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm>&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&)>
+    0.00 :   24e7d:  mov    0x269800(%rbx),%r8
+    0.00 :   24e84:  mov    -0x8a8(%rbp),%r11
+    0.00 :   24e8b:  lea    -0x2(%r8),%r13
+    0.00 :   24e8f:  cmp    %r13,%r12
+    0.00 :   24e92:  jle    24fd8 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2698>
+    0.00 :   24e98:  lea    -0x1(%r8),%rdi
+    0.00 :   24e9c:  jmp    22c9a <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x35a>
+    0.00 :   24ea1:  xor    %r12d,%r12d
+    0.00 :   24ea4:  jmp    233f7 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xab7>
+    0.00 :   24ea9:  xor    %eax,%eax
+    0.00 :   24eab:  mov    %rax,-0x8a8(%rbp)
+    0.00 :   24eb2:  jmp    22ac3 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x183>
+    0.00 :   24eb7:  movb   $0x40,0x1303(%rcx)
+    0.01 :   24ebe:  xor    %edi,%edi
+    0.00 :   24ec0:  mov    %rdx,%r9
+    0.00 :   24ec3:  mov    %r13,%rsi
+    0.00 :   24ec6:  mov    %al,-0x8c0(%rbp)
+    0.00 :   24ecc:  lea    0x1340(%r15,%r8,1),%r8
+    0.00 :   24ed4:  mov    %r14d,%edx
+    0.01 :   24ed7:  mov    %rcx,-0x8a8(%rbp)
+    0.00 :   24ede:  mov    %rbx,%rcx
+    0.00 :   24ee1:  movb   $0x40,0x1302(%rbx)
+    0.00 :   24ee8:  vzeroupper
+    0.00 :   24eeb:  call   33a30 <void Stockfish::Eval::NNUE::(anonymous namespace)::double_inc_update<1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Square, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm> const&)>
+    0.00 :   24ef0:  movzbl -0x8c0(%rbp),%edi
+    0.00 :   24ef7:  add    $0x2,%r12
+    0.00 :   24efb:  mov    -0x8a8(%rbp),%r10
+    0.00 :   24f02:  mov    %dil,0x1303(%r10)
+    0.00 :   24f09:  mov    %dil,0x1302(%rbx)
+    0.00 :   24f10:  jmp    22c79 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x339>
+    0.00 :   24f15:  mov    %rcx,-0x8d8(%rbp)
+    0.00 :   24f1c:  mov    %rdx,%r9
+    0.00 :   24f1f:  mov    %r15,%rsi
+    0.00 :   24f22:  mov    -0x8b0(%rbp),%edx
+    0.00 :   24f28:  movb   $0x40,0x1303(%r14)
+    0.00 :   24f30:  lea    0x1340(%r13,%r11,1),%r8
+    0.00 :   24f38:  mov    $0x1,%edi
+    0.00 :   24f3d:  movb   $0x40,0x1302(%rcx)
+    0.02 :   24f44:  vzeroupper
+    0.00 :   24f47:  call   33a30 <void Stockfish::Eval::NNUE::(anonymous namespace)::double_inc_update<1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Square, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm> const&)>
+    0.00 :   24f4c:  mov    -0x8d8(%rbp),%rcx
+    0.00 :   24f53:  mov    %r12b,0x1303(%r14)
+    0.00 :   24f5a:  add    $0x2,%rbx
+    0.00 :   24f5e:  mov    %r12b,0x1302(%rcx)
+    0.00 :   24f65:  jmp    235b2 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xc72>
+    0.00 :   24f6a:  imul   $0x1340,%r13,%rcx
+    0.00 :   24f71:  mov    -0x8a0(%rbp),%rsi
+    0.00 :   24f78:  mov    0x88(%r11),%rax
+    0.00 :   24f7f:  xor    %ebx,%ebx
+    0.00 :   24f81:  and    0x70(%r11),%rax
+    0.00 :   24f85:  tzcnt  %rax,%rbx
+    0.00 :   24f8a:  lea    (%rsi,%rcx,1),%r15
+    0.00 :   24f8e:  lea    0x1340(%r15),%r8
+    0.00 :   24f95:  mov    %r15,%rcx
+    0.00 :   24f98:  mov    %ebx,%edx
+    0.00 :   24f9a:  mov    %r14,%rsi
+    0.00 :   24f9d:  mov    $0x1,%edi
+    0.00 :   24fa2:  sub    $0x1,%r13
+    0.00 :   24fa6:  mov    %r11,-0x8b0(%rbp)
+    0.00 :   24fad:  sub    $0x1340,%r15
+    0.00 :   24fb4:  call   4daf0 <void Stockfish::Eval::NNUE::(anonymous namespace)::update_accumulator_incremental<false, Stockfish::Eval::NNUE::Features::HalfKAv2_hm, 1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Square, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm> const&)>
+    0.00 :   24fb9:  cmp    %r12,%r13
+    0.00 :   24fbc:  mov    -0x8b0(%rbp),%r11
+    0.00 :   24fc3:  jge    24f8e <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x264e>
+    0.00 :   24fc5:  mov    -0x8a0(%rbp),%r8
+    0.01 :   24fcc:  mov    0x269800(%r8),%r8
+    0.00 :   24fd3:  jmp    24e44 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2504>
+    0.00 :   24fd8:  imul   $0x1340,%r13,%r8
+    0.00 :   24fdf:  mov    -0x8a0(%rbp),%rcx
+    0.00 :   24fe6:  mov    0x80(%r11),%rdx
+    0.00 :   24fed:  xor    %ebx,%ebx
+    0.00 :   24fef:  and    0x70(%r11),%rdx
+    0.00 :   24ff3:  tzcnt  %rdx,%rbx
+    0.00 :   24ff8:  lea    (%rcx,%r8,1),%r15
+    0.00 :   24ffc:  lea    0x1340(%r15),%r8
+    0.00 :   25003:  mov    %r15,%rcx
+    0.00 :   25006:  xor    %edi,%edi
+    0.00 :   25008:  mov    %ebx,%edx
+    0.00 :   2500a:  mov    %r14,%rsi
+    0.00 :   2500d:  sub    $0x1,%r13
+    0.00 :   25011:  mov    %r11,-0x8a8(%rbp)
+    0.00 :   25018:  sub    $0x1340,%r15
+    0.00 :   2501f:  call   4daf0 <void Stockfish::Eval::NNUE::(anonymous namespace)::update_accumulator_incremental<false, Stockfish::Eval::NNUE::Features::HalfKAv2_hm, 1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Square, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::HalfKAv2_hm> const&)>
+    0.00 :   25024:  cmp    %r13,%r12
+    0.00 :   25027:  mov    -0x8a8(%rbp),%r11
+    0.00 :   2502e:  jle    24ffc <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x26bc>
+    0.00 :   25030:  mov    -0x8a0(%rbp),%rdi
+    0.01 :   25037:  mov    0x269800(%rdi),%r8
+    0.00 :   2503e:  jmp    24e98 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2558>
+    0.00 :   25043:  mov    -0x8c0(%rbp),%rcx
+    0.00 :   2504a:  jmp    244a7 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1b67>
+    0.00 :   2504f:  movzbl 0x1306(%r12),%r12d
+    0.02 :   25058:  movzbl %r8b,%eax
+    0.00 :   2505c:  xor    %esi,%eax
+    0.00 :   2505e:  add    (%r11,%r12,4),%eax
+    0.00 :   25062:  mov    -0x8a8(%rbp),%r11
+    0.00 :   25069:  add    %ecx,%eax
+    0.00 :   2506b:  lea    0x1(%r11),%rsi
+    0.00 :   2506f:  mov    %eax,-0x680(%rbp,%r11,4)
+    0.00 :   25077:  mov    %rsi,-0x8a8(%rbp)
+    0.00 :   2507e:  jmp    22b02 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1c2>
+    0.00 :   25083:  vzeroupper
+    0.00 :   25086:  imul   $0x14c0,%rdi,%r8
+    0.00 :   2508d:  mov    %r11,%rdx
+    0.00 :   25090:  mov    %r14,%rsi
+    0.00 :   25093:  xor    %edi,%edi
+    0.00 :   25095:  mov    -0x8a8(%rbp),%r12
+    0.01 :   2509c:  mov    %r11,-0x8b0(%rbp)
+    0.00 :   250a3:  xor    %ebx,%ebx
+    0.00 :   250a5:  lea    (%r12,%r8,1),%rcx
+    0.00 :   250a9:  call   25b50 <void Stockfish::Eval::NNUE::(anonymous namespace)::update_threats_accumulator_full<1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats>&)>
+    0.00 :   250ae:  mov    -0x8a0(%rbp),%rdi
+    0.00 :   250b5:  mov    -0x8b0(%rbp),%r11
+    0.00 :   250bc:  mov    0x269800(%rdi),%rsi
+    0.00 :   250c3:  mov    0x80(%r11),%r10
+    0.00 :   250ca:  and    0x70(%r11),%r10
+    0.00 :   250ce:  imul   $0x14c0,%rsi,%r9
+    0.00 :   250d5:  tzcnt  %r10,%rbx
+    0.00 :   250da:  lea    -0x2(%rsi),%r15
+    0.00 :   250de:  add    %rdi,%r9
+    0.00 :   250e1:  cmp    %r13,%r15
+    0.00 :   250e4:  jge    25238 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x28f8>
+    0.00 :   250ea:  mov    -0x8a0(%rbp),%r13
+    0.00 :   250f1:  lea    -0x680(%rbp),%r15
+    0.00 :   250f8:  mov    -0x8b0(%rbp),%r11
+    0.00 :   250ff:  mov    %r15,-0x8c0(%rbp)
+    0.00 :   25106:  mov    0x269800(%r13),%r8
+    0.00 :   2510d:  lea    -0x1(%r8),%rdi
+    0.00 :   25111:  jmp    232ba <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x97a>
+    0.00 :   25116:  mov    -0x8a0(%rbp),%rcx
+    0.00 :   2511d:  cmpb   $0x0,0x1040(%rcx)
+    0.00 :   25124:  je     24e4d <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x250d>
+    0.00 :   2512a:  lea    0x1292c0(%rcx),%rbx
+    0.00 :   25131:  lea    -0x680(%rbp),%rsi
+    0.00 :   25138:  xor    %r13d,%r13d
+    0.00 :   2513b:  cmpb   $0x0,0x12a300(%rcx)
+    0.00 :   25142:  mov    %rbx,-0x8a8(%rbp)
+    0.00 :   25149:  mov    %rsi,-0x8c0(%rbp)
+    0.00 :   25150:  je     25086 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2746>
+    0.00 :   25156:  mov    -0x8a0(%rbp),%r12
+    0.00 :   2515d:  cmpb   $0x0,0x1041(%r12)
+    0.00 :   25166:  je     24df1 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x24b1>
+    0.00 :   2516c:  mov    -0x8a0(%rbp),%r15
+    0.00 :   25173:  xor    %edi,%edi
+    0.00 :   25175:  xor    %r13d,%r13d
+    0.00 :   25178:  cmpb   $0x0,0x12a301(%r15)
+    0.00 :   25180:  jne    23bc0 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1280>
+    0.00 :   25186:  imul   $0x14c0,%rdi,%rdi
+    0.00 :   2518d:  mov    %r11,-0x8b0(%rbp)
+    0.00 :   25194:  mov    %r11,%rdx
+    0.00 :   25197:  mov    %r14,%rsi
+    0.00 :   2519a:  mov    -0x8a8(%rbp),%r12
+    0.00 :   251a1:  lea    (%r12,%rdi,1),%rcx
+    0.00 :   251a5:  mov    $0x1,%edi
+    0.00 :   251aa:  vzeroupper
+    0.00 :   251ad:  xor    %ebx,%ebx
+    0.00 :   251af:  call   25b50 <void Stockfish::Eval::NNUE::(anonymous namespace)::update_threats_accumulator_full<1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats>&)>
+    0.00 :   251b4:  mov    -0x8a0(%rbp),%rdx
+    0.00 :   251bb:  mov    -0x8b0(%rbp),%r11
+    0.00 :   251c2:  mov    0x269800(%rdx),%rcx
+    0.00 :   251c9:  mov    0x88(%r11),%r8
+    0.00 :   251d0:  and    0x70(%r11),%r8
+    0.00 :   251d4:  imul   $0x14c0,%rcx,%r10
+    0.00 :   251db:  tzcnt  %r8,%rbx
+    0.00 :   251e0:  lea    -0x2(%rcx),%r12
+    0.01 :   251e4:  add    %rdx,%r10
+    0.00 :   251e7:  cmp    %r13,%r12
+    0.00 :   251ea:  jge    25265 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x2925>
+    0.00 :   251ec:  mov    -0x8a0(%rbp),%rbx
+    0.00 :   251f3:  mov    -0x8b0(%rbp),%r11
+    0.00 :   251fa:  mov    0x269800(%rbx),%r15
+    0.00 :   25201:  mov    %r15,-0x8b0(%rbp)
+    0.00 :   25208:  lea    -0x1(%r15),%rdi
+    0.00 :   2520c:  jmp    23bc0 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x1280>
+    0.00 :   25211:  movzbl 0x1306(%rbx),%eax
+    0.00 :   25218:  xor    %esi,%r8d
+    0.00 :   2521b:  xor    $0x38,%r8d
+    0.00 :   2521f:  add    0x40(%r14,%rax,4),%r11d
+    0.00 :   25224:  add    %r8d,%r11d
+    0.00 :   25227:  mov    %r11d,-0x680(%rbp,%r12,4)
+    0.00 :   2522f:  add    $0x1,%r12
+    0.00 :   25233:  jmp    23434 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xaf4>
+    0.00 :   25238:  lea    -0x14c0(%r9),%r12
+    0.00 :   2523f:  mov    %ebx,%edx
+    0.00 :   25241:  mov    %r14,%rsi
+    0.00 :   25244:  xor    %edi,%edi
+    0.00 :   25246:  lea    0x126940(%r9),%rcx
+    0.00 :   2524d:  lea    0x127e00(%r9),%r8
+    0.00 :   25254:  sub    $0x1,%r15
+    0.00 :   25258:  call   4dff0 <void Stockfish::Eval::NNUE::(anonymous namespace)::update_accumulator_incremental<false, Stockfish::Eval::NNUE::Features::FullThreats, 1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Square, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats> const&)>
+    0.00 :   2525d:  mov    %r12,%r9
+    0.00 :   25260:  jmp    250e1 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x27a1>
+    0.00 :   25265:  lea    -0x14c0(%r10),%r15
+    0.00 :   2526c:  mov    %ebx,%edx
+    0.00 :   2526e:  mov    %r14,%rsi
+    0.00 :   25271:  sub    $0x1,%r12
+    0.00 :   25275:  lea    0x126940(%r10),%rcx
+    0.00 :   2527c:  lea    0x127e00(%r10),%r8
+    0.00 :   25283:  mov    $0x1,%edi
+    0.00 :   25288:  call   4dff0 <void Stockfish::Eval::NNUE::(anonymous namespace)::update_accumulator_incremental<false, Stockfish::Eval::NNUE::Features::FullThreats, 1024u>(Stockfish::Color, Stockfish::Eval::NNUE::FeatureTransformer<1024u> const&, Stockfish::Square, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats>&, Stockfish::Eval::NNUE::AccumulatorState<Stockfish::Eval::NNUE::Features::FullThreats> const&)>
+    0.00 :   2528d:  mov    %r15,%r10
+    0.00 :   25290:  jmp    251e7 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x28a7>
+    0.00 :   25295:  lea    -0x280(%r15),%rdi
+    0.00 :   2529c:  vzeroupper
+    0.00 :   2529f:  call   4a130 <Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>::propagate(unsigned char const*) const::Buffer::Buffer()>
+    0.00 :   252a4:  movb   $0x1,%fs:0xffffffffffffffc0
+    0.00 :   252ad:  jmp    240bc <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x177c>
+    0.00 :   252b2:  movslq -0x8b0(%rbp),%r11
+    0.00 :   252b9:  movzbl 0x1300(%rcx),%r8d
+    0.00 :   252c1:  lea    0x6b78b38(%rip),%rsi        # 6b9de00 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::OrientTBL>
+    0.00 :   252c8:  lea    0x6b789b1(%rip),%r12        # 6b9dc80 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::KingBuckets>
+    0.00 :   252cf:  movzbl 0x1301(%rcx),%edi
+    0.00 :   252d6:  lea    0x6b78aa3(%rip),%r14        # 6b9dd80 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::PieceSquareIndex>
+    0.00 :   252dd:  mov    %r11,%rax
+    0.00 :   252e0:  mov    (%rsi,%r11,4),%esi
+    0.00 :   252e4:  mov    0x40(%r14,%r8,4),%r9d
+    0.00 :   252e9:  xor    $0x38,%eax
+    0.00 :   252ec:  mov    (%r12,%rax,4),%r11d
+    0.00 :   252f0:  xor    %esi,%edi
+    0.00 :   252f2:  xor    %r12d,%r12d
+    0.00 :   252f5:  xor    $0x38,%edi
+    0.00 :   252f8:  add    %r11d,%r9d
+    0.00 :   252fb:  add    %edi,%r9d
+    0.00 :   252fe:  jmp    233f7 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xab7>
+    0.00 :   25303:  mov    %r10,-0x8e0(%rbp)
+    0.00 :   2530a:  mov    %r15,%rsi
+    0.00 :   2530d:  mov    -0x8e8(%rbp),%r10d
+    0.00 :   25314:  mov    $0x1,%edi
+    0.00 :   25319:  push   %r10
+    0.00 :   2531b:  push   %r9
+    0.00 :   2531d:  mov    -0x67c(%rbp),%r9d
+    0.00 :   25324:  mov    %rcx,-0x8d8(%rbp)
+    0.00 :   2532b:  vzeroupper
+    0.00 :   2532e:  call   4d430 <void Stockfish::Eval::NNUE::(anonymous namespace)::AccumulatorUpdateContext<Stockfish::Eval::NNUE::Features::HalfKAv2_hm, 1024u>::apply<(Stockfish::Eval::NNUE::SIMD::UpdateOperation)0, (Stockfish::Eval::NNUE::SIMD::UpdateOperation)0, (Stockfish::Eval::NNUE::SIMD::UpdateOperation)1, (Stockfish::Eval::NNUE::SIMD::UpdateOperation)1, unsigned int, unsigned int, unsigned int, unsigned int, true>(unsigned int const, unsigned int const, unsigned int const, unsigned int const) [clone .isra.0]>
+    0.00 :   25333:  pop    %rbx
+    0.00 :   25334:  mov    -0x8e0(%rbp),%r10
+    0.00 :   2533b:  mov    -0x8d8(%rbp),%rcx
+    0.00 :   25342:  pop    %r12
+    0.00 :   25344:  jmp    235a8 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0xc68>
+    0.00 :   25349:  mov    %r10,-0x8a8(%rbp)
+    0.00 :   25350:  mov    %rbx,%rcx
+    0.00 :   25353:  mov    %r13,%rsi
+    0.00 :   25356:  mov    -0x8b8(%rbp),%r10d
+    0.00 :   2535d:  push   %r10
+    0.00 :   2535f:  push   %rdi
+    0.00 :   25360:  mov    -0x67c(%rbp),%r9d
+    0.00 :   25367:  xor    %edi,%edi
+    0.00 :   25369:  vzeroupper
+    0.00 :   2536c:  call   4d430 <void Stockfish::Eval::NNUE::(anonymous namespace)::AccumulatorUpdateContext<Stockfish::Eval::NNUE::Features::HalfKAv2_hm, 1024u>::apply<(Stockfish::Eval::NNUE::SIMD::UpdateOperation)0, (Stockfish::Eval::NNUE::SIMD::UpdateOperation)0, (Stockfish::Eval::NNUE::SIMD::UpdateOperation)1, (Stockfish::Eval::NNUE::SIMD::UpdateOperation)1, unsigned int, unsigned int, unsigned int, unsigned int, true>(unsigned int const, unsigned int const, unsigned int const, unsigned int const) [clone .isra.0]>
+    0.00 :   25371:  pop    %r12
+    0.00 :   25373:  pop    %rax
+    0.00 :   25374:  mov    -0x8a8(%rbp),%r10
+    0.00 :   2537b:  jmp    22c6f <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x32f>
+    0.00 :   25380:  vzeroupper
+    0.00 :   25383:  call   8070 <__stack_chk_fail@plt>
+    0.00 :   25388:  lea    0x6b78a71(%rip),%r11        # 6b9de00 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::OrientTBL>
+    0.00 :   2538f:  movslq %r14d,%rsi
+    0.00 :   25392:  mov    %r14d,%r9d
+    0.00 :   25395:  movzbl 0x1301(%rbx),%edi
+    0.00 :   2539c:  mov    (%r11,%rsi,4),%esi
+    0.00 :   253a0:  movzbl 0x1300(%rbx),%eax
+    0.00 :   253a7:  lea    0x6b788d2(%rip),%r8        # 6b9dc80 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::KingBuckets>
+    0.00 :   253ae:  lea    0x6b789cb(%rip),%r11        # 6b9dd80 <Stockfish::Eval::NNUE::Features::HalfKAv2_hm::PieceSquareIndex>
+    0.00 :   253b5:  mov    (%r8,%r9,4),%ecx
+    0.00 :   253b9:  xor    %r9d,%r9d
+    0.00 :   253bc:  xor    %esi,%edi
+    0.00 :   253be:  add    (%r11,%rax,4),%edi
+    0.00 :   253c2:  mov    %r9,-0x8a8(%rbp)
+    0.00 :   253c9:  add    %ecx,%edi
+    0.00 :   253cb:  jmp    22ac3 <Stockfish::Eval::NNUE::Network<Stockfish::Eval::NNUE::NetworkArchitecture<1024u, 15, 32>, Stockfish::Eval::NNUE::FeatureTransformer<1024u> >::evaluate(Stockfish::Position const&, Stockfish::Eval::NNUE::AccumulatorStack&, Stockfish::Eval::NNUE::AccumulatorCaches::Cache<1024u>&) const+0x183>

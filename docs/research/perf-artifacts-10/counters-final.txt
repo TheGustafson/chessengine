@@ -1,0 +1,24 @@
+# pstat8  rounds=6 nodes=300000 fens=tools/nnue/calib/wl50.fens
+# date=2026-07-28T21:07:28-04:00  uptime= 21:07:28 up 1 day,  8:40,  1 user,  load average: 6.85, 8.33, 8.62
+# arms:
+#   s9final:./engines/bin/archon-s9-final @BENCH@ engines/canonical/net.cenn
+#   s10final:./engines/bin/archon-s10-final @BENCH@ engines/canonical/net.cenn
+#   sf18:./engines/bin/stockfish18 @BENCH@
+round=1 arm=s9final nodes=15001568 nps=823357 instructions=96458048552 cycles=92913657485 branches=11329296911 branch_misses=346317902
+round=1 arm=s10final nodes=15001568 nps=945576 instructions=95517341523 cycles=81283480107 branches=11014546045 branch_misses=346191918
+round=1 arm=sf18 nodes=15010238 nps=1562427 instructions=64988047955 cycles=50536477801 branches=5924045088 branch_misses=393236970
+round=2 arm=s9final nodes=15001568 nps=1167618 instructions=96459534377 cycles=67552154462 branches=11329499087 branch_misses=333161367
+round=2 arm=s10final nodes=15001568 nps=1184490 instructions=95514481754 cycles=66655557205 branches=11014129623 branch_misses=331897950
+round=2 arm=sf18 nodes=15010238 nps=1638314 instructions=64988047123 cycles=48807323344 branches=5924044478 branch_misses=395884762
+round=3 arm=s9final nodes=15001568 nps=1186082 instructions=96458094764 cycles=66652473695 branches=11329293583 branch_misses=329881758
+round=3 arm=s10final nodes=15001568 nps=1177332 instructions=95515899705 cycles=67182887759 branches=11014339043 branch_misses=333570965
+round=3 arm=sf18 nodes=15010238 nps=1640821 instructions=64988047352 cycles=48825775989 branches=5924044553 branch_misses=397787537
+round=4 arm=s9final nodes=15001568 nps=1170351 instructions=96459794847 cycles=67480883055 branches=11329544257 branch_misses=336502396
+round=4 arm=s10final nodes=15001568 nps=1285371 instructions=95517629401 cycles=61680876189 branches=11014588558 branch_misses=330699865
+round=4 arm=sf18 nodes=15010238 nps=1703386 instructions=64988037049 cycles=47052386298 branches=5924044498 branch_misses=394724053
+round=5 arm=s9final nodes=15001568 nps=1174750 instructions=96459487019 cycles=67307028196 branches=11329499057 branch_misses=331084219
+round=5 arm=s10final nodes=15001568 nps=1172822 instructions=95517688920 cycles=67390674454 branches=11014589249 branch_misses=334924469
+round=5 arm=sf18 nodes=15010238 nps=1649114 instructions=64988047166 cycles=48584283291 branches=5924044484 branch_misses=400305367
+round=6 arm=s9final nodes=15001568 nps=1157617 instructions=96456633200 cycles=68276047413 branches=11329084786 branch_misses=340194891
+round=6 arm=s10final nodes=15001568 nps=1166620 instructions=95515929835 cycles=67823885385 branches=11014339086 branch_misses=330868681
+round=6 arm=sf18 nodes=15010238 nps=1643876 instructions=64988047755 cycles=48659319396 branches=5924044759 branch_misses=392438646

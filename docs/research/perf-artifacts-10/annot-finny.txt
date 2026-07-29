@@ -1,0 +1,1333 @@
+ Percent |	Source code & Disassembly of archon-s10base-native for instructions:u (4013 samples, percent: local period)
+---------------------------------------------------------------------------------------------------------------------------
+         :
+         :
+         :
+         : 3     Disassembly of section .text:
+         :
+         : 5     0000000000076950 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into>:
+    0.15 :   76950:  push   %rbp
+    0.15 :   76951:  mov    %rsp,%rbp
+    0.00 :   76954:  push   %r15
+    0.05 :   76956:  push   %r14
+    0.05 :   76958:  push   %r13
+    0.12 :   7695a:  push   %r12
+    0.02 :   7695c:  push   %rbx
+    0.00 :   7695d:  and    $0xffffffffffffffc0,%rsp
+    0.00 :   76961:  sub    $0x740,%rsp
+    0.02 :   76968:  mov    %edx,%eax
+    0.00 :   7696a:  mov    %rax,0x38(%rsp)
+    0.55 :   7696f:  lea    (%rax,%rax,2),%rax
+    0.00 :   76973:  shl    $0x4,%eax
+    0.00 :   76976:  mov    0xc0(%rsi,%rax,1),%rax
+    0.17 :   7697e:  test   %rax,%rax
+    0.00 :   76981:  je     7863a <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1cea>
+    0.00 :   76987:  mov    %rcx,%rbx
+    0.00 :   7698a:  tzcnt  %rax,%r10
+    0.00 :   7698f:  xor    %eax,%eax
+    0.00 :   76991:  test   %dl,%dl
+    0.02 :   76993:  mov    $0x38,%ecx
+    0.02 :   76998:  mov    %rsi,0x40(%rsp)
+    0.12 :   7699d:  lea    -0x6923e(%rip),%rsi        # d766 <__abi_tag+0xd46a>
+    0.00 :   769a4:  mov    %rdi,%r12
+    0.02 :   769a7:  cmove  %eax,%ecx
+    0.02 :   769aa:  mov    %ecx,%eax
+    0.00 :   769ac:  xor    %r10b,%al
+    0.00 :   769af:  movzbl %al,%eax
+    0.00 :   769b2:  movzwl (%rsi,%rax,2),%r9d
+    1.07 :   769b7:  xor    %eax,%eax
+    0.00 :   769b9:  test   $0x4,%r10b
+    0.00 :   769bd:  movzbl %dl,%esi
+    0.02 :   769c0:  sete   %al
+    0.02 :   769c3:  shl    $0x6,%esi
+    0.00 :   769c6:  or     %rax,%rsi
+    0.00 :   769c9:  lea    (%rsi,%r9,2),%rax
+    0.00 :   769cd:  mov    0x48(%rdi),%rsi
+    0.10 :   769d1:  cmp    %rsi,%rax
+    0.00 :   769d4:  jae    786f2 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1da2>
+    0.00 :   769da:  mov    0x40(%r12),%rsi
+    0.00 :   769df:  imul   $0xac0,%rax,%rax
+    0.00 :   769e6:  mov    (%r12),%r15
+    0.02 :   769ea:  mov    0x20(%r12),%r8
+    0.02 :   769ef:  mov    0x28(%r12),%rdi
+    0.00 :   769f4:  cmpb   $0x0,(%rsi,%rax,1)
+    3.36 :   769f8:  lea    (%rsi,%rax,1),%r14
+    0.05 :   769fc:  je     76c3a <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x2ea>
+    0.05 :   76a02:  mov    %r8,0x28(%rsp)
+    0.00 :   76a07:  mov    0x40(%rsp),%r8
+    0.05 :   76a0c:  imul   $0x2c0,%r9,%rax
+    0.00 :   76a13:  xor    %esi,%esi
+    0.00 :   76a15:  test   $0x4,%r10b
+    0.00 :   76a19:  mov    $0x7,%r11d
+    0.00 :   76a1f:  lea    0xb8(%rsp),%r9
+    0.00 :   76a27:  vpxor  %xmm0,%xmm0,%xmm0
+    0.12 :   76a2b:  mov    %r12,0x18(%rsp)
+    0.02 :   76a30:  mov    %rbx,0x100(%rsp)
+    0.02 :   76a38:  mov    %rdi,0x30(%rsp)
+    0.00 :   76a3d:  vmovdqa64 %zmm0,0x6c0(%rsp)
+    0.02 :   76a45:  vmovdqa64 %zmm0,0x680(%rsp)
+    0.05 :   76a4d:  vmovdqa64 %zmm0,0x640(%rsp)
+    0.47 :   76a55:  vmovdqa64 %zmm0,0x600(%rsp)
+    0.25 :   76a5d:  vmovdqa64 %zmm0,0x240(%rsp)
+    0.17 :   76a65:  vmovdqa64 %zmm0,0x200(%rsp)
+    0.10 :   76a6d:  vmovdqa64 %zmm0,0x1c0(%rsp)
+    0.30 :   76a75:  vmovdqa64 %zmm0,0x180(%rsp)
+    0.05 :   76a7d:  movw   $0x504,0xbc(%rsp)
+    0.12 :   76a87:  movl   $0x3020100,0xb8(%rsp)
+    0.00 :   76a92:  mov    %edx,0x140(%rsp)
+    0.20 :   76a99:  mov    %r14,0x20(%rsp)
+    0.02 :   76a9e:  cmovne %esi,%r11d
+    0.05 :   76aa2:  xor    %r13d,%r13d
+    0.02 :   76aa5:  or     %cl,%r11b
+    0.00 :   76aa8:  xor    %ecx,%ecx
+    0.00 :   76aaa:  mov    %rax,0xc0(%rsp)
+    0.57 :   76ab2:  data16 data16 data16 data16 cs nopw 0x0(%rax,%rax,1)
+    0.00 :   76ac0:  movzbl 0xb8(%rsp,%r13,1),%r12d
+    1.30 :   76ac9:  mov    0x20(%rsp),%rdi
+    0.05 :   76ace:  inc    %r13
+    0.05 :   76ad1:  lea    0x0(,%r12,8),%eax
+    0.12 :   76ad9:  mov    0x98(%r8,%rax,1),%r14
+    1.45 :   76ae1:  mov    0xa60(%rdi,%rax,1),%r10
+    0.97 :   76ae9:  cmp    %r10,%r14
+    0.12 :   76aec:  jne    76af9 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1a9>
+    0.00 :   76aee:  cmp    $0x6,%r13
+    0.55 :   76af2:  jne    76ac0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x170>
+    0.00 :   76af4:  jmp    7701b <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x6cb>
+    0.00 :   76af9:  andn   %r14,%r10,%rbx
+    0.47 :   76afe:  je     76bf0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x2a0>
+    0.17 :   76b04:  mov    %r12d,%eax
+    0.07 :   76b07:  shl    $0x7,%eax
+    0.00 :   76b0a:  test   %dl,%dl
+    0.00 :   76b0c:  lea    0x40(%rax),%rdi
+    0.05 :   76b10:  cmove  %rax,%rdi
+    0.02 :   76b14:  cmp    $0x5,%r12
+    0.00 :   76b18:  mov    $0x280,%eax
+    0.00 :   76b1d:  cmove  %rax,%rdi
+    0.02 :   76b21:  add    0xc0(%rsp),%rdi
+    0.20 :   76b29:  cmp    $0x21,%rsi
+    0.02 :   76b2d:  mov    $0x20,%eax
+    0.00 :   76b32:  cmovae %rsi,%rax
+    0.00 :   76b36:  cs nopw 0x0(%rax,%rax,1)
+    0.00 :   76b40:  cmp    %rsi,%rax
+    0.05 :   76b43:  je     786ae <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1d5e>
+    0.00 :   76b49:  tzcnt  %rbx,%r8
+    0.00 :   76b4e:  lea    0x1(%rsi),%r9
+    0.00 :   76b52:  xor    %r11b,%r8b
+    0.02 :   76b55:  movzbl %r8b,%r8d
+    0.10 :   76b59:  or     %rdi,%r8
+    0.20 :   76b5c:  blsr   %rbx,%rbx
+    0.00 :   76b61:  mov    %r8,0x600(%rsp,%rsi,8)
+    0.10 :   76b69:  mov    %r9,%rsi
+    0.00 :   76b6c:  jne    76b40 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1f0>
+    0.00 :   76b6e:  andn   %r10,%r14,%rax
+    0.05 :   76b73:  je     76bfe <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x2ae>
+    0.02 :   76b79:  mov    %r12d,%esi
+    0.12 :   76b7c:  shl    $0x7,%esi
+    0.02 :   76b7f:  cmpb   $0x0,0x140(%rsp)
+    0.20 :   76b87:  mov    $0x280,%edx
+    0.05 :   76b8c:  mov    0x40(%rsp),%r8
+    0.02 :   76b91:  mov    $0x20,%r10d
+    0.00 :   76b97:  lea    0x40(%rsi),%rdi
+    0.00 :   76b9b:  cmove  %rsi,%rdi
+    0.05 :   76b9f:  cmp    $0x5,%r12
+    0.02 :   76ba3:  cmove  %rdx,%rdi
+    0.07 :   76ba7:  add    0xc0(%rsp),%rdi
+    0.10 :   76baf:  cmp    $0x21,%rcx
+    0.00 :   76bb3:  cmovae %rcx,%r10
+    0.05 :   76bb7:  nopw   0x0(%rax,%rax,1)
+    0.00 :   76bc0:  cmp    %rcx,%r10
+    0.10 :   76bc3:  je     78697 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1d47>
+    0.00 :   76bc9:  tzcnt  %rax,%rsi
+    0.02 :   76bce:  lea    0x1(%rcx),%rbx
+    0.00 :   76bd2:  xor    %r11b,%sil
+    0.00 :   76bd5:  movzbl %sil,%esi
+    0.05 :   76bd9:  or     %rdi,%rsi
+    0.05 :   76bdc:  blsr   %rax,%rax
+    0.00 :   76be1:  mov    %rsi,0x180(%rsp,%rcx,8)
+    0.07 :   76be9:  mov    %rbx,%rcx
+    0.00 :   76bec:  jne    76bc0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x270>
+    0.00 :   76bee:  jmp    76c06 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x2b6>
+    0.00 :   76bf0:  mov    %rsi,%r9
+    0.05 :   76bf3:  andn   %r10,%r14,%rax
+    0.00 :   76bf8:  jne    76b79 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x229>
+    0.00 :   76bfe:  mov    0x40(%rsp),%r8
+    0.20 :   76c03:  mov    %rcx,%rbx
+    0.05 :   76c06:  mov    0x20(%rsp),%rax
+    0.02 :   76c0b:  mov    0x140(%rsp),%edx
+    0.02 :   76c12:  mov    %r9,%rsi
+    0.00 :   76c15:  lea    0xb8(%rsp),%r9
+    0.05 :   76c1d:  mov    %rbx,%rcx
+    0.00 :   76c20:  mov    %r14,0xa60(%rax,%r12,8)
+    0.17 :   76c28:  mov    %rax,%r14
+    0.02 :   76c2b:  cmp    $0x6,%r13
+    0.00 :   76c2f:  jne    76ac0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x170>
+    0.00 :   76c35:  jmp    77023 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x6d3>
+    0.00 :   76c3a:  mov    0x18(%r12),%rax
+    0.00 :   76c3f:  cmp    $0x4ff,%rax
+    0.00 :   76c45:  jbe    78681 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1d31>
+    0.00 :   76c4b:  mov    0x10(%r12),%rax
+    0.00 :   76c50:  vmovups 0x800(%rax),%zmm7
+    0.00 :   76c57:  vmovups 0x840(%rax),%zmm4
+    0.00 :   76c5e:  vmovups (%rax),%zmm0
+    0.00 :   76c64:  vmovups 0x3c0(%rax),%zmm2
+    0.00 :   76c6b:  vmovups 0x740(%rax),%zmm3
+    0.00 :   76c72:  vmovdqu64 0x40(%rax),%zmm5
+    0.00 :   76c79:  vmovdqu64 0x80(%rax),%zmm8
+    0.00 :   76c80:  vmovdqu64 0xc0(%rax),%zmm9
+    0.00 :   76c87:  vmovdqu64 0x100(%rax),%zmm10
+    0.00 :   76c8e:  vmovdqu64 0x140(%rax),%zmm11
+    0.00 :   76c95:  vmovdqu64 0x180(%rax),%zmm12
+    0.00 :   76c9c:  vmovdqu64 0x1c0(%rax),%zmm1
+    0.00 :   76ca3:  vmovdqu64 0x200(%rax),%zmm13
+    0.00 :   76caa:  vmovdqu64 0x240(%rax),%zmm14
+    0.00 :   76cb1:  vmovdqu64 0x280(%rax),%zmm15
+    0.00 :   76cb8:  vmovdqu64 0x2c0(%rax),%zmm16
+    0.00 :   76cbf:  vmovdqu64 0x300(%rax),%zmm17
+    0.00 :   76cc6:  vmovdqu64 0x340(%rax),%zmm18
+    0.00 :   76ccd:  vmovdqu64 0x380(%rax),%zmm19
+    0.00 :   76cd4:  vmovdqu64 0x400(%rax),%zmm20
+    0.00 :   76cdb:  vmovdqu64 0x440(%rax),%zmm21
+    0.00 :   76ce2:  vmovdqu64 0x480(%rax),%zmm22
+    0.00 :   76ce9:  vmovdqu64 0x4c0(%rax),%zmm23
+    0.00 :   76cf0:  vmovdqu64 0x500(%rax),%zmm24
+    0.00 :   76cf7:  vmovdqu64 0x540(%rax),%zmm25
+    0.00 :   76cfe:  vmovdqu64 0x580(%rax),%zmm26
+    0.00 :   76d05:  vmovdqu64 0x600(%rax),%zmm27
+    0.00 :   76d0c:  vmovdqu64 0x640(%rax),%zmm28
+    0.00 :   76d13:  vmovdqu64 0x680(%rax),%zmm29
+    0.00 :   76d1a:  vmovdqu64 0x6c0(%rax),%zmm30
+    0.00 :   76d21:  vmovdqu64 0x700(%rax),%zmm31
+    0.00 :   76d28:  vmovdqu64 0x780(%rax),%zmm6
+    0.00 :   76d2f:  vmovaps %zmm7,0x2c0(%rsp)
+    0.00 :   76d37:  vmovups 0x880(%rax),%zmm7
+    0.00 :   76d3e:  vmovaps %zmm4,0x280(%rsp)
+    0.00 :   76d46:  vmovups 0x8c0(%rax),%zmm4
+    0.00 :   76d4d:  vmovaps %zmm0,0x140(%rsp)
+    0.00 :   76d55:  vmovdqu64 0x980(%rax),%zmm0
+    0.00 :   76d5c:  vmovaps %zmm2,0xc0(%rsp)
+    0.00 :   76d64:  vmovaps %zmm3,0x300(%rsp)
+    0.00 :   76d6c:  vmovdqu64 0x5c0(%rax),%zmm2
+    0.00 :   76d73:  vmovdqu64 0x7c0(%rax),%zmm3
+    0.00 :   76d7a:  vmovaps %zmm7,0x500(%rsp)
+    0.00 :   76d82:  vmovups 0x940(%rax),%zmm7
+    0.00 :   76d89:  vmovaps %zmm4,0x4c0(%rsp)
+    0.00 :   76d91:  vmovdqu64 0x900(%rax),%zmm4
+    0.00 :   76d98:  vmovdqa64 %zmm0,0x400(%rsp)
+    0.00 :   76da0:  vpxor  %xmm0,%xmm0,%xmm0
+    0.00 :   76da4:  vmovaps %zmm7,0x440(%rsp)
+    0.00 :   76dac:  vmovdqu64 0x9c0(%rax),%zmm7
+    0.00 :   76db3:  mov    0x40(%rsp),%rax
+    0.00 :   76db8:  vmovdqa64 %zmm0,0x540(%rsp)
+    0.00 :   76dc0:  vmovdqa64 %zmm0,0x240(%rsp)
+    0.00 :   76dc8:  vmovdqa64 %zmm0,0x200(%rsp)
+    0.00 :   76dd0:  vmovdqa64 %zmm0,0x1c0(%rsp)
+    0.00 :   76dd8:  vmovdqa64 %zmm0,0x180(%rsp)
+    0.00 :   76de0:  vmovdqu64 %zmm0,0x560(%rsp)
+    0.00 :   76deb:  vpxor  %xmm0,%xmm0,%xmm0
+    0.00 :   76def:  vmovdqa64 %zmm4,0x480(%rsp)
+    0.00 :   76df7:  mov    0x108(%rax),%r11
+    0.00 :   76dfe:  test   %r11,%r11
+    0.00 :   76e01:  je     783c6 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1a76>
+    0.00 :   76e07:  vmovdqa64 0x140(%rsp),%zmm0
+    0.00 :   76e0f:  imul   $0x2c0,%r9,%r9
+    0.00 :   76e16:  xor    %eax,%eax
+    0.00 :   76e18:  test   $0x4,%r10b
+    0.00 :   76e1c:  mov    $0x7,%esi
+    0.00 :   76e21:  mov    $0x2,%r10d
+    0.00 :   76e27:  mov    %r12,0x18(%rsp)
+    0.00 :   76e2c:  mov    %rbx,0x100(%rsp)
+    0.00 :   76e34:  mov    %r8,0x28(%rsp)
+    0.00 :   76e39:  mov    %rdi,0x30(%rsp)
+    0.00 :   76e3e:  cmovne %eax,%esi
+    0.00 :   76e41:  mov    0x40(%rsp),%rax
+    0.00 :   76e46:  or     %cl,%sil
+    0.00 :   76e49:  nopl   0x0(%rax)
+    0.00 :   76e50:  tzcnt  %r11,%r12
+    0.00 :   76e55:  movzbl 0x18(%rax,%r12,2),%ecx
+    0.00 :   76e5b:  cmp    $0x2,%rcx
+    0.00 :   76e5f:  je     785f1 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1ca1>
+    0.00 :   76e65:  movzbl 0x19(%rax,%r12,2),%edi
+    0.00 :   76e6b:  mov    %esi,%r13d
+    0.00 :   76e6e:  mov    %edx,%r8d
+    0.00 :   76e71:  xor    %r12b,%r13b
+    0.00 :   76e74:  xor    %cl,%r8b
+    0.00 :   76e77:  movzbl %r13b,%r13d
+    0.00 :   76e7b:  or     %r9,%r13
+    0.00 :   76e7e:  mov    %edi,%eax
+    0.00 :   76e80:  shl    $0x7,%eax
+    0.00 :   76e83:  test   $0x1,%r8b
+    0.00 :   76e87:  lea    0x40(%rax),%rbx
+    0.00 :   76e8b:  cmove  %rax,%rbx
+    0.00 :   76e8f:  cmp    $0x5,%edi
+    0.00 :   76e92:  mov    $0x280,%eax
+    0.00 :   76e97:  cmove  %rax,%rbx
+    0.00 :   76e9b:  add    %r13,%rbx
+    0.00 :   76e9e:  mov    %rbx,0x170(%rsp,%r10,8)
+    0.00 :   76ea6:  cmp    $0x6,%edi
+    0.00 :   76ea9:  jae    786c5 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1d75>
+    0.00 :   76eaf:  lea    (%rcx,%rcx,2),%rax
+    0.00 :   76eb3:  mov    $0x1,%r8d
+    0.00 :   76eb9:  blsr   %r11,%rcx
+    0.00 :   76ebe:  shlx   %r12,%r8,%r8
+    0.00 :   76ec3:  shl    $0x4,%eax
+    0.00 :   76ec6:  lea    0x540(%rsp,%rax,1),%rax
+    0.00 :   76ece:  or     %r8,(%rax,%rdi,8)
+    0.00 :   76ed2:  test   %rcx,%rcx
+    0.00 :   76ed5:  je     77870 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xf20>
+    0.00 :   76edb:  mov    0x40(%rsp),%rdi
+    0.00 :   76ee0:  tzcnt  %rcx,%rax
+    0.00 :   76ee5:  movzbl 0x18(%rdi,%rax,2),%r12d
+    0.00 :   76eeb:  cmp    $0x2,%r12
+    0.00 :   76eef:  je     785f1 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1ca1>
+    0.00 :   76ef5:  movzbl 0x19(%rdi,%rax,2),%edi
+    0.00 :   76efa:  mov    %esi,%r8d
+    0.00 :   76efd:  mov    %edx,%r11d
+    0.00 :   76f00:  xor    %al,%r8b
+    0.00 :   76f03:  xor    %r12b,%r11b
+    0.00 :   76f06:  movzbl %r8b,%r8d
+    0.00 :   76f0a:  or     %r9,%r8
+    0.00 :   76f0d:  mov    %edi,%ebx
+    0.00 :   76f0f:  shl    $0x7,%ebx
+    0.00 :   76f12:  test   $0x1,%r11b
+    0.00 :   76f16:  mov    $0x280,%r11d
+    0.00 :   76f1c:  lea    0x40(%rbx),%r13
+    0.00 :   76f20:  cmove  %rbx,%r13
+    0.00 :   76f24:  cmp    $0x5,%edi
+    0.00 :   76f27:  cmove  %r11,%r13
+    0.00 :   76f2b:  add    %r8,%r13
+    0.00 :   76f2e:  mov    %r13,0x178(%rsp,%r10,8)
+    0.00 :   76f36:  cmp    $0x5,%edi
+    0.00 :   76f39:  ja     786c5 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1d75>
+    0.00 :   76f3f:  lea    (%r12,%r12,2),%r8
+    0.00 :   76f43:  mov    $0x1,%r11d
+    0.00 :   76f49:  blsr   %rcx,%rcx
+    0.00 :   76f4e:  shlx   %rax,%r11,%rax
+    0.00 :   76f53:  shl    $0x4,%r8d
+    0.00 :   76f57:  lea    0x540(%rsp,%r8,1),%r8
+    0.00 :   76f5f:  or     %rax,(%r8,%rdi,8)
+    0.00 :   76f63:  test   %rcx,%rcx
+    0.00 :   76f66:  je     77873 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xf23>
+    0.00 :   76f6c:  mov    0x40(%rsp),%rax
+    0.00 :   76f71:  tzcnt  %rcx,%r12
+    0.00 :   76f76:  movzbl 0x18(%rax,%r12,2),%r13d
+    0.00 :   76f7c:  cmp    $0x2,%r13
+    0.00 :   76f80:  je     785f1 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1ca1>
+    0.00 :   76f86:  cmp    $0x20,%r10
+    0.00 :   76f8a:  je     786d9 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1d89>
+    0.00 :   76f90:  movzbl 0x19(%rax,%r12,2),%edi
+    0.00 :   76f96:  mov    %esi,%eax
+    0.00 :   76f98:  mov    %edx,%r8d
+    0.00 :   76f9b:  xor    %r12b,%al
+    0.00 :   76f9e:  xor    %r13b,%r8b
+    0.00 :   76fa1:  movzbl %al,%eax
+    0.00 :   76fa4:  or     %r9,%rax
+    0.00 :   76fa7:  mov    %edi,%r11d
+    0.00 :   76faa:  shl    $0x7,%r11d
+    0.00 :   76fae:  test   $0x1,%r8b
+    0.00 :   76fb2:  mov    $0x280,%r8d
+    0.00 :   76fb8:  lea    0x40(%r11),%rbx
+    0.00 :   76fbc:  cmove  %r11,%rbx
+    0.00 :   76fc0:  cmp    $0x5,%rdi
+    0.00 :   76fc4:  cmove  %r8,%rbx
+    0.00 :   76fc8:  add    %rax,%rbx
+    0.00 :   76fcb:  mov    %rbx,0x180(%rsp,%r10,8)
+    0.00 :   76fd3:  cmp    $0x5,%dil
+    0.00 :   76fd7:  ja     786c5 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1d75>
+    0.00 :   76fdd:  lea    0x0(%r13,%r13,2),%rax
+    0.00 :   76fe2:  blsr   %rcx,%r11
+    0.00 :   76fe7:  mov    $0x1,%ecx
+    0.00 :   76fec:  add    $0x3,%r10
+    0.00 :   76ff0:  shlx   %r12,%rcx,%rcx
+    0.00 :   76ff5:  shl    $0x4,%eax
+    0.00 :   76ff8:  lea    0x540(%rsp,%rax,1),%rax
+    0.00 :   77000:  or     %rcx,(%rax,%rdi,8)
+    0.00 :   77004:  mov    0x40(%rsp),%rax
+    0.00 :   77009:  test   %r11,%r11
+    0.00 :   7700c:  jne    76e50 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x500>
+    0.00 :   77012:  add    $0xfffffffffffffffe,%r10
+    0.00 :   77016:  jmp    77873 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xf23>
+    0.00 :   7701b:  mov    0x20(%rsp),%r14
+    0.05 :   77020:  mov    %rcx,%rbx
+    0.02 :   77023:  xor    %r12d,%r12d
+    0.00 :   77026:  movw   $0x504,0x4(%r9)
+    0.07 :   7702d:  movl   $0x3020100,(%r9)
+    0.10 :   77034:  data16 data16 cs nopw 0x0(%rax,%rax,1)
+    0.12 :   77040:  movzbl 0xb8(%rsp,%r12,1),%ecx
+    0.90 :   77049:  inc    %r12
+    0.07 :   7704c:  lea    0x0(,%rcx,8),%eax
+    0.20 :   77053:  mov    0xc8(%r8,%rax,1),%r13
+    2.77 :   7705b:  mov    0xa90(%r14,%rax,1),%r14
+    0.60 :   77063:  cmp    %r14,%r13
+    0.05 :   77066:  jne    77078 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x728>
+    0.00 :   77068:  mov    0x20(%rsp),%r14
+    0.50 :   7706d:  cmp    $0x6,%r12
+    0.00 :   77071:  jne    77040 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x6f0>
+    0.00 :   77073:  jmp    771ab <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x85b>
+    0.00 :   77078:  andn   %r13,%r14,%r10
+    1.07 :   7707d:  je     7716f <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x81f>
+    0.15 :   77083:  mov    %ecx,%eax
+    0.10 :   77085:  shl    $0x7,%eax
+    0.00 :   77088:  test   %dl,%dl
+    0.00 :   7708a:  lea    0x40(%rax),%rdi
+    0.02 :   7708e:  cmovne %rax,%rdi
+    0.07 :   77092:  cmp    $0x5,%rcx
+    0.00 :   77096:  mov    $0x280,%eax
+    0.00 :   7709b:  cmove  %rax,%rdi
+    0.05 :   7709f:  add    0xc0(%rsp),%rdi
+    0.10 :   770a7:  cmp    $0x21,%rsi
+    0.00 :   770ab:  mov    $0x20,%eax
+    0.02 :   770b0:  cmovae %rsi,%rax
+    0.00 :   770b4:  data16 data16 cs nopw 0x0(%rax,%rax,1)
+    0.00 :   770c0:  cmp    %rsi,%rax
+    0.05 :   770c3:  je     786ae <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1d5e>
+    0.00 :   770c9:  tzcnt  %r10,%r8
+    0.00 :   770ce:  lea    0x1(%rsi),%r9
+    0.00 :   770d2:  xor    %r11b,%r8b
+    0.02 :   770d5:  movzbl %r8b,%r8d
+    0.07 :   770d9:  or     %rdi,%r8
+    0.07 :   770dc:  blsr   %r10,%r10
+    0.00 :   770e1:  mov    %r8,0x600(%rsp,%rsi,8)
+    0.17 :   770e9:  mov    %r9,%rsi
+    0.00 :   770ec:  jne    770c0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x770>
+    0.02 :   770ee:  andn   %r14,%r13,%rdx
+    0.10 :   770f3:  je     7717d <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x82d>
+    0.00 :   770f9:  mov    %ecx,%eax
+    0.00 :   770fb:  shl    $0x7,%eax
+    0.02 :   770fe:  cmpb   $0x0,0x140(%rsp)
+    0.15 :   77106:  mov    0x20(%rsp),%r14
+    0.00 :   7710b:  mov    0x40(%rsp),%r8
+    0.00 :   77110:  mov    $0x20,%r10d
+    0.00 :   77116:  lea    0x40(%rax),%rdi
+    0.00 :   7711a:  cmovne %rax,%rdi
+    0.02 :   7711e:  cmp    $0x5,%rcx
+    0.00 :   77122:  mov    $0x280,%eax
+    0.00 :   77127:  cmove  %rax,%rdi
+    0.05 :   7712b:  add    0xc0(%rsp),%rdi
+    0.07 :   77133:  cmp    $0x21,%rbx
+    0.00 :   77137:  cmovae %rbx,%r10
+    0.02 :   7713b:  nopl   0x0(%rax,%rax,1)
+    0.00 :   77140:  cmp    %rbx,%r10
+    0.10 :   77143:  je     78697 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1d47>
+    0.00 :   77149:  tzcnt  %rdx,%rax
+    0.02 :   7714e:  xor    %r11b,%al
+    0.00 :   77151:  movzbl %al,%esi
+    0.10 :   77154:  lea    0x1(%rbx),%rax
+    0.00 :   77158:  or     %rdi,%rsi
+    0.00 :   7715b:  blsr   %rdx,%rdx
+    0.00 :   77160:  mov    %rsi,0x180(%rsp,%rbx,8)
+    0.17 :   77168:  mov    %rax,%rbx
+    0.00 :   7716b:  jne    77140 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x7f0>
+    0.00 :   7716d:  jmp    7718a <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x83a>
+    0.02 :   7716f:  mov    %rsi,%r9
+    0.05 :   77172:  andn   %r14,%r13,%rdx
+    0.02 :   77177:  jne    770f9 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x7a9>
+    0.00 :   7717d:  mov    0x20(%rsp),%r14
+    0.07 :   77182:  mov    0x40(%rsp),%r8
+    0.00 :   77187:  mov    %rbx,%rax
+    0.10 :   7718a:  mov    0x140(%rsp),%edx
+    0.10 :   77191:  mov    %r13,0xa90(%r14,%rcx,8)
+    0.20 :   77199:  mov    %rax,%rbx
+    0.07 :   7719c:  mov    %r9,%rsi
+    0.05 :   7719f:  cmp    $0x6,%r12
+    0.00 :   771a3:  jne    77040 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x6f0>
+    0.00 :   771a9:  jmp    771ae <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x85e>
+    0.05 :   771ab:  mov    %rbx,%rax
+    0.07 :   771ae:  mov    0x18(%rsp),%rcx
+    0.15 :   771b3:  mov    0x100(%rsp),%rdi
+    0.07 :   771bb:  mov    0x38(%rcx),%r8
+    0.20 :   771bf:  cmp    %r8,%rdi
+    0.07 :   771c2:  jae    78701 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1db1>
+    0.00 :   771c8:  cmp    $0x21,%rsi
+    0.00 :   771cc:  jae    78652 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1d02>
+    0.00 :   771d2:  cmp    $0x21,%rax
+    0.05 :   771d6:  jae    78668 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1d18>
+    0.00 :   771dc:  imul   $0x1480,%rdi,%rdx
+    0.00 :   771e3:  add    0x30(%rcx),%rdx
+    0.07 :   771e7:  mov    0x38(%rsp),%rcx
+    0.00 :   771ec:  lea    -0x8(,%rax,8),%r9
+    0.00 :   771f4:  lea    0x600(%rsp,%rsi,8),%r8
+    0.00 :   771fc:  lea    0x180(%rsp,%rax,8),%r12
+    0.07 :   77204:  mov    %r9d,%r10d
+    0.05 :   77207:  shr    $0x3,%r10d
+    0.00 :   7720b:  and    $0x18,%r9d
+    0.00 :   7720f:  inc    %r10d
+    0.00 :   77212:  mov    %r9,0x140(%rsp)
+    0.05 :   7721a:  and    $0x3,%r10d
+    0.02 :   7721e:  lea    (%rcx,%rcx,4),%rdi
+    0.02 :   77222:  lea    0x0(,%rsi,8),%rcx
+    0.05 :   7722a:  mov    %rdx,0x300(%rsp)
+    0.50 :   77232:  neg    %r10
+    0.02 :   77235:  mov    %r10,0x18(%rsp)
+    0.00 :   7723a:  xor    %r10d,%r10d
+    0.00 :   7723d:  mov    %rcx,0x2c0(%rsp)
+    0.17 :   77245:  lea    0x0(,%rax,8),%rcx
+    0.00 :   7724d:  shl    $0x9,%edi
+    0.00 :   77250:  add    %rdx,%rdi
+    0.00 :   77253:  mov    %rcx,0x280(%rsp)
+    0.10 :   7725b:  lea    -0x8(,%rsi,8),%rcx
+    0.02 :   77263:  mov    %ecx,%edx
+    0.02 :   77265:  shr    $0x3,%edx
+    0.00 :   77268:  mov    %rcx,0xc0(%rsp)
+    0.05 :   77270:  and    $0x18,%ecx
+    0.00 :   77273:  inc    %edx
+    0.00 :   77275:  mov    %rcx,0x40(%rsp)
+    0.07 :   7727a:  mov    $0x100,%ecx
+    0.02 :   7727f:  and    $0x3,%edx
+    0.07 :   77282:  neg    %rdx
+    0.00 :   77285:  mov    %rdx,0x100(%rsp)
+    0.07 :   7728d:  xor    %edx,%edx
+    0.00 :   7728f:  jmp    77336 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x9e6>
+    0.00 :   77294:  data16 data16 cs nopw 0x0(%rax,%rax,1)
+    0.00 :   772a0:  lea    0x100(%rdx),%rcx
+    0.05 :   772a7:  inc    %r10
+    0.00 :   772aa:  vmovdqu64 %zmm7,0x40(%r14,%r9,1)
+    0.07 :   772b2:  vmovdqu64 %zmm6,0x80(%r14,%r9,1)
+    0.25 :   772ba:  vmovdqu64 %zmm5,0xc0(%r14,%r9,1)
+    0.65 :   772c2:  vmovdqu64 %zmm4,0x100(%r14,%r9,1)
+    0.57 :   772ca:  vmovdqu64 %zmm3,0x140(%r14,%r9,1)
+    0.97 :   772d2:  vmovdqu64 %zmm2,0x180(%r14,%r9,1)
+    0.47 :   772da:  vmovdqu64 %zmm1,0x1c0(%r14,%r9,1)
+    0.75 :   772e2:  vmovdqu64 %zmm0,0x200(%r14,%r9,1)
+    0.15 :   772ea:  vmovdqu64 %zmm7,(%rdi,%r9,1)
+    0.12 :   772f1:  vmovdqu64 %zmm6,0x40(%rdi,%r9,1)
+    0.15 :   772f9:  vmovdqu64 %zmm5,0x80(%rdi,%r9,1)
+    0.12 :   77301:  vmovdqu64 %zmm4,0xc0(%rdi,%r9,1)
+    0.12 :   77309:  vmovdqu64 %zmm3,0x100(%rdi,%r9,1)
+    0.85 :   77311:  vmovdqu64 %zmm2,0x140(%rdi,%r9,1)
+    0.75 :   77319:  vmovdqu64 %zmm1,0x180(%rdi,%r9,1)
+    0.82 :   77321:  vmovdqu64 %zmm0,0x1c0(%rdi,%r9,1)
+    0.85 :   77329:  mov    %r11,%rsi
+    0.07 :   7732c:  cmp    $0x5,%r10
+    0.00 :   77330:  je     77791 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xe41>
+    0.02 :   77336:  mov    %r10,%r9
+    0.00 :   77339:  shl    $0x9,%r9
+    0.05 :   7733d:  lea    (%r15,%rdx,2),%r13
+    0.05 :   77341:  mov    %rcx,%rdx
+    0.05 :   77344:  vmovdqu64 0x40(%r14,%r9,1),%zmm7
+    1.50 :   7734c:  vmovdqu64 0x80(%r14,%r9,1),%zmm6
+    1.59 :   77354:  vmovdqu64 0xc0(%r14,%r9,1),%zmm5
+    1.15 :   7735c:  vmovdqu64 0x100(%r14,%r9,1),%zmm4
+    0.57 :   77364:  vmovdqu64 0x140(%r14,%r9,1),%zmm3
+    0.35 :   7736c:  vmovdqu64 0x180(%r14,%r9,1),%zmm2
+    0.80 :   77374:  vmovdqu64 0x1c0(%r14,%r9,1),%zmm1
+    0.50 :   7737c:  vmovdqu64 0x200(%r14,%r9,1),%zmm0
+    0.50 :   77384:  test   %rsi,%rsi
+    0.02 :   77387:  je     773a0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xa50>
+    0.00 :   77389:  cmpl   $0x18,0x40(%rsp)
+    0.25 :   7738e:  jne    773b0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xa60>
+    0.02 :   77390:  mov    %rsi,%r11
+    0.02 :   77393:  lea    0x600(%rsp),%rcx
+    0.00 :   7739b:  jmp    77440 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xaf0>
+    0.00 :   773a0:  mov    %rsi,%r11
+    0.00 :   773a3:  jmp    7757c <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xc2c>
+    0.00 :   773a8:  nopl   0x0(%rax,%rax,1)
+    0.27 :   773b0:  mov    0x100(%rsp),%rbx
+    0.02 :   773b8:  lea    0x600(%rsp),%rcx
+    0.00 :   773c0:  mov    %rsi,%r11
+    0.00 :   773c3:  data16 data16 data16 cs nopw 0x0(%rax,%rax,1)
+    0.10 :   773d0:  mov    (%rcx),%rsi
+    0.10 :   773d3:  add    $0x8,%rcx
+    0.00 :   773d7:  lea    (%rsi,%rsi,4),%rsi
+    0.00 :   773db:  shl    $0x9,%rsi
+    0.40 :   773df:  inc    %rbx
+    0.07 :   773e2:  vpaddw 0x0(%r13,%rsi,1),%zmm7,%zmm7
+   12.71 :   773ea:  vpaddw 0x40(%r13,%rsi,1),%zmm6,%zmm6
+    1.82 :   773f2:  vpaddw 0x80(%r13,%rsi,1),%zmm5,%zmm5
+    2.02 :   773fa:  vpaddw 0xc0(%r13,%rsi,1),%zmm4,%zmm4
+    1.82 :   77402:  vpaddw 0x100(%r13,%rsi,1),%zmm3,%zmm3
+    1.57 :   7740a:  vpaddw 0x140(%r13,%rsi,1),%zmm2,%zmm2
+    1.35 :   77412:  vpaddw 0x180(%r13,%rsi,1),%zmm1,%zmm1
+    1.62 :   7741a:  vpaddw 0x1c0(%r13,%rsi,1),%zmm0,%zmm0
+    4.29 :   77422:  jne    773d0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xa80>
+    0.10 :   77424:  cmpq   $0x18,0xc0(%rsp)
+    0.00 :   7742d:  jb     7757c <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xc2c>
+    0.00 :   77433:  data16 data16 data16 cs nopw 0x0(%rax,%rax,1)
+    0.00 :   77440:  mov    (%rcx),%rsi
+    0.05 :   77443:  mov    0x8(%rcx),%rbx
+    0.00 :   77447:  lea    (%rsi,%rsi,4),%rsi
+    0.00 :   7744b:  lea    (%rbx,%rbx,4),%rbx
+    0.00 :   7744f:  shl    $0x9,%rsi
+    0.00 :   77453:  shl    $0x9,%rbx
+    0.00 :   77457:  vpaddw 0x0(%r13,%rsi,1),%zmm7,%zmm7
+    1.54 :   7745f:  vpaddw 0x40(%r13,%rsi,1),%zmm6,%zmm6
+    0.17 :   77467:  vpaddw 0x80(%r13,%rsi,1),%zmm5,%zmm5
+    0.10 :   7746f:  vpaddw 0xc0(%r13,%rsi,1),%zmm4,%zmm4
+    0.15 :   77477:  vpaddw 0x100(%r13,%rsi,1),%zmm3,%zmm3
+    0.15 :   7747f:  vpaddw 0x140(%r13,%rsi,1),%zmm2,%zmm2
+    0.07 :   77487:  vpaddw 0x180(%r13,%rsi,1),%zmm1,%zmm1
+    0.22 :   7748f:  vpaddw 0x1c0(%r13,%rsi,1),%zmm0,%zmm0
+    0.45 :   77497:  mov    0x10(%rcx),%rsi
+    0.05 :   7749b:  vpaddw 0x0(%r13,%rbx,1),%zmm7,%zmm7
+    0.52 :   774a3:  vpaddw 0x40(%r13,%rbx,1),%zmm6,%zmm6
+    0.02 :   774ab:  vpaddw 0x80(%r13,%rbx,1),%zmm5,%zmm5
+    0.12 :   774b3:  vpaddw 0xc0(%r13,%rbx,1),%zmm4,%zmm4
+    0.10 :   774bb:  vpaddw 0x100(%r13,%rbx,1),%zmm3,%zmm3
+    0.07 :   774c3:  vpaddw 0x140(%r13,%rbx,1),%zmm2,%zmm2
+    0.05 :   774cb:  vpaddw 0x180(%r13,%rbx,1),%zmm1,%zmm1
+    0.17 :   774d3:  vpaddw 0x1c0(%r13,%rbx,1),%zmm0,%zmm0
+    0.27 :   774db:  mov    0x18(%rcx),%rbx
+    0.00 :   774df:  add    $0x20,%rcx
+    0.00 :   774e3:  lea    (%rsi,%rsi,4),%rsi
+    0.00 :   774e7:  lea    (%rbx,%rbx,4),%rbx
+    0.00 :   774eb:  shl    $0x9,%rsi
+    0.00 :   774ef:  vpaddw 0x0(%r13,%rsi,1),%zmm7,%zmm7
+    0.32 :   774f7:  shl    $0x9,%rbx
+    0.00 :   774fb:  vpaddw 0x40(%r13,%rsi,1),%zmm6,%zmm6
+    0.02 :   77503:  vpaddw 0x80(%r13,%rsi,1),%zmm5,%zmm5
+    0.12 :   7750b:  vpaddw 0xc0(%r13,%rsi,1),%zmm4,%zmm4
+    0.05 :   77513:  vpaddw 0x100(%r13,%rsi,1),%zmm3,%zmm3
+    0.12 :   7751b:  vpaddw 0x140(%r13,%rsi,1),%zmm2,%zmm2
+    0.05 :   77523:  vpaddw 0x180(%r13,%rsi,1),%zmm1,%zmm1
+    0.17 :   7752b:  vpaddw 0x1c0(%r13,%rsi,1),%zmm0,%zmm0
+    0.32 :   77533:  vpaddw 0x0(%r13,%rbx,1),%zmm7,%zmm7
+    0.20 :   7753b:  vpaddw 0x40(%r13,%rbx,1),%zmm6,%zmm6
+    0.07 :   77543:  vpaddw 0x80(%r13,%rbx,1),%zmm5,%zmm5
+    0.07 :   7754b:  vpaddw 0xc0(%r13,%rbx,1),%zmm4,%zmm4
+    0.15 :   77553:  vpaddw 0x100(%r13,%rbx,1),%zmm3,%zmm3
+    0.10 :   7755b:  vpaddw 0x140(%r13,%rbx,1),%zmm2,%zmm2
+    0.15 :   77563:  vpaddw 0x180(%r13,%rbx,1),%zmm1,%zmm1
+    0.17 :   7756b:  vpaddw 0x1c0(%r13,%rbx,1),%zmm0,%zmm0
+    0.32 :   77573:  cmp    %r8,%rcx
+    0.00 :   77576:  jne    77440 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xaf0>
+    0.00 :   7757c:  test   %rax,%rax
+    0.05 :   7757f:  je     772a0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x950>
+    0.00 :   77585:  cmpl   $0x18,0x140(%rsp)
+    0.02 :   7758d:  jne    775a0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xc50>
+    0.00 :   7758f:  lea    0x180(%rsp),%rcx
+    0.02 :   77597:  jmp    77620 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xcd0>
+    0.00 :   7759c:  nopl   0x0(%rax)
+    0.00 :   775a0:  mov    0x18(%rsp),%rbx
+    0.17 :   775a5:  lea    0x180(%rsp),%rcx
+    0.07 :   775ad:  nopl   (%rax)
+    0.02 :   775b0:  mov    (%rcx),%rsi
+    0.17 :   775b3:  add    $0x8,%rcx
+    0.07 :   775b7:  lea    (%rsi,%rsi,4),%rsi
+    0.02 :   775bb:  shl    $0x9,%rsi
+    0.00 :   775bf:  inc    %rbx
+    0.05 :   775c2:  vpsubw 0x0(%r13,%rsi,1),%zmm7,%zmm7
+    1.64 :   775ca:  vpsubw 0x40(%r13,%rsi,1),%zmm6,%zmm6
+    1.54 :   775d2:  vpsubw 0x80(%r13,%rsi,1),%zmm5,%zmm5
+    0.57 :   775da:  vpsubw 0xc0(%r13,%rsi,1),%zmm4,%zmm4
+    0.87 :   775e2:  vpsubw 0x100(%r13,%rsi,1),%zmm3,%zmm3
+    0.82 :   775ea:  vpsubw 0x140(%r13,%rsi,1),%zmm2,%zmm2
+    0.80 :   775f2:  vpsubw 0x180(%r13,%rsi,1),%zmm1,%zmm1
+    0.80 :   775fa:  vpsubw 0x1c0(%r13,%rsi,1),%zmm0,%zmm0
+    3.04 :   77602:  jne    775b0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xc60>
+    0.00 :   77604:  lea    -0x8(,%rax,8),%rsi
+    0.30 :   7760c:  cmp    $0x18,%rsi
+    0.07 :   77610:  jb     772a0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x950>
+    0.00 :   77616:  cs nopw 0x0(%rax,%rax,1)
+    0.02 :   77620:  mov    (%rcx),%rsi
+    0.02 :   77623:  mov    0x8(%rcx),%rbx
+    0.02 :   77627:  lea    (%rsi,%rsi,4),%rsi
+    0.00 :   7762b:  shl    $0x9,%rsi
+    0.02 :   7762f:  vmovdqu64 0x0(%r13,%rsi,1),%zmm8
+    0.37 :   77637:  vmovdqu64 0x40(%r13,%rsi,1),%zmm9
+    0.22 :   7763f:  vmovdqu64 0x80(%r13,%rsi,1),%zmm10
+    0.10 :   77647:  vmovdqu64 0xc0(%r13,%rsi,1),%zmm11
+    0.17 :   7764f:  vmovdqu64 0x100(%r13,%rsi,1),%zmm12
+    0.17 :   77657:  vmovdqu64 0x140(%r13,%rsi,1),%zmm13
+    0.12 :   7765f:  vmovdqu64 0x180(%r13,%rsi,1),%zmm14
+    0.20 :   77667:  vmovdqu64 0x1c0(%r13,%rsi,1),%zmm15
+    0.37 :   7766f:  lea    (%rbx,%rbx,4),%rsi
+    0.00 :   77673:  shl    $0x9,%rsi
+    0.00 :   77677:  vpaddw 0x0(%r13,%rsi,1),%zmm8,%zmm8
+    0.07 :   7767f:  vpaddw 0x40(%r13,%rsi,1),%zmm9,%zmm9
+    0.10 :   77687:  vpaddw 0x80(%r13,%rsi,1),%zmm10,%zmm10
+    0.05 :   7768f:  vpaddw 0xc0(%r13,%rsi,1),%zmm11,%zmm11
+    0.12 :   77697:  vpaddw 0x100(%r13,%rsi,1),%zmm12,%zmm12
+    0.02 :   7769f:  vpaddw 0x140(%r13,%rsi,1),%zmm13,%zmm13
+    0.10 :   776a7:  vpaddw 0x180(%r13,%rsi,1),%zmm14,%zmm14
+    0.07 :   776af:  vpaddw 0x1c0(%r13,%rsi,1),%zmm15,%zmm15
+    0.27 :   776b7:  mov    0x10(%rcx),%rsi
+    0.00 :   776bb:  lea    (%rsi,%rsi,4),%rsi
+    0.00 :   776bf:  shl    $0x9,%rsi
+    0.00 :   776c3:  vpaddw 0x0(%r13,%rsi,1),%zmm8,%zmm8
+    0.25 :   776cb:  vpaddw 0x40(%r13,%rsi,1),%zmm9,%zmm9
+    0.07 :   776d3:  vpaddw 0x80(%r13,%rsi,1),%zmm10,%zmm10
+    0.10 :   776db:  vpaddw 0xc0(%r13,%rsi,1),%zmm11,%zmm11
+    0.10 :   776e3:  vpaddw 0x100(%r13,%rsi,1),%zmm12,%zmm12
+    0.07 :   776eb:  vpaddw 0x140(%r13,%rsi,1),%zmm13,%zmm13
+    0.12 :   776f3:  vpaddw 0x180(%r13,%rsi,1),%zmm14,%zmm14
+    0.02 :   776fb:  vpaddw 0x1c0(%r13,%rsi,1),%zmm15,%zmm15
+    0.10 :   77703:  mov    0x18(%rcx),%rsi
+    0.00 :   77707:  add    $0x20,%rcx
+    0.00 :   7770b:  lea    (%rsi,%rsi,4),%rsi
+    0.00 :   7770f:  shl    $0x9,%rsi
+    0.00 :   77713:  vpaddw 0x40(%r13,%rsi,1),%zmm9,%zmm9
+    0.32 :   7771b:  vpaddw 0x80(%r13,%rsi,1),%zmm10,%zmm10
+    0.15 :   77723:  vpaddw 0x0(%r13,%rsi,1),%zmm8,%zmm8
+    0.05 :   7772b:  vpsubw %zmm9,%zmm6,%zmm6
+    0.05 :   77731:  vpaddw 0xc0(%r13,%rsi,1),%zmm11,%zmm9
+    0.05 :   77739:  vpsubw %zmm10,%zmm5,%zmm5
+    0.00 :   7773f:  vpaddw 0x100(%r13,%rsi,1),%zmm12,%zmm10
+    0.10 :   77747:  vpsubw %zmm8,%zmm7,%zmm7
+    0.02 :   7774d:  vpsubw %zmm9,%zmm4,%zmm4
+    0.00 :   77753:  vpaddw 0x140(%r13,%rsi,1),%zmm13,%zmm9
+    0.10 :   7775b:  vpsubw %zmm10,%zmm3,%zmm3
+    0.00 :   77761:  vpaddw 0x180(%r13,%rsi,1),%zmm14,%zmm10
+    0.10 :   77769:  vpsubw %zmm9,%zmm2,%zmm2
+    0.00 :   7776f:  vpaddw 0x1c0(%r13,%rsi,1),%zmm15,%zmm9
+    0.42 :   77777:  vpsubw %zmm10,%zmm1,%zmm1
+    0.00 :   7777d:  vpsubw %zmm9,%zmm0,%zmm0
+    0.05 :   77783:  cmp    %r12,%rcx
+    0.00 :   77786:  jne    77620 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xcd0>
+    0.00 :   7778c:  jmp    772a0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x950>
+    0.00 :   77791:  mov    0x30(%rsp),%rdx
+    0.10 :   77796:  test   %rdx,%rdx
+    0.00 :   77799:  je     77849 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xef9>
+    0.00 :   7779f:  vmovdqa 0xa40(%r14),%ymm0
+    0.00 :   777a8:  test   %rsi,%rsi
+    0.00 :   777ab:  je     777f7 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xea7>
+    0.00 :   777ad:  mov    0x28(%rsp),%rsi
+    0.00 :   777b2:  mov    0x2c0(%rsp),%r9
+    0.05 :   777ba:  xor    %ecx,%ecx
+    0.00 :   777bc:  nopl   0x0(%rax)
+    0.00 :   777c0:  mov    0x600(%rsp,%rcx,1),%rdi
+    0.02 :   777c8:  mov    %rdx,%r8
+    0.00 :   777cb:  shl    $0x3,%rdi
+    0.00 :   777cf:  sub    %rdi,%r8
+    0.00 :   777d2:  jb     785c6 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1c76>
+    0.00 :   777d8:  cmp    $0x7,%r8
+    0.00 :   777dc:  jbe    7860c <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1cbc>
+    0.00 :   777e2:  vpaddd (%rsi,%rdi,4),%ymm0,%ymm0
+    3.21 :   777e7:  add    $0x8,%rcx
+    0.00 :   777eb:  cmp    %rcx,%r9
+    0.02 :   777ee:  jne    777c0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xe70>
+    0.00 :   777f0:  test   %rax,%rax
+    0.05 :   777f3:  jne    77801 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xeb1>
+    0.00 :   777f5:  jmp    77840 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xef0>
+    0.00 :   777f7:  mov    0x28(%rsp),%rsi
+    0.00 :   777fc:  test   %rax,%rax
+    0.00 :   777ff:  je     77840 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xef0>
+    0.00 :   77801:  mov    0x280(%rsp),%r8
+    0.00 :   77809:  xor    %ecx,%ecx
+    0.00 :   7780b:  nopl   0x0(%rax,%rax,1)
+    0.00 :   77810:  mov    0x180(%rsp,%rcx,1),%rdi
+    0.00 :   77818:  mov    %rdx,%rax
+    0.00 :   7781b:  shl    $0x3,%rdi
+    0.10 :   7781f:  sub    %rdi,%rax
+    0.02 :   77822:  jb     785c6 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1c76>
+    0.00 :   77828:  cmp    $0x7,%rax
+    0.07 :   7782c:  jbe    785d8 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1c88>
+    0.00 :   77832:  vpsubd (%rsi,%rdi,4),%ymm0,%ymm0
+    0.57 :   77837:  add    $0x8,%rcx
+    0.00 :   7783b:  cmp    %rcx,%r8
+    0.00 :   7783e:  jne    77810 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xec0>
+    0.00 :   77840:  vmovdqa %ymm0,0xa40(%r14)
+    0.00 :   77849:  vmovaps 0xa40(%r14),%ymm0
+    0.97 :   77852:  mov    0x38(%rsp),%rax
+    0.00 :   77857:  mov    0x300(%rsp),%rcx
+    0.00 :   7785f:  shl    $0x5,%eax
+    0.00 :   77862:  vmovaps %ymm0,0x1400(%rcx,%rax,1)
+    0.30 :   7786b:  jmp    785b4 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1c64>
+    0.00 :   77870:  dec    %r10
+    0.00 :   77873:  lea    -0x8(,%r10,8),%rax
+    0.00 :   7787b:  mov    0x100(%rsp),%rbx
+    0.00 :   77883:  mov    0x18(%rsp),%r12
+    0.00 :   77888:  vmovdqa64 %zmm2,0x3c0(%rsp)
+    0.00 :   77890:  vmovdqa64 %zmm3,0x380(%rsp)
+    0.00 :   77898:  vmovdqa64 %zmm7,0x5c0(%rsp)
+    0.00 :   778a0:  vmovdqa64 %zmm6,0x340(%rsp)
+    0.00 :   778a8:  mov    %rax,%r8
+    0.00 :   778ab:  shr    $0x3,%r8
+    0.00 :   778af:  inc    %r8
+    0.00 :   778b2:  mov    %r8,%rcx
+    0.00 :   778b5:  and    $0x3,%rcx
+    0.00 :   778b9:  je     77926 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xfd6>
+    0.00 :   778bb:  shl    $0x3,%ecx
+    0.00 :   778be:  lea    0x180(%rsp),%r9
+    0.00 :   778c6:  cs nopw 0x0(%rax,%rax,1)
+    0.00 :   778d0:  mov    (%r9),%rsi
+    0.00 :   778d3:  add    $0x8,%r9
+    0.00 :   778d7:  lea    (%rsi,%rsi,4),%rsi
+    0.00 :   778db:  shl    $0x9,%rsi
+    0.00 :   778df:  add    $0xfffffffffffffff8,%rcx
+    0.00 :   778e3:  vpaddw (%r15,%rsi,1),%zmm0,%zmm0
+    0.00 :   778ea:  vpaddw 0x40(%r15,%rsi,1),%zmm5,%zmm5
+    0.00 :   778f2:  vpaddw 0x80(%r15,%rsi,1),%zmm8,%zmm8
+    0.00 :   778fa:  vpaddw 0xc0(%r15,%rsi,1),%zmm9,%zmm9
+    0.00 :   77902:  vpaddw 0x100(%r15,%rsi,1),%zmm10,%zmm10
+    0.00 :   7790a:  vpaddw 0x140(%r15,%rsi,1),%zmm11,%zmm11
+    0.00 :   77912:  vpaddw 0x180(%r15,%rsi,1),%zmm12,%zmm12
+    0.00 :   7791a:  vpaddw 0x1c0(%r15,%rsi,1),%zmm1,%zmm1
+    0.00 :   77922:  jne    778d0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xf80>
+    0.00 :   77924:  jmp    7792e <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0xfde>
+    0.00 :   77926:  lea    0x180(%rsp),%r9
+    0.00 :   7792e:  mov    0x30(%rsp),%rdx
+    0.00 :   77933:  mov    0x28(%rsp),%r11
+    0.00 :   77938:  lea    0x180(%rsp,%r10,8),%rsi
+    0.00 :   77940:  cmp    $0x18,%rax
+    0.00 :   77944:  jb     77a8e <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x113e>
+    0.00 :   7794a:  nopw   0x0(%rax,%rax,1)
+    0.00 :   77950:  mov    (%r9),%rcx
+    0.00 :   77953:  mov    0x8(%r9),%rdi
+    0.00 :   77957:  lea    (%rcx,%rcx,4),%rcx
+    0.00 :   7795b:  lea    (%rdi,%rdi,4),%rdi
+    0.00 :   7795f:  shl    $0x9,%rcx
+    0.00 :   77963:  shl    $0x9,%rdi
+    0.00 :   77967:  vpaddw 0x80(%r15,%rcx,1),%zmm8,%zmm7
+    0.00 :   7796f:  vpaddw 0xc0(%r15,%rcx,1),%zmm9,%zmm8
+    0.00 :   77977:  vpaddw 0x100(%r15,%rcx,1),%zmm10,%zmm9
+    0.00 :   7797f:  vpaddw 0x140(%r15,%rcx,1),%zmm11,%zmm10
+    0.00 :   77987:  vpaddw 0x180(%r15,%rcx,1),%zmm12,%zmm11
+    0.00 :   7798f:  vpaddw (%r15,%rcx,1),%zmm0,%zmm0
+    0.00 :   77996:  vpaddw 0x40(%r15,%rcx,1),%zmm5,%zmm6
+    0.00 :   7799e:  vpaddw 0x1c0(%r15,%rcx,1),%zmm1,%zmm12
+    0.00 :   779a6:  mov    0x10(%r9),%rcx
+    0.00 :   779aa:  vpaddw (%r15,%rdi,1),%zmm0,%zmm0
+    0.00 :   779b1:  vpaddw 0x40(%r15,%rdi,1),%zmm6,%zmm6
+    0.00 :   779b9:  vpaddw 0x80(%r15,%rdi,1),%zmm7,%zmm7
+    0.00 :   779c1:  vpaddw 0xc0(%r15,%rdi,1),%zmm8,%zmm8
+    0.00 :   779c9:  vpaddw 0x100(%r15,%rdi,1),%zmm9,%zmm9
+    0.00 :   779d1:  vpaddw 0x140(%r15,%rdi,1),%zmm10,%zmm10
+    0.00 :   779d9:  vpaddw 0x180(%r15,%rdi,1),%zmm11,%zmm11
+    0.00 :   779e1:  vpaddw 0x1c0(%r15,%rdi,1),%zmm12,%zmm12
+    0.00 :   779e9:  mov    0x18(%r9),%rdi
+    0.00 :   779ed:  add    $0x20,%r9
+    0.00 :   779f1:  lea    (%rcx,%rcx,4),%rcx
+    0.00 :   779f5:  lea    (%rdi,%rdi,4),%rdi
+    0.00 :   779f9:  shl    $0x9,%rcx
+    0.00 :   779fd:  vpaddw 0x40(%r15,%rcx,1),%zmm6,%zmm1
+    0.00 :   77a05:  shl    $0x9,%rdi
+    0.00 :   77a09:  vpaddw (%r15,%rcx,1),%zmm0,%zmm0
+    0.00 :   77a10:  vpaddw 0x80(%r15,%rcx,1),%zmm7,%zmm2
+    0.00 :   77a18:  vpaddw 0xc0(%r15,%rcx,1),%zmm8,%zmm3
+    0.00 :   77a20:  vpaddw 0x100(%r15,%rcx,1),%zmm9,%zmm4
+    0.00 :   77a28:  vpaddw 0x140(%r15,%rcx,1),%zmm10,%zmm5
+    0.00 :   77a30:  vpaddw 0x180(%r15,%rcx,1),%zmm11,%zmm6
+    0.00 :   77a38:  vpaddw 0x1c0(%r15,%rcx,1),%zmm12,%zmm7
+    0.00 :   77a40:  vpaddw 0x40(%r15,%rdi,1),%zmm1,%zmm1
+    0.00 :   77a48:  vpaddw 0x140(%r15,%rdi,1),%zmm5,%zmm11
+    0.00 :   77a50:  vpaddw (%r15,%rdi,1),%zmm0,%zmm0
+    0.00 :   77a57:  vpaddw 0x80(%r15,%rdi,1),%zmm2,%zmm8
+    0.00 :   77a5f:  vpaddw 0xc0(%r15,%rdi,1),%zmm3,%zmm9
+    0.00 :   77a67:  vpaddw 0x100(%r15,%rdi,1),%zmm4,%zmm10
+    0.00 :   77a6f:  vpaddw 0x180(%r15,%rdi,1),%zmm6,%zmm12
+    0.00 :   77a77:  vmovdqa64 %zmm1,%zmm5
+    0.00 :   77a7d:  vpaddw 0x1c0(%r15,%rdi,1),%zmm7,%zmm1
+    0.00 :   77a85:  cmp    %rsi,%r9
+    0.00 :   77a88:  jne    77950 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1000>
+    0.00 :   77a8e:  mov    %r8,%rcx
+    0.00 :   77a91:  and    $0x3,%rcx
+    0.00 :   77a95:  vmovdqa64 %zmm1,0x40(%rsp)
+    0.00 :   77a9d:  vmovdqa64 %zmm0,0x140(%rsp)
+    0.00 :   77aa5:  vmovdqa64 %zmm5,0x100(%rsp)
+    0.00 :   77aad:  je     782d6 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1986>
+    0.00 :   77ab3:  vmovdqa64 0xc0(%rsp),%zmm1
+    0.00 :   77abb:  shl    $0x3,%ecx
+    0.00 :   77abe:  lea    0x180(%rsp),%r9
+    0.00 :   77ac6:  cs nopw 0x0(%rax,%rax,1)
+    0.00 :   77ad0:  mov    (%r9),%rdi
+    0.00 :   77ad3:  add    $0x8,%r9
+    0.00 :   77ad7:  lea    (%rdi,%rdi,4),%rdi
+    0.00 :   77adb:  shl    $0x9,%rdi
+    0.00 :   77adf:  add    $0xfffffffffffffff8,%rcx
+    0.00 :   77ae3:  vpaddw 0x200(%r15,%rdi,1),%zmm13,%zmm13
+    0.00 :   77aeb:  vpaddw 0x240(%r15,%rdi,1),%zmm14,%zmm14
+    0.00 :   77af3:  vpaddw 0x280(%r15,%rdi,1),%zmm15,%zmm15
+    0.00 :   77afb:  vpaddw 0x2c0(%r15,%rdi,1),%zmm16,%zmm16
+    0.00 :   77b03:  vpaddw 0x300(%r15,%rdi,1),%zmm17,%zmm17
+    0.00 :   77b0b:  vpaddw 0x340(%r15,%rdi,1),%zmm18,%zmm18
+    0.00 :   77b13:  vpaddw 0x380(%r15,%rdi,1),%zmm19,%zmm19
+    0.00 :   77b1b:  vpaddw 0x3c0(%r15,%rdi,1),%zmm1,%zmm1
+    0.00 :   77b23:  jne    77ad0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1180>
+    0.00 :   77b25:  cmp    $0x18,%rax
+    0.00 :   77b29:  jb     77c6c <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x131c>
+    0.00 :   77b2f:  nop
+    0.00 :   77b30:  mov    (%r9),%rcx
+    0.00 :   77b33:  mov    0x8(%r9),%rdi
+    0.00 :   77b37:  lea    (%rcx,%rcx,4),%rcx
+    0.00 :   77b3b:  lea    (%rdi,%rdi,4),%rdi
+    0.00 :   77b3f:  shl    $0x9,%rcx
+    0.00 :   77b43:  shl    $0x9,%rdi
+    0.00 :   77b47:  vpaddw 0x200(%r15,%rcx,1),%zmm13,%zmm0
+    0.00 :   77b4f:  vpaddw 0x240(%r15,%rcx,1),%zmm14,%zmm2
+    0.00 :   77b57:  vpaddw 0x280(%r15,%rcx,1),%zmm15,%zmm3
+    0.00 :   77b5f:  vpaddw 0x2c0(%r15,%rcx,1),%zmm16,%zmm4
+    0.00 :   77b67:  vpaddw 0x300(%r15,%rcx,1),%zmm17,%zmm5
+    0.00 :   77b6f:  vpaddw 0x340(%r15,%rcx,1),%zmm18,%zmm6
+    0.00 :   77b77:  vpaddw 0x380(%r15,%rcx,1),%zmm19,%zmm7
+    0.00 :   77b7f:  vpaddw 0x3c0(%r15,%rcx,1),%zmm1,%zmm13
+    0.00 :   77b87:  mov    0x10(%r9),%rcx
+    0.00 :   77b8b:  vpaddw 0x200(%r15,%rdi,1),%zmm0,%zmm0
+    0.00 :   77b93:  vpaddw 0x240(%r15,%rdi,1),%zmm2,%zmm2
+    0.00 :   77b9b:  vpaddw 0x280(%r15,%rdi,1),%zmm3,%zmm3
+    0.00 :   77ba3:  vpaddw 0x2c0(%r15,%rdi,1),%zmm4,%zmm4
+    0.00 :   77bab:  vpaddw 0x300(%r15,%rdi,1),%zmm5,%zmm5
+    0.00 :   77bb3:  vpaddw 0x340(%r15,%rdi,1),%zmm6,%zmm6
+    0.00 :   77bbb:  vpaddw 0x380(%r15,%rdi,1),%zmm7,%zmm7
+    0.00 :   77bc3:  vpaddw 0x3c0(%r15,%rdi,1),%zmm13,%zmm13
+    0.00 :   77bcb:  mov    0x18(%r9),%rdi
+    0.00 :   77bcf:  add    $0x20,%r9
+    0.00 :   77bd3:  lea    (%rcx,%rcx,4),%rcx
+    0.00 :   77bd7:  lea    (%rdi,%rdi,4),%rdi
+    0.00 :   77bdb:  shl    $0x9,%rcx
+    0.00 :   77bdf:  vpaddw 0x200(%r15,%rcx,1),%zmm0,%zmm0
+    0.00 :   77be7:  vpaddw 0x240(%r15,%rcx,1),%zmm2,%zmm2
+    0.00 :   77bef:  shl    $0x9,%rdi
+    0.00 :   77bf3:  vpaddw 0x3c0(%r15,%rcx,1),%zmm13,%zmm1
+    0.00 :   77bfb:  vpaddw 0x280(%r15,%rcx,1),%zmm3,%zmm3
+    0.00 :   77c03:  vpaddw 0x2c0(%r15,%rcx,1),%zmm4,%zmm4
+    0.00 :   77c0b:  vpaddw 0x300(%r15,%rcx,1),%zmm5,%zmm5
+    0.00 :   77c13:  vpaddw 0x340(%r15,%rcx,1),%zmm6,%zmm6
+    0.00 :   77c1b:  vpaddw 0x380(%r15,%rcx,1),%zmm7,%zmm7
+    0.00 :   77c23:  vpaddw 0x200(%r15,%rdi,1),%zmm0,%zmm13
+    0.00 :   77c2b:  vpaddw 0x240(%r15,%rdi,1),%zmm2,%zmm14
+    0.00 :   77c33:  vpaddw 0x280(%r15,%rdi,1),%zmm3,%zmm15
+    0.00 :   77c3b:  vpaddw 0x2c0(%r15,%rdi,1),%zmm4,%zmm16
+    0.00 :   77c43:  vpaddw 0x300(%r15,%rdi,1),%zmm5,%zmm17
+    0.00 :   77c4b:  vpaddw 0x340(%r15,%rdi,1),%zmm6,%zmm18
+    0.00 :   77c53:  vpaddw 0x380(%r15,%rdi,1),%zmm7,%zmm19
+    0.00 :   77c5b:  vpaddw 0x3c0(%r15,%rdi,1),%zmm1,%zmm1
+    0.00 :   77c63:  cmp    %rsi,%r9
+    0.00 :   77c66:  jne    77b30 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x11e0>
+    0.00 :   77c6c:  mov    %r8,%rcx
+    0.00 :   77c6f:  and    $0x3,%rcx
+    0.00 :   77c73:  vmovdqa64 %zmm1,0xc0(%rsp)
+    0.00 :   77c7b:  je     782f5 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x19a5>
+    0.00 :   77c81:  vmovdqa64 0x3c0(%rsp),%zmm7
+    0.00 :   77c89:  shl    $0x3,%ecx
+    0.00 :   77c8c:  lea    0x180(%rsp),%r9
+    0.00 :   77c94:  data16 data16 cs nopw 0x0(%rax,%rax,1)
+    0.00 :   77ca0:  mov    (%r9),%rdi
+    0.00 :   77ca3:  add    $0x8,%r9
+    0.00 :   77ca7:  lea    (%rdi,%rdi,4),%rdi
+    0.00 :   77cab:  shl    $0x9,%rdi
+    0.00 :   77caf:  add    $0xfffffffffffffff8,%rcx
+    0.00 :   77cb3:  vpaddw 0x400(%r15,%rdi,1),%zmm20,%zmm20
+    0.00 :   77cbb:  vpaddw 0x440(%r15,%rdi,1),%zmm21,%zmm21
+    0.00 :   77cc3:  vpaddw 0x480(%r15,%rdi,1),%zmm22,%zmm22
+    0.00 :   77ccb:  vpaddw 0x4c0(%r15,%rdi,1),%zmm23,%zmm23
+    0.00 :   77cd3:  vpaddw 0x500(%r15,%rdi,1),%zmm24,%zmm24
+    0.00 :   77cdb:  vpaddw 0x540(%r15,%rdi,1),%zmm25,%zmm25
+    0.00 :   77ce3:  vpaddw 0x580(%r15,%rdi,1),%zmm26,%zmm26
+    0.00 :   77ceb:  vpaddw 0x5c0(%r15,%rdi,1),%zmm7,%zmm7
+    0.00 :   77cf3:  jne    77ca0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1350>
+    0.00 :   77cf5:  cmp    $0x18,%rax
+    0.00 :   77cf9:  jb     77e3c <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x14ec>
+    0.00 :   77cff:  nop
+    0.00 :   77d00:  mov    (%r9),%rcx
+    0.00 :   77d03:  mov    0x8(%r9),%rdi
+    0.00 :   77d07:  lea    (%rcx,%rcx,4),%rcx
+    0.00 :   77d0b:  lea    (%rdi,%rdi,4),%rdi
+    0.00 :   77d0f:  shl    $0x9,%rcx
+    0.00 :   77d13:  shl    $0x9,%rdi
+    0.00 :   77d17:  vpaddw 0x400(%r15,%rcx,1),%zmm20,%zmm0
+    0.00 :   77d1f:  vpaddw 0x440(%r15,%rcx,1),%zmm21,%zmm1
+    0.00 :   77d27:  vpaddw 0x480(%r15,%rcx,1),%zmm22,%zmm2
+    0.00 :   77d2f:  vpaddw 0x4c0(%r15,%rcx,1),%zmm23,%zmm3
+    0.00 :   77d37:  vpaddw 0x500(%r15,%rcx,1),%zmm24,%zmm4
+    0.00 :   77d3f:  vpaddw 0x540(%r15,%rcx,1),%zmm25,%zmm5
+    0.00 :   77d47:  vpaddw 0x580(%r15,%rcx,1),%zmm26,%zmm6
+    0.00 :   77d4f:  vpaddw 0x5c0(%r15,%rcx,1),%zmm7,%zmm7
+    0.00 :   77d57:  mov    0x10(%r9),%rcx
+    0.00 :   77d5b:  vpaddw 0x400(%r15,%rdi,1),%zmm0,%zmm0
+    0.00 :   77d63:  vpaddw 0x440(%r15,%rdi,1),%zmm1,%zmm1
+    0.00 :   77d6b:  vpaddw 0x480(%r15,%rdi,1),%zmm2,%zmm2
+    0.00 :   77d73:  vpaddw 0x4c0(%r15,%rdi,1),%zmm3,%zmm3
+    0.00 :   77d7b:  vpaddw 0x500(%r15,%rdi,1),%zmm4,%zmm4
+    0.00 :   77d83:  vpaddw 0x540(%r15,%rdi,1),%zmm5,%zmm5
+    0.00 :   77d8b:  vpaddw 0x580(%r15,%rdi,1),%zmm6,%zmm6
+    0.00 :   77d93:  vpaddw 0x5c0(%r15,%rdi,1),%zmm7,%zmm7
+    0.00 :   77d9b:  mov    0x18(%r9),%rdi
+    0.00 :   77d9f:  add    $0x20,%r9
+    0.00 :   77da3:  lea    (%rcx,%rcx,4),%rcx
+    0.00 :   77da7:  lea    (%rdi,%rdi,4),%rdi
+    0.00 :   77dab:  shl    $0x9,%rcx
+    0.00 :   77daf:  vpaddw 0x400(%r15,%rcx,1),%zmm0,%zmm0
+    0.00 :   77db7:  shl    $0x9,%rdi
+    0.00 :   77dbb:  vpaddw 0x5c0(%r15,%rcx,1),%zmm7,%zmm7
+    0.00 :   77dc3:  vpaddw 0x440(%r15,%rcx,1),%zmm1,%zmm1
+    0.00 :   77dcb:  vpaddw 0x480(%r15,%rcx,1),%zmm2,%zmm2
+    0.00 :   77dd3:  vpaddw 0x4c0(%r15,%rcx,1),%zmm3,%zmm3
+    0.00 :   77ddb:  vpaddw 0x500(%r15,%rcx,1),%zmm4,%zmm4
+    0.00 :   77de3:  vpaddw 0x540(%r15,%rcx,1),%zmm5,%zmm5
+    0.00 :   77deb:  vpaddw 0x580(%r15,%rcx,1),%zmm6,%zmm6
+    0.00 :   77df3:  vpaddw 0x400(%r15,%rdi,1),%zmm0,%zmm20
+    0.00 :   77dfb:  vpaddw 0x440(%r15,%rdi,1),%zmm1,%zmm21
+    0.00 :   77e03:  vpaddw 0x480(%r15,%rdi,1),%zmm2,%zmm22
+    0.00 :   77e0b:  vpaddw 0x4c0(%r15,%rdi,1),%zmm3,%zmm23
+    0.00 :   77e13:  vpaddw 0x500(%r15,%rdi,1),%zmm4,%zmm24
+    0.00 :   77e1b:  vpaddw 0x540(%r15,%rdi,1),%zmm5,%zmm25
+    0.00 :   77e23:  vpaddw 0x580(%r15,%rdi,1),%zmm6,%zmm26
+    0.00 :   77e2b:  vpaddw 0x5c0(%r15,%rdi,1),%zmm7,%zmm7
+    0.00 :   77e33:  cmp    %rsi,%r9
+    0.00 :   77e36:  jne    77d00 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x13b0>
+    0.00 :   77e3c:  mov    %r8,%rcx
+    0.00 :   77e3f:  and    $0x3,%rcx
+    0.00 :   77e43:  vmovdqa64 %zmm7,0x3c0(%rsp)
+    0.00 :   77e4b:  je     78314 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x19c4>
+    0.00 :   77e51:  vmovdqa64 0x380(%rsp),%zmm7
+    0.00 :   77e59:  vmovdqa64 0x300(%rsp),%zmm5
+    0.00 :   77e61:  vmovdqa64 0x340(%rsp),%zmm6
+    0.00 :   77e69:  shl    $0x3,%ecx
+    0.00 :   77e6c:  lea    0x180(%rsp),%r9
+    0.00 :   77e74:  data16 data16 cs nopw 0x0(%rax,%rax,1)
+    0.00 :   77e80:  mov    (%r9),%rdi
+    0.00 :   77e83:  add    $0x8,%r9
+    0.00 :   77e87:  lea    (%rdi,%rdi,4),%rdi
+    0.00 :   77e8b:  shl    $0x9,%rdi
+    0.00 :   77e8f:  add    $0xfffffffffffffff8,%rcx
+    0.00 :   77e93:  vpaddw 0x600(%r15,%rdi,1),%zmm27,%zmm27
+    0.00 :   77e9b:  vpaddw 0x640(%r15,%rdi,1),%zmm28,%zmm28
+    0.00 :   77ea3:  vpaddw 0x680(%r15,%rdi,1),%zmm29,%zmm29
+    0.00 :   77eab:  vpaddw 0x6c0(%r15,%rdi,1),%zmm30,%zmm30
+    0.00 :   77eb3:  vpaddw 0x700(%r15,%rdi,1),%zmm31,%zmm31
+    0.00 :   77ebb:  vpaddw 0x740(%r15,%rdi,1),%zmm5,%zmm5
+    0.00 :   77ec3:  vpaddw 0x780(%r15,%rdi,1),%zmm6,%zmm6
+    0.00 :   77ecb:  vpaddw 0x7c0(%r15,%rdi,1),%zmm7,%zmm7
+    0.00 :   77ed3:  jne    77e80 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1530>
+    0.00 :   77ed5:  cmp    $0x18,%rax
+    0.00 :   77ed9:  jb     7801c <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x16cc>
+    0.00 :   77edf:  nop
+    0.00 :   77ee0:  mov    (%r9),%rcx
+    0.00 :   77ee3:  mov    0x8(%r9),%rdi
+    0.00 :   77ee7:  lea    (%rcx,%rcx,4),%rcx
+    0.00 :   77eeb:  lea    (%rdi,%rdi,4),%rdi
+    0.00 :   77eef:  shl    $0x9,%rcx
+    0.00 :   77ef3:  shl    $0x9,%rdi
+    0.00 :   77ef7:  vpaddw 0x600(%r15,%rcx,1),%zmm27,%zmm0
+    0.00 :   77eff:  vpaddw 0x640(%r15,%rcx,1),%zmm28,%zmm1
+    0.00 :   77f07:  vpaddw 0x680(%r15,%rcx,1),%zmm29,%zmm2
+    0.00 :   77f0f:  vpaddw 0x6c0(%r15,%rcx,1),%zmm30,%zmm3
+    0.00 :   77f17:  vpaddw 0x700(%r15,%rcx,1),%zmm31,%zmm4
+    0.00 :   77f1f:  vpaddw 0x740(%r15,%rcx,1),%zmm5,%zmm5
+    0.00 :   77f27:  vpaddw 0x780(%r15,%rcx,1),%zmm6,%zmm6
+    0.00 :   77f2f:  vpaddw 0x7c0(%r15,%rcx,1),%zmm7,%zmm7
+    0.00 :   77f37:  mov    0x10(%r9),%rcx
+    0.00 :   77f3b:  vpaddw 0x600(%r15,%rdi,1),%zmm0,%zmm0
+    0.00 :   77f43:  vpaddw 0x640(%r15,%rdi,1),%zmm1,%zmm1
+    0.00 :   77f4b:  vpaddw 0x680(%r15,%rdi,1),%zmm2,%zmm2
+    0.00 :   77f53:  vpaddw 0x6c0(%r15,%rdi,1),%zmm3,%zmm3
+    0.00 :   77f5b:  vpaddw 0x700(%r15,%rdi,1),%zmm4,%zmm4
+    0.00 :   77f63:  vpaddw 0x740(%r15,%rdi,1),%zmm5,%zmm5
+    0.00 :   77f6b:  vpaddw 0x780(%r15,%rdi,1),%zmm6,%zmm6
+    0.00 :   77f73:  vpaddw 0x7c0(%r15,%rdi,1),%zmm7,%zmm7
+    0.00 :   77f7b:  mov    0x18(%r9),%rdi
+    0.00 :   77f7f:  add    $0x20,%r9
+    0.00 :   77f83:  lea    (%rcx,%rcx,4),%rcx
+    0.00 :   77f87:  lea    (%rdi,%rdi,4),%rdi
+    0.00 :   77f8b:  shl    $0x9,%rcx
+    0.00 :   77f8f:  vpaddw 0x600(%r15,%rcx,1),%zmm0,%zmm0
+    0.00 :   77f97:  shl    $0x9,%rdi
+    0.00 :   77f9b:  vpaddw 0x740(%r15,%rcx,1),%zmm5,%zmm5
+    0.00 :   77fa3:  vpaddw 0x780(%r15,%rcx,1),%zmm6,%zmm6
+    0.00 :   77fab:  vpaddw 0x7c0(%r15,%rcx,1),%zmm7,%zmm7
+    0.00 :   77fb3:  vpaddw 0x640(%r15,%rcx,1),%zmm1,%zmm1
+    0.00 :   77fbb:  vpaddw 0x680(%r15,%rcx,1),%zmm2,%zmm2
+    0.00 :   77fc3:  vpaddw 0x6c0(%r15,%rcx,1),%zmm3,%zmm3
+    0.00 :   77fcb:  vpaddw 0x700(%r15,%rcx,1),%zmm4,%zmm4
+    0.00 :   77fd3:  vpaddw 0x600(%r15,%rdi,1),%zmm0,%zmm27
+    0.00 :   77fdb:  vpaddw 0x640(%r15,%rdi,1),%zmm1,%zmm28
+    0.00 :   77fe3:  vpaddw 0x680(%r15,%rdi,1),%zmm2,%zmm29
+    0.00 :   77feb:  vpaddw 0x6c0(%r15,%rdi,1),%zmm3,%zmm30
+    0.00 :   77ff3:  vpaddw 0x700(%r15,%rdi,1),%zmm4,%zmm31
+    0.00 :   77ffb:  vpaddw 0x740(%r15,%rdi,1),%zmm5,%zmm5
+    0.00 :   78003:  vpaddw 0x780(%r15,%rdi,1),%zmm6,%zmm6
+    0.00 :   7800b:  vpaddw 0x7c0(%r15,%rdi,1),%zmm7,%zmm7
+    0.00 :   78013:  cmp    %rsi,%r9
+    0.00 :   78016:  jne    77ee0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1590>
+    0.00 :   7801c:  and    $0x3,%r8
+    0.00 :   78020:  vmovdqa64 %zmm7,0x380(%rsp)
+    0.00 :   78028:  vmovdqa64 %zmm5,0x300(%rsp)
+    0.00 :   78030:  vmovdqa64 %zmm6,0x340(%rsp)
+    0.00 :   78038:  je     78343 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x19f3>
+    0.00 :   7803e:  vmovdqa64 0x5c0(%rsp),%zmm7
+    0.00 :   78046:  vmovdqa64 0x2c0(%rsp),%zmm0
+    0.00 :   7804e:  vmovdqa64 0x280(%rsp),%zmm1
+    0.00 :   78056:  vmovdqa64 0x500(%rsp),%zmm2
+    0.00 :   7805e:  vmovdqa64 0x4c0(%rsp),%zmm3
+    0.00 :   78066:  vmovdqa64 0x480(%rsp),%zmm4
+    0.00 :   7806e:  vmovdqa64 0x440(%rsp),%zmm5
+    0.00 :   78076:  vmovdqa64 0x400(%rsp),%zmm6
+    0.00 :   7807e:  shl    $0x3,%r8d
+    0.00 :   78082:  lea    0x180(%rsp),%rdi
+    0.00 :   7808a:  nopw   0x0(%rax,%rax,1)
+    0.00 :   78090:  mov    (%rdi),%rcx
+    0.00 :   78093:  add    $0x8,%rdi
+    0.00 :   78097:  lea    (%rcx,%rcx,4),%rcx
+    0.00 :   7809b:  shl    $0x9,%rcx
+    0.00 :   7809f:  add    $0xfffffffffffffff8,%r8
+    0.00 :   780a3:  vpaddw 0x800(%r15,%rcx,1),%zmm0,%zmm0
+    0.00 :   780ab:  vpaddw 0x840(%r15,%rcx,1),%zmm1,%zmm1
+    0.00 :   780b3:  vpaddw 0x880(%r15,%rcx,1),%zmm2,%zmm2
+    0.00 :   780bb:  vpaddw 0x8c0(%r15,%rcx,1),%zmm3,%zmm3
+    0.00 :   780c3:  vpaddw 0x900(%r15,%rcx,1),%zmm4,%zmm4
+    0.00 :   780cb:  vpaddw 0x940(%r15,%rcx,1),%zmm5,%zmm5
+    0.00 :   780d3:  vpaddw 0x980(%r15,%rcx,1),%zmm6,%zmm6
+    0.00 :   780db:  vpaddw 0x9c0(%r15,%rcx,1),%zmm7,%zmm7
+    0.00 :   780e3:  jne    78090 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1740>
+    0.00 :   780e5:  cmp    $0x18,%rax
+    0.00 :   780e9:  jb     7822c <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x18dc>
+    0.00 :   780ef:  nop
+    0.00 :   780f0:  mov    (%rdi),%rax
+    0.00 :   780f3:  mov    0x8(%rdi),%rcx
+    0.00 :   780f7:  lea    (%rax,%rax,4),%rax
+    0.00 :   780fb:  lea    (%rcx,%rcx,4),%rcx
+    0.00 :   780ff:  shl    $0x9,%rax
+    0.00 :   78103:  shl    $0x9,%rcx
+    0.00 :   78107:  vpaddw 0x800(%r15,%rax,1),%zmm0,%zmm0
+    0.00 :   7810f:  vpaddw 0x840(%r15,%rax,1),%zmm1,%zmm1
+    0.00 :   78117:  vpaddw 0x880(%r15,%rax,1),%zmm2,%zmm2
+    0.00 :   7811f:  vpaddw 0x8c0(%r15,%rax,1),%zmm3,%zmm3
+    0.00 :   78127:  vpaddw 0x900(%r15,%rax,1),%zmm4,%zmm4
+    0.00 :   7812f:  vpaddw 0x940(%r15,%rax,1),%zmm5,%zmm5
+    0.00 :   78137:  vpaddw 0x980(%r15,%rax,1),%zmm6,%zmm6
+    0.00 :   7813f:  vpaddw 0x9c0(%r15,%rax,1),%zmm7,%zmm7
+    0.00 :   78147:  mov    0x10(%rdi),%rax
+    0.00 :   7814b:  vpaddw 0x800(%r15,%rcx,1),%zmm0,%zmm0
+    0.00 :   78153:  vpaddw 0x840(%r15,%rcx,1),%zmm1,%zmm1
+    0.00 :   7815b:  vpaddw 0x880(%r15,%rcx,1),%zmm2,%zmm2
+    0.00 :   78163:  vpaddw 0x8c0(%r15,%rcx,1),%zmm3,%zmm3
+    0.00 :   7816b:  vpaddw 0x900(%r15,%rcx,1),%zmm4,%zmm4
+    0.00 :   78173:  vpaddw 0x940(%r15,%rcx,1),%zmm5,%zmm5
+    0.00 :   7817b:  vpaddw 0x980(%r15,%rcx,1),%zmm6,%zmm6
+    0.00 :   78183:  vpaddw 0x9c0(%r15,%rcx,1),%zmm7,%zmm7
+    0.00 :   7818b:  mov    0x18(%rdi),%rcx
+    0.00 :   7818f:  add    $0x20,%rdi
+    0.00 :   78193:  lea    (%rax,%rax,4),%rax
+    0.00 :   78197:  lea    (%rcx,%rcx,4),%rcx
+    0.00 :   7819b:  shl    $0x9,%rax
+    0.00 :   7819f:  vpaddw 0x800(%r15,%rax,1),%zmm0,%zmm0
+    0.00 :   781a7:  shl    $0x9,%rcx
+    0.00 :   781ab:  vpaddw 0x840(%r15,%rax,1),%zmm1,%zmm1
+    0.00 :   781b3:  vpaddw 0x880(%r15,%rax,1),%zmm2,%zmm2
+    0.00 :   781bb:  vpaddw 0x8c0(%r15,%rax,1),%zmm3,%zmm3
+    0.00 :   781c3:  vpaddw 0x900(%r15,%rax,1),%zmm4,%zmm4
+    0.00 :   781cb:  vpaddw 0x940(%r15,%rax,1),%zmm5,%zmm5
+    0.00 :   781d3:  vpaddw 0x980(%r15,%rax,1),%zmm6,%zmm6
+    0.00 :   781db:  vpaddw 0x9c0(%r15,%rax,1),%zmm7,%zmm7
+    0.00 :   781e3:  vpaddw 0x800(%r15,%rcx,1),%zmm0,%zmm0
+    0.00 :   781eb:  vpaddw 0x840(%r15,%rcx,1),%zmm1,%zmm1
+    0.00 :   781f3:  vpaddw 0x880(%r15,%rcx,1),%zmm2,%zmm2
+    0.00 :   781fb:  vpaddw 0x8c0(%r15,%rcx,1),%zmm3,%zmm3
+    0.00 :   78203:  vpaddw 0x900(%r15,%rcx,1),%zmm4,%zmm4
+    0.00 :   7820b:  vpaddw 0x940(%r15,%rcx,1),%zmm5,%zmm5
+    0.00 :   78213:  vpaddw 0x980(%r15,%rcx,1),%zmm6,%zmm6
+    0.00 :   7821b:  vpaddw 0x9c0(%r15,%rcx,1),%zmm7,%zmm7
+    0.00 :   78223:  cmp    %rsi,%rdi
+    0.00 :   78226:  jne    780f0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x17a0>
+    0.00 :   7822c:  vmovdqa64 %zmm6,0x400(%rsp)
+    0.00 :   78234:  vmovdqa64 %zmm5,0x440(%rsp)
+    0.00 :   7823c:  vmovdqa64 %zmm3,0x4c0(%rsp)
+    0.00 :   78244:  vmovdqa64 %zmm2,0x500(%rsp)
+    0.00 :   7824c:  vmovdqa64 %zmm1,0x280(%rsp)
+    0.00 :   78254:  vmovdqa64 %zmm0,0x2c0(%rsp)
+    0.00 :   7825c:  vmovdqa64 %zmm4,0x480(%rsp)
+    0.00 :   78264:  test   %rdx,%rdx
+    0.00 :   78267:  je     7839a <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1a4a>
+    0.00 :   7826d:  vmovdqa64 0x40(%rsp),%zmm1
+    0.00 :   78275:  vmovdqa64 0x3c0(%rsp),%zmm2
+    0.00 :   7827d:  vmovdqa64 0x380(%rsp),%zmm3
+    0.00 :   78285:  vmovdqa64 0x100(%rsp),%zmm5
+    0.00 :   7828d:  vmovdqa64 0x340(%rsp),%zmm6
+    0.00 :   78295:  shl    $0x3,%r10
+    0.00 :   78299:  vpxor  %xmm0,%xmm0,%xmm0
+    0.00 :   7829d:  xor    %ecx,%ecx
+    0.00 :   7829f:  nop
+    0.00 :   782a0:  mov    0x180(%rsp,%rcx,1),%rsi
+    0.00 :   782a8:  mov    %rdx,%rax
+    0.00 :   782ab:  shl    $0x3,%rsi
+    0.00 :   782af:  sub    %rsi,%rax
+    0.00 :   782b2:  jb     78625 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1cd5>
+    0.00 :   782b8:  cmp    $0x7,%rax
+    0.00 :   782bc:  jbe    785d8 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1c88>
+    0.00 :   782c2:  vpaddd (%r11,%rsi,4),%ymm0,%ymm0
+    0.00 :   782c8:  add    $0x8,%rcx
+    0.00 :   782cc:  cmp    %rcx,%r10
+    0.00 :   782cf:  jne    782a0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1950>
+    0.00 :   782d1:  jmp    783c6 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1a76>
+    0.00 :   782d6:  vmovdqa64 0xc0(%rsp),%zmm1
+    0.00 :   782de:  lea    0x180(%rsp),%r9
+    0.00 :   782e6:  cmp    $0x18,%rax
+    0.00 :   782ea:  jae    77b30 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x11e0>
+    0.00 :   782f0:  jmp    77c6c <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x131c>
+    0.00 :   782f5:  vmovdqa64 0x3c0(%rsp),%zmm7
+    0.00 :   782fd:  lea    0x180(%rsp),%r9
+    0.00 :   78305:  cmp    $0x18,%rax
+    0.00 :   78309:  jae    77d00 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x13b0>
+    0.00 :   7830f:  jmp    77e3c <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x14ec>
+    0.00 :   78314:  vmovdqa64 0x380(%rsp),%zmm7
+    0.00 :   7831c:  vmovdqa64 0x300(%rsp),%zmm5
+    0.00 :   78324:  vmovdqa64 0x340(%rsp),%zmm6
+    0.00 :   7832c:  lea    0x180(%rsp),%r9
+    0.00 :   78334:  cmp    $0x18,%rax
+    0.00 :   78338:  jae    77ee0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1590>
+    0.00 :   7833e:  jmp    7801c <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x16cc>
+    0.00 :   78343:  vmovdqa64 0x5c0(%rsp),%zmm7
+    0.00 :   7834b:  vmovdqa64 0x2c0(%rsp),%zmm0
+    0.00 :   78353:  vmovdqa64 0x280(%rsp),%zmm1
+    0.00 :   7835b:  vmovdqa64 0x500(%rsp),%zmm2
+    0.00 :   78363:  vmovdqa64 0x4c0(%rsp),%zmm3
+    0.00 :   7836b:  vmovdqa64 0x480(%rsp),%zmm4
+    0.00 :   78373:  vmovdqa64 0x440(%rsp),%zmm5
+    0.00 :   7837b:  vmovdqa64 0x400(%rsp),%zmm6
+    0.00 :   78383:  lea    0x180(%rsp),%rdi
+    0.00 :   7838b:  cmp    $0x18,%rax
+    0.00 :   7838f:  jae    780f0 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x17a0>
+    0.00 :   78395:  jmp    7822c <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x18dc>
+    0.00 :   7839a:  vmovdqa64 0x40(%rsp),%zmm1
+    0.00 :   783a2:  vmovdqa64 0x3c0(%rsp),%zmm2
+    0.00 :   783aa:  vmovdqa64 0x380(%rsp),%zmm3
+    0.00 :   783b2:  vmovdqa64 0x100(%rsp),%zmm5
+    0.00 :   783ba:  vmovdqa64 0x340(%rsp),%zmm6
+    0.00 :   783c2:  vpxor  %xmm0,%xmm0,%xmm0
+    0.00 :   783c6:  vmovaps 0x140(%rsp),%zmm4
+    0.00 :   783ce:  movb   $0x1,(%r14)
+    0.00 :   783d2:  vmovaps %zmm4,0x40(%r14)
+    0.00 :   783d9:  vmovdqa64 %zmm5,0x80(%r14)
+    0.00 :   783e0:  vmovdqa64 0xc0(%rsp),%zmm5
+    0.00 :   783e8:  vmovdqa64 %zmm8,0xc0(%r14)
+    0.00 :   783ef:  vmovdqa64 %zmm9,0x100(%r14)
+    0.00 :   783f6:  vmovdqa64 %zmm10,0x140(%r14)
+    0.00 :   783fd:  vmovdqa64 %zmm11,0x180(%r14)
+    0.00 :   78404:  vmovdqa64 %zmm12,0x1c0(%r14)
+    0.00 :   7840b:  vmovdqa64 %zmm1,0x200(%r14)
+    0.00 :   78412:  vmovdqa64 %zmm13,0x240(%r14)
+    0.00 :   78419:  vmovdqa64 %zmm14,0x280(%r14)
+    0.00 :   78420:  vmovdqa64 %zmm15,0x2c0(%r14)
+    0.00 :   78427:  vmovdqa64 %zmm16,0x300(%r14)
+    0.00 :   7842e:  vmovdqa64 %zmm17,0x340(%r14)
+    0.00 :   78435:  vmovdqa64 %zmm18,0x380(%r14)
+    0.00 :   7843c:  vmovdqa64 %zmm19,0x3c0(%r14)
+    0.00 :   78443:  vmovdqa64 0x300(%rsp),%zmm4
+    0.00 :   7844b:  vmovdqa64 %zmm5,0x400(%r14)
+    0.00 :   78452:  vmovdqa64 %zmm20,0x440(%r14)
+    0.00 :   78459:  vmovdqa64 %zmm21,0x480(%r14)
+    0.00 :   78460:  vmovdqa64 %zmm22,0x4c0(%r14)
+    0.00 :   78467:  vmovdqa64 %zmm23,0x500(%r14)
+    0.00 :   7846e:  vmovdqa64 %zmm24,0x540(%r14)
+    0.00 :   78475:  vmovdqa64 %zmm25,0x580(%r14)
+    0.00 :   7847c:  vmovdqa64 %zmm26,0x5c0(%r14)
+    0.00 :   78483:  vmovdqa64 %zmm2,0x600(%r14)
+    0.00 :   7848a:  vmovaps 0x2c0(%rsp),%zmm2
+    0.00 :   78492:  vmovdqa64 %zmm27,0x640(%r14)
+    0.00 :   78499:  vmovdqa64 %zmm28,0x680(%r14)
+    0.00 :   784a0:  vmovdqa64 %zmm29,0x6c0(%r14)
+    0.00 :   784a7:  vmovdqa64 %zmm30,0x700(%r14)
+    0.00 :   784ae:  vmovdqa64 %zmm31,0x740(%r14)
+    0.00 :   784b5:  vmovdqa64 %zmm4,0x780(%r14)
+    0.00 :   784bc:  vmovdqa64 %zmm6,0x7c0(%r14)
+    0.00 :   784c3:  vmovdqa64 %zmm3,0x800(%r14)
+    0.00 :   784ca:  vmovaps 0x280(%rsp),%zmm3
+    0.00 :   784d2:  vmovaps %zmm2,0x840(%r14)
+    0.00 :   784d9:  vmovaps 0x500(%rsp),%zmm2
+    0.00 :   784e1:  vmovaps %zmm3,0x880(%r14)
+    0.00 :   784e8:  vmovaps 0x4c0(%rsp),%zmm3
+    0.00 :   784f0:  vmovaps %zmm2,0x8c0(%r14)
+    0.00 :   784f7:  vmovaps 0x480(%rsp),%zmm2
+    0.00 :   784ff:  vmovaps %zmm3,0x900(%r14)
+    0.00 :   78506:  vmovdqa64 0x440(%rsp),%zmm3
+    0.00 :   7850e:  vmovaps %zmm2,0x940(%r14)
+    0.00 :   78515:  vmovdqa64 0x400(%rsp),%zmm2
+    0.00 :   7851d:  vmovdqa64 %zmm3,0x980(%r14)
+    0.00 :   78524:  vmovdqa64 %zmm2,0x9c0(%r14)
+    0.00 :   7852b:  vmovdqa64 %zmm7,0xa00(%r14)
+    0.00 :   78532:  vmovdqa %ymm0,0xa40(%r14)
+    0.00 :   7853b:  vmovups 0x560(%rsp),%zmm0
+    0.00 :   78546:  vmovups %zmm0,0xa80(%r14)
+    0.00 :   7854d:  vmovaps 0x540(%rsp),%zmm0
+    0.00 :   78555:  vmovups %zmm0,0xa60(%r14)
+    0.00 :   7855f:  mov    0x38(%r12),%rsi
+    0.00 :   78564:  cmp    %rsi,%rbx
+    0.00 :   78567:  jae    78713 <<chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into+0x1dc3>
+    0.00 :   7856d:  mov    0x38(%rsp),%r15
+    0.00 :   78572:  imul   $0x1480,%rbx,%rbx
+    0.00 :   78579:  add    0x30(%r12),%rbx
+    0.00 :   7857e:  lea    0x40(%r14),%rsi
+    0.00 :   78582:  mov    $0xa00,%edx
+    0.00 :   78587:  add    $0xa40,%r14
+    0.00 :   7858e:  lea    (%r15,%r15,4),%rdi
+    0.00 :   78592:  shl    $0x9,%edi
+    0.00 :   78595:  add    %rbx,%rdi
+    0.00 :   78598:  vzeroupper
+    0.00 :   7859b:  call   *0x6e2ff(%rip)        # e68a0 <memmove@GLIBC_2.2.5>
+    0.00 :   785a1:  vmovaps (%r14),%ymm0
+    0.00 :   785a6:  shl    $0x5,%r15d
+    0.00 :   785aa:  vmovaps %ymm0,0x1400(%r15,%rbx,1)
+    0.00 :   785b4:  lea    -0x28(%rbp),%rsp
+    0.02 :   785b8:  pop    %rbx
+    0.00 :   785b9:  pop    %r12
+    0.00 :   785bb:  pop    %r13
+    0.00 :   785bd:  pop    %r14
+    0.00 :   785bf:  pop    %r15
+    0.00 :   785c1:  pop    %rbp
+    0.20 :   785c2:  vzeroupper
+    0.00 :   785c5:  ret
+    0.00 :   785c6:  lea    0x6bfc3(%rip),%rcx        # e4590 <__frame_dummy_init_array_entry+0x2300>
+    0.00 :   785cd:  mov    %rdx,%rsi
+    0.00 :   785d0:  vzeroupper
+    0.00 :   785d3:  call   9bcc0 <core::slice::index::slice_index_fail>
+    0.00 :   785d8:  lea    0x6bf99(%rip),%rcx        # e4578 <__frame_dummy_init_array_entry+0x22e8>
+    0.00 :   785df:  mov    $0x8,%esi
+    0.00 :   785e4:  xor    %edi,%edi
+    0.00 :   785e6:  mov    %rax,%rdx
+    0.00 :   785e9:  vzeroupper
+    0.00 :   785ec:  call   9bcc0 <core::slice::index::slice_index_fail>
+    0.00 :   785f1:  lea    -0x6ae12(%rip),%rdi        # d7e6 <__abi_tag+0xd4ea>
+    0.00 :   785f8:  lea    0x6b5f1(%rip),%rdx        # e3bf0 <__frame_dummy_init_array_entry+0x1960>
+    0.00 :   785ff:  mov    $0xf,%esi
+    0.00 :   78604:  vzeroupper
+    0.00 :   78607:  call   9dbd0 <core::option::expect_failed>
+    0.00 :   7860c:  lea    0x6bf65(%rip),%rcx        # e4578 <__frame_dummy_init_array_entry+0x22e8>
+    0.00 :   78613:  mov    $0x8,%esi
+    0.00 :   78618:  xor    %edi,%edi
+    0.00 :   7861a:  mov    %r8,%rdx
+    0.00 :   7861d:  vzeroupper
+    0.00 :   78620:  call   9bcc0 <core::slice::index::slice_index_fail>
+    0.00 :   78625:  lea    0x6bf64(%rip),%rcx        # e4590 <__frame_dummy_init_array_entry+0x2300>
+    0.00 :   7862c:  mov    %rsi,%rdi
+    0.00 :   7862f:  mov    %rdx,%rsi
+    0.00 :   78632:  vzeroupper
+    0.00 :   78635:  call   9bcc0 <core::slice::index::slice_index_fail>
+    0.00 :   7863a:  lea    -0x6ada5(%rip),%rdi        # d89c <__abi_tag+0xd5a0>
+    0.00 :   78641:  lea    0x6b6f8(%rip),%rdx        # e3d40 <__frame_dummy_init_array_entry+0x1ab0>
+    0.00 :   78648:  mov    $0xf,%esi
+    0.00 :   7864d:  call   9dbd0 <core::option::expect_failed>
+    0.00 :   78652:  lea    0x6b60f(%rip),%rcx        # e3c68 <__frame_dummy_init_array_entry+0x19d8>
+    0.00 :   78659:  mov    $0x20,%edx
+    0.00 :   7865e:  xor    %edi,%edi
+    0.00 :   78660:  vzeroupper
+    0.00 :   78663:  call   9bcc0 <core::slice::index::slice_index_fail>
+    0.00 :   78668:  lea    0x6b5e1(%rip),%rcx        # e3c50 <__frame_dummy_init_array_entry+0x19c0>
+    0.00 :   7866f:  mov    $0x20,%edx
+    0.00 :   78674:  xor    %edi,%edi
+    0.00 :   78676:  mov    %rax,%rsi
+    0.00 :   78679:  vzeroupper
+    0.00 :   7867c:  call   9bcc0 <core::slice::index::slice_index_fail>
+    0.00 :   78681:  lea    0x6b538(%rip),%rcx        # e3bc0 <__frame_dummy_init_array_entry+0x1930>
+    0.00 :   78688:  mov    $0x500,%esi
+    0.00 :   7868d:  xor    %edi,%edi
+    0.00 :   7868f:  mov    %rax,%rdx
+    0.00 :   78692:  call   9bcc0 <core::slice::index::slice_index_fail>
+    0.00 :   78697:  lea    0x6b5e2(%rip),%rdx        # e3c80 <__frame_dummy_init_array_entry+0x19f0>
+    0.00 :   7869e:  mov    $0x20,%esi
+    0.00 :   786a3:  mov    %r10,%rdi
+    0.00 :   786a6:  vzeroupper
+    0.00 :   786a9:  call   9af7b <core::panicking::panic_bounds_check>
+    0.00 :   786ae:  lea    0x6b5e3(%rip),%rdx        # e3c98 <__frame_dummy_init_array_entry+0x1a08>
+    0.00 :   786b5:  mov    $0x20,%esi
+    0.00 :   786ba:  mov    %rax,%rdi
+    0.00 :   786bd:  vzeroupper
+    0.00 :   786c0:  call   9af7b <core::panicking::panic_bounds_check>
+    0.00 :   786c5:  lea    0x6b554(%rip),%rdx        # e3c20 <__frame_dummy_init_array_entry+0x1990>
+    0.00 :   786cc:  mov    $0x6,%esi
+    0.00 :   786d1:  vzeroupper
+    0.00 :   786d4:  call   9af7b <core::panicking::panic_bounds_check>
+    0.00 :   786d9:  lea    0x6b528(%rip),%rdx        # e3c08 <__frame_dummy_init_array_entry+0x1978>
+    0.00 :   786e0:  mov    $0x20,%edi
+    0.00 :   786e5:  mov    $0x20,%esi
+    0.00 :   786ea:  vzeroupper
+    0.00 :   786ed:  call   9af7b <core::panicking::panic_bounds_check>
+    0.00 :   786f2:  lea    0x6b4af(%rip),%rdx        # e3ba8 <__frame_dummy_init_array_entry+0x1918>
+    0.00 :   786f9:  mov    %rax,%rdi
+    0.00 :   786fc:  call   9af7b <core::panicking::panic_bounds_check>
+    0.00 :   78701:  lea    0x6b530(%rip),%rdx        # e3c38 <__frame_dummy_init_array_entry+0x19a8>
+    0.00 :   78708:  mov    %r8,%rsi
+    0.00 :   7870b:  vzeroupper
+    0.00 :   7870e:  call   9af7b <core::panicking::panic_bounds_check>
+    0.00 :   78713:  lea    0x6b4be(%rip),%rdx        # e3bd8 <__frame_dummy_init_array_entry+0x1948>
+    0.00 :   7871a:  mov    %rbx,%rdi
+    0.00 :   7871d:  vzeroupper
+    0.00 :   78720:  call   9af7b <core::panicking::panic_bounds_check>

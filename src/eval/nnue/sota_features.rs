@@ -121,10 +121,36 @@ fn piece_square_index(persp: Color, piece: Piece) -> usize {
 /// `bucket·704`. Range: `[0, 22528)`.
 #[inline]
 pub fn halfka_index(perspective: Color, piece: Piece, sq: Square, king_sq: Square) -> usize {
-    let flip = 56 * perspective as u8; // 0 or 56 (vertical mirror for black)
-    let oriented_sq = (sq.index() ^ orient_halfka(king_sq) ^ flip) as usize;
+    halfka_row_base(perspective, piece, king_sq) + halfka_oriented(perspective, sq, king_sq)
+}
+
+/// The part of [`halfka_index`] that depends only on `(perspective, piece,
+/// king_sq)` — i.e. everything a whole BITBOARD of one piece type shares.
+///
+/// Split out because the Finny set-diff refresh walks one piece type's added
+/// and removed squares as two separate bitboard loops, and recomputed the
+/// slot + bucket base inside each of them: nine instructions
+/// (`shl`/`test`/`lea`/`cmove`/`cmp`/`mov`/`cmove`/`add`) per differing piece
+/// type per direction, for a value that cannot change across either loop.
+/// Hoisting it is a source-level change LLVM will not make for you, because
+/// `piece_square_index`'s two `cmove`s make the expression look cheap enough
+/// to sink.
+#[inline]
+pub fn halfka_row_base(perspective: Color, piece: Piece, king_sq: Square) -> usize {
+    let flip = 56 * perspective as u8;
     let bucket = KING_BUCKETS[(king_sq.index() ^ flip) as usize] as usize;
-    oriented_sq + piece_square_index(perspective, piece) + bucket * PS_NB
+    piece_square_index(perspective, piece) + bucket * PS_NB
+}
+
+/// The per-square half of [`halfka_index`]: `sq` mirrored into the king's
+/// half of the board, `0..64`.
+///
+/// `& 63` is a no-op on the value (both operands are 6-bit) and a range fact
+/// for the optimizer — the same move as [`ThreatResolver::index_decoded`].
+#[inline]
+pub fn halfka_oriented(perspective: Color, sq: Square, king_sq: Square) -> usize {
+    let flip = 56 * perspective as u8;
+    ((sq.index() ^ orient_halfka(king_sq) ^ flip) & 63) as usize
 }
 
 // ===========================================================================
@@ -426,8 +452,17 @@ impl ThreatResolver {
         to: Square,
     ) -> Option<usize> {
         let t = self.tables;
-        let from_o = (from.index() ^ self.orientation) as usize;
-        let to_o = (to.index() ^ self.orientation) as usize;
+        // `& 63` is a NO-OP on the value and a RANGE FACT for the optimizer.
+        // Both operands are already 6-bit — `Square::index() < 64` by the
+        // newtype's constructor assert, and `orientation` is
+        // `orient_threats(ksq) ^ 56·p ∈ {0, 7, 56, 63}` — but LLVM only sees
+        // `u8 ^ u8 → 0..=255`, so every `offsets[att][from_o]` and
+        // `lut2[att][from_o][to_o]` index carried a `cmp $63` / `ja panic`
+        // pair it could not hoist (the bound depends on the loaded event).
+        // This is perf study 8 §4.1's `l1_dot` shape in the resolver: the
+        // loop is ~40 instructions and runs once per event per perspective.
+        let from_o = ((from.index() ^ self.orientation) & 63) as usize;
+        let to_o = ((to.index() ^ self.orientation) & 63) as usize;
         let att = attacker_code ^ self.swap;
         let atd = attacked_code ^ self.swap;
         let dir = (from_o < to_o) as usize;

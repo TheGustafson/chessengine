@@ -1,0 +1,220 @@
+diff --git a/src/bench.rs b/src/bench.rs
+index 72b0a83..798c31e 100644
+--- a/src/bench.rs
++++ b/src/bench.rs
+@@ -306,6 +306,7 @@ fn run_to(params: &BenchParams, out: &mut impl Write) -> io::Result<BenchResult>
+         nodes * 1000 / elapsed_ms.max(1)
+     )?;
+ 
++    crate::perfcount::dump(nodes);
+     Ok(BenchResult { nodes, elapsed_ms })
+ }
+ 
+diff --git a/src/board.rs b/src/board.rs
+index 677956d..eef2006 100644
+--- a/src/board.rs
++++ b/src/board.rs
+@@ -824,6 +824,7 @@ impl Board {
+     /// `blockers_for_king` (doc 04 §3.6) — search calls this once per move
+     /// and feeds the answer to [`Board::make_move`].
+     pub fn gives_check(&self, m: Move) -> bool {
++        crate::perfcount::bump(&crate::perfcount::GIVES_CHECK, 1);
+         let us = self.side_to_move;
+         let them = us.flip();
+         let (from, to) = (m.from(), m.to());
+@@ -1122,6 +1123,7 @@ impl Board {
+     /// can overlap memory prefetches with the rest of the move. The
+     /// [`NoHooks`] instantiation is exactly `make_move`.
+     pub fn make_move_with<H: MakeMoveHooks>(&mut self, m: Move, gives_check: bool, hooks: &mut H) {
++        crate::perfcount::bump(&crate::perfcount::MAKE_MOVE, 1);
+         // Step 1: derive the child key from the parent's, and copy the
+         // carried-over prefix block — this assignment IS Stockfish's
+         // "memcpy up to key" (D8). The push happens at the very end, so
+@@ -1460,6 +1462,7 @@ impl Board {
+     /// the null boundary), check bookkeeping rebuilt for the new side.
+     /// `rule50` and `game_ply` are deliberately unchanged (SF behavior).
+     pub fn make_null_move(&mut self) {
++        crate::perfcount::bump(&crate::perfcount::NULL_MOVE, 1);
+         debug_assert!(self.checkers().is_empty(), "make_null_move while in check");
+         let mut st = *self.st();
+         if let Some(ep) = st.copied.ep_square.take() {
+diff --git a/src/eval/nnue/sota_accumulator.rs b/src/eval/nnue/sota_accumulator.rs
+index d4202dd..eca296f 100644
+--- a/src/eval/nnue/sota_accumulator.rs
++++ b/src/eval/nnue/sota_accumulator.rs
+@@ -223,6 +223,7 @@ impl<'a> HalfkaContext<'a> {
+         if self.stack[ply].computed[p] {
+             return;
+         }
++        crate::perfcount::bump(&crate::perfcount::HK_COMPUTE_CALLS, 1);
+         let mut ancestor = ply;
+         while ancestor > 0 && !self.stack[ancestor].computed[p] {
+             ancestor -= 1;
+@@ -235,6 +236,7 @@ impl<'a> HalfkaContext<'a> {
+                 .iter()
+                 .any(|&(piece, _)| piece == king)
+         }) {
++            crate::perfcount::bump(&crate::perfcount::HK_FINNY, 1);
+             self.finny_refresh_into(board, perspective, ply);
+             self.stack[ply].computed[p] = true;
+             return;
+@@ -243,6 +245,12 @@ impl<'a> HalfkaContext<'a> {
+         let weights = self.weights;
+         let psqt_weights = self.psqt_weights;
+         for child in (ancestor + 1)..=ply {
++            crate::perfcount::bump(&crate::perfcount::HK_SPAN_PLIES, 1);
++            crate::perfcount::bump(&crate::perfcount::HK_FOLDS, 1);
++            crate::perfcount::bump(
++                &crate::perfcount::HK_FOLD_ROWS,
++                (self.stack[child].dirty.adds().len() + self.stack[child].dirty.subs().len()) as u64,
++            );
+             let dirty = self.stack[child].dirty;
+             // Fused parent→child fold: read parent lanes, apply deltas, write
+             // child lanes in one pass — no separate ~1.5 KB memmove (opt #2).
+@@ -326,6 +334,10 @@ impl<'a> HalfkaContext<'a> {
+             // probe; the naive doubled assignment measured +0.006% because
+             // dead-store elimination removed it). Writing both homes from the
+             // registers the fold already holds costs one store per 32 lanes.
++            crate::perfcount::bump(
++                &crate::perfcount::HK_FINNY_ROWS,
++                (add_len + sub_len) as u64,
++            );
+             apply_i16_deltas_dual(
+                 &mut cached.acc,
+                 &mut stack[ply].acc[perspective as usize],
+@@ -352,6 +364,7 @@ impl<'a> HalfkaContext<'a> {
+             stack[ply].psqt[perspective as usize] = cached.psqt;
+             return;
+         } else {
++            crate::perfcount::bump(&crate::perfcount::HK_FINNY_COLD, 1);
+             let mut acc = [0i16; ACC];
+             acc.copy_from_slice(&bias[..ACC]);
+             let mut adds = [0usize; 32];
+diff --git a/src/eval/nnue/sota_context.rs b/src/eval/nnue/sota_context.rs
+index 66232c1..bb287e5 100644
+--- a/src/eval/nnue/sota_context.rs
++++ b/src/eval/nnue/sota_context.rs
+@@ -407,6 +407,7 @@ impl SotaContext {
+         #[cfg(debug_assertions)]
+         self.assert_matches_refresh(board, ply);
+ 
++        crate::perfcount::bump(&crate::perfcount::EVALS, 1);
+         let stm = board.side_to_move();
+         // Count total pieces for the output bucket (both nets share the layout).
+         let piece_count = board.all_occupancy().count() as usize;
+diff --git a/src/eval/nnue/sota_threats.rs b/src/eval/nnue/sota_threats.rs
+index 1ef23c5..40d6a79 100644
+--- a/src/eval/nnue/sota_threats.rs
++++ b/src/eval/nnue/sota_threats.rs
+@@ -135,6 +135,10 @@ impl DeltaBuf {
+ 
+     #[inline]
+     fn push(&mut self, d: ThreatDelta) {
++        crate::perfcount::bump(&crate::perfcount::THR_RAW_PUSH, 1);
++        if !super::sota_features::threat_pair_kept(d.attacker.piece_type, d.victim.piece_type) {
++            crate::perfcount::bump(&crate::perfcount::THR_DROPPED, 1);
++        }
+         // §6-T2 (perf study): drop pairs `threat_index` would fold to None at
+         // the single choke point every recording site flows through — they
+         // were being buffered, resolved twice, then discarded (king victims
+@@ -347,6 +351,7 @@ fn record_square_touch(
+     s: Square,
+     add: bool,
+ ) {
++    crate::perfcount::bump(&crate::perfcount::RST_CALLS, 1);
+     let occ = r.occ;
+ 
+     // --- 1. Outgoing: what `p` threatens from `s`. Kings are never attackers.
+@@ -890,6 +895,10 @@ impl<'a> ThreatContext<'a> {
+         // also present in perf study 7's stripped arms, so the measured
+         // 1.25–1.39× threat cost UNDERSTATES what a properly-built
+         // HalfKA-only engine reaches.
++        crate::perfcount::bump(&crate::perfcount::THR_PUSH, 1);
++        if dp.adds().is_empty() && dp.subs().is_empty() {
++            crate::perfcount::bump(&crate::perfcount::THR_PUSH_EMPTY, 1);
++        }
+         if self.weights.is_empty() {
+             self.stack[child].computed = [true; 2];
+             return;
+@@ -912,6 +921,7 @@ impl<'a> ThreatContext<'a> {
+                 // here and mark the perspective computed; a king cross is rare, so
+                 // the common case stays fully lazy. The OTHER perspective still
+                 // folds against the snapshot stored above.
++                crate::perfcount::bump(&crate::perfcount::THR_KINGCROSS, 1);
+                 self.stack[child].acc[pi] = refresh_threat(weights, board, persp);
+                 self.stack[child].psqt[pi] = refresh_psqt_threat(psqt_weights, board, persp);
+                 self.stack[child].computed[pi] = true;
+@@ -934,6 +944,7 @@ impl<'a> ThreatContext<'a> {
+         if self.stack[ply].computed[0] && self.stack[ply].computed[1] {
+             return;
+         }
++        crate::perfcount::bump(&crate::perfcount::THR_COMPUTE_CALLS, 1);
+         // Nearest computed ancestor per perspective (spans differ only across a
+         // king-crossed ply, which computes one perspective eagerly at push).
+         let mut anc = [ply; 2];
+@@ -956,6 +967,7 @@ impl<'a> ThreatContext<'a> {
+             if !need[0] && !need[1] {
+                 continue;
+             }
++            crate::perfcount::bump(&crate::perfcount::THR_SPAN_PLIES, 1);
+             // Regenerate the perspective-agnostic raw events once, from this
+             // ply's stored snapshot — shared across both perspectives.
+             self.buf.clear();
+@@ -974,6 +986,10 @@ impl<'a> ThreatContext<'a> {
+             // window + hardware stride prefetchers already cover the fold's
+             // row streams — so the pipeline keeps only the resolve/fold split
+             // and the constant-factor hoists.
++            crate::perfcount::bump(
++                &crate::perfcount::THR_EVENTS_GEN,
++                self.buf.events().len() as u64,
++            );
+             let mut lens = [(0usize, 0usize); 2];
+             // T6c: the psqt bucket-sum DELTA (Σ add rows − Σ sub rows) is
+             // accumulated during resolve — the row loads (one random 32 B line
+@@ -1028,6 +1044,14 @@ impl<'a> ThreatContext<'a> {
+                     continue;
+                 }
+                 let (add_len, sub_len) = lens[p];
++                crate::perfcount::bump(&crate::perfcount::THR_FOLDS, 1);
++                crate::perfcount::bump(
++                    &crate::perfcount::THR_FOLD_ROWS,
++                    (add_len + sub_len) as u64,
++                );
++                if add_len == 0 && sub_len == 0 {
++                    crate::perfcount::bump(&crate::perfcount::THR_FOLD_COPYONLY, 1);
++                }
+                 let (before, after) = self.stack.split_at_mut(child);
+                 let parent = &before[child - 1];
+                 let entry = &mut after[0];
+diff --git a/src/lib.rs b/src/lib.rs
+index 41a39c8..7f80849 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -30,6 +30,7 @@ pub mod movepick;
+ pub mod moves;
+ #[cfg(feature = "datagen")]
+ pub mod obs;
++pub mod perfcount;
+ pub mod perft;
+ #[cfg(feature = "policy")]
+ pub mod policy;
+diff --git a/src/movepick.rs b/src/movepick.rs
+index 728e9b6..681ba9d 100644
+--- a/src/movepick.rs
++++ b/src/movepick.rs
+@@ -319,6 +319,7 @@ impl MovePicker {
+         ply: usize,
+         cont_hist: [crate::history::ContHistId; 6],
+     ) -> Self {
++        crate::perfcount::bump(&crate::perfcount::MP_NEW, 1);
+         let base = if !board.checkers().is_empty() {
+             Stage::EvasionTt
+         } else if depth > 0 {
+@@ -337,6 +338,7 @@ impl MovePicker {
+     /// (doc 10). The TT move is usable only if it is additionally a capture or
+     /// queen promotion (`capture_stage`).
+     pub fn new_probcut(board: &Board, tt_move: Move, threshold: Value) -> Self {
++        crate::perfcount::bump(&crate::perfcount::MP_NEW_PROBCUT, 1);
+         let usable = tt_move.is_ok() && board.pseudo_legal(tt_move) && board.capture_stage(tt_move);
+         MovePicker::with_base(
+             Stage::ProbcutTt,

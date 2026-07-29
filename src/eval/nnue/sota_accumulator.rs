@@ -8,7 +8,7 @@
 //! skip channel. A net without a PSQ1 table (`psqt_weights` empty) skips
 //! every psqt update and the sums stay zero — bit-identical to pre-T6c.
 
-use super::sota_features::{ACC, halfka_index, halfka_king_key};
+use super::sota_features::{ACC, halfka_index, halfka_king_key, halfka_oriented, halfka_row_base};
 use super::sota_head::BUCKETS;
 use super::sota_simd::{apply_i16_deltas, apply_i16_deltas_dual, apply_i16_deltas_into};
 use crate::bitboard::Bitboard;
@@ -52,11 +52,24 @@ const FINNY_KEYS: usize = 64;
 /// twelve instructions for a load / add / store. A fixed-size array reference
 /// fixes the shape. (A raw-pointer form removes the length check too, but
 /// measured +2.2% — it costs LLVM the aliasing facts the slice index gives it.)
+///
+/// # One bounds check, not three
+/// The `table[f*BUCKETS..][..BUCKETS].try_into()` spelling reaches the same
+/// `&[i32; BUCKETS]` but pays for it three times: the open range checks
+/// `f*BUCKETS <= len`, the closed range checks `BUCKETS <= len - f*BUCKETS`,
+/// and `try_into` checks the length again (it folds, but the first two do
+/// not). In the threat resolver that is a `sub`/`jb`/`cmp $7`/`jbe` quartet
+/// per resolved event per perspective — measured in perf study 10 §2.1 as
+/// two of the five panic edges in that ~40-instruction loop.
+///
+/// `as_chunks` states the shape once: the table IS a slice of BUCKETS-wide
+/// rows (`THREAT_DIMS · BUCKETS` / `HALFKA_DIMS · BUCKETS` by construction),
+/// so the row index is a single `cmp`/`jae` against a length LLVM derives by
+/// a shift. Same row, same arithmetic, bit-identical output.
 #[inline]
 fn psqt_row(table: &[i32], feature: usize) -> &[i32; BUCKETS] {
-    table[feature * BUCKETS..][..BUCKETS]
-        .try_into()
-        .expect("psqt rows are BUCKETS wide by construction")
+    let (rows, _tail) = table.as_chunks::<BUCKETS>();
+    &rows[feature]
 }
 
 /// Add feature `feature`'s 8-wide PSQ1 row into `psqt`.
@@ -294,9 +307,27 @@ impl<'a> HalfkaContext<'a> {
             // position. Same add/sub SETS as the old sorted-list derivation
             // (order may differ; wrapping i16/i32 adds commute => the
             // accumulator and PSQT sums stay bit-identical).
-            let mut adds = [0usize; 32];
+            // The diff walk is 6.8x Stockfish's on its SCALAR half (perf study
+            // 10 §2.2: 184 vs 27 instructions/node, against a fold that is only
+            // 1.8x on the accumulator traffic), so it is written for codegen,
+            // not for prose. Three things it must NOT do:
+            //
+            //  * iterate `PieceType::ALL` — LLVM materialises that 6-byte array
+            //    on the stack every call and reloads the piece type from it per
+            //    iteration (`movw $0x504,0xbc(%rsp)` / `movzbl 0xb8(%rsp,%r13,1)`).
+            //    Zipping the two `[Bitboard; 6]` ROWS gives a compile-time trip
+            //    count and no memory for the iteration variable.
+            //  * recompute the row base per direction — hoisted (see
+            //    `halfka_row_base`).
+            //  * bounds-check the cursor writes — at most one index is pushed
+            //    per occupied square, and there are at most 32 pieces, so a
+            //    cursor cannot exceed `CAP`; `& (CAP - 1)` is free because CAP
+            //    is a power of two, and the `debug_assert` carries the real
+            //    invariant. (Same move as the threat resolver's, §2.1.)
+            const CAP: usize = 32;
+            let mut adds = [0usize; CAP];
             let mut add_len = 0;
-            let mut subs = [0usize; 32];
+            let mut subs = [0usize; CAP];
             let mut sub_len = 0;
             for color in [Color::White, Color::Black] {
                 for pt in PieceType::ALL {
@@ -306,12 +337,15 @@ impl<'a> HalfkaContext<'a> {
                         continue;
                     }
                     let piece = Piece::new(color, pt);
+                    let base = halfka_row_base(perspective, piece, king);
                     for sq in new_bb & !old_bb {
-                        adds[add_len] = halfka_index(perspective, piece, sq, king);
+                        debug_assert!(add_len < CAP, "finny add cursor overflow");
+                        adds[add_len & (CAP - 1)] = base + halfka_oriented(perspective, sq, king);
                         add_len += 1;
                     }
                     for sq in old_bb & !new_bb {
-                        subs[sub_len] = halfka_index(perspective, piece, sq, king);
+                        debug_assert!(sub_len < CAP, "finny sub cursor overflow");
+                        subs[sub_len & (CAP - 1)] = base + halfka_oriented(perspective, sq, king);
                         sub_len += 1;
                     }
                     cached.by_piece[color as usize][pt as usize] = new_bb;
