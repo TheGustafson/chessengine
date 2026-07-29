@@ -17,11 +17,11 @@ fn cenn_v2_round_trip_and_evaluate() {
         .collect();
     let ft_bias: Aligned<i16> = (0..ACC).map(|i| (i % 5) as i16 - 2).collect();
     let threat_weights: Aligned<i8> = (0..THREAT_DIMS * ACC).map(|i| (i % 9) as i8 - 4).collect();
-    let l1_weights: Box<[i8]> = (0..BUCKETS * L2 * L1)
+    let l1_weights: Aligned<i8> = (0..BUCKETS * L2 * L1)
         .map(|i| ((i as i8).wrapping_mul(5).wrapping_add(7)) % 61 - 30)
         .collect();
     let l1_biases: Box<[f32]> = (0..BUCKETS * L2).map(|i| (i as f32) * 0.01 - 0.5).collect();
-    let l2_weights: Box<[f32]> = (0..BUCKETS * L2 * L3)
+    let l2_weights: Aligned<f32> = (0..BUCKETS * L2 * L3)
         .map(|i| (i as f32) * 0.003 - 0.4)
         .collect();
     let l2_biases: Box<[f32]> = (0..BUCKETS * L3)

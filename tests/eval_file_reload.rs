@@ -24,9 +24,9 @@ fn tiny_net(scale: i32) -> SotaNetwork {
         threat_weights: Vec::new().into(),
         psqt_weights: Vec::new().into(),
         head: SotaHead {
-            l1_weights: vec![0i8; BUCKETS * L2 * L1].into_boxed_slice(),
+            l1_weights: vec![0i8; BUCKETS * L2 * L1].into(),
             l1_biases: vec![0.0; BUCKETS * L2].into_boxed_slice(),
-            l2_weights: vec![0.0; BUCKETS * L2 * L3].into_boxed_slice(),
+            l2_weights: vec![0.0; BUCKETS * L2 * L3].into(),
             l2_biases: vec![0.0; BUCKETS * L3].into_boxed_slice(),
             l3_weights: vec![0.0; BUCKETS * L3].into_boxed_slice(),
             l3_biases: vec![0.0; BUCKETS].into_boxed_slice(),
