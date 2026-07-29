@@ -1577,3 +1577,42 @@ binary while a match was USING it. It happened to be harmless (the edit was
 identity by construction, the gate still read 0/50, and running processes keep
 the old inode), but that is luck, not method. Match binaries now get copied to
 a stable path (`engines/bin/archon-swapbin`) that no build writes to.
+
+## CORRECTION TO THE LINE ABOVE — THE NULL IS A SENSITIVITY BOUND, NOT A SUBTRAHEND
+
+Last entry said to read the swap as "swap-vs-plain MINUS scaled-vs-plain".
+That is wrong, and the error is worth stating because it would have produced a
+confidently mis-signed conclusion.
+
+The two arms are not the same kind of perturbation:
+
+- **Reckless × 0.7316** moves their net INTO our frame. It is a
+  NORMALISATION — the thing that makes the comparison fair at all.
+- **Our net × 0.7316** moves our net OUT of its own correct frame. It is a
+  DE-normalisation.
+
+So they do not cancel and must not be subtracted. If the conversion is right,
+`swap vs plain` already IS the net-quality comparison and needs no adjustment.
+
+What the null actually buys is a **sensitivity bound on the conversion error**.
+Our search's margins are fixed centipawns, so the question that decides how
+much to trust the swap is: how expensive is being off-frame by ~27%?
+
+- Null arm loses badly ⇒ the search is highly scale-sensitive ⇒ any error δ in
+  0.7316 is costing the swap arm real Elo ⇒ the swap's measured result is a
+  LOWER bound on the net's quality, and the true figure is better.
+- Null arm is neutral ⇒ scale barely matters ⇒ `swap vs plain` reads directly
+  as net quality, and the curvature caveat (median ratio 0.554 vs LS 0.7316)
+  is not load-bearing after all.
+
+Either outcome is informative, which is why the arm is still worth its games —
+but it is a calibration of the error bar, not a term to subtract from the
+estimate.
+
+**Process, second entry in two ticks:** the null was launched CONCURRENTLY with
+the swap, taking the box to 18 engine processes, 4.3 GB of engines and 1 GB
+available — the pre-OOM condition that has already cost a global OOM once. I
+stopped it at 13 games (`engines/runs/framenull-aborted-13g`) and it re-runs
+after the swap. "One instrument at a time" is a resource rule as much as an
+epistemic one, and I broke it for a match that was never going to be readable
+before the swap finished anyway.
