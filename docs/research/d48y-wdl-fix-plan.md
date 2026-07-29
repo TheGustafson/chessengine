@@ -817,3 +817,45 @@ Related prior: the Reckless frame-null measured **−12.0 ± 18.2 Elo** for a
 SF's frame.
 
 D48Y meanwhile: sb115/300, healthy.
+
+### ★ THE FRAME QUESTION IS ANSWERED — and it is NEUTRAL
+
+`engines/runs/sfframe/`, **406 games, fixed 110k nodes, SAME NET, one header
+field apart** (network_scale 696 = SF frame vs 400 = current):
+
+**+7.7 ± 17.7 Elo. NOT SIGNIFICANT.** (122W 113L 171D, 51.1%, Ptnml
+[1,47,98,56,1], zero forfeits.)
+
+⇒ **Moving into Stockfish's eval frame is worth ~nothing.** Our SF-transcribed
+margins are NOT badly mistuned for D48X's 0.575× frame, despite
+`net_scale_check` calling it an ABSOLUTE FAIL. The tool's band is a
+*diagnostic*, not an Elo claim, and this is the first time anyone has priced it
+in games.
+
+**Consequences, all simplifying:**
+1. The cp-scale worry I built up over several ticks is **deflated**. Either D48Y
+   calibration arm is safe; the frame is not where the Elo is.
+2. The user's hypothesis is answered in its strongest form: the shape/frame does
+   NOT meaningfully fit our margins better. It also does not hurt.
+3. D48Y's verdict will therefore be about the **WEIGHTS**, which is what we
+   wanted to measure all along.
+4. A −10 to +25 Elo interval cannot exclude a small gain, so do not claim the
+   frame is provably worthless — claim it is not a lever worth chasing.
+
+### ★ SECOND OOM — trainer died again at sb117, MY FAULT AGAIN
+
+`journalctl -k`: global OOM at **04:30:14**, killing a 4.4 GB `node-MainThread`.
+The trainer died in the same pressure event. `dmesg` returned nothing this time
+(restricted), so **use `journalctl -k --since` as the OOM oracle**, not dmesg.
+
+**Cause: I ran a 406-game match (8 engine processes) beside an 11-hour GPU
+training run.** Same error as the perf-study build, different tool. I wrote the
+rule after the first one and then broke it myself.
+
+**Recovered from the complete sb110 set** (4 files). Trainer back: 2,991 MB
+host / 6361 MiB GPU, 94% util. Cost ~7 superbatches + a fresh-Adam transient.
+
+**Rule, now with two receipts: NOTHING ELSE RUNS BESIDE THE TRAINER.** Not
+builds, not matches. Batch that work for after the run, or accept losing the
+run. The box has ~8 GB of true headroom and a trainer plus any second heavy
+consumer exceeds it.
