@@ -433,3 +433,39 @@ closing it properly needs an SPSA retune of the cp-denominated margins.
 perfectly-fitted net. The real net smooths it, and the mix-weighted average over
 12 corpora will be gentler than fishpack32's 15×. The real number is available
 minutes after the run ends.
+
+### The shape may HELP — user hypothesis, and the test that decides it
+
+User's point (2026-07-29): the new shape may fit our search better, not worse,
+because our margins are Stockfish's.
+
+**It has real support.** Stockfish already uses this exact functional form —
+`fit_target_transform.py` benchmarks against it: SF's net-side transform is the
+draw-aware double sigmoid at `a=270, b=340`. So we are not inventing a shape, we
+are moving from NO draw model into SF's family, and every cp margin we own was
+transcribed from SF. On our own heldout the ordering agrees: plain sigmoid
+0.0532, SF's transform 0.0361, our fitted 0.0354.
+
+**The complication, stated so it is not assumed away.** D48X ALREADY agrees with
+SF almost linearly (LS 0.5126 vs median 0.5096 — 0.6% apart), so the old net is
+not badly SF-shaped over the range real positions occupy. And our fitted params
+are much SHARPER than SF's once frame is accounted for: our a≈175/b≈72 in our
+units is roughly a≈87/b≈36 in SF cp, versus SF's 270/340. So D48Y could move
+toward SF's FORM while overshooting its SHARPNESS.
+
+**Decisive test, and we already own the instrument** (SF's net runs inside our
+search on `experiment/reckless-net-2`, gated 47/47 bit-exact). Run the paired
+frame regression THREE ways on identical positions:
+
+| pair | what it answers |
+|---|---|
+| D48Y vs D48X | how far the eval moved |
+| **D48Y vs SF-net** | **did we get MORE SF-shaped?** |
+| D48X vs SF-net (=0.5126 / 0.5096, already measured) | the baseline to beat |
+
+If `D48Y vs SF` agrees better than 0.6% (LS ≈ median), the user is right: the
+new shape is more SF-like and our SF-derived margins should fit it BETTER, which
+would make the cp-scale risk a non-issue. If it agrees WORSE, we overshot
+sharpness and the screen understates D48Y.
+
+Cost: minutes, no games. Run it immediately after packing, before any match.
