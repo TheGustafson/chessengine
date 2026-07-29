@@ -737,3 +737,47 @@ large (0.575 → 0.980, n=518, slope and median agreeing) so it is not noise, bu
 the final value may shift with the anneal.
 
 D48Y: sb100/300, heldout ema 0.012594, still slowly improving.
+
+### Perf study 13 — verified, gated, PGO'd, merged; study 14 commissioned
+
+**1.3733× → 1.3658×** (6114.6 → 6081.2 i/n). Gate: `Bench: 587683` reproduced,
+all checks passed. It does NOT touch `src/eval/nnue/`, so `check.sh` is the
+required gate — but it DOES touch `search/mod.rs` and `board.rs`, so the bench
+pin is the real test of its node-identity claim, and it held.
+
+**Independently verified by me** (`bench 16 1 9`, both PGO, canonical net):
+
+| binary | nodes | i/n |
+|---|---|---|
+| pre-study-12 (canonical) | **329,318** | 9540.8 |
+| post-study-12 | **329,318** | 9122.8 (−4.38%) |
+| post-study-13 (`archon-s13pgo`) | **329,318** | **9083.1** (−0.44%) |
+
+Node counts identical across all three. Study 13 claimed −0.55% on its panel; I
+measure −0.44% on mine. **Cumulative for studies 12+13: −4.80%.**
+
+**It found a live correctness bug while optimising.** `king_square`'s `expect`
+was a REACHABLE release tripwire, not dead code — `from_fen` does not validate
+kings and `generate_legal` will emit a king capture from an illegal-but-accepted
+FEN. Removing it would have converted a loud panic into a silent wrong answer.
+Tripwire relocated to the UCI `position` boundary, mutation-verified.
+
+**Five mechanisms refuted**, on top of a new source-perturbation null (±0.011
+i/n): building `DirtyPiece` inside `make_move_with` (+38.2), deleting the slider
+bounds check (+43.8 — and a static scan finds `cmp $0x3f` ZERO times in the hot
+predicates, so **our 1.84× branch ratio is not bounds checks**), generalising
+the panic-edge win (+106.3), and a robustness guard as a `Board` method
+(**+90.6 for a predicate the search never executes** — +40 of it for the method
+merely EXISTING; `#[cold]`/`#[inline(never)]` changed nothing).
+
+That last is the transferable lesson and is now in study 14's brief: **price the
+ARM, never the mechanism** — cold code in an unrelated module moves the hot path
+via the inline cost model alone.
+
+**Study 14 commissioned** at the ranked #1 that study 13 located but could not
+land: **`Board::st()` runs 29.07×/node** through `Vec::last().expect(...)`; the
+`Box<[StateInfo; CAP]>` + `top` fix is blocked on a borrow trick and needs a
+budgeted 1–2 h refactor. Plus ~68 i/n of untraced libc `memmove`. Six dead ends
+are listed as closed so it cannot repeat them.
+
+D48Y unaffected throughout: sb104, memory held 4–5 GB, no OOM.
