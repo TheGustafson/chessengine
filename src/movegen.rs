@@ -484,6 +484,43 @@ impl Board {
         );
 
         match m.kind() {
+            // 1+2. Castling and en passant, out of line together (perf study
+            //      17 §5). Between them they are the only arms that need the
+            //      slider tables, a rebuilt occupancy and an
+            //      `attackers_to_exist` loop, and they are a fraction of a
+            //      percent of the moves `legal` is asked about; inline, they
+            //      set this function's prologue and spill.
+            MoveKind::Castling | MoveKind::EnPassant => self.legal_special(m, us, ksq, from, to),
+
+            // 3. King steps: the destination must be safe with the king
+            //    REMOVED from occupancy, so a checking slider's ray extends
+            //    through the vacated square (fleeing along the ray is
+            //    illegal).
+            _ if from == ksq => !self.attackers_to_exist(
+                to,
+                self.all_occupancy() ^ Bitboard::from_square(from),
+                them,
+            ),
+
+            // 4. Everything else: legal iff not pinned, or moving along
+            //    the pin ray (toward or away from the king).
+            _ => !self.blockers_for_king(us).contains(from) || attacks::aligned(from, to, ksq),
+        }
+    }
+
+    /// The castling and en-passant arms of [`Board::legal`].
+    #[cold]
+    #[inline(never)]
+    fn legal_special(&self, m: Move, us: Color, ksq: Square, from: Square, to: Square) -> bool {
+        // `them` is re-derived, not passed: with it this took SEVEN integer
+        // arguments, one past the six SysV registers, so every call site wrote
+        // a stack slot for a path it almost never takes (D33 reviewer C).
+        // `Color::flip` is one `xor`. Splitting the two arms into separate
+        // helpers -- the reviewer's preferred shape -- was also tried and cost
+        // **+19.4 i/n**, because it turns one cold call site into two and hands
+        // the caller's `match` back its four-way dispatch. Measured, not argued.
+        let them = us.flip();
+        match m.kind() {
             // 1. Castling: the two squares the king crosses/lands on must
             //    be unattacked. `from` (e1/e8) is not tested — castling is
             //    never generated nor pseudo_legal-validated while in check.
@@ -522,19 +559,16 @@ impl Board {
                         .is_empty()
             }
 
-            // 3. King steps: the destination must be safe with the king
-            //    REMOVED from occupancy, so a checking slider's ray extends
-            //    through the vacated square (fleeing along the ray is
-            //    illegal).
-            _ if from == ksq => !self.attackers_to_exist(
-                to,
-                self.all_occupancy() ^ Bitboard::from_square(from),
-                them,
-            ),
-
-            // 4. Everything else: legal iff not pinned, or moving along
-            //    the pin ray (toward or away from the king).
-            _ => !self.blockers_for_king(us).contains(from) || attacks::aligned(from, to, ksq),
+            // Unreachable: the caller only routes the two kinds above here.
+            // `false` is the fail-soft direction — a spurious "illegal" drops a
+            // move, where `true` would let an illegal one be played (D33
+            // reviewer A). No `let _ = …` suppression here: both parameters are
+            // live in the arms above, so a future unused-parameter warning
+            // would be REAL and must not be pre-silenced.
+            _ => {
+                debug_assert!(false, "legal_special called with {m:?}");
+                false
+            }
         }
     }
 
@@ -1968,6 +2002,60 @@ mod tests {
         assert!(!forced.legal(ep), "exd3 exposes the king along rank 4");
         assert!(!legal_set(&forced).contains(&ep));
         assert_legal_matches_oracle(&forced, "forced horizontal ep pin");
+    }
+
+    /// The DIAGONAL half of [`Board::legal_en_passant`], which nothing in the
+    /// repo reached (D33 reviewer C, perf study 17 §9.2). Every other
+    /// en-passant fixture — here, in `board.rs`, and in `tests/data/perft.epd`
+    /// — is a rook/rank case, so deleting that arm's `bishop_attacks` term was
+    /// killed only by an aggregate perft total, which cannot localise a fault.
+    ///
+    /// Two capturers, and only one of them is pinned: the black king sits on
+    /// e6, a white bishop on a2, and the a2–e6 diagonal runs a2-b3-c4-d5-e6.
+    /// `c4xd3` e.p. steps the c4 pawn OFF that diagonal and exposes the king;
+    /// `e4xd3` e.p. does not. **The second capturer is what makes the test
+    /// work**: with only the pinned one, D9's ep-validity gate
+    /// (`make_move_with` step 8) proves no ep capture can be legal and never
+    /// sets the ep square at all, so this arm is never reached. That is why
+    /// `perft.epd`'s `ep-pin-diag` does NOT cover it — verified by mutation,
+    /// deleting the bishop term leaves that FEN's perft totals unchanged.
+    #[test]
+    fn diagonal_ep_pin_is_illegal_for_the_pinned_capturer_only() {
+        let mut forced = Board::empty();
+        for (piece, sq) in [
+            (Piece::new(Color::White, PieceType::King), Square::G2),
+            (Piece::new(Color::White, PieceType::Bishop), Square::A2),
+            (Piece::new(Color::White, PieceType::Pawn), Square::D4),
+            (Piece::new(Color::Black, PieceType::King), Square::E6),
+            (Piece::new(Color::Black, PieceType::Pawn), Square::C4),
+            (Piece::new(Color::Black, PieceType::Pawn), Square::E4),
+        ] {
+            forced.put_piece(piece, sq);
+        }
+        forced.side_to_move = Color::Black;
+        forced.finish_setup(Some(Square::D3), 0, 1);
+        assert_eq!(forced.en_passant_square(), Some(Square::D3));
+        assert!(
+            forced.checkers().is_empty(),
+            "the bishop's a2-e6 diagonal is blocked by the c4 pawn"
+        );
+
+        let pinned = Move::en_passant(Square::C4, Square::D3);
+        let free = Move::en_passant(Square::E4, Square::D3);
+        let pseudo = move_set(&pseudo_list(&forced));
+        assert!(pseudo.contains(&pinned) && pseudo.contains(&free));
+
+        assert!(
+            !forced.legal(pinned),
+            "cxd3 e.p. leaves the a2-e6 diagonal open onto the black king"
+        );
+        assert!(
+            forced.legal(free),
+            "exd3 e.p. is off the pin line and legal"
+        );
+        assert!(!legal_set(&forced).contains(&pinned));
+        assert!(legal_set(&forced).contains(&free));
+        assert_legal_matches_oracle(&forced, "forced diagonal ep pin");
     }
 
     /// Doc 05 §5.2 "ep as evasion": the checker IS the double-pushed pawn,
