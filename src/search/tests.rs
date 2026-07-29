@@ -2192,6 +2192,16 @@ fn search_nnue_accumulator_stays_consistent_across_the_tree() {
 
         assert!(w.eval_ctx.nnue_active(), "NNUE stayed active for {fen}");
         assert!(w.nodes > 0, "search evaluated nodes for {fen}");
+        // The comment above CLAIMS this tree reaches null moves, and the
+        // null-move ply mapping (`EvalContext::null_plies`, perf study 15
+        // arm 1) is one of the two things this oracle is now the guard for.
+        // Assert it rather than argue it — study 14 §7.1's `has_repeated`
+        // hole was exactly a claimed-but-unexecuted path (D33 reviewer C, T2).
+        assert!(
+            w.st_nmp_try > 0,
+            "the tree must contain a null move for {fen} — otherwise the \
+             acc_ply mapping is untested by this oracle"
+        );
 
         // The board is restored to the root, and `stack[0]` holds the root
         // accumulator refreshed at go-start: the incrementally-driven root
@@ -2204,6 +2214,65 @@ fn search_nnue_accumulator_stays_consistent_across_the_tree() {
             "root accumulator diverged from a from-scratch forward for {fen}"
         );
     }
+}
+
+/// The SOTA twin of the test above, and until perf study 15 it did not exist:
+/// **no test anywhere installed a SOTA net into a `Worker`**, so
+/// `SotaContext::assert_matches_refresh` — the per-node oracle that recomputes
+/// BOTH accumulators and both PSQT channels from scratch and compares — had
+/// never once run inside a search (D33 reviewers A/C, the study's largest test
+/// hole). Every gate that could see the SOTA accumulators was a node-count or
+/// eval-hash SNAPSHOT: it fires only if a mistake happens to perturb the tree.
+///
+/// This is the test that covers perf study 15 arm 1's SOTA half. Mutations it
+/// catches, each verified: `push_sota_dirty` indexing `ply` instead of
+/// `acc_ply(ply)`; `at_full`/`current_full` reading `ply + 1`; re-adding an
+/// EMPTY push in the null-move block; dropping `pop_null`.
+#[cfg(feature = "sota")]
+#[test]
+fn search_sota_accumulator_stays_consistent_across_the_tree() {
+    use crate::eval::nnue::sota_loader::{SotaNetwork, tests::test_net_with_threats_pub};
+
+    // Same one-off leak as the v1 test: the accumulator contexts borrow the
+    // net for `'static`, which is the production lifetime.
+    let net: &'static SotaNetwork = Box::leak(Box::new(test_net_with_threats_pub()));
+
+    let positions = [
+        START_FEN,
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 10",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 11",
+    ];
+
+    let tt = test_tt();
+    let mut w = Worker::new(Board::startpos());
+    // Injected per-worker, never through `ACTIVE_NET`, so the parallel test
+    // harness stays hermetic. `iterative_deepening` does not re-install nets
+    // (only `start_searching`/`bench` do), so this survives every position.
+    w.eval_ctx.set_sota_net(Some(net));
+    assert!(w.eval_ctx.nnue_active(), "SOTA net must install");
+
+    let mut null_moves = 0u64;
+    for fen in positions {
+        w.board = board(fen);
+        w.limits = Limits::new();
+        w.limits.nodes = Some(4_000);
+        let stop = AtomicBool::new(false);
+        tt.new_search();
+        w.iterative_deepening(&tt, &stop, &mut TimePersist::default(), &mut |_| {});
+
+        assert!(w.nodes > 0, "search evaluated nodes for {fen}");
+        null_moves += w.st_nmp_try;
+    }
+    // Without a null move somewhere in these trees the oracle never sees the
+    // ply mapping this test exists for — the same measurement-not-argument
+    // rule as its v1 twin. Summed over the loop rather than asserted per
+    // position: `st_nmp_try` is per-search, and whether NMP fires in any ONE
+    // position depends on the synthetic net's eval clearing the NMP margin,
+    // which is not a property this test should pin.
+    assert!(
+        null_moves > 0,
+        "at least one of these trees must contain a null move"
+    );
 }
 
 // --- Stop-flag seam (§3.9): bestmove is printable even so ---

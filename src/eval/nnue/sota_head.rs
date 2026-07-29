@@ -258,6 +258,73 @@ fn find_nnz(ft: &[u8; L1], idx: &mut [u16; L1 / 4]) -> usize {
     super::sota_simd::find_nnz(ft, idx)
 }
 
+/// Reusable per-thread scratch for [`SotaHead::forward_into`] — the activated
+/// feature vector and the non-zero group list its sparse L1 matmul walks.
+///
+/// **This is a caller-owned buffer, not two locals, for a measured reason**
+/// (perf study 15 arm 4). Declared inside `forward_into` as
+/// `let mut ft = [0u8; L1]`, the array's zero-initialiser compiled to a
+/// **1280-byte libc `memset` call at every evaluation** — `mov $0x500,%edx;
+/// xor %esi,%esi; call memset` as the third instruction of the function — even
+/// though the very next statement (`activate_ft`) overwrites every lane. LLVM
+/// cannot dead-store-eliminate it, because `activate_ft` is an indirect
+/// `kernel_dispatch!` call and it therefore cannot prove the buffer is fully
+/// written. `nnz` had the same shape at 640 bytes, and it genuinely IS only
+/// partly written (only `..count` is ever read) — which is why the fix is a
+/// long-lived buffer rather than a `MaybeUninit` + `unsafe` dance: a buffer
+/// that is never re-initialised has nothing left to eliminate, and it needs no
+/// safety argument. Same pattern, and the same reason, as
+/// `ThreatContext::add_scratch`.
+///
+/// Stale bytes are never read: `activate_ft` writes all `L1` lanes of `ft`
+/// before anything reads it, and `nnz` is consumed as `&nnz[..count]` with the
+/// `count` `find_nnz` just returned.
+/// Cache-line aligned like `Entry`/`FinnyEntry`/`ThreatEntry`, and like both
+/// references' equivalents — Stockfish's `alignas(CacheLineSize)
+/// transformedFeatures` (`eca43a97:src/nnue/network.cpp:144-148`) and
+/// Reckless's `Aligned<T>` wrapper. Measured −0.6 i/n, which is 300x this
+/// study's rebuild null but small; it is kept on the reference convergence and
+/// on `sota_simd.rs:232`'s `read_unaligned` (whose comment says "`ft` is only
+/// byte-aligned" and no longer has to be), not on its instruction number.
+/// Alignment is a cycles lever, and cycles are not this study's metric.
+#[repr(align(64))]
+pub struct HeadScratch {
+    ft: [u8; L1],
+    nnz: [u16; L1 / 4],
+}
+
+impl HeadScratch {
+    pub fn new() -> Self {
+        HeadScratch {
+            ft: [0u8; L1],
+            nnz: [0u16; L1 / 4],
+        }
+    }
+
+    /// A scratch filled with values no forward pass can legitimately leave
+    /// behind — the test-only stand-in for "the previous position's buffer".
+    ///
+    /// The whole safety argument for reusing this buffer is that `activate_ft`
+    /// writes every one of `L1` lanes before anything reads them. While `ft`
+    /// was a fresh `[0u8; L1]` local, a lane a kernel failed to write was
+    /// zero — and ~85-95% of activations ARE zero after the clamp, so the bug
+    /// was invisible. Reused, that lane is the previous position's activation
+    /// and the eval becomes silently history-dependent.
+    #[cfg(test)]
+    fn poisoned() -> Self {
+        HeadScratch {
+            ft: [0xABu8; L1],
+            nnz: [0xFFFFu16; L1 / 4],
+        }
+    }
+}
+
+impl Default for HeadScratch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SotaHead {
     /// int8 sparse matmul over the nonzero groups → dequantized SCReLU f32[L2]
     /// (design/11 §12.3 step 3). Products accumulate in i32, matching Bullet's
@@ -403,8 +470,15 @@ impl SotaHead {
         piece_count: usize,
         psqt: &PsqtPair,
     ) -> (i32, Option<f32>, Option<[f32; 3]>) {
+        // Convenience wrapper: builds its own scratch, so it pays the 1920 B of
+        // zero-init that [`HeadScratch`] exists to remove. That is fine for the
+        // tests and for the smallnet/largenet tiers that call it, which cannot
+        // borrow `SotaContext::head_scratch` anyway — their `current_full` holds
+        // a `&mut` to the side stack across the call (D33 reviewer B, M3). The
+        // hot path calls `forward_into` directly.
         let mut l1 = [0.0f32; L2];
-        self.forward_into(pst, threat, stm, piece_count, psqt, &mut l1)
+        let mut scratch = HeadScratch::new();
+        self.forward_into(pst, threat, stm, piece_count, psqt, &mut scratch, &mut l1)
     }
 
     /// [`forward`](Self::forward), writing the shared-bottleneck activation
@@ -413,6 +487,16 @@ impl SotaHead {
     /// with no by-value copy and no discarded return on the `forward` path
     /// (perf study #4 item #5; the pre-restructure `forward` called
     /// `forward_full(...).0` and threw the 512 B array away).
+    ///
+    /// `scratch` is the caller's long-lived [`HeadScratch`] — see that type for
+    /// why it is a parameter and not two locals.
+    // Eight arguments, one over clippy's default: they are the forward pass's
+    // genuinely independent inputs (two accumulators, three position facts, and
+    // two caller-owned output buffers). Bundling them into a struct would move
+    // the same words without adding a fact. NOTE: `tools/check.sh` clippies
+    // DEFAULT features only, so no gate sees this lint either way — see the
+    // study-15 handoff.
+    #[allow(clippy::too_many_arguments)]
     pub fn forward_into(
         &self,
         pst: &[[i16; L1]; 2],
@@ -420,14 +504,19 @@ impl SotaHead {
         stm: Color,
         piece_count: usize,
         psqt: &PsqtPair,
+        scratch: &mut HeadScratch,
         l1_out: &mut [f32; L2],
     ) -> (i32, Option<f32>, Option<[f32; 3]>) {
-        let mut ft = [0u8; L1];
-        activate_ft(pst, threat, stm, &mut ft);
-        let mut nnz = [0u16; L1 / 4];
-        let count = find_nnz(&ft, &mut nnz);
+        // Destructure rather than `scratch.ft` / `scratch.nnz` at each use:
+        // `find_nnz(&scratch.ft, &mut scratch.nnz)` needs a shared and a unique
+        // borrow of two DIFFERENT fields at once, and a field-by-field
+        // destructuring pattern is what makes that legal without `unsafe` —
+        // the same idiom `HalfkaContext::finny_refresh_into` uses on `self`.
+        let HeadScratch { ft, nnz } = scratch;
+        activate_ft(pst, threat, stm, ft);
+        let count = find_nnz(ft, nnz);
         let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
-        self.propagate_l1(&ft, &nnz[..count], bucket, l1_out);
+        self.propagate_l1(ft, &nnz[..count], bucket, l1_out);
         let l1 = l1_out;
         let l2 = self.propagate_l2(l1, bucket);
         let l3 = self.propagate_l3(&l2, bucket);
@@ -492,6 +581,59 @@ impl SotaHead {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Perf study 15 arm 4 made `ft`/`nnz` a REUSED buffer, so nothing in the
+    /// forward pass may depend on their prior contents. A poisoned scratch must
+    /// produce the same value, sigma and WDL as a fresh one — for both sides to
+    /// move, and for a bucket at each end of the piece-count range.
+    ///
+    /// Mutation it catches: any `activate` backend that writes fewer than `L1`
+    /// lanes (a dropped `chunks_exact` remainder, a width assumption), or a
+    /// `find_nnz` whose returned count under-covers the groups it wrote.
+    /// Nothing else in the tree can catch that — the cross-kernel test in
+    /// `sota_simd` compares two buffers that are also both poisoned, but only
+    /// this one closes the loop through the whole head.
+    #[test]
+    fn a_poisoned_scratch_gives_the_same_forward_as_a_fresh_one() {
+        let head = synth_head();
+        let (pst, threat) = synth_accs();
+
+        for stm in [Color::White, Color::Black] {
+            for piece_count in [4usize, 20, 32] {
+                let mut fresh = HeadScratch::new();
+                let mut dirty = HeadScratch::poisoned();
+                let mut l1_a = [0.0f32; L2];
+                let mut l1_b = [0.0f32; L2];
+                let a = head.forward_into(
+                    &pst,
+                    &threat,
+                    stm,
+                    piece_count,
+                    &ZERO_PSQT,
+                    &mut fresh,
+                    &mut l1_a,
+                );
+                let b = head.forward_into(
+                    &pst,
+                    &threat,
+                    stm,
+                    piece_count,
+                    &ZERO_PSQT,
+                    &mut dirty,
+                    &mut l1_b,
+                );
+                assert_eq!(a.0, b.0, "value depends on scratch contents");
+                assert_eq!(a.1, b.1, "sigma depends on scratch contents");
+                assert_eq!(a.2, b.2, "wdl depends on scratch contents");
+                assert_eq!(l1_a, l1_b, "the L2 trunk depends on scratch contents");
+            }
+        }
+
+        // …and the buffer really was dirty on entry, so the assertions above
+        // are not vacuous.
+        assert_eq!(HeadScratch::poisoned().ft[0], 0xAB);
+        assert_ne!(HeadScratch::poisoned().ft, HeadScratch::new().ft);
+    }
 
     #[test]
     fn mixed_transformer_scales_are_normalized_before_sum() {

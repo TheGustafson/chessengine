@@ -103,6 +103,11 @@ pub struct SotaContext {
     /// temporaries (study #5 §3) — and the only allocation on the eval hot
     /// path. `forward_into` now writes this buffer directly.
     last_l2: [f32; super::sota_head::L2],
+    /// Long-lived scratch for the head forward — see
+    /// [`super::sota_head::HeadScratch`]. It is a FIELD and not two locals in
+    /// `forward_into` because the locals' zero-initialiser was a 1280-byte
+    /// libc `memset` at every evaluation (perf study 15 arm 4).
+    head_scratch: super::sota_head::HeadScratch,
     /// Whether [`last_l2`](Self::last_l2) holds the most recent eval's
     /// activation. Same freshness contract as `last_sigma`/`last_wdl`
     /// (cleared when the full forward didn't run or didn't stash).
@@ -216,6 +221,7 @@ impl SotaContext {
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
+            head_scratch: super::sota_head::HeadScratch::new(),
             last_l2_valid: false,
             last_l2_key: 0,
             smallnet,
@@ -263,6 +269,7 @@ impl SotaContext {
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
+            head_scratch: super::sota_head::HeadScratch::new(),
             last_l2_valid: false,
             last_l2_key: 0,
             smallnet: Some(smallnet),
@@ -297,6 +304,7 @@ impl SotaContext {
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
+            head_scratch: super::sota_head::HeadScratch::new(),
             last_l2_valid: false,
             last_l2_key: 0,
             smallnet: None,
@@ -432,10 +440,23 @@ impl SotaContext {
             let (small_pst, small_psqt) = small_halfka.current_full(board, ply);
             // The cheap net's threat channel contributes nothing — its PSQT
             // pair is exactly the HalfKA-side sums (zero for a psqt-less net).
-            let (small_value, _, _) =
-                small
-                    .head
-                    .forward(small_pst, &ZERO_THREAT, stm, piece_count, small_psqt);
+            // Shares the context's `head_scratch` rather than building its own
+            // (D33 reviewers A/B/C, all three): `HeadScratch::new()` inside the
+            // `forward` wrapper zero-inits 1920 bytes, which is exactly the
+            // memset perf study 15 arm 4 removed from the medium path. Arming
+            // this tier must not put it back. `small_halfka` borrows only
+            // `self.smallnet_halfka`, so `&mut self.head_scratch` is a disjoint
+            // field.
+            let mut tier_l1 = [0.0f32; super::sota_head::L2];
+            let (small_value, _, _) = small.head.forward_into(
+                small_pst,
+                &ZERO_THREAT,
+                stm,
+                piece_count,
+                small_psqt,
+                &mut self.head_scratch,
+                &mut tier_l1,
+            );
             if small_value.abs() >= thresh {
                 // Cheap path: no variance head, so σ̂ is unavailable — correct,
                 // since the uncertainty consumers no-op on decided positions.
@@ -451,28 +472,33 @@ impl SotaContext {
         // T6c: total per-perspective PSQT bucket sums (HalfKA + threat rows).
         // All-zero for a psqt-less net ⇒ the head adds 0 ⇒ bit-identical.
         let psqt = combine_psqt(halfka_psqt, threat_psqt);
-        let (value, sigma, wdl) = if self.policy_head.is_some() {
-            // D47: the policy scorer needs the shared-bottleneck activation of
-            // this exact position; stash it (inline buffer, no Box, no heap
-            // traffic — perf study #4 item #4's de-Box half) whenever a head
-            // is loaded, so headless builds/runs pay nothing. NOT gated on a
-            // consultable-node hint: the consult regularly consumes stashes
-            // left by OTHER evals of the same position (razoring/qsearch
-            // stand-pat at this node, TT-eval-served re-visits), so any
-            // stash-time gating is functional — measured as ±20% bench tree
-            // swings; the study's "both gate conditions are knowable before
-            // evaluate" premise is refuted (hindsight also mutates depth
-            // between the eval and the consult).
-            let (value, sigma, wdl) =
-                self.net
-                    .head
-                    .forward_into(pst, threat, stm, piece_count, &psqt, &mut self.last_l2);
+        // D47: the policy scorer needs the shared-bottleneck activation of this
+        // exact position, so the forward always writes it into `last_l2` — the
+        // destination is the same store either way, and only the VALIDITY flag
+        // is gated on a head being loaded. NOT gated on a consultable-node
+        // hint: the consult regularly consumes stashes left by OTHER evals of
+        // the same position (razoring/qsearch stand-pat at this node,
+        // TT-eval-served re-visits), so any stash-time gating is functional —
+        // measured as ±20% bench tree swings.
+        //
+        // The two arms used to be `forward_into` (policy) and `forward` (no
+        // policy, own 512 B local); collapsing them costs nothing and removes a
+        // per-eval branch plus a second instantiation of a ~600 i/n function.
+        let (value, sigma, wdl) = self.net.head.forward_into(
+            pst,
+            threat,
+            stm,
+            piece_count,
+            &psqt,
+            &mut self.head_scratch,
+            &mut self.last_l2,
+        );
+        if self.policy_head.is_some() {
             self.last_l2_valid = true;
             self.last_l2_key = board.key();
-            (value, sigma, wdl)
         } else {
-            self.net.head.forward(pst, threat, stm, piece_count, &psqt)
-        };
+            self.last_l2_valid = false;
+        }
         self.last_sigma = sigma;
         self.last_wdl = wdl;
 
@@ -496,10 +522,20 @@ impl SotaContext {
             let (large_pst, large_hk_psqt) = large_halfka.current_full(board, ply);
             let (large_threat, large_th_psqt) = large_threats.at_full(ply);
             let large_psqt = combine_psqt(large_hk_psqt, large_th_psqt);
-            let (large_value, large_sigma, large_wdl) =
-                large
-                    .head
-                    .forward(large_pst, large_threat, stm, piece_count, &large_psqt);
+            // Same shared scratch as the smallnet tier above. `tier_l1` is a
+            // LOCAL, not `self.last_l2`: the policy stash must keep the MEDIUM
+            // net's trunk, which is the one whose value the search consulted
+            // when it decided to escalate.
+            let mut tier_l1 = [0.0f32; super::sota_head::L2];
+            let (large_value, large_sigma, large_wdl) = large.head.forward_into(
+                large_pst,
+                large_threat,
+                stm,
+                piece_count,
+                &large_psqt,
+                &mut self.head_scratch,
+                &mut tier_l1,
+            );
             self.last_sigma = large_sigma;
             self.last_wdl = large_wdl;
             return large_value;

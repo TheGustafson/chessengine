@@ -2888,18 +2888,22 @@ impl Worker {
                 self.stack[cur].current_move = Move::NULL;
                 self.stack[cur].cont_hist = ContHistId::SENTINEL;
                 // NNUE (design/11 §3.4.4): a null move leaves every piece in
-                // place, so the child accumulator equals the parent's — push an
-                // EMPTY delta at `ply + 1` (marks it uncomputed; the us/them
-                // perspective swap happens at `evaluate`). No-op when NNUE off.
-                self.eval_ctx.push_dirty(DirtyPiece::EMPTY, ply);
+                // place, so the child accumulator IS the parent's — push no
+                // entry at all and let the child index the same one (the us/them
+                // perspective swap happens at `evaluate`, off the board). This
+                // is Stockfish's shape: `do_null_move` has no
+                // `accumulatorStack.push()` and `undo_null_move` no `pop()`
+                // (`eca43a97:src/search.cpp:657-669`). No-op when NNUE is off.
+                // Perf study 15 arm 1 — what it replaced was an EMPTY `DirtyPiece`
+                // pushed into BOTH stacks, whose fold was a 2560-byte copy per
+                // perspective per stack plus a `ThreatPosition` snapshot.
+                self.eval_ctx.push_null();
                 self.st_nmp_try += 1;
                 self.board.make_null_move();
-                #[cfg(feature = "sota")]
-                self.eval_ctx
-                    .push_sota_dirty(DirtyPiece::EMPTY, ply, &self.board);
                 let null_value =
                     -self.search::<NonPv>(tt, stop, -beta, -beta + 1, depth - r, false, ply + 1);
                 self.board.unmake_null_move();
+                self.eval_ctx.pop_null();
 
                 // Do not return an unproven mate/TB score: a null-move
                 // "mate" is an artifact of the illegal pass, never real.
