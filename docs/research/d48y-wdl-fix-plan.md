@@ -2196,3 +2196,56 @@ the WDL question.
 because it was written into the handoff header early and then copied forward. A
 confound asserted once and inherited is not a measured confound. **Two minutes of
 `json.load` on the two run configs would have killed it at any point.**
+
+### ★★★ THE QUANTISATION THEORY — 73% of the net carries ~2 bits of weight precision (2026-07-29)
+
+Owner eliminated, with reasons, every theory on the table: not architecture
+(Reckless's **768-wide** net gives +30.0 in OUR search), not data source or labels
+(we train on SF's own binpacks), not training volume (nets plateau ~100sb until
+anneal), not co-evolution (a Reckless-trained net still beats ours in our
+search), not features (proven identical to SF index-by-index). **What is left has
+to be something every metric we own is blind to.**
+
+**Measured on `d48y2-1280-sb170-ema-quant.bin`:**
+
+| channel | container | share of inputs | max abs | levels used | typical weight | eff. precision |
+|---|---|---|---|---|---|---|
+| HalfKA | i16 @ 255 | 27.1% | 1057 / 32767 | 1,516 / 65,536 (2.3%) | **54.9 steps** | ~5.8 bits |
+| **threats** | **i8 @ 64** | **72.9%** | **127 / 127 — AT THE CEILING** | **250 / 256 (97.7%)** | **4.6 steps** | **~2.2 bits** |
+
+**A typical threat weight is 4.6 quantisation levels.** The i8 container is
+COMPLETELY FULL (97.7% of levels used, max exactly at the ceiling), so the scale
+is being set by OUTLIERS — a few weights need ±127, forcing scale 64, leaving the
+bulk of the distribution with ~2 bits. HalfKA has the same tail but 16 bits
+absorbs it (uses only 3.2% of its range and does not care).
+
+**Why SF does not pay this** — and the line was in our own port spec all along
+(`searchopt/sf-net-port-spec.md` §3): their threat weights are i8 added
+**directly** into the 255-frame accumulator, no shift, because **"SF's trainer
+bakes the scale in instead."** That IS quantisation-aware training: their weight
+distribution adapts during training to fill the container. We train in float,
+let the distribution go where it likes, and quantise post hoc.
+
+**WHY EVERY METRIC WE HAVE IS BLIND TO IT:** heldout MSE, R², the loss curves and
+the target-transform work are ALL computed on the FLOAT net. **We play with the
+QUANTISED net.** Nothing in the training loop, and nothing in any screen we run
+before packing, can see this damage. It also explains the Reckless result
+directly — a smaller net trained with quantisation in the loop beating a larger
+one quantised afterwards.
+
+**STATUS: HYPOTHESIS, NOT A MEASUREMENT.** This measures weight PRECISION, not
+Elo. The link to strength is an inference and must not be quoted as a finding.
+
+**Two tests, cheap one first:**
+1. **Float-vs-quantised eval divergence** on heldout positions — prices the
+   damage in cp before anyone commits to a retrain. Needs the raw checkpoint
+   format resolved (`-raw.bin` is NOT a clean f4 array; it has a header — size
+   433,755,450 is not a multiple of 4).
+2. **QAT** (straight-through estimator), which the training-gap study already
+   lists as one of four current SF mechanisms with NO ARCHON counterpart
+   (`nnue-training-gap-study-2026-07-28.md` §2.5, "real QAT, default on").
+
+Related open item from the same study: **G5 — our threat FT is quantised 4x
+coarser than BOTH comparison engines and nothing in training knows about it.**
+That gap was written down on 2026-07-28 and not acted on. This is the same
+finding, now with the weight distribution measured.
