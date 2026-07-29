@@ -485,6 +485,31 @@ arguments, one over the SysV six-register limit study 17 §5.1c measured at −1
 on its own. It is `#[inline]`, so the limit should not bind, but "should not"
 is not "did not". A re-try under six arguments is in §9 item 4.)*
 
+### 6.1b The `#[cold]` sweep is now two-thirds CLOSED, by measurement
+
+Study 17 §11 item 4 said "the `#[cold]` sweep is not finished" and named three
+sites: `movepick`'s scoring loops, `see_ge`'s non-Normal short circuit, and
+`pseudo_legal`'s non-Normal branch "(which allocates a 520-byte `MoveList`
+frame)". Two of the three are now dead:
+
+* **`see_ge`'s arm is already nothing.** `board.rs:1950-1952` is
+  `if m.kind() != MoveKind::Normal { return 0 >= threshold; }` — a two-
+  instruction terminal return with no locals, no table, no register pressure.
+  There is nothing to outline. Item 4 named it from the ranking table, not from
+  the source.
+* **`pseudo_legal`'s arm measured +0.1** (`a5-pseudolegal-special-cold`, node-
+  and hash-identical). It is the textbook §5 shape — a whole arm of the
+  function's own top-level `MoveKind` dispatch, caller holds both arguments,
+  and it owns the only `MoveList` in the function — and it bought nothing. The
+  site runs at ~0.33 calls/node (movepick's TT-move validation,
+  `movepick.rs:331,340`), and LLVM had evidently already sunk the frame.
+
+That leaves `movepick`'s scoring loops as the only untested site of the three.
+**The §5 rule now has n = 2 in the negative direction** (u3's nested block,
+which cost +64.0, and this one, which cost nothing): satisfying the dataflow
+condition is necessary, not sufficient. The arm also has to be *expensive
+enough inline to have been setting something*.
+
 ### 6.2 Not attempted, and why
 
 * **Deriving the child `ThreatPosition` from the parent by XOR.** Study 15 arm 3
@@ -575,7 +600,8 @@ spellings), the branch ratio as a bounds-check story.
 | 5 | **The branch decomposition has not been re-run per block.** Study 17 §6.2.1 put +94.4 of the +149.6 integer branch gap in threat generation; this study moved the whole-engine count −13.5/node but did not re-bucket | measurement only | high | `cgbr18.sh` on both engines + `brint18.py`, ~8 min of valgrind, no build |
 | 6 | **SF's shifted-bitboard pawn enumeration** (`eca43a97:src/nnue/features/full_threats.cpp:225-250`) vs our per-pawn loop, in `for_each_threat_at`. Real divergence, genuinely cheaper, now on a 0.0214-calls/node path | < 15 callgrind, < 5 probe | high on the shape, low on the value | only worth doing if item 1 finds the same shape inside `build_deltas`, where it runs at 1.06 calls/node |
 | 7 | **`apply_at`'s remaining 83.0 i/call at 1.0 calls/node** — `ThreatPosition::from_board` (11 bitboard reads → an 80-byte store) plus the `DirtyPiece` copy plus `king_cross`. Study 15 arm 3's parent-XOR derivation measured **+106** and its own note says the codebase's idiom for that shape (`split_at_mut`) was never tried | 20–40 | medium | note it also breaks at ply 0, whose `position` is never written by `refresh()` — any retry must seed it |
-| 8 | Inherited and unchanged from study 17: item 3 (`unmake_move`'s 168-byte restore, +25.5), item 3b (SF has no en-passant arm in `legal`), item 4 (the `#[cold]` sweep is unfinished), item 6 (`6b782211` as a games question), item 7 (pack `Piece` into one byte), item 8 (`check.sh` clippies default features only), item 8b (`legal_special`'s unreachable `_` arm) | | | |
+| 8 | **Study 17 item 4's `#[cold]` sweep is two-thirds closed** (§6.1b): `see_ge`'s arm is a two-instruction terminal return with nothing to outline, and `pseudo_legal`'s measured **+0.1**. Only `movepick`'s scoring loops remain untested — and `MovePicker::init_quiets` is **552.42 i/n at 0.1624 calls/node, 3401.3 instructions per call**, the largest single non-SIMD symbol outside the threat block | 0–40 | low, after two nulls | one `probe18.sh` cycle. But `init_quiets` at 3401 i/call deserves a `cg18.sh` split before anyone outlines anything inside it |
+| 9 | Inherited and unchanged from study 17: item 3 (`unmake_move`'s 168-byte restore, +25.5), item 3b (SF has no en-passant arm in `legal`), item 6 (`6b782211` as a games question), item 7 (pack `Piece` into one byte), item 8 (`check.sh` clippies default features only), item 8b (`legal_special`'s unreachable `_` arm) | | | |
 
 ### 9.1 Three method rules this study hands over
 

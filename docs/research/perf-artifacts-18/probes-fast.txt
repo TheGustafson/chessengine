@@ -7,3 +7,4 @@ fast=a3-king-cross-one-pass           instr=30,774,356,062 nodes= 5,001,562 per_
 fast=a2-victim-type-loops             instr=30,887,412,548 nodes= 5,001,562 per_node=  6175.6 brs_per_node=  652.4 hash=5ca978e012da1bb0
 fast=a4-cold-discharge                instr=30,768,162,662 nodes= 5,001,562 per_node=  6151.7 brs_per_node=  649.5 hash=5ca978e012da1bb0
 fast=a4r-rustfmt                      instr=30,768,162,860 nodes= 5,001,562 per_node=  6151.7 brs_per_node=  649.5 hash=5ca978e012da1bb0
+fast=a5-pseudolegal-special-cold      instr=30,768,532,503 nodes= 5,001,562 per_node=  6151.8 brs_per_node=  649.5 hash=5ca978e012da1bb0
