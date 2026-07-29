@@ -103,3 +103,37 @@ gap exceeds that null, so the fits get a units sanity check before use.
   target transform AND teacher. Warm start is held identical
   (`d48x-warm-a3.bin`) and the seed is reused (220480001) so the batch schedule
   matches, which removes the other two obvious differences.
+
+### State log — fits done, units confound RULED OUT, config built, smoke running
+
+**Per-corpus fits (MLE, held out, bootstrapped).** Every corpus improves:
+
+| corpus | a | b | a/b | brier now → fitted |
+|---|---|---|---|---|
+| uho-band75-100 | 175.5 | 71.9 | 2.44 | 0.05317 → 0.03541 (−33.4%) |
+| fishpack32 | 160.2 | 33.1 | 4.84 | 0.04996 → 0.02336 (−53.2%) |
+| farseerT74 | 164.5 | 117.7 | 1.40 | 0.08963 → 0.08004 (−10.7%) |
+| datapv2 | 166.9 | 70.3 | 2.37 | 0.05188 → 0.03544 (−31.7%) |
+| farseerT75 | 142.8 | 91.2 | 1.57 | 0.08625 → 0.07303 (−15.3%) |
+| multinet | 168.6 | 69.5 | 2.43 | 0.05057 → 0.03422 (−32.3%) |
+| t60t70 | 148.4 | 81.2 | 1.83 | 0.07335 → 0.06087 (−17.0%) |
+| pylon | 146.5 | 95.0 | 1.54 | 0.08678 → 0.07539 (−13.1%) |
+| wisr | 167.8 | 52.5 | 3.20 | 0.03671 → 0.02326 (−36.6%) |
+| wrongnnue | 247.0 | 122.3 | 2.02 | 0.05426 → 0.04630 (−14.7%) |
+| canon-tight-frame | 182.5 | 72.5 | 2.52 | 0.05075 → 0.03403 (−32.9%) |
+| hardneg-frame | (no fit) | | | 0.013% of the mix; uho params used, immaterial |
+
+**UNITS CONFOUND RULED OUT — the check the plan demanded.** A pure units
+rescale by `k` maps `(a,b) → (k·a, k·b)`, so **a/b is invariant** under it.
+Observed a/b spans **1.40 → 4.84** (3.46×), and **corr(a,b) = 0.377** where a
+units bug would force ~+1.0. So these are genuine SHAPE differences in how
+score predicts outcome per corpus — exactly what per-corpus fitting is for —
+not a `SFBINPACK_SCORE_DIV`-class units bug. Safe to use.
+
+**Config** `tools/nnue/runs/d48y_1280.json`, generated from the fits by script
+(not by hand): same arch/warm/seed/mix as D48X, `distill_alpha 0` and teacher
+keys removed, `superbatches 300`, `lr_ramp [[0,1e-3],[240,1e-3],[300,0]]`,
+`heldout_target [175.1, 71.6]`.
+
+**Smoke (3sb) launched** and the heldout fix is confirmed live in its log:
+`[pump] heldout scored in the RUN frame a=175.1 b=71.6`.
