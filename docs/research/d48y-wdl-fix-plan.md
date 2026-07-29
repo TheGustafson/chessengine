@@ -1493,3 +1493,56 @@ the user had already flagged that D48Y's different curvature might not transfer.
 
 D48Y2: sb83, 169k pos/s, heldout EMA 0.011685 (sb50→80: 0.011792, 0.011744,
 0.011712, 0.011685) — monotone, slope decelerating to ~−3e-6/sb.
+
+### Study 17 complete — biggest result since #12, and TWO prior studies refuted
+
+**−114.5 i/n in the probe frame** (6335.8 → 6221.3), branches 673.6 → 667.0.
+Node count 5,001,562 and eval hash `5ca978e012da1bb0` identical on **every** arm
+line including the five rejected ones.
+
+**Mechanism, one class:** seven rare-`MoveKind` branches moved out of hot
+per-move functions into `#[cold] #[inline(never)]` helpers (−100.3), then four
+trimmed under the **six-register SysV argument limit** — a 7th argument is a
+stack write at every call site (−14.2).
+
+**All four commissioned targets answered; two are retractions:**
+
+1. **`do_move` split and priced** (callgrind, which prices call edges exactly,
+   rather than `noinline`): 899.6 i/n inclusive — `SotaContext::push` 415.0
+   (46%), `make_move_with` 327.5 (36%), glue 105.1, `DirtyPiece::from_move`
+   52.1. **The expensive stage is the eager king-cross threat refresh: 222.7
+   i/n, 25% of the make side, 6,240 instructions per call at 0.0357 calls/node
+   — and it runs at PUSH time while only 41.5% of nodes evaluate, so ~58% is
+   thrown away.** Ranked item 1 (~130 i/n), code shape written out, not
+   attempted because it needs the NNUE gate and collides with study 16's branch.
+2. **make/unmake is AT PARITY — study 11's 1.93× and study 13's +359 are both
+   REFUTED.** ARCHON 899.6 vs SF **927.3** = **0.970×: we are faster.**
+   `refresh_check_info` is 0.771× SF's. The whole surviving deficit is
+   `unmake_move` +25.5 (study 14's 168-byte state copy vs SF's pointer hop).
+3. **Branch ratio answered for the integer half:** ARCHON 437.6 vs SF 288.0
+   br/node, of which **threat generation is +94.4 of +149.6**.
+4. **`attacks::tables()` closed** — force closure runs 0.0000×/node.
+
+**THE REDIRECT: threat generation, which study 13 called "at parity (+33)", is
++250…+400 i/n (1.30–1.59×) — now the largest addressable block.** It first
+reported +474…+558 and **retracted under its own D33 round B**, having counted
+a Wave-G move-ordering map as NNUE work.
+
+**Three near-misses its method caught**, all documented in the tools: a 14×
+"branch discovery" that was a valgrind CPUID/dispatch artifact; a filter where
+`sse` matched "che**sse**ngine"; and a `cgsum17.py` bug making every non-`Ir`
+event wrong, **100× worse on Stockfish than on us** — which would have
+manufactured a large fake gap.
+
+**Its PGO prediction is two-sided and INCLUDES ZERO** (−100 to +15, likely
+−40…−80) because inlining-boundary changes are the one class where PGO can flip
+the sign. **The falsifiable part is the sign**; revert is five attributes.
+
+**BOTH branches are HELD, ungated** — study 16 (4 commits) and study 17 (15).
+Verified they touch **disjoint `src/` files**, so they will merge cleanly.
+
+**⚠ node identity is PROVEN only for u1–u6.** u7/u8/u9 have NOT had the release
+perft tier run — for those it is evidence, not proof. **I must run
+`cargo test --release -- --ignored perft_full_suite` before merging.**
+
+D48Y2: sb87, 171k pos/s, heldout EMA 0.011685.
