@@ -1081,6 +1081,16 @@ mod avx512 {
         8
     }
     const REGS: usize = pick_regs();
+    // The win depends on the tile dividing the accumulator EXACTLY: a remainder
+    // falls into the one-block `while off < ACC` tail, whose control cost per
+    // block is what the wide tile exists to remove. True for every shipped
+    // width — 1280/20, 768/12, 1536/16, 2048/16 all give remainder 0.
+    const _: () = assert!(
+        BLOCKS.is_multiple_of(REGS),
+        "fold tile must divide the accumulator exactly"
+    );
+    // One zmm is live beyond the accumulators (the row being folded in).
+    const _: () = assert!(REGS < 32, "fold tile must leave a spare zmm");
 
     #[target_feature(enable = "avx512f,avx512bw")]
     unsafe fn i16_deltas_inner(

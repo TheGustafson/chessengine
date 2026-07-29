@@ -16,3 +16,4 @@ fast=+cuckoo-other-filter             instr=33,135,616,982 nodes= 5,001,624 per_
 #                              version probes the cuckoo table unconditionally and
 #                              therefore detects cycles SF's filter rejects.
 #                              Needs an Elo test, not a probe. Instructions rose too.
+fast=+tile-asserts                    instr=32,695,839,752 nodes= 5,001,562 per_node=  6537.1 brs_per_node=  728.6 hash=5ca978e012da1bb0
