@@ -859,3 +859,55 @@ host / 6361 MiB GPU, 94% util. Cost ~7 superbatches + a fresh-Adam transient.
 builds, not matches. Batch that work for after the run, or accept losing the
 run. The box has ~8 GB of true headroom and a trainer plus any second heavy
 consumer exceeds it.
+
+### Perf study 14 — verified, gated, PGO'd, merged; study 15 commissioned
+
+**1.3658× → 1.3446×** (6081.2 → 5986.8 i/n), −94.4 i/n. Gate run inside a
+memory-capped cgroup: `Bench: 587683`, eval hash `5ca978e0…0b38`, d13
+`1922947` all unchanged; `CHECK_NNUE_GATE=1` mandatory here (arm 2 is under
+`src/eval/nnue/`) and passed. **Trainer survived the gate AND the PGO build.**
+
+**Verified independently** (`bench 16 1 9`, both PGO, canonical net):
+
+| binary | i/n |
+|---|---|
+| pre-study-12 (canonical) | 9540.8 |
+| post-12 | 9122.8 |
+| post-13 | 9083.3 |
+| **post-14 (`archon-s14pgo`)** | **9002.9** |
+
+Nodes **IDENTICAL (329,318) across all four**. Study 14 claimed −1.55% on its
+panel; I measure **−0.88%** on mine — the largest claim/measure divergence so
+far, though both are real reductions in the same direction. **Cumulative
+12+13+14: −5.64%.**
+
+**Landed:** `Board::st()` closed by moving the live `StateInfo` OUT of the stack
+into a `Board` field — 29.07 calls/node → **zero instructions**, and "never
+empty" became structural rather than asserted (−36.7). The untraced `memmove`
+named in four minutes with an `LD_PRELOAD` interposer: `at_full`/`apply_at`
+copying 2560-byte accumulators, 891 B/node, verified gone 215.8 → 95.7 MB
+(−22.7). `remove_piece_known`/`move_piece_known` (−40.3).
+
+**The method finding that matters: THE SPELLING IS THE ARM.** Same mechanism,
+two spellings, **45.4 i/n apart** — deleting the empty-delta case measured
++22.7, hand-chunking the copy measured −22.7, both bit-identical. And its first
+null FAILED (+86.4) because it was not *structurally* inert.
+
+### ★ THE OOM GUARD THAT ACTUALLY WORKS (adopted)
+
+Study 14 ran every build inside `systemd-run --user --scope -p MemoryMax=5G`, so
+a runaway build **dies in its own cgroup instead of triggering a global OOM**.
+I adopted it for the study 14 gate and PGO build and **both completed with the
+trainer alive** — the first time this session that heavy builds have coexisted
+with training. This is the fix for the failure that cost two runs.
+
+**Standing:** every build from here runs as
+`systemd-run --user --scope -p MemoryMax=5G env CARGO_BUILD_JOBS=2 nice -n 10 …`
+
+**Study 15 commissioned** on study 14's two named leads: SF never pushes an
+accumulator entry for a null move (`eca43a97:src/search.cpp:657-669`, the origin
+of our 0.313 empty-delta folds/node), and the same 2560-byte `memcpy` still live
+at `sota_accumulator.rs:303` and `:333`. Carries the spelling-is-the-arm lesson,
+the structural-null requirement, and the cgroup guard as mandatory.
+
+D48Y: sb132, alive through both builds.
