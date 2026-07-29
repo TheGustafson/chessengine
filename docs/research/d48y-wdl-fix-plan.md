@@ -1425,3 +1425,35 @@ Throughput recovered to **152k pos/s** (normal 198k); ETA ~6.2 h. Available RAM
 exact job class that killed the trainer at incident #2, memory is tight, and a
 pre-anneal checkpoint measured with ±25 Elo bars would need so many caveats it
 could not change any decision. Completion is worth more than the datapoint.
+
+### ★ THE OOM GUARD WORKS — first incident where a BUILD died instead of the trainer
+
+Four kills in 25 minutes, **all four were study 17's `chessengine-e71` binaries**
+(~3.1 GB anon-rss each). **The trainer survived every one.** That is
+`tools/oomlast.sh` doing exactly what it was written for — five prior incidents
+all took the trainer instead.
+
+**But I had given study 17 conflicting orders**, and the box enforced the
+conflict: I made the D24 perft ritual MANDATORY while banning heavy builds.
+`cargo test --release -- --ignored perft_full_suite` is precisely a ~3 GB job
+that cannot fit beside a 3 GB trainer on a 15 GB box with swap exhausted.
+
+**Corrected: the perft ritual is now DEFERRED to me too**, alongside the gates
+and PGO. Study 17 was told to prefer `cargo check`/thin-LTO, to **stop building
+entirely and switch to static work** (reading SF's `eca43a97` source, writing
+arms to be measured later) if even those are killed, to **commit immediately**
+so a kill cannot cost its work, and to state in the writeup that **node identity
+is UNPROVEN until I run perft** — no node-identical claims the fast tests
+cannot support.
+
+**My PENDING checklist, to run once the GPU frees:**
+1. Study 16 (`worktree-agent-a9f533e89bd5d8242`, 4 commits): `check.sh` +
+   `CHECK_NNUE_GATE=1`, PGO, merge — and check its falsifiable PGO prediction
+   (−15…−26 i/n ⇒ ~1.3306–1.3331×) against measurement.
+2. Study 17: the FULL D24 ritual (`cargo test` + release `perft_full_suite`),
+   both gates, PGO, merge.
+3. D48Y2: pack → `net_scale_check` → fixed-node screen vs D48X → real TC.
+4. The matched pair `d48z_old`/`d48z_new` — the clean test of the WDL question.
+
+D48Y2 meanwhile: sb68, throughput **163k pos/s**, heldout EMA **0.011744**
+(sb50 0.011792 → sb60 0.011744), still monotone.
