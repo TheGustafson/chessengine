@@ -392,3 +392,44 @@ bash tools/nnue/calibrate_network_scale.sh <cand.cenn> \
 
 Report the confound: D48Y differs from D48X in TWO ways — calibrated per-corpus
 target AND no teacher.
+
+### CP-SCALE RISK — one scalar is NOT enough, computed ahead of the net
+
+Setting the scale is trivial (an i32 at CENN byte 44, automated). The risk is
+whether a SCALAR can absorb the new transform at all. It cannot.
+
+The head learns `out ≈ logit(target)`, cp = `out × network_scale`. Under the OLD
+transform `logit(sigmoid(s/400)) × 400 = s` EXACTLY — which is why
+network_scale is 400 and why a scalar always sufficed. Under the new
+draw-aware transform the implied cp per unit of true score is not flat:
+
+| s | uho (25%) | fishpack32 (16%) | farseerT74 (12%) |
+|---|---|---|---|
+| 50 | 0.0043 | 0.0013 | 0.0054 |
+| 150 | 0.0057 | 0.0060 | 0.0057 |
+| 400 | 0.0096 | 0.0198 | 0.0067 |
+| **spread 50–400** | **2.2×** | **15.1×** | 1.2× |
+
+⇒ D48Y will be relatively COMPRESSED at small advantages and EXPANDED at large
+ones. That is the intended correction (the old transform understated big
+advantages), but it means calibration aligns the MEDIAN and leaves the tails
+mismatched.
+
+**Consequence for the test.** Every cp-denominated margin — razoring
+`465 + 300d²`, futility, delta, aspiration — is co-adapted to the OLD shape. A
+better evaluator can lose the match on margin mistuning alone. Measured
+precedent: the Reckless frame-null cost **−12.0 ± 18.2 Elo** from a pure 0.73×
+de-frame with zero net-quality change.
+
+**Mandatory diagnostic after calibration (do not skip):** report median AND
+least-squares slope AND the IQR of the paired ratio. Reference points already
+measured — ARCHON vs SF: LS 0.5126 vs median 0.5096, agree to 0.6% ⇒ a scalar
+is fine. ARCHON vs Reckless: LS 0.7316 vs median 0.554, 1.32× apart ⇒ shape
+mismatch. If D48Y looks like the Reckless case, the fixed-node screen
+UNDERSTATES it by construction and the result is a FLOOR, not an estimate;
+closing it properly needs an SPSA retune of the cp-denominated margins.
+
+**Caveat on the table above:** it is the transform's shape for a
+perfectly-fitted net. The real net smooths it, and the mix-weighted average over
+12 corpora will be gentler than fishpack32's 15×. The real number is available
+minutes after the run ends.
