@@ -1007,6 +1007,13 @@ are all measurements of a tree that is already committed. In this order:
    `check.sh` clippies default features ONLY (study 15 item 12, still open), so
    this one has to be typed by hand.
 
+**Two build trees are left on disk on purpose, because §11 item 1b's cheapest
+next test needs them and rebuilding costs 30 s each:**
+`/home/nick/archon-sf17-eca43a97` (181 MB — the `eca43a97` source export, the
+exported net, and the AVX2 Stockfish binary) and `target-cg17` (18 MB — the AVX2
+ARCHON binary). Neither is inside the repo. Delete them freely; `sfbuild17.sh`
+and `cgbuild17.sh` reproduce both.
+
 Optional, and the cheapest thing that would extend this study: rerun
 `docs/research/perf-artifacts-17/scripts/cg17.sh` on an idle box with
 `#[inline(never)]` on `ThreatContext::compute`, `build_deltas` and
