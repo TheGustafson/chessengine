@@ -1,0 +1,651 @@
+ Percent |	Source code & Disassembly of chessengine for instructions:u (1356 samples, percent: local period)
+-----------------------------------------------------------------------------------------------------------------
+         :
+         :
+         :
+         : 3     Disassembly of section .text:
+         :
+         : 5     0000000000095650 <<chessengine::movepick::MovePicker>::init_quiets>:
+    0.00 :   95650:  push   %rbp
+    0.07 :   95651:  push   %r15
+    0.07 :   95653:  push   %r14
+    0.00 :   95655:  push   %r13
+    0.00 :   95657:  push   %r12
+    0.00 :   95659:  push   %rbx
+    0.07 :   9565a:  sub    $0x368,%rsp
+    0.00 :   95661:  mov    %rsi,%r13
+    0.00 :   95664:  lea    0x160(%rsp),%rsi
+    0.00 :   9566c:  vxorps %xmm0,%xmm0,%xmm0
+    0.00 :   95670:  mov    %rdi,%rbx
+    0.00 :   95673:  mov    %r13,%rdi
+    0.00 :   95676:  mov    %rdx,%r14
+    0.09 :   95679:  vmovups %zmm0,0x320(%rsp)
+    0.30 :   95684:  vmovups %zmm0,0x2e0(%rsp)
+    0.40 :   9568f:  vmovups %zmm0,0x2a0(%rsp)
+    0.35 :   9569a:  vmovups %zmm0,0x260(%rsp)
+    0.15 :   956a5:  vmovups %zmm0,0x220(%rsp)
+    0.14 :   956b0:  vmovups %zmm0,0x1e0(%rsp)
+    0.22 :   956bb:  vmovups %zmm0,0x1a0(%rsp)
+    0.08 :   956c6:  vmovups %zmm0,0x160(%rsp)
+    0.07 :   956d1:  movq   $0x0,0x360(%rsp)
+    0.07 :   956dd:  vzeroupper
+    0.00 :   956e0:  call   4bd00 <chessengine::movegen::generate::<1>>
+    0.00 :   956e5:  mov    0x360(%rsp),%r15
+    0.49 :   956ed:  cmp    $0x101,%r15
+    0.06 :   956f4:  jae    95903 <<chessengine::movepick::MovePicker>::init_quiets+0x2b3>
+    0.00 :   956fa:  movzbl 0x268(%r13),%r12d
+    0.08 :   95702:  mov    %r13,%rdi
+    0.00 :   95705:  call   9a470 <<chessengine::board::Board>::ensure_threats>
+    0.00 :   9570a:  mov    0x230(%r13),%rdx
+    0.00 :   95711:  mov    0x228(%r13),%rcx
+    0.00 :   95718:  mov    0x240(%r13),%rsi
+    0.00 :   9571f:  mov    0x258(%r13),%rax
+    0.35 :   95726:  movzwl 0x888(%rbx),%edi
+    0.00 :   9572d:  or     0x238(%r13),%rdx
+    0.00 :   95734:  movq   $0x0,0x130(%rsp)
+    0.00 :   95740:  mov    %rcx,0x138(%rsp)
+    0.00 :   95748:  mov    %rcx,0x140(%rsp)
+    0.00 :   95750:  or     %rcx,%rdx
+    0.08 :   95753:  or     %rdx,%rsi
+    0.00 :   95756:  mov    %rdx,0x148(%rsp)
+    0.07 :   9575e:  mov    %rsi,0x150(%rsp)
+    0.00 :   95766:  movq   $0x0,0x158(%rsp)
+    0.26 :   95772:  cmp    $0xcff,%rdi
+    0.00 :   95779:  ja     9625b <<chessengine::movepick::MovePicker>::init_quiets+0xc0b>
+    0.00 :   9577f:  movzwl 0x88a(%rbx),%ecx
+    0.00 :   95786:  mov    %rbx,%rdx
+    0.00 :   95789:  cmp    $0xd00,%rcx
+    0.00 :   95790:  jae    9626d <<chessengine::movepick::MovePicker>::init_quiets+0xc1d>
+    0.00 :   95796:  movzwl 0x88c(%rdx),%r8d
+    0.00 :   9579e:  cmp    $0xd00,%r8
+    0.05 :   957a5:  jae    96282 <<chessengine::movepick::MovePicker>::init_quiets+0xc32>
+    0.00 :   957ab:  movzwl 0x88e(%rdx),%r9d
+    0.00 :   957b3:  cmp    $0xd00,%r9
+    0.07 :   957ba:  jae    96297 <<chessengine::movepick::MovePicker>::init_quiets+0xc47>
+    0.00 :   957c0:  movzwl 0x892(%rdx),%esi
+    0.00 :   957c7:  mov    %r9,0x48(%rsp)
+    0.00 :   957cc:  mov    %r8,0x50(%rsp)
+    0.00 :   957d1:  mov    %rcx,0x58(%rsp)
+    0.00 :   957d6:  mov    %rdi,0x60(%rsp)
+    0.08 :   957db:  mov    %r15,0xa0(%rsp)
+    0.23 :   957e3:  mov    %rsi,0x20(%rsp)
+    0.09 :   957e8:  cmp    $0xd00,%rsi
+    0.00 :   957ef:  jae    962ac <<chessengine::movepick::MovePicker>::init_quiets+0xc5c>
+    0.00 :   957f5:  mov    0x88(%r13),%rcx
+    0.00 :   957fc:  mov    0x1b0(%r13),%rsi
+    0.00 :   95803:  mov    %r12,%r8
+    0.00 :   95806:  xor    $0x1,%r8
+    0.00 :   9580a:  mov    %r12,%rdi
+    0.10 :   9580d:  shl    $0x11,%edi
+    0.00 :   95810:  add    (%r14),%rdi
+    0.08 :   95813:  andn   0x1a0(%r13,%r8,8),%rax,%r11
+    0.08 :   9581d:  lea    (%r8,%r8,2),%rax
+    0.00 :   95821:  shl    $0x4,%eax
+    0.00 :   95824:  mov    0x160(%r13,%rax,1),%r12
+    0.00 :   9582c:  and    $0x1fff,%ecx
+    0.00 :   95832:  mov    %rsi,0x10(%rsp)
+    0.06 :   95837:  mov    %r13,%rsi
+    0.07 :   9583a:  mov    0x158(%r13,%rax,1),%r13
+    0.08 :   95842:  mov    0x150(%rsi,%rax,1),%rbx
+    0.00 :   9584a:  mov    0x148(%rsi,%rax,1),%rbp
+    0.00 :   95852:  mov    0x140(%rsi,%rax,1),%r15
+    0.00 :   9585a:  mov    %rsi,0x18(%rsp)
+    0.00 :   9585f:  mov    %rdi,0xf0(%rsp)
+    0.08 :   95867:  lea    (%rcx,%rcx,2),%rax
+    0.00 :   9586b:  shl    $0x9,%eax
+    0.00 :   9586e:  add    0x20(%r14),%rax
+    0.16 :   95872:  or     %r12,%r13
+    0.00 :   95875:  or     %r13,%rbx
+    0.06 :   95878:  or     %rbx,%rbp
+    0.00 :   9587b:  mov    %rax,0x78(%rsp)
+    0.00 :   95880:  mov    0x18(%r14),%rax
+    0.00 :   95884:  or     %rbp,%r15
+    0.00 :   95887:  and    %r11,%r15
+    0.00 :   9588a:  mov    %rax,0x40(%rsp)
+    0.14 :   9588f:  mov    0x850(%rdx),%rax
+    0.00 :   95896:  mov    %rax,0x80(%rsp)
+    0.10 :   9589e:  shl    $0x11,%rax
+    0.06 :   958a2:  add    0x8(%r14),%rax
+    0.00 :   958a6:  mov    0x6036b(%rip),%r14        # f5c18 <_DYNAMIC+0x418>
+    0.00 :   958ad:  mov    %rax,0xa8(%rsp)
+    0.08 :   958b5:  mov    0x1040(%r14),%eax
+    0.00 :   958bc:  mov    %rdx,0x28(%rsp)
+    0.12 :   958c1:  test   %eax,%eax
+    0.00 :   958c3:  jne    9591a <<chessengine::movepick::MovePicker>::init_quiets+0x2ca>
+    0.00 :   958c5:  and    %r11,%rbp
+    0.00 :   958c8:  test   %r15,%r15
+    0.00 :   958cb:  je     9597a <<chessengine::movepick::MovePicker>::init_quiets+0x32a>
+    0.00 :   958d1:  shl    $0x9,%r8d
+    0.00 :   958d5:  add    0x6034c(%rip),%r8        # f5c28 <_DYNAMIC+0x428>
+    0.08 :   958dc:  xor    %ecx,%ecx
+    0.00 :   958de:  xchg   %ax,%ax
+    0.00 :   958e0:  tzcnt  %r15,%rax
+    0.00 :   958e5:  or     (%r8,%rax,8),%rcx
+    0.29 :   958e9:  blsr   %r15,%r15
+    0.00 :   958ee:  jne    958e0 <<chessengine::movepick::MovePicker>::init_quiets+0x290>
+    0.00 :   958f0:  and    %r11,%rbx
+    0.07 :   958f3:  xor    %edx,%edx
+    0.00 :   958f5:  test   %rbp,%rbp
+    0.00 :   958f8:  jne    95986 <<chessengine::movepick::MovePicker>::init_quiets+0x336>
+    0.00 :   958fe:  jmp    959a0 <<chessengine::movepick::MovePicker>::init_quiets+0x350>
+    0.00 :   95903:  lea    0x5c826(%rip),%rcx        # f2130 <anon.eed585b01ae30eb332643aad9fa1c7d5.154.llvm.4360693513763117755>
+    0.00 :   9590a:  mov    $0x100,%edx
+    0.00 :   9590f:  xor    %edi,%edi
+    0.00 :   95911:  mov    %r15,%rsi
+    0.00 :   95914:  call   *0x603be(%rip)        # f5cd8 <_DYNAMIC+0x4d8>
+    0.00 :   9591a:  lea    0xf8(%rsp),%rax
+    0.00 :   95922:  mov    %r8,0x30(%rsp)
+    0.00 :   95927:  lea    0x1040(%r14),%rdi
+    0.00 :   9592e:  lea    0x5c913(%rip),%rcx        # f2248 <anon.a6f5765321737a7533fe8d711b9a7816.2.llvm.177627639348709963+0x18>
+    0.00 :   95935:  lea    0x5c8f4(%rip),%r8        # f2230 <anon.a6f5765321737a7533fe8d711b9a7816.2.llvm.177627639348709963>
+    0.00 :   9593c:  lea    0x100(%rsp),%rdx
+    0.00 :   95944:  mov    $0x1,%esi
+    0.00 :   95949:  mov    %r14,0xf8(%rsp)
+    0.00 :   95951:  mov    %r11,0x38(%rsp)
+    0.00 :   95956:  mov    %rax,0x100(%rsp)
+    0.00 :   9595e:  call   *0x6018c(%rip)        # f5af0 <_DYNAMIC+0x2f0>
+    0.00 :   95964:  mov    0x30(%rsp),%r8
+    0.00 :   95969:  mov    0x38(%rsp),%r11
+    0.00 :   9596e:  and    %r11,%rbp
+    0.00 :   95971:  test   %r15,%r15
+    0.00 :   95974:  jne    958d1 <<chessengine::movepick::MovePicker>::init_quiets+0x281>
+    0.00 :   9597a:  xor    %ecx,%ecx
+    0.00 :   9597c:  and    %r11,%rbx
+    0.00 :   9597f:  xor    %edx,%edx
+    0.00 :   95981:  test   %rbp,%rbp
+    0.00 :   95984:  je     959a0 <<chessengine::movepick::MovePicker>::init_quiets+0x350>
+    0.00 :   95986:  mov    0x60293(%rip),%rax        # f5c20 <_DYNAMIC+0x420>
+    0.05 :   9598d:  nopl   (%rax)
+    0.00 :   95990:  tzcnt  %rbp,%rsi
+    0.00 :   95995:  or     (%rax,%rsi,8),%rdx
+    0.14 :   95999:  blsr   %rbp,%rbp
+    0.00 :   9599e:  jne    95990 <<chessengine::movepick::MovePicker>::init_quiets+0x340>
+    0.00 :   959a0:  test   %rbx,%rbx
+    0.00 :   959a3:  je     95aec <<chessengine::movepick::MovePicker>::init_quiets+0x49c>
+    0.00 :   959a9:  mov    0x1000(%r14),%rax
+    0.06 :   959b0:  mov    0x1008(%r14),%rsi
+    0.00 :   959b7:  mov    0x10(%rsp),%rbp
+    0.08 :   959bc:  xor    %r8d,%r8d
+    0.00 :   959bf:  nop
+    0.00 :   959c0:  tzcnt  %rbx,%rdi
+    0.00 :   959c5:  shl    $0x6,%edi
+    0.00 :   959c8:  mov    (%r14,%rdi,1),%r10
+    0.00 :   959cc:  mov    0x10(%r14,%rdi,1),%r9d
+    0.00 :   959d1:  and    %rbp,%r10
+    0.00 :   959d4:  imul   0x8(%r14,%rdi,1),%r10
+    0.00 :   959da:  movzbl 0x14(%r14,%rdi,1),%edi
+    0.00 :   959e0:  shrx   %rdi,%r10,%rdi
+    0.07 :   959e5:  add    %r9,%rdi
+    0.16 :   959e8:  cmp    %rsi,%rdi
+    0.00 :   959eb:  jae    961e1 <<chessengine::movepick::MovePicker>::init_quiets+0xb91>
+    0.00 :   959f1:  or     (%rax,%rdi,8),%r8
+    0.43 :   959f5:  blsr   %rbx,%rbx
+    0.00 :   959fa:  jne    959c0 <<chessengine::movepick::MovePicker>::init_quiets+0x370>
+    0.00 :   959fc:  and    %r11,%r13
+    0.00 :   959ff:  mov    %r11,%rbx
+    0.08 :   95a02:  je     95b00 <<chessengine::movepick::MovePicker>::init_quiets+0x4b0>
+    0.00 :   95a08:  mov    0x1000(%r14),%rax
+    0.00 :   95a0f:  mov    0x1008(%r14),%rsi
+    0.09 :   95a16:  xor    %r9d,%r9d
+    0.00 :   95a19:  nopl   0x0(%rax)
+    0.00 :   95a20:  tzcnt  %r13,%rdi
+    0.00 :   95a25:  shl    $0x6,%edi
+    0.00 :   95a28:  mov    0x18(%r14,%rdi,1),%r11
+    0.08 :   95a2d:  mov    0x28(%r14,%rdi,1),%r10d
+    0.00 :   95a32:  and    %rbp,%r11
+    0.00 :   95a35:  imul   0x20(%r14,%rdi,1),%r11
+    0.00 :   95a3b:  movzbl 0x2c(%r14,%rdi,1),%edi
+    0.05 :   95a41:  shrx   %rdi,%r11,%rdi
+    0.00 :   95a46:  add    %r10,%rdi
+    0.00 :   95a49:  cmp    %rsi,%rdi
+    0.00 :   95a4c:  jae    961d4 <<chessengine::movepick::MovePicker>::init_quiets+0xb84>
+    0.00 :   95a52:  or     (%rax,%rdi,8),%r9
+    0.00 :   95a56:  blsr   %r13,%r13
+    0.00 :   95a5b:  jne    95a20 <<chessengine::movepick::MovePicker>::init_quiets+0x3d0>
+    0.00 :   95a5d:  and    %rbx,%r12
+    0.00 :   95a60:  je     95b0c <<chessengine::movepick::MovePicker>::init_quiets+0x4bc>
+    0.00 :   95a66:  mov    0x1000(%r14),%r11
+    0.05 :   95a6d:  mov    0x1008(%r14),%rsi
+    0.00 :   95a74:  mov    0x18(%rsp),%r13
+    0.00 :   95a79:  xor    %r10d,%r10d
+    0.00 :   95a7c:  nopl   0x0(%rax)
+    0.00 :   95a80:  tzcnt  %r12,%rax
+    0.00 :   95a85:  shl    $0x6,%eax
+    0.00 :   95a88:  mov    0x18(%r14,%rax,1),%rdi
+    0.00 :   95a8d:  movzbl 0x2c(%r14,%rax,1),%r15d
+    0.06 :   95a93:  mov    0x28(%r14,%rax,1),%ebx
+    0.00 :   95a98:  and    %rbp,%rdi
+    0.00 :   95a9b:  imul   0x20(%r14,%rax,1),%rdi
+    0.00 :   95aa1:  shrx   %r15,%rdi,%rdi
+    0.00 :   95aa6:  add    %rbx,%rdi
+    0.00 :   95aa9:  cmp    %rsi,%rdi
+    0.00 :   95aac:  jae    961d4 <<chessengine::movepick::MovePicker>::init_quiets+0xb84>
+    0.00 :   95ab2:  add    %r14,%rax
+    0.00 :   95ab5:  mov    (%rax),%r15
+    0.00 :   95ab8:  mov    0x10(%rax),%ebx
+    0.00 :   95abb:  and    %rbp,%r15
+    0.00 :   95abe:  imul   0x8(%rax),%r15
+    0.00 :   95ac3:  movzbl 0x14(%rax),%eax
+    0.00 :   95ac7:  shrx   %rax,%r15,%rax
+    0.00 :   95acc:  add    %rbx,%rax
+    0.00 :   95acf:  cmp    %rsi,%rax
+    0.00 :   95ad2:  jae    961ee <<chessengine::movepick::MovePicker>::init_quiets+0xb9e>
+    0.00 :   95ad8:  or     (%r11,%rdi,8),%r10
+    0.00 :   95adc:  blsr   %r12,%r12
+    0.00 :   95ae1:  or     (%r11,%rax,8),%r10
+    0.00 :   95ae5:  test   %r12,%r12
+    0.00 :   95ae8:  jne    95a80 <<chessengine::movepick::MovePicker>::init_quiets+0x430>
+    0.00 :   95aea:  jmp    95b14 <<chessengine::movepick::MovePicker>::init_quiets+0x4c4>
+    0.00 :   95aec:  mov    0x10(%rsp),%rbp
+    0.06 :   95af1:  xor    %r8d,%r8d
+    0.00 :   95af4:  and    %r11,%r13
+    0.00 :   95af7:  mov    %r11,%rbx
+    0.00 :   95afa:  jne    95a08 <<chessengine::movepick::MovePicker>::init_quiets+0x3b8>
+    0.00 :   95b00:  xor    %r9d,%r9d
+    0.00 :   95b03:  and    %rbx,%r12
+    0.00 :   95b06:  jne    95a66 <<chessengine::movepick::MovePicker>::init_quiets+0x416>
+    0.00 :   95b0c:  mov    0x18(%rsp),%r13
+    0.00 :   95b11:  xor    %r10d,%r10d
+    0.08 :   95b14:  mov    0x360(%rsp),%rsi
+    0.00 :   95b1c:  mov    %rcx,0x100(%rsp)
+    0.00 :   95b24:  mov    %rdx,0x108(%rsp)
+    0.00 :   95b2c:  mov    %r8,0x110(%rsp)
+    0.00 :   95b34:  mov    %r9,0x118(%rsp)
+    0.00 :   95b3c:  mov    %r10,0x120(%rsp)
+    0.00 :   95b44:  movq   $0x0,0x128(%rsp)
+    0.08 :   95b50:  cmp    $0x101,%rsi
+    0.00 :   95b57:  jae    961c0 <<chessengine::movepick::MovePicker>::init_quiets+0xb70>
+    0.00 :   95b5d:  mov    0x28(%rsp),%r8
+    0.00 :   95b62:  mov    0x870(%r8),%rax
+    0.00 :   95b69:  mov    %rax,0x70(%rsp)
+    0.00 :   95b6e:  test   %rsi,%rsi
+    0.00 :   95b71:  je     960ae <<chessengine::movepick::MovePicker>::init_quiets+0xa5e>
+    0.00 :   95b77:  mov    0x60(%rsp),%rax
+    0.00 :   95b7c:  mov    0x70(%rsp),%rcx
+    0.06 :   95b81:  add    %rsi,%rsi
+    0.00 :   95b84:  mov    $0x2,%bl
+    0.00 :   95b86:  movq   $0x0,0x88(%rsp)
+    0.09 :   95b92:  movq   $0x0,0x90(%rsp)
+    0.00 :   95b9e:  movq   $0x0,0x98(%rsp)
+    0.19 :   95baa:  mov    %rsi,0xe0(%rsp)
+    0.14 :   95bb2:  lea    (%rax,%rax,2),%rdx
+    0.00 :   95bb6:  mov    0x58(%rsp),%rax
+    0.08 :   95bbb:  mov    %rcx,%r11
+    0.00 :   95bbe:  movq   $0x0,0x58(%rsp)
+    0.32 :   95bc7:  shl    $0x9,%edx
+    0.00 :   95bca:  lea    (%rax,%rax,2),%rdi
+    0.00 :   95bce:  mov    0x50(%rsp),%rax
+    0.09 :   95bd3:  shl    $0x9,%edi
+    0.08 :   95bd6:  lea    (%rax,%rax,2),%r9
+    0.00 :   95bda:  mov    0x48(%rsp),%rax
+    0.00 :   95bdf:  shl    $0x9,%r9d
+    0.08 :   95be3:  lea    (%rax,%rax,2),%r10
+    0.00 :   95be7:  mov    0x20(%rsp),%rax
+    0.00 :   95bec:  shl    $0x9,%r10d
+    0.08 :   95bf0:  lea    (%rax,%rax,2),%rbp
+    0.00 :   95bf4:  mov    0x40(%rsp),%rax
+    0.00 :   95bf9:  shl    $0x9,%ebp
+    0.00 :   95bfc:  add    %rax,%rdx
+    0.00 :   95bff:  add    %rax,%rdi
+    0.08 :   95c02:  add    %rax,%r9
+    0.00 :   95c05:  add    %rax,%r10
+    0.00 :   95c08:  add    %rax,%rbp
+    0.00 :   95c0b:  mov    0x80(%rsp),%rax
+    0.00 :   95c13:  cmp    $0x100,%rcx
+    0.00 :   95c1a:  mov    %rdx,0xd0(%rsp)
+    0.10 :   95c22:  mov    %rdx,0x48(%rsp)
+    0.00 :   95c27:  mov    %rdi,0xc8(%rsp)
+    0.07 :   95c2f:  mov    %rdi,0x40(%rsp)
+    0.09 :   95c34:  mov    %r9,0xc0(%rsp)
+    0.07 :   95c3c:  mov    %r9,0x38(%rsp)
+    0.16 :   95c41:  mov    %r10,0xb8(%rsp)
+    0.20 :   95c49:  mov    %r10,0x30(%rsp)
+    0.07 :   95c4e:  mov    %rbp,0xb0(%rsp)
+    0.00 :   95c56:  lea    0x1(%rax),%eax
+    0.00 :   95c59:  mov    %eax,0x6c(%rsp)
+    0.21 :   95c5d:  mov    $0x100,%eax
+    0.00 :   95c62:  cmovb  %rcx,%rax
+    0.07 :   95c66:  neg    %r11
+    0.00 :   95c69:  xor    %r12d,%r12d
+    0.00 :   95c6c:  mov    %eax,%eax
+    0.00 :   95c6e:  lea    -0x200(%rax,%rax,1),%rax
+    0.00 :   95c76:  mov    %rax,0xe8(%rsp)
+    0.06 :   95c7e:  lea    0x4(%r8,%rcx,8),%rax
+    0.19 :   95c83:  mov    0x78(%rsp),%rcx
+    0.06 :   95c88:  mov    %rax,0xd8(%rsp)
+    0.08 :   95c90:  mov    %rcx,0x50(%rsp)
+    0.00 :   95c95:  jmp    95cf1 <<chessengine::movepick::MovePicker>::init_quiets+0x6a1>
+    0.00 :   95c97:  nopw   0x0(%rax,%rax,1)
+    0.00 :   95ca0:  mov    0x28(%rsp),%r8
+    0.00 :   95ca5:  mov    0x10(%rsp),%rsi
+    0.00 :   95caa:  add    %ecx,%ebx
+    0.00 :   95cac:  mov    0xe8(%rsp),%rax
+    0.00 :   95cb4:  add    %r12,%rax
+    0.00 :   95cb7:  je     96091 <<chessengine::movepick::MovePicker>::init_quiets+0xa41>
+    0.00 :   95cbd:  mov    0xd8(%rsp),%rax
+    0.55 :   95cc5:  mov    0x20(%rsp),%r11
+    0.49 :   95cca:  mov    %si,-0x4(%rax,%r12,4)
+    0.39 :   95cd0:  mov    %ebx,(%rax,%r12,4)
+    0.08 :   95cd4:  mov    0xe0(%rsp),%rax
+    0.16 :   95cdc:  movzbl 0x60(%rsp),%ebx
+    0.74 :   95ce1:  add    $0x2,%r12
+    0.07 :   95ce5:  dec    %r11
+    0.13 :   95ce8:  cmp    %r12,%rax
+    0.00 :   95ceb:  je     960ae <<chessengine::movepick::MovePicker>::init_quiets+0xa5e>
+    0.00 :   95cf1:  movzwl 0x160(%rsp,%r12,1),%r9d
+    0.59 :   95cfa:  mov    %r9d,%r14d
+    0.68 :   95cfd:  and    $0x3f,%r14d
+    0.00 :   95d01:  movzbl 0xc0(%r13,%r14,2),%eax
+    1.51 :   95d0a:  cmp    $0x2,%al
+    0.23 :   95d0c:  je     96194 <<chessengine::movepick::MovePicker>::init_quiets+0xb44>
+    0.00 :   95d12:  movzbl 0xc1(%r13,%r14,2),%ecx
+    0.14 :   95d1b:  cmp    $0x2,%bl
+    0.41 :   95d1e:  jne    95df0 <<chessengine::movepick::MovePicker>::init_quiets+0x7a0>
+    0.00 :   95d24:  movzbl %cl,%edi
+    0.44 :   95d27:  test   $0x1,%al
+    0.14 :   95d29:  lea    0x6(%rdi),%rbp
+    0.00 :   95d2d:  cmove  %rdi,%rbp
+    0.14 :   95d31:  cmp    $0x6,%cl
+    0.00 :   95d34:  jae    961fe <<chessengine::movepick::MovePicker>::init_quiets+0xbae>
+    0.00 :   95d3a:  cmp    $0xc,%ebp
+    0.00 :   95d3d:  jae    96213 <<chessengine::movepick::MovePicker>::init_quiets+0xbc3>
+    0.00 :   95d43:  lea    -0x82682(%rip),%rdx        # 136c8 <anon.eed585b01ae30eb332643aad9fa1c7d5.137.llvm.4360693513763117755+0x670>
+    0.14 :   95d4a:  mov    0x78(%rsp),%r10
+    0.24 :   95d4f:  mov    0xd0(%rsp),%rsi
+    0.07 :   95d57:  shl    $0x7,%ebp
+    0.05 :   95d5a:  mov    %eax,%ebx
+    0.08 :   95d5c:  mov    %cl,0xf(%rsp)
+    0.15 :   95d60:  mov    (%rdx,%rdi,4),%edx
+    0.33 :   95d63:  shl    $0x3,%edi
+    0.00 :   95d66:  mov    %rdx,0x58(%rsp)
+    0.09 :   95d6b:  lea    (%r10,%rbp,1),%rdx
+    0.31 :   95d6f:  mov    0xc8(%rsp),%r10
+    0.00 :   95d77:  mov    %rdx,0x50(%rsp)
+    0.00 :   95d7c:  lea    (%rsi,%rbp,1),%rdx
+    0.00 :   95d80:  mov    0xc0(%rsp),%rsi
+    0.16 :   95d88:  mov    %rdx,0x48(%rsp)
+    0.07 :   95d8d:  lea    (%r10,%rbp,1),%rdx
+    0.00 :   95d91:  mov    0xb8(%rsp),%r10
+    0.06 :   95d99:  mov    %rdx,0x40(%rsp)
+    0.06 :   95d9e:  lea    (%rsi,%rbp,1),%rdx
+    0.17 :   95da2:  mov    0x130(%rsp,%rdi,1),%rsi
+    0.00 :   95daa:  mov    %rdx,0x38(%rsp)
+    0.06 :   95daf:  lea    (%r10,%rbp,1),%rdx
+    0.07 :   95db3:  add    0xb0(%rsp),%rbp
+    0.00 :   95dbb:  mov    0x100(%rsp,%rdi,1),%r10
+    0.00 :   95dc3:  mov    %rsi,0x98(%rsp)
+    0.07 :   95dcb:  mov    0x38(%r13,%rdi,1),%rsi
+    0.21 :   95dd0:  mov    %rdx,0x30(%rsp)
+    0.30 :   95dd5:  mov    %r10,0x90(%rsp)
+    0.08 :   95ddd:  mov    %rsi,0x88(%rsp)
+    0.21 :   95de5:  jmp    95e02 <<chessengine::movepick::MovePicker>::init_quiets+0x7b2>
+    0.00 :   95de7:  nopw   0x0(%rax,%rax,1)
+    0.00 :   95df0:  cmp    %bl,%al
+    0.27 :   95df2:  jne    95d24 <<chessengine::movepick::MovePicker>::init_quiets+0x6d4>
+    0.00 :   95df8:  cmp    %cl,0xf(%rsp)
+    0.68 :   95dfc:  jne    95d24 <<chessengine::movepick::MovePicker>::init_quiets+0x6d4>
+    0.09 :   95e02:  mov    0xf0(%rsp),%rcx
+    0.38 :   95e0a:  mov    0x50(%rsp),%rsi
+    0.23 :   95e0f:  movzwl %r9w,%eax
+    0.27 :   95e13:  mov    0x48(%rsp),%rdi
+    0.52 :   95e18:  mov    %bl,0x60(%rsp)
+    0.21 :   95e1c:  mov    %r11,0x20(%rsp)
+    0.93 :   95e21:  mov    %r9,0x10(%rsp)
+    0.55 :   95e26:  shr    $0x6,%eax
+    0.29 :   95e29:  mov    %eax,%r13d
+    0.05 :   95e2c:  and    $0x3f,%r13d
+    0.00 :   95e30:  mov    %r13d,%edx
+    0.43 :   95e33:  add    %edx,%edx
+    0.00 :   95e35:  movswl 0x0(%rbp,%rdx,1),%r15d
+    2.97 :   95e3b:  movswl (%rcx,%r9,2),%ecx
+    4.83 :   95e40:  movswl (%rsi,%rdx,1),%esi
+    3.02 :   95e44:  add    %ecx,%esi
+    1.05 :   95e46:  movswl (%rdi,%rdx,1),%ecx
+    3.49 :   95e4a:  mov    0x38(%rsp),%rdi
+    0.17 :   95e4f:  lea    (%rcx,%rsi,2),%ecx
+    0.83 :   95e52:  mov    0x40(%rsp),%rsi
+    0.22 :   95e57:  movswl (%rdi,%rdx,1),%edi
+    1.81 :   95e5b:  movswl (%rsi,%rdx,1),%esi
+    2.31 :   95e5f:  add    %esi,%edi
+    0.31 :   95e61:  mov    0x30(%rsp),%rsi
+    0.54 :   95e66:  movswl (%rsi,%rdx,1),%esi
+    1.12 :   95e6a:  mov    0x88(%rsp),%rdx
+    0.00 :   95e72:  add    %edi,%esi
+    1.20 :   95e74:  add    %esi,%r15d
+    0.22 :   95e77:  add    %ecx,%r15d
+    0.63 :   95e7a:  mov    $0x1,%ecx
+    0.28 :   95e7f:  bt     %rax,%rdx
+    0.00 :   95e83:  shlx   %rax,%rcx,%rbx
+    0.00 :   95e88:  jae    95eb5 <<chessengine::movepick::MovePicker>::init_quiets+0x865>
+    0.06 :   95e8a:  mov    0x18(%rsp),%rdi
+    0.25 :   95e8f:  mov    $0xffffffb5,%edx
+    0.00 :   95e94:  mov    %r9d,%esi
+    0.00 :   95e97:  vzeroupper
+    0.00 :   95e9a:  call   *0x60220(%rip)        # f60c0 <_DYNAMIC+0x8c0>
+    0.00 :   95ea0:  mov    0x28(%rsp),%r8
+    0.00 :   95ea5:  lea    0x4000(%r15),%ecx
+    0.00 :   95eac:  test   %al,%al
+    0.00 :   95eae:  cmove  %r15d,%ecx
+    0.00 :   95eb2:  mov    %ecx,%r15d
+    0.73 :   95eb5:  mov    0x98(%rsp),%rcx
+    0.36 :   95ebd:  mov    $0x0,%edx
+    0.05 :   95ec2:  shrx   %r14,%rcx,%rax
+    0.84 :   95ec7:  and    $0x1,%eax
+    0.07 :   95eca:  bt     %r13,%rcx
+    0.84 :   95ece:  mov    0x58(%rsp),%rcx
+    0.20 :   95ed3:  sbb    $0x0,%eax
+    0.05 :   95ed6:  imul   %ecx,%eax
+    0.61 :   95ed9:  test   %rbx,0x90(%rsp)
+    0.06 :   95ee1:  lea    (%rcx,%rcx,1),%ecx
+    0.15 :   95ee4:  lea    (%rcx,%rcx,4),%ecx
+    0.53 :   95ee7:  lea    (%rax,%rax,4),%eax
+    0.29 :   95eea:  cmove  %edx,%ecx
+    0.63 :   95eed:  lea    (%rcx,%rax,4),%ebx
+    0.52 :   95ef0:  add    %r15d,%ebx
+    0.36 :   95ef3:  cmpq   $0x5,0x80(%rsp)
+    0.55 :   95efc:  jb     96050 <<chessengine::movepick::MovePicker>::init_quiets+0xa00>
+    0.19 :   95f02:  mov    0x10(%rsp),%rsi
+    0.23 :   95f07:  mov    0x800(%r8),%r15
+    0.95 :   95f0e:  test   %r15,%r15
+    0.36 :   95f11:  je     9607b <<chessengine::movepick::MovePicker>::init_quiets+0xa2b>
+    0.00 :   95f17:  mov    %esi,%ecx
+    0.00 :   95f19:  and    $0xc000,%ecx
+    0.00 :   95f1f:  mov    $0xff,%al
+    0.00 :   95f21:  cmp    $0x4000,%cx
+    0.00 :   95f26:  jne    95f3e <<chessengine::movepick::MovePicker>::init_quiets+0x8ee>
+    0.00 :   95f28:  mov    $0x20c,%eax
+    0.00 :   95f2d:  lea    -0x82854(%rip),%rcx        # 136e0 <anon.a6f5765321737a7533fe8d711b9a7816.27.llvm.177627639348709963>
+    0.00 :   95f34:  bextr  %eax,%esi,%eax
+    0.00 :   95f39:  movzbl 0x1(%rax,%rcx,1),%eax
+    0.00 :   95f3e:  movzbl 0x84c(%r8),%ecx
+    0.00 :   95f46:  movzbl %al,%edx
+    0.00 :   95f49:  xor    %cl,%r14b
+    0.00 :   95f4c:  xor    %cl,%r13b
+    0.00 :   95f4f:  movzbl %r14b,%edi
+    0.00 :   95f53:  movzbl %r13b,%esi
+    0.00 :   95f57:  vzeroupper
+    0.00 :   95f5a:  call   *0x60248(%rip)        # f61a8 <_DYNAMIC+0x9a8>
+    0.00 :   95f60:  mov    0x18(%rsp),%r13
+    0.00 :   95f65:  xor    %ecx,%ecx
+    0.00 :   95f67:  test   $0x1,%al
+    0.00 :   95f69:  je     95ca0 <<chessengine::movepick::MovePicker>::init_quiets+0x650>
+    0.00 :   95f6f:  movzwl %dx,%edi
+    0.00 :   95f72:  mov    0x8(%r15),%rdx
+    0.00 :   95f76:  mov    %edi,%eax
+    0.00 :   95f78:  shl    $0x4,%eax
+    0.00 :   95f7b:  lea    0x10(%rax),%rsi
+    0.00 :   95f7f:  cmp    %rdx,%rsi
+    0.00 :   95f82:  ja     961b0 <<chessengine::movepick::MovePicker>::init_quiets+0xb60>
+    0.00 :   95f88:  mov    0x18(%r15),%rsi
+    0.00 :   95f8c:  cmp    %rdi,%rsi
+    0.00 :   95f8f:  jbe    9624e <<chessengine::movepick::MovePicker>::init_quiets+0xbfe>
+    0.00 :   95f95:  mov    (%r15),%rcx
+    0.00 :   95f98:  vxorps %xmm1,%xmm1,%xmm1
+    0.00 :   95f9c:  vpmovsxbd (%rcx,%rax,1),%zmm0
+    0.00 :   95fa3:  mov    0x28(%rsp),%rcx
+    0.00 :   95fa8:  mov    0x10(%r15),%rax
+    0.00 :   95fac:  vcvtdq2ps %zmm0,%zmm0
+    0.00 :   95fb2:  vfmadd132ps 0x808(%rcx),%zmm1,%zmm0
+    0.00 :   95fbc:  vextractf64x4 $0x1,%zmm0,%ymm1
+    0.00 :   95fc3:  vextractf128 $0x1,%ymm0,%xmm3
+    0.00 :   95fc9:  vshufpd $0x1,%xmm0,%xmm0,%xmm5
+    0.00 :   95fce:  vpermpd $0xff,%ymm1,%ymm2
+    0.00 :   95fd4:  vshufpd $0x1,%xmm3,%xmm3,%xmm4
+    0.00 :   95fd9:  vaddps %xmm4,%xmm2,%xmm2
+    0.00 :   95fdd:  vshufpd $0x1,%xmm1,%xmm1,%xmm4
+    0.00 :   95fe2:  vextractf128 $0x1,%ymm1,%xmm1
+    0.00 :   95fe8:  vaddps %xmm5,%xmm4,%xmm4
+    0.00 :   95fec:  vaddps %xmm3,%xmm1,%xmm1
+    0.00 :   95ff0:  vaddps %xmm4,%xmm2,%xmm2
+    0.00 :   95ff4:  vextractf32x4 $0x2,%zmm0,%xmm4
+    0.00 :   95ffb:  vaddps %xmm0,%xmm4,%xmm0
+    0.00 :   95fff:  vaddps %xmm0,%xmm1,%xmm0
+    0.00 :   96003:  vaddps %xmm0,%xmm2,%xmm0
+    0.00 :   96007:  vmovshdup %xmm0,%xmm1
+    0.00 :   9600b:  vaddss %xmm0,%xmm1,%xmm0
+    0.00 :   9600f:  vaddss (%rax,%rdi,4),%xmm0,%xmm0
+    0.00 :   96014:  mov    $0x7fffffff,%eax
+    0.00 :   96019:  vmulss 0x848(%rcx),%xmm0,%xmm0
+    0.00 :   96021:  vucomiss -0x88ed9(%rip),%xmm0        # d150 <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0x14b>
+    0.00 :   96029:  vcvttss2si %xmm0,%ecx
+    0.00 :   9602d:  cmova  %eax,%ecx
+    0.00 :   96030:  vucomiss %xmm0,%xmm0
+    0.00 :   96034:  mov    $0x0,%eax
+    0.00 :   96039:  cmovp  %eax,%ecx
+    0.00 :   9603c:  jmp    95ca0 <<chessengine::movepick::MovePicker>::init_quiets+0x650>
+    0.00 :   96041:  data16 data16 data16 data16 data16 cs nopw 0x0(%rax,%rax,1)
+    0.00 :   96050:  mov    0xa8(%rsp),%rax
+    0.00 :   96058:  mov    0x10(%rsp),%rsi
+    0.23 :   9605d:  movswl (%rax,%rsi,2),%eax
+    1.01 :   96061:  shl    $0x3,%eax
+    0.07 :   96064:  cltd
+    0.00 :   96065:  idivl  0x6c(%rsp)
+    1.21 :   96069:  add    %eax,%ebx
+    0.09 :   9606b:  mov    0x800(%r8),%r15
+    0.00 :   96072:  test   %r15,%r15
+    0.00 :   96075:  jne    95f17 <<chessengine::movepick::MovePicker>::init_quiets+0x8c7>
+    0.00 :   9607b:  mov    0x18(%rsp),%r13
+    0.73 :   96080:  mov    0xe8(%rsp),%rax
+    0.25 :   96088:  add    %r12,%rax
+    0.62 :   9608b:  jne    95cbd <<chessengine::movepick::MovePicker>::init_quiets+0x66d>
+    0.00 :   96091:  mov    0x20(%rsp),%rdi
+    0.00 :   96096:  lea    0x5caeb(%rip),%rdx        # f2b88 <anon.a6f5765321737a7533fe8d711b9a7816.150.llvm.177627639348709963+0x78>
+    0.00 :   9609d:  mov    $0x100,%esi
+    0.00 :   960a2:  neg    %rdi
+    0.00 :   960a5:  vzeroupper
+    0.00 :   960a8:  call   *0x5f96a(%rip)        # f5a18 <_DYNAMIC+0x218>
+    0.00 :   960ae:  mov    0x70(%rsp),%rdx
+    0.56 :   960b3:  mov    0xa0(%rsp),%rax
+    0.00 :   960bb:  xor    %esi,%esi
+    0.07 :   960bd:  add    %rdx,%rax
+    0.00 :   960c0:  mov    %rdx,0x858(%r8)
+    0.00 :   960c7:  mov    %rax,0x860(%r8)
+    0.08 :   960ce:  mov    %rax,0x878(%r8)
+    0.08 :   960d5:  sub    %rdx,%rax
+    0.09 :   960d8:  cmovae %rax,%rsi
+    0.00 :   960dc:  cmp    $0x2,%rsi
+    0.00 :   960e0:  jb     9617f <<chessengine::movepick::MovePicker>::init_quiets+0xb2f>
+    0.00 :   960e6:  imul   $0xfffff218,0x880(%r8),%ecx
+    0.13 :   960f1:  lea    (%r8,%rdx,8),%rdx
+    0.00 :   960f5:  mov    $0x1,%r8d
+    0.00 :   960fb:  xor    %eax,%eax
+    0.00 :   960fd:  jmp    96120 <<chessengine::movepick::MovePicker>::init_quiets+0xad0>
+    0.00 :   960ff:  nop
+    0.76 :   96100:  xor    %eax,%eax
+    0.23 :   96102:  cmp    %rsi,%rax
+    6.73 :   96105:  jae    9622b <<chessengine::movepick::MovePicker>::init_quiets+0xbdb>
+    0.00 :   9610b:  mov    %r10w,(%rdx,%rax,8)
+    1.00 :   96110:  mov    %r9d,0x4(%rdx,%rax,8)
+    0.22 :   96115:  mov    %rdi,%rax
+    0.00 :   96118:  inc    %r8
+    2.43 :   9611b:  cmp    %rsi,%r8
+    0.00 :   9611e:  je     9617f <<chessengine::movepick::MovePicker>::init_quiets+0xb2f>
+    0.00 :   96120:  mov    0x4(%rdx,%r8,8),%r9d
+    5.41 :   96125:  cmp    %ecx,%r9d
+    0.08 :   96128:  jl     96118 <<chessengine::movepick::MovePicker>::init_quiets+0xac8>
+    0.00 :   9612a:  lea    0x1(%rax),%rdi
+    3.42 :   9612e:  cmp    %rsi,%rdi
+    0.25 :   96131:  jae    9623e <<chessengine::movepick::MovePicker>::init_quiets+0xbee>
+    0.00 :   96137:  mov    0xc(%rdx,%rax,8),%r11d
+    1.50 :   9613c:  movzwl (%rdx,%r8,8),%r10d
+    0.67 :   96141:  movzwl 0x8(%rdx,%rax,8),%eax
+    0.26 :   96146:  mov    %ax,(%rdx,%r8,8)
+    0.16 :   9614b:  mov    %r11d,0x4(%rdx,%r8,8)
+    0.41 :   96150:  test   %rdi,%rdi
+    0.23 :   96153:  je     96100 <<chessengine::movepick::MovePicker>::init_quiets+0xab0>
+    0.00 :   96155:  mov    %rdi,%rax
+    0.06 :   96158:  nopl   0x0(%rax,%rax,1)
+    0.00 :   96160:  mov    -0x4(%rdx,%rax,8),%r11d
+    4.46 :   96165:  cmp    %r9d,%r11d
+    1.59 :   96168:  jge    96102 <<chessengine::movepick::MovePicker>::init_quiets+0xab2>
+    0.00 :   9616a:  movzwl -0x8(%rdx,%rax,8),%ebx
+    4.22 :   9616f:  mov    %bx,(%rdx,%rax,8)
+    0.62 :   96173:  mov    %r11d,0x4(%rdx,%rax,8)
+    0.43 :   96178:  dec    %rax
+    0.60 :   9617b:  jne    96160 <<chessengine::movepick::MovePicker>::init_quiets+0xb10>
+    0.00 :   9617d:  jmp    96100 <<chessengine::movepick::MovePicker>::init_quiets+0xab0>
+    0.00 :   9617f:  add    $0x368,%rsp
+    0.25 :   96186:  pop    %rbx
+    0.07 :   96187:  pop    %r12
+    0.00 :   96189:  pop    %r13
+    0.00 :   9618b:  pop    %r14
+    0.07 :   9618d:  pop    %r15
+    0.00 :   9618f:  pop    %rbp
+    0.00 :   96190:  vzeroupper
+    0.00 :   96193:  ret
+    0.00 :   96194:  lea    -0x8285e(%rip),%rdi        # 1393d <anon.a6f5765321737a7533fe8d711b9a7816.149.llvm.177627639348709963+0x32>
+    0.00 :   9619b:  lea    0x5c9b6(%rip),%rdx        # f2b58 <anon.a6f5765321737a7533fe8d711b9a7816.150.llvm.177627639348709963+0x48>
+    0.00 :   961a2:  mov    $0x32,%esi
+    0.00 :   961a7:  vzeroupper
+    0.00 :   961aa:  call   *0x5fb20(%rip)        # f5cd0 <_DYNAMIC+0x4d0>
+    0.00 :   961b0:  lea    0x5c479(%rip),%rcx        # f2630 <anon.a6f5765321737a7533fe8d711b9a7816.59.llvm.177627639348709963+0xa0>
+    0.00 :   961b7:  mov    %rax,%rdi
+    0.00 :   961ba:  call   *0x5fb18(%rip)        # f5cd8 <_DYNAMIC+0x4d8>
+    0.00 :   961c0:  lea    0x5bf69(%rip),%rcx        # f2130 <anon.eed585b01ae30eb332643aad9fa1c7d5.154.llvm.4360693513763117755>
+    0.00 :   961c7:  mov    $0x100,%edx
+    0.00 :   961cc:  xor    %edi,%edi
+    0.00 :   961ce:  call   *0x5fb04(%rip)        # f5cd8 <_DYNAMIC+0x4d8>
+    0.00 :   961d4:  lea    0x5c70d(%rip),%rdx        # f28e8 <anon.a6f5765321737a7533fe8d711b9a7816.99.llvm.177627639348709963+0x1c8>
+    0.00 :   961db:  call   *0x5f837(%rip)        # f5a18 <_DYNAMIC+0x218>
+    0.00 :   961e1:  lea    0x5c730(%rip),%rdx        # f2918 <anon.a6f5765321737a7533fe8d711b9a7816.99.llvm.177627639348709963+0x1f8>
+    0.00 :   961e8:  call   *0x5f82a(%rip)        # f5a18 <_DYNAMIC+0x218>
+    0.00 :   961ee:  lea    0x5c723(%rip),%rdx        # f2918 <anon.a6f5765321737a7533fe8d711b9a7816.99.llvm.177627639348709963+0x1f8>
+    0.00 :   961f5:  mov    %rax,%rdi
+    0.00 :   961f8:  call   *0x5f81a(%rip)        # f5a18 <_DYNAMIC+0x218>
+    0.00 :   961fe:  lea    0x5c2ab(%rip),%rdx        # f24b0 <anon.a6f5765321737a7533fe8d711b9a7816.13.llvm.177627639348709963+0x168>
+    0.00 :   96205:  mov    $0x6,%esi
+    0.00 :   9620a:  vzeroupper
+    0.00 :   9620d:  call   *0x5f805(%rip)        # f5a18 <_DYNAMIC+0x218>
+    0.00 :   96213:  lea    0x5c956(%rip),%rdx        # f2b70 <anon.a6f5765321737a7533fe8d711b9a7816.150.llvm.177627639348709963+0x60>
+    0.00 :   9621a:  mov    $0xc,%esi
+    0.00 :   9621f:  mov    %rbp,%rdi
+    0.00 :   96222:  vzeroupper
+    0.00 :   96225:  call   *0x5f7ed(%rip)        # f5a18 <_DYNAMIC+0x218>
+    0.00 :   9622b:  lea    0x5cc9e(%rip),%rdx        # f2ed0 <anon.a6f5765321737a7533fe8d711b9a7816.199.llvm.177627639348709963+0x138>
+    0.00 :   96232:  mov    %rax,%rdi
+    0.00 :   96235:  vzeroupper
+    0.00 :   96238:  call   *0x5f7da(%rip)        # f5a18 <_DYNAMIC+0x218>
+    0.00 :   9623e:  lea    0x5cc73(%rip),%rdx        # f2eb8 <anon.a6f5765321737a7533fe8d711b9a7816.199.llvm.177627639348709963+0x120>
+    0.00 :   96245:  vzeroupper
+    0.00 :   96248:  call   *0x5f7ca(%rip)        # f5a18 <_DYNAMIC+0x218>
+    0.00 :   9624e:  lea    0x5c3c3(%rip),%rdx        # f2618 <anon.a6f5765321737a7533fe8d711b9a7816.59.llvm.177627639348709963+0x88>
+    0.00 :   96255:  call   *0x5f7bd(%rip)        # f5a18 <_DYNAMIC+0x218>
+    0.00 :   9625b:  lea    0x5c8de(%rip),%rdx        # f2b40 <anon.a6f5765321737a7533fe8d711b9a7816.150.llvm.177627639348709963+0x30>
+    0.00 :   96262:  mov    $0xd00,%esi
+    0.00 :   96267:  call   *0x5f7ab(%rip)        # f5a18 <_DYNAMIC+0x218>
+    0.00 :   9626d:  lea    0x5c8cc(%rip),%rdx        # f2b40 <anon.a6f5765321737a7533fe8d711b9a7816.150.llvm.177627639348709963+0x30>
+    0.00 :   96274:  mov    $0xd00,%esi
+    0.00 :   96279:  mov    %rcx,%rdi
+    0.00 :   9627c:  call   *0x5f796(%rip)        # f5a18 <_DYNAMIC+0x218>
+    0.00 :   96282:  lea    0x5c8b7(%rip),%rdx        # f2b40 <anon.a6f5765321737a7533fe8d711b9a7816.150.llvm.177627639348709963+0x30>
+    0.00 :   96289:  mov    $0xd00,%esi
+    0.00 :   9628e:  mov    %r8,%rdi
+    0.00 :   96291:  call   *0x5f781(%rip)        # f5a18 <_DYNAMIC+0x218>
+    0.00 :   96297:  lea    0x5c8a2(%rip),%rdx        # f2b40 <anon.a6f5765321737a7533fe8d711b9a7816.150.llvm.177627639348709963+0x30>
+    0.00 :   9629e:  mov    $0xd00,%esi
+    0.00 :   962a3:  mov    %r9,%rdi
+    0.00 :   962a6:  call   *0x5f76c(%rip)        # f5a18 <_DYNAMIC+0x218>
+    0.00 :   962ac:  mov    0x20(%rsp),%rdi
+    0.00 :   962b1:  lea    0x5c888(%rip),%rdx        # f2b40 <anon.a6f5765321737a7533fe8d711b9a7816.150.llvm.177627639348709963+0x30>
+    0.00 :   962b8:  mov    $0xd00,%esi
+    0.00 :   962bd:  call   *0x5f755(%rip)        # f5a18 <_DYNAMIC+0x218>

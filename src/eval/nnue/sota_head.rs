@@ -19,6 +19,7 @@
 //! Behind the `sota` cargo feature; the default build never compiles it, so the
 //! depth-6 bench stays 548978.
 
+use super::aligned::Aligned;
 use super::sota_simd::{activate, l1_dequant, l1_dot, l2_tail};
 use crate::types::Color;
 
@@ -163,7 +164,7 @@ pub fn output_bucket(piece_count: usize) -> usize {
 #[derive(Debug)]
 pub struct SkipLane {
     /// `[BUCKETS][L1]` i8, bucket-major contiguous.
-    pub q: Box<[i8]>,
+    pub q: Aligned<i8>,
     /// Per-bucket dequantisation scale, `[BUCKETS]`.
     pub scale: Box<[f32]>,
 }
@@ -174,11 +175,11 @@ pub struct SkipLane {
 #[derive(Debug)]
 pub struct SotaHead {
     /// `[BUCKETS][L2 · L1]` i8.
-    pub l1_weights: Box<[i8]>,
+    pub l1_weights: Aligned<i8>,
     /// `[BUCKETS][L2]` f32.
     pub l1_biases: Box<[f32]>,
     /// `[BUCKETS][L2 · L3]` f32.
-    pub l2_weights: Box<[f32]>,
+    pub l2_weights: Aligned<f32>,
     /// `[BUCKETS][L3]` f32.
     pub l2_biases: Box<[f32]>,
     /// `[BUCKETS][L3]` f32.
@@ -676,9 +677,9 @@ mod tests {
             .collect();
         let l3b: Vec<f32> = (0..BUCKETS).map(|i| i as f32 * 0.1).collect();
         SotaHead {
-            l1_weights: l1w.into_boxed_slice(),
+            l1_weights: l1w.into(),
             l1_biases: l1b.into_boxed_slice(),
-            l2_weights: l2w.into_boxed_slice(),
+            l2_weights: l2w.into(),
             l2_biases: l2b.into_boxed_slice(),
             l3_weights: l3w.into_boxed_slice(),
             l3_biases: l3b.into_boxed_slice(),

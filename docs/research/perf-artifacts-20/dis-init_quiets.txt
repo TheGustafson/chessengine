@@ -1,0 +1,597 @@
+0000000000095950 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets>:
+   95950:	push   %rbp
+   95951:	push   %r15
+   95953:	push   %r14
+   95955:	push   %r13
+   95957:	push   %r12
+   95959:	push   %rbx
+   9595a:	sub    $0x308,%rsp
+   95961:	mov    %rsi,%r15
+   95964:	lea    0x100(%rsp),%rsi
+   9596c:	vxorps %xmm0,%xmm0,%xmm0
+   95970:	mov    %rdi,%rbx
+   95973:	mov    %r15,%rdi
+   95976:	mov    %rdx,%r12
+   95979:	vmovups %zmm0,0x2c0(%rsp)
+   95981:	vmovups %zmm0,0x280(%rsp)
+   95989:	vmovups %zmm0,0x240(%rsp)
+   95991:	vmovups %zmm0,0x200(%rsp)
+   95999:	vmovups %zmm0,0x1c0(%rsp)
+   959a1:	vmovups %zmm0,0x180(%rsp)
+   959a9:	vmovups %zmm0,0x140(%rsp)
+   959b1:	vmovups %zmm0,0x100(%rsp)
+   959b9:	movq   $0x0,0x300(%rsp)
+   959c5:	vzeroupper
+   959c8:	call   4be30 <_RINvNtCsj3gVTF6Hx7m_11chessengine7movegen8generateKh1_EB4_>
+   959cd:	mov    0x300(%rsp),%r14
+   959d5:	cmp    $0x101,%r14
+   959dc:	jae    95bf3 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x2a3>
+   959e2:	movzbl 0x268(%r15),%r13d
+   959ea:	mov    %r15,%rdi
+   959ed:	call   9a610 <_RNvMsb_NtCsj3gVTF6Hx7m_11chessengine5boardNtB5_5Board14ensure_threats.llvm.11021376600075084165>
+   959f2:	mov    0x230(%r15),%rdx
+   959f9:	mov    0x228(%r15),%rcx
+   95a00:	mov    0x240(%r15),%rsi
+   95a07:	mov    0x258(%r15),%rax
+   95a0e:	movzwl 0x888(%rbx),%edi
+   95a15:	or     0x238(%r15),%rdx
+   95a1c:	movq   $0x0,0xd0(%rsp)
+   95a28:	mov    %rcx,0xd8(%rsp)
+   95a30:	mov    %rcx,0xe0(%rsp)
+   95a38:	or     %rcx,%rdx
+   95a3b:	or     %rdx,%rsi
+   95a3e:	mov    %rdx,0xe8(%rsp)
+   95a46:	mov    %rsi,0xf0(%rsp)
+   95a4e:	movq   $0x0,0xf8(%rsp)
+   95a5a:	cmp    $0xcff,%rdi
+   95a61:	ja     96406 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xab6>
+   95a67:	movzwl 0x88a(%rbx),%ecx
+   95a6e:	mov    %rbx,%rdx
+   95a71:	cmp    $0xd00,%rcx
+   95a78:	jae    96418 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xac8>
+   95a7e:	movzwl 0x88c(%rdx),%r8d
+   95a86:	cmp    $0xd00,%r8
+   95a8d:	jae    9642d <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xadd>
+   95a93:	movzwl 0x88e(%rdx),%r9d
+   95a9b:	cmp    $0xd00,%r9
+   95aa2:	jae    96442 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xaf2>
+   95aa8:	mov    %rdi,0x50(%rsp)
+   95aad:	movzwl 0x892(%rdx),%edi
+   95ab4:	mov    %r9,0x38(%rsp)
+   95ab9:	mov    %r8,0x40(%rsp)
+   95abe:	mov    %rcx,0x48(%rsp)
+   95ac3:	mov    %r14,0x70(%rsp)
+   95ac8:	mov    %rdi,0x18(%rsp)
+   95acd:	cmp    $0xd00,%rdi
+   95ad4:	jae    96457 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xb07>
+   95ada:	mov    0x88(%r15),%rcx
+   95ae1:	mov    %r13,%r9
+   95ae4:	xor    $0x1,%r9
+   95ae8:	mov    %r13,%rdi
+   95aeb:	mov    0x1b0(%r15),%r8
+   95af2:	mov    %r15,%rsi
+   95af5:	shl    $0x11,%edi
+   95af8:	add    (%r12),%rdi
+   95afc:	andn   0x1a0(%r15,%r9,8),%rax,%r11
+   95b06:	lea    (%r9,%r9,2),%rax
+   95b0a:	shl    $0x4,%eax
+   95b0d:	mov    0x160(%r15,%rax,1),%r13
+   95b15:	mov    0x158(%r15,%rax,1),%r14
+   95b1d:	mov    0x150(%r15,%rax,1),%rbx
+   95b25:	mov    0x148(%r15,%rax,1),%r15
+   95b2d:	mov    0x140(%rsi,%rax,1),%rbp
+   95b35:	and    $0x1fff,%ecx
+   95b3b:	mov    %r8,(%rsp)
+   95b3f:	mov    %rdi,0x90(%rsp)
+   95b47:	lea    (%rcx,%rcx,2),%rax
+   95b4b:	shl    $0x9,%eax
+   95b4e:	add    0x20(%r12),%rax
+   95b53:	or     %r13,%r14
+   95b56:	or     %r14,%rbx
+   95b59:	or     %rbx,%r15
+   95b5c:	or     %r15,%rbp
+   95b5f:	mov    %rax,0x88(%rsp)
+   95b67:	mov    0x18(%r12),%rax
+   95b6c:	and    %r11,%rbp
+   95b6f:	mov    %rax,0x30(%rsp)
+   95b74:	mov    0x850(%rdx),%rax
+   95b7b:	mov    %rax,0x68(%rsp)
+   95b80:	shl    $0x11,%rax
+   95b84:	add    0x8(%r12),%rax
+   95b89:	mov    0x60300(%rip),%r12        # f5e90 <_DYNAMIC+0x418>
+   95b90:	mov    %rax,0x78(%rsp)
+   95b95:	mov    0x1040(%r12),%eax
+   95b9d:	mov    %rdx,0x8(%rsp)
+   95ba2:	mov    %rsi,0x10(%rsp)
+   95ba7:	test   %eax,%eax
+   95ba9:	jne    95c0a <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x2ba>
+   95bab:	and    %r11,%r15
+   95bae:	test   %rbp,%rbp
+   95bb1:	je     95c6b <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x31b>
+   95bb7:	shl    $0x9,%r9d
+   95bbb:	add    0x602de(%rip),%r9        # f5ea0 <_DYNAMIC+0x428>
+   95bc2:	xor    %ecx,%ecx
+   95bc4:	data16 data16 cs nopw 0x0(%rax,%rax,1)
+   95bd0:	tzcnt  %rbp,%rax
+   95bd5:	or     (%r9,%rax,8),%rcx
+   95bd9:	blsr   %rbp,%rbp
+   95bde:	jne    95bd0 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x280>
+   95be0:	and    %r11,%rbx
+   95be3:	xor    %edx,%edx
+   95be5:	test   %r15,%r15
+   95be8:	jne    95c77 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x327>
+   95bee:	jmp    95c90 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x340>
+   95bf3:	lea    0x5bdee(%rip),%rcx        # f19e8 <anon.d336d1d4f10595854553f94acf4f735a.160.llvm.9828231707298148452>
+   95bfa:	mov    $0x100,%edx
+   95bff:	xor    %edi,%edi
+   95c01:	mov    %r14,%rsi
+   95c04:	call   *0x60346(%rip)        # f5f50 <_DYNAMIC+0x4d8>
+   95c0a:	lea    0x98(%rsp),%rax
+   95c12:	lea    0x1040(%r12),%rdi
+   95c1a:	lea    0x5c877(%rip),%rcx        # f2498 <anon.ed23dd53d1999b359621ac0dc763dee2.2.llvm.11021376600075084165+0x18>
+   95c21:	lea    0x5c858(%rip),%r8        # f2480 <anon.ed23dd53d1999b359621ac0dc763dee2.2.llvm.11021376600075084165>
+   95c28:	lea    0xa0(%rsp),%rdx
+   95c30:	mov    $0x1,%esi
+   95c35:	mov    %r12,0x98(%rsp)
+   95c3d:	mov    %r11,0x28(%rsp)
+   95c42:	mov    %r9,0x20(%rsp)
+   95c47:	mov    %rax,0xa0(%rsp)
+   95c4f:	call   *0x60113(%rip)        # f5d68 <_DYNAMIC+0x2f0>
+   95c55:	mov    0x20(%rsp),%r9
+   95c5a:	mov    0x28(%rsp),%r11
+   95c5f:	and    %r11,%r15
+   95c62:	test   %rbp,%rbp
+   95c65:	jne    95bb7 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x267>
+   95c6b:	xor    %ecx,%ecx
+   95c6d:	and    %r11,%rbx
+   95c70:	xor    %edx,%edx
+   95c72:	test   %r15,%r15
+   95c75:	je     95c90 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x340>
+   95c77:	mov    0x6021a(%rip),%rax        # f5e98 <_DYNAMIC+0x420>
+   95c7e:	xchg   %ax,%ax
+   95c80:	tzcnt  %r15,%rsi
+   95c85:	or     (%rax,%rsi,8),%rdx
+   95c89:	blsr   %r15,%r15
+   95c8e:	jne    95c80 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x330>
+   95c90:	test   %rbx,%rbx
+   95c93:	je     95ddc <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x48c>
+   95c99:	mov    0x1000(%r12),%rax
+   95ca1:	mov    0x1008(%r12),%rsi
+   95ca9:	mov    (%rsp),%r15
+   95cad:	xor    %r8d,%r8d
+   95cb0:	tzcnt  %rbx,%rdi
+   95cb5:	shl    $0x6,%edi
+   95cb8:	mov    (%r12,%rdi,1),%r10
+   95cbc:	mov    0x10(%r12,%rdi,1),%r9d
+   95cc1:	and    %r15,%r10
+   95cc4:	imul   0x8(%r12,%rdi,1),%r10
+   95cca:	movzbl 0x14(%r12,%rdi,1),%edi
+   95cd0:	shrx   %rdi,%r10,%rdi
+   95cd5:	add    %r9,%rdi
+   95cd8:	cmp    %rsi,%rdi
+   95cdb:	jae    96371 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xa21>
+   95ce1:	or     (%rax,%rdi,8),%r8
+   95ce5:	blsr   %rbx,%rbx
+   95cea:	jne    95cb0 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x360>
+   95cec:	and    %r11,%r14
+   95cef:	mov    %r11,%rbx
+   95cf2:	je     95def <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x49f>
+   95cf8:	mov    0x1000(%r12),%rax
+   95d00:	mov    0x1008(%r12),%rsi
+   95d08:	xor    %r9d,%r9d
+   95d0b:	nopl   0x0(%rax,%rax,1)
+   95d10:	tzcnt  %r14,%rdi
+   95d15:	shl    $0x6,%edi
+   95d18:	mov    0x18(%r12,%rdi,1),%r11
+   95d1d:	mov    0x28(%r12,%rdi,1),%r10d
+   95d22:	and    %r15,%r11
+   95d25:	imul   0x20(%r12,%rdi,1),%r11
+   95d2b:	movzbl 0x2c(%r12,%rdi,1),%edi
+   95d31:	shrx   %rdi,%r11,%rdi
+   95d36:	add    %r10,%rdi
+   95d39:	cmp    %rsi,%rdi
+   95d3c:	jae    96364 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xa14>
+   95d42:	or     (%rax,%rdi,8),%r9
+   95d46:	blsr   %r14,%r14
+   95d4b:	jne    95d10 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x3c0>
+   95d4d:	and    %rbx,%r13
+   95d50:	je     95dfb <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x4ab>
+   95d56:	mov    0x1000(%r12),%r11
+   95d5e:	mov    0x1008(%r12),%rsi
+   95d66:	xor    %r10d,%r10d
+   95d69:	nopl   0x0(%rax)
+   95d70:	tzcnt  %r13,%rax
+   95d75:	shl    $0x6,%eax
+   95d78:	mov    0x18(%r12,%rax,1),%rdi
+   95d7d:	movzbl 0x2c(%r12,%rax,1),%r14d
+   95d83:	mov    0x28(%r12,%rax,1),%ebx
+   95d88:	and    %r15,%rdi
+   95d8b:	imul   0x20(%r12,%rax,1),%rdi
+   95d91:	shrx   %r14,%rdi,%rdi
+   95d96:	add    %rbx,%rdi
+   95d99:	cmp    %rsi,%rdi
+   95d9c:	jae    96364 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xa14>
+   95da2:	add    %r12,%rax
+   95da5:	mov    (%rax),%r14
+   95da8:	mov    0x10(%rax),%ebx
+   95dab:	and    %r15,%r14
+   95dae:	imul   0x8(%rax),%r14
+   95db3:	movzbl 0x14(%rax),%eax
+   95db7:	shrx   %rax,%r14,%rax
+   95dbc:	add    %rbx,%rax
+   95dbf:	cmp    %rsi,%rax
+   95dc2:	jae    9637e <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xa2e>
+   95dc8:	or     (%r11,%rdi,8),%r10
+   95dcc:	blsr   %r13,%r13
+   95dd1:	or     (%r11,%rax,8),%r10
+   95dd5:	test   %r13,%r13
+   95dd8:	jne    95d70 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x420>
+   95dda:	jmp    95dfe <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x4ae>
+   95ddc:	mov    (%rsp),%r15
+   95de0:	xor    %r8d,%r8d
+   95de3:	and    %r11,%r14
+   95de6:	mov    %r11,%rbx
+   95de9:	jne    95cf8 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x3a8>
+   95def:	xor    %r9d,%r9d
+   95df2:	and    %rbx,%r13
+   95df5:	jne    95d56 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x406>
+   95dfb:	xor    %r10d,%r10d
+   95dfe:	mov    0x300(%rsp),%rsi
+   95e06:	mov    %rcx,0xa0(%rsp)
+   95e0e:	mov    %rdx,0xa8(%rsp)
+   95e16:	mov    %r8,0xb0(%rsp)
+   95e1e:	mov    %r9,0xb8(%rsp)
+   95e26:	mov    %r10,0xc0(%rsp)
+   95e2e:	movq   $0x0,0xc8(%rsp)
+   95e3a:	cmp    $0x101,%rsi
+   95e41:	jae    96350 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xa00>
+   95e47:	mov    0x8(%rsp),%r8
+   95e4c:	mov    0x10(%rsp),%r9
+   95e51:	mov    0x870(%r8),%rax
+   95e58:	mov    %rax,0x60(%rsp)
+   95e5d:	test   %rsi,%rsi
+   95e60:	je     96239 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x8e9>
+   95e66:	mov    0x50(%rsp),%rax
+   95e6b:	mov    0x30(%rsp),%r11
+   95e70:	mov    0x18(%rsp),%r10
+   95e75:	add    %rsi,%rsi
+   95e78:	mov    %rsi,0x28(%rsp)
+   95e7d:	lea    (%rax,%rax,2),%rcx
+   95e81:	mov    0x48(%rsp),%rax
+   95e86:	lea    (%r10,%r10,2),%r10
+   95e8a:	shl    $0x9,%ecx
+   95e8d:	shl    $0x9,%r10d
+   95e91:	add    %r11,%rcx
+   95e94:	add    %r11,%r10
+   95e97:	mov    %rcx,0x50(%rsp)
+   95e9c:	mov    0x60(%rsp),%rcx
+   95ea1:	mov    %r10,0x30(%rsp)
+   95ea6:	lea    (%rax,%rax,2),%rdx
+   95eaa:	mov    0x40(%rsp),%rax
+   95eaf:	shl    $0x9,%edx
+   95eb2:	add    %r11,%rdx
+   95eb5:	mov    %rcx,%r10
+   95eb8:	mov    %rdx,0x48(%rsp)
+   95ebd:	lea    (%rax,%rax,2),%rdi
+   95ec1:	mov    0x38(%rsp),%rax
+   95ec6:	shl    $0x9,%edi
+   95ec9:	add    %r11,%rdi
+   95ecc:	mov    %rdi,0x40(%rsp)
+   95ed1:	lea    (%rax,%rax,2),%rax
+   95ed5:	shl    $0x9,%eax
+   95ed8:	add    %r11,%rax
+   95edb:	cmp    $0x100,%rcx
+   95ee2:	mov    %rax,0x38(%rsp)
+   95ee7:	mov    0x68(%rsp),%rax
+   95eec:	lea    0x1(%rax),%eax
+   95eef:	mov    %eax,0x5c(%rsp)
+   95ef3:	mov    $0x100,%eax
+   95ef8:	cmovb  %rcx,%rax
+   95efc:	lea    0x4(%r8,%rcx,8),%rcx
+   95f01:	neg    %r10
+   95f04:	xor    %r12d,%r12d
+   95f07:	mov    %eax,%eax
+   95f09:	lea    -0x200(%rax,%rax,1),%rax
+   95f11:	mov    %rcx,0x80(%rsp)
+   95f19:	mov    %rax,0x20(%rsp)
+   95f1e:	xchg   %ax,%ax
+   95f20:	movzwl 0x100(%rsp,%r12,1),%r11d
+   95f29:	mov    %r11d,%ebp
+   95f2c:	and    $0x3f,%ebp
+   95f2f:	movzbl 0xc0(%r9,%rbp,2),%eax
+   95f38:	cmp    $0x2,%al
+   95f3a:	je     96324 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x9d4>
+   95f40:	movzbl 0xc1(%r9,%rbp,2),%r14d
+   95f49:	test   $0x1,%al
+   95f4b:	lea    0x6(%r14),%rdi
+   95f4f:	cmove  %r14,%rdi
+   95f53:	cmp    $0xc,%rdi
+   95f57:	jae    963a6 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xa56>
+   95f5d:	mov    %r10,0x18(%rsp)
+   95f62:	cmp    $0x5,%r14b
+   95f66:	ja     9638e <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xa3e>
+   95f6c:	mov    $0x606,%eax
+   95f71:	mov    0x88(%rsp),%rcx
+   95f79:	shl    $0x7,%edi
+   95f7c:	mov    0x50(%rsp),%rsi
+   95f81:	mov    0x38(%rsp),%r10
+   95f86:	mov    %r11,(%rsp)
+   95f8a:	bextr  %eax,%r11d,%r15d
+   95f8f:	mov    0x90(%rsp),%rax
+   95f97:	lea    (%r15,%r15,1),%edx
+   95f9b:	add    %rdi,%rcx
+   95f9e:	movswl (%rax,%r11,2),%eax
+   95fa3:	movswl (%rdx,%rcx,1),%ecx
+   95fa7:	add    %eax,%ecx
+   95fa9:	lea    (%rsi,%rdi,1),%rax
+   95fad:	mov    0x48(%rsp),%rsi
+   95fb2:	movswl (%rdx,%rax,1),%eax
+   95fb6:	lea    (%rax,%rcx,2),%eax
+   95fb9:	lea    (%rsi,%rdi,1),%rcx
+   95fbd:	mov    0x40(%rsp),%rsi
+   95fc2:	movswl (%rdx,%rcx,1),%ecx
+   95fc6:	add    %rdi,%rsi
+   95fc9:	movswl (%rdx,%rsi,1),%esi
+   95fcd:	add    %ecx,%esi
+   95fcf:	lea    (%r10,%rdi,1),%rcx
+   95fd3:	add    0x30(%rsp),%rdi
+   95fd8:	movswl (%rdx,%rcx,1),%ecx
+   95fdc:	movswl (%rdx,%rdi,1),%r13d
+   95fe1:	add    %esi,%ecx
+   95fe3:	add    %ecx,%r13d
+   95fe6:	mov    0x38(%r9,%r14,8),%rcx
+   95feb:	add    %eax,%r13d
+   95fee:	mov    $0x1,%eax
+   95ff3:	shlx   %r15,%rax,%rbx
+   95ff8:	bt     %r15,%rcx
+   95ffc:	jae    96027 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x6d7>
+   95ffe:	mov    $0xffffffb5,%edx
+   96003:	mov    %r9,%rdi
+   96006:	mov    %r11d,%esi
+   96009:	vzeroupper
+   9600c:	call   *0x6022e(%rip)        # f6240 <_DYNAMIC+0x7c8>
+   96012:	mov    0x8(%rsp),%r8
+   96017:	lea    0x4000(%r13),%ecx
+   9601e:	test   %al,%al
+   96020:	cmove  %r13d,%ecx
+   96024:	mov    %ecx,%r13d
+   96027:	lea    0x0(,%r14,8),%eax
+   9602f:	lea    -0x828ee(%rip),%rsi        # 13748 <_RNvNtCsj3gVTF6Hx7m_11chessengine7zobrist7ZOBRIST+0x1e68>
+   96036:	mov    (%rsi,%r14,4),%esi
+   9603a:	mov    0xd0(%rsp,%rax,1),%rcx
+   96042:	shrx   %rbp,%rcx,%rdx
+   96047:	and    $0x1,%edx
+   9604a:	bt     %r15,%rcx
+   9604e:	sbb    $0x0,%edx
+   96051:	imul   %esi,%edx
+   96054:	add    %esi,%esi
+   96056:	test   %rbx,0xa0(%rsp,%rax,1)
+   9605e:	mov    $0x0,%eax
+   96063:	lea    (%rsi,%rsi,4),%r14d
+   96067:	lea    (%rdx,%rdx,4),%ecx
+   9606a:	lea    0x0(%r13,%rcx,4),%ecx
+   9606f:	cmove  %eax,%r14d
+   96073:	add    %ecx,%r14d
+   96076:	cmpq   $0x5,0x68(%rsp)
+   9607c:	jb     960a0 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x750>
+   9607e:	mov    0x10(%rsp),%r9
+   96083:	mov    (%rsp),%rdi
+   96087:	mov    0x800(%r8),%r13
+   9608e:	test   %r13,%r13
+   96091:	jne    960cd <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x77d>
+   96093:	jmp    961ff <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x8af>
+   96098:	nopl   0x0(%rax,%rax,1)
+   960a0:	mov    0x78(%rsp),%rax
+   960a5:	mov    (%rsp),%rdi
+   960a9:	movswl (%rax,%rdi,2),%eax
+   960ad:	shl    $0x3,%eax
+   960b0:	cltd
+   960b1:	idivl  0x5c(%rsp)
+   960b5:	mov    0x10(%rsp),%r9
+   960ba:	add    %eax,%r14d
+   960bd:	mov    0x800(%r8),%r13
+   960c4:	test   %r13,%r13
+   960c7:	je     961ff <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x8af>
+   960cd:	mov    %edi,%ecx
+   960cf:	and    $0xc000,%ecx
+   960d5:	mov    $0xff,%al
+   960d7:	cmp    $0x4000,%cx
+   960dc:	jne    960f4 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x7a4>
+   960de:	mov    $0x20c,%eax
+   960e3:	lea    -0x8298a(%rip),%rcx        # 13760 <anon.ed23dd53d1999b359621ac0dc763dee2.27.llvm.11021376600075084165>
+   960ea:	bextr  %eax,%edi,%eax
+   960ef:	movzbl 0x1(%rax,%rcx,1),%eax
+   960f4:	movzbl 0x84c(%r8),%ecx
+   960fc:	movzbl %al,%edx
+   960ff:	xor    %cl,%bpl
+   96102:	xor    %cl,%r15b
+   96105:	movzbl %bpl,%edi
+   96109:	movzbl %r15b,%esi
+   9610d:	vzeroupper
+   96110:	call   *0x602ba(%rip)        # f63d0 <_DYNAMIC+0x958>
+   96116:	mov    0x10(%rsp),%r9
+   9611b:	xor    %ecx,%ecx
+   9611d:	test   $0x1,%al
+   9611f:	je     961f3 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x8a3>
+   96125:	movzwl %dx,%edi
+   96128:	mov    0x8(%r13),%rdx
+   9612c:	mov    %edi,%eax
+   9612e:	shl    $0x4,%eax
+   96131:	lea    0x10(%rax),%rsi
+   96135:	cmp    %rdx,%rsi
+   96138:	ja     96340 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x9f0>
+   9613e:	mov    0x18(%r13),%rsi
+   96142:	cmp    %rdi,%rsi
+   96145:	jbe    963f9 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xaa9>
+   9614b:	mov    0x0(%r13),%rcx
+   9614f:	vxorps %xmm1,%xmm1,%xmm1
+   96153:	vpmovsxbd (%rcx,%rax,1),%zmm0
+   9615a:	mov    0x8(%rsp),%rcx
+   9615f:	mov    0x10(%r13),%rax
+   96163:	vcvtdq2ps %zmm0,%zmm0
+   96169:	vfmadd132ps 0x808(%rcx),%zmm1,%zmm0
+   96173:	vextractf64x4 $0x1,%zmm0,%ymm1
+   9617a:	vextractf128 $0x1,%ymm0,%xmm3
+   96180:	vshufpd $0x1,%xmm0,%xmm0,%xmm5
+   96185:	vpermpd $0xff,%ymm1,%ymm2
+   9618b:	vshufpd $0x1,%xmm3,%xmm3,%xmm4
+   96190:	vaddps %xmm4,%xmm2,%xmm2
+   96194:	vshufpd $0x1,%xmm1,%xmm1,%xmm4
+   96199:	vextractf128 $0x1,%ymm1,%xmm1
+   9619f:	vaddps %xmm5,%xmm4,%xmm4
+   961a3:	vaddps %xmm3,%xmm1,%xmm1
+   961a7:	vaddps %xmm4,%xmm2,%xmm2
+   961ab:	vextractf32x4 $0x2,%zmm0,%xmm4
+   961b2:	vaddps %xmm0,%xmm4,%xmm0
+   961b6:	vaddps %xmm0,%xmm1,%xmm0
+   961ba:	vaddps %xmm0,%xmm2,%xmm0
+   961be:	vmovshdup %xmm0,%xmm1
+   961c2:	vaddss %xmm0,%xmm1,%xmm0
+   961c6:	vaddss (%rax,%rdi,4),%xmm0,%xmm0
+   961cb:	mov    $0x7fffffff,%eax
+   961d0:	vmulss 0x848(%rcx),%xmm0,%xmm0
+   961d8:	vucomiss -0x89010(%rip),%xmm0        # d1d0 <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0x14b>
+   961e0:	vcvttss2si %xmm0,%ecx
+   961e4:	cmova  %eax,%ecx
+   961e7:	vucomiss %xmm0,%xmm0
+   961eb:	mov    $0x0,%eax
+   961f0:	cmovp  %eax,%ecx
+   961f3:	mov    0x8(%rsp),%r8
+   961f8:	mov    (%rsp),%rdi
+   961fc:	add    %ecx,%r14d
+   961ff:	mov    0x20(%rsp),%rax
+   96204:	mov    0x28(%rsp),%rsi
+   96209:	mov    0x18(%rsp),%r10
+   9620e:	add    %r12,%rax
+   96211:	je     963bb <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xa6b>
+   96217:	mov    0x80(%rsp),%rax
+   9621f:	dec    %r10
+   96222:	mov    %di,-0x4(%rax,%r12,4)
+   96228:	mov    %r14d,(%rax,%r12,4)
+   9622c:	add    $0x2,%r12
+   96230:	cmp    %r12,%rsi
+   96233:	jne    95f20 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x5d0>
+   96239:	mov    0x60(%rsp),%rdx
+   9623e:	mov    0x70(%rsp),%rax
+   96243:	xor    %esi,%esi
+   96245:	add    %rdx,%rax
+   96248:	mov    %rdx,0x858(%r8)
+   9624f:	mov    %rax,0x860(%r8)
+   96256:	mov    %rax,0x878(%r8)
+   9625d:	sub    %rdx,%rax
+   96260:	cmovae %rax,%rsi
+   96264:	cmp    $0x2,%rsi
+   96268:	jb     9630f <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x9bf>
+   9626e:	imul   $0xfffff218,0x880(%r8),%ecx
+   96279:	lea    (%r8,%rdx,8),%rdx
+   9627d:	mov    $0x1,%r8d
+   96283:	xor    %eax,%eax
+   96285:	jmp    962b0 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x960>
+   96287:	nopw   0x0(%rax,%rax,1)
+   96290:	xor    %eax,%eax
+   96292:	cmp    %rsi,%rax
+   96295:	jae    963d6 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xa86>
+   9629b:	mov    %r10w,(%rdx,%rax,8)
+   962a0:	mov    %r9d,0x4(%rdx,%rax,8)
+   962a5:	mov    %rdi,%rax
+   962a8:	inc    %r8
+   962ab:	cmp    %rsi,%r8
+   962ae:	je     9630f <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x9bf>
+   962b0:	mov    0x4(%rdx,%r8,8),%r9d
+   962b5:	cmp    %ecx,%r9d
+   962b8:	jl     962a8 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x958>
+   962ba:	lea    0x1(%rax),%rdi
+   962be:	cmp    %rsi,%rdi
+   962c1:	jae    963e9 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0xa99>
+   962c7:	mov    0xc(%rdx,%rax,8),%r11d
+   962cc:	movzwl (%rdx,%r8,8),%r10d
+   962d1:	movzwl 0x8(%rdx,%rax,8),%eax
+   962d6:	mov    %ax,(%rdx,%r8,8)
+   962db:	mov    %r11d,0x4(%rdx,%r8,8)
+   962e0:	test   %rdi,%rdi
+   962e3:	je     96290 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x940>
+   962e5:	mov    %rdi,%rax
+   962e8:	nopl   0x0(%rax,%rax,1)
+   962f0:	mov    -0x4(%rdx,%rax,8),%r11d
+   962f5:	cmp    %r9d,%r11d
+   962f8:	jge    96292 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x942>
+   962fa:	movzwl -0x8(%rdx,%rax,8),%ebx
+   962ff:	mov    %bx,(%rdx,%rax,8)
+   96303:	mov    %r11d,0x4(%rdx,%rax,8)
+   96308:	dec    %rax
+   9630b:	jne    962f0 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x9a0>
+   9630d:	jmp    96290 <_RNvMs_NtCsj3gVTF6Hx7m_11chessengine8movepickNtB4_10MovePicker11init_quiets+0x940>
+   9630f:	add    $0x308,%rsp
+   96316:	pop    %rbx
+   96317:	pop    %r12
+   96319:	pop    %r13
+   9631b:	pop    %r14
+   9631d:	pop    %r15
+   9631f:	pop    %rbp
+   96320:	vzeroupper
+   96323:	ret
+   96324:	lea    -0x8296e(%rip),%rdi        # 139bd <anon.ed23dd53d1999b359621ac0dc763dee2.145.llvm.11021376600075084165+0x32>
+   9632b:	lea    0x5ca86(%rip),%rdx        # f2db8 <anon.ed23dd53d1999b359621ac0dc763dee2.146.llvm.11021376600075084165+0x48>
+   96332:	mov    $0x32,%esi
+   96337:	vzeroupper
+   9633a:	call   *0x5fc08(%rip)        # f5f48 <_DYNAMIC+0x4d0>
+   96340:	lea    0x5c549(%rip),%rcx        # f2890 <anon.ed23dd53d1999b359621ac0dc763dee2.55.llvm.11021376600075084165+0xa0>
+   96347:	mov    %rax,%rdi
+   9634a:	call   *0x5fc00(%rip)        # f5f50 <_DYNAMIC+0x4d8>
+   96350:	lea    0x5b691(%rip),%rcx        # f19e8 <anon.d336d1d4f10595854553f94acf4f735a.160.llvm.9828231707298148452>
+   96357:	mov    $0x100,%edx
+   9635c:	xor    %edi,%edi
+   9635e:	call   *0x5fbec(%rip)        # f5f50 <_DYNAMIC+0x4d8>
+   96364:	lea    0x5c7dd(%rip),%rdx        # f2b48 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x1c8>
+   9636b:	call   *0x5f91f(%rip)        # f5c90 <_DYNAMIC+0x218>
+   96371:	lea    0x5c800(%rip),%rdx        # f2b78 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x1f8>
+   96378:	call   *0x5f912(%rip)        # f5c90 <_DYNAMIC+0x218>
+   9637e:	lea    0x5c7f3(%rip),%rdx        # f2b78 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x1f8>
+   96385:	mov    %rax,%rdi
+   96388:	call   *0x5f902(%rip)        # f5c90 <_DYNAMIC+0x218>
+   9638e:	lea    0x5ca53(%rip),%rdx        # f2de8 <anon.ed23dd53d1999b359621ac0dc763dee2.146.llvm.11021376600075084165+0x78>
+   96395:	mov    $0x6,%esi
+   9639a:	mov    %r14,%rdi
+   9639d:	vzeroupper
+   963a0:	call   *0x5f8ea(%rip)        # f5c90 <_DYNAMIC+0x218>
+   963a6:	lea    0x5ca23(%rip),%rdx        # f2dd0 <anon.ed23dd53d1999b359621ac0dc763dee2.146.llvm.11021376600075084165+0x60>
+   963ad:	mov    $0xc,%esi
+   963b2:	vzeroupper
+   963b5:	call   *0x5f8d5(%rip)        # f5c90 <_DYNAMIC+0x218>
+   963bb:	neg    %r10
+   963be:	lea    0x5ca3b(%rip),%rdx        # f2e00 <anon.ed23dd53d1999b359621ac0dc763dee2.146.llvm.11021376600075084165+0x90>
+   963c5:	mov    $0x100,%esi
+   963ca:	mov    %r10,%rdi
+   963cd:	vzeroupper
+   963d0:	call   *0x5f8ba(%rip)        # f5c90 <_DYNAMIC+0x218>
+   963d6:	lea    0x5cd6b(%rip),%rdx        # f3148 <anon.ed23dd53d1999b359621ac0dc763dee2.194.llvm.11021376600075084165+0x138>
+   963dd:	mov    %rax,%rdi
+   963e0:	vzeroupper
+   963e3:	call   *0x5f8a7(%rip)        # f5c90 <_DYNAMIC+0x218>
+   963e9:	lea    0x5cd40(%rip),%rdx        # f3130 <anon.ed23dd53d1999b359621ac0dc763dee2.194.llvm.11021376600075084165+0x120>
+   963f0:	vzeroupper
+   963f3:	call   *0x5f897(%rip)        # f5c90 <_DYNAMIC+0x218>
+   963f9:	lea    0x5c478(%rip),%rdx        # f2878 <anon.ed23dd53d1999b359621ac0dc763dee2.55.llvm.11021376600075084165+0x88>
+   96400:	call   *0x5f88a(%rip)        # f5c90 <_DYNAMIC+0x218>
+   96406:	lea    0x5c993(%rip),%rdx        # f2da0 <anon.ed23dd53d1999b359621ac0dc763dee2.146.llvm.11021376600075084165+0x30>
+   9640d:	mov    $0xd00,%esi
+   96412:	call   *0x5f878(%rip)        # f5c90 <_DYNAMIC+0x218>
+   96418:	lea    0x5c981(%rip),%rdx        # f2da0 <anon.ed23dd53d1999b359621ac0dc763dee2.146.llvm.11021376600075084165+0x30>
+   9641f:	mov    $0xd00,%esi
+   96424:	mov    %rcx,%rdi
+   96427:	call   *0x5f863(%rip)        # f5c90 <_DYNAMIC+0x218>
+   9642d:	lea    0x5c96c(%rip),%rdx        # f2da0 <anon.ed23dd53d1999b359621ac0dc763dee2.146.llvm.11021376600075084165+0x30>
+   96434:	mov    $0xd00,%esi
+   96439:	mov    %r8,%rdi
+   9643c:	call   *0x5f84e(%rip)        # f5c90 <_DYNAMIC+0x218>
+   96442:	lea    0x5c957(%rip),%rdx        # f2da0 <anon.ed23dd53d1999b359621ac0dc763dee2.146.llvm.11021376600075084165+0x30>
+   96449:	mov    $0xd00,%esi
+   9644e:	mov    %r9,%rdi
+   96451:	call   *0x5f839(%rip)        # f5c90 <_DYNAMIC+0x218>
+   96457:	mov    0x18(%rsp),%rdi
+   9645c:	lea    0x5c93d(%rip),%rdx        # f2da0 <anon.ed23dd53d1999b359621ac0dc763dee2.146.llvm.11021376600075084165+0x30>
+   96463:	mov    $0xd00,%esi
+   96468:	call   *0x5f822(%rip)        # f5c90 <_DYNAMIC+0x218>
+   9646e:	int3
+   9646f:	int3
+

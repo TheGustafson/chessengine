@@ -1,0 +1,16 @@
+    30.32%  chessengine  chessengine           [.] chessengine::eval::nnue::sota_simd::avx512::i16_deltas_into
+    20.52%  chessengine  chessengine           [.] <chessengine::eval::nnue::sota_head::SotaHead>::forward_into
+    16.14%  chessengine  chessengine           [.] chessengine::eval::nnue::sota_simd::avx512::i16_deltas_dual
+    14.62%  chessengine  chessengine           [.] chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into
+     3.42%  chessengine  chessengine           [.] <chessengine::eval::nnue::sota_threats::ThreatContext>::at_full
+     3.27%  chessengine  chessengine           [.] <chessengine::eval::nnue::sota_context::SotaContext>::evaluate
+     3.11%  chessengine  chessengine           [.] chessengine::eval::nnue::sota_simd::avx512::l2_tail
+     1.48%  chessengine  chessengine           [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::current_full
+     1.16%  chessengine  chessengine           [.] <chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>
+     1.11%  chessengine  chessengine           [.] chessengine::eval::nnue::sota_accumulator::psqt_fold
+     0.68%  chessengine  chessengine           [.] chessengine::eval::nnue::sota_features::refresh_threat_into_at
+     0.46%  chessengine  chessengine           [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into
+     0.44%  chessengine  chessengine           [.] chessengine::eval::nnue::sota_threats::record_square_touch
+     0.31%  chessengine  libc.so.6             [.] 0x0000000000189e7d
+
+

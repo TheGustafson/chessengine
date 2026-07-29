@@ -22,6 +22,9 @@
 //! bit-exact reference the future AVX2 path (step 2) must match.
 
 pub mod accumulator;
+/// Cache-line-aligned heap slices for the weight tables (perf study 20 §5).
+#[cfg(feature = "sota")]
+pub mod aligned;
 pub mod loader;
 pub mod network;
 /// D47 deployed policy head (CPL1 sidecar + selected-row scorer) — needs the

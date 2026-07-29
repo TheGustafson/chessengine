@@ -1,0 +1,56 @@
+A baseline                       n=9 cyc_n=  4999.9 ins_n=  6151.2 ipc=1.230 l1m_n= 699.06 ma64_n= 1611.73
+B baseline-null                  n=9 cyc_n=  5013.1 ins_n=  6151.2 ipc=1.227 l1m_n= 698.88 ma64_n= 1603.19
+  paired dcyc_n (B-A): median=   -31.5 min=  -189.2 max=  +169.2 all_same_sign=False
+  medians: dcyc_n=   +13.2 (+0.26%) dins_n=   -0.00 dl1m_n=  -0.18 dma64_n=   -8.54
+A baseline                       n=9 cyc_n=  4945.3 ins_n=  6151.2 ipc=1.244 l1m_n= 697.17 ma64_n= 1608.79
+B a1-prefetch-finny              n=9 cyc_n=  4952.4 ins_n=  6151.4 ipc=1.242 l1m_n= 698.34 ma64_n= 1604.60
+  paired dcyc_n (B-A): median=    -4.8 min=  -106.7 max=   +86.9 all_same_sign=False
+  medians: dcyc_n=    +7.1 (+0.14%) dins_n=   +0.16 dl1m_n=  +1.17 dma64_n=   -4.19
+A baseline                       n=9 cyc_n=  4898.9 ins_n=  6151.2 ipc=1.256 l1m_n= 699.30 ma64_n= 1608.19
+B a2-align64                     n=9 cyc_n=  4503.6 ins_n=  6193.2 ipc=1.375 l1m_n= 671.82 ma64_n= 1089.92
+  paired dcyc_n (B-A): median=  -347.6 min=  -720.7 max=   +25.6 all_same_sign=False
+  medians: dcyc_n=  -395.4 (-8.07%) dins_n=  +41.95 dl1m_n= -27.48 dma64_n= -518.27
+A a2C-misaligned                 n=9 cyc_n=  5571.8 ins_n=  6193.2 ipc=1.112 l1m_n= 685.58 ma64_n= 1150.67
+B a2-align64                     n=9 cyc_n=  5354.3 ins_n=  6193.2 ipc=1.157 l1m_n= 676.66 ma64_n= 1131.02
+  paired dcyc_n (B-A): median=  -141.5 min=  -749.8 max=   +52.9 all_same_sign=False
+  medians: dcyc_n=  -217.5 (-3.90%) dins_n=   +0.00 dl1m_n=  -8.92 dma64_n=  -19.65
+A a2C16-glibc                    n=9 cyc_n=  5614.6 ins_n=  6193.2 ipc=1.103 l1m_n= 699.89 ma64_n= 1670.29
+B a2-align64                     n=9 cyc_n=  5345.2 ins_n=  6193.2 ipc=1.159 l1m_n= 675.70 ma64_n= 1138.00
+  paired dcyc_n (B-A): median=  -234.6 min=  -558.5 max=   -24.5 all_same_sign=True
+  medians: dcyc_n=  -269.4 (-4.80%) dins_n=   +0.00 dl1m_n= -24.19 dma64_n= -532.29
+A baseline                       n=9 cyc_n=  4996.4 ins_n=  6151.2 ipc=1.231 l1m_n= 697.59 ma64_n= 1621.82
+B a2-align64                     n=9 cyc_n=  4747.0 ins_n=  6193.2 ipc=1.305 l1m_n= 673.58 ma64_n= 1101.80
+  paired dcyc_n (B-A): median=  -332.2 min=  -672.9 max=  -106.8 all_same_sign=True
+  medians: dcyc_n=  -249.4 (-4.99%) dins_n=  +41.95 dl1m_n= -24.01 dma64_n= -520.02
+A a2-align64                     n=7 cyc_n=  4692.8 ins_n=  6193.2 ipc=1.320 l1m_n= 671.86 ma64_n= 1091.05
+B a4b-movelist                   n=7 cyc_n=  4704.3 ins_n=  6186.6 ipc=1.315 l1m_n= 670.35 ma64_n= 1102.88
+  paired dcyc_n (B-A): median=   -15.9 min=  -198.1 max=  +207.3 all_same_sign=False
+  medians: dcyc_n=   +11.5 (+0.25%) dins_n=   -6.53 dl1m_n=  -1.50 dma64_n=  +11.83
+A a4b-movelist                   n=9 cyc_n=  4704.3 ins_n=  6186.6 ipc=1.315 l1m_n= 670.95 ma64_n= 1104.76
+B a5-head-align                  n=9 cyc_n=  4578.1 ins_n=  6123.5 ipc=1.338 l1m_n= 631.45 ma64_n=  941.74
+  paired dcyc_n (B-A): median=  -143.7 min=  -296.2 max=   +61.8 all_same_sign=False
+  medians: dcyc_n=  -126.1 (-2.68%) dins_n=  -63.15 dl1m_n= -39.50 dma64_n= -163.02
+A a5C16-glibc                    n=9 cyc_n=  4911.4 ins_n=  6123.5 ipc=1.247 l1m_n= 697.59 ma64_n= 1619.04
+B a5-head-align                  n=9 cyc_n=  4809.2 ins_n=  6123.5 ipc=1.273 l1m_n= 633.88 ma64_n=  967.10
+  paired dcyc_n (B-A): median=   -91.6 min=  -628.2 max=  +565.3 all_same_sign=False
+  medians: dcyc_n=  -102.2 (-2.08%) dins_n=   -0.00 dl1m_n= -63.71 dma64_n= -651.94
+A a5C16-glibc                    n=11 cyc_n=  4552.5 ins_n=  6123.5 ipc=1.345 l1m_n= 698.00 ma64_n= 1593.87
+B a5-head-align                  n=11 cyc_n=  4539.4 ins_n=  6123.5 ipc=1.349 l1m_n= 630.64 ma64_n=  931.22
+  paired dcyc_n (B-A): median=  -242.3 min=  -497.0 max=  +628.6 all_same_sign=False
+  medians: dcyc_n=   -13.0 (-0.29%) dins_n=   -0.00 dl1m_n= -67.36 dma64_n= -662.65
+A a4b-movelist                   n=11 cyc_n=  4759.1 ins_n=  6186.6 ipc=1.300 l1m_n= 675.90 ma64_n= 1102.05
+B a5-head-align                  n=11 cyc_n=  4582.4 ins_n=  6123.5 ipc=1.336 l1m_n= 634.95 ma64_n=  943.35
+  paired dcyc_n (B-A): median=  -191.5 min=  -510.6 max=   +39.5 all_same_sign=False
+  medians: dcyc_n=  -176.7 (-3.71%) dins_n=  -63.15 dl1m_n= -40.96 dma64_n= -158.70
+A a5-head-align                  n=9 cyc_n=  4350.1 ins_n=  6123.5 ipc=1.408 l1m_n= 631.47 ma64_n=  940.68
+B a6-dirty8                      n=9 cyc_n=  4346.9 ins_n=  6112.1 ipc=1.406 l1m_n= 641.81 ma64_n= 1204.34
+  paired dcyc_n (B-A): median=   +13.1 min=  -281.5 max=  +363.7 all_same_sign=False
+  medians: dcyc_n=    -3.2 (-0.07%) dins_n=  -11.33 dl1m_n= +10.34 dma64_n= +263.67
+A a5-head-align                  n=9 cyc_n=  4128.9 ins_n=  6123.5 ipc=1.483 l1m_n= 634.06 ma64_n=  900.89
+B a7-sort                        n=9 cyc_n=  3955.9 ins_n=  6121.6 ipc=1.547 l1m_n= 628.35 ma64_n=  896.52
+  paired dcyc_n (B-A): median=  -210.2 min=  -385.4 max=  +442.2 all_same_sign=False
+  medians: dcyc_n=  -173.0 (-4.19%) dins_n=   -1.87 dl1m_n=  -5.71 dma64_n=   -4.37
+A a5-head-align                  n=13 cyc_n=  4029.6 ins_n=  6123.5 ipc=1.520 l1m_n= 633.09 ma64_n=  899.55
+B a7-sort                        n=13 cyc_n=  4148.9 ins_n=  6121.6 ipc=1.475 l1m_n= 633.45 ma64_n=  896.42
+  paired dcyc_n (B-A): median=   +53.3 min=  -666.2 max=  +408.6 all_same_sign=False
+  medians: dcyc_n=  +119.2 (+2.96%) dins_n=   -1.87 dl1m_n=  +0.36 dma64_n=   -3.13

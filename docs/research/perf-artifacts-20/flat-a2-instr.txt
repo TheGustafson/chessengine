@@ -1,0 +1,45 @@
+    10.11%  chessengine  chessengine           [.] chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into
+     9.81%  chessengine  chessengine           [.] <chessengine::eval::nnue::sota_head::SotaHead>::forward_into
+     8.91%  chessengine  chessengine           [.] <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+     8.34%  chessengine  chessengine           [.] <chessengine::movepick::MovePicker>::init_quiets
+     6.56%  chessengine  chessengine           [.] chessengine::eval::nnue::sota_simd::avx512::i16_deltas_into
+     6.18%  chessengine  chessengine           [.] <chessengine::eval::nnue::sota_threats::ThreatContext>::at_full
+     5.45%  chessengine  chessengine           [.] <chessengine::search::Worker>::do_move
+     3.16%  chessengine  chessengine           [.] <chessengine::movepick::MovePicker>::next_move
+     2.26%  chessengine  chessengine           [.] <chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>
+     2.25%  chessengine  chessengine           [.] <chessengine::eval::nnue::sota_context::SotaContext>::evaluate
+     2.13%  chessengine  chessengine           [.] <chessengine::eval::nnue::sota_threats::ThreatContext>::apply_at
+     2.09%  chessengine  chessengine           [.] <chessengine::eval::nnue::sota_context::SotaContext>::push
+     2.00%  chessengine  chessengine           [.] chessengine::eval::nnue::sota_simd::avx512::i16_deltas_dual
+     1.92%  chessengine  chessengine           [.] <chessengine::history::Histories>::update_continuation_histories
+     1.64%  chessengine  chessengine           [.] chessengine::eval::nnue::sota_threats::record_square_touch
+     1.61%  chessengine  chessengine           [.] <chessengine::board::Board>::attackers_to
+     1.61%  chessengine  chessengine           [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::current_full
+     1.51%  chessengine  chessengine           [.] chessengine::eval::nnue::sota_loader::load_v2_bytes
+     1.33%  chessengine  chessengine           [.] <chessengine::board::Board>::attackers_to_exist
+     1.33%  chessengine  chessengine           [.] chessengine::eval::nnue::sota_threats::record_targets
+     1.32%  chessengine  chessengine           [.] <chessengine::board::Board>::see_ge
+     1.20%  chessengine  chessengine           [.] chessengine::movegen::generate::<1>
+     1.18%  chessengine  chessengine           [.] <chessengine::board::Board>::unmake_move
+     1.12%  chessengine  chessengine           [.] <chessengine::movepick::MovePicker>::init_captures
+     1.05%  chessengine  chessengine           [.] chessengine::attacks::init_magics
+     0.79%  chessengine  chessengine           [.] <chessengine::board::Board>::ensure_threats
+     0.71%  chessengine  chessengine           [.] <chessengine::history::Histories>::correction_value
+     0.67%  chessengine  chessengine           [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into
+     0.67%  chessengine  chessengine           [.] <chessengine::search::Worker>::qsearch::<chessengine::search::NonPv>
+     0.63%  chessengine  chessengine           [.] <chessengine::movepick::MovePicker>::init_evasions
+     0.63%  chessengine  chessengine           [.] <chessengine::eval::nnue::aligned::Aligned<i16> as core::iter::traits::collect::FromIterator<i16>>::from_iter::<core::iter::adapters::map::Map<core::slice::iter::ChunksExact<u8>, chessengine::eval::nnue::sota_loader::read_i16s::{closure#0}>>
+     0.58%  chessengine  chessengine           [.] chessengine::eval::nnue::sota_threats::ripple
+     0.56%  chessengine  chessengine           [.] chessengine::movegen::generate::<0>
+     0.51%  chessengine  chessengine           [.] <chessengine::tt::TranspositionTable>::probe
+     0.51%  chessengine  chessengine           [.] chessengine::eval::nnue::sota_simd::avx512::l2_tail
+     0.47%  chessengine  chessengine           [.] <chessengine::board::Board>::gives_check
+     0.47%  chessengine  chessengine           [.] <chessengine::search::Worker>::stat_score
+     0.45%  chessengine  chessengine           [.] core::fmt::write
+     0.44%  chessengine  chessengine           [.] <chessengine::search::Worker>::search::<chessengine::search::Pv>
+     0.43%  chessengine  chessengine           [.] <chessengine::history::Histories>::update_all_stats
+     0.40%  chessengine  libc.so.6             [.] 0x0000000000189e7d
+     0.34%  chessengine  chessengine           [.] <chessengine::tt::TtWriter>::write
+     0.33%  chessengine  chessengine           [.] <chessengine::board::DirtyPiece>::from_move
+
+

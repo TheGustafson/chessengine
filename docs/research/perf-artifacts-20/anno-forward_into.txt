@@ -1,0 +1,890 @@
+ Percent |	Source code & Disassembly of chessengine for instructions:u (1640 samples, percent: local period)
+-----------------------------------------------------------------------------------------------------------------
+         :
+         :
+         :
+         : 3     Disassembly of section .text:
+         :
+         : 5     00000000000921c0 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into>:
+    0.00 :   921c0:  push   %rbp
+    0.08 :   921c1:  push   %r15
+    0.00 :   921c3:  push   %r14
+    0.00 :   921c5:  push   %r13
+    0.00 :   921c7:  push   %r12
+    0.00 :   921c9:  push   %rbx
+    0.00 :   921ca:  sub    $0x1a8,%rsp
+    0.00 :   921d1:  vbroadcasti32x4 -0x84ebb(%rip),%zmm0        # d320 <anon.ee651107ab5319c6bc273e1a29320aaf.78.llvm.14746981713632465754+0x20>
+    0.00 :   921db:  mov    %rsi,%r14
+    0.00 :   921de:  mov    0x1f0(%rsp),%rsi
+    0.00 :   921e6:  mov    0x1e8(%rsp),%r13
+    0.00 :   921ee:  mov    %r8d,%r12d
+    0.00 :   921f1:  shl    $0x9,%r8d
+    0.00 :   921f5:  mov    %rdi,%rbx
+    0.00 :   921f8:  vpxor  %xmm1,%xmm1,%xmm1
+    0.00 :   921fc:  lea    (%r8,%r8,4),%rax
+    0.00 :   92200:  mov    $0x60,%r8d
+    0.00 :   92206:  lea    (%rdx,%rax,1),%rdi
+    0.00 :   9220a:  add    %rcx,%rax
+    0.00 :   9220d:  nopl   (%rax)
+    0.00 :   92210:  vpsllw $0x2,-0xc0(%rax,%r8,2),%zmm2
+    0.05 :   92219:  vpsllw $0x2,0x440(%rax,%r8,2),%zmm3
+    0.18 :   92222:  vpsllw $0x2,-0x40(%rax,%r8,2),%zmm4
+    0.00 :   9222b:  vpaddsw -0xc0(%rdi,%r8,2),%zmm2,%zmm2
+    0.04 :   92233:  vpaddsw 0x440(%rdi,%r8,2),%zmm3,%zmm3
+    0.05 :   9223b:  vpmaxsw %zmm1,%zmm2,%zmm2
+    0.00 :   92241:  vpmaxsw %zmm1,%zmm3,%zmm3
+    0.06 :   92247:  vpminsw %zmm0,%zmm2,%zmm2
+    0.00 :   9224d:  vpminsw %zmm0,%zmm3,%zmm3
+    0.00 :   92253:  vpsllw $0x7,%zmm2,%zmm2
+    0.12 :   9225a:  vpmulhuw %zmm2,%zmm3,%zmm2
+    0.21 :   92260:  vpsllw $0x2,-0x80(%rax,%r8,2),%zmm3
+    0.05 :   92269:  vpmovwb %zmm2,-0x60(%r13,%r8,1)
+    0.19 :   92271:  vpaddsw -0x80(%rdi,%r8,2),%zmm3,%zmm2
+    0.00 :   92279:  vpsllw $0x2,0x480(%rax,%r8,2),%zmm3
+    0.19 :   92282:  vpaddsw 0x480(%rdi,%r8,2),%zmm3,%zmm3
+    0.00 :   9228a:  vpmaxsw %zmm1,%zmm2,%zmm2
+    0.00 :   92290:  vpminsw %zmm0,%zmm2,%zmm2
+    0.00 :   92296:  vpmaxsw %zmm1,%zmm3,%zmm3
+    0.00 :   9229c:  vpminsw %zmm0,%zmm3,%zmm3
+    0.06 :   922a2:  vpsllw $0x7,%zmm2,%zmm2
+    0.00 :   922a9:  vpmulhuw %zmm2,%zmm3,%zmm2
+    0.07 :   922af:  vpsllw $0x2,0x4c0(%rax,%r8,2),%zmm3
+    0.13 :   922b8:  vpaddsw 0x4c0(%rdi,%r8,2),%zmm3,%zmm3
+    0.06 :   922c0:  vpmovwb %zmm2,-0x40(%r13,%r8,1)
+    0.00 :   922c8:  vpaddsw -0x40(%rdi,%r8,2),%zmm4,%zmm2
+    0.00 :   922d0:  vpmaxsw %zmm1,%zmm3,%zmm3
+    0.05 :   922d6:  vpminsw %zmm0,%zmm3,%zmm3
+    0.00 :   922dc:  vpmaxsw %zmm1,%zmm2,%zmm2
+    0.00 :   922e2:  vpminsw %zmm0,%zmm2,%zmm2
+    0.00 :   922e8:  vpsllw $0x7,%zmm2,%zmm2
+    0.00 :   922ef:  vpmulhuw %zmm2,%zmm3,%zmm2
+    0.04 :   922f5:  vpsllw $0x2,(%rax,%r8,2),%zmm3
+    0.00 :   922fd:  vpmovwb %zmm2,-0x20(%r13,%r8,1)
+    0.10 :   92305:  vpaddsw (%rdi,%r8,2),%zmm3,%zmm2
+    0.00 :   9230c:  vpsllw $0x2,0x500(%rax,%r8,2),%zmm3
+    0.11 :   92315:  vpaddsw 0x500(%rdi,%r8,2),%zmm3,%zmm3
+    0.00 :   9231d:  vpmaxsw %zmm1,%zmm2,%zmm2
+    0.00 :   92323:  vpminsw %zmm0,%zmm2,%zmm2
+    0.00 :   92329:  vpmaxsw %zmm1,%zmm3,%zmm3
+    0.00 :   9232f:  vpminsw %zmm0,%zmm3,%zmm3
+    0.07 :   92335:  vpsllw $0x7,%zmm2,%zmm2
+    0.05 :   9233c:  vpmulhuw %zmm2,%zmm3,%zmm2
+    0.10 :   92342:  vpmovwb %zmm2,0x0(%r13,%r8,1)
+    0.07 :   9234a:  sub    $0xffffffffffffff80,%r8
+    0.00 :   9234e:  cmp    $0x2e0,%r8
+    0.00 :   92355:  jne    92210 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x50>
+    0.00 :   9235b:  mov    %r12,%rbp
+    0.00 :   9235e:  xor    $0x1,%rbp
+    0.00 :   92362:  vpxor  %xmm1,%xmm1,%xmm1
+    0.00 :   92366:  mov    %ebp,%eax
+    0.00 :   92368:  shl    $0x9,%eax
+    0.00 :   9236b:  lea    (%rax,%rax,4),%rax
+    0.00 :   9236f:  add    %rax,%rdx
+    0.06 :   92372:  add    %rax,%rcx
+    0.00 :   92375:  mov    $0x2e0,%eax
+    0.00 :   9237a:  nopw   0x0(%rax,%rax,1)
+    0.00 :   92380:  vpsllw $0x2,-0x5c0(%rcx,%rax,2),%zmm2
+    0.00 :   92389:  vpsllw $0x2,-0xc0(%rcx,%rax,2),%zmm3
+    0.06 :   92392:  vpsllw $0x2,-0x540(%rcx,%rax,2),%zmm4
+    0.13 :   9239b:  vpaddsw -0x5c0(%rdx,%rax,2),%zmm2,%zmm2
+    0.00 :   923a3:  vpaddsw -0xc0(%rdx,%rax,2),%zmm3,%zmm3
+    0.43 :   923ab:  vpmaxsw %zmm1,%zmm2,%zmm2
+    0.06 :   923b1:  vpmaxsw %zmm1,%zmm3,%zmm3
+    0.18 :   923b7:  vpminsw %zmm0,%zmm2,%zmm2
+    0.15 :   923bd:  vpminsw %zmm0,%zmm3,%zmm3
+    0.10 :   923c3:  vpsllw $0x7,%zmm2,%zmm2
+    0.39 :   923ca:  vpmulhuw %zmm2,%zmm3,%zmm2
+    0.70 :   923d0:  vpsllw $0x2,-0x580(%rcx,%rax,2),%zmm3
+    0.00 :   923d9:  vpmovwb %zmm2,-0x60(%r13,%rax,1)
+    1.36 :   923e1:  vpaddsw -0x580(%rdx,%rax,2),%zmm3,%zmm2
+    0.00 :   923e9:  vpsllw $0x2,-0x80(%rcx,%rax,2),%zmm3
+    0.00 :   923f2:  vpaddsw -0x80(%rdx,%rax,2),%zmm3,%zmm3
+    0.07 :   923fa:  vpmaxsw %zmm1,%zmm2,%zmm2
+    0.00 :   92400:  vpminsw %zmm0,%zmm2,%zmm2
+    0.05 :   92406:  vpmaxsw %zmm1,%zmm3,%zmm3
+    0.12 :   9240c:  vpminsw %zmm0,%zmm3,%zmm3
+    0.37 :   92412:  vpsllw $0x7,%zmm2,%zmm2
+    0.08 :   92419:  vpmulhuw %zmm2,%zmm3,%zmm2
+    0.89 :   9241f:  vpsllw $0x2,-0x40(%rcx,%rax,2),%zmm3
+    0.08 :   92428:  vpaddsw -0x40(%rdx,%rax,2),%zmm3,%zmm3
+    0.17 :   92430:  vpmovwb %zmm2,-0x40(%r13,%rax,1)
+    2.00 :   92438:  vpaddsw -0x540(%rdx,%rax,2),%zmm4,%zmm2
+    0.00 :   92440:  vpmaxsw %zmm1,%zmm3,%zmm3
+    0.14 :   92446:  vpminsw %zmm0,%zmm3,%zmm3
+    0.24 :   9244c:  vpmaxsw %zmm1,%zmm2,%zmm2
+    0.00 :   92452:  vpminsw %zmm0,%zmm2,%zmm2
+    0.00 :   92458:  vpsllw $0x7,%zmm2,%zmm2
+    0.13 :   9245f:  vpmulhuw %zmm2,%zmm3,%zmm2
+    1.21 :   92465:  vpsllw $0x2,-0x500(%rcx,%rax,2),%zmm3
+    0.00 :   9246e:  vpmovwb %zmm2,-0x20(%r13,%rax,1)
+    1.97 :   92476:  vpaddsw -0x500(%rdx,%rax,2),%zmm3,%zmm2
+    0.05 :   9247e:  vpsllw $0x2,(%rcx,%rax,2),%zmm3
+    0.13 :   92486:  vpaddsw (%rdx,%rax,2),%zmm3,%zmm3
+    0.00 :   9248d:  vpmaxsw %zmm1,%zmm2,%zmm2
+    0.00 :   92493:  vpminsw %zmm0,%zmm2,%zmm2
+    0.23 :   92499:  vpmaxsw %zmm1,%zmm3,%zmm3
+    0.12 :   9249f:  vpminsw %zmm0,%zmm3,%zmm3
+    1.11 :   924a5:  vpsllw $0x7,%zmm2,%zmm2
+    0.19 :   924ac:  vpmulhuw %zmm2,%zmm3,%zmm2
+    0.63 :   924b2:  vpmovwb %zmm2,0x0(%r13,%rax,1)
+    1.65 :   924ba:  sub    $0xffffffffffffff80,%rax
+    0.00 :   924be:  cmp    $0x560,%rax
+    0.00 :   924c4:  jne    92380 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x1c0>
+    0.00 :   924ca:  vmovdqa -0x84b12(%rip),%ymm0        # d9c0 <anon.ee651107ab5319c6bc273e1a29320aaf.108.llvm.14746981713632465754+0x2b8>
+    0.00 :   924d2:  lea    0x500(%r13),%rcx
+    0.00 :   924d9:  mov    $0xfffffffffffffec0,%rax
+    0.00 :   924e0:  xor    %r10d,%r10d
+    0.00 :   924e3:  data16 data16 data16 cs nopw 0x0(%rax,%rax,1)
+    0.34 :   924f0:  vmovdqa64 0x500(%r13,%rax,4),%zmm1
+    0.66 :   924f8:  lea    0x140(%rax),%edx
+    0.07 :   924fe:  lea    0x150(%rax),%edi
+    0.25 :   92504:  vpbroadcastw %edx,%ymm2
+    0.00 :   9250a:  vptestmd %zmm1,%zmm1,%k1
+    0.54 :   92510:  vpcompressw %ymm0,%ymm1{%k1}{z}
+    0.46 :   92516:  kmovw  %k1,%edx
+    0.00 :   9251a:  popcnt %edx,%edx
+    0.69 :   9251e:  add    %r10,%rdx
+    0.00 :   92521:  vpaddw %ymm1,%ymm2,%ymm1
+    0.06 :   92525:  vpbroadcastw %edi,%ymm2
+    0.00 :   9252b:  vmovdqu %ymm1,0x500(%r13,%r10,2)
+    0.52 :   92535:  vmovdqa64 0x540(%r13,%rax,4),%zmm1
+    0.79 :   9253d:  vptestmd %zmm1,%zmm1,%k1
+    0.66 :   92543:  vpcompressw %ymm0,%ymm1{%k1}{z}
+    0.52 :   92549:  kmovw  %k1,%edi
+    0.00 :   9254d:  popcnt %edi,%edi
+    0.00 :   92551:  add    %rdx,%rdi
+    0.00 :   92554:  vpaddw %ymm1,%ymm2,%ymm1
+    0.23 :   92558:  vmovdqu %ymm1,0x500(%r13,%rdx,2)
+    0.14 :   92562:  lea    0x160(%rax),%edx
+    0.07 :   92568:  vmovdqa64 0x580(%r13,%rax,4),%zmm1
+    0.67 :   92570:  vpbroadcastw %edx,%ymm2
+    0.00 :   92576:  vptestmd %zmm1,%zmm1,%k1
+    0.63 :   9257c:  vpcompressw %ymm0,%ymm1{%k1}{z}
+    0.29 :   92582:  kmovw  %k1,%edx
+    0.06 :   92586:  popcnt %edx,%edx
+    0.46 :   9258a:  add    %rdi,%rdx
+    0.00 :   9258d:  vpaddw %ymm1,%ymm2,%ymm1
+    0.00 :   92591:  vmovdqu %ymm1,0x500(%r13,%rdi,2)
+    0.11 :   9259b:  lea    0x170(%rax),%edi
+    0.13 :   925a1:  vmovdqa64 0x5c0(%r13,%rax,4),%zmm1
+    0.91 :   925a9:  vpbroadcastw %edi,%ymm2
+    0.05 :   925af:  vptestmd %zmm1,%zmm1,%k1
+    0.75 :   925b5:  vpcompressw %ymm0,%ymm1{%k1}{z}
+    0.09 :   925bb:  kmovw  %k1,%edi
+    0.07 :   925bf:  popcnt %edi,%edi
+    0.13 :   925c3:  add    %rdx,%rdi
+    0.00 :   925c6:  vpaddw %ymm1,%ymm2,%ymm1
+    0.13 :   925ca:  vmovdqu %ymm1,0x500(%r13,%rdx,2)
+    0.24 :   925d4:  lea    0x180(%rax),%edx
+    0.36 :   925da:  vmovdqa64 0x600(%r13,%rax,4),%zmm1
+    0.30 :   925e2:  vpbroadcastw %edx,%ymm2
+    0.00 :   925e8:  vptestmd %zmm1,%zmm1,%k1
+    1.39 :   925ee:  vpcompressw %ymm0,%ymm1{%k1}{z}
+    0.07 :   925f4:  kmovw  %k1,%edx
+    0.05 :   925f8:  popcnt %edx,%r10d
+    0.26 :   925fd:  add    %rdi,%r10
+    0.00 :   92600:  add    $0x50,%rax
+    0.08 :   92604:  vpaddw %ymm1,%ymm2,%ymm1
+    0.04 :   92608:  vmovdqu %ymm1,0x500(%r13,%rdi,2)
+    0.34 :   92612:  jne    924f0 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x330>
+    0.05 :   92618:  cmp    $0x20,%r9
+    0.00 :   9261c:  ja     934ab <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12eb>
+    0.00 :   92622:  cmp    $0x141,%r10
+    0.00 :   92629:  jae    9336f <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x11af>
+    0.00 :   9262f:  lea    -0x7ee36(%rip),%rax        # 13800 <anon.ed23dd53d1999b359621ac0dc763dee2.94.llvm.11021376600075084165+0x1c>
+    0.00 :   92636:  mov    0x38(%r14),%rdx
+    0.11 :   9263a:  mov    (%rax,%r9,8),%r15
+    0.09 :   9263e:  mov    %r15,%rdi
+    0.00 :   92641:  shl    $0xc,%rdi
+    0.00 :   92645:  lea    (%rdi,%rdi,4),%rax
+    0.00 :   92649:  lea    0x5000(%rdi,%rdi,4),%r8
+    0.00 :   92651:  cmp    $0xffffffffffffafff,%rax
+    0.00 :   92657:  ja     93389 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x11c9>
+    0.00 :   9265d:  cmp    %rdx,%r8
+    0.09 :   92660:  ja     93389 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x11c9>
+    0.00 :   92666:  mov    %r15,%rdi
+    0.00 :   92669:  shl    $0x4,%rdi
+    0.00 :   9266d:  test   %r10,%r10
+    0.00 :   92670:  je     92691 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x4d1>
+    0.00 :   92672:  add    0x30(%r14),%rax
+    0.00 :   92676:  lea    (%r10,%r10,1),%r8
+    0.00 :   9267a:  add    $0xfffffffffffffffe,%r8
+    0.06 :   9267e:  mov    %r8d,%edx
+    0.00 :   92681:  not    %edx
+    0.00 :   92683:  test   $0xe,%dl
+    0.00 :   92686:  jne    9269a <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x4da>
+    0.00 :   92688:  vpxor  %xmm0,%xmm0,%xmm0
+    0.06 :   9268c:  mov    %rcx,%rdx
+    0.00 :   9268f:  jmp    926d0 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x510>
+    0.00 :   92691:  vpxor  %xmm0,%xmm0,%xmm0
+    0.00 :   92695:  jmp    927b2 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x5f2>
+    0.00 :   9269a:  mov    %r8d,%r9d
+    0.06 :   9269d:  shr    $1,%r9d
+    0.00 :   926a0:  vpxor  %xmm0,%xmm0,%xmm0
+    0.06 :   926a4:  mov    %rcx,%rdx
+    0.00 :   926a7:  inc    %r9d
+    0.00 :   926aa:  and    $0x7,%r9d
+    0.00 :   926ae:  xchg   %ax,%ax
+    0.00 :   926b0:  movzwl (%rdx),%r11d
+    0.12 :   926b4:  add    $0x2,%rdx
+    0.00 :   926b8:  vpbroadcastd 0x0(%r13,%r11,4),%zmm1
+    0.18 :   926c0:  shl    $0x6,%r11d
+    0.00 :   926c4:  dec    %r9
+    0.00 :   926c7:  vpdpbusd (%rax,%r11,1),%zmm1,%zmm0
+    3.69 :   926ce:  jne    926b0 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x4f0>
+    0.00 :   926d0:  cmp    $0xe,%r8
+    0.12 :   926d4:  jb     927ac <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x5ec>
+    0.00 :   926da:  lea    (%rcx,%r10,2),%rcx
+    0.00 :   926de:  xchg   %ax,%ax
+    0.00 :   926e0:  movzwl (%rdx),%r8d
+    0.05 :   926e4:  vpbroadcastd 0x0(%r13,%r8,4),%zmm1
+    0.86 :   926ec:  shl    $0x6,%r8d
+    0.00 :   926f0:  vpdpbusd (%rax,%r8,1),%zmm1,%zmm0
+    6.65 :   926f7:  movzwl 0x2(%rdx),%r8d
+    0.06 :   926fc:  vpbroadcastd 0x0(%r13,%r8,4),%zmm1
+    0.53 :   92704:  shl    $0x6,%r8d
+    0.00 :   92708:  vpdpbusd (%rax,%r8,1),%zmm1,%zmm0
+    6.09 :   9270f:  movzwl 0x4(%rdx),%r8d
+    0.00 :   92714:  vpbroadcastd 0x0(%r13,%r8,4),%zmm1
+    0.31 :   9271c:  shl    $0x6,%r8d
+    0.00 :   92720:  vpdpbusd (%rax,%r8,1),%zmm1,%zmm0
+    5.67 :   92727:  movzwl 0x6(%rdx),%r8d
+    0.06 :   9272c:  vpbroadcastd 0x0(%r13,%r8,4),%zmm1
+    0.23 :   92734:  shl    $0x6,%r8d
+    0.00 :   92738:  vpdpbusd (%rax,%r8,1),%zmm1,%zmm0
+    5.54 :   9273f:  movzwl 0x8(%rdx),%r8d
+    0.00 :   92744:  vpbroadcastd 0x0(%r13,%r8,4),%zmm1
+    0.34 :   9274c:  shl    $0x6,%r8d
+    0.00 :   92750:  vpdpbusd (%rax,%r8,1),%zmm1,%zmm0
+    5.07 :   92757:  movzwl 0xa(%rdx),%r8d
+    0.00 :   9275c:  vpbroadcastd 0x0(%r13,%r8,4),%zmm1
+    0.60 :   92764:  shl    $0x6,%r8d
+    0.00 :   92768:  vpdpbusd (%rax,%r8,1),%zmm1,%zmm0
+    6.14 :   9276f:  movzwl 0xc(%rdx),%r8d
+    0.00 :   92774:  vpbroadcastd 0x0(%r13,%r8,4),%zmm1
+    0.71 :   9277c:  shl    $0x6,%r8d
+    0.00 :   92780:  vpdpbusd (%rax,%r8,1),%zmm1,%zmm0
+    4.25 :   92787:  movzwl 0xe(%rdx),%r8d
+    0.00 :   9278c:  add    $0x10,%rdx
+    0.00 :   92790:  vpbroadcastd 0x0(%r13,%r8,4),%zmm1
+    0.44 :   92798:  shl    $0x6,%r8d
+    0.00 :   9279c:  vpdpbusd (%rax,%r8,1),%zmm1,%zmm0
+    6.05 :   927a3:  cmp    %rcx,%rdx
+    0.00 :   927a6:  jne    926e0 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x520>
+    0.00 :   927ac:  vcvtdq2ps %zmm0,%zmm0
+    0.33 :   927b2:  mov    0x48(%r14),%rdx
+    0.00 :   927b6:  mov    %rdi,%rax
+    0.00 :   927b9:  or     $0xf,%rax
+    0.00 :   927bd:  cmp    %rdx,%rax
+    0.00 :   927c0:  jae    9339f <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x11df>
+    0.00 :   927c6:  mov    0x40(%r14),%rax
+    0.00 :   927ca:  vbroadcastss -0x85684(%rip),%zmm1        # d150 <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0xcb>
+    0.00 :   927d4:  mov    0x68(%r14),%rdx
+    0.00 :   927d8:  mov    %r12,0x8(%rsp)
+    0.00 :   927dd:  mov    %r15,%r12
+    0.07 :   927e0:  shl    $0x5,%r12
+    0.00 :   927e4:  mov    %rbx,0x68(%rsp)
+    0.00 :   927e9:  lea    0x1f(%r12),%rbx
+    0.00 :   927ee:  vfmadd213ps (%rax,%rdi,4),%zmm0,%zmm1
+    0.51 :   927f5:  vxorps %xmm0,%xmm0,%xmm0
+    0.00 :   927f9:  vmovups %zmm0,0xb0(%rsp)
+    0.33 :   92804:  vmovups %zmm0,0x70(%rsp)
+    0.28 :   9280f:  vmaxps %zmm0,%zmm1,%zmm1
+    0.15 :   92815:  vminps -0x8573b(%rip){1to16},%zmm1,%zmm1        # d0e4 <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0x5f>
+    0.00 :   9281f:  vmulps %zmm1,%zmm1,%zmm1
+    0.42 :   92825:  vmovups %zmm1,(%rsi)
+    0.00 :   9282b:  cmp    %rdx,%rbx
+    0.59 :   9282e:  jae    933b3 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x11f3>
+    0.00 :   92834:  mov    0x58(%r14),%rax
+    0.00 :   92838:  mov    %r15,%rdx
+    0.00 :   9283b:  shl    $0x9,%rdx
+    0.00 :   9283f:  lea    0x1ff(%rdx),%rcx
+    0.00 :   92846:  cmp    %rax,%rcx
+    0.00 :   92849:  jae    933cb <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x120b>
+    0.00 :   9284f:  lea    0x0(,%r12,4),%rcx
+    0.05 :   92857:  shl    $0x2,%rdx
+    0.00 :   9285b:  add    0x60(%r14),%rcx
+    0.00 :   9285f:  add    0x50(%r14),%rdx
+    0.00 :   92863:  lea    0x70(%rsp),%rdi
+    0.00 :   92868:  vzeroupper
+    0.00 :   9286b:  call   8a330 <chessengine::eval::nnue::sota_simd::avx512::l2_tail>
+    0.00 :   92870:  mov    0x78(%r14),%rdx
+    0.06 :   92874:  cmp    %rdx,%rbx
+    0.00 :   92877:  jae    933e8 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x1228>
+    0.00 :   9287d:  mov    0x88(%r14),%rsi
+    0.00 :   92884:  cmp    %rsi,%r15
+    0.00 :   92887:  jae    934c3 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x1303>
+    0.00 :   9288d:  mov    0x70(%r14),%rax
+    0.00 :   92891:  vmovsd 0xa8(%rsp),%xmm12
+    0.16 :   9289a:  vmovsd 0xe8(%rsp),%xmm20
+    0.39 :   928a2:  vpxor  %xmm4,%xmm4,%xmm4
+    0.00 :   928a6:  vmovsd 0x88(%rsp),%xmm8
+    0.00 :   928af:  vmovsd 0xc8(%rsp),%xmm16
+    0.00 :   928b7:  vmovsd 0x98(%rsp),%xmm10
+    0.00 :   928c0:  vmovsd 0xd8(%rsp),%xmm18
+    0.05 :   928c8:  vmovsd 0x78(%rsp),%xmm6
+    0.00 :   928ce:  vmovsd 0xb8(%rsp),%xmm14
+    0.00 :   928d7:  vmovsd 0xa0(%rsp),%xmm11
+    0.00 :   928e0:  vmovsd 0xe0(%rsp),%xmm19
+    0.06 :   928e8:  vmovsd 0x80(%rsp),%xmm7
+    0.00 :   928f1:  vmovsd 0xc0(%rsp),%xmm15
+    0.00 :   928fa:  vmovsd 0x70(%rsp),%xmm5
+    0.00 :   92900:  vmovsd 0x90(%rsp),%xmm9
+    0.00 :   92909:  vmovsd 0xb0(%rsp),%xmm13
+    0.00 :   92912:  vmovsd 0xd0(%rsp),%xmm17
+    0.13 :   9291a:  cmpq   $0xffffffffffffffff,(%r14)
+    0.00 :   9291e:  vmovsd 0x38(%rax,%r12,4),%xmm3
+    0.00 :   92925:  vmovsd 0x78(%rax,%r12,4),%xmm0
+    0.00 :   9292c:  vmovsd 0x58(%rax,%r12,4),%xmm2
+    0.00 :   92933:  vmovsd 0x68(%rax,%r12,4),%xmm1
+    0.00 :   9293a:  vmovaps %xmm19,0x10(%rsp)
+    0.00 :   92942:  vmovaps %xmm18,0x20(%rsp)
+    0.00 :   9294a:  vmovaps %xmm20,0x40(%rsp)
+    0.19 :   92952:  vfmadd213ps %xmm4,%xmm12,%xmm3
+    0.00 :   92957:  vfmadd231ps %xmm0,%xmm20,%xmm3
+    0.00 :   9295d:  vmovsd 0x18(%rax,%r12,4),%xmm0
+    0.00 :   92964:  vfmadd213ps %xmm4,%xmm8,%xmm0
+    0.00 :   92969:  vfmadd231ps %xmm2,%xmm16,%xmm0
+    0.00 :   9296f:  vmovsd 0x48(%rax,%r12,4),%xmm2
+    0.00 :   92976:  vaddps %xmm3,%xmm0,%xmm0
+    0.19 :   9297a:  vmovsd 0x28(%rax,%r12,4),%xmm3
+    0.00 :   92981:  vfmadd213ps %xmm4,%xmm10,%xmm3
+    0.00 :   92986:  vfmadd231ps %xmm1,%xmm18,%xmm3
+    0.00 :   9298c:  vmovsd 0x8(%rax,%r12,4),%xmm1
+    0.00 :   92993:  vmovsd 0x40(%rax,%r12,4),%xmm18
+    0.00 :   9299b:  vfmadd213ps %xmm4,%xmm6,%xmm1
+    0.00 :   929a0:  vfmadd231ps %xmm2,%xmm14,%xmm1
+    0.00 :   929a5:  vmovsd 0x70(%rax,%r12,4),%xmm2
+    0.00 :   929ac:  vaddps %xmm3,%xmm1,%xmm1
+    0.19 :   929b0:  vmovsd 0x50(%rax,%r12,4),%xmm3
+    0.00 :   929b7:  vaddps %xmm0,%xmm1,%xmm0
+    0.28 :   929bb:  vmovsd 0x30(%rax,%r12,4),%xmm1
+    0.00 :   929c2:  vfmadd213ps %xmm4,%xmm11,%xmm1
+    0.00 :   929c7:  vfmadd231ps %xmm2,%xmm19,%xmm1
+    0.00 :   929cd:  vmovsd 0x10(%rax,%r12,4),%xmm2
+    0.00 :   929d4:  vmovsd (%rax,%r12,4),%xmm19
+    0.00 :   929db:  vfmadd213ps %xmm4,%xmm7,%xmm2
+    0.00 :   929e0:  vfmadd213ps %xmm4,%xmm5,%xmm19
+    0.00 :   929e6:  vfmadd231ps %xmm3,%xmm15,%xmm2
+    0.00 :   929eb:  vmovsd 0x60(%rax,%r12,4),%xmm3
+    0.00 :   929f2:  vfmadd231ps %xmm18,%xmm13,%xmm19
+    0.00 :   929f8:  vaddps %xmm1,%xmm2,%xmm1
+    0.00 :   929fc:  vmovsd 0x20(%rax,%r12,4),%xmm2
+    0.00 :   92a03:  mov    0x80(%r14),%rax
+    0.05 :   92a0a:  vfmadd213ps %xmm4,%xmm9,%xmm2
+    0.00 :   92a0f:  vfmadd231ps %xmm3,%xmm17,%xmm2
+    0.00 :   92a15:  vaddps %xmm2,%xmm19,%xmm2
+    0.00 :   92a1b:  vaddps %xmm1,%xmm2,%xmm1
+    0.04 :   92a1f:  vaddps %xmm0,%xmm1,%xmm0
+    0.00 :   92a23:  vmovshdup %xmm0,%xmm1
+    0.06 :   92a27:  vaddss %xmm1,%xmm0,%xmm0
+    0.10 :   92a2b:  vaddss (%rax,%r15,4),%xmm0,%xmm0
+    0.23 :   92a31:  vmovss %xmm0,0x4(%rsp)
+    0.00 :   92a37:  je     92c04 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0xa44>
+    0.00 :   92a3d:  mov    0x10(%r14),%rsi
+    0.00 :   92a41:  mov    0x18(%r14),%rdi
+    0.00 :   92a45:  mov    %rsi,%rdx
+    0.00 :   92a48:  sub    %rdi,%rdx
+    0.00 :   92a4b:  jb     933fd <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x123d>
+    0.00 :   92a51:  mov    %r15,%rax
+    0.00 :   92a54:  shl    $0x8,%rax
+    0.00 :   92a58:  mov    %rdx,%r8
+    0.00 :   92a5b:  lea    (%rax,%rax,4),%rax
+    0.00 :   92a5f:  sub    %rax,%r8
+    0.00 :   92a62:  jb     9340d <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x124d>
+    0.00 :   92a68:  cmp    $0x4ff,%r8
+    0.00 :   92a6f:  jbe    9343c <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x127c>
+    0.00 :   92a75:  mov    0x28(%r14),%rsi
+    0.00 :   92a79:  cmp    %rsi,%r15
+    0.00 :   92a7c:  jae    934d3 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x1313>
+    0.00 :   92a82:  add    0x8(%r14),%rdi
+    0.00 :   92a86:  vmovdqa64 0x0(%r13),%zmm1
+    0.06 :   92a8d:  vxorps %xmm0,%xmm0,%xmm0
+    0.00 :   92a91:  vmovdqa64 0x40(%r13),%zmm2
+    0.00 :   92a98:  vmovdqa64 0x80(%r13),%zmm3
+    0.00 :   92a9f:  vmovdqa64 0xc0(%r13),%zmm4
+    0.05 :   92aa6:  vpdpbusd (%rax,%rdi,1),%zmm1,%zmm0
+    0.06 :   92aad:  vmovdqa64 0x100(%r13),%zmm1
+    0.00 :   92ab4:  vpdpbusd 0x40(%rax,%rdi,1),%zmm2,%zmm0
+    0.14 :   92abc:  vpdpbusd 0x80(%rax,%rdi,1),%zmm3,%zmm0
+    0.15 :   92ac4:  vpdpbusd 0xc0(%rax,%rdi,1),%zmm4,%zmm0
+    0.12 :   92acc:  vpdpbusd 0x100(%rax,%rdi,1),%zmm1,%zmm0
+    0.06 :   92ad4:  vmovdqa64 0x140(%r13),%zmm1
+    0.00 :   92adb:  vpdpbusd 0x140(%rax,%rdi,1),%zmm1,%zmm0
+    0.43 :   92ae3:  vmovdqa64 0x180(%r13),%zmm1
+    0.00 :   92aea:  vpdpbusd 0x180(%rax,%rdi,1),%zmm1,%zmm0
+    0.19 :   92af2:  vmovdqa64 0x1c0(%r13),%zmm1
+    0.00 :   92af9:  vpdpbusd 0x1c0(%rax,%rdi,1),%zmm1,%zmm0
+    0.31 :   92b01:  vmovdqa64 0x200(%r13),%zmm1
+    0.00 :   92b08:  vpdpbusd 0x200(%rax,%rdi,1),%zmm1,%zmm0
+    0.18 :   92b10:  vmovdqa64 0x240(%r13),%zmm1
+    0.00 :   92b17:  vpdpbusd 0x240(%rax,%rdi,1),%zmm1,%zmm0
+    0.24 :   92b1f:  vmovdqa64 0x280(%r13),%zmm1
+    0.00 :   92b26:  vpdpbusd 0x280(%rax,%rdi,1),%zmm1,%zmm0
+    0.22 :   92b2e:  vmovdqa64 0x2c0(%r13),%zmm1
+    0.00 :   92b35:  vpdpbusd 0x2c0(%rax,%rdi,1),%zmm1,%zmm0
+    0.30 :   92b3d:  vmovdqa64 0x300(%r13),%zmm1
+    0.05 :   92b44:  vpdpbusd 0x300(%rax,%rdi,1),%zmm1,%zmm0
+    0.59 :   92b4c:  vmovdqa64 0x340(%r13),%zmm1
+    0.00 :   92b53:  vpdpbusd 0x340(%rax,%rdi,1),%zmm1,%zmm0
+    0.44 :   92b5b:  vmovdqa64 0x380(%r13),%zmm1
+    0.00 :   92b62:  vpdpbusd 0x380(%rax,%rdi,1),%zmm1,%zmm0
+    0.44 :   92b6a:  vmovdqa64 0x3c0(%r13),%zmm1
+    0.00 :   92b71:  vpdpbusd 0x3c0(%rax,%rdi,1),%zmm1,%zmm0
+    0.40 :   92b79:  vmovdqa64 0x400(%r13),%zmm1
+    0.00 :   92b80:  vpdpbusd 0x400(%rax,%rdi,1),%zmm1,%zmm0
+    0.40 :   92b88:  vmovdqa64 0x440(%r13),%zmm1
+    0.00 :   92b8f:  vpdpbusd 0x440(%rax,%rdi,1),%zmm1,%zmm0
+    0.11 :   92b97:  vmovdqa64 0x480(%r13),%zmm1
+    0.00 :   92b9e:  vpdpbusd 0x480(%rax,%rdi,1),%zmm1,%zmm0
+    0.37 :   92ba6:  vmovdqa64 0x4c0(%r13),%zmm1
+    0.06 :   92bad:  vpdpbusd 0x4c0(%rax,%rdi,1),%zmm1,%zmm0
+    0.33 :   92bb5:  mov    0x20(%r14),%rax
+    0.00 :   92bb9:  vextracti64x4 $0x1,%zmm0,%ymm1
+    0.25 :   92bc0:  vpaddd %zmm1,%zmm0,%zmm0
+    0.34 :   92bc6:  vextracti128 $0x1,%ymm0,%xmm1
+    0.29 :   92bcc:  vpaddd %xmm1,%xmm0,%xmm0
+    0.14 :   92bd0:  vpshufd $0xee,%xmm0,%xmm1
+    0.06 :   92bd5:  vpaddd %xmm1,%xmm0,%xmm0
+    0.00 :   92bd9:  vpshufd $0x55,%xmm0,%xmm1
+    0.00 :   92bde:  vpaddd %xmm1,%xmm0,%xmm0
+    0.00 :   92be2:  vmovss 0x4(%rsp),%xmm1
+    0.00 :   92be8:  vcvtdq2ps %xmm0,%xmm0
+    0.32 :   92bec:  vmulss (%rax,%r15,4),%xmm0,%xmm0
+    0.50 :   92bf2:  vmulss -0x85a6a(%rip),%xmm0,%xmm0        # d190 <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0x10b>
+    0.16 :   92bfa:  vaddss %xmm0,%xmm1,%xmm1
+    0.13 :   92bfe:  vmovss %xmm1,0x4(%rsp)
+    0.00 :   92c04:  mov    0x8(%rsp),%rcx
+    0.00 :   92c09:  mov    0x1e0(%rsp),%rdx
+    0.00 :   92c11:  shl    $0x5,%ebp
+    0.00 :   92c14:  mov    0xd0(%r14),%eax
+    0.00 :   92c1b:  xor    %r13d,%r13d
+    0.00 :   92c1e:  vmovaps %xmm5,0x30(%rsp)
+    0.00 :   92c24:  vmovaps %xmm6,0x50(%rsp)
+    0.00 :   92c2a:  vmovaps %xmm7,0x190(%rsp)
+    0.00 :   92c33:  vmovaps %xmm8,0x180(%rsp)
+    0.00 :   92c3c:  vmovaps %xmm9,0x170(%rsp)
+    0.00 :   92c45:  vmovaps %xmm10,0x160(%rsp)
+    0.00 :   92c4e:  vmovaps %xmm11,0x150(%rsp)
+    0.00 :   92c57:  vmovaps %xmm12,0x140(%rsp)
+    0.00 :   92c60:  vmovaps %xmm13,0x130(%rsp)
+    0.00 :   92c69:  vmovaps %xmm14,0x120(%rsp)
+    0.00 :   92c72:  vmovaps %xmm15,0x110(%rsp)
+    0.07 :   92c7b:  vmovaps %xmm16,0x100(%rsp)
+    0.00 :   92c83:  vmovaps %xmm17,0xf0(%rsp)
+    0.00 :   92c8b:  shl    $0x5,%ecx
+    0.00 :   92c8e:  add    %rdx,%rbp
+    0.00 :   92c91:  mov    %eax,(%rsp)
+    0.00 :   92c94:  add    %rdx,%rcx
+    0.00 :   92c97:  mov    0x0(%rbp,%r15,4),%ebp
+    0.00 :   92c9c:  mov    (%rcx,%r15,4),%ebx
+    0.00 :   92ca0:  mov    0x90(%r14),%rcx
+    0.00 :   92ca7:  test   %rcx,%rcx
+    0.00 :   92caa:  je     92e11 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0xc51>
+    0.00 :   92cb0:  mov    0xa0(%r14),%rax
+    0.00 :   92cb7:  test   %rax,%rax
+    0.00 :   92cba:  je     93420 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x1260>
+    0.00 :   92cc0:  mov    0x98(%r14),%rdx
+    0.00 :   92cc7:  lea    0x20(%r12),%rsi
+    0.00 :   92ccc:  cmp    %rdx,%rsi
+    0.00 :   92ccf:  ja     93453 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x1293>
+    0.00 :   92cd5:  mov    0xa8(%r14),%rsi
+    0.00 :   92cdc:  cmp    %rsi,%r15
+    0.00 :   92cdf:  jae    934e3 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x1323>
+    0.00 :   92ce5:  vmovsd 0x38(%rcx,%r12,4),%xmm3
+    0.00 :   92cec:  vmovsd 0x78(%rcx,%r12,4),%xmm0
+    0.00 :   92cf3:  vpxor  %xmm4,%xmm4,%xmm4
+    0.00 :   92cf7:  vmovsd 0x58(%rcx,%r12,4),%xmm2
+    0.00 :   92cfe:  vmovsd 0x68(%rcx,%r12,4),%xmm1
+    0.00 :   92d05:  vfmadd213ps %xmm4,%xmm12,%xmm3
+    0.00 :   92d0a:  vfmadd231ps 0x40(%rsp),%xmm0,%xmm3
+    0.00 :   92d11:  vmovsd 0x18(%rcx,%r12,4),%xmm0
+    0.00 :   92d18:  vfmadd213ps %xmm4,%xmm8,%xmm0
+    0.00 :   92d1d:  vfmadd231ps %xmm2,%xmm16,%xmm0
+    0.00 :   92d23:  vmovsd 0x48(%rcx,%r12,4),%xmm2
+    0.00 :   92d2a:  vaddps %xmm3,%xmm0,%xmm0
+    0.00 :   92d2e:  vmovsd 0x28(%rcx,%r12,4),%xmm3
+    0.00 :   92d35:  vfmadd213ps %xmm4,%xmm10,%xmm3
+    0.00 :   92d3a:  vfmadd231ps 0x20(%rsp),%xmm1,%xmm3
+    0.00 :   92d41:  vmovsd 0x8(%rcx,%r12,4),%xmm1
+    0.00 :   92d48:  vfmadd213ps %xmm4,%xmm6,%xmm1
+    0.00 :   92d4d:  vmovsd (%rcx,%r12,4),%xmm6
+    0.00 :   92d53:  vfmadd231ps %xmm2,%xmm14,%xmm1
+    0.00 :   92d58:  vmovsd 0x70(%rcx,%r12,4),%xmm2
+    0.00 :   92d5f:  vaddps %xmm3,%xmm1,%xmm1
+    0.00 :   92d63:  vmovsd 0x50(%rcx,%r12,4),%xmm3
+    0.00 :   92d6a:  vfmadd213ps %xmm4,%xmm5,%xmm6
+    0.00 :   92d6f:  vmovsd 0x40(%rcx,%r12,4),%xmm5
+    0.00 :   92d76:  vaddps %xmm0,%xmm1,%xmm0
+    0.00 :   92d7a:  vmovsd 0x30(%rcx,%r12,4),%xmm1
+    0.00 :   92d81:  vfmadd231ps %xmm5,%xmm13,%xmm6
+    0.00 :   92d86:  vfmadd213ps %xmm4,%xmm11,%xmm1
+    0.00 :   92d8b:  vfmadd231ps 0x10(%rsp),%xmm2,%xmm1
+    0.00 :   92d92:  vmovsd 0x10(%rcx,%r12,4),%xmm2
+    0.00 :   92d99:  vfmadd213ps %xmm4,%xmm7,%xmm2
+    0.00 :   92d9e:  vfmadd231ps %xmm3,%xmm15,%xmm2
+    0.00 :   92da3:  vmovsd 0x60(%rcx,%r12,4),%xmm3
+    0.00 :   92daa:  vaddps %xmm1,%xmm2,%xmm1
+    0.00 :   92dae:  vmovsd 0x20(%rcx,%r12,4),%xmm2
+    0.00 :   92db5:  vfmadd213ps %xmm4,%xmm9,%xmm2
+    0.00 :   92dba:  vfmadd231ps %xmm3,%xmm17,%xmm2
+    0.00 :   92dc0:  vaddps %xmm2,%xmm6,%xmm2
+    0.00 :   92dc4:  vaddps %xmm1,%xmm2,%xmm1
+    0.00 :   92dc8:  vaddps %xmm0,%xmm1,%xmm0
+    0.00 :   92dcc:  vmovshdup %xmm0,%xmm1
+    0.00 :   92dd0:  vaddss %xmm1,%xmm0,%xmm0
+    0.00 :   92dd4:  vaddss (%rax,%r15,4),%xmm0,%xmm0
+    0.00 :   92dda:  vmulss -0x85ca6(%rip),%xmm0,%xmm0        # d13c <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0xb7>
+    0.00 :   92de2:  vzeroupper
+    0.00 :   92de5:  call   *0x636a5(%rip)        # f6490 <expf@GLIBC_2.27>
+    0.00 :   92deb:  vmovd  %xmm0,%eax
+    0.00 :   92def:  xor    %r15d,%r15d
+    0.00 :   92df2:  and    $0x7fffffff,%eax
+    0.00 :   92df7:  cmp    $0x7f800000,%eax
+    0.00 :   92dfc:  setl   %r15b
+    0.00 :   92e00:  mov    0xb0(%r14),%rcx
+    0.00 :   92e07:  test   %rcx,%rcx
+    0.00 :   92e0a:  jne    92e24 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0xc64>
+    0.00 :   92e0c:  jmp    93309 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x1149>
+    0.00 :   92e11:  xor    %r15d,%r15d
+    0.00 :   92e14:  mov    0xb0(%r14),%rcx
+    0.00 :   92e1b:  test   %rcx,%rcx
+    0.00 :   92e1e:  je     93309 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x1149>
+    0.00 :   92e24:  mov    0xc0(%r14),%rdx
+    0.00 :   92e2b:  test   %rdx,%rdx
+    0.00 :   92e2e:  je     93466 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12a6>
+    0.00 :   92e34:  vmovaps 0x30(%rsp),%xmm18
+    0.00 :   92e3c:  vmovaps 0xf0(%rsp),%xmm31
+    0.00 :   92e44:  vmovaps 0x170(%rsp),%xmm22
+    0.00 :   92e4c:  vmovaps 0x110(%rsp),%xmm29
+    0.00 :   92e54:  vmovaps 0x190(%rsp),%xmm20
+    0.00 :   92e5c:  vmovaps 0x150(%rsp),%xmm25
+    0.00 :   92e64:  vmovaps 0x120(%rsp),%xmm28
+    0.00 :   92e6c:  vmovaps 0x50(%rsp),%xmm19
+    0.00 :   92e74:  vmovaps 0x160(%rsp),%xmm24
+    0.00 :   92e7c:  vmovaps 0x100(%rsp),%xmm30
+    0.00 :   92e84:  vmovaps 0x180(%rsp),%xmm21
+    0.00 :   92e8c:  vmovaps 0x140(%rsp),%xmm26
+    0.00 :   92e94:  vmovaps 0x130(%rsp),%xmm27
+    0.00 :   92e9c:  vmovshdup 0x10(%rsp),%xmm6
+    0.00 :   92ea2:  vmovshdup 0x20(%rsp),%xmm10
+    0.00 :   92ea8:  vmovshdup 0x40(%rsp),%xmm14
+    0.00 :   92eae:  mov    0xb8(%r14),%rsi
+    0.00 :   92eb5:  mov    0xc8(%r14),%rdi
+    0.00 :   92ebc:  vmovss %xmm0,0x8(%rsp)
+    0.00 :   92ec2:  mov    $0x1f,%r8d
+    0.00 :   92ec8:  movl   $0x0,0x78(%rsp)
+    0.00 :   92ed0:  movq   $0x0,0x70(%rsp)
+    0.00 :   92ed9:  xor    %r9d,%r9d
+    0.00 :   92edc:  vxorps %xmm16,%xmm16,%xmm16
+    0.00 :   92ee2:  vmovshdup %xmm27,%xmm0
+    0.00 :   92ee8:  vmovshdup %xmm18,%xmm1
+    0.00 :   92eee:  vmovshdup %xmm31,%xmm2
+    0.00 :   92ef4:  vmovshdup %xmm22,%xmm3
+    0.00 :   92efa:  vmovshdup %xmm29,%xmm4
+    0.00 :   92f00:  vmovshdup %xmm20,%xmm5
+    0.00 :   92f06:  vmovshdup %xmm25,%xmm7
+    0.00 :   92f0c:  vmovshdup %xmm28,%xmm8
+    0.00 :   92f12:  vmovshdup %xmm19,%xmm9
+    0.00 :   92f18:  vmovshdup %xmm24,%xmm11
+    0.00 :   92f1e:  vmovshdup %xmm30,%xmm12
+    0.00 :   92f24:  vmovshdup %xmm21,%xmm13
+    0.00 :   92f2a:  vmovshdup %xmm26,%xmm15
+    0.00 :   92f30:  lea    -0x1f(%r8),%rax
+    0.00 :   92f34:  cmp    %rsi,%rax
+    0.00 :   92f37:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   92f3d:  lea    -0x1e(%r8),%rax
+    0.00 :   92f41:  cmp    %rsi,%rax
+    0.00 :   92f44:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   92f4a:  lea    -0x1d(%r8),%rax
+    0.00 :   92f4e:  cmp    %rsi,%rax
+    0.00 :   92f51:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   92f57:  lea    -0x1c(%r8),%rax
+    0.00 :   92f5b:  cmp    %rsi,%rax
+    0.00 :   92f5e:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   92f64:  lea    -0x1b(%r8),%rax
+    0.00 :   92f68:  cmp    %rsi,%rax
+    0.00 :   92f6b:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   92f71:  lea    -0x1a(%r8),%rax
+    0.00 :   92f75:  cmp    %rsi,%rax
+    0.00 :   92f78:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   92f7e:  lea    -0x19(%r8),%rax
+    0.00 :   92f82:  cmp    %rsi,%rax
+    0.00 :   92f85:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   92f8b:  lea    -0x18(%r8),%rax
+    0.00 :   92f8f:  cmp    %rsi,%rax
+    0.00 :   92f92:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   92f98:  lea    -0x17(%r8),%rax
+    0.00 :   92f9c:  cmp    %rsi,%rax
+    0.00 :   92f9f:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   92fa5:  lea    -0x16(%r8),%rax
+    0.00 :   92fa9:  cmp    %rsi,%rax
+    0.00 :   92fac:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   92fb2:  lea    -0x15(%r8),%rax
+    0.00 :   92fb6:  cmp    %rsi,%rax
+    0.00 :   92fb9:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   92fbf:  lea    -0x14(%r8),%rax
+    0.00 :   92fc3:  cmp    %rsi,%rax
+    0.00 :   92fc6:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   92fcc:  lea    -0x13(%r8),%rax
+    0.00 :   92fd0:  cmp    %rsi,%rax
+    0.00 :   92fd3:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   92fd9:  lea    -0x12(%r8),%rax
+    0.00 :   92fdd:  cmp    %rsi,%rax
+    0.00 :   92fe0:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   92fe6:  lea    -0x11(%r8),%rax
+    0.00 :   92fea:  cmp    %rsi,%rax
+    0.00 :   92fed:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   92ff3:  lea    -0x10(%r8),%rax
+    0.00 :   92ff7:  cmp    %rsi,%rax
+    0.00 :   92ffa:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   93000:  lea    -0xf(%r8),%rax
+    0.00 :   93004:  cmp    %rsi,%rax
+    0.00 :   93007:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   9300d:  lea    -0xe(%r8),%rax
+    0.00 :   93011:  cmp    %rsi,%rax
+    0.00 :   93014:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   9301a:  lea    -0xd(%r8),%rax
+    0.00 :   9301e:  cmp    %rsi,%rax
+    0.00 :   93021:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   93027:  lea    -0xc(%r8),%rax
+    0.00 :   9302b:  cmp    %rsi,%rax
+    0.00 :   9302e:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   93034:  lea    -0xb(%r8),%rax
+    0.00 :   93038:  cmp    %rsi,%rax
+    0.00 :   9303b:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   93041:  lea    -0xa(%r8),%rax
+    0.00 :   93045:  cmp    %rsi,%rax
+    0.00 :   93048:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   9304e:  lea    -0x9(%r8),%rax
+    0.00 :   93052:  cmp    %rsi,%rax
+    0.00 :   93055:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   9305b:  lea    -0x8(%r8),%rax
+    0.00 :   9305f:  cmp    %rsi,%rax
+    0.00 :   93062:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   93068:  lea    -0x7(%r8),%rax
+    0.00 :   9306c:  cmp    %rsi,%rax
+    0.00 :   9306f:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   93075:  lea    -0x6(%r8),%rax
+    0.00 :   93079:  cmp    %rsi,%rax
+    0.00 :   9307c:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   93082:  lea    -0x5(%r8),%rax
+    0.00 :   93086:  cmp    %rsi,%rax
+    0.00 :   93089:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   9308f:  lea    -0x4(%r8),%rax
+    0.00 :   93093:  cmp    %rsi,%rax
+    0.00 :   93096:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   9309c:  lea    -0x3(%r8),%rax
+    0.00 :   930a0:  cmp    %rsi,%rax
+    0.00 :   930a3:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   930a9:  lea    -0x2(%r8),%rax
+    0.00 :   930ad:  cmp    %rsi,%rax
+    0.00 :   930b0:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   930b6:  lea    -0x1(%r8),%rax
+    0.00 :   930ba:  cmp    %rsi,%rax
+    0.00 :   930bd:  jae    93498 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d8>
+    0.00 :   930c3:  cmp    %rsi,%r8
+    0.00 :   930c6:  jae    93495 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12d5>
+    0.00 :   930cc:  cmp    %r9,%rdi
+    0.00 :   930cf:  je     93482 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x12c2>
+    0.00 :   930d5:  vmovss -0x7c(%rcx,%r8,4),%xmm17
+    0.00 :   930dd:  vmovaps 0x20(%rsp),%xmm23
+    0.00 :   930e5:  vfmadd132ss %xmm18,%xmm16,%xmm17
+    0.00 :   930eb:  vfmadd231ss -0x78(%rcx,%r8,4),%xmm1,%xmm17
+    0.00 :   930f3:  vfmadd231ss -0x74(%rcx,%r8,4),%xmm19,%xmm17
+    0.00 :   930fb:  vfmadd231ss -0x70(%rcx,%r8,4),%xmm9,%xmm17
+    0.00 :   93103:  vfmadd231ss -0x6c(%rcx,%r8,4),%xmm20,%xmm17
+    0.00 :   9310b:  vfmadd231ss -0x68(%rcx,%r8,4),%xmm5,%xmm17
+    0.00 :   93113:  vfmadd231ss -0x64(%rcx,%r8,4),%xmm21,%xmm17
+    0.00 :   9311b:  vfmadd231ss -0x60(%rcx,%r8,4),%xmm13,%xmm17
+    0.00 :   93123:  vfmadd231ss -0x5c(%rcx,%r8,4),%xmm22,%xmm17
+    0.00 :   9312b:  vfmadd231ss -0x58(%rcx,%r8,4),%xmm3,%xmm17
+    0.00 :   93133:  vfmadd231ss -0x54(%rcx,%r8,4),%xmm24,%xmm17
+    0.00 :   9313b:  vfmadd231ss -0x50(%rcx,%r8,4),%xmm11,%xmm17
+    0.00 :   93143:  vfmadd231ss -0x4c(%rcx,%r8,4),%xmm25,%xmm17
+    0.00 :   9314b:  vfmadd231ss -0x48(%rcx,%r8,4),%xmm7,%xmm17
+    0.00 :   93153:  vfmadd231ss -0x44(%rcx,%r8,4),%xmm26,%xmm17
+    0.00 :   9315b:  vfmadd231ss -0x40(%rcx,%r8,4),%xmm15,%xmm17
+    0.00 :   93163:  vfmadd231ss -0x3c(%rcx,%r8,4),%xmm27,%xmm17
+    0.00 :   9316b:  vfmadd231ss -0x38(%rcx,%r8,4),%xmm0,%xmm17
+    0.00 :   93173:  vfmadd231ss -0x34(%rcx,%r8,4),%xmm28,%xmm17
+    0.00 :   9317b:  vfmadd231ss -0x30(%rcx,%r8,4),%xmm8,%xmm17
+    0.00 :   93183:  vfmadd231ss -0x2c(%rcx,%r8,4),%xmm29,%xmm17
+    0.00 :   9318b:  vfmadd231ss -0x28(%rcx,%r8,4),%xmm4,%xmm17
+    0.00 :   93193:  vfmadd231ss -0x24(%rcx,%r8,4),%xmm30,%xmm17
+    0.00 :   9319b:  vfmadd231ss -0x20(%rcx,%r8,4),%xmm12,%xmm17
+    0.00 :   931a3:  vfmadd231ss -0x1c(%rcx,%r8,4),%xmm31,%xmm17
+    0.00 :   931ab:  vfmadd231ss -0x18(%rcx,%r8,4),%xmm2,%xmm17
+    0.00 :   931b3:  vfmadd231ss -0x14(%rcx,%r8,4),%xmm23,%xmm17
+    0.00 :   931bb:  vmovaps 0x10(%rsp),%xmm23
+    0.00 :   931c3:  vfmadd231ss -0x10(%rcx,%r8,4),%xmm10,%xmm17
+    0.00 :   931cb:  vfmadd231ss -0xc(%rcx,%r8,4),%xmm23,%xmm17
+    0.00 :   931d3:  vmovaps 0x40(%rsp),%xmm23
+    0.00 :   931db:  vfmadd231ss -0x8(%rcx,%r8,4),%xmm6,%xmm17
+    0.00 :   931e3:  vfmadd231ss -0x4(%rcx,%r8,4),%xmm23,%xmm17
+    0.00 :   931eb:  vfmadd231ss (%rcx,%r8,4),%xmm14,%xmm17
+    0.00 :   931f2:  add    $0x20,%r8
+    0.00 :   931f6:  vaddss (%rdx,%r9,4),%xmm17,%xmm17
+    0.00 :   931fd:  vmovss %xmm17,0x70(%rsp,%r9,4)
+    0.00 :   93205:  inc    %r9
+    0.00 :   93208:  cmp    $0x7f,%r8
+    0.00 :   9320c:  jne    92f30 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0xd70>
+    0.00 :   93212:  vmovss 0x70(%rsp),%xmm0
+    0.00 :   93218:  vmovss 0x74(%rsp),%xmm3
+    0.00 :   9321e:  vmovss 0x78(%rsp),%xmm2
+    0.00 :   93224:  mov    0x63265(%rip),%r14        # f6490 <expf@GLIBC_2.27>
+    0.00 :   9322b:  vmaxss -0x8613b(%rip),%xmm0,%xmm1        # d0f8 <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0x73>
+    0.00 :   93233:  vmovss %xmm3,0x30(%rsp)
+    0.00 :   93239:  vmovss %xmm2,0x40(%rsp)
+    0.00 :   9323f:  vmaxss %xmm1,%xmm3,%xmm1
+    0.00 :   93243:  vmaxss %xmm1,%xmm2,%xmm1
+    0.00 :   93247:  vsubss %xmm1,%xmm0,%xmm0
+    0.00 :   9324b:  vmovss %xmm1,0x10(%rsp)
+    0.00 :   93251:  vzeroupper
+    0.00 :   93254:  call   *%r14
+    0.00 :   93257:  vmovaps %xmm0,0x20(%rsp)
+    0.00 :   9325d:  vmovss 0x30(%rsp),%xmm0
+    0.00 :   93263:  vsubss 0x10(%rsp),%xmm0,%xmm0
+    0.00 :   93269:  call   *%r14
+    0.00 :   9326c:  vmovaps %xmm0,0x30(%rsp)
+    0.00 :   93272:  vaddss 0x20(%rsp),%xmm0,%xmm0
+    0.00 :   93278:  vmovss %xmm0,0x50(%rsp)
+    0.00 :   9327e:  vmovss 0x40(%rsp),%xmm0
+    0.00 :   93284:  vsubss 0x10(%rsp),%xmm0,%xmm0
+    0.00 :   9328a:  call   *%r14
+    0.00 :   9328d:  vaddss 0x50(%rsp),%xmm0,%xmm2
+    0.00 :   93293:  vmovaps 0x20(%rsp),%xmm1
+    0.00 :   93299:  vinsertps $0x10,0x30(%rsp),%xmm1,%xmm1
+    0.00 :   932a1:  vbroadcastss %xmm2,%xmm3
+    0.00 :   932a6:  vdivps %xmm3,%xmm1,%xmm1
+    0.00 :   932aa:  vdivss %xmm2,%xmm0,%xmm3
+    0.00 :   932ae:  vandps -0x860fc(%rip){1to4},%xmm1,%xmm2        # d1bc <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0x137>
+    0.00 :   932b8:  vpcmpgtd -0x86152(%rip){1to4},%xmm2,%k0        # d170 <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0xeb>
+    0.00 :   932c2:  vmovd  %xmm3,%eax
+    0.00 :   932c6:  and    $0x7fffffff,%eax
+    0.00 :   932cb:  cmp    $0x7f800000,%eax
+    0.00 :   932d0:  kmovd  %k0,%ecx
+    0.00 :   932d4:  setge  %al
+    0.00 :   932d7:  xor    %r13d,%r13d
+    0.00 :   932da:  test   $0x1,%cl
+    0.00 :   932dd:  jne    93303 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x1143>
+    0.00 :   932df:  vmovss 0x8(%rsp),%xmm0
+    0.00 :   932e5:  kshiftrb $0x1,%k0,%k0
+    0.00 :   932eb:  kmovd  %k0,%ecx
+    0.00 :   932ef:  test   $0x1,%cl
+    0.00 :   932f2:  jne    93309 <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x1149>
+    0.00 :   932f4:  test   %al,%al
+    0.00 :   932f6:  mov    (%rsp),%eax
+    0.00 :   932f9:  jne    9330c <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x114c>
+    0.00 :   932fb:  mov    $0x1,%r13d
+    0.00 :   93301:  jmp    9330c <<chessengine::eval::nnue::sota_head::SotaHead>::forward_into+0x114c>
+    0.00 :   93303:  vmovss 0x8(%rsp),%xmm0
+    0.00 :   93309:  mov    (%rsp),%eax
+    0.00 :   9330c:  vcvtsi2ss %eax,%xmm31,%xmm2
+    0.07 :   93312:  vmulss 0x4(%rsp),%xmm2,%xmm2
+    0.38 :   93318:  mov    $0x7fffffff,%ecx
+    0.00 :   9331d:  vucomiss -0x86155(%rip),%xmm2        # d1d0 <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0x14b>
+    0.04 :   93325:  vcvttss2si %xmm2,%eax
+    0.06 :   93329:  cmovbe %eax,%ecx
+    0.15 :   9332c:  xor    %eax,%eax
+    0.00 :   9332e:  vucomiss %xmm2,%xmm2
+    0.00 :   93332:  cmovnp %ecx,%eax
+    0.10 :   93335:  sub    %ebp,%ebx
+    0.00 :   93337:  sar    $0x8,%ebx
+    0.00 :   9333a:  add    %eax,%ebx
+    0.00 :   9333c:  mov    0x68(%rsp),%rax
+    0.00 :   93341:  mov    %ebx,0x8(%rax)
+    0.08 :   93344:  mov    %r15d,(%rax)
+    0.24 :   93347:  vmovss %xmm0,0x4(%rax)
+    0.31 :   9334c:  mov    %r13d,0xc(%rax)
+    0.19 :   93350:  vmovlps %xmm1,0x10(%rax)
+    0.05 :   93355:  vmovss %xmm3,0x18(%rax)
+    0.00 :   9335a:  add    $0x1a8,%rsp
+    0.00 :   93361:  pop    %rbx
+    0.00 :   93362:  pop    %r12
+    0.00 :   93364:  pop    %r13
+    0.00 :   93366:  pop    %r14
+    0.06 :   93368:  pop    %r15
+    0.00 :   9336a:  pop    %rbp
+    0.00 :   9336b:  vzeroupper
+    0.06 :   9336e:  ret
+    0.00 :   9336f:  lea    0x5f682(%rip),%rcx        # f29f8 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x78>
+    0.00 :   93376:  mov    $0x140,%edx
+    0.00 :   9337b:  xor    %edi,%edi
+    0.00 :   9337d:  mov    %r10,%rsi
+    0.00 :   93380:  vzeroupper
+    0.00 :   93383:  call   *0x62bc7(%rip)        # f5f50 <_DYNAMIC+0x4d8>
+    0.00 :   93389:  lea    0x5f698(%rip),%rcx        # f2a28 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0xa8>
+    0.00 :   93390:  mov    %rax,%rdi
+    0.00 :   93393:  mov    %r8,%rsi
+    0.00 :   93396:  vzeroupper
+    0.00 :   93399:  call   *0x62bb1(%rip)        # f5f50 <_DYNAMIC+0x4d8>
+    0.00 :   9339f:  lea    0x10(%rdi),%rsi
+    0.00 :   933a3:  lea    0x5f666(%rip),%rcx        # f2a10 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x90>
+    0.00 :   933aa:  vzeroupper
+    0.00 :   933ad:  call   *0x62b9d(%rip)        # f5f50 <_DYNAMIC+0x4d8>
+    0.00 :   933b3:  lea    0x20(%r12),%rsi
+    0.00 :   933b8:  lea    0x5f699(%rip),%rcx        # f2a58 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0xd8>
+    0.00 :   933bf:  mov    %r12,%rdi
+    0.00 :   933c2:  vzeroupper
+    0.00 :   933c5:  call   *0x62b85(%rip)        # f5f50 <_DYNAMIC+0x4d8>
+    0.00 :   933cb:  lea    0x200(%rdx),%rsi
+    0.00 :   933d2:  lea    0x5f667(%rip),%rcx        # f2a40 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0xc0>
+    0.00 :   933d9:  mov    %rdx,%rdi
+    0.00 :   933dc:  mov    %rax,%rdx
+    0.00 :   933df:  vzeroupper
+    0.00 :   933e2:  call   *0x62b68(%rip)        # f5f50 <_DYNAMIC+0x4d8>
+    0.00 :   933e8:  lea    0x20(%r12),%rsi
+    0.00 :   933ed:  lea    0x5f694(%rip),%rcx        # f2a88 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x108>
+    0.00 :   933f4:  mov    %r12,%rdi
+    0.00 :   933f7:  call   *0x62b53(%rip)        # f5f50 <_DYNAMIC+0x4d8>
+    0.00 :   933fd:  lea    0x5f4bc(%rip),%rcx        # f28c0 <anon.ed23dd53d1999b359621ac0dc763dee2.78.llvm.11021376600075084165>
+    0.00 :   93404:  mov    %rsi,%rdx
+    0.00 :   93407:  call   *0x62b43(%rip)        # f5f50 <_DYNAMIC+0x4d8>
+    0.00 :   9340d:  lea    0x5f5cc(%rip),%rcx        # f29e0 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x60>
+    0.00 :   93414:  mov    %rax,%rdi
+    0.00 :   93417:  mov    %rdx,%rsi
+    0.00 :   9341a:  call   *0x62b30(%rip)        # f5f50 <_DYNAMIC+0x4d8>
+    0.00 :   93420:  lea    -0x7fb1f(%rip),%rdi        # 13908 <anon.ed23dd53d1999b359621ac0dc763dee2.94.llvm.11021376600075084165+0x124>
+    0.00 :   93427:  lea    0x5f672(%rip),%rdx        # f2aa0 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x120>
+    0.00 :   9342e:  mov    $0x15,%esi
+    0.00 :   93433:  vzeroupper
+    0.00 :   93436:  call   *0x62b0c(%rip)        # f5f48 <_DYNAMIC+0x4d0>
+    0.00 :   9343c:  lea    0x5f56d(%rip),%rcx        # f29b0 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x30>
+    0.00 :   93443:  mov    $0x500,%esi
+    0.00 :   93448:  xor    %edi,%edi
+    0.00 :   9344a:  mov    %r8,%rdx
+    0.00 :   9344d:  call   *0x62afd(%rip)        # f5f50 <_DYNAMIC+0x4d8>
+    0.00 :   93453:  lea    0x5f676(%rip),%rcx        # f2ad0 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x150>
+    0.00 :   9345a:  mov    %r12,%rdi
+    0.00 :   9345d:  vzeroupper
+    0.00 :   93460:  call   *0x62aea(%rip)        # f5f50 <_DYNAMIC+0x4d8>
+    0.00 :   93466:  lea    -0x861fd(%rip),%rdi        # d270 <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0x1eb>
+    0.00 :   9346d:  lea    0x5f674(%rip),%rdx        # f2ae8 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x168>
+    0.00 :   93474:  mov    $0x10,%esi
+    0.00 :   93479:  vzeroupper
+    0.00 :   9347c:  call   *0x62ac6(%rip)        # f5f48 <_DYNAMIC+0x4d0>
+    0.00 :   93482:  lea    0x5f677(%rip),%rdx        # f2b00 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x180>
+    0.00 :   93489:  mov    %rdi,%rsi
+    0.00 :   9348c:  vzeroupper
+    0.00 :   9348f:  call   *0x627fb(%rip)        # f5c90 <_DYNAMIC+0x218>
+    0.00 :   93495:  mov    %r8,%rax
+    0.00 :   93498:  lea    0x5f679(%rip),%rdx        # f2b18 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x198>
+    0.00 :   9349f:  mov    %rax,%rdi
+    0.00 :   934a2:  vzeroupper
+    0.00 :   934a5:  call   *0x627e5(%rip)        # f5c90 <_DYNAMIC+0x218>
+    0.00 :   934ab:  lea    0x5f4e6(%rip),%rdx        # f2998 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x18>
+    0.00 :   934b2:  mov    $0x21,%esi
+    0.00 :   934b7:  mov    %r9,%rdi
+    0.00 :   934ba:  vzeroupper
+    0.00 :   934bd:  call   *0x627cd(%rip)        # f5c90 <_DYNAMIC+0x218>
+    0.00 :   934c3:  lea    0x5f5a6(%rip),%rdx        # f2a70 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0xf0>
+    0.00 :   934ca:  mov    %r15,%rdi
+    0.00 :   934cd:  call   *0x627bd(%rip)        # f5c90 <_DYNAMIC+0x218>
+    0.00 :   934d3:  lea    0x5f4ee(%rip),%rdx        # f29c8 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x48>
+    0.00 :   934da:  mov    %r15,%rdi
+    0.00 :   934dd:  call   *0x627ad(%rip)        # f5c90 <_DYNAMIC+0x218>
+    0.00 :   934e3:  lea    0x5f5ce(%rip),%rdx        # f2ab8 <anon.ed23dd53d1999b359621ac0dc763dee2.95.llvm.11021376600075084165+0x138>
+    0.00 :   934ea:  mov    %r15,%rdi
+    0.00 :   934ed:  vzeroupper
+    0.00 :   934f0:  call   *0x6279a(%rip)        # f5c90 <_DYNAMIC+0x218>

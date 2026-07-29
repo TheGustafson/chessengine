@@ -1,0 +1,2980 @@
+ Percent |	Source code & Disassembly of chessengine for instructions:u (1661 samples, percent: local period)
+-----------------------------------------------------------------------------------------------------------------
+         :
+         :
+         :
+         : 3     Disassembly of section .text:
+         :
+         : 5     0000000000062cd0 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>>:
+    0.00 :   62cd0:  push   %rbp
+    0.00 :   62cd1:  push   %r15
+    0.07 :   62cd3:  push   %r14
+    0.00 :   62cd5:  push   %r13
+    0.06 :   62cd7:  push   %r12
+    0.07 :   62cd9:  push   %rbx
+    0.00 :   62cda:  sub    $0xae8,%rsp
+    0.00 :   62ce1:  mov    %rdx,0x60(%rsp)
+    0.00 :   62ce6:  mov    %rsi,0x68(%rsp)
+    0.00 :   62ceb:  lea    0x5c50(%rdi),%r12
+    0.00 :   62cf2:  mov    %r9d,%r15d
+    0.07 :   62cf5:  mov    %r8d,%r14d
+    0.00 :   62cf8:  mov    %rdi,%rbx
+    0.13 :   62cfb:  mov    0xb28(%rsp),%r13
+    0.00 :   62d03:  movzbl 0xb20(%rsp),%eax
+    0.00 :   62d0b:  mov    %al,0x6(%rsp)
+    0.00 :   62d0f:  test   %ecx,%ecx
+    0.00 :   62d11:  jns    62d49 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x79>
+    0.00 :   62d13:  cmpl   $0x2,0x5cf8(%rbx)
+    0.00 :   62d1a:  jbe    62d49 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x79>
+    0.00 :   62d1c:  mov    %r12,%rdi
+    0.19 :   62d1f:  mov    %r13d,%esi
+    0.00 :   62d22:  mov    %rcx,%rbp
+    0.00 :   62d25:  call   *0x934dd(%rip)        # f6208 <_DYNAMIC+0x790>
+    0.00 :   62d2b:  mov    %rbp,%rcx
+    0.00 :   62d2e:  test   %al,%al
+    0.00 :   62d30:  je     62d49 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x79>
+    0.00 :   62d32:  mov    0x5ec0(%rbx),%eax
+    0.06 :   62d38:  and    $0x2,%eax
+    0.00 :   62d3b:  lea    -0x1(%rax),%ecx
+    0.00 :   62d3e:  mov    %ecx,%ebp
+    0.00 :   62d40:  cmp    %r14d,%eax
+    0.00 :   62d43:  jg     62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   62d49:  test   %r15d,%r15d
+    0.07 :   62d4c:  jle    62eed <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x21d>
+    0.00 :   62d52:  mov    0x5cc0(%rbx),%rsi
+    0.06 :   62d59:  mov    0x5f70(%rbx),%rdx
+    0.00 :   62d60:  mov    %r13,%rax
+    0.00 :   62d63:  mov    %rcx,0x10(%rsp)
+    0.00 :   62d68:  mov    %rax,0x18(%rsp)
+    0.00 :   62d6d:  lea    0x7(%rax),%r8
+    0.00 :   62d71:  lea    0x0(,%rax,4),%rax
+    0.00 :   62d79:  cmp    $0xf5,%r15d
+    0.00 :   62d80:  mov    $0xf5,%r13d
+    0.00 :   62d86:  mov    $0x100,%ecx
+    0.00 :   62d8b:  cmovb  %r15d,%r13d
+    0.00 :   62d8f:  lea    (%rax,%rax,8),%r15
+    0.04 :   62d93:  test   %rsi,%rsi
+    0.00 :   62d96:  mov    %rsi,0xf0(%rsp)
+    0.00 :   62d9e:  mov    %r12,%rsi
+    0.00 :   62da1:  setne  0x11a(%rdx,%r15,1)
+    0.06 :   62daa:  setne  0x77(%rsp)
+    0.00 :   62daf:  mov    0x5f70(%rbx),%rax
+    0.05 :   62db6:  movl   $0x0,0x108(%rax,%r15,1)
+    0.00 :   62dc2:  mov    0x5f70(%rbx),%rax
+    0.00 :   62dc9:  movl   $0x0,0x104(%rax,%r15,1)
+    0.05 :   62dd5:  mov    0x5f70(%rbx),%rax
+    0.07 :   62ddc:  movb   $0x0,0x11d(%rax,%r15,1)
+    0.00 :   62de5:  mov    0x5f70(%rbx),%rdx
+    0.00 :   62dec:  mov    0x5f80(%rbx),%rdi
+    0.00 :   62df3:  movzwl 0xf0(%rdx,%r15,1),%eax
+    0.00 :   62dfc:  mov    %rax,0xe8(%rsp)
+    0.00 :   62e04:  movzbl 0x5d0c(%rbx),%eax
+    0.00 :   62e0b:  mov    %al,0x27(%rsp)
+    0.00 :   62e0f:  mov    %r8,0x1c8(%rsp)
+    0.05 :   62e17:  call   *0x933f3(%rip)        # f6210 <_DYNAMIC+0x798>
+    0.00 :   62e1d:  mov    0x5f70(%rbx),%rcx
+    0.10 :   62e24:  mov    %eax,%r10d
+    0.00 :   62e27:  mov    0x60(%rsp),%rsi
+    0.00 :   62e2c:  mov    0xec(%rcx,%r15,1),%r11d
+    0.00 :   62e34:  movl   $0x0,0xec(%rcx,%r15,1)
+    0.00 :   62e40:  mov    0x5f70(%rbx),%rax
+    0.00 :   62e47:  movl   $0x0,0x154(%rax,%r15,1)
+    0.00 :   62e53:  mov    0x5f68(%rbx),%rcx
+    0.00 :   62e5a:  test   %rcx,%rcx
+    0.00 :   62e5d:  je     62e96 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1c6>
+    0.00 :   62e5f:  mov    0x5ec0(%rbx),%rax
+    0.00 :   62e66:  andn   0x5f58(%rbx),%rax,%rdx
+    0.00 :   62e6f:  jne    62e96 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1c6>
+    0.00 :   62e71:  cmpl   $0x0,0x6098(%rbx)
+    0.00 :   62e78:  je     62e96 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1c6>
+    0.00 :   62e7a:  mov    0x5f90(%rbx),%rdx
+    0.00 :   62e81:  movzbl 0x2a(%rdx),%edx
+    0.00 :   62e85:  test   %dl,%dl
+    0.00 :   62e87:  jne    62e96 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1c6>
+    0.00 :   62e89:  cmpb   $0x0,0x18(%rcx)
+    0.00 :   62e8d:  je     630a8 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3d8>
+    0.00 :   62e93:  movb   $0x1,(%rsi)
+    0.00 :   62e96:  movzbl (%rsi),%eax
+    0.00 :   62e99:  test   %al,%al
+    0.00 :   62e9b:  je     62f35 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x265>
+    0.00 :   62ea1:  cmpq   $0x0,0xf0(%rsp)
+    0.00 :   62eaa:  sete   %al
+    0.00 :   62ead:  cmpq   $0xf6,0x18(%rsp)
+    0.00 :   62eb6:  setae  %cl
+    0.00 :   62eb9:  test   %al,%cl
+    0.00 :   62ebb:  je     62f16 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x246>
+    0.00 :   62ebd:  movzbl 0x5eb8(%rbx),%eax
+    0.00 :   62ec4:  mov    $0xf6,%ecx
+    0.00 :   62ec9:  mov    %r12,%rdi
+    0.00 :   62ecc:  mov    %rbx,%rsi
+    0.00 :   62ecf:  mov    0x5f20(%rbx,%rax,4),%edx
+    0.00 :   62ed6:  add    $0xae8,%rsp
+    0.00 :   62edd:  pop    %rbx
+    0.00 :   62ede:  pop    %r12
+    0.00 :   62ee0:  pop    %r13
+    0.00 :   62ee2:  pop    %r14
+    0.00 :   62ee4:  pop    %r15
+    0.00 :   62ee6:  pop    %rbp
+    0.00 :   62ee7:  jmp    *0x93033(%rip)        # f5f20 <_DYNAMIC+0x4a8>
+    0.00 :   62eed:  mov    0x68(%rsp),%rsi
+    0.00 :   62ef2:  mov    0x60(%rsp),%rdx
+    0.00 :   62ef7:  mov    %rbx,%rdi
+    0.00 :   62efa:  mov    %r14d,%r8d
+    0.00 :   62efd:  mov    %r13,%r9
+    0.00 :   62f00:  add    $0xae8,%rsp
+    0.00 :   62f07:  pop    %rbx
+    0.00 :   62f08:  pop    %r12
+    0.00 :   62f0a:  pop    %r13
+    0.00 :   62f0c:  pop    %r14
+    0.00 :   62f0e:  pop    %r15
+    0.00 :   62f10:  pop    %rbp
+    0.00 :   62f11:  jmp    67760 <<chessengine::search::Worker>::qsearch::<chessengine::search::NonPv>>
+    0.00 :   62f16:  mov    0x5ec0(%rbx),%ebp
+    0.00 :   62f1c:  and    $0x2,%ebp
+    0.00 :   62f1f:  dec    %ebp
+    0.00 :   62f21:  mov    %ebp,%eax
+    0.19 :   62f23:  add    $0xae8,%rsp
+    0.00 :   62f2a:  pop    %rbx
+    0.25 :   62f2b:  pop    %r12
+    0.07 :   62f2d:  pop    %r13
+    0.00 :   62f2f:  pop    %r14
+    0.17 :   62f31:  pop    %r15
+    0.25 :   62f33:  pop    %rbp
+    0.00 :   62f34:  ret
+    0.00 :   62f35:  cmpl   $0x64,0x5cf8(%rbx)
+    0.05 :   62f3c:  jl     62f69 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x299>
+    0.00 :   62f3e:  cmpq   $0x0,0x5cc0(%rbx)
+    0.00 :   62f46:  je     62ea1 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1d1>
+    0.00 :   62f4c:  mov    %r12,%rdi
+    0.00 :   62f4f:  mov    %r10,%r15
+    0.00 :   62f52:  mov    %r11d,%ebp
+    0.00 :   62f55:  call   *0x9322d(%rip)        # f6188 <_DYNAMIC+0x710>
+    0.00 :   62f5b:  mov    %ebp,%r11d
+    0.00 :   62f5e:  mov    %r15,%r10
+    0.00 :   62f61:  test   %al,%al
+    0.00 :   62f63:  jne    62ea1 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1d1>
+    0.03 :   62f69:  mov    0x5d08(%rbx),%ecx
+    0.00 :   62f6f:  mov    0x18(%rsp),%rdx
+    0.12 :   62f74:  test   %ecx,%ecx
+    0.00 :   62f76:  setne  %al
+    0.06 :   62f79:  cmp    %edx,%ecx
+    0.00 :   62f7b:  setl   %cl
+    0.00 :   62f7e:  cmp    $0xf5,%rdx
+    0.00 :   62f85:  ja     62ea1 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1d1>
+    0.00 :   62f8b:  and    %cl,%al
+    0.00 :   62f8d:  jne    62ea1 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1d1>
+    0.00 :   62f93:  mov    0x18(%rsp),%rax
+    0.00 :   62f98:  mov    0x10(%rsp),%rbp
+    0.00 :   62f9d:  mov    $0x7cff,%r15d
+    0.00 :   62fa3:  mov    %eax,%ecx
+    0.05 :   62fa5:  or     $0xffff8300,%ecx
+    0.00 :   62fab:  cmp    %ebp,%ecx
+    0.00 :   62fad:  cmovg  %ecx,%ebp
+    0.00 :   62fb0:  sub    %eax,%r15d
+    0.00 :   62fb3:  cmp    %r14d,%r15d
+    0.00 :   62fb6:  cmovge %r14d,%r15d
+    0.00 :   62fba:  cmp    %r15d,%ebp
+    0.00 :   62fbd:  jge    630a3 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3d3>
+    0.00 :   62fc3:  mov    0x5cb8(%rbx),%rdx
+    0.00 :   62fca:  mov    0x5cf8(%rbx),%eax
+    0.00 :   62fd0:  mov    %rbp,0x10(%rsp)
+    0.12 :   62fd5:  mov    %ecx,0x128(%rsp)
+    0.00 :   62fdc:  mov    %r10,0x48(%rsp)
+    0.07 :   62fe1:  mov    %r11d,%r12d
+    0.00 :   62fe4:  cmp    $0xe,%eax
+    0.00 :   62fe7:  jl     6300d <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x33d>
+    0.00 :   62fe9:  add    $0xfffffff2,%eax
+    0.00 :   62fec:  movabs $0x5851f42d4c957f2d,%rcx
+    0.00 :   62ff6:  shr    $0x3,%eax
+    0.00 :   62ff9:  imul   %rax,%rcx
+    0.00 :   62ffd:  movabs $0x14057b7ef767814f,%rax
+    0.00 :   63007:  add    %rcx,%rax
+    0.00 :   6300a:  xor    %rax,%rdx
+    0.00 :   6300d:  mov    0x68(%rsp),%rsi
+    0.00 :   63012:  lea    0x148(%rsp),%rdi
+    0.00 :   6301a:  movzbl 0x18(%rsi),%eax
+    0.00 :   6301e:  mov    %al,0x25(%rsp)
+    0.05 :   63022:  mov    %rdx,0x110(%rsp)
+    0.00 :   6302a:  call   *0x931e8(%rip)        # f6218 <_DYNAMIC+0x7a0>
+    0.07 :   63030:  movzwl 0x15c(%rsp),%ecx
+    0.19 :   63038:  movzbl 0x160(%rsp),%r8d
+    0.04 :   63041:  mov    $0x7d02,%r11d
+    0.00 :   63047:  mov    %rcx,0x40(%rsp)
+    0.15 :   6304c:  cmp    $0x1,%r8b
+    0.00 :   63050:  jne    630c3 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3f3>
+    0.00 :   63052:  mov    0x150(%rsp),%eax
+    0.00 :   63059:  mov    0x10(%rsp),%r9
+    0.00 :   6305e:  cmp    $0x7d02,%eax
+    0.00 :   63063:  je     630c8 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3f8>
+    0.00 :   63065:  mov    0x5cf8(%rbx),%ecx
+    0.18 :   6306b:  cmp    $0x7b12,%eax
+    0.00 :   63070:  jle    63628 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x958>
+    0.00 :   63076:  cmp    $0x7c09,%eax
+    0.00 :   6307b:  jbe    63729 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xa59>
+    0.00 :   63081:  mov    $0x64,%edx
+    0.00 :   63086:  mov    $0x7d00,%esi
+    0.00 :   6308b:  mov    $0x7b12,%r11d
+    0.00 :   63091:  sub    %ecx,%edx
+    0.00 :   63093:  mov    0x40(%rsp),%rcx
+    0.00 :   63098:  sub    %eax,%esi
+    0.00 :   6309a:  cmp    %edx,%esi
+    0.00 :   6309c:  jg     630c8 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3f8>
+    0.00 :   6309e:  jmp    63730 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xa60>
+    0.00 :   630a3:  jmp    62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   630a8:  mov    0x6060(%rbx),%rcx
+    0.00 :   630af:  or     0x6058(%rbx),%rcx
+    0.00 :   630b6:  jne    63193 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x4c3>
+    0.00 :   630bc:  xor    %ebp,%ebp
+    0.00 :   630be:  jmp    631e2 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x512>
+    0.00 :   630c3:  mov    0x10(%rsp),%r9
+    0.00 :   630c8:  mov    0x158(%rsp),%eax
+    0.12 :   630cf:  mov    %r15,0x30(%rsp)
+    0.04 :   630d4:  movzwl %cx,%r15d
+    0.00 :   630d8:  mov    0x5f70(%rbx),%rdx
+    0.06 :   630df:  mov    0x154(%rsp),%esi
+    0.03 :   630e6:  mov    %eax,0x9c(%rsp)
+    0.11 :   630ed:  movzbl 0x15e(%rsp),%eax
+    0.00 :   630f5:  mov    %al,0x5(%rsp)
+    0.10 :   630f9:  movzbl 0x15f(%rsp),%eax
+    0.04 :   63101:  mov    0x18(%rsp),%rcx
+    0.06 :   63106:  add    $0x7,%rcx
+    0.05 :   6310a:  lea    0x0(,%rcx,4),%rcx
+    0.00 :   63112:  lea    (%rcx,%rcx,8),%rdi
+    0.00 :   63116:  mov    %r8b,0x20(%rdx,%rdi,1)
+    0.18 :   6311b:  mov    %rdi,0xf8(%rsp)
+    0.04 :   63123:  mov    0x5f70(%rbx),%rcx
+    0.00 :   6312a:  cmpw   $0x0,0x1a(%rcx,%rdi,1)
+    0.14 :   63130:  jne    63140 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x470>
+    0.04 :   63132:  add    0xf8(%rsp),%rcx
+    0.43 :   6313a:  and    %r8b,%al
+    0.00 :   6313d:  mov    %al,0x1f(%rcx)
+    0.22 :   63140:  mov    0xe8(%rsp),%rax
+    0.00 :   63148:  mov    %r8b,0x50(%rsp)
+    0.00 :   6314d:  mov    %eax,%ebp
+    0.00 :   6314f:  shr    $0x6,%ebp
+    0.07 :   63152:  test   %r15w,%r15w
+    0.00 :   63156:  je     63182 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x4b2>
+    0.00 :   63158:  mov    %r15d,%eax
+    0.00 :   6315b:  shr    $0xe,%eax
+    0.00 :   6315e:  lea    -0x53741(%rip),%rcx        # fa24 <chessengine::eval::nnue::sota_context::ZERO_THREAT+0x16d6>
+    0.00 :   63165:  movslq (%rcx,%rax,4),%rax
+    0.14 :   63169:  add    %rcx,%rax
+    0.00 :   6316c:  jmp    *%rax
+    0.00 :   6316e:  mov    %r15d,%eax
+    0.00 :   63171:  shr    $0x6,%eax
+    0.00 :   63174:  shrx   %rax,0x5e00(%rbx),%rax
+    0.00 :   6317d:  jmp    632d8 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x608>
+    0.00 :   63182:  movq   $0x0,0xa0(%rsp)
+    0.00 :   6318e:  jmp    632e0 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x610>
+    0.00 :   63193:  cmpb   $0x0,0x5c48(%rbx)
+    0.00 :   6319a:  jne    631d0 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x500>
+    0.00 :   6319c:  lea    0x5c20(%rbx),%rdi
+    0.00 :   631a3:  mov    %r10,0x48(%rsp)
+    0.00 :   631a8:  mov    %r11d,%r15d
+    0.00 :   631ab:  call   *0x92e87(%rip)        # f6038 <_DYNAMIC+0x5c0>
+    0.00 :   631b1:  imul   $0x3e8,%rax,%rcx
+    0.00 :   631b8:  mov    %edx,%eax
+    0.00 :   631ba:  imul   $0x431bde83,%rax,%rax
+    0.00 :   631c1:  mov    0x48(%rsp),%r10
+    0.00 :   631c6:  mov    %r15d,%r11d
+    0.00 :   631c9:  shr    $0x32,%rax
+    0.00 :   631cd:  add    %rcx,%rax
+    0.00 :   631d0:  mov    0x5c38(%rbx),%rcx
+    0.00 :   631d7:  add    $0xfffffffffffffff1,%rcx
+    0.00 :   631db:  cmp    %rcx,%rax
+    0.00 :   631de:  setg   %bpl
+    0.00 :   631e2:  cmpl   $0x1,0x6008(%rbx)
+    0.00 :   631e9:  jne    6323f <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x56f>
+    0.00 :   631eb:  mov    0x6010(%rbx),%r12
+    0.00 :   631f2:  lea    0x6048(%rbx),%rdi
+    0.00 :   631f9:  mov    %r13,0x8(%rsp)
+    0.00 :   631fe:  mov    %r10,%r13
+    0.00 :   63201:  mov    %r11d,%r15d
+    0.00 :   63204:  call   *0x92e2e(%rip)        # f6038 <_DYNAMIC+0x5c0>
+    0.00 :   6320a:  mov    %edx,%ecx
+    0.00 :   6320c:  imul   $0x431bde83,%rcx,%rcx
+    0.00 :   63213:  imul   $0x3e8,%rax,%rax
+    0.00 :   6321a:  mov    %r13,%r10
+    0.00 :   6321d:  mov    0x8(%rsp),%r13
+    0.00 :   63222:  add    $0xfffffffffffffff1,%r12
+    0.00 :   63226:  mov    %r15d,%r11d
+    0.00 :   63229:  shr    $0x32,%rcx
+    0.00 :   6322d:  add    %rax,%rcx
+    0.00 :   63230:  cmp    %r12,%rcx
+    0.00 :   63233:  lea    0x5c50(%rbx),%r12
+    0.00 :   6323a:  setge  %al
+    0.00 :   6323d:  jmp    63241 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x571>
+    0.00 :   6323f:  xor    %eax,%eax
+    0.00 :   63241:  cmpl   $0x1,0x5ff8(%rbx)
+    0.00 :   63248:  jne    6327f <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x5af>
+    0.00 :   6324a:  mov    0x5f90(%rbx),%rdx
+    0.00 :   63251:  mov    0x6000(%rbx),%rcx
+    0.00 :   63258:  mov    0x20(%rdx),%r8
+    0.00 :   6325c:  test   %r8,%r8
+    0.00 :   6325f:  je     63296 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x5c6>
+    0.00 :   63261:  mov    0x18(%rdx),%rsi
+    0.00 :   63265:  mov    %r8d,%edx
+    0.00 :   63268:  and    $0x7,%edx
+    0.00 :   6326b:  cmp    $0x8,%r8
+    0.00 :   6326f:  jae    63385 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x6b5>
+    0.00 :   63275:  xor    %edi,%edi
+    0.00 :   63277:  xor    %r9d,%r9d
+    0.00 :   6327a:  jmp    6343f <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x76f>
+    0.00 :   6327f:  mov    0x60(%rsp),%rsi
+    0.00 :   63284:  or     %al,%bpl
+    0.00 :   63287:  test   $0x1,%bpl
+    0.00 :   6328b:  jne    62e93 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1c3>
+    0.00 :   63291:  jmp    62e96 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1c6>
+    0.00 :   63296:  xor    %r9d,%r9d
+    0.00 :   63299:  jmp    63467 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x797>
+    0.00 :   6329e:  mov    $0x1,%al
+    0.00 :   632a0:  jmp    632d8 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x608>
+    0.00 :   632a2:  mov    0x5e00(%rbx),%rax
+    0.00 :   632a9:  mov    %r15d,%ecx
+    0.00 :   632ac:  shr    $0x6,%ecx
+    0.00 :   632af:  mov    $0x1,%dl
+    0.00 :   632b1:  mov    %rdx,0xa0(%rsp)
+    0.00 :   632b9:  bt     %rcx,%rax
+    0.00 :   632bd:  jb     632e0 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x610>
+    0.00 :   632bf:  mov    $0x20c,%eax
+    0.00 :   632c4:  lea    -0x4fb6b(%rip),%rcx        # 13760 <anon.ed23dd53d1999b359621ac0dc763dee2.27.llvm.11021376600075084165>
+    0.00 :   632cb:  bextr  %eax,%r15d,%eax
+    0.00 :   632d0:  cmpb   $0x4,0x1(%rax,%rcx,1)
+    0.00 :   632d5:  sete   %al
+    0.00 :   632d8:  mov    %rax,0xa0(%rsp)
+    0.00 :   632e0:  mov    %ebp,%eax
+    0.00 :   632e2:  xor    0xe8(%rsp),%eax
+    0.00 :   632e9:  mov    %eax,0x98(%rsp)
+    0.00 :   632f0:  mov    0x18(%rsp),%rdx
+    0.00 :   632f5:  lea    0x6(%rdx),%rax
+    0.00 :   632f9:  lea    0x7(%rdx),%rcx
+    0.00 :   632fd:  mov    %rax,0xa8(%rsp)
+    0.05 :   63305:  mov    0x5f70(%rbx),%rax
+    0.00 :   6330c:  lea    (%rcx,%rcx,8),%r14
+    0.00 :   63310:  cmpq   $0x0,0xf0(%rsp)
+    0.00 :   63319:  mov    %r11,0x38(%rsp)
+    0.00 :   6331e:  je     63362 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x692>
+    0.00 :   63320:  lea    (%rdx,%rdx,8),%rcx
+    0.18 :   63324:  mov    0xf8(%rsp),%rdx
+    0.04 :   6332c:  mov    %r14,%r8
+    0.00 :   6332f:  mov    %r13,%rdi
+    0.00 :   63332:  vxorps %xmm3,%xmm3,%xmm3
+    0.00 :   63336:  xor    %r10d,%r10d
+    0.00 :   63339:  mov    0xb8(%rax,%rcx,4),%ecx
+    0.05 :   63340:  mov    %ecx,0x4(%rax,%rdx,1)
+    0.00 :   63344:  mov    $0x7d02,%ecx
+    0.00 :   63349:  mov    0x5f70(%rbx),%rax
+    0.00 :   63350:  mov    %rcx,0x100(%rsp)
+    0.00 :   63358:  mov    0x4(%rax,%rdx,1),%r14d
+    0.00 :   6335d:  jmp    63572 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x8a2>
+    0.05 :   63362:  cmpw   $0x0,0x1a(%rax,%r14,4)
+    0.25 :   63369:  je     63487 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x7b7>
+    0.00 :   6336f:  mov    $0x7d02,%ecx
+    0.07 :   63374:  vxorps %xmm3,%xmm3,%xmm3
+    0.00 :   63378:  mov    %rcx,0x100(%rsp)
+    0.00 :   63380:  jmp    63552 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x882>
+    0.00 :   63385:  and    $0xfffffffffffffff8,%r8
+    0.00 :   63389:  mov    %r10,0x48(%rsp)
+    0.00 :   6338e:  mov    %r13,0x8(%rsp)
+    0.00 :   63393:  mov    %r11d,%r15d
+    0.00 :   63396:  mov    %r12,%r13
+    0.00 :   63399:  xor    %edi,%edi
+    0.00 :   6339b:  xor    %r9d,%r9d
+    0.00 :   6339e:  mov    (%rsi,%rdi,8),%r10
+    0.00 :   633a2:  mov    0x10(%r10),%r10
+    0.00 :   633a6:  mov    0x40(%r10),%r10
+    0.00 :   633aa:  add    %r9,%r10
+    0.00 :   633ad:  mov    0x8(%rsi,%rdi,8),%r9
+    0.00 :   633b2:  mov    0x10(%r9),%r9
+    0.00 :   633b6:  mov    0x40(%r9),%r9
+    0.00 :   633ba:  mov    0x10(%rsi,%rdi,8),%r11
+    0.00 :   633bf:  mov    0x10(%r11),%r11
+    0.00 :   633c3:  mov    0x40(%r11),%r11
+    0.00 :   633c7:  add    %r9,%r11
+    0.00 :   633ca:  mov    0x18(%rsi,%rdi,8),%r9
+    0.00 :   633cf:  add    %r10,%r11
+    0.00 :   633d2:  mov    0x10(%r9),%r9
+    0.00 :   633d6:  mov    0x40(%r9),%r9
+    0.00 :   633da:  mov    0x20(%rsi,%rdi,8),%r10
+    0.00 :   633df:  mov    0x10(%r10),%r10
+    0.00 :   633e3:  mov    0x40(%r10),%r10
+    0.00 :   633e7:  add    %r9,%r10
+    0.00 :   633ea:  mov    0x28(%rsi,%rdi,8),%r9
+    0.00 :   633ef:  mov    0x10(%r9),%r9
+    0.00 :   633f3:  mov    0x40(%r9),%r12
+    0.00 :   633f7:  mov    0x30(%rsi,%rdi,8),%r9
+    0.00 :   633fc:  mov    0x10(%r9),%r9
+    0.00 :   63400:  add    %r10,%r12
+    0.00 :   63403:  add    %r11,%r12
+    0.00 :   63406:  mov    0x40(%r9),%r10
+    0.00 :   6340a:  mov    0x38(%rsi,%rdi,8),%r9
+    0.00 :   6340f:  add    $0x8,%rdi
+    0.00 :   63413:  mov    0x10(%r9),%r9
+    0.00 :   63417:  mov    0x40(%r9),%r9
+    0.00 :   6341b:  add    %r10,%r9
+    0.00 :   6341e:  add    %r12,%r9
+    0.00 :   63421:  cmp    %rdi,%r8
+    0.00 :   63424:  jne    6339e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x6ce>
+    0.00 :   6342a:  mov    %r13,%r12
+    0.00 :   6342d:  mov    0x8(%rsp),%r13
+    0.00 :   63432:  mov    0x48(%rsp),%r10
+    0.00 :   63437:  mov    %r15d,%r11d
+    0.00 :   6343a:  test   %rdx,%rdx
+    0.00 :   6343d:  je     63467 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x797>
+    0.00 :   6343f:  lea    (%rsi,%rdi,8),%rsi
+    0.00 :   63443:  xor    %edi,%edi
+    0.00 :   63445:  data16 cs nopw 0x0(%rax,%rax,1)
+    0.00 :   63450:  mov    (%rsi,%rdi,8),%r8
+    0.00 :   63454:  inc    %rdi
+    0.00 :   63457:  mov    0x10(%r8),%r8
+    0.07 :   6345b:  mov    0x40(%r8),%r8
+    0.00 :   6345f:  add    %r8,%r9
+    0.00 :   63462:  cmp    %rdi,%rdx
+    0.00 :   63465:  jne    63450 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x780>
+    0.00 :   63467:  mov    0x60(%rsp),%rsi
+    0.00 :   6346c:  or     %al,%bpl
+    0.00 :   6346f:  test   $0x1,%bpl
+    0.00 :   63473:  jne    62e93 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1c3>
+    0.00 :   63479:  cmp    %rcx,%r9
+    0.00 :   6347c:  jb     62e96 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1c6>
+    0.00 :   63482:  jmp    62e93 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1c3>
+    0.07 :   63487:  movzbl 0x50(%rsp),%edx
+    0.11 :   6348c:  cmp    $0x7d02,%esi
+    0.00 :   63492:  vxorps %xmm3,%xmm3,%xmm3
+    0.00 :   63496:  setne  %al
+    0.00 :   63499:  test   %al,%dl
+    0.00 :   6349b:  je     636b8 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x9e8>
+    0.00 :   634a1:  mov    0x48(%rsp),%rcx
+    0.00 :   634a6:  mov    0x5f70(%rbx),%rdi
+    0.00 :   634ad:  mov    %rsi,0x100(%rsp)
+    0.00 :   634b5:  lea    0x1ffff(%rcx),%eax
+    0.06 :   634bb:  test   %ecx,%ecx
+    0.00 :   634bd:  cmovns %ecx,%eax
+    0.00 :   634c0:  mov    $0xffff84ee,%ecx
+    0.00 :   634c5:  sar    $0x11,%eax
+    0.00 :   634c8:  add    %esi,%eax
+    0.00 :   634ca:  cmp    $0xffff84ef,%eax
+    0.05 :   634cf:  cmovge %eax,%ecx
+    0.00 :   634d2:  mov    $0x7b12,%eax
+    0.00 :   634d7:  cmp    $0x7b12,%ecx
+    0.00 :   634dd:  cmovl  %ecx,%eax
+    0.00 :   634e0:  mov    %eax,0x4(%rdi,%r14,4)
+    0.00 :   634e5:  mov    0x5f70(%rbx),%rax
+    0.20 :   634ec:  test   %dl,%dl
+    0.00 :   634ee:  jne    63552 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x882>
+    0.00 :   634f0:  movzbl 0x1f(%rax,%r14,4),%ecx
+    0.00 :   634f6:  mov    %rsi,%r10
+    0.00 :   634f9:  sub    $0x8,%rsp
+    0.00 :   634fd:  movzbl 0x2d(%rsp),%eax
+    0.00 :   63502:  mov    0x118(%rsp),%rsi
+    0.00 :   6350a:  mov    $0xfffffffe,%r9d
+    0.00 :   63510:  lea    0x150(%rsp),%rdi
+    0.00 :   63518:  mov    $0x7d02,%edx
+    0.00 :   6351d:  xor    %r8d,%r8d
+    0.00 :   63520:  push   %rax
+    0.00 :   63521:  push   %r10
+    0.00 :   63523:  push   $0x0
+    0.00 :   63525:  vmovaps %xmm3,0xa0(%rsp)
+    0.00 :   6352e:  call   *0x92cec(%rip)        # f6220 <_DYNAMIC+0x7a8>
+    0.00 :   63534:  vmovaps 0xa0(%rsp),%xmm3
+    0.00 :   6353d:  mov    0x58(%rsp),%r11
+    0.00 :   63542:  mov    0x30(%rsp),%r9
+    0.00 :   63547:  add    $0x20,%rsp
+    0.00 :   6354b:  mov    0x5f70(%rbx),%rax
+    0.00 :   63552:  mov    0x18(%rsp),%rcx
+    0.05 :   63557:  mov    %r14,%r8
+    0.00 :   6355a:  mov    0x4(%rax,%r14,4),%r14d
+    0.30 :   6355f:  mov    %r13,%rdi
+    0.00 :   63562:  lea    (%rcx,%rcx,8),%rcx
+    0.00 :   63566:  cmp    0xb8(%rax,%rcx,4),%r14d
+    0.00 :   6356e:  setg   %r10b
+    0.24 :   63572:  and    $0x3f,%bpl
+    0.00 :   63576:  mov    %ebp,0x94(%rsp)
+    0.00 :   6357d:  mov    0xa8(%rsp),%rcx
+    0.00 :   63585:  lea    (%rcx,%rcx,8),%rcx
+    0.00 :   63589:  mov    %rcx,0x190(%rsp)
+    0.00 :   63591:  mov    0x4(%rax,%rcx,4),%ecx
+    0.07 :   63595:  mov    %ecx,%r13d
+    0.19 :   63598:  neg    %r13d
+    0.00 :   6359b:  cmp    %r13d,%r14d
+    0.00 :   6359e:  setle  %dl
+    0.00 :   635a1:  cmp    $0x3,%r12d
+    0.00 :   635a5:  setge  %sil
+    0.00 :   635a9:  and    %dl,%sil
+    0.05 :   635ac:  movzbl %sil,%edx
+    0.00 :   635b0:  add    %edx,%edi
+    0.19 :   635b2:  cmp    $0x2,%r12d
+    0.00 :   635b6:  setge  %dl
+    0.11 :   635b9:  cmp    $0x2,%edi
+    0.00 :   635bc:  setae  %sil
+    0.07 :   635c0:  add    %r14d,%ecx
+    0.00 :   635c3:  cmp    $0xae,%ecx
+    0.00 :   635c9:  setge  %cl
+    0.00 :   635cc:  and    %dl,%cl
+    0.14 :   635ce:  and    %sil,%cl
+    0.00 :   635d1:  movzbl %cl,%ecx
+    0.13 :   635d4:  sub    %ecx,%edi
+    0.06 :   635d6:  cmpw   $0x0,0x1a(%rax,%r8,4)
+    0.00 :   635dd:  mov    %rdi,0x8(%rsp)
+    0.06 :   635e2:  mov    %r8,0x28(%rsp)
+    0.00 :   635e7:  jne    63a3b <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xd6b>
+    0.00 :   635ed:  cmp    $0x7d02,%r11d
+    0.00 :   635f4:  je     63a3b <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xd6b>
+    0.00 :   635fa:  xor    %eax,%eax
+    0.00 :   635fc:  cmp    0x30(%rsp),%r11d
+    0.00 :   63601:  mov    0x8(%rsp),%rcx
+    0.07 :   63606:  setle  %al
+    0.00 :   63609:  sub    %eax,%ecx
+    0.00 :   6360b:  cmp    %ecx,0x9c(%rsp)
+    0.00 :   63612:  jle    63a3b <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xd6b>
+    0.00 :   63618:  cmp    0x30(%rsp),%r11d
+    0.62 :   6361d:  jl     63663 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x993>
+    0.00 :   6361f:  cmpb   $0x1,0x5(%rsp)
+    0.05 :   63624:  ja     6366a <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x99a>
+    0.00 :   63626:  jmp    63692 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x9c2>
+    0.00 :   63628:  cmp    $0xffff84ee,%eax
+    0.00 :   6362d:  jge    63751 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xa81>
+    0.00 :   63633:  cmp    $0xffff83f7,%eax
+    0.00 :   63638:  jae    659c4 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2cf4>
+    0.00 :   6363e:  mov    $0x64,%edx
+    0.00 :   63643:  lea    0x7d00(%rax),%esi
+    0.00 :   63649:  mov    $0xffff84ee,%r11d
+    0.00 :   6364f:  sub    %ecx,%edx
+    0.00 :   63651:  mov    0x40(%rsp),%rcx
+    0.00 :   63656:  cmp    %edx,%esi
+    0.00 :   63658:  jg     630c8 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3f8>
+    0.00 :   6365e:  jmp    659cb <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2cfb>
+    0.00 :   63663:  testb  $0x1,0x5(%rsp)
+    0.36 :   63668:  je     63687 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x9b7>
+    0.00 :   6366a:  cmp    0x30(%rsp),%r11d
+    0.07 :   6366f:  setge  %al
+    0.00 :   63672:  cmp    %al,0x6(%rsp)
+    0.00 :   63676:  je     6375e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xa8e>
+    0.00 :   6367c:  cmpl   $0x5,0x8(%rsp)
+    0.13 :   63681:  jae    6375e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xa8e>
+    0.00 :   63687:  cmpb   $0x3,0x5(%rsp)
+    0.14 :   6368c:  je     63a3b <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xd6b>
+    0.00 :   63692:  cmp    0x30(%rsp),%r11d
+    0.00 :   63697:  jge    63a18 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xd48>
+    0.00 :   6369d:  cmpb   $0x2,0x5(%rsp)
+    0.00 :   636a2:  jb     63a3b <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xd6b>
+    0.00 :   636a8:  cmpl   $0x6,0x8(%rsp)
+    0.00 :   636ad:  jae    63a26 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xd56>
+    0.00 :   636b3:  jmp    63a3b <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xd6b>
+    0.00 :   636b8:  movzbl 0x5eb8(%rbx),%eax
+    0.00 :   636bf:  mov    0x18(%rsp),%rcx
+    0.00 :   636c4:  lea    0x5c50(%rbx),%rdi
+    0.00 :   636cb:  mov    %rbx,%rsi
+    0.00 :   636ce:  mov    0x5f20(%rbx,%rax,4),%edx
+    0.06 :   636d5:  call   *0x92845(%rip)        # f5f20 <_DYNAMIC+0x4a8>
+    0.00 :   636db:  vmovss 0x60a8(%rbx),%xmm0
+    0.00 :   636e3:  vxorps %xmm3,%xmm3,%xmm3
+    0.00 :   636e7:  mov    %eax,%esi
+    0.00 :   636e9:  vucomiss %xmm3,%xmm0
+    0.00 :   636ed:  jne    658f6 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2c26>
+    0.00 :   636f3:  jp     658f6 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2c26>
+    0.00 :   636f9:  vmovss 0x60b0(%rbx),%xmm0
+    0.00 :   63701:  vxorps %xmm1,%xmm1,%xmm1
+    0.00 :   63705:  vucomiss %xmm1,%xmm0
+    0.00 :   63709:  jne    658f6 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2c26>
+    0.00 :   6370f:  jp     658f6 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2c26>
+    0.00 :   63715:  mov    0x10(%rsp),%r9
+    0.00 :   6371a:  mov    0x38(%rsp),%r11
+    0.00 :   6371f:  movzbl 0x50(%rsp),%edx
+    0.00 :   63724:  jmp    6595f <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2c8f>
+    0.00 :   63729:  mov    $0x64,%edx
+    0.00 :   6372e:  sub    %ecx,%edx
+    0.00 :   63730:  mov    $0x7c09,%ecx
+    0.00 :   63735:  mov    $0x7b12,%r11d
+    0.00 :   6373b:  sub    %eax,%ecx
+    0.00 :   6373d:  sub    0x18(%rsp),%eax
+    0.00 :   63741:  cmp    %edx,%ecx
+    0.00 :   63743:  mov    0x40(%rsp),%rcx
+    0.00 :   63748:  cmovle %eax,%r11d
+    0.00 :   6374c:  jmp    630c8 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3f8>
+    0.00 :   63751:  mov    0x40(%rsp),%rcx
+    0.20 :   63756:  mov    %eax,%r11d
+    0.00 :   63759:  jmp    630c8 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3f8>
+    0.00 :   6375e:  cmpw   $0x0,0x40(%rsp)
+    0.00 :   63764:  mov    %r10d,0x58(%rsp)
+    0.00 :   63769:  vmovaps %xmm3,0x80(%rsp)
+    0.00 :   63772:  je     638a7 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xbd7>
+    0.00 :   63778:  cmp    0x30(%rsp),%r11d
+    0.00 :   6377d:  jl     638a7 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xbd7>
+    0.07 :   63783:  movzbl 0x5eb8(%rbx),%ebp
+    0.00 :   6378a:  lea    0x5c50(%rbx),%rdi
+    0.00 :   63791:  mov    0x40(%rsp),%rsi
+    0.00 :   63796:  call   *0x92ad4(%rip)        # f6270 <_DYNAMIC+0x7f8>
+    0.00 :   6379c:  test   %al,%al
+    0.00 :   6379e:  jne    63804 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xb34>
+    0.00 :   637a0:  and    $0x3f,%r15d
+    0.06 :   637a4:  movzbl 0x5d10(%rbx,%r15,2),%eax
+    0.14 :   637ad:  cmp    $0x2,%al
+    0.00 :   637af:  je     63804 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xb34>
+    0.00 :   637b1:  and    $0x1,%al
+    0.00 :   637b3:  cmp    %al,%bpl
+    0.00 :   637b6:  jne    63804 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xb34>
+    0.00 :   637b8:  imul   $0x72,0x8(%rsp),%eax
+    0.00 :   637bd:  mov    0x5f70(%rbx),%rdx
+    0.00 :   637c4:  mov    0x5f80(%rbx),%rdi
+    0.00 :   637cb:  mov    $0x2d4,%r10d
+    0.00 :   637d1:  cmp    $0x2d4,%eax
+    0.00 :   637d6:  cmovb  %eax,%r10d
+    0.00 :   637da:  sub    $0x8,%rsp
+    0.00 :   637de:  mov    0x20(%rsp),%rax
+    0.00 :   637e3:  mov    0x48(%rsp),%r9
+    0.00 :   637e8:  mov    $0x100,%ecx
+    0.00 :   637ed:  lea    0x5c50(%rbx),%rsi
+    0.07 :   637f4:  lea    0x7(%rax),%r8
+    0.00 :   637f8:  push   %r10
+    0.00 :   637fa:  call   *0x92aa0(%rip)        # f62a0 <_DYNAMIC+0x828>
+    0.00 :   63800:  add    $0x10,%rsp
+    0.00 :   63804:  vmovaps 0x80(%rsp),%xmm3
+    0.00 :   6380d:  testb  $0x3f,0x98(%rsp)
+    0.00 :   63815:  mov    0x10(%rsp),%r9
+    0.00 :   6381a:  mov    0x94(%rsp),%ecx
+    0.00 :   63821:  mov    0x38(%rsp),%r11
+    0.00 :   63826:  mov    0x58(%rsp),%r10d
+    0.00 :   6382b:  je     638a7 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xbd7>
+    0.00 :   6382d:  cmpb   $0x2,0x27(%rsp)
+    0.00 :   63832:  jne    638a7 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xbd7>
+    0.00 :   63834:  mov    0xa8(%rsp),%rax
+    0.08 :   6383c:  mov    0x5f70(%rbx),%rsi
+    0.00 :   63843:  lea    (%rax,%rax,8),%rax
+    0.00 :   63847:  cmpl   $0x3,0xc(%rsi,%rax,4)
+    0.06 :   6384c:  jg     638a7 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xbd7>
+    0.00 :   6384e:  movzbl %cl,%eax
+    0.00 :   63851:  movzbl 0x5d10(%rbx,%rax,2),%ecx
+    0.00 :   63859:  cmp    $0x2,%cl
+    0.00 :   6385c:  je     638a7 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xbd7>
+    0.00 :   6385e:  movzbl 0x5d11(%rbx,%rax,2),%r9d
+    0.00 :   63867:  movzbl %cl,%r8d
+    0.00 :   6386b:  mov    0x5f80(%rbx),%rdi
+    0.00 :   63872:  mov    0xa8(%rsp),%rcx
+    0.00 :   6387a:  mov    $0x100,%edx
+    0.00 :   6387f:  push   $0xfffffffffffff775
+    0.00 :   63884:  push   %rax
+    0.00 :   63885:  call   *0x929bd(%rip)        # f6248 <_DYNAMIC+0x7d0>
+    0.00 :   6388b:  vmovaps 0x90(%rsp),%xmm3
+    0.00 :   63894:  mov    0x68(%rsp),%r10d
+    0.00 :   63899:  mov    0x48(%rsp),%r11
+    0.00 :   6389e:  mov    0x20(%rsp),%r9
+    0.00 :   638a3:  add    $0x10,%rsp
+    0.00 :   638a7:  cmpl   $0x60,0x5cf8(%rbx)
+    0.07 :   638ae:  jge    63a3b <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xd6b>
+    0.00 :   638b4:  mov    0x40(%rsp),%rsi
+    0.00 :   638b9:  test   %si,%si
+    0.00 :   638bc:  je     659eb <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2d1b>
+    0.00 :   638c2:  cmpl   $0x7,0x8(%rsp)
+    0.00 :   638c7:  jb     659eb <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2d1b>
+    0.00 :   638cd:  lea    -0x7b13(%r11),%eax
+    0.00 :   638d4:  cmp    $0xffff09da,%eax
+    0.00 :   638d9:  jbe    659eb <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2d1b>
+    0.00 :   638df:  lea    0x5c50(%rbx),%rdi
+    0.00 :   638e6:  call   *0x9293c(%rip)        # f6228 <_DYNAMIC+0x7b0>
+    0.00 :   638ec:  mov    0x38(%rsp),%r11
+    0.00 :   638f1:  mov    0x40(%rsp),%rsi
+    0.00 :   638f6:  test   %al,%al
+    0.00 :   638f8:  je     659eb <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2d1b>
+    0.00 :   638fe:  lea    0x5c50(%rbx),%rdi
+    0.00 :   63905:  call   *0x9297d(%rip)        # f6288 <_DYNAMIC+0x810>
+    0.00 :   6390b:  mov    0x38(%rsp),%r11
+    0.00 :   63910:  mov    0x40(%rsp),%rsi
+    0.00 :   63915:  test   %al,%al
+    0.00 :   63917:  je     659eb <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2d1b>
+    0.00 :   6391d:  lea    0x5c50(%rbx),%r15
+    0.00 :   63924:  mov    %rsi,%rbp
+    0.00 :   63927:  mov    %r15,%rdi
+    0.00 :   6392a:  call   *0x92550(%rip)        # f5e80 <_DYNAMIC+0x408>
+    0.00 :   63930:  mov    0x68(%rsp),%rcx
+    0.00 :   63935:  movzbl %al,%edx
+    0.00 :   63938:  mov    %r15,%rdi
+    0.00 :   6393b:  mov    %ebp,%esi
+    0.00 :   6393d:  mov    %rcx,0x250(%rsp)
+    0.00 :   63945:  lea    0x250(%rsp),%rcx
+    0.00 :   6394d:  call   8d4c0 <<chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>>
+    0.00 :   63952:  mov    0x5cb8(%rbx),%rdx
+    0.00 :   63959:  mov    0x5cf8(%rbx),%eax
+    0.00 :   6395f:  cmp    $0xe,%eax
+    0.00 :   63962:  jl     63988 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xcb8>
+    0.00 :   63964:  add    $0xfffffff2,%eax
+    0.00 :   63967:  movabs $0x5851f42d4c957f2d,%rcx
+    0.00 :   63971:  shr    $0x3,%eax
+    0.00 :   63974:  imul   %rax,%rcx
+    0.00 :   63978:  movabs $0x14057b7ef767814f,%rax
+    0.00 :   63982:  add    %rcx,%rax
+    0.00 :   63985:  xor    %rax,%rdx
+    0.00 :   63988:  mov    0x68(%rsp),%rsi
+    0.00 :   6398d:  lea    0x250(%rsp),%rdi
+    0.00 :   63995:  call   *0x9287d(%rip)        # f6218 <_DYNAMIC+0x7a0>
+    0.00 :   6399b:  cmpb   $0x0,0x268(%rsp)
+    0.00 :   639a3:  je     6606f <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x339f>
+    0.00 :   639a9:  mov    0x18(%rsp),%rax
+    0.00 :   639ae:  mov    0x258(%rsp),%edi
+    0.00 :   639b5:  mov    0x5cf8(%rbx),%edx
+    0.00 :   639bb:  lea    0x1(%rax),%esi
+    0.00 :   639be:  call   75160 <chessengine::types::value_from_tt>
+    0.00 :   639c3:  lea    0x5c50(%rbx),%rdi
+    0.00 :   639ca:  mov    0x40(%rsp),%rsi
+    0.00 :   639cf:  mov    %eax,%ebp
+    0.00 :   639d1:  call   *0x92879(%rip)        # f6250 <_DYNAMIC+0x7d8>
+    0.00 :   639d7:  cmp    $0x7d02,%ebp
+    0.00 :   639dd:  je     66081 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x33b1>
+    0.00 :   639e3:  mov    0x30(%rsp),%rcx
+    0.00 :   639e8:  cmp    %ecx,0x38(%rsp)
+    0.00 :   639ec:  setge  %al
+    0.00 :   639ef:  neg    %ebp
+    0.00 :   639f1:  cmp    %ebp,%ecx
+    0.00 :   639f3:  setg   %cl
+    0.00 :   639f6:  cmp    %cl,%al
+    0.00 :   639f8:  jne    66081 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x33b1>
+    0.00 :   639fe:  vmovaps 0x80(%rsp),%xmm3
+    0.00 :   63a07:  mov    0x10(%rsp),%r9
+    0.00 :   63a0c:  mov    0x38(%rsp),%r11
+    0.00 :   63a11:  mov    0x58(%rsp),%r10d
+    0.00 :   63a16:  jmp    63a3b <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xd6b>
+    0.00 :   63a18:  testb  $0x1,0x5(%rsp)
+    0.00 :   63a1d:  je     63a3b <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xd6b>
+    0.00 :   63a1f:  cmpl   $0x5,0x8(%rsp)
+    0.00 :   63a24:  jbe    63a3b <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xd6b>
+    0.00 :   63a26:  mov    0x148(%rsp),%rax
+    0.00 :   63a2e:  movzbl 0x2(%rax),%ecx
+    0.00 :   63a32:  cmp    $0x1,%cl
+    0.00 :   63a35:  adc    $0xff,%cl
+    0.00 :   63a38:  mov    %cl,0x2(%rax)
+    0.00 :   63a3b:  mov    0x5f70(%rbx),%rax
+    0.20 :   63a42:  cmpq   $0x0,0xf0(%rsp)
+    0.00 :   63a4b:  je     63ae5 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xe15>
+    0.00 :   63a51:  mov    %r10b,0x7(%rsp)
+    0.00 :   63a56:  mov    0x30(%rsp),%r15
+    0.00 :   63a5b:  mov    0x28(%rsp),%rsi
+    0.00 :   63a60:  movzbl 0x50(%rsp),%edi
+    0.00 :   63a65:  mov    0x8(%rsp),%r8
+    0.12 :   63a6a:  lea    -0x7b13(%r15),%ecx
+    0.00 :   63a71:  cmp    $0xffff09db,%ecx
+    0.00 :   63a77:  jb     63f9e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x12ce>
+    0.00 :   63a7d:  cmpw   $0x0,0x1a(%rax,%rsi,4)
+    0.18 :   63a83:  sete   %cl
+    0.04 :   63a86:  and    %cl,%dil
+    0.00 :   63a89:  test   %dil,%dil
+    0.00 :   63a8c:  je     63f9e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x12ce>
+    0.00 :   63a92:  cmpb   $0x2,0x5(%rsp)
+    0.08 :   63a97:  jb     63f9e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x12ce>
+    0.07 :   63a9d:  lea    -0x4(%r8),%ecx
+    0.00 :   63aa1:  cmp    %ecx,0x9c(%rsp)
+    0.00 :   63aa8:  jl     63f9e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x12ce>
+    0.00 :   63aae:  cmp    $0x7d02,%r11d
+    0.00 :   63ab5:  je     63f9e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x12ce>
+    0.00 :   63abb:  lea    -0x7b13(%r11),%ecx
+    0.00 :   63ac2:  lea    0x1ac(%r15),%ebp
+    0.07 :   63ac9:  cmp    $0xffff09db,%ecx
+    0.00 :   63acf:  setb   %cl
+    0.00 :   63ad2:  cmp    %ebp,%r11d
+    0.00 :   63ad5:  setl   %dl
+    0.00 :   63ad8:  or     %cl,%dl
+    0.00 :   63ada:  je     62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   63ae0:  jmp    63f9e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x12ce>
+    0.17 :   63ae5:  mov    0x28(%rsp),%rdx
+    0.11 :   63aea:  mov    0x4(%rax,%rdx,4),%ecx
+    0.12 :   63aee:  cmpw   $0x0,0x1a(%rax,%rdx,4)
+    0.07 :   63af4:  mov    %ecx,%ebp
+    0.07 :   63af6:  jne    63b24 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xe54>
+    0.00 :   63af8:  mov    %ecx,%ebp
+    0.00 :   63afa:  cmp    $0x7d02,%r11d
+    0.00 :   63b01:  je     63b24 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xe54>
+    0.00 :   63b03:  movzbl 0x5(%rsp),%esi
+    0.00 :   63b08:  xor    %edx,%edx
+    0.00 :   63b0a:  mov    %ecx,%ebp
+    0.00 :   63b0c:  cmp    $0x2,%sil
+    0.00 :   63b10:  movzbl %sil,%esi
+    0.00 :   63b14:  setae  %dl
+    0.00 :   63b17:  cmp    %ecx,%r11d
+    0.00 :   63b1a:  cmovle %esi,%edx
+    0.06 :   63b1d:  test   $0x1,%dl
+    0.00 :   63b20:  cmovne %r11d,%ebp
+    0.00 :   63b24:  testb  $0x3f,0x98(%rsp)
+    0.00 :   63b2c:  je     63c81 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xfb1>
+    0.00 :   63b32:  cmpb   $0x2,0x27(%rsp)
+    0.00 :   63b37:  jne    63c81 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xfb1>
+    0.00 :   63b3d:  mov    0xa8(%rsp),%rdx
+    0.09 :   63b45:  lea    (%rdx,%rdx,8),%rdx
+    0.00 :   63b49:  cmpb   $0x0,0x1e(%rax,%rdx,4)
+    0.05 :   63b4e:  jne    63c81 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xfb1>
+    0.00 :   63b54:  mov    0xa8(%rsp),%rdx
+    0.13 :   63b5c:  mov    $0xffffff49,%esi
+    0.00 :   63b61:  mov    0xe8(%rsp),%r8
+    0.00 :   63b69:  lea    (%rdx,%rdx,8),%rdx
+    0.00 :   63b6d:  lea    (%rax,%rdx,4),%rax
+    0.00 :   63b71:  movzbl 0x5eb8(%rbx),%edx
+    0.00 :   63b78:  add    0x4(%rax),%ecx
+    0.00 :   63b7b:  mov    $0xb4,%eax
+    0.00 :   63b80:  xor    $0x1,%edx
+    0.06 :   63b83:  neg    %ecx
+    0.00 :   63b85:  cmp    $0xffffff4a,%ecx
+    0.00 :   63b8b:  cmovge %ecx,%esi
+    0.00 :   63b8e:  mov    0x5f80(%rbx),%rcx
+    0.00 :   63b95:  cmp    $0xb4,%esi
+    0.07 :   63b9b:  cmovl  %esi,%eax
+    0.00 :   63b9e:  shl    $0x11,%edx
+    0.00 :   63ba1:  lea    0x7c(%rax,%rax,1),%esi
+    0.17 :   63ba5:  add    (%rcx),%rdx
+    0.00 :   63ba8:  lea    (%rsi,%rsi,4),%esi
+    0.20 :   63bab:  mov    %esi,%edi
+    0.07 :   63bad:  neg    %edi
+    0.00 :   63baf:  cmovs  %esi,%edi
+    0.11 :   63bb2:  movswl (%rdx,%r8,2),%ecx
+    0.05 :   63bb7:  imul   %ecx,%edi
+    0.00 :   63bba:  add    %ecx,%esi
+    0.00 :   63bbc:  movslq %edi,%rcx
+    0.07 :   63bbf:  imul   $0xffffffffb70287c9,%rcx,%rcx
+    0.05 :   63bc6:  mov    %rcx,%rdi
+    0.34 :   63bc9:  shr    $0x3f,%rdi
+    0.08 :   63bcd:  shr    $0x2b,%rcx
+    0.23 :   63bd1:  add    %edi,%ecx
+    0.00 :   63bd3:  add    %esi,%ecx
+    0.19 :   63bd5:  mov    %cx,(%rdx,%r8,2)
+    0.00 :   63bda:  movzbl 0x94(%rsp),%ecx
+    0.00 :   63be2:  movzbl 0x5d10(%rbx,%rcx,2),%esi
+    0.00 :   63bea:  cmp    $0x2,%sil
+    0.00 :   63bee:  je     63c81 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xfb1>
+    0.00 :   63bf4:  mov    0xe8(%rsp),%rdx
+    0.00 :   63bfc:  and    $0xc000,%edx
+    0.12 :   63c02:  cmp    $0x4000,%dx
+    0.00 :   63c07:  je     63c81 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xfb1>
+    0.00 :   63c09:  cmpb   $0x0,0x50(%rsp)
+    0.00 :   63c0e:  jne    63c81 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xfb1>
+    0.00 :   63c10:  movzbl 0x5d11(%rbx,%rcx,2),%edx
+    0.00 :   63c18:  test   %dl,%dl
+    0.00 :   63c1a:  je     63c81 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xfb1>
+    0.00 :   63c1c:  mov    0x5cd8(%rbx),%rdi
+    0.00 :   63c23:  mov    0x5f80(%rbx),%r8
+    0.00 :   63c2a:  add    $0x3e,%eax
+    0.00 :   63c2d:  and    $0x1fff,%edi
+    0.00 :   63c33:  lea    (%rdi,%rdi,2),%rdi
+    0.00 :   63c37:  shl    $0x9,%edi
+    0.00 :   63c3a:  add    0x20(%r8),%rdi
+    0.00 :   63c3e:  xor    %r8d,%r8d
+    0.00 :   63c41:  test   $0x1,%sil
+    0.00 :   63c45:  mov    $0x300,%esi
+    0.00 :   63c4a:  cmove  %r8d,%esi
+    0.00 :   63c4e:  shl    $0x7,%edx
+    0.00 :   63c51:  add    %rdi,%rdx
+    0.00 :   63c54:  add    %rsi,%rdx
+    0.00 :   63c57:  lea    (%rax,%rax,2),%esi
+    0.00 :   63c5a:  lea    (%rax,%rsi,4),%eax
+    0.00 :   63c5d:  movswl (%rdx,%rcx,2),%esi
+    0.07 :   63c61:  mov    %eax,%edi
+    0.00 :   63c63:  neg    %edi
+    0.00 :   63c65:  cmovs  %eax,%edi
+    0.00 :   63c68:  imul   %esi,%edi
+    0.00 :   63c6b:  add    %esi,%eax
+    0.00 :   63c6d:  lea    0x1fff(%rdi),%esi
+    0.00 :   63c73:  test   %edi,%edi
+    0.00 :   63c75:  cmovns %edi,%esi
+    0.00 :   63c78:  shr    $0xd,%esi
+    0.00 :   63c7b:  sub    %esi,%eax
+    0.00 :   63c7d:  mov    %ax,(%rdx,%rcx,2)
+    0.13 :   63c81:  mov    0x48(%rsp),%rcx
+    0.41 :   63c86:  mov    %ecx,%eax
+    0.00 :   63c88:  neg    %eax
+    0.00 :   63c8a:  cmovs  %ecx,%eax
+    0.06 :   63c8d:  movslq %eax,%r15
+    0.00 :   63c90:  imul   $0xffffffffbb47d05f,%r15,%rax
+    0.05 :   63c97:  mov    %rax,%rcx
+    0.07 :   63c9a:  shr    $0x3f,%rcx
+    0.00 :   63c9e:  sar    $0x3c,%rax
+    0.11 :   63ca2:  add    %ecx,%eax
+    0.00 :   63ca4:  mov    0x8(%rsp),%rcx
+    0.00 :   63ca9:  imul   %ecx,%ecx
+    0.00 :   63cac:  add    %r9d,%eax
+    0.06 :   63caf:  imul   $0xfffffed4,%ecx,%ecx
+    0.00 :   63cb5:  lea    -0x1d1(%rcx,%rax,1),%eax
+    0.07 :   63cbc:  cmp    %eax,%ebp
+    0.00 :   63cbe:  jge    63ce6 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1016>
+    0.00 :   63cc0:  mov    %r9d,%ecx
+    0.00 :   63cc3:  mov    0x68(%rsp),%rsi
+    0.00 :   63cc8:  mov    0x60(%rsp),%rdx
+    0.00 :   63ccd:  mov    0x18(%rsp),%r9
+    0.00 :   63cd2:  mov    0x30(%rsp),%r8
+    0.00 :   63cd7:  mov    %rbx,%rdi
+    0.00 :   63cda:  call   67760 <<chessengine::search::Worker>::qsearch::<chessengine::search::NonPv>>
+    0.00 :   63cdf:  mov    %eax,%ebp
+    0.00 :   63ce1:  jmp    62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   63ce6:  mov    0x5f70(%rbx),%rax
+    0.00 :   63ced:  mov    0x28(%rsp),%rcx
+    0.00 :   63cf2:  cmpb   $0x0,0x1f(%rax,%rcx,4)
+    0.05 :   63cf7:  je     63de5 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1115>
+    0.00 :   63cfd:  movzbl 0x5eb8(%rbx),%r14d
+    0.35 :   63d05:  mov    0x95ea5(%rip),%eax        # f9bb0 <chessengine::search::nmp_allnode_probe::ON>
+    0.51 :   63d0b:  test   %eax,%eax
+    0.00 :   63d0d:  jne    66285 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x35b5>
+    0.00 :   63d13:  cmpb   $0x0,0x6(%rsp)
+    0.00 :   63d18:  mov    0x8(%rsp),%r13
+    0.00 :   63d1d:  jne    63d28 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1058>
+    0.00 :   63d1f:  cmpb   $0x0,0x95e8e(%rip)        # f9bb4 <chessengine::search::nmp_allnode_probe::ON+0x4>
+    0.14 :   63d26:  je     63d7d <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x10ad>
+    0.00 :   63d28:  imul   $0x44b82fa1,%r15,%rsi
+    0.20 :   63d2f:  movzbl %r10b,%edx
+    0.00 :   63d33:  mov    0x5f70(%rbx),%rax
+    0.00 :   63d3a:  imul   $0xfffffff2,%r13d,%ecx
+    0.00 :   63d3e:  lea    (%rdx,%rdx,8),%edx
+    0.00 :   63d41:  mov    %rsi,%rdi
+    0.00 :   63d44:  shr    $0x3f,%rdi
+    0.00 :   63d48:  sar    $0x3c,%rsi
+    0.00 :   63d4c:  lea    (%rdx,%rdx,4),%edx
+    0.00 :   63d4f:  add    %edi,%esi
+    0.00 :   63d51:  add    0x30(%rsp),%esi
+    0.19 :   63d55:  sub    %edx,%esi
+    0.00 :   63d57:  mov    0x28(%rsp),%rdx
+    0.00 :   63d5c:  lea    0x176(%rsi,%rcx,1),%ecx
+    0.07 :   63d63:  cmp    %ecx,0x4(%rax,%rdx,4)
+    0.06 :   63d67:  jl     63d7d <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x10ad>
+    0.00 :   63d69:  mov    0x28(%rsp),%rcx
+    0.05 :   63d6e:  lea    (%rax,%rcx,4),%rax
+    0.00 :   63d72:  cmpw   $0x0,0x1a(%rax)
+    0.00 :   63d77:  je     65c0d <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2f3d>
+    0.00 :   63d7d:  mov    0x5f70(%rbx),%rax
+    0.00 :   63d84:  mov    0x28(%rsp),%rsi
+    0.00 :   63d89:  mov    0x30(%rsp),%r15
+    0.00 :   63d8e:  mov    0x4(%rax,%rsi,4),%edx
+    0.18 :   63d92:  cmp    %r15d,%edx
+    0.00 :   63d95:  setge  %cl
+    0.00 :   63d98:  or     %r10b,%cl
+    0.00 :   63d9b:  mov    %cl,0x7(%rsp)
+    0.00 :   63d9f:  cmpb   $0x0,0x6(%rsp)
+    0.05 :   63da4:  je     63f52 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1282>
+    0.13 :   63daa:  cmpb   $0x0,0x21(%rax,%rsi,4)
+    0.13 :   63daf:  jne    63f52 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1282>
+    0.00 :   63db5:  cmp    $0x5,%r13d
+    0.00 :   63db9:  jbe    63f52 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1282>
+    0.00 :   63dbf:  cmpw   $0x1,0x40(%rsp)
+    0.12 :   63dc5:  sbb    $0x0,%r13d
+    0.00 :   63dc9:  mov    %r13,0x8(%rsp)
+    0.00 :   63dce:  lea    -0x3b(%r15),%r13d
+    0.00 :   63dd2:  cmpb   $0x0,0x7(%rsp)
+    0.00 :   63dd7:  movzbl 0x50(%rsp),%edi
+    0.00 :   63ddc:  cmove  %r15d,%r13d
+    0.00 :   63de0:  jmp    63f70 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x12a0>
+    0.00 :   63de5:  cmpw   $0x0,0x40(%rsp)
+    0.07 :   63deb:  sete   %al
+    0.00 :   63dee:  cmpl   $0xffff84ee,0x30(%rsp)
+    0.00 :   63df6:  jl     63cfd <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x102d>
+    0.00 :   63dfc:  or     0xa0(%rsp),%al
+    0.12 :   63e03:  test   $0x1,%al
+    0.00 :   63e05:  je     63cfd <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x102d>
+    0.00 :   63e0b:  cmpl   $0x10,0x8(%rsp)
+    0.13 :   63e10:  ja     63cfd <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x102d>
+    0.00 :   63e16:  cmp    0x30(%rsp),%ebp
+    0.00 :   63e1a:  jl     63cfd <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x102d>
+    0.00 :   63e20:  cmp    $0x7b13,%ebp
+    0.00 :   63e26:  jge    63cfd <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x102d>
+    0.00 :   63e2c:  movzbl 0x5eb8(%rbx),%eax
+    0.00 :   63e33:  lea    0x5c50(%rbx),%rdi
+    0.00 :   63e3a:  vmovaps %xmm3,0x80(%rsp)
+    0.00 :   63e43:  mov    %r10d,%r12d
+    0.08 :   63e46:  mov    %rax,0x78(%rsp)
+    0.00 :   63e4b:  call   9a610 <<chessengine::board::Board>::ensure_threats>
+    0.00 :   63e50:  mov    0x8(%rsp),%rdx
+    0.00 :   63e55:  mov    $0x28,%ecx
+    0.00 :   63e5a:  mov    0x78(%rsp),%rdi
+    0.04 :   63e5f:  mov    %r12d,%r10d
+    0.28 :   63e62:  mov    $0xb76,%esi
+    0.00 :   63e67:  vmovss 0x60a8(%rbx),%xmm1
+    0.00 :   63e6f:  vxorps %xmm2,%xmm2,%xmm2
+    0.00 :   63e73:  lea    0x0(,%rdx,4),%eax
+    0.00 :   63e7a:  mov    0x5df0(%rbx,%rdi,8),%rdi
+    0.00 :   63e82:  cmp    $0x28,%eax
+    0.00 :   63e85:  cmovb  %eax,%ecx
+    0.00 :   63e88:  lea    0x14(%rcx),%eax
+    0.00 :   63e8b:  add    $0x28,%ecx
+    0.00 :   63e8e:  cmpb   $0x0,0x50(%rsp)
+    0.00 :   63e93:  cmove  %eax,%ecx
+    0.00 :   63e96:  mov    %ecx,%eax
+    0.00 :   63e98:  imul   %edx,%eax
+    0.00 :   63e9b:  xor    %edx,%edx
+    0.05 :   63e9d:  test   %r10b,%r10b
+    0.07 :   63ea0:  cmove  %edx,%esi
+    0.00 :   63ea3:  cmp    %r13d,%r14d
+    0.07 :   63ea6:  lea    0x157(%rsi),%edx
+    0.07 :   63eac:  cmovle %esi,%edx
+    0.00 :   63eaf:  imul   %ecx,%edx
+    0.00 :   63eb2:  imul   $0x5c25c72d,%r15,%rcx
+    0.00 :   63eb9:  mov    %rcx,%rsi
+    0.05 :   63ebc:  shr    $0x3f,%rsi
+    0.00 :   63ec0:  sar    $0x30,%rcx
+    0.00 :   63ec4:  shr    $0xa,%edx
+    0.00 :   63ec7:  add    %esi,%ecx
+    0.00 :   63ec9:  add    %eax,%ecx
+    0.13 :   63ecb:  sub    %edx,%ecx
+    0.00 :   63ecd:  test   %rdi,0x5ea8(%rbx)
+    0.45 :   63ed4:  lea    -0x37(%rcx),%eax
+    0.00 :   63ed7:  cmovne %ecx,%eax
+    0.19 :   63eda:  vucomiss %xmm2,%xmm1
+    0.00 :   63ede:  jne    63ee6 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1216>
+    0.00 :   63ee0:  jnp    65bfe <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2f2e>
+    0.00 :   63ee6:  vmovaps 0x80(%rsp),%xmm4
+    0.00 :   63eef:  vcvtsi2ss %eax,%xmm15,%xmm0
+    0.00 :   63ef3:  vucomiss %xmm4,%xmm2
+    0.00 :   63ef7:  jae    65ff5 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3325>
+    0.00 :   63efd:  vmovss 0x60ac(%rbx),%xmm2
+    0.00 :   63f05:  mov    0x10(%rsp),%r9
+    0.00 :   63f0a:  mov    0x38(%rsp),%r11
+    0.00 :   63f0f:  vxorps %xmm3,%xmm3,%xmm3
+    0.00 :   63f13:  vucomiss %xmm2,%xmm3
+    0.00 :   63f17:  jae    65fff <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x332f>
+    0.00 :   63f1d:  vsubss %xmm2,%xmm4,%xmm3
+    0.00 :   63f21:  vmulss %xmm3,%xmm1,%xmm1
+    0.00 :   63f25:  vmovss -0x56e15(%rip),%xmm3        # d118 <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0x93>
+    0.00 :   63f2d:  vdivss %xmm2,%xmm1,%xmm1
+    0.00 :   63f31:  vmovss -0x56d79(%rip),%xmm2        # d1c0 <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0x13b>
+    0.00 :   63f39:  vaddss -0x56e5d(%rip),%xmm1,%xmm1        # d0e4 <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0x5f>
+    0.00 :   63f41:  vmaxss %xmm1,%xmm2,%xmm1
+    0.00 :   63f45:  vminss %xmm1,%xmm3,%xmm1
+    0.00 :   63f49:  vmulss %xmm0,%xmm1,%xmm0
+    0.00 :   63f4d:  jmp    65fff <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x332f>
+    0.00 :   63f52:  cmpb   $0x0,0x7(%rsp)
+    0.44 :   63f57:  movzbl 0x50(%rsp),%edi
+    0.00 :   63f5c:  mov    %r13,%rcx
+    0.00 :   63f5f:  lea    -0x3b(%r15),%r13d
+    0.00 :   63f63:  cmove  %r15d,%r13d
+    0.10 :   63f67:  cmp    $0x2,%ecx
+    0.00 :   63f6a:  jbe    63a65 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xd95>
+    0.00 :   63f70:  add    $0xd6,%r13d
+    0.00 :   63f77:  lea    -0x7b13(%r15),%ecx
+    0.00 :   63f7e:  cmp    $0xffff09db,%ecx
+    0.04 :   63f84:  jb     63a65 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xd95>
+    0.00 :   63f8a:  lea    (%rax,%rsi,4),%rcx
+    0.00 :   63f8e:  cmpw   $0x0,0x1a(%rcx)
+    0.00 :   63f93:  je     65bcb <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2efb>
+    0.00 :   63f99:  mov    0x8(%rsp),%r8
+    0.00 :   63f9e:  mov    %r8,0x8(%rsp)
+    0.16 :   63fa3:  mov    0x18(%rsp),%rcx
+    0.00 :   63fa8:  lea    (%rcx,%rcx,8),%rdx
+    0.00 :   63fac:  mov    $0x400010,%ecx
+    0.00 :   63fb1:  kmovd  %ecx,%k1
+    0.06 :   63fb5:  mov    $0x40001,%ecx
+    0.00 :   63fba:  vmovdqu16 0xc8(%rax,%rdx,4),%zmm0{%k1}{z}
+    8.88 :   63fc5:  kmovd  %ecx,%k1
+    0.00 :   63fc9:  mov    %rdx,0x1b0(%rsp)
+    0.13 :   63fd1:  movzwl 0x40(%rax,%rdx,4),%r14d
+    0.00 :   63fd7:  movzwl 0x64(%rax,%rdx,4),%r13d
+    0.16 :   63fdd:  vextracti32x4 $0x2,%zmm0,%xmm1
+    0.73 :   63fe4:  vpextrw $0x4,%xmm0,%r15d
+    0.00 :   63fe9:  vmovdqu16 0x88(%rax,%rdx,4),%zmm0{%k1}{z}
+    0.00 :   63ff4:  mov    0x40(%rsp),%rax
+    0.00 :   63ff9:  vpextrw $0x6,%xmm1,%r8d
+    0.11 :   63ffe:  mov    %eax,%ebp
+    0.00 :   64000:  vextracti32x4 $0x2,%zmm0,%xmm1
+    0.00 :   64007:  vmovd  %xmm0,%r10d
+    0.00 :   6400c:  vpextrw $0x2,%xmm1,%r12d
+    0.07 :   64011:  test   %ax,%ax
+    0.00 :   64014:  jne    640dd <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x140d>
+    0.00 :   6401a:  cmpl   $0x2,0x8(%rsp)
+    0.00 :   6401f:  mov    %eax,%ebp
+    0.00 :   64021:  jle    640dd <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x140d>
+    0.00 :   64027:  mov    0x5f50(%rbx),%rdi
+    0.00 :   6402e:  xor    %ebp,%ebp
+    0.00 :   64030:  test   %rdi,%rdi
+    0.00 :   64033:  je     640dd <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x140d>
+    0.00 :   64039:  cmpl   $0x2,0x5774(%rbx)
+    0.00 :   64040:  je     640dd <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x140d>
+    0.00 :   64046:  cmpb   $0x0,0x577c(%rbx)
+    0.00 :   6404d:  je     640dd <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x140d>
+    0.00 :   64053:  mov    0x5cb8(%rbx),%rax
+    0.00 :   6405a:  mov    0x5cf8(%rbx),%edx
+    0.00 :   64060:  mov    0x5738(%rbx),%rcx
+    0.00 :   64067:  cmp    $0xe,%edx
+    0.00 :   6406a:  jl     64090 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x13c0>
+    0.00 :   6406c:  add    $0xfffffff2,%edx
+    0.00 :   6406f:  movabs $0x5851f42d4c957f2d,%rsi
+    0.00 :   64079:  shr    $0x3,%edx
+    0.00 :   6407c:  imul   %rdx,%rsi
+    0.00 :   64080:  movabs $0x14057b7ef767814f,%rdx
+    0.00 :   6408a:  add    %rsi,%rdx
+    0.00 :   6408d:  xor    %rdx,%rax
+    0.00 :   64090:  xor    %ebp,%ebp
+    0.00 :   64092:  cmp    %rax,%rcx
+    0.00 :   64095:  jne    640dd <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x140d>
+    0.00 :   64097:  lea    0x780(%rbx),%rdx
+    0.00 :   6409e:  lea    0x5c50(%rbx),%rsi
+    0.00 :   640a5:  mov    %r12d,0x80(%rsp)
+    0.00 :   640ad:  mov    %r8d,%r12d
+    0.00 :   640b0:  mov    %r10d,0x50(%rsp)
+    0.00 :   640b5:  vzeroupper
+    0.00 :   640b8:  call   *0x91f1a(%rip)        # f5fd8 <_DYNAMIC+0x560>
+    0.00 :   640be:  mov    %r12d,%r8d
+    0.00 :   640c1:  mov    0x50(%rsp),%r10d
+    0.00 :   640c6:  mov    0x80(%rsp),%r12d
+    0.00 :   640ce:  mov    0x38(%rsp),%r11
+    0.00 :   640d3:  mov    0x10(%rsp),%r9
+    0.00 :   640d8:  test   $0x1,%al
+    0.00 :   640da:  cmovne %edx,%ebp
+    0.00 :   640dd:  mov    0x5cc0(%rbx),%rdi
+    0.00 :   640e4:  movzwl %bp,%eax
+    0.00 :   640e7:  shr    $0x6,%eax
+    0.00 :   640ea:  xor    %ebp,%eax
+    0.00 :   640ec:  test   $0x3f,%al
+    0.00 :   640ee:  je     6414e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x147e>
+    0.00 :   640f0:  mov    %rdi,0x58(%rsp)
+    0.00 :   640f5:  lea    0x5c50(%rbx),%rdi
+    0.00 :   640fc:  mov    %r13w,0x50(%rsp)
+    0.00 :   64102:  mov    %ebp,%esi
+    0.00 :   64104:  mov    %r15d,0x80(%rsp)
+    0.00 :   6410c:  mov    %r14d,%r15d
+    0.00 :   6410f:  mov    %r12d,%r13d
+    0.00 :   64112:  mov    %r8d,%r14d
+    0.00 :   64115:  mov    %r10d,%r12d
+    0.00 :   64118:  vzeroupper
+    0.07 :   6411b:  call   *0x92107(%rip)        # f6228 <_DYNAMIC+0x7b0>
+    0.00 :   64121:  mov    %r12d,%r10d
+    0.00 :   64124:  mov    %r13d,%r12d
+    0.00 :   64127:  mov    %r14d,%r8d
+    0.00 :   6412a:  mov    %r15d,%r14d
+    0.00 :   6412d:  mov    0x58(%rsp),%rdi
+    0.00 :   64132:  mov    0x80(%rsp),%r15d
+    0.00 :   6413a:  movzwl 0x50(%rsp),%r13d
+    0.00 :   64140:  mov    0x38(%rsp),%r11
+    0.00 :   64145:  mov    0x10(%rsp),%r9
+    0.00 :   6414a:  xor    $0x1,%al
+    0.00 :   6414c:  jmp    64150 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1480>
+    0.00 :   6414e:  mov    $0x1,%al
+    0.00 :   64150:  mov    0x8(%rsp),%rsi
+    0.00 :   64155:  xor    %ecx,%ecx
+    0.00 :   64157:  mov    $0xd,%edx
+    0.00 :   6415c:  vmovd  %r8d,%xmm0
+    0.21 :   64161:  vpinsrw $0x1,%r15d,%xmm0,%xmm0
+    0.07 :   64167:  vpinsrw $0x2,%r12d,%xmm0,%xmm0
+    0.00 :   6416d:  vpinsrw $0x3,%r10d,%xmm0,%xmm0
+    0.06 :   64173:  test   %esi,%esi
+    0.00 :   64175:  cmovg  %ecx,%edx
+    0.00 :   64178:  test   %rdi,%rdi
+    0.00 :   6417b:  mov    $0x7,%ecx
+    0.00 :   64180:  cmove  %edx,%ecx
+    0.00 :   64183:  add    %al,%cl
+    0.00 :   64185:  mov    0x18(%rsp),%rax
+    0.00 :   6418a:  mov    %cl,0xae6(%rsp)
+    0.00 :   64191:  mov    %bp,0xae4(%rsp)
+    0.00 :   64199:  mov    %esi,0xad0(%rsp)
+    0.00 :   641a0:  mov    %rax,0xaa0(%rsp)
+    0.00 :   641a8:  movl   $0x0,0xad4(%rsp)
+    0.00 :   641b3:  movb   $0x0,0xae7(%rsp)
+    0.00 :   641bb:  vmovq  %xmm0,0xad8(%rsp)
+    0.07 :   641c4:  mov    %r13w,0xae0(%rsp)
+    0.08 :   641cd:  mov    %r14w,0xae2(%rsp)
+    0.00 :   641d6:  movq   $0x0,0xa50(%rsp)
+    0.11 :   641e2:  vpxor  %xmm0,%xmm0,%xmm0
+    0.00 :   641e6:  vmovdqu %ymm0,0xaa8(%rsp)
+    0.04 :   641ef:  movq   $0x0,0xac8(%rsp)
+    0.06 :   641fb:  mov    0xa99c7(%rip),%eax        # 10dbc8 <chessengine::eval::nnue::policy_head::ord_weight::W+0x8>
+    0.19 :   64201:  test   %eax,%eax
+    0.00 :   64203:  jne    66115 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3445>
+    0.00 :   64209:  vmovss 0xa99af(%rip),%xmm0        # 10dbc0 <chessengine::eval::nnue::policy_head::ord_weight::W>
+    0.07 :   64211:  lea    0x5c50(%rbx),%rax
+    0.00 :   64218:  vpxor  %xmm1,%xmm1,%xmm1
+    0.00 :   6421c:  mov    %rax,0x178(%rsp)
+    0.00 :   64224:  mov    0x8(%rsp),%r13
+    0.00 :   64229:  mov    0x30(%rsp),%r15
+    0.00 :   6422e:  vucomiss %xmm1,%xmm0
+    0.19 :   64232:  jne    6423a <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x156a>
+    0.05 :   64234:  jnp    64336 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1666>
+    0.00 :   6423a:  mov    0xa9998(%rip),%eax        # 10dbd8 <chessengine::eval::nnue::policy_head::ord_min_depth::D+0x8>
+    0.00 :   64240:  test   %eax,%eax
+    0.00 :   64242:  jne    6621f <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x354f>
+    0.00 :   64248:  cmp    0xa9981(%rip),%r13d        # 10dbd0 <chessengine::eval::nnue::policy_head::ord_min_depth::D>
+    0.00 :   6424f:  jl     64336 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1666>
+    0.00 :   64255:  mov    0x5f50(%rbx),%r14
+    0.00 :   6425c:  test   %r14,%r14
+    0.00 :   6425f:  je     64336 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1666>
+    0.00 :   64265:  cmpl   $0x2,0x5774(%rbx)
+    0.00 :   6426c:  je     64336 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1666>
+    0.00 :   64272:  cmpb   $0x0,0x577c(%rbx)
+    0.00 :   64279:  je     64336 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1666>
+    0.00 :   6427f:  mov    0x5cb8(%rbx),%rax
+    0.00 :   64286:  mov    0x5cf8(%rbx),%edx
+    0.00 :   6428c:  mov    0x5738(%rbx),%rcx
+    0.00 :   64293:  cmp    $0xe,%edx
+    0.00 :   64296:  jl     642bc <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x15ec>
+    0.00 :   64298:  add    $0xfffffff2,%edx
+    0.00 :   6429b:  movabs $0x5851f42d4c957f2d,%rsi
+    0.00 :   642a5:  shr    $0x3,%edx
+    0.00 :   642a8:  imul   %rdx,%rsi
+    0.00 :   642ac:  movabs $0x14057b7ef767814f,%rdx
+    0.00 :   642b6:  add    %rsi,%rdx
+    0.00 :   642b9:  xor    %rdx,%rax
+    0.00 :   642bc:  cmp    %rax,%rcx
+    0.00 :   642bf:  jne    64336 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1666>
+    0.00 :   642c1:  vzeroupper
+    0.00 :   642c4:  call   *0x91f66(%rip)        # f6230 <_DYNAMIC+0x7b8>
+    0.00 :   642ca:  xor    %edx,%edx
+    0.00 :   642cc:  cmpb   $0x0,0x5eb8(%rbx)
+    0.00 :   642d3:  lea    0x168(%rbx),%rax
+    0.00 :   642da:  lea    0x198(%rbx),%rcx
+    0.00 :   642e1:  mov    $0x38,%esi
+    0.00 :   642e6:  vmovups 0x780(%rbx),%zmm1
+    0.00 :   642ed:  mov    0x38(%rsp),%r11
+    0.00 :   642f2:  mov    0x10(%rsp),%r9
+    0.00 :   642f7:  cmovne %rcx,%rax
+    0.00 :   642fb:  cmove  %edx,%esi
+    0.00 :   642fe:  tzcnt  0x5c50(%rax),%rax
+    0.00 :   64307:  vmovups %zmm1,0xa58(%rsp)
+    0.00 :   64312:  mov    %r14,0xa50(%rsp)
+    0.00 :   6431a:  vmovss %xmm0,0xa98(%rsp)
+    0.00 :   64323:  test   $0x4,%al
+    0.00 :   64325:  mov    $0x7,%eax
+    0.00 :   6432a:  cmovne %edx,%eax
+    0.00 :   6432d:  or     %esi,%eax
+    0.00 :   6432f:  mov    %al,0xa9c(%rsp)
+    0.08 :   64336:  lea    -0x7b13(%r11),%ecx
+    0.00 :   6433d:  movzbl 0x7(%rsp),%eax
+    0.00 :   64342:  mov    $0xfffffffd,%edx
+    0.00 :   64347:  mov    0x91eea(%rip),%r12        # f6238 <_DYNAMIC+0x7c0>
+    0.00 :   6434e:  vxorps %xmm0,%xmm0,%xmm0
+    0.00 :   64352:  vmovups %zmm0,0x1d0(%rsp)
+    0.35 :   6435d:  vmovups %zmm0,0x210(%rsp)
+    0.29 :   64368:  mov    $0xffff82ff,%ebp
+    0.00 :   6436d:  mov    %ecx,0x11c(%rsp)
+    0.00 :   64374:  movzbl 0x6(%rsp),%r10d
+    0.00 :   6437a:  xor    $0x1,%al
+    0.00 :   6437c:  movzbl %al,%eax
+    0.06 :   6437f:  mov    %r10d,%ecx
+    0.00 :   64382:  xor    $0x1,%cl
+    0.00 :   64385:  cmp    %r15d,%r11d
+    0.14 :   64388:  movzbl %cl,%ecx
+    0.00 :   6438b:  mov    %rcx,0x138(%rsp)
+    0.00 :   64393:  lea    -0x2(%rcx,%rcx,1),%ecx
+    0.00 :   64397:  cmovl  %ecx,%edx
+    0.00 :   6439a:  mov    %edx,0x118(%rsp)
+    0.00 :   643a1:  mov    0x48(%rsp),%rdx
+    0.00 :   643a6:  mov    %edx,%ecx
+    0.00 :   643a8:  neg    %ecx
+    0.00 :   643aa:  cmovs  %edx,%ecx
+    0.00 :   643ad:  movslq %ecx,%rcx
+    0.00 :   643b0:  imul   $0xffffffffac3b31a9,%rcx,%rdx
+    0.00 :   643b7:  shr    $0x20,%rdx
+    0.00 :   643bb:  add    %ecx,%edx
+    0.00 :   643bd:  mov    %edx,%esi
+    0.04 :   643bf:  sar    $0x11,%esi
+    0.00 :   643c2:  shr    $0x1f,%edx
+    0.09 :   643c5:  testb  $0x1,0xa0(%rsp)
+    0.00 :   643cd:  lea    0x3(%rsi,%rdx,1),%edi
+    0.00 :   643d1:  lea    0xa0(%rsi,%rdx,1),%r14d
+    0.00 :   643d9:  lea    -0x48(%rsi,%rdx,1),%r8d
+    0.12 :   643de:  lea    0x74(%rsi,%rdx,1),%edx
+    0.12 :   643e2:  cmovne %edi,%r14d
+    0.05 :   643e6:  cmovne %r8d,%edx
+    0.00 :   643ea:  imul   $0xffffffffafbea2c3,%rcx,%rcx
+    0.00 :   643f1:  mov    $0xfffffc65,%edi
+    0.00 :   643f6:  mov    %r14,0x170(%rsp)
+    0.00 :   643fe:  mov    %rdx,0x168(%rsp)
+    0.00 :   64406:  mov    %rcx,%rdx
+    0.06 :   64409:  shr    $0x3f,%rdx
+    0.00 :   6440d:  sar    $0x2d,%rcx
+    0.00 :   64411:  add    %edx,%ecx
+    0.00 :   64413:  cmpw   $0x0,0x40(%rsp)
+    0.00 :   64419:  mov    %eax,0x12c(%rsp)
+    0.00 :   64420:  mov    $0x13be,%eax
+    0.00 :   64425:  mov    $0xf9b,%edx
+    0.00 :   6442a:  cmove  %eax,%edx
+    0.00 :   6442d:  xor    %esi,%esi
+    0.07 :   6442f:  test   %r10b,%r10b
+    0.00 :   64432:  mov    $0xfffff8aa,%eax
+    0.05 :   64437:  cmove  %esi,%edx
+    0.00 :   6443a:  cmovne %eax,%edi
+    0.00 :   6443d:  lea    0x2ca(%rdx,%rcx,1),%eax
+    0.11 :   64444:  mov    %edi,0x124(%rsp)
+    0.16 :   6444b:  mov    $0xfffff532,%edi
+    0.00 :   64450:  mov    %eax,0x120(%rsp)
+    0.06 :   64457:  mov    $0x477,%eax
+    0.00 :   6445c:  cmovne %esi,%eax
+    0.00 :   6445f:  mov    $0xfffff1ec,%esi
+    0.00 :   64464:  xor    %edx,%edx
+    0.06 :   64466:  mov    %rax,0x180(%rsp)
+    0.05 :   6446e:  mov    0x18(%rsp),%rax
+    0.00 :   64473:  lea    0x1(%rax),%rcx
+    0.05 :   64477:  add    $0x2,%rax
+    0.00 :   6447b:  mov    %rcx,0x108(%rsp)
+    0.05 :   64483:  mov    %rax,0x188(%rsp)
+    0.00 :   6448b:  movq   $0x0,0xb0(%rsp)
+    0.32 :   64497:  movq   $0x0,0xc8(%rsp)
+    0.00 :   644a3:  movl   $0x0,0x48(%rsp)
+    0.07 :   644ab:  mov    $0xb2,%ecx
+    0.00 :   644b0:  mov    0x28(%rsp),%r14
+    0.00 :   644b5:  mov    %r15d,%eax
+    0.00 :   644b8:  sub    %r9d,%eax
+    0.00 :   644bb:  imul   $0x269,%eax,%eax
+    0.00 :   644c1:  test   %dx,%dx
+    0.00 :   644c4:  mov    %rax,0x1c0(%rsp)
+    0.00 :   644cc:  mov    $0x28,%eax
+    0.00 :   644d1:  cmove  %ecx,%eax
+    0.00 :   644d4:  cmp    %r9d,%r11d
+    0.00 :   644d7:  mov    %r9d,%ecx
+    0.00 :   644da:  mov    %rax,0x1a0(%rsp)
+    0.00 :   644e2:  mov    $0xfffff532,%eax
+    0.00 :   644e7:  cmovg  %esi,%eax
+    0.06 :   644ea:  cmp    $0x7d02,%r11d
+    0.00 :   644f1:  mov    %r9d,%esi
+    0.00 :   644f4:  not    %esi
+    0.00 :   644f6:  cmove  %edi,%eax
+    0.00 :   644f9:  neg    %ecx
+    0.00 :   644fb:  mov    %rax,0x198(%rsp)
+    0.05 :   64503:  mov    %esi,0xc0(%rsp)
+    0.17 :   6450a:  mov    %ecx,0xbc(%rsp)
+    0.08 :   64511:  mov    %ebp,%esi
+    0.00 :   64513:  mov    %r9,0x10(%rsp)
+    0.05 :   64518:  mov    %rdx,0xd0(%rsp)
+    0.20 :   64520:  mov    0x5f80(%rbx),%rdx
+    0.11 :   64527:  movslq %r13d,%rax
+    0.00 :   6452a:  mov    %rsi,0x78(%rsp)
+    0.07 :   6452f:  cmp    $0x10,%r13d
+    0.00 :   64533:  lea    0x250(%rsp),%rdi
+    0.14 :   6453b:  lea    0x5c50(%rbx),%rsi
+    0.12 :   64542:  mov    %rax,0xd8(%rsp)
+    0.06 :   6454a:  mov    $0x10,%eax
+    0.00 :   6454f:  cmovb  %r13d,%eax
+    0.00 :   64553:  mov    %rax,0x140(%rsp)
+    0.45 :   6455b:  vzeroupper
+    0.00 :   6455e:  call   *%r12
+    0.45 :   64561:  cmp    $0xff,%r13d
+    0.00 :   64568:  ja     6579d <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2acd>
+    0.00 :   6456e:  test   $0x1,%al
+    0.19 :   64570:  je     6537f <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x26af>
+    0.00 :   64576:  imul   $0xffffef27,%r13d,%ecx
+    0.05 :   6457d:  lea    -0x1(%r13),%eax
+    0.00 :   64581:  mov    %eax,0xe0(%rsp)
+    0.23 :   64588:  mov    %r13d,%eax
+    0.05 :   6458b:  imul   %r13d,%eax
+    0.00 :   6458f:  mov    %ecx,0x130(%rsp)
+    0.18 :   64596:  mov    0x140(%rsp),%rcx
+    0.00 :   6459e:  add    $0x3,%eax
+    0.20 :   645a1:  movzwl %ax,%eax
+    0.36 :   645a4:  dec    %rcx
+    0.07 :   645a7:  mov    %rcx,0x1a8(%rsp)
+    0.22 :   645af:  imul   $0xffffff51,%r13d,%ecx
+    0.00 :   645b6:  mov    %ecx,0x134(%rsp)
+    0.12 :   645bd:  mov    0x12c(%rsp),%ecx
+    0.35 :   645c4:  shrx   %ecx,%eax,%eax
+    0.07 :   645c9:  mov    %eax,0xc4(%rsp)
+    0.05 :   645d0:  mov    0x48(%rsp),%eax
+    0.15 :   645d4:  mov    %rax,0x80(%rsp)
+    0.18 :   645dc:  mov    %r13,0x8(%rsp)
+    0.11 :   645e1:  jmp    64654 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1984>
+    0.00 :   645e3:  mov    %edi,%eax
+    0.00 :   645e5:  shl    $0x5,%edi
+    0.07 :   645e8:  mov    0x134(%rsp),%edx
+    0.00 :   645ef:  mov    %r15d,%esi
+    0.00 :   645f2:  lea    (%rdi,%rax,2),%ecx
+    0.00 :   645f5:  lea    0x3ff(%rdi,%rax,2),%eax
+    0.00 :   645fc:  lea    0x5c50(%rbx),%rdi
+    0.06 :   64603:  test   %ecx,%ecx
+    0.00 :   64605:  cmovns %ecx,%eax
+    0.00 :   64608:  sar    $0xa,%eax
+    0.00 :   6460b:  sub    %eax,%edx
+    0.00 :   6460d:  call   *0x91c2d(%rip)        # f6240 <_DYNAMIC+0x7c8>
+    0.00 :   64613:  test   %al,%al
+    0.00 :   64615:  jne    64caa <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1fda>
+    0.00 :   6461b:  mov    0x48(%rsp),%eax
+    0.00 :   6461f:  mov    %rax,0x80(%rsp)
+    0.00 :   64627:  mov    0x28(%rsp),%r14
+    0.00 :   6462c:  mov    0x91c05(%rip),%r12        # f6238 <_DYNAMIC+0x7c0>
+    0.08 :   64633:  mov    0x5f80(%rbx),%rdx
+    0.26 :   6463a:  lea    0x250(%rsp),%rdi
+    0.09 :   64642:  lea    0x5c50(%rbx),%rsi
+    0.00 :   64649:  call   *%r12
+    0.18 :   6464c:  test   $0x1,%al
+    0.00 :   6464e:  je     65373 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x26a3>
+    0.00 :   64654:  mov    0x5f70(%rbx),%rax
+    0.21 :   6465b:  cmp    0x1a(%rax,%r14,4),%dx
+    1.60 :   64661:  je     64633 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1963>
+    0.00 :   64663:  mov    %rdx,%r8
+    0.06 :   64666:  movzbl 0x5eb8(%rbx),%edx
+    0.05 :   6466d:  lea    0x5c50(%rbx),%rcx
+    0.05 :   64674:  movzwl %r8w,%ebp
+    0.17 :   64678:  mov    %r8d,%esi
+    0.00 :   6467b:  mov    %r14,%r15
+    0.12 :   6467e:  mov    %r8,%r13
+    0.00 :   64681:  mov    %rbp,0x50(%rsp)
+    0.54 :   64686:  shr    $0x6,%ebp
+    0.26 :   64689:  and    $0x3f,%sil
+    0.00 :   6468d:  mov    %ebp,%edi
+    0.07 :   6468f:  and    $0x3f,%dil
+    0.00 :   64693:  lea    (%rdx,%rdx,2),%rax
+    0.06 :   64697:  shl    $0x4,%eax
+    0.20 :   6469a:  tzcnt  0x168(%rcx,%rax,1),%rax
+    0.21 :   646a4:  mov    %eax,%ecx
+    0.28 :   646a6:  and    $0x3f,%cl
+    0.00 :   646a9:  test   %r8w,%r8w
+    0.15 :   646ad:  js     64c5b <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1f8b>
+    0.00 :   646b3:  mov    %r12,%r14
+    0.12 :   646b6:  cmp    %cl,%sil
+    0.00 :   646b9:  jne    646ec <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1a1c>
+    0.00 :   646bb:  mov    0x5e00(%rbx),%rax
+    0.69 :   646c2:  xor    $0x1,%dl
+    0.00 :   646c5:  mov    %edi,%r12d
+    0.00 :   646c8:  movzbl %dl,%ecx
+    0.06 :   646cb:  btc    %rsi,%rax
+    0.13 :   646cf:  movzbl %dil,%esi
+    0.05 :   646d3:  lea    0x5c50(%rbx),%rdi
+    0.02 :   646da:  mov    %rax,%rdx
+    0.06 :   646dd:  call   *0x91a95(%rip)        # f6178 <_DYNAMIC+0x700>
+    0.00 :   646e3:  mov    %r12d,%edi
+    0.06 :   646e6:  test   %al,%al
+    0.00 :   646e8:  jne    6473e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1a6e>
+    0.00 :   646ea:  jmp    64716 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1a46>
+    0.00 :   646ec:  mov    0x5c68(%rbx,%rdx,8),%rdx
+    0.65 :   646f4:  movzbl %sil,%ecx
+    0.06 :   646f8:  bt     %rcx,%rdx
+    0.00 :   646fc:  jae    64716 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1a46>
+    0.00 :   646fe:  shl    $0x9,%ecx
+    0.03 :   64701:  add    0x91a78(%rip),%rcx        # f6180 <_DYNAMIC+0x708>
+    0.06 :   64708:  movzbl %dil,%edx
+    0.00 :   6470c:  mov    (%rcx,%rdx,8),%rcx
+    0.13 :   64710:  bt     %rax,%rcx
+    0.00 :   64714:  jae    6473e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1a6e>
+    0.12 :   64716:  mov    0x50(%rsp),%rax
+    0.25 :   6471b:  shr    $0xe,%eax
+    0.06 :   6471e:  lea    -0x54cf1(%rip),%rcx        # fa34 <chessengine::eval::nnue::sota_context::ZERO_THREAT+0x16e6>
+    0.06 :   64725:  mov    %dil,0x26(%rsp)
+    0.18 :   6472a:  movslq (%rcx,%rax,4),%rax
+    1.53 :   6472e:  add    %rcx,%rax
+    0.06 :   64731:  jmp    *%rax
+    0.10 :   64733:  shrx   %rbp,0x5e00(%rbx),%rax
+    0.39 :   6473c:  jmp    6478d <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1abd>
+    0.00 :   6473e:  mov    0x8(%rsp),%r13
+    0.19 :   64743:  mov    %r14,%r12
+    0.00 :   64746:  mov    %r15,%r14
+    0.06 :   64749:  jmp    64633 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1963>
+    0.00 :   6474e:  mov    $0x1,%al
+    0.00 :   64750:  jmp    6478d <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1abd>
+    0.00 :   64752:  movq   $0x0,0x58(%rsp)
+    0.00 :   6475b:  jmp    64792 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1ac2>
+    0.00 :   6475d:  mov    0x5e00(%rbx),%rax
+    0.00 :   64764:  movzwl %bp,%ecx
+    0.00 :   64767:  mov    $0x1,%dl
+    0.00 :   64769:  mov    %rdx,0x58(%rsp)
+    0.00 :   6476e:  bt     %rcx,%rax
+    0.00 :   64772:  jb     64792 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1ac2>
+    0.00 :   64774:  mov    $0x20c,%eax
+    0.07 :   64779:  lea    -0x51020(%rip),%rcx        # 13760 <anon.ed23dd53d1999b359621ac0dc763dee2.27.llvm.11021376600075084165>
+    0.00 :   64780:  bextr  %eax,%r13d,%eax
+    0.00 :   64785:  cmpb   $0x4,0x1(%rax,%rcx,1)
+    0.00 :   6478a:  sete   %al
+    0.00 :   6478d:  mov    %rax,0x58(%rsp)
+    0.11 :   64792:  mov    0x80(%rsp),%rax
+    0.00 :   6479a:  lea    0x5c50(%rbx),%rdi
+    0.21 :   647a1:  lea    0x1(%rax),%r12d
+    0.00 :   647a5:  mov    0x5f70(%rbx),%rax
+    0.32 :   647ac:  mov    %r12d,0xc(%rax,%r15,4)
+    0.61 :   647b1:  mov    %r13,%r15
+    0.00 :   647b4:  mov    %r15d,%esi
+    0.00 :   647b7:  call   *0x916c3(%rip)        # f5e80 <_DYNAMIC+0x408>
+    0.61 :   647bd:  movslq %r12d,%r10
+    0.43 :   647c0:  mov    %r12d,0x48(%rsp)
+    0.00 :   647c5:  cmp    $0xff,%r10d
+    0.00 :   647cc:  ja     662d0 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3600>
+    0.00 :   647d2:  mov    %eax,%r14d
+    0.06 :   647d5:  mov    0x6090(%rbx),%ecx
+    0.00 :   647db:  mov    0x1c0(%rsp),%rax
+    0.10 :   647e3:  test   %ecx,%ecx
+    0.04 :   647e5:  je     662c3 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x35f3>
+    0.00 :   647eb:  mov    %ecx,%edx
+    0.16 :   647ed:  lea    -0x80000000(%rax),%esi
+    0.30 :   647f3:  not    %edx
+    0.17 :   647f5:  or     %esi,%edx
+    0.05 :   647f7:  je     662b6 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x35e6>
+    0.00 :   647fd:  mov    0xd8(%rsp),%rdx
+    0.11 :   64805:  mov    0x5800(%rbx,%rdx,4),%esi
+    0.29 :   6480c:  cltd
+    0.00 :   6480d:  imul   0x5800(%rbx,%r10,4),%esi
+    0.13 :   64816:  idiv   %ecx
+    1.05 :   64818:  mov    0x5f70(%rbx),%rdi
+    0.00 :   6481f:  imul   $0xc2,%esi,%ecx
+    0.18 :   64825:  lea    0x1ff(%rcx),%r12d
+    0.19 :   6482c:  test   %ecx,%ecx
+    0.00 :   6482e:  cmovns %ecx,%r12d
+    0.17 :   64832:  mov    $0x0,%ecx
+    0.00 :   64837:  sar    $0x9,%r12d
+    0.06 :   6483b:  cmpb   $0x0,0x7(%rsp)
+    0.63 :   64840:  cmovne %ecx,%r12d
+    0.31 :   64844:  mov    0x28(%rsp),%rcx
+    0.00 :   64849:  add    %esi,%r12d
+    0.45 :   6484c:  sub    %eax,%r12d
+    0.00 :   6484f:  lea    0x7f1(%r12),%eax
+    0.13 :   64857:  add    $0x403,%r12d
+    0.00 :   6485e:  cmpb   $0x0,0x1f(%rdi,%rcx,4)
+    0.04 :   64863:  cmovne %eax,%r12d
+    0.31 :   64867:  cmpl   $0xffff84ee,0x78(%rsp)
+    0.00 :   6486f:  mov    %r10,0x1b8(%rsp)
+    0.00 :   64877:  jl     64c91 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1fc1>
+    0.06 :   6487d:  movzbl 0x5eb8(%rbx),%edx
+    0.12 :   64884:  mov    0x5cf0(%rbx,%rdx,4),%eax
+    0.04 :   6488b:  test   %eax,%eax
+    0.00 :   6488d:  je     64ca5 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1fd5>
+    0.00 :   64893:  mov    0xc4(%rsp),%ecx
+    0.05 :   6489a:  cmp    %ecx,0x48(%rsp)
+    0.07 :   6489e:  jb     648a8 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1bd8>
+    0.00 :   648a0:  movb   $0x1,0xae7(%rsp)
+    0.52 :   648a8:  mov    0xe0(%rsp),%esi
+    0.44 :   648af:  lea    0x3ff(%r12),%r8d
+    0.00 :   648b7:  test   %r12d,%r12d
+    0.00 :   648ba:  mov    0x28(%rsp),%rcx
+    0.00 :   648bf:  cmovns %r12d,%r8d
+    0.14 :   648c3:  sar    $0xa,%r8d
+    0.06 :   648c7:  sub    %r8d,%esi
+    0.12 :   648ca:  testb  $0x1,0x58(%rsp)
+    0.20 :   648cf:  lea    (%rdi,%rcx,4),%rcx
+    0.06 :   648d3:  je     64981 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1cb1>
+    0.00 :   648d9:  mov    %r15d,%edx
+    0.11 :   648dc:  and    $0x3f,%edx
+    0.00 :   648df:  movzbl 0x5d10(%rbx,%rdx,2),%r8d
+    0.00 :   648e8:  cmp    $0x2,%r8b
+    0.00 :   648ec:  je     66056 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3386>
+    0.00 :   648f2:  movzbl 0x5d11(%rbx,%rdx,2),%edx
+    0.00 :   648fa:  test   $0x1,%r8b
+    0.00 :   648fe:  lea    0x6(%rdx),%rdi
+    0.00 :   64902:  cmove  %rdx,%rdi
+    0.06 :   64906:  cmp    $0xc,%rdi
+    0.00 :   6490a:  jae    662e5 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3615>
+    0.00 :   64910:  movzwl %bp,%r11d
+    0.00 :   64914:  mov    0x5f80(%rbx),%r10
+    0.00 :   6491b:  mov    $0x6,%ebp
+    0.00 :   64920:  and    $0x3f,%r11d
+    0.00 :   64924:  movzbl 0x5d10(%rbx,%r11,2),%r9d
+    0.03 :   6492d:  movzbl 0x5d11(%rbx,%r11,2),%r8d
+    0.05 :   64936:  cmp    $0x2,%r9b
+    0.00 :   6493a:  mov    %r8d,%r13d
+    0.00 :   6493d:  cmove  %ebp,%r13d
+    0.00 :   64941:  imul   $0x380,%rdi,%rdi
+    0.05 :   64948:  add    0x10(%r10),%rdi
+    0.00 :   6494c:  lea    (%r11,%r11,1),%r10
+    0.00 :   64950:  shl    $0x4,%r11d
+    0.00 :   64954:  sub    %r10,%r11
+    0.07 :   64957:  add    %rdi,%r11
+    0.00 :   6495a:  cmp    $0x7,%esi
+    0.00 :   6495d:  movswl (%r11,%r13,2),%edi
+    0.65 :   64962:  setge  %r10b
+    0.00 :   64966:  mov    %r14d,%r11d
+    0.00 :   64969:  or     %r10b,%r11b
+    0.00 :   6496c:  je     64b09 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1e39>
+    0.00 :   64972:  mov    0x8(%rsp),%r13
+    0.00 :   64977:  mov    0x10(%rsp),%r9
+    0.00 :   6497c:  jmp    64b60 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1e90>
+    0.12 :   64981:  test   %r14b,%r14b
+    0.32 :   64984:  je     64a17 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1d47>
+    0.00 :   6498a:  mov    %r15d,%ecx
+    0.00 :   6498d:  and    $0x3f,%ecx
+    0.00 :   64990:  mov    0x10(%rsp),%r9
+    0.00 :   64995:  movzbl 0x5d10(%rbx,%rcx,2),%esi
+    0.00 :   6499d:  cmp    $0x2,%sil
+    0.00 :   649a1:  je     66056 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3386>
+    0.00 :   649a7:  movzbl 0x5d11(%rbx,%rcx,2),%edx
+    0.00 :   649af:  mov    0x8(%rsp),%r13
+    0.07 :   649b4:  test   $0x1,%sil
+    0.00 :   649b8:  lea    0x6(%rdx),%rdi
+    0.00 :   649bc:  cmove  %rdx,%rdi
+    0.00 :   649c0:  cmp    $0xc,%rdi
+    0.00 :   649c4:  jae    662e5 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3615>
+    0.00 :   649ca:  movzwl %bp,%esi
+    0.00 :   649cd:  mov    0x5f80(%rbx),%rcx
+    0.00 :   649d4:  mov    $0x6,%r10d
+    0.00 :   649da:  and    $0x3f,%esi
+    0.00 :   649dd:  cmpb   $0x2,0x5d10(%rbx,%rsi,2)
+    0.00 :   649e5:  movzbl 0x5d11(%rbx,%rsi,2),%r8d
+    0.00 :   649ee:  cmove  %r10d,%r8d
+    0.15 :   649f2:  imul   $0x380,%rdi,%rdi
+    0.00 :   649f9:  add    0x10(%rcx),%rdi
+    0.00 :   649fd:  lea    (%rsi,%rsi,1),%rcx
+    0.00 :   64a01:  shl    $0x4,%esi
+    0.00 :   64a04:  sub    %rcx,%rsi
+    0.00 :   64a07:  movzbl %r8b,%ecx
+    0.00 :   64a0b:  add    %rdi,%rsi
+    0.00 :   64a0e:  movswl (%rsi,%rcx,2),%edi
+    0.46 :   64a12:  jmp    64b60 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1e90>
+    0.00 :   64a17:  mov    %r15d,%eax
+    0.00 :   64a1a:  and    $0x3f,%eax
+    0.00 :   64a1d:  movzbl 0x5d10(%rbx,%rax,2),%r9d
+    0.05 :   64a26:  cmp    $0x2,%r9b
+    0.07 :   64a2a:  je     66092 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x33c2>
+    0.00 :   64a30:  movzbl 0x5d11(%rbx,%rax,2),%eax
+    0.05 :   64a38:  test   $0x1,%r9b
+    0.00 :   64a3c:  mov    0x28(%rsp),%r14
+    0.07 :   64a41:  lea    0x6(%rax),%r8
+    0.00 :   64a45:  cmove  %rax,%r8
+    0.21 :   64a49:  mov    0xa8(%rsp),%rax
+    0.00 :   64a51:  lea    (%rax,%rax,8),%rax
+    0.00 :   64a55:  movzwl 0x1c(%rdi,%rax,4),%eax
+    0.10 :   64a5a:  cmp    $0xcff,%rax
+    0.08 :   64a60:  ja     662f7 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3627>
+    0.00 :   64a66:  mov    0x1b0(%rsp),%r9
+    0.00 :   64a6e:  movzwl 0xd0(%rdi,%r9,4),%edi
+    0.21 :   64a77:  cmp    $0xcff,%rdi
+    0.14 :   64a7e:  ja     6630c <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x363c>
+    0.00 :   64a84:  lea    (%rax,%rax,2),%r10
+    0.21 :   64a88:  mov    0x5f80(%rbx),%rax
+    0.00 :   64a8f:  lea    (%rdi,%rdi,2),%rdi
+    0.00 :   64a93:  movzwl %bp,%r9d
+    0.00 :   64a97:  shl    $0x7,%r8d
+    0.13 :   64a9b:  and    $0x3f,%r9d
+    0.00 :   64a9f:  shl    $0x9,%edi
+    0.06 :   64aa2:  shl    $0x9,%r10d
+    0.29 :   64aa6:  add    %r9d,%r9d
+    0.00 :   64aa9:  mov    0x18(%rax),%r11
+    0.04 :   64aad:  add    %r8,%r11
+    0.11 :   64ab0:  add    %r11,%rdi
+    0.19 :   64ab3:  add    %r11,%r10
+    0.04 :   64ab6:  movswl (%r9,%rdi,1),%r11d
+    2.61 :   64abb:  mov    0x5cd8(%rbx),%rdi
+    0.00 :   64ac2:  movswl (%r9,%r10,1),%r10d
+    0.69 :   64ac7:  and    $0x1fff,%edi
+    0.37 :   64acd:  add    %r10d,%r11d
+    0.00 :   64ad0:  lea    (%rdi,%rdi,2),%rdi
+    0.00 :   64ad4:  shl    $0x9,%edi
+    0.00 :   64ad7:  add    0x20(%rax),%rdi
+    0.07 :   64adb:  add    %r8,%rdi
+    0.00 :   64ade:  movswl (%r9,%rdi,1),%edi
+    3.09 :   64ae3:  add    %r11d,%edi
+    0.28 :   64ae6:  cmp    0x130(%rsp),%edi
+    0.31 :   64aed:  jge    64b81 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1eb1>
+    0.00 :   64af3:  mov    0x48(%rsp),%eax
+    0.19 :   64af7:  mov    %rax,0x80(%rsp)
+    0.00 :   64aff:  mov    0x8(%rsp),%r13
+    0.07 :   64b04:  jmp    6462c <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x195c>
+    0.00 :   64b09:  mov    0x8(%rsp),%r13
+    0.00 :   64b0e:  xor    %r10d,%r10d
+    0.00 :   64b11:  cmp    $0x2,%r9b
+    0.00 :   64b15:  je     64b22 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1e52>
+    0.00 :   64b17:  lea    -0x54f56(%rip),%r9        # fbc8 <chessengine::eval::nnue::sota_context::ZERO_THREAT+0x187a>
+    0.00 :   64b1e:  mov    (%r9,%r8,4),%r10d
+    0.07 :   64b22:  imul   $0x83,%edi,%r8d
+    0.07 :   64b29:  imul   $0xe8,%esi,%esi
+    0.00 :   64b2f:  mov    0x4(%rcx),%ecx
+    0.00 :   64b32:  lea    0x3ff(%r8),%r9d
+    0.07 :   64b39:  test   %r8d,%r8d
+    0.00 :   64b3c:  cmovns %r8d,%r9d
+    0.05 :   64b40:  sar    $0xa,%r9d
+    0.00 :   64b44:  add    %r10d,%r9d
+    0.08 :   64b47:  add    %esi,%r9d
+    0.07 :   64b4a:  lea    0xe7(%rcx,%r9,1),%ecx
+    0.00 :   64b52:  mov    0x10(%rsp),%r9
+    0.00 :   64b57:  cmp    %r9d,%ecx
+    0.00 :   64b5a:  jle    6461b <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x194b>
+    0.00 :   64b60:  test   %r9d,%r9d
+    0.00 :   64b63:  jns    645e3 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1913>
+    0.00 :   64b69:  movzbl %dl,%ecx
+    0.00 :   64b6c:  lea    -0x54fab(%rip),%rsi        # fbc8 <chessengine::eval::nnue::sota_context::ZERO_THREAT+0x187a>
+    0.00 :   64b73:  cmp    (%rsi,%rcx,4),%eax
+    0.10 :   64b76:  jne    645e3 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1913>
+    0.00 :   64b7c:  jmp    64caa <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1fda>
+    0.00 :   64b81:  cmpq   $0xf,0x1a8(%rsp)
+    0.06 :   64b8a:  mov    0x10(%rsp),%r8
+    0.00 :   64b8f:  ja     6631e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x364e>
+    0.00 :   64b95:  shl    $0x11,%edx
+    0.00 :   64b98:  add    (%rax),%rdx
+    0.00 :   64b9b:  mov    0x50(%rsp),%rax
+    0.00 :   64ba0:  mov    0x140(%rsp),%r9
+    0.07 :   64ba8:  movswl (%rdx,%rax,2),%eax
+    0.88 :   64bac:  lea    (%rdi,%rax,2),%eax
+    0.62 :   64baf:  lea    -0x55096(%rip),%rdi        # fb20 <chessengine::eval::nnue::sota_context::ZERO_THREAT+0x17d2>
+    0.00 :   64bb6:  cltd
+    0.37 :   64bb7:  idivl  -0x4(%rdi,%r9,4)
+    2.71 :   64bbc:  mov    0x4(%rcx),%ecx
+    0.52 :   64bbf:  add    %esi,%eax
+    0.36 :   64bc1:  mov    0x1a0(%rsp),%rsi
+    0.00 :   64bc9:  imul   $0x75,%eax,%edx
+    0.28 :   64bcc:  cmp    %r8d,%ecx
+    0.00 :   64bcf:  lea    (%rcx,%rsi,1),%esi
+    0.00 :   64bd2:  lea    0x5a(%rdx,%rsi,1),%ecx
+    0.74 :   64bd6:  lea    (%rsi,%rdx,1),%edi
+    0.00 :   64bd9:  cmovle %edi,%ecx
+    0.15 :   64bdc:  cmpq   $0x0,0xf0(%rsp)
+    0.00 :   64be5:  je     64c25 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1f55>
+    0.00 :   64be7:  mov    %eax,%ecx
+    0.23 :   64be9:  sar    $0x1f,%ecx
+    0.00 :   64bec:  lea    0x5c50(%rbx),%rdi
+    0.00 :   64bf3:  mov    %r15d,%esi
+    0.00 :   64bf6:  andn   %eax,%ecx,%eax
+    0.00 :   64bfb:  imul   %eax,%eax
+    0.06 :   64bfe:  imul   $0xffffffe7,%eax,%edx
+    0.07 :   64c01:  call   *0x91639(%rip)        # f6240 <_DYNAMIC+0x7c8>
+    0.44 :   64c07:  mov    0x8(%rsp),%r13
+    0.00 :   64c0c:  test   %al,%al
+    0.00 :   64c0e:  jne    64e56 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2186>
+    0.00 :   64c14:  mov    0x48(%rsp),%eax
+    0.12 :   64c18:  mov    %rax,0x80(%rsp)
+    0.00 :   64c20:  jmp    6462c <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x195c>
+    0.00 :   64c25:  cmp    $0xb,%eax
+    0.00 :   64c28:  jg     64be7 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1f17>
+    0.00 :   64c2a:  cmp    %r8d,%ecx
+    0.00 :   64c2d:  jg     64be7 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1f17>
+    0.00 :   64c2f:  mov    0x78(%rsp),%rsi
+    0.70 :   64c34:  mov    0x8(%rsp),%r13
+    0.06 :   64c39:  cmp    %ecx,%esi
+    0.00 :   64c3b:  setg   %al
+    0.05 :   64c3e:  cmp    $0x7b13,%esi
+    0.14 :   64c44:  setge  %dl
+    0.00 :   64c47:  or     %al,%dl
+    0.06 :   64c49:  jne    64c14 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1f44>
+    0.00 :   64c4b:  cmp    $0x7b13,%ecx
+    0.17 :   64c51:  cmovl  %ecx,%esi
+    0.00 :   64c54:  mov    %rsi,0x78(%rsp)
+    0.00 :   64c59:  jmp    64c14 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1f44>
+    0.00 :   64c5b:  movzbl %sil,%r8d
+    0.00 :   64c5f:  movzbl %cl,%ecx
+    0.00 :   64c62:  movzbl %dil,%r9d
+    0.00 :   64c66:  mov    %dil,0x26(%rsp)
+    0.00 :   64c6b:  lea    0x5c50(%rbx),%rdi
+    0.00 :   64c72:  mov    %r13d,%esi
+    0.00 :   64c75:  call   907a0 <<chessengine::board::Board>::legal_special>
+    0.00 :   64c7a:  movzbl 0x26(%rsp),%edi
+    0.00 :   64c7f:  test   %al,%al
+    0.00 :   64c81:  jne    64716 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1a46>
+    0.00 :   64c87:  mov    0x8(%rsp),%r13
+    0.00 :   64c8c:  jmp    64746 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1a76>
+    0.00 :   64c91:  mov    0x8(%rsp),%r13
+    0.15 :   64c96:  xor    %ebp,%ebp
+    0.00 :   64c98:  cmp    0x40(%rsp),%r15w
+    0.00 :   64c9e:  je     64cb8 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1fe8>
+    0.00 :   64ca0:  jmp    64e9c <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x21cc>
+    0.00 :   64ca5:  mov    0x8(%rsp),%r13
+    0.00 :   64caa:  xor    %ebp,%ebp
+    0.00 :   64cac:  cmp    0x40(%rsp),%r15w
+    0.07 :   64cb2:  jne    64e9c <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x21cc>
+    0.00 :   64cb8:  mov    0x5f70(%rbx),%rax
+    0.07 :   64cbf:  mov    0x28(%rsp),%rcx
+    0.00 :   64cc4:  cmpw   $0x0,0x1a(%rax,%rcx,4)
+    0.00 :   64cca:  jne    64e9c <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x21cc>
+    0.00 :   64cd0:  cmpb   $0x2,0x5(%rsp)
+    0.00 :   64cd5:  lea    (%rax,%rcx,4),%rax
+    0.00 :   64cd9:  movzbl 0x1f(%rax),%eax
+    0.00 :   64cdd:  setb   %cl
+    0.00 :   64ce0:  cmpl   $0xffff09db,0x11c(%rsp)
+    0.00 :   64ceb:  setb   %dl
+    0.00 :   64cee:  or     $0x6,%eax
+    0.00 :   64cf1:  cmp    %eax,%r13d
+    0.00 :   64cf4:  setb   %al
+    0.00 :   64cf7:  or     %cl,%dl
+    0.00 :   64cf9:  lea    -0x3(%r13),%ecx
+    0.00 :   64cfd:  cmp    %ecx,0x9c(%rsp)
+    0.00 :   64d04:  setl   %cl
+    0.00 :   64d07:  or     %dl,%cl
+    0.06 :   64d09:  or     %al,%cl
+    0.00 :   64d0b:  jne    64e9c <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x21cc>
+    0.00 :   64d11:  mov    0x18(%rsp),%rcx
+    0.07 :   64d16:  mov    0x40(%rsp),%r13
+    0.00 :   64d1b:  mov    %rbx,%rdi
+    0.00 :   64d1e:  lea    0x7(%rcx),%rdx
+    0.00 :   64d22:  mov    %r13d,%esi
+    0.00 :   64d25:  call   6aae0 <<chessengine::search::Worker>::is_shuffling>
+    0.00 :   64d2a:  test   %al,%al
+    0.00 :   64d2c:  jne    64e97 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x21c7>
+    0.00 :   64d32:  mov    0x5f70(%rbx),%rax
+    0.00 :   64d39:  mov    0xf8(%rsp),%rsi
+    0.00 :   64d41:  mov    $0x3c,%ecx
+    0.00 :   64d46:  mov    $0x82,%edx
+    0.00 :   64d4b:  mov    0x38(%rsp),%rbp
+    0.00 :   64d50:  mov    %rbx,%rdi
+    0.00 :   64d53:  cmpb   $0x0,0x1f(%rax,%rsi,1)
+    0.00 :   64d58:  mov    %r13w,0x1a(%rax,%rsi,1)
+    0.00 :   64d5e:  mov    %rsi,%r13
+    0.00 :   64d61:  movzbl 0x6(%rsp),%eax
+    0.00 :   64d66:  mov    0x68(%rsp),%rsi
+    0.00 :   64d6b:  cmovne %edx,%ecx
+    0.00 :   64d6e:  imul   0x8(%rsp),%ecx
+    0.00 :   64d73:  mov    0x60(%rsp),%rdx
+    0.00 :   64d78:  imul   $0x8ad9,%ecx,%ecx
+    0.00 :   64d7e:  shr    $0x15,%ecx
+    0.00 :   64d81:  sub    %ecx,%ebp
+    0.00 :   64d83:  mov    $0x701,%ecx
+    0.00 :   64d88:  bextr  %ecx,0xe0(%rsp),%r9d
+    0.00 :   64d92:  lea    -0x1(%rbp),%ecx
+    0.00 :   64d95:  mov    %ebp,%r8d
+    0.00 :   64d98:  push   0x18(%rsp)
+    0.00 :   64d9c:  push   %rax
+    0.00 :   64d9d:  call   62cd0 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>>
+    0.07 :   64da2:  mov    %rbp,%r10
+    0.00 :   64da5:  add    $0x10,%rsp
+    0.00 :   64da9:  mov    0x5f70(%rbx),%rcx
+    0.00 :   64db0:  mov    %eax,%ebp
+    0.00 :   64db2:  movw   $0x0,0x1a(%rcx,%r13,1)
+    0.00 :   64dba:  cmp    %r10d,%ebp
+    0.00 :   64dbd:  jge    64e72 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x21a2>
+    0.00 :   64dc3:  mov    0x5f80(%rbx),%rcx
+    0.00 :   64dca:  movslq 0x608c(%rbx),%rdx
+    0.00 :   64dd1:  mov    0x168(%rsp),%r9
+    0.00 :   64dd9:  mov    0x5f70(%rbx),%rax
+    0.00 :   64de0:  mov    0x8(%rsp),%r13
+    0.00 :   64de5:  movswl 0x38(%rcx),%ecx
+    0.00 :   64de9:  lea    (%r9,%r10,1),%r8d
+    0.00 :   64ded:  imul   $0x439,%ecx,%ecx
+    0.00 :   64df3:  movslq %ecx,%rcx
+    0.00 :   64df6:  imul   $0x473232e5,%rcx,%rcx
+    0.00 :   64dfd:  mov    %rcx,%rsi
+    0.00 :   64e00:  shr    $0x3f,%rsi
+    0.00 :   64e04:  sar    $0x2f,%rcx
+    0.00 :   64e08:  add    %esi,%ecx
+    0.00 :   64e0a:  mov    0x170(%rsp),%rsi
+    0.00 :   64e12:  cmp    %rdx,0x18(%rsp)
+    0.05 :   64e17:  lea    0x2d(%r9,%r10,1),%edx
+    0.00 :   64e1c:  lea    (%rsi,%r10,1),%esi
+    0.00 :   64e20:  cmovbe %r8d,%edx
+    0.00 :   64e24:  lea    (%rsi,%rcx,1),%edi
+    0.00 :   64e27:  lea    0x29(%rsi,%rcx,1),%ecx
+    0.00 :   64e2b:  cmovbe %edi,%ecx
+    0.00 :   64e2e:  mov    0x28(%rsp),%rdi
+    0.00 :   64e33:  xor    %esi,%esi
+    0.00 :   64e35:  cmp    %ecx,%ebp
+    0.00 :   64e37:  lea    -0x54(%rdx),%ecx
+    0.00 :   64e3a:  setl   %sil
+    0.00 :   64e3e:  cmpb   $0x0,0x1f(%rax,%rdi,4)
+    0.00 :   64e43:  cmove  %edx,%ecx
+    0.00 :   64e46:  xor    %eax,%eax
+    0.00 :   64e48:  cmp    %ecx,%ebp
+    0.00 :   64e4a:  setl   %al
+    0.00 :   64e4d:  inc    %r13d
+    0.00 :   64e50:  lea    0x1(%rsi,%rax,1),%ebp
+    0.00 :   64e54:  jmp    64e9c <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x21cc>
+    0.00 :   64e56:  xor    %r14d,%r14d
+    0.00 :   64e59:  movq   $0x0,0x58(%rsp)
+    0.06 :   64e62:  xor    %ebp,%ebp
+    0.00 :   64e64:  cmp    0x40(%rsp),%r15w
+    0.26 :   64e6a:  je     64cb8 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1fe8>
+    0.00 :   64e70:  jmp    64e9c <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x21cc>
+    0.00 :   64e72:  cmp    0x30(%rsp),%ebp
+    0.00 :   64e76:  lea    -0x7b13(%rbp),%ecx
+    0.00 :   64e7c:  setl   %al
+    0.00 :   64e7f:  cmp    $0xffff09db,%ecx
+    0.00 :   64e85:  setb   %cl
+    0.00 :   64e88:  or     %al,%cl
+    0.00 :   64e8a:  je     660b9 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x33e9>
+    0.00 :   64e90:  mov    0x118(%rsp),%ebp
+    0.00 :   64e97:  mov    0x8(%rsp),%r13
+    0.14 :   64e9c:  movslq %ebp,%rax
+    0.11 :   64e9f:  mov    %r13,0x8(%rsp)
+    0.15 :   64ea4:  mov    %ebp,0x50(%rsp)
+    0.00 :   64ea8:  add    %rax,0x5ef0(%rbx)
+    0.06 :   64eaf:  mov    %r15d,%eax
+    0.00 :   64eb2:  and    $0x3f,%eax
+    0.00 :   64eb5:  movzbl 0x5d10(%rbx,%rax,2),%ecx
+    0.11 :   64ebd:  cmp    $0x2,%cl
+    0.11 :   64ec0:  je     661a1 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x34d1>
+    0.00 :   64ec6:  movzbl 0x5d11(%rbx,%rax,2),%r8d
+    0.10 :   64ecf:  movzbl %cl,%ecx
+    0.00 :   64ed2:  movzbl 0x58(%rsp),%edx
+    0.15 :   64ed7:  mov    %rbx,%rdi
+    0.07 :   64eda:  mov    %r15d,%esi
+    0.00 :   64edd:  mov    %ecx,0xd8(%rsp)
+    0.07 :   64ee4:  mov    %r8d,0xc4(%rsp)
+    0.05 :   64eec:  and    $0x1,%edx
+    0.00 :   64eef:  mov    0x18(%rsp),%rbp
+    0.12 :   64ef4:  lea    0x7(%rbp),%r9
+    0.06 :   64ef8:  call   6a6a0 <<chessengine::search::Worker>::stat_score>
+    0.00 :   64efd:  mov    0x5f70(%rbx),%rcx
+    0.00 :   64f04:  mov    0xf8(%rsp),%r13
+    0.00 :   64f0c:  mov    0x68(%rsp),%rsi
+    0.08 :   64f11:  mov    %rbx,%rdi
+    0.00 :   64f14:  mov    %r15d,%edx
+    0.00 :   64f17:  mov    %rbp,%r8
+    0.10 :   64f1a:  mov    %eax,0x8(%rcx,%r13,1)
+    0.00 :   64f1f:  movzbl %r14b,%ecx
+    0.00 :   64f23:  call   74220 <<chessengine::search::Worker>::do_move>
+    1.30 :   64f28:  mov    0x8(%rsp),%rax
+    0.06 :   64f2d:  mov    $0x0,%edx
+    0.00 :   64f32:  mov    0x5f70(%rbx),%rcx
+    0.00 :   64f39:  cmp    %eax,0x9c(%rsp)
+    0.12 :   64f40:  mov    0x124(%rsp),%eax
+    0.00 :   64f47:  cmovl  %edx,%eax
+    0.00 :   64f4a:  mov    0x198(%rsp),%rdx
+    0.00 :   64f52:  add    %r12d,%edx
+    1.12 :   64f55:  add    %edx,%eax
+    0.00 :   64f57:  cmpb   $0x0,0x1f(%rcx,%r13,1)
+    0.00 :   64f5d:  cmove  %r12d,%eax
+    0.00 :   64f61:  imul   $0xffffffc2,0x48(%rsp),%edx
+    0.00 :   64f66:  add    0x120(%rsp),%edx
+    0.00 :   64f6d:  testb  $0x1,0xa0(%rsp)
+    0.00 :   64f75:  lea    (%rdx,%rax,1),%edi
+    0.00 :   64f78:  lea    0x40f(%rax,%rdx,1),%esi
+    0.78 :   64f7f:  mov    0x34(%rcx,%r13,1),%eax
+    0.00 :   64f84:  cmove  %edi,%esi
+    0.00 :   64f87:  cmp    $0x1,%eax
+    0.00 :   64f8a:  jle    64fc0 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x22f0>
+    0.00 :   64f8c:  mov    0x180(%rsp),%rdi
+    0.07 :   64f94:  mov    0x8(%rsp),%r8
+    0.00 :   64f99:  mov    0x91298(%rip),%r12        # f6238 <_DYNAMIC+0x7c0>
+    0.00 :   64fa0:  mov    0xe0(%rsp),%r13d
+    0.00 :   64fa8:  cmp    $0x2,%eax
+    0.00 :   64fab:  lea    0x523(%rdi),%edx
+    0.13 :   64fb1:  lea    0xec(%rdi),%edi
+    0.00 :   64fb7:  cmovne %edx,%edi
+    0.00 :   64fba:  add    %esi,%edi
+    0.00 :   64fbc:  mov    %edi,%esi
+    0.00 :   64fbe:  jmp    64fec <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x231c>
+    0.00 :   64fc0:  mov    0xe0(%rsp),%r13d
+    0.05 :   64fc8:  cmp    0x40(%rsp),%r15w
+    0.00 :   64fce:  jne    64fe0 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2310>
+    0.00 :   64fd0:  add    $0xfffff820,%esi
+    0.10 :   64fd6:  mov    %esi,%eax
+    0.00 :   64fd8:  sar    $0x1f,%eax
+    0.00 :   64fdb:  andn   %esi,%eax,%esi
+    0.00 :   64fe0:  mov    0x8(%rsp),%r8
+    0.00 :   64fe5:  mov    0x9124c(%rip),%r12        # f6238 <_DYNAMIC+0x7c0>
+    0.00 :   64fec:  add    0xf8(%rsp),%rcx
+    0.20 :   64ff4:  mov    0x50(%rsp),%r9d
+    0.00 :   64ff9:  imul   $0x1bd,0x8(%rcx),%eax
+    0.00 :   65000:  lea    0xfff(%rax),%edx
+    0.07 :   65006:  test   %eax,%eax
+    0.00 :   65008:  cmovns %eax,%edx
+    0.00 :   6500b:  sar    $0xc,%edx
+    0.00 :   6500e:  sub    %edx,%esi
+    0.00 :   65010:  cmpb   $0x0,0x6(%rsp)
+    0.00 :   65015:  jne    65030 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2360>
+    0.18 :   65017:  imul   $0x110,%esi,%eax
+    0.05 :   6501d:  mov    %r8d,%edi
+    0.00 :   65020:  shl    $0x8,%edi
+    0.08 :   65023:  add    $0x11d,%edi
+    0.00 :   65029:  cltd
+    0.00 :   6502a:  idiv   %edi
+    0.00 :   6502c:  add    %esi,%eax
+    0.00 :   6502e:  mov    %eax,%esi
+    0.41 :   65030:  add    %r9d,%r13d
+    0.32 :   65033:  cmp    $0x2,%r8d
+    0.00 :   65037:  jb     651aa <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x24da>
+    0.00 :   6503d:  cmpl   $0x1,0x48(%rsp)
+    0.07 :   65042:  jbe    651aa <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x24da>
+    0.00 :   65048:  lea    0x3ff(%rsi),%r14d
+    0.20 :   6504f:  test   %esi,%esi
+    0.00 :   65051:  vpmovsxbq -0x55818(%rip),%xmm0        # f842 <chessengine::eval::nnue::sota_context::ZERO_THREAT+0x14f4>
+    0.00 :   6505a:  mov    $0x2,%eax
+    0.00 :   6505f:  mov    0x60(%rsp),%rdx
+    0.00 :   65064:  mov    0xbc(%rsp),%r8d
+    0.00 :   6506c:  mov    %rbx,%rdi
+    0.07 :   6506f:  cmovns %esi,%r14d
+    0.00 :   65073:  mov    0x68(%rsp),%rsi
+    0.05 :   65078:  sar    $0xa,%r14d
+    0.00 :   6507c:  neg    %r14d
+    0.00 :   6507f:  cmp    $0x2,%r14d
+    0.00 :   65083:  cmovge %eax,%r14d
+    0.00 :   65087:  mov    $0x1,%eax
+    0.00 :   6508c:  add    %r13d,%r14d
+    0.00 :   6508f:  cmp    $0x2,%r14d
+    0.00 :   65093:  cmovl  %eax,%r14d
+    0.00 :   65097:  mov    %r13d,%eax
+    0.00 :   6509a:  sub    %r14d,%eax
+    0.00 :   6509d:  mov    %r14d,%r9d
+    0.00 :   650a0:  cltq
+    0.00 :   650a2:  vpinsrq $0x1,%rax,%xmm0,%xmm0
+    0.00 :   650a8:  vpaddq 0x5f00(%rbx),%xmm0,%xmm0
+    0.00 :   650b0:  vmovdqa %xmm0,0x5f00(%rbx)
+    0.00 :   650b8:  mov    %eax,0x14(%rcx)
+    0.04 :   650bb:  mov    0xc0(%rsp),%ecx
+    0.00 :   650c2:  push   0x108(%rsp)
+    0.00 :   650c9:  push   $0x1
+    0.00 :   650cb:  call   62cd0 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>>
+    0.06 :   650d0:  add    $0x10,%rsp
+    0.04 :   650d4:  mov    %eax,%ebp
+    0.00 :   650d6:  mov    0x5f70(%rbx),%rax
+    0.10 :   650dd:  mov    0x28(%rsp),%rcx
+    0.07 :   650e2:  neg    %ebp
+    0.05 :   650e4:  movl   $0x0,0x14(%rax,%rcx,4)
+    0.17 :   650ec:  cmp    %ebp,0x10(%rsp)
+    0.00 :   650f0:  jge    6519e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x24ce>
+    0.00 :   650f6:  mov    0x78(%rsp),%rdx
+    0.00 :   650fb:  cmp    %r14d,%r13d
+    0.00 :   650fe:  setg   %al
+    0.00 :   65101:  lea    0x34(%rdx),%ecx
+    0.00 :   65104:  lea    0x9(%rdx),%esi
+    0.00 :   65107:  cmp    %ebp,%ecx
+    0.00 :   65109:  setl   %cl
+    0.00 :   6510c:  xor    %edx,%edx
+    0.00 :   6510e:  and    %al,%cl
+    0.00 :   65110:  cmp    %ebp,%esi
+    0.00 :   65112:  setg   %dl
+    0.00 :   65115:  movzbl %cl,%eax
+    0.00 :   65118:  sub    %edx,%r13d
+    0.00 :   6511b:  add    %eax,%r13d
+    0.00 :   6511e:  cmp    %r14d,%r13d
+    0.00 :   65121:  jle    6515d <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x248d>
+    0.00 :   65123:  mov    0x68(%rsp),%rsi
+    0.00 :   65128:  mov    0x60(%rsp),%rdx
+    0.00 :   6512d:  mov    0xc0(%rsp),%ecx
+    0.05 :   65134:  mov    0xbc(%rsp),%r8d
+    0.00 :   6513c:  mov    %rbx,%rdi
+    0.00 :   6513f:  mov    %r13d,%r9d
+    0.00 :   65142:  push   0x108(%rsp)
+    0.00 :   65149:  push   0x140(%rsp)
+    0.00 :   65150:  call   62cd0 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>>
+    0.00 :   65155:  add    $0x10,%rsp
+    0.00 :   65159:  mov    %eax,%ebp
+    0.00 :   6515b:  neg    %ebp
+    0.00 :   6515d:  mov    0x18(%rsp),%rcx
+    0.00 :   65162:  mov    0x5f70(%rbx),%rsi
+    0.00 :   65169:  mov    0x5f80(%rbx),%rdi
+    0.00 :   65170:  movzbl 0x26(%rsp),%eax
+    0.00 :   65175:  mov    0xd8(%rsp),%r8d
+    0.00 :   6517d:  mov    0xc4(%rsp),%r9d
+    0.00 :   65185:  mov    $0x100,%edx
+    0.00 :   6518a:  add    $0x7,%rcx
+    0.00 :   6518e:  push   $0x587
+    0.00 :   65193:  push   %rax
+    0.00 :   65194:  call   *0x910ae(%rip)        # f6248 <_DYNAMIC+0x7d0>
+    0.00 :   6519a:  add    $0x10,%rsp
+    0.00 :   6519e:  mov    0x28(%rsp),%r14
+    0.00 :   651a3:  mov    0x60(%rsp),%r13
+    0.00 :   651a8:  jmp    6521f <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x254f>
+    0.00 :   651aa:  cmpw   $0x0,0x40(%rsp)
+    0.07 :   651b0:  lea    0x43d(%rsi),%eax
+    0.00 :   651b6:  mov    %r13d,%r9d
+    0.00 :   651b9:  mov    0xbc(%rsp),%r8d
+    0.00 :   651c1:  mov    %rbx,%rdi
+    0.00 :   651c4:  cmovne %esi,%eax
+    0.07 :   651c7:  xor    %ecx,%ecx
+    0.00 :   651c9:  mov    0x68(%rsp),%rsi
+    0.00 :   651ce:  cmp    $0x13b0,%eax
+    0.00 :   651d3:  setge  %cl
+    0.00 :   651d6:  sub    %ecx,%r9d
+    0.00 :   651d9:  cmp    $0x1468,%eax
+    0.00 :   651de:  setge  %al
+    0.00 :   651e1:  cmp    $0x3,%r13d
+    0.00 :   651e5:  mov    0x60(%rsp),%r13
+    0.00 :   651ea:  setge  %cl
+    0.00 :   651ed:  and    %al,%cl
+    0.00 :   651ef:  movzbl %cl,%eax
+    0.00 :   651f2:  mov    0xc0(%rsp),%ecx
+    0.00 :   651f9:  sub    %eax,%r9d
+    0.00 :   651fc:  mov    %r13,%rdx
+    0.00 :   651ff:  push   0x108(%rsp)
+    0.05 :   65206:  push   0x140(%rsp)
+    0.00 :   6520d:  call   62cd0 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>>
+    0.07 :   65212:  add    $0x10,%rsp
+    0.00 :   65216:  mov    0x28(%rsp),%r14
+    0.19 :   6521b:  mov    %eax,%ebp
+    0.08 :   6521d:  neg    %ebp
+    0.00 :   6521f:  lea    0x5c50(%rbx),%rdi
+    0.00 :   65226:  mov    %r15d,%esi
+    0.00 :   65229:  call   *0x91021(%rip)        # f6250 <_DYNAMIC+0x7d8>
+    0.05 :   6522f:  movzbl 0x0(%r13),%eax
+    0.11 :   65234:  test   %al,%al
+    0.25 :   65236:  jne    65fd3 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3303>
+    0.00 :   6523c:  mov    0x78(%rsp),%rsi
+    0.23 :   65241:  xor    %eax,%eax
+    0.00 :   65243:  cmp    %esi,%ebp
+    0.14 :   65245:  jne    65293 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x25c3>
+    0.00 :   65247:  movslq 0x608c(%rbx),%rcx
+    0.00 :   6524e:  mov    0x10(%rsp),%r9
+    0.00 :   65253:  mov    0x38(%rsp),%r11
+    0.00 :   65258:  mov    0x8(%rsp),%r13
+    0.00 :   6525d:  mov    0xd0(%rsp),%rdx
+    0.00 :   65265:  mov    $0xfffff532,%edi
+    0.00 :   6526a:  cmp    %rcx,0x188(%rsp)
+    0.00 :   65272:  jb     652af <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x25df>
+    0.00 :   65274:  testb  $0xe,0x5ec0(%rbx)
+    0.00 :   6527b:  jne    652af <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x25df>
+    0.00 :   6527d:  mov    %esi,%ecx
+    0.00 :   6527f:  neg    %ecx
+    0.00 :   65281:  cmovs  %esi,%ecx
+    0.00 :   65284:  xor    %eax,%eax
+    0.00 :   65286:  inc    %ecx
+    0.00 :   65288:  cmp    $0x7b13,%ecx
+    0.00 :   6528e:  setl   %al
+    0.00 :   65291:  jmp    652af <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x25df>
+    0.00 :   65293:  mov    0x10(%rsp),%r9
+    0.10 :   65298:  mov    0x38(%rsp),%r11
+    0.00 :   6529d:  mov    0x8(%rsp),%r13
+    0.00 :   652a2:  mov    0xd0(%rsp),%rdx
+    0.15 :   652aa:  mov    $0xfffff532,%edi
+    0.07 :   652af:  add    %ebp,%eax
+    0.06 :   652b1:  cmp    %esi,%eax
+    0.00 :   652b3:  jle    652bc <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x25ec>
+    0.00 :   652b5:  cmp    %r9d,%eax
+    0.00 :   652b8:  jg     6532d <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x265d>
+    0.00 :   652ba:  mov    %ebp,%esi
+    0.00 :   652bc:  cmp    %dx,%r15w
+    0.20 :   652c0:  je     64520 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1850>
+    0.00 :   652c6:  testb  $0x1,0x58(%rsp)
+    0.16 :   652cb:  je     652fd <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x262d>
+    0.00 :   652cd:  cmpq   $0x20,0xb0(%rsp)
+    0.19 :   652d6:  jae    64520 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1850>
+    0.00 :   652dc:  mov    0xb0(%rsp),%rax
+    0.07 :   652e4:  mov    %r15w,0x210(%rsp,%rax,2)
+    0.25 :   652ed:  inc    %rax
+    0.00 :   652f0:  mov    %rax,0xb0(%rsp)
+    0.00 :   652f8:  jmp    64520 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1850>
+    0.05 :   652fd:  cmpq   $0x20,0xc8(%rsp)
+    0.11 :   65306:  jae    64520 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1850>
+    0.00 :   6530c:  mov    0xc8(%rsp),%rax
+    0.13 :   65314:  mov    %r15w,0x1d0(%rsp,%rax,2)
+    0.96 :   6531d:  inc    %rax
+    0.00 :   65320:  mov    %rax,0xc8(%rsp)
+    0.00 :   65328:  jmp    64520 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1850>
+    0.00 :   6532d:  cmp    0x30(%rsp),%ebp
+    0.06 :   65331:  jge    661ba <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x34ea>
+    0.00 :   65337:  lea    -0x7b13(%rbp),%ecx
+    0.00 :   6533d:  lea    -0xd(%r13),%eax
+    0.00 :   65341:  lea    -0x2(%r13),%edx
+    0.00 :   65345:  mov    $0xfffff1ec,%esi
+    0.00 :   6534a:  mov    %ebp,%r9d
+    0.00 :   6534d:  cmp    $0xffff09db,%ecx
+    0.00 :   65353:  mov    $0xb2,%ecx
+    0.00 :   65358:  cmovb  %r13d,%edx
+    0.00 :   6535c:  cmp    $0xfffffff6,%eax
+    0.00 :   6535f:  cmovb  %r13d,%edx
+    0.00 :   65363:  mov    %edx,%r13d
+    0.00 :   65366:  mov    %r15d,%edx
+    0.00 :   65369:  mov    0x30(%rsp),%r15
+    0.00 :   6536e:  jmp    644b5 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x17e5>
+    0.00 :   65373:  mov    0x80(%rsp),%rax
+    0.11 :   6537b:  mov    %eax,0x48(%rsp)
+    0.00 :   6537f:  mov    0x78(%rsp),%rbp
+    0.00 :   65384:  mov    0xd0(%rsp),%r15
+    0.07 :   6538c:  mov    0x10(%rsp),%rsi
+    0.07 :   65391:  cmp    0x30(%rsp),%ebp
+    0.00 :   65395:  jl     653da <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x270a>
+    0.00 :   65397:  lea    -0x7b13(%rbp),%eax
+    0.00 :   6539d:  cmp    $0xffff09db,%eax
+    0.00 :   653a2:  jb     653da <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x270a>
+    0.00 :   653a4:  lea    -0x7b13(%rsi),%eax
+    0.00 :   653aa:  cmp    $0xffff09db,%eax
+    0.00 :   653af:  jb     653da <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x270a>
+    0.00 :   653b1:  mov    %r13d,%ecx
+    0.00 :   653b4:  inc    %ecx
+    0.00 :   653b6:  je     66337 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3667>
+    0.00 :   653bc:  imul   %r13d,%ebp
+    0.00 :   653c0:  add    0x30(%rsp),%ebp
+    0.00 :   653c4:  cmp    $0xffffffff,%ecx
+    0.00 :   653c7:  jne    653d3 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2703>
+    0.00 :   653c9:  mov    %ebp,%eax
+    0.00 :   653cb:  neg    %eax
+    0.00 :   653cd:  jo     66344 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3674>
+    0.00 :   653d3:  mov    %ebp,%eax
+    0.00 :   653d5:  cltd
+    0.00 :   653d6:  idiv   %ecx
+    0.00 :   653d8:  mov    %eax,%ebp
+    0.00 :   653da:  mov    0xb0(%rsp),%r11
+    0.04 :   653e2:  cmpl   $0x0,0x48(%rsp)
+    0.31 :   653e7:  je     654d3 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2803>
+    0.07 :   653ed:  test   %r15w,%r15w
+    0.07 :   653f1:  je     655ff <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x292f>
+    0.00 :   653f7:  cmpq   $0x21,0xc8(%rsp)
+    0.00 :   65400:  jae    6616e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x349e>
+    0.10 :   65406:  cmp    $0x21,%r11
+    0.00 :   6540a:  jae    6618a <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x34ba>
+    0.00 :   65410:  xor    %eax,%eax
+    0.00 :   65412:  testb  $0x3f,0x98(%rsp)
+    0.00 :   6541a:  mov    0x5f70(%rbx),%rdx
+    0.00 :   65421:  mov    0x5f80(%rbx),%rdi
+    0.00 :   65428:  mov    %r13,%r12
+    0.06 :   6542b:  setne  %al
+    0.00 :   6542e:  sub    $0x8,%rsp
+    0.00 :   65432:  mov    0x20(%rsp),%r8
+    0.00 :   65437:  movzbl 0x9c(%rsp),%r14d
+    0.00 :   65440:  lea    0x218(%rsp),%r10
+    0.00 :   65448:  mov    $0x100,%ecx
+    0.00 :   6544d:  lea    0x5c50(%rbx),%rsi
+    0.00 :   65454:  mov    %r15d,%r9d
+    0.00 :   65457:  add    $0x7,%r8
+    0.00 :   6545b:  push   $0x0
+    0.00 :   6545d:  mov    0x50(%rsp),%r13
+    0.00 :   65462:  push   %r13
+    0.00 :   65464:  push   %r12
+    0.00 :   65466:  push   %r11
+    0.00 :   65468:  push   %r10
+    0.00 :   6546a:  push   0xf8(%rsp)
+    0.06 :   65471:  lea    0x208(%rsp),%r10
+    0.00 :   65479:  push   %r10
+    0.00 :   6547b:  push   %r14
+    0.09 :   6547d:  push   %rax
+    0.14 :   6547e:  call   *0x90ddc(%rip)        # f6260 <_DYNAMIC+0x7e8>
+    0.00 :   65484:  add    $0x50,%rsp
+    0.06 :   65488:  mov    0x5f80(%rbx),%rax
+    0.00 :   6548f:  cmp    %r13w,%r15w
+    0.00 :   65493:  mov    $0x318,%ecx
+    0.00 :   65498:  mov    $0xfffffcf5,%edx
+    0.00 :   6549d:  mov    %r12,%r13
+    0.07 :   654a0:  cmove  %ecx,%edx
+    0.00 :   654a3:  mov    %edx,%esi
+    0.00 :   654a5:  neg    %esi
+    0.00 :   654a7:  cmovs  %edx,%esi
+    0.00 :   654aa:  movswl 0x38(%rax),%ecx
+    0.00 :   654ae:  imul   %ecx,%esi
+    0.00 :   654b1:  add    %ecx,%edx
+    0.00 :   654b3:  lea    0x1fff(%rsi),%ecx
+    0.13 :   654b9:  test   %esi,%esi
+    0.00 :   654bb:  cmovns %esi,%ecx
+    0.00 :   654be:  shr    $0xd,%ecx
+    0.08 :   654c1:  sub    %ecx,%edx
+    0.00 :   654c3:  mov    %dx,0x38(%rax)
+    0.00 :   654c7:  mov    0x10(%rsp),%rsi
+    0.00 :   654cc:  mov    0x28(%rsp),%r14
+    0.00 :   654d1:  jmp    654fb <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x282b>
+    0.00 :   654d3:  xor    %eax,%eax
+    0.00 :   654d5:  cmpq   $0x0,0xf0(%rsp)
+    0.00 :   654de:  mov    0x128(%rsp),%edx
+    0.00 :   654e5:  mov    0x5f70(%rbx),%rcx
+    0.00 :   654ec:  cmove  %eax,%edx
+    0.00 :   654ef:  cmpw   $0x0,0x1a(%rcx,%r14,4)
+    0.00 :   654f6:  cmovne %esi,%edx
+    0.00 :   654f9:  mov    %edx,%ebp
+    0.00 :   654fb:  mov    0x5f70(%rbx),%rax
+    0.04 :   65502:  cmp    %esi,%ebp
+    0.00 :   65504:  jg     6552b <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x285b>
+    0.00 :   65506:  cmpb   $0x0,0x1f(%rax,%r14,4)
+    0.00 :   6550c:  lea    (%rax,%r14,4),%rcx
+    0.07 :   65510:  mov    $0x1,%dl
+    0.00 :   65512:  jne    65521 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2851>
+    0.00 :   65514:  mov    0x190(%rsp),%rdx
+    0.00 :   6551c:  movzbl 0x1f(%rax,%rdx,4),%edx
+    0.05 :   65521:  mov    %dl,0x1f(%rcx)
+    0.05 :   65524:  mov    0x5f70(%rbx),%rax
+    0.13 :   6552b:  cmpw   $0x0,0x1a(%rax,%r14,4)
+    0.15 :   65532:  jne    62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   65538:  lea    0x6(%r13),%ecx
+    0.00 :   6553c:  mov    %r13,%r12
+    0.06 :   6553f:  mov    0x48(%rsp),%r13d
+    0.00 :   65544:  mov    $0xf5,%r9d
+    0.00 :   6554a:  lea    (%rax,%r14,4),%rax
+    0.00 :   6554e:  cmp    $0xf5,%ecx
+    0.00 :   65554:  cmovl  %ecx,%r9d
+    0.00 :   65558:  mov    0x18(%rsp),%rcx
+    0.07 :   6555d:  test   %r13d,%r13d
+    0.00 :   65560:  cmovne %r12d,%r9d
+    0.10 :   65564:  xor    %edx,%edx
+    0.00 :   65566:  cmp    $0xffff84ee,%ebp
+    0.00 :   6556c:  cmovl  %ecx,%edx
+    0.00 :   6556f:  neg    %edx
+    0.00 :   65571:  cmp    $0x7b13,%ebp
+    0.00 :   65577:  cmovge %ecx,%edx
+    0.07 :   6557a:  movzbl 0x1f(%rax),%ecx
+    0.00 :   6557e:  add    %ebp,%edx
+    0.00 :   65580:  sub    $0x8,%rsp
+    0.00 :   65584:  xor    %r8d,%r8d
+    0.00 :   65587:  cmp    0x38(%rsp),%ebp
+    0.05 :   6558b:  movzbl 0x2d(%rsp),%eax
+    0.00 :   65590:  mov    0x118(%rsp),%rsi
+    0.10 :   65598:  lea    0x150(%rsp),%rdi
+    0.00 :   655a0:  setge  %r8b
+    0.00 :   655a4:  inc    %r8d
+    0.11 :   655a7:  push   %rax
+    0.13 :   655a8:  push   0x110(%rsp)
+    0.00 :   655af:  push   %r15
+    0.00 :   655b1:  call   *0x90c69(%rip)        # f6220 <_DYNAMIC+0x7a8>
+    0.05 :   655b7:  add    $0x20,%rsp
+    0.05 :   655bb:  test   %r13d,%r13d
+    0.00 :   655be:  je     62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   655c4:  mov    0x5f70(%rbx),%rax
+    0.00 :   655cb:  cmpw   $0x0,0x1a(%rax,%r14,4)
+    0.09 :   655d2:  jne    62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   655d8:  lea    (%rax,%r14,4),%rax
+    0.00 :   655dc:  mov    0x4(%rax),%r14d
+    0.00 :   655e0:  test   %r15w,%r15w
+    0.00 :   655e4:  je     65744 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2a74>
+    0.00 :   655ea:  lea    0x5c50(%rbx),%rdi
+    0.00 :   655f1:  mov    %r15d,%esi
+    0.00 :   655f4:  call   *0x90c76(%rip)        # f6270 <_DYNAMIC+0x7f8>
+    0.25 :   655fa:  jmp    65746 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2a76>
+    0.00 :   655ff:  testb  $0x3f,0x98(%rsp)
+    0.17 :   65607:  je     654fb <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x282b>
+    0.00 :   6560d:  cmpb   $0x2,0x27(%rsp)
+    0.10 :   65612:  je     6567a <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x29aa>
+    0.00 :   65614:  movzbl 0x94(%rsp),%ecx
+    0.20 :   6561c:  movzbl 0x5d10(%rbx,%rcx,2),%eax
+    0.00 :   65624:  cmp    $0x2,%al
+    0.00 :   65626:  je     654fb <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x282b>
+    0.00 :   6562c:  cmpb   $0x2,0x5d0c(%rbx)
+    0.00 :   65633:  movzbl 0x5d0d(%rbx),%r8d
+    0.00 :   6563b:  mov    $0xff,%edx
+    0.00 :   65640:  mov    0x5f80(%rbx),%rdi
+    0.00 :   65647:  movzbl %al,%esi
+    0.04 :   6564a:  mov    $0x385,%r9d
+    0.00 :   65650:  cmove  %edx,%r8d
+    0.00 :   65654:  cmpw   $0xc000,0xe8(%rsp)
+    0.05 :   6565e:  cmovl  %edx,%r8d
+    0.00 :   65662:  movzbl 0x5d11(%rbx,%rcx,2),%edx
+    0.00 :   6566a:  call   *0x90bf8(%rip)        # f6268 <_DYNAMIC+0x7f0>
+    0.00 :   65670:  mov    0x10(%rsp),%rsi
+    0.00 :   65675:  jmp    654fb <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x282b>
+    0.00 :   6567a:  imul   $0x3b,%r13d,%ecx
+    0.12 :   6567e:  mov    $0x1ae,%eax
+    0.07 :   65683:  mov    0x5f70(%rbx),%rsi
+    0.05 :   6568a:  mov    $0xbf,%r11d
+    0.00 :   65690:  cmp    $0x1ae,%ecx
+    0.00 :   65696:  cmovl  %ecx,%eax
+    0.06 :   65699:  mov    0xa8(%rsp),%rcx
+    0.00 :   656a1:  xor    %edx,%edx
+    0.00 :   656a3:  lea    (%rcx,%rcx,8),%rdi
+    0.00 :   656a7:  cmpl   $0x9,0xc(%rsi,%rdi,4)
+    0.23 :   656ac:  lea    (%rsi,%rdi,4),%r8
+    0.00 :   656b0:  mov    $0x0,%edi
+    0.00 :   656b5:  cmovl  %edx,%r11d
+    0.08 :   656b9:  cmpq   $0x0,0xf0(%rsp)
+    0.00 :   656c2:  jne    656da <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2a0a>
+    0.00 :   656c4:  mov    0x4(%rsi,%r14,4),%edi
+    0.00 :   656c9:  xor    %r9d,%r9d
+    0.00 :   656cc:  add    $0xffffff99,%edi
+    0.00 :   656cf:  cmp    %edi,%ebp
+    0.00 :   656d1:  mov    $0x8f,%edi
+    0.00 :   656d6:  cmovg  %r9d,%edi
+    0.00 :   656da:  cmpb   $0x0,0x1e(%r8)
+    0.00 :   656df:  jne    656f8 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2a28>
+    0.00 :   656e1:  mov    $0xffffffb2,%edx
+    0.14 :   656e6:  sub    0x4(%r8),%edx
+    0.00 :   656ea:  xor    %r8d,%r8d
+    0.00 :   656ed:  cmp    %edx,%ebp
+    0.00 :   656ef:  mov    $0x97,%edx
+    0.00 :   656f4:  cmovg  %r8d,%edx
+    0.00 :   656f8:  mov    %r13,0x8(%rsp)
+    0.00 :   656fd:  imul   $0x8d,%r13d,%r9d
+    0.00 :   65704:  mov    $0x5c0,%r8d
+    0.00 :   6570a:  movzbl 0x94(%rsp),%r13d
+    0.00 :   65713:  add    $0xffffffae,%r9d
+    0.00 :   65717:  cmp    $0x5c0,%r9d
+    0.00 :   6571e:  cmovl  %r9d,%r8d
+    0.00 :   65722:  movzbl 0x5d10(%rbx,%r13,2),%r12d
+    0.12 :   6572b:  cmp    $0x2,%r12b
+    0.00 :   6572f:  jne    659fa <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2d2a>
+    0.00 :   65735:  mov    0x8(%rsp),%r13
+    0.00 :   6573a:  mov    0x10(%rsp),%rsi
+    0.00 :   6573f:  jmp    654fb <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x282b>
+    0.00 :   65744:  xor    %eax,%eax
+    0.00 :   65746:  movzbl 0x77(%rsp),%ecx
+    0.00 :   6574b:  xor    %edx,%edx
+    0.06 :   6574d:  movzbl %al,%r8d
+    0.00 :   65751:  mov    %ebp,%edi
+    0.07 :   65753:  mov    %r14d,%esi
+    0.07 :   65756:  mov    %r12d,%r9d
+    0.00 :   65759:  mov    %cl,%dl
+    0.00 :   6575b:  mov    %r15d,%ecx
+    0.00 :   6575e:  call   *0x90b44(%rip)        # f62a8 <_DYNAMIC+0x830>
+    0.08 :   65764:  test   $0x1,%al
+    0.00 :   65766:  je     62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   6576c:  mov    %edx,%r9d
+    0.00 :   6576f:  mov    0x5f70(%rbx),%rdx
+    0.00 :   65776:  mov    0x5f80(%rbx),%rdi
+    0.00 :   6577d:  mov    0x178(%rsp),%rsi
+    0.07 :   65785:  mov    0x1c8(%rsp),%r8
+    0.00 :   6578d:  mov    $0x100,%ecx
+    0.00 :   65792:  call   *0x90ae0(%rip)        # f6278 <_DYNAMIC+0x800>
+    0.00 :   65798:  jmp    62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   6579d:  test   $0x1,%al
+    0.00 :   6579f:  je     6537f <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x26af>
+    0.00 :   657a5:  lea    0x250(%rsp),%r14
+    0.00 :   657ad:  jmp    657f8 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2b28>
+    0.00 :   657af:  mov    0x5e00(%rbx),%rax
+    0.00 :   657b6:  xor    $0x1,%dl
+    0.00 :   657b9:  movzbl %sil,%esi
+    0.00 :   657bd:  movzbl %dl,%ecx
+    0.00 :   657c0:  btc    %rdi,%rax
+    0.00 :   657c4:  lea    0x5c50(%rbx),%rdi
+    0.00 :   657cb:  mov    %rax,%rdx
+    0.00 :   657ce:  call   *0x909a4(%rip)        # f6178 <_DYNAMIC+0x700>
+    0.00 :   657d4:  test   %al,%al
+    0.00 :   657d6:  je     658a7 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2bd7>
+    0.00 :   657dc:  mov    0x5f80(%rbx),%rdx
+    0.00 :   657e3:  lea    0x5c50(%rbx),%rsi
+    0.00 :   657ea:  mov    %r14,%rdi
+    0.00 :   657ed:  call   *%r12
+    0.00 :   657f0:  test   $0x1,%al
+    0.00 :   657f2:  je     65bf4 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2f24>
+    0.00 :   657f8:  mov    0x5f70(%rbx),%rax
+    0.00 :   657ff:  mov    0x28(%rsp),%rcx
+    0.00 :   65804:  cmp    0x1a(%rax,%rcx,4),%dx
+    0.00 :   65809:  je     657dc <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2b0c>
+    0.00 :   6580b:  mov    %rdx,%r15
+    0.00 :   6580e:  movzbl 0x5eb8(%rbx),%edx
+    0.00 :   65815:  lea    0x5c50(%rbx),%rcx
+    0.00 :   6581c:  mov    %r15,%r8
+    0.00 :   6581f:  mov    %r8d,%edi
+    0.00 :   65822:  mov    %r8d,%esi
+    0.00 :   65825:  shr    $0x6,%esi
+    0.00 :   65828:  and    $0x3f,%dil
+    0.00 :   6582c:  and    $0x3f,%sil
+    0.00 :   65830:  lea    (%rdx,%rdx,2),%rax
+    0.00 :   65834:  shl    $0x4,%eax
+    0.00 :   65837:  tzcnt  0x168(%rcx,%rax,1),%rax
+    0.00 :   65841:  mov    %eax,%ecx
+    0.00 :   65843:  and    $0x3f,%cl
+    0.00 :   65846:  test   %r8w,%r8w
+    0.00 :   6584a:  js     65885 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2bb5>
+    0.00 :   6584c:  cmp    %cl,%dil
+    0.00 :   6584f:  je     657af <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2adf>
+    0.00 :   65855:  mov    0x5c68(%rbx,%rdx,8),%rdx
+    0.00 :   6585d:  movzbl %dil,%ecx
+    0.00 :   65861:  bt     %rcx,%rdx
+    0.00 :   65865:  jae    658a7 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2bd7>
+    0.00 :   65867:  shl    $0x9,%ecx
+    0.00 :   6586a:  add    0x9090f(%rip),%rcx        # f6180 <_DYNAMIC+0x708>
+    0.00 :   65871:  movzbl %sil,%edx
+    0.00 :   65875:  mov    (%rcx,%rdx,8),%rcx
+    0.00 :   65879:  bt     %rax,%rcx
+    0.00 :   6587d:  jae    657dc <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2b0c>
+    0.00 :   65883:  jmp    658a7 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2bd7>
+    0.00 :   65885:  movzbl %dil,%r8d
+    0.00 :   65889:  movzbl %sil,%r9d
+    0.00 :   6588d:  movzbl %cl,%ecx
+    0.00 :   65890:  lea    0x5c50(%rbx),%rdi
+    0.00 :   65897:  mov    %r15d,%esi
+    0.00 :   6589a:  call   907a0 <<chessengine::board::Board>::legal_special>
+    0.00 :   6589f:  test   %al,%al
+    0.00 :   658a1:  je     657dc <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2b0c>
+    0.00 :   658a7:  lea    0x5c50(%rbx),%r14
+    0.00 :   658ae:  mov    %r15d,%esi
+    0.00 :   658b1:  mov    %r14,%rdi
+    0.00 :   658b4:  call   *0x909b6(%rip)        # f6270 <_DYNAMIC+0x7f8>
+    0.00 :   658ba:  mov    0x48(%rsp),%edx
+    0.00 :   658be:  mov    0x5f70(%rbx),%rax
+    0.00 :   658c5:  mov    0x28(%rsp),%rcx
+    0.00 :   658ca:  mov    %r14,%rdi
+    0.00 :   658cd:  mov    %r15d,%esi
+    0.00 :   658d0:  inc    %edx
+    0.00 :   658d2:  mov    %edx,0xc(%rax,%rcx,4)
+    0.00 :   658d6:  call   *0x905a4(%rip)        # f5e80 <_DYNAMIC+0x408>
+    0.00 :   658dc:  mov    0xd8(%rsp),%rdi
+    0.00 :   658e4:  lea    0x8be9d(%rip),%rdx        # f1788 <anon.d336d1d4f10595854553f94acf4f735a.72.llvm.9828231707298148452+0x2c0>
+    0.00 :   658eb:  mov    $0x100,%esi
+    0.00 :   658f0:  call   *0x9039a(%rip)        # f5c90 <_DYNAMIC+0x218>
+    0.00 :   658f6:  testb  $0x1,0x5774(%rbx)
+    0.00 :   658fd:  mov    0x10(%rsp),%r9
+    0.00 :   65902:  mov    0x38(%rsp),%r11
+    0.00 :   65907:  movzbl 0x50(%rsp),%edx
+    0.00 :   6590c:  je     6595f <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2c8f>
+    0.00 :   6590e:  vmovss 0x5778(%rbx),%xmm3
+    0.00 :   65916:  vmovss 0x60ac(%rbx),%xmm0
+    0.00 :   6591e:  cmpq   $0x0,0x18(%rsp)
+    0.00 :   65924:  vxorps %xmm2,%xmm2,%xmm2
+    0.00 :   65928:  vsubss %xmm0,%xmm3,%xmm1
+    0.00 :   6592c:  vmulss 0x60c0(%rbx),%xmm1,%xmm1
+    0.00 :   65934:  vcmpltss %xmm0,%xmm2,%k1
+    0.00 :   6593b:  vaddss %xmm1,%xmm0,%xmm1
+    0.00 :   6593f:  vmovaps %xmm3,%xmm0
+    0.00 :   65943:  vmovss %xmm1,%xmm0,%xmm0{%k1}
+    0.00 :   65949:  vmovss %xmm0,0x60ac(%rbx)
+    0.00 :   65951:  jne    634a1 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x7d1>
+    0.00 :   65957:  vmovss %xmm3,0x60b4(%rbx)
+    0.00 :   6595f:  cmpq   $0x0,0x18(%rsp)
+    0.00 :   65965:  jne    634a1 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x7d1>
+    0.00 :   6596b:  vmovss 0x60b8(%rbx),%xmm0
+    0.00 :   65973:  vxorps %xmm1,%xmm1,%xmm1
+    0.00 :   65977:  vucomiss %xmm1,%xmm0
+    0.00 :   6597b:  jne    65983 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2cb3>
+    0.00 :   6597d:  jnp    634a1 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x7d1>
+    0.00 :   65983:  cmpl   $0x2,0x5774(%rbx)
+    0.00 :   6598a:  je     634a1 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x7d1>
+    0.00 :   65990:  testb  $0x1,0x5764(%rbx)
+    0.00 :   65997:  je     634a1 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x7d1>
+    0.00 :   6599d:  vmovss 0x5770(%rbx),%xmm0
+    0.00 :   659a5:  vsubss 0x5768(%rbx),%xmm0,%xmm0
+    0.00 :   659ad:  vandps -0x587fb(%rip){1to4},%xmm0,%xmm0        # d1bc <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0x137>
+    0.00 :   659b7:  vmovss %xmm0,0x60bc(%rbx)
+    0.00 :   659bf:  jmp    634a1 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x7d1>
+    0.00 :   659c4:  mov    $0x64,%edx
+    0.00 :   659c9:  sub    %ecx,%edx
+    0.00 :   659cb:  lea    0x7c09(%rax),%ecx
+    0.00 :   659d1:  add    0x18(%rsp),%eax
+    0.00 :   659d5:  mov    $0xffff84ee,%r11d
+    0.00 :   659db:  cmp    %edx,%ecx
+    0.00 :   659dd:  mov    0x40(%rsp),%rcx
+    0.00 :   659e2:  cmovle %eax,%r11d
+    0.00 :   659e6:  jmp    630c8 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3f8>
+    0.00 :   659eb:  incq   0x5ee8(%rbx)
+    0.00 :   659f2:  mov    %r11d,%ebp
+    0.00 :   659f5:  jmp    62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   659fa:  mov    0xa8(%rsp),%rcx
+    0.05 :   65a02:  add    %edi,%r11d
+    0.00 :   65a05:  mov    0x5f80(%rbx),%rdi
+    0.00 :   65a0c:  mov    %r12b,0x68(%rsp)
+    0.07 :   65a11:  lea    (%rcx,%rcx,8),%r9
+    0.00 :   65a15:  movslq 0x8(%rsi,%r9,4),%r9
+    0.16 :   65a1a:  imul   $0xffffffffac687d63,%r9,%r9
+    0.06 :   65a21:  mov    %r9,%r10
+    0.13 :   65a24:  shr    $0x3f,%r10
+    0.00 :   65a28:  sar    $0x25,%r9
+    0.14 :   65a2c:  add    %r10d,%r9d
+    0.00 :   65a2f:  add    %r9d,%eax
+    0.11 :   65a32:  add    %eax,%r11d
+    0.00 :   65a35:  lea    -0xf5(%rdx,%r11,1),%eax
+    0.07 :   65a3d:  mov    %eax,%edx
+    0.00 :   65a3f:  sar    $0x1f,%edx
+    0.00 :   65a42:  andn   %eax,%edx,%r14d
+    0.00 :   65a47:  movzbl 0x5d11(%rbx,%r13,2),%edx
+    0.00 :   65a50:  imul   %r8d,%r14d
+    0.07 :   65a54:  movzbl %r12b,%r8d
+    0.00 :   65a58:  imul   $0xec,%r14d,%eax
+    0.12 :   65a5f:  mov    %rdx,%r12
+    0.00 :   65a62:  mov    $0x100,%edx
+    0.00 :   65a67:  mov    %r12d,%r9d
+    0.00 :   65a6a:  lea    0x3fff(%rax),%r10d
+    0.19 :   65a71:  test   %eax,%eax
+    0.00 :   65a73:  cmovns %eax,%r10d
+    0.06 :   65a77:  sar    $0xe,%r10d
+    0.07 :   65a7b:  push   %r10
+    0.00 :   65a7d:  mov    %r13,0x68(%rsp)
+    0.06 :   65a82:  push   %r13
+    0.00 :   65a84:  call   *0x907be(%rip)        # f6248 <_DYNAMIC+0x7d0>
+    0.00 :   65a8a:  add    $0x10,%rsp
+    0.00 :   65a8e:  movzbl 0x5eb8(%rbx),%eax
+    0.00 :   65a95:  mov    0x5f80(%rbx),%rcx
+    0.00 :   65a9c:  mov    0xe8(%rsp),%rdi
+    0.00 :   65aa4:  xor    $0x1,%eax
+    0.00 :   65aa7:  shl    $0x11,%eax
+    0.00 :   65aaa:  add    (%rcx),%rax
+    0.00 :   65aad:  imul   $0xea,%r14d,%ecx
+    0.00 :   65ab4:  lea    0x7fff(%rcx),%edx
+    0.00 :   65aba:  test   %ecx,%ecx
+    0.00 :   65abc:  cmovns %ecx,%edx
+    0.00 :   65abf:  mov    $0xffffe3f1,%ecx
+    0.00 :   65ac4:  sar    $0xf,%edx
+    0.00 :   65ac7:  cmp    $0xffffe3f2,%edx
+    0.00 :   65acd:  cmovge %edx,%ecx
+    0.00 :   65ad0:  mov    $0x1c0f,%edx
+    0.00 :   65ad5:  cmp    $0x1c0f,%ecx
+    0.00 :   65adb:  cmovl  %ecx,%edx
+    0.00 :   65ade:  movswl (%rax,%rdi,2),%ecx
+    0.14 :   65ae2:  mov    %edx,%esi
+    0.00 :   65ae4:  neg    %esi
+    0.00 :   65ae6:  cmovs  %edx,%esi
+    0.00 :   65ae9:  imul   %ecx,%esi
+    0.00 :   65aec:  add    %ecx,%edx
+    0.00 :   65aee:  movslq %esi,%rcx
+    0.00 :   65af1:  imul   $0xffffffffb70287c9,%rcx,%rcx
+    0.00 :   65af8:  mov    %rcx,%rsi
+    0.06 :   65afb:  shr    $0x3f,%rsi
+    0.00 :   65aff:  shr    $0x2b,%rcx
+    0.00 :   65b03:  add    %esi,%ecx
+    0.00 :   65b05:  add    %edx,%ecx
+    0.00 :   65b07:  mov    %cx,(%rax,%rdi,2)
+    0.00 :   65b0b:  and    $0xc000,%edi
+    0.00 :   65b11:  cmp    $0x4000,%di
+    0.00 :   65b16:  je     6604c <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x337c>
+    0.00 :   65b1c:  mov    0x10(%rsp),%rsi
+    0.00 :   65b21:  test   %r12b,%r12b
+    0.00 :   65b24:  je     65bbc <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x2eec>
+    0.00 :   65b2a:  mov    0x5cd8(%rbx),%rax
+    0.00 :   65b31:  mov    0x5f80(%rbx),%rcx
+    0.00 :   65b38:  mov    $0x300,%edx
+    0.00 :   65b3d:  mov    0x60(%rsp),%rdi
+    0.00 :   65b42:  and    $0x1fff,%eax
+    0.00 :   65b47:  lea    (%rax,%rax,2),%rax
+    0.00 :   65b4b:  shl    $0x9,%eax
+    0.00 :   65b4e:  add    0x20(%rcx),%rax
+    0.00 :   65b52:  xor    %ecx,%ecx
+    0.00 :   65b54:  testb  $0x1,0x68(%rsp)
+    0.00 :   65b59:  cmove  %ecx,%edx
+    0.00 :   65b5c:  shl    $0x7,%r12d
+    0.00 :   65b60:  add    %rdx,%r12
+    0.00 :   65b63:  add    %rax,%r12
+    0.00 :   65b66:  imul   $0x142,%r14d,%eax
+    0.00 :   65b6d:  lea    0x1fff(%rax),%ecx
+    0.00 :   65b73:  test   %eax,%eax
+    0.00 :   65b75:  cmovns %eax,%ecx
+    0.00 :   65b78:  mov    $0xffffe000,%eax
+    0.00 :   65b7d:  sar    $0xd,%ecx
+    0.00 :   65b80:  cmp    $0xffffe001,%ecx
+    0.07 :   65b86:  cmovge %ecx,%eax
+    0.00 :   65b89:  mov    $0x2000,%ecx
+    0.00 :   65b8e:  cmp    $0x2000,%eax
+    0.00 :   65b93:  cmovl  %eax,%ecx
+    0.00 :   65b96:  movswl (%r12,%rdi,2),%eax
+    0.24 :   65b9b:  mov    %ecx,%edx
+    0.00 :   65b9d:  neg    %edx
+    0.00 :   65b9f:  cmovs  %ecx,%edx
+    0.00 :   65ba2:  imul   %eax,%edx
+    0.00 :   65ba5:  add    %eax,%ecx
+    0.00 :   65ba7:  lea    0x1fff(%rdx),%eax
+    0.00 :   65bad:  test   %edx,%edx
+    0.00 :   65baf:  cmovns %edx,%eax
+    0.00 :   65bb2:  shr    $0xd,%eax
+    0.04 :   65bb5:  sub    %eax,%ecx
+    0.00 :   65bb7:  mov    %cx,(%r12,%rdi,2)
+    0.00 :   65bbc:  mov    0x8(%rsp),%r13
+    0.00 :   65bc1:  mov    0x28(%rsp),%r14
+    0.00 :   65bc6:  jmp    654fb <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x282b>
+    0.00 :   65bcb:  cmp    $0x7d02,%r11d
+    0.05 :   65bd2:  je     65da4 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x30d4>
+    0.00 :   65bd8:  cmp    %r13d,%r11d
+    0.00 :   65bdb:  jge    65da4 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x30d4>
+    0.00 :   65be1:  mov    0x8(%rsp),%r8
+    0.00 :   65be6:  test   %dil,%dil
+    0.00 :   65be9:  jne    63a92 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xdc2>
+    0.00 :   65bef:  jmp    63f9e <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x12ce>
+    0.00 :   65bf4:  mov    0x28(%rsp),%r14
+    0.00 :   65bf9:  jmp    6537f <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x26af>
+    0.00 :   65bfe:  mov    0x10(%rsp),%r9
+    0.00 :   65c03:  mov    0x38(%rsp),%r11
+    0.00 :   65c08:  jmp    6601c <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x334c>
+    0.00 :   65c0d:  cmpl   $0x0,0x5cf0(%rbx,%r14,4)
+    0.07 :   65c16:  je     63d7d <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x10ad>
+    0.00 :   65c1c:  cmpl   $0xffff84ee,0x30(%rsp)
+    0.00 :   65c24:  jl     63d7d <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x10ad>
+    0.00 :   65c2a:  mov    0x18(%rsp),%rcx
+    0.00 :   65c2f:  cmp    %ecx,0x6094(%rbx)
+    0.00 :   65c35:  jg     63d7d <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x10ad>
+    0.00 :   65c3b:  imul   $0xab,%r13d,%ecx
+    0.00 :   65c42:  movw   $0x0,0x18(%rax)
+    0.00 :   65c48:  lea    0x5c50(%rbx),%r15
+    0.00 :   65c4f:  mov    0x5f70(%rbx),%rax
+    0.00 :   65c56:  mov    %r15,%rdi
+    0.00 :   65c59:  movzwl %cx,%r14d
+    0.00 :   65c5d:  mov    0x28(%rsp),%rcx
+    0.00 :   65c62:  mov    %r10d,0x58(%rsp)
+    0.00 :   65c67:  shr    $0x9,%r14d
+    0.00 :   65c6b:  movw   $0xc00,0x1c(%rax,%rcx,4)
+    0.00 :   65c72:  incq   0x57c8(%rbx)
+    0.00 :   65c79:  incq   0x5f10(%rbx)
+    0.00 :   65c80:  call   *0x9062a(%rip)        # f62b0 <_DYNAMIC+0x838>
+    0.00 :   65c86:  mov    0x18(%rsp),%rax
+    0.00 :   65c8b:  mov    0x30(%rsp),%r12
+    0.00 :   65c90:  mov    0x68(%rsp),%rsi
+    0.00 :   65c95:  mov    0x60(%rsp),%rdx
+    0.00 :   65c9a:  neg    %r14d
+    0.00 :   65c9d:  mov    $0x1,%r8d
+    0.00 :   65ca3:  mov    %rbx,%rdi
+    0.00 :   65ca6:  lea    -0x7(%r13,%r14,1),%r14d
+    0.00 :   65cab:  mov    %r14d,%r9d
+    0.00 :   65cae:  inc    %rax
+    0.00 :   65cb1:  mov    %r12d,%ecx
+    0.00 :   65cb4:  neg    %ecx
+    0.00 :   65cb6:  sub    %r12d,%r8d
+    0.00 :   65cb9:  push   %rax
+    0.00 :   65cba:  push   $0x0
+    0.00 :   65cbc:  call   62cd0 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>>
+    0.00 :   65cc1:  add    $0x10,%rsp
+    0.00 :   65cc5:  mov    %eax,%ebp
+    0.00 :   65cc7:  mov    %r15,%rdi
+    0.00 :   65cca:  neg    %ebp
+    0.00 :   65ccc:  call   *0x905e6(%rip)        # f62b8 <_DYNAMIC+0x840>
+    0.00 :   65cd2:  mov    0x57c8(%rbx),%rax
+    0.00 :   65cd9:  mov    0x58(%rsp),%r10d
+    0.00 :   65cde:  mov    0x38(%rsp),%r11
+    0.00 :   65ce3:  mov    0x10(%rsp),%r9
+    0.00 :   65ce8:  cmp    $0x1,%rax
+    0.00 :   65cec:  adc    $0xffffffffffffffff,%rax
+    0.00 :   65cf0:  cmp    %ebp,%r12d
+    0.00 :   65cf3:  setg   %dl
+    0.00 :   65cf6:  cmp    $0x7b13,%ebp
+    0.00 :   65cfc:  mov    %rax,0x57c8(%rbx)
+    0.00 :   65d03:  setge  %cl
+    0.00 :   65d06:  or     %dl,%cl
+    0.00 :   65d08:  jne    63d7d <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x10ad>
+    0.00 :   65d0e:  incq   0x5f18(%rbx)
+    0.00 :   65d15:  cmpl   $0x0,0x6094(%rbx)
+    0.00 :   65d1c:  jne    62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   65d22:  cmp    $0x10,%r13d
+    0.00 :   65d26:  jb     62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   65d2c:  lea    (%r14,%r14,2),%eax
+    0.00 :   65d30:  lea    0x3(%r14,%r14,2),%ecx
+    0.00 :   65d35:  mov    0x18(%rsp),%r10
+    0.00 :   65d3a:  mov    0x30(%rsp),%r15
+    0.00 :   65d3f:  mov    0x68(%rsp),%rsi
+    0.00 :   65d44:  mov    0x60(%rsp),%rdx
+    0.00 :   65d49:  mov    %r14d,%r9d
+    0.00 :   65d4c:  mov    %rbx,%rdi
+    0.00 :   65d4f:  test   %ax,%ax
+    0.00 :   65d52:  cmovns %eax,%ecx
+    0.00 :   65d55:  movswl %cx,%eax
+    0.00 :   65d58:  sar    $0x2,%eax
+    0.00 :   65d5b:  lea    -0x1(%r15),%ecx
+    0.00 :   65d5f:  mov    %r15d,%r8d
+    0.00 :   65d62:  add    %r10d,%eax
+    0.00 :   65d65:  mov    %eax,0x6094(%rbx)
+    0.00 :   65d6b:  push   %r10
+    0.00 :   65d6d:  push   $0x0
+    0.00 :   65d6f:  call   62cd0 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>>
+    0.00 :   65d74:  add    $0x10,%rsp
+    0.00 :   65d78:  mov    0x8(%rsp),%r13
+    0.00 :   65d7d:  mov    0x10(%rsp),%r9
+    0.00 :   65d82:  mov    0x38(%rsp),%r11
+    0.00 :   65d87:  mov    0x58(%rsp),%r10d
+    0.00 :   65d8c:  movl   $0x0,0x6094(%rbx)
+    0.00 :   65d96:  cmp    %r15d,%eax
+    0.00 :   65d99:  jge    62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   65d9f:  jmp    63d7d <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x10ad>
+    0.00 :   65da4:  mov    %r13d,%ecx
+    0.23 :   65da7:  sub    %edx,%ecx
+    0.00 :   65da9:  lea    0x250(%rsp),%r14
+    0.00 :   65db1:  lea    0x5c50(%rbx),%r15
+    0.00 :   65db8:  mov    0x40(%rsp),%rdx
+    0.00 :   65dbd:  mov    %r14,%rdi
+    0.00 :   65dc0:  mov    %r15,%rsi
+    0.00 :   65dc3:  call   *0x904b7(%rip)        # f6280 <_DYNAMIC+0x808>
+    0.07 :   65dc9:  mov    0x5f80(%rbx),%rdx
+    0.00 :   65dd0:  mov    %r15,%rsi
+    0.00 :   65dd3:  mov    0x30(%rsp),%r15
+    0.06 :   65dd8:  mov    %r14,%rdi
+    0.00 :   65ddb:  call   *0x90457(%rip)        # f6238 <_DYNAMIC+0x7c0>
+    0.00 :   65de1:  test   $0x1,%al
+    0.00 :   65de3:  je     65fda <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x330a>
+    0.00 :   65de9:  movzbl 0x7(%rsp),%eax
+    0.00 :   65dee:  mov    0x8(%rsp),%rcx
+    0.07 :   65df3:  mov    %edx,%r14d
+    0.00 :   65df6:  mov    $0x1,%edx
+    0.00 :   65dfb:  mov    %r13d,%r12d
+    0.00 :   65dfe:  neg    %r12d
+    0.00 :   65e01:  sub    %r13d,%edx
+    0.00 :   65e04:  sub    %eax,%ecx
+    0.00 :   65e06:  lea    -0x4(%rcx),%eax
+    0.00 :   65e09:  add    $0xfffffffd,%ecx
+    0.00 :   65e0c:  mov    %eax,0x80(%rsp)
+    0.00 :   65e13:  mov    %edx,0x58(%rsp)
+    0.00 :   65e17:  mov    0x18(%rsp),%rax
+    0.00 :   65e1c:  inc    %rax
+    0.00 :   65e1f:  mov    %rax,0x78(%rsp)
+    0.00 :   65e24:  movzbl 0x6(%rsp),%eax
+    0.00 :   65e29:  mov    %rcx,0xd8(%rsp)
+    0.00 :   65e31:  xor    $0x1,%al
+    0.00 :   65e33:  movzbl %al,%eax
+    0.00 :   65e36:  mov    %rax,0xe0(%rsp)
+    0.00 :   65e3e:  jmp    65ebf <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x31ef>
+    0.00 :   65e40:  mov    0x5f70(%rbx),%rax
+    0.00 :   65e47:  mov    0x28(%rsp),%rcx
+    0.00 :   65e4c:  add    %ebp,%edx
+    0.00 :   65e4e:  movzbl 0x1f(%rax,%rcx,4),%ecx
+    0.00 :   65e53:  sub    $0x8,%rsp
+    0.00 :   65e57:  movzbl 0x2d(%rsp),%eax
+    0.00 :   65e5c:  mov    0xe0(%rsp),%r9
+    0.00 :   65e64:  lea    0x150(%rsp),%rdi
+    0.00 :   65e6c:  mov    $0x2,%r8d
+    0.00 :   65e72:  push   %rax
+    0.00 :   65e73:  push   0x110(%rsp)
+    0.00 :   65e7a:  push   %r14
+    0.00 :   65e7c:  call   *0x9039e(%rip)        # f6220 <_DYNAMIC+0x7a8>
+    0.00 :   65e82:  add    $0x20,%rsp
+    0.00 :   65e86:  cmp    $0xffff09da,%r15d
+    0.00 :   65e8d:  mov    0x30(%rsp),%r15
+    0.00 :   65e92:  ja     660ab <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x33db>
+    0.00 :   65e98:  mov    0x5f80(%rbx),%rdx
+    0.07 :   65e9f:  lea    0x250(%rsp),%rdi
+    0.00 :   65ea7:  lea    0x5c50(%rbx),%rsi
+    0.00 :   65eae:  call   *0x90384(%rip)        # f6238 <_DYNAMIC+0x7c0>
+    0.00 :   65eb4:  mov    %edx,%r14d
+    0.00 :   65eb7:  test   $0x1,%al
+    0.00 :   65eb9:  je     65fda <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x330a>
+    0.00 :   65ebf:  mov    0x5f70(%rbx),%rax
+    0.00 :   65ec6:  mov    0x28(%rsp),%rcx
+    0.08 :   65ecb:  cmp    0x1a(%rax,%rcx,4),%r14w
+    0.06 :   65ed1:  je     65e98 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x31c8>
+    0.00 :   65ed3:  lea    0x5c50(%rbx),%rdi
+    0.00 :   65eda:  mov    %r14d,%esi
+    0.00 :   65edd:  call   *0x903a5(%rip)        # f6288 <_DYNAMIC+0x810>
+    0.07 :   65ee3:  test   %al,%al
+    0.00 :   65ee5:  je     65e98 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x31c8>
+    0.00 :   65ee7:  lea    0x5c50(%rbx),%rdi
+    0.00 :   65eee:  mov    %r14d,%esi
+    0.00 :   65ef1:  call   *0x8ff89(%rip)        # f5e80 <_DYNAMIC+0x408>
+    0.00 :   65ef7:  mov    0x68(%rsp),%rbp
+    0.00 :   65efc:  mov    0x18(%rsp),%r8
+    0.00 :   65f01:  movzbl %al,%ecx
+    0.00 :   65f04:  mov    %rbx,%rdi
+    0.00 :   65f07:  mov    %r14d,%edx
+    0.00 :   65f0a:  mov    %rbp,%rsi
+    0.00 :   65f0d:  call   74220 <<chessengine::search::Worker>::do_move>
+    0.11 :   65f12:  mov    0x60(%rsp),%rdx
+    0.00 :   65f17:  mov    0x58(%rsp),%r8d
+    0.00 :   65f1c:  mov    0x78(%rsp),%r9
+    0.00 :   65f21:  mov    %rbx,%rdi
+    0.00 :   65f24:  mov    %rbp,%rsi
+    0.00 :   65f27:  mov    %r12d,%ecx
+    0.00 :   65f2a:  call   67760 <<chessengine::search::Worker>::qsearch::<chessengine::search::NonPv>>
+    0.00 :   65f2f:  mov    %eax,%ebp
+    0.00 :   65f31:  neg    %ebp
+    0.00 :   65f33:  cmpl   $0x0,0x80(%rsp)
+    0.00 :   65f3b:  jle    65f77 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x32a7>
+    0.00 :   65f3d:  cmp    %ebp,%r13d
+    0.00 :   65f40:  jg     65f77 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x32a7>
+    0.00 :   65f42:  mov    0x68(%rsp),%rsi
+    0.00 :   65f47:  mov    0x60(%rsp),%rdx
+    0.00 :   65f4c:  mov    0x58(%rsp),%r8d
+    0.00 :   65f51:  mov    0x80(%rsp),%r9d
+    0.00 :   65f59:  mov    %rbx,%rdi
+    0.00 :   65f5c:  mov    %r12d,%ecx
+    0.00 :   65f5f:  push   0x78(%rsp)
+    0.00 :   65f63:  push   0xe8(%rsp)
+    0.00 :   65f6a:  call   62cd0 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>>
+    0.00 :   65f6f:  add    $0x10,%rsp
+    0.00 :   65f73:  mov    %eax,%ebp
+    0.00 :   65f75:  neg    %ebp
+    0.00 :   65f77:  lea    0x5c50(%rbx),%rdi
+    0.00 :   65f7e:  mov    %r14d,%esi
+    0.00 :   65f81:  call   *0x902c9(%rip)        # f6250 <_DYNAMIC+0x7d8>
+    0.05 :   65f87:  mov    0x60(%rsp),%rax
+    0.00 :   65f8c:  movzbl (%rax),%eax
+    0.09 :   65f8f:  test   %al,%al
+    0.00 :   65f91:  jne    65fd3 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3303>
+    0.00 :   65f93:  cmp    %r13d,%ebp
+    0.00 :   65f96:  jl     65e98 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x31c8>
+    0.00 :   65f9c:  mov    0x18(%rsp),%rax
+    0.00 :   65fa1:  cmp    $0xffff84ee,%ebp
+    0.00 :   65fa7:  jl     65fab <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x32db>
+    0.00 :   65fa9:  xor    %eax,%eax
+    0.00 :   65fab:  mov    0x18(%rsp),%rcx
+    0.00 :   65fb0:  mov    0x110(%rsp),%rsi
+    0.00 :   65fb8:  mov    %ebp,%r15d
+    0.00 :   65fbb:  sub    $0x7b13,%r15d
+    0.00 :   65fc2:  mov    %ecx,%edx
+    0.00 :   65fc4:  jge    65e40 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3170>
+    0.00 :   65fca:  neg    %eax
+    0.00 :   65fcc:  mov    %eax,%edx
+    0.00 :   65fce:  jmp    65e40 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x3170>
+    0.00 :   65fd3:  xor    %ebp,%ebp
+    0.00 :   65fd5:  jmp    62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   65fda:  mov    0x5f70(%rbx),%rax
+    0.13 :   65fe1:  mov    0x10(%rsp),%r9
+    0.00 :   65fe6:  mov    0x28(%rsp),%rsi
+    0.00 :   65feb:  mov    0x38(%rsp),%r11
+    0.00 :   65ff0:  jmp    63a60 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0xd90>
+    0.00 :   65ff5:  mov    0x10(%rsp),%r9
+    0.00 :   65ffa:  mov    0x38(%rsp),%r11
+    0.00 :   65fff:  vucomiss -0x58e37(%rip),%xmm0        # d1d0 <anon.e5d23767b56468da721348ab14c7be3d.165.llvm.1650871782393469239+0x14b>
+    0.00 :   66007:  vcvttss2si %xmm0,%eax
+    0.00 :   6600b:  mov    $0x7fffffff,%ecx
+    0.00 :   66010:  cmovbe %eax,%ecx
+    0.00 :   66013:  xor    %eax,%eax
+    0.00 :   66015:  vucomiss %xmm0,%xmm0
+    0.00 :   66019:  cmovnp %ecx,%eax
+    0.00 :   6601c:  mov    %ebp,%ecx
+    0.00 :   6601e:  sub    %eax,%ecx
+    0.19 :   66020:  cmp    0x30(%rsp),%ecx
+    0.12 :   66024:  jl     63cfd <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x102d>
+    0.00 :   6602a:  imul   $0x2cc,0x30(%rsp),%eax
+    0.41 :   66032:  imul   $0x134,%ebp,%ecx
+    0.00 :   66038:  lea    0x3ff(%rcx,%rax,1),%ebp
+    0.00 :   6603f:  add    %eax,%ecx
+    0.00 :   66041:  cmovns %ecx,%ebp
+    0.00 :   66044:  sar    $0xa,%ebp
+    0.00 :   66047:  jmp    62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   6604c:  mov    0x8(%rsp),%r13
+    0.00 :   66051:  jmp    654c7 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x27f7>
+    0.00 :   66056:  lea    -0x553d3(%rip),%rdi        # 10c8a <anon.edb8cceca46d9d15693073fe2a691718.64.llvm.222253722814391989>
+    0.00 :   6605d:  lea    0x8bcb4(%rip),%rdx        # f1d18 <anon.edb8cceca46d9d15693073fe2a691718.65.llvm.222253722814391989>
+    0.00 :   66064:  mov    $0x40,%esi
+    0.00 :   66069:  call   *0x8fed9(%rip)        # f5f48 <_DYNAMIC+0x4d0>
+    0.00 :   6606f:  lea    0x5c50(%rbx),%rdi
+    0.00 :   66076:  mov    0x40(%rsp),%rsi
+    0.00 :   6607b:  call   *0x901cf(%rip)        # f6250 <_DYNAMIC+0x7d8>
+    0.00 :   66081:  incq   0x5ee8(%rbx)
+    0.00 :   66088:  mov    0x38(%rsp),%rbp
+    0.07 :   6608d:  jmp    62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   66092:  lea    -0x565ad(%rip),%rdi        # faec <chessengine::eval::nnue::sota_context::ZERO_THREAT+0x179e>
+    0.00 :   66099:  lea    0x8b130(%rip),%rdx        # f11d0 <anon.d336d1d4f10595854553f94acf4f735a.3.llvm.9828231707298148452+0x88>
+    0.00 :   660a0:  mov    $0x32,%esi
+    0.00 :   660a5:  call   *0x8fe9d(%rip)        # f5f48 <_DYNAMIC+0x4d0>
+    0.00 :   660ab:  sub    %r13d,%r15d
+    0.00 :   660ae:  add    %ebp,%r15d
+    0.00 :   660b1:  mov    %r15d,%ebp
+    0.00 :   660b4:  jmp    62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   660b9:  imul   $0xffffff94,0x8(%rsp),%ecx
+    0.05 :   660be:  mov    0x5f80(%rbx),%rax
+    0.00 :   660c5:  mov    $0xffffe1ba,%edx
+    0.00 :   660ca:  movswl 0x38(%rax),%esi
+    0.05 :   660ce:  cmp    $0xffffe1bb,%ecx
+    0.00 :   660d4:  cmovge %ecx,%edx
+    0.00 :   660d7:  mov    $0x21ba,%ecx
+    0.00 :   660dc:  cmp    $0x21ba,%edx
+    0.00 :   660e2:  cmovl  %edx,%ecx
+    0.00 :   660e5:  lea    -0x1ba(%rcx),%edx
+    0.00 :   660eb:  lea    -0x1ba(%rcx,%rsi,1),%ecx
+    0.00 :   660f2:  mov    %edx,%edi
+    0.00 :   660f4:  neg    %edi
+    0.00 :   660f6:  cmovs  %edx,%edi
+    0.00 :   660f9:  imul   %esi,%edi
+    0.06 :   660fc:  lea    0x1fff(%rdi),%edx
+    0.07 :   66102:  test   %edi,%edi
+    0.00 :   66104:  cmovns %edi,%edx
+    0.00 :   66107:  shr    $0xd,%edx
+    0.00 :   6610a:  sub    %edx,%ecx
+    0.00 :   6610c:  mov    %cx,0x38(%rax)
+    0.00 :   66110:  jmp    62f21 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x251>
+    0.00 :   66115:  lea    0x1d0(%rsp),%rcx
+    0.00 :   6611d:  lea    0xa7a9c(%rip),%rax        # 10dbc0 <chessengine::eval::nnue::policy_head::ord_weight::W>
+    0.00 :   66124:  lea    0xa7a9d(%rip),%rdi        # 10dbc8 <chessengine::eval::nnue::policy_head::ord_weight::W+0x8>
+    0.00 :   6612b:  lea    0x8c34e(%rip),%r8        # f2480 <anon.ed23dd53d1999b359621ac0dc763dee2.2.llvm.11021376600075084165>
+    0.00 :   66132:  lea    0x210(%rsp),%rdx
+    0.00 :   6613a:  mov    $0x1,%esi
+    0.00 :   6613f:  mov    %rcx,0x210(%rsp)
+    0.00 :   66147:  lea    0x8c3c2(%rip),%rcx        # f2510 <anon.ed23dd53d1999b359621ac0dc763dee2.6.llvm.11021376600075084165>
+    0.00 :   6614e:  mov    %rax,0x1d0(%rsp)
+    0.00 :   66156:  vzeroupper
+    0.00 :   66159:  call   *0x8fc09(%rip)        # f5d68 <_DYNAMIC+0x2f0>
+    0.00 :   6615f:  mov    0x38(%rsp),%r11
+    0.00 :   66164:  mov    0x10(%rsp),%r9
+    0.00 :   66169:  jmp    64209 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1539>
+    0.00 :   6616e:  mov    0xc8(%rsp),%rsi
+    0.00 :   66176:  lea    0x8b0cb(%rip),%rcx        # f1248 <anon.d336d1d4f10595854553f94acf4f735a.3.llvm.9828231707298148452+0x100>
+    0.00 :   6617d:  mov    $0x20,%edx
+    0.00 :   66182:  xor    %edi,%edi
+    0.00 :   66184:  call   *0x8fdc6(%rip)        # f5f50 <_DYNAMIC+0x4d8>
+    0.00 :   6618a:  lea    0x8b09f(%rip),%rcx        # f1230 <anon.d336d1d4f10595854553f94acf4f735a.3.llvm.9828231707298148452+0xe8>
+    0.00 :   66191:  mov    $0x20,%edx
+    0.00 :   66196:  xor    %edi,%edi
+    0.00 :   66198:  mov    %r11,%rsi
+    0.00 :   6619b:  call   *0x8fdaf(%rip)        # f5f50 <_DYNAMIC+0x4d8>
+    0.00 :   661a1:  lea    -0x56648(%rip),%rdi        # fb60 <chessengine::eval::nnue::sota_context::ZERO_THREAT+0x1812>
+    0.00 :   661a8:  lea    0x8b051(%rip),%rdx        # f1200 <anon.d336d1d4f10595854553f94acf4f735a.3.llvm.9828231707298148452+0xb8>
+    0.00 :   661af:  mov    $0x32,%esi
+    0.00 :   661b4:  call   *0x8fd8e(%rip)        # f5f48 <_DYNAMIC+0x4d0>
+    0.00 :   661ba:  vpmovsxbq -0x56981(%rip),%xmm0        # f842 <chessengine::eval::nnue::sota_context::ZERO_THREAT+0x14f4>
+    0.23 :   661c3:  xor    %eax,%eax
+    0.00 :   661c5:  cmpl   $0x0,0x80(%rsp)
+    0.00 :   661cd:  sete   %al
+    0.00 :   661d0:  vpinsrq $0x1,%rax,%xmm0,%xmm0
+    0.05 :   661d6:  vpaddq 0x5ed0(%rbx),%xmm0,%xmm0
+    0.00 :   661de:  mov    0x1b8(%rsp),%rax
+    0.00 :   661e6:  vmovdqa %xmm0,0x5ed0(%rbx)
+    0.00 :   661ee:  add    %rax,0x5ee0(%rbx)
+    0.14 :   661f5:  xor    %eax,%eax
+    0.00 :   661f7:  cmpl   $0x2,0x50(%rsp)
+    0.00 :   661fc:  mov    0x5f70(%rbx),%rcx
+    0.00 :   66203:  setl   %al
+    0.00 :   66206:  add    %eax,0x10(%rcx,%r14,4)
+    0.00 :   6620b:  mov    0x10(%rsp),%rsi
+    0.00 :   66210:  cmp    0x30(%rsp),%ebp
+    0.00 :   66214:  jge    65397 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x26c7>
+    0.00 :   6621a:  jmp    653da <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x270a>
+    0.00 :   6621f:  lea    0x1d0(%rsp),%rcx
+    0.00 :   66227:  lea    0xa79a2(%rip),%rax        # 10dbd0 <chessengine::eval::nnue::policy_head::ord_min_depth::D>
+    0.00 :   6622e:  lea    0xa79a3(%rip),%rdi        # 10dbd8 <chessengine::eval::nnue::policy_head::ord_min_depth::D+0x8>
+    0.00 :   66235:  lea    0x8c244(%rip),%r8        # f2480 <anon.ed23dd53d1999b359621ac0dc763dee2.2.llvm.11021376600075084165>
+    0.00 :   6623c:  lea    0x210(%rsp),%rdx
+    0.00 :   66244:  mov    $0x1,%esi
+    0.00 :   66249:  mov    %rcx,0x210(%rsp)
+    0.00 :   66251:  lea    0x8c2e0(%rip),%rcx        # f2538 <anon.ed23dd53d1999b359621ac0dc763dee2.7.llvm.11021376600075084165>
+    0.00 :   66258:  mov    %rax,0x1d0(%rsp)
+    0.00 :   66260:  vzeroupper
+    0.00 :   66263:  call   *0x8faff(%rip)        # f5d68 <_DYNAMIC+0x2f0>
+    0.00 :   66269:  mov    0x38(%rsp),%r11
+    0.00 :   6626e:  mov    0x10(%rsp),%r9
+    0.00 :   66273:  cmp    0xa7956(%rip),%r13d        # 10dbd0 <chessengine::eval::nnue::policy_head::ord_min_depth::D>
+    0.00 :   6627a:  jge    64255 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1585>
+    0.00 :   66280:  jmp    64336 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1666>
+    0.00 :   66285:  lea    0x93924(%rip),%rdi        # f9bb0 <chessengine::search::nmp_allnode_probe::ON>
+    0.00 :   6628c:  mov    %r10d,%ebp
+    0.00 :   6628f:  call   460db <<std::sync::once_lock::OnceLock<bool>>::initialize::<<std::sync::once_lock::OnceLock<bool>>::get_or_init<chessengine::search::nmp_allnode_probe::{closure#0}>::{closure#0}, !>>
+    0.00 :   66294:  mov    0x38(%rsp),%r11
+    0.00 :   66299:  mov    0x10(%rsp),%r9
+    0.00 :   6629e:  mov    %ebp,%r10d
+    0.00 :   662a1:  cmpb   $0x0,0x6(%rsp)
+    0.00 :   662a6:  mov    0x8(%rsp),%r13
+    0.00 :   662ab:  je     63d1f <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x104f>
+    0.00 :   662b1:  jmp    63d28 <<chessengine::search::Worker>::search::<chessengine::search::NonPv>+0x1058>
+    0.00 :   662b6:  lea    0x8b4fb(%rip),%rdi        # f17b8 <anon.d336d1d4f10595854553f94acf4f735a.72.llvm.9828231707298148452+0x2f0>
+    0.00 :   662bd:  call   *0x8ffcd(%rip)        # f6290 <_DYNAMIC+0x818>
+    0.00 :   662c3:  lea    0x8b4ee(%rip),%rdi        # f17b8 <anon.d336d1d4f10595854553f94acf4f735a.72.llvm.9828231707298148452+0x2f0>
+    0.00 :   662ca:  call   *0x8ffc8(%rip)        # f6298 <_DYNAMIC+0x820>
+    0.00 :   662d0:  lea    0x8b4c9(%rip),%rdx        # f17a0 <anon.d336d1d4f10595854553f94acf4f735a.72.llvm.9828231707298148452+0x2d8>
+    0.00 :   662d7:  mov    $0x100,%esi
+    0.00 :   662dc:  mov    %r10,%rdi
+    0.00 :   662df:  call   *0x8f9ab(%rip)        # f5c90 <_DYNAMIC+0x218>
+    0.00 :   662e5:  lea    0x8ba44(%rip),%rdx        # f1d30 <anon.edb8cceca46d9d15693073fe2a691718.66.llvm.222253722814391989>
+    0.00 :   662ec:  mov    $0xc,%esi
+    0.00 :   662f1:  call   *0x8f999(%rip)        # f5c90 <_DYNAMIC+0x218>
+    0.00 :   662f7:  lea    0x8b16a(%rip),%rdx        # f1468 <anon.d336d1d4f10595854553f94acf4f735a.61.llvm.9828231707298148452+0x18>
+    0.00 :   662fe:  mov    $0xd00,%esi
+    0.00 :   66303:  mov    %rax,%rdi
+    0.00 :   66306:  call   *0x8f984(%rip)        # f5c90 <_DYNAMIC+0x218>
+    0.00 :   6630c:  lea    0x8b155(%rip),%rdx        # f1468 <anon.d336d1d4f10595854553f94acf4f735a.61.llvm.9828231707298148452+0x18>
+    0.00 :   66313:  mov    $0xd00,%esi
+    0.00 :   66318:  call   *0x8f972(%rip)        # f5c90 <_DYNAMIC+0x218>
+    0.00 :   6631e:  lea    0x8aec3(%rip),%rdx        # f11e8 <anon.d336d1d4f10595854553f94acf4f735a.3.llvm.9828231707298148452+0xa0>
+    0.00 :   66325:  mov    $0x10,%esi
+    0.00 :   6632a:  mov    $0xffffffffffffffff,%rdi
+    0.00 :   66331:  call   *0x8f959(%rip)        # f5c90 <_DYNAMIC+0x218>
+    0.00 :   66337:  lea    0x8aeda(%rip),%rdi        # f1218 <anon.d336d1d4f10595854553f94acf4f735a.3.llvm.9828231707298148452+0xd0>
+    0.00 :   6633e:  call   *0x8ff54(%rip)        # f6298 <_DYNAMIC+0x820>
+    0.00 :   66344:  lea    0x8aecd(%rip),%rdi        # f1218 <anon.d336d1d4f10595854553f94acf4f735a.3.llvm.9828231707298148452+0xd0>
+    0.00 :   6634b:  call   *0x8ff3f(%rip)        # f6290 <_DYNAMIC+0x818>

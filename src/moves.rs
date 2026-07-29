@@ -1,5 +1,6 @@
 use crate::types::{PieceType, Square};
 use std::fmt;
+use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
 
 /// A move packed into 16 bits, Stockfish-style:
@@ -134,28 +135,107 @@ pub const MAX_MOVES: usize = 256;
 ///
 /// Dereferences to `[Move]`, so slice methods (`len`, `iter`, indexing,
 /// `sort_unstable_by_key`, ...) all work on it.
+///
+/// **UNINITIALISED backing array** (perf study 20 arm 4) — the same exemption,
+/// for the same reason, that `MovePicker::buf` has carried since perf study 2
+/// option C. `moves: [Move; MAX_MOVES]` forced `MoveList::new()` to write 512
+/// bytes of `Move::NULL` before every single move generation, and LLVM cannot
+/// eliminate it: `generate` takes `&mut MoveList` across an outlined call, so
+/// it cannot prove the callee fills the buffer. Measured in the shipped binary
+/// as eight `vmovups %zmm0` plus a `vxorps`/`movq`/`vzeroupper` at the head of
+/// `init_quiets`, `init_captures` and `init_evasions` — and `generate` then
+/// overwrites exactly the prefix that is ever read.
+///
+/// SAFETY ARGUMENT. [`push`](Self::push) is the ONLY writer, and it writes
+/// index `len` before incrementing `len`; `len` moves down only in
+/// [`clear`](Self::clear) and [`swap_remove`](Self::swap_remove). So
+/// `moves[..len]` is initialised at every observable point, which is exactly
+/// the range [`Deref`] hands out. The invariant is machine-checked in debug
+/// builds by the `high_water` tracker below — every write raises it, every read
+/// asserts `len <= high_water` — so a future edit that advances `len` without
+/// writing trips a debug assertion rather than reading a stale move in release.
+/// Release compiles the tracker out.
 #[derive(Clone)]
 pub struct MoveList {
-    moves: [Move; MAX_MOVES],
+    moves: [MaybeUninit<Move>; MAX_MOVES],
     len: usize,
+    /// Debug-only: one past the highest index ever written by `push`. See the
+    /// safety argument above.
+    #[cfg(debug_assertions)]
+    high_water: usize,
 }
 
 impl MoveList {
-    pub const fn new() -> Self {
+    /// Deliberately NOT a `const fn`, and deliberately not a repeat-expression
+    /// (perf study 20 arm 4). `[MaybeUninit::uninit(); MAX_MOVES]` in a
+    /// const-evaluable constructor is materialised as a 512-byte *constant*
+    /// whose uninit bytes lower to a zero store — the shipped binary still
+    /// carried eight `vmovups %zmm0` at the head of `init_quiets` after the
+    /// field type changed. `MaybeUninit::<[MaybeUninit<_>; N]>::uninit()
+    /// .assume_init()` is the documented always-sound spelling (the outer
+    /// `MaybeUninit` is discharged by an array whose elements are themselves
+    /// allowed to be uninitialised) and lowers to a bare `alloca`.
+    #[inline]
+    #[allow(unsafe_code)]
+    pub fn new() -> Self {
         MoveList {
-            moves: [Move::NULL; MAX_MOVES],
+            // SAFETY: the value produced is `[MaybeUninit<Move>; MAX_MOVES]`,
+            // every element of which is *permitted* to be uninitialised — this
+            // is the standard-library-documented use of `assume_init`, and no
+            // element is read before `push` writes it (see the type docs).
+            moves: unsafe { MaybeUninit::<[MaybeUninit<Move>; MAX_MOVES]>::uninit().assume_init() },
             len: 0,
+            #[cfg(debug_assertions)]
+            high_water: 0,
         }
     }
 
     pub fn push(&mut self, m: Move) {
         assert!(self.len < MAX_MOVES, "MoveList overflow");
-        self.moves[self.len] = m;
+        self.moves[self.len] = MaybeUninit::new(m);
         self.len += 1;
+        #[cfg(debug_assertions)]
+        {
+            self.high_water = self.high_water.max(self.len);
+        }
     }
 
     pub fn clear(&mut self) {
         self.len = 0;
+    }
+
+    /// The initialised prefix. The one place the uninitialised backing array is
+    /// reinterpreted as `[Move]`.
+    #[inline]
+    #[allow(unsafe_code)]
+    fn initialised(&self) -> &[Move] {
+        #[cfg(debug_assertions)]
+        debug_assert!(
+            self.len <= self.high_water,
+            "MoveList len {} outran the {} moves ever written",
+            self.len,
+            self.high_water
+        );
+        let prefix = &self.moves[..self.len];
+        // SAFETY: `push` is the only writer and initialises index `len` before
+        // raising `len`, so every element of `moves[..len]` has been written.
+        // `MaybeUninit<Move>` is `#[repr(transparent)]` over `Move`, so the
+        // slice cast is a no-op reinterpretation of the same layout.
+        unsafe { &*(prefix as *const [MaybeUninit<Move>] as *const [Move]) }
+    }
+
+    /// Mutable twin of [`initialised`](Self::initialised).
+    #[inline]
+    #[allow(unsafe_code)]
+    fn initialised_mut(&mut self) -> &mut [Move] {
+        #[cfg(debug_assertions)]
+        debug_assert!(
+            self.len <= self.high_water,
+            "MoveList len outran its writes"
+        );
+        let prefix = &mut self.moves[..self.len];
+        // SAFETY: as `initialised`.
+        unsafe { &mut *(prefix as *mut [MaybeUninit<Move>] as *mut [Move]) }
     }
 
     /// O(1) unordered removal: overwrite index `i` with the last move and
@@ -171,9 +251,11 @@ impl MoveList {
             "swap_remove index {i} out of range (len {})",
             self.len
         );
-        let removed = self.moves[i];
+        let live = self.initialised_mut();
+        let removed = live[i];
+        let last = live[live.len() - 1];
+        live[i] = last;
         self.len -= 1;
-        self.moves[i] = self.moves[self.len];
         removed
     }
 }
@@ -187,14 +269,16 @@ impl Default for MoveList {
 impl Deref for MoveList {
     type Target = [Move];
 
+    #[inline]
     fn deref(&self) -> &[Move] {
-        &self.moves[..self.len]
+        self.initialised()
     }
 }
 
 impl DerefMut for MoveList {
+    #[inline]
     fn deref_mut(&mut self) -> &mut [Move] {
-        &mut self.moves[..self.len]
+        self.initialised_mut()
     }
 }
 
