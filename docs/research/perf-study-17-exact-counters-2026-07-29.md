@@ -513,9 +513,48 @@ open question, and it was wrong. The general form: **a runtime-dispatched
 kernel is invisible to any instrument that changes what the dispatch sees.**
 
 In the shipped frame the branch decomposition (sampled, so soft) is: ARCHON
-673.6 br/node vs SF 384.3, with movepick +43 (`init_quiets` 71.2 vs
-`partial_insertion_sort` 16.6 + a lower `next_move`), threat generation +40, and
-the SIMD kernels at parity (98.6 vs 93.9). §11 item 5.
+673.6 br/node vs SF 384.3, with the SIMD kernels at parity (98.6 vs 93.9).
+
+### 6.2.1 TARGET 3 — the branch ratio, answered for the integer half, EXACTLY
+
+The SIMD rows are the artifact. **Everything else in the binary is the same
+compiled code either way**, so the integer rows are usable — and they are exact,
+not sampled. `brint17.py` drops the SIMD kernels and start-up and buckets the
+rest (`cg/branches-integer-only.txt`):
+
+| block | ARCHON | SF | Δ |
+|---|---:|---:|---:|
+| **threat generation** | **123.6** | **14.6** | **+109.0** (8.5×) |
+| movepick | 81.2 | 54.8 | +26.4 |
+| make/unmake | 34.1 | 12.8 | +21.3 |
+| search body | 85.0 | 68.5 | +16.5 |
+| movegen | 21.9 | 8.3 | +13.7 |
+| board queries | 37.5 | 25.8 | +11.7 |
+| histories | 20.0 | 12.4 | +7.6 |
+| tt | 3.0 | 8.3 | −5.3 |
+| other | 30.5 | 17.1 | +13.5 |
+| **TOTAL, integer code** | **436.8** | **222.5** | **+214.3 (1.96×)** |
+
+**Half of the integer branch gap — 109.0 of 214.3 — is threat generation, and it
+is the same block §4 found with an entirely different statistic.** Two
+independent exact measurements, instructions and branches, on both engines,
+converge on one subsystem. That is the answer to "something else generates them"
+and it is not bounds checks, not movegen, not the search.
+
+The mechanism is visible in the call rates: our threat features are *re-derived*
+per fold with per-square loops (`record_square_touch` 1.06 calls/node,
+`record_targets` 1.02, `ripple` 0.49), while Stockfish maintains an incremental
+`DirtyThreats` list and its `update_piece_threats<true>` spends **3.7 branches
+per call** where our `at_full` spends **117.1**.
+
+One caveat, and this study's own headline rule caught it: the first run of this
+bucketing reported SF's `histories` row as exactly **0.0**, because the movegen
+pattern `Stockfish::\(anonymous` matches every SF anonymous-namespace function
+including `update_continuation_histories`. A block that comes out at zero is not
+a finding, it is a bug in the filter. (The run before that reported ARCHON's
+whole integer subtotal as **3.5 br/node**, because the skip pattern `sse`
+matches "che-**sse**-ngine".) Both are in `brint17.py`'s comments so the next
+reader does not have to rediscover them.
 
 ### 6.3 One `&mut` instead of two `IndexMut` calls — +1.0
 
@@ -705,7 +744,7 @@ spellings). **Re-opened by this study:** threat generation.
 | 2 | **The libc `memcpy` inside `at_full`** — 0.3111 calls/node, 83.7 i/n inclusive, ~269 instructions per call, counted not estimated. Not the empty-delta copy (study 14 already chunked that one) | 20–80 | **high — counted** | `memspy16.sh` from study 16, whose interposer already tags the caller and the payload size. The class it belongs to has paid twice (study 15 −22.7, study 16 −14.6) |
 | 3 | **`unmake_move`'s 168-byte state restore** — the other half of study 14's trade. 79.2 i/call vs SF's 53.6 | **+25.5** | **high — exact** | not a respelling: SF restores by pointer. The honest options are (a) leave it, since study 14's make-side win was larger, or (b) make `StateInfo`'s *restored* prefix smaller by moving the fields `unmake` does not need (blockers, pinners, check_squares — 48 B) out of the copied block. (b) is a design change to doc 04 and wants its own study |
 | 4 | **The `#[cold]` sweep is not finished.** §5's rule (a whole arm of a top-level kind dispatch) has more sites: `movepick`'s scoring loops, `see_ge`'s non-Normal short circuit, `pseudo_legal`'s non-Normal branch (which allocates a 520-byte `MoveList` frame) | 10–40 | medium | one `probe17.sh` cycle each, 6 s. Watch for u3's failure mode: if the caller has to materialise arguments it otherwise never computes, it loses |
-| 5 | **The branch ratio is still open, and the SIMD kernels are NOT the answer.** §6.2. In the shipped frame ARCHON is 673.6 br/node vs SF 384.3; the sampled decomposition puts movepick +43 and threat generation +40, with the kernels at parity | ? | low — sampled | there is no exact per-function branch counter for an AVX-512 binary on this box. The one honest route is a *compile-time* AVX2 build of both engines (force the dispatch, do not let it read CPUID) so callgrind's `--branch-sim` sees the shipped loop shape |
+| 5 | **The branch ratio: HALF of it is answered and it is item 1's block.** §6.2.1. Exact, both engines, integer code only: ARCHON 436.8 br/node vs SF 222.5, of which **threat generation is +109.0 of the +214.3** — `at_full` spends 117.1 branches per call where SF's `update_piece_threats<true>` spends 3.7. What is still open is the SIMD half, because no instrument on this box can count branches in an AVX-512 kernel | +109 of +214 measured; the rest open | **high for the integer half** | the SIMD half needs a *compile-time* AVX2 build of both engines (force the dispatch, do not let it read CPUID) so `--branch-sim` sees the shipped loop shape. The integer half needs no more measurement — it is item 1 |
 | 6 | **`6b782211` whole**, as a games question | a missed-detection class, not a false-draw one (§8) | high | unchanged from study 16 item 4 except the direction. Note the speed half is measured negative for us (+17.8) |
 | 7 | **Pack `Piece` into one byte** | 5–20 | medium | unchanged from study 16 item 1. Confirmed live: `Worker::do_move` at `+0x40`/`+0x48` reads both mailbox bytes with two `movzbl` |
 | 8 | **`tools/check.sh` clippies DEFAULT features only** | 0 i/n | high | unchanged from study 15 item 12 and study 16 item 10. Still open, still the dangerous direction |

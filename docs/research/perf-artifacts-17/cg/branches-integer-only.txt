@@ -1,0 +1,72 @@
+# branch buckets, integer code only, EXACT
+block              ARCHON       SF    delta
+threat gen          123.6     14.6   +109.0
+movepick             81.2     54.8    +26.4
+search body          85.0     68.5    +16.5
+make/unmake          34.1     12.8    +21.3
+board queries        37.5     25.8    +11.7
+movegen              21.9      8.3    +13.7
+histories            20.0     12.4     +7.6
+tt                    3.0      8.3     -5.3
+other                30.5     17.1    +13.5
+TOTAL               436.8    222.5   +214.3
+
+# EXACT conditional branches per node (callgrind Bc); SIMD kernels and
+# start-up EXCLUDED -- see perf study 17 section 6.2 for why the SIMD
+# rows in this frame are an artifact and must not be read.
+# all rows, including the excluded ones: ARCHON 3030.2  SF 1518.2
+# integer-only subtotal:                 ARCHON 436.8  SF 222.5
+
+== ARCHON ==
+  br/node  calls/node   br/call  function
+    59.37      0.1624     365.6  <chessengine::movepick::MovePicker>::init_quiets
+    55.05      0.7159      76.9  <chessengine::search::Worker>::search::<chessengine::search::NonPv>'2
+    48.61      0.4151     117.1  <chessengine::eval::nnue::sota_threats::ThreatContext>::at_full
+    21.58      1.0234      21.1  chessengine::eval::nnue::sota_threats::record_targets
+    21.29      1.0000      21.3  <chessengine::eval::nnue::sota_threats::ThreatContext>::apply_at
+    16.90      1.0006      16.9  <chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>
+    13.28      1.2217      10.9  <chessengine::board::Board>::see_ge
+    12.73      2.0549       6.2  <chessengine::movepick::MovePicker>::next_move
+    12.51      0.1741      71.8  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+    12.47      1.0644      11.7  chessengine::eval::nnue::sota_threats::record_square_touch
+    11.19      0.1624      68.9  chessengine::movegen::generate::<1>
+    10.58      0.3973      26.6  <chessengine::history::Histories>::update_continuation_histories
+     7.89      0.4151      19.0  <chessengine::eval::nnue::sota_head::SotaHead>::forward_into
+     7.03      0.3302      21.3  chessengine::movegen::generate::<0>
+     6.84      0.5783      11.8  <chessengine::board::Board>::ensure_threats
+     6.53      0.0487     133.9  <chessengine::search::Worker>::search::<chessengine::search::Pv>'2
+     6.43      1.6406       3.9  <chessengine::board::Board>::gives_check
+     6.03      0.9635       6.3  chessengine::eval::nnue::sota_accumulator::psqt_fold
+     6.01      1.0000       6.0  <chessengine::search::Worker>::do_move
+     5.95      0.2050      29.0  <chessengine::search::Worker>::qsearch::<chessengine::search::NonPv>
+     5.94      1.0044       5.9  <chessengine::board::Board>::refresh_check_info
+     5.85      0.9818       6.0  <chessengine::history::Histories>::correction_value
+     5.32      0.0363     146.4  chessengine::eval::nnue::sota_features::refresh_threat
+     4.80      1.7969       2.7  <chessengine::board::Board>::legal
+
+== STOCKFISH ==
+  br/node  calls/node   br/call  function
+    36.39      0.6598      55.2  int Stockfish::Search::Worker::search<(Stockfish::NodeType)0>(Stockfish::Position&, Stoc
+    28.80      0.5753      50.1  Stockfish::(anonymous namespace)::partial_insertion_sort(Stockfish::ExtMove*, Stockfish:
+    25.94      2.2221      11.7  Stockfish::MovePicker::next_move()
+    10.44      0.2232      46.8  int Stockfish::Search::Worker::search<(Stockfish::NodeType)0>(Stockfish::Position&, Stoc
+     8.61      0.4182      20.6  Stockfish::(anonymous namespace)::update_continuation_histories(Stockfish::Search::Stack
+     7.86      1.6965       4.6  Stockfish::Position::gives_check(Stockfish::Move) const
+     7.58      0.0074    1024.8  int Stockfish::Search::Worker::search<(Stockfish::NodeType)2>(Stockfish::Position&, Stoc
+     6.69      1.8046       3.7  void Stockfish::Position::update_piece_threats<true>(Stockfish::Piece, bool, Stockfish::
+     6.10      0.0595     102.6  int Stockfish::Search::Worker::search<(Stockfish::NodeType)1>(Stockfish::Position&, Stoc
+     5.24      1.9530       2.7  Stockfish::Position::legal(Stockfish::Move) const
+     4.90      0.9485       5.2  Stockfish::Eval::NNUE::Features::FullThreats::append_changed_indices(Stockfish::Color, S
+     4.52      0.4110      11.0  Stockfish::Eval::NNUE::Network::evaluate(Stockfish::Position const&, Stockfish::Eval::NN
+     4.31      1.0461       4.1  Stockfish::TranspositionTable::probe(unsigned long) const
+     4.27      0.2222      19.2  int Stockfish::Search::Worker::qsearch<(Stockfish::NodeType)0>(Stockfish::Position&, Sto
+     3.97      0.7785       5.1  Stockfish::TTEntry::save(unsigned long, int, bool, Stockfish::Bound, int, Stockfish::Mov
+     3.55      1.0008       3.5  Stockfish::Position::do_move(Stockfish::Move, Stockfish::StateInfo&, bool, Stockfish::Di
+     3.31      1.1356       2.9  Stockfish::Position::see_ge(Stockfish::Move, int) const
+     3.21      2.0169       1.6  Stockfish::Position::update_slider_blockers(Stockfish::Color) const
+     3.19      1.0008       3.2  Stockfish::Position::undo_move(Stockfish::Move)
+     3.02      0.3956       7.6  void Stockfish::Position::update_piece_threats<false>(Stockfish::Piece, bool, Stockfish:
+     2.91      1.4488       2.0  Stockfish::Attacks::attacks_bb(Stockfish::PieceType, Stockfish::Square, unsigned long)
+     2.82      1.0000       2.8  Stockfish::Search::Worker::do_move(Stockfish::Position&, Stockfish::Move, Stockfish::Sta
+     2.08      1.0381       2.0  Stockfish::Position::is_draw(int) const
+     1.94      0.9757       2.0  Stockfish::(anonymous namespace)::correction_value(Stockfish::Search::Worker const&, Sto
