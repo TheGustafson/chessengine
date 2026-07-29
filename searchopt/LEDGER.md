@@ -171,6 +171,20 @@ This makes the conclusion STRONGER, not weaker: if part of SF's nps is cheap eva
 search at 2.13 Mnps compares even better against their search, and the bottleneck is even
 more clearly our eval cost.
 
+**⚠ PROVISIONAL — THE SF BINARY'S PGO STATUS IS UNVERIFIED (owner question,
+2026-07-29).** Everything in this block is measured against
+`engines/bin/stockfish-eca43a97`, whose **AVX-512 is confirmed** (SF's own
+`compiler` report: `x86-64-vnni512`, `VNNI AVX512 BMI2 AVX2`) but whose **PGO
+status could not be determined**. The hot/cold `.text` section fingerprint has
+**no discriminating power** — our own known-PGO `archon-s17pgo` shows an
+identical single `.text`, so that test settles nothing in either direction.
+
+SF's `profile-build` is worth **several percent**, the SAME ORDER as the 6.1%
+edge below. **If that binary was not PGO'd, the edge shrinks or inverts.** A
+known-PGO SF is being built at the identical arch
+(`make profile-build ARCH=x86-64-vnni512`) to race head-to-head; until that
+lands, do NOT quote "ARCHON is faster than Stockfish" as established.
+
 **★ THE CAVEAT IS NOW A MEASUREMENT, AND IT INVERTS THE HEADLINE (2026-07-29).**
 Real contested gauntlet, 18 games, TC 10+0.1, Hash 64, concurrency 2, UHO book,
 D48X net, canonical `archon-s17pgo` (studies 12-17 merged). Per-move `n=`/`nps=`
