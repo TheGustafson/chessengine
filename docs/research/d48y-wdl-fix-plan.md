@@ -1089,3 +1089,34 @@ you cannot protect the trainer, only make everything else more killable.
 `MemoryMax` alone is not enough: it bounds a runaway but does nothing when
 total demand simply exceeds RAM, which is what killed the trainer all three
 times.
+
+### ★★★ D48Y'S LR IS 1.80× D48X's — MY CONFIGURATION ERROR
+
+| run | LR through the whole pre-anneal phase |
+|---|---|
+| D48X | lr_ramp first breakpoint is **sb200 @ 5.5625e-4**; `jnp.interp` CLAMPS FLAT below it ⇒ **5.5625e-4 from sb0** |
+| **D48Y** | flat **1.0e-3** to sb240 |
+
+The user said "usual LR schedule until sb240"; I set flat 1e-3. D48X's actual
+working rate was 5.5625e-4. **D48Y has trained its entire life at 1.80× the
+rate this trunk is known to train well at.**
+
+**This fits the symptom better than any hypothesis about the target:** train
+loss fell **16%** (fitting individual batches) while heldout stayed **flat**
+(never converging) — the textbook signature of an LR too high to settle. It
+also explains the sb30→sb120 dead heat.
+
+**⇒ D48Y's −111.4 is very likely NOT a verdict on the WDL change.** It confounds
+FOUR things now: target transform, absent teacher, 400 fewer superbatches, and
+an LR nearly double the reference. Do not cite it as evidence about the
+transform.
+
+**Matched pair corrected before it inherited the same bug:** `d48z_old` /
+`d48z_new` now run at **5.5625e-4**, so they differ ONLY in
+`per_corpus_target`. Had I not caught this, the clean experiment would have
+been run at the wrong LR too and produced another uninterpretable result.
+
+**Note for the anneal:** D48Y anneals from 1e-3 → 0 over sb240→300. Annealing
+from too high a rate can still land somewhere useful, so the anneal remains
+worth observing — but it is now a test of "can a hot run be rescued by
+annealing", not a test of the target transform.
