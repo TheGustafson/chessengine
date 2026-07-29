@@ -696,3 +696,44 @@ both nearly flat at the held LR (heldout ema 0.012665 @sb20 → 0.012608 @sb80,
 ~0.5% over 60sb) — the designed shape for a flat-LR plateau; the anneal from
 sb240 is where convergence is expected. If the anneal produces no drop, 300sb
 was short, and that is the thing to watch.
+
+### ★★ THE CALIBRATED TARGET PUTS US IN STOCKFISH'S FRAME (sb80, measured)
+
+`net_scale_check.sh`'s ABSOLUTE section, same 518-position set, both nets:
+
+| net | median(ours / SF-internal) | slope | verdict |
+|---|---|---|---|
+| **D48X** (incumbent) | **0.575** | 0.570 | **ABSOLUTE FAIL** — the tool's own words: *"the net's frame does NOT match the frame our search constants were transcribed for"*; constants are **1.75× too large** in its units |
+| **D48Y-sb80** | **0.980** | 0.965 | **ABSOLUTE PASS** |
+
+Our razoring (`465 + 300d²`), futility, delta and aspiration constants are
+TRANSCRIBED FROM STOCKFISH. D48X runs them against a net at 0.575× SF's frame —
+so for the entire D48X era we have applied SF's margins to a net at ~half SF's
+scale. **D48Y lands at 0.980×: the margins finally apply as SF intended.**
+
+This is the user's hypothesis vindicated, but via the ABSOLUTE FRAME rather
+than curvature — and it is a larger effect than the shape question, which
+remains unresolved inside instrument noise.
+
+**⇒ CALIBRATION IS NOW A DECISION, NOT A STEP. Two arms, and it must be tested:**
+
+- **(a) calibrate to D48X's frame** (`median(cand/ref) → 1.000`, network_scale
+  400 → ~237). Margins behave exactly as they do today. This is the
+  conservative arm and the one the old runbook assumed.
+- **(b) leave NATIVE** (network_scale 400, already at 0.980× SF). Margins apply
+  at the size Stockfish designed them for. **Calibrating to (a) would UNDO the
+  alignment.**
+
+Do NOT assume (a). Run both as arms in the fixed-node screen; they are the same
+net with one header field differing, so the comparison is exact and cheap.
+
+Supporting numbers: `median(cand/ref)=1.694`, slope 1.688, **sign-agreement
+99.6%** — D48Y and D48X almost always agree on WHO is better; they disagree on
+HOW MUCH. That is the signature of a frame change, not a quality change, and it
+is why the frame decision may matter more than the net difference.
+
+Caveat: measured on the sb80 checkpoint; re-measure at sb300. The effect is
+large (0.575 → 0.980, n=518, slope and median agreeing) so it is not noise, but
+the final value may shift with the anneal.
+
+D48Y: sb100/300, heldout ema 0.012594, still slowly improving.
