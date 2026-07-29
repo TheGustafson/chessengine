@@ -322,6 +322,44 @@ is workload-controlled in the way my wall-clock comparison was not.
 ⇒ **Whether it converts to Elo is open** and is being answered directly by an equal-time
 match (`engines/runs/s9-convert`, new vs old at 10+0.1), which needs neither NPS figure.
 
+## ★ INSTRUCTIONS → DEPTH CONVERTS AT ~0.45×, NOT 1:1 (2026-07-28)
+
+Nobody in this chain had measured the end-to-end conversion; every perf study priced its
+work in instructions per node and the Elo arithmetic assumed instructions ≈ time.
+
+Equal-time match, `archon-s9-final` vs the pre-study-8 PGO, 10+0.1, canonical net both
+sides (`engines/runs/s9-convert`), n=84 games / 4,695 moves per engine:
+
+| | new | old |
+|---|---|---|
+| total s/game | 17.56 | 17.46 (**ratio 1.0057** — both spend their clock, no banking) |
+| mean depth | 18.786 | 18.640 (+0.146 ply unpaired) |
+| **paired depth delta** | **+0.110 ± 0.235 ply** | |
+
+Studies 8+9 cut instructions/node by **9.65%**. At **2.02 ply/doubling** (measured in
+games) the paired +0.110 ply implies **+3.8% effective speed** and the unpaired +0.146
+implies **+5%**.
+
+⇒ **instructions/node → wall-clock depth runs at ~0.4–0.5×, not 1:1.**
+
+⇒ **Consequence for pricing perf work.** A −9.65% instruction cut is worth **+5 to +9
+Elo**, not the ~+18 a 1:1 reading gives. For the standing 1.10×-SF target (a further
+−26% instructions), ~0.45× conversion makes it **≈ +12 to +21 Elo**, not ~+45.
+
+⇒ **Consequence for match design.** +5–9 Elo needs n≈1000 to become visible. A 400-game
+match reading "+4.1 [−71, +80]" at n=84 is not evidence of failure — it is what a real
++5–9 Elo change looks like before it resolves. (See the power entry above.)
+
+⇒ **Caveats, both real.** (a) The comparison spans an eval change — 84% of positions
+differ, mean 1.05 SF cp — so the two binaries search different trees, and depth-at-equal-
+time mixes speed with an eval-induced tree-shape change. Best available proxy, not a clean
+one. (b) The CI still spans zero, though the point estimate has been stable across n=25 →
+42 → 84 (+0.102, +0.099, +0.110).
+
+⇒ **The banking hypothesis was tested and REFUTED:** the new binary does not leave clock
+unspent (total-time ratio 1.0057), so the shortfall is not time management declining to
+use the speed.
+
 ## PLY PER DOUBLING, AND WHAT A SPEEDUP IS ACTUALLY WORTH (2026-07-28)
 
 Derived free from the stored equal-nodes ladder's IN-GAME depths (n≈29k moves per rung):
