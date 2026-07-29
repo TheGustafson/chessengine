@@ -1457,3 +1457,39 @@ cannot support.
 
 D48Y2 meanwhile: sb68, throughput **163k pos/s**, heldout EMA **0.011744**
 (sb50 0.011792 → sb60 0.011744), still monotone.
+
+### ★ THE FRAME EFFECT IS ASYMMETRIC — and it decides how D48Y2 is tested
+
+Two frame experiments, opposite directions, wildly different costs:
+
+| experiment | eval direction | result |
+|---|---|---|
+| D48X × 1.74 (scale 400→696) | **larger** | **+7.7 ± 17.7** — neutral |
+| D48Y-sb120 ÷ 1.691 (scale 400→237) | **smaller** | **−80 Elo** (−111.4 → −190.9, n=300) |
+
+**Mechanism:** our pruning margins are FIXED centipawn subtractions — razoring
+is `alpha − 465 − 300·d²`, futility and delta likewise. A SMALLER eval makes
+`eval < alpha − margin` true more often, so the search prunes HARDER: shrinking
+the eval silently over-prunes. A LARGER eval only prunes less — mildly wasteful,
+roughly a wash.
+
+⇒ **Eval too small is dangerous; eval too large is nearly free.**
+
+**This corrects my own earlier inference.** I argued from the D48X rescale
+(+7.7 ± 17.7) that frame was worth "at most ±18 Elo" and that rescaling D48Y
+therefore could not matter much. It cost 80. The D48X result did NOT transfer,
+because I generalised a one-directional measurement to both directions — and
+the user had already flagged that D48Y's different curvature might not transfer.
+
+**Consequences for D48Y2's test plan:**
+1. **Screen D48Y2 at its NATIVE scale first.** Its output runs ~1.69× D48X's,
+   i.e. on the SAFE side of this asymmetry.
+2. **Do NOT calibrate it down to D48X's frame as a default.** That is the exact
+   move that cost 80 Elo, and the old runbook made it mandatory.
+3. If calibration is tested at all, run it as a SECOND arm and expect it to
+   lose. Same net, one header field — cheap, but no longer the default.
+4. `net_scale_check`'s "ABSOLUTE FAIL" is a diagnostic, not an instruction.
+   Following it blindly is what produced the −191.
+
+D48Y2: sb83, 169k pos/s, heldout EMA 0.011685 (sb50→80: 0.011792, 0.011744,
+0.011712, 0.011685) — monotone, slope decelerating to ~−3e-6/sb.
