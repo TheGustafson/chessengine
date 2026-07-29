@@ -1,3 +1,4 @@
+=== RUN 1: bash tools/check.sh (default features; NNUE gate off) ===
    Doc-tests chessengine
 
 running 0 tests
@@ -24,6 +25,8 @@ Bench: 587683
 
 All checks passed.
 
+=== RUN 2: CHECK_NNUE_GATE=1 bash tools/check.sh ===
+
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
 
@@ -36,6 +39,45 @@ Nodes searched  : 1839507
 Total time (ms) : 135
 Nodes searched  : 587683
 Nodes/second    : 4353207
+
+==> NNUE behavioural gate (the sota build the bench pin cannot see)
+  eval hash  : 5ca978e012da1bb086799709c3ea5350cf6d49923c254f7975b6d780b0098b38
+  d13 nodes  : 1922947
+
+commit trailer for functional changes (TESTING.md, design/14 §3.2):
+Bench: 587683
+
+All checks passed.
+
+=== RUN 3: CHECK_NNUE_GATE=1 after the D33 review fixes ===
+
+
+==> bench perft fingerprint  (two runs, deterministic output identical)
+===========================
+Nodes searched  : 1839507
+
+==> bench fingerprint  (bench 16 1 6 default depth — the Bench: trailer)
+===========================
+Total time (ms) : 133
+Nodes searched  : 587683
+Nodes/second    : 4418669
+
+==> NNUE behavioural gate (the sota build the bench pin cannot see)
+  eval hash  : 5ca978e012da1bb086799709c3ea5350cf6d49923c254f7975b6d780b0098b38
+  d13 nodes  : 1922947
+
+commit trailer for functional changes (TESTING.md, design/14 §3.2):
+Bench: 587683
+
+All checks passed.
+
+=== RUN 4 (FINAL, shipped tree): CHECK_NNUE_GATE=1 ===
+avail=5623
+==> bench fingerprint  (bench 16 1 6 default depth — the Bench: trailer)
+===========================
+Total time (ms) : 116
+Nodes searched  : 587683
+Nodes/second    : 5066232
 
 ==> NNUE behavioural gate (the sota build the bench pin cannot see)
   eval hash  : 5ca978e012da1bb086799709c3ea5350cf6d49923c254f7975b6d780b0098b38

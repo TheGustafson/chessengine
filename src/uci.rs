@@ -42,6 +42,7 @@
 //! stores through it (doc 07's call sites), and completed PV lines carry
 //! `info hashfull` (§3.13).
 
+use crate::attacks;
 use crate::bench;
 use crate::board::Board;
 use crate::eval::nnue;
@@ -55,7 +56,9 @@ use crate::timeman::Limits;
 use crate::tt::{MAX_HASH_MB, MIN_HASH_MB, TranspositionTable};
 #[cfg(feature = "policy")]
 use crate::types::Square;
-use crate::types::{Color, VALUE_INFINITE, VALUE_MATE, VALUE_ZERO, Value, is_mate, is_mated};
+use crate::types::{
+    Color, PieceType, VALUE_INFINITE, VALUE_MATE, VALUE_ZERO, Value, is_mate, is_mated,
+};
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufRead, Write};
@@ -1365,6 +1368,52 @@ fn cmd_setoption<W: Write>(
 /// Applying the whole list through `make_move` builds the ply-indexed
 /// `StateInfo` history inside `Board` (D8) — exactly what repetition
 /// detection and rule-50 need.
+/// Whether `board` can legally be the root of a search — the check
+/// [`Board::from_fen`] deliberately does not make.
+///
+/// Two conditions: both kings are present, and the side that is **not** to move
+/// is not in check. The second is the one that matters. A FEN like
+/// `4k3/8/8/8/8/8/4R3/4K3 w - - 0 1` is accepted by every parser and is
+/// unreachable by legal play, and from it `generate_legal` emits `Rxe8` — its
+/// legality filter vets only pinned, king and en-passant moves and has no
+/// king-capture test. After that capture every king-keyed structure in the
+/// engine (check bookkeeping, pin geometry, the D30 threat map's king x-ray,
+/// the HalfKA king bucket, the Finny cache key) reads a king that is not there.
+///
+/// Until perf study 13 this class was caught in release by `Board::king_square`'s
+/// `expect("king must exist")` — several times per node, on the hot path, to
+/// guard input the UCI layer should never have accepted (design/12 §3.3: never
+/// panic on input). §4.3 removed that cost; this is the replacement.
+/// `from_fen` stays permissive on purpose, because king-less analysis boards
+/// are a supported class for tooling that never searches.
+///
+/// **Written against the `attacks::` free functions rather than
+/// `Board::attackers_to_exist`, deliberately.** The obvious spelling — a
+/// `Board::is_legal_root` method calling `attackers_to_exist` and `king_square`
+/// — measured **+90.6 i/n on the search**, for a predicate the search never
+/// executes: one new caller shifts LLVM's inline cost model for those helpers
+/// engine-wide, and `#[cold]` + `#[inline(never)]` did not contain it (perf
+/// study 13 §5.5). This form measured neutral.
+fn is_legal_root(board: &Board) -> bool {
+    let (us, them) = (board.side_to_move(), board.side_to_move().flip());
+    let our_king = board.pieces(us, PieceType::King);
+    let Some(ksq) = board.pieces(them, PieceType::King).lsb() else {
+        return false;
+    };
+    if our_king.is_empty() {
+        return false;
+    }
+    let occ = board.all_occupancy();
+    let attacked = (attacks::rook_attacks(ksq, occ)
+        & (board.pieces(us, PieceType::Rook) | board.pieces(us, PieceType::Queen)))
+        | (attacks::bishop_attacks(ksq, occ)
+            & (board.pieces(us, PieceType::Bishop) | board.pieces(us, PieceType::Queen)))
+        | (attacks::knight_attacks(ksq) & board.pieces(us, PieceType::Knight))
+        | (attacks::pawn_attacks(them, ksq) & board.pieces(us, PieceType::Pawn))
+        | (attacks::king_attacks(ksq) & our_king);
+    attacked.is_empty()
+}
+
 fn cmd_position<W: Write>(
     engine: &mut Engine,
     mut tokens: SplitWhitespace,
@@ -1415,6 +1464,21 @@ fn cmd_position<W: Write>(
         };
         let gives_check = board.gives_check(m);
         board.make_move(m, gives_check);
+    }
+    // D33 reviewer A / perf study 13 §5.4: refuse an ILLEGAL root here rather
+    // than discovering it deep inside `make_move`. A FEN in which the side not
+    // to move is already in check is accepted by every parser and unreachable
+    // by legal play, and from it `generate_legal` will emit a king capture —
+    // after which the engine is searching a position with a missing king.
+    // Design/12 §3.3 says the UCI layer never panics on input; the corollary is
+    // that it also never *accepts* input it cannot search. The previous position
+    // is left untouched, which is the same failure mode as a malformed FEN.
+    if !is_legal_root(&board) {
+        return writeln!(
+            out,
+            "info string Illegal position rejected (missing king, or the side \
+             not to move is in check); keeping the previous position"
+        );
     }
     engine.board = board;
     Ok(())
@@ -2176,6 +2240,54 @@ option name EvalFile type string default <empty>
         let out = command_on(&mut engine, "position fen banana split");
         assert!(out.contains("info string Invalid FEN"), "{out}");
         assert_eq!(engine.board.to_fen(), before);
+    }
+
+    /// D33 reviewer A / perf study 13 §5.4. `from_fen` accepts both of these —
+    /// it validates fields, not legality — and before the guard the engine
+    /// searched them, generated a king capture from the first one, and ran the
+    /// rest of the search on a board with no black king. The `king_square`
+    /// rewrite in §4.3 removed the release panic that used to catch it, so this
+    /// test is the replacement tripwire.
+    ///
+    /// It fails if `Board::is_legal_root` drops either of its two conditions:
+    /// delete the `has_both_kings()` term and the second case is accepted,
+    /// delete the `attackers_to_exist` term and the first is.
+    #[test]
+    fn position_illegal_root_is_rejected_and_atomic() {
+        for fen in [
+            // Black is in check with White to move: `Rxe8` is a legal-looking
+            // king capture.
+            "4k3/8/8/8/8/8/4R3/4K3 w - - 0 1",
+            // No black king at all.
+            "8/8/8/8/8/8/4R3/4K3 w - - 0 1",
+        ] {
+            let mut engine = Engine::new();
+            command_on(&mut engine, "position startpos moves d2d4");
+            let before = engine.board.to_fen();
+            let out = command_on(&mut engine, &format!("position fen {fen}"));
+            assert!(out.contains("Illegal position rejected"), "{fen}: {out}");
+            assert_eq!(engine.board.to_fen(), before, "{fen} must be atomic");
+        }
+    }
+
+    /// The guard must not reject anything legal: a plain check (the side TO
+    /// move in check) is perfectly searchable, and so is every startpos line.
+    #[test]
+    fn position_legal_roots_including_checks_are_accepted() {
+        for fen in [
+            crate::fen::START_FEN,
+            // White to move and White IS in check — legal, must be accepted.
+            "4k3/8/8/8/8/8/4r3/4K3 w - - 0 1",
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        ] {
+            let mut engine = Engine::new();
+            let out = command_on(&mut engine, &format!("position fen {fen}"));
+            assert!(!out.contains("Illegal position"), "{fen}: {out}");
+            assert_eq!(
+                engine.board.to_fen().split(' ').next(),
+                fen.split(' ').next()
+            );
+        }
     }
 
     // -- setoption (doc 12 §3.5; §5 "Unit — parser") -----------------------

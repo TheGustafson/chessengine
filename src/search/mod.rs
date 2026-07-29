@@ -979,7 +979,9 @@ pub struct Worker {
     /// The two hot call sites used to reach for
     /// [`crate::eval::nnue::active_policy_head`] directly, which takes a
     /// **process-wide `RwLock` read lock** — two atomic read-modify-writes and
-    /// a poison check — at *every* interior node with no TT move. Nets are
+    /// a poison check — at every interior node with no TT move **at depth >= 3**,
+    /// and once more per node whenever `CPL_ORD_W` is set (it defaults to 0, so
+    /// the measured −4.8 i/n is the first site alone). Nets are
     /// installed once per `go` (`refresh_eval_net`), never mid-search, so the
     /// value is a per-search constant; [`SotaContext`] already snapshots the
     /// same handle at net-set time, and this is that pattern applied to the
@@ -4816,7 +4818,9 @@ impl Worker {
         // Perf study 13 §5.1 MEASURED and REJECTED moving this construction
         // into `make_move_with` behind the (previously unused) Hook C, which
         // would have deleted the duplicate derivation of the mover, victim, ep
-        // capture square and castling rook geometry: **+38.2 i/n**, twice, both
+        // capture square and castling rook geometry: **+41.5 i/n**, and +38.2
+        // for a second variant that re-derived the castling geometry inside the
+        // guarded block instead of carrying it in an `Option` local. Both were
         // node- and eval-identical. The duplication is real; paying it out here
         // where the register pressure is low is cheaper than paying it inside a
         // 650-instruction function that is already spilling.

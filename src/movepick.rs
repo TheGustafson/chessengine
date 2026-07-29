@@ -598,7 +598,7 @@ impl MovePicker {
         // by an enemy piece strictly cheaper than each of our types (cumulative
         // union — the same structure the old local `threats_by_lesser`
         // produced, now read O(1) from the precomputed per-node map).
-        // ONE fill check for all five reads (perf study 13 §4.4): the four
+        // ONE fill check for all five reads (perf study 13 §4.2): the four
         // `piece_threats` calls and the `all_threats` below were five separate
         // `ensure_threats` calls, of which four could only ever find the cache
         // already filled.
@@ -696,7 +696,7 @@ impl MovePicker {
         #[cfg(feature = "policy")]
         let policy_weight = crate::policy::quiet_weight();
 
-        // One `st()` for all ~30 scored quiets (perf study 13 §4.6) instead of
+        // One `st()` for all ~30 scored quiets (perf study 13 §4.4) instead of
         // one per quiet: `pt` varies per move, so the query cannot be hoisted
         // at the call site.
         let check_squares = board.check_squares_all();

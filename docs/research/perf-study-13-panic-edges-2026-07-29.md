@@ -42,25 +42,38 @@ headline bench) and eval-hash-identical (`5ca978e012da1bb0`), and the gate's
 | 2 | `threat_map()` — one `ensure_threats` for the quiet scorer's five reads | **−19.0** | `board.rs`, `movepick.rs` |
 | 3 | `king_square` without its two panic edges | **−13.6** | `board.rs` |
 | 4 | `check_squares_all()` hoisted out of the per-quiet loop | −5.6 | `board.rs`, `movepick.rs` |
-| | **total, probe frame** | **−43.0** | |
+| | subtotal, probe frame | −43.0 | |
+| 5 | §5.4's robustness guard, the price of arm 3 | +5.7 | `uci.rs` |
+| | **total, probe frame** | **−37.3** | |
 | | **total, PGO frame (the number that counts)** | **−33.4** | |
 
-The probe overstated the PGO delta by 1.29× here, against study 12's ~2×.
+The probe overstated the PGO delta by 1.29× before the guard; **after it, the
+PGO panel reproduced 6081.2 i/n and 1.3658× to the digit** on the shipped tree,
+with Stockfish again at 4452.4 / 0.0000% — so the guard's +5.7 probe-frame cost
+is not present in the deliverable frame at all. Both panels are in
+`counters-headline.txt`.
 
 ### 0.3 What this study is actually about
 
-**Two of the four hypotheses were wrong, and both were measured wrong rather
-than argued wrong.** They are written up at the same length as the wins (§5),
-because they close doors: the duplicate `DirtyPiece` derivation is *cheaper left
-duplicated* (+38.2 i/n to fix), and **our 1.84× branch ratio against Stockfish is
-not bounds checks** — deleting the densest bounds check in the engine cost
-+43.8 i/n and moved branches by −0.2 per node.
+**Three of the seven arms were regressions, and every one of them had a
+mechanism that looked airtight on paper.** They are written up at the same
+length as the wins (§5), because they close doors:
 
-What did work, twice, is a single shape: **a hot helper that is called N times
-where once would do, or that carries a panic edge on a query the caller makes
-tens of times per node.** Both wins are that. §8 item 1 is the biggest remaining
-instance of it, and it is counted, not guessed: `Board::st()` runs **29.07 times
-per node** through `Vec::last().expect(...)`.
+* the duplicate `DirtyPiece` derivation is **cheaper left duplicated** (+38.2
+  i/n to remove it);
+* **our 1.84× branch ratio against Stockfish is not bounds checks** — deleting
+  the densest bounds check in the engine cost +43.8 i/n and moved branches by
+  −0.2 per node;
+* and the winning arms' own apparent mechanism **does not generalise**: applying
+  it one level down, to the `piece_on(...).expect(...)` in the per-move scoring
+  loops, cost **+106.3 i/n** (§5.3).
+
+So the operative rule this study leaves behind is not a mechanism at all:
+**price the arm, never the mechanism.** An arm that wins is worth landing
+whether or not the story about why is true; an arm that loses is dead even when
+the story is airtight. What made that safe to say is Null B (§1.1) — without a
+source-perturbation null, all three of those regressions could have been
+dismissed as codegen noise.
 
 ---
 
@@ -147,9 +160,10 @@ accessor in the engine (`key`, `checkers`, `check_squares`, `blockers_for_king`,
 `rule50`, `pawn_key`, …) goes through it.
 
 **(b) 11.0 slider lookups per node**, against Stockfish's dual hyperbola
-quintessence which returns rook *and* bishop from one 32-byte load
-(`eca43a97:src/attacks.h`, `DualMagic::both_attacks_bb`). See §6 — porting it
-would *raise* our instruction count, and the counter is how we know.
+quintessence, which returns rook *and* bishop from one 64-byte `DualMagic` entry
+(`eca43a97:src/attacks.h:90-136`). See §6 — the counter is what turns "should we
+port it?" from a taste question into an arithmetic one, and the answer is that
+for *this* metric it is between neutral and a loss.
 
 ---
 
@@ -169,6 +183,12 @@ a3-attacks-table-mask        6576.1    +43.8   rejected (S5.2)
 a4-threat-map-one-fill       6513.3    -19.0   LANDED
 a5-king-square-no-panic-edge 6499.7    -13.6   LANDED
 a6-check-squares-hoist       6494.1     -5.6   LANDED
+a7-piece-on-occupied         6600.4   +106.3   rejected (S5.3)
+--- D33 review round; S5.4's robustness fix, two spellings ---
+a8-post-D33-review           6584.7    +90.6   Board::is_legal_root  (rejected)
+a8b-is-legal-root-cold       6585.8    +91.7   ... + #[cold]/#[inline(never)]
+a8c-BISECT-guard-disabled    6534.7    +40.6   ... call site removed, method kept
+a8d-guard-in-uci             6499.8     +5.7   uci::is_legal_root    (LANDED)
 ```
 
 Node count 5,001,562 and eval hash `5ca978e012da1bb0` on **every line**,
@@ -257,11 +277,12 @@ different call rate, which is the evidence that the shape generalises.
 
 ---
 
-## 5. WHAT DID NOT LAND — two mechanisms, both measured, both wrong
+## 5. WHAT DID NOT LAND — three mechanisms, all measured, all wrong
 
-Both arms below are **correct** code: node-identical (5,001,562) and
-eval-hash-identical (`5ca978e012da1bb0`). They are simply slower, and the null
-of §1.1 is what makes that statement safe to make.
+All three arms below are **correct** code: node-identical (5,001,562) and
+eval-hash-identical (`5ca978e012da1bb0`). They are simply slower, and Null B
+(§1.1) is what makes that statement safe to make. §5.4 is a fourth finding of a
+different kind — a landed arm that turned out not to be free.
 
 ### 5.1 The duplicate `DirtyPiece` derivation — **+38.2 i/n**
 
@@ -284,7 +305,10 @@ order, and `Worker::do_move` reading it back out of the hook.
 **+41.5 i/n.** A second variant — payload passed by value instead of by
 reference, and the castling rook geometry re-derived inside the guarded block
 instead of carried in an `Option` local across the whole body — recovered 3.3 of
-it: **+38.2 i/n**, still a loss.
+it: **+38.2 i/n**, still a loss — and that variant is, as it happens, exactly
+Stockfish's own shape, because SF does not fill the castling rook half of `dp`
+in `do_move`'s body either. It fills it *inside* `do_castling<true>`
+(`eca43a97:src/position.cpp:1351-1354`).
 
 The mechanism was real and the fix still made things worse: `make_move_with` is
 a 650-instruction function that is already spilling, and the marginal cost of
@@ -297,7 +321,7 @@ comment at the call site so study 14 does not re-derive it.
 ### 5.2 The slider table's bounds check — **+43.8 i/n**, and the thesis behind it is dead
 
 Our headline branch count is **1.84× Stockfish's** (667.6 vs 362.7 per node,
-study 12 §0.1). The obvious reading is Rust bounds checks, and the packed magic
+study 12 §0.1; 1.80× after this study's arms). The obvious reading is Rust bounds checks, and the packed magic
 table is the densest candidate: `self.table[magic.index(occ)]` on a
 `Box<[Bitboard]>`, 11.0 times per node, each paying a length load, a `cmp` and a
 `jae`. The index is in range **by construction** (the per-square blocks tile the
@@ -325,28 +349,154 @@ masking idioms, or a `Square` newtype with a narrower range: that lever has been
 priced at zero. The branches are genuine control flow — `record_square_touch`
 alone carries 127 conditional branches, `at_full` 139, `init_quiets` 50.
 
+### 5.3 …and the same trick one level down does NOT generalise — **+106.3 i/n**
+
+§4.3 removed two panic edges from `king_square` and won 13.6 i/n with 12.5
+branches. The obvious generalisation is the *other* high-traffic `Option`
+unwrap: `board.piece_on(m.from()).expect(...)`, which the quiet scorer runs once
+per scored move (~30 per node) and the capture scorer once per capture. Same
+shape, three times the call rate, and `Board::piece_on` is 20.44 calls per node
+(§2).
+
+Arm: a `Board::piece_on_occupied(sq) -> Piece` that keeps the precondition in a
+`debug_assert` and returns a well-defined placeholder in release, so the panic
+edge becomes a `cmov`.
+
+**+106.3 i/n, and branches went UP by 10.9 per node.**
+
+That is the largest single regression this study measured, and it kills the
+tempting one-line summary of §4. **The winning shape is not "delete panic
+edges".** `king_square`'s win was something narrower — `lsb()`'s zero test
+*plus* the `Option` test *plus* the folding-away of `Square::new`'s own
+`assert!(index < 64)`, on an accessor whose result feeds address arithmetic —
+and it does not transfer to an `Option<Piece>` load whose result feeds a history
+index. Written down here rather than in a code comment because the *code* is
+unchanged: the reverted arm leaves no trace to hang the warning on.
+
+Three arms measured, three mechanisms named, three wrong. **Price the arm,
+never the mechanism.**
+
+### 5.4 The one landed arm that was NOT free — and what it cost
+
+`king_square`'s `expect("king must exist")` was described above as an invariant
+the optimiser is made to disbelieve twice. **The D33 review (persona A) showed
+that the invariant is not one**, and the finding is worth more than the arm:
+
+* `from_fen` does **not** validate that kings exist — king-less analysis boards
+  are a deliberately supported input class (`fen.rs`; `Board::is_check` returns
+  early for them).
+* A king **can** be captured. From a FEN where the side *not* to move is already
+  in check — `4k3/8/8/8/8/8/4R3/4K3 w - - 0 1`, which every parser accepts —
+  `generate_legal` emits `Rxe8`: its legality filter only vets pinned, king and
+  en-passant moves, and it has no king-capture test.
+
+So the `expect` was a **live release tripwire**, not dead code, and removing it
+turned "panic, caught by the pool's `catch_unwind`, no `bestmove`" into "search
+a board with no black king and return a plausible move" — a silent wrong answer,
+which is the failure class this project's standing bar exists to prevent.
+
+**The arm was kept and the tripwire moved to where it costs nothing.**
+`Board::is_legal_root()` — both kings present, and the side not to move not in
+check — is now enforced at the UCI `position` boundary, which is where an engine
+that "never panics on input" (design/12 §3.3) should have been rejecting these
+all along. It is one predicate on a cold path instead of two panic edges several
+times per node, and it rejects the *whole* class rather than the one square
+`king_square` happened to look at. Two tests cover it, both mutation-verified by
+deleting each term of the predicate in turn.
+
+**This is a net robustness improvement that the perf arm paid for**, and it is
+the second time in this study that chasing instructions produced a
+correctness-relevant finding the study was not looking for.
+
+### 5.5 …and the fix itself cost +90.6 i/n until it was written differently
+
+The obvious spelling of §5.4's guard is a `Board::is_legal_root()` method
+calling `has_both_kings()`, `king_square()` and `attackers_to_exist()`, invoked
+once from `cmd_position`. **It measured +90.6 i/n** — twice the study's entire
+landed win, for a predicate the search never executes.
+
+Bisected: **+51 of it is the call site in `cmd_position`, +40 is the method
+merely existing.** `#[cold]` and `#[inline(never)]` on the method changed
+nothing (6585.8 with them, 6584.7 without). The mechanism is the same one that
+killed §5.1, §5.2 and §5.3: one new caller shifts LLVM's inline cost model for
+`attackers_to_exist` and `king_square` engine-wide, and the search pays for it
+on paths that never touch the new code.
+
+Rewritten as a free `uci::is_legal_root(&Board)` built from the `attacks::`
+free functions — which already have many callers — instead of Board's inlinable
+helpers, the same predicate measured **+5.7 i/n**. Identical behaviour, identical
+tests, both mutation-verified.
+
+**This is the most alarming result in the study.** It says that in this codebase
+the cost of a change is only weakly related to the work the change does, and
+that *cold, never-executed code in an unrelated module* can move the hot path by
+1.4%. Study 14 must probe every change, including the ones that "obviously
+cannot matter" — and, more usefully, it says there may be **free i/n sitting in
+the crate's existing structure**, in the form of caller counts and inline
+decisions nobody chose. That is a lever this study did not have time to pull:
+`-C llvm-args=-inline-threshold`, `#[inline(never)]` on cold-but-inlinable Board
+helpers, and per-function PGO hints are all untried.
+
 ---
 
 ## 6. WHAT THE REFERENCE SAYS, AND WHY WE ARE NOT COPYING IT
 
-Stockfish at `eca43a97` **no longer uses magic bitboards on x86**. With AVX2 it
-compiles `USE_DUAL_HYPERBOLA_QUINT` (`src/attacks.h`): a 32-byte-aligned
-`DualMagic` per square whose `both_attacks_bb` computes rook *and* bishop
-attacks together — four masks in one `_mm256_load_si256`, one hyperbola-
-quintessence step across all four lanes with a byte-swap standing in for the bit
-reversal, an `or`/`extract` pair to split the results, and an 8-bit rank-attack
-lookup for the one direction hyperbola cannot serve. The whole structure is
-~4 KB plus a 2 KB rank table; **ours is an 841 KB packed magic array**, so every
-slider query of ours is a guaranteed L2/L3 miss where theirs is L1-resident.
+Stockfish at `eca43a97` **no longer uses magic bitboards on AVX2-capable x86**
+— which is every modern release binary, including our comparison target
+(`stockfish-eca43a97` reports `x86-64-vnni512`). With AVX2 it compiles
+`USE_DUAL_HYPERBOLA_QUINT` (`eca43a97:src/attacks.h:34-36`); the classic fancy
+magic survives only as the pre-AVX2 `#else` fallback (`attacks.h:142-163`).
 
-It is tempting, and it is the wrong trade **for this metric**. `both_attacks_bb`
-is roughly 15 instructions for both piece types; our two magic lookups are ~5
-instructions each, so ten. At the measured **11.0 slider lookups per node** a
-port would *add* on the order of 30–50 i/n while removing cache misses we are
-not being scored on. It is a **cycles** lever, not an instructions lever, and it
-belongs to whoever is optimising NPS rather than the instruction ratio — with
-the note that our headline is already `instructions:u`, so the two goals have
-diverged here for the first time.
+The AVX2 form is a `DualMagic` per square (`attacks.h:90-97`) whose
+`both_attacks_bb` (`attacks.h:107-136`) computes rook *and* bishop attacks
+together: **three masks plus a zero lane** in one `_mm256_load_si256`, one
+hyperbola-quintessence step across all four lanes with a **byte** swap standing
+in for the bit reversal (legal because file, diagonal and antidiagonal each put
+their squares in different bytes), an `or`/`extract` pair to split the result
+into `[bishop, rook]`, and an 8-bit rank-attack lookup for the one direction
+hyperbola cannot serve. The vector load is 32 bytes but three more scalar fields
+come from the same 64-byte entry, so it is **one cache line**, not one load.
+
+The sizes are exact, not approximate: `sizeof(DualMagic)` is 64 and the array is
+`alignas(64) DualMagic[64]` = **4096 B** (`attacks.h:90-97`, `attacks.cpp:34`),
+plus `8 × 256 × u8` = **2048 B** of rank attacks (`attacks.cpp:73-79`). **6 KiB
+total, and no attack table at all.** Ours is an **841 KiB** packed magic array
+(`src/attacks.rs:469-473`) plus 4 KiB of metadata. Theirs is unconditionally
+L1-resident; ours cannot be — but the per-node working set is far smaller than
+841 KiB (11 lookups over ~8 distinct squares, and a single square's rook block
+is 8–32 KiB), **and this study measured no cache counter at all.** "Guaranteed
+L2/L3 miss" would be an unmeasured causal claim and study 14 should not inherit
+it as established; `perf stat -e L1-dcache-load-misses` on both engines is what
+would price it.
+
+It is tempting, and it is **probably** the wrong trade for this metric — and the
+first draft of this paragraph got the arithmetic wrong in both directions at
+once, so here it is re-derived (CLAUDE.md rule 8).
+
+`both_attacks_bb` is **15 vector instructions** (counting the intrinsics at
+`attacks.h:107-136`, excluding the free `set_epi8` constant and the free cast)
+**plus a ~7-instruction scalar rank-attack tail** — shift load, table-pointer
+load, `shrx`, byte mask, `movzx` table load, `shlx`, `add` — so **~22 for both
+piece types**. Our magic lookup is **~10**, not 5: mask load, `and`, `imul`,
+shift load, `shrx`, offset `add`, the slice length load and `cmp`/`jae` of §5.2,
+and the table load. So a *paired* rook+bishop query is ~22 against our ~20 —
+**roughly neutral**, not a clear loss.
+
+The loss is at the **unpaired** call sites, and it is a real asymmetry: SF's own
+dispatch routes single-type `attacks_bb<ROOK>` and `attacks_bb<BISHOP>` through
+the full dual body and lets DCE drop one extract (`attacks.h:279-292`), so an
+unpaired query costs ~21 against our ~10. Most of our sites do pair —
+`attackers_to` (`board.rs:734-735`), `set_check_info` (`:807-808`), `see_ge`
+(`:1811-1818`), the threat generator (`sota_threats.rs:359-360`) — but
+`movegen.rs:192,198` and the blocker loop at `board.rs:841-849` do not.
+
+**At 11.0 slider lookups per node the port is somewhere between neutral and
++50 i/n depending on a pairing rate we did not measure.** That is enough to say
+it is not a lever for *this* metric and not enough to say it is a loss. It is
+clearly a **cycles** lever — 6 KiB of L1-resident tables against 841 KiB — and
+it belongs to whoever is optimising NPS. Our headline is `instructions:u`, so
+the two goals have diverged here for the first time, and study 14 should notice
+that before treating i/n as a proxy for speed.
 
 ---
 
@@ -426,6 +576,9 @@ cost a build cycle each, and both are the kind that look obvious on paper.
 | 5 | `attacks::tables()` — 5.62 `LazyLock` derefs/node | ~17 | high | a `const`-evaluated table removes the check *and* the GOT load; ~5 M const-eval steps, so the risk is build time, not correctness |
 | 5b | **the unsymbolised ~68 i/n of libc `memmove`** (§7) | ~68 | **unknown — nobody has looked** | one call-graph profile on the `profiling` profile; the caller is not in any flat table anyone has produced |
 | 5c | `Board::move_piece` is a 22 i/n **out-of-line call** per make | ~15 | medium | it is the make/unmake hot path's innermost primitive and it is not being inlined; check why (`#[inline]` present? cold-call heuristics from the panic edges in `put_piece`/`remove_piece`?) |
+| 5d | `gives_check` (2–3 `st()` calls) and `see_ge`'s swap loop (re-reads `pinners`/`blockers_for_king` **inside** the loop) | ~1–3 `st()`/node each | medium — D33 reviewer C | one combined arm, not two: both are inside `board.rs` where `st()` is already in scope, so neither needs new public API |
+| 5e | `ord_weight()` / `ord_min_depth()` — per-node `LazyLock` derefs beside the arm that removed the `RwLock` | ~6 | high — reviewer C | reorder the guard so the now-free `self.policy_head` test short-circuits first, or fold head + weight + min-depth into one `Option<PolicyOrder>` snapshot |
+| 5f | `check_squares_all` returns `[Bitboard; 6]` **by value** | small, negative-risk | reviewer C | `&self.st().check_squares` — the caller indexes it at runtime anyway, so the 48-byte copy is pure loss. (`threat_map` genuinely cannot: `Cell::get()` is a copy by definition.) |
 | 6 | ~~accumulator width / fold~~ | **0 as code** | **closed** | §7 — at its arithmetic floor; the residual is 1280 vs 1024, a retrain |
 | 7 | ~~threat generation~~ | **+33** | **closed** | §7 — cheaper than Stockfish's per-node equivalent |
 | 8 | ~~bounds checks / the 1.84× branch ratio~~ | **0** | **REFUTED** | §5.2, two independent measurements |
@@ -486,8 +639,22 @@ four both fit that rule; the two refuted here are what happens when you do not.
   * eval hash `5ca978e012da1bb086799709c3ea5350cf6d49923c254f7975b6d780b0098b38`
   * d13 nodes **1922947**
 
-**The gate triple — `Bench: 587683`, the eval hash, and d13 `1922947` — all
-unchanged IS the node-identity proof for the whole landed set.**
+**Scope of that proof, stated honestly** (D33 reviewer A): the gate triple proves
+node identity for arms **4.2, 4.3 and 4.4**, which are the three that touch
+`board.rs`/`movepick.rs`. It cannot observe arm **4.1** in either direction —
+`active_policy_head()` is `None` in every gated configuration, because no
+`.cpol` sidecar exists anywhere in the tree (every net in
+`data/nnue/nets/screens/` is named `*-nocpol.cenn`) and `CPL_ORD_W` defaults to
+0. Arm 4.1 is therefore verified by an exhaustive trace of the global's writers
+and readers, not by a pin: the only in-session writer is `setoption EvalFile`,
+and `dispatch` calls `wait_for_search_finished()` before it, so no worker can be
+between its `refresh_eval_net` and a node. Every worker — main and pool helper
+alike — runs `refresh_eval_net()` as the first statement of `start_searching`,
+and `bench` refreshes before its position loop.
+
+`gate-s13.log` contains **both** runs concatenated: the default run (whose
+footer correctly says the NNUE gate was skipped) followed by the
+`CHECK_NNUE_GATE=1` run with the two NNUE pins.
 
 ### 9.1 Each landed change has a test that can fail, and it was verified by mutation
 
@@ -496,6 +663,19 @@ unchanged IS the node-identity proof for the whole landed set.**
 | `threat_map` | `threat_map_on_a_cold_cache_agrees_with_the_per_type_accessors` | drop the `ensure_threats()` ⇒ reads the cold all-zero cache |
 | `king_square` | `king_square_is_exact_across_the_index_range` | `& 62` instead of `& 63` (h8/a1 corners are in the fixtures) |
 | `check_squares_all` | `check_squares_all_agrees_with_the_per_type_accessor` | return `[EMPTY; 6]` |
+| `is_legal_root` (§5.4) | `position_illegal_root_is_rejected_and_atomic` | delete either term of the predicate — each term is caught by a different fixture |
+
+**The policy-head snapshot (§4.1) has NO test that can fail, and no pin can see
+it** (D33 reviewer C). `active_policy_head()` returns `None` in every gated
+configuration: `PolicyHead::sibling_of` resolves `.cpol` against the path it is
+given, and the gate loads `engines/canonical/net.cenn`, so it looks for
+`engines/canonical/net.cpol` — while the real sidecar sits beside the symlink's
+*target* in `data/nnue/nets/screens/`. Mutating the snapshot to a hard `None`
+(i.e. silently disabling D47 ordering) passes `cargo test`, `check.sh` and
+`CHECK_NNUE_GATE=1`. The arm is verified by the writer/reader trace in §9, not
+by a test, and closing that hole needs a test-only installer for the global plus
+a `--features sota` test — study 14's cheapest correctness debt, not a perf
+item.
 
 All three mutations were applied and **all three tests failed**, then the
 mutations were reverted and the suite re-run clean. The first test's boards are
@@ -504,7 +684,59 @@ would have passed a `threat_map` with no fill, because it warms the cache first.
 
 ---
 
-## 10. THREATS TO VALIDITY
+## 10. THE D33 REVIEW ROUND
+
+Three read-only reviewer personas ran against the landed diff and this document
+(A correctness/safety, B reference-fidelity vs `eca43a97`, C Rust-idiom/perf/
+test-quality). **No blockers in the landed set.** The round changed the study
+materially in four ways, all of which are folded in above:
+
+* **A found that §4.3's stated invariant does not exist.** `from_fen` does not
+  validate kings and a king *can* be captured from an illegal-but-accepted root,
+  so `king_square`'s `expect` was a live release tripwire. §5.4, and the tripwire
+  now lives in `Board::is_legal_root()` at the UCI `position` boundary with two
+  mutation-verified tests. A also verified exhaustively that **no path** can
+  change the policy head between `refresh_eval_net` and a node — including pool
+  helpers, `setoption` mid-search and `ucinewgame` — which is what arm 4.1 rests
+  on in the absence of a test.
+* **B corrected §6's arithmetic in both directions.** `both_attacks_bb` is ~22
+  instructions (15 vector + a ~7-instruction scalar rank tail), not 15; our magic
+  lookup is ~10, not 5 — a fact the study's own §5.2 already implied and §6
+  contradicted. The verdict survives; the derivation did not, and "priced" is now
+  "between neutral and +50 depending on a pairing rate we did not measure". B also
+  scoped "no longer uses magic bitboards" to AVX2 builds (the pre-AVX2 `#else`
+  still has them), struck the unmeasured "guaranteed L2/L3 miss", and found that
+  **`append_changed_indices` is fold-time**, so §7's eager-vs-lazy comparison was
+  inflating Stockfish's eager side by 35%. B confirmed no GPL code was copied and
+  that all three §6 size figures (4 KiB / 2 KiB / 841 KiB) were already exact.
+* **C found that arm 4.1 has no test that can fail and that no pin can see it** —
+  `PolicyHead::sibling_of` resolves `.cpol` against `engines/canonical/net.cenn`,
+  while the real sidecar sits beside the symlink's *target*. §9.1 now says so
+  instead of the commit message's blanket claim. C also caught two doc numbers
+  that contradicted the artifact they cited ("~30 per node" for a per-`init_quiets`
+  rate; "+38.2 twice" for +41.5 and +38.2), and two test holes: the check-square
+  fixtures made the Pawn and Bishop sets *identical*, so a swapped index would
+  have passed, and `king_square_is_exact_across_the_index_range` sampled 8 of 64
+  indices when the whole domain is free. Both are fixed and the check-square test
+  now also pins pairwise distinctness.
+* **C independently reached the same verdict on arm 7** (§5.3) from the probe log
+  before reading the write-up, and named the one remaining site with
+  `king_square`'s *actual* shape — `checkers().lsb().unwrap()` at
+  `movegen.rs:174` — with the correct caveat that it is not the same win, because
+  `king_square` removed three branches and `a6` removed 0.1.
+
+Reviewer items deliberately **not** taken, with reasons: collapsing
+`Worker::policy_head` into `EvalContext` (C's N-3 — right on one-source-of-truth
+grounds, but it is a re-measure and the two copies cannot diverge while both are
+written inside `refresh_eval_net`); moving the `trailing_zeros() & 63` idiom onto
+`Bitboard` as `lsb_or_a1` (C's N-4 — a strictly better home, and a codegen
+cascade risk of the exact size this study spent three arms learning to respect);
+and returning `&[Bitboard; 6]` from `check_squares_all` (C's N-1 — a real
+improvement, listed as handoff item 5f so it is *measured* rather than assumed).
+
+---
+
+## 11. THREATS TO VALIDITY
 
 1. **Probe deltas overstate PGO deltas by ~2×** (study 12 §0.3). Every per-arm
    figure in §3 is probe-frame; only the total is PGO-measured.
@@ -525,15 +757,21 @@ would have passed a `threat_map` with no fill, because it warms the cache first.
 
 ---
 
-## 11. ARTIFACTS (`perf-artifacts-13/`)
+## 12. ARTIFACTS (`perf-artifacts-13/`)
 
 * `probes-fast.txt` — every arm with its eval hash and node count, including
-  both nulls and both refuted arms.
+  both nulls and all three refuted arms.
+* `blocks.txt` — the §7 block table as emitted.
 * `counters.txt`, `counters-r2.txt` — the §2 deterministic panels.
 * `counters-headline.txt` — the §0.1 two-arm PGO panel, 5 rounds, with the
   parsed ratio table appended.
 * `gate-s13.log` — both gate runs (default and `CHECK_NNUE_GATE=1`).
-* `counters13.patch` — the counter instrumentation (reverted).
+* `counters13.patch` — the counter instrumentation for `counters.txt`
+  (reverted). **It does not carry the `Board::st()` / `Board::piece_on` hunks**
+  that produced `counters-r2.txt`'s two headline rows — those are one relaxed
+  `fetch_add` at the top of each accessor, reported through the same
+  `perfcount13_dump`. Study 14 should re-derive 29.07 rather than inherit it
+  (D33 reviewer C, N-8), which is CLAUDE.md research rule 8 anyway.
 * `scripts/probe13.sh`, `probe13fast.sh`, `pgo13.sh`, `null13.sh` — new.
 * `scripts/blocks13.py` — the block bucketer; its output is `blocks.txt` (§7).
 * `scripts/sfshow.sh` — pinned-revision reader for the reference clone.
