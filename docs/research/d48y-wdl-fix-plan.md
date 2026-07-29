@@ -2062,3 +2062,52 @@ frame.**
 symbols); `see_ge` is assigned to movepick but is also a search-pruning call;
 SF's `Network::evaluate` is one fused symbol so its accumulator/head split cannot
 be read directly, while ours is split across four symbols.
+
+### Study 19 — landed −45.41 i/n, but its THREE CORRECTIONS matter more
+
+**Landed** (probe frame, node- and eval-hash-identical on every line incl.
+rejects): three redundant-guard deletions in the threat generator, **−45.41 i/n
+(−0.738%)**, −6.359 br/n. `DeltaBuf::push_kept` (−28.46), `record_targets` with
+the victim mask as a const parameter (−9.34), a dead knight-scan guard (−7.61).
+Rejected g1/g1b (+4.63, +1.82).
+
+**CORRECTION 1 — the fattest stage is the WRONG target.** `at_full` is split for
+the first time: `resolve_both` is 285.65 i/n = **51% of the block**. But
+re-profiling SF *in the same 30k frame* (study 18's SF column was 3k) shows
+resolution is only **1.076x SF per perspective-resolve**. The 1.289x total is a
+CALL-COUNT difference from a design trade. **Generation is the block: 1.30x
+total, 1.52x per call.** Size never equals opportunity.
+
+**CORRECTION 2 — the cache-miss story I would have believed is FALSE.** Study 19
+had the threat-PSQT row (random 32 B from 1.94 MB) written into its own
+remainder as the stall cause, then measured it: **`at_full` owns just 4.69% of
+misses; 65.75% are in the three ACCUMULATOR-FOLD kernels.** It withdrew its own
+hypothesis in place rather than shipping it. This corroborates
+`i16_deltas_into` + `finny_refresh_into` as the real stall site — study 20's
+files, not study 19's.
+
+**CORRECTION 3 — my per-symbol profile shares are FRAME-DEPENDENT.** Study 19's
+self-profile agrees with mine on the AGGREGATE (accumulator maintenance 45.4% vs
+my 44.1%; head 7.7% vs 8.8%) but disagrees **3.5x on `at_full`** and **7.0x on
+`finny_refresh_into`**, because `wl50.fens` is endgame-skewed and a fixed-depth
+bench set is not. **Rank on the aggregate, or name the frame.** Amendment sent to
+study 20, which had been given my numbers.
+
+**A call-count law worth keeping:** g1/g1b removed provable work and still cost
+instructions, because `ripple` runs 0.481/node against `record_square_touch`'s
+1.0865 — **0.443 ripples per touch, so anything hoisted out of the rarer callee
+is paid 2.26x more often.** Check the call-count ratio before hoisting.
+
+**Its honesty, unprompted:** the paired cycles median read −2.06% against a
+−0.74% instruction change and **it refused to claim it**, because its own null
+came back at 1.0163 with a **19.17pp spread**, and going 8→20 rounds moved the
+null AWAY from unity (drift slower than the measurement, so rounds don't help).
+It also volunteered that it ran that null in the wrong order and destroyed its
+first attempt. That is exactly the standard this project needs.
+
+**Handed to study 20 as its item 1:** SF prefetches inside
+`append_changed_indices` the instant each index is computed
+(`eca43a97:full_threats.cpp:295-299`); our phase split leaves the latency
+exposed. `compute`'s comment rejects this at "−0.4% NPS" — **study-4 era, inside
+today's measured noise floor, therefore not evidence.** This arm EXPECTS
+instructions to rise and must be gated on cycles/cache-misses, not `instructions:u`.
