@@ -562,9 +562,13 @@ impl Board {
             }
 
             // Unreachable: the caller only routes the two kinds above here.
+            // `false` is the fail-soft direction — a spurious "illegal" drops a
+            // move, where `true` would let an illegal one be played (D33
+            // reviewer A). No `let _ = …` suppression here: both parameters are
+            // live in the arms above, so a future unused-parameter warning
+            // would be REAL and must not be pre-silenced.
             _ => {
                 debug_assert!(false, "legal_special called with {m:?}");
-                let _ = (us, ksq);
                 false
             }
         }

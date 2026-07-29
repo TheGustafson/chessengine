@@ -291,7 +291,38 @@ and it won on the make side (that study's headline). **This is the other half of
 that trade, and it is +25.5 i/n.** It is ranked, not attacked — see §11 item 3;
 the alternatives all reintroduce the borrow study 14 removed.
 
-### 3.3 Why study 11 and study 13 disagreed with this
+### 3.3 TARGET 1 — `Worker::do_move`, split and priced
+
+The commission called `do_move` "the largest single unmeasured block in the
+engine … nobody has ever looked inside it", and prescribed splitting it with
+`noinline` the way study 12 split Stockfish's eval. **Callgrind does the same
+split without touching the source**, because every stage is already a call and
+callgrind prices call edges exactly:
+
+| stage of `Worker::do_move` | calls/node | i/n | share |
+|---|---:|---:|---:|
+| **`SotaContext::push`** — the accumulator + threat record | 1.0000 | **415.0** | **46%** |
+| … `SotaContext::push` self (inlines `HalfkaContext::push`) | | 41.0 | |
+| … `ThreatContext::apply_at` self | 1.0000 | 151.3 | |
+| … **the eager king-cross threat refresh** (`refresh_threat` 181.6 + `refresh_psqt_threat` 31.5 + a libc `memcpy` 9.6) | **0.0357** | **222.7** | **25%** |
+| **`make_move_with`** | 1.0000 | **327.5** | **36%** |
+| … self | | 215.0 | |
+| … `refresh_check_info` | 1.0006 | 105.8 | |
+| … `attackers_to` (the `gives_check` confirmation) | 0.0996 | 6.9 | |
+| **`Worker::do_move` self** — node counter, atomic mirror, `capture_stage`, `ContHistId::new`, the inlined `push_dirty`/`push_sota_dirty` dispatch | 1.0000 | **105.1** | 12% |
+| **`DirtyPiece::from_move`** | 1.0000 | **52.1** | 6% |
+| **total** | | **899.6** | |
+
+**The expensive stage is not the board work. It is the eager king-cross threat
+refresh: 222.7 i/n, a quarter of the whole make side, at 0.0357 calls per node
+— 6,240 instructions per call.** That is §11 item 1, and it is the largest
+single mechanism this study found.
+
+The second-largest surprise is how cheap the rest is: 105.1 i/n of glue in a
+function study 15 sized at ~300, and 52.1 for the dirty-piece record whose
+"duplicate derivation" study 13 measured and rejected at +41.5.
+
+### 3.4 Why study 11 and study 13 disagreed with this
 
 Study 13 §7 built its block table from two **stage-split** `perf record`
 profiles — ARCHON at 6362 i/n and SF at 5090, each calibrated off its own
@@ -669,7 +700,8 @@ spellings). **Re-opened by this study:** threat generation.
 
 | # | item | size | confidence | cheapest next test |
 |---|---|---:|---|---|
-| 1 | **Threat generation, 1.70–1.83× SF.** §4. Our nine symbols cost 1148.9 i/n against SF's 674.8. The two engines' designs differ (lazy regenerate-at-fold on 41.5% of nodes vs eager maintenance on 100%), so part of the gap is the design and part is the spelling, and **nobody knows the split** | **+474 to +558** | **high — exact, matched, both engines** | split it before attacking it: `at_full` is 466.19 i/n at 1123 i/call and inlines `compute`; put `#[inline(never)]` on `compute`, `build_deltas`, `resolve_both` and the fold, re-run `cg17.sh`, and price the four stages. One 6 s build and one 10 s callgrind run. **Only then** decide between a cheaper regeneration and SF's eager shape |
+| 1 | **THE EAGER KING-CROSS THREAT REFRESH IS PAID ON NODES THAT NEVER EVALUATE.** §3.3. `ThreatContext::apply_at` rebuilds a perspective's whole threat accumulator from scratch when that perspective's king crosses the d/e mirror — **222.7 i/n, 25% of the entire make side, at 0.0357 calls/node (6,240 instructions per call)**. It runs at PUSH time, i.e. on every made move; only **41.5%** of nodes ever evaluate, so **~58% of it is thrown away**. Everything else in that module is already lazy; this is the one eager path | **~130** | **high — exact, and the mechanism is a one-line design choice** | it is eager only because `refresh_threat` takes a `&Board` and the live board is gone by fold time — but `apply_at` **already stores a `ThreatPosition` snapshot in the same entry**, and that struct carries exactly what `for_each_threat` reads (`by_type`, `by_color`, `occ`, `kings` vs `board.pieces(c,pt)`, `all_occupancy()`, `king_square()`). So: make `for_each_threat` take the snapshot instead of the board, mark the crossed ply "needs refresh" rather than `computed`, and teach `compute`'s ancestor walk to do the refresh when it reaches such a ply. **Needs the NNUE gate, so it is not a gate-frozen session's work**, and it collides with study 16's unmerged `refresh_threat_into` — do them in one study |
+| 1b | **Threat generation overall, 1.70–1.83× SF.** §4. Our nine symbols cost 1148.9 i/n against SF's 674.8. The designs differ (lazy regenerate-at-fold on 41.5% of nodes vs eager maintenance on 100%), so part of the gap is the design and part is the spelling, and **nobody knows the split** | **+474 to +558** | **high — exact, matched, both engines** | split it before attacking it: `at_full` is 466.19 i/n at 1123 i/call and inlines `compute`; put `#[inline(never)]` on `compute`, `build_deltas`, `resolve_both` and the fold, re-run `cg17.sh`, and price the four stages. One 6 s build and one 10 s callgrind run. **Only then** decide between a cheaper regeneration and SF's eager shape |
 | 2 | **The libc `memcpy` inside `at_full`** — 0.3111 calls/node, 83.7 i/n inclusive, ~269 instructions per call, counted not estimated. Not the empty-delta copy (study 14 already chunked that one) | 20–80 | **high — counted** | `memspy16.sh` from study 16, whose interposer already tags the caller and the payload size. The class it belongs to has paid twice (study 15 −22.7, study 16 −14.6) |
 | 3 | **`unmake_move`'s 168-byte state restore** — the other half of study 14's trade. 79.2 i/call vs SF's 53.6 | **+25.5** | **high — exact** | not a respelling: SF restores by pointer. The honest options are (a) leave it, since study 14's make-side win was larger, or (b) make `StateInfo`'s *restored* prefix smaller by moving the fields `unmake` does not need (blockers, pinners, check_squares — 48 B) out of the copied block. (b) is a design change to doc 04 and wants its own study |
 | 4 | **The `#[cold]` sweep is not finished.** §5's rule (a whole arm of a top-level kind dispatch) has more sites: `movepick`'s scoring loops, `see_ge`'s non-Normal short circuit, `pseudo_legal`'s non-Normal branch (which allocates a 520-byte `MoveList` frame) | 10–40 | medium | one `probe17.sh` cycle each, 6 s. Watch for u3's failure mode: if the caller has to materialise arguments it otherwise never computes, it loses |

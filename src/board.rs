@@ -1016,6 +1016,8 @@ impl Board {
     }
 
     /// The promotion / en-passant / castling arms of [`Board::gives_check`].
+    /// Same `#[cold]` caveat as [`Board::unmake_special`]: honest for castling
+    /// and en passant everywhere, honest for promotions outside a pawn endgame.
     #[cold]
     #[inline(never)]
     fn gives_check_special(
@@ -1661,6 +1663,13 @@ impl Board {
     /// The promotion and en-passant arms of [`Board::unmake_move`] — the exact
     /// inverse of `make_move_with` step 10 for those two kinds. Castling has
     /// its own [`Board::unmake_castling`]; `Normal` stays inline in the caller.
+    ///
+    /// `#[cold]` is honest for en passant everywhere and for promotions in the
+    /// overwhelming majority of positions, but NOT unconditionally: in a pawn
+    /// endgame promotions can reach several percent of made moves, and there
+    /// the branch weight buys a mispredict (D33 reviewer A). The measured
+    /// −1.4 i/n is over the wl50 mix; if a promotion-heavy régime ever shows
+    /// up in a régime-split measurement, split `Promotion` back out.
     #[cold]
     #[inline(never)]
     fn unmake_special(
