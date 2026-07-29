@@ -741,6 +741,7 @@ Green **here**, on HEAD:
 | `cargo clippy --all-targets` | **0 warnings** |
 | `cargo clippy --all-targets --features sota,arch-d48x` | **6 warnings, all pre-existing, all in `simple_halfka.rs`** (study 17 item 8's known pair; none in a file this study touches) |
 | `cargo fmt --check` | **clean** |
+| `cargo test --release --test perft_suite -- --ignored perft_full_suite` (**D24 ritual**) | **PASS** — 1 passed, 6.1 s |
 | probe-tree node identity (5,001,562) + eval hash, every arm | **PASS** |
 | the five-mutation panel | **all five caught** |
 
@@ -752,9 +753,10 @@ Deferred to the owner, in this order:
    `5ca978e0…8b38`, d13 nodes `1922947`. Every arm is node-identical and
    eval-hash-identical, so **a moved pin is a bug in this study, not a new
    pin.**
-2. **`cargo test --release -- --ignored perft_full_suite`.** Not strictly owed —
-   this study touches neither `movegen` nor board mutation — but study 17's
-   u7/u8/u9 still had it outstanding and it takes 7 s.
+2. **`cargo test --release -- --ignored perft_extended`** (~18 G nodes, < 4 min)
+   — optional. The **full** tier is green here (table above); the extended tier
+   is a release-and-movegen-rewrite gate and this study is neither, so it is
+   listed for completeness only.
 3. **`bash tools/build_pgo.sh sota,arch-d48x engines/bin/archon-s18
    engines/canonical/net.cenn`**, then the two-arm panel against
    `engines/bin/stockfish-eca43a97`
