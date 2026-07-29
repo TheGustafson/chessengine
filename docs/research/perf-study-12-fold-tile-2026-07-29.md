@@ -337,22 +337,52 @@ them with the probe.**
 1,661 i/n remain. **~327 of it is the 1280 vs 1024 accumulator width**, which is
 a retrain, not a code change (D48X is 1280). The rest is code.
 
+**Item 1 was opened before this study closed, and it is empty.** A
+`#[inline(never)]` split of `next_move`, `correction_value`, `TT::probe`,
+`gives_check` and `legal` out of our search body
+(`flat-s12searchsplit-instructions.txt`) leaves **`search::<NonPv>` at 606 i/n
+against Stockfish's own split `search<NonPv>` at 617** — parity. Movepick is
+parity too (ours 730 vs SF's `next_move` + `partial_insertion_sort` 734). The
+search block's excess is not one defect; it is a long tail of 1.3–2× helpers,
+the largest of which is `correction_value` at 127 vs SF's 73.
+
 | # | item | size | confidence | cheapest next test |
 |---|---|---:|---|---|
-| 1 | **`search::<NonPv>` 1251 vs SF 875** | +376 | low — never split | `#[inline(never)]` split of the search body's phases (the fast probe makes this a 1-minute build), then compare against SF's `search<NonPv>` split the same way |
+| 1 | **The long tail of 1.3–2× search helpers** — `correction_value` +54, `legal` +28, `attackers_to`/`attackers_to_exist`, `update_continuation_histories` | ~+250 total, no single item > 60 | high — measured | take them one at a time with `probe12fast.sh`; start with `correction_value` (four `corr_slot` bundle loads where SF reads four dense per-type tables) |
 | 2 | **make/unmake 417 vs 262** | +155 | medium | the `states.push(StateInfo::EMPTY)` constant store is **provably dead** — 3 zmm loads + 3 zmm stores of 168 B per node, confirmed in the disassembly, and LLVM will not DSE it across `set_check_info`. Needs `states` to become a pre-sized array with a `top` index instead of a `Vec` push/pop (D8 change) |
 | 3 | **`at_full` 954** | ≤ +400 | medium | the threat channel's fold is inlined here; split it with `#[inline(never)]` and price the generator/resolver separately. Note §10's warning before believing any of it |
 | 4 | Fold-kernel loop control, second cut | ~44 | medium | unroll the row loop by 2 (halves the remaining `tiles × rows × 6`) |
 | 5 | `record_mutate`'s duplicated fans | ~5 | high | same fix as arm #5, one level up: `record_outgoing` × 2 + `record_incoming_mutate` recompute `ratt`/`batt` at the same square up to three times |
 | 6 | ~~Merge the two accumulators~~ | **+114, then −64** | **priced and REJECTED** | §3. Merging costs our 0.167× threat refresh rate. Do not spend a session on it |
 | 7 | ~~The head (`forward_into`)~~ | **0** | **closed** | §10 — 556 vs Stockfish's 572, measured |
-| 8 | Accumulator width 1280 → 1024 | ~327 | n/a | a retrain, not an optimisation |
+| 8 | ~~`upcoming_repetition`'s missing `other` prefilter~~ | 0 | **REJECTED as a speed item** | transcribed and measured: the node count MOVES (5,001,562 → 5,001,624), so our version detects cycles SF's filter rejects. That is a **fidelity** question for `searchopt/`, with an Elo test, not a probe |
+| 9 | Accumulator width 1280 → 1024 | ~327 | n/a | a retrain, not an optimisation |
 
 **Honest arithmetic on the 1.1× bar.** 1.1× is 4897.6 i/n; we are at 6113.5, so
-**−1215.9 remains, of which ~889 is code** once the width term is set aside.
-Items 1–5 above are the whole of that budget, and item 1 (never opened) is 42% of
-it. It is reachable only if the search block turns out to carry a defect of the
-same class as §4 and §7 — which is exactly what nobody has looked for yet.
+**−1215.9 remains.** After this study's measurements, here is where it actually
+lives, and none of it is one big defect:
+
+* **~327 i/n — accumulator width, 1280 vs 1024.** A retrain, not a code change.
+  This is the single largest remaining term and it is *not* available to a perf
+  study. It is available to whoever picks gen-3's width: the standing finding is
+  that width is ~Elo-neutral between 768 and 1536 at equal time, so 1024 is
+  nearly free Elo *if* the recipe holds.
+* **~350 i/n — the second accumulator pass** (2.30 passes/node vs SF's 1.17).
+  §3 prices the merge at a net ~114 i/n *gain* and rejects it, because collapsing
+  the two stacks forces the threat channel onto HalfKA's refresh trigger and
+  costs the 0.167× threat-refresh advantage. Anyone who wants this term must
+  first find a way to keep a lazy threat refresh inside a merged stack.
+* **~250 i/n — the long-tail search helpers** (item 1), no single one over 60.
+* **~155 i/n — make/unmake** (item 2), of which the dead `StateInfo::EMPTY`
+  store is provable and the rest is unexamined.
+* The remainder is spread below 50 i/n per site.
+
+**So the honest statement is not "1.1× is unreachable" — it is "1.1× requires
+the 1024-wide retrain plus roughly every remaining code item, and this study
+found no further single lever above ~150 i/n."** Three of the four candidates
+studies 10 and 11 nominated as large (the head, the threat scalar, the merged
+accumulator) are now closed by measurement rather than by argument. The next
+study should expect to grind, not to find.
 
 ---
 
