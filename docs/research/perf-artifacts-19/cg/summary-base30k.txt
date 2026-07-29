@@ -1,0 +1,30 @@
+# nodes=1,500,780  total_Ir=23,084,224,869  total_i/n=15381.5
+ self/node  calls/node  per_call  function
+   3745.34      0.8650    4329.8  chessengine::eval::nnue::sota_simd::avx2::i8_deltas_into
+   3161.01      0.9899    3193.2  chessengine::eval::nnue::sota_simd::avx2::i16_deltas_into
+   1356.14      0.4315    3143.0  chessengine::eval::nnue::sota_simd::avx2::activate
+    802.16      0.1611    4980.3  chessengine::eval::nnue::sota_simd::avx2::i16_deltas_dual
+    739.21      0.8712     848.5  <chessengine::search::Worker>::search::<chessengine::search::NonPv>'2
+    561.40      0.1734    3237.2  <chessengine::movepick::MovePicker>::init_quiets
+    477.45      0.4315    1106.6  <chessengine::eval::nnue::sota_threats::ThreatContext>::at_full
+    456.09      0.4315    1057.0  chessengine::eval::nnue::sota_simd::avx2::l1_dot
+    304.89      0.0000 457578222.0  chessengine::eval::nnue::sota_loader::load_v2_bytes
+    227.39      0.4315     527.0  chessengine::eval::nnue::sota_simd::avx2::find_nnz
+    215.87      0.4315     500.3  <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::current_full
+    212.83      1.0038     212.0  <chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>
+    203.02      1.0865     186.9  chessengine::eval::nnue::sota_threats::record_square_touch
+    189.48      0.0000 142180227.0  chessengine::attacks::init_magics
+    153.72      0.0000 115348528.0  <alloc::boxed::Box<[i16]> as core::iter::traits::collect::FromIterator<i16>>::from_iter::<core::iter::adapters::map::Map<core::slice::iter::ChunksExact<u8>, chessengine::eval::nnue::sota_loader::read_i16s::{closure#0}>>
+    141.46      2.2743      62.2  <chessengine::movepick::MovePicker>::next_move
+    136.96      0.3756     364.6  <chessengine::history::Histories>::update_continuation_histories
+    119.95      0.4315     278.0  <chessengine::eval::nnue::sota_head::SotaHead>::forward_into
+    111.92      1.3024      85.9  <chessengine::board::Board>::see_ge
+    104.86      1.0125     103.6  <chessengine::board::Board>::refresh_check_info
+    103.06      1.0000     103.1  <chessengine::search::Worker>::do_move
+     94.64      0.3627     260.9  __memcpy_avx_unaligned_erms
+     92.08      0.9834      93.6  <chessengine::history::Histories>::correction_value
+     91.91      0.4315     213.0  chessengine::eval::nnue::sota_simd::avx2::skip_dot_i8
+     86.28      0.6434     134.1  __memset_avx2_unaligned_erms
+     81.25      1.0000      81.3  <chessengine::eval::nnue::sota_threats::ThreatContext>::apply_at
+     78.77      0.3476     226.6  <chessengine::movepick::MovePicker>::init_captures
+     75.78      0.1612     470.3  <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into

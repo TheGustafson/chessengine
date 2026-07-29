@@ -1,0 +1,18 @@
+# nodes=1,500,780  total_Ir=23,212,562,646  total_i/n=15467.0
+ self/node  calls/node  per_call  function
+    285.65      0.5776     494.5  chessengine::eval::nnue::sota_threats::resolve_both
+    203.02      1.0865     186.9  chessengine::eval::nnue::sota_threats::record_square_touch
+    137.86      0.4315     319.5  <chessengine::eval::nnue::sota_threats::ThreatContext>::compute
+     81.32      0.6182     131.5  chessengine::eval::nnue::sota_threats::build_deltas
+     81.25      1.0000      81.3  <chessengine::eval::nnue::sota_threats::ThreatContext>::apply_at
+     50.51      1.1959      42.2  chessengine::eval::nnue::sota_threats::fold_one
+     41.10      0.0204    2019.0  chessengine::eval::nnue::sota_features::refresh_threat_into_at
+     37.44      0.4812      77.8  chessengine::eval::nnue::sota_threats::ripple
+     25.57      0.1874     136.4  chessengine::eval::nnue::sota_threats::record_targets
+     20.18      0.3011      67.0  chessengine::eval::nnue::sota_threats::record_outgoing
+     15.37      0.0204     754.9  chessengine::eval::nnue::sota_threats::refresh_psqt_threat_at
+      4.24      0.0406     104.5  chessengine::eval::nnue::sota_threats::resolve_into
+      0.81      0.0203      40.0  chessengine::eval::nnue::sota_threats::discharge_refresh
+      0.10      0.0000  143487.0  chessengine::eval::nnue::sota_features::build_threat_tables
+      0.00      0.0000      75.0  <chessengine::eval::nnue::sota_threats::ThreatContext>::refresh
+      0.00      0.0000      23.0  <std::sync::once::Once>::call_once_force::<<std::sync::lazy_lock::LazyLock<chessengine::eval::nnue::sota_features::ThreatTables>>::force::{closure#0}>::{closure#0}
