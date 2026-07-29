@@ -2158,3 +2158,41 @@ Heldout R² alongside: sb150 **0.8866**, sb160 **0.8877**, sb170 **0.8889**, vs
 D48X's fully-annealed **0.8815**. The loss metric says D48Y2 passed the incumbent
 around sb130. **Games arbitrate — this match is the test of whether that
 converts.**
+
+### ★ RETRACTION — "no teacher" is NOT a confound (owner, 2026-07-29)
+
+Every tick of this doc has carried "D48Y differs from D48X in TWO ways
+(calibrated per-corpus target AND no teacher)". **Owner challenged the teacher
+half. They are right; it is withdrawn.** Read from the configs:
+
+```
+D48X   distill_alpha_ramp = [[0, 0.7], [30, 0.7], [60, 0.0]]   superbatches = 520
+D48X   warm = data/nnue/experiments/d48x-warm-a3.bin
+D48Y   warm = data/nnue/experiments/d48x-warm-a3.bin          <- IDENTICAL trunk
+D48Y2  warm = d48y-1280-sb160-ema-raw.bin                     <- same lineage
+```
+
+Three reasons it is not a confound:
+
+1. **The teacher was OFF for 88.5% of D48X's training.** It ramped to zero at
+   sb60 of 520 — inactive through all of D48X's convergence and its entire
+   anneal.
+2. **Both lineages share the identical warm trunk** (`d48x-warm-a3.bin`), so
+   whatever the teacher contributed in sb0–60 is baked into weights D48Y2
+   INHERITS. D48Y2 did not "lose" it.
+3. **The direction is wrong for a confound.** If the teacher contributed
+   something D48Y2 lacks, that biases AGAINST D48Y2 — it cannot manufacture the
+   −111 → −11.6 improvement. It was only ever a confound for the opposite
+   conclusion.
+
+**WHAT REMAINS A REAL DIFFERENCE (and why `d48z` still matters):** D48Y2 trained
+**190 sb from a D48Y checkpoint** on its own LR ramp; D48X trained **520 sb from
+the raw trunk** on a different one. Those are schedule/budget differences, not
+teacher differences. `d48z_old`/`d48z_new` hold warm, seed, mix and budget fixed
+with **`per_corpus_target` as the single variable**, and remain the clean test of
+the WDL question.
+
+**Method note for future ticks:** this caveat survived many ticks unexamined
+because it was written into the handoff header early and then copied forward. A
+confound asserted once and inherited is not a measured confound. **Two minutes of
+`json.load` on the two run configs would have killed it at any point.**
