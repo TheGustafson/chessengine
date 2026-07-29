@@ -171,65 +171,77 @@ This makes the conclusion STRONGER, not weaker: if part of SF's nps is cheap eva
 search at 2.13 Mnps compares even better against their search, and the bottleneck is even
 more clearly our eval cost.
 
-**⚠ PROVISIONAL — THE SF BINARY'S PGO STATUS IS UNVERIFIED (owner question,
-2026-07-29).** Everything in this block is measured against
-`engines/bin/stockfish-eca43a97`, whose **AVX-512 is confirmed** (SF's own
-`compiler` report: `x86-64-vnni512`, `VNNI AVX512 BMI2 AVX2`) but whose **PGO
-status could not be determined**. The hot/cold `.text` section fingerprint has
-**no discriminating power** — our own known-PGO `archon-s17pgo` shows an
-identical single `.text`, so that test settles nothing in either direction.
+**★★ RETRACTED IN FULL — MATCH-PGN NPS IS NOT A VALID INSTRUMENT (2026-07-29).**
+An earlier version of this block claimed ARCHON was **6% FASTER** than
+single-net Stockfish, and that SF18's edge was a 1.44x smallnet accounting
+artifact. **Both claims are withdrawn. The opposite is true.**
 
-SF's `profile-build` is worth **several percent**, the SAME ORDER as the 6.1%
-edge below. **If that binary was not PGO'd, the edge shrinks or inverts.** A
-known-PGO SF is being built at the identical arch
-(`make profile-build ARCH=x86-64-vnni512`) to race head-to-head; until that
-lands, do NOT quote "ARCHON is faster than Stockfish" as established.
+**How it died — the null I should have run FIRST.** The owner asked whether the
+SF binary was built right (PGO + AVX-512). To check, a known-PGO SF was built at
+the identical arch (`make profile-build ARCH=x86-64-vnni512`) and raced. A
+**paired bench** shows the two binaries are the same speed:
 
-**★ THE CAVEAT IS NOW A MEASUREMENT, AND IT INVERTS THE HEADLINE (2026-07-29).**
-Real contested gauntlet, 18 games, TC 10+0.1, Hash 64, concurrency 2, UHO book,
-D48X net, canonical `archon-s17pgo` (studies 12-17 merged). Per-move `n=`/`nps=`
-from the PGN, aggregated as **Sum(nodes)/Sum(time)** -- not a mean over moves,
-which would weight a 0.05 s book reply like a 3 s think:
-
-| engine | aggregate Mnps | median Mnps | moves |
+| | shipped | freshly profile-built | ratio |
 |---|---|---|---|
-| SF18 (**dual-net**) | **1.482** | 1.230 | 397 |
-| **ARCHON + D48X** | **1.091** | 1.190 | 866 |
-| SF `eca43a97` (**single-net**) | **1.028** | 1.024 | 409 |
+| SF `bench` nps, 3 rounds | 1,704,620 | 1,693,361 | **0.9934x** |
 
-| ratio | value |
-|---|---|
-| **ARCHON / SF-eca43a97** | **1.061x — WE ARE FASTER** |
-| SF18 / SF-eca43a97 | 1.442x (this IS the smallnet inflation) |
-| SF18 / ARCHON | 1.359x |
+So **the shipped binary was already PGO'd and is correctly built** — that part of
+the owner's question is answered, and it is fine. But those two binaries are an
+**INERT PERTURBATION**, and the match-PGN instrument put them **1.237x apart** —
+far larger than the 1.06x "we are faster" effect being read off it. **Rule 1: if
+an inert change moves the statistic more than the arm plausibly could, the
+instrument cannot answer the question.** Match nps confounds engine speed with
+each engine's own TIME MANAGER, its resulting POSITION MIX (endgames are cheap
+per node), and which side drew the long thinks.
 
-**Against the Stockfish architecture we actually reference, ARCHON is 6% FASTER
-in raw throughput.** The single-net premise is verified in source, not assumed:
-`eca43a97:src/evaluate.cpp` contains NO `use_smallnet` and the binary exposes
-zero `EvalFileSmall` options, while `sf_18` has both. **Stockfish REMOVED the
-dual-net design between the tag and our reference revision** -- they took the
-same nps-for-eval-quality trade we did.
+**THE CORRECT MEASUREMENT — paired, identical positions, identical node budget**
+(`tools/paired_nps.py`, 20 calib fens x 400k nodes, engines alternating):
 
-So the old "1.92x slower" framing compared us against a build whose cheap evals
-inflate its node count by a measured **1.44x**. It was never a like-for-like
-speed gap.
+| engine | mean Mnps | spread |
+|---|---|---|
+| SF `eca43a97` shipped | **1.916** | 1.5% |
+| SF `eca43a97` known-PGO | **1.895** | 4.8% |
+| **ARCHON + D48X** | **0.951** | 8.5% |
 
-**Caveats, and the first is not small:**
-- **n=18 games and the ratios were still moving.** SF18/SF-eca went 1.700x
-  (n=8) -> 1.442x (n=18), so that one is NOT settled. ARCHON/SF-eca moved only
-  1.033x -> 1.061x, which is why the parity conclusion is the one worth
-  quoting and SF18's exact figure is not.
-- **Contested by design** (trainer running + 2 concurrent games). Engines were
-  interleaved in the same games so contention is roughly symmetric, but that is
-  an argument, not a measurement -- a more bandwidth-bound engine loses more.
-- **NPS IS NOT STRENGTH.** A node is not a fixed unit of work across engines;
-  SF may search more selectively. This is throughput only, and the D48X
-  promotion ruling (search cannot yet exploit the eval) is untouched by it.
-- **Do NOT compare these absolutes to the 0.54 Mnps above.** Different TC,
-  different position mix (real games incl. cheap endgames vs one movetime
-  probe), different contention. Only the within-run ratio is valid.
+**ARCHON / SF = 0.496x — Stockfish is 2.02x faster.** The two SF builds sit at
+1.0113x, inside their own spread: the null now PASSES.
 
-Tool: `tools/nps_from_pgn.py`. Raw: `engines/runs/nps-ratio/`.
+**This reproduces the ORIGINAL 1.92x figure at the top of this section.** The old
+number was right all along; the "inversion" was my instrument, not reality. A
+headline that overturns a standing measurement deserved the null panel BEFORE
+publication, not after the owner questioned the setup.
+
+**WHY we are 2x slower — decomposed with `perf`, same 20 positions:**
+
+| | ARCHON | SF | ratio |
+|---|---|---|---|
+| instructions / node | 7,358 | 4,360 | **1.69x ours** |
+| **IPC** | 1.231 | 1.426 | **0.86x ours** |
+| cache-misses / node | 99.97 | 49.34 | **2.03x ours** |
+| branch-misses / node | 26.77 | 20.41 | 1.31x ours |
+| Mnps | 0.855 | 1.672 | 0.51x |
+
+Cross-check: `(1/1.688) x 0.863 = 0.511`, matching the measured nps ratio.
+
+**So the gap is TWO deficits, not one**, and this kills a tempting inference:
+**instruction-count parity alone would NOT make us faster.** It would close the
+1.69x factor and leave the IPC gap, landing us at ~0.86x SF — still ~1.16x
+slower. We do more instructions AND stall more while doing them.
+
+The stall source is visible: **2.03x the cache misses per node**. Consistent with
+a 138 MB / 1280-wide net against SF's 90 MB / 1024-wide, and with the standing
+"75% of our node time is eval". Both deficits are eval-cost consequences of the
+width decision, not search defects.
+
+**Era/frame caveat:** the perf studies quote ~1.33x instructions-per-node on
+their own bench frame; this measures 1.69x on 20 calib fens at fixed nodes.
+Different position mixes give different ratios — do NOT treat the two as the
+same number, and quote the frame with the figure.
+
+Tools: `tools/paired_nps.py` (valid). `tools/nps_from_pgn.py` (**match nps —
+do NOT use for engine-speed comparisons**; kept only for describing throughput
+actually realised in a given match). Raw: `engines/runs/nps-ratio/`,
+`engines/runs/nps-pgo/`.
 
 **Idea for whoever owns the net (NOT searchopt work, recorded so it is not lost):**
 adaptive eval cost is a *conditioning axis* — precisely the shape A3 says is the only
