@@ -1821,3 +1821,51 @@ threat-cost memory), and FT row locality.
 **Do not read this as "the width was a mistake".** Width is a pinned product
 decision (D48X, gen-2) and is out of scope; the question is how much of its
 memory cost is recoverable at fixed width.
+
+### Perf study 18 — verified, gated, PGO'd, MERGED; study 19 commissioned (2026-07-29)
+
+**Landed:** the king-cross accumulator refresh is now LAZY — the eager rebuild
+records a `Fold::Refresh` obligation that `compute` discharges from the snapshot
+the entry already stored. Canonical engine moved to `archon-s18`.
+
+**Verified by me, not accepted on report:**
+
+| check | result |
+|---|---|
+| `CHECK_NNUE_GATE=1 tools/check.sh` | **PASSED**, all three pins UNCHANGED, 0 failures |
+| eval hash / d13 / Bench | `5ca978e0…0b38` / `1922947` / `587683` |
+| two-arm panel, 20 calib fens @400k, PGO both sides | **node-identical 6,231,814** |
+| i/n | 7358.4 → **7238.2** = **−120.1 (−1.63%)** |
+| cyc/n | 5785.8 → **5669.4** = −116.4 (−2.01%) |
+
+**MAGNITUDE FLAGGED, NOT BANKED.** Predicted −25…−45; measured −120.1, i.e.
+2.5x its own claim. A result that far past its prediction gets attacked. Two
+named confounds: (1) **frame** — my baseline i/n is 7358 on 20 calib fens at
+fixed nodes vs the study's probe frame ~8910; (2) **PGO profile noise,
+unquantified** — the two binaries were profiled in separate runs and that
+variation is not bounded. Closing (2) needs a baseline rebuild under today's
+conditions. Direction is solid regardless: node-identity exact, gate clean, both
+counters moving together.
+
+**A build trap for next time:** `tools/build_pgo.sh` PREPENDS `engines/bin/` to
+its 2nd arg. Passing an absolute path yields
+`engines/bin//home/nick/...` and the copy fails AFTER a successful ~10 min
+build. The binary is recoverable at `<worktree>/target-pgo-<features>/release/
+chessengine` — recover it, do not rebuild.
+
+**Study 18's own honesty, worth recording:** it RETRACTED its §5 after a
+reviewer broke it (a claimed 3.2x "frame effect" was −54.3 of codegen difference
+plus −29.5 of `rep stosb` counted per-byte by callgrind but once by
+`instructions:u`; the agreement was coincidence), and rejected two of its own
+arms (+22.7, +0.1). It also resolved study 17's unsplittable `X` at **85.5**,
+BELOW the 100–150 range study 17 reasoned within — threat generation is now a
+measured point (1.680x → **1.500x** vs SF), not a bracket.
+
+**Study 19 commissioned** on study 18 §9 item 1: **`at_full`, 470.82 i/n at
+0.4151 calls/node = 1134 instructions per evaluated ply, NEVER SPLIT**, against
+SF's `append_changed_indices` at 227.9 i/call; secondary item 2
+`record_square_touch` 187.0 i/call vs SF's 126.9. Briefed to carry
+**`cycles:u` + `cache-misses:u` + IPC per arm** alongside `instructions:u`, on
+today's finding that instruction parity alone still leaves us ~1.16x slower, and
+that the two axes can fight. Also briefed with the no-escape-hatch rules and
+with today's own instrument failure as the cautionary case.
