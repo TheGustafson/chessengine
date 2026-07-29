@@ -533,6 +533,18 @@ pub(super) struct ThreatPosition {
 }
 
 impl ThreatPosition {
+    /// # Precondition
+    /// **Both** kings must be on the board. `Board` documents king-less
+    /// positions as a supported class and `Board::king_square` is a
+    /// `debug_assert` with a release fallback, so a one-king board that used to
+    /// work in a debug build will now trip here: the three `&Board` entry
+    /// points ([`for_each_threat`], [`refresh_threat_into`] and
+    /// `sota_threats::refresh_psqt_threat`) used to read only
+    /// `king_square(perspective)` and now route through this (D33 reviewer A,
+    /// A6). Release is unaffected -- only `kings[perspective]` is ever read.
+    /// The search path already carried this precondition through
+    /// `ThreatContext::apply_at`; the `pub` datagen callers in
+    /// `tools/nnue/bullet/` are the ones this note is for.
     #[inline]
     pub(super) fn from_board(board: &Board) -> Self {
         let mut by_type = [Bitboard::EMPTY; PieceType::COUNT];
@@ -592,6 +604,11 @@ impl ThreatPosition {
     /// The colour of the piece on `sq`; `sq` must be occupied.
     #[inline]
     pub(super) fn color_on(&self, sq: Square) -> Color {
+        // Same tripwire as `piece_on`'s. This used to be reachable only THROUGH
+        // `piece_on`, which asserts first; the pawn-push branch of
+        // `for_each_threat_at` now calls it directly, guarded only by a pawn
+        // mask (D33 reviewer A, A8). An empty square silently reads as Black.
+        debug_assert!(self.occ.contains(sq), "color_on an empty square");
         if self.colored(Color::White).contains(sq) {
             Color::White
         } else {
@@ -827,9 +844,13 @@ pub fn refresh_both(
 ) -> ([[i16; ACC]; 2], [[i16; ACC]; 2]) {
     let mut pst = [[0i16; ACC]; 2];
     let mut threat = [[0i16; ACC]; 2];
+    // One snapshot for both perspectives, the same hoist `ThreatContext::refresh`
+    // makes (D33 reviewer A, A9). Cold path -- the root refresh and the
+    // debug-assertion oracle -- so this is tidiness, not speed.
+    let pos = ThreatPosition::from_board(board);
     for (i, &persp) in Color::ALL.iter().enumerate() {
         pst[i] = refresh_pst(halfka_weights, ft_bias, board, persp);
-        refresh_threat_into(&mut threat[i], threat_weights, board, persp);
+        refresh_threat_into_at(&mut threat[i], threat_weights, &pos, persp);
     }
     (pst, threat)
 }
