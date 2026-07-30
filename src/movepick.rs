@@ -1090,13 +1090,25 @@ impl MovePicker {
             let to = m.to().index() as usize;
             let raw = m.raw16() as usize;
 
+            // Perf study 36 — SIX planes, ONE cell. Written two-dimensionally
+            // (`p[pci][to]`), LLVM shares `pci * 128` and `to * 2` in two
+            // registers and then pays a `lea` per plane to add that plane's
+            // base, because `base + pci*128 + to*2` is three variable terms and
+            // an x86 addressing mode holds two. `piece_to` makes the shared
+            // term the WHOLE offset, so each plane becomes one
+            // `movswl (%base,%q,2)`. Same cells, same order, same sum —
+            // `[[T; 64]; 12]` is contiguous row-major — so the tree is
+            // bit-identical, and `q < 768` is provable (see `history::piece_to`)
+            // so no bounds check or mask comes back in exchange.
+            let q = crate::history::piece_to(pci, to);
+
             let mut value = QUIET_MAIN_HISTORY_WEIGHT() * main_plane[raw].get()
-                + QUIET_PAWN_HISTORY_WEIGHT() * pawn_plane[pci][to].get()
-                + c1[pci][to].get()
-                + c2[pci][to].get()
-                + c3[pci][to].get()
-                + c4[pci][to].get()
-                + c6[pci][to].get();
+                + QUIET_PAWN_HISTORY_WEIGHT() * crate::history::at_piece_to(pawn_plane, q)
+                + crate::history::at_piece_to(c1, q)
+                + crate::history::at_piece_to(c2, q)
+                + crate::history::at_piece_to(c3, q)
+                + crate::history::at_piece_to(c4, q)
+                + crate::history::at_piece_to(c6, q);
 
             // Check bonus, gated so a checking quiet that hangs material earns
             // nothing (design/09 §3.7).

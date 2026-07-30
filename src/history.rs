@@ -154,6 +154,48 @@ pub type PieceToHist = [[StatEntry<CONT_D>; 64]; 12];
 /// with the tighter `CORR_D` bound (design/09 §3.10).
 pub type PieceToCorr = [[StatEntry<CORR_D>; 64]; 12];
 
+/// The `[piece × to]` cell address as ONE index — `pci * 64 + to`.
+///
+/// Perf study 36. Every `[piece × to]` plane is `[[StatEntry; 64]; 12]`, which
+/// Rust lays out row-major and contiguously, so `p[pci][to]` and
+/// `p.as_flattened()[piece_to(pci, to)]` name the same cell. The difference is
+/// codegen, and it only shows up where **one `(pci, to)` pair is read against
+/// SEVERAL planes**, which is exactly `MovePicker::init_quiets`' scoring loop:
+///
+/// * two-dimensional, LLVM shares `pci * 128` in one register and `to * 2` in
+///   another, and then has to ADD each plane's base to one of them —
+///   `lea (%base,%pci128,1),%tmp` then `movswl (%to2,%tmp,1)`. Three variable
+///   terms do not fit one x86 addressing mode, so every plane pays a `lea`.
+/// * flat, the shared term is the whole offset, so each plane is a single
+///   `movswl (%base,%q,2)`.
+///
+/// The bounds check folds away without a mask or an `unsafe`: `pci < 12`
+/// because the caller has already indexed a 6-element array by the piece type,
+/// and `to < 64` because `Move::to` is six bits, so LLVM's range analysis
+/// carries `q < 768` into the flat access.
+#[inline]
+pub const fn piece_to(pci: usize, to: usize) -> usize {
+    pci * 64 + to
+}
+
+/// Read one `[piece × to]` plane at a [`piece_to`] index.
+///
+/// Generic over the `StatEntry` bound so the continuation planes (`CONT_D`)
+/// and the pawn plane (`PAWN_D`) share one spelling.
+#[inline]
+pub fn at_piece_to<const D: i32>(plane: &[[StatEntry<D>; 64]; 12], q: usize) -> i32 {
+    plane.as_flattened()[q].get()
+}
+
+/// [`at_piece_to`]'s write side — the cell itself, for `update`.
+#[inline]
+pub fn at_piece_to_mut<const D: i32>(
+    plane: &mut [[StatEntry<D>; 64]; 12],
+    q: usize,
+) -> &mut StatEntry<D> {
+    &mut plane.as_flattened_mut()[q]
+}
+
 /// The four correction-history fields that share one `corr[slot][stm]` cell.
 ///
 /// Each field is addressed under its *own* Zobrist key into the same array
@@ -491,8 +533,10 @@ impl Histories {
     ) {
         debug_assert!(cur >= SS_OFFSET);
         let in_check = stack[cur].in_check;
-        let pci = pc.index();
-        let toi = to.index() as usize;
+        // Perf study 36: every iteration below hits the SAME `[pci][toi]` cell
+        // in a different plane, so the offset is loop-invariant while the base
+        // is not — the shape `piece_to` exists for (see its doc).
+        let q = piece_to(pc.index(), to.index() as usize);
         let mut positive_count = 0usize;
 
         for (idx, &weight) in params::CONT_OFFSET_WEIGHTS.iter().enumerate() {
@@ -506,7 +550,7 @@ impl Histories {
             }
             // Copy the key out first, then borrow `self` — no aliasing (§3.2).
             let id = stack[cur - i].cont_hist;
-            let entry = &mut self.cont_mut(id)[pci][toi];
+            let entry = at_piece_to_mut(self.cont_mut(id), q);
             if entry.get() > 0 {
                 positive_count += 1;
             }
@@ -730,11 +774,12 @@ impl Histories {
             let pc = board
                 .piece_on(to)
                 .expect("the previous move's piece sits on its to-square");
-            let (pci, toi) = (pc.index(), to.index() as usize);
+            // Two planes, one cell — flat-indexed for the reason in `piece_to`.
+            let q = piece_to(pc.index(), to.index() as usize);
             let o2 = stack[cur - 2].cont_hist.piece_to();
             let o4 = stack[cur - 4].cont_hist.piece_to();
             params::CORR_CONT_WEIGHT()
-                * (self.cont_corr[o2][pci][toi].get() + self.cont_corr[o4][pci][toi].get())
+                * (at_piece_to(&self.cont_corr[o2], q) + at_piece_to(&self.cont_corr[o4], q))
         } else {
             params::CORR_CONT_NULL_PRIOR()
         };

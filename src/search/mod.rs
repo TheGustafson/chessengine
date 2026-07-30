@@ -4316,12 +4316,18 @@ impl Worker {
                 + self.histories.capture_value(&self.board, m)
         } else {
             let us = self.board.side_to_move();
-            let pci = moved_piece.index();
-            let to = m.to().index() as usize;
+            // Two planes, one cell — flat-indexed (`history::piece_to`).
+            let q = crate::history::piece_to(moved_piece.index(), m.to().index() as usize);
             params::STATSCORE_MAIN_WEIGHT()
                 * self.histories.main[us as usize][m.raw16() as usize].get()
-                + self.histories.cont_ref(self.stack[cur - 1].cont_hist)[pci][to].get()
-                + self.histories.cont_ref(self.stack[cur - 2].cont_hist)[pci][to].get()
+                + crate::history::at_piece_to(
+                    self.histories.cont_ref(self.stack[cur - 1].cont_hist),
+                    q,
+                )
+                + crate::history::at_piece_to(
+                    self.histories.cont_ref(self.stack[cur - 2].cont_hist),
+                    q,
+                )
         }
     }
 
