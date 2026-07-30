@@ -354,9 +354,14 @@ same commit, with the new numbers stated (CLAUDE.md's rule).
 | `Bench:` depth-6, default features, `x86-64-v3` | 587683 | **587683** | **unchanged** — the default build has no NNUE, exactly the blindness the NNUE gate exists to cover |
 | NNUE gate, wl50 eval hash | `5ca978e0…8b38` | **`eb981b11…4f4f37`** | moves: the eval changed |
 | NNUE gate, d13 node total | 1922947 | **1985398** | moves: +3.25%, the tree reshapes |
-| `cargo test --features sota,arch-d48x` | — | **707 + 87 pass, 0 fail** | |
+| `cargo test --features sota,arch-d48x` | — | **707 unit + 97 integration pass, 0 fail** | |
 | `cargo clippy --all-targets` (default features, `-D warnings`) | — | **clean** | |
 | `cargo fmt --check` | — | **clean** | |
+
+`tools/check.sh`'s per-feature-combination loop caught one real defect this
+study would otherwise have shipped: `src/policy.rs`'s `policy_trunk` call also
+needs the scale, and `policy` is off in every shipped build so neither the
+default clippy pass nor the sota one reaches that line.
 
 Four warnings remain under `--features sota,arch-d48x` (`read_i8s`,
 `NNZ_IOTA`, an `is_multiple_of` lint in `aligned.rs`, a `drop` lint in
