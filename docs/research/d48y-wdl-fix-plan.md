@@ -4916,3 +4916,50 @@ deliverable.
 
 Correct current pins were supplied (`587683` / `eb981b11…` / `1985398`), since
 several docs still carry the pre-i8 `5ca978e0…`/`1922947`.
+
+## FREE ELO ON THE SHIPPING NET: D48X@600 beats D48X@400 by +15.65 +/- 11.02
+
+    Elo: +15.65 +/- 11.02   nElo: +25.31 +/- 17.79
+    W 475 / D 582 / L 409   (52.25%)   n=1466   EXIT=0
+
+**Same weights. Header-only change** (`network_scale` 400 -> 600, payload
+byte-identical from offset 64). **The canonical net we ship today is leaving
+~16 Elo on the table**, recoverable with no retraining and no code change.
+
+### This REFUTES my own story from two ticks ago
+
+I had reasoned: D49 gained +32 Elo moving to a spread of 415, which is D48X's
+421, therefore **~420 stdev is where our hardcoded SF margins want to sit and
+D48X happens to land there.** Tidy, mechanistic, and **wrong** — D48X at 421 is
+not optimal; 610 is better by 16 Elo.
+
+*This is the standing rule paying off exactly as written: when the story gets
+beautiful, attack it hardest. Had I trusted the story I would have "confirmed"
+D48X was well-calibrated and never run the screen.*
+
+### What both data points actually say
+
+| net | scale | eval stdev | result |
+|---|---:|---:|---|
+| D49 sb180 | 400 -> 756 | 230 -> 415 | **+32.09 +/- 11.38** |
+| D48X | 400 -> 600 | 421 -> 610 | **+15.65 +/- 11.02** |
+
+**Larger spread is better in BOTH nets**, and 421 is not a ceiling. The optimum
+is somewhere at or above a ~610 stdev, and nobody has ever swept this knob.
+
+### Bracketing now
+
+`sweep900.service`: **D48X@900 (stdev 895.5) vs D48X@600**, 1466 games @ 25000
+nodes, conc=10.
+- **900 wins** ⇒ the optimum is far out and the available Elo is larger than 16.
+- **900 loses** ⇒ optimum is bracketed in (600, 900) and we bisect.
+
+A deliberately large step, because the two results so far suggest the knob is
+nowhere near its edge and a timid step would waste a screen.
+
+**Note the interaction with D49's verdict:** the sb400 screen must now sweep
+scale as well, not merely match D48X — matching a mis-tuned reference would
+just inherit its error.
+
+**D49 sb209/400**, active. Box 8073 MB, load 6.65. Study 36 in its reading
+phase (ahead=0, dirty=3) — no measurement contention.
