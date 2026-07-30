@@ -4285,3 +4285,73 @@ still descending monotonically with no plateau. A self-comparison screen
 (sb168 vs sb100) would be **redundant with the heldout**; the screen that
 actually matters is **vs D48X after the cosine**, sb250+ at the earliest and
 sb400 for the real answer.
+
+## Study 32 MERGED to main (`fbabe54`) — the i8 HalfKA transformer is in
+
+Fast-forward, 33 files, +8097/-505. `check.sh` now declares **Bench 587683 /
+eval `eb981b119bd6…c84f4f37` / d13 1985398**. My own `gate32` run is in flight
+(full `CHECK_NNUE_GATE=1` **plus** a `cargo check` of all four probe features,
+which the default gate cannot see).
+
+### The control converted the guess into a measurement — exactly as intended
+
+Built `--features foldcount,arch-d48x` and ran `tools/perf29/census29.sh`:
+
+| statistic | measured | established | delta |
+|---|---:|---:|---:|
+| HalfKA refresh rate/node | 0.16020 | 0.16102 | −0.51% |
+| HalfKA refresh rows/node | 0.91017 | 0.91320 | −0.33% |
+| HalfKA rows/fold | 2.27725 | 2.27500 | +0.10% |
+| HalfKA fold rate/node | 0.97818 | 0.97490 | +0.34% |
+| evals/node | 0.42716 | 0.43070 | −0.82% |
+
+All five within 0.9%, and the residual is *expected*: the eval changed so the
+tree is not node-identical (5,001,624 vs 5,001,562). Counters are exact
+integers, so a mis-wiring would appear as a **missing or doubled site, not
+0.3%**. `FOLDREGION hka_weights bytes=28835840` — exactly half of 57,671,680,
+correctly attributed.
+
+**MY BRIEF CONTAINED AN ERROR AND THE STUDY CAUGHT IT.** I told it to verify
+`pushes/node == 1.0000` as one of the four controls. `foldcount` has **no
+pushes-per-node counter** — that was study 31's throwaway build — so the study
+correctly declined to claim it rather than inventing a number that matched.
+Recording this because it is the failure mode I keep warning subagents about,
+and here it ran in the other direction.
+
+### The channel-separation decision
+
+Both transformers now fold i8 rows, so `i8` no longer distinguishes them, yet
+study 29 counts them at *separate* sites (`HKA_INTO`/`note_hka_shape` vs
+`THR_INTO`/`note_thr_shape`). Collapsing to one entry would have **silently
+conflated the census**. Resolved as **two entry points over one kernel, named
+by channel** (`apply_halfka_deltas{,_into,_dual}`, `apply_threat_deltas_into`),
+every counter and `pin_rows!`/`pin_src!`/`pin_dst!` site kept on the channel it
+measures. The composition is
+`clamp(pst[j]*ft_scale[j] + (threat[j] << threat_shift), 0, 255)` with
+study 30's const-generic `{0,1,2}` dispatch and exhaustive arm preserved.
+
+### A free cross-check fell out
+
+**The pins did not move again**, which proves **study 30's CENN-v5 is
+eval-neutral for a CEN2 net** — its derived shift for `threat_quant=64` is
+exactly the 2 the backends previously hardcoded. The only eval change on the
+merged tree is study 32's.
+
+### IT DOWNGRADED ITS OWN HEADLINE — post-merge re-measurement
+
+| | pre-merge | **post-merge (base = main)** |
+|---|---:|---:|
+| cycles/node | −6.835% (8/8) | **−5.569% (6/8)** |
+| load-stall/node | −17.4% (8/8) | **−15.639% (8/8)** |
+| L1d miss/node | −6.5% (8/8) | **−5.959% (8/8)** |
+| null | −1.382% | +0.495% |
+
+It has **not** isolated how much is the different baseline vs run-to-run, so
+the doc now quotes a **band: −5.6% to −6.8% cycles, −15.6% to −17.4%
+load-stalls**, and notes the claim rests on load-stalls and L1 misses, which
+are **8/8 in both runs** while cycles slipped to 6/8. Speed translation is
+**+10.2 Elo on the merged figure — still NOT measured strength.** The measured
+strength remains the null: **+3.6 +/- 7.7 Elo over 2932 games.**
+
+`cargo test` 711 + 97 pass; `CHECK_NNUE_GATE=1 bash tools/check.sh` → All
+checks passed on the fully merged tree (its run; mine is verifying).
