@@ -5906,3 +5906,43 @@ argument — that cost tracks access COUNT rather than miss count — is unaffec
 
 `gate38` running with **`CHECK_TEST_THREADS=2`** — free swap was 737 MB and the
 gate's debug test binary is ~2.4 GB at the default 4 threads.
+
+## D49 trajectory FINAL: −47.21 +/- 11.34 at sb270 — and the anneal starts in 10 sb
+
+    Elo: -47.21 +/- 11.34   nElo: -74.96 +/- 17.79
+    W 343 / D 582 / L 541   (43.25%)   n=1466   EXIT=0
+
+D49 sb270 @756 vs canonical D48X @600, each net at its own measured optimum.
+Tightened from −48.96 +/- 14.02 at n=1000; the point estimate barely moved.
+
+**D49 is now at sb290/400. The cosine ends at sb300 and the anneal runs
+300→400 — 100 superbatches of it.**
+
+Read against the documented precedent rather than my earlier instinct:
+
+| | prior run (value-foundation-state.md:543-546) | D49 now |
+|---|---|---|
+| position before the surge | **−14** | **−47.21** |
+| anneal remaining | **30 sb** | **110 sb** (10 cosine + 100 anneal) |
+| gain delivered | **+99 Elo / 30 sb** | to be measured |
+
+**On that precedent −47 with 110 sb left is an ordinary mid-run position.** The
+prior run's full trajectory was −151 → −85 → −85 → −31 → −28 → −14 → **+85**,
+and the AXIS LAW gives the mechanism: Elo lags heldout by the generalization
+gap, and **the gap closes through the anneal**. D49's gap is train 0.007645 vs
+heldout 0.011389 — precisely the quantity the anneal is supposed to collapse.
+
+**`d49-rate` (sb270 vs sb180, same scale) is running** and will give the second
+point on D49's own heldout↔Elo map:
+
+| checkpoint | heldout | Elo vs canonical |
+|---|---|---|
+| sb180 | 0.012248 | −47.21 − (rate result) |
+| sb270 | 0.011472 | **−47.21 +/- 11.34** |
+
+Two points fix the slope in Elo per unit heldout, and the heldout curve then
+projects the endpoint **without assuming the anneal resembles the cosine** —
+which was the flaw in my first framing.
+
+**Box:** 6236 MB available, free swap 708 MB. `gate38` running with
+`CHECK_TEST_THREADS=2`; `d49-rate` running at conc=6. Nothing further started.
