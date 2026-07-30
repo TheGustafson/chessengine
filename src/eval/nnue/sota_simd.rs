@@ -1371,27 +1371,66 @@ mod avx512 {
         // file). i32 wrapping adds are order-independent ⇒ bit-identical.
         // SAFETY: active groups address four FT bytes and L2 complete
         // four-byte output rows in loader-validated storage.
+        // PERF STUDY 21: `CHAINS` independent accumulator sets.
+        //
+        // The group-outer order above is right, but at the SHIPPING width it
+        // leaves one dependency chain. `L2 = 16` ⇒ `BLOCKS = 1`, so every one
+        // of the ~39 active groups accumulated into the same `zmm`, and
+        // `vpdpbusd` on Zen 4 is ~4-cycle latency at ~1-per-cycle throughput:
+        // 39 x 4 = 156 cycles of dependency for 39 cycles of work. Widths that
+        // already carry >= 4 blocks have enough independent chains of their
+        // own and are left byte-for-byte as they were.
+        //
+        // Bit-identical, for the reason the paragraph above already states:
+        // i32 wrapping adds are order-independent, so partitioning the groups
+        // across chains and summing the partials at the end is the same value.
+        // SAFETY: active groups address four FT bytes and L2 complete
+        // four-byte output rows in loader-validated storage.
         unsafe {
             const BLOCKS: usize = L2 / L2_BLK;
-            let mut sums = [_mm512_setzero_si512(); BLOCKS];
-            for (blk, sum) in sums.iter_mut().enumerate() {
+            const CHAINS: usize = if BLOCKS >= 4 { 1 } else { 4 / BLOCKS };
+            let mut sums = [[_mm512_setzero_si512(); BLOCKS]; CHAINS];
+            for (blk, sum) in sums[0].iter_mut().enumerate() {
                 *sum = _mm512_loadu_si512(pre.as_ptr().add(blk * L2_BLK).cast());
             }
             // NOTE: the study's "prefetch the next group's rows" was tried
             // here and measured noise-to-negative (−0.3% over 4 interleaved
             // pairs): the per-bucket L1 table is ~160 KB and L2-resident, so
-            // the loads never miss far enough to hide.
-            for &group in nnz {
+            // the loads never miss far enough to hide. Perf study 21 re-ran
+            // the same idea on the FT weight rows with a proper
+            // wrong-address control and measured +0.01% — the address does
+            // not matter, so do not re-propose row prefetching here.
+            //
+            // `as_chunks` (not `chunks_exact`) so the inner trip count is a
+            // CONSTANT: it removes the per-group conditional pointer advance
+            // LLVM emits when it cannot bound the loop.
+            let (quads, tail) = nnz.as_chunks::<CHAINS>();
+            for quad in quads {
+                for (chain, &group) in quad.iter().enumerate() {
+                    let group = usize::from(group);
+                    let inputs = _mm512_set1_epi32(ft_group(ft, group));
+                    let base = weights.as_ptr().add(group * (L2 * 4));
+                    for (blk, sum) in sums[chain].iter_mut().enumerate() {
+                        let rows = _mm512_loadu_si512(base.add(blk * 64).cast());
+                        *sum = _mm512_dpbusd_epi32(*sum, inputs, rows);
+                    }
+                }
+            }
+            for &group in tail {
                 let group = usize::from(group);
                 let inputs = _mm512_set1_epi32(ft_group(ft, group));
                 let base = weights.as_ptr().add(group * (L2 * 4));
-                for (blk, sum) in sums.iter_mut().enumerate() {
+                for (blk, sum) in sums[0].iter_mut().enumerate() {
                     let rows = _mm512_loadu_si512(base.add(blk * 64).cast());
                     *sum = _mm512_dpbusd_epi32(*sum, inputs, rows);
                 }
             }
-            for (blk, sum) in sums.iter().enumerate() {
-                _mm512_storeu_si512(pre.as_mut_ptr().add(blk * L2_BLK).cast(), *sum);
+            for blk in 0..BLOCKS {
+                let mut total = sums[0][blk];
+                for chain in sums.iter().skip(1) {
+                    total = _mm512_add_epi32(total, chain[blk]);
+                }
+                _mm512_storeu_si512(pre.as_mut_ptr().add(blk * L2_BLK).cast(), total);
             }
         }
     }
@@ -1620,6 +1659,24 @@ mod avx512 {
     /// `NNZ_IOTA` — the 16 u16 lane indices `0..16`, the vpcompressw source.
     const NNZ_IOTA: [u16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
+    /// The 32-lane iota — the full-`zmm` `vpcompressw` source (perf study 21).
+    const NNZ_IOTA32: [u16; 32] = {
+        let mut t = [0u16; 32];
+        let mut i = 0;
+        while i < 32 {
+            t[i] = i as u16;
+            i += 1;
+        }
+        t
+    };
+
+    /// `find_nnz` writes a whole compaction row at `out[count]`, so the row
+    /// width must divide the group count or the last store runs off the end.
+    const _: () = assert!(
+        (ACC / 4).is_multiple_of(32),
+        "find_nnz_vbmi2 stores a full 32-lane row at out[count]; ACC/4 must be a multiple of 32"
+    );
+
     #[target_feature(enable = "avx512f,avx512bw,avx512vl,avx512vbmi2")]
     unsafe fn find_nnz_vbmi2_inner(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
         // Sixteen 4-byte groups per iteration: one 64 B load, test the dwords
@@ -1633,17 +1690,39 @@ mod avx512 {
         // ACC/4 - 16, so the row fits even when every group so far was
         // nonzero; lanes past the popcount are dead padding overwritten by
         // the next store or ignored via the returned count.
+        // PERF STUDY 21: THIRTY-TWO groups per iteration, not sixteen.
+        //
+        // `vpcompressw` is a full-`zmm` instruction — it compacts 32 u16 lanes
+        // under a `__mmask32`. The kernel above used only the 256-bit form, so
+        // it paid 20 iterations of test / kmov / popcnt / broadcast / add /
+        // store where 10 do the same work. The mask for a 32-group iteration
+        // is just the two 16-bit dword-test masks concatenated, and the two
+        // 64 B loads are independent.
+        //
+        // This also halves the length of the serial `count` chain, which is
+        // the loop's only loop-carried dependency (each store's address
+        // depends on every previous popcount).
+        //
+        // Bit-identical: same ascending index set, same count. The old
+        // 16-wide iota and the AVX2 movemask+LUT form remain the reference.
+        // SAFETY: each iteration reads 128 in-bounds FT bytes. Each store
+        // writes a full 32-lane row at `out[count]`: entering chunk c,
+        // count <= 32c <= ACC/4 - 32, so the row fits even when every group so
+        // far was nonzero; lanes past the popcount are dead padding
+        // overwritten by the next store or ignored via the returned count.
         unsafe {
-            let iota = _mm256_loadu_si256(NNZ_IOTA.as_ptr().cast());
+            let iota = _mm512_loadu_si512(NNZ_IOTA32.as_ptr().cast());
             let mut count = 0usize;
-            for chunk in 0..ACC / 4 / 16 {
-                let groups = _mm512_loadu_si512(ft.as_ptr().add(chunk * 64).cast());
-                let mask = _mm512_test_epi32_mask(groups, groups);
-                let row = _mm256_maskz_compress_epi16(mask, iota);
-                let base = _mm256_set1_epi16((chunk * 16) as i16);
-                _mm256_storeu_si256(
+            for chunk in 0..ACC / 4 / 32 {
+                let lo = _mm512_loadu_si512(ft.as_ptr().add(chunk * 128).cast());
+                let hi = _mm512_loadu_si512(ft.as_ptr().add(chunk * 128 + 64).cast());
+                let mask: u32 = u32::from(_mm512_test_epi32_mask(lo, lo))
+                    | (u32::from(_mm512_test_epi32_mask(hi, hi)) << 16);
+                let row = _mm512_maskz_compress_epi16(mask, iota);
+                let base = _mm512_set1_epi16((chunk * 32) as i16);
+                _mm512_storeu_si512(
                     out.as_mut_ptr().add(count).cast(),
-                    _mm256_add_epi16(row, base),
+                    _mm512_add_epi16(row, base),
                 );
                 count += mask.count_ones() as usize;
             }
@@ -1696,15 +1775,54 @@ mod avx512 {
         // `vpdpbusd` is the whole kernel: 64 u8 x i8 products accumulated into
         // 16 i32 lanes per instruction. 1280 lanes = 20 loads + 20 multiply-adds
         // where the f32 form needed 80 x (widen, convert, fma).
+        //
+        // PERF STUDY 21: FOUR accumulators, not one. `vpdpbusd` on Zen 4 is
+        // ~4-cycle latency at ~1-per-cycle throughput, so twenty of them
+        // chained into a single register cost 20 x 4 = 80 cycles of pure
+        // dependency for 20 cycles of work. Four independent chains put four
+        // in flight and bring that to ~20 + 4. The loads were never the
+        // problem; the accumulator was.
+        //
+        // Bit-identical, and this is a stated contract rather than an
+        // accident: the scalar reference's own doc fixes the reduction SHAPE
+        // (16 partial lanes + a halving tree) and leaves each backend free to
+        // reach it in any order, because i32 addition is associative. Every
+        // shipped ACC (768/1280/1536/2048) is a multiple of 256, so the 4-wide
+        // body covers the whole vector; the tail loop is kept for a future
+        // width, not because it runs today.
         // SAFETY: caller guarantees equal lengths, a multiple of 64.
         unsafe {
-            let mut acc = _mm512_setzero_si512();
-            for i in (0..ft.len()).step_by(64) {
+            let mut a0 = _mm512_setzero_si512();
+            let mut a1 = _mm512_setzero_si512();
+            let mut a2 = _mm512_setzero_si512();
+            let mut a3 = _mm512_setzero_si512();
+            let n = ft.len();
+            let mut i = 0;
+            while i + 256 <= n {
+                let l0 = _mm512_loadu_si512(ft.as_ptr().add(i).cast());
+                let w0 = _mm512_loadu_si512(lane.as_ptr().add(i).cast());
+                let l1 = _mm512_loadu_si512(ft.as_ptr().add(i + 64).cast());
+                let w1 = _mm512_loadu_si512(lane.as_ptr().add(i + 64).cast());
+                let l2 = _mm512_loadu_si512(ft.as_ptr().add(i + 128).cast());
+                let w2 = _mm512_loadu_si512(lane.as_ptr().add(i + 128).cast());
+                let l3 = _mm512_loadu_si512(ft.as_ptr().add(i + 192).cast());
+                let w3 = _mm512_loadu_si512(lane.as_ptr().add(i + 192).cast());
+                a0 = _mm512_dpbusd_epi32(a0, l0, w0);
+                a1 = _mm512_dpbusd_epi32(a1, l1, w1);
+                a2 = _mm512_dpbusd_epi32(a2, l2, w2);
+                a3 = _mm512_dpbusd_epi32(a3, l3, w3);
+                i += 256;
+            }
+            while i < n {
                 let a = _mm512_loadu_si512(ft.as_ptr().add(i).cast());
                 let w = _mm512_loadu_si512(lane.as_ptr().add(i).cast());
-                acc = _mm512_dpbusd_epi32(acc, a, w);
+                a0 = _mm512_dpbusd_epi32(a0, a, w);
+                i += 64;
             }
-            _mm512_reduce_add_epi32(acc)
+            _mm512_reduce_add_epi32(_mm512_add_epi32(
+                _mm512_add_epi32(a0, a1),
+                _mm512_add_epi32(a2, a3),
+            ))
         }
     }
 
