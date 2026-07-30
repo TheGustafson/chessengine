@@ -4599,3 +4599,71 @@ is a null, that is equally valuable — it retires the hypothesis and the standi
 "frame is not causal" note gains a second, internal confirmation.
 
 **D49 sb192/400**, active. Studies 34 and 35 both healthy.
+
+## Perf study 34 COMPLETE — move ordering is a COST lever, not a quality lever
+
+6 commits on `worktree-agent-ad31d176ea3157f4f`, tree clean, 29 KB doc,
+`CHECK_NNUE_GATE=1` green on its branch. **Staged as `stage-34` (`d80e32b`),
+merged clean; gate DEFERRED** — memory is at 5386 MB with load 15.2 while the
+frame screen runs, and a gate build now would pile on. Gate + ff when the
+screen finishes.
+
+### It answered the framing question, and the answer closes a direction
+
+**86.44% of all beta cutoffs land on the FIRST move tried** (93.89% by move 2,
+97.81% by move 4; mean index **1.316**). **There is no ordering-quality headroom
+in this engine.** That retires "improve the ordering to shrink the tree" as a
+lever and leaves only cost reduction — worth knowing before anyone spends a
+study on better history heuristics.
+
+### Three measurements nobody had
+
+1. **Consumption census** (new `census34` feature, tree-identity verified): per
+   `init_quiets` call, **22.57 quiets scored, 15.59 ever inspected, 7.41 ever
+   emitted.** One call in five scores ~22 quiets, sorts nine, and consumes
+   exactly one.
+2. **Decomposition of `init_quiets`** (6.59% of engine cycles) on the *shipped*
+   build, bucketed by innermost back-edge with **no `#[inline(never)]`, so no
+   distortion**: generation+setup 19.64%, **scoring loop 49.34%**, sort 30.30%.
+   **This corrects study 23's sort figure from 2.84% to 2.00% of engine
+   cycles** — exactly as study 23's own caveat predicted it would need to be.
+3. **Mispredict localisation:** `init_quiets` is the **2nd largest mispredict
+   source in the engine (13.75%)**; the sort is 61.52% of that, and the
+   insertion walk plus its exit is 47.00% — **6.46% of ALL engine branch
+   mispredicts in a single branch.** (Mispredicts were one of the five angles I
+   named in the brief; nobody had looked anywhere in the engine before tonight.)
+
+### Landed
+
+**`GoodQuiet`/`BadQuiet` stop scanning each other's half of the quiet region.**
+The two stages partition on the same predicate and were inspecting every quiet
+twice. **Node-identical, `Bench: 587683` bit-for-bit, eval hash and d13
+unmoved.** The census confirms the mechanism directly — GoodQuiet
+10.16→6.36 and BadQuiet 5.43→3.56 inspections/call with **emissions
+unchanged**. **−0.267%/−0.258% instructions, −0.649%/−0.618% branches**,
+replicated on two trees (pre- and post-study-32), **zero spread across 31
+rounds**.
+
+**Branchless insertion window** — shipped **OFF** behind `--features
+insertwin34`: node-identical, **+0.702% instructions for −0.530% branches and
+−4% of all engine mispredicts** (movepick's share 15.63%→13.95%). It is a
+*trade*, and only cycles adjudicate trades, so it is gated rather than shipped.
+Correct call.
+
+### The instrument finding — and the honesty around it
+
+Two panels put the **same arm's** cycles median at **+1.058% and −0.546%**,
+with the identical-tree null at **+0.802% and +1.753%** over ranges of 28.8 and
+18.4 points. Net of null that reads +0.256% on one panel and **−3.060%** on the
+other. **It did not quote the −3.060%.** That is the correct call and it is the
+third independent confirmation tonight that cycles are marginal on this box
+under load (study 33: ~1.9x inflation; study 32: 8/8 → 6/8 rounds post-merge).
+
+### The one open question, and it is cheap
+
+**Whether the branchless window is a cycles win.** Its op-count model says
+~−0.17%/node (−0.96 mispredicts x ~18 cycles against +41.8 instructions), but
+**the mispredict penalty is the load-bearing unknown and it could not measure
+it** on a loaded box. Everything else about the arm is nailed down; only the
+sign of the trade is open. It needs **ten quiet minutes** — which is exactly
+what will exist once the frame screen and study 35 are done.
