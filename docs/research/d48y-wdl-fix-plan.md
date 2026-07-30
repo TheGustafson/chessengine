@@ -3297,3 +3297,61 @@ sort shift step was **2 loads + 2 stores**. Now 1 + 1. Doc amended.
 write `head[q..=se]`; the next swap targets `se+1`). Study 23's "no reordering
 survives node identity" was wrong. What actually kills it is +25 i/n to buy the
 wrong 11%.
+
+## ★★★ THE NPS GAP IS 1.37x QUIET, NOT 1.85x — my tool was the fault, twice
+
+Study 28 and I disagreed (my ~1.67-1.85x vs their 1.37x). **They localised it in
+one move: their SF figure matches mine to 0.2% (1.821 vs 1.825). Both harnesses
+agree on Stockfish — so it was entirely about how ARCHON is COUNTED.**
+
+**Proof, by hardware breakpoint on `Board::make_move_with`** (fires once per node,
+cannot be fooled by printed output), at my exact protocol:
+
+```
+BUDGET      6,000,000
+TRUE NODES  6,039,808   100.66%   <- ARCHON HONOURS THE BUDGET
+REPORTED    4,483,696    74.73%   <- it just never PRINTS the last partial iteration
+MY RULE     4,532,735    75.55%   <- my "fix" recovered almost nothing
+```
+
+**MY FIX WAS ALSO WRONG.** I guarded with `last >= nodes * 0.90`, believing it
+detected early stops. It actually tests whether the last ITERATION finished near
+the budget — **which ARCHON fails by construction on most positions** — so the
+fallback took the under-reported count and discarded the correction. That is why
+I measured +4.6% from a fix worth ~27%. Replaced with mate-detection.
+
+| currency | ARCHON | SF | ratio | SF faster |
+|---|---:|---:|---:|---:|
+| my 0.90 guard | 0.885 | 1.594 | 0.5553 | **1.801x** |
+| budget (breakpoint-verified) | 1.119 | 1.594 | 0.7020 | **1.425x** |
+
+They reproduced my tool's number to 0.3% (0.5553 vs 0.5568) before correcting it
+— which is what proves the fault is currency, not either engine's speed.
+
+**Residual 1.41x (my protocol) vs 1.37x (theirs) is BOX LOAD, and it is
+ASYMMETRIC** — a real finding:
+
+| | ARCHON cyc/n | SF cyc/n | ratio |
+|---|---:|---:|---:|
+| quiet | 4169.3 | 3032.4 | **1.375x** |
+| loaded | 5086.4 | 3441.3 | **1.478x** |
+
+We are 59% load-stalled against SF's 50%, so L3 contention lengthens OUR stalls
+more. **The mechanism this study is about shows up in its own error bars.**
+
+**JOINT STATEMENT: the gap is 1.37x quiet, up to 1.48x loaded. 1.67-1.85x is not
+reproducible with a correct node currency.** Every figure I quoted tonight above
+1.5x was my instrument.
+
+**Study 28 also corrected ITSELF** — its §5.9 estimated the under-report at 28%
+from reported-vs-budget rather than from truth; measured, ARCHON reports
+74.7-77.9% of true, i.e. 1.28-1.34x. Retracted in its doc.
+
+**THE REAL FIX IS IN THE ENGINE, NOT THE TOOL:** ARCHON should emit a final
+`info` line when the search stops, as SF does (100.06% of budget). UCI-only,
+bench-neutral, no `Bench:` movement — and it retires the whole class. **Every
+future tool reading our node count over UCI has this bug waiting for it.**
+
+Two suspects of mine, killed: TT semantics (both benches issue exactly one
+`ucinewgame` — `bench.rs:252`, `eca43a97:benchmark.cpp:430`) and Hash 64 vs 16
+(64 is faster for BOTH and NARROWS the ratio).
