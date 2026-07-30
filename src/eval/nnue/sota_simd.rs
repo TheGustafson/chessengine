@@ -1631,8 +1631,66 @@ mod avx512 {
     /// Measured: 20 is the optimum at 1280 and the largest divisor that fits.
     /// `REGS = 40` (one tile, no tile loop at all) was measured too and is a
     /// **disaster** — 6581.5 -> 7589.2 i/n — because 40 accumulators spill.
+    ///
+    /// # Perf study 44 — the cap is an ARM, because 20 was chosen on the wrong counter
+    ///
+    /// Everything above was adjudicated on `instructions:u`, whose noise floor
+    /// on this box is exactly 0.0 — which is precisely why a narrower tile was
+    /// never tried: more tiles is unambiguously more loop control, so it loses
+    /// on instructions by construction. Study 20 is the standing counterexample
+    /// (−5.99% CYCLES with instructions UP 0.19%), and study 44's back-end
+    /// census supplies the mechanism that would make this one of those cases:
+    /// **`de_dis_dispatch_token_stalls1.store_queue_rsrc_stall` is 502.6
+    /// cycles/node, the largest single dispatch-blocking resource in the
+    /// engine** — larger than the load queue (442.1). A `REGS = 20` tile ends
+    /// with 20 `zmm` stores, and Zen 4 splits each into two 32-byte store ops
+    /// (study 39 §1: 2.043 store dispatches per line written), so every tile
+    /// closes with a **40-store burst** into a 64-entry store queue.
+    ///
+    /// Narrowing the cap interleaves those stores with the next tile's loads
+    /// instead of bunching them. It is bit-identical at every setting: the tile
+    /// walk covers the same blocks in the same order with the same arithmetic,
+    /// and no row is read more or fewer times (register `k` consumes its own
+    /// distinct 32 bytes of each row either way).
+    ///
+    /// ## MEASURED, and the cap is now 5 (perf study 44 §4.5)
+    ///
+    /// 32 paired rounds, balanced Latin square, byte-identical null riding in
+    /// the rotation, node- and eval-hash-identical at every setting. Contrasts
+    /// are arm-minus-null on `cycclean` (`cycles` − SMT theft):
+    ///
+    /// | cap | `store_queue_rsrc_stall` | cycles contrast | `instructions:u` |
+    /// |---|---:|---:|---:|
+    /// | 20 (was) | — | — | — |
+    /// | 10 | −9.24% (30/32) | −0.33% (0.8 se) — **null** | +1.261% |
+    /// | 8 | −19.74% (9/9) | +0.18% — **null**, unexplained | +2.305% |
+    /// | **5 (now)** | **−19.70% (32/32, p < 0.0001)** | **−1.10% (2.2 se)** | **+4.076%** |
+    ///
+    /// The null read 16/32 on cycles — a coin flip — and exactly 0.000% on
+    /// instructions, every round.
+    ///
+    /// **`instructions:u` rises 4.08% and cycles still fall.** That is the
+    /// whole reason this was never found: eight prior studies of this kernel
+    /// adjudicated on a counter that can only ever prefer the widest tile.
+    ///
+    /// **Measured at ACC = 1280 ONLY.** The cap applies at every width (768 and
+    /// 1536 and 2048 all fall to `REGS = 4`, their largest divisor ≤ 5), and the
+    /// `const _` asserts below still machine-check that the tile divides the
+    /// accumulator exactly — but the *benefit* is measured at one width.
+    const REGS_CAP: usize = if cfg!(feature = "regs20_44") {
+        20
+    } else if cfg!(feature = "regs4_44") {
+        4
+    } else if cfg!(feature = "regs8_44") {
+        8
+    } else if cfg!(feature = "regs10_44") {
+        10
+    } else {
+        5
+    };
+
     const fn pick_regs() -> usize {
-        let mut r = 20;
+        let mut r = REGS_CAP;
         // Down to 1, not to 8: 1 divides everything, so the `const _` assert below
         // can never fire on a future width whose BLOCKS has no divisor in 9..=20
         // (e.g. ACC 800 -> 25). That case degrades to the per-block loop rather
