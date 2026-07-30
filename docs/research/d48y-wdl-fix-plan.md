@@ -6119,3 +6119,67 @@ larger than anything the bench frame shows.
 not throughput. Use the fixed-node instrument.
 
 **D49 sb298/400 — two superbatches from the anneal.**
+
+## THE ANNEAL HAS STARTED (sb300) — and the speed number is NOT cleanly measurable
+
+**D49 sb302/400.** heldout sb300 **0.011355** (flat vs sb290), ema **0.011105**
+still falling, train 0.007640. **The gap watch is now live** — per the map,
+every 1e-4 of heldout fall is worth **6.40 Elo**, and parity needs 0.000738.
+
+### Speed-alone: four instruments, four answers, and an honest null
+
+| instrument | result | verdict |
+|---|---:|---|
+| bench nodes ÷ wall time | +4.5% | **INVALID** — unequal node counts, startup included |
+| `paired_nps`, 4 rounds × 20 pos | **1.2265x** | spread 16.6% vs a 22.6% effect |
+| `paired_nps`, 8 rounds × 25 pos | **1.1812x** | **spread 18.2% vs an 18.1% effect** |
+| cycles/node at fixed **depth** | −21% (wrong sign) | **INVALID** — trees differ, so nodes are not comparable |
+
+**The higher-power run made the spread WORSE, not better** (7.3% → 18.2% on
+NOW), and its effect is exactly the size of its own noise. By `paired_nps`'s own
+printed rule — *"a ratio smaller than the spread is not a result"* — **I cannot
+resolve speed-alone on this box with wall-clock timing.**
+
+*This is the same box that has produced six `cycles:u` nulls. Its timing
+instruments are poor in general, not just for sub-1% effects.*
+
+**The correct instrument, now running as `fxrun`:** `bench` accepts a **`nodes`**
+limit type (`bench 16 1 100000 <fens> nodes <net>`), so both binaries can be
+made to search **exactly the same node count**, measured in **cycles** rather
+than wall clock. Fixed nodes removes the tree confound by construction; cycles
+removes the wall-clock noise, and a ~18% effect sits far above the 5.3% ceiling
+the six nulls established.
+
+**Until it returns, the honest statement is:** *throughput improved somewhere
+around 1.18-1.23x, but the wall-clock instrument cannot separate that from its
+own noise.* The one exact number is **instructions/node +34%, by design.**
+
+### What SF and Reckless actually do with the accumulator — checked, not recalled
+
+| | accumulator | activated output |
+|---|---|---|
+| Stockfish `eca43a97` | `std::array<std::array<i16, L1>, COLOR_NB>` | `TransformedFeatureType = u8` |
+| Reckless | `Aligned<[[i16; L1_SIZE]; 2]>` | — |
+| **ARCHON** | **`[[i16; ACC]; 2]`** | **`out: &mut [u8; L1]`** |
+
+**Both references accumulate in i16 and neither uses i8 — so the "i8
+accumulator" lever I proposed last tick DOES NOT EXIST, and I retract it.**
+Accumulators sum hundreds of rows; i8 lanes would saturate. We already match
+both on the narrow-at-activation design, and we already have `find_nnz` sparsity
+like SF.
+
+**The real difference is structural.** SF's accumulator is a SINGLE merged array
+(`nnue_accumulator.h:45` — *"combined HalfKA + Threats"*), holding 2 arrays. Ours
+is SPLIT — `activate(out, pst, threat, stm, threat_shift)` — so activate streams
+**4 arrays, 10.24 KB/eval** where SF streams 2. **That is the entire byte-traffic
+difference at the hot boundary, and it is the fusion question.**
+
+And it is a genuine trade, not a free win: study 30's verified finding is that
+**SF pays a full threat rebuild on every refresh** (`append_active_indices` at
+`nnue_accumulator.cpp:577`), which our split avoids.
+
+⇒ **Revised top priority: close studies 29/31's 5.2x stall-per-line
+disagreement** (2.36 additive vs 0.45 subtractive), which spans fusion from
+**+48 (a loss) to −136 (+4.7 Elo)**. Both probes are already committed; study 29
+estimated it a half-hour job. It decides a 34.9%-of-cycles question that two
+studies have now deferred.
