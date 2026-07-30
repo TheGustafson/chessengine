@@ -21,6 +21,46 @@ per binary by `tools/perf44/ident44.sh`, never assumed.
 
 ---
 
+## ★ HEADLINE
+
+**The 49 % back end is 83 % MEMORY and 17 % EXECUTION.**
+`ex_no_retire.load_not_complete` is **2596.93 cycles/node — 55.62 % of every
+cycle the engine spends**, which is **4.8× the entire front-end bucket study 41
+spent a session on**. The execution residual is 536.75 (11.50 %). The partition
+closes on cycles to **−1.18 %**, and study 41's slot accounting reproduces
+(back end **48.38 %** vs 49.0 %, front end **20.29 %** vs 19.9 %).
+
+**Of the four candidates the commission named, one is dead and one is new:**
+
+* **Execution port pressure — DEAD.** Zen 4's four FP pipes are **≥ 85 % idle**
+  and `fp_sch_rsrc_stall` blocks dispatch for only **4.2 %** of cycles.
+* **Store-buffer pressure — REAL, and the largest single dispatch blocker in
+  the engine** at **502.63 cycles/node (10.76 %)**, ahead of the load queue's
+  442.11. Nobody had looked.
+* **Dependency chains — 11.50 %**, and localised to exactly **one** symbol:
+  `forward_into` takes 8.20 % of `not_complete` on 3.87 % of `load_not_complete`.
+* **Memory — the answer, but NOT the memory people assume.** Only **1.61 % of
+  demand fills reach DRAM** (7.90/node). 90.76 % come from **L2**. The engine
+  is not waiting on catastrophic misses; it pays **1.14 stall cycles on every
+  one of 2281 load dispatches**, because **53.8 % of all instructions are memory
+  operations**, at MLP 5.74 and 54-cycle average miss residency. **The lever is
+  the NUMBER of memory operations, not their latency.**
+
+**Two negatives reported as results:**
+
+1. **Arm 1 (history prefetch) LOST** — +2.44 % instructions for a **4/10 coin
+   flip on the counter it was built to move**. The six history planes are
+   reused across the quiets of one `init_quiets` call, so there is no exposed
+   latency to hide. The census had already said the problem is memory-op
+   *count*; a prefetch adds count.
+2. **The panel instrument was BROKEN and the null caught it.** A byte-identical
+   binary read **+2.36 % cycles**. Cause: a +3.9 % within-round drift combined
+   with a free shuffle that seated the *reference* at mean position 0.77 of 1.50
+   — faking a loss and masking a win simultaneously. Replaced with a **balanced
+   Latin square** (§4.2).
+
+---
+
 ## 0. THE COMMISSION, AND THE FIRST THING I DID WITH IT
 
 Study 41 closed the front end (19.9 % of dispatch slots, ~8.5 Elo if the whole
