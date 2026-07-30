@@ -186,7 +186,7 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   omit it and you silently measure PSQT, 3441859). Both were re-pinned on
   2026-07-30 by **perf study 32's i8 HalfKA feature transformer** — the 57.7 MB
   i16 weight table is quantised to i8 at load with a per-column integer scale,
-  measured −6.8% cycles/node and +9.5 ± 11.1 Elo over 1466 fixed-node games
+  measured −6.8% cycles/node and +3.6 ± 7.7 Elo over 2932 fixed-node games
   (i.e. no detectable fidelity cost). The immediately preceding pins were
   `5ca978e0…8b38` / `1922947` (perf study 8's threat-frame change, §4.6 — the
   FT merge carries the 255/64 frame ratio as 4, a measured 0.14 SF cp mean

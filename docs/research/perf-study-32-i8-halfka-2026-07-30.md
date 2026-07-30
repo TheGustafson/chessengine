@@ -6,8 +6,8 @@ Date: 2026-07-30. Instruments: `tools/perf32/`. Artifacts:
 **LANDED.** The HalfKA feature transformer is now an i8 table with a per-column
 integer scale, quantised at load. Measured **−6.835% cycles/node** (8/8 rounds
 negative, null −1.382%) and **−17.42% load-stall cycles/node** (null −1.675%),
-with strength **+9.48 ± 11.08 Elo over 1466 fixed-node games** — i.e. no
-detectable fidelity cost, point estimate positive.
+with strength **+3.6 ± 7.7 Elo over 2932 fixed-node games** across two
+independent screens — i.e. no detectable fidelity cost.
 
 At the project's own calibration constant (122.9 Elo per doubling of speed,
 exp-0154) the speed is worth **+12.6 Elo**.
@@ -38,10 +38,11 @@ Six results, in the order they changed what got built:
    tuned to minimise weight MSE is better on MSE (1.78% vs 1.98%) and **worse
    on eval error** (p95 4.83 vs 4.35). The scale rule that shipped is the one
    the eval battery chose, not the one the L2 norm chose.
-4. **Games settled it, and the offline bar was simply miscalibrated** (§3). A
-   1466-game fixed-node screen of the quantised net against the reference net —
-   same binary, EvalFile the only variable, so it isolates fidelity from every
-   implementation risk — returned **+9.48 ± 11.08 Elo**.
+4. **Games settled it, and the offline bar was simply miscalibrated** (§3).
+   Two independent 1466-game fixed-node screens — the quantised net against the
+   reference net on one binary (isolating the SCHEME), and the landed binary
+   against the pre-change binary on one net (isolating the IMPLEMENTATION) —
+   pool to **+3.6 ± 7.7 Elo over 2932 games**.
 5. **The format did not have to change** (§4). Quantising at LOAD, the way the
    D47V skip lane already does, keeps the CENN-v2 payload, `netpack.py`, the jax
    checkpoint contract and the trainer untouched, and every existing net —
@@ -72,13 +73,13 @@ mapping p99 ≈ 3.7 × rel% puts the bar at ≤1.35%, which no scale rule reache
 know that is a number, not an argument.** It was set from a precedent
 (study 8's threat-frame change, "mean 0.14 SF cp") whose *mean* I beat by 3×,
 and I guessed at the tail. Games — the standing arbiter — say the tail I was
-worried about is worth nothing: **+9.48 ± 11.08 Elo, LOS 95.3%, over 1466
-games** (§3). A bar that rejects a change the arbiter cannot distinguish from
-zero (and whose point estimate is positive) is a bar that was too tight.
+worried about is worth nothing: **+3.6 ± 7.7 Elo over 2932 games** (§3). A bar
+that rejects a change the arbiter cannot distinguish from zero is a bar that was
+too tight.
 
 I am recording the failure rather than restating the bar, because the next
 person to quantise something in this engine should know that **p99 ≈ 7 SF cp of
-static-eval perturbation is not measurably worth anything at 1466 games**, and
+static-eval perturbation is not measurably worth anything at 2932 games**, and
 should set their screen accordingly.
 
 ---
@@ -190,17 +191,29 @@ Ptnml(0-2): [21, 164, 340, 170, 38]
 ```
 
 Zero is inside the interval, so the honest statement is **"no detectable
-strength cost at ±11 Elo"**, not "+9.5 Elo". The direction is worth one remark
-and no more: quantisation noise is not always a loss — it is a perturbation of
-an eval that is itself far from optimal — but at this `n` that is a hypothesis,
-not a result.
+strength cost"**, not "+9.5 Elo" — and the second screen below, which came in
+at −1.90, is the reason to say so plainly rather than to enjoy the sign.
 
-**The landed binary against the pre-change binary**, same net file, fixed nodes
-— this is the gate on the *implementation* rather than on the scheme — is
-running as `tools/perf32/binscreen32.sh`; result recorded in §7.
+**The landed binary against the pre-change binary** (`tools/perf32/binscreen32.sh`),
+same net file, fixed nodes — the gate on the *implementation* rather than on the
+scheme, so it covers the kernels, the Finny paths and the reduced-frame merge:
+
+```
+Elo: -1.90 +/- 10.72,  nElo: -3.15 +/- 17.79,  LOS: 36.43%
+Games: 1466  W 438  L 446  D 582   DrawRatio 47.1%  PairsRatio 0.97
+Ptnml(0-2): [25, 172, 345, 168, 23]
+```
+
+**Pooled over both screens — 2932 games, inverse-variance weighted:
++3.6 ± 7.7 Elo.** Zero is inside, at a tighter bound than either screen alone.
+
+The two point estimates differ by 11.4 Elo, which is **1.45 σ** on their
+combined error — consistent with noise, and worth stating rather than picking
+the flattering one. Neither screen alone excludes a ±10 Elo effect; together
+they exclude ±8.
 
 Fixed nodes hides the throughput win on purpose. The case is the two halves
-together: **cycles say it is faster, games say it is not weaker.**
+together: **cycles say it is faster, 2932 games say it is not weaker.**
 
 ---
 
@@ -373,14 +386,17 @@ Reproduce: `bash tools/perf32/gates32.sh`.
 
 ---
 
-## 7. RESULTS PENDING AT WRITE-UP
+## 7. THE TWO SCREENS, SIDE BY SIDE
 
-The landed-binary-vs-baseline-binary screen (§3) at 1466 fixed-node games. The
-net-vs-net screen already isolates the scheme's fidelity at ±11 Elo, and the
-engine reproduces that scheme bit-for-bit on all 800 battery positions (§1), so
-this is a check on the *implementation* — the kernels, the Finny paths, the
-reduced-frame merge — rather than on the quantisation. Its number belongs here
-when it lands.
+| screen | what it isolates | n | Elo |
+|---|---|---:|---:|
+| net vs net, one binary | the quantisation SCHEME | 1466 | +9.48 ± 11.08 |
+| binary vs binary, one net | the IMPLEMENTATION | 1466 | −1.90 ± 10.72 |
+| **pooled** | | **2932** | **+3.6 ± 7.7** |
+
+Both were run at 25,000 fixed nodes on the UHO book with `-repeat -games 2`, so
+they are paired and independent of each other. The verdict is the pooled one:
+**no detectable strength cost at ±8 Elo**, against a speed win worth +12.6.
 
 ---
 
@@ -396,11 +412,13 @@ Ranked by how much it would change the conclusion.
    at −1.382% is the reason I quote the ratio to its own null rather than as an
    absolute. **Nobody should quote +12.6 Elo as measured strength — it is a
    speed measurement times a calibration constant.**
-2. **The strength verdict is "indistinguishable at ±11 Elo", and a −5 Elo
+2. **The strength verdict is "indistinguishable at ±8 Elo", and a −4 Elo
    fidelity cost would be invisible to it.** That is the honest resolution of
-   this instrument. It is enough to land a change whose speed is worth +12.6,
-   and it is not enough to claim the quantisation is free. A 5,880-game screen
-   (±5 Elo) would settle it and costs about 80 minutes.
+   this instrument even pooled over 2932 games. It is enough to land a change
+   whose speed is worth +12.6; it is not enough to claim the quantisation is
+   free. A 5,880-game screen (±5 Elo) would tighten it and costs about 80
+   minutes. The 1.45 σ disagreement between the two screens is the visible
+   reminder of how much room is left at this `n`.
 3. **The per-column scales are derived from the D48X net's weight
    distribution, and they are derived at load, so they follow whatever net is
    loaded.** That is the right behaviour, but it means a future net with a much
