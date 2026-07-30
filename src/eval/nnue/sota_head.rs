@@ -146,14 +146,38 @@ pub(crate) const FT_SHIFT: i32 = 9; // pairwise-multiply right shift
 /// and well inside the net's own quantisation noise. The approximation is the
 /// same size in either direction: 255/64 = 3.984 → 4, and 255/256 = 0.996 → 1.
 ///
-/// So `threat_quant` must be a power of two in `1..=256`, and the shift is
+/// So `threat_quant` must be a power of two, and the shift is
 /// `log2(256 / threat_quant)`. `256 → 0`, `128 → 1`, `64 → 2` (every CEN2 net).
+///
+/// **The accepted set is exactly `{64, 128, 256}`** ([`MAX_THREAT_SHIFT`]), and
+/// that is a PERFORMANCE contract, not a taste. The merge shift has to be an
+/// IMMEDIATE: `vpsllw $0x2,(%rcx,%r8,2),%zmm3` folds the accumulator load into
+/// the shift, while the register-count form `vpsllw %xmm0,%zmm4,%zmm4` cannot
+/// — `VPSLLW`'s memory operand is the COUNT, not the data — so it needs a
+/// separate `vmovdqu64` per merge, measured at **+34.48 instructions per node,
+/// +0.61%** (perf study 30 §5.3). The backends therefore monomorphise the
+/// kernel over the shift and dispatch once per eval, which only stays cheap
+/// while the set is small. Widening it is a one-line change here plus one more
+/// `match` arm per backend — but nothing coarser than 64 is ever wanted (it
+/// would quantise the threat table *worse* than today) and nothing finer than
+/// 256 fits an i8, so three is the whole real domain: 64 legacy, 128 the
+/// measured non-QAT optimum (`tools/nnue/requant_threats.py`), 256 the QAT
+/// scale.
 pub(crate) const fn threat_shift_for(threat_quant: i32) -> Option<u32> {
     if threat_quant <= 0 || threat_quant > 256 || !(threat_quant as u32).is_power_of_two() {
         return None;
     }
-    Some(8 - (threat_quant as u32).trailing_zeros())
+    let shift = 8 - (threat_quant as u32).trailing_zeros();
+    if shift > MAX_THREAT_SHIFT {
+        return None;
+    }
+    Some(shift)
 }
+
+/// The largest merge shift the SIMD backends are monomorphised for — the
+/// invariant `sota_simd`'s `activate` dispatch relies on to stay exhaustive
+/// without a panic arm. See [`threat_shift_for`].
+pub(crate) const MAX_THREAT_SHIFT: u32 = 2;
 
 /// The `threat_quant` a merge shift came from — the exact inverse of
 /// [`threat_shift_for`] over its whole domain, so the loader and the serializer
@@ -718,16 +742,24 @@ mod tests {
         assert_eq!(threat_shift_for(64), Some(2));
         assert_eq!(threat_shift_for(128), Some(1));
         assert_eq!(threat_shift_for(256), Some(0));
-        assert_eq!(threat_shift_for(1), Some(8));
         // Not representable as a power-of-two frame ratio.
         assert_eq!(threat_shift_for(255), None);
         assert_eq!(threat_shift_for(512), None);
         assert_eq!(threat_shift_for(0), None);
         assert_eq!(threat_shift_for(-64), None);
-        // …and the inverse round-trips over the whole domain.
-        for q in [1, 2, 4, 8, 16, 32, 64, 128, 256] {
+        // Representable, but coarser than 64 and therefore outside the set the
+        // backends monomorphise — the `_` arm of their `activate` dispatch is
+        // only sound because this is rejected here.
+        assert_eq!(threat_shift_for(32), None);
+        assert_eq!(threat_shift_for(1), None);
+        // …and the inverse round-trips over the whole accepted domain.
+        for q in [64, 128, 256] {
             assert_eq!(threat_quant_for(threat_shift_for(q).unwrap()), q);
         }
+        assert_eq!(
+            threat_shift_for(threat_quant_for(MAX_THREAT_SHIFT)),
+            Some(MAX_THREAT_SHIFT)
+        );
 
         assert_eq!(merge_transformers(100, 16, 0), 116);
         assert_eq!(merge_transformers(100, 16, 1), 132);

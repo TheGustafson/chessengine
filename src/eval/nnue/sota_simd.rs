@@ -6,7 +6,7 @@
 //! selected once at startup and preserves wrapping i16 arithmetic.
 
 use super::sota_features::ACC;
-use super::sota_head::{FT_QUANT, FT_SHIFT, L2, L3};
+use super::sota_head::{FT_QUANT, FT_SHIFT, L2, L3, MAX_THREAT_SHIFT};
 use std::sync::LazyLock;
 
 /// The L1 sparse dot writes `L2` int32 accumulators. The kernels process the
@@ -688,13 +688,16 @@ mod avx2 {
         }
     }
 
+    // `SHIFT` is `i32` here and `u32` in the avx512 twin because that is what
+    // each intrinsic's own const parameter is (`_mm256_slli_epi32<const IMM8:
+    // i32>` vs `_mm512_slli_epi16<const IMM8: u32>`), and converting a const
+    // generic in the turbofish needs `generic_const_exprs`.
     #[target_feature(enable = "avx2")]
-    unsafe fn activate_inner(
+    unsafe fn activate_inner<const SHIFT: i32>(
         out: &mut [u8; ACC],
         pst: &[[i16; ACC]; 2],
         threat: &[[i16; ACC]; 2],
         stm: usize,
-        threat_shift: u32,
     ) {
         const H: usize = ACC / 2;
         // SAFETY: each iteration consumes eight in-bounds i16 lanes from each
@@ -703,12 +706,6 @@ mod avx2 {
         unsafe {
             let zero = _mm256_setzero_si256();
             let ceiling = _mm256_set1_epi32(FT_QUANT);
-            // The net's frame shift as a vector shift COUNT rather than an
-            // immediate: `vpslld ymm, ymm, xmm` is the same one instruction as
-            // `vpslld ymm, ymm, imm8`, and the count register is loop-invariant,
-            // so making the shift net-dependent costs one `vmovd` per call and
-            // nothing per lane (perf study 30 §5).
-            let count = _mm_cvtsi32_si128(threat_shift as i32);
             for flip in 0..2 {
                 let perspective = stm ^ flip;
                 let p = &pst[perspective];
@@ -721,7 +718,7 @@ mod avx2 {
                             _mm256_cvtepi16_epi32(_mm_loadu_si128(t.as_ptr().add(offset).cast()));
                         // FT_QUANT/threat_quant carried as a power of two
                         // (see the avx512 twin).
-                        let scaled = _mm256_sll_epi32(tv, count);
+                        let scaled = _mm256_slli_epi32::<SHIFT>(tv);
                         _mm256_min_epi32(
                             _mm256_max_epi32(_mm256_add_epi32(pv, scaled), zero),
                             ceiling,
@@ -946,8 +943,16 @@ mod avx2 {
         stm: usize,
         threat_shift: u32,
     ) {
+        // The `_` arm is `MAX_THREAT_SHIFT` — see the avx512 twin.
+        debug_assert!(threat_shift <= MAX_THREAT_SHIFT);
         // SAFETY: installed only after runtime AVX2 detection.
-        unsafe { activate_inner(out, pst, threat, stm, threat_shift) }
+        unsafe {
+            match threat_shift {
+                0 => activate_inner::<0>(out, pst, threat, stm),
+                1 => activate_inner::<1>(out, pst, threat, stm),
+                _ => activate_inner::<2>(out, pst, threat, stm),
+            }
+        }
     }
 
     pub(super) fn find_nnz(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
@@ -1625,12 +1630,11 @@ mod avx512 {
     }
 
     #[target_feature(enable = "avx512f,avx512bw")]
-    unsafe fn activate_inner(
+    unsafe fn activate_inner<const SHIFT: u32>(
         out: &mut [u8; ACC],
         pst: &[[i16; ACC]; 2],
         threat: &[[i16; ACC]; 2],
         stm: usize,
-        threat_shift: u32,
     ) {
         const H: usize = ACC / 2;
         // Study-2 option D (D1+D2 as one i16 pipeline, 32 lanes/zmm — the
@@ -1660,9 +1664,9 @@ mod avx512 {
         unsafe {
             #[cfg(debug_assertions)]
             {
-                // `t << threat_shift` must stay inside i16 (8191 at the CEN2
-                // shift of 2, 32767 at a QAT net's shift of 0).
-                let bound = (i16::MAX as u16) >> threat_shift;
+                // `t << SHIFT` must stay inside i16 (8191 at the CEN2 shift of
+                // 2, 32767 at a QAT net's shift of 0).
+                let bound = (i16::MAX as u16) >> SHIFT;
                 for side in threat {
                     for &t in side.iter() {
                         debug_assert!(
@@ -1674,12 +1678,6 @@ mod avx512 {
             }
             let zero = _mm512_setzero_si512();
             let ceiling = _mm512_set1_epi16(FT_QUANT as i16);
-            // The net's frame shift as a vector shift COUNT rather than an
-            // immediate: `vpsllw zmm, zmm, xmm` is the same one instruction as
-            // `vpsllw zmm, zmm, imm8` and the count register is loop-invariant,
-            // so net-dependence costs one `vmovd` per call and nothing per lane
-            // (perf study 30 §5 — measured, not assumed).
-            let count = _mm_cvtsi32_si128(threat_shift as i32);
             for flip in 0..2 {
                 let perspective = stm ^ flip;
                 let p = &pst[perspective];
@@ -1706,6 +1704,17 @@ mod avx512 {
                     // QAT net's threat_quant 256, 255/256 = 0.996 → 1 is the
                     // SAME 0.39% in the other direction, i.e. shift 0.
                     //
+                    // **The shift is a const generic and not a parameter for a
+                    // measured reason** (perf study 30 §5.3). With an immediate,
+                    // LLVM folds the accumulator load INTO the shift —
+                    // `vpsllw $0x2,(%rcx,%r8,2),%zmm3`. `vpsllw`'s
+                    // register-count form takes its memory operand as the
+                    // COUNT, not the data, so a runtime shift forces a separate
+                    // `vmovdqu64` per merge and costs the unroll: measured
+                    // **+34.48 instructions per node, +0.61%**, branches
+                    // unchanged. Monomorphising over the three legal shifts and
+                    // branching once per eval gives it back (+2.77 i/n).
+                    //
                     // Measured on the 800-FEN battery against the exact form:
                     // **74.0% of positions identical, mean |delta| 0.14 SF cp,
                     // p99 0.97, max 2.42, Pearson r = 0.999999.** Two rejected
@@ -1720,7 +1729,7 @@ mod avx512 {
                     let merge = |offset: usize| {
                         let pv = _mm512_loadu_si512(p.as_ptr().add(offset).cast());
                         let tv = _mm512_loadu_si512(t.as_ptr().add(offset).cast());
-                        let scaled = _mm512_sll_epi16(tv, count);
+                        let scaled = _mm512_slli_epi16::<SHIFT>(tv);
                         let sum = _mm512_adds_epi16(pv, scaled);
                         _mm512_min_epi16(_mm512_max_epi16(sum, zero), ceiling)
                     };
@@ -1780,8 +1789,24 @@ mod avx512 {
         stm: usize,
         threat_shift: u32,
     ) {
+        // ONE branch per eval, then a kernel whose shift is an immediate — the
+        // form that folds the load (see `activate_inner`). The `_` arm is
+        // `MAX_THREAT_SHIFT`, which `sota_head::threat_shift_for` guarantees is
+        // the largest value any loaded net can carry; the debug assert catches
+        // a hand-built `SotaHead` that violates it, since the field is public.
+        debug_assert!(
+            threat_shift <= MAX_THREAT_SHIFT,
+            "threat_shift {threat_shift} > MAX_THREAT_SHIFT — \
+             add a match arm and a monomorphisation"
+        );
         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
-        unsafe { activate_inner(out, pst, threat, stm, threat_shift) }
+        unsafe {
+            match threat_shift {
+                0 => activate_inner::<0>(out, pst, threat, stm),
+                1 => activate_inner::<1>(out, pst, threat, stm),
+                _ => activate_inner::<2>(out, pst, threat, stm),
+            }
+        }
     }
 
     #[target_feature(enable = "avx512f")]

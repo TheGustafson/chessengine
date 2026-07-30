@@ -239,6 +239,31 @@ class ArchSpec:
     def full(cls) -> "ArchSpec":
         return cls()
 
+    @classmethod
+    def from_run_spec(cls, spec: dict) -> "ArchSpec":
+        """The arch a `tools/nnue/runs/*.json` describes — ONE definition.
+
+        `pump_train` used to build this inline, so any other tool that wanted
+        to re-export a run's checkpoint had to re-derive it and could silently
+        get a different arch (`tools/nnue/requant_threats.py` used the bare
+        default, whose `l2` is 128 where every gen-2 run's is 16). Both read
+        this now.
+        """
+        import dataclasses as _dc
+        return _dc.replace(
+            cls.full(), factorize=True, psqt=True,
+            hl=int(spec.get("arch_hl", cls.full().hl)),
+            l2=int(spec.get("arch_l2", cls.full().l2)),
+            l3=int(spec.get("arch_l3", cls.full().l3)),
+            out_skip=bool(spec.get("arch_out_skip", False)),
+            halfka_only=bool(spec.get("arch_halfka_only", False)),
+            pol_proj=int(spec.get("arch_pol_proj", 0)),
+            dis_proj=int(spec.get("arch_dis_proj", 0)),
+            qat_ft_scale=float(spec.get("qat_ft_scale", 0.0)),
+            qat_threat_scale=float(spec.get("qat_threat_scale", 0.0)),
+            qat_act_levels=float(spec.get("qat_act_levels", 0.0)),
+            qat_l1_scale=float(spec.get("qat_l1_scale", 0.0)))
+
     # Parameter shapes in OUR storage convention: every affine weight is
     # (fan_in, fan_out) row-major, which is byte-identical to bullet's internal
     # column-major (fan_out rows x fan_in cols) flat layout -- so raw-checkpoint

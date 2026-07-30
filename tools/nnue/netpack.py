@@ -457,11 +457,13 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None,
                 f"threat_quant={threat_quant} — at least one bit of the i8 is "
                 f"unused, which is what a QAT net exported at the legacy scale "
                 f"looks like (perf study 30: -125.1 Elo, invisible to R2).\n"
-                f"  Re-export the quant.bin at the trainer's qat_threat_scale "
-                f"(jax ArchSpec.threat_quant()) and pack with "
-                f"D40_THREAT_QUANT={want}, or set "
-                f"D40_ALLOW_THREAT_UNDERRANGE=1 if the table really is this "
-                f"small.")
+                f"  The quant.bin ITSELF is the wrong one: re-export it at the "
+                f"trainer's qat_threat_scale (jax ArchSpec.threat_quant(); "
+                f"tools/nnue/requant_threats.py --scale N --run-spec ...) and "
+                f"pack that with D40_THREAT_QUANT=N. N is at least {want} on "
+                f"this table's range alone; the RUN SPEC decides the real "
+                f"value. Set D40_ALLOW_THREAT_UNDERRANGE=1 if the table really "
+                f"is this small.")
 
     # ── Build CENN-v2 payload ──────────────────────────────────────────
     payload = bytearray()
