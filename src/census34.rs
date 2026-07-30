@@ -38,6 +38,13 @@ counters! {
     BQ_EMITTED,    // moves emitted from BadQuiet
     Q_SKIPPED,     // pickers whose quiets were cut short by skip_quiet_moves()
     Q_EXHAUSTED,   // pickers that walked the entire quiet region
+    // --- MovePicker::new / pseudo_legal(tt_move) (study 23 remainder item 6) ---
+    MP_NEW,            // MovePicker::new calls
+    MP_TT_CAND,        // ... with a candidate TT move (tt_move.is_ok())
+    MP_TT_EVASION_GEN, // ... in check: pseudo_legal runs a FULL evasion generation
+    MP_TT_NONNORMAL,   // ... non-Normal kind: pseudo_legal runs a FULL generation
+    MP_TT_USABLE,      // ... and the TT move survived validation
+    IE_CALLS,          // init_evasions calls (the SECOND evasion generation)
     // --- captures, for comparison ---
     IC_CALLS,
     IC_SCORED,
@@ -143,6 +150,24 @@ pub fn report(nodes: u64) {
         g(&IC_SCORED) / ccalls,
         g(&GC_SCANNED) / ccalls,
         g(&GC_EMITTED) / ccalls
+    );
+    let mpn = g(&MP_NEW).max(1.0);
+    eprintln!(
+        "C34 mp_new  calls={:.0} /node={:.4} tt_cand={:.0} usable={:.0} \
+         evasion_gen={:.0} (/node={:.4}) nonnormal_gen={:.0} (/node={:.4}) \
+         init_evasions={:.0} (/node={:.4})",
+        mpn,
+        mpn / n,
+        // Printed as raw counts too: the interesting question is whether
+        // `pseudo_legal` ever REJECTS a TT move, and a percentage hides that.
+        g(&MP_TT_CAND),
+        g(&MP_TT_USABLE),
+        g(&MP_TT_EVASION_GEN),
+        g(&MP_TT_EVASION_GEN) / n,
+        g(&MP_TT_NONNORMAL),
+        g(&MP_TT_NONNORMAL) / n,
+        g(&IE_CALLS),
+        g(&IE_CALLS) / n
     );
     let fh = g(&FH_NODES).max(1.0);
     eprintln!(

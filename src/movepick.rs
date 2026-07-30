@@ -503,6 +503,25 @@ impl MovePicker {
         // A TT move is usable iff it is a real move that this position would
         // actually generate; an unusable one skips the `*Tt` stage (§3.5).
         let usable = tt_move.is_ok() && board.pseudo_legal(tt_move);
+        // Perf study 34: price the two `pseudo_legal` paths that run a FULL
+        // move generation just to validate one move (study 23 remainder 6).
+        #[cfg(feature = "census34")]
+        {
+            use crate::census34 as cx;
+            let in_check = !board.checkers().is_empty();
+            let cand = tt_move.is_ok();
+            cx::bump(&cx::MP_NEW, 1);
+            cx::bump(&cx::MP_TT_CAND, cand as u64);
+            cx::bump(&cx::MP_TT_USABLE, usable as u64);
+            cx::bump(
+                &cx::MP_TT_NONNORMAL,
+                (cand && tt_move.kind() != crate::moves::MoveKind::Normal) as u64,
+            );
+            cx::bump(
+                &cx::MP_TT_EVASION_GEN,
+                (cand && in_check && tt_move.kind() == crate::moves::MoveKind::Normal) as u64,
+            );
+        }
         MovePicker::with_base(base, tt_move, depth, ply, VALUE_ZERO, cont_hist, usable)
     }
 
@@ -1139,6 +1158,8 @@ impl MovePicker {
         self.end_bad_captures = 0;
         self.end_generated = n;
         partial_insertion_sort(self.slots_mut(0..n), i32::MIN);
+        #[cfg(feature = "census34")]
+        crate::census34::bump(&crate::census34::IE_CALLS, 1);
     }
 
     /// Scan the emission window `buf[cur..end_cur]` for the next element passing
