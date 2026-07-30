@@ -53,6 +53,16 @@ pub static THR_COPY: Site = Site::new();
 /// Perf study 38's parent alias: a ply whose delta was empty for BOTH
 /// perspectives, so the entry was never written at all.
 pub static THR_ALIAS: Site = Site::new();
+/// `refresh_threat_into_at` — the FullThreats FROM-SCRATCH rebuild, both the
+/// root refresh and `discharge_refresh`'s mid-search one.
+///
+/// Perf study 39 added this because studies 29 (§8.1) and 31 both priced
+/// accumulator fusion's COST side — a fused accumulator inherits HalfKA's
+/// refresh trigger, so every HalfKA refresh drags a threat rebuild with it —
+/// from an assumed row count neither had measured. `rows` here is the number
+/// of weight COLUMNS folded, i.e. the number of active threat features for one
+/// perspective, which is the quantity that decides whether fusion is a loss.
+pub static THR_REFRESH: Site = Site::new();
 /// `activate` — the head's accumulator merge. Reads FOUR `[i16; ACC]` arrays
 /// (two perspectives x two channels) and writes one `[u8; ACC]`. This is the
 /// 10.24 KB/ply Stockfish carries as 4.10 KB.
@@ -145,6 +155,7 @@ pub fn dump(nodes: u64) {
         ("thr_into", &THR_INTO),
         ("thr_copy", &THR_COPY),
         ("thr_alias", &THR_ALIAS),
+        ("thr_refresh", &THR_REFRESH),
         ("activate", &ACTIVATE),
         ("eval", &EVAL),
     ] {
