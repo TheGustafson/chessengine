@@ -5616,3 +5616,36 @@ this promotion. Measured wins now in the tree:
 
 **D49 sb268/400**, heldout 0.011472 @ sb260 (ema 0.011243), still descending —
 the cosine ends at sb300, then the anneal.
+
+## Tick 2026-07-30 ~17:00 — D49's heldout goes FLAT for the first time
+
+| sb | heldout | ema | delta |
+|---|---|---|---|
+| 240 | 0.011656 | 0.011344 | −144 |
+| 250 | 0.011587 | 0.011318 | −69 |
+| 260 | 0.011472 | 0.011243 | −115 |
+| **270** | **0.011472** | **0.011189** | **0** |
+
+**sb270 reads exactly the same as sb260 — the first zero step of the run.** The
+**EMA is still falling** (0.011243 → 0.011189), which is the smoother and more
+trustworthy signal, so this is one flat raw reading rather than an established
+plateau.
+
+**Not over-reading it, on purpose.** Standing rule: quote levels, not trends,
+and never judge a run before its anneal. Two data points that happen to be equal
+is not saturation, the cosine still has 30 sb to run to sb300, and **the anneal
+(300→400) is exactly the phase that usually produces the final drop.** The thing
+that would make this meaningful is the EMA flattening too, or two or three more
+zero steps. Watching for that.
+
+**Box:** 8255 MB, free swap 1128 MB, load 5.00. `perf=1` — **study 38 is
+measuring**, so nothing was started this tick.
+
+**Study 38 ahead=2**, and its latest commit names a real mechanism:
+*"nnue: a pure-copy threat ply is ALIASED to its parent, not…"* — i.e. it has
+found that some threat plies which merely copy their parent can share storage
+instead. That is precisely the `thr_copy` cost it was sent to measure, so the
+derivation study 37 flagged as "derived, not measured" appears to be turning
+into something buildable.
+
+main = `d166a2d` (the promotion plus this log).
