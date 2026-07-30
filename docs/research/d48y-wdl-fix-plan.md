@@ -8686,3 +8686,63 @@ PID file.
 "live measurement" at pid 1446260 whose `/proc` entry had already vanished
 between the `pgrep` and the read. Harmless here, but it is the identical failure
 in miniature.
+
+## Study 46 — MY hypothesis refuted by measurement, and study 44's port kill CORRECTED
+
+**D49x: sb509**, 191.8k pos/s. Study 46 is on main (it self-merged — a deviation
+from the loop; tree clean, pins intact, and I ran an independent gate anyway).
+
+### The commissioned hypothesis was WRONG, and it was killed the right way
+
+I proposed that `CHAINS = 4` targets half the ILP, reasoning from "~4–5 cycle
+latency against **2 issue ports** ⇒ 8–10 chains needed." **I never measured the
+port count.** Study 46 built an inline-asm chain sweep instead of citing a
+number:
+
+**512-bit `vpdpbusd`/`vfmadd231ps` run at 4-cycle latency and 1.00 op/cycle —
+ONE effective pipe, because Zen 4 double-pumps 512-bit ops over a 256-bit
+datapath. The knee is exactly 4 and flat from 4 to 10. `CHAINS = 4` is precisely
+right.**
+
+**The control is what makes it trustworthy rather than merely clean:** the SAME
+instructions at 256 bits give **2/cycle with the knee at 8**, same latency. An
+instrument that reproduces the expected answer in the regime where the answer is
+known.
+
+**And it corroborates independently:** study 29 §2.1 measured **2.0015
+`L1-dcache-loads` events per 512-bit load against 1.0016 for 256-bit** — the same
+double-pump, on a different counter, a day earlier. Two studies, two counters,
+one hardware fact. **My error was assuming a port count instead of measuring it.**
+
+### It corrected a MERGED study's headline
+
+Study 44 killed execution-port pressure by dividing by **"Zen 4's 4 FP pipes" — a
+divisor it never measured.** Study 46 closed study 44's own open assumption A4
+(`pack_512_uops_retired` counts one event per *instruction*, ratio 1.0000) and
+re-derived its levels on its own binary to within 0.1%. **The corrected bracket
+is 16.8%–30.3% of cycles, ENTIRELY ABOVE study 44's stated 7.1%–14.4%.**
+**"The FP pipes are ≥85% idle" does not survive.**
+
+### Landed: study 44's owed sweep is closed
+
+**`r4` built for the first time** and panelled against `r5`/`r8` over 40 rounds:
+`r4` **+0.875%**, `r8` **+1.009%** — both worse. **`REGS_CAP = 5` is the
+optimum**, with a mechanism: store-queue relief keeps growing (−3.7% at `r4`) but
+instructions grow faster (+1.125%), and that crossing is the minimum.
+
+Two further hypotheses of its own died on measurement and are reported as
+results: `l1_dot`'s remainder handling is not a defect (the bit-identical "fix"
+measured **worse**, 96.81 vs 92.95 c/call), and `l2_tail` — a genuine 2× ILP
+deficit — is worth only **−0.185%** of cycles at the measured 0.43117
+evals/node, so it was rejected on arithmetic rather than built.
+
+**Against itself:** its first panel read a byte-identical null at **+0.878%**
+because it ran microbenchmarks concurrently with it — the exact mistake study 44
+§7 warns about. Discarded, preserved as `panel-regs-CONTAMINATED.txt`, re-run
+clean.
+
+**Caveats it volunteered:** the 16.8–30.3% bracket is 13 points wide only because
+it did not measure the *word-wise* ops the hot kernels actually issue
+(`vpmulhw`, `vpaddsw`); and its null was 4× larger than study 44's, so its
+resolution was ~±0.5% — **it could not have seen the 0.185% effect even if it had
+built it.**
