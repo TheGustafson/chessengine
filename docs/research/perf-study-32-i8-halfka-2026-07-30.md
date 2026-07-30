@@ -481,6 +481,13 @@ in the same files. **Merged: 25 hunks across 6 files.** `sota_loader.rs`
 auto-merged, which is the important one — quantise-at-load does not collide
 with CENN-v5's format work.
 
+**Then merged again**, after `main` took **study 33**: that one produced
+exactly **one** conflict, in `.gitignore`. Study 33's work is in the search
+node's load attribution, not in the fold or merge kernels, so it composes with
+the i8 transformer without touching it. The branch is level with `main` and the
+full gate passes on the result — `Bench: 587683`, eval hash
+`eb981b11…4f4f37`, d13 `1985398`, all three reproduced after both merges.
+
 **The two studies compose.** Study 30 made the THREAT channel's merge shift
 net-dependent (const-generic over {0,1,2}, `threat_shift_for` rejecting
 anything outside {64,128,256} so the dispatch is exhaustive with no panic arm —
