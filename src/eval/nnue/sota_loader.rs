@@ -435,17 +435,19 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     // L1 weights: i8[BUCKETS · L2 · L1], bucket-major, group-interleaved.
     let l1_weights = read_i8s_aligned(payload, &mut cur, BUCKETS * L2 * L1);
 
-    // L1 biases: f32[BUCKETS · L2].
-    let l1_biases = read_f32s(payload, &mut cur, BUCKETS * L2);
+    // L1 biases: f32[BUCKETS · L2]. Cache-line aligned like the weights:
+    // the head reads a whole 64-byte `[f32; L2]` block per eval and the
+    // bucket stride is a multiple of 64, so the base decides them all.
+    let l1_biases = read_f32s_aligned(payload, &mut cur, BUCKETS * L2);
 
     // L2 weights: f32[BUCKETS · L2 · L3].
     let l2_weights = read_f32s_aligned(payload, &mut cur, BUCKETS * L2 * L3);
 
-    // L2 biases: f32[BUCKETS · L3].
-    let l2_biases = read_f32s(payload, &mut cur, BUCKETS * L3);
+    // L2 biases: f32[BUCKETS · L3]. Aligned; see `l1_biases`.
+    let l2_biases = read_f32s_aligned(payload, &mut cur, BUCKETS * L3);
 
-    // L3 weights: f32[BUCKETS · L3].
-    let l3_weights = read_f32s(payload, &mut cur, BUCKETS * L3);
+    // L3 weights: f32[BUCKETS · L3]. Aligned; see `l1_biases`.
+    let l3_weights = read_f32s_aligned(payload, &mut cur, BUCKETS * L3);
 
     // L3 biases: f32[BUCKETS].
     let l3_biases = read_f32s(payload, &mut cur, BUCKETS);
@@ -921,12 +923,12 @@ pub(crate) mod tests {
         let l1_weights: Aligned<i8> = (0..BUCKETS * L2 * L1)
             .map(|_| small_i8(&mut prng))
             .collect();
-        let l1_biases: Box<[f32]> = (0..BUCKETS * L2).map(|_| small_f32(&mut prng)).collect();
+        let l1_biases: Aligned<f32> = (0..BUCKETS * L2).map(|_| small_f32(&mut prng)).collect();
         let l2_weights: Aligned<f32> = (0..BUCKETS * L2 * L3)
             .map(|_| small_f32(&mut prng))
             .collect();
-        let l2_biases: Box<[f32]> = (0..BUCKETS * L3).map(|_| small_f32(&mut prng)).collect();
-        let l3_weights: Box<[f32]> = (0..BUCKETS * L3).map(|_| small_f32(&mut prng)).collect();
+        let l2_biases: Aligned<f32> = (0..BUCKETS * L3).map(|_| small_f32(&mut prng)).collect();
+        let l3_weights: Aligned<f32> = (0..BUCKETS * L3).map(|_| small_f32(&mut prng)).collect();
         let l3_biases: Box<[f32]> = (0..BUCKETS).map(|_| small_f32(&mut prng)).collect();
 
         SotaNetwork {
@@ -948,6 +950,27 @@ pub(crate) mod tests {
                 l3_wdl_biases: None,
                 skip_weights: None,
             },
+        }
+    }
+
+    /// Every f32 block the head streams per eval must START on a cache line.
+    ///
+    /// A GATE (perf study 21 arm B4). `l1_biases`/`l2_biases`/`l3_weights`
+    /// were plain `Box<[f32]>` while their weight siblings were already
+    /// `Aligned` -- perf study 20 arm 5 fixed the weights and missed the
+    /// biases. Each is read per eval as a whole `[f32; L2]` (64 B) or
+    /// `[f32; L3]` (128 B) block at a `bucket`-strided offset, and both
+    /// strides are multiples of 64, so the base pointer alone decides whether
+    /// every one of those `_mm512_loadu_ps` crosses a cache line.
+    #[test]
+    fn head_f32_blocks_start_on_a_cache_line() {
+        let net = test_net_with_threats();
+        for (name, base) in [
+            ("l1_biases", net.head.l1_biases.as_ptr() as usize),
+            ("l2_biases", net.head.l2_biases.as_ptr() as usize),
+            ("l3_weights", net.head.l3_weights.as_ptr() as usize),
+        ] {
+            assert_eq!(base % 64, 0, "{name} base is {} mod 64", base % 64);
         }
     }
 
