@@ -34,16 +34,24 @@ comparable) — at the pinned frame `bench 16 1 100000 wl50.fens nodes <net>`,
 | `ex_no_retire.load_not_complete` /node | **1965.9** | 2322.7 |
 | IPC | 1.485 | 1.350 |
 
+**Reconciled against the settled frame (`main` @ `01cc007`).** After this study
+started, the coordinator settled the denominator by re-running **study 40's own
+base binary**, still on disk: **5923.909 instructions/node, 4179.7 cycles/node**.
+My non-PGO build is **5929.1 instructions/node — 0.09% away**, so this study is
+in *that* frame, not a third one. And 4179.7 sits **inside** my quiet-to-panel
+bracket (3992.4 … 4390.8), which is the consistency check I would want.
+
 Two notes on comparability, both mine to own:
 
-* The coordinator measured **5659.0 instructions/node** on the **canonical PGO
-  binary**. Mine is 5929.1 on a **non-PGO** build — a 4.6% gap in the direction
-  PGO moves instruction counts. Neither is wrong; they are different binaries,
-  and an A/B panel must be built one way, so this study is non-PGO throughout.
+* The coordinator's earlier **5659.0 instructions/node** figure was the
+  **canonical PGO binary** — a genuinely different binary, 4.6% below mine in
+  the direction PGO moves instruction counts. It is not the frame this study or
+  study 40 is in. An A/B panel must be built one way, and this one is non-PGO
+  throughout.
 * `cycles:u` is inflatable by contention and never deflatable, so the quiet
   column is the lower bound. **Every absolute cycle figure below is quoted as a
-  range across both columns**, and the percentage — which is what the panel
-  actually measures — is quoted first.
+  range across both columns** — a range that brackets the settled 4179.7 — and
+  the percentage, which is what the panel actually measures, is quoted first.
 
 ---
 
@@ -90,7 +98,7 @@ variable.
 | | median | sign count | p | per node (quiet — panel) |
 |---|---:|---:|---:|---:|
 | `instructions:u` | **−0.363%** | 18/18 | <0.0001 | **−21.50** (exact) |
-| `cycles:u` | **+3.504%** | 18/18 | <0.0001 | **+139.9 — +153.8** |
+| `cycles:u` | **+3.504%** | 18/18 | <0.0001 | **+139.9 — +153.8** (146.4 at the settled 4179.7) |
 | `ex_no_retire.load_not_complete` | **+5.571%** | 17/18 | 0.0001 | **+109.5 — +129.4** |
 | `ex_no_retire.empty` | +4.708% | 18/18 | <0.0001 | +8.4 — +9.1 |
 
