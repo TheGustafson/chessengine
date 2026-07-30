@@ -152,6 +152,14 @@ paired medians between −0.45% and −4.8% depending on load.
    quantity the finetune is supposed to recover, and the panel's question is
    how much of it, relative to the random-code null).
 
+**Known gap for Tier-2 (deliberate):** the Python CENN exporter
+(`jax/archon_jax/checkpoint.py`) does not yet write TRM1 sections or
+compressed threat payloads — the panel judges on heldout loss and needs no
+CENN. If a candidate survives the panel, the export writer is a small,
+mechanical addition (the format is pinned by the Rust loader and
+round-tripped in its tests; `tools/nnue/recode_pack.py` already writes valid
+TRM1 nets and can serve as the reference).
+
 The **pre-registered decision rule** (study §5.2) is restated verbatim in the
 driver's docstring and will not be changed after readout. Deviation from the
 pre-registered panel: the fly-hash k=2 control is NOT in this first panel —
