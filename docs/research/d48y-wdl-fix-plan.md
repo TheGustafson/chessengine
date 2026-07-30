@@ -8913,3 +8913,33 @@ history — is upside.
 
 Caveat kept: an EMA is a lagging average and can be dragged back by a bad stretch.
 Nine consecutive samples down is the evidence, not a guarantee.
+
+## Tick — the sb700 endpoint is now fully pre-staged
+
+**D49x: sb523** (the sb530 heldout, where the EMA is predicted to cross the bar,
+prints in ~15 min). Box 6594 MB, load 7.19, two studies live ⇒ **no new
+commission.**
+
+**Pre-staged the verdict instead**, so a tooling surprise cannot delay it:
+
+| check | result |
+|---|---|
+| `tools/build_pgo.sh <features> <out> [eval-file]` | present; **eval-file is arg 3 and REQUIRED for NNUE** — a bench-only profile leaves the NNUE kernels unprofiled and PGO inert (measured 2026-07-18) |
+| profile dir `pgo-prof-s28-sota-arch-d48x` | exists |
+| `llvm-profdata` | present |
+| canonical arch | `sota,arch-d48x` |
+| **D49 loads under `arch-d48x`** | **empirically confirmed** — my sb470 smoke test packed and loaded all three ladder scales, n=50 evals each, so the CENN section-size check passes and D49 needs no new arch feature |
+
+**The exact endpoint sequence, in order:**
+
+1. `bash tools/d49_verdict.sh 700` — requant the **EMA**, pack the 640/756/880
+   ladder, re-measure the frame (expect ~414; it has not moved since sb270).
+2. `bash tools/build_pgo.sh sota,arch-d48x archon-s29 <best-ladder.cenn>` —
+   this is where the batched perf wins (study 44's −1.37%, study 40's copy
+   outlining, and `sortclamp45` if it replicates) enter the match binary.
+3. Ladder screens at 1466 games, then the verdict screen at 5880 vs canonical
+   **at its own optimum** (`network_scale=600`), each as a systemd **SERVICE**.
+
+**Memory timing works in our favour:** the trainer releases ~4.5 GB RAM and the
+whole GPU at sb700, so the PGO build — the single heaviest memory event on this
+box — runs after the pressure lifts rather than against it.
