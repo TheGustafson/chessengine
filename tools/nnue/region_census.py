@@ -32,11 +32,15 @@ Mix-weighted sample over the D48X training mix + a full pass of the heldout
 pack for the never-fire union. CPU-only numpy, nice'd, safe beside the GPU.
 """
 import sys
+from pathlib import Path
+
 import numpy as np
 
-sys.path.insert(0, "/home/nick/projects/chessengine/jax")
+# THIS checkout's jax/ (region_bit lives beside the code2d loader seam).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "jax"))
 from archon_jax.data import BulletBin                       # noqa: E402
-from archon_jax.features import DecodedBatch, threat_batch  # noqa: E402
+from archon_jax.features import (DecodedBatch, REGION_BIT_NAMES,  # noqa: E402
+                                 region_bit, threat_batch)
 from archon_jax.spec import THREAT_DIMS                     # noqa: E402
 
 ROOT = "/home/nick/projects/chessengine"
@@ -57,29 +61,21 @@ MIX = [  # the D48X / recode-t1 training mix (recode_t1_kmeans8k.json)
 HELDOUT = f"{ROOT}/data/nnue/heldout/uho-band0-5.bin"
 N_TOTAL = 8_000_000
 CHUNK = 65_536
-BITS = ["adv", "rank1", "fpair", "esame", "eadv", "null"]
+BITS = list(REGION_BIT_NAMES)
 OUT = f"{ROOT}/data/nnue/nets/screens/recode/region-census-mix8M.npz"
 
 
 def region_bits(dec: DecodedBatch, persp: int) -> np.ndarray:
-    """(NBITS, N) uint8 region bits for one perspective, own-frame defs."""
-    own = dec.kings[:, persp]
-    enemy = dec.kings[:, 1 - persp]
-    own_f = own ^ (56 * persp)            # own king in own frame (rank 0 = home)
-    enemy_f = enemy ^ (56 * (1 - persp))  # enemy king in ITS OWN frame
-    f_own = own & 7                       # file is frame-invariant
-    r_own = own_f >> 3
-    of = np.where(f_own <= 3, f_own, 7 - f_own)  # oriented file, a-d polarity
-    occ = dec.occ
-    hbit = ((occ * np.uint64(0x9E3779B97F4A7C15)) >> np.uint64(63)).astype(np.int64)
-    return np.stack([
-        (r_own >= 2).astype(np.int64),                       # adv
-        (r_own >= 1).astype(np.int64),                       # rank1
-        (of >= 2).astype(np.int64),                          # fpair
-        ((f_own <= 3) == ((enemy & 7) <= 3)).astype(np.int64),  # esame
-        ((enemy_f >> 3) >= 2).astype(np.int64),              # eadv
-        hbit,                                                # null
-    ])
+    """(NBITS, N) int64 region bits for one perspective.
+
+    Thin stack over the CANONICAL per-bit definitions in
+    ``archon_jax.features.region_bit`` — the census, the probe, and the
+    training-time code2d path all read the same arithmetic, so they cannot
+    drift. (The defs were born here and moved there verbatim when the
+    trainer seam landed; the saved census artifacts predate the move but are
+    bit-identical.)
+    """
+    return np.stack([region_bit(dec, persp, n) for n in BITS])
 
 
 def accumulate(recs, joint, fired):

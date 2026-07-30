@@ -178,11 +178,14 @@ def main() -> int:
         if done % 25600 == 0:
             print(f"[probe] {done}/{N_POS} pos, {done / (time.time() - t0):,.0f} pos/s",
                   flush=True)
-
-    np.savez(OUT, bits=np.array(BITS), K=K, n_pos=done,
-             **{f"G_{c}": G[c] for c in G}, **{f"N_{c}": N[c] for c in N},
-             **{f"S2_{c}": S2[c] for c in S2},
-             **{f"top_{c}": top[c] for c in top})
+        if done % 131072 == 0 or done >= N_POS:
+            # periodic save: an OOM kill loses at most 128k positions of work
+            # (the 512k first run died at ~250k with nothing on disk).
+            np.savez(OUT, bits=np.array(BITS), K=K, n_pos=done,
+                     **{f"G_{c}": G[c] for c in G},
+                     **{f"N_{c}": N[c] for c in N},
+                     **{f"S2_{c}": S2[c] for c in S2},
+                     **{f"top_{c}": top[c] for c in top})
 
     # ---- readout ----------------------------------------------------------
     print(f"\n[probe] {done} positions; per-channel per-bit first-order "

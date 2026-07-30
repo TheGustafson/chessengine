@@ -271,7 +271,8 @@ class ArchSpec:
             qat_threat_scale=float(spec.get("qat_threat_scale", 0.0)),
             qat_act_levels=float(spec.get("qat_act_levels", 0.0)),
             qat_l1_scale=float(spec.get("qat_l1_scale", 0.0)),
-            threat_rows=int(spec.get("arch_threat_rows", 0)))
+            threat_rows=int(spec.get("arch_threat_rows", 0)),
+            num_buckets=int(spec.get("arch_num_buckets", NUM_BUCKETS)))
 
     # Parameter shapes in OUR storage convention: every affine weight is
     # (fan_in, fan_out) row-major, which is byte-identical to bullet's internal
@@ -392,6 +393,18 @@ class TrainConfig:
     # "" = identity. Pairs with ArchSpec.threat_rows; data.py loads it once
     # per stream and passes it into map_batch — zero trainer-graph changes.
     threat_remap: str = ""
+    # Richer-representation study (2026-07-31): CONTEXT-REFINED threat code.
+    # threat_code2d names a .npy int array of shape (THREAT_DIMS, 2) mapping
+    # (tuple, region-bit) -> row (< arch.threat_rows); threat_region names the
+    # king-region bit (archon_jax.features.REGION_BIT_NAMES) that indexes the
+    # second axis, computed per perspective at the loader. Mutually exclusive
+    # with threat_remap. "" = off.
+    threat_code2d: str = ""
+    threat_region: str = ""
+    # Head-side refinement: comma-separated region-bit names that extend the
+    # OUTPUT bucket index (each doubles the bucket space; arch.num_buckets
+    # must be 8 * 2^n). "" = the plain piece-count buckets.
+    bucket_regions: str = ""
     # Draw-aware double-sigmoid target (2026-07-26 calibration). 0.0 = the
     # historical plain sigmoid(s/scale). a>0 gives P(win)=sig((s-a)/scale),
     # P(loss)=sig((-s-a)/scale), remainder draw, value = EXPECTED SCORE — the
