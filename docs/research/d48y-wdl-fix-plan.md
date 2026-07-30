@@ -8785,3 +8785,57 @@ upward, each time on more data.
 independent gate on study 46, study 45's panel and the trainer all live. Adding a
 fourth build-capable line at that memory is the configuration that OOM'd this box
 on 2026-07-27.
+
+## Study 45 interim — it corrected MY backlog, and the shuffle defect has a THIRD receipt
+
+### My brief's item 2 was already done, and my verification method was wrong
+
+I commissioned "duplicate evasion generation — 157,016 of 349,337 (45%) redundant"
+as an open lever. **It was landed 14 hours earlier by study 36 arm 1
+(`85d8cacc`), with a BETTER fix** than the one study 34 ranked: it answers
+`pseudo_legal` from check geometry, **deleting** the generation instead of
+recycling the list, so it cannot break the "a TT-move cutoff performs zero
+generation" contract that made the ranked version "delicate".
+
+**How I got it wrong, precisely:** I grepped `src/movepick.rs` for `pseudo_legal`,
+found the call sites, and concluded the item was open. **The call sites are still
+there — the fix landed inside `movegen`, changing what `pseudo_legal` DOES.**
+*Checking that a call site exists is not checking that the cost exists.* The
+backlog was built from study 34's §10 list without asking whether later studies
+had closed any of it.
+
+### Item 3 rejected on arithmetic — exactly the outcome I said was acceptable
+
+The stage-dispatch lever's **100%-mispredict ceiling is 21.3 cycles/node =
+0.51%**, below the **0.6–1.1%** noise floor of the very instrument that would
+have to adjudicate it. Rejected with a number, not a story.
+
+### The free-shuffle defect now has THREE independent receipts
+
+| study | ordering | byte-identical null read |
+|---|---|---:|
+| 43 | cyclic rotation | **−0.5700%** |
+| 44 | free shuffle | **+2.36%** |
+| **45** | free shuffle | **+1.035%** |
+
+**Study 45's null is bigger than either of its own arms.** Three studies, three
+harnesses, same two defects — and the blocked-Latin design now shipped in five
+harnesses is the only one that fixes both.
+
+### What survived: the exact counter, and an unplanned mechanism confirmation
+
+`instructions:u` has a ~0 null and is ordering-independent. `sortclamp45`:
+
+| counter | Δ |
+|---|---:|
+| instructions | **−0.619%** |
+| branches | **−1.217%** |
+| L1d loads | **−0.912%** |
+| mispredicts | **−3.731%** |
+
+**Every work counter moves down together — that is removed work, not an
+instruction/cycle trade.** And the mispredict figure is a mechanism confirmation
+nobody planned: study 34 attributed **6.46% of ALL engine mispredicts** to the
+shift walk's exit test, and halving the sorted prefix removed **3.731% — 58% of
+exactly that quantity.** `tt6x45` measures +0.030% instructions, the small cost
+pre-registered.
