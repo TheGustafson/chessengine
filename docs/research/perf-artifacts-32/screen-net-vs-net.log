@@ -1,0 +1,2954 @@
+screen: 1466 games -> expected bar ~+/-10.0 Elo (calibrated k=383 from our own 120-game screens)
+candidate : /home/nick/projects/chessengine/data/nnue/nets/perf32/d48x-i8-col.cenn
+reference : engines/canonical/net.cenn
+nodes=25000 concurrency=6 rounds=733  out=/home/nick/projects/chessengine/.claude/worktrees/agent-a6205b2309e5cc90c/engines/runs/s32-col
+Indexing opening suite...
+Started game 1 of 1466 (CAND vs REF)
+Started game 3 of 1466 (CAND vs REF)
+Started game 6 of 1466 (REF vs CAND)
+Started game 5 of 1466 (CAND vs REF)
+Started game 2 of 1466 (REF vs CAND)
+Started game 4 of 1466 (REF vs CAND)
+Finished game 1 (CAND vs REF): 1-0 {White mates}
+Started game 7 of 1466 (CAND vs REF)
+Finished game 3 (CAND vs REF): 1-0 {White mates}
+Started game 8 of 1466 (REF vs CAND)
+Finished game 5 (CAND vs REF): 1-0 {White mates}
+Started game 9 of 1466 (CAND vs REF)
+Finished game 6 (REF vs CAND): 1-0 {White mates}
+Started game 10 of 1466 (REF vs CAND)
+Finished game 2 (REF vs CAND): 1-0 {White mates}
+Started game 11 of 1466 (CAND vs REF)
+Finished game 4 (REF vs CAND): 1-0 {White mates}
+Started game 12 of 1466 (REF vs CAND)
+Finished game 7 (CAND vs REF): 1-0 {White mates}
+Started game 13 of 1466 (CAND vs REF)
+Finished game 11 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 14 of 1466 (REF vs CAND)
+Finished game 10 (REF vs CAND): 1-0 {White mates}
+Started game 15 of 1466 (CAND vs REF)
+Finished game 8 (REF vs CAND): 0-1 {Black mates}
+Started game 16 of 1466 (REF vs CAND)
+Finished game 9 (CAND vs REF): 0-1 {Black mates}
+Started game 17 of 1466 (CAND vs REF)
+Finished game 13 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 18 of 1466 (REF vs CAND)
+Finished game 12 (REF vs CAND): 0-1 {Black mates}
+Started game 19 of 1466 (CAND vs REF)
+Finished game 15 (CAND vs REF): 0-1 {Black mates}
+Started game 20 of 1466 (REF vs CAND)
+Finished game 14 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 21 of 1466 (CAND vs REF)
+Finished game 17 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 22 of 1466 (REF vs CAND)
+Finished game 18 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 23 of 1466 (CAND vs REF)
+Finished game 20 (REF vs CAND): 0-1 {Black mates}
+Started game 24 of 1466 (REF vs CAND)
+Finished game 16 (REF vs CAND): 0-1 {Black mates}
+Started game 25 of 1466 (CAND vs REF)
+Finished game 19 (CAND vs REF): 1-0 {White mates}
+Started game 26 of 1466 (REF vs CAND)
+Finished game 21 (CAND vs REF): 1-0 {White mates}
+Started game 27 of 1466 (CAND vs REF)
+Finished game 23 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 28 of 1466 (REF vs CAND)
+Finished game 22 (REF vs CAND): 0-1 {Black mates}
+Started game 29 of 1466 (CAND vs REF)
+Finished game 24 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 30 of 1466 (REF vs CAND)
+Finished game 29 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 31 of 1466 (CAND vs REF)
+Finished game 25 (CAND vs REF): 0-1 {Black mates}
+Started game 32 of 1466 (REF vs CAND)
+Finished game 26 (REF vs CAND): 0-1 {Black mates}
+Started game 33 of 1466 (CAND vs REF)
+Finished game 27 (CAND vs REF): 1-0 {White mates}
+Started game 34 of 1466 (REF vs CAND)
+Finished game 30 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 35 of 1466 (CAND vs REF)
+Finished game 32 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 36 of 1466 (REF vs CAND)
+Finished game 28 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 37 of 1466 (CAND vs REF)
+Finished game 31 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 38 of 1466 (REF vs CAND)
+Finished game 35 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 39 of 1466 (CAND vs REF)
+Finished game 34 (REF vs CAND): 0-1 {Black mates}
+Started game 40 of 1466 (REF vs CAND)
+Finished game 37 (CAND vs REF): 1-0 {White mates}
+Started game 41 of 1466 (CAND vs REF)
+Finished game 38 (REF vs CAND): 1-0 {White mates}
+Started game 42 of 1466 (REF vs CAND)
+Finished game 33 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 43 of 1466 (CAND vs REF)
+Finished game 36 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 44 of 1466 (REF vs CAND)
+Finished game 40 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 45 of 1466 (CAND vs REF)
+Finished game 39 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 46 of 1466 (REF vs CAND)
+Finished game 44 (REF vs CAND): 1-0 {White mates}
+Started game 47 of 1466 (CAND vs REF)
+Finished game 42 (REF vs CAND): 1-0 {White mates}
+Started game 48 of 1466 (REF vs CAND)
+Finished game 41 (CAND vs REF): 0-1 {Black mates}
+Started game 49 of 1466 (CAND vs REF)
+Finished game 43 (CAND vs REF): 1-0 {White mates}
+Started game 50 of 1466 (REF vs CAND)
+Finished game 45 (CAND vs REF): 1-0 {White mates}
+Started game 51 of 1466 (CAND vs REF)
+Finished game 48 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 52 of 1466 (REF vs CAND)
+Finished game 47 (CAND vs REF): 1-0 {White mates}
+Started game 53 of 1466 (CAND vs REF)
+Finished game 46 (REF vs CAND): 1-0 {White mates}
+Started game 54 of 1466 (REF vs CAND)
+Finished game 51 (CAND vs REF): 1/2-1/2 {Draw by stalemate}
+Started game 55 of 1466 (CAND vs REF)
+Finished game 50 (REF vs CAND): 1-0 {White mates}
+Started game 56 of 1466 (REF vs CAND)
+Finished game 53 (CAND vs REF): 1-0 {White mates}
+Started game 57 of 1466 (CAND vs REF)
+Finished game 49 (CAND vs REF): 1-0 {White mates}
+Started game 58 of 1466 (REF vs CAND)
+Finished game 54 (REF vs CAND): 1-0 {White mates}
+Started game 59 of 1466 (CAND vs REF)
+Finished game 56 (REF vs CAND): 0-1 {Black mates}
+Started game 60 of 1466 (REF vs CAND)
+Finished game 52 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 61 of 1466 (CAND vs REF)
+Finished game 55 (CAND vs REF): 0-1 {Black mates}
+Started game 62 of 1466 (REF vs CAND)
+Finished game 59 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 63 of 1466 (CAND vs REF)
+Finished game 57 (CAND vs REF): 1-0 {White mates}
+Started game 64 of 1466 (REF vs CAND)
+Finished game 64 (REF vs CAND): 1-0 {White mates}
+Started game 65 of 1466 (CAND vs REF)
+Finished game 58 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 66 of 1466 (REF vs CAND)
+Finished game 61 (CAND vs REF): 0-1 {Black mates}
+Started game 67 of 1466 (CAND vs REF)
+Finished game 60 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 68 of 1466 (REF vs CAND)
+Finished game 62 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 69 of 1466 (CAND vs REF)
+Finished game 65 (CAND vs REF): 0-1 {Black mates}
+Started game 70 of 1466 (REF vs CAND)
+Finished game 63 (CAND vs REF): 1-0 {White mates}
+Started game 71 of 1466 (CAND vs REF)
+Finished game 66 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 72 of 1466 (REF vs CAND)
+Finished game 69 (CAND vs REF): 0-1 {Black mates}
+Started game 73 of 1466 (CAND vs REF)
+Finished game 68 (REF vs CAND): 1-0 {White mates}
+Started game 74 of 1466 (REF vs CAND)
+Finished game 67 (CAND vs REF): 1-0 {White mates}
+Started game 75 of 1466 (CAND vs REF)
+Finished game 70 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 76 of 1466 (REF vs CAND)
+Finished game 71 (CAND vs REF): 0-1 {Black mates}
+Started game 77 of 1466 (CAND vs REF)
+Finished game 72 (REF vs CAND): 0-1 {Black mates}
+Started game 78 of 1466 (REF vs CAND)
+Finished game 73 (CAND vs REF): 1-0 {White mates}
+Started game 79 of 1466 (CAND vs REF)
+Finished game 76 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 80 of 1466 (REF vs CAND)
+Finished game 75 (CAND vs REF): 0-1 {Black mates}
+Started game 81 of 1466 (CAND vs REF)
+Finished game 77 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 82 of 1466 (REF vs CAND)
+Finished game 74 (REF vs CAND): 1-0 {White mates}
+Started game 83 of 1466 (CAND vs REF)
+Finished game 83 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 84 of 1466 (REF vs CAND)
+Finished game 78 (REF vs CAND): 1-0 {White mates}
+Started game 85 of 1466 (CAND vs REF)
+Finished game 80 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 86 of 1466 (REF vs CAND)
+Finished game 79 (CAND vs REF): 0-1 {Black mates}
+Started game 87 of 1466 (CAND vs REF)
+Finished game 82 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 88 of 1466 (REF vs CAND)
+Finished game 81 (CAND vs REF): 1-0 {White mates}
+Started game 89 of 1466 (CAND vs REF)
+Finished game 86 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 90 of 1466 (REF vs CAND)
+Finished game 84 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 91 of 1466 (CAND vs REF)
+Finished game 89 (CAND vs REF): 0-1 {Black mates}
+Started game 92 of 1466 (REF vs CAND)
+Finished game 87 (CAND vs REF): 1-0 {White mates}
+Started game 93 of 1466 (CAND vs REF)
+Finished game 85 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 94 of 1466 (REF vs CAND)
+Finished game 90 (REF vs CAND): 0-1 {Black mates}
+Started game 95 of 1466 (CAND vs REF)
+Finished game 88 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 96 of 1466 (REF vs CAND)
+Finished game 91 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 97 of 1466 (CAND vs REF)
+Finished game 92 (REF vs CAND): 0-1 {Black mates}
+Started game 98 of 1466 (REF vs CAND)
+Finished game 94 (REF vs CAND): 1-0 {White mates}
+Started game 99 of 1466 (CAND vs REF)
+Finished game 96 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 100 of 1466 (REF vs CAND)
+Finished game 95 (CAND vs REF): 1-0 {White mates}
+Started game 101 of 1466 (CAND vs REF)
+Finished game 93 (CAND vs REF): 1-0 {White mates}
+Started game 102 of 1466 (REF vs CAND)
+Finished game 97 (CAND vs REF): 0-1 {Black mates}
+Started game 103 of 1466 (CAND vs REF)
+Finished game 102 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 104 of 1466 (REF vs CAND)
+Finished game 98 (REF vs CAND): 0-1 {Black mates}
+Started game 105 of 1466 (CAND vs REF)
+Finished game 99 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 106 of 1466 (REF vs CAND)
+Finished game 100 (REF vs CAND): 1-0 {White mates}
+Started game 107 of 1466 (CAND vs REF)
+Finished game 101 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 108 of 1466 (REF vs CAND)
+Finished game 103 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 109 of 1466 (CAND vs REF)
+Finished game 105 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 110 of 1466 (REF vs CAND)
+Finished game 107 (CAND vs REF): 1-0 {White mates}
+Started game 111 of 1466 (CAND vs REF)
+Finished game 104 (REF vs CAND): 0-1 {Black mates}
+Started game 112 of 1466 (REF vs CAND)
+Finished game 109 (CAND vs REF): 0-1 {Black mates}
+Started game 113 of 1466 (CAND vs REF)
+Finished game 108 (REF vs CAND): 1-0 {White mates}
+Started game 114 of 1466 (REF vs CAND)
+Finished game 106 (REF vs CAND): 1-0 {White mates}
+Started game 115 of 1466 (CAND vs REF)
+Finished game 110 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 116 of 1466 (REF vs CAND)
+Finished game 111 (CAND vs REF): 1-0 {White mates}
+Started game 117 of 1466 (CAND vs REF)
+Finished game 113 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 118 of 1466 (REF vs CAND)
+Finished game 112 (REF vs CAND): 1-0 {White mates}
+Started game 119 of 1466 (CAND vs REF)
+Finished game 115 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 120 of 1466 (REF vs CAND)
+Finished game 116 (REF vs CAND): 1-0 {White mates}
+Started game 121 of 1466 (CAND vs REF)
+Finished game 117 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 122 of 1466 (REF vs CAND)
+Finished game 118 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 123 of 1466 (CAND vs REF)
+Finished game 114 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 124 of 1466 (REF vs CAND)
+Finished game 119 (CAND vs REF): 0-1 {Black mates}
+Started game 125 of 1466 (CAND vs REF)
+Finished game 120 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 126 of 1466 (REF vs CAND)
+Finished game 121 (CAND vs REF): 0-1 {Black mates}
+Started game 127 of 1466 (CAND vs REF)
+Finished game 125 (CAND vs REF): 0-1 {Black mates}
+Started game 128 of 1466 (REF vs CAND)
+Finished game 122 (REF vs CAND): 0-1 {Black mates}
+Started game 129 of 1466 (CAND vs REF)
+Finished game 126 (REF vs CAND): 0-1 {Black mates}
+Started game 130 of 1466 (REF vs CAND)
+Finished game 124 (REF vs CAND): 0-1 {Black mates}
+Started game 131 of 1466 (CAND vs REF)
+Finished game 123 (CAND vs REF): 0-1 {Black mates}
+Started game 132 of 1466 (REF vs CAND)
+Finished game 130 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 133 of 1466 (CAND vs REF)
+Finished game 132 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 134 of 1466 (REF vs CAND)
+Finished game 127 (CAND vs REF): 0-1 {Black mates}
+Started game 135 of 1466 (CAND vs REF)
+Finished game 129 (CAND vs REF): 0-1 {Black mates}
+Started game 136 of 1466 (REF vs CAND)
+Finished game 131 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 137 of 1466 (CAND vs REF)
+Finished game 128 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 138 of 1466 (REF vs CAND)
+Finished game 134 (REF vs CAND): 1-0 {White mates}
+Started game 139 of 1466 (CAND vs REF)
+Finished game 133 (CAND vs REF): 1-0 {White mates}
+Started game 140 of 1466 (REF vs CAND)
+Finished game 136 (REF vs CAND): 0-1 {Black mates}
+Started game 141 of 1466 (CAND vs REF)
+Finished game 135 (CAND vs REF): 1-0 {White mates}
+Started game 142 of 1466 (REF vs CAND)
+Finished game 138 (REF vs CAND): 0-1 {Black mates}
+Started game 143 of 1466 (CAND vs REF)
+Finished game 137 (CAND vs REF): 0-1 {Black mates}
+Started game 144 of 1466 (REF vs CAND)
+Finished game 141 (CAND vs REF): 1-0 {White mates}
+Started game 145 of 1466 (CAND vs REF)
+Finished game 144 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 146 of 1466 (REF vs CAND)
+Finished game 143 (CAND vs REF): 1-0 {White mates}
+Started game 147 of 1466 (CAND vs REF)
+Finished game 142 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 148 of 1466 (REF vs CAND)
+Finished game 139 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 149 of 1466 (CAND vs REF)
+Finished game 145 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 150 of 1466 (REF vs CAND)
+Finished game 140 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 151 of 1466 (CAND vs REF)
+Finished game 146 (REF vs CAND): 0-1 {Black mates}
+Started game 152 of 1466 (REF vs CAND)
+Finished game 148 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 153 of 1466 (CAND vs REF)
+Finished game 149 (CAND vs REF): 1-0 {White mates}
+Started game 154 of 1466 (REF vs CAND)
+Finished game 147 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 155 of 1466 (CAND vs REF)
+Finished game 152 (REF vs CAND): 0-1 {Black mates}
+Started game 156 of 1466 (REF vs CAND)
+Finished game 150 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 157 of 1466 (CAND vs REF)
+Finished game 155 (CAND vs REF): 0-1 {Black mates}
+Started game 158 of 1466 (REF vs CAND)
+Finished game 153 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 159 of 1466 (CAND vs REF)
+Finished game 154 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 160 of 1466 (REF vs CAND)
+Finished game 151 (CAND vs REF): 0-1 {Black mates}
+Started game 161 of 1466 (CAND vs REF)
+Finished game 157 (CAND vs REF): 1-0 {White mates}
+Started game 162 of 1466 (REF vs CAND)
+Finished game 156 (REF vs CAND): 0-1 {Black mates}
+Started game 163 of 1466 (CAND vs REF)
+Finished game 160 (REF vs CAND): 0-1 {Black mates}
+Started game 164 of 1466 (REF vs CAND)
+Finished game 159 (CAND vs REF): 0-1 {Black mates}
+Started game 165 of 1466 (CAND vs REF)
+Finished game 158 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 166 of 1466 (REF vs CAND)
+Finished game 161 (CAND vs REF): 0-1 {Black mates}
+Started game 167 of 1466 (CAND vs REF)
+Finished game 163 (CAND vs REF): 0-1 {Black mates}
+Started game 168 of 1466 (REF vs CAND)
+Finished game 165 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 169 of 1466 (CAND vs REF)
+Finished game 164 (REF vs CAND): 0-1 {Black mates}
+Started game 170 of 1466 (REF vs CAND)
+Finished game 162 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 171 of 1466 (CAND vs REF)
+Finished game 166 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 172 of 1466 (REF vs CAND)
+Finished game 168 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 173 of 1466 (CAND vs REF)
+Finished game 170 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 174 of 1466 (REF vs CAND)
+Finished game 169 (CAND vs REF): 1-0 {White mates}
+Started game 175 of 1466 (CAND vs REF)
+Finished game 167 (CAND vs REF): 0-1 {Black mates}
+Started game 176 of 1466 (REF vs CAND)
+Finished game 171 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 177 of 1466 (CAND vs REF)
+Finished game 172 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 178 of 1466 (REF vs CAND)
+Finished game 174 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 179 of 1466 (CAND vs REF)
+Finished game 176 (REF vs CAND): 0-1 {Black mates}
+Started game 180 of 1466 (REF vs CAND)
+Finished game 175 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 181 of 1466 (CAND vs REF)
+Finished game 177 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 182 of 1466 (REF vs CAND)
+Finished game 173 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 183 of 1466 (CAND vs REF)
+Finished game 178 (REF vs CAND): 1-0 {White mates}
+Started game 184 of 1466 (REF vs CAND)
+Finished game 179 (CAND vs REF): 1-0 {White mates}
+Started game 185 of 1466 (CAND vs REF)
+Finished game 180 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 186 of 1466 (REF vs CAND)
+Finished game 181 (CAND vs REF): 1-0 {White mates}
+Started game 187 of 1466 (CAND vs REF)
+Finished game 182 (REF vs CAND): 1-0 {White mates}
+Started game 188 of 1466 (REF vs CAND)
+Finished game 184 (REF vs CAND): 1-0 {White mates}
+Started game 189 of 1466 (CAND vs REF)
+Finished game 185 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 190 of 1466 (REF vs CAND)
+Finished game 183 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 191 of 1466 (CAND vs REF)
+Finished game 186 (REF vs CAND): 1-0 {White mates}
+Started game 192 of 1466 (REF vs CAND)
+Finished game 191 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 193 of 1466 (CAND vs REF)
+Finished game 187 (CAND vs REF): 1-0 {White mates}
+Started game 194 of 1466 (REF vs CAND)
+Finished game 189 (CAND vs REF): 1-0 {White mates}
+Started game 195 of 1466 (CAND vs REF)
+Finished game 188 (REF vs CAND): 1-0 {White mates}
+Started game 196 of 1466 (REF vs CAND)
+Finished game 193 (CAND vs REF): 1-0 {White mates}
+Started game 197 of 1466 (CAND vs REF)
+Finished game 190 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 198 of 1466 (REF vs CAND)
+Finished game 192 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 199 of 1466 (CAND vs REF)
+Finished game 194 (REF vs CAND): 0-1 {Black mates}
+Started game 200 of 1466 (REF vs CAND)
+Finished game 195 (CAND vs REF): 0-1 {Black mates}
+Started game 201 of 1466 (CAND vs REF)
+Finished game 198 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 202 of 1466 (REF vs CAND)
+Finished game 196 (REF vs CAND): 0-1 {Black mates}
+Started game 203 of 1466 (CAND vs REF)
+Finished game 199 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 204 of 1466 (REF vs CAND)
+Finished game 202 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 205 of 1466 (CAND vs REF)
+Finished game 200 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 206 of 1466 (REF vs CAND)
+Finished game 197 (CAND vs REF): 1-0 {White mates}
+Started game 207 of 1466 (CAND vs REF)
+Finished game 203 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 208 of 1466 (REF vs CAND)
+Finished game 204 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 209 of 1466 (CAND vs REF)
+Finished game 206 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 210 of 1466 (REF vs CAND)
+Finished game 201 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 211 of 1466 (CAND vs REF)
+Finished game 207 (CAND vs REF): 0-1 {Black mates}
+Started game 212 of 1466 (REF vs CAND)
+Finished game 205 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 213 of 1466 (CAND vs REF)
+Finished game 209 (CAND vs REF): 1-0 {White mates}
+Started game 214 of 1466 (REF vs CAND)
+Finished game 208 (REF vs CAND): 1-0 {White mates}
+Started game 215 of 1466 (CAND vs REF)
+Finished game 210 (REF vs CAND): 1-0 {White mates}
+Started game 216 of 1466 (REF vs CAND)
+Finished game 211 (CAND vs REF): 1-0 {White mates}
+Started game 217 of 1466 (CAND vs REF)
+Finished game 216 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 218 of 1466 (REF vs CAND)
+Finished game 212 (REF vs CAND): 1-0 {White mates}
+Started game 219 of 1466 (CAND vs REF)
+Finished game 215 (CAND vs REF): 0-1 {Black mates}
+Started game 220 of 1466 (REF vs CAND)
+Finished game 213 (CAND vs REF): 0-1 {Black mates}
+Started game 221 of 1466 (CAND vs REF)
+Finished game 214 (REF vs CAND): 1-0 {White mates}
+Started game 222 of 1466 (REF vs CAND)
+Finished game 217 (CAND vs REF): 1-0 {White mates}
+Started game 223 of 1466 (CAND vs REF)
+Finished game 218 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 224 of 1466 (REF vs CAND)
+Finished game 220 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 225 of 1466 (CAND vs REF)
+Finished game 219 (CAND vs REF): 1-0 {White mates}
+Started game 226 of 1466 (REF vs CAND)
+Finished game 221 (CAND vs REF): 1-0 {White mates}
+Started game 227 of 1466 (CAND vs REF)
+Finished game 223 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 228 of 1466 (REF vs CAND)
+Finished game 222 (REF vs CAND): 1-0 {White mates}
+Started game 229 of 1466 (CAND vs REF)
+Finished game 224 (REF vs CAND): 1-0 {White mates}
+Started game 230 of 1466 (REF vs CAND)
+Finished game 227 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 231 of 1466 (CAND vs REF)
+Finished game 226 (REF vs CAND): 0-1 {Black mates}
+Started game 232 of 1466 (REF vs CAND)
+Finished game 228 (REF vs CAND): 1-0 {White mates}
+Started game 233 of 1466 (CAND vs REF)
+Finished game 225 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 234 of 1466 (REF vs CAND)
+Finished game 229 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 235 of 1466 (CAND vs REF)
+Finished game 231 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 236 of 1466 (REF vs CAND)
+Finished game 230 (REF vs CAND): 0-1 {Black mates}
+Started game 237 of 1466 (CAND vs REF)
+Finished game 234 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 238 of 1466 (REF vs CAND)
+Finished game 233 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 239 of 1466 (CAND vs REF)
+Finished game 232 (REF vs CAND): 1-0 {White mates}
+Started game 240 of 1466 (REF vs CAND)
+Finished game 235 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 241 of 1466 (CAND vs REF)
+Finished game 237 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 242 of 1466 (REF vs CAND)
+Finished game 236 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 243 of 1466 (CAND vs REF)
+Finished game 240 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 244 of 1466 (REF vs CAND)
+Finished game 238 (REF vs CAND): 1-0 {White mates}
+Started game 245 of 1466 (CAND vs REF)
+Finished game 239 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 246 of 1466 (REF vs CAND)
+Finished game 242 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 247 of 1466 (CAND vs REF)
+Finished game 241 (CAND vs REF): 0-1 {Black mates}
+Started game 248 of 1466 (REF vs CAND)
+Finished game 245 (CAND vs REF): 1-0 {White mates}
+Started game 249 of 1466 (CAND vs REF)
+Finished game 244 (REF vs CAND): 1-0 {White mates}
+Started game 250 of 1466 (REF vs CAND)
+Finished game 246 (REF vs CAND): 1-0 {White mates}
+Started game 251 of 1466 (CAND vs REF)
+Finished game 243 (CAND vs REF): 1-0 {White mates}
+Started game 252 of 1466 (REF vs CAND)
+Finished game 247 (CAND vs REF): 0-1 {Black mates}
+Started game 253 of 1466 (CAND vs REF)
+Finished game 250 (REF vs CAND): 1-0 {White mates}
+Started game 254 of 1466 (REF vs CAND)
+Finished game 249 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 255 of 1466 (CAND vs REF)
+Finished game 251 (CAND vs REF): 1-0 {White mates}
+Started game 256 of 1466 (REF vs CAND)
+Finished game 248 (REF vs CAND): 0-1 {Black mates}
+Started game 257 of 1466 (CAND vs REF)
+Finished game 252 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 258 of 1466 (REF vs CAND)
+Finished game 253 (CAND vs REF): 1-0 {White mates}
+Started game 259 of 1466 (CAND vs REF)
+Finished game 254 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 260 of 1466 (REF vs CAND)
+Finished game 255 (CAND vs REF): 1-0 {White mates}
+Started game 261 of 1466 (CAND vs REF)
+Finished game 256 (REF vs CAND): 0-1 {Black mates}
+Started game 262 of 1466 (REF vs CAND)
+Finished game 257 (CAND vs REF): 1-0 {White mates}
+Started game 263 of 1466 (CAND vs REF)
+Finished game 259 (CAND vs REF): 1-0 {White mates}
+Started game 264 of 1466 (REF vs CAND)
+Finished game 258 (REF vs CAND): 1-0 {White mates}
+Started game 265 of 1466 (CAND vs REF)
+Finished game 260 (REF vs CAND): 0-1 {Black mates}
+Started game 266 of 1466 (REF vs CAND)
+Finished game 261 (CAND vs REF): 0-1 {Black mates}
+Started game 267 of 1466 (CAND vs REF)
+Finished game 263 (CAND vs REF): 1-0 {White mates}
+Started game 268 of 1466 (REF vs CAND)
+Finished game 262 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 269 of 1466 (CAND vs REF)
+Finished game 265 (CAND vs REF): 0-1 {Black mates}
+Started game 270 of 1466 (REF vs CAND)
+Finished game 264 (REF vs CAND): 0-1 {Black mates}
+Started game 271 of 1466 (CAND vs REF)
+Finished game 267 (CAND vs REF): 1-0 {White mates}
+Started game 272 of 1466 (REF vs CAND)
+Finished game 266 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 273 of 1466 (CAND vs REF)
+Finished game 270 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 274 of 1466 (REF vs CAND)
+Finished game 268 (REF vs CAND): 1-0 {White mates}
+Started game 275 of 1466 (CAND vs REF)
+Finished game 269 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 276 of 1466 (REF vs CAND)
+Finished game 271 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 277 of 1466 (CAND vs REF)
+Finished game 272 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 278 of 1466 (REF vs CAND)
+Finished game 274 (REF vs CAND): 0-1 {Black mates}
+Started game 279 of 1466 (CAND vs REF)
+Finished game 273 (CAND vs REF): 0-1 {Black mates}
+Started game 280 of 1466 (REF vs CAND)
+Finished game 279 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 281 of 1466 (CAND vs REF)
+Finished game 277 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 282 of 1466 (REF vs CAND)
+Finished game 276 (REF vs CAND): 0-1 {Black mates}
+Started game 283 of 1466 (CAND vs REF)
+Finished game 280 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 284 of 1466 (REF vs CAND)
+Finished game 275 (CAND vs REF): 0-1 {Black mates}
+Started game 285 of 1466 (CAND vs REF)
+Finished game 278 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 286 of 1466 (REF vs CAND)
+Finished game 283 (CAND vs REF): 1-0 {White mates}
+Started game 287 of 1466 (CAND vs REF)
+Finished game 281 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 288 of 1466 (REF vs CAND)
+Finished game 282 (REF vs CAND): 0-1 {Black mates}
+Started game 289 of 1466 (CAND vs REF)
+Finished game 284 (REF vs CAND): 0-1 {Black mates}
+Started game 290 of 1466 (REF vs CAND)
+Finished game 287 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 291 of 1466 (CAND vs REF)
+Finished game 285 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 292 of 1466 (REF vs CAND)
+Finished game 288 (REF vs CAND): 1-0 {White mates}
+Started game 293 of 1466 (CAND vs REF)
+Finished game 289 (CAND vs REF): 0-1 {Black mates}
+Started game 294 of 1466 (REF vs CAND)
+Finished game 286 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 295 of 1466 (CAND vs REF)
+Finished game 290 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 296 of 1466 (REF vs CAND)
+Finished game 291 (CAND vs REF): 0-1 {Black mates}
+Started game 297 of 1466 (CAND vs REF)
+Finished game 295 (CAND vs REF): 0-1 {Black mates}
+Started game 298 of 1466 (REF vs CAND)
+Finished game 293 (CAND vs REF): 0-1 {Black mates}
+Started game 299 of 1466 (CAND vs REF)
+Finished game 292 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 300 of 1466 (REF vs CAND)
+Finished game 294 (REF vs CAND): 0-1 {Black mates}
+Started game 301 of 1466 (CAND vs REF)
+Finished game 296 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 302 of 1466 (REF vs CAND)
+Finished game 299 (CAND vs REF): 1-0 {White mates}
+Started game 303 of 1466 (CAND vs REF)
+Finished game 297 (CAND vs REF): 0-1 {Black mates}
+Started game 304 of 1466 (REF vs CAND)
+Finished game 298 (REF vs CAND): 0-1 {Black mates}
+Started game 305 of 1466 (CAND vs REF)
+Finished game 301 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 306 of 1466 (REF vs CAND)
+Finished game 300 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 307 of 1466 (CAND vs REF)
+Finished game 305 (CAND vs REF): 0-1 {Black mates}
+Started game 308 of 1466 (REF vs CAND)
+Finished game 304 (REF vs CAND): 1-0 {White mates}
+Started game 309 of 1466 (CAND vs REF)
+Finished game 302 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 310 of 1466 (REF vs CAND)
+Finished game 303 (CAND vs REF): 1-0 {White mates}
+Started game 311 of 1466 (CAND vs REF)
+Finished game 306 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 312 of 1466 (REF vs CAND)
+Finished game 307 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 313 of 1466 (CAND vs REF)
+Finished game 308 (REF vs CAND): 1-0 {White mates}
+Started game 314 of 1466 (REF vs CAND)
+Finished game 309 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 315 of 1466 (CAND vs REF)
+Finished game 311 (CAND vs REF): 1-0 {White mates}
+Started game 316 of 1466 (REF vs CAND)
+Finished game 312 (REF vs CAND): 1-0 {White mates}
+Started game 317 of 1466 (CAND vs REF)
+Finished game 310 (REF vs CAND): 1-0 {White mates}
+Started game 318 of 1466 (REF vs CAND)
+Finished game 313 (CAND vs REF): 0-1 {Black mates}
+Started game 319 of 1466 (CAND vs REF)
+Finished game 316 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 320 of 1466 (REF vs CAND)
+Finished game 314 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 321 of 1466 (CAND vs REF)
+Finished game 317 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 322 of 1466 (REF vs CAND)
+Finished game 315 (CAND vs REF): 0-1 {Black mates}
+Started game 323 of 1466 (CAND vs REF)
+Finished game 319 (CAND vs REF): 1-0 {White mates}
+Started game 324 of 1466 (REF vs CAND)
+Finished game 320 (REF vs CAND): 1/2-1/2 {Draw by stalemate}
+Started game 325 of 1466 (CAND vs REF)
+Finished game 321 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 326 of 1466 (REF vs CAND)
+Finished game 322 (REF vs CAND): 1-0 {White mates}
+Started game 327 of 1466 (CAND vs REF)
+Finished game 318 (REF vs CAND): 0-1 {Black mates}
+Started game 328 of 1466 (REF vs CAND)
+Finished game 324 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 329 of 1466 (CAND vs REF)
+Finished game 323 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 330 of 1466 (REF vs CAND)
+Finished game 325 (CAND vs REF): 1-0 {White mates}
+Started game 331 of 1466 (CAND vs REF)
+Finished game 327 (CAND vs REF): 1/2-1/2 {Draw by stalemate}
+Started game 332 of 1466 (REF vs CAND)
+Finished game 328 (REF vs CAND): 0-1 {Black mates}
+Started game 333 of 1466 (CAND vs REF)
+Finished game 326 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 334 of 1466 (REF vs CAND)
+Finished game 331 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 335 of 1466 (CAND vs REF)
+Finished game 330 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 336 of 1466 (REF vs CAND)
+Finished game 329 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 337 of 1466 (CAND vs REF)
+Finished game 337 (CAND vs REF): 1-0 {White mates}
+Started game 338 of 1466 (REF vs CAND)
+Finished game 333 (CAND vs REF): 1-0 {White mates}
+Started game 339 of 1466 (CAND vs REF)
+Finished game 332 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 340 of 1466 (REF vs CAND)
+Finished game 336 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 341 of 1466 (CAND vs REF)
+Finished game 334 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 342 of 1466 (REF vs CAND)
+Finished game 335 (CAND vs REF): 1-0 {White mates}
+Started game 343 of 1466 (CAND vs REF)
+Finished game 340 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 344 of 1466 (REF vs CAND)
+Finished game 339 (CAND vs REF): 1/2-1/2 {Draw by stalemate}
+Started game 345 of 1466 (CAND vs REF)
+Finished game 342 (REF vs CAND): 0-1 {Black mates}
+Started game 346 of 1466 (REF vs CAND)
+Finished game 341 (CAND vs REF): 0-1 {Black mates}
+Started game 347 of 1466 (CAND vs REF)
+Finished game 338 (REF vs CAND): 1-0 {White mates}
+Started game 348 of 1466 (REF vs CAND)
+Finished game 343 (CAND vs REF): 1-0 {White mates}
+Started game 349 of 1466 (CAND vs REF)
+Finished game 345 (CAND vs REF): 1-0 {White mates}
+Started game 350 of 1466 (REF vs CAND)
+Finished game 344 (REF vs CAND): 1-0 {White mates}
+Started game 351 of 1466 (CAND vs REF)
+Finished game 348 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 352 of 1466 (REF vs CAND)
+Finished game 347 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 353 of 1466 (CAND vs REF)
+Finished game 346 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 354 of 1466 (REF vs CAND)
+Finished game 349 (CAND vs REF): 1-0 {White mates}
+Started game 355 of 1466 (CAND vs REF)
+Finished game 350 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 356 of 1466 (REF vs CAND)
+Finished game 352 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 357 of 1466 (CAND vs REF)
+Finished game 351 (CAND vs REF): 0-1 {Black mates}
+Started game 358 of 1466 (REF vs CAND)
+Finished game 353 (CAND vs REF): 0-1 {Black mates}
+Started game 359 of 1466 (CAND vs REF)
+Finished game 354 (REF vs CAND): 0-1 {Black mates}
+Started game 360 of 1466 (REF vs CAND)
+Finished game 358 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 361 of 1466 (CAND vs REF)
+Finished game 359 (CAND vs REF): 1-0 {White mates}
+Started game 362 of 1466 (REF vs CAND)
+Finished game 356 (REF vs CAND): 0-1 {Black mates}
+Started game 363 of 1466 (CAND vs REF)
+Finished game 357 (CAND vs REF): 0-1 {Black mates}
+Started game 364 of 1466 (REF vs CAND)
+Finished game 355 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 365 of 1466 (CAND vs REF)
+Finished game 361 (CAND vs REF): 1-0 {White mates}
+Started game 366 of 1466 (REF vs CAND)
+Finished game 363 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 367 of 1466 (CAND vs REF)
+Finished game 360 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 368 of 1466 (REF vs CAND)
+Finished game 362 (REF vs CAND): 0-1 {Black mates}
+Started game 369 of 1466 (CAND vs REF)
+Finished game 365 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 370 of 1466 (REF vs CAND)
+Finished game 367 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 371 of 1466 (CAND vs REF)
+Finished game 368 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 372 of 1466 (REF vs CAND)
+Finished game 366 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 373 of 1466 (CAND vs REF)
+Finished game 369 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 374 of 1466 (REF vs CAND)
+Finished game 370 (REF vs CAND): 1-0 {White mates}
+Started game 375 of 1466 (CAND vs REF)
+Finished game 364 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 376 of 1466 (REF vs CAND)
+Finished game 372 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 377 of 1466 (CAND vs REF)
+Finished game 371 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 378 of 1466 (REF vs CAND)
+Finished game 373 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 379 of 1466 (CAND vs REF)
+Finished game 374 (REF vs CAND): 1-0 {White mates}
+Started game 380 of 1466 (REF vs CAND)
+Finished game 376 (REF vs CAND): 0-1 {Black mates}
+Started game 381 of 1466 (CAND vs REF)
+Finished game 378 (REF vs CAND): 1-0 {White mates}
+Started game 382 of 1466 (REF vs CAND)
+Finished game 375 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 383 of 1466 (CAND vs REF)
+Finished game 379 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 384 of 1466 (REF vs CAND)
+Finished game 380 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 385 of 1466 (CAND vs REF)
+Finished game 384 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 386 of 1466 (REF vs CAND)
+Finished game 377 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 387 of 1466 (CAND vs REF)
+Finished game 383 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 388 of 1466 (REF vs CAND)
+Finished game 381 (CAND vs REF): 0-1 {Black mates}
+Started game 389 of 1466 (CAND vs REF)
+Finished game 382 (REF vs CAND): 0-1 {Black mates}
+Started game 390 of 1466 (REF vs CAND)
+Finished game 386 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 391 of 1466 (CAND vs REF)
+Finished game 389 (CAND vs REF): 1-0 {White mates}
+Started game 392 of 1466 (REF vs CAND)
+Finished game 385 (CAND vs REF): 0-1 {Black mates}
+Started game 393 of 1466 (CAND vs REF)
+Finished game 388 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 394 of 1466 (REF vs CAND)
+Finished game 387 (CAND vs REF): 1-0 {White mates}
+Started game 395 of 1466 (CAND vs REF)
+Finished game 391 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 396 of 1466 (REF vs CAND)
+Finished game 394 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 397 of 1466 (CAND vs REF)
+Finished game 390 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 398 of 1466 (REF vs CAND)
+Finished game 393 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 399 of 1466 (CAND vs REF)
+Finished game 392 (REF vs CAND): 0-1 {Black mates}
+Started game 400 of 1466 (REF vs CAND)
+Finished game 399 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 401 of 1466 (CAND vs REF)
+Finished game 397 (CAND vs REF): 1-0 {White mates}
+Started game 402 of 1466 (REF vs CAND)
+Finished game 398 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 403 of 1466 (CAND vs REF)
+Finished game 395 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 404 of 1466 (REF vs CAND)
+Finished game 396 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 405 of 1466 (CAND vs REF)
+Finished game 400 (REF vs CAND): 0-1 {Black mates}
+Started game 406 of 1466 (REF vs CAND)
+Finished game 404 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 407 of 1466 (CAND vs REF)
+Finished game 403 (CAND vs REF): 0-1 {Black mates}
+Started game 408 of 1466 (REF vs CAND)
+Finished game 401 (CAND vs REF): 0-1 {Black mates}
+Started game 409 of 1466 (CAND vs REF)
+Finished game 405 (CAND vs REF): 0-1 {Black mates}
+Started game 410 of 1466 (REF vs CAND)
+Finished game 402 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 411 of 1466 (CAND vs REF)
+Finished game 406 (REF vs CAND): 1/2-1/2 {Draw by stalemate}
+Started game 412 of 1466 (REF vs CAND)
+Finished game 407 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 413 of 1466 (CAND vs REF)
+Finished game 408 (REF vs CAND): 1-0 {White mates}
+Started game 414 of 1466 (REF vs CAND)
+Finished game 409 (CAND vs REF): 0-1 {Black mates}
+Started game 415 of 1466 (CAND vs REF)
+Finished game 410 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 416 of 1466 (REF vs CAND)
+Finished game 411 (CAND vs REF): 0-1 {Black mates}
+Started game 417 of 1466 (CAND vs REF)
+Finished game 414 (REF vs CAND): 1-0 {White mates}
+Started game 418 of 1466 (REF vs CAND)
+Finished game 415 (CAND vs REF): 1-0 {White mates}
+Started game 419 of 1466 (CAND vs REF)
+Finished game 412 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 420 of 1466 (REF vs CAND)
+Finished game 413 (CAND vs REF): 0-1 {Black mates}
+Started game 421 of 1466 (CAND vs REF)
+Finished game 416 (REF vs CAND): 1-0 {White mates}
+Started game 422 of 1466 (REF vs CAND)
+Finished game 417 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 423 of 1466 (CAND vs REF)
+Finished game 421 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 424 of 1466 (REF vs CAND)
+Finished game 419 (CAND vs REF): 1-0 {White mates}
+Started game 425 of 1466 (CAND vs REF)
+Finished game 420 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 426 of 1466 (REF vs CAND)
+Finished game 418 (REF vs CAND): 0-1 {Black mates}
+Started game 427 of 1466 (CAND vs REF)
+Finished game 423 (CAND vs REF): 1-0 {White mates}
+Started game 428 of 1466 (REF vs CAND)
+Finished game 422 (REF vs CAND): 0-1 {Black mates}
+Started game 429 of 1466 (CAND vs REF)
+Finished game 424 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 430 of 1466 (REF vs CAND)
+Finished game 427 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 431 of 1466 (CAND vs REF)
+Finished game 426 (REF vs CAND): 0-1 {Black mates}
+Started game 432 of 1466 (REF vs CAND)
+Finished game 428 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 433 of 1466 (CAND vs REF)
+Finished game 429 (CAND vs REF): 1-0 {White mates}
+Started game 434 of 1466 (REF vs CAND)
+Finished game 425 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 435 of 1466 (CAND vs REF)
+Finished game 431 (CAND vs REF): 1-0 {White mates}
+Started game 436 of 1466 (REF vs CAND)
+Finished game 430 (REF vs CAND): 1-0 {White mates}
+Started game 437 of 1466 (CAND vs REF)
+Finished game 432 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 438 of 1466 (REF vs CAND)
+Finished game 433 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 439 of 1466 (CAND vs REF)
+Finished game 436 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 440 of 1466 (REF vs CAND)
+Finished game 435 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 441 of 1466 (CAND vs REF)
+Finished game 434 (REF vs CAND): 1-0 {White mates}
+Started game 442 of 1466 (REF vs CAND)
+Finished game 437 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 443 of 1466 (CAND vs REF)
+Finished game 438 (REF vs CAND): 1-0 {White mates}
+Started game 444 of 1466 (REF vs CAND)
+Finished game 441 (CAND vs REF): 1-0 {White mates}
+Started game 445 of 1466 (CAND vs REF)
+Finished game 442 (REF vs CAND): 1-0 {White mates}
+Started game 446 of 1466 (REF vs CAND)
+Finished game 440 (REF vs CAND): 1-0 {White mates}
+Started game 447 of 1466 (CAND vs REF)
+Finished game 439 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 448 of 1466 (REF vs CAND)
+Finished game 443 (CAND vs REF): 1-0 {White mates}
+Started game 449 of 1466 (CAND vs REF)
+Finished game 444 (REF vs CAND): 1-0 {White mates}
+Started game 450 of 1466 (REF vs CAND)
+Finished game 446 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 451 of 1466 (CAND vs REF)
+Finished game 448 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 452 of 1466 (REF vs CAND)
+Finished game 445 (CAND vs REF): 1-0 {White mates}
+Started game 453 of 1466 (CAND vs REF)
+Finished game 447 (CAND vs REF): 0-1 {Black mates}
+Started game 454 of 1466 (REF vs CAND)
+Finished game 451 (CAND vs REF): 1-0 {White mates}
+Started game 455 of 1466 (CAND vs REF)
+Finished game 449 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 456 of 1466 (REF vs CAND)
+Finished game 452 (REF vs CAND): 1-0 {White mates}
+Started game 457 of 1466 (CAND vs REF)
+Finished game 454 (REF vs CAND): 0-1 {Black mates}
+Started game 458 of 1466 (REF vs CAND)
+Finished game 450 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 459 of 1466 (CAND vs REF)
+Finished game 453 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 460 of 1466 (REF vs CAND)
+Finished game 455 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 461 of 1466 (CAND vs REF)
+Finished game 456 (REF vs CAND): 0-1 {Black mates}
+Started game 462 of 1466 (REF vs CAND)
+Finished game 457 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 463 of 1466 (CAND vs REF)
+Finished game 459 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 464 of 1466 (REF vs CAND)
+Finished game 458 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 465 of 1466 (CAND vs REF)
+Finished game 461 (CAND vs REF): 1-0 {White mates}
+Started game 466 of 1466 (REF vs CAND)
+Finished game 462 (REF vs CAND): 1-0 {White mates}
+Started game 467 of 1466 (CAND vs REF)
+Finished game 460 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 468 of 1466 (REF vs CAND)
+Finished game 463 (CAND vs REF): 0-1 {Black mates}
+Started game 469 of 1466 (CAND vs REF)
+Finished game 464 (REF vs CAND): 0-1 {Black mates}
+Started game 470 of 1466 (REF vs CAND)
+Finished game 467 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 471 of 1466 (CAND vs REF)
+Finished game 466 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 472 of 1466 (REF vs CAND)
+Finished game 470 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 473 of 1466 (CAND vs REF)
+Finished game 465 (CAND vs REF): 0-1 {Black mates}
+Started game 474 of 1466 (REF vs CAND)
+Finished game 468 (REF vs CAND): 1/2-1/2 {Draw by stalemate}
+Started game 475 of 1466 (CAND vs REF)
+Finished game 471 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 476 of 1466 (REF vs CAND)
+Finished game 469 (CAND vs REF): 1-0 {White mates}
+Started game 477 of 1466 (CAND vs REF)
+Finished game 472 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 478 of 1466 (REF vs CAND)
+Finished game 475 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 479 of 1466 (CAND vs REF)
+Finished game 476 (REF vs CAND): 1-0 {White mates}
+Started game 480 of 1466 (REF vs CAND)
+Finished game 474 (REF vs CAND): 1-0 {White mates}
+Started game 481 of 1466 (CAND vs REF)
+Finished game 477 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 482 of 1466 (REF vs CAND)
+Finished game 473 (CAND vs REF): 1-0 {White mates}
+Started game 483 of 1466 (CAND vs REF)
+Finished game 478 (REF vs CAND): 0-1 {Black mates}
+Started game 484 of 1466 (REF vs CAND)
+Finished game 480 (REF vs CAND): 1-0 {White mates}
+Started game 485 of 1466 (CAND vs REF)
+Finished game 481 (CAND vs REF): 1-0 {White mates}
+Started game 486 of 1466 (REF vs CAND)
+Finished game 482 (REF vs CAND): 1-0 {White mates}
+Started game 487 of 1466 (CAND vs REF)
+Finished game 479 (CAND vs REF): 1-0 {White mates}
+Started game 488 of 1466 (REF vs CAND)
+Finished game 483 (CAND vs REF): 1-0 {White mates}
+Started game 489 of 1466 (CAND vs REF)
+Finished game 484 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 490 of 1466 (REF vs CAND)
+Finished game 485 (CAND vs REF): 0-1 {Black mates}
+Started game 491 of 1466 (CAND vs REF)
+Finished game 489 (CAND vs REF): 0-1 {Black mates}
+Started game 492 of 1466 (REF vs CAND)
+Finished game 486 (REF vs CAND): 1-0 {White mates}
+Started game 493 of 1466 (CAND vs REF)
+Finished game 490 (REF vs CAND): 0-1 {Black mates}
+Started game 494 of 1466 (REF vs CAND)
+Finished game 487 (CAND vs REF): 0-1 {Black mates}
+Started game 495 of 1466 (CAND vs REF)
+Finished game 491 (CAND vs REF): 1-0 {White mates}
+Started game 496 of 1466 (REF vs CAND)
+Finished game 493 (CAND vs REF): 1-0 {White mates}
+Started game 497 of 1466 (CAND vs REF)
+Finished game 488 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 498 of 1466 (REF vs CAND)
+Finished game 495 (CAND vs REF): 1-0 {White mates}
+Started game 499 of 1466 (CAND vs REF)
+Finished game 492 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 500 of 1466 (REF vs CAND)
+Finished game 496 (REF vs CAND): 1-0 {White mates}
+Started game 501 of 1466 (CAND vs REF)
+Finished game 494 (REF vs CAND): 0-1 {Black mates}
+Started game 502 of 1466 (REF vs CAND)
+Finished game 498 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 503 of 1466 (CAND vs REF)
+Finished game 497 (CAND vs REF): 0-1 {Black mates}
+Started game 504 of 1466 (REF vs CAND)
+Finished game 500 (REF vs CAND): 1-0 {White mates}
+Started game 505 of 1466 (CAND vs REF)
+Finished game 502 (REF vs CAND): 0-1 {Black mates}
+Started game 506 of 1466 (REF vs CAND)
+Finished game 501 (CAND vs REF): 0-1 {Black mates}
+Started game 507 of 1466 (CAND vs REF)
+Finished game 505 (CAND vs REF): 1-0 {White mates}
+Started game 508 of 1466 (REF vs CAND)
+Finished game 499 (CAND vs REF): 1-0 {White mates}
+Started game 509 of 1466 (CAND vs REF)
+Finished game 504 (REF vs CAND): 1-0 {White mates}
+Started game 510 of 1466 (REF vs CAND)
+Finished game 503 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 511 of 1466 (CAND vs REF)
+Finished game 508 (REF vs CAND): 1-0 {White mates}
+Started game 512 of 1466 (REF vs CAND)
+Finished game 507 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 513 of 1466 (CAND vs REF)
+Finished game 506 (REF vs CAND): 0-1 {Black mates}
+Started game 514 of 1466 (REF vs CAND)
+Finished game 509 (CAND vs REF): 0-1 {Black mates}
+Started game 515 of 1466 (CAND vs REF)
+Finished game 511 (CAND vs REF): 0-1 {Black mates}
+Started game 516 of 1466 (REF vs CAND)
+Finished game 510 (REF vs CAND): 1-0 {White mates}
+Started game 517 of 1466 (CAND vs REF)
+Finished game 512 (REF vs CAND): 0-1 {Black mates}
+Started game 518 of 1466 (REF vs CAND)
+Finished game 515 (CAND vs REF): 1-0 {White mates}
+Started game 519 of 1466 (CAND vs REF)
+Finished game 513 (CAND vs REF): 1-0 {White mates}
+Started game 520 of 1466 (REF vs CAND)
+Finished game 514 (REF vs CAND): 0-1 {Black mates}
+Started game 521 of 1466 (CAND vs REF)
+Finished game 516 (REF vs CAND): 0-1 {Black mates}
+Started game 522 of 1466 (REF vs CAND)
+Finished game 518 (REF vs CAND): 1-0 {White mates}
+Started game 523 of 1466 (CAND vs REF)
+Finished game 517 (CAND vs REF): 1-0 {White mates}
+Started game 524 of 1466 (REF vs CAND)
+Finished game 519 (CAND vs REF): 0-1 {Black mates}
+Started game 525 of 1466 (CAND vs REF)
+Finished game 521 (CAND vs REF): 1-0 {White mates}
+Started game 526 of 1466 (REF vs CAND)
+Finished game 520 (REF vs CAND): 0-1 {Black mates}
+Started game 527 of 1466 (CAND vs REF)
+Finished game 523 (CAND vs REF): 1-0 {White mates}
+Started game 528 of 1466 (REF vs CAND)
+Finished game 524 (REF vs CAND): 1-0 {White mates}
+Started game 529 of 1466 (CAND vs REF)
+Finished game 526 (REF vs CAND): 1-0 {White mates}
+Started game 530 of 1466 (REF vs CAND)
+Finished game 522 (REF vs CAND): 1-0 {White mates}
+Started game 531 of 1466 (CAND vs REF)
+Finished game 525 (CAND vs REF): 1-0 {White mates}
+Started game 532 of 1466 (REF vs CAND)
+Finished game 527 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 533 of 1466 (CAND vs REF)
+Finished game 528 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 534 of 1466 (REF vs CAND)
+Finished game 531 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 535 of 1466 (CAND vs REF)
+Finished game 529 (CAND vs REF): 1-0 {White mates}
+Started game 536 of 1466 (REF vs CAND)
+Finished game 530 (REF vs CAND): 0-1 {Black mates}
+Started game 537 of 1466 (CAND vs REF)
+Finished game 532 (REF vs CAND): 0-1 {Black mates}
+Started game 538 of 1466 (REF vs CAND)
+Finished game 533 (CAND vs REF): 0-1 {Black mates}
+Started game 539 of 1466 (CAND vs REF)
+Finished game 534 (REF vs CAND): 0-1 {Black mates}
+Started game 540 of 1466 (REF vs CAND)
+Finished game 536 (REF vs CAND): 1-0 {White mates}
+Started game 541 of 1466 (CAND vs REF)
+Finished game 535 (CAND vs REF): 1-0 {White mates}
+Started game 542 of 1466 (REF vs CAND)
+Finished game 537 (CAND vs REF): 1-0 {White mates}
+Started game 543 of 1466 (CAND vs REF)
+Finished game 539 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 544 of 1466 (REF vs CAND)
+Finished game 541 (CAND vs REF): 0-1 {Black mates}
+Started game 545 of 1466 (CAND vs REF)
+Finished game 538 (REF vs CAND): 1-0 {White mates}
+Started game 546 of 1466 (REF vs CAND)
+Finished game 540 (REF vs CAND): 1-0 {White mates}
+Started game 547 of 1466 (CAND vs REF)
+Finished game 542 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 548 of 1466 (REF vs CAND)
+Finished game 544 (REF vs CAND): 0-1 {Black mates}
+Started game 549 of 1466 (CAND vs REF)
+Finished game 543 (CAND vs REF): 0-1 {Black mates}
+Started game 550 of 1466 (REF vs CAND)
+Finished game 545 (CAND vs REF): 0-1 {Black mates}
+Started game 551 of 1466 (CAND vs REF)
+Finished game 547 (CAND vs REF): 1-0 {White mates}
+Started game 552 of 1466 (REF vs CAND)
+Finished game 546 (REF vs CAND): 0-1 {Black mates}
+Started game 553 of 1466 (CAND vs REF)
+Finished game 549 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 554 of 1466 (REF vs CAND)
+Finished game 548 (REF vs CAND): 1-0 {White mates}
+Started game 555 of 1466 (CAND vs REF)
+Finished game 553 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 556 of 1466 (REF vs CAND)
+Finished game 550 (REF vs CAND): 0-1 {Black mates}
+Started game 557 of 1466 (CAND vs REF)
+Finished game 552 (REF vs CAND): 0-1 {Black mates}
+Started game 558 of 1466 (REF vs CAND)
+Finished game 551 (CAND vs REF): 0-1 {Black mates}
+Started game 559 of 1466 (CAND vs REF)
+Finished game 554 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 560 of 1466 (REF vs CAND)
+Finished game 557 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 561 of 1466 (CAND vs REF)
+Finished game 555 (CAND vs REF): 0-1 {Black mates}
+Started game 562 of 1466 (REF vs CAND)
+Finished game 556 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 563 of 1466 (CAND vs REF)
+Finished game 559 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 564 of 1466 (REF vs CAND)
+Finished game 558 (REF vs CAND): 1-0 {White mates}
+Started game 565 of 1466 (CAND vs REF)
+Finished game 560 (REF vs CAND): 0-1 {Black mates}
+Started game 566 of 1466 (REF vs CAND)
+Finished game 564 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 567 of 1466 (CAND vs REF)
+Finished game 562 (REF vs CAND): 1-0 {White mates}
+Started game 568 of 1466 (REF vs CAND)
+Finished game 561 (CAND vs REF): 1-0 {White mates}
+Started game 569 of 1466 (CAND vs REF)
+Finished game 563 (CAND vs REF): 1-0 {White mates}
+Started game 570 of 1466 (REF vs CAND)
+Finished game 565 (CAND vs REF): 1-0 {White mates}
+Started game 571 of 1466 (CAND vs REF)
+Finished game 567 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 572 of 1466 (REF vs CAND)
+Finished game 569 (CAND vs REF): 1-0 {White mates}
+Started game 573 of 1466 (CAND vs REF)
+Finished game 568 (REF vs CAND): 0-1 {Black mates}
+Started game 574 of 1466 (REF vs CAND)
+Finished game 570 (REF vs CAND): 1-0 {White mates}
+Started game 575 of 1466 (CAND vs REF)
+Finished game 566 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 576 of 1466 (REF vs CAND)
+Finished game 571 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 577 of 1466 (CAND vs REF)
+Finished game 573 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 578 of 1466 (REF vs CAND)
+Finished game 576 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 579 of 1466 (CAND vs REF)
+Finished game 574 (REF vs CAND): 1-0 {White mates}
+Started game 580 of 1466 (REF vs CAND)
+Finished game 575 (CAND vs REF): 1-0 {White mates}
+Started game 581 of 1466 (CAND vs REF)
+Finished game 577 (CAND vs REF): 1-0 {White mates}
+Started game 582 of 1466 (REF vs CAND)
+Finished game 578 (REF vs CAND): 1-0 {White mates}
+Started game 583 of 1466 (CAND vs REF)
+Finished game 580 (REF vs CAND): 0-1 {Black mates}
+Started game 584 of 1466 (REF vs CAND)
+Finished game 572 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 585 of 1466 (CAND vs REF)
+Finished game 579 (CAND vs REF): 1-0 {White mates}
+Started game 586 of 1466 (REF vs CAND)
+Finished game 581 (CAND vs REF): 1-0 {White mates}
+Started game 587 of 1466 (CAND vs REF)
+Finished game 583 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 588 of 1466 (REF vs CAND)
+Finished game 582 (REF vs CAND): 1-0 {White mates}
+Started game 589 of 1466 (CAND vs REF)
+Finished game 586 (REF vs CAND): 1-0 {White mates}
+Started game 590 of 1466 (REF vs CAND)
+Finished game 585 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 591 of 1466 (CAND vs REF)
+Finished game 589 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 592 of 1466 (REF vs CAND)
+Finished game 584 (REF vs CAND): 1-0 {White mates}
+Started game 593 of 1466 (CAND vs REF)
+Finished game 588 (REF vs CAND): 0-1 {Black mates}
+Started game 594 of 1466 (REF vs CAND)
+Finished game 587 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 595 of 1466 (CAND vs REF)
+Finished game 590 (REF vs CAND): 1-0 {White mates}
+Started game 596 of 1466 (REF vs CAND)
+Finished game 592 (REF vs CAND): 0-1 {Black mates}
+Started game 597 of 1466 (CAND vs REF)
+Finished game 593 (CAND vs REF): 1-0 {White mates}
+Started game 598 of 1466 (REF vs CAND)
+Finished game 591 (CAND vs REF): 0-1 {Black mates}
+Started game 599 of 1466 (CAND vs REF)
+Finished game 596 (REF vs CAND): 1-0 {White mates}
+Started game 600 of 1466 (REF vs CAND)
+Finished game 595 (CAND vs REF): 1-0 {White mates}
+Started game 601 of 1466 (CAND vs REF)
+Finished game 594 (REF vs CAND): 1-0 {White mates}
+Started game 602 of 1466 (REF vs CAND)
+Finished game 597 (CAND vs REF): 0-1 {Black mates}
+Started game 603 of 1466 (CAND vs REF)
+Finished game 598 (REF vs CAND): 0-1 {Black mates}
+Started game 604 of 1466 (REF vs CAND)
+Finished game 599 (CAND vs REF): 1-0 {White mates}
+Started game 605 of 1466 (CAND vs REF)
+Finished game 601 (CAND vs REF): 1-0 {White mates}
+Started game 606 of 1466 (REF vs CAND)
+Finished game 600 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 607 of 1466 (CAND vs REF)
+Finished game 603 (CAND vs REF): 0-1 {Black mates}
+Started game 608 of 1466 (REF vs CAND)
+Finished game 605 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 609 of 1466 (CAND vs REF)
+Finished game 604 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 610 of 1466 (REF vs CAND)
+Finished game 602 (REF vs CAND): 1-0 {White mates}
+Started game 611 of 1466 (CAND vs REF)
+Finished game 607 (CAND vs REF): 1-0 {White mates}
+Started game 612 of 1466 (REF vs CAND)
+Finished game 606 (REF vs CAND): 0-1 {Black mates}
+Started game 613 of 1466 (CAND vs REF)
+Finished game 608 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 614 of 1466 (REF vs CAND)
+Finished game 611 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 615 of 1466 (CAND vs REF)
+Finished game 609 (CAND vs REF): 0-1 {Black mates}
+Started game 616 of 1466 (REF vs CAND)
+Finished game 610 (REF vs CAND): 0-1 {Black mates}
+Started game 617 of 1466 (CAND vs REF)
+Finished game 613 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 618 of 1466 (REF vs CAND)
+Finished game 612 (REF vs CAND): 0-1 {Black mates}
+Started game 619 of 1466 (CAND vs REF)
+Finished game 614 (REF vs CAND): 1-0 {White mates}
+Started game 620 of 1466 (REF vs CAND)
+Finished game 615 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 621 of 1466 (CAND vs REF)
+Finished game 617 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 622 of 1466 (REF vs CAND)
+Finished game 618 (REF vs CAND): 0-1 {Black mates}
+Started game 623 of 1466 (CAND vs REF)
+Finished game 621 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 624 of 1466 (REF vs CAND)
+Finished game 616 (REF vs CAND): 0-1 {Black mates}
+Started game 625 of 1466 (CAND vs REF)
+Finished game 620 (REF vs CAND): 1-0 {White mates}
+Started game 626 of 1466 (REF vs CAND)
+Finished game 622 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 627 of 1466 (CAND vs REF)
+Finished game 619 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 628 of 1466 (REF vs CAND)
+Finished game 623 (CAND vs REF): 0-1 {Black mates}
+Started game 629 of 1466 (CAND vs REF)
+Finished game 625 (CAND vs REF): 0-1 {Black mates}
+Started game 630 of 1466 (REF vs CAND)
+Finished game 626 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 631 of 1466 (CAND vs REF)
+Finished game 624 (REF vs CAND): 0-1 {Black mates}
+Started game 632 of 1466 (REF vs CAND)
+Finished game 627 (CAND vs REF): 1-0 {White mates}
+Started game 633 of 1466 (CAND vs REF)
+Finished game 629 (CAND vs REF): 1-0 {White mates}
+Started game 634 of 1466 (REF vs CAND)
+Finished game 630 (REF vs CAND): 1-0 {White mates}
+Started game 635 of 1466 (CAND vs REF)
+Finished game 628 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 636 of 1466 (REF vs CAND)
+Finished game 631 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 637 of 1466 (CAND vs REF)
+Finished game 632 (REF vs CAND): 1-0 {White mates}
+Started game 638 of 1466 (REF vs CAND)
+Finished game 633 (CAND vs REF): 1-0 {White mates}
+Started game 639 of 1466 (CAND vs REF)
+Finished game 634 (REF vs CAND): 1-0 {White mates}
+Started game 640 of 1466 (REF vs CAND)
+Finished game 635 (CAND vs REF): 0-1 {Black mates}
+Started game 641 of 1466 (CAND vs REF)
+Finished game 636 (REF vs CAND): 0-1 {Black mates}
+Started game 642 of 1466 (REF vs CAND)
+Finished game 637 (CAND vs REF): 1-0 {White mates}
+Started game 643 of 1466 (CAND vs REF)
+Finished game 638 (REF vs CAND): 1-0 {White mates}
+Started game 644 of 1466 (REF vs CAND)
+Finished game 639 (CAND vs REF): 1-0 {White mates}
+Started game 645 of 1466 (CAND vs REF)
+Finished game 641 (CAND vs REF): 1/2-1/2 {Draw by stalemate}
+Started game 646 of 1466 (REF vs CAND)
+Finished game 640 (REF vs CAND): 1-0 {White mates}
+Started game 647 of 1466 (CAND vs REF)
+Finished game 644 (REF vs CAND): 0-1 {Black mates}
+Started game 648 of 1466 (REF vs CAND)
+Finished game 642 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 649 of 1466 (CAND vs REF)
+Finished game 646 (REF vs CAND): 1-0 {White mates}
+Started game 650 of 1466 (REF vs CAND)
+Finished game 643 (CAND vs REF): 0-1 {Black mates}
+Started game 651 of 1466 (CAND vs REF)
+Finished game 647 (CAND vs REF): 0-1 {Black mates}
+Started game 652 of 1466 (REF vs CAND)
+Finished game 645 (CAND vs REF): 1-0 {White mates}
+Started game 653 of 1466 (CAND vs REF)
+Finished game 648 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 654 of 1466 (REF vs CAND)
+Finished game 650 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 655 of 1466 (CAND vs REF)
+Finished game 651 (CAND vs REF): 0-1 {Black mates}
+Started game 656 of 1466 (REF vs CAND)
+Finished game 649 (CAND vs REF): 1-0 {White mates}
+Started game 657 of 1466 (CAND vs REF)
+Finished game 652 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 658 of 1466 (REF vs CAND)
+Finished game 653 (CAND vs REF): 1-0 {White mates}
+Started game 659 of 1466 (CAND vs REF)
+Finished game 655 (CAND vs REF): 1-0 {White mates}
+Started game 660 of 1466 (REF vs CAND)
+Finished game 656 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 661 of 1466 (CAND vs REF)
+Finished game 654 (REF vs CAND): 1-0 {White mates}
+Started game 662 of 1466 (REF vs CAND)
+Finished game 659 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 663 of 1466 (CAND vs REF)
+Finished game 660 (REF vs CAND): 1-0 {White mates}
+Started game 664 of 1466 (REF vs CAND)
+Finished game 657 (CAND vs REF): 1-0 {White mates}
+Started game 665 of 1466 (CAND vs REF)
+Finished game 658 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 666 of 1466 (REF vs CAND)
+Finished game 661 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 667 of 1466 (CAND vs REF)
+Finished game 662 (REF vs CAND): 0-1 {Black mates}
+Started game 668 of 1466 (REF vs CAND)
+Finished game 663 (CAND vs REF): 1-0 {White mates}
+Started game 669 of 1466 (CAND vs REF)
+Finished game 665 (CAND vs REF): 0-1 {Black mates}
+Started game 670 of 1466 (REF vs CAND)
+Finished game 666 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 671 of 1466 (CAND vs REF)
+Finished game 664 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 672 of 1466 (REF vs CAND)
+Finished game 667 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 673 of 1466 (CAND vs REF)
+Finished game 668 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 674 of 1466 (REF vs CAND)
+Finished game 671 (CAND vs REF): 0-1 {Black mates}
+Started game 675 of 1466 (CAND vs REF)
+Finished game 670 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 676 of 1466 (REF vs CAND)
+Finished game 672 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 677 of 1466 (CAND vs REF)
+Finished game 673 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 678 of 1466 (REF vs CAND)
+Finished game 669 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 679 of 1466 (CAND vs REF)
+Finished game 677 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 680 of 1466 (REF vs CAND)
+Finished game 676 (REF vs CAND): 1-0 {White mates}
+Started game 681 of 1466 (CAND vs REF)
+Finished game 674 (REF vs CAND): 0-1 {Black mates}
+Started game 682 of 1466 (REF vs CAND)
+Finished game 679 (CAND vs REF): 1-0 {White mates}
+Started game 683 of 1466 (CAND vs REF)
+Finished game 678 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 684 of 1466 (REF vs CAND)
+Finished game 675 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 685 of 1466 (CAND vs REF)
+Finished game 680 (REF vs CAND): 1-0 {White mates}
+Started game 686 of 1466 (REF vs CAND)
+Finished game 681 (CAND vs REF): 1-0 {White mates}
+Started game 687 of 1466 (CAND vs REF)
+Finished game 682 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 688 of 1466 (REF vs CAND)
+Finished game 685 (CAND vs REF): 1-0 {White mates}
+Started game 689 of 1466 (CAND vs REF)
+Finished game 683 (CAND vs REF): 1-0 {White mates}
+Started game 690 of 1466 (REF vs CAND)
+Finished game 687 (CAND vs REF): 1-0 {White mates}
+Started game 691 of 1466 (CAND vs REF)
+Finished game 690 (REF vs CAND): 0-1 {Black mates}
+Started game 692 of 1466 (REF vs CAND)
+Finished game 684 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 693 of 1466 (CAND vs REF)
+Finished game 689 (CAND vs REF): 1-0 {White mates}
+Started game 694 of 1466 (REF vs CAND)
+Finished game 686 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 695 of 1466 (CAND vs REF)
+Finished game 691 (CAND vs REF): 0-1 {Black mates}
+Started game 696 of 1466 (REF vs CAND)
+Finished game 688 (REF vs CAND): 1-0 {White mates}
+Started game 697 of 1466 (CAND vs REF)
+Finished game 694 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 698 of 1466 (REF vs CAND)
+Finished game 693 (CAND vs REF): 0-1 {Black mates}
+Started game 699 of 1466 (CAND vs REF)
+Finished game 692 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 700 of 1466 (REF vs CAND)
+Finished game 695 (CAND vs REF): 0-1 {Black mates}
+Started game 701 of 1466 (CAND vs REF)
+Finished game 696 (REF vs CAND): 0-1 {Black mates}
+Started game 702 of 1466 (REF vs CAND)
+Finished game 698 (REF vs CAND): 0-1 {Black mates}
+Started game 703 of 1466 (CAND vs REF)
+Finished game 700 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 704 of 1466 (REF vs CAND)
+Finished game 699 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 705 of 1466 (CAND vs REF)
+Finished game 697 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 706 of 1466 (REF vs CAND)
+Finished game 704 (REF vs CAND): 1-0 {White mates}
+Started game 707 of 1466 (CAND vs REF)
+Finished game 701 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 708 of 1466 (REF vs CAND)
+Finished game 707 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 709 of 1466 (CAND vs REF)
+Finished game 706 (REF vs CAND): 0-1 {Black mates}
+Started game 710 of 1466 (REF vs CAND)
+Finished game 705 (CAND vs REF): 0-1 {Black mates}
+Started game 711 of 1466 (CAND vs REF)
+Finished game 702 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 712 of 1466 (REF vs CAND)
+Finished game 703 (CAND vs REF): 1-0 {White mates}
+Started game 713 of 1466 (CAND vs REF)
+Finished game 710 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 714 of 1466 (REF vs CAND)
+Finished game 708 (REF vs CAND): 0-1 {Black mates}
+Started game 715 of 1466 (CAND vs REF)
+Finished game 711 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 716 of 1466 (REF vs CAND)
+Finished game 709 (CAND vs REF): 1-0 {White mates}
+Started game 717 of 1466 (CAND vs REF)
+Finished game 712 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 718 of 1466 (REF vs CAND)
+Finished game 716 (REF vs CAND): 1-0 {White mates}
+Started game 719 of 1466 (CAND vs REF)
+Finished game 714 (REF vs CAND): 0-1 {Black mates}
+Started game 720 of 1466 (REF vs CAND)
+Finished game 713 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 721 of 1466 (CAND vs REF)
+Finished game 717 (CAND vs REF): 0-1 {Black mates}
+Started game 722 of 1466 (REF vs CAND)
+Finished game 720 (REF vs CAND): 1-0 {White mates}
+Started game 723 of 1466 (CAND vs REF)
+Finished game 718 (REF vs CAND): 1-0 {White mates}
+Started game 724 of 1466 (REF vs CAND)
+Finished game 722 (REF vs CAND): 1-0 {White mates}
+Started game 725 of 1466 (CAND vs REF)
+Finished game 721 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 726 of 1466 (REF vs CAND)
+Finished game 715 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 727 of 1466 (CAND vs REF)
+Finished game 719 (CAND vs REF): 1-0 {White mates}
+Started game 728 of 1466 (REF vs CAND)
+Finished game 724 (REF vs CAND): 1-0 {White mates}
+Started game 729 of 1466 (CAND vs REF)
+Finished game 723 (CAND vs REF): 0-1 {Black mates}
+Started game 730 of 1466 (REF vs CAND)
+Finished game 726 (REF vs CAND): 1-0 {White mates}
+Started game 731 of 1466 (CAND vs REF)
+Finished game 728 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 732 of 1466 (REF vs CAND)
+Finished game 725 (CAND vs REF): 1-0 {White mates}
+Started game 733 of 1466 (CAND vs REF)
+Finished game 727 (CAND vs REF): 1-0 {White mates}
+Started game 734 of 1466 (REF vs CAND)
+Finished game 729 (CAND vs REF): 1-0 {White mates}
+Started game 735 of 1466 (CAND vs REF)
+Finished game 731 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 736 of 1466 (REF vs CAND)
+Finished game 732 (REF vs CAND): 1-0 {White mates}
+Started game 737 of 1466 (CAND vs REF)
+Finished game 730 (REF vs CAND): 0-1 {Black mates}
+Started game 738 of 1466 (REF vs CAND)
+Finished game 733 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 739 of 1466 (CAND vs REF)
+Finished game 734 (REF vs CAND): 1-0 {White mates}
+Started game 740 of 1466 (REF vs CAND)
+Finished game 735 (CAND vs REF): 1-0 {White mates}
+Started game 741 of 1466 (CAND vs REF)
+Finished game 736 (REF vs CAND): 1-0 {White mates}
+Started game 742 of 1466 (REF vs CAND)
+Finished game 739 (CAND vs REF): 1-0 {White mates}
+Started game 743 of 1466 (CAND vs REF)
+Finished game 737 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 744 of 1466 (REF vs CAND)
+Finished game 741 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 745 of 1466 (CAND vs REF)
+Finished game 740 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 746 of 1466 (REF vs CAND)
+Finished game 744 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 747 of 1466 (CAND vs REF)
+Finished game 742 (REF vs CAND): 0-1 {Black mates}
+Started game 748 of 1466 (REF vs CAND)
+Finished game 745 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 749 of 1466 (CAND vs REF)
+Finished game 738 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 750 of 1466 (REF vs CAND)
+Finished game 743 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 751 of 1466 (CAND vs REF)
+Finished game 746 (REF vs CAND): 0-1 {Black mates}
+Started game 752 of 1466 (REF vs CAND)
+Finished game 750 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 753 of 1466 (CAND vs REF)
+Finished game 749 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 754 of 1466 (REF vs CAND)
+Finished game 748 (REF vs CAND): 1-0 {White mates}
+Started game 755 of 1466 (CAND vs REF)
+Finished game 747 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 756 of 1466 (REF vs CAND)
+Finished game 751 (CAND vs REF): 1-0 {White mates}
+Started game 757 of 1466 (CAND vs REF)
+Finished game 752 (REF vs CAND): 0-1 {Black mates}
+Started game 758 of 1466 (REF vs CAND)
+Finished game 753 (CAND vs REF): 0-1 {Black mates}
+Started game 759 of 1466 (CAND vs REF)
+Finished game 758 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 760 of 1466 (REF vs CAND)
+Finished game 756 (REF vs CAND): 1-0 {White mates}
+Started game 761 of 1466 (CAND vs REF)
+Finished game 754 (REF vs CAND): 0-1 {Black mates}
+Started game 762 of 1466 (REF vs CAND)
+Finished game 755 (CAND vs REF): 1-0 {White mates}
+Started game 763 of 1466 (CAND vs REF)
+Finished game 759 (CAND vs REF): 0-1 {Black mates}
+Started game 764 of 1466 (REF vs CAND)
+Finished game 757 (CAND vs REF): 1-0 {White mates}
+Started game 765 of 1466 (CAND vs REF)
+Finished game 760 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 766 of 1466 (REF vs CAND)
+Finished game 761 (CAND vs REF): 0-1 {Black mates}
+Started game 767 of 1466 (CAND vs REF)
+Finished game 765 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 768 of 1466 (REF vs CAND)
+Finished game 764 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 769 of 1466 (CAND vs REF)
+Finished game 762 (REF vs CAND): 0-1 {Black mates}
+Started game 770 of 1466 (REF vs CAND)
+Finished game 766 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 771 of 1466 (CAND vs REF)
+Finished game 767 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 772 of 1466 (REF vs CAND)
+Finished game 768 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 773 of 1466 (CAND vs REF)
+Finished game 770 (REF vs CAND): 0-1 {Black mates}
+Started game 774 of 1466 (REF vs CAND)
+Finished game 769 (CAND vs REF): 1-0 {White mates}
+Started game 775 of 1466 (CAND vs REF)
+Finished game 763 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 776 of 1466 (REF vs CAND)
+Finished game 773 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 777 of 1466 (CAND vs REF)
+Finished game 772 (REF vs CAND): 1-0 {White mates}
+Started game 778 of 1466 (REF vs CAND)
+Finished game 774 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 779 of 1466 (CAND vs REF)
+Finished game 771 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 780 of 1466 (REF vs CAND)
+Finished game 776 (REF vs CAND): 0-1 {Black mates}
+Started game 781 of 1466 (CAND vs REF)
+Finished game 777 (CAND vs REF): 1-0 {White mates}
+Started game 782 of 1466 (REF vs CAND)
+Finished game 778 (REF vs CAND): 0-1 {Black mates}
+Started game 783 of 1466 (CAND vs REF)
+Finished game 775 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 784 of 1466 (REF vs CAND)
+Finished game 779 (CAND vs REF): 1-0 {White mates}
+Started game 785 of 1466 (CAND vs REF)
+Finished game 780 (REF vs CAND): 1-0 {White mates}
+Started game 786 of 1466 (REF vs CAND)
+Finished game 781 (CAND vs REF): 1-0 {White mates}
+Started game 787 of 1466 (CAND vs REF)
+Finished game 782 (REF vs CAND): 0-1 {Black mates}
+Started game 788 of 1466 (REF vs CAND)
+Finished game 785 (CAND vs REF): 1-0 {White mates}
+Started game 789 of 1466 (CAND vs REF)
+Finished game 784 (REF vs CAND): 0-1 {Black mates}
+Started game 790 of 1466 (REF vs CAND)
+Finished game 783 (CAND vs REF): 0-1 {Black mates}
+Started game 791 of 1466 (CAND vs REF)
+Finished game 786 (REF vs CAND): 1-0 {White mates}
+Started game 792 of 1466 (REF vs CAND)
+Finished game 787 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 793 of 1466 (CAND vs REF)
+Finished game 790 (REF vs CAND): 1-0 {White mates}
+Started game 794 of 1466 (REF vs CAND)
+Finished game 789 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 795 of 1466 (CAND vs REF)
+Finished game 794 (REF vs CAND): 1-0 {White mates}
+Started game 796 of 1466 (REF vs CAND)
+Finished game 793 (CAND vs REF): 1-0 {White mates}
+Started game 797 of 1466 (CAND vs REF)
+Finished game 788 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 798 of 1466 (REF vs CAND)
+Finished game 791 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 799 of 1466 (CAND vs REF)
+Finished game 792 (REF vs CAND): 1-0 {White mates}
+Started game 800 of 1466 (REF vs CAND)
+Finished game 795 (CAND vs REF): 1-0 {White mates}
+Started game 801 of 1466 (CAND vs REF)
+Finished game 796 (REF vs CAND): 1-0 {White mates}
+Started game 802 of 1466 (REF vs CAND)
+Finished game 798 (REF vs CAND): 0-1 {Black mates}
+Started game 803 of 1466 (CAND vs REF)
+Finished game 800 (REF vs CAND): 0-1 {Black mates}
+Started game 804 of 1466 (REF vs CAND)
+Finished game 799 (CAND vs REF): 0-1 {Black mates}
+Started game 805 of 1466 (CAND vs REF)
+Finished game 802 (REF vs CAND): 0-1 {Black mates}
+Started game 806 of 1466 (REF vs CAND)
+Finished game 797 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 807 of 1466 (CAND vs REF)
+Finished game 801 (CAND vs REF): 0-1 {Black mates}
+Started game 808 of 1466 (REF vs CAND)
+Finished game 807 (CAND vs REF): 1-0 {White mates}
+Started game 809 of 1466 (CAND vs REF)
+Finished game 805 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 810 of 1466 (REF vs CAND)
+Finished game 804 (REF vs CAND): 1-0 {White mates}
+Started game 811 of 1466 (CAND vs REF)
+Finished game 803 (CAND vs REF): 1-0 {White mates}
+Started game 812 of 1466 (REF vs CAND)
+Finished game 806 (REF vs CAND): 0-1 {Black mates}
+Started game 813 of 1466 (CAND vs REF)
+Finished game 808 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 814 of 1466 (REF vs CAND)
+Finished game 811 (CAND vs REF): 1-0 {White mates}
+Started game 815 of 1466 (CAND vs REF)
+Finished game 812 (REF vs CAND): 1-0 {White mates}
+Started game 816 of 1466 (REF vs CAND)
+Finished game 809 (CAND vs REF): 1-0 {White mates}
+Started game 817 of 1466 (CAND vs REF)
+Finished game 810 (REF vs CAND): 1-0 {White mates}
+Started game 818 of 1466 (REF vs CAND)
+Finished game 814 (REF vs CAND): 1-0 {White mates}
+Started game 819 of 1466 (CAND vs REF)
+Finished game 813 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 820 of 1466 (REF vs CAND)
+Finished game 815 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 821 of 1466 (CAND vs REF)
+Finished game 817 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 822 of 1466 (REF vs CAND)
+Finished game 818 (REF vs CAND): 0-1 {Black mates}
+Started game 823 of 1466 (CAND vs REF)
+Finished game 816 (REF vs CAND): 0-1 {Black mates}
+Started game 824 of 1466 (REF vs CAND)
+Finished game 819 (CAND vs REF): 1-0 {White mates}
+Started game 825 of 1466 (CAND vs REF)
+Finished game 822 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 826 of 1466 (REF vs CAND)
+Finished game 821 (CAND vs REF): 0-1 {Black mates}
+Started game 827 of 1466 (CAND vs REF)
+Finished game 820 (REF vs CAND): 1-0 {White mates}
+Started game 828 of 1466 (REF vs CAND)
+Finished game 823 (CAND vs REF): 1-0 {White mates}
+Started game 829 of 1466 (CAND vs REF)
+Finished game 825 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 830 of 1466 (REF vs CAND)
+Finished game 824 (REF vs CAND): 1-0 {White mates}
+Started game 831 of 1466 (CAND vs REF)
+Finished game 826 (REF vs CAND): 0-1 {Black mates}
+Started game 832 of 1466 (REF vs CAND)
+Finished game 828 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 833 of 1466 (CAND vs REF)
+Finished game 830 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 834 of 1466 (REF vs CAND)
+Finished game 827 (CAND vs REF): 0-1 {Black mates}
+Started game 835 of 1466 (CAND vs REF)
+Finished game 831 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 836 of 1466 (REF vs CAND)
+Finished game 829 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 837 of 1466 (CAND vs REF)
+Finished game 833 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 838 of 1466 (REF vs CAND)
+Finished game 832 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 839 of 1466 (CAND vs REF)
+Finished game 834 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 840 of 1466 (REF vs CAND)
+Finished game 838 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 841 of 1466 (CAND vs REF)
+Finished game 835 (CAND vs REF): 0-1 {Black mates}
+Started game 842 of 1466 (REF vs CAND)
+Finished game 836 (REF vs CAND): 1-0 {White mates}
+Started game 843 of 1466 (CAND vs REF)
+Finished game 841 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 844 of 1466 (REF vs CAND)
+Finished game 840 (REF vs CAND): 0-1 {Black mates}
+Started game 845 of 1466 (CAND vs REF)
+Finished game 839 (CAND vs REF): 0-1 {Black mates}
+Started game 846 of 1466 (REF vs CAND)
+Finished game 837 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 847 of 1466 (CAND vs REF)
+Finished game 843 (CAND vs REF): 0-1 {Black mates}
+Started game 848 of 1466 (REF vs CAND)
+Finished game 846 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 849 of 1466 (CAND vs REF)
+Finished game 845 (CAND vs REF): 0-1 {Black mates}
+Started game 850 of 1466 (REF vs CAND)
+Finished game 844 (REF vs CAND): 0-1 {Black mates}
+Started game 851 of 1466 (CAND vs REF)
+Finished game 842 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 852 of 1466 (REF vs CAND)
+Finished game 848 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 853 of 1466 (CAND vs REF)
+Finished game 853 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 854 of 1466 (REF vs CAND)
+Finished game 852 (REF vs CAND): 1-0 {White mates}
+Started game 855 of 1466 (CAND vs REF)
+Finished game 849 (CAND vs REF): 1-0 {White mates}
+Started game 856 of 1466 (REF vs CAND)
+Finished game 847 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 857 of 1466 (CAND vs REF)
+Finished game 850 (REF vs CAND): 1-0 {White mates}
+Started game 858 of 1466 (REF vs CAND)
+Finished game 855 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 859 of 1466 (CAND vs REF)
+Finished game 857 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 860 of 1466 (REF vs CAND)
+Finished game 851 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 861 of 1466 (CAND vs REF)
+Finished game 854 (REF vs CAND): 1-0 {White mates}
+Started game 862 of 1466 (REF vs CAND)
+Finished game 858 (REF vs CAND): 1-0 {White mates}
+Started game 863 of 1466 (CAND vs REF)
+Finished game 856 (REF vs CAND): 1-0 {White mates}
+Started game 864 of 1466 (REF vs CAND)
+Finished game 861 (CAND vs REF): 0-1 {Black mates}
+Started game 865 of 1466 (CAND vs REF)
+Finished game 860 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 866 of 1466 (REF vs CAND)
+Finished game 859 (CAND vs REF): 1-0 {White mates}
+Started game 867 of 1466 (CAND vs REF)
+Finished game 864 (REF vs CAND): 1-0 {White mates}
+Started game 868 of 1466 (REF vs CAND)
+Finished game 862 (REF vs CAND): 0-1 {Black mates}
+Started game 869 of 1466 (CAND vs REF)
+Finished game 863 (CAND vs REF): 1-0 {White mates}
+Started game 870 of 1466 (REF vs CAND)
+Finished game 867 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 871 of 1466 (CAND vs REF)
+Finished game 865 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 872 of 1466 (REF vs CAND)
+Finished game 866 (REF vs CAND): 1-0 {White mates}
+Started game 873 of 1466 (CAND vs REF)
+Finished game 868 (REF vs CAND): 1-0 {White mates}
+Started game 874 of 1466 (REF vs CAND)
+Finished game 870 (REF vs CAND): 0-1 {Black mates}
+Started game 875 of 1466 (CAND vs REF)
+Finished game 869 (CAND vs REF): 0-1 {Black mates}
+Started game 876 of 1466 (REF vs CAND)
+Finished game 872 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 877 of 1466 (CAND vs REF)
+Finished game 873 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 878 of 1466 (REF vs CAND)
+Finished game 871 (CAND vs REF): 0-1 {Black mates}
+Started game 879 of 1466 (CAND vs REF)
+Finished game 875 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 880 of 1466 (REF vs CAND)
+Finished game 876 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 881 of 1466 (CAND vs REF)
+Finished game 874 (REF vs CAND): 0-1 {Black mates}
+Started game 882 of 1466 (REF vs CAND)
+Finished game 877 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 883 of 1466 (CAND vs REF)
+Finished game 878 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 884 of 1466 (REF vs CAND)
+Finished game 879 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 885 of 1466 (CAND vs REF)
+Finished game 882 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 886 of 1466 (REF vs CAND)
+Finished game 880 (REF vs CAND): 1-0 {White mates}
+Started game 887 of 1466 (CAND vs REF)
+Finished game 883 (CAND vs REF): 1-0 {White mates}
+Started game 888 of 1466 (REF vs CAND)
+Finished game 885 (CAND vs REF): 1-0 {White mates}
+Started game 889 of 1466 (CAND vs REF)
+Finished game 884 (REF vs CAND): 1-0 {White mates}
+Started game 890 of 1466 (REF vs CAND)
+Finished game 886 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 891 of 1466 (CAND vs REF)
+Finished game 881 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 892 of 1466 (REF vs CAND)
+Finished game 887 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 893 of 1466 (CAND vs REF)
+Finished game 892 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 894 of 1466 (REF vs CAND)
+Finished game 888 (REF vs CAND): 0-1 {Black mates}
+Started game 895 of 1466 (CAND vs REF)
+Finished game 890 (REF vs CAND): 1-0 {White mates}
+Started game 896 of 1466 (REF vs CAND)
+Finished game 889 (CAND vs REF): 1-0 {White mates}
+Started game 897 of 1466 (CAND vs REF)
+Finished game 891 (CAND vs REF): 1-0 {White mates}
+Started game 898 of 1466 (REF vs CAND)
+Finished game 894 (REF vs CAND): 1-0 {White mates}
+Started game 899 of 1466 (CAND vs REF)
+Finished game 896 (REF vs CAND): 0-1 {Black mates}
+Started game 900 of 1466 (REF vs CAND)
+Finished game 893 (CAND vs REF): 1-0 {White mates}
+Started game 901 of 1466 (CAND vs REF)
+Finished game 895 (CAND vs REF): 0-1 {Black mates}
+Started game 902 of 1466 (REF vs CAND)
+Finished game 897 (CAND vs REF): 0-1 {Black mates}
+Started game 903 of 1466 (CAND vs REF)
+Finished game 898 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 904 of 1466 (REF vs CAND)
+Finished game 901 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 905 of 1466 (CAND vs REF)
+Finished game 900 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 906 of 1466 (REF vs CAND)
+Finished game 902 (REF vs CAND): 1-0 {White mates}
+Started game 907 of 1466 (CAND vs REF)
+Finished game 899 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 908 of 1466 (REF vs CAND)
+Finished game 905 (CAND vs REF): 1-0 {White mates}
+Started game 909 of 1466 (CAND vs REF)
+Finished game 903 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 910 of 1466 (REF vs CAND)
+Finished game 906 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 911 of 1466 (CAND vs REF)
+Finished game 907 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 912 of 1466 (REF vs CAND)
+Finished game 904 (REF vs CAND): 1-0 {White mates}
+Started game 913 of 1466 (CAND vs REF)
+Finished game 908 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 914 of 1466 (REF vs CAND)
+Finished game 909 (CAND vs REF): 1-0 {White mates}
+Started game 915 of 1466 (CAND vs REF)
+Finished game 910 (REF vs CAND): 0-1 {Black mates}
+Started game 916 of 1466 (REF vs CAND)
+Finished game 911 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 917 of 1466 (CAND vs REF)
+Finished game 913 (CAND vs REF): 0-1 {Black mates}
+Started game 918 of 1466 (REF vs CAND)
+Finished game 912 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 919 of 1466 (CAND vs REF)
+Finished game 915 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 920 of 1466 (REF vs CAND)
+Finished game 914 (REF vs CAND): 0-1 {Black mates}
+Started game 921 of 1466 (CAND vs REF)
+Finished game 917 (CAND vs REF): 1-0 {White mates}
+Started game 922 of 1466 (REF vs CAND)
+Finished game 918 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 923 of 1466 (CAND vs REF)
+Finished game 916 (REF vs CAND): 1-0 {White mates}
+Started game 924 of 1466 (REF vs CAND)
+Finished game 921 (CAND vs REF): 1-0 {White mates}
+Started game 925 of 1466 (CAND vs REF)
+Finished game 920 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 926 of 1466 (REF vs CAND)
+Finished game 919 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 927 of 1466 (CAND vs REF)
+Finished game 923 (CAND vs REF): 1-0 {White mates}
+Started game 928 of 1466 (REF vs CAND)
+Finished game 924 (REF vs CAND): 0-1 {Black mates}
+Started game 929 of 1466 (CAND vs REF)
+Finished game 922 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 930 of 1466 (REF vs CAND)
+Finished game 927 (CAND vs REF): 1-0 {White mates}
+Started game 931 of 1466 (CAND vs REF)
+Finished game 925 (CAND vs REF): 1-0 {White mates}
+Started game 932 of 1466 (REF vs CAND)
+Finished game 928 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 933 of 1466 (CAND vs REF)
+Finished game 929 (CAND vs REF): 1-0 {White mates}
+Started game 934 of 1466 (REF vs CAND)
+Finished game 926 (REF vs CAND): 1-0 {White mates}
+Started game 935 of 1466 (CAND vs REF)
+Finished game 930 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 936 of 1466 (REF vs CAND)
+Finished game 932 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 937 of 1466 (CAND vs REF)
+Finished game 933 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 938 of 1466 (REF vs CAND)
+Finished game 931 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 939 of 1466 (CAND vs REF)
+Finished game 934 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 940 of 1466 (REF vs CAND)
+Finished game 937 (CAND vs REF): 0-1 {Black mates}
+Started game 941 of 1466 (CAND vs REF)
+Finished game 939 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 942 of 1466 (REF vs CAND)
+Finished game 935 (CAND vs REF): 0-1 {Black mates}
+Started game 943 of 1466 (CAND vs REF)
+Finished game 938 (REF vs CAND): 0-1 {Black mates}
+Started game 944 of 1466 (REF vs CAND)
+Finished game 940 (REF vs CAND): 0-1 {Black mates}
+Started game 945 of 1466 (CAND vs REF)
+Finished game 936 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 946 of 1466 (REF vs CAND)
+Finished game 943 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 947 of 1466 (CAND vs REF)
+Finished game 941 (CAND vs REF): 0-1 {Black mates}
+Started game 948 of 1466 (REF vs CAND)
+Finished game 945 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 949 of 1466 (CAND vs REF)
+Finished game 944 (REF vs CAND): 1-0 {White mates}
+Started game 950 of 1466 (REF vs CAND)
+Finished game 942 (REF vs CAND): 1-0 {White mates}
+Started game 951 of 1466 (CAND vs REF)
+Finished game 947 (CAND vs REF): 1-0 {White mates}
+Started game 952 of 1466 (REF vs CAND)
+Finished game 950 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 953 of 1466 (CAND vs REF)
+Finished game 946 (REF vs CAND): 1-0 {White mates}
+Started game 954 of 1466 (REF vs CAND)
+Finished game 948 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 955 of 1466 (CAND vs REF)
+Finished game 951 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 956 of 1466 (REF vs CAND)
+Finished game 949 (CAND vs REF): 0-1 {Black mates}
+Started game 957 of 1466 (CAND vs REF)
+Finished game 953 (CAND vs REF): 0-1 {Black mates}
+Started game 958 of 1466 (REF vs CAND)
+Finished game 954 (REF vs CAND): 0-1 {Black mates}
+Started game 959 of 1466 (CAND vs REF)
+Finished game 952 (REF vs CAND): 1-0 {White mates}
+Started game 960 of 1466 (REF vs CAND)
+Finished game 955 (CAND vs REF): 1/2-1/2 {Draw by stalemate}
+Started game 961 of 1466 (CAND vs REF)
+Finished game 956 (REF vs CAND): 1-0 {White mates}
+Started game 962 of 1466 (REF vs CAND)
+Finished game 957 (CAND vs REF): 0-1 {Black mates}
+Started game 963 of 1466 (CAND vs REF)
+Finished game 960 (REF vs CAND): 0-1 {Black mates}
+Started game 964 of 1466 (REF vs CAND)
+Finished game 958 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 965 of 1466 (CAND vs REF)
+Finished game 959 (CAND vs REF): 0-1 {Black mates}
+Started game 966 of 1466 (REF vs CAND)
+Finished game 963 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 967 of 1466 (CAND vs REF)
+Finished game 962 (REF vs CAND): 0-1 {Black mates}
+Started game 968 of 1466 (REF vs CAND)
+Finished game 961 (CAND vs REF): 0-1 {Black mates}
+Started game 969 of 1466 (CAND vs REF)
+Finished game 965 (CAND vs REF): 1-0 {White mates}
+Started game 970 of 1466 (REF vs CAND)
+Finished game 968 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 971 of 1466 (CAND vs REF)
+Finished game 967 (CAND vs REF): 1-0 {White mates}
+Started game 972 of 1466 (REF vs CAND)
+Finished game 970 (REF vs CAND): 0-1 {Black mates}
+Started game 973 of 1466 (CAND vs REF)
+Finished game 964 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 974 of 1466 (REF vs CAND)
+Finished game 966 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 975 of 1466 (CAND vs REF)
+Finished game 969 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 976 of 1466 (REF vs CAND)
+Finished game 971 (CAND vs REF): 1/2-1/2 {Draw by stalemate}
+Started game 977 of 1466 (CAND vs REF)
+Finished game 972 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 978 of 1466 (REF vs CAND)
+Finished game 974 (REF vs CAND): 1-0 {White mates}
+Started game 979 of 1466 (CAND vs REF)
+Finished game 975 (CAND vs REF): 1-0 {White mates}
+Started game 980 of 1466 (REF vs CAND)
+Finished game 973 (CAND vs REF): 1-0 {White mates}
+Started game 981 of 1466 (CAND vs REF)
+Finished game 978 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 982 of 1466 (REF vs CAND)
+Finished game 979 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 983 of 1466 (CAND vs REF)
+Finished game 977 (CAND vs REF): 0-1 {Black mates}
+Started game 984 of 1466 (REF vs CAND)
+Finished game 976 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 985 of 1466 (CAND vs REF)
+Finished game 980 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 986 of 1466 (REF vs CAND)
+Finished game 985 (CAND vs REF): 0-1 {Black mates}
+Started game 987 of 1466 (CAND vs REF)
+Finished game 981 (CAND vs REF): 1-0 {White mates}
+Started game 988 of 1466 (REF vs CAND)
+Finished game 982 (REF vs CAND): 1-0 {White mates}
+Started game 989 of 1466 (CAND vs REF)
+Finished game 986 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 990 of 1466 (REF vs CAND)
+Finished game 984 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 991 of 1466 (CAND vs REF)
+Finished game 983 (CAND vs REF): 0-1 {Black mates}
+Started game 992 of 1466 (REF vs CAND)
+Finished game 989 (CAND vs REF): 1-0 {White mates}
+Started game 993 of 1466 (CAND vs REF)
+Finished game 990 (REF vs CAND): 1-0 {White mates}
+Started game 994 of 1466 (REF vs CAND)
+Finished game 988 (REF vs CAND): 1-0 {White mates}
+Started game 995 of 1466 (CAND vs REF)
+Finished game 987 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 996 of 1466 (REF vs CAND)
+Finished game 991 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 997 of 1466 (CAND vs REF)
+Finished game 992 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 998 of 1466 (REF vs CAND)
+Finished game 993 (CAND vs REF): 0-1 {Black mates}
+Started game 999 of 1466 (CAND vs REF)
+Finished game 995 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1000 of 1466 (REF vs CAND)
+Finished game 996 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1001 of 1466 (CAND vs REF)
+Finished game 994 (REF vs CAND): 0-1 {Black mates}
+Started game 1002 of 1466 (REF vs CAND)
+Finished game 997 (CAND vs REF): 1-0 {White mates}
+Started game 1003 of 1466 (CAND vs REF)
+Finished game 1001 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1004 of 1466 (REF vs CAND)
+Finished game 1000 (REF vs CAND): 0-1 {Black mates}
+Started game 1005 of 1466 (CAND vs REF)
+Finished game 999 (CAND vs REF): 0-1 {Black mates}
+--------------------------------------------------
+Results of CAND vs REF (25000 nodes, 1t, 16MB, UHO_Lichess_4852_v1.epd):
+Elo: 8.01 +/- 13.10, nElo: 13.19 +/- 21.56
+LOS: 88.47 %, DrawRatio: 47.09 %, PairsRatio: 1.08
+Games: 998, Wins: 302, Losses: 279, Draws: 417, Points: 510.5 (51.15 %)
+Ptnml(0-2): [11, 116, 235, 113, 24], WL/DD Ratio: 1.50
+--------------------------------------------------
+Finished game 998 (REF vs CAND): 1-0 {White mates}
+Started game 1006 of 1466 (REF vs CAND)
+Started game 1007 of 1466 (CAND vs REF)
+Finished game 1003 (CAND vs REF): 1-0 {White mates}
+Started game 1008 of 1466 (REF vs CAND)
+Finished game 1004 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1009 of 1466 (CAND vs REF)
+Finished game 1006 (REF vs CAND): 0-1 {Black mates}
+Started game 1010 of 1466 (REF vs CAND)
+Finished game 1005 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1011 of 1466 (CAND vs REF)
+Finished game 1007 (CAND vs REF): 0-1 {Black mates}
+Started game 1012 of 1466 (REF vs CAND)
+Finished game 1009 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1013 of 1466 (CAND vs REF)
+Finished game 1002 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1014 of 1466 (REF vs CAND)
+Finished game 1008 (REF vs CAND): 1-0 {White mates}
+Started game 1015 of 1466 (CAND vs REF)
+Finished game 1012 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1016 of 1466 (REF vs CAND)
+Finished game 1011 (CAND vs REF): 1-0 {White mates}
+Started game 1017 of 1466 (CAND vs REF)
+Finished game 1010 (REF vs CAND): 1-0 {White mates}
+Started game 1018 of 1466 (REF vs CAND)
+Finished game 1013 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1019 of 1466 (CAND vs REF)
+Finished game 1014 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1020 of 1466 (REF vs CAND)
+Finished game 1015 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1021 of 1466 (CAND vs REF)
+Finished game 1018 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1022 of 1466 (REF vs CAND)
+Finished game 1017 (CAND vs REF): 0-1 {Black mates}
+Started game 1023 of 1466 (CAND vs REF)
+Finished game 1016 (REF vs CAND): 0-1 {Black mates}
+Started game 1024 of 1466 (REF vs CAND)
+Finished game 1019 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1025 of 1466 (CAND vs REF)
+Finished game 1020 (REF vs CAND): 0-1 {Black mates}
+Started game 1026 of 1466 (REF vs CAND)
+Finished game 1023 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1027 of 1466 (CAND vs REF)
+Finished game 1021 (CAND vs REF): 0-1 {Black mates}
+Started game 1028 of 1466 (REF vs CAND)
+Finished game 1022 (REF vs CAND): 0-1 {Black mates}
+Started game 1029 of 1466 (CAND vs REF)
+Finished game 1024 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1030 of 1466 (REF vs CAND)
+Finished game 1025 (CAND vs REF): 1-0 {White mates}
+Started game 1031 of 1466 (CAND vs REF)
+Finished game 1027 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1032 of 1466 (REF vs CAND)
+Finished game 1026 (REF vs CAND): 0-1 {Black mates}
+Started game 1033 of 1466 (CAND vs REF)
+Finished game 1029 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1034 of 1466 (REF vs CAND)
+Finished game 1028 (REF vs CAND): 1-0 {White mates}
+Started game 1035 of 1466 (CAND vs REF)
+Finished game 1032 (REF vs CAND): 0-1 {Black mates}
+Started game 1036 of 1466 (REF vs CAND)
+Finished game 1030 (REF vs CAND): 1-0 {White mates}
+Started game 1037 of 1466 (CAND vs REF)
+Finished game 1034 (REF vs CAND): 0-1 {Black mates}
+Started game 1038 of 1466 (REF vs CAND)
+Finished game 1033 (CAND vs REF): 1-0 {White mates}
+Started game 1039 of 1466 (CAND vs REF)
+Finished game 1031 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1040 of 1466 (REF vs CAND)
+Finished game 1036 (REF vs CAND): 0-1 {Black mates}
+Started game 1041 of 1466 (CAND vs REF)
+Finished game 1038 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1042 of 1466 (REF vs CAND)
+Finished game 1037 (CAND vs REF): 0-1 {Black mates}
+Started game 1043 of 1466 (CAND vs REF)
+Finished game 1035 (CAND vs REF): 0-1 {Black mates}
+Started game 1044 of 1466 (REF vs CAND)
+Finished game 1041 (CAND vs REF): 1-0 {White mates}
+Started game 1045 of 1466 (CAND vs REF)
+Finished game 1039 (CAND vs REF): 1-0 {White mates}
+Started game 1046 of 1466 (REF vs CAND)
+Finished game 1042 (REF vs CAND): 1-0 {White mates}
+Started game 1047 of 1466 (CAND vs REF)
+Finished game 1044 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1048 of 1466 (REF vs CAND)
+Finished game 1040 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1049 of 1466 (CAND vs REF)
+Finished game 1043 (CAND vs REF): 1-0 {White mates}
+Started game 1050 of 1466 (REF vs CAND)
+Finished game 1045 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1051 of 1466 (CAND vs REF)
+Finished game 1046 (REF vs CAND): 1-0 {White mates}
+Started game 1052 of 1466 (REF vs CAND)
+Finished game 1049 (CAND vs REF): 1-0 {White mates}
+Started game 1053 of 1466 (CAND vs REF)
+Finished game 1047 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1054 of 1466 (REF vs CAND)
+Finished game 1050 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1055 of 1466 (CAND vs REF)
+Finished game 1048 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1056 of 1466 (REF vs CAND)
+Finished game 1051 (CAND vs REF): 0-1 {Black mates}
+Started game 1057 of 1466 (CAND vs REF)
+Finished game 1053 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1058 of 1466 (REF vs CAND)
+Finished game 1055 (CAND vs REF): 1-0 {White mates}
+Started game 1059 of 1466 (CAND vs REF)
+Finished game 1052 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1060 of 1466 (REF vs CAND)
+Finished game 1054 (REF vs CAND): 0-1 {Black mates}
+Started game 1061 of 1466 (CAND vs REF)
+Finished game 1059 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1062 of 1466 (REF vs CAND)
+Finished game 1056 (REF vs CAND): 0-1 {Black mates}
+Started game 1063 of 1466 (CAND vs REF)
+Finished game 1058 (REF vs CAND): 0-1 {Black mates}
+Started game 1064 of 1466 (REF vs CAND)
+Finished game 1060 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1065 of 1466 (CAND vs REF)
+Finished game 1061 (CAND vs REF): 1-0 {White mates}
+Started game 1066 of 1466 (REF vs CAND)
+Finished game 1057 (CAND vs REF): 0-1 {Black mates}
+Started game 1067 of 1466 (CAND vs REF)
+Finished game 1062 (REF vs CAND): 0-1 {Black mates}
+Started game 1068 of 1466 (REF vs CAND)
+Finished game 1066 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1069 of 1466 (CAND vs REF)
+Finished game 1065 (CAND vs REF): 1-0 {White mates}
+Started game 1070 of 1466 (REF vs CAND)
+Finished game 1063 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1071 of 1466 (CAND vs REF)
+Finished game 1068 (REF vs CAND): 0-1 {Black mates}
+Started game 1072 of 1466 (REF vs CAND)
+Finished game 1064 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1073 of 1466 (CAND vs REF)
+Finished game 1067 (CAND vs REF): 0-1 {Black mates}
+Started game 1074 of 1466 (REF vs CAND)
+Finished game 1073 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1075 of 1466 (CAND vs REF)
+Finished game 1072 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1076 of 1466 (REF vs CAND)
+Finished game 1069 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1077 of 1466 (CAND vs REF)
+Finished game 1070 (REF vs CAND): 0-1 {Black mates}
+Started game 1078 of 1466 (REF vs CAND)
+Finished game 1071 (CAND vs REF): 1-0 {White mates}
+Started game 1079 of 1466 (CAND vs REF)
+Finished game 1074 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1080 of 1466 (REF vs CAND)
+Finished game 1079 (CAND vs REF): 1-0 {White mates}
+Started game 1081 of 1466 (CAND vs REF)
+Finished game 1077 (CAND vs REF): 0-1 {Black mates}
+Started game 1082 of 1466 (REF vs CAND)
+Finished game 1075 (CAND vs REF): 1-0 {White mates}
+Started game 1083 of 1466 (CAND vs REF)
+Finished game 1076 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1084 of 1466 (REF vs CAND)
+Finished game 1078 (REF vs CAND): 1-0 {White mates}
+Started game 1085 of 1466 (CAND vs REF)
+Finished game 1080 (REF vs CAND): 1-0 {White mates}
+Started game 1086 of 1466 (REF vs CAND)
+Finished game 1082 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1087 of 1466 (CAND vs REF)
+Finished game 1083 (CAND vs REF): 0-1 {Black mates}
+Started game 1088 of 1466 (REF vs CAND)
+Finished game 1081 (CAND vs REF): 0-1 {Black mates}
+Started game 1089 of 1466 (CAND vs REF)
+Finished game 1085 (CAND vs REF): 1-0 {White mates}
+Started game 1090 of 1466 (REF vs CAND)
+Finished game 1084 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1091 of 1466 (CAND vs REF)
+Finished game 1086 (REF vs CAND): 1-0 {White mates}
+Started game 1092 of 1466 (REF vs CAND)
+Finished game 1087 (CAND vs REF): 1-0 {White mates}
+Started game 1093 of 1466 (CAND vs REF)
+Finished game 1089 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1094 of 1466 (REF vs CAND)
+Finished game 1090 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1095 of 1466 (CAND vs REF)
+Finished game 1088 (REF vs CAND): 1-0 {White mates}
+Started game 1096 of 1466 (REF vs CAND)
+Finished game 1091 (CAND vs REF): 1-0 {White mates}
+Started game 1097 of 1466 (CAND vs REF)
+Finished game 1092 (REF vs CAND): 1-0 {White mates}
+Started game 1098 of 1466 (REF vs CAND)
+Finished game 1093 (CAND vs REF): 1-0 {White mates}
+Started game 1099 of 1466 (CAND vs REF)
+Finished game 1094 (REF vs CAND): 1-0 {White mates}
+Started game 1100 of 1466 (REF vs CAND)
+Finished game 1096 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1101 of 1466 (CAND vs REF)
+Finished game 1095 (CAND vs REF): 0-1 {Black mates}
+Started game 1102 of 1466 (REF vs CAND)
+Finished game 1099 (CAND vs REF): 1-0 {White mates}
+Started game 1103 of 1466 (CAND vs REF)
+Finished game 1097 (CAND vs REF): 1-0 {White mates}
+Started game 1104 of 1466 (REF vs CAND)
+Finished game 1100 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1105 of 1466 (CAND vs REF)
+Finished game 1101 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1106 of 1466 (REF vs CAND)
+Finished game 1102 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1107 of 1466 (CAND vs REF)
+Finished game 1098 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1108 of 1466 (REF vs CAND)
+Finished game 1104 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1109 of 1466 (CAND vs REF)
+Finished game 1103 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1110 of 1466 (REF vs CAND)
+Finished game 1107 (CAND vs REF): 0-1 {Black mates}
+Started game 1111 of 1466 (CAND vs REF)
+Finished game 1110 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1112 of 1466 (REF vs CAND)
+Finished game 1105 (CAND vs REF): 0-1 {Black mates}
+Started game 1113 of 1466 (CAND vs REF)
+Finished game 1109 (CAND vs REF): 0-1 {Black mates}
+Started game 1114 of 1466 (REF vs CAND)
+Finished game 1108 (REF vs CAND): 0-1 {Black mates}
+Started game 1115 of 1466 (CAND vs REF)
+Finished game 1106 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1116 of 1466 (REF vs CAND)
+Finished game 1112 (REF vs CAND): 1-0 {White mates}
+Started game 1117 of 1466 (CAND vs REF)
+Finished game 1111 (CAND vs REF): 1-0 {White mates}
+Started game 1118 of 1466 (REF vs CAND)
+Finished game 1114 (REF vs CAND): 1-0 {White mates}
+Started game 1119 of 1466 (CAND vs REF)
+Finished game 1115 (CAND vs REF): 0-1 {Black mates}
+Started game 1120 of 1466 (REF vs CAND)
+Finished game 1116 (REF vs CAND): 0-1 {Black mates}
+Started game 1121 of 1466 (CAND vs REF)
+Finished game 1113 (CAND vs REF): 1-0 {White mates}
+Started game 1122 of 1466 (REF vs CAND)
+Finished game 1119 (CAND vs REF): 1/2-1/2 {Draw by stalemate}
+Started game 1123 of 1466 (CAND vs REF)
+Finished game 1117 (CAND vs REF): 0-1 {Black mates}
+Started game 1124 of 1466 (REF vs CAND)
+Finished game 1120 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1125 of 1466 (CAND vs REF)
+Finished game 1121 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1126 of 1466 (REF vs CAND)
+Finished game 1118 (REF vs CAND): 0-1 {Black mates}
+Started game 1127 of 1466 (CAND vs REF)
+Finished game 1122 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1128 of 1466 (REF vs CAND)
+Finished game 1124 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1129 of 1466 (CAND vs REF)
+Finished game 1127 (CAND vs REF): 1-0 {White mates}
+Started game 1130 of 1466 (REF vs CAND)
+Finished game 1128 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1131 of 1466 (CAND vs REF)
+Finished game 1125 (CAND vs REF): 0-1 {Black mates}
+Started game 1132 of 1466 (REF vs CAND)
+Finished game 1126 (REF vs CAND): 0-1 {Black mates}
+Started game 1133 of 1466 (CAND vs REF)
+Finished game 1123 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1134 of 1466 (REF vs CAND)
+Finished game 1129 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1135 of 1466 (CAND vs REF)
+Finished game 1130 (REF vs CAND): 0-1 {Black mates}
+Started game 1136 of 1466 (REF vs CAND)
+Finished game 1131 (CAND vs REF): 1-0 {White mates}
+Started game 1137 of 1466 (CAND vs REF)
+Finished game 1133 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1138 of 1466 (REF vs CAND)
+Finished game 1134 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1139 of 1466 (CAND vs REF)
+Finished game 1132 (REF vs CAND): 1-0 {White mates}
+Started game 1140 of 1466 (REF vs CAND)
+Finished game 1136 (REF vs CAND): 0-1 {Black mates}
+Started game 1141 of 1466 (CAND vs REF)
+Finished game 1135 (CAND vs REF): 1/2-1/2 {Draw by stalemate}
+Started game 1142 of 1466 (REF vs CAND)
+Finished game 1140 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1143 of 1466 (CAND vs REF)
+Finished game 1141 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1144 of 1466 (REF vs CAND)
+Finished game 1138 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1145 of 1466 (CAND vs REF)
+Finished game 1139 (CAND vs REF): 1-0 {White mates}
+Started game 1146 of 1466 (REF vs CAND)
+Finished game 1137 (CAND vs REF): 0-1 {Black mates}
+Started game 1147 of 1466 (CAND vs REF)
+Finished game 1144 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1148 of 1466 (REF vs CAND)
+Finished game 1142 (REF vs CAND): 1-0 {White mates}
+Started game 1149 of 1466 (CAND vs REF)
+Finished game 1147 (CAND vs REF): 1-0 {White mates}
+Started game 1150 of 1466 (REF vs CAND)
+Finished game 1146 (REF vs CAND): 1-0 {White mates}
+Started game 1151 of 1466 (CAND vs REF)
+Finished game 1143 (CAND vs REF): 0-1 {Black mates}
+Started game 1152 of 1466 (REF vs CAND)
+Finished game 1145 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1153 of 1466 (CAND vs REF)
+Finished game 1148 (REF vs CAND): 1-0 {White mates}
+Started game 1154 of 1466 (REF vs CAND)
+Finished game 1149 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1155 of 1466 (CAND vs REF)
+Finished game 1151 (CAND vs REF): 1/2-1/2 {Draw by stalemate}
+Started game 1156 of 1466 (REF vs CAND)
+Finished game 1152 (REF vs CAND): 1-0 {White mates}
+Started game 1157 of 1466 (CAND vs REF)
+Finished game 1150 (REF vs CAND): 0-1 {Black mates}
+Started game 1158 of 1466 (REF vs CAND)
+Finished game 1155 (CAND vs REF): 0-1 {Black mates}
+Started game 1159 of 1466 (CAND vs REF)
+Finished game 1156 (REF vs CAND): 0-1 {Black mates}
+Started game 1160 of 1466 (REF vs CAND)
+Finished game 1154 (REF vs CAND): 1-0 {White mates}
+Started game 1161 of 1466 (CAND vs REF)
+Finished game 1157 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1162 of 1466 (REF vs CAND)
+Finished game 1153 (CAND vs REF): 1-0 {White mates}
+Started game 1163 of 1466 (CAND vs REF)
+Finished game 1158 (REF vs CAND): 0-1 {Black mates}
+Started game 1164 of 1466 (REF vs CAND)
+Finished game 1161 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1165 of 1466 (CAND vs REF)
+Finished game 1162 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1166 of 1466 (REF vs CAND)
+Finished game 1160 (REF vs CAND): 1-0 {White mates}
+Started game 1167 of 1466 (CAND vs REF)
+Finished game 1164 (REF vs CAND): 0-1 {Black mates}
+Started game 1168 of 1466 (REF vs CAND)
+Finished game 1159 (CAND vs REF): 1-0 {White mates}
+Started game 1169 of 1466 (CAND vs REF)
+Finished game 1163 (CAND vs REF): 1-0 {White mates}
+Started game 1170 of 1466 (REF vs CAND)
+Finished game 1165 (CAND vs REF): 1-0 {White mates}
+Started game 1171 of 1466 (CAND vs REF)
+Finished game 1166 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1172 of 1466 (REF vs CAND)
+Finished game 1169 (CAND vs REF): 1-0 {White mates}
+Started game 1173 of 1466 (CAND vs REF)
+Finished game 1170 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1174 of 1466 (REF vs CAND)
+Finished game 1172 (REF vs CAND): 0-1 {Black mates}
+Started game 1175 of 1466 (CAND vs REF)
+Finished game 1168 (REF vs CAND): 0-1 {Black mates}
+Started game 1176 of 1466 (REF vs CAND)
+Finished game 1171 (CAND vs REF): 1-0 {White mates}
+Started game 1177 of 1466 (CAND vs REF)
+Finished game 1167 (CAND vs REF): 0-1 {Black mates}
+Started game 1178 of 1466 (REF vs CAND)
+Finished game 1175 (CAND vs REF): 0-1 {Black mates}
+Started game 1179 of 1466 (CAND vs REF)
+Finished game 1174 (REF vs CAND): 0-1 {Black mates}
+Started game 1180 of 1466 (REF vs CAND)
+Finished game 1173 (CAND vs REF): 1-0 {White mates}
+Started game 1181 of 1466 (CAND vs REF)
+Finished game 1178 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1182 of 1466 (REF vs CAND)
+Finished game 1176 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1183 of 1466 (CAND vs REF)
+Finished game 1177 (CAND vs REF): 1-0 {White mates}
+Started game 1184 of 1466 (REF vs CAND)
+Finished game 1179 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1185 of 1466 (CAND vs REF)
+Finished game 1182 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1186 of 1466 (REF vs CAND)
+Finished game 1180 (REF vs CAND): 1-0 {White mates}
+Started game 1187 of 1466 (CAND vs REF)
+Finished game 1183 (CAND vs REF): 1-0 {White mates}
+Started game 1188 of 1466 (REF vs CAND)
+Finished game 1184 (REF vs CAND): 1-0 {White mates}
+Started game 1189 of 1466 (CAND vs REF)
+Finished game 1181 (CAND vs REF): 1-0 {White mates}
+Started game 1190 of 1466 (REF vs CAND)
+Finished game 1186 (REF vs CAND): 0-1 {Black mates}
+Started game 1191 of 1466 (CAND vs REF)
+Finished game 1190 (REF vs CAND): 0-1 {Black mates}
+Started game 1192 of 1466 (REF vs CAND)
+Finished game 1187 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1193 of 1466 (CAND vs REF)
+Finished game 1188 (REF vs CAND): 1-0 {White mates}
+Started game 1194 of 1466 (REF vs CAND)
+Finished game 1189 (CAND vs REF): 0-1 {Black mates}
+Started game 1195 of 1466 (CAND vs REF)
+Finished game 1185 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1196 of 1466 (REF vs CAND)
+Finished game 1192 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1197 of 1466 (CAND vs REF)
+Finished game 1193 (CAND vs REF): 0-1 {Black mates}
+Started game 1198 of 1466 (REF vs CAND)
+Finished game 1191 (CAND vs REF): 1-0 {White mates}
+Started game 1199 of 1466 (CAND vs REF)
+Finished game 1194 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1200 of 1466 (REF vs CAND)
+Finished game 1195 (CAND vs REF): 0-1 {Black mates}
+Started game 1201 of 1466 (CAND vs REF)
+Finished game 1198 (REF vs CAND): 0-1 {Black mates}
+Started game 1202 of 1466 (REF vs CAND)
+Finished game 1197 (CAND vs REF): 0-1 {Black mates}
+Started game 1203 of 1466 (CAND vs REF)
+Finished game 1196 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1204 of 1466 (REF vs CAND)
+Finished game 1199 (CAND vs REF): 0-1 {Black mates}
+Started game 1205 of 1466 (CAND vs REF)
+Finished game 1200 (REF vs CAND): 1-0 {White mates}
+Started game 1206 of 1466 (REF vs CAND)
+Finished game 1201 (CAND vs REF): 1-0 {White mates}
+Started game 1207 of 1466 (CAND vs REF)
+Finished game 1202 (REF vs CAND): 1-0 {White mates}
+Started game 1208 of 1466 (REF vs CAND)
+Finished game 1203 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1209 of 1466 (CAND vs REF)
+Finished game 1204 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1210 of 1466 (REF vs CAND)
+Finished game 1207 (CAND vs REF): 0-1 {Black mates}
+Started game 1211 of 1466 (CAND vs REF)
+Finished game 1205 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1212 of 1466 (REF vs CAND)
+Finished game 1209 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1213 of 1466 (CAND vs REF)
+Finished game 1206 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1214 of 1466 (REF vs CAND)
+Finished game 1208 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1215 of 1466 (CAND vs REF)
+Finished game 1211 (CAND vs REF): 1-0 {White mates}
+Started game 1216 of 1466 (REF vs CAND)
+Finished game 1210 (REF vs CAND): 1-0 {White mates}
+Started game 1217 of 1466 (CAND vs REF)
+Finished game 1212 (REF vs CAND): 1-0 {White mates}
+Started game 1218 of 1466 (REF vs CAND)
+Finished game 1217 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1219 of 1466 (CAND vs REF)
+Finished game 1214 (REF vs CAND): 0-1 {Black mates}
+Started game 1220 of 1466 (REF vs CAND)
+Finished game 1216 (REF vs CAND): 1-0 {White mates}
+Started game 1221 of 1466 (CAND vs REF)
+Finished game 1213 (CAND vs REF): 0-1 {Black mates}
+Started game 1222 of 1466 (REF vs CAND)
+Finished game 1218 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1223 of 1466 (CAND vs REF)
+Finished game 1220 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1224 of 1466 (REF vs CAND)
+Finished game 1215 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1225 of 1466 (CAND vs REF)
+Finished game 1219 (CAND vs REF): 1-0 {White mates}
+Started game 1226 of 1466 (REF vs CAND)
+Finished game 1222 (REF vs CAND): 0-1 {Black mates}
+Started game 1227 of 1466 (CAND vs REF)
+Finished game 1226 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1228 of 1466 (REF vs CAND)
+Finished game 1223 (CAND vs REF): 1-0 {White mates}
+Started game 1229 of 1466 (CAND vs REF)
+Finished game 1221 (CAND vs REF): 1-0 {White mates}
+Started game 1230 of 1466 (REF vs CAND)
+Finished game 1224 (REF vs CAND): 1-0 {White mates}
+Started game 1231 of 1466 (CAND vs REF)
+Finished game 1225 (CAND vs REF): 1/2-1/2 {Draw by stalemate}
+Started game 1232 of 1466 (REF vs CAND)
+Finished game 1227 (CAND vs REF): 0-1 {Black mates}
+Started game 1233 of 1466 (CAND vs REF)
+Finished game 1228 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1234 of 1466 (REF vs CAND)
+Finished game 1230 (REF vs CAND): 1-0 {White mates}
+Started game 1235 of 1466 (CAND vs REF)
+Finished game 1231 (CAND vs REF): 0-1 {Black mates}
+Started game 1236 of 1466 (REF vs CAND)
+Finished game 1232 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1237 of 1466 (CAND vs REF)
+Finished game 1233 (CAND vs REF): 1-0 {White mates}
+Started game 1238 of 1466 (REF vs CAND)
+Finished game 1229 (CAND vs REF): 0-1 {Black mates}
+Started game 1239 of 1466 (CAND vs REF)
+Finished game 1237 (CAND vs REF): 1-0 {White mates}
+Started game 1240 of 1466 (REF vs CAND)
+Finished game 1236 (REF vs CAND): 0-1 {Black mates}
+Started game 1241 of 1466 (CAND vs REF)
+Finished game 1235 (CAND vs REF): 1-0 {White mates}
+Started game 1242 of 1466 (REF vs CAND)
+Finished game 1234 (REF vs CAND): 0-1 {Black mates}
+Started game 1243 of 1466 (CAND vs REF)
+Finished game 1239 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1244 of 1466 (REF vs CAND)
+Finished game 1238 (REF vs CAND): 1-0 {White mates}
+Started game 1245 of 1466 (CAND vs REF)
+Finished game 1242 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1246 of 1466 (REF vs CAND)
+Finished game 1243 (CAND vs REF): 1-0 {White mates}
+Started game 1247 of 1466 (CAND vs REF)
+Finished game 1245 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1248 of 1466 (REF vs CAND)
+Finished game 1244 (REF vs CAND): 1-0 {White mates}
+Started game 1249 of 1466 (CAND vs REF)
+Finished game 1246 (REF vs CAND): 1-0 {White mates}
+Started game 1250 of 1466 (REF vs CAND)
+Finished game 1240 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1251 of 1466 (CAND vs REF)
+Finished game 1247 (CAND vs REF): 1-0 {White mates}
+Started game 1252 of 1466 (REF vs CAND)
+Finished game 1249 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1253 of 1466 (CAND vs REF)
+Finished game 1248 (REF vs CAND): 1-0 {White mates}
+Started game 1254 of 1466 (REF vs CAND)
+Finished game 1250 (REF vs CAND): 0-1 {Black mates}
+Started game 1255 of 1466 (CAND vs REF)
+Finished game 1241 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1256 of 1466 (REF vs CAND)
+Finished game 1252 (REF vs CAND): 0-1 {Black mates}
+Started game 1257 of 1466 (CAND vs REF)
+Finished game 1251 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1258 of 1466 (REF vs CAND)
+Finished game 1253 (CAND vs REF): 0-1 {Black mates}
+Started game 1259 of 1466 (CAND vs REF)
+Finished game 1255 (CAND vs REF): 1-0 {White mates}
+Started game 1260 of 1466 (REF vs CAND)
+Finished game 1254 (REF vs CAND): 1-0 {White mates}
+Started game 1261 of 1466 (CAND vs REF)
+Finished game 1257 (CAND vs REF): 1-0 {White mates}
+Started game 1262 of 1466 (REF vs CAND)
+Finished game 1256 (REF vs CAND): 1-0 {White mates}
+Started game 1263 of 1466 (CAND vs REF)
+Finished game 1259 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1264 of 1466 (REF vs CAND)
+Finished game 1262 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1265 of 1466 (CAND vs REF)
+Finished game 1258 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1266 of 1466 (REF vs CAND)
+Finished game 1263 (CAND vs REF): 0-1 {Black mates}
+Started game 1267 of 1466 (CAND vs REF)
+Finished game 1264 (REF vs CAND): 1-0 {White mates}
+Started game 1268 of 1466 (REF vs CAND)
+Finished game 1260 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1269 of 1466 (CAND vs REF)
+Finished game 1261 (CAND vs REF): 0-1 {Black mates}
+Started game 1270 of 1466 (REF vs CAND)
+Finished game 1265 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1271 of 1466 (CAND vs REF)
+Finished game 1267 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1272 of 1466 (REF vs CAND)
+Finished game 1266 (REF vs CAND): 0-1 {Black mates}
+Started game 1273 of 1466 (CAND vs REF)
+Finished game 1268 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1274 of 1466 (REF vs CAND)
+Finished game 1269 (CAND vs REF): 1-0 {White mates}
+Started game 1275 of 1466 (CAND vs REF)
+Finished game 1270 (REF vs CAND): 0-1 {Black mates}
+Started game 1276 of 1466 (REF vs CAND)
+Finished game 1272 (REF vs CAND): 1-0 {White mates}
+Started game 1277 of 1466 (CAND vs REF)
+Finished game 1275 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1278 of 1466 (REF vs CAND)
+Finished game 1271 (CAND vs REF): 1-0 {White mates}
+Started game 1279 of 1466 (CAND vs REF)
+Finished game 1274 (REF vs CAND): 1-0 {White mates}
+Started game 1280 of 1466 (REF vs CAND)
+Finished game 1278 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1281 of 1466 (CAND vs REF)
+Finished game 1276 (REF vs CAND): 1/2-1/2 {Draw by stalemate}
+Started game 1282 of 1466 (REF vs CAND)
+Finished game 1277 (CAND vs REF): 0-1 {Black mates}
+Started game 1283 of 1466 (CAND vs REF)
+Finished game 1273 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1284 of 1466 (REF vs CAND)
+Finished game 1279 (CAND vs REF): 1-0 {White mates}
+Started game 1285 of 1466 (CAND vs REF)
+Finished game 1283 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1286 of 1466 (REF vs CAND)
+Finished game 1280 (REF vs CAND): 1-0 {White mates}
+Started game 1287 of 1466 (CAND vs REF)
+Finished game 1281 (CAND vs REF): 0-1 {Black mates}
+Started game 1288 of 1466 (REF vs CAND)
+Finished game 1282 (REF vs CAND): 0-1 {Black mates}
+Started game 1289 of 1466 (CAND vs REF)
+Finished game 1289 (CAND vs REF): 1-0 {White mates}
+Started game 1290 of 1466 (REF vs CAND)
+Finished game 1285 (CAND vs REF): 1-0 {White mates}
+Started game 1291 of 1466 (CAND vs REF)
+Finished game 1284 (REF vs CAND): 1-0 {White mates}
+Started game 1292 of 1466 (REF vs CAND)
+Finished game 1287 (CAND vs REF): 0-1 {Black mates}
+Started game 1293 of 1466 (CAND vs REF)
+Finished game 1288 (REF vs CAND): 1-0 {White mates}
+Started game 1294 of 1466 (REF vs CAND)
+Finished game 1286 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1295 of 1466 (CAND vs REF)
+Finished game 1292 (REF vs CAND): 0-1 {Black mates}
+Started game 1296 of 1466 (REF vs CAND)
+Finished game 1293 (CAND vs REF): 0-1 {Black mates}
+Started game 1297 of 1466 (CAND vs REF)
+Finished game 1290 (REF vs CAND): 1-0 {White mates}
+Started game 1298 of 1466 (REF vs CAND)
+Finished game 1294 (REF vs CAND): 0-1 {Black mates}
+Started game 1299 of 1466 (CAND vs REF)
+Finished game 1291 (CAND vs REF): 0-1 {Black mates}
+Started game 1300 of 1466 (REF vs CAND)
+Finished game 1296 (REF vs CAND): 0-1 {Black mates}
+Started game 1301 of 1466 (CAND vs REF)
+Finished game 1295 (CAND vs REF): 0-1 {Black mates}
+Started game 1302 of 1466 (REF vs CAND)
+Finished game 1297 (CAND vs REF): 1-0 {White mates}
+Started game 1303 of 1466 (CAND vs REF)
+Finished game 1299 (CAND vs REF): 0-1 {Black mates}
+Started game 1304 of 1466 (REF vs CAND)
+Finished game 1298 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1305 of 1466 (CAND vs REF)
+Finished game 1301 (CAND vs REF): 0-1 {Black mates}
+Started game 1306 of 1466 (REF vs CAND)
+Finished game 1302 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1307 of 1466 (CAND vs REF)
+Finished game 1303 (CAND vs REF): 0-1 {Black mates}
+Started game 1308 of 1466 (REF vs CAND)
+Finished game 1300 (REF vs CAND): 0-1 {Black mates}
+Started game 1309 of 1466 (CAND vs REF)
+Finished game 1304 (REF vs CAND): 0-1 {Black mates}
+Started game 1310 of 1466 (REF vs CAND)
+Finished game 1306 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1311 of 1466 (CAND vs REF)
+Finished game 1310 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1312 of 1466 (REF vs CAND)
+Finished game 1307 (CAND vs REF): 0-1 {Black mates}
+Started game 1313 of 1466 (CAND vs REF)
+Finished game 1309 (CAND vs REF): 0-1 {Black mates}
+Started game 1314 of 1466 (REF vs CAND)
+Finished game 1311 (CAND vs REF): 0-1 {Black mates}
+Started game 1315 of 1466 (CAND vs REF)
+Finished game 1305 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1316 of 1466 (REF vs CAND)
+Finished game 1308 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1317 of 1466 (CAND vs REF)
+Finished game 1313 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1318 of 1466 (REF vs CAND)
+Finished game 1312 (REF vs CAND): 0-1 {Black mates}
+Started game 1319 of 1466 (CAND vs REF)
+Finished game 1315 (CAND vs REF): 1-0 {White mates}
+Started game 1320 of 1466 (REF vs CAND)
+Finished game 1314 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1321 of 1466 (CAND vs REF)
+Finished game 1316 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1322 of 1466 (REF vs CAND)
+Finished game 1319 (CAND vs REF): 1-0 {White mates}
+Started game 1323 of 1466 (CAND vs REF)
+Finished game 1317 (CAND vs REF): 0-1 {Black mates}
+Started game 1324 of 1466 (REF vs CAND)
+Finished game 1318 (REF vs CAND): 0-1 {Black mates}
+Started game 1325 of 1466 (CAND vs REF)
+Finished game 1320 (REF vs CAND): 0-1 {Black mates}
+Started game 1326 of 1466 (REF vs CAND)
+Finished game 1321 (CAND vs REF): 1-0 {White mates}
+Started game 1327 of 1466 (CAND vs REF)
+Finished game 1322 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1328 of 1466 (REF vs CAND)
+Finished game 1324 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1329 of 1466 (CAND vs REF)
+Finished game 1323 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1330 of 1466 (REF vs CAND)
+Finished game 1328 (REF vs CAND): 1-0 {White mates}
+Started game 1331 of 1466 (CAND vs REF)
+Finished game 1326 (REF vs CAND): 0-1 {Black mates}
+Started game 1332 of 1466 (REF vs CAND)
+Finished game 1327 (CAND vs REF): 1-0 {White mates}
+Started game 1333 of 1466 (CAND vs REF)
+Finished game 1330 (REF vs CAND): 1-0 {White mates}
+Started game 1334 of 1466 (REF vs CAND)
+Finished game 1329 (CAND vs REF): 1-0 {White mates}
+Started game 1335 of 1466 (CAND vs REF)
+Finished game 1325 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1336 of 1466 (REF vs CAND)
+Finished game 1334 (REF vs CAND): 0-1 {Black mates}
+Started game 1337 of 1466 (CAND vs REF)
+Finished game 1336 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1338 of 1466 (REF vs CAND)
+Finished game 1333 (CAND vs REF): 0-1 {Black mates}
+Started game 1339 of 1466 (CAND vs REF)
+Finished game 1332 (REF vs CAND): 1-0 {White mates}
+Started game 1340 of 1466 (REF vs CAND)
+Finished game 1335 (CAND vs REF): 1-0 {White mates}
+Started game 1341 of 1466 (CAND vs REF)
+Finished game 1331 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1342 of 1466 (REF vs CAND)
+Finished game 1338 (REF vs CAND): 1-0 {White mates}
+Started game 1343 of 1466 (CAND vs REF)
+Finished game 1337 (CAND vs REF): 1-0 {White mates}
+Started game 1344 of 1466 (REF vs CAND)
+Finished game 1339 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1345 of 1466 (CAND vs REF)
+Finished game 1342 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1346 of 1466 (REF vs CAND)
+Finished game 1340 (REF vs CAND): 0-1 {Black mates}
+Started game 1347 of 1466 (CAND vs REF)
+Finished game 1341 (CAND vs REF): 0-1 {Black mates}
+Started game 1348 of 1466 (REF vs CAND)
+Finished game 1344 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1349 of 1466 (CAND vs REF)
+Finished game 1343 (CAND vs REF): 1-0 {White mates}
+Started game 1350 of 1466 (REF vs CAND)
+Finished game 1346 (REF vs CAND): 0-1 {Black mates}
+Started game 1351 of 1466 (CAND vs REF)
+Finished game 1345 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1352 of 1466 (REF vs CAND)
+Finished game 1349 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1353 of 1466 (CAND vs REF)
+Finished game 1347 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1354 of 1466 (REF vs CAND)
+Finished game 1348 (REF vs CAND): 1-0 {White mates}
+Started game 1355 of 1466 (CAND vs REF)
+Finished game 1350 (REF vs CAND): 1-0 {White mates}
+Started game 1356 of 1466 (REF vs CAND)
+Finished game 1351 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1357 of 1466 (CAND vs REF)
+Finished game 1356 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1358 of 1466 (REF vs CAND)
+Finished game 1352 (REF vs CAND): 1-0 {White mates}
+Started game 1359 of 1466 (CAND vs REF)
+Finished game 1353 (CAND vs REF): 1-0 {White mates}
+Started game 1360 of 1466 (REF vs CAND)
+Finished game 1354 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1361 of 1466 (CAND vs REF)
+Finished game 1359 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1362 of 1466 (REF vs CAND)
+Finished game 1355 (CAND vs REF): 1-0 {White mates}
+Started game 1363 of 1466 (CAND vs REF)
+Finished game 1357 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1364 of 1466 (REF vs CAND)
+Finished game 1358 (REF vs CAND): 0-1 {Black mates}
+Started game 1365 of 1466 (CAND vs REF)
+Finished game 1361 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1366 of 1466 (REF vs CAND)
+Finished game 1363 (CAND vs REF): 0-1 {Black mates}
+Started game 1367 of 1466 (CAND vs REF)
+Finished game 1360 (REF vs CAND): 0-1 {Black mates}
+Started game 1368 of 1466 (REF vs CAND)
+Finished game 1364 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1369 of 1466 (CAND vs REF)
+Finished game 1366 (REF vs CAND): 0-1 {Black mates}
+Started game 1370 of 1466 (REF vs CAND)
+Finished game 1362 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1371 of 1466 (CAND vs REF)
+Finished game 1368 (REF vs CAND): 0-1 {Black mates}
+Started game 1372 of 1466 (REF vs CAND)
+Finished game 1365 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1373 of 1466 (CAND vs REF)
+Finished game 1367 (CAND vs REF): 0-1 {Black mates}
+Started game 1374 of 1466 (REF vs CAND)
+Finished game 1369 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1375 of 1466 (CAND vs REF)
+Finished game 1371 (CAND vs REF): 1-0 {White mates}
+Started game 1376 of 1466 (REF vs CAND)
+Finished game 1373 (CAND vs REF): 1-0 {White mates}
+Started game 1377 of 1466 (CAND vs REF)
+Finished game 1374 (REF vs CAND): 1-0 {White mates}
+Started game 1378 of 1466 (REF vs CAND)
+Finished game 1370 (REF vs CAND): 0-1 {Black mates}
+Started game 1379 of 1466 (CAND vs REF)
+Finished game 1372 (REF vs CAND): 0-1 {Black mates}
+Started game 1380 of 1466 (REF vs CAND)
+Finished game 1376 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1381 of 1466 (CAND vs REF)
+Finished game 1377 (CAND vs REF): 1-0 {White mates}
+Started game 1382 of 1466 (REF vs CAND)
+Finished game 1378 (REF vs CAND): 0-1 {Black mates}
+Started game 1383 of 1466 (CAND vs REF)
+Finished game 1375 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1384 of 1466 (REF vs CAND)
+Finished game 1379 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1385 of 1466 (CAND vs REF)
+Finished game 1380 (REF vs CAND): 0-1 {Black mates}
+Started game 1386 of 1466 (REF vs CAND)
+Finished game 1382 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1387 of 1466 (CAND vs REF)
+Finished game 1383 (CAND vs REF): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1388 of 1466 (REF vs CAND)
+Finished game 1384 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1389 of 1466 (CAND vs REF)
+Finished game 1385 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1390 of 1466 (REF vs CAND)
+Finished game 1381 (CAND vs REF): 1-0 {White mates}
+Started game 1391 of 1466 (CAND vs REF)
+Finished game 1386 (REF vs CAND): 0-1 {Black mates}
+Started game 1392 of 1466 (REF vs CAND)
+Finished game 1391 (CAND vs REF): 1-0 {White mates}
+Started game 1393 of 1466 (CAND vs REF)
+Finished game 1387 (CAND vs REF): 0-1 {Black mates}
+Started game 1394 of 1466 (REF vs CAND)
+Finished game 1390 (REF vs CAND): 1-0 {White mates}
+Started game 1395 of 1466 (CAND vs REF)
+Finished game 1389 (CAND vs REF): 0-1 {Black mates}
+Started game 1396 of 1466 (REF vs CAND)
+Finished game 1388 (REF vs CAND): 1-0 {White mates}
+Started game 1397 of 1466 (CAND vs REF)
+Finished game 1392 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1398 of 1466 (REF vs CAND)
+Finished game 1394 (REF vs CAND): 1-0 {White mates}
+Started game 1399 of 1466 (CAND vs REF)
+Finished game 1393 (CAND vs REF): 1-0 {White mates}
+Started game 1400 of 1466 (REF vs CAND)
+Finished game 1397 (CAND vs REF): 1-0 {White mates}
+Started game 1401 of 1466 (CAND vs REF)
+Finished game 1395 (CAND vs REF): 1-0 {White mates}
+Started game 1402 of 1466 (REF vs CAND)
+Finished game 1396 (REF vs CAND): 1-0 {White mates}
+Started game 1403 of 1466 (CAND vs REF)
+Finished game 1399 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1404 of 1466 (REF vs CAND)
+Finished game 1398 (REF vs CAND): 1-0 {White mates}
+Started game 1405 of 1466 (CAND vs REF)
+Finished game 1400 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1406 of 1466 (REF vs CAND)
+Finished game 1401 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1407 of 1466 (CAND vs REF)
+Finished game 1402 (REF vs CAND): 0-1 {Black mates}
+Started game 1408 of 1466 (REF vs CAND)
+Finished game 1403 (CAND vs REF): 0-1 {Black mates}
+Started game 1409 of 1466 (CAND vs REF)
+Finished game 1405 (CAND vs REF): 1-0 {White mates}
+Started game 1410 of 1466 (REF vs CAND)
+Finished game 1404 (REF vs CAND): 0-1 {Black mates}
+Started game 1411 of 1466 (CAND vs REF)
+Finished game 1406 (REF vs CAND): 1-0 {White mates}
+Started game 1412 of 1466 (REF vs CAND)
+Finished game 1408 (REF vs CAND): 0-1 {Black mates}
+Started game 1413 of 1466 (CAND vs REF)
+Finished game 1407 (CAND vs REF): 0-1 {Black mates}
+Started game 1414 of 1466 (REF vs CAND)
+Finished game 1410 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1415 of 1466 (CAND vs REF)
+Finished game 1409 (CAND vs REF): 0-1 {Black mates}
+Started game 1416 of 1466 (REF vs CAND)
+Finished game 1413 (CAND vs REF): 1/2-1/2 {Draw by stalemate}
+Started game 1417 of 1466 (CAND vs REF)
+Finished game 1411 (CAND vs REF): 1-0 {White mates}
+Started game 1418 of 1466 (REF vs CAND)
+Finished game 1412 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1419 of 1466 (CAND vs REF)
+Finished game 1414 (REF vs CAND): 0-1 {Black mates}
+Started game 1420 of 1466 (REF vs CAND)
+Finished game 1415 (CAND vs REF): 0-1 {Black mates}
+Started game 1421 of 1466 (CAND vs REF)
+Finished game 1416 (REF vs CAND): 1-0 {White mates}
+Started game 1422 of 1466 (REF vs CAND)
+Finished game 1418 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1423 of 1466 (CAND vs REF)
+Finished game 1421 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1424 of 1466 (REF vs CAND)
+Finished game 1419 (CAND vs REF): 1-0 {White mates}
+Started game 1425 of 1466 (CAND vs REF)
+Finished game 1420 (REF vs CAND): 1-0 {White mates}
+Started game 1426 of 1466 (REF vs CAND)
+Finished game 1417 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1427 of 1466 (CAND vs REF)
+Finished game 1425 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1428 of 1466 (REF vs CAND)
+Finished game 1423 (CAND vs REF): 1-0 {White mates}
+Started game 1429 of 1466 (CAND vs REF)
+Finished game 1424 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1430 of 1466 (REF vs CAND)
+Finished game 1422 (REF vs CAND): 0-1 {Black mates}
+Started game 1431 of 1466 (CAND vs REF)
+Finished game 1427 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1432 of 1466 (REF vs CAND)
+Finished game 1426 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1433 of 1466 (CAND vs REF)
+Finished game 1430 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1434 of 1466 (REF vs CAND)
+Finished game 1428 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1435 of 1466 (CAND vs REF)
+Finished game 1429 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1436 of 1466 (REF vs CAND)
+Finished game 1431 (CAND vs REF): 0-1 {Black mates}
+Started game 1437 of 1466 (CAND vs REF)
+Finished game 1434 (REF vs CAND): 1-0 {White mates}
+Started game 1438 of 1466 (REF vs CAND)
+Finished game 1432 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1439 of 1466 (CAND vs REF)
+Finished game 1435 (CAND vs REF): 1-0 {White mates}
+Started game 1440 of 1466 (REF vs CAND)
+Finished game 1433 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1441 of 1466 (CAND vs REF)
+Finished game 1437 (CAND vs REF): 1-0 {White mates}
+Started game 1442 of 1466 (REF vs CAND)
+Finished game 1436 (REF vs CAND): 1-0 {White mates}
+Started game 1443 of 1466 (CAND vs REF)
+Finished game 1438 (REF vs CAND): 1-0 {White mates}
+Started game 1444 of 1466 (REF vs CAND)
+Finished game 1440 (REF vs CAND): 1-0 {White mates}
+Started game 1445 of 1466 (CAND vs REF)
+Finished game 1443 (CAND vs REF): 1-0 {White mates}
+Started game 1446 of 1466 (REF vs CAND)
+Finished game 1439 (CAND vs REF): 1-0 {White mates}
+Started game 1447 of 1466 (CAND vs REF)
+Finished game 1442 (REF vs CAND): 1-0 {White mates}
+Started game 1448 of 1466 (REF vs CAND)
+Finished game 1441 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1449 of 1466 (CAND vs REF)
+Finished game 1445 (CAND vs REF): 1-0 {White mates}
+Started game 1450 of 1466 (REF vs CAND)
+Finished game 1444 (REF vs CAND): 1-0 {White mates}
+Started game 1451 of 1466 (CAND vs REF)
+Finished game 1448 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1452 of 1466 (REF vs CAND)
+Finished game 1447 (CAND vs REF): 0-1 {Black mates}
+Started game 1453 of 1466 (CAND vs REF)
+Finished game 1446 (REF vs CAND): 1-0 {White mates}
+Started game 1454 of 1466 (REF vs CAND)
+Finished game 1449 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1455 of 1466 (CAND vs REF)
+Finished game 1452 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1456 of 1466 (REF vs CAND)
+Finished game 1451 (CAND vs REF): 0-1 {Black mates}
+Started game 1457 of 1466 (CAND vs REF)
+Finished game 1454 (REF vs CAND): 1-0 {White mates}
+Started game 1458 of 1466 (REF vs CAND)
+Finished game 1453 (CAND vs REF): 1-0 {White mates}
+Started game 1459 of 1466 (CAND vs REF)
+Finished game 1450 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1460 of 1466 (REF vs CAND)
+Finished game 1457 (CAND vs REF): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1461 of 1466 (CAND vs REF)
+Finished game 1459 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1462 of 1466 (REF vs CAND)
+Finished game 1458 (REF vs CAND): 1/2-1/2 {Draw by insufficient mating material}
+Started game 1463 of 1466 (CAND vs REF)
+Finished game 1455 (CAND vs REF): 0-1 {Black mates}
+Started game 1464 of 1466 (REF vs CAND)
+Finished game 1460 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+Started game 1465 of 1466 (CAND vs REF)
+Finished game 1456 (REF vs CAND): 1/2-1/2 {Draw by fifty moves rule}
+Started game 1466 of 1466 (REF vs CAND)
+Finished game 1461 (CAND vs REF): 1-0 {White mates}
+Finished game 1464 (REF vs CAND): 1-0 {White mates}
+Finished game 1465 (CAND vs REF): 1/2-1/2 {Draw by 3-fold repetition}
+Finished game 1462 (REF vs CAND): 1-0 {White mates}
+Finished game 1463 (CAND vs REF): 1-0 {White mates}
+Finished game 1466 (REF vs CAND): 1/2-1/2 {Draw by 3-fold repetition}
+--------------------------------------------------
+Results of CAND vs REF (25000 nodes, 1t, 16MB, UHO_Lichess_4852_v1.epd):
+Elo: 9.48 +/- 11.08, nElo: 15.23 +/- 17.79
+LOS: 95.34 %, DrawRatio: 46.38 %, PairsRatio: 1.12
+Games: 1466, Wins: 453, Losses: 413, Draws: 600, Points: 753.0 (51.36 %)
+Ptnml(0-2): [21, 164, 340, 170, 38], WL/DD Ratio: 1.56
+--------------------------------------------------
+Finished match
+Total Time: 00:19:34 (hours:minutes:seconds)
+
