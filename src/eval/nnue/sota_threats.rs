@@ -771,12 +771,25 @@ struct ThreatEntry {
     /// accumulator out of it. `dp` is read only by the former.
     dp: DirtyPiece,
     position: ThreatPosition,
-    /// Per-perspective fold state — the FullThreats analogue of HalfKA's
-    /// `Entry::computed`, with one extra state a relational, king-oriented
-    /// feature set needs. Written by [`ThreatContext::apply_at`] and cleared to
-    /// [`Fold::Done`] by [`ThreatContext::compute`].
-    fold: [Fold; 2],
 }
+
+/// The per-ply fold state, in its OWN dense array — perf study 24 arm h1,
+/// taking the shape study 22 landed on `sota_accumulator`'s `Entry`.
+///
+/// `fold` used to be the last two bytes of [`ThreatEntry`], a **5,312-byte**
+/// struct (`imul $0x14c0` on every index). [`ThreatContext::compute`] opens by
+/// scanning it backwards, per perspective, looking for the nearest ancestor
+/// that is not [`Fold::FromParent`] — so a walk of `d` plies touched `d`
+/// guaranteed-distinct cache lines, 5 KB apart, to read two bytes from each,
+/// and it does that walk **twice per evaluated node**. As its own
+/// `[[Fold; 2]; STACK_LEN]` the whole walk is 2 bytes per ply: **32 plies to a
+/// 64-byte line**, and the deepest realistic walk fits in one or two.
+///
+/// `dp`/`position` stay together in [`ThreatEntry`] rather than moving to a
+/// third array: unlike `fold` they are read exactly ONCE per folded child,
+/// never scanned, so their locality does not matter and splitting them would
+/// only add another base pointer to an already register-starved `compute`.
+type FoldState = [Fold; 2];
 
 /// How [`ThreatContext::compute`] must materialise one perspective of one
 /// [`ThreatEntry`].
@@ -806,7 +819,6 @@ impl Default for ThreatEntry {
             psqt: [[0i32; BUCKETS]; 2],
             dp: DirtyPiece::EMPTY,
             position: ThreatPosition::default(),
-            fold: [Fold::FromParent; 2],
         }
     }
 }
@@ -837,7 +849,18 @@ pub struct ThreatContext<'a> {
     /// One lazily-folded entry per ply; `stack[0]` is the root. Indexed by
     /// absolute search ply and never truncated — a sibling simply overwrites its
     /// ply's entry — exactly like the HalfKA stack. Heap-allocated once.
-    stack: Box<[ThreatEntry]>,
+    /// **Sized** `Box<[T; N]>`, not `Box<[T]>` — study 22 paid for this one and
+    /// handed it over: doing exactly this hot/cold split against fat-pointer
+    /// arrays measured **+58.7 i/n**, a regression, purely in the length loads
+    /// and dynamic bounds checks a slice box forces at every index; the same
+    /// split with all arrays sized measured **−9.3 i/n**. A `Box<[T; N]>` is a
+    /// thin pointer with a compile-time stride and statically discharged
+    /// bounds. The boxes are built through `vec![..].into_boxed_slice()` and
+    /// `try_into`, which is a pointer cast — never a 1.3 MB array on the stack.
+    stack: Box<[ThreatEntry; STACK_LEN]>,
+    /// Per-ply, per-perspective fold state. Its own dense array so `compute`'s
+    /// ancestor walk is a linear scan over 2 bytes per ply — see [`FoldState`].
+    fold: Box<[FoldState; STACK_LEN]>,
     /// Scratch raw-event buffer for [`build_deltas`], reused every fold.
     buf: DeltaBuf,
     /// Fold-time resolved-index scratch for [`apply_i8_deltas`], written by
@@ -863,7 +886,19 @@ impl<'a> ThreatContext<'a> {
         ThreatContext {
             weights,
             psqt_weights,
-            stack: vec![ThreatEntry::default(); STACK_LEN].into_boxed_slice(),
+            // `try_into` rather than `expect`: `ThreatEntry` is not `Debug`
+            // (it is 5 KB of accumulator) and `Result::expect` demands it.
+            stack: match vec![ThreatEntry::default(); STACK_LEN]
+                .into_boxed_slice()
+                .try_into()
+            {
+                Ok(b) => b,
+                Err(_) => unreachable!("vec! built exactly STACK_LEN entries"),
+            },
+            fold: vec![[Fold::FromParent; 2]; STACK_LEN]
+                .into_boxed_slice()
+                .try_into()
+                .expect("STACK_LEN fold states"),
             buf: DeltaBuf::new(),
             add_scratch: [[0usize; DELTA_CAP]; 2],
             sub_scratch: [[0usize; DELTA_CAP]; 2],
@@ -894,7 +929,7 @@ impl<'a> ThreatContext<'a> {
                 self.stack[0].psqt[i] = refresh_psqt_threat_at(psqt_weights, &pos, persp);
             }
         }
-        self.stack[0].fold = [Fold::Done; 2];
+        self.fold[0] = [Fold::Done; 2];
     }
 
     /// The current (cursor top) accumulator pair, `[White, Black]` — the input
@@ -983,7 +1018,7 @@ impl<'a> ThreatContext<'a> {
         // 1.25–1.39× threat cost UNDERSTATES what a properly-built
         // HalfKA-only engine reaches.
         if self.weights.is_empty() {
-            self.stack[child].fold = [Fold::Done; 2];
+            self.fold[child] = [Fold::Done; 2];
             return;
         }
 
@@ -1041,7 +1076,7 @@ impl<'a> ThreatContext<'a> {
         // `[T; N]::map` rather than an indexed loop (D33 reviewer C): one
         // address computation and one 2-byte store instead of two of each
         // through a 5,248-byte-strided `self.stack[child]`.
-        self.stack[child].fold = king_cross(dp).map(|crossed| {
+        self.fold[child] = king_cross(dp).map(|crossed| {
             if crossed {
                 Fold::Refresh
             } else {
@@ -1062,7 +1097,7 @@ impl<'a> ThreatContext<'a> {
     /// perspective-agnostic events ONCE and resolves + folds each perspective
     /// that still needs it.
     fn compute(&mut self, ply: usize) {
-        if self.stack[ply].fold[0] == Fold::Done && self.stack[ply].fold[1] == Fold::Done {
+        if self.fold[ply][0] == Fold::Done && self.fold[ply][1] == Fold::Done {
             return;
         }
         let weights = self.weights;
@@ -1078,10 +1113,10 @@ impl<'a> ThreatContext<'a> {
             // loop has already loaded it, and re-reading `self.stack[*a].fold[p]`
             // afterwards costs a second `ply * size_of::<ThreatEntry>()` address
             // computation plus a load, twice per `compute`.
-            let mut f = self.stack[*a].fold[p];
+            let mut f = self.fold[*a][p];
             while *a > 0 && f == Fold::FromParent {
                 *a -= 1;
-                f = self.stack[*a].fold[p];
+                f = self.fold[*a][p];
             }
             // The 3-state marker can finally tell "unseeded root" from
             // "uncomputed root", which the old `bool` could not (D33 reviewer
@@ -1095,6 +1130,11 @@ impl<'a> ThreatContext<'a> {
             );
             if f == Fold::Refresh {
                 discharge_refresh(&mut self.stack[*a], weights, psqt_weights, p);
+                // `fold` no longer lives on the entry, so the discharge's last
+                // act happens here (perf study 24 arm h1). It also keeps
+                // `discharge_refresh` at exactly six integer argument
+                // registers -- see its doc comment.
+                self.fold[*a][p] = Fold::Done;
             }
         }
         // Hoist the magic-table LazyLock deref out of the per-touch geometry
@@ -1103,8 +1143,8 @@ impl<'a> ThreatContext<'a> {
         let tab = tables();
         for child in (anc[0].min(anc[1]) + 1)..=ply {
             let need = [
-                child > anc[0] && self.stack[child].fold[0] == Fold::FromParent,
-                child > anc[1] && self.stack[child].fold[1] == Fold::FromParent,
+                child > anc[0] && self.fold[child][0] == Fold::FromParent,
+                child > anc[1] && self.fold[child][1] == Fold::FromParent,
             ];
             if !need[0] && !need[1] {
                 continue;
@@ -1232,7 +1272,7 @@ impl<'a> ThreatContext<'a> {
                         d.copy_from_slice(s);
                     }
                     entry.psqt[p] = parent.psqt[p];
-                    entry.fold[p] = Fold::Done;
+                    self.fold[child][p] = Fold::Done;
                     continue;
                 }
                 apply_i8_deltas_into(
@@ -1250,7 +1290,7 @@ impl<'a> ThreatContext<'a> {
                 {
                     *dst = src + d;
                 }
-                entry.fold[p] = Fold::Done;
+                self.fold[child][p] = Fold::Done;
             }
         }
     }
@@ -1310,7 +1350,6 @@ fn discharge_refresh(entry: &mut ThreatEntry, weights: &[i8], psqt_weights: &[i3
     let persp = Color::ALL[p];
     refresh_threat_into_at(&mut entry.acc[p], weights, &entry.position, persp);
     entry.psqt[p] = refresh_psqt_threat_at(psqt_weights, &entry.position, persp);
-    entry.fold[p] = Fold::Done;
 }
 
 /// Resolve the perspective-agnostic raw `events` to one perspective's
@@ -1826,13 +1865,13 @@ mod tests {
         // still passing. Any change to `Rng`, to `generate_legal`'s ordering, or
         // to the fixture could do that; these two assertions say so out loud.
         assert_eq!(
-            ctx.stack[1].fold[Color::White as usize],
+            ctx.fold[1][Color::White as usize],
             Fold::Refresh,
             "the crossing ply must still be an undischarged obligation"
         );
         for k in 2..=ply {
             assert_ne!(
-                ctx.stack[k].fold[Color::White as usize],
+                ctx.fold[k][Color::White as usize],
                 Fold::Refresh,
                 "a later re-cross at ply {k} short-circuits the walk this test exists to exercise"
             );
@@ -1857,7 +1896,7 @@ mod tests {
         // descendant instead of once. The entire −40.4 i/n of perf study 18
         // rests on this one store. This is the only assertion that holds it.
         assert_eq!(
-            ctx.stack[1].fold[Color::White as usize],
+            ctx.fold[1][Color::White as usize],
             Fold::Done,
             "a discharged refresh must memoize, or every descendant re-pays it"
         );
