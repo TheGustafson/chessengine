@@ -7763,3 +7763,46 @@ re-warm just perturbed a converged net.
 **Box healthy again** — swap recovered to 268 MB free, available 9379 MB, load
 4.59. Studies: 41 at ahead=5; richer-representation at ahead=4, its Tier-0 probe
 nearly done.
+
+## Tick — extension has NOT turned at sb420; pre-registering the failure condition
+
+| | sb400 | sb410 | **sb420** |
+|---|---:|---:|---:|
+| raw | 0.010784 | 0.011300 | **0.011295** (−5) |
+| **ema** | 0.010804 | 0.010953 | **0.010985** (+32) |
+
+**Raw has gone flat rather than recovering; the EMA is still rising.** Two
+samples, no turn toward baseline.
+
+### The requirement is moving the wrong way every tick
+
+| from | ema | needed rate |
+|---|---:|---:|
+| sb400 | 0.010804 | **2.00e-6/sb** |
+| sb410 | 0.010953 | 2.58e-6/sb |
+| **sb420** | **0.010985** | **2.79e-6/sb** |
+
+Still under the cosine rate (6.06) and about at the anneal rate (2.96) — **not
+out of reach, but it has moved adversely on every single reading**, and that is
+worth saying now rather than when it becomes undeniable.
+
+### The context that cuts the other way
+
+**LR is still near its 1.25e-4 peak and does not fall meaningfully until
+sb500** (1.104e-4 at sb450, 7.5e-5 at sb500, 2.5e-5 at sb600). A re-warm dip
+that persists while LR is high is the *normal* shape — recovery, if it comes,
+arrives as the cosine descends. Two samples at peak LR is genuinely too early to
+call.
+
+### THE FAILURE CONDITION, pre-registered now
+
+> **If the ema has not returned BELOW 0.010804 by the time the anneal starts at
+> sb600, the extension found nothing.**
+
+The anneal **consolidates what exists; it does not discover.** Writing this down
+now, at sb420, so it cannot be quietly relaxed at sb600 when there is 10 hours
+of GPU sunk into the run — which is exactly the pressure that produced the
+rule-stretching the POC study had to pre-commit against.
+
+**Box healthy:** 9193 MB available, swap recovered to 263 MB, load 3.67.
+Studies: 41 at **ahead=7**, richer-representation at ahead=4.
