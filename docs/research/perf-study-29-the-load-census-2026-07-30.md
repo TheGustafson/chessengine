@@ -12,6 +12,13 @@ at **−150 to −375 cycles/node**, and **refused to narrow it** because nobody
 had split the fold kernels' loads into accumulator streaming versus weight
 rows. Get that number, then act on it.
 
+**Gates, all three reproduced after every change in this study:**
+`Bench: 587683` (`tools/perf29/benchpin29.sh`), eval hash
+`5ca978e012da1bb0…0098b38` and d13 nodes `1922947`
+(`tools/perf26/nnuepins26.sh`, x86-64-v3 / AVX2 backend). Everything this
+study lands is behind an off-by-default feature; the shipped build is
+untouched.
+
 ---
 
 ## ★ HEADLINE
