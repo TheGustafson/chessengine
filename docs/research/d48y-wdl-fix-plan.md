@@ -4237,3 +4237,51 @@ rewritten), the expectation that this is **node-identical so Bench 587683 must
 reproduce bit-for-bit**, a warning that study 32's merge will move the two NNUE
 pins but not Bench, and the contention protocol with study 33's ~1.9x inflation
 cited as the reason it exists.
+
+## Tick 2026-07-30 ~06:00 — THE STANDING PROFILE LIST IS NOW STALE
+
+**D49 sb168/400**, active. Heldout 0.012485 @ sb160 (ema 0.011917), sb170 due.
+**Box:** 8166 MB available, load 5.10, 166 GB disk, no `perf`/`fastchess`.
+
+**Studies:** 32 ahead=**15** (merge progressing, +2 since resume, clean),
+34 ahead=0 dirty=11 (working, nothing committed yet), 35 ahead=0 (just started).
+
+### The correction — the tick context's profile numbers no longer describe the engine
+
+The standing directive lists as unexplored:
+`i16_deltas_into 13.14%, finny_refresh_into 9.15%, forward_into 8.77%,
+init_quiets 6.35%, current_full 3.28%, search::NonPv 19.90%`, plus
+"65.75% of cache misses are in the three accumulator-fold kernels".
+
+**Two things landed tonight invalidate parts of that:**
+
+1. **`search::<NonPv>` 19.90% is NOT a search cost — study 33 (merged,
+   `265de05`).** Under PGO only **32.87%** of that symbol is search's own code.
+   The rest is inlined callees: `do_move` **26.12%**, `next_move` 6.38%,
+   `legal` 4.96%, `all_threats` 4.55%, `undo_move` 3.56%, TT `probe` 3.17%,
+   `correction_value` 2.91%, `see_ge` 2.79%. **Treating 19.90% as one
+   optimisable region is the error study 28 made.** The real item under it is
+   `do_move` at 198.4 cycles/node — which is exactly what study 35 is now
+   attacking.
+
+2. **The accumulator-fold miss share is being changed under us by study 32.**
+   Its i8 HalfKA transformer measured **−6.5% L1d misses/node and −17.4%
+   load-stalls/node** engine-wide (8/8 rounds, null-cleared 91x and 10.4x). The
+   "65.75% of cache misses in the three fold kernels" figure predates it. Once
+   study 32's merge lands, **the profile must be re-taken before any new target
+   is ranked off these numbers.**
+
+**Consequence for the loop:** after study 32 merges, the correct next move is a
+**fresh PGO profile with DWARF inline-frame decomposition** (study 33 left the
+tooling for exactly this: `tools/perf33/inline33.py`, `pernode33.py`) rather
+than commissioning another study off the stale list. Ranking targets from a
+pre-i8, symbol-region profile would repeat study 28's mistake with extra steps.
+
+### Still no games — and the reason is unchanged
+
+D49 is at 42% of schedule. The heldout curve is the better trend instrument at
+this stage (standing note: heldout beats 100-game matches for TREND), and it is
+still descending monotonically with no plateau. A self-comparison screen
+(sb168 vs sb100) would be **redundant with the heldout**; the screen that
+actually matters is **vs D48X after the cosine**, sb250+ at the earliest and
+sb400 for the real answer.
