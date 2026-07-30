@@ -8,15 +8,13 @@ fn cenn_v2_round_trip_and_evaluate() {
     use chessengine::eval::nnue::sota_context::SotaContext;
     use chessengine::eval::nnue::sota_features::{ACC, HALFKA_DIMS, THREAT_DIMS};
     use chessengine::eval::nnue::sota_head::{
-        BUCKETS, L1, L1Biases, L1Weights, L2, L2Biases, L2Weights, L3, L3Weights, SotaHead,
+        BUCKETS, FtScale, L1, L1Biases, L1Weights, L2, L2Biases, L2Weights, L3, L3Weights, SotaHead,
     };
     use chessengine::eval::nnue::sota_loader::{self, SotaNetwork};
 
     // Build a deterministic synthetic net (same as the unit tests, but
     // constructed directly since the test fixture is pub(crate)).
-    let halfka_weights: Aligned<i16> = (0..HALFKA_DIMS * ACC)
-        .map(|i| (i % 11) as i16 - 5)
-        .collect();
+    let halfka_weights: Aligned<i8> = (0..HALFKA_DIMS * ACC).map(|i| (i % 11) as i8 - 5).collect();
     let ft_bias: Aligned<i16> = (0..ACC).map(|i| (i % 5) as i16 - 2).collect();
     let threat_weights: Aligned<i8> = (0..THREAT_DIMS * ACC).map(|i| (i % 9) as i8 - 4).collect();
     let l1_weights: L1Weights = (0..BUCKETS * L2 * L1)
@@ -51,6 +49,7 @@ fn cenn_v2_round_trip_and_evaluate() {
             l3_wdl_weights: None,
             l3_wdl_biases: None,
             skip_weights: None,
+            ft_scale: FtScale::from_flat_iter(std::iter::repeat_n(1i16, ACC)),
             network_scale: 380,
         },
     };

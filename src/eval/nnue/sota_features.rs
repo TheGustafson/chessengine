@@ -1049,8 +1049,8 @@ mod tests {
 
     /// A tiny synthetic HalfKA weight set: all-ones columns, so an accumulator
     /// neuron equals `bias + (#active features)` — and #active == piece count.
-    fn ones_halfka() -> (Vec<i16>, Vec<i16>) {
-        let weights = vec![1i16; HALFKA_DIMS * ACC];
+    fn ones_halfka() -> (Vec<i8>, Vec<i16>) {
+        let weights = vec![1i8; HALFKA_DIMS * ACC];
         let bias: Vec<i16> = (0..ACC).map(|j| (j % 5) as i16).collect();
         (weights, bias)
     }
@@ -1077,17 +1077,21 @@ mod tests {
     #[test]
     fn refresh_pst_stride_and_king_feature() {
         let board = Board::from_fen(crate::fen::START_FEN).unwrap();
-        let mut w = vec![0i16; HALFKA_DIMS * ACC];
+        let mut w = vec![0i8; HALFKA_DIMS * ACC];
         let bias: Vec<i16> = (0..ACC).map(|j| (j % 7) as i16).collect();
 
         let ksq = board.king_square(Color::White);
         let king_feat = halfka_index(Color::White, wk(), ksq, ksq);
+        // A per-lane ramp that still fits i8 — the point of the test is that
+        // lane `j` of the king row lands in lane `j` of the accumulator (the
+        // row STRIDE), and `j % 127` is as distinguishing as `j` was while
+        // staying inside the i8 table the transformer now holds.
         for j in 0..ACC {
-            w[king_feat * ACC + j] = j as i16;
+            w[king_feat * ACC + j] = (j % 127) as i8;
         }
         let acc = refresh_pst(&w, &bias, &board, Color::White);
         for (j, &v) in acc.iter().enumerate() {
-            assert_eq!(v, bias[j] + j as i16, "neuron {j}");
+            assert_eq!(v, bias[j] + (j % 127) as i16, "neuron {j}");
         }
     }
 
@@ -1151,6 +1155,9 @@ mod tests {
             l3_wdl_weights: None,
             l3_wdl_biases: None,
             skip_weights: None,
+            ft_scale: crate::eval::nnue::sota_head::FtScale::from_flat_iter(std::iter::repeat_n(
+                1i16, ACC,
+            )),
         };
         let piece_count = board.all_occupancy().count() as usize;
         let (cp, _sigma, _wdl) = head.forward(

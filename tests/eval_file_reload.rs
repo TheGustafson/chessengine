@@ -12,14 +12,14 @@
 use chessengine::eval::nnue::{
     self,
     sota_features::{ACC, HALFKA_DIMS},
-    sota_head::{BUCKETS, L1, L2, L3, SotaHead},
+    sota_head::{BUCKETS, FtScale, L1, L2, L3, SotaHead},
     sota_loader::{SotaNetwork, serialize_v2},
 };
 
 /// A minimal valid no-threats net; `scale` differentiates file contents.
 fn tiny_net(scale: i32) -> SotaNetwork {
     SotaNetwork {
-        halfka_weights: vec![0i16; HALFKA_DIMS * ACC].into(),
+        halfka_weights: vec![0i8; HALFKA_DIMS * ACC].into(),
         ft_bias: vec![0i16; ACC].into(),
         threat_weights: Vec::new().into(),
         psqt_weights: Vec::new().into(),
@@ -35,6 +35,7 @@ fn tiny_net(scale: i32) -> SotaNetwork {
             l3_wdl_weights: None,
             l3_wdl_biases: None,
             skip_weights: None,
+            ft_scale: FtScale::from_flat_iter(std::iter::repeat_n(1i16, ACC)),
             network_scale: scale,
         },
     }

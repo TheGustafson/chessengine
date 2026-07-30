@@ -681,12 +681,18 @@ mod tests {
 
     #[test]
     fn mixed_transformer_scales_are_normalized_before_sum() {
-        assert_eq!(merge_transformers(0, 64), 255);
-        assert_eq!(merge_transformers(255, -64), 0);
-        assert_eq!(merge_transformers(100, 16), 164);
-        assert_eq!(merge_transformers(100, -16), 36);
-        assert_eq!(merge_transformers(250, 2), 255);
-        assert_eq!(merge_transformers(5, -2), 0);
+        assert_eq!(merge_transformers(0, 64, 1), 255);
+        assert_eq!(merge_transformers(255, -64, 1), 0);
+        assert_eq!(merge_transformers(100, 16, 1), 164);
+        assert_eq!(merge_transformers(100, -16, 1), 36);
+        assert_eq!(merge_transformers(250, 2, 1), 255);
+        // The i8 HalfKA scale (perf study 32): a reduced-frame lane of 60 at
+        // scale 4 is 240 in the FT_QUANT frame, so the merge must clamp the
+        // SCALED value, not the stored one.
+        assert_eq!(merge_transformers(60, 0, 4), 240);
+        assert_eq!(merge_transformers(60, 8, 4), 255);
+        assert_eq!(merge_transformers(-60, 8, 4), 0);
+        assert_eq!(merge_transformers(5, -2, 1), 0);
     }
 
     #[test]
@@ -706,6 +712,10 @@ mod tests {
 
     /// A deterministic synthetic head + inputs (no Reckless weights — this is a
     /// transcription regression guard, not a strength net).
+    /// The identity HalfKA scale: what a synthetic net (whose weights all fit
+    /// i8 unscaled) loads with, so these tests exercise the pre-study-32 frame.
+    const UNIT_SCALE: [i16; L1] = [1; L1];
+
     fn synth_head() -> SotaHead {
         let l1w: Vec<i8> = (0..BUCKETS * L2 * L1)
             .map(|i| ((i as i32 * 7 % 61) - 30) as i8)
@@ -732,6 +742,7 @@ mod tests {
             l3_wdl_weights: None,
             l3_wdl_biases: None,
             skip_weights: None,
+            ft_scale: FtScale::from_flat_iter(std::iter::repeat_n(1i16, L1)),
         }
     }
 
@@ -761,14 +772,14 @@ mod tests {
         pst[0][H] = 200;
         threat[0][H] = 16; // rescaled to 64, so right sum = 264 → clamp 255
         let mut ft = [0u8; L1];
-        activate_ft(&pst, &threat, Color::White, &mut ft);
+        activate_ft(&pst, &threat, &UNIT_SCALE, Color::White, &mut ft);
         // (150 * 255) >> 9 = 38250 >> 9 = 74
         assert_eq!(ft[0], 74, "pairwise clamp+shift");
         // a negative sum clamps to 0 → product 0
         let mut pst2 = [[0i16; L1]; 2];
         pst2[0][1] = -500;
         let mut ft2 = [0u8; L1];
-        activate_ft(&pst2, &threat, Color::White, &mut ft2);
+        activate_ft(&pst2, &threat, &UNIT_SCALE, Color::White, &mut ft2);
         assert_eq!(ft2[1], 0, "negative clamps to 0");
     }
 
@@ -779,7 +790,7 @@ mod tests {
         let head = synth_head();
         let (pst, threat) = synth_accs();
         let mut ft = [0u8; L1];
-        activate_ft(&pst, &threat, Color::White, &mut ft);
+        activate_ft(&pst, &threat, &UNIT_SCALE, Color::White, &mut ft);
         let mut nnz = [0u16; L1 / 4];
         let count = find_nnz(&ft, &mut nnz);
         let bucket = 3;

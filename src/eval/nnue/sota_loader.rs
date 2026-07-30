@@ -1015,8 +1015,11 @@ pub(crate) mod tests {
         let small_i8 = |prng: &mut Prng| -> i8 { (prng.rand64() % 121) as i8 - 60 };
         let small_f32 = |prng: &mut Prng| -> f32 { ((prng.rand64() % 201) as f32 - 100.0) * 0.01 };
 
-        let halfka_weights: Aligned<i16> = (0..HALFKA_DIMS * ACC)
-            .map(|_| small_i16(&mut prng))
+        // Small enough that every column's scale comes out 1, so the synthetic
+        // net's reduced accumulator frame IS the FT_QUANT frame and the round
+        // trip is exact (perf study 32).
+        let halfka_weights: Aligned<i8> = (0..HALFKA_DIMS * ACC)
+            .map(|_| small_i8(&mut prng))
             .collect();
         let ft_bias: Aligned<i16> = (0..ACC).map(|_| small_i16(&mut prng)).collect();
         let threat_weights: Aligned<i8> = (0..THREAT_DIMS * ACC)
@@ -1051,6 +1054,7 @@ pub(crate) mod tests {
                 l3_wdl_weights: None,
                 l3_wdl_biases: None,
                 skip_weights: None,
+                ft_scale: sota_head::FtScale::from_flat_iter(std::iter::repeat_n(1i16, ACC)),
             },
         }
     }
@@ -1303,7 +1307,7 @@ pub(crate) mod tests {
     #[test]
     fn payload_len_sanity() {
         // With threats: the expected payload is the sum of all tensor byte sizes.
-        let expected = HALFKA_DIMS * ACC * 2  // halfka i16
+        let expected = HALFKA_DIMS * ACC * 2  // halfka i16 ON DISK (i8 in memory)
             + ACC * 2                         // bias i16
             + THREAT_DIMS * ACC               // threats i8
             + BUCKETS * L2 * L1               // l1w i8

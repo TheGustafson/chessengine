@@ -1,0 +1,8 @@
+/home/nick/projects/chessengine/.claude/worktrees/agent-a6205b2309e5cc90c/target32/debug/deps/eval_symmetry-52cbd9dab2627215.d: tests/eval_symmetry.rs tests/common/mod.rs
+
+/home/nick/projects/chessengine/.claude/worktrees/agent-a6205b2309e5cc90c/target32/debug/deps/libeval_symmetry-52cbd9dab2627215.rmeta: tests/eval_symmetry.rs tests/common/mod.rs
+
+tests/eval_symmetry.rs:
+tests/common/mod.rs:
+
+# env-dep:CARGO_MANIFEST_DIR=/home/nick/projects/chessengine/.claude/worktrees/agent-a6205b2309e5cc90c

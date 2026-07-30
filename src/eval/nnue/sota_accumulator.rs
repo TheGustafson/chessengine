@@ -734,9 +734,9 @@ mod tests {
     use crate::movegen::generate_legal;
     use crate::moves::MoveList;
 
-    fn weights() -> Vec<i16> {
+    fn weights() -> Vec<i8> {
         (0..HALFKA_DIMS * ACC)
-            .map(|i| ((i.wrapping_mul(17) % 251) as i16) - 125)
+            .map(|i| ((i.wrapping_mul(17) % 251) as i16 - 125) as i8)
             .collect()
     }
 

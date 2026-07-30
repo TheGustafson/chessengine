@@ -821,12 +821,12 @@ mod avx2 {
         unsafe { i8_deltas_into_inner(dst, src, weights, adds, subs) }
     }
 
-    fn i8_deltas(acc: &mut [i16; ACC], weights: &[i8], adds: &[usize], subs: &[usize]) {
+    pub(super) fn i8_deltas(acc: &mut [i16; ACC], weights: &[i8], adds: &[usize], subs: &[usize]) {
         // SAFETY: installed only after runtime AVX2 detection.
         unsafe { i8_deltas_inner(acc, weights, adds, subs) }
     }
 
-    fn i8_deltas_dual(
+    pub(super) fn i8_deltas_dual(
         acc: &mut [i16; ACC],
         out: &mut [i16; ACC],
         weights: &[i8],
@@ -1922,6 +1922,11 @@ mod avx512 {
 mod tests {
     use super::*;
 
+    /// The identity HalfKA scale (perf study 32): the kernel tests drive the
+    /// merge with weights that already sit in the FT_QUANT frame, so a scale of
+    /// 1 keeps them testing exactly what they tested before.
+    const UNIT_SCALE: [i16; ACC] = [1; ACC];
+
     #[test]
     fn dispatched_activate_matches_scalar_bitwise() {
         // Option D gate: the i16 pipeline must equal the scalar reference
@@ -1954,8 +1959,8 @@ mod tests {
             // zero — this test is what says every backend writes all of it.
             let mut want = [0xABu8; ACC];
             let mut got = [0x5Cu8; ACC];
-            scalar::activate(&mut want, &pst, &threat, stm);
-            activate(&mut got, &pst, &threat, stm);
+            scalar::activate(&mut want, &pst, &threat, &UNIT_SCALE, stm);
+            activate(&mut got, &pst, &threat, &UNIT_SCALE, stm);
             assert_eq!(want, got, "stm {stm}");
         }
     }
@@ -1996,12 +2001,8 @@ mod tests {
     }
 
     #[test]
-    fn dispatched_i16_and_i8_match_scalar_at_wrapping_extremes() {
-        let mut i16_weights = vec![0i16; 7 * ACC];
+    fn dispatched_i8_folds_match_scalar_at_wrapping_extremes() {
         let mut i8_weights = vec![0i8; 7 * ACC];
-        for (i, value) in i16_weights.iter_mut().enumerate() {
-            *value = (i as u16).wrapping_mul(40503) as i16;
-        }
         for (i, value) in i8_weights.iter_mut().enumerate() {
             *value = (i as u8).wrapping_mul(173) as i8;
         }
@@ -2010,9 +2011,9 @@ mod tests {
         let subs = [3, 5, 0, 3];
 
         let mut reference = seed;
-        scalar::i16_deltas(&mut reference, &i16_weights, &adds, &subs);
+        scalar::i8_deltas(&mut reference, &i8_weights, &adds, &subs);
         let mut dispatched = seed;
-        apply_i16_deltas(&mut dispatched, &i16_weights, &adds, &subs);
+        apply_i8_deltas(&mut dispatched, &i8_weights, &adds, &subs);
         assert_eq!(dispatched, reference);
 
         let mut reference = [0i16; ACC];
@@ -2023,7 +2024,7 @@ mod tests {
     }
 
     #[test]
-    fn dispatched_i16_deltas_match_scalar_on_long_feature_lists() {
+    fn dispatched_i8_deltas_match_scalar_on_long_feature_lists() {
         // The wrapping-extremes test above runs 5 adds / 4 subs, which is the
         // incremental-update shape. The Finny fold is the other caller and it
         // arrives with feature lists an order of magnitude longer, where the
@@ -2033,9 +2034,9 @@ mod tests {
         // ranked item 10, prototyped on perf/i16-deltas-hoist) must stay
         // bit-exact across that boundary. Sizes below straddle it.
         const ROWS: usize = 11;
-        let mut weights = vec![0i16; ROWS * ACC];
+        let mut weights = vec![0i8; ROWS * ACC];
         for (i, value) in weights.iter_mut().enumerate() {
-            *value = (i as u16).wrapping_mul(40503) as i16;
+            *value = (i as u8).wrapping_mul(173) as i8;
         }
         let seed: [i16; ACC] = std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
         let adds: Vec<usize> = (0..240).map(|i| (i * 7) % ROWS).collect();
@@ -2048,14 +2049,14 @@ mod tests {
             (&adds[..0], &subs[..200]),
         ] {
             let mut reference = seed;
-            scalar::i16_deltas(&mut reference, &weights, a, s);
+            scalar::i8_deltas(&mut reference, &weights, a, s);
             let mut dispatched = seed;
-            apply_i16_deltas(&mut dispatched, &weights, a, s);
+            apply_i8_deltas(&mut dispatched, &weights, a, s);
             assert_eq!(dispatched, reference, "adds={} subs={}", a.len(), s.len());
         }
     }
 
-    /// Perf study 25 arm 1 gave `i16_deltas_into` four **shape-specialised**
+    /// Perf study 25 arm 1 gave `i8_deltas_into` four **shape-specialised**
     /// instantiations — `(adds.len(), subs.len())` ∈ {1,2}² — because
     /// `apply_dirty_directed` builds both lists in `[usize; 2]`. Those are the
     /// shapes the engine actually executes, and until this test NOTHING covered
@@ -2070,15 +2071,15 @@ mod tests {
     ///
     /// The empty shape is in the table on purpose: `sota_accumulator.rs`'s
     /// forward fold deletes its own copy special-case and relies on
-    /// `apply_i16_deltas_into(dst, src, w, &[], &[])` being `dst = src` lane for
+    /// `apply_i8_deltas_into(dst, src, w, &[], &[])` being `dst = src` lane for
     /// lane. A fast-path `return` on empty lists would be a silent stale-child
     /// bug in release, and this asserts the copy behaviour directly.
     #[test]
-    fn every_dispatched_i16_fold_shape_matches_scalar() {
+    fn every_dispatched_i8_fold_shape_matches_scalar() {
         const ROWS: usize = 7;
-        let mut weights = vec![0i16; ROWS * ACC];
+        let mut weights = vec![0i8; ROWS * ACC];
         for (i, value) in weights.iter_mut().enumerate() {
-            *value = (i as u16).wrapping_mul(40503) as i16;
+            *value = (i as u8).wrapping_mul(173) as i8;
         }
         let src: [i16; ACC] = std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
         // Distinct row indices per slot so a transposed arm cannot cancel.
@@ -2088,9 +2089,9 @@ mod tests {
             for ns in 0..=2 {
                 let (a, s) = (&adds[..na], &subs[..ns]);
                 let mut reference = src;
-                scalar::i16_deltas(&mut reference, &weights, a, s);
+                scalar::i8_deltas(&mut reference, &weights, a, s);
                 let mut dispatched = [0i16; ACC];
-                apply_i16_deltas_into(&mut dispatched, &src, &weights, a, s);
+                apply_i8_deltas_into(&mut dispatched, &src, &weights, a, s);
                 assert_eq!(dispatched, reference, "shape ({na}, {ns})");
                 if na == 0 && ns == 0 {
                     assert_eq!(dispatched, src, "the empty shape must be a pure copy");
@@ -2109,26 +2110,26 @@ mod tests {
     #[test]
     fn dual_kernel_writes_both_homes_identically_on_every_backend() {
         const ROWS: usize = 11;
-        let mut weights = vec![0i16; ROWS * ACC];
+        let mut weights = vec![0i8; ROWS * ACC];
         for (i, value) in weights.iter_mut().enumerate() {
-            *value = (i as u16).wrapping_mul(40503) as i16;
+            *value = (i as u8).wrapping_mul(173) as i8;
         }
         let seed: [i16; ACC] = std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
         let adds: Vec<usize> = (0..240).map(|i| (i * 7) % ROWS).collect();
         let subs: Vec<usize> = (0..200).map(|i| (i * 5 + 3) % ROWS).collect();
 
         #[allow(clippy::type_complexity)]
-        let mut backends: Vec<(&str, ApplyI16Fn, ApplyI16DualFn)> =
-            vec![("scalar", scalar::i16_deltas, scalar::i16_deltas_dual)];
+        let mut backends: Vec<(&str, ApplyI8Fn, ApplyI8DualFn)> =
+            vec![("scalar", scalar::i8_deltas, scalar::i8_deltas_dual)];
         #[cfg(target_arch = "x86_64")]
         {
             if std::arch::is_x86_feature_detected!("avx2") {
-                backends.push(("avx2", avx2::i16_deltas, avx2::i16_deltas_dual));
+                backends.push(("avx2", avx2::i8_deltas, avx2::i8_deltas_dual));
             }
             if std::arch::is_x86_feature_detected!("avx512f")
                 && std::arch::is_x86_feature_detected!("avx512bw")
             {
-                backends.push(("avx512", avx512::i16_deltas, avx512::i16_deltas_dual));
+                backends.push(("avx512", avx512::i8_deltas, avx512::i8_deltas_dual));
             }
         }
 
@@ -2138,7 +2139,7 @@ mod tests {
             (&adds[..0], &subs[..0]),
         ] {
             let mut reference = seed;
-            scalar::i16_deltas(&mut reference, &weights, a, s);
+            scalar::i8_deltas(&mut reference, &weights, a, s);
             for (name, single, dual) in &backends {
                 // The single-destination kernel is the same arithmetic, so it
                 // pins the dual against BOTH scalar and its own backend.
@@ -2255,10 +2256,19 @@ mod tests {
 
         for (name, kernels) in backends {
             let mut reference = seed;
-            scalar::i16_deltas(&mut reference, &i16_weights, &adds, &subs);
+            scalar::i8_deltas(&mut reference, &i8_weights, &adds, &subs);
             let mut got = seed;
-            (kernels.i16_deltas)(&mut got, &i16_weights, &adds, &subs);
-            assert_eq!(got, reference, "{name} i16_deltas");
+            (kernels.i8_deltas)(&mut got, &i8_weights, &adds, &subs);
+            assert_eq!(got, reference, "{name} i8_deltas");
+
+            let mut reference = seed;
+            let mut ref_out = [0i16; ACC];
+            scalar::i8_deltas_dual(&mut reference, &mut ref_out, &i8_weights, &adds, &subs);
+            let mut got = seed;
+            let mut got_out = [0i16; ACC];
+            (kernels.i8_deltas_dual)(&mut got, &mut got_out, &i8_weights, &adds, &subs);
+            assert_eq!(got, reference, "{name} i8_deltas_dual (acc)");
+            assert_eq!(got_out, ref_out, "{name} i8_deltas_dual (out)");
 
             for fixture in nnz_fixtures() {
                 let mut reference = [0u16; ACC / 4];
@@ -2274,24 +2284,12 @@ mod tests {
             }
 
             let mut reference = [0i16; ACC];
-            scalar::i16_deltas_into(&mut reference, &seed, &i16_weights, &adds, &subs);
-            let mut got = [0i16; ACC];
-            (kernels.i16_deltas_into)(&mut got, &seed, &i16_weights, &adds, &subs);
-            assert_eq!(got, reference, "{name} i16_deltas_into");
-
-            let mut reference = [0i16; ACC];
             scalar::i8_deltas_into(&mut reference, &seed, &i8_weights, &adds, &subs);
             let mut got = [0i16; ACC];
             (kernels.i8_deltas_into)(&mut got, &seed, &i8_weights, &adds, &subs);
             assert_eq!(got, reference, "{name} i8_deltas_into");
 
-            // The same two kernels on lists that straddle the retired CAP = 96.
-            let mut reference = [0i16; ACC];
-            scalar::i16_deltas_into(&mut reference, &seed, &i16_weights, &long_adds, &long_subs);
-            let mut got = [0i16; ACC];
-            (kernels.i16_deltas_into)(&mut got, &seed, &i16_weights, &long_adds, &long_subs);
-            assert_eq!(got, reference, "{name} i16_deltas_into (long lists)");
-
+            // The same kernel on lists that straddle the retired CAP = 96.
             let mut reference = [0i16; ACC];
             scalar::i8_deltas_into(&mut reference, &seed, &i8_weights, &long_adds, &long_subs);
             let mut got = [0i16; ACC];
@@ -2306,9 +2304,9 @@ mod tests {
 
             for stm in 0..2 {
                 let mut reference = [0u8; ACC];
-                scalar::activate(&mut reference, &pst, &threat, stm);
+                scalar::activate(&mut reference, &pst, &threat, &UNIT_SCALE, stm);
                 let mut got = [0u8; ACC];
-                (kernels.activate)(&mut got, &pst, &threat, stm);
+                (kernels.activate)(&mut got, &pst, &threat, &UNIT_SCALE, stm);
                 assert_eq!(got, reference, "{name} activate stm {stm}");
             }
 
@@ -2429,9 +2427,9 @@ mod tests {
         }
         for stm in 0..2 {
             let mut reference = [0u8; ACC];
-            scalar::activate(&mut reference, &pst, &threat, stm);
+            scalar::activate(&mut reference, &pst, &threat, &UNIT_SCALE, stm);
             let mut dispatched = [0u8; ACC];
-            activate(&mut dispatched, &pst, &threat, stm);
+            activate(&mut dispatched, &pst, &threat, &UNIT_SCALE, stm);
             assert_eq!(dispatched, reference);
         }
     }
