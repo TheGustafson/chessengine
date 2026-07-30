@@ -3209,3 +3209,91 @@ without re-deriving the scale that goes with it.** Hypothesis, not yet isolated 
 **Deferred the sb80 screen deliberately.** Packing and scale-checking cost
 minutes; a 1500-game screen would have cost 15 and produced a number about the
 wrong thing.
+
+## ★★★ STUDIES 26 & 27 — and the SF accumulator contradiction is RESOLVED
+
+### ★ THE ACCUMULATOR QUESTION: study 22 read the OLDER revision, study 26 is right
+
+| revision | date | accumulator |
+|---|---|---|
+| `sf_18` | 2026-01-31 | **TWO** separate stacks (`psq_accumulators` + `threat_accumulators`) |
+| **`eca43a97`** | **2026-07-06** | **ONE MERGED** — `acc[k] = vec_add_16(acc[k], vec_convert_8_16(column[k]))` |
+
+`eca43a97` is **223 commits NEWER**. **So Stockfish moved FROM two stacks TO one
+merged accumulator.** Study 22 read `sf_18`, concluded "SF has two, our design is
+fine", and closed the merge. **Study 26 cited `eca43a97:nnue_accumulator.cpp`
+correctly and I verified it.** The direction of travel is TOWARD merging.
+
+**But study 22's blocker was a MEASUREMENT, not a citation, and it stands:**
+merge saves ≤157 i/n, costs **+872 i/n** in refresh-trigger union. Study 26 hits
+the SAME wall from the other side — "blocked on the Finny cache key, which cannot
+cache a threat-contaminated accumulator". Two studies, opposite approaches, one
+obstacle. **What changed: SF evidently solved it, so it is solvable.** Study 26
+estimates 60–120 i/n for the merge.
+
+### Study 26 — −55.61 i/n (−0.959%), −6.31 br/n
+
+**Ran the raw-pointer probe FIRST as instructed: −21.93 i/n.** Study 25's kill
+line was "−20 or better kills it" — survives by 1.93, but study 25's own
+prediction of **−35 to −60 is REFUTED by its own probe**.
+
+| arm | Δ i/n | Δ br/n |
+|---|---|---|
+| a1 `Aligned::deref` → `get_unchecked` (invariant argued + debug-checked) | −8.30 | −2.98 |
+| a2 head tables → `Blocks<T, N, BUCKETS>` | −17.94 | −3.33 |
+| a3 `l3_dot` → dispatched SIMD kernel | **−22.35** | 0.00 |
+| a4 two never-loaded heads `#[cold] #[inline(never)]` | −7.03 | 0.00 |
+
+`forward_into`: **6114 → 3655 bytes, 1274 → 774 instructions, 69 → 19 branches.**
+
+**a2 BEAT THE UNSAFE PROBE BY 4.31 i/n WITH NO `unsafe`.** Against a runtime
+length LLVM could not fold the bounds check; against the CONSTANT `BUCKETS` it
+discharges it statically, because `OUTPUT_BUCKETS_LAYOUT` is a const table whose
+entries are all < 8. **Stating the shape in the type let the compiler prove a
+bound it had been re-testing five times per eval.**
+
+**a3 was INVISIBLE to symbol profiling** — one source line (`propagate_l3`'s FMA)
+was 4.56% of `forward_into` for a *32-element* dot, compiled to sixteen 2-lane
+`vfmadd213ps` fed by sixteen `vmovsd` pair-loads. **Found only by joining
+`objdump -d -l` to `perf annotate`.**
+
+**It closed a hole in OUR GATE:** `tools/perf26/nnuepins26.sh` reproduces both
+NNUE pins from an **`x86-64-v3`** build. The gate builds v3, so it exercises the
+**AVX2 backend that a `target-cpu=native`-only study never runs** — a gap open
+through every prior study. Its `probe26.sh` also deletes the thin-LTO/CGU=4
+override: at CGU=1 the inert-source null is **0.000 i/n / 0.000 br/n**.
+
+### Study 27 — −1.087% instructions, −0.972% branches, and a USEFUL NEGATIVE
+
+I aimed it at branch misses. **They did not improve** — +0.747% inside a null of
+[−0.770, +0.892]. It says so plainly. **Two attributions I handed it are
+RETRACTED with measurements:**
+
+- **`do_move`'s capture test is NOT a mispredict source.** Arm 1b genuinely
+  removes the branch (verified `cmove`/unconditional load/`sbb` in the
+  disassembly) and misses do not move. The picker emits all captures then all
+  quiets, so the test is a run of 1s then a run of 0s. **And `do_move` is 5.49%
+  of engine misses, not the 7.22% I passed on.**
+- **In the sort it is the WALK, not the filter** (~41% vs ~11% of `init_quiets`'
+  misses). That inverted its plan and produced arm 2 instead.
+
+| arm | Δ |
+|---|---|
+| a5 `#[inline(always)]` on `next_move` | **−37.61 i/n, −6.20 br/n** |
+| a2 `ExtMove` padding hole closed, `value` to offset 0 | −21.11 i/n, −8.16 L1d miss/n |
+| a3 stage transitions as literals | −2.97 i/n |
+| a4 state stack slab + cursor (study 24's named spelling) | −1.50 i/n |
+
+**a5 unparked study 23's top remainder by measuring the DENOMINATOR:** total L1d
+*loads* fall 4.1/node, so the "+7.5 misses" was misses without loads — real
+figure ~+2.4.
+
+**a2 found a DOC that was wrong:** design/02 §3.8 claimed 8-byte `ExtMove`s "move
+as single u64 loads/stores"; an implicit padding hole made that illegal, so every
+sort shift step was **2 loads + 2 stores**. Now 1 + 1. Doc amended.
+
+**A constraint I inherited and passed on was DISSOLVED:** the two-pass split of
+`partial_insertion_sort` **IS** provably tail-permutation-exact (insertions only
+write `head[q..=se]`; the next swap targets `se+1`). Study 23's "no reordering
+survives node identity" was wrong. What actually kills it is +25 i/n to buy the
+wrong 11%.
