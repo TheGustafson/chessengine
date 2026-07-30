@@ -5698,3 +5698,41 @@ with a paired null before it is quoted as a headline. What it does establish is
 that the individual per-study deltas do NOT aggregate naively, and that
 **time-to-depth is the end-to-end instrument** — not instructions, which the i8
 trade inverts, and not cycles, which cannot resolve anything here.
+
+## Tick 2026-07-30 ~18:15 — the FIRST fair D49-vs-canonical trajectory point
+
+**D49 sb278/400** (70% of schedule), 168k pos/s. Box idle (load 3.99, no
+`perf`/`cargo`/`fastchess`), study 38 building instruments rather than
+measuring — so this was the window.
+
+**Launched `d49-traj`:** D49 sb270-ema **@756** vs **canonical D48X @600**,
+1466 games @ 25000 nodes, conc=6 (deliberately low, leaving cores for study 38).
+
+**This is the first comparison of the night that is fair to BOTH sides.** Every
+earlier D49 number was against canonical at scale 400 — which we have since
+measured to be 14.78 +/- 5.45 Elo below that same net at 600. Comparing at each
+net's own optimum is the protocol I wrote down two ticks ago, and this is it
+being followed rather than merely recorded:
+
+| side | scale | eval stdev |
+|---|---:|---:|
+| D49 sb270 | 756 | 421.8 |
+| D48X canonical | 600 | 610.3 |
+
+*(Note the spreads are NOT matched — 421.8 vs 610.3 — and that is deliberate.
+The transferable-target hypothesis was refuted; each net is at ITS OWN measured
+optimum, which is what a fair comparison requires.)*
+
+**Why run it at 70% rather than wait for sb400:** if D49 is catastrophically
+behind, four more hours of training does not fix it and we want to know now. If
+it is close, that is the strongest evidence yet that the from-scratch recipe
+works. Either way it is a trajectory point on the actual research question, and
+the directive asks for periodic game evaluation.
+
+**Export sanity:** checkpoint `d49-1280-sb270-ema-raw.bin`, threat requant at
+scale 256 gives **1.57% error, 0 weights clipped**, packed CEN5 at
+`network_scale=756`, payload checksum `0x8399aa2108333932`.
+
+**Heldout still shows the flat step** (sb260 = sb270 = 0.011472) with the EMA
+still falling (0.011189). sb280 is due shortly and will be the first evidence on
+whether the flat reading was noise or the start of saturation.
