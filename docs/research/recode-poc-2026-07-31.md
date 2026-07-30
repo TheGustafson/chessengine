@@ -79,13 +79,26 @@ together with Recode-T would bring the whole input machinery near L3 reach.
 
 ### Dose response (R'=4096, 5.2 MB table)
 
-An interleaved battery (both pairs in the same rounds, same box conditions)
-gives the clean comparison: see the table below, filled from
-`ab-dose`. A first non-interleaved 10-round battery at R'=4096 — which ran
-while a k-means job was hammering the box, i.e. a natural high-pressure
-regime — showed **10/10 rounds for B, paired median −4.81%** raw.
+An interleaved 10-round battery (both pairs run inside the same rounds, so
+both doses see the same box conditions; startup-subtracted; instruction
+parity +0.0000% for both pairs; node identity single-total for both):
 
-<!-- DOSE-TABLE -->
+| dose | table | rounds B faster | pairwise | paired median Δ | worst / best round |
+|---|---|---|---|---|---|
+| R'=8192 | 10.5 MB | 6/10 | 56/100 | −0.45% | +12.46% / −3.18% |
+| R'=4096 | 5.2 MB | 8/10 | 79/100 | −1.85% | +4.27% / −8.99% |
+
+The R'=8192 column is dragged by one +12.5% interference outlier (excluding
+it, the paired median is −1.90%); R'=4096 trends slightly better, consistent
+with its table fitting deeper into L3, but the two doses are within each
+other's noise — **most of the win is already collected at 8192**. A separate
+non-interleaved 10-round battery at R'=4096, which happened to run while a
+k-means job was hammering the box (a natural high-pressure regime), showed
+**10/10 rounds for B, paired median −4.81%** raw.
+
+Across every 100k-node battery in this study the sign count is **32/42
+rounds for the smaller table (sign-test p ≈ 4·10⁻⁴)**, with per-battery
+paired medians between −0.45% and −4.8% depending on load.
 
 ### What phase 1 does NOT show
 
