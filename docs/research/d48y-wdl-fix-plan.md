@@ -3061,3 +3061,42 @@ confirmed both on PGO binaries (−120.1 and −113.3 i/n).
 truncates SILENTLY — no `test result` line, which reads exactly like a hang.**
 `RUST_TEST_THREADS=3` + 4 GB gives 799 passed / 0 failed. Worth knowing before
 diagnosing a "hung" gate.
+
+### ★ THE NPS RATIO GAIN IS MOSTLY BOX DRIFT — do not quote 13.3%
+
+Three paired ARCHON-vs-SF measurements today, same tool, same protocol:
+
+| when | ARCHON | SF | ratio |
+|---|---|---|---|
+| morning | 0.951 | **1.916** | 0.496x |
+| after 18–20 | 0.985 | **1.809** | 0.545x |
+| after 21–25 | 0.969 | **1.724** | 0.5619x |
+
+Read naively that is **+13.3% relative**. **It is not our gain.** Look at SF's
+column: it fell **10%** across the session while never changing a byte. ARCHON's
+own absolute moved **0.951 → 0.969, +1.9%**.
+
+Within a run the alternating design controls for load. But the two engines have
+very different memory footprints and need not respond identically to
+contention, so **comparing ratios across runs hours apart is NOT clean either**.
+This tick's spreads were 8.3%/6.9% with a `rustc` live, and the 0.545 → 0.5619
+step is SMALLER than that spread — not separately resolvable at all.
+
+**WHAT TO QUOTE: −7.97% instructions/node** (7358.4 → 6771.7, node-identical,
+PGO, CGU=1, against a **0.000%** null). At constant IPC that implies ~+8.7% nps,
+which is consistent with ARCHON's own absolutes once the busier box is allowed
+for.
+
+**The "how far from Stockfish" question needs a quiet box with the trainer
+PAUSED.** Any cross-engine number taken now is contaminated. Recording this
+because "13.3% faster vs Stockfish" is exactly the sort of figure that becomes a
+headline and then a premise.
+
+### Tick — D49 at sb74, studies 26/27 building
+
+Heldout EMA R²: 0.8269 (sb10) → 0.8526 (20) → 0.8662 (40) → 0.8706 (60) →
+**0.8723 (sb70)**. D48X annealed is 0.8815; D48Y2 final 0.8906. **18.5% of budget
+spent.**
+
+Studies 26 (`Aligned::deref`, crate-wide bounds check) and 27 (search branch
+misses) are 15 min in, 2 rustc live, memory 8.1 GB free at zero pressure.
