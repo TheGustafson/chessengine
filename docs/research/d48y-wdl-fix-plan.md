@@ -7649,3 +7649,47 @@ brief told it to wait for this number.
 **Live:** `identity2` sb7; **`d49x` correctly queued** on the GPU (921 MiB free
 vs its 7000 MiB threshold); **study 41** ahead=3, measuring the hot footprint;
 **richer-representation study** started. Box 9263 MB, load 4.36 — healthy.
+
+## BUG I INTRODUCED: `d49x`'s GPU threshold was unreachable — fixed, extension now running
+
+I queued the extension to wait for **>7000 MiB free GPU**. The card is **8188
+MiB total** and the desktop permanently holds **~1250 MiB** across three
+processes, so **free peaks at 6931**. *The condition could never be met.* The
+extension would have waited out its full 6-hour timeout and expired silently —
+and I would have kept reporting it as "queued, waiting for GPU" the entire time,
+which is exactly what I did report for several ticks.
+
+**Caught by checking the actual number against the threshold** rather than
+accepting "waiting for GPU" as a healthy state. Lowered to **5500** and
+relaunched; it resumed immediately:
+
+    [pump d49-1280] RESUME from sb400 (fresh Adam transient)
+    [pump] heldout scored in the RUN frame a=175.1 b=71.6
+
+**The `warmup_superbatches=0.25` I set covers exactly that transient** — the
+trainer's own comment records that resumes hit full LR with empty Adam moments
+and ~0.25sb smooths it. That setting was chosen for this reason and the log
+confirms the condition it was chosen for.
+
+*Lesson: a wait-loop whose condition is never satisfiable is indistinguishable
+from a wait-loop that is patiently waiting. Thresholds against hardware limits
+need the limit checked, not assumed.*
+
+## `identity2` COMPLETE — the noise floor is 17e-6
+
+| run | sb12 |
+|---|---:|
+| identity | 0.006410 |
+| **identity2** (same config, different seed) | **0.006427** |
+| **run-to-run noise** | **17e-6** |
+
+Confirms the ±20e-6 working estimate. Against it:
+
+| comparison | margin | vs noise |
+|---|---:|---:|
+| kmeans vs random | 218e-6 | **~13x** |
+| kmeans vs identity | 165e-6 | **~10x** |
+
+**Both panel conclusions are secure.** The learned code decisively beats a
+content-free partition; and it decisively costs eval against identity. The
+compression does not ship, and the representation finding stands.
