@@ -3006,3 +3006,58 @@ fails 3/3.
 2. `Aligned::deref`'s bounds check — one `get_unchecked`, affects every weight table.
 3. **47% of the HalfKA fold's vector work is pure parent→child copy** (80 of ~171 ops for 2.27 rows).
 4. `make_move_with` spills the whole 168 B `StateInfo` and reloads across a never-taken realloc — **72% of the symbol's sampled instructions on those two reloads**; mechanism proven, 24's fix failed, next spelling named (preallocated slab + cursor).
+
+### ★★ THE CGU SPLIT — probe-frame instruction numbers carry a caveat, PGO ones do not
+
+Study 23 found that **at `CODEGEN_UNITS=4`, `instructions:u` is ALSO unusable**:
+its arm 4 read **+48 i/n while its own loop body shrank 189 → 102 static
+instructions**, and the per-symbol diff blamed `unmake_move` for **+382 i/n on
+untouched code**. At CGU=1 the inert-source-change null is **275 instructions in
+30.0 G** (~0.001%).
+
+**I verified which frame is which.** `Cargo.toml`'s release profile is
+`lto = "fat"`, `codegen-units = 1`. But the probe scripts override it —
+`probe20.sh`, `probe21.sh`, `probe25.sh`, `build22.sh`, `perf24/build24.sh` all
+carry:
+
+```
+CARGO_PROFILE_RELEASE_LTO=thin CARGO_PROFILE_RELEASE_CODEGEN_UNITS=4
+```
+
+| frame | CGU / LTO | `instructions:u` trustworthy? |
+|---|---|---|
+| study PROBE frames | 4 / thin | **NO** — study 23's evidence |
+| shipped, PGO, and MY panels | **1 / fat** | **yes**, ~0.001% null |
+
+**So the studies' probe-frame instruction figures inherit this caveat, and my
+PGO verification panels do not.** That is a concrete argument for continuing to
+re-measure every claim on a PGO binary rather than relaying the study's own
+number — which is what caught study 21's scope confusion earlier tonight.
+
+Studies 18's and 19's headline deltas survive regardless: I independently
+confirmed both on PGO binaries (−120.1 and −113.3 i/n).
+
+### Study 25's follow-ups to my three warnings — all answered with measurement
+
+- **`git stash`**: it had used one (adjacent push/pop for a clippy count) and
+  proved no harm two ways — `git diff cf7cf46..HEAD -- src/` touches
+  `sota_simd.rs` and nothing else, and the eval hash is identical across every
+  probe from baseline to final, which foreign code would have moved.
+- **`#[repr(align)]`**: swept every struct in its four files —
+  `ThreatTables` 6280, `ThreatResolver` 24, `ThreatPosition` 80, `SkipLane` 48,
+  `HeadScratch` 1920 (already 64-aligned), `SotaHead` 296. **All multiples of 8,
+  so they address via `lea`+`shl`, never the `imul` that made a 7-byte
+  `ThreatDelta` cost 37.73 i/n. Clean negative — the defect does not recur.**
+- **"read the disassembly"**: three of its five negatives were exactly that
+  failure mode — `for t in 0..TILES` cost **+9.6 i/n** because LLVM keeps a real
+  induction variable and won't unroll; `as_chunks` bought −0.5 because
+  `Aligned::deref` is itself a bounds-checked slice; sized arrays flipped
+  `skip_dot_i8` out of line for +7 i/n until `#[inline(always)]`. **All caught by
+  `objdump`/`nm`, none by thinking harder.**
+
+### One more operational hazard
+
+**The sota test suite OOM-kills itself in a 3 GB cgroup at 16 test threads and
+truncates SILENTLY — no `test result` line, which reads exactly like a hang.**
+`RUST_TEST_THREADS=3` + 4 GB gives 799 passed / 0 failed. Worth knowing before
+diagnosing a "hung" gate.
