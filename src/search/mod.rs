@@ -4838,36 +4838,39 @@ impl Worker {
         let in_check = self.stack[cur].in_check;
         self.stack[cur].current_move = m;
         self.stack[cur].cont_hist = ContHistId::new(in_check, capture, moved_piece, m.to());
+        self.board
+            .make_move_with(m, gives_check, &mut TtPrefetch { tt });
         // NNUE accumulator maintenance (design/11 §3.4.4): record this move's
         // placement deltas into the child entry at `ply + 1` and mark it
         // uncomputed (the invalidation rule), so a sibling subtree can never
-        // reuse a stale accumulator across LMR/PVS re-searches.
+        // reuse a stale accumulator across LMR/PVS re-searches. A no-op — and no
+        // derivation cost at all — when NNUE is off, keeping the PSQT hot path
+        // and the depth-6 bench bit-identical.
         //
-        // Derived from the PRE-move board, so this must run before
-        // `make_move_with`. A no-op — and no `DirtyPiece::from_move` cost —
-        // when NNUE is off, keeping the PSQT hot path and the depth-6 bench
-        // bit-identical.
+        // Perf study 35: derived from the board AFTER the make, not before it.
+        // `DirtyPiece::from_move` re-derived the side to move, the mover
+        // (`piece_on(from)` + a panic edge) and the victim (`piece_on(to)`) —
+        // three facts `make_move_with` derives for its own Zobrist work and then
+        // STORES, two of them into the child `StateInfo` (`moved`/`captured`,
+        // put there by study 14 so `unmake_move` need not re-read them).
+        // `after_move` reads that store instead of the mailbox, which is why
+        // this is a load deletion rather than a code move.
         //
-        // Perf study 13 §5.1 MEASURED and REJECTED moving this construction
-        // into `make_move_with` behind the (previously unused) Hook C, which
-        // would have deleted the duplicate derivation of the mover, victim, ep
-        // capture square and castling rook geometry: **+41.5 i/n**, and +38.2
-        // for a second variant that re-derived the castling geometry inside the
-        // guarded block instead of carrying it in an `Option` local. Both were
-        // node- and eval-identical. The duplication is real; paying it out here
-        // where the register pressure is low is cheaper than paying it inside a
-        // 650-instruction function that is already spilling.
-        let dirty = self
-            .eval_ctx
-            .nnue_active()
-            .then(|| DirtyPiece::from_move(&self.board, m));
-        if let Some(dp) = dirty {
+        // It is also why it is not perf study 13 §5.1, which measured the
+        // OTHER way of removing the same duplication — building the record
+        // inside `make_move_with` behind Hook C — at +41.5 i/n and rejected it:
+        // that shape adds a live 14-byte payload to a 650-instruction function
+        // that is already spilling. Doing it out here after the call keeps that
+        // function's register pressure exactly where it was. §5.2 of study 35
+        // re-prices 13's arm in cycles and it is still a loss.
+        //
+        // Neither push reads the pre-move board: `push_dirty` takes no board at
+        // all, and `push_sota_dirty` deliberately wants the POST-move one (its
+        // threat x-rays read the child), so the whole block moves down together.
+        if self.eval_ctx.nnue_active() {
+            let dp = DirtyPiece::after_move(&self.board, m);
             self.eval_ctx.push_dirty(dp, ply);
-        }
-        self.board
-            .make_move_with(m, gives_check, &mut TtPrefetch { tt });
-        #[cfg(feature = "sota")]
-        if let Some(dp) = dirty {
+            #[cfg(feature = "sota")]
             self.eval_ctx.push_sota_dirty(dp, ply, &self.board);
         }
     }

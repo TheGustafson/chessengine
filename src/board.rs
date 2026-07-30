@@ -409,6 +409,112 @@ impl DirtyPiece {
         dp
     }
 
+    /// The same record as [`DirtyPiece::from_move`], derived from the position
+    /// the move PRODUCED instead of the one it was made in — i.e. from `board`
+    /// *after* [`Board::make_move_with`] has run (perf study 35).
+    ///
+    /// `from_move` re-derives three facts that `make_move_with` has just
+    /// finished deriving for its own Zobrist work: the side to move, the mover
+    /// (`piece_on(from)`, with a panic edge on the `Option`), and the victim
+    /// (`piece_on(to)`). Step 11 of the make stores the last two into the child
+    /// [`StateInfo`] — `moved` and `captured` — precisely so `unmake_move` does
+    /// not have to re-read them (perf study 14 §4.4). This reads them from the
+    /// same place, forward instead of backward, and takes the side to move off
+    /// the mover's own `color` field rather than the board.
+    ///
+    /// Everything else a record needs is either in `m` (from/to/kind/promotion
+    /// piece) or in a table the make does not touch (`castling_rook_square`),
+    /// so the post-move board carries the whole derivation. Emission order is
+    /// `from_move`'s, exactly, and `from_move` is kept in the tree as this
+    /// function's independent oracle:
+    /// `after_move_reproduces_from_move_for_every_move_kind` asserts the two
+    /// agree field for field, both sides of the make, over a depth-3 walk that
+    /// reaches all four move kinds.
+    ///
+    /// # Panics (debug only)
+    ///
+    /// Never called for a null move: those bypass `make_move_with` entirely
+    /// (`make_null_move` + `EvalContext::push_null`), so unlike `from_move`
+    /// there is no `is_ok` sentinel arm — a `debug_assert` stands in its place.
+    pub fn after_move(board: &Board, m: Move) -> DirtyPiece {
+        debug_assert!(m.is_ok(), "after_move: null moves never reach make_move");
+        // Step 11 of the make wrote both of these from the values it had in
+        // registers; nothing between there and here disturbs them.
+        let mover = board.state.moved;
+        let us = mover.color;
+        let (from, to) = (m.from(), m.to());
+        let mut dp = DirtyPiece::EMPTY;
+
+        match m.kind() {
+            // Both cold arms are shared with `from_move`: `castling_record`
+            // reads only `castling_rook_square`, which no move mutates, so it
+            // is valid on either side of the make.
+            MoveKind::Castling => return Self::castling_record(board, us, mover, from, to),
+            MoveKind::EnPassant | MoveKind::Promotion => {
+                return Self::special_record_after(board, m, us, mover, from, to);
+            }
+            MoveKind::Normal => {
+                dp.sub(mover, from);
+                if let Some(victim) = board.state.captured {
+                    dp.sub(victim, to); // ordinary capture
+                }
+                dp.add(mover, to);
+            }
+        }
+        dp
+    }
+
+    /// [`DirtyPiece::special_record`] for the post-move board. It exists as a
+    /// separate function because the two differ in both arms: the promotion arm
+    /// must read the victim from `state.captured` — the `to` square now holds
+    /// the promoted piece, so `piece_on(to)` would report *that* as what was
+    /// captured, which is the single easiest way to get this wrong (the arm is
+    /// mutation-tested for exactly that) — and the en-passant arm reads its
+    /// captured pawn out of `state.captured` too, where step 3 of the make put
+    /// it, instead of constructing one.
+    ///
+    /// Both `expect`s are unreachable by construction and are the same class of
+    /// invariant assertion `special_record` already carries: `make_move_with`
+    /// step 3 sets `captured` unconditionally for `EnPassant`, and
+    /// `MoveKind::Promotion` always carries a piece. Spelling the en-passant
+    /// pawn as `Piece::new(them, Pawn)` instead — no `expect`, and identical
+    /// output — measured **+2.0 i/n**, which cannot be this `#[cold]` arm's own
+    /// instructions (en passant is well under 1% of made moves) and is
+    /// therefore perf study 13 §5.5's finding again: in this crate the cost of
+    /// a change is only weakly related to the work the change does.
+    #[cold]
+    #[inline(never)]
+    fn special_record_after(
+        board: &Board,
+        m: Move,
+        us: Color,
+        mover: Piece,
+        from: Square,
+        to: Square,
+    ) -> DirtyPiece {
+        let captured = board.state.captured;
+        let mut dp = DirtyPiece::EMPTY;
+        if m.kind() == MoveKind::EnPassant {
+            // The captured pawn sits one rank from `to`, toward our home; the
+            // piece itself is `state.captured`, which the make just wrote.
+            let capsq = to.offset(us.flip().pawn_push());
+            dp.sub(mover, from);
+            dp.sub(captured.expect("en passant always captures"), capsq);
+            dp.add(mover, to);
+        } else {
+            let promoted = Piece::new(
+                us,
+                m.promotion_piece().expect("promotion kind carries a piece"),
+            );
+            dp.sub(mover, from);
+            if let Some(victim) = captured {
+                dp.sub(victim, to); // capture-promotion
+            }
+            dp.add(promoted, to);
+        }
+        dp
+    }
+
     /// The en-passant and promotion arms of [`DirtyPiece::from_move`], out of
     /// line for the same reason as [`DirtyPiece::castling_record`].
     #[cold]
@@ -4279,5 +4385,76 @@ mod tests {
         let castle = Move::castling(Square::E1, Square::G1);
         assert!(board.see_ge(castle, 0));
         assert!(!board.see_ge(castle, 1));
+    }
+
+    /// Perf study 35: [`DirtyPiece::after_move`] must produce the record
+    /// [`DirtyPiece::from_move`] would have, for every move of every kind.
+    ///
+    /// The two derive the SAME fact from opposite sides of the make — `from_move`
+    /// from the mailbox of the parent, `after_move` from the `moved`/`captured`
+    /// fields the make wrote into the child — so `from_move` is the independent
+    /// oracle here, and it stays in the tree for exactly that reason even though
+    /// the search no longer calls it. A whole-record `assert_eq!` (derived
+    /// `PartialEq`) also pins the EMISSION ORDER, not just the multiset: the
+    /// accumulator folds these in sequence and the Finny backward walk indexes
+    /// `subs()[0]` positionally.
+    #[test]
+    fn after_move_reproduces_from_move_for_every_move_kind() {
+        // Roots chosen so the walk actually reaches all four kinds: kiwipete
+        // (castling + captures both ways), the ep-rich position 3, a promotion
+        // race, a capture-promotion, and a double-ep-candidate position.
+        let roots = [
+            crate::fen::START_FEN,
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+            "n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1",
+            "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+            "4k3/8/8/8/4Pp2/8/8/4K3 b - e3 0 1",
+        ];
+
+        // Per-kind coverage, so a future refactor that stops reaching (say)
+        // en passant fails the test instead of silently testing less.
+        let mut seen = [0usize; 4];
+
+        fn walk(board: &mut Board, depth: usize, seen: &mut [usize; 4]) {
+            if depth == 0 {
+                return;
+            }
+            let mut list = crate::MoveList::new();
+            crate::movegen::generate_legal(board, &mut list);
+            let moves: Vec<Move> = list.iter().copied().collect();
+            for m in moves {
+                let before = DirtyPiece::from_move(board, m);
+                let gives_check = board.gives_check(m);
+                board.make_move(m, gives_check);
+                let after = DirtyPiece::after_move(board, m);
+                assert_eq!(
+                    before,
+                    after,
+                    "after_move disagreed with from_move for {m} ({:?})",
+                    m.kind()
+                );
+                seen[m.kind() as usize] += 1;
+                walk(board, depth - 1, seen);
+                board.unmake_move(m);
+            }
+        }
+
+        for fen in roots {
+            let mut board = Board::from_fen(fen).expect("test FEN parses");
+            walk(&mut board, 3, &mut seen);
+        }
+
+        for kind in [
+            MoveKind::Normal,
+            MoveKind::Promotion,
+            MoveKind::EnPassant,
+            MoveKind::Castling,
+        ] {
+            assert!(
+                seen[kind as usize] > 0,
+                "the walk never reached a {kind:?} move — coverage claim is false"
+            );
+        }
     }
 }
