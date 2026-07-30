@@ -2771,3 +2771,37 @@ Briefed with the known-dead list so it does not re-run them: the prefetch
 (killed by a resident-address control at +0.01%), FullThreats cancellation
 (0.075 pairs/fold), and alignment in its files (swept twice already).
 And told explicitly **not to pad to four** — study 21 landed two and was right to.
+
+### Tick — s21 promoted, D49 tracking, four studies live
+
+**Canonical is now `archon-s21`.** Panelled against s20, 6 rounds, node-identical:
+**instructions/node 7138.5 → 6934.4 = −204.1 (−2.86%)**, exact instrument.
+Cycles read −0.79% at a **35.8% spread — UNUSABLE**, so not claimed. Four
+concurrent studies have taken the cycles instrument from 0.6–1.1% spread to
+35.8%; `instructions:u` (noise 0.0) still works.
+
+**Reconciled rather than flagged as a discrepancy:** study 21's headline
+−1.35% cycles / −0.07% instructions covered arms **B1+B4 only**; arm B2's own
+commit says instructions down, cycles unresolved. My −2.86% is all four arms.
+I misread its scope, not the other way round.
+
+**D49 heldout, from scratch:**
+
+| sb | value | R² | ema | R²(ema) |
+|---|---|---|---|---|
+| 10 | 0.017605 | 0.8233 | 0.017254 | 0.8269 |
+| 20 | 0.015744 | 0.8420 | 0.014688 | 0.8526 |
+| **40** | **0.014338** | **0.8561** | **0.013338** | **0.8662** |
+
+sb40 EMA already at 0.8662 against D48X's fully-annealed **0.8815**, at 10% of
+the budget. Targets: D48X 0.8815, D48Y2 0.8906.
+
+**Studies:** 22 landed arms 1+1b+2 (hot/cold split, boxed array) on the
+accumulator; 24 landed arm r1 (unswitch `resolve_both` on `has_psq`); 25 is 27
+min in on the SIMD kernels; **23 showed the stall signature** — modified
+`movepick.rs`, artifacts dir created, but zero file writes in 20 min and no
+build. Nudged, and given the two briefing corrections at the same time.
+
+**A cost of running four studies, recorded honestly:** my own verification
+panels can no longer resolve cycles. Until the studies quiet down I verify on
+`instructions:u` and refuse to quote a cycles delta with a 36% spread.
