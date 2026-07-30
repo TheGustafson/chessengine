@@ -3834,3 +3834,30 @@ study 30 changed. -> `scratchpad/gate30.log`.
 **run the validating screen** — CEN5@256 vs the broken CEN2@64 export of the
 same checkpoint, which should recover ~128 Elo. That closes the user's
 "once it is done test it, then run games" sequence.
+
+## Tick 2026-07-30 ~03:15 — gate30 in flight
+
+**D49 sb145/400**, 176k pos/s, active. **Heldout still descending, no plateau:**
+
+| sb | heldout | ema |
+|---|---|---|
+| 120 | 0.012989 | 0.012211 |
+| 130 | 0.012826 | 0.012144 |
+| **140** | **0.012719** | **0.012068** |
+
+**Box:** 6391 MB available, load 15.38 — high, but that is the gate30 build plus
+study 32 plus the trainer, and it is transient. No new load added this tick on
+purpose.
+
+`gate30` still running (reached the bench-fingerprint stage). Armed a background
+waiter (`beo9q7gnp`) so the merge lands the moment the gate clears instead of
+idling a full 15-minute tick.
+
+**On deck, in order, once gate30 is green:**
+1. `git checkout main && git merge --ff-only stage-30`
+2. export D49 at CEN5/256
+3. **the validating screen** — CEN5@256 vs the broken CEN2@64 export of the SAME
+   checkpoint. Study 30 measured the mismatch at **-128.7 +/- 9.6 Elo (n=1600)**,
+   so a correct fix should recover ~128 Elo. That is a real falsifiable
+   prediction, not a smoke test, and it closes the user's "once it is done test
+   it, then run games" sequence.
