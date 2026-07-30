@@ -4554,3 +4554,48 @@ Artifacts ready: `data/nnue/tmp/s32/d49-sb{140,180}-ema-q256.cenn`, and
 
 **D49 sb186/400**, active; heldout 0.012248 @ sb180. Studies 34 (ahead=3,
 *"census MovePicker::new — the pseudo_leg…"*) and 35 (ahead=1) both healthy.
+
+## THE FRAME EXPERIMENT IS RUNNING — same weights, only the scale header differs
+
+**`rescale_net.py` is BROKEN for current containers** — it errored
+`CENN length 138283648 != header+payload 135578728`. The 2,704,920-byte gap is
+**exactly the PSQ1 section** netpack appends, so the tool predates the present
+layout and does not know about the trailing PSQT block. *(Study 30 touched this
+file but not for this.)* Filed as a real tooling gap; **do not use
+`rescale_net.py` on a gen-2 net until it is fixed.**
+
+Worked around at pack time instead — `netpack.py` honours **`D40_NETWORK_SCALE`**
+(default 400). Rather than assume which direction the knob acts, I packed and
+measured:
+
+| net | stdev | vs D48X |
+|---|---:|---|
+| D49 sb180 @ scale400 (as-trained) | 229.9 | 0.55x |
+| D49 sb180 @ **scale756** | **415.3** | **0.99x** |
+| D48X | 421.0 | 1.0 |
+
+**Frame matched to within 1.4%**, and `checksum 0x1abde0949b345696` is identical
+across both packs — confirming the WEIGHTS are byte-identical and only the
+header scale differs. That is what makes this a clean single-variable test.
+
+### The experiment
+
+`frame-screen.service` (a **systemd SERVICE, not a scope** — a scope dies with
+the session, which is what killed the 5880-game screen at 1043):
+
+    CAND = d49-sb180-scale756.cenn   (frame-matched)
+    REF  = d49-sb180-ema-q256.cenn   (as-trained)
+    1466 games @ 25000 fixed nodes, conc=8, bar ~+/-10 Elo
+    -> engines/runs/frame-sb180, log scratchpad/frame-screen.log
+
+conc=8 deliberately below the memory-derived cap (2 x 8 x ~154 MB = 2.5 GB of
+8.6 GB free), leaving headroom for studies 34/35.
+
+**Why this experiment is worth the box time:** it converts my frame *hypothesis*
+into a measurement, it is **independent of how D49 finishes training**, and it
+uses a checkpoint we already have. If frame-matching is worth real Elo, the
+sb400 verdict screen MUST be three-way or a D49 loss is uninterpretable. If it
+is a null, that is equally valuable — it retires the hypothesis and the standing
+"frame is not causal" note gains a second, internal confirmation.
+
+**D49 sb192/400**, active. Studies 34 and 35 both healthy.
