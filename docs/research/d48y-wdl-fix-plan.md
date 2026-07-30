@@ -4963,3 +4963,57 @@ just inherit its error.
 
 **D49 sb209/400**, active. Box 8073 MB, load 6.65. Study 36 in its reading
 phase (ahead=0, dirty=3) — no measurement contention.
+
+## OPTIMUM BRACKETED — and it yields a falsifiable, transferable prediction
+
+**D48X@900 vs D48X@600: −28.50 +/- 10.97** (W369/D608/L489, 45.91%, n=1466,
+EXIT=0).
+
+The knob has a peak, and we have it surrounded:
+
+| arm | vs | result |
+|---|---|---:|
+| D48X@600 | @400 (canonical) | **+15.65 +/- 11.02** |
+| D48X@900 | @600 | **−28.50 +/- 10.97** |
+
+⇒ **the optimum is inside (400, 900), near 600**, i.e. an eval stdev around
+**610**. Note the loss at 900 is *larger* than the gain at 600 — the penalty for
+over-scaling exceeds the reward for correcting under-scaling, so this knob is
+worth getting right rather than merely nudging.
+
+### The prediction now under test
+
+If the optimum is a property of **the engine's hardcoded margins** — a target
+eval spread of ~610 — rather than of any particular net, then it must transfer.
+D49 at 756 sits at stdev 415, well short of 610. Scaling to
+**756 x 610/415 ~= 1111** should land it on target:
+
+| net | scale | stdev |
+|---|---:|---:|
+| D49 sb180 | 756 | 415.3 |
+| **D49 sb180** | **1111** | **600.5** |
+| D48X (measured optimum) | 600 | 610.3 |
+
+`sweep1111.service`: **D49@1111 vs D49@756**, 1466 games @ 25000 nodes.
+
+- **1111 wins** ⇒ the ~610 stdev target is an **engine property**, transferable
+  across nets, and we have a *rule* rather than two anecdotes: every future net
+  gets scaled to ~610 stdev at export, no per-net sweep needed.
+- **1111 loses** ⇒ the optimum is net-specific, every net needs its own sweep,
+  and the D49 verdict must carry a scale ladder.
+
+**Either answer is worth the screen**, and this is the right shape of
+experiment: a number derived from one net, predicting a result on another,
+before the games are played.
+
+### Consequence already banked
+
+**D49's +32.09 result was measured at 756 — which this predicts is NOT its
+optimum.** So D49's true frame-corrected strength is likely *better* than the
++32 already measured, and the sb400 verdict must run a scale ladder rather than
+a single arm.
+
+**D49 sb214/400**, heldout 0.011949 @ sb210 (ema 0.011546) — the delta widened
+again to −145, so the sb200 narrowing was not the onset of a plateau.
+Box: 8393 MB, load 11.91. Study 36 still in reading phase (ahead=0, dirty=3,
+perf=0) — no contention with these screens.
