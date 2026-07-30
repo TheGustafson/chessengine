@@ -1,0 +1,4 @@
+a2ext    loads/n=  3135.79  misses/n= 609.127  miss-rate=19.4250%
+a3inl    loads/n=  3132.99  misses/n= 612.553  miss-rate=19.5517%
+a2ext    loads/n=  3137.09  misses/n= 612.075  miss-rate=19.5109%
+a3inl    loads/n=  3131.55  misses/n= 613.472  miss-rate=19.5901%

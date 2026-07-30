@@ -1,0 +1,56 @@
+diff --git a/src/board.rs b/src/board.rs
+index 3892d2d..bb31310 100644
+--- a/src/board.rs
++++ b/src/board.rs
+@@ -398,12 +398,46 @@ impl DirtyPiece {
+             MoveKind::EnPassant | MoveKind::Promotion => {
+                 return Self::special_record(board, m, us, mover, from, to);
+             }
++            // BRANCHLESS CAPTURE APPEND (perf study 27 arm 1b). `do_move` is
++            // 7.22% of all engine branch misses despite being straight-line
++            // code, and study 23 named this arm's `if let Some(victim) =
++            // board.piece_on(to)` as the only genuinely unpredictable branch
++            // in it: "is the destination occupied" is ~30% true across the
++            // tree and follows no pattern a predictor can learn.
++            //
++            // SELECT THE SQUARE, NOT THE PIECE — the whole trick, and the
++            // reason the obvious spelling fails. `Option<Piece>` is
++            // niche-encoded in the COLOUR byte, so when a square is empty the
++            // piece-type byte is padding and reading it is UB. LLVM knows
++            // that, refuses to speculate the second mailbox load, and keeps
++            // the branch: `subs[1] = (piece_on(to).unwrap_or(mover), to)`
++            // measured **+9.5 i/n with the `je` still in the disassembly**
++            // (arm 1a). `from` on the other hand is ALWAYS occupied — it holds
++            // the mover — so a `cmov` between `to` and `from` yields an
++            // address that is unconditionally a real piece, and the two-byte
++            // load off it needs no branch at all. The surviving `cmp`/`jne` is
++            // the `expect`'s panic edge: never taken, statically predicted.
++            //
++            // Slot 1 of `subs` is then written unconditionally, holding the
++            // mover when there was no victim. Nothing can observe it:
++            // [`DirtyPiece::subs`] returns `&self.subs[..n_sub]`, so an
++            // `n_sub == 1` record cannot expose slot 1 any more than the old
++            // one could.
+             MoveKind::Normal => {
+-                dp.sub(mover, from);
+-                if let Some(victim) = board.piece_on(to) {
+-                    dp.sub(victim, to); // ordinary capture
+-                }
+-                dp.add(mover, to);
++                let occupied = board.all_occupancy.contains(to);
++                let vic_sq = if occupied { to } else { from };
++                let victim = board
++                    .piece_on(vic_sq)
++                    .expect("from_move: the selected square always holds a piece");
++                // Built as one literal rather than three `dp.sub(..)` calls:
++                // that also drops the two 8-byte zero stores `DirtyPiece::EMPTY`
++                // was costing this path, since every field is now assigned.
++                return DirtyPiece {
++                    adds: [(mover, to); 2],
++                    subs: [(mover, from), (victim, to)],
++                    n_add: 1,
++                    n_sub: 1 + u8::from(occupied),
++                };
+             }
+         }
+         dp

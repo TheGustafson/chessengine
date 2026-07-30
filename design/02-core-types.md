@@ -578,13 +578,15 @@ behavior is the movepick doc's business. This doc fixes only the repr so the
 movepick doc and any sort-performance reasoning can rely on it:
 
 ```rust
-// src/movepick.rs (future). Repr contract fixed by design/02-core-types.md.
+// src/movepick.rs. Repr contract fixed by design/02-core-types.md.
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub(crate) struct ExtMove {
-    pub mv: Move,   // 2 bytes; 2 bytes padding follow
     pub value: i32, // move-ordering score. NOT a Value: it mixes history
                     // sums and MVV bonuses on scales far beyond eval range.
+                    // At offset 0 so a compare shares the element's load.
+    pub mv: Move,   // 2 bytes
+    pad: u16,       // explicit, always 0 — the type must be HOLE-FREE
 }
 
 const _: () = assert!(std::mem::size_of::<ExtMove>() == 8);
@@ -596,6 +598,20 @@ its `[ExtMove; MAX_MOVES]` buffer millions of times per second; 8-byte
 elements move as single u64 register loads/stores. `#[repr(C)]` pins the
 layout so the size can't silently grow if field order changes. `MoveList`
 stays score-free (D7) — scoring happens only inside the picker's own buffer.
+
+**Amended 2026-07-29 (perf study 27 arm 2).** The layout above is the *second*
+one. The original was `mv: Move` then an implicit two-byte hole then `value`,
+and the "single u64 register loads/stores" sentence was aspirational: a struct
+with a padding hole cannot legally be copied as one 8-byte move, because the
+padding bytes are `undef` and may be neither read nor written. So every shift
+step of the insertion sort compiled to a 2-byte move plus a 4-byte move — two
+loads and two stores where one of each was intended. Naming the pad as a field
+closes the hole; putting `value` at offset 0 additionally lets the compare fold
+into the element's own load (`cmp %r9d,-0x8(%rdx,%rdi,8)`), so the walk step
+went from 8 instructions and 4 memory operations to 6 and 3. Measured on the
+study frame: **-21.1 instructions/node, branches exactly flat, -1.0 branch
+misses/node, -8.2 L1d load misses/node**, node- and eval-identical. If a future
+edit adds a field, keep the type hole-free or this reverts silently.
 
 ### 3.9 SEE piece values (src/types.rs)
 

@@ -548,6 +548,109 @@ impl PartialEq for ThreatCache {
 
 impl Eq for ThreatCache {}
 
+/// The stack of states BELOW the live ply (D8): a preallocated slab plus a
+/// cursor, **not** a `Vec` whose length is the cursor.
+///
+/// Why the shape matters (perf study 27 arm 4; mechanism from study 24 §4.4).
+/// `Vec::push` takes its argument **by value**, and `RawVec::grow` — the
+/// capacity miss — is a real call that RETURNS. So `history.push(self.state)`
+/// compiled to a stack round-trip of the whole 168-byte record: three
+/// `vmovups` out of `self.state` into `%rsp`, the capacity test, then three
+/// reloads off `%rsp` and three stores into the buffer. Twelve 64-byte memory
+/// operations where six would do, on the one function that runs exactly once
+/// per node. The reloads are not removable while the call is in the way: LLVM
+/// must assume `grow` clobbers memory, so a value that is live across it has
+/// to come back from somewhere.
+///
+/// A slab plus a cursor has no call on the hot path at all. `slots[depth] =
+/// self.state` is a memory-to-memory copy between two disjoint fields of
+/// `*self` — no temporary is created, so there is nothing to spill — and the
+/// only edge left is the index bounds check, which ends in a `panic` that
+/// never returns and therefore forces nothing to stay live.
+///
+/// The idiom: `slots` is kept at its **full length** (every slot a valid
+/// `StateInfo`), and `depth` says how much of it is live. [`Deref`] hands out
+/// `&slots[..depth]`, so every reader — `len()`, indexing, `iter()` — sees
+/// exactly the old `Vec`, and `Clone`/`PartialEq` are written against that
+/// slice so the dead tail below the cursor can never leak into equality.
+#[derive(Debug)]
+struct StateStack {
+    /// Backing storage, always fully initialised: `slots.len()` is capacity.
+    slots: Vec<StateInfo>,
+    /// How many slots are live. Invariant: `depth <= slots.len()`.
+    depth: usize,
+}
+
+impl StateStack {
+    /// Live depth. An INHERENT method, so it wins name resolution over the
+    /// `Deref` slice's `len()`: the cursor already is the answer, and going
+    /// through `Deref` would make every `history.len()` build the slice first
+    /// (a second load and a `cmov`) to ask it something it already knows.
+    #[inline]
+    fn len(&self) -> usize {
+        self.depth
+    }
+
+    fn new() -> Self {
+        // Reserved past MAX_PLY so mid-search pushes never grow the slab
+        // (doc 04 §3.3; growth would be correct, just a latency spike).
+        StateStack {
+            slots: vec![StateInfo::EMPTY; MAX_PLY + 64],
+            depth: 0,
+        }
+    }
+
+    /// The capacity miss: grow the slab, THEN store. A game longer than the
+    /// reserve plus a full-depth search can reach it, so it must exist.
+    ///
+    /// It does the store itself rather than falling back into the hot path so
+    /// that the hot path has exactly one successor and one predecessor. When
+    /// `grow` returned to a shared store block, that block had two
+    /// predecessors — one of which had just called something that may have
+    /// moved `slots` — so LLVM could not carry `depth < slots.len()` into it
+    /// and re-tested with a second identical `cmp`/`jae`. Measured: +1
+    /// branch/node and ~+2 instructions/node for a check already made.
+    #[cold]
+    #[inline(never)]
+    fn grow_and_store(&mut self, st: StateInfo) {
+        self.slots.resize(self.slots.len() * 2, StateInfo::EMPTY);
+        self.slots[self.depth] = st;
+    }
+}
+
+impl std::ops::Deref for StateStack {
+    type Target = [StateInfo];
+
+    #[inline]
+    fn deref(&self) -> &[StateInfo] {
+        // `depth <= slots.len()` is the type's invariant, but a plain
+        // `..self.depth` makes LLVM re-test it — a `cmp`/`jae` and a panic
+        // block on EVERY read, and the repetition scan reads once per node.
+        // `.min` states the invariant in the one form the optimiser can use:
+        // a single `cmov`, no edge.
+        &self.slots[..self.depth.min(self.slots.len())]
+    }
+}
+
+impl Clone for StateStack {
+    fn clone(&self) -> Self {
+        // Clone the whole slab, not just the live prefix: a clone that came
+        // back with a short slab would grow on its first deep search.
+        StateStack {
+            slots: self.slots.clone(),
+            depth: self.depth,
+        }
+    }
+}
+
+impl PartialEq for StateStack {
+    fn eq(&self, other: &Self) -> bool {
+        **self == **other
+    }
+}
+
+impl Eq for StateStack {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Board {
     // Primary representation: bitboards.
@@ -578,7 +681,7 @@ pub struct Board {
     state: StateInfo,
     // Everything BELOW `state`, oldest first: `make_move` pushes the parent,
     // `unmake_move` pops it back. Empty at the root.
-    history: Vec<StateInfo>,
+    history: StateStack,
 
     /// Lazily-filled Wave-G threat map — see [`ThreatCache`]. Not part of the
     /// position: cloned cold, ignored by equality.
@@ -587,9 +690,7 @@ pub struct Board {
 
 impl Board {
     pub fn empty() -> Self {
-        // Reserved past MAX_PLY so mid-search pushes never reallocate
-        // (doc 04 §3.3; growth would be correct, just a latency spike).
-        let history = Vec::with_capacity(MAX_PLY + 64);
+        let history = StateStack::new();
         let mut board = Board {
             pieces: [[Bitboard::EMPTY; PieceType::COUNT]; Color::COUNT],
             color_occupancy: [Bitboard::EMPTY; Color::COUNT],
@@ -1338,6 +1439,42 @@ impl Board {
     /// the placement mutators (doc 04 §3.3, §9.1). In particular the new ep
     /// square is set (and hashed) ONLY when an ep capture will actually be
     /// legal (D9).
+    /// Archive the live state onto the stack — [`StateStack`]'s whole reason
+    /// for existing. Written as an indexed store rather than a `push` so the
+    /// 168-byte record goes straight from one field of `*self` to another with
+    /// no stack temporary and no call in the way (see [`StateStack`]).
+    #[inline]
+    fn push_state(&mut self) {
+        // The store lives in the `<` arm, not after the `if`: see
+        // [`StateStack::grow_and_store`] for why joining the two paths back
+        // together costs a duplicate bounds test. Here the guard IS the bounds
+        // proof, so the hot arm is a bare indexed store.
+        let depth = self.history.depth;
+        if depth < self.history.slots.len() {
+            self.history.slots[depth] = self.state;
+        } else {
+            self.history.grow_and_store(self.state);
+        }
+        self.history.depth = depth + 1;
+    }
+
+    /// Restore the parent state. The mirror of [`Board::push_state`].
+    #[inline]
+    fn pop_state(&mut self) {
+        debug_assert!(
+            self.history.depth > 0,
+            "unmake must have a parent state to restore"
+        );
+        // ONE edge, not two. `checked_sub(1).expect(..)` would put an
+        // underflow test on top of the index bounds test; the wrapping form
+        // lets the single bounds check catch both, since a cursor of 0 wraps
+        // to `usize::MAX` and is out of bounds by a mile. What makes either
+        // unreachable is the make/unmake pairing, not the test.
+        let idx = self.history.depth.wrapping_sub(1);
+        self.state = self.history.slots[idx];
+        self.history.depth = idx;
+    }
+
     pub fn make_move(&mut self, m: Move, gives_check: bool) {
         self.make_move_with(m, gives_check, &mut NoHooks);
     }
@@ -1372,7 +1509,7 @@ impl Board {
         // (`threads.rs`) and every `go` re-seeds each shell with a fresh
         // `Job::Setup { board: board.clone() }`; a make_move panic is a fatal
         // invariant violation either way.
-        self.history.push(self.state);
+        self.push_state();
         let mut k = self.state.key ^ ZOBRIST.side;
 
         // Step 2: counters.
@@ -1627,10 +1764,7 @@ impl Board {
         // so read it before the parent overwrites it.
         let captured = self.state.captured;
         let moved = self.state.moved;
-        self.state = self
-            .history
-            .pop()
-            .expect("unmake_move must have a parent state to restore");
+        self.pop_state();
         self.side_to_move = self.side_to_move.flip();
         let us = self.side_to_move;
         self.game_ply -= 1;
@@ -1750,7 +1884,7 @@ impl Board {
         debug_assert!(self.checkers().is_empty(), "make_null_move while in check");
         // Same shape as `make_move_with` step 1: archive the parent, then
         // edit the live state in place.
-        self.history.push(self.state);
+        self.push_state();
         let st = &mut self.state;
         if let Some(ep) = st.copied.ep_square.take() {
             st.key ^= ZOBRIST.en_passant[ep.file() as usize];
@@ -1774,10 +1908,7 @@ impl Board {
             self.checkers().is_empty(),
             "unmake_null_move while in check"
         );
-        self.state = self
-            .history
-            .pop()
-            .expect("unmake_null_move must have a parent state to restore");
+        self.pop_state();
         self.side_to_move = self.side_to_move.flip();
         #[cfg(debug_assertions)]
         self.assert_consistent();
@@ -2533,12 +2664,14 @@ mod tests {
 
     // Doc 04 §8 item 7: make_move performs no heap allocation — the state
     // stack is pre-reserved past MAX_PLY at construction (doc 04 §3.3), so a
-    // full search-depth walk of makes and nulls never grows it. Capacity
-    // equality is the observable for "no reallocation".
+    // full search-depth walk of makes and nulls never grows it. The slab's
+    // LENGTH is the observable for "no reallocation" now that `StateStack`
+    // keeps it fully initialised and tracks the live depth separately (perf
+    // study 27 arm 4) — `StateStack::grow` is the only thing that may move it.
     #[test]
     fn state_stack_is_prereserved_and_never_reallocates() {
         let mut board = Board::startpos();
-        let cap = board.history.capacity();
+        let cap = board.history.slots.len();
         assert!(
             cap >= MAX_PLY + 64,
             "state stack must be reserved past MAX_PLY ({cap} < {})",
@@ -2556,9 +2689,39 @@ mod tests {
         board.make_null_move();
         assert!(board.history.len() > MAX_PLY - 11);
         assert_eq!(
-            board.history.capacity(),
+            board.history.slots.len(),
             cap,
-            "make_move/make_null_move must never reallocate the state stack"
+            "make_move/make_null_move must never grow the state slab"
+        );
+        assert_eq!(
+            board.history.depth,
+            board.history.len(),
+            "the cursor and the exposed slice must agree"
+        );
+    }
+
+    // The slab is deliberately longer than the live stack, so equality and
+    // cloning must both read through the cursor: a `Board` that has made and
+    // unmade a move still has that move's record sitting in `slots[depth]`,
+    // and it must not be observable (perf study 27 arm 4).
+    #[test]
+    fn state_stack_ignores_the_dead_tail_below_the_cursor() {
+        let mut board = Board::startpos();
+        let pristine = board.clone();
+        let m = Move::normal(Square::E2, Square::E4);
+        board.make_move(m, false);
+        board.unmake_move(m);
+
+        assert_eq!(board.history.depth, 0, "the cursor is back at the root");
+        assert_ne!(
+            board.history.slots[0], pristine.history.slots[0],
+            "the dead record really is still in the slab (else this test is vacuous)"
+        );
+        assert_eq!(board, pristine, "the dead record must not affect equality");
+        assert_eq!(
+            board.clone(),
+            pristine,
+            "nor survive a clone into an observable difference"
         );
     }
 

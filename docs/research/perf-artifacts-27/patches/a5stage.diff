@@ -1,0 +1,86 @@
+diff --git a/src/movepick.rs b/src/movepick.rs
+index b756ce9..d2b89cd 100644
+--- a/src/movepick.rs
++++ b/src/movepick.rs
+@@ -509,6 +509,16 @@ impl MovePicker {
+     /// exhausted (design/09 §3.6). The caller checks legality only on the move
+     /// it actually plays. Idempotent after exhaustion: further calls keep
+     /// returning `None`.
++    ///
++    /// **Every fall-through assigns a LITERAL stage, never `self.stage.bump()`
++    /// (perf study 27 arm 3).** The two are identical in behaviour, and the
++    /// `bump()` spelling reads better, but it hides the destination behind
++    /// arithmetic on a value LLVM loaded from memory — so each `continue` had
++    /// to go back through the 16-entry jump table (`movslq (%r13,%rcx,4); add
++    /// %r13,%rcx; jmp *%rcx`) to reach a block the source already names. With
++    /// a literal the back-edge is a direct jump. That is also why the shared
++    /// `CaptureInit | ProbcutInit | QcaptureInit` arm is split into three
++    /// copies of one line: the bodies are the same, the successors are not.
+     #[inline]
+     pub fn next_move(&mut self, board: &Board, hist: &Histories) -> Option<Move> {
+         loop {
+@@ -523,9 +533,17 @@ impl MovePicker {
+ 
+                 // §3.6 item 2: generate + score captures, full sort, advance.
+                 // Main search, ProbCut, and quiescence share this init verbatim.
+-                Stage::CaptureInit | Stage::ProbcutInit | Stage::QcaptureInit => {
++                Stage::CaptureInit => {
+                     self.init_captures(board, hist);
+-                    self.stage = self.stage.bump();
++                    self.stage = Stage::GoodCapture;
++                }
++                Stage::ProbcutInit => {
++                    self.init_captures(board, hist);
++                    self.stage = Stage::Probcut;
++                }
++                Stage::QcaptureInit => {
++                    self.init_captures(board, hist);
++                    self.stage = Stage::Qcapture;
+                 }
+ 
+                 // Quiescence: every capture, TT move deduped.
+@@ -560,7 +578,7 @@ impl MovePicker {
+                         self.end_bad_captures += 1;
+                         self.cur += 1;
+                     }
+-                    self.stage = self.stage.bump();
++                    self.stage = Stage::QuietInit;
+                 }
+ 
+                 // §3.6 stage 4: generate + score quiets (unless skipping),
+@@ -569,7 +587,7 @@ impl MovePicker {
+                     if !self.skip_quiets {
+                         self.init_quiets(board, hist);
+                     }
+-                    self.stage = self.stage.bump();
++                    self.stage = Stage::GoodQuiet;
+                 }
+ 
+                 // §3.6 stage 5: quiets scoring above the threshold, then rewind
+@@ -582,7 +600,7 @@ impl MovePicker {
+                     }
+                     self.cur = 0;
+                     self.end_cur = self.end_bad_captures;
+-                    self.stage = self.stage.bump();
++                    self.stage = Stage::BadCapture;
+                 }
+ 
+                 // §3.6 stage 6: the deferred bad captures (in swap order), then
+@@ -593,7 +611,7 @@ impl MovePicker {
+                     }
+                     self.cur = self.end_captures;
+                     self.end_cur = self.end_generated;
+-                    self.stage = self.stage.bump();
++                    self.stage = Stage::BadQuiet;
+                 }
+ 
+                 // §3.6 stage 7: the exact complement of GoodQuiet (`value <=
+@@ -609,7 +627,7 @@ impl MovePicker {
+                 // (captures lifted above quiets), full sort, emit every one.
+                 Stage::EvasionInit => {
+                     self.init_evasions(board, hist);
+-                    self.stage = self.stage.bump();
++                    self.stage = Stage::Evasion;
+                 }
+                 Stage::Evasion => return self.select(board, |_, _| true),
+             }
