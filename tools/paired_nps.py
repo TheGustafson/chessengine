@@ -76,7 +76,21 @@ def run_engine(path: str, net: str | None, fens: list[str], nodes: int):
                 if m:
                     last = int(m.group(1))
             elif line.startswith("bestmove"):
-                total_nodes += last
+                # NODE COUNT BUG, found 2026-07-30 (perf study 28, verified by me).
+                # ARCHON emits `info` ONLY at COMPLETED depths, so the last info
+                # line reports the node count at the last finished iteration --
+                # NOT the total searched when `go nodes` trips mid-depth.
+                # Measured at budget 1,000,000 from startpos:
+                #     ARCHON  938,175  -> under-reports 6.2%
+                #     SF    1,000,317  -> accurate
+                # So a reported-node ratio understated ARCHON by 6.6% and every
+                # ARCHON/SF figure taken before this fix is biased AGAINST us.
+                #
+                # Both engines honour the budget to within ~0.03%, so the budget
+                # itself is the accurate common currency. Fall back to the
+                # reported count only if the engine stopped early (mate/TB), which
+                # is the one case where the budget would overstate.
+                total_nodes += nodes if last >= nodes * 0.90 else last
                 break
     elapsed = time.perf_counter() - t0
     send("quit")
