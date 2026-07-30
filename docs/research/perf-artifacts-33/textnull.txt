@@ -1,0 +1,9 @@
+  A bin33/base   _RINvMs8_NtCseqZ2GkIX6jM_11chessengine6searc... @ 0x5b970  3326 insns
+  B bin33/prof   _RINvMs8_NtCsjYhMepb868A_11chessengine6searc... @ 0x5b990  3326 insns
+  whole-symbol address shift: +32 bytes
+  offsets/lengths differing : 0
+  mnemonics differing       : 0
+  bytes differing, all inside ONE 4-byte displacement field : 39
+    displacement deltas (each +/- the +32 section shift): -32:28, +32:11
+  bytes differing, UNEXPLAINED                     : 0
+  NULL PASSES -- identical instruction stream; line tables are codegen-inert.
