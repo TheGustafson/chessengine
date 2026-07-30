@@ -480,6 +480,18 @@ Fixed node budget, one core (4), four sizes back to back, `bin42/base`:
 | **1024 MB** | 5910.30 | **4719.9** | **2598.2** | 10.325 | 52.47 | 2.723 |
 | | **−0.3%** | **+8.7%** | **+18.1%** | **+10.0%** | +0.8% | +44% |
 
+**Where the ladder stops, and why — logged, not silent.** It runs
+**16 / 64 / 256 / 1024 MB and no further**. A 1 GB table is ~1.2 GB RSS on top
+of the engine's ~150 MB base, which was safe against the ~9.4 GB available at
+the time; the next rung (4 GB) would have been ~4.2 GB of resident memory
+competing with the 6 GB `MemoryMax` scope every agent's build runs in, on a box
+whose **swap is exhausted (~60 MB free)** and which has OOMed once already,
+taking the trainer with it. So the 4 GB rung was dropped for memory safety, not
+because it was uninteresting — the curve is still rising at 1 GB and nothing
+here says where it flattens. Builds in this study's kit now serialise behind
+the shared `flock` at `~/.cache/archon-build.lock`, and no large-`Hash` run was
+taken with a build of mine in flight.
+
 **Instructions are flat to −0.3% across a 64x change in table size** — the
 trees differ, the work per node does not, which is what makes the four columns
 comparable at all. Everything else is **monotone in `Hash`** across all four

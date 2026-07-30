@@ -8,10 +8,16 @@
 # tools/perf34/build34.sh; the third argument selects the `profiling` profile
 # (release codegen + line tables) for the IBS source-attribution runs.
 #
-# BOX DISCIPLINE: a D49 trainer and two other studies share this machine.
-# Builds wait for 3000 MB available, run under a 6G cgroup with swap disabled
-# behind tools/oomlast.sh, at -j2, pinned to cores 0,1 at nice 19 so they never
-# land on the measurement core.
+# BOX DISCIPLINE: a D49 trainer and three other agents share this machine, and
+# SWAP IS EXHAUSTED (~60 MB free against ~9.2 GB RAM). Two concurrent builds is
+# 12 GB of MemoryMax against 9.2 GB with no swap headroom to absorb the
+# overshoot -- the exact configuration that OOMed this box once already, taking
+# the trainer with it. So, in order:
+#   1. wait for 3000 MB available (below), then
+#   2. `flock` a SHARED lock so builds across all agents QUEUE instead of
+#      colliding -- no timeout, because waiting is the point, then
+#   3. a 6G cgroup with swap disabled behind tools/oomlast.sh, -j2, pinned to
+#      cores 0,1 at nice 19 so a build never lands on the measurement core.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 LABEL=${1:?label}
@@ -32,7 +38,12 @@ for _ in $(seq 60); do
 done
 
 mkdir -p bin42
-systemd-run --user --scope -q -p MemoryMax=6G -p MemorySwapMax=0 -- \
+LOCK=${ARCHON_BUILD_LOCK:-$HOME/.cache/archon-build.lock}
+# `touch`, never `> "$LOCK"`: truncation is pointless on a zero-byte lock and
+# opening another agent's in-use file with O_TRUNC is a gratuitous risk.
+mkdir -p "$(dirname "$LOCK")"; touch "$LOCK" 2>/dev/null || true
+flock "$LOCK" \
+  systemd-run --user --scope -q -p MemoryMax=6G -p MemorySwapMax=0 -- \
   tools/oomlast.sh env RUSTFLAGS="-C target-cpu=native" CARGO_BUILD_JOBS=2 \
   nice -n 19 taskset -c 0,1 \
   cargo build "${PROF_ARG[@]}" --features "$FEATURES" \
