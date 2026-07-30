@@ -24,6 +24,19 @@ def read_perf(p: Path):
 
 def main():
     out = Path(sys.argv[1])
+    # Optional second dir: a nodes=1 battery whose per-arm MEDIAN cycles /
+    # instructions are subtracted as the startup (net-load) baseline — the
+    # loader checksums+copies the whole payload, so a 69 MB smaller net saves
+    # a CONSTANT ~235M instructions per PROCESS that has nothing to do with
+    # search speed. Subtracting medians removes that bias from both arms.
+    sub_a = sub_b = (0, 0)
+    if len(sys.argv) > 2:
+        sdir = Path(sys.argv[2])
+        sa = sorted(read_perf(p) for p in sdir.glob("A.r*.perf"))
+        sb = sorted(read_perf(p) for p in sdir.glob("B.r*.perf"))
+        sub_a, sub_b = sa[len(sa) // 2], sb[len(sb) // 2]
+        print(f"startup medians (subtracted): A cyc {sub_a[0]:,} ins {sub_a[1]:,}")
+        print(f"                              B cyc {sub_b[0]:,} ins {sub_b[1]:,}")
     rounds = sorted(
         int(p.stem.split(".r")[1]) for p in out.glob("A.r*.perf")
     )
@@ -35,7 +48,7 @@ def main():
         na = (out / f"A.r{r}.nodes").read_text().strip()
         nb = (out / f"B.r{r}.nodes").read_text().strip()
         nodes.update((na, nb))
-        rows.append((r, ca, cb, ia, ib))
+        rows.append((r, ca - sub_a[0], cb - sub_b[0], ia - sub_a[1], ib - sub_b[1]))
 
     print(f"rounds: {len(rows)}   node totals seen: {sorted(nodes)}")
     if len(nodes) != 1:
