@@ -5577,3 +5577,42 @@ revert instructions.
 **Merge to main only after `verify600` confirms the new pins hold.** Study 38 is
 live and gates against the pins; it will be told the new values the moment this
 lands.
+
+## PROMOTED: canonical net is now `network_scale = 600` (main `859a442`)
+
+**`verify600` green** — eval hash `2e1ede95…93cf79c4` ✓, d13 nodes **1739588** ✓,
+`Bench: 587683` ✓, `GATE_EXIT=0`. The re-derived pins hold exactly. Merged
+fast-forward.
+
+    engines/canonical/net.cenn -> d48x-1280-sb520-ema-s600.cenn  (network_scale=600)
+    arch.txt: sota,arch-d48x   (unchanged — no engine rebuild needed)
+
+**+14.78 +/- 5.45 Elo over 5880 games, from a four-byte header field.** The
+weights are byte-identical from offset 64; the only thing that changed is the
+scale word.
+
+### Study 38 told, with the trap named
+
+Sent it the three current pins and, more importantly, the consequence for its
+measurements: **the d13 node total dropped 12.4%**, so any per-node figure
+derived from the d13 frame differs before and after this change. Told it
+explicitly **not to attribute that 12.4% to its own arm**, to re-baseline on the
+tree it measures against, and that **`Bench: 587683` is unchanged** so its
+bit-for-bit expectation for a pure speedup still holds.
+
+### Where the night stands
+
+**Landed on main tonight:** studies 29, 30, 31, 32, 33, 34, 35, 36, 37 — plus
+this promotion. Measured wins now in the tree:
+
+| item | measure |
+|---|---|
+| i8 HalfKA transformer (32) | −5.6..−6.8% cycles, −15.6..−17.4% load-stalls |
+| movepick double-scan removed (34) | −0.267% instr, −0.649% branches |
+| `DirtyPiece::after_move` (35) | −0.442% instr, −3.02 br/node |
+| in-check `pseudo_legal` + flat history index (36) | −0.499% instr, −0.236% branches |
+| `#[cold]` removed from the threat generic (37) | −0.120% branches |
+| **canonical `network_scale` 600** | **+14.78 +/- 5.45 Elo, −12.4% d13 nodes** |
+
+**D49 sb268/400**, heldout 0.011472 @ sb260 (ema 0.011243), still descending —
+the cosine ends at sb300, then the anneal.
