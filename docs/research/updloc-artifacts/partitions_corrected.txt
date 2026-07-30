@@ -1,0 +1,54 @@
+nodes=5,001,562  heldout records=1,000,000  mirror flips/node=0.03394
+
+-- hand bits --
+mirror(file a-d)           flips= 0.03394  add= 0.00000  repl=+0.00000  data-min-mass=26.54%  arrival-min-mass=33.59%
+rank1(back rank)           flips= 0.05611  add= 0.05265  repl=+0.02217  data-min-mass=38.66%  arrival-min-mass=15.22%
+rank12(back two)           flips= 0.05487  add= 0.04841  repl=+0.02093  data-min-mass=35.60%  arrival-min-mass=38.90%
+rankhalf(own half)         flips= 0.02420  add= 0.02169  repl=-0.00974  data-min-mass=10.97%  arrival-min-mass=26.07%
+
+-- learned min-flip partitions (balance on DATA occupancy) --
+learned(>=10% data mass)   flips= 0.01171  add= 0.01171  repl=-0.02223  data-min-mass=10.01%  arrival-min-mass= 6.26%
+      ........   rank 8
+      ........   rank 7
+      ........   rank 6
+      ........   rank 5
+      #.......   rank 4
+      ##......   rank 3
+      ##......   rank 2
+      ###.....   rank 1
+learned(>=20% data mass)   flips= 0.02391  add= 0.01664  repl=-0.01003  data-min-mass=20.17%  arrival-min-mass=15.97%
+      ........   rank 8
+      ........   rank 7
+      ........   rank 6
+      ........   rank 5
+      ##......   rank 4
+      ###.....   rank 3
+      ####....   rank 2
+      #####...   rank 1
+learned(>=30% data mass)   flips= 0.03180  add= 0.03180  repl=-0.00213  data-min-mass=30.42%  arrival-min-mass= 9.99%
+      ........   rank 8
+      ........   rank 7
+      ........   rank 6
+      ........   rank 5
+      ........   rank 4
+      ........   rank 3
+      .......#   rank 2
+      ......##   rank 1
+learned(>=40% data mass)   flips= 0.03586  add= 0.03586  repl=+0.00192  data-min-mass=40.62%  arrival-min-mass=18.72%
+      ........   rank 8
+      ........   rank 7
+      ........   rank 6
+      ........   rank 5
+      ........   rank 4
+      ........   rank 3
+      ......##   rank 2
+      .....###   rank 1
+learned(>=48% data mass)   flips= 0.05935  add= 0.05683  repl=+0.02541  data-min-mass=48.36%  arrival-min-mass=37.99%
+      ########   rank 8
+      #######.   rank 7
+      ######..   rank 6
+      #####...   rank 5
+      ###.....   rank 4
+      ###.....   rank 3
+      ###.....   rank 2
+      ###...##   rank 1

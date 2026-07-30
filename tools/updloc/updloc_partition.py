@@ -12,9 +12,13 @@ partition it prints: in-tree flips/node, exact addition increment
 (union-with-mirror minus mirror) and replacement delta (vs the d/e mirror),
 data-side and arrival-side mass splits, and the board diagram.
 
-Frames: records are stm-canonicalized by vertical flip only (files raw), so
-`ksq` is the own king in own-frame and `opp_ksq ^ 56` is the enemy king in
-ITS own-frame — the same color-relative frame as the KTRANS counter.
+Frames: records are stm-canonicalized by vertical flip only (files raw).
+`ksq` is the stm king in the record frame (= its own frame), and `opp_ksq`
+is ALREADY the enemy king in ITS own frame (verified: the decoded
+record-frame enemy king equals `opp_ksq ^ 56` on 100% of records) — both
+fields are therefore directly in the KTRANS color-relative frame, no flip.
+An earlier revision applied `^ 56` to `opp_ksq` (double flip); every
+occupancy number it printed was wrong and is retracted.
 
 Usage:
   .venv/bin/python tools/updloc/updloc_partition.py <foldcount-dump> \
@@ -37,7 +41,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def data_occupancy(heldout, n_rec):
     rec = np.fromfile(heldout, dtype=RECORD_DTYPE, count=n_rec)
     own = np.bincount(rec["ksq"], minlength=64).astype(float)
-    enemy = np.bincount(rec["opp_ksq"] ^ 56, minlength=64).astype(float)
+    enemy = np.bincount(rec["opp_ksq"], minlength=64).astype(float)
     return (own + enemy) / (own + enemy).sum(), len(rec)
 
 

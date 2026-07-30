@@ -1,0 +1,4 @@
+samples (record x perspective): 2,000,000
+  pocket   P(b=1)=0.304  MI=0.0857 bits  tuples both cells>=100: 9,053 (90.8% mass)  top-8192 median min-cell share: 0.379
+  rank1    P(b=1)=0.613  MI=0.1051 bits  tuples both cells>=100: 8,576 (90.2% mass)  top-8192 median min-cell share: 0.306
+  null     P(b=1)=0.463  MI=0.0022 bits  tuples both cells>=100: 10,944 (93.4% mass)  top-8192 median min-cell share: 0.487
