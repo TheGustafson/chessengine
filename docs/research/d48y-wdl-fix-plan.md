@@ -5736,3 +5736,44 @@ scale 256 gives **1.57% error, 0 weights clipped**, packed CEN5 at
 **Heldout still shows the flat step** (sb260 = sb270 = 0.011472) with the EMA
 still falling (0.011189). sb280 is due shortly and will be the first evidence on
 whether the flat reading was noise or the start of saturation.
+
+## Tick 2026-07-30 ~19:00 — D49 is BEHIND; measuring whether it can close
+
+**D49 sb284/400.** Heldout resumed falling at sb280 (**0.011389**, ema
+0.011153) after the flat sb260=sb270 step — **the flat reading was noise, not
+saturation.** Recording that because I explicitly declined to call it a plateau
+at the time, and the next sample settled it.
+
+### The trajectory number, read honestly
+
+**`d49-traj` at 1000/1466: −48.96 +/- 14.02** (W230/D400/L370, 43.00%) for
+**D49 sb270 @756 vs canonical D48X @600** — the first comparison of the night
+fair to both sides, each net at its own measured optimum.
+
+**D49 is meaningfully behind at 70% of schedule.** What that does and does not
+mean:
+
+- **Not catastrophic.** Not the −200/−300 that would say the recipe is broken.
+- **But 49 Elo in 120 remaining superbatches is a real ask.** The anneal
+  (300→400) is where nets consolidate, which is exactly why the schedule has
+  one — but "the anneal will fix it" is a hope, not a measurement.
+- The comparison is **hard on D49 by construction**: from scratch at 70%, against
+  a fully-trained gen-2 net with a warm-start lineage behind it.
+
+### The measurement that actually decides it — queued
+
+Hope is not a plan, so `d49-rate` is queued: **D49 sb270 @756 vs D49 sb180 @756**
+— same net family, **same scale**, 90 superbatches apart. That measures D49's
+**improvement rate in Elo**, which is the number that predicts whether the
+remaining 120 sb plus the anneal can close 49 Elo.
+
+- gain over sb180→sb270 large (say +30) ⇒ closing the gap is plausible
+- gain small (say +5) ⇒ it will not close, and we should be planning the next
+  recipe rather than waiting four more hours to be told so
+
+It is chained to **wait for `d49-traj` to exit before starting**, so the two
+screens never hold engines simultaneously — swap is at **596 MB free** and two
+concurrent screens is exactly what would break it.
+
+**Box:** 6619 MB available, free swap 596 MB, load 14.48, disk 135 GB.
+**Study 38 ahead=4** — landing work on the threat-fold alias.
