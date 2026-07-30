@@ -381,7 +381,74 @@ cost at this size**, and not the explanation for anything below.
 
 ---
 
-### 4.2 The sweep — and the honest history of how the number moved
+### 4.2 ★ THE INSTRUMENT FAILED, AND THE NULL IS WHAT CAUGHT IT
+
+**A byte-identical copy of the base binary read `+2.363 % cycles`,
+`+5.535 % load_not_complete` and `+6.067 % store_queue_rsrc_stall`, at 2/11
+rounds on each.** A byte-identical binary cannot be 2.4 % slower. By rule 1 the
+panel could not answer the question, and everything measured on it had to be
+set aside rather than interpreted.
+
+**The cause, found by bucketing every run by its POSITION IN ITS ROUND:**
+
+| position in round | mean `cycles:u`/node | n |
+|---|---:|---:|
+| 0 (first) | **4282.4** | 13 |
+| 1 | 4353.7 | 13 |
+| 2 | 4329.5 | 12 |
+| 3 (last) | **4449.4** | 12 |
+
+**+3.9 % from the first slot of a round to the last** — a real within-round
+drift, on a box where three other workloads come and go on the same timescale
+as one round (4 labels × ~20 s).
+
+And the free shuffle did not balance against it. Realised mean positions over
+13 rounds:
+
+| label | mean position | ideal |
+|---|---:|---:|
+| **`base44` (the REFERENCE)** | **0.77** | 1.50 |
+| `r5` | 1.50 | 1.50 |
+| `null44` | 1.62 | 1.50 |
+| `r10` | 2.00 | 1.50 |
+
+**The reference was systematically running early.** Every label is differenced
+against it, so a reference in a cheap slot inflates *everything* — and it
+penalises whichever arm drew the late slots hardest. At ~1.3 % per position,
+`null44`'s 0.85-position deficit accounts for most of its impossible +2.4 %,
+and `r10`'s 1.23-position deficit was **hiding a real effect at the same time
+as it was faking a fake one**. That is the part worth remembering: a broken
+randomisation does not just add noise in one direction.
+
+**The fix, and why it is not "shuffle harder".** A shuffle cancels drift only
+IN EXPECTATION; at n = 13 the realised imbalance was 0.73 positions on the one
+label that matters most. `panel44.sh` now uses a **balanced Latin square**:
+within each block of `NLAB` rounds every label occupies every position exactly
+once, so any monotone within-round trend contributes *identically* to every
+label — by construction, not by luck. The base order is re-shuffled per block,
+which keeps study 25 §0.2's requirement that the design vary *which* orderings
+appear (a single fixed rotation cancels monotone drift but not curvature).
+Verified: mean position **1.50 for all four labels**.
+
+**What this does and does not invalidate.**
+
+* **Arm 1's verdict STANDS, and I checked rather than assumed.** Its panel ran
+  3 labels with realised mean positions **0.91 / 1.18 / 0.91** against an ideal
+  of 1.00, over a gradient that was only **+0.5 % and non-monotone**
+  (4308.7 / 4272.7 / 4330.9). `hpf44`'s 0.27-position deficit is worth ~3
+  cycles/node — 0.07 % against a measured +1.51 %. Its null also behaved (5/10,
+  p = 1.00). The defect was specific to the LONGER 4- and 5-label rounds.
+* **Every `cycles` figure from the arm-2 sweep is provisional** and is re-run
+  in §4.4 on the fixed instrument.
+* **The mechanism counters survive on margin.** Store-queue reductions of
+  13–23 % at 10/10 and 11/11 are one to two orders of magnitude outside what a
+  ±1.3 %-per-position gradient can manufacture, and `instructions:u` has a
+  literally zero noise floor.
+
+The broken panel is kept as `perf-artifacts-44/panel-shuffled-BROKEN.txt`
+rather than deleted.
+
+### 4.3 The sweep — and the honest history of how the number moved
 
 **This arm was nearly published off a lucky `n`, and the record of that is the
 most useful part of the section.** The sweep panel's `cycles:u` estimate for
