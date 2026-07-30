@@ -7134,3 +7134,56 @@ now that the identity arm's number is visible.
 **Its phase-1 result (−1.5% cycles, 32/42 rounds) is unaffected and stands.**
 What is missing is phase 3 — which is to say, the thing the POC exists to
 answer has **no verdict at all** yet, only a control.
+
+# ═══ THE VERDICT (n=1000 of 5880): D49 = −33.46 +/- 13.57 ═══
+
+**D49 sb400 @756 vs canonical D48X @600**, each net at its own measured optimum.
+
+    Elo -33.46 +/- 13.57    W257 / D390 / L353   (45.20%)   n=1000
+
+## MY HELDOUT MAP OVER-PREDICTED BY 2.5x — and this is the headline
+
+| leg | heldout change | Elo |
+|---|---:|---:|
+| sb180 → sb270 (**calibration**) | +0.000545 | **+49.63 measured** |
+| sb270 → sb400 (**prediction**) | +0.000385 | **+35.1 predicted** |
+| sb270 → sb400 (**measured**) | +0.000385 | **+13.75** |
+
+**Effective slope over the second leg: 35,714 Elo/unit, against 91,064 on the
+calibration leg — it FELL 2.5x.** That is **diminishing returns**: the same
+heldout improvement buys less Elo the better the net already is.
+
+### I flagged this exact risk and then leaned on the map anyway
+
+When I built it I wrote: *"The slope is a line through two points. It has no
+curvature information, and linearity far outside the measured heldout range
+(0.01147-0.01225) is an assumption, not a result."* **That was the right caveat
+and I gave it the wrong weight** — I then quoted a −7…−12 band derived from it
+for **nine consecutive ticks**, and treated its stability as evidence. Stability
+of an extrapolation is not evidence about its accuracy; it only shows the inputs
+were stable.
+
+**The band was never a measurement.** Games arbitrate. They say **−33**.
+
+### What D49 actually achieved
+
+- **sb270: −47.21** → **sb400: −33.46** = **+13.75 Elo across 130 superbatches**,
+  most of it in the anneal.
+- Still **~33 Elo short of canonical** — a fully-trained gen-2 net with a
+  warm-start lineage, against a from-scratch run.
+- Every checkpoint is retained, so the user's fallback stands and D48X remains
+  canonical.
+
+*n=1000 of 5880; the bar will tighten from +/-13.6 to +/-5. The sign and rough
+magnitude are not in doubt.*
+
+## Tier-1 panel: recovered and running properly
+
+The agent **fixed the GPU OOM with a pallas self-default**, **added the exact
+guard I asked for** (*"remap guard OK: stream code == projection code (8192
+rows)"*), and committed a post-mortem. `random8k` is training.
+
+Its sb0 projection readout: **0.007696 against identity's 0.006350** — a
+content-free code costs **+21% relative**, so the instrument **sees code changes
+loudly** and pre-registered **rule (1) is satisfied**. That is the panel's own
+sensitivity check passing before any verdict is read off it.
