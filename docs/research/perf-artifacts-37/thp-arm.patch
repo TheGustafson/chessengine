@@ -1,0 +1,265 @@
+diff --git a/src/hugepage.rs b/src/hugepage.rs
+new file mode 100644
+index 0000000..2176300
+--- /dev/null
++++ b/src/hugepage.rs
+@@ -0,0 +1,138 @@
++//! Transparent-huge-page hinting for the big, randomly-addressed tables.
++//!
++//! # Why this exists
++//!
++//! The two feature-transformer weight tables are **28.8 MB (HalfKA) and
++//! 77.7 MB (FullThreats)**, and the engine reads them the worst possible way:
++//! perf study 36's exact fold census puts **7.131 weight rows per node**, each
++//! row 1280 contiguous bytes at a *data-dependent* feature index, i.e. a
++//! uniformly scattered 1280-byte pull out of 106 MB, ~7 times per node.
++//!
++//! A 4 KiB page holds 3.2 such rows and a row straddles a page boundary 31% of
++//! the time, so each row costs ~1.31 page touches and almost every one of them
++//! is a page this core has not touched recently. **Zen 4's L2 STLB is 3072
++//! entries: 12 MB of reach at 4 KiB, against a 106 MB working set.** The
++//! translation therefore misses to a page walk on essentially every row.
++//!
++//! At 2 MiB the same 106 MB is 53 entries. That is the whole idea.
++//!
++//! This is `design/08` §3.13 phase 2's plan for the transposition table and
++//! perf study 4 item #8 ("if `madvise`, add `madvise(MADV_HUGEPAGE)` on the
++//! big allocations"), which was left **RE-OPENED** and never built. It changes
++//! no value the engine computes — it is a hint to the kernel about how to back
++//! pages that already exist — so every accumulator, every eval and every node
++//! count is bit-identical by construction.
++//!
++//! # Why an `extern "C"` block and not the `libc` crate
++//!
++//! The crate has **zero runtime dependencies** and that is a standing rule.
++//! `madvise(2)` is one libc symbol, and `std` already links libc on every
++//! `*-linux-gnu` target, so declaring the one prototype ourselves costs nothing
++//! and adds no dependency. This is the ordinary Rust idiom for a single syscall
++//! wrapper in a dependency-free crate; the `libc` crate's value is its ~10,000
++//! *other* declarations and its cross-platform constant tables, neither of
++//! which we need for one advice flag.
++//!
++//! # Failure is not an error
++//!
++//! `madvise` returns `EINVAL` when THP is compiled out or the range is not
++//! anonymous memory, and the kernel is free to ignore the hint when memory is
++//! too fragmented to produce a 2 MiB block. All of that is *fine*: the table
++//! still works, just on 4 KiB pages, which is exactly today's behaviour. So
++//! [`advise_huge`] reports success as a `bool` for tests and never panics.
++
++/// The x86-64 huge-page size, and the alignment [`advise_huge`] wants its
++/// range to have. A THP-backed region must contain whole 2 MiB-aligned,
++/// 2 MiB-sized chunks; a range that merely *overlaps* one gets 4 KiB pages for
++/// the partial chunks at both ends.
++pub const HUGE: usize = 2 * 1024 * 1024;
++
++/// `MADV_HUGEPAGE` from `include/uapi/asm-generic/mman-common.h`. Stable
++/// kernel ABI since 2.6.38 and identical on every architecture Linux supports
++/// (the arch-specific `MADV_*` values start at 100).
++#[cfg(target_os = "linux")]
++const MADV_HUGEPAGE: i32 = 14;
++
++// `madvise` is NOT a safe FFI item and is deliberately not declared `safe`:
++// the general syscall takes advice values such as `MADV_DONTNEED`, which
++// zeroes anonymous memory and so can invalidate live objects. What is safe is
++// this module's *use* of it — one advice value, one range — and that is what
++// the `unsafe` block in [`advise_huge`] argues, in the crate's documented
++// style for its `deny(unsafe_code)` exceptions.
++#[cfg(target_os = "linux")]
++#[allow(unsafe_code)]
++unsafe extern "C" {
++    /// `int madvise(void *addr, size_t length, int advice)`.
++    fn madvise(addr: usize, length: usize, advice: i32) -> i32;
++}
++
++/// Ask the kernel to back `[addr, addr + len)` with 2 MiB pages.
++///
++/// `addr` is taken as an integer rather than a pointer deliberately: nothing
++/// on this side dereferences it, the callee is the kernel, and passing an
++/// address keeps every byte of pointer arithmetic at the call site in safe
++/// code.
++///
++/// Returns whether the kernel accepted the hint. Call this **before** the range
++/// is written: a fault on a fresh madvised range allocates a huge page
++/// directly, whereas a range advised after it is populated has to wait for
++/// `khugepaged` to collapse it in the background, which may never happen under
++/// memory pressure.
++///
++/// Not a promise: `true` means the advice was recorded, not that any particular
++/// page ended up huge. `/proc/self/smaps_rollup`'s `AnonHugePages` is the
++/// observation; a page-walk counter is the effect.
++#[cfg(target_os = "linux")]
++#[allow(unsafe_code)]
++pub fn advise_huge(addr: usize, len: usize) -> bool {
++    // SAFETY: `MADV_HUGEPAGE` is a pure backing-store hint — it neither reads,
++    // writes, unmaps nor discards the range, so no Rust value can observe a
++    // change through it, whatever `addr`/`len` are. A range that is unmapped,
++    // misaligned or not anonymous is rejected by the kernel with `EINVAL` and
++    // reported here as `false`; there is no address for which this call is
++    // undefined behaviour. That is the whole argument, and it is why the
++    // wrapper takes `usize`: it has no pointer preconditions to state.
++    len >= HUGE && unsafe { madvise(addr, len, MADV_HUGEPAGE) } == 0
++}
++
++/// Everywhere else the hint does not exist, and 4 KiB pages are what the
++/// tables get — which is what every platform got before this module.
++#[cfg(not(target_os = "linux"))]
++pub fn advise_huge(_addr: usize, _len: usize) -> bool {
++    false
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    /// The hint is accepted for a real, page-aligned anonymous range. This is
++    /// a live syscall test, not a mock: if the constant is wrong (say a future
++    /// `MADV_*` renumbering) `madvise` returns `EINVAL` and this fails, which
++    /// is the only way a wrong flag number would ever be noticed — a bad
++    /// advice value is silently ignored by every other layer.
++    #[cfg(target_os = "linux")]
++    #[test]
++    fn a_2mib_aligned_range_accepts_the_hint() {
++        // Own the memory for the whole call, and align a 2 MiB window inside it.
++        let buf = vec![0u8; 4 * HUGE];
++        let base = buf.as_ptr() as usize;
++        let addr = base.next_multiple_of(HUGE);
++        assert!(
++            advise_huge(addr, 2 * HUGE),
++            "madvise(MADV_HUGEPAGE) rejected a 4 MiB aligned anonymous range"
++        );
++        // Touch the range so the buffer cannot be optimised away before the
++        // syscall, and so a wrong length would fault here rather than silently.
++        assert_eq!(buf[buf.len() - 1], 0);
++    }
++
++    /// Ranges below one huge page are declined without a syscall — there is no
++    /// 2 MiB-aligned chunk inside them to back, so the advice could only cost
++    /// `khugepaged` scan time.
++    #[test]
++    fn a_range_smaller_than_one_huge_page_is_declined() {
++        let buf = vec![0u8; 4096];
++        assert!(!advise_huge(buf.as_ptr() as usize, buf.len()));
++    }
++}
+diff --git a/src/eval/nnue/aligned.rs b/src/eval/nnue/aligned.rs
+index c6028d8..2d9f029 100644
+--- a/src/eval/nnue/aligned.rs
++++ b/src/eval/nnue/aligned.rs
+@@ -64,6 +64,7 @@
+ //!    asserts the invariant at the exact point the release build assumes it.
+ //!    A new constructor that got it wrong could not survive one `cargo test`.
+ 
++use crate::hugepage::HUGE;
+ use std::fmt;
+ use std::ops::{Deref, DerefMut};
+ 
+@@ -93,20 +94,37 @@ impl<T: Default + Clone> Aligned<T> {
+     /// slice bounds are what enforce section sizes — this type does not change
+     /// the error model).
+     pub fn from_iter_len(len: usize, iter: impl Iterator<Item = T>) -> Self {
+-        // Worst-case padding: one element short of a whole line. `size_of::<T>()`
+-        // divides LINE for every weight element type we use (i8/i16/i32/f32),
+-        // so this bound is exact rather than merely sufficient.
+-        let pad = LINE / size_of::<T>();
++        // A table at least one huge page long is aligned to 2 MiB instead of 64
++        // B and hinted to the kernel — see [`crate::hugepage`] for why, and note
++        // that the STRONGER alignment subsumes the weaker one, so nothing below
++        // this line changes. Everything smaller keeps the cache line exactly as
++        // before; there is no 2 MiB-aligned chunk inside a sub-huge-page range
++        // to back, so the padding would be pure waste.
++        let bytes = len * size_of::<T>();
++        let align = if bytes >= HUGE { HUGE } else { LINE };
++        // Worst-case padding: one element short of a whole boundary.
++        // `size_of::<T>()` divides LINE — and therefore HUGE — for every weight
++        // element type we use (i8/i16/i32/f32), so this bound is exact rather
++        // than merely sufficient.
++        let pad = align / size_of::<T>();
+         let mut buf: Vec<T> = Vec::with_capacity(len + pad);
+-        // Safe pointer method: how many ELEMENTS from the start until a LINE
+-        // boundary. `usize::MAX` means "impossible", which cannot happen for a
+-        // type whose size divides LINE, but fall back to 0 rather than panic —
+-        // a mis-aligned table is slow, not wrong.
+-        let off = match buf.as_ptr().align_offset(LINE) {
++        // Safe pointer method: how many ELEMENTS from the start until an
++        // `align` boundary. `usize::MAX` means "impossible", which cannot
++        // happen for a type whose size divides `align`, but fall back to 0
++        // rather than panic — a mis-aligned table is slow, not wrong.
++        let off = match buf.as_ptr().align_offset(align) {
+             usize::MAX => 0,
+             n => n,
+         };
+         debug_assert!(off < pad, "align_offset exceeded the reserved padding");
++        // BEFORE the fill: a fault on a fresh madvised range allocates a huge
++        // page outright, where advising an already-populated range only queues
++        // it for `khugepaged`. Integer arithmetic on the address, so the whole
++        // computation stays in safe code and `hugepage` owns the one `unsafe`.
++        if align == HUGE {
++            let payload = buf.as_ptr() as usize + off * size_of::<T>();
++            crate::hugepage::advise_huge(payload, bytes);
++        }
+         buf.resize(off, T::default());
+         buf.extend(iter);
+         debug_assert!(
+@@ -124,6 +142,14 @@ impl<T> Aligned<T> {
+     /// suite (and every debug run of the engine) exercises the check on every
+     /// single weight-table access — which is a far denser test of the invariant
+     /// than any unit test could be.
++    /// Reserved capacity including padding — test-only, so
++    /// `a_huge_page_sized_table_is_huge_page_aligned` can check that a small
++    /// table did not silently start reserving 2 MiB of padding.
++    #[cfg(test)]
++    fn capacity_for_test(&self) -> usize {
++        self.buf.capacity()
++    }
++
+     #[inline]
+     fn debug_check(off: usize, len: usize) {
+         debug_assert!(
+@@ -366,6 +392,34 @@ mod tests {
+         check::<f32>("f32", 1.0);
+     }
+ 
++    /// A table of at least one huge page is aligned to 2 MiB, and one below it
++    /// is not forced to be — the second half is what keeps the small tables
++    /// from each burning up to 2 MiB of padding.
++    ///
++    /// `1` is the exercised boundary in element terms for `i8`: `HUGE` bytes of
++    /// `i8` is exactly `HUGE` elements, so the pair below straddles the
++    /// threshold by a single byte.
++    #[test]
++    fn a_huge_page_sized_table_is_huge_page_aligned() {
++        let big: Aligned<i8> = Aligned::from_iter_len(HUGE, std::iter::repeat_n(1i8, HUGE));
++        assert_eq!(big.len(), HUGE);
++        assert_eq!(
++            big.as_ptr().align_offset(HUGE),
++            0,
++            "a {HUGE}-byte table must start on a huge-page boundary"
++        );
++        // Below the threshold the payload keeps the cache line and nothing
++        // more; asserting it is NOT 2 MiB-aligned would be a coin flip, so
++        // assert the thing that actually matters — the padding stayed small.
++        let n = HUGE - 1;
++        let small: Aligned<i8> = Aligned::from_iter_len(n, std::iter::repeat_n(1i8, n));
++        assert_eq!(small.as_ptr().align_offset(LINE), 0);
++        assert!(
++            small.capacity_for_test() - n < HUGE / 2,
++            "a sub-huge-page table must not reserve huge-page padding"
++        );
++    }
++
+     /// Contents survive the padding trick — an off-by-one in `off` would show
+     /// up here as a shifted or truncated payload.
+     #[test]
+diff --git a/src/lib.rs b/src/lib.rs
+index f4dbf5c..e90617c 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -28,6 +28,7 @@ pub mod cuckoo;
+ pub mod eval;
+ pub mod fen;
+ pub mod history;
++pub mod hugepage;
+ pub mod movegen;
+ pub mod movepick;
+ pub mod moves;
