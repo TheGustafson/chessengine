@@ -3206,6 +3206,17 @@ impl Worker {
                 .board
                 .piece_on(m.from())
                 .expect("a legal move starts on a piece of the side to move");
+            // Perf study 42 arm: the SPECULATIVE TT prefetch (doc 08 §3.15
+            // call site 2 / doc 04 §3.10 hook B). `Board::prefetch_key` has
+            // existed, tested and documented as "search uses it to start the
+            // TT prefetch even earlier than hook A", with NO CALLER, since it
+            // landed. Hook A fires inside `make_move` once the child key is
+            // final; from here to `do_move` is the whole §3.5 pruning cascade
+            // and the singular verification, i.e. hundreds of cycles more
+            // overlap. The cost is that a pruned move's hint is wasted, which
+            // is why this is measured rather than assumed.
+            #[cfg(feature = "ttspec42")]
+            tt.prefetch(self.board.prefetch_key(m));
             move_count += 1;
             self.stack[cur].move_count = move_count;
             let nodes_before = self.nodes; // root effort accounting (§3.4)

@@ -193,6 +193,12 @@ ttpft242 = []
 # on paths that make no search decision, so the tree stays bit-identical
 # (`tools/perf42/ident42.sh`); the binary is NOT a timing reference.
 ttcensus42 = []
+# Perf study 42's SPECULATIVE TT prefetch: `Board::prefetch_key` finally gets
+# the caller its own doc comment promises, in the main move loop right after
+# the legality check -- the whole pruning cascade earlier than hook A. Also
+# node-identical (a cache hint decides nothing), so it is gated on the same
+# `Bench:` fingerprint as the rest.
+ttspec42 = []
 # Perf study 40's DOSE AMPLIFIER for `partial_insertion_sort` (`src/dose40.rs`).
 # `insertwin34` is a ~0.2%-of-cycles trade and six nulls put the `cycles:u`
 # floor on this box an order of magnitude above that, so the arm is replayed
