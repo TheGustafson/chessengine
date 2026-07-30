@@ -117,6 +117,15 @@ pub(crate) fn partial_insertion_sort(moves: &mut [ExtMove], limit: i32) {
         let head = &mut moves[..=p];
         // Hole-punch: the element leaving the prefix edge goes to `p`.
         head[p] = head[se];
+        // PERF STUDY 23 measured this loop at 2.84% of ALL engine cycles and
+        // 10.19% of all branch misses — the largest mispredict source outside
+        // the NNUE and `search` itself. Two rewrites were tried and BOTH lost:
+        // scan-then-`copy_within` cost +91 i/n (memmove is the wrong tool for a
+        // ~3-element shift) and `partition_point` cost +77.8 i/n without moving
+        // branch misses at all. The constraint that makes this hard is that the
+        // TAIL permutation is observable — `BadQuiet` emits the unsorted
+        // remainder in buffer order — so no algorithm that reorders it can pass
+        // the node-identity gate. See docs/research/perf-study-23-*.md §6.
         let mut q = se;
         while q > 0 && head[q - 1].value < tmp.value {
             head[q] = head[q - 1];
@@ -124,6 +133,46 @@ pub(crate) fn partial_insertion_sort(moves: &mut [ExtMove], limit: i32) {
         }
         head[q] = tmp;
     }
+}
+
+/// The per-piece-type facts `init_quiets`' scoring loop reads (perf study 23
+/// arm 4). One 32-byte row per type, so a quiet's five `pt`-indexed reads share
+/// a single scaled address and one cache line instead of four bases in four
+/// different objects. Built once per `init_quiets`, six rows, 192 bytes.
+#[derive(Clone, Copy)]
+struct PtRow {
+    /// Squares attacked by an enemy piece strictly cheaper than this type.
+    threat: Bitboard,
+    /// Reverse attack fan onto the undefended enemies this type may threaten.
+    offense: Bitboard,
+    /// Squares from which this type would give check.
+    check: Bitboard,
+    /// `pt.value() * QUIET_THREAT_FACTOR()`, premultiplied.
+    threat_w: i32,
+    /// `pt.value() * QUIET_OFFENSE_FACTOR()`, premultiplied.
+    offense_w: i32,
+}
+
+/// The P-ORD quiet prior's per-move bonus, kept OUT of `init_quiets`' scoring
+/// loop (perf study 23 arm 3).
+///
+/// `QuietPrior::bonus` is `#[inline]` and its body is a selected-row AVX-512
+/// dot product over `L2` floats plus a horizontal reduction: ~55 instructions
+/// of vector code that LLVM was splicing straight into the quiet-scoring loop.
+/// The prior is OFF in every shipped configuration (`CPL_ORD_W` defaults to 0,
+/// so `quiet_prior` is `None` and the branch is never taken), yet the loop paid
+/// for it three ways — 200-odd bytes of the loop's icache footprint, the
+/// register pressure of keeping the dot's live values schedulable (the loop
+/// carried visible spill/reload traffic around the block), and two
+/// `vzeroupper`s forced by the dirty AVX upper state.
+///
+/// `#[cold]` + `#[inline(never)]` says exactly that: the call is real when the
+/// experiment is switched on, and free when it is not.
+#[cfg(feature = "sota")]
+#[cold]
+#[inline(never)]
+fn quiet_prior_bonus(qp: &crate::eval::nnue::policy_head::QuietPrior, m: Move) -> i32 {
+    qp.bonus(m)
 }
 
 /// The "no victim" capture-history slot (design/09 §3.4): en passant and quiet
@@ -433,6 +482,7 @@ impl MovePicker {
     /// exhausted (design/09 §3.6). The caller checks legality only on the move
     /// it actually plays. Idempotent after exhaustion: further calls keep
     /// returning `None`.
+    #[inline]
     pub fn next_move(&mut self, board: &Board, hist: &Histories) -> Option<Move> {
         loop {
             match self.stage {
@@ -721,12 +771,52 @@ impl MovePicker {
         // one per quiet: `pt` varies per move, so the query cannot be hoisted
         // at the call site.
         let check_squares = board.check_squares_all();
+
+        // Perf study 23 arm 4 — ONE per-piece-type row instead of four parallel
+        // arrays. The loop below reads five `pt`-indexed facts per quiet, and
+        // before this they lived in four different places with four different
+        // bases (two stack arrays, the board's `StateInfo`, and the `PIECE_VALUES`
+        // table) plus a two-instruction `imul`/`lea` chain to turn the piece
+        // value into the threat and offense weights. Interleaved into a 32-byte
+        // row they share ONE `pt << 5` address, sit in one cache line, and the
+        // weights are premultiplied once per call (6 multiplies) instead of once
+        // per quiet (~23). Pure code shape: the arithmetic is unchanged, so the
+        // scores — and therefore the tree — are bit-identical.
+        // Spelled as a literal, not `array::from_fn`: the closure form left a
+        // real six-iteration loop with four bounds checks in it (measured
+        // +326 instructions per call), while the literal is six independent
+        // 32-byte stores LLVM folds into vector moves.
+        let row_of = |i: usize| PtRow {
+            threat: threat[i],
+            offense: offense_from[i],
+            check: check_squares[i],
+            threat_w: PieceType::ALL[i].value() * QUIET_THREAT_FACTOR(),
+            offense_w: PieceType::ALL[i].value() * QUIET_OFFENSE_FACTOR(),
+        };
+        let rows: [PtRow; 6] = [
+            row_of(0),
+            row_of(1),
+            row_of(2),
+            row_of(3),
+            row_of(4),
+            row_of(5),
+        ];
         let base = self.end_captures;
         for (i, &m) in list.iter().enumerate() {
             let pc = board
                 .piece_on(m.from())
                 .expect("a quiet move starts on a piece of the side to move");
             let pt = pc.piece_type;
+            // NOT clamped with `.min(5)` / `.min(11)`, though the bounds are type
+            // invariants and LLVM cannot see them (both values arrive through a
+            // mailbox byte, so it emits a `cmp`/`jae` and a panic block for each,
+            // twice per scored quiet). Perf study 23 measured the clamps: they
+            // remove 7.4 branches/node — an exact match for the 2 panic edges x
+            // 3.93 quiets/node they target — and cost **+21.7 instructions/node**
+            // doing it, because the `cmov` blocks the addressing-mode folding the
+            // bounds-checked form gets for free. Predicted branches are cheap;
+            // this trade is not worth taking.
+            let row = &rows[pt as usize];
             let pci = pc.index();
             let to = m.to().index() as usize;
             let raw = m.raw16() as usize;
@@ -741,25 +831,23 @@ impl MovePicker {
 
             // Check bonus, gated so a checking quiet that hangs material earns
             // nothing (design/09 §3.7).
-            if check_squares[pt as usize].contains(m.to())
-                && board.see_ge(m, QUIET_CHECK_SEE_MARGIN())
-            {
+            if row.check.contains(m.to()) && board.see_ge(m, QUIET_CHECK_SEE_MARGIN()) {
                 value += QUIET_CHECK_BONUS();
             }
 
             // Threat escape/entry: +factor·value for fleeing a cheaper-piece
             // attack, -factor·value for stepping into one (design/09 §3.7).
-            let from_threat = threat[pt as usize].contains(m.from()) as i32;
-            let to_threat = threat[pt as usize].contains(m.to()) as i32;
-            value += pt.value() * QUIET_THREAT_FACTOR() * (from_threat - to_threat);
+            let from_threat = row.threat.contains(m.from()) as i32;
+            let to_threat = row.threat.contains(m.to()) as i32;
+            value += row.threat_w * (from_threat - to_threat);
 
             // Offense (D30): moving to a square from which the piece attacks a
             // vulnerable enemy earns a modest reward. `occ` is the pre-move
             // occupancy (a heuristic approximation — the mover still sits on
             // `from`); acceptable for ordering. Precomputed as a reverse fan
             // above, so this is one bit test instead of a magic lookup.
-            if offense_from[pt as usize].contains(m.to()) {
-                value += pt.value() * QUIET_OFFENSE_FACTOR();
+            if row.offense.contains(m.to()) {
+                value += row.offense_w;
             }
 
             // Low-ply history (plies 0..4 only), damped toward the leaves.
@@ -782,9 +870,13 @@ impl MovePicker {
             // P-ORD: the deployed D47 head's prior, quiets only (captures stay
             // on MVV/SEE — the head is near-blind there by training-data
             // construction). One selected-row SIMD dot per quiet.
+            //
+            // Called through the outlined [`quiet_prior_bonus`], NOT inlined —
+            // see that function's note. `CPL_ORD_W` ships 0, so the branch is
+            // not taken in any shipped configuration.
             #[cfg(feature = "sota")]
             if let Some(qp) = &self.quiet_prior {
-                value += qp.bonus(m);
+                value += quiet_prior_bonus(qp, m);
             }
 
             self.set_slot(base + i, ExtMove { mv: m, value });
