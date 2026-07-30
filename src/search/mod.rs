@@ -2986,7 +2986,13 @@ impl Worker {
                         continue;
                     }
                     let gives_check = self.board.gives_check(m);
-                    self.do_move(tt, m, gives_check, ply);
+                    // ProbCut only ever emits captures and queen promotions, but
+                    // `capture_stage` is asked anyway rather than assumed: this
+                    // is a cold path and an assumption here would be a silent
+                    // continuation-history mis-key if the picker ever changed.
+                    let capture = self.board.capture_stage(m);
+                    let moved_piece = self.board.piece_on(m.from());
+                    self.do_move(tt, m, gives_check, capture, moved_piece, ply);
                     // Cheap qsearch verification first, then — if it held — a
                     // real reduced search.
                     let mut value =
@@ -3187,6 +3193,19 @@ impl Worker {
                 continue;
             }
             let is_capture = self.board.capture_stage(m);
+            // The mover, resolved ONCE for the whole iteration (perf study 23
+            // arm 6). It used to be read from the mailbox three times — in the
+            // capture arm's SEE gate, in the quiet arm's continuation-history
+            // gate, and again for `stat_score` — plus a fourth time inside
+            // `do_move`, each with its own `Option` unwrap and panic edge. Every
+            // path through the body needs it (the two pruning arms partition the
+            // block, and everything that survives reaches `stat_score`), so
+            // hoisting wastes nothing: the read is not merely deduplicated, it
+            // was never conditional to begin with.
+            let moved_piece = self
+                .board
+                .piece_on(m.from())
+                .expect("a legal move starts on a piece of the side to move");
             move_count += 1;
             self.stack[cur].move_count = move_count;
             let nodes_before = self.nodes; // root effort accounting (§3.4)
@@ -3304,12 +3323,7 @@ impl Worker {
                     // moved piece is our LAST non-pawn material (sacrificing it
                     // may be a stalemate resource, which is never pruned).
                     let us = self.board.side_to_move();
-                    let moved_value = self
-                        .board
-                        .piece_on(m.from())
-                        .expect("a capture or checking move starts on a piece of the side to move")
-                        .piece_type
-                        .value();
+                    let moved_value = moved_piece.piece_type.value();
                     if (alpha >= VALUE_DRAW || self.board.non_pawn_material(us) != moved_value)
                         && !self.board.see_ge(m, -capture_see_margin(depth, capt_hist))
                     {
@@ -3332,11 +3346,7 @@ impl Worker {
                     // histories sum to −2366 (above the bar at every depth), so
                     // this is dormant until the search's own updates drive a
                     // quiet's score below `-QHIST_PRUNE_MULT·depth`.
-                    let pc = self
-                        .board
-                        .piece_on(m.from())
-                        .expect("a quiet move starts on a piece of the side to move");
-                    let pci = pc.index();
+                    let pci = moved_piece.index();
                     let to = m.to().index() as usize;
                     let cont_history =
                         self.histories.cont_ref(self.stack[cur - 1].cont_hist)[pci][to].get()
@@ -3483,16 +3493,13 @@ impl Worker {
 
             // §3.7 — the per-node combined history statistic `ss.stat_score`
             // (design/10 Wave-C item 10), computed from PRE-move facts:
-            // `moved_piece` (piece on `m.from()`) also keys the post-LMR
-            // conthist bonus below, so it is captured once here. `stat_score`
-            // lives on the stack because the finalization block docks `r` by
-            // it AND the child reads `(ss-1).stat_score` for its fail-low
-            // parent bonus (a later wave). Must precede `do_move` — every
-            // input (piece_on(from/to), the moving side) is a pre-move fact.
-            let moved_piece = self
-                .board
-                .piece_on(m.from())
-                .expect("a legal move starts on a piece of the side to move");
+            // `moved_piece` (resolved once at the top of the iteration — perf
+            // study 23 arm 6) also keys the post-LMR conthist bonus below.
+            // `stat_score` lives on the stack because the finalization block
+            // docks `r` by it AND the child reads `(ss-1).stat_score` for its
+            // fail-low parent bonus (a later wave). Must precede `do_move` —
+            // every input (piece_on(from/to), the moving side) is a pre-move
+            // fact.
             self.stack[cur].stat_score = self.stat_score(m, is_capture, moved_piece, cur);
 
             // Observational only: copy the already-maintained protected
@@ -3536,7 +3543,7 @@ impl Worker {
             // the scouts below usually right) gets a full window up front;
             // every later move must first prove itself against a
             // zero-width window before it earns a PV re-search.
-            self.do_move(tt, m, gives_check, ply);
+            self.do_move(tt, m, gives_check, is_capture, Some(moved_piece), ply);
             // §3.7 — reduction finalization (design/10 §3.7). The ttPv
             // rebate + cutoffCnt + all_node terms below were deferred through
             // the PSQT era (the surcharges over-reduced deep mate lines
@@ -4696,7 +4703,12 @@ impl Worker {
 
             // Step 8 — recurse: full window, same node type.
             qtrace(ply, alpha, beta, best_value, &m.to_string(), "SEARCH");
-            self.do_move(tt, m, gives_check, ply);
+            // Same facts `do_move` used to re-derive; qsearch has no earlier
+            // use for either, so this is a move, not a saving (perf study 23
+            // arm 6 keeps the main loop's win without taxing qsearch).
+            let capture = self.board.capture_stage(m);
+            let moved_piece = self.board.piece_on(m.from());
+            self.do_move(tt, m, gives_check, capture, moved_piece, ply);
             self.qnodes += 1;
             let value = -self.qsearch::<NT>(tt, stop, -beta, -alpha, ply + 1);
             self.undo_move(m);
@@ -4793,8 +4805,27 @@ impl Worker {
     /// predecessor slab; the SENTINEL is only for null moves / pre-root
     /// padding (no null moves until doc 10). `in_check` was set at this
     /// node's step-2 entry.
+    ///
+    /// `capture` and `moved_piece` are the caller's — perf study 23 arm 6. Both
+    /// used to be re-derived here, and the main move loop had ALREADY computed
+    /// both from the same unchanged board: `capture_stage` at the top of the
+    /// loop and the mover for `stat_score`. Two mailbox reads, an `Option`
+    /// unwrap with its panic edge, and a `capture_stage` `match` per made move,
+    /// for facts that were sitting in registers one line up. The two cold call
+    /// sites (ProbCut, qsearch) pass exactly what this function used to compute,
+    /// so nothing moved onto a path that did not already pay for it.
     #[inline]
-    fn do_move(&mut self, tt: &TranspositionTable, m: Move, gives_check: bool, ply: usize) {
+    fn do_move(
+        &mut self,
+        tt: &TranspositionTable,
+        m: Move,
+        gives_check: bool,
+        capture: bool,
+        moved_piece: Option<Piece>,
+        ply: usize,
+    ) {
+        debug_assert_eq!(capture, self.board.capture_stage(m));
+        debug_assert_eq!(moved_piece, self.board.piece_on(m.from()));
         self.nodes += 1;
         // Mirror the plain per-worker counter (the deterministic driver of
         // every search decision, D24) into this thread's atomic so the pool
@@ -4804,8 +4835,6 @@ impl Worker {
         // the count is unchanged.
         self.counters.nodes.store(self.nodes, Ordering::Relaxed);
         let cur = ss(ply);
-        let moved_piece = self.board.piece_on(m.from());
-        let capture = self.board.capture_stage(m);
         let in_check = self.stack[cur].in_check;
         self.stack[cur].current_move = m;
         self.stack[cur].cont_hist = ContHistId::new(in_check, capture, moved_piece, m.to());
