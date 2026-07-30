@@ -49,7 +49,7 @@ unmultiplied.
 | channel | how it was measured | share of `ex_no_retire.empty` | verdict |
 |---|---|---:|---|
 | **branch mispredicts** | 24.336/node × 9.13 c, study 40's arm | **≥ 108 %** | the bucket |
-| **instruction fetch count** | dose response, §3 — local elasticity **0.79** at 35 se on the dose | **~ 79 % per 1 % of fetches** | the *same* currency |
+| **instruction fetch count** | dose response, §3 — local elasticity **0.79**, dose at 35 se | **0.79 % of the bucket per 1 % of fetches** | the *same* currency |
 | **L1i misses specifically** | **REFUTED as the driver**, §3.2 | **not the mechanism** | the miss counter is the wrong instrument |
 | **instruction TLB** | 0.244 L2-ITLB hits + 0.019 walks per node, direct | **≤ 1.5 %** | **DEAD — do not build the hugepage arm** |
 | **decode / op cache bandwidth** | loop buffer delivers **exactly 0** ops/node; op cache 66.8 % | **~ 0** | wrong bucket by construction |
@@ -74,8 +74,8 @@ instruction fetches, whatever causes them.
 
 The ratio *falls* as the dose grows, so **0.79 is a floor for the slope at the
 shipping operating point**, and all three doses only push one way. In absolute
-terms that is **0.29 cycles of `empty` per instruction fetch**
-(0.79 × 205.333 / 557.6).
+terms that is **0.30 cycles of `empty` per instruction fetch**
+(0.79 × 205.333 / 538.42).
 
 The lever this names is **fewer instruction fetches** — by mispredicting less,
 or by executing fewer code *bytes*. It is emphatically **not** by moving code
@@ -263,7 +263,7 @@ only by a taken branch, so **the padding is jumped over and never executed**.
 |---|---|---:|---:|---|---|---:|
 | `b41` | — | 694 325 | 2.88 × L1i | 5 001 562 | `2e1ede95…` | 29 654 692 261 |
 | `a410` | `-align-all-functions=0` | **694 325** | 2.88 × | 5 001 562 | `2e1ede95…` | 29 654 691 828 |
-| `k416` | `…nofallthru-blocks=6` | 967 781 | 3.62 × | 5 001 562 | `2e1ede95…` | 29 650 528 242 |
+| `k416` | `…nofallthru-blocks=6` | 967 781 | 3.46 × | 5 001 562 | `2e1ede95…` | 29 650 528 242 |
 | `k417` | `…=7` | 1 325 157 | 4.20 × | 5 001 562 | `2e1ede95…` | 29 650 528 222 |
 | `k418` | `…=8` | 2 166 373 | 5.79 × | 5 001 562 | `2e1ede95…` | 29 650 527 976 |
 
@@ -408,9 +408,9 @@ Using the floor slope and this study's own denominator (4304.53 cycles/node):
 |---|---:|---:|---:|---:|
 | −1 % executed code bytes | −1 % | −0.79 % (−1.62 c/node) | **−0.038 %** | ~0.07 |
 | −5 % executed code bytes | −5 % | −3.95 % (−8.1 c/node) | −0.19 % | ~0.33 |
-| **every** L1i fetch free (impossible) | −100 % | −100 % (−205 c/node) | −4.8 % | ~8.3 |
+| **every** L1i fetch free (impossible) | −100 % | −100 % (−205 c/node) | −4.77 % | **~8.5** |
 
-**The entire front-end starvation bucket is worth ~8 Elo if it were abolished,
+**The entire front-end starvation bucket is worth ~8.5 Elo if it were abolished,
 and every realistic lever inside it is worth well under half an Elo.** Against
 that, the back end holds **49 % of dispatch slots** to the front end's 19.9 %.
 
