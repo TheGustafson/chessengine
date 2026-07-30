@@ -191,7 +191,11 @@ this box** and are not quoted.
 | plumbing only, shift pinned back to the immediate | 5654.23 | **+0.00** | 588.73 | +0.00 |
 | **const-generic specialisation (LANDED)** | 5657.00 | **+2.77 (+0.049%)** | 589.58 | **+0.85 (+0.144%)** |
 
-Node count and eval hash identical on every arm.
+Node count (5,001,562) and eval hash (`5ca978e012da1bb0`) identical on every arm.
+The landed arm was measured three times from two independently written copies of
+the same edit (`s30-cen5-constgen`, `s30-cen5-final`, `s30-cen5-restored` — the
+third after a `git checkout` clobbered the unstaged working copy and it had to
+be redone): 5657.00 / 589.58 all three times, to the digit.
 
 ### 5.3 The runtime shift is NOT free, and the mechanism is load folding
 
@@ -340,3 +344,9 @@ a v5 file).
 | `jax/tools/pump_train.py` | uses `from_run_spec` |
 | `design/11-evaluation.md` | §12.6 CENN-v5 |
 | `tools/perf30/probe30.sh` | probe26 with renamed paths |
+
+Pre-existing warnings NOT introduced here, verified against `b9ed7c6`: dead
+`sota_loader::read_i8s`, dead `sota_simd::NNZ_IOTA`, and five clippy lints in
+`aligned.rs` / `simple_halfka.rs` / `protected_halfka.rs`. None are in a file
+this study touched; `tools/check.sh` clippies default features only, so the
+`sota` build has never been lint-clean.
