@@ -52,6 +52,32 @@ additionally loses 178 loads/node outright to compiler CSE, and it still moves
 load-stall cycles by **less than the noise floor**. `wpin` moves them by
 **46.2%**, twelve times the null.
 
+### CORRECTION, mid-study: my first probe only pinned the READ half
+
+`accpin` redirects the folds' `src` and `activate`'s four arrays, but the folds
+still **write** 2560 B per call into the real per-ply stack — so the stack kept
+its whole footprint and kept evicting weight rows. A third probe, `dstpin`,
+takes the stores too. Normalised **per instruction**, because `accpin` deletes
+6.8% of the engine's instructions to compiler CSE and its raw deltas are
+confounded by that (n = 8, control `base`):
+
+| arm | miss/load | Δ | stall/instr | Δ |
+|---|---:|---:|---:|---:|
+| `base` (control) | 0.2016 | — | 0.4681 | — |
+| `basecopy` (**null**) | 0.2012 | −0.21% | 0.4788 | **+2.29%** |
+| `accpin` — reads only | 0.1964 | −2.59% | 0.5065 | +8.21% |
+| **`dstpin`** — reads **and** writes | 0.1608 | **−20.23%** | 0.4464 | **−4.63%** |
+| `wpin` — weight rows | 0.1480 | −26.60% | 0.2752 | **−41.20%** |
+
+In absolute terms: `accpin` −47.4 misses/node, `dstpin` **−130.8** — so **the
+accumulator STORES are ~64% of accumulator-stream misses**, and they cost by
+*capacity*, not by read latency: pinning them frees ~5.1 KB/ply of L1 that the
+weight rows then keep.
+
+So my headline as first written was wrong in one direction, and the corrected
+number is still an order of magnitude short of `wpin`. The ranking does not
+change; the reason does.
+
 ### Therefore: fusion is dead as a stall lever
 
 Fusing HalfKA and FullThreats into one accumulator (Stockfish's shape,
@@ -60,11 +86,23 @@ Threats"*, one `std::array<i16, L1>` per colour) removes **162.8 loads/node**:
 94.7 from the folds and 68.1 from `activate`. Weight-row traffic is untouched
 by construction — the same rows are still fetched, merely in one pass.
 
+**Priced on `dstpin`:** removing the accumulator stack's traffic *entirely*
+(253.7 lines/node — reads, writes and `activate`) is worth **−114.6 stall
+cycles/node** once the probe's own 6.5% instruction reduction is normalised
+out. Fusion removes 127.9 of those 253.7 lines, i.e. **50.4%** ⇒ **−58 stall
+cycles/node**, plus the ~65 cycles of issue work above.
+
+**This is where I disagree with perf study 31, and the disagreement is
+5.2× — see §4.1.** It priced the same quantity with an *additive* redundant
+copy and got 2.36 stall cycles per line; my *subtractive* probe gets 0.45.
+Both numbers are in this document; the reconciliation is a capacity cliff, and
+the honest statement is a bracket, not a point.
+
 162.8 load events is ~81 zmm load *instructions*/node. At our IPC that is
 **~65 cycles/node, ~1.4%, ~+1.7 Elo** — a front-end/issue win, not a stall
-win. **Study 28's −150 to −375 cycles/node bracket is high by 2.3× to 5.8×,
-and the mechanism it named is refuted:** the 10.24 KB/ply of accumulator that
-Stockfish carries as 4.10 KB is real, and it is nearly free, because it is
+win. **Study 28's −150 to −375 cycles/node bracket is high, and the mechanism
+it named is at best half right:** the 10.24 KB/ply of accumulator that
+Stockfish carries as 4.10 KB is real, and its READ half is nearly free, being
 sequential, 64-byte aligned, and covered by the hardware stride prefetcher.
 That prize does not pay for the refresh-trigger union (studies 22 and 26's
 blocker) and it does not pay for the Finny-key problem. **Do not build it.**
@@ -72,9 +110,12 @@ blocker) and it does not pay for the Finny-key problem. **Do not build it.**
 ### What landed
 
 **Instruments, not a strength change.** `foldcount` (the exact census),
-`probe-accpin` / `probe-wpin` (the two traffic probes that killed the fusion
-item), `tools/perf29/`, and `gates29.sh` which clippies and tests all four
-feature sets. All off by default; the shipped build is byte-untouched.
+`probe-accpin` / `probe-dstpin` / `probe-wpin` (the three traffic probes that
+priced the fusion item), `tools/perf29/` (build, identity gate, census runner,
+the rotated panel, the Zen 4 load-unit calibration, per-instruction
+normalisation, static and IBS load scanners), and `gates29.sh`, which clippies
+and tests every feature set. All off by default; the shipped build is
+byte-untouched, and all three pins reproduce.
 
 **No engine change landed, and §5 is the reason.** The one arm this study's own
 measurement pointed at — prefetch the weight row when its index is born,
@@ -288,9 +329,19 @@ of every kernel fixed**, changing only where the loads point:
 * **`probe-wpin`** — every fold folds weight row 0, whatever the feature index
   says. Same rows, same lengths, same dispatch shapes; the entire 57.7 MB
   HalfKA table and 77.7 MB threat table collapse to one hot row.
-* **`probe-accpin`** — every accumulator read (fold `src`, the empty-delta
+* **`probe-accpin`** — every accumulator READ (fold `src`, the empty-delta
   copy's source, and `activate`'s four arrays) comes from a static 2.5 KB
   buffer instead of the per-ply stack.
+* **`probe-dstpin`** — `accpin` plus the WRITES: the folds' `dst`, the dual
+  fold's stack destination, and the empty-delta copy's destination all target
+  one buffer, so the per-ply accumulator stack leaves the working set
+  entirely. Added after `accpin` alone disagreed with perf study 31 (§4.1);
+  it is the half that turned out to matter.
+
+**None of the three is in the test gate, and `tools/perf29/gates29.sh` says so
+in a comment.** They compute wrong evaluations on purpose — `probe-dstpin`
+fails 29 tests, and a green suite under it would mean the probe was inert.
+`foldcount` *is* tested, because its entire claim is that it changes nothing.
 
 They compute wrong evaluations on purpose. `bench … nodes` fixes the node
 budget, so both arms search exactly 5,001,5xx nodes and the totals stay
@@ -398,6 +449,65 @@ stall-per-load when the volume being removed is the engine's *cheapest* load
 class. That is the same error class as pricing a change in instructions when
 instructions are not the binding constraint — study 28's own central finding,
 applied one level down.
+
+### 4.1 WHERE I DISAGREE WITH PERF STUDY 31, AND BY HOW MUCH
+
+Study 31 priced the identical quantity the identical night, in the opposite
+direction, and got a materially different answer. Both numbers, side by side:
+
+| | study 31 | study 29 (this) |
+|---|---|---|
+| probe | **ADDITIVE** — one redundant `[[i16; ACC]; 2]` copy per evaluated node, `black_box`'d | **SUBTRACTIVE** — `dstpin`: every accumulator read *and* write redirected to one hot 2.5 KB buffer |
+| lines moved | +68.9/node | −253.7/node |
+| L1 misses | +32.88 | **−130.8** |
+| load-stall cycles | +162.7 | **−114.6** (instruction-normalised) |
+| **stall cycles per line** | **2.36** | **0.45** |
+| misses per line | 0.477 | 0.516 |
+| ⇒ fusion's saving side | **−242 cycles/node** | **−58 cycles/node** |
+
+**The miss counts agree to 8% per line (0.477 vs 0.516). The stall cost per
+line disagrees by 5.2×.** So the two probes see the same *traffic*, and
+disagree entirely about what a miss of that traffic is worth: 4.95 stall
+cycles per miss for study 31, 0.88 for me.
+
+**The reconciliation is a capacity cliff, and it means neither is simply
+wrong.** An additive probe measures the marginal cost of the *last* 68.9 lines
+added to a working set that is already at the edge — every one of them is pure
+pollution that evicts and is never re-used. A subtractive probe measures the
+average value of 253.7 lines removed from that same set, which includes lines
+whose eviction pressure was already absorbed. Marginal cost at the cliff
+exceeds average value below it, and 5.2× is a plausible size for that gap on a
+32 KB L1 carrying a 10.5 KB/ply stack.
+
+**Consequences, stated as a bracket rather than a point:**
+
+* fusion's **saving** side is somewhere in **−58 … −242 cycles/node**;
+* against study 31's derived **+106** cost for the refresh-trigger union;
+* so fusion nets anywhere from **+48 (a LOSS)** to **−136 (+4.7 Elo)**.
+
+**Either end of that bracket says the same thing about the decision.** At the
+pessimistic end fusion is negative; at the optimistic end it is study 31's own
+**item #4**, worth +4.7 Elo, behind three cheaper things. It is not study 28's
+#1 item under any reading, and study 28's mechanism — that fusion recovers
+load-stall time — survives only at the additive end and only for the *write*
+half.
+
+**And there is a cost neither study had priced.** The coordinator verified
+against the `eca43a97` commit object that Stockfish **has not solved the fusion
+blocker — it pays it**: its refresh-cache `Entry` holds only
+`accumulation`/`psqtAccumulation`, `ThreatFeatureSet::append_active_indices`
+runs on the refresh path (`nnue_accumulator.cpp:577`), and
+`find_last_usable_accumulator` carries the comment *"Threat feature set
+refreshes require a king move across the center, i.e., a subset of halfka
+refreshes"* (lines 112-113). **Our split accumulator is a genuine advantage
+over Stockfish on the refresh axis**, and fusion trades it away. My §1.1
+measures exactly what is being traded: HalfKA refreshes at **0.1610/node**
+against the threat channel's 0.0214.
+
+**Recommendation: do not build fusion, and do not re-open it on either
+study's point estimate.** If someone does re-open it, the first job is to
+close the additive/subtractive gap — run *both* probes in one panel, which
+neither study did.
 
 *(Width is the same story from a different angle: narrowing 1280 → 1024 shrinks
 the accumulator stream by 20% and the weight rows by 20% as well, so unlike
@@ -557,10 +667,11 @@ relocating the rows themselves*.
 | 2 | **Re-price the per-node `ThreatPosition` snapshot on cycles** (study 28 item #2, untouched here). 80 bytes at every node into a 10.5 KB-stride stack; 100% of nodes paying for something 43% use. Rejected once at "+106 i/n", and §5 is a fresh demonstration that instructions are the wrong currency | `search::<NonPv>` is 7.95% of load-stall cycles | study 28 §9 | medium — the arm existed once |
 | 3 | **The threat empty-delta copy, 0.334/node.** 28% of threat folds are a pure 2560-byte parent copy. Study 14 measured the two spellings 45.4 i/n apart and asked for the surviving rate before anyone touched it — **the rate is now measured**. A fold-state "same as parent" alias would remove 26.7 loads/node and the matching stores | 26.7 loads/node + 0.334 × 2560 B of stores | §1.1, §2.3 | medium — touches the fold-state machine, needs the full NNUE gate |
 | 4 | **Weight-row layout.** 22 of a row's 40 lines take a demand miss because each row is a single-visit cold burst the stride prefetcher never trains on. Interleaving the rows a fold uses together, or splitting the table so a fold's rows share pages, attacks the miss *rate* rather than the miss count | the same 46.2% pool | §5.2 | low — a loader + trainer format change |
-| 5 | **Accumulator-channel fusion** | ~65 cycles/node of issue work, ~+1.7 Elo, against a refresh-union cost on the expensive stream | §4 | **DO NOT BUILD** — this study's main result |
-| 6 | Prefetching the weight rows | measured not resolvable at three strengths; ceiling is 1 miss of 22 per row, and `T2` lands in L2 where they already mostly hit | §5 | **closed** |
-| 7 | `activate`'s four-array merge as a standalone target | 136.2 loads/node, but `forward_into` is 12.25% of loads and only 2.18% of stalls | §3.2 | already overlapped; leave it |
-| 8 | **Do NOT delete the 2a2s fold instantiation** despite its zero count | it is castling; `wl50` simply has none | §1.1 | recorded so the next study does not "optimise" it |
+| 5 | **Close the additive/subtractive gap** before anyone re-opens fusion: run study 31's redundant-copy probe and this study's `dstpin` in ONE panel. They agree on misses per line to 8% and disagree on stall cycles per line by **5.2×**, which is the whole width of fusion's bracket | decides whether fusion is +48 or −136 cycles/node | §4.1 | high — both probes exist, both are committed |
+| 6 | **Accumulator-channel fusion** | **−58 … −242 saving against +106 cost ⇒ +48 (loss) … −136 (+4.7 Elo)**, and it trades away a refresh advantage Stockfish does not have | §4, §4.1 | **DO NOT BUILD** |
+| 7 | Prefetching the weight rows | measured not resolvable at three strengths; ceiling is 1 miss of 22 per row, and `T2` lands in L2 where they already mostly hit | §5 | **closed** |
+| 8 | `activate`'s four-array merge as a standalone target | 136.2 loads/node, but `forward_into` is 12.25% of loads and only 2.18% of stalls | §3.2 | already overlapped; leave it |
+| 9 | **Do NOT delete the 2a2s fold instantiation** despite its zero count | it is castling; `wl50` simply has none | §1.1 | recorded so the next study does not "optimise" it |
 
 ---
 

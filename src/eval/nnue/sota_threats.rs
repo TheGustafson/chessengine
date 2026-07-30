@@ -1299,10 +1299,11 @@ impl<'a> ThreatContext<'a> {
                     let src_acc: &[i16; ACC] = &parent.acc[p];
                     #[cfg(feature = "probe-accpin")]
                     let src_acc: &[i16; ACC] = super::sota_simd::probe::pin_one();
-                    for (d, s) in entry.acc[p]
-                        .chunks_exact_mut(32)
-                        .zip(src_acc.chunks_exact(32))
-                    {
+                    #[cfg(not(feature = "probe-dstpin"))]
+                    let dst_acc: &mut [i16; ACC] = &mut entry.acc[p];
+                    #[cfg(feature = "probe-dstpin")]
+                    let dst_acc: &mut [i16; ACC] = super::sota_simd::probe::pin_dst();
+                    for (d, s) in dst_acc.chunks_exact_mut(32).zip(src_acc.chunks_exact(32)) {
                         d.copy_from_slice(s);
                     }
                     entry.psqt[p] = parent.psqt[p];

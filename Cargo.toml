@@ -92,6 +92,14 @@ foldcount = ["sota"]
 #   wpin:   every fold folds weight row 0, whatever the feature index says.
 probe-accpin = ["sota"]
 probe-wpin = ["sota"]
+# `probe-accpin` pins only the READ half of accumulator streaming; the folds
+# still WRITE 2560 B per call into the real per-ply stack, so that stack keeps
+# its full footprint and keeps evicting weight rows. Perf study 31 priced the
+# same quantity with an ADDITIVE read+write probe and got a very different
+# answer, so this pins the write half too and settles which half (if either)
+# costs anything. Implies `probe-accpin`: pinning writes without pinning reads
+# would measure a third thing.
+probe-dstpin = ["probe-accpin"]
 
 [dev-dependencies]
 # Test/bench-only (D15: runtime [dependencies] stays empty; dev-deps allowed).

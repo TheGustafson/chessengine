@@ -191,6 +191,37 @@ pub(crate) mod probe {
         std::hint::black_box(&PIN_ACC[0])
     }
 
+    /// The WRITE half (`probe-dstpin`). `probe-accpin` alone redirects only
+    /// the fold's `src`, so the per-ply accumulator stack keeps its full write
+    /// volume and its full footprint — which means it keeps evicting weight
+    /// rows, and the probe under-reports whatever share of fusion's prize is
+    /// capacity rather than read latency. This buffer takes the stores too.
+    ///
+    /// A leaked `Box` rather than a `static mut`: one allocation, `'static`
+    /// by construction, and no aliasing question about the *address*. The
+    /// aliasing question about the CONTENTS is real and deliberate — every
+    /// fold now writes the same 2.5 KB — which is exactly why this feature
+    /// computes wrong evaluations and is a measurement instrument only.
+    #[cfg(feature = "probe-dstpin")]
+    // D14(a)-style sanctioned relaxation for a measurement-only feature.
+    #[allow(unsafe_code)]
+    #[inline]
+    pub(crate) fn pin_dst() -> &'static mut [i16; ACC] {
+        use std::sync::OnceLock;
+        static SLOT: OnceLock<usize> = OnceLock::new();
+        let addr = *SLOT.get_or_init(|| {
+            let b: Box<[i16; ACC]> = Box::new([0i16; ACC]);
+            Box::into_raw(b) as usize
+        });
+        // SAFETY: the pointer comes from `Box::into_raw` on a leaked
+        // allocation, so it is non-null, aligned, and valid for the whole
+        // program. The engine is single-threaded under `bench`, and this
+        // feature exists only to run `bench` — handing out repeated `&mut` to
+        // one buffer is precisely the traffic collapse being measured, and the
+        // resulting evaluations are known-wrong by design.
+        unsafe { &mut *(addr as *mut [i16; ACC]) }
+    }
+
     /// Feature indices, all zero, for the `wpin` arm. The kernels read
     /// `adds.len()`/`subs.len()` for their shape dispatch, so the SLICE
     /// LENGTHS must be preserved exactly — only the values change.
@@ -221,6 +252,18 @@ macro_rules! pin_src {
 #[cfg(not(feature = "probe-accpin"))]
 macro_rules! pin_src {
     ($src:ident) => {};
+}
+
+#[cfg(feature = "probe-dstpin")]
+macro_rules! pin_dst {
+    ($dst:ident) => {
+        #[allow(unused_variables)]
+        let $dst: &mut [i16; ACC] = probe::pin_dst();
+    };
+}
+#[cfg(not(feature = "probe-dstpin"))]
+macro_rules! pin_dst {
+    ($dst:ident) => {};
 }
 
 #[inline]
@@ -257,6 +300,7 @@ pub(crate) fn apply_i16_deltas_into(
     }
     pin_rows!(adds, subs);
     pin_src!(src);
+    pin_dst!(dst);
     kernel_dispatch!(i16_deltas_into(dst, src, weights, adds, subs))
 }
 
@@ -264,6 +308,7 @@ pub(crate) fn apply_i16_deltas_into(
 /// written to `out` as well (perf study 9 item 4). See [`ApplyI16DualFn`].
 /// `acc` and `out` must not alias.
 #[inline]
+#[cfg_attr(feature = "probe-dstpin", allow(unused_variables))]
 pub(crate) fn apply_i16_deltas_dual(
     acc: &mut [i16; ACC],
     out: &mut [i16; ACC],
@@ -274,6 +319,7 @@ pub(crate) fn apply_i16_deltas_dual(
     #[cfg(feature = "foldcount")]
     super::foldcount::HKA_DUAL.hit(adds.len() + subs.len());
     pin_rows!(adds, subs);
+    pin_dst!(out);
     kernel_dispatch!(i16_deltas_dual(acc, out, weights, adds, subs))
 }
 
@@ -297,6 +343,7 @@ pub(crate) fn apply_i8_deltas_into(
     }
     pin_rows!(adds, subs);
     pin_src!(src);
+    pin_dst!(dst);
     kernel_dispatch!(i8_deltas_into(dst, src, weights, adds, subs))
 }
 
