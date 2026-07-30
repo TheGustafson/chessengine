@@ -88,3 +88,5 @@ bin39/
 /target39-*/
 bin42/
 /target42-*/
+perf42data/
+ttcensus42.txt
