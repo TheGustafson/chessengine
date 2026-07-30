@@ -520,6 +520,26 @@ non-monotonicity, not smoothed away.
 
 ---
 
+## 6. GATES
+
+| gate | result |
+|---|---|
+| node identity, all 6 binaries, study frame | **5 001 562** — exact on `base44`, `hpf44`, `null44`, `r10`, `r8`, `r5` |
+| d13 node identity, all 6 | **1 739 588** — exact |
+| wl50 eval hash, all 6 | `2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4` — exact |
+| `instructions:u` vs study 41 / settled frame | 5929.09 vs 5928.40 / 5923.909 (+0.012 % / +0.087 %) |
+| `ls_any_fills_from_sys.all` vs study 42 | 585.86 vs 580.9 (+0.85 %) |
+| `.text` of `base44` vs study 41's `b41` | **694 325 both** |
+| byte-identical null, `instructions:u` | **0.000 %**, every round, every panel |
+| `cargo fmt --check` | clean |
+| `cargo clippy --all-targets` | *(see §5)* |
+| `CHECK_NNUE_GATE=1 bash tools/check.sh` | *(see §5)* |
+
+D24 perft ritual **not** required: nothing under `movegen`, `board`, `zobrist`
+or `attacks` is touched by any arm here.
+
+---
+
 ## 7. BOX LOAD, STATED — AND ONE OPERATIONAL FINDING WORTH KEEPING
 
 Every panel here ran with the D49 trainer live (~156 % CPU, ~5.8 GB RSS) and
