@@ -284,7 +284,13 @@ re-priced immediately.
 
 ---
 
-## 5. ★ THE CORRECTION — study 44's port-pressure kill is under-stated ~2×
+## 5. ★ THE CORRECTION — study 44's port-pressure kill does not survive
+
+*(This section was drafted as "under-stated ~2×" while A4 was still open. Once
+§5.1 closed A4 by measurement the conclusion got stronger, not weaker: the
+corrected bracket lies **entirely above** study 44's, so there is no reading of
+the counter on which its "≥ 85 % idle" holds. The heading was updated to match
+the evidence rather than the draft.)*
 
 Study 44 §1.2 killed execution-port pressure for the whole engine:
 
