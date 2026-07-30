@@ -3425,6 +3425,17 @@ impl Worker {
                 }
             }
 
+            // Perf study 42 arm 2: the speculative TT prefetch moved BELOW the
+            // §3.5 pruning cascade. Arm 1 (`ttspec42`, above the cascade) buys
+            // the most overlap and pays for it on every move that is then
+            // pruned -- +95.6 instructions/node for ~1.07 probes/node, i.e.
+            // roughly three quarters of its hints thrown away. From here the
+            // move is committed, so the hint count collapses to the probe
+            // count, and the overlap on offer is still the whole singular
+            // verification search plus the reduction stack below it.
+            #[cfg(feature = "ttspec2_42")]
+            tt.prefetch(self.board.prefetch_key(m));
+
             // §3.6 — singular extensions and multicut (Wave-D items 13/14).
             // Only the ttMove is a candidate: an exclusion search below the
             // stored value (with the ttMove excluded, at the SAME ply) decides

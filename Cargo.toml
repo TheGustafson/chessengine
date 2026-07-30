@@ -199,6 +199,12 @@ ttcensus42 = []
 # node-identical (a cache hint decides nothing), so it is gated on the same
 # `Bench:` fingerprint as the rest.
 ttspec42 = []
+# Arm 2 of the same question: the speculative hint moved BELOW the §3.5 pruning
+# cascade, where the move is committed. Arm 1 pays for a hint on every move that
+# is then pruned (+95.6 instructions/node against 1.07 probes/node); from here
+# the hint count collapses to the probe count while the overlap on offer is
+# still the whole singular verification search.
+ttspec2_42 = []
 # Perf study 40's DOSE AMPLIFIER for `partial_insertion_sort` (`src/dose40.rs`).
 # `insertwin34` is a ~0.2%-of-cycles trade and six nulls put the `cycles:u`
 # floor on this box an order of magnitude above that, so the arm is replayed

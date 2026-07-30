@@ -13,6 +13,40 @@ explicitly left it in the unquantified residual.
 
 ---
 
+## 0. DENOMINATORS — stated up front, because one was just found wrong
+
+Mid-study the coordinator retracted **perf study 36's "8262.9 cycles/node"** as
+~1.84x too big and asked every study to name its own denominator.
+**Nothing in this study ever used it**, and nothing needed to: every percentage
+here is differenced inside a single panel and converted with **that panel's own
+measured reference median**, never with an imported constant.
+
+For the record, on **this study's binary** — from-source
+`cargo build --release --features sota,arch-d48x`, `target-cpu=native`,
+**non-PGO** (all five arms built by the same script, which is what makes them
+comparable) — at the pinned frame `bench 16 1 100000 wl50.fens nodes <net>`,
+5 001 562 nodes:
+
+| | quiet-ish box (load ~4.6) | inside the 30-round panel (load ~5.5) |
+|---|---:|---:|
+| `cycles:u` /node | **3992.4** | **4390.8** |
+| `instructions:u` /node | **5929.1** | 5929.1 |
+| `ex_no_retire.load_not_complete` /node | **1965.9** | 2322.7 |
+| IPC | 1.485 | 1.350 |
+
+Two notes on comparability, both mine to own:
+
+* The coordinator measured **5659.0 instructions/node** on the **canonical PGO
+  binary**. Mine is 5929.1 on a **non-PGO** build — a 4.6% gap in the direction
+  PGO moves instruction counts. Neither is wrong; they are different binaries,
+  and an A/B panel must be built one way, so this study is non-PGO throughout.
+* `cycles:u` is inflatable by contention and never deflatable, so the quiet
+  column is the lower bound. **Every absolute cycle figure below is quoted as a
+  range across both columns**, and the percentage — which is what the panel
+  actually measures — is quoted first.
+
+---
+
 ## ★ HEADLINE
 
 ### 1. The TT touches **1.067 cache lines per node** — and that is a hard bound, not an estimate
@@ -44,27 +78,28 @@ no-op and changes nothing else. Node counts reproduce bit-for-bit
 (5001562 at the study frame, 1739588 at d13), so the counter is the only free
 variable.
 
-| | median | sign count | p | per node |
+| | median | sign count | p | per node (quiet — panel) |
 |---|---:|---:|---:|---:|
-| `instructions:u` | **−0.363%** | 18/18 | <0.0001 | **−21.50** |
-| `cycles:u` | **+3.504%** | 18/18 | <0.0001 | **+153.8** |
-| `ex_no_retire.load_not_complete` | **+5.571%** | 17/18 | 0.0001 | **+129.4** |
-| `ex_no_retire.empty` | +4.708% | 18/18 | <0.0001 | +9.1 |
+| `instructions:u` | **−0.363%** | 18/18 | <0.0001 | **−21.50** (exact) |
+| `cycles:u` | **+3.504%** | 18/18 | <0.0001 | **+139.9 — +153.8** |
+| `ex_no_retire.load_not_complete` | **+5.571%** | 17/18 | 0.0001 | **+109.5 — +129.4** |
+| `ex_no_retire.empty` | +4.708% | 18/18 | <0.0001 | +8.4 — +9.1 |
 
 The **null** (`base` against a byte-identical copy of itself, same panel, same
 rounds, shuffled order) is a coin flip on every one of them: 10/18, 10/18,
 9/18, p = 0.81, 0.81, 1.00.
 
-Divide by the 1.067 probes: **each TT probe costs ~121 stall cycles and
-~144 total cycles when it is not prefetched.** That is memory-latency scale,
-and it says the thing the cache hierarchy already implied — **a TT probe
-misses essentially every time**. The prefetch buys back ~168 cycles/node once
-the 21.5 instructions it costs are priced back in (at the engine's IPC of
-1.485, those instructions are ~14.5 cycles).
+Divide by the exactly-counted 1.067 probes: **an unprefetched TT probe costs
+103–121 stall cycles and 131–144 total cycles.** That is memory-latency scale,
+and it says what the cache hierarchy already implied — **a TT probe misses
+essentially every time**. Priced correctly, the prefetch buys back rather more
+than the cycle delta shows: it also *spends* 21.5 instructions/node, worth
+~14.5 cycles at IPC 1.485, so the stall it removes is **~154–168 cycles/node**.
 
-At ~120 Elo per speed doubling, the prefetch we already ship is worth
-**~6 Elo**. It is the sixth prefetch proposal in this engine's history and the
-first one anybody measured.
+The percentage is the measured quantity and the honest headline: **the TT
+prefetch is worth 3.5% of engine cycles**, i.e. ~6 Elo at the project's
+~120 Elo/doubling constant. It is the sixth prefetch proposal in this engine's
+history and the first one anybody measured.
 
 ### 3. ★ A METHODOLOGY CORRECTION: study 39's stall-per-line rate must NOT be applied here, and the commission's own conversion would have been wrong by ~100×
 
@@ -75,7 +110,9 @@ confound-free figure of **1.119 stall cycles per 64-byte line**. Doing that:
 1.067 lines/node  x  1.119 stall/line  =  1.19 stall cycles/node
 ```
 
-The measured value is **129.4**. The conversion is off by **109×**.
+The measured value is **109.5–129.4**. The conversion is off by **92–109×**,
+and no choice of denominator rescues it — this is a two-orders-of-magnitude
+error, not a framing one.
 
 It is not study 39's number that is wrong — it is the population. Study 39
 calibrated on **accumulator streaming** lines: a per-ply stack that the fold
@@ -122,22 +159,46 @@ Its share of address-carrying IBS samples is stable across all three
 *access rate* does not, which is the signature of a structure probed a fixed
 number of times per node.
 
-**Caveat on IBS shares.** IBS op sampling here is cycle-periodic
-(`cnt_ctl=0`), so a sample share is closer to a share of *time* than a share
-of *ops*, and long-latency ops are over-represented. The TT's share of samples
-(2.35%) is therefore **not** its share of memory operations — the census says
-it issues ~11 memory ops per node out of ~3030, i.e. 0.4%. Every absolute
-number in this study comes from the exact census or from a node-identical
-differencing arm; IBS is used for *attribution and profile*, never for a rate.
+**Caveat on IBS shares — read this before quoting one.** IBS op sampling here
+is cycle-periodic (`cnt_ctl=0`), so a sample share is closer to a share of
+*time* than a share of *ops*. Reconstructing the TT's op count from the census
+instead:
+
+```
+probes/node                                 1.0667
+  tag-matched (54.5%): key16 loads by slot  1x1267527 + 2x974061 + 3x665559
+                       + is_occupied + read()'s five fields
+  missed      (45.5%): 3 key16 + 3x2 for the replacement scan
+  ---------------------------------------------------------------> ~8.9 loads/node
+saves/node 0.802: ~3 loads + ~6 stores (LLVM merges some)  ------->  ~7.1 ops/node
+                                                            total   ~16 ops/node
+```
+
+~16 of the engine's ~3030 memory ops per node is **0.53%**, against IBS's
+**2.35%** sample share — a ~4.4x over-representation, which is exactly what a
+time-weighted sample does to the longest-latency ops in the program. **So the
+IBS share is evidence that the TT is slow per access, not that it is frequent.**
+Every absolute number in this study comes from the exact census or from a
+node-identical differencing arm; IBS is used for attribution and profile,
+never for a rate.
 
 ---
 
 ## 4. The arms
 
 All five binaries are node-identical (`tools/perf42/ident42.sh`): a cache hint
-decides nothing, so `Bench:` is unmoved on every one.
+decides nothing, so both gate frames reproduce bit-for-bit (5001562 / 1739588)
+on every one of them.
 
-*(panel numbers filled in below from `docs/research/perf-artifacts-42/panel-all-h16.txt`)*
+| label | what it changes |
+|---|---|
+| `base` | the shipped engine (`.text` identical to `bin34/b42`) |
+| `null` | a byte-identical copy of `base` under another name — the noise floor |
+| `nopf` | `prefetch` becomes a no-op |
+| `pft2` | the hint is demoted `_MM_HINT_T0` → `_MM_HINT_T2` (L2/L3, not L1) |
+| `spec` | `Board::prefetch_key` finally gets its caller: a second, speculative hint in the main move loop, the whole pruning cascade earlier than hook A |
+
+*(panel results below)*
 
 ---
 
