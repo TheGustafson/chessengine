@@ -6539,3 +6539,35 @@ not.
 arbitrated."* Least sure: the last 1.35x between the real stream's 1.298
 stall/miss and the shallowest probe's 1.759; and panel 3 shipped without a
 byte-identical null, so it is used only for the read:write ratio.
+
+## Study 40 commissioned — decide the two GATED arms
+
+Not a hunt for new levers. **Two changes are built, gated, and fully measured on
+every counter except the one that decides them:**
+
+| arm | state | what is missing |
+|---|---|---|
+| **`insertwin34`** (study 34) | node-identical, `Bench` bit-for-bit, **+0.702% instructions for −0.530% branches and −4% of ALL engine mispredicts** | a cycles verdict on the trade |
+| **`null38`** / the `thr_copy` remainder (study 38) | site measured at 63.7 i/n, alias banked 17.1, machinery costs +19.7 | **~26 i/n with no mechanism** |
+
+Both authors stopped at *"cycles cannot adjudicate this"* — **correct at the
+time.** It is no longer true. Two instruments now exist that they did not have:
+
+1. **The fixed-node cycles frame** — fixed NODE budget, validate node *and*
+   instruction counts before trusting the delta, alternate order, report **rank
+   separation** rather than spread (common-mode noise cancels; independent noise
+   does not).
+2. **Study 39's differencing trick** — a clean number built as the **difference
+   of two individually broken arms** (`dstpin` − `actpin0`), which is precisely
+   how it beat a question two studies had deferred.
+
+The brief is explicit that **a measured null is a success** — *"arm A is +0.05%
+cycles, here is the panel and its null, leave it off"* closes the question —
+but that **leaving both switches in the state it found them is not.** It also
+carries the caveat that arm A *deliberately* changes instructions, so its frame
+validates on nodes only and the instruction delta must be reasoned about rather
+than expected to vanish.
+
+Context worth recording: **nobody has ever landed a mispredict-targeted change
+in this engine**, and `init_quiets`' insertion walk plus exit is **6.46% of ALL
+engine branch mispredicts in a single branch**.
