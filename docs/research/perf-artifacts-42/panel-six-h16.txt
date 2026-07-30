@@ -81,3 +81,6 @@ r14 null nodes=5001562 instructions:u=5929.087040 cycles:u=4342.898123 ex_no_ret
 r14 pft2 nodes=5001562 instructions:u=5929.087082 cycles:u=4363.693592 ex_no_retire.load_not_complete:u=2293.496152 ex_no_retire.empty:u=194.101355 ex_no_retire.thread_not_selected:u=23.484303 
 r14 nopf nodes=5001562 instructions:u=5907.590910 cycles:u=4460.484199 ex_no_retire.load_not_complete:u=2378.311155 ex_no_retire.empty:u=198.409175 ex_no_retire.thread_not_selected:u=19.320957 
 r14 spec nodes=5001562 instructions:u=6024.665433 cycles:u=4299.510534 ex_no_retire.load_not_complete:u=2230.251580 ex_no_retire.empty:u=189.576105 ex_no_retire.thread_not_selected:u=23.062489 
+r14 spec2 nodes=5001562 instructions:u=5965.485922 cycles:u=4347.562068 ex_no_retire.load_not_complete:u=2271.950926 ex_no_retire.empty:u=189.629545 ex_no_retire.thread_not_selected:u=19.161867 
+r15 nopf nodes=5001562 instructions:u=5907.590998 cycles:u=4532.716932 ex_no_retire.load_not_complete:u=2443.576607 ex_no_retire.empty:u=200.727931 ex_no_retire.thread_not_selected:u=20.678525 
+r15 spec2 nodes=5001562 instructions:u=5965.486068 cycles:u=4465.357591 ex_no_retire.load_not_complete:u=2411.856734 ex_no_retire.empty:u=188.953008 ex_no_retire.thread_not_selected:u=25.391264 

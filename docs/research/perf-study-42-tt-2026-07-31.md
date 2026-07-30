@@ -241,6 +241,22 @@ on every one of them.
 | `pft2` | the hint is demoted `_MM_HINT_T0` → `_MM_HINT_T2` (L2/L3, not L1) |
 | `spec` | `Board::prefetch_key` finally gets its caller: a second, speculative hint in the main move loop, the whole pruning cascade earlier than hook A |
 
+Three panels were run, all shuffled-order and within-round paired
+(`tools/perf42/panel42.sh`, reduced by `tools/perf40/med40.py`):
+
+| | file | arms | rounds | null's cycles median / sign |
+|---|---|---:|---:|---|
+| **A** | `panel-h16.txt` | 3 | 19 | −0.506%, 10/18, p=0.81 — **cleanest** |
+| **B** | `panel-all-h16.txt` | 5 | 14 | −0.068%, 8/14, p=0.79 |
+| **C** | `panel-six-h16.txt` | 6 | 14 | +0.980%, 5/14, p=0.42 |
+
+**More arms made the panel worse, and the null says so.** A six-label round
+takes ~30 s, long enough for the box's own load to drift inside one round, and
+panel C's null drifts to a +0.98% median even though its *sign count* stays a
+coin flip. This is the one place where reading a median without its sign count
+would have produced a fake +1% effect. Panel A is quoted wherever it has the
+arm; C is quoted only for arms A and B do not carry.
+
 ### 4.1 Replicate panel (14 rounds, 5 arms), `base` as reference
 
 | arm | instructions | cycles | load-stall | verdict |
@@ -275,9 +291,39 @@ arithmetic "spec should have been +1.61%, it was −0.48%, therefore it recovere
 92 cycles" is exactly the unmeasured second inference the project's rule 4
 forbids. The measured facts are the cycles and the stall, and both say null.
 
-### 4.3 Authoritative panel (6 arms)
+### 4.3 Verdicts, every arm across every panel that carried it
 
-*(panel results below)*
+`cycles:u`, median (sign count, p):
+
+| arm | panel A (3, 19r) | panel B (5, 14r) | panel C (6, 14r) | verdict |
+|---|---|---|---|---|
+| `null` | −0.506% (10/18, .81) | −0.068% (8/14, .79) | +0.980% (5/14, .42) | coin flip everywhere |
+| `nopf` | **+3.504% (18/18, <.001)** | **+4.051% (12/14, .013)** | **+2.825% (14/14, <.001)** | **REAL, ~+3.5%** |
+| `pft2` | — | +0.558% (11/13, **.023**) | +1.761% (9/14, .42) | worse than T0 |
+| `spec` | — | −0.481% (8/14, .79) | +0.276% (7/14, **1.00**) | **NULL** |
+| `spec2` | — | — | +0.405% (8/13, .58) | **NULL** |
+
+**`nopf` is the only arm that repeats.** Three panels, three different label
+sets, 44 of 46 rounds on the same side. Everything in §1 rests on it.
+
+**`spec` and `spec2` are nulls, and that resolves the pre-registration in
+favour of branch (b).** Two independent panels put `spec` at 8/14 and 7/14 —
+chance — and `spec2`, which was built precisely to remove `spec`'s instruction
+overhead, is 8/13. The load-stall counter agrees (7/14 and 9/14). **Hook A
+already recovers what there is to recover; issuing the hint earlier buys
+nothing, at either price.** `Board::prefetch_key` therefore stays without a
+caller — but now for a measured reason rather than by neglect, and this is the
+seventh prefetch proposal in this engine to die. It is also the first to die
+with a number attached.
+
+**`pft2` (T0 → T2) is worse**, and it is the cleanest frame in the study:
+instruction-identical to `base` to six decimal places (5929.087 both), so the
+only free variable is where the line lands. It is significant in panel B
+(11/13, p = 0.023) and directionally the same but not significant in the noisier
+panel C (9/14, p = 0.42) — I report it as **directionally consistent, decisive
+in one panel of two**, not as a settled number. Study 29's "T2 lands in L2 where
+the lines already hit" does not transfer to the TT, where the lines hit nowhere:
+the hint has to go all the way to L1.
 
 ---
 
@@ -345,8 +391,7 @@ tested instead of asserted, because a TT line does *not* already hit anywhere.
 `ttpft242` demotes the hint T0 → T2 and is **instruction-identical to `base` to
 six decimal places** (5929.087 both, median −0.000%) — the same instruction with
 a different immediate, which is as clean a frame validation as this study gets.
-
-*(result below)*
+It **loses** (§4.3): +0.558% cycles, 11/13, p = 0.023. The hint has to go to L1.
 
 ---
 
