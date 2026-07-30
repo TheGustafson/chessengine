@@ -90,6 +90,12 @@ foldcount = ["sota"]
 # (verified by `tools/perf34/ident34.sh`); the binary is NOT a timing
 # reference. Never shipped.
 census34 = []
+# Perf study 34's NULL ARM: builds the study's `GoodQuiet`/`BadQuiet` split
+# with the split DISABLED, so the binary carries the arm's struct layout,
+# fields and loop shape while doing the pre-study amount of scanning. Its
+# purpose is to price the instrument on the same machinery the arm moves.
+# Measurement only, never shipped.
+null34 = []
 # Perf study 29's TRAFFIC-PINNING probes. Both keep the load COUNT of every
 # accumulator kernel bit-for-bit identical and collapse ONE stream's working
 # set to a single hot line, so the drop in L1 misses / load-stall cycles is

@@ -318,6 +318,36 @@ pub struct MovePicker {
     end_bad_captures: usize,
     end_captures: usize,
     end_generated: usize,
+    /// Where `BadQuiet` resumes the quiet region (perf study 34 §5).
+    ///
+    /// `GoodQuiet` and `BadQuiet` partition the quiet region by the SAME
+    /// predicate, so between them they used to inspect every quiet TWICE:
+    /// `GoodQuiet` walked to the end of the region and threw its position
+    /// away, and `BadQuiet` then restarted at `end_captures` and re-rejected
+    /// every above-threshold element `GoodQuiet` had just emitted. Once
+    /// [`sorted_covers`](Self::sorted_covers) holds, the split point is a
+    /// single index — the sorted prefix's first sub-threshold element — so
+    /// `GoodQuiet` stops there and `BadQuiet` starts there. Both stages
+    /// emit exactly what they emitted before, in the same order.
+    bad_quiet_start: usize,
+    /// True when the quiet sort's `limit` is at or below
+    /// `GOOD_QUIET_THRESHOLD`, i.e. when the sorted prefix is guaranteed to
+    /// contain every above-threshold quiet (perf study 34 §5).
+    ///
+    /// The sort places element 0 plus everything scoring `>= limit` in a
+    /// descending prefix and leaves the rest — all strictly below `limit` —
+    /// in the tail. So if `limit <= GOOD_QUIET_THRESHOLD`, every tail element
+    /// is below the threshold as well, and within the prefix descending order
+    /// means the sub-threshold elements are a contiguous suffix. The whole
+    /// "good" set is then the prefix `[end_captures, bad_quiet_start)` and the
+    /// whole "bad" set is `[bad_quiet_start, end_generated)`.
+    ///
+    /// `limit = QUIET_SORT_DEPTH_FACTOR * depth` (-3560·depth by default) and
+    /// the threshold is -14000, so this holds from depth 4 up. It is computed
+    /// rather than assumed because both are SPSA-tunable under `tune`; at
+    /// depths 1-3 the flag is false and both stages take the old full scan,
+    /// which is what keeps shallow nodes bit-identical.
+    sorted_covers: bool,
     /// Experiment (design/17 Thrust II): the shared learned move-prior, blended
     /// into quiet ordering when `POLICY_NET` is set. `None` ⇒ pure history stack
     /// (the default build never compiles this in). Set once per node by the
@@ -518,6 +548,8 @@ impl MovePicker {
             end_bad_captures: 0,
             end_captures: 0,
             end_generated: 0,
+            bad_quiet_start: 0,
+            sorted_covers: false,
             #[cfg(feature = "policy")]
             policy_net: None,
             #[cfg(feature = "policy")]
@@ -655,12 +687,51 @@ impl MovePicker {
 
                 // §3.6 stage 5: quiets scoring above the threshold, then rewind
                 // the emission window to the bad-captures region.
+                //
+                // Spelled as its own loop rather than a `select` closure
+                // (perf study 34 §5) for the one thing a closure cannot say:
+                // BREAK. Under `sorted_covers` the first sub-threshold element
+                // ends the stage — the prefix is descending and the tail is
+                // entirely below the limit, so nothing after it can pass — and
+                // the index it stops at is exactly where `BadQuiet` must
+                // resume. The old form ran on to the end of the region
+                // rejecting every remaining element, then discarded the
+                // position it had reached.
                 Stage::GoodQuiet => {
-                    if !self.skip_quiets
-                        && let Some(m) = self.select(board, |_, e| e.value > GOOD_QUIET_THRESHOLD())
-                    {
-                        return Some(m);
+                    if !self.skip_quiets {
+                        while self.cur < self.end_cur {
+                            let ext = self.slot(self.cur);
+                            #[cfg(feature = "census34")]
+                            {
+                                self.c.gq_scanned += 1;
+                            }
+                            if ext.value <= GOOD_QUIET_THRESHOLD() {
+                                if self.sorted_covers {
+                                    break;
+                                }
+                                self.cur += 1;
+                                continue;
+                            }
+                            self.cur += 1;
+                            // Dedup: the TT move was already emitted at MainTt.
+                            if ext.mv != self.tt_move {
+                                #[cfg(feature = "census34")]
+                                {
+                                    self.c.gq_emitted += 1;
+                                }
+                                return Some(ext.mv);
+                            }
+                        }
                     }
+                    // Without the sorted-prefix guarantee the good and bad sets
+                    // interleave, so `BadQuiet` still has to rescan the region
+                    // from the top — the depth-1..3 path, bit-identical to the
+                    // pre-study behaviour.
+                    self.bad_quiet_start = if self.sorted_covers {
+                        self.cur
+                    } else {
+                        self.end_captures
+                    };
                     self.cur = 0;
                     self.end_cur = self.end_bad_captures;
                     self.stage = Stage::BadCapture;
@@ -672,7 +743,7 @@ impl MovePicker {
                     if let Some(m) = self.select(board, |_, _| true) {
                         return Some(m);
                     }
-                    self.cur = self.end_captures;
+                    self.cur = self.bad_quiet_start;
                     self.end_cur = self.end_generated;
                     self.stage = Stage::BadQuiet;
                 }
@@ -1000,6 +1071,16 @@ impl MovePicker {
         self.end_cur = base + n;
         self.end_generated = base + n;
         let sort_limit = QUIET_SORT_DEPTH_FACTOR() * self.depth;
+        // See `sorted_covers`: with the prefix limit at or below the good/bad
+        // threshold, the two emission stages split the region at one index.
+        //
+        // `null34` is perf study 34's NULL ARM: it forces the flag off, so the
+        // binary carries the arm's struct layout, its extra fields and its
+        // rewritten `GoodQuiet` loop, and performs the OLD amount of scanning.
+        // A null that does not perturb the same machinery the arm perturbs is
+        // not a null (study 23 §2.2) — a byte-different build with an inert
+        // `let` reordering would not have moved the stage machine at all.
+        self.sorted_covers = !cfg!(feature = "null34") && sort_limit <= GOOD_QUIET_THRESHOLD();
         // Census BEFORE the sort: the prefix model is "element 0 plus every
         // LATER element >= limit", and the sort permutes the range, so the
         // count is only well defined on the pre-sort order.
