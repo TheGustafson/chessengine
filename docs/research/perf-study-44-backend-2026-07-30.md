@@ -123,9 +123,27 @@ The commission named four. Three of them are now priced and two are dead.
 | candidate | the measurement | verdict |
 |---|---|---|
 | **Memory / load stalls** | `load_not_complete` = **2596.93 c/node, 55.62 % of cycles** | **THE ANSWER.** §2 says which memory. |
-| **Execution port pressure** | 1282.60 512-bit + 33.75 256-bit + 6.06 scalar FP uops/node. On Zen 4 a 512-bit op occupies an FP pipe for 2 cycles ⇒ **2605 pipe-cycles/node over 4 pipes = 651 c/node = 13.9 % occupancy.** Corroborated directly: `fp_sch_rsrc_stall` = **196.41 c/node (4.2 %)** | **DEAD. The FP pipes are 86 % idle.** Do not build a port-pressure arm. |
+| **Execution port pressure** | `fp_ops_retired_by_width.all` = **1399.34 uops/node** (1282.60 of them 512-bit). Over Zen 4's 4 FP pipes that is **7.1 % – 14.4 % occupancy** depending on how the counter names a double-pumped op (see below). Corroborated by a counter that needs no such assumption: `fp_sch_rsrc_stall` = **196.41 c/node (4.2 % of cycles)** | **DEAD at either end of the bracket. The FP pipes are ≥ 85 % idle.** Do not build a port-pressure arm. |
 | **Dependency chains / latency** | the execution residual, **536.75 c/node = 11.50 %** | **REAL BUT SECONDARY**, and §2.2 localises it to ONE symbol. |
 | **Store-buffer / write pressure** | `store_queue_rsrc_stall` = **502.63 c/node = 10.76 % of cycles** — the **largest single dispatch-blocking resource in the engine**, ahead of the load queue at 442.11 | **REAL.** It is what §4's arm targets. |
+
+**Why the port-pressure figure is a BRACKET and not a number, stated because
+the honest version is less quotable than the tidy one.** Whether
+`pack_512_uops_retired` counts one event per 512-bit instruction or two (Zen 4
+executes 512-bit ops on a 256-bit datapath) decides whether the pipe demand is
+2605 or 1399 pipe-cycles per node — 14.4 % or 7.1 % of a 4-pipe machine. I did
+not validate that semantics on this box, and the arithmetic points at the
+second reading: a static count of the fold kernels' FP work
+(7.13 weight rows/node × 40 blocks × 2 ops = 570, plus `activate` ~171, plus
+`l1_dot` and the rest) lands near **790 instructions/node** against a measured
+**1282.60**, a ratio of 1.62 that is much easier to explain by double-counting
+than by 493 missing FP instructions.
+
+**The verdict does not depend on which reading is right**, which is why the
+bracket is quoted instead of a resolution: the pipes are between 85.6 % and
+92.9 % idle, and `fp_sch_rsrc_stall` — a cycle counter that involves no uop
+accounting at all — independently says dispatch is blocked on the FP scheduler
+for only 4.2 % of cycles.
 
 The full dispatch-blocking table, since it is the first time anyone has looked
 (these are cycles in which dispatch was blocked on that structure; they overlap
@@ -436,4 +454,102 @@ figure to pick on: core 0 = 24.1 %, core 4 = 28.3 %, core 6 = 34.3 %,
 
 ## 8. WHAT I COULD NOT ESTABLISH
 
-*(populated at the end)*
+In order, most doubtful first.
+
+1. **The per-symbol attribution in §2 was sampled on `bin44/b44`, which is
+   study 41's reference binary (`main` @ `56fc4c3`), not on `base44`
+   (`main` @ `7dd617df`).** The two retire 5928.40 and 5929.09 instructions per
+   node — 0.012 % apart, i.e. the same code for this purpose — and study 42
+   landed no shipped-path change between them, so I am confident the shares
+   transfer. But it is a different binary and the `.text` md5 differs, so the
+   §2 table is quoted as "the engine", not "this exact binary".
+
+2. **The last column of §2 ("fraction of its own stalls that is load") is a
+   ratio of two SAMPLED shares from two different `perf record` runs.** Each
+   share carries sampling error, and dividing them squares it. It is sound for
+   the one thing this study uses it for — spotting `forward_into` as the single
+   inversion, a 2.1× effect against neighbours all sitting within ±10 % of the
+   engine average — and it should not be read to two figures.
+
+3. **`ex_no_retire.load_not_complete` is the memory subset of `not_complete`
+   by AMD's definition, and I did not independently validate that definition
+   on this box.** The commission asked for counters validated against a case
+   whose answer is known; the validation I have is indirect but real —
+   study 42's `ttnopf42` arm removed the TT prefetch and moved this counter
+   +5.571 % (17/18) while moving `instructions:u` −0.363 %, which is a pure
+   memory perturbation producing a pure response on this counter. That is
+   consistent with the definition; it is not a proof of it.
+
+4. **The engine-wide 0.8288 `load_not_complete / not_complete` ratio used to
+   normalise §2 comes from the census (n = 6 per group, cross-group), not from
+   a paired panel.** It is a scaling constant for one derived column and
+   nothing else in the study depends on it.
+
+5. **`r8`'s non-monotonicity is unexplained** (§4.2). Store-queue pressure says
+   it should sit between `r10` and `r5`; cycles says it is the worst of the
+   three. `TILES = 5` being the only odd trip count is a hypothesis I did not
+   test.
+
+6. **The execution residual (536.75 c/node, 11.50 %) is localised to
+   `forward_into` but NOT to a mechanism inside it.** §2.2 rules out the
+   obvious candidate with a source reference and stops there. This is the
+   best-identified unbuilt lever in the study: a symbol taking 8.20 % of all
+   retirement-blocked cycles while demonstrably not waiting on memory, whose
+   dependency chain has not been found. `l3_dot` (a true reduction),
+   `propagate_l2` (16×32 f32) and the WDL softmax are the places to look.
+
+7. **Nothing here has been arbitrated by games.** Arm 2 is node-identical, so a
+   fixed-node match is a dead heat by construction and only a real-time-control
+   match could see it; at ~120 Elo per doubling of speed the effect size is a
+   few Elo, which is thousands of games. The cycles panel is the arbiter this
+   study can actually run, and §4.2 records how hard it fought back.
+
+8. **Only ACC = 1280 was measured.** `REGS_CAP` is a global cap and changes the
+   tile at every other architecture too (768 → 8, 1536 → 8, 2048 → 8 at a cap
+   of 10). The `const _` asserts still machine-check that the tile divides the
+   accumulator exactly at every width, so nothing can silently break — but the
+   *benefit* is measured at one width only.
+
+---
+
+## 9. REPRODUCTION
+
+```bash
+# 0. the worktree needs the gitignored net visible under its own path
+mkdir -p data/nnue/nets/screens
+ln -sfn /path/to/d48x-1280-sb520-ema-s600.cenn \
+        data/nnue/nets/screens/d48x-1280-sb520-ema-s600.cenn
+
+# 1. build the arms (each serialises behind the shared build lock)
+bash tools/perf44/build44.sh base44                 # REGS = 20, today's main
+bash tools/perf44/build44.sh r10  regs10_44
+bash tools/perf44/build44.sh r5   regs5_44
+cp bin44/base44 bin44/null44                        # the byte-identical null
+
+# 2. THE GATE, before any timing: node count, d13, wl50 eval hash
+bash tools/perf44/ident44.sh base44 r10 r5 null44
+
+# 3. the back-end census (12 unmultiplexed groups x 6 reps)
+bash tools/perf44/census44.sh 6 base44
+python3 tools/perf44/reduce44.py docs/research/perf-artifacts-44/census.txt
+
+# 4. where the stalls are, by symbol
+P44_CPU=4 bash tools/perf44/where44.sh ex_no_retire.load_not_complete 200003 base44
+P44_CPU=4 bash tools/perf44/where44.sh ex_no_retire.not_complete      200003 base44
+
+# 5. the arbitrating panel -- pick a QUIET PHYSICAL core first (see §7)
+P44_CPU=4 \
+P44_EV='cycles:u,instructions:u,ex_no_retire.thread_not_selected:u,ex_no_retire.load_not_complete:u,de_dis_dispatch_token_stalls1.store_queue_rsrc_stall:u' \
+P44_PANEL=docs/research/perf-artifacts-44/panel-final.txt \
+  bash tools/perf44/panel44.sh 45 base44 r10 r5 null44
+python3 tools/perf44/med44.py docs/research/perf-artifacts-44/panel-final.txt \
+  base44 r10 r5 null44
+```
+
+Picking the core (§7) — physical-core busy, summing each SMT sibling pair:
+
+```bash
+for c in $(seq 0 15); do
+  echo "cpu$c $(cat /sys/devices/system/cpu/cpu$c/topology/thread_siblings_list)"
+done
+```
