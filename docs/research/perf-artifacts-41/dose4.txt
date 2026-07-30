@@ -1,0 +1,1 @@
+r1 hcs41 nodes=5001562 cycles:u=4161.526712 instructions:u=5923.127308 ex_no_retire.empty:u=203.202558 de_no_dispatch_per_slot.no_ops_from_frontend:u=5407.303851 ic_tag_hit_miss.all_instruction_cache_accesses:u=527.225834 de_src_op_disp.decoder:u=2632.496246 
