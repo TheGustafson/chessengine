@@ -23,8 +23,11 @@ Measured on the real packed containers (`sha`-verifiable, script in §8):
 
 25% of the i8 range; two bits thrown away on the channel that is 72.9% of our
 input space and carries 86% of all accumulator quantisation noise. D49-sb100
-measured **−125.1 ± 20.9 Elo** against D48X over a 336-game fixed-node screen,
-while its float heldout R² (0.8757) sat **within 0.008** of D48X's.
+measured **−128.7 ± 9.6 Elo** against D48X over 1600 calibrated fixed-node games
+(and −142.6 ± 9.6 uncalibrated, also n=1600), while its float heldout R² (0.8757)
+sat **within 0.008** of D48X's. *(The commissioning brief quoted the interim
+n=336 screen at −125.1 ± 20.9; the matured figures landed on main as `ce42c6d`
+while this study ran and are what every comment now cites.)*
 
 **The damage is invisible to every metric except games**, because R² is computed
 on the float net and we play the quantised one. That is the general lesson of
@@ -283,6 +286,18 @@ loses 125 Elo. Not free, and reported as such.
    `qat_threat_scale` whenever QAT is on, and raises if it is not an integral
    power of two in `1..=256`. With QAT off it returns the module default, which
    is why the D48Y2 re-export is byte-identical (§3).
+
+### One knock-on, checked rather than assumed
+
+`spec.clip_map_for_arch()` derives each tensor's AdamW weight clip from *that
+tensor's export quant*, so making `quant_layout()` report 256 for a QAT net also
+moves `l0_threatw`'s optimiser clip from 127/64 = 1.984 to 127/256 = 0.496.
+**That is a no-op, not a behaviour change**: `model.apply_qat_clip` already
+projects `l0_threatw` to exactly `127/qat_threat_scale` between optimiser steps
+(`jax/archon_jax/model.py:415`), which is the same bound — confirmed empirically
+by the live checkpoint's `max|w| = 0.4948`. For a non-QAT run `threat_quant()`
+returns 64 and the map is unchanged. The live D49 process is unaffected either
+way (Python is loaded at launch); a resume would pick up an identical bound.
 
 ### And a detector, because the float metrics could not see this
 

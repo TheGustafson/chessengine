@@ -1526,8 +1526,9 @@ spanning ±1.98, so 64 is the largest scale that does not clip them (255 measure
 6.80% relative error vs 5.58% at 64 — *worse*). A net trained WITH
 `qat_threat_scale = 256` is clipped to ±127/256 during training and needs 256;
 exported at 64 it reaches only `max|w| = 32/127` and 65 of 256 levels, two bits
-thrown away. Measured on D49-sb100: **−125.1 ± 20.9 Elo over 336 fixed-node
-games** while its float heldout R² sat within 0.008 of the incumbent's — the
+thrown away. Measured on D49-sb100: **−128.7 ± 9.6 Elo over 1600 calibrated
+fixed-node games** (−142.6 ± 9.6 uncalibrated, also n=1600) while its float
+heldout R² sat within 0.008 of the incumbent's — the
 damage is invisible to every metric computed on the float net. `netpack.py`
 therefore refuses to pack a threat table that does not reach half the i8 range
 (`D40_ALLOW_THREAT_UNDERRANGE=1` overrides), and the trainer's export scale is

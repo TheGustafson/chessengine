@@ -50,8 +50,8 @@
 //! weights span ±1.98 and clip catastrophically above 64, while a QAT net
 //! trained at `qat_threat_scale = 256` is clipped to ±127/256 and wastes two
 //! bits of the i8 at 64 (measured: `max|w| 32/127`, 65 of 256 levels, against
-//! 127/127 and 247/256 for a healthy net — and a 336-game screen at −125.1 ±
-//! 20.9 Elo). A `CEN2` file has no field for it, so it means
+//! 127/127 and 247/256 for a healthy net — and −128.7 ± 9.6 Elo over 1600
+//! calibrated games). A `CEN2` file has no field for it, so it means
 //! [`sota_head::THREAT_QUANT_CEN2`] = 64 — which is exactly what every engine
 //! before this change assumed, so **loading a v2 net is bit-identical**.
 //! The runtime consumes it as [`sota_head::threat_shift_for`].

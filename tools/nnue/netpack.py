@@ -438,7 +438,7 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None,
     # `qat_threat_scale = 256`, which CLIPS the threat table to +-127/256, and
     # every deployment path then exported it at 64. The i8 weights reached
     # max|w| = 32 of 127 and used 65 of 256 levels — two bits thrown away — for
-    # a measured -125.1 +- 20.9 Elo over 336 games, while the FLOAT heldout R2
+    # a measured -128.7 +- 9.6 Elo over 1600 calibrated games, while the FLOAT heldout R2
     # stayed within 0.008 of the incumbent. Nothing except games could see it.
     #
     # An i8 table that does not reach even half the range was quantised at
@@ -456,7 +456,7 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None,
                 f"{int(np.abs(threat_w.astype(np.int32)).max())}/127 at "
                 f"threat_quant={threat_quant} — at least one bit of the i8 is "
                 f"unused, which is what a QAT net exported at the legacy scale "
-                f"looks like (perf study 30: -125.1 Elo, invisible to R2).\n"
+                f"looks like (perf study 30: -128.7 Elo, invisible to R2).\n"
                 f"  The quant.bin ITSELF is the wrong one: re-export it at the "
                 f"trainer's qat_threat_scale (jax ArchSpec.threat_quant(); "
                 f"tools/nnue/requant_threats.py --scale N --run-spec ...) and "

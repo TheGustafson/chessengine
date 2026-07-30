@@ -199,7 +199,7 @@ class ArchSpec:
     #                    used to be free to disagree with `QUANT_THREAT`, and
     #                    D49 trained 100 superbatches at 256 while the packer
     #                    exported at 64: max|w| 32/127, 65 of 256 i8 levels,
-    #                    -125.1 +- 20.9 Elo, invisible to every float metric
+    #                    -128.7 +- 9.6 Elo over 1600 games, invisible to every float metric
     #                    (perf study 30).
     #   qat_act_levels   pairwise product -> u8, 127 levels    (the >>9 step;
     #                    the largest previously unmodelled loss)
