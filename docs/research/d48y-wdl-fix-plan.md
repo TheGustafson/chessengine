@@ -5350,3 +5350,48 @@ canonical is not merely nice-to-have — it is what makes the comparison
 straightforward. Still deferred while study 37 measures against the current
 pins; the promotion moves the eval-hash and d13 pins and must land in one
 commit with re-derived pins and a MANIFEST entry.
+
+## D49's eval frame is STABLE across training — the verdict sweep gets cheaper
+
+Box was idle (load 4.64, `perf`/`cargo`/`fastchess` all 0, study 37 between
+measurements), so this cost nothing and needed no games.
+
+| checkpoint | eval stdev @ scale 400 | mean |
+|---|---:|---:|
+| sb140 | 235.0 | −10.8 |
+| sb180 | 229.9 | −17.1 |
+| **sb250** | **234.1** | −13.7 |
+
+**+/-2% variation across 110 superbatches, no trend.** The frame is a property
+of the recipe (the network-side double sigmoid at `net_scale 0.179`), not
+something that wanders as the net learns.
+
+**Consequence for the sb400 verdict:** the measured optimum **756 should still
+be near-optimal at sb400**, so the ladder can be a *narrow* sweep centred on 756
+(e.g. 640 / 756 / 880) rather than a from-scratch bracketing. That saves one to
+two 1466-game screens.
+
+**Caveat kept explicit:** all three samples are from the *cosine* phase. The
+**anneal (sb300→400) is a different regime** — LR goes to zero and the weights
+settle — so this evidence does not cover it. **Re-measure the frame at sb400
+before choosing the ladder**; if it has moved, widen the sweep.
+
+### A secondary observation, recorded but not acted on
+
+The threat-weight quantisation error, at a fixed scale of 256, reads
+**1.23% (sb140) -> 1.32% (sb180) -> 1.51% (sb250)** while the absolute error is
+constant at 0.001028. Since that percentage is error/RMS, **the threat weights
+are SHRINKING as training proceeds** — consistent with the QAT clipping callback
+and weight decay. Still **0 weights clipped**, so it is not yet a fidelity
+concern, and eval stdev is flat, so something else compensates. Worth watching
+at sb400: if RMS keeps falling, the effective quantisation resolution of the
+threat channel degrades even though the scale is nominally correct.
+
+**D49 sb253/400**, 167k pos/s, heldout 0.011587 @ sb250 (ema 0.011318) — the
+delta narrowed to −69 as the cosine deepens.
+
+**Study 37 ahead=2**, now investigating **transparent huge pages**
+(*"add the huge-page observers to the kit (thpch…")*. A sharp angle for
+weight-row streaming: the HalfKA table alone is ~28.8 MB post-i8 and the threat
+table is larger, so 4 KB pages imply real dTLB pressure that nobody has
+measured.
