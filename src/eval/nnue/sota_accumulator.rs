@@ -10,7 +10,7 @@
 
 use super::sota_features::{ACC, halfka_index, halfka_king_key, halfka_oriented, halfka_row_base};
 use super::sota_head::BUCKETS;
-use super::sota_simd::{apply_i16_deltas, apply_i16_deltas_dual, apply_i16_deltas_into};
+use super::sota_simd::{apply_i8_deltas, apply_i8_deltas_dual, apply_i8_deltas_into};
 use crate::bitboard::Bitboard;
 use crate::board::{Board, DirtyPiece};
 use crate::types::{Color, MAX_PLY, Piece, PieceType, Square};
@@ -248,7 +248,9 @@ impl Default for FinnyEntry {
 }
 
 pub(crate) struct HalfkaContext<'a> {
-    weights: &'a [i16],
+    /// The i8 HalfKA table (perf study 32). The accumulator stays i16 — only
+    /// the streamed WEIGHT ROWS shrink, which is where the bytes were.
+    weights: &'a [i8],
     bias: &'a [i16],
     /// T6c PSQ1 rows for the HalfKA feature space (`HALFKA_DIMS · BUCKETS`
     /// i32, row-major), or empty ⇒ the skip channel is inert.
@@ -283,7 +285,7 @@ pub(crate) struct HalfkaContext<'a> {
 }
 
 impl<'a> HalfkaContext<'a> {
-    pub(crate) fn new(weights: &'a [i16], bias: &'a [i16], psqt_weights: &'a [i32]) -> Self {
+    pub(crate) fn new(weights: &'a [i8], bias: &'a [i16], psqt_weights: &'a [i32]) -> Self {
         Self {
             weights,
             bias,
@@ -455,14 +457,14 @@ impl<'a> HalfkaContext<'a> {
             // WHAT THE TRIPWIRE PROTECTS IS THE PERF CLAIM, NOT CORRECTNESS
             // (D33 reviewers A and C, independently). The deleted branch was
             // bit-identical to its `else` arm even when taken:
-            // `apply_i16_deltas_into(dst, src, w, &[], &[])` is `dst = src`
+            // `apply_i8_deltas_into(dst, src, w, &[], &[])` is `dst = src`
             // lane for lane, and `psqt_fold` with empty lists is `*dst = *src`.
             // So this deletion cannot be WRONG, only slower.
             //
             // The corollary is a real future hazard, and it is the reason this
             // paragraph exists: **the empty-list case of the delta kernels
             // must remain a copy.** Adding an `if adds.is_empty() &&
-            // subs.is_empty() { return; }` fast path to `apply_i16_deltas_into`
+            // subs.is_empty() { return; }` fast path to `apply_i8_deltas_into`
             // looks like a free win and would, at that moment, turn this into
             // a stale-child bug — in release, silently.
             let (before, after) = self.stack.split_at_mut(child);
@@ -599,7 +601,7 @@ impl<'a> HalfkaContext<'a> {
             // probe; the naive doubled assignment measured +0.006% because
             // dead-store elimination removed it). Writing both homes from the
             // registers the fold already holds costs one store per 32 lanes.
-            apply_i16_deltas_dual(
+            apply_i8_deltas_dual(
                 &mut cached.acc,
                 &mut stack[ply].acc[p],
                 weights,
@@ -642,7 +644,7 @@ impl<'a> HalfkaContext<'a> {
             cached.by_piece[piece.color as usize][piece.piece_type as usize] |=
                 Bitboard::from_square(square);
         }
-        apply_i16_deltas(&mut cached.acc, weights, &adds[..len], &[]);
+        apply_i8_deltas(&mut cached.acc, weights, &adds[..len], &[]);
         // T6c: seed the PSQT sums from zero (the skip has no bias term).
         cached.psqt = [0i32; BUCKETS];
         if !psqt_weights.is_empty() {
@@ -664,7 +666,7 @@ impl<'a> HalfkaContext<'a> {
 /// carries one) the T6c PSQT bucket-sum fold, so the two channels can never
 /// see different feature events.
 fn apply_dirty_into(
-    weights: &[i16],
+    weights: &[i8],
     psqt_weights: &[i32],
     entry: &mut Entry,
     parent: &Entry,
@@ -697,7 +699,7 @@ fn apply_dirty_into(
 /// king move: no ply inside it moves the king again, so every HalfKA index in
 /// the span is bucketed on the same square.
 fn apply_dirty_directed<const FORWARD: bool>(
-    weights: &[i16],
+    weights: &[i8],
     psqt_weights: &[i32],
     entry: &mut Entry,
     parent: &Entry,
@@ -719,7 +721,7 @@ fn apply_dirty_directed<const FORWARD: bool>(
     } else {
         (&subs[..dirty.subs().len()], &adds[..dirty.adds().len()])
     };
-    apply_i16_deltas_into(&mut entry.acc[p], &parent.acc[p], weights, a, s);
+    apply_i8_deltas_into(&mut entry.acc[p], &parent.acc[p], weights, a, s);
     if !psqt_weights.is_empty() {
         psqt_fold(&mut entry.psqt[p], &parent.psqt[p], psqt_weights, a, s);
     }

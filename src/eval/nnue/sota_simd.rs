@@ -24,11 +24,16 @@ const _: () = assert!(
     "L3 must be a multiple of 16 for the l2_tail block loop"
 );
 
-type ApplyI16Fn = fn(&mut [i16; ACC], &[i16], &[usize], &[usize]);
+// BOTH feature transformers fold i8 weight rows into an i16 accumulator since
+// perf study 32 — HalfKA's 57.7 MB i16 table became a 28.9 MB i8 one plus a
+// per-column scale the merge applies — so there is exactly one fold family and
+// the threat channel and the HalfKA channel share every kernel below.
+//
+// In-place fold: the Finny cache's cold from-scratch build.
+type ApplyI8Fn = fn(&mut [i16; ACC], &[i8], &[usize], &[usize]);
 // Fused copy+apply: read `src`, apply deltas, write `dst` in ONE pass — the
 // lazy fold's child = parent ± deltas without a separate ~1.5 KB memmove
 // (profiling-study §4.3/opt #2). `dst`/`src` may not alias.
-type ApplyI16IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i16], &[usize], &[usize]);
 type ApplyI8IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i8], &[usize], &[usize]);
 // TWO-DESTINATION in-place apply (perf study 9 item 4): `acc ±= deltas`, and
 // the result is ALSO written to `out`. The Finny cached refresh needs the same
@@ -38,9 +43,15 @@ type ApplyI8IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i8], &[usize], &[usize])
 // Both destinations are written from the SAME registers the fold already
 // holds, so the second home costs one store per block instead of a whole
 // read+write pass. `acc` and `out` may not alias.
-type ApplyI16DualFn = fn(&mut [i16; ACC], &mut [i16; ACC], &[i16], &[usize], &[usize]);
+type ApplyI8DualFn = fn(&mut [i16; ACC], &mut [i16; ACC], &[i8], &[usize], &[usize]);
 type L1DotFn = fn(&mut [i32; L2], &[u8; ACC], &[u16], &[i8]);
-type ActivateFn = fn(&mut [u8; ACC], &[[i16; ACC]; 2], &[[i16; ACC]; 2], usize);
+// `scale` is the HalfKA accumulator's per-lane dequantisation multiplier
+// (perf study 32): the i8 rows are stored at `FT_QUANT / scale[j]`, so the
+// merge has to put lane `j` back into the FT_QUANT frame before it can clamp
+// against 255. It is a WRAPPING i16 multiply in every backend — the reduced
+// accumulator wraps exactly where the old FT_QUANT-frame one did, and pinning
+// the width is what keeps the three backends bit-identical.
+type ActivateFn = fn(&mut [u8; ACC], &[[i16; ACC]; 2], &[[i16; ACC]; 2], &[i16; ACC], usize);
 type FindNnzFn = fn(&[u8; ACC], &mut [u16; ACC / 4]) -> usize;
 // The explicit f32 head-tail kernels (perf study #4 item #2a — the one hot
 // path that still lived on autovectorization after the ×8 D47 head growth).
@@ -77,10 +88,9 @@ type L3DotFn = fn(&[f32; L3], &[f32; L3]) -> f32;
 type SkipDotFn = fn(&[u8], &[i8]) -> i32;
 
 struct Kernels {
-    i16_deltas: ApplyI16Fn,
-    i16_deltas_into: ApplyI16IntoFn,
-    i16_deltas_dual: ApplyI16DualFn,
+    i8_deltas: ApplyI8Fn,
     i8_deltas_into: ApplyI8IntoFn,
+    i8_deltas_dual: ApplyI8DualFn,
     l1_dot: L1DotFn,
     activate: ActivateFn,
     find_nnz: FindNnzFn,
@@ -153,41 +163,29 @@ macro_rules! kernel_dispatch {
     }};
 }
 
+/// In-place i8-weight fold — the HalfKA Finny cache's cold from-scratch build.
 #[inline]
-pub(crate) fn apply_i16_deltas(
+pub(crate) fn apply_i8_deltas(
     acc: &mut [i16; ACC],
-    weights: &[i16],
+    weights: &[i8],
     adds: &[usize],
     subs: &[usize],
 ) {
-    kernel_dispatch!(i16_deltas(acc, weights, adds, subs))
+    kernel_dispatch!(i8_deltas(acc, weights, adds, subs))
 }
 
-/// Fused copy+apply for the HalfKA (i16) fold: `dst = src ± deltas` in one
-/// pass, avoiding the separate parent→child memmove.
+/// Two-destination i8-weight fold — the HalfKA Finny cache's warm refresh.
+/// `acc` and `out` must not alias. See [`ApplyI8DualFn`] for why both homes
+/// are written from the fold's own registers.
 #[inline]
-pub(crate) fn apply_i16_deltas_into(
-    dst: &mut [i16; ACC],
-    src: &[i16; ACC],
-    weights: &[i16],
-    adds: &[usize],
-    subs: &[usize],
-) {
-    kernel_dispatch!(i16_deltas_into(dst, src, weights, adds, subs))
-}
-
-/// Two-destination in-place apply: `acc ±= deltas`, and the same result is
-/// written to `out` as well (perf study 9 item 4). See [`ApplyI16DualFn`].
-/// `acc` and `out` must not alias.
-#[inline]
-pub(crate) fn apply_i16_deltas_dual(
+pub(crate) fn apply_i8_deltas_dual(
     acc: &mut [i16; ACC],
     out: &mut [i16; ACC],
-    weights: &[i16],
+    weights: &[i8],
     adds: &[usize],
     subs: &[usize],
 ) {
-    kernel_dispatch!(i16_deltas_dual(acc, out, weights, adds, subs))
+    kernel_dispatch!(i8_deltas_dual(acc, out, weights, adds, subs))
 }
 
 /// Fused copy+apply for the FullThreats (i8-weight) fold.
@@ -248,9 +246,10 @@ pub(crate) fn activate(
     out: &mut [u8; ACC],
     pst: &[[i16; ACC]; 2],
     threat: &[[i16; ACC]; 2],
+    scale: &[i16; ACC],
     stm: usize,
 ) {
-    kernel_dispatch!(activate(out, pst, threat, stm))
+    kernel_dispatch!(activate(out, pst, threat, scale, stm))
 }
 
 /// Compact the indices of the nonzero four-byte groups of `ft` into `out`
@@ -336,57 +335,33 @@ pub(crate) fn skip_dot_i8(ft: &[u8], lane: &[i8]) -> i32 {
 mod scalar {
     use super::*;
 
-    pub(super) fn i16_deltas(
-        acc: &mut [i16; ACC],
-        weights: &[i16],
-        adds: &[usize],
-        subs: &[usize],
-    ) {
+    pub(super) fn i8_deltas(acc: &mut [i16; ACC], weights: &[i8], adds: &[usize], subs: &[usize]) {
         for lane in 0..ACC {
             let mut value = acc[lane];
             for &feature in adds {
-                value = value.wrapping_add(weights[feature * ACC + lane]);
+                value = value.wrapping_add(i16::from(weights[feature * ACC + lane]));
             }
             for &feature in subs {
-                value = value.wrapping_sub(weights[feature * ACC + lane]);
+                value = value.wrapping_sub(i16::from(weights[feature * ACC + lane]));
             }
             acc[lane] = value;
         }
     }
 
-    pub(super) fn i16_deltas_into(
-        dst: &mut [i16; ACC],
-        src: &[i16; ACC],
-        weights: &[i16],
-        adds: &[usize],
-        subs: &[usize],
-    ) {
-        for lane in 0..ACC {
-            let mut value = src[lane];
-            for &feature in adds {
-                value = value.wrapping_add(weights[feature * ACC + lane]);
-            }
-            for &feature in subs {
-                value = value.wrapping_sub(weights[feature * ACC + lane]);
-            }
-            dst[lane] = value;
-        }
-    }
-
-    pub(super) fn i16_deltas_dual(
+    pub(super) fn i8_deltas_dual(
         acc: &mut [i16; ACC],
         out: &mut [i16; ACC],
-        weights: &[i16],
+        weights: &[i8],
         adds: &[usize],
         subs: &[usize],
     ) {
         for lane in 0..ACC {
             let mut value = acc[lane];
             for &feature in adds {
-                value = value.wrapping_add(weights[feature * ACC + lane]);
+                value = value.wrapping_add(i16::from(weights[feature * ACC + lane]));
             }
             for &feature in subs {
-                value = value.wrapping_sub(weights[feature * ACC + lane]);
+                value = value.wrapping_sub(i16::from(weights[feature * ACC + lane]));
             }
             acc[lane] = value;
             out[lane] = value;
@@ -430,17 +405,33 @@ mod scalar {
         out: &mut [u8; ACC],
         pst: &[[i16; ACC]; 2],
         threat: &[[i16; ACC]; 2],
+        scale: &[i16; ACC],
         stm: usize,
     ) {
         const H: usize = ACC / 2;
         for flip in 0..2 {
             let perspective = stm ^ flip;
             for lane in 0..H {
-                // 255/64 carried as 4 (see the avx512 twin).
-                let merge =
-                    |p: i16, t: i16| (i32::from(p) + (i32::from(t) << 2)).clamp(0, FT_QUANT);
-                let left = merge(pst[perspective][lane], threat[perspective][lane]);
-                let right = merge(pst[perspective][lane + H], threat[perspective][lane + H]);
+                // 255/64 carried as 4, and the HalfKA lane put back into the
+                // FT_QUANT frame by its own per-lane i8 scale (see the avx512
+                // twin). `wrapping_mul` in i16 is the DEFINED semantics, not a
+                // convenience: the vector backends multiply in i16 lanes, so
+                // widening first here would disagree with them on the (never
+                // observed) overflow — exactly where the old FT_QUANT-frame
+                // accumulator wrapped too.
+                let merge = |p: i16, t: i16, s: i16| {
+                    (i32::from(p.wrapping_mul(s)) + (i32::from(t) << 2)).clamp(0, FT_QUANT)
+                };
+                let left = merge(
+                    pst[perspective][lane],
+                    threat[perspective][lane],
+                    scale[lane],
+                );
+                let right = merge(
+                    pst[perspective][lane + H],
+                    threat[perspective][lane + H],
+                    scale[lane + H],
+                );
                 out[lane + flip * H] = ((left * right) >> FT_SHIFT) as u8;
             }
         }
@@ -556,10 +547,9 @@ mod scalar {
     }
 
     pub(super) const KERNELS: Kernels = Kernels {
-        i16_deltas,
-        i16_deltas_into,
-        i16_deltas_dual,
+        i8_deltas,
         i8_deltas_into,
+        i8_deltas_dual,
         l1_dot,
         activate,
         find_nnz,
@@ -579,71 +569,6 @@ mod avx2 {
 
     const LANES: usize = 16;
     const _: () = assert!(ACC.is_multiple_of(LANES));
-
-    #[target_feature(enable = "avx2")]
-    unsafe fn i16_deltas_inner(
-        acc: &mut [i16; ACC],
-        weights: &[i16],
-        adds: &[usize],
-        subs: &[usize],
-    ) {
-        // SAFETY: `off` covers one in-bounds 16-lane accumulator block.
-        // Feature indices originate from validated feature maps and each
-        // transformer is loader-validated to contain complete ACC-wide rows.
-        unsafe {
-            for off in (0..ACC).step_by(LANES) {
-                let mut value = _mm256_loadu_si256(acc.as_ptr().add(off).cast());
-                for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm256_add_epi16(value, _mm256_loadu_si256(row.cast()));
-                }
-                for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm256_sub_epi16(value, _mm256_loadu_si256(row.cast()));
-                }
-                _mm256_storeu_si256(acc.as_mut_ptr().add(off).cast(), value);
-            }
-        }
-    }
-
-    #[target_feature(enable = "avx2")]
-    unsafe fn i16_deltas_dual_inner(
-        acc: &mut [i16; ACC],
-        out: &mut [i16; ACC],
-        weights: &[i16],
-        adds: &[usize],
-        subs: &[usize],
-    ) {
-        // `i16_deltas_inner` with a second store per block — same loads, same
-        // per-lane wrapping adds in the same order, so bit-identical.
-        // SAFETY: as `i16_deltas_inner`; `out` is a disjoint ACC-wide array.
-        unsafe {
-            for off in (0..ACC).step_by(LANES) {
-                let mut value = _mm256_loadu_si256(acc.as_ptr().add(off).cast());
-                for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm256_add_epi16(value, _mm256_loadu_si256(row.cast()));
-                }
-                for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm256_sub_epi16(value, _mm256_loadu_si256(row.cast()));
-                }
-                _mm256_storeu_si256(acc.as_mut_ptr().add(off).cast(), value);
-                _mm256_storeu_si256(out.as_mut_ptr().add(off).cast(), value);
-            }
-        }
-    }
-
-    pub(super) fn i16_deltas_dual(
-        acc: &mut [i16; ACC],
-        out: &mut [i16; ACC],
-        weights: &[i16],
-        adds: &[usize],
-        subs: &[usize],
-    ) {
-        // SAFETY: installed only after runtime avx2 detection.
-        unsafe { i16_deltas_dual_inner(acc, out, weights, adds, subs) }
-    }
 
     #[target_feature(enable = "avx2")]
     unsafe fn l1_dot_inner(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
@@ -683,6 +608,7 @@ mod avx2 {
         out: &mut [u8; ACC],
         pst: &[[i16; ACC]; 2],
         threat: &[[i16; ACC]; 2],
+        scale: &[i16; ACC],
         stm: usize,
     ) {
         const H: usize = ACC / 2;
@@ -698,8 +624,12 @@ mod avx2 {
                 let t = &threat[perspective];
                 for lane in (0..H).step_by(8) {
                     let merge = |offset: usize| {
-                        let pv =
-                            _mm256_cvtepi16_epi32(_mm_loadu_si128(p.as_ptr().add(offset).cast()));
+                        // The i8 HalfKA rescale happens in i16 lanes, BEFORE
+                        // the widen, so this wraps exactly where the avx512
+                        // `vpmullw` and the scalar `wrapping_mul` wrap.
+                        let raw = _mm_loadu_si128(p.as_ptr().add(offset).cast());
+                        let sv = _mm_loadu_si128(scale.as_ptr().add(offset).cast());
+                        let pv = _mm256_cvtepi16_epi32(_mm_mullo_epi16(raw, sv));
                         let tv =
                             _mm256_cvtepi16_epi32(_mm_loadu_si128(t.as_ptr().add(offset).cast()));
                         // 255/64 carried as 4 (see the avx512 twin).
@@ -771,75 +701,61 @@ mod avx2 {
         }
     }
 
-    pub(super) fn i16_deltas(
+    /// In-place i8 fold — the HalfKA Finny cold
+    /// build. Same 16-lane block walk; the row is a 16-byte load widened to 16
+    /// i16 lanes, which is the shape the threat fold has always used.
+    #[target_feature(enable = "avx2")]
+    unsafe fn i8_deltas_inner(
         acc: &mut [i16; ACC],
-        weights: &[i16],
+        weights: &[i8],
         adds: &[usize],
         subs: &[usize],
     ) {
-        // SAFETY: installed only after runtime AVX2 detection.
-        unsafe { i16_deltas_inner(acc, weights, adds, subs) }
+        // SAFETY: as `i8_deltas_into_inner`; each row is `ACC` in-bounds i8.
+        unsafe {
+            for off in (0..ACC).step_by(LANES) {
+                let mut value = _mm256_loadu_si256(acc.as_ptr().add(off).cast());
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value =
+                        _mm256_add_epi16(value, _mm256_cvtepi8_epi16(_mm_loadu_si128(row.cast())));
+                }
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value =
+                        _mm256_sub_epi16(value, _mm256_cvtepi8_epi16(_mm_loadu_si128(row.cast())));
+                }
+                _mm256_storeu_si256(acc.as_mut_ptr().add(off).cast(), value);
+            }
+        }
     }
 
+    /// Two-destination i8 fold — the HalfKA Finny warm
+    /// refresh, writing the cache entry and the stack slot from one register.
     #[target_feature(enable = "avx2")]
-    unsafe fn i16_deltas_into_inner(
-        dst: &mut [i16; ACC],
-        src: &[i16; ACC],
-        weights: &[i16],
+    unsafe fn i8_deltas_dual_inner(
+        acc: &mut [i16; ACC],
+        out: &mut [i16; ACC],
+        weights: &[i8],
         adds: &[usize],
         subs: &[usize],
     ) {
-        // SAFETY: as i16_deltas_inner; reads `src`, writes the disjoint `dst`.
-        // §6-F (perf study): pre-scale each feature's row offset ONCE — the
-        // block-outer nest re-derived `feature * ACC` per (block, feature)
-        // pair (the kernels' dominant scalar/GPR share, §2.4). Chunked so
-        // arbitrarily long event lists stay allocation-free; later passes
-        // fold onto dst (wrapping adds commute ⇒ bit-identical).
-        //
-        // KEEP THE HOIST HERE. Perf study 12 §4 removed it from the AVX-512
-        // twins and measured −114 i/n, but the two backends have different
-        // nests and the hoist's value scales with the OUTER trip count: this
-        // one is block-outer and this module's `LANES` is 16, so `ACC / LANES` =
-        // 80 iterations at ACC = 1280: the hoist saves 79 x rows multiplies
-        // against ~91 instructions of prologue. The AVX-512 form holds a
-        // 20-register tile and runs its outer loop TWICE, where it saved only
-        // 1 x rows and the prologue dominated.
+        // SAFETY: as `i8_deltas_inner`; `out` is a disjoint ACC-wide array.
         unsafe {
-            const CAP: usize = 96;
-            // MaybeUninit: only the written prefix is ever read — the zeroing
-            // memset of 2x96 usizes per call cost more than the hoist saved
-            // on the <=2-event HalfKA folds (measured flat on first cut).
-            let mut a_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
-            let mut s_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
-            let (mut ai, mut si) = (0usize, 0usize);
-            let mut source: *const i16 = src.as_ptr();
-            loop {
-                let an = (adds.len() - ai).min(CAP);
-                let sn = (subs.len() - si).min(CAP);
-                for k in 0..an {
-                    a_off[k].write(adds[ai + k] * ACC);
+            for off in (0..ACC).step_by(LANES) {
+                let mut value = _mm256_loadu_si256(acc.as_ptr().add(off).cast());
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value =
+                        _mm256_add_epi16(value, _mm256_cvtepi8_epi16(_mm_loadu_si128(row.cast())));
                 }
-                for k in 0..sn {
-                    s_off[k].write(subs[si + k] * ACC);
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature * ACC + off);
+                    value =
+                        _mm256_sub_epi16(value, _mm256_cvtepi8_epi16(_mm_loadu_si128(row.cast())));
                 }
-                for off in (0..ACC).step_by(LANES) {
-                    let mut value = _mm256_loadu_si256(source.add(off).cast());
-                    for base in a_off[..an].iter().map(|m| m.assume_init()) {
-                        let row = weights.as_ptr().add(base + off);
-                        value = _mm256_add_epi16(value, _mm256_loadu_si256(row.cast()));
-                    }
-                    for base in s_off[..sn].iter().map(|m| m.assume_init()) {
-                        let row = weights.as_ptr().add(base + off);
-                        value = _mm256_sub_epi16(value, _mm256_loadu_si256(row.cast()));
-                    }
-                    _mm256_storeu_si256(dst.as_mut_ptr().add(off).cast(), value);
-                }
-                ai += an;
-                si += sn;
-                if ai >= adds.len() && si >= subs.len() {
-                    break;
-                }
-                source = dst.as_ptr();
+                _mm256_storeu_si256(acc.as_mut_ptr().add(off).cast(), value);
+                _mm256_storeu_si256(out.as_mut_ptr().add(off).cast(), value);
             }
         }
     }
@@ -853,7 +769,7 @@ mod avx2 {
         subs: &[usize],
     ) {
         // SAFETY: as i8_deltas_inner; reads `src`, writes the disjoint `dst`.
-        // §6-F hoist + chunking — see i16_deltas_into_inner above.
+        // §6-F hoist + chunking — see the doc on that kernel.
         unsafe {
             const CAP: usize = 96;
             // MaybeUninit: only the written prefix is ever read — the zeroing
@@ -894,17 +810,6 @@ mod avx2 {
         }
     }
 
-    fn i16_deltas_into(
-        dst: &mut [i16; ACC],
-        src: &[i16; ACC],
-        weights: &[i16],
-        adds: &[usize],
-        subs: &[usize],
-    ) {
-        // SAFETY: installed only after runtime AVX2 detection.
-        unsafe { i16_deltas_into_inner(dst, src, weights, adds, subs) }
-    }
-
     fn i8_deltas_into(
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
@@ -916,14 +821,36 @@ mod avx2 {
         unsafe { i8_deltas_into_inner(dst, src, weights, adds, subs) }
     }
 
+    fn i8_deltas(acc: &mut [i16; ACC], weights: &[i8], adds: &[usize], subs: &[usize]) {
+        // SAFETY: installed only after runtime AVX2 detection.
+        unsafe { i8_deltas_inner(acc, weights, adds, subs) }
+    }
+
+    fn i8_deltas_dual(
+        acc: &mut [i16; ACC],
+        out: &mut [i16; ACC],
+        weights: &[i8],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // SAFETY: installed only after runtime AVX2 detection.
+        unsafe { i8_deltas_dual_inner(acc, out, weights, adds, subs) }
+    }
+
     fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
         // SAFETY: installed only after runtime AVX2 detection.
         unsafe { l1_dot_inner(pre, ft, nnz, weights) }
     }
 
-    fn activate(out: &mut [u8; ACC], pst: &[[i16; ACC]; 2], threat: &[[i16; ACC]; 2], stm: usize) {
+    fn activate(
+        out: &mut [u8; ACC],
+        pst: &[[i16; ACC]; 2],
+        threat: &[[i16; ACC]; 2],
+        scale: &[i16; ACC],
+        stm: usize,
+    ) {
         // SAFETY: installed only after runtime AVX2 detection.
-        unsafe { activate_inner(out, pst, threat, stm) }
+        unsafe { activate_inner(out, pst, threat, scale, stm) }
     }
 
     pub(super) fn find_nnz(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
@@ -1118,10 +1045,9 @@ mod avx2 {
     }
 
     pub(super) const KERNELS: Kernels = Kernels {
-        i16_deltas,
-        i16_deltas_into,
-        i16_deltas_dual,
+        i8_deltas,
         i8_deltas_into,
+        i8_deltas_dual,
         l1_dot,
         activate,
         find_nnz,
@@ -1223,24 +1149,18 @@ mod avx512 {
     const TILES: usize = ACC / TILE;
     const _: () = assert!(TILES * TILE == ACC, "the tile walk must cover ACC exactly");
 
+    /// In-place i8 fold — the HalfKA Finny cold
+    /// build. Same `REGS`-wide register tile; the row is a 32-byte load
+    /// sign-extended to 32 i16 lanes, halving the bytes the tile pulls in.
     #[target_feature(enable = "avx512f,avx512bw")]
-    unsafe fn i16_deltas_inner(
+    unsafe fn i8_deltas_inner(
         acc: &mut [i16; ACC],
-        weights: &[i16],
+        weights: &[i8],
         adds: &[usize],
         subs: &[usize],
     ) {
-        // SAFETY: `off` covers one in-bounds 32-lane accumulator block.
-        // Feature indices originate from validated feature maps and each
-        // transformer is loader-validated to contain complete ACC-wide rows.
+        // SAFETY: as `i8_deltas_into_inner`; each row is `ACC` in-bounds i8.
         unsafe {
-            // Study-2 option B, widened by perf study 12 §7: hold `REGS` blocks
-            // in registers across the feature loop, so loop control is paid per
-            // TILE rather than per block. Per-lane wrapping adds, same per-lane
-            // order => bit-identical. `pick_regs` returns an exact divisor of
-            // `ACC_BLOCKS` (24/40/48/64 -> 12/20/16/16), pinned by the `const _`
-            // assert above — which is what lets the walk be `0..TILES` with no
-            // remainder loop at all (see `TILES`; perf study 25).
             let mut off = 0;
             while off + TILE <= ACC {
                 let mut v = [_mm512_setzero_si512(); REGS];
@@ -1250,13 +1170,15 @@ mod avx512 {
                 for &feature in adds {
                     let row = weights.as_ptr().add(feature * ACC + off);
                     for (k, vk) in v.iter_mut().enumerate() {
-                        *vk = _mm512_add_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                        let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                        *vk = _mm512_add_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
                     }
                 }
                 for &feature in subs {
                     let row = weights.as_ptr().add(feature * ACC + off);
                     for (k, vk) in v.iter_mut().enumerate() {
-                        *vk = _mm512_sub_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                        let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                        *vk = _mm512_sub_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
                     }
                 }
                 for (k, vk) in v.iter().enumerate() {
@@ -1267,19 +1189,17 @@ mod avx512 {
         }
     }
 
+    /// Two-destination i8 fold — the HalfKA Finny warm
+    /// refresh, both homes written from the fold's own registers.
     #[target_feature(enable = "avx512f,avx512bw")]
-    unsafe fn i16_deltas_dual_inner(
+    unsafe fn i8_deltas_dual_inner(
         acc: &mut [i16; ACC],
         out: &mut [i16; ACC],
-        weights: &[i16],
+        weights: &[i8],
         adds: &[usize],
         subs: &[usize],
     ) {
-        // `i16_deltas_inner` with a second store per block. Same loads, same
-        // `REGS`-wide tile, same per-lane wrapping adds in the same order ⇒
-        // bit-identical to fold-then-copy, at one extra store per 32 lanes
-        // instead of a 2560 B memmove (perf study 9 item 4).
-        // SAFETY: as `i16_deltas_inner`; `out` is a disjoint ACC-wide array.
+        // SAFETY: as `i8_deltas_inner`; `out` is a disjoint ACC-wide array.
         unsafe {
             let mut off = 0;
             while off + TILE <= ACC {
@@ -1290,13 +1210,15 @@ mod avx512 {
                 for &feature in adds {
                     let row = weights.as_ptr().add(feature * ACC + off);
                     for (k, vk) in v.iter_mut().enumerate() {
-                        *vk = _mm512_add_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                        let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                        *vk = _mm512_add_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
                     }
                 }
                 for &feature in subs {
                     let row = weights.as_ptr().add(feature * ACC + off);
                     for (k, vk) in v.iter_mut().enumerate() {
-                        *vk = _mm512_sub_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                        let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                        *vk = _mm512_sub_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
                     }
                 }
                 for (k, vk) in v.iter().enumerate() {
@@ -1308,46 +1230,34 @@ mod avx512 {
         }
     }
 
-    pub(super) fn i16_deltas_dual(
-        acc: &mut [i16; ACC],
-        out: &mut [i16; ACC],
-        weights: &[i16],
-        adds: &[usize],
-        subs: &[usize],
-    ) {
-        // SAFETY: installed only after runtime avx512f+bw+vnni detection (or
-        // compiled with the features statically enabled).
-        unsafe { i16_deltas_dual_inner(acc, out, weights, adds, subs) }
-    }
-
-    /// The HalfKA fold with **compile-time row counts** — perf study 25 arm 1.
+    /// The fold with **compile-time row counts** — perf study 25 arm 1, moved
+    /// onto i8 rows by perf study 32.
     ///
     /// `NA`/`NS` are the exact lengths of `adds`/`subs`, so both row loops
     /// unroll away completely: no loop control, no unroll remainder, no
     /// empty-list clones, and `feature * ACC` is computed ONCE for the whole
     /// call instead of once per tile. What is left is straight-line
-    /// `vmovdqu64` / `vpaddw` / `vpsubw` with no branch of any kind.
+    /// `vpmovsxbw` / `vpaddw` / `vpsubw` with no branch of any kind.
     ///
     /// This is NOT perf study 12 §4's rejected offset hoist. That one built a
     /// `[MaybeUninit<usize>; 96]` for a *runtime*-length list and paid 91
-    /// instructions of prologue (stack frame, callee-saved pushes, a CAP
-    /// min/cmov, and LLVM's generic vectorized offset loop emitted twice) to
-    /// save 4 multiplies. Here the array is `[usize; NA]` with `NA <= 2` known
-    /// at compile time: it lives in two registers, the "loop" filling it is two
-    /// `lea`+`shl` pairs, and there is no prologue at all.
+    /// instructions of prologue to save 4 multiplies. Here the array is
+    /// `[usize; NA]` with `NA <= 2` known at compile time: it lives in two
+    /// registers, the "loop" filling it is two `lea`+`shl` pairs, and there is
+    /// no prologue at all.
     ///
     /// Bit-identical to the generic path: same rows, same order (adds then
     /// subs), same per-lane wrapping i16 arithmetic.
     #[target_feature(enable = "avx512f,avx512bw")]
     #[inline]
-    unsafe fn i16_into_shaped<const NA: usize, const NS: usize>(
+    unsafe fn i8_into_shaped<const NA: usize, const NS: usize>(
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
-        weights: &[i16],
+        weights: &[i8],
         adds: &[usize],
         subs: &[usize],
     ) {
-        // SAFETY: as `i16_deltas_into_inner`. The caller has checked
+        // SAFETY: as `i8_deltas_into_inner`. The caller has checked
         // `adds.len() == NA` and `subs.len() == NS`, so every index read below
         // is in bounds; `TILES * tile == ACC` is a const assert, so the tile
         // walk covers the accumulator exactly with no tail.
@@ -1369,109 +1279,15 @@ mod avx512 {
                 for &base in &arow {
                     let row = weights.as_ptr().add(base + off);
                     for (k, vk) in v.iter_mut().enumerate() {
-                        *vk = _mm512_add_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                        let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                        *vk = _mm512_add_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
                     }
                 }
                 for &base in &srow {
                     let row = weights.as_ptr().add(base + off);
                     for (k, vk) in v.iter_mut().enumerate() {
-                        *vk = _mm512_sub_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
-                    }
-                }
-                for (k, vk) in v.iter().enumerate() {
-                    _mm512_storeu_si512(dst.as_mut_ptr().add(off + k * LANES).cast(), *vk);
-                }
-                off += TILE;
-            }
-        }
-    }
-
-    #[target_feature(enable = "avx512f,avx512bw")]
-    unsafe fn i16_deltas_into_inner(
-        dst: &mut [i16; ACC],
-        src: &[i16; ACC],
-        weights: &[i16],
-        adds: &[usize],
-        subs: &[usize],
-    ) {
-        // Perf study 25 arm 1 — dispatch on the SHAPE of the delta set.
-        //
-        // `apply_dirty_directed` (`sota_accumulator.rs`) builds both lists in
-        // `[usize; 2]` arrays, so a HalfKA fold is ALWAYS one of four shapes,
-        // and the comment there pins the lower bound: every real move emits at
-        // least one add and one sub (a null move pushes no entry at all). LLVM
-        // cannot see any of that through `&[usize]`, so it emitted a 6231-byte
-        // function — the row loops unrolled x2 with an odd/even remainder
-        // branch, cloned across the empty-list cases, 480 `vpaddw`/`vpsubw` in
-        // 24 copies of the tile body. Measured on that code: 11.16% of all
-        // engine cycles for 6.93% of instructions (fast build, d16 frame).
-        //
-        // The four shaped instantiations are branch-free straight lines. The
-        // generic fallback stays for the test suite's long feature lists and
-        // for the EMPTY case, which must remain a plain copy — see the
-        // "stale-child bug" note at `sota_accumulator.rs`'s forward fold.
-        unsafe {
-            match (adds.len(), subs.len()) {
-                (1, 1) => return i16_into_shaped::<1, 1>(dst, src, weights, adds, subs),
-                (1, 2) => return i16_into_shaped::<1, 2>(dst, src, weights, adds, subs),
-                (2, 1) => return i16_into_shaped::<2, 1>(dst, src, weights, adds, subs),
-                (2, 2) => return i16_into_shaped::<2, 2>(dst, src, weights, adds, subs),
-                _ => {}
-            }
-            i16_deltas_into_generic(dst, src, weights, adds, subs)
-        }
-    }
-
-    /// The runtime-length HalfKA fold. Off the hot path since perf study 25
-    /// arm 1 (`#[cold]` keeps it out of the shaped instantiations' I-cache
-    /// footprint) but still the correctness reference for every shape the
-    /// dispatch above does not name — including the empty one.
-    #[target_feature(enable = "avx512f,avx512bw")]
-    #[inline(never)]
-    #[cold]
-    unsafe fn i16_deltas_into_generic(
-        dst: &mut [i16; ACC],
-        src: &[i16; ACC],
-        weights: &[i16],
-        adds: &[usize],
-        subs: &[usize],
-    ) {
-        // SAFETY: as i16_deltas_inner; reads `src`, writes the disjoint `dst`.
-        //
-        // Perf study 12 §4: this used to hoist `feature * ACC` into a
-        // `[MaybeUninit<usize>; 96]` stack array, chunking the feature lists to
-        // fit it. The hoist saves `(tiles - 1) * rows` multiplies — 4 x 2.1 for
-        // a HalfKA fold — and cost **91 executed instructions of prologue** per
-        // call: a 1656-byte stack frame, six callee-saved pushes, the CAP
-        // min/cmov pair per list, and (because the trip count is a runtime
-        // value) LLVM's fully generic vectorized offset loop, a `vpmullq`
-        // 8-wide body plus its scalar remainder, emitted twice — for a loop
-        // whose measured trip count is ONE. `feature * ACC` with ACC = 1280 is
-        // `lea (f,f,4)` + `shl $8`, and it is now paid once per tile. The
-        // in-place twins (`i16_deltas_inner`, `i16_deltas_dual_inner`) never
-        // had the hoist, which is why only the `_into` pair carried the cost.
-        //
-        // Bit-identical: same rows, same per-lane wrapping i16 adds, same
-        // order. Dropping the chunking is also bit-identical — mod-2^16
-        // addition is associative, so applying all rows in one pass equals
-        // applying them 96 at a time through `dst`.
-        unsafe {
-            let mut off = 0;
-            while off + TILE <= ACC {
-                let mut v = [_mm512_setzero_si512(); REGS];
-                for (k, vk) in v.iter_mut().enumerate() {
-                    *vk = _mm512_loadu_si512(src.as_ptr().add(off + k * LANES).cast());
-                }
-                for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    for (k, vk) in v.iter_mut().enumerate() {
-                        *vk = _mm512_add_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
-                    }
-                }
-                for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    for (k, vk) in v.iter_mut().enumerate() {
-                        *vk = _mm512_sub_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                        let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                        *vk = _mm512_sub_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
                     }
                 }
                 for (k, vk) in v.iter().enumerate() {
@@ -1490,7 +1306,50 @@ mod avx512 {
         adds: &[usize],
         subs: &[usize],
     ) {
-        // SAFETY: as `i16_deltas_into_inner`; reads `src`, writes the disjoint
+        // Perf study 25 arm 1 — dispatch on the SHAPE of the delta set.
+        //
+        // `apply_dirty_directed` (`sota_accumulator.rs`) builds both lists in
+        // `[usize; 2]` arrays, so a HalfKA fold is ALWAYS one of four shapes,
+        // and the comment there pins the lower bound: every real move emits at
+        // least one add and one sub (a null move pushes no entry at all). LLVM
+        // cannot see any of that through `&[usize]`, so it emitted a 6231-byte
+        // function — the row loops unrolled x2 with an odd/even remainder
+        // branch, cloned across the empty-list cases, 480 `vpaddw`/`vpsubw` in
+        // 24 copies of the tile body. Measured on that code: 11.16% of all
+        // engine cycles for 6.93% of instructions (fast build, d16 frame).
+        //
+        // The four shaped instantiations are branch-free straight lines. The
+        // generic fallback stays for the threat channel's longer feature lists
+        // and for the EMPTY case, which must remain a plain copy — see the
+        // "stale-child bug" note at `sota_accumulator.rs`'s forward fold.
+        unsafe {
+            match (adds.len(), subs.len()) {
+                (1, 1) => return i8_into_shaped::<1, 1>(dst, src, weights, adds, subs),
+                (1, 2) => return i8_into_shaped::<1, 2>(dst, src, weights, adds, subs),
+                (2, 1) => return i8_into_shaped::<2, 1>(dst, src, weights, adds, subs),
+                (2, 2) => return i8_into_shaped::<2, 2>(dst, src, weights, adds, subs),
+                _ => {}
+            }
+            i8_deltas_into_generic(dst, src, weights, adds, subs)
+        }
+    }
+
+    /// The runtime-length i8 fold. `#[cold]` + `#[inline(never)]`: the four
+    /// shaped instantiations above cover every HalfKA fold, so this is for the
+    /// threat channel's longer lists, the tests, and the EMPTY-list contract —
+    /// both lists empty must copy `src` to `dst` verbatim, which the in-place
+    /// twins never have to do.
+    #[target_feature(enable = "avx512f,avx512bw")]
+    #[inline(never)]
+    #[cold]
+    unsafe fn i8_deltas_into_generic(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i8],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // SAFETY: as `i8_deltas_into_inner`; reads `src`, writes the disjoint
         // `dst`, and each row is a 32-byte load sign-extended to 32 i16 lanes.
         // Perf study 12 §4 — the offset hoist + CAP chunking is gone; see the
         // i16 twin above for the full rationale and the bit-identity argument.
@@ -1605,6 +1464,7 @@ mod avx512 {
         out: &mut [u8; ACC],
         pst: &[[i16; ACC]; 2],
         threat: &[[i16; ACC]; 2],
+        scale: &[i16; ACC],
         stm: usize,
     ) {
         const H: usize = ACC / 2;
@@ -1680,11 +1540,22 @@ mod avx512 {
                     // LESS faithful (mean 0.55 SF cp), because `vpsraw` floors
                     // and that asymmetry is noisier than the 0.39% of gain it
                     // corrects.
+                    // The HalfKA rescale, as ONE MULTIPLY (perf study 32).
+                    //
+                    // The HalfKA table is stored i8 with a per-accumulator-lane
+                    // integer scale, so the accumulator lives in the reduced
+                    // frame `FT_QUANT / scale[j]` and has to be put back before
+                    // the clamp. `vpmullw` keeps the product in i16 lanes: the
+                    // result is the value the old FT_QUANT-frame accumulator
+                    // held, so it wraps exactly where that one wrapped, and the
+                    // scalar and avx2 backends pin the same width to agree.
+                    // The threat channel's `<< 2` is unchanged.
                     let merge = |offset: usize| {
                         let pv = _mm512_loadu_si512(p.as_ptr().add(offset).cast());
+                        let sv = _mm512_loadu_si512(scale.as_ptr().add(offset).cast());
                         let tv = _mm512_loadu_si512(t.as_ptr().add(offset).cast());
                         let scaled = _mm512_slli_epi16::<2>(tv);
-                        let sum = _mm512_adds_epi16(pv, scaled);
+                        let sum = _mm512_adds_epi16(_mm512_mullo_epi16(pv, sv), scaled);
                         _mm512_min_epi16(_mm512_max_epi16(sum, zero), ceiling)
                     };
                     let left = merge(lane);
@@ -1699,25 +1570,20 @@ mod avx512 {
         }
     }
 
-    pub(super) fn i16_deltas(
-        acc: &mut [i16; ACC],
-        weights: &[i16],
-        adds: &[usize],
-        subs: &[usize],
-    ) {
+    pub(super) fn i8_deltas(acc: &mut [i16; ACC], weights: &[i8], adds: &[usize], subs: &[usize]) {
         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
-        unsafe { i16_deltas_inner(acc, weights, adds, subs) }
+        unsafe { i8_deltas_inner(acc, weights, adds, subs) }
     }
 
-    pub(super) fn i16_deltas_into(
-        dst: &mut [i16; ACC],
-        src: &[i16; ACC],
-        weights: &[i16],
+    pub(super) fn i8_deltas_dual(
+        acc: &mut [i16; ACC],
+        out: &mut [i16; ACC],
+        weights: &[i8],
         adds: &[usize],
         subs: &[usize],
     ) {
         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
-        unsafe { i16_deltas_into_inner(dst, src, weights, adds, subs) }
+        unsafe { i8_deltas_dual_inner(acc, out, weights, adds, subs) }
     }
 
     pub(super) fn i8_deltas_into(
@@ -1740,10 +1606,11 @@ mod avx512 {
         out: &mut [u8; ACC],
         pst: &[[i16; ACC]; 2],
         threat: &[[i16; ACC]; 2],
+        scale: &[i16; ACC],
         stm: usize,
     ) {
         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
-        unsafe { activate_inner(out, pst, threat, stm) }
+        unsafe { activate_inner(out, pst, threat, scale, stm) }
     }
 
     #[target_feature(enable = "avx512f")]
@@ -2028,10 +1895,9 @@ mod avx512 {
     }
 
     pub(super) const KERNELS: Kernels = Kernels {
-        i16_deltas,
-        i16_deltas_into,
-        i16_deltas_dual,
+        i8_deltas,
         i8_deltas_into,
+        i8_deltas_dual,
         l1_dot,
         activate,
         // The AVX2 movemask+compact form; the 512-bit variant needs

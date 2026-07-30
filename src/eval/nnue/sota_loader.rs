@@ -96,8 +96,15 @@ const _: () = assert!(
 /// Produced by [`load_v2_bytes`]; consumed by the SOTA eval context.
 #[derive(Debug)]
 pub struct SotaNetwork {
-    /// HalfKAv2_hm FT weights, feature-major: `[HALFKA_DIMS · ACC]` i16.
-    pub halfka_weights: Aligned<i16>,
+    /// HalfKAv2_hm FT weights, feature-major: `[HALFKA_DIMS · ACC]` **i8**.
+    ///
+    /// The CENN-v2 payload carries these as i16 in the `FT_QUANT = 255` frame;
+    /// [`quantise_halfka`] halves them at load, one integer scale per
+    /// accumulator column ([`sota_head::SotaHead::ft_scale`]). The FORMAT is
+    /// unchanged — every existing net loads — and the 57.7 MB table the fold
+    /// streams cold on every node becomes 28.9 MB, which is the whole point
+    /// (perf study 32; study 31 §4.3 priced it at −463 cycles/node).
+    pub halfka_weights: Aligned<i8>,
     /// Shared FT bias: `[ACC]` i16 (seeds the HalfKA accumulator; threats seed 0).
     pub ft_bias: Aligned<i16>,
     /// FullThreats FT weights, feature-major: `[THREAT_DIMS · ACC]` i8.
@@ -143,6 +150,7 @@ impl SotaNetwork {
 impl PartialEq for SotaNetwork {
     fn eq(&self, other: &Self) -> bool {
         self.halfka_weights == other.halfka_weights
+            && self.head.ft_scale == other.head.ft_scale
             && self.ft_bias == other.ft_bias
             && self.threat_weights == other.threat_weights
             && self.psqt_weights == other.psqt_weights
@@ -420,12 +428,25 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     // All reads below are in-bounds by construction (payload length validated).
     let mut cur = 0usize;
 
-    // HalfKA FT weights: i16[HALFKA_DIMS · ACC], feature-major.
+    // HalfKA FT weights: i16[HALFKA_DIMS · ACC] on disk, feature-major,
+    // QUANTISED TO i8 on the way in (perf study 32 — see `quantise_halfka`).
+    // Read straight from the payload bytes rather than through `read_i16s`:
+    // materialising the 57.7 MB i16 table first would double the loader's peak
+    // footprint, and a screen runs 2 x concurrency of these processes at once.
     let n_halfka = HALFKA_DIMS * ACC;
-    let halfka_weights = read_i16s(payload, &mut cur, n_halfka);
+    let halfka_raw = &payload[cur..cur + n_halfka * 2];
+    cur += n_halfka * 2;
+    let ft_scale = halfka_column_scales(halfka_raw);
+    let halfka_weights = quantise_halfka(halfka_raw, ft_scale.block(0));
 
-    // FT bias: i16[ACC].
-    let ft_bias = read_i16s(payload, &mut cur, ACC);
+    // FT bias: i16[ACC], rebased onto the same per-column grid so the
+    // accumulator seed and the rows share one frame.
+    let ft_bias_raw = read_i16s(payload, &mut cur, ACC);
+    let ft_bias: Aligned<i16> = ft_bias_raw
+        .iter()
+        .zip(ft_scale.block(0).iter())
+        .map(|(&b, &s)| round_half_away(i32::from(b), i32::from(s)) as i16)
+        .collect();
 
     // Threats FT weights: i8[THREAT_DIMS · ACC], feature-major (if present).
     let threat_weights = if has_threats {
@@ -500,6 +521,7 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         l3_wdl_weights: None,
         l3_wdl_biases: None,
         skip_weights: (!skip_weights.is_empty()).then(|| quantise_skip_lane(&skip_weights)),
+        ft_scale,
     };
 
     Ok(SotaNetwork {
@@ -514,6 +536,58 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
 /// Parse an SKP1 section (starting at its magic). Strict on this build's
 /// [`BUCKETS`] and accumulator width [`crate::eval::nnue::sota_head::L1`];
 /// tolerant of further trailing bytes (future sections).
+/// Round `n / d` half-away-from-zero in integer arithmetic (`d > 0`).
+///
+/// The project's quantisation convention (`_round_half_away` in the trainer),
+/// and it matters here rather than being cosmetic: at `scale = 2` HALF the
+/// weights land exactly on a tie, so a half-to-even rule would move a quarter
+/// of that column's table by one step.
+#[inline]
+fn round_half_away(n: i32, d: i32) -> i32 {
+    debug_assert!(d > 0);
+    let q = (2 * n.abs() + d) / (2 * d);
+    if n < 0 { -q } else { q }
+}
+
+/// Per-accumulator-column integer scale for the i8 HalfKA table: the smallest
+/// `s` for which every weight in the column fits `[-127, 127]` after division.
+///
+/// **Why per-column and why no clipping.** Measured offline over the 800-FEN
+/// battery (perf study 32 §1): one GLOBAL scale of 4 costs p95 6.76 / p99 10.15
+/// SF cp; per-column no-clip costs **p95 4.35 / p99 7.25**; and a per-column
+/// scale tuned to minimise weight MSE — which clips 0.008% of the table — is
+/// BETTER on weight MSE (1.78% vs 1.98%) and WORSE on eval error (p95 4.83).
+/// The weight-MSE proxy misranks the schemes, so the no-clip rule is the one
+/// the eval battery chose, not the one the L2 norm chose.
+fn halfka_column_scales(raw: &[u8]) -> sota_head::FtScale {
+    let mut peak = vec![0u16; ACC];
+    for row in raw.chunks_exact(ACC * 2) {
+        for (p, w) in peak.iter_mut().zip(row.chunks_exact(2)) {
+            let v = i16::from_le_bytes([w[0], w[1]]).unsigned_abs();
+            *p = (*p).max(v);
+        }
+    }
+    // `div_ceil` is the no-clip condition; the `max(1)` covers an all-zero
+    // column (1024 of the 22528 HalfKA rows are all-zero in the canonical net,
+    // and three whole columns are), where any scale is exact and 1 keeps the
+    // reduced frame the identity.
+    sota_head::FtScale::from_flat_iter(
+        peak.iter()
+            .map(|&p| u32::from(p).div_ceil(127).max(1).min(i16::MAX as u32) as i16),
+    )
+}
+
+/// Divide the FT_QUANT-frame i16 table by its per-column scale into i8.
+fn quantise_halfka(raw: &[u8], scale: &[i16; ACC]) -> Aligned<i8> {
+    Aligned::from_iter_len(
+        raw.len() / 2,
+        raw.chunks_exact(2).enumerate().map(|(i, w)| {
+            let v = i32::from(i16::from_le_bytes([w[0], w[1]]));
+            round_half_away(v, i32::from(scale[i % ACC])).clamp(-127, 127) as i8
+        }),
+    )
+}
+
 /// Quantise the D47V output-skip lane to i8, one scale per bucket
 /// (perf study 8 §4.7).
 ///
@@ -736,12 +810,22 @@ pub fn serialize_v2(net: &SotaNetwork) -> Vec<u8> {
     };
     let mut payload = Vec::with_capacity(expected_payload);
 
-    // HalfKA FT weights.
-    for &w in net.halfka_weights.iter() {
+    // HalfKA FT weights. The in-memory table is i8 + a per-column scale
+    // (perf study 32), so the FT_QUANT-frame i16 the format carries is
+    // reconstructed as `q · scale`. That is lossy against the ORIGINAL file —
+    // exactly like the D47V skip lane, which the serializer simply drops — but
+    // it is IDEMPOTENT: reloading these bytes derives the same scales (a
+    // column's peak is `127 · scale` at most and never below `126 · scale`
+    // unless the column is degenerate) and the same quotients, so
+    // `load(serialize(load(x))) == load(x)`, which is what the round-trip
+    // tests assert.
+    for (i, &q) in net.halfka_weights.iter().enumerate() {
+        let w = i16::from(q).wrapping_mul(net.head.ft_scale.block(0)[i % ACC]);
         payload.extend_from_slice(&w.to_le_bytes());
     }
-    // FT bias.
-    for &b in net.ft_bias.iter() {
+    // FT bias, back in the FT_QUANT frame.
+    for (j, &b) in net.ft_bias.iter().enumerate() {
+        let b = b.wrapping_mul(net.head.ft_scale.block(0)[j]);
         payload.extend_from_slice(&b.to_le_bytes());
     }
     // Threats FT weights (if present).

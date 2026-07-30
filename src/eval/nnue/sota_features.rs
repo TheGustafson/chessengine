@@ -752,7 +752,7 @@ fn add_column<W: Copy + Into<i16>>(acc: &mut [i16; ACC], weights: &[W], index: u
 /// `halfka_weights` is feature-major (`[HALFKA_DIMS · ACC]` i16), `ft_bias` is
 /// `ACC`-wide.
 pub fn refresh_pst(
-    halfka_weights: &[i16],
+    halfka_weights: &[i8],
     ft_bias: &[i16],
     board: &Board,
     perspective: Color,
@@ -837,7 +837,7 @@ pub(super) fn refresh_threat_into_at(
 /// Build both accumulators for both perspectives — the `(pst, threat)` pair
 /// [`super::sota_head::SotaHead::forward`] wants (index 0 = White, 1 = Black).
 pub fn refresh_both(
-    halfka_weights: &[i16],
+    halfka_weights: &[i8],
     ft_bias: &[i16],
     threat_weights: &[i8],
     board: &Board,

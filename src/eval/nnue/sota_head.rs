@@ -177,6 +177,8 @@ pub type L2Biases = Blocks<f32, L3, BUCKETS>;
 pub type L3Weights = Blocks<f32, L3, BUCKETS>;
 /// `[BUCKETS][L1]` i8 — the D47V output-skip lane.
 pub type SkipQ = Blocks<i8, L1, BUCKETS>;
+/// `[L1]` i16 — the i8 HalfKA transformer's per-column dequantisation scale.
+pub type FtScale = Blocks<i16, L1, 1>;
 
 /// The D47V output-skip lane, quantised to i8 at load (perf study 8 §4.7).
 ///
@@ -236,6 +238,27 @@ pub struct SotaHead {
     /// D47V output-skip lane, QUANTISED TO i8 at load ([`SkipLane`]).
     /// `None` = pre-skip net: the eval path is bit-identical to before.
     pub skip_weights: Option<SkipLane>,
+    /// Per-accumulator-lane dequantisation multiplier for the **i8 HalfKA
+    /// feature transformer** (perf study 32), `[L1]`.
+    ///
+    /// The HalfKA table is stored on disk as i16 in the `FT_QUANT = 255` frame
+    /// and quantised to i8 AT LOAD, one integer scale per accumulator column —
+    /// the same shape as [`SkipLane`]'s per-bucket scale, for the same reason:
+    /// a column spends its full i8 range on its own dynamic range. The HalfKA
+    /// accumulator therefore lives in the reduced frame `255 / ft_scale[j]`,
+    /// and [`activate_ft`] multiplies it back before the clamp — one `vpmullw`
+    /// per 32 lanes per eval, against a HALVING of the 57.7 MB weight table
+    /// that the fold streams cold on every node.
+    ///
+    /// All-ones for a synthetic head, which makes the reduced frame the
+    /// identity and the eval bit-identical to the pre-study-32 path.
+    ///
+    /// `Blocks<_, L1, 1>` rather than `Aligned<i16>` for the reason study 26 §3
+    /// gives: the kernel wants a `&[i16; L1]`, and a `Blocks` states that shape
+    /// in the type, so acquiring it is `0 < 1` against a constant instead of a
+    /// fat-pointer range check plus a `try_into` length check with a panic edge
+    /// in the eval's hot path.
+    pub ft_scale: FtScale,
 }
 
 /// Pairwise-multiply FT activation (design/11 §12.3 step 1): sum the two
@@ -244,8 +267,14 @@ pub struct SotaHead {
 /// `wrapping_add` reproduces the reference's wrapping i16 accumulator math.
 /// Out-param form (perf study #4 item #5): the kernel writes the caller's
 /// buffer directly instead of returning the 1280 B array by value.
-fn activate_ft(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color, out: &mut [u8; L1]) {
-    activate(out, pst, threat, stm as usize);
+fn activate_ft(
+    pst: &[[i16; L1]; 2],
+    threat: &[[i16; L1]; 2],
+    scale: &[i16; L1],
+    stm: Color,
+    out: &mut [u8; L1],
+) {
+    activate(out, pst, threat, scale, stm as usize);
 }
 
 /// Float view of the quantized shared D40 trunk for the optional policy head.
@@ -254,9 +283,14 @@ fn activate_ft(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color, out: &
 /// deliberately shares [`activate_ft`] with eval to prevent the two consumers
 /// from drifting on perspective order, threat scaling, or clamp semantics.
 #[cfg(feature = "policy")]
-pub fn policy_trunk(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color) -> [f32; L1] {
+pub fn policy_trunk(
+    pst: &[[i16; L1]; 2],
+    threat: &[[i16; L1]; 2],
+    scale: &[i16; L1],
+    stm: Color,
+) -> [f32; L1] {
     let mut quantized = [0u8; L1];
-    activate_ft(pst, threat, stm, &mut quantized);
+    activate_ft(pst, threat, scale, stm, &mut quantized);
     let scale = (1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT) as f32;
     quantized.map(|value| f32::from(value) * scale)
 }
@@ -266,12 +300,12 @@ pub fn policy_trunk(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color) -
 /// Adding the raw integers would underweight every threat feature by ~4x.
 #[cfg(test)]
 #[inline]
-fn merge_transformers(pst: i16, threat: i16) -> i16 {
+fn merge_transformers(pst: i16, threat: i16, scale: i16) -> i16 {
     // One shift: the 255/64 frame ratio is carried as 4 (a 0.39% gain change
     // on the threat channel), which is what every SIMD backend emits and what
     // the 800-FEN fidelity check measured at mean 0.14 SF cp (study 8 §4.6).
     let scaled = i32::from(threat) << 2;
-    (i32::from(pst) + scaled).clamp(0, FT_QUANT) as i16
+    (i32::from(pst.wrapping_mul(scale)) + scaled).clamp(0, FT_QUANT) as i16
 }
 
 /// Indices of the 4-byte groups (of `L1/4`) holding any nonzero activation
@@ -523,7 +557,7 @@ impl SotaHead {
         // destructuring pattern is what makes that legal without `unsafe` —
         // the same idiom `HalfkaContext::finny_refresh_into` uses on `self`.
         let HeadScratch { ft, nnz } = scratch;
-        activate_ft(pst, threat, stm, ft);
+        activate_ft(pst, threat, self.ft_scale.block(0), stm, ft);
         let count = find_nnz(ft, nnz);
         let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
         self.propagate_l1(ft, &nnz[..count], bucket, l1_out);
