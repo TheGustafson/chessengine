@@ -8434,3 +8434,58 @@ games — now for a measured reason rather than a convention.
 
 **OWED:** an audit of which prior studies treated per-position node counts as 50
 independent samples.
+
+## Studies 43, 44, 45 — the back end is answered, a win LANDED, and the harness fixed twice
+
+**D49x: sb482+, ema 0.010933**, five consecutive down. Untouched.
+Merged: study 43 (`96f18b8c`), study 44 (`54994de6`). Gate running on the result.
+
+### Study 44 — the commissioned question, closed, WITH a landed win
+
+**The 49% back end is 83% MEMORY / 17% execution.**
+`ex_no_retire.load_not_complete` = **2558.77 cycles/node = 54.80% of every
+cycle — 12.4× the entire front-end bucket study 41 spent a session on.**
+Partition closes to **−0.161%** on cycles; study 41's headline re-derives as
+48.61% / 20.25%.
+
+| candidate | verdict |
+|---|---|
+| execution **port** pressure | **DEAD** — FP pipes ≥85% idle (quoted as a bracket; it refused to assert counter semantics it had not validated) |
+| **store-buffer** pressure | **REAL, the largest dispatch blocker** — 509.3 cycles/node |
+| dependency chains | 11.38%, localised to one symbol |
+| memory | **L2-AT-VOLUME, not DRAM** — only 1.6% of demand fills reach DRAM, MLP 5.74, 1.12 stall cycles on each of 2281 load dispatches, 53.8% of instructions are memory ops |
+
+**LANDED: NNUE fold tile 20 live `zmm` → 5**, breaking a 40-store burst.
+**−1.37% cycles at 3.6 se** over 40 Latin-square rounds, mechanism **40/40,
+p < 0.0001**, node- and eval-bit-identical, 718 sota tests green, all three pins
+unmoved. **≈ +2.4 Elo.** Shipped default `REGS_CAP = 5` with `regs20_44` as a
+subtractive revert arm (4/8/10 also available). **Documented caveat, verified in
+the code: measured at ACC = 1280 ONLY** — at 768/1536/2048 the tile falls to 4
+and the benefit is unmeasured there. **D49 is 1280-wide, so it inherits this.**
+
+**Why EIGHT prior studies of that kernel missed it — study 20's lesson, again:**
+they all adjudicated on `instructions:u`, and **a narrower tile is strictly MORE
+loop control, so it loses on that counter BY CONSTRUCTION.** The landed change
+**raises instructions 4.08% and lowers cycles anyway.**
+
+### The harness was fixed twice, because the two studies found OPPOSITE halves
+
+| design | position spread | distinct adjacency pairs (max 20) |
+|---|---:|---:|
+| cyclic rotation (original) | 0.000 | **5.0** ← study 43's null: −0.5700% |
+| free shuffle (my first fix) | **0.828** ← study 44's null: +2.36% | 19.8 |
+| **blocked Latin (now shipped)** | **0.000** | **13.7** |
+
+**A plain Latin square IS cyclic rotation** — the very thing study 43 refuted —
+so study 44's recommendation could not be taken literally. Rotating *within* a
+block of N and reshuffling the base *between* blocks gets both. All five
+harnesses carry it plus a comment recording **both** measured nulls, so someone
+who has read only one study cannot reintroduce the other's defect.
+
+### Next lever, already identified and verified open
+
+**`forward_into`: 8.20% of all retirement-blocked cycles with only 39% of its
+stalls from memory** — and study 44 confirmed the obvious explanation (study 21's
+`CHAINS`) is **already active**, so the mechanism is genuinely open. Also: `r4`
+was never built and the tile response was **still falling at `r5`**, so the
+optimum may be lower than what shipped.
