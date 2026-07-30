@@ -13,7 +13,7 @@ use chessengine::eval::nnue::{
     self,
     sota_features::{ACC, HALFKA_DIMS},
     sota_head::{BUCKETS, L1, L2, L3, SotaHead},
-    sota_loader::{SotaNetwork, serialize_v2},
+    sota_loader::{SotaNetwork, serialize},
 };
 
 /// A minimal valid no-threats net; `scale` differentiates file contents.
@@ -36,6 +36,7 @@ fn tiny_net(scale: i32) -> SotaNetwork {
             l3_wdl_biases: None,
             skip_weights: None,
             network_scale: scale,
+            threat_shift: 2,
         },
     }
 }
@@ -48,7 +49,7 @@ fn same_file_resend_is_a_noop_and_changed_file_reloads() {
     ));
     let path_str = path.to_str().unwrap();
 
-    std::fs::write(&path, serialize_v2(&tiny_net(380))).unwrap();
+    std::fs::write(&path, serialize(&tiny_net(380))).unwrap();
     nnue::set_eval_file(path_str).unwrap();
     let first = nnue::active_sota_net().expect("net installed") as *const SotaNetwork;
 
@@ -62,7 +63,7 @@ fn same_file_resend_is_a_noop_and_changed_file_reloads() {
     // length is identical, so this leans on mtime; sleep past coarse
     // filesystem timestamp granularity.
     std::thread::sleep(std::time::Duration::from_millis(20));
-    std::fs::write(&path, serialize_v2(&tiny_net(381))).unwrap();
+    std::fs::write(&path, serialize(&tiny_net(381))).unwrap();
     nnue::set_eval_file(path_str).unwrap();
     let third = nnue::active_sota_net().expect("net reinstalled");
     assert_eq!(third.head.network_scale, 381, "changed file must reload");

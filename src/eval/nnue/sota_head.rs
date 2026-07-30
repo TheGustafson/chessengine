@@ -117,18 +117,74 @@ pub type PsqtPair = [[i32; BUCKETS]; 2];
 pub const ZERO_PSQT: PsqtPair = [[0; BUCKETS]; 2];
 
 pub(crate) const FT_QUANT: i32 = 255; // FT activation clamp ceiling / QA
-/// Quantization scale of the separately exported FullThreats transformer.
-/// CENN-v2 fixes this as an architecture constant so its weights fit in i8.
+/// The quantisation scale of the separately exported FullThreats transformer
+/// that a **`CEN2` container implies**, because that header has no field for it.
 ///
-/// The RUNTIME carries the `FT_QUANT / THREAT_QUANT` frame ratio as exactly 4
-/// rather than 255/64 = 3.984375 — a 0.39% gain change on the threat channel
-/// that turns a six-op per-lane rescale into one shift (perf study 8 §4.6).
-/// This constant therefore documents the EXPORT frame, and is no longer read
-/// by the merge; `#[allow(dead_code)]` keeps it as the format's record.
-#[allow(dead_code)]
-pub(crate) const THREAT_QUANT: i32 = 64;
+/// **The scale is a property of the NET, not of the engine** (perf study 30).
+/// A net trained WITHOUT quantisation-aware training has threat weights
+/// spanning ±1.98, and 64 is simply the largest scale that does not clip them
+/// (127/1.9778 = 64.2). A net trained WITH QAT at `qat_threat_scale = 256` has
+/// them clipped to ±127/256 = ±0.496, and exporting THOSE at 64 throws away two
+/// bits: measured on D49-sb100, `max|w| = 32/127` and 65 of 256 i8 levels used,
+/// against a healthy net's 127/127 and 247/256. Hence [`CENN-v5`], which
+/// carries `threat_quant` in the header; this constant is only what a
+/// headerless `CEN2` file means.
+///
+/// [`CENN-v5`]: super::sota_loader
+pub(crate) const THREAT_QUANT_CEN2: i32 = 64;
 pub(crate) const L1_QUANT: i32 = 64; // L1 weight scale / QB
 pub(crate) const FT_SHIFT: i32 = 9; // pairwise-multiply right shift
+
+/// The threat→HalfKA frame shift a container's `threat_quant` implies, or
+/// `None` if the value is not one this runtime can carry as a shift.
+///
+/// The merge must rescale the threat accumulator by `FT_QUANT / threat_quant`
+/// before summing it into the HalfKA frame. Since perf study 8 §4.6 that ratio
+/// is carried as the nearest POWER OF TWO — `256 / threat_quant`, i.e. a single
+/// `slli` instead of a six-op `round(t · 255/q)` — which is a 0.39% gain change
+/// on one eval channel, measured at mean 0.14 SF cp over the 800-FEN battery
+/// and well inside the net's own quantisation noise. The approximation is the
+/// same size in either direction: 255/64 = 3.984 → 4, and 255/256 = 0.996 → 1.
+///
+/// So `threat_quant` must be a power of two, and the shift is
+/// `log2(256 / threat_quant)`. `256 → 0`, `128 → 1`, `64 → 2` (every CEN2 net).
+///
+/// **The accepted set is exactly `{64, 128, 256}`** ([`MAX_THREAT_SHIFT`]), and
+/// that is a PERFORMANCE contract, not a taste. The merge shift has to be an
+/// IMMEDIATE: `vpsllw $0x2,(%rcx,%r8,2),%zmm3` folds the accumulator load into
+/// the shift, while the register-count form `vpsllw %xmm0,%zmm4,%zmm4` cannot
+/// — `VPSLLW`'s memory operand is the COUNT, not the data — so it needs a
+/// separate `vmovdqu64` per merge, measured at **+34.48 instructions per node,
+/// +0.61%** (perf study 30 §5.3). The backends therefore monomorphise the
+/// kernel over the shift and dispatch once per eval, which only stays cheap
+/// while the set is small. Widening it is a one-line change here plus one more
+/// `match` arm per backend — but nothing coarser than 64 is ever wanted (it
+/// would quantise the threat table *worse* than today) and nothing finer than
+/// 256 fits an i8, so three is the whole real domain: 64 legacy, 128 the
+/// measured non-QAT optimum (`tools/nnue/requant_threats.py`), 256 the QAT
+/// scale.
+pub(crate) const fn threat_shift_for(threat_quant: i32) -> Option<u32> {
+    if threat_quant <= 0 || threat_quant > 256 || !(threat_quant as u32).is_power_of_two() {
+        return None;
+    }
+    let shift = 8 - (threat_quant as u32).trailing_zeros();
+    if shift > MAX_THREAT_SHIFT {
+        return None;
+    }
+    Some(shift)
+}
+
+/// The largest merge shift the SIMD backends are monomorphised for — the
+/// invariant `sota_simd`'s `activate` dispatch relies on to stay exhaustive
+/// without a panic arm. See [`threat_shift_for`].
+pub(crate) const MAX_THREAT_SHIFT: u32 = 2;
+
+/// The `threat_quant` a merge shift came from — the exact inverse of
+/// [`threat_shift_for`] over its whole domain, so the loader and the serializer
+/// cannot disagree about which scale a net is in.
+pub(crate) const fn threat_quant_for(shift: u32) -> i32 {
+    256 >> shift
+}
 /// `(1 << FT_SHIFT) / (FT_QUANT² · L1_QUANT)` — the i32→f32 bridge at L1
 /// (design/11 §12.6).
 const DEQUANT: f32 = (1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT * L1_QUANT) as f32;
@@ -212,6 +268,16 @@ pub struct SotaHead {
     pub l3_biases: Box<[f32]>,
     /// f32→centipawn scale (Reckless 380; ours is baked at training, per-net).
     pub network_scale: i32,
+    /// Left shift applied to the threat accumulator before it merges into the
+    /// HalfKA frame — [`threat_shift_for`] of the container's `threat_quant`.
+    ///
+    /// Lives here, beside `network_scale`, for the same reason that one does:
+    /// both are per-net SCALARS the forward pass reads, not weights, and
+    /// `forward_into` is the only caller that has to reach them. A `CEN2` net
+    /// yields 2 — the literal every SIMD backend used to hardcode — so a net
+    /// loaded from a v2 container evaluates bit-identically to before
+    /// (perf study 30).
+    pub threat_shift: u32,
     /// EXP-UNC-1 (search study bet 1): the OPTIONAL heteroscedastic log-variance
     /// head — a parallel `[BUCKETS][L3]` weight block + `[BUCKETS]` bias trained
     /// under Gaussian NLL alongside the value mean. `None` for every net without
@@ -244,8 +310,14 @@ pub struct SotaHead {
 /// `wrapping_add` reproduces the reference's wrapping i16 accumulator math.
 /// Out-param form (perf study #4 item #5): the kernel writes the caller's
 /// buffer directly instead of returning the 1280 B array by value.
-fn activate_ft(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color, out: &mut [u8; L1]) {
-    activate(out, pst, threat, stm as usize);
+fn activate_ft(
+    pst: &[[i16; L1]; 2],
+    threat: &[[i16; L1]; 2],
+    stm: Color,
+    threat_shift: u32,
+    out: &mut [u8; L1],
+) {
+    activate(out, pst, threat, stm as usize, threat_shift);
 }
 
 /// Float view of the quantized shared D40 trunk for the optional policy head.
@@ -254,23 +326,30 @@ fn activate_ft(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color, out: &
 /// deliberately shares [`activate_ft`] with eval to prevent the two consumers
 /// from drifting on perspective order, threat scaling, or clamp semantics.
 #[cfg(feature = "policy")]
-pub fn policy_trunk(pst: &[[i16; L1]; 2], threat: &[[i16; L1]; 2], stm: Color) -> [f32; L1] {
+pub fn policy_trunk(
+    pst: &[[i16; L1]; 2],
+    threat: &[[i16; L1]; 2],
+    stm: Color,
+    threat_shift: u32,
+) -> [f32; L1] {
     let mut quantized = [0u8; L1];
-    activate_ft(pst, threat, stm, &mut quantized);
+    activate_ft(pst, threat, stm, threat_shift, &mut quantized);
     let scale = (1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT) as f32;
     quantized.map(|value| f32::from(value) * scale)
 }
 
 /// Convert the independently quantized threat accumulator to the HalfKA scale
-/// before summing. This is `round(pst + threat * 255/64)` in quantized space.
-/// Adding the raw integers would underweight every threat feature by ~4x.
+/// before summing. This is `round(pst + threat · FT_QUANT/threat_quant)` in
+/// quantized space. Adding the raw integers would underweight every threat
+/// feature by the frame ratio (4x on a CEN2 net).
 #[cfg(test)]
 #[inline]
-fn merge_transformers(pst: i16, threat: i16) -> i16 {
-    // One shift: the 255/64 frame ratio is carried as 4 (a 0.39% gain change
-    // on the threat channel), which is what every SIMD backend emits and what
-    // the 800-FEN fidelity check measured at mean 0.14 SF cp (study 8 §4.6).
-    let scaled = i32::from(threat) << 2;
+fn merge_transformers(pst: i16, threat: i16, threat_shift: u32) -> i16 {
+    // One shift: the frame ratio is carried as a power of two (a 0.39% gain
+    // change on the threat channel), which is what every SIMD backend emits
+    // and what the 800-FEN fidelity check measured at mean 0.14 SF cp
+    // (study 8 §4.6; see `threat_shift_for`).
+    let scaled = i32::from(threat) << threat_shift;
     (i32::from(pst) + scaled).clamp(0, FT_QUANT) as i16
 }
 
@@ -525,7 +604,7 @@ impl SotaHead {
         #[cfg(feature = "foldcount")]
         super::foldcount::EVAL.hit(0);
         let HeadScratch { ft, nnz } = scratch;
-        activate_ft(pst, threat, stm, ft);
+        activate_ft(pst, threat, stm, self.threat_shift, ft);
         let count = find_nnz(ft, nnz);
         let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
         self.propagate_l1(ft, &nnz[..count], bucket, l1_out);
@@ -649,12 +728,44 @@ mod tests {
 
     #[test]
     fn mixed_transformer_scales_are_normalized_before_sum() {
-        assert_eq!(merge_transformers(0, 64), 255);
-        assert_eq!(merge_transformers(255, -64), 0);
-        assert_eq!(merge_transformers(100, 16), 164);
-        assert_eq!(merge_transformers(100, -16), 36);
-        assert_eq!(merge_transformers(250, 2), 255);
-        assert_eq!(merge_transformers(5, -2), 0);
+        // A CEN2 net: threat_quant 64 ⇒ shift 2.
+        assert_eq!(merge_transformers(0, 64, 2), 255);
+        assert_eq!(merge_transformers(255, -64, 2), 0);
+        assert_eq!(merge_transformers(100, 16, 2), 164);
+        assert_eq!(merge_transformers(100, -16, 2), 36);
+        assert_eq!(merge_transformers(250, 2, 2), 255);
+        assert_eq!(merge_transformers(5, -2, 2), 0);
+    }
+
+    /// The shift is the net's, not the engine's: a QAT net at threat_quant 256
+    /// merges the threat accumulator UNSCALED (shift 0), and 128 halves it.
+    #[test]
+    fn threat_shift_tracks_the_container_quant() {
+        assert_eq!(threat_shift_for(64), Some(2));
+        assert_eq!(threat_shift_for(128), Some(1));
+        assert_eq!(threat_shift_for(256), Some(0));
+        // Not representable as a power-of-two frame ratio.
+        assert_eq!(threat_shift_for(255), None);
+        assert_eq!(threat_shift_for(512), None);
+        assert_eq!(threat_shift_for(0), None);
+        assert_eq!(threat_shift_for(-64), None);
+        // Representable, but coarser than 64 and therefore outside the set the
+        // backends monomorphise — the `_` arm of their `activate` dispatch is
+        // only sound because this is rejected here.
+        assert_eq!(threat_shift_for(32), None);
+        assert_eq!(threat_shift_for(1), None);
+        // …and the inverse round-trips over the whole accepted domain.
+        for q in [64, 128, 256] {
+            assert_eq!(threat_quant_for(threat_shift_for(q).unwrap()), q);
+        }
+        assert_eq!(
+            threat_shift_for(threat_quant_for(MAX_THREAT_SHIFT)),
+            Some(MAX_THREAT_SHIFT)
+        );
+
+        assert_eq!(merge_transformers(100, 16, 0), 116);
+        assert_eq!(merge_transformers(100, 16, 1), 132);
+        assert_eq!(merge_transformers(100, 16, 2), 164);
     }
 
     #[test]
@@ -695,6 +806,7 @@ mod tests {
             l3_weights: l3w.into(),
             l3_biases: l3b.into_boxed_slice(),
             network_scale: 380,
+            threat_shift: 2,
             l3_var_weights: None,
             l3_var_biases: None,
             l3_wdl_weights: None,
@@ -729,14 +841,14 @@ mod tests {
         pst[0][H] = 200;
         threat[0][H] = 16; // rescaled to 64, so right sum = 264 → clamp 255
         let mut ft = [0u8; L1];
-        activate_ft(&pst, &threat, Color::White, &mut ft);
+        activate_ft(&pst, &threat, Color::White, 2, &mut ft);
         // (150 * 255) >> 9 = 38250 >> 9 = 74
         assert_eq!(ft[0], 74, "pairwise clamp+shift");
         // a negative sum clamps to 0 → product 0
         let mut pst2 = [[0i16; L1]; 2];
         pst2[0][1] = -500;
         let mut ft2 = [0u8; L1];
-        activate_ft(&pst2, &threat, Color::White, &mut ft2);
+        activate_ft(&pst2, &threat, Color::White, 2, &mut ft2);
         assert_eq!(ft2[1], 0, "negative clamps to 0");
     }
 
@@ -747,7 +859,7 @@ mod tests {
         let head = synth_head();
         let (pst, threat) = synth_accs();
         let mut ft = [0u8; L1];
-        activate_ft(&pst, &threat, Color::White, &mut ft);
+        activate_ft(&pst, &threat, Color::White, 2, &mut ft);
         let mut nnz = [0u16; L1 / 4];
         let count = find_nnz(&ft, &mut nnz);
         let bucket = 3;

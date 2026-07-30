@@ -172,6 +172,14 @@ def pack(quantised_path: str, out_path: str, activation: str) -> None:
 MAGIC_V2 = b"CEN2"
 CENN_V2_VERSION = 2
 HEADER_V2_LEN = 64
+# CENN-v5 (perf study 30): the v2 header plus `threat_quant: i32` at offset 64
+# and a zero `reserved: u32` at 68; the payload then starts at 72. FIVE, not
+# three: CEN3/CEN4 are the simple/protected HalfKA containers
+# (src/eval/nnue/simple_halfka.rs, protected_halfka.rs) and uci.rs routes on
+# them. Loader: src/eval/nnue/sota_loader.rs.
+MAGIC_V5 = b"CEN5"
+CENN_V5_VERSION = 5
+HEADER_V5_LEN = 72
 FLAG_HAS_THREATS = 1
 
 # D40 architecture constants — must match src/eval/nnue/sota_head.rs +
@@ -205,7 +213,17 @@ POLICY_VOCAB = 1858
 # payload". Defaults to L2, so every existing invocation is unchanged.
 D40_POL_DIM = int(os.environ.get("D40_POL_DIM", str(D40_L2)))
 D40_FT_QUANT = 255
-D40_THREAT_QUANT = 64
+# The scale the FullThreats table was quantised at. **A property of the NET**
+# (perf study 30): a non-QAT net's weights span +-1.98 and 64 is the largest
+# scale that does not clip them, while a net trained with
+# `qat_threat_scale = 256` is clipped to +-127/256 and loses two bits of the i8
+# if it is exported at 64 (measured on D49-sb100: max|w| 32/127, 65 of 256
+# levels used). Env-overridable exactly like D40_NETWORK_SCALE; anything other
+# than 64 emits a CENN-v5 container so the engine can read it back.
+# MUST equal the training spec's `qat_threat_scale` when QAT is on —
+# `jax/archon_jax/spec.py: ArchSpec.threat_quant()` is the single source, and
+# `tools/nnue/pack_ckpt.sh`/the export path derive this from it.
+D40_THREAT_QUANT = int(os.environ.get("D40_THREAT_QUANT", "64"))
 D40_L1_QUANT = 64
 D40_FT_SHIFT = 9
 # The trainer's target is sigmoid(score / 400), so the inverse-logit runtime
@@ -250,10 +268,23 @@ def _split_psq1_trailer(raw: bytes, stream_end: int):
     return bytes(rest)
 
 
-def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> None:
-    """Pack a bullet d40_features quantised.bin into CENN-v2."""
+def pack_d40(quantised_path: str, out_path: str, network_scale: int = None,
+             threat_quant: int = None) -> None:
+    """Pack a bullet d40_features quantised.bin into a CENN container.
+
+    Emits CENN-v2 at the legacy threat scale of 64 (so every existing
+    invocation writes a byte-identical file) and CENN-v5 at any other, which is
+    the only container that can state the scale.
+    """
     if network_scale is None:
         network_scale = int(os.environ.get("D40_NETWORK_SCALE", str(D40_NETWORK_SCALE)))
+    if threat_quant is None:
+        threat_quant = D40_THREAT_QUANT
+    # The runtime carries FT_QUANT/threat_quant as 256/threat_quant, one shift
+    # (sota_head::threat_shift_for), so the scale must be a power of two <= 256.
+    if threat_quant <= 0 or threat_quant > 256 or (threat_quant & (threat_quant - 1)):
+        die(f"D40_THREAT_QUANT={threat_quant} must be a power of two in 1..=256")
+    v5 = threat_quant != 64
 
     raw = Path(quantised_path).read_bytes()
 
@@ -402,6 +433,38 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     # This is already the right layout when flattened: [bucket*L3 + i].
     l3w_engine = l3w_raw.ravel()
 
+    # ── Threat i8 range gate (perf study 30) ───────────────────────────
+    # The bug this catches, in full: D49 trained 100 superbatches with
+    # `qat_threat_scale = 256`, which CLIPS the threat table to +-127/256, and
+    # every deployment path then exported it at 64. The i8 weights reached
+    # max|w| = 32 of 127 and used 65 of 256 levels — two bits thrown away — for
+    # a measured -128.7 +- 9.6 Elo over 1600 calibrated games, while the FLOAT heldout R2
+    # stayed within 0.008 of the incumbent. Nothing except games could see it.
+    #
+    # An i8 table that does not reach even half the range was quantised at
+    # least 2x too coarsely. That is not a judgement call, it is arithmetic, so
+    # this refuses rather than warns.
+    if not D40_HALFKA_ONLY:
+        peak = int(np.abs(threat_w.astype(np.int32)).max())
+        if peak * 2 <= 127 and os.environ.get("D40_ALLOW_THREAT_UNDERRANGE", "0") in (
+                "0", "", "false", "False"):
+            want = threat_quant
+            while want < 256 and peak * 2 <= 127:
+                want *= 2
+                peak *= 2
+            die(f"{quantised_path}: threat i8 peaks at "
+                f"{int(np.abs(threat_w.astype(np.int32)).max())}/127 at "
+                f"threat_quant={threat_quant} — at least one bit of the i8 is "
+                f"unused, which is what a QAT net exported at the legacy scale "
+                f"looks like (perf study 30: -128.7 Elo, invisible to R2).\n"
+                f"  The quant.bin ITSELF is the wrong one: re-export it at the "
+                f"trainer's qat_threat_scale (jax ArchSpec.threat_quant(); "
+                f"tools/nnue/requant_threats.py --scale N --run-spec ...) and "
+                f"pack that with D40_THREAT_QUANT=N. N is at least {want} on "
+                f"this table's range alone; the RUN SPEC decides the real "
+                f"value. Set D40_ALLOW_THREAT_UNDERRANGE=1 if the table really "
+                f"is this small.")
+
     # ── Build CENN-v2 payload ──────────────────────────────────────────
     payload = bytearray()
     payload += pst_w.astype("<i2").tobytes()         # halfka_w feature-major i16
@@ -417,11 +480,13 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
 
     checksum = fnv1a64(bytes(payload))
 
-    # ── Build CENN-v2 header (64 bytes) ────────────────────────────────
+    # ── Build the CENN header (64 bytes v2, 72 bytes v5) ───────────────
+    # v5 keeps bytes 0..64 identical in meaning and APPENDS, so this is one
+    # emitter with a two-field tail.
     flags = 0 if D40_HALFKA_ONLY else FLAG_HAS_THREATS
     header = bytearray()
-    header += MAGIC_V2
-    header += int(CENN_V2_VERSION).to_bytes(2, "little")
+    header += MAGIC_V5 if v5 else MAGIC_V2
+    header += int(CENN_V5_VERSION if v5 else CENN_V2_VERSION).to_bytes(2, "little")
     header += int(flags).to_bytes(2, "little")
     header += int(HALFKA_DIMS).to_bytes(4, "little")
     header += int(0 if D40_HALFKA_ONLY else THREAT_DIMS).to_bytes(4, "little")
@@ -435,7 +500,11 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     header += int(network_scale).to_bytes(4, "little", signed=True)
     header += len(payload).to_bytes(8, "little")
     header += checksum.to_bytes(8, "little")
-    assert len(header) == HEADER_V2_LEN, f"header {len(header)} != {HEADER_V2_LEN}"
+    if v5:
+        header += int(threat_quant).to_bytes(4, "little", signed=True)
+        header += (0).to_bytes(4, "little")  # reserved, MUST be zero
+    want_header = HEADER_V5_LEN if v5 else HEADER_V2_LEN
+    assert len(header) == want_header, f"header {len(header)} != {want_header}"
 
     with open(out_path, "wb") as f:
         f.write(header)
@@ -446,8 +515,9 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
         if psq1:
             f.write(psq1)
 
-    total = HEADER_V2_LEN + len(payload) + (len(psq1) if psq1 else 0)
-    print(f"netpack-d40: wrote {out_path} ({total:,} bytes)")
+    total = want_header + len(payload) + (len(psq1) if psq1 else 0)
+    print(f"netpack-d40: wrote {out_path} ({total:,} bytes, "
+          f"{'CENN-v5' if v5 else 'CENN-v2'})")
     if psq1:
         print(f"  psqt        PSQ1 section passed through ({len(psq1):,} bytes, "
               f"{int.from_bytes(psq1[8:12], 'little')} rows x "
@@ -469,7 +539,8 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None) -> N
     threats_desc = "OFF (HalfKA-only)" if D40_HALFKA_ONLY else THREAT_DIMS
     print(f"  arch        halfka={HALFKA_DIMS} threats={threats_desc} acc={acc}")
     print(f"              L2={D40_L2} L3={D40_L3} buckets={D40_BUCKETS}")
-    print(f"  quant       ft_quant={D40_FT_QUANT} threat_quant={D40_THREAT_QUANT} "
+    print(f"  quant       ft_quant={D40_FT_QUANT} threat_quant={threat_quant} "
+          f"(merge shift {8 - threat_quant.bit_length() + 1}) "
           f"l1_quant={D40_L1_QUANT} "
           f"ft_shift={D40_FT_SHIFT} scale={network_scale}")
     print(f"  payload     {len(payload):,} bytes   checksum {checksum:#018x}")
@@ -483,14 +554,17 @@ def strip_d40_threats(cenn_path: str, out_path: str) -> None:
     remains a fully checksummed, loader-valid CENN-v2 container.
     """
     raw = bytearray(Path(cenn_path).read_bytes())
-    if len(raw) < 64 or raw[:4] != MAGIC_V2:
-        die(f"{cenn_path}: not a CENN-v2 container")
+    if len(raw) < HEADER_V2_LEN or raw[:4] not in (MAGIC_V2, MAGIC_V5):
+        die(f"{cenn_path}: not a CENN-v2/v5 container")
+    hdr = HEADER_V5_LEN if raw[:4] == MAGIC_V5 else HEADER_V2_LEN
+    if len(raw) < hdr:
+        die(f"{cenn_path}: truncated CENN-v5 header")
     flags = int.from_bytes(raw[6:8], "little")
     threat_dims = int.from_bytes(raw[12:16], "little")
     if not flags & FLAG_HAS_THREATS or threat_dims != THREAT_DIMS:
         die(f"{cenn_path}: expected a {THREAT_DIMS}-feature threat channel")
     payload_len = int.from_bytes(raw[48:56], "little")
-    payload = raw[64:]
+    payload = raw[hdr:]
     if len(payload) != payload_len:
         die(f"{cenn_path}: payload length mismatch")
     prefix = HALFKA_DIMS * D40_ACC * 2 + D40_ACC * 2
@@ -500,8 +574,8 @@ def strip_d40_threats(cenn_path: str, out_path: str) -> None:
     raw[12:16] = (0).to_bytes(4, "little")
     raw[48:56] = len(payload).to_bytes(8, "little")
     raw[56:64] = fnv1a64(bytes(payload)).to_bytes(8, "little")
-    Path(out_path).write_bytes(raw[:64] + payload)
-    print(f"netpack-d40: wrote diagnostic HalfKA-only {out_path} ({64 + len(payload):,} bytes)")
+    Path(out_path).write_bytes(raw[:hdr] + payload)
+    print(f"netpack-d40: wrote diagnostic HalfKA-only {out_path} ({hdr + len(payload):,} bytes)")
 
 
 def main():

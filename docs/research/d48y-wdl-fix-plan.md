@@ -3406,6 +3406,19 @@ QAT, spans ±1.98, and measures **6.80% relative error at 255 vs 5.58% at 64**.
 `ft_shift`40 / `network_scale`44 / `payload_len`48 — fully packed). So: **CEN3
 adds the field; loader accepts CEN2 ⇒ 64 implicitly.**
 
+> **LANDED as `CEN5`, not `CEN3` — study 30, `docs/research/perf-study-30-cenn-v5-threat-quant-2026-07-30.md`.**
+> `CEN3` and `CEN4` are already the simple/protected HalfKA containers
+> (`simple_halfka.rs`, `protected_halfka.rs`) and `uci.rs` routes on both, so
+> `CEN3` would have misrouted a SOTA net into the HalfKA loader. Everything else
+> is as specified: v5 appends `threat_quant: i32` @64 + zero `reserved: u32` @68
+> to an otherwise byte-identical header, CEN2 implies 64, and all three pins
+> reproduce on both backends. `netpack.py` now also REFUSES an under-range
+> threat table, and `ArchSpec.threat_quant()` derives the export scale from
+> `qat_threat_scale`. Cost of the net-dependent merge: **+2.77 instructions and
+> +0.85 branches per node** (a runtime shift count cost +34.48 i/n — `vpsllw`'s
+> register-count form cannot fold the load — so the kernels are const-generic
+> over the shift).
+
 Acceptance test given to study 30 is a hard bit-identity property: **a CEN2 net
 must reproduce all three pins unchanged on BOTH backends**, including the
 `x86-64-v3` AVX2 path study 26 found no `target-cpu=native` test exercises.
