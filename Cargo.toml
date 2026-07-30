@@ -158,6 +158,11 @@ null38 = ["sota"]
 # Measurement only, never shipped, never gated.
 noalias40 = ["sota"]
 callcopy40 = ["sota"]
+# Perf study 40's SHIPPABLE form of what `callcopy40` measured: the pure-copy
+# fold's 2560-byte copy behind an `#[inline(never)]` helper. Not an instrument
+# -- it is a candidate strength change, kept behind a feature only until it has
+# a cycles verdict and a gate run.
+outcopy40 = ["sota"]
 # Perf study 40's DOSE AMPLIFIER for `partial_insertion_sort` (`src/dose40.rs`).
 # `insertwin34` is a ~0.2%-of-cycles trade and six nulls put the `cycles:u`
 # floor on this box an order of magnitude above that, so the arm is replayed

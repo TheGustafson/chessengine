@@ -1001,6 +1001,25 @@ impl AliasTable {
     }
 }
 
+/// The pure-copy fold's 2560-byte accumulator copy, behind a call boundary
+/// (perf study 40, `--features outcopy40`).
+///
+/// `#[inline(never)]` is the entire point and it is a MEASURED choice: with the
+/// copy expanded inline, `at_full` (which inlines `compute`) carries an
+/// 83-instruction straight-line zmm block inside the fold loop, and pinning
+/// that block behind a call boundary measured **−15.92 instructions per node**
+/// — while the copy runs only 0.022 times per node, so under 2 of that can be
+/// the copy. The rest is the surrounding function compiling better. Study 14
+/// recorded 45.4 i/n between two spellings of this same copy and called it
+/// "spelling, not semantics"; this is the same effect with a sign and a size.
+#[cfg(feature = "outcopy40")]
+#[inline(never)]
+fn copy_acc_outlined(dst: &mut [i16; ACC], src: &[i16; ACC]) {
+    for (d, s) in dst.chunks_exact_mut(32).zip(src.chunks_exact(32)) {
+        d.copy_from_slice(s);
+    }
+}
+
 /// Perf study 40's null: no table, no reads, no stores — every ply is its own
 /// holder, which is what the module did before study 38.
 #[cfg(feature = "noalias40")]
@@ -1573,7 +1592,16 @@ impl<'a> ThreatContext<'a> {
                         let n = std::hint::black_box(ACC);
                         dst_acc[..n].copy_from_slice(&src_acc[..n]);
                     }
-                    #[cfg(not(feature = "callcopy40"))]
+                    // Perf study 40, `--features outcopy40`: the SHIPPABLE form
+                    // of what `callcopy40` measured. The 15.9 i/n `callcopy40`
+                    // buys is not the copy — at 0.022 copies/node the copy
+                    // itself is worth under 2 — it is `at_full` compiling
+                    // better once this 83-instruction straight-line block stops
+                    // sitting inside the fold loop. An `#[inline(never)]` helper
+                    // gets the same call boundary without the libc call.
+                    #[cfg(all(feature = "outcopy40", not(feature = "callcopy40")))]
+                    copy_acc_outlined(dst_acc, src_acc);
+                    #[cfg(not(any(feature = "callcopy40", feature = "outcopy40")))]
                     for (d, s) in dst_acc.chunks_exact_mut(32).zip(src_acc.chunks_exact(32)) {
                         d.copy_from_slice(s);
                     }

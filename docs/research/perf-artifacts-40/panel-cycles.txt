@@ -1,0 +1,1 @@
+r1 oc40 nodes=5001562 instructions:u=5907.955944 cycles:u=3991.103110 branches:u=619.309438 ex_ret_brn_misp:u=23.713542 
