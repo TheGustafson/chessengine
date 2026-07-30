@@ -7352,3 +7352,53 @@ That is:
 **Goes out when the verdict frees the box.** Deliberately not commissioned into
 a load-16 box: study 33 lost its absolute numbers to exactly that, and study 40
 only succeeded because it took 159 paired rounds in conditions it controlled.
+
+## D49 EXTENDED to sb700 (user ruling) — queued as `d49x.service`
+
+**300 more superbatches, gentle cosine, 100sb anneal at the end.** Waiting for
+>7000 MiB free GPU so it does not disturb the Tier-1 panel.
+
+**LR shape** — built with `lr_ramp`, **not** the built-in cosine, because that
+floors at **2.7% of peak and never reaches zero**; `lr_ramp` is keyed to the
+**absolute** superbatch and is documented as making resumed legs land on the
+same global curve:
+
+| sb | LR |
+|---:|---:|
+| 400 | 1.250e-4 (just above the 1.10e-4 the first cosine reached) |
+| 500 | 7.50e-5 |
+| 600 | 2.50e-5 (cosine ends) |
+| 700 | ~0 (anneal) |
+
+**A config error caught before launch:** resume loads from
+`out/{net_id}-sb{N}-raw.bin`, so my first version — renamed `d49x-1280` — would
+have looked for a checkpoint that does not exist. It **must be a continuation**:
+same `net_id`, same `out`. That also **restores the EMA**, which matters because
+the EMA is what we deploy. Both checkpoints verified at 433,755,450 bytes.
+
+### Where the heldout needs to get — the user's question, answered
+
+| | fall needed | target heldout |
+|---|---:|---:|
+| at the measured leg-2 slope | 0.000600 | **0.010204** |
+| if the slope degrades another 1.5x | 0.000900 | 0.009904 |
+
+Over 300 sb the first is **2.00e-6/sb**, and that is **below every rate we have
+observed**:
+
+    cosine sb180->270        6.06e-6/sb
+    anneal sb270->400        2.96e-6/sb
+    late anneal sb360->400   2.48e-6/sb   <- at NEAR-ZERO LR
+    required                 2.00e-6/sb
+
+**The requirement is under-run even by the near-zero-LR tail.** Restoring LR to
+1.25e-4 should beat it comfortably *if there is signal left*, and the heldout
+never plateaued, which says there is. **The risk is not the rate — it is whether
+the Elo-per-heldout slope degrades again.** The extension supplies a **third leg
+to fit**, which is precisely what the two-point map lacked and why it
+over-predicted.
+
+**Verdict:** 3578/5880, −21.44 +/- 7.86 and still improving with power.
+**Tier-1:** `random8k` at sb11 (0.006804, still descending); the `kmeans8k`
+traceback in the log is **stale from my aborted rerun at 13:19**, not a new
+failure — the agent has not reached that arm yet.
