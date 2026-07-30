@@ -50,6 +50,9 @@ pub static HKA_INPLACE: Site = Site::new();
 pub static THR_INTO: Site = Site::new();
 /// The threat fold's empty-delta branch: a hand-chunked 2560-byte copy.
 pub static THR_COPY: Site = Site::new();
+/// Perf study 38's parent alias: a ply whose delta was empty for BOTH
+/// perspectives, so the entry was never written at all.
+pub static THR_ALIAS: Site = Site::new();
 /// `activate` — the head's accumulator merge. Reads FOUR `[i16; ACC]` arrays
 /// (two perspectives x two channels) and writes one `[u8; ACC]`. This is the
 /// 10.24 KB/ply Stockfish carries as 4.10 KB.
@@ -141,6 +144,7 @@ pub fn dump(nodes: u64) {
         ("hka_inplace", &HKA_INPLACE),
         ("thr_into", &THR_INTO),
         ("thr_copy", &THR_COPY),
+        ("thr_alias", &THR_ALIAS),
         ("activate", &ACTIVATE),
         ("eval", &EVAL),
     ] {

@@ -911,6 +911,27 @@ pub struct ThreatContext<'a> {
     /// Per-ply, per-perspective fold state. Its own dense array so `compute`'s
     /// ancestor walk is a linear scan over 2 bytes per ply — see [`FoldState`].
     fold: Box<[FoldState; STACK_LEN]>,
+    /// Per-ply **value holder**: the ply whose [`ThreatEntry`] actually contains
+    /// ply `k`'s accumulator pair. `alias[k] == k` for a materialised entry;
+    /// `alias[k] < k` when ply `k`'s fold was a pure parent copy for BOTH
+    /// perspectives and the entry was therefore never written at all
+    /// (perf study 38).
+    ///
+    /// The invariant, and every write site maintains it:
+    /// **if `fold[k][p] == Fold::Done` then perspective `p`'s value is in
+    /// `stack[alias[k]].acc[p]`** — and `alias[alias[k]] == alias[k]`, so a
+    /// read is always ONE hop (the alias case copies the parent's holder rather
+    /// than pointing at the parent).
+    ///
+    /// It is a whole-ENTRY alias, not a per-perspective one, because
+    /// [`at_full`](Self::at_full) hands out `&[[i16; ACC]; 2]` — both
+    /// perspectives from one entry — and a per-perspective alias could not be
+    /// returned without changing the head merge kernel's parameter shape. The
+    /// measurement that says that is enough: of 1,650,730 pure-copy folds on the
+    /// study frame, **1,542,958 (93.5%) come from plies where BOTH perspectives
+    /// resolve empty together** (`foldcount` `thr_joint.n11e11`), so the cheap
+    /// form captures almost all of it.
+    alias: Box<[u16; STACK_LEN]>,
     /// Scratch raw-event buffer for [`build_deltas`], reused every fold.
     buf: DeltaBuf,
     /// Fold-time resolved-index scratch for [`apply_threat_deltas_into`], written by
@@ -974,6 +995,16 @@ impl<'a> ThreatContext<'a> {
                 .into_boxed_slice()
                 .try_into()
                 .expect("STACK_LEN fold states"),
+            // Identity: every entry starts as its own holder, which is the
+            // correct reading of a stack whose `fold` is all `FromParent`.
+            alias: {
+                const { assert!(STACK_LEN <= u16::MAX as usize) };
+                (0..STACK_LEN as u16)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice()
+                    .try_into()
+                    .expect("STACK_LEN alias slots")
+            },
             buf: DeltaBuf::new(),
             add_scratch: [[0usize; DELTA_CAP]; 2],
             sub_scratch: [[0usize; DELTA_CAP]; 2],
@@ -1015,6 +1046,7 @@ impl<'a> ThreatContext<'a> {
             }
         }
         self.fold[0] = [Fold::Done; 2];
+        self.alias[0] = 0;
     }
 
     /// The current (cursor top) accumulator pair, `[White, Black]` — the input
@@ -1057,7 +1089,10 @@ impl<'a> ThreatContext<'a> {
         // below (`build_deltas` yields no events, so the empty-list branch
         // copies it), which is the same value the alias returned.
         self.compute(ply);
-        let entry = &self.stack[ply];
+        // Perf study 38: `alias[ply]` is `ply` for a materialised entry and an
+        // ancestor for a ply whose fold was a pure parent copy — see the
+        // field's own doc. One indexed load and no branch.
+        let entry = &self.stack[self.alias[ply] as usize];
         (&entry.acc, &entry.psqt)
     }
 
@@ -1104,6 +1139,9 @@ impl<'a> ThreatContext<'a> {
         // HalfKA-only engine reaches.
         if self.weights.is_empty() {
             self.fold[child] = [Fold::Done; 2];
+            // The entry is never written on this branch and every entry is
+            // all-zero, so the ply is its own holder by construction.
+            self.alias[child] = child as u16;
             return;
         }
 
@@ -1228,6 +1266,10 @@ impl<'a> ThreatContext<'a> {
                 // `discharge_refresh` at exactly six integer argument
                 // registers -- see its doc comment.
                 self.fold[*a][p] = Fold::Done;
+                // A rebuild WRITES this entry, so the ply is now its own value
+                // holder. (It cannot have been aliased: the alias below is only
+                // taken when both perspectives are `FromParent`.)
+                self.alias[*a] = *a as u16;
             }
         }
         // Hoist the magic-table LazyLock deref out of the per-touch geometry
@@ -1341,13 +1383,43 @@ impl<'a> ThreatContext<'a> {
             // of this copy are 45.4 i/n apart (D33 reviewer C, M6/N4).
             #[cfg(feature = "foldcount")]
             super::foldcount::note_thr_joint(need, lens);
+            // The parent's VALUE HOLDER, which is the parent ply itself unless
+            // the parent was a pure-copy ply the alias below elided.
+            let src = self.alias[child - 1] as usize;
+            // ── PERF STUDY 38: THE PURE-COPY PLY IS ALIASED, NOT COPIED ──────
+            //
+            // A ply whose resolved threat delta is empty for BOTH perspectives
+            // has, by definition, exactly its parent's accumulator pair. Rather
+            // than materialise that by copying 2 x 2560 bytes, point the ply at
+            // its parent's holder and write nothing.
+            //
+            // It is 25.2% of all folded plies and 93.5% of all pure copies
+            // (`foldcount` `thr_joint`, study frame): 771,479 of 3,063,994.
+            // The remaining 6.5% are plies where ONE perspective is empty and
+            // the other folds or refreshes — those still copy, because the
+            // entry must be materialised for the other perspective and
+            // `at_full` hands out both perspectives from ONE entry.
+            if need[0] && need[1] && lens[0] == (0, 0) && lens[1] == (0, 0) {
+                #[cfg(feature = "foldcount")]
+                {
+                    super::foldcount::THR_ALIAS.hit(0);
+                }
+                self.alias[child] = src as u16;
+                self.fold[child] = [Fold::Done; 2];
+                continue;
+            }
+            // Anything below WRITES `stack[child]`, so the ply becomes its own
+            // holder. Both perspectives are materialised on every path that
+            // gets here — one of them possibly by `discharge_refresh` above —
+            // which is what makes a whole-entry alias sound.
+            self.alias[child] = child as u16;
             for (p, &needs_fold) in need.iter().enumerate() {
                 if !needs_fold {
                     continue;
                 }
                 let (add_len, sub_len) = lens[p];
                 let (before, after) = self.stack.split_at_mut(child);
-                let parent = &before[child - 1];
+                let parent = &before[src];
                 let entry = &mut after[0];
                 if add_len == 0 && sub_len == 0 {
                     // Chunked so LLVM emits 40 inline 64-byte moves instead of
