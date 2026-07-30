@@ -7438,3 +7438,54 @@ not evidence of its accuracy.*
 - **`d49x` correctly queued** — 921 MiB free GPU against its 7000 MiB threshold,
   so it is waiting behind the panel exactly as designed rather than contending.
 - Box 7371 MB, healthy.
+
+# ═══ D49 ENDPOINT VERDICT — FINAL ═══
+
+    D49 sb400 @756  vs  canonical D48X @600     (each net at its OWN optimum)
+
+    Elo -21.24 +/- 5.67    W1645 / D2231 / L2004    46.95%    n=5880    EXIT=0
+
+Recorded as **exp-0168**.
+
+## The comparison was fair to both sides by construction
+
+Canonical ships `network_scale=600` because **@400 measured 14.78 +/- 5.45 Elo
+worse over 5880 games** — screening D49 against the shipped default would have
+handed it a **~15 Elo head start unrelated to its recipe**. D49's own optimum was
+swept and is a **broad plateau across 640-880** (@880 −2.61 +/- 11.18, @640
+−2.37 +/- 11.11, @1111 −14.47 +/- 11.09). Both traps encoded in
+`tools/d49_verdict.sh` rather than remembered.
+
+## What D49 achieved
+
+| | |
+|---|---:|
+| sb270 vs canonical | −47.21 |
+| **sb400 vs canonical** | **−21.24 +/- 5.67** |
+| **improvement on itself** | **+25.97 Elo**, most of it in the anneal |
+
+**It remains ~21 Elo short of a fully-trained gen-2 net carrying a warm-start
+lineage** — and *that comparison confounds RECIPE with LINEAGE*. The six
+mechanisms have still never been tested on their own; `d50_recipe_warm.json` is
+written and ready for exactly that.
+
+## The map's final accounting
+
+| n | over-predicted by |
+|---:|---:|
+| 1000 | **2.55x** ← what I published |
+| 5880 | **1.35x** |
+
+**The slope is not constant** — it fell from **91,064 to ~36,000 Elo per unit
+heldout**. I flagged that linearity risk when building the map, then quoted a
+band derived from it for **nine ticks**, and published a 2.5x figure off a
+1000-game snapshot. *The direction was right throughout; the magnitude was
+premature twice.*
+
+**The 300sb extension supplies the third leg the two-point map lacked** — if the
+slope degrades again we will see it rather than assume it.
+
+## Status
+
+**D48X remains canonical. All 40 checkpoints retained.** Nothing needs undoing.
+`d49x` is queued and will take the GPU once `kmeans8k` finishes.
