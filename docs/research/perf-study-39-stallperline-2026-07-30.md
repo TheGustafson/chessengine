@@ -142,6 +142,25 @@ inside the noise of a 400-game match, and it additionally trades away a measured
 0.0196/node; fused it inherits HalfKA's 0.1647). Study 29's verdict stands. Its
 reasoning does not.
 
+### Gates, reproduced on the landing tree
+
+`tools/perf39/gates39.sh`, which runs `CHECK_NNUE_GATE=1 bash tools/check.sh`
+because `src/eval/nnue/` was touched and **the `Bench:` pin is blind to NNUE
+work**:
+
+```
+  eval hash  : 2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4
+  d13 nodes  : 1739588
+Bench: 587683
+All checks passed.
+```
+
+All three pins are the current ones, unmoved. The probe features are
+deliberately **not** in the gate — they compute wrong evaluations by
+construction, so a green suite under `probe-dstpin` would mean the probe was
+inert — but `foldcount` **is** gated, because its entire claim is that it
+changes nothing.
+
 ### What landed
 
 **Instruments and a decision, no strength change.** `probe-addcopy` (study 31's
