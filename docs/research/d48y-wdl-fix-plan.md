@@ -2927,3 +2927,82 @@ concurrency is what degraded the cycles instrument in the first place:
 check (the stall nudge worked), 24 and 25 each have an arm landed.
 
 **D49: sb54/400, 192k pos/s.** Value 0.009388 and still descending.
+
+## ★★★ STUDIES 23, 24, 25 — all landed, all three retracted a cycles claim
+
+Merged onto main (23 → 24 → 25, `.gitignore` union-resolved twice; the only
+conflicts were each study's own `binNN/` entry). **Both feature combos compile
+clean**, including the `sota`-only one study 21 found broken. Combined gate run
+on the COMPOSITION, because three independently-gated branches do not prove it.
+
+**Scopes verified genuinely disjoint** by diffing each against its own
+merge-base (the naive `main..branch` diff is polluted by branch age):
+23 = `movepick.rs` + `search/mod.rs`; 24 = `sota_threats.rs`; 25 = `sota_simd.rs`.
+
+| study | landed | gate |
+|---|---|---|
+| 23 | four search-layer arms, **−0.876% instructions** | instructions |
+| 24 | r1 unswitch `resolve_both` −20.93, d1 `#[repr(align(8))]` on `ThreatDelta` **−37.73**, k1 `king_cross` scratch-free −20.51, h1 `fold` out of `ThreatEntry` −19.80 = **−98.98 i/n (−1.556%), −25.82 br/n** | instructions + branches |
+| 25 | arm 1 const-generic HalfKA fold dispatch: **−79.3 i/n (−1.30%), −14.7 br/n, hot code −30%** | instructions + branches |
+
+### ★ STUDY 25 SETTLED THE INLINE QUESTION — and BOTH prior readings were right
+
+`#[inline(never)]` build, PGO, d16, `--no-children`:
+
+| symbol region | own body + what was hiding inside |
+|---|---|
+| `at_full` **23.53%** | `at_full` 7.64% + **`apply_i8_deltas_into` 16.20%** |
+| `i16_deltas_into` 11.84% | **never inlined — the symbol IS the body** (11.91%) |
+| `finny_refresh_into` 7.03% | 1.15% + **`apply_i16_deltas_dual` 4.76%** |
+| `forward_into` 8.31% | **own body below the 0.3% cut** — five inlined kernels |
+
+**Study 25's files held ~39% of PGO d16 cycles, not the 21% I briefed** — the
+2nd and 3rd biggest BODIES were hiding inside symbols named after other studies'
+files. My table and study 21's were each correct about their own question.
+
+### ★★ CYCLES ARE UNMEASURABLE ON THIS BOX — THREE INDEPENDENT CONFIRMATIONS
+
+| study | nulls on byte-identical binaries |
+|---|---|
+| 22 | −3.40% / −0.07% / −1.51% / **+1.42%** |
+| 24 | six spanning +1.38% to −6.17%; live null median **−6.167%, 44-point spread — LARGER than the arm, same direction** |
+| 25 | ABAB +0.97% / symmetric RR +2.06% / randomised RR **−1.93%** (10/12 sign-consistent, so sign counts are no safer) |
+
+**Studies 24 and 25 each RETRACTED a cycles headline already written into a
+commit** (24's "−2.25%", 25's "−2.33%/−1.70%"). Every number above is
+`instructions:u` / `branches:u`, whose live nulls read **+0.0001**.
+
+**Standing gate for the next quiet window** (study 25):
+`panel3-25.sh <base> <copy> <copy>` with both slots byte-identical, and require
+both medians within **±0.3% of zero** before trusting any arm. Tonight that gate
+fails 3/3.
+
+### Rejects worth keeping, each killed on a number
+
+- **25**: the same const-generic trick on the FullThreats fold. Histogrammed
+  FIRST — `{0,1,2}²` covers only **52%** of shapes (mean 1.98/2.66), so the 48%
+  falling through pay dispatch for nothing: **+0.14%/+0.24% instructions**, hot
+  code 3.3→11.7 KB. **Coverage is why arm 1 works and this does not** — arm 1's
+  own histogram over 4.19 M real folds showed **99.99%** hit rate.
+- **24**: `p1` killing `Square::try_offset` **+41.31 i/n — refutes study 19
+  remainder item 4**. `b1` precomputed `by_type` only −2.92 i/n because **LLVM
+  already folds six bitboard unions into one AVX-512 `vorps`** — answers study 19
+  item 6.
+- **25**: sized-array views of the head weight blocks read **−0.5 i/n, a null**.
+  Root cause: **`Aligned<T>` is not a `Box<[T]>` — it is a `Vec` + offset whose
+  `Deref` is a bounds-checked range slice on EVERY access.** Crate-wide finding.
+
+### Two operational hazards found
+
+- **`refs/stash` IS SHARED ACROSS GIT WORKTREES.** Study 24 popped a sibling's
+  stash by accident and pulled their `movepick.rs`/`search/mod.rs` into its tree.
+  It caught it and restored the entry. **With siblings live: never `git stash`;
+  use `git diff > file`.** Warned the others; study 23's work verified intact.
+- `for t in 0..TILES` (compile-time trip count) cost **+9.6 i/n** vs the `while`
+  form — LLVM declines to unroll counted loops here.
+
+### Top remainder
+1. Thin sized head blocks (needs `aligned.rs`) — 25 predicts −35..−60 i/n, **killed if** a raw-pointer probe reads better than −20.
+2. `Aligned::deref`'s bounds check — one `get_unchecked`, affects every weight table.
+3. **47% of the HalfKA fold's vector work is pure parent→child copy** (80 of ~171 ops for 2.27 rows).
+4. `make_move_with` spills the whole 168 B `StateInfo` and reloads across a never-taken realloc — **72% of the symbol's sampled instructions on those two reloads**; mechanism proven, 24's fix failed, next spelling named (preallocated slab + cursor).
