@@ -23,7 +23,10 @@ NET=engines/canonical/net.cenn
 FENS=tools/nnue/calib/wl50.fens
 CPU=${P43_CPU:-2}
 BUDGET=${P43_BUDGET:-100000}
-EV=cycles:u,instructions:u,ex_no_retire.load_not_complete:u
+# Third event is selectable: cycles is the GATE, but a cache-policy arm
+# (study 43 arm NT) acts on miss counts, which are a ~1.6% instrument where
+# cycles is +-0.7% MEDIAN DISPLACEMENT on a byte-identical null.
+EV=cycles:u,instructions:u,${P43_EV3:-ex_no_retire.load_not_complete:u}
 OUT=${P43_PANEL:-docs/research/perf-artifacts-43/panel.txt}
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$(dirname "$OUT")"
@@ -43,7 +46,8 @@ for r in $(seq "$ROUNDS"); do
       >/dev/null 2>"$tmp/bench"
     nodes=$(sed -n 's/^Nodes searched  : //p' "$tmp/bench" | tail -1)
     awk -F, -v l="$spec" -v r="$r" -v n="$nodes" '
-      $3~/^cycles/{c=$1} $3~/^instructions/{i=$1} $3~/^ex_no_retire/{s=$1}
+      $3~/^cycles/{c=$1} $3~/^instructions/{i=$1}
+      $3!~/^cycles/ && $3!~/^instructions/ && $1+0>0 {s=$1}
       END{printf "r%-3d %-14s nodes=%-9d cyc/n=%10.4f i/n=%10.4f stall/n=%10.4f\n",
           r, l, n, c/n, i/n, s/n}
     ' "$tmp/stat" | tee -a "$OUT"

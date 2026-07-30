@@ -284,6 +284,15 @@ impl Default for Entry {
 /// is ~3 KB — 48 cache lines for the entire search stack, versus one line per
 /// ply 5248 bytes apart. A parent/child pair now shares a line instead of
 /// guaranteeing two misses.
+///
+/// The 5248 above is the **pre-split** `Entry` (payload + `dirty` + `computed`,
+/// 5196 rounded up to 64-byte alignment) and is left as written because it is
+/// what the split was measured against. Today's `Entry` is **5184 bytes** —
+/// `acc` 2 × 1280 × 2 B + `psqt` 2 × 8 × 4 B, still an exact 81 cache lines, so
+/// every ply's `acc[p]` stays 64-byte aligned and the fold's 40 `zmm` stores
+/// stay line-aligned. Verified at run time by perf study 43 from the
+/// `foldcount` region dump: `hka_stack` is 1,316,736 B for `STACK_LEN` = 254,
+/// i.e. 5184 each, based at a 64-byte-aligned address.
 #[derive(Clone, Copy)]
 struct Meta {
     dirty: DirtyPiece,

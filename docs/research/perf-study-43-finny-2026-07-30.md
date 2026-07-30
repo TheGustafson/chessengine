@@ -33,9 +33,21 @@ conversion factor got wrong and the one study 42 warned about:
 > imported rate would have given a usable answer.
 
 **Landed:** the instrument kit (`tools/perf43/`), two census counters, an
-instrument DEFECT fix that invalidates part of my own first panel (§6.2), and
-one hardening commit (§7). **Not landed: any speedup.** §8 says so plainly and
-§9 says what I would do next.
+instrument DEFECT fix that invalidates part of my own first panel (§6.2), and a
+documentation correction (§7.2). **Not landed: any speedup.** §8 says so plainly
+and §9 says what I would do next.
+
+**Five arms, five measured negatives, no unanswerable questions.** Two were
+killed by the census before a build (§3.1), two by a 40-round shuffled panel
+(§6.4), and one — non-temporal stores, never tried anywhere in this engine — by
+30 rounds in which it lost **every single round** (§7.3). That last one
+**falsifies a hypothesis I had written down as motivation**, and the
+falsification produced the study's other new number: **at least 25% of Finny
+cache-entry lines survive in L2 between refreshes at the same key.**
+
+**And one retraction of my own** (§7.2): I drafted an `Entry` alignment hazard
+that does not exist — the attribute I claimed was missing is present. It is
+retracted in place rather than deleted.
 
 ---
 
@@ -146,7 +158,7 @@ Per warm refresh, from the disassembly (`REGS = 20`, `LANES = 32`, `TILE = 640`,
 | read weight rows (5.72 × 1280 B, i8) | 7 322 | 114.4 | **18.84** |
 | write `cached.acc` | 2 560 | 40 | 6.59 |
 | write `stack[ply].acc[p]` | 2 560 | 40 | 6.59 |
-| **total** | **14 & 1002 B** | **234.4** | **38.6** |
+| **total** | **15 002 B** | **234.4** | **38.6** |
 
 Measured L1-missing lines: **36.4/node**. Model 38.6. **Agreement to 6%**, and
 the residual has the right sign (some store lines are already resident).
@@ -419,7 +431,7 @@ round — and re-run. **This defect is in `tools/perf34/panel34.sh` and therefor
 in every study that used it.** Whether it changed any of their conclusions I did
 not check; it is flagged here as a live issue.
 
-**40 rounds, shuffled, 4 labels, reference `pf43@0`:** *(see §6.4)*
+**40 rounds, shuffled, 4 labels, reference `pf43@0`:** §6.4.
 
 ### 6.3 The instruction cost is exact, and every probe costs what it should
 
@@ -444,9 +456,31 @@ independent of the hint count. Modes 1 and 3 therefore carry ~12 i/n of
 overhead that a landing implementation would not. Mode 1's honest cost is
 ~+19 i/n, not +31.
 
-### 6.4 The verdict
+### 6.4 The verdict — 40 shuffled rounds
 
-*(filled from the 40-round shuffled panel — see §6.5 table)*
+| label | cyc/n | sign | i/n | stall/n |
+|---|---:|---|---:|---:|
+| `pf43null@0` — **separate file**, byte-identical | **+0.7477%** [−9.09, +16.76] | 13/40 − | +0.0000% | +2.1439% |
+| `pf43@4` — slot T0, **same file** as ref | **−0.0066%** [−8.64, +13.50] | **20/40 −** | +0.1111% | +0.3402% |
+| `pf43@1` — row T0, **same file** as ref | **+0.0671%** [−8.18, +20.11] | **20/40 −** | +0.5262% | −0.3967% |
+
+**Both arms land on a perfect 20/40 coin-flip sign count with medians inside
+±0.07%.** There is no cycles effect to find, in either direction, at 40 paired
+shuffled rounds.
+
+Against that, the instruction cost is exact and non-zero: **+6.59 i/n** (mode 4)
+and **+31.2 i/n** (mode 1), against a 0.0000% null with zero spread.
+
+**A measured cost, and a benefit that 40 rounds cannot distinguish from zero, is
+a kill.** Neither mode lands. That is prefetch kill **#7** on this engine.
+
+**And a second instrument fact, which I did not go looking for:** the *arms*
+behave better than the *null*. `pf43@0`, `pf43@1` and `pf43@4` are the **same
+file** (`bin34/pf43`, three `P43_PF` values); `pf43null@0` is a byte-identical
+**copy at a second path**, and it is the only label that shows a bias
+(+0.7477%, 13/40). A copied file has its own page-cache pages and its own
+mapping, so it is *not* the null a runtime-mode design wants. §6.7 measures the
+fix.
 
 ### 6.5 Why it fails, mechanistically
 
@@ -489,9 +523,26 @@ The distance argument is the one thing that genuinely differs, so this is a
 priced deferral rather than a refutation. If someone builds it, the prediction
 to falsify is: **no resolvable cycles change, at +13 i/n.**
 
----
+### 6.7 The null was the wrong shape, and the fix is measured
 
-## 7. WHAT LANDED
+A third panel (§7.3's) carried **`basesym@0`, a symlink to `base` — the same
+inode, therefore the same page cache and the same mapping** — instead of a copy.
+30 shuffled rounds:
+
+| null shape | cyc/n | sign | L2 misses/n | sign |
+|---|---:|---|---:|---|
+| **copy** at a second path (`pf43null`, 40 rounds) | +0.7477% | 13/40 | — | — |
+| **symlink**, same inode (`basesym`, 30 rounds) | +0.8541% | 11/30 | **+0.0411%** | **15/30** |
+
+So the copy-vs-symlink distinction does **not** explain the cycles bias — both
+nulls sit near +0.8% — and the honest conclusion is stronger and less
+comfortable: **on this box, with four agents live, a null that is byte-identical
+by any definition still displaces the cycles median by ~0.8%.**
+
+What the symlink null *does* establish is that **the L2-miss counter is a far
+better instrument than cycles here**: `+0.0411%` at a 15/30 coin-flip sign,
+against cycles' `+0.85%` at 11/30. Any future arm on this path should be
+adjudicated on misses first and cycles second.
 
 ### 7.1 The instruments (commits `c2583f7a`, `a076a3ae`)
 
@@ -501,31 +552,36 @@ to falsify is: **no resolvable cycles change, at +13 i/n.**
 * `tools/perf43/{build43,panel43,prof43}.sh`, `med43.py`.
 * **`panel43.sh` shuffles instead of rotating** — §6.2, a defect fix.
 
-### 7.2 A latent hazard, checked and hardened
+### 7.2 RETRACTED — an alignment hazard I claimed and that does not exist
 
-`FinnyEntry` carries `#[repr(C, align(64))]`; **`Entry` — the per-ply
-accumulator, 40 zmm stores per fold — carries neither `repr(C)` nor an
-alignment.** Its 40 `vmovdqu64` stores are 64-byte-aligned only if the
-allocation happens to be.
+**I drafted this section as a finding and it was wrong.** The draft said
+`Entry` — the per-ply accumulator, 40 `zmm` stores per fold — "carries neither
+`repr(C)` nor an alignment", making its stores line-aligned only by allocator
+luck, and proposed hardening it.
 
-**Measured, not assumed:** the `foldcount` region dump gives
-`hka_stack lo=0x7fee24101040`, which **is** 64-byte aligned, because glibc
-services a 1,316,736-byte `Vec` with `mmap`. So this is **a null, not a bug** —
-and it is a null that depends on allocator behaviour and on `Entry`'s size
-being 5184 = 81 × 64, neither of which is stated anywhere.
+**`Entry` already carries `#[repr(align(64))]`** (`sota_accumulator.rs`, above
+`struct Entry`). I had read the struct body without its attributes and asserted
+a negative from memory of that read — the exact failure mode the project's
+standing "verify before asserting" rule names, and negative existence claims are
+the worst kind. There is no hazard and there was nothing to harden.
 
-Two corrections land with it:
+What survives, verified two independent ways, is a **documentation** fix:
 
-* `Entry`'s doc comment claims **5248 bytes**; it is **5184** (`acc`
-  2 × 1280 × 2 B + `psqt` 2 × 8 × 4 B). The census region size, 1,316,736 =
-  254 × 5184, is the receipt.
-* `#[repr(C, align(64))]` on `Entry` makes the invariant structural instead of
-  accidental. Size is unchanged (5184 is already a multiple of 64), so the
-  change is bit-identical.
+* `Entry` is **5184 bytes** = `acc` 2 × 1280 × 2 B + `psqt` 2 × 8 × 4 B, an
+  exact **81 cache lines**. Receipt: the `foldcount` region dump reports
+  `hka_stack` = 1,316,736 B for `STACK_LEN` = 254, i.e. 5184 each, based at
+  `0x7fee24101040` — 64-byte aligned.
+* `Meta`'s doc comment compares it to "`Entry`'s 5248". That figure is the
+  **pre-split** `Entry` (5196 rounded up to alignment) and is correct as the
+  thing the split was measured against, but it reads as current. A note now
+  says which is which, and records that 5184 is 81 whole lines so every ply's
+  `acc[p]` is line-aligned.
 
-### 7.3 The arm that is still open: non-temporal stores
+That is the entirety of what §7.2 lands: a comment.
 
-**Built, not yet adjudicated** (`--features nt43`). The dual fold writes the
+### 7.3 Non-temporal stores — BUILT, MEASURED, AND A DECISIVE LOSS
+
+`--features nt43`, node-identical and eval-hash-identical to `base`. The dual fold writes the
 same 2560 bytes to two destinations with opposite reuse distances:
 
 * `out` = `stack[ply].acc[p]`, read by the head **within the same node** —
@@ -543,8 +599,44 @@ at the wrapper. Same store count, different opcode ⇒ **zero instruction-count
 change**, so it is a pure cache-policy arm and `instructions:u` is its identity
 check rather than its measurement.
 
-**Nobody has tried non-temporal stores anywhere in this engine** (`grep` for
-`stream_si512` over `src/` returns nothing).
+**Nobody had tried non-temporal stores anywhere in this engine** (`grep` for
+`stream_si512` over `src/` returned nothing). Now someone has, and the answer is
+no. 30 shuffled rounds, reference `base@0`, third counter = L2 misses:
+
+| label | cyc/n | sign | i/n | L2 misses/n |
+|---|---:|---|---:|---:|
+| `basesym@0` — same-inode null | +0.8541% | 11/30 | +0.0000% | **+0.0411%** (15/30) |
+| **`nt43@0`** | **+5.8208%** [+1.59, +16.98] | **0/30 −** | +0.1190% (+7.06) | **+3.5560%** (6/30) |
+
+**Worse in every one of 30 rounds.** This is by a wide margin the largest and
+cleanest signal in the study, and it is negative.
+
+**My stated hypothesis is falsified, and it is worth being precise about which
+half.** I argued the cache line "cannot survive" ~350 nodes of 3 MB weight
+streaming through a 1 MB L2. The miss counter says otherwise:
+
+> nt43 adds **+1.67 L2 misses/node** (58.05 → 59.72) against a cache-entry write
+> stream of **6.59 lines/node**. Bypassing the cache therefore converted **~25%
+> of subsequent cache-entry reads from L2 hits into L2 misses** — so **at least
+> a quarter of Finny cache-entry lines DO survive in L2 between refreshes at the
+> same key.** That is a new measurement, extracted from a failed arm, and it
+> directly contradicts the reasoning that motivated the arm.
+
+**But the misses are not where the cost is.** +1.67 L2 misses/node at §2.3's
+5.6–20.6 stall cycles/line is 9–34 cycles/node; the arm costs **~250
+cycles/node**. The remaining ~90% is the NT store *mechanism*, and it
+corroborates study 39 §7.3 from the opposite direction:
+
+> Study 39 found that accumulator **stores are the cheap half** — the store
+> buffer absorbs them, so they barely register on the retirement-stall counter
+> (0.385 cycles/line for writes against 1.458 for reads). **A non-temporal store
+> throws exactly that away**, turning a buffer-absorbed write into a
+> write-combining-buffer transaction that must drain to memory. The stall
+> counter moving only +3.56% while cycles move +5.82% is the signature of a cost
+> that is *not* a load stall.
+
+**Do not re-open this without a different access pattern.** The feature stays in
+the tree, off, with this result in its Cargo.toml comment.
 
 ---
 
@@ -553,9 +645,11 @@ check rather than its measurement.
 In order of how much it bothers me.
 
 1. **Any speedup.** The deliverable is landed, verified work and I did not land
-   one. Four prefetch placements measured and killed, two census-killed arms,
-   one arm (§7.3) built but not adjudicated. That is a real outcome and it is
-   not the outcome that was wanted.
+   one. Five arms, five measured negatives: two census-killed before a build
+   (§3.1), two prefetch placements killed on 40 shuffled rounds (§6.4), and
+   non-temporal stores killed decisively on 30 (§7.3). Each is a well-posed arm
+   with a number attached rather than an unanswerability claim — but a clean
+   null is still not a speedup, and that is the outcome that was wanted.
 2. **That the cycles instrument could have resolved a win if there had been
    one.** The byte-identical null moves ±0.6–0.7% on this box with four agents
    live. The largest plausible Finny-specific arm is ~2.5% of engine cycles at
@@ -610,11 +704,26 @@ In order of how much it bothers me.
 | `cargo check --features sota,arch-d48x,pf43` | clean |
 | `cargo check --features foldcount,arch-d48x` | clean |
 | `cargo check --features sota,arch-d48x,nt43` | clean |
-| `CHECK_NNUE_GATE=1 bash tools/check.sh` | *§10.1* |
+| `CHECK_NNUE_GATE=1 bash tools/check.sh` | **exit 0, "All checks passed"** |
 
 ### 10.1 Merge gate
 
-*(filled below)*
+`CHECK_NNUE_GATE=1 bash tools/check.sh` — **exit 0, "All checks passed"**, run
+under `flock` on the study branch with every arm present in the tree. Every
+source change in this
+study is behind a `cfg(feature = ...)` that no default or shipped build enables
+(`foldcount`, `pf43`, `nt43`), plus one `debug_assert!` (compiled out in
+release) and one doc comment, so the shipped path is untouched by construction
+and the pins must reproduce unchanged:
+
+| pin | expected | measured |
+|---|---|---|
+| `Bench:` depth-6 fingerprint | 587683 | **587683** ✓ |
+| wl50 eval hash | `2e1ede95…79c4` | **`2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4`** ✓ |
+| d13 node total | 1739588 | **1739588** ✓ |
+
+All three unchanged, as they must be: no pin moves in this study because no
+shipped behaviour changed.
 
 ---
 
