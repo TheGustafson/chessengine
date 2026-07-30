@@ -5136,3 +5136,93 @@ is one-way, so:
 - **no new screen started** — one big screen is already saturating the box.
 
 Watching for the screen to finish, which frees ~2.5 GB and ten cores at once.
+
+## Perf study 36 COMPLETE and MERGED (`5e42622`) — and it RETRACTED study 34
+
+4 commits, fast-forward, `src/` +140/−21. `gate36` running (full gate + D24
+perft, since it touched movegen).
+
+### Landed: −0.499% engine instructions, −0.236% branches
+
+Three arms, **all node-identical (5,001,624) and eval-hash-identical**, each on a
+paired within-round panel whose **byte-identical null moved +0.000% with zero
+spread**:
+
+| arm | what | instr/node | branches |
+|---|---|---:|---:|
+| 1 | in-check `pseudo_legal` answered from **check geometry**, not a full evasion generation + list scan | −0.120% | −0.258% |
+| 2 | one flat `[piece x to]` index shared across the six history planes | **−0.329%** | +0.022% |
+| 3 | same idiom at `update_continuation_histories`, `correction_value`, `stat_score` | −0.051% | −0.000% |
+| **end-to-end** | 12 rounds vs pure main | **−0.499%** | **−0.236%** |
+
+### ARM 2 IS A RETRACTION OF STUDY 34 — and the pattern is now twice-repeated
+
+Study 34 §4.2 found the same ~11 stack reloads and priced them **structural
+without building an arm**: *"not removable… x86-64 has 15 usable GPRs… the same
+number of loads."* **The diagnosis was wrong.** The cause is not register
+pressure: `base + pci*128 + to*2` is **three variable terms and an x86
+addressing mode holds two**, so every plane materialised its own sum. Making the
+shared term the whole offset (`p.as_flattened()[pci*64+to]` — no mask, no
+`unsafe`, LLVM proves `q < 768`) removes exactly one `lea` per continuation
+plane: 19.497 i/n ÷ 3.927 quiets = **4.97 instructions per quiet across five
+planes.**
+
+**That is the second impossibility-argument-without-an-arm overturned in two
+days** (the first: a "325-740 unit" gap that measured 197.7). The lesson is now
+empirical, not stylistic: *an impossibility claim that was never built is not
+evidence.*
+
+### The fresh profile — VERIFIED BY ME on one point
+
+- `i16_deltas_into` **is gone**, split into the shape-specialised HalfKA fold
+  (**13.77%** cycles) and **`i8_deltas_into_generic` (12.38%, the entire threat
+  channel)**.
+- `search::<NonPv>` is now **third (9.80%)** — still #1 on instructions and
+  mispredicts.
+- **Top three cycle symbols = 34.9% of engine cycles, ALL weight-row
+  streaming**, cycles/instr **1.77 / 1.74 / 2.70** vs **1.0 engine-wide** ⇒
+  memory-bound.
+
+**A FUNCTION CARRYING 12.38% OF ENGINE CYCLES IS MARKED `#[cold]`.** I checked
+it myself rather than relaying: `src/eval/nnue/sota_simd.rs:1571-1573` reads
+`#[inline(never)] #[cold] unsafe fn i8_deltas_into_generic(`. `#[cold]` tells
+LLVM to bank the code away from hot text and spend less optimising it. On an
+eighth of the engine that hint is actively wrong.
+
+### Three method findings to carry forward
+
+1. **`instructions:u` per-INSTRUCTION attribution is not a census on this box** —
+   a **20x skew among instructions retiring equally often.** Per-SYMBOL shares
+   survive. This nearly produced a false finding.
+2. **~5.2% of the bench frame's instructions are one-time startup** (mostly
+   `quantise_halfka`, study 32's addition — also 9.68% of frame branch
+   mispredicts). Deltas cancel it, **denominators do not**, so all frame
+   percentages are ~5% conservative.
+3. Two more cycles nulls (**+1.196%, +1.394%**) — the **third and fourth**
+   confirmations that cycles cannot adjudicate sub-1% arms here.
+
+### Not done, honestly
+
+**`insertwin34` stays OFF.** Its effect is ~0.17% cycles; this box's cycles null
+spread is 9.8-14.2 points — **30-250x too coarse** — and games cannot arbitrate
+a node-identical arm. It also records a **failed prediction**: it expected arm
+2's vanished stack reloads to appear as ~−0.4% L1d loads; they did not
+(−0.020% vs a −0.017% null). **The win is address generation, not loads.**
+
+It also diagnosed a `check.sh` flake rather than filing a regression:
+`go_infinite_bestmove_comes_only_after_stop_and_promptly` is a 2 s wall-clock
+assertion that read **2.17 s at load 24 and 0.77 s on re-run.**
+
+## Study 37 commissioned — the threat stream and the `#[cold]` bug
+
+Pointed at the top-3 weight-row streaming symbols (**34.9% of cycles**) with the
+`#[cold]`/`#[inline(never)]` pair as its cheap first arm, **measured separately
+because they are different hints**, and told to find out *why* they are there
+(`git log -S`) rather than assume a mistake. Given the threat table is the
+LARGER one (60,720 inputs vs HalfKA's 22,528), it must establish what study 32's
+i8 equivalent is for threats. Carries all four cycles-null confirmations, study
+36's three method traps, and study 36's retraction of study 34 as the worked
+example of why an unbuilt impossibility argument is not evidence.
+
+**`confirm600` at 3998/5880: +16.70 +/- 6.69.** Still no promotion until 5880.
+**D49 sb~232/400.**
