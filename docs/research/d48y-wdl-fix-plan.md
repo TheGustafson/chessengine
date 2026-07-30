@@ -4397,3 +4397,50 @@ merged at the end, as studies 29/30/31/32/33 were.
 **Studies:** 34 ahead=1 dirty=12 behind=29; 35 ahead=1 dirty=5 behind=20. Both
 committing now — the commit-as-you-go instruction is holding across all
 studies tonight.
+
+## gate32 GREEN (verified by me) + ledger caught up
+
+**`CHECK_NNUE_GATE=1 bash tools/check.sh` on main (`fbabe54`), my own run:**
+`Bench: 587683`, **All checks passed**, `GATE_EXIT=0`, and all four probe
+features compile (`foldcount`/`probe-accpin`/`probe-wpin`/`probe-dstpin` -> 0).
+**Main is sound after the i8 merge.**
+
+### I verified study 32's screen numbers against its raw logs
+
+Not taken on report — read out of `docs/research/perf-artifacts-32/`:
+
+| arm | games | W/D/L | Elo |
+|---|---:|---|---:|
+| net-vs-net (isolates the scheme) | 1466 | 453/600/413 | **+9.48 +/- 11.08** |
+| bin-vs-bin (isolates the kernel) | 1466 | 438/582/446 | **−1.90 +/- 10.72** |
+
+Both match the study's report exactly. Pooled by hand: 891/1182/859 = 1482/2932
+points = 50.55% = **+3.8 Elo**, consistent with its stated +3.6 +/- 7.7. **The
+i8 result is a strength NULL with a real speed win, and that is how it is
+recorded.**
+
+### Ledger was 3 days stale — now caught up on the load-bearing rows
+
+`ledger/experiments.jsonl` ended at **exp-0164 (2026-07-27)**, so none of
+tonight's evidence was recorded — including the 2932 games that are *the entire
+basis for shipping i8*. Added **exp-0165** (net-vs-net) and **exp-0166**
+(bin-vs-bin) with real W/D/L, the harness invocation, the contended-hardware
+note, and the caveat that the two arms disagree by 1.45 sigma so a −4 Elo
+fidelity cost would still be invisible at this power.
+
+*`ledger.py verify` TIMED OUT at 2 minutes* — it re-hashes 58 nets at ~138 MB
+each. Not a job for a loaded box; run it when the studies are done.
+
+### No third study commissioned this tick, deliberately
+
+Studies 34 and 35 are both measuring. Study 33 already reported its absolute
+numbers were **inflated ~1.9x** by contention (trainer at 143% + study 32
+recording), and contention-driven retraction is this project's documented
+failure mode. Adding a third measurement-heavy study would degrade all three.
+
+**The queued next move remains a fresh post-i8 profile with inline-frame
+decomposition** (`tools/perf33/inline33.py`, `pernode33.py`), commissioned when
+34 or 35 frees the box — *not* another study ranked off the now-stale numbers.
+Noting the standing hazard for that one: a pure ranking study risks landing
+nothing, which is exactly what study 31 nearly did, so it must be briefed to
+land a target, not to produce a list.
