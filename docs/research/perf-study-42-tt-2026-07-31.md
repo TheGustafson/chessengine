@@ -310,7 +310,42 @@ and the table is not cleared between positions (only `new_search` bumps the
 5-bit generation). The measured hit rate of **54.5%** is therefore a saturated
 table's hit rate, not a warm-up artifact.
 
-*(sweep + the Hash-256 arm below)*
+### 6.1 ★ But 16 MB is the CHEAPEST point on the curve, and the curve is steep
+
+Fixed node budget, one core (4), four sizes back to back, `bin42/base`:
+
+| `Hash` | instr/node | cycles/node | load-stall/node | DRAM fills/node | L3 fills/node | page walks/node |
+|---:|---:|---:|---:|---:|---:|---:|
+| **16 MB** | 5929.09 | **4342.2** | **2200.5** | 9.386 | 52.03 | 1.889 |
+| 64 MB | 5918.40 | 4601.6 | 2390.1 | 9.958 | 52.08 | 2.255 |
+| 256 MB | 5920.69 | 4666.6 | 2486.5 | 9.697 | 52.48 | 2.160 |
+| **1024 MB** | 5910.30 | **4719.9** | **2598.2** | 10.325 | 52.47 | 2.723 |
+| | **−0.3%** | **+8.7%** | **+18.1%** | **+10.0%** | +0.8% | +44% |
+
+**Instructions are flat to −0.3% across a 64x change in table size** — the
+trees differ, the work per node does not, which is what makes the four columns
+comparable at all. Everything else is **monotone in `Hash`** across all four
+points: cycles, load-stall, DRAM fills and page walks.
+
+The arithmetic that makes this concrete: 16 MB → 1 GB adds **+397.7 stall
+cycles/node** and **+0.94 DRAM fills/node**. That is ~423 stall cycles per
+added DRAM fill — a full memory latency — and ~0.94 fills is, to within the
+measurement, **the TT's entire line population** (1.067 lines/node, §1).
+
+**Interpretation, one inference deep and flagged as such:** at 16 MB the table
+mostly lives in the 32 MB L3 and a probe is an L3 hit; at 1 GB every probe is a
+DRAM miss, and the hook-A prefetch's lead time — the remainder of `make_move` —
+is not long enough to hide a full DRAM latency. A confound I cannot separate
+with this instrument: a bigger TT also evicts the NNUE weight tables from L3,
+so some of the +0.94 fills are the net's, not the table's.
+
+**What this means for the frame.** Our perf frame and our strength frame agree
+(both 16 MB), so nothing measured here is wrong *for the engine we test*. But
+16 MB is the cheapest point on a steep curve, and a tournament configuration at
+256 MB–1 GB pays 7.5–8.7% more cycles per node. **Any TT-related lever
+evaluated at `Hash=16` is being evaluated where the TT costs least** — which
+means the value of the prefetch measured in §1 is a *floor*, and so is the
+value of anything else that hides or removes a TT miss.
 
 ---
 
