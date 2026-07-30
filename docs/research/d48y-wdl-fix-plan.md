@@ -3160,3 +3160,52 @@ Heldout EMA R²: 0.8269 (sb10) → 0.8662 (40) → 0.8723 (70) → **0.8735 (sb8
 against D48X's fully-annealed **0.8815**, at **20% of budget**.
 Studies 26 (1 commit) and 27 (30 min, none yet) and 28 (just started) running;
 8.4 GB free, pressure 0.56.
+
+## ★★★ D49'S EVAL FRAME IS 0.35x SF — STRUCTURAL, AND A GAME TEST NOW WOULD MEASURE THE FRAME, NOT THE NET
+
+Packed `d49-1280-sb80-ema.cenn` and scale-checked:
+
+```
+vs D48X:  median(cand/ref) = 0.589   IQR (0.49,0.73)  sign-agree 99.2%  -> FAIL (band 0.85-1.18)
+vs SF:    median(ours/sf)  = 0.350                                      -> ABSOLUTE FAIL (band 0.80-1.25)
+```
+
+**It is NOT converging** — checked three checkpoints:
+
+| checkpoint | median(ours/sf) |
+|---|---|
+| sb40 | 0.343 |
+| sb60 | 0.350 |
+| sb80 | 0.350 |
+
+Flat. **Structural property of D49's training, not an early-run transient.**
+
+**This is the OPPOSITE direction from D48Y2** (1.026x, absolute PASS) and it is
+the EXPENSIVE direction: our pruning margins are fixed cp subtractions, so a
+too-small eval OVER-PRUNES, and the measured asymmetry finding prices that at
+**−80 Elo** (D48Y2 calibrated down went −111 → −191).
+
+**LIKELY MECHANISM — `qp_asymmetry = 0.2287`.** It penalises overestimation ~23%
+harder than underestimation (`err *= (sig > target) * qp_asymmetry + 1`), so the
+network is trained to systematically UNDER-predict; in expected-score space that
+pulls output toward 0.5, which in cp space is a smaller magnitude. SF ships this
+constant, but with their own co-tuned output scale. **We adopted the constant
+without re-deriving the scale that goes with it.** Hypothesis, not yet isolated —
+`net_offset`/`net_scale` and `pow_exp 2.5` are also in the same run.
+
+**CONSEQUENCES:**
+
+1. **NO GAME TEST OF D49 UNTIL THE SCALE IS CALIBRATED.** A screen right now
+   would measure an −80-Elo-class frame error and read as "D49 is terrible".
+   That is exactly the trap that made D48Y2's numbers unreadable for hours.
+2. **`calibrate_network_scale.sh` is MANDATORY for D49** — runbook step 3, which
+   I deliberately SKIPPED for D48Y2 because its frame was already right at 1.026x.
+   For D49 it is not optional. Scale check reports an EVAL_SCALE parity point of
+   **3158** against the current export scale of 400.
+3. **The heldout R² is unaffected** — it is computed in the training frame, on
+   the raw net, and does not care about the export scale. R² 0.8735 at sb80
+   stands.
+
+**Deferred the sb80 screen deliberately.** Packing and scale-checking cost
+minutes; a 1500-game screen would have cost 15 and produced a number about the
+wrong thing.
