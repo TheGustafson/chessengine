@@ -325,6 +325,28 @@ SMT-corrected** — 12.05 cycles/node, which is 16.01 instructions at a marginal
 tree it retires **5907.956 i/n and 619.310 br/n — identical to `oc40` to six
 digits** over 6 paired rounds, node- and eval-hash-identical.
 
+### 2.6 `#[inline(never)]` is not a lever — study 26 tried it and LOST
+
+Perf study 26 §6.1 outlined the AVX-512 `l2_tail` kernel for a similar reason
+(the codegen it forced was demonstrably better — 17 clean `vbroadcastss` in
+place of a 36-instruction shuffle chain) and it **lost 4.26 i/n**, "because the
+caller then spills its live state around the call". Reverted.
+
+Same tool, opposite sign, and the difference is not luck — it is the **call
+rate**:
+
+| | `l2_tail` (study 26) | this copy |
+|---|---:|---:|
+| calls per node | ~0.43 (every evaluation) | **0.022** |
+| caller pays spills around the call | **every eval** | 1 node in 45 |
+| measured | **+4.26 i/n** | **−16.01 i/n** |
+
+Outlining moves work from the caller's straight-line body into a callee, and
+charges a spill/reload at every call. It wins where the block is **large and
+the call rate is low** — which is exactly this site after study 38's alias
+elided 93.5% of the copies, and exactly not `l2_tail`. **The two results
+together are the rule**, and either alone would be a bad generalisation.
+
 ---
 
 ## 3. ARM A — `insertwin34`, priced at last
@@ -334,6 +356,16 @@ digits** over 6 paired rounds, node- and eval-hash-identical.
 `cycles:u` cannot see this arm. 60 paired rounds put it at 29/60 on the wrong
 side of zero against a byte-identical null's 26/60 — a coin flip either way, and
 that is the same wall studies 34 and 38 hit.
+
+**Perf study 36 §6.1 was right about that and right to refuse.** It was
+commissioned to adjudicate this arm, declined, and said why: "the trade is
+0.17%, this box's cycles floor is 9.8 to 14.2 points of spread around a median
+that itself moved +0.216% to +1.269%. That is 30–250× the effect… The
+instrument does not exist tonight." Every word of that is confirmed here. Its
+conclusion — "it needs a genuinely idle box and ~40 paired rounds" — is the one
+thing that turned out wrong, and not in the direction of more rounds: **159
+rounds of `cycles:u` still only reach 1.4 se on this arm.** What was needed was
+not a quieter box, it was a different counter.
 
 But the arm's benefit is not diffuse. It is **branch mispredicts**, and a
 mispredict spends its cost in one measurable place: cycles in which nothing

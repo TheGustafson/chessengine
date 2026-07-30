@@ -1033,6 +1033,16 @@ impl AliasTable {
 /// `--features callcopy40` replaces it with the libc call, which measures the
 /// same −15.92; it exists only as the instrument that separated this effect
 /// from the copy's own cost.
+///
+/// **Do NOT generalise this into "outline the big kernels".** Perf study 26
+/// §6.1 outlined the AVX-512 `l2_tail` for a similarly good codegen reason and
+/// **lost 4.26 i/n**, because its caller then spilled its live state around the
+/// call — on *every* evaluation. The difference is the CALL RATE: outlining
+/// charges a spill/reload per call and pays for it once in the body, so it wins
+/// where the block is large and the rate is low. `l2_tail` runs ~0.43 times per
+/// node; this copy runs 0.022, and only because study 38's parent alias made it
+/// rare. The two results together are the rule; either alone is a bad
+/// generalisation.
 #[cfg(not(feature = "callcopy40"))]
 #[inline(never)]
 fn copy_acc_outlined(dst: &mut [i16; ACC], src: &[i16; ACC]) {
