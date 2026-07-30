@@ -7489,3 +7489,34 @@ slope degrades again we will see it rather than assume it.
 
 **D48X remains canonical. All 40 checkpoints retained.** Nothing needs undoing.
 `d49x` is queued and will take the GPU once `kmeans8k` finishes.
+
+## Study 41 commissioned — attribute the front-end starvation
+
+The verdict freed the CPU, so the perf loop resumes.
+
+**Target: `ex_no_retire.empty` = 192.91 cycles/node = 4.7% of the engine** —
+the back end idle with nothing to execute. Study 40 measured it and validated
+the counter at **21x better signal-to-background than `cycles:u`**, at n=159
+against a byte-identical null.
+
+**Mispredicts cannot explain most of it.** At study 40's measured **9.13 cycles
+per mispredict** (not the assumed ~18), `init_quiets`' *entire* share is
+**30.2 cycles/node**. So the majority of that 4.7% is **unattributed**, and
+**nobody has profiled the front end at all** — icache, iTLB, decode bandwidth,
+code layout.
+
+That is the combination the directive asks for: **pure ARCHON, throughput-aimed,
+sized (4.7%), with an instrument validated rather than assumed.**
+
+**The brief carries forward every hard-won rule**, plus one trap worth naming
+again: **study 40's replay amplifier faithfully amplified instructions and
+branches but mispredicts only 1.6x — the branch predictor LEARNS the replay.**
+Any replay harness, including an out-of-engine microbenchmark, has that defect.
+
+It is also told that md5-ing the landing tree against the measured binary is
+**central here, not hygiene**: for a code-layout study **the layout IS the arm**,
+and study 35 showed that adding doc comments alone changes a binary's sha256.
+
+**Box at commissioning:** 10 GB available, 967 MB free swap, load 5.9, no `perf`
+or `fastchess`. `d49x` will take the GPU when `kmeans8k` finishes and run ~13 h
+at ~3 GB + one core — the normal background all session.
