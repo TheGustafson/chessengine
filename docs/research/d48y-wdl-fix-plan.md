@@ -7837,3 +7837,43 @@ sb700 and is judged at the end, on games, like every other net.**
 Per-sample heldout commentary stops. Tick reporting on the extension drops to
 one line unless the abort fires. **Attention returns to the perf studies**, which
 is what the standing directive emphasises.
+
+## Study 42 commissioned — the transposition table, unprofiled after 31 studies
+
+**Seven studies mention the TT; none has measured it.** It is the engine's other
+big random-access structure, and the Recode POC named it explicitly: after the
+threat table went 77.7 MB → 10.5 MB, **LLC misses fell only ~1.75%**, leaving a
+**residual population of HalfKA (28.8 MB) + TT + PSQ1**. The TT's share of that
+is unquantified.
+
+Known shape (`src/tt.rs`): `CLUSTER_SIZE = 3`, `TtEntry` **10 bytes**, `Cluster`
+**32 bytes** — deliberately half a cache line. Bench and screens run **Hash =
+16 MB**. Study 33's inline census puts TT `probe` at **3.17%** of
+`search::<NonPv>`, but that is the probe alone and says nothing about the misses
+it causes.
+
+**Four questions, none currently answerable:**
+
+1. **TT misses/node and their share of load-stall cycles** (convertible via
+   study 39's 1.119 stall / 1.213 cycles per 64-byte line).
+2. **Does the 32-byte cluster actually get its half-line locality**, or do
+   clusters straddle 64-byte boundaries and cost two lines? If alignment is not
+   enforced that is a concrete bug with a concrete fix.
+3. **Prefetch** — prior is strongly negative (**killed six times**, most recently
+   by study 29's ceiling argument), but the TT is a genuinely different case:
+   one dependent load with the address known early. It must beat the prior with
+   a measurement, not a story.
+4. **Does Hash size change the answer?** Everything we measure runs at 16 MB
+   while real games use far more. **If TT cost scales badly with size, that is a
+   finding about our measurement FRAME, not just about the TT.**
+
+**Two instrument points made central rather than incidental:** `L1-dcache-loads`
+counts **stores** on Zen 4, and **a store miss does not block retirement**
+(writes were 52% of misses but only **22% of cycles**) — the TT is write-heavy,
+so that distinction decides its accounting. And the **replay-amplifier trap**,
+since a TT harness is exactly the sort of thing one would build and study 40
+showed the branch predictor **learns** a replay.
+
+**Three perf/research lines now running** (41 front-end, richer-representation,
+42 TT), with **D49's extension left alone** per user instruction — abort only on
+NaN or a pathological loss.
