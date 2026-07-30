@@ -445,6 +445,11 @@ impl SotaContext {
     /// i16 lanes per moved piece), and it keeps the big net's own stacks valid so
     /// any later undecided node evaluates the big net exactly as before.
     pub fn push(&mut self, dirty: DirtyPiece, ply: usize, post_move_board: &Board) {
+        // Learned-representation study Tier-0: unconditional make-time HalfKA
+        // delta census (every made move, before any deferral). Counter-only,
+        // feature-gated, off in every default and release build.
+        #[cfg(feature = "foldcount")]
+        super::foldcount::note_make(dirty.adds().len(), dirty.subs().len());
         self.halfka.push(ply, dirty);
         self.threats.apply_at(ply, &dirty, post_move_board);
         // ONE test for all three optional tier stacks (perf study 16 §6). They
@@ -533,6 +538,21 @@ impl SotaContext {
             }
         }
 
+        // Learned-representation study Tier-0: the ACTIVE-rows census over
+        // full evaluations — piece count (= active HalfKA rows/perspective)
+        // and the enumerated active threat rows for both perspectives.
+        // Enumeration-only (`for_each_threat` reads the board, touches no
+        // accumulator state); instrument builds are not timing references.
+        #[cfg(feature = "foldcount")]
+        {
+            let mut thr_active = [0usize; 2];
+            for color in [Color::White, Color::Black] {
+                let mut n = 0usize;
+                super::sota_features::for_each_threat(board, color, |_| n += 1);
+                thr_active[color as usize] = n;
+            }
+            super::foldcount::note_active(board.all_occupancy().count(), thr_active);
+        }
         let (pst, halfka_psqt) = self.halfka.current_full(board, ply);
         let (threat, threat_psqt) = self.threats.at_full(ply);
         // T6c: total per-perspective PSQT bucket sums (HalfKA + threat rows).

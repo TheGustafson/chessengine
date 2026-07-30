@@ -148,6 +148,80 @@ pub fn note_king_move(c: usize, from: u8, to: u8) {
     }
 }
 
+/// Learned-representation concept study, Tier-0: the MAKE-time locality
+/// census. Every counter above tallies at FOLD or EVAL time — i.e. after the
+/// deferral machinery has already discarded the plies that never needed an
+/// accumulator — so none of them can answer "what does one made move change?"
+/// unconditionally. These can:
+///
+/// * [`MAKE`] — one hit per made move recorded into the SOTA stacks
+///   (`SotaContext::push`; null moves and the TT-verification probe bypass it,
+///   matching `Worker::nodes`). `rows` accumulates the HalfKA delta size
+///   (adds + subs, ≤ 4).
+/// * [`THR_MAKE`] — same denominator; `rows` accumulates the RAW threat event
+///   count from an instrument-only eager [`build_deltas`] replay into the
+///   context's scratch buffer at `apply_at` time. The production path stays
+///   fully lazy; `compute` clears the buffer before its own use, so the replay
+///   leaves no state behind. Comparing `THR_MAKE.rows/calls` against
+///   `thr_into.rows/thr_into.calls` measures exactly what deferral saves.
+pub static MAKE: Site = Site::new();
+pub static THR_MAKE: Site = Site::new();
+/// Make-time HalfKA delta shape, `adds * 4 + subs` (same layout as
+/// [`HKA_SHAPE`], different conditioning: made moves, not surviving folds).
+pub static HKA_MAKE_SHAPE: [AtomicU64; 16] = [const { AtomicU64::new(0) }; 16];
+/// Make-time threat event count histogram, capped at 95 (observer max ≤ 80).
+pub static THR_MAKE_SHAPE: [AtomicU64; 96] = [const { AtomicU64::new(0) }; 96];
+
+#[inline]
+pub fn note_make(adds: usize, subs: usize) {
+    MAKE.hit(adds + subs);
+    HKA_MAKE_SHAPE[(adds.min(3) * 4 + subs.min(3)).min(15)].fetch_add(1, Relaxed);
+}
+
+#[inline]
+pub fn note_thr_make(events: usize) {
+    THR_MAKE.hit(events);
+    THR_MAKE_SHAPE[events.min(95)].fetch_add(1, Relaxed);
+}
+
+/// Active-rows census over full evaluations (the positions the engine actually
+/// prices): [`ACTIVE_HKA`] histograms the piece count (= active HalfKA rows
+/// per perspective) per full eval; [`ACTIVE_THR`] hits once per (eval,
+/// perspective) with the enumerated active threat row count, histogrammed in
+/// [`ACTIVE_THR_SHAPE`] (cap 127; observed per-perspective max ≤ 128).
+pub static ACTIVE_HKA: [AtomicU64; 33] = [const { AtomicU64::new(0) }; 33];
+pub static ACTIVE_THR: Site = Site::new();
+pub static ACTIVE_THR_SHAPE: [AtomicU64; 128] = [const { AtomicU64::new(0) }; 128];
+
+#[inline]
+pub fn note_active(pieces: u32, thr: [usize; 2]) {
+    ACTIVE_HKA[(pieces as usize).min(32)].fetch_add(1, Relaxed);
+    for n in thr {
+        ACTIVE_THR.hit(n);
+        ACTIVE_THR_SHAPE[n.min(127)].fetch_add(1, Relaxed);
+    }
+}
+
+/// The in-tree king-square TRANSITION MATRIX, color-relative (black squares
+/// rank-mirrored via `sq ^ 56`, matching the per-perspective own-frame the
+/// region tools use), both colors summed. `KTRANS[from][to]` counts made moves
+/// that relocated a king `from → to`.
+///
+/// This is the asset that prices ANY candidate king-context partition without
+/// another engine run: for a partition `g`, its in-tree flip rate is
+/// `Σ_{g(from) ≠ g(to)} KTRANS[from][to] / nodes` — the quantity the
+/// richer-representation study could only measure for six hand-picked bits
+/// (`KMOVE`), now available for every partition at once, including learned
+/// ones and the soft assignments a training-time locality penalty needs.
+pub static KTRANS: [[AtomicU64; 64]; 64] = [const { [const { AtomicU64::new(0) }; 64] }; 64];
+
+/// Hook: color `c`'s king moved `from` → `to` (absolute squares, 0..64).
+#[inline]
+pub fn note_king_trans(c: usize, from: u8, to: u8) {
+    let m = (c as u8) * 56;
+    KTRANS[(from ^ m) as usize][(to ^ m) as usize].fetch_add(1, Relaxed);
+}
+
 /// Named address regions, so an IBS data-address sample can be attributed to
 /// the accumulator stack or to a weight table. Sixteen slots is plenty; the
 /// registry is write-once at construction and read once at dump.
@@ -200,6 +274,9 @@ pub fn dump(nodes: u64) {
         ("thr_refresh", &THR_REFRESH),
         ("activate", &ACTIVATE),
         ("eval", &EVAL),
+        ("make", &MAKE),
+        ("thr_make", &THR_MAKE),
+        ("active_thr", &ACTIVE_THR),
     ] {
         let (calls, rows) = site.read();
         emit!("FOLDCOUNT {name}.calls={calls} {name}.rows={rows}");
@@ -228,6 +305,40 @@ pub fn dump(nodes: u64) {
                 (i >> 2) & 1,
                 (i >> 3) & 1
             );
+        }
+    }
+    for a in 0..4 {
+        for s in 0..4 {
+            let n = HKA_MAKE_SHAPE[a * 4 + s].load(Relaxed);
+            if n != 0 {
+                emit!("FOLDCOUNT hka_make_shape.{a}a{s}s={n}");
+            }
+        }
+    }
+    for (r, cell) in THR_MAKE_SHAPE.iter().enumerate() {
+        let n = cell.load(Relaxed);
+        if n != 0 {
+            emit!("FOLDCOUNT thr_make_shape.{r}={n}");
+        }
+    }
+    for (p, cell) in ACTIVE_HKA.iter().enumerate() {
+        let n = cell.load(Relaxed);
+        if n != 0 {
+            emit!("FOLDCOUNT active_hka.{p}={n}");
+        }
+    }
+    for (r, cell) in ACTIVE_THR_SHAPE.iter().enumerate() {
+        let n = cell.load(Relaxed);
+        if n != 0 {
+            emit!("FOLDCOUNT active_thr_shape.{r}={n}");
+        }
+    }
+    for (f, row) in KTRANS.iter().enumerate() {
+        for (t, cell) in row.iter().enumerate() {
+            let n = cell.load(Relaxed);
+            if n != 0 {
+                emit!("FOLDCOUNT ktrans.{f}.{t}={n}");
+            }
         }
     }
     for (i, name) in KMOVE_NAMES.iter().enumerate() {

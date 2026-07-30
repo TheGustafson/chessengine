@@ -188,6 +188,11 @@ def main(cfg_path: str) -> int:
         lr=spec["lr"], lr_end_superbatch=spec["lr_end_superbatch"],
         superbatches=spec["superbatches"], pol_lambda=spec["pol_lambda"],
         ft_sparsity_lambda=spec.get("ft_sparsity_lambda", 0.0),
+        # D47M lesson: a penalty ADDED to a converged warm start ramps, never
+        # steps (updloc study ftsparse arms; train.py applies the ramp on
+        # fresh runs, which a finetune leg is).
+        ft_sparsity_warmup_superbatches=spec.get(
+            "ft_sparsity_warmup_superbatches", 0.0),
         per_tensor_clip=bool(spec.get("per_tensor_clip", False)),
         no_bias_decay=bool(spec.get("no_bias_decay", False)),
         grad_clip_norm=float(spec.get("grad_clip_norm", 0.0)),

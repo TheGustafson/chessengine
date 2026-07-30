@@ -1,0 +1,93 @@
+nodes=1739588  (= made moves: make.calls=1739588)
+
+== make-time locality (unconditional, per made move) ==
+halfka delta rows/move :   2.2292
+  1a1s      1,340,932  (77.08%)
+  1a2s        398,656  (22.92%)
+threat events/move     :   3.6060
+  p50=2 p90=10 p99=16 max_bin=28
+king moves/move        :   0.2800
+
+== fold-time (what the engine actually pays), per node ==
+  hka_into     calls/n=  0.9619  rows/n=  2.2009  rows/call=  2.288
+  hka_dual     calls/n=  0.1518  rows/n=  0.8721  rows/call=  5.745
+  hka_inplace  calls/n=  0.0001  rows/n=  0.0005  rows/call=  6.234
+  thr_into     calls/n=  0.8548  rows/n=  4.2214  rows/call=  4.939
+  thr_copy     calls/n=  0.0211  rows/n=  0.0000  rows/call=  0.000
+  thr_alias    calls/n=  0.1419  rows/n=  0.0000  rows/call=  0.000
+  thr_refresh  calls/n=  0.0189  rows/n=  0.0921  rows/call=  4.869
+  activate     calls/n=  0.4139  rows/n=  0.0000  rows/call=  0.000
+  eval         calls/n=  0.4139  rows/n=  0.0000  rows/call=  0.000
+
+== deferral / laziness interaction ==
+eval rate              :   0.4139 evals/node
+halfka rows folded / recorded : 0.9873  (chain-fold pays ~all)
+threat rows folded / (2x events recorded) : 0.5853   <- fold-time survival
+mirror crossings/node  :  0.03345
+thr refreshes/node     :  0.01892   survival s = 0.566
+
+== active rows per evaluated position ==
+halfka active/persp    : mean  13.91  p50=12 p90=25
+threat active/persp    : mean  12.32  p50=7 p90=33 p99=46
+threat active at REFRESH points :   4.87 (king-move-conditioned, endgame-weighted)
+
+== king transition matrix ==  total=487,165 (kmove.total=487,165)
+  mirror(file a-d)     flips/node= 0.03345  [OK]
+  rank1(back rank)     flips/node= 0.05094  [OK]
+  rank12(back two)     flips/node= 0.05278  [OK]
+  fpair(4 cells)       flips/node= 0.09284  [OK]
+  rankhalf(own half)   flips/node= 0.02329  [OK]
+
+== context-bit pricing, exact (crossings/node) ==
+  bit                     alone add(union-mir) replace(b-mir)
+  mirror(file a-d)      0.03345        0.00000       +0.00000
+  rank1(back rank)      0.05094        0.04798       +0.01749
+  rank12(back two)      0.05278        0.04553       +0.01933
+  fpair(4 cells)        0.09284        0.05939       +0.05939
+  rankhalf(own half)    0.02329        0.02142       -0.01016
+  (mirror partition arrival-mass split: 32.12% on a-d)
+  min-flip 2-part (>= 10% arrival mass/side): flips/node= 0.01270  minority mass=10.23% (15 squares; best of 3 seeds)
+      #####...   rank 8
+      ####....   rank 7
+      ###.....   rank 6
+      ##......   rank 5
+      #.......   rank 4
+      ........   rank 3
+      ........   rank 2
+      ........   rank 1
+  min-flip 2-part (>= 25% arrival mass/side): flips/node= 0.01965  minority mass=25.06% (33 squares; best of 3 seeds)
+      ########   rank 8
+      ########   rank 7
+      ########   rank 6
+      #####...   rank 5
+      ###.....   rank 4
+      #.......   rank 3
+      ........   rank 2
+      ........   rank 1
+  min-flip 2-part (>= 40% arrival mass/side): flips/node= 0.03293  minority mass=40.56% (44 squares; best of 3 seeds)
+      ########   rank 8
+      ########   rank 7
+      #######.   rank 6
+      ######..   rank 5
+      #####...   rank 4
+      ####....   rank 3
+      ###.....   rank 2
+      ###.....   rank 1
+
+== BUDGET LINE ==
+(additions COST Elo; displacements EARN it; 'blended' includes per-call overhead,
+ 'marginal' is the loads-model row share)
+-- denominator: loaded C=4514 cycles/node --
+  threat fold    blended  132.4 c/row (= -5.00 Elo per extra row/node)   marginal   94.2 c/row   per-call  188.4 c
+  halfka fold    blended  282.4 c/row (= -10.51 Elo per extra row/node)   marginal  150.7 c/row   per-call  301.4 c
+  finny refresh  blended  452.7 c/row (= -16.54 Elo per extra row/node)   marginal  335.8 c/row   per-call  671.6 c
+  threat rebuild:   1694 cyc each (mirror-conditioned, 4.9 rows); +0.01/node costs  16.9 cyc = -0.65 Elo
+    (the refuted at_full-based price would say  131.2 cyc — 7.7x overpriced)
+  threat channel, named symbols = 22.27% of cycles; full displacement EARNS +43.6 Elo of speed
+-- denominator: quiet C=4100 cycles/node --
+  threat fold    blended  120.2 c/row (= -5.00 Elo per extra row/node)   marginal   85.6 c/row   per-call  171.2 c
+  halfka fold    blended  256.5 c/row (= -10.51 Elo per extra row/node)   marginal  136.9 c/row   per-call  273.8 c
+  finny refresh  blended  411.2 c/row (= -16.54 Elo per extra row/node)   marginal  305.0 c/row   per-call  610.1 c
+  threat rebuild:   1539 cyc each (mirror-conditioned, 4.9 rows); +0.01/node costs  15.4 cyc = -0.65 Elo
+    (the refuted at_full-based price would say  119.2 cyc — 7.7x overpriced)
+  threat channel, named symbols = 22.27% of cycles; full displacement EARNS +43.6 Elo of speed

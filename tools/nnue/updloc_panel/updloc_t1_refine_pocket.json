@@ -1,0 +1,80 @@
+{
+  "warm": "data/nnue/experiments/d48x-1280/d48x-1280-sb520-ema-raw.bin",
+  "mix": [
+    [
+      "data/nnue/jaxcorpora/uho-band75-100.shuf.bin",
+      0.251234
+    ],
+    [
+      "data/nnue/jaxcorpora/fishpack32.shuf.bin",
+      0.158256
+    ],
+    [
+      "data/nnue/jaxcorpora/farseerT74-band75-100.shuf.bin",
+      0.121036
+    ],
+    [
+      "data/nnue/jaxcorpora/datapv2-band75-88.shuf.bin",
+      0.097139
+    ],
+    [
+      "data/nnue/jaxcorpora/farseerT75-band75-83.shuf.bin",
+      0.090499
+    ],
+    [
+      "data/nnue/jaxcorpora/multinet-band75-88.shuf.bin",
+      0.089567
+    ],
+    [
+      "data/nnue/jaxcorpora/t60t70-band75-85.shuf.bin",
+      0.082276
+    ],
+    [
+      "data/nnue/jaxcorpora/pylon-band75-88.shuf.bin",
+      0.046534
+    ],
+    [
+      "data/nnue/jaxcorpora/wisr-band75-95.shuf.bin",
+      0.034833
+    ],
+    [
+      "data/nnue/jaxcorpora/wrongnnue-band75-95.shuf.bin",
+      0.025796
+    ],
+    [
+      "data/nnue/jaxcorpora/canon-tight-frame.shuf.bin",
+      0.002701
+    ],
+    [
+      "data/nnue/jaxcorpora/hardneg-frame.shuf.bin",
+      0.000129
+    ]
+  ],
+  "seed": 220480001,
+  "lr": 0.00011,
+  "lr_end_superbatch": 1000,
+  "superbatches": 12,
+  "warmup_superbatches": 0.25,
+  "ema_decay": 0.0,
+  "pol_lambda": 0.0,
+  "ft_sparsity_lambda": 0.0,
+  "shuffle_chunk": 128,
+  "workers": 4,
+  "prefetch": 4,
+  "arch_hl": 1280,
+  "arch_l2": 16,
+  "arch_l3": 32,
+  "arch_out_skip": true,
+  "arch_pol_proj": 16,
+  "arch_dis_proj": 64,
+  "per_tensor_clip": true,
+  "no_bias_decay": true,
+  "grad_clip_norm": 2.0,
+  "pow_exp": 2.5,
+  "net_id": "updloc-t1-refine-pocket",
+  "out": "data/nnue/experiments/updloc-t1/refine_pocket",
+  "arch_threat_rows": 60720,
+  "threat_code2d": "data/nnue/nets/screens/recode/refine-pocket-r60720.npy",
+  "threat_region": "pocket",
+  "region_census": "data/nnue/nets/screens/recode/region-census-mix8M.npz"
+}

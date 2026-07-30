@@ -222,7 +222,7 @@ class DecodedBatch:
 # gradient probe, and the training-time code2d path below; the engine-side
 # transcription must be pinned against this the same way the index math is.
 
-REGION_BIT_NAMES = ("adv", "rank1", "fpair", "esame", "eadv", "null")
+REGION_BIT_NAMES = ("adv", "rank1", "fpair", "esame", "eadv", "pocket", "null")
 
 
 def region_bit(dec: "DecodedBatch", persp: int, name: str) -> np.ndarray:
@@ -253,6 +253,13 @@ def region_bit(dec: "DecodedBatch", persp: int, name: str) -> np.ndarray:
         return ((f_own <= 3) == ((enemy & 7) <= 3)).astype(np.int64)
     if name == "eadv":
         return ((enemy_f >> 3) >= 2).astype(np.int64)
+    if name == "pocket":
+        # LEARNED bit (updloc study): own king in the castled pocket
+        # {g1, h1, h2} own-frame — the min-flip >=30%-data-mass bipartition of
+        # the measured in-tree king transition matrix (KTRANS, foldcount).
+        # Heldout value screen: MI(t;b)=0.0857 bits (39x null), P(b=1)=0.304,
+        # top-8192 median min-cell share 0.379 (beats rank1's 0.306).
+        return np.isin(own_f, (6, 7, 15)).astype(np.int64)
     if name == "null":
         return ((dec.occ * np.uint64(0x9E3779B97F4A7C15))
                 >> np.uint64(63)).astype(np.int64)
