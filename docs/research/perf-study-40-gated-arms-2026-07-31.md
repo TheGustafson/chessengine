@@ -110,9 +110,10 @@ sign and a size.
 * **`ex_no_retire.empty` is the instrument for the whole mispredict class**, and
   the exchange rate on this engine is **9.13 cycles per mispredict**, not the
   ~18 everyone has been assuming. At that rate `init_quiets`' entire mispredict
-  share (13.75%, 3.31/node) is **28.8 cycles/node = 0.72% of cycles**, and
-  `search::<NonPv>`'s (16.57%) is 0.87%. Any future mispredict arm has to cost
-  under ~4.3 instructions per mispredict removed to break even.
+  share (13.75%, 3.31/node) is **30.2 cycles/node = 0.74% of cycles**, and
+  `search::<NonPv>`'s (16.57%) is 0.89%. Any future mispredict arm has to cost
+  under **4.3 instructions per mispredict removed** to break even at the machine
+  limit, and under **3.7** at the marginal issue rate measured here.
 * **`ex_ret_brn_misp:u` is not dead.** Studies 34 and 38 retired it at n = 10.
   At n = 159, paired within-round against a byte-identical null, it puts the
   null at a coin flip and this arm at **44 standard errors**.
@@ -446,13 +447,15 @@ wrong twice over:
 
 1. **The trade CAN be adjudicated** — `ex_no_retire.empty` prices a mispredict
    directly, at 21× the signal-to-background of `cycles:u`.
-2. **The exchange rate is 8.71 cycles, not 18.** Every future mispredict arm on
+2. **The exchange rate is 9.13 cycles, not 18.** Every future mispredict arm on
    this engine should be priced at that rate before it is built. `init_quiets`
    is the 2nd largest mispredict source at 13.75% of engine mispredicts = 3.31
-   per node; at 8.71 cycles that entire source is **28.8 cycles/node, 0.72% of
-   cycles** — and removing *all* of it would have to cost under 55 instructions
-   per node to break even. That is a much tighter budget than the class has been
-   assumed to have, and it reprices study 33's `search::<NonPv>` (16.57%) too.
+   per node; at 9.13 cycles that entire source is **30.2 cycles/node, 0.74% of
+   cycles** — and removing *all* of it would have to cost under **74
+   instructions per node** to break even at the 4-wide machine limit, or 51 at
+   the 2.45 marginal rate measured here. That is a much tighter budget than the
+   class has been assumed to have, and it reprices study 33's `search::<NonPv>`
+   (16.57%, 0.89% of cycles) the same way.
 
 ---
 
@@ -658,7 +661,7 @@ In order, most doubtful first.
 2. **Whether `ex_no_retire.empty` captures the WHOLE mispredict penalty.** It
    counts cycles in which nothing retired because the front end delivered
    nothing, which is where a mispredict's refetch bubble lands — but recovery
-   work that overlaps with other retirement is invisible to it, so **8.71 cycles
+   work that overlaps with other retirement is invisible to it, so **9.13 cycles
    per mispredict is a lower bound on the benefit** and the arm's true net could
    be better than measured. I did not run the full `ex_no_retire.{all,
    not_complete, other}` decomposition that would bound the other side; the

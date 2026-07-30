@@ -207,24 +207,27 @@ pub(crate) fn partial_insertion_sort_inner(moves: &mut [ExtMove], limit: i32) {
         // because the front end had nothing to deliver, which is where a
         // mispredict spends its cost. It is 192.91 cycles/node here (4.7% of
         // the engine), so the arm's effect is 4.7% OF IT rather than 0.22% of
-        // cycles. 66 paired rounds, contrasts against the byte-identical null:
+        // cycles. 159 paired rounds, contrasts against the byte-identical null:
         //
-        //     ex_no_retire.empty  -4.668% +/- 0.563%  (8.3 se)  -9.01 cyc/node
-        //     cycles - SMT        +0.333% +/- 0.191%           +13.36 cyc/node
+        //     ex_ret_brn_misp     -4.517% +/- 0.102% (44.3 se) -1.088 misp/node
+        //     ex_no_retire.empty  -5.150% +/- 0.357% (14.4 se)  -9.93 cyc/node
+        //     cycles - SMT        +0.186% +/- 0.137%  (1.4 se)  +7.47 cyc/node
         //
-        // **The arm buys 9.01 cycles of mispredict bubble and pays 22.37 cycles
+        // **The arm buys 9.93 cycles of mispredict bubble and pays 17.40 cycles
         // of issue for it.** Study 34's model assumed ~18 cycles per mispredict
         // and ~4 IPC on the added instructions; measured on this arm in this
-        // engine they are **8.71** and **1.90**, both worse for the arm, and
+        // engine they are **9.13** and **2.45**, both worse for the arm, and
         // that is the whole gap between its predicted -0.17% and the measured
-        // **+0.33%** (about -0.6 Elo).
+        // **+0.19%** (about -0.3 Elo). For the arm to break even the 42.58
+        // added instructions would have to sustain 42.58/9.93 = 4.29 per cycle.
         //
         // The code stays because it is correct, node-identical, and the exact
         // negative result is worth more in the tree than in a doc. If you widen
         // the window or shorten the dependency chain, re-price it against
-        // **8.71 cycles per mispredict** — that is the exchange rate on this
+        // **9.13 cycles per mispredict** — that is the exchange rate on this
         // engine, and at it the whole of `init_quiets`' mispredict share (3.31
-        // per node) is only 28.8 cycles/node. Details: study 40 §3.
+        // per node) is only 30.2 cycles/node, 0.74% of cycles.
+        // Details: study 40 §3.
         #[cfg(feature = "insertwin34")]
         if se <= INSERT_WINDOW && moves.len() > INSERT_WINDOW {
             moves[p] = moves[se];

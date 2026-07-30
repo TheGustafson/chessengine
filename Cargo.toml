@@ -100,9 +100,9 @@ null34 = []
 # insertion window. **DECIDED BY PERF STUDY 40 -- IT LOSES, AND IT STAYS OFF.**
 # The mechanism is real (-4.409% of all engine branch mispredicts, 60/60 paired
 # rounds) and it was priced on `ex_no_retire.empty` rather than `cycles:u`:
-# it buys 9.01 cycles/node of front-end bubble and pays 22.37 cycles for the
-# +42.58 instructions, i.e. +0.33% of cycles, about -0.6 Elo. The exchange rate
-# that decides it -- 8.71 cycles per mispredict on this engine, not the ~18
+# it buys 9.93 cycles/node of front-end bubble and pays 17.40 cycles for the
+# +42.58 instructions, i.e. +0.19% of cycles, about -0.3 Elo. The exchange rate
+# that decides it -- 9.13 cycles per mispredict on this engine, not the ~18
 # study 34 assumed -- is in `src/movepick.rs`. Do not re-open blind.
 insertwin34 = []
 # Perf study 29's TRAFFIC-PINNING probes. Both keep the load COUNT of every
