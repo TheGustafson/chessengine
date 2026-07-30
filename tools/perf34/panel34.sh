@@ -45,5 +45,20 @@ for r in $(seq "$ROUNDS"); do
   # immediately before" never averages out, at any number of rounds.
   # Measured: a BYTE-IDENTICAL null read -0.5700% cycles, 13/16 rounds
   # negative. Shuffling breaks the adjacency, as panel32/39/43 already do.
-  set -- $(printf '%s\n' "$@" | shuf | tr '\n' ' ')
+  # BLOCKED LATIN SQUARE (perf studies 43 + 44, 2026-07-30). Two defects were
+  # found in this reordering, one per study, and they are OPPOSITE:
+  #   * cyclic rotation alone (the original) balances POSITION exactly but
+  #     freezes ADJACENCY -- every arm keeps the same predecessor forever.
+  #     Study 43: a byte-identical null read -0.5700% cycles, 13/16 rounds.
+  #   * free `shuf` alone breaks adjacency but leaves POSITION unbalanced --
+  #     simulated spread 0.83 slots (p95 1.35) at 5 arms x 20 rounds.
+  #     Study 44: a byte-identical null read +2.36% cycles with the
+  #     reference seated at mean position 0.77 of 1.50.
+  # Rotating WITHIN a block of N and reshuffling the base BETWEEN blocks
+  # gets both: position spread 0.000, and 13.7 of 20 distinct adjacency
+  # pairs against rotation's 5.0 (simulated, same conditions).
+  set -- "${@:2}" "$1"
+  if (( r % $# == 0 )); then
+    set -- $(printf '%s\n' "$@" | shuf | tr '\n' ' ')
+  fi
 done
