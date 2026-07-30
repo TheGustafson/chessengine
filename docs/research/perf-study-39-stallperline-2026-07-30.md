@@ -408,11 +408,11 @@ buffers lands on the wrong side of that by construction unless its footprint is
 tuned to match — which nobody, including me at first, thought to do.
 
 **What survives as genuinely unexplained** is the last ~1.35× between the real
-stream's 1.298 and the nearest probe's 1.759. One candidate I did not separate:
-`dstpin` funnels every fold's stores into **one** 2560 B buffer, so part of its
-saving may be eaten by store-port contention the real engine would not have,
-which would make 1.119 a **lower** bound. §7 splits the read and write halves to
-test exactly that.
+stream's 1.298 and the nearest probe's 1.759. I suspected `dstpin`'s
+single-buffer store funnelling was depressing the subtractive number; §7.3
+splits the read and write halves and finds it is **not needed as an
+explanation** — the read half, where no funnelling exists, carries 79% of the
+cycles saving by itself. Funnelling is not excluded; nothing requires it.
 
 ---
 ## 5. WHY THE SUBTRACTIVE PROBE ANSWERS A DIFFERENT QUESTION
@@ -616,6 +616,51 @@ doses 1/2/4 where instructions go 1 : 1.97 : 3.92 — almost certainly page-walk
 traffic as the ring outgrows the L1 dTLB. It does not touch the placement or
 source comparisons above, which are ring-matched pairs.)*
 
+### 7.3 Read half versus write half — and a retraction of study 29's "the stores are the expensive part"
+
+Panel 3, `tools/perf39/panel3.sh`, n = 22. `accpin` pins the fold `src` **reads**
+and leaves every store in the real per-ply stack; `dstpin` pins the stores too.
+All three pin arms compute the same all-zero evaluation and retire the same
+instructions (+1.83 and +1.05 i/n against `actpin0`), so both differences are
+clean:
+
+| half | lines/node | Δ miss/n | miss/line | Δ stall/n | stall/line | Δ cyc/n | **cyc/line** |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **reads** (`accpin − actpin0`) | 74.17 | −63.28 | 0.853 | −77.30 | 1.042 | −108.15 | **1.458** |
+| **writes** (`dstpin − accpin`) | 80.76 | −67.50 | 0.836 | −47.06 | 0.583 | −31.13 | **0.385** |
+| both (`dstpin − actpin0`) | 154.93 | −130.78 | 0.844 | −124.36 | 0.803 | −139.28 | 0.899 |
+
+**The two halves miss at the same rate and cost 3.8× differently.** Study 29 §3
+wrote its correction as *"the accumulator STORES are ~64% of accumulator-stream
+misses, and they cost by capacity"*. The first half survives — writes are 52% of
+the misses here — and **the second half does not**: the writes are the *cheap*
+half, worth 22% of the cycles.
+
+The mechanism is not subtle once seen. `ex_no_retire.load_not_complete` counts
+cycles in which **nothing retired because LOAD data had not arrived**. A store
+that misses does not block retirement — the store buffer absorbs it and the line
+is fetched behind the retiring instruction. So a store miss is nearly invisible
+to that counter *and* cheap in cycles, exactly as measured.
+
+**This also disposes of §4.4's residual worry.** I had flagged `dstpin`'s
+single-buffer store funnelling as a possible depressant on the subtractive
+number. It is not needed as an explanation: the write half is cheap for a reason
+that follows from what the counter counts, and the read half — where no
+funnelling exists, because `accpin` leaves the stores alone — carries 79% of the
+cycles saving on its own. Funnelling is not excluded, but nothing requires it.
+
+**And it leaves the §6 ledger where it was**, because fusion removes a fold
+pass's reads and its writes in equal measure. Splitting panel 1's −187.98
+cycles/node by panel 3's 3.79:1 read:write ratio gives 1.968 cycles per read
+line and 0.519 per write line; fusion's 34.15 + 34.15 lines then price at
+**−84.9 cycles/node** against the −82.9 the uniform 1.213 gave. A 2.4%
+difference, inside everything else in that table.
+
+*(Panel 3 carries no byte-identical null — an oversight. Its combined
+0.803 cycles/line sits below panel 1's 1.119 on a box whose load average had
+risen from 3.5 to 6.9 by then, which is why it is used for the read:write RATIO
+and panel 1 for the LEVEL.)*
+
 ---
 
 ## 8. RANKED REMAINDER
@@ -623,7 +668,7 @@ source comparisons above, which are ring-matched pairs.)*
 | # | item | prize | evidence | tractability |
 |---|---|---|---|---|
 | 1 | **The weight rows, still.** The whole accumulator stream is 235 lines/node at ~1.2 cycles/line ≈ **280 cycles/node of 4081, i.e. 6.9%**. Everything else memory-shaped in the NNUE is weight rows. Study 29 ranked "fewer threat rows" #1 and study 31 ranked "the HalfKA weight rows, never the subject of an arm" #1; nothing in this study moves either down | the residual, ~93% of the NNUE's memory cost | §2, §4 | medium |
-| 2 | **Measure a cold threat weight-row line directly.** Fusion's cost column swings +78 … +157 on a number (6.5–13 cycles/line) that is a *residual* in study 31's model and has never been measured. A `wpin`-style probe aimed at the threat refresh path alone would pin it, and the same number prices item 1 | decides half the width of every FT memory estimate | §6, §8.2 | **high — the probes exist** |
+| 2 | **Measure a cold threat weight-row line directly.** Fusion's cost column swings +78 … +157 on a number (6.5–13 cycles/line) that is a *residual* in study 31's model and has never been measured. A `wpin`-style probe aimed at the threat refresh path alone would pin it, and the same number prices item 1 | decides half the width of every FT memory estimate |  §6, §9.2 | **high — the probes exist** |
 | 3 | **Nothing points at `activate` any more.** Its four-array merge is 12.25% of loads, 2.18% of load-stall cycles (study 29) and **0.0032 misses per line** (§4.2). Three studies have now aimed at it from different angles. Leave it | — | §4.2 | **closed** |
 | 4 | **Accumulator-channel fusion** | **−23 (best) … +281 (worst) cycles/node ⇒ +1.0 … −11.5 Elo**, and it trades away a measured 8.4× refresh advantage | §6 | **DO NOT BUILD** |
 | 5 | **The capacity-cliff reconciliation** | falsified two ways (§3.1); do not re-open it to explain a future probe disagreement — check miss depth first | §3.1, §4.4 | **closed** |
@@ -652,37 +697,45 @@ In order, most doubtful first.
 
 1. **The last 1.35× between the real stream's 1.298 stall cycles per miss and
    the shallowest probe's 1.759.** §4.4 explains most of the additive/
-   subtractive gap as miss depth, with a measured monotone curve — but not all
-   of it, and the residual is exactly the size that would matter if it turned
-   out to be `dstpin`'s store funnelling depressing the subtractive number. §7
-   tests that and does not fully settle it. If the true price is 1.759 rather
-   than 1.213, fusion's saving grows ~45% and the best case moves from +1.0 Elo
-   to roughly +2.5 — still not a lever, but the verdict would rest on the cost
-   side alone.
-2. **The refresh cost side is a model, not a measurement.** The rebuild ROW
+   subtractive gap as miss depth, with a measured monotone curve; §7.3 removes
+   store funnelling as the explanation for the rest. What is left is the
+   residual, and it is unexplained. If the true price were 1.759 rather than
+   1.213, fusion's saving grows ~45% and the best case moves from +1.0 Elo to
+   roughly +2.5 — still not a lever, but the verdict would then rest on the
+   cost side alone.
+2. **Panel 3 has no byte-identical null.** Panels 1 and 2 both carry one and
+   both are quoted against it; panel 3 was queued in a hurry and is not, so its
+   absolute level (0.803 cycles/line against panel 1's 1.119, on a box whose
+   load had doubled) is not trustworthy on its own. It is used only for the
+   read:write RATIO, and §7.3 says so — but a ratio taken without a null is
+   still a ratio taken without a null.
+3. **The refresh cost side is a model, not a measurement.** The rebuild ROW
    count is now measured, and the extra rebuild RATE is measured, but the price
    of a cold threat weight-row line is still study 31's residual — a number
    that absorbs every modelling error in its construction, quoted as a 5–13
    band. Nobody has ever measured it directly. A `wpin`-style probe aimed at
    the *threat refresh path only* would close it, and it is the cheapest
    remaining thing on this board.
-3. **That any of this converts to Elo at the assumed rate.** Everything here is
+4. **That any of this converts to Elo at the assumed rate.** Everything here is
    cycles on a non-PGO build. Studies 12–15 measured the non-PGO frame
    overstating the PGO delta by 1.12–2.0× on data-layout changes, and no game
    has been played. Nothing in this study has been arbitrated by games, which
    by the standing rule means it has not been arbitrated.
-4. **The dose series measures adding traffic to a working set that already
+5. **The dose series measures adding traffic to a working set that already
    contains the real accumulator stack.** Fusion removes traffic *and* shrinks
    the stack, so the post-fusion engine is at a different operating point than
-   any arm I ran. §6 shows the response is close enough to linear over a 4×
+   any arm I ran. §3 shows the response is close enough to linear over a 4×
    span that extrapolating one dose backwards is defensible, but it is still an
    extrapolation past the last measured point.
-5. **`ex_no_retire.load_not_complete` is a count of stall cycles, not of time.**
+6. **`ex_no_retire.load_not_complete` is a count of stall cycles, not of time.**
    It has behaved well here — the byte-identical null is small and every
    additive arm clears it several-fold with a perfect sign count — but the
    engine's absolute level of it has moved a long way between studies (2934 in
    study 31, ~1960 here) as the engine got faster, so ratios travel between
    studies and absolute levels do not.
+
+---
+
 ## 10. HANDOVER
 
 1. **Runtime knobs beat cargo features for a probe panel.** Every additive arm
