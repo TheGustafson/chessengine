@@ -196,6 +196,52 @@ pub fn at_piece_to_mut<const D: i32>(
     &mut plane.as_flattened_mut()[q]
 }
 
+/// Issue an L1 cache hint for one address. **A pure hint** — see
+/// [`prefetch_piece_to`] for why that word is load-bearing here.
+///
+/// Perf study 44 §6: this is `TranspositionTable::prefetch`'s mechanism
+/// pointed at the *other* multi-megabyte random-access structure in the
+/// engine. The history catalogue is ~20 MiB (`pawn` 12.6 MB, `cont` 5.1 MB)
+/// and shares a 32 MB L3 with a 16 MB TT and ~29 MB of NNUE weights, so a
+/// history line is a DRAM-class access for the same reason a TT line is.
+///
+/// D14(a): a FUNCTION-scoped relaxation of the crate-wide
+/// `#![deny(unsafe_code)]`, deliberately narrower than `tt`'s module-scoped
+/// one — this module is otherwise entirely safe and should stay that way, so
+/// the exemption is attached to the single intrinsic that needs it rather
+/// than to the file.
+#[allow(unsafe_code)]
+#[inline]
+pub fn prefetch_line<T>(p: *const T) {
+    #[cfg(all(target_arch = "x86_64", feature = "histpf44"))]
+    {
+        use std::arch::x86_64::{_MM_HINT_T0, _mm_prefetch};
+        // SAFETY: identical to `TranspositionTable::prefetch`. `_mm_prefetch`
+        // performs no memory access observable by the abstract machine, writes
+        // nothing, and cannot fault even on a wild address — the hardware
+        // drops a bad hint. Every caller below forms `p` with `wrapping_add`
+        // precisely so that an out-of-range index is a defined (if useless)
+        // pointer value rather than UB before it ever reaches this call.
+        unsafe { _mm_prefetch(p.cast::<i8>(), _MM_HINT_T0) };
+    }
+    #[cfg(any(not(target_arch = "x86_64"), not(feature = "histpf44")))]
+    let _ = p;
+}
+
+/// Cache-hint the cell [`at_piece_to`] is about to read.
+///
+/// # Why `wrapping_add` and not `[q]`
+/// The index is derived from a mailbox byte for a move the caller has not yet
+/// validated (it is looking *ahead* in the move list), so a bounds check here
+/// would either panic or cost a branch on the hot path. A prefetch has no
+/// observable effect, so the correct handling of a hypothetical out-of-range
+/// `q` is to hint a useless line, not to panic — and `wrapping_add` gets that
+/// without ever forming an out-of-bounds pointer under the aliasing rules.
+#[inline]
+pub fn prefetch_piece_to<const D: i32>(plane: &[[StatEntry<D>; 64]; 12], q: usize) {
+    prefetch_line(plane.as_flattened().as_ptr().wrapping_add(q));
+}
+
 /// The four correction-history fields that share one `corr[slot][stm]` cell.
 ///
 /// Each field is addressed under its *own* Zobrist key into the same array

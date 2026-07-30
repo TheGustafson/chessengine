@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""perf study 44 — reduce a panel44.sh dump to PAIRED within-round contrasts.
+
+    python3 tools/perf44/med44.py <panel.txt> <ref> <label>... [--metric E]
+
+For every label and counter, the per-round percentage difference against the
+SAME round's reference, reported as median, 20%-trimmed mean, a standard error
+on the trimmed mean, and a SIGN COUNT with an exact binomial p.
+
+Why all four: study 40 measured this box's `cycles:u` noise as heavy-tailed --
+raw sd 3.404% but 20%-trimmed sd 1.263% over 60 rounds of a byte-identical
+null -- so a trimmed statistic converges ~3x faster than the range suggests,
+while the sign count stays valid whatever the tail does.
+"""
+
+import math
+import statistics
+import sys
+from collections import defaultdict
+
+
+def load(path):
+    rows = defaultdict(dict)  # rows[round][label] = {event: per-node}
+    for line in open(path):
+        if "SCALED" in line:
+            raise SystemExit(f"refusing multiplexed row: {line.strip()}")
+        t = line.split()
+        if len(t) < 3:
+            continue
+        rnd, label = t[0], t[1]
+        d = {}
+        for tok in t[2:]:
+            if "=" in tok:
+                k, v = tok.split("=", 1)
+                if k != "nodes":
+                    d[k] = float(v)
+        rows[rnd][label] = d
+    return rows
+
+
+def trimmed(xs, frac=0.2):
+    xs = sorted(xs)
+    k = int(len(xs) * frac)
+    core = xs[k:len(xs) - k] if len(xs) - 2 * k >= 2 else xs
+    m = statistics.fmean(core)
+    sd = statistics.stdev(core) if len(core) > 1 else float("nan")
+    return m, sd / math.sqrt(len(core)) if len(core) > 1 else float("nan")
+
+
+def binom_p(k, n):
+    """Two-sided exact binomial p at q=0.5 (stdlib only)."""
+    k = min(k, n - k)
+    tail = sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n
+    return min(1.0, 2 * tail)
+
+
+def main():
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    path, ref, labels = args[0], args[1], args[2:]
+    rows = load(path)
+    events = sorted({e for r in rows.values() for d in r.values() for e in d})
+
+    print(f"# {path}\n# reference: {ref}\n")
+    for label in labels:
+        deltas = defaultdict(list)
+        for rnd, per in rows.items():
+            if ref not in per or label not in per:
+                continue
+            for e in events:
+                if e in per[ref] and e in per[label] and per[ref][e]:
+                    deltas[e].append((per[label][e] / per[ref][e] - 1) * 100)
+        n = max((len(v) for v in deltas.values()), default=0)
+        print(f"## {label}  vs  {ref}   (n = {n} paired rounds)")
+        print(f"{'counter':<40}{'median%':>10}{'trim20%':>10}{'se':>9}"
+              f"{'neg/n':>10}{'p':>9}")
+        print("-" * 88)
+        for e in events:
+            v = deltas.get(e)
+            if not v:
+                continue
+            m, se = trimmed(v)
+            neg = sum(1 for x in v if x < 0)
+            print(f"{e:<40}{statistics.median(v):>10.3f}{m:>10.3f}{se:>9.3f}"
+                  f"{f'{neg}/{len(v)}':>10}{binom_p(neg, len(v)):>9.4f}")
+        print()
+
+
+if __name__ == "__main__":
+    main()

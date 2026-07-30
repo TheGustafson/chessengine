@@ -1111,7 +1111,64 @@ impl MovePicker {
             row_of(5),
         ];
         let base = self.end_captures;
+
+        // Perf study 44 §6 — SOFTWARE-PIPELINED HISTORY PREFETCH.
+        //
+        // The scoring loop below reads SEVEN randomly-addressed history cells
+        // per quiet, from tables totalling ~20 MiB that share a 32 MB L3 with
+        // a 16 MB TT and ~29 MB of NNUE weights. Study 44 sampled
+        // `ex_no_retire.load_not_complete` and found `init_quiets` owns
+        // **6.57% of every load-stall cycle in the engine**, of which 89% is
+        // load-wait rather than execution — i.e. this loop is not computing,
+        // it is waiting for `pawn` (12.6 MB) and the five `cont` planes
+        // (5.1 MB).
+        //
+        // The six plane BASES are already hoisted above the loop, but a base
+        // is not a line: `q` varies per move, so the line is not known until
+        // the iteration that needs it, and the loop body is far too short to
+        // cover a DRAM round trip. Looking `PF_DIST` moves ahead turns the
+        // per-move dependent miss into an overlapped one, which is the same
+        // trade `TranspositionTable::prefetch` already makes (study 42 priced
+        // that one hint at 3.5% of engine cycles).
+        //
+        // NODE-IDENTICAL BY CONSTRUCTION, not by test: `_mm_prefetch` computes
+        // no value the score depends on, so the tree cannot move. The gate
+        // still checks it, because "by construction" has been wrong before.
+        //
+        // `PF_DIST` is the one free parameter and it was measured, not picked
+        // — see §6.2 for the 2/4/8 sweep.
+        #[cfg(feature = "histpf44")]
+        const PF_DIST: usize = 4;
+        #[cfg(feature = "histpf44")]
+        let prefetch_history_for = |m: crate::moves::Move| {
+            // A quiet always starts on one of our pieces, but this runs on a
+            // move the loop has not reached yet, so it asks rather than
+            // asserts — the `expect` below stays the loop's own contract.
+            if let Some(pc) = board.piece_on(m.from()) {
+                let q = crate::history::piece_to(pc.index(), m.to().index() as usize);
+                crate::history::prefetch_piece_to(pawn_plane, q);
+                crate::history::prefetch_piece_to(c1, q);
+                crate::history::prefetch_piece_to(c2, q);
+                crate::history::prefetch_piece_to(c3, q);
+                crate::history::prefetch_piece_to(c4, q);
+                crate::history::prefetch_piece_to(c6, q);
+                crate::history::prefetch_line(
+                    main_plane.as_ptr().wrapping_add(m.raw16() as usize),
+                );
+            }
+        };
+        // Prologue: the first `PF_DIST` moves have no earlier iteration to
+        // issue their hint, so they get it here, before the loop's first body.
+        #[cfg(feature = "histpf44")]
+        for &m in list.iter().take(PF_DIST) {
+            prefetch_history_for(m);
+        }
+
         for (i, &m) in list.iter().enumerate() {
+            #[cfg(feature = "histpf44")]
+            if let Some(&ahead) = list.get(i + PF_DIST) {
+                prefetch_history_for(ahead);
+            }
             let pc = board
                 .piece_on(m.from())
                 .expect("a quiet move starts on a piece of the side to move");

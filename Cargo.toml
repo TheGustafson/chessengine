@@ -205,6 +205,16 @@ ttspec42 = []
 # the hint count collapses to the probe count while the overlap on offer is
 # still the whole singular verification search.
 ttspec2_42 = []
+# Perf study 44's HISTORY-PREFETCH arm. `init_quiets` reads seven randomly
+# addressed history cells per quiet from ~20 MiB of tables; study 44 sampled
+# `ex_no_retire.load_not_complete` and found the function owns 6.57% of every
+# load-stall cycle in the engine, 89% of it load-wait. This feature software-
+# pipelines an `_MM_HINT_T0` hint `PF_DIST` moves ahead of the read, the same
+# mechanism study 42 priced at 3.5% of engine cycles on the TT.
+# ADDITIVE, so the base arm is today's `main` verbatim; node-identical by
+# construction (a hint computes no value the score depends on) and gated on
+# the `Bench:` fingerprint like every other study arm.
+histpf44 = []
 # Perf study 40's DOSE AMPLIFIER for `partial_insertion_sort` (`src/dose40.rs`).
 # `insertwin34` is a ~0.2%-of-cycles trade and six nulls put the `cycles:u`
 # floor on this box an order of magnitude above that, so the arm is replayed
