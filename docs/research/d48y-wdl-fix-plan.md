@@ -3926,3 +3926,50 @@ screen would have:
 "test it" half of the user's sequence IS now discharged: the CEN5 path is
 proven end to end on a live checkpoint — export, container, engine load, and
 distinct search behaviour.
+
+## Tick 2026-07-30 ~04:00 — study 33 commissioned (search::<NonPv>)
+
+**D49 sb151/400**, 175k pos/s, active. Heldout still descending, still no
+plateau — the cosine has 149 sb to run before the anneal:
+
+| sb | heldout | ema |
+|---|---|---|
+| 130 | 0.012826 | 0.012144 |
+| 140 | 0.012719 | 0.012068 |
+| **150** | **0.012593** | **0.011987** |
+
+**Box:** load 3.56, 8385 MB available, 171 GB disk. main = study 30 landed.
+
+**Study 32** ahead=3, dirty=67, **`perf` ACTIVE** — it is mid-measurement.
+
+**Commissioned study 33 — localise `search::<NonPv>`.** Chosen because it is
+the **largest single symbol in our own profile at 19.90%** and it is currently a
+**site with no mechanism**: study 28 attributed -264 cycles/node (26.7% of the
+gap) to a 5,312-byte-stride snapshot, **study 31 built that arm and it is a
+measured NULL** (+1.57 L1 miss/node, wrong sign, against a +/-0.16% null) — yet
+the +303.4 cycles/node at the site is still real and still unexplained. Pure
+ARCHON, no SF comparison, exactly as the standing directive asks.
+
+Brief includes, beyond the usual no-escape-hatch framing:
+- **Six named decompositions** so a dead end has somewhere to go: per-line
+  attribution, separating inlined callees (movepick / TT / eval / make-unmake /
+  pruning), branch mispredicts (**nobody has looked**), front-end icache+iTLB
+  pressure from a large inlined body, study 29's stall taxonomy, and
+  data-structure reordering.
+- The symbol-region vs source-function distinction, which already produced a
+  21.29% vs 19.90% discrepancy between two valid readings.
+- Every instrument rule that has cost us a retraction: cycles-not-instructions
+  (study 20: -5.99% cycles, instructions +0.19%), null-first, **paired
+  within-round form because rotating order is NOT sufficient** (study 29's
+  -1.67% at n=13 was position-in-round), and the Zen 4 512-bit double-pump
+  (2.0015 events per `vmovdqu64`).
+- **An explicit coordination protocol**, since study 32 is measuring right now:
+  do all source reading and hypothesis formation first (costs the box nothing),
+  then check `pgrep -x perf` and for a running `fastchess` screen before ANY
+  cycle measurement, and **wait rather than measure through contention** —
+  reporting in the write-up whether the box was quiet.
+
+**Deliberately NOT done this tick:** no screen launched. Study 32 holds the box
+with its own games phase and a live `perf`; D49 at sb151 remains too early for
+an informative net verdict. The informative screen is post-cosine (sb250+),
+best at sb400.
