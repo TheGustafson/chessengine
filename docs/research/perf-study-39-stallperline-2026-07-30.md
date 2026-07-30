@@ -46,20 +46,26 @@ nothing else: **−133.46 misses, −173.29 stall cycles, −187.98 cycles per n
 Between my own two clean arms the gap is **2.85×**, and it multiplies out:
 
 ```
-stall per LINE, additive / subtractive          2.85x
-  of which COLDNESS  (1.272 vs 0.861 miss/line) 1.48x
-  of which DIRECTION (2.50 vs 1.30 stall/miss)  1.93x
-  product                                       2.85x
+stall per LINE, additive / subtractive           2.85x
+  of which MISS COUNT (1.272 vs 0.861 miss/line) 1.48x
+  of which MISS DEPTH (2.50 vs 1.30 stall/miss)  1.93x
+  product                                        2.85x
 ```
 
-* **Coldness (1.48×).** An additive probe built out of fresh buffers necessarily
+**Both factors are properties of the PROBE, not of the direction it points.**
+
+* **Miss count (1.48×).** An additive probe built out of fresh buffers necessarily
   touches colder memory than the engine's own recycled per-ply stack: my ring
   lines miss at 1.272 per line where the real fold stream misses at 0.861 (a
   fully cold line costs ~1.21 events on this counter — §1).
-* **Direction (1.93×).** An *added* miss costs about twice what a *removed* miss
-  saves. This is the asymmetry study 29 guessed at — but it is **not a capacity
-  cliff** (see 3), and it means the direction-matched measurement is the one
-  that prices a change which *removes* traffic.
+* **Miss DEPTH (1.93×).** An added miss costs 2.50 stall cycles, a removed one
+  saves 1.30 — and this is *not* an additive/subtractive asymmetry, it is where
+  the miss is served from. Sweeping the probe's own footprint 10 KB → 160 KB →
+  2.6 MB at **byte-identical instructions** moves stall cycles per miss
+  **1.759 → 2.503 → 3.203** while the miss *count* barely changes (§4.4). The
+  real accumulator stack sits at **1.298**, below the smallest probe — an
+  L2-resident ~10-ply hot window. An additive probe built from fresh buffers
+  misses further away than the engine's own recycled stack, by construction.
 * The remaining factor from 2.85× to the published 5.2× is **study 29's
   per-instruction normalisation**, which I replicated: raw **0.913** →
   normalised **0.350** on the same data, a 2.6× move from a modelling choice.
@@ -68,7 +74,7 @@ stall per LINE, additive / subtractive          2.85x
 colder than the real stream — it was **warmer**, at 0.477 misses/line against
 the stream's 0.861, and `P39_SRC=live` reproduces that (§7) by having the copy
 read the accumulator `activate` is about to consume. What its number carries is
-therefore the **direction** factor, not the coldness factor: its stall *per line*
+therefore the **miss-depth** factor, not the miss-count factor: its stall *per line*
 (2.36) replicates my additive arm's (2.22 fitted, 3.18 at dose 1) almost exactly,
 even though we disagree 2.7× on how many misses that line took. **Study 31's
 additive measurement was never the thing that was wrong.**
@@ -364,25 +370,49 @@ and 2.18% of load-stall cycles) and did not draw the consequence.
 ### 4.3 The 5.2×, accounted for
 
 ```
-stall per LINE, additive / subtractive          2.85x
-  of which COLDNESS  (1.272 vs 0.861 miss/line) 1.48x
-  of which DIRECTION (2.50 vs 1.30 stall/miss)  1.93x
-  product                                       2.85x
+stall per LINE, additive / subtractive           2.85x
+  of which MISS COUNT (1.272 vs 0.861 miss/line) 1.48x
+  of which MISS DEPTH (2.50 vs 1.30 stall/miss)  1.93x
+  product                                        2.85x
 ```
 
 and the remaining factor to the published 5.2× is study 29's normalisation
-(§5.3), which moves its own data from 0.913 to 0.350.
+(§5.3), which moves its own data from 0.913 to 0.350. Both factors are
+properties of the PROBE, not of the direction it points — §4.4 measures the
+second one directly.
 
-**On the direction factor I am reporting an asymmetry I cannot fully explain.**
-An added miss costs 2.50 stall cycles, a removed one saves 1.30. Two mechanisms
-are plausible and I did not separate them: added lines are pure pollution with
-no reuse and consume miss-address buffers the weight rows are also queueing
-for; and `dstpin` funnels every fold's stores into **one** 2560 B buffer, so its
-saving may be partly eaten by store-port and store-buffer contention that the
-real engine would not have. The second would make the subtractive number a
-**lower** bound, which is the direction that matters for a "do not build"
-verdict — it is the conservative side for the recommendation, and the
-optimistic side for fusion. The fusion ledger in §6 is run at both ends anyway.
+### 4.4 The "direction" factor is mostly a MISS-DEPTH factor, and it is measured
+
+I first wrote §4.3's second factor up as an unexplained asymmetry. It is not
+unexplained — the footprint sweep already in the panel resolves most of it. All
+three arms are the **same binary with the same instruction count** (6007.5 i/n,
+differing by 0.14) and differ only in how much memory the copies rotate through:
+
+| arm | probe footprint | miss/line | **stall cycles per MISS** |
+|---|---:|---:|---:|
+| `d1r1` | 10 KB | 1.243 | **1.759** |
+| `d1` | 160 KB | 1.272 | **2.503** |
+| `d1r256` | 2.6 MB | 0.942 | **3.203** |
+| *the real fold stream* (`dstpin − actpin0`) | ~50–100 KB hot window | 0.861 | **1.298** |
+
+**The miss COUNT barely moves and the price per miss nearly doubles.** These are
+the same L1 misses being served from progressively further away: a 10 KB ring is
+evicted from L1 between evaluations but stays in L2; a 2.6 MB one is gone to L3
+or memory. And the real accumulator stack sits at the shallow end — 1.298, just
+below the smallest probe — exactly where an L2-resident ~10-ply hot window
+should sit.
+
+So the additive/subtractive gap is not really *additive versus subtractive*. It
+is **cold-and-far versus warm-and-near**, and an additive probe built from fresh
+buffers lands on the wrong side of that by construction unless its footprint is
+tuned to match — which nobody, including me at first, thought to do.
+
+**What survives as genuinely unexplained** is the last ~1.35× between the real
+stream's 1.298 and the nearest probe's 1.759. One candidate I did not separate:
+`dstpin` funnels every fold's stores into **one** 2560 B buffer, so part of its
+saving may be eaten by store-port contention the real engine would not have,
+which would make 1.119 a **lower** bound. §7 splits the read and write halves to
+test exactly that.
 
 ---
 ## 5. WHY THE SUBTRACTIVE PROBE ANSWERS A DIFFERENT QUESTION
@@ -507,7 +537,7 @@ Three corrections, in order of size:
 1. **`activate`'s merge is worth zero in stall cycles**, not a third of the
    prize (§4.2). Study 31 counted 34.5 lines at 2.36 = −81 cycles that are not
    there.
-2. **The saving per line is 1.213, not 2.36** — direction- and coldness-matched
+2. **The saving per line is 1.213, not 2.36** — matched on both miss count and miss depth
    (§4.1, §4.3).
 3. **The rebuild's instruction cost was never converted to cycles.** Study 31
    ran an instruction ledger (its own range: −42 … **+199** i/n) beside a cycles
@@ -532,18 +562,73 @@ column above**, and it is a structural advantage over Stockfish that we
 currently hold and would be giving up.
 
 ---
-## 8. WHAT I AM LEAST SURE ABOUT
+---
+
+## 7. TWO MORE ARMS: does the number TRANSFER, and what was study 31 actually copying?
+
+Panel 2, `tools/perf39/panel2.sh`, n = 22, same binary as its own control
+(`d0null`, byte-identical, moves `stall/n` +0.884%, 8/22 negative).
+
+### 7.1 Placement: the number transfers
+
+The recommendation in §6 applies a price measured on traffic issued in one place
+to traffic fusion removes from another. Fusion removes accumulator traffic from
+the **fold**; the probe adds it in **`activate`**. `P39_SITE=fold` moves the
+copies. The fold fires 0.8538/node against `activate`'s 0.4311, so fold dose 1
+and activate dose 2 are the **same volume in different places**, at the same
+reuse distance in nodes:
+
+| arm | site | lines/node | Δ ins/n | Δ miss/n | Δ stall/n | stall/line | Δ cyc/n |
+|---|---|---:|---:|---:|---:|---:|---:|
+| `f1` | fold | 136.60 | +156.65 | +118.12 | +313.24 | **2.293** | +503.37 |
+| `d2` | `activate` | 137.95 | +157.37 | +121.99 | +308.97 | **2.240** | +527.12 |
+| `f2` | fold | 273.20 | +308.63 | +224.49 | +640.69 | **2.345** | +1068.80 |
+| `d4` | `activate` | 275.90 | +312.58 | +226.38 | +593.59 | **2.152** | +1014.60 |
+
+**Within 1.4% and 7.9% on stall cycles, within 3.2% and 0.8% on misses.** Stall
+per line is a property of the traffic, not of where in the node it is issued.
+The price in §6 transfers.
+
+### 7.2 `P39_SRC=live` reproduces study 31's miss count
+
+My ring copy misses 1.272 times per line; study 31's copy missed 0.477. The
+obvious reconstruction is that its copy's READ half touched memory the engine
+was about to touch anyway — prefetching `activate` rather than adding traffic.
+`P39_SRC=live` does exactly that, reading the accumulator pair `activate` is
+about to consume:
+
+| arm | source | Δ miss/n | miss/line | Δ stall/n | stall/line |
+|---|---|---:|---:|---:|---:|
+| `d1` | cold ring | +86.20 | 1.250 | +207.06 | 3.002 |
+| `d1L` | **live accumulator** | **+42.95** | **0.623** | +136.86 | **1.984** |
+| *study 31* | *(unknown)* | *+32.88* | *0.477* | *+162.7* | *2.36* |
+
+**The misses halve, and both columns land on study 31's.** Its probe was a
+live-source copy — 0.623 against its 0.477 on the count, 1.984 against its 2.36
+on the price. That closes the last open question about its instrument: it was
+not measuring something exotic, it was measuring a copy whose read half was
+free.
+
+*(A caveat on panel 2's dose-matched series, which is why panel 1's fixed-ring
+series stays the primary one: scaling `RING` with `DOSE` inflates
+`L1-dcache-loads` faster than instructions — loads go 1 : 2.47 : 4.96 across
+doses 1/2/4 where instructions go 1 : 1.97 : 3.92 — almost certainly page-walk
+traffic as the ring outgrows the L1 dTLB. It does not touch the placement or
+source comparisons above, which are ring-matched pairs.)*
+
+## 9. WHAT I AM LEAST SURE ABOUT
 
 In order, most doubtful first.
 
-1. **That the probe's lines and the real accumulator stack's lines cost the
-   same per line.** This is the load-bearing assumption of the whole
-   additive method, and it is the one I can only bound, not eliminate. The
-   probe's ring lines are ~100% cold; the real stack's are ~40–43% cold
-   (§1's calibration applied to both studies' agreed 0.477/0.516). §4's
-   `P39_SRC=live` arm brackets it from the other side, but a bracket is what
-   it is. If the real stream is systematically warmer than even the live arm
-   suggests, fusion's saving shrinks toward the bottom of the bracket.
+1. **The last 1.35× between the real stream's 1.298 stall cycles per miss and
+   the shallowest probe's 1.759.** §4.4 explains most of the additive/
+   subtractive gap as miss depth, with a measured monotone curve — but not all
+   of it, and the residual is exactly the size that would matter if it turned
+   out to be `dstpin`'s store funnelling depressing the subtractive number. §7
+   tests that and does not fully settle it. If the true price is 1.759 rather
+   than 1.213, fusion's saving grows ~45% and the best case moves from +1.0 Elo
+   to roughly +2.5 — still not a lever, but the verdict would rest on the cost
+   side alone.
 2. **The refresh cost side is a model, not a measurement.** The rebuild ROW
    count is now measured, and the extra rebuild RATE is measured, but the price
    of a cold threat weight-row line is still study 31's residual — a number
@@ -568,7 +653,7 @@ In order, most doubtful first.
    engine's absolute level of it has moved a long way between studies (2934 in
    study 31, ~1960 here) as the engine got faster, so ratios travel between
    studies and absolute levels do not.
-## 9. HANDOVER
+## 10. HANDOVER
 
 1. **Runtime knobs beat cargo features for a probe panel.** Every additive arm
    in this study is the same 1.2 MB binary driven by environment variables, so
