@@ -3973,3 +3973,54 @@ Brief includes, beyond the usual no-escape-hatch framing:
 with its own games phase and a live `perf`; D49 at sb151 remains too early for
 an informative net verdict. The informative screen is post-cosine (sb250+),
 best at sb400.
+
+## Tick 2026-07-30 ~04:30 — a throughput scare that was an INSTRUMENT ARTIFACT
+
+**D49 sb157/400**, active. Heldout 0.012593 @ sb150 (ema 0.011987).
+
+### The scare, and the correction
+
+The logged `pos/s` declines monotonically and looked like progressive
+starvation:
+
+| sb | reported pos/s |
+|---|---|
+| 10 | 198,756 |
+| 60 | 192,625 |
+| 110 | 181,787 |
+| 135 | 177,210 |
+| 157 | 174,675 |
+
+That is **~12% off peak** and perfectly smooth — which is the signature of a
+*cumulative* average, not an instantaneous rate. Checked it against journal
+timestamps instead of trusting the printed field:
+
+- window **sb78 -> sb157: 153.6 s/sb**
+- **last 10 sb only: 154.7 s/sb**
+
+Two windows, same answer ⇒ **the rate is STABLE and the trainer is not being
+progressively starved.** The declining figure is a cumulative average
+converging down toward the true instantaneous rate. **ETA to sb400: 10.4 h.**
+
+*Method note, consistent with the standing rules: a smooth monotonic trend in a
+derived statistic is a reason to re-derive it from raw timestamps, not to
+diagnose a cause.*
+
+### Watch item — the trainer cgroup HAS hit its ceiling
+
+`memory.events` for `archon-d49.service`: **`max 34184`**, `oom_kill 0`.
+`memory.current` 5.22 GB against `memory.max` 9.0 GB, and `memory.pressure`
+currently 0.00. So it has bounced off the 9 GB limit tens of thousands of times
+at some point in the run, without ever being killed. The counter is cumulative
+since unit start, so I **cannot** attribute those events to any particular
+period — flagging as a watch item, not diagnosing it. `cpu.pressure` some
+avg10=3.61 / full avg10=1.32 under load 17.57.
+
+### Box and studies
+
+5977 MB available, load 17.57 (study 32's `fastchess` screen — 1 running, 0
+`perf`). **Study 32 ahead=8, dirty=0** — committing cleanly and well past its
+offline phase. **Study 33 ahead=1, dirty=5** — started and already committing.
+
+No new load added this tick: the box is at 17.57 with a screen running, and the
+standing order is DON'T OOM THE BOX.
