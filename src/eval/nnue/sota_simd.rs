@@ -299,7 +299,10 @@ pub(crate) mod probe {
         fn pins() -> &'static Pins {
             PINS.get_or_init(|| {
                 let live = std::env::var("P39_PINFILL").as_deref() == Ok("live");
-                eprintln!("[p39] actpin: pinfill={}", if live { "live" } else { "zero" });
+                eprintln!(
+                    "[p39] actpin: pinfill={}",
+                    if live { "live" } else { "zero" }
+                );
                 let leak = || Box::into_raw(Box::new([[0i16; ACC]; 2])) as usize;
                 Pins {
                     a: leak(),
@@ -444,9 +447,8 @@ pub(crate) mod probe {
                     if live_src { "live" } else { "ring" },
                     if fold_site { "fold" } else { "activate" }
                 );
-                let leak = || {
-                    Box::leak(vec![0i16; slots * PAIR].into_boxed_slice()).as_mut_ptr() as usize
-                };
+                let leak =
+                    || Box::leak(vec![0i16; slots * PAIR].into_boxed_slice()).as_mut_ptr() as usize;
                 Rings {
                     src: leak(),
                     dst: leak(),
