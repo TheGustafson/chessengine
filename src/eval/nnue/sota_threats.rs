@@ -763,13 +763,61 @@ struct ThreatEntry {
     /// same fold events as `acc` (all-zero when the net carries no threat
     /// PSQ1 rows). Valid where `fold[p]` is [`Fold::Done`], like `acc`.
     psqt: [[i32; BUCKETS]; 2],
-    /// The move that produced this entry, and the post-move board state its
-    /// events regenerate against. Shared by both perspectives.
-    ///
-    /// `position` is read by BOTH deferred paths: [`Fold::FromParent`] runs
-    /// [`build_deltas`] against it, and [`Fold::Refresh`] rebuilds the whole
-    /// accumulator out of it. `dp` is read only by the former.
+}
+
+/// The per-ply PUSH RECORD — the move that produced the entry plus the
+/// post-move board state its events regenerate against — in its OWN dense
+/// array (perf study 31 arm p1), taking the shape studies 22 and 24 landed on
+/// `Entry.dirty`/`computed` and `ThreatEntry.fold`.
+///
+/// # ⚠ THE LOCALITY HYPOTHESIS THIS SPLIT WAS BUILT TO TEST IS **REFUTED**
+///
+/// Read this before proposing anything else about the snapshot's placement.
+///
+/// **The hypothesis.** Perf study 28 §7 measured `search::<NonPv>` — into which
+/// [`ThreatContext::apply_at`] is inlined — stalling **3.03× Stockfish's search
+/// symbol** (+303.4 cycles/node, **26.7% of the whole 1.37× per-node gap**) and
+/// named *this snapshot* as the mechanism: "a `DirtyPiece` and an 80-byte
+/// `ThreatPosition` written every node into a stack whose per-ply stride is
+/// ~10.5 KB … a write into a cold line at every single node, evaluated or not".
+/// Study 24 had declined the split on a READ argument (`dp`/`position` "are read
+/// exactly ONCE per folded child, never scanned"), which is true and is not the
+/// same claim: 100% of nodes WRITE this record and only ~41.5% ever fold it.
+///
+/// **The measurement** (perf study 31, `tools/perf31/stalls31.sh`, 12
+/// randomised-order round-robin rounds against a byte-identical null,
+/// node-identical at 5,001,562 and eval-hash-identical at `5ca978e0…`):
+///
+/// | counter | base | NULL | ARM (this split) |
+/// |---|---:|---:|---:|
+/// | L1-dcache-load-misses/node | 618.08 | −0.160% | **+0.254% (+1.57)** |
+/// | `ex_no_retire.load_not_complete`/node | 2836.01 | +2.100% | **+3.583%** |
+/// | instructions/node | 5653.84 | +0.000% | −0.014% (−0.78) |
+///
+/// **Moving the record from a 5,312-byte stride to an 88-byte one changes the
+/// engine's L1 miss count by nothing** — +1.57/node against a null of −1.0/node,
+/// on the one counter here whose null is ±0.16%. The lines were already hot:
+/// only ~15 plies are live at a time and `compute` walks them repeatedly, so the
+/// top of a 5.3 KB-strided stack is L1/L2-resident, not cold.
+///
+/// **What that means for study 28's item C:** the +303.4 cycles/node is a
+/// SITE localisation, not a mechanism. The named mechanism is now excluded;
+/// whatever `search::<NonPv>` is stalling on (TT probes into 16 MB, the
+/// butterfly/continuation history planes, movegen) has not been identified.
+/// Do not re-price item C off this snapshot.
+///
+/// **Why the split is kept anyway:** −0.78 instructions/node and −0.44
+/// branches/node against an exact 0.000% null, 12/12 sign-consistent, and it
+/// returns [`ThreatEntry`] to 5,248 bytes — the same size and shape as
+/// `sota_accumulator`'s `Entry`. It is kept for the encoded negative result
+/// above at least as much as for the instructions.
+#[derive(Clone, Copy, Default)]
+struct Push {
+    /// Read only by the [`Fold::FromParent`] path ([`build_deltas`]).
     dp: DirtyPiece,
+    /// Read by BOTH deferred paths: [`Fold::FromParent`] runs [`build_deltas`]
+    /// against it, and [`Fold::Refresh`] rebuilds the whole accumulator out of
+    /// it.
     position: ThreatPosition,
 }
 
@@ -817,8 +865,6 @@ impl Default for ThreatEntry {
         ThreatEntry {
             acc: [[0i16; ACC]; 2],
             psqt: [[0i32; BUCKETS]; 2],
-            dp: DirtyPiece::EMPTY,
-            position: ThreatPosition::default(),
         }
     }
 }
@@ -858,6 +904,10 @@ pub struct ThreatContext<'a> {
     /// bounds. The boxes are built through `vec![..].into_boxed_slice()` and
     /// `try_into`, which is a pointer cast — never a 1.3 MB array on the stack.
     stack: Box<[ThreatEntry; STACK_LEN]>,
+    /// Per-ply move + post-move board snapshot, in its own dense array so the
+    /// every-node WRITE is a sequential 88-byte-stride stream instead of two
+    /// cold lines 5.3 KB apart — see [`Push`].
+    push: Box<[Push; STACK_LEN]>,
     /// Per-ply, per-perspective fold state. Its own dense array so `compute`'s
     /// ancestor walk is a linear scan over 2 bytes per ply — see [`FoldState`].
     fold: Box<[FoldState; STACK_LEN]>,
@@ -909,6 +959,16 @@ impl<'a> ThreatContext<'a> {
             {
                 Ok(b) => b,
                 Err(_) => unreachable!("vec! built exactly STACK_LEN entries"),
+            },
+            // `try_into` + `unreachable!`, not `expect`: `Push` embeds a
+            // `ThreatPosition`, which is not `Debug`, and `Result::expect`
+            // demands it (same reason as `stack` above).
+            push: match vec![Push::default(); STACK_LEN]
+                .into_boxed_slice()
+                .try_into()
+            {
+                Ok(b) => b,
+                Err(_) => unreachable!("vec! built exactly STACK_LEN push records"),
             },
             fold: vec![[Fold::FromParent; 2]; STACK_LEN]
                 .into_boxed_slice()
@@ -1071,8 +1131,10 @@ impl<'a> ThreatContext<'a> {
         // codebase's own aliasing idiom for exactly this shape —
         // `split_at_mut`, as `HalfkaContext::compute` uses — was NOT tried.
         // Do not re-derive this without re-measuring.
-        self.stack[child].dp = *dp;
-        self.stack[child].position = ThreatPosition::from_board(board);
+        self.push[child] = Push {
+            dp: *dp,
+            position: ThreatPosition::from_board(board),
+        };
 
         // A perspective whose king crossed the d/e mirror cannot fold from its
         // parent — every index is re-oriented — so it must be rebuilt from
@@ -1154,7 +1216,13 @@ impl<'a> ThreatContext<'a> {
                  refresh() was never called"
             );
             if f == Fold::Refresh {
-                discharge_refresh(&mut self.stack[*a], weights, psqt_weights, p);
+                discharge_refresh(
+                    &mut self.stack[*a],
+                    &self.push[*a].position,
+                    weights,
+                    psqt_weights,
+                    p,
+                );
                 // `fold` no longer lives on the entry, so the discharge's last
                 // act happens here (perf study 24 arm h1). It also keeps
                 // `discharge_refresh` at exactly six integer argument
@@ -1180,8 +1248,8 @@ impl<'a> ThreatContext<'a> {
             build_deltas(
                 &mut self.buf,
                 tab,
-                &self.stack[child].dp,
-                &self.stack[child].position,
+                &self.push[child].dp,
+                &self.push[child].position,
             );
             // Phase 1 — resolve EVERY needed perspective before ANY fold runs
             // (perf study #4 item #3). The [`ThreatResolver`] hoists the
@@ -1205,7 +1273,7 @@ impl<'a> ThreatContext<'a> {
                 // Both perspectives wanted — the common case. One pass over
                 // the buffer, sharing the per-event decode (perf study 9
                 // item 1).
-                let kings = self.stack[child].position.kings;
+                let kings = self.push[child].position.kings;
                 let resolvers = [
                     ThreatResolver::new(Color::White, kings[0]),
                     ThreatResolver::new(Color::Black, kings[1]),
@@ -1223,7 +1291,7 @@ impl<'a> ThreatContext<'a> {
                     if !needs_fold {
                         continue;
                     }
-                    let ksq = self.stack[child].position.kings[p];
+                    let ksq = self.push[child].position.kings[p];
                     let resolver = ThreatResolver::new(Color::ALL[p], ksq);
                     lens[p] = resolve_into(
                         self.buf.events(),
@@ -1378,13 +1446,24 @@ impl<'a> ThreatContext<'a> {
 /// −14.2 study 17 §5.1c measured (D33 reviewer A, A10).
 #[cold]
 #[inline(never)]
-fn discharge_refresh(entry: &mut ThreatEntry, weights: &[i8], psqt_weights: &[i32], p: usize) {
-    // Field-disjoint borrows: `acc[p]`/`psqt[p]` are written while `position`
-    // is read, and the borrow checker splits struct fields, so no copy of the
-    // 80-byte snapshot is needed.
+fn discharge_refresh(
+    entry: &mut ThreatEntry,
+    position: &ThreatPosition,
+    weights: &[i8],
+    psqt_weights: &[i32],
+    p: usize,
+) {
+    // `position` now arrives as its own argument: perf study 31 arm p1 moved
+    // the snapshot into a parallel dense array, so the two borrows are of
+    // different arrays rather than disjoint fields of one struct. The seventh
+    // integer argument register does not exist, so `p` goes on the stack at
+    // this call site -- 0.0208 calls/node, i.e. ~0.06 i/n, against the
+    // every-node write this split is buying (study 17 5.2's six-register rule
+    // costs what it costs only at a hot call rate; this one is cold, which is
+    // exactly why it carries `#[cold]`).
     let persp = Color::ALL[p];
-    refresh_threat_into_at(&mut entry.acc[p], weights, &entry.position, persp);
-    entry.psqt[p] = refresh_psqt_threat_at(psqt_weights, &entry.position, persp);
+    refresh_threat_into_at(&mut entry.acc[p], weights, position, persp);
+    entry.psqt[p] = refresh_psqt_threat_at(psqt_weights, position, persp);
 }
 
 /// Resolve the perspective-agnostic raw `events` to one perspective's

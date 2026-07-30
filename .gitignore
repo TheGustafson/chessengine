@@ -59,3 +59,7 @@ bin26/
 # perf study 29: labelled measurement binaries + the census output file.
 bin29/
 foldcount.txt
+bin31/
+/target31/
+/target31chk/
+/target31def/
