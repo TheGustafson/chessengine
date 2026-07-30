@@ -390,6 +390,14 @@ address containment:
 | `i8_deltas_into` (AVX-512) | 4 572 | 647 | **7.07** |
 | **hot total** | **75 886** | **14 251** | **5.32** |
 
+(Three different "hot set" totals appear in this document and they are three
+different SETS, not a contradiction: **94 438** is `hotsize41.py`'s 13 symbols
+*including* both `search::<Pv>` and `qsearch::<Pv>`; **82 810 / 65 218** is
+`lines41.py`'s top-26 by sample share; **75 886** is this table, which drops the
+two Pv instantiations — the profile shows they are cold — and adds
+`i8_deltas_into_generic`. 94 438 − 22 156 (the Pv pair) + 3 604 = 75 886
+exactly.)
+
 At 5.32 B/instruction a 64-byte fetch block holds **12.02** instructions at
 best. The engine measures 5928.54 instructions against 538.42 fetches =
 **11.01 per fetch, 91.6 % of ideal.** The fetcher is efficient; there is simply
