@@ -213,6 +213,20 @@ ttspec2_42 = []
 # The search tree is untouched at every dose (node count + eval hash gated).
 # Measurement only, never shipped.
 dosesort40 = []
+# Perf study 43's SOFTWARE-PREFETCH arm for the Finny warm refresh, selected by
+# `P43_PF` at run time so control and arm are the SAME BYTES (study 29 built its
+# prefetch arm as a separate binary, and its own §5.3 records a byte-different
+# null moving the cycles median further than the arm). Six modes -- see
+# `sota_accumulator::pf43`. Measurement only unless a mode wins, in which case
+# the winning mode lands unconditionally and the feature goes away.
+pf43 = ["sota"]
+# Perf study 43 arm NT: the Finny cache entry (written now, next read ~350
+# nodes later, in a stream that pushes ~3 MB through a 1 MB L2 in between) is
+# stored NON-TEMPORALLY, while the stack destination the head reads within the
+# same node stays a normal store. Zero instruction-count change -- same store
+# count, different opcode -- so it is a pure cache-policy arm. Measurement
+# feature; if it wins it lands unconditionally and the feature goes away.
+nt43 = ["sota"]
 
 [dev-dependencies]
 # Test/bench-only (D15: runtime [dependencies] stays empty; dev-deps allowed).

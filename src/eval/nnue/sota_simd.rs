@@ -614,7 +614,19 @@ pub(crate) fn apply_halfka_deltas_dual(
     subs: &[usize],
 ) {
     #[cfg(feature = "foldcount")]
-    super::foldcount::HKA_DUAL.hit(adds.len() + subs.len());
+    {
+        super::foldcount::HKA_DUAL.hit(adds.len() + subs.len());
+        super::foldcount::note_hka_dual_shape(adds.len() + subs.len());
+    }
+    // Perf study 43 arm NT stores `acc` non-temporally, which the ISA only
+    // defines for a 64-byte-aligned address. The alignment is structural
+    // (`FinnyEntry` is `align(64)`, `acc` at offset 128), so this asserts the
+    // invariant rather than checking a value that could legitimately vary.
+    debug_assert_eq!(
+        std::ptr::from_ref(acc) as usize % 64,
+        0,
+        "the Finny cache entry's accumulator must be 64-byte aligned"
+    );
     pin_rows!(adds, subs);
     pin_dst!(out);
     kernel_dispatch!(i8_deltas_dual(acc, out, weights, adds, subs))
@@ -1742,6 +1754,27 @@ mod avx512 {
                     }
                 }
                 for (k, vk) in v.iter().enumerate() {
+                    // Perf study 43 arm NT. The two destinations have opposite
+                    // reuse distances and only one of them wants a cache line:
+                    //
+                    //  * `out` is `stack[ply].acc[p]`, which the head reads
+                    //    within the same node -- it must stay a normal store;
+                    //  * `acc` is the FINNY CACHE ENTRY, whose next read is the
+                    //    next refresh at this king key. Measured: 0.16472
+                    //    refreshes/node spread over all 128 slots, so a hot slot
+                    //    comes round roughly every ~350 nodes, and in 350 nodes
+                    //    the engine streams ~3 MB of weight rows through a 1 MB
+                    //    L2. The line cannot survive, so keeping it costs an RFO
+                    //    now (6.6 lines/node) and evicts weight rows for nothing.
+                    //
+                    // `_mm512_stream_si512` REQUIRES 64-byte alignment; that is
+                    // guaranteed structurally, not by luck -- `FinnyEntry` is
+                    // `#[repr(C, align(64))]` and `acc` sits at offset 128
+                    // (`by_piece` 96 + `psqt` 32) -- and the wrapper
+                    // `debug_assert`s it.
+                    #[cfg(feature = "nt43")]
+                    _mm512_stream_si512(acc.as_mut_ptr().add(off + k * LANES).cast(), *vk);
+                    #[cfg(not(feature = "nt43"))]
                     _mm512_storeu_si512(acc.as_mut_ptr().add(off + k * LANES).cast(), *vk);
                     _mm512_storeu_si512(out.as_mut_ptr().add(off + k * LANES).cast(), *vk);
                 }

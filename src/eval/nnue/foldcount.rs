@@ -72,6 +72,39 @@ pub static EVAL: Site = Site::new();
 
 /// Shape histogram for the HalfKA fold: index `adds * 4 + subs`, capped at 15.
 pub static HKA_SHAPE: [AtomicU64; 16] = [const { AtomicU64::new(0) }; 16];
+
+/// Perf study 43 — row-count histogram for the Finny **warm** refresh
+/// (`apply_halfka_deltas_dual`), `min(adds + subs, 63)`.
+///
+/// `hka_dual`'s mean of ~5.68 rows/call is the only shape statistic anyone had
+/// for this site, and a mean cannot answer either of the two questions study 43
+/// needed: how often the set-difference is EMPTY (in which case the fold's
+/// 2560-byte write-back to the cache entry is pure waste and a copy would do),
+/// and how heavy the tail is (which is what an associativity change would
+/// target). Both are read straight off this histogram.
+pub static HKA_DUAL_SHAPE: [AtomicU64; 64] = [const { AtomicU64::new(0) }; 64];
+
+/// Perf study 43 — refreshes per Finny key, indexed `perspective * 64 + key`.
+///
+/// `FINNY_KEYS == 64` because `halfka_king_key` is a BIJECTION from the 64 king
+/// squares onto the 64 keys (perf study 22 §5.3), so the table cannot be made
+/// larger and every key is reachable. What nobody had measured is how many of
+/// them a search actually *visits*: the resident working set is
+/// `distinct keys x 2688 B`, not the 336 KB the array occupies, and that is the
+/// number that decides whether the table's SIZE is a locality problem at all.
+pub static FINNY_KEY: [AtomicU64; 128] = [const { AtomicU64::new(0) }; 128];
+
+/// Hook: a warm Finny refresh folded `rows` weight rows.
+#[inline]
+pub fn note_hka_dual_shape(rows: usize) {
+    HKA_DUAL_SHAPE[rows.min(63)].fetch_add(1, Relaxed);
+}
+
+/// Hook: perspective `p` refreshed Finny key `key`.
+#[inline]
+pub fn note_finny_key(p: usize, key: usize) {
+    FINNY_KEY[(p * 64 + key).min(127)].fetch_add(1, Relaxed);
+}
 /// Shape histogram for the threat fold: `min(adds + subs, 31)`.
 pub static THR_SHAPE: [AtomicU64; 32] = [const { AtomicU64::new(0) }; 32];
 
@@ -287,6 +320,18 @@ pub fn dump(nodes: u64) {
             if n != 0 {
                 emit!("FOLDCOUNT hka_shape.{a}a{s}s={n}");
             }
+        }
+    }
+    for (r, cell) in HKA_DUAL_SHAPE.iter().enumerate() {
+        let n = cell.load(Relaxed);
+        if n != 0 {
+            emit!("FOLDCOUNT hka_dual_shape.{r}={n}");
+        }
+    }
+    for (i, cell) in FINNY_KEY.iter().enumerate() {
+        let n = cell.load(Relaxed);
+        if n != 0 {
+            emit!("FOLDCOUNT finny_key.p{}k{}={n}", i / 64, i % 64);
         }
     }
     for (r, cell) in THR_SHAPE.iter().enumerate() {

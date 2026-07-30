@@ -18,6 +18,100 @@ use crate::types::{Color, MAX_PLY, Piece, PieceType, Square};
 const STACK_LEN: usize = MAX_PLY + 8;
 const FINNY_KEYS: usize = 64;
 
+/// Perf study 43's software-prefetch arm for the Finny warm refresh.
+///
+/// **One binary, four modes, selected by `P43_PF` at run time.** Study 29
+/// killed a prefetch here on a *separate* build, which confounds the arm with
+/// code layout — and its own §5.3 records that a byte-different null moved the
+/// cycles median by more than the arm did. Reading the mode from the
+/// environment makes control and arm the same bytes, so layout differences out
+/// by construction (perf study 39's idiom). The mode check costs one relaxed
+/// load and one branch per refresh, i.e. **0.16 per node**.
+///
+/// Modes, chosen so each names a distinct reason study 29's arm could have
+/// failed rather than repeating it:
+///
+/// | mode | what |
+/// |---|---|
+/// | 0 | off — the control |
+/// | 1 | every line of every fold row, `T0`, issued after the diff walk |
+/// | 2 | as 1 but `T2` — study 29's hint LEVEL at study 43's placement |
+/// | 3 | first line of each row only, `T0` — study 29's COVERAGE at `T0` |
+/// | 4 | the Finny slot's own 2560-byte payload, `T0`, before the diff walk |
+/// | 5 | 1 + 4 |
+#[cfg(feature = "pf43")]
+pub(crate) mod pf43 {
+    use super::ACC;
+    use std::sync::LazyLock;
+
+    static MODE: LazyLock<u32> = LazyLock::new(|| {
+        std::env::var("P43_PF")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0)
+    });
+
+    #[inline]
+    fn hint(p: *const i8, t0: bool) {
+        #[cfg(target_arch = "x86_64")]
+        {
+            #[allow(unsafe_code)]
+            // SAFETY: `_mm_prefetch` is a pure cache hint. It is defined for
+            // ANY address value — it cannot fault, cannot trap, and has no
+            // architectural effect beyond cache state — so no validity or
+            // provenance claim about `p` is required. Same sanctioned use and
+            // same justification as `TranspositionTable::prefetch` (doc 08
+            // §3.15).
+            unsafe {
+                use std::arch::x86_64::{_MM_HINT_T0, _MM_HINT_T2, _mm_prefetch};
+                if t0 {
+                    _mm_prefetch(p, _MM_HINT_T0);
+                } else {
+                    _mm_prefetch(p, _MM_HINT_T2);
+                }
+            }
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        let _ = (p, t0);
+    }
+
+    /// Hint the weight rows this refresh is about to fold. `ACC` i8 per row.
+    #[inline]
+    pub(crate) fn rows(weights: &[i8], adds: &[usize], subs: &[usize]) {
+        let mode = *MODE;
+        if mode == 0 || mode == 4 {
+            return;
+        }
+        let full = mode != 3;
+        let t0 = mode != 2;
+        for &f in adds.iter().chain(subs) {
+            // `wrapping_add`, not `add`: a hint needs no in-bounds proof, and
+            // the wrapping form keeps this free of a provenance argument.
+            let base = weights.as_ptr().wrapping_add(f * ACC);
+            if full {
+                for off in (0..ACC).step_by(64) {
+                    hint(base.wrapping_add(off), t0);
+                }
+            } else {
+                hint(base, t0);
+            }
+        }
+    }
+
+    /// Hint the Finny slot's own payload, before the set-difference walk gives
+    /// the fold ~200 instructions of cover.
+    #[inline]
+    pub(crate) fn slot(acc: &[i16; ACC]) {
+        if !matches!(*MODE, 4 | 5) {
+            return;
+        }
+        let base = acc.as_ptr().cast::<i8>();
+        for off in (0..ACC * 2).step_by(64) {
+            hint(base.wrapping_add(off), true);
+        }
+    }
+}
+
 /// `N` clones of `value` on the heap as a fixed-size array (perf study 22 arm
 /// 1b).
 ///
@@ -190,6 +284,15 @@ impl Default for Entry {
 /// is ~3 KB — 48 cache lines for the entire search stack, versus one line per
 /// ply 5248 bytes apart. A parent/child pair now shares a line instead of
 /// guaranteeing two misses.
+///
+/// The 5248 above is the **pre-split** `Entry` (payload + `dirty` + `computed`,
+/// 5196 rounded up to 64-byte alignment) and is left as written because it is
+/// what the split was measured against. Today's `Entry` is **5184 bytes** —
+/// `acc` 2 × 1280 × 2 B + `psqt` 2 × 8 × 4 B, still an exact 81 cache lines, so
+/// every ply's `acc[p]` stays 64-byte aligned and the fold's 40 `zmm` stores
+/// stay line-aligned. Verified at run time by perf study 43 from the
+/// `foldcount` region dump: `hka_stack` is 1,316,736 B for `STACK_LEN` = 254,
+/// i.e. 5184 each, based at a 64-byte-aligned address.
 #[derive(Clone, Copy)]
 struct Meta {
     dirty: DirtyPiece,
@@ -544,9 +647,13 @@ impl<'a> HalfkaContext<'a> {
             ..
         } = self;
         let p = perspective as usize;
+        #[cfg(feature = "foldcount")]
+        super::foldcount::note_finny_key(p, key);
         let cached = &mut cache[p * FINNY_KEYS + key];
         let valid_bit = 1u64 << key;
         if cache_valid[p] & valid_bit != 0 {
+            #[cfg(feature = "pf43")]
+            pf43::slot(&cached.acc);
             // Option A (perf study #2): bitboard set-diff against the cached
             // position. Same add/sub SETS as the old sorted-list derivation
             // (order may differ; wrapping i16/i32 adds commute => the
@@ -649,6 +756,8 @@ impl<'a> HalfkaContext<'a> {
             // probe; the naive doubled assignment measured +0.006% because
             // dead-store elimination removed it). Writing both homes from the
             // registers the fold already holds costs one store per 32 lanes.
+            #[cfg(feature = "pf43")]
+            pf43::rows(weights, &adds[..add_len], &subs[..sub_len]);
             apply_halfka_deltas_dual(
                 &mut cached.acc,
                 &mut stack[ply].acc[p],
