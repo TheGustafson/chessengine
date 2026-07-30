@@ -4075,3 +4075,84 @@ Brief specifics worth recording:
 
 Still no D49 screen: sb162 is 40% of schedule. Post-cosine (sb250+) remains the
 first informative point, sb400 the real one.
+
+## Perf study 32 COMPLETE — the i8 HalfKA transformer ships (merge pending)
+
+13 commits on `worktree-agent-a6205b2309e5cc90c`, tree clean, 25.8 KB doc.
+**Not on main yet** — see the merge section below.
+
+### IT VALIDATED THE CYCLES-NOT-INSTRUCTIONS RULE IN THE SHARPEST POSSIBLE WAY
+
+8 rounds, paired within round against a byte-identical null, median of
+per-round ratio:
+
+| counter | base | NULL | ARM | rounds negative |
+|---|---:|---:|---:|---:|
+| **cycles/node** | 4786.41 | −1.382% | **−6.835%** | 8/8 |
+| **load-stall/node** | 2754.07 | −1.675% | **−17.421%** | 8/8 |
+| **L1d miss/node** | 617.54 | −0.072% | **−6.542%** | 8/8 |
+| instructions/node | 5659.75 | +0.000% | **+5.519%** | 0/8 |
+
+**Instructions went UP 5.5% while cycles went DOWN 6.8%.** An instructions gate
+would have rejected this outright — the same shape as study 20. Cycles clear
+their null 4.9x, load-stalls 10.4x, L1 misses 91x.
+
+### Strength: a NULL, and I am reporting it as one
+
+Two independent 1466-game fixed-node screens:
+- net-vs-net on one binary (isolates the *scheme*): **+9.48 +/- 11.08**
+- binary-vs-binary on one net (isolates the *implementation*): **−1.90 +/- 10.72**
+- **pooled: +3.6 +/- 7.7 Elo over 2932 games — no detectable fidelity cost.**
+
+**I am NOT quoting the +12.6 Elo speed translation as measured strength**, at
+the study's own request: it is a non-PGO probe-frame number taken on a box
+running the trainer, and this project's probe→PGO translation has gone wrong
+**1.1-2.9x in BOTH directions**. The measured strength result is the null above.
+
+**Gates:** `check.sh` All checks passed; **Bench 587683 unchanged**; NNUE pins
+moved intentionally to `eb981b11…4f4f37` / `1985398`, updated in `check.sh` and
+CLAUDE.md in-commit.
+
+### Its own honesty, recorded — the two most reusable items
+
+- **The pre-registered offline fidelity bar FAILED** (p95 4.35 vs 3.0, p99 7.25
+  vs 5.0) and **no post-training scale scheme reaches it**. Written up as a
+  failure, not a footnote: the bar was miscalibrated, and *the games are what
+  proved it*.
+- **The weight-MSE proxy MISRANKS.** An MSE-optimal scale is 11.5% better on L2
+  and **11% worse at eval p95**. Optimising the proxy actively hurts the thing
+  we care about.
+- Two nulls: per-ROW scaling buys nothing (rows are homogeneous, k=0 for
+  21,386/22,528).
+- **Study 31's −463 was nearly exact on its own terms** (load-stalls fell
+  480/node) but priced only the *saving*; the widen+multiply cost +312
+  instructions. +17 forecast vs +12.6 delivered = **74% realisation, right on
+  study 31's own 76.5% edit-priced rate.** The discount law predicted its own
+  successor.
+- Correctness anchor: shipped `nnue-eval` is **byte-identical to an independent
+  NumPy simulation** across all 800 battery positions.
+
+### The merge — escalated correctly, and sent back with the contract
+
+Verified by me on a throwaway branch: **25 hunks across 6 files**
+(`.gitignore`, `sota_accumulator.rs`, `sota_head.rs`, `sota_simd.rs`,
+`policy.rs`, `tests/eval_file_reload.rs`), **24 commits behind main**.
+
+It stopped because "whether my i8 kernels inherit study 29's counters and probe
+pins is 29's contract, and a wrong guess is a silent eval corruption."
+**I corrected that risk assessment and sent it back to finish:**
+
+- **A wrong guess CANNOT corrupt the shipped engine.** `Cargo.toml` has no
+  `default` key (verified), so all four instrumentation features are opt-in over
+  35 cfg sites, and the probes *deliberately* compute wrong evals by design
+  (`dstpin` fails 29 tests on purpose). The real exposure is **invalidating
+  future probe measurements** — serious, but not catastrophic.
+- **Study 29 left a verifiable CONTROL that converts the guess into a
+  measurement:** build with `foldcount` post-merge and check refresh rate
+  **0.16102**, refresh rows **0.9132**, rows/fold **2.275**, pushes/node
+  **1.0000**. Reproduce those and the wiring is right.
+- The composition is clean: study 30 owns the *threat* shift, study 32 the
+  *HalfKA* multiply ⇒ `clamp(pst*ft_scale + (threat << threat_shift), 0, 255)`,
+  preserving study 30's exhaustive const-generic dispatch with no panic arm.
+- All three pins to be re-derived post-merge; they will likely move again once
+  the threat path composes in.
