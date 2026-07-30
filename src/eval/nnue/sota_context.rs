@@ -225,13 +225,22 @@ impl SotaContext {
         let largenet_halfka = largenet.map(|large| {
             HalfkaContext::new(&large.halfka_weights, &large.ft_bias, large.halfka_psqt())
         });
-        let largenet_threats =
-            largenet.map(|large| ThreatContext::new(&large.threat_weights, large.threat_psqt()));
+        let largenet_threats = largenet.map(|large| {
+            ThreatContext::new(
+                &large.threat_weights,
+                large.threat_psqt(),
+                large.threat_remap.as_deref(),
+            )
+        });
         SotaContext {
             net,
             policy_head: super::active_policy_head(),
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias, net.halfka_psqt()),
-            threats: ThreatContext::new(&net.threat_weights, net.threat_psqt()),
+            threats: ThreatContext::new(
+                &net.threat_weights,
+                net.threat_psqt(),
+                net.threat_remap.as_deref(),
+            ),
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
@@ -295,7 +304,11 @@ impl SotaContext {
             net,
             policy_head: super::active_policy_head(),
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias, net.halfka_psqt()),
-            threats: ThreatContext::new(&net.threat_weights, net.threat_psqt()),
+            threats: ThreatContext::new(
+                &net.threat_weights,
+                net.threat_psqt(),
+                net.threat_remap.as_deref(),
+            ),
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
@@ -332,7 +345,11 @@ impl SotaContext {
             net,
             policy_head: super::active_policy_head(),
             halfka: HalfkaContext::new(&net.halfka_weights, &net.ft_bias, net.halfka_psqt()),
-            threats: ThreatContext::new(&net.threat_weights, net.threat_psqt()),
+            threats: ThreatContext::new(
+                &net.threat_weights,
+                net.threat_psqt(),
+                net.threat_remap.as_deref(),
+            ),
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
@@ -352,6 +369,7 @@ impl SotaContext {
             largenet_threats: Some(ThreatContext::new(
                 &largenet.threat_weights,
                 largenet.threat_psqt(),
+                largenet.threat_remap.as_deref(),
             )),
             largenet_sigma_gate: sigma_gate,
             tiers_armed: false, // recomputed by `with_tier_flag`
@@ -609,6 +627,7 @@ impl SotaContext {
             &self.net.ft_bias,
             &self.net.threat_weights,
             board,
+            self.net.threat_remap.as_deref(),
         );
         assert_eq!(
             got_pst, expected.0,
@@ -629,7 +648,12 @@ impl SotaContext {
             );
             assert_eq!(
                 got_th_psqt[i],
-                refresh_psqt_threat(self.net.threat_psqt(), board, persp),
+                refresh_psqt_threat(
+                    self.net.threat_psqt(),
+                    board,
+                    persp,
+                    self.net.threat_remap.as_deref()
+                ),
                 "SOTA FullThreats PSQT drift at ply {ply}"
             );
         }
@@ -758,6 +782,49 @@ mod tests {
         Box::leak(Box::new(test_net_with_psqt_pub()))
     }
 
+    /// Recode POC end-to-end (deploy mode (ii) correctness): over a random
+    /// game, the compressed net (4,096 threat rows + TRM1 surjection) and its
+    /// scattered twin (full 60,720-row tables carrying the same values through
+    /// an identity TRM1) must produce bit-identical evals at every ply. In a
+    /// debug build each `evaluate` additionally runs `assert_matches_refresh`,
+    /// so this walk also pins the incremental fold against the from-scratch
+    /// refresh in the re-coded row space — the drift class the single
+    /// resolver chokepoint exists to prevent.
+    #[test]
+    fn recode_pair_is_eval_identical_over_a_game() {
+        use super::super::sota_loader::tests::test_recode_pair_pub;
+        let (compressed, scattered) = test_recode_pair_pub();
+        let compressed: &'static SotaNetwork = Box::leak(Box::new(compressed));
+        let scattered: &'static SotaNetwork = Box::leak(Box::new(scattered));
+        let mut a = SotaContext::new(compressed);
+        let mut b = SotaContext::new(scattered);
+        let mut board = Board::startpos();
+        a.refresh_root(&board);
+        b.refresh_root(&board);
+        let mut seed = 0x5EC0_DE02_5EEDu64;
+        for ply in 0..48usize {
+            let mut moves = MoveList::new();
+            generate_legal(&board, &mut moves);
+            if moves.is_empty() {
+                break;
+            }
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let m = moves[seed as usize % moves.len()];
+            let dirty = DirtyPiece::from_move(&board, m);
+            let gives_check = board.gives_check(m);
+            board.make_move(m, gives_check);
+            a.push(dirty, ply, &board);
+            b.push(dirty, ply, &board);
+            assert_eq!(
+                a.evaluate(&board, ply + 1),
+                b.evaluate(&board, ply + 1),
+                "compressed vs scattered eval diverged at ply {ply} ({m})"
+            );
+        }
+    }
+
     /// T6c end-to-end (gate 2): over a random game, the psqt-carrying net's
     /// incrementally-maintained eval equals (a) a fresh-context eval (which the
     /// debug oracle inside `evaluate` additionally pins to from-scratch PSQT
@@ -813,7 +880,7 @@ mod tests {
             let mut totals = [[0i32; super::super::sota_head::BUCKETS]; 2];
             for (i, &persp) in Color::ALL.iter().enumerate() {
                 let hk = refresh_psqt_halfka(psqt_net.halfka_psqt(), &board, persp);
-                let th = refresh_psqt_threat(psqt_net.threat_psqt(), &board, persp);
+                let th = refresh_psqt_threat(psqt_net.threat_psqt(), &board, persp, None);
                 for b in 0..super::super::sota_head::BUCKETS {
                     totals[i][b] = hk[b] + th[b];
                 }

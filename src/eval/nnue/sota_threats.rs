@@ -92,8 +92,8 @@
 
 use super::sota_accumulator::{psqt_add, psqt_sub};
 use super::sota_features::{
-    ACC, KEPT_VICTIMS, THREAT_DIMS, ThreatPosition, ThreatResolver, for_each_threat_at,
-    refresh_threat_into_at, sf_code, threat_pair_kept,
+    ACC, KEPT_VICTIMS, THREAT_DIMS, ThreatPosition, ThreatRemap, ThreatResolver,
+    for_each_threat_at, refresh_threat_into_at, sf_code, threat_pair_kept,
 };
 #[cfg(test)]
 use super::sota_features::{for_each_threat, refresh_threat};
@@ -671,8 +671,14 @@ pub(crate) fn refresh_psqt_threat(
     table: &[i32],
     board: &Board,
     perspective: Color,
+    remap: Option<&ThreatRemap>,
 ) -> [i32; BUCKETS] {
-    refresh_psqt_threat_at(table, &ThreatPosition::from_board(board), perspective)
+    refresh_psqt_threat_at(
+        table,
+        &ThreatPosition::from_board(board),
+        perspective,
+        remap,
+    )
 }
 
 /// [`refresh_psqt_threat`] over a [`ThreatPosition`] snapshot — the deferred
@@ -681,12 +687,15 @@ fn refresh_psqt_threat_at(
     table: &[i32],
     pos: &ThreatPosition,
     perspective: Color,
+    remap: Option<&ThreatRemap>,
 ) -> [i32; BUCKETS] {
     let mut out = [0i32; BUCKETS];
     if table.is_empty() {
         return out;
     }
-    for_each_threat_at(pos, perspective, |idx| psqt_add(&mut out, table, idx));
+    for_each_threat_at(pos, perspective, remap, |idx| {
+        psqt_add(&mut out, table, idx)
+    });
     out
 }
 
@@ -888,10 +897,14 @@ impl Default for ThreatEntry {
 /// [`evaluate`]: super::sota_context::SotaContext::evaluate
 pub struct ThreatContext<'a> {
     weights: &'a [i8],
-    /// T6c PSQ1 rows for the THREAT feature space (`THREAT_DIMS · BUCKETS`
+    /// T6c PSQ1 rows for the THREAT feature space (`threat_rows · BUCKETS`
     /// i32, row-major, indexed by the resolved threat feature index), or
     /// empty ⇒ the skip channel is inert.
     psqt_weights: &'a [i32],
+    /// The net's threat re-coding (`None` = identity) — see
+    /// [`ThreatRemap`]. Applied inside [`ThreatResolver::index_decoded`], so
+    /// every resolved index below is already in the net's row space.
+    remap: Option<&'a ThreatRemap>,
     /// One lazily-folded entry per ply; `stack[0]` is the root. Indexed by
     /// absolute search ply and never truncated — a sibling simply overwrites its
     /// ply's entry — exactly like the HalfKA stack. Heap-allocated once.
@@ -962,7 +975,7 @@ impl<'a> ThreatContext<'a> {
     /// A fresh context over `weights` (the `i8` FullThreats weight slice) plus
     /// the net's threat PSQ1 rows (`&[]` when it has none). Call
     /// [`refresh`](Self::refresh) to seed the root before any [`apply`](Self::apply).
-    pub fn new(weights: &'a [i8], psqt_weights: &'a [i32]) -> Self {
+    pub fn new(weights: &'a [i8], psqt_weights: &'a [i32], remap: Option<&'a ThreatRemap>) -> Self {
         #[cfg(feature = "foldcount")]
         {
             use super::foldcount::region;
@@ -981,6 +994,7 @@ impl<'a> ThreatContext<'a> {
         let mut me = ThreatContext {
             weights,
             psqt_weights,
+            remap,
             // `try_into` rather than `expect`: `ThreatEntry` is not `Debug`
             // (it is 5 KB of accumulator) and `Result::expect` demands it.
             stack: match vec![ThreatEntry::default(); STACK_LEN]
@@ -1045,11 +1059,12 @@ impl<'a> ThreatContext<'a> {
         } else {
             let weights = self.weights;
             let psqt_weights = self.psqt_weights;
+            let remap = self.remap;
             // One snapshot for all four rebuilds, not four.
             let pos = ThreatPosition::from_board(board);
             for (i, &persp) in Color::ALL.iter().enumerate() {
-                refresh_threat_into_at(&mut self.stack[0].acc[i], weights, &pos, persp);
-                self.stack[0].psqt[i] = refresh_psqt_threat_at(psqt_weights, &pos, persp);
+                refresh_threat_into_at(&mut self.stack[0].acc[i], weights, &pos, persp, remap);
+                self.stack[0].psqt[i] = refresh_psqt_threat_at(psqt_weights, &pos, persp, remap);
             }
         }
         self.fold[0] = [Fold::Done; 2];
@@ -1279,6 +1294,7 @@ impl<'a> ThreatContext<'a> {
                     weights,
                     psqt_weights,
                     p,
+                    self.remap,
                 );
                 // `fold` no longer lives on the entry, so the discharge's last
                 // act happens here (perf study 24 arm h1). It also keeps
@@ -1336,8 +1352,8 @@ impl<'a> ThreatContext<'a> {
                 // item 1).
                 let kings = self.push[child].position.kings;
                 let resolvers = [
-                    ThreatResolver::new(Color::White, kings[0]),
-                    ThreatResolver::new(Color::Black, kings[1]),
+                    ThreatResolver::with_remap(Color::White, kings[0], self.remap),
+                    ThreatResolver::with_remap(Color::Black, kings[1], self.remap),
                 ];
                 lens = resolve_both(
                     self.buf.events(),
@@ -1353,7 +1369,7 @@ impl<'a> ThreatContext<'a> {
                         continue;
                     }
                     let ksq = self.push[child].position.kings[p];
-                    let resolver = ThreatResolver::new(Color::ALL[p], ksq);
+                    let resolver = ThreatResolver::with_remap(Color::ALL[p], ksq, self.remap);
                     lens[p] = resolve_into(
                         self.buf.events(),
                         &mut self.add_scratch[p],
@@ -1581,18 +1597,19 @@ fn discharge_refresh(
     weights: &[i8],
     psqt_weights: &[i32],
     p: usize,
+    remap: Option<&ThreatRemap>,
 ) {
     // `position` now arrives as its own argument: perf study 31 arm p1 moved
     // the snapshot into a parallel dense array, so the two borrows are of
     // different arrays rather than disjoint fields of one struct. The seventh
-    // integer argument register does not exist, so `p` goes on the stack at
-    // this call site -- 0.0208 calls/node, i.e. ~0.06 i/n, against the
-    // every-node write this split is buying (study 17 5.2's six-register rule
-    // costs what it costs only at a hot call rate; this one is cold, which is
-    // exactly why it carries `#[cold]`).
+    // integer argument register does not exist, so `p` (and now the Recode
+    // `remap` pointer) go on the stack at this call site -- 0.0208 calls/node,
+    // i.e. ~0.1 i/n, against the every-node write this split is buying (study
+    // 17 5.2's six-register rule costs what it costs only at a hot call rate;
+    // this one is cold, which is exactly why it carries `#[cold]`).
     let persp = Color::ALL[p];
-    refresh_threat_into_at(&mut entry.acc[p], weights, position, persp);
-    entry.psqt[p] = refresh_psqt_threat_at(psqt_weights, position, persp);
+    refresh_threat_into_at(&mut entry.acc[p], weights, position, persp, remap);
+    entry.psqt[p] = refresh_psqt_threat_at(psqt_weights, position, persp, remap);
 }
 
 /// Resolve the perspective-agnostic raw `events` to one perspective's
@@ -1915,8 +1932,8 @@ mod tests {
 
     fn refresh_psqt_pair(table: &[i32], board: &Board) -> [[i32; BUCKETS]; 2] {
         [
-            refresh_psqt_threat(table, board, Color::White),
-            refresh_psqt_threat(table, board, Color::Black),
+            refresh_psqt_threat(table, board, Color::White, None),
+            refresh_psqt_threat(table, board, Color::Black, None),
         ]
     }
 
@@ -1931,7 +1948,7 @@ mod tests {
         let w = signature_weights();
         let q = signature_psqt();
         let mut b = board(START_FEN);
-        let mut ctx = ThreatContext::new(&w, &q);
+        let mut ctx = ThreatContext::new(&w, &q, None);
         ctx.refresh(&b);
 
         let m = Move::normal(Square::E2, Square::E4);
@@ -1953,7 +1970,7 @@ mod tests {
         let q = signature_psqt();
         let fen = "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2";
         let mut b = board(fen);
-        let mut ctx = ThreatContext::new(&w, &q);
+        let mut ctx = ThreatContext::new(&w, &q, None);
         ctx.refresh(&b);
 
         let m = Move::normal(Square::E4, Square::D5);
@@ -2002,7 +2019,7 @@ mod tests {
         let q = signature_psqt();
         for &(fen, m) in cases {
             let mut b = board(fen);
-            let mut ctx = ThreatContext::new(&w, &q);
+            let mut ctx = ThreatContext::new(&w, &q, None);
             ctx.refresh(&b);
             let dp = DirtyPiece::from_move(&b, m);
             b.make_move(m, b.gives_check(m));
@@ -2027,7 +2044,7 @@ mod tests {
         let fen = "k7/2q2r2/8/3b4/2R1Kn2/8/8/8 w - - 0 1";
         let mut b = board(fen);
         let q = signature_psqt();
-        let mut ctx = ThreatContext::new(&w, &q);
+        let mut ctx = ThreatContext::new(&w, &q, None);
         ctx.refresh(&b);
         let m = Move::normal(Square::E4, Square::D4);
         assert!(king_crossed(&DirtyPiece::from_move(&b, m), Color::White));
@@ -2061,7 +2078,7 @@ mod tests {
         // of the crossing are not trivial either.
         let fen = "k7/2q2r2/8/3b4/2R1Kn2/8/8/8 w - - 0 1";
         let mut b = board(fen);
-        let mut ctx = ThreatContext::new(&w, &q);
+        let mut ctx = ThreatContext::new(&w, &q, None);
         ctx.refresh(&b);
 
         let cross = Move::normal(Square::E4, Square::D4);
@@ -2170,7 +2187,7 @@ mod tests {
         let q = signature_psqt();
         let fen = "k7/2q2r2/8/3b4/2R1Kn2/8/8/8 w - - 0 1";
         let start = board(fen);
-        let mut ctx = ThreatContext::new(&w, &q);
+        let mut ctx = ThreatContext::new(&w, &q, None);
         ctx.refresh(&start);
 
         // Sibling A: Rc4–c5, no cross — folded here, which marks ply 1 done.
@@ -2205,7 +2222,7 @@ mod tests {
         let w = signature_weights();
         let q = signature_psqt();
         let mut b = board(START_FEN);
-        let mut ctx = ThreatContext::new(&w, &q);
+        let mut ctx = ThreatContext::new(&w, &q, None);
         ctx.refresh(&b);
 
         let mut rng = Rng(0x1A2F_F01D_C0DE);
@@ -2240,7 +2257,7 @@ mod tests {
         let w = signature_weights();
         let q = signature_psqt();
         let start = board(START_FEN);
-        let mut ctx = ThreatContext::new(&w, &q);
+        let mut ctx = ThreatContext::new(&w, &q, None);
         ctx.refresh(&start);
 
         // Sibling A: 1.e4, folded (marks the ply-1 entry computed).
@@ -2297,7 +2314,7 @@ mod tests {
         let w = signature_weights();
         let q = signature_psqt();
         let mut b = board(START_FEN);
-        let mut ctx = ThreatContext::new(&w, &q);
+        let mut ctx = ThreatContext::new(&w, &q, None);
         ctx.refresh(&b);
         let root = *ctx.current();
 
@@ -2332,7 +2349,7 @@ mod tests {
         let w = signature_weights();
         let q = signature_psqt();
         let b = board(START_FEN);
-        let mut ctx = ThreatContext::new(&w, &q);
+        let mut ctx = ThreatContext::new(&w, &q, None);
         ctx.refresh(&b);
         let (root_acc, root_psqt) = {
             let (a, p) = ctx.current_full();
@@ -2375,7 +2392,7 @@ mod tests {
         let mut nodes = 0usize;
         for _ in 0..games {
             let mut b = board(START_FEN);
-            let mut ctx = ThreatContext::new(weights, psqt);
+            let mut ctx = ThreatContext::new(weights, psqt, None);
             ctx.refresh(&b);
 
             for _ in 0..max_plies {
