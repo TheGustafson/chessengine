@@ -4355,3 +4355,45 @@ strength remains the null: **+3.6 +/- 7.7 Elo over 2932 games.**
 
 `cargo test` 711 + 97 pass; `CHECK_NNUE_GATE=1 bash tools/check.sh` → All
 checks passed on the fully merged tree (its run; mine is verifying).
+
+## Tick 2026-07-30 ~06:45 — pins corrected to study 34; gate32 still verifying
+
+**D49 sb174/400**, active. Heldout continues down with no plateau:
+
+| sb | heldout | ema |
+|---|---|---|
+| 150 | 0.012593 | 0.011987 |
+| 160 | 0.012485 | 0.011917 |
+| **170** | **0.012382** | **0.011819** |
+
+**Box:** 7739 MB available, load 7.75. `gate32` (my own verification of main
+after the i8 merge) **still running** — result next tick.
+
+### THE STANDING TICK CONTEXT NOW CARRIES TWO STALE PIN VALUES
+
+The context block still says the gate pins are
+`587683 / 5ca978e0…0b38 / 1922947`. On current main (`fbabe54`) they are:
+
+| pin | value | status |
+|---|---|---|
+| `Bench:` | **587683** | **unchanged** |
+| NNUE eval hash | **`eb981b119bd6…c84f4f37`** | moved (was `5ca978e0…8b38`) |
+| d13 nodes | **`1985398`** | moved (was `1922947`) |
+
+Both moved intentionally and in-commit when **study 32's i8 HalfKA transformer
+landed**; `tools/check.sh` on main already declares them.
+
+**Sent the correction to study 34**, whose brief was written before study 32
+finished and therefore quotes the old values. Study 35 was already warned in
+its own brief, so it needed nothing. The note to 34 also flags a subtler trap:
+study 32's merge shifted the engine-wide baseline by **−5.6%..−6.8% cycles and
+−15.6%..−17.4% load-stalls**, so a post-rebase baseline will differ from a
+pre-rebase one — **that shift must not be attributed to its own arm.** Told it
+to re-baseline on the same tree it measures against, with its null alongside.
+
+Neither study was told to interrupt work to rebase; both can finish and be
+merged at the end, as studies 29/30/31/32/33 were.
+
+**Studies:** 34 ahead=1 dirty=12 behind=29; 35 ahead=1 dirty=5 behind=20. Both
+committing now — the commit-as-you-go instruction is holding across all
+studies tonight.
