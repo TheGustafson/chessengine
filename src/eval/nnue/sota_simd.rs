@@ -6,7 +6,7 @@
 //! selected once at startup and preserves wrapping i16 arithmetic.
 
 use super::sota_features::ACC;
-use super::sota_head::{FT_QUANT, FT_SHIFT, L2, L3};
+use super::sota_head::{FT_QUANT, FT_SHIFT, L2, L3, MAX_THREAT_SHIFT};
 use std::sync::LazyLock;
 
 /// The L1 sparse dot writes `L2` int32 accumulators. The kernels process the
@@ -45,13 +45,23 @@ type ApplyI8IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i8], &[usize], &[usize])
 // read+write pass. `acc` and `out` may not alias.
 type ApplyI8DualFn = fn(&mut [i16; ACC], &mut [i16; ACC], &[i8], &[usize], &[usize]);
 type L1DotFn = fn(&mut [i32; L2], &[u8; ACC], &[u16], &[i8]);
-// `scale` is the HalfKA accumulator's per-lane dequantisation multiplier
-// (perf study 32): the i8 rows are stored at `FT_QUANT / scale[j]`, so the
-// merge has to put lane `j` back into the FT_QUANT frame before it can clamp
-// against 255. It is a WRAPPING i16 multiply in every backend — the reduced
-// accumulator wraps exactly where the old FT_QUANT-frame one did, and pinning
-// the width is what keeps the three backends bit-identical.
-type ActivateFn = fn(&mut [u8; ACC], &[[i16; ACC]; 2], &[[i16; ACC]; 2], &[i16; ACC], usize);
+// The FT merge + pairwise activation. BOTH channels carry a net-dependent
+// rescale into it, and they are independent of one another:
+//
+//   `scale` — the HalfKA accumulator's per-lane dequantisation multiplier
+//     (perf study 32). The i8 rows are stored at `FT_QUANT / scale[j]`, so the
+//     merge puts lane `j` back into the FT_QUANT frame before it clamps. A
+//     WRAPPING i16 multiply in every backend: the reduced accumulator wraps
+//     exactly where the old FT_QUANT-frame one did, and pinning the width is
+//     what keeps the three backends bit-identical. A vector, so it stays a
+//     parameter rather than becoming a const generic.
+//   `threat_shift` — the NET's threat frame shift
+//     (`sota_head::threat_shift_for`), not a compile-time constant: a QAT net
+//     exports its threat table at scale 256 and needs shift 0 where a legacy
+//     CEN2 net needs 2 (perf study 30). Each backend monomorphises over its
+//     three admissible values, so the inner loop keeps exactly the instruction
+//     it had — measured, §5 of that study.
+type ActivateFn = fn(&mut [u8; ACC], &[[i16; ACC]; 2], &[[i16; ACC]; 2], &[i16; ACC], usize, u32);
 type FindNnzFn = fn(&[u8; ACC], &mut [u16; ACC / 4]) -> usize;
 // The explicit f32 head-tail kernels (perf study #4 item #2a — the one hot
 // path that still lived on autovectorization after the ×8 D47 head growth).
@@ -163,14 +173,130 @@ macro_rules! kernel_dispatch {
     }};
 }
 
+/// Perf study 29's TRAFFIC-PINNING probes (`probe-accpin` / `probe-wpin`).
+///
+/// Both keep the number and the WIDTH of every load in the kernels exactly as
+/// they are and change only WHERE those loads point, so `L1-dcache-loads` is
+/// invariant and the drop in misses / load-stall cycles isolates one stream's
+/// share. They produce wrong evaluations by construction — these features are
+/// measurement instruments, never shipped, and `bench … nodes` fixes the node
+/// budget so the two arms remain comparable at the same tree size.
+#[cfg(any(feature = "probe-accpin", feature = "probe-wpin"))]
+pub(crate) mod probe {
+    #[cfg(feature = "probe-accpin")]
+    use super::ACC;
+
+    /// One accumulator-shaped buffer every pinned read is redirected to.
+    /// `Box` so it is heap-resident like the real stack, `LazyLock` so it is
+    /// built once. Cache-line alignment does not matter here: the point is
+    /// that the whole working set is 2.5 KB and therefore L1-resident.
+    /// TWO distinct buffers, and every handout goes through `black_box`.
+    /// Without both, the probe stops being load-count-neutral: with one buffer
+    /// `activate`'s `pv`/`tv` pair becomes one address and LLVM CSEs 80 of its
+    /// 160 loads away, and with a constant pointer it CSEs the src stream
+    /// across the HalfKA and threat folds in the same `compute`. Measured: the
+    /// naive form dropped 249 loads/node and 360 instructions/node, which is a
+    /// different experiment. `black_box` makes the pointer opaque, so the same
+    /// loads are issued — they simply all hit the same 2.5 KB of L1.
+    #[cfg(feature = "probe-accpin")]
+    pub(crate) static PIN_ACC: std::sync::LazyLock<Box<[[i16; ACC]; 2]>> =
+        std::sync::LazyLock::new(|| Box::new([[0i16; ACC]; 2]));
+    #[cfg(feature = "probe-accpin")]
+    pub(crate) static PIN_ACC2: std::sync::LazyLock<Box<[[i16; ACC]; 2]>> =
+        std::sync::LazyLock::new(|| Box::new([[0i16; ACC]; 2]));
+
+    #[cfg(feature = "probe-accpin")]
+    #[inline]
+    pub(crate) fn pin_one() -> &'static [i16; ACC] {
+        std::hint::black_box(&PIN_ACC[0])
+    }
+
+    /// The WRITE half (`probe-dstpin`). `probe-accpin` alone redirects only
+    /// the fold's `src`, so the per-ply accumulator stack keeps its full write
+    /// volume and its full footprint — which means it keeps evicting weight
+    /// rows, and the probe under-reports whatever share of fusion's prize is
+    /// capacity rather than read latency. This buffer takes the stores too.
+    ///
+    /// A leaked `Box` rather than a `static mut`: one allocation, `'static`
+    /// by construction, and no aliasing question about the *address*. The
+    /// aliasing question about the CONTENTS is real and deliberate — every
+    /// fold now writes the same 2.5 KB — which is exactly why this feature
+    /// computes wrong evaluations and is a measurement instrument only.
+    #[cfg(feature = "probe-dstpin")]
+    // D14(a)-style sanctioned relaxation for a measurement-only feature.
+    #[allow(unsafe_code)]
+    #[inline]
+    pub(crate) fn pin_dst() -> &'static mut [i16; ACC] {
+        use std::sync::OnceLock;
+        static SLOT: OnceLock<usize> = OnceLock::new();
+        let addr = *SLOT.get_or_init(|| {
+            let b: Box<[i16; ACC]> = Box::new([0i16; ACC]);
+            Box::into_raw(b) as usize
+        });
+        // SAFETY: the pointer comes from `Box::into_raw` on a leaked
+        // allocation, so it is non-null, aligned, and valid for the whole
+        // program. The engine is single-threaded under `bench`, and this
+        // feature exists only to run `bench` — handing out repeated `&mut` to
+        // one buffer is precisely the traffic collapse being measured, and the
+        // resulting evaluations are known-wrong by design.
+        unsafe { &mut *(addr as *mut [i16; ACC]) }
+    }
+
+    /// Feature indices, all zero, for the `wpin` arm. The kernels read
+    /// `adds.len()`/`subs.len()` for their shape dispatch, so the SLICE
+    /// LENGTHS must be preserved exactly — only the values change.
+    #[cfg(feature = "probe-wpin")]
+    pub(crate) static ZERO_IDX: [usize; 64] = [0usize; 64];
+}
+
+#[cfg(feature = "probe-wpin")]
+macro_rules! pin_rows {
+    ($adds:ident, $subs:ident) => {
+        let $adds: &[usize] = &probe::ZERO_IDX[..$adds.len().min(64)];
+        let $subs: &[usize] = &probe::ZERO_IDX[..$subs.len().min(64)];
+    };
+}
+#[cfg(not(feature = "probe-wpin"))]
+macro_rules! pin_rows {
+    ($adds:ident, $subs:ident) => {};
+}
+
+#[cfg(feature = "probe-accpin")]
+macro_rules! pin_src {
+    ($src:ident) => {
+        // The shadow makes the real parameter unused, which is the point.
+        #[allow(unused_variables)]
+        let $src: &[i16; ACC] = probe::pin_one();
+    };
+}
+#[cfg(not(feature = "probe-accpin"))]
+macro_rules! pin_src {
+    ($src:ident) => {};
+}
+
+#[cfg(feature = "probe-dstpin")]
+macro_rules! pin_dst {
+    ($dst:ident) => {
+        #[allow(unused_variables)]
+        let $dst: &mut [i16; ACC] = probe::pin_dst();
+    };
+}
+#[cfg(not(feature = "probe-dstpin"))]
+macro_rules! pin_dst {
+    ($dst:ident) => {};
+}
+
 /// In-place i8-weight fold — the HalfKA Finny cache's cold from-scratch build.
 #[inline]
-pub(crate) fn apply_i8_deltas(
+pub(crate) fn apply_halfka_deltas(
     acc: &mut [i16; ACC],
     weights: &[i8],
     adds: &[usize],
     subs: &[usize],
 ) {
+    #[cfg(feature = "foldcount")]
+    super::foldcount::HKA_INPLACE.hit(adds.len() + subs.len());
+    pin_rows!(adds, subs);
     kernel_dispatch!(i8_deltas(acc, weights, adds, subs))
 }
 
@@ -178,25 +304,68 @@ pub(crate) fn apply_i8_deltas(
 /// `acc` and `out` must not alias. See [`ApplyI8DualFn`] for why both homes
 /// are written from the fold's own registers.
 #[inline]
-pub(crate) fn apply_i8_deltas_dual(
-    acc: &mut [i16; ACC],
-    out: &mut [i16; ACC],
-    weights: &[i8],
-    adds: &[usize],
-    subs: &[usize],
-) {
-    kernel_dispatch!(i8_deltas_dual(acc, out, weights, adds, subs))
-}
-
-/// Fused copy+apply for the FullThreats (i8-weight) fold.
-#[inline]
-pub(crate) fn apply_i8_deltas_into(
+// `probe-accpin` shadows the accumulator parameters with its pinned
+// buffer, which is exactly what the probe is for; the originals then
+// go unread. No effect on any build without that feature.
+#[cfg_attr(feature = "probe-accpin", allow(unused_variables))]
+pub(crate) fn apply_halfka_deltas_into(
     dst: &mut [i16; ACC],
     src: &[i16; ACC],
     weights: &[i8],
     adds: &[usize],
     subs: &[usize],
 ) {
+    #[cfg(feature = "foldcount")]
+    {
+        super::foldcount::HKA_INTO.hit(adds.len() + subs.len());
+        super::foldcount::note_hka_shape(adds.len(), subs.len());
+    }
+    pin_rows!(adds, subs);
+    pin_src!(src);
+    pin_dst!(dst);
+    kernel_dispatch!(i8_deltas_into(dst, src, weights, adds, subs))
+}
+
+/// Two-destination in-place apply: `acc ±= deltas`, and the same result is
+/// written to `out` as well (perf study 9 item 4). See [`ApplyI8DualFn`].
+/// `acc` and `out` must not alias.
+#[inline]
+#[cfg_attr(feature = "probe-dstpin", allow(unused_variables))]
+pub(crate) fn apply_halfka_deltas_dual(
+    acc: &mut [i16; ACC],
+    out: &mut [i16; ACC],
+    weights: &[i8],
+    adds: &[usize],
+    subs: &[usize],
+) {
+    #[cfg(feature = "foldcount")]
+    super::foldcount::HKA_DUAL.hit(adds.len() + subs.len());
+    pin_rows!(adds, subs);
+    pin_dst!(out);
+    kernel_dispatch!(i8_deltas_dual(acc, out, weights, adds, subs))
+}
+
+/// Fused copy+apply for the FullThreats (i8-weight) fold.
+#[inline]
+// `probe-accpin` shadows the accumulator parameters with its pinned
+// buffer, which is exactly what the probe is for; the originals then
+// go unread. No effect on any build without that feature.
+#[cfg_attr(feature = "probe-accpin", allow(unused_variables))]
+pub(crate) fn apply_threat_deltas_into(
+    dst: &mut [i16; ACC],
+    src: &[i16; ACC],
+    weights: &[i8],
+    adds: &[usize],
+    subs: &[usize],
+) {
+    #[cfg(feature = "foldcount")]
+    {
+        super::foldcount::THR_INTO.hit(adds.len() + subs.len());
+        super::foldcount::note_thr_shape(adds.len() + subs.len());
+    }
+    pin_rows!(adds, subs);
+    pin_src!(src);
+    pin_dst!(dst);
     kernel_dispatch!(i8_deltas_into(dst, src, weights, adds, subs))
 }
 
@@ -242,21 +411,41 @@ unsafe fn ft_group(ft: &[u8; ACC], group: usize) -> i32 {
 }
 
 #[inline]
+// `probe-accpin` shadows the accumulator parameters with its pinned
+// buffer, which is exactly what the probe is for; the originals then
+// go unread. No effect on any build without that feature.
+#[cfg_attr(feature = "probe-accpin", allow(unused_variables))]
 pub(crate) fn activate(
     out: &mut [u8; ACC],
     pst: &[[i16; ACC]; 2],
     threat: &[[i16; ACC]; 2],
     scale: &[i16; ACC],
     stm: usize,
+    threat_shift: u32,
 ) {
+    #[cfg(feature = "foldcount")]
+    super::foldcount::ACTIVATE.hit(0);
+    // `activate` is the single largest accumulator-STREAM reader in the
+    // engine: four `[i16; ACC]` arrays, 10.24 KB per evaluation, which is the
+    // exact quantity Stockfish carries as 4.10 KB by fusing the two channels.
+    #[cfg(feature = "probe-accpin")]
+    let (pst, threat) = (
+        std::hint::black_box(&*probe::PIN_ACC),
+        std::hint::black_box(&*probe::PIN_ACC2),
+    );
     // The HalfKA rescale is a WRAPPING i16 multiply in every backend, which is
     // what keeps the three bit-identical (see the avx512 merge). It wraps
     // exactly where the pre-study-32 FT_QUANT-frame accumulator wrapped, so it
     // is no *new* hazard — but unlike that one it is a hazard nobody would
     // notice, because a wrap turns a saturating lane into a near-zero one and
     // the clamp hides it. The threat channel carries the same style of bound
-    // check on its own `<< 2` (`|t| <= 8191`); this is its twin, and it is the
+    // check on its own shift (`|t| <= 8191`); this is its twin, and it is the
     // tripwire that would fire if a future net's accumulator range grew.
+    //
+    // Skipped under `probe-accpin`: that feature deliberately redirects the
+    // accumulators to a pinned buffer and computes wrong evals by design, so
+    // the bound is not its contract.
+    #[cfg(not(feature = "probe-accpin"))]
     debug_assert!(
         pst.iter().all(
             |side| side
@@ -270,7 +459,7 @@ pub(crate) fn activate(
         "HalfKA accumulator x ft_scale overflows i16: the reduced-frame merge \
          would wrap and the clamp would hide it"
     );
-    kernel_dispatch!(activate(out, pst, threat, scale, stm))
+    kernel_dispatch!(activate(out, pst, threat, scale, stm, threat_shift))
 }
 
 /// Compact the indices of the nonzero four-byte groups of `ft` into `out`
@@ -428,20 +617,24 @@ mod scalar {
         threat: &[[i16; ACC]; 2],
         scale: &[i16; ACC],
         stm: usize,
+        threat_shift: u32,
     ) {
         const H: usize = ACC / 2;
         for flip in 0..2 {
             let perspective = stm ^ flip;
             for lane in 0..H {
-                // 255/64 carried as 4, and the HalfKA lane put back into the
-                // FT_QUANT frame by its own per-lane i8 scale (see the avx512
-                // twin). `wrapping_mul` in i16 is the DEFINED semantics, not a
+                // Both rescales, and they are independent. THREAT:
+                // FT_QUANT/threat_quant as a power of two — 4 for a CEN2 net,
+                // 1 for a QAT net at scale 256. HALFKA: the lane put back into
+                // the FT_QUANT frame by its own per-column i8 scale.
+                // `wrapping_mul` in i16 is the DEFINED semantics, not a
                 // convenience: the vector backends multiply in i16 lanes, so
                 // widening first here would disagree with them on the (never
                 // observed) overflow — exactly where the old FT_QUANT-frame
-                // accumulator wrapped too.
+                // accumulator wrapped too. (See the avx512 twin.)
                 let merge = |p: i16, t: i16, s: i16| {
-                    (i32::from(p.wrapping_mul(s)) + (i32::from(t) << 2)).clamp(0, FT_QUANT)
+                    (i32::from(p.wrapping_mul(s)) + (i32::from(t) << threat_shift))
+                        .clamp(0, FT_QUANT)
                 };
                 let left = merge(
                     pst[perspective][lane],
@@ -624,8 +817,12 @@ mod avx2 {
         }
     }
 
+    // `SHIFT` is `i32` here and `u32` in the avx512 twin because that is what
+    // each intrinsic's own const parameter is (`_mm256_slli_epi32<const IMM8:
+    // i32>` vs `_mm512_slli_epi16<const IMM8: u32>`), and converting a const
+    // generic in the turbofish needs `generic_const_exprs`.
     #[target_feature(enable = "avx2")]
-    unsafe fn activate_inner(
+    unsafe fn activate_inner<const SHIFT: i32>(
         out: &mut [u8; ACC],
         pst: &[[i16; ACC]; 2],
         threat: &[[i16; ACC]; 2],
@@ -653,8 +850,9 @@ mod avx2 {
                         let pv = _mm256_cvtepi16_epi32(_mm_mullo_epi16(raw, sv));
                         let tv =
                             _mm256_cvtepi16_epi32(_mm_loadu_si128(t.as_ptr().add(offset).cast()));
-                        // 255/64 carried as 4 (see the avx512 twin).
-                        let scaled = _mm256_slli_epi32::<2>(tv);
+                        // FT_QUANT/threat_quant carried as a power of two
+                        // (see the avx512 twin).
+                        let scaled = _mm256_slli_epi32::<SHIFT>(tv);
                         _mm256_min_epi32(
                             _mm256_max_epi32(_mm256_add_epi32(pv, scaled), zero),
                             ceiling,
@@ -869,9 +1067,18 @@ mod avx2 {
         threat: &[[i16; ACC]; 2],
         scale: &[i16; ACC],
         stm: usize,
+        threat_shift: u32,
     ) {
+        // The `_` arm is `MAX_THREAT_SHIFT` — see the avx512 twin.
+        debug_assert!(threat_shift <= MAX_THREAT_SHIFT);
         // SAFETY: installed only after runtime AVX2 detection.
-        unsafe { activate_inner(out, pst, threat, scale, stm) }
+        unsafe {
+            match threat_shift {
+                0 => activate_inner::<0>(out, pst, threat, scale, stm),
+                1 => activate_inner::<1>(out, pst, threat, scale, stm),
+                _ => activate_inner::<2>(out, pst, threat, scale, stm),
+            }
+        }
     }
 
     pub(super) fn find_nnz(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
@@ -1481,7 +1688,7 @@ mod avx512 {
     }
 
     #[target_feature(enable = "avx512f,avx512bw")]
-    unsafe fn activate_inner(
+    unsafe fn activate_inner<const SHIFT: u32>(
         out: &mut [u8; ACC],
         pst: &[[i16; ACC]; 2],
         threat: &[[i16; ACC]; 2],
@@ -1515,12 +1722,17 @@ mod avx512 {
         // SAFETY: each iteration consumes 32 in-bounds i16 lanes per half.
         unsafe {
             #[cfg(debug_assertions)]
-            for side in threat {
-                for &t in side.iter() {
-                    debug_assert!(
-                        t.unsigned_abs() <= 8191,
-                        "threat lane {t} exceeds the i16 activate bound"
-                    );
+            {
+                // `t << SHIFT` must stay inside i16 (8191 at the CEN2 shift of
+                // 2, 32767 at a QAT net's shift of 0).
+                let bound = (i16::MAX as u16) >> SHIFT;
+                for side in threat {
+                    for &t in side.iter() {
+                        debug_assert!(
+                            t.unsigned_abs() <= bound,
+                            "threat lane {t} exceeds the i16 activate bound {bound}"
+                        );
+                    }
                 }
             }
             let zero = _mm512_setzero_si512();
@@ -1533,9 +1745,9 @@ mod avx512 {
                     // The threat rescale, as ONE SHIFT.
                     //
                     // The two FT transformers are quantised differently —
-                    // HalfKA at FT_QUANT = 255, FullThreats at
-                    // THREAT_QUANT = 64 — so the merge used to carry a
-                    // six-op `round(t · 255/64)`: abs / shift / mulhrs /
+                    // HalfKA at FT_QUANT = 255, FullThreats at the NET's own
+                    // `threat_quant` — so the merge used to carry a six-op
+                    // `round(t · 255/64)`: abs / shift / mulhrs /
                     // compare-mask / masked-sub / add. That was 24 of this
                     // loop body's 48 instructions and ~2.2% of ALL engine
                     // instructions, where Stockfish — whose two feature sets
@@ -1544,11 +1756,23 @@ mod avx512 {
                     // `vec_add_16(acc, vec_convert_8_16(column))`
                     // (`eca43a97:src/nnue/nnue_accumulator.cpp:237-238`).
                     //
-                    // 255/64 = 3.984375, and the ratio does not have to be
-                    // exact: it is a GAIN on one eval channel, and moving it to
-                    // 4 is a 0.39% systematic change, well inside the net's own
-                    // quantisation noise. So the merge is `t << 2` — i.e.
-                    // THREAT_QUANT is effectively 63.75 rather than 64.
+                    // The ratio does not have to be exact: it is a GAIN on one
+                    // eval channel, so it is carried as the nearest power of
+                    // two, `256/threat_quant` (`sota_head::threat_shift_for`).
+                    // 255/64 = 3.984375 → 4 is a 0.39% systematic change; at a
+                    // QAT net's threat_quant 256, 255/256 = 0.996 → 1 is the
+                    // SAME 0.39% in the other direction, i.e. shift 0.
+                    //
+                    // **The shift is a const generic and not a parameter for a
+                    // measured reason** (perf study 30 §5.3). With an immediate,
+                    // LLVM folds the accumulator load INTO the shift —
+                    // `vpsllw $0x2,(%rcx,%r8,2),%zmm3`. `vpsllw`'s
+                    // register-count form takes its memory operand as the
+                    // COUNT, not the data, so a runtime shift forces a separate
+                    // `vmovdqu64` per merge and costs the unroll: measured
+                    // **+34.48 instructions per node, +0.61%**, branches
+                    // unchanged. Monomorphising over the three legal shifts and
+                    // branching once per eval gives it back (+2.77 i/n).
                     //
                     // Measured on the 800-FEN battery against the exact form:
                     // **74.0% of positions identical, mean |delta| 0.14 SF cp,
@@ -1575,7 +1799,7 @@ mod avx512 {
                         let pv = _mm512_loadu_si512(p.as_ptr().add(offset).cast());
                         let sv = _mm512_loadu_si512(scale.as_ptr().add(offset).cast());
                         let tv = _mm512_loadu_si512(t.as_ptr().add(offset).cast());
-                        let scaled = _mm512_slli_epi16::<2>(tv);
+                        let scaled = _mm512_slli_epi16::<SHIFT>(tv);
                         let sum = _mm512_adds_epi16(_mm512_mullo_epi16(pv, sv), scaled);
                         _mm512_min_epi16(_mm512_max_epi16(sum, zero), ceiling)
                     };
@@ -1629,9 +1853,26 @@ mod avx512 {
         threat: &[[i16; ACC]; 2],
         scale: &[i16; ACC],
         stm: usize,
+        threat_shift: u32,
     ) {
+        // ONE branch per eval, then a kernel whose shift is an immediate — the
+        // form that folds the load (see `activate_inner`). The `_` arm is
+        // `MAX_THREAT_SHIFT`, which `sota_head::threat_shift_for` guarantees is
+        // the largest value any loaded net can carry; the debug assert catches
+        // a hand-built `SotaHead` that violates it, since the field is public.
+        debug_assert!(
+            threat_shift <= MAX_THREAT_SHIFT,
+            "threat_shift {threat_shift} > MAX_THREAT_SHIFT — \
+             add a match arm and a monomorphisation"
+        );
         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
-        unsafe { activate_inner(out, pst, threat, scale, stm) }
+        unsafe {
+            match threat_shift {
+                0 => activate_inner::<0>(out, pst, threat, scale, stm),
+                1 => activate_inner::<1>(out, pst, threat, scale, stm),
+                _ => activate_inner::<2>(out, pst, threat, scale, stm),
+            }
+        }
     }
 
     #[target_feature(enable = "avx512f")]
@@ -1948,6 +2189,11 @@ mod tests {
     /// 1 keeps them testing exactly what they tested before.
     const UNIT_SCALE: [i16; ACC] = [1; ACC];
 
+    /// A non-unit HalfKA scale, so the backends' `vpmullw` is actually
+    /// exercised against the scalar `wrapping_mul` rather than multiplied by
+    /// one. 4 is the modal column scale in the canonical net.
+    const FOUR_SCALE: [i16; ACC] = [4; ACC];
+
     #[test]
     fn dispatched_activate_matches_scalar_bitwise() {
         // Option D gate: the i16 pipeline must equal the scalar reference
@@ -1970,19 +2216,30 @@ mod tests {
             threat[p][4] = 1760;
             threat[p][5] = 0;
         }
-        for stm in 0..2 {
-            // POISONED with two DIFFERENT fills, not zeroed (D33 reviewer C,
-            // T3). ~85-95% of activations are zero after the clamp, so with
-            // both buffers starting at 0 a lane that NEITHER kernel wrote
-            // compared equal and the test passed. Perf study 15 arm 4 made
-            // `ft` a reused buffer, so an unwritten lane is now a stale
-            // activation from the previous position rather than a harmless
-            // zero — this test is what says every backend writes all of it.
-            let mut want = [0xABu8; ACC];
-            let mut got = [0x5Cu8; ACC];
-            scalar::activate(&mut want, &pst, &threat, &UNIT_SCALE, stm);
-            activate(&mut got, &pst, &threat, &UNIT_SCALE, stm);
-            assert_eq!(want, got, "stm {stm}");
+        // Every shift a container can ask for (perf study 30): 2 is what every
+        // CEN2 net means and what the backends used to hardcode, 0 is a QAT net
+        // at threat_quant 256, 1 the 128 midpoint. The extremes planted above
+        // are |t| = 1760, so `t << 2` = 7040 stays inside the i16 bound.
+        // Crossed with study 32's HalfKA scale, so the two rescales are
+        // exercised together rather than one at a time.
+        for threat_shift in [0u32, 1, 2] {
+            for scale in [&UNIT_SCALE, &FOUR_SCALE] {
+                for stm in 0..2 {
+                    // POISONED with two DIFFERENT fills, not zeroed (D33 reviewer
+                    // C, T3). ~85-95% of activations are zero after the clamp, so
+                    // with both buffers starting at 0 a lane that NEITHER kernel
+                    // wrote compared equal and the test passed. Perf study 15 arm
+                    // 4 made `ft` a reused buffer, so an unwritten lane is now a
+                    // stale activation from the previous position rather than a
+                    // harmless zero — this test is what says every backend writes
+                    // all of it.
+                    let mut want = [0xABu8; ACC];
+                    let mut got = [0x5Cu8; ACC];
+                    scalar::activate(&mut want, &pst, &threat, scale, stm, threat_shift);
+                    activate(&mut got, &pst, &threat, scale, stm, threat_shift);
+                    assert_eq!(want, got, "stm {stm} shift {threat_shift}");
+                }
+            }
         }
     }
 
@@ -2034,13 +2291,13 @@ mod tests {
         let mut reference = seed;
         scalar::i8_deltas(&mut reference, &i8_weights, &adds, &subs);
         let mut dispatched = seed;
-        apply_i8_deltas(&mut dispatched, &i8_weights, &adds, &subs);
+        apply_halfka_deltas(&mut dispatched, &i8_weights, &adds, &subs);
         assert_eq!(dispatched, reference);
 
         let mut reference = [0i16; ACC];
         scalar::i8_deltas_into(&mut reference, &seed, &i8_weights, &adds, &subs);
         let mut dispatched = [0i16; ACC];
-        apply_i8_deltas_into(&mut dispatched, &seed, &i8_weights, &adds, &subs);
+        apply_threat_deltas_into(&mut dispatched, &seed, &i8_weights, &adds, &subs);
         assert_eq!(dispatched, reference);
     }
 
@@ -2072,7 +2329,7 @@ mod tests {
             let mut reference = seed;
             scalar::i8_deltas(&mut reference, &weights, a, s);
             let mut dispatched = seed;
-            apply_i8_deltas(&mut dispatched, &weights, a, s);
+            apply_halfka_deltas(&mut dispatched, &weights, a, s);
             assert_eq!(dispatched, reference, "adds={} subs={}", a.len(), s.len());
         }
     }
@@ -2092,7 +2349,7 @@ mod tests {
     ///
     /// The empty shape is in the table on purpose: `sota_accumulator.rs`'s
     /// forward fold deletes its own copy special-case and relies on
-    /// `apply_i8_deltas_into(dst, src, w, &[], &[])` being `dst = src` lane for
+    /// `apply_threat_deltas_into(dst, src, w, &[], &[])` being `dst = src` lane for
     /// lane. A fast-path `return` on empty lists would be a silent stale-child
     /// bug in release, and this asserts the copy behaviour directly.
     #[test]
@@ -2112,7 +2369,7 @@ mod tests {
                 let mut reference = src;
                 scalar::i8_deltas(&mut reference, &weights, a, s);
                 let mut dispatched = [0i16; ACC];
-                apply_i8_deltas_into(&mut dispatched, &src, &weights, a, s);
+                apply_threat_deltas_into(&mut dispatched, &src, &weights, a, s);
                 assert_eq!(dispatched, reference, "shape ({na}, {ns})");
                 if na == 0 && ns == 0 {
                     assert_eq!(dispatched, src, "the empty shape must be a pure copy");
@@ -2323,12 +2580,19 @@ mod tests {
             (kernels.l1_dot)(&mut got, &ft, &nnz, &l1_weights);
             assert_eq!(got, reference, "{name} l1_dot");
 
-            for stm in 0..2 {
-                let mut reference = [0u8; ACC];
-                scalar::activate(&mut reference, &pst, &threat, &UNIT_SCALE, stm);
-                let mut got = [0u8; ACC];
-                (kernels.activate)(&mut got, &pst, &threat, &UNIT_SCALE, stm);
-                assert_eq!(got, reference, "{name} activate stm {stm}");
+            for threat_shift in [0u32, 1, 2] {
+                for scale in [&UNIT_SCALE, &FOUR_SCALE] {
+                    for stm in 0..2 {
+                        let mut reference = [0u8; ACC];
+                        scalar::activate(&mut reference, &pst, &threat, scale, stm, threat_shift);
+                        let mut got = [0u8; ACC];
+                        (kernels.activate)(&mut got, &pst, &threat, scale, stm, threat_shift);
+                        assert_eq!(
+                            got, reference,
+                            "{name} activate stm {stm} shift {threat_shift}"
+                        );
+                    }
+                }
             }
 
             // f32 head-tail kernels: finite fixtures spanning both clamp
@@ -2432,26 +2696,45 @@ mod tests {
         // form diverges BY DESIGN; the old full-i16-domain sweep therefore
         // now samples the guaranteed domain. pst keeps the full domain
         // (saturating add is exact post-clamp for ALL pst).
-        let mut pst = [[0i16; ACC]; 2];
-        let mut threat = [[0i16; ACC]; 2];
-        for perspective in 0..2 {
-            for lane in 0..ACC {
-                pst[perspective][lane] = (lane as u16)
-                    .wrapping_mul(40503)
-                    .wrapping_add(perspective as u16 * 173)
-                    as i16;
-                let raw = (lane as u16)
-                    .wrapping_mul(49711)
-                    .wrapping_add(perspective as u16 * 251) as i16;
-                threat[perspective][lane] = raw % 8192;
+        //
+        // The domain is `32767 >> threat_shift`, so a QAT net's shift 0 covers
+        // the WHOLE i16 range and the CEN2 shift 2 covers a quarter of it
+        // (perf study 30).
+        for threat_shift in [0u32, 1, 2] {
+            let bound = i32::from(i16::MAX >> threat_shift) + 1;
+            for scale in [&UNIT_SCALE, &FOUR_SCALE] {
+                // The HalfKA half of the same narrowing (perf study 32). The
+                // reduced-frame accumulator represents `pst · scale` in the
+                // FT_QUANT frame, so "the full pst domain" is now the full
+                // domain REPRESENTABLE AT THAT SCALE — `32767 / scale`,
+                // exactly as the threat bound above is `32767 >> shift`.
+                // Beyond it the i16 multiply wraps, which every backend does
+                // identically and the kernel's debug tripwire flags.
+                let pst_bound = i32::from(i16::MAX) / i32::from(scale[0]) + 1;
+                let mut pst = [[0i16; ACC]; 2];
+                let mut threat = [[0i16; ACC]; 2];
+                for perspective in 0..2 {
+                    for lane in 0..ACC {
+                        let raw = (lane as u16)
+                            .wrapping_mul(40503)
+                            .wrapping_add(perspective as u16 * 173)
+                            as i16;
+                        pst[perspective][lane] = (i32::from(raw) % pst_bound) as i16;
+                        let raw = (lane as u16)
+                            .wrapping_mul(49711)
+                            .wrapping_add(perspective as u16 * 251)
+                            as i16;
+                        threat[perspective][lane] = (i32::from(raw) % bound) as i16;
+                    }
+                }
+                for stm in 0..2 {
+                    let mut reference = [0u8; ACC];
+                    scalar::activate(&mut reference, &pst, &threat, scale, stm, threat_shift);
+                    let mut dispatched = [0u8; ACC];
+                    activate(&mut dispatched, &pst, &threat, scale, stm, threat_shift);
+                    assert_eq!(dispatched, reference, "shift {threat_shift}");
+                }
             }
-        }
-        for stm in 0..2 {
-            let mut reference = [0u8; ACC];
-            scalar::activate(&mut reference, &pst, &threat, &UNIT_SCALE, stm);
-            let mut dispatched = [0u8; ACC];
-            activate(&mut dispatched, &pst, &threat, &UNIT_SCALE, stm);
-            assert_eq!(dispatched, reference);
         }
     }
 }

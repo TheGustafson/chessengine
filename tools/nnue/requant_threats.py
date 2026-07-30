@@ -26,18 +26,22 @@ distribution that fits ±0.5 (that is what QAT buys them); ours spans ±1.98, so
 255 just clips our tail. 128 is the optimum for the distribution we actually
 have, and needs no retraining.
 
-Engine side (NOT done by this script): the 255/64 frame ratio is carried as a
-literal `<< 2` at `sota_head.rs:248` and `sota_simd.rs:423`. At scale 128 that
-becomes `<< 1` (255/128 = 1.992, the same 0.39% gain approximation as today's
-3.984 -> 4). The loader also validates quant constants, so both sides must move
-together, and the NNUE gate pins move with them — intentionally.
+Engine side (SINCE perf study 30, no longer a manual edit): the frame ratio is
+carried as `256/threat_quant`, and `threat_quant` is a CENN-v5 header field, so
+the engine derives the shift per net (`sota_head::threat_shift_for`). Pack the
+output with `D40_THREAT_QUANT=<scale>` and netpack emits the v5 container; it
+also REFUSES a threat table that does not reach half the i8 range, which is the
+failure this script exists to fix.
 
 Usage:
-    python3 tools/nnue/requant_threats.py <raw.bin> <out-quant.bin> --scale 128
+    python3 tools/nnue/requant_threats.py <raw.bin> <out-quant.bin> --scale 128 \
+        --run-spec tools/nnue/runs/<run>.json
 """
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import json
 import sys
 from pathlib import Path
 
@@ -45,7 +49,6 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "jax"))
 from archon_jax import checkpoint  # noqa: E402
-from archon_jax import spec as spec_mod  # noqa: E402
 from archon_jax.spec import ArchSpec  # noqa: E402
 
 
@@ -55,12 +58,27 @@ def main() -> int:
     ap.add_argument("raw")
     ap.add_argument("out")
     ap.add_argument("--scale", type=int, default=128,
-                    help="threat quantisation scale (default 128 = measured optimum)")
+                    help="threat quantisation scale (default 128 = measured optimum "
+                         "for a NON-QAT net; a QAT net wants its qat_threat_scale)")
+    ap.add_argument("--run-spec",
+                    help="tools/nnue/runs/<run>.json — REQUIRED for any net whose arch "
+                         "is not the bare default (every gen-2 run has l2=16, not 128; "
+                         "without it the exporter writes a differently shaped file)")
     ap.add_argument("--dry-run", action="store_true",
                     help="report the error/clip statistics and write nothing")
     a = ap.parse_args()
 
-    params = checkpoint.open_raw(a.raw, None, mmap=True)
+    # The arch comes from the RUN SPEC, not from the bare default: every gen-2
+    # run sets l2=16 where ArchSpec.full() says 128 AND factorize=True, and
+    # this script used to pass `ArchSpec.full()` — a wrong shape and a SKIPPED
+    # factoriser merge for every one of them (perf study 30).
+    run = json.loads(Path(a.run_spec).read_text()) if a.run_spec else {}
+    arch = dataclasses.replace(ArchSpec.from_run_spec(run),
+                               qat_threat_scale=float(a.scale))
+
+    # WITH shapes: `fold_for_export` needs the 2-D tensors, and `open_raw`
+    # returns flat arrays when it is not told the arch.
+    params = checkpoint.open_raw(a.raw, arch.param_shapes(), mmap=True)
     params = {k: np.asarray(v) for k, v in params.items()}
     w = params["l0_threatw"].astype(np.float32)
 
@@ -88,16 +106,12 @@ def main() -> int:
     # overflow rather than clipping, which is exactly why scale 64 was forced.
     params["l0_threatw"] = np.clip(w, -lim, lim)
 
-    old = spec_mod.QUANT_THREAT
-    spec_mod.QUANT_THREAT = a.scale          # read at call time by param_tensors()
-    try:
-        n = checkpoint.write_quant(a.out, params, ArchSpec.full())
-    finally:
-        spec_mod.QUANT_THREAT = old
-    print(f"wrote {a.out} ({n:,} bytes) with threat scale {a.scale}")
-    print("REMEMBER: the engine's `<< 2` at sota_head.rs:248 and sota_simd.rs:423 "
-          f"must become `<< {int(round(255/a.scale)).bit_length()-1}` "
-          f"(255/{a.scale} = {255/a.scale:.3f}), and the CENN quant constants must match.")
+    n = checkpoint.write_quant(a.out, params, arch)
+    print(f"wrote {a.out} ({n:,} bytes) with threat scale {arch.threat_quant()}")
+    print(f"Pack it with D40_THREAT_QUANT={arch.threat_quant()}: netpack then emits a "
+          f"CENN-v5 container carrying the scale, and the engine derives the merge "
+          f"shift from it (sota_head::threat_shift_for). netpack REFUSES a table "
+          f"that does not reach half the i8 range, so a forgotten env is caught.")
     return 0
 
 

@@ -274,7 +274,13 @@ fn cmd_nnue_eval_argv(args: &[String]) {
     let raw = std::fs::read(net_path)
         .unwrap_or_else(|e| exit_usage(format_args!("nnue-eval: reading {net_path}: {e}")));
 
-    let loaded = if cfg!(feature = "sota") && raw.len() >= 4 && raw[0..4] == *b"CEN2" {
+    // CEN2 and CEN5 are the SOTA container's two versions (perf study 30);
+    // CEN3/CEN4 below are DIFFERENT net families, which is why the SOTA bump
+    // had to skip to 5.
+    let loaded = if cfg!(feature = "sota")
+        && raw.len() >= 4
+        && (raw[0..4] == *b"CEN2" || raw[0..4] == *b"CEN5")
+    {
         #[cfg(feature = "sota")]
         {
             match nnue::sota_loader::load_v2_bytes(&raw) {
@@ -290,7 +296,9 @@ fn cmd_nnue_eval_argv(args: &[String]) {
         }
         #[cfg(not(feature = "sota"))]
         {
-            exit_usage(format_args!("nnue-eval: CEN2 net requires --features sota"))
+            exit_usage(format_args!(
+                "nnue-eval: CEN2/CEN5 net requires --features sota"
+            ))
         }
     } else if cfg!(feature = "sota") && raw.len() >= 4 && raw[0..4] == *b"CEN3" {
         #[cfg(feature = "sota")]

@@ -1,0 +1,8 @@
+cgu1=s30-base-a                   instr=28,279,966,133 nodes= 5,001,562 per_node= 5654.23 brs_per_node= 588.73 hash=5ca978e012da1bb0
+cgu1=s30-base-null                instr=28,279,966,251 nodes= 5,001,562 per_node= 5654.23 brs_per_node= 588.73 hash=5ca978e012da1bb0
+cgu1=s30-cen5-a                   instr=28,452,449,732 nodes= 5,001,562 per_node= 5688.71 brs_per_node= 588.73 hash=5ca978e012da1bb0
+cgu1=s30-diag-imm-shift           instr=28,279,967,543 nodes= 5,001,562 per_node= 5654.23 brs_per_node= 588.73 hash=5ca978e012da1bb0
+cgu1=s30-cen5-constgen            instr=28,293,813,067 nodes= 5,001,562 per_node= 5657.00 brs_per_node= 589.58 hash=5ca978e012da1bb0
+cgu1=s30-cen5-final               instr=28,293,813,051 nodes= 5,001,562 per_node= 5657.00 brs_per_node= 589.58 hash=5ca978e012da1bb0
+cgu1=s30-base-b                   instr=28,279,966,644 nodes= 5,001,562 per_node= 5654.23 brs_per_node= 588.73 hash=5ca978e012da1bb0
+cgu1=s30-cen5-restored            instr=28,293,811,773 nodes= 5,001,562 per_node= 5657.00 brs_per_node= 589.58 hash=5ca978e012da1bb0

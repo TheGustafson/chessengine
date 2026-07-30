@@ -1,0 +1,46 @@
+# base  budget=100000  nodes=5001562  event=ls_dispatch.ld_dispatch:u  period=200003
+# columns: share%  loads/node(derived)  symbol
+    16.41%  [.] <chessengine::eval::nnue::sota_threats::ThreatContext>::at_full
+    12.25%  [.] <chessengine::eval::nnue::sota_head::SotaHead>::forward_into
+    12.16%  [.] <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+     8.77%  [.] <chessengine::movepick::MovePicker>::init_quiets
+     7.98%  [.] chessengine::eval::nnue::sota_simd::avx512::i16_deltas_into
+     5.14%  [.] <chessengine::search::Worker>::do_move
+     3.83%  [.] <chessengine::eval::nnue::sota_threats::ThreatContext>::apply_at
+     3.31%  [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into
+     1.83%  [.] <chessengine::board::Board>::attackers_to
+     1.62%  [.] chessengine::eval::nnue::sota_threats::record_square_touch
+     1.60%  [.] <chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>
+     1.56%  [.] <chessengine::board::Board>::see_ge
+     1.52%  [.] <chessengine::eval::nnue::sota_context::SotaContext>::evaluate
+     1.46%  [.] <chessengine::history::Histories>::correction_value
+     1.33%  [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::current_full
+     1.28%  [.] chessengine::eval::nnue::sota_loader::load_v2_bytes
+     1.16%  [.] <chessengine::board::Board>::attackers_to_exist
+     1.06%  [.] <chessengine::history::Histories>::update_continuation_histories
+     0.97%  [.] <chessengine::board::Board>::ensure_threats
+     0.97%  [.] <chessengine::board::Board>::refresh_check_info
+     0.94%  [.] <chessengine::board::Board>::unmake_move
+     0.87%  [.] <chessengine::search::Worker>::qsearch::<chessengine::search::NonPv>
+     0.81%  [.] <chessengine::movepick::MovePicker>::init_captures
+     0.81%  [.] <chessengine::tt::TranspositionTable>::probe
+     0.76%  [.] <chessengine::search::Worker>::search::<chessengine::search::Pv>
+     0.72%  [.] <chessengine::search::Worker>::stat_score
+     0.58%  [.] chessengine::eval::nnue::sota_threats::ripple
+     0.53%  [.] chessengine::eval::nnue::sota_features::refresh_threat_into_at
+     0.46%  [.] core::fmt::write
+     0.44%  [.] <chessengine::board::Board>::gives_check
+     0.41%  [.] <chessengine::board::Board>::upcoming_repetition
+     0.40%  [.] <chessengine::movepick::MovePicker>::init_evasions
+     0.38%  [.] chessengine::eval::nnue::sota_threats::record_targets::<31>
+     0.37%  [.] chessengine::attacks::init_magics
+     0.34%  [.] chessengine::eval::nnue::sota_accumulator::psqt_fold
+     0.32%  [.] <chessengine::history::Histories>::update_all_stats
+     0.32%  [.] chessengine::eval::nnue::sota_threats::record_targets::<15>
+     0.30%  [.] 0x0000000000189e76
+     0.26%  [.] <chessengine::tt::TtWriter>::write
+     0.24%  [.] chessengine::eval::nnue::sota_threats::refresh_psqt_threat_at
+     0.23%  [.] 0x0000000000189e7d
+     0.21%  [.] <chessengine::attacks::AttackTables>::attacks
+
+

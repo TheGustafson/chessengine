@@ -79,7 +79,12 @@ WEIGHT_CLIP = 1.98           # applied to EVERY tensor AFTER the step
 # Quantisation (d40 fmt push order lines 1279-1314; weights.rs QuantTarget)
 # ---------------------------------------------------------------------------
 QUANT_FT = 255               # l0_pstw / l0_pstb -> i16, round
-QUANT_THREAT = 64            # l0_threatw -> i8, round
+# l0_threatw -> i8, round. The DEFAULT only; the scale a given net is exported
+# at comes from `ArchSpec.threat_quant()`, which returns `qat_threat_scale`
+# whenever QAT is on. 64 is the largest scale a NON-QAT net's +-1.98 weights
+# survive; a QAT net clipped to +-127/256 wants 256 and loses two bits at 64
+# (perf study 30). Engine side: CENN-v5 carries it in the header.
+QUANT_THREAT = 64
 QUANT_L1 = 64                # l1w -> i8, round (transposed)
 QUANT_POL = 64               # polmovew -> i8, round (transposed)
 QUANT_PAD = b"bullet"        # cyclic padding to a 64-byte multiple (weights.rs:165-174)
@@ -187,8 +192,15 @@ class ArchSpec:
     # pipeline, not just the weights. 0.0 = off everywhere => bit-exact no-op,
     # warm-start safe. Engine reference: sota_head.rs:118-133.
     #   qat_ft_scale     FT HalfKA table -> i16 @ FT_QUANT     (255)
-    #   qat_threat_scale FT threat table -> i8  @ THREAT_QUANT (64 today;
-    #                    128 is the measured optimum, 1.65x less error)
+    #   qat_threat_scale FT threat table -> i8  @ the EXPORT threat scale.
+    #                    **This value IS the export scale** — see
+    #                    `threat_quant()` below, which every quant path reads,
+    #                    and CENN-v5, which writes it into the net header. It
+    #                    used to be free to disagree with `QUANT_THREAT`, and
+    #                    D49 trained 100 superbatches at 256 while the packer
+    #                    exported at 64: max|w| 32/127, 65 of 256 i8 levels,
+    #                    -128.7 +- 9.6 Elo over 1600 games, invisible to every float metric
+    #                    (perf study 30).
     #   qat_act_levels   pairwise product -> u8, 127 levels    (the >>9 step;
     #                    the largest previously unmodelled loss)
     #   qat_l1_scale     L1 weights -> i8 @ L1_QUANT           (64)
@@ -226,6 +238,31 @@ class ArchSpec:
     @classmethod
     def full(cls) -> "ArchSpec":
         return cls()
+
+    @classmethod
+    def from_run_spec(cls, spec: dict) -> "ArchSpec":
+        """The arch a `tools/nnue/runs/*.json` describes — ONE definition.
+
+        `pump_train` used to build this inline, so any other tool that wanted
+        to re-export a run's checkpoint had to re-derive it and could silently
+        get a different arch (`tools/nnue/requant_threats.py` used the bare
+        default, whose `l2` is 128 where every gen-2 run's is 16). Both read
+        this now.
+        """
+        import dataclasses as _dc
+        return _dc.replace(
+            cls.full(), factorize=True, psqt=True,
+            hl=int(spec.get("arch_hl", cls.full().hl)),
+            l2=int(spec.get("arch_l2", cls.full().l2)),
+            l3=int(spec.get("arch_l3", cls.full().l3)),
+            out_skip=bool(spec.get("arch_out_skip", False)),
+            halfka_only=bool(spec.get("arch_halfka_only", False)),
+            pol_proj=int(spec.get("arch_pol_proj", 0)),
+            dis_proj=int(spec.get("arch_dis_proj", 0)),
+            qat_ft_scale=float(spec.get("qat_ft_scale", 0.0)),
+            qat_threat_scale=float(spec.get("qat_threat_scale", 0.0)),
+            qat_act_levels=float(spec.get("qat_act_levels", 0.0)),
+            qat_l1_scale=float(spec.get("qat_l1_scale", 0.0)))
 
     # Parameter shapes in OUR storage convention: every affine weight is
     # (fan_in, fan_out) row-major, which is byte-identical to bullet's internal
@@ -281,6 +318,30 @@ class ArchSpec:
             shapes["skipw"] = (self.hl, self.num_buckets)
         return shapes
 
+    def threat_quant(self):
+        """The scale the threat FT must be EXPORTED at — derived, never chosen.
+
+        **This is the one place the trainer's QAT scale and the export scale
+        meet, and it is a derivation so they cannot disagree.** QAT clips the
+        threat table to +-127/`qat_threat_scale`; exporting at any smaller
+        scale throws away exactly the range QAT reserved. D49 trained at 256
+        while every deployment path hardcoded 64, and the resulting net used
+        32 of 127 i8 levels and lost 125 Elo with a float heldout R2 within
+        0.008 of the incumbent (perf study 30).
+
+        Falls back to the module default when QAT is off, which is what every
+        pre-QAT net was exported at, so nothing about them changes.
+        """
+        scale = self.qat_threat_scale if self.qat_threat_scale > 0.0 else float(QUANT_THREAT)
+        q = int(round(scale))
+        if q != scale or q <= 0 or q > 256 or (q & (q - 1)):
+            raise ValueError(
+                f"qat_threat_scale={scale} cannot be an export scale: the engine "
+                f"carries FT_QUANT/threat_quant as one shift, so it must be an "
+                f"integral power of two in 1..=256 "
+                f"(sota_head::threat_shift_for; CENN-v5 header)")
+        return q
+
     def quant_layout(self):
         """The quant.bin tensor order + encodings (d40 fmt vec, lines 1295-1314).
 
@@ -290,7 +351,7 @@ class ArchSpec:
         out = [("l0_pstw", "i16", QUANT_FT, False),
                ("l0_pstb", "i16", QUANT_FT, False)]
         if not self.halfka_only:
-            out.append(("l0_threatw", "i8", QUANT_THREAT, False))
+            out.append(("l0_threatw", "i8", self.threat_quant(), False))
         if self.policy:
             out.append(("polmovew", "i8", QUANT_POL, True))
             out.append(("polmoveb", "f32", None, False))

@@ -3406,6 +3406,19 @@ QAT, spans ±1.98, and measures **6.80% relative error at 255 vs 5.58% at 64**.
 `ft_shift`40 / `network_scale`44 / `payload_len`48 — fully packed). So: **CEN3
 adds the field; loader accepts CEN2 ⇒ 64 implicitly.**
 
+> **LANDED as `CEN5`, not `CEN3` — study 30, `docs/research/perf-study-30-cenn-v5-threat-quant-2026-07-30.md`.**
+> `CEN3` and `CEN4` are already the simple/protected HalfKA containers
+> (`simple_halfka.rs`, `protected_halfka.rs`) and `uci.rs` routes on both, so
+> `CEN3` would have misrouted a SOTA net into the HalfKA loader. Everything else
+> is as specified: v5 appends `threat_quant: i32` @64 + zero `reserved: u32` @68
+> to an otherwise byte-identical header, CEN2 implies 64, and all three pins
+> reproduce on both backends. `netpack.py` now also REFUSES an under-range
+> threat table, and `ArchSpec.threat_quant()` derives the export scale from
+> `qat_threat_scale`. Cost of the net-dependent merge: **+2.77 instructions and
+> +0.85 branches per node** (a runtime shift count cost +34.48 i/n — `vpsllw`'s
+> register-count form cannot fold the load — so the kernels are const-generic
+> over the shift).
+
 Acceptance test given to study 30 is a hard bit-identity property: **a CEN2 net
 must reproduce all three pins unchanged on BOTH backends**, including the
 `x86-64-v3` AVX2 path study 26 found no `target-cpu=native` test exercises.
@@ -3577,3 +3590,488 @@ merging now risks conflicting under them. Merge order: 30 (user's sequence
 needs it), then 29, then 31. Study 29 has been sent study 31's census numbers
 and the verified SF finding, with instructions to state any disagreement
 plainly rather than defer.
+
+## Tick 2026-07-30 ~02:10 — study 32 commissioned (i8 HalfKA)
+
+**D49 sb134/400**, 177k pos/s, heldout 0.012826 @ sb130 (ema 0.012144), still
+descending. Unit active, untouched.
+
+**Box:** load 12.04 -> 5.59, 6555 MB available, 177 GB disk. Room to commission.
+
+**The nudge worked.** Study 29 went ahead=0/dirty=21 -> **ahead=3**/dirty=5
+after being told to commit. Two hours of census work is now in git rather than
+living only as dirty files in a worktree. Study 30: ahead=2, dirty=9.
+
+**Commissioned study 32 — offline i8 quantisation of the HalfKA transformer.**
+Target chosen because it is study 31's own #1 and it fits the standing
+directive exactly: pure ARCHON, no SF comparison, aimed at throughput.
+Price: **-463 cycles/node ~= +17 Elo**, bigger than fusion and width combined,
+and it pulls the table inside L3. Attacks the largest stall source we have
+(52% of load-stall cycles are FT weight rows, 61% of those HalfKA).
+
+Structure of the brief:
+- **Phase 1 is an offline NumPy fidelity check** — no build, so its early phase
+  costs the box nothing while studies 29/30 finish. Error measured as *eval
+  delta over real positions in SF-frame cp*, not weight MSE. Pass bar declared
+  before measuring.
+- **Phase 2 gates on CYCLES, median >=6 rounds.** Told explicitly that this item
+  moves BYTES so instructions may not move — and that study 20 was -5.99%
+  cycles with instructions UP 0.19%, so an instructions gate would have
+  rejected a real win.
+- **Phase 3: the pins MOVE.** This is eval-affecting, so it is neither
+  node-identical nor eval-bit-identical; the rule is that an intentional change
+  moves the pin in the same commit. Therefore **games arbitrate** — screen at
+  >=1466 games. Also warned that a fixed-node screen HIDES the speed win by
+  construction, so the case is the cycles number AND a no-regression screen,
+  together.
+- Fallbacks pre-named so a hard block has somewhere to go: per-column scales,
+  i8 weights with i16 accumulator, mixed precision (HalfKA only), asymmetric
+  zero-point, short QAT recovery fine-tune. Any one landed = success.
+- Full memory discipline restated (refuse under 2500 MB, systemd-run scope
+  MemoryMax=6G, -j2, no bare pkill -f, screen concurrency memory-bound).
+
+**Games still gated on study 30** (CEN3 threat-quant guard). D49 cannot be
+fairly screened until then: it trains at qat_threat_scale 256 while the
+exporter still writes THREAT_QUANT 64, so a screen now would measure the broken
+deployment, not the recipe. That is the user's stated sequence — study 30, then
+test, then games.
+
+## Perf study 29 COMPLETE — the load census. TWO METHODS NOW CONVERGE.
+
+Branch `worktree-agent-af852c45b5086e424`, **4 commits, tree clean**, 39 KB doc
+`docs/research/perf-study-29-the-load-census-2026-07-30.md`, tooling in
+`tools/perf29/` (19 scripts). Gates re-verified after final edits:
+**Bench 587683, eval hash 5ca978e0…0098b38, d13 1922947.**
+
+**It engaged study 31 instead of deferring to it** — which is exactly what it
+was asked to do.
+
+### THE HEADLINE: two independent instruments agree on where the time goes
+
+| FT weight rows, share of load-stall cycles | method |
+|---:|---|
+| 52% | study 31 — counter census x source geometry |
+| **46.2%** | study 29 — traffic-pinning probes |
+
+Study 29 adds the per-miss economics study 31 lacked:
+
+| | miss rate | stall cycles / miss |
+|---|---:|---:|
+| **FT weight rows** | **38.3%** | **17.0** |
+| accumulator stream | 14.6% | <= 2 |
+
+⇒ weight rows are not just the bigger share, they are the **expensive-per-miss**
+share. **This double-confirms study 32 (i8 HalfKA), which I commissioned before
+study 29 reported.** Independent confirmation of a target chosen on other
+grounds is the strongest signal we have had all night.
+
+### Traffic-pinning table (load count held fixed, one stream collapsed)
+
+| arm | miss/load | stall/instr |
+|---|---:|---:|
+| byte-identical null | −0.21% | +2.29% |
+| `accpin` (accumulator READS) | −2.59% | +8.21% |
+| `dstpin` (reads AND writes) | **−20.23%** | **−4.63%** |
+| `wpin` (weight rows) | **−26.60%** | **−41.20%** |
+
+### FUSION: both studies now say DO NOT BUILD
+
+Study 29 and 31 agree on misses-per-line to 8% (0.477 vs 0.516) but differ
+**5.2x on stall cycles per line** (2.36 additive vs 0.45 subtractive).
+Reconciliation offered: an *additive* redundant-copy probe measures marginal
+cost at a capacity cliff; a *subtractive* probe measures average value below it
+— both can be true. Fusion therefore spans **net +48 (a LOSS) to −136 (+4.7
+Elo)**. Recommendation: **do not build; close the 5.2x gap first** (both probes
+are committed, ~half-hour job). This compounds the verified point that SF
+*pays* the refresh blocker, so our split accumulator is an advantage fusion
+trades away — study 29 prices that too (HalfKA refreshes 0.1610/node vs
+threats' 0.0214).
+
+### A hardware trap worth more than the census
+
+**Zen 4 double-pumps 512-bit loads: 2.0015 `L1-dcache-loads` events per
+`vmovdqu64`, 1.0016 per `vmovdqu`** (10^8 issued loads each). Getting this
+wrong halves the census — it is why its first draft disagreed 2x with the
+sampled profile. **Relayed to study 32 immediately**, since that study is
+actively counting loads on these same kernels.
+
+### Rejected and retracted (its own honesty, recorded)
+
+- **Prefetch rejected again — the sixth death.** Ceiling argument with numbers:
+  a row takes ~22 demand misses, one hint converts one, and `T2` lands in L2
+  where those rows already mostly hit.
+- **Retraction (a):** its prefetch arm read −1.67% cycles at n=13 and was
+  briefly written into the headline as landed. The paired within-round form
+  showed a **byte-different null moving +1.5% while arms moved +1.1%** — it was
+  position-in-round. **Rotating order is NOT sufficient.**
+- **Retraction (b):** "2a2s is a dead fold shape" (zero in 4.88M folds) — it is
+  castling; `wl50` simply contains none.
+- Its first probe pinned only READS and concluded the stream was free; wrong,
+  the **stores are ~64% of accumulator-stream misses**, costing by capacity not
+  latency.
+
+**No strength change landed and none claimed.**
+
+### Safety verified BY ME
+
+The probes deliberately compute wrong evals (`dstpin` fails 29 tests on
+purpose — a green suite would prove it inert), so a leak into a release build
+would be serious. Checked: `Cargo.toml` has **no `default` key**, so the default
+feature set is EMPTY; `foldcount`/`probe-accpin`/`probe-wpin`/`probe-dstpin`
+are all explicit opt-ins over 35 cfg sites. Cannot leak.
+
+**Merge order unchanged: 30 (user's sequence), then 29, then 31.** Studies 30
+and 32 are still live.
+
+## Tick 2026-07-30 ~02:45 — merging 29 + 31, gate running
+
+**D49 sb139/400**, 177k pos/s, unit active. heldout last at sb130 (0.012826 /
+ema 0.012144); sb140 is the next scheduled eval.
+
+**Box:** 8672 MB available, load 4.28, 175 GB disk. Both live studies clean —
+study 30 ahead=4 dirty=0, study 32 ahead=1 dirty=0.
+
+**Chose the merge over commissioning a third study, deliberately.** The
+directive's own PERF LOOP is *verify -> gate -> merge -> commission next*, and
+29 and 31 were both finished and unmerged. More importantly, **study 32 is
+about to take cycle measurements, and a contended box is precisely what
+produces the retractions this project keeps paying for** (study 31 already
+lists "non-PGO on a contended box" among its caveats; study 29 retracted a
+-1.67% cycles reading that turned out to be position-in-round). A third
+concurrent study would degrade the measurement quality of the highest-value
+item on the board.
+
+**Merge state — REPO IS PARKED ON BRANCH `stage-2931`, NOT main.**
+Staged from main `6ab77a9` so a failed gate cannot break main:
+- study 29 merged **clean**
+- study 31 conflicted on `.gitignore` only (both added ignore lines) — resolved
+  by keeping BOTH sides, zero markers left
+- combined: **53 files changed, +4628 / -27**
+
+**Gate running as `gate2931.service`** (systemd-run --user, MemoryMax=6G,
+MemorySwapMax=0, CARGO_BUILD_JOBS=2, CHECK_NNUE_GATE=1) ->
+`scratchpad/gate2931.log`, ends with an `EXIT=` line.
+
+**Next tick MUST do one of:**
+- gate green -> `git checkout main && git merge --ff-only stage-2931`, then
+  delete the staging branch;
+- gate red -> do NOT merge; read the log, fix or bounce back to the study, and
+  leave main untouched.
+
+Games remain gated on study 30 (CEN3 threat-quant guard). A preview screen of
+D49 at sb139/400 was considered and rejected as low-information: it is a
+from-scratch net one third of the way through a 400sb schedule, so a large loss
+to a fully-trained D48X would be expected and would tell us nothing. The
+heldout curve is the better trend instrument at this stage.
+
+## Studies 29 + 31 LANDED on main; study 30 complete and staged
+
+**main = `ac21f34`** — studies 29 and 31 fast-forwarded after `gate2931`
+returned **EXIT=0, Bench: 587683, "All checks passed."** 54 files, +4669/-27.
+
+### Study 30 — CENN-v5. MY SPEC WAS WRONG AND THE STUDY WAS RIGHT.
+
+I briefed "CEN3". **`CEN3` and `CEN4` are already taken** — verified by me:
+`src/eval/nnue/simple_halfka.rs:8` is `b"CEN3"`, `protected_halfka.rs:14` is
+`b"CEN4"`, and `src/uci.rs:295,307` routes on both. Reusing `CEN3` would have
+misrouted a SOTA net into the HalfKA loader — the exact collision a magic
+exists to prevent. It shipped **`CEN5`**. This is the deviation-with-a-reason
+that a study is supposed to produce instead of silent compliance.
+
+**Layout:** the v2 header is full (all 64 bytes assigned), so v5 keeps `0..64`
+byte-for-byte identical in meaning and **appends** `threat_quant: i32` @64,
+zero `reserved: u32` @68, payload @72. `CEN2` implies 64. The serializer emits
+the OLDEST container that can represent the net, so existing round-trips stay
+byte-identical.
+
+**The fix works on D49:** `d49-1280-sb100-ema` re-exported at 256 and packed
+CEN5 goes `max|w|` **32/127 -> 127/127**, levels **65/256 -> 255/256** (healthy
+reference 127/247), **3.99x less quantisation error (4.66% -> 1.17%)**. AVX2 and
+AVX-512 agree on its evals. Artifact
+`data/nnue/tmp/s30/d49-sb100-ema-q256.cenn`.
+
+**The runtime shift is NOT free — measured, null first (0.000% i/n, twice):**
+
+| arm | i/n | delta |
+|---|---:|---:|
+| baseline | 5654.23 | — |
+| runtime vector shift count | 5688.71 | **+34.48 (+0.610%)** |
+| plumbing only, immediate restored | 5654.23 | **+0.00** |
+| **const-generic (landed)** | 5657.00 | **+2.77 (+0.049%)** |
+
+The diagnostic arm is decisive: keeping ALL the new plumbing but pinning the
+shift back to an immediate returns exactly to baseline ⇒ **the plumbing costs
+zero; the entire cost is one instruction form.** `VPSLLW`'s memory operand is
+the *count*, not the data, so the immediate form folds the load
+(`vpsllw $0x2,(%rcx,%r8,2),%zmm3`) while a register count needs a separate
+`vmovdqu64` per merge (80/eval at ACC=1280) and loses the unroll. Const-generic
+over `{0,1,2}` recovers 31.7 of 34.5, exhaustive by construction because
+`threat_shift_for` rejects anything outside `{64,128,256}` — no panic arm.
+
+**Three latent bugs found and fixed**, plus a detector: `netpack.py` now refuses
+to pack a threat table that doesn't reach half the i8 range (verified against
+the live D49 `quant.bin` — it dies and writes nothing). *That is the check that
+would have caught the original mismatch at hour 0.*
+
+**It re-derived the Elo cost rather than quoting my brief:** the -125.1 +/- 20.9
+(n=336) I supplied was superseded by main's `ce42c6d` mid-study; final is
+**-128.7 +/- 9.6 calibrated / -142.6 +/- 9.6 native, both n=1600**.
+
+### Merge state
+
+`stage-30` = main + study 30, at `358c5b3`. Two conflicts, both resolved:
+`.gitignore` (kept both), and **`src/eval/nnue/sota_simd.rs`** — a real one, in
+the hot kernel, where study 29 added foldcount/probe-accpin instrumentation to
+`activate` and study 30 added a `threat_shift` argument to the same call.
+Resolved by keeping BOTH: instrumentation retained, new argument threaded.
+
+**`gate30.service` running** — full `CHECK_NNUE_GATE=1` gate **plus a
+`cargo check` of all four probe features**, because those are off by default so
+the gate is blind to them, and they call the very function whose signature
+study 30 changed. -> `scratchpad/gate30.log`.
+
+**Next tick:** gate green -> ff main to `stage-30`, then export D49 at CEN5 and
+**run the validating screen** — CEN5@256 vs the broken CEN2@64 export of the
+same checkpoint, which should recover ~128 Elo. That closes the user's
+"once it is done test it, then run games" sequence.
+
+## Tick 2026-07-30 ~03:15 — gate30 in flight
+
+**D49 sb145/400**, 176k pos/s, active. **Heldout still descending, no plateau:**
+
+| sb | heldout | ema |
+|---|---|---|
+| 120 | 0.012989 | 0.012211 |
+| 130 | 0.012826 | 0.012144 |
+| **140** | **0.012719** | **0.012068** |
+
+**Box:** 6391 MB available, load 15.38 — high, but that is the gate30 build plus
+study 32 plus the trainer, and it is transient. No new load added this tick on
+purpose.
+
+`gate30` still running (reached the bench-fingerprint stage). Armed a background
+waiter (`beo9q7gnp`) so the merge lands the moment the gate clears instead of
+idling a full 15-minute tick.
+
+**On deck, in order, once gate30 is green:**
+1. `git checkout main && git merge --ff-only stage-30`
+2. export D49 at CEN5/256
+3. **the validating screen** — CEN5@256 vs the broken CEN2@64 export of the SAME
+   checkpoint. Study 30 measured the mismatch at **-128.7 +/- 9.6 Elo (n=1600)**,
+   so a correct fix should recover ~128 Elo. That is a real falsifiable
+   prediction, not a smoke test, and it closes the user's "once it is done test
+   it, then run games" sequence.
+
+## Study 30 LANDED — and the CEN5 pipeline is validated END TO END
+
+**main = `c0f01ed`.** `gate30` green: **Bench 587683, All checks passed,
+GATE_EXIT=0**, and — the part the gate is normally blind to — **all four probe
+features compile** (`foldcount`, `probe-accpin`, `probe-wpin`, `probe-dstpin`
+-> exit 0). That is what confirms the `sota_simd.rs` conflict resolution
+correctly threaded study 30's `threat_shift` argument through study 29's
+instrumentation of `activate`.
+
+### The export path works on a live checkpoint
+
+Ran the full recipe against **D49 sb140-ema** (not study 30's sb100):
+
+```
+requant_threats.py --scale 256 --run-spec tools/nnue/runs/d49_1280.json
+D40_THREAT_QUANT=256 netpack.py ... d40
+```
+
+- threat weights n=77,721,600, RMS 0.08380, max|w| 0.4953
+- **scale 64: err 4.89% (26.2 dB) -> scale 256: err 1.23% (38.2 dB), 3.98x
+  better, ZERO weights clipped**
+- container magic is **`CEN5`** (`4345 4e35`), threat_quant=256, merge shift 0,
+  138,283,648 bytes -> `data/nnue/tmp/s32/d49-sb140-ema-q256.cenn`
+- **the canonical engine cannot load it** (0 `CEN5` strings — it predates the
+  format), so a fresh `sota,arch-d48x` v3 build was needed and made.
+
+### A measurement trap I walked into and corrected
+
+My first load check drove UCI over a pipe and got `bestmove a2a3` with no
+`info` lines from **all three** of D49, D48X **and no-net-at-all**. That looked
+like "EvalFile is not taking effect" — the PSQT-fallback trap `tools/screen.sh`
+warns about. It was not: stdin closed and aborted the search before it started.
+**My driving was broken, not the engine.** Re-tested via the `bench` subcommand
+(net as the 6th arg, cannot be raced):
+
+| net | nodes to depth 8 | nps |
+|---|---:|---:|
+| D49 sb140-ema (CEN5@256) | 261,567 | 740,983 |
+| D48X canonical | 196,861 | 903,032 |
+| PSQT, no net | 1,225,982 | — |
+
+Three distinct results ⇒ EvalFile is applied. **D49 needs 33% MORE nodes to
+reach depth 8**, consistent with an undertrained net at 36% of schedule giving
+less decisive evals. (The nps gap is NOT a kernel regression — study 30
+measured the const-generic shift at +0.049% i/n. Different nets give different
+trees, and bench nps is confounded by tree shape. Not a finding.)
+
+### NO 1466-GAME SCREEN THIS TICK — deliberate, with reasons
+
+Study 32 is **already running its own `tools/screen.sh`** (~13 engine
+processes, no `perf` active — it is in its games phase). Launching a second
+screen would have:
+1. **risked memory** — each screen costs 2 x conc x ~154 MB against 6607 MB
+   available with a 3 GB trainer to protect, and the standing order is DON'T
+   OOM THE BOX;
+2. **bought almost nothing** — D49 at sb140/400 is 36% through a from-scratch
+   schedule. The 33%-more-nodes result already indicates an undertrained net;
+   spending ~30 min of contended box to confirm "it is weaker than a fully
+   trained net" is not information.
+
+**The informative screen is post-cosine (sb250+), and best at sb400.** The
+"test it" half of the user's sequence IS now discharged: the CEN5 path is
+proven end to end on a live checkpoint — export, container, engine load, and
+distinct search behaviour.
+
+## Tick 2026-07-30 ~04:00 — study 33 commissioned (search::<NonPv>)
+
+**D49 sb151/400**, 175k pos/s, active. Heldout still descending, still no
+plateau — the cosine has 149 sb to run before the anneal:
+
+| sb | heldout | ema |
+|---|---|---|
+| 130 | 0.012826 | 0.012144 |
+| 140 | 0.012719 | 0.012068 |
+| **150** | **0.012593** | **0.011987** |
+
+**Box:** load 3.56, 8385 MB available, 171 GB disk. main = study 30 landed.
+
+**Study 32** ahead=3, dirty=67, **`perf` ACTIVE** — it is mid-measurement.
+
+**Commissioned study 33 — localise `search::<NonPv>`.** Chosen because it is
+the **largest single symbol in our own profile at 19.90%** and it is currently a
+**site with no mechanism**: study 28 attributed -264 cycles/node (26.7% of the
+gap) to a 5,312-byte-stride snapshot, **study 31 built that arm and it is a
+measured NULL** (+1.57 L1 miss/node, wrong sign, against a +/-0.16% null) — yet
+the +303.4 cycles/node at the site is still real and still unexplained. Pure
+ARCHON, no SF comparison, exactly as the standing directive asks.
+
+Brief includes, beyond the usual no-escape-hatch framing:
+- **Six named decompositions** so a dead end has somewhere to go: per-line
+  attribution, separating inlined callees (movepick / TT / eval / make-unmake /
+  pruning), branch mispredicts (**nobody has looked**), front-end icache+iTLB
+  pressure from a large inlined body, study 29's stall taxonomy, and
+  data-structure reordering.
+- The symbol-region vs source-function distinction, which already produced a
+  21.29% vs 19.90% discrepancy between two valid readings.
+- Every instrument rule that has cost us a retraction: cycles-not-instructions
+  (study 20: -5.99% cycles, instructions +0.19%), null-first, **paired
+  within-round form because rotating order is NOT sufficient** (study 29's
+  -1.67% at n=13 was position-in-round), and the Zen 4 512-bit double-pump
+  (2.0015 events per `vmovdqu64`).
+- **An explicit coordination protocol**, since study 32 is measuring right now:
+  do all source reading and hypothesis formation first (costs the box nothing),
+  then check `pgrep -x perf` and for a running `fastchess` screen before ANY
+  cycle measurement, and **wait rather than measure through contention** —
+  reporting in the write-up whether the box was quiet.
+
+**Deliberately NOT done this tick:** no screen launched. Study 32 holds the box
+with its own games phase and a live `perf`; D49 at sb151 remains too early for
+an informative net verdict. The informative screen is post-cosine (sb250+),
+best at sb400.
+
+## Tick 2026-07-30 ~04:30 — a throughput scare that was an INSTRUMENT ARTIFACT
+
+**D49 sb157/400**, active. Heldout 0.012593 @ sb150 (ema 0.011987).
+
+### The scare, and the correction
+
+The logged `pos/s` declines monotonically and looked like progressive
+starvation:
+
+| sb | reported pos/s |
+|---|---|
+| 10 | 198,756 |
+| 60 | 192,625 |
+| 110 | 181,787 |
+| 135 | 177,210 |
+| 157 | 174,675 |
+
+That is **~12% off peak** and perfectly smooth — which is the signature of a
+*cumulative* average, not an instantaneous rate. Checked it against journal
+timestamps instead of trusting the printed field:
+
+- window **sb78 -> sb157: 153.6 s/sb**
+- **last 10 sb only: 154.7 s/sb**
+
+Two windows, same answer ⇒ **the rate is STABLE and the trainer is not being
+progressively starved.** The declining figure is a cumulative average
+converging down toward the true instantaneous rate. **ETA to sb400: 10.4 h.**
+
+*Method note, consistent with the standing rules: a smooth monotonic trend in a
+derived statistic is a reason to re-derive it from raw timestamps, not to
+diagnose a cause.*
+
+### Watch item — the trainer cgroup HAS hit its ceiling
+
+`memory.events` for `archon-d49.service`: **`max 34184`**, `oom_kill 0`.
+`memory.current` 5.22 GB against `memory.max` 9.0 GB, and `memory.pressure`
+currently 0.00. So it has bounced off the 9 GB limit tens of thousands of times
+at some point in the run, without ever being killed. The counter is cumulative
+since unit start, so I **cannot** attribute those events to any particular
+period — flagging as a watch item, not diagnosing it. `cpu.pressure` some
+avg10=3.61 / full avg10=1.32 under load 17.57.
+
+### Box and studies
+
+5977 MB available, load 17.57 (study 32's `fastchess` screen — 1 running, 0
+`perf`). **Study 32 ahead=8, dirty=0** — committing cleanly and well past its
+offline phase. **Study 33 ahead=1, dirty=5** — started and already committing.
+
+No new load added this tick: the box is at 17.57 with a screen running, and the
+standing order is DON'T OOM THE BOX.
+
+## Tick 2026-07-30 ~05:00 — study 34 commissioned (move ordering)
+
+**D49 sb162/400**, active, heldout still descending with no plateau:
+
+| sb | heldout | ema |
+|---|---|---|
+| 140 | 0.012719 | 0.012068 |
+| 150 | 0.012593 | 0.011987 |
+| **160** | **0.012485** | **0.011917** |
+
+**Box:** 8411 MB available, load 5.71, 169 GB disk (82% used), all worktrees
+15 GB. Study 32's momentary `dirty=3504` was transient build output — its tree
+is clean again and its worktree is 2.8 GB. No disk concern.
+
+**Studies in flight:** 32 **ahead=11**, last commit *"the second screen lands —
+pooled +3.6 +/- 7"*; 33 **ahead=4**, last commit *"the 19.90% symbol,
+decomposed"*. Neither had `perf` or `fastchess` running at tick time, i.e. both
+were in coding phases. *(Study 32's pooled figure is from its own commit
+message and is NOT yet verified by me — it will be checked against its screen
+logs when it reports.)*
+
+**Commissioned study 34 — move ordering (`init_quiets` 6.35% + the movepick
+family).** Chosen because every other large region of our own profile now has a
+study on it: accumulator folds have 29/31/32, `search::<NonPv>` has 33. This is
+the **largest remaining unexamined region**, and it does not overlap the
+accumulator work, so it can proceed independently.
+
+Brief specifics worth recording:
+- **Pointed at perf study 7's correction banner** — it won -6.17% instructions
+  in this very area but attributed it to *icache pressure* when the mechanism
+  was *register pressure*. Getting the mechanism wrong in movepick is a
+  documented local hazard, not a hypothetical one.
+- **Framed cost AND quality together.** Move ordering is unusual: a change that
+  costs instructions can still win big by shrinking the tree. Told explicitly
+  that ordering changes are **FUNCTIONAL** — the `Bench:` node count legitimately
+  moves and the new number goes in the same commit — and **not** to contort a
+  good idea into node-identity to keep a pin still.
+- **A tripwire:** a movepick change must NOT move the eval hash. If it does,
+  something is wrong.
+- Five named angles so a dead end has somewhere to go: laziness (what fraction
+  of scored quiets is ever tried), stage-transition cost, the history-scoring
+  loop's scattered reads, **branch mispredicts (unlooked-at anywhere in the
+  engine)**, and direct ordering-quality measurement via the distribution of
+  the cutoff move's index.
+- The same **coordination protocol** given to study 33: offline source work
+  first, then check `pgrep -x perf` / `pgrep -x fastchess` and **wait rather
+  than measure through contention**, reporting whether the box was quiet.
+
+Still no D49 screen: sb162 is 40% of schedule. Post-cosine (sb250+) remains the
+first informative point, sb400 the real one.

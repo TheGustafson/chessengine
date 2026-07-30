@@ -1,11 +1,13 @@
-//! The CENN-v2 network container: parse, validate, and serialize D40 SOTA nets
-//! (design/11 §12.6).
+//! The SOTA network container: parse, validate, and serialize D40 SOTA nets
+//! (design/11 §12.6). Two versions are readable — `CEN2` and `CEN5` — and both
+//! produce the same [`SotaNetwork`].
 //!
 //! Completely separate from the v1 CENN loader ([`super::loader`]) — the arch
 //! constants, payload shape, and returned type (`SotaNetwork` vs `Network`) are
-//! all different. A v2 file starts with magic `b"CEN2"` so the two never
-//! collide: the v1 loader rejects it with `BadMagic`, the v2 loader rejects a
-//! v1 file with `BadMagic`.
+//! all different. The magic keeps every container family apart: `CENN` is v1,
+//! `CEN3` is [`super::simple_halfka`], `CEN4` is [`super::protected_halfka`],
+//! and this module owns `CEN2` and `CEN5`. Each loader rejects the others with
+//! `BadMagic`.
 //!
 //! ```text
 //! CENN-v2 header (64 bytes)
@@ -26,6 +28,33 @@
 //! 48      8     payload_len: u64 LE
 //! 56      8     payload_checksum: u64 LE (FNV-1a-64)
 //! ```
+//!
+//! **CENN-v5 (`CEN5`, perf study 30) — the same container plus `threat_quant`.**
+//! The v2 header is FULL: every one of its 64 bytes is spoken for, with no
+//! reserved slot, which is why adding one field costs a magic. v5 therefore
+//! keeps bytes `0..64` byte-for-byte identical in meaning (only the magic and
+//! version differ) and APPENDS, so the two versions share one parser for
+//! everything above and a v2 net cannot be perturbed by the change:
+//! ```text
+//! CENN-v5 header (72 bytes) = the v2 header, with
+//! 0       4     magic = b"CEN5"
+//! 4       2     version: u16 LE (= 5)
+//! ...           (8..64 exactly as CENN-v2)
+//! 64      4     threat_quant: i32 — power of two in 1..=256
+//! 68      4     reserved: u32, MUST be 0
+//! ```
+//! and the payload starts at 72 instead of 64.
+//!
+//! `threat_quant` is the scale at which the FullThreats table was exported to
+//! i8, and it is a property of the NET, not of the engine: a non-QAT net's
+//! weights span ±1.98 and clip catastrophically above 64, while a QAT net
+//! trained at `qat_threat_scale = 256` is clipped to ±127/256 and wastes two
+//! bits of the i8 at 64 (measured: `max|w| 32/127`, 65 of 256 levels, against
+//! 127/127 and 247/256 for a healthy net — and −128.7 ± 9.6 Elo over 1600
+//! calibrated games). A `CEN2` file has no field for it, so it means
+//! [`sota_head::THREAT_QUANT_CEN2`] = 64 — which is exactly what every engine
+//! before this change assumed, so **loading a v2 net is bit-identical**.
+//! The runtime consumes it as [`sota_head::threat_shift_for`].
 //!
 //! Payload (all little-endian, in order):
 //! ```text
@@ -75,6 +104,18 @@ pub const MAGIC_V2: [u8; 4] = *b"CEN2";
 pub const CENN_V2_VERSION: u16 = 2;
 /// Fixed header size in bytes.
 pub const HEADER_V2_LEN: usize = 64;
+/// CENN-v5 magic bytes — the same container plus a `threat_quant` field.
+///
+/// **Five, not three**: `CEN3` and `CEN4` are already taken by
+/// [`super::simple_halfka`] and [`super::protected_halfka`], both routed by
+/// `uci.rs`'s magic peek, so reusing `CEN3` would misroute a SOTA net into the
+/// HalfKA loader — precisely the collision the magic exists to prevent.
+pub const MAGIC_V5: [u8; 4] = *b"CEN5";
+/// Container version for [`MAGIC_V5`].
+pub const CENN_V5_VERSION: u16 = 5;
+/// Fixed header size in bytes for [`MAGIC_V5`]: the v2 header plus
+/// `threat_quant: i32` at 64 and a zero `reserved: u32` at 68.
+pub const HEADER_V5_LEN: usize = 72;
 /// Flag bit: threats feature transformer is present.
 pub const FLAG_HAS_THREATS: u16 = 1;
 /// Magic bytes of the optional trailing PSQT-skip section (T6c).
@@ -155,6 +196,7 @@ impl PartialEq for SotaNetwork {
             && self.threat_weights == other.threat_weights
             && self.psqt_weights == other.psqt_weights
             && self.head.network_scale == other.head.network_scale
+            && self.head.threat_shift == other.head.threat_shift
             && self.head.l1_weights == other.head.l1_weights
             && self.head.l1_biases == other.head.l1_biases
             && self.head.l2_weights == other.head.l2_weights
@@ -174,10 +216,13 @@ pub enum SotaNnueError {
     Io(std::io::Error),
     /// Fewer bytes than needed.
     TooShort { need: usize, got: usize },
-    /// The first four bytes were not `b"CEN2"`.
+    /// The first four bytes were neither `b"CEN2"` nor `b"CEN5"`.
     BadMagic([u8; 4]),
     /// Version mismatch.
     UnsupportedVersion(u16),
+    /// A `CEN5` header's `threat_quant` is not a power of two in `1..=256`, so
+    /// the runtime cannot carry `FT_QUANT/threat_quant` as a shift.
+    BadThreatQuant(i32),
     /// A dimension in the header didn't match this build's compile-time constant.
     WrongDim {
         field: &'static str,
@@ -201,37 +246,43 @@ impl fmt::Display for SotaNnueError {
         match self {
             SotaNnueError::Io(e) => write!(f, "reading SOTA NNUE file: {e}"),
             SotaNnueError::TooShort { need, got } => {
-                write!(f, "CENN-v2 too short: need {need} bytes, got {got}")
+                write!(f, "CENN too short: need {need} bytes, got {got}")
             }
             SotaNnueError::BadMagic(m) => {
-                write!(f, "CENN-v2 bad magic: {m:?} (expected b\"CEN2\")")
+                write!(f, "CENN bad magic: {m:?} (expected b\"CEN2\" or b\"CEN5\")")
             }
             SotaNnueError::UnsupportedVersion(v) => {
                 write!(
                     f,
-                    "CENN-v2 unsupported version {v} (this build reads {CENN_V2_VERSION})"
+                    "CENN unsupported version {v} (this build reads \
+                     {CENN_V2_VERSION} and {CENN_V5_VERSION})"
                 )
             }
+            SotaNnueError::BadThreatQuant(q) => write!(
+                f,
+                "CENN threat_quant {q} is not a power of two in 1..=256 \
+                 (FT_QUANT/threat_quant must be carriable as a shift)"
+            ),
             SotaNnueError::WrongDim {
                 field,
                 expected,
                 found,
             } => write!(
                 f,
-                "CENN-v2 {field} {found} != {expected} (architecture mismatch)"
+                "CENN {field} {found} != {expected} (architecture mismatch)"
             ),
             SotaNnueError::WrongQuant {
                 field,
                 expected,
                 found,
-            } => write!(f, "CENN-v2 {field} {found} != {expected} (quant mismatch)"),
+            } => write!(f, "CENN {field} {found} != {expected} (quant mismatch)"),
             SotaNnueError::BadPayloadLen { expected, found } => write!(
                 f,
-                "CENN-v2 payload_len {found} != {expected} (architecture mismatch)"
+                "CENN payload_len {found} != {expected} (architecture mismatch)"
             ),
             SotaNnueError::ChecksumMismatch { expected, found } => write!(
                 f,
-                "CENN-v2 checksum mismatch: header {expected:#018x}, computed {found:#018x}"
+                "CENN checksum mismatch: header {expected:#018x}, computed {found:#018x}"
             ),
         }
     }
@@ -325,10 +376,12 @@ fn fnv1a64(data: &[u8]) -> u64 {
 
 // ─── Parser ────────────────────────────────────────────────────────────────
 
-/// Parse and validate a CENN-v2 container. Rejects every anomaly with a
-/// [`SotaNnueError`]; never panics on the input bytes.
+/// Parse and validate a `CEN2` or `CEN5` container. Rejects every anomaly with
+/// a [`SotaNnueError`]; never panics on the input bytes.
 pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     // ── Header ─────────────────────────────────────────────────────────
+    // The shorter of the two headers first, so a truncated file still reports
+    // TooShort rather than reading past its end for the magic.
     if bytes.len() < HEADER_V2_LEN {
         return Err(SotaNnueError::TooShort {
             need: HEADER_V2_LEN,
@@ -337,12 +390,22 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     }
 
     let magic: [u8; 4] = [bytes[0], bytes[1], bytes[2], bytes[3]];
-    if magic != MAGIC_V2 {
-        return Err(SotaNnueError::BadMagic(magic));
+    // Bytes 0..64 mean the same thing in both versions (module docs), so only
+    // the header LENGTH and the trailing threat_quant differ here.
+    let (expected_version, header_len) = match magic {
+        MAGIC_V2 => (CENN_V2_VERSION, HEADER_V2_LEN),
+        MAGIC_V5 => (CENN_V5_VERSION, HEADER_V5_LEN),
+        _ => return Err(SotaNnueError::BadMagic(magic)),
+    };
+    if bytes.len() < header_len {
+        return Err(SotaNnueError::TooShort {
+            need: header_len,
+            got: bytes.len(),
+        });
     }
 
     let version = read_u16(bytes, 4);
-    if version != CENN_V2_VERSION {
+    if version != expected_version {
         return Err(SotaNnueError::UnsupportedVersion(version));
     }
 
@@ -393,6 +456,24 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         });
     }
 
+    // threat_quant: read from a v5 header, IMPLIED by a v2 one. This is the
+    // whole point of the version bump — see the module docs.
+    let threat_quant = if header_len == HEADER_V5_LEN {
+        let reserved = read_u32(bytes, 68);
+        if reserved != 0 {
+            return Err(SotaNnueError::WrongDim {
+                field: "reserved",
+                expected: 0,
+                found: reserved,
+            });
+        }
+        read_i32(bytes, 64)
+    } else {
+        sota_head::THREAT_QUANT_CEN2
+    };
+    let threat_shift = sota_head::threat_shift_for(threat_quant)
+        .ok_or(SotaNnueError::BadThreatQuant(threat_quant))?;
+
     // Payload length + checksum.
     let expected_payload = if has_threats {
         payload_len_with_threats()
@@ -409,14 +490,14 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     let header_checksum = read_u64(bytes, 56);
 
     // ── Payload ────────────────────────────────────────────────────────
-    let total_need = HEADER_V2_LEN + expected_payload;
+    let total_need = header_len + expected_payload;
     if bytes.len() < total_need {
         return Err(SotaNnueError::TooShort {
             need: total_need,
             got: bytes.len(),
         });
     }
-    let payload = &bytes[HEADER_V2_LEN..HEADER_V2_LEN + expected_payload];
+    let payload = &bytes[header_len..header_len + expected_payload];
     let computed_checksum = fnv1a64(payload);
     if computed_checksum != header_checksum {
         return Err(SotaNnueError::ChecksumMismatch {
@@ -516,6 +597,7 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         l3_weights,
         l3_biases,
         network_scale,
+        threat_shift,
         l3_var_weights: None,
         l3_var_biases: None,
         l3_wdl_weights: None,
@@ -795,12 +877,21 @@ pub(crate) fn load_wdl_sidecar(head: &mut SotaHead) {
 
 // ─── Serializer (tests + netpack cross-check) ──────────────────────────────
 
-/// Serialize a `SotaNetwork` to CENN-v2 bytes (the inverse of [`load_v2_bytes`]).
-/// Used by tests to build deterministic nets and round-trip them; also lets the
-/// Rust side produce a reference `.cenn` for cross-checking the Python packer.
-pub fn serialize_v2(net: &SotaNetwork) -> Vec<u8> {
+/// Serialize a `SotaNetwork` (the inverse of [`load_v2_bytes`]). Used by tests
+/// to build deterministic nets and round-trip them; also lets the Rust side
+/// produce a reference `.cenn` for cross-checking the Python packer.
+///
+/// **Emits the OLDEST container that can represent the net**: `CEN2` when the
+/// threat frame is the one a v2 header implies
+/// ([`sota_head::THREAT_QUANT_CEN2`]), `CEN5` otherwise. So every net that
+/// round-tripped to v2 bytes before perf study 30 still does, byte for byte,
+/// and only a net that genuinely needs the new field pays the version bump.
+pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
     let has_threats = !net.threat_weights.is_empty();
     let flags: u16 = if has_threats { FLAG_HAS_THREATS } else { 0 };
+    let threat_quant = sota_head::threat_quant_for(net.head.threat_shift);
+    let v5 = threat_quant != sota_head::THREAT_QUANT_CEN2;
+    let header_len = if v5 { HEADER_V5_LEN } else { HEADER_V2_LEN };
 
     // ── Payload ────────────────────────────────────────────────────────
     let expected_payload = if has_threats {
@@ -862,9 +953,9 @@ pub fn serialize_v2(net: &SotaNetwork) -> Vec<u8> {
     let checksum = fnv1a64(&payload);
 
     // ── Header ─────────────────────────────────────────────────────────
-    let mut out = Vec::with_capacity(HEADER_V2_LEN + expected_payload);
-    out.extend_from_slice(&MAGIC_V2);
-    out.extend_from_slice(&CENN_V2_VERSION.to_le_bytes());
+    let mut out = Vec::with_capacity(header_len + expected_payload);
+    out.extend_from_slice(if v5 { &MAGIC_V5 } else { &MAGIC_V2 });
+    out.extend_from_slice(&(if v5 { CENN_V5_VERSION } else { CENN_V2_VERSION }).to_le_bytes());
     out.extend_from_slice(&flags.to_le_bytes());
     out.extend_from_slice(&(HALFKA_DIMS as u32).to_le_bytes());
     let threat_dim = if has_threats { THREAT_DIMS as u32 } else { 0 };
@@ -879,7 +970,11 @@ pub fn serialize_v2(net: &SotaNetwork) -> Vec<u8> {
     out.extend_from_slice(&net.head.network_scale.to_le_bytes());
     out.extend_from_slice(&(payload.len() as u64).to_le_bytes());
     out.extend_from_slice(&checksum.to_le_bytes());
-    debug_assert_eq!(out.len(), HEADER_V2_LEN);
+    if v5 {
+        out.extend_from_slice(&threat_quant.to_le_bytes());
+        out.extend_from_slice(&0u32.to_le_bytes()); // reserved
+    }
+    debug_assert_eq!(out.len(), header_len);
 
     out.extend_from_slice(&payload);
 
@@ -1049,6 +1144,7 @@ pub(crate) mod tests {
                 l3_weights,
                 l3_biases,
                 network_scale: 380,
+                threat_shift: 2,
                 l3_var_weights: None,
                 l3_var_biases: None,
                 l3_wdl_weights: None,
@@ -1105,7 +1201,7 @@ pub(crate) mod tests {
     #[test]
     fn round_trip_with_threats() {
         let net = test_net_with_threats();
-        let bytes = serialize_v2(&net);
+        let bytes = serialize(&net);
         assert_eq!(&bytes[0..4], b"CEN2");
         assert_eq!(read_u16(&bytes, 4), CENN_V2_VERSION);
         assert_eq!(read_u16(&bytes, 6) & FLAG_HAS_THREATS, FLAG_HAS_THREATS);
@@ -1114,10 +1210,106 @@ pub(crate) mod tests {
         assert_eq!(net, back);
     }
 
+    /// **The perf-study-30 safety property, in-tree.** A `CEN2` container has
+    /// no `threat_quant` field, so it must keep meaning 64 ⇒ shift 2 — the
+    /// literal every backend hardcoded before the version bump. If this moves,
+    /// every shipped net's evaluation moves with it.
+    #[test]
+    fn cen2_implies_the_legacy_threat_frame() {
+        let bytes = serialize(&test_net_with_threats());
+        assert_eq!(&bytes[0..4], b"CEN2");
+        assert_eq!(bytes.len(), HEADER_V2_LEN + payload_len_with_threats());
+        let back = load_v2_bytes(&bytes).expect("v2 loads");
+        assert_eq!(back.head.threat_shift, 2);
+        assert_eq!(
+            sota_head::threat_quant_for(back.head.threat_shift),
+            sota_head::THREAT_QUANT_CEN2
+        );
+    }
+
+    /// A QAT net (threat_quant 256 ⇒ shift 0) serializes as `CEN5` and reloads
+    /// with its own frame — and the PAYLOAD is byte-identical to the v2 form,
+    /// because v5 only APPENDS to the header.
+    #[test]
+    fn cen5_carries_threat_quant_and_only_appends() {
+        let v2_net = test_net_with_threats();
+        let v2_bytes = serialize(&v2_net);
+
+        let mut qat = test_net_with_threats();
+        qat.head.threat_shift = 0;
+        let v5_bytes = serialize(&qat);
+
+        assert_eq!(&v5_bytes[0..4], b"CEN5");
+        assert_eq!(read_u16(&v5_bytes, 4), CENN_V5_VERSION);
+        assert_eq!(read_i32(&v5_bytes, 64), 256);
+        assert_eq!(read_u32(&v5_bytes, 68), 0, "reserved must be written zero");
+        assert_eq!(v5_bytes.len(), v2_bytes.len() + 8);
+        // Bytes 4..64 (version aside) and the whole payload are identical.
+        assert_eq!(v5_bytes[6..64], v2_bytes[6..64]);
+        assert_eq!(v5_bytes[HEADER_V5_LEN..], v2_bytes[HEADER_V2_LEN..]);
+
+        let back = load_v2_bytes(&v5_bytes).expect("v5 loads");
+        assert_eq!(back.head.threat_shift, 0);
+        assert_eq!(qat, back);
+        // …and it is NOT equal to the v2 net, i.e. the frame really is carried.
+        assert_ne!(v2_net, back);
+    }
+
+    #[test]
+    fn rejects_bad_threat_quant_and_dirty_reserved() {
+        let mut qat = test_net_with_threats();
+        qat.head.threat_shift = 0;
+        let good = serialize(&qat);
+
+        // 255 is not a power of two, so the frame ratio is not a shift.
+        let mut bytes = good.clone();
+        bytes[64..68].copy_from_slice(&255i32.to_le_bytes());
+        assert!(matches!(
+            load_v2_bytes(&bytes),
+            Err(SotaNnueError::BadThreatQuant(255))
+        ));
+
+        // 512 would need a NEGATIVE shift.
+        let mut bytes = good.clone();
+        bytes[64..68].copy_from_slice(&512i32.to_le_bytes());
+        assert!(matches!(
+            load_v2_bytes(&bytes),
+            Err(SotaNnueError::BadThreatQuant(512))
+        ));
+
+        // The reserved word is a future field: a non-zero value means the file
+        // was written by something newer, so refuse rather than misread it.
+        let mut bytes = good.clone();
+        bytes[68..72].copy_from_slice(&1u32.to_le_bytes());
+        assert!(matches!(
+            load_v2_bytes(&bytes),
+            Err(SotaNnueError::WrongDim {
+                field: "reserved",
+                ..
+            })
+        ));
+
+        // A v5 magic with a v2-length body is short, not silently truncated.
+        let mut bytes = good.clone();
+        bytes.truncate(HEADER_V2_LEN + 4);
+        assert!(matches!(
+            load_v2_bytes(&bytes),
+            Err(SotaNnueError::TooShort { need: 72, .. })
+        ));
+
+        // A v5 magic with the v2 version number is a mismatch, not a v2 file.
+        let mut bytes = good;
+        bytes[4..6].copy_from_slice(&CENN_V2_VERSION.to_le_bytes());
+        assert!(matches!(
+            load_v2_bytes(&bytes),
+            Err(SotaNnueError::UnsupportedVersion(2))
+        ));
+    }
+
     #[test]
     fn round_trip_no_threats() {
         let net = test_net_no_threats();
-        let bytes = serialize_v2(&net);
+        let bytes = serialize(&net);
         assert_eq!(read_u16(&bytes, 6) & FLAG_HAS_THREATS, 0);
         assert_eq!(read_u32(&bytes, 12), 0); // threat_dims = 0
 
@@ -1128,9 +1320,9 @@ pub(crate) mod tests {
     #[test]
     fn round_trip_with_psqt() {
         let net = test_net_with_psqt_pub();
-        let bytes = serialize_v2(&net);
+        let bytes = serialize(&net);
         // The PSQ1 trailer sits after the checksummed payload.
-        let base_len = serialize_v2(&test_net_with_threats()).len();
+        let base_len = serialize(&test_net_with_threats()).len();
         assert_eq!(&bytes[base_len..base_len + 4], b"PSQ1");
         assert_eq!(
             bytes.len(),
@@ -1153,7 +1345,7 @@ pub(crate) mod tests {
     fn round_trip_psqt_no_threats() {
         let mut net = test_net_no_threats();
         net.psqt_weights = test_psqt_table()[..HALFKA_DIMS * BUCKETS].to_vec().into();
-        let bytes = serialize_v2(&net);
+        let bytes = serialize(&net);
         let back = load_v2_bytes(&bytes).expect("halfka-only psqt net loads");
         assert_eq!(net, back);
         assert_eq!(back.halfka_psqt().len(), HALFKA_DIMS * BUCKETS);
@@ -1163,10 +1355,10 @@ pub(crate) mod tests {
     #[test]
     fn rejects_bad_psqt_section() {
         let net = test_net_with_psqt_pub();
-        let base_len = serialize_v2(&test_net_with_threats()).len();
+        let base_len = serialize(&test_net_with_threats()).len();
 
         // Wrong bucket count.
-        let mut bytes = serialize_v2(&net);
+        let mut bytes = serialize(&net);
         bytes[base_len + 4..base_len + 8].copy_from_slice(&7u32.to_le_bytes());
         assert!(matches!(
             load_v2_bytes(&bytes),
@@ -1177,7 +1369,7 @@ pub(crate) mod tests {
         ));
 
         // Wrong row count.
-        let mut bytes = serialize_v2(&net);
+        let mut bytes = serialize(&net);
         bytes[base_len + 8..base_len + 12].copy_from_slice(&(HALFKA_DIMS as u32).to_le_bytes());
         assert!(matches!(
             load_v2_bytes(&bytes),
@@ -1188,7 +1380,7 @@ pub(crate) mod tests {
         ));
 
         // Truncated table.
-        let bytes = serialize_v2(&net);
+        let bytes = serialize(&net);
         assert!(matches!(
             load_v2_bytes(&bytes[..bytes.len() - 4]),
             Err(SotaNnueError::TooShort { .. })
@@ -1199,7 +1391,7 @@ pub(crate) mod tests {
     /// "nets without it behave exactly as today" half of the contract.
     #[test]
     fn legacy_net_has_no_psqt() {
-        let bytes = serialize_v2(&test_net_with_threats());
+        let bytes = serialize(&test_net_with_threats());
         let back = load_v2_bytes(&bytes).expect("legacy net loads");
         assert!(back.psqt_weights.is_empty());
         assert!(back.halfka_psqt().is_empty());
@@ -1208,7 +1400,7 @@ pub(crate) mod tests {
 
     #[test]
     fn rejects_bad_magic() {
-        let mut bytes = serialize_v2(&test_net_with_threats());
+        let mut bytes = serialize(&test_net_with_threats());
         bytes[0] = b'X';
         assert!(matches!(
             load_v2_bytes(&bytes),
@@ -1218,7 +1410,7 @@ pub(crate) mod tests {
 
     #[test]
     fn rejects_wrong_version() {
-        let mut bytes = serialize_v2(&test_net_with_threats());
+        let mut bytes = serialize(&test_net_with_threats());
         bytes[4..6].copy_from_slice(&99u16.to_le_bytes());
         assert!(matches!(
             load_v2_bytes(&bytes),
@@ -1228,7 +1420,7 @@ pub(crate) mod tests {
 
     #[test]
     fn rejects_wrong_dims() {
-        let mut bytes = serialize_v2(&test_net_with_threats());
+        let mut bytes = serialize(&test_net_with_threats());
         // Tamper halfka_dims.
         bytes[8..12].copy_from_slice(&9999u32.to_le_bytes());
         assert!(matches!(
@@ -1242,7 +1434,7 @@ pub(crate) mod tests {
 
     #[test]
     fn rejects_wrong_quant() {
-        let mut bytes = serialize_v2(&test_net_with_threats());
+        let mut bytes = serialize(&test_net_with_threats());
         // Tamper ft_quant at offset 32.
         bytes[32..36].copy_from_slice(&999i32.to_le_bytes());
         assert!(matches!(
@@ -1256,7 +1448,7 @@ pub(crate) mod tests {
 
     #[test]
     fn rejects_bad_payload_len() {
-        let mut bytes = serialize_v2(&test_net_with_threats());
+        let mut bytes = serialize(&test_net_with_threats());
         // Tamper payload_len at offset 48.
         let bad_len = 12345u64;
         bytes[48..56].copy_from_slice(&bad_len.to_le_bytes());
@@ -1268,7 +1460,7 @@ pub(crate) mod tests {
 
     #[test]
     fn rejects_truncated() {
-        let bytes = serialize_v2(&test_net_with_threats());
+        let bytes = serialize(&test_net_with_threats());
         // Truncate to less than header.
         assert!(matches!(
             load_v2_bytes(&bytes[..10]),
@@ -1283,7 +1475,7 @@ pub(crate) mod tests {
 
     #[test]
     fn rejects_bad_checksum() {
-        let mut bytes = serialize_v2(&test_net_with_threats());
+        let mut bytes = serialize(&test_net_with_threats());
         let last = bytes.len() - 1;
         bytes[last] ^= 0xFF;
         assert!(matches!(
@@ -1320,7 +1512,7 @@ pub(crate) mod tests {
 
         // Verify the serialized net has the right total size.
         let net = test_net_with_threats();
-        let bytes = serialize_v2(&net);
+        let bytes = serialize(&net);
         assert_eq!(bytes.len(), HEADER_V2_LEN + expected);
     }
 

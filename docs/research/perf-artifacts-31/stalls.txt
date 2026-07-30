@@ -1,0 +1,18 @@
+
+  stalls31  s31-base -> s31-p1-densepush   rounds=12  (node counts: [5001562])
+  counter        base median |    NULL %    n<0 |     ARM %    n<0 |    ARM abs
+  cyc                4910.26 |   +2.067%   5/12 |   +2.369%   4/12 |    +117.25
+  ins                5653.84 |   +0.000%   4/12 |   -0.014%  12/12 |      -0.78
+  loadstall          2836.01 |   +2.100%   4/12 |   +3.583%   5/12 |    +104.84
+  l1load             3043.59 |   +0.005%   6/12 |   +0.023%   5/12 |      +0.71
+  l1miss              618.08 |   -0.160%   7/12 |   +0.254%   3/12 |      +1.57
+  An ARM row is a result only if it clears the NULL row on the same counter.
+
+  stalls31  s31-p1-densepush -> s31-probe-extracopy   rounds=12  (node counts: [5001562])
+  counter        base median |    NULL %    n<0 |     ARM %    n<0 |    ARM abs
+  cyc                5068.62 |   -2.876%   7/12 |   +3.854%   4/12 |    +184.18
+  ins                5653.06 |   -0.000%   6/12 |   +2.360%   0/12 |    +133.41
+  loadstall          2934.35 |   -2.709%   7/12 |   +5.905%   5/12 |    +162.69
+  l1load             3035.40 |   +0.116%   5/12 |   +5.075%   0/12 |    +153.86
+  l1miss              620.73 |   -0.125%   8/12 |   +5.296%   0/12 |     +32.88
+  An ARM row is a result only if it clears the NULL row on the same counter.

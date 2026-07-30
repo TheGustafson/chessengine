@@ -102,23 +102,9 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
     spec = json.loads(Path(cfg_path).read_text())
     # D47U arch overrides: spec-driven head width / output-skip so a head
     # rebuild rides the standard driver (config keys arch_l2 / arch_out_skip).
-    arch = dataclasses.replace(
-        ArchSpec.full(), factorize=True, psqt=True,
-        hl=int(spec.get("arch_hl", ArchSpec.full().hl)),
-        l2=int(spec.get("arch_l2", ArchSpec.full().l2)),
-        l3=int(spec.get("arch_l3", ArchSpec.full().l3)),
-        out_skip=bool(spec.get("arch_out_skip", False)),
-        # HalfKA-only probe (2026-07-27, unratified): drop the FullThreats channel. Measured
-        # cost of keeping it is 1.78x engine speed (~100 Elo at equal time);
-        # its measured benefit has never been isolated. Default False, so
-        # every existing config is unaffected.
-        halfka_only=bool(spec.get("arch_halfka_only", False)),
-        pol_proj=int(spec.get("arch_pol_proj", 0)),
-        dis_proj=int(spec.get("arch_dis_proj", 0)),
-        qat_ft_scale=float(spec.get("qat_ft_scale", 0.0)),
-        qat_threat_scale=float(spec.get("qat_threat_scale", 0.0)),
-        qat_act_levels=float(spec.get("qat_act_levels", 0.0)),
-        qat_l1_scale=float(spec.get("qat_l1_scale", 0.0)))
+    # The mapping lives in ArchSpec so re-export tools cannot derive a
+    # different arch from the same run json (perf study 30).
+    arch = ArchSpec.from_run_spec(spec)
     start_sb = resume_sb + 1 if resume_sb else 1
     cfg = dataclasses.replace(
         TrainConfig(),

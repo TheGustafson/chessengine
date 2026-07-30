@@ -249,15 +249,18 @@ impl PolicyNet {
             &eval.threat_weights,
             board,
         );
-        // The HalfKA accumulator is in the i8 transformer's reduced frame
-        // (perf study 32), so the trunk needs the same per-column scale the
-        // eval merge uses — sharing `activate_ft` is what stops the two
-        // consumers drifting, and this keeps that true.
+        // Both channels now carry a net-dependent rescale into the merge: the
+        // HalfKA accumulator is in the i8 transformer's reduced frame (study
+        // 32, `ft_scale`) and the threat channel's shift comes from the net's
+        // own `threat_quant` (study 30, `threat_shift`). Sharing `activate_ft`
+        // with eval is what stops the two consumers drifting; this keeps that
+        // true for both.
         let trunk = sota_head::policy_trunk(
             &pst,
             &threat,
             eval.head.ft_scale.block(0),
             board.side_to_move(),
+            eval.head.threat_shift,
         );
         let values = match &self.head {
             Head::Bilinear {

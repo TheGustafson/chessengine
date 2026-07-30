@@ -10,7 +10,7 @@
 
 use super::sota_features::{ACC, halfka_index, halfka_king_key, halfka_oriented, halfka_row_base};
 use super::sota_head::BUCKETS;
-use super::sota_simd::{apply_i8_deltas, apply_i8_deltas_dual, apply_i8_deltas_into};
+use super::sota_simd::{apply_halfka_deltas, apply_halfka_deltas_dual, apply_halfka_deltas_into};
 use crate::bitboard::Bitboard;
 use crate::board::{Board, DirtyPiece};
 use crate::types::{Color, MAX_PLY, Piece, PieceType, Square};
@@ -286,7 +286,25 @@ pub(crate) struct HalfkaContext<'a> {
 
 impl<'a> HalfkaContext<'a> {
     pub(crate) fn new(weights: &'a [i8], bias: &'a [i16], psqt_weights: &'a [i32]) -> Self {
-        Self {
+        #[cfg(feature = "foldcount")]
+        {
+            use super::foldcount::region;
+            // `size_of_val` reports the i8 table, so study 29's census sees
+            // the HALVED region (28.9 MB, not 57.7) — which is the point of
+            // study 32 and exactly what the census should attribute.
+            region(
+                "hka_weights",
+                weights.as_ptr().cast(),
+                std::mem::size_of_val(weights),
+            );
+            region(
+                "hka_psqt",
+                psqt_weights.as_ptr().cast(),
+                std::mem::size_of_val(psqt_weights),
+            );
+        }
+        #[allow(unused_mut)]
+        let mut me = Self {
             weights,
             bias,
             psqt_weights,
@@ -300,7 +318,22 @@ impl<'a> HalfkaContext<'a> {
             meta: boxed_array(Meta::default(), STACK_LEN),
             cache: boxed_array(FinnyEntry::default(), 2 * FINNY_KEYS),
             cache_valid: [0; 2],
+        };
+        #[cfg(feature = "foldcount")]
+        {
+            use super::foldcount::region;
+            region(
+                "hka_stack",
+                std::ptr::from_ref(&*me.stack).cast(),
+                std::mem::size_of_val(&*me.stack),
+            );
+            region(
+                "finny_cache",
+                std::ptr::from_ref(&*me.cache).cast(),
+                std::mem::size_of_val(&*me.cache),
+            );
         }
+        me
     }
 
     pub(crate) fn refresh_root(&mut self, board: &Board) {
@@ -457,14 +490,14 @@ impl<'a> HalfkaContext<'a> {
             // WHAT THE TRIPWIRE PROTECTS IS THE PERF CLAIM, NOT CORRECTNESS
             // (D33 reviewers A and C, independently). The deleted branch was
             // bit-identical to its `else` arm even when taken:
-            // `apply_i8_deltas_into(dst, src, w, &[], &[])` is `dst = src`
+            // `apply_halfka_deltas_into(dst, src, w, &[], &[])` is `dst = src`
             // lane for lane, and `psqt_fold` with empty lists is `*dst = *src`.
             // So this deletion cannot be WRONG, only slower.
             //
             // The corollary is a real future hazard, and it is the reason this
             // paragraph exists: **the empty-list case of the delta kernels
             // must remain a copy.** Adding an `if adds.is_empty() &&
-            // subs.is_empty() { return; }` fast path to `apply_i8_deltas_into`
+            // subs.is_empty() { return; }` fast path to `apply_halfka_deltas_into`
             // looks like a free win and would, at that moment, turn this into
             // a stale-child bug — in release, silently.
             let (before, after) = self.stack.split_at_mut(child);
@@ -579,6 +612,21 @@ impl<'a> HalfkaContext<'a> {
                     }
                     let piece = Piece::new(color, pt);
                     let base = halfka_row_base(perspective, piece, king);
+                    // PERF STUDY 29 REJECTED A SOFTWARE PREFETCH HERE, and it
+                    // is worth knowing why before adding one back. This loop
+                    // resolves up to 32 indices before `apply_halfka_deltas_dual`
+                    // folds any of them — the one site in the engine with a
+                    // real gap between "the row address is known" and "the row
+                    // is read" — and it is the third-largest load-stall symbol
+                    // (13.74%), 81.2% of whose loads are HalfKA weight rows of
+                    // which only 7.2% hit L1. Hinting each row at index time,
+                    // Stockfish's `append_changed_indices` shape, measured
+                    // **not resolvable**: -0.16% misses against a null of
+                    // +0.14%, and in the drift-cancelling paired form the arm
+                    // and a byte-different null are indistinguishable. See
+                    // that study's §5 for the numbers and the ceiling argument
+                    // (one hint can convert at most one of the ~22 demand
+                    // misses a 40-line row takes).
                     for sq in new_bb & !*old_bb {
                         debug_assert!(add_len < CAP, "finny add cursor overflow");
                         adds[add_len & (CAP - 1)] = base + halfka_oriented(perspective, sq, king);
@@ -601,7 +649,7 @@ impl<'a> HalfkaContext<'a> {
             // probe; the naive doubled assignment measured +0.006% because
             // dead-store elimination removed it). Writing both homes from the
             // registers the fold already holds costs one store per 32 lanes.
-            apply_i8_deltas_dual(
+            apply_halfka_deltas_dual(
                 &mut cached.acc,
                 &mut stack[ply].acc[p],
                 weights,
@@ -644,7 +692,7 @@ impl<'a> HalfkaContext<'a> {
             cached.by_piece[piece.color as usize][piece.piece_type as usize] |=
                 Bitboard::from_square(square);
         }
-        apply_i8_deltas(&mut cached.acc, weights, &adds[..len], &[]);
+        apply_halfka_deltas(&mut cached.acc, weights, &adds[..len], &[]);
         // T6c: seed the PSQT sums from zero (the skip has no bias term).
         cached.psqt = [0i32; BUCKETS];
         if !psqt_weights.is_empty() {
@@ -721,7 +769,7 @@ fn apply_dirty_directed<const FORWARD: bool>(
     } else {
         (&subs[..dirty.subs().len()], &adds[..dirty.adds().len()])
     };
-    apply_i8_deltas_into(&mut entry.acc[p], &parent.acc[p], weights, a, s);
+    apply_halfka_deltas_into(&mut entry.acc[p], &parent.acc[p], weights, a, s);
     if !psqt_weights.is_empty() {
         psqt_fold(&mut entry.psqt[p], &parent.psqt[p], psqt_weights, a, s);
     }
