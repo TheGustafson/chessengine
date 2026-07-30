@@ -1,2 +1,8 @@
 fast=baseline                       instr=30,420,002,646 nodes= 5,001,562 per_node=  6082.1 brs_per_node=  643.8 hash=5ca978e012da1bb0
 fast=a1-shaped                      instr=30,023,205,914 nodes= 5,001,562 per_node=  6002.8 brs_per_node=  629.1 hash=5ca978e012da1bb0
+fast=a2-i8shaped                    instr=30,064,306,753 nodes= 5,001,562 per_node=  6011.0 brs_per_node=  636.3 hash=5ca978e012da1bb0
+fast=a2b-i8shaped-o1                instr=30,094,673,623 nodes= 5,001,562 per_node=  6017.1 brs_per_node=  635.8 hash=5ca978e012da1bb0
+fast=a3-head                        instr=30,057,272,967 nodes= 5,001,562 per_node=  6009.6 brs_per_node=  629.1 hash=5ca978e012da1bb0
+fast=a3b-head                       instr=30,057,274,235 nodes= 5,001,562 per_node=  6009.6 brs_per_node=  629.9 hash=5ca978e012da1bb0
+fast=a3c-head                       instr=30,021,073,150 nodes= 5,001,562 per_node=  6002.3 brs_per_node=  629.1 hash=5ca978e012da1bb0
+fast=a3d-skipdot                    instr=30,029,592,572 nodes= 5,001,562 per_node=  6004.0 brs_per_node=  629.1 hash=5ca978e012da1bb0

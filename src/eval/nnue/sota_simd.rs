@@ -2013,8 +2013,16 @@ mod tests {
         // EXACTLY, whatever order it reduces in. Uses the real extremes — ft at
         // its 127 ceiling and weights at both i8 rails — so the avx2 backend's
         // `maddubs` no-saturation argument (2*127*127 < i16::MAX) is exercised.
-        let mut ft = vec![0u8; 768];
-        let mut lane = vec![0i8; 768];
+        //
+        // STALE FIXTURE, fixed by perf study 25: these were 768-lane vectors,
+        // hardcoded from the D47V era. At the shipping ACC = 1280 that
+        // exercised a width the engine never passes — and, worse, 768 is not a
+        // multiple of 256, so the fixture drove the avx512 backend's 64-wide
+        // TAIL loop while the real call drives only its 256-wide four-chain
+        // body. The four-accumulator split (study 21 arm B2) was therefore
+        // going untested against scalar on the one path that ships.
+        let mut ft = vec![0u8; ACC];
+        let mut lane = vec![0i8; ACC];
         for (i, v) in ft.iter_mut().enumerate() {
             *v = ((i as u32 * 97 + 13) % 128) as u8;
         }
