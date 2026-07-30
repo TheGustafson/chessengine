@@ -6571,3 +6571,76 @@ than expected to vanish.
 Context worth recording: **nobody has ever landed a mispredict-targeted change
 in this engine**, and `init_quiets`' insertion walk plus exit is **6.46% of ALL
 engine branch mispredicts in a single branch**.
+
+## Recode POC COMPLETE and MERGED (`af05c2c`) — phase 1 says YES
+
+6 commits. One conflict in `sota_features.rs` (the feature-index code) resolved
+and inspected by hand — the additions are the `ThreatRemap` type and the
+resolver's `remap` field; `gatepoc` is running to confirm behaviour via the
+eval-hash pin.
+
+### Phase-1 verdict: the smaller table DOES buy cycles — small but real
+
+**77.7 MB → 10.5 MB threat table: ~−1.5% cycles (paired median) under typical
+conditions, −3%…−16% under memory pressure.** Sign is consistent across every
+battery: **32/42 rounds favour the small table, sign-test p ≈ 4·10⁻⁴.** At
+~120 Elo/doubling that is **≈ +2.5 Elo quiet, more under load — and match
+conditions ARE loaded** (concurrent games).
+
+**The frame validity is the best of the session** — it executed the commissioned
+recipe exactly:
+
+    same binary; two eval-bit-identical nets (both hash 591b92e1... on wl50)
+    differing ONLY in threat-table size; fixed 100k-node budget
+    node totals identical across all 28 runs (5,001,626)
+    instruction medians agree to 14 instructions in 28.2 BILLION (-0.0000%)
+
+⇒ cycles genuinely was the only free variable.
+
+**Mechanism, and it redirects the next lever:** LLC misses fell only **~1.75%**.
+The residual miss population is **HalfKA (28.8 MB) + TT + PSQ1**, which
+partially confirms the design study's §8.1 suspicion and points the next step at
+**HalfKA coarsening** — getting the whole input under L3 — rather than more
+threat work. **Dose response: R'=4096 ≈ R'=8192, so most of the win is already
+collected at 8192 rows.**
+
+**Side benefits measured, not assumed:** a **69 MB smaller net**, and a
+**~316M-cycle / 235M-instruction cheaper process launch** (the loader checksums
+the whole payload). Loads are **12.2% of an SPSA unit's instructions**, so this
+matters for screen and tuning throughput independently of search speed.
+
+### What landed
+
+- **Engine:** TRM1 CENN section + compressed threat tables, remap applied at the
+  **single `ThreatResolver::index_decoded` chokepoint** shared by the
+  incremental, refresh and PSQ1 paths — so they cannot drift. **Nets without
+  TRM1 are bit-identical**, gate green (`Bench: 587683`, eval hash
+  `2e1ede95…`, d13 `1739588`). New tests include a compressed-vs-scattered game
+  walk with the debug oracle at every node.
+- **Phase 2:** trainer-side remap (`TrainConfig.threat_remap`,
+  `ArchSpec.threat_rows`, `map_batch(threat_remap=)`) with **zero trainer-graph
+  changes**, verified index-exact on real records. Worktree `jax/` only — **the
+  live D49 trainer is untouched.**
+- **Phase 3 built and ARMED:** `recode-t1.service` is **live now**, waiting for
+  D49 (~sb350/400) **plus 10 idle-GPU minutes**, then runs identity → random8k →
+  kmeans8k sequentially with the **pre-registered decision rule in the
+  docstring**. Its own CPU smoke: projection costs +5.3% relative one-batch
+  heldout MSE before finetune — the quantity the panel measures recovery of.
+  **Declared deviation:** the fly-hash k=2 control is deferred (needs 2× active
+  index padding); the three arms the rule consumes are all present.
+
+### OPERATIONAL TRAP: `refs/stash` is SHARED ACROSS WORKTREES
+
+The POC reported popping another worktree's stash by mistake. **Checked: both
+entries are intact and nothing was lost** — and `stash@{0}` is already labelled
+*"RESTORED by perf-study-24: popped by mistake… refs/stash is shared across
+worktrees"*. **Two separate studies have now hit this.** It is a real trap, not
+a one-off: `git stash` is global even when worktrees are not. Future briefs
+should say so.
+
+**Its own least-sure list:** whether 12 low-LR superbatches recover the
+projection cost (if all arms fail the rule, the pre-registered answer is
+**report-and-pivot, not rule-stretching**); the k-means metric (L2 in row space)
+— suspect it first if kmeans ≈ random; which load regime prices the speed win
+for real matches; and that the census used one corpus band, not the training
+mix.
