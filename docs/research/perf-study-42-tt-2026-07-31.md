@@ -542,10 +542,14 @@ fetch. It has to be about what the fetched line CONTAINS — which is §5.2's
    `Bench:` and it needs games. Costs: the probe scans 6 entries instead of 3,
    and half a dozen replacement-policy tests hard-code a 3-slot cluster and
    would need rewriting against `CLUSTER_SIZE`.
-2. **Re-run the prefetch arm at a tournament Hash.** §6.1 shows 16 MB is the
-   cheapest point on a steep curve; §6.2 measures whether the prefetch's value
-   grows with it. If it does, prefetch-class and TT-locality work is worth
-   materially more than any measurement at `Hash=16` will ever show.
+2. **Ask whether `Hash=16` is the right default for our own matches.** Not a
+   perf question — a strength one, and this study only supplies the input. The
+   bench turns a 16 MB table over ~2.5x in 5 M nodes (§3.1); a 10+0.1 game is
+   several times that, so our SPRT/screen/gauntlet harnesses may all be playing
+   with a table that is cycling hard. Both engines in a match share the setting,
+   so the comparison stays fair — but the *absolute* level does not, and any
+   lever that interacts with TT pressure is being judged in an unusual regime.
+   The instrument is games, not counters.
 3. **Print `clusters.as_ptr()` from a two-line instrument arm** and retire the
    last approximation in §3 (uncertainty 1).
 4. **Nothing about huge pages, `_MM_HINT_T2`, or an earlier prefetch.** All
@@ -554,11 +558,43 @@ fetch. It has to be about what the fetched line CONTAINS — which is §5.2's
 
 ---
 
-## 8. Gates
+## 8. Gates, and the kit
 
-- `cargo test`, `cargo clippy --all-targets` clean.
-- All arms node-identical at both frames.
-- Default build untouched: every feature added is OFF by default.
+**Gates.** `bash tools/check.sh` green: `cargo fmt --check`,
+`cargo clippy --all-targets -- -D warnings`, the feature matrix, `cargo test`
+(including the new `no_cluster_straddles_a_64_byte_cache_line`), the release
+perft tier, and the pinned depth-6 fingerprint. Every arm is node-identical at
+both frames (`tools/perf42/ident42.sh`: 5001562 / 1739588). Every feature this
+study adds is **OFF by default**, so the shipped binary is untouched.
+
+**One clippy lesson worth keeping.** The census's first wiring used
+`for (_slot, entry) in cluster.entries.iter().enumerate()`, which
+`-D clippy::unused-enumerate-index` rejects when the feature is off. The fix
+was not an `#[allow]` — it was to derive the slot from the entry's address so
+that **the hot loop keeps exactly the shape it had before the instrument
+existed**. An instrument that changes the codegen of the path it measures is
+not an instrument. (The rebuilt binary reproduces the census file byte for
+byte, so nothing above needed re-deriving.)
+
+**The kit** (`tools/perf42/`), for whoever picks this up:
+
+| script | what it does |
+|---|---|
+| `build42.sh` | one labelled arm into `bin42/`, cgroup-capped, `-j2`, cores 0-1 |
+| `panel42.sh` | shuffled within-round paired panel; `P42_MB` makes Hash a panel variable |
+| `census42.sh` | per-node engine census, three non-multiplexing event groups |
+| `runcensus42.sh` | the exact TT census at one or more Hash sizes |
+| `ident42.sh` | node identity at BOTH gate frames — the gate for every arm here |
+| `textid42.sh` | `.text` identity between two binaries by path |
+| `ibs42.sh` | IBS op capture with data addresses, Hash as a parameter |
+| `regions42.py` / `histo42.py` | attribution by DATA REGION and per-bin histogram |
+| `align42.py` | the straddle check, from data addresses, on the shipped binary |
+| `tlb42.py` | TT TLB behaviour against the engine's |
+| `smaps42.sh` | what actually backs the table (THP) |
+
+Reduce any panel with `tools/perf40/med40.py <panel> base`. **Read the null row
+first**; §4 is the worked example of a panel whose median lied and whose sign
+count did not.
 
 ---
 
