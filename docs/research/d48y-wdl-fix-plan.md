@@ -4444,3 +4444,53 @@ decomposition** (`tools/perf33/inline33.py`, `pernode33.py`), commissioned when
 Noting the standing hazard for that one: a pure ranking study risks landing
 nothing, which is exactly what study 31 nearly did, so it must be briefed to
 land a target, not to produce a list.
+
+## Tick 2026-07-30 ~07:30 — D49 sb180, and an operational trap found
+
+**D49 sb180/400.** Heldout is NOT saturating at 45% of schedule — the
+per-10sb deltas are flat-to-growing, not shrinking:
+
+| sb | heldout | ema | delta |
+|---|---|---|---|
+| 150 | 0.012593 | 0.011987 | — |
+| 160 | 0.012485 | 0.011917 | −108 |
+| 170 | 0.012382 | 0.011819 | −103 |
+| **180** | **0.012248** | **0.011734** | **−134** |
+
+**Box:** 8352 MB, load 5.06, 162 GB disk. Studies healthy and both doing real
+work: **34** ahead=2 — *"movepick: GoodQuiet and BadQuiet stop scanning each
+other's"*; **35** ahead=1 — *"the kit — build, PAIRED within-round cycle…"*,
+i.e. it built the paired within-round instrument as briefed rather than
+rotating rounds.
+
+### TRAP: `tools/check.sh` CLOBBERS `target/release/chessengine`
+
+Went to answer the still-open question *"has D49's eval frame drifted during
+training?"* using `chessengine nnue-eval <net.cenn>`, and it failed with
+`CENN bad magic: [67,69,78,50] (expected b"CENN")` — i.e. it saw `CEN2` and
+did not understand it.
+
+Cause, confirmed: `strings target/release/chessengine` finds **0 `CEN5` and 0
+`CEN2`**, built 03:32:47 — **my `sota,arch-d48x` binary was overwritten by the
+`gate32` run**, because `check.sh` builds the pinned default-feature
+fingerprint (`bench 16 1 6 default depth`) into the same path.
+
+**This is the same class of hazard CLAUDE.md already documents for the NNUE
+gate** ("the `Bench:` pin is BLIND to NNUE work… a no-net `bench` is a PSQT
+run"). The new, concrete form: **any tool that needs the SOTA binary must
+rebuild it after any `check.sh` run, or verify with
+`strings <bin> | grep -c CEN5` first.** Silent, because the default build runs
+fine — it just cannot read our nets.
+
+### The frame check is DEFERRED, on purpose
+
+Rebuilding needs a `cargo build --features sota,arch-d48x`, and **`perf` is
+active right now** (study 35 measuring). Perturbing a paired within-round cycle
+panel to satisfy a non-urgent curiosity is exactly the trade this project keeps
+losing — study 33's absolute numbers are already inflated ~1.9x by contention.
+The sb180 net is exported and waiting
+(`data/nnue/tmp/s32/d49-sb180-ema-q256.cenn`, 1.32% quant error, 0 clipped),
+alongside the sb140 one, so the comparison runs the moment the box is free.
+
+No games again this tick, same standing reason: sb180 is 45% of schedule; the
+informative screen vs D48X is post-cosine.
