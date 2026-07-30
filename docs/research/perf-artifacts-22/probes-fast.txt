@@ -1,0 +1,4 @@
+fast=baseline                           instr=30,446,435,279 nodes= 5,001,562 per_node=  6087.4 brs_per_node=  643.3 bmiss_per_node= 19.93 hash=5ca978e012da1bb0
+fast=a12-hotcold-finnylayout            instr=30,777,995,747 nodes= 5,001,562 per_node=  6153.7 brs_per_node=  652.3 bmiss_per_node= 19.99 hash=5ca978e012da1bb0
+fast=a1-hotcold-only                    instr=30,740,026,203 nodes= 5,001,562 per_node=  6146.1 brs_per_node=  650.9 bmiss_per_node= 19.77 hash=5ca978e012da1bb0
+fast=a12b-boxed-arrays                  instr=30,399,941,157 nodes= 5,001,562 per_node=  6078.1 brs_per_node=  640.8 bmiss_per_node= 19.66 hash=5ca978e012da1bb0

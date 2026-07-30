@@ -1,0 +1,7 @@
+cyc=baseline                     nodes=5001562 cyc_n=  4620.7 ins_n=  6087.4 ipc=1.317 l1m_n= 628.82 ma64_n=  937.61
+cyc=baseline                     nodes=5001562 cyc_n=  4310.9 ins_n=  6087.4 ipc=1.412 l1m_n= 621.47 ma64_n=  943.12
+cyc=baseline                     nodes=5001562 cyc_n=  4455.3 ins_n=  6087.4 ipc=1.366 l1m_n= 621.12 ma64_n=  959.88
+cyc=baseline                     nodes=5001562 cyc_n=  4389.6 ins_n=  6087.4 ipc=1.387 l1m_n= 621.99 ma64_n=  946.40
+cyc=baseline                     nodes=5001562 cyc_n=  4342.6 ins_n=  6087.4 ipc=1.402 l1m_n= 622.06 ma64_n=  949.42
+cyc=baseline                     nodes=5001562 cyc_n=  4368.1 ins_n=  6087.4 ipc=1.394 l1m_n= 622.14 ma64_n=  972.85
+MEDIAN(6) baseline                     cyc_n=  4378.9 ins_n=  6087.4 ipc=1.390 l1m_n= 622.02 ma64_n=  947.91

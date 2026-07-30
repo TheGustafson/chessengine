@@ -18,6 +18,27 @@ use crate::types::{Color, MAX_PLY, Piece, PieceType, Square};
 const STACK_LEN: usize = MAX_PLY + 8;
 const FINNY_KEYS: usize = 64;
 
+/// `N` clones of `value` on the heap as a fixed-size array (perf study 22 arm
+/// 1b).
+///
+/// The array size is a const generic so callers get `Box<[T; N]>` — a THIN
+/// pointer with a compile-time length — rather than `Box<[T]>`, whose fat
+/// pointer makes every index reload the length from memory. The route through
+/// `Vec` is what keeps the 1.3 MB `Entry` array off the thread stack:
+/// `Box::new([…; N])` would build the array as a temporary first.
+///
+/// `debug_assert_eq!` rather than a runtime check on the length: `n` is only
+/// ever the same constant as `N` at every call site, and `TryFrom` for
+/// `Box<[T]> -> Box<[T; N]>` already re-checks it (that check folds away).
+fn boxed_array<T: Clone, const N: usize>(value: T, n: usize) -> Box<[T; N]> {
+    debug_assert_eq!(n, N, "boxed_array length must equal the array size");
+    vec![value; n]
+        .into_boxed_slice()
+        .try_into()
+        .ok()
+        .expect("length checked above")
+}
+
 /// Feature `feature`'s PSQ1 row as a FIXED-size array reference. `table` is
 /// row-major (`feature · BUCKETS + bucket`) and must be non-empty.
 ///
@@ -135,13 +156,22 @@ pub(crate) fn refresh_psqt_halfka(
 // 3152 B / align 4 — 3152 mod 64 = 16, so every ply's accumulator started
 // 16 B further out of phase and 3 plies in 4 split cache lines in the fold
 // kernels. One attribute, identical instruction stream, −1.29% L1d loads.
+//
+// HOT/COLD SPLIT (perf study 22 arm 1). The 12 bytes of per-ply BOOKKEEPING
+// that used to live here — `dirty` and `computed` — moved to [`Meta`]. They
+// were the last two fields of a 5248-byte struct, so `stack[ply].computed[p]`
+// and `stack[ply].dirty` sat in cache line 81 of 82 and consecutive plies were
+// **5248 bytes apart**. Every one of `compute`'s three metadata touches (the
+// early-out, the ancestor walk, the last-king-move scan) and every `push` was
+// therefore a separate cache line, and the walk was a 5 KB-stride pointer
+// chase. The payload here (`acc` + `psqt`) is read ONCE per ply per
+// perspective by the fold, which is a streaming access that gains nothing from
+// having the flags nearby.
 #[derive(Clone)]
 #[repr(align(64))]
 struct Entry {
     acc: [[i16; ACC]; 2],
     psqt: [[i32; BUCKETS]; 2],
-    dirty: DirtyPiece,
-    computed: [bool; 2],
 }
 
 impl Default for Entry {
@@ -149,22 +179,72 @@ impl Default for Entry {
         Self {
             acc: [[0; ACC]; 2],
             psqt: [[0; BUCKETS]; 2],
+        }
+    }
+}
+
+/// The per-ply bookkeeping that [`HalfkaContext::compute`] walks, split out of
+/// [`Entry`] so the walk is dense (perf study 22 arm 1).
+///
+/// 12 bytes per ply against `Entry`'s 5248, so the whole `STACK_LEN`-deep array
+/// is ~3 KB — 48 cache lines for the entire search stack, versus one line per
+/// ply 5248 bytes apart. A parent/child pair now shares a line instead of
+/// guaranteeing two misses.
+#[derive(Clone, Copy)]
+struct Meta {
+    dirty: DirtyPiece,
+    computed: [bool; 2],
+}
+
+impl Default for Meta {
+    fn default() -> Self {
+        Self {
             dirty: DirtyPiece::EMPTY,
             computed: [false; 2],
         }
     }
 }
 
+/// A Finny-cache slot: the accumulator for one (perspective, king-bucket) key
+/// plus the POSITION it was computed from.
+///
+/// # PROBE-FIRST FIELD ORDER (perf study 22 arm 2), and why `repr(C)`
+///
+/// The set-difference refresh reads `by_piece` and updates `psqt` *before* the
+/// fold streams `acc`, so those 128 bytes are the slot's hot head and belong at
+/// offset 0. Rust's default layout put them at the **end**: measured in the
+/// shipped binary as `mov r11,[r14+rdx*1+0xa60]` — `by_piece` at byte 2656 of a
+/// 2752-byte slot, i.e. cache lines 41-42, with the `Option` discriminant alone
+/// on line 0 and 63 bytes of padding beside it. One probe therefore touched
+/// **three** cache lines spread 2.6 KB apart to read 96 bytes and a tag.
+///
+/// `repr(C)` pins the order (Rust's default layout is explicitly unspecified,
+/// so "it happens to be right today" is not a guarantee to build a perf claim
+/// on), and the sizes make it exact: `by_piece` 96 B + `psqt` 32 B = 128 B =
+/// two whole cache lines, then `acc` starts 64-B aligned at offset 128 and the
+/// slot is 2688 B — exactly 42 lines, no tail padding.
+///
+/// The validity tag is gone: see [`HalfkaContext::cache_valid`].
 #[derive(Clone)]
-#[repr(align(64))]
+#[repr(C, align(64))]
 struct FinnyEntry {
-    acc: [i16; ACC],
-    psqt: [i32; BUCKETS],
     // Perf study #2 option A: the cached POSITION as per-(color,type)
     // bitboards — the refresh diff is 12 XOR/AND-NOTs + index computation
     // for CHANGED squares only, replacing two binary-search passes over
     // sorted feature lists (was ~13% of all cycles; SF's shape).
     by_piece: [[Bitboard; 6]; 2],
+    psqt: [i32; BUCKETS],
+    acc: [i16; ACC],
+}
+
+impl Default for FinnyEntry {
+    fn default() -> Self {
+        Self {
+            by_piece: [[Bitboard::EMPTY; 6]; 2],
+            psqt: [0; BUCKETS],
+            acc: [0; ACC],
+        }
+    }
 }
 
 pub(crate) struct HalfkaContext<'a> {
@@ -173,8 +253,33 @@ pub(crate) struct HalfkaContext<'a> {
     /// T6c PSQ1 rows for the HalfKA feature space (`HALFKA_DIMS · BUCKETS`
     /// i32, row-major), or empty ⇒ the skip channel is inert.
     psqt_weights: &'a [i32],
-    stack: Box<[Entry]>,
-    cache: Box<[Option<FinnyEntry>]>,
+    /// The per-ply accumulator stack.
+    ///
+    /// `Box<[Entry; STACK_LEN]>`, not `Box<[Entry]>` (perf study 22 arm 1b): a
+    /// boxed SLICE is a fat pointer, so every `stack[ply]` reloads the length
+    /// from memory and compares against it, and LLVM cannot fold the check away
+    /// across the outlined fold calls. A boxed ARRAY is a thin pointer whose
+    /// length is a compile-time constant, so the same index is one `cmp $0xfe`
+    /// against an immediate — and, more importantly, the panic edge becomes
+    /// provably dead wherever `ply` is already bounded. Measured as +58.7 i/n
+    /// when arm 1 first moved the metadata to a second boxed SLICE.
+    stack: Box<[Entry; STACK_LEN]>,
+    /// Per-ply bookkeeping, parallel to `stack` (perf study 22 arm 1).
+    meta: Box<[Meta; STACK_LEN]>,
+    cache: Box<[FinnyEntry; 2 * FINNY_KEYS]>,
+    /// Which Finny slots have been built, one bit per king key, per
+    /// perspective (perf study 22 arm 2).
+    ///
+    /// This replaces `Box<[Option<FinnyEntry>]>`. The `Option` had no niche to
+    /// hide in — `FinnyEntry` is all integers — so it cost a **whole 64-byte
+    /// cache line per slot** (tag at offset 0, payload pushed to 64 by the
+    /// align-64 requirement, 2752 B per slot instead of 2688) and the probe had
+    /// to read that line before it could read anything useful. 128 keys fit in
+    /// two `u64`s that live in the same line as the rest of the context and are
+    /// never out of L1. Slots are only ever FILLED, never invalidated, so the
+    /// bitmap is monotone: once set, `cache[i]`'s `by_piece` is the position its
+    /// `acc`/`psqt` were computed from, which is the whole cache invariant.
+    cache_valid: [u64; 2],
 }
 
 impl<'a> HalfkaContext<'a> {
@@ -183,8 +288,16 @@ impl<'a> HalfkaContext<'a> {
             weights,
             bias,
             psqt_weights,
-            stack: vec![Entry::default(); STACK_LEN].into_boxed_slice(),
-            cache: vec![None; 2 * FINNY_KEYS].into_boxed_slice(),
+            // `vec![…].into_boxed_slice().try_into()` is the allocation-free
+            // route from a heap slice to a heap ARRAY — the conversion is a
+            // pointer cast, the length check is the `TryFrom` impl's, and it
+            // cannot fail because the `vec!` literally states `STACK_LEN`.
+            // (Boxing the array directly would build it on the STACK first:
+            // 1.3 MB of `Entry` would overflow the thread stack.)
+            stack: boxed_array(Entry::default(), STACK_LEN),
+            meta: boxed_array(Meta::default(), STACK_LEN),
+            cache: boxed_array(FinnyEntry::default(), 2 * FINNY_KEYS),
+            cache_valid: [0; 2],
         }
     }
 
@@ -192,13 +305,15 @@ impl<'a> HalfkaContext<'a> {
         for perspective in Color::ALL {
             self.finny_refresh_into(board, perspective, 0);
         }
-        self.stack[0].dirty = DirtyPiece::EMPTY;
-        self.stack[0].computed = [true; 2];
+        self.meta[0].dirty = DirtyPiece::EMPTY;
+        self.meta[0].computed = [true; 2];
     }
 
     pub(crate) fn push(&mut self, ply: usize, dirty: DirtyPiece) {
-        self.stack[ply + 1].dirty = dirty;
-        self.stack[ply + 1].computed = [false; 2];
+        self.meta[ply + 1] = Meta {
+            dirty,
+            computed: [false; 2],
+        };
     }
 
     /// The current accumulator pair plus the per-perspective T6c PSQT bucket
@@ -230,11 +345,11 @@ impl<'a> HalfkaContext<'a> {
 
     fn compute(&mut self, board: &Board, ply: usize, perspective: Color) {
         let p = perspective as usize;
-        if self.stack[ply].computed[p] {
+        if self.meta[ply].computed[p] {
             return;
         }
         let mut ancestor = ply;
-        while ancestor > 0 && !self.stack[ancestor].computed[p] {
+        while ancestor > 0 && !self.meta[ancestor].computed[p] {
             ancestor -= 1;
         }
         let king = Piece::new(perspective, crate::types::PieceType::King);
@@ -242,7 +357,7 @@ impl<'a> HalfkaContext<'a> {
         // shares the post-move king square, so all of them are reachable from
         // the refreshed leaf by plain reverse folds.
         let last_king_move = ((ancestor + 1)..=ply).rev().find(|&child| {
-            self.stack[child]
+            self.meta[child]
                 .dirty
                 .subs()
                 .iter()
@@ -250,7 +365,7 @@ impl<'a> HalfkaContext<'a> {
         });
         if let Some(king_ply) = last_king_move {
             self.finny_refresh_into(board, perspective, ply);
-            self.stack[ply].computed[p] = true;
+            self.meta[ply].computed[p] = true;
             // Perf study 12 §6 — BACKWARD FILL, the thing Stockfish does and we
             // did not: `AccumulatorStack::evaluate_side` /
             // `backward_update_incremental`,
@@ -280,7 +395,7 @@ impl<'a> HalfkaContext<'a> {
             for child in (king_ply..ply).rev() {
                 // `child` is reconstructed from `child + 1` by undoing the move
                 // that LED to `child + 1`.
-                let dirty = self.stack[child + 1].dirty;
+                let dirty = self.meta[child + 1].dirty;
                 // The whole loop bucket-indexes on ONE king square, which is
                 // sound only because `king_ply` is the LAST king move in the
                 // span. Pin it: the natural next optimisation — refreshing on a
@@ -311,7 +426,7 @@ impl<'a> HalfkaContext<'a> {
                     perspective,
                     king_square,
                 );
-                entry.computed[p] = true;
+                self.meta[child].computed[p] = true;
             }
             return;
         }
@@ -319,7 +434,7 @@ impl<'a> HalfkaContext<'a> {
         let weights = self.weights;
         let psqt_weights = self.psqt_weights;
         for child in (ancestor + 1)..=ply {
-            let dirty = self.stack[child].dirty;
+            let dirty = self.meta[child].dirty;
             // Fused parent→child fold: read parent lanes, apply deltas, write
             // child lanes in one pass — no separate ~1.5 KB memmove (opt #2).
             //
@@ -366,7 +481,7 @@ impl<'a> HalfkaContext<'a> {
                 perspective,
                 king_square,
             );
-            entry.computed[p] = true;
+            self.meta[child].computed[p] = true;
         }
     }
 
@@ -387,10 +502,16 @@ impl<'a> HalfkaContext<'a> {
         // here — the idiomatic Rust answer to "I need two disjoint pieces of
         // self at once", and no `unsafe`.
         let Self {
-            cache, stack, bias, ..
+            cache,
+            cache_valid,
+            stack,
+            bias,
+            ..
         } = self;
-        let slot = &mut cache[perspective as usize * FINNY_KEYS + key];
-        if let Some(cached) = slot.as_mut() {
+        let p = perspective as usize;
+        let cached = &mut cache[p * FINNY_KEYS + key];
+        let valid_bit = 1u64 << key;
+        if cache_valid[p] & valid_bit != 0 {
             // Option A (perf study #2): bitboard set-diff against the cached
             // position. Same add/sub SETS as the old sorted-list derivation
             // (order may differ; wrapping i16/i32 adds commute => the
@@ -450,7 +571,7 @@ impl<'a> HalfkaContext<'a> {
             // registers the fold already holds costs one store per 32 lanes.
             apply_i16_deltas_dual(
                 &mut cached.acc,
-                &mut stack[ply].acc[perspective as usize],
+                &mut stack[ply].acc[p],
                 weights,
                 &adds[..add_len],
                 &subs[..sub_len],
@@ -471,42 +592,39 @@ impl<'a> HalfkaContext<'a> {
             }
             // The accumulator is already in the stack slot (the dual fold put
             // it there); only the 32-byte PSQT pair is left to publish.
-            stack[ply].psqt[perspective as usize] = cached.psqt;
+            stack[ply].psqt[p] = cached.psqt;
             return;
-        } else {
-            let mut acc = [0i16; ACC];
-            acc.copy_from_slice(&bias[..ACC]);
-            let mut adds = [0usize; 32];
-            let mut len = 0usize;
-            let mut by_piece = [[Bitboard::EMPTY; 6]; 2];
-            for square in board.all_occupancy() {
-                let piece = board.piece_on(square).expect("occupied square");
-                adds[len] = halfka_index(perspective, piece, square, king);
-                len += 1;
-                by_piece[piece.color as usize][piece.piece_type as usize] |=
-                    Bitboard::from_square(square);
-            }
-            apply_i16_deltas(&mut acc, weights, &adds[..len], &[]);
-            // T6c: seed the PSQT sums from zero (the skip has no bias term).
-            let mut psqt = [0i32; BUCKETS];
-            if !psqt_weights.is_empty() {
-                for &f in &adds[..len] {
-                    psqt_add(&mut psqt, psqt_weights, f);
-                }
-            }
-            *slot = Some(FinnyEntry {
-                acc,
-                psqt,
-                by_piece,
-            });
         }
-        // COLD path only (the slot was empty): one from-scratch build, then the
-        // single copy into the stack. Leaving it as a copy is deliberate — the
-        // cold branch runs once per king key per search, so a second kernel
-        // variant here would buy nothing.
-        let cached = slot.as_ref().expect("slot filled above");
-        stack[ply].acc[perspective as usize] = cached.acc;
-        stack[ply].psqt[perspective as usize] = cached.psqt;
+        // COLD path only (this key has never been built): one from-scratch
+        // build, then the single copy into the stack. Leaving it as a copy is
+        // deliberate — the cold branch runs once per king key per search, so a
+        // second kernel variant here would buy nothing. The slot is written in
+        // place (it is a real `FinnyEntry`, not an `Option` to be filled), so
+        // the 2.5 KB stack temp the old form round-tripped through is gone too.
+        cached.acc.copy_from_slice(&bias[..ACC]);
+        let mut adds = [0usize; 32];
+        let mut len = 0usize;
+        cached.by_piece = [[Bitboard::EMPTY; 6]; 2];
+        for square in board.all_occupancy() {
+            let piece = board.piece_on(square).expect("occupied square");
+            adds[len] = halfka_index(perspective, piece, square, king);
+            len += 1;
+            cached.by_piece[piece.color as usize][piece.piece_type as usize] |=
+                Bitboard::from_square(square);
+        }
+        apply_i16_deltas(&mut cached.acc, weights, &adds[..len], &[]);
+        // T6c: seed the PSQT sums from zero (the skip has no bias term).
+        cached.psqt = [0i32; BUCKETS];
+        if !psqt_weights.is_empty() {
+            let mut psqt = [0i32; BUCKETS];
+            for &f in &adds[..len] {
+                psqt_add(&mut psqt, psqt_weights, f);
+            }
+            cached.psqt = psqt;
+        }
+        cache_valid[p] |= valid_bit;
+        stack[ply].acc[p] = cached.acc;
+        stack[ply].psqt[p] = cached.psqt;
     }
 }
 

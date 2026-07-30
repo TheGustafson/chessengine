@@ -1,0 +1,12 @@
+A base                       n=8 cycmin=  4227.7 cycmed=  4445.2 ins=  6085.0 l1m= 624.46 l2m=  74.52 dram=   8.39 dtlb=  2.19
+B base2                      n=8 cycmin=  4140.3 cycmed=  4441.9 ins=  6084.6 l1m= 623.08 l2m=  74.08 dram=   8.21 dtlb=  2.18
+  D cycmin=   -87.5 (-2.07%)  cycmed=    -3.2 (-0.07%)  ins=   -0.45 (-0.007%)
+  D l1m=  -1.38 (-0.22%)  l2m=  -0.44 (-0.59%)  dram=  -0.18 (-2.17%)  dtlb= -0.01 (-0.38%)  nodes=[5001562]
+A base                       n=10 cycmin=  4106.9 cycmed=  4197.2 ins=  6086.3 l1m= 621.95 l2m=  73.16 dram=   6.85 dtlb=  2.17
+B a12                        n=10 cycmin=  4063.7 cycmed=  4152.6 ins=  6150.5 l1m= 619.69 l2m=  72.87 dram=   6.06 dtlb=  2.17
+  D cycmin=   -43.2 (-1.05%)  cycmed=   -44.6 (-1.06%)  ins=  +64.17 (+1.054%)
+  D l1m=  -2.26 (-0.36%)  l2m=  -0.29 (-0.40%)  dram=  -0.79 (-11.57%)  dtlb= -0.00 (-0.19%)  nodes=[5001562]
+A base                       n=12 cycmin=  4124.1 cycmed=  4283.7 ins=  6086.8 l1m= 620.66 l2m=  72.85 dram=   8.04 dtlb=  1.93
+B a12b                       n=12 cycmin=  4044.2 cycmed=  4233.9 ins=  6073.2 l1m= 618.43 l2m=  71.74 dram=   7.55 dtlb=  2.00
+  D cycmin=   -79.9 (-1.94%)  cycmed=   -49.9 (-1.16%)  ins=  -13.59 (-0.223%)
+  D l1m=  -2.23 (-0.36%)  l2m=  -1.11 (-1.52%)  dram=  -0.49 (-6.13%)  dtlb= +0.07 (+3.75%)  nodes=[5001562]
