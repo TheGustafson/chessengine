@@ -3417,3 +3417,26 @@ letting it run.
 **Root cause to fix structurally:** derive `QUANT_THREAT` from the trainer's
 `qat_threat_scale`, or assert they agree. A silent disagreement between two
 constants in different languages is what cost 100 superbatches.
+
+### Tick — both matches FINAL at n=1600, D49 at sb122
+
+| D49-sb100 vs D48X | n | Elo |
+|---|---|---|
+| **calibrated** (scale 666, frame 0.974) | 1600 | **−128.7 ± 9.6** |
+| **native** (scale 400, frame 0.601) | 1600 | **−142.6 ± 9.6** |
+| | | **frame cost +13.9** |
+
+Both at full n now (the earlier +15.8 was native at n=1164). **Frame correction is
+worth +13.9 ± ~14 Elo** — the first direct measurement at a KNOWN mis-scaling,
+same direction as the −80 Elo asymmetry finding.
+
+**Both nets were missing two bits on the threat channel** (65/256 levels), so
+neither number tests the six mechanisms. **No further D49 game testing until CEN3
+lands** — it would measure the same bug again at the cost of ~30 min a run.
+
+D49 heldout EMA: 0.012305 (sb110) → **0.012211 (sb120)**, R² ~0.8775, still
+descending. Training healthy at sb122/400.
+
+**Box:** 8.6 GB free, pressure 0.00, no builds. Three studies running —
+29 (fold load census, decides fusion), 30 (CEN3 version guard),
+31 (parity roadmap).
