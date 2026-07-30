@@ -6719,3 +6719,38 @@ earlier tonight. Not nudging yet; it has not been long.
 
 **Box:** 8282 MB, free swap 930 MB, load 4.21, main clean at `56ceb20`.
 `recode-t1` still armed. 36 superbatches to go, ~1.5 h.
+
+## Tick 2026-07-31 ~07:00 — D49 sb371, projection steady
+
+**heldout sb370: raw 0.010915 / ema 0.010869.** The raw column fell hard (−90)
+while the EMA moved −34, continuing their convergence.
+
+| rate | endpoint | Elo vs canonical |
+|---|---:|---:|
+| since sb270 | 0.010773 | **−9.3** |
+| last step (−34/10sb) | 0.010767 | **−8.7** |
+
+**Seventh consecutive tick inside the −7…−12 band.** The individual heldout
+steps are noisy (−83, −34, 0, −84, −35, −78, −67, −31, −55, −90 on raw); the
+*destination* has not moved. That stability is now the strongest thing we know
+about the endpoint.
+
+**Nudged study 40 on commits — deliberately NOT on progress.** A `/proc` scan
+shows three live processes in its worktree, so it is working; it has simply been
+at ahead=0 with 7 dirty files for two checks. The distinction matters: the
+file-mtime stall heuristic was **retracted earlier tonight** for firing on three
+working studies simultaneously, and I do not want to repeat that by reading
+"no commits" as "no work".
+
+The nudge cites tonight's own evidence rather than policy — study 20's
+precedent, **and my own broken merge**, where the compile error that caught it
+was masking a correctness bug that would have double-folded every threat row.
+It also restates that **a measured null IS a verdict** ("+0.05% cycles, here is
+the panel, leave it off" closes the question) and that leaving either switch
+undecided is not acceptable.
+
+Also told it the box is quiet **now** and will get busier when D49 ends —
+`recode-t1` fires on the GPU and the verdict screens follow on CPU — so its
+final panels should be taken in this window.
+
+**Box:** 8138 MB, free swap 995 MB, load 4.02. 29 superbatches left, ~1.2 h.
