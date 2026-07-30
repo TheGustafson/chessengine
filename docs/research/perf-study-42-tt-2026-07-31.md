@@ -198,6 +198,42 @@ on every one of them.
 | `pft2` | the hint is demoted `_MM_HINT_T0` → `_MM_HINT_T2` (L2/L3, not L1) |
 | `spec` | `Board::prefetch_key` finally gets its caller: a second, speculative hint in the main move loop, the whole pruning cascade earlier than hook A |
 
+### 4.1 Replicate panel (14 rounds, 5 arms), `base` as reference
+
+| arm | instructions | cycles | load-stall | verdict |
+|---|---:|---:|---:|---|
+| `null` | +0.000% (6/14, p=0.79) | −0.068% (8/14, p=0.79) | −0.338% (8/14, p=0.79) | **coin flip — panel is readable** |
+| `nopf` | −0.363% (14/14) | **+4.051% (12/14, p=0.013)** | **+6.052% (12/14, p=0.013)** | prefetch is real and large |
+| `pft2` | +0.000% (6/13, p=1.00) | **+0.558% (11/13, p=0.023)** | +1.217% (10/13, p=0.092) | **T2 is WORSE than T0** |
+| `spec` | +1.612% (14/14) | −0.481% (8/14, p=0.79) | −1.075% (8/14, p=0.79) | **null — same sign count as the null** |
+
+### 4.2 A PRE-REGISTERED prediction for `spec2`, written before the data
+
+`spec` costs **+95.58 instructions/node** and returns a cycles/load-stall
+result **numerically identical in sign count to the byte-identical null**
+(8/14 both). Two readings are possible and they differ in what `spec2` must do:
+
+* **(a) the hint's placement is worth something, and `spec` merely spent it on
+  its own overhead.** ~72% of `spec`'s hints land on moves the §3.5 cascade
+  then prunes. `spec2` issues the same hint below the cascade, so its hint
+  count collapses to roughly the probe count and its instruction cost should
+  fall to ~1/4. Prediction: **`spec2` lands negative on cycles with a sign
+  count clearly outside the null's**.
+* **(b) hook A already saturates the recoverable stall,** and no earlier hint
+  can help because the line is already in flight. Prediction: **`spec2` is also
+  a null**, and the seventh prefetch proposal in this engine dies like the
+  previous six — with the difference that this one is refuted by measurement
+  rather than by argument.
+
+**I am explicitly NOT pricing `spec`'s instructions at IPC to infer "recovered
+stall".** The machine is stalled on loads 53% of cycles here, so added
+instructions partly fill existing bubbles and cost far less than 1/IPC; the
+arithmetic "spec should have been +1.61%, it was −0.48%, therefore it recovered
+92 cycles" is exactly the unmeasured second inference the project's rule 4
+forbids. The measured facts are the cycles and the stall, and both say null.
+
+### 4.3 Authoritative panel (6 arms)
+
 *(panel results below)*
 
 ---
@@ -244,7 +280,41 @@ study's work, not claimed here — it changes the tree and needs games.
 
 ---
 
-## 6. Gates
+## 5.3 `_MM_HINT_T2` is worse than `_MM_HINT_T0`, measured
+
+Study 29 killed a prefetch proposal partly on the argument that a `T2` hint
+"lands in L2 where the lines already hit". The TT is the case where that can be
+tested instead of asserted, because a TT line does *not* already hit anywhere.
+`ttpft242` demotes the hint T0 → T2 and is **instruction-identical to `base` to
+six decimal places** (5929.087 both, median −0.000%) — the same instruction with
+a different immediate, which is as clean a frame validation as this study gets.
+
+*(result below)*
+
+---
+
+## 6. THE FRAME — is 16 MB hiding anything?
+
+**The perf frame and the strength frame are the same frame.** Every match
+harness in the project defaults to `Hash=16`: `tools/sprt.sh:97`,
+`tools/screen.sh:49`, `tools/gauntlet.sh:56`, `tools/spsa/spsa_tune.py:77`,
+`tools/spsa/night_gates_v1.sh`, `tools/search_knob_gate.sh:38`. So a TT number
+measured at `bench 16 …` describes the engine our Elo actually comes from —
+which is the good case, and worth stating explicitly since the coordinator has
+just been burned by a frame error.
+
+**The bench does not measure an empty table.** 16 MB is 524288 clusters =
+1 572 864 entries; the 50-position bench writes 0.780 accepted saves/node x
+5 001 562 nodes = **3.90 million entries**, i.e. it turns the table over ~2.5x,
+and the table is not cleared between positions (only `new_search` bumps the
+5-bit generation). The measured hit rate of **54.5%** is therefore a saturated
+table's hit rate, not a warm-up artifact.
+
+*(sweep + the Hash-256 arm below)*
+
+---
+
+## 7. Gates
 
 - `cargo test`, `cargo clippy --all-targets` clean.
 - All arms node-identical at both frames.

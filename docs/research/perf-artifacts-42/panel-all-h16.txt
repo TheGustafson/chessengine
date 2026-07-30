@@ -54,3 +54,16 @@ r11 base nodes=5001562 instructions:u=5929.087061 cycles:u=4400.463068 ex_no_ret
 r11 null nodes=5001562 instructions:u=5929.087115 cycles:u=4395.192660 ex_no_retire.load_not_complete:u=2319.204550 ex_no_retire.empty:u=194.735527 ex_no_retire.thread_not_selected:u=27.190314 
 r11 spec nodes=5001562 instructions:u=6024.665577 cycles:u=4458.144336 ex_no_retire.load_not_complete:u=2373.323494 ex_no_retire.empty:u=198.456956 ex_no_retire.thread_not_selected:u=25.866954 
 r12 null nodes=5001562 instructions:u=5929.087319 cycles:u=4430.206110 ex_no_retire.load_not_complete:u=2359.301041 ex_no_retire.empty:u=194.152266 ex_no_retire.thread_not_selected:u=28.625886 
+r12 pft2 nodes=5001562 instructions:u=5929.087242 cycles:u=4420.250130 ex_no_retire.load_not_complete:u=2336.777397 ex_no_retire.empty:u=198.856743 ex_no_retire.thread_not_selected:u=31.103551 
+r12 base nodes=5001562 instructions:u=5929.087065 cycles:u=4402.689316 ex_no_retire.load_not_complete:u=2331.231546 ex_no_retire.empty:u=192.776721 ex_no_retire.thread_not_selected:u=25.499205 
+r12 spec nodes=5001562 instructions:u=6024.665524 cycles:u=4337.672701 ex_no_retire.load_not_complete:u=2265.007943 ex_no_retire.empty:u=192.291875 ex_no_retire.thread_not_selected:u=23.923480 
+r12 nopf nodes=5001562 instructions:u=5907.590904 cycles:u=4536.164187 ex_no_retire.load_not_complete:u=2440.744911 ex_no_retire.empty:u=201.544172 ex_no_retire.thread_not_selected:u=24.208935 
+r13 null nodes=5001562 instructions:u=5929.087183 cycles:u=4369.066117 ex_no_retire.load_not_complete:u=2296.446893 ex_no_retire.empty:u=192.279572 ex_no_retire.thread_not_selected:u=28.795183 
+r13 base nodes=5001562 instructions:u=5929.086993 cycles:u=4453.218315 ex_no_retire.load_not_complete:u=2367.381027 ex_no_retire.empty:u=195.768480 ex_no_retire.thread_not_selected:u=26.702741 
+r13 pft2 nodes=5001562 instructions:u=5929.087239 cycles:u=4861.884563 ex_no_retire.load_not_complete:u=2721.797481 ex_no_retire.empty:u=222.055483 ex_no_retire.thread_not_selected:u=46.424385 
+r13 spec nodes=5001562 instructions:u=6024.665491 cycles:u=4673.793684 ex_no_retire.load_not_complete:u=2570.162692 ex_no_retire.empty:u=203.938802 ex_no_retire.thread_not_selected:u=36.876736 
+r13 nopf nodes=5001562 instructions:u=5907.591013 cycles:u=4862.384183 ex_no_retire.load_not_complete:u=2738.560202 ex_no_retire.empty:u=213.347236 ex_no_retire.thread_not_selected:u=35.465285 
+r14 base nodes=5001562 instructions:u=5929.087382 cycles:u=5030.447766 ex_no_retire.load_not_complete:u=2907.005898 ex_no_retire.empty:u=216.009980 ex_no_retire.thread_not_selected:u=44.269856 
+r14 spec nodes=5001562 instructions:u=6024.665479 cycles:u=4405.170643 ex_no_retire.load_not_complete:u=2332.677691 ex_no_retire.empty:u=192.286268 ex_no_retire.thread_not_selected:u=22.010723 
+r14 nopf nodes=5001562 instructions:u=5907.591002 cycles:u=4532.173552 ex_no_retire.load_not_complete:u=2431.067542 ex_no_retire.empty:u=202.205475 ex_no_retire.thread_not_selected:u=28.299475 
+r14 null nodes=5001562 instructions:u=5929.087095 cycles:u=4396.135825 ex_no_retire.load_not_complete:u=2318.204161 ex_no_retire.empty:u=193.262373 ex_no_retire.thread_not_selected:u=25.206424 
