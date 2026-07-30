@@ -5946,3 +5946,33 @@ which was the flaw in my first framing.
 
 **Box:** 6236 MB available, free swap 708 MB. `gate38` running with
 `CHECK_TEST_THREADS=2`; `d49-rate` running at conc=6. Nothing further started.
+
+## Tick 2026-07-30 ~21:00 — a stall scare that wasn't, and a watch item that is
+
+**D49 read sb290 on two consecutive ticks**, which at ~154 s/sb should have been
+~6 superbatches of progress. Checked it against journal timestamps rather than
+assuming either way:
+
+    sb287  514s ago   sb288  369s ago   sb289  229s ago   sb290  85s ago
+    recent rate: 143 s/sb   (baseline ~154 s/sb)
+    pid 44898 state=Ssl   GPU 94%, 6899 MiB
+
+**Not stalled — running FASTER than baseline.** The two ticks simply fell inside
+one superbatch. *This is the third time tonight a "stall" signature has been a
+sampling artifact rather than a stall; the file-mtime detector was retracted for
+the same reason.* Rate checks need a time base, not two adjacent readings.
+
+**Genuine watch item: the trainer's cgroup `memory.events max` is now 50130**,
+up from 35401 earlier tonight. It is bouncing off its 9 GB ceiling more often as
+the box has stayed busy. **`oom_kill` is still 0** and `memory.current` is well
+under the limit, so nothing has been killed — but the counter is climbing and
+free swap is at 658 MB. Recording the number so the trend is visible next
+session rather than discovering it after a kill.
+
+**In flight:** `gate38` (long — contending with the screen), `d49-rate`
+(sb270 vs sb180, the heldout↔Elo map calibration). **Nothing new started** —
+load 13.54 with a screen and a gate already running.
+
+**Note on notification noise:** study 38 has fired ~6 duplicate completion
+notifications from its queued gate-wait pollers draining. Harmless, but worth
+knowing that a study's `sleep`-loop waiters keep notifying after it finishes.
