@@ -49,11 +49,15 @@ def main() -> None:
     print(f"  one dose   = {per_dose:.2f} 64-byte lines/node "
           f"({LINES_PER_COPY:.0f} lines x {evals} evals)\n")
 
+    # The QUIETEST round: the one whose control stalled least. The coordinator's
+    # recipe asks for median AND min, min being the least-interference sample.
+    quiet = min(range(len(keep)), key=lambda i: keep[i]["d0"]["stall"])
+
     print(f"  {'arm':6s} {'dose':>4s} {'lines/n':>9s} "
           f"{'Δstall/n':>10s} {'Δmiss/n':>9s} {'Δins/n':>9s} {'Δcyc/n':>9s} "
-          f"{'stall/line':>11s} {'sign':>8s}")
-    print("  " + "-" * 82)
-    pts = []
+          f"{'st/line':>8s} {'quiet':>8s} {'sign':>8s}")
+    print("  " + "-" * 90)
+    pts, qpts = [], []
     for a in arms:
         dose = DOSE_OF[a]
         lines = dose * per_dose
@@ -64,16 +68,21 @@ def main() -> None:
         med = statistics.median(ds)
         pos = sum(x > 0 for x in ds)
         spl = med / lines if lines else float("nan")
+        qsl = ds[quiet] / lines if lines else float("nan")
         pts.append((lines, med))
+        qpts.append((lines, ds[quiet]))
         print(f"  {a:6s} {dose:4d} {lines:9.2f} {med:+10.2f} "
               f"{statistics.median(dm):+9.2f} {statistics.median(di):+9.2f} "
-              f"{statistics.median(dc):+9.2f} {spl:11.3f} {pos:3d}/{len(ds):<4d}")
+              f"{statistics.median(dc):+9.2f} {spl:8.3f} {qsl:8.3f} "
+              f"{pos:3d}/{len(ds):<4d}")
 
-    # Straight line through the origin, least squares on the medians.
-    num = sum(x * y for x, y in pts)
-    den = sum(x * x for x, _ in pts)
-    print(f"\n  least-squares slope through the origin: "
-          f"{num / den:.3f} stall cycles per 64-byte line")
+    # Straight line through the origin, least squares.
+    def slope(ps: list[tuple[float, float]]) -> float:
+        return sum(x * y for x, y in ps) / sum(x * x for x, _ in ps)
+
+    print(f"\n  least-squares slope through the origin:")
+    print(f"    medians       : {slope(pts):.3f} stall cycles per 64-byte line")
+    print(f"    quietest round: {slope(qpts):.3f} stall cycles per 64-byte line")
 
     print("\n  MARGINAL slope between consecutive doses "
           "(this is where a capacity cliff would show):")

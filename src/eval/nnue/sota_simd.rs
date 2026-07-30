@@ -389,6 +389,32 @@ pub(crate) mod probe {
             dst: usize,
             mask: usize,
             dose: usize,
+            /// `P39_SRC=live` — read the REAL accumulator pair `activate` is
+            /// about to consume instead of the cold ring.
+            ///
+            /// This exists because my ring copy generates **2.7× the L1 misses
+            /// study 31's copy did** for the same geometric line count (1.30
+            /// per line against 0.477), and a calibration against known
+            /// traffic (`tools/perf39/calib39.sh`) puts a fully-cold line at
+            /// ~1.2 counter events — i.e. my ring lines are ~100% cold and
+            /// study 31's were ~40%. The obvious way to be 40% cold is for the
+            /// copy's READ half to touch memory the engine was about to touch
+            /// anyway, which prefetches `activate` rather than adding traffic.
+            /// This arm tests that reconstruction directly rather than
+            /// asserting it.
+            live_src: bool,
+            /// `P39_SITE=fold` — issue the copies from the FullThreats fold
+            /// instead of from `activate`.
+            ///
+            /// The recommendation this study makes turns on whether "stall
+            /// cycles per line" is a property of the TRAFFIC or of where in
+            /// the node it happens to be issued. Fusion removes accumulator
+            /// traffic from the fold; the probe adds it in `activate`. The
+            /// fold fires 0.8538 times per node against `activate`'s 0.4311,
+            /// so **fold dose 1 (136.6 lines/node) and activate dose 2 (137.95)
+            /// are the same traffic volume in two different places** — and if
+            /// they price the same, the number transfers.
+            fold_site: bool,
         }
 
         static RINGS: OnceLock<Rings> = OnceLock::new();
@@ -409,9 +435,14 @@ pub(crate) mod probe {
             RINGS.get_or_init(|| {
                 let slots = env_usize("P39_RING", 16).max(1).next_power_of_two();
                 let dose = env_usize("P39_DOSE", 1);
+                let live_src = std::env::var("P39_SRC").as_deref() == Ok("live");
+                let fold_site = std::env::var("P39_SITE").as_deref() == Ok("fold");
                 eprintln!(
-                    "[p39] addcopy: ring={slots} slots, footprint={} KB, dose={dose}",
-                    2 * slots * PAIR * 2 / 1024
+                    "[p39] addcopy: ring={slots} slots, footprint={} KB, dose={dose}, \
+                     src={}, site={}",
+                    2 * slots * PAIR * 2 / 1024,
+                    if live_src { "live" } else { "ring" },
+                    if fold_site { "fold" } else { "activate" }
                 );
                 let leak = || {
                     Box::leak(vec![0i16; slots * PAIR].into_boxed_slice()).as_mut_ptr() as usize
@@ -421,6 +452,8 @@ pub(crate) mod probe {
                     dst: leak(),
                     mask: slots - 1,
                     dose,
+                    live_src,
+                    fold_site,
                 }
             })
         }
@@ -433,10 +466,28 @@ pub(crate) mod probe {
         /// the `vmovdqu64` streaming this probe is pricing (see study 38 on
         /// `rep movsb`). The add form autovectorises to the same
         /// load/`vpaddw`/store shape the fold kernels use.
+        /// The `activate` call site — the default, and study 31's placement.
+        #[inline]
+        pub(crate) fn tick(live: &[[i16; ACC]; 2]) {
+            let r = rings();
+            if !r.fold_site {
+                copies(r, Some(live));
+            }
+        }
+
+        /// The FullThreats-fold call site (`P39_SITE=fold`), which is where the
+        /// traffic fusion actually removes lives.
+        #[inline]
+        pub(crate) fn tick_fold() {
+            let r = rings();
+            if r.fold_site {
+                copies(r, None);
+            }
+        }
+
         #[inline]
         #[allow(unsafe_code)]
-        pub(crate) fn tick() {
-            let r = rings();
+        fn copies(r: &Rings, live: Option<&[[i16; ACC]; 2]>) {
             let bias = std::hint::black_box(0i16);
             for _ in 0..r.dose {
                 let i = CURSOR.load(Relaxed);
@@ -448,8 +499,17 @@ pub(crate) mod probe {
                 // freed, and `bench` — the only thing this measurement-only
                 // feature is ever run under — is single-threaded.
                 let (s, d) = unsafe {
+                    let ring = std::slice::from_raw_parts((r.src as *const i16).add(off), PAIR);
+                    let s = match live {
+                        // Same PAIR lanes, from the accumulator `activate` is
+                        // about to read rather than from cold ring memory.
+                        Some(l) if r.live_src => {
+                            std::slice::from_raw_parts(l.as_ptr().cast::<i16>(), PAIR)
+                        }
+                        _ => ring,
+                    };
                     (
-                        std::slice::from_raw_parts((r.src as *const i16).add(off), PAIR),
+                        s,
                         std::slice::from_raw_parts_mut((r.dst as *mut i16).add(off), PAIR),
                     )
                 };
@@ -576,6 +636,10 @@ pub(crate) fn apply_threat_deltas_into(
         super::foldcount::THR_INTO.hit(adds.len() + subs.len());
         super::foldcount::note_thr_shape(adds.len() + subs.len());
     }
+    // Perf study 39's placement arm: the same copies, issued from the fold
+    // rather than from `activate` (`P39_SITE=fold`). Inert otherwise.
+    #[cfg(feature = "probe-addcopy")]
+    probe::addcopy::tick_fold();
     pin_rows!(adds, subs);
     pin_src!(src);
     pin_dst!(dst);
@@ -644,7 +708,7 @@ pub(crate) fn activate(
     // Perf study 39's ADDITIVE arm rides here — one evaluated node, one
     // redundant accumulator-pair copy, which is study 31's instrument.
     #[cfg(feature = "probe-addcopy")]
-    probe::addcopy::tick();
+    probe::addcopy::tick(pst);
     // `activate` is the single largest accumulator-STREAM reader in the
     // engine: four `[i16; ACC]` arrays, 10.24 KB per evaluation, which is the
     // exact quantity Stockfish carries as 4.10 KB by fusing the two channels.
