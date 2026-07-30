@@ -176,6 +176,13 @@ callcopy40 = ["sota"]
 # The search tree is untouched at every dose (node count + eval hash gated).
 # Measurement only, never shipped.
 dosesort40 = []
+# Perf study 43's SOFTWARE-PREFETCH arm for the Finny warm refresh, selected by
+# `P43_PF` at run time so control and arm are the SAME BYTES (study 29 built its
+# prefetch arm as a separate binary, and its own §5.3 records a byte-different
+# null moving the cycles median further than the arm). Six modes -- see
+# `sota_accumulator::pf43`. Measurement only unless a mode wins, in which case
+# the winning mode lands unconditionally and the feature goes away.
+pf43 = ["sota"]
 
 [dev-dependencies]
 # Test/bench-only (D15: runtime [dependencies] stays empty; dev-deps allowed).

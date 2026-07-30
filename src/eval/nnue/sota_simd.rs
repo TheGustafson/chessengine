@@ -614,7 +614,10 @@ pub(crate) fn apply_halfka_deltas_dual(
     subs: &[usize],
 ) {
     #[cfg(feature = "foldcount")]
-    super::foldcount::HKA_DUAL.hit(adds.len() + subs.len());
+    {
+        super::foldcount::HKA_DUAL.hit(adds.len() + subs.len());
+        super::foldcount::note_hka_dual_shape(adds.len() + subs.len());
+    }
     pin_rows!(adds, subs);
     pin_dst!(out);
     kernel_dispatch!(i8_deltas_dual(acc, out, weights, adds, subs))
