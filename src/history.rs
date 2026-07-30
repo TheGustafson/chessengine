@@ -256,28 +256,82 @@ impl ContHistId {
     }
 }
 
+/// A cache-line-aligned wrapper around one history table's outer element.
+///
+/// # Why this type exists (perf study 21 §B)
+/// Every history row in this module is already a whole number of cache lines
+/// wide — `PieceToHist` is 1536 B, a butterfly plane 131072 B, a capture plane
+/// 896 B. So the alignment of *every row in the engine* is decided by exactly
+/// one thing: the table's base pointer. And [`boxed_array`] gets that from
+/// `vec![row; N]`, which requests `align_of::<Row>()` — **2**, because the
+/// leaf is an `i16`. Rust's `Global` hands any request with align ≤ 16
+/// straight to `malloc`, glibc serves these sizes with `mmap`, and an mmap'd
+/// chunk returns `page + 16`.
+///
+/// Measured on this box, 2026-07-29, by printing `ptr % 64` for a real
+/// `Histories::new()`:
+///
+/// ```text
+/// main=16  low_ply=16  capture=48  cont=16  pawn=16  corr=16  cont_corr=16
+/// ```
+///
+/// Every table was 16 (or 48) mod 64, so every 128-byte `[piece][to]` row
+/// straddled **three** cache lines instead of two, and the scoring loop in
+/// `MovePicker::init_quiets` paid the extra line on every quiet it scored.
+/// This is the same defect perf study 20 found in the NNUE weight tables and
+/// measured at −4.99% cycles there (with a `+16` falsification control);
+/// nobody had looked at the 20 MiB of history tables.
+///
+/// Raising the outer element's alignment to 64 routes the identical `vec!`
+/// through `aligned_alloc` instead of `malloc`. It costs **zero** bytes —
+/// every wrapped row is already a multiple of 64 — and `Deref`/`DerefMut`
+/// keep all ~84 indexing sites compiling unchanged.
+///
+/// `corr` is deliberately NOT wrapped: its element is a 16-byte `[CorrBundle;
+/// 2]`, so aligning it to 64 would quadruple a 1 MiB table.
+#[repr(C, align(64))]
+#[derive(Clone, Copy)]
+pub struct Line64<T>(pub T);
+
+impl<T> std::ops::Deref for Line64<T> {
+    type Target = T;
+    #[inline]
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<T> std::ops::DerefMut for Line64<T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+
 /// The per-thread catalogue of move-ordering statistics (design/09 §3.4).
 ///
 /// All tables are plain (non-atomic) `i16` behind `Box`es: ~20 MiB that lives
 /// once per `Worker` (D23), never synchronized. The multi-MB tables are boxed
 /// so the arrays are built straight on the heap — see [`Histories::new`].
+/// Every multi-row table's outer element is wrapped in [`Line64`] so the
+/// allocation starts on a cache line; see that type for the measurement.
 pub struct Histories {
     /// Butterfly history, `[stm][move.raw16()]`.
-    pub main: Box<[[StatEntry<MAIN_D>; BUTTERFLY_SIZE]; 2]>,
+    pub main: Box<[Line64<[StatEntry<MAIN_D>; BUTTERFLY_SIZE]>; 2]>,
     /// Low-ply history, `[ply][move.raw16()]` for plies 0..=4 — refilled to
     /// `LOW_PLY_REFILL` each `go`; no new-game init (§3.4).
-    pub low_ply: Box<[[StatEntry<MAIN_D>; BUTTERFLY_SIZE]; LOW_PLY_SIZE]>,
+    pub low_ply: Box<[Line64<[StatEntry<MAIN_D>; BUTTERFLY_SIZE]>; LOW_PLY_SIZE]>,
     /// Capture history, `[piece][to][victim_slot]` (victim 6 = "no victim").
-    pub capture: Box<[[[StatEntry<CAPT_D>; VICTIM_NB]; 64]; 12]>,
+    pub capture: Box<[Line64<[[StatEntry<CAPT_D>; VICTIM_NB]; 64]>; 12]>,
     /// Continuation history, outer index [`ContHistId`], inner [`PieceToHist`].
-    pub cont: Box<[PieceToHist; CONT_NB]>,
+    pub cont: Box<[Line64<PieceToHist>; CONT_NB]>,
     /// Pawn-structure history, `[pawn_key & mask][piece][to]`.
-    pub pawn: Box<[[[StatEntry<PAWN_D>; 64]; 12]; PAWN_HIST_SIZE]>,
+    pub pawn: Box<[Line64<[[StatEntry<PAWN_D>; 64]; 12]>; PAWN_HIST_SIZE]>,
     /// Unified correction history, `[key & mask][stm]` of [`CorrBundle`]s.
     pub corr: Box<[[CorrBundle; 2]; CORR_SIZE]>,
     /// Continuation correction, outer [`ContHistId::piece_to`], inner
     /// [`PieceToCorr`].
-    pub cont_corr: Box<[PieceToCorr; CONT_CORR_NB]>,
+    pub cont_corr: Box<[Line64<PieceToCorr>; CONT_CORR_NB]>,
     /// A single scalar tracking the reliability of the TT move.
     pub tt_move: StatEntry<TT_MOVE_D>,
 }
@@ -309,15 +363,15 @@ impl Histories {
     /// so a plain `Box::new` finishes the job.
     pub fn new() -> Box<Self> {
         Box::new(Histories {
-            main: boxed_array([StatEntry::new(MAIN_INIT); BUTTERFLY_SIZE]),
+            main: boxed_array(Line64([StatEntry::new(MAIN_INIT); BUTTERFLY_SIZE])),
             // Low-ply has no new-game init (§3.4); 0 is a placeholder that
             // `new_search` overwrites before the first read of any `go`.
-            low_ply: boxed_array([StatEntry::new(0); BUTTERFLY_SIZE]),
-            capture: boxed_array([[StatEntry::new(CAPTURE_INIT); VICTIM_NB]; 64]),
-            cont: boxed_array([[StatEntry::new(CONT_INIT); 64]; 12]),
-            pawn: boxed_array([[StatEntry::new(PAWN_INIT); 64]; 12]),
+            low_ply: boxed_array(Line64([StatEntry::new(0); BUTTERFLY_SIZE])),
+            capture: boxed_array(Line64([[StatEntry::new(CAPTURE_INIT); VICTIM_NB]; 64])),
+            cont: boxed_array(Line64([[StatEntry::new(CONT_INIT); 64]; 12])),
+            pawn: boxed_array(Line64([[StatEntry::new(PAWN_INIT); 64]; 12])),
             corr: boxed_array([CorrBundle::filled(CORR_INIT); 2]),
-            cont_corr: boxed_array([[StatEntry::new(CONT_CORR_INIT); 64]; 12]),
+            cont_corr: boxed_array(Line64([[StatEntry::new(CONT_CORR_INIT); 64]; 12])),
             tt_move: StatEntry::new(0),
         })
     }
@@ -1026,6 +1080,47 @@ mod tests {
             let id = ContHistId::new(false, false, piece_for_slot(pc), Square::A1);
             assert_ne!(id, ContHistId::SENTINEL);
         }
+    }
+
+    /// Every multi-row history table must START on a cache line.
+    ///
+    /// A GATE, not a comment. Before [`Line64`] these bases were measured at
+    /// `main=16 low_ply=16 capture=48 cont=16 pawn=16 cont_corr=16`, so every
+    /// 128-byte `[piece][to]` row spanned three lines instead of two. The
+    /// property is invisible in any behavioural test and is re-broken by
+    /// simply dropping the wrapper from one field, which is exactly why it
+    /// needs an assertion rather than a paragraph.
+    #[test]
+    fn every_history_table_starts_on_a_cache_line() {
+        let h = Histories::new();
+        for (name, base) in [
+            ("main", h.main.as_ptr() as usize),
+            ("low_ply", h.low_ply.as_ptr() as usize),
+            ("capture", h.capture.as_ptr() as usize),
+            ("cont", h.cont.as_ptr() as usize),
+            ("pawn", h.pawn.as_ptr() as usize),
+            ("cont_corr", h.cont_corr.as_ptr() as usize),
+        ] {
+            assert_eq!(base % 64, 0, "{name} base is {} mod 64", base % 64);
+        }
+    }
+
+    /// The wrapper must cost nothing. Every wrapped row is already a whole
+    /// number of cache lines, so `Line64` may not add a single padding byte —
+    /// if it ever does, the alignment was bought with memory and the trade
+    /// needs re-deciding rather than silently paying for it.
+    #[test]
+    fn line64_adds_no_padding() {
+        assert_eq!(
+            size_of::<Line64<PieceToHist>>(),
+            size_of::<PieceToHist>(),
+            "Line64 padded PieceToHist"
+        );
+        assert_eq!(
+            size_of::<Line64<[StatEntry<MAIN_D>; BUTTERFLY_SIZE]>>(),
+            size_of::<[StatEntry<MAIN_D>; BUTTERFLY_SIZE]>(),
+            "Line64 padded a butterfly plane"
+        );
     }
 
     // Fresh allocation carries each table's §3.4 init value at both extremes.
