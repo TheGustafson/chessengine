@@ -703,8 +703,17 @@ eval hash `2e1ede95…79c4` and d13 `1739588`, verified from source in §6.
 | `.text` of `base44` vs study 41's `b41` | **694 325 both** |
 | byte-identical null, `instructions:u` | **0.000 %**, every round, every panel |
 | `cargo fmt --check` | clean |
-| `cargo clippy --all-targets` | *(see §5)* |
-| `CHECK_NNUE_GATE=1 bash tools/check.sh` | *(see §5)* |
+| `cargo clippy --all-targets` | clean |
+| release perft suite (`--ignored perft_full_suite`) | pass |
+| `cargo test --features sota,arch-d48x` | **718 passed, 0 failed** — includes the kernel-vs-scalar equivalence tests at every fold shape and at long feature lists, which is the real correctness check for a retiled kernel |
+| **`Bench:`** | **587683** — unchanged, as predicted (the `sota` path is absent from the default-feature build the fingerprint uses) |
+| **NNUE eval hash** (from source) | **`2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4`** — unchanged |
+| **NNUE d13 nodes** (from source) | **1739588** — unchanged |
+| `CHECK_NNUE_GATE=1 CHECK_TEST_THREADS=2 bash tools/check.sh` | **All checks passed.** |
+
+**No pin moves in this commit, and that is the point**: the retiling is
+bit-identical, so an intentional-change pin update would have been a sign the
+change was *not* what it claimed to be.
 
 D24 perft ritual **not** required: nothing under `movegen`, `board`, `zobrist`
 or `attacks` is touched by any arm here.
