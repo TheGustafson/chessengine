@@ -6280,3 +6280,48 @@ avoids. Study 29 priced our side: HalfKA refreshes **0.1610/node** vs threats'
 **0.0214/node**. Closed doors restated so no arm is wasted: no threat i8 lever,
 **no i8-accumulator lever** (both references accumulate in i16), huge pages
 retired, and do not "simplify" the two-loop fold.
+
+## Tick 2026-07-31 ~00:45 — first anneal heldout sample, and the gap has NOT moved
+
+**D49 sb316/400.** heldout **sb310 = 0.011271** — a **−84e-6** step, the largest
+in 40 superbatches:
+
+    sb270->280   -83e-6
+    sb280->290   -34e-6
+    sb290->300     0e-6   (the flat step)
+    sb300->310   -84e-6   <- first sample inside the anneal
+
+**Endpoint projection, using the map's 63,956 Elo/unit slope and 90 sb left:**
+
+| extrapolated rate | endpoint heldout | Elo vs canonical |
+|---|---:|---:|
+| last step (−84/10sb) | 0.010515 | **+14** |
+| last 40 sb (−50/10sb) | 0.010819 | **−5** |
+| cosine-era (−34/10sb) | 0.010965 | **−15** |
+
+**Better than the pre-anneal −25**, but the step sequence is noisy enough
+(−83, −34, **0**, −84) that extrapolating from the newest sample alone is not
+trustworthy. The 40-sb rate is the more defensible one, and it lands at **−5**.
+
+### The thing that actually matters has not happened yet
+
+**gap = (heldout − train)/train: 49.7% (sb280) → 48.6% (sb300) → ~49.5% (now).
+Flat.** We are **16% into the anneal and the generalization gap has not begun to
+close.**
+
+Every large outcome in the AXIS LAW model — the +39 and +85 rows — requires that
+gap to collapse. Plain heldout extrapolation, with the gap held constant, lands
+near parity at best. **So the question is unchanged and now sharper: does the
+gap close in the back half of the anneal?** The decision point I set earlier
+(~sb330) stands.
+
+*Not over-reading the −84: one sample, and sb290→300 was exactly zero.*
+
+**Box:** 8379 MB, free swap 1217 MB, load 2.98 — idle and healthy.
+**Study 39** (5.2x stall-per-line) ahead=0, dirty=10, working.
+
+**Operational note:** the learned-feature-code research study was launched
+**without worktree isolation** and is therefore running **in the main repo**.
+It is docs-only and on a different file, so no conflict so far — but that is
+luck, not design, and it is worth watching for commit races. Research studies
+should get `isolation: worktree` like the perf studies do.
