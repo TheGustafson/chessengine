@@ -81,11 +81,13 @@ threat active at REFRESH points :   4.87 (king-move-conditioned, endgame-weighte
   threat fold    blended  132.4 c/row (= -5.00 Elo per extra row/node)   marginal   94.2 c/row   per-call  188.4 c
   halfka fold    blended  282.4 c/row (= -10.51 Elo per extra row/node)   marginal  150.7 c/row   per-call  301.4 c
   finny refresh  blended  452.7 c/row (= -16.54 Elo per extra row/node)   marginal  335.8 c/row   per-call  671.6 c
-  threat rebuild rate: +0.01/node costs  131.2 cyc = -4.96 Elo
-  threat channel, named symbols = 21.56% of cycles; full displacement EARNS +42.0 Elo of speed
+  threat rebuild:   1694 cyc each (mirror-conditioned, 4.9 rows); +0.01/node costs  16.9 cyc = -0.65 Elo
+    (the refuted at_full-based price would say  131.2 cyc — 7.7x overpriced)
+  threat channel, named symbols = 22.27% of cycles; full displacement EARNS +43.6 Elo of speed
 -- denominator: quiet C=4100 cycles/node --
   threat fold    blended  120.2 c/row (= -5.00 Elo per extra row/node)   marginal   85.6 c/row   per-call  171.2 c
   halfka fold    blended  256.5 c/row (= -10.51 Elo per extra row/node)   marginal  136.9 c/row   per-call  273.8 c
   finny refresh  blended  411.2 c/row (= -16.54 Elo per extra row/node)   marginal  305.0 c/row   per-call  610.1 c
-  threat rebuild rate: +0.01/node costs  119.2 cyc = -4.96 Elo
-  threat channel, named symbols = 21.56% of cycles; full displacement EARNS +42.0 Elo of speed
+  threat rebuild:   1539 cyc each (mirror-conditioned, 4.9 rows); +0.01/node costs  15.4 cyc = -0.65 Elo
+    (the refuted at_full-based price would say  119.2 cyc — 7.7x overpriced)
+  threat channel, named symbols = 22.27% of cycles; full displacement EARNS +43.6 Elo of speed

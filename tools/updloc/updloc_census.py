@@ -33,19 +33,31 @@ ELO_PER_DOUBLING = 120.0
 
 # perf-study-36 within-profile cycle shares (self-normalising; its per-node
 # TOTALS line is refuted, the shares are not).
+#
+# ATTRIBUTION CORRECTION (this study, b40 perf record on the pinned frame):
+# `at_full` is the per-EVAL entry point (0.431 calls/node measured), so its
+# share is fold orchestration + resolve, NOT the from-scratch rebuild the
+# richer-representation study priced with it. The rebuild itself is
+# `refresh_threat_into_at` (0.57%) + `refresh_psqt_threat_at` (0.14%) at
+# 0.0196 calls/node — ~7x cheaper per rebuild than the at_full-based price.
 SHARE = {
     "hka_fold": 0.1377,       # avx512::i8_deltas_into
     "thr_fold": 0.1238,       # avx512::i8_deltas_into_generic
     "finny": 0.0875,          # HalfkaContext::finny_refresh_into
     "head": 0.0615,           # SotaHead::forward_into
-    "at_full": 0.0550,        # ThreatContext::at_full
+    "at_full": 0.0550,        # ThreatContext::at_full — PER-EVAL orchestration
+    "thr_rebuild": 0.0071,    # refresh_threat_into_at + refresh_psqt_threat_at
+    #                           (b40 profile; study 36's table truncates above
+    #                           them — its 5.50% at_full row is NOT a rebuild
+    #                           price)
     "hka_walk": 0.0295,       # HalfkaContext::current_full
     "touch": 0.0173,          # sota_threats::record_square_touch
     "psqt_fold": 0.0117,      # sota_accumulator::psqt_fold (both channels)
     "apply_at": 0.0103,       # ThreatContext::apply_at (make-time snapshot)
     "ensure": 0.0092,         # Board::ensure_threats
 }
-THREAT_CHANNEL_NAMED = ["thr_fold", "at_full", "touch", "apply_at", "ensure"]
+THREAT_CHANNEL_NAMED = ["thr_fold", "at_full", "thr_rebuild", "touch",
+                        "apply_at", "ensure"]
 
 
 def elo(dcycles, c):
@@ -287,9 +299,14 @@ def main():
                   f"(= {-elo(blended, c):5.2f} Elo per extra row/node)   "
                   f"marginal {marginal:6.1f} c/row   "
                   f"per-call {k_cyc*(1-row_share)/(calls/n):6.1f} c")
-        reb = SHARE["at_full"] * c * (0.01 / (kv["thr_refresh.calls"] / n))
-        print(f"  threat rebuild rate: +0.01/node costs {reb:6.1f} cyc "
-              f"= {-elo(reb, c):5.2f} Elo")
+        per_rebuild = SHARE["thr_rebuild"] * c / (kv["thr_refresh.calls"] / n)
+        reb = per_rebuild * 0.01
+        print(f"  threat rebuild: {per_rebuild:6.0f} cyc each (mirror-"
+              f"conditioned, {kv['thr_refresh.rows']/kv['thr_refresh.calls']:.1f} "
+              f"rows); +0.01/node costs {reb:5.1f} cyc = {-elo(reb, c):5.2f} Elo")
+        wrong = SHARE["at_full"] * c * (0.01 / (kv["thr_refresh.calls"] / n))
+        print(f"    (the refuted at_full-based price would say {wrong:6.1f} "
+              f"cyc — {wrong/reb:.1f}x overpriced)")
         named = sum(SHARE[k] for k in THREAT_CHANNEL_NAMED)
         gain = ELO_PER_DOUBLING * math.log2(1.0 / (1.0 - named))
         print(f"  threat channel, named symbols = {named:.2%} of cycles; "
