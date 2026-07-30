@@ -8130,3 +8130,67 @@ reproduced to 10 parts per million today. It is the known-good reference for the
 pinned frame, so it is worth more than the 4.1 GB `target/` beside it (which I
 did delete). Both new studies were told it exists and told to treat a
 disagreement with it as a signal about their build, not about the engine.
+
+## Tick — studies 41 + 42 MERGED and gated; study 44 follows the back-end redirect
+
+**D49x: sb461, heldout 0.011228, ema 0.010978** — four consecutive samples down,
+and the raw value is now falling ~30e-6 per 10sb against ~5e-6 early in the
+extension. Untouched.
+
+**Gate green on the merged tree:** `Bench: 587683`, eval hash
+`2e1ede95…79c4`, d13 nodes `1739588`, all checks passed, run under the new
+`flock` serialisation.
+
+### Both studies overturned something I had asserted
+
+**Study 41 — the 192.91 never needed a cause.** Study 40 had both factors in the
+ledger and never multiplied them: **24.336 mispredicts/node × 9.13 = 222.2**
+against a bucket of 191.8–205.3 ⇒ **108–116% before anything else is charged**.
+The residual is *negative*, and that is the finding, not a hedge: **a mispredict's
+cost IS a refetch**, so the channels overlap and charging both double-counts.
+
+It killed its own tidy story with one extra arm. Hot set 2.88× L1i at a 30.6%
+miss rate reads as capacity-bound; `k416` moves fetches **+2.922% (35 se)** while
+L1i misses **fall 0.968% (6.9 se)** and `empty` still rises. **Stopping one arm
+earlier would have published a clean 0.45 cycles/miss at 9.4 se and the wrong
+mechanism.** Four levers killed with numbers (hugepage `.text`, LLVM hot-cold
+splitting, cold-code outlining, layout generally).
+
+**The redirect is the payload: the engine is BACK-END bound — 49.0% of dispatch
+slots vs 19.9% front-end**, whole front-end bucket 4.77% of cycles (~8.5 Elo if
+abolished). Slot accounting closes to 0.03%.
+
+**Study 42 — it corrected the conversion in its own brief, and I verified it.**
+I had told it to convert via study 39's 1.119 stall/line. That prices the whole
+TT at **1.19 stall cycles/node against a measured 109–129 — 91–108×
+under-prediction** (re-derived myself). **Mechanism: a stall-per-line rate is a
+property of the LINE POPULATION, not of the machine.** Study 39 calibrated on the
+L2-resident, hardware-prefetchable accumulator stream; TT lines are DRAM-class and
+dependent. **I had written the same conversion into study 43's brief and have
+pulled it off.**
+
+Its result is two-sided and both halves are useful: the TT is **0.18% of cache
+traffic** (1.067 lines/node of 580.9 fills/node), yet **the prefetch we already
+ship is worth ~3.5% of cycles (~6 Elo)**, measured by removing it, 18/18 rounds.
+Both speculative-prefetch arms died with both branches pre-registered. Cluster
+straddle **0.000%**, now held by a test — `align(32)` was a *type* fact and nobody
+had checked the allocator honours it.
+
+**Docs bug fixed (verified independently):** CLAUDE.md's current-pin slot named a
+**superseded** gate for a day while `check.sh` enforced the real one, and the same
+edit overwrote study 8's hash. My own gate runs confirm `check.sh` is the truth.
+
+### Study 44 commissioned — decompose the 49%
+
+Nobody has ever asked **which back-end resource** the engine waits on. Thirty-three
+studies chipped at individual symbols; the resource question is unasked. Candidates
+to separate: memory/load stalls (and study 42 just proved this varies ~100× by
+population, so "memory-bound" is a question, not an answer), execution-port
+pressure on the two AVX-512 fold kernels (13.77% + 12.38% of cycles), dependency-
+chain latency (which looks *identical* to back-end bound in slot accounting and has
+a completely different fix), and store-buffer pressure.
+
+**Told to re-derive the 49.0%/19.9% before building on it**, to close its
+decomposition to a small residual (41's closed to 0.03%), and — because **study 41
+delivered an excellent map and zero speedup** — that **landed, gated, measured work
+is the deliverable and the decomposition only exists to aim it.**
