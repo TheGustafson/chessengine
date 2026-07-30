@@ -107,7 +107,18 @@ use crate::types::{Color, MAX_PLY, Piece, PieceType, Square};
 /// One perspective-agnostic threat event: "`attacker` on `from` threatens
 /// `victim` on `to`", appearing (`add`) or disappearing (`!add`). Resolved to a
 /// feature index per perspective by [`threat_index`]; excluded pairs drop out.
+///
+/// # Why `align(8)` (perf study 24 arm d1)
+/// The natural layout is five `u8`-sized fields — **size 7, align 1**. At a
+/// 7-byte stride roughly one event in nine straddles a 64-byte cache line,
+/// every field access is unaligned, the five stores in
+/// [`DeltaBuf::push_kept`] cannot be merged, and the resolver's per-event
+/// address arithmetic is a `lea`-unfriendly `add $0x7`. Rounding the SIZE up to
+/// 8 (align 8 implies size 8) costs 256 bytes on a 2 KB scratch buffer that
+/// never leaves L1, and measured **−37.73 i/n, −0.67 branches/n and
+/// −19.34 L1 loads/n** — node- and eval-hash-identical, one attribute.
 #[derive(Debug, Clone, Copy)]
+#[repr(align(8))]
 pub struct ThreatDelta {
     pub attacker: Piece,
     pub from: Square,
@@ -690,23 +701,35 @@ fn refresh_psqt_threat_at(
 /// piece, so at most one colour's king can appear at all; scanning per colour
 /// bought nothing but a second walk.
 fn king_cross(dp: &DirtyPiece) -> [bool; 2] {
-    let mut from = [None; 2];
-    let mut to = [None; 2];
-    for &(pc, sq) in dp.subs() {
-        if pc.piece_type == PieceType::King {
-            from[pc.color as usize] = Some(sq);
-        }
-    }
-    for &(pc, sq) in dp.adds() {
-        if pc.piece_type == PieceType::King {
-            to[pc.color as usize] = Some(sq);
-        }
-    }
+    // NO INTERMEDIATE `Option` ARRAYS (perf study 24 arm k1). The predecessor
+    // materialised `from: [Option<Square>; 2]` and `to: [Option<Square>; 2]`,
+    // filled them in two passes and then ran a THIRD pass pairing them: eight
+    // bytes of stack initialised to `None`, up to four conditional stores and
+    // two `Option` destructurings, on EVERY made move, to answer a question
+    // that is false for the ~95% of moves that do not move a king. It is
+    // visible in `apply_at`'s disassembly as a 2-byte-strided stack array
+    // (`mov %cl,0x1(%rsp,%r8,2)` / `movzbl 0x5(%rsp),%r8d`).
+    //
+    // A move relocates ONE piece, so a king can appear at most once per list
+    // and, if it appears in both, it is the same king — the pairing needs no
+    // storage at all, only a nested scan whose outer body is skipped outright
+    // for a non-king mover. Same rule, same answer: `out[c]` is set only when
+    // colour `c`'s king is in BOTH lists, so `Fold::Refresh` is raised on
+    // exactly the same moves.
+    //
+    // Measured −20.51 i/n and −3.34 branches/n against a live interleaved null
+    // of −0.0006 i/n / −0.0005 b/n; node- and eval-hash-identical.
     let mut out = [false; 2];
-    for (c, o) in out.iter_mut().enumerate() {
-        if let (Some(f), Some(t)) = (from[c], to[c]) {
-            // orient_threats splits on file <= 3 (a–d) vs >= 4 (e–h).
-            *o = (f.file() <= 3) != (t.file() <= 3);
+    for &(pc, from) in dp.subs() {
+        if pc.piece_type != PieceType::King {
+            continue;
+        }
+        for &(pc2, to) in dp.adds() {
+            if pc2.piece_type == PieceType::King && pc2.color == pc.color {
+                // orient_threats splits on file <= 3 (a–d) vs >= 4 (e–h).
+                out[pc.color as usize] = (from.file() <= 3) != (to.file() <= 3);
+                break;
+            }
         }
     }
     out

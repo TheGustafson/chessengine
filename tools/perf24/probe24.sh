@@ -33,14 +33,17 @@ esac
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-perf stat -x, -e instructions:u,cycles:u -o "$tmp/stat" \
+taskset -c "${P24_CPU:-3}" perf stat -x, \
+    -e instructions:u,cycles:u,branches:u,L1-dcache-loads:u -o "$tmp/stat" \
     "$BIN" "${args[@]}" >/dev/null 2>"$tmp/bench"
 
 nodes=$(sed -n 's/^Nodes searched  : //p' "$tmp/bench")
-ins=$(awk -F, '$3=="instructions:u"{print $1}' "$tmp/stat")
-cyc=$(awk -F, '$3=="cycles:u"{print $1}' "$tmp/stat")
+ins=$(awk -F, '$3~/^instructions/{print $1}' "$tmp/stat")
+cyc=$(awk -F, '$3~/^cycles/{print $1}' "$tmp/stat")
+br=$(awk -F, '$3~/^branches/{print $1}' "$tmp/stat")
+ld=$(awk -F, '$3~/^L1-dcache-loads/{print $1}' "$tmp/stat")
 hash=$("$BIN" nnue-eval "$NET" < "$FENS" | sha256sum | cut -d' ' -f1)
 
-awk -v l="$label" -v f="$frame" -v n="$nodes" -v i="$ins" -v c="$cyc" -v h="$hash" \
-    'BEGIN{printf "%-22s %-8s nodes=%s  i=%s  i/n=%.4f  c/n=%.4f  hash=%s\n",
-           l, f, n, i, i/n, c/n, substr(h,1,16)}'
+awk -v l="$label" -v n="$nodes" -v i="$ins" -v c="$cyc" -v b="$br" -v d="$ld" -v h="$hash" \
+    'BEGIN{printf "%-10s nodes=%s  i/n=%.4f  b/n=%.4f  l/n=%.4f  (c/n=%.0f)  hash=%s\n",
+           l, n, i/n, b/n, d/n, c/n, substr(h,1,16)}'

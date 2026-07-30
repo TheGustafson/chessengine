@@ -58,8 +58,20 @@ one() { # <bin> -> "cyc ins br ld nodes"
 
 : > "$tmp/rows"
 for r in $(seq 1 "$rounds"); do
-    read -r cA iA bA lA nA <<<"$(one "$ROOT/perf24/bin/$base")"
-    read -r cB iB bB lB nB <<<"$(one "$ROOT/perf24/bin/$arm")"
+    # COUNTERBALANCED ORDER (perf study 24): rounds alternate A,B / B,A.
+    # A fixed A,B interleave still biases when contention arrives in bursts
+    # longer than one run -- three sibling studies invoke `rustc` on this box
+    # and a burst covers roughly one 7 s bench, so it lands on whichever slot
+    # it overlaps. Swapping the order every other round cancels that to first
+    # order. Measured: with the fixed order the bit-identical null read
+    # -2.43%/-3.80%; that is what this exists to fix.
+    if [ $((r % 2)) -eq 1 ]; then
+        read -r cA iA bA lA nA <<<"$(one "$ROOT/perf24/bin/$base")"
+        read -r cB iB bB lB nB <<<"$(one "$ROOT/perf24/bin/$arm")"
+    else
+        read -r cB iB bB lB nB <<<"$(one "$ROOT/perf24/bin/$arm")"
+        read -r cA iA bA lA nA <<<"$(one "$ROOT/perf24/bin/$base")"
+    fi
     [ "$nA" = "$nB" ] || { echo "NODE MISMATCH round $r: $nA vs $nB" >&2; exit 3; }
     echo "$cA $cB $iA $iB $bA $bB $lA $lB $nA" >> "$tmp/rows"
     awk -v r="$r" -v a="$cA" -v b="$cB" -v n="$nA" \
