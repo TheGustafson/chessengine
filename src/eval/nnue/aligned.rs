@@ -19,20 +19,50 @@
 //! `i16_deltas_into` 30.3%, `forward_into` 20.5%, `i16_deltas_dual` 16.1%,
 //! `i8_deltas_into` 14.6%. Those are exactly the four that read weight tables.
 //!
-//! # How it is safe
+//! # How the alignment is obtained
 //!
-//! There is no `unsafe` here and no allocator API. `Vec::with_capacity`
-//! reserves the buffer up front, `<*const T>::align_offset` (a safe method)
-//! reports how many elements to skip to reach a 64-byte boundary, and the
-//! payload is then written after exactly that many padding elements. Growing a
-//! `Vec` never moves it while it stays inside its reserved capacity, so the
-//! offset measured before the fill is still valid after it — which the
-//! `payload_is_line_aligned` test checks directly rather than by argument.
+//! No allocator API. `Vec::with_capacity` reserves the buffer up front,
+//! `<*const T>::align_offset` (a safe method) reports how many elements to skip
+//! to reach a 64-byte boundary, and the payload is then written after exactly
+//! that many padding elements. Growing a `Vec` never moves it while it stays
+//! inside its reserved capacity, so the offset measured before the fill is
+//! still valid after it — which the `payload_is_line_aligned` test checks
+//! directly rather than by argument.
 //!
 //! The one trap worth naming: **`into_boxed_slice()` must not be called on the
 //! backing vector.** It shrinks-to-fit, and a realloc is free to return a
 //! differently-aligned block, silently undoing the whole point. That is why
 //! the payload is kept in a `Vec<T>` and handed out through `Deref`.
+//!
+//! # The one invariant: `OFF_LE_LEN`
+//!
+//! **`self.off <= self.buf.len()`, always.**
+//!
+//! `Deref`/`DerefMut` rely on it to hand out `buf[off..]` *without* a range
+//! check, which is the difference between "a weight table" and "a bounds-checked
+//! range slice re-derived on every single access" — perf study 25 §4 found the
+//! latter was what its head-block arm was actually fighting, and perf study 26
+//! §2 measured the fix at **−8.30 instructions and −2.98 branches per node,
+//! crate-wide**, against an exactly-zero rebuild null.
+//!
+//! Why it cannot be violated, in three parts, none of which is an argument
+//! about the caller:
+//!
+//! 1. **Both fields are private and this module is the whole surface.**
+//!    `Aligned` has no public constructor other than [`Aligned::from_iter_len`]
+//!    and the two `From`/`FromIterator` wrappers that call it, so `off` is only
+//!    ever written in one place.
+//! 2. **That place establishes it by construction.** `buf.resize(off, …)`
+//!    makes `buf.len() == off` exactly, and `buf.extend(iter)` can only grow it.
+//!    There is no path on which `off` is chosen after the fill, and none on
+//!    which `buf` shrinks — `Aligned` exposes no `truncate`, `pop`, `clear` or
+//!    `into_boxed_slice`, and `DerefMut` hands out `&mut [T]`, which cannot
+//!    change a `Vec`'s length.
+//! 3. **Debug builds re-check it on every access.** `Aligned::debug_check` runs
+//!    in front of both derefs, so the entire test suite — and every debug run of
+//!    the engine, which touches these tables millions of times per search —
+//!    asserts the invariant at the exact point the release build assumes it.
+//!    A new constructor that got it wrong could not survive one `cargo test`.
 
 use std::fmt;
 use std::ops::{Deref, DerefMut};
@@ -87,6 +117,23 @@ impl<T: Default + Clone> Aligned<T> {
     }
 }
 
+impl<T> Aligned<T> {
+    /// The debug-build half of [`OFF_LE_LEN`](self#the-one-invariant-off_le_len):
+    /// every `Deref`/`DerefMut` re-checks the invariant the release build
+    /// assumes. Compiled out of release by `debug_assert!`, so the whole test
+    /// suite (and every debug run of the engine) exercises the check on every
+    /// single weight-table access — which is a far denser test of the invariant
+    /// than any unit test could be.
+    #[inline]
+    fn debug_check(off: usize, len: usize) {
+        debug_assert!(
+            off <= len,
+            "Aligned: OFF_LE_LEN violated ({off} > {len}) — a constructor did \
+             not resize-then-extend"
+        );
+    }
+}
+
 impl<T: Default + Clone> FromIterator<T> for Aligned<T> {
     /// Convenience for call sites that already have a sized iterator; uses the
     /// iterator's lower size hint to pick the capacity.
@@ -103,18 +150,32 @@ impl<T: Default + Clone> From<Vec<T>> for Aligned<T> {
     }
 }
 
+// The crate denies `unsafe_code`; this is the documented, measured exception
+// (perf study 26 §2). Both blocks below are the same two lines of pointer
+// arithmetic `&self.buf[self.off..]` already performs, minus the range check
+// that [`OFF_LE_LEN`] proves can never fire.
+#[allow(unsafe_code)]
 impl<T> Deref for Aligned<T> {
     type Target = [T];
     #[inline]
     fn deref(&self) -> &[T] {
-        &self.buf[self.off..]
+        Self::debug_check(self.off, self.buf.len());
+        // SAFETY: OFF_LE_LEN — `self.off <= self.buf.len()`, so `off..` is a
+        // valid range for `buf`. `get_unchecked` on a `Vec` autoderefs to the
+        // slice method, i.e. this is `&buf_slice[off..]` with the bounds check
+        // elided, not an allocator or provenance trick.
+        unsafe { self.buf.get_unchecked(self.off..) }
     }
 }
 
+#[allow(unsafe_code)]
 impl<T> DerefMut for Aligned<T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut [T] {
-        &mut self.buf[self.off..]
+        Self::debug_check(self.off, self.buf.len());
+        // SAFETY: OFF_LE_LEN, as for `deref`. `&mut [T]` cannot change the
+        // `Vec`'s length, so no caller can invalidate the invariant either.
+        unsafe { self.buf.get_unchecked_mut(self.off..) }
     }
 }
 
