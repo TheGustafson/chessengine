@@ -3709,3 +3709,44 @@ are all explicit opt-ins over 35 cfg sites. Cannot leak.
 
 **Merge order unchanged: 30 (user's sequence), then 29, then 31.** Studies 30
 and 32 are still live.
+
+## Tick 2026-07-30 ~02:45 — merging 29 + 31, gate running
+
+**D49 sb139/400**, 177k pos/s, unit active. heldout last at sb130 (0.012826 /
+ema 0.012144); sb140 is the next scheduled eval.
+
+**Box:** 8672 MB available, load 4.28, 175 GB disk. Both live studies clean —
+study 30 ahead=4 dirty=0, study 32 ahead=1 dirty=0.
+
+**Chose the merge over commissioning a third study, deliberately.** The
+directive's own PERF LOOP is *verify -> gate -> merge -> commission next*, and
+29 and 31 were both finished and unmerged. More importantly, **study 32 is
+about to take cycle measurements, and a contended box is precisely what
+produces the retractions this project keeps paying for** (study 31 already
+lists "non-PGO on a contended box" among its caveats; study 29 retracted a
+-1.67% cycles reading that turned out to be position-in-round). A third
+concurrent study would degrade the measurement quality of the highest-value
+item on the board.
+
+**Merge state — REPO IS PARKED ON BRANCH `stage-2931`, NOT main.**
+Staged from main `6ab77a9` so a failed gate cannot break main:
+- study 29 merged **clean**
+- study 31 conflicted on `.gitignore` only (both added ignore lines) — resolved
+  by keeping BOTH sides, zero markers left
+- combined: **53 files changed, +4628 / -27**
+
+**Gate running as `gate2931.service`** (systemd-run --user, MemoryMax=6G,
+MemorySwapMax=0, CARGO_BUILD_JOBS=2, CHECK_NNUE_GATE=1) ->
+`scratchpad/gate2931.log`, ends with an `EXIT=` line.
+
+**Next tick MUST do one of:**
+- gate green -> `git checkout main && git merge --ff-only stage-2931`, then
+  delete the staging branch;
+- gate red -> do NOT merge; read the log, fix or bounce back to the study, and
+  leave main untouched.
+
+Games remain gated on study 30 (CEN3 threat-quant guard). A preview screen of
+D49 at sb139/400 was considered and rejected as low-information: it is a
+from-scratch net one third of the way through a 400sb schedule, so a large loss
+to a fully-trained D48X would be expected and would tell us nothing. The
+heldout curve is the better trend instrument at this stage.
