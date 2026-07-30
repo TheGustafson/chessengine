@@ -8041,3 +8041,54 @@ cycles/node (≈4100 quiet), not 8262.9.**
 
 Both running perf studies notified, since a wrong denominator would silently
 mis-rank everything they are about to report.
+
+## Tick — D49 sb448; the denominator is SETTLED on study 40's own binary; study 43 commissioned
+
+### Settled: 4179.7 cycles/node, and study 36's per-node line is ~2.00× too high
+
+I ran study 40's **own base binary** (`bin34/b40`, still on disk in its
+worktree) on the pinned frame. It reproduces the study's published number to
+**10 parts per million**:
+
+| | measured on `b40` | study 40 published/implied |
+|---|---:|---:|
+| node count | 5,001,562 | 5,001,562 — exact |
+| **instructions/node** | **5923.909** | 5923.967 (**Δ −0.058**) |
+| **cycles/node** | **4179.7** | ~4104 implied (+1.8%, contention) |
+| mispredicts/node | 24.01 | 24.07 implied |
+| IPC | 1.417 | 1.448 implied |
+
+**Study 36's 8262.9 would need +97.7% inflation. The ratio is ~2.00, which
+points at a double-count, not a measurement difference.**
+
+**In fairness to study 36, it self-flagged**: "the per-node totals beside them
+are not [immune to drift], and are only comparable within this document." The
+symbol *shares* are within-run attributions and stand. **The error was inheriting
+its per-node totals across studies — which is what I did.** Quote **4104–4180
+cycles/node**; never 8262.9.
+
+### Study 43 — `finny_refresh_into`, 8.75% of cycles and never targeted
+
+The Finny (king-bucket accumulator) cache is the **4th largest symbol** and the
+most *memory-bound* one in the top tier. Its signature is unusual and specific:
+
+| symbol | %cycles | %instr | %L1d loads | ratio cyc:instr |
+|---|---:|---:|---:|---:|
+| `HalfkaContext::finny_refresh_into` | **8.75** | **3.24** | **3.44** | **2.70×** engine avg |
+
+**Few loads, few instructions, lots of cycles** — it is not computing, it is
+waiting. And the layout says why: `FinnyEntry` is **2688 B** (`by_piece`
+[[Bitboard;6];2] = 96 B + `psqt` + `acc` [i16; 1280] = 2560 B), and the cache is
+`2 × FINNY_KEYS = 128` entries ⇒ **~336 KB**. That is 10× Zen 4's 32 KB L1d and
+sits in L2, so **every refresh streams ~42 cache lines**.
+
+Seven studies mention Finny (22, 29, 10, 4, 19, 9 …) and **none targeted making
+it faster**. Study 22 fixed its *metadata* (the `Option` niche costing a whole
+line per slot, and the boxed-slice fat pointer); the 2560-byte payload stream was
+never examined. Four questions in the brief: the miss/stall attribution at the
+now-correct denominator; whether hot metadata and cold payload should be split
+(SoA) so the probe stops pulling payload lines it does not need; whether
+`FINNY_KEYS = 64` is anywhere near the locality/hit-rate optimum (never
+measured); and prefetch — where the prior is strongly negative, **six kills**, but
+this is the one case in the engine where the address is known a long way ahead of
+the use, so it must beat the prior with a measurement rather than a story.
