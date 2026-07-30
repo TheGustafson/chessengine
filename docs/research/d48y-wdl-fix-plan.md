@@ -5478,3 +5478,60 @@ point at instructions / branches / loads instead.
 the binary the panel measured — byte-identical**, proving the doc comments and
 new test did not perturb codegen. That directly answers study 35's finding that
 adding doc comments changes a binary's sha256 (panic `Location` line numbers).
+
+## Tick 2026-07-30 ~15:15 — gate37 green; study 38 commissioned
+
+**`gate37` green, my own run:** `Bench: 587683`, All checks passed,
+`GATE_EXIT=0`. Main verified at **`f7faa47`**.
+
+**D49 sb259/400**, heldout 0.011587 @ sb250 (ema 0.011318). Box idle: 8495 MB
+available, 1078 MB free swap, load 3.99.
+
+### THE STANDING "GATE ARMS ON CYCLES" INSTRUCTION IS NOW REFUTED
+
+The tick context and CLAUDE.md both say *"GATE ARMS ON CYCLES (median >= 6
+rounds)"*. **Our own evidence contradicts it.** Five independent nulls — a
+byte-identical binary measured against itself:
+
+| study | null on `cycles:u` | box |
+|---|---|---|
+| 33 | absolutes inflated ~1.9x | loaded |
+| 34 | +0.802%, +1.753% (ranges 28.8 / 18.4 pts) | loaded |
+| 35 | +0.383% … +5.266% (3 protocols), spread +/-20.3% | loaded |
+| 36 | +1.196%, +1.394% (11-14 pt ranges) | loaded |
+| **37** | **+0.784%** (10.7 pt range) | **IDLE, load 4.3** |
+
+The rule was written from study 20, where cycles caught a **−5.99%** win that
+instructions (+0.19%) would have rejected. **That remains true for effects of
+that size.** What five nulls establish is the *floor*: `cycles:u` cannot
+adjudicate **sub-1%** arms here at any load, and most remaining items are
+sub-1%. Study 37's phrasing: *"contention is not the cause; it is the counter."*
+
+**Revised rule now given to every brief:** gate on `instructions:u` (null
+measured at exactly **0.000%**, an exact counter), **branches**, and **L1d
+loads** (licensed by study 33 §5.3, which proved cost at these sites tracks load
+COUNT not miss count) — with a **paired within-round null in the same session**.
+Reach for cycles only for effects >1%, and report the null beside it.
+
+### Study 38 commissioned — `thr_copy`
+
+Target: the **~26 instructions/node** study 37 named as *the largest remaining
+exact-counter prize*, and flagged honestly as **derived, not measured**. First
+job is to measure it and check the derivation — finding the derivation wrong is
+itself a result.
+
+The brief front-loads the **closed doors** so no arm is wasted:
+- **no threat i8 lever** (threats were always i8 — verified by me at
+  `sota_loader.rs:63,153` and `netpack.py:362,473`);
+- **do NOT simplify the two-loop fold** — study 37 measured the paired form as a
+  loss three ways, because **LLVM's tile-body cloning is worth more than the
+  control flow it duplicates** (3616 B two-loop vs 1744 B paired, and the small
+  one is slower);
+- **huge pages retired** by the base level of 2.25 page walks/node;
+- the fold control is **6 instructions per row per tile** (exact, correcting
+  study 36's estimated 4).
+
+It also carries both receipts against impossibility arguments (study 36
+overturning study 34's "structurally not removable"; the 325-740 vs 197.7
+over-pricing), study 37's md5-the-landing-tree gate hygiene, and the swap-aware
+memory guard.
