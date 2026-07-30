@@ -7996,3 +7996,48 @@ codes whose update-stability was never measured), each priced BOTH additively an
 as a REPLACEMENT for part of the threat channel — which costs 25–39% of our
 speed and is therefore the thing worth displacing. Tier-1 specified, not
 launched. The 2× denominator contradiction above is written into the brief.
+
+## Tick — D49 sb441, ema TURNED; the 2× cycles/node contradiction is RESOLVED by measurement
+
+**D49x: sb441. The ema turned down for the first time since the restart**
+(0.011009 → 0.010997) and the raw heldout is falling faster (0.011290 →
+0.011260, vs 5e-6/10sb before). Running untouched.
+
+### The contested denominator: study 40 is right, study 36 is wrong
+
+Measured myself rather than argued — `perf stat` on the pinned frame
+(`bench 16 1 100000 wl50.fens nodes`, canonical D48X net, canonical binary,
+5,001,566 nodes):
+
+| | measured | study 36 claim | study 40 implied |
+|---|---:|---:|---:|
+| **cycles/node** | **4489.8** | 8262.9 | ~4090 |
+| instructions/node | 5659.0 | 5935.2 | 5923.967 |
+| branches/node | 563.5 | — | 623.802 (study 34) |
+| mispredicts/node | **22.35** | 27.3 | 24.07 (implied) |
+| IPC | **1.260** | 0.718 (implied) | 1.448 (implied) |
+
+**And study 40 is confirmed to within contention.** Its "192.91 cycles/node =
+4.7% of the engine" implies a denominator of **4104**; I measured **4489.8**
+while two perf studies and the trainer were running — **+9.4%, exactly the
+inflation contention produces**, and cycles:u can only be inflated by
+contention, never deflated. **Study 36's 8262.9 would need +84% inflation to be
+reachable. It is not reachable.** Its per-node totals line is wrong by ~1.84×.
+
+**Scope of the damage — narrow, but it caught me.** Study 36's *symbol
+percentages* are almost certainly fine (perf-record shares are self-normalising).
+What is wrong is its **per-node totals line**, so anyone converting one of its
+percentages into absolute cycles/node over-estimates by ~1.84×.
+
+**Correction to my own correction.** Last tick I "corrected" my `insertwin34`
+repricing by adopting study 36's 8262.9. That made it worse: my original 4104
+was approximately right. Repriced on measured numbers — +41.841 i/n buys
+−0.894 mispredicts/node = **−8.16 cycles/node**, against +17.08 at study 40's
+measured 2.45 marginal rate ⇒ **net +8.92 cycles/node LOSS**, and
+**break-even needs 5.13 IPC against a measured engine IPC of 1.260.** The
+verdict has now survived three different denominators; it is not
+frame-sensitive. **Bottom line: the arm loses, and the number to quote is 4489.8
+cycles/node (≈4100 quiet), not 8262.9.**
+
+Both running perf studies notified, since a wrong denominator would silently
+mis-rank everything they are about to report.
