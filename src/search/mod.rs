@@ -3959,6 +3959,15 @@ impl Worker {
                         self.st_fh += 1;
                         self.st_fh_first += u64::from(move_count == 1);
                         self.st_fh_moves += move_count as u64;
+                        // Perf study 34: the ordering-quality instrument — the
+                        // index of the move that actually caused the cutoff.
+                        #[cfg(feature = "census34")]
+                        {
+                            use crate::census34 as cx;
+                            cx::bump(&cx::FH_NODES, 1);
+                            cx::bump(&cx::FH_MOVES, move_count as u64);
+                            cx::hist(&cx::HIST_FH, move_count as usize);
+                        }
                         // A cutoff by a heavily-extended move is weaker evidence
                         // of a fail-high-prone child, so it does not bump the
                         // count (design/10 §3.9, Wave-D item 15).
@@ -4018,6 +4027,14 @@ impl Worker {
         if best_value >= beta && !is_decisive(best_value) && !is_decisive(alpha) {
             best_value = (best_value * depth + params::FH_SOFTEN_BETA_W() * beta)
                 / (depth + params::FH_SOFTEN_BETA_W());
+        }
+
+        // Perf study 34: the move loop exits either by the fail-high `break`
+        // (counted at the cutoff site) or by exhausting the picker; the two
+        // together are the denominator of the ordering-quality rate.
+        #[cfg(feature = "census34")]
+        if best_value < beta {
+            crate::census34::bump(&crate::census34::NOFH_NODES, 1);
         }
 
         // Step 14 — node result: ply-relative mate/stalemate terminals

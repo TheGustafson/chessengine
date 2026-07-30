@@ -21,6 +21,9 @@ pub mod attacks;
 pub mod bench;
 pub mod bitboard;
 pub mod board;
+/// Perf study 34's move-ordering census (instrument only).
+#[cfg(feature = "census34")]
+pub mod census34;
 pub mod cuckoo;
 pub mod eval;
 pub mod fen;

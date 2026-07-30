@@ -75,3 +75,5 @@ target33-test/
 # perf study 35: labelled measurement binaries + its build tree.
 bin35/
 target35/
+bin34/
+/target34-*/

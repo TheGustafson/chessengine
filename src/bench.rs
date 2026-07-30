@@ -313,6 +313,10 @@ fn run_to(params: &BenchParams, out: &mut impl Write) -> io::Result<BenchResult>
     #[cfg(feature = "foldcount")]
     crate::eval::nnue::foldcount::dump(nodes);
 
+    // Perf study 34's move-ordering census (instrument builds only).
+    #[cfg(feature = "census34")]
+    crate::census34::report(nodes);
+
     Ok(BenchResult { nodes, elapsed_ms })
 }
 

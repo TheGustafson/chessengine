@@ -82,6 +82,28 @@ sota = []
 # `bench`. Instrumentation only: the search tree, node count and eval hash are
 # untouched (verified), but the binary is NOT a timing reference. Never shipped.
 foldcount = ["sota"]
+# Perf study 34's MOVE-ORDERING CENSUS. Study 23 measured how much work
+# `init_quiets` does; this measures how much of it the search ever USES —
+# per picker, how far into the scored-and-sorted quiet list the move loop
+# actually walked, plus the cutoff-move-index distribution. Relaxed atomics on
+# paths that make no search decision, so the tree stays bit-identical
+# (verified by `tools/perf34/ident34.sh`); the binary is NOT a timing
+# reference. Never shipped.
+census34 = []
+# Perf study 34's NULL ARM: builds the study's `GoodQuiet`/`BadQuiet` split
+# with the split DISABLED, so the binary carries the arm's struct layout,
+# fields and loop shape while doing the pre-study amount of scanning. Its
+# purpose is to price the instrument on the same machinery the arm moves.
+# Measurement only, never shipped.
+null34 = []
+# Perf study 34 arm 2: `partial_insertion_sort`'s BRANCHLESS fixed-width
+# insertion window. Verified node-identical and measured (+0.702% instructions,
+# -0.530% branches, movepick's share of engine branch mispredicts 15.63% ->
+# 13.95%) -- a genuine instructions-for-mispredicts trade that only a CYCLES
+# instrument can adjudicate, which the box could not provide on 2026-07-30.
+# OFF by default so the shipped engine carries no unadjudicated change; the
+# code is here so the verdict costs one panel rather than a reimplementation.
+insertwin34 = []
 # Perf study 29's TRAFFIC-PINNING probes. Both keep the load COUNT of every
 # accumulator kernel bit-for-bit identical and collapse ONE stream's working
 # set to a single hot line, so the drop in L1 misses / load-stall cycles is
