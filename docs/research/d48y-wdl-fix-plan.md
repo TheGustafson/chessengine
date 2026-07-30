@@ -7927,3 +7927,72 @@ reprices every queued mispredict arm**, and none of them were revisited. Study
 40 said so itself — "every future mispredict arm should be priced at that rate
 before it is built" — and the FUTURE-tense framing let the already-queued ones
 through. Queued arms are exactly the ones with nobody watching.
+
+## Tick — D49 sb434; TWO corrections, one of them to my own published number
+
+### 1. Owner correction: REPLACEMENT was never considered, and it reprices ~3×
+
+The richer-representation study priced every context bit as an **addition** to
+what we already pay. The words "replace" and "swap" appear **nowhere** in it.
+Owner's point: if a representation is better, swap it in rather than bolt it on.
+Using the study's own conversion (s = 0.566; 2.57% cycles per 0.01 rebuilds/node;
+120 Elo/doubling), against the existing d/e mirror at 0.03345 flips/node:
+
+| bit | flips/node | ADD %cyc | **REPLACE %cyc** | ADD Elo | **REPL Elo** |
+|---|---:|---:|---:|---:|---:|
+| `rank1` (back rank) | 0.05094 | 7.41% | **2.54%** | −13.3 | **−4.5** |
+| `adv` (back-two) | 0.05278 | 7.68% | 2.81% | −13.8 | −4.9 |
+| `fpair` | 0.05939 | 8.64% | 3.77% | −15.6 | −6.7 |
+| `rankhalf` | 0.02329 | 3.39% | **−1.48%** | −6.0 | **+2.5** |
+| `esame` (enemy d/e) | 0.03345 | 4.87% | 0.00% | −8.6 | −0.0 |
+
+**`rankhalf` goes NEGATIVE as a replacement** — it flips *less often* than the
+mirror we already pay for, so swapping is +2.5 Elo of pure speed before any
+value question is asked. **CAVEAT, stated rather than buried:** the d/e mirror
+does double duty — it is also the left-right symmetry fold, which halves the
+feature space and doubles effective training data per row. Replacing it forfeits
+that sharing, which is a VALUE cost the speed table does not price. The panel
+can measure it; the arithmetic above cannot.
+
+### 2. RETRACTION of my own repricing — the cycles/node denominator is contested
+
+Two ticks ago I priced study 34's `insertwin34` using **4104 cycles/node**,
+derived from study 40's "192.91 = 4.7% of the engine". **That number is
+contested and I should not have derived it from a percentage.** On the
+IDENTICAL pinned frame (`bench 16 1 100000 wl50.fens nodes`, ~5,001,600 nodes):
+
+| | cycles/node | instructions/node |
+|---|---:|---:|
+| perf study 36 (direct per-node totals) | **8262.9** | 5935.2 |
+| perf study 40 (implied: 192.91 = 4.7%; 30.2 = 0.74%) | **~4090** | 5923.967 |
+
+**The instruction counts agree to 0.2%. The cycle counts differ by 2×.** Study
+40's percentages are self-consistent (both imply ~4090), so this is one
+denominator error, not noise — and if study 36 is right, **every "% of cycles"
+in study 40 is doubled**, including the mispredict-class pricing that the whole
+front-end line rests on. Unresolved; flagged to the running studies.
+
+**What survives:** the `insertwin34` verdict is robust to the frame, because the
+benefit is counted per node directly (27.3 mispredicts/node × 4% × 9.13 = −9.97
+cycles/node under study 36's frame, −8.79 under study 40's) while the cost only
+grows if study 40's cycles are half of truth (its measured 2.45 i/cycle marginal
+rate would become 1.225). **The arm still loses; break-even needs the added work
+to retire at 4.20 IPC against an engine-wide 0.72.** The magnitudes I published
+were wrong; the conclusion was not.
+
+### 3. Commissioned: the CONCEPT study (Fable)
+
+Owner's actual question — *"something entirely different, a different concept or
+a mix of concepts, than the current features"* — not a finer slicing (proved
+vacuous) and not a better king bit. Our whole vocabulary is two hand-designed
+relations: piece-on-square-given-king, and attacker-hits-victim.
+
+**The binding constraint is UPDATE LOCALITY, and it is measurable on CPU today**
+with the `foldcount` counters the predecessor just landed — rows changed per made
+move, in-tree, on the pinned frame, while the GPU stays committed to D49 for
+~14h. Tier-0 is that census over candidate families (pawn-structure motifs,
+king-safety zone occupancy, piece-pair relations beyond attacks, learned discrete
+codes whose update-stability was never measured), each priced BOTH additively and
+as a REPLACEMENT for part of the threat channel — which costs 25–39% of our
+speed and is therefore the thing worth displacing. Tier-1 specified, not
+launched. The 2× denominator contradiction above is written into the brief.
