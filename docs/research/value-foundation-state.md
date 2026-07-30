@@ -52,7 +52,20 @@
 > scale on calibrated fishpack → multi-epoch schedules → self-play datagen
 > flywheel + SPSA consumer retune.
 
-Last updated: 2026-07-25 ~13:0x — **JOINT VALUE-TAX FINDING + d47k repair trajectory + P-ORD landed + D47L frozen-head staged; running log = jax-workstream-plan.md (2026-07-25 sections).**
+Last updated: 2026-07-31 — **LEARNED-FEATURE-CODE LINE, third study.** The
+compression Tier-1 panel decided (b373c98): learned code beats the null 2.3×
+(kmeans8k +165e-6 vs random8k +383e-6, identity 0.006410, identity2 seed-repeat
+0.006427 ⇒ per-readout noise ~17e-6) but compression cannot buy Elo. The
+REFINEMENT study (`docs/research/richer-representation-study-2026-07-31.md`)
+closed the cost accounting with measurements (input-side threat context bits =
+3.4–8.6% cycles each, measured in-tree; HalfKA-side 4.7× cheaper; head-side
+output-bucket conditioning ~free), ran the Tier-0 census+probe, and built a
+pre-registered four-arm Tier-1 panel (oracle / headbucket / constant-row
+refine / null control; every arm sb0 bit-parity-verified) — **specs in
+`tools/nnue/refine_panel/`, NOT launched; GPU queue = d49x; launching is the
+owner's call.**
+
+Previous: 2026-07-25 ~13:0x — **JOINT VALUE-TAX FINDING + d47k repair trajectory + P-ORD landed + D47L frozen-head staged; running log = jax-workstream-plan.md (2026-07-25 sections).**
 imminent (S5 λ probe finishing).**
 
 > **2026-07-23 OVERNIGHT (autonomy window, user rulings: shadow twin
