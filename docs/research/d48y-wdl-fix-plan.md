@@ -8489,3 +8489,57 @@ stalls from memory** — and study 44 confirmed the obvious explanation (study 2
 `CHAINS`) is **already active**, so the mechanism is genuinely open. Also: `r4`
 was never built and the tile response was **still falling at `r5`**, so the
 optimum may be lower than what shipped.
+
+## Tick — gate GREEN on 43+44; study 46 commissioned; PGO rebuild deliberately BATCHED
+
+**Gate on merged main: `Bench: 587683`, eval hash `2e1ede95…79c4`, d13 `1739588`,
+all checks passed.** Studies 43 and 44 landed, including the **−1.37% cycles /
+≈ +2.4 Elo** fold-tile narrowing (node- AND eval-bit-identical).
+
+**D49x: sb490, heldout 0.011114, ema 0.010907** — six consecutive down. The raw
+value is **186e-6 below the restart peak** and holding the faster pace
+(~50e-6/10sb). ~290e-6 still needed to beat the pre-extension 0.010824, with 210
+sb + the anneal remaining. Box: 9467 MB, load 4.37, disk 87%.
+
+### Study 46 — `forward_into`, and a specific ILP hypothesis from the source
+
+Study 44's handover: **`forward_into` is 8.20% of ALL retirement-blocked cycles
+while only 39% of its stalls are memory.** In an engine that is 83% memory-bound,
+that is the anomaly — the largest non-memory stall concentration sits in one
+symbol, and **nobody has ever made `forward_into` faster** (25 and 26 touched it;
+neither targeted its stalls).
+
+**The hypothesis, read out of `sota_simd.rs:2075`:**
+
+```rust
+const CHAINS: usize = if BLOCKS >= 4 { 1 } else { 4 / BLOCKS };
+```
+
+**The design target is 4 total independent accumulators.** On Zen 4 the relevant
+dot-product latency is ~4–5 cycles against 2 issue ports, so saturating needs
+**~8–10 chains, not 4**. If so, `CHAINS` is "active" (study 44 verified that) but
+targeting **half the ILP the machine wants** — and study 44's **11.38%
+dependency-chain share, localised to exactly one symbol**, is the visible
+consequence.
+
+Told explicitly not to take it on trust: derive `BLOCKS` at ACC=1280 from the
+shipped build, validate the instruction's real latency/port count rather than
+assert counter semantics (study 44's refusal is the standard), and confirm the
+11.38% is that symbol. **If the ILP target is already adequate, that is a
+redirect with a number, not a stopping point.**
+
+**Also owed and cheap:** study 44 shipped `REGS_CAP = 5` but **`r4` was never
+built and the response was STILL FALLING at `r5`.** The arms already exist —
+build it, panel it, bank the result early.
+
+**Warned about all three instrument defects** found in the last hours (blocked
+Latin harness, the one-trajectory node instrument, the 2× denominator), and told
+to run a byte-identical null through its own harness and report the number.
+
+### PGO rebuild: batched on purpose, not forgotten
+
+The loop says build PGO after a landed win. **Deferring it to the D49 verdict
+(~7h) is the better call:** no games are queued until then, a PGO build is the
+single heaviest memory event on this box (it caused the 2026-07-27 global OOM),
+and batching captures **every** landed win in one build instead of rebuilding per
+study. Recorded so it is a decision rather than an omission.
