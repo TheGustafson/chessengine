@@ -1336,44 +1336,87 @@ fn resolve_both(
     psqt_deltas: &mut [[i32; BUCKETS]; 2],
 ) -> [(usize, usize); 2] {
     let mut len = [(0usize, 0usize); 2];
-    let has_psqt = !psqt_table.is_empty();
+
+    // `& (DELTA_CAP - 1)` below is a NO-OP on the value and a range fact for
+    // the optimizer, the same move as `index_decoded`'s `& 63`. `adds`/`subs`
+    // are `[usize; DELTA_CAP]` and each event pushes at most ONE index into ONE
+    // of them, so a cursor can only reach `events.len() <= DELTA_CAP` — and the
+    // last *write* is therefore at `DELTA_CAP - 1`. LLVM cannot see that (the
+    // cursor is carried across a loop whose trip count it does not relate to
+    // the array length), so the store carried a `cmp $0xff` / `ja panic` pair
+    // per event per perspective. DELTA_CAP is a power of two, which is what
+    // makes the mask free.
+    const M: usize = DELTA_CAP - 1;
+
+    // LEGACY (psqt-less) NET — hand-unswitched, exactly as `resolve_into`
+    // already was. Perf study 24 arm r1: `resolve_both` never got that
+    // treatment, so `has_psqt` was a loop-invariant `&[i32]` emptiness test
+    // re-evaluated per resolved index per perspective — and register pressure
+    // in this loop had SPILLED it, so the asm re-read it from the stack
+    // (`cmpq $0x0,0xd8(%rsp)`, four copies inside the loop body).
+    if psqt_table.is_empty() {
+        for d in events {
+            let att = sf_code(d.attacker);
+            let atd = sf_code(d.victim);
+            for p in 0..2 {
+                let Some(idx) = resolvers[p].index_decoded(att, atd, d.from, d.to) else {
+                    continue;
+                };
+                debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
+                if d.add {
+                    adds[p][len[p].0 & M] = idx;
+                    len[p].0 += 1;
+                } else {
+                    subs[p][len[p].1 & M] = idx;
+                    len[p].1 += 1;
+                }
+            }
+        }
+        return len;
+    }
+
     // Register-resident PSQT accumulators, the §4.5 pairing that only pays
     // alongside `psqt_row`'s fixed-size row.
     let mut acc = *psqt_deltas;
+    // Row-major view of the PSQ1 table, hoisted out of the event loop: the
+    // per-call `as_chunks` inside `psqt_add`/`psqt_sub` re-derived the row
+    // count by a shift on every resolved index.
+    let (rows, _tail) = psqt_table.as_chunks::<BUCKETS>();
     for d in events {
         let att = sf_code(d.attacker);
         let atd = sf_code(d.victim);
+        // BOTH perspectives resolved before EITHER PSQ1 row is touched (perf
+        // study 24 arm r2). Each row is a random 32-byte load out of a 2.7 MB
+        // table — an L2-miss/L3-hit on essentially every event — and the
+        // address depends on a THREE-DEEP dependent load chain inside
+        // `index_decoded` (`lut1` → `offsets` → `lut2`). In the interleaved
+        // shape the second chain did not even start until the first row's
+        // `vpaddd` had retired, so the two long latencies serialised; a
+        // `perf annotate` of the split build put **41% of `resolve_both`** on
+        // the four instructions immediately after the `vpaddd`/`vpsubd` pairs.
+        // Resolving both first makes the two loads independent and adjacent,
+        // so the memory system overlaps them.
         for p in 0..2 {
             let Some(idx) = resolvers[p].index_decoded(att, atd, d.from, d.to) else {
                 continue;
             };
             debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
-            // `& (DELTA_CAP - 1)` is a NO-OP on the value and a range fact for
-            // the optimizer, the same move as `index_decoded`'s `& 63`.
-            // `adds`/`subs` are `[usize; DELTA_CAP]` and each event pushes at
-            // most ONE index into ONE of them, so a cursor can only reach
-            // `events.len() <= DELTA_CAP` — and the last *write* is therefore
-            // at `DELTA_CAP - 1`. LLVM cannot see that (the cursor is carried
-            // across a loop whose trip count it does not relate to the array
-            // length), so the store carried a `cmp $0xff` / `ja panic` pair
-            // per event per perspective. DELTA_CAP is a power of two, which is
-            // what makes the mask free.
             debug_assert!(
                 len[p].0 < DELTA_CAP && len[p].1 < DELTA_CAP,
                 "resolve cursor overflow: {len:?} events={}",
                 events.len()
             );
             if d.add {
-                adds[p][len[p].0 & (DELTA_CAP - 1)] = idx;
+                adds[p][len[p].0 & M] = idx;
                 len[p].0 += 1;
-                if has_psqt {
-                    psqt_add(&mut acc[p], psqt_table, idx);
+                for (a, &w) in acc[p].iter_mut().zip(&rows[idx]) {
+                    *a += w;
                 }
             } else {
-                subs[p][len[p].1 & (DELTA_CAP - 1)] = idx;
+                subs[p][len[p].1 & M] = idx;
                 len[p].1 += 1;
-                if has_psqt {
-                    psqt_sub(&mut acc[p], psqt_table, idx);
+                for (a, &w) in acc[p].iter_mut().zip(&rows[idx]) {
+                    *a -= w;
                 }
             }
         }
