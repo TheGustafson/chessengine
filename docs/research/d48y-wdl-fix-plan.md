@@ -6644,3 +6644,50 @@ projection cost (if all arms fail the rule, the pre-registered answer is
 — suspect it first if kmeans ≈ random; which load regime prices the speed win
 for real matches; and that the census used one corpus band, not the training
 mix.
+
+## Tick 2026-07-31 ~05:00 — main RESTORED and verified; D49 sb357
+
+**`gatefix` green — all three pins bit-for-bit:**
+
+    eval hash : 2e1ede9521624dd89...93cf79c4   (unchanged)
+    d13 nodes : 1739588                        (unchanged)
+    Bench     : 587683
+    All checks passed.   GATE_EXIT=0
+
+**So the TRM1 merge IS behaviour-preserving for non-TRM1 nets**, and the
+double-fold my keep-both resolver introduced is gone. `gate39` had already
+passed independently, confirming study 39's merge was clean and the damage was
+mine alone, in the POC merge.
+
+### The incident, recorded for the process rather than the code
+
+`af05c2c` resolved a `sota_features.rs` conflict with a script because it
+reported **a single hunk**. That script concatenated two versions of
+`refresh_threat_into_at` — study 39's `foldcount` block with 3-arg calls, then
+the POC's `match remap` with its 4-arg call. It **failed to compile (E0061)**,
+which is how it was caught, **and the compile error was masking a correctness
+bug**: had the arity happened to match, the function would have folded every
+threat row **twice**.
+
+**Rule I am adopting: a keep-both resolver is fine for docs and `.gitignore`,
+and unsafe for code.** The three earlier code conflicts this session were
+inspected by hand and were fine; this one I delegated purely because it looked
+small. Size is not the criterion — file type is.
+
+### D49 projection, updated
+
+**sb350: raw 0.011060 / ema 0.010942**, 50 sb left.
+
+| assumption | endpoint | Elo vs canonical |
+|---|---:|---:|
+| EMA own trend since sb270 | 0.010788 | **−10.7** |
+| EMA converges onto raw | 0.010802 | **−12.0** |
+
+**The projection has drifted slightly worse across the anneal** — −25
+(pre-anneal) → −9 → −9.5 → **≈ −11 now** — as the EMA steps stay modest and the
+two columns converge. Still near parity, still short of it. The two estimates
+have also *converged on each other*, which is expected: as LR→0 the EMA bonus
+vanishes, so the "converges onto raw" branch stops being a separate upside case.
+
+**Box:** 8332 MB, free swap 910 MB, load 4.80. **`recode-t1` still armed**,
+waiting on D49. **Study 40** working (dirty=7) on the two gated arms.
