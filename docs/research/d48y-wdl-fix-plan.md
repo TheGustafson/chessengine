@@ -6475,3 +6475,67 @@ might be.
 **Box:** 8170 MB, free swap 912 MB, load 5.13.
 **Study 39** ahead=11, writing up (*"quote the panel-to-panel range"*).
 **POC** ahead=2, on phase-2 (*"trainer-side thre…"*) — so phase 1 is behind it.
+
+## Perf study 39 COMPLETE and MERGED (`2c68626`) — the 5.2x is closed, fusion is DEAD
+
+13 commits, clean, 44.5 KB doc, 16 tools in `tools/perf39/`. `gate39` running.
+
+### Which number was right: NEITHER
+
+It reproduced **both** prior studies on today's engine **in one panel** — study
+29's published statistic to **2.7%** (−4.503% vs its −4.63%), study 31's
+stall-per-line to within its own spread (2.22 fitted / 3.18 at dose 1 vs its
+2.36). **Both measured competently. They measured different things.**
+
+**The confound-free measurement is a third one: 1.119 stall / 1.213 cycles per
+64-byte line** (0.803/0.899 on a busier panel; the range is quoted, not hidden).
+Its construction is the elegant part: `dstpin` **differenced against**
+`actpin0`. Both arms pin `activate` to the same all-zero buffer, so both compute
+the same wrong eval, search the same tree, and retire the same instructions
+(**+1.05 i/n out of 5474**). Their difference relocates **154.92 lines/node** of
+real fold traffic and nothing else. **It exists only as a difference of two
+individually broken arms** — neither is valid alone.
+
+### Study 29's capacity-cliff reconciliation is FALSIFIED
+
+That was the lead hypothesis I put in the brief. Killed two ways: the dose
+series (0/1/2/4 copies, tree bit-identical, **24/24 sign-consistent**) has
+marginal slopes **3.18 → 1.42 → 1.98 — not convex**; and sweeping the probe's
+own footprint **260x at byte-identical instructions finds no knee.**
+
+**The gap factorises exactly instead:** **2.85x = 1.48x (miss count) x 1.93x
+(miss DEPTH)** — stall/miss runs 1.759 → 2.503 → 3.203 across 10 KB → 160 KB →
+2.6 MB footprints at identical instructions, with the real stack at 1.298. The
+remainder to 5.2x is study 29's per-instruction normalisation, which moves its
+own data 0.913 → 0.350.
+
+### FUSION: DO NOT BUILD — and MY FRAMING WAS WRONG
+
+**−23 (best) … +281 (worst) cycles/node ⇒ +1.0 … −11.5 Elo**, and it trades away
+a measured **8.4x refresh advantage** (threat rebuild 4.156 rows at 0.0196/node
+— reproducing study 31's 4.18/0.01955 to 0.5% — going to 0.1647 under fusion).
+
+**I told the user that `activate` streaming 4 arrays vs SF's 2 was "the entire
+byte-traffic difference at the hot boundary." That is retracted.** Study 39
+measures **`activate`'s four accumulator arrays at 0.0032 misses/line — they are
+L1-resident and cost essentially nothing.** *A third of the prize in BOTH prior
+ledgers was worth zero.* The structural 4-vs-2 difference is real; its cost is
+not.
+
+### Retractions it makes of prior work, with data
+
+- study 29's *"`accpin` deletes instructions via compiler CSE"* — no: it is a
+  zero-filled pin that turns **off** `find_nnz`/`l1_dot`; `P39_PINFILL=live`
+  restores **+735 i/n**.
+- study 29's *"accumulator STORES cost by capacity"* — writes are **52% of
+  misses but only 22% of the cycles**; a store miss does not block retirement.
+- **`L1-dcache-loads` on Zen 4 counts stores** — independently confirming study
+  38, so study 29's "load census" is a load+store census.
+- **And one of its own first draft:** it initially wrote that study 31 priced
+  traffic *colder* than the real stream; it was **warmer** (0.477 vs 0.861
+  misses/line).
+
+**Honest close:** *"no games were run, so by the standing rule nothing here is
+arbitrated."* Least sure: the last 1.35x between the real stream's 1.298
+stall/miss and the shallowest probe's 1.759; and panel 3 shipped without a
+byte-identical null, so it is used only for the read:write ratio.
