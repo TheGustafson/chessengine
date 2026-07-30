@@ -6325,3 +6325,69 @@ gap close in the back half of the anneal?** The decision point I set earlier
 It is docs-only and on a different file, so no conflict so far — but that is
 luck, not design, and it is worth watching for commit races. Research studies
 should get `isolation: worktree` like the perf studies do.
+
+## Learned feature-code: design study DONE, POC study commissioned
+
+**Design study committed as `a4d5aec`** —
+`docs/research/learned-feature-code-study-2026-07-30.md` (43 KB) plus a
+built-and-run instrument, `tools/nnue/feature_census.py`. No training launched;
+3 minutes of nice'd CPU beside the live run.
+
+### It improved on my framing, which is the point of commissioning it
+
+I said the learnable surface was vocabulary / conditioning / firing-count. **It
+found a lever I missed:** the accumulator is a **turnstile linear sketch**
+(contributions need only combine under an abelian group with cheap inverse), and
+because each channel's (atom, context) space is finite and **already routed
+through LUTs**, **the code MAPPING is completely unconstrained — any learned
+code compiles to table contents and deploys as DATA with zero engine change.**
+
+It also priced a constraint I had not: **rows-per-atom multiplies the fold
+kernels** (#1 and #2 in the profile, 13.77% + 12.38%, input machinery ~45% of
+cycles), so **k=2 costs ~−20 Elo of speed**. k-hot proposals now carry a
+quantified burden.
+
+### Verified by me
+
+- **`ft_sparsity_lambda` is L1 on post-CReLU ACTIVATIONS**, not input-code
+  selection — `jax/archon_jax/train.py:213` says so in its own comment
+  (*"= what the engine pays for (density-linear l1_dot)"*). **Wrong knob**, as
+  reported. That was the specific question I asked it to settle.
+- Its in-repo commit landed cleanly on top of mine; **no collision, but that was
+  luck** — the POC study gets worktree isolation.
+
+### The measured census — the actionable part
+
+- **top 1,024 of 60,720 threat rows carry 56.4% of fire mass**
+- **22% never fire across 4M positions** ⇒ ~13,400 dead rows, **~17 MB of a
+  77.7 MB table**
+
+Since our entire measured bottleneck is weight-row load traffic, that is
+on-mechanism rather than speculative.
+
+**Prior-art null:** no engine and no ML paper learns a sparse code under an
+explicit update-cost objective — the publishable angle — with two honesty
+caveats flagged (an unread talkchess thread, a machine-unreadable thesis). Three
+engine-survey corrections folded in, notably that **SF's 32 king buckets are
+full resolution**, so the learnable object is the *coarsening* (B<32), which
+nobody has learned.
+
+## POC study commissioned — ordered cheapest-falsifiable-first
+
+**Phase 1 kills or confirms the cache win BEFORE any training**, using a
+projected code. That is the predecessor's own top uncertainty *and* its noted
+decoupling (mode (ii) benches with a projected net). **CPU-only, so it does not
+contend with D49 on the GPU.** If a 77.7 MB → L3-sized table buys no cycles,
+mode (ii) dies in hours and only mode (i) — pure quality, zero engine lines —
+survives.
+
+Phase 2: the load-time index remap (**zero trainer surgery** — `features.py`
+computes indices in numpy). Phase 3: the **pre-registered** Tier-1 panel
+(identity null, random-partition null, fly-hash control, two learned arms,
+~45 min/arm), with the rule fixed before results are seen.
+
+**Handed it the fixed-node cycles frame** — fixed NODE budget, verify node AND
+instruction counts before trusting the delta, alternate order, report rank
+separation. For a remap that changes table size but not arithmetic, instructions
+should stay near-constant, which makes that frame ideal for exactly this
+question.
