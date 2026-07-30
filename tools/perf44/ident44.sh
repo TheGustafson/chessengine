@@ -25,9 +25,11 @@ WANT_HASH=2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4
 WANT_D13=1739588
 rc=0
 for label in "$@"; do
-  n=$(taskset -c "$CPU" "./$BIN/$label" bench 16 1 100000 "$FENS" nodes "$NET" 2>/dev/null \
+  # `bench` reports on STDERR -- stdout is reserved for the fingerprint, which
+  # is exactly why the eval hash below can be piped straight from stdout.
+  n=$(taskset -c "$CPU" "./$BIN/$label" bench 16 1 100000 "$FENS" nodes "$NET" 2>&1 >/dev/null \
       | sed -n 's/^Nodes searched  : //p' | tail -1)
-  d13=$(taskset -c "$CPU" "./$BIN/$label" bench 16 1 13 "$FENS" depth "$NET" 2>/dev/null \
+  d13=$(taskset -c "$CPU" "./$BIN/$label" bench 16 1 13 "$FENS" depth "$NET" 2>&1 >/dev/null \
       | sed -n 's/^Nodes searched  : //p' | tail -1)
   # Same spelling `tools/check.sh` uses for its own pin, so the two cannot drift.
   h=$("./$BIN/$label" nnue-eval "$NET" < "$FENS" | sha256sum | cut -d' ' -f1)

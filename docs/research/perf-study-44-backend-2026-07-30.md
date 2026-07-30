@@ -227,15 +227,24 @@ across the denominator range.
 **`SotaHead::forward_into` takes 8.20 % of `not_complete` while taking only
 3.87 % of `load_not_complete`** — its share of total stalls is **2.1× its share
 of load stalls**, the only inversion in the table. That is the signature of a
-dependency chain, and it has a known mechanism: `l1_dot_inner` is a chain of
-`vpdpbusd` (Zen 4: ~4-cycle latency, ~1/cycle throughput) and perf study 21
-already added `CHAINS` independent accumulator sets for exactly this reason —
-but only for widths with `BLOCKS < 4`. At D48X (`L2 = 128`, `L2_BLK = 16`)
-`BLOCKS = 8`, so `CHAINS = 1` and study 21's fix is switched off by its own
-condition.
+dependency chain rather than a memory wait, and it is consistent with study 29's
+independent IBS observation that `forward_into` is **12.25 % of the engine's
+loads but only 2.18 % of its load-stall cycles**: this symbol issues a lot of
+memory traffic that does *not* stall, and stalls on something else.
 
-**This is the single best-identified lever this study did not have time to
-build**, and §8 records it as such rather than as a finding.
+**The obvious mechanism is NOT the mechanism, and I checked before writing it
+down.** `l1_dot_inner` is a `vpdpbusd` chain (Zen 4 ~4-cycle latency at ~1/cycle
+throughput) and perf study 21 added `CHAINS` independent accumulator sets for
+exactly that — gated on `BLOCKS = L2 / L2_BLK < 4`. My first draft of this
+section asserted that D48X has `L2 = 128`, hence `BLOCKS = 8`, hence
+`CHAINS = 1`, hence study 21's fix is switched off. **That is false.**
+`sota_head.rs:100-101` gives `L2 = 16` for `arch-d48x`, so `BLOCKS = 1` and
+`CHAINS = 4` — **study 21's fix is already active at the shipping arch.**
+
+So the chain is somewhere else in `forward_into` — `l3_dot` is a true reduction,
+`propagate_l2` is a 16×32 f32 matmul, and the WDL softmax is serial — and this
+study did not localise it further. §8 records it as the best-identified
+UNBUILT lever, with that correction attached, rather than as a finding.
 
 ---
 
@@ -333,6 +342,68 @@ same order with the same arithmetic, and register `k` consumes its own distinct
 32 bytes of each weight row either way, so no row is read more or fewer times.
 `REGS ∈ {20, 10, 8, 5, 4}` are the exact divisors of `ACC_BLOCKS = 40` at or
 below 20.
+
+**The code-size cost, read off the binaries** (`size -A`, and `nm` summed over
+`i8_deltas_into*`, `i8_into_shaped*`, `i8_deltas_dual*`, `i8_deltas_inner`) —
+this matters because study 41 established that `ex_no_retire.empty` follows
+instruction FETCHES at ≥ 0.79, and fetches ≈ executed code bytes ÷ 64:
+
+| binary | `REGS` | `TILES` | `.text` | vs base | fold kernels | vs base |
+|---|---:|---:|---:|---:|---:|---:|
+| `base44` | 20 | 2 | 694 325 | — | 8 176 | — |
+| `r10` | 10 | 4 | 697 221 | **+0.42 %** | 9 408 | +15.1 % |
+| `r8` | 8 | 5 | 702 197 | +1.13 % | 12 426 | +52.0 % |
+| `r5` | 5 | 8 | 704 981 | +1.54 % | 13 388 | +63.7 % |
+
+`base44`'s `.text` is **694 325 bytes — identical to study 41's reference
+binary**, an independent confirmation that this study's base is the same code
+the front-end study measured. At study 41's slope, `r10`'s +0.42 % of code
+buys back only ~0.016 % of cycles in extra front-end bubble: **not a material
+cost at this size**, and not the explanation for anything below.
+
+---
+
+### 4.2 The sweep — and the honest history of how the number moved
+
+**This arm was nearly published off a lucky `n`, and the record of that is the
+most useful part of the section.** The sweep panel's `cycles:u` estimate for
+`r10` read **−2.49 % (5/5 rounds negative)** at n = 5, **−1.50 % (7/10)** at
+n = 10, and **−0.77 % (7/12)** at n = 12 — shrinking monotonically as rounds
+accumulated, with the sign count stuck at 7/12 (p = 0.77). That is precisely
+the shape of study 29 §5.3's retracted result, which looked like a −1.67 %
+cycles win at n = 13 and evaporated at n = 24.
+
+So the sweep was **stopped and replaced by a longer, narrower panel** —
+`base44`, `r10`, `r5`, byte-identical null, 45 rounds — carrying
+`ex_no_retire.thread_not_selected` so the reduction can also report
+`cycclean = cycles − thread_not_selected` (study 40 §3.2 measured that
+subtraction cutting a byte-identical null's trimmed sd from 0.888 % to
+0.624 %, i.e. 2.0× fewer rounds for the same resolution).
+
+**The mechanism counters never wavered, and they are what the arm was aimed
+at.** From the sweep panel (`panel-regs-sweep.txt`, n = 9–12, contrasts against
+the same-round reference):
+
+| | `r10` | `r8` | `r5` | **null** |
+|---|---:|---:|---:|---:|
+| `store_queue_rsrc_stall` | **−13.05 %** (10/10, p = 0.002) | −19.10 % (9/9, p = 0.004) | **−23.33 %** (10/10, p = 0.002) | −0.06 % (5/10, p = 1.00) |
+| `load_queue_rsrc_stall` | **−8.40 %** (10/10, p = 0.002) | −9.84 % (9/9, p = 0.004) | **−14.40 %** (10/10, p = 0.002) | −0.18 % (5/10, p = 1.00) |
+| `ex_no_retire.load_not_complete` | −2.11 % (8/10) | +0.67 % (2/9) | −4.17 % (8/10) | +0.62 % (4/10) |
+| `instructions:u` | +1.257 % | +2.305 % | +4.087 % | +0.007 % (5/10) |
+
+**Store-queue pressure falls monotonically with tile width — 13 %, 19 %, 23 %
+— at 10/10 and 9/9, against a null that is a coin flip at 5/10.** The predicted
+mechanism is real and large. `instructions:u` rises monotonically and with
+exactly zero spread, as designed: this arm can only ever lose on that counter,
+which is the whole reason it had never been tried.
+
+**`r8` is anomalous and I cannot explain it.** It has the second-largest
+store-queue reduction and the *worst* cycles reading (+0.67 %, 4/9 — a null),
+breaking the monotone ordering that `r10` and `r5` both fit. Its fold kernels
+are 12 426 B against `r10`'s 9 408 and `r5`'s 13 388, so code size does not
+order it either. `TILES = 5` is the only odd trip count in the sweep, which is
+a hypothesis and not a finding. It is recorded here as an unexplained
+non-monotonicity, not smoothed away.
 
 ---
 

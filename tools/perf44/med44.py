@@ -58,6 +58,15 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     path, ref, labels = args[0], args[1], args[2:]
     rows = load(path)
+    # Study 40 §3.2: `ex_no_retire.thread_not_selected` is the SMT sibling
+    # stealing the core. It ranges -56% to +203% between rounds and is pure
+    # noise for a single-thread arm, so subtracting it gives a cleaner cycle
+    # counter -- measured there to cut a byte-identical null's trimmed sd from
+    # 0.888% to 0.624%, i.e. 2.0x fewer rounds for the same resolution.
+    for per in rows.values():
+        for d in per.values():
+            if "cycles:u" in d and "ex_no_retire.thread_not_selected:u" in d:
+                d["cycclean:u"] = d["cycles:u"] - d["ex_no_retire.thread_not_selected:u"]
     events = sorted({e for r in rows.values() for d in r.values() for e in d})
 
     print(f"# {path}\n# reference: {ref}\n")
