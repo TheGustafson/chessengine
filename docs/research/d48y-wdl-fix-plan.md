@@ -3440,3 +3440,61 @@ descending. Training healthy at sb122/400.
 **Box:** 8.6 GB free, pressure 0.00, no builds. Three studies running —
 29 (fold load census, decides fusion), 30 (CEN3 version guard),
 31 (parity roadmap).
+
+## Tick 2026-07-30 01:40 — disk crisis, false-stall lesson, D49 sb130
+
+**DISK was the unwatched resource.** `.claude/worktrees/` had grown to **88 GB
+across 47 worktrees** (~5 GB of cargo `target/` per finished study), with the
+root filesystem at 89% and only 101 GB free. Reclaimed build dirs from all
+NON-ACTIVE worktrees (68 dirs): **88 GB -> 9 GB, 101 GB -> 179 GB free.**
+Source, git history and the three running studies were untouched — cargo
+artifacts are regenerable by definition, which is what makes this safe.
+*Standing habit: check `df -h /` on the tick, not just `free -m`.* A first pass
+that matched only `target-*` reclaimed 111 MB; most worktrees use plain
+`target/`.
+
+**RETRACTED INSTRUMENT: file-mtime stall detection.** I have been calling a
+study "stalled" when `find -newermt '-15 min'` returns 0 files. This tick it
+fired on **all three studies at once** — and a `/proc/*/cwd` scan showed every
+one of them mid-`cargo test` with live child processes (load average 12.04).
+The heuristic cannot see work that happens inside a build. **Detect with the
+cwd scan instead:**
+
+```bash
+for p in $(ls /proc | grep -E '^[0-9]+$'); do
+  cw=$(readlink "/proc/$p/cwd" 2>/dev/null) || continue
+  case "$cw" in *worktrees/agent-*)
+    tr '\0' ' ' < "/proc/$p/cmdline" | grep -q shell-snapshots && continue
+    echo "$p $(tr '\0' ' ' < /proc/$p/cmdline | head -c 80)";; esac
+done
+```
+
+Note this means **the study-23 "stall" I nudged earlier may never have been
+stalled** — the nudge was cheap, but the diagnosis was not evidence-based.
+
+**Also checked and CLEARED:** all three transcripts report
+`gitBranch: worktree-agent-af852c45b5086e424`, which looked like three agents
+sharing one branch. Direct `git -C <worktree> rev-parse --abbrev-ref HEAD`
+shows each is on its OWN branch; the shared value is session-level transcript
+metadata, not the real checkout. No merge-integrity problem.
+
+**D49 at sb130/400** (178k pos/s, ~2.34 min/sb, ~10.5 h to finish). Descending
+monotonically, no plateau — cosine has 170 sb left before the 300->400 anneal:
+
+| sb | heldout | ema | train |
+|---|---|---|---|
+| 10 | 0.017605 | 0.017254 | 0.013851 (sb5) |
+| 40 | 0.014338 | 0.013338 | 0.009609 (sb45) |
+| 80 | 0.013512 | 0.012602 | 0.009035 (sb85) |
+| 120 | 0.012989 | 0.012211 | 0.008789 (sb105) |
+| **130** | **0.012826** | **0.012144** | **0.008605** |
+
+Generalization gap 1.49x (train/heldout), normal for NNUE. The earlier sb10 row
+at 0.038598 is the pre-fix run, before the heldout scorer was corrected to the
+network-side `expected_score` transform.
+
+**Study status:** 29 (fold census) ahead=0, 21 dirty — *still the study-20
+hazard: nothing committed after ~2 h.* 30 (CEN3 guard) ahead=2, 5 dirty.
+31 (roadmap) ahead=0, 6 dirty. No games launched this tick deliberately: load
+was already 12.04 with three cargo builds plus the trainer, and the user's
+sequence is study 30 -> test -> games.
