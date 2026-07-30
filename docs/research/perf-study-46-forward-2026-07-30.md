@@ -533,6 +533,22 @@ now, at 5.
 | `null46` byte-identical to `base46` | `cmp` clean |
 | `base46` fold-kernel bytes vs study 44 `r5` | **13 388 both** |
 | `r8` fold-kernel bytes vs study 44 `r8` | **12 426 both** |
+| `instructions:u` on `base46` vs study 44's `r5` prediction | 6170.77 vs 5929.09 × 1.04076 = **6170.8** |
+| `fp_ops_retired_by_width.all` vs study 44 | 1398.05 vs 1399.34 (−0.09 %) |
+| `pack_512_uops_retired` vs study 44 | 1283.25 vs 1282.60 (+0.05 %) |
+| **comment-only source edits are codegen-neutral** | rebuilt binary **`cmp`-identical to `base46`** — proved, not asserted |
+| byte-identical null, `instructions:u` | **0.000 %**, every round |
+| `cargo fmt --check` / `cargo clippy --all-targets` | clean |
+| release perft suite | pass |
+| **`Bench:`** | **587683** — unchanged |
+| **NNUE eval hash** (from source) | **`2e1ede95…79c4`** — unchanged |
+| **NNUE d13 nodes** (from source) | **1739588** — unchanged |
+| `CHECK_NNUE_GATE=1 CHECK_TEST_THREADS=2 bash tools/check.sh` | **All checks passed.** (rc = 0) |
+
+**No pin moves in this study, and that is the correct outcome**: nothing that
+reaches the shipped binary changed. `REGS_CAP` stays at 5, `l1_dot` stays as it
+is, and the `l2_tail` change that *would* have moved a pin was rejected on
+arithmetic before it was written.
 
 ---
 
