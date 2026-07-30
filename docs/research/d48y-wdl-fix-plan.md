@@ -8543,3 +8543,36 @@ The loop says build PGO after a landed win. **Deferring it to the D49 verdict
 single heaviest memory event on this box (it caused the 2026-07-27 global OOM),
 and batching captures **every** landed win in one build instead of rebuilding per
 study. Recorded so it is a decision rather than an omission.
+
+## Tick — the OWED per-position independence audit, CLOSED
+
+**D49x: sb496**, 191.7k pos/s, ema 0.010907 (six consecutive down). Box 9195 MB,
+load 3.98, disk 87%, both services active. Three lines running: study 45
+(harvest), study 46 (`forward_into`), and the relaunched learned-representation
+study.
+
+### Audit result: blast radius essentially NIL
+
+Study 45 showed `bench <fens> depth` is **one sequential TT trajectory, not 50
+independent samples**, and I flagged an audit as owed. Done:
+
+| study | uses per-position node statistics? |
+|---|---|
+| 43, 44 | mention it, but **postdate the finding and account for it** |
+| **17** (exact counters) | **NO** — its mentions are about tree properties per position, and it already ships a *"not-usable row"* table warning against exactly this class of ratio |
+| **16** (memset class) | **NO** — its mention is about linearity in nodes |
+| all others | no per-position independence-assuming statistics |
+
+**Study 17 had independently anticipated the hazard** and marked absolute totals
+and ratios built from them as not-usable. That is the audit's most reassuring
+finding, and it was there a day before study 45 named the mechanism.
+
+**One historical instance, and it is harmless:** the P9 **upcoming-repetition**
+change reports "*across the other 48 it is −28.8% nodes*" (CLAUDE.md:471) — a
+per-position aggregate over a correlated trajectory, so that figure is not the
+independent-sample statistic it reads as. **It was never load-bearing:** the same
+paragraph records "*Strength testing still owed*", so no promotion decision ever
+rested on it. Flagged, not re-litigated.
+
+**Owed item CLOSED.** The instrument defect is real and now documented in three
+places; what it did *not* do is corrupt prior conclusions.
