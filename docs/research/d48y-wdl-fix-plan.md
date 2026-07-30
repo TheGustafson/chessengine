@@ -5976,3 +5976,62 @@ load 13.54 with a screen and a gate already running.
 **Note on notification noise:** study 38 has fired ~6 duplicate completion
 notifications from its queued gate-wait pollers draining. Harmless, but worth
 knowing that a study's `sleep`-loop waiters keep notifying after it finishes.
+
+## D49's OWN heldout↔Elo map — the projection, with both models
+
+`d49-rate` at 1002/1466: **+47.10 +/- 13.93** for D49 sb270 vs D49 sb180 (same
+scale, same net family). **D49 gained +47 Elo across 90 superbatches of
+cosine.** With the trajectory result that fixes two points:
+
+| checkpoint | heldout | Elo vs canonical |
+|---|---|---|
+| sb180 | 0.012248 | **≈ −94.3** *(derived: −47.21 − 47.10)* |
+| sb270 | 0.011472 | **−47.21 +/- 11.34** *(measured)* |
+
+**SLOPE: 60,696 Elo per unit heldout — one point of 1e-4 is worth 6.07 Elo.**
+
+### To reach parity
+
+From sb290 (heldout **0.011355**), heldout must fall **0.000778** to
+**0.010577**.
+
+**Model A — linear extrapolation of the recent rate** (0.000034 per 10 sb,
+110 sb left): predicted fall 0.000374 ⇒ heldout 0.010981 ⇒ **ends ≈ −25 Elo vs
+canonical.** Short of parity.
+
+**Model B — the AXIS LAW mechanism** (the generalization gap closes *through*
+the anneal). Current gap: train 0.007645 vs heldout 0.011355 = **48.5%**.
+
+| if gap closes to | heldout | Elo vs canonical |
+|---|---|---|
+| 40% | 0.010703 | **−8** |
+| 30% | 0.009938 | **+39** |
+| 20% | 0.009174 | **+85** |
+
+**The two models bracket the outcome at −25 to +85**, and **the decisive
+quantity is how far the generalization gap closes during the anneal.** That is
+now a specific, falsifiable thing to watch through sb300→400 — not a hope.
+
+*(Noted, not built on: gap→20% lands on +85, which is exactly the prior run's
+endpoint. One coincidence between two runs with different recipes is not
+evidence, and I am recording it only so nobody later mistakes it for a
+prediction I made.)*
+
+### Caveats, stated
+
+- **sb180's −94.3 is DERIVED**, not directly measured against canonical.
+- `d49-rate` is **provisional at 1002/1466** (+/-13.93, will tighten to ~+/-10).
+- **The slope is a line through two points.** It has no curvature information,
+  and linearity far outside the measured heldout range (0.01147-0.01225) is an
+  assumption, not a result.
+- Model B's gap percentages are illustrative brackets, not a fitted curve. The
+  prior run's gap went 6% → 1.5% in its final quarter, but on a **different loss
+  definition** (D49 uses pow_exp 2.5 and the network-side double sigmoid), so
+  those figures do not transfer numerically.
+
+### What to watch
+
+**Track train loss AND heldout together through the anneal.** The map converts
+any heldout reading directly into a predicted Elo, so each sb300+ sample is now
+a strength forecast. If the gap does not start closing by ~sb330, Model A is
+winning and the endpoint is ≈−25.
