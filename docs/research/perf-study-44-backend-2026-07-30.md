@@ -586,13 +586,24 @@ mechanism is real and large. `instructions:u` rises monotonically and with
 exactly zero spread, as designed: this arm can only ever lose on that counter,
 which is the whole reason it had never been tried.
 
-**`r8` is anomalous and I cannot explain it.** It has the second-largest
+**`r8` looked anomalous here — and the right conclusion is that `r8` is
+UNMEASURED, not anomalous.** On this sweep it had the second-largest
 store-queue reduction and the *worst* cycles reading (+0.67 %, 4/9 — a null),
-breaking the monotone ordering that `r10` and `r5` both fit. Its fold kernels
-are 12 426 B against `r10`'s 9 408 and `r5`'s 13 388, so code size does not
-order it either. `TILES = 5` is the only odd trip count in the sweep, which is
-a hypothesis and not a finding. It is recorded here as an unexplained
-non-monotonicity, not smoothed away.
+breaking the ordering `r10` and `r5` both fit. But **this whole table was taken
+on the instrument §4.2 shows was broken**, and `r8` was never re-run on the
+Latin square. Its 9 rounds are exactly the sample size at which a 0.73-position
+imbalance does its worst damage.
+
+Two things support downgrading it from "anomaly" to "not measured". Code size
+does not order it (`r8`'s fold kernels are 12 426 B against `r10`'s 9 408 and
+`r5`'s 13 388, so it is not the biggest). And on the FIXED instrument the
+response is **monotone across the two caps that were re-run** — `r10` −0.72 %
+and `r5` −1.37 %, tracking store-queue relief of −9.5 % and −19.5 %. A
+mid-point that inverts a relationship whose two endpoints are both clean is
+much more likely to be an artifact of the instrument it was measured on than a
+real feature of the machine. **I did not spend rounds re-measuring `r8`** —
+`r5` is the landing candidate and `r8` sits between two measured points — so it
+goes in §8 as unmeasured.
 
 ---
 
