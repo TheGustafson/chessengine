@@ -652,12 +652,39 @@ impl Board {
         }
 
         // 6. In check, a Normal move is pseudo-legal only if the evasion
-        //    generator would emit it (blocks, checker captures, king
-        //    flights — with the evasion target masks applied).
-        if !self.checkers().is_empty() {
-            let mut list = MoveList::new();
-            generate::<{ gen_type::EVASIONS }>(self, &mut list);
-            return list.contains(&m);
+        //    generator would emit it. Answered DIRECTLY from the check
+        //    geometry rather than by generating the whole evasion list and
+        //    scanning it — perf study 36. Read `generate_all::<EVASIONS>`
+        //    beside this: it is a three-line function once checks 3-5 above
+        //    have already done the piece geometry.
+        //
+        //    * **King:** `king_target` is `!occupancy(us)` — a flight is
+        //      never restricted to the check ray, and safety is `legal`'s
+        //      job. Check 3 puts OUR piece on `from`, so a King here IS
+        //      `king_square(us)`; check 5b already ran `king_attacks(from)`
+        //      and check 4 already cleared `to`. Nothing is left to test.
+        //    * **Double check:** `generate_all` skips every non-king
+        //      generator outright.
+        //    * **Single check, non-king:** every remaining generator is
+        //      masked by `target = between(ksq, checker)` — pushes and piece
+        //      moves directly, and pawn captures by `enemies = checkers()`,
+        //      which is the same set here because the squares strictly
+        //      between a king and its checker are empty by construction, so
+        //      `target & occupancy(them) == checkers()`.
+        //
+        //    Study 34 §9 measured the cost this deletes: 157,016 of the
+        //    engine's 349,337 evasion generations — 45% — were this line
+        //    validating one TT move.
+        let checkers = self.checkers();
+        if !checkers.is_empty() {
+            if pc.piece_type == PieceType::King {
+                return true;
+            }
+            // `lsb` is `Some` because `checkers` is non-empty; `more_than_one`
+            // has already rejected the double-check case, where no non-king
+            // move is generated at all.
+            return !checkers.more_than_one()
+                && attacks::between(self.king_square(us), checkers.lsb().unwrap()).contains(to);
         }
 
         true
@@ -2296,6 +2323,25 @@ mod tests {
         // Double check and a checkmate: king-only / empty evasion sets.
         "4k3/8/3N4/8/8/8/8/4RK2 b - - 0 1",
         "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3",
+        // Perf study 36: one fixture per shape of the single-check evasion
+        // mask, since `pseudo_legal` step 6 now answers from the geometry
+        // instead of generating the list. Each is a case where the direct
+        // test and the generator could diverge if `between`'s "includes the
+        // target square" convention were misread.
+        //   knight checker — `between` is exactly {f3}, no interposition
+        "4k3/8/8/8/8/5n2/8/4K3 w - - 0 1",
+        //   distant rook checker — a knight with both blocking and
+        //   non-blocking destinations on the SAME piece
+        "4k3/8/8/8/8/2N5/8/r3K3 w - - 0 1",
+        //   contact check by a queen — capture-only, adjacent
+        "4k3/8/8/8/8/8/4q3/4K3 w - - 0 1",
+        //   pawn checker — the checker is not a slider and not capturable
+        //   by a push
+        "4k3/8/8/8/8/8/3p4/4K3 w - - 0 1",
+        //   bishop checker blocked by a DOUBLE push (b2-b4) but not by the
+        //   single push (b2-b3): the one geometry where the relay-square
+        //   test in check 5a and the ray mask must both fire
+        "4k3/8/8/b7/8/8/1P6/4K3 w - - 0 1",
     ];
 
     #[test]
@@ -2355,6 +2401,12 @@ mod tests {
     /// Release/nightly tier (heavier — a 64k scan at every interior node):
     /// recurse the differential oracle to depth 3 from the most branching
     /// standard perft positions.
+    ///
+    /// Perft position 4 is here because its ROOT is in check (bishop b6 on
+    /// the long diagonal to g1), so every one of its subtrees enters
+    /// `pseudo_legal`'s check-6 evasion branch at the root as well as at
+    /// interior nodes — the branch perf study 36 rewrote from a generation
+    /// plus a list scan into a direct geometry test.
     #[test]
     #[ignore = "release/nightly perft tier: 64k-per-node predicate scan"]
     fn perft_predicate_oracle_deep() {
@@ -2362,6 +2414,10 @@ mod tests {
             (crate::fen::START_FEN, 3),
             (KIWIPETE, 3),
             ("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 3),
+            (
+                "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+                3,
+            ),
         ] {
             assert_eq!(
                 perft_via_predicate(&mut board(fen), depth),

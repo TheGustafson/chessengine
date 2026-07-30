@@ -77,3 +77,9 @@ bin35/
 target35/
 bin34/
 /target34-*/
+# perf study 36: the recorded perf.data files (36 MB) are regenerable with
+# tools/perf36/prof36.sh; the derived tables and panels beside them are not,
+# and stay tracked.
+docs/research/perf-artifacts-36/*.data
+bin36/
+/target36-*/

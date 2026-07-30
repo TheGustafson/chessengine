@@ -1,0 +1,45 @@
+FOLDCOUNT nodes=5001624 acc_width=1280
+FOLDCOUNT hka_into.calls=4892468 hka_into.rows=11141369
+FOLDCOUNT hka_dual.calls=801138 hka_dual.rows=4551690
+FOLDCOUNT hka_inplace.calls=128 hka_inplace.rows=658
+FOLDCOUNT thr_into.calls=4287198 thr_into.rows=19971417
+FOLDCOUNT thr_copy.calls=1650730 thr_copy.rows=0
+FOLDCOUNT activate.calls=2136514 activate.rows=0
+FOLDCOUNT eval.calls=2136514 eval.rows=0
+FOLDCOUNT hka_shape.1a1s=3536035
+FOLDCOUNT hka_shape.1a2s=1307817
+FOLDCOUNT hka_shape.2a1s=48616
+FOLDCOUNT thr_shape.1=799924
+FOLDCOUNT thr_shape.2=692078
+FOLDCOUNT thr_shape.3=568774
+FOLDCOUNT thr_shape.4=473089
+FOLDCOUNT thr_shape.5=381358
+FOLDCOUNT thr_shape.6=297729
+FOLDCOUNT thr_shape.7=241202
+FOLDCOUNT thr_shape.8=193546
+FOLDCOUNT thr_shape.9=161348
+FOLDCOUNT thr_shape.10=133987
+FOLDCOUNT thr_shape.11=104072
+FOLDCOUNT thr_shape.12=78891
+FOLDCOUNT thr_shape.13=56204
+FOLDCOUNT thr_shape.14=37312
+FOLDCOUNT thr_shape.15=24438
+FOLDCOUNT thr_shape.16=17179
+FOLDCOUNT thr_shape.17=9579
+FOLDCOUNT thr_shape.18=7394
+FOLDCOUNT thr_shape.19=3606
+FOLDCOUNT thr_shape.20=2470
+FOLDCOUNT thr_shape.21=1226
+FOLDCOUNT thr_shape.22=662
+FOLDCOUNT thr_shape.23=596
+FOLDCOUNT thr_shape.24=462
+FOLDCOUNT thr_shape.25=58
+FOLDCOUNT thr_shape.26=10
+FOLDCOUNT thr_shape.27=4
+FOLDREGION hka_weights lo=0x7fca96bcb040 hi=0x7fca9874b040 bytes=28835840
+FOLDREGION hka_psqt lo=0x7fca91ef7040 hi=0x7fca91fa7040 bytes=720896
+FOLDREGION hka_stack lo=0x7fca9f5ed040 hi=0x7fca9f72e7c0 bytes=1316736
+FOLDREGION finny_cache lo=0x7fca9f598040 hi=0x7fca9f5ec040 bytes=344064
+FOLDREGION thr_weights lo=0x7fca921ab040 hi=0x7fca96bca040 bytes=77721600
+FOLDREGION thr_psqt lo=0x7fca91fa7040 hi=0x7fca92181640 bytes=1943040
+FOLDREGION thr_stack lo=0x7fca9f456040 hi=0x7fca9f5977c0 bytes=1316736
