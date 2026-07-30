@@ -107,7 +107,18 @@ use crate::types::{Color, MAX_PLY, Piece, PieceType, Square};
 /// One perspective-agnostic threat event: "`attacker` on `from` threatens
 /// `victim` on `to`", appearing (`add`) or disappearing (`!add`). Resolved to a
 /// feature index per perspective by [`threat_index`]; excluded pairs drop out.
+///
+/// # Why `align(8)` (perf study 24 arm d1)
+/// The natural layout is five `u8`-sized fields — **size 7, align 1**. At a
+/// 7-byte stride roughly one event in nine straddles a 64-byte cache line,
+/// every field access is unaligned, the five stores in
+/// [`DeltaBuf::push_kept`] cannot be merged, and the resolver's per-event
+/// address arithmetic is a `lea`-unfriendly `add $0x7`. Rounding the SIZE up to
+/// 8 (align 8 implies size 8) costs 256 bytes on a 2 KB scratch buffer that
+/// never leaves L1, and measured **−37.73 i/n, −0.67 branches/n and
+/// −19.34 L1 loads/n** — node- and eval-hash-identical, one attribute.
 #[derive(Debug, Clone, Copy)]
+#[repr(align(8))]
 pub struct ThreatDelta {
     pub attacker: Piece,
     pub from: Square,
@@ -690,23 +701,35 @@ fn refresh_psqt_threat_at(
 /// piece, so at most one colour's king can appear at all; scanning per colour
 /// bought nothing but a second walk.
 fn king_cross(dp: &DirtyPiece) -> [bool; 2] {
-    let mut from = [None; 2];
-    let mut to = [None; 2];
-    for &(pc, sq) in dp.subs() {
-        if pc.piece_type == PieceType::King {
-            from[pc.color as usize] = Some(sq);
-        }
-    }
-    for &(pc, sq) in dp.adds() {
-        if pc.piece_type == PieceType::King {
-            to[pc.color as usize] = Some(sq);
-        }
-    }
+    // NO INTERMEDIATE `Option` ARRAYS (perf study 24 arm k1). The predecessor
+    // materialised `from: [Option<Square>; 2]` and `to: [Option<Square>; 2]`,
+    // filled them in two passes and then ran a THIRD pass pairing them: eight
+    // bytes of stack initialised to `None`, up to four conditional stores and
+    // two `Option` destructurings, on EVERY made move, to answer a question
+    // that is false for the ~95% of moves that do not move a king. It is
+    // visible in `apply_at`'s disassembly as a 2-byte-strided stack array
+    // (`mov %cl,0x1(%rsp,%r8,2)` / `movzbl 0x5(%rsp),%r8d`).
+    //
+    // A move relocates ONE piece, so a king can appear at most once per list
+    // and, if it appears in both, it is the same king — the pairing needs no
+    // storage at all, only a nested scan whose outer body is skipped outright
+    // for a non-king mover. Same rule, same answer: `out[c]` is set only when
+    // colour `c`'s king is in BOTH lists, so `Fold::Refresh` is raised on
+    // exactly the same moves.
+    //
+    // Measured −20.51 i/n and −3.34 branches/n against a live interleaved null
+    // of −0.0006 i/n / −0.0005 b/n; node- and eval-hash-identical.
     let mut out = [false; 2];
-    for (c, o) in out.iter_mut().enumerate() {
-        if let (Some(f), Some(t)) = (from[c], to[c]) {
-            // orient_threats splits on file <= 3 (a–d) vs >= 4 (e–h).
-            *o = (f.file() <= 3) != (t.file() <= 3);
+    for &(pc, from) in dp.subs() {
+        if pc.piece_type != PieceType::King {
+            continue;
+        }
+        for &(pc2, to) in dp.adds() {
+            if pc2.piece_type == PieceType::King && pc2.color == pc.color {
+                // orient_threats splits on file <= 3 (a–d) vs >= 4 (e–h).
+                out[pc.color as usize] = (from.file() <= 3) != (to.file() <= 3);
+                break;
+            }
         }
     }
     out
@@ -748,12 +771,25 @@ struct ThreatEntry {
     /// accumulator out of it. `dp` is read only by the former.
     dp: DirtyPiece,
     position: ThreatPosition,
-    /// Per-perspective fold state — the FullThreats analogue of HalfKA's
-    /// `Entry::computed`, with one extra state a relational, king-oriented
-    /// feature set needs. Written by [`ThreatContext::apply_at`] and cleared to
-    /// [`Fold::Done`] by [`ThreatContext::compute`].
-    fold: [Fold; 2],
 }
+
+/// The per-ply fold state, in its OWN dense array — perf study 24 arm h1,
+/// taking the shape study 22 landed on `sota_accumulator`'s `Entry`.
+///
+/// `fold` used to be the last two bytes of [`ThreatEntry`], a **5,312-byte**
+/// struct (`imul $0x14c0` on every index). [`ThreatContext::compute`] opens by
+/// scanning it backwards, per perspective, looking for the nearest ancestor
+/// that is not [`Fold::FromParent`] — so a walk of `d` plies touched `d`
+/// guaranteed-distinct cache lines, 5 KB apart, to read two bytes from each,
+/// and it does that walk **twice per evaluated node**. As its own
+/// `[[Fold; 2]; STACK_LEN]` the whole walk is 2 bytes per ply: **32 plies to a
+/// 64-byte line**, and the deepest realistic walk fits in one or two.
+///
+/// `dp`/`position` stay together in [`ThreatEntry`] rather than moving to a
+/// third array: unlike `fold` they are read exactly ONCE per folded child,
+/// never scanned, so their locality does not matter and splitting them would
+/// only add another base pointer to an already register-starved `compute`.
+type FoldState = [Fold; 2];
 
 /// How [`ThreatContext::compute`] must materialise one perspective of one
 /// [`ThreatEntry`].
@@ -783,7 +819,6 @@ impl Default for ThreatEntry {
             psqt: [[0i32; BUCKETS]; 2],
             dp: DirtyPiece::EMPTY,
             position: ThreatPosition::default(),
-            fold: [Fold::FromParent; 2],
         }
     }
 }
@@ -814,7 +849,18 @@ pub struct ThreatContext<'a> {
     /// One lazily-folded entry per ply; `stack[0]` is the root. Indexed by
     /// absolute search ply and never truncated — a sibling simply overwrites its
     /// ply's entry — exactly like the HalfKA stack. Heap-allocated once.
-    stack: Box<[ThreatEntry]>,
+    /// **Sized** `Box<[T; N]>`, not `Box<[T]>` — study 22 paid for this one and
+    /// handed it over: doing exactly this hot/cold split against fat-pointer
+    /// arrays measured **+58.7 i/n**, a regression, purely in the length loads
+    /// and dynamic bounds checks a slice box forces at every index; the same
+    /// split with all arrays sized measured **−9.3 i/n**. A `Box<[T; N]>` is a
+    /// thin pointer with a compile-time stride and statically discharged
+    /// bounds. The boxes are built through `vec![..].into_boxed_slice()` and
+    /// `try_into`, which is a pointer cast — never a 1.3 MB array on the stack.
+    stack: Box<[ThreatEntry; STACK_LEN]>,
+    /// Per-ply, per-perspective fold state. Its own dense array so `compute`'s
+    /// ancestor walk is a linear scan over 2 bytes per ply — see [`FoldState`].
+    fold: Box<[FoldState; STACK_LEN]>,
     /// Scratch raw-event buffer for [`build_deltas`], reused every fold.
     buf: DeltaBuf,
     /// Fold-time resolved-index scratch for [`apply_i8_deltas`], written by
@@ -840,7 +886,19 @@ impl<'a> ThreatContext<'a> {
         ThreatContext {
             weights,
             psqt_weights,
-            stack: vec![ThreatEntry::default(); STACK_LEN].into_boxed_slice(),
+            // `try_into` rather than `expect`: `ThreatEntry` is not `Debug`
+            // (it is 5 KB of accumulator) and `Result::expect` demands it.
+            stack: match vec![ThreatEntry::default(); STACK_LEN]
+                .into_boxed_slice()
+                .try_into()
+            {
+                Ok(b) => b,
+                Err(_) => unreachable!("vec! built exactly STACK_LEN entries"),
+            },
+            fold: vec![[Fold::FromParent; 2]; STACK_LEN]
+                .into_boxed_slice()
+                .try_into()
+                .expect("STACK_LEN fold states"),
             buf: DeltaBuf::new(),
             add_scratch: [[0usize; DELTA_CAP]; 2],
             sub_scratch: [[0usize; DELTA_CAP]; 2],
@@ -871,7 +929,7 @@ impl<'a> ThreatContext<'a> {
                 self.stack[0].psqt[i] = refresh_psqt_threat_at(psqt_weights, &pos, persp);
             }
         }
-        self.stack[0].fold = [Fold::Done; 2];
+        self.fold[0] = [Fold::Done; 2];
     }
 
     /// The current (cursor top) accumulator pair, `[White, Black]` — the input
@@ -960,7 +1018,7 @@ impl<'a> ThreatContext<'a> {
         // 1.25–1.39× threat cost UNDERSTATES what a properly-built
         // HalfKA-only engine reaches.
         if self.weights.is_empty() {
-            self.stack[child].fold = [Fold::Done; 2];
+            self.fold[child] = [Fold::Done; 2];
             return;
         }
 
@@ -1018,7 +1076,7 @@ impl<'a> ThreatContext<'a> {
         // `[T; N]::map` rather than an indexed loop (D33 reviewer C): one
         // address computation and one 2-byte store instead of two of each
         // through a 5,248-byte-strided `self.stack[child]`.
-        self.stack[child].fold = king_cross(dp).map(|crossed| {
+        self.fold[child] = king_cross(dp).map(|crossed| {
             if crossed {
                 Fold::Refresh
             } else {
@@ -1039,7 +1097,7 @@ impl<'a> ThreatContext<'a> {
     /// perspective-agnostic events ONCE and resolves + folds each perspective
     /// that still needs it.
     fn compute(&mut self, ply: usize) {
-        if self.stack[ply].fold[0] == Fold::Done && self.stack[ply].fold[1] == Fold::Done {
+        if self.fold[ply][0] == Fold::Done && self.fold[ply][1] == Fold::Done {
             return;
         }
         let weights = self.weights;
@@ -1055,10 +1113,10 @@ impl<'a> ThreatContext<'a> {
             // loop has already loaded it, and re-reading `self.stack[*a].fold[p]`
             // afterwards costs a second `ply * size_of::<ThreatEntry>()` address
             // computation plus a load, twice per `compute`.
-            let mut f = self.stack[*a].fold[p];
+            let mut f = self.fold[*a][p];
             while *a > 0 && f == Fold::FromParent {
                 *a -= 1;
-                f = self.stack[*a].fold[p];
+                f = self.fold[*a][p];
             }
             // The 3-state marker can finally tell "unseeded root" from
             // "uncomputed root", which the old `bool` could not (D33 reviewer
@@ -1072,6 +1130,11 @@ impl<'a> ThreatContext<'a> {
             );
             if f == Fold::Refresh {
                 discharge_refresh(&mut self.stack[*a], weights, psqt_weights, p);
+                // `fold` no longer lives on the entry, so the discharge's last
+                // act happens here (perf study 24 arm h1). It also keeps
+                // `discharge_refresh` at exactly six integer argument
+                // registers -- see its doc comment.
+                self.fold[*a][p] = Fold::Done;
             }
         }
         // Hoist the magic-table LazyLock deref out of the per-touch geometry
@@ -1080,8 +1143,8 @@ impl<'a> ThreatContext<'a> {
         let tab = tables();
         for child in (anc[0].min(anc[1]) + 1)..=ply {
             let need = [
-                child > anc[0] && self.stack[child].fold[0] == Fold::FromParent,
-                child > anc[1] && self.stack[child].fold[1] == Fold::FromParent,
+                child > anc[0] && self.fold[child][0] == Fold::FromParent,
+                child > anc[1] && self.fold[child][1] == Fold::FromParent,
             ];
             if !need[0] && !need[1] {
                 continue;
@@ -1209,7 +1272,7 @@ impl<'a> ThreatContext<'a> {
                         d.copy_from_slice(s);
                     }
                     entry.psqt[p] = parent.psqt[p];
-                    entry.fold[p] = Fold::Done;
+                    self.fold[child][p] = Fold::Done;
                     continue;
                 }
                 apply_i8_deltas_into(
@@ -1227,7 +1290,7 @@ impl<'a> ThreatContext<'a> {
                 {
                     *dst = src + d;
                 }
-                entry.fold[p] = Fold::Done;
+                self.fold[child][p] = Fold::Done;
             }
         }
     }
@@ -1287,7 +1350,6 @@ fn discharge_refresh(entry: &mut ThreatEntry, weights: &[i8], psqt_weights: &[i3
     let persp = Color::ALL[p];
     refresh_threat_into_at(&mut entry.acc[p], weights, &entry.position, persp);
     entry.psqt[p] = refresh_psqt_threat_at(psqt_weights, &entry.position, persp);
-    entry.fold[p] = Fold::Done;
 }
 
 /// Resolve the perspective-agnostic raw `events` to one perspective's
@@ -1336,44 +1398,87 @@ fn resolve_both(
     psqt_deltas: &mut [[i32; BUCKETS]; 2],
 ) -> [(usize, usize); 2] {
     let mut len = [(0usize, 0usize); 2];
-    let has_psqt = !psqt_table.is_empty();
+
+    // `& (DELTA_CAP - 1)` below is a NO-OP on the value and a range fact for
+    // the optimizer, the same move as `index_decoded`'s `& 63`. `adds`/`subs`
+    // are `[usize; DELTA_CAP]` and each event pushes at most ONE index into ONE
+    // of them, so a cursor can only reach `events.len() <= DELTA_CAP` — and the
+    // last *write* is therefore at `DELTA_CAP - 1`. LLVM cannot see that (the
+    // cursor is carried across a loop whose trip count it does not relate to
+    // the array length), so the store carried a `cmp $0xff` / `ja panic` pair
+    // per event per perspective. DELTA_CAP is a power of two, which is what
+    // makes the mask free.
+    const M: usize = DELTA_CAP - 1;
+
+    // LEGACY (psqt-less) NET — hand-unswitched, exactly as `resolve_into`
+    // already was. Perf study 24 arm r1: `resolve_both` never got that
+    // treatment, so `has_psqt` was a loop-invariant `&[i32]` emptiness test
+    // re-evaluated per resolved index per perspective — and register pressure
+    // in this loop had SPILLED it, so the asm re-read it from the stack
+    // (`cmpq $0x0,0xd8(%rsp)`, four copies inside the loop body).
+    if psqt_table.is_empty() {
+        for d in events {
+            let att = sf_code(d.attacker);
+            let atd = sf_code(d.victim);
+            for p in 0..2 {
+                let Some(idx) = resolvers[p].index_decoded(att, atd, d.from, d.to) else {
+                    continue;
+                };
+                debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
+                if d.add {
+                    adds[p][len[p].0 & M] = idx;
+                    len[p].0 += 1;
+                } else {
+                    subs[p][len[p].1 & M] = idx;
+                    len[p].1 += 1;
+                }
+            }
+        }
+        return len;
+    }
+
     // Register-resident PSQT accumulators, the §4.5 pairing that only pays
     // alongside `psqt_row`'s fixed-size row.
     let mut acc = *psqt_deltas;
+    // Row-major view of the PSQ1 table, hoisted out of the event loop: the
+    // per-call `as_chunks` inside `psqt_add`/`psqt_sub` re-derived the row
+    // count by a shift on every resolved index.
+    let (rows, _tail) = psqt_table.as_chunks::<BUCKETS>();
     for d in events {
         let att = sf_code(d.attacker);
         let atd = sf_code(d.victim);
+        // BOTH perspectives resolved before EITHER PSQ1 row is touched (perf
+        // study 24 arm r2). Each row is a random 32-byte load out of a 2.7 MB
+        // table — an L2-miss/L3-hit on essentially every event — and the
+        // address depends on a THREE-DEEP dependent load chain inside
+        // `index_decoded` (`lut1` → `offsets` → `lut2`). In the interleaved
+        // shape the second chain did not even start until the first row's
+        // `vpaddd` had retired, so the two long latencies serialised; a
+        // `perf annotate` of the split build put **41% of `resolve_both`** on
+        // the four instructions immediately after the `vpaddd`/`vpsubd` pairs.
+        // Resolving both first makes the two loads independent and adjacent,
+        // so the memory system overlaps them.
         for p in 0..2 {
             let Some(idx) = resolvers[p].index_decoded(att, atd, d.from, d.to) else {
                 continue;
             };
             debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
-            // `& (DELTA_CAP - 1)` is a NO-OP on the value and a range fact for
-            // the optimizer, the same move as `index_decoded`'s `& 63`.
-            // `adds`/`subs` are `[usize; DELTA_CAP]` and each event pushes at
-            // most ONE index into ONE of them, so a cursor can only reach
-            // `events.len() <= DELTA_CAP` — and the last *write* is therefore
-            // at `DELTA_CAP - 1`. LLVM cannot see that (the cursor is carried
-            // across a loop whose trip count it does not relate to the array
-            // length), so the store carried a `cmp $0xff` / `ja panic` pair
-            // per event per perspective. DELTA_CAP is a power of two, which is
-            // what makes the mask free.
             debug_assert!(
                 len[p].0 < DELTA_CAP && len[p].1 < DELTA_CAP,
                 "resolve cursor overflow: {len:?} events={}",
                 events.len()
             );
             if d.add {
-                adds[p][len[p].0 & (DELTA_CAP - 1)] = idx;
+                adds[p][len[p].0 & M] = idx;
                 len[p].0 += 1;
-                if has_psqt {
-                    psqt_add(&mut acc[p], psqt_table, idx);
+                for (a, &w) in acc[p].iter_mut().zip(&rows[idx]) {
+                    *a += w;
                 }
             } else {
-                subs[p][len[p].1 & (DELTA_CAP - 1)] = idx;
+                subs[p][len[p].1 & M] = idx;
                 len[p].1 += 1;
-                if has_psqt {
-                    psqt_sub(&mut acc[p], psqt_table, idx);
+                for (a, &w) in acc[p].iter_mut().zip(&rows[idx]) {
+                    *a -= w;
                 }
             }
         }
@@ -1760,13 +1865,13 @@ mod tests {
         // still passing. Any change to `Rng`, to `generate_legal`'s ordering, or
         // to the fixture could do that; these two assertions say so out loud.
         assert_eq!(
-            ctx.stack[1].fold[Color::White as usize],
+            ctx.fold[1][Color::White as usize],
             Fold::Refresh,
             "the crossing ply must still be an undischarged obligation"
         );
         for k in 2..=ply {
             assert_ne!(
-                ctx.stack[k].fold[Color::White as usize],
+                ctx.fold[k][Color::White as usize],
                 Fold::Refresh,
                 "a later re-cross at ply {k} short-circuits the walk this test exists to exercise"
             );
@@ -1791,7 +1896,7 @@ mod tests {
         // descendant instead of once. The entire −40.4 i/n of perf study 18
         // rests on this one store. This is the only assertion that holds it.
         assert_eq!(
-            ctx.stack[1].fold[Color::White as usize],
+            ctx.fold[1][Color::White as usize],
             Fold::Done,
             "a discharged refresh must memoize, or every descendant re-pays it"
         );

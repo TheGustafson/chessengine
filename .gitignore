@@ -3,26 +3,21 @@
 # Reference clone of Stockfish (GPL, not ours to commit). Markdown notes
 # alongside it in stockfish_reference/ ARE tracked.
 /stockfish_reference/Stockfish/
-
 # Reference clone of Reckless (AGPLv3, not ours to commit). Distilled
 # markdown notes alongside it in reckless_reference/ ARE tracked.
 /reckless_reference/Reckless/
-
 # Reference clone of Integral (NO explicit license => all rights reserved;
 # study for IDEAS ONLY, never copy code). Distilled notes in
 # integral_reference/ ARE tracked; the clone is not.
 /integral_reference/integral/
-
 # Python bytecode from tools/
 __pycache__/
 tools/cloud/__pycache__/
-
 # NNUE training-data corpus (design/15, D28): the SF-labeled bootstrap
 # corpus is gigabytes of discardable dev scaffold — never committed. The
 # SF teacher binary is covered by the /stockfish_reference/Stockfish/ ignore
 # above; the tools/nnue/ generation scripts ARE tracked.
 /data/
-
 # Strength-testing externals (design/14 §3.8, §4 steps 10-11): pinned
 # opponent/tool binaries (fastchess, ordo, reference engines), downloaded
 # books and EPD suites (never vendored, D15), and match-run output
@@ -33,20 +28,16 @@ tools/cloud/__pycache__/
 # (which net/binary is the release pair) and must be versioned. Their targets stay
 # ignored; a symlink is just a path string.
 !/engines/canonical/
-
 # NNUE training dashboard tfevents (artifacts, P13)
 tools/nnue/runs/
 /dist/
 /.claude/
-
 # ARCHON runtime state (pids, logs, pinned toolchain checkouts) — never commit
 /.archon-state/
-
 # tool sub-crates build artifacts
 tools/*/target/
 tools/nnue/*/target/
 config.json
-
 # Extra build/log dirs (session artifacts, regenerable)
 /target-*/
 /logs/
@@ -58,7 +49,4 @@ tools/spsa/out/
 tools/nnue/calib/oracle-obs.json
 tools/nnue/calib/oracle-multipv.json
 bin14/
-
-# perf study 22 measurement binaries + build tree (gitignored like target/)
-/bin22/
-/target-fast22/
+/perf24/

@@ -1,0 +1,16 @@
+  round  1   NULL  -8.145%   ARM  -7.165%
+  round  2   NULL  +3.738%   ARM  -0.180%
+  round  3   NULL -12.646%   ARM -15.419%
+  round  4   NULL  +1.133%   ARM  +9.089%
+  round  5   NULL  -6.167%   ARM  -0.233%
+  round  6   NULL -18.878%   ARM -18.235%
+  round  7   NULL -12.392%   ARM  -0.512%
+  round  8   NULL +25.794%   ARM  +3.426%
+  round  9   NULL  -2.467%   ARM  +0.307%
+
+ROUND-ROBIN PANEL  base (base) / nullB (identical copy) / h1 (arm)  [bench16, n=9, nodes=9444932]
+  CYCLES  live NULL  median  -6.167%   spread -18.878% .. +25.794%
+  CYCLES  ARM        median  -0.233%   spread -18.235% ..  +9.089%
+  INSTR   null  +0.0001 i/n     ARM -98.9761 i/n   (6363.4255 -> 6264.4494)
+  BRANCH  null  +0.0001 b/n     ARM -25.8173 b/n   (655.2607 -> 629.4434)
+  L1LOAD  null  +7.0532 l/n     ARM -36.1297 l/n   (3346.2569 -> 3310.1272)
