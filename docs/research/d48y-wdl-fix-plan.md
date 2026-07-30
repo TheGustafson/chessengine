@@ -6035,3 +6035,35 @@ prediction I made.)*
 any heldout reading directly into a predicted Elo, so each sb300+ sample is now
 a strength forecast. If the gap does not start closing by ~sb330, Model A is
 winning and the endpoint is ≈−25.
+
+## Tick 2026-07-30 ~22:15 — nine superbatches from the anneal; memory tightening
+
+**D49 sb291/400.** The anneal starts at sb300. Both axes for the map are now
+being logged together, which is what the projection needs:
+
+| sb | train | heldout | ema |
+|---|---|---|---|
+| 264 | 0.007686 | — | — |
+| 274 | 0.007658 | — | — |
+| 284 | 0.007606 | — | — |
+| 270 | — | 0.011472 | 0.011189 |
+| 280 | — | 0.011389 | 0.011153 |
+| **290** | — | **0.011355** | **0.011125** |
+
+Gap at sb290: train ~0.00760 vs heldout 0.011355 ⇒ **~49%**. **This is THE
+number to watch from sb300.** Per the map, every 1e-4 the heldout falls is worth
+**6.07 Elo**, and parity needs a fall of 0.000778 from here.
+
+**Box: 4426 MB available, 587 MB free swap, load 15.26** — the second-tightest
+of the night, with `gate38` and the `d49-rate` screen both live. `buff/cache` is
+down to 2528 MB, which is where the squeeze is showing.
+
+**Decision: monitor, do not intervene.** Both jobs are finite and near their
+ends (`d49-rate` at 1002/1466 ≈ 10 min left at conc=6; `gate38` at its bench
+fingerprint). Killing either would waste completed work to solve a problem that
+resolves itself, and `available` is still ~1.8x the 2500 MB refuse line.
+**Nothing new started.** The trainer's cgroup shows `oom_kill 0` throughout.
+
+**No study currently running** — study 38 merged, and I am deliberately NOT
+commissioning study 39 into this memory state. The next study goes out when the
+screen and gate clear, which also gives it the quiet box its measurements need.
