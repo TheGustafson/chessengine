@@ -4667,3 +4667,62 @@ under load (study 33: ~1.9x inflation; study 32: 8/8 → 6/8 rounds post-merge).
 it** on a loaded box. Everything else about the arm is nailed down; only the
 sign of the trade is open. It needs **ten quiet minutes** — which is exactly
 what will exist once the frame screen and study 35 are done.
+
+## CONFIRMED: the eval frame is worth ~33 Elo on D49 — the hypothesis was RIGHT
+
+**`frame-screen` at 1000/1466 games (still running):**
+
+    Elo: +33.46 +/- 13.78   nElo: +52.63 +/- 21.53
+    W 363 / D 370 / L 267   (54.80%)
+
+**CAND = D49 sb180 packed at `D40_NETWORK_SCALE=756`.
+REF = the SAME checkpoint packed at 400.** Payload checksum
+`0x1abde0949b345696` is **identical** in both files — the weights are
+byte-for-byte the same and *only the 4-byte header scale differs*. There is no
+other variable in this experiment.
+
+**+33 Elo at 2.4 sigma, from a header field.** It will tighten to ~+/-11 at
+1466. This is not a subtle effect.
+
+### What it establishes
+
+1. **The frame hypothesis from two ticks ago is CONFIRMED, not merely
+   plausible.** D49's as-trained output spans 0.53x D48X's range, and our
+   pruning margins are hardcoded SF transcriptions (razoring
+   `alpha − 465 − 300·d²`, futility, ProbCut). Against a net with half the
+   spread they bite at ~2.0 sigma instead of ~1.1 sigma, and the search prunes
+   far more aggressively than the constants intend.
+2. **A two-way D49 verdict screen would have been UNINTERPRETABLE** — and worse,
+   *actively misleading*: D49-as-trained would have lost ~33 Elo to a cause
+   that has nothing to do with the recipe, and the natural conclusion would have
+   been "the from-scratch recipe failed". **The whole 400sb run was one screen
+   away from being misread.**
+3. **It qualifies the standing note.** "Our frame gap vs SF is TRUE as units but
+   NOT causal for losses" was about ARCHON-vs-SF and remains untouched. This is
+   an INTERNAL mismatch between a net's output scale and *our own* hardcoded
+   margins, and internally it is very much causal. Both can be true; they are
+   different comparisons.
+
+### The bigger question this opens — possibly free Elo on the CANONICAL net
+
+The experiment does **not** show "matching D48X is good". It shows **756 beats
+400 for this net.** Nobody has ever swept this knob. Two open possibilities,
+both cheap to test:
+
+- **D49's optimum may be above 756** — the sweep was never run, 756 was chosen
+  only to match D48X.
+- **D48X itself may be mis-scaled.** Its 421 stdev is not a calibrated target,
+  it is just where D48X happened to land. If a scale sweep moves D48X too,
+  **that is free Elo on the net we currently ship**, available today without
+  retraining anything.
+
+**Queued next, once the box frees:** a `D40_NETWORK_SCALE` sweep — D49 sb180 at
+{400, 756, 1100, 1500} and D48X at {its native, 1.5x, 2x} — as fixed-node
+screens. Cheap, no retraining, and it directly serves "reduce nps / find Elo".
+
+### State
+
+**D49 sb198/400**, heldout 0.012147 @ sb190 (ema 0.011647), still descending.
+Box: 6039 MB, load 18.79 (the screen at conc 8 + study 35 + trainer) — **no new
+load added this tick.** Study 35 ahead=3, dirty=2. Study 34 staged as
+`stage-34`, gate still deferred until the screen completes.
