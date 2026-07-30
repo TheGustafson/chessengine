@@ -5649,3 +5649,52 @@ derivation study 37 flagged as "derived, not measured" appears to be turning
 into something buildable.
 
 main = `d166a2d` (the promotion plus this log).
+
+## FIRST END-TO-END MEASUREMENT: session start (`ef9756e`) vs now
+
+Nobody had measured this. The individual study deltas (−0.267%, −0.442%,
+−0.499%, …) were each taken against their OWN baseline, so **summing them is not
+valid.** Built `ef9756e` in a detached worktree with identical features and
+flags (`sota,arch-d48x`, `target-cpu=x86-64-v3`), ran both binaries on the
+**same net** (`d48x-1280-sb520-ema-s600.cenn`) and the same 50 fens, 8 rounds,
+**alternating order each round**:
+
+| metric | ef9756e -> now | trust |
+|---|---:|---|
+| **nodes to depth 10** | **−14.74%** (450,961 -> 384,499) | **exact + deterministic** |
+| **wall time to depth 10** | **−18.40%** (407.5 -> 332.5 ms) | 8 alternating rounds |
+| cycles | +2.81% | **inside the counter's own noise floor** — unresolvable |
+| instructions/node | +34.05% | real, and BY DESIGN |
+| branches/node | +33.44% | same cause |
+
+### Reading this honestly
+
+- **Instructions rose on purpose.** Study 32's i8 transformer explicitly traded
+  instructions **+5.519%** for cycles −5.6..−6.8% and load-stalls −15.6..−17.4%.
+  Instructions are the WRONG instrument for a frame that i8 dominates. The
+  +34% here is that trade at whole-engine scale, not a regression.
+- **The +2.81% cycles figure means nothing.** Five nulls put this counter's
+  floor at +0.383%..+5.266% on a byte-identical binary. **+2.81% sits inside
+  that.** Cycles say "unresolvable", not "worse".
+- **The node count is the strongest number** — exact, deterministic, and it
+  fell **14.74%** at fixed depth with the same net on both sides.
+- Wall time fell **18.4% despite the new binary doing MORE startup work**
+  (`quantise_halfka`, ~5.2% of frame instructions, is study 32's addition), so
+  the search-side gain is larger than 18.4%.
+
+### A check I ran because the first result looked wrong
+
+The first pass showed the old binary using FEWER instructions/node and searching
+MORE nodes — the exact signature of a **silent PSQT fallback**, which CLAUDE.md
+warns about. **I did not report it until I had tested it.** Both binaries change
+behaviour when handed the net (OLD 174220 vs PSQT 331433; NEW 158499 vs 331433)
+and the old binary reads the net fine. **Hypothesis refuted — the comparison is
+valid.**
+
+### Status of this number
+
+**Provisional, one session, counters disagreeing.** It deserves a proper study
+with a paired null before it is quoted as a headline. What it does establish is
+that the individual per-study deltas do NOT aggregate naively, and that
+**time-to-depth is the end-to-end instrument** — not instructions, which the i8
+trade inverts, and not cycles, which cannot resolve anything here.
