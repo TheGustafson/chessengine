@@ -497,29 +497,36 @@ evaluated at `Hash=16` is being evaluated where the TT costs least.**
 
 ### 6.2 …but the PREFETCH's share does not grow with `Hash` — and that is the more useful half
 
-I expected the prefetch to be worth much more on a big table and ran the arm at
-`Hash=256` to check (`panel-h256.txt`, same three labels, null clean at
-3–4 of 7, p = 1.00):
+I expected the prefetch to be worth much more on a big table and ran the arm
+there to check — 15 rounds at `Hash=256`, `panel-h256.txt`, null clean at
+8/15 on cycles (p = 1.00) and 9/15 on load-stall (p = 0.61):
 
 | | `Hash` = 16 MB | `Hash` = 256 MB |
 |---|---:|---:|
-| `nopf` cycles | +3.504% (18/18) | **+3.943%** (6/7) |
-| `nopf` load-stall | +5.571% (17/18) | **+5.792%** (6/7) |
-| panel `base` cycles/node | 4390.8 | 4642.1 |
-| ⇒ prefetch worth, absolute | ~154 cycles/node | ~183 cycles/node |
+| `nopf` cycles | +3.504% (18/18, p<0.001) | **+3.943%** (12/15, p=0.035) |
+| `nopf` load-stall | +5.571% (17/18, p=0.0001) | **+6.112%** (13/15, p=0.0074) |
+| `nopf` instructions | −0.363% (18/18) | −0.363% (15/15) |
+| panel `base` cycles/node | 4390.8 | 4516.8 |
+| ⇒ prefetch worth, absolute | **~154 cycles/node** | **~178 cycles/node** |
 
-**The percentage barely moves.** Between the two sizes the engine's cost rises
-by ~325 cycles/node (§6.1) while the prefetch's absolute value rises by only
-~29 — i.e. **the prefetch recovers roughly a tenth of the increment a bigger
-table brings.** Its lead time is the remainder of `make_move`, which is a fixed
-budget; a deeper miss simply overflows it.
+**The percentage barely moves: 3.50% → 3.94%.** And that is the finding, because
+of what it is set against. Between the same two sizes the engine's cost rises by
+**~325 cycles/node** (§6.1, 4342.2 → 4666.6) while the prefetch's absolute value
+rises by only **~24** — **the prefetch recovers about 7% of the increment a
+bigger table brings.** Its lead time is the remainder of `make_move`, a fixed
+budget; a deeper miss simply overflows it, and no amount of extra table makes
+the hint cover more.
 
-So the frame answer has two halves, and the second is the actionable one:
-**yes, the TT costs much more at a tournament `Hash`, and no, the mechanism we
-already have does not scale to cover it.** Whatever recovers that increment is
-not another prefetch — §4.3 killed the two obvious ones — which points the next
-session at the table's *contents* (fewer, better-chosen entries per line fetched:
-§5.2) rather than at its timing.
+So the frame answer has two halves and the second is the actionable one:
+
+* **Yes, the TT costs much more at a tournament `Hash`** — +7.5% cycles/node at
+  256 MB, +8.7% at 1 GB, entirely un-hidden.
+* **No, the mechanism we already ship does not scale to cover it**, and §4.3
+  killed both obvious ways of extending it (earlier hint, cheaper earlier hint).
+
+Whatever recovers that increment is therefore **not** about the timing of the
+fetch. It has to be about what the fetched line CONTAINS — which is §5.2's
+64-byte cluster, and which is why that is the top item in §7.
 
 ---
 
