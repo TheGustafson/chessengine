@@ -50,3 +50,6 @@ tools/nnue/calib/oracle-obs.json
 tools/nnue/calib/oracle-multipv.json
 bin14/
 /perf24/
+# perf-study binary snapshots (regenerable: the study's probe script)
+bin21/
+bin25/

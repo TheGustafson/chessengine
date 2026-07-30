@@ -1108,6 +1108,30 @@ mod avx512 {
     // One zmm is live beyond the accumulators (the row being folded in).
     const _: () = assert!(REGS < 32, "fold tile must leave a spare zmm");
 
+    /// Lanes per tile, and the number of tiles in one accumulator.
+    ///
+    /// Perf study 25. Every fold kernel used to end its tile walk with a
+    /// one-block `while off < ACC` remainder, under a comment saying that
+    /// remainder is DEAD — `pick_regs` returns an exact divisor of
+    /// `ACC_BLOCKS`, pinned by the `const _` assert above. It really is dead,
+    /// at every width, and `TILES * TILE == ACC` below is the machine-checked
+    /// statement of that. Deleting the four of them is bit-identical: same
+    /// blocks, same order, same arithmetic.
+    ///
+    /// **Measured, because the obvious form was the wrong one.** Rewriting the
+    /// walk as `for t in 0..TILES { let off = t * TILE; … }` — trip count
+    /// compile-time, which reads like the strictly better shape — cost **+9.6
+    /// instructions/node**, and `for _ in 0..TILES` with an accumulated offset
+    /// still cost **+7.9** with branches up 3.6/node: LLVM declines to unroll
+    /// the counted loop and keeps a real induction variable. Leaving the walk
+    /// as `while off + TILE <= ACC` and removing ONLY the remainder measured
+    /// **−3.2 i/n**, because with nothing after the loop LLVM unrolls both
+    /// tiles outright. All three are node- and eval-hash-identical; the
+    /// counter has a 0.0 noise floor, so those signs are real.
+    const TILE: usize = LANES * REGS;
+    const TILES: usize = ACC / TILE;
+    const _: () = assert!(TILES * TILE == ACC, "the tile walk must cover ACC exactly");
+
     #[target_feature(enable = "avx512f,avx512bw")]
     unsafe fn i16_deltas_inner(
         acc: &mut [i16; ACC],
@@ -1124,10 +1148,10 @@ mod avx512 {
             // TILE rather than per block. Per-lane wrapping adds, same per-lane
             // order => bit-identical. `pick_regs` returns an exact divisor of
             // `ACC_BLOCKS` (24/40/48/64 -> 12/20/16/16), pinned by the `const _`
-            // assert above, so the remainder loop is dead; it stays for safety.
-            let tile = LANES * REGS;
+            // assert above — which is what lets the walk be `0..TILES` with no
+            // remainder loop at all (see `TILES`; perf study 25).
             let mut off = 0;
-            while off + tile <= ACC {
+            while off + TILE <= ACC {
                 let mut v = [_mm512_setzero_si512(); REGS];
                 for (k, vk) in v.iter_mut().enumerate() {
                     *vk = _mm512_loadu_si512(acc.as_ptr().add(off + k * LANES).cast());
@@ -1147,20 +1171,7 @@ mod avx512 {
                 for (k, vk) in v.iter().enumerate() {
                     _mm512_storeu_si512(acc.as_mut_ptr().add(off + k * LANES).cast(), *vk);
                 }
-                off += tile;
-            }
-            while off < ACC {
-                let mut value = _mm512_loadu_si512(acc.as_ptr().add(off).cast());
-                for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm512_add_epi16(value, _mm512_loadu_si512(row.cast()));
-                }
-                for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
-                }
-                _mm512_storeu_si512(acc.as_mut_ptr().add(off).cast(), value);
-                off += LANES;
+                off += TILE;
             }
         }
     }
@@ -1179,9 +1190,8 @@ mod avx512 {
         // instead of a 2560 B memmove (perf study 9 item 4).
         // SAFETY: as `i16_deltas_inner`; `out` is a disjoint ACC-wide array.
         unsafe {
-            let tile = LANES * REGS;
             let mut off = 0;
-            while off + tile <= ACC {
+            while off + TILE <= ACC {
                 let mut v = [_mm512_setzero_si512(); REGS];
                 for (k, vk) in v.iter_mut().enumerate() {
                     *vk = _mm512_loadu_si512(acc.as_ptr().add(off + k * LANES).cast());
@@ -1202,21 +1212,7 @@ mod avx512 {
                     _mm512_storeu_si512(acc.as_mut_ptr().add(off + k * LANES).cast(), *vk);
                     _mm512_storeu_si512(out.as_mut_ptr().add(off + k * LANES).cast(), *vk);
                 }
-                off += tile;
-            }
-            while off < ACC {
-                let mut value = _mm512_loadu_si512(acc.as_ptr().add(off).cast());
-                for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm512_add_epi16(value, _mm512_loadu_si512(row.cast()));
-                }
-                for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
-                }
-                _mm512_storeu_si512(acc.as_mut_ptr().add(off).cast(), value);
-                _mm512_storeu_si512(out.as_mut_ptr().add(off).cast(), value);
-                off += LANES;
+                off += TILE;
             }
         }
     }
@@ -1233,8 +1229,116 @@ mod avx512 {
         unsafe { i16_deltas_dual_inner(acc, out, weights, adds, subs) }
     }
 
+    /// The HalfKA fold with **compile-time row counts** — perf study 25 arm 1.
+    ///
+    /// `NA`/`NS` are the exact lengths of `adds`/`subs`, so both row loops
+    /// unroll away completely: no loop control, no unroll remainder, no
+    /// empty-list clones, and `feature * ACC` is computed ONCE for the whole
+    /// call instead of once per tile. What is left is straight-line
+    /// `vmovdqu64` / `vpaddw` / `vpsubw` with no branch of any kind.
+    ///
+    /// This is NOT perf study 12 §4's rejected offset hoist. That one built a
+    /// `[MaybeUninit<usize>; 96]` for a *runtime*-length list and paid 91
+    /// instructions of prologue (stack frame, callee-saved pushes, a CAP
+    /// min/cmov, and LLVM's generic vectorized offset loop emitted twice) to
+    /// save 4 multiplies. Here the array is `[usize; NA]` with `NA <= 2` known
+    /// at compile time: it lives in two registers, the "loop" filling it is two
+    /// `lea`+`shl` pairs, and there is no prologue at all.
+    ///
+    /// Bit-identical to the generic path: same rows, same order (adds then
+    /// subs), same per-lane wrapping i16 arithmetic.
+    #[target_feature(enable = "avx512f,avx512bw")]
+    #[inline]
+    unsafe fn i16_into_shaped<const NA: usize, const NS: usize>(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // SAFETY: as `i16_deltas_into_inner`. The caller has checked
+        // `adds.len() == NA` and `subs.len() == NS`, so every index read below
+        // is in bounds; `TILES * tile == ACC` is a const assert, so the tile
+        // walk covers the accumulator exactly with no tail.
+        unsafe {
+            let mut arow = [0usize; NA];
+            for (slot, &feature) in arow.iter_mut().zip(adds) {
+                *slot = feature * ACC;
+            }
+            let mut srow = [0usize; NS];
+            for (slot, &feature) in srow.iter_mut().zip(subs) {
+                *slot = feature * ACC;
+            }
+            let mut off = 0;
+            while off + TILE <= ACC {
+                let mut v = [_mm512_setzero_si512(); REGS];
+                for (k, vk) in v.iter_mut().enumerate() {
+                    *vk = _mm512_loadu_si512(src.as_ptr().add(off + k * LANES).cast());
+                }
+                for &base in &arow {
+                    let row = weights.as_ptr().add(base + off);
+                    for (k, vk) in v.iter_mut().enumerate() {
+                        *vk = _mm512_add_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                    }
+                }
+                for &base in &srow {
+                    let row = weights.as_ptr().add(base + off);
+                    for (k, vk) in v.iter_mut().enumerate() {
+                        *vk = _mm512_sub_epi16(*vk, _mm512_loadu_si512(row.add(k * LANES).cast()));
+                    }
+                }
+                for (k, vk) in v.iter().enumerate() {
+                    _mm512_storeu_si512(dst.as_mut_ptr().add(off + k * LANES).cast(), *vk);
+                }
+                off += TILE;
+            }
+        }
+    }
+
     #[target_feature(enable = "avx512f,avx512bw")]
     unsafe fn i16_deltas_into_inner(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i16],
+        adds: &[usize],
+        subs: &[usize],
+    ) {
+        // Perf study 25 arm 1 — dispatch on the SHAPE of the delta set.
+        //
+        // `apply_dirty_directed` (`sota_accumulator.rs`) builds both lists in
+        // `[usize; 2]` arrays, so a HalfKA fold is ALWAYS one of four shapes,
+        // and the comment there pins the lower bound: every real move emits at
+        // least one add and one sub (a null move pushes no entry at all). LLVM
+        // cannot see any of that through `&[usize]`, so it emitted a 6231-byte
+        // function — the row loops unrolled x2 with an odd/even remainder
+        // branch, cloned across the empty-list cases, 480 `vpaddw`/`vpsubw` in
+        // 24 copies of the tile body. Measured on that code: 11.16% of all
+        // engine cycles for 6.93% of instructions (fast build, d16 frame).
+        //
+        // The four shaped instantiations are branch-free straight lines. The
+        // generic fallback stays for the test suite's long feature lists and
+        // for the EMPTY case, which must remain a plain copy — see the
+        // "stale-child bug" note at `sota_accumulator.rs`'s forward fold.
+        unsafe {
+            match (adds.len(), subs.len()) {
+                (1, 1) => return i16_into_shaped::<1, 1>(dst, src, weights, adds, subs),
+                (1, 2) => return i16_into_shaped::<1, 2>(dst, src, weights, adds, subs),
+                (2, 1) => return i16_into_shaped::<2, 1>(dst, src, weights, adds, subs),
+                (2, 2) => return i16_into_shaped::<2, 2>(dst, src, weights, adds, subs),
+                _ => {}
+            }
+            i16_deltas_into_generic(dst, src, weights, adds, subs)
+        }
+    }
+
+    /// The runtime-length HalfKA fold. Off the hot path since perf study 25
+    /// arm 1 (`#[cold]` keeps it out of the shaped instantiations' I-cache
+    /// footprint) but still the correctness reference for every shape the
+    /// dispatch above does not name — including the empty one.
+    #[target_feature(enable = "avx512f,avx512bw")]
+    #[inline(never)]
+    #[cold]
+    unsafe fn i16_deltas_into_generic(
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
         weights: &[i16],
@@ -1261,9 +1365,8 @@ mod avx512 {
         // addition is associative, so applying all rows in one pass equals
         // applying them 96 at a time through `dst`.
         unsafe {
-            let tile = LANES * REGS;
             let mut off = 0;
-            while off + tile <= ACC {
+            while off + TILE <= ACC {
                 let mut v = [_mm512_setzero_si512(); REGS];
                 for (k, vk) in v.iter_mut().enumerate() {
                     *vk = _mm512_loadu_si512(src.as_ptr().add(off + k * LANES).cast());
@@ -1283,20 +1386,7 @@ mod avx512 {
                 for (k, vk) in v.iter().enumerate() {
                     _mm512_storeu_si512(dst.as_mut_ptr().add(off + k * LANES).cast(), *vk);
                 }
-                off += tile;
-            }
-            while off < ACC {
-                let mut value = _mm512_loadu_si512(src.as_ptr().add(off).cast());
-                for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm512_add_epi16(value, _mm512_loadu_si512(row.cast()));
-                }
-                for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
-                }
-                _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
-                off += LANES;
+                off += TILE;
             }
         }
     }
@@ -1314,9 +1404,8 @@ mod avx512 {
         // Perf study 12 §4 — the offset hoist + CAP chunking is gone; see the
         // i16 twin above for the full rationale and the bit-identity argument.
         unsafe {
-            let tile = LANES * REGS;
             let mut off = 0;
-            while off + tile <= ACC {
+            while off + TILE <= ACC {
                 let mut v = [_mm512_setzero_si512(); REGS];
                 for (k, vk) in v.iter_mut().enumerate() {
                     *vk = _mm512_loadu_si512(src.as_ptr().add(off + k * LANES).cast());
@@ -1338,22 +1427,7 @@ mod avx512 {
                 for (k, vk) in v.iter().enumerate() {
                     _mm512_storeu_si512(dst.as_mut_ptr().add(off + k * LANES).cast(), *vk);
                 }
-                off += tile;
-            }
-            while off < ACC {
-                let mut value = _mm512_loadu_si512(src.as_ptr().add(off).cast());
-                for &feature in adds {
-                    let bytes =
-                        _mm256_loadu_si256(weights.as_ptr().add(feature * ACC + off).cast());
-                    value = _mm512_add_epi16(value, _mm512_cvtepi8_epi16(bytes));
-                }
-                for &feature in subs {
-                    let bytes =
-                        _mm256_loadu_si256(weights.as_ptr().add(feature * ACC + off).cast());
-                    value = _mm512_sub_epi16(value, _mm512_cvtepi8_epi16(bytes));
-                }
-                _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
-                off += LANES;
+                off += TILE;
             }
         }
     }
@@ -1903,8 +1977,16 @@ mod tests {
         // EXACTLY, whatever order it reduces in. Uses the real extremes — ft at
         // its 127 ceiling and weights at both i8 rails — so the avx2 backend's
         // `maddubs` no-saturation argument (2*127*127 < i16::MAX) is exercised.
-        let mut ft = vec![0u8; 768];
-        let mut lane = vec![0i8; 768];
+        //
+        // STALE FIXTURE, fixed by perf study 25: these were 768-lane vectors,
+        // hardcoded from the D47V era. At the shipping ACC = 1280 that
+        // exercised a width the engine never passes — and, worse, 768 is not a
+        // multiple of 256, so the fixture drove the avx512 backend's 64-wide
+        // TAIL loop while the real call drives only its 256-wide four-chain
+        // body. The four-accumulator split (study 21 arm B2) was therefore
+        // going untested against scalar on the one path that ships.
+        let mut ft = vec![0u8; ACC];
+        let mut lane = vec![0i8; ACC];
         for (i, v) in ft.iter_mut().enumerate() {
             *v = ((i as u32 * 97 + 13) % 128) as u8;
         }
@@ -1981,6 +2063,50 @@ mod tests {
             let mut dispatched = seed;
             apply_i16_deltas(&mut dispatched, &weights, a, s);
             assert_eq!(dispatched, reference, "adds={} subs={}", a.len(), s.len());
+        }
+    }
+
+    /// Perf study 25 arm 1 gave `i16_deltas_into` four **shape-specialised**
+    /// instantiations — `(adds.len(), subs.len())` ∈ {1,2}² — because
+    /// `apply_dirty_directed` builds both lists in `[usize; 2]`. Those are the
+    /// shapes the engine actually executes, and until this test NOTHING covered
+    /// them: every other kernel test in this module runs 4-5 rows or 200+, all
+    /// of which land in the generic fallback.
+    ///
+    /// Mutation it catches: a transposed `(NA, NS)` arm in the dispatch (which
+    /// would apply a sub as an add — an eval error of exactly two weight rows,
+    /// invisible to a node count and to every shape-agnostic test), a shaped
+    /// body that tiles short, or a dropped `return` that ran the generic pass a
+    /// second time on top of the shaped one.
+    ///
+    /// The empty shape is in the table on purpose: `sota_accumulator.rs`'s
+    /// forward fold deletes its own copy special-case and relies on
+    /// `apply_i16_deltas_into(dst, src, w, &[], &[])` being `dst = src` lane for
+    /// lane. A fast-path `return` on empty lists would be a silent stale-child
+    /// bug in release, and this asserts the copy behaviour directly.
+    #[test]
+    fn every_dispatched_i16_fold_shape_matches_scalar() {
+        const ROWS: usize = 7;
+        let mut weights = vec![0i16; ROWS * ACC];
+        for (i, value) in weights.iter_mut().enumerate() {
+            *value = (i as u16).wrapping_mul(40503) as i16;
+        }
+        let src: [i16; ACC] = std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
+        // Distinct row indices per slot so a transposed arm cannot cancel.
+        let adds = [1usize, 4];
+        let subs = [2usize, 6];
+        for na in 0..=2 {
+            for ns in 0..=2 {
+                let (a, s) = (&adds[..na], &subs[..ns]);
+                let mut reference = src;
+                scalar::i16_deltas(&mut reference, &weights, a, s);
+                let mut dispatched = [0i16; ACC];
+                apply_i16_deltas_into(&mut dispatched, &src, &weights, a, s);
+                assert_eq!(dispatched, reference, "shape ({na}, {ns})");
+                if na == 0 && ns == 0 {
+                    assert_eq!(dispatched, src, "the empty shape must be a pure copy");
+                }
+            }
         }
     }
 

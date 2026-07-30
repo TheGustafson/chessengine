@@ -1,0 +1,25 @@
+    23.53%  archon-s20  archon-s20            [.] <chessengine::eval::nnue::sota_threats::ThreatContext>::at_full
+    18.84%  archon-s20  archon-s20            [.] <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+    11.84%  archon-s20  archon-s20            [.] chessengine::eval::nnue::sota_simd::avx512::i16_deltas_into
+     8.31%  archon-s20  archon-s20            [.] <chessengine::eval::nnue::sota_head::SotaHead>::forward_into
+     7.03%  archon-s20  archon-s20            [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into
+     5.80%  archon-s20  archon-s20            [.] <chessengine::movepick::MovePicker>::init_quiets
+     4.07%  archon-s20  archon-s20            [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::current_full
+     2.61%  archon-s20  archon-s20            [.] <chessengine::search::Worker>::qsearch::<chessengine::search::NonPv>
+     2.36%  archon-s20  archon-s20            [.] chessengine::eval::nnue::sota_threats::record_square_touch
+     1.90%  archon-s20  archon-s20            [.] <chessengine::eval::nnue::sota_context::SotaContext>::evaluate
+     1.59%  archon-s20  archon-s20            [.] <chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>
+     1.16%  archon-s20  archon-s20            [.] chessengine::eval::nnue::sota_loader::load_v2_bytes
+     1.03%  archon-s20  archon-s20            [.] <chessengine::movepick::MovePicker>::init_captures
+     0.91%  archon-s20  archon-s20            [.] <chessengine::movepick::MovePicker>::new
+     0.86%  archon-s20  archon-s20            [.] <chessengine::search::Worker>::do_move
+     0.80%  archon-s20  archon-s20            [.] <chessengine::history::Histories>::update_quiet_histories
+     0.78%  archon-s20  archon-s20            [.] <chessengine::board::Board>::see_ge
+     0.62%  archon-s20  archon-s20            [.] chessengine::eval::nnue::sota_features::refresh_threat_into_at
+     0.57%  archon-s20  archon-s20            [.] chessengine::eval::nnue::sota_threats::record_outgoing
+     0.48%  archon-s20  archon-s20            [.] <chessengine::history::Histories>::update_continuation_histories
+     0.47%  archon-s20  archon-s20            [.] <chessengine::types::Square as core::fmt::Display>::fmt
+     0.47%  archon-s20  archon-s20            [.] <chessengine::movepick::MovePicker>::init_evasions
+     0.32%  archon-s20  archon-s20            [.] <char as core::fmt::Display>::fmt
+
+
