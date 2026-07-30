@@ -5103,3 +5103,36 @@ confirm `1 passed`).
 **Box:** 5692 MB available, load 21.34 — the 5880-game screen at conc=10 plus
 study 36 plus the trainer. Above the 2500 MB refuse line, but this is the
 busiest the box has been tonight; **no new work started this tick on purpose.**
+
+## Tick 2026-07-30 ~11:30 — confirmation strengthening, D49 sb230
+
+**`confirm600` progression** (D48X@600 vs canonical @400, same weights,
+header-only):
+
+| n | Elo | bar |
+|---:|---:|---:|
+| 1466 (first pass) | +15.65 | +/-11.02 |
+| 998 | +20.91 | +/-13.09 |
+| 2002 | +15.11 | +/-9.41 |
+| **2998** | **+19.26** | **+/-7.73** |
+
+Now **2.5 sigma** and stable in the +15..+21 band across four readings on two
+independent runs. Running on to 5880 (+/-5). **Still no promotion until it
+completes** — the whole point of this screen is that 1.42 sigma was not enough,
+and stopping early at 2.5 sigma would repeat the error in a smaller size.
+
+**D49 sb230/400**, heldout **0.011731** (ema 0.011399), still descending. 170 sb
+to go: cosine to sb300, then the anneal.
+
+**Study 36 ahead=2**, and it has moved on from its first item to a second:
+*"history: index the `[piece x to]` planes FLAT wher…"*. Two committed pieces of
+work, dirty=2 — the commit-as-you-go instruction is holding.
+
+**Box: 4932 MB available, load 20.19.** This is the tightest memory has been
+tonight (down from 8.6 GB), driven by the 5880-game screen at conc=10 plus study
+36 plus the trainer. Still nearly 2x the 2500 MB refuse line, but the direction
+is one-way, so:
+- **no new study commissioned this tick**, and
+- **no new screen started** — one big screen is already saturating the box.
+
+Watching for the screen to finish, which frees ~2.5 GB and ten cores at once.
