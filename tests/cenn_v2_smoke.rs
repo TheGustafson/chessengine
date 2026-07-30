@@ -52,11 +52,12 @@ fn cenn_v2_round_trip_and_evaluate() {
             l3_wdl_biases: None,
             skip_weights: None,
             network_scale: 380,
+            threat_shift: 2,
         },
     };
 
     // Serialize → load round-trip.
-    let bytes = sota_loader::serialize_v2(&net);
+    let bytes = sota_loader::serialize(&net);
     assert_eq!(&bytes[0..4], b"CEN2");
     let loaded = sota_loader::load_v2_bytes(&bytes).expect("valid net loads");
     assert_eq!(net, loaded);

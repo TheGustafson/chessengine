@@ -229,8 +229,9 @@ fn file_identity(path: &str) -> Result<(PathBuf, u64, Option<SystemTime>), NnueE
 /// unless the exact same file is already the active net, in which case this
 /// is a no-op (see [`LOADED_FILE`]).
 ///
-/// With the `sota` feature: the first 4 bytes are peeked — if `b"CEN2"` the
-/// file is loaded as a D40 SOTA net (clearing any v1 net), otherwise as a v1
+/// With the `sota` feature: the first 4 bytes are peeked — if `b"CEN2"` or
+/// `b"CEN5"` the file is loaded as a D40 SOTA net (clearing any v1 net),
+/// otherwise as a v1
 /// CENN net (clearing any SOTA net). Without the `sota` feature: only v1 CENN
 /// is accepted. Loader errors are returned for a clean UCI `info string`; this
 /// never panics on a user-supplied file (CLAUDE.md).
@@ -280,7 +281,9 @@ fn install_eval_file(path: &str) -> Result<(), NnueError> {
     #[cfg(feature = "sota")]
     {
         let bytes = std::fs::read(path).map_err(NnueError::Io)?;
-        if bytes.len() >= 4 && bytes[0..4] == *b"CEN2" {
+        if bytes.len() >= 4
+            && (bytes[0..4] == sota_loader::MAGIC_V2 || bytes[0..4] == sota_loader::MAGIC_V5)
+        {
             let mut net = sota_loader::load_v2_bytes(&bytes).map_err(|e| {
                 NnueError::Io(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
@@ -347,7 +350,7 @@ fn install_eval_file(path: &str) -> Result<(), NnueError> {
                 .unwrap_or_else(|e| e.into_inner()) = None;
             return Ok(());
         }
-        // Not CEN2 → fall through to v1 loader. Clear SOTA + policy.
+        // Not a SOTA container → fall through to v1 loader. Clear SOTA + policy.
         *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
         *ACTIVE_POLICY_HEAD
             .write()

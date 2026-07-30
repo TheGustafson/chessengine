@@ -1146,6 +1146,7 @@ mod tests {
             l3_weights: vec![0.02f32; BUCKETS * L3].into(),
             l3_biases: vec![0.0f32; BUCKETS].into_boxed_slice(),
             network_scale: 380,
+            threat_shift: 2,
             l3_var_weights: None,
             l3_var_biases: None,
             l3_wdl_weights: None,

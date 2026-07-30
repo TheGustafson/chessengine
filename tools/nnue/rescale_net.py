@@ -57,6 +57,10 @@ CENN_VERSION = 1
 HEADER_LEN = 48
 MAGIC_V2 = b"CEN2"
 HEADER_V2_LEN = 64
+# CENN-v5 (perf study 30): the v2 header + threat_quant:i32 @64 + reserved:u32
+# @68. Bytes 0..64 are unchanged, so this file only has to know the LENGTH.
+MAGIC_V5 = b"CEN5"
+HEADER_V5_LEN = 72
 
 # Payload element counts, in CENN order.
 N_FT_W = INPUT * L1  # 196608
@@ -155,15 +159,17 @@ def rescale_v1(raw: bytes, in_path: str, k: float) -> bytes:
 
 
 def rescale_v2(raw: bytes, in_path: str, k: float) -> bytes:
-    if len(raw) < HEADER_V2_LEN:
-        die(f"{in_path}: truncated CENN-v2 header")
+    v5 = raw[:4] == MAGIC_V5
+    hdr = HEADER_V5_LEN if v5 else HEADER_V2_LEN
+    if len(raw) < hdr:
+        die(f"{in_path}: truncated CENN header")
     version, flags = struct.unpack_from("<HH", raw, 4)
-    if version != 2:
-        die(f"unsupported CENN-v2 version {version}")
+    if version != (5 if v5 else 2):
+        die(f"unsupported CENN version {version}")
     halfka, threats, acc, l2, l3, buckets = struct.unpack_from("<6I", raw, 8)
     payload_len = struct.unpack_from("<Q", raw, 48)[0]
-    if len(raw) != HEADER_V2_LEN + payload_len:
-        die(f"CENN-v2 length {len(raw)} != header+payload {HEADER_V2_LEN + payload_len}")
+    if len(raw) != hdr + payload_len:
+        die(f"CENN length {len(raw)} != header+payload {hdr + payload_len}")
     expected = (
         halfka * acc * 2 + acc * 2 + (threats * acc if flags & 1 else 0)
         + buckets * l2 * acc
@@ -174,9 +180,9 @@ def rescale_v2(raw: bytes, in_path: str, k: float) -> bytes:
         + buckets * 4
     )
     if payload_len != expected:
-        die(f"CENN-v2 payload_len {payload_len} != derived {expected}")
+        die(f"CENN payload_len {payload_len} != derived {expected}")
 
-    payload = bytearray(raw[HEADER_V2_LEN:])
+    payload = bytearray(raw[hdr:])
     # l3_w and l3_b are the final two tensors in the payload.
     off_b = payload_len - buckets * 4
     off_w = off_b - buckets * l3 * 4
@@ -185,11 +191,13 @@ def rescale_v2(raw: bytes, in_path: str, k: float) -> bytes:
     struct.pack_into(f"<{len(weights)}f", payload, off_w, *(v * k for v in weights))
     struct.pack_into(f"<{len(biases)}f", payload, off_b, *(v * k for v in biases))
 
-    header = bytearray(raw[:HEADER_V2_LEN])
+    header = bytearray(raw[:hdr])
     checksum = fnv1a64(bytes(payload))
     struct.pack_into("<Q", header, 56, checksum)
+    tq = struct.unpack_from("<i", raw, 64)[0] if v5 else 64
     print(f"  k            {k}")
-    print(f"  CENN-v2      {halfka}+{threats}->{acc}->{l2}->{l3}, buckets={buckets}")
+    print(f"  CENN-v{5 if v5 else 2}      {halfka}+{threats}->{acc}->{l2}->{l3}, "
+          f"buckets={buckets}, threat_quant={tq}")
     print(f"  l3 weights   max|w| {max(map(abs, weights)):.7g} -> "
           f"{max(abs(v * k) for v in weights):.7g}")
     print(f"  payload_len  {payload_len}   checksum {checksum:#018x}")
@@ -200,10 +208,10 @@ def rescale(in_path: str, out_path: str, k: float) -> None:
     raw = open(in_path, "rb").read()
     if raw[:4] == MAGIC:
         output = rescale_v1(raw, in_path, k)
-    elif raw[:4] == MAGIC_V2:
+    elif raw[:4] in (MAGIC_V2, MAGIC_V5):
         output = rescale_v2(raw, in_path, k)
     else:
-        die(f"bad magic {raw[:4]!r} (expected {MAGIC!r} or {MAGIC_V2!r})")
+        die(f"bad magic {raw[:4]!r} (expected {MAGIC!r}, {MAGIC_V2!r} or {MAGIC_V5!r})")
     with open(out_path, "wb") as handle:
         handle.write(output)
     print(f"rescale_net: wrote {out_path} ({len(output)} bytes)")
