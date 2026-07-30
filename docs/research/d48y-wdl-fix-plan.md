@@ -2529,3 +2529,24 @@ first superbatches of any run with new mechanisms.**
 **Launched as a systemd transient SERVICE, not `--scope`.** A `--scope` dies
 with the session — that is what killed the 5,880-game screen at 1043/5880.
 Anything long-running is a service from now on.
+
+### Tick @ D49 sb9 — healthy, and FASTER than D48Y2
+
+| | |
+|---|---|
+| unit | `archon-d49.service` **active** |
+| progress | **sb9/400**, 125 s/sb |
+| value | 0.025927 (sb1) → **0.012189 (sb9)** |
+| throughput | 172k → **192k pos/s**, still climbing as the page cache warms |
+| resources | GPU 94% / 7.0 GB, **9.7 GB RAM free** |
+
+**Throughput now EXCEEDS D48Y2's ~178k despite carrying all six mechanisms.**
+The earlier "~3% cost" reading was a cold-cache artifact from sb1 — QAT's
+fake-quant, the 127-level activation grid and the per-record shaping weights are
+free in practice, and the from-scratch init (no 433 MB warm load) starts leaner.
+
+**ETA at current pace: sb100 in 3.2 h, sb300 in 10.1 h, sb400 in ~13.6 h.**
+First screenable checkpoint (sb100, the owner's plateau point) is ~3 h out; per
+the standing rule it gets >=1500 games, not 120.
+
+Study 21 (ARCHON-only stall hunt) running, no commits yet, no builds in flight.
