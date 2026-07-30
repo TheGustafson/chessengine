@@ -25,6 +25,10 @@ pub mod accumulator;
 /// Cache-line-aligned heap slices for the weight tables (perf study 20 §5).
 #[cfg(feature = "sota")]
 pub mod aligned;
+/// Perf study 29's exact accumulator load census — instrumentation only,
+/// compiled out unless `--features foldcount`.
+#[cfg(feature = "foldcount")]
+pub mod foldcount;
 pub mod loader;
 pub mod network;
 /// D47 deployed policy head (CPL1 sidecar + selected-row scorer) — needs the

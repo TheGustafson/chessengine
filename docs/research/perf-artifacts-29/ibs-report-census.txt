@@ -1,0 +1,55 @@
+# text base=0x561d10c01000 file-off=0x3e000
+# regions=hka_weights:0x7f625391e040:0x7f625701e040,hka_psqt:0x7f624ec4a040:0x7f624ecfa040,hka_stack:0x7f625dec0040:0x7f625e0017c0,finny_cache:0x7f625de6b040:0x7f625debf040,thr_weights:0x7f624eefe040:0x7f625391d040,thr_psqt:0x7f624ecfa040:0x7f624eed4640,thr_stack:0x7f625dd21040:0x7f625de6a6c0
+# resolved LOAD samples inside the binary: 11615
+
+=== _RNvMs0_NtNtNtCseaZmtGgbJW5_11chessengine4eval4nnue12sota_threatsNtB5_13ThreatContext7at_full   loads=3277 (28.21% of resolved)
+    thr_weights  n=   1776 ( 54.2%)  L1-hit  43.4%  L1 hit=771 L2 hit=721 L3 hit=180 RAM hit=104
+    other        n=   1002 ( 30.6%)  L1-hit  49.2%  L1 hit=493 L2 hit=457 L3 hit=44 RAM hit=8
+    thr_stack    n=    402 ( 12.3%)  L1-hit  45.8%  L2 hit=212 L1 hit=184 L3 hit=5 RAM hit=1
+    hka_stack    n=     97 (  3.0%)  L1-hit  22.7%  L2 hit=75 L1 hit=22
+
+=== _RNvMs1_NtNtNtCseaZmtGgbJW5_11chessengine4eval4nnue16sota_accumulatorNtB5_13HalfkaContext18finny_refresh_into   loads=1853 (15.95% of resolved)
+    hka_weights  n=   1504 ( 81.2%)  L1-hit   7.2%  L2 hit=1093 L3 hit=221 L1 hit=108 RAM hit=82
+    hka_stack    n=    338 ( 18.2%)  L1-hit  33.7%  L2 hit=209 L1 hit=114 L3 hit=12 RAM hit=3
+    other        n=     11 (  0.6%)  L1-hit  81.8%  L1 hit=9 L2 hit=2
+
+=== _RNvNtNtNtCseaZmtGgbJW5_11chessengine4eval4nnue12sota_threats22refresh_psqt_threat_at   loads=1171 (10.08% of resolved)
+    hka_weights  n=    697 ( 59.5%)  L1-hit   4.6%  RAM hit=333 L2 hit=174 L3 hit=158 L1 hit=32
+    other        n=    443 ( 37.8%)  L1-hit  96.8%  L1 hit=429 L2 hit=13 L3 hit=1
+    finny_cache  n=     31 (  2.6%)  L1-hit  12.9%  L3 hit=15 L2 hit=11 L1 hit=4 RAM hit=1
+
+=== _RINvNtNtNtCseaZmtGgbJW5_11chessengine4eval4nnue12sota_threats14record_targetsKhb_EB8_   loads=665 (5.73% of resolved)
+    hka_weights  n=    664 ( 99.8%)  L1-hit  10.2%  L2 hit=266 RAM hit=170 L3 hit=160 L1 hit=68
+    other        n=      1 (  0.2%)  L1-hit 100.0%  L1 hit=1
+
+=== _RINvMs8_NtCseaZmtGgbJW5_11chessengine6searchNtB6_6Worker6searchNtB6_5NonPvEB8_   loads=648 (5.58% of resolved)
+    other        n=    648 (100.0%)  L1-hit  89.5%  L1 hit=580 L2 hit=61 L3 hit=7
+
+=== _RNvMs0_NtCseaZmtGgbJW5_11chessengine8movepickNtB5_10MovePicker11init_quiets   loads=610 (5.25% of resolved)
+    other        n=    610 (100.0%)  L1-hit  81.6%  L1 hit=498 L2 hit=73 L3 hit=32 RAM hit=7
+
+=== _RNvMs_NtNtNtCseaZmtGgbJW5_11chessengine4eval4nnue11accumulatorNtB4_11NnueContext7compute   loads=361 (3.11% of resolved)
+    other        n=    361 (100.0%)  L1-hit  93.4%  L1 hit=337 L2 hit=23 RAM hit=1
+
+=== _RINvMs8_NtCseaZmtGgbJW5_11chessengine6searchNtB6_6Worker7qsearchNtB6_5NonPvEB8_   loads=286 (2.46% of resolved)
+    other        n=    286 (100.0%)  L1-hit  90.9%  L1 hit=260 L2 hit=21 L3 hit=4 RAM hit=1
+
+=== _RINvNtCseaZmtGgbJW5_11chessengine7movegen8generateKh2_EB4_   loads=231 (1.99% of resolved)
+    other        n=    231 (100.0%)  L1-hit  87.4%  L1 hit=202 L2 hit=29
+
+=== _RINvNtNtNtNtCs4NRVxsYgnAr_4core5slice4sort6stable9quicksort9quicksortNtNtNtCseaZmtGgbJW5_11chessengine6search9rootmoves8RootMoveNCINvMNtCscdodAO9FK5_5alloc5sliceSB15_11sort_by_keyINtNtBa_3cmp7ReverseTlllEENCNvB17_15sort_descending0E0EB1b_   loads=219 (1.89% of resolved)
+    other        n=    219 (100.0%)  L1-hit  72.6%  L1 hit=159 L2 hit=30 RAM hit=17 L3 hit=13
+
+=== _RNvMs1_NtNtNtCseaZmtGgbJW5_11chessengine4eval4nnue16sota_accumulatorNtB5_13HalfkaContext12current_full   loads=166 (1.43% of resolved)
+    other        n=    145 ( 87.3%)  L1-hit 100.0%  L1 hit=145
+    thr_psqt     n=     12 (  7.2%)  L1-hit   0.0%  L2 hit=9 L3 hit=3
+    thr_stack    n=      9 (  5.4%)  L1-hit 100.0%  L1 hit=9
+
+=== _RNSNvYNCINvMs0_NtNtCs2AWtUsOyxgP_3std4sync4onceNtBd_4Once15call_once_forceNCNvMNtBf_9lazy_lockINtB1f_8LazyLockNtNtNtNtCseaZmtGgbJW5_11chessengine4eval4nnue13sota_features12ThreatTablesE5force0E0INtNtNtCs4NRVxsYgnAr_4core3ops8function6FnOnceTRNtBd_9OnceStateEE9call_once6vtableB1S_   loads=163 (1.40% of resolved)
+    hka_weights  n=    163 (100.0%)  L1-hit   3.1%  RAM hit=54 L3 hit=53 L2 hit=51 L1 hit=5
+
+=== _RNvMs0_NtCseaZmtGgbJW5_11chessengine8movepickNtB5_10MovePicker13init_captures   loads=162 (1.39% of resolved)
+    other        n=    162 (100.0%)  L1-hit  91.4%  L1 hit=148 L2 hit=7 RAM hit=4 L3 hit=3
+
+=== _RNvNvNtCscdodAO9FK5_5alloc3fmt6format12format_inner   loads=158 (1.36% of resolved)
+    other        n=    158 (100.0%)  L1-hit  96.2%  L1 hit=152 L2 hit=6
