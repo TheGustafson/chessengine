@@ -6780,3 +6780,39 @@ verdict screens want the CPU; doing the build now means neither waits on it.
 - checkpoints — all 40 will be retained; the fallback needs no action.
 
 **Box:** 8234 MB, free swap 1018 MB, load 4.40.
+
+## Tick 2026-07-31 ~08:45 — 15 superbatches left; the EMA bonus is spent
+
+**heldout sb380: raw 0.010860 / ema 0.010838.**
+
+### The predicted EMA/raw convergence has completed
+
+| sb | ema − raw | free EMA bonus |
+|---:|---:|---:|
+| 180 | −514e-6 | 46.8 Elo |
+| 270 | −283e-6 | 25.8 Elo |
+| 320 | −208e-6 | 18.9 Elo |
+| 360 | −102e-6 | 9.3 Elo |
+| **380** | **−22e-6** | **2.0 Elo** |
+
+**This was predicted and is now visible:** as LR → 0 the EMA must converge on
+the live weights, and it has. **That closes the last upside branch of the
+projection** — "EMA converges onto the faster raw trend" is no longer a separate
+optimistic case, because the two columns have already met. What remains is a
+single trajectory.
+
+**Endpoint holds at ≈ −9 Elo** (−9.4 on the since-sb270 rate, −9.5 on the last
+step) — the **eighth consecutive tick** in the −7…−12 band.
+
+### Study 40 has closed arm B
+
+Its latest commit: ***"the ~26 i/n is CLOSED, and it…"*** — study 38's
+unexplained remainder now has a mechanism, which is the thing study 38 explicitly
+declined to invent a story for and shipped `null38` to let someone else find.
+Arm A (`insertwin34`) still pending. **ahead=2**, so the nudge is holding.
+
+**Verdict build finished clean (`EXIT=0`)** — `target-sota` is now current-main
+and CEN5-capable, so the ladder can start the moment sb400 lands.
+
+**Box:** 8190 MB, free swap 1008 MB, load 4.11 — quiet, and everything for the
+endpoint is pre-staged.
