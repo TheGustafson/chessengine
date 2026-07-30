@@ -82,6 +82,14 @@ sota = []
 # `bench`. Instrumentation only: the search tree, node count and eval hash are
 # untouched (verified), but the binary is NOT a timing reference. Never shipped.
 foldcount = ["sota"]
+# Perf study 34's MOVE-ORDERING CENSUS. Study 23 measured how much work
+# `init_quiets` does; this measures how much of it the search ever USES —
+# per picker, how far into the scored-and-sorted quiet list the move loop
+# actually walked, plus the cutoff-move-index distribution. Relaxed atomics on
+# paths that make no search decision, so the tree stays bit-identical
+# (verified by `tools/perf34/ident34.sh`); the binary is NOT a timing
+# reference. Never shipped.
+census34 = []
 # Perf study 29's TRAFFIC-PINNING probes. Both keep the load COUNT of every
 # accumulator kernel bit-for-bit identical and collapse ONE stream's working
 # set to a single hot line, so the drop in L1 misses / load-stall cycles is

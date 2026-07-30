@@ -351,6 +351,53 @@ pub struct MovePicker {
     buf: [core::mem::MaybeUninit<ExtMove>; MAX_MOVES],
     #[cfg(debug_assertions)]
     written: [bool; MAX_MOVES],
+    /// Perf study 34's census (instrument builds only): per-picker tallies,
+    /// aggregated in `Drop` because only the drop point knows how far the
+    /// search actually walked before the node ended.
+    #[cfg(feature = "census34")]
+    c: Census,
+}
+
+/// Per-picker census tallies (perf study 34, instrument builds only).
+#[cfg(feature = "census34")]
+#[derive(Default)]
+struct Census {
+    /// Length of the sorted prefix `partial_insertion_sort` produced for the
+    /// quiet region — the elements whose order the sort actually paid for.
+    prefix: u32,
+    n_quiets: u32,
+    gq_scanned: u32,
+    gq_emitted: u32,
+    bq_scanned: u32,
+    bq_emitted: u32,
+    gc_scanned: u32,
+    gc_emitted: u32,
+    /// Set once `init_quiets` has run, so `Drop` can tell a picker that never
+    /// reached `QuietInit` from one that generated an empty quiet list.
+    quiets_generated: bool,
+}
+
+#[cfg(feature = "census34")]
+impl Drop for MovePicker {
+    fn drop(&mut self) {
+        use crate::census34 as cx;
+        cx::bump(&cx::GC_SCANNED, self.c.gc_scanned as u64);
+        cx::bump(&cx::GC_EMITTED, self.c.gc_emitted as u64);
+        if !self.c.quiets_generated {
+            return;
+        }
+        cx::bump(&cx::GQ_SCANNED, self.c.gq_scanned as u64);
+        cx::bump(&cx::GQ_EMITTED, self.c.gq_emitted as u64);
+        cx::bump(&cx::BQ_SCANNED, self.c.bq_scanned as u64);
+        cx::bump(&cx::BQ_EMITTED, self.c.bq_emitted as u64);
+        cx::bump(&cx::Q_SKIPPED, self.skip_quiets as u64);
+        // "Exhausted" = the search consumed every quiet the picker generated.
+        let walked = self.c.gq_scanned + self.c.bq_scanned;
+        cx::bump(&cx::Q_EXHAUSTED, u64::from(walked >= self.c.n_quiets));
+        cx::hist(&cx::HIST_GQ, self.c.gq_scanned as usize);
+        cx::hist(&cx::HIST_NQ, self.c.n_quiets as usize);
+        cx::hist(&cx::HIST_PFX, self.c.prefix as usize);
+    }
 }
 
 impl MovePicker {
@@ -480,6 +527,8 @@ impl MovePicker {
             buf: [core::mem::MaybeUninit::uninit(); MAX_MOVES],
             #[cfg(debug_assertions)]
             written: [false; MAX_MOVES],
+            #[cfg(feature = "census34")]
+            c: Census::default(),
         }
     }
 
@@ -568,6 +617,10 @@ impl MovePicker {
                 Stage::GoodCapture => {
                     while self.cur < self.end_cur {
                         let ext = self.slot(self.cur);
+                        #[cfg(feature = "census34")]
+                        {
+                            self.c.gc_scanned += 1;
+                        }
                         // Dedup: the TT move was already emitted at MainTt.
                         if ext.mv == self.tt_move {
                             self.cur += 1;
@@ -575,6 +628,10 @@ impl MovePicker {
                         }
                         if board.see_ge(ext.mv, -ext.value / GOOD_CAPTURE_SEE_DIVISOR()) {
                             self.cur += 1;
+                            #[cfg(feature = "census34")]
+                            {
+                                self.c.gc_emitted += 1;
+                            }
                             return Some(ext.mv);
                         }
                         // Bad: park it in `[0, end_bad_captures)`. The stale,
@@ -691,6 +748,12 @@ impl MovePicker {
         self.end_generated = n;
         self.end_cur = n;
         partial_insertion_sort(self.slots_mut(0..n), i32::MIN);
+        #[cfg(feature = "census34")]
+        {
+            use crate::census34 as cx;
+            cx::bump(&cx::IC_CALLS, 1);
+            cx::bump(&cx::IC_SCORED, n as u64);
+        }
     }
 
     /// Late-move pruning (design/09 §3.5): abandon quiet generation and
@@ -937,7 +1000,30 @@ impl MovePicker {
         self.end_cur = base + n;
         self.end_generated = base + n;
         let sort_limit = QUIET_SORT_DEPTH_FACTOR() * self.depth;
+        // Census BEFORE the sort: the prefix model is "element 0 plus every
+        // LATER element >= limit", and the sort permutes the range, so the
+        // count is only well defined on the pre-sort order.
+        #[cfg(feature = "census34")]
+        let pfx = if n == 0 {
+            0
+        } else {
+            1 + self
+                .slots_mut(base + 1..base + n)
+                .iter()
+                .filter(|e| e.value >= sort_limit)
+                .count()
+        };
         partial_insertion_sort(self.slots_mut(base..base + n), sort_limit);
+        #[cfg(feature = "census34")]
+        {
+            use crate::census34 as cx;
+            cx::bump(&cx::IQ_CALLS, 1);
+            cx::bump(&cx::IQ_SCORED, n as u64);
+            cx::bump(&cx::IQ_PREFIX, pfx as u64);
+            self.c.prefix = pfx as u32;
+            self.c.n_quiets = n as u32;
+            self.c.quiets_generated = true;
+        }
     }
 
     /// Generate + score check evasions into `buf[0..n]`, full-sort, and set the
@@ -987,12 +1073,40 @@ impl MovePicker {
         while self.cur < self.end_cur {
             let ext = self.slot(self.cur);
             self.cur += 1;
+            #[cfg(feature = "census34")]
+            self.census_scan();
             // Dedup: the TT move was already emitted at the `*Tt` stage.
             if ext.mv != self.tt_move && ok(board, ext) {
+                #[cfg(feature = "census34")]
+                self.census_emit();
                 return Some(ext.mv);
             }
         }
         None
+    }
+
+    /// Census (perf study 34): attribute one inspected element to its stage.
+    #[cfg(feature = "census34")]
+    #[inline]
+    fn census_scan(&mut self) {
+        match self.stage {
+            Stage::GoodQuiet => self.c.gq_scanned += 1,
+            Stage::BadQuiet => self.c.bq_scanned += 1,
+            Stage::Qcapture | Stage::Probcut => self.c.gc_scanned += 1,
+            _ => {}
+        }
+    }
+
+    /// Census (perf study 34): attribute one emitted move to its stage.
+    #[cfg(feature = "census34")]
+    #[inline]
+    fn census_emit(&mut self) {
+        match self.stage {
+            Stage::GoodQuiet => self.c.gq_emitted += 1,
+            Stage::BadQuiet => self.c.bq_emitted += 1,
+            Stage::Qcapture | Stage::Probcut => self.c.gc_emitted += 1,
+            _ => {}
+        }
     }
 }
 
