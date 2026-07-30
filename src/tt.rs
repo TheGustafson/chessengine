@@ -512,13 +512,22 @@ impl TranspositionTable {
             c::note_cluster(std::ptr::from_ref(cluster) as usize);
         }
 
-        for (_slot, entry) in cluster.entries.iter().enumerate() {
+        for entry in &cluster.entries {
             if entry.key16.load(Relaxed) == tag {
                 #[cfg(feature = "ttcensus42")]
                 {
                     use crate::ttcensus42 as c;
                     c::bump(&c::TAG_MATCH);
-                    c::bump([&c::SLOT0, &c::SLOT1, &c::SLOT2][_slot]);
+                    // Which slot matched, derived from the address rather than
+                    // from an `enumerate()` index: the loop above is the hot
+                    // path and the default build must keep exactly the shape it
+                    // had before this census existed. Entries are `size_of::
+                    // <TtEntry>()` apart inside the cluster, so the division is
+                    // exact.
+                    let slot = (std::ptr::from_ref(entry) as usize
+                        - std::ptr::from_ref(cluster) as usize)
+                        / size_of::<TtEntry>();
+                    c::bump([&c::SLOT0, &c::SLOT1, &c::SLOT2][slot]);
                     if entry.is_occupied() {
                         c::bump(&c::HITS);
                     }
@@ -1156,7 +1165,11 @@ mod tests {
     fn no_cluster_straddles_a_64_byte_cache_line() {
         let tt = TranspositionTable::new(MIN_HASH_MB);
         let base = tt.clusters.as_ptr() as usize;
-        assert_eq!(base % 32, 0, "cluster buffer base {base:#x} is not 32-aligned");
+        assert_eq!(
+            base % 32,
+            0,
+            "cluster buffer base {base:#x} is not 32-aligned"
+        );
         let n = tt.clusters.len();
         for i in [0, 1, 2, n / 2, n - 2, n - 1] {
             let lo = std::ptr::from_ref(&tt.clusters[i]) as usize;

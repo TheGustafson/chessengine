@@ -172,7 +172,7 @@ Two mechanisms, both of which had to be checked rather than assumed:
 
 **Consequence, and it is the reason §H2 is built the way it is:** the IBS level
 distribution is structurally blind to the question "is the prefetch working".
-Only the node-identical differencing arm can answer it, and it does (§1:
+Only the node-identical differencing arm can answer it, and it does (§H2:
 +3.504% cycles, 12–18 of 12–18 rounds, against a clean null). Nothing in this
 study's headline rests on the retracted claim.
 
@@ -480,7 +480,7 @@ points: cycles, load-stall, DRAM fills and page walks.
 The arithmetic that makes this concrete: 16 MB → 1 GB adds **+397.7 stall
 cycles/node** and **+0.94 DRAM fills/node**. That is ~423 stall cycles per
 added DRAM fill — a full memory latency — and ~0.94 fills is, to within the
-measurement, **the TT's entire line population** (1.067 lines/node, §1).
+measurement, **the TT's entire line population** (1.067 lines/node, §H1).
 
 **Interpretation, one inference deep and flagged as such:** at 16 MB the table
 mostly lives in the 32 MB L3 and a probe is an L3 hit; at 1 GB every probe is a

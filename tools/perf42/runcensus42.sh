@@ -10,6 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 CPU=${P42_CPU:-2}
+BIN=${P42_BIN:-bin42/census}
 BUDGET=${P42_BUDGET:-100000}
 NET=engines/canonical/net.cenn
 FENS=tools/nnue/calib/wl50.fens
@@ -17,7 +18,7 @@ OUT=docs/research/perf-artifacts-42
 mkdir -p "$OUT"
 for mb in "${@:-16}"; do
   ARCHON_TTCENSUS="$OUT/ttcensus-$mb.txt" \
-    taskset -c "$CPU" ./bin42/census bench "$mb" 1 "$BUDGET" "$FENS" nodes "$NET" \
+    taskset -c "$CPU" "./$BIN" bench "$mb" 1 "$BUDGET" "$FENS" nodes "$NET" \
     >/dev/null 2>&1
   echo "=== Hash = ${mb} MB ==="
   cat "$OUT/ttcensus-$mb.txt"

@@ -105,6 +105,10 @@ pub fn dump(nodes: u64) {
         ("same_cluster", &SAME_CLUSTER),
     ] {
         let v = c.load(Relaxed);
-        let _ = writeln!(f, "TTCENSUS {name}={v} {name}_per_node={:.6}", v as f64 / nodes as f64);
+        let _ = writeln!(
+            f,
+            "TTCENSUS {name}={v} {name}_per_node={:.6}",
+            v as f64 / nodes as f64
+        );
     }
 }
