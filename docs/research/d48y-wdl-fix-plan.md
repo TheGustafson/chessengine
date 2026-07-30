@@ -7323,3 +7323,32 @@ now**) and remains short of canonical. D48X stays canonical; every checkpoint is
 retained.
 
 Verdict continues to 5880 at ~130 games/min.
+
+## Tick 2026-07-31 ~15:30 — verdict 2228/5880; the next perf target identified
+
+Nothing started: load 16.47, and the verdict has ~28 min left. Both live jobs
+are ones I want finishing undisturbed.
+
+### The next study, recorded while the reasoning is fresh
+
+**Study 40 handed us a new instrument and an unexplained quantity in the same
+result.** It validated **`ex_no_retire.empty`** — front-end starvation — as
+having **21x better signal-to-background than `cycles:u`**, and measured it at
+**192.91 cycles/node = 4.7% of the engine**.
+
+**Mispredicts explain only a fraction of that.** At the newly measured **9.13
+cycles per mispredict** (not the assumed 18), `init_quiets`' *entire* mispredict
+share is **30.2 cycles/node**. So the large majority of those 192.91 cycles has
+**no attributed cause**, and **nobody has profiled the front end systematically**
+— icache, iTLB, decode bandwidth.
+
+That is:
+- a **pure ARCHON** target, no Stockfish comparison;
+- aimed at **throughput**, which is the standing bias;
+- backed by an instrument that is **freshly validated at n=159** rather than
+  assumed;
+- and sized — 4.7% of the engine, of which most is unexplained.
+
+**Goes out when the verdict frees the box.** Deliberately not commissioned into
+a load-16 box: study 33 lost its absolute numbers to exactly that, and study 40
+only succeeded because it took 159 paired rounds in conditions it controlled.
