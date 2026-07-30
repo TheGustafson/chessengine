@@ -1562,14 +1562,63 @@ mod avx512 {
         }
     }
 
-    /// The runtime-length i8 fold. `#[cold]` + `#[inline(never)]`: the four
-    /// shaped instantiations above cover every HalfKA fold, so this is for the
-    /// threat channel's longer lists, the tests, and the EMPTY-list contract —
-    /// both lists empty must copy `src` to `dst` verbatim, which the in-place
-    /// twins never have to do.
+    /// The runtime-length i8 fold — **the whole FullThreats channel**, plus the
+    /// tests' long lists and the EMPTY-list contract (both lists empty must copy
+    /// `src` to `dst` verbatim, which the in-place twins never have to do).
+    ///
+    /// # It is not cold, and it stopped being cold in perf study 32
+    ///
+    /// This carried `#[cold]` + `#[inline(never)]` from perf study 25 arm 1,
+    /// where it was **true**: the fold family was still split by weight type,
+    /// HalfKA folded `i16` rows through the shaped dispatch above and the threat
+    /// channel had its own `i8` kernel, so nothing but tests and the empty case
+    /// reached this function. Study 32 quantised HalfKA to `i8` and deleted the
+    /// `i16` family — "both feature transformers now fold i8 rows" — which
+    /// routed every threat fold into the *shared* kernel, out through the shape
+    /// dispatch (threat lists average 4.658 rows, so they miss all four shapes)
+    /// and into here. The attribute came across with the code. Perf study 36
+    /// then measured the result: **12.38% of engine cycles in a function
+    /// labelled cold.**
+    ///
+    /// Perf study 37 measured what the label cost. `#[inline(never)]` was
+    /// **provably inert** — the binary is byte-identical with it removed,
+    /// because `cold` already forbids inlining — and `#[cold]` was worth
+    /// −0.744 instructions and −0.744 branches per node, entirely from block
+    /// placement in the caller: it laid the generic call out as the unlikely
+    /// arm of the shape dispatch, so the one path that is actually taken took a
+    /// jump the fallthrough now covers.
+    ///
+    /// # ⚠ DO NOT "TIDY" THE TWO ROW LOOPS INTO ONE — that arm was built and it LOST
+    ///
+    /// Perf study 37 arm 3 walked the add and sub lists TOGETHER for their
+    /// common prefix (`split_at(adds.len().min(subs.len()))`, then one paired
+    /// loop plus whichever tail survives), on the reasoning that two cursor
+    /// bumps, two compares and two back-edges per pair become one of each. The
+    /// per-row control here really is **6 instructions per row per tile**
+    /// (`mov`, `add`, `lea`, `shl`, `cmp`, `jne` — read off the shipped
+    /// disassembly, not estimated), i.e. ~47.9 i/n and ~8.0 br/n at 3.993
+    /// rows/node over 2 tiles, so the target was real.
+    ///
+    /// It is bit-identical — wrapping `i16` add/sub is a commutative group
+    /// operation per lane, so only the multiset of signed rows matters — and it
+    /// measured **+0.147% instructions, +0.243% branches and +0.331% L1d
+    /// loads**, node- and hash-identical, 12 paired rounds, against a null of
+    /// exactly zero on the first two. A LOSS, three times over.
+    ///
+    /// **Why**, and this is the part worth keeping: the two-loop form is
+    /// 3616 bytes because **LLVM clones the whole tile body across the
+    /// empty-list cases and unrolls both tiles**, and that cloning is worth more
+    /// than the control it duplicates. The paired form collapsed to 1744 bytes
+    /// (405 instructions from 714, one tile body instead of the clones) —
+    /// tidier, smaller, and slower. Turning two loops into three also gives the
+    /// common `na == ns` case two empty-tail entry tests it did not have.
+    ///
+    /// The lesson generalises to anything else proposed here: in this kernel the
+    /// specialised, duplicated shape IS the optimisation, and a restructuring
+    /// that lets LLVM re-merge the paths pays for it. Measure before believing
+    /// a control-count argument.
     #[target_feature(enable = "avx512f,avx512bw")]
     #[inline(never)]
-    #[cold]
     unsafe fn i8_deltas_into_generic(
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
@@ -1580,7 +1629,7 @@ mod avx512 {
         // SAFETY: as `i8_deltas_into_inner`; reads `src`, writes the disjoint
         // `dst`, and each row is a 32-byte load sign-extended to 32 i16 lanes.
         // Perf study 12 §4 — the offset hoist + CAP chunking is gone; see the
-        // i16 twin above for the full rationale and the bit-identity argument.
+        // shaped kernel above for the full rationale.
         unsafe {
             let mut off = 0;
             while off + TILE <= ACC {
@@ -2374,6 +2423,44 @@ mod tests {
                 if na == 0 && ns == 0 {
                     assert_eq!(dispatched, src, "the empty shape must be a pure copy");
                 }
+            }
+        }
+    }
+
+    /// The GENERIC fold — the threat channel's kernel — over the full 15×15
+    /// grid of `(adds.len(), subs.len())`, against the scalar reference.
+    ///
+    /// Written for perf study 37's rejected pairing arm (see the ⚠ banner on
+    /// `i8_deltas_into_generic`) and kept after it was reverted, because the
+    /// coverage it adds is real and was missing: the module's other kernel tests
+    /// run either ≤2 rows (the shaped dispatch) or 200+ (one long list), so
+    /// **no test walked the short, UNEQUAL lengths that are the threat
+    /// channel's actual working range** — 18.66% of threat folds are exactly one
+    /// row, 59.10% are four or fewer, and the mean is 4.658.
+    ///
+    /// Mutation it catches: any future restructuring of the two row loops that
+    /// mis-slices the lists, drops the longer side's tail, or applies a sub as
+    /// an add. The index pools are disjoint and the weight table is dense, so a
+    /// dropped or mis-signed row cannot cancel coincidentally.
+    #[test]
+    fn the_generic_fold_matches_scalar_at_every_short_length_pair() {
+        const ROWS: usize = 29;
+        let mut weights = vec![0i8; ROWS * ACC];
+        for (i, value) in weights.iter_mut().enumerate() {
+            *value = (i as u8).wrapping_mul(173) as i8;
+        }
+        let src: [i16; ACC] = std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
+        // Disjoint index pools, so an add applied as a sub cannot cancel.
+        let adds: Vec<usize> = (0..14).map(|i| i * 2).collect();
+        let subs: Vec<usize> = (0..14).map(|i| i * 2 + 1).collect();
+        for na in 0..=14 {
+            for ns in 0..=14 {
+                let (a, s) = (&adds[..na], &subs[..ns]);
+                let mut reference = src;
+                scalar::i8_deltas(&mut reference, &weights, a, s);
+                let mut folded = [0i16; ACC];
+                apply_threat_deltas_into(&mut folded, &src, &weights, a, s);
+                assert_eq!(folded, reference, "lengths ({na}, {ns})");
             }
         }
     }
