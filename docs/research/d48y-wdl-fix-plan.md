@@ -8746,3 +8746,42 @@ it did not measure the *word-wise* ops the hot kernels actually issue
 (`vpmulhw`, `vpaddsw`); and its null was 4× larger than study 44's, so its
 resolution was ~±0.5% — **it could not have seen the 0.185% effect even if it had
 built it.**
+
+## Tick — D49's extension FITTED (not differenced), and it is ahead of schedule
+
+**sb510: heldout 0.011013, ema 0.010864** — eight consecutive down, and the
+sb500→510 step (**−92e-6**) is the largest of the extension. **Fitted rather than
+differenced**, because differencing two observations has produced four false
+readings in this project:
+
+| fit | slope |
+|---|---:|
+| OLS over the whole extension (n=11) | **−2.72e-6 / sb** (−27.2e-6 per 10sb) |
+| OLS over the last 5 samples | **−4.00e-6 / sb** (−40.0e-6 per 10sb) |
+
+**It is accelerating**, and that is a fitted statement over 5 points, not a
+single step.
+
+| | |
+|---|---:|
+| current (sb510) | 0.011013 |
+| pre-extension bar (sb390) | **0.010824** |
+| gap remaining | **189e-6** |
+| sb to reach the bar, whole-extension slope | **70** |
+| sb to reach the bar, last-5 slope | **47** |
+| **sb actually remaining to sb700** | **190** |
+
+**So on either fit it clears the pre-extension value with 120–143 superbatches to
+spare, BEFORE the anneal starts.** And D49's own history puts the sb600–700
+anneal at **~300e-6**, which is not in either fit.
+
+**Stated honestly:** the LR is still decaying, so neither slope extrapolates
+cleanly and both will flatten. The claim is directional, not a forecast — but the
+earlier projection of *"roughly a wash"* is now clearly too pessimistic, and I am
+retracting it. This is the third time I have revised this projection, each time
+upward, each time on more data.
+
+**No new study commissioned this tick** — 7230 MB available with the census, my
+independent gate on study 46, study 45's panel and the trainer all live. Adding a
+fourth build-capable line at that memory is the configuration that OOM'd this box
+on 2026-07-27.
