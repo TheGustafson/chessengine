@@ -8877,3 +8877,39 @@ one.** The lesson generalises: an unprivileged process cannot LOWER its own
 `oom_score_adj`, so protecting one job means continuously raising *everything
 else that is expendable* — and a guard scoped to one process class silently
 lapses whenever that class is idle.
+
+## Tick — I have been tracking the WRONG series: the EMA crosses the bar at ~sb530
+
+**D49x: sb521**, 190.8k pos/s, box 6326 MB, load 8.94. Probe alive at 2425 MB and
+correctly marked expendable by `oomguard` v2 (`adj=1000`) while the trainer stays
+protected. Waiter valid.
+
+**I have been quoting the raw heldout value against the pre-extension bar. The
+verdict protocol says DEPLOY THE EMA** (`tools/d49_verdict.sh` trap 3 — the ema
+column is the deployed net and has run 200–500e-6 below the raw column all run).
+**So the EMA is the series that decides this, and it is far closer than I have
+been reporting:**
+
+| | value |
+|---|---:|
+| pre-extension **EMA** (sb390) — the deployed-net bar | **0.010812** |
+| current EMA (sb520) | **0.010835** |
+| **gap** | **23e-6** |
+| EMA slope, last 4 samples | −2.40e-6/sb (−24e-6 per 10sb) |
+| **⇒ crosses the bar at** | **~sb530** |
+| sb remaining to sb700 | 180 |
+
+**For contrast the RAW gap is 169e-6** — 7× larger — which is the number I have
+been quoting for several ticks. **The EMA crosses within roughly ten
+superbatches, about twenty minutes**, with 180 superbatches and the entire
+sb600–700 anneal still to come.
+
+**This is a reporting error on my part, not a change in the run.** Both series
+were always in the log; I tracked the one that was falling more visibly rather
+than the one that gets deployed. The correct framing is that the extension has
+essentially already recovered the restart cost on the metric that matters, and
+everything from here — 180 superbatches plus an anneal worth ~300e-6 on D49's own
+history — is upside.
+
+Caveat kept: an EMA is a lagging average and can be dragged back by a bad stretch.
+Nine consecutive samples down is the evidence, not a guarantee.
