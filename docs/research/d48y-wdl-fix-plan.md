@@ -6816,3 +6816,44 @@ and CEN5-capable, so the ladder can start the moment sb400 lands.
 
 **Box:** 8190 MB, free swap 1008 MB, load 4.11 — quiet, and everything for the
 endpoint is pre-staged.
+
+## Tick 2026-07-31 ~09:15 — verdict path REHEARSED on sb390; frame confirmed stable
+
+**D49 sb392/400 — 8 left.** heldout sb390: raw 0.010824 / **ema 0.010812**; the
+two columns are now 12e-6 apart, i.e. converged.
+
+### Rehearsed the verdict rather than waiting
+
+Ran `tools/d49_verdict.sh 390` as a dress rehearsal, so the real sb400 run
+cannot fail on a typo when it matters. Safe by construction — steps 1-2 export
+and measure, steps 3-4 only *print* the screen invocations.
+
+**Result 1: the path works end to end.** Requant at scale 256 gives 1.80% error,
+**0 weights clipped**, and all three ladder nets packed as CEN5.
+
+**Result 2 — the important one: THE FRAME HAS NOT MOVED THROUGH THE ANNEAL.**
+
+| scale | stdev @ sb390 |
+|---:|---:|
+| 640 | 360.2 |
+| **756** | **423.2** |
+| 880 | 490.4 |
+
+Against **415-422 measured through sb270**. The anneal did not shift it, so the
+**narrow 640/756/880 ladder is correct and no re-bracketing is needed** — which
+was the open question the script was written to guard against. (Canonical D48X
+sits at 610.3, a reminder that the optima are genuinely net-specific.)
+
+### Watch item confirmed, not yet a problem
+
+Threat-weight **RMS has fallen 0.08380 → 0.05715** across the run, so
+fixed-scale quantisation error is now **1.80%** (was 1.23% at sb140). This is
+the drift flagged at sb250. **Still 0 weights clipped**, so fidelity is intact
+and no action is needed — but if a future run's RMS falls further, the threat
+channel's effective resolution degrades even at a nominally correct scale.
+
+**Projection:** ema sb390 0.010812, 10 sb left ⇒ **≈ −10 Elo**. Ninth
+consecutive tick in the band.
+
+**Study 40** ahead=3, now pricing **arm A** (*"count the BUBBL…"*) — so both
+switches are being decided. **Box:** 8218 MB, swap 986 MB, load 4.35.
