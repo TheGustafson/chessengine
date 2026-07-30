@@ -58,6 +58,24 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     path, ref, labels = args[0], args[1], args[2:]
     rows = load(path)
+
+    # Study 44 §4.2: `panel44.sh` balances position-in-round with a Latin
+    # square whose block length is the LABEL COUNT, so the design is only
+    # exactly balanced at a multiple of that. Reading a partial block
+    # reintroduces the very confound the square exists to remove -- a +3.9%
+    # first-slot-to-last-slot drift on this frame -- so truncate to whole
+    # blocks rather than quietly report a lopsided n.
+    nlab = len(labels) + 1
+    complete = (len(rows) // nlab) * nlab
+    if complete < len(rows):
+        keep = sorted(rows, key=lambda s: int(s[1:]))[:complete]
+        dropped = len(rows) - complete
+        rows = {k: rows[k] for k in keep}
+        print(f"# truncated to {complete} rounds = {complete // nlab} whole "
+              f"Latin-square blocks of {nlab} ({dropped} partial-block "
+              f"round(s) dropped)")
+    if not rows:
+        raise SystemExit(f"not one complete block of {nlab} rounds yet")
     # Study 40 §3.2: `ex_no_retire.thread_not_selected` is the SMT sibling
     # stealing the core. It ranges -56% to +203% between rounds and is pure
     # noise for a single-thread arm, so subtracting it gives a cleaner cycle

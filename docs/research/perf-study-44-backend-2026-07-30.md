@@ -448,7 +448,35 @@ Verified: mean position **1.50 for all four labels**.
 The broken panel is kept as `perf-artifacts-44/panel-shuffled-BROKEN.txt`
 rather than deleted.
 
-### 4.3 The sweep — and the honest history of how the number moved
+### 4.3 ★ A PRE-REGISTERED BOUND, written down BEFORE the panel finished
+
+At n = 8 (2 complete Latin-square blocks) `r5` read **−5.44 % cycles
+(trimmed) / −6.48 % (median)**. That is a beautiful number, so rule 6 says
+attack it, and the cheapest attack is to ask whether the arm's own mechanism
+counters can pay for it.
+
+They cannot, on the same panel's numbers:
+
+| term | cycles/node |
+|---|---:|
+| store-queue-blocked cycles removed (−26.4 % of 502.63) | **−132.5** |
+| load-stall cycles removed (−7.33 % of 2596.93) | **−190.4** |
+| — the two OVERLAP (a full store queue blocks dispatch of loads too), so the removal is **at most** −190.4, not their sum | |
+| instructions added (+4.076 % of 5929.09 = +242) at a marginal 1.5 – 2.45 issue/cycle | **+99 … +161** |
+| **predicted net** | **−29 … −92 c/node = −0.63 % … −1.96 %** |
+
+**So the mechanism supports roughly −1 % to −2 %, and the panel at n = 8 is
+claiming −5.4 %. One of them is wrong, and small `n` is the likelier
+suspect** — the arm-2 sweep already demonstrated this exact failure mode,
+shrinking from −2.49 % at n = 5 to −0.77 % at n = 12.
+
+**Pre-registered, before the remaining rounds landed:** if `r5`'s contrast
+against the null converges into the **−0.6 % … −2.0 %** band, the arm is real
+and the mechanism is understood. If it stays near −5 %, then something other
+than store-queue relief is doing the work and the mechanism story in §4.1 is
+wrong regardless of whether the number is. §4.5 reports which happened.
+
+### 4.4 The sweep — and the honest history of how the number moved
 
 **This arm was nearly published off a lucky `n`, and the record of that is the
 most useful part of the section.** The sweep panel's `cycles:u` estimate for
