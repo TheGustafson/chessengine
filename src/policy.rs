@@ -249,7 +249,16 @@ impl PolicyNet {
             &eval.threat_weights,
             board,
         );
-        let trunk = sota_head::policy_trunk(&pst, &threat, board.side_to_move());
+        // The HalfKA accumulator is in the i8 transformer's reduced frame
+        // (perf study 32), so the trunk needs the same per-column scale the
+        // eval merge uses — sharing `activate_ft` is what stops the two
+        // consumers drifting, and this keeps that true.
+        let trunk = sota_head::policy_trunk(
+            &pst,
+            &threat,
+            eval.head.ft_scale.block(0),
+            board.side_to_move(),
+        );
         let values = match &self.head {
             Head::Bilinear {
                 rank,
