@@ -2653,3 +2653,67 @@ run `free -m` before every build, sleeping 120 s and re-checking if under
 
 Box right now: **8.85 GB available, memory pressure avg10 0.16**, zero rustc.
 The scheme is holding.
+
+## ★★★ STUDY 21 — and it CORRECTS THE PROFILE TABLE I BRIEFED EVERY STUDY WITH
+
+**Landed: −1.35% cycles at −0.07% instructions, L1 misses −6.8/node.** A pure
+stall win. Frame: `bench 16 1 100000 wl50.fens nodes` (fixed 5,001,562-node
+tree), interleaved paired A/B, two 25-round panels, **36/50 rounds negative
+against a same-binary-vs-itself null of 12/25 (+0.01%)** — it ran the null LAST
+to validate the harness. All three pins reproduce.
+
+| arm | what |
+|---|---|
+| **B1** | all six history tables started at **16 or 48 mod 64**, so every 128-byte `[piece][to]` row spanned **three** cache lines instead of two. 20 MiB nobody had checked. −0.56% alone |
+| **B4** | study 20's own alignment sweep **stopped one field short** — `l1_biases`/`l2_biases`/`l3_weights` at 32 mod 64 |
+| B2 | head kernel reshapes: instruction-axis only, **cycles a null**, and the commit says so |
+
+### ★ THE CORRECTION — my profile shares attribute INLINED CALLEES TO CALLERS
+
+| symbol | I briefed (inclusive) | study 21 (exclusive) |
+|---|---|---|
+| `finny_refresh_into` | 9.15% | **1.17%** |
+| `search::<NonPv>` | 19.90% | **6.81%** |
+| **`i8_deltas_into`** | **not on my list** | **14.88% — LARGEST IN THE ENGINE** |
+
+**I verified the mechanism myself:** `apply_i8_deltas_into` is real at
+`sota_simd.rs:185` but does **NOT appear in `nm`** on the shipped binary — it is
+inlined, so its cycles land on its caller. That is exactly what inflates a
+symbol-level table. (I could not re-run the exclusive profile to confirm the
+percentages — `perf` returns 129/255 under contention from the sibling studies —
+so the MECHANISM is mine and confirmed; the NUMBERS are study 21's and
+unverified by me.)
+
+Two more from the same study: **symbol shares are frame-dependent**
+(`i8_deltas_into` reads 10.86% on wl50 vs 14.88% on d16, same binary), and the
+**resolution floor is ~1% cycles**, set by the running trainer — so two of the
+six targets I briefed sit at or below it.
+
+**ACTION TAKEN: study 22 redirected.** I had sent it after `finny_refresh_into`
+at a briefed 9.15%; at ~1.17% exclusive it is AT the floor and no honest arm
+there can resolve. Its new target is study 21's top remainder, which happens to
+be in its own files:
+
+> **ARCHON maintains TWO 1280-wide accumulators where Stockfish maintains ONE**
+> — ~20 KB/node of copy traffic, **65% of all L1 misses**, 135 MB of weight
+> tables against a 32 MB L3. A pin-moving refactor, not a perf-study arm.
+
+Told explicitly that ONE characterised-and-landed structural change beats four
+sub-noise arms, and that moving the pins is EXPECTED for this one.
+
+### What study 21 did right, and should be the template
+
+- **Reported TWO wins, not four, and said so plainly** rather than padding with
+  noise-floor arms.
+- **Killed the prefetch lead with a real control**: identical prefetch
+  instructions issued at a *resident* address measure the same cycles (+0.01%),
+  so the address is irrelevant. That supersedes the NPS-era rejection, which was
+  never evidence.
+- **Killed FullThreats cancellation by instrumenting instead of building** —
+  0.075 cancelling pairs/fold, and the same probe corrected its own 3x
+  overestimate.
+- **Reverted a measured regression** (`Stack` 36→32: +0.81% cycles at −0.39%
+  instructions).
+- **The gate caught study 20's exact failure mode on it** — `Aligned<f32>` broke
+  two `tests/` builders under the `sota`-only feature combo that plain
+  `cargo test --features sota,arch-d48x` never builds. Fixed before write-up.
