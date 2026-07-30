@@ -3,14 +3,17 @@
 Date: 2026-07-30. Instruments: `tools/perf32/`. Artifacts:
 `docs/research/perf-artifacts-32/`.
 
-**LANDED.** The HalfKA feature transformer is now an i8 table with a per-column
-integer scale, quantised at load. Measured **−6.835% cycles/node** (8/8 rounds
-negative, null −1.382%) and **−17.42% load-stall cycles/node** (null −1.675%),
-with strength **+3.6 ± 7.7 Elo over 2932 fixed-node games** across two
-independent screens — i.e. no detectable fidelity cost.
+**LANDED AND MERGED WITH `main`.** The HalfKA feature transformer is now an i8
+table with a per-column integer scale, quantised at load. Measured **−5.6%
+cycles/node** and **−15.6% load-stall cycles/node** on the merged tree (−6.8%
+and −17.4% pre-merge; §5.2), with strength **+3.6 ± 7.7 Elo over 2932
+fixed-node games** across two independent screens — i.e. no detectable fidelity
+cost.
 
 At the project's own calibration constant (122.9 Elo per doubling of speed,
-exp-0154) the speed is worth **+12.6 Elo**.
+exp-0154) the speed is worth **+10.2 Elo** — but see §8, item 1: that is a
+speed measurement times a constant, not measured strength, and nobody should
+quote it as the latter.
 
 ---
 
@@ -302,7 +305,32 @@ a byte-different null moving +1.5% while the arms moved +1.1%. So every round
 runs base, a **byte-identical copy of base**, and the arm back to back in a
 randomised order, and the figure is the median of the per-round ratio.
 
-### 5.2 The panel — 8 rounds
+### 5.2 The panel — 8 rounds, measured TWICE
+
+**On the merged tree** (arm = this branch, base = `main`), which is the number
+that describes what lands:
+
+| counter | base | NULL | ARM | rounds negative |
+|---|---:|---:|---:|---:|
+| **cycles/node** | 4821.83 | +0.495% | **−5.569%** | 6/8 |
+| **load-stall cycles/node** | 2796.33 | +0.554% | **−15.639%** | **8/8** |
+| **L1d misses/node** | 616.84 | +0.199% | **−5.959%** | **8/8** |
+| L1d loads/node | 3051.08 | −0.145% | −0.842% | 8/8 |
+| instructions/node | 5659.75 | +0.000% | +5.582% | 0/8 |
+
+−5.569% of 4821.83 = **−268 cycles/node** = 1.0590× = **+10.2 Elo**. The null
+is much tighter here (+0.495% against the pre-merge −1.382%) because the box
+was quiet; the load-stall row clears it by **28×**.
+
+**Two things to state rather than bury.** The cycles row is **6/8** negative
+here against 8/8 pre-merge — cycles are the noisiest counter in the panel and
+this is why the claim rests on load-stalls and L1 misses, which are 8/8 in both
+runs. And the merged figure is **smaller** than the pre-merge one (−5.6% vs
+−6.8%): the two baselines differ (main carries studies 29 and 30), and I have
+not isolated which of that gap is the different base and which is run-to-run.
+The honest band is **−5.6% to −6.8% cycles, −15.6% to −17.4% load-stalls.**
+
+### 5.2.1 The pre-merge panel — 8 rounds
 
 | counter | base | NULL | ARM | rounds negative |
 |---|---:|---:|---:|---:|
@@ -319,7 +347,9 @@ load-stall cycles clear their null by **10.4×**, and L1d misses — the counter
 study 31 measured at a ±0.16% null — clear theirs by **91×**.
 
 **−6.835% of 4786.41 = −327 cycles/node**, i.e. **1.0734×**, i.e. **+12.6 Elo**
-at 122.9 Elo/doubling.
+at 122.9 Elo/doubling. Superseded as the headline by the merged-tree figure
+above, and kept because it was measured against a baseline that differs from
+the arm by *only* this study.
 
 ### 5.3 Reconciling with the −463 forecast
 
@@ -443,48 +473,87 @@ Ranked by how much it would change the conclusion.
 
 ---
 
-## 8.1 INTEGRATION — this branch does NOT merge into main as it stands
+## 8.1 INTEGRATION — DONE, and the census control passed
 
-Branched from `24b655e`. `main` has since advanced 23 commits, landing **study
-30 (CENN-v5)** and **study 29's `foldcount` counters + traffic-pinning probes**
-in the same files. A trial merge gives **24 conflict hunks**: 13 in
-`sota_simd.rs`, 8 in `sota_head.rs`, one each in `sota_accumulator.rs`,
-`policy.rs`, `tests/eval_file_reload.rs` and `.gitignore`. `sota_loader.rs`
-auto-merges cleanly, which is the important one — quantise-at-load does not
-collide with CENN-v5's format work.
+Branched from `24b655e`; `main` advanced 24 commits under it, landing **study
+30 (CENN-v5)** and **study 29's `foldcount` census + traffic-pinning probes**
+in the same files. **Merged: 25 hunks across 6 files.** `sota_loader.rs`
+auto-merged, which is the important one — quantise-at-load does not collide
+with CENN-v5's format work.
 
-**The two studies compose; they do not conflict semantically.** Study 30 made
-the THREAT channel's merge shift net-dependent (`threat_shift: u32`, a const
-generic, from CENN-v5's `threat_quant`); this study made the HALFKA channel's
-rescale a per-column multiply. Different channels, one closure. The merged
-merge is:
+**The two studies compose.** Study 30 made the THREAT channel's merge shift
+net-dependent (const-generic over {0,1,2}, `threat_shift_for` rejecting
+anything outside {64,128,256} so the dispatch is exhaustive with no panic arm —
+preserved); this study made the HALFKA channel's rescale a per-column multiply.
+Different channels, one closure:
 
 ```
     clamp(pst[j] * ft_scale[j] + (threat[j] << threat_shift), 0, 255)
 ```
 
-and `activate` carries BOTH `scale: &[i16; ACC]` and `threat_shift`.
+`threat_shift` stays a const generic; `scale` is a vector and stays a
+parameter.
 
-Three things the person doing the merge has to decide, and they are the reason
-I did not do it blind:
+### The one judgement call, and how it became a measurement
 
-1. **Do the new `i8_deltas` / `i8_deltas_dual` / `i8_into_shaped` kernels get
-   study 29's `foldcount` counters and `probe-*` pins?** They almost certainly
-   should, mirroring what 29 attached to the kernels this study deleted — but
-   that is 29's instrumentation contract, and guessing wrong in these files is
-   a silent eval corruption, which is the one failure mode this project ranks
-   above everything.
-2. **The i16 fold family is gone.** Any counter or probe main attached to
-   `i16_deltas*` has to move to the i8 twin rather than be dropped.
-3. **All three gate pins must be re-derived after the merge.** CENN-v5 moves
-   the eval hash on its own; composed with this change it moves again. The
-   numbers in §6 are for THIS branch against `24b655e`, and they will not
-   reproduce on the merged tree. `bash tools/perf32/gates32.sh` regenerates
-   them.
+Both transformers now fold i8 rows, so **`i8` no longer distinguishes the two
+channels** — but study 29's census counts them at SEPARATE sites (`HKA_INTO` +
+`note_hka_shape` against `THR_INTO` + `note_thr_shape`). Collapsing them onto
+one entry point would have silently conflated the census. The resolution is
+**two entry points over one kernel, named by channel**:
 
-The cycles panel (§5) should also be re-run against a post-merge baseline
-before its −6.835% is quoted as the merged engine's number; the mechanism is
-independent of both sibling studies, but the base it is a ratio of is not.
+| entry point | counter | pins |
+|---|---|---|
+| `apply_halfka_deltas` | `HKA_INPLACE` | `pin_rows!` |
+| `apply_halfka_deltas_into` | `HKA_INTO` + `note_hka_shape` | `pin_rows!` `pin_src!` `pin_dst!` |
+| `apply_halfka_deltas_dual` | `HKA_DUAL` | `pin_rows!` `pin_dst!` |
+| `apply_threat_deltas_into` | `THR_INTO` + `note_thr_shape` | `pin_rows!` `pin_src!` `pin_dst!` |
+
+Every counter and every pin site is preserved on the channel it was measuring.
+
+**Study 29 left a verifiable control, and it turns this from a guess into a
+measurement.** Built `--features foldcount,arch-d48x`,
+`tools/perf29/census29.sh`:
+
+| statistic | measured | established | delta |
+|---|---:|---:|---:|
+| HalfKA refresh rate /node | 0.16020 | 0.16102 | −0.51% |
+| HalfKA refresh rows /node | 0.91017 | 0.91320 | −0.33% |
+| HalfKA rows / fold | 2.27725 | 2.27500 | +0.10% |
+| HalfKA fold rate /node | 0.97818 | 0.97490 | +0.34% |
+| evals / node | 0.42716 | 0.43070 | −0.82% |
+
+All five within 0.9%, and the residual is **expected rather than slack**: this
+change alters the eval, so the tree is not node-identical (5,001,624 against
+5,001,562) and the search visits marginally different positions. The counters
+are exact integers, so a mis-wiring would have shown up as a whole missing site
+or a doubled one, not as 0.3%.
+
+And the region report is the change itself, correctly attributed:
+
+```
+FOLDREGION hka_weights bytes=28835840      (was 57,671,680 — exactly half)
+```
+
+**One control I could NOT check, stated rather than glossed:** study 29's
+`foldcount` set has no pushes-per-node counter (that was study 31's own
+throwaway build), so `push/n == 1.0000` is not available here and is not
+claimed.
+
+### Two further merge notes
+
+* **The pins did not move again.** `main` still pins `5ca978e0…/1922947`, so
+  study 30's CENN-v5 is **eval-neutral for a CEN2 net** — its derived shift for
+  `threat_quant = 64` is exactly the 2 the backends used to hardcode. The only
+  eval change on the merged tree is this study's, and §6's numbers carry
+  through unchanged. That is a real cross-check on the composition, not a
+  convenience.
+* **The overflow tripwire is skipped under `probe-accpin`**, which redirects
+  the accumulators to a pinned buffer and computes wrong evals by design.
+  `dispatched_activation_matches_scalar_for_full_i16_domain_sample` now bounds
+  `pst` by `32767 / scale` — the exact analogue of the threat bound main added
+  (`32767 >> shift`), since the reduced-frame accumulator represents
+  `pst · scale`. The tripwire caught that test itself, which is what it is for.
 
 ---
 
