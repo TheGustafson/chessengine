@@ -8605,3 +8605,47 @@ figure already given to the representation study, so no correction is owed there
 are ancestors of `main` with ZERO commits outstanding.** Worth checking because I
 merged study 44 while it was still committing its assumptions section — a merge
 taken mid-flight can silently drop the tail of a study.
+
+## Tick — a NUMBER for "periodically eval with games", instead of a repeated judgement call
+
+**D49x: sb503**, 191.6k pos/s, ema 0.010898. Box 9199 MB, load 5.30, both
+services active. Three studies running.
+
+The directive asks for periodic game evals and I have deferred them many ticks
+running. **That deserves a rule with a number rather than a fresh judgement each
+time.** Inventory of what has actually landed since the canonical binary
+`archon-s25` (2026-07-29 22:53):
+
+| landed change | measured | Elo of speed |
+|---|---|---:|
+| study 44 — fold tile 20 → 5 `zmm` | **−1.37% cycles** | **+2.39** |
+| study 40 — outlined accumulator copy | −16 i/n = −0.156% cycles | +0.27 |
+| studies 41, 42, 43 | *no perf change* — diagnosis and measured negatives | 0 |
+| **CUMULATIVE** | **−1.53% cycles** | **+2.66** |
+
+**What games could resolve** (bar = 383/√n, 104 games/min):
+
+| effect | games needed | full-box time |
+|---|---:|---:|
+| **+2.66 Elo (what we have)** | **20,690** | **3.32 h** |
+| +5 Elo | 5,868 | 0.94 h |
+| +10 Elo | 1,467 | 0.24 h |
+
+### The rule, adopted
+
+**Accumulate landed cycles wins until the cumulative reaches ≈ 5.61% cycles
+(≈ 10 Elo), then ONE standard 1466-game screen confirms it in 14 minutes.**
+Below that threshold a match cannot resolve the effect and costs *more* box time
+than the cycles gate that produced it — confirming today's +2.66 Elo would take
+**3.3 hours of the whole machine**, against 14 minutes once the pile is big
+enough.
+
+**We are at 1.53% — 27% of the way.** So the honest answer to "why no games on
+the perf work" is not "later", it is **"the effect is 3.8× below what a
+practical match can see, and the cycles gate is the correct instrument until
+then."**
+
+**This does not defer the D49 verdict**, which is a *net* comparison worth far
+more than 10 Elo and gets its full 5880-game screen at sb700 (~7 h). The batched
+PGO rebuild folds these perf wins into that binary; since both sides of a net
+screen use the SAME binary, they cannot confound it.
