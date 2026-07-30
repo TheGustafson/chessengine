@@ -8386,3 +8386,51 @@ This also re-confirms trap 2 in that protocol: D49 sits at stdev ~414 where
 canonical sits at 610, and matching stdev was **REFUTED** as a heuristic
 (D49@1111/stdev 600 lost −14.47 ± 11.09 to D49@756). **Compare each net at its
 OWN optimum.**
+
+## Tick — study 43 merged; the NODE-COUNT instrument is one trajectory, not 50 samples
+
+**D49x: sb482, heldout 0.011169, ema 0.010933** — five consecutive down.
+Untouched. Merged study 43 (`96f18b8c`); gate to follow.
+
+### Study 45's interim finding, verified in source, and it is bigger than its own levers
+
+**`bench 16 1 13 <fens> depth` is ONE sequential trajectory, not 50 independent
+samples.** Verified verbatim in `src/bench.rs:18-22` and `:250-264`: *"the TT
+deliberately PERSISTS across positions"*, with **one `Worker` and one table
+reused across the whole suite**, aged by a generation bump per position. Position
+N searches with positions 1..N−1 still resident.
+
+**Demonstrated, not argued:** the `tt6x45` arm is **bit-identical to base for
+positions p0–p27, then diverges for all 22 remaining** — the arm is *unreachable*
+until the table first evicts, after which every later position inherits a
+different table.
+
+| arm | regime | total nodes | W/L/T | median ratio | sign test |
+|---|---|---:|---|---:|---|
+| `null45` | either | ±0.000% | 0/0/50 | 1.0000 | — |
+| `tt6x45` | Hash=16 d13, independent | **±0.000%** | 0/0/50 | 1.0000 | — |
+| `tt6x45` | Hash=1 d16, saturated | −10.043% | 24/25/1 | 1.0065 | p = 1.00 |
+| `sortclamp45` | Hash=16 d13, **sequential** | **+18.643%** | 19/31/0 | 1.1183 | — |
+| `sortclamp45` | Hash=16 d13, **independent** | **−6.545%** | 24/26/0 | 1.0138 | p = 0.89 |
+
+**Three consequences:**
+
+1. **At Hash=16 a single depth-13 search never fills the table** — 1.57 M entries
+   against ~37 k nodes — so the cluster geometry is *literally unreachable*.
+   **Study 42's nominated instrument cannot see its own lever.**
+2. **`sortclamp45` CHANGES SIGN between the correlated and independent versions
+   of the same instrument** (+18.6% → −6.5%). The sequential number was one
+   chaotic trajectory.
+3. Both arms show the same signature — large negative total, median ~1.00,
+   coin-flip sign test, 17–20× per-position spread — while `null45` is exactly
+   0/0/50 in both regimes. **The spread is real tree divergence, not instrument
+   noise; heavy-tailed divergence is not evidence of improvement.**
+
+**CRITICAL DISTINCTION, so nobody "fixes" the gate:** the same source says depth
+and nodes limits *"never read the wall clock, so their totals are exact
+fingerprints."* **The d13 pin (1739588) remains valid as a TRIPWIRE. What it is
+not is a STATISTICAL INSTRUMENT** for comparing tree-changing arms. Those need
+games — now for a measured reason rather than a convention.
+
+**OWED:** an audit of which prior studies treated per-position node counts as 50
+independent samples.
