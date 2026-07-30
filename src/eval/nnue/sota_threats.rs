@@ -927,11 +927,20 @@ pub struct ThreatContext<'a> {
     /// [`at_full`](Self::at_full) hands out `&[[i16; ACC]; 2]` — both
     /// perspectives from one entry — and a per-perspective alias could not be
     /// returned without changing the head merge kernel's parameter shape. The
-    /// measurement that says that is enough: of 1,650,730 pure-copy folds on the
-    /// study frame, **1,542,958 (93.5%) come from plies where BOTH perspectives
+    /// measurement that says that is enough: of 1,694,891 pure-copy folds on the
+    /// study frame, **1,584,928 (93.5%) come from plies where BOTH perspectives
     /// resolve empty together** (`foldcount` `thr_joint.n11e11`), so the cheap
     /// form captures almost all of it.
-    alias: Box<[u16; STACK_LEN]>,
+    ///
+    /// **INLINE, not `Box`ed**, and that is a measured choice rather than a
+    /// stylistic one. `stack`, `push` and `fold` are each a boxed array, so each
+    /// costs `compute` a base pointer; a fourth one is exactly what `Push`'s own
+    /// doc comment declines a further split over ("another base pointer to an
+    /// already register-starved `compute`"), and what study 22 priced at
+    /// +58.7 i/n in this same walk. 508 bytes at a fixed offset from `self` —
+    /// which is live anyway — needs no register of its own, and it is small
+    /// beside the 8,192 bytes of `add_scratch`/`sub_scratch` already inline here.
+    alias: [u16; STACK_LEN],
     /// Scratch raw-event buffer for [`build_deltas`], reused every fold.
     buf: DeltaBuf,
     /// Fold-time resolved-index scratch for [`apply_threat_deltas_into`], written by
@@ -997,13 +1006,11 @@ impl<'a> ThreatContext<'a> {
                 .expect("STACK_LEN fold states"),
             // Identity: every entry starts as its own holder, which is the
             // correct reading of a stack whose `fold` is all `FromParent`.
+            // `from_fn` because the array is inline and const-sized — no
+            // allocation, and the index fits by the const assert above it.
             alias: {
                 const { assert!(STACK_LEN <= u16::MAX as usize) };
-                (0..STACK_LEN as u16)
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice()
-                    .try_into()
-                    .expect("STACK_LEN alias slots")
+                std::array::from_fn(|i| i as u16)
             },
             buf: DeltaBuf::new(),
             add_scratch: [[0usize; DELTA_CAP]; 2],
@@ -1415,7 +1422,16 @@ impl<'a> ThreatContext<'a> {
             // the other folds or refreshes — those still copy, because the
             // entry must be materialised for the other perspective and
             // `at_full` hands out both perspectives from ONE entry.
-            if need[0] && need[1] && lens[0] == (0, 0) && lens[1] == (0, 0) {
+            // Perf study 38's NULL ARM (`--features null38`): the alias
+            // MACHINERY -- the extra array, its read in `at_full`, its read of
+            // the parent's holder here, and its per-fold store -- with the
+            // alias itself never taken, so every copy still happens. It exists
+            // because the arm's own delta cannot separate "what the copy cost"
+            // from "what carrying a fourth base pointer through `compute`
+            // costs", and this module has been bitten by exactly that before
+            // (study 22 measured +58.7 i/n from fat-pointer length loads alone).
+            const ALIAS_ENABLED: bool = !cfg!(feature = "null38");
+            if ALIAS_ENABLED && need[0] && need[1] && lens[0] == (0, 0) && lens[1] == (0, 0) {
                 #[cfg(feature = "foldcount")]
                 {
                     super::foldcount::THR_ALIAS.hit(0);

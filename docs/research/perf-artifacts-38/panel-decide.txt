@@ -1,0 +1,16 @@
+r1 base nodes=5001562 instructions:u=5941.036426 cycles:u=6461.341242 branches:u=623.808194 ex_ret_brn_misp:u=28.045324 L1-dcache-loads:u=3030.719356 
+r1 null nodes=5001562 instructions:u=5941.035998 cycles:u=6291.487948 branches:u=623.807863 ex_ret_brn_misp:u=26.552384 L1-dcache-loads:u=3008.192013 
+r1 alia nodes=5001562 instructions:u=5924.972990 cycles:u=6202.879288 branches:u=621.105877 ex_ret_brn_misp:u=26.894362 L1-dcache-loads:u=2966.041909 
+r1 almg nodes=5001562 instructions:u=5923.925468 cycles:u=6092.846599 branches:u=620.513304 ex_ret_brn_misp:u=26.820162 L1-dcache-loads:u=2962.979106 
+r2 null nodes=5001562 instructions:u=5941.036102 cycles:u=6061.254716 branches:u=623.807875 ex_ret_brn_misp:u=26.734259 L1-dcache-loads:u=3018.257899 
+r2 alia nodes=5001562 instructions:u=5924.972613 cycles:u=6129.624211 branches:u=621.105596 ex_ret_brn_misp:u=26.529555 L1-dcache-loads:u=2959.537919 
+r2 almg nodes=5001562 instructions:u=5923.925547 cycles:u=6182.189702 branches:u=620.513362 ex_ret_brn_misp:u=26.378027 L1-dcache-loads:u=2957.588683 
+r2 base nodes=5001562 instructions:u=5941.036322 cycles:u=6364.974756 branches:u=623.808149 ex_ret_brn_misp:u=26.833882 L1-dcache-loads:u=3013.359764 
+r3 alia nodes=5001562 instructions:u=5924.972577 cycles:u=6089.860882 branches:u=621.105565 ex_ret_brn_misp:u=26.706321 L1-dcache-loads:u=2965.794014 
+r3 almg nodes=5001562 instructions:u=5923.925547 cycles:u=6145.733967 branches:u=620.513331 ex_ret_brn_misp:u=26.694978 L1-dcache-loads:u=2967.109368 
+r3 base nodes=5001562 instructions:u=5941.035935 cycles:u=6286.221461 branches:u=623.807860 ex_ret_brn_misp:u=26.653611 L1-dcache-loads:u=3014.537661 
+r3 null nodes=5001562 instructions:u=5941.035927 cycles:u=6161.462839 branches:u=623.807858 ex_ret_brn_misp:u=26.420512 L1-dcache-loads:u=3012.130782 
+r4 almg nodes=5001562 instructions:u=5923.925589 cycles:u=6395.247050 branches:u=620.513511 ex_ret_brn_misp:u=26.937419 L1-dcache-loads:u=2962.834845 
+r4 base nodes=5001562 instructions:u=5941.035909 cycles:u=6253.569856 branches:u=623.807856 ex_ret_brn_misp:u=26.567668 L1-dcache-loads:u=3009.935871 
+r4 null nodes=5001562 instructions:u=5941.035966 cycles:u=6411.099094 branches:u=623.807901 ex_ret_brn_misp:u=26.970622 L1-dcache-loads:u=3009.303815 
+r4 alia nodes=5001562 instructions:u=5924.973000 cycles:u=6921.747352 branches:u=621.105997 ex_ret_brn_misp:u=27.423301 L1-dcache-loads:u=2956.052820 
