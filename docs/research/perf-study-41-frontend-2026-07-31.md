@@ -476,9 +476,22 @@ In order, most doubtful first.
    Every dose here inflates fetches; none reduces them. The saturation
    (0.79 → 0.51 → 0.41) is exactly the shape that says the slope keeps rising as
    the dose shrinks, so 0.79 is conservative — but the true slope at zero dose
-   is unmeasured, and §5's Elo table scales linearly with it. An arm that
-   genuinely *reduced* executed code bytes would settle this in one panel, and I
-   did not have one.
+   is unmeasured, and §5's Elo table scales linearly with it.
+
+   I tried to close this and could not, which is worth recording so the next
+   session does not repeat it. `k410` (`-align-all-nofallthru-blocks=0`) was
+   built to strip LLVM's *existing* block padding and give a point below the
+   operating point; LLVM reads `0` as "use the default" and the binary came out
+   with `.text` md5 `8c9d05de…` — **byte-identical to the reference**, exactly as
+   `-align-all-functions=0` had. The knob is one-directional.
+
+   The deeper reason there is no clean reduction-side arm: fetches ≈ executed
+   code bytes ÷ 64 (§4.1), and **anything that genuinely removes executed code
+   bytes also removes executed work**, so it moves `instructions:u` out of frame
+   tolerance and confounds `empty` with the thing being measured. Inter-function
+   padding, the one byte-neutral candidate, is not fetched in the first place.
+   Settling this needs a real optimisation that shrinks the hot path, measured
+   as a by-product — not a dose.
 2. **`9.13 cycles per mispredict` is inherited from study 40**, and it is a
    marginal rate at one call site, not an average over all 24.336 mispredicts.
    I re-derived both *inputs* (§2.1) but not the rate itself. My own attempt to
