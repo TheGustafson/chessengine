@@ -30,9 +30,32 @@ mkdir -p "$(dirname "$OUT")"
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 
 ALL=("$REF" "$@")
+NLAB=${#ALL[@]}
+BASEORD=()
 for r in $(seq "$ROUNDS"); do
-  # Fisher-Yates over the label list, fresh every round.
-  order=($(printf '%s\n' "${ALL[@]}" | shuf))
+  # ---- BALANCED LATIN SQUARE, not a free shuffle -------------------------
+  # Perf study 44 §4.3 found the free per-round shuffle is NOT sufficient at
+  # achievable n. This frame has a real within-round drift -- mean cycles/node
+  # by position in round read 4282 / 4354 / 4330 / 4449, i.e. +3.9% from first
+  # slot to last -- and over 13 rounds `shuf` happened to seat the REFERENCE at
+  # mean position 0.77 while the null sat at 1.62 and one arm at 2.00. That
+  # imbalance alone accounts for most of a byte-identical null reading +2.4%
+  # cycles, which is a broken instrument by rule 1.
+  #
+  # A shuffle cancels drift only IN EXPECTATION. A Latin square cancels it BY
+  # CONSTRUCTION: within each block of NLAB rounds every label occupies every
+  # position exactly once, so any monotone within-round trend contributes the
+  # same amount to every label's total. The base order is re-shuffled per block
+  # so the design still varies WHICH orderings appear (study 25 §0.2's point
+  # that a single fixed rotation cannot cancel curvature).
+  k=$(( (r - 1) % NLAB ))
+  if [ "$k" -eq 0 ]; then
+    BASEORD=($(printf '%s\n' "${ALL[@]}" | shuf))
+  fi
+  order=()
+  for ((i = 0; i < NLAB; i++)); do
+    order+=("${BASEORD[$(((i + k) % NLAB))]}")
+  done
   for label in "${order[@]}"; do
     nice -n 19 perf stat -x, -e "$EV" -o "$tmp/stat" -- \
       taskset -c "$CPU" "./$BIN/$label" \
