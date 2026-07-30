@@ -8970,3 +8970,39 @@ sb600–700 anneal still to come.**
 study 45: replication). Both took their corrections, visible in their commits:
 conj wrote *"rejection-filter framing (owner guard-rail)"*, and study 45 wrote
 *"the three instrument defects, with the null that exposed each"*.
+
+## Study 47 commissioned — the lever study 44 declared DEAD is the largest on the board
+
+**D49x: sb537**, past the ~sb533 crossing. Box recovered: **9248 MB, load 3.99**,
+the conj probe finished, one study process left ⇒ room to commission.
+
+**Study 44 killed execution port pressure by dividing by "Zen 4's 4 FP pipes" — a
+divisor it never measured.** Study 46 measured it: Zen 4 **double-pumps 512-bit
+over a 256-bit datapath**, so `vpdpbusd`/`vfmadd231ps` at 512 bits run **4-cycle
+latency, 1.00 op/cycle — ONE effective pipe.** Corrected bracket: **16.8%–30.3%
+of all cycles, entirely above study 44's 7.1%–14.4%.**
+
+**If that is real it is the largest single lever identified anywhere here** —
+against the whole front-end bucket at 4.77% (a full session) and the TT at 0.18%
+of cache traffic. **And nobody has attacked it, because until study 46 it was
+believed dead.**
+
+**Two jobs, in order.** (1) **Narrow the bracket** — it is 13 points wide only
+because study 46 measured `vpdpbusd`/`vfmadd231ps` and not the **word-wise** ops
+the hot kernels actually issue (`vpmulhw`, `vpaddsw`); study 46 named the one-line
+fix. A 13-point bracket cannot justify a build. (2) **Then attack it and land
+something.** At 1.00 op/cycle **every 512-bit op is a full cycle**, so the lever
+is issuing FEWER — and I flagged the trap explicitly: 2×256-bit moves the same 64
+bytes/cycle as 1×512-bit, so a naive width change buys nothing and costs
+instructions. It must prove that equivalence rather than take my word.
+
+**Briefed with the current instrument state**, which has moved a long way in a few
+hours: blocked-Latin ordering (both prior designs broken, in opposite
+directions); **`cycles:u` cannot resolve sub-1% here** — study 45's two *inert*
+arms disagreed by **1.164pp** — so arms must clear ~1% or use the exact counters
+and the independent-trajectory node instrument; `bench` depth mode is one TT
+trajectory; study 36's per-node totals are 2× wrong. And told **not to self-merge**
+(study 46 did; harmless, but not the loop).
+
+**The no-escape-hatch line has a receipt now:** *this exact lever was declared
+DEAD by study 44 and turned out to be the largest one on the board.*
