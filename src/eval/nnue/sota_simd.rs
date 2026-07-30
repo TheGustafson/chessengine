@@ -249,6 +249,27 @@ pub(crate) fn activate(
     scale: &[i16; ACC],
     stm: usize,
 ) {
+    // The HalfKA rescale is a WRAPPING i16 multiply in every backend, which is
+    // what keeps the three bit-identical (see the avx512 merge). It wraps
+    // exactly where the pre-study-32 FT_QUANT-frame accumulator wrapped, so it
+    // is no *new* hazard — but unlike that one it is a hazard nobody would
+    // notice, because a wrap turns a saturating lane into a near-zero one and
+    // the clamp hides it. The threat channel carries the same style of bound
+    // check on its own `<< 2` (`|t| <= 8191`); this is its twin, and it is the
+    // tripwire that would fire if a future net's accumulator range grew.
+    debug_assert!(
+        pst.iter().all(
+            |side| side
+                .iter()
+                .zip(scale.iter())
+                .all(
+                    |(&p, &s)| i32::from(p) * i32::from(s) <= i32::from(i16::MAX)
+                        && i32::from(p) * i32::from(s) >= i32::from(i16::MIN)
+                )
+        ),
+        "HalfKA accumulator x ft_scale overflows i16: the reduced-frame merge \
+         would wrap and the clamp would hide it"
+    );
     kernel_dispatch!(activate(out, pst, threat, scale, stm))
 }
 
