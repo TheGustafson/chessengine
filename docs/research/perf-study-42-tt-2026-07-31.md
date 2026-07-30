@@ -62,11 +62,20 @@ Three independent facts compose into it, each measured here:
 A `Cluster` is 32 bytes and `align(32)`, so a probe reads one 32-byte half of
 one 64-byte line and **never straddles** — verified from the outside, on the
 shipped binary, by histogramming the low 6 bits of every observed TT data
-address: **zero** accesses at offsets {30, 31, 62, 63} (the two pad bytes of
-each cluster), and a 48.7% / 51.3% split between the two halves of the line,
-which is exactly what two 32-byte clusters per line must produce.
-**Straddle rate: 0.000%.** The design comment was right and had never been
-checked against the allocator.
+address (`tools/perf42/align42.py`, on the Hash = 256 MB capture where the
+window is exact):
+
+* **zero** accesses at offsets {30, 31, 62, 63} — the two pad bytes of each
+  cluster — out of 4289;
+* a **48.7% / 51.3%** split between the two halves of the 64-byte line, which is
+  exactly what two 32-byte clusters per line must produce;
+* and every non-zero offset lands on a `TtEntry` field: `key16` at cluster
+  +0/+10/+20, then `depth8` +2, `gen_bound8` +3, `move16` +4, `value16` +6,
+  `eval16` +8 within each entry. **Traffic at a non-field offset: 0 of 4289.**
+
+**Straddle rate: 0.000%.** The module doc said "`align(32)` guarantees a cluster
+never straddles a line boundary" and nothing had ever checked it against the
+allocator; `no_cluster_straddles_a_64_byte_cache_line` now does, permanently.
 
 Against the engine's **580.9 cache fills per node**, 1.067 lines is **0.18%**.
 The TT is a rounding error in cache *traffic*.
@@ -177,6 +186,21 @@ Its share of address-carrying IBS samples is stable across all three
 (2.38%, 2.36%, 2.35%) — a table whose *footprint* changes 16× while its
 *access rate* does not, which is the signature of a structure probed a fixed
 number of times per node.
+
+**And the 256 MB block carries an exact `TtEntry` fingerprint**, which settles
+identity on its own without the size argument. Every one of its 4289 sampled
+accesses falls on a field boundary of a 10-byte `TtEntry` at cluster offset
+0, 10 or 20:
+
+```
+non-field offsets: 0 of 4289 (0.00%)      pad bytes {30,31}: 0 (0.00%)
+```
+
+No other structure in this engine is 10-byte records in 32-byte groups.
+(At 16 and 64 MB my block *edges* are eyeballed off a 1 MB histogram rather
+than exact, so those windows carry 2.7–3.6% foreign traffic from whatever
+abuts them; the 256 MB window starts at the mapping's own offset 0 and is
+exact. Every layout claim above is quoted from that one.)
 
 **Caveat on IBS shares — read this before quoting one.** IBS op sampling here
 is cycle-periodic (`cnt_ctl=0`), so a sample share is closer to a share of
@@ -390,6 +414,50 @@ value of anything else that hides or removes a TT miss.
 
 ---
 
-## 7. What I am least sure about
+## 9. What I am least sure about
 
-*(filled in at the end)*
+Ordered by how much of the study would move if I am wrong.
+
+1. **The BLOCK EDGES at 16 and 64 MB, not the identification.** Identification
+   I now consider settled: the 256 MB window carries a perfect `TtEntry`
+   fingerprint (0 of 4289 accesses off a field boundary, 0 in the pad bytes)
+   *and* the block width tracks `Hash` across three sizes. What is sloppy is
+   that at 16 and 64 MB I read the block's edges off a 1 MB histogram by eye,
+   so those windows carry **2.7–3.6% foreign traffic**. Every layout number is
+   therefore quoted from the 256 MB capture. The two-line arm that prints
+   `clusters.as_ptr()` would remove even this, and I did not build it — it is
+   the cheapest thing left on the table.
+
+2. **The Hash-sweep confound I could not separate.** A bigger TT evicts the
+   NNUE weight tables from L3, so some of the +0.94 DRAM fills/node between
+   16 MB and 1 GB belongs to the net, not the table. The *frame* conclusion
+   (16 MB is the cheapest point, and it is the point every TT lever has been
+   judged at) does not depend on the split; the attribution "that is the TT's
+   line population migrating L3 → DRAM" does.
+
+3. **Sweep points are single runs, not panels.** The four Hash points are one
+   measurement each, taken back to back on one core while a panel ran on
+   another. Monotonicity across four points on three separate counters, at flat
+   instructions, is what makes me believe them; a paired panel per point would
+   be better and I did not have the box time.
+
+4. **`same_line = 0` only counts CONSECUTIVE probes.** A probe could still hit
+   the sibling cluster of a line pulled several probes ago and still resident.
+   Uniform indexing over 524288 clusters makes that negligible by construction
+   — but "negligible by construction" is an argument, and the counter is a
+   measurement of something slightly narrower than the claim it supports.
+
+5. **Everything here is single-threaded.** The TT is the one structure in the
+   engine that is *shared* under SMP, and every number in this study is from a
+   one-thread bench. Cluster layout, replacement pressure and false sharing all
+   change when workers contend; a 32-byte cluster puts two clusters in one line
+   and therefore two writers in one coherence unit, which is a cost that
+   **cannot appear anywhere in this study's data**. Nothing here should be
+   carried into an SMP decision without re-measuring.
+
+6. **`cycles:u` on this box.** The commission's own null panel spans +0.383% to
+   +5.266% on a byte-identical binary. My nulls came back coin flips (4/9,
+   6/14, 9/18 across three panels) and the arms I call real are 12/14–18/18, so
+   I believe the *ranking*. I am much less sure of the absolute cycle figures,
+   which is why §0 quotes them as a range and why the percentage leads every
+   claim.
