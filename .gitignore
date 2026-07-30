@@ -69,3 +69,6 @@ target33/
 perf33data/
 target33-pgo/
 target33-test/
+# perf study 35: labelled measurement binaries + its build tree.
+bin35/
+target35/

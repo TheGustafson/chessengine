@@ -1,0 +1,10 @@
+# passes=41  control=base  (each pass = one simultaneous control+arm run on two physical cores)
+#   after        nodes [5001562]
+#   base         nodes [5001562]
+#   hookc        nodes [5001562]
+#   null         nodes [5001562]
+
+arm              n      i/n d%           [min,max]    cyc/n d%           [min,max]  loads/n d%           [min,max]
+after            7      -0.442  [ -0.442, -0.442]      +1.548  [ -1.068, +2.526]      -0.368  [ -0.505, +0.200]
+hookc            6      -0.201  [ -0.201, -0.201]      -0.233  [ -3.689, +3.561]      -0.036  [ -0.326, +0.249]
+null             7      +0.000  [ +0.000, +0.000]      +0.383  [ -1.176, +2.304]      -0.019  [ -0.168, +0.084]

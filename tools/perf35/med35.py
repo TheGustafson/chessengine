@@ -42,6 +42,7 @@ def main():
         r, arm = int(m.group(1)), m.group(2)
         nodes[arm].add(int(m.group(3)))
         rows[r][arm] = {c: float(m.group(4 + i)) for i, c in enumerate(COLS)}
+        rows[r][arm]["_pos"] = len(rows[r]) - 1
 
     labels = sorted({a for r in rows.values() for a in r})
     if ctrl not in labels:
@@ -78,6 +79,41 @@ def main():
         v = [rows[r][ctrl][c] for r in complete]
         half = 100 * (max(v) - min(v)) / 2 / st.median(v)
         print(f"#   {c:8s} {min(v):11.3f} .. {max(v):11.3f}   +/-{half:6.3f}%")
+
+    # MIN-OVER-ROUNDS. On a box with a live trainer the interference is
+    # one-sided -- it can only ADD cycles -- so the minimum over rounds is the
+    # least-disturbed estimate of the interference-free cost, and the median is
+    # biased upward by however loaded the box typically was. Quoted alongside,
+    # never instead: it is one sample per arm, so it has no error bar of its own
+    # and it is only believable when the null's min-ratio is also ~0.
+    print("\n# min over rounds, and the min-ratio vs the control's min")
+    head = f"{'arm':14s}" + "".join(f"{c:>11s}{'  d%':>8s}" for c in COLS)
+    print(head)
+    for arm in order:
+        row = f"{arm:14s}"
+        for c in COLS:
+            lo = min(rows[r][arm][c] for r in complete)
+            base = min(rows[r][ctrl][c] for r in complete)
+            row += f"{lo:11.3f}{100 * (lo - base) / base:+8.3f}"
+        print(row)
+
+    # POSITION IN ROUND. The artifact that nearly shipped study 29's -1.67%.
+    # If this table is flat, rotation was not load-bearing; if it is not,
+    # every paired delta above is only as good as the rotation's coverage.
+    print("\n# cyc/n by POSITION in round (labels pooled), the study-29 artifact")
+    by_pos = defaultdict(list)
+    for r in complete:
+        for i, a in enumerate(sorted(rows[r], key=lambda a: order_in_round(rows, r, a))):
+            by_pos[i].append(rows[r][a]["cyc/n"])
+    for i in sorted(by_pos):
+        v = by_pos[i]
+        print(f"#   pos {i + 1}: n={len(v):3d} median={st.median(v):9.2f} "
+              f"min={min(v):9.2f} max={max(v):9.2f}")
+
+
+def order_in_round(rows, r, arm):
+    """Position of `arm` within round `r`, from the file's line order."""
+    return rows[r][arm]["_pos"]
 
 
 if __name__ == "__main__":
