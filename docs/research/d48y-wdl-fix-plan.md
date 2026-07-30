@@ -7619,3 +7619,33 @@ both surveys say nobody has done.
 **Pre-screen mandatory and already exists:** reuse the calibrated Tier-1 panel,
 **wait for `identity2`'s run-noise number**, and **pre-register the decision
 rule before seeing any arm** — a margin inside run noise is not a result.
+
+## Tick — the noise pin makes BOTH panel conclusions safe
+
+`identity2`'s cross-seed deltas at matched superbatch put **run-to-run noise at
+about +/-20e-6**. Against that floor:
+
+| comparison | margin | vs noise |
+|---|---:|---:|
+| kmeans vs random | **218e-6** | **~10x** |
+| kmeans vs identity | **165e-6** | **~8x** |
+
+**Both halves of the split are real, in both directions:**
+
+- the learned code **genuinely finds structure** — decisively better than a
+  content-free partition;
+- and it **genuinely costs eval** — decisively worse than identity, so the
+  compression does not ship.
+
+**That is what the seed-repeat buys.** Without it the +165e-6 shortfall could
+have been waved off as noise and the compression arm talked into looking viable
+— and symmetrically the +218e-6 win could have been doubted. *A panel with a
+control but no noise pin can be argued with in either direction.*
+
+It also hands the new **richer-representation study a measured threshold to
+pre-register against** rather than an invented one, which is exactly why its
+brief told it to wait for this number.
+
+**Live:** `identity2` sb7; **`d49x` correctly queued** on the GPU (921 MiB free
+vs its 7000 MiB threshold); **study 41** ahead=3, measuring the hot footprint;
+**richer-representation study** started. Box 9263 MB, load 4.36 — healthy.
