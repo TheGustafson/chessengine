@@ -404,7 +404,9 @@ planes are *not* reused across a loop.
 
 ## 4. ARM 2 — the fold-tile width, aimed by the store-queue counter
 
-*(populated below — see §4.2 for the panel)*
+**Verdict up front: `REGS = 5` LANDS at −1.10 % cycles; `REGS = 10` and
+`REGS = 8` are nulls. §4.5.** The route there ran through a broken instrument
+(§4.2) and a pre-registered bound (§4.3), both of which are part of the result.
 
 ### 4.1 Why this arm exists, and why nobody had built it
 
@@ -513,7 +515,7 @@ Verified: mean position **1.50 for all four labels**.
   cycles/node — 0.07 % against a measured +1.51 %. Its null also behaved (5/10,
   p = 1.00). The defect was specific to the LONGER 4- and 5-label rounds.
 * **Every `cycles` figure from the arm-2 sweep is provisional** and is re-run
-  in §4.4 on the fixed instrument.
+  in §4.5 on the fixed instrument.
 * **The mechanism counters survive on margin.** Store-queue reductions of
   13–23 % at 10/10 and 11/11 are one to two orders of magnitude outside what a
   ±1.3 %-per-position gradient can manufacture, and `instructions:u` has a
@@ -591,6 +593,90 @@ are 12 426 B against `r10`'s 9 408 and `r5`'s 13 388, so code size does not
 order it either. `TILES = 5` is the only odd trip count in the sweep, which is
 a hypothesis and not a finding. It is recorded here as an unexplained
 non-monotonicity, not smoothed away.
+
+---
+
+### 4.5 ★ THE VERDICT — and the pre-registered bound HELD
+
+**The arbitrating panel:** `base44` / `r10` / `r5` / byte-identical null,
+**balanced Latin square**, **40 paired rounds (10 whole blocks)**, `cpu4`,
+contrasts on `cycclean = cycles − thread_not_selected`.
+
+**First, the gate that decides whether any of it is readable — the null:**
+
+| `null44` (byte-identical `cp` of `base44`) | median | trimmed | se | neg/n | p |
+|---|---:|---:|---:|---:|---:|
+| `cycclean:u` | **+0.171 %** | +0.046 % | 0.262 | **19/40** | **0.8746** |
+| `cycles:u` | +0.130 % | +0.131 % | 0.310 | 18/40 | 0.6358 |
+| `store_queue_rsrc_stall` | −0.523 % | −0.129 % | 0.657 | 21/40 | 0.8746 |
+| `ex_no_retire.load_not_complete` | +0.111 % | −0.039 % | 0.457 | 20/40 | 1.0000 |
+| `instructions:u` | **0.000 %** | 0.000 % | **0.000** | 19/40 | 0.8746 |
+
+**19/40 on the adjudicating counter, p = 0.87 — a coin flip on every counter,
+and exactly 0.000 % on instructions.** The instrument that read **+2.36 %** on
+this same byte-identical null before §4.2's fix now reads **+0.171 %**.
+
+**The arms** (contrast = arm − null, the study-40 form):
+
+| | `r10` | **`r5`** |
+|---|---:|---:|
+| `store_queue_rsrc_stall` | −9.543 % (**38/40**, p < 0.0001) | **−19.474 % (40/40, p < 0.0001)** |
+| `ex_no_retire.load_not_complete` | −0.659 % (21/40) | **−1.937 % (27/40, p = 0.039)** |
+| `cycclean:u` raw | −0.676 % ± 0.197 (26/40) | **−1.324 % ± 0.279 (27/40, p = 0.039)** |
+| **`cycclean` CONTRAST vs null** | **−0.72 % (2.2 se)** | **−1.37 % (3.6 se)** |
+| `instructions:u` | +1.261 % (0/40, exact) | **+4.076 % (0/40, exact)** |
+| `.text` | +0.42 % | +1.54 % |
+
+**§4.3's pre-registered band was −0.6 % … −2.0 %. The measured contrast is
+−1.37 %, at 3.6 se.** It landed inside, and it got there by converging from
+above exactly as a small-`n` inflation should — **−3.93 % (n = 8) → −1.92 %
+(n = 12) → −1.47 % (n = 16) → −1.27 % (n = 20) → −1.10 % (n = 32) → −1.37 %
+(n = 40)**. The mechanism story in §4.1 survives its own falsification test,
+and the number I would have published at n = 8 was **4× too big**.
+
+**`r10` is real too, at about half the size** (−0.72 %, 2.2 se) for about half
+the store-queue reduction (−9.5 % against −19.5 %) — it read as a clean null
+until n = 32 and only separated at n = 40. **The response is monotone in tile
+narrowness on both counters**, which is the shape §4.1 predicted. `r5` is taken
+because it is the larger effect; `r4` was never built (§8).
+
+**So `REGS = 5` lands and `REGS = 20` becomes the `regs20_44` revert arm.**
+`instructions:u` rises **4.076 %** and cycles still fall — which is the entire
+reason eight prior studies of this kernel never found it. They all adjudicated
+on a counter that can only ever prefer the widest tile.
+
+---
+
+## 5. WHAT LANDED
+
+1. **`REGS_CAP = 5`** in `sota_simd.rs` — the fold tile narrows from 20 live
+   `zmm` (2 tiles) to 5 (8 tiles) at ACC = 1280, breaking the 40-store burst
+   that was the engine's largest dispatch blocker. **−1.37 % cycles (3.6 se,
+   40 paired rounds against a 19/40 null)**, with the named mechanism moving
+   **40/40, p < 0.0001**. Node-identical and eval-bit-identical. At ~120 Elo per
+   doubling of speed that is **~+2.4 Elo**.
+2. **`tools/perf44/` — the back-end kit** (7 tools): `census44.sh` (12
+   unmultiplexed Zen 4 groups: the `ex_no_retire` partition, slot accounting,
+   per-resource dispatch token stalls, fill-source breakdown, MAB occupancy,
+   512/256-bit execution mix), `reduce44.py` (within-run shares + both closure
+   checks), `where44.sh` (per-symbol attribution by sampling the stall counter
+   itself), `panel44.sh` (**balanced Latin square**), `med44.py` (paired
+   contrasts, trimmed mean, exact binomial, whole-block truncation),
+   `build44.sh`, `ident44.sh`.
+3. **The decomposition** (§1), closing to **−0.161 %** on cycles and **−0.396 %**
+   on slots, with study 41's 49 % / 19.9 % re-derived.
+4. **Levers killed with numbers** — the history prefetch (§3) and `REGS = 8`
+   (§4.4) — plus **execution port pressure killed for the whole engine**
+   (§1.2), which saves a future session from building it.
+5. **A method fix that outlives this study**: the free per-round shuffle is not
+   sufficient at achievable `n` on a shared box (§4.2). It let a byte-identical
+   null read +2.36 % cycles.
+
+**`Bench: 587683` is unaffected** — `Cargo.toml` has no `default = [...]`, so
+the pinned `bench 16 1 6 default depth` is a default-feature build in which the
+whole `sota` path, `REGS` included, does not exist. The **NNUE** pins are the
+ones that matter here, and they are unmoved because the change is bit-identical:
+eval hash `2e1ede95…79c4` and d13 `1739588`, verified from source in §6.
 
 ---
 
@@ -674,10 +760,14 @@ In order, most doubtful first.
    a paired panel.** It is a scaling constant for one derived column and
    nothing else in the study depends on it.
 
-5. **`r8`'s non-monotonicity is unexplained** (§4.2). Store-queue pressure says
-   it should sit between `r10` and `r5`; cycles says it is the worst of the
-   three. `TILES = 5` being the only odd trip count is a hypothesis I did not
-   test.
+5. **`r8`'s non-monotonicity is unexplained** (§4.4), and it is the one crack
+   in an otherwise monotone response. At n = 40 both `r10` (−0.72 %) and `r5`
+   (−1.37 %) convert their store-queue relief to cycles in proportion; `r8` sat
+   at +0.18 % on the SWEEP panel with the second-largest store-queue reduction.
+   But `r8` was only ever measured at n = 9 **on the broken shuffled
+   instrument** and was never re-run on the Latin square, so the honest reading
+   is that `r8` is UNMEASURED, not anomalous. `r4` was never built at all —
+   the response is still falling at `r5` and the peak may be below it.
 
 6. **The execution residual (536.75 c/node, 11.50 %) is localised to
    `forward_into` but NOT to a mechanism inside it.** §2.2 rules out the

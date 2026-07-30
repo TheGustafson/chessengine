@@ -224,9 +224,12 @@ histpf44 = []
 # dispatch blocker at 502.6 cycles/node, and a 20-register tile closes with a
 # 40-store burst. Bit-identical at every setting (same blocks, same order,
 # same arithmetic), so all of them are gated on the `Bench:` fingerprint.
+# `regs20_44` restores the PRE-STUDY-44 tile (REGS = 20) -- it is the
+# subtractive arm that re-prices the landed change at any later date, and the
+# label that reproduces every pre-44 measurement of these kernels.
+regs20_44 = []
 regs10_44 = []
 regs8_44 = []
-regs5_44 = []
 regs4_44 = []
 # Perf study 40's DOSE AMPLIFIER for `partial_insertion_sort` (`src/dose40.rs`).
 # `insertwin34` is a ~0.2%-of-cycles trade and six nulls put the `cycles:u`

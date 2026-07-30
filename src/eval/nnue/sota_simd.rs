@@ -1640,16 +1640,41 @@ mod avx512 {
     /// walk covers the same blocks in the same order with the same arithmetic,
     /// and no row is read more or fewer times (register `k` consumes its own
     /// distinct 32 bytes of each row either way).
-    const REGS_CAP: usize = if cfg!(feature = "regs4_44") {
+    ///
+    /// ## MEASURED, and the cap is now 5 (perf study 44 §4.5)
+    ///
+    /// 32 paired rounds, balanced Latin square, byte-identical null riding in
+    /// the rotation, node- and eval-hash-identical at every setting. Contrasts
+    /// are arm-minus-null on `cycclean` (`cycles` − SMT theft):
+    ///
+    /// | cap | `store_queue_rsrc_stall` | cycles contrast | `instructions:u` |
+    /// |---|---:|---:|---:|
+    /// | 20 (was) | — | — | — |
+    /// | 10 | −9.24% (30/32) | −0.33% (0.8 se) — **null** | +1.261% |
+    /// | 8 | −19.74% (9/9) | +0.18% — **null**, unexplained | +2.305% |
+    /// | **5 (now)** | **−19.70% (32/32, p < 0.0001)** | **−1.10% (2.2 se)** | **+4.076%** |
+    ///
+    /// The null read 16/32 on cycles — a coin flip — and exactly 0.000% on
+    /// instructions, every round.
+    ///
+    /// **`instructions:u` rises 4.08% and cycles still fall.** That is the
+    /// whole reason this was never found: eight prior studies of this kernel
+    /// adjudicated on a counter that can only ever prefer the widest tile.
+    ///
+    /// **Measured at ACC = 1280 ONLY.** The cap applies at every width (768 and
+    /// 1536 and 2048 all fall to `REGS = 4`, their largest divisor ≤ 5), and the
+    /// `const _` asserts below still machine-check that the tile divides the
+    /// accumulator exactly — but the *benefit* is measured at one width.
+    const REGS_CAP: usize = if cfg!(feature = "regs20_44") {
+        20
+    } else if cfg!(feature = "regs4_44") {
         4
-    } else if cfg!(feature = "regs5_44") {
-        5
     } else if cfg!(feature = "regs8_44") {
         8
     } else if cfg!(feature = "regs10_44") {
         10
     } else {
-        20
+        5
     };
 
     const fn pick_regs() -> usize {
