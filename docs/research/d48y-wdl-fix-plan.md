@@ -8346,3 +8346,43 @@ an acceptable answer — with the number.
 
 **The instruction that matters: a write-up that re-analyses the backlog and lands
 nothing is the failure mode this study exists to correct.**
+
+## Tick — D49 sb475; the sb700 verdict is DE-RISKED ahead of time
+
+**D49x: sb475**, 191.7k pos/s. Heldout ema 0.010958 at sb470 (four consecutive
+down), raw 0.011181 — **down 119e-6 from the restart peak and accelerating**
+(~47e-6/10sb now vs ~5e-6 early). Box: 9175 MB available, load 6.15, disk 86%,
+`d49x` + `oomguard` both active.
+
+### Periodic eval: packing smoke test instead of games, and it paid
+
+Games would contend with **three live cycles panels** (studies 43, 44, 45), and
+an intermediate checkpoint at high LR is low-information anyway. The cheaper
+check is worth more: **does a D49 checkpoint actually pack and load?** A
+packaging bug found at sb700 would waste the whole extension.
+
+Ran steps 1–2 of `tools/d49_verdict.sh` on **sb470-ema-raw** (no games,
+memory-capped 5 G):
+
+| stage | result |
+|---|---|
+| requant @ threat scale 256 | **0 weights clipped (0.0000%)**, err 1.84%, 34.7 dB — 3.98× better than default |
+| pack → CENN-v5 × 3 scales | all three written, 138,283,648 B each |
+| engine load + eval | all three load, n=50 each |
+
+| net | stdev (our frame) |
+|---|---:|
+| D49 sb470 @ 640 | 352.4 |
+| **D49 sb470 @ 756** | **413.8** |
+| D49 sb470 @ 880 | 479.5 |
+| canonical D48X @ 600 | 610.3 |
+
+**The finding: D49's frame has NOT moved.** It measured **415–422 at scale 756
+through sb270**; at **sb470 it is 413.8**. Three hundred superbatches of
+extension left the eval spread where it was ⇒ **the narrow ladder around 756 in
+the verdict protocol stays correct and needs no re-derivation at sb700.**
+
+This also re-confirms trap 2 in that protocol: D49 sits at stdev ~414 where
+canonical sits at 610, and matching stdev was **REFUTED** as a heuristic
+(D49@1111/stdev 600 lost −14.47 ± 11.09 to D49@756). **Compare each net at its
+OWN optimum.**
