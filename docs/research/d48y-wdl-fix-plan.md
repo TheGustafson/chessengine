@@ -2598,3 +2598,29 @@ with NO Stockfish counterpart to diff against — the SF-comparative method coul
 not have found it. That is now three such finds across two ARCHON-only studies.
 
 Resources: 10.2 GB RAM free, GPU 94%, no builds in flight.
+
+### Tick — first heldout under the FIXED scorer, and it is sane
+
+`heldout sb 10 | value 0.017605 | ema 0.017254`, D49 at sb13, **193k pos/s**.
+
+| net | heldout | R² |
+|---|---|---|
+| **D49 sb10 (FROM SCRATCH)** | 0.017605 | **0.8233** |
+| D49 sb10 EMA | 0.017254 | 0.8269 |
+| D48Y2 sb10 (WARM) | 0.012129 | 0.8783 |
+| D48Y2 sb190 final | 0.010904 | 0.8906 |
+| D48X sb520 annealed | 0.006350 | 0.8815 (old frame) |
+
+R² 0.823 at sb10 from scratch is a plausible early value, and it is the right
+kind of sanity check: **a net trained with the network-side double sigmoid but
+scored with a plain one would read far worse than this.** The scorer fix is
+live and behaving.
+
+D49 starts well behind D48Y2's sb10 (0.8233 vs 0.8783) purely because that run
+was WARM — it inherited a fully-trained trunk. From-scratch has to earn it.
+
+**WATCH ITEM: study 21 has 1 commit and 7 UNCOMMITTED FILES.** That is exactly
+the pattern that put main in a non-compiling state when study 20 died — its
+committed arms depended on test fixes left in the working tree. Its brief tells
+it to commit as it goes. Mid-arm uncommitted work is normal; **if it dies with
+those 7 outstanding, check the worktree before merging anything.**
