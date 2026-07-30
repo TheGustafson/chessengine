@@ -7996,3 +7996,201 @@ codes whose update-stability was never measured), each priced BOTH additively an
 as a REPLACEMENT for part of the threat channel — which costs 25–39% of our
 speed and is therefore the thing worth displacing. Tier-1 specified, not
 launched. The 2× denominator contradiction above is written into the brief.
+
+## Tick — D49 sb441, ema TURNED; the 2× cycles/node contradiction is RESOLVED by measurement
+
+**D49x: sb441. The ema turned down for the first time since the restart**
+(0.011009 → 0.010997) and the raw heldout is falling faster (0.011290 →
+0.011260, vs 5e-6/10sb before). Running untouched.
+
+### The contested denominator: study 40 is right, study 36 is wrong
+
+Measured myself rather than argued — `perf stat` on the pinned frame
+(`bench 16 1 100000 wl50.fens nodes`, canonical D48X net, canonical binary,
+5,001,566 nodes):
+
+| | measured | study 36 claim | study 40 implied |
+|---|---:|---:|---:|
+| **cycles/node** | **4489.8** | 8262.9 | ~4090 |
+| instructions/node | 5659.0 | 5935.2 | 5923.967 |
+| branches/node | 563.5 | — | 623.802 (study 34) |
+| mispredicts/node | **22.35** | 27.3 | 24.07 (implied) |
+| IPC | **1.260** | 0.718 (implied) | 1.448 (implied) |
+
+**And study 40 is confirmed to within contention.** Its "192.91 cycles/node =
+4.7% of the engine" implies a denominator of **4104**; I measured **4489.8**
+while two perf studies and the trainer were running — **+9.4%, exactly the
+inflation contention produces**, and cycles:u can only be inflated by
+contention, never deflated. **Study 36's 8262.9 would need +84% inflation to be
+reachable. It is not reachable.** Its per-node totals line is wrong by ~1.84×.
+
+**Scope of the damage — narrow, but it caught me.** Study 36's *symbol
+percentages* are almost certainly fine (perf-record shares are self-normalising).
+What is wrong is its **per-node totals line**, so anyone converting one of its
+percentages into absolute cycles/node over-estimates by ~1.84×.
+
+**Correction to my own correction.** Last tick I "corrected" my `insertwin34`
+repricing by adopting study 36's 8262.9. That made it worse: my original 4104
+was approximately right. Repriced on measured numbers — +41.841 i/n buys
+−0.894 mispredicts/node = **−8.16 cycles/node**, against +17.08 at study 40's
+measured 2.45 marginal rate ⇒ **net +8.92 cycles/node LOSS**, and
+**break-even needs 5.13 IPC against a measured engine IPC of 1.260.** The
+verdict has now survived three different denominators; it is not
+frame-sensitive. **Bottom line: the arm loses, and the number to quote is 4489.8
+cycles/node (≈4100 quiet), not 8262.9.**
+
+Both running perf studies notified, since a wrong denominator would silently
+mis-rank everything they are about to report.
+
+## Tick — D49 sb448; the denominator is SETTLED on study 40's own binary; study 43 commissioned
+
+### Settled: 4179.7 cycles/node, and study 36's per-node line is ~2.00× too high
+
+I ran study 40's **own base binary** (`bin34/b40`, still on disk in its
+worktree) on the pinned frame. It reproduces the study's published number to
+**10 parts per million**:
+
+| | measured on `b40` | study 40 published/implied |
+|---|---:|---:|
+| node count | 5,001,562 | 5,001,562 — exact |
+| **instructions/node** | **5923.909** | 5923.967 (**Δ −0.058**) |
+| **cycles/node** | **4179.7** | ~4104 implied (+1.8%, contention) |
+| mispredicts/node | 24.01 | 24.07 implied |
+| IPC | 1.417 | 1.448 implied |
+
+**Study 36's 8262.9 would need +97.7% inflation. The ratio is ~2.00, which
+points at a double-count, not a measurement difference.**
+
+**In fairness to study 36, it self-flagged**: "the per-node totals beside them
+are not [immune to drift], and are only comparable within this document." The
+symbol *shares* are within-run attributions and stand. **The error was inheriting
+its per-node totals across studies — which is what I did.** Quote **4104–4180
+cycles/node**; never 8262.9.
+
+### Study 43 — `finny_refresh_into`, 8.75% of cycles and never targeted
+
+The Finny (king-bucket accumulator) cache is the **4th largest symbol** and the
+most *memory-bound* one in the top tier. Its signature is unusual and specific:
+
+| symbol | %cycles | %instr | %L1d loads | ratio cyc:instr |
+|---|---:|---:|---:|---:|
+| `HalfkaContext::finny_refresh_into` | **8.75** | **3.24** | **3.44** | **2.70×** engine avg |
+
+**Few loads, few instructions, lots of cycles** — it is not computing, it is
+waiting. And the layout says why: `FinnyEntry` is **2688 B** (`by_piece`
+[[Bitboard;6];2] = 96 B + `psqt` + `acc` [i16; 1280] = 2560 B), and the cache is
+`2 × FINNY_KEYS = 128` entries ⇒ **~336 KB**. That is 10× Zen 4's 32 KB L1d and
+sits in L2, so **every refresh streams ~42 cache lines**.
+
+Seven studies mention Finny (22, 29, 10, 4, 19, 9 …) and **none targeted making
+it faster**. Study 22 fixed its *metadata* (the `Option` niche costing a whole
+line per slot, and the boxed-slice fat pointer); the 2560-byte payload stream was
+never examined. Four questions in the brief: the miss/stall attribution at the
+now-correct denominator; whether hot metadata and cold payload should be split
+(SoA) so the probe stops pulling payload lines it does not need; whether
+`FINNY_KEYS = 64` is anywhere near the locality/hit-rate optimum (never
+measured); and prefetch — where the prior is strongly negative, **six kills**, but
+this is the one case in the engine where the address is known a long way ahead of
+the use, so it must beat the prior with a measurement rather than a story.
+
+## Tick — D49 sb455; box capacity was the real work this tick
+
+**D49x: sb455, heldout ema 0.010990** (0.011009 → 0.010997 → 0.010990, three
+consecutive down). Running untouched.
+
+### Two capacity warnings, both acted on
+
+**1. Swap was exhausted — 4035 of 4095 MB, ~60 MB free, against ~9.2 GB RAM.**
+Four agents are live (41 front-end, 42 TT, 43 Finny, learned-representation) and
+each wraps builds in a 6 GB `MemoryMax` scope. **Two concurrent builds is 12 GB
+against 9.2 GB with no swap headroom to absorb the overshoot** — the exact
+configuration that caused a global OOM on this box on 2026-07-27, and an OOM
+takes the D49 trainer with it.
+
+**Fix: a shared build lock, mandatory for all four agents.**
+
+```bash
+flock /home/nick/.cache/archon-build.lock \
+  systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0 --quiet \
+  cargo build --release --features '<yours>' -j2
+```
+
+`flock` blocks rather than failing, so builds queue instead of colliding. Sent to
+all four with the no-timeout caveat spelled out (a timeout that gives up and
+builds anyway defeats the purpose). The per-agent `free -m` floor of 2500 MB
+stays — the lock is *in addition to* it.
+
+**2. Disk had climbed to 90%.** Reclaimed **36.4 GB** from 11 stale worktree
+`target/` directories, excluding all four live agents by ID. **90% → 86%, 129 GB
+free.**
+
+**Deliberately preserved: `.claude/worktrees/agent-a6dd50900b77441ab/bin34/b40`**
+— perf study 40's own base binary, whose published `instructions/node` I
+reproduced to 10 parts per million today. It is the known-good reference for the
+pinned frame, so it is worth more than the 4.1 GB `target/` beside it (which I
+did delete). Both new studies were told it exists and told to treat a
+disagreement with it as a signal about their build, not about the engine.
+
+## Tick — studies 41 + 42 MERGED and gated; study 44 follows the back-end redirect
+
+**D49x: sb461, heldout 0.011228, ema 0.010978** — four consecutive samples down,
+and the raw value is now falling ~30e-6 per 10sb against ~5e-6 early in the
+extension. Untouched.
+
+**Gate green on the merged tree:** `Bench: 587683`, eval hash
+`2e1ede95…79c4`, d13 nodes `1739588`, all checks passed, run under the new
+`flock` serialisation.
+
+### Both studies overturned something I had asserted
+
+**Study 41 — the 192.91 never needed a cause.** Study 40 had both factors in the
+ledger and never multiplied them: **24.336 mispredicts/node × 9.13 = 222.2**
+against a bucket of 191.8–205.3 ⇒ **108–116% before anything else is charged**.
+The residual is *negative*, and that is the finding, not a hedge: **a mispredict's
+cost IS a refetch**, so the channels overlap and charging both double-counts.
+
+It killed its own tidy story with one extra arm. Hot set 2.88× L1i at a 30.6%
+miss rate reads as capacity-bound; `k416` moves fetches **+2.922% (35 se)** while
+L1i misses **fall 0.968% (6.9 se)** and `empty` still rises. **Stopping one arm
+earlier would have published a clean 0.45 cycles/miss at 9.4 se and the wrong
+mechanism.** Four levers killed with numbers (hugepage `.text`, LLVM hot-cold
+splitting, cold-code outlining, layout generally).
+
+**The redirect is the payload: the engine is BACK-END bound — 49.0% of dispatch
+slots vs 19.9% front-end**, whole front-end bucket 4.77% of cycles (~8.5 Elo if
+abolished). Slot accounting closes to 0.03%.
+
+**Study 42 — it corrected the conversion in its own brief, and I verified it.**
+I had told it to convert via study 39's 1.119 stall/line. That prices the whole
+TT at **1.19 stall cycles/node against a measured 109–129 — 91–108×
+under-prediction** (re-derived myself). **Mechanism: a stall-per-line rate is a
+property of the LINE POPULATION, not of the machine.** Study 39 calibrated on the
+L2-resident, hardware-prefetchable accumulator stream; TT lines are DRAM-class and
+dependent. **I had written the same conversion into study 43's brief and have
+pulled it off.**
+
+Its result is two-sided and both halves are useful: the TT is **0.18% of cache
+traffic** (1.067 lines/node of 580.9 fills/node), yet **the prefetch we already
+ship is worth ~3.5% of cycles (~6 Elo)**, measured by removing it, 18/18 rounds.
+Both speculative-prefetch arms died with both branches pre-registered. Cluster
+straddle **0.000%**, now held by a test — `align(32)` was a *type* fact and nobody
+had checked the allocator honours it.
+
+**Docs bug fixed (verified independently):** CLAUDE.md's current-pin slot named a
+**superseded** gate for a day while `check.sh` enforced the real one, and the same
+edit overwrote study 8's hash. My own gate runs confirm `check.sh` is the truth.
+
+### Study 44 commissioned — decompose the 49%
+
+Nobody has ever asked **which back-end resource** the engine waits on. Thirty-three
+studies chipped at individual symbols; the resource question is unasked. Candidates
+to separate: memory/load stalls (and study 42 just proved this varies ~100× by
+population, so "memory-bound" is a question, not an answer), execution-port
+pressure on the two AVX-512 fold kernels (13.77% + 12.38% of cycles), dependency-
+chain latency (which looks *identical* to back-end bound in slot accounting and has
+a completely different fix), and store-buffer pressure.
+
+**Told to re-derive the 49.0%/19.9% before building on it**, to close its
+decomposition to a small residual (41's closed to 0.03%), and — because **study 41
+delivered an excellent map and zero speedup** — that **landed, gated, measured work
+is the deliverable and the decomposition only exists to aim it.**

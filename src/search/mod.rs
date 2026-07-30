@@ -3206,6 +3206,17 @@ impl Worker {
                 .board
                 .piece_on(m.from())
                 .expect("a legal move starts on a piece of the side to move");
+            // Perf study 42 arm: the SPECULATIVE TT prefetch (doc 08 §3.15
+            // call site 2 / doc 04 §3.10 hook B). `Board::prefetch_key` has
+            // existed, tested and documented as "search uses it to start the
+            // TT prefetch even earlier than hook A", with NO CALLER, since it
+            // landed. Hook A fires inside `make_move` once the child key is
+            // final; from here to `do_move` is the whole §3.5 pruning cascade
+            // and the singular verification, i.e. hundreds of cycles more
+            // overlap. The cost is that a pruned move's hint is wasted, which
+            // is why this is measured rather than assumed.
+            #[cfg(feature = "ttspec42")]
+            tt.prefetch(self.board.prefetch_key(m));
             move_count += 1;
             self.stack[cur].move_count = move_count;
             let nodes_before = self.nodes; // root effort accounting (§3.4)
@@ -3413,6 +3424,17 @@ impl Worker {
                     }
                 }
             }
+
+            // Perf study 42 arm 2: the speculative TT prefetch moved BELOW the
+            // §3.5 pruning cascade. Arm 1 (`ttspec42`, above the cascade) buys
+            // the most overlap and pays for it on every move that is then
+            // pruned -- +95.6 instructions/node for ~1.07 probes/node, i.e.
+            // roughly three quarters of its hints thrown away. From here the
+            // move is committed, so the hint count collapses to the probe
+            // count, and the overlap on offer is still the whole singular
+            // verification search plus the reduction stack below it.
+            #[cfg(feature = "ttspec2_42")]
+            tt.prefetch(self.board.prefetch_key(m));
 
             // §3.6 — singular extensions and multicut (Wave-D items 13/14).
             // Only the ttMove is a candidate: an exclusion search below the

@@ -317,6 +317,11 @@ fn run_to(params: &BenchParams, out: &mut impl Write) -> io::Result<BenchResult>
     #[cfg(feature = "census34")]
     crate::census34::report(nodes);
 
+    // Perf study 42's transposition-table census. Same file-not-stream rule
+    // as study 29's: `$ARCHON_TTCENSUS`, never stdout or stderr.
+    #[cfg(feature = "ttcensus42")]
+    crate::ttcensus42::dump(nodes);
+
     Ok(BenchResult { nodes, elapsed_ms })
 }
 
