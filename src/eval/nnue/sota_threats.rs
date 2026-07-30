@@ -1091,8 +1091,20 @@ impl<'a> ThreatContext<'a> {
         self.compute(ply);
         // Perf study 38: `alias[ply]` is `ply` for a materialised entry and an
         // ancestor for a ply whose fold was a pure parent copy — see the
-        // field's own doc. One indexed load and no branch.
-        let entry = &self.stack[self.alias[ply] as usize];
+        // field's own doc.
+        //
+        // `.min(ply)` is a NO-OP on the value and a RANGE FACT for the
+        // optimizer — the same move as the threat resolver's `& 63`. The
+        // invariant is `alias[k] <= k`, but LLVM only sees `u16 → 0..=65535`
+        // and cannot prove the index is inside a `[ThreatEntry; STACK_LEN]`,
+        // so without it this load carries a compare and a
+        // `panic_bounds_check` edge in the hottest symbol in the module.
+        // `ply` is already known in range: `compute(ply)` indexed
+        // `self.fold[ply]` one line above. It is also the same defensive shape
+        // as `EvalContext::acc_ply`'s `saturating_sub` — if the invariant were
+        // ever broken this reads a stale but IN-RANGE entry instead of walking
+        // off the stack.
+        let entry = &self.stack[usize::from(self.alias[ply]).min(ply)];
         (&entry.acc, &entry.psqt)
     }
 
@@ -1385,7 +1397,11 @@ impl<'a> ThreatContext<'a> {
             super::foldcount::note_thr_joint(need, lens);
             // The parent's VALUE HOLDER, which is the parent ply itself unless
             // the parent was a pure-copy ply the alias below elided.
-            let src = self.alias[child - 1] as usize;
+            // `.min(child - 1)` for the reason `at_full`'s `.min(ply)` is
+            // there: `src` indexes `before`, whose length is exactly `child`,
+            // and the range fact is what keeps the fold's parent load free of
+            // a bounds compare and a panic edge.
+            let src = usize::from(self.alias[child - 1]).min(child - 1);
             // ── PERF STUDY 38: THE PURE-COPY PLY IS ALIASED, NOT COPIED ──────
             //
             // A ply whose resolved threat delta is empty for BOTH perspectives

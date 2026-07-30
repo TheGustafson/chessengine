@@ -28,6 +28,12 @@ INSN = re.compile(r"^\s+([0-9a-f]+):\s+(?:[0-9a-f]{2} )+\s*(.*)$")
 # `mov $0xa00,%edx` / `mov $0xa00,%rdx` — the third SysV integer argument.
 SIZE = re.compile(r"^mov\s+\$0x([0-9a-f]+),%[er]dx")
 TARGET = re.compile(r"(memcpy|memset|memmove|bcmp|memcmp)@")
+# LLVM emits the GOT read as its own instruction and calls through a REGISTER
+# when the call site is in a loop or duplicated (`mov 0x..(%rip),%r14` … `call
+# *%r14`), and then the callee's name is on the `mov`, not the `call`. Matching
+# only `call *0x..(%rip)` misses those entirely — this study's own probe build
+# has four such sites and the first version of this script reported zero.
+# Counting the GOT REFERENCES is spelling-independent and cannot miss them.
 
 
 def main() -> None:
@@ -48,10 +54,12 @@ def main() -> None:
         if not m:
             continue
         addr, text = m.group(1), m.group(2).strip()
-        # The call is INDIRECT through the GOT (`call *0x...(%rip)`), so the
-        # callee's name appears only in objdump's `#` comment. Match the whole
-        # line, and strip the comment only for the size scan below.
-        if text.startswith("call") and (t := TARGET.search(text)):
+        # The reference is INDIRECT through the GOT, so the callee's name
+        # appears only in objdump's `#` comment. Match the whole line (any
+        # instruction that names the GOT slot: `call *0x..(%rip)` or the
+        # `mov 0x..(%rip),%reg` that feeds a `call *%reg`), and strip the
+        # comment only for the size scan below.
+        if text.startswith(("call", "mov")) and (t := TARGET.search(text)):
             size = "?"
             for prev in reversed(recent):
                 s = SIZE.match(prev)
