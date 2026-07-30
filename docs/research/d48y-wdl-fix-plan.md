@@ -4810,3 +4810,56 @@ movepick.rs +291, board.rs +177. `gate3435` running: full
 **Note:** study 35's own gate quoted the OLD NNUE pins
 (`5ca978e0…`/`1922947`) because its branch predates study 32's i8 merge. Current
 main pins `eb981b11…`/`1985398`; `gate3435` is what confirms the merged tree.
+
+## main VERIFIED at `1f374bc`; the scale sweep begins on the SHIPPING net
+
+**`gate3435` green, my own run:** `Bench: 587683`, All checks passed,
+`GATE_EXIT=0`, and all six opt-in features compile (`foldcount`, three probes,
+`census34`, `insertwin34`).
+
+**D24 perft ritual — I re-ran it explicitly because I did not trust my own
+output.** `gate3435` showed `PERFT_EXIT=0` next to a `0 passed` line, which
+could have meant the filter matched nothing. Re-run standalone:
+`test perft_full_suite ... ok — 1 passed; 0 failed; 7 filtered out`. **It did
+run and it passed**; the `0 passed` was a different test binary that my
+`tail -4` had cropped. Study 35 changed make/unmake, so this was mandatory, not
+optional.
+
+### New tool: `tools/nnue/patch_scale.py`
+
+`rescale_net.py` is unusable on gen-2 nets (it asserts
+`len(file) == header + payload` and dies on netpack's appended 2,704,920-byte
+PSQ1 section). But **`network_scale` is a single i32 at offset 44** and needs no
+weight touch at all. The new tool copies the file and patches those 4 bytes,
+with a readback check, and works on CEN2 and CEN5 alike.
+
+**Verified before use, not assumed:**
+- payload **byte-identical from offset 64** (`cmp -i 64` → YES)
+- D48X stdev **421.0 → 610.3** for scale 400 → 600, a **1.45x** move against
+  the 1.5x requested ⇒ `network_scale` is a clean **linear multiplier** on eval
+  output.
+
+### The finding that makes this worth a screen
+
+**D48X's native `network_scale` is 400 — the SAME value D49 ships.** Yet their
+eval spreads differ 421 vs 230, because the trained weights differ. So **400 was
+never tuned for either net; it is just the default.** D49 gained
+**+32.09 +/- 11.38 Elo** moving to 756 (which brought its spread to 415, i.e.
+onto D48X's 421).
+
+That suggests a coherent story — *~420 stdev is roughly where our hardcoded SF
+margins want to sit, and D48X happens to land there* — but **a story is not a
+measurement**, and the standing rule is to attack a beautiful story hardest.
+
+### The test now running
+
+`sweep-d48x.service`: **D48X@600 vs D48X@400 (canonical)**, same weights,
+header-only difference, 1466 games @ 25000 nodes, conc=10, bar ~+/-10 Elo.
+
+Both outcomes are informative:
+- **600 wins** ⇒ the optimum is above 400 and there is **free Elo on the net we
+  ship today**, no retraining.
+- **600 loses** ⇒ 400 is near-optimal for D48X, which *confirms* the
+  ~420-stdev rule and licenses using it to pick D49's final scale.
+
+**D49 sb~200/400**, training undisturbed throughout.
