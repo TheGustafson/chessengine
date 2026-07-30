@@ -4856,13 +4856,18 @@ impl Worker {
         // `after_move` reads that store instead of the mailbox, which is why
         // this is a load deletion rather than a code move.
         //
-        // It is also why it is not perf study 13 §5.1, which measured the
-        // OTHER way of removing the same duplication — building the record
-        // inside `make_move_with` behind Hook C — at +41.5 i/n and rejected it:
-        // that shape adds a live 14-byte payload to a 650-instruction function
-        // that is already spilling. Doing it out here after the call keeps that
-        // function's register pressure exactly where it was. §5.2 of study 35
-        // re-prices 13's arm in cycles and it is still a loss.
+        // This is NOT perf study 13 §5.1, which removed the same duplication the
+        // other way — building the record inside `make_move_with` behind Hook C
+        // — and rejected it at +41.5 i/n. Study 35 §4 rebuilt that arm and
+        // measured **−11.36 i/n**: 13's rejection does NOT reproduce, because
+        // study 14 replaced the spilling `mem::take`/224-byte-temp shape that
+        // was its stated mechanism. **Do not re-reject the fusion on 13's
+        // number.** It is simply worth less than this: it deletes instructions
+        // but moves L1d loads by −0.04%, indistinguishable from a byte-identical
+        // null, while this shape moves them −0.30…−0.49%. It also has to be a
+        // `const WANTS_DIRTY` on the hook type, so the PSQT and ProbCut-probe
+        // paths build a record they never read; the `nnue_active()` guard below
+        // is what keeps the classical path free.
         //
         // Neither push reads the pre-move board: `push_dirty` takes no board at
         // all, and `push_sota_dirty` deliberately wants the POST-move one (its
