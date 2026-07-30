@@ -7402,3 +7402,39 @@ over-predicted.
 **Tier-1:** `random8k` at sb11 (0.006804, still descending); the `kmeans8k`
 traceback in the log is **stale from my aborted rerun at 13:19**, not a new
 failure — the agent has not reached that arm yet.
+
+## Tick — the verdict has CONVERGED: −21.08 +/- 6.14 at n=5000
+
+| n | Elo | bar |
+|---:|---:|---:|
+| 1000 | −33.46 | +/-13.57 |
+| 2000 | −25.53 | +/-9.64 |
+| 3000 | −21.44 | +/-7.86 |
+| 4000 | −20.52 | +/-6.82 |
+| **5000** | **−21.08** | **+/-6.14** |
+
+**Stopped moving.** D49 sb400 at its own optimum sits **~21 Elo behind canonical
+at its own optimum**. 880 games to the final bar.
+
+### My over-prediction headline, settled
+
+| n | map over-predicted by |
+|---:|---:|
+| 1000 | **2.50x** ← what I published |
+| 3000 | 1.44x |
+| 5000 | **1.34x** |
+
+**The direction was right; the magnitude was premature, and I published it
+twice.** The durable finding is that **the heldout↔Elo slope is not constant** —
+the same heldout improvement buys less Elo the better the net already is. That
+falsifies the linearity assumption I explicitly flagged when building the map
+and then leaned on for nine consecutive ticks. *Stability of an extrapolation is
+not evidence of its accuracy.*
+
+### Everything else healthy
+
+- **`kmeans8k` resumed falling** — sb5 at +183e-6 after appearing to stall at
+  +202. **sb12 is still the pre-registered call**; I am not reading the trend.
+- **`d49x` correctly queued** — 921 MiB free GPU against its 7000 MiB threshold,
+  so it is waiting behind the panel exactly as designed rather than contending.
+- Box 7371 MB, healthy.
