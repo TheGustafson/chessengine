@@ -7727,3 +7727,39 @@ run that just started and the standing order is DON'T OOM THE BOX.
 **Studies:** 41 at ahead=5, measuring the **executed** footprint (the right
 distinction — the icache only cares about bytes actually fetched, not
 allocated); richer-representation at ahead=3, on its deliverable.
+
+## Tick — the extension's first heldout is WORSE, which is what a re-warm looks like
+
+| | sb400 | **sb410** | Δ |
+|---|---:|---:|---:|
+| raw | 0.010784 | **0.011300** | **+516e-6** |
+| **ema (deployed)** | 0.010804 | **0.010953** | **+149e-6** |
+
+**Expected, not alarming.** LR went from ~0 back to **1.25e-4**, so the net
+leaves the minimum the anneal had settled it into. A re-warm always costs
+first — that is the price of buying back the ability to move at all.
+
+### But it did eat margin, and the target moved
+
+| | needed rate |
+|---|---:|
+| at sb400 | **2.00e-6/sb** |
+| **from sb410's ema** | **2.58e-6/sb** (749e-6 over 290 sb) |
+
+Against observed rates: cosine **6.06** ✓, anneal **2.96** ✓, **late anneal 2.48
+— now SHORT.** So parity is still feasible at any rate above the late-anneal
+tail, but the comfortable margin I reported when queuing this is gone.
+
+### Not calling direction on one sample
+
+The first run's heldout steps were **−83, −34, 0, −84, −35** and I misread
+single samples twice (the "flat = saturation" scare at sb290, the "gap closed"
+call at sb330 that reversed at sb340). **The read comes at sb420-430**, and the
+question is specific: does the curve return **below 0.010804**, or merely
+descend from its own re-warm peak? Only the former means new signal was found;
+the latter would mean the anneal had already extracted what was there and the
+re-warm just perturbed a converged net.
+
+**Box healthy again** — swap recovered to 268 MB free, available 9379 MB, load
+4.59. Studies: 41 at ahead=5; richer-representation at ahead=4, its Tier-0 probe
+nearly done.
