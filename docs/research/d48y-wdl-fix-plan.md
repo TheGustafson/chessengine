@@ -7209,3 +7209,34 @@ right base before asserting.*
 — both mutually-exclusive `#[cfg]` guards, the helper, and the call site — and
 confirmed **no double-fold at that site**, which is exactly the failure I
 introduced elsewhere and is the right thing to have checked rather than assumed.
+
+## Tick 2026-07-31 ~13:30 — verdict progressing; Tier-1 recovery is decelerating
+
+**Verified the verdict is playing rather than stalled** — 1539 → **1574 games in
+20 seconds** with 23 engine processes, matching the expected ~105/min. The Elo
+line had simply not been reprinted at that moment and my `tail` caught a stale
+window. *Checked rather than assumed, which is the standing rule and has already
+paid twice tonight.* ~4,300 games left, ~40 min.
+
+### The Tier-1 recovery curve — the panel's actual question
+
+| sb | random8k heldout | vs identity (0.006410) |
+|---:|---:|---:|
+| 0 | 0.007696 | +20.1% (the projection cost) |
+| 1 | 0.007081 | +10.5% |
+| 2 | 0.006990 | **+9.1%** |
+
+**Recovering, but clearly decelerating** — most of the projection cost came back
+in the first superbatch and the curve is flattening well above baseline.
+**Whether 12 low-LR superbatches close the remaining gap is the entire question
+the panel exists to answer**, and the agent pre-registered **report-and-pivot,
+not rule-stretching**, if they do not. Worth holding it to that.
+
+### Disk composition, recorded so the next reclaim targets correctly
+
+179 GB after the mid-session reclaim → 128 → 115 → **106 GB now**.
+
+The growable part is worktrees; the D49 checkpoint set (~39 GB) is the
+**deliberate** cost of the user's fallback and must not be touched. If it gets
+tight, prune merged studies' `target*` dirs — the same move that recovered 78 GB
+earlier — rather than the checkpoints.
