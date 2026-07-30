@@ -28,9 +28,9 @@ thing that prices fusion is neither of them:
 | direction | subtractive | additive | **subtractive** |
 | tree held identical? | **no** | yes | **yes** |
 | instructions held identical? | **no** (−7.6%) | n/a (they *are* the traffic) | **yes (+0.019%)** |
-| line coldness vs the real stack | n/a | **~1.5× colder** | **the real stack itself** |
+| misses/line, vs the real stream's **0.861** | n/a | 0.477 (**warmer**) | **0.861** |
 | stall cycles per line | 0.45 | 2.36 | **1.119** |
-| reproduced here | **0.350** (its own statistic, −4.503% vs its −4.63%) | **3.184** at dose 1, 2.22 fitted | — |
+| reproduced here | **0.350** (its own statistic: −4.503% vs its −4.63%) | **2.22** fitted, **3.18** at dose 1 | — |
 
 The measurement that carries no confound is **`dstpin` differenced against
 `actpin0`**, and it exists only as a difference of two individually broken arms:
@@ -52,9 +52,10 @@ stall per LINE, additive / subtractive          2.85x
   product                                       2.85x
 ```
 
-* **Coldness (1.48×).** An additive probe's ring lines are ~100% cold; the real
-  accumulator stack's are ~71%. Study 31 priced traffic colder than the traffic
-  fusion removes.
+* **Coldness (1.48×).** An additive probe built out of fresh buffers necessarily
+  touches colder memory than the engine's own recycled per-ply stack: my ring
+  lines miss at 1.272 per line where the real fold stream misses at 0.861 (a
+  fully cold line costs ~1.21 events on this counter — §1).
 * **Direction (1.93×).** An *added* miss costs about twice what a *removed* miss
   saves. This is the asymmetry study 29 guessed at — but it is **not a capacity
   cliff** (see 3), and it means the direction-matched measurement is the one
@@ -62,6 +63,15 @@ stall per LINE, additive / subtractive          2.85x
 * The remaining factor from 2.85× to the published 5.2× is **study 29's
   per-instruction normalisation**, which I replicated: raw **0.913** →
   normalised **0.350** on the same data, a 2.6× move from a modelling choice.
+
+**A correction to my own first draft of this section.** Study 31's probe was not
+colder than the real stream — it was **warmer**, at 0.477 misses/line against
+the stream's 0.861, and `P39_SRC=live` reproduces that (§7) by having the copy
+read the accumulator `activate` is about to consume. What its number carries is
+therefore the **direction** factor, not the coldness factor: its stall *per line*
+(2.36) replicates my additive arm's (2.22 fitted, 3.18 at dose 1) almost exactly,
+even though we disagree 2.7× on how many misses that line took. **Study 31's
+additive measurement was never the thing that was wrong.**
 
 ### 3. Study 29's proposed reconciliation is FALSIFIED
 
@@ -522,3 +532,72 @@ column above**, and it is a structural advantage over Stockfish that we
 currently hold and would be giving up.
 
 ---
+## 8. WHAT I AM LEAST SURE ABOUT
+
+In order, most doubtful first.
+
+1. **That the probe's lines and the real accumulator stack's lines cost the
+   same per line.** This is the load-bearing assumption of the whole
+   additive method, and it is the one I can only bound, not eliminate. The
+   probe's ring lines are ~100% cold; the real stack's are ~40–43% cold
+   (§1's calibration applied to both studies' agreed 0.477/0.516). §4's
+   `P39_SRC=live` arm brackets it from the other side, but a bracket is what
+   it is. If the real stream is systematically warmer than even the live arm
+   suggests, fusion's saving shrinks toward the bottom of the bracket.
+2. **The refresh cost side is a model, not a measurement.** The rebuild ROW
+   count is now measured, and the extra rebuild RATE is measured, but the price
+   of a cold threat weight-row line is still study 31's residual — a number
+   that absorbs every modelling error in its construction, quoted as a 5–13
+   band. Nobody has ever measured it directly. A `wpin`-style probe aimed at
+   the *threat refresh path only* would close it, and it is the cheapest
+   remaining thing on this board.
+3. **That any of this converts to Elo at the assumed rate.** Everything here is
+   cycles on a non-PGO build. Studies 12–15 measured the non-PGO frame
+   overstating the PGO delta by 1.12–2.0× on data-layout changes, and no game
+   has been played. Nothing in this study has been arbitrated by games, which
+   by the standing rule means it has not been arbitrated.
+4. **The dose series measures adding traffic to a working set that already
+   contains the real accumulator stack.** Fusion removes traffic *and* shrinks
+   the stack, so the post-fusion engine is at a different operating point than
+   any arm I ran. §6 shows the response is close enough to linear over a 4×
+   span that extrapolating one dose backwards is defensible, but it is still an
+   extrapolation past the last measured point.
+5. **`ex_no_retire.load_not_complete` is a count of stall cycles, not of time.**
+   It has behaved well here — the byte-identical null is small and every
+   additive arm clears it several-fold with a perfect sign count — but the
+   engine's absolute level of it has moved a long way between studies (2934 in
+   study 31, ~1960 here) as the engine got faster, so ratios travel between
+   studies and absolute levels do not.
+## 9. HANDOVER
+
+1. **Runtime knobs beat cargo features for a probe panel.** Every additive arm
+   in this study is the same 1.2 MB binary driven by environment variables, so
+   code layout — which study 29 had to carry a second null for — is differenced
+   away by construction. It also collapsed what would have been eight fat-LTO
+   builds into one. If a probe's parameter can be read from the environment
+   without a branch in the inner loop, read it from the environment.
+2. **`L1-dcache-loads` on Zen 4 counts STORES.** Measured in §1 against traffic
+   of known geometry. Study 29's per-site load census is a load+store census.
+   And a fully cold 64-byte line costs ~1.2 `L1-dcache-load-misses` events, not
+   1.0, so a "miss rate" off that counter is ~1.2× the fraction of lines that
+   are actually cold.
+3. **A probe that computes wrong evaluations changes the search tree, and no
+   normalisation repairs that.** Measured: +7.5% evaluations per node with a
+   zero-filled pin, +20.4% with a realistic one. The node TOTAL being fixed by
+   a `nodes` budget is necessary but nowhere near sufficient — check the node
+   MIX with `foldcount` before believing a per-node delta from an
+   eval-breaking arm.
+4. **A zero-filled pin turns off the sparse L1 layer.** All-zero accumulator ⇒
+   all-zero `ft` ⇒ `find_nnz` finds nothing ⇒ `l1_dot` does nothing. That is
+   where `accpin`'s "6.8% of instructions to compiler CSE" actually went, and
+   `P39_PINFILL=live` is the one-line control that proves it.
+5. **Price a change in the currency you will spend it in.** The commissioned
+   question was stall cycles per line, and that is answered; but fusion is
+   bought with *cycles*, and the probe's `Δcycles/line` is materially larger
+   than its `Δstall/line` because the copy also has to be issued. Study 31
+   measured in stall cycles and converted to Elo through a cycles ratio.
+6. **Additive probes are the tractable kind for accumulator work.** They leave
+   the tree bit-identical (node counts matched exactly here), and their extra
+   instructions ARE the thing being priced rather than a confound to normalise
+   away. The cost is that their lines are colder than the real stream's, which
+   is a bounded, measurable correction — §4 — rather than an unmeasured one.
