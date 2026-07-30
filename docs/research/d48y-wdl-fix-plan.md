@@ -6067,3 +6067,55 @@ resolves itself, and `available` is still ~1.8x the 2500 MB refuse line.
 **No study currently running** — study 38 merged, and I am deliberately NOT
 commissioning study 39 into this memory state. The next study goes out when the
 screen and gate clear, which also gives it the quiet box its measurements need.
+
+## RETRACTION: my "+8 Elo from speed alone" was WRONG — the clean instrument says ~+36
+
+I answered a direct question ("how much Elo from speed alone?") with **+4.5%
+throughput ⇒ +7.8 Elo**, derived by dividing the bench frame's node counts by
+its wall time. **That derivation is invalid** for two reasons I should have
+caught before quoting it:
+
+1. **The bench wall time includes startup** — one 138 MB net load plus
+   `quantise_halfka`, which is *new* in the current tree (study 32's addition,
+   ~5.2% of frame instructions). It dilutes the search-side gain.
+2. **The two sides searched DIFFERENT node counts** (450,961 vs 384,499), so
+   "nodes ÷ time" is not a throughput comparison at all — it silently mixes the
+   tree effect into the denominator.
+
+**The correct instrument is `tools/paired_nps.py`** — the tool built earlier
+tonight for exactly this: identical positions, **identical node budget**,
+alternating order. Fixed nodes eliminate the tree by construction, leaving only
+throughput.
+
+**First clean run** (20 pos x 300k nodes, 4 rounds, load ~5):
+
+| engine | mean | min | max | spread |
+|---|---:|---:|---:|---:|
+| NOW | **1.329 Mnps** | 1.288 | 1.385 | 7.3% |
+| SESSIONSTART (`ef9756e`) | **1.084 Mnps** | 0.973 | 1.154 | 16.6% |
+
+**ratio 1.2265x ⇒ +22.65% throughput ⇒ 122.9 x log2(1.2265) = +36.2 Elo.**
+
+**Caveat, and it is the tool's own printed warning:** SESSIONSTART's spread is
+**16.6%** against a 22.65% effect. That is not a comfortable margin — the ratio
+is only ~1.4x the noise. A higher-power run (**8 rounds x 25 positions x 400k
+nodes**) is running as `npsrun.service`.
+
+### Reconciling the three numbers
+
+| instrument | result | what it measures |
+|---|---:|---|
+| bench nodes÷time (**WRONG**) | +4.5% | nothing coherent — mixes startup and tree |
+| bench time-to-depth | 1.2256x | throughput **+ tree**, **diluted by startup** |
+| **paired_nps (fixed nodes)** | **1.2265x** | **throughput ONLY** |
+
+The near-equality of the last two is a coincidence of two opposing errors in the
+middle row (the tree helps it, startup hurts it), **not** a confirmation. On the
+clean number, throughput is 1.2265x and the 14.7% node reduction is *additional*
+— startup-free time-to-depth would be 1.2265 / 0.853 ≈ **1.44x**, which is
+larger than anything the bench frame shows.
+
+**Standing lesson:** derived throughput from a frame with unequal node counts is
+not throughput. Use the fixed-node instrument.
+
+**D49 sb298/400 — two superbatches from the anneal.**
