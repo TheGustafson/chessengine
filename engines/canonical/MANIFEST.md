@@ -107,3 +107,57 @@ instruction saving — prediction and measurement agree. At 2.02 ply/doubling (m
 games) that is worth **+3.5 to +6.0 Elo** depending on the Elo/doubling constant, whose
 95% CI includes zero. An adoption SPRT (`elo0=-5 elo1=0`) was paused at n=117 for memory
 pressure and should be resumed.
+
+---
+
+## 2026-07-30 — network_scale 400 → 600 (same weights, header only)
+
+**The net file changed by four bytes and nothing else.** `net.cenn` now points
+at `d48x-1280-sb520-ema-s600.cenn`, which is `d48x-1280-sb520-ema.cenn` with
+`network_scale` patched from 400 to 600. Payload is **byte-identical from offset
+64** (`cmp -i 64` → identical). The weights, architecture, and `arch.txt`
+(`sota,arch-d48x`) are unchanged, so the existing engine binary loads it without
+a rebuild.
+
+### Evidence
+
+| screen | result |
+|---|---:|
+| @600 vs @400, n=1466 | +15.65 +/- 11.02 |
+| **@600 vs @400, n=5880 (confirmation)** | **+14.78 +/- 5.45** (exp-0167) |
+| @900 vs @600, n=1466 | −28.50 +/- 10.97 |
+
+Fixed 25,000 nodes, `UHO_Lichess_4852_v1.epd`, both sides the same binary with
+only `EvalFile` differing. The optimum is bracketed inside (400, 900) near 600;
+**over-scaling costs more than under-scaling gains**, so 600 is taken rather
+than pushed higher.
+
+### Why 400 was wrong
+
+400 is netpack's **default**, never a tuned value — the same default D49 also
+ships. It was never swept for any net. The optimum is **net-specific**: D49
+prefers ~756 (eval stdev 415) while D48X prefers ~600 (stdev 610), and the
+hypothesis that a fixed ~610 stdev target would transfer was **refuted** — D49
+at 1111 (stdev 600) lost −14.47 +/- 11.09 to D49 at 756.
+
+### Mechanism, corroborated by the pin move
+
+Our pruning margins are hardcoded transcriptions of Stockfish constants
+(razoring `alpha − 465 − 300·d²`, futility, ProbCut) and are calibrated against
+an eval of a particular spread. Correcting the spread makes them bite correctly
+— and the **d13 node total falls 1985398 → 1739588, −12.4%**. The better
+calibrated net reaches depth 13 on 12.4% fewer nodes, which is an efficiency
+gain rather than a scoring artifact.
+
+### Pins moved in the same commit
+
+| pin | old | new |
+|---|---|---|
+| `Bench:` | 587683 | **587683 (unchanged)** — a default-feature PSQT run, blind to the net |
+| NNUE eval hash | `eb981b11…c84f4f37` | **`2e1ede95…93cf79c4`** |
+| d13 nodes | 1985398 | **1739588** |
+
+### Reverting
+
+Point `engines/canonical/net.cenn` back at `d48x-1280-sb520-ema.cenn` and
+restore the two NNUE pins. The original file was never modified.

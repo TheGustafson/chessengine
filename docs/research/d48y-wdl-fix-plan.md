@@ -5535,3 +5535,45 @@ It also carries both receipts against impossibility arguments (study 36
 overturning study 34's "structurally not removable"; the 325-740 vs 197.7
 over-pricing), study 37's md5-the-landing-tree gate hygiene, and the swap-aware
 memory guard.
+
+## PROMOTION PREPARED: canonical net -> network_scale 600 (branch `promote600`)
+
+Done on a branch so a bad pin re-derivation cannot break main. **Verification
+gate `verify600` running.**
+
+**The change is four bytes.** `engines/canonical/net.cenn` now points at
+`d48x-1280-sb520-ema-s600.cenn` = the same file with `network_scale` 400 -> 600.
+**Payload byte-identical from offset 64** (`cmp -i 64`). Weights, architecture
+and `arch.txt` (`sota,arch-d48x`) unchanged, so **the existing engine binary
+loads it with no rebuild**. The original net file was never modified — reverting
+is repointing a symlink and restoring two pins.
+
+### Pins re-derived by running the gate with them BLANKED
+
+Rather than guess, I set `NNUE_EVAL_PIN=` / `NNUE_NODE_PIN=` empty so the gate
+*printed* the actual values:
+
+| pin | old | new |
+|---|---|---|
+| `Bench:` | 587683 | **587683 — UNCHANGED**, correctly: it is a default-feature PSQT run and blind to the net |
+| NNUE eval hash | `eb981b11…c84f4f37` | **`2e1ede95…93cf79c4`** |
+| d13 nodes | 1985398 | **1739588** |
+
+### THE PIN MOVE CORROBORATES THE MECHANISM
+
+**d13 nodes fall 1985398 -> 1739588, −12.4%.** The better-calibrated net reaches
+depth 13 on **12.4% fewer nodes**. That is an *efficiency* gain, not a scoring
+artifact, and it is exactly what the hypothesis predicts: our pruning margins
+are hardcoded SF transcriptions calibrated against an eval of a particular
+spread, so correcting the spread makes them bite correctly. **I did not predict
+this number in advance — it is corroboration found after the fact, and is
+recorded as such rather than as a pre-registered result.**
+
+Updated in the same commit: `tools/check.sh` (both pins), `CLAUDE.md`, and a
+`engines/canonical/MANIFEST.md` entry carrying the evidence table, the
+net-specific-optimum finding, the refuted transfer hypothesis, and explicit
+revert instructions.
+
+**Merge to main only after `verify600` confirms the new pins hold.** Study 38 is
+live and gates against the pins; it will be told the new values the moment this
+lands.

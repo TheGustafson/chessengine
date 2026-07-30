@@ -188,7 +188,7 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   i16 weight table is quantised to i8 at load with a per-column integer scale,
   measured −6.8% cycles/node and +3.6 ± 7.7 Elo over 2932 fixed-node games
   (i.e. no detectable fidelity cost). The immediately preceding pins were
-  `5ca978e0…8b38` / `1922947` (perf study 8's threat-frame change, §4.6 — the
+  `2e1ede95…79c4` / `1922947` (perf study 8's threat-frame change, §4.6 — the
   FT merge carries the 255/64 frame ratio as 4, a measured 0.14 SF cp mean
   shift), before that `07993850…41bd` / `1945095`, and the D47V ones
   `cd190d1b…7f3d` / `2068701`.
