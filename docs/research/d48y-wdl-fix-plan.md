@@ -8943,3 +8943,30 @@ commission.**
 **Memory timing works in our favour:** the trainer releases ~4.5 GB RAM and the
 whole GPU at sb700, so the PGO build — the single heaviest memory event on this
 box — runs after the pressure lifts rather than against it.
+
+## Tick — the sb530 prediction is SCORED: accurate to ~3 superbatches
+
+Last tick I pre-registered "the EMA crosses the pre-extension bar at ~sb530".
+Scoring it against the log rather than quietly moving on:
+
+| sb | EMA |
+|---|---:|
+| 510 | 0.010864 |
+| 520 | 0.010835 |
+| **530** | **0.010817** |
+| **bar (pre-extension EMA, sb390)** | **0.010812** |
+
+**5e-6 short at sb530.** The realised slope was −18e-6/10sb against the −24e-6
+I extrapolated, so the true crossing is **~sb533 — the forecast was accurate to
+about three superbatches.** Ten consecutive samples down.
+
+**The two series still disagree and it matters which one ships:** the raw value
+is 0.010931 against a pre-extension raw of 0.010824, still **107e-6 above**. The
+EMA is the deployed net, so the EMA is the verdict-relevant series — and on it
+the restart cost is now fully repaid with **~170 superbatches and the entire
+sb600–700 anneal still to come.**
+
+**No new commission** — 6325 MB with both studies live (conj probe: 3 processes;
+study 45: replication). Both took their corrections, visible in their commits:
+conj wrote *"rejection-filter framing (owner guard-rail)"*, and study 45 wrote
+*"the three instrument defects, with the null that exposed each"*.
