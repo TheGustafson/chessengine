@@ -181,9 +181,18 @@ macro_rules! kernel_dispatch {
 /// share. They produce wrong evaluations by construction — these features are
 /// measurement instruments, never shipped, and `bench … nodes` fixes the node
 /// budget so the two arms remain comparable at the same tree size.
-#[cfg(any(feature = "probe-accpin", feature = "probe-wpin"))]
+#[cfg(any(
+    feature = "probe-accpin",
+    feature = "probe-wpin",
+    feature = "probe-actpin",
+    feature = "probe-addcopy"
+))]
 pub(crate) mod probe {
-    #[cfg(feature = "probe-accpin")]
+    #[cfg(any(
+        feature = "probe-accpin",
+        feature = "probe-actpin",
+        feature = "probe-addcopy"
+    ))]
     use super::ACC;
 
     /// One accumulator-shaped buffer every pinned read is redirected to.
@@ -247,6 +256,210 @@ pub(crate) mod probe {
     /// LENGTHS must be preserved exactly — only the values change.
     #[cfg(feature = "probe-wpin")]
     pub(crate) static ZERO_IDX: [usize; 64] = [0usize; 64];
+
+    /// Perf study 39's **SUBTRACTIVE** arm at study 31's magnitude, plus the
+    /// control that says whether a pinning probe measures locality at all.
+    ///
+    /// `probe-actpin` pins ONLY `activate`'s four accumulator arrays — 68.9
+    /// lines/node, the exact dose of study 31's additive copy — so the two
+    /// directions are finally comparable at equal magnitude. `probe-accpin`
+    /// pins the fold `src` stream too and therefore cannot be.
+    ///
+    /// **`P39_PINFILL=live` is the point of this module.** Study 29 read a
+    /// −6.8% instruction drop off `accpin` and attributed it to *compiler CSE*.
+    /// It is not CSE: a pin buffer full of ZEROES makes `activate` emit an
+    /// all-zero `ft`, so `find_nnz` returns almost nothing and `l1_dot` — the
+    /// sparse L1 layer, with its own weight rows and its own misses — does
+    /// almost no work. The probe silently deletes a whole layer of the
+    /// network, and per-instruction normalisation cannot repair that because
+    /// the deleted instructions carry loads and stalls of their own.
+    ///
+    /// Under `P39_PINFILL=live` the FIRST `activate` copies the real
+    /// accumulators into the pin and every later one reads that snapshot: a
+    /// realistic accumulator, realistic magnitudes, realistic group sparsity,
+    /// so the head does its normal work. Same binary, same code layout, one
+    /// runtime branch — the difference between the two modes is the size of
+    /// the confound.
+    #[cfg(feature = "probe-actpin")]
+    pub(crate) mod livepin {
+        use super::ACC;
+        use std::sync::OnceLock;
+        use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
+
+        type Pair = [[i16; ACC]; 2];
+
+        struct Pins {
+            a: usize,
+            b: usize,
+            live: bool,
+        }
+        static PINS: OnceLock<Pins> = OnceLock::new();
+        static FILLED: AtomicBool = AtomicBool::new(false);
+
+        fn pins() -> &'static Pins {
+            PINS.get_or_init(|| {
+                let live = std::env::var("P39_PINFILL").as_deref() == Ok("live");
+                eprintln!("[p39] actpin: pinfill={}", if live { "live" } else { "zero" });
+                let leak = || Box::into_raw(Box::new([[0i16; ACC]; 2])) as usize;
+                Pins {
+                    a: leak(),
+                    b: leak(),
+                    live,
+                }
+            })
+        }
+
+        /// Hand out the pinned pair, filling it from the real accumulators on
+        /// the first call when `P39_PINFILL=live`.
+        ///
+        /// Relaxed load/store on `FILLED` rather than a `swap`: an atomic RMW
+        /// on the eval path would be ~20 cycles of pure probe artefact, and
+        /// `bench` is single-threaded.
+        #[inline]
+        #[allow(unsafe_code)]
+        pub(crate) fn take(pst: &Pair, threat: &Pair) -> (&'static Pair, &'static Pair) {
+            let p = pins();
+            // SAFETY: both pointers come from `Box::into_raw` on leaked `Pair`
+            // allocations — non-null, aligned, valid for the whole program.
+            // Handing out `&'static Pair` aliased against a transient `&mut`
+            // during the one-shot fill is sound here because the fill happens
+            // before either reference is handed out and `bench` is
+            // single-threaded; the *contents* being shared across plies is the
+            // traffic collapse this instrument exists to create, which is why
+            // it computes wrong evaluations by design.
+            unsafe {
+                if p.live && !FILLED.load(Relaxed) {
+                    FILLED.store(true, Relaxed);
+                    *(p.a as *mut Pair) = *pst;
+                    *(p.b as *mut Pair) = *threat;
+                }
+                (
+                    std::hint::black_box(&*(p.a as *const Pair)),
+                    std::hint::black_box(&*(p.b as *const Pair)),
+                )
+            }
+        }
+    }
+
+    /// Perf study 39's **ADDITIVE** traffic probe — study 31's instrument,
+    /// rebuilt with the two controls it never had.
+    ///
+    /// Study 31 priced accumulator streaming by ADDING one redundant
+    /// accumulator-pair copy per evaluated node and reading the cost off
+    /// `ex_no_retire.load_not_complete`: **2.36 stall cycles per 64-byte
+    /// line**. Study 29 priced the same quantity SUBTRACTIVELY
+    /// (`probe-dstpin`) and got **0.45**. Neither ran the arms that separate
+    /// the candidate explanations, so both knobs here are **runtime**:
+    ///
+    /// * `P39_DOSE` — copies per evaluated node (default 1). A dose series
+    ///   measures whether stall cycles are LINEAR in added traffic. Study
+    ///   29's "capacity cliff" reconciliation requires the cost function to be
+    ///   CONVEX at our operating point; a linear dose response falsifies it.
+    /// * `P39_RING` — how many distinct accumulator-pair slots the copies
+    ///   rotate through, rounded up to a power of two (default 16). The
+    ///   probe's own footprint is `2 × RING × 5120` bytes, so RING sweeps the
+    ///   copy from L1-resident (RING = 1, 10 KB) through the real accumulator
+    ///   stack's hot window (RING = 16, 160 KB) and out into L3.
+    ///   **RING = 1 is the control study 31 lacked**: byte-identical code,
+    ///   identical instruction and load counts, essentially no cold lines —
+    ///   so `cold − hot` is the probe's LOCALITY cost with its ISSUE cost
+    ///   differenced away.
+    ///
+    /// Runtime knobs rather than cargo features on purpose: ONE binary serves
+    /// the whole additive panel, so no comparison inside it can be confounded
+    /// by code layout (study 29 §8.6 needed two nulls precisely because its
+    /// arms were different binaries; here they are the same bytes).
+    #[cfg(feature = "probe-addcopy")]
+    pub(crate) mod addcopy {
+        use super::ACC;
+        use std::sync::OnceLock;
+        use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+
+        /// i16 lanes in one accumulator PAIR: 2 × 1280 × 2 B = 5120 B = 80
+        /// 64-byte lines. One copy therefore moves 80 read + 80 write lines =
+        /// **160 lines**, which is study 31's per-evaluated-node figure
+        /// exactly.
+        const PAIR: usize = 2 * ACC;
+
+        /// `src`/`dst` are leaked `Box<[i16]>` allocations kept as integers.
+        /// A `&'static mut` cannot be handed out of a `&'static Rings`, and
+        /// this mirrors the existing `pin_dst` idiom two screens up.
+        struct Rings {
+            src: usize,
+            dst: usize,
+            mask: usize,
+            dose: usize,
+        }
+
+        static RINGS: OnceLock<Rings> = OnceLock::new();
+        /// Plain relaxed load/store, never a `fetch_add`: an atomic RMW is a
+        /// locked op worth ~20 cycles and would be a large fraction of what
+        /// this probe is trying to measure. `bench` is single-threaded, so a
+        /// non-atomic increment is all the ordering this needs.
+        static CURSOR: AtomicUsize = AtomicUsize::new(0);
+
+        fn env_usize(key: &str, default: usize) -> usize {
+            std::env::var(key)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
+        }
+
+        fn rings() -> &'static Rings {
+            RINGS.get_or_init(|| {
+                let slots = env_usize("P39_RING", 16).max(1).next_power_of_two();
+                let dose = env_usize("P39_DOSE", 1);
+                eprintln!(
+                    "[p39] addcopy: ring={slots} slots, footprint={} KB, dose={dose}",
+                    2 * slots * PAIR * 2 / 1024
+                );
+                let leak = || {
+                    Box::leak(vec![0i16; slots * PAIR].into_boxed_slice()).as_mut_ptr() as usize
+                };
+                Rings {
+                    src: leak(),
+                    dst: leak(),
+                    mask: slots - 1,
+                    dose,
+                }
+            })
+        }
+
+        /// One dose = one accumulator-pair-sized vector copy through the ring.
+        ///
+        /// `wrapping_add(bias)` with an opaque zero rather than
+        /// `copy_from_slice`: the latter lowers to `memcpy`, which for 5 KB on
+        /// Zen 4 is `rep movsb` — a different microarchitectural animal from
+        /// the `vmovdqu64` streaming this probe is pricing (see study 38 on
+        /// `rep movsb`). The add form autovectorises to the same
+        /// load/`vpaddw`/store shape the fold kernels use.
+        #[inline]
+        #[allow(unsafe_code)]
+        pub(crate) fn tick() {
+            let r = rings();
+            let bias = std::hint::black_box(0i16);
+            for _ in 0..r.dose {
+                let i = CURSOR.load(Relaxed);
+                CURSOR.store(i.wrapping_add(1), Relaxed);
+                let off = (i & r.mask) * PAIR;
+                // SAFETY: both rings are leaked `Box<[i16]>` of exactly
+                // `(mask + 1) * PAIR` lanes, and `off + PAIR` is therefore in
+                // bounds for every `i`. The allocations are `'static`, never
+                // freed, and `bench` — the only thing this measurement-only
+                // feature is ever run under — is single-threaded.
+                let (s, d) = unsafe {
+                    (
+                        std::slice::from_raw_parts((r.src as *const i16).add(off), PAIR),
+                        std::slice::from_raw_parts_mut((r.dst as *mut i16).add(off), PAIR),
+                    )
+                };
+                for (dl, &sl) in d.iter_mut().zip(s.iter()) {
+                    *dl = sl.wrapping_add(bias);
+                }
+                std::hint::black_box(d);
+            }
+        }
+    }
 }
 
 #[cfg(feature = "probe-wpin")]
@@ -414,7 +627,10 @@ unsafe fn ft_group(ft: &[u8; ACC], group: usize) -> i32 {
 // `probe-accpin` shadows the accumulator parameters with its pinned
 // buffer, which is exactly what the probe is for; the originals then
 // go unread. No effect on any build without that feature.
-#[cfg_attr(feature = "probe-accpin", allow(unused_variables))]
+#[cfg_attr(
+    any(feature = "probe-accpin", feature = "probe-actpin"),
+    allow(unused_variables)
+)]
 pub(crate) fn activate(
     out: &mut [u8; ACC],
     pst: &[[i16; ACC]; 2],
@@ -425,14 +641,24 @@ pub(crate) fn activate(
 ) {
     #[cfg(feature = "foldcount")]
     super::foldcount::ACTIVATE.hit(0);
+    // Perf study 39's ADDITIVE arm rides here — one evaluated node, one
+    // redundant accumulator-pair copy, which is study 31's instrument.
+    #[cfg(feature = "probe-addcopy")]
+    probe::addcopy::tick();
     // `activate` is the single largest accumulator-STREAM reader in the
     // engine: four `[i16; ACC]` arrays, 10.24 KB per evaluation, which is the
     // exact quantity Stockfish carries as 4.10 KB by fusing the two channels.
+    //
+    // `probe-actpin` (study 39) pins ONLY these four arrays — 68.9 lines/node,
+    // the exact magnitude of study 31's additive copy, in the subtractive
+    // direction. `probe-accpin` additionally pins the fold `src` stream.
     #[cfg(feature = "probe-accpin")]
     let (pst, threat) = (
         std::hint::black_box(&*probe::PIN_ACC),
         std::hint::black_box(&*probe::PIN_ACC2),
     );
+    #[cfg(all(feature = "probe-actpin", not(feature = "probe-accpin")))]
+    let (pst, threat) = probe::livepin::take(pst, threat);
     // The HalfKA rescale is a WRAPPING i16 multiply in every backend, which is
     // what keeps the three bit-identical (see the avx512 merge). It wraps
     // exactly where the pre-study-32 FT_QUANT-frame accumulator wrapped, so it
@@ -442,10 +668,10 @@ pub(crate) fn activate(
     // check on its own shift (`|t| <= 8191`); this is its twin, and it is the
     // tripwire that would fire if a future net's accumulator range grew.
     //
-    // Skipped under `probe-accpin`: that feature deliberately redirects the
-    // accumulators to a pinned buffer and computes wrong evals by design, so
-    // the bound is not its contract.
-    #[cfg(not(feature = "probe-accpin"))]
+    // Skipped under `probe-accpin`/`probe-actpin`: those features deliberately
+    // redirect the accumulators to a pinned buffer and compute wrong evals by
+    // design, so the bound is not their contract.
+    #[cfg(not(any(feature = "probe-accpin", feature = "probe-actpin")))]
     debug_assert!(
         pst.iter().all(
             |side| side
