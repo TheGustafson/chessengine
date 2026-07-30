@@ -566,8 +566,8 @@ currently hold and would be giving up.
 
 ## 7. TWO MORE ARMS: does the number TRANSFER, and what was study 31 actually copying?
 
-Panel 2, `tools/perf39/panel2.sh`, n = 22, same binary as its own control
-(`d0null`, byte-identical, moves `stall/n` +0.884%, 8/22 negative).
+Panel 2, `tools/perf39/panel2.sh`, n = 24, same binary as its own control
+(`d0null`, byte-identical, moves `stall/n` +0.884%, 8/24 negative).
 
 ### 7.1 Placement: the number transfers
 
@@ -580,12 +580,12 @@ reuse distance in nodes:
 
 | arm | site | lines/node | Δ ins/n | Δ miss/n | Δ stall/n | stall/line | Δ cyc/n |
 |---|---|---:|---:|---:|---:|---:|---:|
-| `f1` | fold | 136.60 | +156.65 | +118.12 | +313.24 | **2.293** | +503.37 |
-| `d2` | `activate` | 137.95 | +157.37 | +121.99 | +308.97 | **2.240** | +527.12 |
+| `f1` | fold | 136.60 | +156.65 | +117.55 | +313.24 | **2.293** | +490.67 |
+| `d2` | `activate` | 137.95 | +157.37 | +121.57 | +318.73 | **2.310** | +548.27 |
 | `f2` | fold | 273.20 | +308.63 | +224.49 | +640.69 | **2.345** | +1068.80 |
-| `d4` | `activate` | 275.90 | +312.58 | +226.38 | +593.59 | **2.152** | +1014.60 |
+| `d4` | `activate` | 275.90 | +312.58 | +226.05 | +593.59 | **2.152** | +1014.60 |
 
-**Within 1.4% and 7.9% on stall cycles, within 3.2% and 0.8% on misses.** Stall
+**Within 1.7% and 7.9% on stall cycles, within 0.4% and 0.7% on misses.** Stall
 per line is a property of the traffic, not of where in the node it is issued.
 The price in §6 transfers.
 
@@ -599,12 +599,12 @@ about to consume:
 
 | arm | source | Δ miss/n | miss/line | Δ stall/n | stall/line |
 |---|---|---:|---:|---:|---:|
-| `d1` | cold ring | +86.20 | 1.250 | +207.06 | 3.002 |
-| `d1L` | **live accumulator** | **+42.95** | **0.623** | +136.86 | **1.984** |
+| `d1` | cold ring | +86.56 | 1.255 | +207.06 | 3.002 |
+| `d1L` | **live accumulator** | **+42.95** | **0.623** | +135.91 | **1.970** |
 | *study 31* | *(unknown)* | *+32.88* | *0.477* | *+162.7* | *2.36* |
 
 **The misses halve, and both columns land on study 31's.** Its probe was a
-live-source copy — 0.623 against its 0.477 on the count, 1.984 against its 2.36
+live-source copy — 0.623 against its 0.477 on the count, 1.970 against its 2.36
 on the price. That closes the last open question about its instrument: it was
 not measuring something exotic, it was measuring a copy whose read half was
 free.
@@ -618,7 +618,7 @@ source comparisons above, which are ring-matched pairs.)*
 
 ### 7.3 Read half versus write half — and a retraction of study 29's "the stores are the expensive part"
 
-Panel 3, `tools/perf39/panel3.sh`, n = 22. `accpin` pins the fold `src` **reads**
+Panel 3, `tools/perf39/panel3.sh`, n = 24. `accpin` pins the fold `src` **reads**
 and leaves every store in the real per-ply stack; `dstpin` pins the stores too.
 All three pin arms compute the same all-zero evaluation and retire the same
 instructions (+1.83 and +1.05 i/n against `actpin0`), so both differences are
@@ -683,6 +683,12 @@ and panel 1 for the LEVEL.)*
   the standing rule that means nothing here is arbitrated.
 * **`P39_SITE=fold` was added late** and the arms that use it are in panel 2
   only, so the fold-site placement result rests on one panel rather than two.
+* **A `cargo fmt` at the end reflowed two `eprintln!` calls** in the probe
+  module, shifting line numbers after every panel had been measured. It cannot
+  change codegen, but it can change panic `Location` strings and therefore the
+  binaries' hashes (study 35's finding), so the measured binaries are not
+  reproducible from the landing tree byte-for-byte. Their md5s are recorded;
+  the claim is that their *behaviour* is reproducible, not their bytes.
 * **The three pin binaries were built from three different source states**
   (`accpin`/`dstpin` from `b8d6e13`'s predecessor, `actpin` from `4320db4`,
   `addcopy` twice). Every code path they exercise is `#[cfg]`-identical across
