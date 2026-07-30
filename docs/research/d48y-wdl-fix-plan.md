@@ -7299,3 +7299,27 @@ being precise about, since a stale failure log next to a running job is exactly
 how a healthy run gets declared broken.
 
 **Box:** 7261 MB, load 18.67, GPU 6891 MiB. Both jobs healthy; nothing started.
+
+## The verdict moves: −25.53 +/- 9.64 at n=2041 — and my "2.5x" was premature
+
+| n | measured | gain over sb270 | vs predicted +35.1 |
+|---:|---:|---:|---:|
+| 1000 | −33.46 +/- 13.57 | +13.75 | over-predicted **2.5x** |
+| **2041** | **−25.53 +/- 9.64** | **+21.68** | over-predicted **1.6x** |
+
+**I published "the map over-predicted 2.5x" as a headline from a 1000-game
+snapshot.** At 2041 games it is 1.6x. Both are partial, and the honest statement
+is: **the map over-predicted by a factor that will not be known until n=5880.**
+
+*This is worth flagging on myself. The previous tick I wrote a rule about
+"a rate claim needs a timed interval, never two observations" — and then in the
+same session published a ratio computed off a partial screen as though it were
+the finding.* The **direction** holds and is the durable part: the heldout↔Elo
+map was optimistic, and diminishing returns are real — the same heldout gain
+buys less Elo the better the net gets. **The magnitude was premature.**
+
+**What is not in doubt:** D49 improved on itself (**−47.21 at sb270 → −25.53
+now**) and remains short of canonical. D48X stays canonical; every checkpoint is
+retained.
+
+Verdict continues to 5880 at ~130 games/min.
