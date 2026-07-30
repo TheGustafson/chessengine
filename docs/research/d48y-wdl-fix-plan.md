@@ -7012,3 +7012,67 @@ over-tight and would have blocked safe work.
 **Study 40 at ahead=7** — *"the final committed tree reprod…"*, i.e. it is doing
 the md5-the-landing-tree hygiene, so it is close to reporting.
 **`recode-t1`** still on its identity arm.
+
+## Perf study 40 COMPLETE and MERGED (`2e01a74`) — BOTH switches decided
+
+9 commits, clean, merged without conflict. `gate40` running.
+
+### Arm A — `insertwin34` LOSES (+0.19% cycles). Stays OFF.
+
+Study 34's counters all reproduce exactly (n=60, **zero spread**, byte-identical
+null at 0.000%): +0.719% instructions, −0.525% branches, **−4.409%
+mispredicts**, 60/60 rounds each. And **`cycles:u` still cannot see it** —
+29/60 against the null's 26/60.
+
+**The instrument that could is `ex_no_retire.empty`.** A mispredict spends its
+cost as **front-end starvation**, and Zen 4 counts exactly that: 192.91
+cycles/node, **4.7% of the engine**. So a 9-cycle effect is 4.7% *of that*
+instead of 0.22% of cycles. Over 159 paired rounds:
+
+| counter | contrast | se |
+|---|---:|---:|
+| `ex_ret_brn_misp:u` | −4.517% | 44.3 |
+| **`ex_no_retire.empty:u`** | **−5.150%** | **14.4** |
+| `cycles` − SMT | +0.186% | 1.4 |
+
+**The arm buys 9.93 cycles of bubble and pays 17.40 for 42.58 instructions.**
+Study 34 assumed **18 cycles/mispredict and ~4 IPC**; measured they are **9.13
+and 2.45** — both worse for the arm, and together they are the *entire* gap
+between its predicted −0.17% and the measured +0.19%.
+
+### Arm B — CLOSED, and study 38's ~26 i/n was a codegen-regime artifact
+
+**The 2560-byte copy is a `memcpy` CALL only when the alias machinery is
+ABSENT.** Every binary carrying the array — **including `null38`** — compiles it
+as 40 inline zmm moves. So study 38 priced the elided copies at **187.9 (a
+call)** when the binary they are elided *from* has them **inline at 111.8**.
+
+Exact ladder, zero spread, decomposition closing to **0.000 i/n**: machinery
+**+4.35**, codegen flip **+13.98**, elision **−35.44** → **−17.11**, which is
+study 38's headline exactly. `na40` reproduces its base to **7 ppm**.
+
+### Bonus: a −16 i/n arm fell out of it, and landed
+
+Pinning the copy behind a call boundary: **−16.01 instructions and −1.21
+branches per node**, cycles **−0.415% ± 0.179%**, **node-identical**, gate
+green. Shipped as `#[inline(never)] copy_acc_outlined`.
+
+### The failure it reports is a deep one
+
+**The dose amplifier FAILED.** `--features dosesort40` replays real earlier
+sorts to amplify the arm 25×. It amplifies instructions and branches faithfully
+but **mispredicts only 1.6× — the branch predictor LEARNS the replay.** Kept in
+the tree with a warning, because ***any*** replay harness has this defect,
+including an out-of-engine microbenchmark. That invalidates a whole class of
+amplification technique for mispredict work.
+
+Also: it independently hit the **`refs/stash` shared-across-worktrees** trap
+mid-gate — the third occurrence — and documented recovery.
+
+### The calibration that prices ALL future mispredict work
+
+**The exchange rate is 9.13 cycles per mispredict, not 18.** Consequently
+`init_quiets`' **entire** mispredict share is only **30.2 cycles/node (0.74%)**,
+and any mispredict arm must cost **under ~3.7 instructions per mispredict
+removed** to break even. It also revives a retired instrument: **`ex_ret_brn_misp:u`
+is not dead** — studies 34/38 retired it at n=10; at n=159 it reads 44 se.
