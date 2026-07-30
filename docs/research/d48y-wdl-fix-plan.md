@@ -7240,3 +7240,32 @@ The growable part is worktrees; the D49 checkpoint set (~39 GB) is the
 **deliberate** cost of the user's fallback and must not be touched. If it gets
 tight, prune merged studies' `target*` dirs — the same move that recovered 78 GB
 earlier — rather than the checkpoints.
+
+## Tick 2026-07-31 ~14:00 — verdict 1772/5880; reading the Tier-1 control correctly
+
+**Verdict progressing**, 1772 of 5880 games, holding at −33.46 +/- 13.57 from
+its last printed interval.
+
+### `random8k` is a CONTROL, not an arm — and it is behaving correctly
+
+| sb | heldout | vs identity |
+|---:|---:|---:|
+| 0 | 0.007696 | +20.1% |
+| 1 | 0.007081 | +10.5% |
+| 2 | 0.006990 | +9.1% |
+| 3 | 0.006943 | **+8.3% (+533e-6)** |
+
+**Asymptoting well above identity — which is the desired result.** `random8k` is
+the **content-free random-partition control**; a random code *failing* to
+recover is precisely what demonstrates the instrument discriminates between
+codes. Had it recovered to identity, the panel would be measuring nothing.
+
+**The signal is `kmeans8k` — the learned arm, queued next — recovering
+meaningfully better than this control.**
+
+Recording the framing explicitly because *"the arm is not recovering"* is an
+easy and wrong read of a control doing exactly its job, and the pre-registered
+rule depends on the contrast, not on either arm's absolute number.
+
+**Box:** 7225 MB, load 17.53 — the 5880-game screen plus the GPU panel.
+Nothing started.
