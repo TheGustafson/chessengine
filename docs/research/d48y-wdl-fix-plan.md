@@ -6940,3 +6940,38 @@ arbitrate*. The screens now running are the actual verdict.
 **`ladder880`** — D49@880 vs D49@756, 1466 games, **conc=8** deliberately, to
 leave headroom for **`recode-t1`**, which has now taken the GPU that D49
 released and is running the Tier-1 panel with its pre-registered decision rule.
+
+## Tick 2026-07-31 ~10:30 — ladder arm 1; the restart rule does NOT apply
+
+**D49 COMPLETED its 400sb schedule.** The standing directive says *restart if it
+stops* — **it did not stop, it finished.** Restarting would be wrong, and the
+verdict work has taken its place.
+
+### Ladder arm 1: D49@880 vs D49@756
+
+    Elo -6.25 +/- 13.38    W286 / D410 / L304   (49.10%)   n=1000
+
+**880 loses to 756, but only 0.47 sigma** — not a resolved difference. Combined
+with **D49@1111 losing −14.47 +/- 11.09** at sb180, the upper side is bracketed:
+**the optimum is at or just below 756.**
+
+**The 640 arm still decides the lower side and will run when the box frees.**
+I considered skipping it — the frame argument suggests 640 (stdev 357.9) is
+worse, since larger stdev helped both nets up to their peaks and 880 (487.3) is
+already past it. **But that is an inference, and the ladder exists precisely so
+the verdict is a measurement rather than a guess.** Skipping it to save 25
+minutes would undermine the reason the script was written.
+
+### `recode-t1` is running the Tier-1 panel
+
+It **started its identity arm at 12:42:54, the moment D49 freed the GPU** —
+the arming logic worked exactly as designed (wait for the trainer, plus 10 idle
+GPU minutes). Logs under `data/nnue/experiments/recode-t1/`.
+
+**Study 40: ahead=4, dirty=0** — clean, and both arms have been worked
+(arm B closed, arm A priced).
+
+**Box: 5135 MB available, free swap 960 MB, load 16.10** — the 1466-game screen
+at conc=8 plus the GPU panel. **Nothing added this tick.** This is the busiest
+the box has been since the peak earlier, and both jobs are ones I want to
+finish undisturbed.
