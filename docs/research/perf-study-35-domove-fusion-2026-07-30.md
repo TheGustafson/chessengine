@@ -185,6 +185,11 @@ Gates run before landing:
 * `cargo test` — green (the fast perft tier is in it).
 * `cargo test --release -- --ignored perft_full_suite` — green (D24 ritual;
   this is board-mutation-adjacent code).
+* `cargo test --release -- --ignored perft_extended` — green (~18 G nodes,
+  61.1 s). Not strictly owed: `make_move_with` and `unmake_move` are
+  byte-identical to their previous form and the whole `board.rs` diff is two
+  additions inside `impl DirtyPiece` plus a test. Run anyway because the change
+  reads state that make/unmake maintain.
 * `cargo clippy --all-targets` — clean.
 * `bash tools/check.sh` — **`Bench: 587683` reproduced bit-for-bit.**
 * `CHECK_NNUE_GATE=1 bash tools/check.sh` — eval hash
@@ -365,11 +370,15 @@ of the two `#[cold]` outlined helpers on the pre-move path — disappears entire
 
 **And it is still not what landed**, for the reason in §0.2: it deletes
 instructions but not loads. `hookc` moves L1d loads by −0.04% (protocol 1) and
-−0.036% (protocol 3) — indistinguishable from its byte-identical null. Building
-the record from registers the make already holds is free of memory traffic in
-*both* directions: the loads it saves, `make_move_with` was going to issue
-anyway. Only reading the make's *stores* — which is what `after_move` does —
-removes them from the node.
+−0.036% (protocol 3) — indistinguishable from its byte-identical null, while
+`after` moves them −0.30…−0.49% in the same panels. That contrast is the
+measurement; the mechanism I would offer for it is that building the record from
+registers the make already holds saves no memory traffic in either direction —
+the loads it avoids, `make_move_with` was going to issue anyway — whereas
+reading the make's *stores* takes them off the node. I did not test that
+explanation (a disassembly diff of the two `do_move` bodies would), and §9 item 1
+records that the size of `after`'s loads delta is larger than a naive count of
+the deleted mailbox reads predicts.
 
 `hookc` also has a cost the table does not show: `WANTS_DIRTY` is a const on the
 search's hook type, so the PSQT and ProbCut-probe paths construct a record they
@@ -427,6 +436,9 @@ the pre-move board, and only threads in the mover that `do_move` already holds:
 23 arm 6, so `from_move`'s `board.piece_on(from).expect(...)` was the *third*
 derivation of that one fact.
 
+Δ loads% is protocol 1 (n=14), where all three arms were measured in the same
+rounds.
+
 | | Δ i/n | Δ br/n | Δ loads% | what it deletes |
 |---|---:|---:|---:|---|
 | `passmover` | −19.00 | −1.00 | −0.324 | `mailbox[from]`, `board.side_to_move`, the `expect` panic edge, the dead `is_ok` sentinel |
@@ -467,8 +479,8 @@ Noise floors measured by this study on this box, with the D49 trainer live:
 | metric | control's round-to-round spread | byte-identical paired null |
 |---|---:|---:|
 | `instructions:u` | ±0.000% | +0.000% |
-| `L1-dcache-loads:u` | ±0.829% | −0.060% / −0.019% |
-| `cycles:u` | ±20.341% | +1.585% / +1.650% / +0.383% |
+| `L1-dcache-loads:u` | ±0.829% | −0.060% / +0.003% / −0.019% |
+| `cycles:u` | ±20.341% | +1.585% / +1.650% / +2.780% / +0.383% |
 | `ex_no_retire.load_not_complete:u` | ±30.591% | +2.107% / +2.699% |
 
 `perf stat` reported **100.00% counter-enabled** for all five events, so none of
@@ -501,8 +513,8 @@ In order.
 
 1. **The loads delta is bigger than the mechanism accounts for.** Deleting
    `mailbox[from]`, `mailbox[to]` and `side_to_move` is ~3 load ops per node
-   against a total of ~3081 — about 0.10%. The measurement says 0.33–0.49%,
-   three to five times that, consistently across two protocols with nulls at
+   against a total of ~3081 — about 0.10%. The measurement says 0.30–0.49%,
+   three to five times that, consistently across three protocols with nulls at
    zero. Candidate explanations I did not test: `L1-dcache-loads` on Zen 4 counts
    *dispatched* loads including replays and mispredicted paths, and this arm also
    removes 3.02 branches per node; or LLVM restructured more than the three
@@ -525,10 +537,16 @@ In order.
    very suggestive and the sharing is architecturally real, but the clean control
    — spinner from a third, never-measured copy — was not run, because by then I
    judged protocol 3 the better use of the box.
-5. **`passmover` is a real, unlanded 19 i/n.** It is strictly dominated by what
+5. **The `after` vs `after2` ordering (§5.2) may not be a real ordering.** The
+   +2.000 i/n is exact and reproducible, but the loads half of it (−0.295% vs
+   −0.148%) is the same size as the protocol-to-protocol spread of `after`'s own
+   loads delta (−0.295% to −0.491%). I landed the spelling with the better
+   numbers; if a future reader prefers the `expect`-free one, the cost is at most
+   0.035% of engine instructions and it is not worth a rebuild to find out.
+6. **`passmover` is a real, unlanded 19 i/n.** It is strictly dominated by what
    landed, so it is not a loss; but if a future change ever needs the record on
    the *pre*-move board again, that is where 76% of this win still lives.
-6. **No game testing.** This is node-identical by construction and verified so,
+7. **No game testing.** This is node-identical by construction and verified so,
    so its Elo is exactly whatever ~0.4% of engine work is worth — but "0.4% of
    work" and "0.4% of time" are the same thing only if the deleted work was on
    the critical path, and §3 is why I cannot say that from measurement.
