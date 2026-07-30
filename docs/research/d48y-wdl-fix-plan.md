@@ -8649,3 +8649,40 @@ then."**
 more than 10 Elo and gets its full 5880-game screen at sb700 (~7 h). The batched
 PGO rebuild folds these perf wins into that binary; since both sides of a net
 screen use the SAME binary, they cannot confound it.
+
+## The five "stale monitor" notifications had ONE cause: a self-matching wait loop
+
+Study 44 fired five completion notifications after finishing. Cause found and
+fixed — a live process (pid 1406540) in its worktree running:
+
+```bash
+until ! pgrep -f panel44.sh >/dev/null; do sleep 45; done
+```
+
+**The `pgrep` matches its own wrapper's command line**, which contains the string
+`panel44.sh`. So it always finds something, the `until` condition never becomes
+true, and the loop re-fires every 45 s **forever** — waiting on a panel that had
+been discarded hours earlier.
+
+**This is the DETECTION half of the `pkill -f` trap, and CLAUDE.md already
+documents it**: a `pgrep` inside a subshell has a pid that is neither `$$` nor
+`$PPID`, so that filter cannot save it. The rule exists; **agents keep writing
+self-matching detectors anyway.** Killed by PID (never a bare `pkill -f`).
+
+**Consequence for briefs:** stating the rule is not enough — the safe idiom has
+to be handed over literally:
+
+```bash
+pgrep -f 'PATTERN' | while read -r p; do
+    tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q shell-snapshots && continue
+    echo "$p"
+done
+```
+
+or better, do not pattern-match at all: `systemctl --user is-active <unit>`, or a
+PID file.
+
+**Honest footnote:** my own check hit the same class of race — it reported a
+"live measurement" at pid 1446260 whose `/proc` entry had already vanished
+between the `pgrep` and the read. Harmless here, but it is the identical failure
+in miniature.
