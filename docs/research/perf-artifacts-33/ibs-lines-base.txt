@@ -1,0 +1,70 @@
+  symbol _RINvMs8_NtCsjYhMepb868A_11chessengine6searchNtB6_6Worker6se
+  ELF range 0x5b990..0x5f7aa (15898 bytes)
+  text mapped at 0x56407f961000 from file offset 0x3e000; p_vaddr - p_offset = 0x1000
+
+  IBS samples 706,794; in symbol 72,992 (10.33%); LOADS in symbol 20,707
+  loads in symbol by data source: L1 hit=18,919 (91.4%)  L2 hit=1,719 (8.3%)  L3 hit=62 (0.3%)  RAM hit=7 (0.0%)
+
+  BY SOURCE LINE -- loads inside the symbol, and where they were served
+     loads  %miss      L2      L3    DRAM  key
+     5,096   7.5%     372       8       0  mod.rs:?
+     1,147   2.4%      27       0       0  moves.rs:15
+       814   9.6%      73       5       0  movepick.rs:?
+       526   1.7%       9       0       0  mod.rs:2414
+       484   1.2%       6       0       0  mod.rs:2418
+       383  17.2%      63       3       0  types.rs:?
+       376   2.7%      10       0       0  board.rs:1968
+       344   2.3%       8       0       0  mod.rs:2467
+       317   0.3%       1       0       0  mod.rs:3503
+       292  46.6%     127       9       0  mod.rs:4242
+       268   0.0%       0       0       0  history.rs:?
+       251   3.2%       8       0       0  board.rs:715
+       240  30.4%      72       1       0  movepick.rs:531
+       239  17.2%      37       4       0  movepick.rs:366
+       229  11.8%      27       0       0  bitboard.rs:53
+       226   0.4%       1       0       0  mod.rs:2300
+       200   0.5%       1       0       0  mod.rs:2361
+       192   1.0%       2       0       0  mod.rs:2405
+       183   1.1%       2       0       0  mod.rs:2363
+       168  31.5%      51       2       0  mod.rs:3352
+       167  48.5%      79       1       0  mod.rs:3353
+       164   1.2%       2       0       0  movepick.rs:626
+
+  BY PHASE (outermost inline frame below search)
+     loads  %miss      L2      L3    DRAM  key
+    15,145   8.6%   1,251      46       0  search (own code)
+     1,580   6.9%     108       1       0  _RINvMs8_NtCsjYhMepb868A_11chessengine6searchNtB6_6Worker6se
+     1,422  11.6%     157       8       0  next_move
+       377   2.7%      10       0       0  is_draw
+       330   0.3%       1       0       0  ne<chessengine::moves::Move, chessengine::moves::Move>
+       322  14.0%      44       1       0  reduction
+       275   3.3%       7       1       0  legal
+       179  14.5%      26       0       0  is_empty
+       161   5.0%       8       0       0  piece_on
+       149   6.7%      10       0       0  capture_stage
+       102   5.9%       6       0       0  is_ok
+        99  24.2%      24       0       0  load
+        98   0.0%       0       0       0  eq
+        74   2.7%       2       0       0  new
+        64  64.1%      40       1       0  nmp_allnode_probe
+        63   1.6%       1       0       0  index
+        54   0.0%       0       0       0  is_some<chessengine::types::Piece>
+        47   6.4%       2       1       0  capture_value
+        43   0.0%       0       0       0  rfp_prune_margin
+        40   7.5%       3       0       0  generation
+        30  53.3%      13       3       0  undo_move
+        20  20.0%       4       0       0  ord_weight
+
+  DATA-ADDRESS CLUSTERS (4 MB buckets, top 14) -- cross-check on the above
+    17,819  0x7fffbb800000
+     2,055  0x56408f000000
+       425  0x56407f800000
+       120  0x7f92ca400000
+       119  0x7f92ca000000
+        78  0x000000000000
+        47  0x7f92ca800000
+        18  0x7f92c9c00000
+        14  0x7f92c9800000
+        10  0x7f92c9400000
+         1  0x7f92c8800000
+         1  0x7f92c8400000

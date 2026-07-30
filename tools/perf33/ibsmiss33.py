@@ -27,6 +27,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, __file__.rsplit('/', 1)[0])
+from elfmap33 import ip_to_elf  # noqa: E402
+
 HEAD = re.compile(r"^\s*([0-9a-f]+)\s+[0-9a-f]+\s+\|")
 FIELD = re.compile(r"\|(OP|LVL|TLB)\s+([^|]*?)\s*(?=\|)")
 TAIL = re.compile(r"\|BLK\s+\S+\s+([0-9a-f]+)\s*$")
@@ -116,8 +119,7 @@ def main() -> int:
     script_path, mmap_path, binary = sys.argv[1:4]
     pat = sys.argv[4] if len(sys.argv) > 4 else r"6Worker6search.*5NonPv"
 
-    m = MMAP.search(open(mmap_path).read())
-    vbase, foff = int(m.group(1), 16), int(m.group(3), 16)
+    to_elf, vbase, foff, delta = ip_to_elf(mmap_path, binary)
     starts, ends = symbols(binary)
 
     per_sym: dict[str, Tally] = collections.defaultdict(Tally)
@@ -135,7 +137,7 @@ def main() -> int:
         lvl = f.get("LVL", "?")
         if lvl == "N/A":
             continue
-        fa = int(t.group(1), 16) - vbase + foff
+        fa = to_elf(int(t.group(1), 16))
         i = bisect.bisect_right(starts, fa) - 1
         if i < 0 or fa >= ends[i][0]:
             continue

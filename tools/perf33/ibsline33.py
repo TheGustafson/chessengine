@@ -25,6 +25,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, __file__.rsplit('/', 1)[0])
+from elfmap33 import ip_to_elf  # noqa: E402
+
 # perf script's column order for IBS is FIXED regardless of the -F order:
 #   <data addr> <raw data_src> |OP ..|LVL ..|SNP ..|TLB ..|LCK ..|BLK  ..  <ip>
 # Note there is NO closing '|' after the BLK field, so the whole record is
@@ -75,13 +78,11 @@ def main() -> int:
     script_path, mmap_path, binary = sys.argv[1:4]
     pat = sys.argv[4] if len(sys.argv) > 4 else r"6Worker6search.*5NonPv"
 
-    m = MMAP.search(open(mmap_path).read())
-    if not m:
-        raise SystemExit(f"no r-xp mapping in {mmap_path}")
-    vbase, _vlen, foff = int(m.group(1), 16), int(m.group(2), 16), int(m.group(3), 16)
+    to_elf, vbase, pgoff, delta = ip_to_elf(mmap_path, binary)
     sym, lo, hi = sym_range(binary, pat)
-    print(f"  symbol {sym[:60]}\n  file range 0x{lo:x}..0x{hi:x} ({hi - lo} bytes)")
-    print(f"  text mapped at 0x{vbase:x} from file offset 0x{foff:x}")
+    print(f"  symbol {sym[:60]}\n  ELF range 0x{lo:x}..0x{hi:x} ({hi - lo} bytes)")
+    print(f"  text mapped at 0x{vbase:x} from file offset 0x{pgoff:x}; "
+          f"p_vaddr - p_offset = 0x{delta:x}")
 
     # (file addr, level) counts for LOADS in the target symbol, plus global tallies.
     per_addr_lvl: collections.Counter[tuple[int, str]] = collections.Counter()
@@ -95,7 +96,7 @@ def main() -> int:
         f = dict(FIELD.findall(line))
         tot += 1
         op, lvl, ip = f.get("OP", "?"), f.get("LVL", "?"), int(t.group(1), 16)
-        fa = ip - vbase + foff
+        fa = to_elf(ip)
         if not (lo <= fa < hi):
             continue
         insym += 1
