@@ -120,6 +120,22 @@ const _: () = assert!(align_of::<ExtMove>() == 4);
 const INSERT_WINDOW: usize = 8;
 
 pub(crate) fn partial_insertion_sort(moves: &mut [ExtMove], limit: i32) {
+    // Perf study 40's DOSE AMPLIFIER (`--features dosesort40`, dose from
+    // `P40_DOSE`). The arm this module is waiting on is a ~0.2%-of-cycles
+    // trade, an order of magnitude under what `cycles:u` can resolve on this
+    // box; the amplifier replays REAL earlier inputs through the same sort D
+    // extra times per call so the same trade lands at (D+1)x its size and a
+    // dose series can be regressed back to one call. See `dose40`.
+    #[cfg(feature = "dosesort40")]
+    crate::dose40::replay(moves, limit);
+    partial_insertion_sort_inner(moves, limit)
+}
+
+/// The sort proper. Split out only so [`crate::dose40`] can re-enter it without
+/// recursing through the amplifier; `#[inline(always)]` keeps the shipped
+/// codegen byte-identical (verified: `.text` md5 unchanged, study 40 §1.3).
+#[inline(always)]
+pub(crate) fn partial_insertion_sort_inner(moves: &mut [ExtMove], limit: i32) {
     if moves.is_empty() {
         return;
     }

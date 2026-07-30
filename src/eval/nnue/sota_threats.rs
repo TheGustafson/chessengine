@@ -940,7 +940,10 @@ pub struct ThreatContext<'a> {
     /// +58.7 i/n in this same walk. 508 bytes at a fixed offset from `self` —
     /// which is live anyway — needs no register of its own, and it is small
     /// beside the 8,192 bytes of `add_scratch`/`sub_scratch` already inline here.
-    alias: [u16; STACK_LEN],
+    ///
+    /// Behind [`AliasTable`] rather than a bare array so perf study 40 can
+    /// delete the whole mechanism at one site (`--features noalias40`).
+    alias: AliasTable,
     /// Scratch raw-event buffer for [`build_deltas`], reused every fold.
     buf: DeltaBuf,
     /// Fold-time resolved-index scratch for [`apply_threat_deltas_into`], written by
@@ -956,6 +959,66 @@ pub struct ThreatContext<'a> {
     /// which the standalone tests drive). The search stack uses the explicit
     /// [`apply_at`](Self::apply_at)/[`at`](Self::at) ply form instead.
     top: usize,
+}
+
+/// The per-ply value-holder table of [`ThreatContext::alias`], behind two
+/// methods so the whole mechanism has exactly ONE definition site.
+///
+/// Perf study 40 built this to make `--features noalias40` possible: that
+/// feature swaps the table for a zero-sized stand-in whose `get(k)` is `k`,
+/// which is bit-for-bit the pre-study-38 behaviour — the alias reconstructed
+/// away in place, rather than checked out of git and re-benchmarked on a
+/// different tree. It exists because study 38's "+19.7 i/n of machinery" was
+/// measured against a binary whose copy ALSO compiled differently (a `memcpy`
+/// call, against 40 inline zmm moves here), so that number is the sum of two
+/// effects and not the machinery. See `docs/research/perf-study-40-*.md` §2.
+///
+/// `get`'s `.min(k)` is the range fact `ThreatContext::at_full` used to spell
+/// at its call site: a no-op on the value (the invariant is `alias[k] <= k`)
+/// and the only reason the load carries no `panic_bounds_check` edge.
+#[cfg(not(feature = "noalias40"))]
+struct AliasTable([u16; STACK_LEN]);
+
+#[cfg(not(feature = "noalias40"))]
+impl AliasTable {
+    fn new() -> Self {
+        const { assert!(STACK_LEN <= u16::MAX as usize) };
+        // Identity: every entry starts as its own holder, which is the correct
+        // reading of a stack whose `fold` is all `FromParent`. `from_fn`
+        // because the array is inline and const-sized — no allocation.
+        Self(std::array::from_fn(|i| i as u16))
+    }
+
+    /// The ply that actually holds ply `k`'s value. Always ONE hop.
+    #[inline(always)]
+    fn get(&self, k: usize) -> usize {
+        usize::from(self.0[k]).min(k)
+    }
+
+    #[inline(always)]
+    fn set(&mut self, k: usize, holder: usize) {
+        self.0[k] = holder as u16;
+    }
+}
+
+/// Perf study 40's null: no table, no reads, no stores — every ply is its own
+/// holder, which is what the module did before study 38.
+#[cfg(feature = "noalias40")]
+struct AliasTable;
+
+#[cfg(feature = "noalias40")]
+impl AliasTable {
+    fn new() -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn get(&self, k: usize) -> usize {
+        k
+    }
+
+    #[inline(always)]
+    fn set(&mut self, _k: usize, _holder: usize) {}
 }
 
 impl<'a> ThreatContext<'a> {
@@ -1004,14 +1067,7 @@ impl<'a> ThreatContext<'a> {
                 .into_boxed_slice()
                 .try_into()
                 .expect("STACK_LEN fold states"),
-            // Identity: every entry starts as its own holder, which is the
-            // correct reading of a stack whose `fold` is all `FromParent`.
-            // `from_fn` because the array is inline and const-sized — no
-            // allocation, and the index fits by the const assert above it.
-            alias: {
-                const { assert!(STACK_LEN <= u16::MAX as usize) };
-                std::array::from_fn(|i| i as u16)
-            },
+            alias: AliasTable::new(),
             buf: DeltaBuf::new(),
             add_scratch: [[0usize; DELTA_CAP]; 2],
             sub_scratch: [[0usize; DELTA_CAP]; 2],
@@ -1053,7 +1109,7 @@ impl<'a> ThreatContext<'a> {
             }
         }
         self.fold[0] = [Fold::Done; 2];
-        self.alias[0] = 0;
+        self.alias.set(0, 0);
     }
 
     /// The current (cursor top) accumulator pair, `[White, Black]` — the input
@@ -1111,7 +1167,7 @@ impl<'a> ThreatContext<'a> {
         // as `EvalContext::acc_ply`'s `saturating_sub` — if the invariant were
         // ever broken this reads a stale but IN-RANGE entry instead of walking
         // off the stack.
-        let entry = &self.stack[usize::from(self.alias[ply]).min(ply)];
+        let entry = &self.stack[self.alias.get(ply)];
         (&entry.acc, &entry.psqt)
     }
 
@@ -1160,7 +1216,7 @@ impl<'a> ThreatContext<'a> {
             self.fold[child] = [Fold::Done; 2];
             // The entry is never written on this branch and every entry is
             // all-zero, so the ply is its own holder by construction.
-            self.alias[child] = child as u16;
+            self.alias.set(child, child);
             return;
         }
 
@@ -1288,7 +1344,7 @@ impl<'a> ThreatContext<'a> {
                 // A rebuild WRITES this entry, so the ply is now its own value
                 // holder. (It cannot have been aliased: the alias below is only
                 // taken when both perspectives are `FromParent`.)
-                self.alias[*a] = *a as u16;
+                self.alias.set(*a, *a);
             }
         }
         // Hoist the magic-table LazyLock deref out of the per-touch geometry
@@ -1408,7 +1464,7 @@ impl<'a> ThreatContext<'a> {
             // there: `src` indexes `before`, whose length is exactly `child`,
             // and the range fact is what keeps the fold's parent load free of
             // a bounds compare and a panic edge.
-            let src = usize::from(self.alias[child - 1]).min(child - 1);
+            let src = self.alias.get(child - 1);
             // ── PERF STUDY 38: THE PURE-COPY PLY IS ALIASED, NOT COPIED ──────
             //
             // A ply whose resolved threat delta is empty for BOTH perspectives
@@ -1430,13 +1486,17 @@ impl<'a> ThreatContext<'a> {
             // from "what carrying a fourth base pointer through `compute`
             // costs", and this module has been bitten by exactly that before
             // (study 22 measured +58.7 i/n from fat-pointer length loads alone).
-            const ALIAS_ENABLED: bool = !cfg!(feature = "null38");
+            // Perf study 40's `noalias40` deletes the table itself, so the
+            // branch must go with it — an alias into a stand-in that answers
+            // `get(k) == k` would point the child at ITSELF.
+            const ALIAS_ENABLED: bool =
+                !cfg!(feature = "null38") && !cfg!(feature = "noalias40");
             if ALIAS_ENABLED && need[0] && need[1] && lens[0] == (0, 0) && lens[1] == (0, 0) {
                 #[cfg(feature = "foldcount")]
                 {
                     super::foldcount::THR_ALIAS.hit(0);
                 }
-                self.alias[child] = src as u16;
+                self.alias.set(child, src);
                 self.fold[child] = [Fold::Done; 2];
                 continue;
             }
@@ -1444,7 +1504,7 @@ impl<'a> ThreatContext<'a> {
             // holder. Both perspectives are materialised on every path that
             // gets here — one of them possibly by `discharge_refresh` above —
             // which is what makes a whole-entry alias sound.
-            self.alias[child] = child as u16;
+            self.alias.set(child, child);
             for (p, &needs_fold) in need.iter().enumerate() {
                 if !needs_fold {
                     continue;
@@ -1500,6 +1560,20 @@ impl<'a> ThreatContext<'a> {
                     let dst_acc: &mut [i16; ACC] = &mut entry.acc[p];
                     #[cfg(feature = "probe-dstpin")]
                     let dst_acc: &mut [i16; ACC] = super::sota_simd::probe::pin_dst();
+                    // Perf study 40, `--features callcopy40`: PIN the codegen to
+                    // the library call. An opaque length is what stops LLVM
+                    // expanding the copy inline again, and it is the whole point
+                    // — study 38 compared a binary whose copy was a `memcpy`
+                    // call against one whose copy was 40 inline zmm moves, and
+                    // attributed the difference to machinery. With this on, both
+                    // sides of that comparison call, and the machinery is the
+                    // only thing left moving. Measurement only, never shipped.
+                    #[cfg(feature = "callcopy40")]
+                    {
+                        let n = std::hint::black_box(ACC);
+                        dst_acc[..n].copy_from_slice(&src_acc[..n]);
+                    }
+                    #[cfg(not(feature = "callcopy40"))]
                     for (d, s) in dst_acc.chunks_exact_mut(32).zip(src_acc.chunks_exact(32)) {
                         d.copy_from_slice(s);
                     }

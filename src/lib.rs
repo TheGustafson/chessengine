@@ -25,6 +25,10 @@ pub mod board;
 #[cfg(feature = "census34")]
 pub mod census34;
 pub mod cuckoo;
+/// Perf study 40's dose amplifier for the movepick partial sort
+/// (instrument only; the search tree is untouched at every dose).
+#[cfg(feature = "dosesort40")]
+pub mod dose40;
 pub mod eval;
 pub mod fen;
 pub mod history;

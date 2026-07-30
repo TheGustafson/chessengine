@@ -142,6 +142,30 @@ probe-addcopy = ["sota"]
 # separately from the copies it removes -- the same role `null34` plays for the
 # movepick split. Measurement only, never shipped.
 null38 = ["sota"]
+# Perf study 40's two overlays for the ~26 i/n study 38 could not localise.
+# `null38` above prices "the machinery" only if the two binaries it differences
+# compile the COPY the same way -- and they do not: the pre-study-38 binary
+# emitted a `memcpy` CALL where every binary carrying the alias array emits 40
+# inline zmm moves (`tools/perf40/symscan40.py`, study 40 SS2). So the machinery
+# and the codegen flip are confounded in that number, and these two features
+# unconfound it on the exact `instructions:u` counter:
+#   noalias40:  the alias table becomes a ZERO-SIZED stand-in whose `get(k)` is
+#               `k` -- the pre-study-38 source, reconstructed in place instead
+#               of checked out of git onto a different tree.
+#   callcopy40: PINS the pure-copy fold to the library call (an opaque length
+#               defeats LLVM's inline expansion), so the machinery can be
+#               measured with the copy's codegen held fixed.
+# Measurement only, never shipped, never gated.
+noalias40 = ["sota"]
+callcopy40 = ["sota"]
+# Perf study 40's DOSE AMPLIFIER for `partial_insertion_sort` (`src/dose40.rs`).
+# `insertwin34` is a ~0.2%-of-cycles trade and six nulls put the `cycles:u`
+# floor on this box an order of magnitude above that, so the arm is replayed
+# `P40_DOSE` extra times per call over REAL earlier inputs held in a ring: the
+# same trade at (D+1)x its size, regressed back to one call by a dose series.
+# The search tree is untouched at every dose (node count + eval hash gated).
+# Measurement only, never shipped.
+dosesort40 = []
 
 [dev-dependencies]
 # Test/bench-only (D15: runtime [dependencies] stays empty; dev-deps allowed).
