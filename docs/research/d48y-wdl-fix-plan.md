@@ -3861,3 +3861,68 @@ idling a full 15-minute tick.
    so a correct fix should recover ~128 Elo. That is a real falsifiable
    prediction, not a smoke test, and it closes the user's "once it is done test
    it, then run games" sequence.
+
+## Study 30 LANDED — and the CEN5 pipeline is validated END TO END
+
+**main = `c0f01ed`.** `gate30` green: **Bench 587683, All checks passed,
+GATE_EXIT=0**, and — the part the gate is normally blind to — **all four probe
+features compile** (`foldcount`, `probe-accpin`, `probe-wpin`, `probe-dstpin`
+-> exit 0). That is what confirms the `sota_simd.rs` conflict resolution
+correctly threaded study 30's `threat_shift` argument through study 29's
+instrumentation of `activate`.
+
+### The export path works on a live checkpoint
+
+Ran the full recipe against **D49 sb140-ema** (not study 30's sb100):
+
+```
+requant_threats.py --scale 256 --run-spec tools/nnue/runs/d49_1280.json
+D40_THREAT_QUANT=256 netpack.py ... d40
+```
+
+- threat weights n=77,721,600, RMS 0.08380, max|w| 0.4953
+- **scale 64: err 4.89% (26.2 dB) -> scale 256: err 1.23% (38.2 dB), 3.98x
+  better, ZERO weights clipped**
+- container magic is **`CEN5`** (`4345 4e35`), threat_quant=256, merge shift 0,
+  138,283,648 bytes -> `data/nnue/tmp/s32/d49-sb140-ema-q256.cenn`
+- **the canonical engine cannot load it** (0 `CEN5` strings — it predates the
+  format), so a fresh `sota,arch-d48x` v3 build was needed and made.
+
+### A measurement trap I walked into and corrected
+
+My first load check drove UCI over a pipe and got `bestmove a2a3` with no
+`info` lines from **all three** of D49, D48X **and no-net-at-all**. That looked
+like "EvalFile is not taking effect" — the PSQT-fallback trap `tools/screen.sh`
+warns about. It was not: stdin closed and aborted the search before it started.
+**My driving was broken, not the engine.** Re-tested via the `bench` subcommand
+(net as the 6th arg, cannot be raced):
+
+| net | nodes to depth 8 | nps |
+|---|---:|---:|
+| D49 sb140-ema (CEN5@256) | 261,567 | 740,983 |
+| D48X canonical | 196,861 | 903,032 |
+| PSQT, no net | 1,225,982 | — |
+
+Three distinct results ⇒ EvalFile is applied. **D49 needs 33% MORE nodes to
+reach depth 8**, consistent with an undertrained net at 36% of schedule giving
+less decisive evals. (The nps gap is NOT a kernel regression — study 30
+measured the const-generic shift at +0.049% i/n. Different nets give different
+trees, and bench nps is confounded by tree shape. Not a finding.)
+
+### NO 1466-GAME SCREEN THIS TICK — deliberate, with reasons
+
+Study 32 is **already running its own `tools/screen.sh`** (~13 engine
+processes, no `perf` active — it is in its games phase). Launching a second
+screen would have:
+1. **risked memory** — each screen costs 2 x conc x ~154 MB against 6607 MB
+   available with a 3 GB trainer to protect, and the standing order is DON'T
+   OOM THE BOX;
+2. **bought almost nothing** — D49 at sb140/400 is 36% through a from-scratch
+   schedule. The 33%-more-nodes result already indicates an undertrained net;
+   spending ~30 min of contended box to confirm "it is weaker than a fully
+   trained net" is not information.
+
+**The informative screen is post-cosine (sb250+), and best at sb400.** The
+"test it" half of the user's sequence IS now discharged: the CEN5 path is
+proven end to end on a live checkpoint — export, container, engine load, and
+distinct search behaviour.
