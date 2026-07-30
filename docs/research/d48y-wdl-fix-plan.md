@@ -4156,3 +4156,84 @@ pins is 29's contract, and a wrong guess is a silent eval corruption."
   preserving study 30's exhaustive const-generic dispatch with no panic arm.
 - All three pins to be re-derived post-merge; they will likely move again once
   the threat path composes in.
+
+## Perf study 33 COMPLETE and MERGED (`265de05`) — the 19.90% symbol is not what we thought
+
+6 commits, tree clean. **`src/` is byte-identical to main — verified by me
+(zero diff) — so `Bench: 587683` is unchanged by construction** and the merge
+carries only docs + `tools/perf33/`.
+
+### It reframed the target rather than optimising it
+
+1. **The site reproduces.** 410.5 stall cycles/node in the probe frame, on a
+   statistic whose byte-identical-copy null is **+0.80%**. Study 28 did not
+   measure a build artifact.
+2. **"19.90% of the profile" is roughly HALF AN INLINING BOUNDARY.** Same
+   source, PGO on: 410.5 -> **759.7** cycles/node while `Worker::do_move`
+   collapses 116.6 -> 18.0. By DWARF inline frame, only **32.87% of the PGO
+   symbol is search's own code**: `do_move` 26.12%, `next_move` 6.38%, `legal`
+   4.96%, `all_threats` 4.55%, `undo_move` 3.56%, TT `probe` 3.17%,
+   `correction_value` 2.91%, `see_ge` 2.79%. *Study 28 wrote exactly this
+   caveat about Reckless and Stockfish and never applied it to ARCHON's own PGO
+   build.*
+3. **14.5% is NNUE eviction, measured causally** via study 29's `probe-wpin`
+   (~59 cycles/node) — but 85.5% survives with every weight miss deleted.
+4. **THE MECHANISM: cost tracks LOAD COUNT, not miss count.** Its share of
+   engine stall cycles (8.80%) equals its share of retired load ops (**8.84%**)
+   to two decimals, while it holds **1.69%** of misses and **91.4% of its loads
+   hit L1**. Calibrated against `forward_into` 0.28 (overlapped streaming) and
+   `apply_at` 6.60 (serial). **This is study 31's null with a reason attached,
+   and it FORBIDS a third locality proposal here.**
+5. **`search::<NonPv>` is the engine's #1 branch-mispredict symbol** — 17.47%
+   of engine mispredicts, 4.25/node vs engine mean 24.1. Nobody had ever
+   looked. (This was one of the six angles I named in the brief.)
+
+### Its retraction, caught by its own null
+
+Commit `0e0d217`'s engine-wide load table was **wrong**: the IP->symbol map used
+the mapping's **file offset** where `nm` reports **ELF virtual addresses**,
+which differ by 0x1000 here. It resolved every sample, looked plausible, and
+summed to 100%. **Its own null caught it** (`i16_deltas_into` 0.30% where perf
+said 13.80%); after the fix the worst disagreement over 14 symbols is **0.00
+points**. The `perf`-symbolized headlines were unaffected.
+
+### No speedup landed — an honest failure, not a quit
+
+It designed one arm (skip `correction_value` in check) and **killed it before
+writing code** — an exhaustive grep showed the value is live at `mod.rs:3459`
+and `3590` inside the move loop. Two more rejected with reasons.
+
+**Its caveats, recorded:** the stall/load index of 1.00 is a ratio of two
+profiles and **the ratio has no null of its own** ("tidier than it has any
+right to be" — it only defends it because of the 0.28/6.60 calibration pair);
+the PGO comparison is a single build; and **the box was NOT quiet** (trainer at
+143% plus study 32 recording on CPU 6) so **absolute numbers are inflated
+~1.9x — it defends the ratios, not 410.5.** *That vindicates the coordination
+protocol and argues for tightening it.*
+
+## Study 35 commissioned — the do_move fusion, re-priced in the right currency
+
+Study 33's parting lead, **verified by me before commissioning**: `do_move` is
+198.4 cycles/node, and its two hottest lines are `DirtyPiece::from_move`
+re-deriving mover/victim/ep/castling geometry that `make_move_with` derives
+again immediately after. **Perf study 13 rejected fusing them — at `+41.5`
+instructions/node** (`perf-study-13-panic-edges-2026-07-29.md:179`, line
+`a2-dirty-via-hookc 6573.8 +41.5 rejected`).
+
+**That currency is now proven backwards twice on this engine:** study 20
+(−5.99% cycles, instructions **+0.19%**) and tonight's study 32 (−6.835%
+cycles, instructions **+5.519%**, 8/8 rounds, shipped). A +41.5 i/n rejection
+is not evidence.
+
+**And the mechanism agrees with the lead:** study 33 proved cost here tracks
+**load count**, not miss count — so locality proposals are forbidden and
+load-count reduction is mandated. Removing a duplicate geometry derivation is
+precisely a load-count reduction.
+
+Brief includes the **mandatory D24 perft ritual** (`make_move_with` is
+board-mutation code: `cargo test` AND `cargo test --release -- --ignored
+perft_full_suite` before landing, extended tier if make/unmake is substantially
+rewritten), the expectation that this is **node-identical so Bench 587683 must
+reproduce bit-for-bit**, a warning that study 32's merge will move the two NNUE
+pins but not Bench, and the contention protocol with study 33's ~1.9x inflation
+cited as the reason it exists.
