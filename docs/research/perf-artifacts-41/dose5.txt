@@ -1,0 +1,2 @@
+r1 k417 nodes=5001562 cycles:u=4097.512868 instructions:u=5923.804423 ex_no_retire.empty:u=199.614902 ic_tag_hit_miss.instruction_cache_miss:u=179.139197 ic_tag_hit_miss.all_instruction_cache_accesses:u=558.261042 de_no_dispatch_per_slot.no_ops_from_frontend:u=5368.172065 
+r1 k418 nodes=5001562 cycles:u=4114.653384 instructions:u=5931.549694 ex_no_retire.empty:u=197.933291 ic_tag_hit_miss.instruction_cache_miss:u=191.607567 ic_tag_hit_miss.all_instruction_cache_accesses:u=600.865100 de_no_dispatch_per_slot.no_ops_from_frontend:u=5552.089578 
