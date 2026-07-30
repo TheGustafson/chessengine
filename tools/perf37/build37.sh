@@ -10,6 +10,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 LABEL=${1:?base|nocold|noinl|noboth}
-trap 'python3 tools/perf37/patch37.py base' EXIT
+# Restore from GIT, not by re-applying a named variant. Study 37 LANDED
+# `nocold`, so "the shipped text" is no longer the `base` variant, and a trap
+# that spelled it by name would quietly re-add `#[cold]` to the tree every time
+# this script ran. `git checkout` cannot go stale that way.
+trap 'git checkout -- src/eval/nnue/sota_simd.rs' EXIT
 python3 tools/perf37/patch37.py "$LABEL"
 bash tools/perf34/build34.sh "$LABEL"

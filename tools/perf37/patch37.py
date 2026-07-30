@@ -3,10 +3,22 @@
 
     python3 tools/perf37/patch37.py <base|nocold|noinl|noboth>
 
-`base` restores the shipped text. The point of driving this from a script is
-that the four binaries differ by EXACTLY the attribute lines and nothing else:
-a hand-edit between builds is how a study ends up comparing two trees that
-also disagree somewhere it forgot about.
+The names are the study's arm labels, describing which of the two attributes
+`i8_deltas_into_generic` carries:
+
+    base    #[inline(never)] + #[cold]     the text as of `5e42622`
+    nocold  #[inline(never)]               ** THE SHIPPED TEXT since study 37 **
+    noinl                     #[cold]      (byte-identical to `base`)
+    noboth  neither
+
+**`base` is no longer "restore the tree".** Study 37 landed `nocold`, so to get
+back to the shipped state use `git checkout -- src/eval/nnue/sota_simd.rs`,
+which is what `build37.sh` does and cannot go stale.
+
+The point of driving this from a script at all is that the binaries differ by
+EXACTLY the attribute lines and nothing else: a hand-edit between builds is how
+a study ends up comparing two trees that also disagree somewhere it forgot
+about.
 """
 
 import pathlib
