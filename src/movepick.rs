@@ -53,18 +53,45 @@ use crate::types::{DEPTH_QS, Depth, PieceType, VALUE_ZERO, Value};
 /// §3.8 and asserted below: exactly 8 bytes, `#[repr(C)]`, align 4. Two
 /// `ExtMove`s are ordered by `value` only — the move bits are payload, never a
 /// tiebreak (the `partial_insertion_sort` below compares `value`).
+///
+/// **The layout is `value` first and the padding is a FIELD (perf study 27
+/// arm 2).** Doc 02 §3.8 justified the 8-byte size with "8-byte elements move
+/// as single u64 register loads/stores" — and for four months they did not.
+/// The old order was `mv: Move` then an implicit 2-byte hole then `value`, and
+/// a hole makes a struct copy *illegal* to widen: the padding bytes are `undef`
+/// and LLVM may not read or write them, so `head[q] = head[q - 1]` in the
+/// insertion sort compiled to a 2-byte move plus a 4-byte move, two loads and
+/// two stores, per shift step. Naming the pad closes the hole; putting `value`
+/// at offset 0 means the one 8-byte load that copies the element ALSO carries
+/// the score in its low half, so the sort's compare is free of its own load.
+///
+/// The field order is not observable — nothing serialises an `ExtMove`, and
+/// `#[repr(C)]` still pins the size against silent growth, which is what doc
+/// 02 asked the attribute for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
 pub(crate) struct ExtMove {
+    /// The ordering score; sorted and filtered on this alone. At offset 0 so
+    /// it shares a load with the whole-element copy.
+    pub value: i32,
     /// The move (`u16`).
     pub mv: Move,
-    /// The ordering score; sorted and filtered on this alone.
-    pub value: i32,
+    /// Explicit tail padding. Always zero — its only job is to make the type
+    /// hole-free so a copy is one 8-byte move instead of two narrow ones.
+    pad: u16,
+}
+
+impl ExtMove {
+    /// The only constructor, so `pad` cannot be forgotten.
+    #[inline]
+    pub(crate) const fn new(mv: Move, value: i32) -> Self {
+        ExtMove { value, mv, pad: 0 }
+    }
 }
 
 // design/09 §8 criterion 2 / doc 02 §3.8: 8 bytes, align 4. `#[repr(C)]` lays
-// out `mv` (u16) then two padding bytes then `value` (i32), so the size is 8
-// and the alignment is the i32's 4.
+// out `value` (i32), `mv` (u16) and `pad` (u16) back to back — 8 bytes with NO
+// hole, and the alignment is the i32's 4.
 const _: () = assert!(size_of::<ExtMove>() == 8);
 const _: () = assert!(align_of::<ExtMove>() == 4);
 
@@ -630,7 +657,7 @@ impl MovePicker {
                         (policy_weight as f32 * scores.move_score(m.from(), m.to())) as i32
                     })
                     .unwrap_or(0);
-            self.set_slot(i, ExtMove { mv: m, value });
+            self.set_slot(i, ExtMove::new(m, value));
         }
         // Captures occupy `[0, n)`; nothing has been swapped into the
         // bad-captures region and no quiets exist yet.
@@ -879,7 +906,7 @@ impl MovePicker {
                 value += quiet_prior_bonus(qp, m);
             }
 
-            self.set_slot(base + i, ExtMove { mv: m, value });
+            self.set_slot(base + i, ExtMove::new(m, value));
         }
 
         self.cur = base;
@@ -912,7 +939,7 @@ impl MovePicker {
                     .expect("an evasion starts on a piece of the side to move");
                 main_plane[m.raw16() as usize].get() + c1[pc.index()][m.to().index() as usize].get()
             };
-            self.set_slot(i, ExtMove { mv: m, value });
+            self.set_slot(i, ExtMove::new(m, value));
         }
 
         self.cur = 0;
@@ -965,10 +992,7 @@ mod tests {
     // A distinctly-tagged ExtMove: `idx` (0..256) uniquely identifies the slot
     // via its move bits, so a multiset of (raw16, value) tracks permutations.
     fn ext(idx: usize, value: i32) -> ExtMove {
-        ExtMove {
-            mv: Move::from_raw16(idx as u16),
-            value,
-        }
+        ExtMove::new(Move::from_raw16(idx as u16), value)
     }
 
     fn multiset(slice: &[ExtMove]) -> Vec<(u16, i32)> {
