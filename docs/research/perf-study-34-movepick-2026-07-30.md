@@ -74,11 +74,13 @@ Per method rule 1 the instrument cannot answer a sub-1% question on this box
 tonight, so the arm is carried by two exact counters (zero spread across 31
 rounds on two trees) plus a direct before/after census of the work removed.
 
-**Not taken, with the number that priced it (§8):** the branchless/vector
-rewrite of the insertion walk — the single biggest mispredict site in
-movepick — is the right next arm and it is *unmeasurable tonight*, because it
-trades instructions UP for mispredicts DOWN and only cycles can adjudicate
-that. Building it would have produced a number I could not read.
+**Built and shipped OFF (§8.1):** the branchless insertion window, the arm
+aimed at that one branch. Verified **node-identical**, and measured at
+**+0.702% instructions for −0.530% branches and −4% of all engine
+mispredicts** (movepick's share 15.63% → 13.95%). It is an
+instructions-for-mispredicts trade, and only cycles adjudicate a trade — so it
+sits behind `--features insertwin34`, correct and gated, one panel away from a
+verdict instead of one reimplementation away.
 
 ---
 
@@ -403,13 +405,81 @@ Each of these was costed against a measurement, not waved away.
 
 | candidate | the number that decided it |
 |---|---|
-| **Branchless / vector insertion walk** — the biggest mispredict site in movepick (§5) | **The right next arm, and unmeasurable tonight.** Every formulation trades instructions UP (a fixed-width branchless window is ~59 ops per insertion against ~11 for the current walk) for mispredicts DOWN. Only cycles can adjudicate that trade, and §6 shows cycles carrying a ±15-point null. It also covers only ~68% of insertions at width 8 (derived from `HIST_PFX`: mean prefix 9.31, so `E[min(P−1,8)] / E[P−1]` = 5.62/8.31). Building it would have produced a number I could not read. |
+| **Branchless insertion window** — the biggest mispredict site in movepick (§5) | **BUILT, VERIFIED, MEASURED, and shipped OFF.** See §8.1. |
 | **Lazy quiet scoring** — 67% of scoring output is unused | Structural (§3.1). ~2.2% of cycles ≈ 3.8 Elo at ARCHON's own 120-Elo-per-doubling constant; any lazy scheme pays for it in ordering quality, which is at 86.44% first-move cutoffs. Elo-negative. |
 | **Interleaving the six `[pci][to]` history planes into one row** | 6 planes × 64 squares presummed per piece type is ~50 SIMD ops of setup × up to 6 types against 22.57 quiets × ~16 saved ops — roughly break-even at the measured mean list length, and a **loss** on short lists. Dropped without a build. |
 | **Reusing the evasion list `pseudo_legal` already generated** | Real, and priced: **157,016 of the engine's 349,337 evasion generations (45%) are duplicates** (§9). Worth ~0.2% of engine cycles. Breaks the module's "a TT-move cutoff performs zero generation" contract unless the list is carried in the picker's own buffer — a delicate refactor that needs a cycles instrument to justify. |
 | **Removing the `pseudo_legal(tt_move)` guard** — it rejects 8 of 714,496 | **Rejected on reading the code, not on the rate.** It fires, so TT collisions reach it; `Board::legal` only tests the pin ray for a non-king move and would NOT catch a move that fails to address an existing check, so a garbage TT move would be played. Load-bearing at 1 in 89k. |
 | **Short-circuiting on non-Normal TT moves** (full `NON_EVASIONS` generation) | 7,065 calls, 0.0014/node. I expected castling TT moves to make this common; measured, it is negligible. Arm not built. |
 | **`MoveList::new` zero store** | Already gone — study 20 arm 4. Verified present-tense rather than assumed. |
+
+### 8.1 Arm 2 — the branchless insertion window (`--features insertwin34`)
+
+Built rather than left as a hypothesis. `partial_insertion_sort`'s walk is
+replaced, when the sorted prefix fits one 8-element window, by a fixed-trip
+unconditional pass — no exit test, so nothing to mispredict:
+
+```rust
+moves[p] = moves[se];
+let win = &mut moves[..=INSERT_WINDOW];
+let mut q = se;
+for j in (0..INSERT_WINDOW).rev() {
+    let cur = win[j];
+    let nxt = win[j + 1];
+    let shift = j < se && cur.value < tmp.value;
+    win[j + 1] = if shift { cur } else { nxt };
+    q -= shift as usize;
+}
+win[q] = tmp;
+```
+
+It is the **same permutation**, not an approximation. `moves[0..se]` is sorted
+descending, so `{ j < se : value < tmp.value }` is a contiguous suffix and the
+predicated pass performs exactly the walk's writes; `j` in `[0, q)` and
+`[se, W)` rewrite a slot with its own value, and descending `j` guarantees
+every read happens before that slot is written, so the self-writes are no-ops
+rather than smears. `q` falls out as `se` minus the shift count.
+
+**Verified node-identical: 5,001,624 nodes, hash `eb981b119bd66d6e`.** This is
+the gate that matters — study 23 recorded that the unsorted TAIL permutation is
+observable (`BadQuiet` emits it in buffer order), so an algorithm that
+rearranged it would fail on contact. It also matters more than the unit tests:
+`assert_sort_contract` pins the tail as a **multiset, not a permutation**, so
+the 2000-case randomised sweep would NOT have caught a tail reordering. Node
+identity would, and did not fire.
+
+**Measured** (exact counters, zero spread):
+
+| counter | vs the landed arm |
+|---|---:|
+| `instructions:u` / node | **+0.702%** (5960.137 → 6001.978) |
+| `branches:u` / node | **−0.530%** (623.802 → 620.495) |
+| `ex_ret_brn_misp:u` / node | ≈ **−4%** (consistent across 6 runs, noisy counter) |
+| movepick's share of ALL engine mispredicts | **15.63% → 13.95%** |
+
+The mispredict profile is the mechanism check and it fires where §5 predicted:
+`init_quiets` drops from 12.31% of all engine mispredicts to 4.69%, with 6.92%
+appearing in a now-outlined `partial_insertion_sort` symbol, and
+`init_evasions` falls 1.06% → 0.37%. Predicted from §5 at 68% window coverage:
+−4.4% of all engine mispredicts. Measured ≈ −4%.
+
+**Shipped OFF, and the reason is §6, not doubt about the code.** This is an
+instructions-for-mispredicts trade and only cycles adjudicate a trade. Flipping
+it on and running one `panel34.sh` on a quiet box settles it; the
+implementation is already correct and gated, so the verdict costs a panel
+rather than a reimplementation. With the feature off the build is *exactly*
+inert — `i/n` 5960.137 and `br/n` 623.802, identical to three decimals to the
+binary built before the code existed.
+
+**One sub-result, honestly a null.** LLVM outlines `partial_insertion_sort`
+once the window grows the body (0 symbols before, 1 after), which costs the
+`limit = i32::MIN` specialisation `init_captures` and `init_evasions` get when
+the constant is visible — the exact effect study 23 flagged as a measurement
+artifact of its own `#[inline(never)]`. I predicted that would cost
+instructions and added `#[inline]` to fix it. **It changed the binary and did
+not move the dynamic instruction count by one part in 10⁶** (6001.978 and
+620.495 with and without). The hint was removed again; the theory was wrong and
+the counter said so in one build.
 
 ---
 
@@ -433,10 +503,13 @@ dropped.
 
 ## 10. Ranked remainder
 
-1. **The insertion walk, branchless.** 1.28% of engine cycles and 6.46% of all
-   engine mispredicts, in one branch. Needs a quiet box, not a new idea. Build
-   the fixed-width-8 window (`se <= 8 && n > 8`, ~68% insertion coverage, the
-   self-masking select form is written out in §8) and adjudicate on cycles.
+1. **The insertion walk, branchless — ALREADY BUILT, awaiting one panel.**
+   `--features insertwin34`, node-identical, +0.702% instructions for −0.530%
+   branches and −4% of all engine mispredicts (§8.1). Everything except the
+   cycles verdict is done. On a quiet box:
+   `bash tools/perf34/build34.sh on "insertwin34,sota,arch-d48x"` and
+   `panel34.sh 20 off on`. **This is the highest value-per-minute item on the
+   list and it needs ten quiet minutes rather than a new idea.**
 2. **The duplicate evasion generation.** ~0.2% of cycles, mechanism fully
    measured (§9). Carry the `pseudo_legal` list into the picker's buffer.
 3. **`QUIET_SORT_DEPTH_FACTOR` is mistuned for cost.** The sorted prefix is

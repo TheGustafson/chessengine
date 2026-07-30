@@ -110,6 +110,15 @@ const _: () = assert!(align_of::<ExtMove>() == 4);
 /// Ties keep their relative order (the shift condition is a strict `<`), so
 /// the sort is stable among equal scores. Call sites: captures and evasions
 /// with `limit = i32::MIN` (a full sort); quiets with a depth-scaled limit.
+/// Width of `partial_insertion_sort`'s branchless window (perf study 34 §8).
+///
+/// Covers ~68% of insertions: the mean sorted prefix is 9.31 elements
+/// (`HIST_PFX`), insertions run at `se = 1..P-1`, so the covered fraction is
+/// `E[min(P-1, 8)] / E[P-1]` = 5.62/8.31. Widening it costs a store per lane
+/// on every insertion, which is why it is not 16.
+#[cfg(feature = "insertwin34")]
+const INSERT_WINDOW: usize = 8;
+
 pub(crate) fn partial_insertion_sort(moves: &mut [ExtMove], limit: i32) {
     if moves.is_empty() {
         return;
@@ -141,6 +150,62 @@ pub(crate) fn partial_insertion_sort(moves: &mut [ExtMove], limit: i32) {
         // asserted, and it is precisely the fact the compiler was missing: one
         // `cmov` in place of a check plus a panic block.
         let se = sorted_end.min(p);
+        // Perf study 34 arm 2 — the BRANCHLESS fixed-width insertion, taken
+        // when the sorted prefix still fits one window.
+        //
+        // The walk below is 1.28% of all engine cycles and 6.46% of ALL engine
+        // branch mispredicts (study 34 §5), essentially all of it in its own
+        // exit test: the displacement averages 2.8 with a wide spread, which is
+        // the worst case a predictor can be handed. A fixed trip count has no
+        // exit test to mispredict.
+        //
+        // It is the SAME permutation, not an approximation. Because
+        // `moves[0..se]` is sorted descending, `{ j < se : value < tmp.value }`
+        // is a contiguous SUFFIX, so a full-window pass with the shift
+        // predicated on that comparison performs exactly the walk's writes:
+        //   - `j` in `[q, se)`   -> shift, `moves[j+1] = moves[j]`
+        //   - `j` in `[0, q)`    -> the compare is false, `moves[j+1]` rewritten
+        //                           with its own value
+        //   - `j` in `[se, W)`   -> masked off, likewise a self-write
+        // and `q` falls out as `se` minus the number of shifts. Descending `j`
+        // means every read is of a slot not yet written, which is what makes
+        // the self-writes no-ops rather than smears.
+        //
+        // Guarded on `se <= W` (the window must cover the prefix) and
+        // `moves.len() > W` (so `moves[W]` is in bounds — the self-writes may
+        // reach past `p`, which is harmless in value but must be in range).
+        // Everything else falls through to the walk unchanged.
+        //
+        // **OFF by default, and the reason is a measurement, not a doubt about
+        // the code.** Verified node-identical (5,001,624 / `eb981b119bd66d6e`)
+        // and measured exactly: `instructions:u` **+0.702%/node**,
+        // `branches:u` **-0.530%/node**, and the movepick family's share of all
+        // engine branch mispredicts **15.63% -> 13.95%**. That is a real trade
+        // of instructions for mispredicts, and ONLY cycles can adjudicate a
+        // trade — which the box could not do on 2026-07-30, with a null arm
+        // moving the cycles median +0.802% and +1.753% on two panels over
+        // ranges of 28.8 and 18.4 points (study 34 §6). Turn it on with
+        // `--features insertwin34`, run `tools/perf34/panel34.sh` on a quiet
+        // box against the same binary built without it, and the answer is one
+        // panel away.
+        #[cfg(feature = "insertwin34")]
+        if se <= INSERT_WINDOW && moves.len() > INSERT_WINDOW {
+            moves[p] = moves[se];
+            // Length `INSERT_WINDOW + 1` is a constant LLVM can see, so every
+            // index below is discharged without a panic edge (study 20 arm 7's
+            // lesson, applied to a constant instead of `p`).
+            let win = &mut moves[..=INSERT_WINDOW];
+            let mut q = se;
+            for j in (0..INSERT_WINDOW).rev() {
+                let cur = win[j];
+                let nxt = win[j + 1];
+                let shift = j < se && cur.value < tmp.value;
+                win[j + 1] = if shift { cur } else { nxt };
+                q -= shift as usize;
+            }
+            win[q] = tmp;
+            continue;
+        }
         let head = &mut moves[..=p];
         // Hole-punch: the element leaving the prefix edge goes to `p`.
         head[p] = head[se];
