@@ -1,5 +1,31 @@
 # A richer representation at constant cost — the refinement study (2026-07-31)
 
+> **⚠ PRICE CORRECTION (2026-07-30) — §1.3's whole table is 2–8× TOO HIGH.**
+> This study attributed the cost of a threat-context rebuild to
+> `ThreatContext::at_full` (5.50% of cycles, perf study 36's profile row).
+> **`at_full` is the per-eval fold-orchestration entry point, not the
+> from-scratch rebuild** — it calls `self.compute(ply)` and is invoked from the
+> eval path (`src/eval/nnue/sota_context.rs:537`). Measured call rates differ
+> **22×**: `at_full`/eval **0.4311/node** against `thr_refresh` **0.0196/node**.
+> The real rebuild symbols are **0.71% of cycles, not 5.50%** — a **7.7×**
+> over-attribution — so a threat rebuild costs **~1,635 cycles, not ~12,700**.
+>
+> **This REVERSES this study's central conclusion.** Input-side context
+> refinement is *not* "possible but not free at −6…−14 Elo per bit"; at
+> corrected prices **king-conditioning the threat channel is nearly free**
+> (`rank1` as a replacement: **−0.7 Elo**, not −4.5). A *learned* min-flip
+> partition (`pocket` = own king in {g1,h1,h2}) carries **82% of `rank1`'s
+> conditioning information at 60% of its flip price ⇒ −1.2 Elo**.
+>
+> Corrected in `docs/research/learned-representation-study-2026-07-30.md` §2,
+> whose numbers supersede §1.3 here. The mechanism of the error: **a cost was
+> attributed to a symbol without checking that symbol's CALL RATE.** Everything
+> else in this study — the injectivity proof (§1.1), the dead-row census, the
+> Tier-1 panel design — stands.
+>
+> This study also priced every candidate as an **addition**; replacement is
+> 2–3× cheaper and was never considered. See the successor.
+
 **Status:** design + Tier-0 pre-screen, all measured; Tier-1 panel built,
 smoke-verified end-to-end on CPU, specs committed, **not launched** (the GPU
 queue at study time was identity2 → d49x ~13 h; launching is the owner's

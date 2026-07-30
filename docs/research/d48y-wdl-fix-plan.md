@@ -8244,3 +8244,40 @@ validated end-to-end on 200k pairs.
 → successor corrected it → I verified the mechanism in source.** The lesson is
 the project's own rule 8, and the specific failure mode is attributing a cost to
 a symbol without checking its CALL RATE.
+
+## Tick — learned-representation study MERGED; concurrency held at 2 on capacity
+
+**D49x: sb469**, 192k pos/s, heldout ema 0.010978 (four consecutive down).
+Untouched. **Merged `4113228b`** (learned-representation study); my own gate is
+running under the shared lock.
+
+### Capacity: holding at two studies, deliberately
+
+| | value |
+|---|---|
+| swap free | **4 MB of 4095** |
+| RAM available | 8888 MB |
+| load average | 8.50 |
+| disk | 87%, 124 GB free |
+
+Top swap consumers: the trainer (**1007 MB**, cold pages — it is running at full
+192k pos/s), then gnome-shell/Chrome/VS Code. **Nothing is safely reclaimable
+without killing the user's own applications, which is not mine to do.**
+`swapoff/swapon` would have to page 4 GB back into 8.9 GB while two studies
+build — refused.
+
+**So no third study this tick.** Studies 43 (Finny) and 44 (back-end
+decomposition) continue; adding a build to a box at 4 MB swap and load 8.5 is how
+the 2026-07-27 global OOM happened. The `flock` serialisation is confirmed
+working — the learned-rep gate held the lock and study 43/44 builds queued behind
+it rather than colliding.
+
+### Correction banner added to the superseded study
+
+`richer-representation-study-2026-07-31.md` is **on main with prices 2–8× too
+high**, and a future agent would read it as current. This is precisely the
+failure study 41 just fixed in CLAUDE.md — a number moved and the document
+stating it did not. Banner added at the top: the reversal, the corrected figures,
+the pointer to the successor's §2, and the mechanism (**a cost attributed to a
+symbol without checking that symbol's CALL RATE**). Explicitly preserved as still
+valid: the injectivity proof, the dead-row census, the Tier-1 panel design.
