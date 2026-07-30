@@ -25,6 +25,7 @@ import numpy as np
 from .spec import (
     HALFKA_DIMS,
     HALFKA_MAX_ACTIVE,
+    NUM_BUCKETS,
     PS_KING,
     PS_NB,
     THREAT_DIMS,
@@ -208,6 +209,54 @@ class DecodedBatch:
         self.kings = kings
         self.mailbox_code = mailbox
         self.piece_count = counts.astype(np.int64)
+
+
+# ===========================================================================
+# King-region context bits (richer-representation study, 2026-07-31)
+# ===========================================================================
+#
+# Candidate SLOW context bits for conditioning feature rows, defined per
+# PERSPECTIVE in that perspective's own frame — exactly what the engine would
+# compute from (perspective, own ksq, enemy ksq) at its resolver chokepoint.
+# ONE definition, shared by the census (tools/nnue/region_census.py), the
+# gradient probe, and the training-time code2d path below; the engine-side
+# transcription must be pinned against this the same way the index math is.
+
+REGION_BIT_NAMES = ("adv", "rank1", "fpair", "esame", "eadv", "null")
+
+
+def region_bit(dec: "DecodedBatch", persp: int, name: str) -> np.ndarray:
+    """(N,) int64 in {0,1}: context bit `name` for `persp`, own-frame defs.
+
+    adv    own king off its back two ranks (rel_rank >= 2)
+    rank1  own king off its back rank      (rel_rank >= 1)
+    fpair  own king on the CENTER file pair of its mirror half (oriented
+           file c/d — one bit finer than the existing d/e mirror)
+    esame  enemy king on the SAME file-half as own king (attack-race bit)
+    eadv   enemy king off ITS back two ranks
+    null   content-free position-hash bit (the control; identical for both
+           perspectives by construction)
+    """
+    own = dec.kings[:, persp]
+    enemy = dec.kings[:, 1 - persp]
+    own_f = own ^ (56 * persp)            # own king in own frame (rank 0 = home)
+    enemy_f = enemy ^ (56 * (1 - persp))  # enemy king in ITS OWN frame
+    f_own = own & 7                       # file is frame-invariant
+    if name == "adv":
+        return ((own_f >> 3) >= 2).astype(np.int64)
+    if name == "rank1":
+        return ((own_f >> 3) >= 1).astype(np.int64)
+    if name == "fpair":
+        of = np.where(f_own <= 3, f_own, 7 - f_own)
+        return (of >= 2).astype(np.int64)
+    if name == "esame":
+        return ((f_own <= 3) == ((enemy & 7) <= 3)).astype(np.int64)
+    if name == "eadv":
+        return ((enemy_f >> 3) >= 2).astype(np.int64)
+    if name == "null":
+        return ((dec.occ * np.uint64(0x9E3779B97F4A7C15))
+                >> np.uint64(63)).astype(np.int64)
+    raise ValueError(f"unknown region bit {name!r}")
 
 
 # ===========================================================================
@@ -506,7 +555,10 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
               piece_rebalance: bool = False,
               wdl_filter: bool = False,
               wdl_filter_floor: float = 0.0,
-              threat_remap: np.ndarray | None = None) -> dict:
+              threat_remap: np.ndarray | None = None,
+              threat_code2d: np.ndarray | None = None,
+              threat_region: str = "",
+              bucket_regions: tuple[str, ...] = ()) -> dict:
     """records -> the dense/sparse training tensors, bullet-mapper-parity.
 
     Returns dict with:
@@ -534,12 +586,20 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
     """
     dec = DecodedBatch(recs)
     hk = halfka_batch(dec)
+    bucket = OUTPUT_BUCKETS_LAYOUT[np.minimum(dec.piece_count, 32)]
+    # Richer-representation study: king-region-conditioned OUTPUT buckets (the
+    # head-side, refresh-free form of context refinement). Bits are read from
+    # the STM perspective; each named bit doubles the bucket space. The arch's
+    # num_buckets must equal base * 2^len(bucket_regions).
+    for i, bname in enumerate(bucket_regions):
+        bucket = bucket + NUM_BUCKETS * (2 ** i) * region_bit(dec, 0, bname)
     out = {
         "hk_stm": hk[:, 0], "hk_ntm": hk[:, 1],
-        "bucket": OUTPUT_BUCKETS_LAYOUT[
-            np.minimum(dec.piece_count, 32)].astype(np.int32),
+        "bucket": bucket.astype(np.int32),
     }
     if threats:
+        assert threat_remap is None or threat_code2d is None, \
+            "threat_remap and threat_code2d are mutually exclusive"
         th = threat_batch(dec)
         if threat_remap is not None:
             # Recode POC (learned-feature-code study §6.1): re-code the raw
@@ -549,6 +609,22 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
             # section), so trainer and engine cannot disagree by construction.
             th = np.where(th >= 0,
                           threat_remap[np.maximum(th, 0)].astype(np.int32), th)
+        if threat_code2d is not None:
+            # Richer-representation study: CONTEXT-REFINED code. code2d has
+            # shape (THREAT_DIMS, 2); a tuple's row now depends on a slow
+            # king-region bit, computed per perspective in that perspective's
+            # own frame. -1 padding preserved. The engine analogue is a
+            # (tuple, bit)-indexed TRM table at the same resolver chokepoint
+            # plus a rebuild trigger on the bit's boundary (priced by the
+            # kmove counters).
+            assert threat_region, "threat_code2d needs threat_region"
+            for p in (0, 1):
+                bit = region_bit(dec, p, threat_region)
+                tp = th[:, p]
+                th[:, p] = np.where(
+                    tp >= 0,
+                    threat_code2d[np.maximum(tp, 0), bit[:, None]].astype(np.int32),
+                    tp)
         out["th_stm"], out["th_ntm"] = th[:, 0], th[:, 1]
 
     score = recs["score"].astype(np.float32)
