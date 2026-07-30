@@ -747,6 +747,25 @@ figure to pick on: core 0 = 24.1 %, core 4 = 28.3 %, core 6 = 34.3 %,
 
 ---
 
+## 7.5 ASSUMPTIONS — everything this study rests on that it did not itself prove
+
+Stated explicitly so a later reader can attack them individually.
+
+| # | assumption | why it is believed | what breaks if it is false |
+|---|---|---|---|
+| A1 | **`ex_no_retire.load_not_complete` is the load-wait subset of `not_complete`** (AMD's definition) | Not validated from first principles here. Indirect but real evidence: study 42's `ttnopf42` removed the TT prefetch — a *pure* memory perturbation — and moved this counter **+5.571 % (17/18)** while moving `instructions:u` −0.363 % | **The whole 83/17 memory-vs-execution split.** This is the single most load-bearing assumption in the study |
+| A2 | **The `ex_no_retire.*` umasks tile every non-retiring cycle without overlap** | The partition closes to **−0.161 %** against the independently counted `ex_no_retire.all`, which would be a remarkable coincidence otherwise | §1.1's partition; the residual would absorb the error |
+| A3 | **Zen 4 dispatches 6 ops/cycle**, so slot buckets sum to 6 × cycles | Closes to **−0.396 %**; study 41 got −0.03 % on the same identity | §0.1's reproduction of study 41 |
+| A4 | **A 512-bit FP op occupies a pipe for 2 cycles**, and `pack_512_uops_retired` counts *instructions* not double-pumped halves | **NOT assumed — deliberately bracketed** (§1.2). The verdict is quoted at both readings | Nothing. The port-pressure kill holds at 7.1 % and at 14.4 % occupancy |
+| A5 | **Symbol-level attribution of a sampled stall counter is sound** even though instruction-level is not (study 36 §2.3) | Standard for non-precise events; the two independent profiles (`load_not_complete`, `not_complete`) agree symbol-for-symbol to within a few points everywhere except the one inversion the study is interested in | §2's ranking, and the choice of which lever to build |
+| A6 | **The §2 profile taken on `bin44/b44` transfers to `base44`** | 5928.40 vs 5929.09 instructions/node (0.012 % apart); study 42 landed no shipped-path change between the two commits | §2 only; no arm was adjudicated on that binary |
+| A7 | **A cache hint cannot change the search tree**, so arm 1 is node-identical by construction | Verified anyway rather than assumed — `ident44.sh` checks node count, d13 and eval hash on every binary | Nothing; it was checked |
+| A8 | **The fold retiling is bit-identical** — same blocks, same order, same arithmetic, each register consuming its own distinct 32 bytes of each row | Verified three ways: identical node count at 5 M nodes, identical d13, identical wl50 eval hash, plus **718 sota tests passing** including kernel-vs-scalar equivalence at every fold shape | The landed change would be a *behaviour* change wearing a speedup's clothes |
+| A9 | **~120 Elo per doubling of speed** (exp-0154) for converting cycles to Elo | Inherited, not re-derived here | Only the Elo *translation* of §5's result, never the cycles measurement itself |
+| A10 | **Paired within-round differencing plus a Latin square removes shared-box load** | The byte-identical null reads **19/40, p = 0.87** on the adjudicating counter and exactly 0.000 % on instructions | Every contrast in the study. This is the assumption §4.2 caught being violated once already |
+
+---
+
 ## 8. WHAT I COULD NOT ESTABLISH
 
 In order, most doubtful first.
