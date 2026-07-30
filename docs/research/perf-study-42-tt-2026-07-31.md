@@ -128,16 +128,35 @@ own method bar forbids, and this study is the receipt.
 
 ---
 
-## 2. What the TT costs *today*, with the prefetch on
+## 2. ✗ RETRACTED IN DRAFT — "IBS shows the prefetch converting the population"
 
-Section 1 prices the TT **unprefetched**. With the hint in place, IBS reports
-that **87–95% of TT demand loads are L1 hits**, on a 16 MB table *and on a
-256 MB one* — impossible for a uniformly-indexed table 8× the size of L3
-unless the line is already there when the load retires. The prefetch is not
-merely helping; it is converting nearly the whole population.
+My first draft of this section said: with the hint in place IBS reports
+**87–95% of TT demand loads as L1 hits**, on a 16 MB table and on a 256 MB one,
+which "is impossible for a uniformly-indexed table 8x the size of L3 unless the
+prefetch is converting nearly the whole population."
 
-The residual is therefore small, and §4 measures it directly rather than
-inferring it.
+**That is wrong, and I caught it by running the falsification.** I captured IBS
+again on `nopf` — the arm with **no prefetch at all** — and the same block came
+back at **90.5% L1 hits**, against `base`'s 89.6%. The statistic does not move,
+so it was never evidence about the prefetch.
+
+Two mechanisms, both of which had to be checked rather than assumed:
+
+1. **One probe issues ~8 memory accesses into ONE line.** The first allocates
+   the miss; the other seven find the line already resident (or merge into the
+   in-flight fill) and are reported as L1 hits. So ~87% L1 is the *layout's*
+   signature, not the prefetch's — it is what 8 accesses per 64-byte line must
+   produce whether or not anything prefetched it.
+2. **IBS reports where the data came FROM, not when it arrived.** A demand load
+   that waits on a software prefetch's fill still reports the fill's source. The
+   prefetch changes *when* the line lands, which is exactly the axis this
+   counter cannot see.
+
+**Consequence, and it is the reason §1 is built the way it is:** the IBS level
+distribution is structurally blind to the question "is the prefetch working".
+Only the node-identical differencing arm can answer it, and it does (§1:
++3.504% cycles, 12–18 of 12–18 rounds, against a clean null). Nothing in this
+study's headline rests on the retracted claim.
 
 ---
 
@@ -258,10 +277,24 @@ That is a real capacity argument and it is **wrong**:
 | Hash 256 MB | 95.38% | 95.26% | **1.99%** |
 
 The TT's TLB behaviour is **indistinguishable from the engine average**, even
-at 256 MB, because `prefetcht0` walks the page table too — the same hint that
-hides the cache miss hides the TLB miss. Engine-wide page walks are
-2.67/node; the TT's share of them is ~0.05/node. A `MADV_HUGEPAGE` allocator
-(doc 08 §3.13 phase 2, still unimplemented) would be buying that.
+at 256 MB.
+
+*A caveat I have to apply here after §2 bit me on the same shape:* the
+**per-access hit rate is diluted** — ~8 of a probe's accesses go to one line and
+so to one page, so at most 1 in 8 can be a TLB miss, and a ~87.5% hit rate is
+the floor for any structure with this access shape. **The share column is not
+diluted** (both sides are absolute page-walk counts) and it is the one the
+conclusion rests on.
+
+Sized end to end: engine-wide page walks are **1.89/node at 16 MB and
+2.72/node at 1 GB** (§6.1), and the TT's share of them is ~2%, i.e. **~0.04–0.05
+walks/node**. Even granting the whole +0.83 walks/node the sweep adds between
+16 MB and 1 GB to the table, and pricing a walk generously, that is tens of
+cycles per node against the **+397.7 stall cycles** the same size change costs.
+**A `MADV_HUGEPAGE` allocator (doc 08 §3.13 phase 2, still unimplemented)
+would be buying ~5% of the problem, and the raw-syscall/unsafe cost of building
+one in a crate with zero runtime dependencies is not worth that.** Dead lever,
+priced.
 
 ### 5.2 The 32-byte cluster is NOT costing us a straddle — but it is halving the associativity per line fetched
 
