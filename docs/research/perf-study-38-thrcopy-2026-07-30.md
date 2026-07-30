@@ -513,13 +513,15 @@ Raw panels: `panel-core.txt`, `panel-price.txt`, `panel-arms.txt`,
 
 In order.
 
-1. **That the 45.8 i/n gap is register pressure.** It is a residual, not a
-   measurement: I priced the copy (§0.2, direct), priced the arm (§0.3,
-   direct), and subtracted. §4.1 excludes bounds checks and the static census
-   is consistent with spills, but "consistent with" is not "measured", and I
-   have twice this session had a mechanism story fall over when I built the
-   arm for it. `--features null38` exists precisely so the next session does
-   not have to take my word for it.
+1. **The ~26 i/n of the gap that `null38` does NOT explain.** Of the 44.7 i/n
+   the arm is missing, 19.7 is measured machinery (§5) and the rest is a
+   residual — the difference of two direct measurements, with no arm of its
+   own. I built the two candidate mechanisms I could name and both came back
+   nearly empty: bounds checks moved 0.02% (§4.1) and removing the fourth base
+   pointer recovered ~1 i/n (§4.2). So I have a number I trust and no mechanism
+   for it, and I would rather say that than write a third story. The `null38`
+   feature is in the tree so the next attempt starts from an isolated
+   instrument rather than from my subtraction.
 2. **The 187.9 instructions per `memcpy`.** The panel is exact and its null is
    zero, so the *delta* is not in doubt; what is derived is dividing it by the
    copy rate, which assumes the probe's marginal copy costs the same as the
