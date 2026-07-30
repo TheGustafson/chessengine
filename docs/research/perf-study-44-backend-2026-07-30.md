@@ -24,24 +24,24 @@ per binary by `tools/perf44/ident44.sh`, never assumed.
 ## ★ HEADLINE
 
 **The 49 % back end is 83 % MEMORY and 17 % EXECUTION.**
-`ex_no_retire.load_not_complete` is **2596.93 cycles/node — 55.62 % of every
-cycle the engine spends**, which is **4.8× the entire front-end bucket study 41
-spent a session on**. The execution residual is 536.75 (11.50 %). The partition
-closes on cycles to **−1.18 %**, and study 41's slot accounting reproduces
-(back end **48.38 %** vs 49.0 %, front end **20.29 %** vs 19.9 %).
+`ex_no_retire.load_not_complete` is **2558.77 cycles/node — 54.80 % of every
+cycle the engine spends**, which is **12.4× the entire front-end bucket study 41
+spent a session on**. The execution residual is 531.31 (11.38 %). The partition
+closes on cycles to **−0.161 %**, and study 41's slot accounting reproduces
+(back end **48.61 %** vs 49.0 %, front end **20.25 %** vs 19.9 %).
 
 **Of the four candidates the commission named, one is dead and one is new:**
 
 * **Execution port pressure — DEAD.** Zen 4's four FP pipes are **≥ 85 % idle**
-  and `fp_sch_rsrc_stall` blocks dispatch for only **4.2 %** of cycles.
+  and `fp_sch_rsrc_stall` blocks dispatch for only **4.35 %** of cycles.
 * **Store-buffer pressure — REAL, and the largest single dispatch blocker in
-  the engine** at **502.63 cycles/node (10.76 %)**, ahead of the load queue's
-  442.11. Nobody had looked.
-* **Dependency chains — 11.50 %**, and localised to exactly **one** symbol:
+  the engine** at **509.30 cycles/node (10.91 %)**, ahead of the load queue's
+  450.12. Nobody had looked.
+* **Dependency chains — 11.38 %**, and localised to exactly **one** symbol:
   `forward_into` takes 8.20 % of `not_complete` on 3.87 % of `load_not_complete`.
 * **Memory — the answer, but NOT the memory people assume.** Only **1.61 % of
   demand fills reach DRAM** (7.90/node). 90.76 % come from **L2**. The engine
-  is not waiting on catastrophic misses; it pays **1.14 stall cycles on every
+  is not waiting on catastrophic misses; it pays **1.12 stall cycles on every
   one of 2281 load dispatches**, because **53.8 % of all instructions are memory
   operations**, at MLP 5.74 and 54-cycle average miss residency. **The lever is
   the NUMBER of memory operations, not their latency.**
@@ -77,19 +77,18 @@ this study's own binary.
 
 | dispatch slots | study 41 (n = 6) | **this study (n = 6)** |
 |---|---:|---:|
-| ops dispatched | 29.6 % | **27.87 %** |
-| **back-end bound** | **49.0 %** | **48.38 %** |
-| **front-end bound** | **19.9 %** | **20.29 %** |
-| SMT contention | 1.5 % | 3.46 % |
-| closure (implied vs measured cycles) | −0.03 % | **−1.00 %** |
+| ops dispatched | 29.6 % | **27.66 %** |
+| **back-end bound** | **49.0 %** | **48.61 %** |
+| **front-end bound** | **19.9 %** | **20.25 %** |
+| SMT contention | 1.5 % | 3.49 % |
+| closure (implied vs measured cycles) | −0.03 % | **−0.396 %** |
 
-**The two load-bearing figures reproduce to 0.6 and 0.4 points.** The SMT row is
+**The two load-bearing figures reproduce to 0.4 and 0.35 points.** The SMT row is
 the one that moved, and it moved for a stated reason: this study ran on a box
 carrying more concurrent agents than study 41's (see §7), and
 `ex_no_retire.thread_not_selected` is the counter study 40 measured swinging
-−56 % to +203 % between rounds. My closure is −1.00 % against study 41's
-−0.03 % for the same reason — my twelve groups were collected over ~25 minutes
-of a *changing* load, and each group carries its own `cycles:u`.
+−56 % to +203 % between rounds. My closure is −0.396 % against study 41's
+−0.03 %; §0.3 explains what closed most of that gap.
 
 **So the 49 % stands, and this study is a decomposition of it, not a re-audit.**
 
@@ -99,8 +98,8 @@ of a *changing* load, and each group carries its own `cycles:u`.
 |---|---:|
 | `instructions:u` | **5929.09** |
 | `cycles:u` (census, box load ~5–9) | **4668.94** |
-| `ex_no_retire.load_not_complete:u` | **2596.93** |
-| `ex_no_retire.not_complete:u` | **3133.67** |
+| `ex_no_retire.load_not_complete:u` (raw level — see §0.3) | **2596.93** |
+| `ex_no_retire.not_complete:u` (raw level — see §0.3) | **3133.67** |
 | `ls_dispatch.ld_dispatch:u` | **2280.76** |
 | `ls_dispatch.store_dispatch:u` | **907.31** |
 | `ls_any_fills_from_sys.all:u` | **585.86** |
@@ -123,6 +122,41 @@ cycle conversions are quoted as a range across 4179.7 … 4668.94.
 **Perf study 36's 8262.9 cycles/node is used nowhere in this study**
 (`grep -rn 8262 tools/perf44 docs/research/perf-study-44-*` is empty).
 
+### 0.3 ★ Shares are computed WITHIN each run, never level-over-pooled-level
+
+Mid-study the coordinator circulated a harness defect found in study 43: five
+panel scripts reordered labels by *cyclic rotation*, which changes only the
+starting point and leaves relative order invariant, so per-position bias never
+averages out. **None of this study's panels ever rotated** (`panel44.sh` used a
+free shuffle and now uses a Latin square, §4.2). But the warning landed on
+something else of mine that was genuinely wrong:
+
+**`census44.sh` walks its 12 event groups in a FIXED order**, so each group
+always occupies the same slot of a rep — and `reduce44.py` originally divided
+each bucket's per-node LEVEL by a *global* median of `cycles:u` pooled across
+all 72 runs. That imports one slot's bias into another slot's numerator, which
+is exactly the failure mode the note describes.
+
+**The fix, applied to every share in this document:** every group carries
+`cycles:u`, so each run yields a self-contained ratio `event / cycles` measured
+in the *same run*, at the *same slot*, under the *same* instantaneous load. Any
+common multiplicative drift cancels in the division. Shares are the median of
+those per-run ratios; absolute cycles/node are that share × the reference
+denominator.
+
+**It tightened both closures and moved no conclusion:**
+
+| | pooled-level (wrong) | **within-run (used)** |
+|---|---:|---:|
+| `ex_no_retire` partition residual | −1.183 % | **−0.161 %** |
+| dispatch-slot closure | −0.997 % | **−0.396 %** |
+| `load_not_complete` share of cycles | 55.62 % | **54.80 %** |
+| back-end slot share | 48.38 % | **48.61 %** |
+
+A 7.3× improvement in the partition residual is a real check that the
+correction was warranted rather than cosmetic — and the headline moved by
+0.8 points, which is why the conclusions stand.
+
 ---
 
 ## ★ 1. THE DECOMPOSITION
@@ -139,21 +173,21 @@ chains, divides, long-latency shuffles.
 
 | bucket | cycles/node | **% of all cycles** |
 |---|---:|---:|
-| **`load_not_complete` — MEMORY** | **2596.93** | **55.62 %** |
-| `not_complete` − `load_not_complete` — **EXECUTION** | **536.75** | **11.50 %** |
-| `other` | 225.51 | 4.83 % |
-| `empty` — front end (study 41's whole subject) | 209.66 | 4.49 % |
-| `thread_not_selected` — SMT | 60.97 | 1.31 % |
-| **— all no-retire cycles** | **3629.81** | **77.74 %** |
-| **RETIRING cycles** | **1039.14** | **22.26 %** |
+| **`load_not_complete` — MEMORY** | **2558.77** | **54.80 %** |
+| `not_complete` − `load_not_complete` — **EXECUTION** | **531.31** | **11.38 %** |
+| `other` | 221.94 | 4.75 % |
+| `empty` — front end (study 41's whole subject) | 206.88 | 4.43 % |
+| `thread_not_selected` — SMT | 59.63 | 1.28 % |
+| **— all no-retire cycles** | **3578.53** | **76.65 %** |
+| **RETIRING cycles** | **1090.41** | **23.35 %** |
 
-Closure: `ex_no_retire.all` measured **3673.27** against the parts' sum
-**3629.81** — **a −1.18 % residual**, from the same cross-group drift as §0.1.
+Closure: `ex_no_retire.all` measured **3584.30** against the parts' sum
+**3578.53** — **a −0.161 % residual**.
 
 **The answer to the commissioned question, in one line: the 49 % back-end
 bucket is 83 % memory and 17 % execution.** Not "memory-bound" as a mood —
 `load_not_complete` alone is **more than half of every cycle the engine
-spends**, and it is 4.8× the entire front-end bucket study 41 spent a session
+spends**, and it is 12.4× the entire front-end bucket study 41 spent a session
 on.
 
 ### 1.2 The four candidates, resolved with numbers
@@ -162,10 +196,10 @@ The commission named four. Three of them are now priced and two are dead.
 
 | candidate | the measurement | verdict |
 |---|---|---|
-| **Memory / load stalls** | `load_not_complete` = **2596.93 c/node, 55.62 % of cycles** | **THE ANSWER.** §2 says which memory. |
-| **Execution port pressure** | `fp_ops_retired_by_width.all` = **1399.34 uops/node** (1282.60 of them 512-bit). Over Zen 4's 4 FP pipes that is **7.1 % – 14.4 % occupancy** depending on how the counter names a double-pumped op (see below). Corroborated by a counter that needs no such assumption: `fp_sch_rsrc_stall` = **196.41 c/node (4.2 % of cycles)** | **DEAD at either end of the bracket. The FP pipes are ≥ 85 % idle.** Do not build a port-pressure arm. |
-| **Dependency chains / latency** | the execution residual, **536.75 c/node = 11.50 %** | **REAL BUT SECONDARY**, and §2.2 localises it to ONE symbol. |
-| **Store-buffer / write pressure** | `store_queue_rsrc_stall` = **502.63 c/node = 10.76 % of cycles** — the **largest single dispatch-blocking resource in the engine**, ahead of the load queue at 442.11 | **REAL.** It is what §4's arm targets. |
+| **Memory / load stalls** | `load_not_complete` = **2558.77 c/node, 54.80 % of cycles** | **THE ANSWER.** §2 says which memory. |
+| **Execution port pressure** | `fp_ops_retired_by_width.all` = **1399.34 uops/node** (1282.60 of them 512-bit). Over Zen 4's 4 FP pipes that is **7.1 % – 14.4 % occupancy** depending on how the counter names a double-pumped op (see below). Corroborated by a counter that needs no such assumption: `fp_sch_rsrc_stall` = **203.01 c/node (4.35 % of cycles)** | **DEAD at either end of the bracket. The FP pipes are ≥ 85 % idle.** Do not build a port-pressure arm. |
+| **Dependency chains / latency** | the execution residual, **531.31 c/node = 11.38 %** | **REAL BUT SECONDARY**, and §2.2 localises it to ONE symbol. |
+| **Store-buffer / write pressure** | `store_queue_rsrc_stall` = **509.30 c/node = 10.91 % of cycles** — the **largest single dispatch-blocking resource in the engine**, ahead of the load queue at 450.12 | **REAL.** It is what §4's arm targets. |
 
 **Why the port-pressure figure is a BRACKET and not a number, stated because
 the honest version is less quotable than the tidy one.** Whether
@@ -183,7 +217,7 @@ than by 493 missing FP instructions.
 bracket is quoted instead of a resolution: the pipes are between 85.6 % and
 92.9 % idle, and `fp_sch_rsrc_stall` — a cycle counter that involves no uop
 accounting at all — independently says dispatch is blocked on the FP scheduler
-for only 4.2 % of cycles.
+for only 4.35 % of cycles.
 
 The full dispatch-blocking table, since it is the first time anyone has looked
 (these are cycles in which dispatch was blocked on that structure; they overlap
@@ -191,16 +225,16 @@ with each other and so do not partition):
 
 | resource | cycles/node | % of cycles |
 |---|---:|---:|
-| **store queue** | **502.63** | **10.76 %** |
-| load queue | 442.11 | 9.47 % |
-| FP register file | 329.07 | 7.05 % |
-| integer physical register file | 259.55 | 5.56 % |
-| **FP scheduler** (the port-pressure signature) | **196.41** | **4.21 %** |
-| retire tokens (ROB full) | 194.91 | 4.17 % |
-| integer scheduler 1 | 149.73 | 3.21 % |
-| integer schedulers 0 / 3 / 2 | 78.35 / 68.31 / 35.96 | 1.68 / 1.46 / 0.77 % |
-| FP flush recovery | 5.83 | 0.12 % |
-| taken-branch buffer | 0.013 | 0.000 % |
+| **store queue** | **509.30** | **10.91 %** |
+| load queue | 450.12 | 9.64 % |
+| FP register file | 333.50 | 7.14 % |
+| integer physical register file | 256.57 | 5.50 % |
+| **FP scheduler** (the port-pressure signature) | **203.01** | **4.35 %** |
+| retire tokens (ROB full) | 196.57 | 4.21 % |
+| integer scheduler 1 | 149.82 | 3.21 % |
+| integer schedulers 0 / 3 / 2 | 78.99 / 69.90 / 37.02 | 1.69 / 1.50 / 0.79 % |
+| FP flush recovery | 5.95 | 0.13 % |
+| taken-branch buffer | 0.01 | 0.00 % |
 
 ### 1.3 WHICH memory — and it is not DRAM
 
@@ -226,13 +260,13 @@ Three derived quantities that between them describe the whole memory system:
 | memory ops per node | **3188.1** (2280.8 loads + 907.3 stores) = **53.8 % of instructions** | `ls_dispatch.*` |
 | average in-flight L1 misses (**MLP**) | **5.74** | `ls_alloc_mab_count` / `cycles` |
 | average L1-miss residency | **53.99 cycles** | `ls_alloc_mab_count` / `ls_mab_alloc.load_store_allocations` |
-| load-stall cycles per load dispatched | **1.139** | `load_not_complete` / `ld_dispatch` |
-| load-stall cycles per demand fill | **5.31** | `load_not_complete` / demand fills |
+| load-stall cycles per load dispatched | **1.122** | `load_not_complete` / `ld_dispatch` |
+| load-stall cycles per demand fill | **5.23** | `load_not_complete` / demand fills |
 
 **This is the shape of the problem, and it is not the shape people assume.**
 The engine is not waiting on a handful of catastrophic DRAM misses — there are
 only **7.9 DRAM fills per node**, and the average missing line comes back in
-**54 cycles** with **5.7 of them in flight at once**. It is waiting **1.14
+**54 cycles** with **5.7 of them in flight at once**. It is waiting **1.12
 cycles on every one of 2281 load dispatches**, because 53.8 % of all
 instructions are memory operations and the L2 is doing 444 fills a node to keep
 up.
@@ -277,7 +311,7 @@ Summing the NNUE symbols (both fold kernels, `finny_refresh_into`,
 `current_full`, `at_full`, `forward_into`, `record_square_touch`,
 `SotaContext::evaluate`, `apply_at`, `refresh_threat_into_at`,
 `ensure_threats`) gives **~62.3 %** of `load_not_complete`. The two feature-
-transformer fold kernels alone are **26.43 %** — worth **686 … 767 cycles/node**
+transformer fold kernels alone are **26.43 %** — worth **676 … 756 cycles/node**
 across the denominator range.
 
 ### 2.2 One symbol is execution-bound, and only one
@@ -499,9 +533,9 @@ They cannot, on the same panel's numbers:
 
 | term | cycles/node |
 |---|---:|
-| store-queue-blocked cycles removed (−26.4 % of 502.63) | **−132.5** |
-| load-stall cycles removed (−7.33 % of 2596.93) | **−190.4** |
-| — the two OVERLAP (a full store queue blocks dispatch of loads too), so the removal is **at most** −190.4, not their sum | |
+| store-queue-blocked cycles removed (−26.4 % of 509.30) | **−134.3** |
+| load-stall cycles removed (−7.33 % of 2558.77) | **−187.6** |
+| — the two OVERLAP (a full store queue blocks dispatch of loads too), so the removal is **at most** −187.6, not their sum | |
 | instructions added (+4.076 % of 5929.09 = +242) at a marginal 1.5 – 2.45 issue/cycle | **+99 … +161** |
 | **predicted net** | **−29 … −92 c/node = −0.63 % … −1.96 %** |
 
