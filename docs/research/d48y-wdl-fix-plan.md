@@ -5269,3 +5269,44 @@ merged tree (study 36 touched movegen). Gate still finishing.
 **D49 sb235/400**, heldout 0.011731 @ sb230, unaffected throughout — the
 trainer's cgroup shows `oom_kill 0` and its `max` counter is unchanged from
 earlier at 35401.
+
+## CONFIRMED AT FULL POWER: D48X@600 = +14.78 +/- 5.45 over 5880 games
+
+    Elo: +14.78 +/- 5.45   nElo: +24.13 +/- 8.88
+    W 1866 / D 2398 / L 1616   (52.13%)   n=5880   EXIT=0
+
+**Highly consistent with the 1466-game pass (+15.65 +/- 11.02).** 2.7 sigma at
+the project's own +/-5 bar. Recorded as **exp-0167**.
+
+**The canonical net we ship is leaving ~15 Elo on the table to an untuned
+default**, recoverable by a 4-byte header patch with byte-identical weights.
+
+### Promotion is JUSTIFIED but NOT taken yet — and here is the real cost
+
+Promotion is not merely a symlink flip. **`engines/canonical/` is what the NNUE
+behavioural gate reads** (CLAUDE.md: "The gate reads the CANONICAL net and arch
+from `engines/canonical/`"), so changing the net **moves the eval-hash and d13
+pins**, which are currently `eb981b119bd6…c84f4f37` / `1985398`. Those pins are
+the merge gate every study is checked against, and **study 37 is live right now
+and measuring against them.**
+
+Doing it mid-flight would invalidate a running study's gate for no reason.
+**The promotion should happen when studies are quiescent**, and it needs, in one
+commit: the patched net in `engines/canonical/`, re-derived eval-hash and d13
+pins in `tools/check.sh` and CLAUDE.md, and a `MANIFEST.md` entry recording the
++14.78 +/- 5.45 evidence and the fact that the change is header-only.
+
+### Box recovered; study 37 released
+
+    available 8371 MB (was 3842) | free swap 1057 MB (was 297) | load 4.31 (was 25.97)
+
+`gate36` green — **`Bench: 587683`, All checks passed, `GATE_EXIT=0`,
+`PERFT_EXIT=0`** — main at `5e42622` independently verified by me.
+
+**Study 37 released to build**, with the instruction to take its null and its
+arm **in the same quiet window** — four independent cycles nulls now span
++0.383% to +5.266%, and every study tonight that split measurements across
+periods of differing load paid for it.
+
+**D49 sb241/400**, heldout **0.011656** @ sb240 (ema 0.011344), still falling.
+Cosine ends at sb300; anneal 300→400.
