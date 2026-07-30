@@ -7,7 +7,9 @@ fn cenn_v2_round_trip_and_evaluate() {
     use chessengine::eval::nnue::aligned::Aligned;
     use chessengine::eval::nnue::sota_context::SotaContext;
     use chessengine::eval::nnue::sota_features::{ACC, HALFKA_DIMS, THREAT_DIMS};
-    use chessengine::eval::nnue::sota_head::{BUCKETS, L1, L2, L3, SotaHead};
+    use chessengine::eval::nnue::sota_head::{
+        BUCKETS, L1, L1Biases, L1Weights, L2, L2Biases, L2Weights, L3, L3Weights, SotaHead,
+    };
     use chessengine::eval::nnue::sota_loader::{self, SotaNetwork};
 
     // Build a deterministic synthetic net (same as the unit tests, but
@@ -17,17 +19,17 @@ fn cenn_v2_round_trip_and_evaluate() {
         .collect();
     let ft_bias: Aligned<i16> = (0..ACC).map(|i| (i % 5) as i16 - 2).collect();
     let threat_weights: Aligned<i8> = (0..THREAT_DIMS * ACC).map(|i| (i % 9) as i8 - 4).collect();
-    let l1_weights: Aligned<i8> = (0..BUCKETS * L2 * L1)
+    let l1_weights: L1Weights = (0..BUCKETS * L2 * L1)
         .map(|i| ((i as i8).wrapping_mul(5).wrapping_add(7)) % 61 - 30)
         .collect();
-    let l1_biases: Aligned<f32> = (0..BUCKETS * L2).map(|i| (i as f32) * 0.01 - 0.5).collect();
-    let l2_weights: Aligned<f32> = (0..BUCKETS * L2 * L3)
+    let l1_biases: L1Biases = (0..BUCKETS * L2).map(|i| (i as f32) * 0.01 - 0.5).collect();
+    let l2_weights: L2Weights = (0..BUCKETS * L2 * L3)
         .map(|i| (i as f32) * 0.003 - 0.4)
         .collect();
-    let l2_biases: Aligned<f32> = (0..BUCKETS * L3)
+    let l2_biases: L2Biases = (0..BUCKETS * L3)
         .map(|i| (i as f32) * 0.005 - 0.3)
         .collect();
-    let l3_weights: Aligned<f32> = (0..BUCKETS * L3)
+    let l3_weights: L3Weights = (0..BUCKETS * L3)
         .map(|i| (i as f32) * 0.007 - 0.2)
         .collect();
     let l3_biases: Box<[f32]> = (0..BUCKETS).map(|i| (i as f32) * 0.01 - 0.04).collect();

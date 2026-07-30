@@ -196,6 +196,150 @@ impl<T> fmt::Debug for Aligned<T> {
     }
 }
 
+// ===========================================================================
+// Blocks — the shape the head's weight tables actually have
+// ===========================================================================
+
+/// One bucket's weight block: `[T; N]`, starting on its own cache line.
+///
+/// The `repr(align(64))` is what makes [`Blocks`] need no padding offset at
+/// all: alignment is a property of the *type*, so the allocator honours it for
+/// every element of the array, and `into_boxed_slice`'s shrink-to-fit — the
+/// trap [`Aligned`] has to dodge — cannot lose it.
+#[repr(align(64))]
+#[derive(Clone, PartialEq, Eq)]
+pub struct Line<T, const N: usize>(pub [T; N]);
+
+/// `B` cache-line-aligned blocks of `N` `T`s.
+///
+/// # Why this exists next to [`Aligned`]
+///
+/// Every head weight table is read exactly one way: *give me bucket `b`'s
+/// block*. Stored as an `Aligned<T>`, that cost a fat-pointer materialisation
+/// (`buf.ptr`, `buf.len`, `off`, `len − off`, `ptr + off`), a range check
+/// against the derived length, and a `try_into` length check — **eight scalar
+/// instructions and a branch per acquisition, five acquisitions per eval**,
+/// all to re-derive facts fixed at load time.
+///
+/// Stated as `Blocks<T, N, B>` the same acquisition is one pointer load and one
+/// `lea`, and the only surviving check is `b < B` against a *compile-time
+/// constant* — which LLVM CSEs into a single test for the whole forward pass,
+/// because `b` does not change inside it.
+///
+/// Perf study 26 §3 measured the swap; the numbers are in that document and in
+/// the commit. There is no `unsafe` in this type.
+pub struct Blocks<T, const N: usize, const B: usize>(Box<[Line<T, N>; B]>);
+
+impl<T, const N: usize, const B: usize> Blocks<T, N, B> {
+    /// Compile-time proof that `[Line<T, N>; B]` is `B · N` contiguous `T`s
+    /// with no interior padding, which is what lets [`as_ptr`](Self::as_ptr)
+    /// hand out a base pointer the alignment gate can check and what keeps the
+    /// on-disk layout meaning what it says. Referenced from
+    /// [`block`](Self::block) so it is actually evaluated.
+    const LAYOUT_OK: () = assert!(
+        N * size_of::<T>() % LINE == 0,
+        "Blocks<T, N, B>: N * size_of::<T>() must be a multiple of the cache \
+         line, or repr(align(64)) pads between blocks"
+    );
+
+    /// Bucket `i`'s block. One bounds check against the constant `B`.
+    #[inline]
+    pub fn block(&self, i: usize) -> &[T; N] {
+        let () = Self::LAYOUT_OK;
+        &self.0[i].0
+    }
+
+    /// Flat iteration over all `B · N` elements — the checksum/parity path,
+    /// never the hot one.
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.0.iter().flat_map(|line| line.0.iter())
+    }
+
+    /// Overwrite every element (`[T]::fill` for a block table) — the fixture
+    /// idiom the head's unit tests use to isolate one layer.
+    pub fn fill(&mut self, value: T)
+    where
+        T: Clone,
+    {
+        for line in self.0.iter_mut() {
+            line.0.fill(value.clone());
+        }
+    }
+
+    /// Base pointer, for the alignment gate. Casting a reference to a pointer
+    /// dereferences nothing, so this needs no `unsafe`.
+    pub fn as_ptr(&self) -> *const T {
+        self.0.as_ptr().cast()
+    }
+
+    /// Total element count, `B · N` — a constant, kept as a method so the
+    /// call sites read the same as they did against `Aligned`.
+    pub const fn len(&self) -> usize {
+        N * B
+    }
+
+    /// Never true for a shipped table (`B ≥ 1`, `N ≥ 1`); present because
+    /// clippy requires it alongside `len`.
+    pub const fn is_empty(&self) -> bool {
+        N * B == 0
+    }
+}
+
+impl<T: Copy + Default, const N: usize, const B: usize> Blocks<T, N, B> {
+    /// Build from exactly `B · N` elements in block-major order.
+    ///
+    /// **Panics** on a short iterator. That is the same error model the range
+    /// slices had — `self.l1_biases[bb..bb + L2].try_into().expect(..)` would
+    /// have panicked too — moved from *every eval* to *load time*, where the
+    /// CENN section-size validation has already made it unreachable.
+    pub fn from_flat_iter(iter: impl IntoIterator<Item = T>) -> Self {
+        let mut it = iter.into_iter();
+        let mut v: Vec<Line<T, N>> = Vec::with_capacity(B);
+        for b in 0..B {
+            let mut line = Line([T::default(); N]);
+            for (j, slot) in line.0.iter_mut().enumerate() {
+                *slot = it
+                    .next()
+                    .unwrap_or_else(|| panic!("Blocks: iterator ended at block {b} element {j}"));
+            }
+            v.push(line);
+        }
+        // `len == capacity == B`, so `into_boxed_slice` cannot realloc; and
+        // even if it did, `Line`'s alignment travels in the layout.
+        let boxed: Box<[Line<T, N>]> = v.into_boxed_slice();
+        match <Box<[Line<T, N>; B]>>::try_from(boxed) {
+            Ok(arr) => Blocks(arr),
+            Err(_) => unreachable!("exactly B lines were pushed"),
+        }
+    }
+}
+
+impl<T: Copy + Default, const N: usize, const B: usize> FromIterator<T> for Blocks<T, N, B> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self::from_flat_iter(iter)
+    }
+}
+
+impl<T: Copy + Default, const N: usize, const B: usize> From<Vec<T>> for Blocks<T, N, B> {
+    fn from(v: Vec<T>) -> Self {
+        Self::from_flat_iter(v)
+    }
+}
+
+impl<T: PartialEq, const N: usize, const B: usize> PartialEq for Blocks<T, N, B> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+/// Shape only — same reason as [`Aligned`]'s: a 138 MB net must not print
+/// itself.
+impl<T, const N: usize, const B: usize> fmt::Debug for Blocks<T, N, B> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Blocks<{}>[{B}x{N}]", std::any::type_name::<T>())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,5 +392,53 @@ mod tests {
         let a: Aligned<i8> = Aligned::from_iter_len(0, std::iter::empty());
         assert!(a.is_empty());
         assert_eq!(a.as_ptr().align_offset(LINE), 0);
+    }
+
+    /// EVERY block starts on a cache line, not just the first — the property
+    /// `Aligned` could only give for the table base. Checked for both element
+    /// types the head uses and for a block size on either side of a page.
+    #[test]
+    fn every_block_starts_on_a_cache_line() {
+        fn check<T: Copy + Default, const N: usize, const B: usize>(name: &str) {
+            let b: Blocks<T, N, B> =
+                Blocks::from_flat_iter(std::iter::repeat_n(T::default(), N * B));
+            for i in 0..B {
+                assert_eq!(
+                    (b.block(i).as_ptr()).align_offset(LINE),
+                    0,
+                    "{name}: block {i} not {LINE}-aligned"
+                );
+            }
+            // No interior padding: consecutive blocks are exactly N apart.
+            for i in 1..B {
+                let step = b.block(i).as_ptr() as usize - b.block(i - 1).as_ptr() as usize;
+                assert_eq!(step, N * size_of::<T>(), "{name}: gap between blocks");
+            }
+        }
+        check::<f32, 16, 8>("f32 x16");
+        check::<f32, 32, 8>("f32 x32");
+        check::<i8, 1280, 8>("i8 x1280");
+        check::<i8, 20480, 8>("i8 x20480");
+    }
+
+    /// Block-major order survives the reshape, and `iter()`/`len()` still see
+    /// the flat table the loader's checksum walks.
+    #[test]
+    fn block_major_order_round_trips() {
+        let b: Blocks<f32, 16, 8> = (0..128).map(|i| i as f32).collect();
+        assert_eq!(b.len(), 128);
+        assert!(b.iter().copied().eq((0..128).map(|i| i as f32)));
+        for bucket in 0..8 {
+            let blk = b.block(bucket);
+            assert_eq!(blk[0], (bucket * 16) as f32);
+            assert_eq!(blk[15], (bucket * 16 + 15) as f32);
+        }
+    }
+
+    /// The load-time panic the range slices used to raise per eval.
+    #[test]
+    #[should_panic(expected = "iterator ended at block 1 element 0")]
+    fn a_short_table_fails_at_construction() {
+        let _: Blocks<f32, 16, 8> = (0..16).map(|i| i as f32).collect();
     }
 }
