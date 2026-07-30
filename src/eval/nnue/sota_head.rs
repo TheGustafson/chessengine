@@ -403,6 +403,16 @@ impl SotaHead {
     /// `(sigmoid(out) − target)` residual, so σ̂ = exp(½·s) is a WDL-space std,
     /// NOT a cp-space one (D33 review, reviewer B: mind this when it scales the
     /// cp-space RFP margin). Caller guarantees the variance head is present.
+    // `#[cold] #[inline(never)]`: NO SHIPPED NET HAS EITHER OF THESE HEADS.
+    // `l3_var_weights` and `l3_wdl_weights` are `None` for every net in
+    // `engines/`, so both bodies are unreachable at run time — but inlined into
+    // `forward_into` they contributed ~140 static instructions to the hottest
+    // eval function, including a 31-deep chain of SCALAR `vfmadd231ss` and 32
+    // `lea`/`cmp`/`jae` bounds-check triples on the runtime-length
+    // `Box<[f32]>` (perf study 26 §5, measured on a line-attributed profile).
+    // Same treatment, and the same reason, as `i16_deltas_into_generic`.
+    #[cold]
+    #[inline(never)]
     fn propagate_l3_var(&self, l2: &[f32; L3], bucket: usize) -> f32 {
         const LANES: usize = 16;
         let mut sums = [0.0f32; LANES];
@@ -436,6 +446,8 @@ impl SotaHead {
     /// (`w[o·L3 + j]`) + `[3]` biases — mirrors the trainer's `l3_wdl` affine
     /// (`L3 → 3`). Softmax is left to the consumer. Caller guarantees the head is
     /// present.
+    #[cold]
+    #[inline(never)]
     fn propagate_l3_wdl(&self, l2: &[f32; L3]) -> [f32; 3] {
         let ww = self.l3_wdl_weights.as_ref().expect("wdl head present");
         let wb = self.l3_wdl_biases.as_ref().expect("wdl head present");
