@@ -6,3 +6,4 @@ fast=probe-one-extra-acc-copy           instr=31,187,446,149 nodes= 5,001,562 pe
 fast=a3-finny-rowzip                    instr=30,403,821,067 nodes= 5,001,562 per_node=  6078.9 brs_per_node=  641.4 bmiss_per_node= 19.63 hash=5ca978e012da1bb0
 fast=a34-outline-kingbranch             instr=30,391,117,320 nodes= 5,001,562 per_node=  6076.3 brs_per_node=  641.6 bmiss_per_node= 20.37 hash=5ca978e012da1bb0
 fast=a3only-final                       instr=30,403,823,693 nodes= 5,001,562 per_node=  6078.9 brs_per_node=  641.4 bmiss_per_node= 22.20 hash=5ca978e012da1bb0
+fast=merged-s21-plus-s22                instr=30,362,016,828 nodes= 5,001,562 per_node=  6070.5 brs_per_node=  646.8 bmiss_per_node= 22.20 hash=5ca978e012da1bb0

@@ -574,18 +574,28 @@ form, or a HalfKA refresh trigger that can be weakened (§5.3 says it cannot).
 
 ---
 
-## 7. Method notes worth keeping
+## 7. Method notes worth keeping — the first one is the expensive one
 
-1. **The null caught a dead instrument in the first ten minutes.** Core 3 was
-   100% busy with a sibling study's bench; the same binary against itself read
-   −3.40%. An instruction-gated study would have measured 0.000% there and
-   proceeded happily on a machine that could not resolve cycles at all. §2.
-2. **Pick the measurement core by reading `/proc/stat`, not by inheriting it.**
+1. **A NULL EXPIRES. Run it in the same round-robin as the arm, or it bounds
+   nothing.** This is the one that cost this study a retracted headline. Three
+   nulls on the same binary against its own copy, same command, same core where
+   noted: **−3.40%** (core 3, contended), **−0.07%** (core 2), **−1.51%**
+   (core 2, two hours later), **+1.42%** (core 2, round-robin). "Null first"
+   was followed to the letter and still produced a wrong claim, because the
+   rule as written says *before the arm* and what it needs to say is
+   *interleaved with the arm*. `scripts/panel3-22.sh` is the fix: A, a copy of
+   A, and B, cycled together, paired per-round deltas, and a sign count.
+2. **The null also caught a dead instrument in the first ten minutes.** Core 3
+   was 100% busy with a sibling study's bench and the harness process was
+   getting 2.2% CPU. An instruction-gated study would have measured 0.000%
+   there and proceeded happily on a machine that could not resolve cycles at
+   all. §2.
+3. **Pick the measurement core by reading `/proc/stat`, not by inheriting it.**
    `scripts/cores22.sh`. Study 20's core-6 pin was correct when study 20 ran it
    and wrong four hours later.
-3. **A fat pointer is a perf decision.** Splitting one struct into two arrays
+4. **A fat pointer is a perf decision.** Splitting one struct into two arrays
    cost +58.7 i/n purely because the second array was a `Box<[T]>`; the same
    split with `Box<[T; N]>` was −9.3. Any future hot/cold split in this codebase
    should reach for the array type first.
-4. **Read the reference before accepting a "we deviate from Stockfish" claim.**
+5. **Read the reference before accepting a "we deviate from Stockfish" claim.**
    Three studies' worth of framing rested on one wrong sentence in one comment.
