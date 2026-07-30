@@ -20,14 +20,14 @@ fn cenn_v2_round_trip_and_evaluate() {
     let l1_weights: Aligned<i8> = (0..BUCKETS * L2 * L1)
         .map(|i| ((i as i8).wrapping_mul(5).wrapping_add(7)) % 61 - 30)
         .collect();
-    let l1_biases: Box<[f32]> = (0..BUCKETS * L2).map(|i| (i as f32) * 0.01 - 0.5).collect();
+    let l1_biases: Aligned<f32> = (0..BUCKETS * L2).map(|i| (i as f32) * 0.01 - 0.5).collect();
     let l2_weights: Aligned<f32> = (0..BUCKETS * L2 * L3)
         .map(|i| (i as f32) * 0.003 - 0.4)
         .collect();
-    let l2_biases: Box<[f32]> = (0..BUCKETS * L3)
+    let l2_biases: Aligned<f32> = (0..BUCKETS * L3)
         .map(|i| (i as f32) * 0.005 - 0.3)
         .collect();
-    let l3_weights: Box<[f32]> = (0..BUCKETS * L3)
+    let l3_weights: Aligned<f32> = (0..BUCKETS * L3)
         .map(|i| (i as f32) * 0.007 - 0.2)
         .collect();
     let l3_biases: Box<[f32]> = (0..BUCKETS).map(|i| (i as f32) * 0.01 - 0.04).collect();

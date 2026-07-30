@@ -865,7 +865,7 @@ mod tests {
     #[test]
     fn propagate_l3_var_mirrors_propagate_l3() {
         let mut head = synth_head();
-        head.l3_var_weights = Some(head.l3_weights.clone());
+        head.l3_var_weights = Some(head.l3_weights.to_vec().into_boxed_slice());
         head.l3_var_biases = Some(head.l3_biases.clone());
         let l2: [f32; L3] = std::array::from_fn(|i| (i as f32 * 0.031 - 0.5).sin());
         for bucket in 0..BUCKETS {
