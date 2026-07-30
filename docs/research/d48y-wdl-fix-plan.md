@@ -5834,3 +5834,75 @@ does not require assuming the anneal behaves like the cosine.
 
 **Standing correction for the verdict:** do not judge D49 before its anneal
 completes. The prior run's trajectory went **−14 → +85 in its final 30sb.**
+
+## Perf study 38 COMPLETE and MERGED (`72839fa`) — a compiler silently undid study 14
+
+### The commissioned number: study 37's ~26 i/n was 2.4x UNDER-priced
+
+Study 37 derived the price from "40 zmm loads + 40 stores per copy".
+**That code does not exist.** `ThreatContext::at_full` compiles to
+`mov $0xa00,%edx; call *memcpy@GLIBC` — **twice, once per perspective**.
+**Perf study 14's hand-chunked copy has been silently re-formed into a library
+call by LLVM's loop-idiom pass**, and had been for an unknown stretch. The
+source still carries study 14's comments explaining that it chunks by hand
+*specifically to avoid a libc memcpy* (`sota_threats.rs:1315-1374`,
+`chunks_exact_mut(32)`) — **the comment went stale and nothing caught it.**
+
+| | study 37, derived | **measured** |
+|---|---:|---:|
+| per 2560-byte copy | 80 moves | **187.9 instructions, 19.5 branches, 194.7 DC accesses** |
+| whole site, per node | ~26 i/n (0.45%) | **63.7 i/n (1.07%)** |
+
+The branch figure (19.5 ~= 10 loop back-edges + ~9 dispatch compares)
+independently matches the glibc kernel the profile lands in.
+
+**New guard shipped:** `tools/perf38/memcpy38.py`, a libc call-site census —
+*the gate that would have caught study 14's comment going stale.*
+
+### Landed
+
+A ply whose threat delta is empty for **both** perspectives now **aliases its
+parent's value holder** and writes nothing. The new `foldcount::THR_JOINT`
+histogram is what made the cheap whole-entry form possible: **93.5% of pure
+copies are both-empty plies**, so study 37's "needs the head kernel's parameter
+shape changed" blocker applies only to the remaining 6.5%.
+
+**−0.288% instructions, −0.528% branches, −1.608% data-cache accesses**,
+12 paired rounds, null **−0.000%/−0.000%/−0.032%**. Node-identical,
+eval-hash-identical, plus 1.0 M nodes of debug-oracle search, and the landing
+binary's `.text` is **byte-identical to what the panels measured**.
+
+### A COUNTER-NAME CORRECTION THAT TOUCHES EVERY STUDY — verified by me
+
+**`L1-dcache-loads` on this box is NOT loads.** It is PMCx040 `ls_dc_accesses`
+— **loads AND stores**. I checked it myself rather than take the report:
+
+    L1-dcache-loads:u   629030098
+    r0040:u             629030098      <- identical to the digit
+
+**Studies 33-37's verdicts survive** (every one is a paired comparison, and the
+counter is consistent), **but their vocabulary does not.** Every "loads" figure
+in studies 33-38 should be read as *data-cache accesses*. Study 33's licensing
+argument — that cost tracks access COUNT rather than miss count — is unaffected.
+
+### Honest reporting, at the standard I want
+
+- **The arm banks only 17.1 of the site's 63.7 i/n.** Rather than assert a
+  mechanism for the rest, it **built the null** (`--features null38`, machinery
+  present but the alias never taken) and priced it: **+19.7 i/n is the machinery
+  itself.** ~26 i/n remain unlocalised; it built **both** candidates it could
+  name (bounds checks 0.02%; removing the fourth base pointer ~1 i/n) and
+  neither is it — so it **reports the number without a story** and declines to
+  name a third without an arm. That is exactly the discipline this project has
+  been paying to learn.
+- **Its `rep movsb` hypothesis was wrong**, and both `GLIBC_TUNABLES` arms
+  testing it were **inert** — the threshold here is **24 MiB**, not 2 KiB, and
+  the tunable is not honoured on this box at all.
+- **Sixth null on `cycles:u`: +0.771% over a 16-point range**, byte-identical
+  binary.
+- One gate flake named, not filed as a regression:
+  `go_movetime_respects_the_clock_within_tolerance`, 1.59 s at load 13 vs
+  0.52 s standalone.
+
+`gate38` running with **`CHECK_TEST_THREADS=2`** — free swap was 737 MB and the
+gate's debug test binary is ~2.4 GB at the default 4 threads.
