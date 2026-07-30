@@ -58,3 +58,7 @@ tools/spsa/out/
 tools/nnue/calib/oracle-obs.json
 tools/nnue/calib/oracle-multipv.json
 bin14/
+
+# perf study 22 measurement binaries + build tree (gitignored like target/)
+/bin22/
+/target-fast22/
