@@ -20,7 +20,7 @@
 //! depth-6 bench stays 548978.
 
 use super::aligned::Blocks;
-use super::sota_simd::{activate, l1_dequant, l1_dot, l2_tail};
+use super::sota_simd::{activate, l1_dequant, l1_dot, l2_tail, l3_dot};
 use crate::types::Color;
 
 /// Accumulator width per perspective — D47 (user-directed, 2026-07-22):
@@ -386,28 +386,14 @@ impl SotaHead {
     /// Dense f32[L3]→f32, 16-lane FMA + recursive-halving reduction + bias
     /// (step 5). Reduction order mirrors a 16-lane horizontal add.
     fn propagate_l3(&self, l2: &[f32; L3], bucket: usize) -> f32 {
-        const LANES: usize = 16;
-        let mut sums = [0.0f32; LANES];
-        // Fixed-size bucket + per-lane slices hoist the bounds checks so the
-        // 16-wide FMA vectorizes; same lane assignment ⇒ bit-identical.
-        let weights = self.l3_weights.block(bucket);
-        let mut i = 0;
-        while i < L3 {
-            let wl: &[f32; LANES] = weights[i..i + LANES].try_into().expect("l3 weight lane");
-            let ll: &[f32; LANES] = l2[i..i + LANES].try_into().expect("l2 lane");
-            for j in 0..LANES {
-                sums[j] = wl[j].mul_add(ll[j], sums[j]);
-            }
-            i += LANES;
-        }
-        let mut stride = LANES / 2;
-        while stride > 0 {
-            for k in 0..stride {
-                sums[k] += sums[k + stride];
-            }
-            stride /= 2;
-        }
-        sums[0] + self.l3_biases[bucket]
+        // Dispatched since perf study 26 arm 3 — the loop that used to live
+        // here is now `sota_simd::scalar::l3_dot`, unchanged, and is the
+        // bit-exact reference the SIMD backends match. It was the last
+        // autovectorized f32 path in the head, and LLVM would not widen it:
+        // for a 32-element dot it emitted sixteen 2-lane `vfmadd213ps` fed by
+        // sixteen `vmovsd` pair-loads — 4.56% of `forward_into`'s executed
+        // instructions.
+        l3_dot(self.l3_weights.block(bucket), l2) + self.l3_biases[bucket]
     }
 
     /// EXP-UNC-1: the log-variance head's dense f32[L3]→f32, mirroring

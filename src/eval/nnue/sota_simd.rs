@@ -59,6 +59,15 @@ type L2TailFn = fn(&mut [f32; L3], &[f32; L2], &[f32; L2 * L3], &[f32; L3]);
 // serial loop's, which was verified non-functional by the package's
 // 100-game fixed-node PGN-identity oracle before landing.
 type PolicyDotFn = fn(&[i8; L2], &[f32; L2]) -> f32;
+// The head's final f32 L3 -> scalar dot (perf study 26 arm 3). Same fixed
+// reduction SHAPE as `policy_dot` -- 16 partial lanes (lane k sums elements
+// k, k+16) then a halving tree -- so every backend is bit-identical to the
+// scalar reference, which is the loop that used to live in
+// `SotaHead::propagate_l3`. It is here rather than autovectorized because
+// LLVM would not widen it: with L3 = 32 it emitted **2-lane** `vfmadd213ps`
+// over sixteen `vmovsd` pair-loads, 4.56% of `forward_into`'s instructions
+// for a 32-element dot product.
+type L3DotFn = fn(&[f32; L3], &[f32; L3]) -> f32;
 // The SKP1 skip-lane dot (perf study §6-S2): u8 activations × bucket-major
 // f32 lane. Reduction shape is DEFINED as 16 partial lanes + the halving
 // tree (the policy_dot discipline) so every backend is bit-identical to the
@@ -77,6 +86,7 @@ struct Kernels {
     find_nnz: FindNnzFn,
     l1_dequant: L1DequantFn,
     l2_tail: L2TailFn,
+    l3_dot: L3DotFn,
     policy_dot: PolicyDotFn,
     skip_dot_i8: SkipDotFn,
 }
@@ -295,6 +305,14 @@ pub(crate) fn l2_tail(
     kernel_dispatch!(l2_tail(out, l1, weights, bias))
 }
 
+/// The head's final dense `f32[L3] → f32` dot: `Σ weights[j]·l2[j]`, in the
+/// fixed 16-partial-lane + halving-tree shape (see the [`L3DotFn`] note). The
+/// bias is added by the caller, as in the scalar reference.
+#[inline]
+pub(crate) fn l3_dot(weights: &[f32; L3], l2: &[f32; L3]) -> f32 {
+    kernel_dispatch!(l3_dot(weights, l2))
+}
+
 /// Policy selected-row dot: `Σ row[i]·h[i]` with the fixed 16-partial-lane +
 /// halving-tree reduction shape (see the [`PolicyDotFn`] note).
 #[inline]
@@ -479,6 +497,29 @@ mod scalar {
         }
     }
 
+    /// The bit-exact reference for the head's L3 dot — this IS the loop that
+    /// lived in `SotaHead::propagate_l3` until perf study 26 arm 3, moved here
+    /// unchanged so the SIMD backends have something to be identical to.
+    pub(super) fn l3_dot(weights: &[f32; L3], l2: &[f32; L3]) -> f32 {
+        const LANES: usize = 16;
+        let mut sums = [0.0f32; LANES];
+        let mut i = 0;
+        while i < L3 {
+            for j in 0..LANES {
+                sums[j] = weights[i + j].mul_add(l2[i + j], sums[j]);
+            }
+            i += LANES;
+        }
+        let mut stride = LANES / 2;
+        while stride > 0 {
+            for k in 0..stride {
+                sums[k] += sums[k + stride];
+            }
+            stride /= 2;
+        }
+        sums[0]
+    }
+
     /// The bit-exact reference for the policy row dot: 16 partial lanes
     /// (lane k accumulates elements k, k+16, …, each a fused mul-add) then
     /// the same halving tree as `propagate_l3`.
@@ -524,6 +565,7 @@ mod scalar {
         find_nnz,
         l1_dequant,
         l2_tail,
+        l3_dot,
         policy_dot,
         skip_dot_i8,
     };
@@ -963,6 +1005,54 @@ mod avx2 {
         unsafe { l2_tail_inner(out, l1, weights, bias) }
     }
 
+    /// The last three steps of the reference halving tree, in registers:
+    /// `sums[k] += sums[k+4]`, then `+= sums[k+2]`, then `+= sums[1]`.
+    /// Shared by both f32 dots and by both SIMD backends so the four of them
+    /// cannot drift from the scalar reference or from each other.
+    ///
+    /// SAFETY-free: `#[target_feature]` is not needed on a pure AVX shuffle
+    /// chain that is only ever reached from an AVX2/AVX-512 caller, but it is
+    /// marked anyway so the caller's feature set propagates and it inlines.
+    #[target_feature(enable = "avx")]
+    pub(super) fn halve8(a: __m256) -> f32 {
+        let b = _mm_add_ps(_mm256_castps256_ps128(a), _mm256_extractf128_ps::<1>(a));
+        let c = _mm_add_ps(b, _mm_movehl_ps(b, b));
+        _mm_cvtss_f32(_mm_add_ss(c, _mm_movehdup_ps(c)))
+    }
+
+    #[target_feature(enable = "avx2,fma")]
+    unsafe fn l3_dot_inner(weights: &[f32; L3], l2: &[f32; L3]) -> f32 {
+        // Two 8-lane accumulators = the scalar reference's 16 partial lanes
+        // (acc_lo = lanes 0-7, acc_hi = lanes 8-15), then the SAME halving
+        // tree, done in vector registers instead of over a spilled array —
+        // identical pairs in identical order, so bit-identical, and f32
+        // non-associativity is respected rather than assumed away.
+        // SAFETY: L3 = 32 is two 8-lane blocks per accumulator, in bounds.
+        unsafe {
+            let mut acc_lo = _mm256_setzero_ps();
+            let mut acc_hi = _mm256_setzero_ps();
+            for i in (0..L3).step_by(16) {
+                acc_lo = _mm256_fmadd_ps(
+                    _mm256_loadu_ps(weights.as_ptr().add(i)),
+                    _mm256_loadu_ps(l2.as_ptr().add(i)),
+                    acc_lo,
+                );
+                acc_hi = _mm256_fmadd_ps(
+                    _mm256_loadu_ps(weights.as_ptr().add(i + 8)),
+                    _mm256_loadu_ps(l2.as_ptr().add(i + 8)),
+                    acc_hi,
+                );
+            }
+            // stride 8 of the reference's halving tree; `halve8` finishes it.
+            halve8(_mm256_add_ps(acc_lo, acc_hi))
+        }
+    }
+
+    fn l3_dot(weights: &[f32; L3], l2: &[f32; L3]) -> f32 {
+        // SAFETY: installed only after runtime AVX2+FMA detection.
+        unsafe { l3_dot_inner(weights, l2) }
+    }
+
     #[target_feature(enable = "avx2,fma")]
     unsafe fn policy_dot_inner(row: &[i8; L2], h: &[f32; L2]) -> f32 {
         // Two 8-lane accumulators = the 16 partial lanes of the scalar
@@ -1037,6 +1127,7 @@ mod avx2 {
         find_nnz,
         l1_dequant,
         l2_tail,
+        l3_dot,
         policy_dot,
         skip_dot_i8,
     };
@@ -1811,6 +1902,37 @@ mod avx512 {
     }
 
     #[target_feature(enable = "avx512f")]
+    unsafe fn l3_dot_inner(weights: &[f32; L3], l2: &[f32; L3]) -> f32 {
+        // One 16-lane accumulator IS the scalar reference's 16 partial lanes,
+        // so the whole L3 = 32 dot is two `vfmadd231ps` and a four-step
+        // halving tree — against the sixteen 2-lane `vfmadd213ps` and sixteen
+        // `vmovsd` pair-loads LLVM produced for the autovectorized source
+        // (perf study 26 arm 3).
+        // SAFETY: L3 = 32 is exactly two in-bounds 16-lane blocks.
+        unsafe {
+            let mut acc = _mm512_setzero_ps();
+            for i in (0..L3).step_by(16) {
+                acc = _mm512_fmadd_ps(
+                    _mm512_loadu_ps(weights.as_ptr().add(i)),
+                    _mm512_loadu_ps(l2.as_ptr().add(i)),
+                    acc,
+                );
+            }
+            // stride 8 of the reference's halving tree; `halve8` finishes it.
+            super::avx2::halve8(_mm256_add_ps(
+                _mm512_castps512_ps256(acc),
+                _mm512_extractf32x8_ps::<1>(acc),
+            ))
+        }
+    }
+
+    pub(super) fn l3_dot(weights: &[f32; L3], l2: &[f32; L3]) -> f32 {
+        // SAFETY: installed only after runtime avx512f detection (or compiled
+        // with the feature statically enabled).
+        unsafe { l3_dot_inner(weights, l2) }
+    }
+
+    #[target_feature(enable = "avx512f")]
     unsafe fn policy_dot_inner(row: &[i8; L2], h: &[f32; L2]) -> f32 {
         // One zmm accumulator = the 16 partial lanes of the scalar reference
         // (lane k sums elements k, k+16, …); the halving tree runs scalar
@@ -1917,6 +2039,7 @@ mod avx512 {
         find_nnz: avx2::find_nnz,
         l1_dequant,
         l2_tail,
+        l3_dot,
         policy_dot,
         skip_dot_i8,
     };
@@ -2355,6 +2478,24 @@ mod tests {
                 scalar::policy_dot(&prow, &ph),
                 "{name} policy_dot"
             );
+
+            // `l3_dot` (perf study 26 arm 3). EXACT f32 equality, on fixtures
+            // whose partial sums differ per lane so a reduction tree that
+            // pairs the lanes in the wrong ORDER is caught — associativity is
+            // the whole risk when a scalar halving loop becomes a shuffle
+            // chain, and magnitudes are spread over four decades so a
+            // re-association actually changes the rounding.
+            for scale in [1.0f32, 1e-3, 1e3, 1e6] {
+                let l3w: [f32; L3] =
+                    std::array::from_fn(|j| ((j as f32 * 0.29).sin() - 0.2) * scale);
+                let l3in: [f32; L3] =
+                    std::array::from_fn(|j| ((j as f32 * 0.17).cos() + 0.05) / scale);
+                assert_eq!(
+                    (kernels.l3_dot)(&l3w, &l3in),
+                    scalar::l3_dot(&l3w, &l3in),
+                    "{name} l3_dot scale {scale}"
+                );
+            }
         }
     }
 
