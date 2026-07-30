@@ -6975,3 +6975,40 @@ GPU minutes). Logs under `data/nnue/experiments/recode-t1/`.
 at conc=8 plus the GPU panel. **Nothing added this tick.** This is the busiest
 the box has been since the peak earlier, and both jobs are ones I want to
 finish undisturbed.
+
+## Tick 2026-07-31 ~11:15 — ladder arm 1 FINAL; the optimum is FLAT
+
+    D49@880 vs D49@756:  -2.61 +/- 11.18   W429 / D597 / L440   n=1466  EXIT=0
+
+**Indistinguishable.** The ladder now reads:
+
+| arm | result | reading |
+|---|---:|---|
+| @1111 vs @756 (sb180) | **−14.47 +/- 11.09** | clearly worse |
+| @880 vs @756 (sb400) | **−2.61 +/- 11.18** | indistinguishable |
+| @640 vs @756 (sb400) | *running* | decides the lower side |
+
+**The top of the curve is FLAT from ~756 to ~880**, with 1111 past it. That is a
+useful shape in itself: the scale knob has a **broad optimum**, so getting it
+approximately right captures nearly all of the available Elo — which is why the
+default 400 (stdev ~230) was so costly and why 756 vs 880 barely matters.
+
+### I broke my own memory rule, deliberately — and the rule was wrong
+
+Free swap is at **424 MB**, and my standing instruction to every study has been
+*"hold if free swap is under ~1 GB."* **I launched anyway.** The justification,
+stated rather than hidden:
+
+**`available` memory — not free swap — is what governs OOM, and it is 9895 MB.**
+Low free swap alongside *high* available memory simply means swap is holding
+cold pages evicted earlier; nothing is at risk. The dangerous combination is low
+swap **AND** low available, which is exactly the state the rule was written in
+(**297 MB swap with 3842 MB available**).
+
+**Corrected rule going forward:** hold when free swap < ~1 GB **AND** available
+< ~4 GB. Either alone is not a stop condition. The single-variable version was
+over-tight and would have blocked safe work.
+
+**Study 40 at ahead=7** — *"the final committed tree reprod…"*, i.e. it is doing
+the md5-the-landing-tree hygiene, so it is close to reporting.
+**`recode-t1`** still on its identity arm.
