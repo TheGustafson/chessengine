@@ -153,6 +153,119 @@ macro_rules! kernel_dispatch {
     }};
 }
 
+/// Perf study 29's TRAFFIC-PINNING probes (`probe-accpin` / `probe-wpin`).
+///
+/// Both keep the number and the WIDTH of every load in the kernels exactly as
+/// they are and change only WHERE those loads point, so `L1-dcache-loads` is
+/// invariant and the drop in misses / load-stall cycles isolates one stream's
+/// share. They produce wrong evaluations by construction — these features are
+/// measurement instruments, never shipped, and `bench … nodes` fixes the node
+/// budget so the two arms remain comparable at the same tree size.
+#[cfg(any(feature = "probe-accpin", feature = "probe-wpin"))]
+pub(crate) mod probe {
+    #[cfg(feature = "probe-accpin")]
+    use super::ACC;
+
+    /// One accumulator-shaped buffer every pinned read is redirected to.
+    /// `Box` so it is heap-resident like the real stack, `LazyLock` so it is
+    /// built once. Cache-line alignment does not matter here: the point is
+    /// that the whole working set is 2.5 KB and therefore L1-resident.
+    /// TWO distinct buffers, and every handout goes through `black_box`.
+    /// Without both, the probe stops being load-count-neutral: with one buffer
+    /// `activate`'s `pv`/`tv` pair becomes one address and LLVM CSEs 80 of its
+    /// 160 loads away, and with a constant pointer it CSEs the src stream
+    /// across the HalfKA and threat folds in the same `compute`. Measured: the
+    /// naive form dropped 249 loads/node and 360 instructions/node, which is a
+    /// different experiment. `black_box` makes the pointer opaque, so the same
+    /// loads are issued — they simply all hit the same 2.5 KB of L1.
+    #[cfg(feature = "probe-accpin")]
+    pub(crate) static PIN_ACC: std::sync::LazyLock<Box<[[i16; ACC]; 2]>> =
+        std::sync::LazyLock::new(|| Box::new([[0i16; ACC]; 2]));
+    #[cfg(feature = "probe-accpin")]
+    pub(crate) static PIN_ACC2: std::sync::LazyLock<Box<[[i16; ACC]; 2]>> =
+        std::sync::LazyLock::new(|| Box::new([[0i16; ACC]; 2]));
+
+    #[cfg(feature = "probe-accpin")]
+    #[inline]
+    pub(crate) fn pin_one() -> &'static [i16; ACC] {
+        std::hint::black_box(&PIN_ACC[0])
+    }
+
+    /// The WRITE half (`probe-dstpin`). `probe-accpin` alone redirects only
+    /// the fold's `src`, so the per-ply accumulator stack keeps its full write
+    /// volume and its full footprint — which means it keeps evicting weight
+    /// rows, and the probe under-reports whatever share of fusion's prize is
+    /// capacity rather than read latency. This buffer takes the stores too.
+    ///
+    /// A leaked `Box` rather than a `static mut`: one allocation, `'static`
+    /// by construction, and no aliasing question about the *address*. The
+    /// aliasing question about the CONTENTS is real and deliberate — every
+    /// fold now writes the same 2.5 KB — which is exactly why this feature
+    /// computes wrong evaluations and is a measurement instrument only.
+    #[cfg(feature = "probe-dstpin")]
+    // D14(a)-style sanctioned relaxation for a measurement-only feature.
+    #[allow(unsafe_code)]
+    #[inline]
+    pub(crate) fn pin_dst() -> &'static mut [i16; ACC] {
+        use std::sync::OnceLock;
+        static SLOT: OnceLock<usize> = OnceLock::new();
+        let addr = *SLOT.get_or_init(|| {
+            let b: Box<[i16; ACC]> = Box::new([0i16; ACC]);
+            Box::into_raw(b) as usize
+        });
+        // SAFETY: the pointer comes from `Box::into_raw` on a leaked
+        // allocation, so it is non-null, aligned, and valid for the whole
+        // program. The engine is single-threaded under `bench`, and this
+        // feature exists only to run `bench` — handing out repeated `&mut` to
+        // one buffer is precisely the traffic collapse being measured, and the
+        // resulting evaluations are known-wrong by design.
+        unsafe { &mut *(addr as *mut [i16; ACC]) }
+    }
+
+    /// Feature indices, all zero, for the `wpin` arm. The kernels read
+    /// `adds.len()`/`subs.len()` for their shape dispatch, so the SLICE
+    /// LENGTHS must be preserved exactly — only the values change.
+    #[cfg(feature = "probe-wpin")]
+    pub(crate) static ZERO_IDX: [usize; 64] = [0usize; 64];
+}
+
+#[cfg(feature = "probe-wpin")]
+macro_rules! pin_rows {
+    ($adds:ident, $subs:ident) => {
+        let $adds: &[usize] = &probe::ZERO_IDX[..$adds.len().min(64)];
+        let $subs: &[usize] = &probe::ZERO_IDX[..$subs.len().min(64)];
+    };
+}
+#[cfg(not(feature = "probe-wpin"))]
+macro_rules! pin_rows {
+    ($adds:ident, $subs:ident) => {};
+}
+
+#[cfg(feature = "probe-accpin")]
+macro_rules! pin_src {
+    ($src:ident) => {
+        // The shadow makes the real parameter unused, which is the point.
+        #[allow(unused_variables)]
+        let $src: &[i16; ACC] = probe::pin_one();
+    };
+}
+#[cfg(not(feature = "probe-accpin"))]
+macro_rules! pin_src {
+    ($src:ident) => {};
+}
+
+#[cfg(feature = "probe-dstpin")]
+macro_rules! pin_dst {
+    ($dst:ident) => {
+        #[allow(unused_variables)]
+        let $dst: &mut [i16; ACC] = probe::pin_dst();
+    };
+}
+#[cfg(not(feature = "probe-dstpin"))]
+macro_rules! pin_dst {
+    ($dst:ident) => {};
+}
+
 #[inline]
 pub(crate) fn apply_i16_deltas(
     acc: &mut [i16; ACC],
@@ -160,12 +273,19 @@ pub(crate) fn apply_i16_deltas(
     adds: &[usize],
     subs: &[usize],
 ) {
+    #[cfg(feature = "foldcount")]
+    super::foldcount::HKA_INPLACE.hit(adds.len() + subs.len());
+    pin_rows!(adds, subs);
     kernel_dispatch!(i16_deltas(acc, weights, adds, subs))
 }
 
 /// Fused copy+apply for the HalfKA (i16) fold: `dst = src ± deltas` in one
 /// pass, avoiding the separate parent→child memmove.
 #[inline]
+// `probe-accpin` shadows the accumulator parameters with its pinned
+// buffer, which is exactly what the probe is for; the originals then
+// go unread. No effect on any build without that feature.
+#[cfg_attr(feature = "probe-accpin", allow(unused_variables))]
 pub(crate) fn apply_i16_deltas_into(
     dst: &mut [i16; ACC],
     src: &[i16; ACC],
@@ -173,6 +293,14 @@ pub(crate) fn apply_i16_deltas_into(
     adds: &[usize],
     subs: &[usize],
 ) {
+    #[cfg(feature = "foldcount")]
+    {
+        super::foldcount::HKA_INTO.hit(adds.len() + subs.len());
+        super::foldcount::note_hka_shape(adds.len(), subs.len());
+    }
+    pin_rows!(adds, subs);
+    pin_src!(src);
+    pin_dst!(dst);
     kernel_dispatch!(i16_deltas_into(dst, src, weights, adds, subs))
 }
 
@@ -180,6 +308,7 @@ pub(crate) fn apply_i16_deltas_into(
 /// written to `out` as well (perf study 9 item 4). See [`ApplyI16DualFn`].
 /// `acc` and `out` must not alias.
 #[inline]
+#[cfg_attr(feature = "probe-dstpin", allow(unused_variables))]
 pub(crate) fn apply_i16_deltas_dual(
     acc: &mut [i16; ACC],
     out: &mut [i16; ACC],
@@ -187,11 +316,19 @@ pub(crate) fn apply_i16_deltas_dual(
     adds: &[usize],
     subs: &[usize],
 ) {
+    #[cfg(feature = "foldcount")]
+    super::foldcount::HKA_DUAL.hit(adds.len() + subs.len());
+    pin_rows!(adds, subs);
+    pin_dst!(out);
     kernel_dispatch!(i16_deltas_dual(acc, out, weights, adds, subs))
 }
 
 /// Fused copy+apply for the FullThreats (i8-weight) fold.
 #[inline]
+// `probe-accpin` shadows the accumulator parameters with its pinned
+// buffer, which is exactly what the probe is for; the originals then
+// go unread. No effect on any build without that feature.
+#[cfg_attr(feature = "probe-accpin", allow(unused_variables))]
 pub(crate) fn apply_i8_deltas_into(
     dst: &mut [i16; ACC],
     src: &[i16; ACC],
@@ -199,6 +336,14 @@ pub(crate) fn apply_i8_deltas_into(
     adds: &[usize],
     subs: &[usize],
 ) {
+    #[cfg(feature = "foldcount")]
+    {
+        super::foldcount::THR_INTO.hit(adds.len() + subs.len());
+        super::foldcount::note_thr_shape(adds.len() + subs.len());
+    }
+    pin_rows!(adds, subs);
+    pin_src!(src);
+    pin_dst!(dst);
     kernel_dispatch!(i8_deltas_into(dst, src, weights, adds, subs))
 }
 
@@ -244,12 +389,26 @@ unsafe fn ft_group(ft: &[u8; ACC], group: usize) -> i32 {
 }
 
 #[inline]
+// `probe-accpin` shadows the accumulator parameters with its pinned
+// buffer, which is exactly what the probe is for; the originals then
+// go unread. No effect on any build without that feature.
+#[cfg_attr(feature = "probe-accpin", allow(unused_variables))]
 pub(crate) fn activate(
     out: &mut [u8; ACC],
     pst: &[[i16; ACC]; 2],
     threat: &[[i16; ACC]; 2],
     stm: usize,
 ) {
+    #[cfg(feature = "foldcount")]
+    super::foldcount::ACTIVATE.hit(0);
+    // `activate` is the single largest accumulator-STREAM reader in the
+    // engine: four `[i16; ACC]` arrays, 10.24 KB per evaluation, which is the
+    // exact quantity Stockfish carries as 4.10 KB by fusing the two channels.
+    #[cfg(feature = "probe-accpin")]
+    let (pst, threat) = (
+        std::hint::black_box(&*probe::PIN_ACC),
+        std::hint::black_box(&*probe::PIN_ACC2),
+    );
     kernel_dispatch!(activate(out, pst, threat, stm))
 }
 

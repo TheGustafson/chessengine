@@ -883,7 +883,22 @@ impl<'a> ThreatContext<'a> {
     /// the net's threat PSQ1 rows (`&[]` when it has none). Call
     /// [`refresh`](Self::refresh) to seed the root before any [`apply`](Self::apply).
     pub fn new(weights: &'a [i8], psqt_weights: &'a [i32]) -> Self {
-        ThreatContext {
+        #[cfg(feature = "foldcount")]
+        {
+            use super::foldcount::region;
+            region(
+                "thr_weights",
+                weights.as_ptr().cast(),
+                std::mem::size_of_val(weights),
+            );
+            region(
+                "thr_psqt",
+                psqt_weights.as_ptr().cast(),
+                std::mem::size_of_val(psqt_weights),
+            );
+        }
+        #[allow(unused_mut)]
+        let mut me = ThreatContext {
             weights,
             psqt_weights,
             // `try_into` rather than `expect`: `ThreatEntry` is not `Debug`
@@ -903,7 +918,17 @@ impl<'a> ThreatContext<'a> {
             add_scratch: [[0usize; DELTA_CAP]; 2],
             sub_scratch: [[0usize; DELTA_CAP]; 2],
             top: 0,
+        };
+        #[cfg(feature = "foldcount")]
+        {
+            use super::foldcount::region;
+            region(
+                "thr_stack",
+                std::ptr::from_ref(&*me.stack).cast(),
+                std::mem::size_of_val(&*me.stack),
+            );
         }
+        me
     }
 
     /// Rebuild the root accumulator from scratch for `board`, both perspectives,
@@ -1265,10 +1290,20 @@ impl<'a> ThreatContext<'a> {
                     // `cfg(target_arch = "x86_64")` — this one is local and
                     // holds on every target (D33 reviewer A, m1).
                     const { assert!(ACC.is_multiple_of(32)) };
-                    for (d, s) in entry.acc[p]
-                        .chunks_exact_mut(32)
-                        .zip(parent.acc[p].chunks_exact(32))
-                    {
+                    #[cfg(feature = "foldcount")]
+                    super::foldcount::THR_COPY.hit(0);
+                    // Perf study 29's accumulator-stream probe: same 40 loads
+                    // and 40 stores, one hot source line instead of a cold
+                    // parent entry 10.5 KB up the stack.
+                    #[cfg(not(feature = "probe-accpin"))]
+                    let src_acc: &[i16; ACC] = &parent.acc[p];
+                    #[cfg(feature = "probe-accpin")]
+                    let src_acc: &[i16; ACC] = super::sota_simd::probe::pin_one();
+                    #[cfg(not(feature = "probe-dstpin"))]
+                    let dst_acc: &mut [i16; ACC] = &mut entry.acc[p];
+                    #[cfg(feature = "probe-dstpin")]
+                    let dst_acc: &mut [i16; ACC] = super::sota_simd::probe::pin_dst();
+                    for (d, s) in dst_acc.chunks_exact_mut(32).zip(src_acc.chunks_exact(32)) {
                         d.copy_from_slice(s);
                     }
                     entry.psqt[p] = parent.psqt[p];
@@ -1468,6 +1503,18 @@ fn resolve_both(
                 "resolve cursor overflow: {len:?} events={}",
                 events.len()
             );
+            // PERF STUDY 29 REJECTED A SOFTWARE PREFETCH HERE. This is exactly
+            // Stockfish's `append_changed_indices` site — it issues one
+            // `prefetch<READ, LOW>` per index at `eca43a97:src/nnue/features/
+            // full_threats.cpp:295-299` — and it is the right site by the
+            // stall profile (`at_full` is 22.78% of load-stall cycles, and a
+            // pinning probe showed the weight rows carry 46.2% of them). It
+            // still does not measure: -0.50% misses / -0.97% cycles at n = 24
+            // against nulls of +0.14% / -0.37%, and nothing survives the
+            // paired within-round form. The mechanism is capped — one hint of
+            // a 20-line row cannot touch the ~11 demand misses the row takes,
+            // and a whole-row hint (`pf-full`, +2.0% instructions) bought
+            // -0.69% misses. Numbers in that study's §5.
             if d.add {
                 adds[p][len[p].0 & M] = idx;
                 len[p].0 += 1;

@@ -40,6 +40,7 @@ tools/nnue/*/target/
 config.json
 # Extra build/log dirs (session artifacts, regenerable)
 /target-*/
+/target29-*/
 /logs/
 resume-builder-ideas.md
 pymask/target/
@@ -55,3 +56,6 @@ bin14/
 bin21/
 bin25/
 bin26/
+# perf study 29: labelled measurement binaries + the census output file.
+bin29/
+foldcount.txt

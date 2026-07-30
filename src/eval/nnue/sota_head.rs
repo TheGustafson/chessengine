@@ -522,6 +522,8 @@ impl SotaHead {
         // borrow of two DIFFERENT fields at once, and a field-by-field
         // destructuring pattern is what makes that legal without `unsafe` —
         // the same idiom `HalfkaContext::finny_refresh_into` uses on `self`.
+        #[cfg(feature = "foldcount")]
+        super::foldcount::EVAL.hit(0);
         let HeadScratch { ft, nnz } = scratch;
         activate_ft(pst, threat, stm, ft);
         let count = find_nnz(ft, nnz);

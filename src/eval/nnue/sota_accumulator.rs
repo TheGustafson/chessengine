@@ -284,7 +284,22 @@ pub(crate) struct HalfkaContext<'a> {
 
 impl<'a> HalfkaContext<'a> {
     pub(crate) fn new(weights: &'a [i16], bias: &'a [i16], psqt_weights: &'a [i32]) -> Self {
-        Self {
+        #[cfg(feature = "foldcount")]
+        {
+            use super::foldcount::region;
+            region(
+                "hka_weights",
+                weights.as_ptr().cast(),
+                std::mem::size_of_val(weights),
+            );
+            region(
+                "hka_psqt",
+                psqt_weights.as_ptr().cast(),
+                std::mem::size_of_val(psqt_weights),
+            );
+        }
+        #[allow(unused_mut)]
+        let mut me = Self {
             weights,
             bias,
             psqt_weights,
@@ -298,7 +313,22 @@ impl<'a> HalfkaContext<'a> {
             meta: boxed_array(Meta::default(), STACK_LEN),
             cache: boxed_array(FinnyEntry::default(), 2 * FINNY_KEYS),
             cache_valid: [0; 2],
+        };
+        #[cfg(feature = "foldcount")]
+        {
+            use super::foldcount::region;
+            region(
+                "hka_stack",
+                std::ptr::from_ref(&*me.stack).cast(),
+                std::mem::size_of_val(&*me.stack),
+            );
+            region(
+                "finny_cache",
+                std::ptr::from_ref(&*me.cache).cast(),
+                std::mem::size_of_val(&*me.cache),
+            );
         }
+        me
     }
 
     pub(crate) fn refresh_root(&mut self, board: &Board) {
@@ -577,6 +607,21 @@ impl<'a> HalfkaContext<'a> {
                     }
                     let piece = Piece::new(color, pt);
                     let base = halfka_row_base(perspective, piece, king);
+                    // PERF STUDY 29 REJECTED A SOFTWARE PREFETCH HERE, and it
+                    // is worth knowing why before adding one back. This loop
+                    // resolves up to 32 indices before `apply_i16_deltas_dual`
+                    // folds any of them — the one site in the engine with a
+                    // real gap between "the row address is known" and "the row
+                    // is read" — and it is the third-largest load-stall symbol
+                    // (13.74%), 81.2% of whose loads are HalfKA weight rows of
+                    // which only 7.2% hit L1. Hinting each row at index time,
+                    // Stockfish's `append_changed_indices` shape, measured
+                    // **not resolvable**: -0.16% misses against a null of
+                    // +0.14%, and in the drift-cancelling paired form the arm
+                    // and a byte-different null are indistinguishable. See
+                    // that study's §5 for the numbers and the ceiling argument
+                    // (one hint can convert at most one of the ~22 demand
+                    // misses a 40-line row takes).
                     for sq in new_bb & !*old_bb {
                         debug_assert!(add_len < CAP, "finny add cursor overflow");
                         adds[add_len & (CAP - 1)] = base + halfka_oriented(perspective, sq, king);

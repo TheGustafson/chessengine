@@ -77,6 +77,29 @@ search-control = []
 # head. OFF by default (the whole SOTA path is inert until it ships), so the
 # default build + depth-6 bench stay byte-identical. Build with `--features sota`.
 sota = []
+# Perf study 29's exact accumulator LOAD CENSUS. Adds one relaxed atomic pair
+# per accumulator-kernel call and dumps the totals on stderr at the end of
+# `bench`. Instrumentation only: the search tree, node count and eval hash are
+# untouched (verified), but the binary is NOT a timing reference. Never shipped.
+foldcount = ["sota"]
+# Perf study 29's TRAFFIC-PINNING probes. Both keep the load COUNT of every
+# accumulator kernel bit-for-bit identical and collapse ONE stream's working
+# set to a single hot line, so the drop in L1 misses / load-stall cycles is
+# that stream's share and nothing else. They compute WRONG evaluations on
+# purpose — measurement builds only, never shipped, never gated.
+#   accpin: the accumulator stream (fold `src`, `activate`'s four arrays)
+#           reads from one static buffer instead of the per-ply stack.
+#   wpin:   every fold folds weight row 0, whatever the feature index says.
+probe-accpin = ["sota"]
+probe-wpin = ["sota"]
+# `probe-accpin` pins only the READ half of accumulator streaming; the folds
+# still WRITE 2560 B per call into the real per-ply stack, so that stack keeps
+# its full footprint and keeps evicting weight rows. Perf study 31 priced the
+# same quantity with an ADDITIVE read+write probe and got a very different
+# answer, so this pins the write half too and settles which half (if either)
+# costs anything. Implies `probe-accpin`: pinning writes without pinning reads
+# would measure a third thing.
+probe-dstpin = ["probe-accpin"]
 
 [dev-dependencies]
 # Test/bench-only (D15: runtime [dependencies] stays empty; dev-deps allowed).

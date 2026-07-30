@@ -306,6 +306,13 @@ fn run_to(params: &BenchParams, out: &mut impl Write) -> io::Result<BenchResult>
         nodes * 1000 / elapsed_ms.max(1)
     )?;
 
+    // Perf study 29: the exact accumulator load census. It writes its own
+    // FILE (`$ARCHON_FOLDCOUNT`), never stdout or stderr — the fingerprint
+    // this function prints to stderr is byte-compared by
+    // `spawned_bench_*_runs_are_byte_identical`.
+    #[cfg(feature = "foldcount")]
+    crate::eval::nnue::foldcount::dump(nodes);
+
     Ok(BenchResult { nodes, elapsed_ms })
 }
 

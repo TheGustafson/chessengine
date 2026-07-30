@@ -1,0 +1,7 @@
+# docs/research/perf-artifacts-29/panel-dstpin.txt  control=base  n=8
+arm             IPC    xctrl  stall/instr       d%  miss/load       d%
+base         1.2123   1.0000       0.4681    +0.00     0.2016    +0.00
+basecopy     1.2048   0.9938       0.4788    +2.29     0.2012    -0.21
+accpin       1.1466   0.9458       0.5065    +8.21     0.1964    -2.59
+dstpin       1.1981   0.9883       0.4464    -4.63     0.1608   -20.23
+wpin         1.6055   1.3243       0.2752   -41.20     0.1480   -26.60
