@@ -6754,3 +6754,29 @@ Also told it the box is quiet **now** and will get busier when D49 ends —
 final panels should be taken in this window.
 
 **Box:** 8138 MB, free swap 995 MB, load 4.02. 29 superbatches left, ~1.2 h.
+
+## Tick 2026-07-31 ~08:00 — D49 sb378, 22 to go; verdict pre-staged
+
+**22 superbatches left, ~56 minutes.** heldout still last at sb370
+(raw 0.010915 / ema 0.010869); sb380 due shortly.
+
+**The commit nudge worked.** Study 40 went **ahead=0 → ahead=1** (*"perf study
+40 WIP: the instrument kit"*), so its work is in git rather than living as
+dirty files. Same outcome as the study 29 nudge earlier tonight — that is twice
+now that a nudge citing *evidence* rather than policy has produced a commit
+within one tick.
+
+**Rebuilding `target-sota` at current main while the box is quiet.** The
+existing binary predates the TRM1 merge. Both verdict arms use the *same*
+binary, so staleness would not invalidate the comparison — **this is about
+timing, not correctness.** When D49 ends, `recode-t1` takes the GPU and the
+verdict screens want the CPU; doing the build now means neither waits on it.
+
+**Verdict readiness:**
+- `tools/d49_verdict.sh` — ready, and it encodes the three traps (each net at
+  its OWN optimum, D49's optimum is net-specific so sweep don't assume, deploy
+  the EMA).
+- `target-sota` — rebuilding now, CEN5-capable.
+- checkpoints — all 40 will be retained; the fallback needs no action.
+
+**Box:** 8234 MB, free swap 1018 MB, load 4.40.
