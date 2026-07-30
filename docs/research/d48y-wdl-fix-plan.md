@@ -2624,3 +2624,32 @@ the pattern that put main in a non-compiling state when study 20 died — its
 committed arms depended on test fixes left in the working tree. Its brief tells
 it to commit as it goes. Mid-arm uncommitted work is normal; **if it dies with
 those 7 outstanding, check the worktree before merging anything.**
+
+### Tick — D49 heldout trending, FOUR studies live on disjoint scopes
+
+**D49 sb20, 194k pos/s.** Heldout under the fixed (network-side) scorer:
+
+| sb | value | R² | EMA | R²(ema) |
+|---|---|---|---|---|
+| 10 | 0.017605 | 0.8233 | 0.017254 | 0.8269 |
+| **20** | **0.015744** | **0.8420** | **0.014688** | **0.8526** |
+
+Falling cleanly from scratch; EMA improving faster than raw, as expected.
+Targets: D48X annealed **0.8815**, D48Y2 final **0.8906**.
+
+**FOUR studies now cover ~87% of our cycles on fully disjoint file scopes:**
+
+| study | files | cycles | state |
+|---|---|---|---|
+| 21 | history, sota_simd, sota_head, sota_loader, sota_features | ~22% | **4 commits** |
+| 22 | **sota_accumulator** (narrowed to it alone), sota_context | 12.4%, never analysed | 0 commits, 15 min in |
+| 23 | search, movepick | ~30% | 0 commits, 15 min in |
+| 24 | sota_threats, board, movegen, moves | ~23% | 0 commits, 15 min in |
+
+**Build serialisation instead of coordination:** each study is capped at
+`MemoryMax=3G` with `oomlast` (a study dies before the trainer can) AND told to
+run `free -m` before every build, sleeping 120 s and re-checking if under
+3500 MB. Four studies therefore cannot all build at once without waiting.
+
+Box right now: **8.85 GB available, memory pressure avg10 0.16**, zero rustc.
+The scheme is holding.
