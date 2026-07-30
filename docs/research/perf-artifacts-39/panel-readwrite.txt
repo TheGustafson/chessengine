@@ -1,0 +1,2 @@
+# panel39 2026-07-30T10:19:08-04:00 cpu=2 budget=100000 arms=actpin0=actpin:P39_PINFILL=zero accpin=accpin:P39_UNUSED=1 dstpin=dstpin:P39_UNUSED=1 d0=addcopy:P39_DOSE=0,P39_RING=16
+1 accpin 5001558 5475.7404 4075.6987 2763.6230 503.2529 1997.4061

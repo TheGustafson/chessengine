@@ -616,6 +616,36 @@ doses 1/2/4 where instructions go 1 : 1.97 : 3.92 — almost certainly page-walk
 traffic as the ring outgrows the L1 dTLB. It does not touch the placement or
 source comparisons above, which are ring-matched pairs.)*
 
+---
+
+## 8. RANKED REMAINDER
+
+| # | item | prize | evidence | tractability |
+|---|---|---|---|---|
+| 1 | **The weight rows, still.** The whole accumulator stream is 235 lines/node at ~1.2 cycles/line ≈ **280 cycles/node of 4081, i.e. 6.9%**. Everything else memory-shaped in the NNUE is weight rows. Study 29 ranked "fewer threat rows" #1 and study 31 ranked "the HalfKA weight rows, never the subject of an arm" #1; nothing in this study moves either down | the residual, ~93% of the NNUE's memory cost | §2, §4 | medium |
+| 2 | **Measure a cold threat weight-row line directly.** Fusion's cost column swings +78 … +157 on a number (6.5–13 cycles/line) that is a *residual* in study 31's model and has never been measured. A `wpin`-style probe aimed at the threat refresh path alone would pin it, and the same number prices item 1 | decides half the width of every FT memory estimate | §6, §8.2 | **high — the probes exist** |
+| 3 | **Nothing points at `activate` any more.** Its four-array merge is 12.25% of loads, 2.18% of load-stall cycles (study 29) and **0.0032 misses per line** (§4.2). Three studies have now aimed at it from different angles. Leave it | — | §4.2 | **closed** |
+| 4 | **Accumulator-channel fusion** | **−23 (best) … +281 (worst) cycles/node ⇒ +1.0 … −11.5 Elo**, and it trades away a measured 8.4× refresh advantage | §6 | **DO NOT BUILD** |
+| 5 | **The capacity-cliff reconciliation** | falsified two ways (§3.1); do not re-open it to explain a future probe disagreement — check miss depth first | §3.1, §4.4 | **closed** |
+
+### 8.1 What this study did NOT do
+
+* **No strength change landed, and none was available.** The commissioned
+  deliverable was a decision on a 34.9%-of-cycles architectural question, and
+  the decision is "no". The one thing that would have been a strength change —
+  building fusion — is what the measurement says not to build.
+* **No games were run.** Nothing here reached a state worth arbitrating, and by
+  the standing rule that means nothing here is arbitrated.
+* **`P39_SITE=fold` was added late** and the arms that use it are in panel 2
+  only, so the fold-site placement result rests on one panel rather than two.
+* **The three pin binaries were built from three different source states**
+  (`accpin`/`dstpin` from `b8d6e13`'s predecessor, `actpin` from `4320db4`,
+  `addcopy` twice). Every code path they exercise is `#[cfg]`-identical across
+  those states, and the headline arm's own instruction counts agree to
+  +1.05 i/n out of 5474 — but the binaries are not bit-comparable and their
+  md5s are recorded in `docs/research/perf-artifacts-39/binaries.md5` rather
+  than claimed to match.
+
 ## 9. WHAT I AM LEAST SURE ABOUT
 
 In order, most doubtful first.
