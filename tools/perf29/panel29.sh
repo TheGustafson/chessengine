@@ -36,5 +36,12 @@ for r in $(seq "$ROUNDS"); do
     ' "$tmp/stat" | tee -a "$OUT"
   done
   # rotate the order so position cannot correlate with arm
-  set -- "${@:2}" "$1"
+  # DEFECT FIX (perf study 43, 2026-07-30): this was a cyclic rotation,
+  # `set -- "${@:2}" "$1"`. Rotation changes only the STARTING POINT --
+  # relative order is invariant under it, so every label keeps the same
+  # predecessor in every round and any carryover from "which arm ran
+  # immediately before" never averages out, at any number of rounds.
+  # Measured: a BYTE-IDENTICAL null read -0.5700% cycles, 13/16 rounds
+  # negative. Shuffling breaks the adjacency, as panel32/39/43 already do.
+  set -- $(printf '%s\n' "$@" | shuf | tr '\n' ' ')
 done
