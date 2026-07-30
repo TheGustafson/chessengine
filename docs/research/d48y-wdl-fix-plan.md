@@ -3100,3 +3100,63 @@ spent.**
 
 Studies 26 (`Aligned::deref`, crate-wide bounds check) and 27 (search branch
 misses) are 15 min in, 2 rustc live, memory 8.1 GB free at zero pressure.
+
+### ★ WIDTH IS NOT THE STOCKFISH GAP — owner correction, and the arithmetic
+
+Owner: *"It isn't width. Our net is only barely larger than SF."* Correct:
+
+| | L1 | Mnps | width predicts | MEASURED | unexplained |
+|---|---|---|---|---|---|
+| ARCHON | 1280 | 0.851 | — | — | — |
+| SF `eca43a97` | 1024 | 1.572 | 1.25x faster | **1.85x** | **1.48x** |
+| Reckless | 768 | 1.120 | 1.67x faster | 1.32x | 0.79x |
+
+**Width buys SF 1.25x of a 1.85x gap. ~1.48x is NOT width.** I had commissioned
+study 28 partly to normalise for width; that would have spent it on the smallest
+term. Brief corrected mid-flight.
+
+**The Reckless row reads backwards and is worth understanding:** 1.67x narrower,
+only 1.32x faster ⇒ *per unit of width we would look FASTER than Reckless*.
+**But see below — that reading may be an artifact.**
+
+### ★★ THE RECKLESS PGO QUESTION — I got this wrong TWICE, record it
+
+Owner asked whether `engines/bin/reckless` was PGO-built. My answers, in order:
+
+1. **"Almost certainly not PGO"** — based on their default `make` target being a
+   plain `cargo rustc --release`, and `cargo-pgo` not being installed here.
+   **Overstated.**
+2. Owner: *"A release build could be PGO."* **Correct, and my logic was wrong** —
+   PGO builds ARE release builds, just with `-Cprofile-use`. "It is a release
+   build" proves nothing. And `cargo-pgo` being absent only rules out building it
+   HERE; it says nothing about a downloaded release artifact.
+3. Then the binary evidence came back leaning the OTHER way:
+
+| | embedded source paths |
+|---|---|
+| our `archon-s25` (built here) | `/rustc/8bab26f4…/library/alloc/src` — full rustc hash |
+| `reckless` | `/alloc/src`, `/board`, `/core/src` — **remapped/trimmed** |
+
+Trimmed paths indicate a DISTRIBUTION build, and engine projects normally ship
+PGO'd release artifacts. **So the evidence now leans toward it BEING PGO'd.**
+
+**CONCLUSION: undeterminable from the binary — exactly where the Stockfish PGO
+question landed earlier tonight, where the empirical race proved my suspicion
+WRONG and the shipped SF binary already was profile-built.** The Reckless column
+is unreliable **in an unknown direction** until study 28's `target-native28` /
+`target-pgo28` builds race the shipped binary.
+
+**Method note on my own failure:** twice I asserted a direction from indirect
+evidence when the direct test (build it, race it) was available and is the only
+thing that has ever settled this class of question here.
+
+**Unaffected by any of it:** both SF and ARCHON are confirmed PGO'd and were
+measured in the same run on the same box, so **the ~1.48x non-width gap to
+Stockfish stands.** That is what study 28 is for.
+
+### Tick — D49 sb80
+
+Heldout EMA R²: 0.8269 (sb10) → 0.8662 (40) → 0.8723 (70) → **0.8735 (sb80)**,
+against D48X's fully-annealed **0.8815**, at **20% of budget**.
+Studies 26 (1 commit) and 27 (30 min, none yet) and 28 (just started) running;
+8.4 GB free, pressure 0.56.
