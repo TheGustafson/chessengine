@@ -560,7 +560,8 @@ fetch. It has to be about what the fetched line CONTAINS — which is §5.2's
 
 ## 8. Gates, and the kit
 
-**Gates.** `bash tools/check.sh` green: `cargo fmt --check`,
+**Gates.** `bash tools/check.sh` green — **"All checks passed", `Bench: 587683`
+unmoved**: `cargo fmt --check`,
 `cargo clippy --all-targets -- -D warnings`, the feature matrix, `cargo test`
 (including the new `no_cluster_straddles_a_64_byte_cache_line`), the release
 perft tier, and the pinned depth-6 fingerprint. Every arm is node-identical at
