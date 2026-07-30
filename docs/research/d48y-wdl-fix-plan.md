@@ -4863,3 +4863,56 @@ Both outcomes are informative:
   ~420-stdev rule and licenses using it to pick D49's final scale.
 
 **D49 sb~200/400**, training undisturbed throughout.
+
+## Tick 2026-07-30 ~09:15 — study 36 commissioned; D49's curve begins to bend
+
+**D49 sb203/400.** First narrowing of the heldout delta:
+
+| sb | heldout | ema | delta |
+|---|---|---|---|
+| 180 | 0.012248 | 0.011734 | −134 |
+| 190 | 0.012147 | 0.011647 | −101 |
+| **200** | **0.012094** | **0.011587** | **−53** |
+
+Still descending, but the step halved — consistent with the cosine deepening
+(LR is on its way from 5.5625e-4 to 1.10e-4 at sb300). Not a plateau yet, and
+the anneal 300→400 is still to come.
+
+**Box:** 5190 MB available, load 19.29 — the `sweep-d48x` screen at conc=10.
+Still above the 2500 MB refuse line; watching it.
+
+**Commissioned study 36 — re-profile the post-i8 engine AND land off it.**
+Every ranked number we hold is stale: study 32's i8 moved cycles −5.6..−6.8%
+and load-stalls −15.6..−17.4% engine-wide, and study 33 showed the headline
+19.90% symbol is only **32.87%** search's own code. The standing target list
+describes an engine that no longer exists.
+
+**The brief's central guard is against the obvious failure mode:** *"YOUR
+DELIVERABLE IS A LANDED WIN. THE PROFILE IS THE MEANS, NOT THE END… A study
+that delivers only a ranking has failed."* Study 31 came close to exactly that
+and flagged it itself. Also given: pick the largest tractable item, and **if the
+first resists, take the second — changing target is expected, landing nothing is
+not.**
+
+**It carries the full instrument reality**, which now has *three independent
+confirmations from tonight* that cycles are marginal on this box:
+- study 33 — absolutes inflated **~1.9x**, ratios only;
+- study 34 — same arm read **+1.058% and −0.546%** on two panels, nulls
+  **+0.802% / +1.753%**, ranges 28.8 and 18.4 points;
+- study 35 — a **byte-identical control** moved **+0.383%..+5.266%** across
+  three protocols against a ~0.35% mechanism, control spread **+/-20.3%**.
+
+So it is pointed at instructions (null **0.000%**, exact), branches, and
+**L1d loads** — the currency study 33 §5.3 licensed by proving cost tracks load
+COUNT not miss count. Plus the Zen 4 512-bit double-pump (2.0015 events per
+`vmovdqu64`) as a silent-2x trap.
+
+**And it is given a pre-set fallback so a dead end has somewhere to go:**
+adjudicating study 34's `insertwin34` branchless insertion window on a quiet box
+— node-identical, fully measured except the sign of its trade (+0.702%
+instructions for −4% of ALL engine mispredicts), needing only ten quiet
+minutes. Flipping that feature on if it wins is itself an acceptable landed
+deliverable.
+
+Correct current pins were supplied (`587683` / `eb981b11…` / `1985398`), since
+several docs still carry the pre-i8 `5ca978e0…`/`1922947`.
