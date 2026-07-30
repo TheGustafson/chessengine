@@ -67,11 +67,14 @@ def run_engine(path: str, net: str | None, fens: list[str], nodes: int):
         send(f"position fen {fen}")
         send(f"go nodes {nodes}")
         last = 0
+        mate_seen = False
         while True:
             line = p.stdout.readline()
             if not line:
                 raise RuntimeError("engine died mid-search")
             if line.startswith("info"):
+                if " score mate " in line:
+                    mate_seen = True
                 m = INFO.search(line)
                 if m:
                     last = int(m.group(1))
@@ -90,7 +93,15 @@ def run_engine(path: str, net: str | None, fens: list[str], nodes: int):
                 # itself is the accurate common currency. Fall back to the
                 # reported count only if the engine stopped early (mate/TB), which
                 # is the one case where the budget would overstate.
-                total_nodes += nodes if last >= nodes * 0.90 else last
+                # The 0.90 guard here was WRONG (study 28, hardware breakpoint on
+                # Board::make_move_with, which cannot be fooled by printed output):
+                #   budget 6,000,000 -> TRUE 6,039,808 (100.66%), REPORTED 4,483,696 (74.73%)
+                # ARCHON honours the budget; it just never PRINTS the final partial
+                # iteration. The guard tested whether the last ITERATION finished near
+                # the budget -- which ARCHON fails by construction -- so the fallback
+                # took the under-reported count and threw the correction away.
+                # A real early stop is a MATE score, not a low node count.
+                total_nodes += last if mate_seen else nodes
                 break
     elapsed = time.perf_counter() - t0
     send("quit")
