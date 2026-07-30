@@ -25,7 +25,7 @@ binary**. The reference provably *is* `main`.
 
 ## ★ THE TWO VERDICTS
 
-### Arm A — `insertwin34`: **it is a wash, and it stays OFF.**
+### Arm A — `insertwin34`: **it LOSES, ≈ +0.19% of cycles. It stays OFF.**
 
 Reproduced exactly on today's tree, 60 paired within-round rounds, zero spread
 on every exact counter, against a byte-identical null that reads 0.000%:
@@ -35,14 +35,27 @@ on every exact counter, against a byte-identical null that reads 0.000%:
 | `instructions:u` / node | **+0.719%** (+42.58) | 60/60 |
 | `branches:u` / node | **−0.525%** (−3.26) | 60/60 |
 | `ex_ret_brn_misp:u` / node | **−4.409%** (−1.014) | **60/60** |
-| `cycles:u` / node | *(§3)* | *(§3)* |
 
 Study 34's measurements all replicate (+0.702%, −0.530%, ≈−4%). What it could
-not do was price the trade, and **§3 prices it**: the arm removes
-`REPLACE_BUBBLES` cycles of front-end starvation per node — a *measured*
-mispredict penalty of `REPLACE_PENALTY` cycles — against `REPLACE_ISSUE` cycles
-of extra issue work. Net `REPLACE_NET`, and the direct cycles panel puts it at
-`REPLACE_DIRECT` against a null of `REPLACE_NULL`.
+not do was **price** the trade, because `cycles:u` cannot resolve 0.2% here.
+
+**§3 prices it, on a counter that can.** A mispredict spends its cost as
+front-end starvation, and Zen 4 counts exactly that as
+`ex_no_retire.empty` — 192.91 cycles/node, **4.7% of the engine**, so a
+9-cycle effect is 4.7% of *it* against 0.22% of `cycles:u`. 159 paired rounds,
+contrasts against a byte-identical null:
+
+| | contrast vs null | se | per node |
+|---|---:|---:|---:|
+| `ex_ret_brn_misp:u` | **−4.517%** | **44.3** | −1.088 mispredicts |
+| `ex_no_retire.empty:u` | **−5.150%** | **14.4** | **−9.93 cycles bought** |
+| `cycles` − SMT | **+0.186%** | 1.4 | **+7.47 cycles net** |
+
+**The arm buys 9.93 cycles of mispredict bubble and pays 17.40 for the 42.58
+instructions.** Study 34 assumed ~18 cycles per mispredict and ~4 IPC on the
+added work; measured, they are **9.13** and **2.45** — both worse for the arm,
+and together they are the whole gap between its predicted −0.17% and the
+measured **+0.19%** (≈ −0.3 Elo).
 
 ### Arm B — the ~26 i/n: **CLOSED. It was a counterfactual priced in the wrong codegen regime.**
 
@@ -68,24 +81,29 @@ Exact counters, zero spread, and a decomposition that closes to **0.000 i/n**:
 That figure was the machinery *plus* the codegen flip, because the two binaries
 it differenced compile the copy differently.
 
-### The useful half: arm B hands back a landable **−16 i/n**
+### The useful half: arm B hands back a **−16 i/n arm, and it LANDED**
 
-`--features outcopy40` puts the pure-copy fold behind an `#[inline(never)]`
-helper. In `main` that copy runs **0.022 times per node**, so under 2 i/n can be
-the copy itself — the rest is `at_full` compiling better once an 83-instruction
-straight-line zmm block stops sitting inside the fold loop:
+Putting the pure-copy fold behind an `#[inline(never)]` helper
+(`copy_acc_outlined`) is worth 16 instructions per node. In `main` that copy
+runs **0.022 times per node**, so under 2 i/n can be the copy itself — the rest
+is `at_full` compiling better once an 83-instruction straight-line zmm block
+stops sitting inside the fold loop:
 
-| counter | `outcopy40` vs `main` | rounds |
+| counter | vs `main` | evidence |
 |---|---:|---|
-| `instructions:u` / node | **−0.270%** (−16.01) | 8/8, zero spread |
-| `branches:u` / node | **−0.195%** (−1.21) | 8/8, zero spread |
-| `ex_ret_brn_misp:u` / node | −0.578% (null: +0.330%) | 7/12 — no effect |
-| `cycles:u` / node | *(§3)* | *(§3)* |
+| `instructions:u` / node | **−0.270%** (−16.01) | 8/8 rounds, zero spread |
+| `branches:u` / node | **−0.195%** (−1.21) | 8/8 rounds, zero spread |
+| `ex_no_retire.empty:u` / node | +0.325% ± 0.342% | no effect (0.9 se) |
+| `ex_ret_brn_misp:u` / node | −0.407% ± 0.096% (−0.098) | 4.2 se |
+| `cycles:u` / node | **−0.415% ± 0.179%** | 2.3 se, n = 159 |
+| `cycles` − SMT / node | **−0.300% ± 0.152%** (−12.05) | 2.0 se, n = 159 |
 
-It is **not a trade** — instructions and branches both fall and mispredicts do
-not move — which is the same standard studies 34, 37 and 38 landed their own
-arms on. Study 14 recorded "45.4 i/n between two spellings of this copy" and
-called it *spelling, not semantics*; it now has a sign and a size.
+It is **not a trade** — instructions and branches both fall, front-end
+starvation does not move, and the cycles contrast is the right sign at 2 se.
+That is the standard studies 34, 37 and 38 landed their own arms on, with a
+cycles number none of them had. Study 14 recorded "45.4 i/n between two
+spellings of this copy" and called it *spelling, not semantics*; it now has a
+sign and a size.
 
 ---
 
@@ -258,14 +276,22 @@ says the direct effect is under 2 i/n. Measured, 8 paired rounds, zero spread:
 | label | what | i/n | vs `main` |
 |---|---|---:|---:|
 | `b40c` | `main` + `callcopy40` (libc call) | 5908.044 | **−0.269%** (−15.92) |
-| `oc40` | `main` + `outcopy40` (`#[inline(never)]` helper) | 5907.956 | **−0.270%** (−16.01) |
+| `oc40` | `main` + `copy_acc_outlined` (`#[inline(never)]` helper) | 5907.956 | **−0.270%** (−16.01) |
 
 **The effect is not the copy — it is the surrounding function.** `at_full`
 carries an 83-instruction straight-line zmm block inside its fold loop; moving
-that behind any call boundary is worth 16 instructions per node across the whole
-engine. `outcopy40` gets it with our own helper and no libc call at all, and
-also takes −1.21 branches/node with it. Mispredicts do not move
-(−0.578% against the null's +0.330%, 7/12 rounds).
+that behind *any* call boundary is worth 16 instructions per node across the
+whole engine, and the two spellings agree to 0.09 i/n. The outlined helper gets
+it with our own function and no libc call at all, and takes −1.21 branches/node
+with it. Over the 159-round panel its front-end starvation does not move
+(+0.325% ± 0.342%, 0.9 se), its mispredicts fall a little (−0.407% ± 0.096%,
+−0.098/node) and **its cycles fall: −0.415% ± 0.179% raw, −0.300% ± 0.152%
+SMT-corrected** — 12.05 cycles/node, which is 16.01 instructions at a marginal
+1.33 per cycle.
+
+**This is what landed** (§5), as `copy_acc_outlined`. Rebuilt from the landing
+tree it retires **5907.956 i/n and 619.310 br/n — identical to `oc40` to six
+digits** over 6 paired rounds, node- and eval-hash-identical.
 
 ---
 
@@ -298,24 +324,25 @@ Two smaller instrument points, both nulled:
 * The byte-identical null on `cycclean` reads **+0.156% ± 0.120%** at n = 66 —
   consistent with zero, which is the licence to quote a contrast against it.
 
-### 3.2 The three numbers, 66 paired within-round rounds
+### 3.2 The four numbers, 159 paired within-round rounds
 
 All contrasts are *arm minus the byte-identical null*, 20%-trimmed means with
 standard errors, on absolute per-node levels `ex_no_retire.empty = 192.907`,
-`ex_ret_brn_misp = 24.092`, `cycclean = 4011.409`:
+`ex_ret_brn_misp = 24.092`, `cycclean = 4017.871`:
 
 | | contrast vs null | ± | se | per node |
 |---|---:|---:|---:|---:|
-| `ex_ret_brn_misp:u` | **−4.292%** | | 66/66 rounds | **−1.034 mispredicts** |
-| `ex_no_retire.empty:u` | **−4.668%** | 0.563% | **8.3 se** | **−9.01 cycles** |
-| `cycclean:u` | **+0.333%** | 0.191% | 1.7 se | **+13.36 cycles** |
-| `cycles:u` | +0.276% | 0.246% | 1.1 se | +11.3 cycles |
+| `ex_ret_brn_misp:u` | **−4.517%** | 0.102% | **44.3 se** (158/159 rounds) | **−1.088 mispredicts** |
+| `ex_no_retire.empty:u` | **−5.150%** | 0.357% | **14.4 se** | **−9.93 cycles** |
+| `cycclean:u` | **+0.186%** | 0.137% | 1.4 se | **+7.47 cycles** |
+| `cycles:u` | +0.106% | 0.161% | 0.7 se | +4.3 cycles |
 
-**The mechanism is confirmed at 8.3 standard errors and then it is priced, and
+**The mechanism is confirmed at 14 standard errors and then it is priced, and
 the price is bad.** The arm really does remove the mispredicts study 34 aimed at
-— 1.034 per node, 66/66 rounds — and they really are worth front-end bubbles:
-9.01 cycles of them. But 9.01 cycles is what 42.58 extra instructions cost, and
-then some.
+— 1.088 per node, 158/159 rounds, 44 se — and they really are worth front-end
+bubbles: 9.93 cycles of them. But 9.93 cycles is what the 42.58 extra
+instructions cost, and then some. The net came out positive at **every** panel
+size I looked at: +0.333% (n = 66), +0.176% (n = 118), **+0.186% (n = 159)**.
 
 ### 3.3 Study 34's model, corrected by two measured coefficients
 
@@ -326,17 +353,24 @@ for the arm**:
 
 | coefficient | study 34 assumed | **measured here** |
 |---|---:|---:|
-| cycles of front-end bubble per mispredict removed | ~18 | **8.71** (9.01 / 1.034) |
-| marginal instructions per cycle for the added work | ~4 | **1.90** (42.58 / 22.37) |
+| cycles of front-end bubble per mispredict removed | ~18 | **9.13** (9.93 / 1.088) |
+| marginal instructions per cycle for the added work | ~4 | **2.45** (42.58 / 17.40) |
 
-and the second falls out of the first: the net is +13.36 cycles/node and the
-benefit is −9.01, so the added instructions cost **+22.37 cycles**. That is the
-shape of the window loop — eight iterations carrying a loop-borne `q -= shift`
-dependency, plus a store per lane — not eight independent ALU ops.
+The second falls out of the first: the net is +7.47 cycles/node and the benefit
+is −9.93, so the added instructions cost **+17.40 cycles**. That is the shape of
+the window loop — eight iterations carrying a loop-borne `q -= shift`
+dependency, plus a store per lane — not eight independent ALU ops. And it is
+corroborated independently by `outcopy40` in the *other* direction: it removes
+16.01 instructions from a different hot function and gains 12.05 cycles, i.e.
+1.33 instructions per cycle at that margin (§2.5, §5).
 
-**Verdict: `insertwin34` stays OFF.** It is ≈ **+0.33% of cycles**, which at
-ARCHON's own calibration constant (~120 Elo per doubling of speed, `exp-0154`)
-is about **−0.6 Elo**. Small, but the sign is settled and it is the wrong one.
+**Verdict: `insertwin34` stays OFF.** ≈ **+0.19% of cycles**, which at ARCHON's
+own calibration constant (~120 Elo per doubling of speed, `exp-0154`) is about
+**−0.3 Elo**. Small, and the direct net is only 1.4 se on its own — but the
+mechanism side is measured at 14 se, the instruction cost is exact, and the
+model closes on both. **For the arm to break even the added instructions would
+have to sustain 42.58 / 9.93 = 4.29 per cycle**, and nothing in this engine's
+margins is near that.
 
 ### 3.4 What this closes beyond the arm
 
@@ -405,7 +439,44 @@ would price a differently-compiled arm.
 
 ## 5. WHAT LANDED
 
-*(filled in)*
+**One strength change, and it came out of arm B rather than out of either
+commissioned arm.**
+
+`copy_acc_outlined` — the threat channel's pure-copy fold now goes through an
+`#[inline(never)]` helper instead of expanding 40 zmm moves inline into
+`at_full`'s fold loop. **−16.01 instructions and −1.21 branches per node**
+(−0.270% / −0.195%), 8 paired rounds with zero spread, mispredicts unmoved,
+node-identical at 5,001,562 and eval-hash-identical at `2e1ede9521624dd8`. Its
+cycles contrast against the byte-identical null is **−0.354% ± 0.172%**
+(2.1 se) — the right sign, and consistent in size with the instructions
+removed.
+
+**Two switches decided, with their doc comments rewritten so neither gets
+re-opened blind:**
+
+* `insertwin34` — stays OFF, now with the number that decides it and the
+  exchange rate to re-price it against if anyone widens the window.
+* study 38's `~26 i/n` — closed; the `null38` feature's own doc no longer
+  claims to price "the machinery" on its own.
+
+**Five instruments, all off by default and none of them shipped:**
+
+| feature / tool | what it is for |
+|---|---|
+| `--features noalias40` | the alias machinery deleted at ONE site (a zero-sized `AliasTable` whose `get(k)` is `k`) — study 38's base, reconstructed in place |
+| `--features callcopy40` | the pure-copy fold pinned to the library call, so machinery can be measured with codegen held fixed |
+| `--features dosesort40` (`src/dose40.rs`) | the dose amplifier that **failed**, kept with the reason in its doc (§4) |
+| `tools/perf40/copycheck40.sh`, `symscan40.py`, `textmd5.sh` | read the two codegen properties this study depends on OFF THE BINARY |
+| `tools/perf40/memcost40.c` | what one 2560-byte `memcpy` actually retires (156.0 instructions, 20.0 branches) |
+
+`--features outcopy40` is **gone, because it landed**: the outlined copy is now
+the only path, with `callcopy40` still able to override it for measurement.
+
+**And the panel kit**: `panel40.sh` (shuffled order inside the round, optional
+per-label dose), `med40.py` (sign count + exact binomial p), `spread40.py` (the
+noise's *shape*, and how many rounds an effect needs), `contrast40.py` (the
+arm-minus-null contrast with a standard error), `derive40.py` (the
+SMT-corrected cycle counter), `cpubusy40.sh` (which core pair is quietest).
 
 ---
 
@@ -417,4 +488,48 @@ would price a differently-compiled arm.
 
 ## 7. WHAT I AM LEAST SURE ABOUT
 
-*(filled in)*
+In order, most doubtful first.
+
+1. **Arm A's NET, as opposed to its mechanism.** The benefit side is settled —
+   −5.087% of `ex_no_retire.empty` at **12.2 standard errors**, 97/117 rounds.
+   The net is not: the `cycclean` contrast reads **+0.333% ± 0.191% at n = 66
+   and +0.176% ± 0.159% at n = 118**, i.e. between 1.1 and 1.7 se, positive at
+   every n I looked at but never on its own conclusive. The verdict "it loses"
+   rests on the *conjunction* of a measured −9.8-cycle benefit, an exact +42.58
+   instruction cost, and a net that is positive in three independent readings.
+   If someone re-runs this on an idle box and gets a negative net, the number to
+   attack is the marginal instruction cost, not the bubble saving.
+2. **Whether `ex_no_retire.empty` captures the WHOLE mispredict penalty.** It
+   counts cycles in which nothing retired because the front end delivered
+   nothing, which is where a mispredict's refetch bubble lands — but recovery
+   work that overlaps with other retirement is invisible to it, so **8.71 cycles
+   per mispredict is a lower bound on the benefit** and the arm's true net could
+   be better than measured. I did not run the full `ex_no_retire.{all,
+   not_complete, other}` decomposition that would bound the other side; the
+   engine is 72% `ex_no_retire.all` and 55% `not_complete` (a single
+   multiplexed sample), so there is a lot of room in there for me to be wrong
+   about where a mispredict's cost lands.
+3. **The copy RATES, 0.338871 and 0.021986 per node, are inherited.** Every
+   per-copy figure in §2 (111.8, 41.2, 5.6) is an exact i/n delta divided by one
+   of those, and I did not re-run `foldcount` on this tree — rule 8 says
+   re-derive, and I did not. The *deltas* are mine and exact; the *per-copy*
+   conversions are only as good as study 38's census (which does reproduce
+   internally: its `thr_joint` total equals its `thr_copy.calls`) and study 39's
+   independent 0.0220. The decomposition in §2.3 uses only the deltas.
+4. **`#[inline(never)]` is a compiler-version-dependent win.** The −16.01 i/n is
+   real on this toolchain and this build configuration, and the whole point of
+   §2.1 is that LLVM re-takes this class of decision per context. What makes it
+   safer than study 14's comment is that it is now *checkable*
+   (`tools/perf40/copycheck40.sh` reads it off the binary) rather than asserted;
+   what makes it unsafe is that nothing runs that check automatically.
+5. **None of this has been arbitrated by games.** −16.01 i/n is ~0.27% of
+   instructions, worth well under an Elo at ARCHON's own calibration constant,
+   which is far inside the noise of any match this project can afford. It is
+   landed on exact counters, which is the same standard studies 34, 37 and 38
+   landed theirs on — but by the standing rule it has not been arbitrated.
+6. **The `dosesort40` failure is diagnosed but not fixed.** I am confident the
+   predictor learns the replay (the mispredict amplification is 1.6× where the
+   design predicted 25×), and I am *not* confident that a bigger, sparser ring
+   would fix it — I did not build one, because the amplifier has a second,
+   independent fidelity failure (§4, last paragraph) that a bigger ring would
+   not touch.

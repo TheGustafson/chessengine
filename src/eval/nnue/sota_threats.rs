@@ -1002,19 +1002,42 @@ impl AliasTable {
 }
 
 /// The pure-copy fold's 2560-byte accumulator copy, behind a call boundary
-/// (perf study 40, `--features outcopy40`).
+/// (perf study 40 §2.5).
 ///
-/// `#[inline(never)]` is the entire point and it is a MEASURED choice: with the
-/// copy expanded inline, `at_full` (which inlines `compute`) carries an
-/// 83-instruction straight-line zmm block inside the fold loop, and pinning
-/// that block behind a call boundary measured **−15.92 instructions per node**
-/// — while the copy runs only 0.022 times per node, so under 2 of that can be
-/// the copy. The rest is the surrounding function compiling better. Study 14
-/// recorded 45.4 i/n between two spellings of this same copy and called it
-/// "spelling, not semantics"; this is the same effect with a sign and a size.
-#[cfg(feature = "outcopy40")]
+/// **`#[inline(never)]` is the entire point of this function and it is a
+/// MEASURED choice, not a style one.** Expanded inline, this copy is an
+/// 83-instruction straight-line zmm block sitting inside `compute`'s fold loop
+/// — and `compute` is inlined into `at_full`, the module's hottest symbol.
+/// Moving the block behind a call boundary measured, over 8 paired
+/// within-round rounds with **zero spread** and a byte-identical null at
+/// 0.000%:
+///
+/// | counter | vs the inline form |
+/// |---|---:|
+/// | `instructions:u` / node | **−0.270%** (−16.01) |
+/// | `branches:u` / node | **−0.195%** (−1.21) |
+/// | `ex_ret_brn_misp:u` / node | −0.578%, 7/12 rounds — no effect |
+///
+/// The copy runs **0.022 times per node** in the shipped engine (study 38's
+/// parent alias elides 93.5% of them), so under 2 of those 16 instructions can
+/// be the copy itself. The rest is the surrounding function compiling better
+/// without the block in it. Verified node-identical (5,001,562) and
+/// eval-hash-identical (`2e1ede9521624dd8`).
+///
+/// Study 14 recorded "45.4 i/n between two spellings of this copy" and called
+/// it *spelling, not semantics*. This is the same effect with a sign and a
+/// size — and unlike study 14's comment, it is checkable: `tools/perf40/
+/// copycheck40.sh` reads the codegen off the binary, and a build where this
+/// helper has been inlined away will show `vmovups=80` inside `at_full`.
+///
+/// `--features callcopy40` replaces it with the libc call, which measures the
+/// same −15.92; it exists only as the instrument that separated this effect
+/// from the copy's own cost.
 #[inline(never)]
 fn copy_acc_outlined(dst: &mut [i16; ACC], src: &[i16; ACC]) {
+    // `chunks_exact` DROPS a remainder, so a width that is not a multiple of 32
+    // would silently leave the tail of `dst` holding a stale sibling's lanes.
+    const { assert!(ACC.is_multiple_of(32)) };
     for (d, s) in dst.chunks_exact_mut(32).zip(src.chunks_exact(32)) {
         d.copy_from_slice(s);
     }
@@ -1500,16 +1523,22 @@ impl<'a> ThreatContext<'a> {
             // Perf study 38's NULL ARM (`--features null38`): the alias
             // MACHINERY -- the extra array, its read in `at_full`, its read of
             // the parent's holder here, and its per-fold store -- with the
-            // alias itself never taken, so every copy still happens. It exists
-            // because the arm's own delta cannot separate "what the copy cost"
-            // from "what carrying a fourth base pointer through `compute`
-            // costs", and this module has been bitten by exactly that before
-            // (study 22 measured +58.7 i/n from fat-pointer length loads alone).
+            // alias itself never taken, so every copy still happens.
+            //
+            // ⚠ PERF STUDY 40 CORRECTION: on its own it does NOT price the
+            // machinery. Differencing it against a no-machinery build moves two
+            // things at once, because carrying this array is what makes LLVM
+            // stop calling `memcpy` at the copy below and emit 40 inline zmm
+            // moves instead. Unconfounded with `noalias40` + `callcopy40`, the
+            // machinery is **+4.35 i/n** and the codegen flip **+13.98**; study
+            // 38's "+19.7 of machinery" was their sum, and the ~26 i/n it could
+            // not explain was pricing the ELIDED copies as library calls
+            // (187.9 each) when the binary they are elided from has them inline
+            // (111.8 each). Study 40 §2.
             // Perf study 40's `noalias40` deletes the table itself, so the
             // branch must go with it — an alias into a stand-in that answers
             // `get(k) == k` would point the child at ITSELF.
-            const ALIAS_ENABLED: bool =
-                !cfg!(feature = "null38") && !cfg!(feature = "noalias40");
+            const ALIAS_ENABLED: bool = !cfg!(feature = "null38") && !cfg!(feature = "noalias40");
             if ALIAS_ENABLED && need[0] && need[1] && lens[0] == (0, 0) && lens[1] == (0, 0) {
                 #[cfg(feature = "foldcount")]
                 {
@@ -1592,19 +1621,15 @@ impl<'a> ThreatContext<'a> {
                         let n = std::hint::black_box(ACC);
                         dst_acc[..n].copy_from_slice(&src_acc[..n]);
                     }
-                    // Perf study 40, `--features outcopy40`: the SHIPPABLE form
-                    // of what `callcopy40` measured. The 15.9 i/n `callcopy40`
-                    // buys is not the copy — at 0.022 copies/node the copy
-                    // itself is worth under 2 — it is `at_full` compiling
-                    // better once this 83-instruction straight-line block stops
-                    // sitting inside the fold loop. An `#[inline(never)]` helper
-                    // gets the same call boundary without the libc call.
-                    #[cfg(all(feature = "outcopy40", not(feature = "callcopy40")))]
+                    // PERF STUDY 40: the copy is OUTLINED, and that is the whole
+                    // change. Expanded inline it is an 83-instruction
+                    // straight-line zmm block sitting inside the fold loop, and
+                    // moving it behind a call boundary measured **−16.01
+                    // instructions and −1.21 branches per node** — while the
+                    // copy itself runs 0.022 times per node, so under 2 of that
+                    // can be the copy. See [`copy_acc_outlined`].
+                    #[cfg(not(feature = "callcopy40"))]
                     copy_acc_outlined(dst_acc, src_acc);
-                    #[cfg(not(any(feature = "callcopy40", feature = "outcopy40")))]
-                    for (d, s) in dst_acc.chunks_exact_mut(32).zip(src_acc.chunks_exact(32)) {
-                        d.copy_from_slice(s);
-                    }
                     entry.psqt[p] = parent.psqt[p];
                     self.fold[child][p] = Fold::Done;
                     continue;

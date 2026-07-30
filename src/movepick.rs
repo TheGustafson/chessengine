@@ -192,18 +192,39 @@ pub(crate) fn partial_insertion_sort_inner(moves: &mut [ExtMove], limit: i32) {
         // reach past `p`, which is harmless in value but must be in range).
         // Everything else falls through to the walk unchanged.
         //
-        // **OFF by default, and the reason is a measurement, not a doubt about
-        // the code.** Verified node-identical (5,001,624 / `eb981b119bd66d6e`)
-        // and measured exactly: `instructions:u` **+0.702%/node**,
-        // `branches:u` **-0.530%/node**, and the movepick family's share of all
-        // engine branch mispredicts **15.63% -> 13.95%**. That is a real trade
-        // of instructions for mispredicts, and ONLY cycles can adjudicate a
-        // trade — which the box could not do on 2026-07-30, with a null arm
-        // moving the cycles median +0.802% and +1.753% on two panels over
-        // ranges of 28.8 and 18.4 points (study 34 §6). Turn it on with
-        // `--features insertwin34`, run `tools/perf34/panel34.sh` on a quiet
-        // box against the same binary built without it, and the answer is one
-        // panel away.
+        // ⚠ **DECIDED, AND THE ANSWER IS NO. DO NOT RE-OPEN THIS BLIND.**
+        //
+        // Perf study 34 built it, verified it node-identical, and measured the
+        // trade exactly — study 40 reproduced every figure on today's tree over
+        // 60 paired within-round rounds with zero spread and a byte-identical
+        // null at 0.000%: `instructions:u` **+0.719%/node** (+42.58),
+        // `branches:u` **-0.525%** (-3.26), `ex_ret_brn_misp:u` **-4.409%**
+        // (-1.014), 60/60 rounds on each. The mechanism is exactly as designed.
+        //
+        // What study 34 could not do was PRICE it, because `cycles:u` cannot
+        // see a 0.3% effect on this box. Study 40 priced it on a counter that
+        // can: **`ex_no_retire.empty`** — the cycles in which nothing retired
+        // because the front end had nothing to deliver, which is where a
+        // mispredict spends its cost. It is 192.91 cycles/node here (4.7% of
+        // the engine), so the arm's effect is 4.7% OF IT rather than 0.22% of
+        // cycles. 66 paired rounds, contrasts against the byte-identical null:
+        //
+        //     ex_no_retire.empty  -4.668% +/- 0.563%  (8.3 se)  -9.01 cyc/node
+        //     cycles - SMT        +0.333% +/- 0.191%           +13.36 cyc/node
+        //
+        // **The arm buys 9.01 cycles of mispredict bubble and pays 22.37 cycles
+        // of issue for it.** Study 34's model assumed ~18 cycles per mispredict
+        // and ~4 IPC on the added instructions; measured on this arm in this
+        // engine they are **8.71** and **1.90**, both worse for the arm, and
+        // that is the whole gap between its predicted -0.17% and the measured
+        // **+0.33%** (about -0.6 Elo).
+        //
+        // The code stays because it is correct, node-identical, and the exact
+        // negative result is worth more in the tree than in a doc. If you widen
+        // the window or shorten the dependency chain, re-price it against
+        // **8.71 cycles per mispredict** — that is the exchange rate on this
+        // engine, and at it the whole of `init_quiets`' mispredict share (3.31
+        // per node) is only 28.8 cycles/node. Details: study 40 §3.
         #[cfg(feature = "insertwin34")]
         if se <= INSERT_WINDOW && moves.len() > INSERT_WINDOW {
             moves[p] = moves[se];

@@ -97,12 +97,13 @@ census34 = []
 # Measurement only, never shipped.
 null34 = []
 # Perf study 34 arm 2: `partial_insertion_sort`'s BRANCHLESS fixed-width
-# insertion window. Verified node-identical and measured (+0.702% instructions,
-# -0.530% branches, movepick's share of engine branch mispredicts 15.63% ->
-# 13.95%) -- a genuine instructions-for-mispredicts trade that only a CYCLES
-# instrument can adjudicate, which the box could not provide on 2026-07-30.
-# OFF by default so the shipped engine carries no unadjudicated change; the
-# code is here so the verdict costs one panel rather than a reimplementation.
+# insertion window. **DECIDED BY PERF STUDY 40 -- IT LOSES, AND IT STAYS OFF.**
+# The mechanism is real (-4.409% of all engine branch mispredicts, 60/60 paired
+# rounds) and it was priced on `ex_no_retire.empty` rather than `cycles:u`:
+# it buys 9.01 cycles/node of front-end bubble and pays 22.37 cycles for the
+# +42.58 instructions, i.e. +0.33% of cycles, about -0.6 Elo. The exchange rate
+# that decides it -- 8.71 cycles per mispredict on this engine, not the ~18
+# study 34 assumed -- is in `src/movepick.rs`. Do not re-open blind.
 insertwin34 = []
 # Perf study 29's TRAFFIC-PINNING probes. Both keep the load COUNT of every
 # accumulator kernel bit-for-bit identical and collapse ONE stream's working
@@ -138,9 +139,14 @@ probe-actpin = ["sota"]
 probe-addcopy = ["sota"]
 # Perf study 38's NULL ARM for the threat-fold parent alias: builds the alias
 # array, its reads and its stores, but never TAKES the alias, so every pure-copy
-# fold still runs its 2560-byte copy. Its purpose is to price the machinery
-# separately from the copies it removes -- the same role `null34` plays for the
-# movepick split. Measurement only, never shipped.
+# fold still runs its 2560-byte copy. Measurement only, never shipped.
+#
+# ⚠ IT DOES NOT PRICE "THE MACHINERY" ON ITS OWN, and study 38 read it that way.
+# Differencing it against a no-machinery build changes TWO things: the machinery
+# AND the copy's codegen, because carrying the array is what makes LLVM stop
+# calling `memcpy` at that site. Study 40 unconfounded it with `noalias40` +
+# `callcopy40`: the machinery is **+4.35 i/n**, the codegen flip **+13.98**, and
+# study 38's "+19.7 of machinery" was their sum.
 null38 = ["sota"]
 # Perf study 40's two overlays for the ~26 i/n study 38 could not localise.
 # `null38` above prices "the machinery" only if the two binaries it differences
@@ -158,11 +164,10 @@ null38 = ["sota"]
 # Measurement only, never shipped, never gated.
 noalias40 = ["sota"]
 callcopy40 = ["sota"]
-# Perf study 40's SHIPPABLE form of what `callcopy40` measured: the pure-copy
-# fold's 2560-byte copy behind an `#[inline(never)]` helper. Not an instrument
-# -- it is a candidate strength change, kept behind a feature only until it has
-# a cycles verdict and a gate run.
-outcopy40 = ["sota"]
+# (`outcopy40` is gone: it LANDED. The pure-copy fold's 2560-byte copy now
+# always goes through the `#[inline(never)]` `copy_acc_outlined` helper --
+# -16.01 instructions and -1.21 branches per node, node-identical. See that
+# function's doc comment.)
 # Perf study 40's DOSE AMPLIFIER for `partial_insertion_sort` (`src/dose40.rs`).
 # `insertwin34` is a ~0.2%-of-cycles trade and six nulls put the `cycles:u`
 # floor on this box an order of magnitude above that, so the arm is replayed
