@@ -7877,3 +7877,218 @@ showed the branch predictor **learns** a replay.
 **Three perf/research lines now running** (41 front-end, richer-representation,
 42 TT), with **D49's extension left alone** per user instruction — abort only on
 NaN or a pathological loss.
+
+## Tick — D49 sb428; study 34's "highest value-per-minute item" RE-PRICED and pre-registered
+
+**D49x: sb428 of 700, heldout ema 0.010985**, running untouched. The ema sits
+above the sb390 value (0.010812) because the LR was restarted at 1.25e-4 from a
+near-zero anneal — an expected transient, and far under the 0.0125 abort line.
+One abort condition only (NaN/inf, or ema > 0.0125 on two consecutive samples).
+
+**No games this tick, deliberately.** Three perf studies are taking cycles
+measurements; a 1500-game screen is ~104 games/min of full-box load and would
+contaminate all three. Games resume when the studies land.
+
+### Study 34 item 1 is priced NEGATIVE by a constant that did not exist when it was queued
+
+Study 34 called the branchless insertion window (`--features insertwin34`)
+**"the highest value-per-minute item on the list"** — built, node-identical,
+gated, shipped OFF, needing only "ten quiet minutes" of `panel34.sh`. That
+ranking was written **before study 40 measured the mispredict exchange rate**.
+Nobody went back to re-price it. From the two studies' own printed numbers:
+
+| term | value | source |
+|---|---:|---|
+| instructions added | **+41.841 i/n** (5960.137 → 6001.978) | study 34 §8.1, exact counters |
+| engine mispredicts/node | **24.07** | study 40 (`init_quiets` 3.31 = 13.75%) |
+| mispredicts removed | **−0.963/node** (≈ −4% of all) | study 34 §8.1 |
+| benefit @ **9.13** cycles/mispredict | **−8.79 cycles/node** | study 40's measured rate |
+| engine cycles/node | **4104** (IPC **1.452**) | study 40 (192.91 = 4.7%) |
+
+| conversion of the added instructions | cost | **net** |
+|---|---:|---:|
+| study 40's **measured** marginal rate, 2.45 i/cycle | +17.08 | **+8.29 cycles/node (LOSS)** |
+| Zen 4's theoretical 6-wide retire | +6.97 | −1.82 cycles/node (marginal win) |
+
+**⇒ Break-even requires the added work to retire at 4.76 IPC in an engine that
+runs at 1.452.** At the assumed-18-cycle exchange rate the arm cleared easily;
+at the measured 9.13 it does not, and the whole trade is ≤0.2% of cycles either
+way. **It is no longer the top of the list.**
+
+**Pre-registered prediction, so the panel tests a claim instead of fishing:**
+`panel34.sh 20 off on` on a quiet box will show `insertwin34` **between +2 and
++12 cycles/node WORSE** than off. The 6-wide row is why the panel is still worth
+its ten minutes rather than being cancelled outright — but it needs a quiet box,
+so it queues behind the three running studies.
+
+**The generalisable failure this exposes:** study 40 produced a calibration
+constant (9.13 cycles/mispredict, replacing an assumed 18) that **retroactively
+reprices every queued mispredict arm**, and none of them were revisited. Study
+40 said so itself — "every future mispredict arm should be priced at that rate
+before it is built" — and the FUTURE-tense framing let the already-queued ones
+through. Queued arms are exactly the ones with nobody watching.
+
+## Tick — D49 sb434; TWO corrections, one of them to my own published number
+
+### 1. Owner correction: REPLACEMENT was never considered, and it reprices ~3×
+
+The richer-representation study priced every context bit as an **addition** to
+what we already pay. The words "replace" and "swap" appear **nowhere** in it.
+Owner's point: if a representation is better, swap it in rather than bolt it on.
+Using the study's own conversion (s = 0.566; 2.57% cycles per 0.01 rebuilds/node;
+120 Elo/doubling), against the existing d/e mirror at 0.03345 flips/node:
+
+| bit | flips/node | ADD %cyc | **REPLACE %cyc** | ADD Elo | **REPL Elo** |
+|---|---:|---:|---:|---:|---:|
+| `rank1` (back rank) | 0.05094 | 7.41% | **2.54%** | −13.3 | **−4.5** |
+| `adv` (back-two) | 0.05278 | 7.68% | 2.81% | −13.8 | −4.9 |
+| `fpair` | 0.05939 | 8.64% | 3.77% | −15.6 | −6.7 |
+| `rankhalf` | 0.02329 | 3.39% | **−1.48%** | −6.0 | **+2.5** |
+| `esame` (enemy d/e) | 0.03345 | 4.87% | 0.00% | −8.6 | −0.0 |
+
+**`rankhalf` goes NEGATIVE as a replacement** — it flips *less often* than the
+mirror we already pay for, so swapping is +2.5 Elo of pure speed before any
+value question is asked. **CAVEAT, stated rather than buried:** the d/e mirror
+does double duty — it is also the left-right symmetry fold, which halves the
+feature space and doubles effective training data per row. Replacing it forfeits
+that sharing, which is a VALUE cost the speed table does not price. The panel
+can measure it; the arithmetic above cannot.
+
+### 2. RETRACTION of my own repricing — the cycles/node denominator is contested
+
+Two ticks ago I priced study 34's `insertwin34` using **4104 cycles/node**,
+derived from study 40's "192.91 = 4.7% of the engine". **That number is
+contested and I should not have derived it from a percentage.** On the
+IDENTICAL pinned frame (`bench 16 1 100000 wl50.fens nodes`, ~5,001,600 nodes):
+
+| | cycles/node | instructions/node |
+|---|---:|---:|
+| perf study 36 (direct per-node totals) | **8262.9** | 5935.2 |
+| perf study 40 (implied: 192.91 = 4.7%; 30.2 = 0.74%) | **~4090** | 5923.967 |
+
+**The instruction counts agree to 0.2%. The cycle counts differ by 2×.** Study
+40's percentages are self-consistent (both imply ~4090), so this is one
+denominator error, not noise — and if study 36 is right, **every "% of cycles"
+in study 40 is doubled**, including the mispredict-class pricing that the whole
+front-end line rests on. Unresolved; flagged to the running studies.
+
+**What survives:** the `insertwin34` verdict is robust to the frame, because the
+benefit is counted per node directly (27.3 mispredicts/node × 4% × 9.13 = −9.97
+cycles/node under study 36's frame, −8.79 under study 40's) while the cost only
+grows if study 40's cycles are half of truth (its measured 2.45 i/cycle marginal
+rate would become 1.225). **The arm still loses; break-even needs the added work
+to retire at 4.20 IPC against an engine-wide 0.72.** The magnitudes I published
+were wrong; the conclusion was not.
+
+### 3. Commissioned: the CONCEPT study (Fable)
+
+Owner's actual question — *"something entirely different, a different concept or
+a mix of concepts, than the current features"* — not a finer slicing (proved
+vacuous) and not a better king bit. Our whole vocabulary is two hand-designed
+relations: piece-on-square-given-king, and attacker-hits-victim.
+
+**The binding constraint is UPDATE LOCALITY, and it is measurable on CPU today**
+with the `foldcount` counters the predecessor just landed — rows changed per made
+move, in-tree, on the pinned frame, while the GPU stays committed to D49 for
+~14h. Tier-0 is that census over candidate families (pawn-structure motifs,
+king-safety zone occupancy, piece-pair relations beyond attacks, learned discrete
+codes whose update-stability was never measured), each priced BOTH additively and
+as a REPLACEMENT for part of the threat channel — which costs 25–39% of our
+speed and is therefore the thing worth displacing. Tier-1 specified, not
+launched. The 2× denominator contradiction above is written into the brief.
+
+## Tick — D49 sb441, ema TURNED; the 2× cycles/node contradiction is RESOLVED by measurement
+
+**D49x: sb441. The ema turned down for the first time since the restart**
+(0.011009 → 0.010997) and the raw heldout is falling faster (0.011290 →
+0.011260, vs 5e-6/10sb before). Running untouched.
+
+### The contested denominator: study 40 is right, study 36 is wrong
+
+Measured myself rather than argued — `perf stat` on the pinned frame
+(`bench 16 1 100000 wl50.fens nodes`, canonical D48X net, canonical binary,
+5,001,566 nodes):
+
+| | measured | study 36 claim | study 40 implied |
+|---|---:|---:|---:|
+| **cycles/node** | **4489.8** | 8262.9 | ~4090 |
+| instructions/node | 5659.0 | 5935.2 | 5923.967 |
+| branches/node | 563.5 | — | 623.802 (study 34) |
+| mispredicts/node | **22.35** | 27.3 | 24.07 (implied) |
+| IPC | **1.260** | 0.718 (implied) | 1.448 (implied) |
+
+**And study 40 is confirmed to within contention.** Its "192.91 cycles/node =
+4.7% of the engine" implies a denominator of **4104**; I measured **4489.8**
+while two perf studies and the trainer were running — **+9.4%, exactly the
+inflation contention produces**, and cycles:u can only be inflated by
+contention, never deflated. **Study 36's 8262.9 would need +84% inflation to be
+reachable. It is not reachable.** Its per-node totals line is wrong by ~1.84×.
+
+**Scope of the damage — narrow, but it caught me.** Study 36's *symbol
+percentages* are almost certainly fine (perf-record shares are self-normalising).
+What is wrong is its **per-node totals line**, so anyone converting one of its
+percentages into absolute cycles/node over-estimates by ~1.84×.
+
+**Correction to my own correction.** Last tick I "corrected" my `insertwin34`
+repricing by adopting study 36's 8262.9. That made it worse: my original 4104
+was approximately right. Repriced on measured numbers — +41.841 i/n buys
+−0.894 mispredicts/node = **−8.16 cycles/node**, against +17.08 at study 40's
+measured 2.45 marginal rate ⇒ **net +8.92 cycles/node LOSS**, and
+**break-even needs 5.13 IPC against a measured engine IPC of 1.260.** The
+verdict has now survived three different denominators; it is not
+frame-sensitive. **Bottom line: the arm loses, and the number to quote is 4489.8
+cycles/node (≈4100 quiet), not 8262.9.**
+
+Both running perf studies notified, since a wrong denominator would silently
+mis-rank everything they are about to report.
+
+## Tick — D49 sb448; the denominator is SETTLED on study 40's own binary; study 43 commissioned
+
+### Settled: 4179.7 cycles/node, and study 36's per-node line is ~2.00× too high
+
+I ran study 40's **own base binary** (`bin34/b40`, still on disk in its
+worktree) on the pinned frame. It reproduces the study's published number to
+**10 parts per million**:
+
+| | measured on `b40` | study 40 published/implied |
+|---|---:|---:|
+| node count | 5,001,562 | 5,001,562 — exact |
+| **instructions/node** | **5923.909** | 5923.967 (**Δ −0.058**) |
+| **cycles/node** | **4179.7** | ~4104 implied (+1.8%, contention) |
+| mispredicts/node | 24.01 | 24.07 implied |
+| IPC | 1.417 | 1.448 implied |
+
+**Study 36's 8262.9 would need +97.7% inflation. The ratio is ~2.00, which
+points at a double-count, not a measurement difference.**
+
+**In fairness to study 36, it self-flagged**: "the per-node totals beside them
+are not [immune to drift], and are only comparable within this document." The
+symbol *shares* are within-run attributions and stand. **The error was inheriting
+its per-node totals across studies — which is what I did.** Quote **4104–4180
+cycles/node**; never 8262.9.
+
+### Study 43 — `finny_refresh_into`, 8.75% of cycles and never targeted
+
+The Finny (king-bucket accumulator) cache is the **4th largest symbol** and the
+most *memory-bound* one in the top tier. Its signature is unusual and specific:
+
+| symbol | %cycles | %instr | %L1d loads | ratio cyc:instr |
+|---|---:|---:|---:|---:|
+| `HalfkaContext::finny_refresh_into` | **8.75** | **3.24** | **3.44** | **2.70×** engine avg |
+
+**Few loads, few instructions, lots of cycles** — it is not computing, it is
+waiting. And the layout says why: `FinnyEntry` is **2688 B** (`by_piece`
+[[Bitboard;6];2] = 96 B + `psqt` + `acc` [i16; 1280] = 2560 B), and the cache is
+`2 × FINNY_KEYS = 128` entries ⇒ **~336 KB**. That is 10× Zen 4's 32 KB L1d and
+sits in L2, so **every refresh streams ~42 cache lines**.
+
+Seven studies mention Finny (22, 29, 10, 4, 19, 9 …) and **none targeted making
+it faster**. Study 22 fixed its *metadata* (the `Option` niche costing a whole
+line per slot, and the boxed-slice fat pointer); the 2560-byte payload stream was
+never examined. Four questions in the brief: the miss/stall attribution at the
+now-correct denominator; whether hot metadata and cold payload should be split
+(SoA) so the probe stops pulling payload lines it does not need; whether
+`FINNY_KEYS = 64` is anywhere near the locality/hit-rate optimum (never
+measured); and prefetch — where the prior is strongly negative, **six kills**, but
+this is the one case in the engine where the address is known a long way ahead of
+the use, so it must beat the prior with a measurement rather than a story.

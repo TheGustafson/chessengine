@@ -106,6 +106,48 @@ pub fn note_thr_joint(need: [bool; 2], lens: [(usize, usize); 2]) {
     THR_JOINT[i].fetch_add(1, Relaxed);
 }
 
+/// King-boundary crossing census (richer-representation study, Tier-0 T0c).
+///
+/// A threat-context refinement bit b(ksq) forces a from-scratch threat rebuild
+/// whenever the relevant king crosses b's boundary — the same trigger shape as
+/// the existing d/e mirror. Its runtime price is therefore
+/// `crossing_rate x at_full`, and the crossing rate must be measured IN-TREE
+/// (search walks kings differently from games). These counters tally, for
+/// every made move that relocates a king, which candidate boundaries it
+/// crossed; `kmove.mirror` doubles as the calibration column against the
+/// measured 0.0214 rebuilds/node (its ratio to `thr_refresh.calls` on the same
+/// run gives the deferral survival factor, which the deferral machinery
+/// applies identically to any boundary).
+///
+/// Indexed by the moving king's color; ranks are color-relative (rank 0 = that
+/// king's home rank), matching the per-perspective own-frame definitions in
+/// `tools/nnue/region_census.py`.
+pub static KMOVE: [[AtomicU64; 2]; 6] = [const { [const { AtomicU64::new(0) }; 2] }; 6];
+/// Row names for [`KMOVE`], in index order.
+pub const KMOVE_NAMES: [&str; 6] = ["total", "mirror", "rank12", "rank01", "fpair", "rankhalf"];
+
+/// Hook: color `c`'s king moved `from` → `to` (absolute squares, 0..64).
+#[inline]
+pub fn note_king_move(c: usize, from: u8, to: u8) {
+    let (ff, tf) = (from & 7, to & 7);
+    // Color-relative ranks: home rank = 0 for both colors.
+    let flip = (c as u8) * 7;
+    let (fr, tr) = ((from >> 3) ^ flip, (to >> 3) ^ flip);
+    let hits: [bool; 6] = [
+        true,
+        (ff <= 3) != (tf <= 3), // d/e mirror (the existing context)
+        (fr <= 1) != (tr <= 1), // back-two-ranks vs advanced
+        (fr == 0) != (tr == 0), // back rank vs off it
+        (ff >> 1) != (tf >> 1), // file pair a-b/c-d/e-f/g-h (finer than mirror)
+        (fr <= 3) != (tr <= 3), // own half vs enemy half of the board
+    ];
+    for (i, hit) in hits.iter().enumerate() {
+        if *hit {
+            KMOVE[i][c].fetch_add(1, Relaxed);
+        }
+    }
+}
+
 /// Named address regions, so an IBS data-address sample can be attributed to
 /// the accumulator stack or to a weight table. Sixteen slots is plenty; the
 /// registry is write-once at construction and read once at dump.
@@ -187,6 +229,13 @@ pub fn dump(nodes: u64) {
                 (i >> 3) & 1
             );
         }
+    }
+    for (i, name) in KMOVE_NAMES.iter().enumerate() {
+        let (w, b) = (KMOVE[i][0].load(Relaxed), KMOVE[i][1].load(Relaxed));
+        emit!(
+            "FOLDCOUNT kmove.{name}={} kmove.{name}.w={w} kmove.{name}.b={b}",
+            w + b
+        );
     }
     if let Ok(g) = REGION_NAME.lock() {
         for &(i, name) in g.iter() {
