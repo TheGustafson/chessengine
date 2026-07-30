@@ -3498,3 +3498,82 @@ hazard: nothing committed after ~2 h.* 30 (CEN3 guard) ahead=2, 5 dirty.
 31 (roadmap) ahead=0, 6 dirty. No games launched this tick deliberately: load
 was already 12.04 with three cargo builds plus the trainer, and the user's
 sequence is study 30 -> test -> games.
+
+## Perf study 31 COMPLETE — the parity roadmap (verified, NOT yet merged)
+
+Branch `worktree-agent-aada569ec146a882d`, 2 commits, tree clean, 43 KB doc at
+`docs/research/perf-study-31-parity-roadmap-2026-07-30.md`.
+
+**It contradicts two prior studies, so I verified its load-bearing claim myself
+before accepting the reframing** (standing rule: retractions of prior work get
+checked against the source, not taken on report).
+
+### VERIFIED BY ME against the `eca43a97` commit object
+
+> **Stockfish did NOT solve the fusion blocker — it pays it.**
+
+- `nnue_accumulator.h:45-46` — SF's Accumulator IS "combined HalfKA + Threats".
+- But the refresh-cache `Entry` (h:65-67) holds only `accumulation` +
+  `psqtAccumulation`.
+- `ThreatFeatureSet::append_active_indices` IS called on the refresh-cache path
+  (`nnue_accumulator.cpp:577`) — the full threat index list is rebuilt.
+- `find_last_usable_accumulator` carries the verbatim comment (cpp:112-113):
+  *"Threat feature set refreshes require a king move across the center, i.e., a
+  subset of halfka refreshes"*.
+
+⇒ **Our split accumulator is a genuine advantage over SF on the refresh axis,
+and fusion trades it away.** This nuances the standing memory note that "SF's
+advantage is incremental maintenance vs our at_full replay" — on the REFRESH
+path SF rebuilds too.
+
+### The five results (study's own, not independently re-measured by me)
+
+1. **Per-node line budget.** 52% of load-stall cycles are FT weight rows, 61% of
+   those the HalfKA table. Accumulator streaming (the whole fusion debate) is
+   **19%**; the threat channel — four studies to itself — is **20%**. Control:
+   reproduces four established numbers (refresh rate 0.16102 vs 0.1611, refresh
+   rows 0.9132 vs 0.9064, rows/fold 2.275 vs 2.27, pushes/node 1.0000).
+   Explains prefetch's five deaths and why width's elasticity is 0.31 not 1.0.
+2. **Accumulator streaming priced directly:** one redundant acc-pair copy/node
+   = +32.88 L1 misses/node, +162.7 load-stall cycles/node, 0/12 rounds
+   negative, nulls −0.125% / −2.709%. ⇒ 2.36 stall cycles/line, 4.95/miss.
+3. **Fusion re-priced −136 cycles/node [−183, −89] = +4.7 Elo — rank #4.**
+   Study 22 closed it at "+872 i/n, 6:1 against" using 6,240 instructions per
+   threat rebuild, a figure **study 18 had already corrected 2.2-2.9x down**;
+   the census says a rebuild adds 4.18 rows. Study 28 ranked it #1.
+   Instructions net **−42 … +199** — neutral; the case is stall cycles.
+4. **Study 28's item C is a measured NULL** (was −264 cycles/node, 26.7% of the
+   gap). The arm was built; the L1-miss counter (null ±0.16%) does not move:
+   +1.57/node, wrong sign. The lines were already hot. `search::<NonPv>`'s
+   +303.4 is now a *site with no mechanism*.
+5. **THE DISCOUNT, derived across studies 8-19.** Items priced as *"this edit
+   removes N instructions at M sites"* realised **76.5%**. Items priced as
+   *"we are N i/n worse than SF at this block"* realised **6.8%**. All four of
+   study 28's ceilings are block-excess prices ⇒ **forecast +8 to +18 Elo, not
+   its +22 to +32.** *This is the most reusable thing in the study.*
+
+### The biggest item is NOT fusion
+
+**Offline i8 quantisation of the HalfKA transformer: −463 cycles/node ≈ +17
+Elo** — bigger than fusion and width combined, and it brings the table inside
+L3. Gated on an offline fidelity check first. Two other pre-build measurements:
+localise `search::<NonPv>`'s stall, and a co-access census of the two FT tables
+(input to a bit-identical index permutation).
+
+### Landed + honesty
+
+`4503060` — arm p1, node-identical, eval-bit-identical, −0.78 i/n against an
+exact 0.000% null; kept as an **encoded negative result** so the split is not
+proposed a third time. Gates reported clean: Bench 587683, eval hash
+5ca978e0…, d13 1922947, 45 tests, clippy/fmt.
+Study's own caveats, recorded: 7.4 cycles-per-cold-line is a *residual* so
+items 1/2 and the i8 estimate all move with it; the non-NNUE floor (30%) is
+scaled across frames; 4.18 rows is measured on endgame-heavy `wl50` and a
+middlegame rebuild is likely ~7 (moves fusion −136 → ~−100, not the sign);
+frame is non-PGO on a contended box. **It ran no games.**
+
+**NOT MERGED YET** — studies 29 and 30 are still live on their own branches and
+merging now risks conflicting under them. Merge order: 30 (user's sequence
+needs it), then 29, then 31. Study 29 has been sent study 31's census numbers
+and the verified SF finding, with instructions to state any disagreement
+plainly rather than defer.
