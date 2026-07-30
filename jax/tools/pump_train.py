@@ -51,7 +51,8 @@ HELDOUT_TARGET = (0.0, None)
 
 
 def heldout_value_loss(params, arch, ft_impl="pallas", batch_size=8192,
-                       target_offset=0.0, scale=None):
+                       target_offset=0.0, scale=None,
+                       net_offset=0.0, net_scale=0.0):
     """Heldout value MSE.
 
     **The frame matters and this is a trap.** This metric was pinned at
@@ -77,7 +78,16 @@ def heldout_value_loss(params, arch, ft_impl="pallas", batch_size=8192,
                       policy=False, target_offset=target_offset)
         b = {k: np.asarray(v) for k, v in b.items()}
         out = forward(jparams, arch, b, ft_impl)[0]
-        total += float(np.sum((np.asarray(jax.nn.sigmoid(out)) - b["target"]) ** 2))
+        # THE SAME TRAP AS THE LABEL FRAME, ON THE NETWORK SIDE. D49 trains
+        # with the offset two-sigmoid on the network output; scoring it with a
+        # plain sigmoid measures a DIFFERENT FUNCTION than training optimises
+        # and reads as a regression by construction.
+        if net_scale > 0.0:
+            from archon_jax.losses import expected_score
+            q = np.asarray(expected_score(out, net_offset, net_scale))
+        else:
+            q = np.asarray(jax.nn.sigmoid(out))
+        total += float(np.sum((q - b["target"]) ** 2))
     return total / n
 
 
@@ -263,13 +273,17 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
                 save_pair(host, arch, out, f"{net_id}-sb{sb}")
                 hv = heldout_value_loss(host, arch,
                                         target_offset=HELDOUT_TARGET[0],
-                                        scale=HELDOUT_TARGET[1])
+                                        scale=HELDOUT_TARGET[1],
+                                        net_offset=cfg.net_offset,
+                                        net_scale=cfg.net_scale)
                 if ema_on:
                     ema_host = jax.tree.map(np.asarray, ema)
                     save_pair(ema_host, arch, out, f"{net_id}-sb{sb}-ema")
                     he = heldout_value_loss(ema_host, arch,
                                             target_offset=HELDOUT_TARGET[0],
-                                            scale=HELDOUT_TARGET[1])
+                                            scale=HELDOUT_TARGET[1],
+                                            net_offset=cfg.net_offset,
+                                            net_scale=cfg.net_scale)
                     print(f"heldout sb {sb} | value {hv:.6f} | ema {he:.6f}",
                           flush=True)
                 else:

@@ -2550,3 +2550,29 @@ First screenable checkpoint (sb100, the owner's plateau point) is ~3 h out; per
 the standing rule it gets >=1500 games, not 120.
 
 Study 21 (ARCHON-only stall hunt) running, no commits yet, no builds in flight.
+
+### ★ D49 RESTARTED at sb16 — the heldout scorer was measuring the WRONG FUNCTION
+
+**Found before it could mislead a 13.6-hour run.** `heldout_value_loss`
+(`pump_train.py`) computed `sigmoid(out)`, while D49's training loss uses
+`expected_score(out, 0.43775, 0.179)` — the network-side double sigmoid.
+
+**This is the SAME TRAP the function's own docstring warns about, on the other
+side.** That docstring covers the LABEL frame ("scoring a calibrated net against
+the old target reads as a REGRESSION BY CONSTRUCTION") and nobody extended the
+thought to the network output when we added the network-side transform. D49
+would have logged a heldout for its whole run that measured a different function
+than it was optimising.
+
+Fixed: `heldout_value_loss` now takes `net_offset` / `net_scale` and applies
+`expected_score` when set; both call sites (params and EMA) pass `cfg.*`.
+`net_scale=0` keeps the historical path bit-exact.
+
+**Restarted at sb16 — 33 min lost out of 13.6 h (4%).** Cheap against flying
+blind on the primary health metric for the whole run. Training itself was always
+correct; only the telemetry was wrong, but telemetry is how a divergence gets
+caught early.
+
+**Generalisation worth keeping: when a transform is added to one side of the
+loss, grep for EVERY place that recomputes the loss outside the training step.**
+Heldout scorers, probes and parity tools all silently keep the old shape.
