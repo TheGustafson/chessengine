@@ -117,11 +117,13 @@ difference is visible in the instrument itself. All measurements in §2 and §3
 were taken in **one** window with the D49 trainer as the only other load
 (load average 4.3–4.8 against 20–26 for studies 34/36).
 
-The signature: `cycles:u` on the reference binary reads **~4165 per node here
-against study 36's 8262.9** on the same frame and the same tree. That is study
-33's "absolutes inflate ~1.9× under contention" reproduced almost exactly, from
-the other side, and it is a warning attached to every cycles number any of these
-studies has ever printed.
+The signature: `cycles:u` on the reference binary reads **4289.1 per node here
+against study 36's 8262.9** on the same frame and the same tree — a factor of
+**1.93**. That is study 33's "absolutes inflate ~1.9× under contention"
+reproduced almost exactly, from the other side, and it is a warning attached to
+every cycles *level* any of these studies has printed. (Instructions reproduce
+study 36's landed tree to seven digits over the same interval: **5905.510** here
+against its 5905.511.)
 
 Source reading, `git log -S` archaeology and arm design were all done *before*
 the window opened, on an explicitly loaded box, exactly so the window could be
