@@ -800,9 +800,12 @@ ln -sfn /path/to/d48x-1280-sb520-ema-s600.cenn \
         data/nnue/nets/screens/d48x-1280-sb520-ema-s600.cenn
 
 # 1. build the arms (each serialises behind the shared build lock)
-bash tools/perf44/build44.sh base44                 # REGS = 20, today's main
-bash tools/perf44/build44.sh r10  regs10_44
-bash tools/perf44/build44.sh r5   regs5_44
+# NOTE: after this study landed, REGS = 5 is the DEFAULT and REGS = 20 is the
+# feature. The panel below is written in the post-landing spelling, so `base44`
+# is the pre-study tile and `r5` is plain main -- the same contrast, relabelled.
+bash tools/perf44/build44.sh base44 regs20_44       # REGS = 20, the OLD tile
+bash tools/perf44/build44.sh r10    regs10_44
+bash tools/perf44/build44.sh r5                     # REGS = 5, what landed
 cp bin44/base44 bin44/null44                        # the byte-identical null
 
 # 2. THE GATE, before any timing: node count, d13, wl50 eval hash
