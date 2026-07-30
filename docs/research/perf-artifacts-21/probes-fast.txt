@@ -1,0 +1,7 @@
+fast=baseline                           instr=30,446,436,810 nodes= 5,001,562 per_node=  6087.4 brs_per_node=  643.3 hash=5ca978e012da1bb0
+fast=n1-prefetch-null                   instr=31,122,990,605 nodes= 5,001,562 per_node=  6222.7 brs_per_node=  673.2 hash=5ca978e012da1bb0
+fast=a1-prefetch-rows                   instr=31,292,552,645 nodes= 5,001,562 per_node=  6256.6 brs_per_node=  673.7 hash=5ca978e012da1bb0
+fast=b1-hist-align64                    instr=30,530,828,111 nodes= 5,001,562 per_node=  6104.3 brs_per_node=  642.4 hash=5ca978e012da1bb0
+fast=b2-head-pack                       instr=30,390,285,428 nodes= 5,001,562 per_node=  6076.2 brs_per_node=  642.6 hash=5ca978e012da1bb0
+fast=b3-stack32                         instr=30,279,285,011 nodes= 5,001,562 per_node=  6054.0 brs_per_node=  643.5 hash=5ca978e012da1bb0
+fast=b4-final                           instr=30,420,005,499 nodes= 5,001,562 per_node=  6082.1 brs_per_node=  643.8 hash=5ca978e012da1bb0

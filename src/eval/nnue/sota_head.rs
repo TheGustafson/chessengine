@@ -177,13 +177,13 @@ pub struct SotaHead {
     /// `[BUCKETS][L2 · L1]` i8.
     pub l1_weights: Aligned<i8>,
     /// `[BUCKETS][L2]` f32.
-    pub l1_biases: Box<[f32]>,
+    pub l1_biases: Aligned<f32>,
     /// `[BUCKETS][L2 · L3]` f32.
     pub l2_weights: Aligned<f32>,
     /// `[BUCKETS][L3]` f32.
-    pub l2_biases: Box<[f32]>,
+    pub l2_biases: Aligned<f32>,
     /// `[BUCKETS][L3]` f32.
-    pub l3_weights: Box<[f32]>,
+    pub l3_weights: Aligned<f32>,
     /// `[BUCKETS]` f32.
     pub l3_biases: Box<[f32]>,
     /// f32→centipawn scale (Reckless 380; ours is baked at training, per-net).
@@ -678,10 +678,10 @@ mod tests {
         let l3b: Vec<f32> = (0..BUCKETS).map(|i| i as f32 * 0.1).collect();
         SotaHead {
             l1_weights: l1w.into(),
-            l1_biases: l1b.into_boxed_slice(),
+            l1_biases: l1b.into(),
             l2_weights: l2w.into(),
-            l2_biases: l2b.into_boxed_slice(),
-            l3_weights: l3w.into_boxed_slice(),
+            l2_biases: l2b.into(),
+            l3_weights: l3w.into(),
             l3_biases: l3b.into_boxed_slice(),
             network_scale: 380,
             l3_var_weights: None,
@@ -865,7 +865,7 @@ mod tests {
     #[test]
     fn propagate_l3_var_mirrors_propagate_l3() {
         let mut head = synth_head();
-        head.l3_var_weights = Some(head.l3_weights.clone());
+        head.l3_var_weights = Some(head.l3_weights.to_vec().into_boxed_slice());
         head.l3_var_biases = Some(head.l3_biases.clone());
         let l2: [f32; L3] = std::array::from_fn(|i| (i as f32 * 0.031 - 0.5).sin());
         for bucket in 0..BUCKETS {

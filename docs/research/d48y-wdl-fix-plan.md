@@ -2624,3 +2624,184 @@ the pattern that put main in a non-compiling state when study 20 died — its
 committed arms depended on test fixes left in the working tree. Its brief tells
 it to commit as it goes. Mid-arm uncommitted work is normal; **if it dies with
 those 7 outstanding, check the worktree before merging anything.**
+
+### Tick — D49 heldout trending, FOUR studies live on disjoint scopes
+
+**D49 sb20, 194k pos/s.** Heldout under the fixed (network-side) scorer:
+
+| sb | value | R² | EMA | R²(ema) |
+|---|---|---|---|---|
+| 10 | 0.017605 | 0.8233 | 0.017254 | 0.8269 |
+| **20** | **0.015744** | **0.8420** | **0.014688** | **0.8526** |
+
+Falling cleanly from scratch; EMA improving faster than raw, as expected.
+Targets: D48X annealed **0.8815**, D48Y2 final **0.8906**.
+
+**FOUR studies now cover ~87% of our cycles on fully disjoint file scopes:**
+
+| study | files | cycles | state |
+|---|---|---|---|
+| 21 | history, sota_simd, sota_head, sota_loader, sota_features | ~22% | **4 commits** |
+| 22 | **sota_accumulator** (narrowed to it alone), sota_context | 12.4%, never analysed | 0 commits, 15 min in |
+| 23 | search, movepick | ~30% | 0 commits, 15 min in |
+| 24 | sota_threats, board, movegen, moves | ~23% | 0 commits, 15 min in |
+
+**Build serialisation instead of coordination:** each study is capped at
+`MemoryMax=3G` with `oomlast` (a study dies before the trainer can) AND told to
+run `free -m` before every build, sleeping 120 s and re-checking if under
+3500 MB. Four studies therefore cannot all build at once without waiting.
+
+Box right now: **8.85 GB available, memory pressure avg10 0.16**, zero rustc.
+The scheme is holding.
+
+## ★★★ STUDY 21 — and it CORRECTS THE PROFILE TABLE I BRIEFED EVERY STUDY WITH
+
+**Landed: −1.35% cycles at −0.07% instructions, L1 misses −6.8/node.** A pure
+stall win. Frame: `bench 16 1 100000 wl50.fens nodes` (fixed 5,001,562-node
+tree), interleaved paired A/B, two 25-round panels, **36/50 rounds negative
+against a same-binary-vs-itself null of 12/25 (+0.01%)** — it ran the null LAST
+to validate the harness. All three pins reproduce.
+
+| arm | what |
+|---|---|
+| **B1** | all six history tables started at **16 or 48 mod 64**, so every 128-byte `[piece][to]` row spanned **three** cache lines instead of two. 20 MiB nobody had checked. −0.56% alone |
+| **B4** | study 20's own alignment sweep **stopped one field short** — `l1_biases`/`l2_biases`/`l3_weights` at 32 mod 64 |
+| B2 | head kernel reshapes: instruction-axis only, **cycles a null**, and the commit says so |
+
+### ★ THE CORRECTION — my profile shares attribute INLINED CALLEES TO CALLERS
+
+| symbol | I briefed (inclusive) | study 21 (exclusive) |
+|---|---|---|
+| `finny_refresh_into` | 9.15% | **1.17%** |
+| `search::<NonPv>` | 19.90% | **6.81%** |
+| **`i8_deltas_into`** | **not on my list** | **14.88% — LARGEST IN THE ENGINE** |
+
+**I verified the mechanism myself:** `apply_i8_deltas_into` is real at
+`sota_simd.rs:185` but does **NOT appear in `nm`** on the shipped binary — it is
+inlined, so its cycles land on its caller. That is exactly what inflates a
+symbol-level table. (I could not re-run the exclusive profile to confirm the
+percentages — `perf` returns 129/255 under contention from the sibling studies —
+so the MECHANISM is mine and confirmed; the NUMBERS are study 21's and
+unverified by me.)
+
+Two more from the same study: **symbol shares are frame-dependent**
+(`i8_deltas_into` reads 10.86% on wl50 vs 14.88% on d16, same binary), and the
+**resolution floor is ~1% cycles**, set by the running trainer — so two of the
+six targets I briefed sit at or below it.
+
+**ACTION TAKEN: study 22 redirected.** I had sent it after `finny_refresh_into`
+at a briefed 9.15%; at ~1.17% exclusive it is AT the floor and no honest arm
+there can resolve. Its new target is study 21's top remainder, which happens to
+be in its own files:
+
+> **ARCHON maintains TWO 1280-wide accumulators where Stockfish maintains ONE**
+> — ~20 KB/node of copy traffic, **65% of all L1 misses**, 135 MB of weight
+> tables against a 32 MB L3. A pin-moving refactor, not a perf-study arm.
+
+Told explicitly that ONE characterised-and-landed structural change beats four
+sub-noise arms, and that moving the pins is EXPECTED for this one.
+
+### What study 21 did right, and should be the template
+
+- **Reported TWO wins, not four, and said so plainly** rather than padding with
+  noise-floor arms.
+- **Killed the prefetch lead with a real control**: identical prefetch
+  instructions issued at a *resident* address measure the same cycles (+0.01%),
+  so the address is irrelevant. That supersedes the NPS-era rejection, which was
+  never evidence.
+- **Killed FullThreats cancellation by instrumenting instead of building** —
+  0.075 cancelling pairs/fold, and the same probe corrected its own 3x
+  overestimate.
+- **Reverted a measured regression** (`Stack` 36→32: +0.81% cycles at −0.39%
+  instructions).
+- **The gate caught study 20's exact failure mode on it** — `Aligned<f32>` broke
+  two `tests/` builders under the `sota`-only feature combo that plain
+  `cargo test --features sota,arch-d48x` never builds. Fixed before write-up.
+
+### ★ CORRECTION TO MY OWN CORRECTION — the profile table was NOT wrong
+
+Last tick I relayed study 21's claim that my briefing shares were wrong, and
+told the owner so. **I re-measured and my numbers reproduce.** Fresh
+`perf record -e cycles:u`, d16 bench on wl50.fens, `--no-children`, PGO
+`archon-s20`:
+
+| symbol | I briefed | RE-MEASURED | study 21 claimed |
+|---|---|---|---|
+| `search::<NonPv>` | 19.90% | **21.29%** | 6.81% |
+| `at_full` | 18.56% | **17.76%** | — |
+| `i16_deltas_into` | 13.14% | **12.54%** | — |
+| `forward_into` | 8.77% | **8.66%** | — |
+| `finny_refresh_into` | 9.15% | **8.49%** | 1.17% |
+| `init_quiets` | 6.35% | **6.77%** | — |
+
+**Both measurements are right; they answer different questions.**
+`perf --no-children` gives cycles in a SYMBOL'S CODE REGION, INCLUDING callees
+the compiler inlined into it. Study 21's figures are cycles in a SOURCE
+FUNCTION'S OWN BODY, excluding inlined callees. Mine answers "where are the
+cycles"; theirs answers "which function body do I edit". Neither is the error I
+called it.
+
+**My failure was process, not arithmetic: I relayed a subagent's reframing to
+the owner without re-measuring first** — the exact thing the standing rule says
+to do ("verify load-bearing claims against the code/data yourself before acting
+on them", and check the FRAMING not just the numbers).
+
+**Consequence for study 22 is smaller than I told it.** 8.49% of cycles really
+do execute inside `finny_refresh_into`'s region; much of it is inlined callee
+code owned by another file. **Not churning study 22 again** — the
+dual-accumulator redirect stands on its own merits (65% of L1 misses, ~20 KB/node
+of copy traffic), independent of the share dispute.
+
+**Also note `--call-graph=none` is INVALID on this perf build** when combined
+with `-e` — it silently worked in earlier invocations without `-e` and then
+failed with exit 129. Omit it; no call graph is the default.
+
+### Study 25 commissioned — sota_simd + head, ~21% of cycles
+
+Study 21's files are free, so `i16_deltas_into` (12.54%) and `forward_into`
+(8.66%) are now claimable. Study 25 owns `sota_simd.rs`, `sota_head.rs`,
+`sota_loader.rs`, `sota_features.rs`.
+
+**Its FIRST task is to settle the inline question** — build with
+`#[inline(never)]` on `apply_i8_deltas_into` / `apply_i16_deltas_into` /
+`apply_i16_deltas_dual` and the head kernels, re-profile, and report the split.
+That is the thing I got wrong, so it gets measured rather than assumed.
+
+Briefed with the known-dead list so it does not re-run them: the prefetch
+(killed by a resident-address control at +0.01%), FullThreats cancellation
+(0.075 pairs/fold), and alignment in its files (swept twice already).
+And told explicitly **not to pad to four** — study 21 landed two and was right to.
+
+### Tick — s21 promoted, D49 tracking, four studies live
+
+**Canonical is now `archon-s21`.** Panelled against s20, 6 rounds, node-identical:
+**instructions/node 7138.5 → 6934.4 = −204.1 (−2.86%)**, exact instrument.
+Cycles read −0.79% at a **35.8% spread — UNUSABLE**, so not claimed. Four
+concurrent studies have taken the cycles instrument from 0.6–1.1% spread to
+35.8%; `instructions:u` (noise 0.0) still works.
+
+**Reconciled rather than flagged as a discrepancy:** study 21's headline
+−1.35% cycles / −0.07% instructions covered arms **B1+B4 only**; arm B2's own
+commit says instructions down, cycles unresolved. My −2.86% is all four arms.
+I misread its scope, not the other way round.
+
+**D49 heldout, from scratch:**
+
+| sb | value | R² | ema | R²(ema) |
+|---|---|---|---|---|
+| 10 | 0.017605 | 0.8233 | 0.017254 | 0.8269 |
+| 20 | 0.015744 | 0.8420 | 0.014688 | 0.8526 |
+| **40** | **0.014338** | **0.8561** | **0.013338** | **0.8662** |
+
+sb40 EMA already at 0.8662 against D48X's fully-annealed **0.8815**, at 10% of
+the budget. Targets: D48X 0.8815, D48Y2 0.8906.
+
+**Studies:** 22 landed arms 1+1b+2 (hot/cold split, boxed array) on the
+accumulator; 24 landed arm r1 (unswitch `resolve_both` on `has_psq`); 25 is 27
+min in on the SIMD kernels; **23 showed the stall signature** — modified
+`movepick.rs`, artifacts dir created, but zero file writes in 20 min and no
+build. Nudged, and given the two briefing corrections at the same time.
+
+**A cost of running four studies, recorded honestly:** my own verification
+panels can no longer resolve cycles. Until the studies quiet down I verify on
+`instructions:u` and refuse to quote a cycles delta with a 36% spread.
