@@ -1108,6 +1108,30 @@ mod avx512 {
     // One zmm is live beyond the accumulators (the row being folded in).
     const _: () = assert!(REGS < 32, "fold tile must leave a spare zmm");
 
+    /// Lanes per tile, and the number of tiles in one accumulator.
+    ///
+    /// Perf study 25. Every fold kernel used to end its tile walk with a
+    /// one-block `while off < ACC` remainder, under a comment saying that
+    /// remainder is DEAD — `pick_regs` returns an exact divisor of
+    /// `ACC_BLOCKS`, pinned by the `const _` assert above. It really is dead,
+    /// at every width, and `TILES * TILE == ACC` below is the machine-checked
+    /// statement of that. Deleting the four of them is bit-identical: same
+    /// blocks, same order, same arithmetic.
+    ///
+    /// **Measured, because the obvious form was the wrong one.** Rewriting the
+    /// walk as `for t in 0..TILES { let off = t * TILE; … }` — trip count
+    /// compile-time, which reads like the strictly better shape — cost **+9.6
+    /// instructions/node**, and `for _ in 0..TILES` with an accumulated offset
+    /// still cost **+7.9** with branches up 3.6/node: LLVM declines to unroll
+    /// the counted loop and keeps a real induction variable. Leaving the walk
+    /// as `while off + TILE <= ACC` and removing ONLY the remainder measured
+    /// **−3.2 i/n**, because with nothing after the loop LLVM unrolls both
+    /// tiles outright. All three are node- and eval-hash-identical; the
+    /// counter has a 0.0 noise floor, so those signs are real.
+    const TILE: usize = LANES * REGS;
+    const TILES: usize = ACC / TILE;
+    const _: () = assert!(TILES * TILE == ACC, "the tile walk must cover ACC exactly");
+
     #[target_feature(enable = "avx512f,avx512bw")]
     unsafe fn i16_deltas_inner(
         acc: &mut [i16; ACC],
@@ -1124,10 +1148,10 @@ mod avx512 {
             // TILE rather than per block. Per-lane wrapping adds, same per-lane
             // order => bit-identical. `pick_regs` returns an exact divisor of
             // `ACC_BLOCKS` (24/40/48/64 -> 12/20/16/16), pinned by the `const _`
-            // assert above, so the remainder loop is dead; it stays for safety.
-            let tile = LANES * REGS;
+            // assert above — which is what lets the walk be `0..TILES` with no
+            // remainder loop at all (see `TILES`; perf study 25).
             let mut off = 0;
-            while off + tile <= ACC {
+            while off + TILE <= ACC {
                 let mut v = [_mm512_setzero_si512(); REGS];
                 for (k, vk) in v.iter_mut().enumerate() {
                     *vk = _mm512_loadu_si512(acc.as_ptr().add(off + k * LANES).cast());
@@ -1147,20 +1171,7 @@ mod avx512 {
                 for (k, vk) in v.iter().enumerate() {
                     _mm512_storeu_si512(acc.as_mut_ptr().add(off + k * LANES).cast(), *vk);
                 }
-                off += tile;
-            }
-            while off < ACC {
-                let mut value = _mm512_loadu_si512(acc.as_ptr().add(off).cast());
-                for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm512_add_epi16(value, _mm512_loadu_si512(row.cast()));
-                }
-                for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
-                }
-                _mm512_storeu_si512(acc.as_mut_ptr().add(off).cast(), value);
-                off += LANES;
+                off += TILE;
             }
         }
     }
@@ -1179,9 +1190,8 @@ mod avx512 {
         // instead of a 2560 B memmove (perf study 9 item 4).
         // SAFETY: as `i16_deltas_inner`; `out` is a disjoint ACC-wide array.
         unsafe {
-            let tile = LANES * REGS;
             let mut off = 0;
-            while off + tile <= ACC {
+            while off + TILE <= ACC {
                 let mut v = [_mm512_setzero_si512(); REGS];
                 for (k, vk) in v.iter_mut().enumerate() {
                     *vk = _mm512_loadu_si512(acc.as_ptr().add(off + k * LANES).cast());
@@ -1202,21 +1212,7 @@ mod avx512 {
                     _mm512_storeu_si512(acc.as_mut_ptr().add(off + k * LANES).cast(), *vk);
                     _mm512_storeu_si512(out.as_mut_ptr().add(off + k * LANES).cast(), *vk);
                 }
-                off += tile;
-            }
-            while off < ACC {
-                let mut value = _mm512_loadu_si512(acc.as_ptr().add(off).cast());
-                for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm512_add_epi16(value, _mm512_loadu_si512(row.cast()));
-                }
-                for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
-                }
-                _mm512_storeu_si512(acc.as_mut_ptr().add(off).cast(), value);
-                _mm512_storeu_si512(out.as_mut_ptr().add(off).cast(), value);
-                off += LANES;
+                off += TILE;
             }
         }
     }
@@ -1273,11 +1269,8 @@ mod avx512 {
             for (slot, &feature) in srow.iter_mut().zip(subs) {
                 *slot = feature * ACC;
             }
-            const TILE: usize = LANES * REGS;
-            const TILES: usize = ACC / TILE;
-            const _: () = assert!(TILES * TILE == ACC, "shaped fold must tile exactly");
-            for t in 0..TILES {
-                let off = t * TILE;
+            let mut off = 0;
+            while off + TILE <= ACC {
                 let mut v = [_mm512_setzero_si512(); REGS];
                 for (k, vk) in v.iter_mut().enumerate() {
                     *vk = _mm512_loadu_si512(src.as_ptr().add(off + k * LANES).cast());
@@ -1297,6 +1290,7 @@ mod avx512 {
                 for (k, vk) in v.iter().enumerate() {
                     _mm512_storeu_si512(dst.as_mut_ptr().add(off + k * LANES).cast(), *vk);
                 }
+                off += TILE;
             }
         }
     }
@@ -1371,9 +1365,8 @@ mod avx512 {
         // addition is associative, so applying all rows in one pass equals
         // applying them 96 at a time through `dst`.
         unsafe {
-            let tile = LANES * REGS;
             let mut off = 0;
-            while off + tile <= ACC {
+            while off + TILE <= ACC {
                 let mut v = [_mm512_setzero_si512(); REGS];
                 for (k, vk) in v.iter_mut().enumerate() {
                     *vk = _mm512_loadu_si512(src.as_ptr().add(off + k * LANES).cast());
@@ -1393,20 +1386,7 @@ mod avx512 {
                 for (k, vk) in v.iter().enumerate() {
                     _mm512_storeu_si512(dst.as_mut_ptr().add(off + k * LANES).cast(), *vk);
                 }
-                off += tile;
-            }
-            while off < ACC {
-                let mut value = _mm512_loadu_si512(src.as_ptr().add(off).cast());
-                for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm512_add_epi16(value, _mm512_loadu_si512(row.cast()));
-                }
-                for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
-                    value = _mm512_sub_epi16(value, _mm512_loadu_si512(row.cast()));
-                }
-                _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
-                off += LANES;
+                off += TILE;
             }
         }
     }
@@ -1424,9 +1404,8 @@ mod avx512 {
         // Perf study 12 §4 — the offset hoist + CAP chunking is gone; see the
         // i16 twin above for the full rationale and the bit-identity argument.
         unsafe {
-            let tile = LANES * REGS;
             let mut off = 0;
-            while off + tile <= ACC {
+            while off + TILE <= ACC {
                 let mut v = [_mm512_setzero_si512(); REGS];
                 for (k, vk) in v.iter_mut().enumerate() {
                     *vk = _mm512_loadu_si512(src.as_ptr().add(off + k * LANES).cast());
@@ -1448,22 +1427,7 @@ mod avx512 {
                 for (k, vk) in v.iter().enumerate() {
                     _mm512_storeu_si512(dst.as_mut_ptr().add(off + k * LANES).cast(), *vk);
                 }
-                off += tile;
-            }
-            while off < ACC {
-                let mut value = _mm512_loadu_si512(src.as_ptr().add(off).cast());
-                for &feature in adds {
-                    let bytes =
-                        _mm256_loadu_si256(weights.as_ptr().add(feature * ACC + off).cast());
-                    value = _mm512_add_epi16(value, _mm512_cvtepi8_epi16(bytes));
-                }
-                for &feature in subs {
-                    let bytes =
-                        _mm256_loadu_si256(weights.as_ptr().add(feature * ACC + off).cast());
-                    value = _mm512_sub_epi16(value, _mm512_cvtepi8_epi16(bytes));
-                }
-                _mm512_storeu_si512(dst.as_mut_ptr().add(off).cast(), value);
-                off += LANES;
+                off += TILE;
             }
         }
     }

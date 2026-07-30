@@ -6,3 +6,6 @@ fast=a3-head                        instr=30,057,272,967 nodes= 5,001,562 per_no
 fast=a3b-head                       instr=30,057,274,235 nodes= 5,001,562 per_node=  6009.6 brs_per_node=  629.9 hash=5ca978e012da1bb0
 fast=a3c-head                       instr=30,021,073,150 nodes= 5,001,562 per_node=  6002.3 brs_per_node=  629.1 hash=5ca978e012da1bb0
 fast=a3d-skipdot                    instr=30,029,592,572 nodes= 5,001,562 per_node=  6004.0 brs_per_node=  629.1 hash=5ca978e012da1bb0
+fast=a4-tiles                       instr=30,071,503,275 nodes= 5,001,562 per_node=  6012.4 brs_per_node=  632.7 hash=5ca978e012da1bb0
+fast=a4b-tiles-inc                  instr=30,062,890,676 nodes= 5,001,562 per_node=  6010.7 brs_per_node=  632.7 hash=5ca978e012da1bb0
+fast=a4c-tailonly                   instr=30,007,530,225 nodes= 5,001,562 per_node=  5999.6 brs_per_node=  629.0 hash=5ca978e012da1bb0

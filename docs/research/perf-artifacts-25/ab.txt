@@ -30,3 +30,10 @@ ARM   a1-shaped                  n=16 cyc_n=  4376.1 ins_n=  6002.9 l1m_n= 619.8
   NULL  (copy-base): paired median=   +88.7 (+2.06%) min=  -416.6 max=  +355.6 neg=2/8
   ARM   (arm -base): paired median=   +30.2 (+0.70%) min=  -164.7 max=  +292.2 neg=3/8
   dins_n: null=  +0.00  arm= -79.34 (-1.30%)
+== 3-way round-robin  frame=wl50 cpu=2  base=baseline copy=baseline-copy arm=a1-shaped rounds=12
+BASE  baseline                   n=24 cyc_n=  4332.2 ins_n=  6082.2 l1m_n= 617.94 ma64_n=  964.70
+COPY  baseline-copy              n=24 cyc_n=  4255.7 ins_n=  6082.2 l1m_n= 619.22 ma64_n=  955.71
+ARM   a1-shaped                  n=24 cyc_n=  4364.1 ins_n=  6002.9 l1m_n= 618.46 ma64_n=  975.15
+  NULL  (copy-base): paired median=   -83.5 (-1.93%) min=  -400.6 max=  +512.7 neg=10/12
+  ARM   (arm -base): paired median=   +25.5 (+0.59%) min=  -222.6 max=  +776.8 neg=6/12
+  dins_n: null=  +0.00  arm= -79.34 (-1.30%)
