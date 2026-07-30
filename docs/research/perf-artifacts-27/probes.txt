@@ -1,0 +1,13 @@
+probe=base                   r=1 nodes=5,001,562 i_n= 5819.829 br_n= 607.495 bmiss_n=21.7495 l1m_n= 621.336 hash=5ca978e012da1bb0
+probe=base                   r=2 nodes=5,001,562 i_n= 5819.828 br_n= 607.495 bmiss_n=21.3638 l1m_n= 619.633 hash=5ca978e012da1bb0
+probe=base                   r=3 nodes=5,001,562 i_n= 5819.828 br_n= 607.495 bmiss_n=21.7913 l1m_n= 618.881 hash=5ca978e012da1bb0
+probe=a1                     r=1 nodes=5,001,562 i_n= 5829.332 br_n= 607.505 bmiss_n=21.5636 l1m_n= 620.787 hash=5ca978e012da1bb0
+probe=a1                     r=2 nodes=5,001,562 i_n= 5829.332 br_n= 607.505 bmiss_n=21.3245 l1m_n= 623.339 hash=5ca978e012da1bb0
+probe=a1b                    r=1 nodes=5,001,562 i_n= 5836.560 br_n= 608.495 bmiss_n=21.9337 l1m_n= 625.481 hash=5ca978e012da1bb0
+probe=a1b                    r=2 nodes=5,001,562 i_n= 5836.560 br_n= 608.495 bmiss_n=21.6453 l1m_n= 624.323 hash=5ca978e012da1bb0
+probe=a4slab                 r=1 nodes=5,001,562 i_n= 5822.229 br_n= 609.983 bmiss_n=21.1740 l1m_n= 617.756 hash=5ca978e012da1bb0
+probe=a4slab                 r=2 nodes=5,001,562 i_n= 5822.229 br_n= 609.983 bmiss_n=21.3243 l1m_n= 621.749 hash=5ca978e012da1bb0
+probe=a4slab2                r=1 nodes=5,001,562 i_n= 5820.129 br_n= 608.512 bmiss_n=21.3016 l1m_n= 621.504 hash=5ca978e012da1bb0
+probe=a4slab2                r=2 nodes=5,001,562 i_n= 5820.129 br_n= 608.512 bmiss_n=21.5654 l1m_n= 615.254 hash=5ca978e012da1bb0
+probe=a4slab3                r=1 nodes=5,001,562 i_n= 5818.333 br_n= 607.494 bmiss_n=21.6115 l1m_n= 617.549 hash=5ca978e012da1bb0
+probe=a4slab3                r=2 nodes=5,001,562 i_n= 5818.333 br_n= 607.494 bmiss_n=21.4577 l1m_n= 617.345 hash=5ca978e012da1bb0
