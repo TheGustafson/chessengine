@@ -7877,3 +7877,53 @@ showed the branch predictor **learns** a replay.
 **Three perf/research lines now running** (41 front-end, richer-representation,
 42 TT), with **D49's extension left alone** per user instruction — abort only on
 NaN or a pathological loss.
+
+## Tick — D49 sb428; study 34's "highest value-per-minute item" RE-PRICED and pre-registered
+
+**D49x: sb428 of 700, heldout ema 0.010985**, running untouched. The ema sits
+above the sb390 value (0.010812) because the LR was restarted at 1.25e-4 from a
+near-zero anneal — an expected transient, and far under the 0.0125 abort line.
+One abort condition only (NaN/inf, or ema > 0.0125 on two consecutive samples).
+
+**No games this tick, deliberately.** Three perf studies are taking cycles
+measurements; a 1500-game screen is ~104 games/min of full-box load and would
+contaminate all three. Games resume when the studies land.
+
+### Study 34 item 1 is priced NEGATIVE by a constant that did not exist when it was queued
+
+Study 34 called the branchless insertion window (`--features insertwin34`)
+**"the highest value-per-minute item on the list"** — built, node-identical,
+gated, shipped OFF, needing only "ten quiet minutes" of `panel34.sh`. That
+ranking was written **before study 40 measured the mispredict exchange rate**.
+Nobody went back to re-price it. From the two studies' own printed numbers:
+
+| term | value | source |
+|---|---:|---|
+| instructions added | **+41.841 i/n** (5960.137 → 6001.978) | study 34 §8.1, exact counters |
+| engine mispredicts/node | **24.07** | study 40 (`init_quiets` 3.31 = 13.75%) |
+| mispredicts removed | **−0.963/node** (≈ −4% of all) | study 34 §8.1 |
+| benefit @ **9.13** cycles/mispredict | **−8.79 cycles/node** | study 40's measured rate |
+| engine cycles/node | **4104** (IPC **1.452**) | study 40 (192.91 = 4.7%) |
+
+| conversion of the added instructions | cost | **net** |
+|---|---:|---:|
+| study 40's **measured** marginal rate, 2.45 i/cycle | +17.08 | **+8.29 cycles/node (LOSS)** |
+| Zen 4's theoretical 6-wide retire | +6.97 | −1.82 cycles/node (marginal win) |
+
+**⇒ Break-even requires the added work to retire at 4.76 IPC in an engine that
+runs at 1.452.** At the assumed-18-cycle exchange rate the arm cleared easily;
+at the measured 9.13 it does not, and the whole trade is ≤0.2% of cycles either
+way. **It is no longer the top of the list.**
+
+**Pre-registered prediction, so the panel tests a claim instead of fishing:**
+`panel34.sh 20 off on` on a quiet box will show `insertwin34` **between +2 and
++12 cycles/node WORSE** than off. The 6-wide row is why the panel is still worth
+its ten minutes rather than being cancelled outright — but it needs a quiet box,
+so it queues behind the three running studies.
+
+**The generalisable failure this exposes:** study 40 produced a calibration
+constant (9.13 cycles/mispredict, replacing an assumed 18) that **retroactively
+reprices every queued mispredict arm**, and none of them were revisited. Study
+40 said so itself — "every future mispredict arm should be priced at that rate
+before it is built" — and the FUTURE-tense framing let the already-queued ones
+through. Queued arms are exactly the ones with nobody watching.
