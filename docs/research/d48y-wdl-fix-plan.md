@@ -7806,3 +7806,34 @@ rule-stretching the POC study had to pre-commit against.
 
 **Box healthy:** 9193 MB available, swap recovered to 263 MB, load 3.67.
 Studies: 41 at **ahead=7**, richer-representation at ahead=4.
+
+## RETRACTED: the sb600 failure condition. `d49x` runs to sb700.
+
+**I claimed "the anneal consolidates what exists; it does not discover."
+That is false, and D49's own run disproves it:**
+
+| leg | delivered | rate |
+|---|---:|---:|
+| cosine sb180→300 | 629e-6 | 5.24e-6/sb |
+| **anneal sb300→400** | **301e-6 — 32% of all progress from sb180** | 3.01e-6/sb |
+
+Corrected arithmetic: if the extension's anneal contributes like D49's own did,
+the cosine leg needs only **480e-6 over 180 sb = 2.67e-6/sb** — below D49's own
+anneal rate, well below its cosine rate.
+
+**The evidence was one command away and I asserted instead of checking** — after
+spending the session demanding exactly that standard from the studies.
+
+### Process correction (user instruction): stop over-managing the run
+
+**The only abort condition:**
+
+> NaN/inf in train or heldout, **or** ema heldout **> 0.0125 on two consecutive
+> samples** (vs 0.010985 now, 0.010804 at sb400).
+
+That is *pathological*, not merely disappointing. **Otherwise `d49x` runs to
+sb700 and is judged at the end, on games, like every other net.**
+
+Per-sample heldout commentary stops. Tick reporting on the extension drops to
+one line unless the abort fires. **Attention returns to the perf studies**, which
+is what the standing directive emphasises.
