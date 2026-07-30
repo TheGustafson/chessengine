@@ -8839,3 +8839,41 @@ nobody planned: study 34 attributed **6.46% of ALL engine mispredicts** to the
 shift walk's exit test, and halving the sorted prefix removed **3.731% — 58% of
 exactly that quantity.** `tt6x45` measures +0.030% instructions, the small cost
 pre-registered.
+
+## Tick — oomguard v2: the guard was protecting against the WRONG processes
+
+**D49x: sb517**, 191.5k pos/s. Box at its tightest today: **6314 MB available,
+swap 0 free, load 8.56**, disk 88%. **No new study commissioned** — a fourth
+build-capable line here is precisely the 2026-07-27 OOM configuration.
+
+**Checking the safety margin rather than adding load found the guard was
+useless.** `oomguard` v1 raised `oom_score_adj` on `rustc`/`cargo` only. With no
+build running — which is most of the time — the D49 trainer was again the
+**highest-scoring process on the box**:
+
+| pid | RSS | `oom_score` | |
+|---|---:|---:|---|
+| 1240876 | 4430 MB | **1002** | **D49 trainer — FIRST VICTIM** |
+| 1467533 | 2700 MB | 894 | conjunction probe |
+| 1470421/30 | ~148 MB | 804 | study 45 arms |
+
+**517 superbatches of training were sitting behind fully restartable measurement
+work.** v1 protected against the one workload that happened not to be running.
+
+**oomguard v2** now raises every *expendable* workload — compilers, the JAX
+census/probe tools, netpack/requant, and any study measurement binary under a
+`bin4x`/`perf4x` path — with two hard exclusions: **never `pump_train`** (the
+trainer) and **never a `shell-snapshots` wrapper** (the self-match trap). It
+writes to `/proc` and kills nothing.
+
+| pid | RSS | `oom_score` | |
+|---|---:|---:|---|
+| 1467533 | 2403 MB | **1414** | conjunction probe — first victim |
+| 1470738 | 148 MB | **1338** | study 45 arm |
+| 1240876 | 4686 MB | **1011** | **D49 trainer — now safest** |
+
+**A 400-point margin in the right direction, where it had been 108 in the wrong
+one.** The lesson generalises: an unprivileged process cannot LOWER its own
+`oom_score_adj`, so protecting one job means continuously raising *everything
+else that is expendable* — and a guard scoped to one process class silently
+lapses whenever that class is idle.
