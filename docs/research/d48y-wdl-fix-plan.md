@@ -2901,3 +2901,29 @@ reverted), min-of-N cycles (read −2.07% on two identical binaries — median o
 1. `ThreatEntry` needs the identical hot/cold split — same defect, walked more often.
 2. `ThreatContext.stack` → `Box<[ThreatEntry; STACK_LEN]>` — the +58.7 i/n fat-pointer tax, unfixed there.
 3. Outline the `Fold::Refresh` arm of `at_full` (7855 B, largest eval symbol).
+
+### Tick — study 22 merged, remainder forwarded, D49 at sb54
+
+**Study 22 merged** (gate clean, all three pins, BOTH feature combos checked
+including the `sota`-only one study 21 found broken). Canonical PGO build for it
+running.
+
+**Its remainder was FORWARDED to study 24 rather than spawning a fifth study** —
+all three items are in `sota_threats.rs`, which study 24 owns, and adding
+concurrency is what degraded the cycles instrument in the first place:
+
+1. `ThreatEntry` needs the identical hot/cold split — `fold`/`dp`/`position` at
+   the end of a ~5344 B struct, and `ThreatContext::compute` walks them **twice
+   per evaluated node**, i.e. MORE often than the one already fixed.
+2. `ThreatContext.stack` → `Box<[ThreatEntry; STACK_LEN]>` — **with the warning
+   that the split ALONE cost +58.7 i/n in fat-pointer indexing** and was a
+   regression until the arrays became sized. Do both in one arm or you reject a
+   good change on a bad measurement.
+3. Outline the `Fold::Refresh` arm of `at_full` (7855 B, largest eval symbol) —
+   **with the caveat that outlining `compute`'s king branch shrank the symbol 41%
+   and then two panels disagreed on the SIGN.** Measure, don't assume.
+
+**All three live studies are producing:** 23 committed 7 seconds before this
+check (the stall nudge worked), 24 and 25 each have an arm landed.
+
+**D49: sb54/400, 192k pos/s.** Value 0.009388 and still descending.
