@@ -7076,3 +7076,61 @@ mid-gate — the third occurrence — and documented recovery.
 and any mispredict arm must cost **under ~3.7 instructions per mispredict
 removed** to break even. It also revives a retired instrument: **`ex_ret_brn_misp:u`
 is not dead** — studies 34/38 retired it at n=10; at n=159 it reads 44 se.
+
+## THE LADDER IS COMPLETE; THE VERDICT IS RUNNING; the Tier-1 panel was a FALSE COMPLETION
+
+**`gate40` green** — Bench 587683, all checks passed. Main healthy after study 40.
+
+### D49's scale optimum: a broad plateau
+
+| arm | vs @756 |
+|---|---:|
+| @1111 (sb180) | **−14.47 +/- 11.09** — worse |
+| @880 | **−2.61 +/- 11.18** — same |
+| @640 | **−2.37 +/- 11.11** — same |
+
+**Flat from 640 to 880.** 756 confirmed; the knob has a broad top, which is why
+the untuned default 400 (stdev ~230) was so costly and why the exact choice
+inside the plateau barely matters.
+
+**`d49verdict` RUNNING:** D49 sb400 @756 vs canonical D48X @600 — **each net at
+its own measured optimum**, 5880 games, +/-5 Elo. This is the number the whole
+run exists to produce.
+
+### The Tier-1 panel reported success with 2 of 3 arms never run
+
+    identity  start 12:42:54   -> 28 MINUTES  (ran)
+    random8k  start 13:10:37   -> 40 SECONDS
+    kmeans8k  start 13:11:17   -> 39 SECONDS
+    panel complete 13:11:56
+
+**Caught on the timing**, not on any error surfaced upward. Each arm was
+designed to take ~45 minutes.
+
+**Failure 1 — relative path, wrong cwd. FIXED BY ME.** Both arms died with
+`FileNotFoundError` on the remap `.npy`. The artifacts existed the whole time
+(written 10:34/10:36). The launcher does `cd "$WT/jax"`, but `threat_remap` is
+relative **to the repo root**, so it resolved to `jax/data/...`. Rewrote both
+arm configs to absolute paths.
+
+**Why it went unnoticed is the important part:** identity has
+`threat_remap = ""` → `_threat_remap_of` returns `None` → **it never opens a
+file.** So the one arm structurally incapable of hitting the bug is the one
+that passed, and its success let the launcher print "panel complete".
+***A panel whose control is immune to the failure mode will always report
+success.*** Guard proposed to the agent: assert every non-identity arm actually
+loaded its remap before training begins.
+
+**Failure 2 — GPU OOM. Handed back.** With the path fixed, the arm reaches
+`model.py:132` (`acc + jnp.sum(th_rows * th_valid, axis=-2)`) and dies:
+`RESOURCE_EXHAUSTED: Out of memory while trying to allocate 6.27GiB` on an
+**8188 MiB card with 6931 MiB free**. **Identity fit; the remapped arms do
+not** — pointing at the remap stream materialising a larger intermediate.
+Stopped `recode-t1-rerun` rather than let `kmeans8k` burn the same way, and
+resumed the POC agent with the full diagnosis, the memory arithmetic, and a
+reminder that the decision rule was **pre-registered** and must not be adjusted
+now that the identity arm's number is visible.
+
+**Its phase-1 result (−1.5% cycles, 32/42 rounds) is unaffected and stands.**
+What is missing is phase 3 — which is to say, the thing the POC exists to
+answer has **no verdict at all** yet, only a control.
