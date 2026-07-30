@@ -1619,8 +1619,41 @@ mod avx512 {
     /// Measured: 20 is the optimum at 1280 and the largest divisor that fits.
     /// `REGS = 40` (one tile, no tile loop at all) was measured too and is a
     /// **disaster** — 6581.5 -> 7589.2 i/n — because 40 accumulators spill.
+    ///
+    /// # Perf study 44 — the cap is an ARM, because 20 was chosen on the wrong counter
+    ///
+    /// Everything above was adjudicated on `instructions:u`, whose noise floor
+    /// on this box is exactly 0.0 — which is precisely why a narrower tile was
+    /// never tried: more tiles is unambiguously more loop control, so it loses
+    /// on instructions by construction. Study 20 is the standing counterexample
+    /// (−5.99% CYCLES with instructions UP 0.19%), and study 44's back-end
+    /// census supplies the mechanism that would make this one of those cases:
+    /// **`de_dis_dispatch_token_stalls1.store_queue_rsrc_stall` is 502.6
+    /// cycles/node, the largest single dispatch-blocking resource in the
+    /// engine** — larger than the load queue (442.1). A `REGS = 20` tile ends
+    /// with 20 `zmm` stores, and Zen 4 splits each into two 32-byte store ops
+    /// (study 39 §1: 2.043 store dispatches per line written), so every tile
+    /// closes with a **40-store burst** into a 64-entry store queue.
+    ///
+    /// Narrowing the cap interleaves those stores with the next tile's loads
+    /// instead of bunching them. It is bit-identical at every setting: the tile
+    /// walk covers the same blocks in the same order with the same arithmetic,
+    /// and no row is read more or fewer times (register `k` consumes its own
+    /// distinct 32 bytes of each row either way).
+    const REGS_CAP: usize = if cfg!(feature = "regs4_44") {
+        4
+    } else if cfg!(feature = "regs5_44") {
+        5
+    } else if cfg!(feature = "regs8_44") {
+        8
+    } else if cfg!(feature = "regs10_44") {
+        10
+    } else {
+        20
+    };
+
     const fn pick_regs() -> usize {
-        let mut r = 20;
+        let mut r = REGS_CAP;
         // Down to 1, not to 8: 1 divides everything, so the `const _` assert below
         // can never fire on a future width whose BLOCKS has no divisor in 9..=20
         // (e.g. ACC 800 -> 25). That case degrades to the per-block loop rather

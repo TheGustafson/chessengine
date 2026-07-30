@@ -215,6 +215,19 @@ ttspec2_42 = []
 # construction (a hint computes no value the score depends on) and gated on
 # the `Bench:` fingerprint like every other study arm.
 histpf44 = []
+# Perf study 44's FOLD-TILE WIDTH sweep. `REGS` (the number of live zmm
+# accumulators in every fold kernel's tile) is 20 at ACC 1280, chosen as the
+# largest exact divisor of ACC_BLOCKS and adjudicated on `instructions:u` --
+# a counter that can only ever prefer the widest tile, since narrower means
+# more loop control. These caps force 10 / 8 / 5 / 4 instead. The motivating
+# measurement is study 44's census: store-queue-full is the engine's largest
+# dispatch blocker at 502.6 cycles/node, and a 20-register tile closes with a
+# 40-store burst. Bit-identical at every setting (same blocks, same order,
+# same arithmetic), so all of them are gated on the `Bench:` fingerprint.
+regs10_44 = []
+regs8_44 = []
+regs5_44 = []
+regs4_44 = []
 # Perf study 40's DOSE AMPLIFIER for `partial_insertion_sort` (`src/dose40.rs`).
 # `insertwin34` is a ~0.2%-of-cycles trade and six nulls put the `cycles:u`
 # floor on this box an order of magnitude above that, so the arm is replayed
