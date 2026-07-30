@@ -6691,3 +6691,31 @@ vanishes, so the "converges onto raw" branch stops being a separate upside case.
 
 **Box:** 8332 MB, free swap 910 MB, load 4.80. **`recode-t1` still armed**,
 waiting on D49. **Study 40** working (dirty=7) on the two gated arms.
+
+## Tick 2026-07-31 ~06:00 — D49 sb364, projection recovers slightly
+
+**heldout sb360: raw 0.011005 / ema 0.010903.** The EMA step improved from
+−24 to **−39** per 10 sb, pulling the endpoint estimate back:
+
+| rate | endpoint | Elo vs canonical |
+|---|---:|---:|
+| since sb270 (−32/10sb) | 0.010776 | **−9.6** |
+| last step (−39/10sb) | 0.010747 | **−6.9** |
+
+**≈ −7 to −10**, up from last tick's −11. Across six ticks the estimate has sat
+in a **−7 to −12 band** and never left it — which is itself informative: the
+noise is in the individual steps, not in the destination. **D49 finishes just
+short of canonical.**
+
+**Disk is drifting down again** — 179 GB after the mid-session reclaim, then
+128 GB, now **115 GB**. The bulk is legitimate: the D49 checkpoint set is the
+deliberate cost of the user's "back up to an earlier checkpoint" fallback, and
+worktrees are accumulating as studies land. Noting the trend rather than acting
+— reclaiming now would attack the one thing we explicitly want to keep.
+
+**Study 40 is at ahead=0 with 7 dirty files.** Watching it: that is precisely
+the shape of the failure I have warned every study about — and caused myself
+earlier tonight. Not nudging yet; it has not been long.
+
+**Box:** 8282 MB, free swap 930 MB, load 4.21, main clean at `56ceb20`.
+`recode-t1` still armed. 36 superbatches to go, ~1.5 h.
