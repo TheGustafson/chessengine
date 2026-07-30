@@ -1,0 +1,13 @@
+cgu1=base                         instr=29,003,410,773 nodes= 5,001,562 per_node= 5798.87 brs_per_node= 600.93 hash=5ca978e012da1bb0
+cgu1=null-inert                   instr=29,003,410,200 nodes= 5,001,562 per_node= 5798.87 brs_per_node= 600.93 hash=5ca978e012da1bb0
+cgu1=probe-rawptr                 instr=28,893,744,122 nodes= 5,001,562 per_node= 5776.94 brs_per_node= 594.54 hash=5ca978e012da1bb0
+cgu1=a1-deref                     instr=28,961,885,580 nodes= 5,001,562 per_node= 5790.57 brs_per_node= 597.95 hash=5ca978e012da1bb0
+cgu1=a2-blocks                    instr=28,871,814,471 nodes= 5,001,562 per_node= 5772.56 brs_per_node= 594.61 hash=5ca978e012da1bb0
+cgu1=a2-fmt                       instr=28,871,814,594 nodes= 5,001,562 per_node= 5772.56 brs_per_node= 594.61 hash=5ca978e012da1bb0
+cgu1=a3-bcast                     instr=28,871,814,416 nodes= 5,001,562 per_node= 5772.56 brs_per_node= 594.61 hash=5ca978e012da1bb0
+cgu1=a3-l3dot                     instr=28,760,030,477 nodes= 5,001,562 per_node= 5750.21 brs_per_node= 594.61 hash=5ca978e012da1bb0
+cgu1=a4a-noinline                 instr=28,781,316,834 nodes= 5,001,562 per_node= 5754.47 brs_per_node= 595.46 hash=5ca978e012da1bb0
+cgu1=a4b-blackbox                 instr=28,744,060,973 nodes= 5,001,562 per_node= 5747.02 brs_per_node= 594.61 hash=5ca978e012da1bb0
+cgu1=a4c-whilewalk                instr=28,757,900,827 nodes= 5,001,562 per_node= 5749.78 brs_per_node= 594.61 hash=5ca978e012da1bb0
+cgu1=a4d-coldheads                instr=28,724,884,179 nodes= 5,001,562 per_node= 5743.18 brs_per_node= 594.61 hash=5ca978e012da1bb0
+cgu1=final-head                   instr=28,724,884,873 nodes= 5,001,562 per_node= 5743.18 brs_per_node= 594.61 hash=5ca978e012da1bb0

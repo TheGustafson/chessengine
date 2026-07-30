@@ -19,8 +19,8 @@
 //! Behind the `sota` cargo feature; the default build never compiles it, so the
 //! depth-6 bench stays 548978.
 
-use super::aligned::Aligned;
-use super::sota_simd::{activate, l1_dequant, l1_dot, l2_tail};
+use super::aligned::Blocks;
+use super::sota_simd::{activate, l1_dequant, l1_dot, l2_tail, l3_dot};
 use crate::types::Color;
 
 /// Accumulator width per perspective — D47 (user-directed, 2026-07-22):
@@ -154,6 +154,30 @@ pub fn output_bucket(piece_count: usize) -> usize {
     OUTPUT_BUCKETS_LAYOUT[piece_count]
 }
 
+// The head's five bucket-selected weight tables, and the skip lane, named as
+// what they are: `BUCKETS` fixed-size blocks. Perf study 26 §3 — as
+// `Aligned<T>` each acquisition re-derived a fat pointer, range-checked it and
+// then `try_into`-length-checked it, five times per eval, to recover a shape
+// that has been fixed since load. `Blocks` states it in the type, so the only
+// runtime check left is `bucket < BUCKETS` against a constant, CSE'd across the
+// whole forward pass.
+//
+// Every `N · size_of::<T>()` below is a multiple of 64 at every shipped arch,
+// which `Blocks::LAYOUT_OK` asserts at compile time — so the reshape adds no
+// padding and the on-disk block-major layout is unchanged.
+/// `[BUCKETS][L2 · L1]` i8 — the sparse L1 matmul's weights.
+pub type L1Weights = Blocks<i8, { L2 * L1 }, BUCKETS>;
+/// `[BUCKETS][L2]` f32.
+pub type L1Biases = Blocks<f32, L2, BUCKETS>;
+/// `[BUCKETS][L2 · L3]` f32.
+pub type L2Weights = Blocks<f32, { L2 * L3 }, BUCKETS>;
+/// `[BUCKETS][L3]` f32.
+pub type L2Biases = Blocks<f32, L3, BUCKETS>;
+/// `[BUCKETS][L3]` f32.
+pub type L3Weights = Blocks<f32, L3, BUCKETS>;
+/// `[BUCKETS][L1]` i8 — the D47V output-skip lane.
+pub type SkipQ = Blocks<i8, L1, BUCKETS>;
+
 /// The D47V output-skip lane, quantised to i8 at load (perf study 8 §4.7).
 ///
 /// `w[b][i] ≈ q[b · L1 + i] · scale[b]`, with a per-bucket scale so a bucket
@@ -164,7 +188,7 @@ pub fn output_bucket(piece_count: usize) -> usize {
 #[derive(Debug)]
 pub struct SkipLane {
     /// `[BUCKETS][L1]` i8, bucket-major contiguous.
-    pub q: Aligned<i8>,
+    pub q: SkipQ,
     /// Per-bucket dequantisation scale, `[BUCKETS]`.
     pub scale: Box<[f32]>,
 }
@@ -175,15 +199,15 @@ pub struct SkipLane {
 #[derive(Debug)]
 pub struct SotaHead {
     /// `[BUCKETS][L2 · L1]` i8.
-    pub l1_weights: Aligned<i8>,
+    pub l1_weights: L1Weights,
     /// `[BUCKETS][L2]` f32.
-    pub l1_biases: Aligned<f32>,
+    pub l1_biases: L1Biases,
     /// `[BUCKETS][L2 · L3]` f32.
-    pub l2_weights: Aligned<f32>,
+    pub l2_weights: L2Weights,
     /// `[BUCKETS][L3]` f32.
-    pub l2_biases: Aligned<f32>,
+    pub l2_biases: L2Biases,
     /// `[BUCKETS][L3]` f32.
-    pub l3_weights: Aligned<f32>,
+    pub l3_weights: L3Weights,
     /// `[BUCKETS]` f32.
     pub l3_biases: Box<[f32]>,
     /// f32→centipawn scale (Reckless 380; ours is baked at training, per-net).
@@ -335,13 +359,9 @@ impl SotaHead {
     /// returning 512 B by value.
     fn propagate_l1(&self, ft: &[u8; L1], nnz: &[u16], bucket: usize, out: &mut [f32; L2]) {
         let mut pre = [0i32; L2];
-        let wbase = bucket * L2 * L1;
-        let wb = &self.l1_weights[wbase..wbase + L2 * L1];
+        let wb = self.l1_weights.block(bucket);
         l1_dot(&mut pre, ft, nnz, wb);
-        let bb = bucket * L2;
-        let bias: &[f32; L2] = self.l1_biases[bb..bb + L2]
-            .try_into()
-            .expect("l1 bias block");
+        let bias = self.l1_biases.block(bucket);
         // Explicit dequant+SCReLU kernel (perf study #4 item #2a); the scalar
         // backend is the loop that used to live here — bit-identical.
         l1_dequant(out, &pre, bias, DEQUANT);
@@ -357,14 +377,8 @@ impl SotaHead {
     /// accumulation preserved ⇒ bit-identical.
     fn propagate_l2(&self, l1: &[f32; L2], bucket: usize) -> [f32; L3] {
         let mut out = [0.0f32; L3];
-        let bb = bucket * L3;
-        let bias: &[f32; L3] = self.l2_biases[bb..bb + L3]
-            .try_into()
-            .expect("l2 bias block");
-        let wbase = bucket * L2 * L3;
-        let wblock: &[f32; L2 * L3] = self.l2_weights[wbase..wbase + L2 * L3]
-            .try_into()
-            .expect("l2 weight block");
+        let bias = self.l2_biases.block(bucket);
+        let wblock = self.l2_weights.block(bucket);
         l2_tail(&mut out, l1, wblock, bias);
         out
     }
@@ -372,31 +386,14 @@ impl SotaHead {
     /// Dense f32[L3]→f32, 16-lane FMA + recursive-halving reduction + bias
     /// (step 5). Reduction order mirrors a 16-lane horizontal add.
     fn propagate_l3(&self, l2: &[f32; L3], bucket: usize) -> f32 {
-        const LANES: usize = 16;
-        let mut sums = [0.0f32; LANES];
-        let wbase = bucket * L3;
-        // Fixed-size bucket + per-lane slices hoist the bounds checks so the
-        // 16-wide FMA vectorizes; same lane assignment ⇒ bit-identical.
-        let weights: &[f32; L3] = self.l3_weights[wbase..wbase + L3]
-            .try_into()
-            .expect("l3 weight block");
-        let mut i = 0;
-        while i < L3 {
-            let wl: &[f32; LANES] = weights[i..i + LANES].try_into().expect("l3 weight lane");
-            let ll: &[f32; LANES] = l2[i..i + LANES].try_into().expect("l2 lane");
-            for j in 0..LANES {
-                sums[j] = wl[j].mul_add(ll[j], sums[j]);
-            }
-            i += LANES;
-        }
-        let mut stride = LANES / 2;
-        while stride > 0 {
-            for k in 0..stride {
-                sums[k] += sums[k + stride];
-            }
-            stride /= 2;
-        }
-        sums[0] + self.l3_biases[bucket]
+        // Dispatched since perf study 26 arm 3 — the loop that used to live
+        // here is now `sota_simd::scalar::l3_dot`, unchanged, and is the
+        // bit-exact reference the SIMD backends match. It was the last
+        // autovectorized f32 path in the head, and LLVM would not widen it:
+        // for a 32-element dot it emitted sixteen 2-lane `vfmadd213ps` fed by
+        // sixteen `vmovsd` pair-loads — 4.56% of `forward_into`'s executed
+        // instructions.
+        l3_dot(self.l3_weights.block(bucket), l2) + self.l3_biases[bucket]
     }
 
     /// EXP-UNC-1: the log-variance head's dense f32[L3]→f32, mirroring
@@ -406,6 +403,16 @@ impl SotaHead {
     /// `(sigmoid(out) − target)` residual, so σ̂ = exp(½·s) is a WDL-space std,
     /// NOT a cp-space one (D33 review, reviewer B: mind this when it scales the
     /// cp-space RFP margin). Caller guarantees the variance head is present.
+    // `#[cold] #[inline(never)]`: NO SHIPPED NET HAS EITHER OF THESE HEADS.
+    // `l3_var_weights` and `l3_wdl_weights` are `None` for every net in
+    // `engines/`, so both bodies are unreachable at run time — but inlined into
+    // `forward_into` they contributed ~140 static instructions to the hottest
+    // eval function, including a 31-deep chain of SCALAR `vfmadd231ss` and 32
+    // `lea`/`cmp`/`jae` bounds-check triples on the runtime-length
+    // `Box<[f32]>` (perf study 26 §5, measured on a line-attributed profile).
+    // Same treatment, and the same reason, as `i16_deltas_into_generic`.
+    #[cold]
+    #[inline(never)]
     fn propagate_l3_var(&self, l2: &[f32; L3], bucket: usize) -> f32 {
         const LANES: usize = 16;
         let mut sums = [0.0f32; LANES];
@@ -439,6 +446,8 @@ impl SotaHead {
     /// (`w[o·L3 + j]`) + `[3]` biases — mirrors the trainer's `l3_wdl` affine
     /// (`L3 → 3`). Softmax is left to the consumer. Caller guarantees the head is
     /// present.
+    #[cold]
+    #[inline(never)]
     fn propagate_l3_wdl(&self, l2: &[f32; L3]) -> [f32; 3] {
         let ww = self.l3_wdl_weights.as_ref().expect("wdl head present");
         let wb = self.l3_wdl_biases.as_ref().expect("wdl head present");
@@ -542,7 +551,7 @@ impl SotaHead {
             // accumulator, which doubles that kernel), but we CAN pay for it
             // in the same currency: `vpdpbusd` over u8 x i8 does 64 lanes per
             // instruction, so 1280 lanes cost 20 loads and 20 multiply-adds.
-            let lane = &sk.q[bucket * ft.len()..][..ft.len()];
+            let lane = sk.q.block(bucket);
             let acc = super::sota_simd::skip_dot_i8(&ft[..], lane) as f32 * sk.scale[bucket];
             l3 + acc * ((1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT) as f32)
         } else {
@@ -744,7 +753,7 @@ mod tests {
         head.propagate_l1(&ft, &nnz[..count], bucket, &mut sparse);
         // Dense: iterate every group with the same mathematical i32 dot.
         let mut pre = [0i32; L2];
-        let wb = &head.l1_weights[bucket * L2 * L1..bucket * L2 * L1 + L2 * L1];
+        let wb = head.l1_weights.block(bucket);
         for g in 0..L1 / 4 {
             for j in 0..L2 {
                 let mut v = 0i32;
@@ -757,7 +766,7 @@ mod tests {
         let mut dense = [0.0f32; L2];
         for j in 0..L2 {
             let clipped = (pre[j] as f32)
-                .mul_add(DEQUANT, head.l1_biases[bucket * L2 + j])
+                .mul_add(DEQUANT, head.l1_biases.block(bucket)[j])
                 .clamp(0.0, 1.0);
             dense[j] = clipped * clipped;
         }
@@ -865,7 +874,7 @@ mod tests {
     #[test]
     fn propagate_l3_var_mirrors_propagate_l3() {
         let mut head = synth_head();
-        head.l3_var_weights = Some(head.l3_weights.to_vec().into_boxed_slice());
+        head.l3_var_weights = Some(head.l3_weights.iter().copied().collect());
         head.l3_var_biases = Some(head.l3_biases.clone());
         let l2: [f32; L3] = std::array::from_fn(|i| (i as f32 * 0.031 - 0.5).sin());
         for bucket in 0..BUCKETS {

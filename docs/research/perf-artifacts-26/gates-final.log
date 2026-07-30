@@ -1,0 +1,724 @@
+===== cargo fmt --check =====
+===== cargo clippy --all-targets --target-dir target-gate26 -- -D warnings =====
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.10s
+===== cargo clippy --all-targets --features sota,arch-d48x --target-dir target-gate26 =====
+    Checking chessengine v0.1.0 (/home/nick/projects/chessengine/.claude/worktrees/agent-ac426e9705822a091)
+warning: function `read_i8s` is never used
+   --> src/eval/nnue/sota_loader.rs:849:4
+    |
+849 | fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
+    |    ^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `NNZ_IOTA` is never used
+    --> src/eval/nnue/sota_simd.rs:1825:11
+     |
+1825 |     const NNZ_IOTA: [u16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+     |           ^^^^^^^^
+
+warning: manual implementation of `.is_multiple_of()`
+   --> src/eval/nnue/aligned.rs:240:9
+    |
+240 |         N * size_of::<T>() % LINE == 0,
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with: `(N * size_of::<T>()).is_multiple_of(LINE)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_is_multiple_of
+    = note: `#[warn(clippy::manual_is_multiple_of)]` on by default
+
+warning: call to `std::mem::drop` with a value that does not implement `Drop`. Dropping such a type only extends its contained lifetimes
+   --> src/eval/nnue/protected_halfka.rs:142:5
+    |
+142 |     drop(take_i16);
+    |     ^^^^^^^^^^^^^^
+    |
+note: argument has type `{closure@src/eval/nnue/protected_halfka.rs:126:24: 126:38}`
+   --> src/eval/nnue/protected_halfka.rs:142:10
+    |
+142 |     drop(take_i16);
+    |          ^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#drop_non_drop
+    = note: `#[warn(clippy::drop_non_drop)]` on by default
+
+warning: call to `std::mem::drop` with a value that does not implement `Drop`. Dropping such a type only extends its contained lifetimes
+   --> src/eval/nnue/simple_halfka.rs:116:5
+    |
+116 |     drop(take_i16);
+    |     ^^^^^^^^^^^^^^
+    |
+note: argument has type `{closure@src/eval/nnue/simple_halfka.rs:105:24: 105:38}`
+   --> src/eval/nnue/simple_halfka.rs:116:10
+    |
+116 |     drop(take_i16);
+    |          ^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#drop_non_drop
+
+warning: the loop variable `i` is used to index `acc`
+   --> src/eval/nnue/simple_halfka.rs:178:22
+    |
+178 |             for i in 0..SIMPLE_ACC {
+    |                      ^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_range_loop
+    = note: `#[warn(clippy::needless_range_loop)]` on by default
+help: consider using an iterator and enumerate()
+    |
+178 -             for i in 0..SIMPLE_ACC {
+178 +             for (i, <item>) in acc.iter_mut().enumerate().take(SIMPLE_ACC) {
+    |
+
+warning: the loop variable `i` is used to index `acc`
+   --> src/eval/nnue/simple_halfka.rs:207:26
+    |
+207 |                 for i in 0..SIMPLE_ACC {
+    |                          ^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_range_loop
+help: consider using an iterator and enumerate()
+    |
+207 -                 for i in 0..SIMPLE_ACC {
+207 +                 for (i, <item>) in acc.iter_mut().enumerate().take(SIMPLE_ACC) {
+    |
+
+warning: the loop variable `i` is used to index `acc`
+   --> src/eval/nnue/simple_halfka.rs:213:26
+    |
+213 |                 for i in 0..SIMPLE_ACC {
+    |                          ^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_range_loop
+help: consider using an iterator and enumerate()
+    |
+213 -                 for i in 0..SIMPLE_ACC {
+213 +                 for (i, <item>) in acc.iter_mut().enumerate().take(SIMPLE_ACC) {
+    |
+
+warning: unneeded `return` statement
+   --> src/eval/nnue/simple_halfka.rs:240:13
+    |
+240 | /             return (super::KERNELS.forward)(
+241 | |                 &acc[stm],
+242 | |                 &acc[stm ^ 1],
+243 | |                 out,
+244 | |                 self.net.out_bias,
+245 | |                 super::Activation::SCReLU,
+246 | |             );
+    | |_____________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_return
+    = note: `#[warn(clippy::needless_return)]` on by default
+help: remove `return`
+    |
+240 ~             (super::KERNELS.forward)(
+241 +                 &acc[stm],
+242 +                 &acc[stm ^ 1],
+243 +                 out,
+244 +                 self.net.out_bias,
+245 +                 super::Activation::SCReLU,
+246 ~             )
+    |
+
+warning: `chessengine` (lib) generated 9 warnings (run `cargo clippy --fix --lib -p chessengine -- ` to apply 2 suggestions)
+warning: `chessengine` (lib test) generated 9 warnings (9 duplicates)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.06s
+===== cargo test --target-dir target-gate26 -q =====
+
+running 616 tests
+..............................i........................................................ 87/616
+........................................................................i.............. 174/616
+....................................................................................... 261/616
+...i................................................................................... 348/616
+....................................................................................... 435/616
+...............................................................................i....ii. 522/616
+....................................................Position: 1/49 (rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1)
+Nodes searched: 20
+Position: 2/49 (r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 10)
+Nodes searched: 819
+Position: 3/49 (8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 11)
+Nodes searched: 17
+Position: 4/49 (4rrk1/pp1n3p/3q2pQ/2p1pb2/2PP4/2P3N1/P2B2PP/4RRK1 b - - 7 19)
+Nodes searched: 207
+Position: 5/49 (rq3rk1/ppp2ppp/1bnpb3/3N2B1/3NP3/7P/PPPQ1PP1/2KR3R w - - 7 14 moves d4e6)
+Nodes searched: 130
+Position: 6/49 (r1bq1r1k/1pp1n1pp/1p1p4/4p2Q/4Pp2/1BNP4/PPP2PPP/3R1RK1 w - - 2 14 moves g2g4)
+Nodes searched: 37
+Position: 7/49 (r3r1k1/2p2ppp/p1p1bn2/8/1q2P3/2NPQN2/PPP3PP/R4RK1 b - - 2 15)
+Nodes searched: 58
+Position: 8/49 (r1bbk1nr/pp3p1p/2n5/1N4p1/2Np1B2/8/PPP2PPP/2KR1B1R w kq - 0 13)
+Nodes searched: 138
+Position: 9/49 (r1bq1rk1/ppp1nppp/4n3/3p3Q/3P4/1BP1B3/PP1N2PP/R4RK1 w - - 1 16)
+Nodes searched: 62
+Position: 10/49 (4r1k1/r1q2ppp/ppp2n2/4P3/5Rb1/1N1BQ3/PPP3PP/R5K1 w - - 1 17)
+Nodes searched: 143
+Position: 11/49 (2rqkb1r/ppp2p2/2npb1p1/1N1Nn2p/2P1PP2/8/PP2B1PP/R1BQK2R b KQ - 0 11)
+Nodes searched: 203
+Position: 12/49 (r1bq1r1k/b1p1npp1/p2p3p/1p6/3PP3/1B2NN2/PP3PPP/R2Q1RK1 w - - 1 16)
+Nodes searched: 47
+Position: 13/49 (3r1rk1/p5pp/bpp1pp2/8/q1PP1P2/b3P3/P2NQRPP/1R2B1K1 b - - 6 22)
+Nodes searched: 52
+Position: 14/49 (r1q2rk1/2p1bppp/2Pp4/p6b/Q1PNp3/4B3/PP1R1PPP/2K4R w - - 2 18)
+Nodes searched: 45
+Position: 15/49 (4k2r/1pb2ppp/1p2p3/1R1p4/3P4/2r1PN2/P4PPP/1R4K1 b - - 3 22)
+Nodes searched: 41
+Position: 16/49 (3q2k1/pb3p1p/4pbp1/2r5/PpN2N2/1P2P2P/5PP1/Q2R2K1 b - - 4 26)
+Nodes searched: 112
+Position: 17/49 (6k1/6p1/6Pp/ppp5/3pn2P/1P3K2/1PP2P2/3N4 b - - 0 1)
+Nodes searched: 31
+Position: 18/49 (3b4/5kp1/1p1p1p1p/pP1PpP1P/P1P1P3/3KN3/8/8 w - - 0 1)
+Nodes searched: 12
+Position: 19/49 (2K5/p7/7P/5pR1/8/5k2/r7/8 w - - 0 1 moves g5g6 f3e3 g6g5 e3f3)
+Nodes searched: 18
+Position: 20/49 (8/6pk/1p6/8/PP3p1p/5P2/4KP1q/3Q4 w - - 0 1)
+Nodes searched: 28
+Position: 21/49 (7k/3p2pp/4q3/8/4Q3/5Kp1/P6b/8 w - - 0 1)
+Nodes searched: 48
+Position: 22/49 (8/2p5/8/2kPKp1p/2p4P/2P5/3P4/8 w - - 0 1)
+Nodes searched: 18
+Position: 23/49 (8/1p3pp1/7p/5P1P/2k3P1/8/2K2P2/8 w - - 0 1)
+Nodes searched: 11
+Position: 24/49 (8/pp2r1k1/2p1p3/3pP2p/1P1P1P1P/P5KR/8/8 w - - 0 1)
+Nodes searched: 11
+Position: 25/49 (8/3p4/p1bk3p/Pp6/1Kp1PpPp/2P2P1P/2P5/5B2 b - - 0 1)
+Nodes searched: 13
+Position: 26/49 (5k2/7R/4P2p/5K2/p1r2P1p/8/8/8 b - - 0 1)
+Nodes searched: 30
+Position: 27/49 (6k1/6p1/P6p/r1N5/5p2/7P/1b3PP1/4R1K1 w - - 0 1)
+Nodes searched: 64
+Position: 28/49 (1r3k2/4q3/2Pp3b/3Bp3/2Q2p2/1p1P2P1/1P2KP2/3N4 w - - 0 1)
+Nodes searched: 46
+Position: 29/49 (6k1/4pp1p/3p2p1/P1pPb3/R7/1r2P1PP/3B1P2/6K1 w - - 0 1)
+Nodes searched: 25
+Position: 30/49 (8/3p3B/5p2/5P2/p7/PP5b/k7/6K1 w - - 0 1)
+Nodes searched: 12
+Position: 31/49 (5rk1/q6p/2p3bR/1pPp1rP1/1P1Pp3/P3B1Q1/1K3P2/R7 w - - 93 90)
+Nodes searched: 45
+Position: 32/49 (4rrk1/1p1nq3/p7/2p1P1pp/3P2bp/3Q1Bn1/PPPB4/1K2R1NR w - - 40 21)
+Nodes searched: 270
+Position: 33/49 (r3k2r/3nnpbp/q2pp1p1/p7/Pp1PPPP1/4BNN1/1P5P/R2Q1RK1 w kq - 0 16)
+Nodes searched: 42
+Position: 34/49 (3Qb1k1/1r2ppb1/pN1n2q1/Pp1Pp1Pr/4P2p/4BP2/4B1R1/1R5K b - - 11 40)
+Nodes searched: 46
+Position: 35/49 (4k3/3q1r2/1N2r1b1/3ppN2/2nPP3/1B1R2n1/2R1Q3/3K4 w - - 5 1)
+Nodes searched: 371
+Position: 36/49 (1r6/1P4bk/3qr1p1/N6p/3pp2P/6R1/3Q1PP1/1R4K1 w - - 1 42)
+Nodes searched: 52
+Position: 37/49 (k7/2n1n3/1nbNbn2/2NbRBn1/1nbRQR2/2NBRBN1/3N1N2/7K w - - 0 1)
+................................... 609/616
+.....Nodes searched: 329975
+Position: 38/49 (K7/8/8/BNQNQNB1/N5N1/R1Q1q2r/n5n1/bnqnqnbk w - - 0 1)
+Nodes searched: 9080
+Position: 39/49 (8/8/8/8/5kp1/P7/8/1K1N4 w - - 0 1)
+Nodes searched: 11
+Position: 40/49 (8/8/8/5N2/8/p7/8/2NK3k w - - 0 1)
+Nodes searched: 17
+Position: 41/49 (8/3k4/8/8/8/4B3/4KB2/2B5 w - - 0 1)
+Nodes searched: 21
+Position: 42/49 (8/8/1P6/5pr1/8/4R3/7k/2K5 w - - 0 1)
+Nodes searched: 24
+Position: 43/49 (8/2p4P/8/kr6/6R1/8/8/1K6 w - - 0 1)
+Nodes searched: 9
+Position: 44/49 (8/8/3P3k/8/1p6/8/1P6/1K3n2 b - - 0 1)
+Nodes searched: 11
+Position: 45/49 (8/R7/2q5/8/6k1/8/1P5p/K6R w - - 0 124)
+Nodes searched: 58
+Position: 46/49 (6k1/3b3r/1p1p4/p1n2p2/1PPNpP1q/P3Q1p1/1R1RB1P1/5K2 b - - 0 1)
+Nodes searched: 95
+Position: 47/49 (r2r1n2/pp2bk2/2p1p2p/3q4/3PN1QP/2P3R1/P4PP1/5RK1 w - - 0 1)
+Nodes searched: 72
+Position: 48/49 (8/8/8/8/8/6k1/6p1/6K1 w - -)
+Nodes searched: 0
+Position: 49/49 (7k/7P/6K1/8/3B4/8/8/8 b - -)
+Nodes searched: 0
+===========================
+Total time (ms) : 3164
+Nodes searched  : 342697
+Nodes/second    : 108311
+..
+test result: ok. 610 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 10.59s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 9 tests
+.........
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 11 tests
+...........
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.14s
+
+
+running 10 tests
+..........
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+
+running 6 tests
+......
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+
+
+running 7 tests
+.......
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.49s
+
+
+running 7 tests
+.......
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 8 tests
+....ii..
+test result: ok. 6 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 3.54s
+
+
+running 15 tests
+...............
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+
+running 24 tests
+........................
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 19.97s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+===== cargo test --features sota --target-dir target-gate26 -q =====
+warning: function `read_i8s` is never used
+   --> src/eval/nnue/sota_loader.rs:849:4
+    |
+849 | fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
+    |    ^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `NNZ_IOTA` is never used
+    --> src/eval/nnue/sota_simd.rs:1825:11
+     |
+1825 |     const NNZ_IOTA: [u16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+     |           ^^^^^^^^
+
+
+running 714 tests
+..............................i........................................................ 87/714
+.....................................................................................i. 174/714
+............................................................................i...i...... 261/714
+....................................................................................... 348/714
+..........i............................................................................ 435/714
+....................................................................................... 522/714
+....................................................................................... 609/714
+...i....ii.....................................................Position: 1/49 (rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1)
+Nodes searched: 20
+Position: 2/49 (r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 10)
+Nodes searched: 819
+Position: 3/49 (8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 11)
+Nodes searched: 17
+Position: 4/49 (4rrk1/pp1n3p/3q2pQ/2p1pb2/2PP4/2P3N1/P2B2PP/4RRK1 b - - 7 19)
+Nodes searched: 207
+Position: 5/49 (rq3rk1/ppp2ppp/1bnpb3/3N2B1/3NP3/7P/PPPQ1PP1/2KR3R w - - 7 14 moves d4e6)
+Nodes searched: 130
+Position: 6/49 (r1bq1r1k/1pp1n1pp/1p1p4/4p2Q/4Pp2/1BNP4/PPP2PPP/3R1RK1 w - - 2 14 moves g2g4)
+Nodes searched: 37
+Position: 7/49 (r3r1k1/2p2ppp/p1p1bn2/8/1q2P3/2NPQN2/PPP3PP/R4RK1 b - - 2 15)
+Nodes searched: 58
+Position: 8/49 (r1bbk1nr/pp3p1p/2n5/1N4p1/2Np1B2/8/PPP2PPP/2KR1B1R w kq - 0 13)
+Nodes searched: 138
+Position: 9/49 (r1bq1rk1/ppp1nppp/4n3/3p3Q/3P4/1BP1B3/PP1N2PP/R4RK1 w - - 1 16)
+Nodes searched: 62
+Position: 10/49 (4r1k1/r1q2ppp/ppp2n2/4P3/5Rb1/1N1BQ3/PPP3PP/R5K1 w - - 1 17)
+Nodes searched: 143
+Position: 11/49 (2rqkb1r/ppp2p2/2npb1p1/1N1Nn2p/2P1PP2/8/PP2B1PP/R1BQK2R b KQ - 0 11)
+Nodes searched: 203
+Position: 12/49 (r1bq1r1k/b1p1npp1/p2p3p/1p6/3PP3/1B2NN2/PP3PPP/R2Q1RK1 w - - 1 16)
+Nodes searched: 47
+Position: 13/49 (3r1rk1/p5pp/bpp1pp2/8/q1PP1P2/b3P3/P2NQRPP/1R2B1K1 b - - 6 22)
+Nodes searched: 52
+Position: 14/49 (r1q2rk1/2p1bppp/2Pp4/p6b/Q1PNp3/4B3/PP1R1PPP/2K4R w - - 2 18)
+Nodes searched: 45
+Position: 15/49 (4k2r/1pb2ppp/1p2p3/1R1p4/3P4/2r1PN2/P4PPP/1R4K1 b - - 3 22)
+Nodes searched: 41
+Position: 16/49 (3q2k1/pb3p1p/4pbp1/2r5/PpN2N2/1P2P2P/5PP1/Q2R2K1 b - - 4 26)
+Nodes searched: 112
+Position: 17/49 (6k1/6p1/6Pp/ppp5/3pn2P/1P3K2/1PP2P2/3N4 b - - 0 1)
+Nodes searched: 31
+Position: 18/49 (3b4/5kp1/1p1p1p1p/pP1PpP1P/P1P1P3/3KN3/8/8 w - - 0 1)
+Nodes searched: 12
+Position: 19/49 (2K5/p7/7P/5pR1/8/5k2/r7/8 w - - 0 1 moves g5g6 f3e3 g6g5 e3f3)
+Nodes searched: 18
+Position: 20/49 (8/6pk/1p6/8/PP3p1p/5P2/4KP1q/3Q4 w - - 0 1)
+Nodes searched: 28
+Position: 21/49 (7k/3p2pp/4q3/8/4Q3/5Kp1/P6b/8 w - - 0 1)
+Nodes searched: 48
+Position: 22/49 (8/2p5/8/2kPKp1p/2p4P/2P5/3P4/8 w - - 0 1)
+Nodes searched: 18
+Position: 23/49 (8/1p3pp1/7p/5P1P/2k3P1/8/2K2P2/8 w - - 0 1)
+Nodes searched: 11
+Position: 24/49 (8/pp2r1k1/2p1p3/3pP2p/1P1P1P1P/P5KR/8/8 w - - 0 1)
+Nodes searched: 11
+Position: 25/49 (8/3p4/p1bk3p/Pp6/1Kp1PpPp/2P2P1P/2P5/5B2 b - - 0 1)
+Nodes searched: 13
+Position: 26/49 (5k2/7R/4P2p/5K2/p1r2P1p/8/8/8 b - - 0 1)
+Nodes searched: 30
+Position: 27/49 (6k1/6p1/P6p/r1N5/5p2/7P/1b3PP1/4R1K1 w - - 0 1)
+Nodes searched: 64
+Position: 28/49 (1r3k2/4q3/2Pp3b/3Bp3/2Q2p2/1p1P2P1/1P2KP2/3N4 w - - 0 1)
+Nodes searched: 46
+Position: 29/49 (6k1/4pp1p/3p2p1/P1pPb3/R7/1r2P1PP/3B1P2/6K1 w - - 0 1)
+Nodes searched: 25
+Position: 30/49 (8/3p3B/5p2/5P2/p7/PP5b/k7/6K1 w - - 0 1)
+Nodes searched: 12
+Position: 31/49 (5rk1/q6p/2p3bR/1pPp1rP1/1P1Pp3/P3B1Q1/1K3P2/R7 w - - 93 90)
+Nodes searched: 45
+Position: 32/49 (4rrk1/1p1nq3/p7/2p1P1pp/3P2bp/3Q1Bn1/PPPB4/1K2R1NR w - - 40 21)
+Nodes searched: 270
+Position: 33/49 (r3k2r/3nnpbp/q2pp1p1/p7/Pp1PPPP1/4BNN1/1P5P/R2Q1RK1 w kq - 0 16)
+Nodes searched: 42
+Position: 34/49 (3Qb1k1/1r2ppb1/pN1n2q1/Pp1Pp1Pr/4P2p/4BP2/4B1R1/1R5K b - - 11 40)
+Nodes searched: 46
+Position: 35/49 (4k3/3q1r2/1N2r1b1/3ppN2/2nPP3/1B1R2n1/2R1Q3/3K4 w - - 5 1)
+Nodes searched: 371
+Position: 36/49 (1r6/1P4bk/3qr1p1/N6p/3pp2P/6R1/3Q1PP1/1R4K1 w - - 1 42)
+Nodes searched: 52
+Position: 37/49 (k7/2n1n3/1nbNbn2/2NbRBn1/1nbRQR2/2NBRBN1/3N1N2/7K w - - 0 1)
+........Nodes searched: 329975
+Position: 38/49 (K7/8/8/BNQNQNB1/N5N1/R1Q1q2r/n5n1/bnqnqnbk w - - 0 1)
+....Nodes searched: 9080
+Position: 39/49 (8/8/8/8/5kp1/P7/8/1K1N4 w - - 0 1)
+Nodes searched: 11
+Position: 40/49 (8/8/8/5N2/8/p7/8/2NK3k w - - 0 1)
+.Nodes searched: 17
+Position: 41/49 (8/3k4/8/8/8/4B3/4KB2/2B5 w - - 0 1)
+Nodes searched: 21
+Position: 42/49 (8/8/1P6/5pr1/8/4R3/7k/2K5 w - - 0 1)
+Nodes searched: 24
+Position: 43/49 (8/2p4P/8/kr6/6R1/8/8/1K6 w - - 0 1)
+Nodes searched: 9
+Position: 44/49 (8/8/3P3k/8/1p6/8/1P6/1K3n2 b - - 0 1)
+Nodes searched: 11
+Position: 45/49 (8/R7/2q5/8/6k1/8/1P5p/K6R w - - 0 124)
+Nodes searched: 58
+Position: 46/49 (6k1/3b3r/1p1p4/p1n2p2/1PPNpP1q/P3Q1p1/1R1RB1P1/5K2 b - - 0 1)
+Nodes searched: 95
+Position: 47/49 (r2r1n2/pp2bk2/2p1p2p/3q4/3PN1QP/2P3R1/P4PP1/5RK1 w - - 0 1)
+Nodes searched: 72
+Position: 48/49 (8/8/8/8/8/6k1/6p1/6K1 w - -)
+Nodes searched: 0
+Position: 49/49 (7k/7P/6K1/8/3B4/8/8/8 b - -)
+Nodes searched: 0
+===========================
+Total time (ms) : 2813
+Nodes searched  : 342697
+Nodes/second    : 121826
+........... 696/714
+..................
+test result: ok. 706 passed; 0 failed; 8 ignored; 0 measured; 0 filtered out; finished in 46.73s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.72s
+
+
+running 9 tests
+.........
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.27s
+
+
+running 11 tests
+...........
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.17s
+
+
+running 10 tests
+..........
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+
+running 6 tests
+......
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+
+
+running 7 tests
+.......
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.48s
+
+
+running 7 tests
+.......
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 8 tests
+...i.i..
+test result: ok. 6 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 3.27s
+
+
+running 15 tests
+...............
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+
+running 24 tests
+........................
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.29s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+===== cargo test --features sota,arch-d48x --target-dir target-gate26 -q =====
+warning: function `read_i8s` is never used
+   --> src/eval/nnue/sota_loader.rs:849:4
+    |
+849 | fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
+    |    ^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `NNZ_IOTA` is never used
+    --> src/eval/nnue/sota_simd.rs:1825:11
+     |
+1825 |     const NNZ_IOTA: [u16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+     |           ^^^^^^^^
+
+
+running 714 tests
+..............................i........................................................ 87/714
+.....................................................................................i. 174/714
+............................................................................i...i...... 261/714
+....................................................................................... 348/714
+..........i............................................................................ 435/714
+....................................................................................... 522/714
+....................................................................................... 609/714
+...i....ii.....................................................Position: 1/49 (rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1)
+Nodes searched: 20
+Position: 2/49 (r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 10)
+Nodes searched: 819
+Position: 3/49 (8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 11)
+Nodes searched: 17
+Position: 4/49 (4rrk1/pp1n3p/3q2pQ/2p1pb2/2PP4/2P3N1/P2B2PP/4RRK1 b - - 7 19)
+Nodes searched: 207
+Position: 5/49 (rq3rk1/ppp2ppp/1bnpb3/3N2B1/3NP3/7P/PPPQ1PP1/2KR3R w - - 7 14 moves d4e6)
+Nodes searched: 130
+Position: 6/49 (r1bq1r1k/1pp1n1pp/1p1p4/4p2Q/4Pp2/1BNP4/PPP2PPP/3R1RK1 w - - 2 14 moves g2g4)
+Nodes searched: 37
+Position: 7/49 (r3r1k1/2p2ppp/p1p1bn2/8/1q2P3/2NPQN2/PPP3PP/R4RK1 b - - 2 15)
+Nodes searched: 58
+Position: 8/49 (r1bbk1nr/pp3p1p/2n5/1N4p1/2Np1B2/8/PPP2PPP/2KR1B1R w kq - 0 13)
+Nodes searched: 138
+Position: 9/49 (r1bq1rk1/ppp1nppp/4n3/3p3Q/3P4/1BP1B3/PP1N2PP/R4RK1 w - - 1 16)
+Nodes searched: 62
+Position: 10/49 (4r1k1/r1q2ppp/ppp2n2/4P3/5Rb1/1N1BQ3/PPP3PP/R5K1 w - - 1 17)
+Nodes searched: 143
+Position: 11/49 (2rqkb1r/ppp2p2/2npb1p1/1N1Nn2p/2P1PP2/8/PP2B1PP/R1BQK2R b KQ - 0 11)
+Nodes searched: 203
+Position: 12/49 (r1bq1r1k/b1p1npp1/p2p3p/1p6/3PP3/1B2NN2/PP3PPP/R2Q1RK1 w - - 1 16)
+Nodes searched: 47
+Position: 13/49 (3r1rk1/p5pp/bpp1pp2/8/q1PP1P2/b3P3/P2NQRPP/1R2B1K1 b - - 6 22)
+Nodes searched: 52
+Position: 14/49 (r1q2rk1/2p1bppp/2Pp4/p6b/Q1PNp3/4B3/PP1R1PPP/2K4R w - - 2 18)
+Nodes searched: 45
+Position: 15/49 (4k2r/1pb2ppp/1p2p3/1R1p4/3P4/2r1PN2/P4PPP/1R4K1 b - - 3 22)
+Nodes searched: 41
+Position: 16/49 (3q2k1/pb3p1p/4pbp1/2r5/PpN2N2/1P2P2P/5PP1/Q2R2K1 b - - 4 26)
+Nodes searched: 112
+Position: 17/49 (6k1/6p1/6Pp/ppp5/3pn2P/1P3K2/1PP2P2/3N4 b - - 0 1)
+Nodes searched: 31
+Position: 18/49 (3b4/5kp1/1p1p1p1p/pP1PpP1P/P1P1P3/3KN3/8/8 w - - 0 1)
+Nodes searched: 12
+Position: 19/49 (2K5/p7/7P/5pR1/8/5k2/r7/8 w - - 0 1 moves g5g6 f3e3 g6g5 e3f3)
+Nodes searched: 18
+Position: 20/49 (8/6pk/1p6/8/PP3p1p/5P2/4KP1q/3Q4 w - - 0 1)
+Nodes searched: 28
+Position: 21/49 (7k/3p2pp/4q3/8/4Q3/5Kp1/P6b/8 w - - 0 1)
+Nodes searched: 48
+Position: 22/49 (8/2p5/8/2kPKp1p/2p4P/2P5/3P4/8 w - - 0 1)
+Nodes searched: 18
+Position: 23/49 (8/1p3pp1/7p/5P1P/2k3P1/8/2K2P2/8 w - - 0 1)
+Nodes searched: 11
+Position: 24/49 (8/pp2r1k1/2p1p3/3pP2p/1P1P1P1P/P5KR/8/8 w - - 0 1)
+Nodes searched: 11
+Position: 25/49 (8/3p4/p1bk3p/Pp6/1Kp1PpPp/2P2P1P/2P5/5B2 b - - 0 1)
+Nodes searched: 13
+Position: 26/49 (5k2/7R/4P2p/5K2/p1r2P1p/8/8/8 b - - 0 1)
+Nodes searched: 30
+Position: 27/49 (6k1/6p1/P6p/r1N5/5p2/7P/1b3PP1/4R1K1 w - - 0 1)
+Nodes searched: 64
+Position: 28/49 (1r3k2/4q3/2Pp3b/3Bp3/2Q2p2/1p1P2P1/1P2KP2/3N4 w - - 0 1)
+Nodes searched: 46
+Position: 29/49 (6k1/4pp1p/3p2p1/P1pPb3/R7/1r2P1PP/3B1P2/6K1 w - - 0 1)
+Nodes searched: 25
+Position: 30/49 (8/3p3B/5p2/5P2/p7/PP5b/k7/6K1 w - - 0 1)
+Nodes searched: 12
+Position: 31/49 (5rk1/q6p/2p3bR/1pPp1rP1/1P1Pp3/P3B1Q1/1K3P2/R7 w - - 93 90)
+Nodes searched: 45
+Position: 32/49 (4rrk1/1p1nq3/p7/2p1P1pp/3P2bp/3Q1Bn1/PPPB4/1K2R1NR w - - 40 21)
+Nodes searched: 270
+Position: 33/49 (r3k2r/3nnpbp/q2pp1p1/p7/Pp1PPPP1/4BNN1/1P5P/R2Q1RK1 w kq - 0 16)
+Nodes searched: 42
+Position: 34/49 (3Qb1k1/1r2ppb1/pN1n2q1/Pp1Pp1Pr/4P2p/4BP2/4B1R1/1R5K b - - 11 40)
+Nodes searched: 46
+Position: 35/49 (4k3/3q1r2/1N2r1b1/3ppN2/2nPP3/1B1R2n1/2R1Q3/3K4 w - - 5 1)
+Nodes searched: 371
+Position: 36/49 (1r6/1P4bk/3qr1p1/N6p/3pp2P/6R1/3Q1PP1/1R4K1 w - - 1 42)
+Nodes searched: 52
+Position: 37/49 (k7/2n1n3/1nbNbn2/2NbRBn1/1nbRQR2/2NBRBN1/3N1N2/7K w - - 0 1)
+Nodes searched: 329975
+Position: 38/49 (K7/8/8/BNQNQNB1/N5N1/R1Q1q2r/n5n1/bnqnqnbk w - - 0 1)
+Nodes searched: 9080
+Position: 39/49 (8/8/8/8/5kp1/P7/8/1K1N4 w - - 0 1)
+Nodes searched: 11
+Position: 40/49 (8/8/8/5N2/8/p7/8/2NK3k w - - 0 1)
+Nodes searched: 17
+Position: 41/49 (8/3k4/8/8/8/4B3/4KB2/2B5 w - - 0 1)
+Nodes searched: 21
+Position: 42/49 (8/8/1P6/5pr1/8/4R3/7k/2K5 w - - 0 1)
+Nodes searched: 24
+Position: 43/49 (8/2p4P/8/kr6/6R1/8/8/1K6 w - - 0 1)
+Nodes searched: 9
+Position: 44/49 (8/8/3P3k/8/1p6/8/1P6/1K3n2 b - - 0 1)
+Nodes searched: 11
+Position: 45/49 (8/R7/2q5/8/6k1/8/1P5p/K6R w - - 0 124)
+Nodes searched: 58
+Position: 46/49 (6k1/3b3r/1p1p4/p1n2p2/1PPNpP1q/P3Q1p1/1R1RB1P1/5K2 b - - 0 1)
+Nodes searched: 95
+Position: 47/49 (r2r1n2/pp2bk2/2p1p2p/3q4/3PN1QP/2P3R1/P4PP1/5RK1 w - - 0 1)
+Nodes searched: 72
+Position: 48/49 (8/8/8/8/8/6k1/6p1/6K1 w - -)
+Nodes searched: 0
+Position: 49/49 (7k/7P/6K1/8/3B4/8/8/8 b - -)
+Nodes searched: 0
+===========================
+Total time (ms) : 3059
+Nodes searched  : 342697
+Nodes/second    : 112029
+........................ 696/714
+..................
+test result: ok. 706 passed; 0 failed; 8 ignored; 0 measured; 0 filtered out; finished in 48.64s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.78s
+
+
+running 9 tests
+.........
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.33s
+
+
+running 11 tests
+...........
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.24s
+
+
+running 10 tests
+..........
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+
+running 6 tests
+......
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+
+
+running 7 tests
+.......
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
+
+
+running 7 tests
+.......
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 8 tests
+....i.i.
+test result: ok. 6 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 3.43s
+
+
+running 15 tests
+...............
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+
+running 24 tests
+........................
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 19.57s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+===== ALL GATES PASSED =====

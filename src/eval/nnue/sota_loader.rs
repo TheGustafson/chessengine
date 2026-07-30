@@ -60,9 +60,11 @@
 //! compile-time architecture constants from [`super::sota_head`] and
 //! [`super::sota_features`].
 
-use super::aligned::Aligned;
+use super::aligned::{Aligned, Blocks};
 use super::sota_features::{ACC, HALFKA_DIMS, THREAT_DIMS};
-use super::sota_head::{self, BUCKETS, L1, L2, L3, SotaHead};
+use super::sota_head::{
+    self, BUCKETS, L1, L1Biases, L1Weights, L2, L2Biases, L2Weights, L3, L3Weights, SotaHead,
+};
 use std::error::Error;
 use std::fmt;
 use std::path::Path;
@@ -432,22 +434,25 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         Aligned::from_iter_len(0, std::iter::empty())
     };
 
-    // L1 weights: i8[BUCKETS · L2 · L1], bucket-major, group-interleaved.
-    let l1_weights = read_i8s_aligned(payload, &mut cur, BUCKETS * L2 * L1);
-
-    // L1 biases: f32[BUCKETS · L2]. Cache-line aligned like the weights:
-    // the head reads a whole 64-byte `[f32; L2]` block per eval and the
-    // bucket stride is a multiple of 64, so the base decides them all.
-    let l1_biases = read_f32s_aligned(payload, &mut cur, BUCKETS * L2);
-
-    // L2 weights: f32[BUCKETS · L2 · L3].
-    let l2_weights = read_f32s_aligned(payload, &mut cur, BUCKETS * L2 * L3);
-
-    // L2 biases: f32[BUCKETS · L3]. Aligned; see `l1_biases`.
-    let l2_biases = read_f32s_aligned(payload, &mut cur, BUCKETS * L3);
-
-    // L3 weights: f32[BUCKETS · L3]. Aligned; see `l1_biases`.
-    let l3_weights = read_f32s_aligned(payload, &mut cur, BUCKETS * L3);
+    // The head's five bucket-major tables. Read as `Blocks`, not as one flat
+    // aligned run: the bucket stride is fixed at load, so it belongs in the
+    // type rather than in a range slice re-derived on every eval (perf study
+    // 26 §3). The on-disk layout is unchanged — `Blocks` is block-major
+    // contiguous with no interior padding, which `Blocks::LAYOUT_OK` asserts
+    // at compile time.
+    //
+    // L1 weights: i8[BUCKETS][L2 · L1], group-interleaved within a bucket.
+    let l1_weights: L1Weights = read_i8_blocks(payload, &mut cur);
+    // L1 biases: f32[BUCKETS][L2]. Every block starts on a cache line now,
+    // not just the table (perf study 21 arm B4 fixed the base; this fixes all
+    // BUCKETS of them by construction).
+    let l1_biases: L1Biases = read_f32_blocks(payload, &mut cur);
+    // L2 weights: f32[BUCKETS][L2 · L3].
+    let l2_weights: L2Weights = read_f32_blocks(payload, &mut cur);
+    // L2 biases: f32[BUCKETS][L3].
+    let l2_biases: L2Biases = read_f32_blocks(payload, &mut cur);
+    // L3 weights: f32[BUCKETS][L3].
+    let l3_weights: L3Weights = read_f32_blocks(payload, &mut cur);
 
     // L3 biases: f32[BUCKETS].
     let l3_biases = read_f32s(payload, &mut cur, BUCKETS);
@@ -870,12 +875,25 @@ fn read_i32s(payload: &[u8], cur: &mut usize, count: usize) -> Aligned<i32> {
     out
 }
 
-/// [`read_f32s`] into a cache-line-aligned buffer — for the L2 weight block,
-/// which `l2_tail` reads as whole `zmm` operands (perf study 20 arm 5).
-fn read_f32s_aligned(payload: &[u8], cur: &mut usize, count: usize) -> Aligned<f32> {
-    let end = *cur + 4 * count;
-    let out = Aligned::from_iter_len(
-        count,
+/// [`read_i8s_aligned`]'s block-shaped sibling: `B` blocks of `N` i8, in the
+/// same block-major order the flat read produced.
+fn read_i8_blocks<const N: usize, const B: usize>(
+    payload: &[u8],
+    cur: &mut usize,
+) -> Blocks<i8, N, B> {
+    let end = *cur + N * B;
+    let out = Blocks::from_flat_iter(payload[*cur..end].iter().map(|&b| b as i8));
+    *cur = end;
+    out
+}
+
+/// The f32 form of [`read_i8_blocks`]; same block-major order.
+fn read_f32_blocks<const N: usize, const B: usize>(
+    payload: &[u8],
+    cur: &mut usize,
+) -> Blocks<f32, N, B> {
+    let end = *cur + 4 * N * B;
+    let out = Blocks::from_flat_iter(
         payload[*cur..end]
             .chunks_exact(4)
             .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])),
@@ -920,15 +938,15 @@ pub(crate) mod tests {
         let threat_weights: Aligned<i8> = (0..THREAT_DIMS * ACC)
             .map(|_| small_i8(&mut prng))
             .collect();
-        let l1_weights: Aligned<i8> = (0..BUCKETS * L2 * L1)
+        let l1_weights: L1Weights = (0..BUCKETS * L2 * L1)
             .map(|_| small_i8(&mut prng))
             .collect();
-        let l1_biases: Aligned<f32> = (0..BUCKETS * L2).map(|_| small_f32(&mut prng)).collect();
-        let l2_weights: Aligned<f32> = (0..BUCKETS * L2 * L3)
+        let l1_biases: L1Biases = (0..BUCKETS * L2).map(|_| small_f32(&mut prng)).collect();
+        let l2_weights: L2Weights = (0..BUCKETS * L2 * L3)
             .map(|_| small_f32(&mut prng))
             .collect();
-        let l2_biases: Aligned<f32> = (0..BUCKETS * L3).map(|_| small_f32(&mut prng)).collect();
-        let l3_weights: Aligned<f32> = (0..BUCKETS * L3).map(|_| small_f32(&mut prng)).collect();
+        let l2_biases: L2Biases = (0..BUCKETS * L3).map(|_| small_f32(&mut prng)).collect();
+        let l3_weights: L3Weights = (0..BUCKETS * L3).map(|_| small_f32(&mut prng)).collect();
         let l3_biases: Box<[f32]> = (0..BUCKETS).map(|_| small_f32(&mut prng)).collect();
 
         SotaNetwork {
