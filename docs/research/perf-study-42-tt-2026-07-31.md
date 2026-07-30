@@ -49,7 +49,7 @@ Two notes on comparability, both mine to own:
 
 ## ★ HEADLINE
 
-### 1. The TT touches **1.067 cache lines per node** — and that is a hard bound, not an estimate
+### H1. The TT touches **1.067 cache lines per node** — and that is a hard bound, not an estimate
 
 Three independent facts compose into it, each measured here:
 
@@ -80,7 +80,7 @@ allocator; `no_cluster_straddles_a_64_byte_cache_line` now does, permanently.
 Against the engine's **580.9 cache fills per node**, 1.067 lines is **0.18%**.
 The TT is a rounding error in cache *traffic*.
 
-### 2. It is not a rounding error in TIME, because every one of those lines is a DRAM-class miss — and the prefetch we already ship is worth 3.5% of the engine
+### H2. It is not a rounding error in TIME, because every one of those lines is a DRAM-class miss — and the prefetch we already ship is worth 3.5% of the engine
 
 The node-identical arm `ttnopf42` turns `TranspositionTable::prefetch` into a
 no-op and changes nothing else. Node counts reproduce bit-for-bit
@@ -107,10 +107,19 @@ than the cycle delta shows: it also *spends* 21.5 instructions/node, worth
 
 The percentage is the measured quantity and the honest headline: **the TT
 prefetch is worth 3.5% of engine cycles**, i.e. ~6 Elo at the project's
-~120 Elo/doubling constant. It is the sixth prefetch proposal in this engine's
-history and the first one anybody measured.
+~120 Elo/doubling constant.
 
-### 3. ★ A METHODOLOGY CORRECTION: study 39's stall-per-line rate must NOT be applied here, and the commission's own conversion would have been wrong by ~100×
+The commission warned that prefetching has been proposed and killed **six
+times** in this engine, most recently by study 29. That prior is about *new*
+prefetches. The hint measured here is the **incumbent** — it shipped with the
+TT in P6, its only justification was a 2026-07-10 standalone microbenchmark,
+and doc 08 §4 step 7's "re-measure the search-integrated delta when the call
+sites land" had been outstanding ever since. **It is not a seventh proposal; it
+is the one we already run, and this is the first time it was measured in the
+search.** The seventh and eighth proposals are `spec` and `spec2` below, and
+both die (§4.3) — so the prior survives this study intact at 6-for-8.
+
+### H3. ★ A METHODOLOGY CORRECTION: study 39's stall-per-line rate must NOT be applied here, and the commission's own conversion would have been wrong by ~100×
 
 The commission asked me to convert misses to stall cycles with study 39's
 confound-free figure of **1.119 stall cycles per 64-byte line**. Doing that:
@@ -161,7 +170,7 @@ Two mechanisms, both of which had to be checked rather than assumed:
    prefetch changes *when* the line lands, which is exactly the axis this
    counter cannot see.
 
-**Consequence, and it is the reason §1 is built the way it is:** the IBS level
+**Consequence, and it is the reason §H2 is built the way it is:** the IBS level
 distribution is structurally blind to the question "is the prefetch working".
 Only the node-identical differencing arm can answer it, and it does (§1:
 +3.504% cycles, 12–18 of 12–18 rounds, against a clean null). Nothing in this
@@ -304,7 +313,7 @@ forbids. The measured facts are the cycles and the stall, and both say null.
 | `spec2` | — | — | +0.405% (8/13, .58) | **NULL** |
 
 **`nopf` is the only arm that repeats.** Three panels, three different label
-sets, 44 of 46 rounds on the same side. Everything in §1 rests on it.
+sets, 44 of 46 rounds on the same side. Everything in §H2 rests on it.
 
 **`spec` and `spec2` are nulls, and that resolves the pre-registration in
 favour of branch (b).** Two independent panels put `spec` at 8/14 and 7/14 —
@@ -327,7 +336,7 @@ the hint has to go all the way to L1.
 
 ---
 
-## 5. Two levers that are DEAD, with the measurement that kills each
+## 5. Three levers that are DEAD, each with the measurement that kills it
 
 ### 5.1 Huge pages for the TT: dead
 
@@ -373,7 +382,7 @@ the 64-byte line the previous probe had just pulled. The sibling cluster that
 shares each line is never reused, which is what uniform indexing over 524288
 clusters must give.
 
-So the layout is straddle-free (§1) but **each 64-byte line the TT fetches
+So the layout is straddle-free (§H1) but **each 64-byte line the TT fetches
 carries 3 usable entries and 3 unusable ones**. A 64-byte, 6-entry cluster
 would carry 6 usable entries for exactly the same traffic — same lines
 fetched, same table size, double the associativity. This is a *quality* lever,
@@ -383,7 +392,7 @@ study's work, not claimed here — it changes the tree and needs games.
 
 ---
 
-## 5.3 `_MM_HINT_T2` is worse than `_MM_HINT_T0`, measured
+### 5.3 `_MM_HINT_T2` is worse than `_MM_HINT_T0`, measured
 
 Study 29 killed a prefetch proposal partly on the argument that a `T2` hint
 "lands in L2 where the lines already hit". The TT is the case where that can be
@@ -459,7 +468,7 @@ value of anything else that hides or removes a TT miss.
 
 ---
 
-## 9. What I am least sure about
+## 8. What I am least sure about
 
 Ordered by how much of the study would move if I am wrong.
 

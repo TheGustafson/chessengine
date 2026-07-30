@@ -3,3 +3,7 @@ r1 nopf nodes=5001625 instructions:u=5899.190330 cycles:u=4960.911454 ex_no_reti
 r1 null nodes=5001625 instructions:u=5920.686342 cycles:u=4817.390709 ex_no_retire.load_not_complete:u=2741.276458 ex_no_retire.empty:u=201.950085 ex_no_retire.thread_not_selected:u=32.010284 
 r2 base nodes=5001625 instructions:u=5920.686312 cycles:u=4632.814473 ex_no_retire.load_not_complete:u=2586.241012 ex_no_retire.empty:u=188.735344 ex_no_retire.thread_not_selected:u=23.281738 
 r2 nopf nodes=5001625 instructions:u=5899.190364 cycles:u=4806.840673 ex_no_retire.load_not_complete:u=2721.378965 ex_no_retire.empty:u=203.655078 ex_no_retire.thread_not_selected:u=23.975140 
+r2 null nodes=5001625 instructions:u=5920.686138 cycles:u=4672.996322 ex_no_retire.load_not_complete:u=2614.165283 ex_no_retire.empty:u=195.250779 ex_no_retire.thread_not_selected:u=25.588331 
+r3 nopf nodes=5001625 instructions:u=5899.190214 cycles:u=4837.489462 ex_no_retire.load_not_complete:u=2740.597987 ex_no_retire.empty:u=206.396988 ex_no_retire.thread_not_selected:u=24.519266 
+r3 null nodes=5001625 instructions:u=5920.686326 cycles:u=4645.653703 ex_no_retire.load_not_complete:u=2592.392221 ex_no_retire.empty:u=191.830015 ex_no_retire.thread_not_selected:u=23.843684 
+r3 base nodes=5001625 instructions:u=5920.686317 cycles:u=4703.215438 ex_no_retire.load_not_complete:u=2633.618185 ex_no_retire.empty:u=193.346655 ex_no_retire.thread_not_selected:u=25.370448 
