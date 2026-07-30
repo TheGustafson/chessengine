@@ -3577,3 +3577,48 @@ merging now risks conflicting under them. Merge order: 30 (user's sequence
 needs it), then 29, then 31. Study 29 has been sent study 31's census numbers
 and the verified SF finding, with instructions to state any disagreement
 plainly rather than defer.
+
+## Tick 2026-07-30 ~02:10 — study 32 commissioned (i8 HalfKA)
+
+**D49 sb134/400**, 177k pos/s, heldout 0.012826 @ sb130 (ema 0.012144), still
+descending. Unit active, untouched.
+
+**Box:** load 12.04 -> 5.59, 6555 MB available, 177 GB disk. Room to commission.
+
+**The nudge worked.** Study 29 went ahead=0/dirty=21 -> **ahead=3**/dirty=5
+after being told to commit. Two hours of census work is now in git rather than
+living only as dirty files in a worktree. Study 30: ahead=2, dirty=9.
+
+**Commissioned study 32 — offline i8 quantisation of the HalfKA transformer.**
+Target chosen because it is study 31's own #1 and it fits the standing
+directive exactly: pure ARCHON, no SF comparison, aimed at throughput.
+Price: **-463 cycles/node ~= +17 Elo**, bigger than fusion and width combined,
+and it pulls the table inside L3. Attacks the largest stall source we have
+(52% of load-stall cycles are FT weight rows, 61% of those HalfKA).
+
+Structure of the brief:
+- **Phase 1 is an offline NumPy fidelity check** — no build, so its early phase
+  costs the box nothing while studies 29/30 finish. Error measured as *eval
+  delta over real positions in SF-frame cp*, not weight MSE. Pass bar declared
+  before measuring.
+- **Phase 2 gates on CYCLES, median >=6 rounds.** Told explicitly that this item
+  moves BYTES so instructions may not move — and that study 20 was -5.99%
+  cycles with instructions UP 0.19%, so an instructions gate would have
+  rejected a real win.
+- **Phase 3: the pins MOVE.** This is eval-affecting, so it is neither
+  node-identical nor eval-bit-identical; the rule is that an intentional change
+  moves the pin in the same commit. Therefore **games arbitrate** — screen at
+  >=1466 games. Also warned that a fixed-node screen HIDES the speed win by
+  construction, so the case is the cycles number AND a no-regression screen,
+  together.
+- Fallbacks pre-named so a hard block has somewhere to go: per-column scales,
+  i8 weights with i16 accumulator, mixed precision (HalfKA only), asymmetric
+  zero-point, short QAT recovery fine-tune. Any one landed = success.
+- Full memory discipline restated (refuse under 2500 MB, systemd-run scope
+  MemoryMax=6G, -j2, no bare pkill -f, screen concurrency memory-bound).
+
+**Games still gated on study 30** (CEN3 threat-quant guard). D49 cannot be
+fairly screened until then: it trains at qat_threat_scale 256 while the
+exporter still writes THREAT_QUANT 64, so a screen now would measure the broken
+deployment, not the recipe. That is the user's stated sequence — study 30, then
+test, then games.
