@@ -5310,3 +5310,43 @@ periods of differing load paid for it.
 
 **D49 sb241/400**, heldout **0.011656** @ sb240 (ema 0.011344), still falling.
 Cosine ends at sb300; anneal 300→400.
+
+## Tick 2026-07-30 ~13:45 — quiet window honoured; the D49 verdict plan has a TRAP in it
+
+**D49 sb247/400**, 167k pos/s, heldout 0.011656 @ sb240 (ema 0.011344). ~153 sb
+left, roughly 6.5 h.
+
+**Box:** 8033 MB available, free swap 1010 MB, load 5.09. **`perf=1`** — study 37
+is measuring in the quiet window I promised it, and has already committed its
+kit (*"attribute patcher, event-sele…"*). **Nothing was started this tick on
+purpose**: I told it to take its null and arm in one quiet stretch, and then
+adding load myself would be the exact contention that degraded studies 33-36.
+
+### THE TRAP: the D49 verdict must compare each net AT ITS OWN OPTIMUM
+
+The obvious verdict screen is *D49-final vs D48X-canonical*. **That comparison
+is now unfair — to D48X.** Canonical ships `network_scale = 400`, which we have
+just measured to be **14.78 +/- 5.45 Elo worse than 600** for that very net
+(n=5880). Running D49 against canonical@400 would hand D49 a ~15 Elo head start
+that has nothing to do with its recipe, and would be **exactly the same class of
+error as the one I nearly made in the other direction** — where a two-way screen
+would have blamed the from-scratch recipe for a header field.
+
+**Correct protocol for the sb400 verdict:**
+1. Export D49 sb400 and sweep ITS scale — the optimum is net-specific
+   (**refuted**: the transferable ~610-stdev target; D49@1111 lost −14.47 to
+   @756). D49's optimum may also have moved during the anneal, so **do not reuse
+   756** without re-bracketing.
+2. **Then screen D49-at-its-own-optimum vs D48X@600**, not vs canonical@400.
+3. Only that number answers "did the from-scratch recipe work".
+
+Cost: two or three extra 1466-game screens on top of the verdict itself.
+Cheap against misreading a 400-superbatch run.
+
+### Standing consequence for the promotion
+
+Because the verdict needs **D48X@600 as the reference**, promoting it to
+canonical is not merely nice-to-have — it is what makes the comparison
+straightforward. Still deferred while study 37 measures against the current
+pins; the promotion moves the eval-hash and d13 pins and must land in one
+commit with re-derived pins and a MANIFEST entry.
