@@ -5395,3 +5395,86 @@ delta narrowed to −69 as the cosine deepens.
 weight-row streaming: the HalfKA table alone is ~28.8 MB post-i8 and the threat
 table is larger, so 4 KB pages imply real dTLB pressure that nobody has
 measured.
+
+## Perf study 37 COMPLETE and MERGED (`7ef4367`) — the `#[cold]` bug is fixed
+
+5 commits. `gate37` running.
+
+### MEASURING THE TWO ATTRIBUTES SEPARATELY WAS THE WHOLE STUDY
+
+12 paired within-round rounds on a **genuinely idle box (load 4.3)**, null
+exactly **0.000%** on instructions and branches:
+
+| arm | instructions/node | branches/node | loads/node |
+|---|---:|---:|---:|
+| **`nocold`** — drop `#[cold]`, keep `#[inline(never)]` | **−0.013%** | **−0.120%** | — |
+| `noinl` — drop `#[inline(never)]`, keep `#[cold]` | **byte-identical binary (same md5)** | | |
+| `noboth` | **+0.137%** | −0.092% | **+0.408%** |
+
+**`#[inline(never)]` is INERT while `#[cold]` stands** (LLVM already refuses to
+inline a cold function) **and becomes load-bearing the moment `#[cold]` goes.**
+Removing only `#[cold]` is the one winning combination out of four —
+**the obvious move, removing both, measures WORSE three ways.**
+
+*My brief insisted on measuring them separately precisely because they are
+different hints. Had it lumped them, this study would have shipped a
+regression.*
+
+**Mechanism closes exactly:** 0.744 branches/node ÷ 0.857 threat folds/node =
+**0.87 branches per fold** — `cold` laid the generic call out as the *unlikely*
+arm of the shape dispatch, so the always-taken path paid a jump that the
+fallthrough now covers. The generic's own 3616 bytes are bit-identical and at
+the same address: **no section migration, no optsize effect — a mechanism the
+study predicted and then recorded as WRONG.**
+
+### Why it was there: it was TRUE when written
+
+`git log -S` settles it. **Study 25 (`2703512`) wrote `#[cold]` when the fold
+family was split by weight TYPE** — its only callers really were tests and the
+empty case. **Study 32 (`aed3016`) merged both channels onto i8 and gave the i8
+kernel study 25's dispatch.** Every threat fold has landed in a cold-labelled
+function ever since. *Not a mistake — a correct annotation that a later change
+silently invalidated. This is why the brief said find out WHY before assuming.*
+
+### It corrected MY brief — there is no threat i8 lever
+
+I wrote that the threat table is the larger one and asked what study 32's i8
+equivalent would be for it. **Wrong premise. FullThreats weights are i8 on disk
+in CENN v2 and always were** — verified by me: `sota_loader.rs:63`
+(`threat_w: i8[...]`), `:153` (`Aligned<i8>`), `netpack.py:362,473`
+(`dtype="<i1"`). **Study 32's win was pulling HalfKA DOWN to the width threats
+already had.** Establishing this first kept the study off a dead arm.
+
+### Two arms built and rejected in full
+
+- **Paired row loops:** bit-identical, gated clean, **+0.147% instructions /
+  +0.243% branches / +0.302% loads — a loss three ways.** The durable finding is
+  *why*: the two-loop form is 3616 B because **LLVM clones the tile body across
+  empty-list cases, and that cloning is worth more than the control it
+  duplicates** — the paired form collapsed to 1744 B and got slower. Now a ⚠
+  banner in the source. It also **corrects study 36**: the control is **6
+  instructions per row per tile, not the estimated 4**.
+- **Huge pages** (perf study 4 item #8, open since): built, `hg` verified on both
+  table VMAs at exact byte ranges — **the kernel could not honour it** (6 free
+  order-9 blocks, `AnonHugePages: 0`, `tlb_reload_2m_l2_hit` flat 0.0000).
+  **The number that retires the lever is the BASE level: 2.25 page walks/node,
+  not the 9-11 its own STLB arithmetic predicted** ⇒ ceiling under 1% even if it
+  worked. Not landed — *unsafe FFI for a measured zero fails the crate's own
+  bar*. Patch preserved as an artifact.
+
+### THE FIFTH CYCLES NULL — AND THE FIRST ON AN IDLE BOX
+
+A byte-identical binary moved **+0.784% over a 10.7-point range** with load at
+4.3. Its conclusion, and I agree: **"contention is not the cause; it is the
+counter."**
+
+That upgrades a working assumption into an established fact. Five nulls now:
+study 33 (~1.9x inflation), 34 (+0.802%/+1.753%), 35 (+0.383%..+5.266%),
+36 (+1.196%/+1.394%), **37 (+0.784%, idle)**. **`cycles:u` cannot adjudicate
+sub-1% arms on this machine at any load.** Every future brief should say so and
+point at instructions / branches / loads instead.
+
+**Gate hygiene worth copying:** the landing tree was **rebuilt and md5'd against
+the binary the panel measured — byte-identical**, proving the doc comments and
+new test did not perturb codegen. That directly answers study 35's finding that
+adding doc comments changes a binary's sha256 (panic `Location` line numbers).
