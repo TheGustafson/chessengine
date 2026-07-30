@@ -7187,3 +7187,25 @@ Its sb0 projection readout: **0.007696 against identity's 0.006350** — a
 content-free code costs **+21% relative**, so the instrument **sees code changes
 loudly** and pre-registered **rule (1) is satisfied**. That is the panel's own
 sensitivity check passing before any verdict is read off it.
+
+## Main's tip IS gate-covered — study 40's caveat answered
+
+Study 40 closed by noting, correctly, that it had verified **its own change** at
+main's tip but had **not re-run the gate on main as a whole**, which carries
+commits from other agents — including one titled *"my conflict resolution broke
+main and would have double-folded threats"*.
+
+**Checked and resolved:** `src/`, `Cargo.toml` and `tools/check.sh` at main's
+tip (`5b40ca2`) are **byte-identical** to the tree `gate40` verified green
+(`Bench: 587683`, `GATE_EXIT=0`). The only commits since are documentation.
+**No re-gate needed.**
+
+*Process note on myself: my first check compared against `bdf5c0c` — my own doc
+commit — rather than `2e01a74`, the merge `gate40` actually tested. Same answer
+either way, but it was not the check I claimed it was, so I redid it against the
+right base before asserting.*
+
+**Study 40 also verified its own landed change survived the merge byte-for-byte**
+— both mutually-exclusive `#[cfg]` guards, the helper, and the call site — and
+confirmed **no double-fold at that site**, which is exactly the failure I
+introduced elsewhere and is the right thing to have checked rather than assumed.
