@@ -201,6 +201,43 @@ The commission named four. Three of them are now priced and two are dead.
 | **Dependency chains / latency** | the execution residual, **531.31 c/node = 11.38 %** | **REAL BUT SECONDARY**, and §2.2 localises it to ONE symbol. |
 | **Store-buffer / write pressure** | `store_queue_rsrc_stall` = **509.30 c/node = 10.91 % of cycles** — the **largest single dispatch-blocking resource in the engine**, ahead of the load queue at 450.12 | **REAL.** It is what §4's arm targets. |
 
+> ### ⚠ CORRECTION (perf study 46, 2026-07-30) — THE DIVISOR WAS NEVER MEASURED
+>
+> **"The FP pipes are ≥ 85 % idle" does not survive, and the bracket below is
+> under-stated by about 2× at the top.** This section was careful about the
+> counter's *semantics* (assumption A4 refuses to say whether
+> `pack_512_uops_retired` counts one event per instruction or two, and quotes
+> the verdict at both readings) — but it took the **divisor**, "Zen 4's 4 FP
+> pipes", as given and never measured it.
+>
+> Study 46 measured it directly (generated inline asm, sustained 8-chain
+> throughput, min-of-5, `tools/perf46/gen_ilp.py`). **No op class in this
+> engine's hot path retires 4 per cycle at 512 bits:**
+>
+> | 512-bit op | cycles/op | effective pipes |
+> |---|---:|---:|
+> | `vfmadd231ps` zmm | 1.0035 | **1** |
+> | `vpdpbusd` zmm | 1.0033 | **1** |
+> | `vaddps` zmm | 1.0022 | **1** |
+> | `vpaddd` zmm (simple integer) | 0.5516 | ~2 |
+>
+> Zen 4 double-pumps 512-bit ops over a 256-bit datapath, so the FMA/VNNI class
+> — `l1_dot`, `l2_tail`, `l3_dot`, `skip_dot_i8` and both fold kernels'
+> multiply-accumulate work — issues at **1 per cycle, not 4**. Re-running this
+> section's own arithmetic with a measured divisor, and keeping A4's bracket
+> intact, gives **7.6 % – 27.5 %** of cycles rather than 7.1 % – 14.4 %.
+>
+> **What still stands:** there is no arm that "adds ports", and
+> `fp_sch_rsrc_stall` at 4.35 % genuinely says dispatch is rarely blocked
+> waiting for an FP *scheduler slot*. **What does not:** that counter does not
+> corroborate pipe idleness — a machine can be 100 % pipe-busy and never fill
+> its scheduler, if the front end delivers ops at exactly the issue rate. The
+> two counters answer different questions.
+>
+> **Consequence for levers:** §1.3's conclusion generalises from memory ops to
+> *all* ops — the prize is the NUMBER of 512-bit operations, not their
+> arrangement. See `perf-study-46-forward-2026-07-30.md` §5.
+
 **Why the port-pressure figure is a BRACKET and not a number, stated because
 the honest version is less quotable than the tidy one.** Whether
 `pack_512_uops_retired` counts one event per 512-bit instruction or two (Zen 4
@@ -815,6 +852,18 @@ In order, most doubtful first.
    retirement-blocked cycles while demonstrably not waiting on memory, whose
    dependency chain has not been found. `l3_dot` (a true reduction),
    `propagate_l2` (16×32 f32) and the WDL softmax are the places to look.
+
+   > **ANSWERED (perf study 46): it is not a shortenable dependency chain.**
+   > Four of the head's five kernels are already at the measured ILP knee of 4,
+   > and the one that is not (`propagate_l2`/`l2_tail`, 2 chains where 4 are
+   > wanted) is worth **−0.185 % of cycles** once converted at the measured
+   > **0.43117 evals/node** — and is not eval-bit-identical. The residual is
+   > **512-bit issue throughput**, not latency: the head is a dense stream of
+   > ops going through **one** effective FMA/VNNI pipe (see the §1.2 correction
+   > banner) while touching relatively little memory, which is exactly the
+   > 8.20 %-vs-3.87 % inversion. The correctly-aimed lever is op COUNT — study
+   > 26 §8 item 1 (the merged `pst + 4·threat` accumulator) rather than
+   > anything inside `forward_into`'s arrangement.
 
 7. **Nothing here has been arbitrated by games.** Arm 2 is node-identical, so a
    fixed-node match is a dead heat by construction and only a real-time-control
