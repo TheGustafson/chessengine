@@ -259,6 +259,8 @@ impl TtEntry {
         generation: u8,
     ) {
         let tag = key as u16;
+        #[cfg(feature = "ttcensus42")]
+        crate::ttcensus42::bump(&crate::ttcensus42::SAVES);
         let same_key = tag == self.key16.load(Relaxed);
 
         // Rule 1 — ttMove preservation: keep the old move only when the
@@ -286,6 +288,8 @@ impl TtEntry {
             debug_assert!(d > DEPTH_NONE && new_d < 256);
             debug_assert!(generation <= GENERATION_MASK);
             debug_assert!(i16::try_from(v).is_ok() && i16::try_from(ev).is_ok());
+            #[cfg(feature = "ttcensus42")]
+            crate::ttcensus42::bump(&crate::ttcensus42::SAVE_ACCEPT);
             self.key16.store(tag, Relaxed);
             self.depth8.store(new_d as u8, Relaxed);
             self.gen_bound8.store(
@@ -412,6 +416,8 @@ impl TtWriter<'_> {
     /// (doc 07) uses `penalize(1)`.
     pub fn penalize(&self, penalty: i32) {
         debug_assert!(penalty >= 0);
+        #[cfg(feature = "ttcensus42")]
+        crate::ttcensus42::bump(&crate::ttcensus42::PENALIZE);
         let d = i32::from(self.entry.depth8.load(Relaxed));
         self.entry.depth8.store((d - penalty).max(0) as u8, Relaxed);
     }
@@ -499,8 +505,33 @@ impl TranspositionTable {
         let cluster = self.cluster_for(key);
         let tag = key as u16;
 
+        #[cfg(feature = "ttcensus42")]
+        {
+            use crate::ttcensus42 as c;
+            c::bump(&c::PROBES);
+            c::note_cluster(std::ptr::from_ref(cluster) as usize);
+        }
+
         for entry in &cluster.entries {
             if entry.key16.load(Relaxed) == tag {
+                #[cfg(feature = "ttcensus42")]
+                {
+                    use crate::ttcensus42 as c;
+                    c::bump(&c::TAG_MATCH);
+                    // Which slot matched, derived from the address rather than
+                    // from an `enumerate()` index: the loop above is the hot
+                    // path and the default build must keep exactly the shape it
+                    // had before this census existed. Entries are `size_of::
+                    // <TtEntry>()` apart inside the cluster, so the division is
+                    // exact.
+                    let slot = (std::ptr::from_ref(entry) as usize
+                        - std::ptr::from_ref(cluster) as usize)
+                        / size_of::<TtEntry>();
+                    c::bump([&c::SLOT0, &c::SLOT1, &c::SLOT2][slot]);
+                    if entry.is_occupied() {
+                        c::bump(&c::HITS);
+                    }
+                }
                 return Probe {
                     hit: entry.is_occupied(),
                     data: entry.read(),
@@ -620,14 +651,44 @@ impl TranspositionTable {
     /// stream at ~23 ns/probe (throughput — out-of-order overlap already
     /// hides part of each DRAM miss); with `prefetch` issued 8 keys ahead
     /// the same loop runs at ~11 ns/probe, a 2x gain, matching doc 14
-    /// §3.4's "mostly hidden by prefetch" target. The search-integrated
-    /// bench-nps delta is re-measured when the call sites land (doc 08 §4
-    /// step 7).
+    /// §3.4's "mostly hidden by prefetch" target.
+    ///
+    /// **The search-integrated delta doc 08 §4 step 7 asked for, finally
+    /// measured (perf study 42, 2026-07-31).** The `ttnopf42` arm makes this
+    /// function a no-op and changes nothing else; it is node-identical at both
+    /// gate frames, so the counters are the only free variable. Over 18 paired
+    /// shuffled rounds at Hash = 16 MB, against a byte-identical null that came
+    /// back a coin flip (10/18, p = 0.81):
+    ///
+    /// | | median | sign count | per node |
+    /// |---|---:|---:|---:|
+    /// | `instructions:u` | −0.363% | 18/18 | −21.50 |
+    /// | `cycles:u` | **+3.504%** | 18/18 | **+153.8** |
+    /// | `ex_no_retire.load_not_complete` | +5.571% | 17/18 | +129.4 |
+    ///
+    /// i.e. removing the hint costs 3.5% of engine cycles while *saving* 21.5
+    /// instructions per node. Divided by the exactly-counted 1.0667 probes per
+    /// node, **an unprefetched probe costs ~121 stall cycles** — memory-latency
+    /// scale, so a TT probe misses essentially every time and this one
+    /// instruction is worth roughly 6 Elo. Do not remove it, and do not price a
+    /// TT line with a stall-per-line rate calibrated on accumulator streaming:
+    /// study 39's 1.119 stall/line would value the whole table at 1.19 stall
+    /// cycles per node against a measured 129.4.
     #[inline]
     pub fn prefetch(&self, key: Key) {
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(feature = "ttcensus42")]
+        crate::ttcensus42::bump(&crate::ttcensus42::PREFETCH);
+        #[cfg(all(target_arch = "x86_64", not(feature = "ttnopf42")))]
         {
-            use std::arch::x86_64::{_MM_HINT_T0, _mm_prefetch};
+            // Perf study 42 arms. `ttnopf42` removes the hint entirely (the
+            // subtractive arm that prices it); `ttpft242` demotes it from L1
+            // to L2/L3. Both are node-identical: a cache hint changes no
+            // search result, so the `Bench:` fingerprint is unmoved.
+            #[cfg(not(feature = "ttpft242"))]
+            use std::arch::x86_64::_MM_HINT_T0 as HINT;
+            #[cfg(feature = "ttpft242")]
+            use std::arch::x86_64::_MM_HINT_T2 as HINT;
+            use std::arch::x86_64::_mm_prefetch;
             let p: *const Cluster = self.cluster_for(key);
             // SAFETY: `_mm_prefetch` is a pure cache hint: it performs no
             // memory access observable by the abstract machine, writes
@@ -635,9 +696,9 @@ impl TranspositionTable {
             // hardware drops bad hints). The pointer additionally derives
             // from a live `&Cluster` into our own allocation, so it is
             // valid for the cache line being hinted.
-            unsafe { _mm_prefetch(p.cast::<i8>(), _MM_HINT_T0) };
+            unsafe { _mm_prefetch(p.cast::<i8>(), HINT) };
         }
-        #[cfg(not(target_arch = "x86_64"))]
+        #[cfg(any(not(target_arch = "x86_64"), feature = "ttnopf42"))]
         let _ = key;
     }
 }
@@ -1087,6 +1148,36 @@ mod tests {
     }
 
     // --- §5 indexing -----------------------------------------------------------
+
+    /// Perf study 42: the "a cluster never straddles a cache line" claim in
+    /// this module's docs is TWO claims, and only one of them was checked.
+    /// `align_of::<Cluster>() == 32` is a *type* fact the const assert above
+    /// covers; that the running `Vec<Cluster>` buffer starts on a 32-byte
+    /// boundary is an *allocator* fact, and nothing tested it. If the base
+    /// ever slipped, every probe would silently cost two lines instead of
+    /// one and no existing test would notice.
+    ///
+    /// (The study also confirmed it from the outside, on the shipped binary:
+    /// `tools/perf42/align42.py` histograms the low 6 bits of every observed
+    /// TT data address and finds zero traffic at the pad offsets — but a test
+    /// is what keeps it true.)
+    #[test]
+    fn no_cluster_straddles_a_64_byte_cache_line() {
+        let tt = TranspositionTable::new(MIN_HASH_MB);
+        let base = tt.clusters.as_ptr() as usize;
+        assert_eq!(
+            base % 32,
+            0,
+            "cluster buffer base {base:#x} is not 32-aligned"
+        );
+        let n = tt.clusters.len();
+        for i in [0, 1, 2, n / 2, n - 2, n - 1] {
+            let lo = std::ptr::from_ref(&tt.clusters[i]) as usize;
+            let hi = lo + size_of::<Cluster>() - 1;
+            assert_eq!(lo % 32, 0, "cluster {i} at {lo:#x} is not 32-aligned");
+            assert_eq!(lo / 64, hi / 64, "cluster {i} straddles a 64-byte line");
+        }
+    }
 
     #[test]
     fn mul_hi64_in_range_for_adversarial_inputs() {
