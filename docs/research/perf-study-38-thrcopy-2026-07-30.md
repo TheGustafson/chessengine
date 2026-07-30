@@ -43,7 +43,7 @@ unknown stretch of the project's history, and study 37 costed the source's
 `--features probe-dblcopy` runs the same copy a **second** time into the ply
 above (provably unread, node- and eval-hash-identical), so one paired panel
 prices exactly one `memcpy` with the rest of the binary held fixed. Ten paired
-within-round rounds, idle box, against a byte-identical null:
+within-round rounds against a byte-identical null:
 
 | counter | `dbl` (one extra copy) | null | per 2560-byte `memcpy` |
 |---|---:|---:|---:|
@@ -73,26 +73,27 @@ iterations for 2560 bytes.
 **A ply whose resolved threat delta is empty for BOTH perspectives now points
 at its parent's value holder and writes nothing at all.**
 
-12–14 paired within-round rounds, idle box, node-identical at **5,001,562** and
-eval-hash-identical at `2e1ede9521624dd8`:
+Paired within-round rounds, node-identical at **5,001,562** and
+eval-hash-identical at `2e1ede9521624dd8` on every arm:
 
-| counter | reference/node | `alias` (landed) | null |
-|---|---:|---:|---:|
-| `instructions:u` | 5941.036 | **−0.270%** [−0.27, −0.27] | −0.000% [0.00, 0.00] |
-| `branches:u` | 623.808 | **−0.433%** [−0.43, −0.43] | +0.000% [0.00, 0.00] |
-| `L1-dcache-loads:u` | 3023.586 | **−1.653%** [−2.03, −1.45] | −0.085% [−0.26, +0.50] |
-| `cycles:u` | 4199.258 | −0.495% [−5.86, +4.50] | **+0.771%** [−7.75, +8.57] |
+| counter | reference/node | **landed** | first form | null |
+|---|---:|---:|---:|---:|
+| `instructions:u` | 5941.036 | **−0.288%** [−0.29, −0.29] | −0.270% [−0.27, −0.27] | −0.000% [0.00, 0.00] |
+| `branches:u` | 623.808 | **−0.528%** [−0.53, −0.53] | −0.433% [−0.43, −0.43] | +0.000% [0.00, 0.00] |
+| `L1-dcache-loads:u` | 3011–3024 | **−1.608%** [−2.24, −1.28] | −1.653% [−2.03, −1.45] | −0.085% [−0.26, +0.50] |
+| `cycles:u` | 4199.258 | (not quoted) | (not quoted) | **+0.771%** [−7.75, +8.57] |
 
 **The load figure is the largest single-arm move on that counter in the 33–38
 run**, five times its null's spread, and it is the counter study 33 §5.3
 licensed as the cost proxy at these sites.
 
 **And the honest half:** the arm removes 93.5% of the copies, so at 187.9
-instructions each it *should* have delivered ≈ −61.8 i/n. It delivered
-**−16.04**. **Something in the arm costs ~44 i/n**, and §5 reports what I could
-and could not pin down about it. That is not a rounding error — it is 70% of
-the available instruction win still sitting on the table, and naming it is more
-useful than the part I banked.
+instructions each it *should* have delivered ≈ −61.8 i/n. It delivers **−17.1**.
+§5 builds the null that prices the difference: **the alias machinery alone
+costs +19.7 i/n**, measured, before it removes a single copy — and ~26 i/n
+beyond that I could not localise. That is not a rounding error; it is most of
+the site still sitting on the table, and naming it is more useful than the part
+I banked.
 
 ---
 
@@ -100,9 +101,16 @@ useful than the part I banked.
 
 ### 1.1 The box, and a sixth null on `cycles`
 
-All panels ran with the D49 trainer as the only other load. The commission
-already retired `cycles:u`; this study adds the **sixth** independent null on a
-**byte-identical** binary, and it is the largest yet on an otherwise idle box:
+The early panels (`panel-core`, `panel-price`) ran with the D49 trainer as the
+only other load, at load average 4–8. The later ones (`panel-arms`,
+`panel-machinery`, `panel-decide`) ran at load **12–17**, because a match and a
+build joined part-way. **That is why this study quotes nothing but exact
+counters**: `instructions:u` and `branches:u` reproduce to six digits across
+both regimes — every `base` row in every panel reads 5941.036 — and the only
+column that moved with the load is the one already retired.
+
+The commission already retired `cycles:u`; this study adds the **sixth**
+independent null on a **byte-identical** binary:
 
 | counter | null median | null spread | verdict |
 |---|---:|---|---|
@@ -145,7 +153,7 @@ of their *verdicts* change, because every one of them compared like with like.
 | `tools/perf37/panel37.sh` + `med37.py` | the paired within-round panel |
 | `tools/perf37/symcount37.sh` | static per-symbol instruction census |
 | **`tools/perf38/memcpy38.py`** | libc `memcpy`/`memset` CALL-SITE census by symbol |
-| **`tools/perf38/repmovsb38.sh`** | which glibc copy path a size takes (§4.2) |
+| **`tools/perf38/repmovsb38.sh`** | which glibc copy path a size takes (§4.3) |
 | **`--features probe-dblcopy`** | the doubled-copy price probe (§0.2) |
 | **`--features null38`** | the alias arm's own machinery, alias never taken (§5) |
 | **`foldcount::THR_JOINT`** | the per-ply JOINT fold shape that chose the design (§2.1) |
@@ -185,8 +193,8 @@ head kernel and the SIMD backends untouched. The 6.5% remainder still copies.
 
 ### 2.2 The invariant
 
-A per-ply `alias: Box<[u16; STACK_LEN]>` records **the ply whose entry holds
-this ply's value**:
+A per-ply `alias: [u16; STACK_LEN]` records **the ply whose entry holds this
+ply's value**:
 
 > if `fold[k][p] == Fold::Done` then perspective `p`'s value is in
 > `stack[alias[k]].acc[p]`, and `alias[alias[k]] == alias[k]`.
@@ -227,7 +235,7 @@ happen again.
 | binary | the chunked copy compiles to |
 |---|---|
 | `base` | `call memcpy@GLIBC` (2 sites, `$0xa00`) |
-| **`alias`** | a **fully unrolled inline 40×`vmovups` zmm copy** |
+| **the landed arm** | a **fully unrolled inline 40×`vmovups` zmm copy** |
 | `dbl` (probe) | `call memcpy@GLIBC` (4 sites, through a register) |
 
 **Identical source text.** The chunked spelling is not a guarantee; it is a
@@ -241,9 +249,9 @@ mechanism and points at the tool rather than asserting the outcome.
 
 ---
 
-## 4. TWO INERT ARMS, REPORTED IN FULL
+## 4. THE SPELLING ARMS, AND ONE HYPOTHESIS THAT WAS WRONG
 
-### 4.1 The clamped-index arm — measured, ~null, NOT landed
+### 4.1 Clamping the two new indices — small, and NOT for the reason I expected
 
 The arm adds two indices LLVM cannot prove in range (`before[src]` and
 `stack[alias[ply]]`), and `at_full`'s `panic_bounds_check` count goes 14 → 16.
@@ -252,16 +260,41 @@ The codebase's standard answer is a no-op range fact (`& 63`, `& (CAP-1)`), so
 
 | label | `instructions:u` | `branches:u` | `L1-dcache-loads:u` |
 |---|---:|---:|---:|
-| `alias` (landed) | **−0.270%** | −0.433% | −1.653% |
-| `alib` (clamped) | −0.247% | **−0.502%** | −1.591% |
+| `alia` (first form) | **−0.270%** | −0.433% | −1.631% |
+| `alib` (+ clamps) | −0.247% | **−0.502%** | −1.536% |
 
-It removes one of the two panic edges and trades ~0.023% of instructions for
-~0.07% of branches. **Inside the practical floor and not obviously a win**, so
-the landed arm keeps the unclamped form. More importantly it **refutes the
-hypothesis** that the missing 44 i/n of §0.3 is bounds checking: a not-taken
-bounds check is two instructions at ~0.6 executions/node, which cannot be 44.
+On its own the clamp trades ~0.023% of instructions for ~0.07% of branches and
+removes one of the two panic edges — inside the practical floor either way. It
+**refutes the hypothesis** that the missing instructions of §0.3 are bounds
+checking: a not-taken bounds check is two instructions at ~0.6 executions/node,
+which cannot be 45.
 
-### 4.2 The `rep movsb` hypothesis — WRONG, and my first probe was inert
+### 4.2 Inlining the alias array — the landed form
+
+`stack`, `push` and `fold` are each a boxed array, so each costs the inlined
+`compute` a base pointer, and `Push`'s own doc comment declines a further split
+because a fourth would land on "an already register-starved `compute`". `almg`
+makes the alias array an inline `[u16; STACK_LEN]` — 508 bytes at a fixed
+offset from `self`, which is live anyway, against 8,192 bytes of scratch
+already inline in that struct.
+
+Twelve paired within-round rounds, both arms in the same rotation
+(`panel-decide.txt`):
+
+| label | `instructions:u` | `branches:u` | `L1-dcache-loads:u` |
+|---|---:|---:|---:|
+| null | −0.000% [−0.00, +0.00] | −0.000% [−0.00, +0.00] | −0.032% [−0.74, +0.21] |
+| `alia` (boxed, unclamped) | −0.270% [−0.27, −0.27] | −0.433% [−0.43, −0.43] | −1.759% [−2.23, −1.52] |
+| **`almg` (inline + clamped)** | **−0.288%** [−0.29, −0.29] | **−0.528%** [−0.53, −0.53] | −1.608% [−2.24, −1.28] |
+
+Better on both exact counters with zero spread on each, so it is what landed;
+the load counter's ranges overlap and it does not separate the two. **But note
+the size**: it recovers ~1 i/n of the ~46 the arm is missing. The fourth base
+pointer is a real cost and removing it is worth having, but it is **not** where
+the §5 overhead lives — which is exactly why §5 stopped guessing and built the
+null instead.
+
+### 4.3 The `rep movsb` hypothesis — WRONG, and my first probe was inert
 
 I predicted the 2560-byte copy was a `rep movsb`, from the shape of the
 numbers: a first pass through the alias delta implied ~50 instructions and
@@ -301,14 +334,14 @@ kernel to within a few percent.
 Arithmetic, from the direct probe:
 
 ```
-  copies removed          0.316885/node x 187.9 i  =  -59.54 i/n
+  copies removed           0.316885/node x 187.9 i  =  -59.54 i/n   (measured x measured)
   residual copies, memcpy -> inline
-                          0.021986/node x ~103 i   =   -2.26 i/n
-                                                      ---------
-  predicted                                           -61.80 i/n
-  measured (`alias`)                                  -16.04 i/n
-                                                      ---------
-  overhead to account for                             +45.76 i/n
+                           0.021986/node x ~103 i   =   -2.26 i/n   (rate measured, delta estimated)
+                                                       ---------
+  predicted                                            -61.80 i/n
+  measured (landed arm)                                -17.11 i/n
+                                                       ---------
+  overhead to account for                              +44.69 i/n
 ```
 
 Rather than write a mechanism paragraph, I built the null. **`--features
@@ -320,7 +353,7 @@ with the alias **never taken**, so every copy still runs. Ten paired rounds:
 |---|---:|---:|---:|
 | `anul` (machinery only, no copies removed) | **+0.332%** [+0.33, +0.33] | −0.554% [−0.56, −0.55] | +0.198% |
 
-**+19.7 instructions per node for four array accesses per fold.** That is 43%
+**+19.7 instructions per node for four array accesses per fold.** That is 44%
 of the gap, measured rather than argued, and it is the single most useful
 number in this study for whoever works here next: in this walk, *touching a
 fifth per-ply array at all* costs ~20 i/n before it does anything.
@@ -336,31 +369,38 @@ Two caveats I will not paper over:
   branches removed" and I do not present it as one. The instruction and
   DC-access columns compose; the branch column does not.
 
-That leaves ~26 i/n still unaccounted, and §4.3 shows the obvious structural
-fix recovers almost none of it — so the residue is not the base pointer either.
+That leaves ~26 i/n still unaccounted, and §4.2 shows the obvious structural
+fix — removing the fourth base pointer — recovers about **1** of them. So the
+residue is not the base pointer either, and I am not going to name a third
+mechanism without building it.
 
 ### 5.1 What is left on the table
 
-The site is worth **63.7 i/n** (§0.2) and the landed arm banks **17.1** of it
-(§4.3). The remainder is not more copies to remove — it is the ~26 i/n this
-study could not localise inside `compute`/`at_full`. A study that wants it
-should start from `null38`, not from the arm.
+The site is worth **63.7 i/n** (§0.2) and the landed arm banks **17.1** of it.
+The remainder is not more copies to remove — it is the ~46 i/n of overhead the
+arm carries, of which **19.7 is measured machinery** and ~26 is unlocalised. A
+study that wants it should start from `--features null38`, not from the arm:
+the null already isolates the machinery from the copies, and the next question
+("which of the four array accesses, and why 20 i/n for four accesses?") can be
+asked of it one access at a time.
 
 ---
 
 ## 6. WHAT LANDED
 
-**`#[cfg]`-free, one change:** the both-empty threat fold aliases its parent's
-holder instead of copying 2 × 2560 bytes.
+**One behavioural change:** the both-empty threat fold aliases its parent's
+holder instead of copying 2 × 2560 bytes. It ships as an inline `[u16;
+STACK_LEN]` with both new indices carrying their range fact (§4.1, §4.2).
 
-* **−0.270% instructions, −0.433% branches, −1.653% data-cache accesses**, all
-  against a null of −0.000% / +0.000% / −0.085%, 14 paired within-round rounds
-  on an idle box.
-* Node-identical and eval-hash-identical; 1.0 M nodes of debug-oracle search.
-* In absolute terms: **−16.0 instructions, −2.7 branches and −50 DC accesses
+* **−0.288% instructions, −0.528% branches, −1.608% data-cache accesses**, all
+  against a null of −0.000% / −0.000% / −0.032%, twelve paired within-round
+  rounds.
+* Node-identical (5,001,562) and eval-hash-identical; 1.0 M nodes of
+  debug-oracle search.
+* In absolute terms: **−17.1 instructions, −3.3 branches and −48 DC accesses
   per node**, the last of which is ~1.6 KB/node of L1 traffic.
 
-Three things go with it and are the durable part:
+Four things go with it and are the durable part:
 
 1. **`tools/perf38/memcpy38.py`** — the libc call-site census. Study 14's
    comment was a codegen claim in prose; this reads it off the binary.
@@ -369,28 +409,62 @@ Three things go with it and are the durable part:
 3. **`foldcount::THR_JOINT`** — the joint fold shape, which is what turned "a
    per-perspective alias needs the head kernel changed" from a blocker into a
    6.5% remainder.
+4. **`--features null38`** — the arm's own machinery with the alias never
+   taken. It is what turns "something costs 45 i/n" into "19.7 of it is the
+   machinery, measured", and it is the entry point for the next attempt.
 
 ---
 
 ## 7. GATES
 
+`CHECK_NNUE_GATE=1 CHECK_TEST_THREADS=2 bash tools/check.sh` — **"All checks
+passed."**
+
 | gate | result |
 |---|---|
 | `cargo fmt --check` | clean |
 | `cargo clippy --all-targets -- -D warnings` | clean |
+| feature-matrix `cargo check` | clean |
 | `cargo test` (debug: unit + fast perft tier) | pass |
 | release perft suite (`--ignored perft_full_suite`) | pass |
-| `cargo test --features sota,arch-d48x` | pass |
+| `cargo test --features sota,arch-d48x` | **713 passed, 0 failed** |
 | `bench 16 1 6 default depth` | **587683** — the pin, bit-for-bit |
-| wl50 eval hash | the `859a442` pin |
-| d13 node total | the `859a442` pin |
+| wl50 eval hash | `2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4` — the pin |
+| d13 node total | **1739588** — the pin |
 | node identity, study frame | **5,001,562** on every binary in every panel |
 | debug oracle | 1,000,789 nodes, zero failures |
 
-**And the study-37 hygiene rule, kept:** `bin34/base` md5s to
-`19798abf79732d92c9fbcb2c90af699f`, which is **byte-identical to study 37's
-landed binary** — so this study's reference provably is `main`, and the kit
-commit that precedes the arm is codegen-inert.
+**One flake, named and re-run.** The first gate pass failed
+`go_movetime_respects_the_clock_within_tolerance` with *"bestmove after
+1.589583376s — movetime 200 overshot"* against a 1500 ms tolerance. It is a
+wall-clock assertion in the 24-test `uci_smoke` binary, each test spawning its
+own engine, on a box at load 13–15 with the D49 trainer and a match running.
+Re-run alone at load 14.7 it passes in **0.52 s**. The arm is node-identical
+and eval-hash-identical and cannot affect it. This is the same class as the
+commission's named flake (`go_infinite_bestmove_comes_only_after_stop_and_promptly`)
+and a second member of it worth recording by name.
+
+**And the study-37 hygiene rule, kept — in both directions:**
+
+* `bin34/base` md5s to `19798abf79732d92c9fbcb2c90af699f`, which is
+  **byte-identical to study 37's landed binary**. This study's reference
+  provably *is* `main`, and the kit commit that precedes the arm is
+  codegen-inert.
+* The landing tree was rebuilt as `bin34/land` after the write-up's source
+  comments went in. Its **md5 differs** from the measured `bin34/almg` — as
+  study 35 warned it would, because a comment shifts every later panic
+  `Location` line number — so md5 is the wrong instrument here. The right one
+  says it plainly:
+
+```
+e4aa8ffe35d8aeb9d1bb553f045cda5d   .text of bin34/almg    <- what the panel measured
+e4aa8ffe35d8aeb9d1bb553f045cda5d   .text of bin34/land    <- what is committed
+```
+
+  **690,981 bytes of `.text`, byte-identical**, `at_full` at the same address
+  with the same 8176 bytes and 1917 instructions, and `land` node- and
+  eval-hash-identical on the study frame. The comments moved `.rodata` and not
+  one instruction.
 
 ---
 
@@ -414,12 +488,18 @@ P37_PANEL=docs/research/perf-artifacts-38/panel-price.txt \
   bash tools/perf37/panel37.sh 10 base null dbl
 python3 tools/perf37/med37.py docs/research/perf-artifacts-38/panel-price.txt base
 
-# the arm (Sec 0.3) and the clamped variant (Sec 4.1)
-P37_PANEL=docs/research/perf-artifacts-38/panel-core.txt \
-  bash tools/perf37/panel37.sh 14 base null alia
-python3 tools/perf37/med37.py docs/research/perf-artifacts-38/panel-core.txt base
+# the arm (Sec 0.3), the clamped variant (Sec 4.1) and the inline one (Sec 4.2)
+P37_PANEL=docs/research/perf-artifacts-38/panel-decide.txt \
+  bash tools/perf37/panel37.sh 12 base null alia almg
+python3 tools/perf37/med37.py docs/research/perf-artifacts-38/panel-decide.txt base
 
-# the glibc path, and the tunable that is NOT honoured here (Sec 4.2)
+# the machinery null: the alias array, reads and stores, alias never taken
+bash tools/perf34/build34.sh anul "sota,arch-d48x,null38"
+P37_PANEL=docs/research/perf-artifacts-38/panel-machinery.txt \
+  bash tools/perf37/panel37.sh 10 base null anul
+python3 tools/perf37/med37.py docs/research/perf-artifacts-38/panel-machinery.txt base
+
+# the glibc path, and the tunable that is NOT honoured here (Sec 4.3)
 /lib64/ld-linux-x86-64.so.2 --list-tunables | grep rep_movsb
 bash tools/perf38/repmovsb38.sh 8 base
 ```

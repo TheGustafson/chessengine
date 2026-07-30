@@ -1454,8 +1454,31 @@ impl<'a> ThreatContext<'a> {
                 let parent = &before[src];
                 let entry = &mut after[0];
                 if add_len == 0 && sub_len == 0 {
-                    // Chunked so LLVM emits 40 inline 64-byte moves instead of
-                    // one 2560-byte libc `memcpy` call.
+                    // ⚠ THE CHUNKING IS A HINT, NOT A GUARANTEE — CHECK IT,
+                    // DO NOT TRUST THIS COMMENT.
+                    //
+                    // Perf study 14 wrote the loop this way and recorded that
+                    // "LLVM emits 40 inline 64-byte moves instead of one
+                    // 2560-byte libc `memcpy` call". Perf study 38 read the
+                    // shipped binary and found the opposite: at `859a442` this
+                    // site was `mov $0xa00,%edx; call *memcpy@GLIBC`, twice,
+                    // because LLVM's loop-idiom pass re-forms the call. Same
+                    // source text, both outcomes, in binaries built the same
+                    // day — the pre-study-38 build called `memcpy`, the build
+                    // with the parent alias above unrolled it inline. The
+                    // decision depends on surrounding context and LLVM is free
+                    // to re-take it.
+                    //
+                    // It matters: study 38 priced one such call by a doubled-
+                    // copy probe at **187.9 instructions, 19.5 branches and
+                    // 194.7 data-cache accesses**, against ~80 vector moves for
+                    // the inline form.
+                    //
+                    // So do not assert an outcome here — MEASURE it:
+                    //     objdump -d <binary> > /tmp/a.asm
+                    //     python3 tools/perf38/memcpy38.py /tmp/a.asm | grep at_full
+                    // A hit means the idiom re-formed and this site is paying
+                    // a library call again.
                     //
                     // `chunks_exact` DROPS a remainder, so a width that is not
                     // a multiple of 32 would silently leave the tail of
