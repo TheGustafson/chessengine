@@ -443,6 +443,51 @@ Ranked by how much it would change the conclusion.
 
 ---
 
+## 8.1 INTEGRATION — this branch does NOT merge into main as it stands
+
+Branched from `24b655e`. `main` has since advanced 23 commits, landing **study
+30 (CENN-v5)** and **study 29's `foldcount` counters + traffic-pinning probes**
+in the same files. A trial merge gives **24 conflict hunks**: 13 in
+`sota_simd.rs`, 8 in `sota_head.rs`, one each in `sota_accumulator.rs`,
+`policy.rs`, `tests/eval_file_reload.rs` and `.gitignore`. `sota_loader.rs`
+auto-merges cleanly, which is the important one — quantise-at-load does not
+collide with CENN-v5's format work.
+
+**The two studies compose; they do not conflict semantically.** Study 30 made
+the THREAT channel's merge shift net-dependent (`threat_shift: u32`, a const
+generic, from CENN-v5's `threat_quant`); this study made the HALFKA channel's
+rescale a per-column multiply. Different channels, one closure. The merged
+merge is:
+
+```
+    clamp(pst[j] * ft_scale[j] + (threat[j] << threat_shift), 0, 255)
+```
+
+and `activate` carries BOTH `scale: &[i16; ACC]` and `threat_shift`.
+
+Three things the person doing the merge has to decide, and they are the reason
+I did not do it blind:
+
+1. **Do the new `i8_deltas` / `i8_deltas_dual` / `i8_into_shaped` kernels get
+   study 29's `foldcount` counters and `probe-*` pins?** They almost certainly
+   should, mirroring what 29 attached to the kernels this study deleted — but
+   that is 29's instrumentation contract, and guessing wrong in these files is
+   a silent eval corruption, which is the one failure mode this project ranks
+   above everything.
+2. **The i16 fold family is gone.** Any counter or probe main attached to
+   `i16_deltas*` has to move to the i8 twin rather than be dropped.
+3. **All three gate pins must be re-derived after the merge.** CENN-v5 moves
+   the eval hash on its own; composed with this change it moves again. The
+   numbers in §6 are for THIS branch against `24b655e`, and they will not
+   reproduce on the merged tree. `bash tools/perf32/gates32.sh` regenerates
+   them.
+
+The cycles panel (§5) should also be re-run against a post-merge baseline
+before its −6.835% is quoted as the merged engine's number; the mechanism is
+independent of both sibling studies, but the base it is a ratio of is not.
+
+---
+
 ## 9. WHAT THIS OPENS
 
 * **The HalfKA table is now 28.9 MB, inside the 32 MB L3 for the first time.**
