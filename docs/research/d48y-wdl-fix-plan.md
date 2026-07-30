@@ -3355,3 +3355,357 @@ future tool reading our node count over UCI has this bug waiting for it.**
 Two suspects of mine, killed: TT semantics (both benches issue exactly one
 `ucinewgame` — `bench.rs:252`, `eca43a97:benchmark.cpp:430`) and Hash 64 vs 16
 (64 is faster for BOTH and NARROWS the ratio).
+
+## ★★★ THE D49 QAT/EXPORT MISMATCH — my config error, and it invalidates every D49 game so far
+
+**D49 trains with `qat_threat_scale = 256`** (weights clipped to ±127/256 =
+±0.496) **but every deployment path is hardcoded `THREAT_QUANT = 64`**
+(`netpack.py:208`, `spec.py:82`, `sota_head.rs:129`). So the exporter writes
+those clipped weights at scale 64 and they land in ±32 of ±127.
+
+```
+D48Y2-sb190 (no QAT):   threat i8  max|w| 127/127   levels 247/256
+D49-sb100   (QAT @256): threat i8  max|w|  32/127   levels  65/256   <- 25% of range
+```
+
+**Two bits thrown away on 73% of the input space.** D49 is damaged twice: trained
+for a 1/256 grid, deployed on 1/64; and range-starved because the QAT clip was
+sized for the finer scale.
+
+**I set `qat_threat_scale = 256` in the training config and never changed the
+deployment side.** Nothing in the system objected for 100+ superbatches — the
+trainer and the exporter each had a constant and they were allowed to disagree.
+
+**Invisible to everything except games**, because R² is computed on the FLOAT
+net: heldout R² 0.8757, within 0.008 of D48X, while the net played 129 Elo down.
+
+### The two matches (owner asked for calibrated AND uncalibrated)
+
+| | n | W/L/D | Elo vs D48X |
+|---|---|---|---|
+| **calibrated** (scale 400→666, frame 0.601→0.974) | 1600 | 241/808/551 | **−128.7 ± 9.6** |
+| **native** (uncalibrated) | 1164 | 168/626/370 | **−144.5 ± 11.2** |
+| | | | **FRAME COST +15.8** |
+
+**Calibration is worth +15.8 Elo** — real, outside the bars, and the first direct
+measurement of frame cost at a KNOWN mis-scaling. It corroborates the earlier
+asymmetry finding (−80 Elo when D48Y2 was calibrated DOWN) in the same direction:
+under-scaled eval over-prunes.
+
+**But the frame was 15.8 of a 144 Elo deficit.** Both matches were played by a net
+missing two bits on its threat channel, so **NEITHER number is a verdict on the
+six mechanisms.**
+
+### The fix: CEN3 version guard (owner's call), study 30 commissioned
+
+A global `THREAT_QUANT = 256` would **wreck existing nets** — D48X trained without
+QAT, spans ±1.98, and measures **6.80% relative error at 255 vs 5.58% at 64**.
+**The scale is a property of the NET, not the engine.**
+
+`threat_quant` is NOT in the CENN header (`ft_quant`32 / `l1_quant`36 /
+`ft_shift`40 / `network_scale`44 / `payload_len`48 — fully packed). So: **CEN3
+adds the field; loader accepts CEN2 ⇒ 64 implicitly.**
+
+Acceptance test given to study 30 is a hard bit-identity property: **a CEN2 net
+must reproduce all three pins unchanged on BOTH backends**, including the
+`x86-64-v3` AVX2 path study 26 found no `target-cpu=native` test exercises.
+
+**D49 does NOT need restarting.** Its QAT clip (±0.496) is correct FOR scale 256,
+so once CEN3 lands every checkpoint re-exports at full range. Nothing is lost by
+letting it run.
+
+**Root cause to fix structurally:** derive `QUANT_THREAT` from the trainer's
+`qat_threat_scale`, or assert they agree. A silent disagreement between two
+constants in different languages is what cost 100 superbatches.
+
+### Tick — both matches FINAL at n=1600, D49 at sb122
+
+| D49-sb100 vs D48X | n | Elo |
+|---|---|---|
+| **calibrated** (scale 666, frame 0.974) | 1600 | **−128.7 ± 9.6** |
+| **native** (scale 400, frame 0.601) | 1600 | **−142.6 ± 9.6** |
+| | | **frame cost +13.9** |
+
+Both at full n now (the earlier +15.8 was native at n=1164). **Frame correction is
+worth +13.9 ± ~14 Elo** — the first direct measurement at a KNOWN mis-scaling,
+same direction as the −80 Elo asymmetry finding.
+
+**Both nets were missing two bits on the threat channel** (65/256 levels), so
+neither number tests the six mechanisms. **No further D49 game testing until CEN3
+lands** — it would measure the same bug again at the cost of ~30 min a run.
+
+D49 heldout EMA: 0.012305 (sb110) → **0.012211 (sb120)**, R² ~0.8775, still
+descending. Training healthy at sb122/400.
+
+**Box:** 8.6 GB free, pressure 0.00, no builds. Three studies running —
+29 (fold load census, decides fusion), 30 (CEN3 version guard),
+31 (parity roadmap).
+
+## Tick 2026-07-30 01:40 — disk crisis, false-stall lesson, D49 sb130
+
+**DISK was the unwatched resource.** `.claude/worktrees/` had grown to **88 GB
+across 47 worktrees** (~5 GB of cargo `target/` per finished study), with the
+root filesystem at 89% and only 101 GB free. Reclaimed build dirs from all
+NON-ACTIVE worktrees (68 dirs): **88 GB -> 9 GB, 101 GB -> 179 GB free.**
+Source, git history and the three running studies were untouched — cargo
+artifacts are regenerable by definition, which is what makes this safe.
+*Standing habit: check `df -h /` on the tick, not just `free -m`.* A first pass
+that matched only `target-*` reclaimed 111 MB; most worktrees use plain
+`target/`.
+
+**RETRACTED INSTRUMENT: file-mtime stall detection.** I have been calling a
+study "stalled" when `find -newermt '-15 min'` returns 0 files. This tick it
+fired on **all three studies at once** — and a `/proc/*/cwd` scan showed every
+one of them mid-`cargo test` with live child processes (load average 12.04).
+The heuristic cannot see work that happens inside a build. **Detect with the
+cwd scan instead:**
+
+```bash
+for p in $(ls /proc | grep -E '^[0-9]+$'); do
+  cw=$(readlink "/proc/$p/cwd" 2>/dev/null) || continue
+  case "$cw" in *worktrees/agent-*)
+    tr '\0' ' ' < "/proc/$p/cmdline" | grep -q shell-snapshots && continue
+    echo "$p $(tr '\0' ' ' < /proc/$p/cmdline | head -c 80)";; esac
+done
+```
+
+Note this means **the study-23 "stall" I nudged earlier may never have been
+stalled** — the nudge was cheap, but the diagnosis was not evidence-based.
+
+**Also checked and CLEARED:** all three transcripts report
+`gitBranch: worktree-agent-af852c45b5086e424`, which looked like three agents
+sharing one branch. Direct `git -C <worktree> rev-parse --abbrev-ref HEAD`
+shows each is on its OWN branch; the shared value is session-level transcript
+metadata, not the real checkout. No merge-integrity problem.
+
+**D49 at sb130/400** (178k pos/s, ~2.34 min/sb, ~10.5 h to finish). Descending
+monotonically, no plateau — cosine has 170 sb left before the 300->400 anneal:
+
+| sb | heldout | ema | train |
+|---|---|---|---|
+| 10 | 0.017605 | 0.017254 | 0.013851 (sb5) |
+| 40 | 0.014338 | 0.013338 | 0.009609 (sb45) |
+| 80 | 0.013512 | 0.012602 | 0.009035 (sb85) |
+| 120 | 0.012989 | 0.012211 | 0.008789 (sb105) |
+| **130** | **0.012826** | **0.012144** | **0.008605** |
+
+Generalization gap 1.49x (train/heldout), normal for NNUE. The earlier sb10 row
+at 0.038598 is the pre-fix run, before the heldout scorer was corrected to the
+network-side `expected_score` transform.
+
+**Study status:** 29 (fold census) ahead=0, 21 dirty — *still the study-20
+hazard: nothing committed after ~2 h.* 30 (CEN3 guard) ahead=2, 5 dirty.
+31 (roadmap) ahead=0, 6 dirty. No games launched this tick deliberately: load
+was already 12.04 with three cargo builds plus the trainer, and the user's
+sequence is study 30 -> test -> games.
+
+## Perf study 31 COMPLETE — the parity roadmap (verified, NOT yet merged)
+
+Branch `worktree-agent-aada569ec146a882d`, 2 commits, tree clean, 43 KB doc at
+`docs/research/perf-study-31-parity-roadmap-2026-07-30.md`.
+
+**It contradicts two prior studies, so I verified its load-bearing claim myself
+before accepting the reframing** (standing rule: retractions of prior work get
+checked against the source, not taken on report).
+
+### VERIFIED BY ME against the `eca43a97` commit object
+
+> **Stockfish did NOT solve the fusion blocker — it pays it.**
+
+- `nnue_accumulator.h:45-46` — SF's Accumulator IS "combined HalfKA + Threats".
+- But the refresh-cache `Entry` (h:65-67) holds only `accumulation` +
+  `psqtAccumulation`.
+- `ThreatFeatureSet::append_active_indices` IS called on the refresh-cache path
+  (`nnue_accumulator.cpp:577`) — the full threat index list is rebuilt.
+- `find_last_usable_accumulator` carries the verbatim comment (cpp:112-113):
+  *"Threat feature set refreshes require a king move across the center, i.e., a
+  subset of halfka refreshes"*.
+
+⇒ **Our split accumulator is a genuine advantage over SF on the refresh axis,
+and fusion trades it away.** This nuances the standing memory note that "SF's
+advantage is incremental maintenance vs our at_full replay" — on the REFRESH
+path SF rebuilds too.
+
+### The five results (study's own, not independently re-measured by me)
+
+1. **Per-node line budget.** 52% of load-stall cycles are FT weight rows, 61% of
+   those the HalfKA table. Accumulator streaming (the whole fusion debate) is
+   **19%**; the threat channel — four studies to itself — is **20%**. Control:
+   reproduces four established numbers (refresh rate 0.16102 vs 0.1611, refresh
+   rows 0.9132 vs 0.9064, rows/fold 2.275 vs 2.27, pushes/node 1.0000).
+   Explains prefetch's five deaths and why width's elasticity is 0.31 not 1.0.
+2. **Accumulator streaming priced directly:** one redundant acc-pair copy/node
+   = +32.88 L1 misses/node, +162.7 load-stall cycles/node, 0/12 rounds
+   negative, nulls −0.125% / −2.709%. ⇒ 2.36 stall cycles/line, 4.95/miss.
+3. **Fusion re-priced −136 cycles/node [−183, −89] = +4.7 Elo — rank #4.**
+   Study 22 closed it at "+872 i/n, 6:1 against" using 6,240 instructions per
+   threat rebuild, a figure **study 18 had already corrected 2.2-2.9x down**;
+   the census says a rebuild adds 4.18 rows. Study 28 ranked it #1.
+   Instructions net **−42 … +199** — neutral; the case is stall cycles.
+4. **Study 28's item C is a measured NULL** (was −264 cycles/node, 26.7% of the
+   gap). The arm was built; the L1-miss counter (null ±0.16%) does not move:
+   +1.57/node, wrong sign. The lines were already hot. `search::<NonPv>`'s
+   +303.4 is now a *site with no mechanism*.
+5. **THE DISCOUNT, derived across studies 8-19.** Items priced as *"this edit
+   removes N instructions at M sites"* realised **76.5%**. Items priced as
+   *"we are N i/n worse than SF at this block"* realised **6.8%**. All four of
+   study 28's ceilings are block-excess prices ⇒ **forecast +8 to +18 Elo, not
+   its +22 to +32.** *This is the most reusable thing in the study.*
+
+### The biggest item is NOT fusion
+
+**Offline i8 quantisation of the HalfKA transformer: −463 cycles/node ≈ +17
+Elo** — bigger than fusion and width combined, and it brings the table inside
+L3. Gated on an offline fidelity check first. Two other pre-build measurements:
+localise `search::<NonPv>`'s stall, and a co-access census of the two FT tables
+(input to a bit-identical index permutation).
+
+### Landed + honesty
+
+`4503060` — arm p1, node-identical, eval-bit-identical, −0.78 i/n against an
+exact 0.000% null; kept as an **encoded negative result** so the split is not
+proposed a third time. Gates reported clean: Bench 587683, eval hash
+5ca978e0…, d13 1922947, 45 tests, clippy/fmt.
+Study's own caveats, recorded: 7.4 cycles-per-cold-line is a *residual* so
+items 1/2 and the i8 estimate all move with it; the non-NNUE floor (30%) is
+scaled across frames; 4.18 rows is measured on endgame-heavy `wl50` and a
+middlegame rebuild is likely ~7 (moves fusion −136 → ~−100, not the sign);
+frame is non-PGO on a contended box. **It ran no games.**
+
+**NOT MERGED YET** — studies 29 and 30 are still live on their own branches and
+merging now risks conflicting under them. Merge order: 30 (user's sequence
+needs it), then 29, then 31. Study 29 has been sent study 31's census numbers
+and the verified SF finding, with instructions to state any disagreement
+plainly rather than defer.
+
+## Tick 2026-07-30 ~02:10 — study 32 commissioned (i8 HalfKA)
+
+**D49 sb134/400**, 177k pos/s, heldout 0.012826 @ sb130 (ema 0.012144), still
+descending. Unit active, untouched.
+
+**Box:** load 12.04 -> 5.59, 6555 MB available, 177 GB disk. Room to commission.
+
+**The nudge worked.** Study 29 went ahead=0/dirty=21 -> **ahead=3**/dirty=5
+after being told to commit. Two hours of census work is now in git rather than
+living only as dirty files in a worktree. Study 30: ahead=2, dirty=9.
+
+**Commissioned study 32 — offline i8 quantisation of the HalfKA transformer.**
+Target chosen because it is study 31's own #1 and it fits the standing
+directive exactly: pure ARCHON, no SF comparison, aimed at throughput.
+Price: **-463 cycles/node ~= +17 Elo**, bigger than fusion and width combined,
+and it pulls the table inside L3. Attacks the largest stall source we have
+(52% of load-stall cycles are FT weight rows, 61% of those HalfKA).
+
+Structure of the brief:
+- **Phase 1 is an offline NumPy fidelity check** — no build, so its early phase
+  costs the box nothing while studies 29/30 finish. Error measured as *eval
+  delta over real positions in SF-frame cp*, not weight MSE. Pass bar declared
+  before measuring.
+- **Phase 2 gates on CYCLES, median >=6 rounds.** Told explicitly that this item
+  moves BYTES so instructions may not move — and that study 20 was -5.99%
+  cycles with instructions UP 0.19%, so an instructions gate would have
+  rejected a real win.
+- **Phase 3: the pins MOVE.** This is eval-affecting, so it is neither
+  node-identical nor eval-bit-identical; the rule is that an intentional change
+  moves the pin in the same commit. Therefore **games arbitrate** — screen at
+  >=1466 games. Also warned that a fixed-node screen HIDES the speed win by
+  construction, so the case is the cycles number AND a no-regression screen,
+  together.
+- Fallbacks pre-named so a hard block has somewhere to go: per-column scales,
+  i8 weights with i16 accumulator, mixed precision (HalfKA only), asymmetric
+  zero-point, short QAT recovery fine-tune. Any one landed = success.
+- Full memory discipline restated (refuse under 2500 MB, systemd-run scope
+  MemoryMax=6G, -j2, no bare pkill -f, screen concurrency memory-bound).
+
+**Games still gated on study 30** (CEN3 threat-quant guard). D49 cannot be
+fairly screened until then: it trains at qat_threat_scale 256 while the
+exporter still writes THREAT_QUANT 64, so a screen now would measure the broken
+deployment, not the recipe. That is the user's stated sequence — study 30, then
+test, then games.
+
+## Perf study 29 COMPLETE — the load census. TWO METHODS NOW CONVERGE.
+
+Branch `worktree-agent-af852c45b5086e424`, **4 commits, tree clean**, 39 KB doc
+`docs/research/perf-study-29-the-load-census-2026-07-30.md`, tooling in
+`tools/perf29/` (19 scripts). Gates re-verified after final edits:
+**Bench 587683, eval hash 5ca978e0…0098b38, d13 1922947.**
+
+**It engaged study 31 instead of deferring to it** — which is exactly what it
+was asked to do.
+
+### THE HEADLINE: two independent instruments agree on where the time goes
+
+| FT weight rows, share of load-stall cycles | method |
+|---:|---|
+| 52% | study 31 — counter census x source geometry |
+| **46.2%** | study 29 — traffic-pinning probes |
+
+Study 29 adds the per-miss economics study 31 lacked:
+
+| | miss rate | stall cycles / miss |
+|---|---:|---:|
+| **FT weight rows** | **38.3%** | **17.0** |
+| accumulator stream | 14.6% | <= 2 |
+
+⇒ weight rows are not just the bigger share, they are the **expensive-per-miss**
+share. **This double-confirms study 32 (i8 HalfKA), which I commissioned before
+study 29 reported.** Independent confirmation of a target chosen on other
+grounds is the strongest signal we have had all night.
+
+### Traffic-pinning table (load count held fixed, one stream collapsed)
+
+| arm | miss/load | stall/instr |
+|---|---:|---:|
+| byte-identical null | −0.21% | +2.29% |
+| `accpin` (accumulator READS) | −2.59% | +8.21% |
+| `dstpin` (reads AND writes) | **−20.23%** | **−4.63%** |
+| `wpin` (weight rows) | **−26.60%** | **−41.20%** |
+
+### FUSION: both studies now say DO NOT BUILD
+
+Study 29 and 31 agree on misses-per-line to 8% (0.477 vs 0.516) but differ
+**5.2x on stall cycles per line** (2.36 additive vs 0.45 subtractive).
+Reconciliation offered: an *additive* redundant-copy probe measures marginal
+cost at a capacity cliff; a *subtractive* probe measures average value below it
+— both can be true. Fusion therefore spans **net +48 (a LOSS) to −136 (+4.7
+Elo)**. Recommendation: **do not build; close the 5.2x gap first** (both probes
+are committed, ~half-hour job). This compounds the verified point that SF
+*pays* the refresh blocker, so our split accumulator is an advantage fusion
+trades away — study 29 prices that too (HalfKA refreshes 0.1610/node vs
+threats' 0.0214).
+
+### A hardware trap worth more than the census
+
+**Zen 4 double-pumps 512-bit loads: 2.0015 `L1-dcache-loads` events per
+`vmovdqu64`, 1.0016 per `vmovdqu`** (10^8 issued loads each). Getting this
+wrong halves the census — it is why its first draft disagreed 2x with the
+sampled profile. **Relayed to study 32 immediately**, since that study is
+actively counting loads on these same kernels.
+
+### Rejected and retracted (its own honesty, recorded)
+
+- **Prefetch rejected again — the sixth death.** Ceiling argument with numbers:
+  a row takes ~22 demand misses, one hint converts one, and `T2` lands in L2
+  where those rows already mostly hit.
+- **Retraction (a):** its prefetch arm read −1.67% cycles at n=13 and was
+  briefly written into the headline as landed. The paired within-round form
+  showed a **byte-different null moving +1.5% while arms moved +1.1%** — it was
+  position-in-round. **Rotating order is NOT sufficient.**
+- **Retraction (b):** "2a2s is a dead fold shape" (zero in 4.88M folds) — it is
+  castling; `wl50` simply contains none.
+- Its first probe pinned only READS and concluded the stream was free; wrong,
+  the **stores are ~64% of accumulator-stream misses**, costing by capacity not
+  latency.
+
+**No strength change landed and none claimed.**
+
+### Safety verified BY ME
+
+The probes deliberately compute wrong evals (`dstpin` fails 29 tests on
+purpose — a green suite would prove it inert), so a leak into a release build
+would be serious. Checked: `Cargo.toml` has **no `default` key**, so the default
+feature set is EMPTY; `foldcount`/`probe-accpin`/`probe-wpin`/`probe-dstpin`
+are all explicit opt-ins over 35 cfg sites. Cannot leak.
+
+**Merge order unchanged: 30 (user's sequence), then 29, then 31.** Studies 30
+and 32 are still live.
