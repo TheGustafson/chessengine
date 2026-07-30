@@ -6183,3 +6183,50 @@ disagreement** (2.36 additive vs 0.45 subtractive), which spans fusion from
 **+48 (a loss) to −136 (+4.7 Elo)**. Both probes are already committed; study 29
 estimated it a half-hour job. It decides a 34.9%-of-cycles question that two
 studies have now deferred.
+
+## SPEED ALONE, SETTLED: **+20 to +22 Elo** — and how the frame was finally made clean
+
+The instrument that works is **`bench 16 1 100000 <fens> nodes <net>`** — a
+fixed **NODE** budget, not fixed depth — measured in **cycles**, not wall clock.
+
+**Why this frame is trustworthy where three earlier ones were not:**
+
+    node counts   5,001,566 vs 5,001,562   (-0.000%)
+    instructions  30.917e9  vs 30.912e9    (-0.016%)
+
+**The two binaries execute the same work, instruction for instruction.** The
+only remaining difference is how many cycles that work takes.
+
+| estimator | OLD | NEW | ratio | Elo |
+|---|---:|---:|---:|---:|
+| median | 25.17e9 | 22.27e9 | **1.1304x** | **+21.7** |
+| min (least interference) | 22.55e9 | 20.09e9 | **1.1228x** | **+20.5** |
+
+**IPC: 1.371 → 1.539, +12.3%.** Same instructions, more of them retired per
+cycle — which is exactly and only what memory-traffic work produces.
+
+**Why this counts as resolved when the raw spread (16-21%) exceeds the effect
+(11.5%):** the spread is **common-mode** — box interference hits both arms —
+and the design alternates order every round, so it cancels. The rank separation
+survives it:
+
+    OLD: 22.55  24.40  24.56  25.78  26.22  26.64
+    NEW: 20.09  20.77  22.11  22.43  22.75  24.81
+    => 32 of 36 pairwise comparisons favour NEW
+
+This is the distinction I missed on the `paired_nps` runs: there the noise was
+**independent per sample**, so spread ≈ effect genuinely blocked a verdict.
+
+### Three retracted attempts, recorded so the reasoning is auditable
+
+| attempt | figure | why it was wrong |
+|---|---:|---|
+| bench nodes ÷ wall time | +4.5% | unequal node counts put the TREE in the denominator; startup included |
+| `paired_nps` wall-clock | 1.18-1.23x | independent noise, spread == effect |
+| cycles/node at fixed **depth** | −21% (wrong sign) | different trees ⇒ "per node" compares different nodes |
+
+**Final accounting for the night's perf work:**
+- **speed alone: +20 to +22 Elo** (this measurement)
+- **canonical `network_scale` 600: +14.78 +/- 5.45 Elo** (5880 games, separate
+  and additive — the speed frame used the same net on both sides)
+- the 14.7% node reduction to a given depth is *additional* on top of throughput
