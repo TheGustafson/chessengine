@@ -10,3 +10,19 @@ A base                       n=12 cycmin=  4124.1 cycmed=  4283.7 ins=  6086.8 l
 B a12b                       n=12 cycmin=  4044.2 cycmed=  4233.9 ins=  6073.2 l1m= 618.43 l2m=  71.74 dram=   7.55 dtlb=  2.00
   D cycmin=   -79.9 (-1.94%)  cycmed=   -49.9 (-1.16%)  ins=  -13.59 (-0.223%)
   D l1m=  -2.23 (-0.36%)  l2m=  -1.11 (-1.52%)  dram=  -0.49 (-6.13%)  dtlb= +0.07 (+3.75%)  nodes=[5001562]
+A a12b                       n=10 cycmin=  4116.9 cycmed=  4374.2 ins=  6076.8 l1m= 618.64 l2m=  72.59 dram=   8.44 dtlb=  2.10
+B probe-extracopy            n=10 cycmin=  4241.2 cycmed=  4454.3 ins=  6234.2 l1m= 674.02 l2m=  72.30 dram=   8.39 dtlb=  2.15
+  D cycmin=  +124.3 (+3.02%)  cycmed=   +80.1 (+1.83%)  ins= +157.42 (+2.591%)
+  D l1m= +55.38 (+8.95%)  l2m=  -0.29 (-0.40%)  dram=  -0.05 (-0.63%)  dtlb= +0.05 (+2.19%)  nodes=[5001562]
+A a12b                       n=10 cycmin=  4202.3 cycmed=  4436.7 ins=  6076.8 l1m= 617.58 l2m=  71.87 dram=   9.52 dtlb=  2.18
+B a34                        n=10 cycmin=  4075.6 cycmed=  4402.6 ins=  6074.0 l1m= 619.98 l2m=  72.52 dram=   9.56 dtlb=  2.04
+  D cycmin=  -126.7 (-3.01%)  cycmed=   -34.1 (-0.77%)  ins=   -2.80 (-0.046%)
+  D l1m=  +2.40 (+0.39%)  l2m=  +0.66 (+0.91%)  dram=  +0.05 (+0.47%)  dtlb= -0.14 (-6.27%)  nodes=[5001562]
+A base                       n=8 cycmin=  4397.2 cycmed=  4665.8 ins=  6081.9 l1m= 622.54 l2m=  73.31 dram=  11.58 dtlb=  2.14
+B base2                      n=8 cycmin=  4297.2 cycmed=  4595.3 ins=  6086.6 l1m= 624.71 l2m=  73.78 dram=   9.99 dtlb=  2.15
+  D cycmin=  -100.1 (-2.28%)  cycmed=   -70.5 (-1.51%)  ins=   +4.68 (+0.077%)
+  D l1m=  +2.17 (+0.35%)  l2m=  +0.47 (+0.64%)  dram=  -1.58 (-13.68%)  dtlb= +0.01 (+0.67%)  nodes=[5001562]
+A a12b                       n=10 cycmin=  4558.2 cycmed=  5226.7 ins=  6077.8 l1m= 620.22 l2m=  73.94 dram=  16.28 dtlb=  2.88
+B a34                        n=10 cycmin=  4724.1 cycmed=  5257.9 ins=  6076.7 l1m= 624.06 l2m=  75.39 dram=  17.18 dtlb=  2.87
+  D cycmin=  +165.8 (+3.64%)  cycmed=   +31.2 (+0.60%)  ins=   -1.09 (-0.018%)
+  D l1m=  +3.84 (+0.62%)  l2m=  +1.46 (+1.97%)  dram=  +0.91 (+5.56%)  dtlb= -0.01 (-0.38%)  nodes=[5001562]

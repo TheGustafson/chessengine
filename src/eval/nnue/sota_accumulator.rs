@@ -533,31 +533,61 @@ impl<'a> HalfkaContext<'a> {
             //    cursor cannot exceed `CAP`; `& (CAP - 1)` is free because CAP
             //    is a power of two, and the `debug_assert` carries the real
             //    invariant. (Same move as the threat resolver's, §2.1.)
+            //
+            // PERF STUDY 22 ARM 3 — THE FIRST OF THOSE THREE WAS NOT ACTUALLY
+            // BEING DONE, and had not been for as long as the comment has
+            // existed. The loop was `for pt in PieceType::ALL`, and the shipped
+            // binary contained the exact anti-pattern forbidden above, opcode
+            // for opcode:
+            //
+            //     mov   WORD  PTR [rsp+0x154],0x504      ; PieceType::ALL, on
+            //     mov   DWORD PTR [rsp+0x150],0x3020100  ;   the STACK, per call
+            //     movzx r8d,BYTE PTR [rsp+rdi*1+0x150]   ; reloaded per iteration
+            //     mov   r9, QWORD PTR [r12+rdx*1+0x140]  ; board.pieces[c][pt]
+            //     mov   r11,QWORD PTR [r14+rdx*1+0xa60]  ; cached.by_piece[c][pt]
+            //
+            // Iterating an array BY VALUE hands LLVM an `alloca` it declined to
+            // promote to `.rodata`, so a 6-byte constant was written to the
+            // stack on every call and read back once per iteration.
+            //
+            // THIS IS A MEASURED NULL, and it is landed as documentation
+            // repair, not as a speedup: +0.8 i/n on the 5,001,562-node frame,
+            // which is inside the ~5 i/n practical floor. The eight
+            // instructions per call it removes are worth ~1.3 i/n at 0.16
+            // refreshes/node. It is here because a comment that forbids what
+            // the code does is worse than no comment — it cost this study time
+            // twice (perf study 22 §1.3, §5.3, both the same failure mode).
             const CAP: usize = 32;
+            static PIECE_TYPES: [PieceType; 6] = PieceType::ALL;
             let mut adds = [0usize; CAP];
             let mut add_len = 0;
             let mut subs = [0usize; CAP];
             let mut sub_len = 0;
             for color in [Color::White, Color::Black] {
-                for pt in PieceType::ALL {
-                    let new_bb = board.pieces(color, pt);
-                    let old_bb = cached.by_piece[color as usize][pt as usize];
-                    if new_bb == old_bb {
+                // `board.pieces` is the `pub(crate)` FIELD, not the accessor:
+                // the accessor hands back one bitboard and would put the
+                // indexed load straight back. The row is the unit the diff
+                // walks. `PIECE_TYPES` is a `static`, so the piece type comes
+                // from `.rodata` at a fixed address rather than a stack copy.
+                let new_row = &board.pieces[color as usize];
+                let old_row = &mut cached.by_piece[color as usize];
+                for ((&new_bb, old_bb), &pt) in new_row.iter().zip(old_row).zip(&PIECE_TYPES) {
+                    if new_bb == *old_bb {
                         continue;
                     }
                     let piece = Piece::new(color, pt);
                     let base = halfka_row_base(perspective, piece, king);
-                    for sq in new_bb & !old_bb {
+                    for sq in new_bb & !*old_bb {
                         debug_assert!(add_len < CAP, "finny add cursor overflow");
                         adds[add_len & (CAP - 1)] = base + halfka_oriented(perspective, sq, king);
                         add_len += 1;
                     }
-                    for sq in old_bb & !new_bb {
+                    for sq in *old_bb & !new_bb {
                         debug_assert!(sub_len < CAP, "finny sub cursor overflow");
                         subs[sub_len & (CAP - 1)] = base + halfka_oriented(perspective, sq, king);
                         sub_len += 1;
                     }
-                    cached.by_piece[color as usize][pt as usize] = new_bb;
+                    *old_bb = new_bb;
                 }
             }
             // Two-destination fold (perf study 9 item 4): the cache entry is
