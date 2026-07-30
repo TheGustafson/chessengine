@@ -6857,3 +6857,34 @@ consecutive tick in the band.
 
 **Study 40** ahead=3, now pricing **arm A** (*"count the BUBBL…"*) — so both
 switches are being decided. **Box:** 8218 MB, swap 986 MB, load 4.35.
+
+## Tick 2026-07-31 ~09:45 — sb399/400, waiter armed for the endpoint
+
+**One superbatch from completion**, train 0.007164, 173k pos/s. Final heldout
+sample stands at sb390 (raw 0.010824 / **ema 0.010812**).
+
+**Armed a background waiter on the sb400 CHECKPOINT FILE**, not on the unit
+going inactive. That is the right trigger: the checkpoint is what the verdict
+consumes, and it is written *before* the process exits — waiting on the unit
+would add a needless gap, and waiting on the log would race the flush.
+
+**Everything downstream is pre-staged and rehearsed:**
+
+| item | state |
+|---|---|
+| `target-sota` binary | rebuilt at current main, CEN5-capable |
+| `tools/d49_verdict.sh` | dry-run clean on sb390 |
+| the frame | **confirmed unmoved** — 756 → stdev 423.2 at sb390 vs 415-422 through sb270 |
+| the ladder | 640/756/880 stands; no re-bracketing needed |
+| checkpoints | all 40 retained; fallback needs no action |
+
+**On deck the moment sb400 lands:** export the EMA checkpoint across the
+ladder, re-measure the frame, run the two 1466-game ladder screens to pick
+D49's own optimum, then the **5880-game verdict against canonical at ITS
+optimum** (`network_scale=600`, not the shipped-default 400 — that trap is
+encoded in the script).
+
+**Note on box contention ahead:** `recode-t1` is armed and fires when the GPU
+frees, so the Tier-1 panel (GPU) and the verdict screens (CPU) will run
+concurrently. Different resources, but both want memory — worth watching rather
+than assuming.
