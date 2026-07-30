@@ -262,10 +262,15 @@ Three things worth carrying:
 * **the tag scan is not front-loaded**: 22.9% of matches are in slot 2, so a
   probe usually reads more than one entry — which is why one probe issues ~8
   memory accesses into its line, and why the §2 retraction was necessary.
-* **97.2% of saves are accepted.** The replacement rules reject almost nothing;
+* **97.2% of saves are accepted.** The replacement rules reject almost nothing:
   the depth/age arithmetic in `TtEntry::save` is doing far less work than its
-  five tunables suggest, and an SPSA campaign over them is aiming at a decision
-  that is made one way 97 times in 100.
+  five tunables suggest. Those five (`TT_REPLACE_DEPTH_WEIGHT`,
+  `TT_REPLACE_AGE_WEIGHT`, `TT_REFRESH_DEPTH_MARGIN`, `TT_REFRESH_PV_CREDIT`,
+  `TT_SECONDARY_AGING_*`) were made tunable on 2026-07-27 and — verified, not
+  assumed: `grep` over `tools/spsa/` finds them in **no campaign**. If one is
+  ever built, it should know first that it is steering a decision that already
+  goes one way 97 times in 100, and that the rejected 2.8% is where all of its
+  leverage has to come from.
 
 ---
 
@@ -488,9 +493,33 @@ so some of the +0.94 fills are the net's, not the table's.
 (both 16 MB), so nothing measured here is wrong *for the engine we test*. But
 16 MB is the cheapest point on a steep curve, and a tournament configuration at
 256 MB–1 GB pays 7.5–8.7% more cycles per node. **Any TT-related lever
-evaluated at `Hash=16` is being evaluated where the TT costs least** — which
-means the value of the prefetch measured in §1 is a *floor*, and so is the
-value of anything else that hides or removes a TT miss.
+evaluated at `Hash=16` is being evaluated where the TT costs least.**
+
+### 6.2 …but the PREFETCH's share does not grow with `Hash` — and that is the more useful half
+
+I expected the prefetch to be worth much more on a big table and ran the arm at
+`Hash=256` to check (`panel-h256.txt`, same three labels, null clean at
+3–4 of 7, p = 1.00):
+
+| | `Hash` = 16 MB | `Hash` = 256 MB |
+|---|---:|---:|
+| `nopf` cycles | +3.504% (18/18) | **+3.943%** (6/7) |
+| `nopf` load-stall | +5.571% (17/18) | **+5.792%** (6/7) |
+| panel `base` cycles/node | 4390.8 | 4642.1 |
+| ⇒ prefetch worth, absolute | ~154 cycles/node | ~183 cycles/node |
+
+**The percentage barely moves.** Between the two sizes the engine's cost rises
+by ~325 cycles/node (§6.1) while the prefetch's absolute value rises by only
+~29 — i.e. **the prefetch recovers roughly a tenth of the increment a bigger
+table brings.** Its lead time is the remainder of `make_move`, which is a fixed
+budget; a deeper miss simply overflows it.
+
+So the frame answer has two halves, and the second is the actionable one:
+**yes, the TT costs much more at a tournament `Hash`, and no, the mechanism we
+already have does not scale to cover it.** Whatever recovers that increment is
+not another prefetch — §4.3 killed the two obvious ones — which points the next
+session at the table's *contents* (fewer, better-chosen entries per line fetched:
+§5.2) rather than at its timing.
 
 ---
 
