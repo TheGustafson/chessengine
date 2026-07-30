@@ -5069,3 +5069,37 @@ was noise and nothing is lost but box time.
 **D49 sb220/400**, heldout 0.011949 @ sb210. Box 8436 MB, load 10.61. Study 36
 committed its first work (ahead=1, dirty=0) and has `perf=0` — still no
 measurement contention with these screens.
+
+## Tick 2026-07-30 ~10:45 — confirmation in flight, study 36 into movegen
+
+**`confirm600` at 998/5880: +20.91 +/- 13.09.** Consistent with — slightly
+above — the +15.65 +/- 11.02 measured on the first 1466-game pass. Running on to
+the +/-5 bar before any promotion decision. **No promotion on a partial
+screen.**
+
+**D49 sb225/400.** Heldout still falling hard, no plateau:
+
+| sb | heldout | ema | delta |
+|---|---|---|---|
+| 200 | 0.012094 | 0.011587 | −53 |
+| 210 | 0.011949 | 0.011546 | −145 |
+| **220** | **0.011805** | **0.011461** | **−144** |
+
+The sb200 narrowing is now clearly a blip, not the onset of saturation.
+Cosine runs to sb300, then anneal 300→400 — roughly 7.5 h left.
+
+**Study 36 has picked its target and is implementing:** *"movegen: answer
+in-check `pseudo_legal` from the g…"* (ahead=1, dirty=6). It went to the fresh
+profile, chose an item, and is building — which is exactly the brief's demand
+that the profile be the means and a landed win the deliverable.
+
+**Its change touches `movegen`, so the D24 perft ritual is MANDATORY** —
+`cargo test` AND `cargo test --release -- --ignored perft_full_suite` before
+landing. Its brief states this explicitly, and I will verify it independently at
+merge time rather than take the report (as I did for study 35, where my own
+gate's `tail` cropped the perft result and I had to re-run it standalone to
+confirm `1 passed`).
+
+**Box:** 5692 MB available, load 21.34 — the 5880-game screen at conc=10 plus
+study 36 plus the trainer. Above the 2500 MB refuse line, but this is the
+busiest the box has been tonight; **no new work started this tick on purpose.**
