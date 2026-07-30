@@ -259,6 +259,8 @@ impl TtEntry {
         generation: u8,
     ) {
         let tag = key as u16;
+        #[cfg(feature = "ttcensus42")]
+        crate::ttcensus42::bump(&crate::ttcensus42::SAVES);
         let same_key = tag == self.key16.load(Relaxed);
 
         // Rule 1 — ttMove preservation: keep the old move only when the
@@ -286,6 +288,8 @@ impl TtEntry {
             debug_assert!(d > DEPTH_NONE && new_d < 256);
             debug_assert!(generation <= GENERATION_MASK);
             debug_assert!(i16::try_from(v).is_ok() && i16::try_from(ev).is_ok());
+            #[cfg(feature = "ttcensus42")]
+            crate::ttcensus42::bump(&crate::ttcensus42::SAVE_ACCEPT);
             self.key16.store(tag, Relaxed);
             self.depth8.store(new_d as u8, Relaxed);
             self.gen_bound8.store(
@@ -412,6 +416,8 @@ impl TtWriter<'_> {
     /// (doc 07) uses `penalize(1)`.
     pub fn penalize(&self, penalty: i32) {
         debug_assert!(penalty >= 0);
+        #[cfg(feature = "ttcensus42")]
+        crate::ttcensus42::bump(&crate::ttcensus42::PENALIZE);
         let d = i32::from(self.entry.depth8.load(Relaxed));
         self.entry.depth8.store((d - penalty).max(0) as u8, Relaxed);
     }
@@ -499,8 +505,24 @@ impl TranspositionTable {
         let cluster = self.cluster_for(key);
         let tag = key as u16;
 
-        for entry in &cluster.entries {
+        #[cfg(feature = "ttcensus42")]
+        {
+            use crate::ttcensus42 as c;
+            c::bump(&c::PROBES);
+            c::note_cluster(std::ptr::from_ref(cluster) as usize);
+        }
+
+        for (_slot, entry) in cluster.entries.iter().enumerate() {
             if entry.key16.load(Relaxed) == tag {
+                #[cfg(feature = "ttcensus42")]
+                {
+                    use crate::ttcensus42 as c;
+                    c::bump(&c::TAG_MATCH);
+                    c::bump([&c::SLOT0, &c::SLOT1, &c::SLOT2][_slot]);
+                    if entry.is_occupied() {
+                        c::bump(&c::HITS);
+                    }
+                }
                 return Probe {
                     hit: entry.is_occupied(),
                     data: entry.read(),
@@ -625,9 +647,19 @@ impl TranspositionTable {
     /// step 7).
     #[inline]
     pub fn prefetch(&self, key: Key) {
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(feature = "ttcensus42")]
+        crate::ttcensus42::bump(&crate::ttcensus42::PREFETCH);
+        #[cfg(all(target_arch = "x86_64", not(feature = "ttnopf42")))]
         {
-            use std::arch::x86_64::{_MM_HINT_T0, _mm_prefetch};
+            // Perf study 42 arms. `ttnopf42` removes the hint entirely (the
+            // subtractive arm that prices it); `ttpft242` demotes it from L1
+            // to L2/L3. Both are node-identical: a cache hint changes no
+            // search result, so the `Bench:` fingerprint is unmoved.
+            #[cfg(not(feature = "ttpft242"))]
+            use std::arch::x86_64::_MM_HINT_T0 as HINT;
+            #[cfg(feature = "ttpft242")]
+            use std::arch::x86_64::_MM_HINT_T2 as HINT;
+            use std::arch::x86_64::_mm_prefetch;
             let p: *const Cluster = self.cluster_for(key);
             // SAFETY: `_mm_prefetch` is a pure cache hint: it performs no
             // memory access observable by the abstract machine, writes
@@ -635,9 +667,9 @@ impl TranspositionTable {
             // hardware drops bad hints). The pointer additionally derives
             // from a live `&Cluster` into our own allocation, so it is
             // valid for the cache line being hinted.
-            unsafe { _mm_prefetch(p.cast::<i8>(), _MM_HINT_T0) };
+            unsafe { _mm_prefetch(p.cast::<i8>(), HINT) };
         }
-        #[cfg(not(target_arch = "x86_64"))]
+        #[cfg(any(not(target_arch = "x86_64"), feature = "ttnopf42"))]
         let _ = key;
     }
 }

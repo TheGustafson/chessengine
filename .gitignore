@@ -86,3 +86,5 @@ bin36/
 # perf study 39: labelled measurement binaries + its build trees.
 bin39/
 /target39-*/
+bin42/
+/target42-*/

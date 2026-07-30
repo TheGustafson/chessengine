@@ -168,6 +168,31 @@ callcopy40 = ["sota"]
 # always goes through the `#[inline(never)]` `copy_acc_outlined` helper --
 # -16.01 instructions and -1.21 branches per node, node-identical. See that
 # function's doc comment.)
+# Perf study 42's TRANSPOSITION-TABLE arms. All three are node-identical by
+# construction -- none of them changes which entry a probe finds, only how the
+# line gets into the cache -- so the `Bench:` fingerprint must reproduce
+# bit-for-bit on every one of them (`tools/perf42/ident42.sh` checks it).
+#   ttnopf42:  `TranspositionTable::prefetch` becomes a no-op. This is the
+#              SUBTRACTIVE arm that prices the prefetch we already ship, and it
+#              is the only way to see the TT's demand-miss cost at all: with the
+#              hint in place, IBS reports 87% of TT loads as L1 hits even on a
+#              256 MB table, because the fill was issued by a prefetch that is
+#              not a retired op and carries no data source.
+#   ttpft242:  the same hint at `_MM_HINT_T2` instead of `_MM_HINT_T0`, i.e.
+#              into L2/L3 rather than L1. Study 29 killed a prefetch proposal
+#              partly on the argument that T2 lands where the lines already
+#              hit; the TT is the case where that argument can be tested
+#              instead of asserted.
+# Measurement only, never shipped, never gated.
+ttnopf42 = []
+ttpft242 = []
+# Perf study 42's TT CENSUS (`src/ttcensus42.rs`): probes, hits, tag-scan depth,
+# saves and -- the counter that decides a layout question -- how often two
+# consecutive probes land in the same 64-byte line, i.e. whether the sibling
+# cluster a 32-byte cluster shares its line with is ever used. Relaxed atomics
+# on paths that make no search decision, so the tree stays bit-identical
+# (`tools/perf42/ident42.sh`); the binary is NOT a timing reference.
+ttcensus42 = []
 # Perf study 40's DOSE AMPLIFIER for `partial_insertion_sort` (`src/dose40.rs`).
 # `insertwin34` is a ~0.2%-of-cycles trade and six nulls put the `cycles:u`
 # floor on this box an order of magnitude above that, so the arm is replayed
