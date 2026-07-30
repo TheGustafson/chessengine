@@ -7269,3 +7269,33 @@ rule depends on the contrast, not on either arm's absolute number.
 
 **Box:** 7225 MB, load 17.53 — the 5880-game screen plus the GPU panel.
 Nothing started.
+
+## Tick 2026-07-31 ~14:45 — a slowdown that wasn't, and the pattern behind it
+
+**Verdict: 1971/5880**, and measured properly it runs at **130 games/min against
+an expected ~105** — *faster* than spec. I had flagged a slowdown from the
+1772 → 1872 counts between ticks; that inference came from **differencing two
+observations across an interval I estimated rather than timed**, and it was
+wrong.
+
+### This is the FOURTH sampling artifact tonight
+
+| # | signature | reality |
+|---|---|---|
+| 1 | file-mtime "stall" on three studies at once | all three mid-`cargo test` |
+| 2 | D49 read sb290 on two consecutive ticks | running at 143 s/sb, *faster* than baseline |
+| 3 | verdict's Elo line "stuck" at 1000 | just not reprinted; PGN was advancing |
+| 4 | verdict "slowed" to ~7/min | actually 130/min |
+
+**Every one was resolved by measuring against a time base instead of
+differencing two adjacent reads**, and every one would have been a false alarm
+acted on. The rule is consistent enough to state plainly: **a rate claim needs a
+timed interval, never two observations.** I retracted the mtime detector for
+exactly this and then made the same class of error three more times.
+
+**The `kmeans8k` traceback in the log is from MY aborted rerun**, not the
+agent's work — `recode-t1-finish.service` is its own unit and is live. Worth
+being precise about, since a stale failure log next to a running job is exactly
+how a healthy run gets declared broken.
+
+**Box:** 7261 MB, load 18.67, GPU 6891 MiB. Both jobs healthy; nothing started.
