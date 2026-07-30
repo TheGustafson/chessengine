@@ -249,12 +249,8 @@ impl PolicyNet {
             &eval.threat_weights,
             board,
         );
-        let trunk = sota_head::policy_trunk(
-            &pst,
-            &threat,
-            board.side_to_move(),
-            eval.head.threat_shift,
-        );
+        let trunk =
+            sota_head::policy_trunk(&pst, &threat, board.side_to_move(), eval.head.threat_shift);
         let values = match &self.head {
             Head::Bilinear {
                 rank,

@@ -2612,7 +2612,8 @@ mod tests {
                         as i16;
                     let raw = (lane as u16)
                         .wrapping_mul(49711)
-                        .wrapping_add(perspective as u16 * 251) as i16;
+                        .wrapping_add(perspective as u16 * 251)
+                        as i16;
                     threat[perspective][lane] = (i32::from(raw) % bound) as i16;
                 }
             }

@@ -871,14 +871,7 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
     // ── Header ─────────────────────────────────────────────────────────
     let mut out = Vec::with_capacity(header_len + expected_payload);
     out.extend_from_slice(if v5 { &MAGIC_V5 } else { &MAGIC_V2 });
-    out.extend_from_slice(
-        &(if v5 {
-            CENN_V5_VERSION
-        } else {
-            CENN_V2_VERSION
-        })
-        .to_le_bytes(),
-    );
+    out.extend_from_slice(&(if v5 { CENN_V5_VERSION } else { CENN_V2_VERSION }).to_le_bytes());
     out.extend_from_slice(&flags.to_le_bytes());
     out.extend_from_slice(&(HALFKA_DIMS as u32).to_le_bytes());
     let threat_dim = if has_threats { THREAT_DIMS as u32 } else { 0 };
