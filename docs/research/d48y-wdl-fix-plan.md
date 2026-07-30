@@ -8092,3 +8092,41 @@ now-correct denominator; whether hot metadata and cold payload should be split
 measured); and prefetch — where the prior is strongly negative, **six kills**, but
 this is the one case in the engine where the address is known a long way ahead of
 the use, so it must beat the prior with a measurement rather than a story.
+
+## Tick — D49 sb455; box capacity was the real work this tick
+
+**D49x: sb455, heldout ema 0.010990** (0.011009 → 0.010997 → 0.010990, three
+consecutive down). Running untouched.
+
+### Two capacity warnings, both acted on
+
+**1. Swap was exhausted — 4035 of 4095 MB, ~60 MB free, against ~9.2 GB RAM.**
+Four agents are live (41 front-end, 42 TT, 43 Finny, learned-representation) and
+each wraps builds in a 6 GB `MemoryMax` scope. **Two concurrent builds is 12 GB
+against 9.2 GB with no swap headroom to absorb the overshoot** — the exact
+configuration that caused a global OOM on this box on 2026-07-27, and an OOM
+takes the D49 trainer with it.
+
+**Fix: a shared build lock, mandatory for all four agents.**
+
+```bash
+flock /home/nick/.cache/archon-build.lock \
+  systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0 --quiet \
+  cargo build --release --features '<yours>' -j2
+```
+
+`flock` blocks rather than failing, so builds queue instead of colliding. Sent to
+all four with the no-timeout caveat spelled out (a timeout that gives up and
+builds anyway defeats the purpose). The per-agent `free -m` floor of 2500 MB
+stays — the lock is *in addition to* it.
+
+**2. Disk had climbed to 90%.** Reclaimed **36.4 GB** from 11 stale worktree
+`target/` directories, excluding all four live agents by ID. **90% → 86%, 129 GB
+free.**
+
+**Deliberately preserved: `.claude/worktrees/agent-a6dd50900b77441ab/bin34/b40`**
+— perf study 40's own base binary, whose published `instructions/node` I
+reproduced to 10 parts per million today. It is the known-good reference for the
+pinned frame, so it is worth more than the 4.1 GB `target/` beside it (which I
+did delete). Both new studies were told it exists and told to treat a
+disagreement with it as a signal about their build, not about the engine.
