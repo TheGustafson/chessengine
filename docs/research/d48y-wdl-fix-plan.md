@@ -4726,3 +4726,87 @@ screens. Cheap, no retraining, and it directly serves "reduce nps / find Elo".
 Box: 6039 MB, load 18.79 (the screen at conc 8 + study 35 + trainer) — **no new
 load added this tick.** Study 35 ahead=3, dirty=2. Study 34 staged as
 `stage-34`, gate still deferred until the screen completes.
+
+## FRAME RESULT FINAL: +32.09 +/- 11.38 Elo over 1466 games
+
+    Elo: +32.09 +/- 11.38   nElo: +50.43 +/- 17.79
+    W 526 / D 549 / L 391   (54.60%)    EXIT=0
+
+Held at full power (2.8 sigma). Same weights, identical payload checksum, only
+the 4-byte `network_scale` header differs (756 vs 400). **The eval frame is
+worth ~32 Elo on D49, and nobody had ever swept that knob.**
+
+## Perf study 35 COMPLETE — the do_move fusion LANDED
+
+5 commits. **`DirtyPiece::after_move`**: the accumulator's placement record is
+now derived from the board the move **produced**, not the one it was made in.
+`from_move` was re-deriving three facts that `make_move_with` derives a few
+instructions later — and two of them it does not merely derive, it **stores**,
+into `StateInfo.moved`/`.captured` (put there by perf study 14 §4.4 so
+`unmake_move` need not re-read the mailbox). `after_move` reads that store
+forward instead of the mailbox backward.
+
+| arm | i/n | delta | br/n | loads |
+|---|---:|---:|---:|---:|
+| base | 5659.760 | — | 589.06 | — |
+| **after (LANDED)** | **5634.760** | **−25.000 (−0.442%)** | **586.04 (−3.02)** | **−0.30…−0.49%** |
+| passmover | 5640.760 | −19.000 | 588.06 | −0.32% |
+| hookc (study 13 §5.1) | 5648.400 | −11.360 | 586.17 | −0.04% |
+
+Node total and eval hash identical on every arm; the control returned
+**5659.760 fourteen times out of fourteen — a 0.000% null.**
+
+### Study 13's rejection does NOT reproduce — with the honest framing
+
+Rebuilt, Hook C is **−11.36 i/n, not +41.5.** Cause: **study 14 removed the
+spilling `mem::take` shape that was study 13's stated mechanism.** And the study
+declined the tempting claim: frames are not comparable (13's baseline 6537 i/n
+vs 5660 today), so it reports *"it wins today"*, **not** *"13 mis-measured"*.
+The stale "do not re-reject on 13's number" warning is now in the call-site
+comment.
+
+### It PROVED the commissioned instrument could not work, rather than asserting it
+
+I briefed cycles. Across three protocols, a **byte-identical copy of the
+control** moved **+1.585%/+1.650%** (sequential rotated, n=14), **+5.266%**
+(SMT-pinned, confounded), **+0.383%** (simultaneous two-core, n=6 pairs),
+**+2.780%** (calmer box, n=15) — against a mechanism pricing the arm at
+~0.3–0.4%. The control's own `cyc/n` spread was **+/-20.3%**, and the
+position-in-round artifact that nearly shipped study 29 is present and worth
+**9.4%**. So it landed on instructions (exact), branches (exact) and L1d loads
+— **the currency study 33 §5.3 licensed by name.** *Study 33's mechanism
+finding directly licensed study 35's instrument choice: that is the loop
+working.*
+
+**Retracted a protocol bug in flight:** its SMT spinner ran `bin35/base`, and
+Zen 4 siblings share L1I/L2, so the control was measured with its text
+pre-warmed by an identical process. Script kept, bug documented in its header.
+
+**Two accidental reproductions of study 13 §5.5:** respelling four lines inside
+a `#[cold] #[inline(never)]` en-passant arm moved the hot path by exactly
+**+2.0 i/n**; and **adding doc comments changes the binary's sha256** (panic
+`Location` constants carry line numbers), so source↔binary identity had to be
+proven with counters rather than hashes.
+
+**Gates on its branch:** Bench 587683 bit-for-bit, `cargo test`, clippy
+`-D warnings`, **`perft_full_suite` AND `perft_extended` (~18 G nodes)** all
+green — the D24 ritual was followed — plus a new mutation-verified oracle test
+keeping `from_move` as the independent oracle.
+
+**Least sure:** the loads delta (0.30–0.49%) is 3–5x larger than a naive count
+of the three deleted mailbox reads predicts (~0.10%). Sign is solid across three
+protocols with clean nulls; magnitude may be the instrument
+(`L1-dcache-loads` counts dispatched loads including replays, and the arm also
+removes 3.02 branches/node). IBS retired-load sampling would settle it.
+
+## Both studies merged; gate running
+
+main = **`1f374bc`** (study 35, then study 34 — one `.gitignore` hunk).
+movepick.rs +291, board.rs +177. `gate3435` running: full
+`CHECK_NNUE_GATE=1`, **the D24 `perft_full_suite`** on the merged tree, and a
+`cargo check` of all six opt-in features (`foldcount`, three probes, `census34`,
+`insertwin34`).
+
+**Note:** study 35's own gate quoted the OLD NNUE pins
+(`5ca978e0…`/`1922947`) because its branch predates study 32's i8 merge. Current
+main pins `eb981b11…`/`1985398`; `gate3435` is what confirms the merged tree.
