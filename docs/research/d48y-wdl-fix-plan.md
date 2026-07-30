@@ -7693,3 +7693,37 @@ Confirms the ±20e-6 working estimate. Against it:
 **Both panel conclusions are secure.** The learned code decisively beats a
 content-free partition; and it decisively costs eval against identity. The
 compression does not ship, and the representation finding stands.
+
+## Tick — extension training at sb406; swap exhausted, guard tightened
+
+**`d49x` is training and FASTER than the original leg: 191k pos/s vs 173k**,
+because the box is no longer carrying a 5880-game screen. sb406 of 700, value
+0.007329-0.007430.
+
+**Baseline it must beat:** heldout **0.010784 raw / 0.010804 ema** at sb400.
+**Parity target: ~0.010204**, needing 2.00e-6/sb — below every rate observed,
+including the near-zero-LR tail at 2.48e-6/sb.
+
+### Swap is exhausted — the guard is now one condition from firing
+
+    free swap: 7 MB of 4095     available: 4844 MB
+
+The rule I gave every study — *hold when swap < ~1 GB **AND** available < ~4 GB*
+— now has its **first clause permanently true**. `available` is the only cushion
+left, with nothing behind it.
+
+**Warned study 41 concretely:** one build at a time; **`CHECK_TEST_THREADS=2`**
+(1.2 GB instead of 2.4 GB); and **re-check `free -m` immediately before each
+build**, not once per phase, because the number moves. Also offered to hold other
+work off if it needs a quiet window for its decisive panel — load has swung
+between 3 and 20 today and every study that split measurements across differing
+load has paid for it.
+
+**The trainer is NOT at risk — checked, not assumed:** its cgroup reports
+`memory.current` 2.08 GB with **every** `memory.events` counter at **zero** — no
+pressure, no throttling, no OOM. Worth verifying directly given it is a 13-hour
+run that just started and the standing order is DON'T OOM THE BOX.
+
+**Studies:** 41 at ahead=5, measuring the **executed** footprint (the right
+distinction — the icache only cares about bytes actually fetched, not
+allocated); richer-representation at ahead=3, on its deliverable.
