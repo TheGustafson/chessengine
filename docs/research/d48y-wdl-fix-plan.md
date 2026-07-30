@@ -8576,3 +8576,32 @@ rested on it. Flagged, not re-litigated.
 
 **Owed item CLOSED.** The instrument defect is real and now documented in three
 places; what it did *not* do is corrupt prior conclusions.
+
+## Tick — D49 rate MEASURED, not assumed; all three lines took their corrections
+
+**D49x: sb502, heldout 0.011105, ema 0.010898** — seven consecutive down.
+
+**Rate measured from checkpoint mtimes against a time base** (the project has been
+bitten four times by differencing two observations instead):
+
+| interval | rate |
+|---|---|
+| sb470 → sb480 | 2.17 min/sb |
+| sb480 → sb490 | 2.18 min/sb |
+| sb490 → sb500 | 2.15 min/sb |
+
+**2.17 min/sb ⇒ 200 sb remaining = 7.2 h to sb700.** This CONFIRMS the ~7 h
+figure already given to the representation study, so no correction is owed there.
+
+### All three live lines took their corrections — verified from their branches
+
+| line | evidence |
+|---|---|
+| **study 45** (harvest, +5) | first commit is *"shuffle the panel order (study 43's cyclic-rotation defect)"* — picked up the harness fix |
+| **study 46** (`forward_into`, +1) | *"an ILP sweep that MEASURES Zen 4's chain latency"* — measuring the latency rather than trusting my 4–5 cycle estimate, exactly as briefed |
+| **representation** | branch **`conj-study`** — took the CONJUNCTION framing, not the discarded handcrafted-atom list |
+
+**Also verified: study 44's full branch (`2f27a542`) and study 42's (`87ed7cb2`)
+are ancestors of `main` with ZERO commits outstanding.** Worth checking because I
+merged study 44 while it was still committing its assumptions section — a merge
+taken mid-flight can silently drop the tail of a study.
