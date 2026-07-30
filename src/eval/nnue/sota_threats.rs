@@ -742,7 +742,13 @@ fn king_cross(dp: &DirtyPiece) -> [bool; 2] {
                 // cross? Counter-only, feature-gated, off in every default and
                 // release build.
                 #[cfg(feature = "foldcount")]
-                super::foldcount::note_king_move(pc.color as usize, from.index(), to.index());
+                {
+                    super::foldcount::note_king_move(pc.color as usize, from.index(), to.index());
+                    // Learned-representation study: the full from→to transition
+                    // matrix, so any FUTURE partition (including learned ones)
+                    // is priceable from one run.
+                    super::foldcount::note_king_trans(pc.color as usize, from.index(), to.index());
+                }
                 break;
             }
         }
@@ -1322,6 +1328,20 @@ impl<'a> ThreatContext<'a> {
             dp: *dp,
             position: ThreatPosition::from_board(board),
         };
+
+        // Learned-representation study Tier-0: unconditional make-time threat
+        // EVENT census. The production path defers `build_deltas` to fold time
+        // and so only ever counts the plies that survive deferral; replaying
+        // it here (instrument-only) counts what a non-deferring engine would
+        // pay on EVERY made move. `compute` clears `self.buf` before its own
+        // use, so this leaves no state behind; the search tree, node count and
+        // eval hash are untouched (verified by the neutrality gate).
+        #[cfg(feature = "foldcount")]
+        {
+            self.buf.clear();
+            build_deltas(&mut self.buf, tables(), dp, &self.push[child].position);
+            super::foldcount::note_thr_make(self.buf.len);
+        }
 
         // A perspective whose king crossed the d/e mirror cannot fold from its
         // parent — every index is re-oriented — so it must be rebuilt from
