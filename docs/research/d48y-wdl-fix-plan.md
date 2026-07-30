@@ -8194,3 +8194,53 @@ a completely different fix), and store-buffer pressure.
 decomposition to a small residual (41's closed to 0.03%), and — because **study 41
 delivered an excellent map and zero speedup** — that **landed, gated, measured work
 is the deliverable and the decomposition only exists to aim it.**
+
+## CORRECTION — the context-bit prices I published twice were 2–8× too high
+
+The learned-representation study found that **the richer-representation study
+priced every context bit off the wrong symbol**, and I verified the mechanism in
+the source before accepting it.
+
+**`ThreatContext::at_full` is the per-eval fold-orchestration entry point, not
+the from-scratch rebuild.** It calls `self.compute(ply)` and is invoked from the
+eval path (`src/eval/nnue/sota_context.rs:537`). The census separates them
+cleanly on the pinned frame:
+
+| symbol | calls/node |
+|---|---:|
+| `at_full` / eval rate | **0.4311** |
+| `thr_refresh` (the actual rebuild) | **0.0196** |
+
+**22× different call rates.** Attributing all of `at_full`'s 5.50% of cycles to
+the rebuild over-prices it **7.7×** — the real rebuild symbols are **0.71% of
+cycles**. A threat rebuild costs **~1,635 cycles, not ~12,700**.
+
+**Consequence for my own published table** (the replacement pricing I gave twice,
+which used the predecessor's derived 2.57% per 0.01 rebuilds/node):
+
+| bit, as a REPLACEMENT for the mirror | I published | **corrected** |
+|---|---:|---:|
+| `rank1` | −5.7 Elo | **−0.7** |
+| `rank12` | −5.4 Elo | **−0.7** |
+| `rankhalf` | +2.4 Elo | **+0.3** |
+
+**This REVERSES the standing conclusion.** Input-side context refinement was
+ruled "possible but not free — every candidate bit costs 3.4–8.6% of cycles
+(−6…−14 Elo)". At corrected prices **king-conditioning the threat channel is
+nearly free**, and the door I described to the owner as expensive is not.
+
+**And the learned bit beats the handcrafted ones.** A min-flip partition learned
+from the measured in-tree king-transition matrix finds `pocket` (own king in
+{g1,h1,h2}) carrying **82% of `rank1`'s conditioning information** (MI **39×** the
+null control) at **60% of its flip price** ⇒ **−1.2 Elo**, against the
+predecessor's −12.4-Elo-class prices for hand-picked bits.
+
+**Also free, and it removes the main obstacle to the trained-locality objective:**
+successor pairs cost nothing at the loader — every binpack-derived record already
+carries the played move and the D46 filter guarantees it is a pure relocation,
+validated end-to-end on 200k pairs.
+
+**Chain of custody on this number: predecessor derived it → I published it twice
+→ successor corrected it → I verified the mechanism in source.** The lesson is
+the project's own rule 8, and the specific failure mode is attributing a cost to
+a symbol without checking its CALL RATE.
