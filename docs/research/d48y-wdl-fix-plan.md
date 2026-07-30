@@ -6426,3 +6426,52 @@ The script requants, packs the ladder, re-measures the frame, then prints the
 three screen invocations (ladder x2 at 1466 games, verdict at 5880) with the
 reminder to launch each as a **systemd SERVICE** — a `--scope` dies with the
 session and that is what killed a 5880-game screen at 1043.
+
+## Tick 2026-07-31 ~03:15 — RETRACTING the sb330 "gap closed" call
+
+**D49 sb343/400.** The sb340 sample settles it, in the unfavourable direction:
+
+| sb | gap | ema |
+|---:|---:|---:|
+| 300 | 49.9% | 0.011105 |
+| 310 | 50.0% | 0.011077 |
+| 320 | 51.1% | 0.011028 |
+| 330 | **49.7%** | 0.011011 |
+| **340** | **51.0%** | **0.010966** |
+
+**49.9, 50.0, 51.1, 49.7, 51.0 — oscillating around ~50%, no trend.**
+
+**I called sb330 "the gap closed… the mechanism engaged" last tick. That is
+retracted.** It was one sample, and the very next one undid it. I did hedge at
+the time ("not upgrading further on one sample; the next two tell us"), but I
+should not have led with a mechanism claim on a single point — this is the same
+error class as the earlier "flat heldout = saturation" scare, which also
+reversed on the next sample.
+
+**Consequence:** the AXIS LAW's large outcomes (+39, +85) all require a gap
+collapse, and across 40 superbatches of anneal **it is not happening.** Those
+rows should now be treated as unlikely rather than pending.
+
+### What IS happening, and it is fine
+
+The **deployed** (EMA) net keeps falling steadily — **−28, −49, −17, −45** per
+10 sb — and the projection has now been **stable across three consecutive
+ticks**:
+
+| assumption | endpoint | Elo vs canonical |
+|---|---:|---:|
+| EMA follows its own trend | 0.010775 | **−9.5** |
+| EMA converges onto the raw trend as LR→0 | 0.010639 | **+2.8** |
+
+**Best estimate: ≈ −9 Elo, i.e. just short of canonical**, with parity reachable
+only via the EMA/raw convergence, which is mechanically motivated (the EMA bonus
+must vanish as LR→0) but has not yet shown up in the numbers.
+
+**That is a respectable result for a from-scratch net** measured against a
+fully-trained gen-2 incumbent that itself sits on a warm-start lineage — but it
+is not the surge the precedent suggested, and I am not going to keep implying it
+might be.
+
+**Box:** 8170 MB, free swap 912 MB, load 5.13.
+**Study 39** ahead=11, writing up (*"quote the panel-to-panel range"*).
+**POC** ahead=2, on phase-2 (*"trainer-side thre…"*) — so phase 1 is behind it.
