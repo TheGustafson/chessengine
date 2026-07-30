@@ -7566,3 +7566,56 @@ after `finish` completed its two arms; pid 1223987 holds 6004 MiB legitimately.
 `identity2`'s sb0 also reproduces identity's exactly (0.006350), so the noise
 pin is correctly configured. *Reading one signal without the others — the same
 class of error as the four sampling artifacts earlier.*
+
+## RICHER-REPRESENTATION STUDY COMMISSIONED (user ruling) — the compression branch is closed
+
+**The POC's negative deployment result is what makes this the right next move**,
+and it also tells us how to aim it.
+
+### The cost model is the spine of the brief
+
+    fold work = active_features × ACC
+    NEITHER term changes when the table shrinks
+
+⇒ **compression can only buy cache.** Measured: a **9.5× table shrink bought
+1.5% cycles** against an eval cost (+165e-6) worth more than that. Dead end, and
+now we know *why* rather than just *that*.
+
+**But splitting a row into finer distinctions does NOT change how many fire.**
+The same relation fires once; it just lands in a more specific slot. **Same
+work, more information.** *That* is the opening, and it is the exact inverse of
+what the POC did.
+
+### The sketch it was given — and told not to trust
+
+Combined with the census (**22% of rows never fire**; **top 1,024 carry 56.4% of
+fire mass**): **expand the base vocabulary with finer geometric distinctions,
+then learn a surjection back down to the SAME total row count** — merging the
+dead region to pay for splitting the hot one. Constant table size, constant
+cache behaviour, constant `active_features × ACC`, **richer where the data says
+it matters.**
+
+**TRM1 is already exactly that kind of surjection** (base index space → net rows,
+applied at the single `index_decoded` chokepoint), and the trainer remap needs
+**zero graph changes**. Only the *direction* changes: today 60,720 → 8,192;
+this would be *larger base* → *equal-sized target*.
+
+It is told explicitly **not to treat the sketch as the answer** but to argue from
+the structure — including the design study's finding that **SF's 32 king buckets
+are FULL resolution, so the coarsening B<32 is learnable and nobody has ever
+learned it.**
+
+### The honest context, framed as context and not as an exit
+
+**A net swap proves the current deficit is the WEIGHTS, not the features**:
+SF's net in *our* search at equal nodes is **+90.7 Elo** on a *provably
+identical* feature set. So this is **not** where the near-term 90 Elo is.
+
+**Success criterion set accordingly:** not "close the 90 Elo", but
+**demonstrate a learned representation beating the handcrafted one AT EQUAL
+COST** — which is what "learn more, handcraft less" actually requires, and what
+both surveys say nobody has done.
+
+**Pre-screen mandatory and already exists:** reuse the calibrated Tier-1 panel,
+**wait for `identity2`'s run-noise number**, and **pre-register the decision
+rule before seeing any arm** — a margin inside run noise is not a result.
