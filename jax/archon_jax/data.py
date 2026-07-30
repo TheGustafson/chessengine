@@ -25,7 +25,21 @@ import threading
 import numpy as np
 
 from .features import canonical_orient, map_batch, policy_move_id
-from .spec import POLICY_MASK_ILLEGAL, POLICY_VOCAB, RECORD_DTYPE, TrainConfig
+from .spec import POLICY_MASK_ILLEGAL, POLICY_VOCAB, RECORD_DTYPE, THREAT_DIMS, TrainConfig
+
+
+def _threat_remap_of(cfg: TrainConfig) -> np.ndarray | None:
+    """Load the Recode threat re-coding named by ``cfg.threat_remap`` (once
+    per stream). "" = identity = None. Validated here so a bad code fails the
+    run at stream construction, not superbatches in."""
+    path = getattr(cfg, "threat_remap", "")
+    if not path:
+        return None
+    remap = np.load(path).astype(np.int64)
+    if remap.shape != (THREAT_DIMS,) or remap.min() < 0:
+        raise ValueError(f"threat_remap {path}: shape {remap.shape}, "
+                         f"min {remap.min()} — want ({THREAT_DIMS},) >= 0")
+    return remap
 
 
 class BulletBin:
@@ -58,11 +72,14 @@ def make_batches(bin_: BulletBin, cfg: TrainConfig, *, policy: bool,
     if max_batches is not None:
         order = order[:max_batches]
 
+    _remap = _threat_remap_of(cfg)
+
     def map_one(i: int) -> dict:
         recs = bin_.slice(int(i) * cfg.batch_size, cfg.batch_size)
         out = map_batch(recs, wdl=cfg.wdl, score_multiplier=cfg.score_multiplier,
                         scale=cfg.scale, policy=policy, threats=threats,
-                        target_offset=getattr(cfg, "target_offset", 0.0))
+                        target_offset=getattr(cfg, "target_offset", 0.0),
+                        threat_remap=_remap)
         if policy and legal_mask:
             out["pol_mask"] = legal_move_masks(recs, out["pol_target_id"])
         return out
@@ -142,6 +159,8 @@ def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
         _off = np.asarray([o for o, _ in _pct], dtype=np.float32)
         _scl = np.asarray([b for _, b in _pct], dtype=np.float32)
 
+    _remap = _threat_remap_of(cfg)
+
     def _map_recs(recs, src=None) -> dict:
         if _pct is not None and src is not None:
             t_off, t_scl = _off[src], _scl[src]
@@ -150,7 +169,7 @@ def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
             t_scl = cfg.scale
         out = map_batch(recs, wdl=cfg.wdl, score_multiplier=cfg.score_multiplier,
                         scale=t_scl, policy=policy, threats=threats,
-                        target_offset=t_off)
+                        target_offset=t_off, threat_remap=_remap)
         if policy and legal_mask:
             if str(legal_mask) == "ids":
                 out["pol_legal"] = legal_move_ids(recs, out["pol_target_id"])
