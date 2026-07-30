@@ -8281,3 +8281,28 @@ stating it did not. Banner added at the top: the reversal, the corrected figures
 the pointer to the successor's §2, and the mechanism (**a cost attributed to a
 symbol without checking that symbol's CALL RATE**). Explicitly preserved as still
 valid: the injectivity proof, the dead-row census, the Tier-1 panel design.
+
+### OOM guard installed — the trainer was the kernel's FIRST choice
+
+Swap reached **0 free** (4095/4095). Not imminent failure — 7.2 GB of page cache
+is reclaimable and `available` was 6806 MB — but there is zero elasticity, so I
+checked *who the OOM killer would actually pick*:
+
+| process | RSS | `oom_score` | `oom_score_adj` |
+|---|---:|---:|---:|
+| **D49 trainer** (pid 1240876) | **4452 MB** | **999** | **200** |
+| a `rustc` build | ~1 GB | 1001 | 0 |
+
+**The trainer was carrying `oom_score_adj = 200` — i.e. already marked MORE
+killable than default — and an unprivileged process cannot LOWER its own adj.**
+So the trainer could not be protected directly; the only lever is to make
+everything else a more attractive victim.
+
+**Fix: `oomguard.service`** — a systemd transient **service** (not a `--scope`,
+per the restart rule, so it outlives this session) that every 15 s sets
+`oom_score_adj = 1000` on every `rustc`/`cargo` process. It writes to `/proc`
+only and kills nothing.
+
+**Result: compilers 1334 vs trainer 972 — a 362-point margin**, where the gap
+had been **2 points**. If the box does run out, a build dies and gets retried
+instead of losing 470 superbatches of training.
