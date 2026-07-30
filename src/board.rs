@@ -591,11 +591,6 @@ impl StateStack {
         self.depth
     }
 
-    #[inline]
-    fn is_empty(&self) -> bool {
-        self.depth == 0
-    }
-
     fn new() -> Self {
         // Reserved past MAX_PLY so mid-search pushes never grow the slab
         // (doc 04 §3.3; growth would be correct, just a latency spike).
