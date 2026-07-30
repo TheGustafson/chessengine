@@ -1,0 +1,26 @@
+    19.31%  baseline  baseline              [.] <chessengine::eval::nnue::sota_head::SotaHead>::forward_into
+    19.27%  baseline  baseline              [.] chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into
+    19.11%  baseline  baseline              [.] chessengine::eval::nnue::sota_simd::avx512::i16_deltas_into
+     7.80%  baseline  baseline              [.] chessengine::eval::nnue::sota_simd::avx512::i16_deltas_dual
+     6.81%  baseline  baseline              [.] <chessengine::eval::nnue::sota_threats::ThreatContext>::at_full
+     6.68%  baseline  baseline              [.] <chessengine::eval::nnue::sota_context::SotaContext>::evaluate
+     2.35%  baseline  baseline              [.] <chessengine::board::Board>::unmake_move
+     2.27%  baseline  baseline              [.] <chessengine::movepick::MovePicker>::init_quiets
+     1.56%  baseline  baseline              [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::current_full
+     1.44%  baseline  baseline              [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into
+     1.28%  baseline  baseline              [.] <chessengine::search::Worker>::do_move
+     1.11%  baseline  baseline              [.] chessengine::eval::nnue::sota_threats::record_square_touch
+     0.83%  baseline  baseline              [.] <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+     0.64%  baseline  baseline              [.] chessengine::eval::nnue::sota_features::refresh_threat_into_at
+     0.57%  baseline  baseline              [.] <chessengine::eval::nnue::sota_context::SotaContext>::push
+     0.56%  baseline  baseline              [.] <chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>
+     0.54%  baseline  libc.so.6             [.] 0x0000000000189e7d
+     0.52%  baseline  libc.so.6             [.] 0x0000000000189e76
+     0.48%  baseline  baseline              [.] <chessengine::movepick::MovePicker>::next_move
+     0.45%  baseline  baseline              [.] <chessengine::search::Worker>::qsearch::<chessengine::search::NonPv>
+     0.43%  baseline  baseline              [.] <chessengine::board::Board>::refresh_check_info
+     0.40%  baseline  baseline              [.] <chessengine::eval::nnue::sota_threats::ThreatContext>::apply_at
+     0.39%  baseline  libc.so.6             [.] 0x0000000000189e68
+     0.34%  baseline  baseline              [.] <chessengine::board::Board>::see_ge
+
+
