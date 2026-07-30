@@ -6888,3 +6888,55 @@ encoded in the script).
 frees, so the Tier-1 panel (GPU) and the verdict screens (CPU) will run
 concurrently. Different resources, but both want memory — worth watching rather
 than assuming.
+
+# ═══ D49 COMPLETE — sb400/400 ═══
+
+**Final state:** unit inactive, **heldout raw 0.010784 / ema 0.010804**, train
+0.007188, 173k pos/s. All 40 checkpoints retained (39 GB) — the fallback is
+intact.
+
+### The EMA lost its lead at the very end
+
+| | sb390 | **sb400** |
+|---|---:|---:|
+| raw | 0.010824 | **0.010784** |
+| ema | 0.010812 | 0.010804 |
+
+**The EMA led the entire run and lost that lead in the final superbatches.** It
+is the completion of the convergence traced all night (bonus 47 → 26 → 19 → 9 →
+2 → **negative**): as LR → 0 the EMA has nothing left to average over, and the
+live weights caught and passed it.
+
+It is only **~1.8 Elo** by the map — below screen resolution — but it means the
+**"deploy the EMA" guard I encoded in `d49_verdict.sh` is no longer
+automatically right.** The live-weight net should be carried as a verdict
+candidate rather than assumed inferior.
+
+### The frame never moved
+
+| checkpoint | stdev @ 756 |
+|---|---:|
+| through sb270 | 415-422 |
+| sb390 | 423.2 |
+| **sb400** | **420.4** |
+
+So the narrow 640/756/880 ladder is right, and the anneal did not shift the
+deployment frame. That was the one thing the script existed to guard against.
+
+### What the map predicts — and its standing
+
+| column | final heldout | map projection |
+|---|---:|---:|
+| ema | 0.010804 | **−12.2 Elo** |
+| raw | 0.010784 | −10.3 Elo |
+
+**At the pessimistic end of the −7…−12 band** the estimate held for nine
+consecutive ticks. **But this is a prediction, not a measurement** — the map is
+a two-point line through game results, and by the standing rule *games
+arbitrate*. The screens now running are the actual verdict.
+
+### Running
+
+**`ladder880`** — D49@880 vs D49@756, 1466 games, **conc=8** deliberately, to
+leave headroom for **`recode-t1`**, which has now taken the GPU that D49
+released and is running the Tier-1 panel with its pre-registered decision rule.
