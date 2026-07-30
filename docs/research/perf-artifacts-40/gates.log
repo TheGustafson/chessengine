@@ -1,0 +1,1384 @@
+
+==> cargo fmt --check
+
+==> cargo clippy --all-targets -- -D warnings
+    Checking chessengine v0.1.0 (/home/nick/projects/chessengine/.claude/worktrees/agent-a6dd50900b77441ab)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.82s
+
+==> cargo check across the feature matrix (the ~1/3 of src/ the gate misses)
+  checking --features sota
+warning: function `read_i8s` is never used
+    --> src/eval/nnue/sota_loader.rs:1028:4
+     |
+1028 | fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
+     |    ^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `NNZ_IOTA` is never used
+    --> src/eval/nnue/sota_simd.rs:2295:11
+     |
+2295 |     const NNZ_IOTA: [u16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+     |           ^^^^^^^^
+
+  checking --features sota,arch-d47v
+warning: function `read_i8s` is never used
+    --> src/eval/nnue/sota_loader.rs:1028:4
+     |
+1028 | fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
+     |    ^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `NNZ_IOTA` is never used
+    --> src/eval/nnue/sota_simd.rs:2295:11
+     |
+2295 |     const NNZ_IOTA: [u16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+     |           ^^^^^^^^
+
+  checking --features sota,arch-d48w
+warning: function `read_i8s` is never used
+    --> src/eval/nnue/sota_loader.rs:1028:4
+     |
+1028 | fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
+     |    ^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `NNZ_IOTA` is never used
+    --> src/eval/nnue/sota_simd.rs:2295:11
+     |
+2295 |     const NNZ_IOTA: [u16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+     |           ^^^^^^^^
+
+  checking --features sota,arch-d48x
+warning: function `read_i8s` is never used
+    --> src/eval/nnue/sota_loader.rs:1028:4
+     |
+1028 | fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
+     |    ^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `NNZ_IOTA` is never used
+    --> src/eval/nnue/sota_simd.rs:2295:11
+     |
+2295 |     const NNZ_IOTA: [u16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+     |           ^^^^^^^^
+
+  checking --features sota,arch-hka2048
+warning: function `read_i8s` is never used
+    --> src/eval/nnue/sota_loader.rs:1028:4
+     |
+1028 | fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
+     |    ^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `NNZ_IOTA` is never used
+    --> src/eval/nnue/sota_simd.rs:2295:11
+     |
+2295 |     const NNZ_IOTA: [u16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+     |           ^^^^^^^^
+
+  checking --features sota,tune
+warning: function `read_i8s` is never used
+    --> src/eval/nnue/sota_loader.rs:1028:4
+     |
+1028 | fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
+     |    ^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `NNZ_IOTA` is never used
+    --> src/eval/nnue/sota_simd.rs:2295:11
+     |
+2295 |     const NNZ_IOTA: [u16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+     |           ^^^^^^^^
+
+  checking --features datagen
+  checking --features policy
+warning: function `read_i8s` is never used
+    --> src/eval/nnue/sota_loader.rs:1028:4
+     |
+1028 | fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
+     |    ^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `NNZ_IOTA` is never used
+    --> src/eval/nnue/sota_simd.rs:2295:11
+     |
+2295 |     const NNZ_IOTA: [u16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+     |           ^^^^^^^^
+
+  checking --features search-control
+
+==> cargo test  (debug: unit tests + fast perft tier)
+   Compiling chessengine v0.1.0 (/home/nick/projects/chessengine/.claude/worktrees/agent-a6dd50900b77441ab)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.34s
+     Running unittests src/lib.rs (target/debug/deps/chessengine-17c36adc7068ae7d)
+
+running 618 tests
+test attacks::tests::foundations_are_const_evaluable ... ok
+test attacks::tests::geometry_hand_cases ... ok
+test attacks::tests::between_includes_target_always ... ok
+test attacks::tests::geometry_diagonal_edge_cases ... ok
+test attacks::tests::king_attack_count_distribution ... ok
+test attacks::tests::knight_attack_counts ... ok
+test attacks::tests::distance_properties ... ok
+test attacks::tests::geometry_tables_match_coordinate_models ... ok
+test attacks::tests::leaper_hand_cases ... ok
+test attacks::tests::leaper_tables_match_shift_models_exhaustively ... ok
+test attacks::tests::leaper_attack_symmetry ... ok
+test attacks::tests::pawn_attack_counts ... ok
+test attacks::tests::no_edge_wrapping ... ok
+test attacks::tests::pawn_attacks_mirror_between_colors ... ok
+test attacks::tests::prng_is_deterministic_and_sparse ... ok
+test attacks::tests::prng_rejects_zero_seed - should panic ... ok
+test attacks::tests::line_symmetry_endpoints_and_extension ... ok
+test bench::tests::bench_depth_fingerprint_is_deterministic_over_the_default_suite ... ignored, release-only: two ~34 s suite runs (design/14 §4 step 7)
+test attacks::tests::ray_pass_properties ... ok
+test attacks::tests::naive_slider_blocker_semantics ... ok
+test attacks::tests::pawn_attacks_bb_matches_per_square_union ... ok
+test bench::tests::parse_malformed_input_is_err_never_panics ... ok
+test bench::tests::parse_no_args_gives_sf_defaults ... ok
+test bench::tests::parse_positional_overrides ... ok
+test attacks::tests::pseudo_tables_match_ray_models_exhaustively ... ok
+test attacks::tests::geometry_tables_agree_with_naive_rays ... ok
+test attacks::tests::aligned_collinearity_cases ... ok
+test attacks::tests::naive_sliders_match_ray_models_on_random_occupancies ... ok
+test bench::tests::suite_entries_default_is_the_frozen_49 ... ok
+test attacks::tests::packing_structural_invariants ... ok
+test attacks::tests::magic_hand_cases ... ok
+test attacks::tests::magic_edge_occupancies ... ok
+test attacks::tests::magic_masks_exclude_irrelevant_edges ... ok
+test bitboard::tests::contains ... ok
+test bench::tests::suite_has_49_entries_and_three_moves_suffixes ... ok
+test bitboard::tests::count_and_is_empty ... ok
+test bitboard::tests::from_iterator_roundtrip ... ok
+test bitboard::tests::iteration_is_ascending_and_exact ... ok
+test bitboard::tests::lsb_and_pop_lsb ... ok
+test bitboard::tests::from_square ... ok
+test bench::tests::every_suite_fen_parses ... ok
+test bitboard::tests::file_and_rank_constants ... ok
+test bitboard::tests::more_than_one_cases ... ok
+test bitboard::tests::set_operations ... ok
+test bitboard::tests::shift_is_const_evaluable ... ok
+test bitboard::tests::shifts ... ok
+test bitboard::tests::shift_by_direction_edges ... ok
+test board::tests::assert_consistent_catches_blockers_corruption - should panic ... ok
+test attacks::tests::attacks_dispatch_matches_specialized_fns ... ok
+test board::tests::assert_consistent_catches_checkers_corruption - should panic ... ok
+test board::tests::assert_consistent_catches_pawn_key_corruption - should panic ... ok
+test board::tests::attackers_to_exposes_xrays_under_reduced_occupancy ... ok
+test board::tests::assert_consistent_catches_key_corruption - should panic ... ok
+test board::tests::castling_all_four_roundtrip ... ok
+test board::tests::attackers_to_sees_every_piece_type ... ok
+test board::tests::castling_rights_display_parse_roundtrip ... ok
+test bitboard::tests::pawn_helpers_match_per_square_models ... ok
+test board::tests::castling_rights_bits_roundtrip ... ok
+test board::tests::castling_geometry_from_fen ... ok
+test board::tests::castling_rights_wing_helpers ... ok
+test board::tests::castling_rights_revocation_cases ... ok
+test board::tests::castling_rights_single_bit_index ... ok
+test board::tests::check_squares_orientation_for_black ... ok
+test board::tests::check_squares_all_agrees_with_the_per_type_accessor ... ok
+test board::tests::checkers_detects_double_check ... ok
+test board::tests::clone_is_deep_and_equal ... ok
+test board::tests::check_squares_on_startpos ... ok
+test board::tests::display_shows_pieces_at_correct_coordinates ... ok
+test board::tests::double_push_sets_ep_only_when_capturable ... ok
+test board::tests::double_push_withholds_ep_when_capture_is_illegal ... ok
+test board::tests::empty_board_has_consistent_root_state ... ok
+test bitboard::tests::shift_matches_per_square_shifted_on_random_boards ... ok
+test board::tests::castling_rights_operations ... ok
+test board::tests::ep_capture_roundtrip_and_pin_line_capture_keeps_ep ... ok
+test board::tests::display_empty_board ... ok
+test board::tests::counters_and_captured_piece_track_moves ... ok
+test board::tests::fifty_move_rule_draw_with_check_guard ... ok
+test board::tests::king_square_finds_kings ... ok
+test board::tests::has_repeated_walks_past_the_current_state_into_history ... ok
+test board::tests::king_square_is_exact_across_the_index_range ... ok
+test board::tests::gives_check_fixture_cases ... ok
+test attacks::tests::all_subsets_exact_on_every_square ... ok
+test board::tests::hooks_seam_is_a_no_op_and_reports_final_keys ... ok
+test board::tests::make_unmake_roundtrip_on_kiwipete ... ok
+test board::tests::null_move_key_toggle_and_roundtrip ... ok
+test board::tests::prefetch_key_matches_child_key_on_normal_moves ... ok
+test board::tests::promotion_capture_revokes_castling_rights ... ok
+test board::tests::repetition_detected_across_rule50_fold_buckets ... ok
+test board::tests::promotion_roundtrip_all_pieces ... ok
+test board::tests::put_piece_updates_all_layers ... ok
+test board::tests::remove_piece_reverses_put_piece ... ok
+test board::tests::repetition_encoding_and_ply_relative_draw ... ok
+test board::tests::repetition_window_cut_by_null_move ... ok
+test board::tests::see_capturing_the_pinner_frees_the_pinned_piece ... ok
+test board::tests::make_unmake_roundtrip_from_startpos ... ok
+test board::tests::see_losing_capture_defended_pawn ... ok
+test board::tests::repetition_window_cut_by_capture ... ok
+test board::tests::see_king_recapture_only_when_unguarded ... ok
+test board::tests::see_pinned_defender_does_not_count ... ok
+test board::tests::see_non_normal_kinds_short_circuit ... ok
+test board::tests::see_quiet_move_to_defended_square ... ok
+test board::tests::see_simple_winning_capture ... ok
+test board::tests::see_xray_bishop_behind_queen ... ok
+test board::tests::see_xray_rook_battery ... ok
+test board::tests::slider_blockers_diagonal_pin ... ok
+test board::tests::slider_blockers_vertical_pin ... ok
+test board::tests::slider_blockers_white_pins_black ... ok
+test board::tests::slider_blockers_xray_through_stacked_snipers ... ok
+test board::tests::state_info_is_copy_and_bounded ... ok
+test board::tests::threat_map_on_a_cold_cache_agrees_with_the_per_type_accessors ... ok
+test board::tests::threat_map_survives_make_unmake ... ok
+test board::tests::state_stack_ignores_the_dead_tail_below_the_cursor ... ok
+test board::tests::threat_map_matches_the_attackers_to_oracle ... ok
+test board::tests::transposition_invariance ... ok
+test board::tests::slider_blockers_discovered_check_candidate ... ok
+test board::tests::slider_blockers_need_a_sole_blocker ... ok
+test board::tests::upcoming_repetition_sees_the_move_back_into_the_cycle ... ok
+test board::tests::upcoming_repetition_requires_a_clear_slider_path ... ok
+test cuckoo::tests::build_matches_stockfishs_exact_entry_count ... ok
+test eval::nnue::accumulator::tests::dirty_piece_covers_every_move_kind ... ok
+test cuckoo::tests::a_nonsense_delta_is_absent ... ok
+test cuckoo::tests::every_reversible_move_delta_is_findable ... ok
+test cuckoo::tests::a_pawn_push_delta_is_absent ... ok
+test eval::nnue::loader::tests::fnv1a64_known_vectors ... ok
+test board::tests::state_stack_is_prereserved_and_never_reallocates ... ok
+test eval::nnue::loader::tests::error_displays_and_has_io_source ... ok
+test eval::nnue::accumulator::tests::forward_is_color_flip_symmetric ... ok
+test eval::nnue::accumulator::tests::one_move_incremental_equals_refresh ... ok
+test bench::tests::perft_output_matches_the_doc_06_format ... ok
+test bench::tests::suite_entries_file_takes_one_entry_per_nonblank_trimmed_line ... ok
+test bench::tests::bench_perft_mode_smoke ... ok
+test eval::nnue::loader::tests::rejects_bad_magic ... ok
+test eval::nnue::loader::tests::rejects_bad_checksum ... ok
+test eval::nnue::loader::tests::rejects_bad_activation ... ok
+test eval::nnue::loader::tests::rejects_truncated_payload ... ok
+test eval::nnue::network::tests::activation_id_roundtrip ... ok
+test eval::nnue::loader::tests::rejects_wrong_version ... ok
+test eval::nnue::loader::tests::rejects_wrong_quant ... ok
+test eval::nnue::network::tests::feature_index_hand_computed ... ok
+test eval::nnue::policy_vocab::tests::every_legal_move_in_sample_positions_has_an_id ... ok
+test eval::nnue::policy_vocab::tests::geometric_ids_are_a_bijection_onto_0_to_1791 ... ok
+test eval::nnue::policy_vocab::tests::underpromotions_index_the_tail_block ... ok
+test eval::nnue::policy_vocab::tests::vocabulary_counts ... ok
+test eval::nnue::policy_vocab::tests::knight_and_castle_and_ep_geometries_are_covered ... ok
+test eval::nnue::simd::tests::add_sub_is_src_plus_add_minus_sub ... ok
+test eval::nnue::simd::tests::add2_sub2_is_src_plus_two_adds_minus_two_subs ... ok
+test eval::nnue::simd::tests::aligned64_is_cache_line_aligned ... ok
+test eval::nnue::simd::tests::add_sub_sub_is_src_plus_add_minus_two_subs ... ok
+test eval::nnue::simd::tests::avx2_bit_exact::avx2_forward_speedup ... ignored, timing microbenchmark; run manually with --nocapture in release
+test eval::nnue::simd::tests::avx2_bit_exact::forward_constructed_cases_exercise_i64_reduction_and_boundaries ... ok
+test eval::nnue::loader::tests::rejects_wrong_payload_len_field ... ok
+test eval::nnue::simd::tests::forward_matches_hand_computed_screlu_and_crelu ... ok
+test eval::nnue::simd::tests::kernels_lazylock_dispatch_matches_scalar_reference ... ok
+test eval::nnue::simd::tests::refresh_is_bias_plus_rows ... ok
+test eval::psqt::tests::hand_computed_anchors ... ok
+test eval::psqt::tests::material_is_baked_into_tables ... ok
+test eval::psqt::tests::side_to_move_perspective_negates ... ok
+test eval::psqt::tests::startpos_is_zero ... ok
+test eval::psqt::tests::white_pawn_e4_matches_black_pawn_e5 ... ok
+test eval::score::tests::game_phase_anchors ... ok
+test eval::score::tests::game_phase_clamps_above_max ... ok
+test eval::score::tests::score_ops_are_field_wise ... ok
+test eval::score::tests::taper_boundaries_and_rounding ... ok
+test eval::tests::dead_draws_evaluate_to_exact_zero ... ok
+test eval::tests::evaluate_asserts_not_in_check - should panic ... ok
+test eval::tests::near_misses_do_not_hit_the_guard ... ok
+test eval::tests::outer_shape_clamps_inside_tb_band ... ok
+test eval::tests::outer_shape_optimism_sign_and_material_scaling ... ok
+test eval::tests::outer_shape_rule50_damping ... ok
+test eval::tests::startpos_evaluates_to_zero ... ok
+test fen::tests::ep_keying_follows_validation ... ok
+test fen::tests::ep_square_kept_when_capture_playable ... ok
+test fen::tests::ep_squares_kept_when_some_capture_is_legal ... ok
+test fen::tests::ep_squares_with_illegal_captures_are_dropped ... ok
+test fen::tests::fen_roundtrip_preserves_state ... ok
+test fen::tests::fullmove_zero_fens_clamp_to_game_ply_zero ... ok
+test fen::tests::game_ply_tracks_fullmove_and_side ... ok
+test fen::tests::key_folds_rule50_from_fen_clocks ... ok
+test fen::tests::parses_partial_state_fields ... ok
+test fen::tests::rejects_malformed_fens ... ok
+test fen::tests::roundtrip_startpos_and_kiwipete ... ok
+test fen::tests::spurious_ep_squares_are_dropped ... ok
+test fen::tests::startpos_has_expected_state ... ok
+test fen::tests::startpos_keys_are_stable_and_recomputable ... ok
+test fen::tests::state_fields_change_the_key ... ok
+test eval::nnue::loader::tests::rejects_wrong_dims ... ok
+test eval::nnue::network::tests::deterministic_net_is_reproducible_and_well_shaped ... ok
+test history::tests::all_stats_best_quiet_and_geometric_malus ... ok
+test eval::nnue::loader::tests::rejects_wrong_quant_qb_and_scale ... ok
+test history::tests::catalogue_shapes_match_spec ... ok
+test history::tests::all_stats_refutation_malus_gated_on_first_try_quiet ... ok
+test history::tests::cont_hist_id_is_the_flat_index_bijection ... ok
+test history::tests::cont_hist_id_sentinel_is_no_piece_a1 ... ok
+test history::tests::all_stats_best_capture_and_nonbest_capture_malus ... ok
+test history::tests::accessors_resolve_in_bounds ... ok
+test history::tests::cont_update_in_check_truncates_to_offsets_one_two ... ok
+test history::tests::correction_bonus_respects_direction_gate ... ok
+test history::tests::correction_update_writes_all_tables ... ok
+test history::tests::cont_update_consistency_multiplier_amplifies_agreeing_chain ... ok
+test history::tests::cont_update_offset_weights_and_flat_bonus ... ok
+test bench::tests::perft_fingerprint_is_byte_identical_across_runs_in_process ... ok
+test history::tests::correction_value_combiner_matches_hand_computed ... ok
+test history::tests::correction_value_null_prev_uses_flat_prior ... ok
+test history::tests::every_history_table_starts_on_a_cache_line ... ok
+test bench::tests::bench_depth_mode_searches_each_entry_and_counts_nodes ... ok
+test eval::nnue::loader::tests::round_trip_is_identity ... ok
+test history::tests::gravity_matches_hand_computed_values ... ok
+test history::tests::gravity_zero_bonus_is_noop ... ok
+test history::tests::line64_adds_no_padding ... ok
+test history::tests::gravity_saturates_toward_bound ... ok
+test history::tests::stat_entry_is_two_bytes ... ok
+test history::tests::to_corrected_static_eval_adds_and_clamps ... ok
+test movegen::tests::blocked_and_relayed_pushes ... ok
+test movegen::tests::boxed_rook_exact_move_set ... ok
+test movegen::tests::capture_counts_on_hand_fixtures ... ok
+test movegen::tests::capture_shifts_do_not_wrap_files ... ok
+test movegen::tests::capture_stage_and_is_capture_by_kind ... ok
+test movegen::tests::capture_stage_is_consistent_with_generation ... ok
+test movegen::tests::captures_and_quiets_partition_non_evasions ... ok
+test movegen::tests::captures_both_directions_both_colors ... ok
+test movegen::tests::castling_blocked_on_each_path_square ... ok
+test movegen::tests::castling_generated_through_attacked_squares ... ok
+test movegen::tests::castling_requires_the_right ... ok
+test history::tests::quiet_update_writes_all_tables ... ok
+test movegen::tests::castling_transit_attacks_are_dropped_by_legal ... ok
+test movegen::tests::classic_promotion_position_partition ... ok
+test movegen::tests::diagonal_ep_pin_is_illegal_for_the_pinned_capturer_only ... ok
+test movegen::tests::double_check_generates_king_moves_only ... ok
+test movegen::tests::double_check_legal_moves_are_king_only ... ok
+test history::tests::new_has_init_values ... ok
+test eval::nnue::loader::tests::rejects_out_weight_out_of_clip ... ok
+test movegen::tests::emission_order_class_is_pinned ... ok
+test movegen::tests::en_passant_generation ... ok
+test movegen::tests::ep_capture_of_the_checking_pawn_is_an_evasion ... ok
+test movegen::tests::evasion_pawn_captures_only_the_checker ... ok
+test movegen::tests::ep_evasion_survives_the_legality_filter ... ok
+test movegen::tests::ep_skipped_when_check_is_discovered_through_the_push_origin ... ok
+test movegen::tests::evasion_pawn_interposition_by_double_push ... ok
+test movegen::tests::evasion_promotions ... ok
+test history::tests::new_search_decays_main_and_refills_low_ply ... ok
+test movegen::tests::generate_legal_appends_without_clearing ... ok
+test movegen::tests::generate_appends_without_clearing ... ok
+test movegen::tests::has_legal_moves_probe ... ok
+test movegen::tests::horizontal_ep_double_removal_is_illegal ... ok
+test movegen::tests::kiwipete_emits_both_white_castles_in_quiets ... ok
+test movegen::tests::kiwipete_reversed_emits_both_black_castles ... ok
+test movegen::tests::knight_fixture_exact_move_set ... ok
+test movegen::tests::evasions_without_check_panics_in_debug - should panic ... ok
+test movegen::tests::legal_evasions_match_filtered_evasions ... ok
+test movegen::tests::no_castling_under_evasions ... ok
+test movegen::tests::non_evasions_while_in_check_panics_in_debug - should panic ... ok
+test movegen::tests::pawn_fixture_partition_and_semantics ... ok
+test movegen::tests::pawn_emission_order_is_pinned ... ok
+test movegen::tests::perft_predicate_oracle_deep ... ignored, release/nightly perft tier: 64k-per-node predicate scan
+test movegen::tests::per_piece_counts_on_hand_fixtures ... ok
+test movegen::tests::perft1_gate_on_known_positions ... ok
+test movegen::tests::pinned_piece_moves_along_the_ray_only ... ok
+test movegen::tests::promotion_captures_full_split ... ok
+test movegen::tests::evasions_complete_on_in_check_fixtures ... ok
+test movegen::tests::pseudo_legal_rejects_classic_tt_corruption ... ok
+test movegen::tests::push_promotion_split ... ok
+test movegen::tests::single_check_block_capture_flee ... ok
+test movegen::tests::startpos_pawn_pushes ... ok
+test movegen::tests::target_mask_filtering ... ok
+test history::tests::gravity_stays_bounded ... ok
+test movepick::tests::capture_scoring_matches_hand_computed_values ... ok
+test history::tests::quiet_update_pawn_history_bonus_malus_asymmetry ... ok
+test movepick::tests::ext_move_is_eight_bytes_align_four ... ok
+test movegen::tests::legal_agrees_with_the_make_unmake_oracle ... ok
+test movepick::tests::offense_reverse_fan_pins_the_pawn_flip_and_slider_blockers ... ok
+test movepick::tests::partial_sort_edge_cases ... ok
+test movepick::tests::partial_sort_int_min_is_a_full_descending_sort ... ok
+test movepick::tests::capture_history_flips_good_to_bad ... ok
+test movepick::tests::partial_sort_limit_above_max_keeps_only_element_zero ... ok
+test history::tests::clear_restores_init_values ... ok
+test movepick::tests::probcut_threshold_matches_see_ge_filter ... ok
+test movepick::tests::probcut_neg_infinity_threshold_emits_all_captures ... ok
+test eval::nnue::simd::tests::avx2_bit_exact::add_sub_family_matches_scalar_over_full_range_i16 ... ok
+test movepick::tests::quiet_scoring_matches_hand_computed_values ... ok
+test movepick::tests::unusable_tt_move_is_never_emitted ... ok
+test movepick::tests::wave_g_offense_term_scores_only_an_undefended_target ... ok
+test moves::tests::distinct_kinds_are_distinct_moves ... ok
+test moves::tests::en_passant_and_castling_kinds ... ok
+test movepick::tests::skip_quiet_moves_suppresses_quiets ... ok
+test moves::tests::extreme_squares_roundtrip ... ok
+test moves::tests::is_ok_distinguishes_null_from_real_moves ... ok
+test moves::tests::movelist_fills_to_capacity ... ok
+test moves::tests::movelist_panics_on_overflow - should panic ... ok
+test moves::tests::movelist_push_and_slice_access ... ok
+test moves::tests::moves_fit_in_two_bytes ... ok
+test moves::tests::normal_move_roundtrip ... ok
+test moves::tests::raw16_roundtrip_totality_and_distinctness ... ok
+test moves::tests::promotion_roundtrip_all_pieces ... ok
+test moves::tests::swap_remove_middle_element ... ok
+test moves::tests::swap_remove_panics_on_bad_index - should panic ... ok
+test moves::tests::swap_remove_panics_on_empty_list - should panic ... ok
+test moves::tests::swap_remove_single_element ... ok
+test perft::tests::divide_display_is_sf_format ... ok
+test moves::tests::swap_remove_last_element ... ok
+test movepick::tests::emission_completeness_over_full_perft_suite ... ok
+test movepick::tests::partial_sort_randomized_contract_sweep ... ok
+test perft::tests::perft_zero_is_one ... ok
+test search::params::frame_tests::frame_transforms_are_exact_identities_at_1024 ... ok
+test search::params::frame_tests::scale_and_expand_move_opposite_ways ... ok
+test search::rootmoves::tests::average_score_seeds_then_halves ... ok
+test search::rootmoves::tests::build_root_moves_applies_the_searchmoves_whitelist ... ok
+test search::rootmoves::tests::build_root_moves_ignores_a_filter_with_no_legal_moves ... ok
+test search::rootmoves::tests::build_root_moves_is_empty_only_without_legal_moves ... ok
+test search::rootmoves::tests::build_root_moves_lists_every_legal_move_without_filter ... ok
+test search::rootmoves::tests::mean_squared_score_seeds_then_halves_sign_preserving ... ok
+test search::rootmoves::tests::new_starts_at_sentinels ... ok
+test search::rootmoves::tests::policy_score_breaks_only_otherwise_equal_root_ties ... ok
+test search::rootmoves::tests::score_is_exact_loss_requires_searched_loss_without_bounds ... ok
+test search::rootmoves::tests::sort_orders_by_score_then_previous_score ... ok
+test search::rootmoves::tests::stable_sort_preserves_prior_order_of_unsearched_moves ... ok
+test search::stack::tests::init_stack_pads_below_root_and_stamps_plies ... ok
+test search::stack::tests::pv_line_clear_empties_without_touching_moves ... ok
+test search::stack::tests::pv_line_load_at_full_capacity ... ok
+test search::stack::tests::pv_line_load_splices_first_plus_child ... ok
+test search::stack::tests::ss_offsets_in_bounds_at_ply_zero_and_max_ply ... ok
+test search::stack::tests::stack_is_small ... ok
+test search::stack::tests::update_pv_round_trip_through_scripted_tree ... ok
+test attacks::tests::init_is_deterministic ... ok
+test search::tests::a_bound_mate_rescore_is_rolled_back_to_the_exact_one ... ok
+test search::tests::a_stopped_non_loss_iteration_is_left_alone ... ok
+test movepick::tests::main_pipeline_emits_full_pseudo_legal_set ... ok
+test search::tests::a_shorter_proven_mate_replaces_the_remembered_one ... ok
+test search::tests::aborted_loss_without_history_is_published_as_a_bound ... ok
+test movepick::tests::evasion_pipeline_emits_all_evasions_captures_first ... ok
+test search::tests::aborted_loss_restores_the_previous_iteration_line ... ok
+test movepick::tests::qsearch_emits_exactly_the_captures ... ok
+test search::tests::aspiration_fail_high_widens_and_researches_shallower ... ok
+test perft::tests::perft_checked_mini_tier ... ok
+test search::tests::aspiration_fail_low_slides_beta_to_old_alpha_at_full_depth ... ok
+test perft::tests::divide_total_equals_perft_kiwipete_d3 ... ok
+test search::tests::capture_futility_value_matches_the_hand_computed_bound ... ok
+test eval::nnue::simd::tests::avx2_bit_exact::forward_matches_scalar_pre_narrowing_and_final ... ok
+test search::tests::capture_see_margin_matches_the_hand_computed_value ... ok
+test search::tests::aspiration_trace_through_iterative_deepening_on_a_score_jump ... ok
+test search::tests::back_rank_mate_in_1_found_at_depth_2 ... ok
+test search::tests::clock_time_management_enforces_the_hard_wall ... ok
+test search::tests::capture_pruning_preserves_a_forced_mate ... ok
+test search::tests::aborted_loss_end_to_end_reports_the_last_completed_iteration ... ok
+test search::tests::continuation_history_bar_is_linear_and_monotone_in_depth ... ok
+test search::tests::aspiration_preserves_values_on_quiet_positions_at_fixed_depth ... ok
+test search::tests::checkmated_root_yields_no_root_moves ... ok
+test search::tests::capture_futility_prunes_a_futile_capture_at_its_margin ... ok
+test search::tests::continuation_history_prunes_matches_the_threshold ... ok
+test search::tests::exclusion_search_skips_the_excluded_move ... ok
+test search::tests::depth_limit_is_respected_with_monotone_info_reports ... ok
+test search::tests::forgotten_mate_rolls_back_to_the_proven_line ... ok
+test search::tests::go_mate_1_ignores_a_longer_mate ... ok
+test search::tests::go_mate_stops_when_the_engine_is_being_mated ... ok
+test search::tests::go_mate_2_stops_after_proving_the_mate_in_2 ... ok
+test search::tests::deeper_search_keeps_the_exact_mate_score ... ok
+test search::tests::continuation_history_pruning_preserves_a_forced_mate ... ok
+test search::tests::is_shuffling_guards_and_detects_oscillation ... ok
+test search::tests::continuation_history_pruning_drops_a_distrusted_quiet ... ok
+test search::tests::fresh_startpos_search_is_bit_reproducible ... ok
+test perft::tests::perft_fast_smoke_startpos ... ok
+test bench::tests::spawned_bench_depth_runs_are_byte_identical ... ok
+test search::tests::lmp_active_search_still_finds_the_forced_mate ... ok
+test search::tests::lmp_caps_a_wide_quiet_nonpv_node_at_the_threshold ... ok
+test search::tests::krk_mate_in_2_exact_score_at_depth_4 ... ok
+test search::tests::lmp_move_count_matches_the_hand_computed_threshold ... ok
+test search::tests::lmp_threshold_grows_with_depth_and_prunes_sooner_when_not_improving ... ok
+test search::tests::last_best_move_tracks_the_stable_best ... ok
+test search::tests::kqk_mate_in_2_exact_score_at_depth_4 ... ok
+test search::tests::lmp_is_disabled_without_non_pawn_material ... ok
+test search::tests::iter_value_ring_is_seeded_per_go_from_persist ... ok
+test search::tests::lmr_active_deep_search_preserves_the_exact_mate ... ok
+test search::tests::main_search_never_softens_a_decisive_fail_high ... ok
+test search::tests::mated_root_reports_the_negative_mate ... ok
+test search::tests::main_search_fail_high_softens_toward_beta ... ok
+test search::tests::movetime_limit_terminates_the_search ... ok
+test search::tests::multipv_clamps_to_the_legal_move_count ... ok
+test search::tests::nmp_active_search_still_finds_the_forced_mate ... ok
+test search::tests::item12_n8_nudges_opponent_main_history ... ok
+test search::tests::n14_in_check_probcut_fails_high_before_the_move_loop ... ok
+test search::tests::nmp_disabled_below_nmp_min_ply ... ok
+test search::tests::nmp_disabled_without_non_pawn_material ... ok
+test search::tests::nmp_prunes_a_winning_cut_node_via_the_null_search ... ok
+test search::tests::nmp_never_fires_on_a_pv_node ... ok
+test search::tests::nonpv_qsearch_rejects_a_wide_window - should panic ... ok
+test search::tests::item12_nudges_preserve_correctness_and_determinism ... ok
+test search::tests::nmp_reduces_nodes_in_the_null_only_regime ... ok
+test search::tests::nonpv_search_rejects_a_wide_window - should panic ... ok
+test bench::tests::spawned_bench_perft_runs_are_byte_identical ... ok
+test search::tests::parent_futility_value_matches_the_hand_computed_bound ... ok
+test search::tests::one_legal_reply_caps_the_soft_budget ... ok
+test search::tests::parent_futility_and_quiet_see_preserve_the_forced_mate ... ok
+test attacks::tests::magic_lookups_match_naive_on_random_occupancies ... ok
+test search::tests::ponderhit_after_armed_budget_stops_via_check_time ... ok
+test search::tests::pondering_soft_budget_arms_stop_on_ponderhit ... ok
+test search::tests::parent_futility_prunes_a_quiet_only_at_or_below_its_margin ... ok
+test search::tests::preset_stop_searches_nothing_but_keeps_a_legal_bestmove ... ok
+test search::tests::pv_node_rejects_cut_node_status - should panic ... ok
+test search::tests::qsearch_fail_high_softening_blends_toward_beta ... ok
+test search::tests::pvs_matches_full_window_negamax_at_fixed_depth ... ok
+test search::tests::qsearch_futility_prunes_a_small_capture_below_alpha ... ok
+test search::tests::lmr_shrinks_the_effective_branching_factor ... ok
+test search::tests::qsearch_in_check_never_stands_pat ... ok
+test search::tests::qsearch_evasions_are_searched_while_best_value_is_a_loss ... ok
+test search::tests::qsearch_late_move_rule_stops_after_two_quiet_window_captures ... ok
+test search::tests::multipv_reports_k_ordered_lines_per_iteration ... ok
+test search::tests::qsearch_stand_pat_uses_tt_value_as_better_eval ... ok
+test search::tests::qsearch_stand_pat_fail_high_blends_toward_beta ... ok
+test search::tests::qsearch_stalemate_test_needs_a_preceding_big_capture ... ok
+test search::tests::qsearch_narrow_stalemate_test_scores_the_trap_as_a_draw ... ok
+test search::tests::quiet_see_pruning_drops_a_hanging_quiet ... ok
+test search::tests::qsearch_window_see_rule_skips_an_even_capture_below_the_window ... ok
+test search::tests::razoring_condition_never_fires_on_a_winning_eval ... ok
+test search::tests::qsearch_see_floor_skips_a_losing_capture_even_when_it_checks ... ok
+test search::tests::qsearch_non_capture_skip_drops_quiet_evasions_once_best_value_is_real ... ok
+test search::tests::razoring_active_search_still_finds_the_forced_mate ... ok
+test search::tests::reduction_equals_the_full_formula ... ok
+test search::tests::reduction_scale_product_fits_i32 ... ok
+test search::tests::razoring_never_fires_on_a_pv_node ... ok
+test search::tests::reduction_table_matches_the_closed_form ... ok
+test search::tests::reduction_wider_window_reduces_less ... ok
+test search::tests::reduction_table_is_monotonic_nondecreasing ... ok
+test search::tests::rfp_margin_matches_the_hand_computed_formula ... ok
+test search::tests::rfp_margin_preserves_the_truncating_term_order ... ok
+test search::tests::reduction_not_improving_adds_the_scale_surcharge ... ok
+test search::tests::razoring_holds_off_one_centipawn_below_its_threshold ... ok
+test search::tests::mate_suite_1_to_3_exact_scores_and_first_moves ... ok
+test search::tests::rfp_never_fires_on_a_pv_node ... ok
+test search::tests::rfp_never_fires_when_beta_is_decisive ... ok
+test search::tests::rfp_prune_margin_folds_the_threat_relaxation_with_the_right_sign ... ok
+test search::tests::rfp_return_blend_weights_sum_to_the_denominator ... ok
+test search::tests::rfp_threat_coupling_is_disarmed_when_an_own_piece_is_attacked ... ok
+test search::tests::singular_double_margin_matches_the_hand_computed_margin ... ok
+test search::tests::razoring_drops_a_hopeless_nonpv_node_straight_to_qsearch ... ok
+test search::tests::rfp_fires_on_a_winning_nonpv_node_and_returns_the_blend ... ok
+test search::tests::singular_triple_margin_matches_the_hand_computed_margin ... ok
+test search::tests::searchmoves_restricts_root_moves_and_bestmove ... ok
+test search::tests::singular_verification_beta_matches_the_hand_computed_centre ... ok
+test search::tests::soft_stop_best_move_instability_pins_constants ... ok
+test search::tests::soft_stop_falling_eval_pins_constants ... ok
+test search::tests::soft_stop_high_best_move_effort_pins_constants ... ok
+test search::tests::soft_stop_stability_reduction_pins_constants ... ok
+test search::tests::ponder_guard_blocks_every_check_time_stop ... ok
+test board::tests::upcoming_repetition_matches_a_brute_force_legal_move_oracle ... ok
+test search::tests::stalemate_root_yields_no_root_moves ... ok
+test search::tests::item16_probcut_preserves_tactics_and_determinism ... ok
+test search::tests::statscore_reduction_dock_direction_and_truncation ... ok
+test search::tests::statscore_capture_grades_victim_value_plus_capture_history ... ok
+test search::tests::search_is_deterministic_at_fixed_depth ... ok
+test search::tests::statscore_quiet_grades_main_and_two_continuation_histories ... ok
+test search::tests::sub_iteration_node_budget_still_completes_iteration_one ... ok
+test search::tests::startpos_returns_a_legal_pv ... ok
+test search::tests::value_draw_dithers_plus_minus_one ... ok
+test search::tests::voting_accumulates_votes_over_a_lone_higher_score ... ok
+test search::tests::voting_bound_flagged_win_is_not_decisive ... ok
+test search::tests::voting_disabled_under_fixed_depth_or_single_thread ... ok
+test search::tests::voting_equal_votes_break_by_pv_length ... ok
+test search::tests::voting_infinite_helper_never_wins ... ok
+test search::tests::voting_prefers_the_shorter_mate ... ok
+test search::tests::voting_protects_a_decisive_incumbent_from_votes ... ok
+test search::tests::voting_single_report_is_thread_zero ... ok
+test search::tests::voting_trusts_a_proven_loss_over_a_fuzzy_incumbent ... ok
+test search::tests::voting_unanimous_elects_that_move ... ok
+test search::tests::unusable_searchmoves_filter_is_ignored ... ok
+test search::tests::soft_stop_defers_to_the_ponder_guard ... ok
+test search::tests::two_rook_ladder_mate_in_3_exact_at_depth_12 ... ok
+test search::tests::tt_on_and_off_return_identical_values_at_fixed_depth ... ok
+test search::tests::wave_e_zugzwang_reti_still_draws_or_wins ... ok
+test threads::tests::a_main_panic_stops_helpers_so_the_all_shells_wait_joins ... ok
+test search::tests::warm_tt_searches_fewer_nodes_at_equal_depth ... ok
+test threads::tests::best_move_changes_harvest_loses_no_counts ... ok
+test search::tests::item21_correction_history_learns_and_preserves_mate ... ok
+test search::tests::reported_pvs_replay_legally_under_the_dither ... ok
+test search::tests::node_limit_stops_within_the_check_cadence ... ok
+test threads::tests::a_panicking_job_does_not_wedge_the_pool ... ok
+test threads::tests::shared_types_are_sync ... ok
+test threads::tests::counters_aggregate_across_threads ... ok
+test timeman::tests::bare_limits_use_no_time_management ... ok
+test timeman::tests::elapsed_uses_wall_clock_without_nodestime ... ok
+test threads::tests::setup_propagates_repetition_history_to_the_worker ... ok
+test timeman::tests::golden_repeating_tc ... ok
+test timeman::tests::golden_subsecond_horizon_shrink ... ok
+test timeman::tests::golden_sudden_death ... ok
+test timeman::tests::golden_ponder_option_bumps_optimum_by_quarter ... ok
+test timeman::tests::missing_own_clock_yields_zero_budgets ... ok
+test timeman::tests::golden_time_left_clamps_at_one ... ok
+test timeman::tests::nodestime_budget_advances_and_survives_within_a_game ... ok
+test timeman::tests::nodestime_opponent_clock_only_leaves_budget_untouched ... ok
+test timeman::tests::nodestime_converts_clock_to_node_budget ... ok
+test threads::tests::park_submit_run_park_via_custom ... ok
+test timeman::tests::original_time_adjust_computed_once_per_game ... ok
+test tt::tests::clear_zeroes_entries_and_generation ... ok
+test threads::tests::resize_rebuilds_the_pool ... ok
+test tt::tests::empty_cluster_victim_is_first_entry ... ok
+test tt::tests::exact_overwrites_deeper_same_key_entry ... ok
+test tt::tests::fresh_table_misses ... ok
+test threads::tests::wait_idle_observes_job_completion ... ok
+test tt::tests::key_change_overwrites_regardless_of_depth ... ok
+test tt::tests::hashfull_counts_current_generation_permille ... ok
+test tt::tests::mul_hi64_in_range_for_adversarial_inputs ... ok
+test tt::tests::new_search_cycles_through_32_generations ... ok
+test tt::tests::older_generation_overwritten_by_shallow_data ... ok
+test search::tests::wave_e_preserves_mate_and_determinism ... ok
+test tt::tests::penalize_decrements_and_clamps_to_unoccupied ... ok
+test timeman::tests::optimum_and_maximum_are_ordered ... ok
+test tt::tests::prefetch_microbenchmark ... ignored, timing microbenchmark (D14a measurement); run manually: cargo test --release -- --ignored prefetch_microbenchmark --nocapture
+test tt::tests::prefetch_is_callable_for_any_key ... ok
+test tt::tests::rejected_write_still_updates_the_move ... ok
+test tt::tests::relative_age_wraps_for_all_generation_pairs ... ok
+test tt::tests::refresh_boundary_non_pv ... ok
+test tt::tests::resize_1024_mb_uses_all_requested_memory ... ignored, allocates 1 GiB; run manually in release: cargo test --release -- --ignored resize_1024_mb
+test tt::tests::resize_absurd_request_falls_back_without_abort ... ignored, commits multiple GiB on overcommit-happy hosts (doc 08 §3.13 residual risk); run manually in release under a virtual-memory cap so the halving fallback bottoms out early and cheaply: cargo test --release --no-run, then bash -c 'ulimit -v 2097152; <test-binary> --ignored resize_absurd'
+test tt::tests::refresh_boundary_pv_credit ... ok
+test tt::tests::secondary_aging_erodes_decisive_non_exact_entries ... ok
+test tt::tests::secondary_aging_skips_non_decisive_and_exact_entries ... ok
+test tt::tests::small_table_lifecycle_exercises_all_paths ... ok
+test tt::tests::tag_collision_returns_foreign_payload ... ok
+test tt::tests::ttmove_preserved_on_same_key_null_write ... ok
+test tt::tests::victim_minimizes_depth_minus_age_weight ... ok
+test tt::tests::ttmove_cleared_on_key_change_null_write ... ok
+test tt::tests::zero_tag_matches_empty_slot_and_writes_back_into_it ... ok
+test types::tests::color_flip ... ok
+test types::tests::piece_char_roundtrip ... ok
+test types::tests::piece_index_flat ... ok
+test types::tests::piece_values ... ok
+test types::tests::square_display_parse_roundtrip ... ok
+test tt::tests::write_probe_roundtrip_grid ... ok
+test types::tests::square_file_rank ... ok
+test types::tests::square_parse_rejects_garbage ... ok
+test types::tests::square_new_rejects_out_of_range - should panic ... ok
+test types::tests::square_shifted_exhaustive_vs_coordinate_model ... ok
+test types::tests::square_xor_transforms ... ok
+test timeman::tests::optimum_is_monotone_in_time ... ok
+test types::tests::tt_value_roundtrip ... ok
+test types::tests::value_constant_table ... ok
+test types::tests::value_layer_is_const_evaluable ... ok
+test types::tests::value_predicates_band_edges ... ok
+test tt::tests::resize_clamps_and_uses_all_requested_memory ... ok
+test types::tests::square_try_offset_knight_steps_and_wraps ... ok
+test types::tests::tt_value_downgrade_rule50 ... ok
+test threads::tests::clean_exit_and_join_for_various_sizes ... ok
+test tt::tests::mul_hi64_distribution_smoke ... ok
+test uci::tests::blank_lines_are_ignored ... ok
+test uci::tests::d_shows_checkers_squares ... ok
+test uci::tests::bestmove_carries_a_ponder_move_when_the_pv_is_long_enough ... ok
+test uci::tests::d_prints_diagram_fen_key_checkers ... ok
+test uci::tests::format_info_orders_the_fields ... ok
+test uci::tests::debug_and_register_are_consumed_silently ... ok
+test uci::tests::format_score_covers_the_mate_band_both_signs ... ok
+test uci::tests::go_bare_and_unknown_tokens ... ok
+test uci::tests::blocking_commands_implicitly_stop_a_running_search ... ok
+test uci::tests::debug_log_file_tees_both_directions ... ok
+test uci::tests::eof_is_quit ... ok
+test uci::tests::eof_implicitly_stops_a_search_and_flushes_bestmove ... ok
+test uci::tests::go_searchmoves_consumes_the_tail ... ok
+test uci::tests::go_token_soup_parses_in_any_order ... ok
+test uci::tests::garbage_is_absorbed_never_fatal ... ok
+test uci::tests::go_depth_emits_info_lines_then_exactly_one_bestmove ... ok
+test uci::tests::go_infinite_prints_bestmove_only_after_stop ... ok
+test uci::tests::go_mate_self_terminates_on_the_mate_limit ... ok
+test uci::tests::move_text_roundtrips_castling_ep_promotions ... ok
+test uci::tests::move_text_sentinels_and_rejections ... ok
+test uci::tests::isready_answers_during_a_search ... ok
+test uci::tests::isready_answers_readyok ... ok
+test uci::tests::mated_root_answers_info_depth_0_and_bestmove_none ... ok
+test uci::tests::ponder_from_tt_offers_only_validated_moves ... ok
+test uci::tests::ponder_from_tt_refuses_immediate_draws ... ok
+test uci::tests::mid_search_hash_setoption_implicitly_stops_then_applies ... ok
+test uci::tests::ponderhit_releases_a_finished_ponder_search ... ok
+test uci::tests::multithread_voting_enabled_search_smoke ... ok
+test uci::tests::position_ep_square_appears_when_capturable ... ok
+test uci::tests::position_invalid_fen_is_rejected ... ok
+test uci::tests::position_invalid_move_is_atomic ... ok
+test uci::tests::position_illegal_root_is_rejected_and_atomic ... ok
+test uci::tests::position_fen_with_and_without_moves ... ok
+test uci::tests::position_moves_build_history_for_repetition ... ok
+test uci::tests::position_startpos_moves_reaches_expected_fen ... ok
+test uci::tests::quit_implicitly_stops_an_infinite_search_and_flushes_bestmove ... ok
+Position: 1/49 (rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1)
+Nodes searched: 20
+Position: 2/49 (r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 10)
+test uci::tests::quit_stops_reading ... ok
+Nodes searched: 819
+Position: 3/49 (8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 11)
+test uci::tests::position_legal_roots_including_checks_are_accepted ... ok
+test search::tests::singular_preserves_mate_and_determinism ... ok
+test uci::tests::setoption_errors_leave_values_unchanged ... ok
+test uci::tests::setoption_is_case_insensitive_and_clamps ... ok
+Nodes searched: 17
+Position: 4/49 (4rrk1/pp1n3p/3q2pQ/2p1pb2/2PP4/2P3N1/P2B2PP/4RRK1 b - - 7 19)
+Nodes searched: 207
+Position: 5/49 (rq3rk1/ppp2ppp/1bnpb3/3N2B1/3NP3/7P/PPPQ1PP1/2KR3R w - - 7 14 moves d4e6)
+test uci::tests::setoption_clear_hash_clears_the_tt_without_resizing ... ok
+test uci::tests::setoption_spaced_string_value_roundtrips ... ok
+Nodes searched: 130
+Position: 6/49 (r1bq1r1k/1pp1n1pp/1p1p4/4p2Q/4Pp2/1BNP4/PPP2PPP/3R1RK1 w - - 2 14 moves g2g4)
+test uci::tests::setoption_hash_resizes_and_clears_the_tt ... ok
+Nodes searched: 37
+Position: 7/49 (r3r1k1/2p2ppp/p1p1bn2/8/1q2P3/2NPQN2/PPP3PP/R4RK1 b - - 2 15)
+Nodes searched: 58
+Position: 8/49 (r1bbk1nr/pp3p1p/2n5/1N4p1/2Np1B2/8/PPP2PPP/2KR1B1R w kq - 0 13)
+test uci::tests::stalemated_root_answers_info_depth_0_and_bestmove_none ... ok
+Nodes searched: 138
+Position: 9/49 (r1bq1rk1/ppp1nppp/4n3/3p3Q/3P4/1BP1B3/PP1N2PP/R4RK1 w - - 1 16)
+Nodes searched: 62
+Position: 10/49 (4r1k1/r1q2ppp/ppp2n2/4P3/5Rb1/1N1BQ3/PPP3PP/R5K1 w - - 1 17)
+Nodes searched: 143
+Position: 11/49 (2rqkb1r/ppp2p2/2npb1p1/1N1Nn2p/2P1PP2/8/PP2B1PP/R1BQK2R b KQ - 0 11)
+Nodes searched: 203
+Position: 12/49 (r1bq1r1k/b1p1npp1/p2p3p/1p6/3PP3/1B2NN2/PP3PPP/R2Q1RK1 w - - 1 16)
+Nodes searched: 47
+Position: 13/49 (3r1rk1/p5pp/bpp1pp2/8/q1PP1P2/b3P3/P2NQRPP/1R2B1K1 b - - 6 22)
+Nodes searched: 52
+Position: 14/49 (r1q2rk1/2p1bppp/2Pp4/p6b/Q1PNp3/4B3/PP1R1PPP/2K4R w - - 2 18)
+test search::tests::wave_g_ordering_and_rfp_preserve_correctness ... ok
+test uci::tests::go_perft_runs_divide_not_a_search ... ok
+Nodes searched: 45
+Position: 15/49 (4k2r/1pb2ppp/1p2p3/1R1p4/3P4/2r1PN2/P4PPP/1R4K1 b - - 3 22)
+Nodes searched: 41
+Position: 16/49 (3q2k1/pb3p1p/4pbp1/2r5/PpN2N2/1P2P2P/5PP1/Q2R2K1 b - - 4 26)
+Nodes searched: 112
+Position: 17/49 (6k1/6p1/6Pp/ppp5/3pn2P/1P3K2/1PP2P2/3N4 b - - 0 1)
+Nodes searched: 31
+Position: 18/49 (3b4/5kp1/1p1p1p1p/pP1PpP1P/P1P1P3/3KN3/8/8 w - - 0 1)
+Nodes searched: 12
+Position: 19/49 (2K5/p7/7P/5pR1/8/5k2/r7/8 w - - 0 1 moves g5g6 f3e3 g6g5 e3f3)
+test uci::tests::setoption_error_paths_answer_info_string ... ok
+Nodes searched: 18
+Position: 20/49 (8/6pk/1p6/8/PP3p1p/5P2/4KP1q/3Q4 w - - 0 1)
+test uci::tests::timed_ponder_search_stops_only_after_ponderhit ... ok
+Nodes searched: 28
+Position: 21/49 (7k/3p2pp/4q3/8/4Q3/5Kp1/P6b/8 w - - 0 1)
+test uci::tests::two_go_cycles_answer_exactly_one_bestmove_each ... ok
+Nodes searched: 48
+Position: 22/49 (8/2p5/8/2kPKp1p/2p4P/2P5/3P4/8 w - - 0 1)
+test uci::tests::uci_score_displays_the_wdl_less_form ... ok
+Nodes searched: 18
+Position: 23/49 (8/1p3pp1/7p/5P1P/2k3P1/8/2K2P2/8 w - - 0 1)
+Nodes searched: 11
+Position: 24/49 (8/pp2r1k1/2p1p3/3pP2p/1P1P1P1P/P5KR/8/8 w - - 0 1)
+test uci::tests::uci_handshake ... ok
+Nodes searched: 11
+Position: 25/49 (8/3p4/p1bk3p/Pp6/1Kp1PpPp/2P2P1P/2P5/5B2 b - - 0 1)
+test uci::tests::uci_lists_the_options_verbatim ... ok
+Nodes searched: 13
+Position: 26/49 (5k2/7R/4P2p/5K2/p1r2P1p/8/8/8 b - - 0 1)
+Nodes searched: 30
+Position: 27/49 (6k1/6p1/P6p/r1N5/5p2/7P/1b3PP1/4R1K1 w - - 0 1)
+Nodes searched: 64
+Position: 28/49 (1r3k2/4q3/2Pp3b/3Bp3/2Q2p2/1p1P2P1/1P2KP2/3N4 w - - 0 1)
+Nodes searched: 46
+Position: 29/49 (6k1/4pp1p/3p2p1/P1pPb3/R7/1r2P1PP/3B1P2/6K1 w - - 0 1)
+Nodes searched: 25
+Position: 30/49 (8/3p3B/5p2/5P2/p7/PP5b/k7/6K1 w - - 0 1)
+Nodes searched: 12
+Position: 31/49 (5rk1/q6p/2p3bR/1pPp1rP1/1P1Pp3/P3B1Q1/1K3P2/R7 w - - 93 90)
+test uci::tests::stop_latency_is_bounded ... ok
+test zobrist::tests::determinism_pins ... ok
+test zobrist::tests::helpers_are_const_evaluable ... ok
+test zobrist::tests::live_keys_nonzero_and_pairwise_distinct ... ok
+test zobrist::tests::make_key_pins ... ok
+test zobrist::tests::material_count_slots ... ok
+test zobrist::tests::promotion_rank_pawn_slots_zeroed_exactly ... ok
+test zobrist::tests::rule50_fold_buckets ... ok
+Nodes searched: 45
+Position: 32/49 (4rrk1/1p1nq3/p7/2p1P1pp/3P2bp/3Q1Bn1/PPPB4/1K2R1NR w - - 40 21)
+test zobrist::tests::tables_deterministic_across_builds ... ok
+test uci::tests::unusable_searchmoves_warns_and_still_searches ... ok
+test uci::tests::stop_and_ponderhit_are_idle_noops ... ok
+Nodes searched: 270
+Position: 33/49 (r3k2r/3nnpbp/q2pp1p1/p7/Pp1PPPP1/4BNN1/1P5P/R2Q1RK1 w kq - 0 16)
+Nodes searched: 42
+Position: 34/49 (3Qb1k1/1r2ppb1/pN1n2q1/Pp1Pp1Pr/4P2p/4BP2/4B1R1/1R5K b - - 11 40)
+Nodes searched: 46
+Position: 35/49 (4k3/3q1r2/1N2r1b1/3ppN2/2nPP3/1B1R2n1/2R1Q3/3K4 w - - 5 1)
+Nodes searched: 371
+Position: 36/49 (1r6/1P4bk/3qr1p1/N6p/3pp2P/6R1/3Q1PP1/1R4K1 w - - 1 42)
+Nodes searched: 52
+Position: 37/49 (k7/2n1n3/1nbNbn2/2NbRBn1/1nbRQR2/2NBRBN1/3N1N2/7K w - - 0 1)
+test uci::tests::ucinewgame_clears_the_tt ... ok
+test uci::tests::ucinewgame_resets_tm_state_not_position ... ok
+test search::tests::tm_reduction_numerator_is_a_per_move_constant ... ok
+test search::tests::soft_stop_halts_deepening_within_the_budget ... ok
+test board::tests::after_move_reproduces_from_move_for_every_move_kind ... ok
+test tt::tests::concurrency_smoke_probe_write_penalize ... ok
+test search::tests::search_nnue_accumulator_stays_consistent_across_the_tree ... ok
+test uci::tests::setoption_roundtrips_every_consumer_accessor ... ok
+test movegen::tests::pseudo_legal_matches_generation_64k_fuzz ... ok
+test movegen::tests::perft_predicate_oracle_matches_perft ... ok
+test search::tests::bench_suite_debug_run_upholds_the_node_invariants ... ok
+Nodes searched: 329975
+Position: 38/49 (K7/8/8/BNQNQNB1/N5N1/R1Q1q2r/n5n1/bnqnqnbk w - - 0 1)
+Nodes searched: 9080
+Position: 39/49 (8/8/8/8/5kp1/P7/8/1K1N4 w - - 0 1)
+Nodes searched: 11
+Position: 40/49 (8/8/8/5N2/8/p7/8/2NK3k w - - 0 1)
+Nodes searched: 17
+Position: 41/49 (8/3k4/8/8/8/4B3/4KB2/2B5 w - - 0 1)
+Nodes searched: 21
+Position: 42/49 (8/8/1P6/5pr1/8/4R3/7k/2K5 w - - 0 1)
+Nodes searched: 24
+Position: 43/49 (8/2p4P/8/kr6/6R1/8/8/1K6 w - - 0 1)
+Nodes searched: 9
+Position: 44/49 (8/8/3P3k/8/1p6/8/1P6/1K3n2 b - - 0 1)
+Nodes searched: 11
+Position: 45/49 (8/R7/2q5/8/6k1/8/1P5p/K6R w - - 0 124)
+Nodes searched: 58
+Position: 46/49 (6k1/3b3r/1p1p4/p1n2p2/1PPNpP1q/P3Q1p1/1R1RB1P1/5K2 b - - 0 1)
+Nodes searched: 95
+Position: 47/49 (r2r1n2/pp2bk2/2p1p2p/3q4/3PN1QP/2P3R1/P4PP1/5RK1 w - - 0 1)
+Nodes searched: 72
+Position: 48/49 (8/8/8/8/8/6k1/6p1/6K1 w - -)
+Nodes searched: 0
+Position: 49/49 (7k/7P/6K1/8/3B4/8/8/8 b - -)
+Nodes searched: 0
+===========================
+Total time (ms) : 4444
+Nodes searched  : 342697
+Nodes/second    : 77114
+test uci::tests::no_panic_on_junk_torrent ... ok
+test uci::tests::multithread_interleaved_search_smoke ... ok
+
+test result: ok. 612 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 10.71s
+
+     Running unittests src/bin/canon_filter.rs (target/debug/deps/canon_filter-bfbcca121586c660)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/chessengine-6f163fdf6258872c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cenn_v2_smoke.rs (target/debug/deps/cenn_v2_smoke-62d84b6301998e0d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/check_info.rs (target/debug/deps/check_info-aa70edb3299f178b)
+
+running 9 tests
+test common::tests::fen_lines_skip_comments_and_blanks ... ok
+test common::tests::perft_epd_parses_sample ... ok
+test common::tests::perft_epd_rejects_broken_lines ... ok
+test common::tests::perft_epd_reports_line_numbers ... ok
+test common::tests::place_builds_positions_through_put_piece ... ok
+test corpus_checkers_match_brute_force ... ok
+test corpus_blockers_and_pinners_are_aligned_with_the_king ... ok
+test corpus_attackers_to_matches_per_piece_queries ... ok
+test corpus_attackers_to_matches_under_reduced_occupancies ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+     Running tests/eval_file_reload.rs (target/debug/deps/eval_file_reload-5f08189099d00cda)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/eval_symmetry.rs (target/debug/deps/eval_symmetry-148e3eefca85afab)
+
+running 11 tests
+test common::tests::fen_lines_skip_comments_and_blanks ... ok
+test common::tests::perft_epd_parses_sample ... ok
+test common::tests::perft_epd_reports_line_numbers ... ok
+test common::tests::perft_epd_rejects_broken_lines ... ok
+test common::tests::place_builds_positions_through_put_piece ... ok
+test startpos_evaluates_to_zero ... ok
+test material_anchors ... ok
+test dead_draw_guard_over_fixtures ... ok
+test flip_fen_startpos_and_involution ... ok
+test corpus_symmetry ... ok
+test perft_walk_symmetry_over_10k_positions ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.49s
+
+     Running tests/fen_corpus.rs (target/debug/deps/fen_corpus-8a51ca742836c759)
+
+running 10 tests
+test common::tests::fen_lines_skip_comments_and_blanks ... ok
+test common::tests::perft_epd_parses_sample ... ok
+test common::tests::perft_epd_rejects_broken_lines ... ok
+test malformed_fens_are_rejected ... ok
+test common::tests::place_builds_positions_through_put_piece ... ok
+test corpus_has_at_least_60_positions ... ok
+test common::tests::perft_epd_reports_line_numbers ... ok
+test corpus_positions_have_one_king_each_and_no_back_rank_pawns ... ok
+test corpus_round_trips_through_fen ... ok
+test corpus_boards_are_internally_consistent ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+     Running tests/make_unmake_walk.rs (target/debug/deps/make_unmake_walk-5c4125c1bcce0772)
+
+running 6 tests
+test common::tests::fen_lines_skip_comments_and_blanks ... ok
+test common::tests::perft_epd_parses_sample ... ok
+test common::tests::perft_epd_rejects_broken_lines ... ok
+test common::tests::place_builds_positions_through_put_piece ... ok
+test common::tests::perft_epd_reports_line_numbers ... ok
+test randomized_walks_keep_keys_and_roundtrip_make_unmake ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.80s
+
+     Running tests/movegen_pawns.rs (target/debug/deps/movegen_pawns-78c1b48f9b5c4362)
+
+running 7 tests
+test common::tests::fen_lines_skip_comments_and_blanks ... ok
+test common::tests::perft_epd_parses_sample ... ok
+test common::tests::perft_epd_rejects_broken_lines ... ok
+test common::tests::perft_epd_reports_line_numbers ... ok
+test common::tests::place_builds_positions_through_put_piece ... ok
+test corpus_pawn_moves_match_reference ... ok
+test randomized_pawn_moves_match_reference ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.70s
+
+     Running tests/nnue_accumulator.rs (target/debug/deps/nnue_accumulator-fc2106b8cc5138ee)
+
+running 7 tests
+test common::tests::fen_lines_skip_comments_and_blanks ... ok
+test common::tests::perft_epd_parses_sample ... ok
+test common::tests::place_builds_positions_through_put_piece ... ok
+test common::tests::perft_epd_reports_line_numbers ... ok
+test common::tests::perft_epd_rejects_broken_lines ... ok
+test forward_pass_is_color_flip_symmetric_over_corpus ... ok
+test incremental_accumulator_equals_refresh_over_random_games ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s
+
+     Running tests/obs_capture.rs (target/debug/deps/obs_capture-9c2b1b3b2007d761)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/perft_suite.rs (target/debug/deps/perft_suite-1eecf1417d4a77b6)
+
+running 8 tests
+test common::tests::fen_lines_skip_comments_and_blanks ... ok
+test common::tests::perft_epd_parses_sample ... ok
+test common::tests::perft_epd_rejects_broken_lines ... ok
+test perft_extended ... ignored, extended tier: cargo test --release -- --ignored perft_extended
+test common::tests::perft_epd_reports_line_numbers ... ok
+test perft_full_suite ... ignored, full tier: cargo test --release -- --ignored perft_full_suite
+test common::tests::place_builds_positions_through_put_piece ... ok
+test perft_fast_tier ... ok
+
+test result: ok. 6 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 4.47s
+
+     Running tests/properties.rs (target/debug/deps/properties-8655ec5e5ab73363)
+
+running 15 tests
+test castling_rights_display_parse_roundtrip ... ok
+test bitboard_iteration_count_is_popcount ... ok
+test bitboard_iter_collect_roundtrip ... ok
+test bitboard_de_morgan ... ok
+test bitboard_xor_is_symmetric_difference ... ok
+test move_castling_roundtrip ... ok
+test move_en_passant_roundtrip ... ok
+test square_display_parse_roundtrip ... ok
+test move_kinds_and_promotions_are_distinct ... ok
+test square_coords_roundtrip ... ok
+test move_normal_roundtrip ... ok
+test square_from_own_coords_is_identity ... ok
+test move_promotion_roundtrip ... ok
+test fen_roundtrip_with_random_state_fields ... ok
+test fen_roundtrip_on_generated_placements ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+     Running tests/uci_smoke.rs (target/debug/deps/uci_smoke-50021e85f2b54ffa)
+
+running 24 tests
+test eval_command_prints_a_static_evaluation ... ok
+test handshake_transcript_is_byte_exact ... ok
+test argv_d_prints_startpos ... ok
+test isready_answers_immediately_during_a_search ... ok
+test go_infinite_bestmove_comes_only_after_stop_and_promptly ... ok
+test eof_without_quit_exits_zero ... ok
+test go_depth_completes_with_exactly_one_legal_bestmove ... ok
+test multipv_emits_three_ordered_lines_per_iteration ... ok
+test minimal_report_mode_prints_one_summary_line ... ok
+test go_movetime_respects_the_clock_within_tolerance ... ok
+test blocking_position_during_infinite_search_implicitly_stops_it ... ok
+test perft_command_matches_known_counts ... ok
+test position_moves_then_d_shows_expected_fen ... ok
+test position_with_illegal_move_is_rejected_atomically ... ok
+test stop_during_deep_search_is_prompt_and_exactly_once ... ok
+test two_go_cycles_and_a_position_change_in_one_session ... ok
+test rapid_stop_after_go_always_yields_one_legal_bestmove ... ok
+test uci_handshake_survives_garbage_and_exits_zero ... ok
+test stop_before_any_go_is_a_quiet_noop ... ok
+test go_with_clocks_returns_promptly_and_spends_near_optimum ... ok
+test terminal_roots_answer_info_depth_0_and_bestmove_none ... ok
+test argv_errors_exit_nonzero ... ok
+test nodestime_games_are_deterministic ... ok
+test clock_game_of_20_moves_never_forfeits_at_10_plus_01 ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.64s
+
+   Doc-tests chessengine
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+==> cargo build --release
+   Compiling chessengine v0.1.0 (/home/nick/projects/chessengine/.claude/worktrees/agent-a6dd50900b77441ab)
+    Finished `release` profile [optimized] target(s) in 17.13s
+
+==> perft divide sanity  (chessengine perft 1 — SF-format output)
+
+==> release perft suite  (cargo test --release -- --ignored perft_full_suite)
+   Compiling chessengine v0.1.0 (/home/nick/projects/chessengine/.claude/worktrees/agent-a6dd50900b77441ab)
+    Finished `release` profile [optimized] target(s) in 41.97s
+     Running unittests src/lib.rs (target/release/deps/chessengine-2df3941c592ada33)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 612 filtered out; finished in 0.00s
+
+     Running unittests src/bin/canon_filter.rs (target/release/deps/canon_filter-b5def9ed78914a09)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/chessengine-9f369dddc6a8a137)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cenn_v2_smoke.rs (target/release/deps/cenn_v2_smoke-0f59862a03b2b444)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/check_info.rs (target/release/deps/check_info-2ffc13c6da0f401e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/eval_file_reload.rs (target/release/deps/eval_file_reload-3e44e56e21a14bf7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/eval_symmetry.rs (target/release/deps/eval_symmetry-2600f31eb07a71db)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+     Running tests/fen_corpus.rs (target/release/deps/fen_corpus-e25b2ab2f2489e1f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/make_unmake_walk.rs (target/release/deps/make_unmake_walk-283d401d07416cc4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/movegen_pawns.rs (target/release/deps/movegen_pawns-417790f15f08b69d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/nnue_accumulator.rs (target/release/deps/nnue_accumulator-361d9219b54e3121)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/obs_capture.rs (target/release/deps/obs_capture-14f669581c5914f7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/perft_suite.rs (target/release/deps/perft_suite-f83f08bae23d1b5b)
+
+running 1 test
+test perft_full_suite ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 7.33s
+
+     Running tests/properties.rs (target/release/deps/properties-6746154fe3d92c7d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 15 filtered out; finished in 0.00s
+
+     Running tests/uci_smoke.rs (target/release/deps/uci_smoke-9e019ce8adfe9b87)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 24 filtered out; finished in 0.00s
+
+   Doc-tests chessengine
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+==> bench perft fingerprint  (two runs, deterministic output identical)
+===========================
+Nodes searched  : 1839507
+
+==> bench fingerprint  (bench 16 1 6 default depth — the Bench: trailer)
+===========================
+Total time (ms) : 231
+Nodes searched  : 587683
+Nodes/second    : 2544082
+
+==> NNUE behavioural gate (the sota build the bench pin cannot see)
+warning: function `read_i8s` is never used
+    --> src/eval/nnue/sota_loader.rs:1028:4
+     |
+1028 | fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
+     |    ^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `NNZ_IOTA` is never used
+    --> src/eval/nnue/sota_simd.rs:2295:11
+     |
+2295 |     const NNZ_IOTA: [u16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+     |           ^^^^^^^^
+
+warning: function `refresh_psqt_threat` is never used
+   --> src/eval/nnue/sota_threats.rs:670:15
+    |
+670 | pub(crate) fn refresh_psqt_threat(
+    |               ^^^^^^^^^^^^^^^^^^^
+
+
+==> cargo test --features sota,arch-d48x  (the sota tests no other gate runs)
+warning: function `read_i8s` is never used
+    --> src/eval/nnue/sota_loader.rs:1028:4
+     |
+1028 | fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
+     |    ^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `NNZ_IOTA` is never used
+    --> src/eval/nnue/sota_simd.rs:2295:11
+     |
+2295 |     const NNZ_IOTA: [u16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+     |           ^^^^^^^^
+
+
+running 721 tests
+...............................i....................................................... 87/721
+....................................................................................... 174/721
+.i..................................................................................i.. 261/721
+.i..................................................................................... 348/721
+..................i.................................................................... 435/721
+....................................................................................... 522/721
+....................................................................................... 609/721
+...........i....ii.....................................................Position: 1/49 (rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1)
+Nodes searched: 20
+Position: 2/49 (r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 10)
+...Nodes searched: 819
+Position: 3/49 (8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 11)
+Nodes searched: 17
+Position: 4/49 (4rrk1/pp1n3p/3q2pQ/2p1pb2/2PP4/2P3N1/P2B2PP/4RRK1 b - - 7 19)
+Nodes searched: 207
+Position: 5/49 (rq3rk1/ppp2ppp/1bnpb3/3N2B1/3NP3/7P/PPPQ1PP1/2KR3R w - - 7 14 moves d4e6)
+Nodes searched: 130
+Position: 6/49 (r1bq1r1k/1pp1n1pp/1p1p4/4p2Q/4Pp2/1BNP4/PPP2PPP/3R1RK1 w - - 2 14 moves g2g4)
+Nodes searched: 37
+Position: 7/49 (r3r1k1/2p2ppp/p1p1bn2/8/1q2P3/2NPQN2/PPP3PP/R4RK1 b - - 2 15)
+Nodes searched: 58
+Position: 8/49 (r1bbk1nr/pp3p1p/2n5/1N4p1/2Np1B2/8/PPP2PPP/2KR1B1R w kq - 0 13)
+.Nodes searched: 138
+Position: 9/49 (r1bq1rk1/ppp1nppp/4n3/3p3Q/3P4/1BP1B3/PP1N2PP/R4RK1 w - - 1 16)
+Nodes searched: 62
+Position: 10/49 (4r1k1/r1q2ppp/ppp2n2/4P3/5Rb1/1N1BQ3/PPP3PP/R5K1 w - - 1 17)
+Nodes searched: 143
+Position: 11/49 (2rqkb1r/ppp2p2/2npb1p1/1N1Nn2p/2P1PP2/8/PP2B1PP/R1BQK2R b KQ - 0 11)
+Nodes searched: 203
+Position: 12/49 (r1bq1r1k/b1p1npp1/p2p3p/1p6/3PP3/1B2NN2/PP3PPP/R2Q1RK1 w - - 1 16)
+.Nodes searched: 47
+Position: 13/49 (3r1rk1/p5pp/bpp1pp2/8/q1PP1P2/b3P3/P2NQRPP/1R2B1K1 b - - 6 22)
+Nodes searched: 52
+Position: 14/49 (r1q2rk1/2p1bppp/2Pp4/p6b/Q1PNp3/4B3/PP1R1PPP/2K4R w - - 2 18)
+Nodes searched: 45
+Position: 15/49 (4k2r/1pb2ppp/1p2p3/1R1p4/3P4/2r1PN2/P4PPP/1R4K1 b - - 3 22)
+Nodes searched: 41
+Position: 16/49 (3q2k1/pb3p1p/4pbp1/2r5/PpN2N2/1P2P2P/5PP1/Q2R2K1 b - - 4 26)
+Nodes searched: 112
+Position: 17/49 (6k1/6p1/6Pp/ppp5/3pn2P/1P3K2/1PP2P2/3N4 b - - 0 1)
+Nodes searched: 31
+Position: 18/49 (3b4/5kp1/1p1p1p1p/pP1PpP1P/P1P1P3/3KN3/8/8 w - - 0 1)
+Nodes searched: 12
+Position: 19/49 (2K5/p7/7P/5pR1/8/5k2/r7/8 w - - 0 1 moves g5g6 f3e3 g6g5 e3f3)
+Nodes searched: 18
+Position: 20/49 (8/6pk/1p6/8/PP3p1p/5P2/4KP1q/3Q4 w - - 0 1)
+Nodes searched: 28
+Position: 21/49 (7k/3p2pp/4q3/8/4Q3/5Kp1/P6b/8 w - - 0 1)
+Nodes searched: 48
+Position: 22/49 (8/2p5/8/2kPKp1p/2p4P/2P5/3P4/8 w - - 0 1)
+Nodes searched: 18
+Position: 23/49 (8/1p3pp1/7p/5P1P/2k3P1/8/2K2P2/8 w - - 0 1)
+Nodes searched: 11
+Position: 24/49 (8/pp2r1k1/2p1p3/3pP2p/1P1P1P1P/P5KR/8/8 w - - 0 1)
+Nodes searched: 11
+Position: 25/49 (8/3p4/p1bk3p/Pp6/1Kp1PpPp/2P2P1P/2P5/5B2 b - - 0 1)
+Nodes searched: 13
+Position: 26/49 (5k2/7R/4P2p/5K2/p1r2P1p/8/8/8 b - - 0 1)
+Nodes searched: 30
+Position: 27/49 (6k1/6p1/P6p/r1N5/5p2/7P/1b3PP1/4R1K1 w - - 0 1)
+Nodes searched: 64
+Position: 28/49 (1r3k2/4q3/2Pp3b/3Bp3/2Q2p2/1p1P2P1/1P2KP2/3N4 w - - 0 1)
+Nodes searched: 46
+Position: 29/49 (6k1/4pp1p/3p2p1/P1pPb3/R7/1r2P1PP/3B1P2/6K1 w - - 0 1)
+Nodes searched: 25
+Position: 30/49 (8/3p3B/5p2/5P2/p7/PP5b/k7/6K1 w - - 0 1)
+Nodes searched: 12
+Position: 31/49 (5rk1/q6p/2p3bR/1pPp1rP1/1P1Pp3/P3B1Q1/1K3P2/R7 w - - 93 90)
+Nodes searched: 45
+Position: 32/49 (4rrk1/1p1nq3/p7/2p1P1pp/3P2bp/3Q1Bn1/PPPB4/1K2R1NR w - - 40 21)
+Nodes searched: 270
+Position: 33/49 (r3k2r/3nnpbp/q2pp1p1/p7/Pp1PPPP1/4BNN1/1P5P/R2Q1RK1 w kq - 0 16)
+Nodes searched: 42
+Position: 34/49 (3Qb1k1/1r2ppb1/pN1n2q1/Pp1Pp1Pr/4P2p/4BP2/4B1R1/1R5K b - - 11 40)
+Nodes searched: 46
+Position: 35/49 (4k3/3q1r2/1N2r1b1/3ppN2/2nPP3/1B1R2n1/2R1Q3/3K4 w - - 5 1)
+.Nodes searched: 371
+Position: 36/49 (1r6/1P4bk/3qr1p1/N6p/3pp2P/6R1/3Q1PP1/1R4K1 w - - 1 42)
+Nodes searched: 52
+Position: 37/49 (k7/2n1n3/1nbNbn2/2NbRBn1/1nbRQR2/2NBRBN1/3N1N2/7K w - - 0 1)
+.......... 696/721
+........................Nodes searched: 329975
+Position: 38/49 (K7/8/8/BNQNQNB1/N5N1/R1Q1q2r/n5n1/bnqnqnbk w - - 0 1)
+Nodes searched: 9080
+Position: 39/49 (8/8/8/8/5kp1/P7/8/1K1N4 w - - 0 1)
+Nodes searched: 11
+Position: 40/49 (8/8/8/5N2/8/p7/8/2NK3k w - - 0 1)
+Nodes searched: 17
+Position: 41/49 (8/3k4/8/8/8/4B3/4KB2/2B5 w - - 0 1)
+Nodes searched: 21
+Position: 42/49 (8/8/1P6/5pr1/8/4R3/7k/2K5 w - - 0 1)
+Nodes searched: 24
+Position: 43/49 (8/2p4P/8/kr6/6R1/8/8/1K6 w - - 0 1)
+Nodes searched: 9
+Position: 44/49 (8/8/3P3k/8/1p6/8/1P6/1K3n2 b - - 0 1)
+Nodes searched: 11
+Position: 45/49 (8/R7/2q5/8/6k1/8/1P5p/K6R w - - 0 124)
+Nodes searched: 58
+Position: 46/49 (6k1/3b3r/1p1p4/p1n2p2/1PPNpP1q/P3Q1p1/1R1RB1P1/5K2 b - - 0 1)
+Nodes searched: 95
+Position: 47/49 (r2r1n2/pp2bk2/2p1p2p/3q4/3PN1QP/2P3R1/P4PP1/5RK1 w - - 0 1)
+Nodes searched: 72
+Position: 48/49 (8/8/8/8/8/6k1/6p1/6K1 w - -)
+Nodes searched: 0
+Position: 49/49 (7k/7P/6K1/8/3B4/8/8/8 b - -)
+Nodes searched: 0
+===========================
+Total time (ms) : 3722
+Nodes searched  : 342697
+Nodes/second    : 92073
+.
+test result: ok. 713 passed; 0 failed; 8 ignored; 0 measured; 0 filtered out; finished in 118.60s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.11s
+
+
+running 9 tests
+.........
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.48s
+
+
+running 11 tests
+...........
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.54s
+
+
+running 10 tests
+..........
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+
+
+running 6 tests
+......
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.84s
+
+
+running 7 tests
+.......
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
+
+
+running 7 tests
+.......
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.67s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 8 tests
+....i.i.
+test result: ok. 6 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 4.43s
+
+
+running 15 tests
+...............
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.49s
+
+
+running 24 tests
+........................
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.77s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+  eval hash  : 2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4
+  d13 nodes  : 1739588
+
+commit trailer for functional changes (TESTING.md, design/14 §3.2):
+Bench: 587683
+
+All checks passed.
