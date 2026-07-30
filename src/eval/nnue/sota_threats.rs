@@ -737,6 +737,12 @@ fn king_cross(dp: &DirtyPiece) -> [bool; 2] {
             if pc2.piece_type == PieceType::King && pc2.color == pc.color {
                 // orient_threats splits on file <= 3 (a–d) vs >= 4 (e–h).
                 out[pc.color as usize] = (from.file() <= 3) != (to.file() <= 3);
+                // Tier-0 T0c census for the richer-representation study: which
+                // CANDIDATE context boundaries did this in-tree king move
+                // cross? Counter-only, feature-gated, off in every default and
+                // release build.
+                #[cfg(feature = "foldcount")]
+                super::foldcount::note_king_move(pc.color as usize, from.index(), to.index());
                 break;
             }
         }
