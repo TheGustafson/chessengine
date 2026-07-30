@@ -86,3 +86,8 @@ bin36/
 # perf study 39: labelled measurement binaries + its build trees.
 bin39/
 /target39-*/
+/target41-*/
+
+# perf study 41: the raw perf-script IP dump (9.6 MB) is regenerable with
+# tools/perf41/lines41.sh; the reduced lines-*.txt beside it is what is read.
+docs/research/perf-artifacts-41/*.script

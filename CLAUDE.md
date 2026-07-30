@@ -180,18 +180,29 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   wrong and leave 587683 untouched. The gate reads the CANONICAL net and arch
   from `engines/canonical/` (see below) and pins two numbers, both reproduced
   by a from-source non-PGO build: the **eval hash**
-  `eb981b11…4f4f37` (sha256 of the forward-pass score for all 50
-  `tools/nnue/calib/wl50.fens`) and the **d13 node total 1985398**
+  `2e1ede95…79c4` (sha256 of the forward-pass score for all 50
+  `tools/nnue/calib/wl50.fens`) and the **d13 node total 1739588**
   (`bench 16 1 13 <fens> depth <net>` — the net is the optional **6th arg**;
   omit it and you silently measure PSQT, 3441859). Both were re-pinned on
-  2026-07-30 by **perf study 32's i8 HalfKA feature transformer** — the 57.7 MB
-  i16 weight table is quantised to i8 at load with a per-column integer scale,
-  measured −6.8% cycles/node and +3.6 ± 7.7 Elo over 2932 fixed-node games
-  (i.e. no detectable fidelity cost). The immediately preceding pins were
-  `2e1ede95…79c4` / `1922947` (perf study 8's threat-frame change, §4.6 — the
-  FT merge carries the 255/64 frame ratio as 4, a measured 0.14 SF cp mean
-  shift), before that `07993850…41bd` / `1945095`, and the D47V ones
+  2026-07-30 by the **`network_scale` 600 canonical promotion** (`859a442`,
+  +14.78 ± 5.45 over 5880 games) — a four-byte header change with the payload
+  byte-identical from offset 64, so the existing binary loads it with no
+  rebuild; the −12.4% node drop is the hardcoded SF pruning margins biting
+  correctly once the eval spread is right. Preceding pins, newest first:
+  `eb981b11…4f4f37` / `1985398` (perf study 32's i8 HalfKA feature
+  transformer — the 57.7 MB i16 weight table quantised to i8 at load with a
+  per-column integer scale, −6.8% cycles/node and +3.6 ± 7.7 Elo over 2932
+  fixed-node games), `5ca978e0…8b38` / `1922947` (perf study 8's threat-frame
+  change, §4.6 — the FT merge carries the 255/64 frame ratio as 4, a measured
+  0.14 SF cp mean shift), `07993850…41bd` / `1945095` (D48X), and the D47V ones
   `cd190d1b…7f3d` / `2068701`.
+  **Both current values were re-verified from source on 2026-07-30** (perf
+  study 41) against a `sota,arch-d48x` non-PGO build and the canonical net, and
+  they match `tools/check.sh` exactly. `859a442` had updated `check.sh`
+  correctly but landed its CLAUDE.md edit on the *preceding*-pin line, so this
+  paragraph named a superseded gate for a day and overwrote study 8's real
+  hash — **when you move a pin, check that the doc's CURRENT slot moved, not
+  its history.**
   Same update rule as the bench pin: an intentional change moves the pin in the
   same commit. Default OFF (needs a second release build + the gitignored net).
 - **The canonical net and engine — `engines/canonical/`.** ONE place names the
