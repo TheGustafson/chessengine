@@ -6391,3 +6391,38 @@ instruction counts before trusting the delta, alternate order, report rank
 separation. For a remap that changes table size but not arithmetic, instructions
 should stay near-constant, which makes that frame ideal for exactly this
 question.
+
+## Tick 2026-07-31 ~02:00 — verdict protocol encoded; decision sample one sb away
+
+**D49 sb329/400.** The sb330 heldout — the gap-watch decision point I set — is
+**one superbatch away and not yet logged.** Last samples remain sb320
+(raw 0.011236 / **ema 0.011028**), train 0.007435.
+
+**Box:** 8137 MB, free swap 1220 MB, load 4.89. **Study 39** ahead=3, `perf`
+active — measuring its `SRC=live` / `SITE=fold` arms. **POC study** started;
+its phase 1 is CPU-only by design and will not contend with D49's GPU.
+
+### Wrote `tools/d49_verdict.sh` — the protocol, encoded rather than remembered
+
+Three traps were identified separately during this run, and **each would
+silently corrupt the verdict** if the sequence were reconstructed from memory
+when the run ends:
+
+1. **Compare each net at its OWN optimum.** Canonical now ships
+   `network_scale=600`, because @400 measured **14.78 +/- 5.45 Elo worse over
+   5880 games**. Screening D49 against canonical@400 would hand D49 a ~15 Elo
+   head start that has nothing to do with its recipe.
+2. **D49's optimum is net-specific — the transfer hypothesis was REFUTED.**
+   D49@1111 (stdev 600) lost **−14.47 +/- 11.09** to D49@756 (stdev 415), while
+   D48X prefers stdev 610. So the script *sweeps* a narrow ladder (640/756/880)
+   rather than assuming — narrow because the frame was stable across sb140-250
+   (235.0 / 229.9 / 234.1), but it **re-measures the frame first** in case the
+   anneal moved it.
+3. **Deploy the EMA.** The ema column has run 200-500e-6 below raw all run, and
+   the screened nets were `*-ema-raw.bin`. Exporting the live weights instead
+   would quietly throw away ~19-47 Elo.
+
+The script requants, packs the ladder, re-measures the frame, then prints the
+three screen invocations (ladder x2 at 1466 games, verdict at 5880) with the
+reminder to launch each as a **systemd SERVICE** — a `--scope` dies with the
+session and that is what killed a 5880-game screen at 1043.
