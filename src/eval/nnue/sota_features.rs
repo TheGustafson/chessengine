@@ -831,6 +831,20 @@ pub(super) fn refresh_threat_into_at(
         THREAT_DIMS * ACC,
         "FullThreats transformer has the wrong size"
     );
+    // Perf study 39: count the COLUMNS this from-scratch rebuild folds. Fusion
+    // makes the threat channel inherit HalfKA's refresh trigger, so this row
+    // count times the extra refresh rate IS fusion's cost side — quoted by
+    // studies 29 and 31 from an assumption, measured here.
+    #[cfg(feature = "foldcount")]
+    {
+        let mut rows = 0usize;
+        for_each_threat_at(pos, perspective, |idx| {
+            rows += 1;
+            add_column(dst, threat_weights, idx);
+        });
+        super::foldcount::THR_REFRESH.hit(rows);
+    }
+    #[cfg(not(feature = "foldcount"))]
     for_each_threat_at(pos, perspective, |idx| add_column(dst, threat_weights, idx));
 }
 

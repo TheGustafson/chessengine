@@ -122,6 +122,20 @@ probe-wpin = ["sota"]
 # costs anything. Implies `probe-accpin`: pinning writes without pinning reads
 # would measure a third thing.
 probe-dstpin = ["probe-accpin"]
+# Perf study 39's two arms for the additive/subtractive disagreement that
+# studies 29 (§4.1) and 31 (§2.4) both deferred: 0.45 vs 2.36 stall cycles per
+# 64-byte accumulator line, a 5.2x gap that is the whole width of fusion's
+# bracket.
+#   actpin:  pins ONLY `activate`'s four accumulator reads -- 68.9 lines/node,
+#            the EXACT magnitude of study 31's additive copy, measured in the
+#            SUBTRACTIVE direction. `accpin` pins the fold `src` stream too and
+#            so cannot be compared to study 31 dose-for-dose.
+#   addcopy: study 31's additive redundant copy, rebuilt with runtime knobs
+#            (`P39_DOSE`, `P39_RING`) so one binary gives the dose response AND
+#            the L1-resident control that separates the probe's ISSUE cost from
+#            its LOCALITY cost. See `sota_simd::probe::addcopy`.
+probe-actpin = ["sota"]
+probe-addcopy = ["sota"]
 # Perf study 38's NULL ARM for the threat-fold parent alias: builds the alias
 # array, its reads and its stores, but never TAKES the alias, so every pure-copy
 # fold still runs its 2560-byte copy. Its purpose is to price the machinery
