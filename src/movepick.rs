@@ -1152,9 +1152,7 @@ impl MovePicker {
                 crate::history::prefetch_piece_to(c3, q);
                 crate::history::prefetch_piece_to(c4, q);
                 crate::history::prefetch_piece_to(c6, q);
-                crate::history::prefetch_line(
-                    main_plane.as_ptr().wrapping_add(m.raw16() as usize),
-                );
+                crate::history::prefetch_line(main_plane.as_ptr().wrapping_add(m.raw16() as usize));
             }
         };
         // Prologue: the first `PF_DIST` moves have no earlier iteration to
