@@ -62,27 +62,20 @@ sequential, 64-byte aligned, and covered by the hardware stride prefetcher.
 That prize does not pay for the refresh-trigger union (studies 22 and 26's
 blocker) and it does not pay for the Finny-key problem. **Do not build it.**
 
-### What landed instead
+### What landed
 
-The measurement points at the weight rows, and there is a shovel-ready item
-aimed exactly there which study 19 ranked #1 and nobody had re-measured:
-**prefetch the weight row when its index is born, not when the fold reaches
-it** — Stockfish's `append_changed_indices` shape
-(`eca43a97:src/nnue/features/full_threats.cpp:295-299`).
+**Instruments, not a strength change.** `foldcount` (the exact census),
+`probe-accpin` / `probe-wpin` (the two traffic probes that killed the fusion
+item), `tools/perf29/`, and `gates29.sh` which clippies and tests all four
+feature sets. All off by default; the shipped build is byte-untouched.
 
-| arm | i/n | cycles/n | L1 miss/n | miss rate | load-stall/n |
-|---|---:|---:|---:|---:|---:|
-| **null** (arms-off source vs `main`) | −0.04% | −0.20% | −0.12% | −0.01% | −0.81% |
-| `pf-finny` — the Finny refresh's HalfKA rows | +0.02% | −1.02% | −0.29% | −0.26% | −0.04% |
-| `pf-threat` — the threat resolve's FT rows | +0.20% | −1.38% | −0.61% | −0.67% | −1.60% |
-| **both** | +0.22% | **−1.67%** | **−0.66%** | **−0.65%** | **−2.48%** |
-
-*(medians over 13 interleaved rotated rounds; final table in §5.)* Node count
-and eval hash identical on every arm — a prefetch changes no value.
-
-**It raises instructions and lowers cycles**, which is exactly the trade study
-28 said the instruction gate cannot see and exactly the trade this study's
-probe says is available.
+**No engine change landed, and §5 is the reason.** The one arm this study's own
+measurement pointed at — prefetch the weight row when its index is born,
+Stockfish's `append_changed_indices` shape — was built at three strengths,
+gated node- and eval-hash-identical, and **measured as not resolvable**. It is
+recorded as rejected, in the code comments at both sites, with the ceiling
+argument that explains why. §5.3 also retracts a reading of my own data that
+looked like a clean win for four rounds and was positional drift.
 
 ---
 
@@ -165,10 +158,18 @@ build.
 
 Three facts fall straight out and none was known before:
 
-* **The HalfKA fold is essentially always one of three shapes** — 1a1s
-  (3,535,957), 1a2s (1,291,367), 2a1s (48,554), and **2a2s never happens**.
-  Study 25's four shaped instantiations therefore carry one dead
-  instantiation.
+* **The HalfKA fold is one of three shapes in this bench** — 1a1s
+  (3,535,957 = 72.5%), 1a2s (1,291,367 = 26.5%), 2a1s (48,554 = 1.0%) — and
+  **2a2s occurs zero times in 4.88 M folds**. The 2a1s bucket is the *backward*
+  fill of a capture: `apply_dirty_directed::<false>` swaps the two lists, so a
+  1a2s forward fold is a 2a1s backward one, and 48,554 is the capture subset of
+  study 12's 0.0532 backward folds/node.
+  **DO NOT delete the 2a2s instantiation on this evidence.** I nearly wrote
+  that recommendation. 2a2s is castling (`DirtyPiece::castling_record`,
+  `board.rs:451` — sub king, sub rook, add king, add rook), which folds for the
+  non-moving side while the mover refreshes. It is zero here because `wl50` is
+  50 calibration positions whose trees rarely contain a castle, not because it
+  is unreachable. A bench-frequency zero is not a proof of deadness.
 * **The threat fold folds 4.604 rows per call against HalfKA's 2.275** — 2.02×
   — and its row count has a long tail: 803,916 folds of 1 row, but also 25,683
   of 15 and a maximum of 26.
@@ -398,7 +399,7 @@ standing finding is that width is Elo-neutral in 768–1536.)*
 
 ---
 
-## 5. WHAT LANDED — THE WEIGHT-ROW PREFETCH
+## 5. THE ARM THIS STUDY BUILT AND REJECTED — THE WEIGHT-ROW PREFETCH
 
 Study 19 ranked this #1 and could not price it; it had been rejected once on a
 study-4-era NPS instrument at "−2.5% NPS full-row, ~−0.4% first-two-lines",
@@ -437,35 +438,79 @@ Two sites, because two sites have a real gap between "the index is known" and
 The HalfKA *incremental* fold gets nothing: `apply_dirty_directed` computes its
 indices and calls the kernel on the next line, so there is no latency to hide.
 
-### 5.1 Result
+### 5.1 Result — 24 interleaved rotated rounds, medians
 
 `bin29/pfnone` is the arms-off build **of the same source** — the honest
-control, since the arm adds a (dead, LTO-eliminated) parameter to
-`resolve_both`. `base` is `main`.
+control, since the arm added a (dead, LTO-eliminated) parameter to
+`resolve_both`. `base` is `main`, i.e. a second, byte-different null.
 
-RESULTS_TABLE_PLACEHOLDER
+| arm | i/n | cycles/n | loads/n | miss/n | miss rate | load-stall/n |
+|---|---:|---:|---:|---:|---:|---:|
+| `pfnone` (control) | 5656.59 | 4593.93 | 3050.62 | 614.09 | 20.145% | 2595.48 |
+| `base` (**null**) | −0.042% | −0.374% | −0.052% | **+0.135%** | +0.122% | **−0.696%** |
+| `pf-finny` | +0.024% | +0.348% | −0.202% | −0.159% | −0.072% | +1.096% |
+| `pf-threat` | +0.197% | −0.971% | −0.038% | −0.498% | −0.603% | −0.854% |
+| both | +0.220% | −0.006% | −0.209% | −0.312% | −0.283% | −0.023% |
+| `pf-full` (whole row, n=6) | **+2.046%** | — | −0.347% | −0.688% | −0.344% | — |
+
+Control spread over the 24 rounds: **cycles ±8.3%, load-stall ±12.5%**, misses
+±1.6%, instructions ±0.000%.
 
 **Identity:** every arm reproduces **5,001,562 nodes** and eval hash
-**`5ca978e012da1bb0`**. A prefetch changes no value; this is the check that it
-did not accidentally change control flow.
+**`5ca978e012da1bb0`**.
 
-### 5.2 How to read it, honestly
+### 5.2 Verdict: NOT RESOLVABLE, and the mechanism says why
 
-* **The miss axis is the load-bearing one.** Its control null is −0.12% and
-  the combined arm is −0.66% — 5.5× the null — and the miss *rate* moves the
-  same way. That is the mechanism the probe predicted: rows arrive before the
-  fold asks for them.
-* **The cycles axis agrees in sign and is worth less than it looks.** The
-  control's per-round spread on this box is ±8% on cycles and ±12.5% on
-  load-stall cycles; only the median over many rotated rounds means anything,
-  and even then the claim is "about −1.5%", not a third digit.
-* **It costs instructions.** +12.5 i/n for both arms, against a 0.000 i/n
-  null. **On the instruction gate this arm is a regression** — and that is the
-  trade study 28's central finding says to take, which is why it is stated in
-  the headline rather than buried.
-* **Games arbitrate and have not run.** The pre-registered prediction: on a
-  quiet box, PGO both sides, the combined arm is NPS-positive by ~1–2%. If it
-  is not, this arm is wrong and the miss delta was measuring something else.
+Nothing here clears its null by enough to keep. `pf-finny` is *positive* on
+load-stall cycles. `pf-threat`'s −0.50% on misses against a +0.14% null is the
+best signal in the table and it does not carry into cycles by more than the
+control's own −0.37% wander. And every arm costs instructions: +11 to +12.5
+i/n for the first-line form, **+116 i/n for the whole-row form**, against a
+0.000 i/n null.
+
+**The ceiling explains it, and it was computable in advance from §3.** `wpin`
+removes 156.0 misses/node across 7.04 weight rows/node — **22 demand misses
+per row.** A row is 40 lines (HalfKA) or 20 (threats), so the hardware stride
+prefetcher is *not* covering these walks: each row is a cold single-visit
+burst, and the streamer never trains because the next row is somewhere else in
+a 57.7 / 77.7 MB table. One software hint can therefore convert at most **1 of
+22**. Seven hints per node against a 156-miss target is a 4.5% ceiling; we
+measured ~3 misses/node, i.e. the arm worked about as well as its mechanism
+permits, and its mechanism is capped an order of magnitude below the prize.
+
+The whole-row form removes the cap and still buys only −0.69% of misses,
+because `_MM_HINT_T2` (SF's `PrefetchLoc::LOW`) lands the line in **L2, not
+L1** — so a prefetched row still counts as an L1 miss on the demand load. The
+IBS data says the weight rows *already* mostly hit L2 (finny's HalfKA rows:
+7.2% L1, 72.7% L2), so T2 has little left to add. Hinting to L1 (`T0`) instead
+would evict the accumulator for 2.5 KB of single-use weights — which is
+presumably why Stockfish chose LOW.
+
+### 5.3 RETRACTION — I read a win off this table and it was drift
+
+At n = 13 rounds the medians were monotone and beautiful: `pfboth` −1.67%
+cycles, −2.48% load-stall, −0.66% misses, with `pft` > `pff` in every column.
+I had written that into the headline of this document as the landed arm.
+
+It did not survive n = 24, and the **paired within-round form** — delta taken
+against the control *inside the same round*, which cancels monotone drift —
+kills it outright:
+
+| arm, paired vs `pfnone`, n=16 | Δ cycles | Δ misses | Δ load-stall | rounds negative |
+|---|---:|---:|---:|---|
+| `base` (**null**) | **+1.518%** | +0.360% | **+1.643%** | 7/16, 6/16 |
+| `pf-finny` | +1.078% | +0.204% | +2.089% | 7/16, 5/16 |
+| `pf-threat` | +1.110% | −0.123% | +1.102% | 7/16, 9/16 |
+| both | +1.113% | −0.204% | +1.149% | 5/16, 11/16 |
+
+**The byte-different null moves +1.5% in the same form the arms move +1.1%.**
+Whichever binary runs second in a round eats the ramp; rotating the order
+spreads that across arms but does not remove it, and the sign counts are coin
+flips. Rule 6 — *when the story gets beautiful, attack it hardest* — earned its
+keep here: the beautiful table was measuring position-in-round.
+
+**What I would have shipped if I had stopped at 13 rounds:** a +12.5 i/n
+regression sold as a −1.7% cycles win.
 
 ---
 
@@ -493,14 +538,22 @@ did not accidentally change control flow.
 
 ## 7. RANKED REMAINDER
 
+**The whole ranking now points at ONE thing: the weight rows carry 46.2% of the
+engine's load-stall cycles, they miss at 38.3%, and each miss costs 17.0 stall
+cycles. Nothing else on the board is within an order of magnitude.** §5 shows
+prefetching cannot get at it. So the items below are about *reducing or
+relocating the rows themselves*.
+
 | # | item | prize | evidence | tractability |
 |---|---|---|---|---|
-| 1 | **Prefetch distance and coverage.** The landed arm hints one line at index time. The Finny diff resolves up to 32 indices, so there is room to hint the *second* line as well, and to hint from `push` time for the incremental HalfKA fold (one ply of distance, which the current site does not have) | the weight rows carry **46.2%** of all load-stall cycles and this arm recovered ~2.5% of them — the mechanism is right and barely exploited | §3.1, §5.1 | high — the helper exists |
-| 2 | **Re-price the per-node `ThreatPosition` snapshot on cycles** (study 28 item #2). Untouched by this study. 80 bytes at every node into a 10.5 KB-stride stack, 100% of nodes paying for something 43% use; rejected once at "+106 i/n", which §5 shows is the wrong currency | `search::<NonPv>` is 7.95% of load-stall cycles here | study 28 §9 | medium — the arm existed once |
-| 3 | **Delete the dead HalfKA fold shape.** The census shows **2a2s never occurs** in 4.88 M folds, and 2a1s is 1.0%. Study 25's four shaped instantiations carry ~1.5 of them for nothing — pure I-cache footprint in the hottest kernel | small but exact and free | §1.1 | high |
-| 4 | **The threat empty-delta copy, 0.334/node.** 28% of threat folds are a pure 2560-byte parent copy. Study 14 measured the two spellings of it 45.4 i/n apart and asked for the surviving rate before anyone touched it — the rate is now measured. A fused *no-op* marker (fold state "same as parent", resolved lazily) would remove 26.7 loads/node and 0.334 × 2560 B of stores | 26.7 loads/node + the stores | §1.1, §2.3 | medium — touches the fold-state machine |
-| 5 | **Accumulator-channel fusion** | **~65 cycles/node, ~+1.7 Elo, against a refresh-union cost on the expensive stream** | §4 | **DO NOT BUILD** — this study's main result |
-| 6 | `activate`'s four-array merge as a standalone target | 136.2 loads/node, but `forward_into` is 12.25% of loads and 2.18% of stalls | §3.2 | already overlapped; leave it |
+| 1 | **Fewer threat rows.** The threat fold is **3.912 rows/node** — 55% of all weight rows and the single biggest consumer at 156.5 loads/node — against HalfKA's 3.13. It folds 4.604 rows per call where HalfKA folds 2.275. Every row not emitted is a random column out of 77.7 MB not fetched. Study 19's g2/g3/g4 attacked the *cost per event*; nobody has attacked the *count* | up to ~1500 stall cycles/node at the measured 17.0/miss, if the count can be halved | §1.1, §3.2 | medium — it is a feature-set question, and it interacts with net quality |
+| 2 | **Re-price the per-node `ThreatPosition` snapshot on cycles** (study 28 item #2, untouched here). 80 bytes at every node into a 10.5 KB-stride stack; 100% of nodes paying for something 43% use. Rejected once at "+106 i/n", and §5 is a fresh demonstration that instructions are the wrong currency | `search::<NonPv>` is 7.95% of load-stall cycles | study 28 §9 | medium — the arm existed once |
+| 3 | **The threat empty-delta copy, 0.334/node.** 28% of threat folds are a pure 2560-byte parent copy. Study 14 measured the two spellings 45.4 i/n apart and asked for the surviving rate before anyone touched it — **the rate is now measured**. A fold-state "same as parent" alias would remove 26.7 loads/node and the matching stores | 26.7 loads/node + 0.334 × 2560 B of stores | §1.1, §2.3 | medium — touches the fold-state machine, needs the full NNUE gate |
+| 4 | **Weight-row layout.** 22 of a row's 40 lines take a demand miss because each row is a single-visit cold burst the stride prefetcher never trains on. Interleaving the rows a fold uses together, or splitting the table so a fold's rows share pages, attacks the miss *rate* rather than the miss count | the same 46.2% pool | §5.2 | low — a loader + trainer format change |
+| 5 | **Accumulator-channel fusion** | ~65 cycles/node of issue work, ~+1.7 Elo, against a refresh-union cost on the expensive stream | §4 | **DO NOT BUILD** — this study's main result |
+| 6 | Prefetching the weight rows | measured not resolvable at three strengths; ceiling is 1 miss of 22 per row, and `T2` lands in L2 where they already mostly hit | §5 | **closed** |
+| 7 | `activate`'s four-array merge as a standalone target | 136.2 loads/node, but `forward_into` is 12.25% of loads and only 2.18% of stalls | §3.2 | already overlapped; leave it |
+| 8 | **Do NOT delete the 2a2s fold instantiation** despite its zero count | it is castling; `wl50` simply has none | §1.1 | recorded so the next study does not "optimise" it |
 
 ---
 
@@ -524,3 +577,26 @@ did not accidentally change control flow.
 4. **`ex_no_retire.load_not_complete` is noisy on a shared box** — ±12.5%
    round to round here. It still resolved a −46% effect without difficulty.
    Pick effects that clear the floor by 10×, or change instrument.
+5. **Rotating the arm order is not enough; take the delta INSIDE the round.**
+   The rotated median said `pfboth` was −1.7% cycles at n = 13. The paired
+   within-round delta said a byte-different null moved +1.5% in the same
+   direction. §5.3. The panel script now prints the control's spread next to
+   every median for exactly this reason.
+6. **Two nulls, not one.** `base` (a different binary from a different source
+   with the same behaviour) and `basecopy` (byte-identical) answer different
+   questions, and this study needed both: the byte-identical one bounds the
+   instrument, the different-binary one bounds *code layout*, which on a
+   1.2 MB binary is its own effect.
+
+### 8.1 What this study did NOT do
+
+* **No strength change landed**, and §5 is the whole reason. The one arm the
+  measurement pointed at was built at three strengths and rejected on its own
+  data.
+* **No games were run.** Nothing here reached a state worth arbitrating.
+* **The IBS symbolisation is half-finished** (§6). Its numbers are quoted only
+  as corroboration of the probes, never alone.
+* **The threat-refresh row count was not measured**, so the refresh-union cost
+  in §4 is quoted from studies 22 and 28 rather than re-derived. It is not
+  load-bearing: the *benefit* side of fusion is already ≈ 0 in stall cycles
+  before any cost is counted, which is what decides it.
