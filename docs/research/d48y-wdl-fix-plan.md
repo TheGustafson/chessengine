@@ -5226,3 +5226,46 @@ example of why an unbuilt impossibility argument is not evidence.
 
 **`confirm600` at 3998/5880: +16.70 +/- 6.69.** Still no promotion until 5880.
 **D49 sb~232/400.**
+
+## Tick 2026-07-30 ~12:45 — BOX PRESSURE: swap nearly exhausted, study 37 held
+
+**The tightest the box has been tonight**, and the binding resource is not RAM:
+
+    swap:  3798 MB used / 4095  -> only 297 MB free
+    available: 3842 MB, load 25.97, memory.pressure some avg10=0.22
+
+**Diagnosed rather than guessed — nothing is leaking**, it is three legitimate
+loads landing together:
+
+| consumer | RSS |
+|---|---:|
+| D49 trainer (python) | 4381 MB |
+| `confirm600` screen — 20 engines x 134 MB | 2684 MB |
+| **`gate36`'s DEBUG test binary** (`target/nnue-gate/debug/deps/chessengine-… --test-threads=4`) | **2382 MB** |
+
+**New operational fact worth keeping: the NNUE gate's debug test binary is the
+single most expensive transient on this box at ~2.4 GB.** It is a *debug*
+build (`target/nnue-gate/debug/`) running 4 test threads. `--test-threads=2`
+would roughly halve it when something else is live.
+
+**Action taken: told study 37 to HOLD all builds and test runs** and to spend
+the interval on source reading, `git log -S` archaeology of the `#[cold]`
+attribute, and writing its arms ready-to-build. Also gave it a sharper rule
+than its brief had:
+
+> **`free -m` showing >2500 MB available is necessary but NOT sufficient right
+> now** — with 297 MB of free swap there is no cushion behind that number.
+> Check `free -m | sed -n 3p` too and wait if free swap is under ~1 GB.
+
+That is a real gap in the standing memory guidance: **every brief tonight has
+specified an `available` threshold and none has mentioned swap.** The 2500 MB
+rule assumes swap headroom that currently does not exist.
+
+**`gate36`: `test perft_full_suite ... ok`** — the D24 ritual passed on the
+merged tree (study 36 touched movegen). Gate still finishing.
+
+**`confirm600` at 3998/5880: +16.70 +/- 6.69.** No promotion until complete.
+
+**D49 sb235/400**, heldout 0.011731 @ sb230, unaffected throughout — the
+trainer's cgroup shows `oom_kill 0` and its `max` counter is unchanged from
+earlier at 35401.
