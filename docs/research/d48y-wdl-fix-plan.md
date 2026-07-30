@@ -5777,3 +5777,60 @@ concurrent screens is exactly what would break it.
 
 **Box:** 6619 MB available, free swap 596 MB, load 14.48, disk 135 GB.
 **Study 38 ahead=4** — landing work on the threat-fold alias.
+
+## CORRECTION (user, 2026-07-30): "anneal usually adds a lot" — and our own records prove it
+
+**My "−49 Elo is a warning" framing was too pessimistic, and my stated decision
+rule was wrong.** The user pushed back; I checked it against
+`docs/research/value-foundation-state.md` rather than either of us guessing.
+
+**The evidence (value-foundation-state.md:543-546):**
+
+> **★ sb210 SURGE: Elo +85.0 +/- 30.6 (49-26-25) — stage-2 passed the ENTIRE
+> stage-1 endpoint band (+49-56) with 30sb of anneal left.** Trajectory:
+> −151 → −85 → −85(floor) → −31 → −28 → −14 → **+85**; the sb180→210 closure =
+> **+99/30sb (the anneal endgame surge).**
+
+**A prior run gained +99 Elo across 30 superbatches of anneal**, from −14. D49 is
+at **−49 with 116 superbatches remaining** (16 cosine + 100 anneal) — *more than
+three times that run's remaining anneal*. On this evidence −49 at 70% is an
+ordinary mid-run position, not a warning.
+
+**And there is a stated mechanism, not just a pattern — the AXIS LAW
+(value-foundation-state.md:563-573):**
+
+> Elo tracks HELD-OUT loss, not train loss… **Train-axis readings lead Elo by
+> the generalization gap; the gap closes through the anneal** (stage-1:
+> 6% → 1.5% final quarter) **so Elo catches up late.** The held-out instrument
+> is now formally the strength predictor.
+
+D49's generalization gap right now is **train 0.007645 vs heldout 0.011389**.
+The law says that gap is exactly what the anneal closes, and that Elo therefore
+lags until it does.
+
+### What I got wrong, precisely
+
+I wrote: *"gain small (say +5) ⇒ it will not close."* **That inference is
+invalid.** `d49-rate` measures sb180→sb270, which is **entirely cosine phase**.
+Using a cosine-phase rate to predict an anneal-phase outcome is comparing two
+different regimes — the same error class as reading a trend off the wrong
+instrument.
+
+### The rate screen is still worth running — for a BETTER reason
+
+Not to extrapolate a rate. To **calibrate D49's own heldout↔Elo map**, which the
+AXIS LAW names as the strength predictor. With Elo(sb270) = −48.96 vs canonical
+already measured, `d49-rate` supplies Elo(sb180), giving two points:
+
+| checkpoint | heldout | Elo vs canonical |
+|---|---|---|
+| sb180 | 0.012248 | −48.96 − (rate screen result) |
+| sb270 | 0.011472 | **−48.96 +/- 14.02** |
+
+Two points fix the slope in Elo per unit heldout; the heldout curve then
+projects the endpoint. That is the project's own documented instrument
+(*"the held-out instrument is now formally the strength predictor"*), and it
+does not require assuming the anneal behaves like the cosine.
+
+**Standing correction for the verdict:** do not judge D49 before its anneal
+completes. The prior run's trajectory went **−14 → +85 in its final 30sb.**
