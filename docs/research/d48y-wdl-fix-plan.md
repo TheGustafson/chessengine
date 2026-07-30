@@ -7520,3 +7520,49 @@ and study 35 showed that adding doc comments alone changes a binary's sha256.
 **Box at commissioning:** 10 GB available, 967 MB free swap, load 5.9, no `perf`
 or `fastchess`. `d49x` will take the GPU when `kmeans8k` finishes and run ~13 h
 at ~3 GB + one core — the normal background all session.
+
+## TIER-1 PANEL: the sb12 decision numbers
+
+| arm | heldout @ sb12 | vs identity |
+|---|---:|---:|
+| identity | **0.006410** | baseline |
+| **random8k** (content-free control) | **0.006793** | **+383e-6 ← THE NULL BAR** |
+| **kmeans8k** (learned) | **0.006575** | **+165e-6 — 43% of the bar** |
+| identity2 (seed-repeat) | *running* | pins run-to-run noise |
+
+### The representation question: answered POSITIVELY
+
+The learned code costs **2.3x less than a random partition after full finetune**,
+on top of **4.1x less projection cost before any training at all**. **The
+handcrafted 60,720-row threat space contains structure a learned code can find
+and exploit.** That is the novel result, and the prior-art survey found nobody
+learns a sparse code under an update-cost objective.
+
+### The deployment question: answered NEGATIVELY
+
+**+165e-6 of eval cost against a ~+2.5 Elo cache win**, which needs to be under
+~30-70e-6. Not close.
+
+**And this was capped low by construction, which is the durable lesson.** The
+fold work is **`active_features × ACC`** and *neither term changes* when the
+table shrinks — remapping alters only *which slot* a feature lands in, not how
+many fire or how wide the accumulator is. **Compression can only ever buy
+locality.** The 9.5x table shrink bought 1.5% cycles, which is exactly the
+signature of a pure locality effect; had the *work* shrunk we would have seen
+something proportional.
+
+⇒ **The paths that can actually pay in Elo are capacity REALLOCATION at constant
+row count** (merge the 22% of rows that never fire, spend it splitting the
+top-1,024 that carry 56.4% of fire mass — same size, same speed, richer
+representation) **and the training recipe**, where the measured **+90.7 Elo**
+net-swap deficit already sits.
+
+### A false alarm, checked and cleared
+
+`recode-t1-finish` showed **inactive** while `identity2` showed **running** and
+the GPU stayed held — which looked like a dead process holding the card and
+blocking `d49x` forever. It is not: **`identity2` is its own unit**, launched
+after `finish` completed its two arms; pid 1223987 holds 6004 MiB legitimately.
+`identity2`'s sb0 also reproduces identity's exactly (0.006350), so the noise
+pin is correctly configured. *Reading one signal without the others — the same
+class of error as the four sampling artifacts earlier.*
