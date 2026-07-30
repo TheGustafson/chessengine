@@ -17,7 +17,7 @@ fusion's bracket: **+48 cycles/node (a loss) to −136 (+4.7 Elo)**.
 
 ## ★ HEADLINE
 
-### 1. Which number is right: **neither**. The right value is 1.12 stall / 1.21 total cycles per line, and it is a THIRD measurement.
+### 1. Which number is right: **neither**. The right value is ~0.8–1.1 stall / ~0.9–1.2 total cycles per line, and it is a THIRD measurement.
 
 Both studies measured competently and I reproduced both on today's engine, in
 one panel, to within a few percent. They measured **different things**, and the
@@ -29,7 +29,7 @@ thing that prices fusion is neither of them:
 | tree held identical? | **no** | yes | **yes** |
 | instructions held identical? | **no** (−7.6%) | n/a (they *are* the traffic) | **yes (+0.019%)** |
 | misses/line, vs the real stream's **0.861** | n/a | 0.477 (**warmer**) | **0.861** |
-| stall cycles per line | 0.45 | 2.36 | **1.119** |
+| stall cycles per line | 0.45 | 2.36 | **1.119** (panel 1) / **0.803** (panel 3) |
 | reproduced here | **0.350** (its own statistic: −4.503% vs its −4.63%) | **2.22** fitted, **3.18** at dose 1 | — |
 
 The measurement that carries no confound is **`dstpin` differenced against
@@ -40,6 +40,15 @@ out of 5474**). Their difference relocates **154.92 lines/node** of *real* fold
 accumulator traffic from cold stack memory to a hot 2.5 KB buffer and changes
 nothing else: **−133.46 misses, −173.29 stall cycles, −187.98 cycles per node,
 24/24 sign-consistent on misses.**
+
+**The same arm run twice does not repeat to better than 1.4×.** Panel 3 re-ran
+it on a busier box (load average 3.5 → 6.9, another agent building) and got
+−124.36 stall and −139.28 cycles for the identical 154.9 lines — 0.803 and
+0.899 per line against panel 1's 1.119 and 1.213. Both are 24/24
+sign-consistent on misses and agree on the miss count to 2%; it is the
+cycles-per-miss conversion that moves with box load, which is the same axis the
+whole study is about. **§6 prices fusion at the panel-1 (higher) value on
+purpose — it is the optimistic end for fusion, and the verdict survives it.**
 
 ### 2. Why the two differed — factorised exactly, no residual
 
@@ -120,6 +129,11 @@ and a cycles ledger and quoted only the second; instructions cost cycles):
 | **total cost** | **+215.3 … +444.3** |
 | **NET** | **−23.1 (best) … +280.5 (worst)** |
 | **⇒ Elo at 120/doubling** | **+1.0 … −11.5** |
+
+The saving column uses **panel 1's** 1.213 cycles/line, the higher of the two
+measurements of that arm. On panel 3's 0.899 the fold saving falls from −82.9 to
+−61.4 and the best case becomes **−1.6 cycles/node ⇒ +0.1 Elo**. The verdict is
+the same either way, which is the point of quoting the optimistic one.
 
 **At the most favourable end of every input, fusion is worth one Elo.** It is
 not a lever; it is a large architectural change whose *entire* expected value is
