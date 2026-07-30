@@ -1033,6 +1033,7 @@ impl AliasTable {
 /// `--features callcopy40` replaces it with the libc call, which measures the
 /// same −15.92; it exists only as the instrument that separated this effect
 /// from the copy's own cost.
+#[cfg(not(feature = "callcopy40"))]
 #[inline(never)]
 fn copy_acc_outlined(dst: &mut [i16; ACC], src: &[i16; ACC]) {
     // `chunks_exact` DROPS a remainder, so a width that is not a multiple of 32

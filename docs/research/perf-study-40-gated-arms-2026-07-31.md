@@ -105,6 +105,24 @@ cycles number none of them had. Study 14 recorded "45.4 i/n between two
 spellings of this copy" and called it *spelling, not semantics*; it now has a
 sign and a size.
 
+### What this study also hands to the next one
+
+* **`ex_no_retire.empty` is the instrument for the whole mispredict class**, and
+  the exchange rate on this engine is **9.13 cycles per mispredict**, not the
+  ~18 everyone has been assuming. At that rate `init_quiets`' entire mispredict
+  share (13.75%, 3.31/node) is **28.8 cycles/node = 0.72% of cycles**, and
+  `search::<NonPv>`'s (16.57%) is 0.87%. Any future mispredict arm has to cost
+  under ~4.3 instructions per mispredict removed to break even.
+* **`ex_ret_brn_misp:u` is not dead.** Studies 34 and 38 retired it at n = 10.
+  At n = 159, paired within-round against a byte-identical null, it puts the
+  null at a coin flip and this arm at **44 standard errors**.
+* **`ex_no_retire.thread_not_selected` is the SMT sibling**, 68.4 cycles/node
+  swinging −56% to +203% across rounds. Subtracting it is worth 2× in rounds.
+* **You cannot amplify a mispredict effect by replaying inputs** (§4) — the
+  replay is what makes them predictable.
+* **Never `git stash` in a worktree** (§6.1). It cost time here and it cost
+  perf study 24 time before that.
+
 ---
 
 ## 1. METHOD
@@ -230,6 +248,20 @@ landed arm replicates.
 Every term is a difference of two exact medians with zero spread, and the sum
 is the measured total to **0.000 i/n**.
 
+**The three rates were re-derived on this tree, not inherited** (rule 8). Two
+`foldcount` builds, both node- and eval-hash-identical to `main`:
+
+| | `fcn40` (`noalias40`) | `fc40` (`main`) |
+|---|---:|---:|
+| `thr_copy.calls` | **1,694,891** = 0.338871/node | **109,963** = 0.021986/node |
+| `thr_alias.calls` | 0 | **792,464** |
+| `thr_joint.n11e11` (both perspectives empty) | 792,464 | 792,464 |
+
+Elided: 1,694,891 − 109,963 = **1,584,928 = 0.316885/node**. Every figure
+matches study 38's census exactly, and the `thr_joint` histogram is bit-identical
+between the two builds — which is the check that `noalias40` changes only how the
+copy is *performed*, never which plies need one.
+
 Against this, study 38's ledger read:
 
 ```
@@ -321,8 +353,10 @@ Two smaller instrument points, both nulled:
   null's 20%-trimmed sd from **0.888% to 0.624%** — 2.0× fewer rounds for the
   same resolution. It is the same quantity with a *measured* confound removed,
   and the null is what says so.
-* The byte-identical null on `cycclean` reads **+0.156% ± 0.120%** at n = 66 —
-  consistent with zero, which is the licence to quote a contrast against it.
+* The byte-identical null on `cycclean` reads **+0.282% ± 0.095%** at n = 159 —
+  small but not zero, which is exactly why every number in §3.2 is quoted as a
+  *contrast against it* rather than raw. Read alone, the arm's `cycclean` delta
+  is +0.468%; two thirds of that is the panel, not the arm.
 
 ### 3.2 The four numbers, 159 paired within-round rounds
 
@@ -478,11 +512,101 @@ noise's *shape*, and how many rounds an effect needs), `contrast40.py` (the
 arm-minus-null contrast with a standard error), `derive40.py` (the
 SMT-corrected cycle counter), `cpubusy40.sh` (which core pair is quietest).
 
+### 5.1 Reproducing
+
+```bash
+bash tools/perf40/buildall40.sh          # b40 (main), w40 (insertwin34), n38
+bash tools/perf40/buildarms40.sh         # the arm-B ladder + the dose binaries
+cp bin34/b40 bin34/z40                   # the byte-identical null
+bash tools/perf34/ident34.sh b40 w40 n38 na40 nac40 n38c   # node + eval-hash gate
+
+# the codegen fact that reprices arm B (Sec 2.1)
+bash tools/perf40/copycheck40.sh b40 n38 na40
+
+# arm B's ladder, exact counters (Sec 2.2, 2.3)
+P40_PANEL=docs/research/perf-artifacts-40/panel-armb.txt \
+  bash tools/perf40/panel40.sh 12 b40 z40 n38 na40 nac40 n38c
+python3 tools/perf40/med40.py docs/research/perf-artifacts-40/panel-armb.txt b40 \
+  --metric instructions:u
+
+# the copy rates (Sec 2.3)
+ARCHON_FOLDCOUNT=/tmp/fc.txt ./bin34/fc40  bench 16 1 100000 \
+  tools/nnue/calib/wl50.fens nodes engines/canonical/net.cenn
+
+# what one 2560-byte memcpy retires (Sec 2.4)
+gcc -O2 -o /tmp/memcost40 tools/perf40/memcost40.c
+perf stat -e instructions:u,branches:u /tmp/memcost40 3000000 2560
+
+# arm A: the bubble panel (Sec 3)
+P40_EV=instructions:u,cycles:u,ex_no_retire.empty:u,\
+ex_no_retire.thread_not_selected:u,ex_ret_brn_misp:u \
+P40_PANEL=docs/research/perf-artifacts-40/panel-frontend.txt \
+  bash tools/perf40/panel40.sh 159 b40 z40 w40 oc40
+python3 tools/perf40/derive40.py docs/research/perf-artifacts-40/panel-frontend.txt \
+  cycclean:u=cycles:u-ex_no_retire.thread_not_selected:u > /tmp/fe.txt
+python3 tools/perf40/contrast40.py /tmp/fe.txt b40 z40 w40 oc40 \
+  --metric ex_no_retire.empty:u
+
+# the amplifier that failed (Sec 4)
+bash tools/perf40/identdose40.sh ds40 0 12 24
+P40_PANEL=/tmp/dose.txt bash tools/perf40/panel40.sh 2 ds40:0 ds40:24 dsw40:0 dsw40:24
+```
+
+Raw panels: `docs/research/perf-artifacts-40/` — `panel-core.txt` (n = 60, the
+four-label core), `panel-armb.txt` (the ladder), `panel-frontend.txt`
+(n = 159, the bubble panel), `panel-cycles.txt` (n = 18, the abandoned
+direct-cycles panel, kept because it is the run that showed 45 s/round and made
+me change instrument), `panel-land.txt` (the landing-tree check),
+`foldcount-{main,noalias40}.txt`, `gates.log`. `bin34/` is a build output and is
+not tracked.
+
 ---
 
 ## 6. GATES
 
-*(filled in)*
+`CHECK_NNUE_GATE=1 CHECK_TEST_THREADS=2 bash tools/check.sh` — **"All checks
+passed."**
+
+| gate | result |
+|---|---|
+| `cargo fmt --check` | clean |
+| `cargo clippy --all-targets -- -D warnings` | clean |
+| feature-matrix `cargo check` | clean |
+| `cargo test` (debug: unit + fast perft tier) | 612 passed, 0 failed |
+| release perft suite (`--ignored perft_full_suite`) | pass |
+| `cargo test --features sota,arch-d48x` | pass |
+| bench perft fingerprint | deterministic, identical |
+| `bench 16 1 6 default depth` | **587683** — the pin, bit-for-bit |
+| wl50 eval hash | `2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4` — the pin |
+| d13 node total | **1739588** — the pin |
+| node identity, study frame | **5,001,562** on all 12 binaries in every panel |
+| landing tree vs measured binary | `land40` retires **5907.956 i/n / 619.310 br/n**, identical to `oc40` to six digits |
+
+**Clippy under the opt-in features.** `--features sota,arch-d48x` has **9
+pre-existing** `-D warnings` errors, all in files this study did not touch
+(`sota_loader.rs`, `sota_simd.rs`, `aligned.rs`, `protected_halfka.rs`,
+`simple_halfka.rs`); the merge gate only runs clippy on default features, which
+is why they are there. **None of this study's code produces one** under
+`sota,arch-d48x`, `+dosesort40`, `+noalias40` or `+callcopy40` — checked
+per-file, and one that did appear (`copy_acc_outlined` dead under `callcopy40`)
+was fixed with a `#[cfg]`.
+
+### 6.1 A process hazard, paid for here: **never `git stash` in a worktree**
+
+`refs/stash` is **shared across every worktree of the repository**. A `git
+stash` in a clean worktree stashes nothing and silently succeeds; the matching
+`git stash pop` then pops **another worktree's** entry into your files. It
+happened here (mid-gate, checking whether a clippy failure was pre-existing) and
+it left `src/movepick.rs` in a conflicted state with someone else's work in it.
+
+It has happened before: the surviving `stash@{0}` on this repository is
+literally titled *"RESTORED by perf-study-24: popped by mistake from
+worktree-agent-af9e0a5aab3c0063e (refs/stash is shared across worktrees)"*.
+Recovery both times: the entry is **kept, not dropped**, on a conflicted pop, so
+`git restore --source=HEAD --staged --worktree <file>` puts your tree back and
+the other worktree's stash survives. **The safe way to ask "is this failure
+pre-existing?" is to build the reference commit into its own `--target-dir`, not
+to stash.**
 
 ---
 
@@ -509,13 +633,15 @@ In order, most doubtful first.
    engine is 72% `ex_no_retire.all` and 55% `not_complete` (a single
    multiplexed sample), so there is a lot of room in there for me to be wrong
    about where a mispredict's cost lands.
-3. **The copy RATES, 0.338871 and 0.021986 per node, are inherited.** Every
-   per-copy figure in §2 (111.8, 41.2, 5.6) is an exact i/n delta divided by one
-   of those, and I did not re-run `foldcount` on this tree — rule 8 says
-   re-derive, and I did not. The *deltas* are mine and exact; the *per-copy*
-   conversions are only as good as study 38's census (which does reproduce
-   internally: its `thr_joint` total equals its `thr_copy.calls`) and study 39's
-   independent 0.0220. The decomposition in §2.3 uses only the deltas.
+3. ~~**The copy RATES are inherited.**~~ **Retracted before publication** — I
+   wrote this caveat, then re-ran `foldcount` on both configurations of this
+   tree and got 1,694,891 / 109,963 / 792,464 exactly (§2.3). The per-copy
+   figures (111.83, 41.24, 5.57) are now measured end to end. What survives of
+   the worry: those are *averages over a mixed population* — the 6.5% of
+   pure-copy folds that survive the alias are the ones where only ONE
+   perspective went empty, and there is no reason their per-copy cost should
+   equal the both-empty case's. The decomposition in §2.3 does not depend on it
+   (it uses only the i/n deltas); the "111.8 per copy" framing does.
 4. **`#[inline(never)]` is a compiler-version-dependent win.** The −16.01 i/n is
    real on this toolchain and this build configuration, and the whole point of
    §2.1 is that LLVM re-takes this class of decision per context. What makes it
