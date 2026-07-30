@@ -1339,6 +1339,8 @@ impl<'a> ThreatContext<'a> {
             // that neither attacks nor is attacked changes none of them.
             // Measure the surviving rate before touching it; the two spellings
             // of this copy are 45.4 i/n apart (D33 reviewer C, M6/N4).
+            #[cfg(feature = "foldcount")]
+            super::foldcount::note_thr_joint(need, lens);
             for (p, &needs_fold) in need.iter().enumerate() {
                 if !needs_fold {
                     continue;

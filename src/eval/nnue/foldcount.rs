@@ -62,6 +62,16 @@ pub static HKA_SHAPE: [AtomicU64; 16] = [const { AtomicU64::new(0) }; 16];
 /// Shape histogram for the threat fold: `min(adds + subs, 31)`.
 pub static THR_SHAPE: [AtomicU64; 32] = [const { AtomicU64::new(0) }; 32];
 
+/// Perf study 38 — the JOINT (per-perspective) shape of one ply's threat fold,
+/// indexed `need0 | need1<<1 | empty0<<2 | empty1<<3`.
+///
+/// The question it answers: can a parent→child alias be taken on the WHOLE
+/// entry (both perspectives at once, so `at_full`'s `&[[i16; ACC]; 2]` return
+/// type survives), or must it be per-perspective (which forces the head's
+/// merge kernel to take two separate rows)? Only the `1,1,1,1` cell licenses
+/// the cheap form.
+pub static THR_JOINT: [AtomicU64; 16] = [const { AtomicU64::new(0) }; 16];
+
 #[inline]
 pub fn note_hka_shape(adds: usize, subs: usize) {
     let i = (adds.min(3) * 4 + subs.min(3)).min(15);
@@ -71,6 +81,16 @@ pub fn note_hka_shape(adds: usize, subs: usize) {
 #[inline]
 pub fn note_thr_shape(rows: usize) {
     THR_SHAPE[rows.min(31)].fetch_add(1, Relaxed);
+}
+
+#[inline]
+pub fn note_thr_joint(need: [bool; 2], lens: [(usize, usize); 2]) {
+    let empty = |p: usize| lens[p].0 == 0 && lens[p].1 == 0;
+    let i = usize::from(need[0])
+        | usize::from(need[1]) << 1
+        | usize::from(empty(0)) << 2
+        | usize::from(empty(1)) << 3;
+    THR_JOINT[i].fetch_add(1, Relaxed);
 }
 
 /// Named address regions, so an IBS data-address sample can be attributed to
@@ -139,6 +159,18 @@ pub fn dump(nodes: u64) {
         let n = cell.load(Relaxed);
         if n != 0 {
             emit!("FOLDCOUNT thr_shape.{r}={n}");
+        }
+    }
+    for (i, cell) in THR_JOINT.iter().enumerate() {
+        let n = cell.load(Relaxed);
+        if n != 0 {
+            emit!(
+                "FOLDCOUNT thr_joint.n{}{}e{}{}={n}",
+                i & 1,
+                (i >> 1) & 1,
+                (i >> 2) & 1,
+                (i >> 3) & 1
+            );
         }
     }
     if let Ok(g) = REGION_NAME.lock() {
