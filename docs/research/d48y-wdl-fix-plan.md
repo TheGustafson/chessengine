@@ -4075,3 +4075,213 @@ Brief specifics worth recording:
 
 Still no D49 screen: sb162 is 40% of schedule. Post-cosine (sb250+) remains the
 first informative point, sb400 the real one.
+
+## Perf study 32 COMPLETE — the i8 HalfKA transformer ships (merge pending)
+
+13 commits on `worktree-agent-a6205b2309e5cc90c`, tree clean, 25.8 KB doc.
+**Not on main yet** — see the merge section below.
+
+### IT VALIDATED THE CYCLES-NOT-INSTRUCTIONS RULE IN THE SHARPEST POSSIBLE WAY
+
+8 rounds, paired within round against a byte-identical null, median of
+per-round ratio:
+
+| counter | base | NULL | ARM | rounds negative |
+|---|---:|---:|---:|---:|
+| **cycles/node** | 4786.41 | −1.382% | **−6.835%** | 8/8 |
+| **load-stall/node** | 2754.07 | −1.675% | **−17.421%** | 8/8 |
+| **L1d miss/node** | 617.54 | −0.072% | **−6.542%** | 8/8 |
+| instructions/node | 5659.75 | +0.000% | **+5.519%** | 0/8 |
+
+**Instructions went UP 5.5% while cycles went DOWN 6.8%.** An instructions gate
+would have rejected this outright — the same shape as study 20. Cycles clear
+their null 4.9x, load-stalls 10.4x, L1 misses 91x.
+
+### Strength: a NULL, and I am reporting it as one
+
+Two independent 1466-game fixed-node screens:
+- net-vs-net on one binary (isolates the *scheme*): **+9.48 +/- 11.08**
+- binary-vs-binary on one net (isolates the *implementation*): **−1.90 +/- 10.72**
+- **pooled: +3.6 +/- 7.7 Elo over 2932 games — no detectable fidelity cost.**
+
+**I am NOT quoting the +12.6 Elo speed translation as measured strength**, at
+the study's own request: it is a non-PGO probe-frame number taken on a box
+running the trainer, and this project's probe→PGO translation has gone wrong
+**1.1-2.9x in BOTH directions**. The measured strength result is the null above.
+
+**Gates:** `check.sh` All checks passed; **Bench 587683 unchanged**; NNUE pins
+moved intentionally to `eb981b11…4f4f37` / `1985398`, updated in `check.sh` and
+CLAUDE.md in-commit.
+
+### Its own honesty, recorded — the two most reusable items
+
+- **The pre-registered offline fidelity bar FAILED** (p95 4.35 vs 3.0, p99 7.25
+  vs 5.0) and **no post-training scale scheme reaches it**. Written up as a
+  failure, not a footnote: the bar was miscalibrated, and *the games are what
+  proved it*.
+- **The weight-MSE proxy MISRANKS.** An MSE-optimal scale is 11.5% better on L2
+  and **11% worse at eval p95**. Optimising the proxy actively hurts the thing
+  we care about.
+- Two nulls: per-ROW scaling buys nothing (rows are homogeneous, k=0 for
+  21,386/22,528).
+- **Study 31's −463 was nearly exact on its own terms** (load-stalls fell
+  480/node) but priced only the *saving*; the widen+multiply cost +312
+  instructions. +17 forecast vs +12.6 delivered = **74% realisation, right on
+  study 31's own 76.5% edit-priced rate.** The discount law predicted its own
+  successor.
+- Correctness anchor: shipped `nnue-eval` is **byte-identical to an independent
+  NumPy simulation** across all 800 battery positions.
+
+### The merge — escalated correctly, and sent back with the contract
+
+Verified by me on a throwaway branch: **25 hunks across 6 files**
+(`.gitignore`, `sota_accumulator.rs`, `sota_head.rs`, `sota_simd.rs`,
+`policy.rs`, `tests/eval_file_reload.rs`), **24 commits behind main**.
+
+It stopped because "whether my i8 kernels inherit study 29's counters and probe
+pins is 29's contract, and a wrong guess is a silent eval corruption."
+**I corrected that risk assessment and sent it back to finish:**
+
+- **A wrong guess CANNOT corrupt the shipped engine.** `Cargo.toml` has no
+  `default` key (verified), so all four instrumentation features are opt-in over
+  35 cfg sites, and the probes *deliberately* compute wrong evals by design
+  (`dstpin` fails 29 tests on purpose). The real exposure is **invalidating
+  future probe measurements** — serious, but not catastrophic.
+- **Study 29 left a verifiable CONTROL that converts the guess into a
+  measurement:** build with `foldcount` post-merge and check refresh rate
+  **0.16102**, refresh rows **0.9132**, rows/fold **2.275**, pushes/node
+  **1.0000**. Reproduce those and the wiring is right.
+- The composition is clean: study 30 owns the *threat* shift, study 32 the
+  *HalfKA* multiply ⇒ `clamp(pst*ft_scale + (threat << threat_shift), 0, 255)`,
+  preserving study 30's exhaustive const-generic dispatch with no panic arm.
+- All three pins to be re-derived post-merge; they will likely move again once
+  the threat path composes in.
+
+## Perf study 33 COMPLETE and MERGED (`265de05`) — the 19.90% symbol is not what we thought
+
+6 commits, tree clean. **`src/` is byte-identical to main — verified by me
+(zero diff) — so `Bench: 587683` is unchanged by construction** and the merge
+carries only docs + `tools/perf33/`.
+
+### It reframed the target rather than optimising it
+
+1. **The site reproduces.** 410.5 stall cycles/node in the probe frame, on a
+   statistic whose byte-identical-copy null is **+0.80%**. Study 28 did not
+   measure a build artifact.
+2. **"19.90% of the profile" is roughly HALF AN INLINING BOUNDARY.** Same
+   source, PGO on: 410.5 -> **759.7** cycles/node while `Worker::do_move`
+   collapses 116.6 -> 18.0. By DWARF inline frame, only **32.87% of the PGO
+   symbol is search's own code**: `do_move` 26.12%, `next_move` 6.38%, `legal`
+   4.96%, `all_threats` 4.55%, `undo_move` 3.56%, TT `probe` 3.17%,
+   `correction_value` 2.91%, `see_ge` 2.79%. *Study 28 wrote exactly this
+   caveat about Reckless and Stockfish and never applied it to ARCHON's own PGO
+   build.*
+3. **14.5% is NNUE eviction, measured causally** via study 29's `probe-wpin`
+   (~59 cycles/node) — but 85.5% survives with every weight miss deleted.
+4. **THE MECHANISM: cost tracks LOAD COUNT, not miss count.** Its share of
+   engine stall cycles (8.80%) equals its share of retired load ops (**8.84%**)
+   to two decimals, while it holds **1.69%** of misses and **91.4% of its loads
+   hit L1**. Calibrated against `forward_into` 0.28 (overlapped streaming) and
+   `apply_at` 6.60 (serial). **This is study 31's null with a reason attached,
+   and it FORBIDS a third locality proposal here.**
+5. **`search::<NonPv>` is the engine's #1 branch-mispredict symbol** — 17.47%
+   of engine mispredicts, 4.25/node vs engine mean 24.1. Nobody had ever
+   looked. (This was one of the six angles I named in the brief.)
+
+### Its retraction, caught by its own null
+
+Commit `0e0d217`'s engine-wide load table was **wrong**: the IP->symbol map used
+the mapping's **file offset** where `nm` reports **ELF virtual addresses**,
+which differ by 0x1000 here. It resolved every sample, looked plausible, and
+summed to 100%. **Its own null caught it** (`i16_deltas_into` 0.30% where perf
+said 13.80%); after the fix the worst disagreement over 14 symbols is **0.00
+points**. The `perf`-symbolized headlines were unaffected.
+
+### No speedup landed — an honest failure, not a quit
+
+It designed one arm (skip `correction_value` in check) and **killed it before
+writing code** — an exhaustive grep showed the value is live at `mod.rs:3459`
+and `3590` inside the move loop. Two more rejected with reasons.
+
+**Its caveats, recorded:** the stall/load index of 1.00 is a ratio of two
+profiles and **the ratio has no null of its own** ("tidier than it has any
+right to be" — it only defends it because of the 0.28/6.60 calibration pair);
+the PGO comparison is a single build; and **the box was NOT quiet** (trainer at
+143% plus study 32 recording on CPU 6) so **absolute numbers are inflated
+~1.9x — it defends the ratios, not 410.5.** *That vindicates the coordination
+protocol and argues for tightening it.*
+
+## Study 35 commissioned — the do_move fusion, re-priced in the right currency
+
+Study 33's parting lead, **verified by me before commissioning**: `do_move` is
+198.4 cycles/node, and its two hottest lines are `DirtyPiece::from_move`
+re-deriving mover/victim/ep/castling geometry that `make_move_with` derives
+again immediately after. **Perf study 13 rejected fusing them — at `+41.5`
+instructions/node** (`perf-study-13-panic-edges-2026-07-29.md:179`, line
+`a2-dirty-via-hookc 6573.8 +41.5 rejected`).
+
+**That currency is now proven backwards twice on this engine:** study 20
+(−5.99% cycles, instructions **+0.19%**) and tonight's study 32 (−6.835%
+cycles, instructions **+5.519%**, 8/8 rounds, shipped). A +41.5 i/n rejection
+is not evidence.
+
+**And the mechanism agrees with the lead:** study 33 proved cost here tracks
+**load count**, not miss count — so locality proposals are forbidden and
+load-count reduction is mandated. Removing a duplicate geometry derivation is
+precisely a load-count reduction.
+
+Brief includes the **mandatory D24 perft ritual** (`make_move_with` is
+board-mutation code: `cargo test` AND `cargo test --release -- --ignored
+perft_full_suite` before landing, extended tier if make/unmake is substantially
+rewritten), the expectation that this is **node-identical so Bench 587683 must
+reproduce bit-for-bit**, a warning that study 32's merge will move the two NNUE
+pins but not Bench, and the contention protocol with study 33's ~1.9x inflation
+cited as the reason it exists.
+
+## Tick 2026-07-30 ~06:00 — THE STANDING PROFILE LIST IS NOW STALE
+
+**D49 sb168/400**, active. Heldout 0.012485 @ sb160 (ema 0.011917), sb170 due.
+**Box:** 8166 MB available, load 5.10, 166 GB disk, no `perf`/`fastchess`.
+
+**Studies:** 32 ahead=**15** (merge progressing, +2 since resume, clean),
+34 ahead=0 dirty=11 (working, nothing committed yet), 35 ahead=0 (just started).
+
+### The correction — the tick context's profile numbers no longer describe the engine
+
+The standing directive lists as unexplored:
+`i16_deltas_into 13.14%, finny_refresh_into 9.15%, forward_into 8.77%,
+init_quiets 6.35%, current_full 3.28%, search::NonPv 19.90%`, plus
+"65.75% of cache misses are in the three accumulator-fold kernels".
+
+**Two things landed tonight invalidate parts of that:**
+
+1. **`search::<NonPv>` 19.90% is NOT a search cost — study 33 (merged,
+   `265de05`).** Under PGO only **32.87%** of that symbol is search's own code.
+   The rest is inlined callees: `do_move` **26.12%**, `next_move` 6.38%,
+   `legal` 4.96%, `all_threats` 4.55%, `undo_move` 3.56%, TT `probe` 3.17%,
+   `correction_value` 2.91%, `see_ge` 2.79%. **Treating 19.90% as one
+   optimisable region is the error study 28 made.** The real item under it is
+   `do_move` at 198.4 cycles/node — which is exactly what study 35 is now
+   attacking.
+
+2. **The accumulator-fold miss share is being changed under us by study 32.**
+   Its i8 HalfKA transformer measured **−6.5% L1d misses/node and −17.4%
+   load-stalls/node** engine-wide (8/8 rounds, null-cleared 91x and 10.4x). The
+   "65.75% of cache misses in the three fold kernels" figure predates it. Once
+   study 32's merge lands, **the profile must be re-taken before any new target
+   is ranked off these numbers.**
+
+**Consequence for the loop:** after study 32 merges, the correct next move is a
+**fresh PGO profile with DWARF inline-frame decomposition** (study 33 left the
+tooling for exactly this: `tools/perf33/inline33.py`, `pernode33.py`) rather
+than commissioning another study off the stale list. Ranking targets from a
+pre-i8, symbol-region profile would repeat study 28's mistake with extra steps.
+
+### Still no games — and the reason is unchanged
+
+D49 is at 42% of schedule. The heldout curve is the better trend instrument at
+this stage (standing note: heldout beats 100-game matches for TREND), and it is
+still descending monotonically with no plateau. A self-comparison screen
+(sb168 vs sb100) would be **redundant with the heldout**; the screen that
+actually matters is **vs D48X after the cosine**, sb250+ at the earliest and
+sb400 for the real answer.

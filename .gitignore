@@ -67,3 +67,8 @@ bin30/
 # perf study 32.
 /bin32/
 /target32*/
+bin33/
+target33/
+perf33data/
+target33-pgo/
+target33-test/
