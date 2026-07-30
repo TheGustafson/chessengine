@@ -2805,3 +2805,99 @@ build. Nudged, and given the two briefing corrections at the same time.
 **A cost of running four studies, recorded honestly:** my own verification
 panels can no longer resolve cycles. Until the studies quiet down I verify on
 `instructions:u` and refuse to quote a cycles delta with a 36% spread.
+
+## ★★★ STUDY 22 — refuted my redirect's premise, MIS-CITED the reference, and was right anyway
+
+### The citation error — the exact trap CLAUDE.md documents
+
+Study 22 reported: *"'ARCHON maintains TWO 1280-wide accumulators where Stockfish
+maintains ONE' is wrong — **I can prove it from the pinned reference**"*, and
+quoted `eca43a97:src/nnue/nnue_accumulator.h` declaring
+`psq_accumulators` + `threat_accumulators`.
+
+**I checked. That code is NOT at `eca43a97`:**
+
+```
+eca43a97 (PINNED reference):  std::array<AccumulatorState, MaxSize> accumulators;   ONE
+sf_18 / HEAD (the CHECKOUT):  threat_accumulators ... psq_accumulators              TWO
+```
+
+`git grep threat_accumulators eca43a97 -- src/` returns **nothing**; the same grep
+at `sf_18` and `HEAD` hits. **It read the checkout and labelled it the pinned
+revision** — precisely what CLAUDE.md warns about ("the reference is `eca43a97`
+— never the checkout, and never a release tag"). Interesting corollary:
+**Stockfish SPLIT its accumulator into two stacks AFTER `eca43a97`**, so ARCHON's
+two-context structure resembles current SF more than it resembles our own pinned
+constants revision.
+
+### The conclusion survives, because it never rested on the citation
+
+Study 22 also **priced the merge empirically**, and that is what actually closes
+it:
+
+| | i/n |
+|---|---|
+| max saving from deleting one accumulator (`black_box`'d extra copy in `current_full`) | **≤157.4** (+55.4 L1d misses/node) |
+| cost of the refresh-trigger union (extra from-scratch threat rebuilds) | **+872** |
+| | **loses ~6:1** |
+
+HalfKA refreshes on every own-king move (0.1611/node); threats only on d/e-mirror
+crossings (0.0214/node, 6,240 instructions each). The one escape — weakening
+HalfKA's trigger to "king BUCKET changed", which `halfka_king_key`'s own doc
+comment promises — is unreachable: that key is a **bijection on all 64 squares**.
+**Dual-accumulator merge: CLOSED on measurement, not on the mis-cited quote.**
+
+### ★★ THE METHODOLOGY FINDING — bigger than the arms
+
+**Four nulls on the SAME BINARY vs its own byte-identical copy, one session:**
+
+| | |
+|---|---|
+| null 1 | **−3.40%** |
+| null 2 | −0.07% |
+| null 3 | −1.51% |
+| null 4 | **+1.42%** |
+
+**A 4.8-point spread on a change that does not exist.** Study 22 first committed
+a **−1.16% cycles** headline against a null taken 40 minutes earlier, then ran a
+three-way round-robin (base / byte-identical copy / arm, cycled together), found
+**the null itself moving +1.42%**, and **RETRACTED its own headline**.
+
+**"NULL FIRST" AS WRITTEN IS INSUFFICIENT. It must be "NULL INTERLEAVED WITH THE
+ARM".** A null taken before the arm measures a different machine state than the
+arm does. `scripts/panel3-22.sh` implements the round-robin.
+
+This also explains my own 35.8% cycles spread this tick, and it retroactively
+puts a band on every cycles number quoted today that was not interleaved —
+including study 20's −5.99% and study 21's −1.35%. **Neither is refuted; both are
+now un-reverified.**
+
+### What survived, and what it landed
+
+`sota_accumulator.rs` (`7237f6d` + `cd852f3`), node-identical 5,001,562:
+- **Hot/cold split** — `dirty`+`computed` were the last 12 B of a 5248 B `Entry`
+  (`imul rax,r9,0x1480`): four guaranteed-distinct 5 KB-strided line touches per
+  node. Now a dense 12 B/ply `Meta` array.
+- **`Box<[T; N]>` not `Box<[T]>`** — the split ALONE cost **+58.7 i/n** in
+  fat-pointer indexing; converting all three arrays turned it into **−9.3**.
+- **Finny slot probe-first** — `Option<FinnyEntry>` burned a cache line on the
+  discriminant (2752 B/slot) with `by_piece` at byte 2656: three lines 2.6 KB
+  apart per probe. Now `#[repr(C)]`, two adjacent leading lines, 2688 B,
+  validity in a `[u64; 2]` bitmap.
+- Arm 3: **measured null (+0.8 i/n)**, landed as documentation repair only and
+  labelled as such.
+
+Surviving claim: **−8.08 i/n against an exactly-zero null in the same
+round-robin** (three measurements: −9.3, −13.59, −8.08), L1d misses 2.1x and L2
+2.9x the null in the arm's direction, plus cache-line reductions that are
+structural facts off the disassembly. **Cycles: UNRESOLVED, and it says so.**
+
+Rejects: prefetch (pre-refuted twice on larger tables), the 512 dead memset bytes
+(~−2 i/n, and would cost the file its first `unsafe`), outlining `compute`'s king
+branch (shrank `current_full` 2461→1440 B then two panels **disagreed on sign**;
+reverted), min-of-N cycles (read −2.07% on two identical binaries — median only).
+
+### Top remainder
+1. `ThreatEntry` needs the identical hot/cold split — same defect, walked more often.
+2. `ThreatContext.stack` → `Box<[ThreatEntry; STACK_LEN]>` — the +58.7 i/n fat-pointer tax, unfixed there.
+3. Outline the `Fold::Refresh` arm of `at_full` (7855 B, largest eval symbol).
