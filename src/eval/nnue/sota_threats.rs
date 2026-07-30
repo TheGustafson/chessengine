@@ -911,6 +911,36 @@ pub struct ThreatContext<'a> {
     /// Per-ply, per-perspective fold state. Its own dense array so `compute`'s
     /// ancestor walk is a linear scan over 2 bytes per ply — see [`FoldState`].
     fold: Box<[FoldState; STACK_LEN]>,
+    /// Per-ply **value holder**: the ply whose [`ThreatEntry`] actually contains
+    /// ply `k`'s accumulator pair. `alias[k] == k` for a materialised entry;
+    /// `alias[k] < k` when ply `k`'s fold was a pure parent copy for BOTH
+    /// perspectives and the entry was therefore never written at all
+    /// (perf study 38).
+    ///
+    /// The invariant, and every write site maintains it:
+    /// **if `fold[k][p] == Fold::Done` then perspective `p`'s value is in
+    /// `stack[alias[k]].acc[p]`** — and `alias[alias[k]] == alias[k]`, so a
+    /// read is always ONE hop (the alias case copies the parent's holder rather
+    /// than pointing at the parent).
+    ///
+    /// It is a whole-ENTRY alias, not a per-perspective one, because
+    /// [`at_full`](Self::at_full) hands out `&[[i16; ACC]; 2]` — both
+    /// perspectives from one entry — and a per-perspective alias could not be
+    /// returned without changing the head merge kernel's parameter shape. The
+    /// measurement that says that is enough: of 1,694,891 pure-copy folds on the
+    /// study frame, **1,584,928 (93.5%) come from plies where BOTH perspectives
+    /// resolve empty together** (`foldcount` `thr_joint.n11e11`), so the cheap
+    /// form captures almost all of it.
+    ///
+    /// **INLINE, not `Box`ed**, and that is a measured choice rather than a
+    /// stylistic one. `stack`, `push` and `fold` are each a boxed array, so each
+    /// costs `compute` a base pointer; a fourth one is exactly what `Push`'s own
+    /// doc comment declines a further split over ("another base pointer to an
+    /// already register-starved `compute`"), and what study 22 priced at
+    /// +58.7 i/n in this same walk. 508 bytes at a fixed offset from `self` —
+    /// which is live anyway — needs no register of its own, and it is small
+    /// beside the 8,192 bytes of `add_scratch`/`sub_scratch` already inline here.
+    alias: [u16; STACK_LEN],
     /// Scratch raw-event buffer for [`build_deltas`], reused every fold.
     buf: DeltaBuf,
     /// Fold-time resolved-index scratch for [`apply_threat_deltas_into`], written by
@@ -974,6 +1004,14 @@ impl<'a> ThreatContext<'a> {
                 .into_boxed_slice()
                 .try_into()
                 .expect("STACK_LEN fold states"),
+            // Identity: every entry starts as its own holder, which is the
+            // correct reading of a stack whose `fold` is all `FromParent`.
+            // `from_fn` because the array is inline and const-sized — no
+            // allocation, and the index fits by the const assert above it.
+            alias: {
+                const { assert!(STACK_LEN <= u16::MAX as usize) };
+                std::array::from_fn(|i| i as u16)
+            },
             buf: DeltaBuf::new(),
             add_scratch: [[0usize; DELTA_CAP]; 2],
             sub_scratch: [[0usize; DELTA_CAP]; 2],
@@ -1015,6 +1053,7 @@ impl<'a> ThreatContext<'a> {
             }
         }
         self.fold[0] = [Fold::Done; 2];
+        self.alias[0] = 0;
     }
 
     /// The current (cursor top) accumulator pair, `[White, Black]` — the input
@@ -1057,7 +1096,22 @@ impl<'a> ThreatContext<'a> {
         // below (`build_deltas` yields no events, so the empty-list branch
         // copies it), which is the same value the alias returned.
         self.compute(ply);
-        let entry = &self.stack[ply];
+        // Perf study 38: `alias[ply]` is `ply` for a materialised entry and an
+        // ancestor for a ply whose fold was a pure parent copy — see the
+        // field's own doc.
+        //
+        // `.min(ply)` is a NO-OP on the value and a RANGE FACT for the
+        // optimizer — the same move as the threat resolver's `& 63`. The
+        // invariant is `alias[k] <= k`, but LLVM only sees `u16 → 0..=65535`
+        // and cannot prove the index is inside a `[ThreatEntry; STACK_LEN]`,
+        // so without it this load carries a compare and a
+        // `panic_bounds_check` edge in the hottest symbol in the module.
+        // `ply` is already known in range: `compute(ply)` indexed
+        // `self.fold[ply]` one line above. It is also the same defensive shape
+        // as `EvalContext::acc_ply`'s `saturating_sub` — if the invariant were
+        // ever broken this reads a stale but IN-RANGE entry instead of walking
+        // off the stack.
+        let entry = &self.stack[usize::from(self.alias[ply]).min(ply)];
         (&entry.acc, &entry.psqt)
     }
 
@@ -1104,6 +1158,9 @@ impl<'a> ThreatContext<'a> {
         // HalfKA-only engine reaches.
         if self.weights.is_empty() {
             self.fold[child] = [Fold::Done; 2];
+            // The entry is never written on this branch and every entry is
+            // all-zero, so the ply is its own holder by construction.
+            self.alias[child] = child as u16;
             return;
         }
 
@@ -1228,6 +1285,10 @@ impl<'a> ThreatContext<'a> {
                 // `discharge_refresh` at exactly six integer argument
                 // registers -- see its doc comment.
                 self.fold[*a][p] = Fold::Done;
+                // A rebuild WRITES this entry, so the ply is now its own value
+                // holder. (It cannot have been aliased: the alias below is only
+                // taken when both perspectives are `FromParent`.)
+                self.alias[*a] = *a as u16;
             }
         }
         // Hoist the magic-table LazyLock deref out of the per-touch geometry
@@ -1339,17 +1400,85 @@ impl<'a> ThreatContext<'a> {
             // that neither attacks nor is attacked changes none of them.
             // Measure the surviving rate before touching it; the two spellings
             // of this copy are 45.4 i/n apart (D33 reviewer C, M6/N4).
+            #[cfg(feature = "foldcount")]
+            super::foldcount::note_thr_joint(need, lens);
+            // The parent's VALUE HOLDER, which is the parent ply itself unless
+            // the parent was a pure-copy ply the alias below elided.
+            // `.min(child - 1)` for the reason `at_full`'s `.min(ply)` is
+            // there: `src` indexes `before`, whose length is exactly `child`,
+            // and the range fact is what keeps the fold's parent load free of
+            // a bounds compare and a panic edge.
+            let src = usize::from(self.alias[child - 1]).min(child - 1);
+            // ── PERF STUDY 38: THE PURE-COPY PLY IS ALIASED, NOT COPIED ──────
+            //
+            // A ply whose resolved threat delta is empty for BOTH perspectives
+            // has, by definition, exactly its parent's accumulator pair. Rather
+            // than materialise that by copying 2 x 2560 bytes, point the ply at
+            // its parent's holder and write nothing.
+            //
+            // It is 25.2% of all folded plies and 93.5% of all pure copies
+            // (`foldcount` `thr_joint`, study frame): 771,479 of 3,063,994.
+            // The remaining 6.5% are plies where ONE perspective is empty and
+            // the other folds or refreshes — those still copy, because the
+            // entry must be materialised for the other perspective and
+            // `at_full` hands out both perspectives from ONE entry.
+            // Perf study 38's NULL ARM (`--features null38`): the alias
+            // MACHINERY -- the extra array, its read in `at_full`, its read of
+            // the parent's holder here, and its per-fold store -- with the
+            // alias itself never taken, so every copy still happens. It exists
+            // because the arm's own delta cannot separate "what the copy cost"
+            // from "what carrying a fourth base pointer through `compute`
+            // costs", and this module has been bitten by exactly that before
+            // (study 22 measured +58.7 i/n from fat-pointer length loads alone).
+            const ALIAS_ENABLED: bool = !cfg!(feature = "null38");
+            if ALIAS_ENABLED && need[0] && need[1] && lens[0] == (0, 0) && lens[1] == (0, 0) {
+                #[cfg(feature = "foldcount")]
+                {
+                    super::foldcount::THR_ALIAS.hit(0);
+                }
+                self.alias[child] = src as u16;
+                self.fold[child] = [Fold::Done; 2];
+                continue;
+            }
+            // Anything below WRITES `stack[child]`, so the ply becomes its own
+            // holder. Both perspectives are materialised on every path that
+            // gets here — one of them possibly by `discharge_refresh` above —
+            // which is what makes a whole-entry alias sound.
+            self.alias[child] = child as u16;
             for (p, &needs_fold) in need.iter().enumerate() {
                 if !needs_fold {
                     continue;
                 }
                 let (add_len, sub_len) = lens[p];
                 let (before, after) = self.stack.split_at_mut(child);
-                let parent = &before[child - 1];
+                let parent = &before[src];
                 let entry = &mut after[0];
                 if add_len == 0 && sub_len == 0 {
-                    // Chunked so LLVM emits 40 inline 64-byte moves instead of
-                    // one 2560-byte libc `memcpy` call.
+                    // ⚠ THE CHUNKING IS A HINT, NOT A GUARANTEE — CHECK IT,
+                    // DO NOT TRUST THIS COMMENT.
+                    //
+                    // Perf study 14 wrote the loop this way and recorded that
+                    // "LLVM emits 40 inline 64-byte moves instead of one
+                    // 2560-byte libc `memcpy` call". Perf study 38 read the
+                    // shipped binary and found the opposite: at `859a442` this
+                    // site was `mov $0xa00,%edx; call *memcpy@GLIBC`, twice,
+                    // because LLVM's loop-idiom pass re-forms the call. Same
+                    // source text, both outcomes, in binaries built the same
+                    // day — the pre-study-38 build called `memcpy`, the build
+                    // with the parent alias above unrolled it inline. The
+                    // decision depends on surrounding context and LLVM is free
+                    // to re-take it.
+                    //
+                    // It matters: study 38 priced one such call by a doubled-
+                    // copy probe at **187.9 instructions, 19.5 branches and
+                    // 194.7 data-cache accesses**, against ~80 vector moves for
+                    // the inline form.
+                    //
+                    // So do not assert an outcome here — MEASURE it:
+                    //     objdump -d <binary> > /tmp/a.asm
+                    //     python3 tools/perf38/memcpy38.py /tmp/a.asm | grep at_full
+                    // A hit means the idiom re-formed and this site is paying
+                    // a library call again.
                     //
                     // `chunks_exact` DROPS a remainder, so a width that is not
                     // a multiple of 32 would silently leave the tail of

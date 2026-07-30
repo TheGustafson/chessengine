@@ -1,0 +1,16 @@
+r1 dflt nodes=5001562 instructions:u=5941.035768 branches:u=623.807651 L1-dcache-loads:u=3021.800276 
+r1 rep nodes=5001562 instructions:u=5941.036597 branches:u=623.807902 L1-dcache-loads:u=3026.358284 
+r2 rep nodes=5001562 instructions:u=5941.036450 branches:u=623.807846 L1-dcache-loads:u=3023.475840 
+r2 dflt nodes=5001562 instructions:u=5941.035973 branches:u=623.807741 L1-dcache-loads:u=3027.783568 
+r3 dflt nodes=5001562 instructions:u=5941.035840 branches:u=623.807671 L1-dcache-loads:u=3024.061646 
+r3 rep nodes=5001562 instructions:u=5941.036617 branches:u=623.807915 L1-dcache-loads:u=3022.473365 
+r4 rep nodes=5001562 instructions:u=5941.037028 branches:u=623.808334 L1-dcache-loads:u=3022.541185 
+r4 dflt nodes=5001562 instructions:u=5941.035847 branches:u=623.807736 L1-dcache-loads:u=3014.394690 
+r5 dflt nodes=5001562 instructions:u=5941.036305 branches:u=623.808101 L1-dcache-loads:u=3022.664311 
+r5 rep nodes=5001562 instructions:u=5941.036585 branches:u=623.807930 L1-dcache-loads:u=3024.247774 
+r6 rep nodes=5001562 instructions:u=5941.036667 branches:u=623.807945 L1-dcache-loads:u=3021.305240 
+r6 dflt nodes=5001562 instructions:u=5941.035958 branches:u=623.807708 L1-dcache-loads:u=3025.287341 
+r7 dflt nodes=5001562 instructions:u=5941.035916 branches:u=623.807716 L1-dcache-loads:u=3018.555432 
+r7 rep nodes=5001562 instructions:u=5941.036621 branches:u=623.807983 L1-dcache-loads:u=3013.620843 
+r8 rep nodes=5001562 instructions:u=5941.036692 branches:u=623.808023 L1-dcache-loads:u=3008.463783 
+r8 dflt nodes=5001562 instructions:u=5941.035978 branches:u=623.807711 L1-dcache-loads:u=3022.300904 

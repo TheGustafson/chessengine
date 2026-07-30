@@ -122,6 +122,12 @@ probe-wpin = ["sota"]
 # costs anything. Implies `probe-accpin`: pinning writes without pinning reads
 # would measure a third thing.
 probe-dstpin = ["probe-accpin"]
+# Perf study 38's NULL ARM for the threat-fold parent alias: builds the alias
+# array, its reads and its stores, but never TAKES the alias, so every pure-copy
+# fold still runs its 2560-byte copy. Its purpose is to price the machinery
+# separately from the copies it removes -- the same role `null34` plays for the
+# movepick split. Measurement only, never shipped.
+null38 = ["sota"]
 
 [dev-dependencies]
 # Test/bench-only (D15: runtime [dependencies] stays empty; dev-deps allowed).
