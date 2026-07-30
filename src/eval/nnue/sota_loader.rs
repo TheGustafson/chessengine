@@ -90,7 +90,7 @@
 //! [`super::sota_features`].
 
 use super::aligned::{Aligned, Blocks};
-use super::sota_features::{ACC, HALFKA_DIMS, THREAT_DIMS};
+use super::sota_features::{ACC, HALFKA_DIMS, THREAT_DIMS, ThreatRemap};
 use super::sota_head::{
     self, BUCKETS, L1, L1Biases, L1Weights, L2, L2Biases, L2Weights, L3, L3Weights, SotaHead,
 };
@@ -124,6 +124,16 @@ pub const PSQT_MAGIC: [u8; 4] = *b"PSQ1";
 /// skip_section_bytes — b"SKP1" | u32 num_buckets | u32 hl | f32[hl·buckets],
 /// row-major, raw f32; rides AFTER the PSQ1 section).
 pub const SKIP_MAGIC: [u8; 4] = *b"SKP1";
+/// TRM1 magic (the Recode POC threat re-coding,
+/// `docs/research/learned-feature-code-study-2026-07-30.md` §6.1 mode (ii)):
+/// `b"TRM1" | u32 dims (= THREAT_DIMS) | u32 rows | u16[dims]` little-endian,
+/// riding after the SKP1 section (or after PSQ1 / the payload when the earlier
+/// sections are absent). When present, the header's `threat_dims` field
+/// carries `rows` — the actual threat weight-table row count, `1..=60720` —
+/// and every remap entry must be `< rows`. A net whose header says 60,720 may
+/// still carry a TRM1 (the identity/shuffle instrumentation arms); a net whose
+/// header says less MUST.
+pub const REMAP_MAGIC: [u8; 4] = *b"TRM1";
 /// PSQ1 section header length: magic + u32 num_buckets + u32 rows.
 const PSQT_HEADER_LEN: usize = 12;
 
@@ -148,9 +158,17 @@ pub struct SotaNetwork {
     pub halfka_weights: Aligned<i8>,
     /// Shared FT bias: `[ACC]` i16 (seeds the HalfKA accumulator; threats seed 0).
     pub ft_bias: Aligned<i16>,
-    /// FullThreats FT weights, feature-major: `[THREAT_DIMS · ACC]` i8.
+    /// FullThreats FT weights, feature-major: `[threat_rows · ACC]` i8.
     /// Empty if the net has no threats channel.
     pub threat_weights: Aligned<i8>,
+    /// Number of rows in [`threat_weights`](Self::threat_weights):
+    /// `THREAT_DIMS` for every identity-coded net, the compressed row count
+    /// for a TRM1-carrying net, 0 for a threat-less net.
+    pub threat_rows: usize,
+    /// The threat re-coding table (TRM1 section), or `None` = identity. See
+    /// [`super::sota_features::ThreatRemap`]. A sized box, so the hot paths
+    /// carry a thin pointer and fixed-size indexing.
+    pub threat_remap: Option<Box<ThreatRemap>>,
     /// T6c FT PSQT skip table, row-major `[rows · BUCKETS]` i32 with the HalfKA
     /// rows first, then the threat rows (module docs). Empty when the net has
     /// no PSQ1 section — every psqt path is then inert and the eval is
@@ -194,6 +212,8 @@ impl PartialEq for SotaNetwork {
             && self.head.ft_scale == other.head.ft_scale
             && self.ft_bias == other.ft_bias
             && self.threat_weights == other.threat_weights
+            && self.threat_rows == other.threat_rows
+            && self.threat_remap == other.threat_remap
             && self.psqt_weights == other.psqt_weights
             && self.head.network_scale == other.head.network_scale
             && self.head.threat_shift == other.head.threat_shift
@@ -237,6 +257,9 @@ pub enum SotaNnueError {
     },
     /// Declared payload length didn't match the architecture's computed size.
     BadPayloadLen { expected: u64, found: u64 },
+    /// A TRM1 remap entry points past the net's threat row count, or a
+    /// compressed threat table arrived without its TRM1 section.
+    BadRemap { detail: &'static str },
     /// Payload checksum mismatch.
     ChecksumMismatch { expected: u64, found: u64 },
 }
@@ -280,6 +303,9 @@ impl fmt::Display for SotaNnueError {
                 f,
                 "CENN payload_len {found} != {expected} (architecture mismatch)"
             ),
+            SotaNnueError::BadRemap { detail } => {
+                write!(f, "CENN TRM1 threat remap invalid: {detail}")
+            }
             SotaNnueError::ChecksumMismatch { expected, found } => write!(
                 f,
                 "CENN checksum mismatch: header {expected:#018x}, computed {found:#018x}"
@@ -299,11 +325,12 @@ impl Error for SotaNnueError {
 
 // ─── Payload size helpers ──────────────────────────────────────────────────
 
-/// Payload byte length for a net WITH threats.
-fn payload_len_with_threats() -> usize {
+/// Payload byte length for a net WITH threats (`threat_rows` weight rows —
+/// `THREAT_DIMS` unless a TRM1 re-coding shrinks the table).
+fn payload_len_with_threats(threat_rows: usize) -> usize {
     let halfka_bytes = HALFKA_DIMS * ACC * 2; // i16
     let bias_bytes = ACC * 2; // i16
-    let threat_bytes = THREAT_DIMS * ACC; // i8
+    let threat_bytes = threat_rows * ACC; // i8
     let l1w_bytes = BUCKETS * L2 * L1; // i8
     let l1b_bytes = BUCKETS * L2 * 4; // f32
     let l2w_bytes = BUCKETS * L2 * L3 * 4; // f32
@@ -425,8 +452,23 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         Ok(())
     };
     check_dim(8, "halfka_dims", HALFKA_DIMS)?;
-    let threat_dim_expected = if has_threats { THREAT_DIMS } else { 0 };
-    check_dim(12, "threat_dims", threat_dim_expected)?;
+    // The threat_dims field carries the threat weight-table ROW count. For
+    // every net before the TRM1 re-coding that is exactly THREAT_DIMS (or 0
+    // without the flag); a compressed net says how many rows it actually
+    // carries, and the TRM1 trailer (validated below) maps the 60,720
+    // geometric codes onto them.
+    let threat_rows = read_u32(bytes, 12) as usize;
+    if has_threats {
+        if !(1..=THREAT_DIMS).contains(&threat_rows) {
+            return Err(SotaNnueError::WrongDim {
+                field: "threat_dims",
+                expected: THREAT_DIMS as u32,
+                found: threat_rows as u32,
+            });
+        }
+    } else {
+        check_dim(12, "threat_dims", 0)?;
+    }
     check_dim(16, "acc_width", ACC)?;
     check_dim(20, "l2_width", L2)?;
     check_dim(24, "l3_width", L3)?;
@@ -476,7 +518,7 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
 
     // Payload length + checksum.
     let expected_payload = if has_threats {
-        payload_len_with_threats()
+        payload_len_with_threats(threat_rows)
     } else {
         payload_len_no_threats()
     };
@@ -529,9 +571,9 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         .map(|(&b, &s)| round_half_away(i32::from(b), i32::from(s)) as i16)
         .collect();
 
-    // Threats FT weights: i8[THREAT_DIMS · ACC], feature-major (if present).
+    // Threats FT weights: i8[threat_rows · ACC], feature-major (if present).
     let threat_weights = if has_threats {
-        read_i8s_aligned(payload, &mut cur, THREAT_DIMS * ACC)
+        read_i8s_aligned(payload, &mut cur, threat_rows * ACC)
     } else {
         Aligned::from_iter_len(0, std::iter::empty())
     };
@@ -569,25 +611,44 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     // trailing bytes are ignored exactly as this loader always has.
     let rest = &bytes[total_need..];
     let psqt_weights = if rest.len() >= 4 && rest[0..4] == PSQT_MAGIC {
-        parse_psqt_section(rest, has_threats)?
+        parse_psqt_section(rest, threat_rows)?
     } else {
         Aligned::from_iter_len(0, std::iter::empty())
     };
     // D47V: optional SKP1 trailer after PSQ1 (or directly, on a psqt-less
     // net). Empty slice = no skip lane = the pre-D47V eval, bit-identical.
-    let skip_weights = {
-        let psqt_len = if psqt_weights.is_empty() {
+    let psqt_len = if psqt_weights.is_empty() {
+        0
+    } else {
+        PSQT_HEADER_LEN + psqt_weights.len() * 4
+    };
+    let tail = &rest[psqt_len.min(rest.len())..];
+    let skip_weights = if tail.len() >= 4 && tail[0..4] == SKIP_MAGIC {
+        parse_skip_section(tail)?
+    } else {
+        Vec::new().into_boxed_slice()
+    };
+    // Recode POC: optional TRM1 trailer after SKP1 (or directly after PSQ1 /
+    // the payload). Mandatory when the header's threat row count is
+    // compressed; `None` = the identity code = every net before this change.
+    let threat_remap = {
+        let skip_len = if skip_weights.is_empty() {
             0
         } else {
-            PSQT_HEADER_LEN + psqt_weights.len() * 4
+            12 + skip_weights.len() * 4
         };
-        let tail = &rest[psqt_len.min(rest.len())..];
-        if tail.len() >= 4 && tail[0..4] == SKIP_MAGIC {
-            parse_skip_section(tail)?
+        let tail2 = &tail[skip_len.min(tail.len())..];
+        if tail2.len() >= 4 && tail2[0..4] == REMAP_MAGIC {
+            Some(parse_remap_section(tail2, threat_rows)?)
         } else {
-            Vec::new().into_boxed_slice()
+            None
         }
     };
+    if has_threats && threat_rows != THREAT_DIMS && threat_remap.is_none() {
+        return Err(SotaNnueError::BadRemap {
+            detail: "compressed threat table (threat_dims < 60720) without a TRM1 section",
+        });
+    }
 
     let head = SotaHead {
         l1_weights,
@@ -610,9 +671,60 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         halfka_weights,
         ft_bias,
         threat_weights,
+        threat_rows: if has_threats { threat_rows } else { 0 },
+        threat_remap,
         psqt_weights,
         head,
     })
+}
+
+/// Parse a TRM1 section (starting at its magic): the threat re-coding table.
+/// Strict: `dims` must equal [`THREAT_DIMS`], `rows` must equal the header's
+/// threat row count, and every entry must be `< rows` — that validation is
+/// what lets the fold paths index the weight table without per-event bounds
+/// checks. Tolerant of further trailing bytes (future sections).
+fn parse_remap_section(sec: &[u8], threat_rows: usize) -> Result<Box<ThreatRemap>, SotaNnueError> {
+    const HDR: usize = 12;
+    if sec.len() < HDR {
+        return Err(SotaNnueError::TooShort {
+            need: HDR,
+            got: sec.len(),
+        });
+    }
+    let dims = read_u32(sec, 4);
+    if dims as usize != THREAT_DIMS {
+        return Err(SotaNnueError::WrongDim {
+            field: "remap_dims",
+            expected: THREAT_DIMS as u32,
+            found: dims,
+        });
+    }
+    let rows = read_u32(sec, 8);
+    if rows as usize != threat_rows {
+        return Err(SotaNnueError::WrongDim {
+            field: "remap_rows",
+            expected: threat_rows as u32,
+            found: rows,
+        });
+    }
+    let need = HDR + THREAT_DIMS * 2;
+    if sec.len() < need {
+        return Err(SotaNnueError::TooShort {
+            need,
+            got: sec.len(),
+        });
+    }
+    let mut table = Box::new([0u16; THREAT_DIMS]);
+    for (dst, src) in table.iter_mut().zip(sec[HDR..need].chunks_exact(2)) {
+        let v = u16::from_le_bytes([src[0], src[1]]);
+        if usize::from(v) >= threat_rows {
+            return Err(SotaNnueError::BadRemap {
+                detail: "remap entry >= threat row count",
+            });
+        }
+        *dst = v;
+    }
+    Ok(table)
 }
 
 /// Parse an SKP1 section (starting at its magic). Strict on this build's
@@ -757,7 +869,7 @@ fn parse_skip_section(sec: &[u8]) -> Result<Box<[f32]>, SotaNnueError> {
 /// equal this build's [`BUCKETS`], the row count must equal the net's feature
 /// space (`HALFKA_DIMS` plus `THREAT_DIMS` iff threats), and the full
 /// `rows · BUCKETS` i32 table must be present.
-fn parse_psqt_section(sec: &[u8], has_threats: bool) -> Result<Aligned<i32>, SotaNnueError> {
+fn parse_psqt_section(sec: &[u8], threat_rows: usize) -> Result<Aligned<i32>, SotaNnueError> {
     if sec.len() < PSQT_HEADER_LEN {
         return Err(SotaNnueError::TooShort {
             need: PSQT_HEADER_LEN,
@@ -772,7 +884,10 @@ fn parse_psqt_section(sec: &[u8], has_threats: bool) -> Result<Aligned<i32>, Sot
             found: num_buckets,
         });
     }
-    let expected_rows = HALFKA_DIMS + if has_threats { THREAT_DIMS } else { 0 };
+    // `threat_rows` is 0 for a threat-less net, the (possibly compressed)
+    // weight-table row count otherwise — the PSQ1 threat rows live in the same
+    // re-coded space as the weight rows.
+    let expected_rows = HALFKA_DIMS + threat_rows;
     let rows = read_u32(sec, 8);
     if rows as usize != expected_rows {
         return Err(SotaNnueError::WrongDim {
@@ -895,7 +1010,7 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
 
     // ── Payload ────────────────────────────────────────────────────────
     let expected_payload = if has_threats {
-        payload_len_with_threats()
+        payload_len_with_threats(net.threat_rows)
     } else {
         payload_len_no_threats()
     };
@@ -958,7 +1073,11 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
     out.extend_from_slice(&(if v5 { CENN_V5_VERSION } else { CENN_V2_VERSION }).to_le_bytes());
     out.extend_from_slice(&flags.to_le_bytes());
     out.extend_from_slice(&(HALFKA_DIMS as u32).to_le_bytes());
-    let threat_dim = if has_threats { THREAT_DIMS as u32 } else { 0 };
+    let threat_dim = if has_threats {
+        net.threat_rows as u32
+    } else {
+        0
+    };
     out.extend_from_slice(&threat_dim.to_le_bytes());
     out.extend_from_slice(&(ACC as u32).to_le_bytes());
     out.extend_from_slice(&(L2 as u32).to_le_bytes());
@@ -988,6 +1107,16 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
         out.extend_from_slice(&(rows as u32).to_le_bytes());
         for &w in net.psqt_weights.iter() {
             out.extend_from_slice(&w.to_le_bytes());
+        }
+    }
+    // Optional TRM1 trailer (Recode POC): present only when the net carries a
+    // threat re-coding, so every other net serializes byte-identically.
+    if let Some(remap) = &net.threat_remap {
+        out.extend_from_slice(&REMAP_MAGIC);
+        out.extend_from_slice(&(THREAT_DIMS as u32).to_le_bytes());
+        out.extend_from_slice(&(net.threat_rows as u32).to_le_bytes());
+        for &r in remap.iter() {
+            out.extend_from_slice(&r.to_le_bytes());
         }
     }
     out
@@ -1135,6 +1264,8 @@ pub(crate) mod tests {
             halfka_weights,
             ft_bias,
             threat_weights,
+            threat_rows: THREAT_DIMS,
+            threat_remap: None,
             psqt_weights: Vec::new().into(),
             head: SotaHead {
                 l1_weights,
@@ -1180,6 +1311,7 @@ pub(crate) mod tests {
     fn test_net_no_threats() -> SotaNetwork {
         let mut full = test_net_with_threats();
         full.threat_weights = Vec::new().into();
+        full.threat_rows = 0;
         full
     }
 
@@ -1196,6 +1328,145 @@ pub(crate) mod tests {
         let mut net = test_net_with_threats();
         net.psqt_weights = test_psqt_table();
         net
+    }
+
+    /// The Recode POC fixture pair: a **compressed** net (`ROWS` threat rows +
+    /// a TRM1 surjection) and its **scattered twin** (full 60,720-row tables
+    /// with `W'[t] = Wsmall[remap[t]]`, carrying an identity-sized TRM1 so
+    /// both nets exercise the remap path). The two must evaluate
+    /// bit-identically on every position — that equality is the whole
+    /// correctness argument for deploy mode (ii), and `recode_pair_is_eval
+    /// _identical_over_a_game` in `sota_context` pins it end-to-end through
+    /// the incremental accumulators. Both carry PSQ1 threat rows so the skip
+    /// channel is exercised too.
+    pub(crate) fn test_recode_pair_pub() -> (SotaNetwork, SotaNetwork) {
+        const ROWS: usize = 4096;
+        let mut prng = Prng::new(0x5EC0_DE01);
+
+        // A deterministic surjection covering every target row (entry i % ROWS
+        // guarantees surjectivity for i < ROWS; the rest scatter pseudo-randomly).
+        let mut remap = Box::new([0u16; THREAT_DIMS]);
+        for (i, r) in remap.iter_mut().enumerate() {
+            *r = if i < ROWS {
+                i as u16
+            } else {
+                (prng.rand64() % ROWS as u64) as u16
+            };
+        }
+
+        // Small tables: ROWS weight rows + ROWS psqt rows.
+        let small_i8 = |prng: &mut Prng| -> i8 { (prng.rand64() % 121) as i8 - 60 };
+        let w_small: Aligned<i8> = (0..ROWS * ACC).map(|_| small_i8(&mut prng)).collect();
+        let psqt_small: Vec<i32> = (0..ROWS * BUCKETS)
+            .map(|_| (prng.rand64() % 20001) as i32 - 10000)
+            .collect();
+
+        // The compressed net.
+        let mut compressed = test_net_with_threats();
+        compressed.threat_weights = w_small.iter().copied().collect();
+        compressed.threat_rows = ROWS;
+        compressed.threat_remap = Some(remap.clone());
+        let halfka_psqt: Vec<i32> = test_psqt_table()[..HALFKA_DIMS * BUCKETS].to_vec();
+        compressed.psqt_weights = halfka_psqt
+            .iter()
+            .copied()
+            .chain(psqt_small.iter().copied())
+            .collect();
+
+        // The scattered twin: full-size tables that read the SAME values
+        // through the identity code.
+        let mut scattered = test_net_with_threats();
+        scattered.threat_weights = remap
+            .iter()
+            .flat_map(|&r| {
+                let r = usize::from(r);
+                w_small[r * ACC..(r + 1) * ACC].iter().copied()
+            })
+            .collect();
+        scattered.threat_rows = THREAT_DIMS;
+        scattered.threat_remap = Some(Box::new(std::array::from_fn(|i| i as u16)));
+        scattered.psqt_weights = halfka_psqt
+            .iter()
+            .copied()
+            .chain(remap.iter().flat_map(|&r| {
+                let r = usize::from(r);
+                psqt_small[r * BUCKETS..(r + 1) * BUCKETS].iter().copied()
+            }))
+            .collect();
+
+        (compressed, scattered)
+    }
+
+    /// A compressed TRM1 net round-trips through serialize/load bit-exactly,
+    /// and the header's threat_dims field carries the compressed row count.
+    #[test]
+    fn round_trip_with_remap() {
+        let (compressed, scattered) = test_recode_pair_pub();
+        for net in [&compressed, &scattered] {
+            let bytes = serialize(net);
+            assert_eq!(
+                read_u32(&bytes, 12) as usize,
+                net.threat_rows,
+                "header threat_dims must carry the row count"
+            );
+            let back = load_v2_bytes(&bytes).expect("remap net loads");
+            assert_eq!(*net, back);
+        }
+    }
+
+    /// A compressed threat table without its TRM1 section must be rejected,
+    /// and so must a remap entry pointing past the row count.
+    #[test]
+    fn rejects_compressed_without_trm1_and_bad_entries() {
+        let (compressed, _) = test_recode_pair_pub();
+        let good = serialize(&compressed);
+
+        // Truncate the TRM1 section (it is the final trailer).
+        let trm1_len = 12 + THREAT_DIMS * 2;
+        let bytes = &good[..good.len() - trm1_len];
+        assert!(matches!(
+            load_v2_bytes(bytes),
+            Err(SotaNnueError::BadRemap { .. })
+        ));
+
+        // Corrupt one remap entry to 0xFFFF (>= ROWS).
+        let mut bytes = good.clone();
+        let n = bytes.len();
+        bytes[n - 2] = 0xFF;
+        bytes[n - 1] = 0xFF;
+        assert!(matches!(
+            load_v2_bytes(&bytes),
+            Err(SotaNnueError::BadRemap { .. })
+        ));
+    }
+
+    /// The scattered twin and the compressed net produce identical
+    /// from-scratch accumulators (the projection identity, one position).
+    /// The end-to-end game-walk twin lives in `sota_context`.
+    #[test]
+    fn recode_pair_matches_on_refresh() {
+        use super::super::sota_features::refresh_threat_into;
+        let (compressed, scattered) = test_recode_pair_pub();
+        let board = crate::board::Board::startpos();
+        for persp in crate::types::Color::ALL {
+            let mut a = [0i16; ACC];
+            let mut b = [0i16; ACC];
+            refresh_threat_into(
+                &mut a,
+                &compressed.threat_weights,
+                &board,
+                persp,
+                compressed.threat_remap.as_deref(),
+            );
+            refresh_threat_into(
+                &mut b,
+                &scattered.threat_weights,
+                &board,
+                persp,
+                scattered.threat_remap.as_deref(),
+            );
+            assert_eq!(a, b, "compressed and scattered accumulators must agree");
+        }
     }
 
     #[test]
@@ -1218,7 +1489,10 @@ pub(crate) mod tests {
     fn cen2_implies_the_legacy_threat_frame() {
         let bytes = serialize(&test_net_with_threats());
         assert_eq!(&bytes[0..4], b"CEN2");
-        assert_eq!(bytes.len(), HEADER_V2_LEN + payload_len_with_threats());
+        assert_eq!(
+            bytes.len(),
+            HEADER_V2_LEN + payload_len_with_threats(THREAT_DIMS)
+        );
         let back = load_v2_bytes(&bytes).expect("v2 loads");
         assert_eq!(back.head.threat_shift, 2);
         assert_eq!(
@@ -1508,7 +1782,7 @@ pub(crate) mod tests {
             + BUCKETS * L3 * 4                // l2b f32
             + BUCKETS * L3 * 4                // l3w f32
             + BUCKETS * 4; // l3b f32
-        assert_eq!(payload_len_with_threats(), expected);
+        assert_eq!(payload_len_with_threats(THREAT_DIMS), expected);
 
         // Verify the serialized net has the right total size.
         let net = test_net_with_threats();

@@ -505,7 +505,8 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
               threats: bool = True, target_offset: float = 0.0,
               piece_rebalance: bool = False,
               wdl_filter: bool = False,
-              wdl_filter_floor: float = 0.0) -> dict:
+              wdl_filter_floor: float = 0.0,
+              threat_remap: np.ndarray | None = None) -> dict:
     """records -> the dense/sparse training tensors, bullet-mapper-parity.
 
     Returns dict with:
@@ -540,6 +541,14 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
     }
     if threats:
         th = threat_batch(dec)
+        if threat_remap is not None:
+            # Recode POC (learned-feature-code study §6.1): re-code the raw
+            # 60,720-space indices onto the candidate row space. -1 padding is
+            # preserved; the embedding table is (threat_rows, hl). The engine
+            # applies the SAME u16 table at its resolver chokepoint (TRM1
+            # section), so trainer and engine cannot disagree by construction.
+            th = np.where(th >= 0,
+                          threat_remap[np.maximum(th, 0)].astype(np.int32), th)
         out["th_stm"], out["th_ntm"] = th[:, 0], th[:, 1]
 
     score = recs["score"].astype(np.float32)

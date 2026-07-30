@@ -160,6 +160,21 @@ pub fn halfka_oriented(perspective: Color, sq: Square, king_sq: Square) -> usize
 /// FullThreats feature-space dimension.
 pub const THREAT_DIMS: usize = 60720;
 
+/// A learned re-coding of the FullThreats index space (the Recode POC,
+/// `docs/research/learned-feature-code-study-2026-07-30.md` §6.1 mode (ii)):
+/// a surjection from the 60,720 geometric relation codes onto the net's actual
+/// threat row space (`SotaNetwork::threat_rows` rows). Carried by the net
+/// (CENN `TRM1` section), applied at the single resolver chokepoint
+/// ([`ThreatResolver::index_decoded`]) that both the from-scratch and
+/// incremental paths share — so the two cannot drift. `None` everywhere means
+/// the identity code (every net before this change).
+///
+/// `u16` fits because `THREAT_DIMS < 65536` and the target row space is never
+/// larger than the source. The loader validates every entry `< threat_rows`,
+/// which is what lets the fold paths index the weight table without a per-event
+/// bounds check.
+pub type ThreatRemap = [u16; THREAT_DIMS];
+
 /// SF piece code: white P..K = 1..6, black P..K = 9..14 (color = bit 3). The
 /// gap layout is deliberate — XOR-8 flips color, which is the trick FullThreats
 /// uses to swap perspective (`attacker ^ 8·persp`).
@@ -406,21 +421,39 @@ pub fn threat_index(
 /// re-run per event; a resolve loop builds one of these per fold and pays
 /// them once. [`index`](Self::index) is the same arithmetic as
 /// [`threat_index`] (which now delegates here), so the two cannot drift.
-pub(crate) struct ThreatResolver {
+pub(crate) struct ThreatResolver<'r> {
     tables: &'static ThreatTables,
     orientation: u8,
     swap: usize,
+    /// The net's threat re-coding, or `None` for the identity code. `Option`
+    /// rather than a static identity table so a remap-less net pays a
+    /// predicted branch per event instead of a 121 KB table's worth of new
+    /// data traffic (see [`ThreatRemap`]).
+    remap: Option<&'r ThreatRemap>,
 }
 
-impl ThreatResolver {
+impl<'r> ThreatResolver<'r> {
+    /// Identity-code resolver — the raw 60,720-space geometry, what the
+    /// datagen exporters and [`threat_index`] speak.
     #[inline]
     pub(crate) fn new(perspective: Color, ksq: Square) -> Self {
+        Self::with_remap(perspective, ksq, None)
+    }
+
+    /// Resolver with the net's threat re-coding applied ([`ThreatRemap`]).
+    #[inline]
+    pub(crate) fn with_remap(
+        perspective: Color,
+        ksq: Square,
+        remap: Option<&'r ThreatRemap>,
+    ) -> Self {
         let p = perspective as u8;
         ThreatResolver {
             tables: &THREAT_TABLES,
             orientation: orient_threats(ksq) ^ (56 * p),
             // 0 or 8: flips the piece color bit.
             swap: 8 * p as usize,
+            remap,
         }
     }
 
@@ -471,8 +504,17 @@ impl ThreatResolver {
         if base >= THREAT_DIMS as u32 {
             return None; // excluded / semi-excluded
         }
-        let idx = base + t.offsets[att][from_o] + t.lut2[att][from_o][to_o] as u32;
-        Some(idx as usize)
+        let idx = (base + t.offsets[att][from_o] + t.lut2[att][from_o][to_o] as u32) as usize;
+        // The Recode chokepoint: one table lookup re-codes the geometric index
+        // into the net's row space. `.min(THREAT_DIMS - 1)` is a NO-OP on the
+        // value (the tiling test pins `base + piece_offset <= THREAT_DIMS`, so
+        // `idx < THREAT_DIMS` always) and a range fact for the optimizer — the
+        // same move as the `& 63` above, discharging the bounds check against
+        // the fixed-size [`ThreatRemap`] array without a panic edge.
+        match self.remap {
+            Some(remap) => Some(usize::from(remap[idx.min(THREAT_DIMS - 1)])),
+            None => Some(idx),
+        }
     }
 }
 
@@ -660,19 +702,24 @@ impl Default for ThreatPosition {
 /// excluded / semi-excluded relations are skipped ([`threat_index`] returns
 /// `None`).
 pub fn for_each_threat(board: &Board, perspective: Color, f: impl FnMut(usize)) {
-    for_each_threat_at(&ThreatPosition::from_board(board), perspective, f);
+    for_each_threat_at(&ThreatPosition::from_board(board), perspective, None, f);
 }
 
 /// [`for_each_threat`] over a [`ThreatPosition`] snapshot rather than a live
 /// [`Board`] — the form the deferred king-cross rebuild needs, since the board
 /// that produced the crossing ply is long gone by the time it is evaluated.
+/// `remap` is the net's threat re-coding (`None` = identity; [`ThreatRemap`]) —
+/// the engine's accumulator/psqt refresh paths pass the net's table so the
+/// from-scratch build speaks the same row space as the incremental fold.
 pub(super) fn for_each_threat_at(
     pos: &ThreatPosition,
     perspective: Color,
+    remap: Option<&ThreatRemap>,
     mut f: impl FnMut(usize),
 ) {
     let ksq = pos.kings[perspective as usize];
     let occ = pos.occ;
+    let resolver = ThreatResolver::with_remap(perspective, ksq, remap);
 
     let bb = |c: Color, pt: PieceType| pos.pieces(c, pt);
     let both = |pt: PieceType| pos.typed(pt);
@@ -683,7 +730,7 @@ pub(super) fn for_each_threat_at(
     let queen_targets = minor_slider_targets | both(PieceType::Queen);
 
     let mut emit = |attacker: Piece, from: Square, to: Square, attacked: Piece| {
-        if let Some(idx) = threat_index(perspective, attacker, from, to, attacked, ksq) {
+        if let Some(idx) = resolver.index(attacker, from, to, attacked) {
             f(idx);
         }
     };
@@ -783,7 +830,7 @@ pub fn refresh_pst(
 #[cfg(test)]
 pub fn refresh_threat(threat_weights: &[i8], board: &Board, perspective: Color) -> [i16; ACC] {
     let mut acc = [0i16; ACC];
-    refresh_threat_into(&mut acc, threat_weights, board, perspective);
+    refresh_threat_into(&mut acc, threat_weights, board, perspective, None);
     acc
 }
 
@@ -804,12 +851,14 @@ pub fn refresh_threat_into(
     threat_weights: &[i8],
     board: &Board,
     perspective: Color,
+    remap: Option<&ThreatRemap>,
 ) {
     refresh_threat_into_at(
         dst,
         threat_weights,
         &ThreatPosition::from_board(board),
         perspective,
+        remap,
     );
 }
 
@@ -821,6 +870,7 @@ pub(super) fn refresh_threat_into_at(
     threat_weights: &[i8],
     pos: &ThreatPosition,
     perspective: Color,
+    remap: Option<&ThreatRemap>,
 ) {
     dst.fill(0);
     if threat_weights.is_empty() {
@@ -846,6 +896,25 @@ pub(super) fn refresh_threat_into_at(
     }
     #[cfg(not(feature = "foldcount"))]
     for_each_threat_at(pos, perspective, |idx| add_column(dst, threat_weights, idx));
+    match remap {
+        // Identity code: the weight table spans the full geometric space.
+        None => assert_eq!(
+            threat_weights.len(),
+            THREAT_DIMS * ACC,
+            "FullThreats transformer has the wrong size"
+        ),
+        // Re-coded net: the table spans `threat_rows` rows; the loader has
+        // validated every remap entry against that row count, so whole-rows
+        // is the only shape left to check here.
+        Some(_) => assert_eq!(
+            threat_weights.len() % ACC,
+            0,
+            "FullThreats transformer is not whole rows"
+        ),
+    }
+    for_each_threat_at(pos, perspective, remap, |idx| {
+        add_column(dst, threat_weights, idx)
+    });
 }
 
 /// Build both accumulators for both perspectives — the `(pst, threat)` pair
@@ -855,6 +924,7 @@ pub fn refresh_both(
     ft_bias: &[i16],
     threat_weights: &[i8],
     board: &Board,
+    threat_remap: Option<&ThreatRemap>,
 ) -> ([[i16; ACC]; 2], [[i16; ACC]; 2]) {
     let mut pst = [[0i16; ACC]; 2];
     let mut threat = [[0i16; ACC]; 2];
@@ -864,7 +934,7 @@ pub fn refresh_both(
     let pos = ThreatPosition::from_board(board);
     for (i, &persp) in Color::ALL.iter().enumerate() {
         pst[i] = refresh_pst(halfka_weights, ft_bias, board, persp);
-        refresh_threat_into_at(&mut threat[i], threat_weights, &pos, persp);
+        refresh_threat_into_at(&mut threat[i], threat_weights, &pos, persp, threat_remap);
     }
     (pst, threat)
 }
@@ -1135,8 +1205,8 @@ mod tests {
         let (hw, bias) = ones_halfka();
         let tw = vec![2i8; THREAT_DIMS * ACC];
 
-        let a = refresh_both(&hw, &bias, &tw, &board);
-        let b = refresh_both(&hw, &bias, &tw, &board);
+        let a = refresh_both(&hw, &bias, &tw, &board, None);
+        let b = refresh_both(&hw, &bias, &tw, &board, None);
         assert_eq!(a, b, "deterministic");
 
         let (pst, threat) = &a;
@@ -1154,7 +1224,7 @@ mod tests {
         let board = Board::from_fen(crate::fen::START_FEN).unwrap();
         let (hw, bias) = ones_halfka();
         let tw = vec![0i8; THREAT_DIMS * ACC];
-        let (pst, threat) = refresh_both(&hw, &bias, &tw, &board);
+        let (pst, threat) = refresh_both(&hw, &bias, &tw, &board, None);
 
         let head = SotaHead {
             l1_weights: vec![1i8; BUCKETS * L2 * L1].into(),

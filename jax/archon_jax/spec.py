@@ -234,6 +234,14 @@ class ArchSpec:
     #   l3w (l3,   B)    -> (2*l2 + 2*l3, B)
     # False = today's single-activation tail, byte-for-byte.
     dual_tail: bool = False
+    # Recode POC (learned-feature-code study §6.1, 2026-07-30): the threat
+    # embedding's ROW COUNT. 0 = the identity code (THREAT_DIMS rows, every
+    # net before the study). When a run trains a re-coded threat channel,
+    # this is the compressed row count R'; the u16 code table itself rides
+    # in TrainConfig.threat_remap (a data-pipeline concern — the arch only
+    # needs the shape). A net is now (weights, code): the code's sha256
+    # belongs in the ledger row beside the net's.
+    threat_rows: int = 0
 
     @classmethod
     def full(cls) -> "ArchSpec":
@@ -262,7 +270,8 @@ class ArchSpec:
             qat_ft_scale=float(spec.get("qat_ft_scale", 0.0)),
             qat_threat_scale=float(spec.get("qat_threat_scale", 0.0)),
             qat_act_levels=float(spec.get("qat_act_levels", 0.0)),
-            qat_l1_scale=float(spec.get("qat_l1_scale", 0.0)))
+            qat_l1_scale=float(spec.get("qat_l1_scale", 0.0)),
+            threat_rows=int(spec.get("arch_threat_rows", 0)))
 
     # Parameter shapes in OUR storage convention: every affine weight is
     # (fan_in, fan_out) row-major, which is byte-identical to bullet's internal
@@ -285,16 +294,18 @@ class ArchSpec:
             "l3w": (l3_fan_in, self.num_buckets),
             "l3b": (self.num_buckets,),
         }
+        # Recode POC: 0 = identity code = the full geometric space.
+        threat_rows = self.threat_rows or THREAT_DIMS
         if not self.halfka_only:
             # No bias: the shared FT bias lives on the HalfKA tensor only
             # (d40:951-956) -- landmine: do NOT give the threat FT a bias.
-            shapes["l0_threatw"] = (THREAT_DIMS, self.hl)
+            shapes["l0_threatw"] = (threat_rows, self.hl)
         if self.factorize:
             shapes["l0_factw"] = (PS_NB, self.hl)
         if self.psqt:
             shapes["l0_psqt_hkw"] = (HALFKA_DIMS, self.num_buckets)
             if not self.halfka_only:
-                shapes["l0_psqt_thw"] = (THREAT_DIMS, self.num_buckets)
+                shapes["l0_psqt_thw"] = (threat_rows, self.num_buckets)
         if self.policy:
             if self.pol_proj:
                 # D48W: policy branches OFF THE ACCUMULATOR through its own
@@ -376,6 +387,11 @@ class TrainConfig:
     wdl: float = DEFAULT_WDL         # D40_WDL
     scale: float = DEFAULT_SCALE     # D40_EVAL_TARGET_SCALE
     score_multiplier: float = 1.0    # D40_SCORE_MULTIPLIER
+    # Recode POC: path to a .npy int array (len THREAT_DIMS, entries <
+    # arch.threat_rows) re-coding the threat index space at the loader.
+    # "" = identity. Pairs with ArchSpec.threat_rows; data.py loads it once
+    # per stream and passes it into map_batch — zero trainer-graph changes.
+    threat_remap: str = ""
     # Draw-aware double-sigmoid target (2026-07-26 calibration). 0.0 = the
     # historical plain sigmoid(s/scale). a>0 gives P(win)=sig((s-a)/scale),
     # P(loss)=sig((-s-a)/scale), remainder draw, value = EXPECTED SCORE — the

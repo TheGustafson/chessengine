@@ -22,6 +22,8 @@ fn tiny_net(scale: i32) -> SotaNetwork {
         halfka_weights: vec![0i8; HALFKA_DIMS * ACC].into(),
         ft_bias: vec![0i16; ACC].into(),
         threat_weights: Vec::new().into(),
+        threat_rows: 0,
+        threat_remap: None,
         psqt_weights: Vec::new().into(),
         head: SotaHead {
             l1_weights: vec![0i8; BUCKETS * L2 * L1].into(),

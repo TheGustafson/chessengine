@@ -248,6 +248,7 @@ impl PolicyNet {
             &eval.ft_bias,
             &eval.threat_weights,
             board,
+            eval.threat_remap.as_deref(),
         );
         // Both channels now carry a net-dependent rescale into the merge: the
         // HalfKA accumulator is in the i8 transformer's reduced frame (study
