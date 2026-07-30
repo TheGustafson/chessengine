@@ -64,3 +64,8 @@ bin31/
 /target31chk/
 /target31def/
 bin30/
+bin33/
+target33/
+perf33data/
+target33-pgo/
+target33-test/

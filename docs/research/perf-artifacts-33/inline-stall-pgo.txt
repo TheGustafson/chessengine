@@ -1,0 +1,111 @@
+
+  samples total 466,782   in target symbol 75,963 (16.27%)
+  distinct addresses in target: 2,823
+
+  INNERMOST inline frame -- which callee's code the sample is in
+    share   samples  function
+   44.22%    33,593  <chessengine[e8a1690a7e6dbdfe]::search::Worker>::search::<chessengine[e8a1690a7e6dbdfe]::search:
+   11.22%     8,523  push
+   10.15%     7,711  then<board::DirtyPiece, search::{impl#10}::do_move::{closure_env#0}>
+    3.45%     2,619  next_move
+    2.49%     1,894  correction_value
+    2.17%     1,647  pop_state
+    2.16%     1,644  atomic_load<u16>
+    1.77%     1,346  index
+    1.63%     1,237  attackers_to_exist
+    1.50%     1,142  apply_at
+    1.21%       919  reduction
+    1.15%       872  is_ok
+    0.98%       741  stat_score
+    0.91%       691  see_ge
+    0.85%       645  bitor_assign
+    0.83%       632  to
+    0.81%       617  update<7183>
+    0.71%       539  eq
+    0.54%       412  compute_threats
+    0.54%       410  lsb
+    0.49%       373  gives_check
+    0.47%       359  update_all_stats
+    0.47%       358  select<movepick::{impl#2}::next_move::{closure_env#2}>
+    0.46%       349  unmake_move
+    0.33%       250  rfp_margin
+    0.29%       219  capture_value
+    0.29%       217  is_empty
+    0.28%       212  pieces
+    0.28%       212  kind
+    0.27%       206  king_cross
+
+  OUTERMOST frame below search -- which PHASE of the node
+    share   samples  function
+   32.87%    24,972  <chessengine[e8a1690a7e6dbdfe]::search::Worker>::search::<chessengine[e8a1690a7e6dbdfe]::search:
+   26.12%    19,840  do_move
+    6.38%     4,845  next_move
+    4.96%     3,771  legal
+    4.55%     3,457  all_threats
+    3.56%     2,702  undo_move
+    3.17%     2,411  probe
+    2.91%     2,213  correction_value
+    2.79%     2,120  see_ge
+    1.21%       919  reduction
+    1.20%       911  stat_score
+    1.13%       862  gives_check
+    1.12%       853  is_ok
+    0.96%       732  update<7183>
+    0.75%       571  update_all_stats
+    0.66%       502  evaluate
+    0.48%       363  nmp_allnode_probe
+    0.47%       356  ne<moves::Move, moves::Move>
+    0.44%       337  write
+    0.44%       336  eq
+    0.44%       336  capture_stage
+    0.38%       289  rfp_prune_margin
+    0.37%       283  capture_value
+    0.29%       217  is_empty
+    0.21%       160  update<8192>
+    0.19%       143  load
+    0.16%       122  check_time
+    0.14%       107  value_from_tt
+    0.13%       101  cont_ref
+    0.11%        87  to_corrected_static_eval
+
+  TOP SOURCE LINES
+    share   samples  file:line
+   11.25%     8,547  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/eval/nnue/sota_accumulator.rs:343
+   10.23%     7,768  /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/bool.rs:66
+    4.76%     3,615  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/search/mod.rs:3081
+    3.66%     2,779  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/search/mod.rs:?
+    2.79%     2,117  /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/sync/atomic.rs:3904
+    2.07%     1,574  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/board.rs:1474
+    1.94%     1,474  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/board.rs:?
+    1.87%     1,417  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/history.rs:716
+    1.77%     1,341  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/movepick.rs:531
+    1.46%     1,111  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/history.rs:737
+    1.29%       978  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/movegen.rs:451
+    1.28%       976  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/moves.rs:15
+    1.25%       947  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/board.rs:720
+    1.23%       931  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/moves.rs:110
+    1.20%       914  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/eval/nnue/sota_threats.rs:1134
+    1.18%       897  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/movepick.rs:?
+    1.18%       893  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/attacks.rs:504
+    1.03%       779  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/search/mod.rs:3352
+    0.93%       710  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/history.rs:98
+    0.93%       704  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/moves.rs:62
+    0.92%       701  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/bitboard.rs:193
+    0.76%       575  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/search/mod.rs:2546
+    0.73%       552  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/search/mod.rs:2550
+    0.68%       520  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/bitboard.rs:67
+    0.68%       520  /home/nick/projects/chessengine/.claude/worktrees/agent-a592b32f099298268/src/attacks.rs:503
+
+  TOP SYMBOLS ENGINE-WIDE (context)
+   22.90%   106,878  <chessengine[e8a1690a7e6dbdfe]::eval::nnue::sota_threats::ThreatContext>::at_full
+   17.18%    80,192  chessengine[e8a1690a7e6dbdfe]::eval::nnue::sota_simd::avx512::i16_deltas_into
+   16.27%    75,963  <chessengine[e8a1690a7e6dbdfe]::search::Worker>::search::<chessengine[e8a1690a7e6dbdfe]::search:
+   14.17%    66,147  <chessengine[e8a1690a7e6dbdfe]::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into
+    5.88%    27,430  <chessengine[e8a1690a7e6dbdfe]::movepick::MovePicker>::init_quiets
+    5.82%    27,182  <chessengine[e8a1690a7e6dbdfe]::eval::nnue::sota_accumulator::HalfkaContext>::current_full
+    2.46%    11,505  <chessengine[e8a1690a7e6dbdfe]::eval::nnue::sota_head::SotaHead>::forward_into
+    2.43%    11,356  chessengine[e8a1690a7e6dbdfe]::eval::nnue::sota_threats::record_square_touch
+    2.32%    10,832  <chessengine[e8a1690a7e6dbdfe]::search::Worker>::qsearch::<chessengine[e8a1690a7e6dbdfe]::search
+    1.86%     8,683  <chessengine[e8a1690a7e6dbdfe]::board::Board>::make_move_with::<chessengine[e8a1690a7e6dbdfe]::s
+    1.06%     4,926  <chessengine[e8a1690a7e6dbdfe]::eval::nnue::sota_context::SotaContext>::evaluate
+    0.95%     4,421  <chessengine[e8a1690a7e6dbdfe]::movepick::MovePicker>::new

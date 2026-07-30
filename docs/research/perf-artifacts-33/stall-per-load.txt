@@ -1,0 +1,24 @@
+  stall samples 466,494   IBS load samples 234,258   non-L1 105,703
+
+   %stall  %loads   %miss  stall/load  stall/miss  symbol
+   22.07%  22.49%  28.01%        0.98        0.79  <eval::nnue::sota_threats::ThreatContext>::at_full
+   15.82%  15.03%  27.29%        1.05        0.58  eval::nnue::sota_simd::avx512::i16_deltas_into
+   13.03%  14.31%  26.90%        0.91        0.48  <eval::nnue::sota_accumulator::HalfkaContext>::finny_refre
+    8.80%   8.84%   1.69%        1.00        5.20  <search::Worker>::search::<search::NonPv>
+    5.77%   4.84%   0.84%        1.19        6.84  <movepick::MovePicker>::init_quiets
+    4.39%   2.13%   0.42%        2.06       10.47  <eval::nnue::sota_accumulator::HalfkaContext>::current_ful
+    3.08%   0.47%   0.03%        6.60      104.86  <eval::nnue::sota_threats::ThreatContext>::apply_at
+    2.64%   9.61%   8.66%        0.28        0.31  <eval::nnue::sota_head::SotaHead>::forward_into
+    2.50%   1.68%   0.31%        1.49        8.13  <search::Worker>::do_move
+    1.69%   1.25%   0.48%        1.35        3.53  eval::nnue::sota_threats::record_square_touch
+    1.69%   1.04%   0.44%        1.62        3.87  <search::Worker>::qsearch::<search::NonPv>
+    1.64%   0.00%   0.00%         nan         nan  [unknown]
+    1.42%   0.34%   0.32%        4.17        4.50  <eval::nnue::sota_context::SotaContext>::evaluate
+    1.08%   0.75%   0.45%        1.44        2.43  <history::Histories>::correction_value
+    0.91%   0.78%   0.44%        1.17        2.06  <board::Board>::attackers_to
+    0.89%   1.02%   0.35%        0.87        2.54  <board::Board>::refresh_check_info
+
+  stall/load and stall/miss are INDICES: a symbol's share of stall
+  cycles divided by its share of load ops / of non-L1 loads. 1.00 =
+  the engine average. High stall/load + low miss share = serial,
+  dependent loads. Low stall/load + high miss share = overlapped.
