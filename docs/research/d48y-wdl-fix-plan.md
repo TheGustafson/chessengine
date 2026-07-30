@@ -8306,3 +8306,43 @@ only and kills nothing.
 **Result: compilers 1334 vs trainer 972 — a 362-point margin**, where the gap
 had been **2 points**. If the box does run out, a build dies and gets retried
 instead of losing 470 superbatches of training.
+
+## Study 45 commissioned — HARVEST: the backlog is the problem
+
+Reclaimed **8.1 GB** from the three now-idle worktrees (41, 42, learned-rep),
+preserving the two live ones. Disk 86%, 130 GB free.
+
+**D49x sb470: heldout 0.011181, ema 0.010958.** The raw value has fallen
+**119e-6 from the restart peak**, at ~47e-6 per 10sb now against ~5e-6 early —
+**accelerating, not flattening**. It needs ~357e-6 more to beat the
+pre-extension 0.010824, with 230 sb left plus the sb600–700 anneal, which on
+D49's own history is worth ~300e-6. **On current trajectory it lands ahead
+rather than at a wash** — an upgrade on the break-even projection I gave
+earlier, still on three samples, and the anneal remains the unpredictable part.
+
+### The diagnosis/landing imbalance
+
+The perf line is producing excellent diagnosis and an accumulating pile of levers
+that were identified, priced, and never pulled. **Study 41 said so about itself —
+a superb decomposition and zero speedup.** Study 34's ranked remainder is
+untouched days later; study 42 named a lever and did not pull it. Study 45's only
+job is to land them. **Verified all four still open in the current tree.**
+
+| # | lever | measured price | gate |
+|---|---|---|---|
+| 1 | `QUIET_SORT_DEPTH_FACTOR` mistuned — sorted prefix 9.31, `GoodQuiet` uses 4.22; rest sorted solely for `BadQuiet` at max reduction | **2.00% of cycles**, roughly halves the sort | tunable ⇒ **games** |
+| 2 | duplicate evasion generation — **157,016 of 349,337 (45%)** redundant | ~0.2% of cycles | node-identical |
+| 3 | stage dispatch, 16-arm jump table at 2.335 calls/node | branch-class | node-identical |
+| 4 | TT 64-byte 6-entry cluster — `same_line = 0`, every line carries **3 unusable entries** | doubles associativity at identical traffic | **games** |
+
+**The ordering is evidence-based, and I told it to re-derive rather than trust
+it: study 41 measured the engine BACK-END bound (49.0% of slots vs 19.9%), so
+levers that REMOVE WORK beat levers that remove branches.** That is why the
+dispatch item is last, and why item 3 is the one item where "it cannot clear" is
+an acceptable answer — with the number.
+
+**Explicitly priced dead so no panel is wasted:** `insertwin34`. Break-even needs
+**5.13 IPC against a measured 1.260**; it survives three denominators as a loss.
+
+**The instruction that matters: a write-up that re-analyses the backlog and lands
+nothing is the failure mode this study exists to correct.**
