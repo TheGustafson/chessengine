@@ -2576,3 +2576,25 @@ caught early.
 **Generalisation worth keeping: when a transform is added to one side of the
 loss, grep for EVERY place that recomputes the loss outside the training step.**
 Heldout scorers, probes and parity tools all silently keep the old shape.
+
+### Tick — D49 restarted clean, study 21 lands its first arm
+
+**D49** back at sb6 after the heldout-scorer restart, **198k pos/s** (up from
+192k pre-restart; from-scratch keeps getting faster as the cache warms).
+
+**The restart doubles as a determinism check on the fix:**
+
+| sb | pre-restart | post-restart |
+|---|---|---|
+| 1 | 0.025927 | 0.025924 |
+| 6 | 0.013312 | 0.013331 |
+
+Reproduces to ~0.1% ⇒ **the heldout change was telemetry-only, as intended.**
+Not bit-identical, which is expected — the Pallas FT scatter uses atomics.
+
+**Study 21 arm B1: "the 20 MiB of history tables all started 16 B off a cache
+line."** Same defect class as study 20's NNUE weight tables, and again a defect
+with NO Stockfish counterpart to diff against — the SF-comparative method could
+not have found it. That is now three such finds across two ARCHON-only studies.
+
+Resources: 10.2 GB RAM free, GPU 94%, no builds in flight.
