@@ -7,3 +7,10 @@ r2 null nodes=5001625 instructions:u=5920.686138 cycles:u=4672.996322 ex_no_reti
 r3 nopf nodes=5001625 instructions:u=5899.190214 cycles:u=4837.489462 ex_no_retire.load_not_complete:u=2740.597987 ex_no_retire.empty:u=206.396988 ex_no_retire.thread_not_selected:u=24.519266 
 r3 null nodes=5001625 instructions:u=5920.686326 cycles:u=4645.653703 ex_no_retire.load_not_complete:u=2592.392221 ex_no_retire.empty:u=191.830015 ex_no_retire.thread_not_selected:u=23.843684 
 r3 base nodes=5001625 instructions:u=5920.686317 cycles:u=4703.215438 ex_no_retire.load_not_complete:u=2633.618185 ex_no_retire.empty:u=193.346655 ex_no_retire.thread_not_selected:u=25.370448 
+r4 nopf nodes=5001625 instructions:u=5899.190302 cycles:u=4845.983571 ex_no_retire.load_not_complete:u=2754.441036 ex_no_retire.empty:u=199.882966 ex_no_retire.thread_not_selected:u=24.291079 
+r4 base nodes=5001625 instructions:u=5920.686304 cycles:u=4662.163890 ex_no_retire.load_not_complete:u=2603.634908 ex_no_retire.empty:u=194.584691 ex_no_retire.thread_not_selected:u=24.771213 
+r4 null nodes=5001625 instructions:u=5920.686366 cycles:u=4672.928291 ex_no_retire.load_not_complete:u=2585.635143 ex_no_retire.empty:u=201.484477 ex_no_retire.thread_not_selected:u=38.350821 
+r5 nopf nodes=5001625 instructions:u=5899.190401 cycles:u=4827.758285 ex_no_retire.load_not_complete:u=2721.575354 ex_no_retire.empty:u=205.989167 ex_no_retire.thread_not_selected:u=32.612517 
+r5 base nodes=5001625 instructions:u=5920.686211 cycles:u=4611.173483 ex_no_retire.load_not_complete:u=2546.875990 ex_no_retire.empty:u=195.334793 ex_no_retire.thread_not_selected:u=27.319533 
+r5 null nodes=5001625 instructions:u=5920.686403 cycles:u=4640.390762 ex_no_retire.load_not_complete:u=2562.475248 ex_no_retire.empty:u=201.059797 ex_no_retire.thread_not_selected:u=31.580271 
+r6 nopf nodes=5001625 instructions:u=5899.190459 cycles:u=4844.769417 ex_no_retire.load_not_complete:u=2727.739156 ex_no_retire.empty:u=207.112291 ex_no_retire.thread_not_selected:u=35.043652 

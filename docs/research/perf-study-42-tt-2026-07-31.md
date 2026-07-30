@@ -236,6 +236,39 @@ never for a rate.
 
 ---
 
+## 3.1 The census — reference numbers the project did not have
+
+`src/ttcensus42.rs`, exact integers, `Hash=16`, 5 001 562 nodes, node-identical
+to `base` at both gate frames:
+
+| | total | per node |
+|---|---:|---:|
+| probes | 5 335 338 | **1.0667** |
+| tag matches | 2 907 147 | 0.5812 |
+| **hits** (tag match AND occupied) | 2 907 123 | **0.5812** |
+| — matched in slot 0 / 1 / 2 | 1 267 527 / 974 061 / 665 559 | 43.6% / 33.5% / 22.9% of matches |
+| saves | 4 013 058 | 0.8024 |
+| — accepted by the §3.7 rules | 3 899 672 | 0.7797 (**97.2%**) |
+| penalize | 35 512 | 0.0071 |
+| prefetch calls | 5 031 939 | 1.0061 |
+| **consecutive probes in the same 64 B line** | **0** | **0.0000** |
+| consecutive probes in the same cluster | 195 646 | 0.0391 |
+
+Three things worth carrying:
+
+* **hit rate 54.5%**, on a saturated table — the 50-position bench writes 3.90 M
+  entries into 1 572 864 slots, turning it over ~2.5x, and the table is never
+  cleared between positions (only `new_search` bumps the 5-bit generation).
+* **the tag scan is not front-loaded**: 22.9% of matches are in slot 2, so a
+  probe usually reads more than one entry — which is why one probe issues ~8
+  memory accesses into its line, and why the §2 retraction was necessary.
+* **97.2% of saves are accepted.** The replacement rules reject almost nothing;
+  the depth/age arithmetic in `TtEntry::save` is doing far less work than its
+  five tunables suggest, and an SPSA campaign over them is aiming at a decision
+  that is made one way 97 times in 100.
+
+---
+
 ## 4. The arms
 
 All five binaries are node-identical (`tools/perf42/ident42.sh`): a cache hint
@@ -388,7 +421,8 @@ would carry 6 usable entries for exactly the same traffic — same lines
 fetched, same table size, double the associativity. This is a *quality* lever,
 not a cost lever: it cannot reduce misses per probe (already exactly one line),
 only improve what the table remembers. It is written up in §7 as the next
-study's work, not claimed here — it changes the tree and needs games.
+session's work, not claimed here — it changes the tree, so it moves `Bench:`
+and it needs games.
 
 ---
 
@@ -460,7 +494,31 @@ value of anything else that hides or removes a TT miss.
 
 ---
 
-## 7. Gates
+## 7. What to do next, in the order I would do it
+
+1. **The 64-byte, 6-entry cluster (§5.2).** The one lever this study found and
+   did not pull. `same_line = 0` says every 64-byte line the TT fetches carries
+   three entries it can never use; a 64-byte cluster makes all six reachable for
+   **identical** memory traffic and identical table size. It is a hit-rate
+   change, so the discrete instrument is right there and is immune to this
+   box's timing noise: **`bench 16 1 13 <fens> depth` node totals — fewer nodes
+   to the same depth is a better table.** It changes the tree, so it moves
+   `Bench:` and it needs games. Costs: the probe scans 6 entries instead of 3,
+   and half a dozen replacement-policy tests hard-code a 3-slot cluster and
+   would need rewriting against `CLUSTER_SIZE`.
+2. **Re-run the prefetch arm at a tournament Hash.** §6.1 shows 16 MB is the
+   cheapest point on a steep curve; §6.2 measures whether the prefetch's value
+   grows with it. If it does, prefetch-class and TT-locality work is worth
+   materially more than any measurement at `Hash=16` will ever show.
+3. **Print `clusters.as_ptr()` from a two-line instrument arm** and retire the
+   last approximation in §3 (uncertainty 1).
+4. **Nothing about huge pages, `_MM_HINT_T2`, or an earlier prefetch.** All
+   three are measured dead above; re-opening any of them needs a new mechanism,
+   not a new argument.
+
+---
+
+## 8. Gates
 
 - `cargo test`, `cargo clippy --all-targets` clean.
 - All arms node-identical at both frames.
@@ -468,7 +526,7 @@ value of anything else that hides or removes a TT miss.
 
 ---
 
-## 8. What I am least sure about
+## 9. What I am least sure about
 
 Ordered by how much of the study would move if I am wrong.
 
