@@ -3355,3 +3355,65 @@ future tool reading our node count over UCI has this bug waiting for it.**
 Two suspects of mine, killed: TT semantics (both benches issue exactly one
 `ucinewgame` — `bench.rs:252`, `eca43a97:benchmark.cpp:430`) and Hash 64 vs 16
 (64 is faster for BOTH and NARROWS the ratio).
+
+## ★★★ THE D49 QAT/EXPORT MISMATCH — my config error, and it invalidates every D49 game so far
+
+**D49 trains with `qat_threat_scale = 256`** (weights clipped to ±127/256 =
+±0.496) **but every deployment path is hardcoded `THREAT_QUANT = 64`**
+(`netpack.py:208`, `spec.py:82`, `sota_head.rs:129`). So the exporter writes
+those clipped weights at scale 64 and they land in ±32 of ±127.
+
+```
+D48Y2-sb190 (no QAT):   threat i8  max|w| 127/127   levels 247/256
+D49-sb100   (QAT @256): threat i8  max|w|  32/127   levels  65/256   <- 25% of range
+```
+
+**Two bits thrown away on 73% of the input space.** D49 is damaged twice: trained
+for a 1/256 grid, deployed on 1/64; and range-starved because the QAT clip was
+sized for the finer scale.
+
+**I set `qat_threat_scale = 256` in the training config and never changed the
+deployment side.** Nothing in the system objected for 100+ superbatches — the
+trainer and the exporter each had a constant and they were allowed to disagree.
+
+**Invisible to everything except games**, because R² is computed on the FLOAT
+net: heldout R² 0.8757, within 0.008 of D48X, while the net played 129 Elo down.
+
+### The two matches (owner asked for calibrated AND uncalibrated)
+
+| | n | W/L/D | Elo vs D48X |
+|---|---|---|---|
+| **calibrated** (scale 400→666, frame 0.601→0.974) | 1600 | 241/808/551 | **−128.7 ± 9.6** |
+| **native** (uncalibrated) | 1164 | 168/626/370 | **−144.5 ± 11.2** |
+| | | | **FRAME COST +15.8** |
+
+**Calibration is worth +15.8 Elo** — real, outside the bars, and the first direct
+measurement of frame cost at a KNOWN mis-scaling. It corroborates the earlier
+asymmetry finding (−80 Elo when D48Y2 was calibrated DOWN) in the same direction:
+under-scaled eval over-prunes.
+
+**But the frame was 15.8 of a 144 Elo deficit.** Both matches were played by a net
+missing two bits on its threat channel, so **NEITHER number is a verdict on the
+six mechanisms.**
+
+### The fix: CEN3 version guard (owner's call), study 30 commissioned
+
+A global `THREAT_QUANT = 256` would **wreck existing nets** — D48X trained without
+QAT, spans ±1.98, and measures **6.80% relative error at 255 vs 5.58% at 64**.
+**The scale is a property of the NET, not the engine.**
+
+`threat_quant` is NOT in the CENN header (`ft_quant`32 / `l1_quant`36 /
+`ft_shift`40 / `network_scale`44 / `payload_len`48 — fully packed). So: **CEN3
+adds the field; loader accepts CEN2 ⇒ 64 implicitly.**
+
+Acceptance test given to study 30 is a hard bit-identity property: **a CEN2 net
+must reproduce all three pins unchanged on BOTH backends**, including the
+`x86-64-v3` AVX2 path study 26 found no `target-cpu=native` test exercises.
+
+**D49 does NOT need restarting.** Its QAT clip (±0.496) is correct FOR scale 256,
+so once CEN3 lands every checkpoint re-exports at full range. Nothing is lost by
+letting it run.
+
+**Root cause to fix structurally:** derive `QUANT_THREAT` from the trainer's
+`qat_threat_scale`, or assert they agree. A silent disagreement between two
+constants in different languages is what cost 100 superbatches.
