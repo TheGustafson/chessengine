@@ -3763,3 +3763,74 @@ D49 at sb139/400 was considered and rejected as low-information: it is a
 from-scratch net one third of the way through a 400sb schedule, so a large loss
 to a fully-trained D48X would be expected and would tell us nothing. The
 heldout curve is the better trend instrument at this stage.
+
+## Studies 29 + 31 LANDED on main; study 30 complete and staged
+
+**main = `ac21f34`** — studies 29 and 31 fast-forwarded after `gate2931`
+returned **EXIT=0, Bench: 587683, "All checks passed."** 54 files, +4669/-27.
+
+### Study 30 — CENN-v5. MY SPEC WAS WRONG AND THE STUDY WAS RIGHT.
+
+I briefed "CEN3". **`CEN3` and `CEN4` are already taken** — verified by me:
+`src/eval/nnue/simple_halfka.rs:8` is `b"CEN3"`, `protected_halfka.rs:14` is
+`b"CEN4"`, and `src/uci.rs:295,307` routes on both. Reusing `CEN3` would have
+misrouted a SOTA net into the HalfKA loader — the exact collision a magic
+exists to prevent. It shipped **`CEN5`**. This is the deviation-with-a-reason
+that a study is supposed to produce instead of silent compliance.
+
+**Layout:** the v2 header is full (all 64 bytes assigned), so v5 keeps `0..64`
+byte-for-byte identical in meaning and **appends** `threat_quant: i32` @64,
+zero `reserved: u32` @68, payload @72. `CEN2` implies 64. The serializer emits
+the OLDEST container that can represent the net, so existing round-trips stay
+byte-identical.
+
+**The fix works on D49:** `d49-1280-sb100-ema` re-exported at 256 and packed
+CEN5 goes `max|w|` **32/127 -> 127/127**, levels **65/256 -> 255/256** (healthy
+reference 127/247), **3.99x less quantisation error (4.66% -> 1.17%)**. AVX2 and
+AVX-512 agree on its evals. Artifact
+`data/nnue/tmp/s30/d49-sb100-ema-q256.cenn`.
+
+**The runtime shift is NOT free — measured, null first (0.000% i/n, twice):**
+
+| arm | i/n | delta |
+|---|---:|---:|
+| baseline | 5654.23 | — |
+| runtime vector shift count | 5688.71 | **+34.48 (+0.610%)** |
+| plumbing only, immediate restored | 5654.23 | **+0.00** |
+| **const-generic (landed)** | 5657.00 | **+2.77 (+0.049%)** |
+
+The diagnostic arm is decisive: keeping ALL the new plumbing but pinning the
+shift back to an immediate returns exactly to baseline ⇒ **the plumbing costs
+zero; the entire cost is one instruction form.** `VPSLLW`'s memory operand is
+the *count*, not the data, so the immediate form folds the load
+(`vpsllw $0x2,(%rcx,%r8,2),%zmm3`) while a register count needs a separate
+`vmovdqu64` per merge (80/eval at ACC=1280) and loses the unroll. Const-generic
+over `{0,1,2}` recovers 31.7 of 34.5, exhaustive by construction because
+`threat_shift_for` rejects anything outside `{64,128,256}` — no panic arm.
+
+**Three latent bugs found and fixed**, plus a detector: `netpack.py` now refuses
+to pack a threat table that doesn't reach half the i8 range (verified against
+the live D49 `quant.bin` — it dies and writes nothing). *That is the check that
+would have caught the original mismatch at hour 0.*
+
+**It re-derived the Elo cost rather than quoting my brief:** the -125.1 +/- 20.9
+(n=336) I supplied was superseded by main's `ce42c6d` mid-study; final is
+**-128.7 +/- 9.6 calibrated / -142.6 +/- 9.6 native, both n=1600**.
+
+### Merge state
+
+`stage-30` = main + study 30, at `358c5b3`. Two conflicts, both resolved:
+`.gitignore` (kept both), and **`src/eval/nnue/sota_simd.rs`** — a real one, in
+the hot kernel, where study 29 added foldcount/probe-accpin instrumentation to
+`activate` and study 30 added a `threat_shift` argument to the same call.
+Resolved by keeping BOTH: instrumentation retained, new argument threaded.
+
+**`gate30.service` running** — full `CHECK_NNUE_GATE=1` gate **plus a
+`cargo check` of all four probe features**, because those are off by default so
+the gate is blind to them, and they call the very function whose signature
+study 30 changed. -> `scratchpad/gate30.log`.
+
+**Next tick:** gate green -> ff main to `stage-30`, then export D49 at CEN5 and
+**run the validating screen** — CEN5@256 vs the broken CEN2@64 export of the
+same checkpoint, which should recover ~128 Elo. That closes the user's
+"once it is done test it, then run games" sequence.
