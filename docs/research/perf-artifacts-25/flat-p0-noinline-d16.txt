@@ -1,0 +1,32 @@
+    19.39%  p0-noinline  p0-noinline           [.] <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+    16.20%  p0-noinline  p0-noinline           [.] chessengine::eval::nnue::sota_simd::apply_i8_deltas_into
+    11.91%  p0-noinline  p0-noinline           [.] chessengine::eval::nnue::sota_simd::apply_i16_deltas_into
+     7.64%  p0-noinline  p0-noinline           [.] <chessengine::eval::nnue::sota_threats::ThreatContext>::at_full
+     5.53%  p0-noinline  p0-noinline           [.] <chessengine::movepick::MovePicker>::init_quiets
+     4.76%  p0-noinline  p0-noinline           [.] chessengine::eval::nnue::sota_simd::apply_i16_deltas_dual
+     3.51%  p0-noinline  p0-noinline           [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::current_full
+     2.93%  p0-noinline  p0-noinline           [.] <chessengine::search::Worker>::qsearch::<chessengine::search::NonPv>
+     2.72%  p0-noinline  p0-noinline           [.] chessengine::eval::nnue::sota_threats::record_square_touch
+     2.67%  p0-noinline  p0-noinline           [.] chessengine::eval::nnue::sota_simd::l1_dot
+     2.11%  p0-noinline  p0-noinline           [.] <chessengine::eval::nnue::sota_context::SotaContext>::evaluate
+     1.77%  p0-noinline  p0-noinline           [.] <chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>
+     1.45%  p0-noinline  p0-noinline           [.] <chessengine::movepick::MovePicker>::init_captures
+     1.39%  p0-noinline  p0-noinline           [.] chessengine::eval::nnue::sota_simd::activate
+     1.37%  p0-noinline  p0-noinline           [.] chessengine::eval::nnue::sota_loader::load_v2_bytes
+     1.15%  p0-noinline  p0-noinline           [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into
+     1.06%  p0-noinline  p0-noinline           [.] <chessengine::search::Worker>::do_move
+     1.05%  p0-noinline  p0-noinline           [.] chessengine::eval::nnue::sota_simd::l2_tail
+     0.84%  p0-noinline  p0-noinline           [.] <chessengine::history::Histories>::update_quiet_histories
+     0.81%  p0-noinline  p0-noinline           [.] <chessengine::movepick::MovePicker>::new
+     0.80%  p0-noinline  p0-noinline           [.] chessengine::eval::nnue::sota_simd::find_nnz
+     0.76%  p0-noinline  p0-noinline           [.] <chessengine::board::Board>::see_ge
+     0.67%  p0-noinline  p0-noinline           [.] chessengine::eval::nnue::sota_threats::record_outgoing
+     0.55%  p0-noinline  p0-noinline           [.] <char as core::fmt::Display>::fmt
+     0.52%  p0-noinline  p0-noinline           [.] <chessengine::movepick::MovePicker>::init_evasions
+     0.51%  p0-noinline  p0-noinline           [.] chessengine::eval::nnue::sota_features::refresh_threat_into_at
+     0.47%  p0-noinline  p0-noinline           [.] <chessengine::types::Square as core::fmt::Display>::fmt
+     0.46%  p0-noinline  p0-noinline           [.] <chessengine::history::Histories>::update_continuation_histories
+     0.39%  p0-noinline  p0-noinline           [.] chessengine::eval::nnue::sota_simd::skip_dot_i8
+     0.34%  p0-noinline  libc.so.6             [.] malloc
+
+

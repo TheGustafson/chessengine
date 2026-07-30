@@ -1,0 +1,2 @@
+fast=baseline                       instr=30,420,002,646 nodes= 5,001,562 per_node=  6082.1 brs_per_node=  643.8 hash=5ca978e012da1bb0
+fast=a1-shaped                      instr=30,023,205,914 nodes= 5,001,562 per_node=  6002.8 brs_per_node=  629.1 hash=5ca978e012da1bb0

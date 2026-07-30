@@ -1,0 +1,49 @@
+    11.71%  baseline  baseline              [.] chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into
+     8.53%  baseline  baseline              [.] <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+     8.44%  baseline  baseline              [.] <chessengine::eval::nnue::sota_threats::ThreatContext>::at_full
+     7.34%  baseline  baseline              [.] <chessengine::movepick::MovePicker>::init_quiets
+     6.93%  baseline  baseline              [.] chessengine::eval::nnue::sota_simd::avx512::i16_deltas_into
+     5.16%  baseline  baseline              [.] <chessengine::search::Worker>::do_move
+     3.61%  baseline  baseline              [.] <chessengine::eval::nnue::sota_head::SotaHead>::forward_into
+     3.33%  baseline  baseline              [.] chessengine::eval::nnue::sota_simd::avx512::l1_dot
+     2.88%  baseline  baseline              [.] <chessengine::board::Board>::make_move_with::<chessengine::search::TtPrefetch>
+     2.85%  baseline  baseline              [.] <chessengine::movepick::MovePicker>::next_move
+     2.64%  baseline  baseline              [.] <chessengine::eval::nnue::sota_context::SotaContext>::evaluate
+     1.85%  baseline  baseline              [.] <chessengine::eval::nnue::sota_threats::ThreatContext>::apply_at
+     1.83%  baseline  baseline              [.] <chessengine::movepick::MovePicker>::init_captures
+     1.75%  baseline  baseline              [.] chessengine::eval::nnue::sota_threats::record_square_touch
+     1.71%  baseline  baseline              [.] <chessengine::board::Board>::see_ge
+     1.66%  baseline  baseline              [.] <chessengine::eval::nnue::sota_context::SotaContext>::push
+     1.60%  baseline  baseline              [.] <chessengine::board::Board>::attackers_to
+     1.58%  baseline  baseline              [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::current_full
+     1.46%  baseline  baseline              [.] <chessengine::history::Histories>::update_continuation_histories
+     1.30%  baseline  baseline              [.] <chessengine::board::Board>::ensure_threats
+     1.23%  baseline  baseline              [.] chessengine::eval::nnue::sota_simd::avx512::i16_deltas_dual
+     1.20%  baseline  baseline              [.] <chessengine::board::Board>::attackers_to_exist
+     1.14%  baseline  baseline              [.] chessengine::eval::nnue::sota_simd::avx512::find_nnz_vbmi2
+     1.03%  baseline  baseline              [.] <chessengine::search::Worker>::qsearch::<chessengine::search::NonPv>
+     1.00%  baseline  baseline              [.] <chessengine::board::Board>::unmake_move
+     0.98%  baseline  baseline              [.] <chessengine::history::Histories>::correction_value
+     0.88%  baseline  baseline              [.] chessengine::eval::nnue::sota_simd::avx512::l2_tail
+     0.81%  baseline  baseline              [.] core::fmt::write
+     0.77%  baseline  baseline              [.] chessengine::eval::nnue::sota_loader::load_v2_bytes
+     0.74%  baseline  baseline              [.] chessengine::eval::nnue::sota_threats::ripple
+     0.71%  baseline  baseline              [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into
+     0.63%  baseline  baseline              [.] <char as core::fmt::Display>::fmt
+     0.60%  baseline  baseline              [.] <chessengine::search::Worker>::stat_score
+     0.59%  baseline  baseline              [.] chessengine::eval::nnue::sota_threats::record_targets::<31>
+     0.58%  baseline  baseline              [.] <chessengine::movepick::MovePicker>::init_evasions
+     0.56%  baseline  baseline              [.] <chessengine::tt::TranspositionTable>::probe
+     0.53%  baseline  baseline              [.] <chessengine::board::Board>::gives_check
+     0.50%  baseline  baseline              [.] chessengine::attacks::init_magics
+     0.49%  baseline  baseline              [.] chessengine::eval::nnue::sota_threats::record_targets::<15>
+     0.40%  baseline  baseline              [.] <chessengine::board::Board>::refresh_check_info
+     0.40%  baseline  baseline              [.] <chessengine::board::DirtyPiece>::from_move
+     0.36%  baseline  baseline              [.] <chessengine::tt::TtWriter>::write
+     0.35%  baseline  baseline              [.] <chessengine::search::Worker>::search::<chessengine::search::Pv>
+     0.32%  baseline  baseline              [.] <chessengine::eval::nnue::aligned::Aligned<i16> as core::iter::traits::collect::FromIterator<i16>>::from_iter::<core::iter::adapters::map::Map<core::slice::iter::ChunksExact<u8>, chessengine::eval::nnue::sota_loader::read_i16s::{closure#0}>>
+     0.31%  baseline  baseline              [.] <chessengine::history::Histories>::update_all_stats
+     0.30%  baseline  baseline              [.] chessengine::eval::nnue::sota_features::refresh_threat_into_at
+     0.30%  baseline  baseline              [.] <chessengine::attacks::AttackTables>::attacks
+
+

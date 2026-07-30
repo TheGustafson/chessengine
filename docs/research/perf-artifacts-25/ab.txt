@@ -1,0 +1,20 @@
+== frame=wl50 cpu=2  A=baseline  B=baseline-copy
+A baseline                       n=9 cyc_n=  5264.6 ins_n=  6082.2 ipc=1.155 l1m_n= 619.94 ma64_n= 1056.50
+B baseline-copy                  n=9 cyc_n=  5315.8 ins_n=  6082.2 ipc=1.144 l1m_n= 621.01 ma64_n= 1053.09
+  paired dcyc_n (B-A): median=  +176.0 min=   -97.6 max= +1163.6 neg=3/9
+  medians: dcyc_n=   +51.3 (+0.97%) dins_n=   +0.00 (+0.00%) dl1m_n=  +1.07 dma64_n=   -3.41
+== frame=wl50 cpu=2  A=baseline  B=baseline-copy
+A baseline                       n=14 cyc_n=  4414.8 ins_n=  6082.2 ipc=1.378 l1m_n= 618.17 ma64_n=  977.56
+B baseline-copy                  n=14 cyc_n=  4459.8 ins_n=  6082.2 ipc=1.364 l1m_n= 619.13 ma64_n=  988.69
+  paired dcyc_n (B-A): median=    -6.6 min=  -268.2 max=  +414.5 neg=4/7
+  medians: dcyc_n=   +45.0 (+1.02%) dins_n=   +0.00 (+0.00%) dl1m_n=  +0.96 dma64_n=  +11.13
+== frame=wl50 cpu=2  A=baseline  B=a1-shaped
+A baseline                       n=24 cyc_n=  4757.0 ins_n=  6082.2 ipc=1.279 l1m_n= 620.30 ma64_n=  984.49
+B a1-shaped                      n=24 cyc_n=  4545.5 ins_n=  6002.9 ipc=1.321 l1m_n= 620.77 ma64_n=  994.98
+  paired dcyc_n (B-A): median=  -111.0 min=  -532.9 max=  +741.3 neg=8/12
+  medians: dcyc_n=  -211.5 (-4.45%) dins_n=  -79.34 (-1.30%) dl1m_n=  +0.47 dma64_n=  +10.49
+== frame=wl50 cpu=2  A=baseline  B=a1-shaped
+A baseline                       n=24 cyc_n=  4157.5 ins_n=  6082.2 ipc=1.463 l1m_n= 619.13 ma64_n=  946.88
+B a1-shaped                      n=24 cyc_n=  4217.6 ins_n=  6002.9 ipc=1.423 l1m_n= 620.07 ma64_n=  961.85
+  paired dcyc_n (B-A): median=   -70.7 min=  -397.9 max=  +414.6 neg=8/12
+  medians: dcyc_n=   +60.1 (+1.45%) dins_n=  -79.34 (-1.30%) dl1m_n=  +0.94 dma64_n=  +14.97
