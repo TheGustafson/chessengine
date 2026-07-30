@@ -6230,3 +6230,53 @@ This is the distinction I missed on the `paired_nps` runs: there the noise was
 - **canonical `network_scale` 600: +14.78 +/- 5.45 Elo** (5880 games, separate
   and additive — the speed frame used the same net on both sides)
 - the 14.7% node reduction to a given depth is *additional* on top of throughput
+
+## Tick 2026-07-30 ~23:45 — study 39 commissioned: close the 5.2x, decide fusion
+
+**D49 sb309/400**, anneal running. Train loss falling: **0.007640 → 0.007532**.
+Heldout last at sb300 (0.011355, ema 0.011105); sb310 due — **the first heldout
+sample fully inside the anneal**, and the one that starts telling us whether the
+gap is closing.
+
+**Box:** 8442 MB, free swap 1007 MB, load 4.28, disk 130 GB, **idle**.
+
+### The target
+
+Studies 29 and 31 both measured accumulator streaming, **agree on misses/line to
+8%** (0.477 vs 0.516), and **disagree 5.2x on cycles/line** (2.36 additive vs
+0.45 subtractive). **Both said "close this first"; neither did.** It decides
+fusion — **+48 cycles/node (a loss) to −136 (+4.7 Elo)** — a **34.9%-of-cycles**
+structural question that two studies have now deferred. The brief says plainly:
+*do not become the third.*
+
+Study 29's untested reconciliation is the lead hypothesis: an **additive** probe
+measures **marginal** cost at a capacity cliff, a **subtractive** probe measures
+**average** value below it. If that holds, the deliverable is a *rule* for which
+number applies to which kind of change — worth more than any single arm.
+
+### What makes this brief different: it hands over a WORKING INSTRUMENT
+
+Studies 33-38 were all crippled by cycle noise and concluded "cycles cannot
+adjudicate anything here." **That was too broad.** The frame established this
+session and now passed on:
+
+1. **fixed NODE budget** (`bench 16 1 100000 <fens> nodes <net>`), never fixed
+   depth — fixed depth lets trees differ and produced a **−21% wrong-sign**
+   result for me;
+2. **verify the frame before trusting the delta** — node counts to −0.000% AND
+   `instructions:u` to −0.016% proves both binaries execute the same work;
+3. alternate order every round;
+4. **report RANK SEPARATION, not spread** — 32 of 36 pairwise comparisons
+   favoured one side despite a 16-21% spread against an 11.5% effect;
+5. **why `paired_nps` fails where this works: independent noise blocks a
+   verdict, common-mode noise cancels.**
+
+### And it prices BOTH sides of fusion
+
+SF streams 2 accumulator arrays to our 4 (10.24 KB/eval) — **but SF pays a full
+threat rebuild on every refresh** (`append_active_indices` at
+`nnue_accumulator.cpp:577`, verified by me at `eca43a97`), which our split
+avoids. Study 29 priced our side: HalfKA refreshes **0.1610/node** vs threats'
+**0.0214/node**. Closed doors restated so no arm is wasted: no threat i8 lever,
+**no i8-accumulator lever** (both references accumulate in i16), huge pages
+retired, and do not "simplify" the two-loop fold.
