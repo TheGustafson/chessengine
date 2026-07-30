@@ -61,17 +61,31 @@ measured both ways.
    accumulator chains where the machine wants 4 — and it is **priced at
    −0.185 % of engine cycles and REJECTED on cost/benefit**, because it is not
    eval-bit-identical and the prize is below the panel's own resolution. §4.
-4. **★ Study 44's port-pressure kill is under-stated by ~2×, and the reason is
-   a divisor it did not measure.** §5. This is the most consequential thing in
-   the study.
+4. **★ Study 44's port-pressure kill is WRONG, and the reason is a divisor it
+   did not measure.** Its bracket was 7.1 % – 14.4 % of cycles; the corrected
+   bracket is **16.8 % – 30.3 %**, which lies **entirely above** the original.
+   Study 44's own open assumption **A4 is closed here by measurement** —
+   `pack_512_uops_retired` counts one event per 512-bit *instruction*, ratio
+   1.0000 — and its two levels reproduce on my binary to within 0.1 %. §5. This
+   is the most consequential thing in the study.
 
 **The load-bearing number that makes all of §3–§5 arithmetic instead of
 hand-waving: `evals/node = 0.43117`**, exact (§2). Every per-eval quantity in
 this document is converted with it, and it is 2.3× away from the "≈1" a reader
-would assume.
+would assume. One eval of this net costs **~805 cycles**, of which **~358 are
+non-memory stall** (§5.4).
 
-**Landed:** §6 — the `REGS_CAP` sweep study 44 left open (`r4` built, panelled
-against `r5` and `r8`).
+**Landed — the sweep study 44 left open is CLOSED, and the answer is "keep
+what you have":** `r4` was built for the first time and panelled against `r5`
+and `r8`, 40 paired rounds, balanced Latin square. **`REGS_CAP = 5` is the
+optimum.** `r4` reads **+0.875 %** and `r8` **+1.009 %** on the cycles contrast
+— both on the *wrong* side. The mechanism keeps working (store-queue pressure
+falls a further −3.7 % at `r4`, 34/40) but `instructions:u` rises faster
+(+1.125 %), and the crossing between them is what makes 5 a minimum rather than
+a way-point. Study 44 §8 item 5 is answered in both halves: the response is
+**not** still falling below 5, and `r8` — which study 44 correctly flagged as
+measured only on a broken instrument — **does not reproduce** its −19.1 %
+store-queue figure (+0.36 %, 18/40, a null). §6.2.
 
 **Instrument failure, mine, reported first:** my initial panel read a
 byte-identical null at **+0.878 % cycclean**. Cause: I ran the microbenchmarks
@@ -297,20 +311,55 @@ measures it:
 `skip_dot_i8`, `l1_dequant` and both fold kernels' multiply-accumulate work —
 runs at **exactly 1 per cycle**. Simple integer vector work runs at ~2.
 
-Re-running study 44's own arithmetic with a measured divisor instead of an
-assumed one, and keeping its A4 bracket intact:
+### 5.1 Study 44's assumption A4 is CLOSED, by measurement
 
-| counter semantics | op class | 512-bit issue cycles/node | % of 4668.94 |
-|---|---|---:|---:|
-| 1 event per instruction | 1/cycle (FMA/VNNI) | 1282.60 | **27.5 %** |
-| 1 event per instruction | 2/cycle (integer) | 707.5 | 15.2 % |
-| 2 events per instruction | 1/cycle (FMA/VNNI) | 641.3 | 13.7 % |
-| 2 events per instruction | 2/cycle (integer) | 353.8 | 7.6 % |
+Study 44 could not say whether `pack_512_uops_retired` counts one event per
+512-bit instruction or two (double-pumped halves), and honourably bracketed its
+verdict at both readings. That bracket is closable: run a **known** number of
+512-bit instructions and read the counter (`tools/perf46/widthsem46.sh`).
 
-**Study 44's bracket was 7.1 % – 14.4 %. The correct bracket is 7.6 % – 27.5 %**
-— the top roughly doubles, and the engine's real mix (both fold kernels and
-`activate` are integer-class; the head's dots are FMA-class) sits in the middle
-of it, not at the bottom.
+| instruction | issued | `pack_512_uops_retired` | ratio |
+|---|---:|---:|---:|
+| `vfmadd231ps` zmm | 400 000 000 | 400 000 410 | **1.0000** |
+| `vpdpbusd` zmm | 400 000 000 | 400 000 411 | **1.0000** |
+| `vpaddd` zmm | 400 000 000 | 400 000 411 | **1.0000** |
+| `vfmadd231ps` ymm → `pack_256` (control) | 400 000 000 | 400 000 849 | 1.0000 |
+
+**One event per 512-bit INSTRUCTION**, to seven significant figures (the ~410
+excess is loop and startup overhead). **A4 is resolved and the semantics half of
+the bracket disappears.**
+
+### 5.2 Study 44's levels, re-derived on this study's own binary
+
+Rule 8 — the levels this correction is applied to are study 44's, whose `n` I
+did not set (`tools/perf46/fpcensus46.sh`, 5 reps, median):
+
+| per node | study 44 (`base44`) | **this study (`base46`)** | Δ |
+|---|---:|---:|---:|
+| `fp_ops_retired_by_width.all` | 1399.34 | **1398.05** | −0.09 % |
+| `pack_512_uops_retired` | 1282.60 | **1283.25** | +0.05 % |
+| `pack_256_uops_retired` | — | 33.75 | — |
+| `instructions:u` | 5929.09 | **6170.77** | +4.076 % |
+
+**Both load-bearing levels reproduce to within 0.1 %.** The instruction row
+differs by exactly study 44's own measured `REGS = 5` cost — 5929.09 × 1.04076 =
+**6170.8**, matching 6170.77 — which independently confirms that `base46` *is*
+study 44's `r5` and that its +4.076 % figure is right.
+
+### 5.3 The corrected bracket
+
+With A4 closed, the only remaining unknown is the **op mix**, and 1283.25
+512-bit instructions/node is now a count of real instructions:
+
+| op mix assumption | 512-bit issue cycles/node | % of measured 4316.58 |
+|---|---:|---:|
+| all FMA/VNNI class (1.00 c/op) | 1287.7 + 18.1 (256-bit) | **30.3 %** |
+| all simple-integer class (0.55 c/op) | 707.9 + 18.1 | **16.8 %** |
+
+**Study 44's bracket was 7.1 % – 14.4 %. The corrected bracket is
+16.8 % – 30.3 % — it lies ENTIRELY ABOVE study 44's**, not merely wider at the
+top. Even the most generous assumption about the op mix puts 512-bit issue above
+the ceiling study 44 used to declare the pipes idle.
 
 **What survives of study 44's verdict, and what does not.**
 
@@ -324,7 +373,7 @@ of it, not at the bottom.
   The two counters answer different questions and study 44 read one as
   confirming the other.
 
-### 5.1 `forward_into` in per-EVAL units, which is where it becomes legible
+### 5.4 `forward_into` in per-EVAL units, which is where it becomes legible
 
 Study 44's shares are per node. Divided by §2's 0.43117 they become per eval,
 and the numbers stop looking small:
@@ -416,9 +465,61 @@ contaminated panel anyway, since they are deterministic:
 in tile narrowness across all five settings — `r4` is the most expensive tile on
 `instructions:u` ever measured here, as designed.
 
-### 6.2 THE VERDICT
+### 6.2 ★ THE VERDICT — `REGS_CAP = 5` IS THE OPTIMUM, and the sweep is closed
 
-*(panel in flight — filled in below)*
+**The arbitrating panel:** `base46` (= `REGS 5`, what ships) / `r4` / `r8` /
+byte-identical null, **balanced Latin square**, **40 paired rounds (10 whole
+blocks)**, `cpu0`, nothing else of mine on the box.
+
+**The null first, because it decides whether any of it is readable:**
+
+| `null46` (byte-identical `cp` of `base46`) | median | trim20 | se | neg/n | p |
+|---|---:|---:|---:|---:|---:|
+| `cycclean:u` | −0.707 % | −0.771 % | 0.289 | **22/40** | **0.6358** |
+| `cycles:u` | −0.897 % | −0.781 % | 0.340 | 22/40 | 0.6358 |
+| `store_queue_rsrc_stall` | −1.430 % | −1.522 % | 0.408 | 26/40 | 0.0807 |
+| `instructions:u` | **0.000 %** | 0.000 % | **0.000** | 19/40 | 0.8746 |
+
+**22/40 on the adjudicating counter, p = 0.64 — a coin flip in SIGN, and exactly
+0.000 % on instructions.** But its **magnitude** (−0.71 %) is four times study
+44's fixed-panel null (+0.171 %), so this panel's resolution is worse than study
+44's and I say so rather than quoting a tighter number than I earned. That is
+what the contrast form is for.
+
+**The contrast, computed the honest way** — per round, `(arm − ref) − (null −
+ref)`, then median over rounds (`tools/perf46/contrast46.py`). Differencing two
+medians is *not* the same statistic and does not cancel the round's shared load:
+
+| contrast vs `r5` | `cycclean` | store queue | `instructions:u` |
+|---|---:|---:|---:|
+| **`r4`** | **+0.875 % (trim +0.573), se 0.551, 17/40** | **−3.732 % (34/40)** | +1.125 % (0/40, exact) |
+| **`r8`** | **+1.009 % (trim +0.972), se 0.477, 14/40** | +0.361 % (18/40) | −1.656 % (40/40, exact) |
+
+**Both point estimates are POSITIVE — that is, WORSE than `REGS = 5`.** Neither
+sign count is significant (17/40 and 14/40), so the honest reading is *not a
+win*, with `r8` about 2 se on the wrong side. **`REGS_CAP` stays at 5.**
+
+**And the mechanism story survives intact, which is what makes this an optimum
+rather than a puzzle.** Store-queue pressure keeps falling monotonically with
+tile narrowness all the way down — study 44 measured −9.5 % at `r10` and
+−19.5 % at `r5` against `REGS = 20`, and `r4` takes a further **−3.7 %** beyond
+`r5` at 34/40. The predicted mechanism does not stop working at 4. What changes
+is the other side of the trade: `instructions:u` also rises monotonically
+(+1.125 % at `r4`), and **at `r4` the instruction cost finally exceeds the
+store-queue relief.** A benefit that keeps growing, a cost that keeps growing
+faster, and a crossing between them is exactly the shape of a minimum — located,
+now, at 5.
+
+**Two things study 44 left open in its §8 are closed by this panel:**
+
+* **item 5, "`r4` was never built at all — the response is still falling at
+  `r5` and the peak may be below it."** Built, panelled, and the response is
+  **not** still falling: `r4` is +0.88 % on the wrong side. **5 is the floor.**
+* **item 5's other half, "`r8` is UNMEASURED, not anomalous."** Now measured on
+  the fixed instrument at n = 40: **+1.01 %, worse than `r5`**, with a
+  store-queue contrast of +0.36 % (18/40, a null) rather than the −19.1 % the
+  broken sweep reported. Study 44 was right to distrust its own `r8` row — the
+  old figure does not reproduce.
 
 ---
 
@@ -486,4 +587,54 @@ python3 tools/perf46/med46.py docs/research/perf-artifacts-46/panel-regs.txt \
 
 ## 10. WHAT I COULD NOT ESTABLISH
 
-*(filled in with the panel verdict)*
+In order, most doubtful first.
+
+1. **The engine's actual 512-bit OP MIX, which is the only thing keeping §5.3's
+   bracket 13 points wide.** I measured two throughput classes — 1.00 c/op
+   (`vfmadd231ps`, `vpdpbusd`, `vaddps`) and 0.55 c/op (`vpaddd`) — but I did
+   **not** measure the specific word-wise ops the hot kernels actually issue
+   (`vpaddsw`, `vpmaxsw`, `vpminsw`, `vpsllw`, `vpmulhw`, `vpmulhrsw`,
+   `vpmovwb`, `vpmovsxbw`). Vector integer **multiplies** in particular are
+   often more restricted than adds, so `activate`'s `vpmulhw`/`vpmulhrsw` may
+   well be 1/cycle rather than 2. **The honest position is that the mix is
+   somewhere in 16.8 % – 30.3 % and probably nearer the middle than either end**
+   — and that this is a one-hour job for the next session, since
+   `gen_ilp.py` takes a new instruction as a one-line edit. It does not affect
+   the correction's direction: even the most generous end is above study 44's
+   entire bracket.
+
+2. **The ~950 vector-ops-per-eval figure in §5.4 is an ESTIMATE built from
+   static kernel shapes, not a measurement.** I did not run per-symbol
+   instruction attribution on the head. It is used only to say "the residual is
+   issue throughput, not latency", which is independently supported by §3's
+   kernel-level audit; no number in this study depends on it.
+
+3. **Why spreading `l1_dot`'s tail measured WORSE is unexplained** (§3.2). I
+   offered register allocation as a hypothesis and explicitly did not
+   disassemble to confirm it. The *measurement* is solid — the direction
+   reproduces at both count = 39 and count = 40 — but the mechanism is a guess.
+
+4. **This panel's null is 4× larger in magnitude than study 44's** (−0.71 % vs
+   +0.171 %) despite an identical Latin-square design and a clean sign count
+   (22/40). I did not find the residual source. The contrast form differences it
+   out, but the honest consequence is that **my resolution is ~±0.5 % and I
+   cannot see effects smaller than that** — which is precisely why §4's
+   −0.185 % `l2_tail` arm was rejected rather than attempted.
+
+5. **`l2_tail`'s −17.9 cycles/call is an ISOLATED microbenchmark number, never
+   confirmed in-engine.** I did not build the arm, so the conversion to
+   −0.185 % rests on assumption A3 (that a chained-call microbenchmark measures
+   the latency the engine experiences) and on A2 (evals/node). If both are
+   right the arm is not worth building; if A3 understates the in-engine effect
+   by ~3× it would become marginally worth it. §3.1's independent reproduction
+   of the §1.2 knee is the main evidence that A3 is sound.
+
+6. **Nothing here has been arbitrated by games**, and nothing here changes the
+   search tree — every binary is node-identical, so a fixed-node match is a dead
+   heat by construction. The cycles panel is the arbiter this study can run.
+
+7. **`REGS = 4` and `REGS = 8` are established as NOT WINS, not as precisely
+   priced losses.** Their contrasts (+0.88 ± 0.55, +1.01 ± 0.48) are on the
+   wrong side of zero but neither sign count is significant. The actionable
+   conclusion — *do not move `REGS_CAP` off 5* — is safe; a claim that `r4`
+   costs exactly 0.88 % would not be.
