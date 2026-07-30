@@ -2717,3 +2717,57 @@ sub-noise arms, and that moving the pins is EXPECTED for this one.
 - **The gate caught study 20's exact failure mode on it** — `Aligned<f32>` broke
   two `tests/` builders under the `sota`-only feature combo that plain
   `cargo test --features sota,arch-d48x` never builds. Fixed before write-up.
+
+### ★ CORRECTION TO MY OWN CORRECTION — the profile table was NOT wrong
+
+Last tick I relayed study 21's claim that my briefing shares were wrong, and
+told the owner so. **I re-measured and my numbers reproduce.** Fresh
+`perf record -e cycles:u`, d16 bench on wl50.fens, `--no-children`, PGO
+`archon-s20`:
+
+| symbol | I briefed | RE-MEASURED | study 21 claimed |
+|---|---|---|---|
+| `search::<NonPv>` | 19.90% | **21.29%** | 6.81% |
+| `at_full` | 18.56% | **17.76%** | — |
+| `i16_deltas_into` | 13.14% | **12.54%** | — |
+| `forward_into` | 8.77% | **8.66%** | — |
+| `finny_refresh_into` | 9.15% | **8.49%** | 1.17% |
+| `init_quiets` | 6.35% | **6.77%** | — |
+
+**Both measurements are right; they answer different questions.**
+`perf --no-children` gives cycles in a SYMBOL'S CODE REGION, INCLUDING callees
+the compiler inlined into it. Study 21's figures are cycles in a SOURCE
+FUNCTION'S OWN BODY, excluding inlined callees. Mine answers "where are the
+cycles"; theirs answers "which function body do I edit". Neither is the error I
+called it.
+
+**My failure was process, not arithmetic: I relayed a subagent's reframing to
+the owner without re-measuring first** — the exact thing the standing rule says
+to do ("verify load-bearing claims against the code/data yourself before acting
+on them", and check the FRAMING not just the numbers).
+
+**Consequence for study 22 is smaller than I told it.** 8.49% of cycles really
+do execute inside `finny_refresh_into`'s region; much of it is inlined callee
+code owned by another file. **Not churning study 22 again** — the
+dual-accumulator redirect stands on its own merits (65% of L1 misses, ~20 KB/node
+of copy traffic), independent of the share dispute.
+
+**Also note `--call-graph=none` is INVALID on this perf build** when combined
+with `-e` — it silently worked in earlier invocations without `-e` and then
+failed with exit 129. Omit it; no call graph is the default.
+
+### Study 25 commissioned — sota_simd + head, ~21% of cycles
+
+Study 21's files are free, so `i16_deltas_into` (12.54%) and `forward_into`
+(8.66%) are now claimable. Study 25 owns `sota_simd.rs`, `sota_head.rs`,
+`sota_loader.rs`, `sota_features.rs`.
+
+**Its FIRST task is to settle the inline question** — build with
+`#[inline(never)]` on `apply_i8_deltas_into` / `apply_i16_deltas_into` /
+`apply_i16_deltas_dual` and the head kernels, re-profile, and report the split.
+That is the thing I got wrong, so it gets measured rather than assumed.
+
+Briefed with the known-dead list so it does not re-run them: the prefetch
+(killed by a resident-address control at +0.01%), FullThreats cancellation
+(0.075 pairs/fold), and alignment in its files (swept twice already).
+And told explicitly **not to pad to four** — study 21 landed two and was right to.
