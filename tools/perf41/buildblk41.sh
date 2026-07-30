@@ -25,7 +25,8 @@ for k in "$@"; do
     sleep 120
   done
   mkdir -p bin34
-  systemd-run --user --scope -q -p MemoryMax=6G -p MemorySwapMax=0 -- \
+  flock /home/nick/.cache/archon-build.lock \
+    systemd-run --user --scope -q -p MemoryMax=6G -p MemorySwapMax=0 -- \
     tools/oomlast.sh env \
     RUSTFLAGS="-C target-cpu=native -C llvm-args=-align-all-nofallthru-blocks=$k" \
     CARGO_BUILD_JOBS=2 nice -n 10 cargo build --release --features "$FEATURES" \

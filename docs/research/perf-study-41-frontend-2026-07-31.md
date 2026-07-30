@@ -97,7 +97,22 @@ binary, in this study's own panel**, never inherited:
 | `ex_no_retire.empty:u` | **205.333** |
 
 Source: `docs/research/perf-artifacts-41/dose3.txt`, median over **110 paired
-rounds**, box carrying two perf studies and the D49 trainer. `cycles:u` can only
+rounds**.
+
+**Box load, stated because it was not quiet and the protocol is what handles
+that.** Every panel here ran with the D49 extension trainer live (~1 core,
+~2-5 GB) and up to three other agents on the same 8-core box; swap went from
+968 MB free at commissioning to ~60 MB by the end, and 1-minute load average
+ranged 3.5-12. No panel was started while a build of mine was running, and the
+protocol's defence is structural rather than circumstantial: **every label is
+differenced against the byte-identical null inside the SAME round**, with the
+order Fisher-Yates shuffled per round, so common-mode load cancels in the pair.
+The evidence that it worked is the null itself — `a410` reads 58/110, 59/110 and
+50/110 on the three counters, i.e. a coin flip, on a box this noisy.
+
+The absolute levels are what load moves, not the contrasts: `ex_no_retire.empty`
+reads 205.333 under load and 191.757 on the quieter census, a 7 % band that §8.3
+carries as a stated uncertainty. `cycles:u` can only
 be inflated by contention, so 4304.53 is an upper bound on the quiet-box figure
 and study 40's implied ~4104 is the lower one; **every cycle percentage here is
 therefore a slight UNDER-statement**, the safe direction for a study whose job
