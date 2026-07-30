@@ -4916,3 +4916,223 @@ deliverable.
 
 Correct current pins were supplied (`587683` / `eb981b11…` / `1985398`), since
 several docs still carry the pre-i8 `5ca978e0…`/`1922947`.
+
+## FREE ELO ON THE SHIPPING NET: D48X@600 beats D48X@400 by +15.65 +/- 11.02
+
+    Elo: +15.65 +/- 11.02   nElo: +25.31 +/- 17.79
+    W 475 / D 582 / L 409   (52.25%)   n=1466   EXIT=0
+
+**Same weights. Header-only change** (`network_scale` 400 -> 600, payload
+byte-identical from offset 64). **The canonical net we ship today is leaving
+~16 Elo on the table**, recoverable with no retraining and no code change.
+
+### This REFUTES my own story from two ticks ago
+
+I had reasoned: D49 gained +32 Elo moving to a spread of 415, which is D48X's
+421, therefore **~420 stdev is where our hardcoded SF margins want to sit and
+D48X happens to land there.** Tidy, mechanistic, and **wrong** — D48X at 421 is
+not optimal; 610 is better by 16 Elo.
+
+*This is the standing rule paying off exactly as written: when the story gets
+beautiful, attack it hardest. Had I trusted the story I would have "confirmed"
+D48X was well-calibrated and never run the screen.*
+
+### What both data points actually say
+
+| net | scale | eval stdev | result |
+|---|---:|---:|---|
+| D49 sb180 | 400 -> 756 | 230 -> 415 | **+32.09 +/- 11.38** |
+| D48X | 400 -> 600 | 421 -> 610 | **+15.65 +/- 11.02** |
+
+**Larger spread is better in BOTH nets**, and 421 is not a ceiling. The optimum
+is somewhere at or above a ~610 stdev, and nobody has ever swept this knob.
+
+### Bracketing now
+
+`sweep900.service`: **D48X@900 (stdev 895.5) vs D48X@600**, 1466 games @ 25000
+nodes, conc=10.
+- **900 wins** ⇒ the optimum is far out and the available Elo is larger than 16.
+- **900 loses** ⇒ optimum is bracketed in (600, 900) and we bisect.
+
+A deliberately large step, because the two results so far suggest the knob is
+nowhere near its edge and a timid step would waste a screen.
+
+**Note the interaction with D49's verdict:** the sb400 screen must now sweep
+scale as well, not merely match D48X — matching a mis-tuned reference would
+just inherit its error.
+
+**D49 sb209/400**, active. Box 8073 MB, load 6.65. Study 36 in its reading
+phase (ahead=0, dirty=3) — no measurement contention.
+
+## OPTIMUM BRACKETED — and it yields a falsifiable, transferable prediction
+
+**D48X@900 vs D48X@600: −28.50 +/- 10.97** (W369/D608/L489, 45.91%, n=1466,
+EXIT=0).
+
+The knob has a peak, and we have it surrounded:
+
+| arm | vs | result |
+|---|---|---:|
+| D48X@600 | @400 (canonical) | **+15.65 +/- 11.02** |
+| D48X@900 | @600 | **−28.50 +/- 10.97** |
+
+⇒ **the optimum is inside (400, 900), near 600**, i.e. an eval stdev around
+**610**. Note the loss at 900 is *larger* than the gain at 600 — the penalty for
+over-scaling exceeds the reward for correcting under-scaling, so this knob is
+worth getting right rather than merely nudging.
+
+### The prediction now under test
+
+If the optimum is a property of **the engine's hardcoded margins** — a target
+eval spread of ~610 — rather than of any particular net, then it must transfer.
+D49 at 756 sits at stdev 415, well short of 610. Scaling to
+**756 x 610/415 ~= 1111** should land it on target:
+
+| net | scale | stdev |
+|---|---:|---:|
+| D49 sb180 | 756 | 415.3 |
+| **D49 sb180** | **1111** | **600.5** |
+| D48X (measured optimum) | 600 | 610.3 |
+
+`sweep1111.service`: **D49@1111 vs D49@756**, 1466 games @ 25000 nodes.
+
+- **1111 wins** ⇒ the ~610 stdev target is an **engine property**, transferable
+  across nets, and we have a *rule* rather than two anecdotes: every future net
+  gets scaled to ~610 stdev at export, no per-net sweep needed.
+- **1111 loses** ⇒ the optimum is net-specific, every net needs its own sweep,
+  and the D49 verdict must carry a scale ladder.
+
+**Either answer is worth the screen**, and this is the right shape of
+experiment: a number derived from one net, predicting a result on another,
+before the games are played.
+
+### Consequence already banked
+
+**D49's +32.09 result was measured at 756 — which this predicts is NOT its
+optimum.** So D49's true frame-corrected strength is likely *better* than the
++32 already measured, and the sb400 verdict must run a scale ladder rather than
+a single arm.
+
+**D49 sb214/400**, heldout 0.011949 @ sb210 (ema 0.011546) — the delta widened
+again to −145, so the sb200 narrowing was not the onset of a plateau.
+Box: 8393 MB, load 11.91. Study 36 still in reading phase (ahead=0, dirty=3,
+perf=0) — no contention with these screens.
+
+## THE PREDICTION FAILED — the optimum is NET-SPECIFIC, not an engine property
+
+**D49@1111 vs D49@756: −14.47 +/- 11.09** (W420/D565/L481, 47.92%, n=1466,
+EXIT=0).
+
+I predicted, before the games, that if ~610 eval stdev were a property of the
+engine's hardcoded margins it must transfer, so D49 should prefer 1111 (stdev
+600.5) over 756 (stdev 415.3). **It does not. The hypothesis is refuted.**
+
+### The full ladder — four screens, 5864 games
+
+| net | arm | result | ⇒ optimum |
+|---|---|---:|---|
+| D49 sb180 | 756 vs 400 | **+32.09 +/- 11.38** | |
+| D49 sb180 | 1111 vs 756 | **−14.47 +/- 11.09** | **~756, stdev ~415** |
+| D48X | 600 vs 400 | **+15.65 +/- 11.02** | |
+| D48X | 900 vs 600 | **−28.50 +/- 10.97** | **~600, stdev ~610** |
+
+Each net is bracketed on both sides, and **their optimal spreads differ by 47%
+(415 vs 610).** There is no single target stdev. *(A tempting near-coincidence:
+the optimal SCALES, 756 and 600, are only 26% apart while the spreads are 47%
+apart. I am NOT building on that — it is one comparison on two nets, exactly the
+kind of pattern the standing rules say to distrust until measured.)*
+
+### What survives, stated at the strength the evidence supports
+
+**The rule is weaker than the law I wanted, and that is the honest version:**
+
+1. **The default `network_scale = 400` is wrong for both nets we have tested**,
+   by +32 and +16 Elo respectively. It is a default, never a tuned value.
+2. **The optimum is net-specific and must be swept per net.**
+3. **Over-scaling costs more than under-scaling gains** (D48X −28.50 at 900 vs
+   +15.65 at 600) — so sweep, do not guess upward.
+4. Cost of a sweep: a 4-byte header patch plus two screens. Trivial against
+   16-32 Elo.
+
+**D49's optimum may also move as training completes** — sb180 is 45% of
+schedule — so the sb400 verdict must carry its own ladder, not reuse 756.
+
+### Promotion NOT taken on 1.42 sigma
+
+D48X@600 is +15.65 **+/- 11.02** over the canonical net: a 1.42 sigma result.
+That is not a basis for changing what we ship, however attractive "free Elo"
+sounds. **`confirm600.service` is now running the same pair at 5880 games
+(+/-5 Elo).** If it holds near +15, promotion is justified and cheap (a header
+patch on the canonical net); if it collapses toward zero, the 1466-game number
+was noise and nothing is lost but box time.
+
+**D49 sb220/400**, heldout 0.011949 @ sb210. Box 8436 MB, load 10.61. Study 36
+committed its first work (ahead=1, dirty=0) and has `perf=0` — still no
+measurement contention with these screens.
+
+## Tick 2026-07-30 ~10:45 — confirmation in flight, study 36 into movegen
+
+**`confirm600` at 998/5880: +20.91 +/- 13.09.** Consistent with — slightly
+above — the +15.65 +/- 11.02 measured on the first 1466-game pass. Running on to
+the +/-5 bar before any promotion decision. **No promotion on a partial
+screen.**
+
+**D49 sb225/400.** Heldout still falling hard, no plateau:
+
+| sb | heldout | ema | delta |
+|---|---|---|---|
+| 200 | 0.012094 | 0.011587 | −53 |
+| 210 | 0.011949 | 0.011546 | −145 |
+| **220** | **0.011805** | **0.011461** | **−144** |
+
+The sb200 narrowing is now clearly a blip, not the onset of saturation.
+Cosine runs to sb300, then anneal 300→400 — roughly 7.5 h left.
+
+**Study 36 has picked its target and is implementing:** *"movegen: answer
+in-check `pseudo_legal` from the g…"* (ahead=1, dirty=6). It went to the fresh
+profile, chose an item, and is building — which is exactly the brief's demand
+that the profile be the means and a landed win the deliverable.
+
+**Its change touches `movegen`, so the D24 perft ritual is MANDATORY** —
+`cargo test` AND `cargo test --release -- --ignored perft_full_suite` before
+landing. Its brief states this explicitly, and I will verify it independently at
+merge time rather than take the report (as I did for study 35, where my own
+gate's `tail` cropped the perft result and I had to re-run it standalone to
+confirm `1 passed`).
+
+**Box:** 5692 MB available, load 21.34 — the 5880-game screen at conc=10 plus
+study 36 plus the trainer. Above the 2500 MB refuse line, but this is the
+busiest the box has been tonight; **no new work started this tick on purpose.**
+
+## Tick 2026-07-30 ~11:30 — confirmation strengthening, D49 sb230
+
+**`confirm600` progression** (D48X@600 vs canonical @400, same weights,
+header-only):
+
+| n | Elo | bar |
+|---:|---:|---:|
+| 1466 (first pass) | +15.65 | +/-11.02 |
+| 998 | +20.91 | +/-13.09 |
+| 2002 | +15.11 | +/-9.41 |
+| **2998** | **+19.26** | **+/-7.73** |
+
+Now **2.5 sigma** and stable in the +15..+21 band across four readings on two
+independent runs. Running on to 5880 (+/-5). **Still no promotion until it
+completes** — the whole point of this screen is that 1.42 sigma was not enough,
+and stopping early at 2.5 sigma would repeat the error in a smaller size.
+
+**D49 sb230/400**, heldout **0.011731** (ema 0.011399), still descending. 170 sb
+to go: cosine to sb300, then the anneal.
+
+**Study 36 ahead=2**, and it has moved on from its first item to a second:
+*"history: index the `[piece x to]` planes FLAT wher…"*. Two committed pieces of
+work, dirty=2 — the commit-as-you-go instruction is holding.
+
+**Box: 4932 MB available, load 20.19.** This is the tightest memory has been
+tonight (down from 8.6 GB), driven by the 5880-game screen at conc=10 plus study
+36 plus the trainer. Still nearly 2x the 2500 MB refuse line, but the direction
+is one-way, so:
+- **no new study commissioned this tick**, and
+- **no new screen started** — one big screen is already saturating the box.
+
+Watching for the screen to finish, which frees ~2.5 GB and ten cores at once.
