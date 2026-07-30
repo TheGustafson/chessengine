@@ -9006,3 +9006,27 @@ trajectory; study 36's per-node totals are 2× wrong. And told **not to self-mer
 
 **The no-escape-hatch line has a receipt now:** *this exact lever was declared
 DEAD by study 44 and turned out to be the largest one on the board.*
+
+## D49 HAS CROSSED — the extension is now net-positive on the deployed metric
+
+**sb540: EMA 0.010772 against the pre-extension bar of 0.010812 — 40e-6 BELOW
+it.** Eleven consecutive samples down. The crossing happened between sb530
+(0.010817) and sb540, i.e. **~sb531–532 against my pre-registered sb533.**
+
+| series | sb390 (pre-extension) | sb540 | vs bar |
+|---|---:|---:|---:|
+| **EMA — the DEPLOYED net** | 0.010812 | **0.010772** | **−40e-6 (ahead)** |
+| raw value | 0.010824 | 0.010871 | +47e-6 (behind, closing fast — was +107e-6 at sb530) |
+
+**The extension has fully repaid the restart cost and is now ahead**, with **160
+superbatches and the entire sb600–700 anneal still to come** — the anneal being
+worth ~300e-6 on D49's own history and present in none of the fits above.
+
+**Sequence of my own projections on this run, each revised upward on more data,
+recorded so the drift is visible:** "the anneal consolidates, it does not
+discover" (**retracted by the owner, correctly**) → "roughly break even"
+(**retracted**) → "clears the bar with 120 sb to spare" → **crossed at sb531–532,
+now 40e-6 ahead.** The lesson is the owner's: *there is no way to know how much
+the anneal will recover*, and the same applied to the linear phase.
+
+Confirm pass running (pid 1486751, 2100 MB) with a waiter armed; box 7034 MB.
