@@ -519,7 +519,13 @@ impl MovePicker {
     /// a literal the back-edge is a direct jump. That is also why the shared
     /// `CaptureInit | ProbcutInit | QcaptureInit` arm is split into three
     /// copies of one line: the bodies are the same, the successors are not.
-    #[inline]
+    // `inline(always)`, not `inline` -- perf study 27 arm 5 measured the
+    // difference at -37.6 instructions and -6.2 branches per node, and study 23
+    // left the same change on the table for want of an instrument. What made it
+    // look expensive was `L1-dcache-load-misses` rising; measuring the
+    // DENOMINATOR settles that -- total L1d LOADS fall 4.1/node, so this is less
+    // memory work at a marginally worse hit rate, not more work.
+    #[inline(always)]
     pub fn next_move(&mut self, board: &Board, hist: &Histories) -> Option<Move> {
         loop {
             match self.stage {
