@@ -3622,3 +3622,90 @@ fairly screened until then: it trains at qat_threat_scale 256 while the
 exporter still writes THREAT_QUANT 64, so a screen now would measure the broken
 deployment, not the recipe. That is the user's stated sequence — study 30, then
 test, then games.
+
+## Perf study 29 COMPLETE — the load census. TWO METHODS NOW CONVERGE.
+
+Branch `worktree-agent-af852c45b5086e424`, **4 commits, tree clean**, 39 KB doc
+`docs/research/perf-study-29-the-load-census-2026-07-30.md`, tooling in
+`tools/perf29/` (19 scripts). Gates re-verified after final edits:
+**Bench 587683, eval hash 5ca978e0…0098b38, d13 1922947.**
+
+**It engaged study 31 instead of deferring to it** — which is exactly what it
+was asked to do.
+
+### THE HEADLINE: two independent instruments agree on where the time goes
+
+| FT weight rows, share of load-stall cycles | method |
+|---:|---|
+| 52% | study 31 — counter census x source geometry |
+| **46.2%** | study 29 — traffic-pinning probes |
+
+Study 29 adds the per-miss economics study 31 lacked:
+
+| | miss rate | stall cycles / miss |
+|---|---:|---:|
+| **FT weight rows** | **38.3%** | **17.0** |
+| accumulator stream | 14.6% | <= 2 |
+
+⇒ weight rows are not just the bigger share, they are the **expensive-per-miss**
+share. **This double-confirms study 32 (i8 HalfKA), which I commissioned before
+study 29 reported.** Independent confirmation of a target chosen on other
+grounds is the strongest signal we have had all night.
+
+### Traffic-pinning table (load count held fixed, one stream collapsed)
+
+| arm | miss/load | stall/instr |
+|---|---:|---:|
+| byte-identical null | −0.21% | +2.29% |
+| `accpin` (accumulator READS) | −2.59% | +8.21% |
+| `dstpin` (reads AND writes) | **−20.23%** | **−4.63%** |
+| `wpin` (weight rows) | **−26.60%** | **−41.20%** |
+
+### FUSION: both studies now say DO NOT BUILD
+
+Study 29 and 31 agree on misses-per-line to 8% (0.477 vs 0.516) but differ
+**5.2x on stall cycles per line** (2.36 additive vs 0.45 subtractive).
+Reconciliation offered: an *additive* redundant-copy probe measures marginal
+cost at a capacity cliff; a *subtractive* probe measures average value below it
+— both can be true. Fusion therefore spans **net +48 (a LOSS) to −136 (+4.7
+Elo)**. Recommendation: **do not build; close the 5.2x gap first** (both probes
+are committed, ~half-hour job). This compounds the verified point that SF
+*pays* the refresh blocker, so our split accumulator is an advantage fusion
+trades away — study 29 prices that too (HalfKA refreshes 0.1610/node vs
+threats' 0.0214).
+
+### A hardware trap worth more than the census
+
+**Zen 4 double-pumps 512-bit loads: 2.0015 `L1-dcache-loads` events per
+`vmovdqu64`, 1.0016 per `vmovdqu`** (10^8 issued loads each). Getting this
+wrong halves the census — it is why its first draft disagreed 2x with the
+sampled profile. **Relayed to study 32 immediately**, since that study is
+actively counting loads on these same kernels.
+
+### Rejected and retracted (its own honesty, recorded)
+
+- **Prefetch rejected again — the sixth death.** Ceiling argument with numbers:
+  a row takes ~22 demand misses, one hint converts one, and `T2` lands in L2
+  where those rows already mostly hit.
+- **Retraction (a):** its prefetch arm read −1.67% cycles at n=13 and was
+  briefly written into the headline as landed. The paired within-round form
+  showed a **byte-different null moving +1.5% while arms moved +1.1%** — it was
+  position-in-round. **Rotating order is NOT sufficient.**
+- **Retraction (b):** "2a2s is a dead fold shape" (zero in 4.88M folds) — it is
+  castling; `wl50` simply contains none.
+- Its first probe pinned only READS and concluded the stream was free; wrong,
+  the **stores are ~64% of accumulator-stream misses**, costing by capacity not
+  latency.
+
+**No strength change landed and none claimed.**
+
+### Safety verified BY ME
+
+The probes deliberately compute wrong evals (`dstpin` fails 29 tests on
+purpose — a green suite would prove it inert), so a leak into a release build
+would be serious. Checked: `Cargo.toml` has **no `default` key**, so the default
+feature set is EMPTY; `foldcount`/`probe-accpin`/`probe-wpin`/`probe-dstpin`
+are all explicit opt-ins over 35 cfg sites. Cannot leak.
+
+**Merge order unchanged: 30 (user's sequence), then 29, then 31.** Studies 30
+and 32 are still live.
