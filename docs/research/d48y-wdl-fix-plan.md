@@ -2473,3 +2473,59 @@ than D48X.** The 5,880-game screen is running to settle it.
 
 **STANDING RULE: no net verdict from a screen under ~1,500 games.** At 120 games
 the bar is +/-35 and every effect we care about is smaller than that.
+
+## ★★★ D49 LAUNCHED — from scratch, 400sb, all six mechanisms ON (2026-07-29)
+
+`tools/nnue/runs/d49_1280.json`, unit `archon-d49.service`, log via
+`journalctl --user -u archon-d49`. **Owner ruling: everything on, no ablation —
+"these are all things that are proven by other engines".**
+
+| | setting |
+|---|---|
+| init | **FROM SCRATCH** (`init_params` seed 0), no warm |
+| budget | **400 sb** |
+| LR | peak 5.5625e-4, flat sb0–10, **cosine to 1.10e-4 at sb300 (5.1x decay)**, linear anneal 300→400. D48Y2 managed only **1.24x** before its anneal — the owner's "we didn't decay enough" |
+| loss | net_offset **0.43775** / net_scale **0.179** (network-side double sigmoid), qp_asymmetry **0.2287**, pow_exp **2.5** |
+| QAT | ft 255, threat **256**, act **127 (FLOOR)**, l1 64, **+ clipping callback** |
+| data | piece_rebalance ON, wdl_filter ON (floor 0.10) |
+
+**First superbatch: `value 0.025927`, 172,219 pos/s** — against D48Y2's ~178k,
+so **the six mechanisms cost ~3% throughput**. QAT's fake-quant, the activation
+grid and the per-record weights are all essentially free.
+
+### The four pre-flight items, and what each caught
+
+1. **Config surface** threaded through `TrainConfig`, `ArchSpec` AND
+   `pump_train`. This is the exact bug class that sank D48Y2: `per_corpus_target`
+   was dropped by an explicit field list and the run trained the OLD target while
+   the config claimed the new one.
+2. **Clipping callback** fires after `apply_updates`, matching SF's per-batch
+   cadence. This is what makes threat scale **256** usable instead of the 64 our
+   unconstrained weights force.
+3. **Net-side constants DERIVED, not guessed.** The export path assumes
+   `logit ≈ score/400`, so scaling the label frame by /400 makes `qf` and `pf`
+   **the same function** — verified at **max abs diff 0.00e+00**.
+4. **Parity check** — all knobs off reproduces the historical MSE **BIT-EXACT**.
+   It also caught a real bug: `.view(np.uint8)` on a non-contiguous structured
+   field, which would have thrown on the first batch of a 400sb run.
+
+### THREE LAUNCH BUGS, each of which would have wasted the run
+
+1. **`pump_train` had NO from-scratch path.** Every recent run was warm-started,
+   so `spec["warm"]` was unconditional → `KeyError`. Added the branch.
+2. **`train.py` did not import `model`** — my clipping-callback edit referenced
+   it and died on the first step.
+3. **Buffer double-donation.** `init_params` returns JAX arrays, so
+   `ema = dict(params)` SHARED device buffers and the step fn donates both
+   (`donate_argnums=(0,1)`); JAX rejects donating one buffer twice. The warm path
+   is safe only because `load_warm` returns numpy. Fixed with `np.asarray` +
+   explicit `.copy()`.
+
+All three surfaced within 2 minutes because the launch was watched. **Watch the
+first superbatches of any run with new mechanisms.**
+
+### Operational
+
+**Launched as a systemd transient SERVICE, not `--scope`.** A `--scope` dies
+with the session — that is what killed the 5,880-game screen at 1043/5880.
+Anything long-running is a service from now on.

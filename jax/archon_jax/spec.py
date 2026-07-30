@@ -334,6 +334,24 @@ class TrainConfig:
     # the 2026-07-26 D47V 1.378× output-scale gotcha.
     teacher_frame_offset: float = 0.0
     teacher_frame_scale: float = 0.0
+    # --- D49 (2026-07-29). All default to the historical behaviour, so an
+    # untouched config trains bit-identically to before.
+    # Loss: SF applies the offset two-sigmoid to BOTH sides; D48Y2 did the
+    # LABEL side only, which is the leading candidate for its R2-without-
+    # strength result. net_scale > 0 enables the NETWORK side.
+    net_offset: float = 0.0
+    net_scale: float = 0.0
+    qp_asymmetry: float = 0.0        # SF ships 0.2287
+    # Data shaping. SF's loader REWEIGHTS (probabilistic skip); ours was a pure
+    # accept/reject predicate with no shaping at all.
+    piece_rebalance: bool = False    # SF PR #4942 spline; our mix is 3x endgame-skewed
+    wdl_filter: bool = False         # down-weight eval/result disagreement
+    wdl_filter_floor: float = 0.0
+    # QAT scales (0 = off). Engine constants: sota_head.rs:118-133.
+    qat_ft_scale: float = 0.0
+    qat_threat_scale: float = 0.0
+    qat_act_levels: float = 0.0
+    qat_l1_scale: float = 0.0
     # Linear ramp distill_alpha -> distill_alpha_end over the whole schedule
     # (nnue-pytorch --start-lambda/--end-lambda precedent: fold ground truth
     # in as training proceeds). Negative (default) = constant alpha.

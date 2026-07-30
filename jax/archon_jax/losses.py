@@ -58,7 +58,7 @@ def expected_score(x: jnp.ndarray, offset: float, scale: float) -> jnp.ndarray:
 def value_loss(value_logit: jnp.ndarray, target: jnp.ndarray,
                pow_exp: float = 2.0,
                net_offset: float = 0.0, net_scale: float = 0.0,
-               qp_asymmetry: float = 0.0) -> jnp.ndarray:
+               qp_asymmetry: float = 0.0, weight=None) -> jnp.ndarray:
     """Mean sigmoid power-error (bullet: sig.squared_error(targets)
     .reduce_sum_batch(), d40:1069, then /B at reporting).
 
@@ -79,11 +79,16 @@ def value_loss(value_logit: jnp.ndarray, target: jnp.ndarray,
         sig = expected_score(value_logit, net_offset, net_scale)
     else:
         sig = jax.nn.sigmoid(value_logit)
-    if qp_asymmetry == 0.0 and pow_exp == 2.0:
+    if qp_asymmetry == 0.0 and pow_exp == 2.0 and weight is None:
         return jnp.mean((sig - target) ** 2)
     err = (jnp.abs(sig - target) + 1e-12) ** pow_exp
     if qp_asymmetry != 0.0:
         err = err * ((sig > target) * qp_asymmetry + 1.0)
+    if weight is not None:
+        # SF's shaping is a probabilistic SKIP; a fixed-batch pipeline gets the
+        # same thing in expectation as a weighted mean (their loss is likewise
+        # `(loss*weights).sum()/weights.sum()`).
+        return jnp.sum(err * weight) / (jnp.sum(weight) + 1e-12)
     return jnp.mean(err)
 
 
@@ -105,8 +110,12 @@ def policy_loss(pol_logits: jnp.ndarray, pol_target_id: jnp.ndarray) -> jnp.ndar
 
 def total_loss(value_logit, pol_logits, target, pol_target_id, pol_lambda: float,
                pow_exp: float = 2.0, pol_soft=None,
-               dis_pred=None, dis_lambda: float = 0.0):
-    v = value_loss(value_logit, target, pow_exp)
+               dis_pred=None, dis_lambda: float = 0.0,
+               net_offset: float = 0.0, net_scale: float = 0.0,
+               qp_asymmetry: float = 0.0, weight=None):
+    v = value_loss(value_logit, target, pow_exp,
+                   net_offset=net_offset, net_scale=net_scale,
+                   qp_asymmetry=qp_asymmetry, weight=weight)
     metrics = {"value": v}
     loss = v
     if pol_logits is not None and pol_lambda > 0.0:

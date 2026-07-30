@@ -35,7 +35,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from archon_jax import checkpoint as ck                      # noqa: E402
+from archon_jax import checkpoint as ck
+from archon_jax import model                      # noqa: E402
 from archon_jax.data import BulletBin, make_mixed_batches    # noqa: E402
 from archon_jax.features import map_batch                    # noqa: E402
 from archon_jax.spec import ArchSpec, RECORD_DTYPE, TrainConfig  # noqa: E402
@@ -103,7 +104,11 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         # every existing config is unaffected.
         halfka_only=bool(spec.get("arch_halfka_only", False)),
         pol_proj=int(spec.get("arch_pol_proj", 0)),
-        dis_proj=int(spec.get("arch_dis_proj", 0)))
+        dis_proj=int(spec.get("arch_dis_proj", 0)),
+        qat_ft_scale=float(spec.get("qat_ft_scale", 0.0)),
+        qat_threat_scale=float(spec.get("qat_threat_scale", 0.0)),
+        qat_act_levels=float(spec.get("qat_act_levels", 0.0)),
+        qat_l1_scale=float(spec.get("qat_l1_scale", 0.0)))
     start_sb = resume_sb + 1 if resume_sb else 1
     cfg = dataclasses.replace(
         TrainConfig(),
@@ -125,6 +130,16 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         per_corpus_target=(tuple((float(a), float(b))
                                  for a, b in spec["per_corpus_target"])
                            if spec.get("per_corpus_target") else None),
+        net_offset=float(spec.get("net_offset", 0.0)),
+        net_scale=float(spec.get("net_scale", 0.0)),
+        qp_asymmetry=float(spec.get("qp_asymmetry", 0.0)),
+        piece_rebalance=bool(spec.get("piece_rebalance", False)),
+        wdl_filter=bool(spec.get("wdl_filter", False)),
+        wdl_filter_floor=float(spec.get("wdl_filter_floor", 0.0)),
+        qat_ft_scale=float(spec.get("qat_ft_scale", 0.0)),
+        qat_threat_scale=float(spec.get("qat_threat_scale", 0.0)),
+        qat_act_levels=float(spec.get("qat_act_levels", 0.0)),
+        qat_l1_scale=float(spec.get("qat_l1_scale", 0.0)),
         teacher_frame_offset=float(spec.get("teacher_frame_offset", 0.0)),
         teacher_frame_scale=float(spec.get("teacher_frame_scale", 0.0)),
         per_tensor_clip=bool(spec.get("per_tensor_clip", False)),
@@ -153,6 +168,21 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         params = ck.load_warm(out / f"{net_id}-sb{resume_sb}-raw.bin", arch)
         ema = (ck.load_warm(out / f"{net_id}-sb{resume_sb}-ema-raw.bin", arch)
                if ema_on else None)
+    elif not spec.get("warm"):
+        # FROM SCRATCH (D49). Every recent run was warm-started, so this branch
+        # did not exist and `spec["warm"]` raised KeyError. Bullet-parity init:
+        # affine ~ Normal(0, sqrt(2/fan_in)) with l0_pstw using the EFFECTIVE
+        # input size (32 active features, not 22528), biases and the threat FT
+        # zeroed. See model.init_params.
+        seed = int(spec.get("init_seed", 0))
+        print(f"[pump {net_id}] FROM SCRATCH (init_params seed={seed})", flush=True)
+        # np.asarray so params and the EMA shadow get SEPARATE device buffers.
+        # init_params returns jax arrays, and `dict(params)` would share them —
+        # the step fn donates both (donate_argnums=(0,1)) and JAX rejects
+        # donating one buffer twice. The warm path is safe only because
+        # load_warm returns numpy.
+        params = {k: np.asarray(v) for k, v in model.init_params(arch, seed).items()}
+        ema = {k: v.copy() for k, v in params.items()} if ema_on else None
     else:
         print(f"[pump {net_id}] warm load {spec['warm']}", flush=True)
         params = ck.load_warm(ROOT / spec["warm"], arch)

@@ -578,8 +578,9 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
     # measured +5.08 Elo STC / +2.28 LTC for fixing exactly this, as a
     # data-loader change alone.
     if piece_rebalance:
-        npc = np.unpackbits(
-            recs["occ"].view(np.uint8).reshape(-1, 8), axis=1).sum(1).astype(np.float32)
+        # popcount of the occupancy bitboard. NOT `.view(np.uint8)` — a
+        # structured-array field is not contiguous and that raises.
+        npc = np.bitwise_count(np.ascontiguousarray(recs["occ"])).astype(np.float32)
         # SF's 5-point spline over piece counts 0/8/16/24/32. The -0.20 at 0 is
         # a control point, not a probability — clamp after interpolating.
         knots = np.array([0.0, 8.0, 16.0, 24.0, 32.0], dtype=np.float32)

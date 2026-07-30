@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 
 from . import checkpoint
+from . import model
 from .spec import ArchSpec, TrainConfig
 
 
@@ -205,7 +206,9 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
             loss, metrics = total_loss(value_logit, pol_logits, batch["target"],
                                        batch.get("pol_target_id"), cfg.pol_lambda,
                                        getattr(cfg, "pow_exp", 2.0),
-                                       pol_soft=batch.get("_pol_soft"))
+                                       pol_soft=batch.get("_pol_soft"),
+                               net_offset=cfg.net_offset, net_scale=cfg.net_scale,
+                               qp_asymmetry=cfg.qp_asymmetry, weight=batch.get("weight"))
             # L1 on the post-CReLU activations = what the engine pays for
             # (density-linear l1_dot). Density metric = deploy-relevant
             # fraction of nonzero clamped activations.
@@ -227,12 +230,16 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
                               getattr(cfg, "pow_exp", 2.0),
                               pol_soft=batch.get("_pol_soft"),
                               dis_pred=dis_pred,
-                              dis_lambda=float(cfg.dis_lambda))
+                              dis_lambda=float(cfg.dis_lambda),
+                               net_offset=cfg.net_offset, net_scale=cfg.net_scale,
+                               qp_asymmetry=cfg.qp_asymmetry, weight=batch.get("weight"))
         value_logit, pol_logits, _ = forward(params, arch, batch, ft_impl)
         return total_loss(value_logit, pol_logits, batch["target"],
                           batch.get("pol_target_id"), cfg.pol_lambda,
                           getattr(cfg, "pow_exp", 2.0),
-                          pol_soft=batch.get("_pol_soft"))
+                          pol_soft=batch.get("_pol_soft"),
+                               net_offset=cfg.net_offset, net_scale=cfg.net_scale,
+                               qp_asymmetry=cfg.qp_asymmetry, weight=batch.get("weight"))
 
     import optax
 
@@ -259,6 +266,13 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
         new = optax.apply_updates(params, updates)
         if allow is not None:
             new = {k: (v if k in allow else params[k]) for k, v in new.items()}
+        # QAT clipping callback (SF: trainer/callbacks.py:67-79 clips layer
+        # stacks after EVERY batch). This is the half that makes a fine scale
+        # usable: without it our threat weights drift to +/-1.978, and since
+        # the exporter RAISES on overflow the scale is forced to 127/1.978 = 64.
+        # No-op when the scales are 0.
+        if arch.qat_threat_scale > 0.0 or arch.qat_l1_scale > 0.0:
+            new = model.clip_qat_weights(new, arch)
         return new, opt_state
 
     @partial(jax.jit, donate_argnums=(0, 1))
