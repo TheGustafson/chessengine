@@ -4024,3 +4024,54 @@ offline phase. **Study 33 ahead=1, dirty=5** — started and already committing.
 
 No new load added this tick: the box is at 17.57 with a screen running, and the
 standing order is DON'T OOM THE BOX.
+
+## Tick 2026-07-30 ~05:00 — study 34 commissioned (move ordering)
+
+**D49 sb162/400**, active, heldout still descending with no plateau:
+
+| sb | heldout | ema |
+|---|---|---|
+| 140 | 0.012719 | 0.012068 |
+| 150 | 0.012593 | 0.011987 |
+| **160** | **0.012485** | **0.011917** |
+
+**Box:** 8411 MB available, load 5.71, 169 GB disk (82% used), all worktrees
+15 GB. Study 32's momentary `dirty=3504` was transient build output — its tree
+is clean again and its worktree is 2.8 GB. No disk concern.
+
+**Studies in flight:** 32 **ahead=11**, last commit *"the second screen lands —
+pooled +3.6 +/- 7"*; 33 **ahead=4**, last commit *"the 19.90% symbol,
+decomposed"*. Neither had `perf` or `fastchess` running at tick time, i.e. both
+were in coding phases. *(Study 32's pooled figure is from its own commit
+message and is NOT yet verified by me — it will be checked against its screen
+logs when it reports.)*
+
+**Commissioned study 34 — move ordering (`init_quiets` 6.35% + the movepick
+family).** Chosen because every other large region of our own profile now has a
+study on it: accumulator folds have 29/31/32, `search::<NonPv>` has 33. This is
+the **largest remaining unexamined region**, and it does not overlap the
+accumulator work, so it can proceed independently.
+
+Brief specifics worth recording:
+- **Pointed at perf study 7's correction banner** — it won -6.17% instructions
+  in this very area but attributed it to *icache pressure* when the mechanism
+  was *register pressure*. Getting the mechanism wrong in movepick is a
+  documented local hazard, not a hypothetical one.
+- **Framed cost AND quality together.** Move ordering is unusual: a change that
+  costs instructions can still win big by shrinking the tree. Told explicitly
+  that ordering changes are **FUNCTIONAL** — the `Bench:` node count legitimately
+  moves and the new number goes in the same commit — and **not** to contort a
+  good idea into node-identity to keep a pin still.
+- **A tripwire:** a movepick change must NOT move the eval hash. If it does,
+  something is wrong.
+- Five named angles so a dead end has somewhere to go: laziness (what fraction
+  of scored quiets is ever tried), stage-transition cost, the history-scoring
+  loop's scattered reads, **branch mispredicts (unlooked-at anywhere in the
+  engine)**, and direct ordering-quality measurement via the distribution of
+  the cutoff move's index.
+- The same **coordination protocol** given to study 33: offline source work
+  first, then check `pgrep -x perf` / `pgrep -x fastchess` and **wait rather
+  than measure through contention**, reporting whether the box was quiet.
+
+Still no D49 screen: sb162 is 40% of schedule. Post-cosine (sb250+) remains the
+first informative point, sb400 the real one.
