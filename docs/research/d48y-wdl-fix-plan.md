@@ -4494,3 +4494,63 @@ alongside the sb140 one, so the comparison runs the moment the box is free.
 
 No games again this tick, same standing reason: sb180 is 45% of schedule; the
 informative screen vs D48X is post-cosine.
+
+## MEASURED: D49's eval frame is ~0.53x D48X's — and it could make D49's final screen UNINTERPRETABLE
+
+Box was fully free (0 `perf`, 0 `fastchess`, 0 `cargo`), so the deferred frame
+check ran. Built the SOTA binary into **`target-sota/`** rather than `target/`,
+so `check.sh` can no longer clobber it (the trap found last tick).
+
+`chessengine nnue-eval <net> < tools/nnue/calib/wl50.fens`, 50 positions, three
+nets:
+
+| net | n | mean | stdev | min | max | stdev ratio | regression slope vs D48X |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| D49 sb140 | 50 | −10.8 | 235.0 | −425 | 790 | 0.5581x | **0.5387** |
+| D49 sb180 | 50 | −17.1 | 229.9 | −416 | 700 | 0.5462x | **0.5290** |
+| D48X | 50 | −24.8 | **421.0** | −851 | 1324 | 1.0 | 1.0 |
+
+**D49's eval output spans about HALF the range D48X's does**, and the ratio is
+stable — very slightly shrinking — between sb140 and sb180.
+
+### Why this is not cosmetic
+
+**Our pruning margins are hardcoded transcriptions of Stockfish constants**
+(razoring `alpha − 465 − 300·d²`, and the whole futility/ProbCut family). Those
+constants are calibrated against an eval of a particular spread. A margin of
+465 against a net whose stdev is 421 is ~1.1 sigma. **Against a net whose stdev
+is 230 it is ~2.0 sigma.** Same code, same constants, roughly twice as
+aggressive in the units that matter.
+
+### What is HYPOTHESIS and what is MEASUREMENT
+
+- **Measured:** the 0.53x ratio, on 50 positions, three nets, one binary.
+- **Expected, not surprising:** D49 trains with the **network-side** double
+  sigmoid (`net_scale 0.179`, `net_offset 0.43775`); D48X did not. The
+  network-side transform is exactly what sets the natural output scale, so a
+  different frame is a *predicted* consequence of the recipe change, not a bug.
+- **Hypothesis, NOT established:** that this materially costs D49 strength via
+  mis-calibrated margins.
+- **Counter-evidence on file:** the standing note that our frame difference
+  vs SF is "TRUE as units, **NOT causal** for losses". That was ARCHON-vs-SF,
+  a different comparison from this internal D49-vs-D48X one — but it is the
+  direct precedent and it says do not assume causality.
+
+### The actionable consequence
+
+**If D49's sb400 screen is run without addressing this, a loss is
+uninterpretable** — recipe failure and frame mismatch predict the same result.
+The fix is cheap and already exists: `netpack` writes `scale=400`, and
+`tools/nnue/rescale_net.py` can change it. A frame-matched export would use
+roughly `400 / 0.53 ~= 755`.
+
+**Therefore the D49 verdict screen must be a THREE-WAY, not a two-way:**
+D49-as-trained vs D49-rescaled vs D48X. That separates "the recipe is weak"
+from "the margins are mis-calibrated for this net", which a two-way cannot do.
+Cost is one extra arm on a screen we are running anyway.
+
+Artifacts ready: `data/nnue/tmp/s32/d49-sb{140,180}-ema-q256.cenn`, and
+`target-sota/release/chessengine` (CEN5-capable, clobber-proof).
+
+**D49 sb186/400**, active; heldout 0.012248 @ sb180. Studies 34 (ahead=3,
+*"census MovePicker::new — the pseudo_leg…"*) and 35 (ahead=1) both healthy.
