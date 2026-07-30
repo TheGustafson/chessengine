@@ -2065,6 +2065,36 @@ mod avx512 {
         // already carry >= 4 blocks have enough independent chains of their
         // own and are left byte-for-byte as they were.
         //
+        // ## PERF STUDY 46: 4 IS THE RIGHT NUMBER, AND IT IS NOW MEASURED
+        //
+        // Study 21 DERIVED 4 from a cited latency x throughput. Study 46's
+        // commission proposed that 4 was only half the truth -- "2 issue ports
+        // against a 4-5 cycle latency needs 8-10 chains" -- so the constant was
+        // measured directly on the box (generated inline asm, chain-count
+        // sweep, min-of-5, `tools/perf46/gen_ilp.py`). Cycles per op:
+        //
+        //   chains        1      2      3      4      5      8     10
+        //   vpdpbusd zmm  4.007  2.002  1.338  1.004  1.002  1.002  1.002
+        //   vpdpbusd ymm  4.005  2.003  1.335  1.002  0.802  0.538  0.527
+        //
+        // 512-bit latency is 4 cycles and 512-bit throughput is 1.00 op/cycle
+        // -- ONE effective FMA/VNNI pipe, because Zen 4 double-pumps 512-bit
+        // ops over a 256-bit datapath. The knee is exactly 4 and the curve is
+        // FLAT from 4 to 10, so raising `CHAINS` above 4 buys provably zero.
+        // The ymm row is the control that proves the mechanism rather than
+        // asserting it: the same instruction at 256 bits runs 2/cycle and its
+        // knee moves to 8, at the same 4-cycle latency.
+        //
+        // DO NOT re-propose 8 chains here. If a future arch raises `L2` so
+        // that `BLOCKS >= 4`, the gate above already switches `CHAINS` to 1 for
+        // the same reason -- the blocks are themselves independent chains.
+        //
+        // Study 46 also tested spreading the `as_chunks::<CHAINS>()` remainder
+        // across chains instead of folding all of it into `sums[0]` below
+        // (bit-identical, since i32 wrapping adds are order-independent). It
+        // measured WORSE -- 96.81 vs 92.95 cycles/call at the typical count of
+        // 39 -- so the shipped shape stays. The tail is not a defect.
+        //
         // Bit-identical, for the reason the paragraph above already states:
         // i32 wrapping adds are order-independent, so partitioning the groups
         // across chains and summing the partials at the end is the same value.
@@ -2351,6 +2381,36 @@ mod avx512 {
         // j-lane order preserved and i-sequential per lane ⇒ bit-identical
         // to the scalar reference. SAFETY: all loads/stores cover in-bounds
         // 16-lane blocks of loader-validated storage.
+        //
+        // ## PERF STUDY 46: this IS an ILP deficit, and it was PRICED and
+        // ## REJECTED -- do not rebuild it without re-reading the number.
+        //
+        // Each accumulator carries a 16-deep FMA chain, and study 46 measured
+        // Zen 4's 512-bit FMA at 4-cycle latency / 1.00 op-per-cycle:
+        //
+        //   throughput floor (32 FMAs)        32 cycles
+        //   latency bound at 2 chains         64 cycles   <-- what this is
+        //   latency bound at 4 chains         32 cycles
+        //
+        // So this kernel runs at 2x its own throughput floor, exactly as study
+        // 21 §9.3 item 5 suspected. A 4-accumulator version measured -17.9
+        // cycles/call in isolation (`tools/perf46/kern.rs`; 8 accumulators
+        // measured WORSE than 4, re-confirming the knee).
+        //
+        // It is rejected on ARITHMETIC, not on difficulty. At the measured
+        // 0.43117 evals/node the prize is -17.9 x 0.43117 = -7.7 cycles/node =
+        // -0.185% of engine cycles -- below the paired panel's own resolution
+        // (se ~0.26% at n = 40), and it is NOT eval-bit-identical: a
+        // left-to-right float sum IS a serial dependency chain, so any
+        // reassociation changes the rounding. Landing it would move the eval
+        // hash and d13 pins and would have to change the scalar reference (the
+        // bit-exact contract), this AVX-512 backend AND the AVX2 backend
+        // below -- which carries the identical 2x deficit for the same reason
+        // (4 ymm accumulators over 4 DISJOINT output slices, each still 16
+        // deep, against a ymm knee of 8).
+        //
+        // Re-price it if `L2` ever grows: the chain deepens linearly with L2,
+        // so at the D47 `L2 = 128` this deficit would be ~8x larger.
         unsafe {
             let mut acc0 = _mm512_loadu_ps(bias.as_ptr());
             let mut acc1 = _mm512_loadu_ps(bias.as_ptr().add(16));
