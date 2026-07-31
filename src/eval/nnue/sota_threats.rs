@@ -1117,6 +1117,16 @@ impl<'a> ThreatContext<'a> {
                 psqt_weights.as_ptr().cast(),
                 std::mem::size_of_val(psqt_weights),
             );
+            // Perf study 51: see the twin call in `HalfkaContext::new`. The
+            // threat table is 77.7 MB and 54.7% of all folded weight rows, so
+            // it is the one that decides whether a narrower weight is possible.
+            static THR_VH: std::sync::Once = std::sync::Once::new();
+            THR_VH.call_once(|| {
+                super::foldcount::valhist(
+                    "thr_weights_p128",
+                    weights.iter().map(|&w| i64::from(w) + 128),
+                );
+            });
         }
         #[allow(unused_mut)]
         let mut me = ThreatContext {
