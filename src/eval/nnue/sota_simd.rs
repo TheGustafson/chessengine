@@ -61,7 +61,7 @@ type L1DotFn = fn(&mut [i32; L2], &[u8; ACC], &[u16], &[i8]);
 //     CEN2 net needs 2 (perf study 30). Each backend monomorphises over its
 //     three admissible values, so the inner loop keeps exactly the instruction
 //     it had — measured, §5 of that study.
-type ActivateFn = fn(&mut [u8; ACC], &[[i16; ACC]; 2], &[[i16; ACC]; 2], &[i16; ACC], usize, u32);
+type ActivateFn = fn(&mut [u8; ACC], &[[i16; ACC]; 2], &[[i16; ACC]; 2], &[u8; ACC], usize, u32);
 type FindNnzFn = fn(&[u8; ACC], &mut [u16; ACC / 4]) -> usize;
 // The explicit f32 head-tail kernels (perf study #4 item #2a — the one hot
 // path that still lived on autovectorization after the ×8 D47 head growth).
@@ -713,7 +713,7 @@ pub(crate) fn activate(
     out: &mut [u8; ACC],
     pst: &[[i16; ACC]; 2],
     threat: &[[i16; ACC]; 2],
-    scale: &[i16; ACC],
+    scale: &[u8; ACC],
     stm: usize,
     threat_shift: u32,
 ) {
@@ -919,7 +919,7 @@ mod scalar {
         out: &mut [u8; ACC],
         pst: &[[i16; ACC]; 2],
         threat: &[[i16; ACC]; 2],
-        scale: &[i16; ACC],
+        scale: &[u8; ACC],
         stm: usize,
         threat_shift: u32,
     ) {
@@ -936,8 +936,8 @@ mod scalar {
                 // widening first here would disagree with them on the (never
                 // observed) overflow — exactly where the old FT_QUANT-frame
                 // accumulator wrapped too. (See the avx512 twin.)
-                let merge = |p: i16, t: i16, s: i16| {
-                    (i32::from(p.wrapping_mul(s)) + (i32::from(t) << threat_shift))
+                let merge = |p: i16, t: i16, s: u8| {
+                    (i32::from(p.wrapping_mul(i16::from(s))) + (i32::from(t) << threat_shift))
                         .clamp(0, FT_QUANT)
                 };
                 let left = merge(
@@ -1130,7 +1130,7 @@ mod avx2 {
         out: &mut [u8; ACC],
         pst: &[[i16; ACC]; 2],
         threat: &[[i16; ACC]; 2],
-        scale: &[i16; ACC],
+        scale: &[u8; ACC],
         stm: usize,
     ) {
         const H: usize = ACC / 2;
@@ -1150,7 +1150,13 @@ mod avx2 {
                         // the widen, so this wraps exactly where the avx512
                         // `vpmullw` and the scalar `wrapping_mul` wrap.
                         let raw = _mm_loadu_si128(p.as_ptr().add(offset).cast());
-                        let sv = _mm_loadu_si128(scale.as_ptr().add(offset).cast());
+                        // Perf study 50: the scale is u8 on disk and in
+                        // memory, so the 128-bit i16 load becomes a 64-bit
+                        // byte load plus a zero-extend. Same op count, half
+                        // the bytes; `_mm_cvtepu8_epi16` is exact for the
+                        // 1..=255 range the loader guarantees.
+                        let sv =
+                            _mm_cvtepu8_epi16(_mm_loadl_epi64(scale.as_ptr().add(offset).cast()));
                         let pv = _mm256_cvtepi16_epi32(_mm_mullo_epi16(raw, sv));
                         let tv =
                             _mm256_cvtepi16_epi32(_mm_loadu_si128(t.as_ptr().add(offset).cast()));
@@ -1369,7 +1375,7 @@ mod avx2 {
         out: &mut [u8; ACC],
         pst: &[[i16; ACC]; 2],
         threat: &[[i16; ACC]; 2],
-        scale: &[i16; ACC],
+        scale: &[u8; ACC],
         stm: usize,
         threat_shift: u32,
     ) {
@@ -2226,7 +2232,7 @@ mod avx512 {
         out: &mut [u8; ACC],
         pst: &[[i16; ACC]; 2],
         threat: &[[i16; ACC]; 2],
-        scale: &[i16; ACC],
+        scale: &[u8; ACC],
         stm: usize,
     ) {
         const H: usize = ACC / 2;
@@ -2308,8 +2314,20 @@ mod avx512 {
             // over the same inputs; only the loop order and the operand that
             // happens to live in a register change.
             for lane in (0..H).step_by(32) {
-                let sv_left = _mm512_loadu_si512(scale.as_ptr().add(lane).cast());
-                let sv_right = _mm512_loadu_si512(scale.as_ptr().add(lane + H).cast());
+                // ★ PERF STUDY 50 — the scale is u8, so this is a 32-byte
+                // load zero-extended into 32 i16 lanes instead of a 64-byte
+                // load. `vpmovzxbw` takes its 256-bit memory operand in the
+                // SAME single issue slot a `vmovdqu64` takes (study 47's
+                // table: every memory-operand op costs ~1 c), so the op count
+                // is unchanged and only the BYTES move: 2560 -> 1280 per
+                // evaluation, and the whole array drops from 40 cache lines
+                // to 20. On Zen 4 a 512-bit load is double-pumped into two
+                // dispatches and a 256-bit load into one (study 29 §2.1,
+                // measured 2.0015), so it is also -40 load dispatches/eval.
+                let sv_left =
+                    _mm512_cvtepu8_epi16(_mm256_loadu_si256(scale.as_ptr().add(lane).cast()));
+                let sv_right =
+                    _mm512_cvtepu8_epi16(_mm256_loadu_si256(scale.as_ptr().add(lane + H).cast()));
                 for flip in 0..2 {
                     let perspective = stm ^ flip;
                     let p = &pst[perspective];
@@ -2422,7 +2440,7 @@ mod avx512 {
         out: &mut [u8; ACC],
         pst: &[[i16; ACC]; 2],
         threat: &[[i16; ACC]; 2],
-        scale: &[i16; ACC],
+        scale: &[u8; ACC],
         stm: usize,
         threat_shift: u32,
     ) {
@@ -2788,12 +2806,12 @@ mod tests {
     /// The identity HalfKA scale (perf study 32): the kernel tests drive the
     /// merge with weights that already sit in the FT_QUANT frame, so a scale of
     /// 1 keeps them testing exactly what they tested before.
-    const UNIT_SCALE: [i16; ACC] = [1; ACC];
+    const UNIT_SCALE: [u8; ACC] = [1; ACC];
 
     /// A non-unit HalfKA scale, so the backends' `vpmullw` is actually
     /// exercised against the scalar `wrapping_mul` rather than multiplied by
     /// one. 4 is the modal column scale in the canonical net.
-    const FOUR_SCALE: [i16; ACC] = [4; ACC];
+    const FOUR_SCALE: [u8; ACC] = [4; ACC];
 
     #[test]
     fn dispatched_activate_matches_scalar_bitwise() {
