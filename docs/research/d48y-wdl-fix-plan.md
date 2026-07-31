@@ -12463,3 +12463,67 @@ fault) halts loudly instead of burning the GPU on a restart loop.
 
 **D49:** sb1151, heldout ema 0.010657, 193k pos/s, four services active, 149 GB
 disk. **sb1400 in ~9.0 h.** **Study 62** working.
+
+## Tick — 2026-07-31, study 62 merged: −112.98 i/n, the series' largest; session total −669.2
+
+**Merged `018cda79`, gate green.** Verified from my own v3 build: **post-61 5760.1
+→ post-62 5651.9 = −108.1 i/n (−1.877%)** against a claimed −112.98 (−2.024%) —
+**96% of claim.**
+
+### SESSION TOTAL, gate build, provenance-verified by rebuilding
+
+| | i/n |
+|---|---|
+| pre-52 `f289433c` | 6321.2 |
+| **post-62** | **5651.9** |
+| **delta** | **−669.2 (−10.587%)** |
+
+`.text` is now 765,525 bytes. **Read that −10.6% through the day's chain, not as
+a headline**: native+PGO retains ~65% of a gate-build win, instructions overstate
+wall-clock ~2.6× on average and **marginally ≈ 0** for recent arms, and ~half of a
+measured wall-clock gain was process startup that games never see.
+
+### Where the win came from
+
+1. The threat fold's table finished to a **6×6 grid**: −61.80 i/n.
+2. **`i8_deltas_dual_inner` — the Finny warm refresh — had NO shape dispatch at
+   all: −42.54 i/n.** Study 61 ranked its caller at 9.64% of IBS latency, called
+   it *"the highest-ranked symbol nobody is working on"*, and screened it out on
+   refresh **rate** and row **locality**. Both true — **and neither is about loop
+   control.** A correct screen on the wrong axis.
+3. A free **−8.64 i/n** on promotion: 33 arms in **one** `match` beat the same
+   arms in three chained ones.
+
+### It refuted three of study 61's claims, and its own hypothesis
+
+- **"Loop control is the cheaper route"** — refuted *as an ordering*. Route A is a
+  pure dispatch change and delivered −104 i/n before promotion; route B has three
+  measured failures in this same kernel (37, 58×2). It priced B and did not build
+  it.
+- **"The win per converted fold grows with the shape"** — refuted: the max-4 ring
+  folds *more* rows per fold and is **35% cheaper**.
+- **"`finny_refresh_into` is not an opportunity"** — refuted at −0.762% of frame.
+- **Its own pre-registered `len mod 4` hypothesis** — built the separating probe
+  and measured `subs=8` worth **2.3×** `subs=7`, the opposite of its prediction.
+
+### A blind spot in MY briefs, named and instrumented
+
+**`instructions:u` is structurally blind to what `.text` costs**, and every study
+from 52 onward gated on it alone. Study 62's ladder reached **+70 KB**, so it put
+`ic_tag_hit_miss` in every panel: **L1i misses +6.199%, 0/24, p<1e-4.** It
+**pre-registered a landing rule (≥2.0 i/n per KB) before building**, which dropped
+three rungs that *win* on instructions (−3.91, −5.37, −13.71), kept switchable.
+
+**Then a later panel argued for reinstating them** — the L1i cost does not convert
+into dispatch starvation, since `de_no_dispatch_per_slot` shows the engine
+backend-bound 2:1 — **and it declined to act**, because relaxing a pre-registered
+rule after seeing the data is the failure the rule exists to prevent. **That
+judgement is worth more than the rungs**, and the protocol is now in memory.
+
+**Not established, said plainly:** `cycles:u` unresolvable, and
+`wallclock_panel.py` **refused twice** — at 60 rounds the byte-identical null moved
+*further* than the arm (−0.502% vs −0.318%, null p=0.0011). **No wall-clock or Elo
+number appears in the study.** Re-running that one command on a quiet box is the
+top follow-up.
+
+**D49:** sb1151+, 193k pos/s, four services active. **sb1400 in ~8.8 h.**
