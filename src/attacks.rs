@@ -548,6 +548,12 @@ const TABLE_ALLOC: usize = TABLE_SIZE.next_power_of_two();
 /// `TABLE_ALLOC - 1` and `idx & TABLE_MASK` is unconditionally in bounds.
 const TABLE_MASK: usize = TABLE_ALLOC - 1;
 
+// The mask in `AttackTables::slot` is sound only while these three hold, so
+// they fail the build rather than a test (perf study 53).
+const _: () = assert!(TABLE_ALLOC.is_power_of_two());
+const _: () = assert!(TABLE_ALLOC >= TABLE_SIZE);
+const _: () = assert!(TABLE_MASK == TABLE_ALLOC - 1);
+
 pub struct AttackTables {
     magics: [MagicPair; 64],
     /// Fixed-size so the length is a compile-time constant: with the
@@ -1759,8 +1765,35 @@ mod tests {
             );
             expected += 1usize << m.mask.count_ones();
         }
-        assert_eq!(expected, TABLE_SIZE, "bishop block ends at the table end");
-        assert_eq!(t.table.len(), TABLE_SIZE);
+        assert_eq!(
+            expected, TABLE_SIZE,
+            "bishop block ends at the packed-table end"
+        );
+
+        // Perf study 53. The ALLOCATION is rounded up to a power of two so
+        // `AttackTables::slot`'s index mask is provably in bounds and the slice
+        // bounds check folds; the PACKED CONTENT still ends at `TABLE_SIZE`.
+        // Both halves are pinned, because the mask is only sound while they
+        // differ in exactly this way.
+        // (the three purely-constant halves of this invariant are `const`
+        // assertions next to TABLE_ALLOC, so they fail the BUILD, not a test)
+        assert_eq!(
+            t.table.len(),
+            TABLE_ALLOC,
+            "allocation is the padded length"
+        );
+
+        // The padding is allocated, zeroed once, and never written: a non-empty
+        // slot at or above `TABLE_SIZE` would mean some magic wrote outside its
+        // reserved block, which is precisely the corruption the mask would
+        // otherwise hide (it turns an out-of-range panic into a silent read).
+        // `init_magics` step 6 proves unreachability exhaustively at startup in
+        // every build, including release; this is the cheap standing check that
+        // the proof and the data still agree.
+        assert!(
+            t.table[TABLE_SIZE..].iter().all(|b| b.is_empty()),
+            "padding slots must stay empty"
+        );
     }
 
     #[test]
