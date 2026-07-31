@@ -37,7 +37,7 @@ fn tiny_net(scale: i32) -> SotaNetwork {
             l3_wdl_weights: None,
             l3_wdl_biases: None,
             skip_weights: None,
-            ft_scale: FtScale::from_flat_iter(std::iter::repeat_n(1i16, ACC)),
+            ft_scale: FtScale::from_flat_iter(std::iter::repeat_n(1u8, ACC)),
             network_scale: scale,
             threat_shift: 2,
         },
