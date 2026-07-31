@@ -1162,6 +1162,116 @@ impl MovePicker {
             prefetch_history_for(m);
         }
 
+        // The per-quiet scoring body, shared verbatim by the two loop shapes
+        // below. A `macro_rules!` rather than a closure or a method because
+        // the body both reads `self.quiet_prior` and calls `self.set_slot`:
+        // any binding that holds a borrow of `*self` across the body collides
+        // with the store (the note on the `policy` arm below says so), and a
+        // free function would need fifteen parameters. Expanding the body
+        // twice costs nothing in the shipped binary — exactly one of the two
+        // loops is compiled.
+        macro_rules! score_quiet {
+            ($m:expr, $i:expr, $row:expr, $pci:expr) => {{
+                let m = $m;
+                let i = $i;
+                let row = $row;
+                let pci = $pci;
+                let to = m.to().index() as usize;
+                let raw = m.raw16() as usize;
+                let q = crate::history::piece_to(pci, to);
+
+                let mut value = QUIET_MAIN_HISTORY_WEIGHT() * main_plane[raw].get()
+                    + QUIET_PAWN_HISTORY_WEIGHT() * crate::history::at_piece_to(pawn_plane, q)
+                    + crate::history::at_piece_to(c1, q)
+                    + crate::history::at_piece_to(c2, q)
+                    + crate::history::at_piece_to(c3, q)
+                    + crate::history::at_piece_to(c4, q)
+                    + crate::history::at_piece_to(c6, q);
+
+                if row.check.contains(m.to()) && board.see_ge(m, QUIET_CHECK_SEE_MARGIN()) {
+                    value += QUIET_CHECK_BONUS();
+                }
+
+                let from_threat = row.threat.contains(m.from()) as i32;
+                let to_threat = row.threat.contains(m.to()) as i32;
+                value += row.threat_w * (from_threat - to_threat);
+
+                if row.offense.contains(m.to()) {
+                    value += row.offense_w;
+                }
+
+                if let Some(lp) = low_ply_plane {
+                    value += QUIET_LOW_PLY_WEIGHT() * lp[raw].get() / (1 + ply as i32);
+                }
+
+                #[cfg(feature = "policy")]
+                if let Some(ps) = &self.policy_scores {
+                    value += (policy_weight as f32 * ps.move_score(m.from(), m.to())) as i32;
+                }
+
+                #[cfg(feature = "sota")]
+                if let Some(qp) = &self.quiet_prior {
+                    value += quiet_prior_bonus(qp, m);
+                }
+
+                self.set_slot(base + i, ExtMove::new(m, value));
+            }};
+        }
+
+        // Perf study 54 arm `qtrun54` — RUN-HOISTING.
+        //
+        // `generate_all` emits quiets in piece-type order: the whole pawn set
+        // in one batch, then knights, bishops, rooks, queens, then the king
+        // (castling is a king move, so it joins that run). So `pt` is very
+        // nearly a step function of `i`, and everything the loop derives from
+        // it — `row`, `pci`, and the two panic edges that come with reading a
+        // piece out of a mailbox byte — is constant across a run.
+        //
+        // The rewrite below reads the mailbox ONCE PER RUN instead of once per
+        // quiet, and hoists `&rows[pt]` and `pc.index()` with it. `rows` is a
+        // 192-byte stack array whose five fields are read per quiet
+        // (`check`, `threat` twice, `threat_w`, `offense`, `offense_w`), so
+        // hoisting the row is worth more than the two mailbox loads it was
+        // built for.
+        //
+        // **It does not ASSUME the grouping.** The run is discovered, not
+        // asserted: the inner loop continues only while the next move's
+        // from-square is in the same piece bitboard, and an ungrouped list
+        // simply produces more runs and degenerates to exactly today's cost.
+        // That matters because the grouping is `movegen`'s emission order, an
+        // implementation detail no doc pins — an invariant this loop must not
+        // silently depend on. Emission order, scores and slots are unchanged,
+        // so the tree is bit-identical.
+        #[cfg(feature = "qtrun54")]
+        let mut i = 0usize;
+        #[cfg(feature = "qtrun54")]
+        while i < n {
+            let pc = board
+                .piece_on(list[i].from())
+                .expect("a quiet move starts on a piece of the side to move");
+            let pt = pc.piece_type;
+            // `pt` is a `#[repr(u8)]` enum with six variants, so this index
+            // into `[PtRow; 6]` folds — but it now happens once per RUN.
+            let row = &rows[pt as usize];
+            let pci = pc.index();
+            // The run's membership test: one register-resident bitboard, no
+            // load, replacing a mailbox read and its `expect` edge per move.
+            let run = board.pieces(pc.color, pt);
+            loop {
+                let m = list[i];
+                #[cfg(feature = "histpf44")]
+                if let Some(&ahead) = list.get(i + PF_DIST) {
+                    prefetch_history_for(ahead);
+                }
+                score_quiet!(m, i, row, pci);
+                i += 1;
+                if i >= n || !run.contains(list[i].from()) {
+                    break;
+                }
+            }
+        }
+
+        #[cfg(not(feature = "qtrun54"))]
         for (i, &m) in list.iter().enumerate() {
             #[cfg(feature = "histpf44")]
             if let Some(&ahead) = list.get(i + PF_DIST) {
@@ -1182,80 +1292,7 @@ impl MovePicker {
             // this trade is not worth taking.
             let row = &rows[pt as usize];
             let pci = pc.index();
-            let to = m.to().index() as usize;
-            let raw = m.raw16() as usize;
-
-            // Perf study 36 — SIX planes, ONE cell. Written two-dimensionally
-            // (`p[pci][to]`), LLVM shares `pci * 128` and `to * 2` in two
-            // registers and then pays a `lea` per plane to add that plane's
-            // base, because `base + pci*128 + to*2` is three variable terms and
-            // an x86 addressing mode holds two. `piece_to` makes the shared
-            // term the WHOLE offset, so each plane becomes one
-            // `movswl (%base,%q,2)`. Same cells, same order, same sum —
-            // `[[T; 64]; 12]` is contiguous row-major — so the tree is
-            // bit-identical, and `q < 768` is provable (see `history::piece_to`)
-            // so no bounds check or mask comes back in exchange.
-            let q = crate::history::piece_to(pci, to);
-
-            let mut value = QUIET_MAIN_HISTORY_WEIGHT() * main_plane[raw].get()
-                + QUIET_PAWN_HISTORY_WEIGHT() * crate::history::at_piece_to(pawn_plane, q)
-                + crate::history::at_piece_to(c1, q)
-                + crate::history::at_piece_to(c2, q)
-                + crate::history::at_piece_to(c3, q)
-                + crate::history::at_piece_to(c4, q)
-                + crate::history::at_piece_to(c6, q);
-
-            // Check bonus, gated so a checking quiet that hangs material earns
-            // nothing (design/09 §3.7).
-            if row.check.contains(m.to()) && board.see_ge(m, QUIET_CHECK_SEE_MARGIN()) {
-                value += QUIET_CHECK_BONUS();
-            }
-
-            // Threat escape/entry: +factor·value for fleeing a cheaper-piece
-            // attack, -factor·value for stepping into one (design/09 §3.7).
-            let from_threat = row.threat.contains(m.from()) as i32;
-            let to_threat = row.threat.contains(m.to()) as i32;
-            value += row.threat_w * (from_threat - to_threat);
-
-            // Offense (D30): moving to a square from which the piece attacks a
-            // vulnerable enemy earns a modest reward. `occ` is the pre-move
-            // occupancy (a heuristic approximation — the mover still sits on
-            // `from`); acceptable for ordering. Precomputed as a reverse fan
-            // above, so this is one bit test instead of a magic lookup.
-            if row.offense.contains(m.to()) {
-                value += row.offense_w;
-            }
-
-            // Low-ply history (plies 0..4 only), damped toward the leaves.
-            if let Some(lp) = low_ply_plane {
-                value += QUIET_LOW_PLY_WEIGHT() * lp[raw].get() / (1 + ply as i32);
-            }
-
-            // Learned move-prior (design/17 Thrust II), scaled into history
-            // units. Additive, so it only nudges ties the history stack leaves
-            // ambiguous rather than overriding a strong history signal.
-            // Read through `self` here rather than binding the borrow above
-            // the loop: an outer binding holds `*self` immutably across the
-            // whole body and collides with `set_slot`. This is the same shape
-            // as the `quiet_prior` read just below.
-            #[cfg(feature = "policy")]
-            if let Some(ps) = &self.policy_scores {
-                value += (policy_weight as f32 * ps.move_score(m.from(), m.to())) as i32;
-            }
-
-            // P-ORD: the deployed D47 head's prior, quiets only (captures stay
-            // on MVV/SEE — the head is near-blind there by training-data
-            // construction). One selected-row SIMD dot per quiet.
-            //
-            // Called through the outlined [`quiet_prior_bonus`], NOT inlined —
-            // see that function's note. `CPL_ORD_W` ships 0, so the branch is
-            // not taken in any shipped configuration.
-            #[cfg(feature = "sota")]
-            if let Some(qp) = &self.quiet_prior {
-                value += quiet_prior_bonus(qp, m);
-            }
-
-            self.set_slot(base + i, ExtMove::new(m, value));
+            score_quiet!(m, i, row, pci);
         }
 
         self.cur = base;

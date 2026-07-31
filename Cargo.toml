@@ -42,6 +42,20 @@ tune = []
 # +13.64 i/n. Node-identical by construction (a refactor of how the same
 # record is derived), so the eval hash and node total gate it.
 hookc54 = []
+# `qtrun54`: `MovePicker::init_quiets` scores quiets in PIECE-TYPE RUNS.
+# `generate_all` emits pawns, then knights, bishops, rooks, queens, then the
+# king, so `pt` is nearly a step function of the index and everything derived
+# from it — the mailbox read and its `expect` edge, `&rows[pt]` (whose five
+# fields are read per quiet) and `pc.index()` — is constant across a run. The
+# run is DISCOVERED, not assumed, so an ungrouped list degenerates to today's
+# cost rather than misbehaving. Emission order and scores unchanged =>
+# node-identical.
+qtrun54 = []
+# `inl54`: the DECOMPOSITION CONTROL for `hookc54`. A hook type behaviourally
+# identical to `TtPrefetch` but used at ONE call site, which is what makes
+# `make_move_with::<H>` single-caller and gets it inlined into `do_move`.
+# Isolates that codegen event from the fusion itself. Node-identical.
+inl54 = []
 # `nogc54`: study 53's `gc53` REVERTED, so its marginal cost/benefit can be
 # read on the shipped tree. Study 53 landed `gc53 + magic53` together and
 # reported that `magic53` alone was -22.3 loads/node (10/10) against the

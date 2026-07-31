@@ -531,6 +531,30 @@ impl MakeMoveHooks for TtPrefetch<'_> {
     }
 }
 
+/// Perf study 54 arm `inl54` — the DECOMPOSITION CONTROL for `hookc54`.
+///
+/// Behaviourally identical to [`TtPrefetch`] in every respect; the only
+/// difference is that it is used at ONE call site (`do_move`) rather than two
+/// (`do_move` and the ProbCut verification probe). That is enough to make
+/// `make_move_with::<Self>` a single-caller `internal` function, which LLVM
+/// then inlines bodily into `do_move` — the same codegen event `hookc54`
+/// triggers as a side effect of introducing a new hook type.
+///
+/// Without this arm, `hookc54`'s win cannot be attributed: "fusing the record
+/// into the make" and "the make got inlined" would be confounded.
+#[cfg(feature = "inl54")]
+struct TtPrefetchOnly<'a> {
+    tt: &'a TranspositionTable,
+}
+
+#[cfg(feature = "inl54")]
+impl MakeMoveHooks for TtPrefetchOnly<'_> {
+    #[inline]
+    fn on_key(&mut self, key: Key) {
+        self.tt.prefetch(key);
+    }
+}
+
 /// Perf study 54 arm `hookc54`: [`TtPrefetch`] plus Hook C. `WANTS_DIRTY` is
 /// `true` only on THIS type, so the ProbCut verification probe — which still
 /// makes and unmakes through the plain [`TtPrefetch`] — pays nothing, and
@@ -4965,9 +4989,12 @@ impl Worker {
         let in_check = self.stack[cur].in_check;
         self.stack[cur].current_move = m;
         self.stack[cur].cont_hist = ContHistId::new(in_check, capture, moved_piece, m.to());
-        #[cfg(not(feature = "hookc54"))]
+        #[cfg(all(not(feature = "hookc54"), not(feature = "inl54")))]
         self.board
             .make_move_with(m, gives_check, &mut TtPrefetch { tt });
+        #[cfg(all(not(feature = "hookc54"), feature = "inl54"))]
+        self.board
+            .make_move_with(m, gives_check, &mut TtPrefetchOnly { tt });
         // Perf study 54 arm `hookc54` — study 35 §4's fusion, rebuilt on the
         // tree that landed `after_move` instead of it. The record is built
         // inside the make from step 3's registers and handed back through the
