@@ -121,3 +121,8 @@ docs/research/perf-artifacts-57/*.lock
 /bin58/
 docs/research/perf-artifacts-58/*.data
 docs/research/perf-artifacts-58/*.lock
+# perf study 59 (arm binaries + raw perf records; the parsed panels stay)
+/bin59/
+docs/research/perf-artifacts-59/*.data
+docs/research/perf-artifacts-59/*.lock
+/target-x86-64-v3/
