@@ -1039,7 +1039,12 @@ const HISTORIES_BYTES: usize = size_of::<[[StatEntry<MAIN_D>; BUTTERFLY_SIZE]; 2
     + size_of::<[PieceToHist; CONT_ALLOC]>()
     + size_of::<[[[StatEntry<PAWN_D>; 64]; 12]; PAWN_HIST_SIZE]>()
     + size_of::<[[CorrBundle; 2]; CORR_SIZE]>()
-    + size_of::<[PieceToCorr; CONT_CORR_NB]>()
+    // Perf study 56: `CONT_CORR_ALLOC`, not `CONT_CORR_NB` — the budget must
+    // count what is ALLOCATED, and this table is now padded to a power of two.
+    // Accounting the logical size here would have hidden 288 KiB per worker
+    // from design/09 §8's guard, which is the one place that would have caught
+    // the padding growing.
+    + size_of::<[PieceToCorr; CONT_CORR_ALLOC]>()
     + size_of::<StatEntry<TT_MOVE_D>>();
 // The catalogue is ~20 MiB: comfortably under the 21 MiB budget (§8), and
 // well over 19 MiB (a guard against a table silently shrinking away).
