@@ -241,19 +241,27 @@ noshape61 = ["noshape62"]
 # charged per):
 #
 #   grid 0..=3 (study 61, 15 arms)  68.40% of folds   59.66% of rows generic
-#   shape62a   (+9 arms)            79.42%            44.31%
-#   shape62b   (+11 arms)           87.04%            30.84%
-#   shape62c   (+13 arms)           92.45%            19.31%
+#   ring a     (+9 arms)            79.42%            44.31%   -19.90 i/n
+#   ring b     (+11 arms)           87.04%            30.84%   -19.01
+#   ring c     (+13 arms)           92.45%            19.31%   -22.90
 #
-# LANDED UNCONDITIONALLY: rings a, b and c on the threat fold (grid 0..=6,
-# 92.45% of folds, -61.80 i/n for +23,648 B) and the grid 0..=4 dispatch on the
-# Finny warm refresh, which had NO dispatch at all (79.95% of calls, -42.54 i/n
-# for +13,296 B). Together **-104.34 instructions/node = -1.870%, and -3.781%
-# branches, 24/24 at se 0.000** against a null of exactly -0.000%,
-# node-identical (5,001,562) and eval-hash exact.
+# LANDED UNCONDITIONALLY: all three rings on the threat fold (grid 0..=6,
+# -61.80 i/n for +23,648 B) and the grid 0..=4 dispatch on the Finny warm
+# refresh, which had NO dispatch at all (79.95% of calls, -42.54 i/n for
+# +13,296 B) -- plus a further -8.64 i/n that appeared on promotion, because the
+# 33 threat arms in ONE `match` beat the same arms in three chained ones.
 #
-# `noshape62` restores study 61's dispatch at BOTH sites, so the contrast stays
-# reproducible on the shipped tree. MEASUREMENT ONLY; never ship it.
+# Measured on the promoted binary, 24 rounds, blocked Latin square, with both a
+# byte-identical null and the `noshape62` revert in the rotation:
+# **-2.024% instructions (-112.98/node) and -3.649% branches, 24/24 at
+# se 0.000**, against a null of exactly -0.000%. Node-identical (5,001,562) and
+# eval-hash exact. The cost is `.text` +5.16% and L1i misses +6.199% (0/24);
+# `cycles:u` and two wall-clock panels were NOT resolvable on this box.
+#
+# The three rings are no longer separately switchable (study 61's precedent:
+# one revert per study). `noshape62` restores study 61's dispatch at BOTH sites,
+# so the contrast stays reproducible on the shipped tree; the per-ring ladder is
+# reproduced from this commit's parent. MEASUREMENT ONLY; never ship it.
 noshape62 = []
 # `shape62d`/`shape62e` are RECTANGULAR: `foldcount::THR_LENS` (added here,
 # uncapped where `THR_PAIR` saturates at 7) shows the residual tail is almost
@@ -270,7 +278,7 @@ noshape62 = []
 # that predicted `subs = 7` would dominate `subs = 8`.
 shape62d = []
 shape62e = ["shape62d"]
-# `dual62a`/`dual62b` -- the SECOND site, and the one study 61 §10 item 5 named:
+# `dual62b` -- the SECOND site, and the one study 61 §10 item 5 named:
 # `i8_deltas_dual_inner` (the Finny WARM refresh) has no shape dispatch at all.
 # Study 25 gave the into-fold its dispatch because a make-move fold is one of
 # four shapes; the warm refresh folds a set difference between two king buckets,

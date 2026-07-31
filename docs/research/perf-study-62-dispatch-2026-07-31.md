@@ -64,8 +64,14 @@ engine is backend-bound), states the landing rule that was pre-registered before
 the candidate existed, and lists the **three further rungs that win on
 instructions and were dropped anyway**.
 
-**Two claims of study 61's are refuted with numbers** (§1.3, §6.3), and the
-wall-clock arbiter **refused to license** (§7.1). Both are reported as such.
+**Three claims of study 61's are refuted with numbers** (§1.3, §3, §5.3), and
+the wall-clock arbiter **refused to license, twice, the second time with the
+byte-identical null moving further than the arm** (§7 item 1). All are reported
+as such; no wall-clock or Elo figure appears anywhere in this document.
+
+Over studies 61 + 62 the fold's dispatch is now worth **−181.85 i/node
+(−3.219 %)**, and both intermediate states are still buildable from today's
+source (§6.1a).
 
 ---
 
@@ -446,6 +452,23 @@ land    cycles:u                      +0.186   0.334    11/24   0.8388
 > rebuilt to `75c9955e` both times, and the pre-edit control `base2` reproduced
 > `base`'s `242abfdd` exactly across a macro refactor plus a `cfg_attr` change.
 
+### 6.1a The two revert levers reconstruct the whole chain
+
+`noshape61` now implies `noshape62`, so the shipped tree carries a switch for
+every state the dispatch has been in. Built from study 62's source:
+
+| build | `.text` | instructions | i/node | vs previous |
+|---|---:|---:|---:|---:|
+| `noshape61` = **pre-study-61** | **714,725** | 28,256,164,501 | 5649.51 | — |
+| `noshape62` = **study 61** | 722,773 | 27,911,705,726 | 5580.64 | **−68.87** |
+| default = **study 62** | 760,085 | 27,346,635,316 | 5467.66 | **−112.98** |
+
+**The top row reproduces study 61's own `base` — `.text` 714,725 exactly, and
+28,256,164,501 against its recorded 28,256,162,803, a difference of 6 parts in
+10⁸.** That is an end-to-end provenance check across two studies and a rebase:
+the pre-61 binary can still be rebuilt from today's source and it is the same
+binary. The chain is **−181.85 i/node, −3.219 %** over the two studies.
+
 ### 6.2 `target-cpu`, both quoted
 
 The commission's rule (an arm's value is `target-cpu` dependent and the
@@ -470,7 +493,7 @@ node-identical at 5,001,562 with the exact eval hash.
 | "the win per converted fold GROWS with the shape" | **REFUTED** (§5.3): the max-4 ring folds more rows per fold than the three-row family and is 35 % cheaper per fold |
 | "fix the generic kernel's loop control … the cheaper of the two" | **REFUTED as an ordering** (§1.3) |
 | `finny_refresh_into` "is not an opportunity" | **REFUTED**: −42.54 i/n = −0.762 % of frame from 24 `match` arms (§3) |
-| `cycles:u` is not load-robust | **Confirmed again**: its null fails at p = 0.023–0.0227 in three of four panels while `instructions:u`'s null is exactly 0.000 with se 0.000 in all four |
+| `cycles:u` is not load-robust | **Confirmed again**: its null fails at p = 0.023–0.0227 in three of four panels while `instructions:u`'s null is exactly 0.000 with se 0.000 in all four. And **the same defect reaches wall clock** — §7 item 1's 60-round panel had the byte-identical null move further than the arm |
 
 ---
 
@@ -478,23 +501,35 @@ node-identical at 5,001,562 with the exact eval hash.
 
 Most doubtful first.
 
-1. **The wall-clock value. The instrument REFUSED, and the refusal is the
-   result.** `tools/wallclock_panel.py --base bin61/base --arm bin61/comb3
-   --rounds 40`:
+1. **The wall-clock value. The instrument REFUSED — TWICE — and the refusal is
+   the result.** `tools/wallclock_panel.py`, on two different binary pairs at
+   two different round counts:
 
    ```
+   --base bin61/base --arm bin61/comb3 --rounds 40
    NULL (byte-identical): median +0.134%  sd 0.977  sign 16/40 neg  p=0.2682
    ARM                  : median +0.026%  sd 0.876  sign 19/40 neg  p=0.8746
    NOT LICENSED: null median +0.134% vs arm +0.026%.
+
+   --base bin61/revert --arm bin61/land --rounds 60      (the LANDED pair)
+   NULL (byte-identical): median -0.502%  sd 0.977  sign 43/60 neg  p=0.0011
+   ARM                  : median -0.318%  sd 1.129  sign 39/60 neg  p=0.0273
+   NOT LICENSED: null median -0.502% vs arm -0.318%.
    ```
 
-   The arm's median is indistinguishable from zero **and** from the null, so
-   nothing may be quoted — including "it is zero". The tool's own docstring puts
-   the non-PGO-instructions → PGO-wall-clock ratio at **2.63–4.08×** on studies
-   52–58, which would put −2.024 % instructions somewhere near −0.5 % to −0.8 %
-   of wall clock before the `.text` cost; the panel cannot resolve anything that
-   size against a null with sd 0.98. **A quiet box should re-run exactly this
-   command.** It is the single most valuable follow-up in this document.
+   **In the second panel the byte-identical null moved FURTHER than the arm, and
+   its own sign test came out at p = 0.0011** — i.e. the harness resolved a
+   difference between two identical binaries more confidently than it resolved
+   the arm. That is study 61 §4.2's `cycles:u` failure mode, reproduced one
+   level up in wall clock, at 60 rounds, on a box carrying a GPU training run.
+   Nothing may be quoted from either panel — including "the arm is zero".
+
+   The tool's own docstring puts the non-PGO-instructions → PGO-wall-clock ratio
+   at **2.63–4.08×** on studies 52–58, which would put −2.024 % instructions
+   somewhere near −0.5 % to −0.8 % of wall clock before the `.text` cost — the
+   same size as the null's own excursion here. **A quiet box should re-run
+   exactly the second command.** It is the single most valuable follow-up in
+   this document.
 2. **No PGO pair.** Everything here is non-PGO, the frame studies 51, 60 and 61
    used. PGO absorbed 38 % of the instruction win on studies 52–56 and would
    plausibly do so again; the shipped engine is PGO.
@@ -563,6 +598,7 @@ Most doubtful first.
 | `noshape62` revert vs `base` | `instructions:u` **+0.000 % se 0.000**, `.text` **722,773 both** |
 | realised mean panel position | **1.50 / 1.50 / 1.00 / 2.50** — ideal in all four panels |
 | `base` reproducibility across the study (n = 4) | 27,911,704,200 … 27,911,705,726 = **5.5 parts in 10⁸** |
+| `noshape61` rebuilds study 61's own `base` | `.text` **714,725** exact; instructions 28,256,164,501 vs its recorded 28,256,162,803 = **6 parts in 10⁸** |
 | `CHECK_NNUE_GATE=1 bash tools/check.sh` | **exit 0 — `All checks passed.`, `Bench: 587683`, eval hash `2e1ede95…79c4`, d13 nodes `1739588`; all three pins unmoved. Run TWICE: on `69922ca4` and again after the rebase to `f0d8f405`** |
 | `cargo test --release -- --ignored perft_full_suite` | **ok** (1 passed), both times |
 | `cargo clippy --all-targets` | **clean** |
