@@ -9079,3 +9079,35 @@ cannot recover a quantity from `acc` alone, the network does not have it — wit
 deficits. Then, and only then, supply a raw stream carrying the demonstrated
 deficit and **learn the embedding** rather than hand-designing the feature.
 CPU-feasible against a frozen net, so it runs while D49 holds the GPU.
+
+## NEAR-MISS — 2144 MB available, below the floor; oomguard v3 matches STRUCTURALLY
+
+**D49x: sb558.** The representation study's two `reprgap/probes.py` processes held
+**6874 MB (4143 + 2731) simultaneously**, driving the box to **2144 MB available —
+below the 2500 MB floor — with swap fully exhausted.** That is the
+2026-07-27 global-OOM configuration, and it would have taken the trainer with it.
+
+**And oomguard did not cover them.** Both probe processes sat at the default
+`adj=200` — the same as the trainer — **while holding the most memory on the
+box.** v2's pattern list (`conj_mine|recode_|netpack|requant_`, plus `bin4x`
+paths) had no entry for a tool that did not exist when I wrote it.
+
+**The guard has now lapsed twice for the same structural reason:**
+
+| version | matched | lapsed when |
+|---|---|---|
+| v1 | compilers only | no build was running — i.e. most of the time |
+| v2 | + a fixed tool-name list | a study wrote a **new** tool |
+| **v3** | **structural: anything referencing this repo's `tools/` or a worktree, plus compilers** | — minus trainer, wrapper shells, harness |
+
+**A name list was always going to leak.** v3 matches what the process *is* (repo
+work) rather than what it is *called*.
+
+**Result: probes 1438/1376 vs trainer 925 — trainer now safest.** Available
+recovered **2144 → 4459 MB**.
+
+**Study told to cap concurrent probe memory at ~3 GB**, run passes sequentially,
+chunk the gram accumulation rather than materialising a full matrix, and queue
+anything genuinely larger for after the sb700 handover when ~4.5 GB and the GPU
+free up. **Its research direction was explicitly not questioned** — the
+decodability-probe method is right; it just has to fit the box.
