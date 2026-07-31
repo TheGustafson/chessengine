@@ -3275,9 +3275,6 @@ impl Worker {
             // piece `gives_check` would read back out of the mailbox, and the
             // intervening `stack[cur].move_count` store blocks the CSE. See
             // `Board::gives_check_by`.
-            #[cfg(not(feature = "gc53"))]
-            let gives_check = self.board.gives_check(m);
-            #[cfg(feature = "gc53")]
             let gives_check = self.board.gives_check_by(m, moved_piece);
             let mut new_depth = depth - 1;
             let delta = beta - alpha;

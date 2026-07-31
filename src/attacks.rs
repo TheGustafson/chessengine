@@ -543,20 +543,11 @@ impl MagicPair {
 /// that are allocated, zeroed once at init, and never read again. They are
 /// never *reachable*: [`init_magics`]'s step 6 proves every index this table
 /// can produce is `< TABLE_SIZE`, exhaustively, at startup.
-#[cfg(feature = "magic53")]
 const TABLE_ALLOC: usize = TABLE_SIZE.next_power_of_two();
 /// Index mask for [`TABLE_ALLOC`]. `TABLE_ALLOC` is a power of two, so this is
 /// `TABLE_ALLOC - 1` and `idx & TABLE_MASK` is unconditionally in bounds.
-#[cfg(feature = "magic53")]
 const TABLE_MASK: usize = TABLE_ALLOC - 1;
 
-#[cfg(not(feature = "magic53"))]
-pub struct AttackTables {
-    magics: [MagicPair; 64],
-    table: Box<[Bitboard]>, // len == TABLE_SIZE
-}
-
-#[cfg(feature = "magic53")]
 pub struct AttackTables {
     magics: [MagicPair; 64],
     /// Fixed-size so the length is a compile-time constant: with the
@@ -570,17 +561,11 @@ impl AttackTables {
     /// `magic53` mask has exactly one home.
     #[inline]
     fn slot(&self, i: usize) -> Bitboard {
-        #[cfg(feature = "magic53")]
-        {
-            // Provably a no-op: `init_magics` step 6 asserts every reachable
-            // `i` is `< TABLE_SIZE <= TABLE_ALLOC`, exhaustively at startup.
-            // What it buys is the bounds check, which LLVM can now discharge.
-            self.table[i & TABLE_MASK]
-        }
-        #[cfg(not(feature = "magic53"))]
-        {
-            self.table[i]
-        }
+        // Provably a no-op: `init_magics` step 6 asserts every reachable `i` is
+        // `< TABLE_SIZE <= TABLE_ALLOC`, exhaustively at startup. What it buys
+        // is the bounds check, which LLVM can now discharge because the array's
+        // length IS `TABLE_MASK + 1`.
+        self.table[i & TABLE_MASK]
     }
 
     /// Squares a rook on `sq` attacks given `occupied` (blockers included —
@@ -621,16 +606,6 @@ impl AttackTables {
         }
     }
 
-    #[cfg(not(feature = "magic53"))]
-    fn new() -> AttackTables {
-        let mut table = vec![Bitboard::EMPTY; TABLE_SIZE].into_boxed_slice();
-        let mut magics = [MagicPair::ZEROED; 64];
-        init_magics(Slider::Rook, 0, &mut table, &mut magics);
-        init_magics(Slider::Bishop, ROOK_TABLE_SIZE, &mut table, &mut magics);
-        AttackTables { magics, table }
-    }
-
-    #[cfg(feature = "magic53")]
     fn new() -> AttackTables {
         // `vec![..].into_boxed_slice().try_into()` builds the array straight on
         // the heap; `Box::new([_; TABLE_ALLOC])` would materialise 1 MiB on the
@@ -777,7 +752,6 @@ fn init_magics(
         // occupancy bits are masked away by `index`, so they cannot widen the
         // range). A real `assert!`, not a `debug_assert!`: without it the mask
         // would turn a would-be panic into a silent read of a padding slot.
-        #[cfg(feature = "magic53")]
         for &occ in &occupancy[..size] {
             let idx = found.index(Bitboard::from_u64(occ));
             assert!(
