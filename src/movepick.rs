@@ -1218,80 +1218,54 @@ impl MovePicker {
             }};
         }
 
-        // Perf study 54 arm `qtrun54` — RUN-HOISTING.
+        // Perf study 54 — RUN-HOISTING. **-21.3 instructions/node**
+        // (-0.350 %, 20/20, se 0.000), node-identical.
         //
         // `generate_all` emits quiets in piece-type order: the whole pawn set
         // in one batch, then knights, bishops, rooks, queens, then the king
         // (castling is a king move, so it joins that run). So `pt` is very
-        // nearly a step function of `i`, and everything the loop derives from
-        // it — `row`, `pci`, and the two panic edges that come with reading a
-        // piece out of a mailbox byte — is constant across a run.
+        // nearly a step function of `i`, and so is everything the loop derives
+        // from it — `pc.index()`, `&rows[pt]`, and the `expect` panic edge that
+        // comes with reading a piece out of a mailbox byte.
         //
-        // The rewrite below reads the mailbox ONCE PER RUN instead of once per
-        // quiet, and hoists `&rows[pt]` and `pc.index()` with it. `rows` is a
-        // 192-byte stack array whose five fields are read per quiet
-        // (`check`, `threat` twice, `threat_w`, `offense`, `offense_w`), so
-        // hoisting the row is worth more than the two mailbox loads it was
-        // built for.
+        // The run state is therefore carried ACROSS iterations: the mailbox is
+        // read only when the from-square leaves the current piece's bitboard,
+        // which on a piece-type-ordered list is ~6 times per call instead of
+        // once per quiet (3.93 quiets/node, study 23). `Bitboard::EMPTY` seeds
+        // it so the first move always misses and fills.
         //
         // **It does not ASSUME the grouping.** The run is discovered, not
-        // asserted: the inner loop continues only while the next move's
-        // from-square is in the same piece bitboard, and an ungrouped list
-        // simply produces more runs and degenerates to exactly today's cost.
-        // That matters because the grouping is `movegen`'s emission order, an
-        // implementation detail no doc pins — an invariant this loop must not
-        // silently depend on. Emission order, scores and slots are unchanged,
-        // so the tree is bit-identical.
-        #[cfg(feature = "qtrun54")]
-        let mut i = 0usize;
-        #[cfg(feature = "qtrun54")]
-        while i < n {
-            let pc = board
-                .piece_on(list[i].from())
-                .expect("a quiet move starts on a piece of the side to move");
-            let pt = pc.piece_type;
-            // `pt` is a `#[repr(u8)]` enum with six variants, so this index
-            // into `[PtRow; 6]` folds — but it now happens once per RUN.
-            let row = &rows[pt as usize];
-            let pci = pc.index();
-            // The run's membership test: one register-resident bitboard, no
-            // load, replacing a mailbox read and its `expect` edge per move.
-            let run = board.pieces(pc.color, pt);
-            loop {
-                let m = list[i];
-                #[cfg(feature = "histpf44")]
-                if let Some(&ahead) = list.get(i + PF_DIST) {
-                    prefetch_history_for(ahead);
-                }
-                score_quiet!(m, i, row, pci);
-                i += 1;
-                if i >= n || !run.contains(list[i].from()) {
-                    break;
-                }
-            }
-        }
-
-        #[cfg(not(feature = "qtrun54"))]
+        // asserted: an ungrouped list simply refills more often and degenerates
+        // to exactly the previous cost. That matters because the grouping is
+        // `movegen`'s emission order — an implementation detail no doc pins,
+        // and not one this loop may silently depend on. Emission order, scores
+        // and slots are untouched, so the tree is bit-identical.
+        //
+        // **The shape matters more than the idea, and the first shape LOST.**
+        // The same hoisting written as a nested `while i < n` over runs
+        // measured **+9.4 i/node and +11.4 load dispatches/node** (0/24, se
+        // 0.000) — because that form indexes `list[i]` twice per move, once as
+        // the element and once in the continuation test, and every one is a
+        // bounds-checked slice index where `list.iter()` has none. It paid two
+        // indexed loads and two compares to save one mailbox load. Keeping the
+        // iterator is what turns +9.4 into -21.3; a future rewrite here should
+        // re-measure rather than assume the idea carries.
+        let mut run = crate::bitboard::Bitboard::EMPTY;
+        let mut row = &rows[0];
+        let mut pci = 0usize;
         for (i, &m) in list.iter().enumerate() {
             #[cfg(feature = "histpf44")]
             if let Some(&ahead) = list.get(i + PF_DIST) {
                 prefetch_history_for(ahead);
             }
-            let pc = board
-                .piece_on(m.from())
-                .expect("a quiet move starts on a piece of the side to move");
-            let pt = pc.piece_type;
-            // NOT clamped with `.min(5)` / `.min(11)`, though the bounds are type
-            // invariants and LLVM cannot see them (both values arrive through a
-            // mailbox byte, so it emits a `cmp`/`jae` and a panic block for each,
-            // twice per scored quiet). Perf study 23 measured the clamps: they
-            // remove 7.4 branches/node — an exact match for the 2 panic edges x
-            // 3.93 quiets/node they target — and cost **+21.7 instructions/node**
-            // doing it, because the `cmov` blocks the addressing-mode folding the
-            // bounds-checked form gets for free. Predicted branches are cheap;
-            // this trade is not worth taking.
-            let row = &rows[pt as usize];
-            let pci = pc.index();
+            if !run.contains(m.from()) {
+                let pc = board
+                    .piece_on(m.from())
+                    .expect("a quiet move starts on a piece of the side to move");
+                run = board.pieces(pc.color, pc.piece_type);
+                row = &rows[pc.piece_type as usize];
+                pci = pc.index();
+            }
             score_quiet!(m, i, row, pci);
         }
 

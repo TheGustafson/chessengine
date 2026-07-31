@@ -480,7 +480,6 @@ impl DirtyPiece {
     /// that both `from_move` and `after_move` need disappears entirely.
     /// Emission order is `from_move`'s in every arm, which is what the
     /// `after_move_reproduces_from_move_for_every_move_kind` oracle checks.
-    #[cfg(feature = "hookc54")]
     #[inline]
     fn from_actors(
         board: &Board,
@@ -517,7 +516,6 @@ impl DirtyPiece {
     /// into `make_move_with`, whose prologue study 13 §5.1 measured spilling,
     /// so only the arm taken on ~99% of moves stays in line. Promotions carry
     /// `capsq == to`, so the victim square is not a parameter.
-    #[cfg(feature = "hookc54")]
     #[cold]
     #[inline(never)]
     fn promotion_record(
@@ -668,7 +666,6 @@ pub trait MakeMoveHooks {
     /// This is what study 13 §5.1 lacked and study 35 §4 added when it
     /// rebuilt the arm: without it the seam is no longer bench-neutral by
     /// construction.
-    #[cfg(feature = "hookc54")]
     const WANTS_DIRTY: bool = false;
 
     /// Hook A: the child's full key is final (rule50-folded — the TT probe
@@ -1926,7 +1923,6 @@ impl Board {
         // AFTER step 10 so the board a castling record reads is the mutated
         // one — `castling_rook_square` is invariant, but keeping the hook on
         // the far side of mutation makes the two shapes directly comparable.
-        #[cfg(feature = "hookc54")]
         if H::WANTS_DIRTY {
             hooks.on_dirty(&DirtyPiece::from_actors(self, m, us, pc, captured, capsq));
         }
@@ -4562,6 +4558,85 @@ mod tests {
                     before,
                     after,
                     "after_move disagreed with from_move for {m} ({:?})",
+                    m.kind()
+                );
+                seen[m.kind() as usize] += 1;
+                walk(board, depth - 1, seen);
+                board.unmake_move(m);
+            }
+        }
+
+        for fen in roots {
+            let mut board = Board::from_fen(fen).expect("test FEN parses");
+            walk(&mut board, 3, &mut seen);
+        }
+
+        for kind in [
+            MoveKind::Normal,
+            MoveKind::Promotion,
+            MoveKind::EnPassant,
+            MoveKind::Castling,
+        ] {
+            assert!(
+                seen[kind as usize] > 0,
+                "the walk never reached a {kind:?} move — coverage claim is false"
+            );
+        }
+    }
+
+    /// Perf study 54: the twin of the test above for [`DirtyPiece::from_actors`],
+    /// the THIRD derivation of the same record.
+    ///
+    /// `from_move` reads the parent's mailbox, `after_move` reads the child's
+    /// `StateInfo`, and `from_actors` reads neither — it is handed step 3's own
+    /// registers. Three independent derivations means the oracle has to be run
+    /// against the new one too, and it is exercised through `make_move_with`
+    /// itself rather than called directly, so what the test checks is the record
+    /// the SEARCH would actually receive through Hook C.
+    ///
+    /// Same roots, same depth-3 walk, same per-kind coverage assertion, and the
+    /// same whole-record `assert_eq!` — which pins emission ORDER, not just the
+    /// multiset, because the accumulator folds these in sequence.
+    #[test]
+    fn from_actors_reproduces_from_move_for_every_move_kind() {
+        /// Hook C, recording. `WANTS_DIRTY` is what makes `make_move_with`
+        /// build the record at all.
+        struct Recorder(Option<DirtyPiece>);
+        impl MakeMoveHooks for Recorder {
+            const WANTS_DIRTY: bool = true;
+            fn on_dirty(&mut self, dp: &DirtyPiece) {
+                self.0 = Some(*dp);
+            }
+        }
+
+        let roots = [
+            crate::fen::START_FEN,
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+            "n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1",
+            "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+            "4k3/8/8/8/4Pp2/8/8/4K3 b - e3 0 1",
+        ];
+
+        let mut seen = [0usize; 4];
+
+        fn walk(board: &mut Board, depth: usize, seen: &mut [usize; 4]) {
+            if depth == 0 {
+                return;
+            }
+            let mut list = crate::MoveList::new();
+            crate::movegen::generate_legal(board, &mut list);
+            let moves: Vec<Move> = list.iter().copied().collect();
+            for m in moves {
+                let before = DirtyPiece::from_move(board, m);
+                let gives_check = board.gives_check(m);
+                let mut rec = Recorder(None);
+                board.make_move_with(m, gives_check, &mut rec);
+                let via_hook = rec.0.expect("Hook C must fire when WANTS_DIRTY");
+                assert_eq!(
+                    before,
+                    via_hook,
+                    "from_actors disagreed with from_move for {m} ({:?})",
                     m.kind()
                 );
                 seen[m.kind() as usize] += 1;
