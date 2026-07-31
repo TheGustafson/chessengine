@@ -9581,3 +9581,41 @@ largest on the board, and **study 48 landed in `activate` immediately after stud
 47 priced it at its floor** — because study 47 assumed `vpmullw`'s memory operand
 had to be the scale, and it is commutative. Also told plainly that studies 47 and
 49 both produced excellent analysis and no speedup, and two in a row is enough.
+
+## Node scan COMPLETE (2500 games) — flat at −8.2 ± 7.7 across a 25× node range
+
+**D49 sb640-EMA @756 vs canonical D48X @600, 500 games at each budget:**
+
+| nodes | n | score | Elo |
+|---|---:|---:|---|
+| 2,000 | 500 | 49.5% | −3.5 ± 17.1 |
+| 5,000 | 500 | 47.5% | −17.4 ± 17.1 |
+| 10,000 | 500 | 48.5% | −10.4 ± 17.1 |
+| 25,000 | 500 | 49.1% | −6.3 ± 17.1 |
+| 50,000 | 500 | 49.5% | −3.5 ± 17.1 |
+| **POOLED** | **2500** | **48.8%** | **−8.2 ± 7.7** |
+
+**The spread across five points is 13.9 Elo against a single-point bar of ±17.1**
+— i.e. the points are *closer together than one point's own noise*. There is no
+depth trend to find. **The gap is a constant ≈ −8 Elo across a 25× range of node
+budget.**
+
+**Both endpoints reading −3.5** (2k and 50k) while the middle dips is the
+signature of noise around a flat line, not a curve.
+
+**What it settles:** the deficit is **not** a search interaction in either
+direction — depth neither amplifies nor masks it. It is **flat evaluator
+quality**, so no search-side work will touch it and the fix must come from the
+net. It also retires the apparent depth-dependence in the earlier sb620 readings
+(−9.0 ± 12.1 @5k vs −4.2 ± 8.6 @25k) as noise.
+
+**And the number itself is better than the headline figure has been.** At sb640
+D49 sits **−8.2 ± 7.7** against canonical over 2500 games — against **−21.24 ±
+5.67** at sb400. The extension continues to pay.
+
+**Method note kept:** pooling was legitimate only *because* the flatness test
+passed first. Per-point and pooled together, never a lone aggregate.
+
+**D49x: sb655, EMA 0.010623** — flattening as the sb600–700 anneal exhausts. The
+whole chain (`d49y` continuation, `d49wd` watchdog, `d49v700` verdict,
+`d49yshim`) is queued and verified waiting.
