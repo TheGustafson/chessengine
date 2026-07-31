@@ -11461,3 +11461,57 @@ failure that put a commit on the wrong branch.
 
 **D49:** sb1033, 193k pos/s, four services active, 7.9 GB free. **Study 59**
 building.
+
+## Tick — 2026-07-31 14:01, full 52–58 priced: −0.909% wall-clock, +1.58 DERIVED Elo
+
+Rebuilt `archon-58-pgo` at `main` and ran `tools/wallclock_panel.py` (40 rounds)
+against the preserved `archon-pre52-pgo`:
+
+```
+NULL (byte-identical) : median +0.204%  sd 6.734  sign 19/40 neg  p=0.8746
+ARM                   : median -0.909%  sd 6.760  sign 26/40 neg  p=0.0807
+LICENSED (median-only, pre-registered)  ->  -0.909%  ->  +1.58 DERIVED Elo
+```
+
+### Licence and significance are different questions, and only one passed cleanly
+
+The pre-registered criterion licences the **instrument** (|null| < |arm|/2 — it
+can resolve an effect this size). It says nothing about whether *this* effect is
+real. **The arm's own sign test is p = 0.0807 — marginal, and much weaker than the
+52–56 panel's p = 0.0064** (29/40 vs 26/40). The `sd` is also higher, 6.76 vs
+4.99, because study 59 was building through part of the run.
+
+So: **the instrument worked; the reading is soft.** I am recording +1.58 as
+DERIVED *and* marginal, not as a firmed-up number.
+
+### The observation that matters more than the Elo
+
+| series | shipped i/n | wall-clock | sign p | derived Elo |
+|---|---:|---:|---:|---:|
+| 52–56 | −162.4 | −1.020% | 0.0064 | +1.77 |
+| **52–58** | **−317.7** | **−0.909%** | 0.0807 | **+1.58** |
+
+**Shipped instructions nearly DOUBLED (−162.4 → −317.7) and wall-clock did not
+move.** Taken at face value it went slightly the wrong way, but −1.020% and
+−0.909% are well inside each other's noise, so the honest reading is: **studies 57
+and 58 added ~155 i/n of shipped instruction reduction with no measurable
+wall-clock effect.**
+
+That is a real, uncomfortable observation and it sharpens the earlier finding.
+Instructions do not merely *overstate* time by a constant 2.63× — **the marginal
+conversion for these particular later arms is indistinguishable from zero.** The
+engine at this point is not instruction-throughput bound in the way the gate
+assumes.
+
+**Caveat stated rather than buried:** the `Ptnml [0,0,750,0,0]` node-null was run
+on the pre-52 ↔ post-56 pair, **not** this one. Studies 57 and 58 were each gated
+node-identical, so it should hold transitively, but that is inference, not the
+measurement. The Elo conversion inherits that caveat.
+
+**Next instrument question, to be pre-registered before the next panel, not
+after:** whether the licence should require the arm's sign test to reach p<0.05 as
+well as the median criterion. This run is exactly the case that motivates it —
+**and that is why it does not get applied retroactively here.**
+
+**D49:** sb1038, 193k pos/s, four services active, 162 GB disk. **Study 59** at
+work, no builds in flight.
