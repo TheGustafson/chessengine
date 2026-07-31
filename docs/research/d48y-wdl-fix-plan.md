@@ -9219,3 +9219,56 @@ harness fix live in `panel34/37`; `objdump` banner stripped in `build44`;
 **Standing change: my own commits now go through the dedicated worktree, never
 the shared checkout.** An agent that does not take a worktree can move the branch
 under anyone sharing the directory, and nothing warns you — the commits succeed.
+
+## Tick — REFOCUS on the two real gaps; TensorBoard armed (D49 had been running DARK)
+
+**Owner's refocus:** the two known gaps to Stockfish are **speed** and **NNUE
+weights**. Big representation ideas wait until we are fast enough and can
+generate labels good enough to train new features on. **The representation line
+is cancelled**; perf + D49 are the whole focus.
+
+**D49x: sb586**, EMA **0.010704** — fifteen consecutive down, **108e-6 past its
+bar**. ~3.5 h to sb700.
+
+### TensorBoard: D49 had NO telemetry, which is a standing-rule violation
+
+`data/nnue/tb/` holds `d47b`, `d47c`, `d47c-stage2`, `d47d-stage3`,
+`d47e-stage4` … and **no `d49`**. The run has been dark since launch. The
+standing rule from the 2026-07-22 twin is *every training run gets tb telemetry
+armed AT LAUNCH*; I launched D49 without checking. **Nothing is lost** — the shim
+backfills from the log, which had everything — but it should not have needed
+backfilling.
+
+Armed: `d49shim-extend.service` → `data/nnue/tb/d49-1280/extend`, and
+`tbserver.service` on **http://127.0.0.1:6006/** (serving all of `data/nnue/tb`,
+so D49 charts against the d47/d48 history). Both transient **services**, so they
+survive the session. The shim's `COMP`/`HELDOUT` regexes already handle this
+run's JAX format including the `ema` column.
+
+### Two bugs found arming it, one of them general
+
+1. **`systemd-run --user` starts in `$HOME`, not the repo.** The shim failed with
+   `can't open file '/home/nick/tools/nnue/tb_shim.py'` because I passed relative
+   paths. **Every service launched this session could have failed the same way** —
+   audited: `d49x`, `oomguard`, `tbserver`, `d49read` all pass ABSOLUTE script
+   paths and are unaffected. Fix is `--working-directory=`.
+2. **`tensorboard` is not on PATH** — it runs via
+   `uv run --with tensorboard python -m tensorboard.main`.
+
+### Orphan from the cancelled study, and a THIRD oomguard leak
+
+Killing the representation agent left `reprgap/kpk.py probe` alive holding
+**6417 MB**, which had driven available memory to **1577 MB — below the floor**.
+Killed by PID; **7.5 GB reclaimed**. **`oomguard` v3 missed it**: it discovers
+candidates with `pgrep -f "$REPO"` (absolute path) and that process ran with a
+RELATIVE path. Third leak, same root cause every time — **matching on how a
+process is NAMED rather than what it IS.**
+
+### D49 equal-node read, in flight
+
+`d49read.service`: sb580 EMA requanted (0 clipped), packed at **756 — D49's own
+optimum**, screening **1466 games fixed-node vs canonical D48X at ITS optimum
+(600)**. Both traps from the verdict protocol respected: each net at its own
+optimum, and the EMA deployed. Same engine binary both sides, so the landed perf
+wins cannot confound it. **A progress read, not the verdict** — D49 still has 114
+sb and the whole anneal to run.
