@@ -12052,3 +12052,51 @@ requirement to record commit + build command + `.text` md5 for any future
 canonical promotion is now in `engines/canonical/MANIFEST.md`.
 
 **D49:** sb1094, 193k pos/s, four services active. **Study 61** working.
+
+## Tick — 2026-07-31 16:16, CORRECTION: the heldout EMA *does* have a trend (t = −6.83)
+
+I have written "still inside the sawtooth, still not a trend" at nearly every tick
+since sb900. **I finally tested it instead of repeating it, and it is wrong.**
+
+Regression over all 40 EMA points since sb700 (sb710–sb1100):
+
+| | |
+|---|---|
+| slope | **−2.483e-07 per superbatch** |
+| se | 3.634e-08 |
+| **t** | **−6.83 — SIGNIFICANT** |
+| projected over the 400 sb measured | **−0.000099 of EMA** |
+| EMA spread | 0.010620 … 0.010765 |
+| residual sd after removing the trend | **0.000026** |
+
+The residual sd is small against the spread, so the trend accounts for a large
+share of the movement — this is not a line fitted through noise.
+
+**How the error happened, because it is the reusable part.** The claim was
+*defensible* when I first made it at n≈4: three or four readings of a sawtooth
+genuinely cannot show a trend. It became false as points accumulated, and **I
+carried it forward as a stock phrase instead of re-running the test.** A caveat
+that was true once does not stay true; **a claim repeated across ticks needs
+re-testing at the new n, not restating.**
+
+### What it does and does not mean
+
+**It is NOT a strength claim.** Loss is not Elo — the standing receipt is that
+**44e-6 of heldout moved alongside ~30 Elo of games**, an order of magnitude off
+any exchange rate. −99e-6 over 400 superbatches converts to nothing.
+
+**What it is worth:**
+
+1. **The schedule is doing something.** Combined with the phase-lock result
+   (peaks vs troughs, 10.93σ), the cycling is both *applied* and *productive* —
+   the net is still learning at sb1100, not oscillating in place.
+2. **The abort condition is comfortably not firing**, and now on a fitted trend
+   rather than on eyeballed readings.
+
+**Neither changes the reading rule:** the experiment is still arbitrated by games
+at **sb1400** and **sb1700**, and every mid-cycling Elo point remains sampled at
+an arbitrary phase of a sawtooth whose peaks measurably worsen the fit.
+
+**D49:** sb1101, 193k pos/s, four services active, 158 GB disk. **Study 61**
+working — `tools/perf61/` now holds `build61.sh`, `fills61.sh`, `ibstop61.py`,
+`med61.py`, so it is on IBS and cache fills as briefed.
