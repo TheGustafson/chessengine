@@ -9821,3 +9821,48 @@ specified.
 **2377 / 5880 games**, running at `CONC=6` beside the trainer. Trajectory so far,
 all vs canonical @25k: sb400 **−21.24 ± 5.67**, sb580 −25.90 ± 10.00, sb620
 −4.20 ± 8.60, sb640 −8.20 ± 7.70 (pooled), sb700 partial −2.2 ± 15.3.
+
+## ★★★ sb700 VERDICT FINAL — the extension is worth +17.1 Elo
+
+**D49 sb700-EMA @756 vs canonical D48X @600, 5880 games at 25k fixed nodes:**
+
+```
+Elo: -4.14 +/- 5.56   nElo: -6.61 +/- 8.88
+Games: 5880  W 1733  L 1803  D 2344   49.40%
+Ptnml(0-2): [112, 741, 1301, 677, 109]   WL/DD 1.81
+```
+
+| checkpoint | Elo | n | interval |
+|---|---:|---:|---|
+| **sb400** — where the run would have STOPPED | **−21.24 ± 5.67** | 5880 | [−26.9, −15.6] |
+| **sb700** | **−4.14 ± 5.56** | 5880 | [−9.7, +1.4] |
+
+**+17.1 Elo, both ends at full 5880-game precision, intervals DISJOINT.**
+
+### What this establishes
+
+**The stopping criterion was wrong.** At sb400 D49 looked finished — loss had
+flattened and the anneal had run. Training it **75% longer bought 17.1 Elo that
+the loss curve never showed.** Every net this project has shelved on a flat loss
+curve is now suspect.
+
+**And sb700 is still only 44% of Stockfish's presentation budget** (17.4 G
+positions against 40 G). The running continuation takes D49 to **42.3 G = 106%**,
+which is the first time the question gets asked at parity.
+
+**Trajectory, all vs canonical @25k:** sb400 −21.24 ± 5.67 (5880) → sb580 −25.90 ±
+10.00 (1466) → sb620 −4.20 ± 8.60 (2000) → sb640 −8.20 ± 7.70 (2500, pooled over
+a 25× node range) → **sb700 −4.14 ± 5.56 (5880)**.
+
+### Cycle experiment: NOT readable yet, and the instrument has a blind spot
+
+**Heldout is sampled every 10 sb; the cycle period is 20.** Troughs fall at sb719,
+739, 759 — **always 9 mod 20, never on a multiple of 10** — so every reading lands
+at a peak or mid-decay and **the trough state is systematically invisible.** The
+metric grid is aliased against the schedule period. Fixing it costs a trainer
+restart and another fresh-Adam transient, which is worth more than the reading.
+
+What is readable is the EMA, which smooths across cycles and is the deployed
+artifact: **0.010694 after one full cycle against sb700's 0.010592.** One cycle
+cannot beat a completed anneal; the experiment is only readable at **sb1400** (end
+of cycling) and **sb1700** (after the final anneal).
