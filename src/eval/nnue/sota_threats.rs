@@ -784,6 +784,29 @@ struct ThreatEntry {
     /// same fold events as `acc` (all-zero when the net carries no threat
     /// PSQ1 rows). Valid where `fold[p]` is [`Fold::Done`], like `acc`.
     psqt: [[i32; BUCKETS]; 2],
+    /// Perf study 51 arm `cong51`: 64 bytes of pure padding. It changes nothing
+    /// an evaluation can observe and everything about which L1 SET this entry's
+    /// accumulator lands in.
+    ///
+    /// `ThreatEntry` and HalfKA's `Entry` have byte-identical layouts (5120 B
+    /// of `acc` + 64 B of `psqt`, `align(64)`, stride **5184**) and both stacks
+    /// are `Box<[_; 254]>` of exactly 1,316,736 B, so the allocator returns
+    /// both at the same page offset and they come out EXACTLY 4 KB-congruent —
+    /// study 50 measured the separation at `0x197000 = 407 x 4096`, and study
+    /// 51 reproduced it on an independently ASLR'd run. L1d indexes on
+    /// `addr[11:6]`, so `halfka.stack[p].acc[c]` and `threats.stack[p].acc[c]`
+    /// contend for the same 64 sets at EVERY ply — and `activate` reads all
+    /// four of those arrays interleaved.
+    ///
+    /// Study 50 recorded this as its own unfinished business: *"the clean
+    /// experiment — offset one stack by a non-multiple of 4096 and re-run the
+    /// region census — is two lines and I did not build it"*. Padding the
+    /// stride to 5248 makes the same-ply separation `D + 64p`, which is
+    /// 4 KB-congruent for only one ply in 64.
+    ///
+    /// Bit-identical by construction: no code reads it.
+    #[cfg(feature = "cong51")]
+    _cong: [u8; 64],
 }
 
 /// The per-ply PUSH RECORD — the move that produced the entry plus the
@@ -886,6 +909,8 @@ impl Default for ThreatEntry {
         ThreatEntry {
             acc: [[0i16; ACC]; 2],
             psqt: [[0i32; BUCKETS]; 2],
+            #[cfg(feature = "cong51")]
+            _cong: [0u8; 64],
         }
     }
 }
@@ -1117,6 +1142,21 @@ impl<'a> ThreatContext<'a> {
                 psqt_weights.as_ptr().cast(),
                 std::mem::size_of_val(psqt_weights),
             );
+            // Perf study 51: see the twin call in `HalfkaContext::new`. The
+            // threat table is 77.7 MB and 54.7% of all folded weight rows, so
+            // it is the one that decides whether a narrower weight is possible.
+            static THR_VH: std::sync::Once = std::sync::Once::new();
+            THR_VH.call_once(|| {
+                super::foldcount::valhist(
+                    "thr_weights_p128",
+                    weights.iter().map(|&w| i64::from(w) + 128),
+                );
+            });
+            static THR_WEIGHTS_RS: std::sync::Once = std::sync::Once::new();
+            THR_WEIGHTS_RS.call_once(|| {
+                super::foldcount::rowstats("thr_weights", weights, super::sota_head::L1);
+                super::foldcount::rowwidth_init(1, weights, super::sota_head::L1);
+            });
         }
         #[allow(unused_mut)]
         let mut me = ThreatContext {

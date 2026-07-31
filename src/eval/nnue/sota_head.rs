@@ -648,7 +648,17 @@ impl SotaHead {
             static ONCE: std::sync::Once = std::sync::Once::new();
             ONCE.call_once(|| {
                 use super::foldcount::region;
-                region("ft_scale", self.ft_scale.block(0).as_ptr().cast(), L1 * 2);
+                // `L1 * 2` until perf study 51: study 50 halved `FtScale` to
+                // `u8` but left the region byte count at the i16 width, so the
+                // registered range covered 1280 B of NEIGHBOURING heap and its
+                // post-arm miss rate was contaminated. Derive the width from
+                // the array instead of restating it, so the next requantisation
+                // cannot desynchronise it again.
+                region(
+                    "ft_scale",
+                    self.ft_scale.block(0).as_ptr().cast(),
+                    std::mem::size_of_val(self.ft_scale.block(0)),
+                );
                 region("head_ft", ft.as_ptr(), L1);
                 region("head_nnz", nnz.as_ptr().cast(), L1 / 2);
                 region(

@@ -427,6 +427,23 @@ impl<'a> HalfkaContext<'a> {
                 psqt_weights.as_ptr().cast(),
                 std::mem::size_of_val(psqt_weights),
             );
+            // Perf study 51: how many BITS of each i8 weight are real? Study 50
+            // halved `ft_scale` on exactly this evidence. Offset by +128 so the
+            // signed range lands in `valhist`'s unsigned 0..1024 buckets.
+            // `Once` because a context is constructed per search, and the table
+            // is 28.8 MB — one pass is diagnostic, one per search is a stall.
+            static HKA_VH: std::sync::Once = std::sync::Once::new();
+            HKA_VH.call_once(|| {
+                super::foldcount::valhist(
+                    "hka_weights_p128",
+                    weights.iter().map(|&w| i64::from(w) + 128),
+                );
+            });
+            static HKA_WEIGHTS_RS: std::sync::Once = std::sync::Once::new();
+            HKA_WEIGHTS_RS.call_once(|| {
+                super::foldcount::rowstats("hka_weights", weights, super::sota_head::L1);
+                super::foldcount::rowwidth_init(0, weights, super::sota_head::L1);
+            });
         }
         #[allow(unused_mut)]
         let mut me = Self {

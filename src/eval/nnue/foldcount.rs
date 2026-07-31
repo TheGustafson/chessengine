@@ -63,6 +63,103 @@ pub static THR_ALIAS: Site = Site::new();
 /// of weight COLUMNS folded, i.e. the number of active threat features for one
 /// perspective, which is the quantity that decides whether fusion is a loss.
 pub static THR_REFRESH: Site = Site::new();
+/// Perf study 51 — weight ROWS that are entirely zero, counted where it
+/// matters: as a fraction of the rows actually FOLDED, not of the table.
+///
+/// A row of zeros contributes nothing to the accumulator, so the fold's 40
+/// loads and 40 `vpaddw` for it are pure waste, and skipping it is
+/// bit-identical (adding zero is the group identity). The static table share
+/// and the folded share are different questions — zeros could sit entirely in
+/// rare features — so `ZERO_ROW_*` counts the folded population and
+/// `FOLDROWSTATS` reports the static one.
+pub static ZERO_ROW_HKA: Site = Site::new();
+/// The same for the FullThreats channel, which is 54.7% of all folded rows.
+pub static ZERO_ROW_THR: Site = Site::new();
+
+/// Count the all-zero rows among `idx`, charged to `site`. `rows` counts every
+/// row inspected so `rows − calls` is not needed: `calls` is the zero count.
+///
+/// `iter().all()` short-circuits on the first nonzero byte, so a dense row
+/// costs one comparison and only a genuinely zero row pays the full `acc`
+/// scan. Diagnostic build only.
+#[inline]
+pub fn note_zero_rows(site: &Site, weights: &[i8], idx: &[usize], acc: usize) {
+    for &r in idx {
+        let base = r * acc;
+        if let Some(row) = weights.get(base..base + acc) {
+            if row.iter().all(|&w| w == 0) {
+                site.calls.fetch_add(1, Relaxed);
+            }
+        }
+        site.rows.fetch_add(1, Relaxed);
+    }
+}
+
+/// Per-channel fold counts and per-row peak magnitude, so the question "how
+/// many BITS does a folded weight row actually need?" is answered over the
+/// FOLDED population rather than over the table.
+///
+/// The distinction is not academic: `FOLDROWSTATS` says 16.4% of threat rows
+/// are entirely zero, and `FOLDZEROROW` says 30 of 19.6 M FOLDED rows are —
+/// the zeros sit in features that never occur. A static histogram of the table
+/// answers a question nobody asked.
+pub const ROWCH: usize = 2;
+pub const ROWCH_NAMES: [&str; ROWCH] = ["hka", "thr"];
+static ROWCOUNT: [std::sync::OnceLock<Vec<AtomicU64>>; ROWCH] =
+    [const { std::sync::OnceLock::new() }; ROWCH];
+static ROWMAXABS: [std::sync::OnceLock<Vec<u8>>; ROWCH] =
+    [const { std::sync::OnceLock::new() }; ROWCH];
+
+/// Charge each index in `idx` to its row's fold counter.
+#[inline]
+pub fn note_row_fold(ch: usize, idx: &[usize]) {
+    if let Some(c) = ROWCOUNT[ch].get() {
+        for &r in idx {
+            if let Some(cell) = c.get(r) {
+                cell.fetch_add(1, Relaxed);
+            }
+        }
+    }
+}
+
+/// Build channel `ch`'s per-row peak-magnitude table and size its counters.
+pub fn rowwidth_init(ch: usize, weights: &[i8], acc: usize) {
+    let peaks: Vec<u8> = weights
+        .chunks_exact(acc)
+        .map(|row| {
+            row.iter()
+                .map(|&w| i16::from(w).unsigned_abs().min(255) as u8)
+                .max()
+                .unwrap_or(0)
+        })
+        .collect();
+    let n = peaks.len();
+    let _ = ROWMAXABS[ch].set(peaks);
+    let _ = ROWCOUNT[ch].set((0..n).map(|_| AtomicU64::new(0)).collect());
+}
+
+/// Static row structure of a weight table: how many rows are entirely zero,
+/// and the distribution of nonzero lanes per row in 16 buckets of `acc/16`.
+pub fn rowstats(name: &'static str, weights: &[i8], acc: usize) {
+    let (mut zero, mut total) = (0u64, 0u64);
+    let mut hist = [0u64; 17];
+    for row in weights.chunks_exact(acc) {
+        total += 1;
+        let nz = row.iter().filter(|&&w| w != 0).count();
+        if nz == 0 {
+            zero += 1;
+        }
+        hist[(nz * 16 / acc).min(16)] += 1;
+    }
+    if let Ok(mut g) = ROWSTATS.lock() {
+        g.push((name, total, zero, hist));
+    }
+}
+
+#[allow(clippy::type_complexity)]
+static ROWSTATS: std::sync::Mutex<Vec<(&'static str, u64, u64, [u64; 17])>> =
+    std::sync::Mutex::new(Vec::new());
+
 /// `activate` — the head's accumulator merge. Reads FOUR `[i16; ACC]` arrays
 /// (two perspectives x two channels) and writes one `[u8; ACC]`. This is the
 /// 10.24 KB/ply Stockfish carries as 4.10 KB.
@@ -456,6 +553,59 @@ pub fn dump(nodes: u64) {
         for &(i, name) in g.iter() {
             let (lo, hi) = (REGION_LO[i].load(Relaxed), REGION_HI[i].load(Relaxed));
             emit!("FOLDREGION {name} lo={lo:#x} hi={hi:#x} bytes={}", hi - lo);
+        }
+    }
+    for (name, site) in [("hka", &ZERO_ROW_HKA), ("thr", &ZERO_ROW_THR)] {
+        let (zero, seen) = site.read();
+        emit!("FOLDZEROROW {name}.folded={seen} {name}.allzero={zero}");
+    }
+    // Fold-weighted signed bit width. A row whose peak magnitude is `m` needs
+    // `ceil(log2(m+1)) + 1` signed bits; bucket 0 is an all-zero row.
+    for ch in 0..ROWCH {
+        let (Some(peaks), Some(cnt)) = (ROWMAXABS[ch].get(), ROWCOUNT[ch].get()) else {
+            continue;
+        };
+        let mut by_bits = [0u64; 10];
+        let mut rows_by_bits = [0u64; 10];
+        for (r, &m) in peaks.iter().enumerate() {
+            let bits = if m == 0 {
+                0
+            } else {
+                (16 - u16::from(m).leading_zeros() + 1) as usize
+            };
+            let b = bits.min(9);
+            by_bits[b] += cnt[r].load(Relaxed);
+            rows_by_bits[b] += 1;
+        }
+        let folded: u64 = by_bits.iter().sum();
+        let f: Vec<String> = by_bits
+            .iter()
+            .enumerate()
+            .map(|(b, n)| format!("{b}:{n}"))
+            .collect();
+        let s: Vec<String> = rows_by_bits
+            .iter()
+            .enumerate()
+            .map(|(b, n)| format!("{b}:{n}"))
+            .collect();
+        emit!(
+            "FOLDROWBITS {} folded={folded} byfolds {} byrows {}",
+            ROWCH_NAMES[ch],
+            f.join(" "),
+            s.join(" ")
+        );
+    }
+    if let Ok(g) = ROWSTATS.lock() {
+        for (name, total, zero, hist) in g.iter() {
+            let h: Vec<String> = hist
+                .iter()
+                .enumerate()
+                .map(|(i, n)| format!("{i}:{n}"))
+                .collect();
+            emit!(
+                "FOLDROWSTATS {name} rows={total} allzero={zero} nzhist16 {}",
+                h.join(" ")
+            );
         }
     }
     if let Ok(g) = VALHIST.lock() {
