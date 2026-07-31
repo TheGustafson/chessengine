@@ -715,7 +715,10 @@ impl SotaHead {
         // ceiling: a row is a cold single-visit burst taking 22 demand misses,
         // one hint converts at most 1 of 22, and `_MM_HINT_T2` lands in L2 where
         // those rows already hit 72.7 % of the time. **None of that is true
-        // here.** The tail tables are 2,304 B, they are read IN FULL on every
+        // here.** The tail tables are 2,368 B at this arch (`l2_weights`
+        // 16*32*4 = 2048 + `l2_biases` 128 + `l3_weights` 128 + `l1_biases`
+        // 64 -- the same arithmetic that reproduces study 51's "l1_weights
+        // 20 KB/bucket"), they are read IN FULL on every
         // evaluation (so a hint cannot be wasted on data that is not touched),
         // study 51's region census measures them at 98.84 % / 100.00 % L1 miss,
         // and their addresses are known at entry while their first use is ~800
@@ -748,7 +751,13 @@ impl SotaHead {
                 }
                 hint(self.l2_biases.block(bucket).as_ptr().cast());
                 hint(self.l3_weights.block(bucket).as_ptr().cast());
-                hint(self.l3_weights.block(bucket).as_ptr().cast::<u8>().wrapping_add(64));
+                hint(
+                    self.l3_weights
+                        .block(bucket)
+                        .as_ptr()
+                        .cast::<u8>()
+                        .wrapping_add(64),
+                );
                 hint(self.l1_biases.block(bucket).as_ptr().cast());
             }
         }

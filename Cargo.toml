@@ -326,6 +326,18 @@ regs4_44 = []
 # where the whole matmul can overlap it. Memory-level parallelism, not a
 # prefetch: no hint instruction and no extra load. Bit-identical by
 # construction, so it is gated on the eval hash like everything else here.
+#
+# *** MEASURED AND REFUTED (perf study 60 sec 4). DO NOT RE-PROPOSE. ***
+# 40 paired rounds, byte-identical null in the rotation, node-identical at
+# 5,001,562 and eval hash 2e1ede95...79c4:
+#   instructions:u          -0.031%  (-1.75/node)   40/40   <- better
+#   L1-dcache-loads:u       -0.219%  (null -0.048)  30/40   <- better
+#   L1-dcache-load-misses:u +0.614%  (null +0.135)   3/40   <- WORSE, p<0.0001
+# The arm's own mechanism inverts: issued EARLY the skip lane's 20 cold lines
+# sit in L1 through the sparse L1 matmul and compete with `l1_weights` (which
+# study 51 already measured at 91.44% miss); issued LATE they are fetched once,
+# used once, and displace nothing. Hoisting a cold single-use read into a hot
+# streaming phase adds the displaced data's misses to its own.
 hskip60 = []
 # Perf study 60 arm `htail`: `_MM_HINT_T0` on the head's TAIL tables
 # (`l2_weights` 2048 B, `l2_biases`, `l3_weights`, `l1_biases` -- 2,304 B, 36
@@ -336,6 +348,18 @@ hskip60 = []
 # does not apply to a 2 KB table that is read in full every evaluation and that
 # study 51 measured at 98.84-100.00 % L1 miss. A hint cannot change a value, so
 # this is gated on the eval hash like everything else.
+#
+# *** MEASURED AND REFUTED -- PREFETCH KILL #9 (perf study 60 sec 5). ***
+# Same 40-round panel:
+#   instructions:u          +0.404%  (+22.8/node)    0/40
+#   L1-dcache-loads:u       +0.205%  (null -0.048)   6/40
+#   L1-dcache-load-misses:u +0.379%  (null +0.135)   5/40   <- WORSE, p<0.0001
+# It died at the one site where study 29 sec 5.2's ceiling argument did NOT
+# apply, which is what makes it informative: the tail tables' 36 lines are one
+# dense sequential burst whose misses ALREADY overlap each other, so there was
+# no exposed latency to hide -- only 36 extra address computations and 36 extra
+# L1 lookups. The rule that now covers all nine kills: a hint pays only where
+# the miss is cold AND SERIALISING.
 htail60 = []
 # Perf study 40's DOSE AMPLIFIER for `partial_insertion_sort` (`src/dose40.rs`).
 # `insertwin34` is a ~0.2%-of-cycles trade and six nulls put the `cycles:u`
