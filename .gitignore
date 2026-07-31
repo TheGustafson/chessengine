@@ -117,3 +117,8 @@ bin54/
 # perf study 57 recorded perf.data (regenerable; ~40 MB)
 docs/research/perf-artifacts-57/*.data
 docs/research/perf-artifacts-57/*.lock
+# perf study 58 (arm binaries + raw perf records; the parsed panels stay)
+/bin58/
+docs/research/perf-artifacts-58/*.data
+docs/research/perf-artifacts-58/*.lock
+/data
