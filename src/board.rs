@@ -464,6 +464,81 @@ impl DirtyPiece {
         dp
     }
 
+    /// Perf study 54 arm `hookc54` — study 35 §4's fusion, rebuilt on the
+    /// `after_move` tree that landed instead of it.
+    ///
+    /// The record built from the actors [`Board::make_move_with`] step 3
+    /// already holds in registers: the mover `pc`, the `(captured, capsq)`
+    /// pair, and `us`. Nothing is read back out of the board or the
+    /// `StateInfo`, which is the whole point — `after_move` costs two
+    /// `StateInfo` loads (`moved`, `captured`) that this shape never issues.
+    ///
+    /// **Two hot arms, not three.** Step 3 already resolves en passant into
+    /// `(Some(their pawn), ep square)`, precisely so steps 5 and 10 need no
+    /// special case, so `MoveKind::EnPassant` and `MoveKind::Normal` collapse
+    /// into one straight-line arm here — and the `#[cold]` en-passant helper
+    /// that both `from_move` and `after_move` need disappears entirely.
+    /// Emission order is `from_move`'s in every arm, which is what the
+    /// `after_move_reproduces_from_move_for_every_move_kind` oracle checks.
+    #[inline]
+    fn from_actors(
+        board: &Board,
+        m: Move,
+        us: Color,
+        pc: Piece,
+        captured: Option<Piece>,
+        capsq: Square,
+    ) -> DirtyPiece {
+        let (from, to) = (m.from(), m.to());
+        let mut dp = DirtyPiece::EMPTY;
+        match m.kind() {
+            // Out of line for the same reason as everywhere else: castling is
+            // under 1% of made moves and this is the only arm needing the
+            // rook-square table. Step 4 has already mutated the board, but
+            // `castling_rook_square` is a start-of-game table no move touches.
+            MoveKind::Castling => return Self::castling_record(board, us, pc, from, to),
+            MoveKind::Promotion => return Self::promotion_record(m, us, pc, captured, from, to),
+            // En passant folded in: `capsq` is the ep pawn's square and
+            // `captured` is that pawn, both resolved by step 3.
+            MoveKind::Normal | MoveKind::EnPassant => {
+                dp.sub(pc, from);
+                if let Some(victim) = captured {
+                    dp.sub(victim, capsq);
+                }
+                dp.add(pc, to);
+            }
+        }
+        dp
+    }
+
+    /// The promotion arm of [`DirtyPiece::from_actors`], out of line for the
+    /// same reason as [`DirtyPiece::castling_record`] — this body is inlined
+    /// into `make_move_with`, whose prologue study 13 §5.1 measured spilling,
+    /// so only the arm taken on ~99% of moves stays in line. Promotions carry
+    /// `capsq == to`, so the victim square is not a parameter.
+    #[cold]
+    #[inline(never)]
+    fn promotion_record(
+        m: Move,
+        us: Color,
+        pc: Piece,
+        captured: Option<Piece>,
+        from: Square,
+        to: Square,
+    ) -> DirtyPiece {
+        let promoted = Piece::new(
+            us,
+            m.promotion_piece().expect("promotion kind carries a piece"),
+        );
+        let mut dp = DirtyPiece::EMPTY;
+        dp.sub(pc, from);
+        if let Some(victim) = captured {
+            dp.sub(victim, to); // capture-promotion
+        }
+        dp.add(promoted, to);
+        dp
+    }
+
     /// [`DirtyPiece::special_record`] for the post-move board. It exists as a
     /// separate function because the two differ in both arms: the promotion arm
     /// must read the victim from `state.captured` — the `to` square now holds
@@ -582,6 +657,17 @@ impl DirtyPiece {
 /// [`NoHooks`] path compiles away entirely: the seam is bench-neutral by
 /// construction.
 pub trait MakeMoveHooks {
+    /// Perf study 54: does this hook type want Hook C at all? An associated
+    /// `const`, not a field, so `make_move_with` monomorphizes the whole
+    /// record construction away for [`NoHooks`] (perft, `Board::make_move`,
+    /// the classical path) and for the ProbCut verification probe, which
+    /// makes and unmakes without ever pushing an accumulator entry.
+    ///
+    /// This is what study 13 §5.1 lacked and study 35 §4 added when it
+    /// rebuilt the arm: without it the seam is no longer bench-neutral by
+    /// construction.
+    const WANTS_DIRTY: bool = false;
+
     /// Hook A: the child's full key is final (rule50-folded — the TT probe
     /// key) while board mutation is still in flight. The TT prefetches its
     /// cluster here.
@@ -1832,6 +1918,14 @@ impl Board {
         self.state.captured = captured;
         self.state.moved = pc;
         self.state.checkers = checkers;
+        // Hook C (perf study 54 / study 35 §4): the placement record, built
+        // from step 3's own actors while they are still in registers. Placed
+        // AFTER step 10 so the board a castling record reads is the mutated
+        // one — `castling_rook_square` is invariant, but keeping the hook on
+        // the far side of mutation makes the two shapes directly comparable.
+        if H::WANTS_DIRTY {
+            hooks.on_dirty(&DirtyPiece::from_actors(self, m, us, pc, captured, capsq));
+        }
         debug_assert_eq!(
             gives_check,
             !(self.attackers_to(self.king_square(them), self.all_occupancy) & self.occupancy(us))
@@ -4464,6 +4558,85 @@ mod tests {
                     before,
                     after,
                     "after_move disagreed with from_move for {m} ({:?})",
+                    m.kind()
+                );
+                seen[m.kind() as usize] += 1;
+                walk(board, depth - 1, seen);
+                board.unmake_move(m);
+            }
+        }
+
+        for fen in roots {
+            let mut board = Board::from_fen(fen).expect("test FEN parses");
+            walk(&mut board, 3, &mut seen);
+        }
+
+        for kind in [
+            MoveKind::Normal,
+            MoveKind::Promotion,
+            MoveKind::EnPassant,
+            MoveKind::Castling,
+        ] {
+            assert!(
+                seen[kind as usize] > 0,
+                "the walk never reached a {kind:?} move — coverage claim is false"
+            );
+        }
+    }
+
+    /// Perf study 54: the twin of the test above for [`DirtyPiece::from_actors`],
+    /// the THIRD derivation of the same record.
+    ///
+    /// `from_move` reads the parent's mailbox, `after_move` reads the child's
+    /// `StateInfo`, and `from_actors` reads neither — it is handed step 3's own
+    /// registers. Three independent derivations means the oracle has to be run
+    /// against the new one too, and it is exercised through `make_move_with`
+    /// itself rather than called directly, so what the test checks is the record
+    /// the SEARCH would actually receive through Hook C.
+    ///
+    /// Same roots, same depth-3 walk, same per-kind coverage assertion, and the
+    /// same whole-record `assert_eq!` — which pins emission ORDER, not just the
+    /// multiset, because the accumulator folds these in sequence.
+    #[test]
+    fn from_actors_reproduces_from_move_for_every_move_kind() {
+        /// Hook C, recording. `WANTS_DIRTY` is what makes `make_move_with`
+        /// build the record at all.
+        struct Recorder(Option<DirtyPiece>);
+        impl MakeMoveHooks for Recorder {
+            const WANTS_DIRTY: bool = true;
+            fn on_dirty(&mut self, dp: &DirtyPiece) {
+                self.0 = Some(*dp);
+            }
+        }
+
+        let roots = [
+            crate::fen::START_FEN,
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+            "n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1",
+            "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+            "4k3/8/8/8/4Pp2/8/8/4K3 b - e3 0 1",
+        ];
+
+        let mut seen = [0usize; 4];
+
+        fn walk(board: &mut Board, depth: usize, seen: &mut [usize; 4]) {
+            if depth == 0 {
+                return;
+            }
+            let mut list = crate::MoveList::new();
+            crate::movegen::generate_legal(board, &mut list);
+            let moves: Vec<Move> = list.iter().copied().collect();
+            for m in moves {
+                let before = DirtyPiece::from_move(board, m);
+                let gives_check = board.gives_check(m);
+                let mut rec = Recorder(None);
+                board.make_move_with(m, gives_check, &mut rec);
+                let via_hook = rec.0.expect("Hook C must fire when WANTS_DIRTY");
+                assert_eq!(
+                    before,
+                    via_hook,
+                    "from_actors disagreed with from_move for {m} ({:?})",
                     m.kind()
                 );
                 seen[m.kind() as usize] += 1;
