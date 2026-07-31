@@ -33,6 +33,19 @@ shipped build, 39 paired rounds against a null that passes at 18/39:
 (§5.3: **−147.2 M cycles per engine process**, on top of study 57 arm B's
 −263.2 M).
 
+**Wall clock, on the instrument `main`'s 2026-07-31 handoff mandates**
+(`tools/wallclock_panel.py`, 40 rounds, fresh PGO pair, §5.6):
+
+```
+NULL (byte-identical): median +0.010%  sd 1.148  sign 20/40 neg  p=1.0000
+ARM                  : median -0.888%  sd 1.734  sign 30/40 neg  p=0.0022
+LICENSED  ->  -0.888% wall-clock  ->  +1.54 DERIVED Elo
+```
+
+**And that +1.54 is a fixed-node-process number, not a game number.** §5.6 says
+why in one line: ~94% of it is startup, so a `screen.sh` game or a datagen
+shard gets it and a long time control does not.
+
 Gate: `CHECK_NNUE_GATE=1 bash tools/check.sh` → **All checks passed.**,
 `Bench: 587683`, eval hash
 `2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4`,
@@ -649,22 +662,130 @@ against a null of −0.100%, i.e. **≈ −0.19% net ≈ −5.7 loads/node**, wi
 than the wider table costs, which is what "a lookup reads one `to`-ordinal
 either way" predicted.
 
+### 5.5 ★ REBASE CHECK, and the finding that landed on `main` mid-run
+
+**Rebase (the `bcmisc55` rule).** `main` moved four commits while this study
+ran — `00cfbc6b`, `f1188fd4`, `0478e7f4`, `450f766d`. This branch is rebased
+onto `450f766d` and **`git diff a8a013c4..450f766d -- src Cargo.toml
+tools/check.sh` is empty**: all four are handoff documents. No arm figure in
+this study is affected, and no rebuild was needed to establish that.
+
+**But one of those documents changes how this study's numbers should be read,
+and it is right.** `450f766d` measured, on the shipped binary:
+
+| metric | value |
+|---|---|
+| IPC | **1.595** (Zen 4 realistic peak 3–4) |
+| L1d load miss rate | **18.33%** — 543 misses/node |
+| stall share of cycles | ≥47% |
+
+and `0478e7f4` priced studies 52–58 end to end at **−0.909% wall-clock
+(p = 0.0807, marginal)** against **−317.7 shipped i/node** — i.e. studies 57
+and 58 added ~155 shipped i/node with **no measurable wall-clock effect**. The
+conclusion drawn there is that `instructions:u` answers *"did this arm do what
+I meant?"* and does not answer *"is this arm worth anything?"*.
+
+**This study is not exempt and does not claim to be.** What it can say is that
+its two arms sit on opposite sides of that finding, and that the split is
+measured rather than assumed:
+
+* **`qrow` is not subject to it at all.** It is startup, and its value was
+  measured on `cycles:u` from the start (§5.3: −15.886%, 39/39, null +0.019% at
+  19/39): **−147.2 M cycles per process**. That is a cycles number with a
+  passing null, not an instruction number hoping to convert.
+* **`lutp` is subject to it, and here is its size.** The shipped frame's whole
+  cycles win is −0.886% of 17.696 G = **−156.8 M cycles**, of which the
+  independently measured startup saving is 147.2 M. The residual — everything
+  `lutp` contributes — is **≈9.6 M cycles = 1.9 cycles/node**, against 3538
+  cycles/node. **That is 0.05% and this box cannot resolve it**, which is
+  exactly the handoff's point applied to this study's own search arm.
+  (The two panels are on different builds — the startup panel is non-PGO, the
+  frame panel PGO — so the subtraction is an estimate, and it is used only to
+  bound `lutp`, never to claim it.)
+
+**And `lutp` is aimed at the axis the handoff names as primary.** It deletes a
+load rather than an ALU op: **−0.19% net loads on native, −0.09% net on v3,
+−0.09% net on the shipped PGO build**, with `ls_dispatch` agreeing at −0.36%,
+−0.28% and −0.19%. On an engine at 18.33% L1d miss rate and ≥47% stall, a
+deleted load is the right currency and a deleted `add` is not. It is a small
+arm on the right axis, and the honest description of this study is: **one
+startup win priced correctly on cycles, and one search arm that is 24.29 i/node
+and 5.7 loads/node with no resolvable time value.**
+
+§5.6 runs the instrument the handoff mandates.
+
+### 5.6 ★ The wall-clock panel — LICENSED, and it passes the stricter test too
+
+`taskset -c 1 python3 tools/wallclock_panel.py --base bin59/wcbase-pgo --arm
+bin59/wcfinal-pgo --rounds 40 --elo`, on a freshly rebuilt PGO pair:
+
+```
+NULL (byte-identical): median +0.010%  sd 1.148  sign 20/40 neg  p=1.0000
+ARM                  : median -0.888%  sd 1.734  sign 30/40 neg  p=0.0022
+
+LICENSED (pre-registered median-only: |0.010| < |-0.888|/2)
+  wall-clock : -0.888%
+  speed      : 1.0090x
+  DERIVED Elo: +1.54  (120/doubling, exp-0154)
+```
+
+The null is the cleanest this instrument has produced — **+0.010% at exactly
+20/40, p = 1.0000** — and the arm passes not only the pre-registered median
+licence but the **stricter sign-test criterion `0478e7f4` proposed for future
+panels and explicitly declined to apply retroactively**: p = 0.0022, against
+the 52–58 panel's p = 0.0807.
+
+**Read the +1.54 correctly, because at face value it says this one study is
+worth as much as studies 52–58 combined (+1.58), and that is not a claim about
+search speed.** The panel's frame is one process running 5,001,562 nodes, and
+§5.3/§5.5 already established that ~94% of the cycles delta is the fixed
+startup cost. So:
+
+* **+1.54 DERIVED Elo is the right number for a fixed-node process** — a
+  `tools/screen.sh` game, a datagen shard, a bench. Those are run by the
+  thousand and this is real throughput.
+* **At a real time control it decays toward `lutp` alone**, which is
+  ~1.9 cycles/node of 3538 and unmeasurable here. **The honest expectation for
+  game strength is ~0.**
+
+Stating it the other way round, because that is the useful lesson: **studies
+52–58 bought −317.7 shipped i/node and −0.909% wall-clock at p = 0.0807; this
+study buys −176.77 shipped i/node and −0.888% at p = 0.0022 — half the
+instructions, the same time, ten times the confidence — because the
+instructions it removed were ones the machine was actually waiting on
+serially.** Startup is not memory-bound the way the search is; it is a
+28.8-million-iteration scalar loop, and that is precisely the regime where
+`instructions:u` still converts.
+
+**One incidental result, and it retires a standing caveat.** `wcbase-pgo` and
+`wcfinal-pgo` were built hours after `base-pgo`/`final-pgo`, from the same
+source, by independent `build_pgo.sh` invocations that each retrained their own
+profile — and their `.text` md5s are **identical** (`55c50d41` and `4bd5867f`).
+Study 52 §7 item 3 flagged "each invocation retrains" as an uncharacterised
+source of variation in every PGO-pair comparison in this repo. **For this
+workload it is zero**, and the four PGO figures in this study are contrasts of
+byte-reproducible binaries.
+
 ---
 
 ## 6. WHAT THIS STUDY DID NOT ESTABLISH
 
 Most doubtful first.
 
-1. **No game has been played, none is owed, and NO ELO IS CLAIMED.** Both arms
-   are node-identical at 5,001,562 and eval-bit-exact, so a fixed-node match
-   against the base is a dead heat by construction (study 49 §8 item 6, study
-   52 §9.1). The temptation is to convert −0.886% of shipped cycles at ARCHON's
-   ~122.9 Elo per speed doubling and quote ~1.6 Elo; **that conversion is wrong
-   here**, because §5.3 shows essentially all of the cycles win is the fixed
-   startup cost, which a real time control amortises to nothing. The honest
-   statement is: `lutp` is −24.29 i/node of *search* work on the shipped binary
-   whose cycles value this box cannot resolve at 24 rounds, and `qrow` is
-   −147.2 M cycles per *process*.
+1. **No game has been played, none is owed, and the +1.54 DERIVED Elo is a
+   FIXED-NODE-PROCESS number.** Both arms are node-identical at 5,001,562 and
+   eval-bit-exact, so a fixed-node match against the base is a dead heat by
+   construction (study 49 §8 item 6, study 52 §9.1) — which is also what
+   *licenses* the speed→Elo constant. The wall-clock panel is clean (§5.6) and
+   the licence conditions are met. **What is NOT established is that any of it
+   survives a real time control**, because §5.3/§5.5 put ~94% of the cycles
+   delta in the fixed per-process startup cost. The honest split: `qrow` is
+   −147.2 M cycles per *process* and worth its +1.5 on any fixed-node workload;
+   `lutp` is −24.29 i/node and ≈1.9 cycles/node of *search*, which is 0.05% and
+   below this box's floor. **Nobody should quote +1.54 as game strength.**
+   Also inherited from `0478e7f4`: the `Ptnml [0,0,750,0,0]` node-null that
+   underwrites the Elo constant was run on a different binary pair, so its
+   transitivity here is inference from the node-identity gate, not measurement.
 2. **The `lutp` cache claim rests on a counter with a documented floor.**
    "A 128-byte row costs the same one line a 64-byte row did" is a statement
    about the access pattern; what falsifies it is `L1-dcache-loads:u`, which
@@ -719,4 +840,15 @@ Most doubtful first.
 5. **Startup is now ~4.6% of the pinned frame's instructions** (`load_v2_bytes`
    1.60%, `quantise_halfka` down from 2.94%, `init_magics` 1.01%). Study 57 §6
    named the FNV-1a-64 payload checksum at ~45% of startup CYCLES and it still
-   needs a format ruling, not a measurement.
+   needs a format ruling, not a measurement. **That ruling is now the single
+   largest startup item and the cheapest remaining process-level win** — after
+   `qrow`, everything else in startup is memory traffic.
+6. **`main`'s 2026-07-31 memory-bound finding is the right frame for study 60,
+   and `lutp` is a one-arm sanity check on it.** A deleted load in the threat
+   resolver moved `L1-dcache-loads` −0.19% net and cycles not at all that this
+   box could see. If the programme's next thesis is "delete misses, not
+   instructions", then the arm that deletes 5.7 L1d *loads* per node and buys
+   ~1.9 cycles/node is a data point about how much a non-missing load is worth,
+   and the answer looks like "almost nothing". **Target the 543 misses/node, not
+   the 2921 loads/node** — and price with `tools/wallclock_panel.py` before
+   calling anything valuable, which §5.6 does.
