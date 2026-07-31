@@ -1127,6 +1127,11 @@ impl<'a> ThreatContext<'a> {
                     weights.iter().map(|&w| i64::from(w) + 128),
                 );
             });
+            static THR_WEIGHTS_RS: std::sync::Once = std::sync::Once::new();
+            THR_WEIGHTS_RS.call_once(|| {
+                super::foldcount::rowstats("thr_weights", weights, super::sota_head::L1);
+                super::foldcount::rowwidth_init(1, weights, super::sota_head::L1);
+            });
         }
         #[allow(unused_mut)]
         let mut me = ThreatContext {

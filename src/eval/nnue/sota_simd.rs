@@ -594,6 +594,11 @@ pub(crate) fn apply_halfka_deltas_into(
     {
         super::foldcount::HKA_INTO.hit(adds.len() + subs.len());
         super::foldcount::note_hka_shape(adds.len(), subs.len());
+        let z = &super::foldcount::ZERO_ROW_HKA;
+        super::foldcount::note_zero_rows(z, weights, adds, ACC);
+        super::foldcount::note_zero_rows(z, weights, subs, ACC);
+        super::foldcount::note_row_fold(0, adds);
+        super::foldcount::note_row_fold(0, subs);
     }
     pin_rows!(adds, subs);
     pin_src!(src);
@@ -649,6 +654,11 @@ pub(crate) fn apply_threat_deltas_into(
     {
         super::foldcount::THR_INTO.hit(adds.len() + subs.len());
         super::foldcount::note_thr_shape(adds.len() + subs.len());
+        let z = &super::foldcount::ZERO_ROW_THR;
+        super::foldcount::note_zero_rows(z, weights, adds, ACC);
+        super::foldcount::note_zero_rows(z, weights, subs, ACC);
+        super::foldcount::note_row_fold(1, adds);
+        super::foldcount::note_row_fold(1, subs);
     }
     // Perf study 39's placement arm: the same copies, issued from the fold
     // rather than from `activate` (`P39_SITE=fold`). Inert otherwise.

@@ -439,6 +439,11 @@ impl<'a> HalfkaContext<'a> {
                     weights.iter().map(|&w| i64::from(w) + 128),
                 );
             });
+            static HKA_WEIGHTS_RS: std::sync::Once = std::sync::Once::new();
+            HKA_WEIGHTS_RS.call_once(|| {
+                super::foldcount::rowstats("hka_weights", weights, super::sota_head::L1);
+                super::foldcount::rowwidth_init(0, weights, super::sota_head::L1);
+            });
         }
         #[allow(unused_mut)]
         let mut me = Self {
