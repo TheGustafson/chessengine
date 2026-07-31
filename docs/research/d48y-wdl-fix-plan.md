@@ -11630,3 +11630,88 @@ prune destroyed both PGO binaries and only a scratch copy saved the comparison.
 **D49:** sb1052, heldout ema 0.010635/0.010679, 193k pos/s, four services active,
 163 GB disk. **Study 59** still running; both studies serialise builds on the
 shared lock.
+
+## Tick — 2026-07-31, study 59 merged; IT RETRACTED ITS OWN ELO AND HALVED MINE
+
+**Merged `86d5762a`, gate green on the rebased tree.** Two arms: `lutp`
+(`index_decoded` reads one table where it read two) and `qrow` (`quantise_halfka`
+becomes a row walk LLVM auto-vectorises). **Shipped −176.77 i/n (−3.086%)**,
+gate −26.97.
+
+Its wall-clock panel **passed the stricter sign test I proposed one tick earlier**
+— null +0.010% (20/40, p=1.0000), arm −0.888% (30/40, **p=0.0022**) → +1.54
+DERIVED Elo.
+
+### And then it retracted that number itself, in three places
+
+**"+1.54 is a fixed-node-PROCESS number, not a game number."** Two independent
+measurements put **~94% of its cycles delta in fixed STARTUP cost** (1-node panel:
+−147.2 M/process against −156.8 M for the whole frame). The residual is ~1.9
+cycles/node of 3538 — below this box's floor. **At a real TC the expectation is
+~0.**
+
+**I verified it against my own pair, and it halves my headline too:**
+
+| | cycles |
+|---|---|
+| startup-only delta (1 node) | **−261.4 M** |
+| full-frame delta (5M nodes) | −526.0 M |
+| **startup share of the 52–58 gain** | **49.7%** |
+| search-only residual | −52.9 cycles/node of 3809 (**−1.39%**) |
+
+**The 5M-node bench frame charges process startup ONCE PER RUN.** A real game
+amortises it over minutes of search. So **+1.77 and +1.58 DERIVED Elo are roughly
+double their game-relevant value** — study 59's arms were 94% startup because they
+targeted `quantise_halfka` directly; the series as a whole is ~half. Both are
+single-shot cycles reads, so 49.7% is indicative, not precise — but two
+independent routes agree on the direction.
+
+**Fixed in the instrument, not just the doc:** `tools/wallclock_panel.py` gains
+`--startup-frame`, which runs the identical panel at 1 node so the fixed component
+can be measured and subtracted, with the docstring stating that **the residual is
+the game-relevant number.**
+
+### Four findings from the study
+
+1. **The profile "disagreement" I handed over was PGO, not error.** Both tables
+   reproduce; PGO folds `do_move` into `search::<NonPv>` (13.50→26.01%) and the
+   fold kernels into `current_full` (2.36→8.73%). My brief's "5834.4 i/n on the
+   gate build" is the **v3** baseline while its build scripts default to
+   **native** — the same two-compilers confusion, one level up.
+2. **`perf record -e instructions:u` is NOT usable per-instruction or per-line on
+   this box.** One stack load collects 13.32% of `search::<NonPv>`'s samples; one
+   `prefetcht0` collects 13.15% of the *engine's*. Study 36 §2.3 killed
+   per-mnemonic attribution; this is the same defect two granularities finer.
+   Replacement is **AMD IBS** — and `lutp` exists ONLY because IBS put one source
+   line at 0.90% of the engine.
+3. **The target-cpu rule reproduces with its mechanism in the disassembly, and
+   points the OTHER WAY.** `qrow` is **14.1× LARGER on native** than v3, because
+   AVX-512DQ has `vpmullq` and AVX2 does not; `lutp` is 0.76×. **There is no
+   constant correction factor between the two targets — it is per-arm and it can
+   invert.** My "v3 overstates" rule was generalised from study 57's arms alone.
+4. **Re-checking a stale banner means reading what it said the CAUSE was.** Study
+   57's "do not re-propose the row-major rewrite" is honoured: its §4.4 blamed
+   `Vec::extend` losing its bulk path to a `FlatMap`, and `qrow` does not collect
+   at all. The arm that KEPT the iterator measured −29.31; the one that DROPPED it
+   measured **−158.27**.
+
+**Negatives with numbers:** no arm landed in `search::<NonPv>`, the largest
+target — every sub-block has a prior study's number against it, and study 52's
+spill-class figure reproduces (19.0% vs 19.3%). `correction_value` lazy ≈4 i/n;
+`reduction`'s `idiv` declined (a reciprocal costs *more*); node-entry init ~7.6
+i/n but needs `MaybeUninit`. The `copy_nonoverlapping` at 7.52% of `at_full` is
+`core::arch`'s SIMD load/store, **not a memcpy** — an arm aimed at it would have
+found nothing.
+
+**Correction to my brief, from the study:** it did **not** re-derive my
+"−30.8 native / −187.6 v3" figures — those are merged into its base. **Its 6×
+receipt is independent, not a confirmation of mine.**
+
+**Incidental and valuable:** `build_pgo.sh` is **byte-reproducible across
+invocations** — a pair rebuilt hours later with independently retrained profiles
+reproduces the earlier `.text` md5s exactly. **That retires study 52 §7 item 3's
+standing caveat** that PGO retraining is uncharacterised variation in every PGO
+comparison in the repo.
+
+**D49:** sb1052+, 193k pos/s, four services active. **Study 60** running on
+memory locality.
