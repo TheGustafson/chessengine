@@ -9364,3 +9364,36 @@ attached: **a lever study 44 declared dead was the largest on the board**, and
 **study 48 landed in `activate` right after study 47 priced it at its floor** —
 because study 47 assumed `vpmullw`'s memory operand had to be the scale, and it
 is commutative.
+
+## Tick — gate GREEN; 3.2 GB of RAM reclaimed from my OWN scratchpad
+
+**Gate on merged main: `Bench: 587683`, eval hash `2e1ede95…79c4`, d13
+`1739588`, all checks passed.** Study 48 verified. (The earlier FAIL was a
+worktree artifact — `engines/canonical/net.cenn` symlinks into gitignored
+`data/`, absent from a separate worktree. Re-ran with an explicit
+`NNUE_GATE_NET`.)
+
+**D49x: sb609**, 187k pos/s, in the anneal.
+
+### I put a git worktree on tmpfs and then built into it
+
+`/tmp` is **tmpfs — RAM.** I have that recorded as a standing hazard ("never park
+packs or exchanges there"), and then created the `main` worktree in the
+scratchpad and ran a `cargo` gate inside it. **`mainfix/target` reached 2.7 GB of
+resident RAM**, which is most of the memory pressure this tick.
+
+| | before | after |
+|---|---:|---:|
+| `/tmp` used | 3.5 G | **331 M** |
+| RAM available | 5473 MB | **8444 MB** |
+
+Relocated the worktree to **`/home/nick/projects/chessengine-mainwt`** (on disk)
+and cleared 399 MB of stale perf artifacts (`ibs-big.txt`, `flat`, `ibs-*.data`).
+**`main` is unchanged at `e33e2f09`** — commits live in the shared `.git`, so
+removing a worktree loses nothing.
+
+**The general lesson, and it is the third instance of the same shape today:** a
+rule recorded as "don't put DATA in /tmp" did not fire for "don't put a BUILD
+TREE in /tmp", because I matched the rule against the noun rather than the
+mechanism. Same failure as `oomguard` leaking three times by matching process
+NAMES instead of what a process IS.
