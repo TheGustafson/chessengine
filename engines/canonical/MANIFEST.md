@@ -203,7 +203,18 @@ here, in the same commit that promotes it:
 2. the **exact build command**, including the `--features` string and the
    **resolved absolute path** of the eval-file (never the `net.cenn` symlink —
    that is what dangles), and
-3. the binary's **`.text` md5**, so the artifact can be tied back to a rebuild.
+3. the binary's **`.text` md5** — **but see the caveat below**, so the artifact can
+   be tied back to a rebuild.
+
+**CAVEAT on `.text` md5 (added 2026-07-31 by perf study 61).** A `.text` md5 is
+**NOT a valid identity check across a Cargo feature-set change.** A Rust symbol
+name embeds the crate metadata hash, which changes with the feature set and then
+appears inside `objdump`'s branch annotations — so two builds that are
+semantically identical will differ, and the check fires falsely. It **remains
+correct for same-feature-set edits**, which is what it is for: proving a rebuild
+of the same configuration reproduces the artifact. For cross-configuration
+identity use `tools/perf61/ident61.sh`, which compares node total on the study
+frame plus the wl50 eval hash — quantities that do not carry build metadata.
 
 Provenance by artifact — mtime, filename, or "I remember building it" — is not
 provenance. The same failure produced a phantom −0.473% measurement on
