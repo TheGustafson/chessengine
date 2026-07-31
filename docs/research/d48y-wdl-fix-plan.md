@@ -10249,3 +10249,36 @@ experiment stays unreadable until sb1400/sb1700 by construction.
 it serialises against study 56's builds rather than racing them; `CONC=5` pinned
 under `screen.sh`'s own memory-derived cap. 8.4 GB free, 155 GB disk, all five
 services active.
+
+## Tick — 2026-07-31, sb900 frame measured: STABLE, and it saves two screens
+
+**The frame has not moved in 630 superbatches of training, including the
+cycling.** Measured on the sb900 EMA:
+
+| scale | stdev @ sb900 | measured through sb270 |
+|---|---|---|
+| 640 | 359.9 | — |
+| **756** | **423.5** | **415–422** |
+| 880 | 491.3 | — |
+
+**Consequence: the ladder step can be SKIPPED at sb1400 and sb1700.**
+`tools/d49_verdict.sh` step 3 spends two 1466-game screens (~28 min) picking
+D49's own optimum. Trap 2 in that script's header says "sweep, do not assume —
+but the frame was stable across sb140–250, so a NARROW ladder suffices unless
+sb400 has drifted." It has now been shown stable through **sb900**, across the
+anneal *and* six LR cycles. **756 stands; go straight to the verdict screen.**
+That is ~1 h of wall clock returned at each endpoint.
+
+This is a case where re-measuring a number I had already been given (trap 2's
+own caveat) paid — the caveat was live and is now discharged with data.
+
+**Screen in flight** (`eval900`): sb900 @756 vs canonical, 1500 games @ 25k.
+At game 940/1500 when checked. **Draw types are normal throughout** (3-fold,
+fifty-move) — that is the tell that both sides have NNUE loaded. The PSQT
+disaster of 2026-07-30 showed **5 draws in 1466 games**; the draw count, not the
+Elo, is what catches a silently-unloaded net. The `screen.sh` load guard also
+stayed silent.
+
+**D49:** sb905, **193k pos/s**, all four services active. 6.5 GB free, 155 GB
+disk. Study 56 still in its census phase — no compiles yet, so the build lock has
+been uncontended and the screen has had the box to itself.
