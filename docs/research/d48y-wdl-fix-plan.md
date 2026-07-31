@@ -11959,3 +11959,51 @@ has `--startup-frame`, IBS replaces per-line `perf record`, and the `build_pgo.s
 net trap with its resolved-path fix.
 
 **D49:** sb1081, 193k pos/s, four services active, 159 GB disk.
+
+## Tick — 2026-07-31 15:42, canonical-engine question sharpened (and I nearly mis-corrected myself)
+
+I set out to walk back last tick's flag on `archon-s25`, on a recollection that
+the canonical engine "predates CEN5 and cannot load the current net" — which would
+have made the netless-PGO question moot. **I checked instead of asserting, and the
+recollection was wrong.**
+
+```
+archon-s25 + canonical net  ->  info string eval: NNUE     (loads fine)
+```
+
+The CEN5 incompatibility I was remembering applies to **D49's packed nets**, which
+is why `d49_verdict.sh` carries its `ENGINE=` warning — **not** to the canonical
+net. **So last tick's flag stands and my doubt was the error.** Worth recording:
+the near-miss was a *correct* statement about to be overwritten by a misremembered
+one, and the only thing that stopped it was running the probe.
+
+**The question is therefore live, and slightly larger than I said.**
+`engines/canonical/archon` is the default engine for **five tools** —
+`screen.sh`, `paired_nps.py`, `frame_compare.py`, `eval_bench.py`,
+`reprgap/twins.py`. If it was built netless it is ~5.4% slower than it should be.
+
+**Impact is uneven, and that matters for how urgent this is:**
+
+- `screen.sh` is **fixed-node**, so a slower engine changes nothing there — every
+  D49 Elo number in this document is unaffected. (Our screens also override
+  `ENGINE=` anyway.)
+- **`paired_nps.py` measures speed directly** and would inherit the full 5.4%.
+  Its own header exists because match-aggregated NPS confounded two engines
+  "within 0.7%" into "1.237× apart" — so it is precisely the tool where a silently
+  degraded baseline would do damage.
+
+**What would settle it: one PGO build at `archon-s25`'s commit with the now-guarded
+script, compared against a non-PGO native build of the same commit.** Study 60's
+discriminator is unambiguous — correct PGO reads **−1.559%** against non-PGO
+native, netless reads **+3.801%**. **`engines/canonical/` records no build
+commit** (`archon`, `arch.txt`, `MANIFEST.md`, `net.cenn` — no provenance line),
+so the commit has to be recovered before that test can run.
+
+**Left as an owner decision, unchanged:** promoting a rebuilt canonical engine is
+a promotion, not maintenance. **Added as a concrete gap:** `engines/canonical/`
+should record the commit its binary was built from — the absence of that line is
+what makes this question expensive instead of trivial, and it is the same
+provenance-by-artifact problem that produced today's phantom −0.473%.
+
+**D49:** sb1086, heldout ema 0.010630, 193k pos/s, four services active.
+**sb1400 in 11.3 h, sb1700 in 22.1 h.** **Study 61** working.
