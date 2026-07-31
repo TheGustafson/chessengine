@@ -294,6 +294,25 @@ shape62e = ["shape62d"]
 # `dual62b` fails study 62 §4's pre-registered `.text` rule at 0.70 i/node per
 # KB (the landed rungs are 2.02-4.05). Kept switchable for a quiet box.
 dual62b = []
+# ---- Perf study 63 -- `hot63`, the modal-shape pre-dispatch. MEASURED, REJECTED.
+#
+# `i8_deltas_into_inner` serves TWO callers and studies 61/62 grew its match
+# from 4 arms to 48 for one of them. The other, `apply_halfka_deltas_into`,
+# is structurally bounded to `(0..=2, 0..=2)` (`apply_dirty_directed` builds
+# both lists in `[RowOffset; 2]`) and the census says it presents exactly three
+# shapes -- `hka_shape.1a1s` 3,529,017 + `1a2s` 1,316,030 + `2a1s` 48,267 =
+# `hka_into.calls` 4,893,314, to the unit. `(1,1)` is also the modal THREAT
+# shape (449,864 of 4,270,334), so it is 43.4% of all 9,163,648 into-folds.
+#
+# The hypothesis: 4.89 M calls per 5 M nodes walk a two-level jump table that a
+# leading `if adds.len() == 1 && subs.len() == 1` would decide in one predicted
+# branch. `hot63` adds exactly that.
+#
+# MEASURED on the study-63 frame, whole-frame `instructions:u` (reproducible to
+# 1.5 parts in 10^8, so a 10^6 delta is far outside run-to-run variation):
+# see docs/research/perf-study-63-*.md. Kept switchable because it is the
+# cheapest available falsification of "the dispatch table has a dispatch cost".
+hot63 = []
 # `probe-accpin` pins only the READ half of accumulator streaming; the folds
 # still WRITE 2560 B per call into the real per-ply stack, so that stack keeps
 # its full footprint and keeps evicting weight rows. Perf study 31 priced the

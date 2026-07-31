@@ -26,7 +26,13 @@ FEATURES=${1:?features (e.g. sota | nnue-l1-2048)}
 OUT=${2:?output binary name under engines/bin/}
 EVALFILE=${3:-}
 TD=target-pgo-$FEATURES
-PROF=/tmp/pgo-prof-$FEATURES
+# `/tmp` on this box is TMPFS, i.e. RAM (standing rule; a full tmpfs makes bash
+# return a bare exit 1 and kills the job). A `profile-generate` run of the
+# 5 M-node bench frame writes tens to hundreds of MB of raw profile, and a study
+# that PGO-builds several configurations back to back keeps one such directory
+# per feature set. `PGO_PROF_DIR` moves them onto real disk; the default is
+# unchanged so nothing that already works changes behaviour. (Perf study 63.)
+PROF=${PGO_PROF_DIR:-/tmp}/pgo-prof-$FEATURES
 SYSROOT=$(rustc --print sysroot)
 PROFDATA=$(find "$SYSROOT" -name llvm-profdata | head -1)
 [ -n "$PROFDATA" ] || { echo "llvm-profdata not found (rustup component add llvm-tools)"; exit 1; }

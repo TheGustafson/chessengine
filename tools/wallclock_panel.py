@@ -46,6 +46,24 @@ a panel that was not quiet end-to-end should be VOIDED AND RE-RUN, not salvaged.
 Interleaving the null within each round (below) makes the panel robust to steady
 load, but not to load that ARRIVES or LEAVES mid-run.
 
+A BEFORE/AFTER CHECK CANNOT SEE A JOB THAT STARTS AND ENDS BETWEEN THEM. Perf
+study 63's first panel ran 18:59-20:11 with a before/after process census that
+saw only the GPU trainer, while a concurrent session on the same box ran a
+400-game fixed-node match and a wall-clock smoke test of its own inside that
+window (`d990a1bd`, `4fecb7c1`). Sample DURING the panel when you can.
+
+RAW ROUNDS ARE THE ARTIFACT (--dump, perf study 63)
+---------------------------------------------------
+Until study 63 a panel left behind five printed lines, so nothing downstream
+could recover the round-to-round sd, re-check the median, or size the NEXT
+panel. That matters because the round count a panel needs scales as the INVERSE
+SQUARE of the contrast: the 40-round default is calibrated for the ~1% arms of
+studies 52-58, and study 63's arm was -0.32% of instructions, needing 400. The
+only way to pre-register a round count honestly is to have the previous panel's
+sd on disk. `--dump` writes one TSV row per round (absolute seconds for base,
+null and arm) beside the summary. Park it under docs/research/perf-artifacts-NN/,
+never on /tmp -- that is tmpfs.
+
 STARTUP IS NOT A GAME WIN -- SUBTRACT IT
 ----------------------------------------
 The 5M-node bench frame charges process startup ONCE PER RUN. An arm that cuts
@@ -122,6 +140,10 @@ def main():
     ap.add_argument("--elo", action="store_true",
                     help="convert to DERIVED Elo; only valid if the binaries are "
                          "node-identical (see module docstring)")
+    ap.add_argument("--dump", default=None,
+                    help="write the per-round raw timings to this TSV so the "
+                         "panel is auditable and its sd is recoverable; see "
+                         "RAW ROUNDS ARE THE ARTIFACT in the module docstring")
     a = ap.parse_args()
 
     net = os.path.realpath(a.net)
@@ -143,17 +165,26 @@ def main():
         return time.perf_counter() - s
 
     order = [(a.base, null, a.arm), (null, a.arm, a.base), (a.arm, a.base, null)]
-    nulls, arms = [], []
+    nulls, arms, raw = [], [], []
     busy_before = cpu_busy()
     try:
         for r in range(a.rounds):
             res = {b: t(b) for b in order[r % 3]}
             nulls.append(100 * (res[null]   - res[a.base]) / res[a.base])
             arms .append(100 * (res[a.arm]  - res[a.base]) / res[a.base])
+            raw.append((r, res[a.base], res[null], res[a.arm]))
             if (r + 1) % 10 == 0:
                 print(f"  ...{r + 1}/{a.rounds}", flush=True)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+        if a.dump:
+            with open(a.dump, "w") as fh:
+                fh.write("# base=%s arm=%s nodes=%s rounds=%d\n"
+                         % (a.base, a.arm, nodes, a.rounds))
+                fh.write("round\tt_base\tt_null\tt_arm\n")
+                for r, tb, tn, ta in raw:
+                    fh.write(f"{r}\t{tb:.6f}\t{tn:.6f}\t{ta:.6f}\n")
+            print(f"raw rounds -> {a.dump}")
 
     busy_after = cpu_busy()
     print(f"\nbox CPU busy (excluding this panel): before {100*busy_before:.1f}%, "
