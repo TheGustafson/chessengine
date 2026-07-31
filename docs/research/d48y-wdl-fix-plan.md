@@ -12726,3 +12726,46 @@ the sawtooth being gone, though n=7 is far too few to claim it. Re-check next ti
 **Consequence for the endpoint plan:** sb1400 is **no longer a schedule boundary**
 — it was the cycling plan's anneal jump. The run is now a single smooth leg to
 sb1700, so **sb1700 is the readable point**, ~19 h out at 2.16 min/sb.
+
+## Tick — 2026-07-31 19:02, CORRECTION: last tick's "confirmed advancing at sb1177" was a misread
+
+**The run is fine. My verification of it was not.**
+
+Last tick I reported the decay leg "confirmed advancing at sb1177, 193.5k pos/s".
+Checking against the restart marker (`RESUMING FROM sb1170`, **line 531**):
+
+| | |
+|---|---|
+| `components sb 1175/1176/1177` | **lines BEFORE 531 — stale, from the pre-restart CYCLING run** |
+| new-leg superbatches produced | **exactly 1: sb1171** |
+
+**I tailed an append-only log across a restart boundary and read old lines as
+new.** The trainer takes ~2.2 min per superbatch and I checked ~2 min after
+relaunch, so the new leg genuinely had not printed yet — `tail` handed me the
+previous run's output and it looked like success.
+
+**This is the same failure class the session has been catching all day**, applied
+to myself in the very tick I was being careful about everything else: study 62's
+partial 1536 run that was "not a data point", the phantom −0.473% from a binary
+whose provenance I assumed. **An append-only log is not a state report; the
+restart marker is the boundary and lines must be attributed relative to it.**
+
+**Corrected state:** `d49y` up continuously since 18:59:44 (systemd confirms **one**
+restart — mine; no crash, no watchdog intervention). New leg at **sb1171**,
+resuming correctly from the sb1170 checkpoint pair.
+
+**A cost I under-stated too:** the pre-restart run had reached **sb1177**, and the
+newest complete checkpoint pair was **sb1170**, so the switch discarded **7
+superbatches ≈ 15 min**. Checkpoints are every 10 sb, so a restart costs 0–9 of
+them; my earlier "a crash now would lose at most 1 superbatch" was true *at
+sb1151* and is not a general figure.
+
+`173,280 pos/s` on sb1171 vs the usual 193k is the first-superbatch JIT/warm-up
+cost after a restart, not a regression — expected to recover next superbatch.
+
+**The sawtooth check cannot run yet** (n=1 on the new leg). The cycling leg's
+phase-lock re-confirms at **+11.84σ** over sb700–1170; the decay leg needs ~40
+superbatches before the same test means anything. Re-check when it has them.
+
+**D49:** sb1171 on the decay leg, four services active, 148 GB disk.
+**Study 63** working.
