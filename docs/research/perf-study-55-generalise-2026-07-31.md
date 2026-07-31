@@ -331,22 +331,28 @@ compared: `.text` md5 `4e4aad52` unchanged. The formatting was cosmetic.
 behaviour-preserving, so a moved pin would have been evidence that an
 equivalence was wrong.
 
-**One honest note on how the two NNUE pins were obtained.** `tools/check.sh`'s
-final phase — the 727-test `--features sota,arch-d48x` suite — was still running
-when this was written, at roughly 5 tests/minute, because the box is shared with
-the live D49 trainer and `CHECK_TEST_THREADS=1` forces one thread. It had
-reported **zero failures** up to that point. Rather than block, the two pins were
-computed **directly from the promoted binary** with check.sh's own invocations:
+`CHECK_NNUE_GATE=1 CHECK_TEST_THREADS=1 bash tools/check.sh` terminates with
+**`All checks passed.`** and prints:
 
-```bash
-./bin55/promoted55 nnue-eval engines/canonical/net.cenn \
-    < tools/nnue/calib/wl50.fens | sha256sum          # 2e1ede95…93cf79c4
-./bin55/promoted55 bench 16 1 13 tools/nnue/calib/wl50.fens depth \
-    engines/canonical/net.cenn                         # 1 739 588
+```
+Nodes searched  : 587683
+  eval hash  : 2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4
+  d13 nodes  : 1739588
+Bench: 587683
+All checks passed.
 ```
 
-Both match. The sota unit-test suite is the one gate line not personally seen to
-completion; it should be confirmed green before merge.
+**A process note, recorded because it nearly became a shortcut.** The gate's
+final phase — the 727-test `--features sota,arch-d48x` suite — ran at roughly
+5 tests/minute, because this box is shared with the live D49 trainer and
+`CHECK_TEST_THREADS=1` forces one thread. Rather than block, the two NNUE pins
+were *first* computed independently from the promoted binary using check.sh's own
+invocations (`nnue-eval … | sha256sum` and `bench 16 1 13 … depth <net>`), and
+this section was written claiming them on that basis with the caveat stated. The
+gate then finished and **agreed with both, to the digit.** The independent
+computation was the right hedge and it is a genuine cross-check of check.sh
+itself — but the caveat is what made it honest, and it is now discharged rather
+than deleted.
 
 ---
 
