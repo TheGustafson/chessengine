@@ -9537,3 +9537,47 @@ the same way: **the remaining deficit lives in the weights**, and the live
 hypothesis for its mechanism is **presentation budget** — we train 10 G positions
 against Stockfish's 40 G. The queued sb700→1700 cyclical continuation takes D49 to
 **42.3 G = 106% of their budget**, which is the first direct test.
+
+## Unattended handoff — the queue, the watchdog, and study 50
+
+**Owner stepping away.** Everything below runs without intervention.
+
+### D49, queued in order
+
+| unit | what | trigger |
+|---|---|---|
+| `d49x` | current phase, sb600–700 anneal | running, ~sb650 |
+| `d49y` | **cyclical continuation sb700 → 1700** — 35 cycles × 20sb, 1e-4 → 5e-6, peaks decaying **0.985**/cycle to 5.98e-5; sb1400 jump to 5e-5, anneal to zero over 300sb | waits on `d49x` + 5500 MiB GPU |
+| `d49v700` | **5880-game sb700 verdict** vs canonical, `CONC=6` so it runs beside the trainer | waits on `d49x`, +120s |
+| `d49yshim` | TensorBoard on `cyc.log` — **armed BEFORE launch this time** | live |
+| **`d49wd`** | **WATCHDOG — restarts `d49y` if it dies, exits at sb1700** | live |
+
+**The watchdog is new and it closes a real hole:** the directive says *restart if
+it stops*, and until now nothing did. It polls every 100 s for ~55 h, relaunches
+`d49y` if the unit is inactive before sb1699, and stands down on completion.
+
+**On completion D49 reaches 1700 sb = 42.3 G positions = 4.16 dataset passes =
+106% of Stockfish's 40 G budget** — the first time this project crosses it, and
+the direct test of the presentation-budget hypothesis for the +90.7 weights gap.
+
+### Study 50 commissioned — `forward_into`'s four allocations
+
+Study 49's IBS work corrected study 48's ranking: **`forward_into` is the
+third-largest TRUE stall source at 17.5%**, not the cheapest loads in the engine,
+and **40.5% of its loads miss L1** because **`activate_inner` streams 12.8 KB per
+eval from FOUR SEPARATE ALLOCATIONS** — four stride streams, four TLB sets, no
+adjacency guarantee, ~5.5 KB/node of streaming nobody has tried to make
+contiguous.
+
+Told to re-derive the 12.8 KB rather than inherit it, to consolidate into one
+aligned sequential allocation, and to measure `L1-dcache-load-misses` on the
+symbol directly since that is the thing being changed. Given the full current
+instrument state, including that **`load_not_complete` is not adjudicating**
+(byte-identical null +3.478%) and that **study 42 retracted an IBS claim** when
+the L1-hit statistic proved blind to prefetch.
+
+**Anti-escape-hatch receipts attached:** a lever study 44 declared dead was the
+largest on the board, and **study 48 landed in `activate` immediately after study
+47 priced it at its floor** — because study 47 assumed `vpmullw`'s memory operand
+had to be the scale, and it is commutative. Also told plainly that studies 47 and
+49 both produced excellent analysis and no speedup, and two in a row is enough.
