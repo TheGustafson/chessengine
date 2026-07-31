@@ -29,13 +29,13 @@ not a property of `HalfkaContext::current_full`'s loads.
 |---|---:|---|
 | share of engine load dispatches | **2.20 %** | sampled `ls_dispatch.ld_dispatch` (study 48: 2.27 %) |
 | share of engine loads | **2.98 %** | AMD IBS, precise |
-| **share of engine L1 misses** | **0.62 %** | AMD IBS, precise |
-| **share of engine load-miss LATENCY** | **0.43 %** | AMD IBS, precise |
-| its own loads' L1 hit rate | **93.4 %** | AMD IBS, precise |
+| **share of engine L1 misses** | **0.592 %** | AMD IBS, precise |
+| **share of engine load-miss LATENCY** | **0.478 %** | AMD IBS, precise |
+| its own loads' L1 hit rate | **93.6 %** | AMD IBS, precise |
 | share of engine stall attributed to it | **7.96 %** | sampled `ex_no_retire.load_not_complete` |
 
-**The stall charged to it is 18.5× the miss latency its own loads produce — and
-more than 100 % of what they could possibly produce.** A cycle counted by
+**The stall charged to it is 16.7× the miss latency its own loads produce — and
+at or above 100 % of what they could possibly produce.** A cycle counted by
 `ex_no_retire.load_not_complete` for a symbol requires the oldest un-retired op
 to be an incomplete load *belonging to that symbol*, so every such cycle lies
 inside one of that symbol's own miss intervals. The ratio therefore has a hard
@@ -70,7 +70,7 @@ the ranking does not.** Re-ranked by true miss latency:
 | **`SotaHead::forward_into`** | **0.29** | **4.23** | **17.5** |
 | `finny_refresh_into` | 1.96 | 8.31 | **8.3** |
 | `TranspositionTable::probe` | — | <1 | **5.2** |
-| **`HalfkaContext::current_full`** | **3.04** | **7.61** | **0.43** |
+| **`HalfkaContext::current_full`** | **3.04** | **7.61** | **0.478** |
 
 **`forward_into` is the third-largest true stall source in the engine.** Study
 48 priced its loads at 0.29 c/load, called them "the *cheapest* loads in the
@@ -249,24 +249,35 @@ not a confounder for the ratio: whatever `apply_dirty_into` contributes to
 
 ### 3.1 The bound — `stall ≤ own miss latency`, and `current_full` breaks it
 
-Two independent anchors for the denominator, because the result is only ~1.3×
-over and I did not want it resting on one:
+Two independent anchors for the denominator, because the margin is not large and
+I did not want it resting on one. `current_full`'s attributed stall is
+**140.4 c/node** (7.96 % of 1764.05).
 
-| anchor for total miss latency | value | `current_full`'s 0.43 % share | its attributed stall | ratio |
-|---|---:|---:|---:|---:|
-| `ls_alloc_mab_count` (hardware MAB-occupancy cycles) | 22354.3 c/n | 96.1 c/n | 140.4 c/n | **146 %** |
-| IBS: fills/node × mean latency (575.74 × 50.5) | 29 074 c/n | 125.6 c/n | 140.4 c/n | **112 %** |
+| anchor for the symbol's OWN total miss latency | derivation | value | ratio to 140.4 |
+|---|---|---:|---:|
+| **`ls_alloc_mab_count`** (hardware MAB-occupancy cycles) | 0.478 % of 22354.3 | **107.0 c/n** | **131 %** |
+| IBS fills × latency | (0.592 % × 575.74 fills/n) × 40.8 c | **139.0 c/n** | **101 %** |
 
-Both exceed 100 %. **And both anchors are biased in the direction that makes
-this understated**: one L1 miss can be charged several IBS `DcMissLat` samples
-when several loads hit the same in-flight line, which inflates the *numerator of
-the share* and hence the ceiling. Correcting for that pushes the ratio up, not
-down.
+**The two disagree by 1.30×, and the MAB anchor is the correct one.** A single
+L1 miss can be charged several IBS `DcMissLat` samples when several loads hit the
+same in-flight line; MAB counts each missing line's occupancy once. That is
+exactly the 29 097 / 22 354 = 1.30 gap between the two engine totals. So the
+fills route systematically *over*-states a symbol's own latency, and 101 % is a
+generous upper bound rather than the estimate.
 
-Statistical weight: `current_full`'s 0.43 % rests on 852 DC-miss samples
-(Poisson se ≈ 3.4 %), so the ceiling is ±4 c/node. **This is the study's
-weakest-looking test and its strongest-in-principle one**, which is why §3.2 and
-§3.3 exist.
+**Either way the conclusion is the same, and it does not depend on which anchor
+you prefer: `current_full` would have to convert 101–131 % of its own loads'
+miss latency into retirement stall, when the physical maximum is 100 %, the
+engine-wide value is 7.9 %, and every SIMD leaf is at 2–4 %.** Even the most
+generous reading requires this one scalar function to be perfectly serialised
+with zero overlap while the machine around it runs 6-way.
+
+Statistical weight: the 0.478 % rests on **820 DC-miss samples** (Poisson
+se ≈ 3.5 %), so the MAB-anchored ceiling is 107.0 ± 3.7 c/node.
+
+**This is the study's strongest-in-principle test and its narrowest in margin**,
+which is exactly why §3.2 and §3.3 exist and why the conclusion is not rested on
+it alone.
 
 ### 3.2 What kind of instruction does the stall land on?
 
@@ -503,7 +514,18 @@ indexings per node into an `imul`.
 | byte-identical null through THIS harness | `instructions:u` **0.000 %**, `ld_dispatch` −0.039 %, `store_dispatch` +0.003 % |
 | realised mean panel position | **1.00** for every label |
 
-<!--GATES-->
+**`CHECK_NNUE_GATE=1 CHECK_TEST_THREADS=1 bash tools/check.sh`** — see the run
+recorded alongside this document. The library suite is the real check on §5.1's
+memo idea and on §5.2: the `debug_assert_eq!` written for `lk49` recomputed the
+scan it replaced at every node of every test, and `Meta`'s new `const` block
+assertion is evaluated during compilation, so a size change fails the build
+rather than a test.
+
+D24 perft ritual not required: nothing under `movegen`, `board` mutation,
+`zobrist` or `attacks` is touched.
+
+**No pin moves.** All three landed changes are bit-identical, so a pin update
+would have been evidence one of them was not what it claims to be.
 
 ---
 
