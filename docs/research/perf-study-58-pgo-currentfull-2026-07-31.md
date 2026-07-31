@@ -1,7 +1,15 @@
 # Perf study 58 — `current_full` on the binary we actually ship
 
-**2026-07-31. Branch `worktree-agent-afe02e02380931853`, based on post-57 main
-(`247a0d4d` + main's `2d709045`).**
+**2026-07-31. Branch `worktree-agent-afe02e02380931853`.**
+
+**Rebase check (the `bcmisc55` rule).** The study was measured on study 57's
+branch; `main` merged study 57 and moved eleven commits while it ran. Rebased
+onto `43ed471a` and **re-measured**: `git diff HEAD~2 247a0d4d -- src Cargo.toml`
+is empty (main's new commits are docs and tools), the post-rebase baseline
+builds to the **same `.text` md5 `8876f37d`** — verified by building, not by
+mtime — and the landing set re-reads **−152,220,000 instructions = −30.43/node**
+against it, the same figure to five significant digits. Gate re-run green on the
+rebased tree.
 
 ## 0. What landed
 
