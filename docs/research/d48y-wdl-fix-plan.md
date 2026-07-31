@@ -9725,3 +9725,27 @@ cycles; prefetch is 0-for-7. **Anti-escape-hatch receipts attached:** a lever
 study 44 declared dead was the largest on the board; study 48 landed in `activate`
 right after study 47 priced it at its floor; **study 50 landed in a path study 47
 had already closed.**
+
+## Tick — sb682, handoff verified ready; checkpoint cadence confirmed
+
+**D49x: sb682**, 186.5k pos/s, ~18 superbatches (~40 min) to the handoff. Train
+loss is falling through the anneal (0.007009 at sb682); heldout EMA 0.010599.
+
+**Verified the one thing the handoff depends on:** checkpoints are written every
+10 superbatches (sb650/660/670/680 all present) and **700 % 10 == 0**, so
+`d49-1280-sb700-raw.bin` and `-ema-raw.bin` will both exist when `d49y` resumes.
+That is the pair `pump_train.py` loads at `resume_sb=700` — the argument I
+corrected earlier this session.
+
+**Chain state, all four waiting correctly:**
+
+| unit | state |
+|---|---|
+| `d49x` | active, finishing sb700 |
+| `d49y` | active, blocked on `is-active d49x` (log shows two queue entries — the second is the relaunch with the corrected `resume_sb`) |
+| `d49wd` | active, progress-gated watchdog |
+| `d49v700` | active, blocked on `d49x` then polling for the sb700 EMA |
+
+**Budget checkpoint:** at sb700 D49 will have seen **17.4 G positions = 1.71
+dataset passes = 44% of Stockfish's 40 G**. The continuation takes it to **42.3 G
+= 4.16 passes = 106%** — the crossing this whole line is aimed at.
