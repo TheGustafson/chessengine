@@ -46,9 +46,19 @@ done
 echo "  (canonical D48X@600 is 610.3; D49 measured 415-422 at 756 through sb270)"
 
 echo
-echo "== 3. LADDER: pick D49's own optimum (1466 games each, +/-10 Elo) =="
-echo "  ENGINE=$BIN bash tools/screen.sh $OUT/d49-sb${SB}-880.cenn $OUT/d49-sb${SB}-756.cenn 1466 25000"
-echo "  ENGINE=$BIN bash tools/screen.sh $OUT/d49-sb${SB}-640.cenn $OUT/d49-sb${SB}-756.cenn 1466 25000"
+echo "== 3. LADDER: DISCHARGED -- SKIP unless the frame above has moved =="
+echo "  Trap 2 in this file's header said 'sweep, do not assume -- but the frame"
+echo "  was stable across sb140-250, so a NARROW ladder suffices unless sb400 has"
+echo "  drifted.' It has NOT drifted, measured three times at scale 756:"
+echo "      through sb270 : 415-422"
+echo "      sb900         : 423.5"
+echo "      sb1060        : 426.1"
+echo "  Stable across 790 superbatches, through the anneal AND eleven LR cycles."
+echo "  756 stands. SKIP to step 4 -- this saves two 1466-game screens (~1 h)."
+echo
+echo "  Run the ladder ONLY if the stdev printed above is outside ~415-430:"
+echo "    ENGINE=$BIN bash tools/screen.sh $OUT/d49-sb${SB}-880.cenn $OUT/d49-sb${SB}-756.cenn 1466 25000"
+echo "    ENGINE=$BIN bash tools/screen.sh $OUT/d49-sb${SB}-640.cenn $OUT/d49-sb${SB}-756.cenn 1466 25000"
 echo
 echo "== 4. VERDICT: D49 at its optimum vs canonical AT ITS OWN OPTIMUM =="
 echo "  ENGINE=$BIN bash tools/screen.sh $OUT/d49-sb${SB}-<best>.cenn engines/canonical/net.cenn 5880 25000"
