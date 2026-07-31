@@ -348,25 +348,55 @@ impl DirtyPiece {
     };
 
     /// The (piece, square) pairs a piece appears on after this move.
+    ///
+    /// Perf study 58: the `.min(len)` is **not a bounds guard** — the
+    /// constructors below cannot push a third entry, and the `debug_assert` is
+    /// the written statement of that. It is a RANGE FACT for the optimizer.
+    ///
+    /// Slicing by a bare `u8` leaves `n_add` unbounded as far as LLVM is
+    /// concerned, so every caller carried a `cmp $0x2 / ja panic_bounds_check`
+    /// edge and no loop over the result could have a compile-time trip bound.
+    /// This record is read on the hottest paths in the engine — both fold
+    /// paths in `sota_accumulator::compute`, the last-king-move scan, and the
+    /// threat channel's four `dp.adds()`/`dp.subs()` walks plus its two
+    /// slice-pattern fast paths in `sota_threats.rs` — and the total was
+    /// **−9.30 instructions/node and −9.79 branches/node, i.e. −1.655% of
+    /// EVERY branch the engine retires**, node-identical, on the 5,001,562-node
+    /// frame. Two characters, and the largest branch win of that study.
+    ///
+    /// Same family as study 56's `& M` masks on `MovePicker::slot`, with the
+    /// difference study 56 §0.4 paid for: a mask is unconditional cost, so
+    /// spell the bound as the fact you actually have. Here the fact is "at most
+    /// as long as the array", which `min` says exactly and for free.
     #[inline]
     pub fn adds(&self) -> &[(Piece, Square)] {
-        &self.adds[..self.n_add as usize]
+        debug_assert!(self.n_add as usize <= self.adds.len(), "n_add overflow");
+        &self.adds[..(self.n_add as usize).min(self.adds.len())]
     }
 
     /// The (piece, square) pairs a piece leaves after this move.
     #[inline]
     pub fn subs(&self) -> &[(Piece, Square)] {
-        &self.subs[..self.n_sub as usize]
+        debug_assert!(self.n_sub as usize <= self.subs.len(), "n_sub overflow");
+        &self.subs[..(self.n_sub as usize).min(self.subs.len())]
     }
 
+    /// Perf study 58 measured a `& 1` mask on this write cursor (`dpwr58`) at
+    /// **+690 instructions in 2.93 × 10¹⁰ — an exact null**, and dropped it:
+    /// `n_add` is only ever incremented from zero inside one `from_move` call,
+    /// so LLVM already proves the bound and there is no check to delete. The
+    /// `debug_assert` stays as the written statement of the invariant that
+    /// [`DirtyPiece::adds`]'s `.min` relies on.
     #[inline]
     fn add(&mut self, piece: Piece, sq: Square) {
+        debug_assert!((self.n_add as usize) < self.adds.len(), "add cursor");
         self.adds[self.n_add as usize] = (piece, sq);
         self.n_add += 1;
     }
 
     #[inline]
     fn sub(&mut self, piece: Piece, sq: Square) {
+        debug_assert!((self.n_sub as usize) < self.subs.len(), "sub cursor");
         self.subs[self.n_sub as usize] = (piece, sq);
         self.n_sub += 1;
     }

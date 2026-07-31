@@ -883,6 +883,7 @@ mod scalar {
         }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn i8_deltas_dual(
         acc: &mut [i16; ACC],
         out: &mut [i16; ACC],
@@ -903,6 +904,7 @@ mod scalar {
         }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn i8_deltas_into(
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
@@ -922,6 +924,7 @@ mod scalar {
         }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
         for &group in nnz {
             let group = usize::from(group);
@@ -936,6 +939,7 @@ mod scalar {
         }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn activate(
         out: &mut [u8; ACC],
         pst: &[[i16; ACC]; 2],
@@ -976,6 +980,7 @@ mod scalar {
         }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn find_nnz(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
         let mut count = 0;
         for g in 0..ACC / 4 {
@@ -993,6 +998,7 @@ mod scalar {
 
     /// The bit-exact reference for the L1 dequant+SCReLU (the loop moved here
     /// verbatim from `SotaHead::propagate_l1`).
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn l1_dequant(out: &mut [f32; L2], pre: &[i32; L2], bias: &[f32; L2], dequant: f32) {
         for j in 0..L2 {
             let clipped = (pre[j] as f32).mul_add(dequant, bias[j]).clamp(0.0, 1.0);
@@ -1005,6 +1011,7 @@ mod scalar {
     /// the i-sequential accumulation per j lane is the pinned order — then
     /// SCReLU.
     #[allow(clippy::needless_range_loop)]
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn l2_tail(
         out: &mut [f32; L3],
         l1: &[f32; L2],
@@ -1030,6 +1037,7 @@ mod scalar {
     /// The bit-exact reference for the head's L3 dot — this IS the loop that
     /// lived in `SotaHead::propagate_l3` until perf study 26 arm 3, moved here
     /// unchanged so the SIMD backends have something to be identical to.
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn l3_dot(weights: &[f32; L3], l2: &[f32; L3]) -> f32 {
         const LANES: usize = 16;
         let mut sums = [0.0f32; LANES];
@@ -1077,6 +1085,7 @@ mod scalar {
     /// is associative, so unlike the f32 form this replaced there is no lane
     /// shape to pin — every backend is free to reduce in whatever order is
     /// fastest and they still agree bit-for-bit.
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn skip_dot_i8(ft: &[u8], lane: &[i8]) -> i32 {
         let mut acc = 0i32;
         for (&a, &w) in ft.iter().zip(lane) {
@@ -1368,6 +1377,7 @@ mod avx2 {
         unsafe { i8_deltas_inner(acc, weights, adds, subs) }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn i8_deltas_dual(
         acc: &mut [i16; ACC],
         out: &mut [i16; ACC],
@@ -1404,6 +1414,7 @@ mod avx2 {
         }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn find_nnz(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
         // SAFETY: installed only after runtime AVX2 detection (the avx512
         // kernel set reuses this too — every avx512 CPU has AVX2).
@@ -1590,6 +1601,7 @@ mod avx2 {
         }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn skip_dot_i8(ft: &[u8], lane: &[i8]) -> i32 {
         // SAFETY: installed only after runtime avx2+fma detection.
         unsafe { skip_dot_i8_inner(ft, lane) }
@@ -2020,6 +2032,41 @@ mod avx512 {
     /// that lets LLVM re-merge the paths pays for it. Measure before believing
     /// a control-count argument.
     ///
+    /// ## ⚠ PERF STUDY 58 RE-PRICED IT AT `TILES = 8` AND IT LOST HARDER
+    ///
+    /// Study 37 §9 item 4 left this open in writing — *"whether the paired arm
+    /// would still lose at a different `REGS`/`TILES`… I did not test another
+    /// width and the banner does not claim I did"* — and study 44 then took
+    /// `REGS_CAP` to 5, so the walk this arm attacks became **four times
+    /// wider**. That is the exact shape that made study 57 arm A worth −41 i/n
+    /// after study 37 had priced it at −8, so it was rebuilt and re-measured
+    /// against post-57 main on the 5,001,562-node frame:
+    ///
+    /// | arm | `instructions:u` | `branches:u` |
+    /// |---|---:|---:|
+    /// | study 37, `TILES = 2` | +0.147% | +0.243% |
+    /// | **study 58, `TILES = 8`** | **+0.290% (+16.96 i/n)** | **+0.566% (+3.35 br/n)** |
+    ///
+    /// Node-identical, 3 paired rounds, every round the same sign, against a
+    /// counter whose null on this box is 0.000. **The width was not the
+    /// reason.** At eight tiles there are no unrolled tile bodies left to
+    /// clone, so study 37's stated mechanism does not even apply here — and the
+    /// arm is twice as bad. What actually costs is turning two row loops into
+    /// three: each gets its own entry test and its own unroll prologue, per
+    /// tile, and at `TILES = 8` that multiplies by four as well.
+    ///
+    /// The same study built the neighbouring idea — split the row lists ONCE
+    /// outside the tile walk into compile-time 4-row groups plus a ≤3 tail
+    /// (`as_chunks::<4>`), to stop LLVM re-deciding its unroll prologue inside
+    /// the tile loop (~5 instructions per list per tile, ~80 per call, read off
+    /// the disassembly). That measured **+1.083% instructions (+63.35 i/n) and
+    /// +16.24 br/n** — the largest single loser of the study. Two loops became
+    /// four, and LLVM's own scaffolding is cheaper than any hand-split.
+    ///
+    /// **The rule, now paid for three times: in this kernel a loop-control
+    /// instruction count is not a prize, it is an estimate of what LLVM would
+    /// charge you for taking the loop away from it.**
+    ///
     /// # ⚠ THE `vpmovsxbw` : `vpaddw` 1:1 RATIO IS A HARDWARE FLOOR (perf study 47)
     ///
     /// The disassembly of this function is **450 `vpmovsxbw` against 450
@@ -2427,6 +2474,7 @@ mod avx512 {
         unsafe { i8_deltas_inner(acc, weights, adds, subs) }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn i8_deltas_dual(
         acc: &mut [i16; ACC],
         out: &mut [i16; ACC],
@@ -2438,6 +2486,7 @@ mod avx512 {
         unsafe { i8_deltas_dual_inner(acc, out, weights, adds, subs) }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn i8_deltas_into(
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
@@ -2449,11 +2498,13 @@ mod avx512 {
         unsafe { i8_deltas_into_inner(dst, src, weights, adds, subs) }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
         unsafe { l1_dot_inner(pre, ft, nnz, weights) }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn activate(
         out: &mut [u8; ACC],
         pst: &[[i16; ACC]; 2],
@@ -2507,6 +2558,7 @@ mod avx512 {
         }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn l1_dequant(out: &mut [f32; L2], pre: &[i32; L2], bias: &[f32; L2], dequant: f32) {
         // SAFETY: installed only after runtime avx512f+bw+vnni detection (or
         // compiled with the features statically enabled).
@@ -2576,6 +2628,7 @@ mod avx512 {
         }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn l2_tail(
         out: &mut [f32; L3],
         l1: &[f32; L2],
@@ -2661,6 +2714,7 @@ mod avx512 {
         }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn find_nnz_vbmi2(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
         // SAFETY: installed only after runtime avx512 vl+vbmi2 detection (or
         // compiled with the features statically enabled).
@@ -2692,6 +2746,7 @@ mod avx512 {
         }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn l3_dot(weights: &[f32; L3], l2: &[f32; L3]) -> f32 {
         // SAFETY: installed only after runtime avx512f detection (or compiled
         // with the feature statically enabled).
@@ -2788,6 +2843,7 @@ mod avx512 {
         }
     }
 
+    #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn skip_dot_i8(ft: &[u8], lane: &[i8]) -> i32 {
         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
         unsafe { skip_dot_i8_inner(ft, lane) }

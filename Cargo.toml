@@ -18,6 +18,25 @@ path = "src/bin/root_analysis.rs"
 required-features = ["datagen"]
 
 [features]
+# ---- perf study 58. Three arms LANDED UNCONDITIONALLY (`DirtyPiece::adds`'s
+# range fact, the zipped index loops in `apply_dirty_directed`, and disjoint
+# field borrows for both fold loops in `HalfkaContext::compute`) -- together
+# -30.43 instructions/node and -9.88 branches/node, node-identical. Two arms
+# were built and LOST and are recorded where they would be re-proposed, in the
+# banner on `i8_deltas_into_generic`: study 37's paired row loop re-priced at
+# `TILES = 8` (+16.96 i/n, twice its cost at `TILES = 2`) and a hand-hoisted
+# unroll split (+63.35 i/n). A third, masking `DirtyPiece::add`'s write cursor,
+# measured an exact null (+690 instructions in 2.93e10) and is not here.
+# See docs/research/perf-study-58-*.md.
+#
+# `split58`: DIAGNOSTIC ONLY, never shipped. `#[inline(never)]` on every head
+# and fold kernel wrapper, so a profile reports `forward_into`'s composition
+# per SYMBOL rather than as one 11%-of-instructions blob. Per-symbol shares are
+# the only attribution on this box that survives its own null -- study 36 §2.3
+# killed per-mnemonic attribution of `instructions:u` with a 20x skew among
+# four instructions that retire identically. Study 25 §1 ran this experiment
+# once, three architectures ago; this feature is the re-runnable form of it.
+split58 = []
 # ---- perf study 55 RETAINED MEASUREMENT ARMS, RE-PRICED BY STUDY 56.
 #
 # Study 55 retained three arms as "large wins alone, blocked only by

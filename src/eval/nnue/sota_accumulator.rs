@@ -598,13 +598,22 @@ impl<'a> HalfkaContext<'a> {
             // siblings take the incremental path. Bit-identical: a reverse fold
             // subtracts exactly the rows the forward fold added, and wrapping
             // i16 addition is exactly invertible.
-            let weights = self.weights;
-            let psqt_weights = self.psqt_weights;
             let king_square = board.king_square(perspective);
+            // Perf study 58 (`dpref58`), same treatment as the forward loop
+            // below: disjoint field borrows instead of a 14-byte copy of the
+            // dirty record onto the stack and straight back off it.
+            let Self {
+                weights,
+                psqt_weights,
+                stack,
+                meta,
+                ..
+            } = self;
+            let (weights, psqt_weights) = (*weights, *psqt_weights);
             for child in (king_ply..ply).rev() {
                 // `child` is reconstructed from `child + 1` by undoing the move
                 // that LED to `child + 1`.
-                let dirty = self.meta[child + 1].dirty;
+                let dirty = &meta[child + 1].dirty;
                 // The whole loop bucket-indexes on ONE king square, which is
                 // sound only because `king_ply` is the LAST king move in the
                 // span. Pin it: the natural next optimisation — refreshing on a
@@ -614,7 +623,7 @@ impl<'a> HalfkaContext<'a> {
                     !dirty.subs().iter().any(|&(piece, _)| piece == king),
                     "backward span must not contain a king move"
                 );
-                let (before, after) = self.stack.split_at_mut(child + 1);
+                let (before, after) = stack.split_at_mut(child + 1);
                 let entry = &mut before[child];
                 let source = &after[0];
                 // The backward loop's own bound, which the forward loop's
@@ -631,19 +640,43 @@ impl<'a> HalfkaContext<'a> {
                     psqt_weights,
                     entry,
                     source,
-                    &dirty,
+                    dirty,
                     perspective,
                     king_square,
                 );
-                self.meta[child].computed[p] = true;
+                meta[child].computed[p] = true;
             }
             return;
         }
         let king_square = board.king_square(perspective);
-        let weights = self.weights;
-        let psqt_weights = self.psqt_weights;
+        // PERF STUDY 58 (`dpref58`) — read the dirty record WHERE IT LIVES.
+        //
+        // `let dirty = self.meta[child].dirty;` copies 14 bytes out of the
+        // `meta` array onto the stack and then reads the length and the rows
+        // back out of that copy: the shipped PGO binary opens every fold with
+        //
+        //     mov  (%r8,%rbp,1),%rax      ; meta[child].dirty, bytes 0..8
+        //     mov  0x6(%r8,%rbp,1),%rcx   ;                    bytes 6..14
+        //     mov  %rcx,0x16(%rsp)
+        //     mov  %rax,0x10(%rsp)
+        //     movzbl 0x1c(%rsp),%r15d     ; n_add, straight back off the stack
+        //
+        // — a store-to-load forward on the critical path of the index loop.
+        // The copy exists only because `apply_dirty_into` wants `&DirtyPiece`
+        // while `self.stack` is borrowed mutably. Destructuring `self` into
+        // DISJOINT FIELD BORROWS is the idiomatic Rust answer to that (the
+        // same move `finny_refresh_into` already makes on this type), and it
+        // lets the fold read the record in place.
+        let Self {
+            weights,
+            psqt_weights,
+            stack,
+            meta,
+            ..
+        } = self;
+        let (weights, psqt_weights) = (*weights, *psqt_weights);
         for child in (ancestor + 1)..=ply {
-            let dirty = self.meta[child].dirty;
+            let dirty = &meta[child].dirty;
             // Fused parent→child fold: read parent lanes, apply deltas, write
             // child lanes in one pass — no separate ~1.5 KB memmove (opt #2).
             //
@@ -674,7 +707,7 @@ impl<'a> HalfkaContext<'a> {
             // subs.is_empty() { return; }` fast path to `apply_halfka_deltas_into`
             // looks like a free win and would, at that moment, turn this into
             // a stale-child bug — in release, silently.
-            let (before, after) = self.stack.split_at_mut(child);
+            let (before, after) = stack.split_at_mut(child);
             let parent = &before[child - 1];
             let entry = &mut after[0];
             debug_assert!(
@@ -686,11 +719,11 @@ impl<'a> HalfkaContext<'a> {
                 psqt_weights,
                 entry,
                 parent,
-                &dirty,
+                dirty,
                 perspective,
                 king_square,
             );
-            self.meta[child].computed[p] = true;
+            meta[child].computed[p] = true;
         }
     }
 
@@ -962,15 +995,36 @@ fn apply_dirty_directed<const FORWARD: bool>(
     let mut add_feat = [0usize; 2];
     let mut subs = [RowOffset::default(); 2];
     let mut sub_feat = [0usize; 2];
-    for (i, &(piece, square)) in dirty.adds().iter().enumerate() {
+    // PERF STUDY 58 — zip the DESTINATIONS, don't index them by a counter.
+    //
+    // `for (i, &(piece, square)) in dirty.adds().iter().enumerate()` reads
+    // fine and compiles badly, because `i`'s range is a runtime fact: the
+    // shipped PGO binary carried `cmp $0x1,%rdi; ja <panic>` per row for the
+    // two `[_; 2]` stores, could not unroll, and emitted a rotated loop whose
+    // control (two `setne`, a `cmovne`, two `test`, an `enumerate` counter and
+    // a 3-byte-stride cursor) was LARGER than the index arithmetic it carried.
+    //
+    // Zipping `adds`/`add_feat` — whose length is 2 at compile time — makes
+    // the trip count `min(2, 2, n)`, so the bounds checks are gone by
+    // construction. The multiset of rows and the order within each list are
+    // unchanged, so this is bit-identical. Measured **−2.67 instructions/node
+    // alone** on the 5,001,562-node frame; it is small because the *counter*
+    // was never the expensive half — `DirtyPiece::adds`'s own unbounded length
+    // was, and the two changes are landed together for that reason.
+    //
+    // `zip().zip()` nests, so the item is `((row, feat), &(piece, square))`;
+    // that nesting is the price of pairing three iterators without an
+    // itertools dependency (D15 keeps [dependencies] empty), and slice
+    // iterators specialise it away via `TrustedRandomAccess`.
+    for ((row, feat), &(piece, square)) in adds.iter_mut().zip(&mut add_feat).zip(dirty.adds()) {
         let f = halfka_index(perspective, piece, square, king);
-        add_feat[i] = f;
-        adds[i] = RowOffset::of(f);
+        *feat = f;
+        *row = RowOffset::of(f);
     }
-    for (i, &(piece, square)) in dirty.subs().iter().enumerate() {
+    for ((row, feat), &(piece, square)) in subs.iter_mut().zip(&mut sub_feat).zip(dirty.subs()) {
         let f = halfka_index(perspective, piece, square, king);
-        sub_feat[i] = f;
-        subs[i] = RowOffset::of(f);
+        *feat = f;
+        *row = RowOffset::of(f);
     }
     let (na, ns) = (dirty.adds().len(), dirty.subs().len());
     let (a, s) = if FORWARD {
