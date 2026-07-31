@@ -9783,3 +9783,41 @@ applied** — it needs a cumulative number, and right now we do not have one.
 **Blocked on a quiet box**, which this is not about to be: the handoff fires in
 minutes, then the 5880-game verdict runs beside the continuation. Queued for the
 next genuinely idle window.
+
+## ★ HANDOFF FIRED CLEANLY — D49 is on the cyclical schedule
+
+**`[pump d49-1280] RESUME from sb700 (fresh Adam transient)`** — the corrected
+`resume_sb` worked, all four sb700 checkpoints written, continuation running at
+**sb710, 195k pos/s**. This is the transition that would have failed silently and
+been restarted into the same failure every 100 s for 55 h had the argument bug not
+been caught.
+
+**D49 is now in cycle 1 of 35, heading for sb1700 = 42.3 G positions = 106% of
+Stockfish's budget.**
+
+### First cycle: the debt is visible, as predicted
+
+| point | heldout value | EMA |
+|---|---:|---:|
+| sb700 (end of anneal) | **0.010570** | 0.010592 |
+| sb710 (mid cycle 1, LR ≈ 5e-5) | 0.010846 | 0.010725 |
+
+**The restart cost +276e-6 on the raw value** — the same debt-before-dividend
+shape as the sb400 warm restart, which cost 476e-6 and took ~130 sb to repay.
+
+**But sb710 is mid-cycle at high LR, which is the wrong comparison.**
+Trough-to-trough is the right one, and **sb720 — taken just after cycle 1's
+trough at sb719 — is the decisive early reading**:
+
+- recovers toward ~0.010600 ⇒ the 20-sb period is long enough, cycling can pay
+- stays at 0.010725+ ⇒ **the period is too short**, every cycle pays the debt and
+  never collects, which is the risk flagged when the schedule was designed
+
+**Nothing changes on one mid-cycle sample.** The experiment is running as
+specified.
+
+### sb700 verdict in flight
+
+**2377 / 5880 games**, running at `CONC=6` beside the trainer. Trajectory so far,
+all vs canonical @25k: sb400 **−21.24 ± 5.67**, sb580 −25.90 ± 10.00, sb620
+−4.20 ± 8.60, sb640 −8.20 ± 7.70 (pooled), sb700 partial −2.2 ± 15.3.
