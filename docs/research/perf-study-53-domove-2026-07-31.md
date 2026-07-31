@@ -27,42 +27,7 @@ exactly the md5 study 52's gate log records for `rfp52b`, the binary it landed.
 
 ## ★ 0. THE ANSWER, FIRST
 
-### 0.0 Two premises in the commission are wrong, and one of them points the wrong way
-
-Reported first because both were load-bearing for how this study was framed.
-
-**(a) "Study 35 looked at do_move fusion and study 39 reported that fusion is
-dead" — false, and it conflates two unrelated levers.** Study 39 killed
-**accumulator-channel fusion** (merging the HalfKA and FullThreats NNUE
-accumulator channels — a net-architecture question), §8 row 4: *"**DO NOT
-BUILD**… −23 (best) … +281 cycles/node ⇒ +1.0 … −11.5 Elo"*. It contains no
-mention of `do_move`, `make_move`, `make_move_with`, `unmake_move`,
-`push_sota_dirty` or `Meta` anywhere in its text. **`do_move`/`make_move_with`
-fusion is the opposite of dead: study 35 §4 REVIVED it**, rebuilding study 13
-§5.1's arm (rejected at +41.5 i/n) and measuring **−11.36 i/n — a win**. It went
-unlanded only because the alternative (`after`) was worth 2.2× as much on
-instructions and, unlike `hookc`, also moved loads. Study 35 §9 item 3 leaves
-the PGO comparison explicitly open. **Anyone citing "fusion is dead" against a
-`do_move` arm is citing the wrong study.**
-
-**(b) "`do_move` … 461 % stall/own-miss-latency, the most extreme caller ratio in
-the engine" is a misattribution signature, not an opportunity.** Study 49
-defines `stall/lat` as (share of sampled `ex_no_retire.load_not_complete` ×
-1764.05 c/node) ÷ (IBS share of miss latency × 22354.3 c/node), and states the
-reading rule itself: *"Every symbol above 100 % is a scalar function that
-**calls** something."* `do_move`'s **own** miss latency is **16.7 c/node**; the
-76.7 c/node of stall charged to it is run-ahead absorbed from callees while
-their misses are outstanding. Study 52 §0.3 then measured the same phenomenon
-directly and put it at **46×** on the hottest line. **There is no 461 % of
-recoverable stall inside `do_move`, and an arm priced off the 76.7 would be
-priced off a counter artifact.** The genuinely unfinished business study 49
-names is different and survives: `do_move` has **260.3 instructions/node and
-116.3 loads/node that nobody has censused**.
-
-This study therefore attacks op COUNT — the only currency study 52 §4 licenses
-at this site — and makes no stall or locality claim.
-
-### 0.1 ★ What LANDED — −39.34 instructions/node, −19.7 branches/node, node-identical
+### 0.0 ★ What LANDED — −39.34 instructions/node, −19.7 branches/node, node-identical
 
 Two of the three commissioned items, promoted to unconditional:
 
@@ -98,10 +63,45 @@ here — `attacks` is touched). **No cycles claim** (§2.4).
 
 For scale: study 52 landed −36.5 i/n, study 35 −25.0, study 36 −19.5.
 
+### 0.1 Two premises in the commission are wrong, and one of them points the wrong way
+
+Reported first because both were load-bearing for how this study was framed.
+
+**(a) "Study 35 looked at do_move fusion and study 39 reported that fusion is
+dead" — false, and it conflates two unrelated levers.** Study 39 killed
+**accumulator-channel fusion** (merging the HalfKA and FullThreats NNUE
+accumulator channels — a net-architecture question), §8 row 4: *"**DO NOT
+BUILD**… −23 (best) … +281 cycles/node ⇒ +1.0 … −11.5 Elo"*. It contains no
+mention of `do_move`, `make_move`, `make_move_with`, `unmake_move`,
+`push_sota_dirty` or `Meta` anywhere in its text. **`do_move`/`make_move_with`
+fusion is the opposite of dead: study 35 §4 REVIVED it**, rebuilding study 13
+§5.1's arm (rejected at +41.5 i/n) and measuring **−11.36 i/n — a win**. It went
+unlanded only because the alternative (`after`) was worth 2.2× as much on
+instructions and, unlike `hookc`, also moved loads. Study 35 §9 item 3 leaves
+the PGO comparison explicitly open. **Anyone citing "fusion is dead" against a
+`do_move` arm is citing the wrong study.**
+
+**(b) "`do_move` … 461 % stall/own-miss-latency, the most extreme caller ratio in
+the engine" is a misattribution signature, not an opportunity.** Study 49
+defines `stall/lat` as (share of sampled `ex_no_retire.load_not_complete` ×
+1764.05 c/node) ÷ (IBS share of miss latency × 22354.3 c/node), and states the
+reading rule itself: *"Every symbol above 100 % is a scalar function that
+**calls** something."* `do_move`'s **own** miss latency is **16.7 c/node**; the
+76.7 c/node of stall charged to it is run-ahead absorbed from callees while
+their misses are outstanding. Study 52 §0.3 then measured the same phenomenon
+directly and put it at **46×** on the hottest line. **There is no 461 % of
+recoverable stall inside `do_move`, and an arm priced off the 76.7 would be
+priced off a counter artifact.** The genuinely unfinished business study 49
+names is different and survives: `do_move` has **260.3 instructions/node and
+116.3 loads/node that nobody has censused**.
+
+This study therefore attacks op COUNT — the only currency study 52 §4 licenses
+at this site — and makes no stall or locality claim.
+
 ### 0.2 ★ The single best result is `magic53` ALONE, and the combination is worse on loads
 
 The three-panel picture is consistent and it is the study's most useful finding
-after §0.0. `magic53` on its own is the only arm that is **10/10 with a tight
+after §0.1. `magic53` on its own is the only arm that is **10/10 with a tight
 `se` on all four exact counters at once**:
 
 | head-to-head, n=10 | instr/n | branch/n | **loads/n** | stores/n |
@@ -490,7 +490,7 @@ Most doubtful first.
 6. **`do_move`'s 260.3 i/node and 116.3 loads/node are still uncensused.** That
    was study 49's stated open item and this study did not close it — it attacked
    the *neighbourhood* (three call sites reachable from the same move loop)
-   rather than the body. §0.0(b) explains why the 461 % framing that pointed at
+   rather than the body. §0.1(b) explains why the 461 % framing that pointed at
    the body does not justify the trip; a census still might.
 7. **The allocator-fragility generalisation now has two independent sources but
    is still not a model.** Study 52 saw it in one arm plus one control; this
@@ -560,9 +560,9 @@ CHECK_NNUE_GATE=1 CHECK_TEST_THREADS=1 bash tools/check.sh
    260.3 i/node and 116.3 loads/node, never decomposed.
    `tools/perf52/ibsline52.py` is the instrument and it already does per-inline-
    frame attribution; point it at `Worker::do_move` rather than at
-   `search::<NonPv>`. **Do not price the arm off the 461 %** (§0.0b).
+   `search::<NonPv>`. **Do not price the arm off the 461 %** (§0.1b).
 3. **Rebuild study 35's `hookc`** (−11.36 i/n, unlanded, never PGO-tested) now
-   that "fusion is dead" is known to be a misattribution (§0.0a). Study 35 §9
+   that "fusion is dead" is known to be a misattribution (§0.1a). Study 35 §9
    item 3 predicted the ordering would hold under PGO and did not test it.
 4. **Take the PGO pair this study skipped** (§6 item 3) — one `buildpgo52.sh`
    pair of `base53`/`final53` would convert the largest inference here into a
