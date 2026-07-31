@@ -105,11 +105,60 @@ the panels' warm point); the GPU stays the D49 trainer's.
   uho-band0-5.bin (the panels' heldout file). Full-state sets: 450k
   (filtered TSV) + 250k (raw TSV), fresh shuf samples, seeds 42/43.
 
-## 3. Data-blindness census (L3), already measurable
+## 3. The oracle-twin results (L2+L3) — the invisible state is decision-relevant
 
-RESULTS SLOT — prevalence of castling rights / ep / rule50>k in the
-full-state UHO corpus (filtered and raw), i.e. how much of the training
-distribution carries state the records erased.
+Twin pairs are IDENTICAL to the network and differ only in the invisible
+dimension; SF eca43a97 (the pinned constants reference) at 60k fixed nodes
+arbitrates; ARCHON receipts prove the blindness end-to-end. n=800 each, from
+the filtered (trainer-parity) full-state corpus. Discrete outcome first.
+
+| twin | ARCHON static eval | SF bestmove changes | SF |Δcp| p50/p90/p99 | mean Δ |
+|---|---|---|---|---|
+| castling rights (stm owns) vs stripped | **800/800 bit-identical** | **312/800 = 39.0%** | 18 / 78 / 167 | +20.0 cp to the owner |
+| rule50 = 0 vs 90 (no rights/ep) | **800/800 bit-identical** | **299/800 = 37.4%** | 11 / 57 / 247 | −2.8 cp |
+
+Readings, kept one inference deep:
+
+- **In ~4 of 10 rights-bearing positions the correct MOVE depends on
+  information our evaluation provably cannot see.** The engine's search
+  still knows the rights (movegen), but every leaf eval scores
+  rights-sensitive positions identically — the tree is steered by an eval
+  that cannot tell a castled future from a lost one.
+- The castle Δ is one-signed (+20 mean: rights help their owner), so the
+  net's mixture-average has learned "some rights-shaped placement bonus"
+  smeared over both cases; the per-position error is the p50–p99 column.
+- rule50's mean ≈ 0 but |Δ| tail is FAT (p99 247 cp): the clock converts
+  advantages to draws symmetrically. The NET is fully clock-blind (800/800);
+  the engine's only defense is the outer damping — position-blind and
+  linear, i.e. exactly the mixture-mean of the interaction the oracle shows.
+- Caveats: SF's twin Δ includes search-strategic effects (e.g. rushing
+  progress near the clock), not pure eval differences; 60k nodes is the
+  budget the box allows beside the trainer. Both twins were drawn from
+  rights/clock-UNfiltered rows of the corpus, so prevalences below scale
+  the per-position numbers into per-game terms.
+
+### 3.1 Prevalence census (the L3 exposure)
+
+Full-state UHO corpus, 450k filtered / 250k raw samples:
+
+| state | filtered | raw |
+|---|---|---|
+| any castling right | 2.7% | 3.1% |
+| stm owns a right | 1.4% | 1.8% |
+| ep square set | 0.06% | 0.11% |
+| rule50 ≥ 20 | 11.2% | 9.6% |
+| rule50 ≥ 40 | 5.6% | 4.7% |
+| rule50 ≥ 80 | 1.1% | 1.0% |
+
+Two honest readings. (a) The corpus under-represents rights positions —
+UHO book exits are deep, both sides have usually castled — so the net gets
+FEW examples of exactly the positions where the twin gap is largest: the
+label-noise problem and the data-scarcity problem stack. (b) Deployment
+value scales with IN-GAME prevalence (every game passes through a
+rights-bearing opening), not corpus prevalence; an in-tree rights-prevalence
+counter (foldcount pattern) is the cheap follow-up that converts §3's
+per-position numbers into per-game terms. The rule50 tail needs no such
+argument: ≥40 is 5.6% of the training distribution itself.
 
 ## 4. Decodability results (L1)
 

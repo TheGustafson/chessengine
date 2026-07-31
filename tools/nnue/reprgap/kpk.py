@@ -275,6 +275,9 @@ def probe() -> None:
     y = np.load(DIR / "recs-kpk.npz")["kpk_win"].astype(np.float64)
     z = np.load(DIR / "kpk-bitbase.npz")
     ids = np.nonzero(z["legal_w"])[0]
+    # memory envelope (<=3 GB): subsample 60k of the 163k states
+    sub = np.random.default_rng(3).choice(len(y), 60_000, replace=False)
+    acs, acn, y, ids = acs[sub], acn[sub], y[sub], ids[sub]
     prank = ((ids % 48) + 8) // 8  # control target: pawn rank
     occb = np.zeros(len(ids))     # hash-bit control from state index
     occb = ((ids.astype(np.uint64) * np.uint64(0x9E3779B97F4A7C15))
