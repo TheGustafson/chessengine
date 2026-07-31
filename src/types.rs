@@ -238,6 +238,36 @@ impl Square {
         self.index
     }
 
+    /// The square as a **table subscript** — the same number as
+    /// `index() as usize`, but carrying the `< 64` range proof that a `u8`
+    /// does not.
+    ///
+    /// # Why this exists (perf study 56, mechanism B)
+    ///
+    /// [`Self::index`] returns a `u8`, so `sq.index() as usize` is provably
+    /// `< 256` and nothing more. Every `[T; 64]` in the engine subscripted by
+    /// it — the mailbox, `ZOBRIST.psq`'s inner axis, every leaper and geometry
+    /// table, the castling-rights mask, the magic table — therefore compiled to
+    /// a `cmp $0x40` / `jae panic_bounds_check` pair on the hot path that can
+    /// never be taken, because [`Square::new`] asserts `index < 64` in release
+    /// too. A census of the shipped binary (`tools/perf56/sites56.py`) found
+    /// this one spelling responsible for the largest family of unfoldable
+    /// bounds checks in ARCHON.
+    ///
+    /// `& 63` states the invariant where the optimizer can use it. **It is the
+    /// identity on every value a `Square` can hold**, so this is a no-op
+    /// semantically and a bounds-check deletion in codegen — the same trick
+    /// `movepick.rs` carries as `BUF_MASK` (perf study 55) and `attacks.rs` as
+    /// `TABLE_MASK` (perf study 53), applied at the type that feeds them all.
+    ///
+    /// Use this at subscript positions; keep [`Self::index`] for arithmetic,
+    /// comparisons and anything that is not an array index, where the mask
+    /// would be pure cost.
+    #[inline]
+    pub const fn idx(self) -> usize {
+        self.index as usize & (Self::COUNT - 1)
+    }
+
     /// File 0-7 (a-h).
     pub const fn file(self) -> u8 {
         self.index & 0b111

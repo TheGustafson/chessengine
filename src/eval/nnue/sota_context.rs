@@ -478,6 +478,7 @@ impl SotaContext {
     }
 
     /// Evaluate `board` through the incrementally maintained SOTA accumulators.
+    #[inline(always)]
     pub fn evaluate(&mut self, board: &Board, ply: usize) -> Value {
         // The production search-stack oracle: catch stale sibling entries,
         // missed king refreshes, and FullThreats delta drift at the first node

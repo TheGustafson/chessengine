@@ -146,6 +146,23 @@ const CONT_ALLOC: usize = CONT_NB;
 #[cfg(feature = "cont53")]
 const CONT_MASK: usize = CONT_ALLOC - 1;
 const CONT_CORR_NB: usize = 832; // piece13 × to(64)
+/// Allocated slab count for `cont_corr` (perf study 56, arm `contcorr56`).
+///
+/// Same shape as [`CONT_ALLOC`] and the same reason: [`CONT_CORR_NB`] is not a
+/// power of two and the index arrives from [`ContHistId::piece_to`], which the
+/// optimizer only knows is `< 16384` (it is `u16 / 4`). So `cont_corr[o2]` and
+/// `cont_corr[o4]` each carry a bounds check, twice per evaluated node in
+/// [`Histories::correction_value`] and twice more per updated node in
+/// [`Histories::update_correction_history`].
+///
+/// **The reason this is a candidate where `cont53` was not is the price.**
+/// Padding 832 → 1024 costs +192 slabs × 1536 B = **+288 KiB per `Histories`**,
+/// i.e. per worker thread, taking the catalogue from 19.979 MiB to 20.260 MiB —
+/// inside design/09 §8's ≤21 MiB budget. `cont53` pads 3328 → 4096, costs
+/// +1.125 MiB and breaches it.
+const CONT_CORR_ALLOC: usize = CONT_CORR_NB.next_power_of_two(); // 1024
+/// Index mask for [`CONT_CORR_ALLOC`] — see that constant.
+const CONT_CORR_MASK: usize = CONT_CORR_ALLOC - 1;
 /// The `(in_check, capture)` axis pair — the LOW axis of [`ContHistId`], which
 /// is what makes [`ContHistId::piece_to`] a shift (see that type's doc).
 const QUADRANT_NB: usize = 4;
@@ -334,8 +351,7 @@ impl ContHistId {
     #[inline]
     pub fn new(in_check: bool, capture: bool, piece: Option<Piece>, to: Square) -> Self {
         let pc = piece.map_or(12, |p| p.index()); // 12 = "no piece"
-        let flat = (pc * 64 + to.index() as usize) * QUADRANT_NB
-            + (in_check as usize * 2 + capture as usize);
+        let flat = (pc * 64 + to.idx()) * QUADRANT_NB + (in_check as usize * 2 + capture as usize);
         // The old `% 832` mapped ANY `u16` back into range, so a corrupt id
         // could not walk `cont_corr` out of bounds; `/ QUADRANT_NB` only stays
         // in range because ids are `< CONT_NB`. That fail-soft property is
@@ -438,7 +454,7 @@ pub struct Histories {
     pub corr: Box<[[CorrBundle; 2]; CORR_SIZE]>,
     /// Continuation correction, outer [`ContHistId::piece_to`], inner
     /// [`PieceToCorr`].
-    pub cont_corr: Box<[Line64<PieceToCorr>; CONT_CORR_NB]>,
+    pub cont_corr: Box<[Line64<PieceToCorr>; CONT_CORR_ALLOC]>,
     /// A single scalar tracking the reliability of the TT move.
     pub tt_move: StatEntry<TT_MOVE_D>,
 }
@@ -531,6 +547,19 @@ impl Histories {
         }
     }
 
+    /// Resolve a [`ContHistId::piece_to`] sub-index to its continuation-
+    /// correction slab (read side). See [`CONT_CORR_ALLOC`] for why the mask.
+    #[inline]
+    fn corr_slab(&self, o: usize) -> &PieceToCorr {
+        &self.cont_corr[o & CONT_CORR_MASK]
+    }
+
+    /// [`Self::corr_slab`]'s write side.
+    #[inline]
+    fn corr_slab_mut(&mut self, o: usize) -> &mut PieceToCorr {
+        &mut self.cont_corr[o & CONT_CORR_MASK]
+    }
+
     /// Resolve a continuation-history key to its slab (read side).
     #[inline]
     pub fn cont_ref(&self, id: ContHistId) -> &PieceToHist {
@@ -615,7 +644,7 @@ impl Histories {
         // Perf study 36: every iteration below hits the SAME `[pci][toi]` cell
         // in a different plane, so the offset is loop-invariant while the base
         // is not — the shape `piece_to` exists for (see its doc).
-        let q = piece_to(pc.index(), to.index() as usize);
+        let q = piece_to(pc.index(), to.idx());
         let mut positive_count = 0usize;
 
         // Perf study 55 mechanism B. The shipped loop indexes `stack[cur - i]`
@@ -722,7 +751,7 @@ impl Histories {
             params::PAWN_HIST_MALUS_NUM()
         };
         let slot = (board.pawn_key() & (PAWN_HIST_SIZE as u64 - 1)) as usize;
-        self.pawn[slot][pc.index()][to.index() as usize]
+        self.pawn[slot][pc.index()][to.idx()]
             .update(bonus * pawn_weight / params::STAT_WEIGHT_DEN());
     }
 
@@ -818,7 +847,7 @@ impl Histories {
         let victim = board
             .piece_on(m.to())
             .map_or(NO_VICTIM, |p| p.piece_type as usize);
-        self.capture[moved.index()][m.to().index() as usize][victim].get()
+        self.capture[moved.index()][m.to().idx()][victim].get()
     }
 
     /// Flat capture-history reward for the parent's capturing move that caused
@@ -835,7 +864,7 @@ impl Histories {
         bonus: i32,
     ) {
         let vi = victim.map_or(NO_VICTIM, |pt| pt as usize);
-        self.capture[moved.index()][to.index() as usize][vi].update(bonus);
+        self.capture[moved.index()][to.idx()][vi].update(bonus);
     }
 
     /// The mutable capture-history cell for `m` in `board`: `[moved][to]
@@ -848,7 +877,7 @@ impl Histories {
         let victim = board
             .piece_on(m.to())
             .map_or(NO_VICTIM, |p| p.piece_type as usize);
-        &mut self.capture[moved.index()][m.to().index() as usize][victim]
+        &mut self.capture[moved.index()][m.to().idx()][victim]
     }
 
     /// A correction-history bundle for `key`'s slot and side `us` (read side).
@@ -889,11 +918,11 @@ impl Histories {
                 .piece_on(to)
                 .expect("the previous move's piece sits on its to-square");
             // Two planes, one cell — flat-indexed for the reason in `piece_to`.
-            let q = piece_to(pc.index(), to.index() as usize);
+            let q = piece_to(pc.index(), to.idx());
             let o2 = stack[cur - 2].cont_hist.piece_to();
             let o4 = stack[cur - 4].cont_hist.piece_to();
             params::CORR_CONT_WEIGHT()
-                * (at_piece_to(&self.cont_corr[o2], q) + at_piece_to(&self.cont_corr[o4], q))
+                * (at_piece_to(self.corr_slab(o2), q) + at_piece_to(self.corr_slab(o4), q))
         } else {
             params::CORR_CONT_NULL_PRIOR()
         };
@@ -934,13 +963,13 @@ impl Histories {
             let pc = board
                 .piece_on(to)
                 .expect("the previous move's piece sits on its to-square");
-            let (pci, toi) = (pc.index(), to.index() as usize);
+            let (pci, toi) = (pc.index(), to.idx());
             let o2 = stack[cur - 2].cont_hist.piece_to();
             let o4 = stack[cur - 4].cont_hist.piece_to();
-            self.cont_corr[o2][pci][toi]
-                .update(bonus * params::CORR_CONT2_UPDATE_NUM() / params::CORR_UPDATE_DEN());
-            self.cont_corr[o4][pci][toi]
-                .update(bonus * params::CORR_CONT4_UPDATE_NUM() / params::CORR_UPDATE_DEN());
+            let c2 = bonus * params::CORR_CONT2_UPDATE_NUM() / params::CORR_UPDATE_DEN();
+            let c4 = bonus * params::CORR_CONT4_UPDATE_NUM() / params::CORR_UPDATE_DEN();
+            self.corr_slab_mut(o2)[pci][toi].update(c2);
+            self.corr_slab_mut(o4)[pci][toi].update(c4);
         }
     }
 }
@@ -1010,7 +1039,12 @@ const HISTORIES_BYTES: usize = size_of::<[[StatEntry<MAIN_D>; BUTTERFLY_SIZE]; 2
     + size_of::<[PieceToHist; CONT_ALLOC]>()
     + size_of::<[[[StatEntry<PAWN_D>; 64]; 12]; PAWN_HIST_SIZE]>()
     + size_of::<[[CorrBundle; 2]; CORR_SIZE]>()
-    + size_of::<[PieceToCorr; CONT_CORR_NB]>()
+    // Perf study 56: `CONT_CORR_ALLOC`, not `CONT_CORR_NB` — the budget must
+    // count what is ALLOCATED, and this table is now padded to a power of two.
+    // Accounting the logical size here would have hidden 288 KiB per worker
+    // from design/09 §8's guard, which is the one place that would have caught
+    // the padding growing.
+    + size_of::<[PieceToCorr; CONT_CORR_ALLOC]>()
     + size_of::<StatEntry<TT_MOVE_D>>();
 // The catalogue is ~20 MiB: comfortably under the 21 MiB budget (§8), and
 // well over 19 MiB (a guard against a table silently shrinking away).

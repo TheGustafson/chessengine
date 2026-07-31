@@ -904,7 +904,7 @@ impl Board {
     }
 
     pub fn piece_on(&self, sq: Square) -> Option<Piece> {
-        self.mailbox[sq.index() as usize]
+        self.mailbox[sq.idx()]
     }
 
     /// The squares holding `color`'s pieces of type `piece_type`.
@@ -1145,7 +1145,7 @@ impl Board {
     /// its king's home square, one right on each rook's home square, NONE
     /// elsewhere (doc 04 §3.7 revocation mask).
     pub fn castling_rights_mask(&self, sq: Square) -> CastlingRights {
-        self.castling_rights_mask[sq.index() as usize]
+        self.castling_rights_mask[sq.idx()]
     }
 
     /// All pieces of BOTH colors attacking `sq` under the given occupancy
@@ -1158,6 +1158,7 @@ impl Board {
     /// The pawn terms use attack symmetry: the squares a White pawn ON `sq`
     /// would attack are precisely the from-squares of Black pawns attacking
     /// `sq`, and vice versa.
+    #[inline(always)]
     pub fn attackers_to(&self, sq: Square, occupied: Bitboard) -> Bitboard {
         let tables = attacks::tables();
         let queens = self.pieces_of_type(PieceType::Queen);
@@ -1436,8 +1437,8 @@ impl Board {
         let king_from = Square::E1.relative_to(color);
         let kingside = rook_from.file() > king_from.file();
         let right = CastlingRights::single(color, kingside);
-        self.castling_rights_mask[king_from.index() as usize].add(right);
-        self.castling_rights_mask[rook_from.index() as usize].add(right);
+        self.castling_rights_mask[king_from.idx()].add(right);
+        self.castling_rights_mask[rook_from.idx()].add(right);
         self.castling_rook_square[right.index()] = rook_from;
 
         let kto = if kingside { Square::G1 } else { Square::C1 }.relative_to(color);
@@ -1515,8 +1516,8 @@ impl Board {
         let mut non_pawn_material: [Value; 2] = [0; 2];
 
         for sq in self.all_occupancy() {
-            let pc = self.mailbox[sq.index() as usize].expect("occupancy and mailbox in sync");
-            let psq = ZOBRIST.psq[pc.index()][sq.index() as usize];
+            let pc = self.mailbox[sq.idx()].expect("occupancy and mailbox in sync");
+            let psq = ZOBRIST.psq[pc.index()][sq.idx()];
             key ^= psq;
             match pc.piece_type {
                 PieceType::Pawn => pawn_key ^= psq,
@@ -1602,12 +1603,12 @@ impl Board {
         self.pieces[piece.color as usize][piece.piece_type as usize] |= bb;
         self.color_occupancy[piece.color as usize] |= bb;
         self.all_occupancy |= bb;
-        self.mailbox[sq.index() as usize] = Some(piece);
+        self.mailbox[sq.idx()] = Some(piece);
     }
 
     /// Remove and return the piece on `sq`, keeping bitboards and mailbox in sync.
     pub fn remove_piece(&mut self, sq: Square) -> Option<Piece> {
-        let piece = self.mailbox[sq.index() as usize]?;
+        let piece = self.mailbox[sq.idx()]?;
         self.remove_piece_known(piece, sq);
         Some(piece)
     }
@@ -1632,7 +1633,7 @@ impl Board {
         self.pieces[piece.color as usize][piece.piece_type as usize] ^= bb;
         self.color_occupancy[piece.color as usize] ^= bb;
         self.all_occupancy ^= bb;
-        self.mailbox[sq.index() as usize] = None;
+        self.mailbox[sq.idx()] = None;
     }
 
     /// Move a piece between squares in one pass: from-bit ^ to-bit on three
@@ -1660,8 +1661,8 @@ impl Board {
         self.pieces[pc.color as usize][pc.piece_type as usize] ^= from_to;
         self.color_occupancy[pc.color as usize] ^= from_to;
         self.all_occupancy ^= from_to;
-        self.mailbox[from.index() as usize] = None;
-        self.mailbox[to.index() as usize] = Some(pc);
+        self.mailbox[from.idx()] = None;
+        self.mailbox[to.idx()] = Some(pc);
     }
 
     /// Make `m` on the board (doc 04 §3.8, D10). `m` must be legal for the
@@ -1794,7 +1795,7 @@ impl Board {
 
         // Step 5: capture (mutually exclusive with castling).
         if let Some(cap) = captured {
-            let cap_psq = ZOBRIST.psq[cap.index()][capsq.index() as usize];
+            let cap_psq = ZOBRIST.psq[cap.index()][capsq.idx()];
             if cap.piece_type == PieceType::Pawn {
                 self.state.copied.pawn_key ^= cap_psq;
             } else {
@@ -1818,8 +1819,7 @@ impl Board {
         // Step 6: mover key — for castling this is the king pair; for
         // promotions the pawn's `to` key is zero by construction, so no
         // special case (D9). Then clear a stale ep square out of the key.
-        k ^= ZOBRIST.psq[pc.index()][from.index() as usize]
-            ^ ZOBRIST.psq[pc.index()][to.index() as usize];
+        k ^= ZOBRIST.psq[pc.index()][from.idx()] ^ ZOBRIST.psq[pc.index()][to.idx()];
         if let Some(ep) = self.state.copied.ep_square.take() {
             k ^= ZOBRIST.en_passant[ep.file() as usize];
         }
@@ -1827,8 +1827,8 @@ impl Board {
         // Step 7: castling-rights revocation. One mask lookup covers king
         // moves, rook moves, and rook captures (doc 04 §3.7); the whole-mask
         // castling key makes any change two XORs (a no-op change cancels).
-        let mut touched = self.castling_rights_mask[from.index() as usize];
-        touched.add(self.castling_rights_mask[to.index() as usize]);
+        let mut touched = self.castling_rights_mask[from.idx()];
+        touched.add(self.castling_rights_mask[to.idx()]);
         k ^= ZOBRIST.castling[self.state.copied.castling_rights.bits() as usize];
         self.state.copied.castling_rights.remove(touched);
         k ^= ZOBRIST.castling[self.state.copied.castling_rights.bits() as usize];
@@ -1865,7 +1865,7 @@ impl Board {
             } else if m.kind() == MoveKind::Promotion {
                 let promo_pt = m.promotion_piece().expect("promotion kind has a piece");
                 let promo = Piece::new(us, promo_pt);
-                let promo_psq = ZOBRIST.psq[promo.index()][to.index() as usize];
+                let promo_psq = ZOBRIST.psq[promo.index()][to.idx()];
                 // No pawn-clear XOR: psq[pawn][promotion rank] is zero (D9).
                 k ^= promo_psq;
                 // Count slots: promoted piece pre-add count in, pawn
@@ -1882,12 +1882,12 @@ impl Board {
             }
             // Always: the `to` term is zero on the promotion rank, so this
             // degenerates to a from-only update for promotions.
-            self.state.copied.pawn_key ^= ZOBRIST.psq[pc.index()][from.index() as usize]
-                ^ ZOBRIST.psq[pc.index()][to.index() as usize];
+            self.state.copied.pawn_key ^=
+                ZOBRIST.psq[pc.index()][from.idx()] ^ ZOBRIST.psq[pc.index()][to.idx()];
             self.state.copied.rule50 = 0;
         } else {
-            let mover_delta = ZOBRIST.psq[pc.index()][from.index() as usize]
-                ^ ZOBRIST.psq[pc.index()][to.index() as usize];
+            let mover_delta =
+                ZOBRIST.psq[pc.index()][from.idx()] ^ ZOBRIST.psq[pc.index()][to.idx()];
             self.state.copied.non_pawn_key[us as usize] ^= mover_delta;
             if matches!(pc.piece_type, PieceType::Knight | PieceType::Bishop) {
                 self.state.copied.minor_key ^= mover_delta;
@@ -2059,8 +2059,7 @@ impl Board {
         self.put_piece(pc, to);
         self.put_piece(rook, rto);
 
-        ZOBRIST.psq[rook.index()][rfrom.index() as usize]
-            ^ ZOBRIST.psq[rook.index()][rto.index() as usize]
+        ZOBRIST.psq[rook.index()][rfrom.idx()] ^ ZOBRIST.psq[rook.index()][rto.idx()]
     }
 
     /// The promotion and en-passant arms of [`Board::unmake_move`] — the exact
@@ -2184,10 +2183,10 @@ impl Board {
         let captured = self.piece_on(m.to());
         let mut k = self.raw_key()
             ^ ZOBRIST.side
-            ^ ZOBRIST.psq[pc.index()][m.from().index() as usize]
-            ^ ZOBRIST.psq[pc.index()][m.to().index() as usize];
+            ^ ZOBRIST.psq[pc.index()][m.from().idx()]
+            ^ ZOBRIST.psq[pc.index()][m.to().idx()];
         if let Some(cap) = captured {
-            k ^= ZOBRIST.psq[cap.index()][m.to().index() as usize];
+            k ^= ZOBRIST.psq[cap.index()][m.to().idx()];
         }
         // Captures and pawn moves reset the child clock, so its key is raw;
         // otherwise fold with threshold 13, modeling "parent rule50 + 1".
@@ -3461,8 +3460,8 @@ mod tests {
             board.raw_key(),
             before
                 ^ ZOBRIST.side
-                ^ ZOBRIST.psq[wp][Square::E2.index() as usize]
-                ^ ZOBRIST.psq[wp][Square::E4.index() as usize]
+                ^ ZOBRIST.psq[wp][Square::E2.idx()]
+                ^ ZOBRIST.psq[wp][Square::E4.idx()]
                 ^ ZOBRIST.en_passant[Square::E3.file() as usize]
         );
     }

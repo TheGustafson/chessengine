@@ -18,37 +18,49 @@ path = "src/bin/root_analysis.rs"
 required-features = ["datagen"]
 
 [features]
-# ---- perf study 55 RETAINED MEASUREMENT ARMS.
-# Study 55 landed three groups unconditionally (small-body `#[inline(always)]`
-# on the search-body and board/TT helpers, and MovePicker's `BUF_MASK`), for a
-# measured -83.8 instructions/node. These three arms are NOT landed and are kept
-# switchable because each is a large WIN ON ITS OWN and only loses in
-# combination -- the interaction, not the change, is what blocks them. Do not
-# re-measure them alone and assume they stack; study 55 Sec 3.2 shows arms on
-# this codebase missing the sum of their parts by up to 2.6 percentage points,
-# in BOTH directions.
+# ---- perf study 55 RETAINED MEASUREMENT ARMS, RE-PRICED BY STUDY 56.
 #
-# `bcmisc55` (-44.7 i/n alone): three provable range facts --
-# `reductions[depth]`/`[move_number]` (which also closes a LATENT PANIC:
-# move_number reaches 256 in a 256-move position and `reductions` is [i32; 256]),
-# `LMR_DIVISOR[depth.min(16) - 1]` (underflows at depth 0), and DeltaBuf's write
-# side (its read side is already masked in `resolve_both`).
-bcmisc55 = []
-# `bcsort55` (-34.6 i/n alone): `partial_insertion_sort` reads `head[q - 1]`
-# twice per shifted element, once in the loop condition and once in the body.
-# NOT either rewrite study 23 rejected -- the permutation, including the
-# observable BadQuiet tail, is untouched; only the load count changes.
+# Study 55 retained three arms as "large wins alone, blocked only by
+# interaction", quoting -44.7 (`bcmisc55`) and -34.6 (`bcsort55`)
+# instructions/node. Those figures were measured against `base55` -- a substrate
+# that no longer exists, since study 55 then landed small-body inlining AND
+# `BUF_MASK` on top of it. Study 56 re-measured all three against the SHIPPING
+# binary and none of them survives:
+#
+#   arm         study 55 (vs base55)   study 56 (vs shipped)
+#   bcmisc55         -44.7 i/n              +7.7 i/n   (rebuilt from 0ce956f4)
+#   bcsort55         -34.6 i/n              +14.7 i/n
+#   bccont55          +5.8 i/n              +55.6 i/n
+#
+# The interaction did not BLOCK those wins, it consumed them. `bcmisc55`'s
+# useful half survived only after being respelled (`clamp` -> mask) and is now
+# landed unconditionally in `Worker::reduction`; the other two are kept
+# switchable purely as falsifications. See docs/research/perf-study-56-*.md §3.
+#
+# `bcsort55` (+14.7 i/n on the shipping tree): `partial_insertion_sort` reads
+# `head[q - 1]` twice per shifted element, once in the loop condition and once
+# in the body. NOT either rewrite study 23 rejected -- the permutation,
+# including the observable BadQuiet tail, is untouched; only the load count
+# changes. It still costs, alone (+14.7) and in combination (study 56 §5's
+# `c_fin4` is 14.7 i/n worse than the same binary without it).
 bcsort55 = []
-# `bccont55` (+5.8 i/n alone -- a LOSS, retained as the falsification):
-# `update_continuation_histories` has study 54's exact double-index shape on a
-# RUNTIME-LENGTH slice, and converting it to one subslice + reversed zip did not
-# pay. The shape being present is not sufficient.
+# `bccont55` (+55.6 i/n on the shipping tree -- the study's largest single
+# loser): `update_continuation_histories` has study 54's exact double-index
+# shape on a RUNTIME-LENGTH slice, and converting it to one subslice + reversed
+# zip did not pay. The shape being present is not sufficient. Study 55 measured
+# it at +5.8; on the shipped tree it is ten times worse.
 bccont55 = []
 # ---- perf study 53 arms (do_move / bounds-check deletion). Node-identical by
 # construction; each is a MEASUREMENT arm, promoted to unconditional if it wins.
 # `cont53`: pad CONT_NB 3328 -> 4096 and mask, folding the continuation-history
 # bounds check. Costs +1.125 MiB per WORKER THREAD and breaches design/09 §8's
 # 21 MiB catalogue budget -- measured, but not free.
+#
+# PERF STUDY 56 re-measured it on the shipping tree: -5.1 i/n ALONE, but adding
+# it to the study-56 landing set moves that set from -12.8 to -12.0 i/n, i.e. it
+# is DOMINATED -- it buys nothing on top and still costs the 1.125 MiB. Its
+# smaller sibling `cont_corr` (832 -> 1024, +288 KiB, inside the budget) DID
+# land. Keep this arm switchable; do not ship it without a fresh measurement.
 cont53 = []
 # perf study 48 DIAGNOSTIC PROBE: drop the PSQ1 trailer at load so the whole
 # psqt channel switches off. Changes the eval -- never ship it.

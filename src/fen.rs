@@ -347,7 +347,7 @@ mod tests {
         let mut key = 0;
         for sq in Square::all() {
             if let Some(pc) = board.piece_on(sq) {
-                key ^= ZOBRIST.psq[pc.index()][sq.index() as usize];
+                key ^= ZOBRIST.psq[pc.index()][sq.idx()];
             }
         }
         key ^= ZOBRIST.castling[board.castling_rights().bits() as usize];

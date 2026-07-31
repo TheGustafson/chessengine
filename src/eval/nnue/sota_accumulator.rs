@@ -206,7 +206,7 @@ pub(crate) fn psqt_sub(psqt: &mut [i32; BUCKETS], table: &[i32], feature: usize)
 /// Fused parent→child PSQT fold: `dst = src ± rows`, mirroring the
 /// accumulators' `apply_*_deltas_into` shape. No-op guard belongs to callers
 /// (`table` must be non-empty here).
-#[inline]
+#[inline(always)]
 pub(crate) fn psqt_fold(
     dst: &mut [i32; BUCKETS],
     src: &[i32; BUCKETS],

@@ -1577,7 +1577,7 @@ fn statscore_capture_grades_victim_value_plus_capture_history() {
     let moved_piece = w.board.piece_on(m.from()).unwrap();
     let victim = w.board.piece_on(m.to()).unwrap();
     // Same [moved][to][victim] cell `capture_value` reads (doc 09 §3.9).
-    w.histories.capture[moved_piece.index()][m.to().index() as usize][victim.piece_type as usize] =
+    w.histories.capture[moved_piece.index()][m.to().idx()][victim.piece_type as usize] =
         StatEntry::new(300);
     let want = params::STATSCORE_CAPT_NUM() * victim.piece_type.value()
         / params::STATSCORE_CAPT_DEN()

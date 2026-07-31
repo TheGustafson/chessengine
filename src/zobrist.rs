@@ -87,7 +87,15 @@ impl Tables {
                     _ => 9,
                 }
         );
-        self.psq[pc.index()][8 + count]
+        // Perf study 56 mechanism B: the outer index folds (`Piece::index` is
+        // enum arithmetic, provably `< 12`), but `8 + count` is an unbounded
+        // `usize` as far as the optimizer is concerned, so this one line was
+        // the second-largest bounds-check site in the shipped binary — NINE
+        // machine edges, all inside `make_move`/`do_move`. The debug_assert
+        // above is the real invariant (`count <= 9`); `& 63` states it where
+        // codegen can use it and is the identity for every count the assert
+        // admits.
+        self.psq[pc.index()][(8 + count) & (Square::COUNT - 1)]
     }
 }
 
@@ -222,18 +230,9 @@ mod tests {
     // which invalidate every stored key and must be deliberate.
     #[test]
     fn determinism_pins() {
-        assert_eq!(
-            ZOBRIST.psq[0][Square::A1.index() as usize],
-            0x083610FB1CD7C6A5
-        );
-        assert_eq!(
-            ZOBRIST.psq[0][Square::A2.index() as usize],
-            0x3F00957BF619FABD
-        );
-        assert_eq!(
-            ZOBRIST.psq[11][Square::H8.index() as usize],
-            0x2FE9A4D5AA8D43F6
-        );
+        assert_eq!(ZOBRIST.psq[0][Square::A1.idx()], 0x083610FB1CD7C6A5);
+        assert_eq!(ZOBRIST.psq[0][Square::A2.idx()], 0x3F00957BF619FABD);
+        assert_eq!(ZOBRIST.psq[11][Square::H8.idx()], 0x2FE9A4D5AA8D43F6);
         assert_eq!(ZOBRIST.en_passant[0], 0x7D56D658294A9988);
         assert_eq!(ZOBRIST.en_passant[7], 0x586CDAC18FC14DF7);
         assert_eq!(ZOBRIST.castling[0], 0x67E85E44A0C80F99);

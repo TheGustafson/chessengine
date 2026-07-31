@@ -211,14 +211,7 @@ impl DeltaBuf {
         // buffer for exactly this reason (see its `M` there); the write side was
         // never given the same treatment.
         debug_assert!(self.len < DELTA_CAP, "threat delta buffer overflow");
-        #[cfg(feature = "bcmisc55")]
-        {
-            self.data[self.len & (DELTA_CAP - 1)] = d;
-        }
-        #[cfg(not(feature = "bcmisc55"))]
-        {
-            self.data[self.len] = d;
-        }
+        self.data[self.len & (DELTA_CAP - 1)] = d;
         self.len += 1;
     }
 
@@ -475,7 +468,7 @@ fn record_square_touch(
 /// (sign `!add`). At most one discovered piece — `ray_pass(sl, s) & occ & qatt`
 /// is the classic "one blocker beyond" query (design/11 §12.9.1; `ray_pass` at
 /// src/attacks.rs).
-#[inline]
+#[inline(always)]
 #[allow(clippy::too_many_arguments)]
 fn ripple(
     buf: &mut DeltaBuf,
@@ -1323,6 +1316,7 @@ impl<'a> ThreatContext<'a> {
     /// fully overwritten — every perspective's `fold` state plus the move and
     /// snapshot are reset here, so no truncation is needed and deeper stale
     /// entries are never read (`compute` only ever walks toward the root).
+    #[inline(always)]
     pub fn apply_at(&mut self, ply: usize, dp: &DirtyPiece, board: &Board) {
         let child = ply + 1;
         debug_assert!(child < STACK_LEN, "ThreatContext ply {child} exceeds stack");
@@ -1991,12 +1985,29 @@ fn resolve_both(
 
 fn resolve_into(
     events: &[ThreatDelta],
-    adds: &mut [usize],
-    subs: &mut [usize],
+    // Perf study 56 mechanism B: these two were `&mut [usize]` — RUNTIME-LENGTH
+    // slices — while the only production caller passes `&mut self.add_scratch[p]`,
+    // which is already a `[usize; DELTA_CAP]`. The signature threw the length
+    // away, so all four cursor stores below carried a `cmp`/`ja panic` pair per
+    // event. `resolve_both` — the fused two-perspective twin, twenty lines up,
+    // doing the identical job — takes `&mut [[usize; DELTA_CAP]; 2]` and masks
+    // with `& M` for exactly this reason (perf study 24). `resolve_into` never
+    // got the same treatment, and it is the branch taken whenever only ONE
+    // perspective needs folding. Same argument as there: each event pushes at
+    // most one index into one buffer, so a cursor cannot pass `events.len() <=
+    // DELTA_CAP`, and `DELTA_CAP` is a power of two, so the mask is free and is
+    // the identity on every reachable value.
+    adds: &mut [usize; DELTA_CAP],
+    subs: &mut [usize; DELTA_CAP],
     resolver: &ThreatResolver,
     psqt_table: &[i32],
     psqt_delta: &mut [i32; BUCKETS],
 ) -> (usize, usize) {
+    // OFF, `M` is all-ones: `x & usize::MAX` is `x`, which the optimizer folds
+    // away entirely, so the feature-off build is identical to the unmasked
+    // spelling and the study's control stays valid with ONE spelling of each
+    // store rather than a `#[cfg]` pair around all four.
+    const M: usize = DELTA_CAP - 1;
     let mut add_len = 0usize;
     let mut sub_len = 0usize;
     if psqt_table.is_empty() {
@@ -2004,10 +2015,10 @@ fn resolve_into(
             if let Some(idx) = resolver.index(d.attacker, d.from, d.to, d.victim) {
                 debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
                 if d.add {
-                    adds[add_len] = idx;
+                    adds[add_len & M] = idx;
                     add_len += 1;
                 } else {
-                    subs[sub_len] = idx;
+                    subs[sub_len & M] = idx;
                     sub_len += 1;
                 }
             }
@@ -2026,11 +2037,11 @@ fn resolve_into(
             if let Some(idx) = resolver.index(d.attacker, d.from, d.to, d.victim) {
                 debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
                 if d.add {
-                    adds[add_len] = idx;
+                    adds[add_len & M] = idx;
                     add_len += 1;
                     psqt_add(&mut acc, psqt_table, idx);
                 } else {
-                    subs[sub_len] = idx;
+                    subs[sub_len & M] = idx;
                     sub_len += 1;
                     psqt_sub(&mut acc, psqt_table, idx);
                 }
