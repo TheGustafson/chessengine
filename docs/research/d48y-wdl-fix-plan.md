@@ -10282,3 +10282,48 @@ stayed silent.
 **D49:** sb905, **193k pos/s**, all four services active. 6.5 GB free, 155 GB
 disk. Study 56 still in its census phase — no compiles yet, so the build lock has
 been uncontended and the screen has had the box to itself.
+
+## Tick — 2026-07-31, sb900 screen: −11.59 ± 11.51, and a correction to my own framing
+
+**Result:** sb900 EMA @756 vs canonical @600, **1500 games @ 25k nodes,
+Elo −11.59 ± 11.51**, nElo −17.72 ± 17.58, LOS 2.41%, **DrawRatio 45.73%**,
+Ptnml [44, 180, 343, 148, 35], 14m38s. Unit exited 0.
+
+DrawRatio 45.7% is the health check that matters: the 2026-07-30 PSQT failure
+ran at ~0.3% draws. Both sides had NNUE active.
+
+### The D49 trajectory vs canonical @25k
+
+| point | Elo | games |
+|---|---|---|
+| sb400 | −21.24 ± 5.67 | 5880 |
+| sb620 | −4.2 ± 8.6 | 2000 |
+| sb640 | −8.2 ± 7.7 | 2500 |
+| **sb700** (end of extend) | **−4.14 ± 5.56** | 5880 |
+| mid-cycling prior pooled | −15.1 ± 8.6 | — |
+| **sb900** (mid-cycle) | **−11.59 ± 11.51** | 1500 |
+| **mid-cycling pooled** | **−13.84 ± 6.89** | — |
+
+### CORRECTION — "stable ~11 Elo debt" was over-stated
+
+I have written across several ticks that mid-cycling carries a **"stable ~11 Elo
+debt, not compounding."** The second half survives; **the first half does not,
+and I should not have asserted it.** Testing it properly:
+
+- **Mid-cycling vs canonical:** −13.84 ± 6.89 → **2.0σ**. Behind, marginally.
+- **Mid-cycling vs sb700:** difference **−9.70 ± 8.85 = 1.10σ**. **NOT
+  significant.** There is no established evidence that cycling has cost anything
+  relative to where the extend run ended.
+
+So the correct statement is: *mid-cycling measures modestly behind canonical, and
+is statistically indistinguishable from sb700.* Calling it a "debt" implied a
+measured loss caused by the cycling; that loss is not in the data. This is the
+[[quote-levels-not-trends]] failure — reading a direction off overlapping bars.
+
+**What it does establish:** nothing is diverging. The abort condition (a large,
+growing deficit) is not firing, which is the only thing a mid-cycle datapoint is
+entitled to say. **The experiment remains readable only at sb1400 and sb1700** —
+by construction, since intermediate nets sit at high-LR points of the sawtooth.
+
+**D49:** sb912, 193k pos/s, four services active, 8.4 GB free.
+**Study 56** is alive on branch `perf-study-56-combine`.
