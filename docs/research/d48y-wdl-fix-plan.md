@@ -12631,3 +12631,36 @@ measurement), branch mispredicts, `forward_into` internals, `REGS_CAP = 5`.
 
 **D49:** sb1165, 193k pos/s, four services active, 149 GB disk.
 **sb1400 in ~8.5 h.**
+
+## Tick — 2026-07-31 18:47, DELIBERATELY IDLE: study 63 needs the quiet box
+
+**No work run this tick, on purpose.** Study 63's decisive measurement is a
+wall-clock lattice that is only valid on a quiet box, and its brief requires it to
+**void any panel that loses quiet rather than salvage it.**
+
+**The standing directive includes "periodically eval the network with a few games
+and stats", and I am not doing that this tick.** A screen puts ten `fastchess`
+processes on the box and would void whatever panel study 63 is running.
+
+The trade is lopsided:
+
+- **Cost of running the eval:** a sixth mid-cycling point. The five existing
+  points (sb620/640/700/900/1060) already pool to **−10.52 ± 8.05**, at **0.65σ
+  from sb700** — the conclusion has been stable across 3000 mid-cycling games and
+  another 1500 will not change it. And mid-cycling nets sample arbitrary phases of
+  a sawtooth whose peaks measurably worsen the fit, so the point is *known* to be
+  uninformative by construction.
+- **Cost of voiding study 63's panel:** the only clean instrument for the question,
+  on the only quiet box we have had in days. Today's quiet-box panel produced a
+  null of **−0.011% at an exact 20/40 split, p=1.0000**; under load the same tool
+  has **refused outright**.
+
+**So the eval waits.** It is worth stating explicitly rather than silently
+skipping a standing instruction: the directive asks for periodic evals, and the
+reason this tick has none is that running one would destroy a more valuable
+measurement. The next natural eval point is **sb1400**, which is the first
+*readable* one anyway.
+
+**State, all read-only:** D49 **sb1171**, heldout ema 0.010607/0.010647, 193k
+pos/s, four services active, 149 GB disk, box quiet (`rustc=0`, `fastchess=0`).
+**sb1400 in 8.2 h.** Study 63 working.
