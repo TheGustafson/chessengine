@@ -11421,3 +11421,43 @@ that is worth confirming rather than assuming.
 **D49:** heldout ema **0.010641** at sb1020, the run's lowest — still inside the
 sawtooth, still not a trend, unreadable until sb1400 (~13 h out).
 **Study 59** working, no builds in flight.
+
+## Tick — 2026-07-31 13:47, the prune's second-order cost: it destroyed build artifacts
+
+Integrity confirmed after yesterday's repair: shared checkout back on
+`repr-gap-study @ 1b3845ec`, `mainwt` on `main @ 00cfbc6b`, D49 untouched at
+sb1031.
+
+**But the prune cost more than the worktrees.** Going to price the full 52–58
+series with the new `tools/wallclock_panel.py`, **both PGO binaries were gone**:
+
+- `chessengine-pre52` was itself pruned — its `HEAD` (`f289433c`) is an ancestor
+  of `main`, so it passed the same "is merged" test that ate `mainwt`.
+- `archon-58-pgo` vanished when I **recreated `mainwt`**: `engines/bin/` is
+  gitignored, so `git worktree add` materialises it **empty**. Same mechanism that
+  broke the first PGO build attempt this morning (`cp: cannot create regular file
+  'engines/bin/archon-pre52-pgo'`), arriving from the other direction.
+
+**A "merged" worktree is not a disposable worktree.** Its tracked content is
+reproducible from git; its **gitignored build output — target dirs, PGO binaries,
+profile data — is not.** Those cost 10+ minutes each to regenerate. The merge test
+says nothing about them.
+
+**What saved it: copies in the scratchpad.** `pgo_null` is **1,246,112 bytes —
+byte-for-byte the size of `archon-pre52-pgo`** — because I had copied it out when
+building the earlier panel. The reference half of the pair survived; only the
+post-58 half needed rebuilding. **Preserving a binary outside the tree that
+produced it turned a 20-minute loss into a 10-minute one**, and it is why the
+comparison is still possible at all.
+
+**Rebuilding `archon-58-pgo` at `main` now**, then running the 40-round panel to
+price studies **52–58** shipped. Expected input: the shipped instruction delta is
+**−317.7 i/n (−5.254%)** vs the gate build's −486.8 (−7.700%). The earlier panel
+priced 52–56 only, at **−1.020% wall-clock → +1.77 DERIVED Elo**.
+
+The rebuild script now **gates every later step on the `cd` succeeding and asserts
+`HEAD == main`** before touching anything — the direct fix for the silent-`cd`
+failure that put a commit on the wrong branch.
+
+**D49:** sb1033, 193k pos/s, four services active, 7.9 GB free. **Study 59**
+building.
