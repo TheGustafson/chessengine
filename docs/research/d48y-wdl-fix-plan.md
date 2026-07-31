@@ -12332,3 +12332,62 @@ the trainer, whose checkpoints live under `data/`.
 
 **D49:** sb1130, heldout ema 0.010621, four services active, 154 GB disk.
 **sb1400 in ~9.7 h.** **Study 62** working.
+
+## Tick — 2026-07-31 17:32, where the remaining speed actually is: a PRE-REGISTERED width prediction
+
+Ten studies in, the code-side picture is closed enough to say where the next
+speed is **not**:
+
+- **Instruction count** — the marginal conversion to wall-clock is
+  **indistinguishable from zero** (studies 57+58 added ~155 shipped i/n and moved
+  wall-clock not at all).
+- **Memory locality** — closed by study 61's capacity model with **no fitted
+  parameter** (L1 hit 18.5% model vs 19.1% measured; P(L2 hit | L1 miss) 70.1% vs
+  69.0%). **The cache already extracts essentially all the locality the access
+  stream contains**; ten routes closed by number.
+- **Branch mispredicts** — study 27's null.
+
+**Study 61's model leaves exactly one free variable: bytes per weight row.** And
+it measured that variable to be **convex** — **1280 → 1024 is a 20% byte cut but
+a 30% cut in L2-MISSING bytes.** So the biggest remaining speed lever is not in
+the code at all; **it is the net architecture.**
+
+### The arithmetic, with a consistency check first
+
+Using the project's own constants — **+44 Elo of fit per width doubling**,
+**−45 Elo of speed per width doubling**:
+
+| | net Elo, 1280 → 1024 |
+|---|---|
+| speed scaling **linear** in bytes | **+0.3** |
+| speed scaling with study 61's **convexity** (×1.50) | **+7.6** |
+
+**The linear case lands at ≈0, reproducing the standing finding that width is
+Elo-neutral across 768–1536.** That is the check that these are the right
+constants — the convexity result is then a change *to a model that already
+reproduces the known answer*, not a free-floating estimate.
+
+### Why this is well-motivated rather than wishful
+
+Today's central negative result is that **instruction cuts stopped converting to
+time because the engine is memory-bound** (IPC 1.595, ≥47% stall). A width
+reduction is not an instruction cut — **it attacks L2-missing bytes, which is the
+binding constraint.** It should convert *better* than everything the perf
+programme has landed, for precisely the reason those landings converted badly.
+
+### Stated as a prediction, not a recommendation
+
+**This is DERIVED and it is not a proposal to retrain at 1024.** That is a large
+commitment and an owner's call. What it is:
+
+- **Falsifiable**: a 1024-wide gen-2 net at equal time should beat a 1280 one by
+  roughly **+7.6 Elo**, where the standing model predicts **0**. Those are
+  distinguishable outcomes.
+- **Carrying three named assumptions**: the 44/45 constants have their own error
+  bars; the convexity factor assumes L2-missing bytes map ~linearly to time; and
+  the whole thing routes through the ~120 Elo/doubling speed constant.
+- **Pre-registered now, before any gen-2 net exists** — so it cannot be fitted
+  after the fact. Recorded here for whoever makes the gen-2 architecture call.
+
+**D49:** sb1137, 193k pos/s, four services active. **sb1400 in ~9.5 h.**
+**Study 62** working.
