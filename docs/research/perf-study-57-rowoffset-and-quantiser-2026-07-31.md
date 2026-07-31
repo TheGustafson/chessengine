@@ -32,6 +32,13 @@ finding study 56 asked for.
 | | `L1-dcache-loads:u` | +0.052% (ns) | +0.083% (ns) |
 | **null** (byte-identical) | instructions / branches | −0.000% se 0.000 | −0.000% se 0.000 |
 
+A **PGO pair** was also built and measured (§10): it reads −1.611% instructions,
+3.1× the non-PGO win, with arm A's load regression inverting into a −0.365%
+win. **It is reported and deliberately NOT quoted as the shipped number**,
+because the PGO baseline underneath it shows no PGO win at all (+0.060%
+instructions, +1.185% cycles against its non-PGO twin) where study 3 pins
++8.1% NPS. That discrepancy is escalated, not resolved.
+
 Gates, all green on the **integrated** tree (post-56 base, both arms):
 `CHECK_NNUE_GATE=1 bash tools/check.sh` → **All checks passed**, `Bench: 587683`,
 eval hash `2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4`,
@@ -642,3 +649,81 @@ than it was pre-56.
 
 Still true, and still unclaimed: **neither arm has been game-tested**, and arm
 A's cycles contribution remains unresolvable on this box in either base.
+
+---
+
+## 10. The PGO pair — measured, and NOT certifiable, and here is why
+
+`main`'s 2026-07-31 handoff established a new standing rule while this
+integration was running: *"every non-PGO study number overstates shipped value
+~1.6×… the rule is to add a PGO pair before quoting a shipped number."* It also
+made a prediction about this study by name — absorption largest on
+inlining-family arms, *"smallest on arms PGO cannot express (data layout,
+algorithmic removal, study 57's idiv elimination)"*.
+
+So I built the pair with `tools/build_pgo.sh` (with the eval-file argument,
+wrapped for the box in `tools/perf57/pgo57.sh`) and measured it. 30 rounds,
+node-identical, against a byte-identical PGO null that reads 0.000 on
+instructions and branches:
+
+```
+label      event                     median %  trimmed %     se   neg/n      p
+post56pgo  instructions:u              -1.611     -1.611  0.000   30/30  0.0000
+post56pgo  branches:u                  -4.166     -4.166  0.000   30/30  0.0000
+post56pgo  ls_dispatch.ld_dispatch:u   -1.179     -1.194  0.078   29/30  0.0000
+post56pgo  cycles:u                    -1.032     -1.169  0.320   24/30  0.0014
+post56pgo  L1-dcache-loads:u           -0.365     -0.372  0.038   29/30  0.0000
+```
+
+That is **3.1× the non-PGO instruction win** (−1.611% vs −0.523%), and arm A's
+load regression **inverts into a −0.365% win**. It is exactly the shape the
+handoff predicted — and I am **not quoting it as the shipped number**, because
+the baseline underneath it fails the project's own PGO yardstick.
+
+### 10.1 The PGO baseline shows no PGO win at all
+
+`base56pgo` against `base56` — same source, same `target-cpu=native`, the only
+difference being `-C profile-use`. 20 rounds:
+
+| counter | PGO vs non-PGO baseline |
+|---|---:|
+| `instructions:u` | **+0.060%** (0/20, se 0.000) |
+| `branches:u` | −3.384% (20/20, se 0.000) |
+| `L1-dcache-loads:u` | **+1.350%** (0/20) |
+| `ls_dispatch.ld_dispatch:u` | **+3.121%** (0/20) |
+| `cycles:u` | +1.185% (7/20, ns) |
+
+**PGO bought nothing here and cost loads.** Against that, perf study 3 pins
+native+PGO at **+8.1% NPS** (8/8 ABBA blocks) and `main`'s same-day handoff
+pins PGO at **−173.9 i/n (−2.96%) on this exact code**. I measure +3.5 i/n.
+Those cannot both be right.
+
+PGO clearly *applied* — branches move −3.384% and the binary differs — so this
+is not a silently-ignored profile. The signature (branches improve, loads and
+`ls_dispatch` get worse, instructions flat) is what a **partially-covered
+profile** looks like: search paths trained, the NNUE kernels not. That is the
+failure mode `build_pgo.sh`'s own header documents in capitals — *"a bench-only
+profile leaves the feature build's NNUE kernels unprofiled and PGO inert
+(measured 2026-07-18: pgo == native on the sota path)"*. I passed the
+eval-file, and a hand-run of the training UCI snippet accepts `EvalFile` and
+answers `readyok`, so if that trap fired it fired for a reason I did not find.
+
+### 10.2 What I am and am not claiming
+
+* **Claimed:** the non-PGO numbers in §9, which are what every arm in studies
+  25–56 was adjudicated on, and which have a 0.000 null.
+* **Reported but NOT certified:** the −1.611% PGO contrast. Two binaries whose
+  PGO did not take the way the standing results require may be contrasting
+  something other than shipped value, in either direction.
+* **Escalated, not resolved:** I do not own the PGO pipeline and did not go
+  further into it. But `main`'s "PGO absorbs 38% of the series' win" conclusion
+  rests on **this same script**, so if some invocations of it produce
+  partially-inert PGO binaries, that conclusion needs its own check before it
+  becomes doctrine. My one data point is not enough to overturn it and I am not
+  claiming it does — it is enough to say **it should be re-derived with a
+  direct PGO-vs-non-PGO baseline contrast**, which is the cheap 20-round panel
+  above and which I do not think was run.
+
+A concrete falsifier for whoever picks this up: on a working PGO pair, the
+baseline contrast in §10.1 must show `instructions:u` near −2.96% and a cycles
+win, not +0.060% and +1.185%.
