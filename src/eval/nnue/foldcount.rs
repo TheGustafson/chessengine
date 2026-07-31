@@ -139,6 +139,59 @@ pub fn note_thr_joint(need: [bool; 2], lens: [(usize, usize); 2]) {
     THR_JOINT[i].fetch_add(1, Relaxed);
 }
 
+/// **Perf study 48 — the redundancy census of the resolved threat index
+/// lists.** A feature index that appears in BOTH the add list and the sub list
+/// for the same perspective contributes `+row` and `−row` to the same
+/// accumulator lanes. Under wrapping `i16` arithmetic that is EXACTLY zero, so
+/// the pair is pure weight-table traffic (2 × 1280 B of the 12.6 MB threat
+/// table) that provably changes no lane. A repeated index *within* one list is
+/// a second read of a row already read — `x + w + w ≡ x + 2w (mod 2¹⁶)`, also
+/// exact.
+///
+/// This is a COUNT, not a fix: the study measures the population before
+/// deciding whether the de-duplication is worth its own scan.
+pub static THR_CANCEL: [AtomicU64; 6] = [const { AtomicU64::new(0) }; 6];
+/// Row names for [`THR_CANCEL`], in index order.
+pub const THR_CANCEL_NAMES: [&str; 6] = [
+    "folds",
+    "adds",
+    "subs",
+    "cancel_pairs",
+    "dup_add",
+    "dup_sub",
+];
+
+/// Tally one folded ply's resolved index lists into [`THR_CANCEL`].
+///
+/// Quadratic in the list length on purpose: this is instrument-only code, the
+/// lists are at most `DELTA_CAP` long and in practice ~5, and a hash set here
+/// would allocate inside the hot fold.
+#[inline]
+pub fn note_thr_cancel(adds: [&[usize]; 2], subs: [&[usize]; 2]) {
+    THR_CANCEL[0].fetch_add(1, Relaxed);
+    for p in 0..2 {
+        let (a, s) = (adds[p], subs[p]);
+        THR_CANCEL[1].fetch_add(a.len() as u64, Relaxed);
+        THR_CANCEL[2].fetch_add(s.len() as u64, Relaxed);
+        // Greedy multiset intersection: each sub may cancel at most one add.
+        let mut taken = [false; 64];
+        let mut cancel = 0u64;
+        for &x in a {
+            for (j, &y) in s.iter().enumerate().take(64) {
+                if !taken[j] && x == y {
+                    taken[j] = true;
+                    cancel += 1;
+                    break;
+                }
+            }
+        }
+        THR_CANCEL[3].fetch_add(cancel, Relaxed);
+        let dups = |v: &[usize]| (1..v.len()).filter(|&i| v[..i].contains(&v[i])).count() as u64;
+        THR_CANCEL[4].fetch_add(dups(a), Relaxed);
+        THR_CANCEL[5].fetch_add(dups(s), Relaxed);
+    }
+}
+
 /// King-boundary crossing census (richer-representation study, Tier-0 T0c).
 ///
 /// A threat-context refinement bit b(ksq) forces a from-scratch threat rebuild
@@ -385,6 +438,12 @@ pub fn dump(nodes: u64) {
                 emit!("FOLDCOUNT ktrans.{f}.{t}={n}");
             }
         }
+    }
+    for (i, name) in THR_CANCEL_NAMES.iter().enumerate() {
+        emit!(
+            "FOLDCOUNT thr_cancel.{name}={}",
+            THR_CANCEL[i].load(Relaxed)
+        );
     }
     for (i, name) in KMOVE_NAMES.iter().enumerate() {
         let (w, b) = (KMOVE[i][0].load(Relaxed), KMOVE[i][1].load(Relaxed));

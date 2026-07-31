@@ -1553,6 +1553,19 @@ impl<'a> ThreatContext<'a> {
             // of this copy are 45.4 i/n apart (D33 reviewer C, M6/N4).
             #[cfg(feature = "foldcount")]
             super::foldcount::note_thr_joint(need, lens);
+            // Perf study 48: how much of this ply's weight-row traffic is
+            // provably inert (an index in BOTH lists, or twice in one)?
+            #[cfg(feature = "foldcount")]
+            super::foldcount::note_thr_cancel(
+                [
+                    &self.add_scratch[0][..lens[0].0],
+                    &self.add_scratch[1][..lens[1].0],
+                ],
+                [
+                    &self.sub_scratch[0][..lens[0].1],
+                    &self.sub_scratch[1][..lens[1].1],
+                ],
+            );
             // The parent's VALUE HOLDER, which is the parent ply itself unless
             // the parent was a pure-copy ply the alias below elided.
             // `.min(child - 1)` for the reason `at_full`'s `.min(ply)` is

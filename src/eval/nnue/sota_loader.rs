@@ -610,7 +610,18 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     // Only bytes that START with the PSQ1 magic are interpreted; any other
     // trailing bytes are ignored exactly as this loader always has.
     let rest = &bytes[total_need..];
-    let psqt_weights = if rest.len() >= 4 && rest[0..4] == PSQT_MAGIC {
+    // ★ PERF STUDY 48 — `nopsqt48` is a SUBTRACTIVE DIAGNOSTIC PROBE, never a
+    // shipping configuration. It drops the PSQ1 trailer at load, which switches
+    // off every psqt path (both channels hand-unswitch on
+    // `psqt_weights.is_empty()`), so differencing it against the base prices
+    // the WHOLE psqt channel: 7.18 random 32-byte reads per node out of a
+    // 2.7 MB table that does not fit beside everything else in a 1 MB L2.
+    //
+    // It changes the EVAL, so the search tree differs — but `bench … nodes`
+    // pins the node count, so per-node counters stay comparable. Read it as a
+    // CEILING on any psqt-layout arm, not as a speedup.
+    let psqt_weights = if rest.len() >= 4 && rest[0..4] == PSQT_MAGIC && !cfg!(feature = "nopsqt48")
+    {
         parse_psqt_section(rest, threat_rows)?
     } else {
         Aligned::from_iter_len(0, std::iter::empty())

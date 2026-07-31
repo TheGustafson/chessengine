@@ -2271,11 +2271,49 @@ mod avx512 {
             }
             let zero = _mm512_setzero_si512();
             let ceiling = _mm512_set1_epi16(FT_QUANT as i16);
-            for flip in 0..2 {
-                let perspective = stm ^ flip;
-                let p = &pst[perspective];
-                let t = &threat[perspective];
-                for lane in (0..H).step_by(32) {
+            // ★ PERF STUDY 48 — LANE OUTER, PERSPECTIVE INNER, AND THE SCALE
+            // IN A REGISTER.
+            //
+            // `scale` is the one array here that does NOT depend on the
+            // perspective: both merges read the SAME 2560 bytes at the SAME
+            // offsets. With the perspective loop outside, the whole array was
+            // therefore streamed TWICE per evaluation — 40 redundant `zmm`
+            // loads, and on Zen 4 a 512-bit load is double-pumped into two
+            // dispatches (study 29 §2.1, measured 2.0015), so **80 redundant
+            // load dispatches per eval = 34.5 per node = 1.5 % of every load
+            // the engine issues**.
+            //
+            // Interchanging the loops alone would only trade those loads for
+            // an equal number of `vmovdqu64`s, which is the trade perf study 47
+            // §5.2 priced and (correctly, for the shape it considered)
+            // rejected: hoisting a FOLDED memory operand costs an issue slot,
+            // so `2 × vpmullw[mem]` → `1 × vmovdqu64 + 2 × vpmullw[reg]` is
+            // three ops for two.
+            //
+            // **`vpmullw` is commutative, and that is what makes this strictly
+            // better rather than a wash.** Exactly one of the multiply's two
+            // operands can be memory. Study 47 assumed it had to be the scale;
+            // it does not. Put the REUSED operand (the scale) in a register and
+            // fold the per-perspective accumulator load into the multiply
+            // instead, and the separate `vmovdqu64` for `pst` disappears:
+            //
+            // | per 32-lane group (4 merges) | ops | 512-bit loads |
+            // |---|---:|---:|
+            // | before: 4 × (`vmovdqu64` pst + `vpsllw`[threat] + `vpmullw`[scale]) | 12 | 12 |
+            // | after: 2 × `vmovdqu64` scale + 4 × (`vpmullw`[pst] + `vpsllw`[threat]) | 10 | 10 |
+            //
+            // So it removes an op AND a load per merge pair — the only strict
+            // improvement of the two, and the reason it is not the arm study 47
+            // closed. Bit-identical: every output byte is the same expression
+            // over the same inputs; only the loop order and the operand that
+            // happens to live in a register change.
+            for lane in (0..H).step_by(32) {
+                let sv_left = _mm512_loadu_si512(scale.as_ptr().add(lane).cast());
+                let sv_right = _mm512_loadu_si512(scale.as_ptr().add(lane + H).cast());
+                for flip in 0..2 {
+                    let perspective = stm ^ flip;
+                    let p = &pst[perspective];
+                    let t = &threat[perspective];
                     // The threat rescale, as ONE SHIFT.
                     //
                     // The two FT transformers are quantised differently —
@@ -2329,16 +2367,15 @@ mod avx512 {
                     // held, so it wraps exactly where that one wrapped, and the
                     // scalar and avx2 backends pin the same width to agree.
                     // The threat channel's `<< 2` is unchanged.
-                    let merge = |offset: usize| {
+                    let merge = |offset: usize, sv: __m512i| {
                         let pv = _mm512_loadu_si512(p.as_ptr().add(offset).cast());
-                        let sv = _mm512_loadu_si512(scale.as_ptr().add(offset).cast());
                         let tv = _mm512_loadu_si512(t.as_ptr().add(offset).cast());
                         let scaled = _mm512_slli_epi16::<SHIFT>(tv);
                         let sum = _mm512_adds_epi16(_mm512_mullo_epi16(pv, sv), scaled);
                         _mm512_min_epi16(_mm512_max_epi16(sum, zero), ceiling)
                     };
-                    let left = merge(lane);
-                    let right = merge(lane + H);
+                    let left = merge(lane, sv_left);
+                    let right = merge(lane + H, sv_right);
                     let prod = _mm512_mulhi_epi16(_mm512_slli_epi16::<7>(left), right);
                     _mm256_storeu_si256(
                         out.as_mut_ptr().add(flip * H + lane).cast(),
