@@ -9415,3 +9415,43 @@ the failure: *engines/canonical/archon predates CENN-v5, silently disabled NNUE 
 one side, and returned −1106.98 over 1466 games with five draws.*
 
 Box: 8872 MB, load 1.53, study 49 running on `current_full`.
+
+## ★ RETRACTION — the pre-registered sb700 range was ill-formed. LOSS IS NOT ELO.
+
+**Owner, verbatim: "Loss is not Elo. It never has been."**
+
+I pre-registered a −15 to −1 Elo range for sb700 by taking a heldout delta and
+multiplying it by a 12–28e-6-per-Elo "exchange rate". **That range is retracted as
+ill-formed — not re-estimated.** There is no such rate.
+
+**Why it is wrong in KIND:** heldout loss is a **mean over a position
+distribution**; Elo is determined by **decisions at decision points**. A net can
+shave average error on quiet positions it already scored adequately and gain
+nothing, or sharpen exactly where games turn and gain a lot with flat loss.
+Nothing makes those proportional.
+
+**The project already had this rule one level up**, from the blunder work:
+*"Centipawns are not additive into outcomes… small inaccuracies are mostly
+absorbed, while one 126 cp error at a decision point converts a result."* **Loss →
+Elo is that identical error applied to the training metric**, and I imported it
+while believing I was respecting the games-arbitrate rule.
+
+**The receipt, from today's own runs:**
+
+| | heldout | games (25k nodes) |
+|---|---:|---:|
+| sb580 | — | **−25.88 ± 11.60** (n=1466) |
+| sb620 | **−44e-6** vs sb580 | **+5.3 ± 21.2** (n=327, running) |
+| implied by the fake rate | "1.6–3.7 Elo" | **~30 Elo observed** |
+
+**Off by an order of magnitude.** That is not a mis-calibrated constant; it is a
+quantity that does not exist.
+
+**What loss is for from here:** divergence, NaN and gross-regression detection —
+the abort conditions — and ranking arms *within* a panel where everything else is
+held fixed. **It is never a strength estimate and is never converted to Elo.**
+Strength comes from games; the 5880-game verdict is the only thing that answers
+sb700.
+
+Also running: sb620 @ 5k finished at **−9.0 ± 12.1** (1000 games); sb620 @ 25k in
+flight to 2000 games (bar ±8.6).
