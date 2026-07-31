@@ -10761,3 +10761,45 @@ moment another study lands on its substrate (`bcmisc55`: −44.7 → +7.7).
 unmeasured. **The largest remaining item is the FNV-1a payload checksum at ~542 M
 cycles, ~45% of startup.** It is irreducible without changing the CENN container
 or the shipped net. Reported for a decision rather than changed quietly.
+
+## Tick — 2026-07-31, PGO PAIR BUILT AND MEASURED: PGO absorbs 38% of the win
+
+Both PGO binaries built (`archon-main-pgo`, `archon-pre52-pgo`), via
+`build_pgo.sh sota,arch-d48x <out> <canonical net>` so the NNUE kernels are
+actually profiled.
+
+| | pre-52 `f289433c` | main | delta |
+|---|---|---|---|
+| **non-PGO** | 6321.2 | 6058.1 | **−263.1 i/n (−4.163%)** |
+| **PGO** | 6046.7 | 5884.2 | **−162.4 i/n (−2.686%)** |
+
+**Only 61.7% of the series' hand-optimised win survives PGO.**
+
+**The same fact from the other direction:** PGO is worth **−274.5 i/n** on pre-52
+code but only **−173.9** on main. **Our manual work and PGO overlap by ~100 i/n** —
+we have partly been doing PGO's job by hand, and PGO then finds less left to do.
+
+**This was predicted in advance and is why it got checked.** Study 56 flagged that
+it lands **six `inline(always)` attributes** and that "PGO re-litigates exactly
+that". It does. Expect absorption to be largest for mechanism-A-style arms
+(inlining, call-site specialisation) and smallest for arms PGO cannot express —
+data layout, algorithmic removal, study 57's `idiv` elimination.
+
+### The consequence for how we report
+
+**Match and release binaries are PGO by standing rule**, so **every non-PGO study
+number overstates shipped value by ~1.6×.** Study 55's headline "−83.8 i/n" is
+about −52 i/n of shipped effect; study 56's −69.9 is about −43.
+
+Not a reason to change the gate: `instructions:u` non-PGO remains the only counter
+with a 0.000 null, and PGO builds are far too slow to gate every arm on. **The
+rule is to add a PGO pair before quoting a shipped number** — two `build_pgo.sh`
+runs and two `perf stat` calls, which is what this tick cost.
+
+**Still not converted to Elo.** −2.686% of instructions is not −2.686% of time,
+and the wall-clock instrument has failed its null three times under load. The
+fixed-TIME PGO match is now *fully prepared* — both binaries exist — and waits
+only on a quiet box. Study 57 is rebuilding (6 `rustc`), so it waits.
+
+**D49:** sb961, heldout ema **0.010662** — lowest of the run, though still inside
+the sawtooth and not a trend. 193k pos/s, four services active, 151 GB disk.
