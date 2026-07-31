@@ -126,6 +126,25 @@ const BUTTERFLY_SIZE: usize = 1 << 16; // 65536
 pub const LOW_PLY_SIZE: usize = 5;
 const VICTIM_NB: usize = 7; // 6 piece types + a "no victim" slot (ep, quiet promos)
 const CONT_NB: usize = 3328; // in_check(2) × capture(2) × piece13 × to(64)
+/// Allocated slab count for `cont` (perf study 53, arm `cont53`).
+///
+/// [`CONT_NB`] is not a power of two, so `cont[id.0 as usize]` cannot be proved
+/// in range and every `cont_ref`/`cont_mut` carries a `cmp $3328` / `jae
+/// panic_bounds_check`. Padding the allocation to 4096 and masking the index
+/// makes the mask a no-op ([`ContHistId::new`]'s bijection caps ids at 3327)
+/// and folds the check away.
+///
+/// **It is not free: +768 slabs × 1536 B = +1.125 MiB per `Histories`, i.e.
+/// per WORKER THREAD.** That takes the catalogue from 19.979 MiB to 21.104 MiB
+/// and breaches design/09 §8's ≤21 MiB budget, which is why this is a feature
+/// rather than the default.
+#[cfg(feature = "cont53")]
+const CONT_ALLOC: usize = CONT_NB.next_power_of_two(); // 4096
+#[cfg(not(feature = "cont53"))]
+const CONT_ALLOC: usize = CONT_NB;
+/// Index mask for [`CONT_ALLOC`] — see that constant.
+#[cfg(feature = "cont53")]
+const CONT_MASK: usize = CONT_ALLOC - 1;
 const CONT_CORR_NB: usize = 832; // piece13 × to(64)
 /// The `(in_check, capture)` axis pair — the LOW axis of [`ContHistId`], which
 /// is what makes [`ContHistId::piece_to`] a shift (see that type's doc).
@@ -412,7 +431,7 @@ pub struct Histories {
     /// Capture history, `[piece][to][victim_slot]` (victim 6 = "no victim").
     pub capture: Box<[Line64<[[StatEntry<CAPT_D>; VICTIM_NB]; 64]>; 12]>,
     /// Continuation history, outer index [`ContHistId`], inner [`PieceToHist`].
-    pub cont: Box<[Line64<PieceToHist>; CONT_NB]>,
+    pub cont: Box<[Line64<PieceToHist>; CONT_ALLOC]>,
     /// Pawn-structure history, `[pawn_key & mask][piece][to]`.
     pub pawn: Box<[Line64<[[StatEntry<PAWN_D>; 64]; 12]>; PAWN_HIST_SIZE]>,
     /// Unified correction history, `[key & mask][stm]` of [`CorrBundle`]s.
@@ -515,13 +534,27 @@ impl Histories {
     /// Resolve a continuation-history key to its slab (read side).
     #[inline]
     pub fn cont_ref(&self, id: ContHistId) -> &PieceToHist {
-        &self.cont[id.0 as usize]
+        #[cfg(feature = "cont53")]
+        {
+            &self.cont[id.0 as usize & CONT_MASK]
+        }
+        #[cfg(not(feature = "cont53"))]
+        {
+            &self.cont[id.0 as usize]
+        }
     }
 
     /// Resolve a continuation-history key to its slab (write side).
     #[inline]
     pub fn cont_mut(&mut self, id: ContHistId) -> &mut PieceToHist {
-        &mut self.cont[id.0 as usize]
+        #[cfg(feature = "cont53")]
+        {
+            &mut self.cont[id.0 as usize & CONT_MASK]
+        }
+        #[cfg(not(feature = "cont53"))]
+        {
+            &mut self.cont[id.0 as usize]
+        }
     }
 
     /// The pawn-history slot for a position, masked by its pawn key.
@@ -939,14 +972,21 @@ const _: () = assert!((ContHistId::SENTINEL.0 as usize) < CONT_NB);
 const HISTORIES_BYTES: usize = size_of::<[[StatEntry<MAIN_D>; BUTTERFLY_SIZE]; 2]>()
     + size_of::<[[StatEntry<MAIN_D>; BUTTERFLY_SIZE]; LOW_PLY_SIZE]>()
     + size_of::<[[[StatEntry<CAPT_D>; VICTIM_NB]; 64]; 12]>()
-    + size_of::<[PieceToHist; CONT_NB]>()
+    + size_of::<[PieceToHist; CONT_ALLOC]>()
     + size_of::<[[[StatEntry<PAWN_D>; 64]; 12]; PAWN_HIST_SIZE]>()
     + size_of::<[[CorrBundle; 2]; CORR_SIZE]>()
     + size_of::<[PieceToCorr; CONT_CORR_NB]>()
     + size_of::<StatEntry<TT_MOVE_D>>();
 // The catalogue is ~20 MiB: comfortably under the 21 MiB budget (§8), and
 // well over 19 MiB (a guard against a table silently shrinking away).
-const _: () = assert!(HISTORIES_BYTES <= 21 * 1024 * 1024);
+/// design/09 §8 criterion 2. Arm `cont53`'s power-of-two padding costs
+/// +1.125 MiB and does not fit the 21 MiB budget; the feature raises the bound
+/// explicitly rather than deleting the guard.
+#[cfg(not(feature = "cont53"))]
+const HISTORIES_BUDGET: usize = 21 * 1024 * 1024;
+#[cfg(feature = "cont53")]
+const HISTORIES_BUDGET: usize = 22 * 1024 * 1024;
+const _: () = assert!(HISTORIES_BYTES <= HISTORIES_BUDGET);
 const _: () = assert!(HISTORIES_BYTES > 19 * 1024 * 1024);
 
 #[cfg(test)]

@@ -18,6 +18,20 @@ path = "src/bin/root_analysis.rs"
 required-features = ["datagen"]
 
 [features]
+# ---- perf study 53 arms (do_move / bounds-check deletion). Node-identical by
+# construction; each is a MEASUREMENT arm, promoted to unconditional if it wins.
+# `gc53`: pass the search's already-resolved `moved_piece` into `gives_check`
+# instead of letting it re-read the mailbox (two loads, a panic edge and a
+# `check_squares` bounds check per call). See `Board::gives_check_by`.
+gc53 = []
+# `magic53`: round the shared magic-slider table to a power of two and mask the
+# index, so the `Box<[Bitboard]>` bounds check folds. Costs 187 392 B of
+# never-read pages; licensed by init_magics' exhaustive step-6 oracle.
+magic53 = []
+# `cont53`: pad CONT_NB 3328 -> 4096 and mask, folding the continuation-history
+# bounds check. Costs +1.125 MiB per WORKER THREAD and breaches design/09 §8's
+# 21 MiB catalogue budget -- measured, but not free.
+cont53 = []
 # perf study 48 DIAGNOSTIC PROBE: drop the PSQ1 trailer at load so the whole
 # psqt channel switches off. Changes the eval -- never ship it.
 nopsqt48 = []

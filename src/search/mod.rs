@@ -3271,7 +3271,14 @@ impl Worker {
             // the aspiration width at the root). `r` is finalized after the
             // move is made (§3.7), but the pruning block reads only its BASE
             // value for `lmr_depth`, so it is computed here, ahead of both.
+            // Perf study 53 arm `gc53`: `moved_piece` above is exactly the
+            // piece `gives_check` would read back out of the mailbox, and the
+            // intervening `stack[cur].move_count` store blocks the CSE. See
+            // `Board::gives_check_by`.
+            #[cfg(not(feature = "gc53"))]
             let gives_check = self.board.gives_check(m);
+            #[cfg(feature = "gc53")]
+            let gives_check = self.board.gives_check_by(m, moved_piece);
             let mut new_depth = depth - 1;
             let delta = beta - alpha;
             let mut r = self.reduction(improving, depth, move_count, delta);

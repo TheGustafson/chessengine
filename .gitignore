@@ -105,3 +105,5 @@ perf52data/
 target52-pgo/
 gate52*.log
 pgo52.log
+# perf study 53 build + measurement artifacts
+/bin53/
