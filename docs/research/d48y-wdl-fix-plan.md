@@ -11075,3 +11075,46 @@ box", not "fixed-time match". The PGO pair remains built and useful for it.
 
 **D49:** heldout sb990 ema 0.010701, 193k pos/s, four services active.
 **Study 58** working, no builds in flight.
+
+## Tick — 2026-07-31 12:31, node-null FINAL at 1500 games; speed panel launched on a quiet box
+
+**Node-null final, all 1500 games:**
+
+```
+Elo: -0.00 +/- 0.00        DrawRatio (pairs): 100.00%
+Games: 1500  Wins: 421  Losses: 421  Draws: 658
+Ptnml(0-2): [0, 0, 750, 0, 0]
+```
+
+**All 750 pairs split exactly 1–1. Zero deviations at full sample.** The 998-game
+interim was not a small-sample artifact; determinism holds across the whole run.
+The perf series is behaviourally inert in live play, proven rather than assumed.
+
+### The quiet window arrived and was used immediately
+
+`nodenull3` finished, `rustc = 0`, no builds in flight — the first genuinely quiet
+box since the plan was corrected. **The 40-round wall-clock panel is running now**
+(`wc40`), against the PGO pair.
+
+Design, all of it fixed *before* the run:
+
+- **Interleaved null and arm within each round** — each round times `pre52-pgo`,
+  a byte-identical copy of it, and `main-pgo`. Null and arm therefore experience
+  the *same* contention. This was the fix for the earlier failure where the null
+  drifted −0.132% → +0.972% *between* a null phase and an arm phase as a third
+  party's build came and went.
+- **Blocked rotation** of which binary runs first, so position in the round cannot
+  alias onto a binary.
+- **40 rounds**, per study 57's finding that a ~1% effect needs ~40 paired rounds
+  for the **sign test** (its own contrast read −0.790% and *failed* its sign test
+  at 24 rounds, then −1.228% at p=0.0034 at 39).
+- **Median-only criterion, pre-registered** (registered two ticks ago, before any
+  of this data existed): licence requires |null median| < |arm median| / 2.
+- On licence, convert via **~120 Elo/doubling** (exp-0154) and label the result
+  **DERIVED**, never measured.
+
+**Note what the panel measures:** `archon-main-pgo` was built at post-56 main, so
+this prices **studies 52–56**. Study 57 merged afterwards and is not in it.
+
+**D49:** sb996 — about to cross **sb1000**. 193k pos/s, four services active,
+8.5 GB free, 154 GB disk. **Study 58** working, no builds.
