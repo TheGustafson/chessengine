@@ -280,10 +280,20 @@ impl Default for Entry {
 /// The per-ply bookkeeping that [`HalfkaContext::compute`] walks, split out of
 /// [`Entry`] so the walk is dense (perf study 22 arm 1).
 ///
-/// 12 bytes per ply against `Entry`'s 5248, so the whole `STACK_LEN`-deep array
-/// is ~3 KB — 48 cache lines for the entire search stack, versus one line per
-/// ply 5248 bytes apart. A parent/child pair now shares a line instead of
-/// guaranteeing two misses.
+/// **16** bytes per ply against `Entry`'s 5248, so the whole `STACK_LEN`-deep
+/// array is **4064 B — 64 cache lines** for the entire search stack, versus one
+/// line per ply 5248 bytes apart. A parent/child pair now shares a line instead
+/// of guaranteeing two misses; four plies share one line.
+///
+/// **This paragraph said "12 bytes … ~3 KB … 48 cache lines" until perf study
+/// 49, and had since the split.** `DirtyPiece` is 14 B, not 10: `(Piece,
+/// Square)` is 3 bytes (`Piece` is a two-field struct, not a packed index), so
+/// `adds` and `subs` are 6 each. The claim was never checked by anything —
+/// unlike the `Entry` size in the next paragraph, which perf study 43 verified
+/// from the `foldcount` region dump — so the `const` assertion below now pins
+/// both the size and the `shl $4` addressing that depends on it. The
+/// disassembly is the third witness: `compute` indexes `meta` with
+/// `shl $0x4,%rbp` and reads `computed[p]` at `0xe(%r8,%rax,1)`.
 ///
 /// The 5248 above is the **pre-split** `Entry` (payload + `dirty` + `computed`,
 /// 5196 rounded up to 64-byte alignment) and is left as written because it is
@@ -298,6 +308,18 @@ struct Meta {
     dirty: DirtyPiece,
     computed: [bool; 2],
 }
+
+/// `Meta` must stay a power of two wide. The doc above quotes a line count that
+/// depends on it, and — the part that actually costs cycles — `compute` indexes
+/// `meta` thousands of times per node, which LLVM emits as a `shl $0x4` only
+/// while the stride is 16. Widening the struct by one byte turns every index
+/// into an `imul`, silently. A `const` block is the idiomatic Rust spelling for
+/// "check this during compilation": it is evaluated at const-eval time and
+/// fails the BUILD, so it cannot be skipped the way a test can.
+const _: () = assert!(
+    std::mem::size_of::<Meta>() == 16,
+    "Meta must stay 16 bytes: compute's meta indexing is a shl $4"
+);
 
 impl Default for Meta {
     fn default() -> Self {
