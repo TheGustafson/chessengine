@@ -9111,3 +9111,41 @@ chunk the gram accumulation rather than materialising a full matrix, and queue
 anything genuinely larger for after the sb700 handover when ~4.5 GB and the GPU
 free up. **Its research direction was explicitly not questioned** — the
 decodability-probe method is right; it just has to fit the box.
+
+## Tick — raw crossing SCORED (I was 7 sb optimistic); load-29 incident
+
+### The raw-series prediction, scored honestly
+
+Pre-registered last tick: "the raw series crosses at ~sb555."
+
+| sb | raw | vs bar 0.010824 |
+|---|---:|---:|
+| 550 | 0.010847 | +23e-6 |
+| **560** | **0.010829** | **+5e-6** |
+
+**Actual crossing ~sb562 — I was 7 superbatches optimistic**, against the EMA
+prediction which was accurate to ~1. **Why:** I fitted the slope over a window
+containing the steep sb530→540 step (−60e-6), so the −4.20e-6/sb I extrapolated
+was inflated by a transient; the realised recent rate is −1.8e-6/sb. *Fitting
+across an outlier step is not the same as fitting a trend* — the same class of
+error as differencing two points, one level up.
+
+**EMA is now 0.010739 — 73e-6 past its bar**, thirteen consecutive down.
+
+### Load 29 on a 16-thread box
+
+`reprgap/probes.py report` ran at **1148% CPU across 16 threads**, driving the
+1-minute load to **28.96**. Consequences: the **trainer slipped 192k → 189.5k
+pos/s**, and **any concurrent cycles panel is invalid** — study 45 is measuring
+now, and its own work established this box cannot resolve sub-1% *without*
+contention (two inert arms disagreed by 1.164pp).
+
+Reniced the study's processes to **+19** so the trainer wins the scheduler —
+a mitigation, not a fix, since it still spawns 16 threads. Study told to set
+`OMP_NUM_THREADS`/`OPENBLAS_NUM_THREADS`/`MKL_NUM_THREADS`=4 explicitly, because
+**numpy/BLAS defaults to ALL cores and will repeat this on every invocation
+unless the environment says otherwise.**
+
+**Its operating envelope is now: ≤3 GB resident, ≤4 threads, sequential passes.**
+Both corrections to that study have been about footprint; neither about the
+science, and I said so to it explicitly.
