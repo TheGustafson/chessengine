@@ -10803,3 +10803,57 @@ only on a quiet box. Study 57 is rebuilding (6 `rustc`), so it waits.
 
 **D49:** sb961, heldout ema **0.010662** — lowest of the run, though still inside
 the sawtooth and not a trend. 193k pos/s, four services active, 151 GB disk.
+
+## Tick — 2026-07-31, CORRECTION: profile the PGO binary. My "stale list" call was wrong.
+
+Every profile in this document until now was taken on a **non-PGO** binary — and
+the one I used to declare the directive's list stale was **also pre-52**. Wrong on
+both axes. Profiled `archon-main-pgo`, the binary we actually ship:
+
+| function | my non-PGO re-profile | **PGO (shipped)** | directive's list |
+|---|---|---|---|
+| `search::<NonPv>` | 11.19% | **23.53%** | 19.90% |
+| `HalfkaContext::current_full` | 3.72% | **12.40%** | 3.28% |
+| `i8_deltas_into_generic` | 8.74% | **10.21%** | — |
+| `SotaHead::forward_into` | *not in top 18* | **9.30%** | **8.77%** |
+| `init_quiets` | 6.35% | 7.64% | 6.35% |
+| `at_full` | 5.61% | 7.19% | — |
+| `finny_refresh_into` | 1.56% | **6.38%** | **9.15%** |
+| `qsearch::<NonPv>` | — | 4.07% | — |
+| `i8_deltas_into_inner` | 10.36% | **ABSENT — PGO inlines it** | — |
+
+**The directive's percentages were closer to the shipped truth than my
+"correction" was.** It was evidently measured on a PGO build. I saw one genuinely
+dead name (`i16_deltas_into`, killed by study 32's i8 change), generalised from it
+to "the whole list is stale", and re-derived numbers from the wrong binary. Perf
+study 57 caught this independently — "your profile table came from a
+differently-inlined build" — and it was right.
+
+**The mechanism, which is the reusable part:** PGO inlines `i8_deltas_into_inner`
+away *entirely*, and its 10.36% reappears inside `current_full` (3.72% →
+**12.40%**). A study targeting `i8_deltas_into_inner` by name would be optimising
+a symbol **that does not exist in the shipped binary.**
+
+**What survives from the earlier finding:** the `i16_deltas_*` family really is
+gone; `instructions:u` really is the only 0.000-null counter; and ~5.2% of the
+frame really is startup. What does *not* survive is my claim that
+`finny_refresh_into` had collapsed to 1.56% and that `forward_into` had left the
+profile. **Both are alive and large in the shipped binary — 6.38% and 9.30% — and
+both were on the directive's list all along.**
+
+### The shipped binary's actual top targets
+
+`search::<NonPv>` **23.53%** · `current_full` **12.40%** ·
+`i8_deltas_into_generic` **10.21%** · `forward_into` **9.30%** ·
+`init_quiets` 7.64% · `at_full` 7.19% · `finny_refresh_into` 6.38%
+
+`forward_into` and `current_full` are the two largest genuinely-untouched blocks,
+and both were named in the directive I talked myself out of.
+
+**Standing rule going forward:** profile `engines/bin/*-pgo`, built with
+`build_pgo.sh <features> <out> <net>`. Verify a binary's provenance by **building
+it**, never by its mtime — the same error that produced the −0.473% phantom
+earlier today.
+
+**D49:** sb968, 193k pos/s, four services active, 152 GB disk. **Study 57**
+rebasing onto post-56 main; writeup and self-retraction commits already in.
