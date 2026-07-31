@@ -10433,3 +10433,62 @@ deliberately so** — starting a time-sensitive match on a contended box is how 
 four services active, 8.1 GB free.
 **Studies 56 and 57 both alive**, one `rustc` between them — the shared
 `flock` is serialising builds as designed.
+
+## Tick — 2026-07-31, THE PERF CHAIN IS REAL: −193.1 i/n measured end-to-end, 93.6% of claims
+
+Last tick I recorded that the perf programme's value was unmeasured. This tick
+measured the instruction half of it properly, **and caught myself running a
+confounded comparison first.**
+
+### The controlled result
+
+Built the pre-52 parent `f289433c` from source with **flags identical** to a
+fresh `main` build (`sota,arch-d48x`, `-C target-cpu=x86-64-v3`, same box, same
+pinned 5M-node frame):
+
+| | i/n |
+|---|---|
+| pre-52 (`f289433c`) | 6321.2 |
+| main | 6128.0 |
+| **delta** | **−193.1 (−3.056%)** |
+| claimed by studies 52–55 (36.5+39.3+46.7+83.8) | −206.3 |
+| **realised** | **93.6%** |
+
+**The chain composes.** Study 55 proved arms are violently non-additive *within*
+a study; across merged studies the loss is only 6.4%. Those are different
+questions and it is worth not confusing them: non-additivity bites between arms
+sharing code paths, not between independently-gated merges.
+
+### The confounded comparison I ran first, and why it was wrong
+
+I first compared `main` against the existing `target-sota` binary and got
+**−0.473%** — which would have meant the whole series was worth almost nothing. I
+did not report it as a finding, because its provenance was a *guess*: I inferred
+that binary's commit from its **mtime** via `git log --until`, and I never knew
+its `RUSTFLAGS`. Both are load-bearing for an instruction comparison. Rebuilding
+the real parent with matched flags moved the answer from −0.473% to −3.056%.
+
+**The lesson is narrow and reusable: a binary on disk is not a known commit.**
+Provenance by timestamp is not provenance. Build both sides of a perf comparison
+yourself, or you are measuring your build flags.
+
+### Wall-clock, designed null-first
+
+An earlier paired timing panel on the same box **disqualified its own primary
+statistic**, which is exactly what rule 1 is for:
+
+| statistic | NULL (byte-identical) | ARM |
+|---|---|---|
+| paired **mean** | **+3.504% ± 3.372** (sd 9.54) | −2.858% ± 0.699 |
+| **median** | **−0.132%** | −2.103% |
+
+One contention round of **+27.07%** wrecked the mean; its null noise exceeds the
+effect, so **the mean cannot answer under load**. The median null is −0.132% and
+is licensed. A controlled median panel (main vs the rebuilt pre-52, null first)
+is running now; its ratio will say whether −3.056% of instructions buys
+proportional time. **Until it reports, no time claim is made** — and the
+directive's own study-20 receipt (−5.99% cycles, instructions **up** 0.19%) is
+the standing reason not to assume one.
+
+**D49:** sb933, heldout ema 0.010666/0.010714 (sawtooth), 193k pos/s, four
+services active. Studies 56 and 57 alive, builds serialised on the shared lock.
