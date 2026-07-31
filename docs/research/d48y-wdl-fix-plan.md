@@ -9656,3 +9656,29 @@ verified.** The mistake came from copying d49x's invocation shape while
 mis-reading which number meant what — the same units-at-the-boundary error the
 project has now paid for three times today (SF "epochs", study 36's denominator,
 this).
+
+## Watchdog v2 — progress-gated, because v1 would have amplified the bug I just caught
+
+**D49x: sb669**, ~31 superbatches to the handoff.
+
+**v1 had a flaw the sb700 resume bug made concrete.** It restarted `d49y`
+whenever the unit went inactive, with no check that the run had actually
+advanced. Had the `resume_sb=1700` bug not been caught, the sequence would have
+been: continuation dies instantly → watchdog restarts it → dies instantly →
+**every 100 seconds for 55 hours**, filling the log and burning the box while
+every `is-active` check reported healthy.
+
+**v2 is progress-gated.** A restart is permitted only if the superbatch counter
+has advanced since the previous one. **Three restarts with no progress and it
+HALTS**, logging that the fault is a resume/checkpoint/config problem rather than
+something transient, and explicitly declining to restart again.
+
+That is the right failure mode for unattended running: **a watchdog that cannot
+tell "crashed" from "crashing" is an amplifier, not a safety net.**
+
+**Audit of the other queued unit** (`d49v700`, the 5880-game verdict): it waits on
+`d49x`, polls up to 30 min for `sb700-ema-raw.bin` before touching it, requants
+and packs at 756, and screens with `ENGINE=target-sota` — CEN5-capable, so
+`screen.sh`'s new load guard passes rather than fires. No positional-argument
+hazard: `requant_threats.py` and `netpack.py` take explicit flags, and
+`screen.sh` takes `CAND REF GAMES NODES` in that order. Clean.
