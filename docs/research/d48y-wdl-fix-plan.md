@@ -10857,3 +10857,39 @@ earlier today.
 
 **D49:** sb968, 193k pos/s, four services active, 152 GB disk. **Study 57**
 rebasing onto post-56 main; writeup and self-retraction commits already in.
+
+## Tick — 2026-07-31 11:46, study 58 commissioned against the PGO profile
+
+**Study 57 has committed its integration** (`247a0d4d`, "integrate with study 56
+and re-measure against post-56 main") and is still working. Not merged yet.
+
+**Study 58 commissioned** on the two largest genuinely-untouched blocks in the
+*shipped* binary: **`current_full` 12.40%** and **`forward_into` 9.30%**.
+
+Note what `current_full` now is: **it contains the inlined i8 delta fold**, so
+work there is work on the fold kernel as the shipped binary actually lays it out.
+That framing is only visible from a PGO profile — in a non-PGO build the same
+cost sits under a separate `i8_deltas_into_inner` symbol.
+
+**Three lessons from today are written into the brief as gates, not advice:**
+
+1. **Profile the PGO binary; verify provenance by BUILDING, never by mtime.**
+   Both of my errors today are quoted at it with their numbers (the absent
+   symbol; the −0.473% phantom vs the real −3.056%).
+2. **Read the catalogue first.** Study 57's best arm existed only because study
+   37 §5 had priced it at −8 i/n *when the fold was 2 tiles wide*, study 44 made
+   the walk 4× wider, and nobody re-priced it — worth **−41 i/n** at the shipped
+   width. The brief names all twelve prior studies that worked this block and
+   tells it to hunt for candidates invalidated by later assumptions. It also
+   explicitly **closes** the threat shape dispatch, which three studies have now
+   over-priced ~3× by the same per-call/per-row confusion.
+3. **`instructions:u` is not universal.** Study 57's `idiv` arm is −22.5% startup
+   cycles with instructions **up** 4.5%. The brief says so, so the agent can
+   recognise a latency-for-count trade rather than gate itself out of one.
+
+Plus: **report both non-PGO and PGO deltas before claiming a shipped number**
+(38% absorption, measured today), and **rebase onto post-57 main before the final
+gate** — study 56's `bcmisc55` (−44.7 → +7.7) is cited as the reason.
+
+**D49:** sb975, heldout ema 0.010662/0.010695 (sawtooth), 193k pos/s, four
+services active, 151 GB disk. **sb1400 — the first readable point — is ~15 h out.**
