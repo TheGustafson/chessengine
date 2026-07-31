@@ -1544,3 +1544,3369 @@ Nodes searched: 100031
 Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
 Nodes searched: 100031
 Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7308
+Nodes searched  : 5001562
+Nodes/second    : 684395
+30290718814,,instructions:u,3990403865,100.00,,
+20182713351,,cycles:u,3990403865,100.00,,
+15021580460,,L1-dcache-loads:u,3990403865,100.00,,
+11516252272,,ls_dispatch.ld_dispatch:u,3990403865,100.00,,
+4610461832,,ls_dispatch.store_dispatch:u,3990403865,100.00,,
+### round=2 pos=3 label=inld55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7330
+Nodes searched  : 5001562
+Nodes/second    : 682341
+30287017363,,instructions:u,3992295959,100.00,,
+20195039912,,cycles:u,3992295959,100.00,,
+15022451654,,L1-dcache-loads:u,3992295959,100.00,,
+11518366671,,ls_dispatch.ld_dispatch:u,3992295959,100.00,,
+4642300764,,ls_dispatch.store_dispatch:u,3992295959,100.00,,
+### round=2 pos=4 label=inle55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7294
+Nodes searched  : 5001562
+Nodes/second    : 685709
+30184546054,,instructions:u,3971113028,100.00,,
+20108762553,,cycles:u,3971113028,100.00,,
+15090317835,,L1-dcache-loads:u,3971113028,100.00,,
+11541306083,,ls_dispatch.ld_dispatch:u,3971113028,100.00,,
+4655384602,,ls_dispatch.store_dispatch:u,3971113028,100.00,,
+### round=2 pos=5 label=null55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7339
+Nodes searched  : 5001562
+Nodes/second    : 681504
+30161882331,,instructions:u,3995357484,100.00,,
+20215019651,,cycles:u,3995357484,100.00,,
+14942264965,,L1-dcache-loads:u,3995357484,100.00,,
+11423462610,,ls_dispatch.ld_dispatch:u,3995357484,100.00,,
+4550270122,,ls_dispatch.store_dispatch:u,3995357484,100.00,,
+### round=3 pos=0 label=inlall55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7275
+Nodes searched  : 5001562
+Nodes/second    : 687499
+30190413173,,instructions:u,3966158209,100.00,,
+20051009283,,cycles:u,3966158209,100.00,,
+14993348666,,L1-dcache-loads:u,3966158209,100.00,,
+11472025940,,ls_dispatch.ld_dispatch:u,3966158209,100.00,,
+4577947048,,ls_dispatch.store_dispatch:u,3966158209,100.00,,
+### round=3 pos=1 label=inlc55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7301
+Nodes searched  : 5001562
+Nodes/second    : 685051
+30290719376,,instructions:u,3982850736,100.00,,
+20138037060,,cycles:u,3982850736,100.00,,
+15024750432,,L1-dcache-loads:u,3982850736,100.00,,
+11518945085,,ls_dispatch.ld_dispatch:u,3982850736,100.00,,
+4609528746,,ls_dispatch.store_dispatch:u,3982850736,100.00,,
+### round=3 pos=2 label=inld55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7346
+Nodes searched  : 5001562
+Nodes/second    : 680855
+30287016600,,instructions:u,3997584350,100.00,,
+20260176372,,cycles:u,3997584350,100.00,,
+15033889623,,L1-dcache-loads:u,3997584350,100.00,,
+11546464087,,ls_dispatch.ld_dispatch:u,3997584350,100.00,,
+4636357205,,ls_dispatch.store_dispatch:u,3997584350,100.00,,
+### round=3 pos=3 label=inle55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7239
+Nodes searched  : 5001562
+Nodes/second    : 690918
+30184546661,,instructions:u,3961067690,100.00,,
+19989930424,,cycles:u,3961067690,100.00,,
+15065210506,,L1-dcache-loads:u,3961067690,100.00,,
+11521818910,,ls_dispatch.ld_dispatch:u,3961067690,100.00,,
+4644052720,,ls_dispatch.store_dispatch:u,3961067690,100.00,,
+### round=3 pos=4 label=null55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7307
+Nodes searched  : 5001562
+Nodes/second    : 684489
+30161882672,,instructions:u,3983479061,100.00,,
+20148591490,,cycles:u,3983479061,100.00,,
+14929421433,,L1-dcache-loads:u,3983479061,100.00,,
+11401398973,,ls_dispatch.ld_dispatch:u,3983479061,100.00,,
+4543637236,,ls_dispatch.store_dispatch:u,3983479061,100.00,,
+### round=3 pos=5 label=base55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7280
+Nodes searched  : 5001562
+Nodes/second    : 687027
+30161882547,,instructions:u,3972535021,100.00,,
+20078016920,,cycles:u,3972535021,100.00,,
+14902097522,,L1-dcache-loads:u,3972535021,100.00,,
+11387271113,,ls_dispatch.ld_dispatch:u,3972535021,100.00,,
+4535185382,,ls_dispatch.store_dispatch:u,3972535021,100.00,,
+### round=4 pos=0 label=inlc55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7240
+Nodes searched  : 5001562
+Nodes/second    : 690823
+30290717918,,instructions:u,3953297584,100.00,,
+20003613233,,cycles:u,3953297584,100.00,,
+15016873814,,L1-dcache-loads:u,3953297584,100.00,,
+11507523961,,ls_dispatch.ld_dispatch:u,3953297584,100.00,,
+4607049866,,ls_dispatch.store_dispatch:u,3953297584,100.00,,
+### round=4 pos=1 label=inld55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7305
+Nodes searched  : 5001562
+Nodes/second    : 684676
+30287016479,,instructions:u,3985201943,100.00,,
+20174524347,,cycles:u,3985201943,100.00,,
+14971566402,,L1-dcache-loads:u,3985201943,100.00,,
+11457415034,,ls_dispatch.ld_dispatch:u,3985201943,100.00,,
+4623965958,,ls_dispatch.store_dispatch:u,3985201943,100.00,,
+### round=4 pos=2 label=inle55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7304
+Nodes searched  : 5001562
+Nodes/second    : 684770
+30184546288,,instructions:u,3982308852,100.00,,
+20154311437,,cycles:u,3982308852,100.00,,
+15091433330,,L1-dcache-loads:u,3982308852,100.00,,
+11543436556,,ls_dispatch.ld_dispatch:u,3982308852,100.00,,
+4655436779,,ls_dispatch.store_dispatch:u,3982308852,100.00,,
+### round=4 pos=3 label=null55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7294
+Nodes searched  : 5001562
+Nodes/second    : 685709
+30161882617,,instructions:u,3981117403,100.00,,
+20132919326,,cycles:u,3981117403,100.00,,
+14933437298,,L1-dcache-loads:u,3981117403,100.00,,
+11409425224,,ls_dispatch.ld_dispatch:u,3981117403,100.00,,
+4545774089,,ls_dispatch.store_dispatch:u,3981117403,100.00,,
+### round=4 pos=4 label=base55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7254
+Nodes searched  : 5001562
+Nodes/second    : 689490
+30161882117,,instructions:u,3955839939,100.00,,
+20023497837,,cycles:u,3955839939,100.00,,
+14896969933,,L1-dcache-loads:u,3955839939,100.00,,
+11382393401,,ls_dispatch.ld_dispatch:u,3955839939,100.00,,
+4533564431,,ls_dispatch.store_dispatch:u,3955839939,100.00,,
+### round=4 pos=5 label=inlall55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7285
+Nodes searched  : 5001562
+Nodes/second    : 686556
+30190412909,,instructions:u,3969966212,100.00,,
+20080386108,,cycles:u,3969966212,100.00,,
+14990587313,,L1-dcache-loads:u,3969966212,100.00,,
+11473488494,,ls_dispatch.ld_dispatch:u,3969966212,100.00,,
+4579286309,,ls_dispatch.store_dispatch:u,3969966212,100.00,,
+### round=5 pos=0 label=inld55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7343
+Nodes searched  : 5001562
+Nodes/second    : 681133
+30287016472,,instructions:u,4002244163,100.00,,
+20237258367,,cycles:u,4002244163,100.00,,
+15026023559,,L1-dcache-loads:u,4002244163,100.00,,
+11517722065,,ls_dispatch.ld_dispatch:u,4002244163,100.00,,
+4640690985,,ls_dispatch.store_dispatch:u,4002244163,100.00,,
+### round=5 pos=1 label=inle55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7309
+Nodes searched  : 5001562
+Nodes/second    : 684301
+30184546695,,instructions:u,3990829845,100.00,,
+20162419049,,cycles:u,3990829845,100.00,,
+15069215201,,L1-dcache-loads:u,3990829845,100.00,,
+11519831271,,ls_dispatch.ld_dispatch:u,3990829845,100.00,,
+4643263216,,ls_dispatch.store_dispatch:u,3990829845,100.00,,
+### round=5 pos=2 label=null55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7498
+Nodes searched  : 5001562
+Nodes/second    : 667052
+30161882238,,instructions:u,4087220207,100.00,,
+20662095855,,cycles:u,4087220207,100.00,,
+14895497074,,L1-dcache-loads:u,4087220207,100.00,,
+11381591809,,ls_dispatch.ld_dispatch:u,4087220207,100.00,,
+4541851055,,ls_dispatch.store_dispatch:u,4087220207,100.00,,
+### round=5 pos=3 label=base55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7456
+Nodes searched  : 5001562
+Nodes/second    : 670810
+30161882595,,instructions:u,4067522051,100.00,,
+20535552863,,cycles:u,4067522051,100.00,,
+14895691713,,L1-dcache-loads:u,4067522051,100.00,,
+11386030111,,ls_dispatch.ld_dispatch:u,4067522051,100.00,,
+4535204887,,ls_dispatch.store_dispatch:u,4067522051,100.00,,
+### round=5 pos=4 label=inlall55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7484
+Nodes searched  : 5001562
+Nodes/second    : 668300
+30190413573,,instructions:u,4073065857,100.00,,
+20579201361,,cycles:u,4073065857,100.00,,
+14996213272,,L1-dcache-loads:u,4073065857,100.00,,
+11477351718,,ls_dispatch.ld_dispatch:u,4073065857,100.00,,
+4582061959,,ls_dispatch.store_dispatch:u,4073065857,100.00,,
+### round=5 pos=5 label=inlc55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7514
+Nodes searched  : 5001562
+Nodes/second    : 665632
+30290718966,,instructions:u,4091614672,100.00,,
+20665137425,,cycles:u,4091614672,100.00,,
+15017432702,,L1-dcache-loads:u,4091614672,100.00,,
+11511700190,,ls_dispatch.ld_dispatch:u,4091614672,100.00,,
+4608585578,,ls_dispatch.store_dispatch:u,4091614672,100.00,,
+### round=6 pos=0 label=inle55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7485
+Nodes searched  : 5001562
+Nodes/second    : 668211
+30184547564,,instructions:u,4074621788,100.00,,
+20566962823,,cycles:u,4074621788,100.00,,
+15080595422,,L1-dcache-loads:u,4074621788,100.00,,
+11537395211,,ls_dispatch.ld_dispatch:u,4074621788,100.00,,
+4651855197,,ls_dispatch.store_dispatch:u,4074621788,100.00,,
+### round=6 pos=1 label=base55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7533
+Nodes searched  : 5001562
+Nodes/second    : 663953
+30161883855,,instructions:u,4098392339,100.00,,
+20699628605,,cycles:u,4098392339,100.00,,
+14918978760,,L1-dcache-loads:u,4098392339,100.00,,
+11412345360,,ls_dispatch.ld_dispatch:u,4098392339,100.00,,
+4545586347,,ls_dispatch.store_dispatch:u,4098392339,100.00,,
+### round=6 pos=2 label=inlall55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7826
+Nodes searched  : 5001562
+Nodes/second    : 639095
+30190413467,,instructions:u,4247823274,100.00,,
+21374126470,,cycles:u,4247823274,100.00,,
+14999724612,,L1-dcache-loads:u,4247823274,100.00,,
+11477352514,,ls_dispatch.ld_dispatch:u,4247823274,100.00,,
+4579253532,,ls_dispatch.store_dispatch:u,4247823274,100.00,,
+### round=6 pos=3 label=inld55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 7200
+Nodes searched  : 5001562
+Nodes/second    : 694661
+30287016460,,instructions:u,4160495053,100.00,,
+20910624472,,cycles:u,4160495053,100.00,,
+14972792393,,L1-dcache-loads:u,4160495053,100.00,,
+11475702162,,ls_dispatch.ld_dispatch:u,4160495053,100.00,,
+4631616177,,ls_dispatch.store_dispatch:u,4160495053,100.00,,
+### round=6 pos=4 label=inlc55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 3393
+Nodes searched  : 5001562
+Nodes/second    : 1474082
+30290717305,,instructions:u,3727964549,100.00,,
+18741786287,,cycles:u,3727964549,100.00,,
+14910310910,,L1-dcache-loads:u,3727964549,100.00,,
+11358195207,,ls_dispatch.ld_dispatch:u,3727964549,100.00,,
+4545441394,,ls_dispatch.store_dispatch:u,3727964549,100.00,,
+### round=6 pos=5 label=null55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 3438
+Nodes searched  : 5001562
+Nodes/second    : 1454788
+30161881878,,instructions:u,3772790496,100.00,,
+18972287868,,cycles:u,3772790496,100.00,,
+14817832880,,L1-dcache-loads:u,3772790496,100.00,,
+11239380876,,ls_dispatch.ld_dispatch:u,3772790496,100.00,,
+4479348176,,ls_dispatch.store_dispatch:u,3772790496,100.00,,
+### round=7 pos=0 label=base55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 3482
+Nodes searched  : 5001562
+Nodes/second    : 1436404
+30161881072,,instructions:u,3816266802,100.00,,
+19163708027,,cycles:u,3816266802,100.00,,
+14806170732,,L1-dcache-loads:u,3816266802,100.00,,
+11218966652,,ls_dispatch.ld_dispatch:u,3816266802,100.00,,
+4465979633,,ls_dispatch.store_dispatch:u,3816266802,100.00,,
+### round=7 pos=1 label=inlall55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)
+Nodes searched: 100031
+Position: 37/50 (2r3k1/ppnqpr1p/3pN1pB/1npP1p2/7P/5P2/P1PQ2P1/R3R1K1 w - - 1 10)
+Nodes searched: 100031
+Position: 38/50 (1k2rb1r/p3n1p1/1p3p2/1P6/3RP3/2N3Pp/1N2K2P/3R4 b - - 0 23)
+Nodes searched: 100031
+Position: 39/50 (8/1p4k1/p2P2P1/P1PpP3/5Q1p/7q/5K2/8 b - - 0 61)
+Nodes searched: 100031
+Position: 40/50 (B7/8/3k3p/2p3pP/2P1Pp2/5P1K/5b2/8 w - - 34 62)
+Nodes searched: 100031
+Position: 41/50 (8/2K3p1/4k3/2P4p/8/3r4/2R3P1/8 b - - 5 56)
+Nodes searched: 100031
+Position: 42/50 (7r/3b4/p2p3k/Pp1P1prp/5N2/2PK1P2/1P6/4R2R b - - 6 24)
+Nodes searched: 100031
+Position: 43/50 (1r4rk/1pb2pp1/2p1q2p/3pPN1P/1PnP4/3Q2R1/R2B1PPK/8 b - - 20 22)
+Nodes searched: 100034
+Position: 44/50 (8/8/7p/B5bP/2B1p1K1/8/8/3k4 b - - 5 68)
+Nodes searched: 100031
+Position: 45/50 (8/6kb/7p/p3N1p1/8/P5P1/r1n2P1P/2RB2K1 w - - 0 22)
+Nodes searched: 100031
+Position: 46/50 (1r2r1k1/p4ppb/2nq1n1p/2p2P2/2QpP1P1/3P1NNP/PP6/1K1R1BR1 b - - 4 15)
+Nodes searched: 100031
+Position: 47/50 (2r2rk1/1b1qb2n/ppn1p2p/3pPpp1/1P1P3P/P2Q1NP1/2BB1PNK/R2R4 b - - 1 15)
+Nodes searched: 100032
+Position: 48/50 (7R/8/8/3bp1k1/4P2b/8/1P1NK2p/8 w - - 0 81)
+Nodes searched: 100031
+Position: 49/50 (4n3/p6p/2r2kp1/8/3P4/5P2/P2BK3/R7 w - - 1 23)
+Nodes searched: 100031
+Position: 50/50 (8/3R4/2K5/8/8/2n1k3/8/8 w - - 53 84)
+Nodes searched: 100031
+===========================
+Total time (ms) : 8035
+Nodes searched  : 5001562
+Nodes/second    : 622471
+30190414026,,instructions:u,4350481257,100.00,,
+21829167294,,cycles:u,4350481257,100.00,,
+15002075365,,L1-dcache-loads:u,4350481257,100.00,,
+11493430787,,ls_dispatch.ld_dispatch:u,4350481257,100.00,,
+4584342375,,ls_dispatch.store_dispatch:u,4350481257,100.00,,
+### round=7 pos=2 label=inld55
+Position: 1/50 (8/1K6/8/3k4/5Q2/3b4/8/8 b - - 4 70)
+Nodes searched: 100031
+Position: 2/50 (8/8/4k3/2R5/1PK5/6r1/1P6/8 b - - 2 56)
+Nodes searched: 100031
+Position: 3/50 (4r3/2k5/3n3p/6pP/1B3bP1/PB2p3/4K3/3R4 b - - 5 36)
+Nodes searched: 100031
+Position: 4/50 (8/6k1/5p2/1p4p1/8/P2R2P1/1r3PKP/8 b - - 1 32)
+Nodes searched: 100031
+Position: 5/50 (Q7/2k5/1bp2qP1/3p4/8/2PB3P/KP6/8 b - - 2 53)
+Nodes searched: 100033
+Position: 6/50 (4R3/8/P7/6p1/1kB2b2/1P6/r7/5K2 b - - 18 50)
+Nodes searched: 100031
+Position: 7/50 (5k2/8/r7/3BPK1p/5N1P/6P1/5P2/8 w - - 9 59)
+Nodes searched: 100032
+Position: 8/50 (8/4k2p/1p4p1/pP1nN3/3P3P/R5P1/5PK1/4r3 b - - 3 31)
+Nodes searched: 100031
+Position: 9/50 (8/5K2/PR4pk/7p/3P4/5r2/1P6/8 w - - 1 39)
+Nodes searched: 100031
+Position: 10/50 (8/6k1/bP1KB3/2BP3p/2n5/8/8/8 w - - 1 52)
+Nodes searched: 100031
+Position: 11/50 (8/6k1/R4p2/P6p/8/6K1/r5P1/8 w - - 1 42)
+Nodes searched: 100031
+Position: 12/50 (5r1b/1N6/3Q3p/2pp1qkP/3P4/P1P5/KP3p2/4rR2 w - - 4 39)
+Nodes searched: 100031
+Position: 13/50 (8/1p6/p1b1K3/4B1k1/5P2/4N2p/n5P1/8 b - - 0 41)
+Nodes searched: 100031
+Position: 14/50 (8/1p2R2R/2p2rp1/8/6kP/1P4r1/P4P2/5K2 w - - 2 32)
+Nodes searched: 100031
+Position: 15/50 (1rbq3k/1p1nbprP/p2p1n2/2pP2B1/P4P2/2N1P1R1/1PB1Q1P1/5RK1 w - - 1 18)
+Nodes searched: 100031
+Position: 16/50 (3r4/2p3p1/pkpn1b2/2N4p/PP5P/4B1P1/5P2/2R3K1 b - - 2 21)
+Nodes searched: 100033
+Position: 17/50 (8/5pk1/4n3/8/5r1p/4Q2P/8/7K b - - 7 90)
+Nodes searched: 100031
+Position: 18/50 (rbq2rk1/1p1n2p1/2p1p2p/1PPp1p2/3Pn3/4PN2/2Q1BPPP/1RBR2K1 b - - 2 11)
+Nodes searched: 100031
+Position: 19/50 (6k1/8/p5p1/1prp2P1/5PK1/2P4R/P7/8 w - - 6 40)
+Nodes searched: 100031
+Position: 20/50 (3k4/4p3/3pP3/1Np4r/2P2nBP/8/3K4/8 b - - 11 54)
+Nodes searched: 100031
+Position: 21/50 (8/6k1/3R4/5pp1/7p/4r3/6K1/1B6 b - - 17 57)
+Nodes searched: 100031
+Position: 22/50 (8/1k1pn3/p5p1/1p4R1/4P2p/4KP2/7P/8 w - - 2 33)
+Nodes searched: 100032
+Position: 23/50 (q6k/rp1nbpr1/2p1p3/P1PpPp2/3P1P1p/2B2N1P/1R4PK/1R2Q3 w - - 5 27)
+Nodes searched: 100031
+Position: 24/50 (3rr1k1/5qp1/p1p4p/1p6/3Pn3/P5P1/1PQ1RP1P/4R1K1 w - - 1 20)
+Nodes searched: 100031
+Position: 25/50 (4r1k1/pb5p/1p2P3/2p1QP2/2P5/2P1K3/P5rP/2B5 b - - 0 25)
+Nodes searched: 100031
+Position: 26/50 (8/2p5/3p4/P1pP4/2P3b1/4k3/P7/6K1 w - - 1 47)
+Nodes searched: 100031
+Position: 27/50 (8/6k1/2p2pp1/p1q4p/PpNnPp1P/1P2Q3/2P3P1/5K2 w - - 0 43)
+Nodes searched: 100031
+Position: 28/50 (8/6B1/5K2/3k3p/6pP/1n4P1/8/8 w - - 17 64)
+Nodes searched: 100032
+Position: 29/50 (1qr5/pp3pkn/4p2p/3pP3/6pP/1P1NPP2/P3Q3/5R1K w - - 0 24)
+Nodes searched: 100031
+Position: 30/50 (8/8/8/4kp1p/2P2R2/6P1/2r2PK1/8 w - - 40 81)
+Nodes searched: 100031
+Position: 31/50 (4r3/6kP/8/5B2/6K1/8/8/8 w - - 31 120)
+Nodes searched: 100032
+Position: 32/50 (5B2/3b4/8/1pp5/p1kp4/P7/1P1K4/8 b - - 3 59)
+Nodes searched: 100031
+Position: 33/50 (2r3k1/pp1r1p2/6p1/3Pb1Bp/1qN4P/1P4P1/P1QR1n2/4R1K1 b - - 0 22)
+Nodes searched: 100031
+Position: 34/50 (8/8/8/3k1pp1/R7/P2K4/1P3P2/2r5 w - - 2 32)
+Nodes searched: 100031
+Position: 35/50 (r1b2rk1/ppb1q1pp/3p1n2/2pP4/2P1N3/3Q4/P3PPBP/R1B2RK1 w - - 0 9)
+Nodes searched: 100031
+Position: 36/50 (7r/5k2/p1b1p1Rp/Pp1pP2P/1PpP4/2P1KB2/8/8 b - - 80 99)

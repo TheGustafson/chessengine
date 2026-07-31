@@ -618,30 +618,66 @@ impl Histories {
         let q = piece_to(pc.index(), to.index() as usize);
         let mut positive_count = 0usize;
 
+        // Perf study 55 mechanism B. The shipped loop indexes `stack[cur - i]`
+        // TWICE per iteration — once for `current_move`, once for `cont_hist` —
+        // and `stack` is a `&[Stack]`, a slice with a RUNTIME length, so each
+        // index is a real bounds check with its own panic edge. That is exactly
+        // the shape study 54 measured at +9.4 i/n against its iterator twin's
+        // −21.3: two indexed reads where one borrow would do.
+        //
+        // The `bccont55` arm takes ONE subslice — `cur >= SS_OFFSET` (7) and
+        // `CONT_OFFSET_WEIGHTS` has 6 entries, so `cur - N` is in bounds by the
+        // precondition asserted above — and walks it in reverse, which maps
+        // `frames[N - 1]` to offset 1. Emission order, arithmetic and writes are
+        // untouched, so the tree is bit-identical.
+        //
+        // The body is a `macro_rules!` so both loop shapes share one source (the
+        // shape study 54 §2 used for the same reason): a `let` binding holding a
+        // borrow of `*self` cannot live across `self.cont_mut(id)`.
+        macro_rules! cont_body {
+            ($idx:expr, $weight:expr, $frame:expr) => {{
+                let idx: usize = $idx;
+                let i = idx + 1;
+                if in_check && i > params::CONT_IN_CHECK_MAX_OFFSET() {
+                    break;
+                }
+                // Null move / pre-root padding: no predecessor move to pair with.
+                if $frame.current_move.is_ok() {
+                    // Copy the key out first, then borrow `self` — no aliasing (§3.2).
+                    let id = $frame.cont_hist;
+                    let entry = at_piece_to_mut(self.cont_mut(id), q);
+                    if entry.get() > 0 {
+                        positive_count += 1;
+                    }
+                    let mult = params::CONT_CONSISTENCY_MULT[positive_count];
+                    let scaled = (bonus as i64 * $weight as i64 * mult as i64
+                        / params::CONT_UPDATE_DIVISOR())
+                        as i32
+                        + if i == 1 {
+                            params::CONT_OFFSET1_FLAT_BONUS()
+                        } else {
+                            0
+                        };
+                    entry.update(scaled);
+                }
+            }};
+        }
+
+        #[cfg(feature = "bccont55")]
+        {
+            const N: usize = params::CONT_OFFSET_WEIGHTS.len();
+            let frames = &stack[cur - N..cur];
+            for (idx, (&weight, frame)) in params::CONT_OFFSET_WEIGHTS
+                .iter()
+                .zip(frames.iter().rev())
+                .enumerate()
+            {
+                cont_body!(idx, weight, frame);
+            }
+        }
+        #[cfg(not(feature = "bccont55"))]
         for (idx, &weight) in params::CONT_OFFSET_WEIGHTS.iter().enumerate() {
-            let i = idx + 1;
-            if in_check && i > params::CONT_IN_CHECK_MAX_OFFSET() {
-                break;
-            }
-            // Null move / pre-root padding: no predecessor move to pair with.
-            if !stack[cur - i].current_move.is_ok() {
-                continue;
-            }
-            // Copy the key out first, then borrow `self` — no aliasing (§3.2).
-            let id = stack[cur - i].cont_hist;
-            let entry = at_piece_to_mut(self.cont_mut(id), q);
-            if entry.get() > 0 {
-                positive_count += 1;
-            }
-            let mult = params::CONT_CONSISTENCY_MULT[positive_count];
-            let scaled = (bonus as i64 * weight as i64 * mult as i64
-                / params::CONT_UPDATE_DIVISOR()) as i32
-                + if i == 1 {
-                    params::CONT_OFFSET1_FLAT_BONUS()
-                } else {
-                    0
-                };
-            entry.update(scaled);
+            cont_body!(idx, weight, &stack[cur - (idx + 1)]);
         }
     }
 

@@ -258,7 +258,27 @@ pub(crate) fn partial_insertion_sort_inner(moves: &mut [ExtMove], limit: i32) {
         // TAIL permutation is observable — `BadQuiet` emits the unsorted
         // remainder in buffer order — so no algorithm that reorders it can pass
         // the node-identity gate. See docs/research/perf-study-23-*.md §6.
+        // Perf study 55 mechanism B, study 54's shape exactly: the shipped
+        // condition reads `head[q - 1].value` and the body then reads the WHOLE
+        // `head[q - 1]` again — two indexed reads per shifted element, where one
+        // borrow does. Line 147 above already carries the comment "One read of
+        // `moves[p]`, not two" for the identical defect twenty lines earlier;
+        // this loop never got the same treatment. This is NOT either rewrite
+        // study 23 §6 measured and rejected (`copy_within` +91 i/n,
+        // `partition_point` +77.8 i/n): the algorithm, the comparison order and
+        // the resulting permutation — including the observable tail — are
+        // untouched. Only the number of loads changes.
         let mut q = se;
+        #[cfg(feature = "bcsort55")]
+        while q > 0 {
+            let prev = head[q - 1];
+            if prev.value >= tmp.value {
+                break;
+            }
+            head[q] = prev;
+            q -= 1;
+        }
+        #[cfg(not(feature = "bcsort55"))]
         while q > 0 && head[q - 1].value < tmp.value {
             head[q] = head[q - 1];
             q -= 1;
@@ -540,6 +560,32 @@ impl Drop for MovePicker {
     }
 }
 
+/// Perf study 55 mechanism B: `MAX_MOVES` is a power of two and the region-index
+/// invariant on `buf` proves every access lands in `[0, end_generated)` with
+/// `end_generated <= MAX_MOVES` -- but `i` arrives as a struct field (`self.cur`)
+/// or `base + i`, neither of which LLVM can bound, so each access carried a
+/// `cmp`/`jae` and a panic edge. The mask states the fact the invariant already
+/// guarantees, so it cannot change which slot is touched. Same mechanism as
+/// `attacks.rs`'s `TABLE_MASK` (study 53's `magic53`, -22.3 loads/node) and
+/// `history.rs`'s `CONT_MASK`.
+#[cfg(feature = "bcbuf55")]
+const BUF_MASK: usize = MAX_MOVES - 1;
+#[cfg(feature = "bcbuf55")]
+const _: () = assert!(MAX_MOVES.is_power_of_two());
+
+/// The buffer index, masked under `bcbuf55` and untouched otherwise.
+#[inline(always)]
+fn bi(i: usize) -> usize {
+    #[cfg(feature = "bcbuf55")]
+    {
+        i & BUF_MASK
+    }
+    #[cfg(not(feature = "bcbuf55"))]
+    {
+        i
+    }
+}
+
 impl MovePicker {
     /// Read one buffer slot. Debug builds assert the slot was written.
     #[inline]
@@ -550,14 +596,14 @@ impl MovePicker {
         // written by a fill loop; the debug tracker machine-checks it.
         #[allow(unsafe_code)]
         unsafe {
-            self.buf[i].assume_init()
+            self.buf[bi(i)].assume_init()
         }
     }
 
     /// Write one buffer slot (and mark it in debug builds).
     #[inline]
     fn set_slot(&mut self, i: usize, e: ExtMove) {
-        self.buf[i].write(e);
+        self.buf[bi(i)].write(e);
         #[cfg(debug_assertions)]
         {
             self.written[i] = true;
@@ -585,7 +631,7 @@ impl MovePicker {
     fn swap_slots(&mut self, a: usize, b: usize) {
         #[cfg(debug_assertions)]
         debug_assert!(self.written[a] && self.written[b]);
-        self.buf.swap(a, b);
+        self.buf.swap(bi(a), bi(b));
     }
 
     /// Main search (`depth > 0`), quiescence (`depth <= 0`), and evasions

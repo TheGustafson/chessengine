@@ -204,8 +204,21 @@ impl DeltaBuf {
             d.attacker.piece_type,
             d.victim.piece_type
         );
+        // Perf study 55 mechanism B: `DELTA_CAP` is a power of two and the
+        // debug_assert above is the invariant, but `self.len` is a struct field
+        // LLVM cannot bound, so this store carried a `cmp`/`ja` and a panic edge
+        // per threat event. `resolve_both` masks the READ side of this very
+        // buffer for exactly this reason (see its `M` there); the write side was
+        // never given the same treatment.
         debug_assert!(self.len < DELTA_CAP, "threat delta buffer overflow");
-        self.data[self.len] = d;
+        #[cfg(feature = "bcmisc55")]
+        {
+            self.data[self.len & (DELTA_CAP - 1)] = d;
+        }
+        #[cfg(not(feature = "bcmisc55"))]
+        {
+            self.data[self.len] = d;
+        }
         self.len += 1;
     }
 

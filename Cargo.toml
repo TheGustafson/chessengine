@@ -52,6 +52,25 @@ inld55 = []
 # per node; the code-growth outlier, priced on its own so the batch cannot hide
 # it.
 inle55 = []
+# ---- perf study 55 MECHANISM B arms: study 54 measured a 30.7 i/n swing
+# between two spellings of ONE algorithm, because the losing shape indexed
+# `list[i]` twice per move (bounds-checked) where `list.iter()` has none. These
+# arms apply that lens to the sites the census found. All node-identical.
+# `bcbuf55`: mask MovePicker's `buf` funnel -- every move in every stage of
+# every node passes through `slot`/`set_slot`/`swap_slots`, and `MAX_MOVES` is
+# a power of two, but the index is a struct field LLVM cannot bound.
+bcbuf55 = []
+# `bccont55`: `update_continuation_histories` indexes a RUNTIME-LENGTH slice
+# twice per iteration (study 54's exact defect, one worse); plus the search's
+# three 2-D `[pci][to]` chains that `stat_score` already spells flat.
+bccont55 = []
+# `bcmisc55`: three provable range facts -- `reductions[depth]`/`[move_number]`
+# (also a latent panic at 256 moves), `LMR_DIVISOR[min(16)-1]` (underflows at
+# depth 0), and the DeltaBuf write side (its READ side is already masked).
+bcmisc55 = []
+# `bcsort55`: partial_insertion_sort reads `head[q-1]` twice per shifted
+# element. Not either rewrite study 23 rejected -- the permutation is untouched.
+bcsort55 = []
 # The INERT CONTROL is not a feature: it is the label `ctl55`, this EDITED tree
 # built with NO arm feature.  If its `.text` md5 equals `base55`'s (built from
 # the untouched tree) the scaffolding is provably inert and every arm is a
