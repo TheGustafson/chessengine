@@ -10528,3 +10528,74 @@ build.
 re-run, null first; (2) a fixed-TIME PGO match, main vs pre-52. The pre-52 binary
 is preserved at `$SCRATCH/pre52_bin` so neither needs a rebuild; its build tree
 was deleted to return disk.
+
+## Tick — 2026-07-31, study 56 merged (−65.8 i/n) and it RETRACTS my commission's premise
+
+**Merged at `46588c4b`. Gate re-running from source on my side; not yet green as
+of writing — no pass claimed until it prints.**
+
+### I verified the number myself, before/after, same flags
+
+| | i/n |
+|---|---|
+| main pre-56 | 6128.0 |
+| main post-56 | 6058.1 |
+| **delta** | **−69.9 (−1.141%)** |
+| study 56 claimed | −65.8 (−1.107%) |
+
+**Verified, and marginally better than claimed.**
+
+### The premise I sent it after did not exist
+
+I commissioned study 56 to recover "**~79 i/n sitting behind feature flags**"
+(`bcmisc55` −44.7, `bcsort55` −34.6). **That work does not exist.** Study 55
+measured those arms against `base55` — a substrate it then **destroyed by landing
+on top of it**. Re-measured against the binary actually shipped:
+
+| arm | study 55 | vs shipped |
+|---|---:|---:|
+| `bcmisc55` | −44.7 | **+7.7** |
+| `bcsort55` | −34.6 | **+14.7** |
+| `bccont55` | +5.8 | **+55.6** |
+
+**The interaction did not BLOCK those wins, it CONSUMED them.** A retained arm's
+number expires the moment the study lands anything.
+
+### Bundles hide their members — the mechanism behind both studies
+
+`attackers_to_exist` is **−19.2 i/n** on its own. Study 55 measured it inside the
+`inld55` bundle at **+25.0** and rejected the whole group, because the bundle also
+held `correction_value` at **+28.1**. Study 56 priced members individually via an
+`nm -S` × `perf report` join and recovered the win. **Two of study 55's headline
+rules fall with it:** its size rule for mechanism A is wrong (885 B wins at −6.9;
+504 B is the worst loser at +28.1), and edge count predicts nothing.
+
+### The missing bound: my correction held
+
+No 256-move position exists — 218 is the maximum, `move_number` counts only
+post-legality-filter moves, and depth is clamped at node entry. A path to ≥256 was
+looked for and not found. Landed as free correctness. **But the spelling costs
+15.2 i/n:** `clamp` is +11.3, the same bound as a mask is −3.9.
+
+### A gate gap worth more than the study
+
+`HISTORIES_BYTES` counted the *logical* slab count, so design/09 §8's heap guard
+would have under-reported this study's padding by **288 KiB/worker**. Fixed. The
+general point stands and is ours to own: **every gate in this repo is a BEHAVIOUR
+gate; none weighs the heap.**
+
+### Deviation RATIFIED — and the fault was mine
+
+The study built **unlocked** (under a tighter 4G cgroup at `nice 19`, floor raised
+2500→3500 MB) because **my `flock` was held by a 1500-game MATCH, not a build**.
+That was my design error: `screen.sh`'s own header says "Fixed NODES, so the
+result is contention-immune", so a match never needed the build lock and holding
+it stalled a study for 15 minutes. **Ratified.** Standing fix: **the build lock is
+for builds only — never wrap a match in it.**
+
+### Still owed, and now most acute
+
+**The PGO pair, overdue across studies 52–56.** This study lands six
+`inline(always)` attributes — **exactly what PGO re-litigates**, since PGO makes
+its own inlining decisions from profile data. The instruction win is measured on
+non-PGO builds; whether it survives PGO is unmeasured.
