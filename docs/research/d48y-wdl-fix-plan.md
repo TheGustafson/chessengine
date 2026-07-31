@@ -12664,3 +12664,65 @@ measurement. The next natural eval point is **sb1400**, which is the first
 **State, all read-only:** D49 **sb1171**, heldout ema 0.010607/0.010647, 193k
 pos/s, four services active, 149 GB disk, box quiet (`rustc=0`, `fastchess=0`).
 **sb1400 in 8.2 h.** Study 63 working.
+
+## Tick — 2026-07-31 19:00, USER RULING: cycling STOPPED, gentle decay from sb1170
+
+**"I think I have had enough of the cyclic LR — let's move to a regular and gentle
+cosine decay. Start at the midpoint LR for our cycle and let it go down 0.996 each
+sb."**
+
+Two things needed pinning before restarting, and both were put to the owner
+because they change the run materially:
+
+1. **Which "midpoint".** At sb1176 the cycle spans **7.064e-5 … 3.532e-6** (peaks
+   have decayed 0.985²³). Arithmetic mean is 3.708e-5, geometric is 1.579e-5 — a
+   **2.35× difference**. **Ruling: geometric, 1.579e-5.** The arithmetic mean sits
+   at 53% of peak, i.e. barely a reduction from where cycling already ran; the
+   geometric mean is the true middle of a 20× range at 22% of peak.
+2. **Whether to keep the pre-registered sb1400 anneal-to-zero.** **Ruling: no —
+   pure 0.996/sb all the way to sb1700**, one rule and no discontinuity. The
+   anneal belonged to the cycling plan being replaced.
+
+**Naming note, recorded rather than silently reinterpreted:** the instruction says
+"cosine" but specifies **0.996 each sb**, which is *exponential*. I implemented
+the number, not the label — the schedule is a geometric decay.
+
+### The schedule
+
+`tools/nnue/runs/d49z_decay_1280.json`: **134 `lr_ramp` points from sb1170 to
+sb1700**, `lr = 1.579e-5 × 0.996^(sb−1170)`.
+
+| | |
+|---|---|
+| start (sb1170) | **1.5790e-05** |
+| end (sb1700) | **1.8873e-06** |
+| end/start | **0.1195** — matches 0.996⁵³⁰ = 0.1195 exactly |
+
+Points every 4 sb because `lr_fn` uses **`jnp.interp` — piecewise-linear on the
+absolute superbatch, clamped flat outside the breakpoints** (`train.py:67`).
+Over 4 sb the decay is 1.6%, so linear interpolation tracks the exponential to
+<0.02%. Verified against the closed form rather than assumed.
+
+### Restart, done in an order that cannot race
+
+**Watchdog stopped FIRST**, then the trainer — otherwise the watchdog would have
+restarted `d49y` on the *old* config within its poll interval. Then: resume point
+discovered (**sb1170**, newest sb with both `raw` and `ema-raw`), config written,
+launcher repointed (**verified 0 stale references**), trainer relaunched, watchdog
+relaunched.
+
+**Running and confirmed advancing: sb1177 and climbing, 193.5k pos/s, GPU 96%.**
+All four services active.
+
+**One real cost of the restart, stated:** the log reads `RESUME from sb1170
+(fresh Adam transient)` — **resuming discards the optimizer moments.** That is
+inherent to any restart, not to this change, but it means the first few
+superbatches re-accumulate Adam state.
+
+**Early sanity check:** train-loss sd is **0.000070 over the 470 cycling
+superbatches** vs **0.000056 over the first 7 decaying ones** — consistent with
+the sawtooth being gone, though n=7 is far too few to claim it. Re-check next tick.
+
+**Consequence for the endpoint plan:** sb1400 is **no longer a schedule boundary**
+— it was the cycling plan's anneal jump. The run is now a single smooth leg to
+sb1700, so **sb1700 is the readable point**, ~19 h out at 2.16 min/sb.
