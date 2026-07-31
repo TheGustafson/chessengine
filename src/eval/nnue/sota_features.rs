@@ -327,12 +327,9 @@ fn pawn_push_or_attacks(color: Color, from: Square) -> Bitboard {
     bb
 }
 
-/// The three threat lookup tables, built once. Sizes: `lut2` 64 KiB, the rest a
+/// The threat lookup tables, built once. Sizes: `from_to` 128 KiB, the rest a
 /// few KiB — all indexed by SF piece code (16-wide, gap entries unused).
 struct ThreatTables {
-    /// `offsets[code][from]` = prefix-sum of empty-board attack counts over
-    /// from-squares before `from` (the per-attacker from-square base).
-    offsets: [[u32; 64]; 16],
     /// `piece_offset[code]` = total empty-board attack edges for the attacker
     /// (SF `cumulativePieceOffset`; the per-attacker geometry size). Folded into
     /// `lut1` for the index, but kept explicitly: the table-invariant test reads
@@ -344,8 +341,28 @@ struct ThreatTables {
     #[allow(dead_code)]
     cumulative_offset: [u32; 16],
     /// `lut2[code][from][to]` = popcount of the attacker's attack bits strictly
-    /// below `to` (the dense ordinal of `to` among `from`'s targets).
-    lut2: Box<[[[u8; 64]; 64]; 16]>,
+    /// below `to` (the dense ordinal of `to` among `from`'s targets), **plus**
+    /// `offsets[code][from]` — the two terms of the index that share a key.
+    ///
+    /// PERF STUDY 59, arm `lutp`. `index_decoded` used to compute
+    /// `offsets[att][from_o] + lut2[att][from_o][to_o]`, which is two loads,
+    /// two address computations and two adds for a sum whose *both* operands are
+    /// functions of the same `(att, from_o)` prefix. IBS put the line that does
+    /// it at **9.56 % of `at_full`'s sampled ops = 0.90 % of the whole engine**,
+    /// the largest single source line in the symbol. Pre-adding at build time
+    /// makes it one load and one add.
+    ///
+    /// The sum fits `u16` **structurally, not by luck**: `offsets[code][from]`
+    /// is a prefix sum bounded by the attacker's total empty-board edge count
+    /// (`piece_offset`, at most 1456 for a queen) and the ordinal is bounded by
+    /// the same quantity, so the sum is under 2·1456. `build_threat_tables`
+    /// asserts it, and `threats_from_to_fits_u16` sweeps every entry.
+    ///
+    /// The cost is the table: 64 KiB of `u8` becomes 128 KiB of `u16`. It is
+    /// paid in address space, not in touched lines — a lookup reads ONE
+    /// `to`-ordinal, so a 128-byte row costs the same single cache line a
+    /// 64-byte row did.
+    from_to: Box<[[[u16; 64]; 64]; 16]>,
     /// `lut1[attacker][attacked][from<to]` = the block+sub-block feature base, or
     /// [`THREAT_DIMS`] (an out-of-range sentinel → dropped) for an excluded or
     /// semi-excluded pair. The `from<to` axis dedups symmetric same-type threats.
@@ -353,26 +370,35 @@ struct ThreatTables {
 }
 
 fn build_threat_tables() -> ThreatTables {
-    let mut offsets = [[0u32; 64]; 16];
     let mut piece_offset = [0u32; 16];
     let mut cumulative_offset = [0u32; 16];
-    let mut lut2 = Box::new([[[0u8; 64]; 64]; 16]);
+    let mut from_to = Box::new([[[0u16; 64]; 64]; 16]);
 
-    // Per-attacker geometry: prefix-sum from-square bases + the `to`-ordinal LUT.
+    // Per-attacker geometry: the `to`-ordinal LUT, pre-added to the prefix-sum
+    // from-square base (perf study 59 — see `ThreatTables::from_to`).
     let mut cumulative = 0u32;
     for &code in &ALL_PIECES {
         let is_pawn = code & 7 == 1;
         let mut cum_piece = 0u32;
         for from_i in 0..64u8 {
-            offsets[code][from_i as usize] = cum_piece;
             let from = Square::new(from_i);
             let attacks = geom_attacks(code, from);
             // Fill the ordinal LUT for every from-square (SF builds it for all
             // 64, even rank 1/8 pawns that never occur in play).
             let bits = attacks.to_u64();
+            // The from-square base this row is folded onto. `assert` and not
+            // `debug_assert`: the whole arm rests on the sum fitting `u16`, the
+            // table is built once at startup, and a silent wrap here is an
+            // arbitrarily wrong evaluation that still benches.
+            let base = cum_piece + attacks.count();
+            assert!(
+                base <= u16::MAX as u32,
+                "threat from-square base {base} overflows the fused u16 table"
+            );
             for to_i in 0..64u8 {
                 let below = bits & ((1u64 << to_i) - 1);
-                lut2[code][from_i as usize][to_i as usize] = below.count_ones() as u8;
+                from_to[code][from_i as usize][to_i as usize] =
+                    (cum_piece + below.count_ones()) as u16;
             }
             // Advance the prefix sum. Pawns only count from squares a2..h7
             // (a pawn never sits on rank 1 or 8), matching SF's guard.
@@ -426,10 +452,9 @@ fn build_threat_tables() -> ThreatTables {
     }
 
     ThreatTables {
-        offsets,
         piece_offset,
         cumulative_offset,
-        lut2,
+        from_to,
         lut1,
     }
 }
@@ -442,7 +467,9 @@ static THREAT_TABLES: LazyLock<ThreatTables> = LazyLock::new(build_threat_tables
 /// an illegal attacker→victim type) or semi-excluded (the dropped direction of a
 /// symmetric same-type threat) — SF's `push_back_if_lt(index, Dimensions)`.
 ///
-/// `index = lut1[att][atd][from<to] + offsets[att][from] + lut2[att][from][to]`,
+/// `index = lut1[att][atd][from<to] + from_to[att][from][to]`, where the second
+/// term is the from-square prefix base plus the `to`-ordinal, pre-added at
+/// build time (perf study 59),
 /// all with the squares file/rank-oriented by `OrientTBL[ksq] ^ 56·persp` and
 /// the piece codes color-swapped by `^ 8·persp`. Range when `Some`: `[0, 60720)`.
 #[inline]
@@ -531,9 +558,9 @@ impl<'r> ThreatResolver<'r> {
         // Both operands are already 6-bit — `Square::index() < 64` by the
         // newtype's constructor assert, and `orientation` is
         // `orient_threats(ksq) ^ 56·p ∈ {0, 7, 56, 63}` — but LLVM only sees
-        // `u8 ^ u8 → 0..=255`, so every `offsets[att][from_o]` and
-        // `lut2[att][from_o][to_o]` index carried a `cmp $63` / `ja panic`
-        // pair it could not hoist (the bound depends on the loaded event).
+        // `u8 ^ u8 → 0..=255`, so every `from_to[att][from_o][to_o]` index
+        // carried a `cmp $63` / `ja panic` pair it could not hoist (the bound
+        // depends on the loaded event).
         // This is perf study 8 §4.1's `l1_dot` shape in the resolver: the
         // loop is ~40 instructions and runs once per event per perspective.
         let from_o = ((from.index() ^ self.orientation) & 63) as usize;
@@ -546,7 +573,7 @@ impl<'r> ThreatResolver<'r> {
         if base >= THREAT_DIMS as u32 {
             return None; // excluded / semi-excluded
         }
-        let idx = (base + t.offsets[att][from_o] + t.lut2[att][from_o][to_o] as u32) as usize;
+        let idx = (base + t.from_to[att][from_o][to_o] as u32) as usize;
         // The Recode chokepoint: one table lookup re-codes the geometric index
         // into the net's row space. `.min(THREAT_DIMS - 1)` is a NO-OP on the
         // value (the tiling test pins `base + piece_offset <= THREAT_DIMS`, so
@@ -1083,10 +1110,46 @@ mod tests {
         }
     }
 
+    /// Perf study 59, arm `lutp` — the fused `from_to` table IS the old
+    /// `offsets[code][from] + lut2[code][from][to]`, entry for entry, and every
+    /// entry fits `u16`.
+    ///
+    /// The two summands are re-derived here from the SAME definitions
+    /// `build_threat_tables` used (the prefix sum of `geom_attacks` counts, and
+    /// the popcount of the attack bits strictly below `to`) rather than read
+    /// back out of the table, so this is an independent recomputation and not a
+    /// tautology. 65,536 entries; runs in well under a second.
+    #[test]
+    fn threats_from_to_is_the_fused_sum() {
+        let t = &*THREAT_TABLES;
+        for &code in &ALL_PIECES {
+            let is_pawn = code & 7 == 1;
+            let mut cum_piece = 0u32;
+            for from_i in 0..64u8 {
+                let bits = geom_attacks(code, Square::new(from_i)).to_u64();
+                for to_i in 0..64u8 {
+                    let want = cum_piece + (bits & ((1u64 << to_i) - 1)).count_ones();
+                    assert!(
+                        want <= u16::MAX as u32,
+                        "code {code} from {from_i} to {to_i}"
+                    );
+                    assert_eq!(
+                        u32::from(t.from_to[code][from_i as usize][to_i as usize]),
+                        want,
+                        "from_to[{code}][{from_i}][{to_i}]"
+                    );
+                }
+                if !is_pawn || (8..=55).contains(&from_i) {
+                    cum_piece += bits.count_ones();
+                }
+            }
+        }
+    }
+
     /// A hand-computed threat index for one simple geometry:
     /// White knight b1 → black pawn c3, white king a1 (orient 0), white view.
     /// lut1[Nw][Pb][from<to] = 792 + (1·5 + 0)·336 = 2472;
-    /// offsets[Nw][b1] = 2 (knight a1 has 2 edges); lut2[Nw][b1][c3] = 2.
+    /// from_to[Nw][b1][c3] = 2 (knight a1 has 2 edges) + 2 (the `to`-ordinal).
     #[test]
     fn threats_hand_computed() {
         let idx = threat_index(

@@ -848,26 +848,71 @@ fn round_half_away_reciprocal(scale: u8) -> u64 {
 /// losing the `extend` specialisation**, which is not a trade anyone would
 /// guess from the source.
 ///
-/// Bit-identical to the pre-study form by construction: same numerator, same
-/// denominator, same rounding rule, same clamp, same order.
+/// # Perf study 59 — the column is a ROW WALK, and the collector is gone
+///
+/// The ⚠ above is a warning about `Vec::extend`'s specialisation, not about
+/// row-major order, and this version keeps the warning's lesson by **not
+/// collecting at all**: the destination is allocated once and filled by an
+/// explicit nested loop, so there is no `extend` to specialise or de-specialise
+/// and `FlatMap` never appears. Study 57's arm and this one differ in the one
+/// thing its own §4.4 identified as causal.
+///
+/// What the shipped `imul`-era disassembly spent per weight, read off
+/// `objdump` (2×-unrolled body, 24 instructions per weight):
+///
+/// * **6 instructions maintaining the column** — `cmp`/`mov`/`cmovb` for a
+///   range clamp plus `inc`/`cmp`/`cmovne` for the wrap — to walk a counter
+///   that a row loop gets for free. (Study 57's shape spent even more: a magic
+///   multiply, a high-half multiply, a shift and a multiply-subtract for
+///   `i % 1280`, `ACC` not being a power of two.)
+/// * **4 instructions assembling the `i16`** — `movzbl`, `movzbl`, `shl`, `or`.
+///   `chunks_exact(2)` yields a `&[u8]` of runtime length, so LLVM would not
+///   merge the two byte loads; `as_chunks::<2>()` yields `&[[u8; 2]]` and it
+///   emits one 16-bit load.
+/// * **a bounds check and panic edge on `recip`**, which was a `Vec` whose
+///   length LLVM cannot relate to the column. A `[u64; ACC]` states the same
+///   fact where the compiler reads it.
+///
+/// The three lists the inner loop walks are all exactly `ACC` long, so the trip
+/// count is a compile-time constant and every index is discharged by
+/// construction rather than by a hint.
+///
+/// Bit-identical to the study-57 form by construction: same numerator, same
+/// denominator, same rounding rule, same clamp, same column for every weight,
+/// same order. `quantise_halfka_column_cycle_matches_the_modulo` sweeps the one
+/// thing the existing arithmetic tests cannot see — which column each weight is
+/// divided by.
 fn quantise_halfka(raw: &[u8], scale: &[u8; ACC]) -> Aligned<i8> {
-    let recip: Vec<u64> = scale
-        .iter()
-        .map(|&s| round_half_away_reciprocal(s))
-        .collect();
-    Aligned::from_iter_len(
-        raw.len() / 2,
-        raw.chunks_exact(2).enumerate().map(|(i, w)| {
+    let mut recip = [0u64; ACC];
+    for (r, &s) in recip.iter_mut().zip(scale.iter()) {
+        *r = round_half_away_reciprocal(s);
+    }
+    let n = raw.len() / 2;
+    // One allocation, filled with a bulk memset (`repeat_n` is `TrustedLen`, so
+    // this is the specialised `extend` path the ⚠ above is about) and then
+    // overwritten in place. A partial last row — impossible for a well-formed
+    // section, since `HALFKA_DIMS · ACC` weights arrive — simply keeps its
+    // zeros, which is the same "shorter iterator ⇒ shorter payload" tolerance
+    // `from_iter_len` already documents.
+    let mut out: Aligned<i8> = Aligned::from_iter_len(n, core::iter::repeat_n(0i8, n));
+    for (dst_row, src_row) in out.chunks_mut(ACC).zip(raw.chunks_exact(2 * ACC)) {
+        let (src, _) = src_row.as_chunks::<2>();
+        for (((d, w), &s), &r) in dst_row
+            .iter_mut()
+            .zip(src)
+            .zip(scale.iter())
+            .zip(recip.iter())
+        {
             // `(2·|v| + s) / (2·s)`, exactly `round_half_away`'s numerator and
             // denominator — only the division is replaced.
-            let s = scale[i % ACC];
-            let v = i16::from_le_bytes([w[0], w[1]]);
+            let v = i16::from_le_bytes(*w);
             let n = 2 * u64::from(v.unsigned_abs()) + u64::from(s);
-            let q = ((n * recip[i % ACC]) >> 32) as i32;
+            let q = ((n * r) >> 32) as i32;
             let q = if v < 0 { -q } else { q };
-            q.clamp(-127, 127) as i8
-        }),
-    )
+            *d = q.clamp(-127, 127) as i8;
+        }
+    }
+    out
 }
 
 /// Quantise the D47V output-skip lane to i8, one scale per bucket
@@ -1358,6 +1403,37 @@ pub(crate) mod tests {
                 assert_eq!(fast, slow, "w={w} scale={scale}");
             }
         }
+    }
+
+    /// Perf study 59: the quantiser walks its column index as a CYCLE instead
+    /// of `i % ACC`. The two arithmetic tests above sweep the *division* and
+    /// would both pass if every weight were divided by the WRONG column, so
+    /// this is the test that actually pins the change.
+    ///
+    /// Every column gets a distinct scale (`1 + c % 255`, so no two adjacent
+    /// columns agree and a one-off in the counter shows up immediately), the
+    /// weights are pseudo-random and large enough to survive the clamp, and the
+    /// reference is the pre-study `i % ACC` spelling written out longhand.
+    /// Three full rows, so the wrap is exercised twice.
+    #[test]
+    fn quantise_halfka_column_cycle_matches_the_modulo() {
+        let mut scale = [0u8; ACC];
+        for (c, s) in scale.iter_mut().enumerate() {
+            *s = 1 + (c % 255) as u8;
+        }
+        let mut prng = Prng::new(0x5901_C0DE);
+        let n = 3 * ACC;
+        let mut raw = Vec::with_capacity(2 * n);
+        let mut want = Vec::with_capacity(n);
+        for i in 0..n {
+            let w = (prng.rand64() % 65536) as u16 as i16;
+            raw.extend_from_slice(&w.to_le_bytes());
+            want.push(
+                round_half_away(i32::from(w), i32::from(scale[i % ACC])).clamp(-127, 127) as i8,
+            );
+        }
+        let got = quantise_halfka(&raw, &scale);
+        assert_eq!(&got[..], &want[..]);
     }
 
     /// Build a deterministic synthetic SOTA net (with threats) for round-trip
