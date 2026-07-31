@@ -12391,3 +12391,42 @@ commitment and an owner's call. What it is:
 
 **D49:** sb1137, 193k pos/s, four services active. **sb1400 in ~9.5 h.**
 **Study 62** working.
+
+## Tick — 2026-07-31 17:46, tried to test the width prediction's SPEED half today. BLOCKED — reported as a null.
+
+The width prediction has two halves: a **fit** half that needs a training run, and
+a **speed** half that does not. I went after the speed half, because
+`arch-d48w` (1536) and `arch-d48x` (1280) differ **only in width** — CLAUDE.md
+records "width 1536 → 1280, **recipe untouched**" — which is exactly the clean
+one-variable comparison the convexity claim needs.
+
+**Built `arch-d48w` and it runs. There is no D48W-compatible 1536 net on disk.**
+Every 1536 candidate fails the same way:
+
+```
+ERROR EvalFile: CENN l2_width 32 != 16 (architecture mismatch)
+```
+
+`h1536-smoke-uho-3sb`, `h1536-smoke-s2-farseer-3sb`, `synth_1536` — all three are
+from an **older architecture generation** (L2 width 32, not merely a different
+accumulator width), and a sweep of every >100 MB `.cenn` on disk found **none**
+that loads in a D48W build.
+
+**So the experiment is blocked by artifact availability, not by the idea.** The
+1280 arm measured fine (28,809,256,906 instructions, 2,688,395,771 L1d misses,
+5,001,562 nodes); there is simply nothing valid to compare it against.
+
+**Reported rather than quietly dropped**, and the partial 1536 reading —
+308 M instructions, no node count — is **not** a data point: it is the signature
+of a run that aborted at net load. Quoting it as "1536 is faster" would have been
+the exact substitution this log keeps catching.
+
+**What it would take:** a 1536-wide net at the current architecture (L2 width 16),
+which means a training run — so the speed half is **not** separable from the fit
+half with what exists today. **The prediction stays pre-registered and untested,
+and that is now a measured fact about our artifacts rather than an assumption.**
+
+**Cleaned up:** `target-w` removed.
+
+**D49:** sb1144, 193k pos/s, four services active. **sb1400 in ~9.2 h.**
+**Study 62** working.
