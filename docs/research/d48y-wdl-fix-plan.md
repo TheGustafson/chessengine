@@ -11569,3 +11569,64 @@ worse. It says the *pricing* was wrong, that ~+1.6 DERIVED Elo is what seven
 studies bought, and that the next seven should be aimed somewhere else.
 
 **D49:** sb1045, 193k pos/s, four services active.
+
+## Tick — 2026-07-31 14:32, the cache-miss map, and study 60 commissioned on it
+
+`perf record -e L1-dcache-load-misses:u` on the **shipped** binary
+(`archon-58-pgo`, canonical net, pinned frame):
+
+| function | % of L1d misses |
+|---|---|
+| **`SotaHead::forward_into`** | **20.44** |
+| **`avx512::i8_deltas_into_generic`** | **17.44** |
+| **`HalfkaContext::current_full`** | **17.08** |
+| `search::<NonPv>` | 10.81 |
+| **`ThreatContext::at_full`** | **10.69** |
+| `finny_refresh_into` | 6.97 |
+| `qsearch::<NonPv>` | 4.59 |
+| `eval::evaluate` | 2.97 |
+
+**Three accumulator-fold kernels = 54.96% of all L1d misses; 61.93% with
+`finny_refresh_into`.**
+
+**The directive's standing claim — "65.75% of cache misses are in the three
+accumulator-fold kernels" — essentially SURVIVES re-measurement** (54.96% for
+three, 61.93% including the fourth fold kernel). That is worth recording plainly:
+I have corrected several directive claims today (the stale profile list, the
+non-existent `i16_deltas_into`), and **this one holds.** It has also been sitting
+in the directive as a footnote the whole time while the programme optimised
+instruction counts.
+
+### The framing that makes study 60 worth running
+
+**`forward_into` is #1 in cache misses at 20.44%, and perf study 58 correctly
+concluded there is no cheap INSTRUCTION win left in it** — activate 35%, l1_dot
+30%, l2_tail 13%, find_nnz 12%, glue 10%, every component on a documented floor.
+
+**A function closed for instruction work can be wide open for memory work.**
+Those studies measured a different thing. The brief says so explicitly, so study
+58's conclusion is not inherited as a reason to skip the biggest miss source in
+the engine.
+
+**Study 60 commissioned** on memory locality in the four fold kernels, with
+branch mispredicts (~9.4% of cycles) as the fallback target. Its brief inverts the
+programme's instrument hierarchy:
+
+- **`instructions:u` is demoted to a GUARD** — it answers "did my arm do what I
+  meant", not "is this worth anything". A memory arm may *raise* instruction count
+  and still win.
+- **`tools/wallclock_panel.py` is mandatory** — no arm may be called valuable
+  without a 40-round panel result.
+- Cache counters must ship their own published null (`ls_stlf` **fails** its;
+  `L1-dcache-loads:u` fails at n=24 and passes at n=39).
+- Eight prefetch arms are already dead in the catalogue — read them before
+  proposing a ninth.
+
+It also carries the build-config rules that cost a day: **gate on v3, rebuild on
+`native`+PGO and quote that** (6× divergence receipt), **verify provenance by
+building**, and **preserve binaries outside the tree that built them** — today's
+prune destroyed both PGO binaries and only a scratch copy saved the comparison.
+
+**D49:** sb1052, heldout ema 0.010635/0.010679, 193k pos/s, four services active,
+163 GB disk. **Study 59** still running; both studies serialise builds on the
+shared lock.
