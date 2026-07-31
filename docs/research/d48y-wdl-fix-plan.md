@@ -11118,3 +11118,58 @@ this prices **studies 52–56**. Study 57 merged afterwards and is not in it.
 
 **D49:** sb996 — about to cross **sb1000**. 193k pos/s, four services active,
 8.5 GB free, 154 GB disk. **Study 58** working, no builds.
+
+## Tick — 2026-07-31, THE PERF PROGRAMME IS PRICED: −4.163% headline = +1.77 DERIVED Elo
+
+The 40-round interleaved panel **licensed under its pre-registered criterion**,
+and the perf series finally has a strength number.
+
+```
+NULL (byte-identical PGO) : median +0.109%   sd 5.358   sign 20/40 neg   p = 1.0000
+ARM  (main-PGO vs pre52)  : median -1.020%   sd 4.989   sign 29/40 neg   p = 0.0064
+LICENSED: |0.109| < |1.020| / 2
+```
+
+**A null with a sign test of exactly 20/40 and p = 1.0000 is as clean as this
+instrument gets** — and it is the direct payoff of interleaving null and arm
+*within* each round. The earlier null-then-arm design had its null drift
+**−0.132% → +0.972%** between phases as a third party's build came and went.
+
+### The full honest accounting for studies 52–56
+
+| stage | value |
+|---|---|
+| non-PGO instructions — **what the studies report** | **−4.163%** |
+| PGO instructions | −2.686% — native+PGO absorbs **38%** |
+| **PGO wall-clock** | **−1.020%** — instructions overstate time a further **2.63×** |
+| **DERIVED Elo** (120/doubling, exp-0154) | **+1.77** |
+
+**Direction is established (p = 0.0064); magnitude is loose.** The median's
+precision is ≈±0.99%, so the honest range is **+0.1 to +3.5 Elo**. Stated as
+DERIVED, never measured.
+
+**So a −4.163% instruction headline is worth under two Elo.** Not zero, and it
+compounds across studies — but **~4× smaller than the headline** and ~2.4× smaller
+than the PGO figure. Every study number in this document should be read through
+that chain from now on.
+
+**What makes the conversion legitimate rather than hand-waving:** the fixed-node
+match of this exact PGO pair returned `Ptnml [0, 0, 750, 0, 0]` over 1500 games.
+The binaries are behaviourally identical, so **the speed ratio is the entire
+difference between them** — the assumption a speed→Elo constant needs and almost
+never gets.
+
+**And it confirms the infeasibility call was right.** Pricing the *true* +1.77
+Elo by direct match would need far more than the 26,408 games (29 h) computed for
+a hypothetical 4.7 — well over 100,000 games. The panel did it in **eight
+minutes**.
+
+### What this does NOT say
+
+It does not say the perf work is worthless. +1.77 Elo for five studies is real,
+it accumulates, and studies 57/58 are not in this number (the PGO binary predates
+them). It does say that **the headline instruction figure is not the deliverable**
+and that expectations for future studies should be set against wall-clock, not
+`instructions:u`.
+
+**D49:** sb996→sb1000, 193k pos/s, four services active. **Study 58** working.
