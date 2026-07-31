@@ -406,7 +406,7 @@ final panel is the measurement of the thing that shipped.
 | **wl50 eval hash** | **`2e1ede95…93cf79c4`** — **unmoved** |
 | **d13 node total** | **1 739 588** — **unmoved** |
 | `cargo test --features sota,arch-d48x` (the NNUE suite) | **PASSED** — 719 passed, 0 failed |
-| frame node identity, all 25 binaries | **5 001 562** exact |
+| frame node identity, **39 binaries** through `nodes56.sh` | **5 001 562** exact |
 | `ctl56` `.text` md5 vs study 55's `promoted55` | **`4e4aad52`, identical** |
 | `ctl56b` ≡ `ctl56` on `instructions:u` | **0.000 %**, se 0.000 |
 | `ctl56c` ≡ `ctl56b` | **`153f7ef2`, byte-identical** |
