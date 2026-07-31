@@ -85,6 +85,10 @@ sota = []
 # `bench`. Instrumentation only: the search tree, node count and eval hash are
 # untouched (verified), but the binary is NOT a timing reference. Never shipped.
 foldcount = ["sota"]
+# perf study 51: the fold-weighted row probes (all-zero rows, per-row bit width).
+# They walk every folded row's bytes, so they must be OFF in the binary the IBS
+# region census measures -- hence a feature of their own, not part of foldcount.
+rowprobe = ["foldcount"]
 # perf study 49 DIAGNOSTIC PROBE: inject a strictly serial cache-missing chase
 # into `HalfkaContext::current_full`, in its own `#[inline(never)]` leaf, so a
 # known quantity of stall has a known owner and the profiler's attribution of
