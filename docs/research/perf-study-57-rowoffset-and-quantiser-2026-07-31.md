@@ -1,6 +1,7 @@
 # Perf study 57 — pre-scaled fold row offsets, and an `idiv`-free HalfKA quantiser
 
-**Branch** `perf-study-57-i8deltas`, commit `44e5f151`, on top of `c4bcbef3`.
+**Branch** `perf-study-57-i8deltas`, rebased onto **post-study-56 `main`
+(`f1a1325e`)**; §9 is the integration and the re-measurement against that base.
 **Box** 7700X / AVX-512 VBMI2, cpu1 (`P57_CPU=1`), shared throughout with the
 D49 GPU trainer and perf study 56's `ctl56b` on cpu2.
 **Frame** `bench 16 1 100000 tools/nnue/calib/wl50.fens nodes engines/canonical/net.cenn`
@@ -8,20 +9,34 @@ D49 GPU trainer and perf study 56's `ctl56b` on cpu2.
 same command for the startup panels.
 
 **Two arms landed. One arm built and lost, reported with its number. One
-finding of my own retracted.**
+finding of my own retracted, and one re-pricing of my own retracted (§6.1).**
 
-| | `instructions:u` | `branches:u` | `cycles:u` | `L1-dcache-loads:u` |
-|---|---:|---:|---:|---:|
-| **arm A** `RowOffset`, 5 M-node frame | **−0.694%** (24/24) | −0.014% (24/24) | −0.099% (13/24, ns) | **+0.283%** (3/24) |
-| **arm B** reciprocal quantiser, startup frame | +4.549% (0/39) | **−31.431%** (39/39) | **−22.496%** (39/39) | **−5.856%** (39/39) |
-| **both**, 5 M-node frame | **−0.448%** (24/24) | **−2.319%** (24/24) | **−1.363%** (21/24) | +0.052% (7/24, ns) |
-| null (byte-identical), 5 M-node frame | −0.000% se 0.000 | −0.000% se 0.000 | +0.298% se 0.324 | −0.086% se 0.030 |
+**⚠ QUOTE THE POST-56 COLUMN.** §§1–8 were measured against `c4bcbef3`, which
+predates study 56's merge; §9 re-measures everything against the base the work
+actually lands on. Both are given because the *difference between them* is the
+finding study 56 asked for.
 
-Gates, all green on the landed tree:
+| | | vs `c4bcbef3` (pre-56) | vs `f1a1325e` (**post-56, current**) |
+|---|---|---:|---:|
+| **arm A** `RowOffset` | `instructions:u` | −0.694% (−41.27 i/n) | **−0.772% (−45.40 i/n)** |
+| 5 M-node frame | `branches:u` | −0.014% (24/24) | **+0.015% (0/24)** — sign flip |
+| | `L1-dcache-loads:u` | +0.283% (3/24) | +0.354% (1/24) |
+| | `cycles:u` | −0.099% (ns) | +0.175% (ns) |
+| **arm B** reciprocal | `cycles:u` | **−22.496%** (39/39) | **−22.120%** (40/40) |
+| startup frame | `branches:u` | −31.431% (39/39) | −31.433% (40/40) |
+| | `instructions:u` | +4.549% (0/39) | +4.533% (0/40) |
+| **both** | `instructions:u` | −0.448% (24/24) | **−0.523% (39/39)** |
+| 5 M-node frame | `branches:u` | −2.319% (24/24) | **−2.344% (39/39)** |
+| | `ls_dispatch.ld_dispatch:u` | −0.556% (24/24) | **−0.667% (39/39)** |
+| | `cycles:u` | −1.363% (21/24, p=0.0003) | **−1.228% (29/39, p=0.0034)** |
+| | `L1-dcache-loads:u` | +0.052% (ns) | +0.083% (ns) |
+| **null** (byte-identical) | instructions / branches | −0.000% se 0.000 | −0.000% se 0.000 |
+
+Gates, all green on the **integrated** tree (post-56 base, both arms):
 `CHECK_NNUE_GATE=1 bash tools/check.sh` → **All checks passed**, `Bench: 587683`,
 eval hash `2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4`,
 d13 `1739588`; `cargo test --release -- --ignored perft_full_suite` → ok;
-node total 5,001,562 on every arm.
+node total 5,001,562 on every arm and on post-56 `main` itself.
 
 ---
 
@@ -506,3 +521,124 @@ bash tools/perf57/perft57.sh                         # the D24 release tier
 The `foldcount` census in §1 is
 `bash tools/perf57/build57.sh foldcount foldcount,rowprobe` then
 `ARCHON_FOLDCOUNT=… ./bin57/foldcount bench 16 1 100000 …`.
+
+§9's panels are the same commands with `base56` / `null56` / `rowoff56` /
+`post56`, against `panel-null-post56.txt`, `panel-armA-post56.txt`,
+`panel-post56-long.txt` and `startup-post56.txt`.
+
+---
+
+## 9. Integration with perf study 56, and the re-measurement
+
+Study 56 merged at `46588c4b` while this study was running. This branch was
+rebased from `c4bcbef3` onto `f1a1325e` (current `main`), and everything below
+was re-measured against that base rather than carried over.
+
+### 9.1 The conflict, and why it is semantic
+
+Both studies changed `resolve_into`'s buffers, in orthogonal directions, and
+**both changes are wanted**:
+
+* **study 56 mechanism B** made them fixed-size (`&mut [usize; DELTA_CAP]`) and
+  writes through `adds[add_len & M]`. The fixed size is what lets LLVM discharge
+  the `cmp`/`ja panic` pair on the **write**; the mask is the identity on every
+  reachable cursor because `DELTA_CAP` is a power of two.
+* **study 57 arm A** changed the element type to `RowOffset`, so the fold kernel
+  does not recompute `feature * ACC` once per tile on the **read**.
+
+Resolution kept both: `&mut [RowOffset; DELTA_CAP]`, written
+`adds[add_len & M] = RowOffset::of(idx)`, with `add_scratch` / `sub_scratch`
+retyped to match, and study 56's explanatory comment carried across with the
+one phrase that named the old element type generalised.
+
+Two comment repairs went with it, both flagged rather than done quietly:
+
+1. `resolve_both`'s range argument still said the buffers "are
+   `[usize; DELTA_CAP]`" — retyped in the prose, argument untouched.
+2. `resolve_into`'s body carried a fragment left on `main` by study 56's merge:
+   it opened **"OFF, `M` is all-ones: …"**, a sentence about the `bcmisc55`
+   feature gate that the *same commit* deleted, so it described a `#[cfg]` that
+   no longer exists. Replaced with a comment that says what the mask does now.
+
+`.gitignore` kept both studies' entries.
+
+### 9.2 What the re-measurement found
+
+The commission's reason for demanding this is study 56's own receipt —
+`bcmisc55` went from −44.7 to +7.7 i/n when another study landed on its
+substrate. **The same thing happened here, in the opposite direction.**
+
+**Arm A got BIGGER, and that is measured, not derived.** I built an
+arm-A-only binary on the post-56 base (`rowoff56`) rather than subtracting arm
+B's startup share out of the combined number — a derived figure would have been
+two unmeasured inferences deep, which is exactly what rule 4 forbids.
+
+| arm A alone | vs `c4bcbef3` | vs `f1a1325e` |
+|---|---:|---:|
+| `instructions:u` | −0.694% = **−41.27 i/n** | −0.772% = **−45.40 i/n** |
+| `branches:u` | −0.014% (24/24) | **+0.015% (0/24)** |
+| `L1-dcache-loads:u` | +0.283% (3/24) | +0.354% (1/24) |
+| `cycles:u` | −0.099% (13/24, ns) | +0.175% (11/24, ns) |
+
+Two changes worth naming:
+
+* **+4.13 i/n of extra saving (+10%), absolute.** Part of the percentage move is
+  the shrinking denominator (study 56 took the frame from 5946.69 to 5880.89
+  i/n), but the absolute figure moved too, and the arm itself is byte-for-byte
+  the same idea. **I cannot attribute the mechanism without another build and I
+  am not going to guess at one** — the plausible candidates (study 56's
+  `#[inline(always)]` on `ripple`/`apply_at` changing where `resolve_*` inlines,
+  or its fixed-size buffers freeing registers around the producer's new
+  multiply) are hypotheses, not measurements.
+* **`branches:u` flipped sign**, −0.014% → +0.015%. Both readings are exact
+  (se 0.000, unanimous), and both are ≈0.09 branches/node — practically
+  nothing, but it *is* a sign flip and it is the fingerprint of study 56 having
+  removed the bounds-check branches this producer used to sit next to.
+
+**Arm B is untouched**, which is the expected result and worth stating because
+it was checked rather than assumed: study 56 changed nothing in the loader, and
+the startup panel reads −22.120% cycles (40/40) against −22.496% before —
+**263.2 M cycles saved per process** against 269.0 M, the difference being the
+slightly smaller post-56 startup frame.
+
+**The combined arms on the 5 M-node frame, post-56, 39 rounds:**
+
+```
+label   event                     median %  trimmed %     se   neg/n      p
+null56  instructions:u              -0.000     -0.000  0.000   23/39  0.3368
+null56  branches:u                  -0.000     -0.000  0.000   23/39  0.3368
+null56  cycles:u                    +0.033     -0.102  0.241   19/39  1.0000
+
+post56  instructions:u              -0.523     -0.523  0.000   39/39  0.0000
+post56  branches:u                  -2.344     -2.344  0.000   39/39  0.0000
+post56  ls_dispatch.ld_dispatch:u   -0.667     -0.686  0.041   39/39  0.0000
+post56  cycles:u                    -1.228     -1.211  0.258   29/39  0.0034
+post56  L1-dcache-loads:u           +0.083     +0.075  0.024   14/39  0.1081
+```
+
+### 9.3 A 24-round cycles panel was underpowered, and I nearly reported it
+
+The first post-56 combined panel ran **24 rounds** and read
+**`cycles:u` −0.790%, 17/24, se 0.308, p = 0.0639** — it fails its own sign
+test. Extending the identical panel to **39 rounds** gives **−1.228%, 29/39,
+se 0.258, p = 0.0034**, which agrees with both the pre-56 reading (−1.363%) and
+the arithmetic prediction from arm B's fixed startup saving (−263.2 M of an
+18.062 G frame = −1.457%).
+
+The two panels are statistically compatible (the gap is ~1.1 se), so nothing
+here is a contradiction — but had I stopped at 24 rounds I would have written
+"the cycles win halved after integration", which is a story, not a measurement.
+**On this box, a cycles effect near 1% needs ~40 paired rounds, not 24.** The
+commission's own brief said ≥23 rounds resolves 1%; that is right for the
+*median*, and not enough for the *sign test* at this effect size.
+
+### 9.4 Net position
+
+Against the base it actually lands on, the study is worth **−0.523%
+instructions, −2.344% branches, −0.667% load dispatches and −1.228% cycles** on
+the pinned frame, plus **−263.2 M cycles of fixed cost per engine process**,
+node-identical and eval-bit-exact. Arm A alone is **−45.40 i/n**, 10% larger
+than it was pre-56.
+
+Still true, and still unclaimed: **neither arm has been game-tested**, and arm
+A's cycles contribution remains unresolvable on this box in either base.

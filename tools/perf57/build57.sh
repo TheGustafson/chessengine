@@ -5,8 +5,11 @@
 # script builds every arm so a pair can only differ in the feature list.
 #
 # Box discipline (D49 training + perf study 56 both share this machine):
-#   * refuse under 2500 MB available,
-#   * flock against every other study's builds,
+#   * refuse under 3500 MB available,
+#   * flock against every other study's BUILDS — and only builds. The lock is
+#     for compiler memory, not for measurement: a panel or a match that takes
+#     it blocks every other study's compiles for its whole duration, and
+#     `screen.sh` is contention-immune by design and never needed it.
 #   * MemoryMax=6G, -j2.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -17,8 +20,8 @@ FEATURES=$BASE${EXTRA:+,$EXTRA}
 LOCK=/home/nick/.cache/archon-build.lock
 
 avail=$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo)
-if [ "$avail" -lt 2500 ]; then
-  echo "[build57] REFUSING: only ${avail} MB available (< 2500)" >&2
+if [ "$avail" -lt 3500 ]; then
+  echo "[build57] REFUSING: only ${avail} MB available (< 3500)" >&2
   exit 1
 fi
 echo "[build57] $LABEL  features=$FEATURES  avail=${avail}MB  (waiting for lock)"
