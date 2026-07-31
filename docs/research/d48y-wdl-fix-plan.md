@@ -12210,3 +12210,41 @@ three-row) — so continue the table, or fix the generic kernel's loop control,
 which now looks cheaper.
 
 **D49:** sb1109+, 193k pos/s, four services active.
+
+## Tick — 2026-07-31 16:5x, corrected my own provenance guidance; study 62 commissioned
+
+**Fixed the `.text` md5 requirement I wrote into `engines/canonical/MANIFEST.md`
+two ticks ago.** Study 61 showed it is **not a valid identity check across a Cargo
+feature-set change** — a Rust symbol name embeds the crate metadata hash, which
+surfaces inside `objdump`'s branch annotations, so two semantically identical
+builds differ and the check fires falsely. It **remains correct for same-feature
+edits**, which is what it is actually for. The manifest now carries the caveat and
+points at `tools/perf61/ident61.sh` (node total + wl50 eval hash — quantities that
+carry no build metadata) for cross-configuration identity.
+
+Worth noting the sequence: I introduced that requirement to close a provenance
+gap, and it was **wrong within two ticks** — corrected in the same file that
+carried it, rather than left to be discovered by whoever next promotes a binary.
+
+**Study 62 commissioned on study 61's own best-priced open item:** 31.60% of
+threat folds are still generic, and the win per converted fold **grows** with the
+shape (−115 i/fold one-sided vs −322 three-row). Two routes — continue the shape
+table, or fix the generic kernel's loop control — and the brief tells it to
+**price both with `foldcount::THR_PAIR` before building either**, since the shape
+of the remaining tail decides which wins and is measurable first. Study 61 judged
+the loop-control route cheaper; the brief says verify that judgement rather than
+inherit it.
+
+The brief also names, explicitly, **the mechanism class that has produced four of
+the last five best arms**: re-reading a decision made under assumptions a later
+change invalidated (25→61 shape dispatch, 37→57 tile width, and study 58's inverse
+where the same move **lost** at +16.96). **Stale assumptions cut both ways and
+only a build settles the sign** — that is in the brief as a warning, not an
+invitation.
+
+**Closed in the brief so it is not re-litigated:** memory locality (study 61's
+no-fitted-parameter capacity model, ten routes closed — *do not propose an
+eleventh prefetch arm*), branch mispredicts (study 27's null), `forward_into`
+internals, the threat shape dispatch, and `REGS_CAP = 5` from three directions.
+
+**D49:** sb1115, 193k pos/s, four services active, 154 GB disk.
