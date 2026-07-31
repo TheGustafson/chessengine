@@ -9314,3 +9314,53 @@ Both nets must load in the chosen `ENGINE` **and** report `info string eval:
 NNUE` — otherwise it exits 1 with the engine's own error. Verified both
 directions: it rejects `engines/canonical/archon` + the CEN5 net with the exact
 message above, and passes `target-sota` + both nets through to the match phase.
+
+## D49 ENTERS THE ANNEAL (sb600) — with a pre-registered sb700 prediction
+
+**sb602. EMA 0.010673 at the anneal boundary**, ~137e-6 past its pre-extension
+bar. This is the phase I called "consolidates but does not discover" and the
+owner retracted — correctly, since D49's own sb300–400 anneal delivered **301e-6,
+32% of all progress from sb180.**
+
+**PRE-REGISTERED, before the anneal runs:**
+
+| input | value |
+|---|---|
+| measured gap at sb580 | **−25.88 ± 11.60** Elo (1466 games) |
+| anneal on D49's own history | 301e-6 of heldout |
+| heldout↔Elo exchange | 12–28e-6 per Elo |
+| ⇒ anneal worth | **11 to 25 Elo** |
+| **⇒ sb700 vs canonical** | **−15 to −1 Elo** |
+
+**The 5880-game verdict screen settles this to ±5.** If it lands above the range,
+the anneal did more than D49's own history predicts — which would itself be the
+finding.
+
+## Study 49 commissioned — the highest stall density in the engine, unexplained
+
+Study 48's census: **stall-per-load spans 12.5×.**
+
+| symbol | loads/node | stall c/node | **c/load** |
+|---|---:|---:|---:|
+| `forward_into` | 305.3 | 88.0 | **0.29** |
+| `current_full` | 52.1 | 158.4 | **3.04** |
+
+**`current_full` issues one sixth the loads and eats nearly twice the stall**, and
+study 48 lists it as its **largest open item** — two mechanisms died, the third
+(sample skid) untested. **Nobody has ever targeted it**; it has been a row in a
+table for six studies.
+
+Three-way question, all outcomes useful: **is 3.04 real** (if it is skid, study
+44's assumption A5 needs a caveat and the 12.5× spread is partly artifact —
+proving that is real work); **if real, what is it waiting on** (study 43 found
+`finny_refresh_into` moves 234 lines per refresh with 49% being HalfKA weight
+rows, a mechanism nobody predicted — expect a surprise); **then reduce it**
+(158.4 stall cycles/node is 3.8% of the frame; half of it beats study 48's win).
+
+Briefed with the full current instrument state, including that
+**`load_not_complete` is NOT adjudicating** (byte-identical null +3.478% at n=6)
+and `instructions:u` is the only exact counter. Two anti-escape-hatch receipts
+attached: **a lever study 44 declared dead was the largest on the board**, and
+**study 48 landed in `activate` right after study 47 priced it at its floor** —
+because study 47 assumed `vpmullw`'s memory operand had to be the scale, and it
+is commutative.
