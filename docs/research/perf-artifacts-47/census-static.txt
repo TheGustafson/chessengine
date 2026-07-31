@@ -1,0 +1,19 @@
+perf study 47 -- static 512-bit opcode census (tools/perf47/census47.py)
+Binary: bin47/base47 (cmp-identical to study 46's bin46/base46).
+
+=== i8_deltas_into_generic      (1806 insns, 1135 are 512-bit)
+  vpmovsxbw 450 | vpaddw 360 | vpsubw 90 | vmovdqu64 179 | vmovups 56
+  -> widening : arithmetic = 450 : 450, exactly 1:1
+=== finny_refresh_into          (1824 insns, 819 are 512-bit)
+  vpmovsxbw 300 | vpaddw 280 | vpsubw 20 | vmovdqu64 149 | vmovups 70
+=== refresh_threat_into_at      (1122 insns, 700 are 512-bit)
+  vmovdqu64 272 | vmovups 188 | vpmovsxbw 120 | vpaddw 120
+=== SotaHead::forward_into      (785 insns, 403 are 512-bit)
+  vmovdqa64 42 | vpdpbusd 41 | vmovdqu64 33 | vfmadd231ps 30 | vpsllw 28
+  vpbroadcastd 27 | vpmullw 24 | vpaddsw 24 | vpmaxsw 24 | vpminsw 24
+  vptestmd 20 | vpmulhuw 12 | vpmovwb 12 | vbroadcastss 12 | vpcompressw 10
+=== ThreatContext::at_full      (1636 insns, ONLY 21 are 512-bit) -- scalar code
+=== HalfkaContext::current_full ( 541 insns, ZERO 512-bit)        -- scalar code
+
+The last two carry 11.35% of all engine stalls (study 44 s2) and have NO
+512-bit issue lever at all.  Their cost is scalar and memory.

@@ -1,0 +1,29 @@
+perf study 47 -- ISSUE cost of `activate`'s EMITTED lane-iteration
+Transcribed from the shipped disassembly at 0x70ab0 (NOT from Rust source):
+two 6-op merges + a 3-op tail = 15 512-bit ops.  All L1-resident.
+
+independent lane-groups            1        2        3        4
+c/op, first harness (SHARED    1.4268   0.7937   0.5980   0.5317   <- OPTIMISTIC
+      offset for all 3 loads)                                         by ~10%
+c/op, distinct addresses       1.4038   0.9112   0.7350   0.5856   <- FAITHFUL
+c/iteration (faithful)          21.06    13.67    11.03     8.78
+
+Isolated per-op sum for this sequence = 13.34 c/iteration = 0.889 c/op
+Measured (faithful, 4 groups)         = 0.586 c/op  =>  OVERLAP 0.659
+
+TWO INSTRUMENT CORRECTIONS, both recorded rather than quietly fixed:
+ 1. The fold's 0.873 overlap factor does NOT generalise here.  Borrowing it
+    over-priced activate by 1.3x and put the first draft of the study's
+    bracket at 23.9-25.4%.  Measured, the bracket is 20.8-24.4%.
+ 2. The first harness gave all three loads in a merge the SAME buffer
+    offset, so they hit one cache line; the real kernel reads three separate
+    arrays.  Distinct addresses: 0.532 -> 0.586 c/op.
+
+The FOLD measurement (mix-fold.txt) does NOT share defect 2: its sequence has
+exactly one memory operand per chunk-update and the offset advances per slot.
+
+activate's 40 lane-iterations are mutually independent and LLVM unrolls by 12
+(census: vpmullw appears 24x = 2/iteration x 12), so >=4 groups is the
+engine's case.  The curve has not flattened at 4, so the study brackets
+activate between the groups-4 and groups-3 readings (0.586-0.735) rather than
+quoting the best number.
