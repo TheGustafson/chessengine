@@ -9272,3 +9272,45 @@ optimum**, screening **1466 games fixed-node vs canonical D48X at ITS optimum
 optimum, and the EMA deployed. Same engine binary both sides, so the landed perf
 wins cannot confound it. **A progress read, not the verdict** — D49 still has 114
 sb and the whole anneal to run.
+
+## D49 EQUAL-NODE READ: −25.88 ± 11.60 Elo — and the silent-failure trap that nearly ate the verdict
+
+**Result (1466 games, fixed 25k nodes, D49 sb580-EMA @756 vs canonical D48X @600,
+each net at its OWN optimum, same binary both sides):**
+
+| | |
+|---|---|
+| **Elo** | **−25.88 ± 11.60** |
+| score | 46.28% (W 404 / L 513 / D 549) |
+| Ptnml(0–2) | [37, 232, 295, 141, 28] |
+
+Behind, as expected mid-run, with 110 sb and the whole anneal left.
+
+### The first run of this screen was MEANINGLESS and looked fine
+
+It returned **−1106.98 ± 234.39: 0 wins, 1461 losses, 5 draws.** Cause:
+`tools/screen.sh` defaults to `ENGINE=engines/canonical/archon`, **which predates
+CENN-v5**, and `netpack` with `D40_THREAT_QUANT` emits CEN5:
+
+```
+ERROR EvalFile: CENN bad magic: [67, 69, 78, 53]   ([C,E,N,5])
+```
+
+**The EvalFile load failed, NNUE switched off, and CAND played 1466 games on
+PSQT** — while `screen.sh` reported a well-formed result with tight error bars.
+Confirmed: the same binary loads the canonical net (`info string eval:
+NNUE(sota-v2)`), and benching the D49 net through it gives the PSQT node count.
+
+**The giveaway was the DRAW COUNT, not the Elo — five draws in 1466.** A net that
+is merely weak still draws. That is not a signal anyone should have to notice.
+
+**This was aimed at the sb700 verdict**: `d49_verdict.sh` prints screen
+invocations that inherit the same default engine, so the real verdict would have
+compared PSQT against canonical and declared D49 destroyed.
+
+### Fix: a LOAD GUARD in `screen.sh`, before a single game is played
+
+Both nets must load in the chosen `ENGINE` **and** report `info string eval:
+NNUE` — otherwise it exits 1 with the engine's own error. Verified both
+directions: it rejects `engines/canonical/archon` + the CEN5 net with the exact
+message above, and passes `target-sota` + both nets through to the match phase.

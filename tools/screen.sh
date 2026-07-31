@@ -63,6 +63,30 @@ _memcap=$(( (_freemb - 1536) / (2 * (_netmb + ${HASH:-16})) ))
 CONC="${CONC:-$(( _memcap < $(nproc) - 2 ? _memcap : $(nproc) - 2 ))}"
 [ "$CONC" -ge 1 ] || { echo "error: not enough free memory to run even one pair" >&2; exit 1; }
 
+# ---------------------------------------------------------------------------
+# LOAD GUARD (2026-07-30). A screen whose engine cannot READ a net does not
+# crash -- the EvalFile load fails, NNUE silently switches off, and that side
+# plays on PSQT. It then reports a perfectly well-formed result with tight error
+# bars. Measured: D49 packed as CENN-v5 (netpack with D40_THREAT_QUANT set)
+# against engines/canonical/archon, which predates CEN5:
+#     "ERROR EvalFile: CENN bad magic: [67,69,78,53]"  ([C,E,N,5])
+#     -> 1466 games, 0 wins, 1461 losses, FIVE draws, Elo -1107.
+# The giveaway was the draw count, not the Elo. Never rely on noticing that.
+# Both nets must LOAD in the chosen ENGINE before a single game is played.
+for _net in "$CAND" "$REF"; do
+    _probe=$(printf 'uci\nsetoption name EvalFile value %s\nisready\nquit\n' \
+                    "$(readlink -f "$_net")" | "$ENGINE" 2>&1)
+    if printf '%s' "$_probe" | grep -qi 'ERROR EvalFile'; then
+        echo "error: $ENGINE cannot load $_net" >&2
+        printf '%s\n' "$_probe" | grep -i 'ERROR EvalFile' >&2
+        echo "  -> that side would play on PSQT and the match would be meaningless." >&2
+        echo "  -> use an ENGINE built from a tree that supports this container." >&2
+        exit 1
+    fi
+    printf '%s' "$_probe" | grep -qi 'info string eval: NNUE' || {
+        echo "error: $ENGINE did not report NNUE active for $_net" >&2; exit 1; }
+done
+
 OUT="${OUT:-$ROOT/engines/runs/screen-$(basename "${CAND%.cenn}")}"
 ROUNDS=$(( GAMES / 2 ))
 
