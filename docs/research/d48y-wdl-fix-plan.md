@@ -12248,3 +12248,43 @@ eleventh prefetch arm*), branch mispredicts (study 27's null), `forward_into`
 internals, the threat shape dispatch, and `REGS_CAP = 5` from three directions.
 
 **D49:** sb1115, 193k pos/s, four services active, 154 GB disk.
+
+## Tick — 2026-07-31 17:0x, sb1400 endpoint protocol prepared (~10 h out)
+
+**`tools/d49_verdict.sh` step 3 (the ladder) is now DISCHARGED in the script
+itself**, not just in this log. Its own trap 2 deliberately left the question
+open — *"sweep, do not assume — but the frame was stable across sb140–250, so a
+NARROW ladder suffices unless sb400 has drifted."*
+
+It has not drifted. Measured three times at scale 756:
+
+| sb | stdev @756 |
+|---|---|
+| through 270 | 415–422 |
+| 900 | 423.5 |
+| **1060** | **426.1** |
+
+Stable across **790 superbatches, through the anneal and eleven LR cycles.** So
+756 stands and step 3 is skipped — **~1 h saved at sb1400 and again at sb1700.**
+
+**The caution is preserved as a condition, not deleted as an inconvenience:** the
+ladder commands are retained and gated on step 2's printed stdev falling outside
+~415–430, so the sweep still runs if the frame ever moves. That is the right way
+to retire a trap someone wrote deliberately.
+
+**Done now rather than at the endpoint**, because this is exactly the preparation
+that gets skipped under time pressure when a 5880-game screen is waiting.
+
+**Endpoint readiness checked:**
+
+- `target-sota/release/chessengine` present and **CEN5-capable** — it packed and
+  screened sb900 and sb1060 successfully, with normal draw ratios (43.7–45.7%),
+  which is the tell that both sides loaded NNUE.
+- Its build date (2026-07-30, pre-study-52) **does not matter and should not be
+  "fixed"**: the matches are fixed-node, both sides run the same binary, and the
+  node-null proved `Ptnml [0, 0, 750, 0, 0]` — a pre-52 and a post-58 engine play
+  *identically* at fixed nodes. Continuity with the earlier screens is a reason to
+  keep it.
+
+**D49:** sb1122, heldout ema 0.010621, 193k pos/s, four services active, 154 GB
+disk. **sb1400 in 10.0 h, sb1700 in 20.8 h.** **Study 62** working.
