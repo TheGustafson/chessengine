@@ -12288,3 +12288,47 @@ that gets skipped under time pressure when a 5880-game screen is waiting.
 
 **D49:** sb1122, heldout ema 0.010621, 193k pos/s, four services active, 154 GB
 disk. **sb1400 in 10.0 h, sb1700 in 20.8 h.** **Study 62** working.
+
+## Tick — 2026-07-31 17:16, box-discipline audit: ZERO throttle events, zero OOM
+
+The standing hard constraint is *"DON'T OOM the box"* and the trainer is the more
+valuable job. **Verified at the cgroup rather than inferred from the fact that
+nothing crashed:**
+
+| | |
+|---|---|
+| `memory.events` (d49y.service) | **low 0, high 0, max 0, oom 0** |
+| `memory.pressure` avg300 | **0.58%** |
+| OOM kills in today's user journal | **0** |
+| `memory.peak` | 11.0 GB (includes reclaimable page cache, not anon RSS) |
+
+**Zero throttle events of any kind**, across a day that ran **eleven perf
+studies**, dozens of builds, ~6,000 games of matches, three PGO builds and a
+worktree prune alongside a permanently-resident GPU trainer on a 15 GB box.
+
+**And the trainer never slowed down:**
+
+| segment | throughput |
+|---|---|
+| sb701–807 | 192,513 pos/s |
+| sb808–914 | 193,344 pos/s |
+| sb915–1021 | 193,340 pos/s |
+| sb1022–1130 | **193,470 pos/s** |
+
+**Slightly faster at the end than the beginning** — no degradation, no thermal or
+memory drift. This matters beyond hygiene: **every D49 timing and ETA in this log
+rests on the trainer running at a constant rate**, and that assumption is now
+measured across the whole cycling phase rather than spot-checked.
+
+**What did the work:** the `flock` on `archon-build.lock` serialising every study
+build, the 6 GB `MemoryMax` cgroup per build, `-j2`, the 3500 MB pre-build floor,
+and matches deliberately kept *out* of the build lock (fixed-node matches are
+contention-immune, so locking them only stalled studies — my error, corrected
+mid-session).
+
+**The one real incident was disk, not memory:** 8.0 GB of stale worktree
+`target/` dirs, cleared by pruning 66 merged worktrees. Even that never threatened
+the trainer, whose checkpoints live under `data/`.
+
+**D49:** sb1130, heldout ema 0.010621, four services active, 154 GB disk.
+**sb1400 in ~9.7 h.** **Study 62** working.
