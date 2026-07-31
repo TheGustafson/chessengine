@@ -9030,3 +9030,52 @@ now 40e-6 ahead.** The lesson is the owner's: *there is no way to know how much
 the anneal will recover*, and the same applied to the linear phase.
 
 Confirm pass running (pid 1486751, 2100 MB) with a waiter armed; box 7034 MB.
+
+## Tick — BOTH D49 series converging; four lines live; the representation line RESET
+
+**D49x: sb551.** EMA **0.010769** — twelve consecutive down, **43e-6 past its
+bar**. And the raw series, which lagged badly, is now nearly there too:
+
+| sb | raw value | gap to raw bar (0.010824) |
+|---|---:|---:|
+| 530 | 0.010931 | +107e-6 |
+| 540 | 0.010871 | +47e-6 |
+| 550 | 0.010847 | **+23e-6** |
+
+Slope −4.20e-6/sb ⇒ **PRE-REGISTERED: the raw series crosses at ~sb555.** Both
+series ahead would make the extension unambiguous rather than metric-dependent.
+
+**Box: 6527 MB, swap 17 MB, load 5.18, four lines live** (conj confirm ×3, study
+45 replication, study 47, representation probe ×2). Tight but stable; `flock`
+serialises any build and `oomguard` keeps the trainer last in OOM preference.
+**No fifth line.**
+
+### The representation line was reset, on the owner's sixth correction
+
+**Pair mining is a capacity improvement over the SAME information, not new
+information.** The primitives are unchanged, and the head already computes 640
+quadratic monomials per perspective, so conjunctions are partly available
+already. The `conj-study` branch is therefore **relabelled an ENCODING study** —
+it answers a real architectural question (do explicit conjunction rows beat the
+implicit quadratic head?) and is nearly finished, so it runs to completion under
+that label. **It is not the representation line.**
+
+**The through-line of all five of my failed answers, named so it stops
+recurring: each fixed the previous criticism and dropped a different one of
+{new, richer, learned}.** Local repair on the last sentence instead of holding
+the whole specification.
+
+**The reset brief** turns "what is missing?" into a measurement. HalfKA is
+injective on placement, so every static fact is *present* — **but presence is not
+access.** The architecture is a linear map plus 640 rank-1 quadratic monomials
+plus two tiny dense layers, and that class cannot compute most functions of
+placement (exchange outcomes, pawn races, opposition, trapped pieces).
+**Information the architecture cannot extract is information it does not have.**
+
+**Method: decodability probes on the frozen accumulator.** If a small probe
+cannot recover a quantity from `acc` alone, the network does not have it — with a
+**control target that IS trivially present (material balance)** so a failure means
+"not decodable" rather than "weak probe". That yields a *ranked, empirical* map of
+deficits. Then, and only then, supply a raw stream carrying the demonstrated
+deficit and **learn the embedding** rather than hand-designing the feature.
+CPU-feasible against a frozen net, so it runs while D49 holds the GPU.
