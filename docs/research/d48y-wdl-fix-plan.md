@@ -11372,3 +11372,52 @@ native+PGO and quote that**, and verify provenance by building. The 6× receipt 
 quoted in full so the agent treats it as a gate rather than advice.
 
 **D49:** sb1017, 193k pos/s, four services active, 154 GB disk.
+
+## Tick — 2026-07-31 13:31, worktree prune: 66 removed, ~12 GB freed — AND I DELETED MY OWN WORKTREE
+
+**80 worktrees had accumulated**, 56 of them agent worktrees holding **8.0 GB**.
+`git worktree prune` reported **zero** prunable — every one was still on disk, so
+nothing would have been reclaimed automatically.
+
+Pruned by **merge status**, not age or name: removed only where `HEAD` is an
+ancestor of `main`. **66 removed, 153 GB → 165 GB.** Largest single reclaim was
+`perf-study-52` at **2.9 GB** of stale `target/`. Kept the 11 unmerged worktrees
+(`reprgap-seam`, `conj-study`, `perf-study-45`, six agent trees) — **unmerged
+means unlanded work and none of it was mine to discard** — and excluded study 59's
+active worktree *by name before the loop*, not by trusting the merge test.
+
+### The bug in my own filter, and what it cost
+
+**`chessengine-mainwt` — my dedicated main worktree — was itself deleted.** Its
+`HEAD` *is* `main`, so it trivially passed "is an ancestor of main". The exclusion
+I wrote protected the running agent and forgot the one worktree I use every tick.
+
+The consequence was the exact failure that worktree exists to prevent: my next
+`cd` failed silently, the shell stayed in the shared checkout, and `git add -A`
++ commit put the handoff **on `repr-gap-study`** — the wrong-branch problem this
+setup was built to solve, reintroduced by deleting the solution.
+
+**Repaired, and verified rather than assumed at each step:**
+
+1. Checked what the stray commit actually contained. `git add -A` had swept up
+   dirty files in the shared checkout — `screen.sh` (+24), `d49_verdict.sh` (+13).
+   **`git diff main <stray> -- tools/screen.sh tools/d49_verdict.sh` is EMPTY**:
+   those were diffs against `repr-gap-study`'s stale copies, not new work. Nothing
+   was lost by discarding the commit.
+2. Recreated the worktree at `main`.
+3. Reset `repr-gap-study` back to `1b3845ec`, its own last real commit.
+
+**Two rules from this.** An exclusion list must name **every** worktree that must
+survive, and "is merged" is exactly the wrong test for a *working* tree — being
+identical to main is what a working tree is *supposed* to look like. And a `cd`
+into a deleted directory fails silently while the rest of a `&&`-free script runs
+on regardless: **build a script's later steps on the `cd` succeeding, or check
+`pwd`.**
+
+**D49 verified unaffected after deleting 66 directories** — sb1025, 193k pos/s,
+four services active. Its checkpoints live under `data/`, not in any worktree, but
+that is worth confirming rather than assuming.
+
+**D49:** heldout ema **0.010641** at sb1020, the run's lowest — still inside the
+sawtooth, still not a trend, unreadable until sb1400 (~13 h out).
+**Study 59** working, no builds in flight.
