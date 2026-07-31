@@ -698,7 +698,82 @@ impl SotaHead {
             self.threat_shift,
             ft,
         );
+        // The `bucket` binding is DUPLICATED under the two `cfg`s rather than
+        // hoisted once, so that the arm-OFF build keeps its statement order
+        // byte-for-byte: hoisting it unconditionally moved one index load
+        // across `find_nnz` and changed the control build's `.text` md5
+        // (d0dff381 -> caab9574), which would have made every number below a
+        // property of the edit rather than of the arm.
+        #[cfg(any(feature = "hskip60", feature = "htail60"))]
+        let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
+        // PERF STUDY 60 arm `htail` — hint the head's TAIL tables at the top of
+        // the forward pass.
+        //
+        // This is the ninth software prefetch in this engine and the first at
+        // this site. The eight dead ones (studies 4, 21, 29 x3, 43 x4, 44, 51)
+        // are all on the FOLD's weight rows, where study 29 sec 5.2 computed the
+        // ceiling: a row is a cold single-visit burst taking 22 demand misses,
+        // one hint converts at most 1 of 22, and `_MM_HINT_T2` lands in L2 where
+        // those rows already hit 72.7 % of the time. **None of that is true
+        // here.** The tail tables are 2,304 B, they are read IN FULL on every
+        // evaluation (so a hint cannot be wasted on data that is not touched),
+        // study 51's region census measures them at 98.84 % / 100.00 % L1 miss,
+        // and their addresses are known at entry while their first use is ~800
+        // instructions away at the end of the serial `l1 -> l2 -> l3` chain.
+        // `T0`, not `T2`, for the same reason: the miss being converted is an
+        // L1 miss.
+        //
+        // 36 hints per evaluation ~= 15.5 instructions/node, which is why this
+        // is an ARM and not an obvious win -- see the panel.
+        #[cfg(feature = "htail60")]
+        {
+            #[cfg(target_arch = "x86_64")]
+            {
+                use std::arch::x86_64::{_MM_HINT_T0, _mm_prefetch};
+                let mut hint = |p: *const u8| {
+                    #[allow(unsafe_code)]
+                    // SAFETY: `_mm_prefetch` is a pure cache hint, defined for
+                    // ANY address value -- it cannot fault, cannot trap and has
+                    // no architectural effect beyond cache state. Same
+                    // sanctioned use and justification as
+                    // `TranspositionTable::prefetch` (doc 08 sec 3.15) and
+                    // `sota_accumulator::pf43`.
+                    unsafe {
+                        _mm_prefetch(p.cast(), _MM_HINT_T0);
+                    }
+                };
+                let l2w = self.l2_weights.block(bucket).as_ptr().cast::<u8>();
+                for off in (0..L2 * L3 * 4).step_by(64) {
+                    hint(l2w.wrapping_add(off));
+                }
+                hint(self.l2_biases.block(bucket).as_ptr().cast());
+                hint(self.l3_weights.block(bucket).as_ptr().cast());
+                hint(self.l3_weights.block(bucket).as_ptr().cast::<u8>().wrapping_add(64));
+                hint(self.l1_biases.block(bucket).as_ptr().cast());
+            }
+        }
+        // PERF STUDY 60 arm `hskip` — issue the output-skip lane's 20 cold
+        // lines HERE, not after `propagate_l3`.
+        //
+        // `skip_dot_i8` depends on `ft` and on `sk.q.block(bucket)` only, and
+        // both are ready the instant `activate_ft` returns — but the value is
+        // consumed at the very END of a strictly serial chain
+        // (`l1_dot -> l1_dequant -> l2_tail -> l3_dot`). Left where it was, its
+        // reads of a 1280-byte lane that study 51 measured at a **96.27 % L1
+        // miss rate** are issued when nothing else is left to overlap them
+        // with. Hoisted, they are in flight across the whole matmul.
+        //
+        // This is memory-level parallelism, not prefetching: no hint
+        // instruction, no extra load, the same loads issued ~800 instructions
+        // earlier. Bit-exact by construction — the integer dot and the two f32
+        // multiplies are unchanged and the f32 ADD into `l3` stays where it
+        // was, so no floating-point operation is reordered.
+        #[cfg(feature = "hskip60")]
+        let skip_early = self.skip_weights.as_ref().map(|sk| {
+            super::sota_simd::skip_dot_i8(&ft[..], sk.q.block(bucket)) as f32 * sk.scale[bucket]
+        });
         let count = find_nnz(ft, nnz);
+        #[cfg(not(any(feature = "hskip60", feature = "htail60")))]
         let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
         self.propagate_l1(ft, &nnz[..count], bucket, l1_out);
         let l1 = l1_out;
@@ -725,8 +800,16 @@ impl SotaHead {
             // accumulator, which doubles that kernel), but we CAN pay for it
             // in the same currency: `vpdpbusd` over u8 x i8 does 64 lanes per
             // instruction, so 1280 lanes cost 20 loads and 20 multiply-adds.
+            #[cfg(not(feature = "hskip60"))]
             let lane = sk.q.block(bucket);
+            #[cfg(not(feature = "hskip60"))]
             let acc = super::sota_simd::skip_dot_i8(&ft[..], lane) as f32 * sk.scale[bucket];
+            // `skip_early` is `Some` exactly when `skip_weights` is `Some`, so
+            // this arm is unreachable-with-`None` by construction; `expect`
+            // rather than `unwrap_or` so a future edit that breaks the pairing
+            // fails loudly instead of silently evaluating to zero.
+            #[cfg(feature = "hskip60")]
+            let acc = skip_early.expect("skip_early is Some whenever skip_weights is");
             l3 + acc * ((1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT) as f32)
         } else {
             l3
