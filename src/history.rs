@@ -651,8 +651,7 @@ impl Histories {
                     }
                     let mult = params::CONT_CONSISTENCY_MULT[positive_count];
                     let scaled = (bonus as i64 * $weight as i64 * mult as i64
-                        / params::CONT_UPDATE_DIVISOR())
-                        as i32
+                        / params::CONT_UPDATE_DIVISOR()) as i32
                         + if i == 1 {
                             params::CONT_OFFSET1_FLAT_BONUS()
                         } else {
@@ -869,9 +868,6 @@ impl Histories {
     /// specialized key; the continuation term sums offsets 2 and 4 (or falls
     /// back to a flat prior after a null previous move). Combine with
     /// [`to_corrected_static_eval`].
-    // perf study 55 arm `inld55`: force the inline that the search::<NT>
-    // call-site duplication denies (study 54's mechanism, generalised).
-    #[cfg_attr(feature = "inld55", inline(always))]
     pub fn correction_value(&self, board: &Board, stack: &[Stack], cur: usize) -> i32 {
         debug_assert!(cur >= SS_OFFSET);
         let us = board.side_to_move();

@@ -18,64 +18,32 @@ path = "src/bin/root_analysis.rs"
 required-features = ["datagen"]
 
 [features]
-# ---- perf study 55 arms: how far does study 54's SINGLE-CALL-SITE INLINING
-# mechanism generalise?  Study 54 measured -20.8 i/n from making
-# `make_move_with::<H>` reachable from ONE call site, so LLVM's last-call-to-
-# static bonus inlined all 2466 bytes of it into `do_move`.  The generic that
-# denies that bonus everywhere else is `search::<NT>`: Pv and NonPv are two
-# monomorphizations of one body, so EVERY helper called from the search body
-# has (at least) two call sites and stays out of line -- including three that
-# already carry `#[inline]` and were declined anyway.  These arms force the
-# inline that the duplicated call site denies.  Pure codegen; node-identical.
+# ---- perf study 55 RETAINED MEASUREMENT ARMS.
+# Study 55 landed three groups unconditionally (small-body `#[inline(always)]`
+# on the search-body and board/TT helpers, and MovePicker's `BUF_MASK`), for a
+# measured -83.8 instructions/node. These three arms are NOT landed and are kept
+# switchable because each is a large WIN ON ITS OWN and only loses in
+# combination -- the interaction, not the change, is what blocks them. Do not
+# re-measure them alone and assume they stack; study 55 Sec 3.2 shows arms on
+# this codebase missing the sum of their parts by up to 2.6 percentage points,
+# in BOTH directions.
 #
-# `inla55`: the pure 2-call-site class -- helpers whose ONLY caller pair is
-# search::<Pv> + search::<NonPv> (stat_score, is_shuffling, MovePicker::select,
-# Stage::bump, Board::legal, upcoming_repetition, new_probcut).
-inlas55 = []          # inla55's SMALL bodies: Stage::bump, MovePicker::select,
-                      # Board::legal, is_shuffling (68-267 bytes each)
-inlab55 = []          # inla55's BIG bodies: stat_score, upcoming_repetition,
-                      # new_probcut (268-802 bytes) -- suspected source of the
-                      # +21.8 loads/node inla55 measured against -18.7 instr/n
-inla55 = ["inlas55", "inlab55"]
-# `inlb55`: per-node board/TT helpers with 3-10 call sites (unmake_move,
-# tt::probe, TtWriter::write, capture_stage, gives_check) -- the same lever
-# where the call-site count is NOT two, to test whether the mechanism is about
-# "one site" or just about "inlined at all".
-inlb55 = []
-# `inlc55`: `Worker::do_move` itself -- study 54's own site, one level out.
-# 3516 bytes, 8 call sites, once per node, already `#[inline]` and declined.
-inlc55 = []
-# `inld55`: the next tier of per-node helpers (check_time, correction_value,
-# attackers_to_exist, pseudo_legal) -- 4 to 10 call sites each.
-inld55 = []
-# `inle55`: `Board::see_ge` alone. 941 bytes at TWENTY-TWO call sites, several
-# per node; the code-growth outlier, priced on its own so the batch cannot hide
-# it.
-inle55 = []
-# ---- perf study 55 MECHANISM B arms: study 54 measured a 30.7 i/n swing
-# between two spellings of ONE algorithm, because the losing shape indexed
-# `list[i]` twice per move (bounds-checked) where `list.iter()` has none. These
-# arms apply that lens to the sites the census found. All node-identical.
-# `bcbuf55`: mask MovePicker's `buf` funnel -- every move in every stage of
-# every node passes through `slot`/`set_slot`/`swap_slots`, and `MAX_MOVES` is
-# a power of two, but the index is a struct field LLVM cannot bound.
-bcbuf55 = []
-# `bccont55`: `update_continuation_histories` indexes a RUNTIME-LENGTH slice
-# twice per iteration (study 54's exact defect, one worse); plus the search's
-# three 2-D `[pci][to]` chains that `stat_score` already spells flat.
-bccont55 = []
-# `bcmisc55`: three provable range facts -- `reductions[depth]`/`[move_number]`
-# (also a latent panic at 256 moves), `LMR_DIVISOR[min(16)-1]` (underflows at
-# depth 0), and the DeltaBuf write side (its READ side is already masked).
+# `bcmisc55` (-44.7 i/n alone): three provable range facts --
+# `reductions[depth]`/`[move_number]` (which also closes a LATENT PANIC:
+# move_number reaches 256 in a 256-move position and `reductions` is [i32; 256]),
+# `LMR_DIVISOR[depth.min(16) - 1]` (underflows at depth 0), and DeltaBuf's write
+# side (its read side is already masked in `resolve_both`).
 bcmisc55 = []
-# `bcsort55`: partial_insertion_sort reads `head[q-1]` twice per shifted
-# element. Not either rewrite study 23 rejected -- the permutation is untouched.
+# `bcsort55` (-34.6 i/n alone): `partial_insertion_sort` reads `head[q - 1]`
+# twice per shifted element, once in the loop condition and once in the body.
+# NOT either rewrite study 23 rejected -- the permutation, including the
+# observable BadQuiet tail, is untouched; only the load count changes.
 bcsort55 = []
-# The INERT CONTROL is not a feature: it is the label `ctl55`, this EDITED tree
-# built with NO arm feature.  If its `.text` md5 equals `base55`'s (built from
-# the untouched tree) the scaffolding is provably inert and every arm is a
-# straight arm-minus-base contrast.  Study 53's control failed exactly this
-# test (-6.9 i/n on its own); study 54's passed.
+# `bccont55` (+5.8 i/n alone -- a LOSS, retained as the falsification):
+# `update_continuation_histories` has study 54's exact double-index shape on a
+# RUNTIME-LENGTH slice, and converting it to one subslice + reversed zip did not
+# pay. The shape being present is not sufficient.
+bccont55 = []
 # ---- perf study 53 arms (do_move / bounds-check deletion). Node-identical by
 # construction; each is a MEASUREMENT arm, promoted to unconditional if it wins.
 # `cont53`: pad CONT_NB 3328 -> 4096 and mask, folding the continuation-history

@@ -445,9 +445,6 @@ impl Board {
     /// testing hammers (doc 05 §3.8). The `||` chain short-circuits
     /// between the five terms; sliders first, they answer most often on
     /// the king-safety probes this serves.
-    // perf study 55 arm `inld55`: force the inline that the search::<NT>
-    // call-site duplication denies (study 54's mechanism, generalised).
-    #[cfg_attr(feature = "inld55", inline(always))]
     pub fn attackers_to_exist(&self, sq: Square, occupied: Bitboard, c: Color) -> bool {
         let tables = attacks::tables();
         let queens = self.pieces(c, PieceType::Queen);
@@ -479,7 +476,25 @@ impl Board {
     // becoming single-call-site, which let LLVM's last-call-to-static bonus
     // inline it.  `search::<NT>` duplicates every search-body call site, so
     // that bonus never applies here; this forces the same inline directly.
-    #[cfg_attr(feature = "inlas55", inline(always))]
+    // perf study 55: `#[inline(always)]`, not `#[inline]`. `search::<NT>` is two
+    // out-of-line monomorphizations of one body, so every helper the search
+    // body calls has at least two machine call sites and can never earn LLVM's
+    // last-call-to-static bonus -- the bonus that let study 54 inline 2466 bytes
+    // of `make_move_with` into `do_move` for -20.8 i/n. A plain `#[inline]` was
+    // already here on some of these and was DECLINED. Forcing it measured
+    // -19.3 i/n for this group. Only SMALL bodies win: the same lever on
+    // `do_move` (3516 B) costs +25.7 i/n in spills -- see study 55 Sec 0.1.
+    // Perf study 55: `inline(always)`, deliberately, and NOT a plain `#[inline]`.
+    // `search::<NT>` is two out-of-line 16 KB monomorphizations of one body, so
+    // every helper the search body calls has at least two machine call sites and
+    // can never earn LLVM's last-call-to-static bonus — the bonus that let study
+    // 54 fold 2466 bytes of `make_move_with` into `do_move` for −20.8 i/n. Some
+    // of these already carried `#[inline]` and were DECLINED anyway. Forcing it
+    // measured −19.3 i/n (small search-body helpers) and −12.6 (board/TT ones).
+    // The lever INVERTS on large bodies: the same change on `do_move` (3516 B)
+    // costs +25.7 i/n in spills. Do not extend this to a big function without
+    // measuring — study 55 §0.1 has the size curve.
+    #[inline(always)]
     pub fn legal(&self, m: Move) -> bool {
         let us = self.side_to_move();
         let them = us.flip();
@@ -586,9 +601,6 @@ impl Board {
     /// data races or key aliasing (D19); they must pass this — and then
     /// [`Board::legal`] separately — before being played. Total over all
     /// 65,536 encodings; never panics.
-    // perf study 55 arm `inld55`: force the inline that the search::<NT>
-    // call-site duplication denies (study 54's mechanism, generalised).
-    #[cfg_attr(feature = "inld55", inline(always))]
     pub fn pseudo_legal(&self, m: Move) -> bool {
         let us = self.side_to_move();
         let them = us.flip();
@@ -709,11 +721,17 @@ impl Board {
     ///
     /// Precondition: `m` is pseudo-legal in `self`. On arbitrary moves the
     /// answer is meaningless but never panics.
-    // perf study 55 arm `inlb55`: study 54 measured -20.8 i/n from a helper
-    // becoming single-call-site, which let LLVM's last-call-to-static bonus
-    // inline it.  `search::<NT>` duplicates every search-body call site, so
-    // that bonus never applies here; this forces the same inline directly.
-    #[cfg_attr(feature = "inlb55", inline(always))]
+    // Perf study 55: `inline(always)`, deliberately, and NOT a plain `#[inline]`.
+    // `search::<NT>` is two out-of-line 16 KB monomorphizations of one body, so
+    // every helper the search body calls has at least two machine call sites and
+    // can never earn LLVM's last-call-to-static bonus — the bonus that let study
+    // 54 fold 2466 bytes of `make_move_with` into `do_move` for −20.8 i/n. Some
+    // of these already carried `#[inline]` and were DECLINED anyway. Forcing it
+    // measured −19.3 i/n (small search-body helpers) and −12.6 (board/TT ones).
+    // The lever INVERTS on large bodies: the same change on `do_move` (3516 B)
+    // costs +25.7 i/n in spills. Do not extend this to a big function without
+    // measuring — study 55 §0.1 has the size curve.
+    #[inline(always)]
     pub fn capture_stage(&self, m: Move) -> bool {
         match m.kind() {
             MoveKind::Normal => self.all_occupancy().contains(m.to()),

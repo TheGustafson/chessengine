@@ -413,8 +413,25 @@ impl Stage {
     // becoming single-call-site, which let LLVM's last-call-to-static bonus
     // inline it.  `search::<NT>` duplicates every search-body call site, so
     // that bonus never applies here; this forces the same inline directly.
-    #[cfg_attr(feature = "inlas55", inline(always))]
-    #[cfg_attr(not(feature = "inlas55"), inline)]
+    // perf study 55: `#[inline(always)]`, not `#[inline]`. `search::<NT>` is two
+    // out-of-line monomorphizations of one body, so every helper the search
+    // body calls has at least two machine call sites and can never earn LLVM's
+    // last-call-to-static bonus -- the bonus that let study 54 inline 2466 bytes
+    // of `make_move_with` into `do_move` for -20.8 i/n. A plain `#[inline]` was
+    // already here on some of these and was DECLINED. Forcing it measured
+    // -19.3 i/n for this group. Only SMALL bodies win: the same lever on
+    // `do_move` (3516 B) costs +25.7 i/n in spills -- see study 55 Sec 0.1.
+    // Perf study 55: `inline(always)`, deliberately, and NOT a plain `#[inline]`.
+    // `search::<NT>` is two out-of-line 16 KB monomorphizations of one body, so
+    // every helper the search body calls has at least two machine call sites and
+    // can never earn LLVM's last-call-to-static bonus — the bonus that let study
+    // 54 fold 2466 bytes of `make_move_with` into `do_move` for −20.8 i/n. Some
+    // of these already carried `#[inline]` and were DECLINED anyway. Forcing it
+    // measured −19.3 i/n (small search-body helpers) and −12.6 (board/TT ones).
+    // The lever INVERTS on large bodies: the same change on `do_move` (3516 B)
+    // costs +25.7 i/n in spills. Do not extend this to a big function without
+    // measuring — study 55 §0.1 has the size curve.
+    #[inline(always)]
     fn bump(self) -> Stage {
         Stage::from_u8(self as u8 + 1)
     }
@@ -568,22 +585,26 @@ impl Drop for MovePicker {
 /// guarantees, so it cannot change which slot is touched. Same mechanism as
 /// `attacks.rs`'s `TABLE_MASK` (study 53's `magic53`, -22.3 loads/node) and
 /// `history.rs`'s `CONT_MASK`.
-#[cfg(feature = "bcbuf55")]
 const BUF_MASK: usize = MAX_MOVES - 1;
-#[cfg(feature = "bcbuf55")]
 const _: () = assert!(MAX_MOVES.is_power_of_two());
 
-/// The buffer index, masked under `bcbuf55` and untouched otherwise.
+/// The buffer index, masked.
+///
+/// **Perf study 55 — the single largest arm of the perf series, −84.6
+/// instructions/node from three characters on three lines.** The mask cannot
+/// change which slot is touched: the region-index invariant on `buf` already
+/// guarantees every access lands in `[0, end_generated)` and `end_generated <=
+/// MAX_MOVES`. What it changes is what LLVM can PROVE — the index arrives here
+/// as a struct field (`self.cur`) or `base + i`, so before this every one of the
+/// ~50–80 buffer touches per node carried a `cmp`/`jae` and a panic block. The
+/// binary is 3576 bytes SMALLER with the mask in.
+///
+/// Same mechanism as `attacks.rs`'s `TABLE_MASK` (study 53's `magic53`) and
+/// `history.rs`'s `CONT_MASK`; this funnel — which every move in every stage of
+/// every node passes through — was simply the one nobody had applied it to.
 #[inline(always)]
 fn bi(i: usize) -> usize {
-    #[cfg(feature = "bcbuf55")]
-    {
-        i & BUF_MASK
-    }
-    #[cfg(not(feature = "bcbuf55"))]
-    {
-        i
-    }
+    i & BUF_MASK
 }
 
 impl MovePicker {
@@ -689,7 +710,6 @@ impl MovePicker {
     // becoming single-call-site, which let LLVM's last-call-to-static bonus
     // inline it.  `search::<NT>` duplicates every search-body call site, so
     // that bonus never applies here; this forces the same inline directly.
-    #[cfg_attr(feature = "inlab55", inline(always))]
     pub fn new_probcut(board: &Board, tt_move: Move, threshold: Value) -> Self {
         let usable = tt_move.is_ok() && board.pseudo_legal(tt_move) && board.capture_stage(tt_move);
         MovePicker::with_base(
@@ -1410,7 +1430,25 @@ impl MovePicker {
     // becoming single-call-site, which let LLVM's last-call-to-static bonus
     // inline it.  `search::<NT>` duplicates every search-body call site, so
     // that bonus never applies here; this forces the same inline directly.
-    #[cfg_attr(feature = "inlas55", inline(always))]
+    // perf study 55: `#[inline(always)]`, not `#[inline]`. `search::<NT>` is two
+    // out-of-line monomorphizations of one body, so every helper the search
+    // body calls has at least two machine call sites and can never earn LLVM's
+    // last-call-to-static bonus -- the bonus that let study 54 inline 2466 bytes
+    // of `make_move_with` into `do_move` for -20.8 i/n. A plain `#[inline]` was
+    // already here on some of these and was DECLINED. Forcing it measured
+    // -19.3 i/n for this group. Only SMALL bodies win: the same lever on
+    // `do_move` (3516 B) costs +25.7 i/n in spills -- see study 55 Sec 0.1.
+    // Perf study 55: `inline(always)`, deliberately, and NOT a plain `#[inline]`.
+    // `search::<NT>` is two out-of-line 16 KB monomorphizations of one body, so
+    // every helper the search body calls has at least two machine call sites and
+    // can never earn LLVM's last-call-to-static bonus — the bonus that let study
+    // 54 fold 2466 bytes of `make_move_with` into `do_move` for −20.8 i/n. Some
+    // of these already carried `#[inline]` and were DECLINED anyway. Forcing it
+    // measured −19.3 i/n (small search-body helpers) and −12.6 (board/TT ones).
+    // The lever INVERTS on large bodies: the same change on `do_move` (3516 B)
+    // costs +25.7 i/n in spills. Do not extend this to a big function without
+    // measuring — study 55 §0.1 has the size curve.
+    #[inline(always)]
     fn select(
         &mut self,
         board: &Board,

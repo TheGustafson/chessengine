@@ -1290,11 +1290,17 @@ impl Board {
     /// O(1) for the common cases via `check_squares` and
     /// `blockers_for_king` (doc 04 §3.6) — search calls this once per move
     /// and feeds the answer to [`Board::make_move`].
-    // perf study 55 arm `inlb55`: study 54 measured -20.8 i/n from a helper
-    // becoming single-call-site, which let LLVM's last-call-to-static bonus
-    // inline it.  `search::<NT>` duplicates every search-body call site, so
-    // that bonus never applies here; this forces the same inline directly.
-    #[cfg_attr(feature = "inlb55", inline(always))]
+    // Perf study 55: `inline(always)`, deliberately, and NOT a plain `#[inline]`.
+    // `search::<NT>` is two out-of-line 16 KB monomorphizations of one body, so
+    // every helper the search body calls has at least two machine call sites and
+    // can never earn LLVM's last-call-to-static bonus — the bonus that let study
+    // 54 fold 2466 bytes of `make_move_with` into `do_move` for −20.8 i/n. Some
+    // of these already carried `#[inline]` and were DECLINED anyway. Forcing it
+    // measured −19.3 i/n (small search-body helpers) and −12.6 (board/TT ones).
+    // The lever INVERTS on large bodies: the same change on `do_move` (3516 B)
+    // costs +25.7 i/n in spills. Do not extend this to a big function without
+    // measuring — study 55 §0.1 has the size curve.
+    #[inline(always)]
     pub fn gives_check(&self, m: Move) -> bool {
         let pc = self
             .piece_on(m.from())
@@ -1996,11 +2002,17 @@ impl Board {
     /// Deliberately dumb-cheap: restore the placement, pop the state — no
     /// key or check-info work, everything derived lives in the popped
     /// record and the parent state is intact underneath.
-    // perf study 55 arm `inlb55`: study 54 measured -20.8 i/n from a helper
-    // becoming single-call-site, which let LLVM's last-call-to-static bonus
-    // inline it.  `search::<NT>` duplicates every search-body call site, so
-    // that bonus never applies here; this forces the same inline directly.
-    #[cfg_attr(feature = "inlb55", inline(always))]
+    // Perf study 55: `inline(always)`, deliberately, and NOT a plain `#[inline]`.
+    // `search::<NT>` is two out-of-line 16 KB monomorphizations of one body, so
+    // every helper the search body calls has at least two machine call sites and
+    // can never earn LLVM's last-call-to-static bonus — the bonus that let study
+    // 54 fold 2466 bytes of `make_move_with` into `do_move` for −20.8 i/n. Some
+    // of these already carried `#[inline]` and were DECLINED anyway. Forcing it
+    // measured −19.3 i/n (small search-body helpers) and −12.6 (board/TT ones).
+    // The lever INVERTS on large bodies: the same change on `do_move` (3516 B)
+    // costs +25.7 i/n in spills. Do not extend this to a big function without
+    // measuring — study 55 §0.1 has the size curve.
+    #[inline(always)]
     pub fn unmake_move(&mut self, m: Move) {
         // The child's `captured` is the only field that survives the restore,
         // so read it before the parent overwrites it.
@@ -2251,7 +2263,6 @@ impl Board {
     // becoming single-call-site, which let LLVM's last-call-to-static bonus
     // inline it.  `search::<NT>` duplicates every search-body call site, so
     // that bonus never applies here; this forces the same inline directly.
-    #[cfg_attr(feature = "inlab55", inline(always))]
     pub fn upcoming_repetition(&self, ply: i32) -> bool {
         let copied = &self.st().copied;
         // Same window as the repetition scan: an irreversible move or a null
@@ -2322,9 +2333,6 @@ impl Board {
     /// still on the board; x-ray batteries are walked by lifting each used
     /// capturer out of `occupied` and re-querying the slider rays through
     /// the vacated square. Values are the D11 `PIECE_VALUES`.
-    // perf study 55 arm `inle55`: force the inline that the search::<NT>
-    // call-site duplication denies (study 54's mechanism, generalised).
-    #[cfg_attr(feature = "inle55", inline(always))]
     pub fn see_ge(&self, m: Move, threshold: Value) -> bool {
         // Non-Normal kinds (promotion, en passant, castling) short-circuit
         // to a static exchange value of 0 (doc 04 §3.11 step 1).
