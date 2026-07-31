@@ -10381,3 +10381,55 @@ Both studies serialise builds on `flock /home/nick/.cache/archon-build.lock`;
 that is what lets two concurrent studies share a 15 GB box with the trainer.
 
 **D49:** sb920, 193k pos/s, four services active, 8.0 GB free, 155 GB disk.
+
+## Tick — 2026-07-31, THE PERF PROGRAMME'S ELO IS UNMEASURED, AND OUR INSTRUMENT CANNOT MEASURE IT
+
+**Measured base:** 30,794,610,363 instructions over 5,001,562 nodes =
+**6157.0 instructions/node**. The session's landed ≈ **−240 i/n is 3.90% of
+base.**
+
+**But that does not convert to Elo, and I should not have implied it might.**
+If instructions mapped 1:1 to time, 3.90% would be 1.0406× → **6.9 Elo** at the
+project's ~120 Elo/doubling. **The directive's own PERF LOOP note contains the
+counterexample:** study 20 was **−5.99% cycles with instructions UP 0.19%.**
+Instructions and time demonstrably dissociate in this codebase, so 6.9 Elo is an
+arithmetic exercise, not an estimate. Recorded as unmeasured.
+
+### The structural gap
+
+**No instrument we are currently running can price the perf programme:**
+
+- **Screens are FIXED-NODE (25k) — speed-blind by construction.** A faster engine
+  searches the same 25,000 nodes and plays the identical move. This is a feature
+  for net comparisons (it removes speed as a confound) and it means the perf work
+  is *invisible* to every Elo number in this document.
+- **`cycles:u` has σ = 1.57%** — a 3.90% effect needs n≥23 paired rounds to
+  resolve cleanly.
+- **Match NPS has ~24% noise** — the directive already calls it unusable.
+
+So the perf series (52–56, ≈−240 i/n) has **zero measured strength value**. Not
+"small" — *unmeasured*. This is not a defect in the studies, which were gated
+correctly on the one counter with a 0.000 null; it is a gap in what we have ever
+asked games to arbitrate.
+
+**Also confirmed:** `target-sota/release/chessengine`, the screen binary, was
+built **2026-07-30 11:47** — *predating* the study-52 merge (07-31 05:56) and
+study-55 merge (07-31 09:04). **This does not invalidate any D49 result**: both
+CAND and REF run the same binary under `ENGINE=$BIN`, and the matches are
+fixed-node. The net-quality measurements stand exactly as recorded.
+
+### Queued for the first quiet box
+
+1. **A fixed-TIME match, current main vs the pre-52 build, both PGO** — the only
+   thing that can price the perf series. Per rule 5 (GAMES ARBITRATE) this is
+   overdue: the series has been landing for two days with no game ever run on it.
+2. **An n≥23 cycles panel on the aggregate** — the cheaper, weaker fallback.
+
+Both need the box; two studies plus the trainer are on it now. **Not started, and
+deliberately so** — starting a time-sensitive match on a contended box is how the
+`nodestime` error happened (it gave TM +52.6 where the real clock gave −31.4).
+
+**D49:** sb926, heldout sb920 ema **0.010666** (sawtooth, no trend), 193k pos/s,
+four services active, 8.1 GB free.
+**Studies 56 and 57 both alive**, one `rustc` between them — the shared
+`flock` is serialising builds as designed.
