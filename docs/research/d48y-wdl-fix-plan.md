@@ -10077,3 +10077,51 @@ longer — against a debt half the size.**
 The reaper's newest-4 rule is load-bearing: **the launcher discovers its resume
 point from the newest complete pair**, so the reaper must never leave it nothing
 to find. First pass took the directory 18 GB → 12 GB.
+
+## ★ THE CYCLES NOISE FLOOR IS σ = 1.57% — measured, and it retires a standing rule
+
+**D49x: sb871.** All five services healthy; checkpoint dir held at 14 GB by the
+reaper; 156 GB disk.
+
+Every cycles panel tonight had a bad null — **+0.517%** (aggregate), **−1.847%**
+(PGO), **−1.026%** (study 50), **−1.488%…+0.024%** (study 53), **+0.553% at
+p=0.041** (study 54). Four studies declined cycles claims because of it. I went
+looking for the mechanism.
+
+### My frequency hypothesis was REFUTED, and the n=1 test that "confirmed" it was noise
+
+The governor is `powersave` + boost + `amd_pstate active`, clocks spanning
+**2989–5575 MHz**. Since `cycles:u` counts core cycles and memory latency is fixed
+in wall time, a memory-bound workload (this engine is **83% memory-bound**) should
+show cycles/node rising with clock. An n=1 paired test appeared to confirm it:
++2.16% clock, +1.75% cycles.
+
+**At n=12 it collapses:**
+
+| | |
+|---|---|
+| clock range | 4092–5310 MHz (**+29.8% spread**) |
+| cycles/node range | 3740.3–3914.4 (**+4.7% spread**) |
+| **Pearson r** | **−0.144** |
+
+**A 30% frequency swing produces no correlation.** The mechanism is not frequency,
+and my n=1 "confirmation" was a 1.75% draw from a 1.57% distribution — I went
+looking for confirmation and found it.
+
+### The real answer is simpler and more useful
+
+**A single run's cycles/node carries σ = 1.57% on this box, intrinsically.**
+
+That one number explains **every** bad null of the night without any mechanism —
+all of them sit within ~1σ of zero. And it retroactively justifies what the
+studies did on instinct.
+
+**It also retires the standing gate rule.** "GATE ARMS ON CYCLES (median ≥6
+rounds)" is under-powered: to resolve a 1% effect you need σ/√n < 0.33%, i.e.
+**n ≈ 23 paired rounds, not 6.** At n=6 the residual noise is 0.64% — larger than
+most arms landed tonight.
+
+**⇒ `instructions:u`, with a measured null of 0.000, carried every landed decision
+tonight, and that was correct rather than conservative.** Studies 50, 52, 53 and
+54 all refused cycles claims for effects of 0.3–1.5%; at 3σ ≈ 4.7% single-run
+resolution, none of those effects was ever visible.
