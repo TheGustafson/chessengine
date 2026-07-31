@@ -12527,3 +12527,59 @@ number appears in the study.** Re-running that one command on a quiet box is the
 top follow-up.
 
 **D49:** sb1151+, 193k pos/s, four services active. **sb1400 in ~8.8 h.**
+
+## Tick — 2026-07-31, THE QUIET BOX ARRIVED: studies 61+62 priced at +3.14 game-relevant Elo
+
+Study 62's own named top follow-up was "re-run that one command on a quiet box."
+The box went quiet (no study, no match, no build) and it was run immediately.
+
+**Full-frame panel, shipped PGO pair, 40 rounds:**
+
+| | median | sign | p |
+|---|---|---|---|
+| **NULL** (byte-identical) | **−0.011%** | **20/40** | **1.0000** |
+| **ARM** | **−1.879%** | 29/40 | **0.0064** |
+
+**A null of −0.011% at an exact 20/40 split is the cleanest this instrument has
+ever produced** — the difference a quiet box makes, against the runs where the
+null moved further than the arm.
+
+**Startup separated, not assumed** (`--startup-frame`, 40 rounds, plus absolute
+timings so the two percentages could actually be subtracted — they are relative to
+different baselines):
+
+| | |
+|---|---|
+| full frame / startup frame | 3.488 s / 0.245 s (**7.0%**) |
+| full-frame saving | 65.5 ms |
+| startup saving | 7.3 ms |
+| **startup share of the win** | **11.2%** |
+| **search-only saving** | **1.795% of search time** |
+| **game-relevant DERIVED Elo** | **+3.14** (naive full-frame would say +3.28) |
+
+Shipped instructions: **5552.2 → 5335.2 i/n, −217.0 (−3.909%)** — so instructions
+still overstate time, here by **2.08×**, consistent with the 2.63× average.
+
+### The redirect worked, and here is the receipt
+
+| | studies | full-frame | startup | search-only | Elo | sign p |
+|---|---:|---:|---:|---:|---:|---:|
+| **52–58** (pre-redirect) | **7** | −0.909% | 49.7% | −0.46% | **+0.79** | 0.0807 |
+| **61–62** (post-redirect) | **2** | −1.879% | 11.2% | −1.795% | **+3.14** | 0.0064 |
+
+**Two studies after the redirect delivered ~4× the game-relevant Elo of the seven
+before it** — and did so on a *solid* measurement (p=0.0064) where the earlier
+number was marginal (p=0.0807).
+
+**The mechanism is understood, not just observed.** Studies 52–58 were dominated
+by instruction-count and startup work — half their measured win was process
+startup a real game never sees. Studies 61–62 are **fold-kernel dispatch**: work
+per node, in the kernels that actually run, which is why only 11.2% is startup.
+The memory-bound finding redirected the programme toward the binding constraint
+and the value followed.
+
+**Caveat kept in view:** the +0.79 it is being compared against is itself a
+marginal reading. The comparison is between a solid measurement and a soft one,
+which argues for the direction rather than the exact ratio.
+
+**D49:** sb1159, 193k pos/s, four services active. **sb1400 in ~8.7 h.**
