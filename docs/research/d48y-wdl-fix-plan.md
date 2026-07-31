@@ -12769,3 +12769,48 @@ superbatches before the same test means anything. Re-check when it has them.
 
 **D49:** sb1171 on the decay leg, four services active, 148 GB disk.
 **Study 63** working.
+
+## Tick — 2026-07-31 19:15, ASIDE (user request): gai-chess vs ARCHON
+
+Built the user's other engine (`/home/nick/projects/gai-chess`) and installed it
+at `engines/bin/gai-chess`. 200 games each at fixed 25k nodes, UHO book.
+
+| opponent | result | Elo | Ptnml |
+|---|---|---|---|
+| ARCHON **PSQT** (no net) | **0–200–0** | −inf | [100, 0, 0, 0, 0] |
+| ARCHON **canonical D48X** | **0–199–1** | **−1040.39** | [99, 1, 0, 0, 0] |
+
+It scored its only half-point **against the stronger opponent** — noise at this
+scale, but it happened.
+
+**Zero draws in 200 games is a red flag, so I checked the setup rather than
+accepting the score.** Both engines honour `go nodes 25000` exactly. The gap is
+real and it is **search depth per node**:
+
+| at 25,000 nodes | depth |
+|---|---|
+| gai-chess (tiny-nnue) | **3** (seldepth 9) |
+| ARCHON (D48X) | **12** (seldepth 18) |
+
+The PGN depth histogram over all 8,000 annotated moves is **perfectly bimodal with
+an empty gap**: gai-chess occupies depths 1–5 (mode 2), ARCHON occupies 10–15
+(mode 13), and **not one move was searched at depth 6–9.** At an identical node
+budget the two engines live in disjoint depth ranges — that is pruning
+(LMR/null-move/futility), not evaluation.
+
+**A methodological note worth keeping**, because it nearly produced a false bug
+report: my first smoke test returned `bestmove 0000` at depth 0 for every `go`
+form, which looked like a broken engine. It was **my test harness**. `engine.rs`
+runs an async stdin thread that sets the stop flag on `quit`; piping the whole
+script at once means `quit` is consumed *before* `go` is processed, so the search
+aborts instantly. A real GUI sends `go` and waits for `bestmove`. **Feeding a UCI
+engine a here-doc is not the same as playing it.**
+
+**Scale, for context:** gai-chess is **6,078 lines** with a **197 KB** net;
+ARCHON is **61,304 lines** with a **138 MB** net — ~700× the net, ~10× the code.
+Median game length was 44–50 plies, so it is not collapsing in the opening; it
+gets out-searched and ground down.
+
+Box note: these matches were run while study 63 was working, which may have voided
+a wall-clock panel. Its brief already requires voiding rather than salvaging any
+panel that loses quiet, so the cost is a re-run, not a bad number.
