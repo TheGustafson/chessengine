@@ -9499,3 +9499,41 @@ the obvious upgrade appears untried in this domain.
 **Caveat kept:** gamma 0.992 compounded over hundreds of epochs is itself a very
 long smooth anneal, so SF's schedule may already capture much of what a restart
 provides, spread out.
+
+## ★ THE GAP IS DEPTH-INDEPENDENT — a flat evaluator deficit, not a search interaction
+
+**D49 sb640-EMA @756 vs canonical D48X @600, 500 games at each node budget:**
+
+| nodes | n | score | Elo |
+|---|---:|---:|---|
+| 2,000 | 500 | 49.5% | −3.5 ± 17.1 |
+| 5,000 | 500 | 47.5% | −17.4 ± 17.1 |
+| 10,000 | 500 | 48.5% | −10.4 ± 17.1 |
+| 25,000 | 334 | 47.6% | −16.7 ± 21.0 |
+| **POOLED** | **1834** | **48.3%** | **−11.6 ± 8.9** |
+
+**Across a 12.5× range of node budget the gap does not move.** Every point sits
+inside a ±17 bar that overlaps every other; the spread is entirely consistent
+with sampling noise around a single constant near **−12 Elo**, which the pooled
+1834-game estimate gives at **±8.9**.
+
+**What this rules out:** the deficit is NOT something the search amplifies at
+depth, and NOT something a shallow search exposes. **It is a flat
+evaluator-quality difference.** So the fix must come from the net — training
+budget, schedule, or data — and nothing on the search side will touch it.
+
+**It also retires two earlier readings as noise:** sb620 measured −9.0 ± 12.1 at
+5k against −4.2 ± 8.6 at 25k, which looked depth-dependent and is not.
+
+**Method note:** pooling is legitimate here *because* the flatness test passed
+first — had the points trended, pooling would have averaged away the finding.
+Per-point and pooled together, never a lone aggregate.
+
+### Where this leaves the weights gap
+
+Net-swap put Stockfish's weights in our search at **+90.7 ± 16.9**. D49 sb640 is
+**−11.6 ± 8.9** against our own canonical, and that gap is depth-flat. Both point
+the same way: **the remaining deficit lives in the weights**, and the live
+hypothesis for its mechanism is **presentation budget** — we train 10 G positions
+against Stockfish's 40 G. The queued sb700→1700 cyclical continuation takes D49 to
+**42.3 G = 106% of their budget**, which is the first direct test.
