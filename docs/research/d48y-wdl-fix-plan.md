@@ -10327,3 +10327,57 @@ by construction, since intermediate nets sit at high-LR points of the sawtooth.
 
 **D49:** sb912, 193k pos/s, four services active, 8.4 GB free.
 **Study 56** is alive on branch `perf-study-56-combine`.
+
+## Tick — 2026-07-31, RE-PROFILED: the standing "unexplored" list is stale
+
+**I tried to commission a study against the directive's profile list and the
+first target did not exist.** `i16_deltas_into` (listed at 13.14%) is absent from
+`src/` — it survives only in a comment in `src/eval/nnue/aligned.rs` quoting a
+30.3% profile. So I re-profiled from source instead of proceeding
+(`perf record -F 999 -g`, `target-sota`, canonical net, pinned 5M-node frame).
+
+| directive claims | measured 2026-07-31 |
+|---|---|
+| `i16_deltas_into` 13.14% | **does not exist** |
+| `finny_refresh_into` 9.15% | **1.56%** |
+| `forward_into` 8.77% | **not in the top 18** |
+| `search::<NonPv>` 19.90% | **11.19%** |
+| `init_quiets` 6.35% | 6.35% (exact) |
+| `current_full` 3.28% | 3.72% |
+
+**Both causes are our own landed work.** Study 32 quantised the 57.7 MB i16
+feature transformer to **i8** at load, renaming the whole `i16_deltas_*` family.
+Studies 52–55 cut search-side instructions enough to take `search::<NonPv>` from
+19.90% to **11.19%** — the perf programme has been working, and it moved the
+profile out from under the list describing it.
+
+### The current top block
+
+**The i8 delta family is 24.10% — the largest single block in the engine, larger
+than search, and untouched by studies 52–56 (all search-side):**
+`i8_deltas_into_inner` **10.36%** + `i8_deltas_into_generic` **8.74%** +
+`i8_deltas_dual_inner` **5.00%**.
+
+**The lead:** both an `_inner` and a `_generic` variant of the same operation are
+hot, 19.1% combined. A generic fallback burning 8.74% next to a specialised inner
+suggests **the specialised path is not covering the cases it should** — but that
+is a question to measure (call-site split, dispatch shape, monomorphisation
+boundary), not a diagnosis.
+
+**Separately: ~5.12% is STARTUP, not search** — `load_v2_bytes` 2.70% +
+`quantise_halfka` 2.42%, the i8 quantisation of the weight table done at load.
+Amortised over a 5M-node bench, but **match play spawns short-lived processes by
+the thousand**, so it is real cost there and an inflated denominator here.
+
+**Study 57 commissioned** on both, with the instrument problem stated explicitly
+in the brief: **a cache/layout win in a SIMD kernel may be invisible to
+`instructions:u`**, the only counter with a 0.000 null. So instructions is the
+*guard*, cycles needs n≥23 (σ = 1.57%), and any cache counter must ship its own
+published null — `ls_stlf` fails its null outright and
+`ex_no_retire.load_not_complete` reads +3.478% on byte-identical binaries.
+Eval-bit-exactness (hash `2e1ede95…79c4`) is what makes SIMD work safe here.
+
+Both studies serialise builds on `flock /home/nick/.cache/archon-build.lock`;
+that is what lets two concurrent studies share a 15 GB box with the trainer.
+
+**D49:** sb920, 193k pos/s, four services active, 8.0 GB free, 155 GB disk.
