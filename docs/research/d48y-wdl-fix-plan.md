@@ -9916,3 +9916,58 @@ touched population said 97.3% of folded HalfKA rows need all 8.
 reopens the width trade — the standing finding is that width is ~Elo-neutral
 across 768–1536 at equal time, and this says the speed half of that trade was
 under-credited.
+
+## Two unattended-run hazards closed, one of them expensive
+
+**D49x: sb780**, cycling. Disk 92% → **83%**, 158 GB free.
+
+### 1. The watchdog would have thrown away 11 hours of GPU
+
+`d49y_launch.sh` passed a **hardcoded `700`** as `resume_sb`. The watchdog restarts
+that launcher on a crash — so **a failure at sb1000 would have resumed from sb700
+and re-run 300 superbatches.** The launcher now **discovers** the resume point by
+scanning for the highest superbatch with **both** a `-raw.bin` and an
+`-ema-raw.bin` (the pair `pump_train` actually loads). Verified: it would now
+resume from **sb770, not 700**.
+
+**Same class as the original `resume_sb` bug — a literal where a lookup belonged —
+and it only mattered on the failure path, which is where nobody looks.** The
+watchdog was written to make a crash survivable and would instead have made it
+expensive.
+
+### 2. Checkpoints were on track to fill the disk
+
+D49 wrote **154 raw checkpoints at 433 MB** = **83 GB**, one pair every 10 sb, with
+**930 superbatches still to run** (~79 GB more against 91 GB free). It fit only
+just, with **no margin for the screens, study builds and PGNs that share the
+disk.**
+
+Pruned to **12 GB** — kept **sb400 and sb700** (the two measured baselines), every
+**100 sb** for later analysis, and the **newest four pairs** for resume safety.
+44 files kept, 264 deleted, **72 GB freed.**
+
+### A peer session's ranked list for `search::<NonPv>` — routed, not landed
+
+Another session produced seven ranked items and it reached me. **Analysis only —
+explicitly unbuilt and unmeasured.** I verified its load-bearing premises against
+`main`:
+
+| claim | result |
+|---|---|
+| `RFP_THREAT_MARGIN = 55 ≥ 0` ⇒ `relaxed ≤ base` (the biggest item's node-identity) | ✅ `search/params.rs:349` |
+| magic table is a runtime-length `Box<[Bitboard]>` | ✅ `attacks.rs:535` |
+| `CONT_NB = 3328`, not a power of two | ✅ `history.rs:128` |
+| "additive on top of your `.max(1)` guard removal" | ❌ **`main` has no such edit** |
+
+It is addressed to a peer ("your allocator-fragility finding", "your `.max(1)`
+edit"), so **its line numbers are for a tree I do not have** and one item's
+dependency is unmet. **Forwarded to study 52**, which owns the area and can
+measure it, with my verification attached and the same bar as everything else:
+node identity plus eval hash, its own byte-identical null published, and arms
+clearing ~1.5% on cycles — since tonight's aggregate panel had a byte-identical
+null at **+0.517%, range [−2.71, +1.78]**.
+
+**Not landed.** Seven unmeasured proposals is exactly the input that needs a
+measurement gate: study 47 priced `activate` at its floor and study 48 landed
+there anyway; study 44 declared port pressure dead and it was the largest lever on
+the board.
