@@ -11173,3 +11173,26 @@ and that expectations for future studies should be set against wall-clock, not
 `instructions:u`.
 
 **D49:** sb996→sb1000, 193k pos/s, four services active. **Study 58** working.
+
+## Tick — 2026-07-31 12:46, the speed instrument is now a standing tool
+
+`tools/wallclock_panel.py` lands the panel that priced the programme, with the
+reasoning for each design choice in its docstring. Every piece of that design was
+paid for by a failure earlier today — interleaving (null drifted −0.132% →
++0.972% between phases), 40 rounds (study 57's contrast failed its sign test at
+24 and passed at 39), median-only licence pre-registered *in the file* so the
+statistic cannot be chosen after seeing data.
+
+**Smoke-tested against the real PGO pair at 6 rounds: it correctly REFUSED to
+license** (null −0.935% vs arm −0.530%) and told the caller to raise rounds. The
+same comparison licensed cleanly at 40. **The tool's refusal path is the valuable
+one** — it is what the project lacked every time a cycles reading was quoted off
+an underpowered panel.
+
+`--elo` is documented as valid only when the binaries are node-identical, with the
+`Ptnml [0,0,750,0,0]` fixed-node match named as the evidence that licenses ours.
+
+**D49:** **sb1003** — past sb1000. heldout ema **0.010655**, the run's lowest,
+still inside the sawtooth. 193k pos/s, four services active, 151 GB disk.
+**Study 58** has landed a first commit: three arms on the shipped PGO profile's
+`current_full`, −30.4 i/n so far. Not merged; it re-measures and gates first.
