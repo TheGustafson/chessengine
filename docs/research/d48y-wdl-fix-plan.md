@@ -10949,3 +10949,35 @@ the caveat and the one-build isolation recipe.
 
 **D49:** sb975+, 193k pos/s, four services active. **Study 58** running against
 the corrected PGO profile.
+
+## Tick — 2026-07-31 12:0x, a contention-immune control: is the perf work behaviourally inert?
+
+The fixed-TIME match still needs a quiet box (study 58 is running). But there is a
+control that is **contention-immune by construction** and has never been run:
+
+**Fixed-NODE match, `archon-main-pgo` vs `archon-pre52-pgo`, same canonical net,
+25k nodes, 1500 games.** Both are PGO, both serve the same net; they differ only
+by studies 52–57.
+
+**The prediction is exact, not approximate: 0 Elo.** Every study in the series was
+gated node-identical (5,001,562) with the eval hash unmoved, so at fixed nodes the
+two binaries should make **identical decisions**. Anything outside noise means
+some study changed *search behaviour* in a way the bench frame did not catch —
+which the bench cannot rule out, since it is one fixed position set at one depth
+and says nothing about time management, hash pressure across a real game, or
+repetition state.
+
+This is the null the perf programme has never had. It costs 15 minutes and runs
+happily under load.
+
+**Two path bugs of mine on the way in**, both worth naming because they are the
+same class: I extracted `BOOK` from `screen.sh` with a grep that dropped the
+`$ROOT` prefix, producing `/engines/books/…`, and the heredoc then froze that wrong
+value at write time so my first `sed` fix edited a string that was already
+expanded. **Reconstructing a script's variable by grepping its source is
+guesswork** — the same failure family as inferring a binary's commit from its
+mtime, which cost me a phantom −0.473% earlier today.
+
+**D49:** sb982, heldout ema **0.010659** — lowest of the run, still inside the
+sawtooth. 193k pos/s, four services active, 153 GB disk.
+**Study 58** merged main into its worktree and is working.
