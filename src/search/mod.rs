@@ -3439,6 +3439,27 @@ impl Worker {
                     // quiet's score below `-QHIST_PRUNE_MULT·depth`.
                     let pci = moved_piece.index();
                     let to = m.to().index() as usize;
+                    // Perf study 55 mechanism B: three 2-D `[pci][to]` chains,
+                    // each re-deriving the same offset and re-checking the inner
+                    // row. `stat_score` — called from THIS loop iteration, 160
+                    // lines below — already uses study 36's flat `piece_to` form
+                    // for two of these three planes. Bit-identical: `history.rs`
+                    // proves `p[pci][to] == p.as_flattened()[piece_to(pci, to)]`.
+                    #[cfg(feature = "bccont55")]
+                    let cont_history = {
+                        let q = crate::history::piece_to(pci, to);
+                        crate::history::at_piece_to(
+                            self.histories.cont_ref(self.stack[cur - 1].cont_hist),
+                            q,
+                        ) + crate::history::at_piece_to(
+                            self.histories.cont_ref(self.stack[cur - 2].cont_hist),
+                            q,
+                        ) + crate::history::at_piece_to(
+                            self.histories.pawn_slot(self.board.pawn_key()),
+                            q,
+                        )
+                    };
+                    #[cfg(not(feature = "bccont55"))]
                     let cont_history =
                         self.histories.cont_ref(self.stack[cur - 1].cont_hist)[pci][to].get()
                             + self.histories.cont_ref(self.stack[cur - 2].cont_hist)[pci][to].get()
@@ -3463,7 +3484,16 @@ impl Worker {
                                 [m.raw16() as usize]
                                 .get()
                             / params::LMRDEPTH_MAIN_DEN();
-                    lmr_depth += history / params::LMR_DIVISOR[depth.min(16) as usize - 1];
+                    // Perf study 55 mechanism B: `depth.min(16) as usize - 1`
+                    // underflows to a huge usize at `depth == 0`, so LLVM must
+                    // keep the bounds check; `clamp(1, 16) - 1` is a provable
+                    // 0..=15 and folds it away. Identical for every depth >= 1,
+                    // which this arm of the move loop guarantees.
+                    #[cfg(feature = "bcmisc55")]
+                    let divisor = params::LMR_DIVISOR[(depth.clamp(1, 16) - 1) as usize];
+                    #[cfg(not(feature = "bcmisc55"))]
+                    let divisor = params::LMR_DIVISOR[depth.min(16) as usize - 1];
+                    lmr_depth += history / divisor;
 
                     // Parent futility (design/10 §3.5): the most optimistic
                     // value this quiet could yield still cannot reach alpha at
@@ -4386,6 +4416,18 @@ impl Worker {
             self.root_delta > 0,
             "root_delta is beta - alpha, never zero"
         );
+        // Perf study 55 mechanism B: both indices arrive as `i32 as usize`, so
+        // LLVM can prove nothing about them and emits two bounds checks and two
+        // panic edges per MOVE. `clamp` states the range the search already
+        // guarantees. It also closes a latent panic: `move_number` reaches 256
+        // in a 256-move position, one past `reductions: [i32; MAX_MOVES]`.
+        #[cfg(feature = "bcmisc55")]
+        let scale = {
+            const LAST: i32 = crate::moves::MAX_MOVES as i32 - 1;
+            self.reductions[depth.clamp(0, LAST) as usize]
+                * self.reductions[move_number.clamp(0, LAST) as usize]
+        };
+        #[cfg(not(feature = "bcmisc55"))]
         let scale = self.reductions[depth as usize] * self.reductions[move_number as usize];
         scale - delta * params::RED_DELTA_MULT() / self.root_delta
             + i32::from(!improving) * scale * params::RED_NON_IMPROVING()
@@ -4407,6 +4449,10 @@ impl Worker {
     /// `stack[cur-2]` (the same slabs move ordering reads as `contHist(1/2)`,
     /// doc 09 §3.7). Feeds the `RED_STATSCORE_NUM` reduction dock in the
     /// finalization block below.
+    // perf study 55 (arm named on the cfg_attr below): study 54 measured -20.8 i/n from a helper
+    // becoming single-call-site, which let LLVM's last-call-to-static bonus
+    // inline it.  `search::<NT>` duplicates every search-body call site, so
+    // that bonus never applies here; this forces the same inline directly.
     #[inline]
     fn stat_score(&self, m: Move, is_capture: bool, moved_piece: Piece, cur: usize) -> i32 {
         if is_capture {
@@ -4440,7 +4486,29 @@ impl Worker {
     /// is deep, and the piece is retracing its own path —
     /// `m.from() == (ss-2).to() && (ss-2).from() == (ss-4).to()`. The `ply >=
     /// 20` guard keeps `cur - 4` well in bounds.
-    #[inline]
+    // perf study 55 (arm named on the cfg_attr below): study 54 measured -20.8 i/n from a helper
+    // becoming single-call-site, which let LLVM's last-call-to-static bonus
+    // inline it.  `search::<NT>` duplicates every search-body call site, so
+    // that bonus never applies here; this forces the same inline directly.
+    // perf study 55: `#[inline(always)]`, not `#[inline]`. `search::<NT>` is two
+    // out-of-line monomorphizations of one body, so every helper the search
+    // body calls has at least two machine call sites and can never earn LLVM's
+    // last-call-to-static bonus -- the bonus that let study 54 inline 2466 bytes
+    // of `make_move_with` into `do_move` for -20.8 i/n. A plain `#[inline]` was
+    // already here on some of these and was DECLINED. Forcing it measured
+    // -19.3 i/n for this group. Only SMALL bodies win: the same lever on
+    // `do_move` (3516 B) costs +25.7 i/n in spills -- see study 55 Sec 0.1.
+    // Perf study 55: `inline(always)`, deliberately, and NOT a plain `#[inline]`.
+    // `search::<NT>` is two out-of-line 16 KB monomorphizations of one body, so
+    // every helper the search body calls has at least two machine call sites and
+    // can never earn LLVM's last-call-to-static bonus — the bonus that let study
+    // 54 fold 2466 bytes of `make_move_with` into `do_move` for −20.8 i/n. Some
+    // of these already carried `#[inline]` and were DECLINED anyway. Forcing it
+    // measured −19.3 i/n (small search-body helpers) and −12.6 (board/TT ones).
+    // The lever INVERTS on large bodies: the same change on `do_move` (3516 B)
+    // costs +25.7 i/n in spills. Do not extend this to a big function without
+    // measuring — study 55 §0.1 has the size curve.
+    #[inline(always)]
     fn is_shuffling(&self, m: Move, cur: usize, ply: usize) -> bool {
         if self.board.capture_stage(m)
             || (self.board.rule50_count() as i32) < params::SHUFFLE_RULE50()

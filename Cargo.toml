@@ -18,6 +18,32 @@ path = "src/bin/root_analysis.rs"
 required-features = ["datagen"]
 
 [features]
+# ---- perf study 55 RETAINED MEASUREMENT ARMS.
+# Study 55 landed three groups unconditionally (small-body `#[inline(always)]`
+# on the search-body and board/TT helpers, and MovePicker's `BUF_MASK`), for a
+# measured -83.8 instructions/node. These three arms are NOT landed and are kept
+# switchable because each is a large WIN ON ITS OWN and only loses in
+# combination -- the interaction, not the change, is what blocks them. Do not
+# re-measure them alone and assume they stack; study 55 Sec 3.2 shows arms on
+# this codebase missing the sum of their parts by up to 2.6 percentage points,
+# in BOTH directions.
+#
+# `bcmisc55` (-44.7 i/n alone): three provable range facts --
+# `reductions[depth]`/`[move_number]` (which also closes a LATENT PANIC:
+# move_number reaches 256 in a 256-move position and `reductions` is [i32; 256]),
+# `LMR_DIVISOR[depth.min(16) - 1]` (underflows at depth 0), and DeltaBuf's write
+# side (its read side is already masked in `resolve_both`).
+bcmisc55 = []
+# `bcsort55` (-34.6 i/n alone): `partial_insertion_sort` reads `head[q - 1]`
+# twice per shifted element, once in the loop condition and once in the body.
+# NOT either rewrite study 23 rejected -- the permutation, including the
+# observable BadQuiet tail, is untouched; only the load count changes.
+bcsort55 = []
+# `bccont55` (+5.8 i/n alone -- a LOSS, retained as the falsification):
+# `update_continuation_histories` has study 54's exact double-index shape on a
+# RUNTIME-LENGTH slice, and converting it to one subslice + reversed zip did not
+# pay. The shape being present is not sufficient.
+bccont55 = []
 # ---- perf study 53 arms (do_move / bounds-check deletion). Node-identical by
 # construction; each is a MEASUREMENT arm, promoted to unconditional if it wins.
 # `cont53`: pad CONT_NB 3328 -> 4096 and mask, folding the continuation-history

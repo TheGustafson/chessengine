@@ -109,3 +109,5 @@ pgo52.log
 /bin53/
 # perf study 54 arm binaries (rebuildable via tools/perf54/build54.sh)
 bin54/
+# perf study 55 arm binaries (built by tools/perf55/build55.sh)
+/bin55/
