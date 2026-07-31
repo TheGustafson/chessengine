@@ -464,6 +464,83 @@ impl DirtyPiece {
         dp
     }
 
+    /// Perf study 54 arm `hookc54` — study 35 §4's fusion, rebuilt on the
+    /// `after_move` tree that landed instead of it.
+    ///
+    /// The record built from the actors [`Board::make_move_with`] step 3
+    /// already holds in registers: the mover `pc`, the `(captured, capsq)`
+    /// pair, and `us`. Nothing is read back out of the board or the
+    /// `StateInfo`, which is the whole point — `after_move` costs two
+    /// `StateInfo` loads (`moved`, `captured`) that this shape never issues.
+    ///
+    /// **Two hot arms, not three.** Step 3 already resolves en passant into
+    /// `(Some(their pawn), ep square)`, precisely so steps 5 and 10 need no
+    /// special case, so `MoveKind::EnPassant` and `MoveKind::Normal` collapse
+    /// into one straight-line arm here — and the `#[cold]` en-passant helper
+    /// that both `from_move` and `after_move` need disappears entirely.
+    /// Emission order is `from_move`'s in every arm, which is what the
+    /// `after_move_reproduces_from_move_for_every_move_kind` oracle checks.
+    #[cfg(feature = "hookc54")]
+    #[inline]
+    fn from_actors(
+        board: &Board,
+        m: Move,
+        us: Color,
+        pc: Piece,
+        captured: Option<Piece>,
+        capsq: Square,
+    ) -> DirtyPiece {
+        let (from, to) = (m.from(), m.to());
+        let mut dp = DirtyPiece::EMPTY;
+        match m.kind() {
+            // Out of line for the same reason as everywhere else: castling is
+            // under 1% of made moves and this is the only arm needing the
+            // rook-square table. Step 4 has already mutated the board, but
+            // `castling_rook_square` is a start-of-game table no move touches.
+            MoveKind::Castling => return Self::castling_record(board, us, pc, from, to),
+            MoveKind::Promotion => return Self::promotion_record(m, us, pc, captured, from, to),
+            // En passant folded in: `capsq` is the ep pawn's square and
+            // `captured` is that pawn, both resolved by step 3.
+            MoveKind::Normal | MoveKind::EnPassant => {
+                dp.sub(pc, from);
+                if let Some(victim) = captured {
+                    dp.sub(victim, capsq);
+                }
+                dp.add(pc, to);
+            }
+        }
+        dp
+    }
+
+    /// The promotion arm of [`DirtyPiece::from_actors`], out of line for the
+    /// same reason as [`DirtyPiece::castling_record`] — this body is inlined
+    /// into `make_move_with`, whose prologue study 13 §5.1 measured spilling,
+    /// so only the arm taken on ~99% of moves stays in line. Promotions carry
+    /// `capsq == to`, so the victim square is not a parameter.
+    #[cfg(feature = "hookc54")]
+    #[cold]
+    #[inline(never)]
+    fn promotion_record(
+        m: Move,
+        us: Color,
+        pc: Piece,
+        captured: Option<Piece>,
+        from: Square,
+        to: Square,
+    ) -> DirtyPiece {
+        let promoted = Piece::new(
+            us,
+            m.promotion_piece().expect("promotion kind carries a piece"),
+        );
+        let mut dp = DirtyPiece::EMPTY;
+        dp.sub(pc, from);
+        if let Some(victim) = captured {
+            dp.sub(victim, to); // capture-promotion
+        }
+        dp.add(promoted, to);
+        dp
+    }
+
     /// [`DirtyPiece::special_record`] for the post-move board. It exists as a
     /// separate function because the two differ in both arms: the promotion arm
     /// must read the victim from `state.captured` — the `to` square now holds
@@ -582,6 +659,18 @@ impl DirtyPiece {
 /// [`NoHooks`] path compiles away entirely: the seam is bench-neutral by
 /// construction.
 pub trait MakeMoveHooks {
+    /// Perf study 54: does this hook type want Hook C at all? An associated
+    /// `const`, not a field, so `make_move_with` monomorphizes the whole
+    /// record construction away for [`NoHooks`] (perft, `Board::make_move`,
+    /// the classical path) and for the ProbCut verification probe, which
+    /// makes and unmakes without ever pushing an accumulator entry.
+    ///
+    /// This is what study 13 §5.1 lacked and study 35 §4 added when it
+    /// rebuilt the arm: without it the seam is no longer bench-neutral by
+    /// construction.
+    #[cfg(feature = "hookc54")]
+    const WANTS_DIRTY: bool = false;
+
     /// Hook A: the child's full key is final (rule50-folded — the TT probe
     /// key) while board mutation is still in flight. The TT prefetches its
     /// cluster here.
@@ -1832,6 +1921,15 @@ impl Board {
         self.state.captured = captured;
         self.state.moved = pc;
         self.state.checkers = checkers;
+        // Hook C (perf study 54 / study 35 §4): the placement record, built
+        // from step 3's own actors while they are still in registers. Placed
+        // AFTER step 10 so the board a castling record reads is the mutated
+        // one — `castling_rook_square` is invariant, but keeping the hook on
+        // the far side of mutation makes the two shapes directly comparable.
+        #[cfg(feature = "hookc54")]
+        if H::WANTS_DIRTY {
+            hooks.on_dirty(&DirtyPiece::from_actors(self, m, us, pc, captured, capsq));
+        }
         debug_assert_eq!(
             gives_check,
             !(self.attackers_to(self.king_square(them), self.all_occupancy) & self.occupancy(us))

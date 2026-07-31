@@ -531,6 +531,35 @@ impl MakeMoveHooks for TtPrefetch<'_> {
     }
 }
 
+/// Perf study 54 arm `hookc54`: [`TtPrefetch`] plus Hook C. `WANTS_DIRTY` is
+/// `true` only on THIS type, so the ProbCut verification probe — which still
+/// makes and unmakes through the plain [`TtPrefetch`] — pays nothing, and
+/// `NoHooks` (perft, `Board::make_move`) monomorphizes the record away
+/// entirely. What it does NOT dodge is the PSQT path: the const cannot see
+/// `nnue_active()`, so a classical search builds a record it never reads.
+/// That is the cost study 35 §4 named, and it is why the `nnue_active()`
+/// guard in `do_move` cannot be pushed down into the make.
+#[cfg(feature = "hookc54")]
+struct TtPrefetchDirty<'a> {
+    tt: &'a TranspositionTable,
+    dp: DirtyPiece,
+}
+
+#[cfg(feature = "hookc54")]
+impl MakeMoveHooks for TtPrefetchDirty<'_> {
+    const WANTS_DIRTY: bool = true;
+
+    #[inline]
+    fn on_key(&mut self, key: Key) {
+        self.tt.prefetch(key);
+    }
+
+    #[inline]
+    fn on_dirty(&mut self, dp: &DirtyPiece) {
+        self.dp = *dp;
+    }
+}
+
 mod sealed {
     pub trait Sealed {}
 }
@@ -3275,6 +3304,14 @@ impl Worker {
             // piece `gives_check` would read back out of the mailbox, and the
             // intervening `stack[cur].move_count` store blocks the CSE. See
             // `Board::gives_check_by`.
+            // Perf study 54 arm `nogc54` reverts JUST this line to the
+            // pre-study-53 spelling, so `gc53`'s marginal effect can be
+            // measured on the tree that actually shipped it — study 53 §0.2
+            // left that open because its own control was not inert and
+            // `magic53` alone beat the combination on loads by 11.7/node.
+            #[cfg(feature = "nogc54")]
+            let gives_check = self.board.gives_check(m);
+            #[cfg(not(feature = "nogc54"))]
             let gives_check = self.board.gives_check_by(m, moved_piece);
             let mut new_depth = depth - 1;
             let delta = beta - alpha;
@@ -4928,8 +4965,20 @@ impl Worker {
         let in_check = self.stack[cur].in_check;
         self.stack[cur].current_move = m;
         self.stack[cur].cont_hist = ContHistId::new(in_check, capture, moved_piece, m.to());
+        #[cfg(not(feature = "hookc54"))]
         self.board
             .make_move_with(m, gives_check, &mut TtPrefetch { tt });
+        // Perf study 54 arm `hookc54` — study 35 §4's fusion, rebuilt on the
+        // tree that landed `after_move` instead of it. The record is built
+        // inside the make from step 3's registers and handed back through the
+        // hook struct, so neither `state.moved` nor `state.captured` is read.
+        #[cfg(feature = "hookc54")]
+        let mut hooks = TtPrefetchDirty {
+            tt,
+            dp: DirtyPiece::EMPTY,
+        };
+        #[cfg(feature = "hookc54")]
+        self.board.make_move_with(m, gives_check, &mut hooks);
         // NNUE accumulator maintenance (design/11 §3.4.4): record this move's
         // placement deltas into the child entry at `ply + 1` and mark it
         // uncomputed (the invalidation rule), so a sibling subtree can never
@@ -4963,7 +5012,10 @@ impl Worker {
         // all, and `push_sota_dirty` deliberately wants the POST-move one (its
         // threat x-rays read the child), so the whole block moves down together.
         if self.eval_ctx.nnue_active() {
+            #[cfg(not(feature = "hookc54"))]
             let dp = DirtyPiece::after_move(&self.board, m);
+            #[cfg(feature = "hookc54")]
+            let dp = hooks.dp;
             self.eval_ctx.push_dirty(dp, ply);
             #[cfg(feature = "sota")]
             self.eval_ctx.push_sota_dirty(dp, ply, &self.board);

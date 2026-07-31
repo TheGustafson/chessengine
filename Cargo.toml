@@ -32,6 +32,22 @@ nopsqt48 = []
 # expands the same entries to inline-folded constants and stays bench-
 # identical (D24). Tune builds are for the SPSA harness only, never shipped.
 tune = []
+# --- Perf study 54 ---
+# `hookc54`: study 35 §4's `do_move` fusion, REBUILT on the tree that landed
+# `after_move` instead of it. The `DirtyPiece` is constructed inside
+# `make_move_with` from step 3's own actors (mover, `(captured, capsq)`, `us`)
+# and handed out through Hook C, so neither `state.moved` nor `state.captured`
+# is read back. Study 35 measured this shape at -11.36 i/n against a
+# `from_move` base; against an `after_move` base its own table predicts
+# +13.64 i/n. Node-identical by construction (a refactor of how the same
+# record is derived), so the eval hash and node total gate it.
+hookc54 = []
+# `nogc54`: study 53's `gc53` REVERTED, so its marginal cost/benefit can be
+# read on the shipped tree. Study 53 landed `gc53 + magic53` together and
+# reported that `magic53` alone was -22.3 loads/node (10/10) against the
+# combination's -10.6 (7/10, ns) while instructions added to 0.1/node. This
+# arm is the head-to-head that was missing. Node-identical.
+nogc54 = []
 # D47V deploy arch (768 accumulator, 32/32 head + skip). Mutually exclusive
 # with the default 1280/128/32 consts; build D47V-capable binaries with
 # `--features sota,arch-d47v`. Never combined into one binary — the CENN's
