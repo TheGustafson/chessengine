@@ -10642,3 +10642,29 @@ under the criterion that was in force when it ran.
 **D49:** sb947, 193k pos/s, four services active, 8.3 GB free, 154 GB disk.
 **Study 57** still in census/analysis with no commits yet — expected, its brief
 front-loads a call-site measurement before any change.
+
+## Tick — 2026-07-31 11:02, PGO 1/2 built, 2/2 fixed and relaunched
+
+**PGO 1/2 succeeded:** `archon-main-pgo` (1,249,544 B) in
+`chessengine-mainwt/engines/bin/`.
+
+**PGO 2/2 failed on a trivial cause and is relaunched:**
+`cp: cannot create regular file 'engines/bin/archon-pre52-pgo': No such file or
+directory` — a **fresh git worktree has no `engines/bin/`**, because that
+directory is gitignored and therefore not materialised by `git worktree add`.
+`mkdir -p` and rerun. Worth noting for any future worktree-based build: the
+gitignored output directories do not come with the checkout.
+
+**Study 57 is alive and productive — I was checking the wrong ref.**
+`git log main..perf-study-57-i8deltas` showed nothing, but the agent's worktree
+HEAD is at `44e5f151`: *"pre-scaled fold row offsets + an idiv-free HalfKA
+quantiser."* It has built a full `tools/perf57/` harness (build/check/clippy/
+perft/median/pair scripts) and modified both `sota_simd.rs` and `sota_loader.rs`
+— hitting the primary target (the i8 delta kernels) **and** the secondary one
+(`quantise_halfka`, where an idiv-free rewrite is exactly the right attack on a
+load-time integer-division cost). Its panel is running 23+ rounds over five
+counters, node-identical at 5,001,562. **Last worktree write was one minute ago.**
+
+No conclusions drawn from its intermediate artifacts — it reports its own numbers.
+
+**D49:** sb954, 193k pos/s, four services active, 8.4 GB free, 150 GB disk.
