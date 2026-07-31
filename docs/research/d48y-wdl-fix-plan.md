@@ -9971,3 +9971,47 @@ null at **+0.517%, range [−2.71, +1.78]**.
 measurement gate: study 47 priced `activate` at its floor and study 48 landed
 there anyway; study 44 declared port pressure dead and it was the largest lever on
 the board.
+
+## Study 52 GATED GREEN — and the session's landed perf tally
+
+**Gate on merged main: `Bench: 587683`, all checks passed.** Study 52 verified.
+
+| study | landed | measured on |
+|---|---|---|
+| 40 | outlined accumulator copy | **−16.0 i/n** |
+| 44 | fold tile 20 → 5 `zmm` | **−1.37% cycles** |
+| 48 | `activate` reused operand → register | −0.286% instructions |
+| 50 | `ft_scale` i16 → u8 | −0.563% L1d loads |
+| **52** | **lazy RFP threat map** | **−36.5 i/n, −26.6 loads, −5.8 branches** |
+
+**Study 52's −36.5 i/n is the largest instruction win of the session** — larger
+than study 35's −25.0 and study 36's −19.5 — and it came from an item a prior
+study had walked past.
+
+Analysis-only, no speedup, all reported as such by their own authors: **43, 47,
+49, 51**. Two of those (47, 51) closed their sites with hardware measurements
+rather than arguments, which is why the line stopped spending on them.
+
+**Aggregate cycles, measured tonight: −1.475% at 10/10 against a byte-identical
+null of +0.517%** — call it **≈ −2.0% null-corrected ⇒ +2.6 to +3.5 Elo**. Studies
+48, 50 and 52 remain **unpriced in cycles** by their own choice, since this box's
+`cycles:u` cannot resolve them and reaching would have been dishonest.
+
+### D49 cycling: 90 superbatches in, no improvement yet, and both metrics agree
+
+| sb | heldout | EMA |
+|---|---:|---:|
+| 700 (anneal end) | 0.010570 | **0.010592** |
+| 770 | 0.010899 | 0.010754 |
+| 780 | 0.010934 | 0.010717 |
+| 790 | 0.010880 | 0.010765 |
+
+**The EMA is oscillating with the sawtooth and not trending down** — five heldout
+samples of cycling, all worse than sb700. And unlike earlier tonight, **games
+agree**: sb750 measured **−17.7 ± 12.1** against sb700's **−4.14 ± 5.56**.
+
+**This is still the predicted debt phase, not a verdict.** The precedent is exact:
+D49's own single warm restart sat at **−25.9 mid-recovery** and a **100-superbatch
+anneal took it to −4.1**, a +21.8 Elo swing. Cycling is currently **less** deep in
+debt than that was, and the planned final anneal is **300 superbatches, three times
+longer**. Readable points remain **sb1400** and **sb1700**.
