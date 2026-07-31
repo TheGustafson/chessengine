@@ -12583,3 +12583,51 @@ marginal reading. The comparison is between a solid measurement and a soft one,
 which argues for the direction rather than the exact ratio.
 
 **D49:** sb1159, 193k pos/s, four services active. **sb1400 in ~8.7 h.**
+
+## Tick — 2026-07-31, study 63 commissioned: settle the `.text` tradeoff by MEASUREMENT, not by threshold
+
+Study 62 left three rungs unlanded — `shape62d` (−3.91 i/n), `shape62e` (−5.37),
+`dual62b` (−13.71) — all switchable on `main`, all dropped by its **pre-registered
+≥2.0 i/n-per-KB rule**, and all subsequently argued affordable by its own later
+panel (`de_no_dispatch_per_slot`: engine **backend-bound 2:1**, so the L1i cost
+does not convert into dispatch starvation). **Study 62 refused to act on that**,
+correctly, because relaxing a pre-registered rule after seeing the data is the
+failure the rule exists to prevent.
+
+**Study 63 is explicitly forbidden from re-arguing that threshold.** Instead:
+
+**A per-KB rule was always a PROXY for "does the code growth cost more than the
+instructions save". That question can now be measured directly** — which sidesteps
+the rule entirely and is a strictly better instrument than any threshold.
+
+**The box is quiet right now**, which is what makes this possible and has not been
+true most of the week. On a quiet box today `wallclock_panel.py` produced its
+cleanest result ever — byte-identical null **−0.011% at an exact 20/40 split,
+p=1.0000** — where under load the same tool has **refused outright**, with the
+null moving further than the arm.
+
+So the brief asks for **a lattice over `{shape62d+shape62e, dual62b}` panelled on
+wall-clock at 40 rounds, with `--startup-frame` subtracted using absolute
+timings** (the two panel percentages have different baselines and cannot be
+subtracted directly), and requires **checking the box is still quiet before and
+after each panel — a panel that loses quiet is void, not salvaged.**
+
+**And it names the acceptable null:** if wall-clock genuinely cannot resolve
+−3.91 i/n, say so and land nothing there. **A rung too small to measure is a rung
+not worth the icache.**
+
+**Secondary target: continue the vein that is paying.** Studies 61–62 delivered
+**+3.14 game-relevant Elo from two studies** against **+0.79 from the seven
+before**, by attacking fold-kernel dispatch rather than instruction count or
+startup. Study 62's biggest win came from a kernel with **no shape dispatch at
+all**, which study 61 had screened out on refresh *rate* and row *locality* —
+both true, neither about loop control. **Census the remaining fold/refresh sites
+for dispatch coverage and measure the `(adds, subs)` distribution before writing
+a kernel** — that is how both studies found their targets.
+
+**Closed in-brief:** memory locality (no eleventh prefetch arm), the generic
+kernel's loop control (three prior failures — be the fourth only with a
+measurement), branch mispredicts, `forward_into` internals, `REGS_CAP = 5`.
+
+**D49:** sb1165, 193k pos/s, four services active, 149 GB disk.
+**sb1400 in ~8.5 h.**
