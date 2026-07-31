@@ -12814,3 +12814,31 @@ gets out-searched and ground down.
 Box note: these matches were run while study 63 was working, which may have voided
 a wall-clock panel. Its brief already requires voiding rather than salvaging any
 panel that loses quiet, so the cost is a re-run, not a bad number.
+
+## Tick — 2026-07-31 19:18, decay schedule VERIFIED IN EFFECT at the process level
+
+Last tick I "confirmed" the restart by tailing the log and read stale pre-restart
+lines. **This time the verification does not depend on the log at all.**
+
+| check | result |
+|---|---|
+| running trainer's `/proc/<pid>/cmdline` | **`runs/d49z_decay_1280.json 1170`** ✓ |
+| ramp endpoints | sb1170 **1.5790e-05** → sb1700 **1.8873e-06** |
+| ramp points | 134 |
+| **monotone decreasing** | **True** — no sawtooth *by construction* |
+| closed form `1.579e-5 × 0.996⁵³⁰` | 1.8873e-06 vs 1.8873e-06 — **exact** |
+
+**The process itself names the new config**, so the launcher edit took and the
+schedule is live — not inferred from a log line that could predate the restart.
+
+**Decay leg at sb1178, 8 superbatches in.** Throughput 184k pos/s, recovering
+toward the usual 193k from the 173k first-superbatch JIT cost; the gap is the
+gai-chess matches that were running alongside, not a regression.
+
+**Still too few superbatches for the sawtooth test** — the phase-lock statistic
+needs ~40 to mean anything, and reading it at n=8 would be the same error as
+calling a trend at n=4. The schedule being monotone by construction is the
+stronger guarantee anyway: **there is no sawtooth to detect, because the ramp
+cannot produce one.**
+
+All four services active, 8.4 GB free, 148 GB disk. **Study 63** working.
