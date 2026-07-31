@@ -9749,3 +9749,37 @@ corrected earlier this session.
 **Budget checkpoint:** at sb700 D49 will have seen **17.4 G positions = 1.71
 dataset passes = 44% of Stockfish's 40 G**. The continuation takes it to **42.3 G
 = 4.16 passes = 106%** — the crossing this whole line is aimed at.
+
+## The perf line has a MEASUREMENT problem: four landed changes, two unpriced
+
+**D49x: sb696**, four superbatches to the handoff. All units waiting correctly.
+
+**Landed since the canonical binary `archon-s25`:**
+
+| study | what | cycles claim |
+|---|---|---|
+| 40 | outlined accumulator copy | **−0.156%** |
+| 44 | fold tile 20 → 5 `zmm` | **−1.37%** |
+| 48 | `activate` reused operand into a register | **none — declined** |
+| 50 | `ft_scale` i16 → u8 | **none — declined** |
+
+**Studies 48 and 50 both landed real, exactly-measured reductions and both
+correctly refused to claim cycles**, because this box's `cycles:u` cannot resolve
+what they moved — study 45's two *inert* arms disagreed by **1.164 pp**, and study
+50's own panel null was −1.026% against an arm of −1.215%. That refusal is the
+right call and I am not asking them to reach.
+
+**But it leaves the cumulative figure unmeasurable one change at a time.** Our
+running total (**−1.53% cycles ⇒ +2.66 Elo**) counts only the two changes big
+enough to price, so it *understates* what has landed by an unknown amount.
+
+**The fix is an AGGREGATE panel, not more per-study panels:** one binary with all
+four changes against one without, on a quiet box, median of ≥6 blocked-Latin
+rounds. Four sub-resolution changes summed may clear the ~1% the instrument can
+see, where none of them can alone. **That is also the only way the games-threshold
+rule (≈5.61% cycles before a 1466-game screen can resolve it) can ever be
+applied** — it needs a cumulative number, and right now we do not have one.
+
+**Blocked on a quiet box**, which this is not about to be: the handoff fires in
+minutes, then the 5880-game verdict runs beside the continuation. Queued for the
+next genuinely idle window.
