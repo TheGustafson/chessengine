@@ -11831,3 +11831,74 @@ panels survive load only because `tools/wallclock_panel.py` interleaves the null
 
 **D49:** sb1073, heldout ema 0.010628/0.010670, 193k pos/s, four services active,
 160 GB disk. **Study 60** working, no builds in flight.
+
+## Tick — 2026-07-31, study 60 merged: NO arm landed, and it found a live PGO corruption
+
+**Merged `220106b4`, gate green.** Three arms built, all node-identical and
+eval-bit-exact, **all lost**. Its value is elsewhere.
+
+### The headline is a bug fix that has been live since study 40
+
+**`engines/canonical/net.cenn` is a symlink into gitignored `data/`, so it DANGLES
+in every fresh git worktree — which is where every perf study since 40 has run.**
+`build_pgo.sh`'s own header documents this failure class *in capitals* and had **no
+check behind it**: the UCI training session ran with `setoption` failing, the
+profile merged, and a binary came out, silently.
+
+| build (5,001,562-node frame, median of 3) | i/node | vs non-PGO |
+|---|---:|---:|
+| non-PGO native | 5819.68 | — |
+| **PGO trained WITH the net** | **5728.98** | −1.559% |
+| **PGO trained WITHOUT the net** | **6040.90** | **+3.801%** |
+
+**It is not "PGO inert" as the header supposed — a netless PGO binary is 5.445%
+worse than the correct one, and worse than no PGO at all.** The script now
+**refuses** to emit a binary whose eval-file never loaded.
+
+### My own PGO numbers are unaffected — verified two ways, not assumed
+
+1. **Mechanism:** my builds passed a **resolved absolute path**
+   (`/home/nick/projects/chessengine/data/…/s600.cenn`), not the symlink, and
+   `build_pgo.sh` substitutes that straight into `setoption`.
+2. **Outcome:** my post-58 PGO measures **5729.0 i/n** against this study's
+   correct-PGO **5728.98** — matching to **0.02 i/n**.
+
+So "native+PGO absorbs 38%", the −317.7 shipped i/n, and both wall-clock panels
+stand. **Studies that passed the bare `engines/canonical/net.cenn` path from
+inside a worktree are the ones at risk** — that is a question for the archive,
+not for today's numbers.
+
+### Where my brief was wrong, with receipts
+
+Its profile replicates exactly (63.19% of L1d misses in four accumulator symbols).
+**Its premise does not.** "Nobody has attacked this as a memory problem" is
+**false**: study 51 already measured the ceiling — **`probe-wpin` = −13.19%
+cycles, 15/15, p=0.0001** — and **nine routes to it are closed with numbers**
+(eight prefetch arms, zero-rows 30-of-19.6M, nibble-packing 0.03%, cancellation
+1.99%, huge pages, 4 KB congruence, fusion, hardware pollution control).
+
+**And my ranking was wrong.** Ranked by miss **latency** rather than miss
+**count** — study 29 §8's rule, which I did not apply — **`forward_into` is 11.8%
+while the fold's weight rows are 55.05%.** I handed over a count-ranked table and
+called it the target list. It also computed a floor nobody had written down: the
+fold's own vector arithmetic is **~287 cycles/node ≈ 8% of the frame** that no
+locality work can touch.
+
+**That is my brief's premise refuted for the fourth study running** — and each
+time the study was right to check rather than accept it.
+
+### Instrument reality, corroborating `c09e21be` independently
+
+`cycles:u`'s per-round spread was **1.6% in both panels, 5× the standing quiet-box
+σ**, and **`wallclock_panel.py` REFUSED (NOT LICENSED)** even on a contrast with a
+**+5.445%** instruction difference. Two independent routes on the same afternoon
+now say cycles and wall-clock are unusable on a loaded box. **No number in study
+60 is quoted on cycles or wall-clock.**
+
+**Two process failures it recorded rather than hid:** it hoisted a `let` outside a
+`#[cfg]` and changed the **control** binary's `.text` md5 (caught by rebuilding,
+not by mtime); and it ran **`git stash`** while a panel was appending inside the
+tree, voiding a 20-minute panel. **This repo's standing rule is never `git
+stash`** — `refs/stash` is shared across worktrees.
+
+**D49:** sb1073+, 193k pos/s, four services active.
