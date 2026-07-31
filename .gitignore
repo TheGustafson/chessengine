@@ -112,3 +112,8 @@ bin54/
 # perf study 55 arm binaries (built by tools/perf55/build55.sh)
 /bin55/
 /bin56/
+# perf study 57 arm binaries (rebuildable via tools/perf57/build57.sh)
+/bin57/
+# perf study 57 recorded perf.data (regenerable; ~40 MB)
+docs/research/perf-artifacts-57/*.data
+docs/research/perf-artifacts-57/*.lock

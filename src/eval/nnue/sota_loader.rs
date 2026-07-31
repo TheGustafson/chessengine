@@ -790,13 +790,82 @@ fn halfka_column_scales(raw: &[u8]) -> sota_head::FtScale {
     )
 }
 
+/// Reciprocal of `2·scale` for the [`round_half_away`] division, one per
+/// accumulator column — perf study 57's startup arm.
+///
+/// # Why this exists
+///
+/// [`quantise_halfka`] runs `HALFKA_DIMS · ACC` = **28,835,840 integer
+/// divisions** at every engine start, and `idiv` is the one common integer op
+/// Zen 4 does not pipeline (~14–20 cycles, no overlap). A match spawns one
+/// process per game and `tools/screen.sh` spawns them by the thousand, so this
+/// is real wall clock, not a denominator to shrink — study 36 §6 dismissed the
+/// symbol as "startup" and that is exactly the reasoning this arm rejects.
+///
+/// # Why it is EXACT, not an approximation
+///
+/// Standard round-up reciprocal (Granlund–Montgomery). With
+/// `M = ⌊2³²/D⌋ + 1` and `e = M·D − 2³²`, we have `0 < e ≤ D`, and
+/// `⌊N·M / 2³²⌋ = ⌊N/D⌋` for every `0 ≤ N < 2³²/e`.
+///
+/// Both bounds are structural here, not hoped for:
+/// * `D = 2·scale ∈ [2, 510]` — `scale` is a `u8` clamped to `[1, 255]` by
+///   [`halfka_column_scales`];
+/// * `N = 2·|w| + scale ≤ 2·32768 + 255 = 65,791` — `w` is an `i16`, so
+///   `|w| ≤ 32768` (`i16::MIN`).
+///
+/// So the requirement is `65,791 < 2³²/e`, and `2³²/510 = 8,421,504`. The
+/// margin is **128×**. `reciprocal_division_is_exact_over_the_whole_input
+/// _domain` sweeps every `(scale, N)` pair in those ranges against the real
+/// division rather than trusting the algebra.
+#[inline]
+fn round_half_away_reciprocal(scale: u8) -> u64 {
+    (1u64 << 32) / (2 * u64::from(scale)) + 1
+}
+
 /// Divide the FT_QUANT-frame i16 table by its per-column scale into i8.
+///
+/// Perf study 57 replaced the `idiv` with a reciprocal multiply
+/// ([`round_half_away_reciprocal`]) and **changed nothing else**. The iterator
+/// shape is deliberately the same single-level `chunks_exact(2).enumerate()`
+/// with the `i % ACC` column recovery it always had.
+///
+/// # ⚠ THE ROW-MAJOR REWRITE WAS BUILT AND IT LOST — DO NOT RE-PROPOSE IT
+///
+/// The obvious companion change is to walk the table row-outer
+/// (`raw.chunks_exact(ACC * 2).flat_map(|row| row.chunks_exact(2).zip(scale))`)
+/// so the modulo disappears and `scale` becomes a sequential stream. Measured,
+/// 40 paired rounds on the 1-node startup frame, against this same reciprocal:
+/// **+10.668% instructions (0/40, se 0.000), +19.018% branches (0/40),
+/// +36.661% L1d loads (0/40), +5.294% cycles (0/40, p < 0.0001).** A loss on
+/// every counter including cycles, which on this box almost never resolves.
+///
+/// The mechanism is the collector, not the arithmetic: `Aligned::from_iter_len`
+/// ends in `Vec::extend`, and a `FlatMap` is neither `TrustedLen` nor
+/// exact-size, so `extend` degrades to the per-element `extend_desugared` path
+/// with a capacity check per weight — 28.8 M of them. The flat `Map<ChunksExact>`
+/// keeps the specialised bulk path. **A modulo per element is cheaper than
+/// losing the `extend` specialisation**, which is not a trade anyone would
+/// guess from the source.
+///
+/// Bit-identical to the pre-study form by construction: same numerator, same
+/// denominator, same rounding rule, same clamp, same order.
 fn quantise_halfka(raw: &[u8], scale: &[u8; ACC]) -> Aligned<i8> {
+    let recip: Vec<u64> = scale
+        .iter()
+        .map(|&s| round_half_away_reciprocal(s))
+        .collect();
     Aligned::from_iter_len(
         raw.len() / 2,
         raw.chunks_exact(2).enumerate().map(|(i, w)| {
-            let v = i32::from(i16::from_le_bytes([w[0], w[1]]));
-            round_half_away(v, i32::from(scale[i % ACC])).clamp(-127, 127) as i8
+            // `(2·|v| + s) / (2·s)`, exactly `round_half_away`'s numerator and
+            // denominator — only the division is replaced.
+            let s = scale[i % ACC];
+            let v = i16::from_le_bytes([w[0], w[1]]);
+            let n = 2 * u64::from(v.unsigned_abs()) + u64::from(s);
+            let q = ((n * recip[i % ACC]) >> 32) as i32;
+            let q = if v < 0 { -q } else { q };
+            q.clamp(-127, 127) as i8
         }),
     )
 }
@@ -1243,6 +1312,53 @@ fn read_f32s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[f32]> {
 pub(crate) mod tests {
     use super::*;
     use crate::attacks::Prng;
+
+    /// Perf study 57: [`quantise_halfka`] divides by a reciprocal multiply
+    /// instead of `idiv`, 28.8 M times per engine start. That is only safe if
+    /// the reciprocal is EXACT over the entire input domain, so this asserts
+    /// it against the real division for **every** `(scale, N)` pair that can
+    /// occur — not a sample, and not the algebra.
+    ///
+    /// Domain, and each half is structural (see
+    /// [`round_half_away_reciprocal`]'s doc for why):
+    /// * `scale ∈ [1, 255]` — `halfka_column_scales` clamps a `u8`;
+    /// * `N = 2·|w| + scale ≤ 65,791` — `w` is an `i16`.
+    ///
+    /// A wrong reciprocal is the worst class of bug this loader can have: it
+    /// perturbs a handful of weights out of 28.8 M, so the net still loads,
+    /// still benches, and evaluates subtly wrong. The eval-hash gate would
+    /// catch it on the canonical net — this catches it on every net.
+    #[test]
+    fn reciprocal_division_is_exact_over_the_whole_input_domain() {
+        for scale in 1u8..=255 {
+            let m = round_half_away_reciprocal(scale);
+            let d = 2 * u64::from(scale);
+            for n in 0u64..=(2 * 32768 + u64::from(scale)) {
+                assert_eq!(
+                    (n * m) >> 32,
+                    n / d,
+                    "reciprocal division wrong at scale={scale} n={n}"
+                );
+            }
+        }
+    }
+
+    /// The reciprocal path reproduces [`round_half_away`] — including the sign
+    /// rule and the `i16::MIN` corner — for every `(w, scale)` the loader can
+    /// see. This is the whole quantiser body, not just its division.
+    #[test]
+    fn quantise_halfka_matches_the_scalar_reference_for_every_weight() {
+        for scale in 1u8..=255 {
+            let m = round_half_away_reciprocal(scale);
+            for w in i16::MIN..=i16::MAX {
+                let n = 2 * u64::from(w.unsigned_abs()) + u64::from(scale);
+                let q = ((n * m) >> 32) as i32;
+                let fast = (if w < 0 { -q } else { q }).clamp(-127, 127) as i8;
+                let slow = round_half_away(i32::from(w), i32::from(scale)).clamp(-127, 127) as i8;
+                assert_eq!(fast, slow, "w={w} scale={scale}");
+            }
+        }
+    }
 
     /// Build a deterministic synthetic SOTA net (with threats) for round-trip
     /// tests. NOT a trained net — weights are small random values.

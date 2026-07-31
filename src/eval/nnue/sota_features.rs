@@ -112,6 +112,48 @@ fn piece_square_index(persp: Color, piece: Piece) -> usize {
     }
 }
 
+/// A feature's **element offset into a feature-transformer weight table** —
+/// `feature * ACC` — as consumed by every `apply_*_deltas*` fold kernel.
+///
+/// # Why this is a type and not a bare `usize` (perf study 57)
+///
+/// The fold kernels walk their row list once per TILE, and at the shipped
+/// `REGS = 5` (perf study 44) an `ACC = 1280` accumulator is **8 tiles**. The
+/// scaling `feature * ACC` therefore used to be recomputed 8 times per row —
+/// `lea (%r,%r,4)` + `shl $0x8` sitting in the innermost loop, 2 of its 6
+/// scalar instructions per row per tile, read off the shipped disassembly.
+/// Scaling ONCE at the producer and handing the kernel a pre-scaled offset
+/// deletes 16 instructions per folded row and shortens each weight-row load's
+/// address dependency by two ALU ops.
+///
+/// Perf study 37 §5 named this "the best-priced remaining candidate" and
+/// priced it at −8 i/n **when the fold was 2 tiles wide**; study 44 then made
+/// the walk 4× wider without anyone re-pricing it.
+///
+/// The newtype is the whole safety argument: the two channels' producers and
+/// five kernels have to agree on the unit, and a silent disagreement is an
+/// arbitrarily wrong evaluation that still benches. A `usize` cannot catch
+/// that; this can, at compile time. PSQ1 indexing keeps using the plain
+/// feature index — its rows are `BUCKETS` wide, not `ACC` — so the two units
+/// coexist and must not be confused.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct RowOffset(pub usize);
+
+impl RowOffset {
+    /// Scale a feature index into its weight-table element offset.
+    #[inline(always)]
+    pub const fn of(feature: usize) -> Self {
+        Self(feature * ACC)
+    }
+
+    /// Recover the feature index. Only instrumentation and tests need this —
+    /// the hot path never divides.
+    #[inline]
+    pub const fn feature(self) -> usize {
+        self.0 / ACC
+    }
+}
+
 /// The HalfKAv2_hm feature index of `piece` on `sq`, as seen from `perspective`
 /// with the own king on `king_sq` (design/11 §12.1).
 ///
