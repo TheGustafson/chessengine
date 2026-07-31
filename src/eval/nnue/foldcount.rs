@@ -597,7 +597,11 @@ pub fn dump(nodes: u64) {
     }
     if let Ok(g) = ROWSTATS.lock() {
         for (name, total, zero, hist) in g.iter() {
-            let h: Vec<String> = hist.iter().enumerate().map(|(i, n)| format!("{i}:{n}")).collect();
+            let h: Vec<String> = hist
+                .iter()
+                .enumerate()
+                .map(|(i, n)| format!("{i}:{n}"))
+                .collect();
             emit!(
                 "FOLDROWSTATS {name} rows={total} allzero={zero} nzhist16 {}",
                 h.join(" ")

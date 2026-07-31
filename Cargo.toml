@@ -89,6 +89,9 @@ foldcount = ["sota"]
 # They walk every folded row's bytes, so they must be OFF in the binary the IBS
 # region census measures -- hence a feature of their own, not part of foldcount.
 rowprobe = ["foldcount"]
+# perf study 51: 64 B of padding in ThreatEntry, breaking the exact 4 KB
+# congruence between the two 1.3 MB accumulator stacks. Bit-identical.
+cong51 = ["sota"]
 # perf study 49 DIAGNOSTIC PROBE: inject a strictly serial cache-missing chase
 # into `HalfkaContext::current_full`, in its own `#[inline(never)]` leaf, so a
 # known quantity of stall has a known owner and the profiler's attribution of
