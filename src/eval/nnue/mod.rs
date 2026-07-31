@@ -43,6 +43,9 @@ pub mod simd;
 /// Exact HalfKAv2_hm plus the protected classic SCReLU head (CENN-v3).
 #[cfg(feature = "sota")]
 pub mod simple_halfka;
+/// Perf study 49's known-answer stall injector — DIAGNOSTIC ONLY.
+#[cfg(feature = "skidprobe")]
+mod skidprobe;
 /// Incremental HalfKA stack and Finny cache for the SOTA net.
 #[cfg(feature = "sota")]
 mod sota_accumulator;

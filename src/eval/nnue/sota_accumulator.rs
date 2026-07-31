@@ -280,10 +280,20 @@ impl Default for Entry {
 /// The per-ply bookkeeping that [`HalfkaContext::compute`] walks, split out of
 /// [`Entry`] so the walk is dense (perf study 22 arm 1).
 ///
-/// 12 bytes per ply against `Entry`'s 5248, so the whole `STACK_LEN`-deep array
-/// is ~3 KB — 48 cache lines for the entire search stack, versus one line per
-/// ply 5248 bytes apart. A parent/child pair now shares a line instead of
-/// guaranteeing two misses.
+/// **16** bytes per ply against `Entry`'s 5248, so the whole `STACK_LEN`-deep
+/// array is **4064 B — 64 cache lines** for the entire search stack, versus one
+/// line per ply 5248 bytes apart. A parent/child pair now shares a line instead
+/// of guaranteeing two misses; four plies share one line.
+///
+/// **This paragraph said "12 bytes … ~3 KB … 48 cache lines" until perf study
+/// 49, and had since the split.** `DirtyPiece` is 14 B, not 10: `(Piece,
+/// Square)` is 3 bytes (`Piece` is a two-field struct, not a packed index), so
+/// `adds` and `subs` are 6 each. The claim was never checked by anything —
+/// unlike the `Entry` size in the next paragraph, which perf study 43 verified
+/// from the `foldcount` region dump — so the `const` assertion below now pins
+/// both the size and the `shl $4` addressing that depends on it. The
+/// disassembly is the third witness: `compute` indexes `meta` with
+/// `shl $0x4,%rbp` and reads `computed[p]` at `0xe(%r8,%rax,1)`.
 ///
 /// The 5248 above is the **pre-split** `Entry` (payload + `dirty` + `computed`,
 /// 5196 rounded up to 64-byte alignment) and is left as written because it is
@@ -298,6 +308,18 @@ struct Meta {
     dirty: DirtyPiece,
     computed: [bool; 2],
 }
+
+/// `Meta` must stay a power of two wide. The doc above quotes a line count that
+/// depends on it, and — the part that actually costs cycles — `compute` indexes
+/// `meta` thousands of times per node, which LLVM emits as a `shl $0x4` only
+/// while the stride is 16. Widening the struct by one byte turns every index
+/// into an `imul`, silently. A `const` block is the idiomatic Rust spelling for
+/// "check this during compilation": it is evaluated at const-eval time and
+/// fails the BUILD, so it cannot be skipped the way a test can.
+const _: () = assert!(
+    std::mem::size_of::<Meta>() == 16,
+    "Meta must stay 16 bytes: compute's meta indexing is a shl $4"
+);
 
 impl Default for Meta {
     fn default() -> Self {
@@ -474,7 +496,37 @@ impl<'a> HalfkaContext<'a> {
         // region, `find_last_usable_accumulator`
         // (`eca43a97:src/nnue/nnue_accumulator.cpp:105-119`), is our `compute`
         // ancestor walk, not this one. Deleting it is convergence.
-        for perspective in Color::ALL {
+        // Perf study 49's known-answer stall injector (diagnostic feature only,
+        // see `skidprobe.rs`): a serial cache-missing chase in its OWN leaf
+        // symbol, so the profiler's attribution of a stall with an unambiguous
+        // owner can be measured.
+        // The seed MUST vary widely per call. A first version seeded from `ply`
+        // alone, which takes ~60 distinct values, so the chase revisited the
+        // same few hundred lines and sat in L1 -- it injected no stall at all
+        // and would have "proved" attribution was fine. The zobrist key is a
+        // different address every node.
+        #[cfg(feature = "skidprobe")]
+        super::skidprobe::poke(board.key() as usize ^ ply);
+        // `for perspective in Color::ALL` -- iterating the array BY VALUE --
+        // is the anti-pattern `finny_refresh_into` already forbids in prose a
+        // few hundred lines below, and perf study 49 found `current_full`
+        // committing it. `Color::ALL` is a two-byte array, but consuming it
+        // builds a `core::array::IntoIter` (pointer plus an alive range), and
+        // LLVM declined to promote that `alloca`, so the shipped binary opened
+        // every call with
+        //
+        //     movq $0x0,0xf0(%rsp)         ; iterator: alive.start
+        //     movq $0x2,0xf8(%rsp)         ;           alive.end
+        //     movw $0x100,0x100(%rsp)      ; Color::ALL = [White, Black]
+        //     ...
+        //     movzbl 0x100(%rsp,%rax,1),%r8d   ; and reloaded it per iteration
+        //
+        // Three stores of a compile-time constant plus a stack round-trip, on
+        // every evaluation. Iterating a `static` BY REFERENCE gives the same
+        // two values from `.rodata` with no iterator object: exactly the fix
+        // study 22 arm 3 applied to `PieceType::ALL` in this same file.
+        static PERSPECTIVES: [Color; 2] = Color::ALL;
+        for &perspective in &PERSPECTIVES {
             self.compute(board, ply, perspective);
         }
         let entry = &self.stack[ply];
