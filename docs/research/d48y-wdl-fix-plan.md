@@ -10150,3 +10150,69 @@ night, and that **my frequency hypothesis was refuted at n=12 after an n=1 test
 appeared to confirm it** — a 1.75% draw from a 1.57% distribution.
 
 All five services healthy; checkpoint dir flat under the reaper; 156 GB disk.
+
+## Tick — 2026-07-31, study 55 merged (−83.8 i/n, largest of the series)
+
+**Gate green on the merge:** `All checks passed.`, `Bench: 587683`, exit 0. Three
+pins unmoved (eval hash `2e1ede95…79c4`, d13 `1739588`), `perft_full_suite`
+PASSED, all 20 arm binaries node-identical at 5,001,562.
+
+**Series to date on `instructions:u`:** 52 −36.5, 53 −39.3, 54 −46.7, **55 −83.8**.
+Each study has found more than the one before it.
+
+### The three findings that change how the next study is built
+
+1. **Mechanism A (single-call-site inlining) INVERTS on large bodies.** Winners
+   were nine small helpers (−19.3, −12.6 i/n). Losers, priced rather than
+   guessed: `do_move` **+25.7**, medium batch **+25.0**, `see_ge` **+4.5**.
+   Three arms each cost more than study 54's entire gain — **reading study 54 as
+   "inline more things" would have shipped a regression.**
+2. **Mechanism B is bigger than the study that found it.** `bcbuf55` — masking
+   MovePicker's buffer funnel — is **−84.6 i/n alone**, from three characters on
+   three lines, and makes the binary **3,576 bytes smaller**. Highest
+   yield-per-character in the series.
+3. **Arms are violently non-additive in BOTH directions.** `bcall55` misses the
+   sum of its parts by **+2.63 pp (159 i/n)**; `landa55` misses by **−44 i/n
+   favourably**. Study 54's "instructions add to the third decimal place" does
+   **not** generalise. **Build the combination you intend to ship; never sum arms.**
+
+### Three corrections study 55 made to my own commissioning framing
+
+- **"One call site ⇒ LLVM inlines it" is FALSE.** `make_move_with::<TtPrefetch>`
+  has exactly one call site and is still out of line at 2466 bytes. The condition
+  is a single **hot** site.
+- **`search::<Root>` has one call site and no symbol in the binary** — LLVM had
+  already folded its ~16 KB body into `iterative_deepening` (29,459 B vs
+  `search::<NonPv>`'s 16,264). **Study 54's mechanism was already running at the
+  largest scale in the engine, unnoticed.**
+- Negatives in full: `bccont55` **+5.8 i/n** — the arm that looked most like
+  study 54's on paper, and lost.
+
+### Left unlanded, and it is the next study's target
+
+`bcmisc55` (**−44.7**) and `bcsort55` (**−34.6**) are large wins alone, blocked
+only by interaction and retained behind feature flags. **~79 i/n of measured work
+is sitting on the table.**
+
+**Correctness item, with study 55's framing corrected.** `Worker::reduction()`
+indexes `self.reductions[move_number as usize]` where `reductions: [i32; 256]`,
+no clamp. Study 55 called this a "latent panic in a 256-move position". **I
+checked it: the maximum legal move count in any chess position is 218, so it is a
+missing bound, not a reachable panic.** `bcmisc55` closes it — but `bcmisc55` was
+not landed, so **the bound is still absent.**
+
+**Instrument discipline held:** inert control `ctl55` byte-identical to base
+(`.text` md5 `1ce4526f`) *and* measured 0.000%. **No cycles claim anywhere** —
+correct, given σ = 1.57%.
+
+### D49
+
+**sb890** (checkpoints every 10). Rate **2.14 min/sb**, unchanged with four
+studies sharing the box. **sb1400 in ~18.2 h, sb1700 in ~28.9 h.** All four
+services active; 157 GB disk. Nothing to read until sb1400 — the cycling makes
+intermediate loss uninformative by construction.
+
+**Study 56 commissioned:** build the shipping combination over the bounds-check
+family (16-binary lattice — affordable because instruction counts are
+deterministic), land the missing bound, and census the engine for more
+mechanism-B sites. Explicitly told **not** to extend mechanism A blindly.
