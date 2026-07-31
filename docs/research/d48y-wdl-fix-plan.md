@@ -12881,3 +12881,40 @@ config — reintroducing the schedule the owner just retired.
 
 **D49:** sb1184, 14 superbatches into the decay leg, four services active, 7.2 GB
 free. **Study 63** working.
+
+## Tick — 2026-07-31 19:46, throughput dip diagnosed: study 63's panel, not a regression
+
+The decay leg has been running **181,327 pos/s (n=20)** against **193,583** for
+the last 40 cycling superbatches — a persistent **−6.3%**, well past any
+first-superbatch JIT transient. Chased it rather than assuming it settles.
+
+**Cause found and it is benign:** `bin61/pbase` at **99.5% CPU** — study 63's
+byte-identical **null binary**, i.e. it is running a wall-clock panel right now.
+Chrome adds another ~52% across two processes.
+
+**Ruled out, with numbers rather than by inspection:**
+
+| check | result |
+|---|---|
+| trainer cgroup `memory.events` | low 0, high 0, max 0 — **no throttling** |
+| trainer cgroup `cpu.pressure` avg300 | **0.00** — not CPU-starved at the cgroup level |
+| GPU utilisation | **94%** — trainer is GPU-saturated |
+
+So the trainer is not throttled and not stalled; the shortfall is its **CPU-side
+data pipeline** losing a core to the panel. It resolves when study 63 finishes.
+
+**Two things worth noting rather than filing away:**
+
+1. **This is the cost of the arrangement, and it is the right way round.** A ~6%
+   trainer slowdown for the duration of a panel is a fair price for the panel
+   being *measurable at all* — and the panel is the instrument that priced
+   studies 61–62 at +3.14 game-relevant Elo.
+2. **It cuts the other way too:** study 63's panel is running while chrome uses
+   ~52% of a core. Its brief requires it to **check quiet before and after each
+   panel and void anything that loses it** — that check is exactly what should
+   catch this, and it is the agent's call, not mine to pre-empt.
+
+**D49:** sb1190, 20 superbatches into the decay leg, heldout ema **0.010598** —
+the run's lowest. Four services active, 7.4 GB free, 146 GB disk.
+**Study 63** has committed "PRE-REGISTER the wall-clock design before running a
+single round" — the discipline asked for.
