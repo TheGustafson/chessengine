@@ -314,18 +314,39 @@ compared: `.text` md5 `4e4aad52` unchanged. The formatting was cosmetic.
 
 | gate | result |
 |---|---|
-| `CHECK_NNUE_GATE=1 CHECK_TEST_THREADS=1 bash tools/check.sh` | see §5.1 |
-| wl50 eval hash | `2e1ede95…79c4` — must be unmoved |
-| d13 node total | `1 739 588` — must be unmoved |
-| `Bench:` trailer (depth-6 default build) | `587683` — must be unmoved |
-| **D24 perft ritual** (`board`/`movegen` touched) | `perft_full_suite` |
+| `cargo fmt --check` | **PASSED** |
+| `cargo clippy --all-targets -- -D warnings` | **PASSED** |
+| feature-matrix `cargo check` | **PASSED** |
+| `cargo test` (debug: unit + fast perft tier) | **PASSED** — 614 passed, 0 failed |
+| **D24 perft ritual** (`board`/`movegen` touched) | **`perft_full_suite` PASSED** |
+| `Bench:` trailer (depth-6 default build) | **587683** — **unmoved** |
+| **wl50 eval hash** | **`2e1ede9521624dd8…93cf79c4`** — **unmoved** |
+| **d13 node total** | **1 739 588** — **unmoved** |
 | frame node identity, all 20 binaries | **5 001 562** exact |
 | inert control `ctl55` `.text` md5 | **`1ce4526f` = `base55`** |
 | byte-identical null, `instructions:u` | **≤1250 counts in 3.0 × 10¹⁰** |
 | `promoted55` reproduces `landbuf55` | **−1.390 % both**, se 0.000 |
 
-No pin should move: every change here is behaviour-preserving, so a moved pin
-would be evidence that an equivalence was wrong.
+**No pin moved, and none should have** — every change here is
+behaviour-preserving, so a moved pin would have been evidence that an
+equivalence was wrong.
+
+**One honest note on how the two NNUE pins were obtained.** `tools/check.sh`'s
+final phase — the 727-test `--features sota,arch-d48x` suite — was still running
+when this was written, at roughly 5 tests/minute, because the box is shared with
+the live D49 trainer and `CHECK_TEST_THREADS=1` forces one thread. It had
+reported **zero failures** up to that point. Rather than block, the two pins were
+computed **directly from the promoted binary** with check.sh's own invocations:
+
+```bash
+./bin55/promoted55 nnue-eval engines/canonical/net.cenn \
+    < tools/nnue/calib/wl50.fens | sha256sum          # 2e1ede95…93cf79c4
+./bin55/promoted55 bench 16 1 13 tools/nnue/calib/wl50.fens depth \
+    engines/canonical/net.cenn                         # 1 739 588
+```
+
+Both match. The sota unit-test suite is the one gate line not personally seen to
+completion; it should be confirmed green before merge.
 
 ---
 
