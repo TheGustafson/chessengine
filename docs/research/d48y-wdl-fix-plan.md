@@ -11196,3 +11196,77 @@ an underpowered panel.
 still inside the sawtooth. 193k pos/s, four services active, 151 GB disk.
 **Study 58** has landed a first commit: three arms on the shipped PGO profile's
 `current_full`, −30.4 i/n so far. Not merged; it re-measures and gates first.
+
+## Tick — 2026-07-31, study 58 merged + gate GREEN; session total −486.8 i/n; ONE UNEXPLAINED GAP
+
+**Merged `cbeca0f5`. Gate green:** `All checks passed.`, `Bench: 587683`, pins
+unmoved, node-identical (both sides 5,001,562, checked directly).
+
+### Decomposition, all same flags (v3, non-PGO), provenance verified by REBUILDING
+
+The saved "post-56" binary was re-derived from source at `46588c4b` before use —
+today's own lesson applied to myself, since "I copied it from a target dir and
+believe it was built there" is mtime-style reasoning. **Fresh build 6058.1 i/n,
+saved binary 6058.1 i/n, difference −0.0.** Provenance confirmed.
+
+| | i/n | delivered |
+|---|---|---|
+| post-56 | 6058.1 | — |
+| post-57 | 5870.4 | **study 57: −187.6** |
+| post-58 | 5834.4 | **study 58: −36.0** |
+
+**Session total: pre-52 6321.2 → post-58 5834.4 = −486.8 i/n (−7.700%).**
+
+### The gap I cannot explain, stated rather than smoothed over
+
+**Study 58 verifies:** −36.0 measured against −30.43 self-reported. Good.
+
+**Study 57 does not.** It self-reported ≈−31 i/n (−0.523% combined) and
+**delivers −187.6 i/n — 6× its own claim.** The code diff between the two merges
+contains only study 57's work, the flags are identical on both sides, both
+binaries are node-identical, and the baseline's provenance is now proven by
+rebuild. So the measurement stands; the *reconciliation* does not.
+
+Note the direction: **it UNDERSTATED.** That is the unusual way round, and it is
+not a reason to relax — a number that cannot be reconciled is a number I do not
+understand, whichever way it errs. Its own arithmetic is internally consistent
+(arm A −45.40, arm B's `idiv`→reciprocal swap should *add* ~11 i/n), which makes
+the gap more interesting, not less. **I am not inventing a mechanism for it.**
+Flagged for a dedicated bisect of the four commits in that merge.
+
+### PGO on the combined 57+58: absorbed, not amplified
+
+| | i/n |
+|---|---|
+| PGO post-56 | 5884.4 |
+| PGO post-58 | 5729.0 |
+| **57+58 under PGO** | **−155.4** |
+| 57+58 non-PGO | −223.7 |
+| **PGO retains** | **69%** |
+
+Study 58 reported PGO **amplifying** its own arms 1.99× and gave a good reason —
+they were found by profiling the PGO binary, so the largest deletes a stack
+round-trip that only reaches that size once PGO inlines the fold. **That framing
+is sharper than my "38% absorption" and I accept it**, but my combined 57+58
+measurement cannot isolate study 58's arms, and at the combined level PGO
+**absorbs 31%** — consistent with the 38% measured on 52–56. Both can hold: 58's
+arms amplify, 57's absorb, the sum absorbs.
+
+### Study 58's corrections to my brief
+
+- **My profile table was taken on a binary without study 57** — `quantise_halfka`
+  reads 2.36% there and 1.00% post-57, exactly where study 57 arm B landed. My
+  third stale-binary error today, and the same class as the other two.
+- **`current_full` is 13.18% of CYCLES but only 2.52% of `instructions:u`**
+  (and `do_move` is 0.82% / 8.76%). **The targets I commissioned rank very
+  differently on the counter the gate adjudicates** — it went at instructions
+  anyway and the wins were there.
+- **`pair58` — my flagship "stale price" candidate** (study 37 arm 3 re-priced at
+  `TILES = 8`) — is **+16.96 i/n, twice its cost at `TILES = 2`.** The width was
+  never the reason; study 37's stated mechanism does not apply at 8 tiles. My
+  headline lead was wrong for the third study running.
+- `forward_into` **decomposed for the first time since study 25**: activate 35%,
+  l1_dot 30%, l2_tail 13%, find_nnz 12%, glue 10% — all on documented floors.
+  **No cheap instruction win left there.**
+
+**D49:** sb1003+, 193k pos/s, four services active.
