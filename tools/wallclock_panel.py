@@ -33,6 +33,18 @@ THE DESIGN, AND WHY EACH PIECE IS THERE
    with sd 6.3-9.5, wrecked by single contention rounds. Deciding the statistic
    after seeing the data is the failure this file exists to prevent.
 
+STARTUP IS NOT A GAME WIN -- SUBTRACT IT
+----------------------------------------
+The 5M-node bench frame charges process startup ONCE PER RUN. An arm that cuts
+load-time work (net load, quantise_halfka) therefore reads as a wall-clock win
+that a real game -- where startup is amortised over minutes of search -- never
+sees. Measured 2026-07-31 on the studies 52-58 pair: the 1-node delta was
+-261.4 M cycles against -526.0 M for the whole frame, i.e. HALF the apparent gain
+was startup. Perf study 59's own arms were 94% startup and it retracted its Elo.
+
+Pass --startup-frame to run the same panel at 1 node; subtract that result from
+the full-frame result and quote the residual as the game-relevant number.
+
 WHAT LICENSES THE ELO CONVERSION
 --------------------------------
 Only run --elo when the two binaries are behaviourally IDENTICAL, i.e. the perf
@@ -71,13 +83,20 @@ def main():
     ap.add_argument("--nodes", default="100000")
     ap.add_argument("--net",  default=DEFAULT_NET)
     ap.add_argument("--fens", default=DEFAULT_FENS)
+    ap.add_argument("--startup-frame", action="store_true",
+                    help="run at 1 node instead of --nodes, to measure the fixed "
+                         "startup component; subtract from the full-frame result")
     ap.add_argument("--elo", action="store_true",
                     help="convert to DERIVED Elo; only valid if the binaries are "
                          "node-identical (see module docstring)")
     a = ap.parse_args()
 
     net = os.path.realpath(a.net)
-    cmd = ["bench", "16", "1", a.nodes, a.fens, "nodes", net]
+    nodes = "1" if a.startup_frame else a.nodes
+    cmd = ["bench", "16", "1", nodes, a.fens, "nodes", net]
+    if a.startup_frame:
+        print("STARTUP FRAME (1 node): this measures fixed per-process cost only.")
+        print("Subtract it from the full-frame result; games never see it.\n")
 
     # The null arm is a byte-identical copy of base: any reading it produces is
     # pure instrument noise, by construction.
