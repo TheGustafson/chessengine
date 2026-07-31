@@ -10125,3 +10125,28 @@ most arms landed tonight.
 tonight, and that was correct rather than conservative.** Studies 50, 52, 53 and
 54 all refused cycles claims for effects of 0.3–1.5%; at 3σ ≈ 4.7% single-run
 resolution, none of those effects was ever visible.
+
+## Tick — ETA corrected, and the noise floor saved to memory
+
+**D49x: sb893.** Rate **measured against a time base**: 21.4 min per 10sb across
+three consecutive intervals = **2.14 min/sb**, and slightly FASTER than the 2.17
+measured on an idle box — so studies 52–55 running builds and panels alongside
+have cost the trainer nothing measurable.
+
+**I had been quoting the wrong ETA for several ticks.** Corrected:
+
+| milestone | sb remaining | time |
+|---|---:|---:|
+| sb1400 — end of cycling | 514 | **18.3 h** |
+| sb1700 — final anneal complete | 814 | **29.0 h** |
+
+I had been saying "~10 h to sb1400". It is 18. The arithmetic was mine, not the
+run's.
+
+**Saved to memory: the σ = 1.57% cycles noise floor**, because it corrects a rule
+in the standing directive and would otherwise be re-derived. The memory records
+the measurement, the n≈23 requirement, that it explains every bad null of the
+night, and that **my frequency hypothesis was refuted at n=12 after an n=1 test
+appeared to confirm it** — a 1.75% draw from a 1.57% distribution.
+
+All five services healthy; checkpoint dir flat under the reaper; 156 GB disk.
