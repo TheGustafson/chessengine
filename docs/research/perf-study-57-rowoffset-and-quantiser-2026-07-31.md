@@ -413,12 +413,53 @@ why the exact counters are the arbiter here.
 
 | candidate | why not, with the number |
 |---|---|
-| **Shape-specialise the threat fold** — **the best-named follow-up, and its price has moved twice** | Study 25 §3 built it at `{0,1,2}²` and measured **+0.14% instructions**, hot code 3336 → 11674 B, at `TILES = 2`. Study 36 §6 re-declined it on an estimate of "32 i/n" — also at `TILES = 2`. At today's `TILES = 8` **and after arm A**, the remaining per-row control is 4 instructions × 8 tiles × 3.922 threat rows = **125 i/n = 2.1% of engine instructions**, while the dispatch cost is per-CALL and unchanged at ~0.56%. Expected net ≈ **−1.5% instructions**. It is one build, and the falsifier is study 25's own: if instructions rise, the coverage argument beat the control argument again. I ran out of budget, not out of case. |
+| **Shape-specialise the threat fold** — **I re-priced it, my first re-pricing was wrong, and the corrected number does NOT justify a build.** See §6.1. | Reachable prize **37.2 i/n = 0.63%**, against study 25's measured dispatch + icache cost of ~0.5–0.6% at the same coverage. Roughly break-even, which is exactly what study 25 measured. |
 | **`psqt_fold` on `RowOffset`** (would delete arm A's +0.283% load regression) | +14 instructions/node for −8.3 loads/node. Pays a 0.000-null counter to relieve a 0.04%-floor counter, at ~0.29 stall cycles per load (study 48 §1.1). Priced, declined. |
 | **The FNV-1a-64 payload checksum**, the largest single startup item left | 135,578,656 bytes on a serial `xor`→`imul` chain = 4 cycles/byte ≈ **542 M cycles**, i.e. roughly **45% of all startup cycles** and bigger than arm B. It is not reducible without changing the value: FNV's recurrence is `h = (h ⊕ b)·P`, the XOR only touches the low byte, and the low-byte sub-chain is itself 4 cycles/byte (or an L1 lookup, no better). Interleaved sub-streams would change the checksum, i.e. the container format. **Reported, not built** — the only routes are a format change or skipping the check, and both need a ruling. |
 | **A pre-quantised i8 net** (the commission's secondary suggestion) | Would delete `halfka_column_scales` (57.7 MB read) *and* `quantise_halfka` *and* 21% of the FNV payload. But it changes the CENN container **and the shipped canonical net file**, and `c30611fd` rules the net out of agent scope. `sota_loader::serialize` is already idempotent (`load(serialize(load(x))) == load(x)`), so it is buildable and bit-checkable — it needs a human decision, not more measurement. Naming it, not doing it quietly. |
 | **The 77.7 MB threat-table copy** (`read_i8s_aligned`) | ~155 MB of traffic ≈ 13 ms, against arm B's 62 ms. Avoiding it means keeping the file bytes alive and taking an aligned view, which the 64-byte-alignment contract does not permit in general. |
 | **Software prefetch of weight rows** | Dead eight times (studies 4, 21, 29 ×3, 43 ×4, 44, 51). Not re-run. |
+
+### 6.1 A second retraction, this one of my own §6
+
+I first wrote that the threat shape dispatch is now worth ≈ **−1.5%
+instructions** and called it "one build away". **That number is wrong and I am
+retracting it before anyone spends a night on it.**
+
+The error is the one study 25 §3 named — I priced the *whole* per-row control as
+the prize, when a `(≤2, ≤2)` shape table can only reach the SHORT folds, and
+the rows are not in the short folds. From this study's own `thr_shape` census:
+
+| threat folds with | share of CALLS | share of ROWS |
+|---|---:|---:|
+| ≤ 2 rows | 35.6% | **11.3%** |
+| ≤ 4 rows | 59.9% | **29.6%** |
+| ≤ 6 rows | 75.5% | 48.1% |
+| ≤ 8 rows | 85.6% | 64.4% |
+
+Study 36 §3.2's headline "59.10% fold four or fewer" is a statement about
+*calls*, and the loop control is paid per *row*. The full threat per-row control
+is 4 instructions × 8 tiles × 3.922 rows/node = **125.5 i/n (2.11%)**, but the
+part a `(≤2, ≤2)` table can reach is at most the ≤4-row folds' 29.6%:
+
+> 4 × 8 × (0.296 × 3.922) = **37.2 i/n = 0.63% of engine instructions**
+
+against study 25's *measured* dispatch + icache cost of ~0.5–0.6% at that
+coverage (it read +0.14% net with a 3336 → 11674 byte hot-code growth). That is
+break-even, which is what study 25 measured, and `TILES = 8` does not rescue it
+because the dispatch cost is per-call and the reachable rows are the same 30%.
+
+Covering the row-heavy folds needs shapes out to (12, 13) — combinatorial, and
+the tail is where study 25's icache cost would grow fastest. **The shape
+dispatch stays closed.** What is *not* closed is the row-heavy tail itself: the
+row loop LLVM emits is already 4×-unrolled for long lists, so the remaining
+control is ~1 offset load + ~0.75 of an `add`/`inc`/`jne` per row, and I know of
+no way to remove the offset load.
+
+The generalisable form: **in this kernel, a per-call statistic (fold shapes) and
+a per-row cost (loop control) are different currencies, and every study that has
+tried to spend one on the other — 25 §3, 36 §6, and now me — has over-priced by
+about 3×.**
 
 ---
 
