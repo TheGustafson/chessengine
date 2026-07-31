@@ -9455,3 +9455,47 @@ sb700.
 
 Also running: sb620 @ 5k finished at **−9.0 ± 12.1** (1000 games); sb620 @ 25k in
 flight to 2000 games (bar ±8.6).
+
+## ★ THE WARM RESTART IS WORTH +17.1 ELO — and I nearly re-measured what was already known
+
+**sb620 @25k COMPLETE: −4.2 ± 8.6 over 2000 games.**
+
+| checkpoint | Elo vs canonical @600 | n | interval |
+|---|---:|---:|---|
+| **sb400** — where the run would have STOPPED | **−21.24 ± 5.67** | **5880** | [−26.9, −15.6] |
+| sb580 | −25.9 ± 10.0 | 1466 | [−35.9, −15.9] |
+| **sb620** | **−4.2 ± 8.6** | 2000 | [−12.7, +4.4] |
+| sb620 @ **5k** nodes | −9.0 ± 12.1 | 1000 | — |
+
+**⇒ the extension is +17.1 Elo over sb400, intervals DISJOINT**, with 65
+superbatches of anneal still to run.
+
+**And the shape matters as much as the number: it went DOWN before it went up.**
+sb580 is no better than sb400 and possibly worse — matching the loss curve, where
+the restart cost **476e-6** and took ~130 superbatches to repay. **A warm restart
+is a debt before it is a dividend**, which constrains any cyclical schedule: the
+period must be long enough to clear the recovery, or you pay the cost repeatedly
+and never collect.
+
+### My error: I asserted sb400 was unmeasured
+
+I proposed spending 20 minutes measuring sb400 "because we have never measured
+it". **It was measured at 5880 games — the most precise number in this entire
+run** — and the owner corrected me. I made a **negative existence claim without
+grepping**, which my own standing note records as the worst kind. The record was
+in this very document at lines 7096–7464.
+
+### What the literature says (checked, not recalled)
+
+**Stockfish's `nnue-pytorch` uses `StepLR`, gamma 0.992 per epoch — a monotone
+exponential decay. No cycling, no restarts.** Their docs add that nets "mature"
+around 400 epochs but are "very competitive after only 100" — i.e. a long flat
+tail, exactly the regime where a loss-based stop misleads. Cosine-with-warm-
+restarts (SGDR) and cyclical LR are textbook in general ML; **I could find no
+NNUE-specific application.** That is a weak negative — the community publishes in
+Discord and commits, not papers — but combined with SF shipping a plain `StepLR`,
+the obvious upgrade appears untried in this domain.
+
+**Caveat kept:** gamma 0.992 compounded over hundreds of epochs is itself a very
+long smooth anneal, so SF's schedule may already capture much of what a restart
+provides, spread out.
