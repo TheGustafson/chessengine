@@ -37,7 +37,8 @@ RF_DIM = 3072
 RF_SEED = 220480777
 SHUF_SEED = 41
 HL = 1280
-DECODE_EVAL_CAP = 262144   # rows of stored decode scores (AUC needs vectors)
+DECODE_EVAL_CAP = 131072   # rows of stored decode scores (AUC needs vectors;
+                           # capped for the ~3 GB box budget)
 
 # tag -> (acc shard prefix, targets npz, sidecar npz | None, row_start, row_end)
 SETS = {
@@ -125,18 +126,19 @@ def _feat(acs, acn):
 
 
 def moments(tag: str) -> dict:
+    """Chunked at 8192 rows: whole-shard f64 copies were a measured ~2.7 GB
+    peak (coordinator flag 2026-07-30) — the box budget is ~3 GB total."""
     n = 0
-    s1a = s2a = s1h = s2h = None
+    s1a = np.zeros(2560); s2a = np.zeros(2560)
+    s1h = np.zeros(1280); s2h = np.zeros(1280)
     for acs, acn, *_ in stream_shards(tag):
-        acc, hh = _feat(acs, acn)
-        a64, h64 = acc.astype(np.float64), hh.astype(np.float64)
-        if s1a is None:
-            s1a, s2a = a64.sum(0), (a64 ** 2).sum(0)
-            s1h, s2h = h64.sum(0), (h64 ** 2).sum(0)
-        else:
+        for b0 in range(0, len(acs), 8192):
+            sl = slice(b0, b0 + 8192)
+            acc, hh = _feat(acs[sl], acn[sl])
+            a64, h64 = acc.astype(np.float64), hh.astype(np.float64)
             s1a += a64.sum(0); s2a += (a64 ** 2).sum(0)
             s1h += h64.sum(0); s2h += (h64 ** 2).sum(0)
-        n += len(acc)
+            n += len(acc)
     ma, mh = s1a / n, s1h / n
     va = np.maximum(s2a / n - ma ** 2, 1e-8)
     vh = np.maximum(s2h / n - mh ** 2, 1e-8)
