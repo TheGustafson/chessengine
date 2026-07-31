@@ -656,6 +656,24 @@ impl SotaHead {
                     self.l1_weights.as_ptr().cast(),
                     L2 * L1 * BUCKETS,
                 );
+                region(
+                    "l2_weights",
+                    self.l2_weights.as_ptr().cast(),
+                    L2 * L3 * BUCKETS * 4,
+                );
+                region(
+                    "l3_weights",
+                    self.l3_weights.as_ptr().cast(),
+                    L3 * BUCKETS * 4,
+                );
+                region(
+                    "l1_biases",
+                    self.l1_biases.as_ptr().cast(),
+                    L2 * BUCKETS * 4,
+                );
+                if let Some(sk) = &self.skip_weights {
+                    region("skip_q", sk.q.as_ptr().cast(), L1 * BUCKETS);
+                }
                 super::foldcount::valhist(
                     "ft_scale",
                     self.ft_scale.block(0).iter().map(|&s| i64::from(s)),

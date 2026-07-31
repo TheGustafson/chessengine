@@ -171,19 +171,36 @@ This is the measurement that redirected the study. Per-region attribution of
 
 | region | % of its loads | miss rate | **% of its misses** | % of its miss latency |
 |---|---:|---:|---:|---:|
-| `l1_weights` (the sparse L1 matmul table) | 15.7 % | **88.6 %** | **35.0 %** | 37.4 % |
-| unregistered heap (the head's f32 + skip tables) | 14.1 % | 84.2 % | **29.6 %** | 31.0 % |
-| `hka_stack` (the `pst` accumulator) | 11.8 % | 53.9 % | 15.8 % | 13.6 % |
-| `ft_scale` | 5.9 % | 75.5 % | 11.1 % | 9.3 % |
-| `thr_stack` (the `threat` accumulator) | 12.2 % | 24.8 % | 7.5 % | 7.6 % |
-| thread stack (spills) | 3.1 % | 9.3 % | 0.7 % | 0.8 % |
-| `head_ft` (the output) | 21.5 % | **0.4 %** | 0.2 % | 0.2 % |
-| `head_nnz` | 15.3 % | 0.1 % | 0.0 % | 0.0 % |
+| `l1_weights` (sparse L1 matmul, 20 KB/bucket) | 15.1 % | **89.0 %** | **35.7 %** | 41.0 % |
+| **`l2_weights`** (f32, 2048 B/bucket) | 5.2 % | **98.9 %** | **13.6 %** | 18.2 % |
+| `hka_stack` (the `pst` accumulator) | 12.0 % | 44.7 % | 14.3 % | 10.4 % |
+| **`skip_q`** (D47V skip lane, 1280 B/bucket) | 3.2 % | **96.9 %** | 8.1 % | 9.8 % |
+| unattributed heap | 5.8 % | 63.1 % | 9.8 % | 7.3 % |
+| `thr_stack` (the `threat` accumulator) | 12.4 % | 24.0 % | 7.9 % | 6.6 % |
+| `ft_scale` | 6.1 % | 51.8 % | 8.4 % | 4.4 % |
+| thread stack (spills) | 3.5 % | 10.1 % | 0.9 % | 1.0 % |
+| **`l3_weights`** | 0.2 % | **100.0 %** | 0.6 % | 0.7 % |
+| **`l1_biases`** | 0.1 % | **100.0 %** | 0.3 % | 0.4 % |
+| `head_ft` (the output) | 20.7 % | **0.4 %** | 0.2 % | 0.2 % |
+| `head_nnz` | 15.8 % | 0.2 % | 0.1 % | 0.1 % |
+
+*(This table is the POST-arm binary, which is why `ft_scale` reads 51.8 %; the
+pre-arm shares are in §0's before/after. The ranking is unchanged by the arm.)*
 
 **The 12.8 KB the commission sent me to consolidate is `hka_stack` + `thr_stack`
-+ `ft_scale` = 34.4 % of `forward_into`'s misses.** The majority — 64.6 % — is
-`l1_weights` plus the head's other per-bucket tables, which no consolidation of
-the accumulator pair can touch.
++ `ft_scale` = 30.6 % of `forward_into`'s misses.** The majority — **58.3 %** —
+is the head's five WEIGHT tables, which no consolidation of the accumulator pair
+can touch.
+
+**★ And the weight tables miss at 89–100 %.** `l2_weights` is 2048 bytes, read
+densely once per evaluation, and it misses **98.9 %** of the time; `l3_weights`
+and `l1_biases` miss **100 %**; the skip lane 96.9 %. These are small,
+permanently-reused, read-only tables that ought to be the most L1-resident data
+in the engine, and they are essentially never resident. **That is the capacity
+mechanism (§2.2) at its most extreme, and it is the strongest single piece of
+evidence in this study that layout is not the variable.** A 2048-byte array
+cannot miss 98.9 % of the time for any reason except being evicted between every
+use.
 
 **Two rows nobody had.** `head_ft`, the 1280-byte output buffer, misses **0.4 %**
 of the time: it is written and immediately re-read by `find_nnz` and `l1_dot`
@@ -298,6 +315,7 @@ item 3 recorded exactly that omission as "free Elo left on the floor".
 | `foldcount` rows/node vs studies 47/48 | **7.1754** vs 7.1754 / 7.1753 |
 | byte-identical null through THIS harness | `instructions:u` **0.000 %**, `L1-dcache-loads` +0.016 %, `ld_dispatch` +0.033 % |
 | realised mean panel position | **1.00** for every label |
+| measured binary unaffected by the later diagnostic-only region edits | `.text` **byte-identical by `cmp`** (whole-file differs only in the build-id note — study 47's trap, in reverse) |
 | `CHECK_NNUE_GATE=1 CHECK_TEST_THREADS=1 bash tools/check.sh` | see §7 |
 
 **No pin moves, and that is the point:** the change is bit-identical, so a pin
@@ -338,11 +356,11 @@ bucket that lands near `(n−1)/n` of the total is a join bug, not a finding.**
 
 Most doubtful first.
 
-1. **The 29.6 % of `forward_into`'s misses in unregistered heap is not
-   identified.** By elimination it is the head's remaining per-bucket tables —
-   `l2_weights` (2048 B/eval), the D47V skip lane (1280 B/eval), and the bias
-   blocks — but I registered four regions and not seven, so this is inference,
-   not measurement. It is the largest single open item and it is one build away.
+1. **9.8 % of `forward_into`'s misses are still unattributed heap** (63 % miss
+   rate). The first draft of this list said 29.6 % and named the tables by
+   elimination; I then registered four more regions and measured them, which is
+   what §1.3's table now reports. The remainder is small enough to be `self`
+   field loads and the `l1_out`/`last_l2` buffer, but that is inference again.
 2. **Study 39's −0.22 misses/node is inherited, not re-derived.** I planned to
    re-measure it with `probe-actpin` under IBS — which would have been much
    sharper than study 39's counter, since IBS would show *which region* stopped
@@ -361,11 +379,22 @@ Most doubtful first.
    non-multiple of 4096 and re-run the region census — is two lines and I did not
    build it, because §2.2's three converging results made it the wrong next
    thing.
-6. **`l1_weights` at 35 % of `forward_into`'s misses and an 88.6 % miss rate is
+6. **`l1_weights` at 35.7 % of `forward_into`'s misses and an 89.0 % miss rate is
    priced and NOT attacked.** It is a 20 KB per-bucket block, randomly indexed by
    the nonzero-group list, evicted between evaluations by the same 21.3 KB of
-   weight rows. It is now the largest single item inside this symbol and the
-   obvious next target.
+   weight rows. It is now the largest single item inside this symbol.
+
+**The next arm this study would run, stated so the successor does not have to
+re-derive it.** §1.3 says the head's dense f32 tables miss at 98.9–100 %, and the
+lever that worked here was **bytes**. `l2_weights` is `[BUCKETS][L2·L3]` **f32** —
+2048 B/bucket, 32 lines, read in full on every evaluation, missing essentially
+all of them. `l1_biases` and `l3_weights` are f32 too. The whole f32 tail is
+**3.65 KB per bucket** and it is the last un-quantised data in the forward pass;
+everything upstream of it is already i8. Halving it is worth ~16 lines/eval by
+the same arithmetic that priced this arm at 20. **It is NOT bit-identical** — it
+is a quantisation change and needs the eval battery and games, not a node-identity
+gate — which is exactly why it did not happen tonight and why it should not be
+attempted as a perf arm without that plan.
 
 ---
 

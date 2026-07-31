@@ -311,7 +311,7 @@ pub fn note_king_trans(c: usize, from: u8, to: u8) {
 /// Named address regions, so an IBS data-address sample can be attributed to
 /// the accumulator stack or to a weight table. Sixteen slots is plenty; the
 /// registry is write-once at construction and read once at dump.
-const REGIONS: usize = 16;
+const REGIONS: usize = 24;
 static REGION_LO: [AtomicU64; REGIONS] = [const { AtomicU64::new(0) }; REGIONS];
 static REGION_HI: [AtomicU64; REGIONS] = [const { AtomicU64::new(0) }; REGIONS];
 static REGION_NAME: std::sync::Mutex<Vec<(usize, &'static str)>> =
