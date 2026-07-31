@@ -2803,30 +2803,71 @@ impl Worker {
                 // our pieces — pawns included — matching the doc's "no own
                 // piece is currently threatened" and Reckless's `all_threats()
                 // & colors(stm)`; a hanging pawn still blocks the relaxation.
-                let us = self.board.side_to_move();
-                let no_own_threat =
-                    (self.board.all_threats() & self.board.occupancy(us)).is_empty();
-                let margin = rfp_prune_margin(
-                    depth,
-                    tt_hit,
-                    improving,
-                    opponent_worsening,
-                    correction_value,
-                    no_own_threat,
-                );
-                // EXP-UNC-1: position-condition the RFP margin by the value
-                // uncertainty (consumer 1). unc_margin_scale returns exactly 1.0
-                // when disabled or when there is no fresh σ̂ this node, and the
-                // else keeps the integer margin untouched → bit-identical by
-                // default (verified: sota bench 147691 with the coeff unset).
-                #[cfg(feature = "sota")]
-                let margin = if self.unc_rfp_c1 != 0.0 {
-                    (margin as f32 * unc_margin_scale(node_sigma, self.sigma_bar, self.unc_rfp_c1))
-                        as Value
-                } else {
+                // …but the threat map is only ever ABLE to change this node's
+                // answer inside one `RFP_THREAT_MARGIN`-wide band, so it is
+                // computed lazily (perf study 52 §5.5).
+                //
+                // `rfp_prune_margin` subtracts `RFP_THREAT_MARGIN * flag`, and
+                // `RFP_THREAT_MARGIN` is positive (55), so `m(true) <= m(false)`
+                // unconditionally — the flag can only ever make pruning EASIER.
+                // Writing `C(f)` for `eval - m(f) >= beta`, that ordering gives
+                // `C(false) => C(true)`, and therefore
+                //
+                //     C(flag)  ==  C(false) || (flag && C(true))
+                //
+                // exactly, for both values of `flag`. The right-hand side never
+                // evaluates the flag when `C(false)` already prunes or when
+                // `C(true)` cannot, which confines `all_threats()` to the band
+                // where the relaxation decides. The equivalence survives the
+                // EXP-UNC-1 rescale below because that scale is non-negative and
+                // `as Value` truncation is monotone, so it cannot reorder the
+                // two margins.
+                //
+                // Why this is worth doing: `Board::ensure_threats` memoises on
+                // the position key, but RFP runs BEFORE any child search, so the
+                // entry is cold here and this is a full `compute_threats()`
+                // sweep. Measured on the precise (IBS) instrument: the
+                // `all_threats` phase is 3.17% of `search::<NonPv>`'s executed
+                // micro-ops — 0.90% of ALL engine ops — at this one call site.
+                // Nodes that prune on the un-relaxed margin, or that go on to
+                // fail high before `MovePicker::init_quiets` asks for the map,
+                // now never build it.
+                //
+                // NOTE for anyone re-tightening this: the win is only real
+                // while the map is genuinely unused on the paths that skip it.
+                // It is a MEMO, so deferring never duplicates work — the first
+                // later consumer pays what this site used to.
+                let rfp_margin = |flag: bool| -> Value {
+                    let margin = rfp_prune_margin(
+                        depth,
+                        tt_hit,
+                        improving,
+                        opponent_worsening,
+                        correction_value,
+                        flag,
+                    );
+                    // EXP-UNC-1: position-condition the RFP margin by the value
+                    // uncertainty (consumer 1). unc_margin_scale returns exactly
+                    // 1.0 when disabled or when there is no fresh σ̂ this node,
+                    // and the else keeps the integer margin untouched →
+                    // bit-identical by default (verified: sota bench 147691 with
+                    // the coeff unset).
+                    #[cfg(feature = "sota")]
+                    let margin = if self.unc_rfp_c1 != 0.0 {
+                        (margin as f32
+                            * unc_margin_scale(node_sigma, self.sigma_bar, self.unc_rfp_c1))
+                            as Value
+                    } else {
+                        margin
+                    };
                     margin
                 };
-                if eval - margin >= beta {
+                let prune = eval - rfp_margin(false) >= beta
+                    || (eval - rfp_margin(true) >= beta && {
+                        let us = self.board.side_to_move();
+                        (self.board.all_threats() & self.board.occupancy(us)).is_empty()
+                    });
+                if prune {
                     return (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval)
                         / params::RFP_RET_DEN();
                 }
