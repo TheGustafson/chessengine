@@ -474,6 +474,17 @@ impl<'a> HalfkaContext<'a> {
         // region, `find_last_usable_accumulator`
         // (`eca43a97:src/nnue/nnue_accumulator.cpp:105-119`), is our `compute`
         // ancestor walk, not this one. Deleting it is convergence.
+        // Perf study 49's known-answer stall injector (diagnostic feature only,
+        // see `skidprobe.rs`): a serial cache-missing chase in its OWN leaf
+        // symbol, so the profiler's attribution of a stall with an unambiguous
+        // owner can be measured.
+        // The seed MUST vary widely per call. A first version seeded from `ply`
+        // alone, which takes ~60 distinct values, so the chase revisited the
+        // same few hundred lines and sat in L1 -- it injected no stall at all
+        // and would have "proved" attribution was fine. The zobrist key is a
+        // different address every node.
+        #[cfg(feature = "skidprobe")]
+        super::skidprobe::poke(board.key() as usize ^ ply);
         for perspective in Color::ALL {
             self.compute(board, ply, perspective);
         }
