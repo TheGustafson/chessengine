@@ -11792,3 +11792,42 @@ with the mid-cycling series and with the standing reading that mid-cycling is
 **statistically indistinguishable from sb700**. Final at 1500 next tick.
 
 **D49:** sb1066, 193k pos/s, four services active. **Study 60** building.
+
+## Tick — 2026-07-31 15:16, sb1060 eval final: −9.50 ± 11.27, series conclusion unchanged
+
+| sb | Elo vs canonical @25k | games |
+|---|---:|---:|
+| 400 | −21.24 ± 5.67 | 5880 |
+| 620 | −4.20 ± 8.60 | 2000 |
+| 640 | −8.20 ± 7.70 | 2500 |
+| **700** (end of extend) | **−4.14 ± 5.56** | 5880 |
+| 900 | −11.59 ± 11.51 | 1500 |
+| **1060** | **−9.50 ± 11.27** | 1500 |
+
+**Mid-cycling pooled: −12.66 ± 5.88** (2.15σ from zero).
+**Versus sb700: −8.52 ± 8.09 = 1.05σ — still NOT significant**, now on 3000
+mid-cycling games rather than 1500.
+
+The reading is unchanged and better supported: **mid-cycling sits modestly behind
+canonical and is statistically indistinguishable from where the extend run
+ended.** No divergence, so the abort condition is not firing — which remains the
+only thing a mid-cycle point is entitled to say, since these nets sit at high-LR
+points of the sawtooth. DrawRatio 43.7% confirms both sides had NNUE loaded.
+
+**sb1400 — the first readable point — is ~12 h out.**
+
+### Instrument note added to memory: cycles is not load-robust
+
+The σ = 1.57% figure for `cycles:u` was measured on a **quiet** box. Today the
+same binary read **17.95 B cycles quiet and 26.92 B under a match plus a build:
++49.9%**, while its `instructions:u` drifted **+0.08%** across the same two runs.
+
+That is why the attempt to verify study 59's "94% startup" returned 4.6% — the
+answer was measuring the contention, not the arm. **Never take a cycles reading
+while a match, a build or another study is running, and not even a paired one:
+the inflation lives in the stall component and does not cancel.** Wall-clock
+panels survive load only because `tools/wallclock_panel.py` interleaves the null
+*within* each round.
+
+**D49:** sb1073, heldout ema 0.010628/0.010670, 193k pos/s, four services active,
+160 GB disk. **Study 60** working, no builds in flight.
