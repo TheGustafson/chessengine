@@ -31,12 +31,27 @@ required-features = ["datagen"]
 # `inla55`: the pure 2-call-site class -- helpers whose ONLY caller pair is
 # search::<Pv> + search::<NonPv> (stat_score, is_shuffling, MovePicker::select,
 # Stage::bump, Board::legal, upcoming_repetition, new_probcut).
-inla55 = []
+inlas55 = []          # inla55's SMALL bodies: Stage::bump, MovePicker::select,
+                      # Board::legal, is_shuffling (68-267 bytes each)
+inlab55 = []          # inla55's BIG bodies: stat_score, upcoming_repetition,
+                      # new_probcut (268-802 bytes) -- suspected source of the
+                      # +21.8 loads/node inla55 measured against -18.7 instr/n
+inla55 = ["inlas55", "inlab55"]
 # `inlb55`: per-node board/TT helpers with 3-10 call sites (unmake_move,
 # tt::probe, TtWriter::write, capture_stage, gives_check) -- the same lever
 # where the call-site count is NOT two, to test whether the mechanism is about
 # "one site" or just about "inlined at all".
 inlb55 = []
+# `inlc55`: `Worker::do_move` itself -- study 54's own site, one level out.
+# 3516 bytes, 8 call sites, once per node, already `#[inline]` and declined.
+inlc55 = []
+# `inld55`: the next tier of per-node helpers (check_time, correction_value,
+# attackers_to_exist, pseudo_legal) -- 4 to 10 call sites each.
+inld55 = []
+# `inle55`: `Board::see_ge` alone. 941 bytes at TWENTY-TWO call sites, several
+# per node; the code-growth outlier, priced on its own so the batch cannot hide
+# it.
+inle55 = []
 # The INERT CONTROL is not a feature: it is the label `ctl55`, this EDITED tree
 # built with NO arm feature.  If its `.text` md5 equals `base55`'s (built from
 # the untouched tree) the scaffolding is provably inert and every arm is a

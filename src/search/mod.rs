@@ -4407,12 +4407,12 @@ impl Worker {
     /// `stack[cur-2]` (the same slabs move ordering reads as `contHist(1/2)`,
     /// doc 09 §3.7). Feeds the `RED_STATSCORE_NUM` reduction dock in the
     /// finalization block below.
-    // perf study 55 arm `inla55`: study 54 measured -20.8 i/n from a helper
+    // perf study 55 (arm named on the cfg_attr below): study 54 measured -20.8 i/n from a helper
     // becoming single-call-site, which let LLVM's last-call-to-static bonus
     // inline it.  `search::<NT>` duplicates every search-body call site, so
     // that bonus never applies here; this forces the same inline directly.
-    #[cfg_attr(feature = "inla55", inline(always))]
-    #[cfg_attr(not(feature = "inla55"), inline)]
+    #[cfg_attr(feature = "inlab55", inline(always))]
+    #[cfg_attr(not(feature = "inlab55"), inline)]
     fn stat_score(&self, m: Move, is_capture: bool, moved_piece: Piece, cur: usize) -> i32 {
         if is_capture {
             let captured_value = self
@@ -4445,12 +4445,12 @@ impl Worker {
     /// is deep, and the piece is retracing its own path —
     /// `m.from() == (ss-2).to() && (ss-2).from() == (ss-4).to()`. The `ply >=
     /// 20` guard keeps `cur - 4` well in bounds.
-    // perf study 55 arm `inla55`: study 54 measured -20.8 i/n from a helper
+    // perf study 55 (arm named on the cfg_attr below): study 54 measured -20.8 i/n from a helper
     // becoming single-call-site, which let LLVM's last-call-to-static bonus
     // inline it.  `search::<NT>` duplicates every search-body call site, so
     // that bonus never applies here; this forces the same inline directly.
-    #[cfg_attr(feature = "inla55", inline(always))]
-    #[cfg_attr(not(feature = "inla55"), inline)]
+    #[cfg_attr(feature = "inlas55", inline(always))]
+    #[cfg_attr(not(feature = "inlas55"), inline)]
     fn is_shuffling(&self, m: Move, cur: usize, ply: usize) -> bool {
         if self.board.capture_stage(m)
             || (self.board.rule50_count() as i32) < params::SHUFFLE_RULE50()
@@ -4949,7 +4949,14 @@ impl Worker {
     /// for facts that were sitting in registers one line up. The two cold call
     /// sites (ProbCut, qsearch) pass exactly what this function used to compute,
     /// so nothing moved onto a path that did not already pay for it.
-    #[inline]
+    // perf study 55 arm `inlc55`: study 54's own site, one level out. It grew
+    // `do_move` to 3516 bytes by inlining `make_move_with` INTO it -- but
+    // `do_move` itself is still an out-of-line call at 8 sites, once per node.
+    // If the -20.8 i/n was the call overhead rather than the fusion, deleting
+    // this call should pay again. Costs ~28 KB of code growth; that is the
+    // trade the measurement is there to price.
+    #[cfg_attr(feature = "inlc55", inline(always))]
+    #[cfg_attr(not(feature = "inlc55"), inline)]
     fn do_move(
         &mut self,
         tt: &TranspositionTable,
@@ -5048,7 +5055,10 @@ impl Worker {
     /// the wall-clock bounds (`maximum`/`movetime`) so we stop a few ms
     /// early to cover the unwind-and-print tail. The `nodes` budget is left
     /// unshaved — an exactness bound, not a clock forfeit risk.
-    #[inline]
+    // perf study 55 arm `inld55`: force the inline that the search::<NT>
+    // call-site duplication denies (study 54's mechanism, generalised).
+    #[cfg_attr(feature = "inld55", inline(always))]
+    #[cfg_attr(not(feature = "inld55"), inline)]
     fn check_time(&self, stop: &AtomicBool) {
         // Helpers never enforce time or limits (design/13 §3.7): they stop
         // only when they observe the shared `stop`, which the main worker

@@ -2247,11 +2247,11 @@ impl Board {
     /// Search calls this before its other early exits: a side that can force
     /// a draw need never search a losing subtree, which prunes hard in
     /// blocked and fortress-like positions.
-    // perf study 55 arm `inla55`: study 54 measured -20.8 i/n from a helper
+    // perf study 55 (arm named on the cfg_attr below): study 54 measured -20.8 i/n from a helper
     // becoming single-call-site, which let LLVM's last-call-to-static bonus
     // inline it.  `search::<NT>` duplicates every search-body call site, so
     // that bonus never applies here; this forces the same inline directly.
-    #[cfg_attr(feature = "inla55", inline(always))]
+    #[cfg_attr(feature = "inlab55", inline(always))]
     pub fn upcoming_repetition(&self, ply: i32) -> bool {
         let copied = &self.st().copied;
         // Same window as the repetition scan: an irreversible move or a null
@@ -2322,6 +2322,9 @@ impl Board {
     /// still on the board; x-ray batteries are walked by lifting each used
     /// capturer out of `occupied` and re-querying the slider rays through
     /// the vacated square. Values are the D11 `PIECE_VALUES`.
+    // perf study 55 arm `inle55`: force the inline that the search::<NT>
+    // call-site duplication denies (study 54's mechanism, generalised).
+    #[cfg_attr(feature = "inle55", inline(always))]
     pub fn see_ge(&self, m: Move, threshold: Value) -> bool {
         // Non-Normal kinds (promotion, en passant, castling) short-circuit
         // to a static exchange value of 0 (doc 04 §3.11 step 1).

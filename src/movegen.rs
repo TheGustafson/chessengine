@@ -445,6 +445,9 @@ impl Board {
     /// testing hammers (doc 05 §3.8). The `||` chain short-circuits
     /// between the five terms; sliders first, they answer most often on
     /// the king-safety probes this serves.
+    // perf study 55 arm `inld55`: force the inline that the search::<NT>
+    // call-site duplication denies (study 54's mechanism, generalised).
+    #[cfg_attr(feature = "inld55", inline(always))]
     pub fn attackers_to_exist(&self, sq: Square, occupied: Bitboard, c: Color) -> bool {
         let tables = attacks::tables();
         let queens = self.pieces(c, PieceType::Queen);
@@ -472,11 +475,11 @@ impl Board {
     /// occupancy-swap test as defense-in-depth: `legal` stays correct even
     /// on hand-forced boards that violate D9, at the cost of two slider
     /// probes on a rare move type.
-    // perf study 55 arm `inla55`: study 54 measured -20.8 i/n from a helper
+    // perf study 55 (arm named on the cfg_attr below): study 54 measured -20.8 i/n from a helper
     // becoming single-call-site, which let LLVM's last-call-to-static bonus
     // inline it.  `search::<NT>` duplicates every search-body call site, so
     // that bonus never applies here; this forces the same inline directly.
-    #[cfg_attr(feature = "inla55", inline(always))]
+    #[cfg_attr(feature = "inlas55", inline(always))]
     pub fn legal(&self, m: Move) -> bool {
         let us = self.side_to_move();
         let them = us.flip();
@@ -583,6 +586,9 @@ impl Board {
     /// data races or key aliasing (D19); they must pass this — and then
     /// [`Board::legal`] separately — before being played. Total over all
     /// 65,536 encodings; never panics.
+    // perf study 55 arm `inld55`: force the inline that the search::<NT>
+    // call-site duplication denies (study 54's mechanism, generalised).
+    #[cfg_attr(feature = "inld55", inline(always))]
     pub fn pseudo_legal(&self, m: Move) -> bool {
         let us = self.side_to_move();
         let them = us.flip();
