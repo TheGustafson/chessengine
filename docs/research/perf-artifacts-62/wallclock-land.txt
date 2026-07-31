@@ -1,0 +1,12 @@
+  ...10/60
+  ...20/60
+  ...30/60
+  ...40/60
+  ...50/60
+  ...60/60
+
+NULL (byte-identical): median -0.502%  sd 0.977  sign 43/60 neg  p=0.0011
+ARM                  : median -0.318%  sd 1.129  sign 39/60 neg  p=0.0273
+
+NOT LICENSED: null median -0.502% vs arm -0.318%.
+The instrument cannot resolve this arm under current load. Re-run on a quieter box or raise --rounds; do NOT quote the arm.

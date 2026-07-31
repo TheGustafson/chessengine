@@ -226,8 +226,74 @@ probe-wpin-thr = ["sota"]
 #
 # `noshape61` restores the study-25 dispatch, so the contrast stays reproducible
 # on the shipped tree -- the same falsifiability `null34` and `nogc54` keep for
-# their studies. It is a MEASUREMENT feature; never ship it.
-noshape61 = []
+# their studies. It is a MEASUREMENT feature; never ship it. It implies
+# `noshape62`: reverting to the study-25 four-arm cover while keeping study 62's
+# extension of study 61's cover would not be any historical state of the tree.
+noshape61 = ["noshape62"]
+# ---- Perf study 62 -- the rest of the square grid, as a measured LADDER.
+#
+# Study 61 left 31.60% of threat folds on the runtime-length generic kernel and
+# named two routes: continue the table, or fix the generic kernel's loop
+# control. Its own pair histogram, re-run here, says the tail is LONG -- 7.55%
+# of folds carry >= 7 rows on one side -- so no finite square grid closes it and
+# each rung has to pay for its `.text`. Cumulative coverage of threat FOLDS
+# (and the share of all threat ROWS left generic, which is what the control is
+# charged per):
+#
+#   grid 0..=3 (study 61, 15 arms)  68.40% of folds   59.66% of rows generic
+#   ring a     (+9 arms)            79.42%            44.31%   -19.90 i/n
+#   ring b     (+11 arms)           87.04%            30.84%   -19.01
+#   ring c     (+13 arms)           92.45%            19.31%   -22.90
+#
+# LANDED UNCONDITIONALLY: all three rings on the threat fold (grid 0..=6,
+# -61.80 i/n for +23,648 B) and the grid 0..=4 dispatch on the Finny warm
+# refresh, which had NO dispatch at all (79.95% of calls, -42.54 i/n for
+# +13,296 B) -- plus a further -8.64 i/n that appeared on promotion, because the
+# 33 threat arms in ONE `match` beat the same arms in three chained ones.
+#
+# Measured on the promoted binary, 24 rounds, blocked Latin square, with both a
+# byte-identical null and the `noshape62` revert in the rotation:
+# **-2.024% instructions (-112.98/node) and -3.649% branches, 24/24 at
+# se 0.000**, against a null of exactly -0.000%. Node-identical (5,001,562) and
+# eval-hash exact. The cost is `.text` +5.16% and L1i misses +6.199% (0/24);
+# `cycles:u` and two wall-clock panels were NOT resolvable on this box.
+#
+# The three rings are no longer separately switchable (study 61's precedent:
+# one revert per study). `noshape62` restores study 61's dispatch at BOTH sites,
+# so the contrast stays reproducible on the shipped tree; the per-ring ladder is
+# reproduced from this commit's parent. MEASUREMENT ONLY; never ship it.
+noshape62 = []
+# `shape62d`/`shape62e` are RECTANGULAR: `foldcount::THR_LENS` (added here,
+# uncapped where `THR_PAIR` saturates at 7) shows the residual tail is almost
+# entirely LONG SUB lists -- adds <= 6 covers 98.64% of folds and never exceeds
+# 12, while subs run to 16 and only reach 92.99% at 6. So these add the
+# subs = 7 and subs = 8 COLUMNS for every add count already covered, not another
+# square ring. Split in two because they are also the study's mechanism probe:
+# `subs = 7` leaves 3 rows in LLVM's ×4 unroll remainder and `subs = 8` leaves
+# none, so the win per fold should track `len mod 4` rather than `len`.
+#
+# NOT LANDED. Both are real instruction wins (-3.91 and -5.37 i/n) and both fail
+# study 62's pre-registered `.text` rule (>= 2.0 i/node per KB, they are 0.60 and
+# 0.75); see that study's §4. The split also refuted the `len mod 4` mechanism
+# that predicted `subs = 7` would dominate `subs = 8`.
+shape62d = []
+shape62e = ["shape62d"]
+# `dual62b` -- the SECOND site, and the one study 61 §10 item 5 named:
+# `i8_deltas_dual_inner` (the Finny WARM refresh) has no shape dispatch at all.
+# Study 25 gave the into-fold its dispatch because a make-move fold is one of
+# four shapes; the warm refresh folds a set difference between two king buckets,
+# which those four would not have covered -- so it was left generic and nobody
+# ever counted its distribution (`HKA_DUAL_SHAPE` records only the SUM).
+# Counted here (`foldcount::DUAL_PAIR`, 823,842 warm refreshes): it is the most
+# dispatch-friendly fold in the engine, concentrated on the diagonal --
+# (2,2) 19.06%, (1,1) 12.68%, (3,3) 12.25%, (4,4) 5.38%.
+#
+#   grid 0..=4 (24 arms)  79.95% of warm refreshes  -42.54 i/n  LANDED
+#   dual62b   (24 more)   95.01%                    -13.71 i/n  NOT landed
+#
+# `dual62b` fails study 62 §4's pre-registered `.text` rule at 0.70 i/node per
+# KB (the landed rungs are 2.02-4.05). Kept switchable for a quiet box.
+dual62b = []
 # `probe-accpin` pins only the READ half of accumulator streaming; the folds
 # still WRITE 2560 B per call into the real per-ply stack, so that stack keeps
 # its full footprint and keeps evicting weight rows. Perf study 31 priced the
