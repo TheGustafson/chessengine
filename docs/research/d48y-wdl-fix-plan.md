@@ -10015,3 +10015,65 @@ D49's own single warm restart sat at **−25.9 mid-recovery** and a **100-superb
 anneal took it to −4.1**, a +21.8 Elo swing. Cycling is currently **less** deep in
 debt than that was, and the planned final anneal is **300 superbatches, three times
 longer**. Readable points remain **sb1400** and **sb1700**.
+
+## Study 53 GATED; cycling debt measured STABLE; the run is now fully unattended
+
+**Gate on merged main: `Bench: 587683`, all checks passed.** Study 53 verified —
+**−39.34 i/n and −19.7 branches/node**, the largest instruction win of the session,
+node-identical with `perft_full_suite` green.
+
+### Study 53 corrected two premises that came from ME
+
+**(a) "Study 39 reported that fusion is dead" — WRONG, and I verified the
+correction.** Study 39 killed **accumulator-channel** fusion. Study 35 §4 line 13
+says of `do_move` fusion: *"that arm measures −11.36 i/n — a win, not a loss"*,
+left unlanded only because a better arm dominated it at the time. **A measured win
+sat unlanded for a day because of a sentence I got wrong**, and it is now study
+54's lead item.
+
+**(b) The "461% stall" I passed on from study 49's caller table is a counter
+artifact** — `do_move`'s own miss latency is 16.7 c/node, so there was never 461%
+of recoverable stall to aim at. Study 53 attacked op count instead, which is where
+the win came from.
+
+Four things it surfaced rather than buried: its **inert control was not inert**
+(−6.9 i/n at 18/18, failing to compile byte-identical, cause unpinned);
+**`magic53` alone beats the combination on loads** (−22.3 at 10/10 vs −10.6 at
+7/10 stacked) so it flagged a counter disagreement it could not settle;
+**`cont53` works at −13.4 i/n and it declined to land it** because +1.125 MiB per
+worker thread breaches design/09 §8 — **a design-doc decision, correctly escalated
+rather than taken**; and **`ls_stlf` fails its byte-identical null** (+0.540%,
+p=0.0215), closing store-forwarding for a measured reason.
+
+### D49 cycling: the debt is STABLE, not compounding
+
+| | Elo | n |
+|---|---:|---:|
+| sb700 (anneal end) | **−4.14 ± 5.6** | 5880 |
+| sb750 | −17.7 ± 12.1 | 1000 |
+| sb800 | −12.5 ± 12.1 | 1000 |
+| **pooled mid-cycling** | **−15.1 ± 8.6** | 2000 |
+
+**The two points differ by 5.2 Elo against ±12.1 bars — one constant, not a
+trend.** Cycling carries a **~11 Elo debt held flat across 50 superbatches.** That
+was the decision-relevant question and it means **no schedule change**: a
+compounding cost would have argued for intervening with 900 sb left; a fixed cost
+is what the design assumed.
+
+**Recovery precedent has margin:** D49's own warm restart sat at −25.9 and a
+**100-sb anneal took it to −4.1 (+21.8 Elo)**. The final anneal is **300 sb — 3×
+longer — against a debt half the size.**
+
+### The run is now fully unattended
+
+| service | role |
+|---|---|
+| `d49y` | cyclical continuation → sb1700 |
+| `d49wd` | **progress-gated** watchdog; halts after 3 no-progress restarts |
+| `ckptreap` | **NEW** — keeps sb400/sb700/every-100/newest-4; 880 sb remaining would otherwise add ~76 GB |
+| `oomguard` | v3, structural match, trainer last in OOM preference |
+| `tbserver` | telemetry, port 6006 |
+
+The reaper's newest-4 rule is load-bearing: **the launcher discovers its resume
+point from the newest complete pair**, so the reaper must never leave it nothing
+to find. First pass took the directory 18 GB → 12 GB.
