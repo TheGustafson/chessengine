@@ -1,0 +1,34 @@
+{
+ "warm": "data/nnue/experiments/d48x-1280/d48x-1280-sb520-ema-raw.bin",
+ "mix": [
+  [
+   "data/nnue/reprgap/state-uho-40M.bin",
+   1.0
+  ]
+ ],
+ "state_heldout": "data/nnue/reprgap/state-heldout-1M.bin",
+ "seed": 220480001,
+ "lr": 0.00011,
+ "lr_end_superbatch": 1000,
+ "superbatches": 12,
+ "warmup_superbatches": 0.25,
+ "ema_decay": 0.0,
+ "shuffle_chunk": 128,
+ "workers": 4,
+ "prefetch": 4,
+ "arch_hl": 1280,
+ "arch_l2": 16,
+ "arch_l3": 32,
+ "arch_out_skip": true,
+ "arch_pol_proj": 16,
+ "arch_dis_proj": 64,
+ "per_tensor_clip": true,
+ "no_bias_decay": true,
+ "grad_clip_norm": 2.0,
+ "pow_exp": 2.5,
+ "arch_threat_rows": 0,
+ "state_atoms": 0,
+ "state_shuffle": 0,
+ "net_id": "rg-t1-identity",
+ "out": "data/nnue/experiments/reprgap-t1/identity"
+}
