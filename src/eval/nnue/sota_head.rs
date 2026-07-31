@@ -233,8 +233,8 @@ pub type L2Biases = Blocks<f32, L3, BUCKETS>;
 pub type L3Weights = Blocks<f32, L3, BUCKETS>;
 /// `[BUCKETS][L1]` i8 — the D47V output-skip lane.
 pub type SkipQ = Blocks<i8, L1, BUCKETS>;
-/// `[L1]` i16 — the i8 HalfKA transformer's per-column dequantisation scale.
-pub type FtScale = Blocks<i16, L1, 1>;
+/// `[L1]` u8 — the i8 HalfKA transformer's per-column dequantisation scale.
+pub type FtScale = Blocks<u8, L1, 1>;
 
 /// The D47V output-skip lane, quantised to i8 at load (perf study 8 §4.7).
 ///
@@ -336,7 +336,7 @@ pub struct SotaHead {
 fn activate_ft(
     pst: &[[i16; L1]; 2],
     threat: &[[i16; L1]; 2],
-    scale: &[i16; L1],
+    scale: &[u8; L1],
     stm: Color,
     threat_shift: u32,
     out: &mut [u8; L1],
@@ -353,7 +353,7 @@ fn activate_ft(
 pub fn policy_trunk(
     pst: &[[i16; L1]; 2],
     threat: &[[i16; L1]; 2],
-    scale: &[i16; L1],
+    scale: &[u8; L1],
     stm: Color,
     threat_shift: u32,
 ) -> [f32; L1] {
@@ -636,6 +636,50 @@ impl SotaHead {
         #[cfg(feature = "foldcount")]
         super::foldcount::EVAL.hit(0);
         let HeadScratch { ft, nnz } = scratch;
+        // Perf study 50: register the head's OWN streams as named address
+        // regions so an IBS data-address sample can be attributed to the array
+        // it actually landed in. Registered from here, and not from a
+        // constructor, because `SotaContext::new` returns by value through
+        // `with_tier_flag(mut self) -> Self` — the scratch is MOVED after
+        // construction, so a pointer taken there is not the live one. A
+        // `Once` keeps it to a single relaxed load per evaluation.
+        #[cfg(feature = "foldcount")]
+        {
+            static ONCE: std::sync::Once = std::sync::Once::new();
+            ONCE.call_once(|| {
+                use super::foldcount::region;
+                region("ft_scale", self.ft_scale.block(0).as_ptr().cast(), L1 * 2);
+                region("head_ft", ft.as_ptr(), L1);
+                region("head_nnz", nnz.as_ptr().cast(), L1 / 2);
+                region(
+                    "l1_weights",
+                    self.l1_weights.as_ptr().cast(),
+                    L2 * L1 * BUCKETS,
+                );
+                region(
+                    "l2_weights",
+                    self.l2_weights.as_ptr().cast(),
+                    L2 * L3 * BUCKETS * 4,
+                );
+                region(
+                    "l3_weights",
+                    self.l3_weights.as_ptr().cast(),
+                    L3 * BUCKETS * 4,
+                );
+                region(
+                    "l1_biases",
+                    self.l1_biases.as_ptr().cast(),
+                    L2 * BUCKETS * 4,
+                );
+                if let Some(sk) = &self.skip_weights {
+                    region("skip_q", sk.q.as_ptr().cast(), L1 * BUCKETS);
+                }
+                super::foldcount::valhist(
+                    "ft_scale",
+                    self.ft_scale.block(0).iter().map(|&s| i64::from(s)),
+                );
+            });
+        }
         activate_ft(
             pst,
             threat,
@@ -838,7 +882,7 @@ mod tests {
     /// transcription regression guard, not a strength net).
     /// The identity HalfKA scale: what a synthetic net (whose weights all fit
     /// i8 unscaled) loads with, so these tests exercise the pre-study-32 frame.
-    const UNIT_SCALE: [i16; L1] = [1; L1];
+    const UNIT_SCALE: [u8; L1] = [1; L1];
 
     fn synth_head() -> SotaHead {
         let l1w: Vec<i8> = (0..BUCKETS * L2 * L1)
@@ -867,7 +911,7 @@ mod tests {
             l3_wdl_weights: None,
             l3_wdl_biases: None,
             skip_weights: None,
-            ft_scale: FtScale::from_flat_iter(std::iter::repeat_n(1i16, L1)),
+            ft_scale: FtScale::from_flat_iter(std::iter::repeat_n(1u8, L1)),
         }
     }
 

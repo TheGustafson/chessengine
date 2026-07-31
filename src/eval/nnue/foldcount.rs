@@ -311,7 +311,7 @@ pub fn note_king_trans(c: usize, from: u8, to: u8) {
 /// Named address regions, so an IBS data-address sample can be attributed to
 /// the accumulator stack or to a weight table. Sixteen slots is plenty; the
 /// registry is write-once at construction and read once at dump.
-const REGIONS: usize = 16;
+const REGIONS: usize = 24;
 static REGION_LO: [AtomicU64; REGIONS] = [const { AtomicU64::new(0) }; REGIONS];
 static REGION_HI: [AtomicU64; REGIONS] = [const { AtomicU64::new(0) }; REGIONS];
 static REGION_NAME: std::sync::Mutex<Vec<(usize, &'static str)>> =
@@ -457,5 +457,43 @@ pub fn dump(nodes: u64) {
             let (lo, hi) = (REGION_LO[i].load(Relaxed), REGION_HI[i].load(Relaxed));
             emit!("FOLDREGION {name} lo={lo:#x} hi={hi:#x} bytes={}", hi - lo);
         }
+    }
+    if let Ok(g) = VALHIST.lock() {
+        for (name, hist) in g.iter() {
+            let occupied: Vec<String> = hist
+                .iter()
+                .enumerate()
+                .filter(|&(_, &n)| n > 0)
+                .map(|(v, n)| format!("{v}:{n}"))
+                .collect();
+            emit!(
+                "FOLDVALHIST {name} distinct={} {}",
+                occupied.len(),
+                occupied.join(" ")
+            );
+        }
+    }
+}
+
+/// A value histogram for a small integer weight array, so a quantisation
+/// question ("does every `ft_scale` fit in a `u8`?") is answered by the engine
+/// that loads the net rather than by re-deriving the loader's arithmetic in
+/// Python. Values outside `0..VALHIST_N` land in the last bucket.
+const VALHIST_N: usize = 1024;
+static VALHIST: std::sync::Mutex<Vec<(&'static str, Vec<u64>)>> = std::sync::Mutex::new(Vec::new());
+
+/// Record the value distribution of `vals` under `name`.
+pub fn valhist(name: &'static str, vals: impl IntoIterator<Item = i64>) {
+    let mut hist = vec![0u64; VALHIST_N + 1];
+    for v in vals {
+        let i = if (0..VALHIST_N as i64).contains(&v) {
+            v as usize
+        } else {
+            VALHIST_N
+        };
+        hist[i] += 1;
+    }
+    if let Ok(mut g) = VALHIST.lock() {
+        g.push((name, hist));
     }
 }

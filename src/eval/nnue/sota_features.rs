@@ -1235,7 +1235,7 @@ mod tests {
             l3_wdl_biases: None,
             skip_weights: None,
             ft_scale: crate::eval::nnue::sota_head::FtScale::from_flat_iter(std::iter::repeat_n(
-                1i16, ACC,
+                1u8, ACC,
             )),
         };
         let piece_count = board.all_occupancy().count() as usize;

@@ -778,12 +778,20 @@ fn halfka_column_scales(raw: &[u8]) -> sota_head::FtScale {
     // reduced frame the identity.
     sota_head::FtScale::from_flat_iter(
         peak.iter()
-            .map(|&p| u32::from(p).div_ceil(127).max(1).min(i16::MAX as u32) as i16),
+            // Perf study 50: stored as u8. The saturation is one notch
+            // tighter than the `i16::MAX` it replaces and is unreachable for
+            // any net that can work: a column scale above 255 needs a peak
+            // above 32,385 in the FT_QUANT frame, and the reduced frame then
+            // requires |acc| <= 127 for `acc * scale` to stay in i16 — which
+            // the `activate` debug_assert already enforces and which no
+            // accumulator summing dozens of rows satisfies. Canonical net:
+            // 8 distinct values, max 8 (`FOLDVALHIST ft_scale`).
+            .map(|&p| u32::from(p).div_ceil(127).clamp(1, u8::MAX as u32) as u8),
     )
 }
 
 /// Divide the FT_QUANT-frame i16 table by its per-column scale into i8.
-fn quantise_halfka(raw: &[u8], scale: &[i16; ACC]) -> Aligned<i8> {
+fn quantise_halfka(raw: &[u8], scale: &[u8; ACC]) -> Aligned<i8> {
     Aligned::from_iter_len(
         raw.len() / 2,
         raw.chunks_exact(2).enumerate().map(|(i, w)| {
@@ -1037,12 +1045,12 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
     // `load(serialize(load(x))) == load(x)`, which is what the round-trip
     // tests assert.
     for (i, &q) in net.halfka_weights.iter().enumerate() {
-        let w = i16::from(q).wrapping_mul(net.head.ft_scale.block(0)[i % ACC]);
+        let w = i16::from(q).wrapping_mul(i16::from(net.head.ft_scale.block(0)[i % ACC]));
         payload.extend_from_slice(&w.to_le_bytes());
     }
     // FT bias, back in the FT_QUANT frame.
     for (j, &b) in net.ft_bias.iter().enumerate() {
-        let b = b.wrapping_mul(net.head.ft_scale.block(0)[j]);
+        let b = b.wrapping_mul(i16::from(net.head.ft_scale.block(0)[j]));
         payload.extend_from_slice(&b.to_le_bytes());
     }
     // Threats FT weights (if present).
@@ -1292,7 +1300,7 @@ pub(crate) mod tests {
                 l3_wdl_weights: None,
                 l3_wdl_biases: None,
                 skip_weights: None,
-                ft_scale: sota_head::FtScale::from_flat_iter(std::iter::repeat_n(1i16, ACC)),
+                ft_scale: sota_head::FtScale::from_flat_iter(std::iter::repeat_n(1u8, ACC)),
             },
         }
     }

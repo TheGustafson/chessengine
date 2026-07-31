@@ -51,7 +51,7 @@ fn cenn_v2_round_trip_and_evaluate() {
             l3_wdl_weights: None,
             l3_wdl_biases: None,
             skip_weights: None,
-            ft_scale: FtScale::from_flat_iter(std::iter::repeat_n(1i16, ACC)),
+            ft_scale: FtScale::from_flat_iter(std::iter::repeat_n(1u8, ACC)),
             network_scale: 380,
             threat_shift: 2,
         },
