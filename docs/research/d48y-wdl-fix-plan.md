@@ -11715,3 +11715,33 @@ comparison in the repo.
 
 **D49:** sb1052+, 193k pos/s, four services active. **Study 60** running on
 memory locality.
+
+## Tick — 2026-07-31 14:49, frame still stable at sb1060; periodic eval running
+
+**D49 eval frame re-measured on the sb1060 EMA: stdev 426.1 at scale 756.**
+
+| sb | stdev @756 |
+|---|---|
+| through 270 | 415–422 |
+| 900 | 423.5 |
+| **1060** | **426.1** |
+
+**Stable across 790 superbatches, through the anneal and eleven LR cycles.** The
+ladder step (two 1466-game screens, ~1 h) stays skippable at sb1400 and sb1700 —
+`d49_verdict.sh` trap 2 left that open ("sweep, do not assume") and it is now
+discharged twice.
+
+**Periodic eval running:** sb1060 EMA @756 vs canonical, 1500 games @ 25k. This is
+the fifth point in the mid-cycling series (sb620/640/700/900/1060). Prior points
+pool to **−13.84 ± 6.89**, and the honest reading has been that mid-cycling is
+**statistically indistinguishable from sb700** (1.10σ) — not a "debt". This point
+tests that again rather than assuming it.
+
+**Gate re-verified on current main** (study 59 merged plus my `wallclock_panel.py`
+commits) — running as of writing; no pass claimed until it prints.
+
+**D49:** sb1061, heldout ema **0.010628** — the run's lowest. Still inside the
+sawtooth and still not a trend; **sb1400 is ~12 h out** and remains the first
+readable point by construction.
+
+**Study 60** building, on memory locality in the four fold kernels.
