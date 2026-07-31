@@ -11324,3 +11324,51 @@ it used first.** Two correct measurements can disagree 6× and both be right.
 
 **D49:** sb1010, heldout ema 0.010655/0.010691 (sawtooth), 193k pos/s, four
 services active, 154 GB disk.
+
+## Tick — 2026-07-31, study 59 commissioned; INSTRUCTION-weighted profile of the shipped binary
+
+**Profiled with `-e instructions:u` rather than cycles** — the counter the gate
+actually adjudicates. It differs materially from the cycles view, which is the
+point: `current_full` is **12.40% of cycles but 8.88% of instructions**, and
+`forward_into` inverts (9.30% cycles → **11.03%** instructions).
+
+Shipped binary (native+PGO, post-58):
+
+| function | % of instructions |
+|---|---|
+| **`search::<NonPv>`** | **26.95** |
+| `SotaHead::forward_into` | 11.03 |
+| `i8_deltas_into_generic` | 9.47 |
+| `HalfkaContext::current_full` | 8.88 |
+| **`MovePicker::init_quiets`** | **8.56** |
+| **`ThreatContext::at_full`** | **8.03** |
+| `finny_refresh_into` | 4.25 |
+| `qsearch::<NonPv>` | 3.32 |
+| `quantise_halfka` | 2.90 |
+
+**Study 59 targets `search::<NonPv>` (26.95%, the largest single block and
+untouched since study 52), `at_full` (8.03%) and `init_quiets` (8.56%).**
+
+**One disagreement handed over as a question, not a fact:** study 58 reported
+`current_full` at 2.52% of instructions and `do_move` at 8.76%; I measure 8.88%
+and `do_move` outside the top ten. Likely different build configs — study 59 is
+told to resolve it and say which holds for the shipped binary.
+
+**Mechanism lead on `at_full`, with its correction attached:** ours is a **full
+replay**; SF maintains the equivalent state **incrementally**. Perf study 7's own
+banner records that our real cost vs SF is **1.25–1.39×** (not the 1.78× first
+claimed) and that **SF18's threat space is LARGER than ours** — so the lead is
+"stop replaying what you could carry forward", explicitly **not** "delete
+threats".
+
+**Closed in the brief, each with its number:** `forward_into` internals (study 58
+decomposed it — activate 35% / l1_dot 30% / l2_tail 13% / find_nnz 12% / glue
+10%, all on documented floors, **no cheap instruction win left**); the threat
+shape dispatch (~3× over-priced by three studies); `pair58` (+16.96) and `quad58`
+(+63.35).
+
+**The target-cpu rule is the brief's headline:** gate on v3, **rebuild on
+native+PGO and quote that**, and verify provenance by building. The 6× receipt is
+quoted in full so the agent treats it as a gate rather than advice.
+
+**D49:** sb1017, 193k pos/s, four services active, 154 GB disk.
