@@ -1205,13 +1205,45 @@ impl Board {
     /// `blockers_for_king` (doc 04 §3.6) — search calls this once per move
     /// and feeds the answer to [`Board::make_move`].
     pub fn gives_check(&self, m: Move) -> bool {
+        let pc = self
+            .piece_on(m.from())
+            .expect("gives_check: no piece on the from-square");
+        self.gives_check_by(m, pc)
+    }
+
+    /// [`Board::gives_check`] with the mover already in hand.
+    ///
+    /// Perf study 53. The body is `gives_check`'s verbatim; the only
+    /// difference is that `pc` arrives as an argument instead of being read
+    /// back out of the mailbox. The search's move loop resolves the mover once
+    /// per iteration (`moved_piece`, §3.5) and every path through the body
+    /// already needs it, so at that one call site the mailbox read inside
+    /// `gives_check` was pure duplication — and LLVM cannot remove it: between
+    /// the caller's read and the call sits `stack[cur].move_count = move_count`,
+    /// a store through a `Box`ed pointer that the alias analysis cannot prove
+    /// disjoint from the board's mailbox, so the load must be re-issued.
+    ///
+    /// Reading the mover from memory also costs a *third* thing that is easy to
+    /// miss: `pc.piece_type` arrives with no range information, so
+    /// `check_squares(pc.piece_type)` — an index into a six-element array —
+    /// carries a `cmp $6` / `jae panic_bounds_check`. Taking `pc` by value
+    /// gives LLVM the `#[repr(u8)]` enum's `0..=5` validity range and the check
+    /// folds. Measured on the shipped disassembly: two mailbox loads, one
+    /// `expect` panic edge and one bounds check, all per call.
+    ///
+    /// The cold call sites (perft, UCI, ProbCut, the singular probe) stay on
+    /// the wrapper above — they have no mover in hand and no reason to acquire
+    /// one.
+    pub fn gives_check_by(&self, m: Move, pc: Piece) -> bool {
         let us = self.side_to_move;
         let them = us.flip();
         let (from, to) = (m.from(), m.to());
-        let pc = self
-            .piece_on(from)
-            .expect("gives_check: no piece on the from-square");
         debug_assert_eq!(pc.color, us, "gives_check: moving an enemy piece");
+        debug_assert_eq!(
+            Some(pc),
+            self.piece_on(from),
+            "gives_check_by: `pc` is not the piece on the from-square"
+        );
         let ksq = self.king_square(them);
 
         // Direct check: `to` is a square from which `pc`'s type checks the

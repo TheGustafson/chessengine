@@ -18,6 +18,12 @@ path = "src/bin/root_analysis.rs"
 required-features = ["datagen"]
 
 [features]
+# ---- perf study 53 arms (do_move / bounds-check deletion). Node-identical by
+# construction; each is a MEASUREMENT arm, promoted to unconditional if it wins.
+# `cont53`: pad CONT_NB 3328 -> 4096 and mask, folding the continuation-history
+# bounds check. Costs +1.125 MiB per WORKER THREAD and breaches design/09 §8's
+# 21 MiB catalogue budget -- measured, but not free.
+cont53 = []
 # perf study 48 DIAGNOSTIC PROBE: drop the PSQ1 trailer at load so the whole
 # psqt channel switches off. Changes the eval -- never ship it.
 nopsqt48 = []
