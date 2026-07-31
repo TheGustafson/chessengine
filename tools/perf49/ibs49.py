@@ -37,6 +37,9 @@ def main() -> int:
         except ValueError:
             continue
         sym = " ".join(tok[4:]) or "[unknown]"
+        # `perf script -F symoff` appends "+0x..."; strip it so this
+        # stays a per-SYMBOL census (join49.py is the per-offset view).
+        sym = sym.split("+0x")[0]
         ops[sym] += 1
         is_load = "OP LOAD" in head
         if is_load:

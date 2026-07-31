@@ -485,7 +485,26 @@ impl<'a> HalfkaContext<'a> {
         // different address every node.
         #[cfg(feature = "skidprobe")]
         super::skidprobe::poke(board.key() as usize ^ ply);
-        for perspective in Color::ALL {
+        // `for perspective in Color::ALL` -- iterating the array BY VALUE --
+        // is the anti-pattern `finny_refresh_into` already forbids in prose a
+        // few hundred lines below, and perf study 49 found `current_full`
+        // committing it. `Color::ALL` is a two-byte array, but consuming it
+        // builds a `core::array::IntoIter` (pointer plus an alive range), and
+        // LLVM declined to promote that `alloca`, so the shipped binary opened
+        // every call with
+        //
+        //     movq $0x0,0xf0(%rsp)         ; iterator: alive.start
+        //     movq $0x2,0xf8(%rsp)         ;           alive.end
+        //     movw $0x100,0x100(%rsp)      ; Color::ALL = [White, Black]
+        //     ...
+        //     movzbl 0x100(%rsp,%rax,1),%r8d   ; and reloaded it per iteration
+        //
+        // Three stores of a compile-time constant plus a stack round-trip, on
+        // every evaluation. Iterating a `static` BY REFERENCE gives the same
+        // two values from `.rodata` with no iterator object: exactly the fix
+        // study 22 arm 3 applied to `PieceType::ALL` in this same file.
+        static PERSPECTIVES: [Color; 2] = Color::ALL;
+        for &perspective in &PERSPECTIVES {
             self.compute(board, ply, perspective);
         }
         let entry = &self.stack[ply];
