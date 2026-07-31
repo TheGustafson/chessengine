@@ -11902,3 +11902,60 @@ tree, voiding a 20-minute panel. **This repo's standing rule is never `git
 stash`** — `refs/stash` is shared across worktrees.
 
 **D49:** sb1073+, 193k pos/s, four services active.
+
+## Tick — 2026-07-31, PGO-corruption audit + study 61 commissioned on study 51's ceiling
+
+### Audit of the dangling-net bug across the archive
+
+Study 60's guard is on main and is the right shape: **`[ -r ]` on the eval-file
+(the exact dangling-symlink test) plus a grep for `ERROR EvalFile` in the training
+session** — belt and braces, because a path can exist and still fail to load.
+
+**What the archive shows:** studies **17, 18 and 19** document the invocation with
+the **bare** `engines/canonical/net.cenn` path, e.g.
+`bash tools/build_pgo.sh sota,arch-d48x engines/bin/archon-s17 engines/canonical/net.cenn`.
+In a worktree that path dangles. **Those appear in next-steps lists, so they may
+never have been executed** — I am not asserting those studies are corrupted, only
+that the recipe they wrote down is the broken one.
+
+**Study 18's "recorded trap", referenced by study 19, is a DIFFERENT bug** —
+`build_pgo.sh` prepending `engines/bin/` to its second argument, so an absolute
+*output* path fails the copy. The dangling *net* is genuinely new to study 60.
+
+**Scoped honestly:** determining whether any specific historical binary was built
+netless requires rebuilding it at its commit, which is a build each and settles
+nothing today's numbers depend on. **Today's numbers are verified clean** (resolved
+absolute path; post-58 PGO at 5729.0 against study 60's correct-PGO 5728.98).
+Recorded as an archive question with the test that would settle it, not launched
+as a retroactive sweep.
+
+**One item worth an owner's decision:** the canonical match engine is
+`engines/canonical/archon -> ../bin/archon-s25`. If it was built netless it is
+~5.4% slower than it should be, and rebuilding would be a free speedup for every
+match. Determining that needs a build at study 25's commit; **promoting a
+rebuilt canonical engine is a promotion decision, not a maintenance one**, so it
+is flagged rather than done.
+
+### Study 61 commissioned — at the largest measured prize in the engine
+
+**Study 51's `probe-wpin` measured −13.19% cycles, 15/15, p=0.0001.** That is the
+biggest single measured opportunity anywhere in ARCHON, it is a *memory*
+opportunity, and **nine routes to it are closed with numbers** — eight prefetch
+arms plus zero-rows, nibble-packing, cancellation, huge pages, 4 KB congruence,
+fusion, pollution control, and study 60's three.
+
+The brief tells it to read all nine first, **not to re-propose prefetching**
+(nine attempts is enough), and states plainly that **"the ceiling is unreachable"
+is not a finding, not a deliverable and not an acceptable conclusion** — with this
+project's own receipt attached: a prior study priced an "unavoidable" gap at
+325–740 units when the real figure was 197.7.
+
+It carries the corrected ranking (**miss LATENCY, not count** — the fold's weight
+rows are 55.05%, `forward_into` 11.8%), study 60's ~287 cycles/node arithmetic
+floor, the memory-bound evidence (IPC 1.595, ≥47% stall), and every instrument
+change from today: cycles is **not** load-robust (+49.9% under contention),
+`instructions:u` is a guard not a licence, `wallclock_panel.py` is mandatory and
+has `--startup-frame`, IBS replaces per-line `perf record`, and the `build_pgo.sh`
+net trap with its resolved-path fix.
+
+**D49:** sb1081, 193k pos/s, four services active, 159 GB disk.
