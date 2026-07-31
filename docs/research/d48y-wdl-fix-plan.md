@@ -9619,3 +9619,40 @@ passed first. Per-point and pooled together, never a lone aggregate.
 **D49x: sb655, EMA 0.010623** — flattening as the sb600–700 anneal exhausts. The
 whole chain (`d49y` continuation, `d49wd` watchdog, `d49v700` verdict,
 `d49yshim`) is queued and verified waiting.
+
+## ⚠ CAUGHT BEFORE IT FIRED — the sb700 handoff would have failed on contact
+
+**D49x: sb662.** Stress-testing the handoff before it triggers found a bug I
+introduced.
+
+`jax/tools/pump_train.py` takes the resume point as its **second positional
+argument**:
+
+```
+python tools/pump_train.py <config.json> [resume_sb]
+```
+
+`start_sb = resume_sb + 1`, and it loads `{net_id}-sb{resume_sb}-raw.bin` **and**
+`-ema-raw.bin`. The `400` in d49x's working invocation was therefore
+**`resume_sb=400`**, with `superbatches=700` in the config supplying the total.
+
+**I wrote d49y's launcher passing `1700`** — the total — which would have tried to
+resume from `d49-1280-sb1700-raw.bin`, **a file that does not exist**. The
+continuation would have died immediately at the handoff, and with the owner away
+the watchdog would have restarted it into the same failure every 100 seconds for
+55 hours.
+
+**Fixed: the launcher now passes `700`.** Verified arithmetic —
+`remaining = 3040 × (1700 − 700) = 3,040,000 batches = 1000 superbatches`,
+`skip_batches = 3040 × 700` so the loader skips data already seen, and it loads
+the sb700 raw **and** EMA state. `d49y` relaunched with the corrected line and is
+waiting correctly.
+
+**Why this was worth the check rather than trusting the queue:** the failure
+would have been silent from the outside — the unit would flap, `cyc.log` would
+fill with load errors, and every status check that only asks `is-active` would
+have said "active". **A queue that is verified only by its own status flag is not
+verified.** The mistake came from copying d49x's invocation shape while
+mis-reading which number meant what — the same units-at-the-boundary error the
+project has now paid for three times today (SF "epochs", study 36's denominator,
+this).
