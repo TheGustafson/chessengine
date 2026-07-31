@@ -782,6 +782,8 @@ impl SotaHead {
             super::sota_simd::skip_dot_i8(&ft[..], sk.q.block(bucket)) as f32 * sk.scale[bucket]
         });
         let count = find_nnz(ft, nnz);
+        #[cfg(feature = "foldcount")]
+        super::foldcount::NNZ.hit(count);
         #[cfg(not(any(feature = "hskip60", feature = "htail60")))]
         let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
         self.propagate_l1(ft, &nnz[..count], bucket, l1_out);

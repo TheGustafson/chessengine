@@ -123,6 +123,63 @@ pub fn note_row_fold(ch: usize, idx: &[RowOffset]) {
     }
 }
 
+/// Perf study 61 — the **reuse-distance census** of the fold's weight rows.
+///
+/// Studies 29/43/44/51/60 closed nine routes to the −13.19 % weight-row prize,
+/// every one of them by changing *when* a row arrives (eight prefetch arms) or
+/// *how many bytes* it occupies (zeros, nibbles, huge pages, congruence). None
+/// of them ever asked the prior question: **how far apart in time are two
+/// touches of the SAME row?** That number decides whether the misses are
+/// capacity (nothing but fewer bytes can help) or conflict/ordering (layout
+/// can).
+///
+/// The statistic is the **temporal reuse distance**: for each folded row, the
+/// number of row-touches since that same row was last folded, in this channel.
+/// Bucketed by `floor(log2 d)`. Reading it: a fully-associative cache holding
+/// the last `W` DISTINCT rows gets at least `CDF(W)` hits, because the number
+/// of distinct rows in a window of `W` touches is at most `W`. So the CDF at
+/// `W = 819` (= 1 MB of L2 / 1280 B per row) is a **lower bound on the
+/// achievable L2 hit rate**, and the CDF at `W = 25` (32 KB of L1) the same
+/// for L1.
+///
+/// One `Vec<u32>` load, compare and store per folded row — instrument-only,
+/// and it does not touch the weight bytes, so it cannot perturb the very
+/// locality it is measuring beyond its own (small, contiguous, per-channel)
+/// table.
+const RD_BUCKETS: usize = 28;
+static ROWLAST: [std::sync::OnceLock<Vec<std::sync::atomic::AtomicU32>>; ROWCH] =
+    [const { std::sync::OnceLock::new() }; ROWCH];
+static ROWCLOCK: [AtomicU64; ROWCH] = [const { AtomicU64::new(0) }; ROWCH];
+static ROWDIST: [[AtomicU64; RD_BUCKETS]; ROWCH] =
+    [const { [const { AtomicU64::new(0) }; RD_BUCKETS] }; ROWCH];
+/// Touches whose row had never been folded before — the compulsory misses.
+static ROWFIRST: [AtomicU64; ROWCH] = [const { AtomicU64::new(0) }; ROWCH];
+
+/// Charge each index in `idx` to the reuse-distance histogram of channel `ch`.
+#[inline]
+pub fn note_row_reuse(ch: usize, idx: &[RowOffset]) {
+    let Some(last) = ROWLAST[ch].get() else {
+        return;
+    };
+    for &r in idx {
+        let now = ROWCLOCK[ch].fetch_add(1, Relaxed) + 1;
+        let Some(cell) = last.get(r.feature()) else {
+            continue;
+        };
+        let prev = cell.swap(now as u32, Relaxed);
+        if prev == 0 {
+            ROWFIRST[ch].fetch_add(1, Relaxed);
+            continue;
+        }
+        let d = (now as u32).saturating_sub(prev).max(1);
+        // `ilog2` of a `u32` is 0..=31; the top bucket absorbs everything
+        // beyond 2^27 touches, which at 7.2 rows/node is ~18.6 M nodes — more
+        // than the whole frame, so nothing real lands there.
+        let b = (d.ilog2() as usize).min(RD_BUCKETS - 1);
+        ROWDIST[ch][b].fetch_add(1, Relaxed);
+    }
+}
+
 /// Build channel `ch`'s per-row peak-magnitude table and size its counters.
 pub fn rowwidth_init(ch: usize, weights: &[i8], acc: usize) {
     let peaks: Vec<u8> = weights
@@ -137,6 +194,13 @@ pub fn rowwidth_init(ch: usize, weights: &[i8], acc: usize) {
     let n = peaks.len();
     let _ = ROWMAXABS[ch].set(peaks);
     let _ = ROWCOUNT[ch].set((0..n).map(|_| AtomicU64::new(0)).collect());
+    // Perf study 61's reuse clock. 0 means "never folded", so the clock starts
+    // at 1 and a first touch is distinguishable from a distance-0 one.
+    let _ = ROWLAST[ch].set(
+        (0..n)
+            .map(|_| std::sync::atomic::AtomicU32::new(0))
+            .collect(),
+    );
 }
 
 /// Static row structure of a weight table: how many rows are entirely zero,
@@ -167,6 +231,22 @@ static ROWSTATS: std::sync::Mutex<Vec<(&'static str, u64, u64, [u64; 17])>> =
 pub static ACTIVATE: Site = Site::new();
 /// `SotaHead::forward_into` — one full evaluation.
 pub static EVAL: Site = Site::new();
+
+/// Perf study 61 — the **group density of the sparse L1 matmul**.
+///
+/// `l1_dot` is a gather: one 64-byte `vpdpbusd` load per NONZERO four-lane
+/// group of the activated FT, indexed through `find_nnz`'s output. It is 6.9 %
+/// of the engine's IBS tag-to-retire latency and study 51 measures its table
+/// (`l1_weights`, 20 KB per output bucket) at a **91.44 % L1 miss rate**.
+///
+/// Sparsity only pays if the groups it skips are worth the irregularity it
+/// buys. A four-lane group is zero only if all FOUR of its clipped-ReLU lanes
+/// are zero, so the GROUP density is far above the element density — and if it
+/// is high enough, the dense form reads the same 20 KB *sequentially*, which is
+/// a different memory access pattern for a small amount of extra arithmetic.
+/// `rows` holds the summed nonzero-group count and `calls` the evaluations, so
+/// `rows/calls / (ACC/4)` is the density.
+pub static NNZ: Site = Site::new();
 
 /// Shape histogram for the HalfKA fold: index `adds * 4 + subs`, capped at 15.
 pub static HKA_SHAPE: [AtomicU64; 16] = [const { AtomicU64::new(0) }; 16];
@@ -205,6 +285,24 @@ pub fn note_finny_key(p: usize, key: usize) {
 }
 /// Shape histogram for the threat fold: `min(adds + subs, 31)`.
 pub static THR_SHAPE: [AtomicU64; 32] = [const { AtomicU64::new(0) }; 32];
+
+/// Perf study 61 — the threat fold's `(adds, subs)` PAIR, capped at 7 each.
+///
+/// `THR_SHAPE` records only the SUM, and the sum cannot answer the question the
+/// kernel dispatch actually asks. `i8_deltas_into_inner` matches on the pair
+/// and has exactly four arms — `(1,1) (1,2) (2,1) (2,2)` — chosen in study 25
+/// when this kernel was HalfKA-only and the threat channel had its own; study
+/// 32 merged the two and routed every threat fold through the same dispatch
+/// without revisiting the arm list. So the share of threat folds that reach the
+/// branch-free straight-line path, and the share that fall through to the
+/// runtime-length generic, have never been counted.
+pub static THR_PAIR: [AtomicU64; 64] = [const { AtomicU64::new(0) }; 64];
+
+/// Hook: a threat fold had `adds` add-rows and `subs` sub-rows.
+#[inline]
+pub fn note_thr_pair(adds: usize, subs: usize) {
+    THR_PAIR[adds.min(7) * 8 + subs.min(7)].fetch_add(1, Relaxed);
+}
 
 /// Perf study 38 — the JOINT (per-perspective) shape of one ply's threat fold,
 /// indexed `need0 | need1<<1 | empty0<<2 | empty1<<3`.
@@ -459,6 +557,7 @@ pub fn dump(nodes: u64) {
         ("thr_refresh", &THR_REFRESH),
         ("activate", &ACTIVATE),
         ("eval", &EVAL),
+        ("nnz", &NNZ),
         ("make", &MAKE),
         ("thr_make", &THR_MAKE),
         ("active_thr", &ACTIVE_THR),
@@ -490,6 +589,12 @@ pub fn dump(nodes: u64) {
         let n = cell.load(Relaxed);
         if n != 0 {
             emit!("FOLDCOUNT thr_shape.{r}={n}");
+        }
+    }
+    for (i, cell) in THR_PAIR.iter().enumerate() {
+        let n = cell.load(Relaxed);
+        if n != 0 {
+            emit!("FOLDCOUNT thr_pair.{}a{}s={n}", i / 8, i % 8);
         }
     }
     for (i, cell) in THR_JOINT.iter().enumerate() {
@@ -595,6 +700,26 @@ pub fn dump(nodes: u64) {
             ROWCH_NAMES[ch],
             f.join(" "),
             s.join(" ")
+        );
+    }
+    // Perf study 61 — the reuse-distance census, plus the distinct-row count
+    // the whole frame actually touched (the working set's UPPER bound).
+    for ch in 0..ROWCH {
+        let Some(cnt) = ROWCOUNT[ch].get() else {
+            continue;
+        };
+        let distinct = cnt.iter().filter(|c| c.load(Relaxed) > 0).count();
+        let first = ROWFIRST[ch].load(Relaxed);
+        let hist: Vec<String> = ROWDIST[ch]
+            .iter()
+            .enumerate()
+            .map(|(b, n)| format!("{b}:{}", n.load(Relaxed)))
+            .collect();
+        emit!(
+            "FOLDROWREUSE {} touches={} distinct={distinct} first={first} log2dist {}",
+            ROWCH_NAMES[ch],
+            ROWCLOCK[ch].load(Relaxed),
+            hist.join(" ")
         );
     }
     if let Ok(g) = ROWSTATS.lock() {

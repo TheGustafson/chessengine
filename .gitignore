@@ -128,3 +128,6 @@ docs/research/perf-artifacts-59/*.lock
 /target-x86-64-v3/
 bin60/
 docs/research/perf-artifacts-60/*.lock
+# perf study 61 — labelled arm binaries and the panel lock
+bin61/
+docs/research/perf-artifacts-61/*.lock
