@@ -10893,3 +10893,59 @@ gate** — study 56's `bcmisc55` (−44.7 → +7.7) is cited as the reason.
 
 **D49:** sb975, heldout ema 0.010662/0.010695 (sawtooth), 193k pos/s, four
 services active, 151 GB disk. **sb1400 — the first readable point — is ~15 h out.**
+
+## Tick — 2026-07-31, study 57 merged; its PGO challenge CHECKED, and I had a confound
+
+**Study 57 merged at `05ff213f`**, integrated with study 56, gate green on the
+merged tree, byte-reproducible (`.text` md5 `8876f37d`).
+
+**The conflict was resolved as specified, keeping both wins:** `resolve_into` is
+`&mut [RowOffset; DELTA_CAP]` written `adds[add_len & M] = RowOffset::of(idx)` —
+study 56's fixed size discharges the bounds check on the **write**, study 57's
+pre-scaling stops the kernel recomputing `feature * ACC` per tile on the **read**.
+
+**Re-measured against post-56 main, the arm got BIGGER, not smaller:**
+−0.694% → **−0.772%** (−41.27 → −45.40 i/n, +10%), with a branch **sign flip**
+(−0.014% 24/24 → +0.015% 0/24). Both left **unattributed** — correctly, since the
+plausible mechanisms are hypotheses. A dedicated arm-A-only binary was built on
+the new base rather than subtracting arm B from the combined number, which would
+have been two unmeasured inferences deep.
+
+Combined post-56, 39 rounds: instructions **−0.523%** (39/39), branches −2.344%,
+`ls_dispatch` −0.667%, cycles **−1.228%** (29/39, p=0.0034), null +0.033%.
+
+**Method finding worth more than the arm:** the same cycles contrast read
+**−0.790% at 24 rounds and FAILED its own sign test** (17/24, p=0.0639); at 39
+rounds it is −1.228%, p=0.0034. Stopping at 24 would have produced "the cycles win
+halved after integration" — **a story, not a measurement.** A ~1% cycles effect on
+this box needs **~40 paired rounds for the SIGN TEST**, not the 23 that resolve the
+median. Our σ = 1.57% note covers the median only; this extends it.
+
+### It challenged my PGO finding with a control I had not run — and it was right to
+
+Study 57 built the PGO pair, got −1.611% instructions, then **declined to quote
+it** because a direct PGO-vs-non-PGO contrast of `base56` (same source, same
+`target-cpu`, only `-C profile-use` differing) read **instructions +0.060%** — no
+PGO win at all. It escalated instead of resolving, and named a cheap falsifier.
+
+**I checked it. My measurement had a real confound:** my non-PGO builds used
+`-C target-cpu=x86-64-v3` while `build_pgo.sh` uses `target-cpu=native`, **so my
+"PGO pair" varied two things at once.** `build_pgo.sh` honours `PGO_CPU`, so the
+isolation is one build:
+
+| contrast (current main) | delta |
+|---|---|
+| **PGO alone** (`PGO_CPU=x86-64-v3`, target-cpu held fixed) | **−82.6 i/n (−1.408%)** |
+| **target-cpu alone** (v3 → native, no PGO either side) | −20.3 i/n (−0.346%) |
+
+**PGO works.** Study 57's `+0.060%` does **not** reproduce at main — it is a
+result about its own `base56`, worth its own look but not an overturning.
+
+**The absorption finding survives, with its label corrected.** target-cpu
+contributes only −0.346%, so PGO dominates the config difference. But the honest
+statement is **"native+PGO absorbs ~38% relative to v3-non-PGO, with PGO the
+dominant term"** — not the clean "PGO absorbs 38%" I wrote. Memory updated with
+the caveat and the one-build isolation recipe.
+
+**D49:** sb975+, 193k pos/s, four services active. **Study 58** running against
+the corrected PGO profile.
