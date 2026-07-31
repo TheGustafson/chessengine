@@ -12430,3 +12430,36 @@ and that is now a measured fact about our artifacts rather than an assumption.**
 
 **D49:** sb1144, 193k pos/s, four services active. **sb1400 in ~9.2 h.**
 **Study 62** working.
+
+## Tick — 2026-07-31 18:02, the WATCHDOG verified end-to-end (it had never been exercised)
+
+The restart rule is a standing user directive and the watchdog is the insurance
+policy on a 20-hour run — **and it has never fired.** Verified the whole chain by
+reading and dry-running it, **without** exercising it destructively:
+
+| step | verified |
+|---|---|
+| watchdog sees `d49y` inactive → `systemd-run --user --unit=d49y bash $S/d49y_launch.sh` | ✓ `$S` is defined in the watchdog itself (line 9), so the path resolves in its own environment |
+| launcher discovers resume = **highest sbN having BOTH `raw` and `ema-raw`** | ✓ that pair is what `pump_train` loads |
+| resume passed as the **positional** arg to `pump_train.py` | ✓ — the argument I corrected earlier this run (it was going to receive `1700`, the *total*, and try to load a nonexistent `sb1700-raw.bin`) |
+| waits for GPU to be free before launching | ✓ |
+| **3 restarts with no progress → HALT** and log "investigate before relaunching" | ✓ not an infinite restart loop |
+
+**Currently resolves to sb1150; a crash right now would lose at most 1
+superbatch.**
+
+**One methodological note on how this was checked.** My first dry-run
+re-implemented the discovery logic and reported "resumes from sb1150" — which
+tested **my model of the watchdog, not the watchdog.** I then read the actual
+launcher and confirmed the real logic is identical. **A dry-run that reimplements
+the thing it is testing proves nothing**; the same substitution as quoting a
+partial run as a data point, one level up.
+
+**Why this was worth a tick:** every ETA and endpoint plan in this log assumes the
+run survives to sb1700, ~9 h away, unattended. That assumption now rests on a
+verified path rather than on the fact that nothing has crashed yet — and the
+progress-gate means a *persistent* fault (bad resume, missing checkpoint, config
+fault) halts loudly instead of burning the GPU on a restart loop.
+
+**D49:** sb1151, heldout ema 0.010657, 193k pos/s, four services active, 149 GB
+disk. **sb1400 in ~9.0 h.** **Study 62** working.
