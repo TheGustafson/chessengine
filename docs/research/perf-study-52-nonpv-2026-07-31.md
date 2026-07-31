@@ -202,6 +202,30 @@ Reported prominently because a closed lever is a result:
    spill traffic. There is no single variable to fix. **The static count
    overstated the case and is not a usable guide.**
 
+### 0.5b The mispredict bucket, computed before anything was built (as commissioned)
+
+The brief asked for this arithmetic up front rather than after an arm, so:
+`search::<NonPv>` carries **16.57 %** of engine branch mispredicts (study 36
+§0.1; study 33 §6 independently read 17.47 % on a different tree) against an
+engine **24.34 mispredicts/node** (study 41 §0). That is **4.03
+mispredicts/node**, and at study 40's marginal **9.13 cycles** each,
+
+> **36.8 cycles/node = 1.00 % of my measured 3665.37 frame.**
+
+**That is the ceiling on eliminating every branch mispredict in the largest
+symbol in the engine**, and it is why no arm here was designed around
+mispredicts. Two further constraints make it smaller still: study 41 established
+that **mispredict cost and instruction-refetch cost are the same cycles** (the
+two channels together already over-explain the front-end bucket at 108–116 %),
+so this 1.00 % must never be added to a fetch-side estimate; and 9.13 is a
+*marginal* rate at one call site, flagged by study 40 itself as a lower bound
+that study 41 then failed to re-identify (±13 on 14).
+
+The landed arm (§5.4) does remove **5.8 branches/node**, but that is a
+side-effect of deleting work, not a mispredict play — and `ex_ret_brn_misp`
+cannot adjudicate it anyway (study 36 §2.2 nulls it at ±0.3 % over ~10-point
+ranges).
+
 ### 0.6 The one live forward pointer, measured but UNPRICED
 
 **Nobody has ever measured store-to-load forwarding in this engine.**
