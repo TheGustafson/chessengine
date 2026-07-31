@@ -11515,3 +11515,57 @@ well as the median criterion. This run is exactly the case that motivates it —
 
 **D49:** sb1038, 193k pos/s, four services active, 162 GB disk. **Study 59** at
 work, no builds in flight.
+
+## Tick — 2026-07-31 14:1x, WHY THE INSTRUCTIONS DIDN'T CONVERT: ARCHON IS MEMORY-BOUND
+
+Last tick's uncomfortable observation — ~155 shipped i/n added with no wall-clock
+movement — has a measured cause. Profiled `archon-58-pgo` (shipped config,
+canonical net, pinned frame):
+
+| metric | value |
+|---|---|
+| **IPC** | **1.595** — Zen 4 realistic peak ~3–4 |
+| **L1d load miss rate** | **18.33%** — 2.71 **billion** misses, **543 per node** |
+| branch miss rate | 4.07% → ~**9.4% of cycles** at a 15-cycle penalty |
+| instructions/node | 5724 |
+| **stall share of cycles** | **47%** (IPC 3) · **60%** (IPC 4) · 73% (peak 6) |
+
+**At minimum half the engine's time is stall, not instruction issue.** Even on the
+most conservative assumption about achievable IPC, instruction issue is under half
+the budget. **That is why −317.7 shipped i/n bought nothing measurable.**
+
+### What this means for the programme
+
+**The perf programme has been optimising the thing that is not binding.** Seven
+studies, all gated on `instructions:u`, all landing real instruction reductions —
+and the shipped wall-clock gain across the whole series is ~**−0.9%**, marginal at
+p=0.081.
+
+**`instructions:u` should stay the gate.** It is the only counter with a 0.000
+null, it is load-robust and cheap, and it reliably answers *"did this arm do what
+I meant?"*. **What it does not answer is *"is this arm worth anything?"** — and
+the programme has been treating one as the other. Those are separate claims and
+they now have separate instruments: `instructions:u` for the first,
+`tools/wallclock_panel.py` for the second.
+
+### Where the next studies should aim
+
+1. **Cache/memory locality — 543 L1d misses per node.** The standing note that
+   **65.75% of cache misses sit in the three accumulator-fold kernels** has been
+   in the directive all along and is now the *primary* target rather than a
+   footnote. This is where the stall is.
+2. **Branch mispredicts — ~9.4% of cycles** at 4.07% of 2.76 B branches. Second
+   largest single identified block.
+
+Study 59 is already in flight against `search::<NonPv>` / `at_full` /
+`init_quiets` on an instruction-weighted profile. **It is not being redirected
+mid-run** — its targets are large and its arms will be measured properly — but the
+brief for study 60 should lead with memory locality and require a wall-clock panel
+before any arm is called valuable.
+
+**Honest framing:** this does not retract the landed work. −486.8 i/n on the gate
+build is real, node-identical, and gate-green, and a faster-issuing engine is not
+worse. It says the *pricing* was wrong, that ~+1.6 DERIVED Elo is what seven
+studies bought, and that the next seven should be aimed somewhere else.
+
+**D49:** sb1045, 193k pos/s, four services active.
