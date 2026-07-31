@@ -18,6 +18,30 @@ path = "src/bin/root_analysis.rs"
 required-features = ["datagen"]
 
 [features]
+# ---- perf study 55 arms: how far does study 54's SINGLE-CALL-SITE INLINING
+# mechanism generalise?  Study 54 measured -20.8 i/n from making
+# `make_move_with::<H>` reachable from ONE call site, so LLVM's last-call-to-
+# static bonus inlined all 2466 bytes of it into `do_move`.  The generic that
+# denies that bonus everywhere else is `search::<NT>`: Pv and NonPv are two
+# monomorphizations of one body, so EVERY helper called from the search body
+# has (at least) two call sites and stays out of line -- including three that
+# already carry `#[inline]` and were declined anyway.  These arms force the
+# inline that the duplicated call site denies.  Pure codegen; node-identical.
+#
+# `inla55`: the pure 2-call-site class -- helpers whose ONLY caller pair is
+# search::<Pv> + search::<NonPv> (stat_score, is_shuffling, MovePicker::select,
+# Stage::bump, Board::legal, upcoming_repetition, new_probcut).
+inla55 = []
+# `inlb55`: per-node board/TT helpers with 3-10 call sites (unmake_move,
+# tt::probe, TtWriter::write, capture_stage, gives_check) -- the same lever
+# where the call-site count is NOT two, to test whether the mechanism is about
+# "one site" or just about "inlined at all".
+inlb55 = []
+# The INERT CONTROL is not a feature: it is the label `ctl55`, this EDITED tree
+# built with NO arm feature.  If its `.text` md5 equals `base55`'s (built from
+# the untouched tree) the scaffolding is provably inert and every arm is a
+# straight arm-minus-base contrast.  Study 53's control failed exactly this
+# test (-6.9 i/n on its own); study 54's passed.
 # ---- perf study 53 arms (do_move / bounds-check deletion). Node-identical by
 # construction; each is a MEASUREMENT arm, promoted to unconditional if it wins.
 # `cont53`: pad CONT_NB 3328 -> 4096 and mask, folding the continuation-history

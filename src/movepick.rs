@@ -389,7 +389,12 @@ impl Stage {
 
     /// The next stage in the pipeline (design/09 §3.6): the Rust replacement
     /// for Stockfish's `goto`/fallthrough between stages.
-    #[inline]
+    // perf study 55 arm `inla55`: study 54 measured -20.8 i/n from a helper
+    // becoming single-call-site, which let LLVM's last-call-to-static bonus
+    // inline it.  `search::<NT>` duplicates every search-body call site, so
+    // that bonus never applies here; this forces the same inline directly.
+    #[cfg_attr(feature = "inla55", inline(always))]
+    #[cfg_attr(not(feature = "inla55"), inline)]
     fn bump(self) -> Stage {
         Stage::from_u8(self as u8 + 1)
     }
@@ -634,6 +639,11 @@ impl MovePicker {
     /// `threshold = probcut_beta - static_eval` is computed by the caller
     /// (doc 10). The TT move is usable only if it is additionally a capture or
     /// queen promotion (`capture_stage`).
+    // perf study 55 arm `inla55`: study 54 measured -20.8 i/n from a helper
+    // becoming single-call-site, which let LLVM's last-call-to-static bonus
+    // inline it.  `search::<NT>` duplicates every search-body call site, so
+    // that bonus never applies here; this forces the same inline directly.
+    #[cfg_attr(feature = "inla55", inline(always))]
     pub fn new_probcut(board: &Board, tt_move: Move, threshold: Value) -> Self {
         let usable = tt_move.is_ok() && board.pseudo_legal(tt_move) && board.capture_stage(tt_move);
         MovePicker::with_base(
@@ -1350,6 +1360,11 @@ impl MovePicker {
     /// shared select semantics). Advances `cur` past every element it inspects.
     /// The closure sees the whole [`ExtMove`] so value-filtered stages (good/
     /// bad quiets) can test the ordering score directly.
+    // perf study 55 arm `inla55`: study 54 measured -20.8 i/n from a helper
+    // becoming single-call-site, which let LLVM's last-call-to-static bonus
+    // inline it.  `search::<NT>` duplicates every search-body call site, so
+    // that bonus never applies here; this forces the same inline directly.
+    #[cfg_attr(feature = "inla55", inline(always))]
     fn select(
         &mut self,
         board: &Board,

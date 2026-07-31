@@ -395,6 +395,11 @@ impl TtWriter<'_> {
     /// `generation` is the caller's cached `tt.generation()`.
     // The 8-parameter shape is the doc 08 §3.7 contract (mirrors SF's save).
     #[allow(clippy::too_many_arguments)]
+    // perf study 55 arm `inlb55`: study 54 measured -20.8 i/n from a helper
+    // becoming single-call-site, which let LLVM's last-call-to-static bonus
+    // inline it.  `search::<NT>` duplicates every search-body call site, so
+    // that bonus never applies here; this forces the same inline directly.
+    #[cfg_attr(feature = "inlb55", inline(always))]
     pub fn write(
         &self,
         key: Key,
@@ -501,6 +506,11 @@ impl TranspositionTable {
     /// `depth8 − 8·relative_age`, first strict minimum wins (§3.6) — one
     /// generation of staleness outweighs 8 plies of stored depth, and
     /// empties (score 0) are consumed before current-generation entries.
+    // perf study 55 arm `inlb55`: study 54 measured -20.8 i/n from a helper
+    // becoming single-call-site, which let LLVM's last-call-to-static bonus
+    // inline it.  `search::<NT>` duplicates every search-body call site, so
+    // that bonus never applies here; this forces the same inline directly.
+    #[cfg_attr(feature = "inlb55", inline(always))]
     pub fn probe(&self, key: Key) -> Probe<'_> {
         let cluster = self.cluster_for(key);
         let tag = key as u16;

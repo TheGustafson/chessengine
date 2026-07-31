@@ -472,6 +472,11 @@ impl Board {
     /// occupancy-swap test as defense-in-depth: `legal` stays correct even
     /// on hand-forced boards that violate D9, at the cost of two slider
     /// probes on a rare move type.
+    // perf study 55 arm `inla55`: study 54 measured -20.8 i/n from a helper
+    // becoming single-call-site, which let LLVM's last-call-to-static bonus
+    // inline it.  `search::<NT>` duplicates every search-body call site, so
+    // that bonus never applies here; this forces the same inline directly.
+    #[cfg_attr(feature = "inla55", inline(always))]
     pub fn legal(&self, m: Move) -> bool {
         let us = self.side_to_move();
         let them = us.flip();
@@ -698,6 +703,11 @@ impl Board {
     ///
     /// Precondition: `m` is pseudo-legal in `self`. On arbitrary moves the
     /// answer is meaningless but never panics.
+    // perf study 55 arm `inlb55`: study 54 measured -20.8 i/n from a helper
+    // becoming single-call-site, which let LLVM's last-call-to-static bonus
+    // inline it.  `search::<NT>` duplicates every search-body call site, so
+    // that bonus never applies here; this forces the same inline directly.
+    #[cfg_attr(feature = "inlb55", inline(always))]
     pub fn capture_stage(&self, m: Move) -> bool {
         match m.kind() {
             MoveKind::Normal => self.all_occupancy().contains(m.to()),

@@ -1290,6 +1290,11 @@ impl Board {
     /// O(1) for the common cases via `check_squares` and
     /// `blockers_for_king` (doc 04 §3.6) — search calls this once per move
     /// and feeds the answer to [`Board::make_move`].
+    // perf study 55 arm `inlb55`: study 54 measured -20.8 i/n from a helper
+    // becoming single-call-site, which let LLVM's last-call-to-static bonus
+    // inline it.  `search::<NT>` duplicates every search-body call site, so
+    // that bonus never applies here; this forces the same inline directly.
+    #[cfg_attr(feature = "inlb55", inline(always))]
     pub fn gives_check(&self, m: Move) -> bool {
         let pc = self
             .piece_on(m.from())
@@ -1991,6 +1996,11 @@ impl Board {
     /// Deliberately dumb-cheap: restore the placement, pop the state — no
     /// key or check-info work, everything derived lives in the popped
     /// record and the parent state is intact underneath.
+    // perf study 55 arm `inlb55`: study 54 measured -20.8 i/n from a helper
+    // becoming single-call-site, which let LLVM's last-call-to-static bonus
+    // inline it.  `search::<NT>` duplicates every search-body call site, so
+    // that bonus never applies here; this forces the same inline directly.
+    #[cfg_attr(feature = "inlb55", inline(always))]
     pub fn unmake_move(&mut self, m: Move) {
         // The child's `captured` is the only field that survives the restore,
         // so read it before the parent overwrites it.
@@ -2237,6 +2247,11 @@ impl Board {
     /// Search calls this before its other early exits: a side that can force
     /// a draw need never search a losing subtree, which prunes hard in
     /// blocked and fortress-like positions.
+    // perf study 55 arm `inla55`: study 54 measured -20.8 i/n from a helper
+    // becoming single-call-site, which let LLVM's last-call-to-static bonus
+    // inline it.  `search::<NT>` duplicates every search-body call site, so
+    // that bonus never applies here; this forces the same inline directly.
+    #[cfg_attr(feature = "inla55", inline(always))]
     pub fn upcoming_repetition(&self, ply: i32) -> bool {
         let copied = &self.st().copied;
         // Same window as the repetition scan: an irreversible move or a null
