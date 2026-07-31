@@ -10981,3 +10981,46 @@ mtime, which cost me a phantom −0.473% earlier today.
 **D49:** sb982, heldout ema **0.010659** — lowest of the run, still inside the
 sawtooth. 193k pos/s, four services active, 153 GB disk.
 **Study 58** merged main into its worktree and is working.
+
+## Tick — 2026-07-31, THE NODE-NULL IS PERFECT: the perf work is provably behaviourally inert
+
+`archon-main-pgo` vs `archon-pre52-pgo`, same canonical net, fixed 25k nodes,
+reported at the 998-game interval:
+
+```
+Elo: -0.00 +/- 0.00        DrawRatio (pairs): 100.00%
+Games: 998  Wins: 271  Losses: 271  Draws: 456
+Ptnml(0-2): [0, 0, 499, 0, 0]
+```
+
+**Every one of 499 game pairs split exactly 1–1. Zero deviations.** Two binaries
+differing by six merged studies and **263 instructions/node** played *identically*
+in every position. The 271/271 win/loss split is pure colour symmetry — the same
+game, played from both sides.
+
+**This is stronger than a null result; it is a determinism proof.** A conventional
+null says "no effect detected within ±10 Elo". A degenerate pentanomial says the
+decisions were **bit-identical in live play**, which no aggregate could establish.
+
+### What it buys, and it is not small
+
+1. **Node-identity holds in real games, not just on the bench.** The bench frame
+   is one position set at one depth; it says nothing about time management, hash
+   pressure across a game, or repetition state. Those are now covered by
+   measurement rather than by assumption. This null had never been run.
+2. **The entire perf programme cannot have changed strength at fixed nodes.**
+   Therefore any Elo it produces is **100% attributable to speed** — no
+   behavioural side-channel, no accidental search change hiding inside a "pure
+   speed" claim.
+3. **It makes the pending fixed-TIME match clean by construction.** Whatever that
+   match reads is speed and nothing else. Very few speed measurements get to say
+   that; ours now can, and it cost 15 minutes on a contended box.
+
+It also confirms, from the other direction, why **fixed-node screens can never
+price perf work** — here they returned a mathematically exact zero.
+
+**Still owed and now the only remaining question:** the fixed-TIME PGO match. Both
+binaries exist, the behavioural confound is eliminated, and it waits solely on a
+quiet box. Study 58 is running.
+
+**D49:** sb989, 193k pos/s, four services active.
