@@ -11270,3 +11270,57 @@ arms amplify, 57's absorb, the sum absorbs.
   **No cheap instruction win left there.**
 
 **D49:** sb1003+, 193k pos/s, four services active.
+
+## Tick — 2026-07-31, THE 6× GAP IS EXPLAINED: an arm's value is target-cpu dependent
+
+Last tick I flagged that study 57 self-reported ≈−31 i/n and delivered **−187.6**
+on my build, and said I would not invent a mechanism. **Bisected it instead, and
+the cause is exact.**
+
+Its own arithmetic implied a base of **5880.8 i/n**. My post-56 gate build reads
+**6058.1**. So I rebuilt both endpoints with `target-cpu=native`:
+
+| build | post-56 | post-57 | **study 57 delivers** |
+|---|---|---|---|
+| **`native`** (what we SHIP) | **5880.9** | 5850.1 | **−30.8 i/n (−0.523%)** |
+| **`x86-64-v3`** (what the GATE builds) | 6058.1 | 5870.4 | **−187.6 i/n (−3.097%)** |
+
+**5880.9 against its implied 5880.8 — one decimal.** Study 57 measured on native
+and reported `−0.523%`, which reproduces **exactly**. Neither of us was wrong;
+**we measured different compilers.**
+
+**Mechanism:** `native` on this box has AVX-512 VBMI2 and already does much of
+what arm A does by hand — pre-scaling fold row offsets so the kernel stops
+recomputing `feature * ACC` per tile. On v3 it does not, so the hand-written
+version wins six times as much.
+
+**The distinction that matters, and it is easy to conflate:** comparing v3 vs
+native on the *same* code is a **small** difference (−20.3 i/n, measured earlier).
+The value of an **arm** between the two can differ **6×**. Those are different
+questions.
+
+### Consequence: our gate build is not our shipped build
+
+| | pre-52 → post-58 |
+|---|---|
+| gate (v3, non-PGO) | **−486.8 i/n (−7.700%)** |
+| **SHIPPED (native+PGO)** | **−317.7 i/n (−5.254%)** |
+
+**Shipped retains 65% of the gate headline.** Both provenance-verified by
+rebuilding from source, not by trusting a binary's mtime.
+
+This refines — and partly re-labels — the earlier "PGO absorbs 38%" finding.
+Some of that absorption was never PGO; it was `target-cpu`. The three effects are
+now separated:
+
+- **PGO alone** (target-cpu held fixed): −82.6 i/n
+- **native vs v3, same code**: −20.3 i/n
+- **an ARM's value between v3 and native**: up to **6×**
+
+**Standing rule added:** keep gating on v3 `instructions:u` — cheap, portable,
+0.000 null. **But rebuild on `native` (+PGO) before quoting a number as
+delivered**, and when reconciling against a study's figure, **ask what `RUSTFLAGS`
+it used first.** Two correct measurements can disagree 6× and both be right.
+
+**D49:** sb1010, heldout ema 0.010655/0.010691 (sawtooth), 193k pos/s, four
+services active, 154 GB disk.
